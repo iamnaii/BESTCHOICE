@@ -15,7 +15,10 @@ import ThaiDateInput from '@/components/ui/ThaiDateInput';
 import { Form, FormField, FormItem, FormLabel, FormControl, FormMessage } from '@/components/ui/form';
 import AddressForm, { type AddressData, emptyAddress, serializeAddress } from '@/components/ui/AddressForm';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
+import { HeardFromChips } from '@/components/customer/journey/HeardFromChips';
+import { postHeardFrom } from '@/hooks/customer-journey/journeyEntries';
 import { ChevronDown, CreditCard, Camera, User, MapPin, Phone, Briefcase, Users, Link2 } from 'lucide-react';
+import type { JourneyHeardFrom } from '@installment/shared';
 import type { OcrResult } from '@/types/ocr';
 
 /**
@@ -121,6 +124,20 @@ export interface CustomerCreateDialogProps {
   fillCustomerId?: string;
   /** โหมด fill บันทึกสำเร็จ — dialog ปิดตัวเองหลังเรียก */
   onFilled?: (customer: CreatedCustomer) => void;
+  /**
+   * เปิดจากห้องแชท (แผงอินบ็อกซ์ "บันทึกและผูกกับแชท" · /customers?new=1&fromRoomId=…) — ระบบรู้ช่องทางแรกจากห้องแล้ว
+   * จึงไม่ถามชิป "ลูกค้ารู้จักร้านจากไหน" (คำตัดสินเจ้าของ 2026-09-15 ข้อ 3, 12) · โหมด fill ไม่ถามอยู่แล้ว
+   */
+  linkedToChat?: boolean;
+}
+
+/** ตัวแปรของ mutation — ชิปถูกจับ ณ ตอนกดบันทึก และถูกถอดออกก่อนสร้าง body ของ POST /customers */
+type CreateVariables = CustomerFormData & { heardFrom: JourneyHeardFrom | null };
+
+/** ผลของ mutation — heardFromFailed = สร้าง/เติมลูกค้าได้ แต่บันทึกชิปไม่สำเร็จ (ไม่ขวางการสร้าง) */
+interface CreateResult {
+  data: CreatedCustomer;
+  heardFromFailed: boolean;
 }
 
 export default function CustomerCreateDialog({ open, onOpenChange, ...formProps }: CustomerCreateDialogProps) {
@@ -139,8 +156,10 @@ export default function CustomerCreateDialog({ open, onOpenChange, ...formProps 
 
 type FormProps = Omit<CustomerCreateDialogProps, 'open' | 'onOpenChange'> & { onClose: () => void };
 
-function CustomerCreateForm({ mode = 'create', fillCustomerId, initialValues, initialAddressIdCard, context, submitLabel = 'บันทึก', onCreated, onFilled, onUseExisting, onClose }: FormProps) {
+function CustomerCreateForm({ mode = 'create', fillCustomerId, initialValues, initialAddressIdCard, context, submitLabel = 'บันทึก', onCreated, onFilled, onUseExisting, linkedToChat = false, onClose }: FormProps) {
   const isFill = mode === 'fill';
+  /* ถามช่องทางที่รู้จักเฉพาะลูกค้าหน้าร้านที่สร้างใหม่ — โหมด fill / ผูกห้องแชท = ทักแชทมาก่อน ระบบรู้ช่องทางแล้ว */
+  const askHeardFrom = !isFill && !linkedToChat;
   const form = useForm<CustomerFormData>({
     /* R43: `prospectFillSchema.lastName` ว่างได้ (ชื่อในแชทคำเดียว) — สคีมาใช้ `z.string().catch('')`
        ให้ชนิด input/output เป็น string เท่ากับ `CustomerFormData` จึงไม่ต้อง cast resolver (B5) */
@@ -149,6 +168,8 @@ function CustomerCreateForm({ mode = 'create', fillCustomerId, initialValues, in
   });
   // Extra fields not in customerSchema (managed as separate state)
   const [formExtra, setFormExtra] = useState({ facebookFriends: '', googleMapLink: '', addressCurrentType: '' });
+  /* ชิป "รู้จักร้านจากไหน" — ไม่อยู่ใน customerSchema (ห้ามเข้า body ของ POST /customers) · ฟอร์ม mount ตอนเปิดเท่านั้น ⇒ เปิดใหม่ = ว่าง */
+  const [heardFrom, setHeardFrom] = useState<JourneyHeardFrom | null>(null);
   const [addressIdCard, setAddressIdCard] = useState<AddressData>(initialAddressIdCard ?? emptyAddress);
   const [addressCurrent, setAddressCurrent] = useState<AddressData>(emptyAddress);
   const [sameAddress, setSameAddress] = useState(false);
@@ -168,7 +189,7 @@ function CustomerCreateForm({ mode = 'create', fillCustomerId, initialValues, in
   const [cardReaderLoading, setCardReaderLoading] = useState(false);
 
   const createMutation = useMutation({
-    mutationFn: async (data: CustomerFormData) => {
+    mutationFn: async ({ heardFrom: chosenHeardFrom, ...data }: CreateVariables): Promise<CreateResult> => {
       // R43: โหมด fill นามสกุลว่างได้ (ชื่อในแชทคำเดียว) — ต้องไม่เหลือช่องว่างคั่นกลาง
       // โหมดสร้างนามสกุลบังคับอยู่แล้ว ผลลัพธ์จึงเท่าเดิมทุกไบต์
       const name = [data.firstName, data.lastName].filter(Boolean).join(' ').trim();
@@ -179,7 +200,8 @@ function CustomerCreateForm({ mode = 'create', fillCustomerId, initialValues, in
         if (data.nickname) fillPayload.nickname = data.nickname;
         if (data.nationalId) fillPayload.nationalId = data.nationalId;
         if (data.facebookName) fillPayload.facebookName = data.facebookName;
-        return api.post<CreatedCustomer>(`/customers/${fillCustomerId}/fill-contact`, fillPayload);
+        const filled = await api.post<CreatedCustomer>(`/customers/${fillCustomerId}/fill-contact`, fillPayload);
+        return { data: filled.data, heardFromFailed: false };
       }
       const payload: Record<string, unknown> = {
         nationalId: data.nationalId,
@@ -216,7 +238,11 @@ function CustomerCreateForm({ mode = 'create', fillCustomerId, initialValues, in
       const validRefs = references.filter(r => r.firstName || r.lastName || r.phone);
       if (validRefs.length > 0) payload.references = validRefs;
 
-      return api.post<CreatedCustomer>('/customers', payload);
+      const created = await api.post<CreatedCustomer>('/customers', payload);
+      // ชิปบันทึกแยกหลังได้ id — รอให้เสร็จก่อนปิด: ปุ่มบันทึกยัง disabled (กันกดซ้ำ) และหน้าที่เปิดต่อได้ summary ที่ตอบแล้ว
+      // postHeardFrom ไม่ throw — ล้ม = true แล้วเตือนหลัง toast สำเร็จ · 409 ของ /customers โยนก่อนถึงบรรทัดนี้
+      const heardFromFailed = chosenHeardFrom ? await postHeardFrom(created.data.id, chosenHeardFrom) : false;
+      return { data: created.data, heardFromFailed };
     },
     onSuccess: (res) => {
       if (isFill) {
@@ -224,11 +250,13 @@ function CustomerCreateForm({ mode = 'create', fillCustomerId, initialValues, in
         onFilled?.(res.data);
       } else {
         toast.success('เพิ่มลูกค้าสำเร็จ');
+        // ต้องยิงหลัง toast สำเร็จ ไม่งั้นป้ายเตือนจะซ้อนอยู่ใต้ป้ายสำเร็จ (บอร์ด HeardFrom d) · ไม่มีปุ่มลองใหม่
+        if (res.heardFromFailed) toast.warning('บันทึกลูกค้าแล้ว แต่บันทึกช่องทางที่รู้จักไม่สำเร็จ');
         onCreated(res.data);
       }
       onClose();
     },
-    onError: (err: unknown, variables: CustomerFormData) => {
+    onError: (err: unknown, variables: CreateVariables) => {
       const axiosErr = err as { response?: { status?: number; data?: { existingCustomer?: ExistingCustomerRef; field?: string } } };
       const body = axiosErr.response?.status === 409 ? axiosErr.response.data : undefined;
       const dup = body?.existingCustomer;
@@ -487,7 +515,7 @@ function CustomerCreateForm({ mode = 'create', fillCustomerId, initialValues, in
       </div>
       {context}
       <Form {...form}>
-        <form onSubmit={form.handleSubmit((data) => createMutation.mutate(data))} className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+        <form onSubmit={form.handleSubmit((data) => createMutation.mutate({ ...data, heardFrom: askHeardFrom ? heardFrom : null }))} className="flex min-h-0 flex-1 flex-col overflow-y-auto">
           <div className="flex flex-col gap-4 p-6">
 
           {existing && (
@@ -691,6 +719,18 @@ function CustomerCreateForm({ mode = 'create', fillCustomerId, initialValues, in
                 </div>
               )}
             </div>
+            {/* ลูกค้าหน้าร้านที่สร้างใหม่ — ไม่บังคับ · แตะซ้ำ = ยกเลิก · "ข้าม" = ล้าง (บอร์ด HeardFrom a) · ซ่อนแล้วการ์ดจบที่วันเกิด ไม่มีเส้นคั่น (a2) */}
+            {askHeardFrom && (
+              <div className="mt-4 border-t border-border pt-4">
+                <HeardFromChips
+                  value={heardFrom}
+                  onSelect={(code) => setHeardFrom((current) => (current === code ? null : code))}
+                  onSkip={() => setHeardFrom(null)}
+                  skipStyle="text"
+                  disabled={createMutation.isPending}
+                />
+              </div>
+            )}
           </div>
 
           {/* ===== ที่อยู่ (collapsible) — ซ่อนในโหมด fill ตาม mockup ===== */}

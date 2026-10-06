@@ -1,12 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within, act } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 
 const apiPost = vi.fn();
-const toastError = vi.fn();
+const toastMock = vi.hoisted(() => ({ success: vi.fn(), warning: vi.fn(), error: vi.fn(), info: vi.fn() }));
+const toastError = toastMock.error;
 vi.mock('sonner', () => ({
-  toast: { error: (...args: unknown[]) => toastError(...args), success: vi.fn(), warning: vi.fn(), info: vi.fn() },
+  toast: toastMock,
 }));
 vi.mock('@/lib/api', () => ({
   __esModule: true,
@@ -16,7 +17,7 @@ vi.mock('@/lib/api', () => ({
 vi.mock('@/lib/cardReader', () => ({ checkCardReaderStatus: vi.fn(), readSmartCard: vi.fn() }));
 vi.mock('@/lib/compressImage', () => ({ compressImageForOcr: vi.fn() }));
 
-import CustomerCreateDialog, { splitDisplayName } from './CustomerCreateDialog';
+import CustomerCreateDialog, { splitDisplayName, type CustomerCreateDialogProps } from './CustomerCreateDialog';
 import { customerSchema, prospectFillSchema } from '@/lib/schemas';
 
 function wrap(ui: ReactNode) {
@@ -571,5 +572,137 @@ describe('CustomerCreateDialog mode="fill" (เพิ่มเบอร์/ข�
     rejectFn!({ response: { status: 409, data: { existingCustomer: { id: 'c-old', name: 'สมชาย ใจดี', createdAt: CREATED_AT, activeContracts: 1 }, field: 'phone' } } });
     await screen.findByRole('alert');
     expect(fieldError('phone')).toBeNull();
+  });
+});
+
+describe('CustomerCreateDialog — ชิป "ลูกค้ารู้จักร้านจากไหน" (ลูกค้าหน้าร้าน · เฟส 3)', () => {
+  /** ลำดับตามบอร์ด HeardFrom (a) = JOURNEY_HEARD_FROM_CODES — ปักตัวอักษรจริง */
+  const HEARD_FROM_LABELS = ['โฆษณา FB', 'เพจ/โพสต์', 'TikTok', 'LINE', 'Google', 'เพื่อนแนะนำ', 'ผ่านหน้าร้าน', 'ลูกค้าเก่า', 'อื่น ๆ'];
+  const WARNING = 'บันทึกลูกค้าแล้ว แต่บันทึกช่องทางที่รู้จักไม่สำเร็จ';
+  const CREATED = { id: 'c-new', name: 'ทดสอบ หน้าร้าน' };
+  const GROUP_NAME = 'ลูกค้ารู้จักร้านจากไหน';
+
+  const heardFromGroup = () => screen.getByRole('group', { name: GROUP_NAME });
+  const chip = (label: string) => within(heardFromGroup()).getByRole('button', { name: label });
+  const renderCreate = (props: Partial<CustomerCreateDialogProps> = {}) => {
+    const onCreated = vi.fn();
+    const onOpenChange = vi.fn();
+    wrap(
+      <CustomerCreateDialog
+        open
+        onOpenChange={onOpenChange}
+        initialValues={{ firstName: 'ทดสอบ', lastName: 'หน้าร้าน' }}
+        onCreated={onCreated}
+        {...props}
+      />,
+    );
+    return { onCreated, onOpenChange };
+  };
+
+  // ห้ามคืนค่า mock ออกจาก hook — คร่อมปีกกาเสมอ
+  beforeEach(() => {
+    apiPost.mockReset();
+    toastMock.success.mockReset();
+    toastMock.warning.mockReset();
+    toastMock.error.mockReset();
+  });
+
+  it('โหมดสร้าง: ชิป 9 ตัวตามลำดับ · แตะชิปไม่ส่งฟอร์ม · แตะซ้ำ = ยกเลิก · "ข้าม" ล้างที่เลือก', async () => {
+    renderCreate();
+    const chips = within(heardFromGroup()).getAllByRole('button', { pressed: false });
+    expect(chips.map((button) => button.textContent)).toEqual(HEARD_FROM_LABELS);
+    // ชิปอยู่ใน <form> — ปุ่มที่ไม่ใช่ type="button" จะส่งฟอร์มทันทีที่แตะ
+    for (const button of chips) expect(button).toHaveAttribute('type', 'button');
+    expect(screen.getByRole('button', { name: 'ข้าม' })).toHaveAttribute('type', 'button');
+
+    fillRequired();
+    fireEvent.click(chip('เพื่อนแนะนำ'));
+    expect(chip('เพื่อนแนะนำ')).toHaveAttribute('aria-pressed', 'true');
+    // ให้ handleSubmit (async) มีเวลาทำงานถ้าเผลอส่งฟอร์ม — ต้องไม่มีการยิง API
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
+    expect(apiPost).not.toHaveBeenCalled();
+
+    fireEvent.click(chip('เพื่อนแนะนำ'));
+    expect(chip('เพื่อนแนะนำ')).toHaveAttribute('aria-pressed', 'false');
+
+    fireEvent.click(chip('LINE'));
+    expect(chip('LINE')).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(screen.getByRole('button', { name: 'ข้าม' }));
+    expect(within(heardFromGroup()).queryAllByRole('button', { pressed: true })).toHaveLength(0);
+    expect(apiPost).not.toHaveBeenCalled();
+  });
+
+  it('เลือกชิปแล้วบันทึก → POST /customers (ไม่มี heardFrom) ก่อน แล้ว POST journey/entries ไปที่ id ใหม่ · รอให้เสร็จก่อนเรียก onCreated', async () => {
+    apiPost.mockImplementation((url: string) =>
+      Promise.resolve(url === '/customers' ? { data: CREATED } : { data: { entryId: 'e-1', event: null, summary: null } }),
+    );
+    const { onCreated, onOpenChange } = renderCreate();
+    fillRequired();
+    fireEvent.click(chip('เพื่อนแนะนำ'));
+    fireEvent.click(screen.getByRole('button', { name: 'บันทึก' }));
+
+    await waitFor(() => expect(onCreated).toHaveBeenCalledWith(CREATED));
+    expect(apiPost).toHaveBeenCalledTimes(2);
+    const [createUrl, createBody] = apiPost.mock.calls[0] as [string, Record<string, unknown>];
+    expect(createUrl).toBe('/customers');
+    expect(createBody).toMatchObject({ name: 'ทดสอบ หน้าร้าน', nationalId: VALID_NID, phone: '0812345678', prefix: 'นาย' });
+    expect(createBody).not.toHaveProperty('heardFrom');
+    const [entryUrl, entryBody] = apiPost.mock.calls[1] as [string, Record<string, unknown>];
+    expect(entryUrl).toBe('/customers/c-new/journey/entries');
+    expect(entryBody).toEqual({ kind: 'HEARD_FROM', heardFrom: 'FRIEND', clientRequestId: expect.any(String) });
+    // บันทึกชิปเสร็จก่อนส่งต่อ — หน้าที่เปิดต่อจึงได้ summary ที่ตอบแล้ว
+    expect(apiPost.mock.invocationCallOrder[1]).toBeLessThan(onCreated.mock.invocationCallOrder[0]);
+    expect(toastMock.success).toHaveBeenCalledWith('เพิ่มลูกค้าสำเร็จ');
+    expect(toastMock.warning).not.toHaveBeenCalled();
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
+
+  it('บันทึกชิปไม่สำเร็จ → ลูกค้ายังถูกสร้างและเรียก onCreated · toast สำเร็จก่อนแล้วตามด้วย toast เตือน · ไม่มี toast error', async () => {
+    // reject ตอนถูกเรียกเท่านั้น (mockRejectedValue = unhandled ตั้งแต่ตั้งค่า)
+    apiPost.mockImplementation((url: string) =>
+      url === '/customers' ? Promise.resolve({ data: CREATED }) : Promise.reject(new Error('journey entries unavailable')),
+    );
+    const { onCreated, onOpenChange } = renderCreate();
+    fillRequired();
+    fireEvent.click(chip('ลูกค้าเก่า'));
+    fireEvent.click(screen.getByRole('button', { name: 'บันทึก' }));
+
+    await waitFor(() => expect(onCreated).toHaveBeenCalledWith(CREATED));
+    expect(apiPost).toHaveBeenCalledTimes(2);
+    expect(toastMock.success).toHaveBeenCalledWith('เพิ่มลูกค้าสำเร็จ');
+    expect(toastMock.warning).toHaveBeenCalledWith(WARNING);
+    expect(toastMock.success.mock.invocationCallOrder[0]).toBeLessThan(toastMock.warning.mock.invocationCallOrder[0]);
+    expect(toastMock.error).not.toHaveBeenCalled();
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
+
+  it('ไม่เลือกชิป → ยิงแค่ POST /customers ครั้งเดียว ไม่มี toast เตือน', async () => {
+    apiPost.mockResolvedValue({ data: CREATED });
+    const { onCreated } = renderCreate();
+    fillRequired();
+    fireEvent.click(screen.getByRole('button', { name: 'บันทึก' }));
+
+    await waitFor(() => expect(onCreated).toHaveBeenCalledWith(CREATED));
+    expect(apiPost).toHaveBeenCalledTimes(1);
+    expect(apiPost.mock.calls[0][0]).toBe('/customers');
+    expect(toastMock.success).toHaveBeenCalledWith('เพิ่มลูกค้าสำเร็จ');
+    expect(toastMock.warning).not.toHaveBeenCalled();
+  });
+
+  it('dialog ผูกกับห้องแชท (linkedToChat) → ไม่มีแถวชิป การ์ดข้อมูลหลักจบที่วันเกิด', () => {
+    renderCreate({ linkedToChat: true, submitLabel: 'บันทึกและผูกกับแชท' });
+    expect(screen.getByText('วันเกิด')).toBeInTheDocument();
+    expect(screen.queryByRole('group', { name: GROUP_NAME })).toBeNull();
+    expect(screen.queryByText('ลูกค้ารู้จักร้านจากไหน (ไม่บังคับ)')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'ข้าม' })).toBeNull();
+  });
+
+  it('โหมด fill (เติมข้อมูลผู้สนใจจากแชท) → ไม่มีแถวชิป', () => {
+    renderCreate({ mode: 'fill', fillCustomerId: 'p1', onFilled: vi.fn() });
+    expect(screen.getByRole('heading', { name: 'เพิ่มเบอร์/ข้อมูลผู้สนใจ' })).toBeInTheDocument();
+    expect(screen.queryByRole('group', { name: GROUP_NAME })).toBeNull();
+    expect(screen.queryByText('ลูกค้ารู้จักร้านจากไหน (ไม่บังคับ)')).toBeNull();
   });
 });

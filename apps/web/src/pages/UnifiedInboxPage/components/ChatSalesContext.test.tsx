@@ -4,9 +4,9 @@ import { SalesContextView } from './ChatSalesContext';
 import { journeySummary, stageSteps } from '../../CustomerDetailPage/__tests__/journeyFixtures';
 describe('Evidence-based chat sales context', () => {
   it('shows server-supplied cash purchase and skipped credit without a manual purchase control', () => {
-    render(<SalesContextView context={{ customerId: 'c', journey: journeySummary({ stage: 'PURCHASED', stageLabel: 'ซื้อแล้ว', path: 'CASH', steps: stageSteps({ CONTACTED: 'done', IDENTIFIED: 'done', INTERESTED: 'done', CREDIT: 'skipped', PURCHASED: 'current' }) }), nextAction: null, evidenceLinks: [] }} onLink={vi.fn()} onNew={vi.fn()} onEvidence={vi.fn()} />);
+    render(<SalesContextView context={{ customerId: 'c', journey: journeySummary({ stage: 'PURCHASED', stageLabel: 'ซื้อแล้ว', path: 'CASH', steps: stageSteps({ CONTACTED: 'done', IDENTIFIED: 'done', INTERESTED: 'done', CREDIT: 'not_needed', PURCHASED: 'current' }) }), nextAction: null, evidenceLinks: [] }} onLink={vi.fn()} onNew={vi.fn()} onEvidence={vi.fn()} />);
     expect(screen.getByLabelText('ขั้นการขาย')).toHaveTextContent('ซื้อแล้ว');
-    expect(screen.getByText('ข้าม (เงินสด)')).toBeInTheDocument();
+    expect(screen.getByText('ไม่ต้องตรวจ (ซื้อสด)')).toBeInTheDocument();
     expect(screen.queryByRole('combobox')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /ซื้อแล้ว/ })).not.toBeInTheDocument();
   });

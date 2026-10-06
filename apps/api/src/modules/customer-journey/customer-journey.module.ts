@@ -1,4 +1,5 @@
 import { JourneyManualEntryService } from './journey-manual-entry.service';
+import { ChatSalesDispositionService } from './chat-sales-disposition.service';
 import { ChatWorkAccessService } from '../staff-chat/services/chat-work-access.service';
 import { Module } from '@nestjs/common';
 import { CustomerJourneyController } from './customer-journey.controller';
@@ -14,7 +15,7 @@ import { JourneySummaryService } from './journey-summary.service';
  */
 @Module({
   controllers: [CustomerJourneyController],
-  providers: [JourneyManualEntryService, ChatWorkAccessService, JourneyEntryWriter, JourneyStateService, JourneySummaryService, CustomerJourneyService, CustomerJourneyCron],
-  exports: [JourneyManualEntryService, JourneyEntryWriter, JourneyStateService, JourneySummaryService],
+  providers: [JourneyManualEntryService, ChatSalesDispositionService, ChatWorkAccessService, JourneyEntryWriter, JourneyStateService, JourneySummaryService, CustomerJourneyService, CustomerJourneyCron],
+  exports: [ChatSalesDispositionService, JourneyEntryWriter, JourneyStateService, JourneySummaryService],
 })
 export class CustomerJourneyModule {}

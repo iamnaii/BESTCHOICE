@@ -116,10 +116,10 @@ export async function chatScopedSummary(
   const firstPurchaseAt = earliest(sales[0]?.createdAt, boughtContracts[0]?.createdAt);
   const stage = firstPurchaseAt
     ? 'PURCHASED'
-    : creditAt
-      ? 'CREDIT'
-      : interestedAt
-        ? 'INTERESTED'
+    : interestedAt
+      ? 'INTERESTED'
+      : creditAt
+        ? 'CREDIT'
         : identifiedAt
           ? 'IDENTIFIED'
           : 'CONTACTED';
@@ -137,7 +137,7 @@ export async function chatScopedSummary(
   return buildJourneySummary(
     {
       stage,
-      stageEnteredAt: firstPurchaseAt ?? creditAt ?? interestedAt ?? identifiedAt ?? contactedAt,
+      stageEnteredAt: firstPurchaseAt ?? interestedAt ?? creditAt ?? identifiedAt ?? contactedAt,
       path: boughtContracts.length
         ? 'INSTALLMENT'
         : sales[0]?.saleType === 'CASH'
@@ -166,6 +166,10 @@ export async function chatScopedSummary(
       interestedByManualEntry:
         !!interestEntry && interestEntry.occurredAt.getTime() === interestedAt?.getTime(),
       creditRejected: false,
+      creditByChatFile: false,
+      hasCustomerChatFile: false,
+      creditCheckStatus: 'NONE',
+      purchaseCount: sales.length + boughtContracts.length,
       postSaleBadges: postSaleBadges({
         latestContractStatus: boughtContracts.at(-1)?.status ?? null,
         purchaseCount: sales.length + boughtContracts.length,

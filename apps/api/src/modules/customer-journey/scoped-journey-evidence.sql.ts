@@ -41,11 +41,11 @@ export function scopedJourneyEvidence(options: {
  WHERE c.first_at>=${from}::timestamp AND c.first_at<${to}::timestamp
  AND ${staffId ? Prisma.sql`EXISTS(SELECT 1 FROM scoped_rooms r WHERE r.canonical_id=c.customer_id AND r.assigned_to_id=${staffId})` : Prisma.sql`TRUE`}
  ), journey AS (
- SELECT *,CASE WHEN purchased THEN 4 WHEN credit THEN 3 WHEN interested THEN 2 WHEN identified THEN 1 ELSE 0 END AS stage_index,
+ SELECT *,CASE WHEN purchased THEN 4 WHEN interested THEN 3 WHEN credit THEN 2 WHEN identified THEN 1 ELSE 0 END AS stage_index,
  CASE WHEN NOT purchased AND lost_kind='MARKED_LOST' AND last_at<=lost_at AND (touched_at IS NULL OR touched_at<=lost_at) THEN COALESCE(lost_reason,'OTHER') END AS current_loss
  FROM journey_facts
  ), journey_steps AS (
  SELECT j.*,s.stage,s.idx,s.proven FROM journey j CROSS JOIN LATERAL(VALUES
- ('CONTACTED',0,TRUE),('IDENTIFIED',1,j.identified),('INTERESTED',2,j.interested),('CREDIT',3,j.credit),('PURCHASED',4,j.purchased)) s(stage,idx,proven)
+ ('CONTACTED',0,TRUE),('IDENTIFIED',1,j.identified),('CREDIT',2,j.credit),('INTERESTED',3,j.interested),('PURCHASED',4,j.purchased)) s(stage,idx,proven)
  )`;
 }

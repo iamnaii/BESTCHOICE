@@ -62,7 +62,7 @@ const audit = new AuditService(prisma as never);
 const settingsFlags = new SettingsFlagsService(prisma as never);
 // write / pettyCash / docNumberPreview ไม่ถูกเรียกจากเส้นทางที่เทสต์นี้ใช้ (createDraftForRepair
 // เรียกแค่ this.settings.getKey / getDocPrefixMap ซึ่ง delegate ไปที่ `flags` เท่านั้น)
-const settingsSvc = new SettingsService(settingsFlags, null as never, null as never, null as never);
+const settingsSvc = new SettingsService(settingsFlags, null as never, null as never);
 const expenseDocNumber = new ExpenseDocNumberService(settingsSvc);
 const lineAggregator = new LineAggregatorService();
 // transition / ssoConfig / payrollCustom / pettyCash ไม่ถูกเรียกจาก createDraftForRepair

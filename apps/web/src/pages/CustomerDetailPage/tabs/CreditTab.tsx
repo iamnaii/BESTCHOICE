@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { openCreditDocument } from '@/lib/credit-document';
 import api, { getErrorMessage } from '@/lib/api';
 import { toast } from 'sonner';
-import { invalidateCustomerJourney } from '../hooks/useCustomerJourney';
+import { invalidateCustomerJourney } from '@/hooks/customer-journey/useCustomerJourney';
 import type { CreditCheckItem, CustomerDetail } from '../types';
 
 interface CreditTabProps {

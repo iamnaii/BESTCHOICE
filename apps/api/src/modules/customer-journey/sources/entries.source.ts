@@ -1,7 +1,5 @@
 import {
   JOURNEY_EVENT_GROUPS,
-  JOURNEY_HEARD_FROM_LABELS,
-  JOURNEY_LOST_REASON_LABELS,
   type JourneyEntryKind,
   type JourneyEvent,
   type JourneyEventGroup,
@@ -9,17 +7,8 @@ import {
 } from '@installment/shared';
 import { roomAssignmentScope } from '../../credit-check/services/room-credit-access';
 import { JOURNEY_DATA_SCHEMAS } from '../journey-data-schemas';
-import {
-  asActorType,
-  asRecord,
-  dbTimeRange,
-  finalizeSource,
-  roleSeesGroup,
-  scanTake,
-  staffActor,
-  whenAny,
-  type JourneySource,
-} from './journey-window';
+import { asActorType, asRecord, dbTimeRange, finalizeSource, roleSeesGroup, scanTake, staffActor, whenAny, type JourneySource } from './journey-window';
+import { isManualEntryKind, manualEntryToEvent } from './manual-entry-event';
 
 type ShownKind = Exclude<JourneyEntryKind, 'CREDIT_CHECK_OPENED_BY'>; // credit.source.ts ใช้เติมผู้เปิดแทน
 const VIEWS: Record<
@@ -45,23 +34,7 @@ const VIEWS: Record<
   MARKED_LOST: { group: 'chat', stage: null, title: 'ติดป้ายหลุด' },
   REOPENED: { group: 'chat', stage: null, title: 'เปิดใหม่' },
 };
-const TOUCH_CHANNELS: Record<string, string> = {
-  PHONE: 'โทร',
-  FB_APP: 'แชทในแอป FB',
-  LINE_APP: 'LINE',
-  WALK_IN: 'หน้าร้าน',
-  OTHER: 'อื่น ๆ',
-};
-const OUTCOMES: Record<string, string> = {
-  APPOINTED: 'นัดแล้ว',
-  VISITED: 'มาร้านแล้ว',
-  THINKING: 'ขอคิดก่อน',
-  BUDGET: 'งบ/ดาวน์ไม่พอ',
-  NO_ANSWER: 'ไม่รับสาย',
-  BOUGHT_ELSEWHERE: 'ซื้อที่อื่น',
-  NOT_INTERESTED: 'ไม่สนใจ',
-};
-// ป้ายรู้จักร้านจาก / เหตุผลหลุด = JOURNEY_HEARD_FROM_LABELS / JOURNEY_LOST_REASON_LABELS ของ shared (ชุดเดียวกับ summary และเว็บ)
+// ชื่อแถวบันทึกมือ (ติดต่อ / รู้จักร้านจาก / ติดป้ายหลุด / เปิดใหม่) อยู่ที่ manual-entry-event.ts ที่เดียว — คำตอบ POST journey/entries ใช้ตัวแปลงเดียวกัน
 /** ชุดเดียวกับ apps/web/src/pages/CustomersPage/components/ProspectFilterBar.tsx:30-36 */
 const TAG_LABELS: Record<string, string> = {
   VIP: 'VIP',
@@ -120,31 +93,10 @@ export function entriesSourceFor(groups: ReadonlySet<JourneyEventGroup>): Journe
     const [rows, tags] = await Promise.all([
       whenAny(kinds, () =>
         prisma.customerJourneyEntry.findMany({
-          where: {
-            customerId: { in: customerIds },
-            deletedAt: null,
-            kind: { in: kinds },
-            occurredAt: dbTimeRange(window),
-          },
-          // ไม่ select note (ข้อความอิสระ) ทุกกรณี
-          select: {
-            id: true,
-            kind: true,
-            origin: true,
-            occurredAt: true,
-            actorType: true,
-            roomId: true,
-            refType: true,
-            refId: true,
-            data: true,
-            channel: true,
-            outcome: true,
-            lostReason: true,
-            heardFrom: true,
-            actorUser: { select: { id: true, name: true } },
-          },
-          orderBy: [{ occurredAt: 'desc' }, { id: 'desc' }],
-          take: scanTake(window),
+          where: { NOT: { origin: 'MANUAL', roomId: { not: null } }, customerId: { in: customerIds }, deletedAt: null, kind: { in: kinds }, occurredAt: dbTimeRange(window) },
+          // createdAt = หน้าต่างเลิกทำ 24 ชม. (ไม่ใช่ PII) · ยังไม่ select note (ข้อความอิสระ) ทุกกรณี
+          select: { id: true, kind: true, origin: true, occurredAt: true, createdAt: true, actorType: true, roomId: true, refType: true, refId: true, data: true, channel: true, outcome: true, lostReason: true, heardFrom: true, actorUser: { select: { id: true, name: true } } },
+          orderBy: [{ occurredAt: 'desc' }, { id: 'desc' }], take: scanTake(window),
         }),
       ),
       whenAny(withTags ? customerIds : [], () =>
@@ -179,44 +131,25 @@ export function entriesSourceFor(groups: ReadonlySet<JourneyEventGroup>): Journe
       : null;
     const seesChat = roleSeesGroup(actor.role, 'chat');
     const events: JourneyEvent[] = [];
+    const now = new Date();
 
     for (const row of rows) {
+      if (row.origin === 'MANUAL' && row.roomId) continue; // Room-scoped facts stay in the authorized chat workspace.
       const kind = row.kind;
       // DB กรอง kind แล้ว — ตรวจกลุ่มซ้ำฝั่งโค้ด · kind ที่ยังไม่มีใน VIEWS ถูกทิ้ง
-      if (
-        !isShownKind(kind) ||
-        !groups.has(VIEWS[kind].group) ||
-        (row.roomId && visibleRooms && !visibleRooms.has(row.roomId))
-      )
+      if (!isShownKind(kind) || !groups.has(VIEWS[kind].group) || (row.roomId && visibleRooms && !visibleRooms.has(row.roomId))) continue;
+      // บันทึกมือ — ตัวแปลงเดียวกับคำตอบ POST /customers/:id/journey/entries (ห้ามสร้างชื่อแถวซ้ำที่นี่)
+      if (isManualEntryKind(kind)) {
+        events.push(manualEntryToEvent(row, actor, now));
         continue;
+      }
       const data = whitelisted(kind, row.data);
-      const title =
-        kind === 'TOUCHPOINT'
-          ? `ติดต่อทาง${TOUCH_CHANNELS[row.channel ?? ''] ?? 'อื่น ๆ'}: ${OUTCOMES[row.outcome ?? ''] ?? 'บันทึกแล้ว'}`
-          : kind === 'HEARD_FROM'
-            ? `ลูกค้าบอกว่ารู้จักร้านจาก${JOURNEY_HEARD_FROM_LABELS[row.heardFrom ?? ''] ?? 'อื่น ๆ'}`
-            : kind === 'MARKED_LOST'
-              ? `ติดป้ายหลุด: ${JOURNEY_LOST_REASON_LABELS[row.lostReason ?? ''] ?? 'อื่น ๆ'}`
-              : kind === 'PLACEHOLDER_MERGED' && typeof data?.roomCount === 'number'
-                ? `รวมประวัติแชท ${data.roomCount} ห้องเข้ากับลูกค้าคนนี้`
-                : VIEWS[kind].title;
-      const href =
-        row.refType === 'contract' && row.refId
-          ? `/contracts/${row.refId}`
-          : row.roomId && seesChat
-            ? `/inbox/${row.roomId}`
-            : undefined;
+      const title = kind === 'PLACEHOLDER_MERGED' && typeof data?.roomCount === 'number' ? `รวมประวัติแชท ${data.roomCount} ห้องเข้ากับลูกค้าคนนี้` : VIEWS[kind].title;
+      const href = row.refType === 'contract' && row.refId ? `/contracts/${row.refId}` : row.roomId && seesChat ? `/inbox/${row.roomId}` : undefined;
       const type = asActorType(row.actorType);
       events.push({
-        id: `entry-${row.id}`,
-        type: kind,
-        group: VIEWS[kind].group,
-        stage:
-          kind === 'TOUCHPOINT' && (row.outcome === 'APPOINTED' || row.outcome === 'VISITED')
-            ? 'INTERESTED'
-            : VIEWS[kind].stage,
-        timestamp: row.occurredAt.toISOString(),
-        title,
+        id: `entry-${row.id}`, type: kind, group: VIEWS[kind].group, stage: VIEWS[kind].stage,
+        timestamp: row.occurredAt.toISOString(), title,
         actor: row.actorUser ? { type, id: row.actorUser.id, name: row.actorUser.name } : { type },
         reliability: 'exact',
         origin: row.origin === 'MANUAL' ? 'MANUAL' : 'SYSTEM_ENTRY',

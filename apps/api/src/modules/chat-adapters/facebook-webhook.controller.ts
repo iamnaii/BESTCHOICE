@@ -330,12 +330,12 @@ export class FacebookWebhookController {
     if (event.referral && !message && !postback) {
       // ลูกค้าเก่ากลับมาจากโฆษณา (source=ADS) — ต้อง subscribe messaging_referrals ถึงจะได้ event นี้
       const adAttribution = buildFbAttribution(event.referral);
-      // 🔴 เดิม gate ด้วย `adAttribution?.adId` ⇒ ลิงก์สินค้าจากเว็บร้าน
-      // (m.me/<page>?ref=p:<id> — `copy.ts` / `ProductDetailPage.tsx`) มีแต่ `ref` ไม่มี `ad_id`
-      // จึง **ไม่เคยถูกบันทึกเลยสักครั้ง** ทั้งที่เส้นลูกค้าใหม่ (message.referral ด้านล่าง)
-      // ไม่มี gate นี้ ⇒ ลูกค้าเก่ากับลูกค้าใหม่กดลิงก์เดียวกันแล้วได้ผลต่างกัน = บั๊ก ไม่ใช่ดีไซน์
-      // `linkAttribution` รองรับอยู่แล้ว: campaignKey = adId ?? utmCampaign ?? 'organic'
-      // และแยกโฆษณากับลิงก์สินค้าได้จาก `referrerUrl` (ADS vs SHORTLINK)
+      // ส่งทุก referral ต่อให้ router — ด่าน "โฆษณาจริงเท่านั้น" (referral.source = 'ADS') อยู่ที่ `isAdAttribution`
+      // (chat-engine/utils/ad-attribution.util.ts) ซึ่ง recordAdReferral และ linkAttribution ใช้ตัวเดียวกัน
+      // ⇒ ลิงก์สินค้าจากเว็บร้าน (m.me/<page>?ref=p:<id> — source SHORTLINK) ไม่สร้างแคมเปญ/ที่มา ไม่ชี้ห้องใหม่
+      //   ไม่มีโน้ตโฆษณา (เจ้าของเคาะ 2026-09-15 ข้อ 7 — กลับทิศของ 5f0dc62c4 ที่เคยบันทึกลิงก์สินค้าเป็นที่มา)
+      //   โน้ต "ลูกค้ากดมาจากสินค้า …" ยังมาจาก handleProductReferral ข้างล่างตามเดิม
+      // ลูกค้าเก่ากับลูกค้าใหม่ได้ผลเดียวกัน: เส้น message.referral ผ่านด่านเดียวกันใน getOrCreateRoom → linkAttribution
       if (adAttribution) {
         await this.messageRouter.recordAdReferral(senderId, ChatChannel.FACEBOOK, adAttribution);
       }

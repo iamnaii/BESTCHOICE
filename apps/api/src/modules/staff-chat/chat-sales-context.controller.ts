@@ -1,4 +1,4 @@
-import { JourneyManualEntryService } from '../customer-journey/journey-manual-entry.service';
+import { ChatSalesDispositionService } from '../customer-journey/chat-sales-disposition.service';
 import { ChatSalesDispositionDto } from './dto/chat-sales-disposition.dto';
 import {
   Body,
@@ -24,7 +24,7 @@ import { ChatSalesContextService } from './services/chat-sales-context.service';
 export class ChatSalesContextController {
   constructor(
     private readonly context: ChatSalesContextService,
-    private readonly manual: JourneyManualEntryService,
+    private readonly manual: ChatSalesDispositionService,
   ) {}
   @Get('sales-context/credit/:analysisId') credit(
     @Param('id', ParseUUIDPipe) id: string,

@@ -4,7 +4,7 @@ import { defaultEventStyle } from '@/components/timeline/eventTimelineStyles';
 import { Card, CardContent, CardHeader, CardHeading, CardTitle, CardToolbar } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
 import { formatDateTime } from '@/utils/formatters';
-import { isJourneyRedirect, useCustomerJourney } from '../hooks/useCustomerJourney';
+import { isJourneyRedirect, useCustomerJourney } from '@/hooks/customer-journey/useCustomerJourney';
 import { canViewJourney, journeyEventSubtitle, OVERVIEW_GROUPS, OVERVIEW_LIMIT } from '../utils/journeyGroups';
 
 /** การ์ดท้ายแท็บภาพรวม — 6 เหตุการณ์ล่าสุดของแชท/เครดิต/ขาย · ปุ่มพาไปแท็บการเดินทาง · ไม่อ่าน metadata (PDPA) */

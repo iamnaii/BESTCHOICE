@@ -1,3 +1,6 @@
+import type { JourneyHeardFrom } from '@installment/shared';
+import { HeardFromChips } from '@/components/customer/journey/HeardFromChips';
+import { postHeardFrom } from '@/hooks/customer-journey/journeyEntries';
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -63,17 +66,18 @@ export default function CustomerSearch({
   const [showCreate, setShowCreate] = useState(false);
   const [newName, setNewName] = useState('');
   const [newPhone, setNewPhone] = useState('');
+  const [newHeardFrom, setNewHeardFrom] = useState<JourneyHeardFrom | null>(null);
 
   const createMutation = useMutation({
-    mutationFn: (input: { name: string; phone: string }) =>
-      api.post('/customers', input).then((r) => r.data),
-    onSuccess: (created: {
-      id: string;
-      name: string;
-      phone: string;
-      nationalId?: string | null;
-    }) => {
+    mutationFn: async ({ heardFrom, ...input }: { name: string; phone: string; heardFrom: JourneyHeardFrom | null }) => {
+      const { data: created } = await api.post<{ id: string; name: string; phone: string; nationalId?: string | null }>('/customers', input);
+      const heardFromFailed = heardFrom ? await postHeardFrom(created.id, heardFrom) : false;
+      return { created, heardFromFailed };
+    },
+    onSuccess: ({ created, heardFromFailed }) => {
       toast.success('เพิ่มลูกค้าใหม่สำเร็จ');
+      if (heardFromFailed) toast.warning('บันทึกลูกค้าแล้ว แต่บันทึกช่องทางที่รู้จักไม่สำเร็จ');
+      setNewHeardFrom(null);
       queryClient.invalidateQueries({ queryKey: ['pos-customers'] });
       onSelectCustomer({
         id: created.id,
@@ -89,6 +93,7 @@ export default function CustomerSearch({
   });
 
   const openCreate = () => {
+    setNewHeardFrom(null);
     const typed = customerSearch.trim();
     const looksLikePhone = /^0[0-9]{0,9}$/.test(typed);
     setNewName(looksLikePhone ? '' : typed);
@@ -105,7 +110,7 @@ export default function CustomerSearch({
       toast.error('เบอร์โทรต้องเป็นเลข 10 หลัก ขึ้นต้นด้วย 0');
       return;
     }
-    createMutation.mutate({ name: newName.trim(), phone: newPhone.trim() });
+    createMutation.mutate({ name: newName.trim(), phone: newPhone.trim(), heardFrom: newHeardFrom });
   };
 
   return (
@@ -232,6 +237,7 @@ export default function CustomerSearch({
               />
             </div>
           </div>
+          <HeardFromChips value={newHeardFrom} onSelect={code => setNewHeardFrom(current => current === code ? null : code)} onSkip={() => setNewHeardFrom(null)} skipStyle="text" disabled={createMutation.isPending} />
           <DialogFooter>
             <Button
               variant="outline"

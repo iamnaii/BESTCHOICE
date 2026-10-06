@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { AlertTriangle } from 'lucide-react';
 import { maskNationalId } from '@/utils/mask.util';
 import { useAuth } from '@/contexts/AuthContext';
@@ -17,6 +18,10 @@ export interface CustomerSelectStepProps {
   onOpenCustomerModal: () => void;
   overrideActiveContractCheck: boolean;
   setOverrideActiveContractCheck: (v: boolean) => void;
+  /** การ์ด "ลูกค้ารู้จักร้านจากไหน" ของลูกค้าที่เลือก (index.tsx สร้าง) — วางระหว่างแถบเตือนสัญญาค้างกับกล่องเครดิต */
+  heardFromSlot?: ReactNode;
+  /** "ทักแชทครั้งแรกทาง …" ของลูกค้าที่เลือก (อ่านอย่างเดียว ไม่เขียน heardFrom) — แสดงเฉพาะในแถวที่เลือก */
+  firstContactLine?: string | null;
 }
 
 export function CustomerSelectStep({
@@ -32,6 +37,8 @@ export function CustomerSelectStep({
   onOpenCustomerModal,
   overrideActiveContractCheck,
   setOverrideActiveContractCheck,
+  heardFromSlot,
+  firstContactLine,
 }: CustomerSelectStepProps) {
   const { user } = useAuth();
   const visibleCustomers = selectedCustomer && !customers.some(customer => customer.id === selectedCustomer.id)
@@ -82,7 +89,10 @@ export function CustomerSelectStep({
                     )}
                   </div>
                   <div className="mt-1 text-xs text-muted-foreground"><ProspectPhoneLine phone={c.phone} chatPlaceholder={c.chatPlaceholder} /></div>
-                  {c.salary && <div className="text-xs text-muted-foreground mt-1">เงินเดือน: <span className="tabular-nums font-mono">{parseFloat(c.salary).toLocaleString()}</span> ฿</div>}
+                  {selectedCustomer?.id === c.id && firstContactLine && (
+                    <div className="mt-1 text-xs leading-snug text-muted-foreground">{firstContactLine}</div>
+                  )}
+                  {c.salary &&<div className="text-xs text-muted-foreground mt-1">เงินเดือน: <span className="tabular-nums font-mono">{parseFloat(c.salary).toLocaleString()}</span> ฿</div>}
                 </div>
                 <div className="text-xs text-muted-foreground font-mono">
                   {maskNationalId(c.nationalId)}
@@ -124,6 +134,9 @@ export function CustomerSelectStep({
           </div>
         </div>
       )}
+
+      {/* การ์ด "ลูกค้ารู้จักร้านจากไหน" (index.tsx ส่งมา) — หลังแถบเตือนสัญญาค้าง ก่อนกล่องเครดิต */}
+      {heardFromSlot}
 
       {/* Credit check status for selected customer */}
       {selectedCustomer && (() => {

@@ -2,6 +2,7 @@ import { ChatWorkAccessService } from '../../staff-chat/services/chat-work-acces
 import type { WorkScope } from '@installment/shared';
 import { ResponseCycleService } from './response-cycle.service';
 import type { InboundAttribution } from '../interfaces/channel-adapter.interface';
+import { isAdAttribution } from '../utils/ad-attribution.util';
 import {
   Injectable,
   Logger,
@@ -235,7 +236,8 @@ export class RoomManagerService {
           this.logger.warn(`[prospect] sync name ${roomId}: ${err instanceof Error ? err.message : err}`),
         );
       }
-      // ลูกค้าเก่ากดโฆษณา/ลิงก์ซ้ำ — บันทึกที่มาครั้งล่าสุดให้ห้องเดิมด้วย (เดิมบันทึกเฉพาะห้องใหม่)
+      // ลูกค้าเก่ากดโฆษณาซ้ำ — บันทึกที่มาครั้งล่าสุดให้ห้องเดิมด้วย (เดิมบันทึกเฉพาะห้องใหม่)
+      // ลิงก์สินค้า/ref อื่นที่ไม่ใช่ ADS ถูก linkAttribution ทิ้งเอง ⇒ ห้องที่ชี้โฆษณาอยู่ไม่ถูกชี้ไปที่มาอื่น
       if (params.attribution?.utmSource) {
         await this.linkAttribution(room.id, params.attribution, room.attributionId);
       }
@@ -334,7 +336,11 @@ export class RoomManagerService {
   }
 
   /**
-   * ผูก "ที่มา" (โฆษณา/UTM) ให้ห้อง — ท่าเดียวกับ OBI `Util\Facebook::ads` + `chat_room.facebook_ad_id`:
+   * ผูก "ที่มาโฆษณา" ให้ห้อง — ท่าเดียวกับ OBI `Util\Facebook::ads` + `chat_room.facebook_ad_id`:
+   * นับเป็นโฆษณาเฉพาะ referral.source = 'ADS' (`isAdAttribution` — journey-state.sql ใช้ literal เดียวกัน)
+   * ⇒ ลิงก์สินค้า m.me (SHORTLINK) / referral ที่ไม่มี source คืน null ทันที: ไม่สร้างแคมเปญ ไม่สร้าง attribution
+   *   ไม่ชี้ห้องใหม่ — ห้องที่ชี้โฆษณาอยู่จึงไม่มีทางถูกชี้ไปที่มาที่ไม่ใช่โฆษณา (เจ้าของเคาะ 2026-09-15 ข้อ 7 ·
+   *   กลับทิศของ 5f0dc62c4 ที่เคยบันทึกลิงก์สินค้าเป็นที่มา — โน้ตสินค้ายังมาจาก handleProductReferral)
    * แคมเปญคีย์ด้วย ad_id · ชื่อ/รูปโฆษณาเติมจาก ads_context_data เมื่อมี (ครั้งแรกอาจว่าง ครั้งหลังเติมได้) ·
    * ห้องที่มีที่มาอยู่แล้วและมาจากโฆษณา "ตัวเดิม" → อัปเดต lastTouch · โฆษณา "ตัวใหม่" → attribution ใหม่
    * แล้วชี้ห้องไปที่ล่าสุด (พนักงานต้องรู้ว่าลูกค้าเพิ่งเห็นชิ้นไหน ไม่ใช่ชิ้นแรกเมื่อ 3 เดือนก่อน)
@@ -346,6 +352,8 @@ export class RoomManagerService {
     currentAttributionId: string | null,
   ): Promise<{ campaignName: string; adTitle: string | null; changed: boolean } | null> {
     try {
+      // ไม่ใช่โฆษณา: ไม่สร้างแคมเปญ ไม่สร้าง attribution ไม่ชี้ห้องใหม่ (ห้องที่ชี้โฆษณาอยู่คงเดิม)
+      if (!isAdAttribution(attribution)) return null;
       const platformMap: Record<string, AdsPlatform> = {
         facebook: AdsPlatform.FACEBOOK_ADS,
         tiktok: AdsPlatform.TIKTOK_ADS,

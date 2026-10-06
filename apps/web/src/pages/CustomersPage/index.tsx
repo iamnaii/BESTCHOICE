@@ -362,6 +362,7 @@ export default function CustomersPage() {
       </Card>
 
       <CustomerCreateDialog
+        linkedToChat={!!linkAfterCreate}
         open={isModalOpen}
         onOpenChange={(open) => {
           setIsModalOpen(open);

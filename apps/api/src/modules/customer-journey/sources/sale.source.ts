@@ -4,13 +4,25 @@ import { bahtText, finalizeSource, staffActor, whenAny, type JourneySource } fro
 const productLabel = (p: { brand: string | null; model: string | null; storage: string | null } | null) => (p ? [p.brand, p.model, p.storage].filter(Boolean).join(' ') : '');
 const base = { group: 'sale', origin: 'SOURCE' } as const;
 
-/** กลุ่ม sale · เอกสารต่อคนหลักหน่วย ดึงหมดแล้วตัดใน finalizeSource · ไม่คัด notes/voidReason/reviewNotes · ไม่ select ลายเซ็น */
+/**
+ * กลุ่ม sale · เอกสารต่อคนหลักหน่วย ดึงหมดแล้วตัดใน finalizeSource · ไม่คัด notes/voidReason/reviewNotes · ไม่ select ลายเซ็น
+ * เอกสาร 6 ชนิดที่ล้างป้ายหลุด (ใบจอง + 5 ชนิดด้านล่าง) ต้องมีแถวของตัวเองครบ — ไม่มีแถว "กลับมาติดต่ออีกครั้ง" เมื่อเอกสารล้างป้าย แถวเอกสารจึงเป็นคำอธิบาย (canvas TimelineRows g4)
+ * แผนออม · คำสั่งซื้อออนไลน์ · จองเครื่องบนเว็บ · ใบสมัครผ่อนออนไลน์ · เทิร์นเครื่อง: คัดแค่ id + เวลา — ไม่คัด targetProductModel · shippingAddress · bankSlipUrl · paymentRef · promoCode ·
+ *   fullName · phone · nationalId ของใบสมัคร · ข้อมูลผู้ขาย (sellerName ฯลฯ) · imei · serialNumber · รูปบัตร · customerNotes · photoUrls · ราคาของเทิร์น · sessionId ของการจอง
+ * ทุกสถานะที่ไม่ถูกลบ (product_reservations ไม่มี deleted_at) = ชุดเดียวกับหลักฐานขั้น "นัด / จอง" และ doc_last_at (ล้างป้ายหลุด) ใน sql/journey-state.sql · ไม่มีลิงก์
+ */
 export const saleSource: JourneySource = async (prisma, customerIds, window) => {
   const who = { select: { id: true, name: true } };
-  const [bookings, sales, contracts] = await Promise.all([
+  const family = { customerId: { in: customerIds } };
+  const [bookings, sales, contracts, savingPlans, onlineOrders, webHolds, onlineApplications, tradeIns] = await Promise.all([
     prisma.booking.findMany({ where: { customerId: { in: customerIds }, deletedAt: null }, select: { id: true, bookingNumber: true, status: true, depositAmount: true, depositPaidAt: true, canceledAt: true, convertedAt: true, expireDate: true, createdAt: true, createdBy: who, canceledBy: who } }),
     prisma.sale.findMany({ where: { customerId: { in: customerIds } }, select: { id: true, saleNumber: true, saleType: true, netAmount: true, financeCompany: true, contractId: true, saleSource: true, createdAt: true, deletedAt: true, salesperson: who, voidedBy: who, product: { select: { brand: true, model: true, storage: true } } } }),
     prisma.contract.findMany({ where: { customerId: { in: customerIds } }, select: { id: true, contractNumber: true, status: true, totalMonths: true, monthlyPayment: true, createdAt: true, deletedAt: true, reviewedAt: true, workflowStatus: true, salesperson: who, reviewedBy: who } }),
+    prisma.savingPlan.findMany({ where: { ...family, deletedAt: null }, select: { id: true, createdAt: true } }),
+    prisma.onlineOrder.findMany({ where: { ...family, deletedAt: null }, select: { id: true, createdAt: true } }),
+    prisma.productReservation.findMany({ where: family, select: { id: true, reservedAt: true } }),
+    prisma.onlineInstallmentApplication.findMany({ where: { ...family, deletedAt: null }, select: { id: true, createdAt: true } }),
+    prisma.tradeIn.findMany({ where: { ...family, deletedAt: null }, select: { id: true, createdAt: true } }),
   ]);
   const contractIds = contracts.map((c) => c.id);
   const endedIds = contracts.filter((c) => !c.deletedAt && (c.status === 'COMPLETED' || c.status === 'EARLY_PAYOFF')).map((c) => c.id);
@@ -31,6 +43,12 @@ export const saleSource: JourneySource = async (prisma, customerIds, window) => 
     if (b.convertedAt) events.push({ ...base, id: `booking-convert-${b.id}`, type: 'BOOKING_CONVERTED', stage: 'INTERESTED', timestamp: b.convertedAt.toISOString(), title: `แปลงใบจอง ${no} เป็นใบขาย`, actor: { type: 'STAFF' }, reliability: 'exact' });
     if (b.status === 'EXPIRED') events.push({ ...base, id: `booking-expire-${b.id}`, type: 'BOOKING_EXPIRED', stage: null, timestamp: b.expireDate.toISOString(), title: `ใบจอง ${no} หมดอายุ`, actor: { type: 'SYSTEM' }, reliability: 'approximate' });
   }
+  for (const p of savingPlans) events.push({ ...base, id: `savingplan-${p.id}`, type: 'SAVING_PLAN_OPENED', stage: 'INTERESTED', timestamp: p.createdAt.toISOString(), title: 'สมัครออมเครื่อง', actor: { type: 'CUSTOMER' }, reliability: 'exact' });
+  for (const o of onlineOrders) events.push({ ...base, id: `onlineorder-${o.id}`, type: 'ONLINE_ORDER_PLACED', stage: 'INTERESTED', timestamp: o.createdAt.toISOString(), title: 'สั่งซื้อออนไลน์', actor: { type: 'SYSTEM', name: 'ออนไลน์' }, reliability: 'exact' });
+  for (const h of webHolds) events.push({ ...base, id: `webhold-${h.id}`, type: 'WEB_HOLD', stage: 'INTERESTED', timestamp: h.reservedAt.toISOString(), title: 'กดจองเครื่องบนเว็บ', actor: { type: 'CUSTOMER' }, reliability: 'exact' });
+  for (const a of onlineApplications) events.push({ ...base, id: `onlineapp-${a.id}`, type: 'ONLINE_APPLICATION', stage: 'INTERESTED', timestamp: a.createdAt.toISOString(), title: 'ยื่นใบสมัครผ่อนออนไลน์', actor: { type: 'CUSTOMER' }, reliability: 'exact' });
+  // เทิร์นหน้าร้านพนักงานเป็นคนคีย์ แต่ไม่คัดคอลัมน์พนักงาน ⇒ แสดงผู้ทำเป็นลูกค้า (คนที่นำเครื่องมา)
+  for (const t of tradeIns) events.push({ ...base, id: `tradein-${t.id}`, type: 'TRADE_IN', stage: 'INTERESTED', timestamp: t.createdAt.toISOString(), title: 'ส่งเครื่องเทิร์น/ขายคืน', actor: { type: 'CUSTOMER' }, reliability: 'exact' });
   for (const s of sales) {
     if (s.saleType === 'CASH' || s.saleType === 'EXTERNAL_FINANCE') {
       const cash = s.saleType === 'CASH';

@@ -903,6 +903,7 @@ export default function RoomDossier({ onClose, room, customerId, activeRoomId, o
       <LinkCustomerDialog open={linkOpen} onOpenChange={setLinkOpen} roomId={room.id} mergesProspect={placeholder} onLinked={onRoomLinked} />
       <CustomerCreateDialog
         key={room.id}
+        linkedToChat
         open={createOpen}
         onOpenChange={setCreateOpen}
         initialValues={createInitialValues}

@@ -108,7 +108,7 @@ model CustomerJourneyEntry {
 model CustomerJourneyState {
   customerId        String    @id @map("customer_id")
   customer          Customer  @relation(fields: [customerId], references: [id], onDelete: Cascade)
-  stage             String    @db.VarChar(12)   // CONTACTED|IDENTIFIED|INTERESTED|CREDIT|PURCHASED
+  stage             String    @db.VarChar(12)   // CONTACTED|IDENTIFIED|CREDIT|INTERESTED|PURCHASED (ลำดับขั้น — ตรวจเครดิตก่อนนัด / จอง เจ้าของสั่ง 2026-09-15)
   stageEnteredAt    DateTime  @map("stage_entered_at")
   path              String    @db.VarChar(18)   // UNKNOWN|INSTALLMENT|CASH|EXTERNAL_FINANCE
   contactedAt       DateTime  @map("contacted_at")         // แช่แข็ง; merge เลือกค่าเก่ากว่า
@@ -179,7 +179,29 @@ firstChannel = acquisitionSource ของห้อง/แถวที่เก�
 
 ใช้แทน 'คุยแล้ว' เพราะห้องที่มีข้อความ STAFF บน prod เป็น 8,840/8,992 จากข้อความทักทายอัตโนมัติ FB ส่วน 'ร้านตอบครั้งแรก' แสดงเป็นจุดสัมผัส ไม่ใช่ขั้น
 
-### 3 สนใจจริง / นัด-จอง (INTERESTED)
+> **ลำดับขั้น 3–4 (เจ้าของสั่ง 2026-09-15 "ต้องเช็คเครดิตก่อนนัด" · scope v2 ข้อ 11):** ขั้น 3 = ตรวจเครดิต · ขั้น 4 = นัด / จอง
+> - ชื่อ enum เดิม (`CREDIT` / `INTERESTED`) ไม่มี migration แต่ค่า `stage` ในแคชเปลี่ยนความหมาย ⇒ ขึ้น prod แล้วต้องคำนวณแคชใหม่ทั้งหมด (`docs/superpowers/runbooks/2026-09-15-customer-journey-phase3-deploy.md`)
+> - ขั้นปัจจุบัน = ขั้นสูงสุดที่มีหลักฐานตามลำดับนี้ ไม่ใช่หลักฐานล่าสุดตามเวลา · เวลาเข้าขั้น = เวลาของขั้นนั้นเอง ⇒ วันที่บนแถบอาจไม่เรียง (ใบจองก่อน ตรวจเครดิตทีหลัง = ขั้นปัจจุบันยังเป็นขั้น 4 และขั้น 3 ได้วันที่ที่ใหม่กว่า)
+> - มีหลักฐานขั้น 4 แต่ไม่มีหลักฐานขั้น 3 ⇒ ขั้น 3 แสดง "ข้าม" ตามกติกาเดิมของแถบ (ขั้นก่อนขั้นปัจจุบันที่ไม่มีเวลา)
+> - ยกเลิกการซื้อจนไม่เข้าเงื่อนไขซื้อแล้ว ⇒ ถอยกลับตามลำดับ นัด / จอง → ตรวจเครดิต → ได้เบอร์ → ทักเข้ามา (CASE ของ stage ใน journey-state.sql และ `UNBUY_FALLBACK_STAGES` ใช้ลำดับจาก `JOURNEY_STAGES` ชุดเดียว)
+
+### 3 ตรวจเครดิต (CREDIT) — เฉพาะผ่อนกับร้าน
+
+เวลาเข้าขั้น = MIN ของ:
+- credit_checks.created_at (customer_id อยู่ใน ids; แถวที่นำเข้าจากแชทมี created_at ย้อนเป็นเวลา OCR = approximate)
+- room_credit_analyses.created_at status COMPLETED บนห้องของลูกค้า
+- contracts.created_at (deleted_at null)
+- ข้อความ CUSTOMER ชนิด FILE ที่เป็นไฟล์เอกสารในห้องของลูกค้า: media_url ลงท้ายด้วย .pdf / .doc / .docx / .xls / .xlsx (ไม่สนตัวพิมพ์ · ตามด้วย ? ได้) — เงื่อนไขเดียวทั้งระบบคือ `CUSTOMER_DOCUMENT_FILE_SQL` ใน `apps/api/src/modules/customer-journey/chat-document-file.ts` (journey-state.sql เขียนตรงตัวอักษร เทสปักไว้ · คำตัดสินผู้ควบคุม R-P1) · นับแถว soft-delete · media_url ใช้ในเงื่อนไขเท่านั้น ไม่เลือกออกมา · ไม่อ่าน text / media_type / ชื่อไฟล์ · ไม่นับ: รูปภาพ · ไฟล์ของร้าน · media_url ว่าง · ลิงก์แชร์ (webhook Facebook เก็บไฟล์แนบชนิดที่ไม่รู้จัก เช่น fallback / template เป็น FILE) · **ไม่ตั้ง path** (คำตัดสินเจ้าของ 2026-09-15 ข้อ 11 + 13) · สัญญาณมาจาก Facebook อย่างเดียว · แก้ตัวแปลงของ webhook อยู่นอกเฟส 3
+
+ตั้ง path=INSTALLMENT เฉพาะจากใบตรวจเครดิต / วิเคราะห์สเตทเม้นจากแชท / สัญญา — ไฟล์เอกสารในแชทอย่างเดียวให้ขั้นนี้แต่ path คง UNKNOWN
+
+ถ้าผู้จัดการตัดสินล่าสุด (audit CREDIT_CHECK_OVERRIDE) เป็น REJECTED และยังไม่ซื้อ ⇒ ธง 'เครดิตไม่ผ่าน' ขั้นเป็นสีแดง (ยังแดงแม้ขั้นปัจจุบันเลยไปขั้น 4 นัด / จอง แล้ว)
+
+คนที่ซื้อแล้วโดยไม่มีหลักฐานขั้นนี้ และซื้อเงินสดหรือไฟแนนซ์นอก ⇒ summary ตั้งขั้นนี้เป็น state 'not_needed' (ไม่นับเป็นข้าม · ไม่มีวันที่) · แถบแสดงสีเทาชุดเดียวกับขั้นที่ข้าม คำบรรยาย 'ไม่ต้องตรวจ (ซื้อสด)' / 'ไฟแนนซ์นอกตรวจ' · ยกเลิกใบขายจนถอยขั้น = กลับเป็นกติกาปกติ (path ในแคชยังค้างได้ จึงดูจาก stage ซื้อแล้วก่อนเสมอ) · ยังไม่ซื้อแต่เลยขั้นนี้ไปโดยไม่มีหลักฐาน = 'ข้าม' ธรรมดา ไม่มีวงเล็บต่อท้าย · ซื้อสดแต่ส่งไฟล์ในแชท/ตรวจเครดิตมาก่อน = ขั้นนี้มีวันที่ตามปกติ
+
+ตั้งด้วยมือไม่ได้
+
+### 4 นัด / จอง (INTERESTED)
 
 เวลาเข้าขั้น = MIN ของ:
 - bookings.created_at
@@ -188,24 +210,11 @@ firstChannel = acquisitionSource ของห้อง/แถวที่เก�
 - online_installment_applications.created_at
 - product_reservations.reserved_at (customer_id)
 - trade_ins.created_at (customer_id)
+- saving_plans.created_at (แผนออมเครื่อง · deleted_at null · ทุกสถานะ)
+- online_orders.created_at (คำสั่งซื้อออนไลน์ · deleted_at null · ทุกสถานะ)
 - entry MANUAL TOUCHPOINT outcome APPOINTED/VISITED (แถบขั้นติดป้ายเล็ก 'พนักงานบันทึก')
 
 เป็นขั้นเดียวที่บันทึกมือนับเป็นหลักฐานได้ เพราะทีมนัดลูกค้าในแอป FB ซึ่งระบบไม่เห็น
-
-### 4 ตรวจเครดิต (CREDIT) — เฉพาะผ่อนกับร้าน
-
-เวลาเข้าขั้น = MIN ของ:
-- credit_checks.created_at (customer_id อยู่ใน ids; แถวที่นำเข้าจากแชทมี created_at ย้อนเป็นเวลา OCR = approximate)
-- room_credit_analyses.created_at status COMPLETED บนห้องของลูกค้า
-- contracts.created_at (deleted_at null)
-
-ตั้ง path=INSTALLMENT
-
-ถ้าผู้จัดการตัดสินล่าสุด (audit CREDIT_CHECK_OVERRIDE) เป็น REJECTED และยังไม่ซื้อ ⇒ ธง 'เครดิตไม่ผ่าน' ขั้นเป็นสีแดง
-
-คนที่ซื้อเงินสดหรือไฟแนนซ์นอกโดยไม่มีใบตรวจ ⇒ แถบแสดง 'ข้าม (เงินสด/ไฟแนนซ์นอก)' ไม่นับว่าค้าง
-
-ตั้งด้วยมือไม่ได้
 
 ### 5 ซื้อแล้ว (PURCHASED)
 
@@ -241,7 +250,12 @@ firstPurchaseAt = LEAST ของ:
 หลุด:
 - ตั้งด้วยมือเท่านั้น (entry MARKED_LOST พร้อม lostReason) และตั้งได้เฉพาะคนที่ยังไม่ซื้อ
 - ขั้นเดิมไม่เปลี่ยน แค่เพิ่มป้าย
-- ล้างเองเมื่อมีข้อความ CUSTOMER ใหม่ หรือ TOUCHPOINT หลัง lostAt (ไทม์ไลน์แสดง 'กลับมาติดต่ออีกครั้ง') หรือกดปุ่ม 'เปิดใหม่'
+- ล้างเองเมื่อมีสิ่งใดสิ่งหนึ่งต่อไปนี้ **หลัง** lostAt (เวลาเท่ากับ lostAt พอดีไม่ล้าง) หรือกดปุ่ม 'เปิดใหม่':
+  - ข้อความ CUSTOMER ใหม่ในห้องใดก็ได้ของลูกค้า (รวมไฟล์ · รวมแถว soft-delete)
+  - TOUCHPOINT ใหม่
+  - เอกสาร 6 ชนิดใหม่ (ทุกสถานะ · ตารางที่มี deleted_at นับเฉพาะแถวที่ไม่ถูกลบ): bookings.created_at · online_installment_applications.created_at · product_reservations.reserved_at · trade_ins.created_at · saving_plans.created_at · online_orders.created_at — ไม่มีแถว 'กลับมาติดต่ออีกครั้ง' (แถวของเอกสารอธิบายเอง)
+- ไม่ล้างป้าย: นัดหมาย (todos) · ใบตรวจเครดิต / วิเคราะห์สเตทเม้นจากแชท · สัญญา · บอทจดความสนใจ (AI_LEAD_CAPTURED) — คำตัดสินเจ้าของ 2026-09-15 ข้อ 5 + 12 ระบุเฉพาะเอกสาร 6 ชนิดข้างบน
+- แถว 'กลับมาติดต่ออีกครั้ง' (RECONTACTED) ออกเมื่อมีข้อความลูกค้าหลังป้ายหลุดล่าสุด และไม่มีเอกสารที่ล้างป้ายเกิดหลัง mark จนถึงเวลาข้อความนั้น — ป้ายที่ล้างด้วยเอกสาร (ใบจอง · ใบสมัครผ่อนออนไลน์ · จองสินค้า · เทิร์นเครื่อง · แผนออม · คำสั่งซื้อออนไลน์) ไม่ออกแถวนี้ แถวของเอกสารอธิบายแทน · TOUCHPOINT ไม่กันแถว · กติกาเต็มอยู่ในแถว MARKED_LOST / REOPENED / RECONTACTED ของรายการเหตุการณ์
 
 เงียบ:
 - คำนวณตอนอ่าน ไม่เก็บ
@@ -254,29 +268,32 @@ firstPurchaseAt = LEAST ของ:
 | type | ป้าย | กลุ่ม | ต้นทาง | ขั้น | ผู้กระทำ | ความแม่นยำ |
 |---|---|---|---|---|---|---|
 | CHAT_ROOM_OPENED | ทักแชทครั้งแรกทาง {Facebook\|LINE ร้าน\|LINE การเงิน\|TikTok\|เว็บ} · ห้องถัดไป = ทักเพิ่มอีกช่องทาง/ห้องใหม่ | แชท/ติดต่อ | chat_rooms.created_at, channel (customer_id ∈ ids รวมห้องที่ soft-delete) เทียบ MIN(chat_messages.created_at role=CUSTOMER) | ทักเข้ามา | ลูกค้า | ห้องที่เกิดหลัง deploy #1592 = exact · ห้องที่นำเข้าย้อนหลังใช้ LEAST กับข้อความแรกของลูกค้า = approximate |
-| AD_REFERRAL | ทักจากโฆษณา: {adName\|campaignName} | แชท/ติดต่อ | chat_rooms.attribution_id → ads_attributions.first_touch, ads_campaigns | ทักเข้ามา (ตั้ง firstAdCampaignId) | ลูกค้า | exact ถ้ามีข้อมูล · prod = 0 แถว ไม่มีข้อมูลต้นทาง (messaging_referrals ถูกถอด) · กดโฆษณาตัวใหม่ทำให้แถวเก่าหลุด |
+| AD_REFERRAL | ทักจากโฆษณา: {adName\|campaignName} | แชท/ติดต่อ | chat_rooms.attribution_id → ads_attributions.first_touch, ads_campaigns · **นับเฉพาะ ads_attributions.referrer_url = 'ADS'** (= Meta referral.source ของโฆษณาจริง · ด่านตอนเขียน `isAdAttribution` / `AD_REFERRAL_SOURCE` ใน chat-engine/utils/ad-attribution.util.ts ใช้ literal เดียวกับ journey-state.sql) · ลิงก์สินค้า m.me (SHORTLINK) / referral ไม่มี source ไม่สร้างแคมเปญหรือแถวที่มา ไม่ชี้ห้องใหม่ ไม่มีโน้ต "ลูกค้าทักจากโฆษณา" (เจ้าของเคาะ 2026-09-15) | ทักเข้ามา (ตั้ง firstAdCampaignId เฉพาะเมื่อห้องแรกชี้ที่มา ADS — ห้องแรกไม่ใช่โฆษณา = CHAT_<ช่องทาง> แม้ห้องหลังมาจากโฆษณา) | ลูกค้า | exact ถ้ามีข้อมูล · prod = 0 แถว ไม่มีข้อมูลต้นทาง (messaging_referrals ถูกถอด) · กดโฆษณาตัวใหม่ทำให้แถวเก่าหลุด · first_source ที่แช่แข็งไปแล้วไม่ถูกกติกาใหม่ล้าง — ถ้ามีแถวที่มาที่ไม่ใช่ ADS ก่อน deploy ต้องล้างตาม runbook เฟส 3 |
 | PRODUCT_LINK_CLICK | กดมาจากสินค้าบนเว็บ: {รุ่น} | แชท/ติดต่อ | entry SYSTEM เขียนใน facebook-webhook.controller.ts handleProductReferral (ref p:<productId>) หลังส่งข้อความระบบ | ทักเข้ามา | ลูกค้า | วันนี้ไม่ได้บันทึกแบบมีโครงสร้าง · เก็บตั้งแต่ deploy · ไม่ย้อนหลัง (ไม่แกะข้อความ) |
 | CHAT_DAY | คุยแชท: ลูกค้า {n} ข้อความ · ร้านตอบ {m} · บอท {k} | แชท/ติดต่อ | chat_messages GROUP BY room_id, วันเวลาไทย, role (นับรวมแถวที่ retention soft-delete แล้ว ไม่อ่านข้อความ) | — | ลูกค้า / ร้าน (ไม่ระบุชื่อถ้า staff_id ว่าง) / บอท | จำนวนลูกค้า exact · จำนวนร้าน approximate: ข้อความทักทายอัตโนมัติ FB ถูกเก็บเป็น STAFF และมี staff_id แค่ 9 จาก 72,816 · หลัง mergeRooms ข้อความถูกย้ายไปห้องหลัก จึงไปรวมอยู่ใต้ห้องหลัก |
-| FIRST_STAFF_REPLY | ร้านตอบครั้งแรก (หลังทัก {x} นาที) | แชท/ติดต่อ | MIN(chat_messages.created_at) role=STAFF จากสองขา: (1) ส่งจาก inbox สำเร็จ (outbound_sent_at NOT NULL) ยกเว้น staff_id เป็นผู้ใช้ระบบ (ข้อความสำเร็จรูปที่ Quick Reply ส่งเอง) (2) echo (external_message_id NOT NULL, outbound_sent_at NULL) ที่ไม่อยู่ใน 60 วิหลัง anchor ใดก็ได้ของครอบครัว (ลูกค้า + placeholder ที่รวมแล้ว) ในช่องทางเดียวกัน · anchor = echo ที่ออกหลังข้อความลูกค้าไม่เกิน 10 วิ หรือบันทึกก่อนข้อความลูกค้าไม่เกิน 10 วิโดยไม่มีข้อความลูกค้าในห้องของ echo 30 นาทีก่อนหน้า (race ของ greeting) — ข้อความลูกค้าที่ใช้ยึดมองทุกห้องของครอบครัวในช่องทางนั้น (ห้องซ้ำ) · ยึดทุกครั้งที่ลูกค้าทัก ไม่ใช่แค่คำตอบใบแรกของห้อง (ช่วงข้อความอัตโนมัติของเพจ: instant reply / away message / keyword response) · ทั้งสองขานับเฉพาะแถวที่ไม่ก่อนข้อความลูกค้าแรกของครอบครัวในช่องทางนั้น (ไม่มีข้อความลูกค้า = ว่าง · ช่องทางอื่นไม่นับแทน) · ห้องที่ mergeRooms รวมข้ามช่องทาง: ข้อความที่ย้ายมานับเป็นช่องทางของห้องหลัก (ยอมรับ — แยกช่องทางเดิมไม่ได้) · แช่แข็งเป็น state.firstStaffReplyAt (LEAST — ทำกติกาให้แคบลงเมื่อไรต้อง reset คอลัมน์ใน PR เดียวกัน) | — (จุดสัมผัส ไม่เลื่อนขั้น) | ร้าน | approximate |
+| CHAT_CUSTOMER_FILE | ลูกค้าส่งไฟล์ในแชท · วันนั้นส่งมากกว่า 1 ไฟล์ต่อท้าย " {n} ไฟล์" | แชท/ติดต่อ | chat_messages ไฟล์เอกสารของลูกค้า (role=CUSTOMER type=FILE media_url ลงท้าย .pdf / .doc(x) / .xls(x) — เงื่อนไข CUSTOMER_DOCUMENT_FILE_SQL ชุดเดียวกับแคชขั้น · คำตัดสินผู้ควบคุม R-P1) ในก้อนเดียวกับ CHAT_DAY (GROUP BY room_id, วันเวลาไทย · นับรวมแถวที่ retention soft-delete) · media_url อยู่ในเงื่อนไขเท่านั้น ไม่เลือกออกมา · ไม่อ่าน text/media_type · หนึ่งแถวต่อห้องต่อวัน เวลา = ไฟล์เอกสารล่าสุดของวัน · ลิงก์ /inbox/:roomId สิทธิ์ห้องเดียวกับแถวแชทอื่น (SALES เห็นเฉพาะห้องที่ยังไม่มีผู้ดูแลหรือตัวเองดูแล) · CHAT_DAY ยังนับข้อความลูกค้าทุกชนิดรวมไฟล์ | ตรวจเครดิต (คำบรรยายขั้น "ส่งไฟล์ในแชท") | ลูกค้า | exact · รูปภาพ · ไฟล์ของร้าน · ไม่มีลิงก์ · ลิงก์แชร์ (webhook Facebook เก็บไฟล์แนบชนิดที่ไม่รู้จักเป็น FILE) ไม่นับ |
+| FIRST_STAFF_REPLY | ร้านตอบครั้งแรก (หลังทัก {N นาที\|N ชม.\|N วัน}) | แชท/ติดต่อ | MIN(chat_messages.created_at) role=STAFF จากสองขา: (1) ส่งจาก inbox สำเร็จ (outbound_sent_at NOT NULL) ยกเว้น staff_id เป็นผู้ใช้ระบบ (ข้อความสำเร็จรูปที่ Quick Reply ส่งเอง) (2) echo (external_message_id NOT NULL, outbound_sent_at NULL) ที่ไม่อยู่ใน 60 วิหลัง anchor ใดก็ได้ของครอบครัว (ลูกค้า + placeholder ที่รวมแล้ว) ในช่องทางเดียวกัน · anchor = echo ที่ออกหลังข้อความลูกค้าไม่เกิน 10 วิ หรือบันทึกก่อนข้อความลูกค้าไม่เกิน 10 วิโดยไม่มีข้อความลูกค้าในห้องของ echo 30 นาทีก่อนหน้า (race ของ greeting) — ข้อความลูกค้าที่ใช้ยึดมองทุกห้องของครอบครัวในช่องทางนั้น (ห้องซ้ำ) · ยึดทุกครั้งที่ลูกค้าทัก ไม่ใช่แค่คำตอบใบแรกของห้อง (ช่วงข้อความอัตโนมัติของเพจ: instant reply / away message / keyword response) · ทั้งสองขานับเฉพาะแถวที่ไม่ก่อนข้อความลูกค้าแรกของครอบครัวในช่องทางนั้น (ไม่มีข้อความลูกค้า = ว่าง · ช่องทางอื่นไม่นับแทน) · ห้องที่ mergeRooms รวมข้ามช่องทาง: ข้อความที่ย้ายมานับเป็นช่องทางของห้องหลัก (ยอมรับ — แยกช่องทางเดิมไม่ได้) · แช่แข็งเป็น state.firstStaffReplyAt (LEAST — ทำกติกาให้แคบลงเมื่อไรต้อง reset คอลัมน์ใน PR เดียวกัน) | — (จุดสัมผัส ไม่เลื่อนขั้น) | ร้าน | approximate · แถวไทม์ไลน์คำนวณตอนอ่านจากแคช (chat.source ไม่เขียนอะไร · หน้ารายการไม่คำนวณแคชใหม่ ⇒ อาจช้าตามรอบคำนวณแคช) · ไม่มีลิงก์ · ซ่อนตามกลุ่ม chat เท่านั้น ไม่จำกัดห้องตามสิทธิ์ (เวลาเดียวกันอยู่ใน summary อยู่แล้ว) · หลังทัก = เวลาตอบ − จุดเริ่ม: firstChannel ขึ้นต้น CHAT_ ⇒ contactedAt · อื่น ๆ (หน้าร้าน/แนะนำก่อน) ⇒ ข้อความ CUSTOMER แรกของทุกห้องในครอบครัว · ปัดลง ต่ำสุด 1 นาที · ต่ำกว่า 60 นาที "N นาที" · ต่ำกว่า 24 ชม. "N ชม." · ตั้งแต่ 24 ชม. "N วัน" · เลขกับหน่วยคั่นด้วยเว้นวรรคไม่ตัดบรรทัด (U+00A0) · ไม่ออกแถวเมื่อยังไม่มีคำตอบ หาจุดเริ่มไม่ได้ หรือเวลาตอบก่อนจุดเริ่ม |
 | ROOM_CLAIMED | {พนักงาน} รับดูแลห้องแชท | แชท/ติดต่อ | staff_chat_activities action IN (assign, transfer_in) metadata->>'roomId' ∈ roomIds (จำกัด created_at ≥ ห้องแรก) | — | staff_id | exact แต่ prod แทบไม่มี (มอบหมาย ≈1 ห้อง) |
 | BOT_HANDOFF | บอทส่งต่อพนักงาน ({เหตุผล}) | แชท/ติดต่อ | entry SYSTEM เขียนใน HandoffManagerService.initiateHandoff หลังตั้ง handoffReason (dedupe = handoff:<roomId>:<timestamp>) | — | บอท | วันนี้ไม่ได้บันทึก (chat_rooms.handoffReason ถูกเขียนทับ) · เก็บตั้งแต่ deploy |
-| AI_LEAD_CAPTURED | บอทจดความสนใจ: {รุ่น} · {ผ่อน/สด} · ดาวน์ {x} | แชท/ติดต่อ | audit_logs action=AI_LEAD_CAPTURED entity='customer' entity_id ∈ ids · ใช้เฉพาะ productId/packageChoice/downAmount/visitPlan ห้ามส่ง phone/address | สนใจจริง | บอท | exact · prod = 0 (บอทยัง whitelist) |
-| APPOINTMENT | นัดเข้าร้าน {วัน เวลา} / มาตามนัดแล้ว | แชท/ติดต่อ | todos.room_id ∈ roomIds, due_date not null, created_at, completed_at, created_by_id | สนใจจริง | พนักงาน | exact · prod = 1 แถว · ไม่รู้ว่ามาจริงไหมถ้าไม่กด completed |
+| AI_LEAD_CAPTURED | บอทจดความสนใจ: {รุ่น} · {ผ่อน/สด} · ดาวน์ {x} | แชท/ติดต่อ | audit_logs action=AI_LEAD_CAPTURED entity='customer' entity_id ∈ ids · ใช้เฉพาะ productId/packageChoice/downAmount/visitPlan ห้ามส่ง phone/address | นัด / จอง | บอท | exact · prod = 0 (บอทยัง whitelist) |
+| APPOINTMENT | นัดเข้าร้าน {วัน เวลา} / มาตามนัดแล้ว | แชท/ติดต่อ | todos.room_id ∈ roomIds, due_date not null, created_at, completed_at, created_by_id | นัด / จอง | พนักงาน | exact · prod = 1 แถว · ไม่รู้ว่ามาจริงไหมถ้าไม่กด completed |
 | CUSTOMER_CREATED_BY_STAFF | พนักงานเพิ่มเป็นลูกค้า (หน้าร้าน) | แชท/ติดต่อ | customers.created_at เมื่อ acquisition_source ไม่ขึ้นต้น CHAT_ · actor = audit_logs entity='customers' action='POST' entity_id | ทักเข้ามา + ได้เบอร์ / ยืนยันตัวตน | พนักงาน | approximate (ทาง revive-ghost / stub-upgrade ใช้ created_at เก่า) |
 | CONTACT_ADDED | ได้เบอร์/เลขบัตรลูกค้าแล้ว | แชท/ติดต่อ | entry SYSTEM ใน CustomerWriteService.update / fill-contact เมื่อค่าเดิมเป็น null และค่าใหม่ไม่ null (เทียบค่าในโค้ด ไม่เก็บเบอร์) · capture-lead ที่เติมเบอร์ให้ placeholder | ได้เบอร์ / ยืนยันตัวตน | พนักงาน / บอท | วันนี้ไม่ได้บันทึก (body ใน audit ถูก REDACTED) · ย้อนหลัง = customers.updated_at (approximate) · เก็บ exact ตั้งแต่ deploy |
 | PLACEHOLDER_MERGED | รวมประวัติแชท {n} ห้องเข้ากับลูกค้าคนนี้ | แชท/ติดต่อ | entry SYSTEM เขียนใน tx ของ absorbPlaceholder (dedupe merge:<placeholderId>) · ย้อนหลัง = audit CUSTOMER_PLACEHOLDER_MERGED หรือ placeholder.deleted_at + merged_into_id | ได้เบอร์ / ยืนยันตัวตน | พนักงาน / ระบบ (OTP, LIFF, พิมพ์เบอร์ใน LINE) | exact (เขียนใน tx ไม่ถูกข้ามแบบ audit R12) |
 | LINE_LINKED | ผูก LINE {การเงิน\|ร้าน} แล้ว | แชท/ติดต่อ | entry SYSTEM ใน verification.service.ts bind, liff-api.service.ts, line-customer-link.service.ts selfLinkByPhone · ย้อนหลัง customer_line_links.linkedAt | ได้เบอร์ / ยืนยันตัวตน | ลูกค้า | FINANCE ย้อนหลัง approximate (ผูกซ้ำรีเซ็ต linkedAt) · LINE ร้าน วันนี้ไม่มีเวลา · exact ตั้งแต่ deploy |
-| TOUCHPOINT | {พนักงาน} ติดต่อทาง {โทร\|แชทในแอป FB\|LINE\|หน้าร้าน}: {นัดแล้ว\|มาร้านแล้ว\|ขอคิดก่อน\|งบ/ดาวน์ไม่พอ\|ไม่รับสาย\|ซื้อที่อื่น\|ไม่สนใจ} | แชท/ติดต่อ | customer_journey_entries origin=MANUAL kind=TOUCHPOINT | APPOINTED/VISITED → สนใจจริง · อื่น ๆ ไม่เลื่อนขั้น | พนักงาน (created) | exact ตามที่พนักงานกด · มีเฉพาะที่กด |
+| TOUCHPOINT | {พนักงาน} ติดต่อทาง {โทร\|แชทในแอป FB\|LINE\|หน้าร้าน}: {นัดแล้ว\|มาร้านแล้ว\|ขอคิดก่อน\|งบ/ดาวน์ไม่พอ\|ไม่รับสาย\|ซื้อที่อื่น\|ไม่สนใจ} | แชท/ติดต่อ | customer_journey_entries origin=MANUAL kind=TOUCHPOINT | APPOINTED/VISITED → นัด / จอง · อื่น ๆ ไม่เลื่อนขั้น | พนักงาน (ผู้กด) | exact — เวลาเซิร์ฟเวอร์ตอนกด ไม่มีช่องเปลี่ยนเวลา ไม่มีโน้ต (ขอบเขต v2) · มีเฉพาะที่กด |
 | HEARD_FROM | ลูกค้าบอกว่ารู้จักร้านจาก {โฆษณา FB\|เพจ/โพสต์\|TikTok\|LINE\|Google\|เพื่อนแนะนำ\|ผ่านหน้าร้าน\|ลูกค้าเก่า\|อื่น ๆ} | แชท/ติดต่อ | entries MANUAL kind=HEARD_FROM (CustomerCreateDialog / POS / สร้างสัญญา / แท็บการเดินทาง) | — | พนักงาน | ลูกค้าบอกเอง ไม่ใช่หลักฐาน · เก็บตั้งแต่ deploy |
-| MARKED_LOST / REOPENED | ติดป้ายหลุด: {เหตุผล} / เปิดใหม่ / กลับมาติดต่ออีกครั้ง | แชท/ติดต่อ | entries MANUAL kind=MARKED_LOST\|REOPENED · 'กลับมาติดต่อ' = ข้อความ CUSTOMER แรกหลัง lostAt (คำนวณตอนอ่าน) | ป้ายหลุด | พนักงาน / ลูกค้า | exact |
+| MARKED_LOST / REOPENED / RECONTACTED | ติดป้ายหลุด: {เหตุผล} / เปิดใหม่ / กลับมาติดต่ออีกครั้ง | แชท/ติดต่อ | entries MANUAL kind=MARKED_LOST\|REOPENED · 'กลับมาติดต่ออีกครั้ง' (type RECONTACTED) คำนวณตอนอ่านใน chat.source ไม่เก็บ: entry ล่าสุดที่ไม่ถูกลบของครอบครัว kind MARKED_LOST\|REOPENED (occurred_at desc, id desc — กติกาเดียวกับ CTE lost_mark) ต้องเป็น MARKED_LOST → แถว = ข้อความ role=CUSTOMER แรกที่ created_at > เวลา mark ในห้องที่ผู้ดูเห็น (กติกาห้องของ SALES · รวมข้อความที่ retention soft-delete · คัดแค่ room_id + created_at) · ไม่ออกแถวเมื่อมีเอกสารที่ล้างป้ายเวลาอยู่ใน (mark, ข้อความ] — bookings.created_at · online_installment_applications.created_at · product_reservations.reserved_at · trade_ins.created_at · saving_plans.created_at · online_orders.created_at (ทุกสถานะ ไม่ถูกลบ ชุดเดียวกับ doc_last_at ใน journey-state.sql) แถวเอกสารอธิบายแทน · TOUCHPOINT ไม่กันแถว · มีเฉพาะรอบหลุดล่าสุด (ติดป้ายซ้ำ = แถวรอบก่อนหาย) · เลิกทำ mark หรือเปิดใหม่ = แถวหาย | ป้ายหลุด (RECONTACTED ไม่เลื่อนขั้น) | พนักงาน / ลูกค้า (RECONTACTED) | exact · RECONTACTED ลิงก์ /inbox/:roomId ของข้อความนั้น · SALES อาจไม่เห็นแถวทั้งที่ป้ายล้างแล้ว เมื่อข้อความอยู่ในห้องที่คนอื่นดูแล |
 | CREDIT_CHECK_OPENED | เปิดตรวจเครดิต (ที่ร้าน / จากสเตทเม้นในแชท) | เครดิต | credit_checks.created_at (ai_analysis->>'source'='chat-statement' = จากแชท) · actor จาก entry CREDIT_CHECK_OPENED_BY เขียนหลัง commit ใน credit-check.controller (ที่มี user อยู่แล้ว) | ตรวจเครดิต | พนักงาน (ตั้งแต่ deploy) · ย้อนหลังไม่ทราบ | เวลา exact สำหรับที่สร้างเอง · approximate สำหรับที่นำเข้าจากแชท (created_at ย้อนเป็นเวลา OCR) · ผู้เปิดวันนี้ไม่ได้บันทึก (_userId ถูกทิ้ง) |
 | CHAT_STATEMENT_ANALYZED | วิเคราะห์สเตทเม้นจากแชทแล้ว | เครดิต | room_credit_analyses.created_at status=COMPLETED room_id ∈ roomIds | ตรวจเครดิต | พนักงาน (ไม่ระบุชื่อ) | exact · SALES ที่ไม่ได้ดูแลห้องมองไม่เห็น (creditHistoryAccess) |
 | CREDIT_AI_SCORED | AI ประเมินเครดิต {คะแนน} → {ผ่าน\|ส่งตรวจ\|ไม่ผ่าน} | เครดิต | entry SYSTEM หลัง commit ใน credit-check-ai-analysis.service.ts (dedupe ai:<creditCheckId>:<analysisAt>) | ตรวจเครดิต | ระบบ | วันนี้ไม่ได้บันทึก (status เขียนทับ ห้ามใช้ updatedAt) · เก็บตั้งแต่ deploy · ย้อนหลังไม่แสดง |
 | CREDIT_DECISION | {ผู้จัดการ} {อนุมัติ\|ไม่อนุมัติ\|ส่งตรวจเพิ่ม} เครดิต | เครดิต | audit_logs action=CREDIT_CHECK_OVERRIDE entity='credit_check' entity_id ∈ creditCheckIds (หนึ่ง event ต่อแถว audit) | ตรวจเครดิต (REJECTED → ธงไม่ผ่าน) | audit user_id | exact |
 | CREDIT_LIMIT_APPROVED | อนุมัติค่างวดไม่เกิน {x} บาท/เดือน | เครดิต | credit_approvals.created_at, approved_by_id (ทุกแถว) · used/superseded เป็นบรรทัดรอง | ตรวจเครดิต | ผู้จัดการ | exact |
-| BOOKING | เปิดใบจอง {BK-…} / รับมัดจำ {x} บาท / ยกเลิกใบจอง / ใบจองหมดอายุ / แปลงเป็นใบขาย | ขาย/สัญญา | bookings.created_at(created_by_id), deposit_paid_at(deposit_received_by_id), canceled_at(canceled_by_id), converted_at · audit BOOKING_AUTO_EXPIRED | สนใจจริง | พนักงาน / ระบบ | exact |
-| WEB_HOLD / ONLINE_APPLICATION | กดจองเครื่องบนเว็บ / ยื่นใบสมัครผ่อนออนไลน์ | ขาย/สัญญา | product_reservations.reserved_at (customer_id not null) · online_installment_applications.created_at | สนใจจริง | ลูกค้า | เวลาสร้าง exact · สถานะภายหลังถูกเขียนทับ · ส่วนใหญ่ customer_id ว่าง |
-| TRADE_IN | ส่งเครื่องเทิร์น/ขายคืน · รับซื้อแล้ว {ราคา} | ขาย/สัญญา | trade_ins.created_at, id_card_verified_at, id_card_verified_by_id (customer_id) | สนใจจริง | พนักงาน | exact เฉพาะแถวที่ผูก customer_id · เวลาปฏิเสธ/ปิดไม่ได้บันทึก |
+| BOOKING | เปิดใบจอง {BK-…} / รับมัดจำ {x} บาท / ยกเลิกใบจอง / ใบจองหมดอายุ / แปลงเป็นใบขาย | ขาย/สัญญา | bookings.created_at(created_by_id), deposit_paid_at(deposit_received_by_id), canceled_at(canceled_by_id), converted_at · audit BOOKING_AUTO_EXPIRED | นัด / จอง | พนักงาน / ระบบ | exact |
+| WEB_HOLD / ONLINE_APPLICATION | กดจองเครื่องบนเว็บ / ยื่นใบสมัครผ่อนออนไลน์ | ขาย/สัญญา | product_reservations.reserved_at (customer_id ∈ ids · ตารางไม่มี deleted_at · ทุกสถานะ) · online_installment_applications.created_at (customer_id ∈ ids · deleted_at null · ทุกสถานะ) · คัดแค่ id + เวลา (ไม่คัด session_id · full_name · phone · national_id) · หนึ่งแถวต่อเอกสาร (id webhold-/onlineapp-) · ไม่มีลิงก์ | นัด / จอง · ล้างป้ายหลุดโดยไม่ออกแถว 'กลับมาติดต่ออีกครั้ง' | ลูกค้า | เวลาสร้าง exact · สถานะภายหลังถูกเขียนทับจึงไม่แสดงสถานะ · ส่วนใหญ่ customer_id ว่าง ⇒ แถวเหล่านั้นไม่ขึ้น |
+| TRADE_IN | ส่งเครื่องเทิร์น/ขายคืน | ขาย/สัญญา | trade_ins.created_at (customer_id ∈ ids · deleted_at null · ทุกสถานะ) · คัดแค่ id + created_at (ไม่คัดข้อมูลผู้ขาย · IMEI · serial · รูปบัตร · รูปเครื่อง · ราคา · customer_notes) · id tradein- · ไม่มีลิงก์ | นัด / จอง · ล้างป้ายหลุดโดยไม่ออกแถว 'กลับมาติดต่ออีกครั้ง' | ลูกค้า (ไม่อ่านผู้คีย์ — เทิร์นหน้าร้านก็แสดงลูกค้า) | exact เฉพาะแถวที่ผูก customer_id · ไม่แสดงราคา/ผลรับซื้อ · เวลาปฏิเสธ/ปิดไม่ได้บันทึก |
+| SAVING_PLAN_OPENED | สมัครออมเครื่อง | ขาย/สัญญา | saving_plans.created_at (customer_id ∈ ids · deleted_at null · ทุกสถานะ) · ลูกค้าสมัครเองบนเว็บร้าน · คัดแค่ id + created_at (ไม่คัด target_product_model) · ไม่มีลิงก์ (/saving-plans เป็นหน้ารายการของผู้จัดการ ไม่มีหน้ารายละเอียด) | นัด / จอง · ล้างป้ายหลุดโดยไม่ออกแถว 'กลับมาติดต่ออีกครั้ง' | ลูกค้า | exact |
+| ONLINE_ORDER_PLACED | สั่งซื้อออนไลน์ | ขาย/สัญญา | online_orders.created_at (customer_id ∈ ids · deleted_at null · ทุกสถานะ รวมใบที่ถูกยกเลิกเพราะสร้างรายการชำระไม่สำเร็จ) · ลูกค้าสั่งเองบนเว็บร้าน · คัดแค่ id + created_at (ไม่คัด shipping_address · bank_slip_url · payment_ref · promo_code) · ไม่มีลิงก์ (/online-orders เป็นหน้ารายการของผู้จัดการ) | นัด / จอง · ล้างป้ายหลุดโดยไม่ออกแถว 'กลับมาติดต่ออีกครั้ง' | ออนไลน์ | exact |
 | SALE_CASH / SALE_EXTERNAL_FINANCE | ซื้อเงินสด {รุ่น} {ยอด} บาท / ซื้อผ่านไฟแนนซ์ {บริษัท} | ขาย/สัญญา | sales.created_at, sale_type ∈ CUSTOMER_BOUGHT_SALE_TYPES, deleted_at null, salesperson_id | ซื้อแล้ว (path CASH / EXTERNAL_FINANCE) | พนักงานขาย (ออนไลน์ = 'ออนไลน์') | exact |
 | SALE_VOIDED | ยกเลิกใบขาย {เลข} ({เหตุผล}) | ขาย/สัญญา | sales.deleted_at, voided_by_id, void_reason | — (คำนวณขั้นใหม่) | พนักงาน | exact |
 | CONTRACT_DRAFTED | ร่างสัญญาผ่อน {เลขสัญญา} | ขาย/สัญญา | contracts.created_at, salesperson_id (รวมร่างที่ถูกลบ แสดง 'ลบร่าง') | ตรวจเครดิต | พนักงานขาย | exact |
@@ -318,25 +335,80 @@ firstPurchaseAt = LEAST ของ:
 - ภาพรวม: ?limit=6&include=summary&groups=chat,credit,sale
 
 2) GET /customers/:id/journey/summary (roles เดียวกัน)
-- 200 JourneySummary = { stage, stageLabel, stageEnteredAt, daysInStage, path, steps: [{ stage, label, at|null, state: 'done'|'current'|'skipped'|'todo', evidence: 'SYSTEM'|'MANUAL' }], firstChannel, firstSource, firstSourceLabel, firstAd: {id, name}|null, heardFrom, contactedAt, firstStaffReplyAt, firstPurchaseAt, lastCustomerAt, lastTouchAt, silentDays|null, lost: {at, reason}|null, postSaleBadges: string[], creditRejected: boolean }
+- 200 JourneySummary = { stage, stageLabel, stageEnteredAt, daysInStage, path, steps: [{ stage, label, at|null, state: 'done'|'current'|'skipped'|'todo'|'not_needed', evidence: 'SYSTEM'|'MANUAL'|'CHAT_FILE' }], firstChannel, firstSource, firstSourceLabel, firstAd: {id, name}|null, heardFrom, contactedAt, firstStaffReplyAt, firstPurchaseAt, lastCustomerAt, lastTouchAt, silentDays|null, lost: {at, reason}|null, postSaleBadges: string[], creditRejected: boolean, askHeardFrom: boolean, creditFilePending: boolean }
 - ลำดับการทำงาน: อ่านแคช → ตรวจสด BOUGHT exists → ถ้าไม่ตรง หรือ computedAt เก่ากว่า 15 นาทีและมี activity ใหม่กว่า computedAt → recompute([id]) ในคำขอนั้น
 - ใช้กับแถบขั้นใน header และ KPI tiles
+- steps[].state 'not_needed' มีเฉพาะขั้นตรวจเครดิต: stage ซื้อแล้ว · ไม่มีเวลาเข้าขั้นเครดิต · path CASH หรือ EXTERNAL_FINANCE — ขั้นอื่นที่เลยมาโดยไม่มีเวลา = 'skipped' เหมือนเดิม
+- evidence 'CHAT_FILE' มีเฉพาะขั้นตรวจเครดิต: เวลาเข้าขั้นเครดิตในแคช = เวลาไฟล์เอกสารที่ลูกค้าในครอบครัวส่งพอดี (เงื่อนไข CUSTOMER_DOCUMENT_FILE_SQL — .pdf / .doc(x) / .xls(x) · media_url ว่างและลิงก์แชร์ไม่นับ · คำตัดสินผู้ควบคุม R-P1 · เทียบเท่ากันพอดีแบบเดียวกับ 'MANUAL' ของขั้นนัด / จอง) · ใบตรวจเครดิตมาก่อนไฟล์ = 'SYSTEM' · ส่งให้ทุก role ที่อ่าน summary ได้ (ชนิด + เวลาเท่านั้น ตาม Ruling FR-CREDIT-STAGE)
+- askHeardFrom = firstSource 'WALK_IN' · heardFrom ว่าง · ซื้อ (สัญญา + ใบขายที่นับว่าซื้อ) ไม่ถึง 2 ครั้ง — แบนเนอร์แท็บการเดินทางกับการ์ดหน้าสร้างสัญญาอ่านธงนี้ เว็บไม่คิดเงื่อนไขซ้ำ · ระบบไม่เขียน heardFrom ให้เอง
+- creditFilePending = ยังไม่ซื้อ · มีไฟล์เอกสารของลูกค้า (เงื่อนไขเดียวกัน) ในห้องของครอบครัว · customers.credit_check_status = NONE — ช่อง KPI "เครดิต" แสดง 'ส่งไฟล์แล้ว รอตรวจ' (คำตัดสินเจ้าของข้อ 13(3) · บอร์ด Main (a) ในแคนวาสที่เคาะยังวาดช่องนี้เป็น 'ยังไม่เคยตรวจ' หลังส่งไฟล์ — คำตัดสินข้อ 13(3) มาทีหลังจึงชนะ ห้ามแก้กลับตามบอร์ด)
 
-3) POST /customers/:id/journey/entries
+3) POST /customers/:id/journey/entries (เฟส 3 ขอบเขต v2 — คำตัดสินเจ้าของ 2026-09-15 ข้อ 4 และ 12)
+
+สิทธิ์
 - roles: OWNER, BRANCH_MANAGER, FINANCE_MANAGER, SALES
-- body แบบ discriminated:
-  - { kind: 'TOUCHPOINT', channel, outcome, note?, occurredAt? (≥ now-7d, ≤ now), roomId? }
-  - { kind: 'HEARD_FROM', heardFrom }
-  - { kind: 'MARKED_LOST', lostReason, note? }
-  - { kind: 'REOPENED' }
-- 409 เมื่อ MARKED_LOST กับคนที่ซื้อแล้ว
-- ถ้า :id เป็น placeholder ที่รวมแล้ว → เขียนไปที่ merged_into_id
-- note ตรง /\d[\d\s-]{8,}\d/ → 400 'ห้ามใส่เบอร์โทรหรือเลขบัตรในบันทึก'
-- 201 { event: JourneyEvent, summary: JourneySummary } (recompute รายคนแบบ sync ข้อมูลหลักสิบแถว)
+- FM บันทึกได้ (Q8) · ACCOUNTANT ไม่มีสิทธิ์เขียน
 
-4) DELETE /customers/:id/journey/entries/:entryId
-- soft delete (deletedById) เฉพาะ origin=MANUAL
-- ผู้บันทึกภายใน 24 ชม. หรือ OWNER/BRANCH_MANAGER
+body แบบ discriminated (CreateJourneyEntryDto) — **ไม่มี note / occurredAt / roomId** (ValidationPipe whitelist ตัดคีย์อื่นทิ้ง)
+- { kind: 'TOUCHPOINT', channel, outcome, clientRequestId? }
+  - channel: PHONE | FB_APP | LINE_APP | WALK_IN — OTHER ไม่รับ (คงไว้เป็นป้ายของแถวเก่าเท่านั้น)
+  - outcome: APPOINTED | VISITED | THINKING | BUDGET | NO_ANSWER | BOUGHT_ELSEWHERE | NOT_INTERESTED
+- { kind: 'HEARD_FROM', heardFrom, clientRequestId? }
+  - heardFrom: FB_AD | FB_PAGE | TIKTOK | LINE | GOOGLE | FRIEND | WALK_BY | OLD_CUSTOMER | OTHER
+- { kind: 'MARKED_LOST', lostReason, clientRequestId? }
+  - lostReason: NOT_INTERESTED | BOUGHT_ELSEWHERE | CREDIT_FAILED | UNREACHABLE | OTHER — ชิปอย่างเดียว
+- { kind: 'REOPENED', clientRequestId? }
+
+ข้อความ 400
+- 'ชนิดรายการไม่ถูกต้อง'
+- 'กรุณาเลือกช่องทาง'
+- 'กรุณาเลือกผลการติดต่อ'
+- 'กรุณาเลือกเหตุผล'
+- 'กรุณาเลือกช่องทางที่รู้จักร้าน'
+- 'รหัสคำขอไม่ถูกต้อง' (clientRequestId ต้องเป็น UUID v4)
+
+แถวที่เขียน
+- origin MANUAL · actorType STAFF · actorUserId = ผู้กด
+- occurredAt = เวลาเซิร์ฟเวอร์ ทุก kind
+- roomId / refType / refId / note = null
+- คอลัมน์ของ kind อื่น = null
+
+กติกา
+- :id เป็น placeholder ที่รวมแล้ว → เขียนที่ merged_into_id (customerId = originCustomerId = ลูกค้าจริง)
+- ไม่พบ หรือถูกลบด้วยเหตุอื่น → 404 'ไม่พบลูกค้า'
+- MARKED_LOST กับคนที่ซื้อแล้ว (BOUGHT_WHERE สด) → 409 'ลูกค้ารายนี้ซื้อแล้ว ติดป้ายหลุดไม่ได้'
+- หลุดอยู่แล้วติดซ้ำได้ = เปลี่ยนเหตุผล (Q4)
+- REOPENED ตอนไม่หลุด → ไม่เขียนแถว · ตอบ 201 { entryId: null, event: null, summary } · เว็บแสดง 'เปิดอยู่แล้ว' (Q4)
+  - คำนวณแคชใหม่ก่อนอ่านค่า lost
+
+กันกดซ้ำ (Q6)
+- dedupe_key = 'MANUAL:<kind>:<clientRequestId>'
+- เว็บสร้าง UUID ใหม่ทุกครั้งที่แตะ ส่ง UUID เดิมซ้ำเฉพาะตอน retry
+- ค้นแถวด้วย dedupe_key ก่อนตรวจกติกาข้างบน:
+  - เจอแถวของครอบครัวนี้ที่ยังไม่ถูกเลิกทำ → คืนแถวนั้น ไม่เขียนแถวที่สอง (retry ของคำขอที่สำเร็จแล้วได้ผลเดิมเสมอ)
+  - แถวนั้นถูกเลิกทำแล้ว หรือเป็นของลูกค้าคนอื่น → 409 'คำขอนี้ถูกใช้ไปแล้ว กรุณากดใหม่อีกครั้ง'
+- สองคำขอพร้อมกันชน unique (P2002) → ตัวที่แพ้โหลดแถวของตัวที่ชนะมาคืน
+
+หลังเขียน
+- recompute([ลูกค้าจริง]) แบบ sync
+- ถ้าล้ม: warn + Sentry (tags kind customer-journey · op manual-entry-recompute) · คำขอยังสำเร็จ
+
+คำตอบ
+- 201 JourneyEntryCreatedResponse { entryId, event: JourneyEvent, summary: JourneySummary }
+- event มาจากตัวแปลงเดียวกับรายการ (sources/manual-entry-event.ts) ⇒ ชื่อแถวสองทางตรงกันเสมอ
+- ไม่เขียน audit_logs เพิ่ม — แถว entries มีผู้กด เวลา และ deletedById อยู่แล้ว
+
+4) DELETE /customers/:id/journey/entries/:entryId ("เลิกทำ" — เฟส 3)
+- roles: OWNER, BRANCH_MANAGER, FINANCE_MANAGER, SALES (ชุดเดียวกับ POST) · service ตัดสินสิทธิ์รายแถว
+- :id ที่เป็น placeholder ที่รวมแล้วตามไป merged_into_id · ครอบครัว = ลูกค้า + placeholder ที่รวมเข้ามา · ลูกค้าไม่พบ → 404 'ไม่พบลูกค้า'
+- ด่านตามลำดับ:
+  - ไม่พบรายการ หรือรายการไม่ใช่ของครอบครัวนี้ → 404 'ไม่พบรายการนี้'
+  - origin ไม่ใช่ MANUAL → 400 'ลบได้เฉพาะรายการที่พนักงานบันทึกเอง'
+  - OWNER/BRANCH_MANAGER ลบได้ทุกแถวทุกเวลา · FINANCE_MANAGER/SALES เฉพาะแถวที่ตัวเองบันทึก ภายใน 24 ชม. นับจาก created_at (ไม่ใช่ occurred_at · ครบ 24 ชม. พอดียังลบได้) · อื่น ๆ → 403 'ลบได้เฉพาะรายการของตัวเองภายใน 24 ชั่วโมง'
+  - ลบไปแล้ว (กดเลิกทำซ้ำ) → 200 { summary } ไม่เขียนซ้ำ
+- เขียนแบบ compare-and-set: updateMany where id + origin MANUAL + deleted_at null + customer_id ในครอบครัว → set deleted_at, deleted_by_id · count 0 (มีคำขออื่นเลิกทำไปก่อน) = 200 ไม่คำนวณใหม่
+- หลังเขียน recompute([ลูกค้า]) ใน try/catch + Sentry (kind customer-journey · op manual-entry-undo-recompute) แล้วคืน 200 { summary }
+- ฝั่งอ่าน: ทุกแถว MANUAL ใน GET /customers/:id/journey และ event ในคำตอบ POST มี entryId, undoableUntil (ผู้บันทึกที่ยังอยู่ในหน้าต่าง = created_at + 24 ชม. · อื่น ๆ null), canDelete (กติกาเดียวกับด่าน 403 — canDeleteManualEntry · เว็บแสดงลิงก์ "เลิกทำ" ตามค่านี้) · แถว SOURCE/SYSTEM_ENTRY ไม่มีสามคีย์นี้ · ยังไม่ select note
 
 5) GET /customers/journey/funnel
 - roles: OWNER, BRANCH_MANAGER
@@ -425,16 +497,22 @@ db.spec (test_db เท่านั้น) ต่อยอด customer-merge.ser
 - บันทึกเป็น entry HEARD_FROM ครั้งแรก ตอบซ้ำ = แก้ค่า
 - ห้ามแก้ acquisitionSource (R14/R24)
 
-(ค) '+ บันทึกการติดต่อ' ในแท็บการเดินทาง (เฟส 3)
-- เปิด bottom sheet บนมือถือ / popover บนเดสก์ท็อป
-- แถว 1 ชิปช่องทาง: โทร · แชทในแอป FB · LINE · หน้าร้าน (จำค่าล่าสุดใน localStorage ห่อ try/catch)
-- แถว 2 ชิปผล: นัดแล้ว · มาร้านแล้ว · ขอคิดก่อน · งบ/ดาวน์ไม่พอ · ไม่รับสาย · ซื้อที่อื่น · ไม่สนใจ
-- แตะผล = บันทึกทันที (1 แตะถ้าช่องทางถูกอยู่แล้ว ไม่งั้น 2 แตะ) → toast 'บันทึกแล้ว · เลิกทำ' (soft delete ภายใน 24 ชม.)
-- 'ซื้อที่อื่น' / 'ไม่สนใจ' ถามต่อแตะเดียว 'ติดป้ายหลุดไหม [ใช่]' (แตะที่ 3)
-- 'เพิ่มโน้ต' พับไว้ (≤140 ตัว มีคำเตือนและ DTO ปฏิเสธเลขยาว) และ 'เปลี่ยนเวลา' (ย้อนได้ 7 วัน) เป็นทางเลือก
+(ค) 'บันทึกการติดต่อ' ในแท็บการเดินทาง (เฟส 3 — ไม่บังคับ, ขอบเขตรอบ 2 ข้อ 4)
+- ปุ่ม outline เล็กอยู่แถวของตัวเอง ชิดขวา เหนือชิปกรอง (Q16) · มือถือเต็มกว้าง สูง 44px (Q17) · กดไม่ได้ระหว่างรอ summary · ฝ่ายบัญชีไม่เห็น (บทบาทที่บันทึกได้ = OWNER · ผจก.สาขา · ผจก.การเงิน · พนง.ขาย ตาม `@Roles` ของ POST)
+- เปิด bottom sheet บนมือถือ (ต่ำกว่า 1024px) / popover กว้าง w-80 ชิดขวาปุ่มบนเดสก์ท็อป
+- แถว 'ช่องทาง': โทร · แชทในแอป FB · LINE · หน้าร้าน — เลือกไว้จากค่าล่าสุดใน localStorage `customerJourney.lastChannel.v1` (ห่อ try/catch · ค่าที่ไม่ใช่ 4 ตัวนี้ถูกทิ้ง · เขียนหลังบันทึกสำเร็จเท่านั้น) · ยังไม่มีช่องทาง = ชิปผลกดไม่ได้ + คำใบ้ 'เลือกช่องทางก่อน'
+- แถว 'ผล': นัดแล้ว · มาร้านแล้ว · ขอคิดก่อน · งบ/ดาวน์ไม่พอ · ไม่รับสาย · ซื้อที่อื่น · ไม่สนใจ (ขึ้น 3 แถวใน w-80 — Q19)
+- แตะผล = บันทึกทันที เวลา = เวลาเซิร์ฟเวอร์ (1 แตะถ้าช่องทางถูกอยู่แล้ว ไม่งั้น 2 แตะ) · ชิปที่แตะหมุน ชิปอื่นล็อกกันแตะซ้ำ · สำเร็จ → ปิดตัวเลือก + toast 'บันทึกแล้ว · เลิกทำ' 10 วินาที · ไม่สำเร็จ → toast ข้อความจาก API ตัวเลือกยังเปิดพร้อมช่องทางที่เลือก
+- 'ซื้อที่อื่น' / 'ไม่สนใจ' → บันทึกแล้วตัวเลือกยังเปิด เหลือบรรทัดเดียว 'ติดป้ายหลุดไหม [ใช่ ติดป้ายหลุด] [ไม่ต้อง]' — 'ใช่' = MARKED_LOST เหตุผลเดียวกับผล แล้ว toast 'ติดป้ายหลุดแล้ว · เลิกทำ' (แตะที่ 3) · ไม่ถามเมื่อคำตอบของเซิร์ฟเวอร์บอกว่าลูกค้าซื้อแล้ว · 'ไม่รับสาย' ไม่ถาม (Q3)
+- ทุกการแตะใช้ clientRequestId ใหม่ (dedupe `MANUAL:<kind>:<id>`) — คำขอของ 'ใช่ ติดป้ายหลุด' จึงไม่ถูกรวมเข้ากับ TOUCHPOINT ที่เพิ่งบันทึก
+- ไม่มีช่องโน้ต ไม่มีช่องเปลี่ยนเวลา ไม่มีปุ่ม 'บันทึก' (ตัดออกตามขอบเขตรอบ 2)
+- ลิงก์ 'เลิกทำ' ท้ายแถวบันทึกมือขึ้นตาม `canDelete` ที่เซิร์ฟเวอร์ส่ง (Q18): OWNER/ผจก.สาขา ลบได้ทุกเวลา · ผจก.การเงิน/พนง.ขาย เฉพาะของตัวเองภายใน 24 ชม. (Q5) · แถวที่ระบบบันทึกเองไม่มีลิงก์ · ปุ่มใน toast และลิงก์ในแถวเรียกการลบตัวเดียวกัน กดได้แม้สลับไปแท็บอื่นแล้ว → toast 'เลิกทำแล้ว'
 
 (ง) ปุ่ม 'ติดป้ายหลุด' / 'เปิดใหม่' บนแถบขั้น
 - ไม่มีปุ่มเลื่อนขั้นด้วยมือ เพราะขั้นมาจากหลักฐานในระบบเท่านั้น
+- ยังไม่หลุดและยังไม่ซื้อ: ghost 'ติดป้ายหลุด' → ตัวเลือก 'ติดป้ายหลุด — เพราะอะไร' 5 ชิป (ไม่สนใจ · ซื้อที่อื่น · เครดิตไม่ผ่าน · ติดต่อไม่ได้ · อื่น ๆ) แตะ = บันทึก (2 แตะ, Q2) ไม่มีโน้ต → toast 'ติดป้ายหลุดแล้ว · เลิกทำ'
+- หลุดแล้ว: ป้าย 'หลุด · {เหตุผล}' + outline 'เปิดใหม่' แตะเดียวไม่มียืนยัน → toast 'เปิดใหม่แล้ว · เลิกทำ' (ถ้าเซิร์ฟเวอร์บอกว่าเปิดอยู่แล้ว = 'เปิดอยู่แล้ว' ไม่มีเลิกทำ) — ใช้ยามจำเป็น เพราะป้ายหลุดหายเองเมื่อลูกค้าทักกลับหรือมีเอกสารลูกค้าใหม่
+- ซื้อแล้ว หรือบทบาทที่บันทึกไม่ได้: ไม่มีปุ่ม (ป้ายหลุด/เงียบยังแสดงตามเดิม) · มือถือกลุ่มปุ่มย้ายลงใต้ขั้น ชิดขวา สูง 44px
 
 (จ) การ์ดผู้สนใจใน RoomDossier ของอินบ็อกซ์
 - ใช้ชิปชุดเดียวกัน roomId แนบให้อัตโนมัติ
@@ -446,7 +524,7 @@ db.spec (test_db เท่านั้น) ต่อยอด customer-merge.ser
 - เลือกขั้นเอง
 - รายการ follow-up แยก (ถ้าเจ้าของต้องการ ให้ใช้ todos เดิมที่มี roomId/dueDate)
 
-ตัวชี้วัดการใช้งานหลังเปิด 2 สัปดาห์: นับ entries MANUAL ต่อพนักงาน ถ้า ≈0 ให้คงไว้แต่ไม่ขยาย
+ตัวชี้วัดการใช้งานหลังเปิด 2 สัปดาห์: นับ entries MANUAL ต่อพนักงาน ถ้า ≈0 ให้คงไว้แต่ไม่ขยาย — คิวรีนับอย่างเดียวอยู่ใน docs/superpowers/runbooks/2026-09-15-customer-journey-phase3-deploy.md หัวข้อ "ตัวชี้วัดการใช้งานบันทึกมือ"
 
 ## คำตอบด้านการตลาด (เฟส 2)
 

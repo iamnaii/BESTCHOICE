@@ -77,6 +77,8 @@ export interface AdjustmentPreview {
   journalLines: AdjustmentJournalLine[];
   journalNote: string;
   requiresPhoto: boolean;
+  /** ไม่ว่าง = คำขอนี้ส่งไม่ได้ (เครื่องจากใบสั่งซื้อที่ยังไม่เข้าคลัง — ต้องตีกลับผู้จัดจำหน่าย) ข้อความเดียวกับที่ API ปฏิเสธ */
+  blockedReason: string | null;
 }
 
 export interface ProductLookupRow {
@@ -93,6 +95,8 @@ export interface ProductLookupRow {
   costPrice: string | null;
   category: string;
   pendingRequestNumber: string | null;
+  /** เครื่องจากใบรับของที่ยังไม่ลงบัญชีรับเข้าและยังไม่เข้าคลัง — ขอตัดสินค้าไม่ได้ ต้องตีกลับผู้จัดจำหน่าย (คำตัดสินเจ้าของ 2026-10-06) */
+  poUnbooked: boolean;
 }
 
 export interface AdjustmentListResponse {

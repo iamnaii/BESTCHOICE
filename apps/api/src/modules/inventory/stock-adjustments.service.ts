@@ -41,7 +41,8 @@ import { StockAdjustmentNumberService } from './stock-adjustment-number.service'
  *
  * คำตอบฝ่ายบัญชี 29–30/09/2569: ข6 สูญหาย/ตัดจำหน่าย `Dr S53-1102 / Cr S11-200x` ที่ต้นทุน ณ วันอนุมัติ · FOUND = กลับรายการ
  * ใบเดิม · CORRECTION/OTHER ไม่ลงบัญชี · **ข7 เครื่องเสียหายที่ยังอยู่ = คงในสต๊อก ไม่ลงบัญชี ไม่ลบ** · ข้อ 8 เครื่องที่ยังไม่ลง
- * บัญชีรับเข้าตัดได้โดยไม่มี JE แล้วแจ้งฝ่ายบัญชี.
+ * บัญชีรับเข้าตัดได้โดยไม่มี JE แล้วแจ้งฝ่ายบัญชี — **เฉพาะเครื่องที่ไม่มีใบรับของ**: เครื่องจากใบสั่งซื้อที่ยังไม่เข้าคลังขอตัดไม่ได้
+ * ตั้งแต่ 2026-10-06 (`PO_UNBOOKED_BLOCK_HINT` / `poUnbookedBlock` — คำตัดสินเจ้าของ: ตีกลับผู้จัดจำหน่ายเท่านั้น).
  */
 export interface AdjustmentActor {
   id: string;
@@ -77,6 +78,25 @@ export const REASON_LABEL: Record<StockAdjustmentReason, string> = {
   WRITE_OFF: 'ตัดจำหน่าย',
   OTHER: 'อื่น ๆ',
 };
+
+/**
+ * คำตัดสินเจ้าของ 2026-10-06 ("เครื่องไม่ผ่าน คืน supplier เลย"): เครื่องจากใบสั่งซื้อที่ยังไม่เข้าคลัง (ใบรับของยังไม่ลงบัญชีรับเข้า —
+ * มือสองที่รอถ่ายรูป) **ขอตัดสินค้าไม่ได้** ทุกเหตุผลตัดออก (สูญหาย/เสียหาย/ตัดจำหน่าย) — ทางเดียวคือตีกลับผู้จัดจำหน่าย
+ * (`PoReceivingService.rejectQC` ผ่านเมนู รอถ่ายรูป › ไม่รับเข้าคลัง — OWNER/BM เท่านั้น ปุ่มรับเฉพาะ PHOTO_PENDING) ·
+ * เครื่องที่ไม่มีใบรับของ (ยอดยกมา / เพิ่มด้วยมือ / รับซื้อ-รับเทิร์น) และเครื่อง IN_STOCK (เข้าคลังแล้ว แม้ใบต้นทุน 0 ไม่มี JE) ไม่เข้าข่าย
+ */
+export const PO_UNBOOKED_BLOCK_HINT =
+  'ให้ตีกลับผู้จัดจำหน่ายแทน ที่เมนู รอถ่ายรูป › ไม่รับเข้าคลัง (ผู้จัดการสาขาหรือเจ้าของกิจการเป็นผู้กด)';
+
+export function poUnbookedBlockMessage(reason: StockAdjustmentReason, status: ProductStatus, grNumber: string): string {
+  const backToQueue =
+    status === 'PHOTO_PENDING' ? '' : ` · เครื่องอยู่สถานะ ${status} ต้องเปลี่ยนสถานะกลับเป็น PHOTO_PENDING ก่อนจึงจะตีกลับได้`;
+  return (
+    `ขอ${REASON_LABEL[reason]}ไม่ได้ — เครื่องนี้มาจากใบรับของ ${grNumber} และยังไม่เข้าคลัง (ยังไม่ลงบัญชีรับเข้า) ` +
+    PO_UNBOOKED_BLOCK_HINT +
+    backToQueue
+  );
+}
 
 export const REQUESTABLE_STATUSES: Record<'EXIT' | 'FOUND' | 'NOTE', readonly ProductStatus[]> = {
   // เครื่องที่ "อยู่ในมือร้าน" และยังไม่ถูกขาย/จอง/ยึด — DAMAGED เพิ่มเฉพาะเหตุผล WRITE_OFF (ของเสียที่เก็บไว้แล้วตัดทิ้ง)
@@ -208,6 +228,8 @@ export interface ProductLookupRow {
   category: string;
   /** เลขคำขอที่ยังรออนุมัติของเครื่องนี้ (ถ้ามี) */
   pendingRequestNumber: string | null;
+  /** เครื่องจากใบรับของที่ยังไม่ลงบัญชีรับเข้าและยังไม่เข้าคลัง — ขอตัดสินค้าไม่ได้ ต้องตีกลับผู้จัดจำหน่าย (คำตัดสินเจ้าของ 2026-10-06) */
+  poUnbooked: boolean;
 }
 
 export interface AdjustmentJournalLine {
@@ -230,6 +252,8 @@ export interface AdjustmentPreview {
   journalNote: string;
   /** เหตุผล DAMAGED ต้องแนบรูป */
   requiresPhoto: boolean;
+  /** ไม่ว่าง = คำขอนี้ส่งไม่ได้ (เครื่อง PO ที่ยังไม่เข้าคลัง — ต้องตีกลับผู้จัดจำหน่าย) ข้อความเดียวกับที่ `createRequest` ปฏิเสธ */
+  blockedReason: string | null;
 }
 
 export interface ApproveResult {
@@ -246,6 +270,7 @@ const NOTE_UNBOOKED = 'ไม่ลงบัญชี — เครื่อง�
 const NOTE_DAMAGED = 'ไม่ลงบัญชี — เครื่องเสียหายคงในสต๊อกจนกว่าจะขายหรือตัดจำหน่าย (คำตอบฝ่ายบัญชี ข7)';
 const NOTE_NONE = 'ไม่ลงบัญชี — เหตุผลนี้เป็นการบันทึกข้อมูลอย่างเดียว';
 const NOTE_ZERO_COST = 'ไม่ลงบัญชี — เครื่องนี้ไม่มีต้นทุน (0 บาท)';
+const NOTE_PO_UNBOOKED = 'ไม่ลงบัญชี — เครื่องยังไม่เข้าคลัง ขอตัดสินค้าไม่ได้ ต้องตีกลับผู้จัดจำหน่าย';
 
 const money = (v: Prisma.Decimal | number | string) => new Prisma.Decimal(v).toFixed(2);
 const isP2002 = (err: unknown): boolean =>
@@ -338,6 +363,33 @@ export class StockAdjustmentsService {
     );
   }
 
+  /** ใบรับของของเครื่องที่ยังไม่ลงบัญชีรับเข้า (null = ไม่มีใบรับของ หรือลงบัญชีแล้ว) — `GoodsReceivingItem.productId` เป็น unique */
+  private async unbookedReceivingOf(
+    client: Prisma.TransactionClient | PrismaService,
+    productId: string,
+  ): Promise<{ grNumber: string } | null> {
+    const gri = await client.goodsReceivingItem.findFirst({
+      where: { productId, deletedAt: null },
+      select: { journalEntryId: true, receiving: { select: { grNumber: true } } },
+    });
+    if (!gri || gri.journalEntryId) return null;
+    return { grNumber: gri.receiving.grNumber };
+  }
+
+  /**
+   * คำตัดสินเจ้าของ 2026-10-06 — เครื่องจาก PO ที่ยังไม่เข้าคลัง: เหตุผลตัดออก (EXIT) ถูกปฏิเสธ คืนข้อความที่ต้องบอกผู้ขอ
+   * (null = ไม่เข้าข่าย) · ตรวจที่ `createRequest` ทั้งก่อนอัปโหลดรูปและในธุรกรรมหลังล็อกแถว และที่ `preview` (ฟอร์มปิดปุ่มส่ง)
+   */
+  private async poUnbookedBlock(
+    client: Prisma.TransactionClient | PrismaService,
+    reason: StockAdjustmentReason,
+    product: LoadedProduct,
+  ): Promise<string | null> {
+    if (!EXIT_REASONS.has(reason) || product.deletedAt || product.status === 'IN_STOCK') return null;
+    const gr = await this.unbookedReceivingOf(client, product.id);
+    return gr ? poUnbookedBlockMessage(reason, product.status, gr.grNumber) : null;
+  }
+
   // ────────────────────────────────────────────────────────────────────────────
   // รูปหลักฐาน
   // ────────────────────────────────────────────────────────────────────────────
@@ -395,6 +447,8 @@ export class StockAdjustmentsService {
     if (!probe) throw new NotFoundException('ไม่พบสินค้า');
     this.assertRequesterScope(actor, probe.branchId, 'ขอตัดสินค้า');
     this.assertReasonAllowed(reason, probe);
+    const blocked = await this.poUnbookedBlock(this.prisma, reason, probe);
+    if (blocked) throw new BadRequestException(blocked);
 
     const now = new Date();
     const photoKeys = await this.uploadPhotos(files, now);
@@ -423,6 +477,8 @@ export class StockAdjustmentsService {
             );
           }
           this.assertReasonAllowed(reason, product);
+          const blockedInTx = await this.poUnbookedBlock(tx, reason, product);
+          if (blockedInTx) throw new BadRequestException(blockedInTx);
           if (holdsProduct) {
             await assertProductNotHeld(tx, product, 'STOCK_ADJUST');
           }
@@ -652,7 +708,8 @@ export class StockAdjustmentsService {
               });
             }
           } else if (!booked.booked && cost.gt(0)) {
-            // ข้อ 8 — ของยกมา / เพิ่มด้วยมือ / เครื่องจาก PO ที่ยังรอถ่ายรูป: ไม่มีสินค้าคงคลังในบัญชีให้เครดิต
+            // ข้อ 8 — ของยกมา / เพิ่มด้วยมือ: ไม่มีสินค้าคงคลังในบัญชีให้เครดิต
+            // เครื่องจาก PO ที่ยังรอถ่ายรูปถูกกันตั้งแต่ createRequest แล้ว (2026-10-06) — branch ข้างล่างเหลือสำหรับใบ PENDING ที่สร้างก่อน deploy
             // I3 (final review): เครื่องจาก PO ที่ยังไม่ผ่านเข้าคลัง = เจ้าหนี้ผู้จัดจำหน่ายของเครื่องนั้นก็ยังไม่ถูกตั้ง (ก้อน 2 คิดเจ้าหนี้จาก JE รับของ)
             // ⇒ ถ้าจ่ายใบนั้นเต็ม ส่วนของเครื่องนี้จะค้างเป็นมัดจำ S11-4201 — ต้องบอกฝ่ายบัญชีให้ครบ (รอคำตอบว่าจะให้ลงรับเข้าก่อนตัดหรือไม่)
             const gr = booked.grNumber
@@ -888,6 +945,14 @@ export class StockAdjustmentsService {
         },
       },
     });
+    // เครื่องจากใบรับของที่ยังไม่ลงบัญชี — ฟอร์มติดป้าย "ต้องตีกลับผู้จัดจำหน่าย" (คำตัดสินเจ้าของ 2026-10-06)
+    const grItems = rows.length
+      ? await this.prisma.goodsReceivingItem.findMany({
+          where: { productId: { in: rows.map((p) => p.id) }, deletedAt: null },
+          select: { productId: true, journalEntryId: true },
+        })
+      : [];
+    const unbookedPo = new Set(grItems.filter((g) => !g.journalEntryId).map((g) => g.productId));
     return rows.map((p) => ({
       id: p.id,
       name: p.name,
@@ -901,6 +966,7 @@ export class StockAdjustmentsService {
       costPrice: canSeeCost(actor.role) ? money(p.costPrice) : null,
       category: p.category,
       pendingRequestNumber: p.stockAdjustments?.[0]?.requestNumber ?? null,
+      poUnbooked: unbookedPo.has(p.id) && !p.deletedAt && p.status !== 'IN_STOCK',
     }));
   }
 
@@ -924,9 +990,13 @@ export class StockAdjustmentsService {
     if (reason === 'DAMAGED' || reason === 'LOST' || reason === 'WRITE_OFF') productStatusAfter = EXIT_TARGET_STATUS[reason];
     else if (reason === 'FOUND') productStatusAfter = FOUND_TO_IN_STOCK.has(product.status) ? 'IN_STOCK' : product.status;
 
+    const blockedReason = await this.poUnbookedBlock(this.prisma, reason, product);
+
     let journalLines: AdjustmentJournalLine[] = [];
     let journalNote = NOTE_NONE;
-    if (reason === 'DAMAGED') {
+    if (blockedReason) {
+      journalNote = NOTE_PO_UNBOOKED;
+    } else if (reason === 'DAMAGED') {
       journalNote = NOTE_DAMAGED;
     } else if (BOOKED_EXIT_REASONS.has(reason)) {
       if (!booked.booked) journalNote = NOTE_UNBOOKED;
@@ -972,6 +1042,7 @@ export class StockAdjustmentsService {
       journalLines,
       journalNote,
       requiresPhoto,
+      blockedReason,
     };
   }
 

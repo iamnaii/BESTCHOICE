@@ -79,7 +79,7 @@ function build(product: Record<string, unknown> | null = baseProduct()) {
     contract: { findFirst: jest.fn().mockResolvedValue(null) },
     productReservation: { findFirst: jest.fn().mockResolvedValue(null) },
     onlineOrder: { findFirst: jest.fn().mockResolvedValue(null) },
-    goodsReceivingItem: { findFirst: jest.fn().mockResolvedValue(null) },
+    goodsReceivingItem: { findFirst: jest.fn().mockResolvedValue(null), findMany: jest.fn().mockResolvedValue([]) },
     journalEntry: { findFirst: jest.fn().mockResolvedValue(null), findUnique: jest.fn().mockResolvedValue(null), findMany: jest.fn().mockResolvedValue([]) },
     chartOfAccount: {
       findMany: jest.fn().mockResolvedValue([
@@ -799,5 +799,82 @@ describe('StockAdjustmentsService.approve — Todo แจ้งบัญชี�
     expect(data.description).toMatch(/PO-20261001-0007/);
     expect(data.description).toMatch(/เจ้าหนี้/);
     expect(data.description).toMatch(/มัดจำ/);
+  });
+});
+
+describe('StockAdjustmentsService — เครื่องจากใบสั่งซื้อที่ยังไม่เข้าคลัง (คำตัดสินเจ้าของ 2026-10-06: ตีกลับผู้จัดจำหน่ายเท่านั้น)', () => {
+  const unbookedGr = { journalEntryId: null, receiving: { grNumber: 'GR-20261006-001' } };
+
+  it('(po1) LOST บนเครื่อง PHOTO_PENDING ที่ใบรับของยังไม่ลงบัญชี → 400 บอกให้ตีกลับ · ไม่สร้างใบ ไม่พักขาย', async () => {
+    const { service, prisma, storage } = build(baseProduct({ status: 'PHOTO_PENDING', category: 'PHONE_USED' }));
+    prisma.goodsReceivingItem.findFirst.mockResolvedValue(unbookedGr);
+    const p = service.createRequest({ productId: 'p1', reason: 'LOST' }, [], SALES_B1);
+    await expect(p).rejects.toBeInstanceOf(BadRequestException);
+    await expect(p).rejects.toThrow(/ไม่รับเข้าคลัง/);
+    await expect(p).rejects.toThrow(/GR-20261006-001/);
+    expect(storage.upload).not.toHaveBeenCalled();
+    expect(prisma.stockAdjustment.create).not.toHaveBeenCalled();
+    expect(prisma.product.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('(po2) DAMAGED มีรูป บนเครื่อง PO ที่ยังไม่เข้าคลัง → 400 ก่อนอัปโหลดรูป', async () => {
+    const { service, prisma, storage } = build(baseProduct({ status: 'PHOTO_PENDING', category: 'PHONE_USED' }));
+    prisma.goodsReceivingItem.findFirst.mockResolvedValue(unbookedGr);
+    await expect(service.createRequest({ productId: 'p1', reason: 'DAMAGED' }, [jpeg()], SALES_B1)).rejects.toThrow(/ไม่รับเข้าคลัง/);
+    expect(storage.upload).not.toHaveBeenCalled();
+  });
+
+  it('(po3) เครื่อง PO ที่ถูกเปลี่ยนสถานะมือเป็น INSPECTION → 400 และบอกให้เปลี่ยนกลับเป็น PHOTO_PENDING ก่อนตีกลับ', async () => {
+    const { service, prisma } = build(baseProduct({ status: 'INSPECTION', category: 'PHONE_USED' }));
+    prisma.goodsReceivingItem.findFirst.mockResolvedValue(unbookedGr);
+    await expect(service.createRequest({ productId: 'p1', reason: 'WRITE_OFF' }, [], OWNER)).rejects.toThrow(/PHOTO_PENDING ก่อน/);
+  });
+
+  it('(po4) LOST บนเครื่อง PHOTO_PENDING ที่ไม่มีใบรับของ (รับซื้อ/ยกมา) → สร้างใบได้ตามเดิม', async () => {
+    const { service, prisma } = build(baseProduct({ status: 'PHOTO_PENDING', category: 'PHONE_USED' }));
+    const view = await service.createRequest({ productId: 'p1', reason: 'LOST' }, [], SALES_B1);
+    expect(view.requestNumber).toBe('SA-20261005-0001');
+    expect(prisma.stockAdjustment.create).toHaveBeenCalled();
+  });
+
+  it('(po5) WRITE_OFF บนเครื่อง IN_STOCK ที่ใบรับของไม่มีรายการบัญชี (ใบต้นทุน 0) → สร้างใบได้ — เข้าคลังแล้วไม่ใช่ของค้างรอตีกลับ', async () => {
+    const { service, prisma } = build(baseProduct({ status: 'IN_STOCK' }));
+    prisma.goodsReceivingItem.findFirst.mockResolvedValue(unbookedGr);
+    await service.createRequest({ productId: 'p1', reason: 'WRITE_OFF' }, [], OWNER);
+    expect(prisma.stockAdjustment.create).toHaveBeenCalled();
+  });
+
+  it('(po6) CORRECTION บนเครื่อง PO ที่ยังไม่เข้าคลัง → ทำได้ (บันทึกข้อมูลอย่างเดียว ไม่ใช่การตัดออก)', async () => {
+    const { service, prisma } = build(baseProduct({ status: 'PHOTO_PENDING', category: 'PHONE_USED' }));
+    prisma.goodsReceivingItem.findFirst.mockResolvedValue(unbookedGr);
+    await service.createRequest({ productId: 'p1', reason: 'CORRECTION', notes: 'แก้สี' }, [], OWNER);
+    expect(prisma.stockAdjustment.create).toHaveBeenCalled();
+  });
+
+  it('(po7) preview LOST บนเครื่อง PO ที่ยังไม่เข้าคลัง → blockedReason บอกให้ตีกลับ · ไม่มีบรรทัดบัญชี', async () => {
+    const { service, prisma } = build(baseProduct({ status: 'PHOTO_PENDING', category: 'PHONE_USED' }));
+    prisma.goodsReceivingItem.findFirst.mockResolvedValue(unbookedGr);
+    const pv = await service.preview('p1', 'LOST', OWNER);
+    expect(pv.blockedReason).toMatch(/ไม่รับเข้าคลัง/);
+    expect(pv.journalLines).toEqual([]);
+    expect(pv.journalNote).toMatch(/ตีกลับ/);
+    // เครื่องปกติ → ไม่ถูกบล็อก
+    const { service: s2 } = build(baseProduct({ status: 'IN_STOCK' }));
+    expect((await s2.preview('p1', 'LOST', OWNER)).blockedReason).toBeNull();
+  });
+
+  it('(po8) lookup → แถวเครื่อง PO ที่ยังไม่เข้าคลังติด poUnbooked=true · เครื่องที่ลงบัญชีแล้ว/ไม่มีใบรับของ = false', async () => {
+    const { service, prisma } = build();
+    const row = (id: string, status: string) => ({
+      id, name: 'x', brand: 'Apple', model: 'iPhone', imeiSerial: `35000000000000${id}`, serialNumber: null, status, deletedAt: null,
+      costPrice: new Prisma.Decimal('1000.00'), category: 'PHONE_USED', branch: { id: 'branch-1', name: 'ลาดพร้าว' }, stockAdjustments: [],
+    });
+    prisma.product.findMany.mockResolvedValue([row('p-po', 'PHOTO_PENDING'), row('p-booked', 'IN_STOCK'), row('p-tradein', 'PHOTO_PENDING')]);
+    prisma.goodsReceivingItem.findMany = jest.fn().mockResolvedValue([
+      { productId: 'p-po', journalEntryId: null },
+      { productId: 'p-booked', journalEntryId: 'je-1' },
+    ]);
+    const rows = await service.lookupProduct({ search: 'iPhone', reason: 'LOST' }, OWNER);
+    expect(rows.map((r) => [r.id, r.poUnbooked])).toEqual([['p-po', true], ['p-booked', false], ['p-tradein', false]]);
   });
 });

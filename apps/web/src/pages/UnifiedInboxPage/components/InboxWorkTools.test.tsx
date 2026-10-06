@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   markRead: vi.fn(),
   error: vi.fn(),
   enabled: true,
+  queueError: false,
 }));
 vi.mock('sonner', () => ({ toast: { error: mocks.error } }));
 vi.mock('../hooks/useChatWork', () => ({
@@ -20,7 +21,7 @@ vi.mock('../hooks/useChatWork', () => ({
       isError: false,
       data: { flags: { chat_mentions_enabled: true, chat_facebook_comments_enabled: true } },
     },
-    queue: { data: undefined },
+    queue: { data: undefined, isError: mocks.queueError },
     inbox: {
       data: {
         unreadCount: 1,
@@ -56,6 +57,7 @@ function view(select: (roomId: string) => void, url = '/') {
 describe('Work notification targets', () => {
   beforeEach(() => {
     mocks.enabled = true;
+    mocks.queueError = false;
     vi.clearAllMocks();
   });
   it('keeps comments, notifications and note deep links available when only queue is disabled', async () => {
@@ -73,7 +75,16 @@ describe('Work notification targets', () => {
     expect(screen.getByRole('button', { name: 'คอมเมนต์' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'การแจ้งเตือนงาน 1' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'คิวงาน' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'คิวงาน' })).toHaveAccessibleDescription('คิวงานยังไม่เปิดใช้งาน');
     await waitFor(() => expect(select).toHaveBeenCalledWith('room'));
+  });
+  it.each([false, true])('does not announce an empty queue while its count is unknown (error=%s)', (error) => {
+    mocks.queueError = error;
+    view(vi.fn());
+    expect(screen.getByRole('heading', { name: 'ศูนย์การสื่อสาร' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'คิวงาน' })).toHaveAccessibleDescription(
+      error ? 'โหลดจำนวนงานไม่ได้ เปิดคิวงานเพื่อลองใหม่' : 'กำลังโหลดจำนวนงาน',
+    );
   });
   it('refuses navigation and read mutation when target permission is gone', async () => {
     mocks.getTarget.mockRejectedValueOnce(new Error('not found'));

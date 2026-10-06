@@ -28,7 +28,7 @@ const baseRow: LineCaseRow = {
 describe('lineEventTag', () => {
   it('คืน [eventType] เสมอ', () => {
     expect(lineEventTag('AFTER_SALES_READY')).toBe('[AFTER_SALES_READY]');
-    expect(lineEventTag('WARRANTY_EXPIRING_7D')).toBe('[WARRANTY_EXPIRING_7D]');
+    expect(lineEventTag('AFTER_SALES_PICKUP_REMINDER')).toBe('[AFTER_SALES_PICKUP_REMINDER]');
   });
 });
 

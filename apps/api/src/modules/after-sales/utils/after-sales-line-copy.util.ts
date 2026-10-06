@@ -13,15 +13,12 @@ export const AFTER_SALES_LINE_EVENT_TYPE: Record<AfterSalesLineMoment, string> =
   PICKUP_REMINDER: 'AFTER_SALES_PICKUP_REMINDER',
 };
 
-export const WARRANTY_EXPIRING_EVENT_TYPE = 'WARRANTY_EXPIRING_7D';
-
 const MOMENT_LABEL: Record<string, string> = {
   AFTER_SALES_RECEIVED: 'รับเรื่องแล้ว',
   AFTER_SALES_READY: 'มารับได้แล้ว',
   AFTER_SALES_CLOSED: 'ปิดเคส',
   // final fix I-6 — ป้ายนี้ขึ้นหน้าพนักงาน (event note) ห้ามคำว่า "รับเครื่อง" + ไม่ผูกเลขวัน (ตั้งค่าได้)
   AFTER_SALES_PICKUP_REMINDER: 'เตือนให้มารับ',
-  WARRANTY_EXPIRING_7D: 'ประกันใกล้หมด',
 };
 
 /** note ของ AfterSalesEvent ทุกแถวที่ service นี้เขียน ขึ้นต้นด้วย tag เพื่อ dedup/ค้นย้อน */
@@ -113,9 +110,7 @@ const THAI_MONTHS_SHORT = [
  * "17 พ.ย. 69" (ปี พ.ศ. 2 หลัก) จึงเขียน formatter เฉพาะของไฟล์นี้แทนการเรียกใช้ตัวนั้น
  * (BKK timezone เดียวกัน, เดือนย่อไทยเดียวกัน, ต่างแค่ปีตัดเหลือ 2 หลัก)
  *
- * Exported (PR 3 Task 5, additive-only — no behavior change) so `warranty-line-notifier.service.ts`
- * can reuse the same short-year formatter for `${expireDate}` instead of writing a third Thai-date
- * formatter (`formatThaiDateText` in `thai-date.util.ts` is the full-year one, unsuitable here).
+ * Exported — `liff-after-sales.service.ts` ใช้รูปสั้นตัวเดียวกันบนหน้า LIFF
  */
 export function thaiShortYearDate(value: string | Date | null | undefined): string | null {
   if (!value) return null;

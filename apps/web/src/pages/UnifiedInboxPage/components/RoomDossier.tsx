@@ -1,3 +1,4 @@
+import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import CloudCreditPicker from './CloudCreditPicker';
 import ChatServiceRequestSection from './ChatServiceRequestSection';
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/dialog';
@@ -31,7 +32,6 @@ import { cn } from '@/lib/utils';
 import { apptState } from './appointment';
 import api, { getErrorMessage } from '@/lib/api';
 import { Button } from '@/components/ui/button';
-import { getGeneratedAvatarUrl } from '@/lib/avatar';
 import { formatChatTimestamp } from '@/lib/chat-time';
 import ProductContextCard from './ProductContextCard';
 import Customer360Panel from './Customer360Panel';
@@ -145,7 +145,7 @@ export function Group({
   className?: string;
 }) {
   return (
-    <section className={cn('rounded-[10px] border border-border bg-card px-3 pb-3 pt-2.5', className)}>
+    <section className={cn('inbox-dossier-group rounded-[10px] border border-border bg-card px-3 pb-3 pt-2.5', className)}>
       <div className="mb-2 flex items-center gap-1.5 text-[12.5px] font-bold text-foreground">
         <h3 className="m-0 text-[12.5px] font-bold">{label}</h3>
         {count != null && <span className="font-semibold text-muted-foreground">({count})</span>}
@@ -615,7 +615,7 @@ export default function RoomDossier({ onClose, room, customerId, activeRoomId, o
 
   if (!room) {
     return (
-      <aside className="flex h-full w-80 shrink-0 flex-col items-center justify-center border-l border-border p-6 text-center" aria-label="ข้อมูลลูกค้า">
+      <aside className="inbox-dossier flex h-full w-80 shrink-0 flex-col items-center justify-center border-l border-border p-6 text-center" aria-label="ข้อมูลลูกค้า">
         <MessagesSquare className="mb-3 size-7 text-muted-foreground/30" />
         <p className="text-xs font-semibold text-muted-foreground">ข้อมูลลูกค้า</p>
         <p className="mt-1 max-w-[180px] text-[11px] leading-relaxed text-muted-foreground">เลือกแชทเพื่อดูข้อมูลลูกค้า สัญญา และประกัน</p>
@@ -624,7 +624,6 @@ export default function RoomDossier({ onClose, room, customerId, activeRoomId, o
   }
 
   const name = room.customer?.name ?? room.displayName ?? 'ไม่ระบุชื่อ';
-  const avatar: string | undefined = room.pictureUrl || getGeneratedAvatarUrl(room.id) || undefined;
   const metaLine = placeholder
     ? ['ผู้สนใจจากแชท · ยังไม่มีเบอร์', room.createdAt ? `เริ่มคุย ${fmtDate(room.createdAt)}` : null].filter(Boolean).join(' · ')
     : linked
@@ -674,7 +673,7 @@ export default function RoomDossier({ onClose, room, customerId, activeRoomId, o
   );
 
   return (
-    <aside className="relative flex h-full w-80 shrink-0 flex-col border-l border-border bg-card" aria-label="ข้อมูลลูกค้า"
+    <aside className="inbox-dossier relative flex h-full w-80 shrink-0 flex-col border-l border-border bg-card" aria-label="ข้อมูลลูกค้า"
       onDragEnter={event => { if (!acceptsDrop(event)) return; event.preventDefault(); creditDragDepth.current++; setCreditDragging(true); }}
       onDragOver={event => { if (!acceptsDrop(event)) return; event.preventDefault(); event.dataTransfer.dropEffect = (tab === 'gfin' ? gfin?.busy : credit?.busy) ? 'none' : 'copy'; }}
       onDragLeave={event => { if (!acceptsDrop(event)) return; event.preventDefault(); if (--creditDragDepth.current <= 0) { creditDragDepth.current = 0; setCreditDragging(false); } }}
@@ -695,37 +694,21 @@ export default function RoomDossier({ onClose, room, customerId, activeRoomId, o
         else credit?.upload(Array.from(event.dataTransfer.files));
       }}>
       {creditDragging && <div className="pointer-events-none absolute inset-0 z-30 flex items-center justify-center border-2 border-dashed border-primary bg-primary/10"><div className="rounded-xl border border-primary bg-card px-4 py-5 text-center text-primary shadow-sm"><p className="font-semibold leading-snug">{tab === 'gfin' ? 'วางที่นี่ = ใส่ในใบยื่น GFIN' : 'วางที่นี่ = ให้ AI ตรวจเครดิต'}</p><p className="mt-1 text-xs leading-snug">ลูกค้าไม่เห็น</p>{(tab === 'gfin' ? gfin?.busy : credit?.busy) && <p className="mt-2 text-xs">กำลังทำงาน กรุณารอก่อนแนบไฟล์</p>}</div></div>}
-      {/* หัว */}
-      <div className="flex shrink-0 flex-col gap-2.5 border-b border-border px-3.5 pb-3 pt-3.5">
-        <div className="flex items-start gap-2.5">
-          <div className="relative size-11 shrink-0 overflow-hidden rounded-full bg-muted ring-1 ring-border">
-            <img src={avatar} alt="" className="size-full object-cover" />
-            <span className={cn('absolute -bottom-0.5 -right-0.5 size-4 rounded-full border-2 border-card', channelDot[room.channel] ?? 'bg-muted-foreground')} />
-          </div>
-          <div className="min-w-0 flex-1">
-            <h2 className="m-0 truncate text-sm font-bold leading-6">{name}</h2>
-            <p className="m-0 text-xs leading-snug text-muted-foreground">{metaLine}</p>
-          </div>
-          <button
-            type="button"
-            title={customerId ? 'เปิดโปรไฟล์ลูกค้าเต็มหน้า' : 'ผูกลูกค้าก่อนถึงเปิดโปรไฟล์ได้'}
-            aria-label="เปิดโปรไฟล์ลูกค้าเต็มหน้า"
-            disabled={!customerId}
-            onClick={() => customerId && navigate(`/customers/${customerId}`)}
-            className="grid size-7 shrink-0 place-items-center rounded-lg border border-border text-muted-foreground hover:bg-muted disabled:opacity-40"
-          >
-            <ExternalLink className="size-3.5" />
-          </button>
-          {onClose && <Button variant="ghost" size="icon" className="size-9 shrink-0" aria-label="ปิดข้อมูลลูกค้า" onClick={onClose}><X className="size-4" /></Button>}
+      <header className="inbox-dossier-header flex shrink-0 items-center justify-between gap-2 px-5 py-6">
+        <div><p className="text-[10px] font-semibold tracking-widest text-muted-foreground">CUSTOMER WORKSPACE</p><h2 className="mt-1 text-base font-semibold leading-snug">ข้อมูลและการดำเนินงาน</h2></div>
+        <div className="flex shrink-0"><Button variant="ghost" size="icon" aria-label="เปิดโปรไฟล์ลูกค้าเต็มหน้า" disabled={!customerId} onClick={() => customerId && navigate(`/customers/${customerId}`)}><ExternalLink className="size-4" /></Button>{onClose && <Button variant="ghost" size="icon" className="size-9 shrink-0" aria-label="ปิดข้อมูลลูกค้า" onClick={onClose}><X className="size-4" /></Button>}</div>
+      </header>
+      <div className="inbox-next-action mx-4 mb-4 rounded-lg border border-primary/25 bg-primary/5 p-3">
+        <h3 className="text-sm font-semibold leading-snug">งานถัดไป</h3>
+        <p className="my-2 text-xs leading-snug text-muted-foreground">{todosQuery.isError ? 'โหลดงานไม่สำเร็จ — ลองเปิดรายการนัดด้านล่าง' : todosQuery.isLoading ? 'กำลังโหลดงาน…' : roomTodos.some(t => !['DONE', 'CANCELLED'].includes(t.status)) ? 'มีงานติดตามในห้องนี้ · ดูรายการนัดด้านล่าง' : 'ตอบคำถามลูกค้า แล้วกำหนดงานติดตาม'}</p>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button variant="outline" size="sm" onClick={newAppointment}><CalendarPlus className="size-3.5" /> ตั้งนัด</Button>
+          {!!work.settings.data?.flags.chat_mentions_enabled && <Button variant="outline" size="sm" onClick={() => setHandoffOpen(true)}><Users className="size-3.5" /> ส่งงาน</Button>}
         </div>
-        {/* ปุ่มด่วนอันเดียว — "ส่งสินค้า" มีที่แถบพิมพ์แล้ว ไม่ทำซ้ำ · นัดเป็นของห้อง ตั้งได้จากทุกแท็บ */}
-        <Button variant="outline" size="sm" className="w-full" onClick={newAppointment}>
-          <CalendarPlus className="mr-1.5 size-3.5" /> ตั้งนัด
-        </Button>
       </div>
 
       {/* แท็บเม็ดยา */}
-      <div role="tablist" data-gfin-seen-tick={seenTick} className="flex shrink-0 gap-1.5 overflow-x-auto border-b border-border px-3 pb-2 pt-2.5">
+      <div role="tablist" data-gfin-seen-tick={seenTick} className="inbox-dossier-tabs flex shrink-0 border-b border-border px-2">
         {tabs.map((t) => {
           const on = tab === t.key;
           return (
@@ -735,10 +718,10 @@ export default function RoomDossier({ onClose, room, customerId, activeRoomId, o
               aria-selected={on}
               onClick={() => setTab(t.key)}
               className={cn(
-                'inline-flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border px-3 text-xs font-semibold transition-colors',
+                'inline-flex min-h-11 min-w-0 flex-1 items-center justify-center gap-1 whitespace-nowrap border-b-2 px-1 text-xs font-semibold transition-colors',
                 on
-                  ? 'border-primary bg-primary text-primary-foreground ring-[3px] ring-primary/15'
-                  : 'border-border bg-card text-foreground/80 hover:bg-muted',
+                  ? 'border-primary text-primary'
+                  : 'border-transparent text-muted-foreground hover:bg-muted',
               )}
             >
               {t.label}
@@ -750,11 +733,14 @@ export default function RoomDossier({ onClose, room, customerId, activeRoomId, o
       </div>
 
       {/* เนื้อหาแท็บ */}
-      <div className="flex-1 overflow-y-auto bg-muted/30">
+      <div className="inbox-dossier-content flex-1 min-h-0 overflow-y-auto bg-card">
         {tab === 'customer' && (
           <div className="flex flex-col gap-2.5 p-2.5">
-            <ChatSalesContext roomId={room.id} onLink={() => setLinkOpen(true)} onNew={newAppointment} />
             <Group label="ข้อมูลลูกค้า">
+              <div className="mb-4 flex min-w-0 items-center gap-3">
+                <Avatar className="size-9 shrink-0"><AvatarImage src={room.pictureUrl ?? undefined} alt="" /><AvatarFallback className="bg-primary/5 text-primary">{name[0]}</AvatarFallback></Avatar>
+                <div className="min-w-0"><p className="truncate text-sm font-semibold">{name}</p><p className="mt-1 text-xs leading-snug text-muted-foreground">{metaLine}</p></div>
+              </div>
               {linked ? (
                 <>
                   <button type="button" onClick={() => navigate(`/customers/${customerId}`)} className="flex w-full items-center gap-2 rounded-lg border border-border bg-muted/40 px-2.5 py-2 text-left text-xs font-semibold hover:bg-muted">
@@ -814,10 +800,15 @@ export default function RoomDossier({ onClose, room, customerId, activeRoomId, o
                     ผลวิเคราะห์ {mergeNotice.count} รายการ {mergeNotice.fromThisRoom ? 'ย้ายมาจากห้องนี้ตอนรวม' : 'ย้ายมาจากผู้สนใจที่รวมเข้ามา'} — ดูได้ใน<Link to={`/customers/${mergeNotice.targetId}?tab=credit`} className="font-semibold text-primary hover:underline">โปรไฟล์ลูกค้า › เครดิต</Link>
                   </p>
                 )}
-                <CloudCreditPicker localPicker={<CreditFilePicker credit={credit} />} roomId={room.id} disabled={credit?.busy || credit?.loading} />
-                <RoomCreditCard key={room.id} credit={credit} customerId={customerId} />
+                <div className={!credit?.files.length ? 'inbox-credit-dropzone' : 'mb-3'}>
+                  {!credit?.files.length && <><p className="font-semibold text-foreground">ลากสเตทเม้นมาวางที่นี่</p><p>PDF / รูปภาพ · ลากจากแชทหรือเลือกไฟล์<br /><span className="text-[11px]">ไม่เกิน 10 MB/ไฟล์ · สูงสุด 10 ไฟล์</span></p></>}
+                  <CloudCreditPicker localPicker={<CreditFilePicker credit={credit} />} roomId={room.id} disabled={credit?.busy || credit?.loading} />
+                </div>
+                <RoomCreditCard key={room.id} credit={credit} customerId={customerId} hideEmptyState />
               </Group>
             </div>
+
+            <ChatSalesContext roomId={room.id} onLink={() => setLinkOpen(true)} onNew={newAppointment} />
 
             <AdGroup room={room} />
 
@@ -913,7 +904,7 @@ export default function RoomDossier({ onClose, room, customerId, activeRoomId, o
         context={
           <div className="flex items-center gap-2.5 border-b border-primary/25 bg-primary/8 px-6 py-2.5 text-xs leading-snug">
             <span className="relative size-7 shrink-0 overflow-hidden rounded-full bg-muted ring-1 ring-border">
-              <img src={avatar} alt="" className="size-full object-cover" />
+              <Avatar className="size-full"><AvatarImage src={room.pictureUrl ?? undefined} alt="" /><AvatarFallback>{name[0]}</AvatarFallback></Avatar>
               <span className={cn('absolute -bottom-0.5 -right-0.5 size-2.5 rounded-full border-2 border-card', channelDot[room.channel] ?? 'bg-muted-foreground')} />
             </span>
             <span className="min-w-0 flex-1 truncate">
@@ -944,7 +935,7 @@ export default function RoomDossier({ onClose, room, customerId, activeRoomId, o
           context={
             <div className="flex items-center gap-2.5 border-b border-primary/25 bg-primary/8 px-6 py-2.5 text-xs leading-snug">
               <span className="relative size-7 shrink-0 overflow-hidden rounded-full bg-muted ring-1 ring-border">
-                <img src={avatar} alt="" className="size-full object-cover" />
+                <Avatar className="size-full"><AvatarImage src={room.pictureUrl ?? undefined} alt="" /><AvatarFallback>{name[0]}</AvatarFallback></Avatar>
                 <span className={cn('absolute -bottom-0.5 -right-0.5 size-2.5 rounded-full border-2 border-card', channelDot[room.channel] ?? 'bg-muted-foreground')} />
               </span>
               <span className="min-w-0 flex-1 truncate">

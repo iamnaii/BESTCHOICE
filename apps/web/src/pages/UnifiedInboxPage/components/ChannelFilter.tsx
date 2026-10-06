@@ -76,7 +76,7 @@ export default function ChannelFilter({
   return (
     <div>
       {/* แท็บกองงาน */}
-      <div className="flex px-4 pt-1.5 gap-1">
+      <div className="grid grid-cols-3 px-4 pt-1.5 gap-1.5">
         {TABS.map((tab) => {
           const isActive = activeTab === tab.key;
           const n = tab.key === 'waiting' ? counts?.waiting : tab.key === 'mine' ? counts?.mine : undefined;
@@ -86,8 +86,8 @@ export default function ChannelFilter({
               onClick={() => onTabChange(tab.key)}
               aria-pressed={isActive}
               className={cn(
-                'flex items-center justify-center gap-1 px-2.5 py-2 text-xs font-medium rounded-md transition-colors',
-                isActive ? 'bg-muted text-foreground' : 'text-muted-foreground hover:text-foreground',
+                'flex min-h-10 min-w-0 items-center justify-center gap-1 px-1 py-2 text-xs font-semibold rounded-md transition-colors',
+                isActive ? 'bg-primary text-primary-foreground' : 'bg-muted/60 text-muted-foreground hover:text-foreground',
               )}
             >
               {tab.label}
@@ -95,7 +95,7 @@ export default function ChannelFilter({
                 <span
                   className={cn(
                     'ml-0.5 inline-flex items-center justify-center min-w-[15px] h-[15px] px-1 rounded-full text-[9px] font-bold leading-none',
-                    tab.key === 'waiting' ? 'bg-destructive text-destructive-foreground' : 'bg-primary text-primary-foreground',
+                    isActive ? 'bg-primary-foreground/15 text-primary-foreground' : 'bg-primary/10 text-primary',
                   )}
                 >
                   {n > 99 ? '99+' : n}
@@ -107,12 +107,12 @@ export default function ChannelFilter({
       </div>
 
       {/* เมนูช่องทาง + เมนูผู้ดูแล — รูปเดียวกัน กรองเฉพาะรายการ ไม่แตะเลขบนแท็บ */}
-      <div className="flex flex-wrap items-center gap-2 px-4 pt-2 pb-3">
+      <div className="inbox-queue-filters grid grid-cols-2 gap-2 px-4 pt-3 pb-3">
         <Select value={channel ?? ALL} onValueChange={(v) => onChannelChange(v === ALL ? null : v)}>
           <SelectTrigger
             aria-label="กรองตามช่องทาง"
             className={cn(
-              'h-6 min-h-6 w-auto gap-1 rounded-full border px-2 py-1 text-[11px] font-medium whitespace-nowrap',
+              'h-10 min-h-10 w-full min-w-0 gap-1 rounded-md border px-2 py-1 text-xs font-medium',
               selected
                 ? 'bg-primary text-primary-foreground border-primary'
                 : 'bg-background text-muted-foreground border-border/60 hover:bg-muted',
@@ -125,7 +125,7 @@ export default function ChannelFilter({
               </span>
             ) : (
               <>
-                <span className="opacity-70">ช่องทาง</span>
+                <span className="inbox-filter-label">ช่องทาง</span>
                 ทุกช่องทาง
               </>
             )}
@@ -158,14 +158,14 @@ export default function ChannelFilter({
           <SelectTrigger
             aria-label="กรองตามผู้ดูแล"
             className={cn(
-              'h-6 min-h-6 w-auto gap-1 rounded-full border px-2 py-1 text-[11px] font-medium whitespace-nowrap',
+              'h-10 min-h-10 w-full min-w-0 gap-1 rounded-md border px-2 py-1 text-xs font-medium',
               !mineTab && who !== 'all'
                 ? 'bg-primary text-primary-foreground border-primary'
                 : 'bg-background text-muted-foreground border-border/60 hover:bg-muted',
               mineTab && 'opacity-60',
             )}
           >
-            <span className="opacity-70">ผู้ดูแล</span>
+            <span className="inbox-filter-label">ผู้ดูแล</span>
             {mineTab ? 'คุณ' : who === 'all' ? 'ทุกคน' : who === 'free' ? 'ยังไม่มีคนดูแล' : whoLabel}
           </SelectTrigger>
           <SelectContent className="min-w-[186px]">

@@ -1,3 +1,4 @@
+import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { memo, useState } from 'react';
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
@@ -201,7 +202,7 @@ function MessageBubble({ message, customerAvatar, customerInitial, onCreditMessa
         {isCustomer && (
           <div className="w-7 h-7 rounded-full bg-muted flex items-center justify-center overflow-hidden shrink-0 mt-1">
             {customerAvatar ? (
-              <img src={customerAvatar} alt={customerInitial ?? ''} className="w-full h-full object-cover" />
+              <Avatar className="size-full"><AvatarImage src={customerAvatar} alt="" /><AvatarFallback className="text-xs text-primary">{customerInitial ?? '?'}</AvatarFallback></Avatar>
             ) : (
               <span className="text-muted-foreground text-[10px] font-bold">{customerInitial ?? '?'}</span>
             )}
@@ -297,7 +298,7 @@ function MessageBubble({ message, customerAvatar, customerInitial, onCreditMessa
         {isCustomer && (
           <div className="w-7 h-7 rounded-full bg-muted flex items-center justify-center overflow-hidden shrink-0 mt-1">
             {customerAvatar ? (
-              <img src={customerAvatar} alt={customerInitial ?? ''} className="w-full h-full object-cover" />
+              <Avatar className="size-full"><AvatarImage src={customerAvatar} alt="" /><AvatarFallback className="text-xs text-primary">{customerInitial ?? '?'}</AvatarFallback></Avatar>
             ) : (
               <span className="text-muted-foreground text-[10px] font-bold">{customerInitial ?? '?'}</span>
             )}
@@ -330,7 +331,7 @@ function MessageBubble({ message, customerAvatar, customerInitial, onCreditMessa
       {isCustomer && (
         <div className="w-7 h-7 rounded-full bg-muted flex items-center justify-center overflow-hidden shrink-0 mt-1">
           {customerAvatar ? (
-            <img src={customerAvatar} alt={customerInitial ?? ''} className="w-full h-full object-cover" />
+            <Avatar className="size-full"><AvatarImage src={customerAvatar} alt="" /><AvatarFallback className="text-xs text-primary">{customerInitial ?? '?'}</AvatarFallback></Avatar>
           ) : (
             <span className="text-muted-foreground text-[10px] font-bold">{customerInitial ?? '?'}</span>
           )}
@@ -365,12 +366,12 @@ function MessageBubble({ message, customerAvatar, customerInitial, onCreditMessa
             event.dataTransfer.effectAllowed = 'copy';
           }}
           className={cn(
-            'relative max-w-full min-w-0 px-3.5 py-2 rounded-2xl text-sm leading-relaxed [overflow-wrap:anywhere]',
+            'inbox-message-bubble relative max-w-full min-w-0 px-3.5 py-3 rounded-xl border text-sm leading-relaxed [overflow-wrap:anywhere]',
             isCustomer
-              ? 'bg-muted text-foreground rounded-bl-md'
+              ? 'bg-card text-foreground border-border rounded-tl-sm'
               : isBot
-                ? 'bg-muted text-foreground rounded-br-md border border-border'
-                : 'bg-primary text-primary-foreground rounded-br-md',
+                ? 'bg-transparent text-foreground rounded-tr-sm border-dashed border-primary/20'
+                : 'bg-primary/5 text-foreground border-primary/20 rounded-tr-sm',
           )}
         >
           {/* Copy button — floats at the outer corner of the bubble, visible on hover */}

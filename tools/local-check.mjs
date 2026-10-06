@@ -17,6 +17,7 @@ import { checkWorkCompany } from './check-local-work-company.mjs';
 import { checkTradeIn } from './check-local-trade-in.mjs';
 import { checkAppraisal } from './check-local-appraisal.mjs';
 import { checkInboxVoice } from './check-local-inbox-voice.mjs';
+import { checkInboxDesign } from './check-local-inbox-design.mjs';
 import { checkInboxLayout } from './check-local-inbox-layout.mjs';
 
 const release = acquireLock('check');
@@ -58,6 +59,8 @@ try {
   try {
     await checkInboxVoice(browser, info.url, output);
     report.checks.push({ label: 'Inbox voice: simulated Thai speech/delivery, desktop/mobile, manual send and room isolation', status: 'PASS' });
+    await checkInboxDesign(browser, info.url, output);
+    report.checks.push({ label: 'Approved Inbox V2.4 shell, expanded/collapsed sidebar, flags off, light/dark at 320–1512px', status: 'PASS' });
     await checkInboxLayout(browser, info.url, output);
     report.checks.push({ label: 'Inbox layout: light/dark, 320–1920px, chat/note focus and multiline drafts', status: 'PASS' });
     for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844 }]) {

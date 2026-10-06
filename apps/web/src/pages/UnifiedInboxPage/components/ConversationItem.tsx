@@ -179,10 +179,10 @@ function ConversationItem({ session, isActive, onSelect, onPin, aiSettings }: Co
       tabIndex={0}
       aria-current={isActive || undefined}
       className={cn(
-        'relative group flex items-start gap-3 px-4 py-3 cursor-pointer transition-colors duration-100 border-b border-border/40',
+        'inbox-room-item relative group flex items-start gap-3 px-4 py-4 cursor-pointer transition-colors duration-100 border-b border-border/40',
         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-inset',
         isActive
-          ? 'bg-primary/10 border-l-2 border-l-primary'
+          ? 'bg-primary/5 border-l-2 border-l-primary'
           : 'hover:bg-muted/40',
         isPinned && !isActive && 'bg-warning/5',
         !!session.resolvedAt && !isActive && 'opacity-60',
@@ -198,7 +198,7 @@ function ConversationItem({ session, isActive, onSelect, onPin, aiSettings }: Co
       <Avatar session={session} displayName={displayName} />
 
       {/* Content */}
-      <div className="flex-1 min-w-0 pt-0.5">
+      <div className="inbox-room-content flex-1 min-w-0 pt-0.5">
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-1 min-w-0">
             {isPinned && <Pin className="w-2.5 h-2.5 text-warning-strong flex-shrink-0 fill-warning" />}
@@ -214,8 +214,9 @@ function ConversationItem({ session, isActive, onSelect, onPin, aiSettings }: Co
           </span>
         </div>
 
+        <p className="mt-1 text-[11px] text-muted-foreground">{CHANNEL_CONFIG[session.channel]?.text ?? session.channel}</p>
         {/* Last message preview */}
-        <div className="flex items-center justify-between gap-2 mt-0.5">
+        <div className="inbox-room-preview flex items-center justify-between gap-2 mt-2">
           <p className={cn(
             'text-[13px] truncate',
             hasUnread ? 'text-foreground/90' : 'text-muted-foreground',
@@ -241,7 +242,7 @@ function ConversationItem({ session, isActive, onSelect, onPin, aiSettings }: Co
           aiPaused ||
           handoffMode ||
           (aiAutoEnabled && enabledChannels.includes(session.channel))) && (
-          <div className="flex items-center gap-1.5 mt-1.5 overflow-hidden whitespace-nowrap">
+          <div className="inbox-room-meta flex items-center gap-1.5 mt-2 overflow-hidden whitespace-nowrap">
             {/* ป้ายไม่เกิน 2 ใบ ที่เหลือยุบเป็น +N (สเปก §7 แก้ไข 2026-09-05) — ลำดับล็อกไว้:
                 ป้ายหน้าต่าง (เหลือ N / หมดเวลาตอบ / รอ N) → ด่วน → ค้างชำระ → สถานะบอท
                 ป้ายหน้าต่างมาก่อนเสมอ เพราะเป็นใบเดียวที่แปลว่า "ทำงานต่อไม่ได้" · ของเดิมห้าใบเต็ม 235/235px แบบ nowrap */}

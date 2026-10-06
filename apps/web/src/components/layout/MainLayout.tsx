@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
@@ -7,6 +7,7 @@ import { useGlobalShortcuts } from '@/hooks/useGlobalShortcuts';
 import { useUiFlags } from '@/hooks/useUiFlags';
 import { LayoutProvider, useLayout } from './LayoutContext';
 import Sidebar from './Sidebar';
+import { InboxNavigationContext } from './InboxNavigationContext';
 import TopBar from './TopBar';
 import { Sheet, SheetContent, SheetBody, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import CommandPalette from '@/components/CommandPalette';
@@ -58,6 +59,7 @@ const FULL_BLEED_ROUTES = ['/inbox'];
 
 function MainContent() {
   const isMobile = useIsMobile();
+  const [inboxNavigationHost, setInboxNavigationHost] = useState<HTMLDivElement | null>(null);
   const { effectiveSidebarCollapse, currentZone, workZone, setCurrentZone, enterSettings } = useLayout();
   const { pathname, search, hash } = useLocation();
   // key ของ <main> เปลี่ยนตามหน้า (เพื่อ fadeIn + รีเซ็ตโฟกัสเมื่อเปลี่ยนหน้า) — แต่ห้องแชทอยู่ใน URL
@@ -156,9 +158,10 @@ function MainContent() {
     ? 0
     : effectiveSidebarCollapse
       ? SIDEBAR_COLLAPSED_W
-      : SIDEBAR_EXPANDED_W;
+      : isFullBleed ? 188 : SIDEBAR_EXPANDED_W;
 
   return (
+    <InboxNavigationContext.Provider value={{ host: inboxNavigationHost, setHost: setInboxNavigationHost }}>
     <div className="app-shell flex min-h-screen flex-col bg-background">
       <SkipLink />
 
@@ -211,6 +214,7 @@ function MainContent() {
         <ShortcutsHelpOverlay onClose={() => setShowShortcutsHelp(false)} />
       )}
     </div>
+    </InboxNavigationContext.Provider>
   );
 }
 

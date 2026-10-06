@@ -37,6 +37,11 @@ export async function checkChatLibrary(page,origin,output,width){
  await page.getByRole('button',{name:'ข้อความสำเร็จรูป',exact:true}).click();await page.getByPlaceholder('ค้นหาตามชื่อ, เนื้อหา, หรือ shortcut...').fill('ขอบคุณ (ตัวอย่าง)');await page.getByText('ขอบคุณ (ตัวอย่าง)',{exact:true}).click();await page.getByRole('button',{name:'ใส่ข้อความ',exact:true}).click();await expect(page.getByRole('textbox',{name:'พิมพ์ข้อความ',exact:true})).toHaveValue('ขอบคุณที่สนใจ BESTCHOICE ครับ');
  if(width<1280)await page.getByRole('button',{name:'ข้อมูลลูกค้า',exact:true}).click();
  await page.getByRole('button',{name:'เลือกจากคลังไฟล์',exact:true}).click();await page.getByRole('dialog').getByLabel('ค้นหาไฟล์',{exact:true}).fill(name);await page.getByRole('dialog').getByRole('checkbox',{name:`เลือก ${name}`,exact:true}).click();await page.getByRole('dialog').getByRole('button',{name:'เพิ่มไฟล์ที่เลือก',exact:true}).click();
+ // A local upload changes the empty credit card into a file list. The staged
+ // cloud draft must stay mounted across that transition (and keep its retry key).
+ await page.locator('aside[aria-label="ข้อมูลลูกค้า"]:visible').getByLabel('เลือกสเตทเม้นเพื่อตรวจเครดิต',{exact:true}).setInputFiles({name:`local-${name}`,mimeType:'image/png',buffer:bytes});
+ await expect(page.locator('aside[aria-label="ข้อมูลลูกค้า"]:visible').getByText('Statement 1',{exact:true})).toBeVisible();
+ await expect(page.getByRole('button',{name:'เพิ่มในตรวจเครดิต',exact:true})).toBeEnabled();
  await page.getByRole('button',{name:'เพิ่มในตรวจเครดิต',exact:true}).click();await expect(page.getByText('เพิ่มในตรวจเครดิตแล้ว',{exact:true})).toBeVisible();assert.equal(await count(),before+2,'Credit copy must not send');
  if(width<1280)await page.keyboard.press('Escape');
  await page.screenshot({path:join(output,`chat-library-staged-${width}.png`),animations:'disabled'});

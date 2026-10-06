@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { MemoryRouter } from 'react-router';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { MemoryRouter, useLocation } from 'react-router';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import InboxWorkTools from './InboxWorkTools';
 const mocks = vi.hoisted(() => ({
@@ -10,9 +10,18 @@ const mocks = vi.hoisted(() => ({
   enabled: true,
   queueError: false,
   role: 'SALES',
+  logout: vi.fn(),
+  mobile: false,
+  companies: ['SHOP', 'FINANCE'] as string[],
 }));
 vi.mock('sonner', () => ({ toast: { error: mocks.error } }));
-vi.mock('@/contexts/AuthContext', () => ({ useAuth: () => ({ user: { role: mocks.role } }) }));
+vi.mock('@/contexts/AuthContext', () => ({
+  useAuth: () => ({
+    user: { role: mocks.role, name: 'สมชาย', accessibleCompanies: mocks.companies },
+    logout: mocks.logout,
+  }),
+}));
+vi.mock('@/hooks/useIsMobile', () => ({ useIsMobile: () => mocks.mobile }));
 vi.mock('../../chat-analytics/ChatWorkSettingsDialog', () => ({ default: () => <div role="dialog">ตั้งค่าทดสอบ</div> }));
 vi.mock('../hooks/useChatWork', () => ({
   useChatWork: () => ({
@@ -46,12 +55,17 @@ vi.mock('../hooks/useChatWork', () => ({
     markRead: mocks.markRead,
   }),
 }));
+function LocationProbe() {
+  const location = useLocation();
+  return <div data-testid="location">{location.pathname + location.search}</div>;
+}
 function view(select: (roomId: string) => void, url = '/') {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(
     <MemoryRouter initialEntries={[url]}>
       <QueryClientProvider client={client}>
         <InboxWorkTools onSelectRoom={select} />
+        <LocationProbe />
       </QueryClientProvider>
     </MemoryRouter>,
   );
@@ -62,6 +76,8 @@ describe('Work notification targets', () => {
     mocks.enabled = true;
     mocks.role = 'SALES';
     mocks.queueError = false;
+    mocks.mobile = false;
+    mocks.companies = ['SHOP', 'FINANCE'];
     vi.clearAllMocks();
   });
   it('lets the owner open setup from Inbox while queue is disabled', () => {
@@ -141,5 +157,63 @@ describe('Work notification targets', () => {
     await client.invalidateQueries({ queryKey: ['chat-work'] });
     await screen.findByRole('alert');
     expect(screen.queryByText('เนื้อหาที่ต้องหายหลังลบ')).not.toBeInTheDocument();
+  });
+});
+/* เจ้าของเคาะ 2026-10-07 (แบบ ค): จอใหญ่ไม่มีแถบหัวและไม่มีเมนูระบบ — แถบข้าง 72px ของ inbox
+   ต้องพากลับหน้าหลัก สลับหมวดงาน และออกจากระบบได้เอง · จอเล็กคงแถบหัวแบบย่อ */
+describe('Inbox rail on desktop', () => {
+  beforeEach(() => {
+    mocks.enabled = true;
+    mocks.role = 'SALES';
+    mocks.queueError = false;
+    mocks.mobile = false;
+    mocks.companies = ['SHOP', 'FINANCE'];
+    vi.clearAllMocks();
+  });
+  it('replaces the header with a rail: home link, chat navigation, tools and sign-out', () => {
+    view(vi.fn());
+    const rail = screen.getByRole('complementary', { name: 'ศูนย์การสื่อสาร' });
+    expect(document.querySelector('.inbox-workspace-header')).toBeNull();
+    expect(within(rail).getByRole('link', { name: 'กลับหน้าหลัก' })).toHaveAttribute('href', '/');
+    const nav = within(rail).getByRole('navigation', { name: 'การสื่อสารและงานทีม' });
+    expect(within(nav).getByRole('button', { name: 'แชทลูกค้า' })).toHaveAttribute('aria-current', 'page');
+    expect(within(nav).getByRole('button', { name: 'คิวงาน' })).toBeEnabled();
+    expect(within(nav).getByRole('button', { name: 'คอมเมนต์' })).toBeEnabled();
+    expect(within(nav).getByRole('link', { name: 'ภาพรวมงานแชท' })).toHaveAttribute('href', '/chat-analytics?zone=shop');
+    expect(within(rail).getByRole('button', { name: 'สลับธีม' })).toBeInTheDocument();
+    expect(within(rail).getByRole('button', { name: 'การแจ้งเตือนงาน 1' })).toBeInTheDocument();
+    // The page title stays in the accessibility tree even though the rail has no room to show it.
+    expect(within(rail).getByRole('heading', { name: 'ศูนย์การสื่อสาร' })).toHaveClass('sr-only');
+    fireEvent.click(within(rail).getByRole('button', { name: 'ออกจากระบบ' }));
+    expect(mocks.logout).toHaveBeenCalledTimes(1);
+  });
+  it('switches the work zone inside the inbox when the user has both companies', () => {
+    mocks.role = 'OWNER';
+    view(vi.fn(), '/inbox/room-1?zone=shop');
+    const zones = screen.getByRole('tablist', { name: 'หมวดงาน' });
+    expect(within(zones).getByRole('tab', { name: 'งานหน้าร้าน (SHOP)' })).toHaveAttribute('aria-selected', 'true');
+    expect(within(zones).getByRole('tab', { name: 'งานการเงิน (FINANCE)' })).toHaveAttribute('aria-selected', 'false');
+    fireEvent.click(within(zones).getByRole('tab', { name: 'งานหน้าร้าน (SHOP)' }));
+    expect(screen.getByTestId('location')).toHaveTextContent('/inbox/room-1?zone=shop');
+    fireEvent.click(within(zones).getByRole('tab', { name: 'งานการเงิน (FINANCE)' }));
+    expect(screen.getByTestId('location')).toHaveTextContent('/inbox?zone=fin');
+  });
+  it('hides the zone switch when the user is granted a single company', () => {
+    // OWNER's config lists both zones; the grant must narrow it to one.
+    mocks.role = 'OWNER';
+    mocks.companies = ['SHOP'];
+    view(vi.fn());
+    expect(screen.queryByRole('tablist', { name: 'หมวดงาน' })).toBeNull();
+    expect(screen.getByText('หน้าร้าน')).toBeInTheDocument();
+  });
+  it('keeps the compact header on small screens', () => {
+    mocks.mobile = true;
+    view(vi.fn());
+    expect(screen.queryByRole('complementary', { name: 'ศูนย์การสื่อสาร' })).toBeNull();
+    expect(screen.queryByRole('link', { name: 'กลับหน้าหลัก' })).toBeNull();
+    expect(document.querySelector('.inbox-workspace-header')).not.toBeNull();
+    expect(screen.getByRole('heading', { name: 'ศูนย์การสื่อสาร' })).not.toHaveClass('sr-only');
+    expect(screen.getByRole('button', { name: 'คิวงาน' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'สลับธีม' })).toBeInTheDocument();
   });
 });

@@ -65,6 +65,8 @@ describe('CustomerJourneyService.list (real DB) — PDPA · สิทธิ์ �
     await prisma.customerJourneyEntry.create({ data: { ...entry, originCustomerId: ids.placeholder, origin: 'SYSTEM', kind: 'PLACEHOLDER_MERGED', dedupeKey: journeyDedupeKey('PLACEHOLDER_MERGED', ids.placeholder), data: { roomCount: 1 } } });
     await prisma.customerJourneyEntry.create({ data: { ...entry, originCustomerId: ids.target, origin: 'MANUAL', kind: 'TOUCHPOINT', roomId: ids.assigned, channel: 'PHONE', outcome: 'APPOINTED', note: `โทร ${phone}` } });
 
+    await prisma.customerJourneyEntry.create({ data: { ...entry, originCustomerId: ids.target, origin: 'MANUAL', kind: 'TOUCHPOINT', roomId: null, channel: 'WALK_IN', outcome: 'THINKING' } });
+
     // OD-10: ลูกค้าที่มีสัญญา — ชำระแล้ว 1 งวด · โทรติดตามพร้อมโน้ต · ทวงทาง LINE พร้อมข้อความ
     ids.buyer = (await prisma.customer.create({ data: { name: `journey pdpa buyer ${stamp}` } })).id;
     ids.branch = (await prisma.branch.create({ data: { name: `journey pdpa spec ${stamp}` } })).id;
@@ -114,6 +116,13 @@ describe('CustomerJourneyService.list (real DB) — PDPA · สิทธิ์ �
     for (const type of ['CHAT_ROOM_OPENED', 'CHAT_DAY', 'CHAT_CUSTOMER_FILE', 'APPOINTMENT', 'AI_LEAD_CAPTURED', 'CUSTOMER_CREATED_BY_STAFF', 'CREDIT_CHECK_OPENED', 'TAG_ADDED', 'PLACEHOLDER_MERGED', 'TOUCHPOINT']) expect(types).toContain(type);
   });
 
+  it('global profile excludes room-bound manual facts even for a branch manager', async () => {
+    const result = await page(ids.target, { id: ids.other, role: 'BRANCH_MANAGER' });
+    const manual = result.events.filter(e => e.type === 'TOUCHPOINT');
+    expect(manual).toHaveLength(1);
+    expect(manual[0].title).toContain('หน้าร้าน');
+  });
+
   it('PDPA snapshot: ไม่มีคีย์ต้องห้าม ไม่มีข้อความแชท/เบอร์/บัตร/ที่อยู่ · รูปรายการอยู่ในชุดคีย์ที่อนุญาต', async () => {
     const result = await page(ids.target, OWNER);
     const keys = allKeys(result);
@@ -145,7 +154,7 @@ describe('CustomerJourneyService.list (real DB) — PDPA · สิทธิ์ �
 
   it('SALES ไม่เห็นห้อง/บันทึกของห้องที่คนอื่นดูแล · ACCOUNTANT ไม่ได้ chat แม้ขอมา', async () => {
     const sales = await page(ids.target, { id: ids.staff, role: 'SALES' });
-    expect(sales.events.some((e) => e.href === `/inbox/${ids.assigned}` || e.type === 'TOUCHPOINT')).toBe(false);
+    expect(sales.events.some((e) => e.href === `/inbox/${ids.assigned}`)).toBe(false);
     expect(sales.events.some((e) => e.href === `/inbox/${ids.open}`)).toBe(true);
     const accountant = await page(ids.target, { id: 'acc-spec', role: 'ACCOUNTANT' });
     expect(accountant.events.filter((e) => e.group === 'chat')).toEqual([]);

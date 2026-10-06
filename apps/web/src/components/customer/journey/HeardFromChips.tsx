@@ -35,14 +35,14 @@ export function HeardFromChips({
         <div className="text-xs font-medium leading-snug text-muted-foreground">ลูกค้ารู้จักร้านจากไหน (ไม่บังคับ)</div>
         {onSkip &&
           (skipStyle === 'ghost-button' ? (
-            <Button type="button" variant="ghost" size="sm" onClick={onSkip} disabled={saving}>
+            <Button type="button" variant="ghost" size="sm" onClick={onSkip} disabled={locked}>
               ข้าม
             </Button>
           ) : (
             <button
               type="button"
               onClick={onSkip}
-              disabled={saving}
+              disabled={locked}
               className="text-xs leading-snug text-muted-foreground hover:text-foreground"
             >
               ข้าม

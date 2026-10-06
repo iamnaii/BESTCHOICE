@@ -22,7 +22,7 @@ import { ChatHandoffService } from '../../src/modules/staff-chat/services/chat-h
 import { RoomNotesController } from '../../src/modules/staff-chat/room-notes.controller';
 import { NoteMentionService } from '../../src/modules/staff-chat/services/note-mention.service';
 import { StaffMessageService } from '../../src/modules/staff-chat/services/staff-message.service';
-import { JourneyManualEntryService } from '../../src/modules/customer-journey/journey-manual-entry.service';
+import { ChatSalesDispositionService } from '../../src/modules/customer-journey/chat-sales-disposition.service';
 import { TodosController } from '../../src/modules/todos/todos.controller';
 import { TodosService } from '../../src/modules/todos/todos.service';
 import { ChatFollowUpController } from '../../src/modules/staff-chat/chat-follow-up.controller';
@@ -543,7 +543,7 @@ async function main() {
     providers: [ChatLibraryService, ChatLibraryDeliveryService, { provide: MessageRouterService, useValue: library.router }, ChatAnalyticsV2Service, ChatSalesAttributionService,
       ChatServiceRequestService, ChatServiceCaseLinkService, ...afterSales.providers,
       FacebookCommentWorkService, FacebookCommentReplyService, { provide: FacebookCommentClient, useValue: facebookComments.client },
-      ChatHandoffService, NoteMentionService, { provide: StaffMessageService, useValue: Object.assign(Object.create(StaffMessageService.prototype), { prisma: db }) }, JourneyManualEntryService, TodosService, ChatFollowUpService, ChatSalesContextService, JourneySummaryService, JourneyStateService, ChatWorkQueryService, ChatWorkSettingsService, StaffInboxService, ChatWorkAccessService,
+      ChatHandoffService, NoteMentionService, { provide: StaffMessageService, useValue: Object.assign(Object.create(StaffMessageService.prototype), { prisma: db }) }, ChatSalesDispositionService, TodosService, ChatFollowUpService, ChatSalesContextService, JourneySummaryService, JourneyStateService, ChatWorkQueryService, ChatWorkSettingsService, StaffInboxService, ChatWorkAccessService,
       ...tradeInProviders(db, storageForPreview as StorageService),
       ProductPhotosService, DocumentsService, ContractDocumentsService, ContractFileAccessGuard,
       { provide: SettingsService, useValue: { findAll: () => db.systemConfig.findMany() } },

@@ -85,3 +85,11 @@ describe('HeardFromChips', () => {
     expect(onSkip).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('parent mutation lock', () => {
+  it.each(['text', 'ghost-button'] as const)('also locks skip for %s while customer creation is pending', (skipStyle) => {
+    const skip = vi.fn();
+    render(<HeardFromChips value="FRIEND" onSelect={vi.fn()} onSkip={skip} disabled skipStyle={skipStyle} />);
+    expect(screen.getByRole('button', { name: 'ข้าม' })).toBeDisabled();
+  });
+});

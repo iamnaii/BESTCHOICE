@@ -1,3 +1,5 @@
+> 6 October 2026 integration: phase 3 manual create/undo, shared stage order, heard-from capture in profile/contract/customer-create/POS, and hidden CRM navigation are included in PR #1682. Room-bound chat dispositions stay in the authorized chat workspace and cannot be undone from the global profile. [Current integration record](../../reports/2026-10-06-pending-work-integration.md).
+
 # การเดินทางของลูกค้า — สเปกการออกแบบ (2026-09-15)
 
 > ที่มา: workflow ออกแบบ 3 แนวทาง (A ตาราง materialized · B union ตอนอ่าน · C ผสม) → กรรมการ 3 มุม (ความถูกต้องข้อมูล · แรงงานในโค้ดเบส · ประโยชน์ต่อร้าน) → สังเคราะห์เป็นแบบเดียว · เจ้าของสั่ง 2026-09-15 "อยากฟิวเก็บบันทึก customer journey ด้วย" และ "วางแผน เขียน code โดยใช้ sub agent ได้เลย"

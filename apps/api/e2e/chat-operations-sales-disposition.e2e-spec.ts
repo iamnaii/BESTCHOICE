@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { PrismaService } from '../src/prisma/prisma.service';
 import { JourneyStateService } from '../src/modules/customer-journey/journey-state.service';
 import { JourneySummaryService } from '../src/modules/customer-journey/journey-summary.service';
-import { JourneyManualEntryService } from '../src/modules/customer-journey/journey-manual-entry.service';
+import { ChatSalesDispositionService } from '../src/modules/customer-journey/chat-sales-disposition.service';
 import { ChatWorkAccessService } from '../src/modules/staff-chat/services/chat-work-access.service';
 import type { ChatWorkActor } from '@installment/shared';
 if (!process.env.DATABASE_URL?.includes('/bc_chat_credit_test?host=/tmp/bc-chat-credit.'))
@@ -11,7 +11,7 @@ describe('Manual sales disposition preserves original journey evidence', () => {
   const db = new PrismaService();
   const states = new JourneyStateService(db);
   const summaries = new JourneySummaryService(db, states);
-  const service = new JourneyManualEntryService(db, states, new ChatWorkAccessService(db));
+  const service = new ChatSalesDispositionService(db, states, new ChatWorkAccessService(db));
   let actor: ChatWorkActor;
   let branchId: string;
   const scope = { company: 'SHOP' as const };

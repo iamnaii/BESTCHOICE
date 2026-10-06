@@ -43,4 +43,3 @@ ALTER TABLE "staff_inbox_items" ADD CONSTRAINT "staff_inbox_items_room_id_fkey" 
 
 -- AddForeignKey
 ALTER TABLE "staff_inbox_items" ADD CONSTRAINT "staff_inbox_items_todo_id_fkey" FOREIGN KEY ("todo_id") REFERENCES "todos"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
-

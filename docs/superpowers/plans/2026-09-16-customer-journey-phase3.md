@@ -1,3 +1,5 @@
+> Integration update — 6 October 2026: this historical step-by-step plan is implemented through T15 in PR #1682. T14 optional create/POS capture is complete; T15 menu/palette removal was already supplied by main. The original checkbox ledger below is retained as planning history, not an outstanding-work list. See [integration evidence](../../reports/2026-10-06-pending-work-integration.md) for current verification and room-scoped undo restrictions.
+
 # Customer Journey Phase 3 (Scope V2) Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.

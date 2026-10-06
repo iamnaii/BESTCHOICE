@@ -1,3 +1,5 @@
+> 6 October 2026: implementation integrated in PR #1682. Optional create/POS heard-from capture is included and CRM menu/palette entries remain hidden as on main. This merge does not execute the production backfill commands below. Old version examples in this historical runbook are superseded by the PR's current web version. Room-bound manual chat entries must be managed in the chat workspace, never via the customer undo endpoint.
+
 # Runbook: ขึ้น prod — การเดินทางของลูกค้า เฟส 3 (scope v2: ระบบบันทึกเอง + บันทึกมือแบบไม่บังคับ)
 
 - spec: `docs/superpowers/specs/2026-09-15-customer-journey-design.md` · คำตัดสินเจ้าของ scope v2 ข้อ 1–13 (2026-09-15)

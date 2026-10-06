@@ -95,7 +95,7 @@ describe('Sales context composes the original live Journey summary', () => {
     const cash = await sale(c.id);
     const bought = await service.get(r.id, actor, scope);
     expect(bought.journey).toMatchObject({ stage: 'PURCHASED', path: 'CASH' });
-    expect(bought.journey?.steps.find((s) => s.stage === 'CREDIT')?.state).toBe('skipped');
+    expect(bought.journey?.steps.find((s) => s.stage === 'CREDIT')?.state).toBe('not_needed');
     expect(bought.evidenceLinks).toContainEqual(
       expect.objectContaining({ kind: 'PURCHASE', id: cash.id }),
     );

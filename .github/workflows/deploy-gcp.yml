@@ -417,6 +417,10 @@ jobs:
         run: npx playwright install --with-deps chromium
       - name: Verify credit flow on isolated PostgreSQL
         run: bash tools/test-chat-credit.sh
+      # Operations specs enforce a disposable socket DB and must never run against
+      # the general integration service database. Keep this as a blocking gate.
+      - name: Verify chat operations on isolated PostgreSQL
+        run: CREDIT_SUITE=chat-operations bash tools/test-chat-credit.sh
 
   lint-and-test:
     name: Lint & Test

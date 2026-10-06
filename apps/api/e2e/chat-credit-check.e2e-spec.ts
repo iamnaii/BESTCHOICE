@@ -484,6 +484,10 @@ describe('chat credit with real PostgreSQL, HTTP and synthetic storage/OCR', () 
               totalPages: 1,
             },
           });
+        // This legacy credit flow runs with new work features disabled. Supply
+        // their actual response envelopes instead of the generic [] fallback.
+        if (path === '/staff-chat/work-settings') return route.fulfill({ json: { flags: {} } });
+        if (path === '/staff-chat/work-notifications') return route.fulfill({ json: { data: [], unreadCount: 0, total: 0 } });
         if (path === '/staff-chat/rooms/counts') return route.fulfill({ json: {} });
         if (path === '/staff-chat/ai/settings') return route.fulfill({ json: {} });
         if (path.endsWith('/suggest'))

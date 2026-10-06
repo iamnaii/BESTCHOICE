@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { PrismaClient, Prisma } from '@prisma/client';
-import { BadRequestException, ForbiddenException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, GoneException } from '@nestjs/common';
 import { Readable } from 'stream';
 
 import { AuditService } from '../../audit/audit.service';
@@ -45,7 +45,7 @@ import { AfterSalesService } from '../after-sales.service';
  * (Task 7) และ exchange-priced-flow.integration.spec.ts (contract-exchange). ContractExchangeService /
  * ExchangeCancelService / DefectExchangeService เป็นของจริงทั้งชุด (รวม CPA templates ที่พวกมันฉีดเข้าไป)
  * เพราะทุกเคสของไฟล์นี้ไม่โพสต์ JE จริงเลย (เคส 9: MEMO approve/cancel ไม่มี JE ตาม engine): MEMO submit() คืนคำขอ PENDING ทันทีไม่แตะ GL,
- * PRICED submit() ที่ล้มเหลว (เคส 6) โยนก่อนจะแตะ GL/ผลิตภัณฑ์ใดๆ, และ confirmSameModel (เคส 4) เดินผ่าน
+ * PRICED intake (เคส 6) ถูกปิด 410 ตั้งแต่ต้นเมธอดตั้งแต่ 2026-10-06 ไม่แตะ DB เลย, และ confirmSameModel (เคส 4) เดินผ่าน
  * DefectExchangeService.execute() ซึ่งเรียก DefectExchangeReversalTemplate.reverseContract() ที่เป็น
  * no-op เมื่อสัญญาเดิมไม่มี JE ที่โพสต์แล้ว (เราสร้างสัญญาเดิมตรงด้วย prisma ไม่ผ่าน activate() จริง) —
  * จึง**ไม่ต้อง** seedFinanceCoa/seedShopCoa เหมือน exchange-priced-flow.integration.spec.ts.
@@ -608,17 +608,11 @@ describe('after-sales exchange — DB จริง (Task 8, PR2)', () => {
   });
 
   // -------------------------------------------------------------------------
-  // เคส 6 — PRICED intake ที่ submit() ปฏิเสธ (tradeInCreditSnapshot ตั้งอยู่แล้ว) → CANCELLED +
-  // IMEI เดิมเปิดเคสใหม่ได้ (Review Focus 3)
+  // เคส 6 (ปรับ 2026-10-06 — ปิดเมนูเปลี่ยนแบบมีราคา) — PRICED intake → 410 ก่อนแตะ DB: ไม่มีแถวเคส/คำขอเกิด
+  // (เดิม: submit() ปฏิเสธ → เคส CANCELLED) · IMEI เดิมเปิดเคส REPAIR ได้ตามปกติ
   // -------------------------------------------------------------------------
-  it('6) PRICED intake: seed สัญญาที่ submit() ปฏิเสธ (tradeInCreditSnapshot) → createCase throw + เคส CANCELLED (cancelReason ขึ้นต้น "ยื่นคำขอไม่สำเร็จ") · IMEI เดิมเปิดเคสใหม่ได้', async () => {
-    const fx = await seedInstallmentFixture({
-      tag: 'FAIL',
-      daysAgoReceived: 2,
-      // ผ่านด่าน computeOutcomes ตอนแจ้งปัญหา (ไม่เช็คฟิลด์นี้เลย) แต่ ContractExchangeService.submit()
-      // ปฏิเสธทันทีตั้งแต่บรรทัดแรกๆ ก่อนแตะ mode/GL ใดๆ — ตรงตามที่บรีฟแนะ (ง่ายสุดที่จะ seed)
-      tradeInCreditSnapshot: { note: `เครดิตเทิร์นทดสอบ ${RUN}` },
-    });
+  it('6) PRICED intake ปิดใช้: createCase(PRICED_EXCHANGE) → GoneException ก่อนแตะ DB (ไม่มีเคส/คำขอเกิด) · IMEI เดิมเปิดเคส REPAIR ได้', async () => {
+    const fx = await seedInstallmentFixture({ tag: 'FAIL', daysAgoReceived: 2 });
     const np = await seedReplacementProduct('FAIL', {
       brand: fx.brand,
       model: fx.model,
@@ -629,7 +623,7 @@ describe('after-sales exchange — DB จริง (Task 8, PR2)', () => {
       svc.createCase(
         {
           imei: fx.imei,
-          symptom: 'ทดสอบ PRICED ที่ submit ปฏิเสธ (Task 8 เคส 6)',
+          symptom: 'ทดสอบ PRICED หลังปิดเมนู (Task 8 เคส 6)',
           accessories: { box: false, charger: false, case: false },
           unlockConfirmed: true,
           outcome: 'PRICED_EXCHANGE',
@@ -642,22 +636,17 @@ describe('after-sales exchange — DB จริง (Task 8, PR2)', () => {
         [fakeJpeg('fail-intake.jpg')],
         OWNER(),
       ),
-    ).rejects.toThrow(BadRequestException);
+    ).rejects.toThrow(GoneException);
 
-    const caseRow = await prisma.afterSalesCase.findFirstOrThrow({
-      where: { deviceImei: fx.imei },
-    });
-    createdCaseIds.push(caseRow.id);
-    expect(caseRow.stage).toBe('CANCELLED');
-    expect(caseRow.cancelledAt).not.toBeNull();
-    expect(caseRow.cancelReason ?? '').toMatch(/^ยื่นคำขอไม่สำเร็จ/);
+    expect(await prisma.afterSalesCase.findFirst({ where: { deviceImei: fx.imei } })).toBeNull();
+    expect(
+      await prisma.contractExchangeRequest.count({ where: { oldContractId: fx.oldContractId } }),
+    ).toBe(0);
 
-    // Review Focus 3 — IMEI เดิมเปิดเคสใหม่ได้ (เคสเก่าถูกเขียน CANCELLED ตรงๆ ไม่ใช่ derived ⇒
-    // candidates query ของ createCase เห็นว่ามันปิดแล้วโดยไม่ต้องพึ่ง reconcile)
     const reopened = await svc.createCase(
       {
         imei: fx.imei,
-        symptom: 'เปิดเคสใหม่หลังคำขอเดิมล้มเหลว (Task 8 เคส 6)',
+        symptom: 'เปิดเคสซ่อมหลังเมนูเปลี่ยนเครื่องปิด (Task 8 เคส 6)',
         accessories: { box: false, charger: false, case: false },
         unlockConfirmed: true,
         outcome: 'REPAIR',
@@ -668,15 +657,15 @@ describe('after-sales exchange — DB จริง (Task 8, PR2)', () => {
     );
     createdCaseIds.push(reopened.id);
     if (reopened.repairTicketId) createdRepairTicketIds.push(reopened.repairTicketId);
-    expect(reopened.id).not.toBe(caseRow.id);
     expect(reopened.caseNumber).toMatch(/^AS-\d{8}-\d{4}$/);
   });
 
   // -------------------------------------------------------------------------
-  // เคส 7 — PRICED สำเร็จ (MEMO: รุ่น/ราคาเดิม) แล้วปฏิเสธผ่าน ContractExchangeService.reject ตรงๆ
-  // (endpoint เก่า) → getCase reconcile เป็น CANCELLED จาก request (Review Focus 5)
+  // เคส 7 (ปรับ 2026-10-06) — คำขอที่ค้างรออนุมัติก่อนปิดเมนู (seed ผ่าน engine submit MEMO ตรง แล้วผูกกับเคส
+  // แบบ legacy in-flight): approvePriced / preview → 410 โดยคำขอ/เคสไม่เปลี่ยน · ทางออกเดียวที่ยังเปิด =
+  // rejectPriced (OWNER) → คำขอปิด + getCase reconcile เป็น CANCELLED + cancelReason = reason
   // -------------------------------------------------------------------------
-  it('7) PRICED สำเร็จ (MEMO — เครื่องทดแทนราคาเท่าเดิม) → เคส AWAITING_APPROVAL + exchangeRequestId · ContractExchangeService.reject ตรงๆ → getCase คืน CANCELLED + cancelReason = reason', async () => {
+  it('7) คำขอค้างก่อนปิดเมนู: approvePriced/preview → 410 ไม่แตะคำขอ/เคส · rejectPriced (OWNER) ยังปิดคำขอได้ → เคส CANCELLED + cancelReason', async () => {
     const sellingPrice = '10000.00';
     const fx = await seedInstallmentFixture({ tag: 'MEMO', daysAgoReceived: 30, sellingPrice });
     const np = await seedReplacementProduct('MEMO', {
@@ -686,40 +675,67 @@ describe('after-sales exchange — DB จริง (Task 8, PR2)', () => {
       installmentPrice: sellingPrice, // รุ่น+ราคาเดิม ⇒ detectMode() ต้องเป็น MEMO
     });
 
-    const result = await svc.createCase(
+    // คำขอค้าง: ยื่นผ่าน engine ตรง (เส้นทาง createCase PRICED ปิดแล้ว — engine ยังอยู่เพื่อคำขอเก่า/ยกเลิก)
+    const req = await contractExchange.submit(
+      {
+        oldContractId: fx.oldContractId,
+        oldProductId: fx.oldProductId,
+        newProductId: np.id,
+        conditionNote: `ทดสอบคำขอค้างก่อนปิดเมนู ${RUN}`,
+      } as never,
+      OWNER(),
+    );
+    createdRequestIds.push(req.id);
+    expect(req.mode).toBe('MEMO');
+
+    // เคสที่ผูกกับคำขอ (รูปเดียวกับเคส PRICED ที่สร้างไว้ก่อน deploy): สร้างเคสซ่อมแล้วแปลงเป็น PRICED/AWAITING
+    const created = await svc.createCase(
       {
         imei: fx.imei,
-        symptom: 'ทดสอบ MEMO — เปลี่ยนรุ่นเดิมราคาเดิม (Task 8 เคส 7)',
+        symptom: 'ทดสอบคำขอค้างก่อนปิดเมนู (Task 8 เคส 7)',
         accessories: { box: false, charger: false, case: false },
         unlockConfirmed: true,
-        outcome: 'PRICED_EXCHANGE',
-        replacementProductId: np.id,
-        // ไม่ส่ง buybackPrice/deviceCondition/newTotalMonths — MEMO branch ของ submit() ปฏิเสธถ้า
-        // buybackPrice !== undefined
+        outcome: 'REPAIR',
         branchId,
       } as never,
       [fakeJpeg('memo-intake.jpg')],
       OWNER(),
     );
-    const memoCaseId = result.id;
-    createdCaseIds.push(memoCaseId);
-    expect(result.exchangeRequestId).toBeTruthy();
-    const memoRequestId = result.exchangeRequestId as string;
-    createdRequestIds.push(memoRequestId);
-
-    const request = await prisma.contractExchangeRequest.findUniqueOrThrow({
-      where: { id: memoRequestId },
+    createdCaseIds.push(created.id);
+    if (created.repairTicketId) createdRepairTicketIds.push(created.repairTicketId);
+    await prisma.afterSalesCase.update({
+      where: { id: created.id },
+      data: {
+        outcome: 'PRICED_EXCHANGE',
+        stage: 'AWAITING_APPROVAL',
+        exchangeRequestId: req.id,
+        repairTicketId: null,
+      },
     });
-    expect(request.mode).toBe('MEMO');
-    expect(request.status).toBe('PENDING');
-
-    const beforeCase = await svc.getCase(memoCaseId, OWNER());
+    const beforeCase = await svc.getCase(created.id, OWNER());
     expect((beforeCase as { stage: string }).stage).toBe('AWAITING_APPROVAL');
 
-    const reason = `ลูกค้าไม่ยืนยันการเปลี่ยนเครื่อง MEMO — ทดสอบปฏิเสธตรงเอนจิน ${RUN}`;
-    await contractExchange.reject(memoRequestId, reason, adminId);
+    await expect(
+      exchangeSvc.approvePriced(
+        created.id,
+        { memoAddendumSigned: true, memoMdmSwapped: true } as never,
+        OWNER(),
+      ),
+    ).rejects.toThrow(GoneException);
+    await expect(
+      exchangeSvc.preview({ imei: fx.imei, replacementProductId: np.id } as never, OWNER()),
+    ).rejects.toThrow(GoneException);
 
-    const afterCase = await svc.getCase(memoCaseId, OWNER());
+    const untouched = await prisma.contractExchangeRequest.findUniqueOrThrow({ where: { id: req.id } });
+    expect(untouched.status).toBe('PENDING');
+    expect((await svc.getCase(created.id, OWNER()) as { stage: string }).stage).toBe('AWAITING_APPROVAL');
+
+    const reason = `ปิดเมนูเปลี่ยนเครื่องแล้ว — ปิดคำขอค้าง ${RUN}`;
+    await exchangeSvc.rejectPriced(created.id, { reason } as never, OWNER());
+
+    const rejected = await prisma.contractExchangeRequest.findUniqueOrThrow({ where: { id: req.id } });
+    expect(rejected.status).not.toBe('PENDING');
+    const afterCase = await svc.getCase(created.id, OWNER());
     expect((afterCase as { stage: string }).stage).toBe('CANCELLED');
     expect((afterCase as { cancelReason: string | null }).cancelReason).toBe(reason);
   });
@@ -828,10 +844,11 @@ describe('after-sales exchange — DB จริง (Task 8, PR2)', () => {
   });
 
   // -------------------------------------------------------------------------
-  // เคส 9 (final fix wave I3) — MEMO อนุมัติผ่าน hub → เคส CLOSED → ยกเลิก swap ผ่าน hub → เคส
-  // CANCELLED + cancelReason · IMEI เดิมเปิดเคสใหม่ได้
+  // เคส 9 (final fix wave I3 · ปรับ 2026-10-06) — swap MEMO ที่อนุมัติไว้ก่อนปิดเมนู (engine approve ตรง) →
+  // เคส reconcile เป็น CLOSED → approvePriced ซ้ำ = 410 · cancelSwap ผ่าน hub ยังทำได้ → CANCELLED + cancelReason ·
+  // IMEI เดิมเปิดเคสใหม่ได้
   // -------------------------------------------------------------------------
-  it('9) I3: MEMO approvePriced (checkbox) → CLOSED → cancelSwap → CANCELLED + cancelReason · createCase IMEI เดิมได้', async () => {
+  it('9) I3: swap MEMO ที่อนุมัติไว้ก่อนปิดเมนู → เคส CLOSED · approvePriced → 410 · cancelSwap → CANCELLED + cancelReason · createCase IMEI เดิมได้', async () => {
     const sellingPrice = '10000.00';
     const fx = await seedInstallmentFixture({ tag: 'SWAP', daysAgoReceived: 30, sellingPrice });
     const np = await seedReplacementProduct('SWAP', {
@@ -841,37 +858,59 @@ describe('after-sales exchange — DB จริง (Task 8, PR2)', () => {
       installmentPrice: sellingPrice, // MEMO
     });
 
+    const req = await contractExchange.submit(
+      {
+        oldContractId: fx.oldContractId,
+        oldProductId: fx.oldProductId,
+        newProductId: np.id,
+        conditionNote: `ทดสอบยกเลิก swap หลังปิดเมนู ${RUN}`,
+      } as never,
+      OWNER(),
+    );
+    createdRequestIds.push(req.id);
+    expect(req.mode).toBe('MEMO');
+
     const created = await svc.createCase(
       {
         imei: fx.imei,
         symptom: 'ทดสอบยกเลิก swap หลัง MEMO ลงผล (final fix I3)',
         accessories: { box: false, charger: false, case: false },
         unlockConfirmed: true,
-        outcome: 'PRICED_EXCHANGE',
-        replacementProductId: np.id,
+        outcome: 'REPAIR',
         branchId,
       } as never,
       [fakeJpeg('swap-intake.jpg')],
       OWNER(),
     );
     createdCaseIds.push(created.id);
-    const requestId = created.exchangeRequestId as string;
-    createdRequestIds.push(requestId);
-    expect(created.stage).toBe('AWAITING_APPROVAL');
+    if (created.repairTicketId) createdRepairTicketIds.push(created.repairTicketId);
+    await prisma.afterSalesCase.update({
+      where: { id: created.id },
+      data: {
+        outcome: 'PRICED_EXCHANGE',
+        stage: 'AWAITING_APPROVAL',
+        exchangeRequestId: req.id,
+        repairTicketId: null,
+      },
+    });
 
-    await exchangeSvc.approvePriced(
-      created.id,
-      { memoAddendumSigned: true, memoMdmSwapped: true } as never,
-      OWNER(),
-    );
+    // อนุมัติไว้ก่อนปิดเมนู = engine approve ตรง (MEMO: checkbox 2 ข้อ) — ทาง hub ปิดแล้ว
+    await contractExchange.approve(req.id, OWNER(), {
+      memoAddendumSigned: true,
+      memoMdmSwapped: true,
+    } as never);
     const closed = await svc.getCase(created.id, OWNER());
     expect((closed as { stage: string }).stage).toBe('CLOSED');
+
+    await expect(
+      exchangeSvc.approvePriced(created.id, {} as never, OWNER()),
+    ).rejects.toThrow(GoneException);
 
     const reason = `ลูกค้าคืนเครื่องใหม่ — ยกเลิก swap ${RUN}`;
     await exchangeSvc.cancelSwap(created.id, { reason } as never, BM_USER());
 
     const request = await prisma.contractExchangeRequest.findUniqueOrThrow({
-      where: { id: requestId },
+      where: { id: req.id },
     });
     expect(request.status).toBe('CANCELED');
     const row = await prisma.afterSalesCase.findUniqueOrThrow({ where: { id: created.id } });

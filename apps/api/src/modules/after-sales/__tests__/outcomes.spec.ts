@@ -2,7 +2,9 @@ import {
   computeOutcomes,
   dropOffOutcome,
   SWITCHED_TO_REPAIR_NOTE,
+  type OutcomeInput,
 } from '../utils/after-sales-outcomes.util';
+import { DEVICE_SWAP_CLOSED_REASON } from '../../contract-exchange/device-swap-closed.policy';
 
 const base = {
   source: 'INSTALLMENT_CONTRACT' as const,
@@ -19,12 +21,12 @@ const pick = (opts: ReturnType<typeof computeOutcomes>, o: string) =>
   opts.find((x) => x.outcome === o)!;
 
 describe('computeOutcomes — ตารางทางออก (spec 4.3)', () => {
-  it('ผ่อน ≤7 วัน: เปิดทั้ง 3 ทาง · ซ่อมร้านจ่าย', () => {
+  it('ผ่อน ≤7 วัน: ซ่อม + เปลี่ยนรุ่นเดิมเปิด · เปลี่ยนแบบมีราคาปิดตามนโยบาย (2026-10-06) · ซ่อมร้านจ่าย', () => {
     const o = computeOutcomes(base);
     expect(o.map((x) => [x.outcome, x.enabled])).toEqual([
       ['REPAIR', true],
       ['SAME_MODEL_EXCHANGE', true],
-      ['PRICED_EXCHANGE', true],
+      ['PRICED_EXCHANGE', false],
     ]);
     expect(pick(o, 'REPAIR').payerDefault).toBe('SHOP');
   });
@@ -44,7 +46,7 @@ describe('computeOutcomes — ตารางทางออก (spec 4.3)', () 
     });
     expect(pick(sales, 'PRICED_EXCHANGE')).toMatchObject({
       enabled: false,
-      reason: 'เกินกรอบ 7 วัน — ผจก.สาขาหรือเจ้าของยื่นได้',
+      reason: DEVICE_SWAP_CLOSED_REASON,
     });
     const bm = computeOutcomes({
       ...base,
@@ -58,7 +60,8 @@ describe('computeOutcomes — ตารางทางออก (spec 4.3)', () 
       enabled: true,
       note: 'ข้ามกรอบ 7 วัน — ผจก. ต้องยืนยัน',
     });
-    expect(pick(bm, 'PRICED_EXCHANGE').enabled).toBe(true);
+    // 2026-10-06 — ผจก. ก็ยื่นเปลี่ยนแบบมีราคาไม่ได้แล้ว (ปิดทั้งเมนู)
+    expect(pick(bm, 'PRICED_EXCHANGE')).toMatchObject({ enabled: false, reason: DEVICE_SWAP_CLOSED_REASON });
   });
 
   it('ผ่อน ในประกันศูนย์: ซ่อมเคลมศูนย์เท่านั้น', () => {
@@ -73,7 +76,7 @@ describe('computeOutcomes — ตารางทางออก (spec 4.3)', () 
     expect(pick(o, 'REPAIR').payerDefault).toBe('SUPPLIER_CLAIM');
     expect(pick(o, 'PRICED_EXCHANGE')).toMatchObject({
       enabled: false,
-      reason: 'อยู่ในประกันศูนย์ — ส่งเคลมก่อน',
+      reason: DEVICE_SWAP_CLOSED_REASON,
     });
     // R9: SAME_MODEL_EXCHANGE must be gated the same way — even OWNER cannot
     // enable it on a manufacturer-warranty device.
@@ -97,7 +100,7 @@ describe('computeOutcomes — ตารางทางออก (spec 4.3)', () 
     });
   });
 
-  it('ผ่อน หมดประกัน: ซ่อมลูกค้าจ่าย · มีราคาได้ (BM)', () => {
+  it('ผ่อน หมดประกัน: ซ่อมลูกค้าจ่าย · เปลี่ยนแบบมีราคาปิดแม้เป็น BM (นโยบาย 2026-10-06)', () => {
     const o = computeOutcomes({
       ...base,
       warrantyStatus: 'OUT_OF_WARRANTY',
@@ -107,10 +110,10 @@ describe('computeOutcomes — ตารางทางออก (spec 4.3)', () 
       viewerRole: 'BRANCH_MANAGER',
     });
     expect(pick(o, 'REPAIR').payerDefault).toBe('CUSTOMER');
-    expect(pick(o, 'PRICED_EXCHANGE').enabled).toBe(true);
+    expect(pick(o, 'PRICED_EXCHANGE')).toMatchObject({ enabled: false, reason: DEVICE_SWAP_CLOSED_REASON });
   });
 
-  it('R11: ผ่อน หมดประกัน (SALES) → เปลี่ยนแบบมีราคาปิดด้วยเหตุผลหมดประกัน ไม่ใช่ข้อความ 7 วัน', () => {
+  it('R11 (ปรับ 2026-10-06): ผ่อน หมดประกัน (SALES) → เปลี่ยนแบบมีราคาปิดด้วยเหตุผลนโยบาย ไม่ใช่ข้อความ 7 วัน/หมดประกัน', () => {
     const o = computeOutcomes({
       ...base,
       warrantyStatus: 'OUT_OF_WARRANTY',
@@ -120,8 +123,9 @@ describe('computeOutcomes — ตารางทางออก (spec 4.3)', () 
     });
     expect(pick(o, 'PRICED_EXCHANGE')).toMatchObject({
       enabled: false,
-      reason: 'หมดประกันแล้ว — ผจก.สาขาหรือเจ้าของยื่นได้',
+      reason: DEVICE_SWAP_CLOSED_REASON,
     });
+    expect(pick(o, 'PRICED_EXCHANGE').reason).not.toMatch(/7 วัน|หมดประกัน/);
   });
 
   it('ขายสด ≤7 วัน: ซ่อม + เปลี่ยนรุ่นเดิม(ขายสด) แต่ปิดรอกติกาบัญชี · ไม่มีเปลี่ยนแบบมีราคา', () => {
@@ -159,9 +163,9 @@ describe('computeOutcomes — ตารางทางออก (spec 4.3)', () 
     expect(o[0]).toMatchObject({ outcome: 'REPAIR', enabled: true, payerDefault: 'CUSTOMER' });
   });
 
-  it('SAME_MODEL_EXCHANGE และ PRICED_EXCHANGE implemented=true · CASH_SAME_MODEL_EXCHANGE ยัง false', () => {
-    // ผ่อน ≤7 วัน: ทั้งสามทางออกเปิดอยู่ (จาก `base`) — PR 2 เปิดใช้งานสองทางออกเปลี่ยนเครื่องแล้ว
-    expect(computeOutcomes(base).map((x) => x.implemented)).toEqual([true, true, true]);
+  it('SAME_MODEL_EXCHANGE implemented=true · PRICED_EXCHANGE implemented=false ตั้งแต่ปิดเมนู 2026-10-06 · CASH_SAME_MODEL_EXCHANGE ยัง false', () => {
+    // ผ่อน ≤7 วัน: ซ่อม + เปลี่ยนรุ่นเดิมเปิด · เปลี่ยนแบบมีราคาปิดทั้งเมนู (คำตัดสินเจ้าของ)
+    expect(computeOutcomes(base).map((x) => x.implemented)).toEqual([true, true, false]);
     // ขายสด — เปลี่ยนรุ่นเดิม(ขายสด) ยังรอกติกาบัญชี (สเปกข้อ 10) ไม่เกี่ยวกับ PR 2 นี้
     const cash = computeOutcomes({ ...base, source: 'CASH_SALE', contractStatus: undefined });
     expect(pick(cash, 'CASH_SAME_MODEL_EXCHANGE').implemented).toBe(false);
@@ -223,6 +227,35 @@ describe('computeOutcomes — ตารางทางออก (spec 4.3)', () 
       });
       expect(JSON.stringify(o)).not.toContain('รับเครื่อง');
     });
+  });
+});
+
+describe('คำตัดสินเจ้าของ 2026-10-06 — เปลี่ยนแบบมีราคา (device swap) ปิดทุกกรณี', () => {
+  const cases: Array<[string, Partial<OutcomeInput>]> = [
+    ['ในกรอบ 7 วัน · SALES', {}],
+    ['ในกรอบ 7 วัน · OWNER', { viewerRole: 'OWNER' }],
+    ['ประกันร้าน · BM', { warrantyStatus: 'IN_SHOP_WARRANTY', daysRemainingIn7Day: 0, defectEligible: false, defectReasons: [WINDOW], viewerRole: 'BRANCH_MANAGER' }],
+    ['หมดประกัน · BM', { warrantyStatus: 'OUT_OF_WARRANTY', daysRemainingIn7Day: 0, defectEligible: false, defectReasons: ['เกินกรอบ 7 วัน'], viewerRole: 'BRANCH_MANAGER' }],
+    ['ประกันศูนย์ · OWNER', { warrantyStatus: 'IN_MANUFACTURER', daysRemainingIn7Day: 0, defectEligible: false, defectReasons: [], viewerRole: 'OWNER' }],
+    ['สัญญา OVERDUE · OWNER', { contractStatus: 'OVERDUE', viewerRole: 'OWNER' }],
+  ];
+  it.each(cases)('%s → PRICED_EXCHANGE enabled=false · implemented=false · reason = นโยบาย (ยังอยู่ในรายการให้จอแสดงเหตุผล)', (_label, over) => {
+    const o = computeOutcomes({ ...base, ...over });
+    expect(pick(o, 'PRICED_EXCHANGE')).toEqual({
+      outcome: 'PRICED_EXCHANGE',
+      enabled: false,
+      implemented: false,
+      reason: DEVICE_SWAP_CLOSED_REASON,
+    });
+  });
+
+  it('เปลี่ยนรุ่นเดิม (เปลี่ยนเครื่องตำหนิ 7 วัน) ไม่ถูกกระทบ — ในกรอบยังเปิด', () => {
+    expect(pick(computeOutcomes(base), 'SAME_MODEL_EXCHANGE')).toMatchObject({ enabled: true, implemented: true });
+  });
+
+  it('ข้อความนโยบายบอกเหตุ (ปิดยอดสัญญาเดิมก่อน) และไม่มีคำว่า "รับเครื่อง"', () => {
+    expect(DEVICE_SWAP_CLOSED_REASON).toMatch(/ปิดยอดสัญญาเดิมก่อน/);
+    expect(DEVICE_SWAP_CLOSED_REASON).not.toMatch(/รับเครื่อง/);
   });
 });
 

@@ -1,4 +1,10 @@
-import { BadRequestException, ConflictException, ForbiddenException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  GoneException,
+} from '@nestjs/common';
+import { DEVICE_SWAP_CLOSED_MESSAGE } from '../../contract-exchange/device-swap-closed.policy';
 import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
 import { AfterSalesCaseService, MAX_INTAKE_PHOTOS } from '../services/after-sales-case.service';
@@ -542,300 +548,55 @@ describe('AfterSalesCaseService.createCase', () => {
       },
     );
 
-    // (d) PRICED_EXCHANGE — submit สำเร็จ
-    it('(d) PRICED_EXCHANGE: tx สร้างเคส AWAITING_APPROVAL แล้ว submit สำเร็จ → update exchangeRequestId + event OUTCOME_SET', async () => {
-      const dto = {
+    // คำตัดสินเจ้าของ 2026-10-06 — เมนูเปลี่ยนเครื่องแบบมีราคา (device swap) ปิดทั้งหมด:
+    // createCase(outcome PRICED_EXCHANGE) ต้อง 410 ตั้งแต่บรรทัดแรก ก่อนแตะ สาขา/รูป/lookup/storage/tx/engine
+    describe('PRICED_EXCHANGE ปิดใช้ (410 Gone) — คำตัดสินเจ้าของ 2026-10-06', () => {
+      const pricedDto = {
         ...BASE_DTO,
         outcome: 'PRICED_EXCHANGE' as const,
-        replacementProductId: 'p-2',
-        buybackPrice: '5000',
-        deviceCondition: 'B' as const,
-        newTotalMonths: 10,
-        newInterestRate: '0.02',
-      };
-      lookupSvc.lookup.mockResolvedValue(buildExchangeLookup('PRICED_EXCHANGE'));
-      tx.afterSalesCase.create.mockResolvedValue({ id: 'as-4', caseNumber: 'AS-20260924-0004' });
-      contractExchange.submit.mockResolvedValue({
-        id: 'req-1',
-        mode: 'PRICED',
-        approvalTier: 'REVIEW',
-      });
-
-      const result = await svc.createCase(dto as never, [mockFile()], USER);
-
-      expect(defect.checkEligibility).not.toHaveBeenCalled();
-      expect(repair.createInTx).not.toHaveBeenCalled();
-      expect(contractExchange.submit).toHaveBeenCalledWith(
-        {
-          oldContractId: 'ct-1',
-          oldProductId: 'p-1',
-          newProductId: 'p-2',
-          conditionNote: dto.symptom, // conditionNote ไม่ได้ส่งมา → fallback เป็นอาการที่แจ้ง
-          buybackPrice: '5000',
-          deviceCondition: 'B',
-          newTotalMonths: 10,
-          newInterestRate: '0.02',
-        },
-        USER,
-      );
-      expect(prisma.afterSalesCase.update).toHaveBeenCalledWith({
-        where: { id: 'as-4' },
-        data: {
-          exchangeRequestId: 'req-1',
-          events: {
-            create: {
-              kind: 'OUTCOME_SET',
-              actorId: USER.id,
-              note: 'เปลี่ยนแบบมีราคา · PRICED · tier REVIEW',
-            },
-          },
-        },
-      });
-      expect(result).toEqual({
-        id: 'as-4',
-        caseNumber: 'AS-20260924-0004',
-        repairTicketId: null,
-        outcome: 'PRICED_EXCHANGE',
-        exchangeRequestId: 'req-1',
-        stage: 'AWAITING_APPROVAL',
-      });
-      // Task 3 — PRICED ที่ submit สำเร็จ (link/compensation ผ่าน) ก็ยังไปถึง audit.log ปกติ ⇒
-      // ยังส่ง RECEIVED (ต่างจาก (b) ที่ submit ล้ม)
-      expect(line.notifyMoment).toHaveBeenCalledWith('as-4', 'RECEIVED', USER.id);
-    });
-
-    // M13 — AUTO tier: submit() อนุมัติคำขอให้ทันที → คืน stage ที่ reconcile แล้ว + event APPROVED
-    it('M13: PRICED AUTO tier (คำขอ APPROVED แล้ว) → reconcile → READY_FOR_PICKUP, เขียน approvedAt/APPROVED event, audit มี exchangeRequestId', async () => {
-      const dto = {
-        ...BASE_DTO,
-        outcome: 'PRICED_EXCHANGE' as const,
-        replacementProductId: 'p-2',
-        buybackPrice: '5000',
-        deviceCondition: 'A' as const,
-        newTotalMonths: 10,
-      };
-      lookupSvc.lookup.mockResolvedValue(buildExchangeLookup('PRICED_EXCHANGE'));
-      tx.afterSalesCase.create.mockResolvedValue({ id: 'as-9', caseNumber: 'AS-20260924-0009' });
-      contractExchange.submit.mockResolvedValue({
-        id: 'req-9',
-        mode: 'PRICED',
-        approvalTier: 'AUTO',
-      });
-      prisma.afterSalesCase.findFirst.mockResolvedValue({
-        id: 'as-9',
-        stage: 'AWAITING_APPROVAL',
-        outcome: 'PRICED_EXCHANGE',
-        cancelledAt: null,
-        closedAt: null,
-        replacementContractId: null,
-        repairTicket: null,
-        exchangeRequest: {
-          status: 'APPROVED',
-          mode: 'PRICED',
-          memoAppliedAt: null,
-          rejectionReason: null,
-          cancelReason: null,
-          newContract: { status: 'DRAFT' },
-        },
-      });
-
-      const result = await svc.createCase(dto as never, [mockFile()], USER);
-
-      expect(prisma.afterSalesCase.updateMany).toHaveBeenCalledWith({
-        where: { id: 'as-9', stage: 'AWAITING_APPROVAL' },
-        data: { stage: 'READY_FOR_PICKUP' },
-      });
-      expect(prisma.afterSalesCase.update).toHaveBeenCalledWith({
-        where: { id: 'as-9' },
-        data: expect.objectContaining({
-          approvedAt: expect.any(Date),
-          approvedById: USER.id,
-          events: { create: expect.objectContaining({ kind: 'APPROVED', actorId: USER.id }) },
-        }),
-      });
-      expect(result.stage).toBe('READY_FOR_PICKUP');
-      expect(audit.log).toHaveBeenCalledWith(
-        expect.objectContaining({
-          newValue: expect.objectContaining({ exchangeRequestId: 'req-9' }),
-        }),
-      );
-    });
-
-    // final fix I-3 — tier AUTO: submit() อนุมัติในตัว ⇒ createCase ได้เคสที่ READY_FOR_PICKUP (PRICED)
-    // หรือ CLOSED (MEMO) แล้ว — ส่ง RECEIVED ก่อน แล้วค่อยต่อจังหวะที่ทันไปแล้ว (เรียงลำดับด้วย .then)
-    describe('final fix I-3: LINE หลังสร้างเคส PRICED ที่อนุมัติอัตโนมัติ', () => {
-      const flush = () => new Promise((resolve) => setImmediate(resolve));
-      const PRICED_DTO = {
-        ...BASE_DTO,
-        outcome: 'PRICED_EXCHANGE' as const,
-        replacementProductId: 'p-2',
-        buybackPrice: '5000',
-        deviceCondition: 'A' as const,
-        newTotalMonths: 10,
+        replacementProductId: 'p-new',
+        buybackPrice: '5000.00',
+        deviceCondition: 'A',
+        newTotalMonths: 12,
       };
 
-      function linkedRow(exchangeRequest: Record<string, unknown>) {
-        return {
-          id: 'as-9',
-          stage: 'AWAITING_APPROVAL',
-          outcome: 'PRICED_EXCHANGE',
-          cancelledAt: null,
-          closedAt: null,
-          replacementContractId: null,
-          repairTicket: null,
-          exchangeRequest: {
-            rejectionReason: null,
-            cancelReason: null,
-            newContract: null,
-            memoAppliedAt: null,
-            ...exchangeRequest,
-          },
-        };
-      }
-
-      function arrange(tier: string, exchangeRequest: Record<string, unknown>) {
+      it.each([
+        ['SALES', { id: 'u-sales', role: 'SALES', branchId: 'b-1' }],
+        ['BRANCH_MANAGER', { id: 'u-bm', role: 'BRANCH_MANAGER', branchId: 'b-1' }],
+        ['OWNER', { id: 'u-owner', role: 'OWNER', branchId: null }],
+      ])('%s → GoneException ก่อนแตะ branch/lookup/upload/tx/submit/audit/LINE', async (_label, user) => {
         lookupSvc.lookup.mockResolvedValue(buildExchangeLookup('PRICED_EXCHANGE'));
-        tx.afterSalesCase.create.mockResolvedValue({ id: 'as-9', caseNumber: 'AS-20260924-0009' });
-        contractExchange.submit.mockResolvedValue({
-          id: 'req-9',
-          mode: exchangeRequest.mode,
-          approvalTier: tier,
-        });
-        prisma.afterSalesCase.findFirst.mockResolvedValue(linkedRow(exchangeRequest));
-      }
-
-      it('AUTO PRICED → reconcile READY_FOR_PICKUP → notifyMoment RECEIVED แล้วตามด้วย READY (ตามลำดับ)', async () => {
-        arrange('AUTO', { status: 'APPROVED', mode: 'PRICED', newContract: { status: 'DRAFT' } });
-
-        const result = await svc.createCase(PRICED_DTO as never, [mockFile()], USER);
-        await flush();
-
-        expect(result.stage).toBe('READY_FOR_PICKUP');
-        expect(line.notifyMoment.mock.calls).toEqual([
-          ['as-9', 'RECEIVED', USER.id],
-          ['as-9', 'READY', USER.id],
-        ]);
-        expect(audit.log.mock.invocationCallOrder[0]).toBeLessThan(
-          line.notifyMoment.mock.invocationCallOrder[0],
+        await expect(svc.createCase(pricedDto as never, [mockFile()], user as never)).rejects.toThrow(
+          GoneException,
         );
+        expect(prisma.branch.findFirst).not.toHaveBeenCalled();
+        expect(assertEvidenceImage).not.toHaveBeenCalled();
+        expect(lookupSvc.lookup).not.toHaveBeenCalled();
+        expect(storage.upload).not.toHaveBeenCalled();
+        expect(prisma.$transaction).not.toHaveBeenCalled();
+        expect(tx.afterSalesCase.create).not.toHaveBeenCalled();
+        expect(contractExchange.submit).not.toHaveBeenCalled();
+        expect(audit.log).not.toHaveBeenCalled();
+        expect(line.notifyMoment).not.toHaveBeenCalled();
       });
 
-      it('AUTO MEMO → reconcile CLOSED → notifyMoment RECEIVED แล้วตามด้วย CLOSED (ตามลำดับ)', async () => {
-        arrange('AUTO', {
-          status: 'APPROVED',
-          mode: 'MEMO',
-          memoAppliedAt: new Date('2026-09-24T03:00:00.000Z'),
-        });
-
-        const result = await svc.createCase(PRICED_DTO as never, [mockFile()], USER);
-        await flush();
-
-        expect(result.stage).toBe('CLOSED');
-        expect(line.notifyMoment.mock.calls).toEqual([
-          ['as-9', 'RECEIVED', USER.id],
-          ['as-9', 'CLOSED', USER.id],
-        ]);
-      });
-
-      it('ไม่ใช่ AUTO (คำขอยัง PENDING → AWAITING_APPROVAL) → ส่งแค่ RECEIVED', async () => {
-        arrange('REVIEW', { status: 'PENDING', mode: 'PRICED' });
-
-        const result = await svc.createCase(PRICED_DTO as never, [mockFile()], USER);
-        await flush();
-
-        expect(result.stage).toBe('AWAITING_APPROVAL');
-        expect(line.notifyMoment.mock.calls).toEqual([['as-9', 'RECEIVED', USER.id]]);
-      });
-
-      it('RECEIVED reject → ไม่ส่งจังหวะถัดไป และ createCase ยัง resolve ปกติ', async () => {
-        arrange('AUTO', { status: 'APPROVED', mode: 'PRICED', newContract: { status: 'DRAFT' } });
-        line.notifyMoment.mockRejectedValueOnce(new Error('LINE ล่ม'));
-
-        await expect(svc.createCase(PRICED_DTO as never, [mockFile()], USER)).resolves.toEqual(
-          expect.objectContaining({ id: 'as-9', stage: 'READY_FOR_PICKUP' }),
+      it('ข้อความ 410 = DEVICE_SWAP_CLOSED_MESSAGE (ชี้ทางที่ทำได้จริง: ปิดยอดสัญญาเดิมก่อน · คำขอค้างให้เจ้าของ "ปฏิเสธ")', async () => {
+        await expect(svc.createCase(pricedDto as never, [mockFile()], USER)).rejects.toThrow(
+          new GoneException(DEVICE_SWAP_CLOSED_MESSAGE),
         );
-        await flush();
-
-        expect(line.notifyMoment).toHaveBeenCalledTimes(1);
-        expect(line.notifyMoment).toHaveBeenCalledWith('as-9', 'RECEIVED', USER.id);
+        expect(DEVICE_SWAP_CLOSED_MESSAGE).toMatch(/ปิดยอด/);
+        expect(DEVICE_SWAP_CLOSED_MESSAGE).toMatch(/ปฏิเสธ/);
       });
-    });
 
-    // (d) PRICED_EXCHANGE — submit throw → compensation
-    it('(d) PRICED_EXCHANGE: submit throw → เคสถูกอัปเดตเป็น CANCELLED พร้อมเหตุผล + rethrow · รูปที่อัปโหลดไม่ถูกลบ', async () => {
-      const dto = {
-        ...BASE_DTO,
-        outcome: 'PRICED_EXCHANGE' as const,
-        replacementProductId: 'p-2',
-        buybackPrice: '5000',
-        deviceCondition: 'B' as const,
-        newTotalMonths: 10,
-      };
-      lookupSvc.lookup.mockResolvedValue(buildExchangeLookup('PRICED_EXCHANGE'));
-      tx.afterSalesCase.create.mockResolvedValue({ id: 'as-5', caseNumber: 'AS-20260924-0005' });
-      contractExchange.submit.mockRejectedValue(
-        new BadRequestException('เครื่องใหม่ต้องอยู่ในสต็อก (IN_STOCK)'),
-      );
-
-      await expect(svc.createCase(dto as never, [mockFile()], USER)).rejects.toThrow(
-        'เครื่องใหม่ต้องอยู่ในสต็อก (IN_STOCK)',
-      );
-
-      expect(prisma.afterSalesCase.update).toHaveBeenCalledWith({
-        where: { id: 'as-5' },
-        data: {
-          stage: 'CANCELLED',
-          cancelledAt: expect.any(Date),
-          cancelReason: 'ยื่นคำขอไม่สำเร็จ: เครื่องใหม่ต้องอยู่ในสต็อก (IN_STOCK)',
-          events: {
-            create: {
-              kind: 'CANCELLED',
-              actorId: USER.id,
-              note: 'ยื่นคำขอไม่สำเร็จ: เครื่องใหม่ต้องอยู่ในสต็อก (IN_STOCK)',
-            },
-          },
-        },
+      it('SAME_MODEL_EXCHANGE (เปลี่ยนเครื่องตำหนิ 7 วัน) ไม่ถูกกระทบ — ยังผ่านด่าน outcome ไปถึง lookup', async () => {
+        lookupSvc.lookup.mockResolvedValue(buildExchangeLookup('SAME_MODEL_EXCHANGE'));
+        defect.checkEligibility.mockResolvedValue({ eligible: true, reasons: [], newProduct: REPLACEMENT_PRODUCT });
+        const dto = { ...BASE_DTO, outcome: 'SAME_MODEL_EXCHANGE' as const, replacementProductId: 'p-new' };
+        const result = await svc.createCase(dto as never, [mockFile()], USER);
+        expect(lookupSvc.lookup).toHaveBeenCalled();
+        expect(result.exchangeRequestId).toBeNull();
+        expect(tx.afterSalesCase.create).toHaveBeenCalled();
       });
-      // รูปที่อัปโหลดไว้ต้องไม่ถูกลบ — เคสยังอยู่เป็นประวัติ (คนละ catch กับ tx)
-      expect(storage.delete).not.toHaveBeenCalled();
-      expect(audit.log).not.toHaveBeenCalled();
-      // Task 3 (b) — submit ล้ม → throw ก่อนถึง audit.log/notifyMoment เสมอ ไม่ส่ง LINE
-      expect(line.notifyMoment).not.toHaveBeenCalled();
-    });
-
-    // (d) fix round 1, Important — submit สำเร็จ (คำขอเปลี่ยนเครื่องถูกสร้างจริงแล้ว) แต่ update
-    // เชื่อมโยง exchangeRequestId พังทีหลัง: ต้อง "ปล่อยผ่านตามจริง" ไม่ใช่ยกเลิกเป็น CANCELLED
-    // (ไม่งั้นคำขอที่สร้างไปแล้วกลายเป็นคำขอกำพร้า + IMEI เปิดใหม่ได้ทั้งที่มีคำขอค้างอยู่จริง)
-    it('(d) fix round 1: submit สำเร็จ แต่ update เชื่อมโยง exchangeRequestId throw → error หลุดตรงๆ ไม่ถูกเปลี่ยนเป็น CANCELLED (กันคำขอกำพร้า)', async () => {
-      const dto = {
-        ...BASE_DTO,
-        outcome: 'PRICED_EXCHANGE' as const,
-        replacementProductId: 'p-2',
-        buybackPrice: '5000',
-        deviceCondition: 'B' as const,
-        newTotalMonths: 10,
-      };
-      lookupSvc.lookup.mockResolvedValue(buildExchangeLookup('PRICED_EXCHANGE'));
-      tx.afterSalesCase.create.mockResolvedValue({ id: 'as-6', caseNumber: 'AS-20260924-0006' });
-      contractExchange.submit.mockResolvedValue({
-        id: 'req-2',
-        mode: 'PRICED',
-        approvalTier: 'REVIEW',
-      });
-      prisma.afterSalesCase.update.mockRejectedValueOnce(new Error('DB ล่มตอนเชื่อมโยง'));
-
-      await expect(svc.createCase(dto as never, [mockFile()], USER)).rejects.toThrow(
-        'DB ล่มตอนเชื่อมโยง',
-      );
-
-      // update ถูกเรียกครั้งเดียว (เชื่อมโยง exchangeRequestId) — ไม่มีการเรียกซ้ำเพื่อยกเลิกเป็น
-      // CANCELLED (คำขอเปลี่ยนเครื่อง req-2 ยังอยู่จริง การยกเลิกเคสจะทำให้มันกลายเป็นคำขอกำพร้า)
-      expect(prisma.afterSalesCase.update).toHaveBeenCalledTimes(1);
-      expect(prisma.afterSalesCase.update).toHaveBeenCalledWith({
-        where: { id: 'as-6' },
-        data: expect.objectContaining({ exchangeRequestId: 'req-2' }),
-      });
-      expect(audit.log).not.toHaveBeenCalled();
     });
 
     // (e) outcome นอก enum → 400 จาก DTO

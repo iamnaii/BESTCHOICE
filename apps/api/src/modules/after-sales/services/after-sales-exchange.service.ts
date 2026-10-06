@@ -17,6 +17,7 @@ import {
 } from '../../repair-tickets/dto/create-repair-ticket.dto';
 import { hasCrossBranchAccess } from '../../auth/branch-access.util';
 import { ContractExchangeService } from '../../contract-exchange/contract-exchange.service';
+import { deviceSwapClosed } from '../../contract-exchange/device-swap-closed.policy';
 import { ExchangeCancelService } from '../../contract-exchange/contract-exchange-cancel.service';
 import { AfterSalesQueryService } from './after-sales-query.service';
 import { AfterSalesLookupService } from './after-sales-lookup.service';
@@ -437,60 +438,17 @@ export class AfterSalesExchangeService {
   }
 
   /**
-   * อนุมัติคำขอเปลี่ยนเครื่องแบบมีราคา — MGR (engine บังคับ ESCALATE=OWNER เอง ที่นี่ไม่เช็คซ้ำ).
-   * MEMO mode ไม่มีสัญญาใหม่ (`newContractId: null`) เพราะแค่สลับ productId บนสัญญาเดิม; PRICED
-   * mode ต้องเปิดใช้สัญญาใหม่ที่หน้าสัญญาต่อก่อนเคสจะปิด (`reconcile` จึงได้ READY_FOR_PICKUP
-   * ไม่ใช่ CLOSED ทันที — CLOSED มาทีหลังตอนสัญญาใหม่พ้น DRAFT).
+   * อนุมัติคำขอเปลี่ยนเครื่องแบบมีราคา (ทั้ง MEMO และ PRICED) — **ปิดใช้ 2026-10-06** (คำตัดสินเจ้าของ:
+   * ลูกค้าต้องปิดยอดสัญญาเดิมก่อนทำสัญญาผ่อนใหม่) → 410 ก่อนแตะ role/getCase/engine. คำขอที่ค้างรออนุมัติ
+   * ปิดได้ทางเดียวคือ `rejectPriced` (OWNER); ที่อนุมัติไปแล้วก่อนปิดยกเลิกผ่าน `cancelSwap` ตามเดิม.
+   * คงเมธอดไว้ให้ route `POST /after-sales/:id/approve` ได้ข้อความชี้ทาง ไม่ใช่ 404 เงียบ ๆ.
    */
-  async approvePriced(caseId: string, dto: ApproveExchangeRequestDto, user: ReqUser) {
-    this.assertMgr(user);
-    const c: ExchangeCase = await this.query.getCase(caseId, user);
-    const requestId = this.assertPricedCase(c);
-
-    const res = await this.contractExchange.approve(requestId, user, dto);
-
-    let note: string;
-    if (res.mode === 'MEMO') {
-      note = 'อนุมัติ · MEMO ลงผลแล้ว';
-    } else {
-      // res.newContractId is only null for MEMO — PRICED always creates a new contract, but
-      // read the contract number defensively (fall back to the raw id) rather than assume.
-      const newContract = res.newContractId
-        ? await this.prisma.contract.findUnique({
-            where: { id: res.newContractId, deletedAt: null },
-            select: { contractNumber: true },
-          })
-        : null;
-      const contractNumber = newContract?.contractNumber ?? res.newContractId ?? '';
-      note = `อนุมัติ · PRICED สัญญาใหม่ ${contractNumber} รอเปิดใช้`;
-    }
-
-    await this.reconcile(caseId);
-
-    const updated = await this.prisma.afterSalesCase.update({
-      where: { id: caseId },
-      data: {
-        approvedById: user.id,
-        approvedAt: new Date(),
-        events: { create: { kind: 'APPROVED', actorId: user.id, note } },
-      },
-    });
-
-    await this.audit.log({
-      userId: user.id,
-      action: 'AFTER_SALES_EXCHANGE_APPROVED',
-      entity: 'after_sales_case',
-      entityId: caseId,
-      newValue: { exchangeRequestId: requestId, mode: res.mode, newContractId: res.newContractId },
-    });
-
-    // Task 3 — MEMO ลงผลแล้ว = เคสจบ (CLOSED); PRICED ยังต้องเปิดใช้สัญญาใหม่ที่หน้าสัญญาก่อน
-    // เคสจึงยัง READY_FOR_PICKUP รอส่งมอบ (READY) — หลัง commit + audit เสมอ, fire-and-forget
-    void this.line
-      .notifyMoment(caseId, res.mode === 'MEMO' ? 'CLOSED' : 'READY', user.id)
-      .catch(() => undefined);
-
-    return updated;
+  async approvePriced(
+    _caseId: string,
+    _dto: ApproveExchangeRequestDto,
+    _user: ReqUser,
+  ): Promise<never> {
+    throw deviceSwapClosed();
   }
 
   /** ปฏิเสธคำขอเปลี่ยนเครื่องแบบมีราคา — OWNER เท่านั้น (ต่างจาก rejectSameModel ที่เป็น MGR) */
@@ -556,25 +514,11 @@ export class AfterSalesExchangeService {
   }
 
   /**
-   * ตัวเลข NCV/tier/plan ก่อนอนุมัติจริง — หาสัญญาจาก IMEI แล้วส่งต่อ engine ตรง ๆ (คืนผลเดิม
-   * ไม่แปลง). STAFF เท่านั้น (OWNER/BM/SALES) เพราะเห็นเลขการเงินของสัญญา.
+   * ตัวเลข NCV/tier/plan ก่อนอนุมัติจริง — **ปิดใช้ 2026-10-06** พร้อมเมนูเปลี่ยนเครื่องแบบมีราคา → 410
+   * ก่อนแตะ role/lookup/engine (ไม่มีอะไรให้ preview เมื่อยื่นคำขอใหม่ไม่ได้แล้ว).
    */
-  async preview(q: PreviewQuery, user: ReqUser) {
-    this.assertStaff(user);
-    const found = await this.lookup.lookup({ imei: q.imei }, user);
-    if (!found.contract) throw new BadRequestException('ไม่พบสัญญาผ่อนของเครื่องนี้');
-
-    return this.contractExchange.buildPreview(
-      {
-        oldContractId: found.contract.id,
-        newProductId: q.replacementProductId,
-        buybackPrice: q.buybackPrice,
-        deviceCondition: q.deviceCondition,
-        newTotalMonths: q.newTotalMonths,
-        newInterestRate: q.newInterestRate,
-      },
-      user,
-    );
+  async preview(_q: PreviewQuery, _user: ReqUser): Promise<never> {
+    throw deviceSwapClosed();
   }
 
   /**

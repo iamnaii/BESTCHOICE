@@ -1,4 +1,5 @@
 import type { AfterSalesOutcome, AfterSalesSource, WarrantyStatus } from '@prisma/client';
+import { DEVICE_SWAP_CLOSED_REASON } from '../../contract-exchange/device-swap-closed.policy';
 
 export interface OutcomeInput {
   source: AfterSalesSource;
@@ -123,45 +124,15 @@ export function computeOutcomes(i: OutcomeInput): OutcomeOption[] {
     };
   }
 
-  let priced: OutcomeOption;
-  if (i.contractStatus !== 'ACTIVE') {
-    priced = {
-      outcome: 'PRICED_EXCHANGE',
-      enabled: false,
-      implemented: false,
-      reason: 'สัญญาไม่ได้อยู่ในสถานะเปิดใช้',
-    };
-  } else if (i.warrantyStatus === 'IN_MANUFACTURER') {
-    priced = {
-      outcome: 'PRICED_EXCHANGE',
-      enabled: false,
-      implemented: false,
-      reason: 'อยู่ในประกันศูนย์ — ส่งเคลมก่อน',
-    };
-  } else if (within7 || managerUp) {
-    priced = {
-      outcome: 'PRICED_EXCHANGE',
-      enabled: true,
-      implemented: true,
-      note: 'มีขั้นอนุมัติตามราคารับซื้อ',
-    };
-  } else if (i.warrantyStatus === 'OUT_OF_WARRANTY') {
-    // R11: OUT_OF_WARRANTY gets its own disabled reason — distinct from the
-    // "still within a warranty window but past 7 days" (IN_SHOP_WARRANTY) case.
-    priced = {
-      outcome: 'PRICED_EXCHANGE',
-      enabled: false,
-      implemented: false,
-      reason: 'หมดประกันแล้ว — ผจก.สาขาหรือเจ้าของยื่นได้',
-    };
-  } else {
-    priced = {
-      outcome: 'PRICED_EXCHANGE',
-      enabled: false,
-      implemented: false,
-      reason: 'เกินกรอบ 7 วัน — ผจก.สาขาหรือเจ้าของยื่นได้',
-    };
-  }
+  // คำตัดสินเจ้าของ 2026-10-06 — เมนูเปลี่ยนเครื่องแบบมีราคา (device swap) ปิดทั้งหมด: คงไว้ในรายการ
+  // (enabled:false) เพื่อให้จอแสดงเหตุผลนโยบายใต้ปุ่มแทนที่จะหายไปเฉย ๆ · กติกาเดิม (ในกรอบ 7 วัน /
+  // ผจก. ยื่นได้ / ประกันศูนย์ / หมดประกัน) ตกไปทั้งชุด — ดู device-swap-closed.policy.ts
+  const priced: OutcomeOption = {
+    outcome: 'PRICED_EXCHANGE',
+    enabled: false,
+    implemented: false,
+    reason: DEVICE_SWAP_CLOSED_REASON,
+  };
   return [repair, sameModel, priced];
 }
 

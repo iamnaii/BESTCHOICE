@@ -10,6 +10,7 @@ import {
   type ListResponse,
   type LookupResult,
   type Summary,
+  DEVICE_SWAP_CLOSED_SHORT,
 } from './after-sales/after-sales';
 
 const auth = vi.hoisted(() => ({
@@ -479,7 +480,7 @@ describe('AfterSalesPage — Task 12: แท็บรออนุมัติ (A
     });
   }
 
-  it('(o) แท็บรออนุมัติ render ApprovalTable ไม่ใช่ CaseTable; กด "อนุมัติ" แถว MEMO → dialog checkbox → POST /approve; กด "ยืนยันเปลี่ยนเครื่อง" → navigate ?action=confirm', async () => {
+  it('(o) แท็บรออนุมัติ render ApprovalTable ไม่ใช่ CaseTable; แถว MEMO ไม่มี "อนุมัติ" (ปิดเมนู 2026-10-06) มีข้อความปิดใช้ ไม่มี POST /approve; กด "ยืนยันเปลี่ยนเครื่อง" → navigate ?action=confirm', async () => {
     auth.user = { id: 'u1', role: 'BRANCH_MANAGER', branchId: 'branch-1' };
     mockGet({
       list: listResponse({ data: [memoApprovalRow(), sameModelApprovalRow()], summary: summary() }),
@@ -496,19 +497,10 @@ describe('AfterSalesPage — Task 12: แท็บรออนุมัติ (A
     const table = screen.getByRole('table');
     const memoRow = within(table).getByText('AS-20260920-0010').closest('tr');
     if (!memoRow) throw new Error('memo row not found');
-    await userEvent.click(within(memoRow).getByRole('button', { name: 'อนุมัติ' }));
-
-    const dialog = await screen.findByRole('dialog');
-    await userEvent.click(within(dialog).getByRole('checkbox', { name: 'เซ็น ADDENDUM แล้ว' }));
-    await userEvent.click(within(dialog).getByRole('checkbox', { name: 'สลับ MDM แล้ว' }));
-    await userEvent.click(within(dialog).getByRole('button', { name: 'อนุมัติ' }));
-
-    await waitFor(() =>
-      expect(mocks.post).toHaveBeenCalledWith('/after-sales/case-memo/approve', {
-        memoAddendumSigned: true,
-        memoMdmSwapped: true,
-      }),
-    );
+    expect(within(memoRow).queryByRole('button', { name: 'อนุมัติ' })).not.toBeInTheDocument();
+    expect(within(memoRow).getByText(DEVICE_SWAP_CLOSED_SHORT)).toBeInTheDocument();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(mocks.post).not.toHaveBeenCalledWith('/after-sales/case-memo/approve', expect.anything());
 
     const swapRow = within(table).getByText('AS-20260920-0011').closest('tr');
     if (!swapRow) throw new Error('swap row not found');

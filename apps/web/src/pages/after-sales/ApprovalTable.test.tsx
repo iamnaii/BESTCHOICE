@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router';
 import ApprovalTable from './ApprovalTable';
-import type { CaseRow } from './after-sales';
+import { DEVICE_SWAP_CLOSED_SHORT, type CaseRow } from './after-sales';
 
 /** 3 แถวจากมockup C (task-12-brief §Step 1): PRICED REVIEW (ผจก.สาขาอนุมัติได้) ·
  * SAME_MODEL (MGR ยืนยัน/ปฏิเสธ) · PRICED ESCALATE (เจ้าของเท่านั้น) */
@@ -143,33 +143,38 @@ function rowByCase(caseNumber: string) {
 }
 
 describe('ApprovalTable — role matrix (task-12-brief Step 1)', () => {
-  it('BM: แถว 1 (PRICED REVIEW) "อนุมัติ" enabled, แถว 2 (SAME_MODEL) "ยืนยันเปลี่ยนเครื่อง", แถว 3 (PRICED ESCALATE) "อนุมัติ" disabled + "รอเจ้าของ"', () => {
+  it('BM (2026-10-06 ปิดเมนูเปลี่ยนแบบมีราคา): แถว PRICED ไม่มี "อนุมัติ"/"ปฏิเสธ" มีข้อความปิดใช้แทน · แถว 2 (SAME_MODEL) "ยืนยันเปลี่ยนเครื่อง"/"ปฏิเสธ" คงเดิม', () => {
     renderTable('BRANCH_MANAGER');
 
     const row1 = rowByCase('AS-20260924-0001');
-    expect(row1.getByRole('button', { name: 'อนุมัติ' })).not.toBeDisabled();
+    expect(row1.queryByRole('button', { name: 'อนุมัติ' })).not.toBeInTheDocument();
+    expect(row1.queryByRole('button', { name: 'ปฏิเสธ' })).not.toBeInTheDocument();
+    expect(row1.getByText(DEVICE_SWAP_CLOSED_SHORT)).toBeInTheDocument();
 
     const row2 = rowByCase('AS-20260924-0002');
     expect(row2.getByRole('button', { name: 'ยืนยันเปลี่ยนเครื่อง' })).toBeInTheDocument();
     expect(row2.getByRole('button', { name: 'ปฏิเสธ' })).toBeInTheDocument();
 
     const row3 = rowByCase('AS-20260924-0003');
-    expect(row3.getByRole('button', { name: 'อนุมัติ' })).toBeDisabled();
-    expect(row3.getByText('รอเจ้าของอนุมัติ')).toBeInTheDocument();
+    expect(row3.queryByRole('button', { name: 'อนุมัติ' })).not.toBeInTheDocument();
+    expect(row3.getByText(DEVICE_SWAP_CLOSED_SHORT)).toBeInTheDocument();
+    expect(row3.queryByText('รอเจ้าของอนุมัติ')).not.toBeInTheDocument();
   });
 
-  it('OWNER: ทุกปุ่ม enabled ทุกแถว', () => {
+  it('OWNER: แถว PRICED ไม่มี "อนุมัติ" (ปิดเมนู) แต่ยัง "ปฏิเสธ" ได้เพื่อปิดเคสที่ค้าง · แถว SAME_MODEL ครบเหมือนเดิม', () => {
     renderTable('OWNER');
 
     const row1 = rowByCase('AS-20260924-0001');
-    expect(row1.getByRole('button', { name: 'อนุมัติ' })).not.toBeDisabled();
+    expect(row1.queryByRole('button', { name: 'อนุมัติ' })).not.toBeInTheDocument();
+    expect(row1.getByRole('button', { name: 'ปฏิเสธ' })).not.toBeDisabled();
+    expect(row1.getByText(DEVICE_SWAP_CLOSED_SHORT)).toBeInTheDocument();
 
     const row2 = rowByCase('AS-20260924-0002');
     expect(row2.getByRole('button', { name: 'ยืนยันเปลี่ยนเครื่อง' })).not.toBeDisabled();
     expect(row2.getByRole('button', { name: 'ปฏิเสธ' })).not.toBeDisabled();
 
     const row3 = rowByCase('AS-20260924-0003');
-    expect(row3.getByRole('button', { name: 'อนุมัติ' })).not.toBeDisabled();
+    expect(row3.queryByRole('button', { name: 'อนุมัติ' })).not.toBeInTheDocument();
     expect(row3.getByRole('button', { name: 'ปฏิเสธ' })).not.toBeDisabled();
     expect(row3.queryByText('รอเจ้าของอนุมัติ')).not.toBeInTheDocument();
   });
@@ -220,7 +225,7 @@ describe('ApprovalTable — คอลัมน์ (mockup C)', () => {
     expect(row3.getByText(/ยังไม่เลือก/)).toBeInTheDocument();
   });
 
-  it('การกระทำเรียก onAction พร้อม row และ action ที่ถูกต้อง (confirm/approve/reject/open)', async () => {
+  it('การกระทำเรียก onAction พร้อม row และ action ที่ถูกต้อง (confirm/reject/open — ไม่มี approve ตั้งแต่ปิดเมนู)', async () => {
     const { onAction } = renderTable('OWNER');
     const row2 = rowByCase('AS-20260924-0002');
     row2.getByRole('button', { name: 'ยืนยันเปลี่ยนเครื่อง' }).click();
@@ -229,10 +234,11 @@ describe('ApprovalTable — คอลัมน์ (mockup C)', () => {
     expect(onAction).toHaveBeenCalledWith(expect.objectContaining({ id: 'case-2' }), 'reject');
 
     const row1 = rowByCase('AS-20260924-0001');
-    row1.getByRole('button', { name: 'อนุมัติ' }).click();
-    expect(onAction).toHaveBeenCalledWith(expect.objectContaining({ id: 'case-1' }), 'approve');
+    row1.getByRole('button', { name: 'ปฏิเสธ' }).click();
+    expect(onAction).toHaveBeenCalledWith(expect.objectContaining({ id: 'case-1' }), 'reject');
     row1.getByRole('button', { name: 'เปิดเคส' }).click();
     expect(onAction).toHaveBeenCalledWith(expect.objectContaining({ id: 'case-1' }), 'open');
+    expect(onAction).not.toHaveBeenCalledWith(expect.anything(), 'approve');
   });
 });
 

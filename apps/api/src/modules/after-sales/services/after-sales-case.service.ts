@@ -3,7 +3,6 @@ import {
   BadRequestException,
   ConflictException,
   ForbiddenException,
-  HttpException,
   Injectable,
   Optional,
 } from '@nestjs/common';
@@ -29,6 +28,7 @@ import { CreateCaseDto } from '../dto/create-case.dto';
 import { assertEvidenceImage, evidenceImageExtension } from '../../../utils/upload-image.util';
 import { hashLockKey } from '../../../utils/advisory-lock.util';
 import { hasCrossBranchAccess } from '../../auth/branch-access.util';
+import { deviceSwapClosed } from '../../contract-exchange/device-swap-closed.policy';
 
 type ReqUser = { id: string; role: string; branchId?: string | null };
 
@@ -104,6 +104,9 @@ export class AfterSalesCaseService {
   }
 
   async createCase(dto: CreateCaseDto, files: Express.Multer.File[], user: ReqUser) {
+    // คำตัดสินเจ้าของ 2026-10-06 — เมนูเปลี่ยนเครื่องแบบมีราคาปิดทั้งหมด: 410 ตั้งแต่บรรทัดแรก ก่อนแตะ
+    // สาขา/รูป/lookup/storage/tx/engine (DTO ยังรับค่า PRICED_EXCHANGE เพื่อให้ไคลเอนต์เก่าได้ข้อความชี้ทาง)
+    if (dto.outcome === 'PRICED_EXCHANGE') throw deviceSwapClosed();
     if (dto.serviceRequestId) {
       if (!this.chatLinks) throw new BadRequestException('ระบบเชื่อมใบรับเรื่องยังไม่พร้อม');
       const existing = await this.chatLinks.existingForCreation(dto.serviceRequestId, user);
@@ -146,13 +149,12 @@ export class AfterSalesCaseService {
     if (!outcome?.enabled)
       throw new BadRequestException(outcome?.reason ?? 'ทางออกนี้ทำไม่ได้กับเครื่องนี้');
 
-    // Task 4 — เปิดทางออกเปลี่ยนเครื่องตอนแจ้งปัญหา (SAME_MODEL_EXCHANGE / PRICED_EXCHANGE)
+    // Task 4 — เปิดทางออกเปลี่ยนเครื่องตอนแจ้งปัญหา (SAME_MODEL_EXCHANGE — PRICED_EXCHANGE ถูกปิด 410 ด้านบน)
     const isSameModel = dto.outcome === 'SAME_MODEL_EXCHANGE';
-    const isPriced = dto.outcome === 'PRICED_EXCHANGE';
-    if ((isSameModel || isPriced) && !dto.replacementProductId) {
+    if (isSameModel && !dto.replacementProductId) {
       throw new BadRequestException('ต้องเลือกเครื่องทดแทนจากสต๊อก');
     }
-    if ((isSameModel || isPriced) && !look.contract) {
+    if (isSameModel && !look.contract) {
       throw new BadRequestException('ทางออกนี้ใช้ได้กับสัญญาผ่อนเท่านั้น');
     }
     // R28 — ข้อมูลเครื่องทดแทน (สำหรับข้อความ event OUTCOME_SET ของ (a)) ต้องมาจากการค้นจริง
@@ -339,10 +341,9 @@ export class AfterSalesCaseService {
           return repairResult;
         }
 
-        // กิ่งเปลี่ยนเครื่อง (SAME_MODEL_EXCHANGE / PRICED_EXCHANGE) — ไม่เรียก repair.createInTx
-        // events: RECEIVED เสมอ + OUTCOME_SET เฉพาะ SAME_MODEL (ข้อความ (a)) — PRICED_EXCHANGE
-        // ยังไม่รู้ mode/tier ตอนนี้ (ต้องรอ contractExchange.submit หลัง tx commit) จึงเติม
-        // OUTCOME_SET ของมันทีหลังผ่าน update() แทน (ดู (d))
+        // กิ่งเปลี่ยนเครื่อง (SAME_MODEL_EXCHANGE) — ไม่เรียก repair.createInTx
+        // events: RECEIVED เสมอ + OUTCOME_SET (ข้อความ (a)) · PRICED_EXCHANGE ปิด 410 ตั้งแต่ต้นเมธอด
+        // (2026-10-06) จึงไม่มีกิ่ง submit หลัง commit อีกต่อไป
         const exchangeEvents = isSameModel
           ? [
               receivedEvent,
@@ -405,96 +406,6 @@ export class AfterSalesCaseService {
       return result;
     }
 
-    // Task 4 — PRICED_EXCHANGE: ยื่นคำขอเปลี่ยนเครื่องแบบมีราคาหลัง tx commit (นอก try/catch ของรูป
-    // ด้านบน — Review Focus 3). ทำไม compensation ไม่ใช่ tx เดียว: contractExchange.submit() เปิด
-    // $transaction ของตัวเองและมี preview/ราคากลางภายใน ไม่แตะ engine ตามข้อจำกัด · เคสที่ถูกยกเลิก
-    // ยังอยู่เป็นประวัติ (IMEI เปิดใหม่ได้เพราะ stage CANCELLED) รูปที่อัปโหลดไปแล้วไม่ถูกลบ
-    if (isPriced) {
-      // R30 (fix round 1, Important — ruling P-G) — เฉพาะ submit() เท่านั้นที่อยู่ใน try/catch
-      // ของ compensation นี้: ถ้า submit() เองล้มเหลว คำขอเปลี่ยนเครื่องไม่เคยถูกสร้างขึ้นจริง
-      // จึงยกเลิกเคสเป็น CANCELLED ได้อย่างปลอดภัย. แต่ถ้า submit() สำเร็จแล้ว (คำขอถูกสร้างจริง
-      // ในอีก $transaction หนึ่ง) การ update ที่ตามมาเป็นเพียงการ "เชื่อมโยง" exchangeRequestId
-      // กลับมาไว้บนเคส — ถ้า update นี้พังทีหลัง ต้องปล่อยให้ error หลุดออกไปตามจริง (เคสค้างที่
-      // AWAITING_APPROVAL) ไม่ใช่ไปยกเลิกเคสเป็น CANCELLED เพราะคำขอที่สร้างไปแล้วจะกลายเป็น
-      // คำขอกำพร้า (ไม่มีเคสไหนอ้างถึง) ในขณะที่ข้อความบอกผู้ใช้ว่า "ยื่นคำขอไม่สำเร็จ" ซึ่งไม่จริง
-      let req: { id: string; mode: string; approvalTier: string | null };
-      try {
-        req = await this.contractExchange.submit(
-          {
-            oldContractId: look.contract!.id,
-            oldProductId: look.product!.id,
-            newProductId: dto.replacementProductId!,
-            conditionNote: dto.conditionNote ?? dto.symptom,
-            buybackPrice: dto.buybackPrice,
-            deviceCondition: dto.deviceCondition,
-            newTotalMonths: dto.newTotalMonths,
-            newInterestRate: dto.newInterestRate,
-          },
-          user,
-        );
-      } catch (err) {
-        const reason = `ยื่นคำขอไม่สำเร็จ: ${
-          err instanceof HttpException
-            ? ((err.getResponse() as any)?.message ?? err.message)
-            : 'ระบบขัดข้อง'
-        }`;
-        await this.prisma.afterSalesCase.update({
-          where: { id: result.id },
-          data: {
-            stage: 'CANCELLED',
-            cancelledAt: new Date(),
-            cancelReason: reason,
-            events: { create: { kind: 'CANCELLED', actorId: user.id, note: reason } },
-          },
-        });
-        throw err;
-      }
-
-      // เชื่อมโยง exchangeRequestId กลับมาไว้บนเคส — อยู่นอก try/catch ด้านบนโดยตั้งใจ (ดูคอมเมนต์)
-      await this.prisma.afterSalesCase.update({
-        where: { id: result.id },
-        data: {
-          exchangeRequestId: req.id,
-          events: {
-            create: {
-              kind: 'OUTCOME_SET',
-              actorId: user.id,
-              note: `เปลี่ยนแบบมีราคา · ${req.mode} · tier ${req.approvalTier ?? '-'}`,
-            },
-          },
-        },
-      });
-      result = { ...result, exchangeRequestId: req.id };
-
-      // M13 — tier AUTO: submit() อนุมัติคำขอให้ในตัว ⇒ ตอนนี้คำขออาจ APPROVED แล้ว — reconcile ทันที
-      // (คืน stage จริงให้ผู้เรียก ไม่ใช่ AWAITING_APPROVAL ที่เพิ่งเขียน) และบันทึกผู้อนุมัติ/event
-      // APPROVED ให้ไทม์ไลน์ตรงกับที่เกิดขึ้นจริง (ผู้ยื่นคือผู้ที่ทำให้อนุมัติอัตโนมัติ)
-      const linked = await this.prisma.afterSalesCase.findFirst({
-        where: { id: result.id, deletedAt: null },
-        select: RECONCILE_SELECT,
-      });
-      if (linked) {
-        const reconciled = await reconcileStage(this.prisma, linked);
-        if (linked.exchangeRequest?.status === 'APPROVED') {
-          await this.prisma.afterSalesCase.update({
-            where: { id: result.id },
-            data: {
-              approvedAt: new Date(),
-              approvedById: user.id,
-              events: {
-                create: {
-                  kind: 'APPROVED',
-                  actorId: user.id,
-                  note: `อนุมัติอัตโนมัติ (AUTO) · ${linked.exchangeRequest.mode}`,
-                },
-              },
-            },
-          });
-        }
-        result = { ...result, stage: reconciled.stage };
-      }
-    }
-
     // R13 — audit.log อยู่นอก try/catch: ถ้ามันเองพังหลัง tx commit แล้ว ต้องไม่ไปลบรูปของ
     // เคสที่บันทึกสำเร็จแล้ว (catch ด้านบนมีไว้กัน storage/tx เท่านั้น)
     await this.audit.log({
@@ -510,9 +421,8 @@ export class AfterSalesCaseService {
       },
     });
 
-    // Task 3 — จังหวะ 1 (RECEIVED): หลัง commit + audit เสมอ — ทุก outcome รวม PRICED_EXCHANGE
-    // (ถึงจุดนี้ได้ก็ต่อเมื่อ submit()/compensation สำเร็จแล้วเท่านั้น — เคสที่ถูก CANCELLED เพราะ
-    // submit ล้มจะ throw ก่อนถึงบรรทัดนี้เสมอ จึงไม่ส่ง). fire-and-forget: LINE ล้มต้องไม่ทำให้
+    // Task 3 — จังหวะ 1 (RECEIVED): หลัง commit + audit เสมอ — ทุก outcome (PRICED_EXCHANGE ไม่ถึงจุดนี้
+    // อีกแล้ว — ปิด 410 ตั้งแต่ต้นเมธอด). fire-and-forget: LINE ล้มต้องไม่ทำให้
     // การบันทึกล้ม (Global Constraints) — `.catch` เป็นเข็มขัดคู่กับ notifyMoment เองที่ไม่ throw.
     // final fix I-3 — tier AUTO: submit() อนุมัติในตัว ⇒ result.stage (ที่ reconcile แล้วด้านบน — ทางออก
     // อื่นเขียน stage ตรงตอนสร้าง: REPAIR = RECEIVED, SAME_MODEL = AWAITING_APPROVAL) อาจเป็น

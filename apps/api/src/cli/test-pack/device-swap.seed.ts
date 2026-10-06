@@ -5,6 +5,10 @@ import type { CleanupStat, DomainSeeder, PlanRow, SeedContext, SeedStat } from '
  * คำขอเปลี่ยนเครื่อง 1 ใบ สถานะรออนุมัติ
  * R2 — ห้าม finalize (finalize โพสต์ JE ชุด A.1-A.5 + SHOP leg)
  *
+ * ⚠ 2026-10-06 — เมนูเปลี่ยนเครื่องแบบมีราคาปิดใช้แล้ว (device-swap-closed.policy.ts): ยื่น/preview/อนุมัติ = 410.
+ * seed นี้เขียนแถวตรงผ่าน prisma (ไม่ผ่าน submit) จึงยังสร้างได้ และใช้ทดสอบเส้นทางที่ยังเปิดอยู่เท่านั้น —
+ * ปฏิเสธ (OWNER) · รายการ pending/recent · หน้าจอต้องไม่มีปุ่ม "อนุมัติ". ย่อหน้าถัดไปเรื่อง approvePriced เป็นประวัติ.
+ *
  * ใบที่ seed ไม่ระบุ mode ⇒ default PRICED โดยไม่มี snapshot แผนผ่อน — ตรงกับรูป
  * "legacy in-flight PENDING" ที่ approvePriced รองรับอยู่แล้ว (`usedSnapshot =
  * req.newTotalMonths != null` เป็น false ⇒ clone งวดคงเหลือจากสัญญาเดิม) จึงกดอนุมัติ

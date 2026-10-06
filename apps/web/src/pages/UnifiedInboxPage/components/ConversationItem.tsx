@@ -189,6 +189,7 @@ function ConversationItem({ session, isActive, onSelect, onPin, aiSettings }: Co
       )}
       onClick={() => onSelect(session.id)}
       onKeyDown={(e) => {
+        if (e.target !== e.currentTarget) return;
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault();
           onSelect(session.id);
@@ -215,124 +216,129 @@ function ConversationItem({ session, isActive, onSelect, onPin, aiSettings }: Co
         </div>
 
         <p className="mt-1 text-[11px] text-muted-foreground">{CHANNEL_CONFIG[session.channel]?.text ?? session.channel}</p>
-        {/* Last message preview */}
-        <div className="inbox-room-preview flex items-center justify-between gap-2 mt-2">
-          <p className={cn(
-            'text-[13px] truncate',
-            hasUnread ? 'text-foreground/90' : 'text-muted-foreground',
-          )}>
-            {lastMessage?.role === 'STAFF' && <span className="text-primary font-medium">คุณ: </span>}
-            {lastMessage?.role === 'BOT' && <span className="text-muted-foreground font-medium">Bot: </span>}
-            {lastMessage ? formatMessagePreview(lastMessage.text) : <span className="italic text-muted-foreground">ยังไม่มีข้อความ</span>}
-          </p>
-          {hasUnread && (
-            <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-primary text-primary-foreground text-[10px] font-bold leading-snug flex-shrink-0">
-              {unreadCount > 99 ? '99+' : unreadCount}
-            </span>
-          )}
-        </div>
+        <div className="inbox-room-details flex items-start gap-2 mt-2">
+          <div className="flex-1 min-w-0">
+            {/* Last message preview */}
+            <div className="inbox-room-preview flex items-center justify-between gap-2">
+              <p className={cn(
+                'text-[13px] truncate',
+                hasUnread ? 'text-foreground/90' : 'text-muted-foreground',
+              )}>
+                {lastMessage?.role === 'STAFF' && <span className="text-primary font-medium">คุณ: </span>}
+                {lastMessage?.role === 'BOT' && <span className="text-muted-foreground font-medium">Bot: </span>}
+                {lastMessage ? formatMessagePreview(lastMessage.text) : <span className="italic text-muted-foreground">ยังไม่มีข้อความ</span>}
+              </p>
+              {hasUnread && (
+                <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-primary text-primary-foreground text-[10px] font-bold leading-snug flex-shrink-0">
+                  {unreadCount > 99 ? '99+' : unreadCount}
+                </span>
+              )}
+            </div>
 
-        {/* Tags + priority + assigned + AI status */}
-        {(session.resolvedAt ||
-          session.todos?.length ||
-          session.waitingSince ||
-          session.tags?.length ||
-          (session.priority && session.priority !== 'NORMAL' && session.priority !== 'LOW') ||
-          session.assignedTo ||
-          aiPaused ||
-          handoffMode ||
-          (aiAutoEnabled && enabledChannels.includes(session.channel))) && (
-          <div className="inbox-room-meta flex items-center gap-1.5 mt-2 overflow-hidden whitespace-nowrap">
-            {/* ป้ายไม่เกิน 2 ใบ ที่เหลือยุบเป็น +N (สเปก §7 แก้ไข 2026-09-05) — ลำดับล็อกไว้:
-                ป้ายหน้าต่าง (เหลือ N / หมดเวลาตอบ / รอ N) → ด่วน → ค้างชำระ → สถานะบอท
-                ป้ายหน้าต่างมาก่อนเสมอ เพราะเป็นใบเดียวที่แปลว่า "ทำงานต่อไม่ได้" · ของเดิมห้าใบเต็ม 235/235px แบบ nowrap */}
-            {(() => {
-              const pills: ReactNode[] = [];
-              if (session.resolvedAt) {
-                pills.push(<Badge key="closed" variant="secondary" appearance="light" className="text-[10px] px-1.5 py-0 h-5 leading-snug text-muted-foreground">ปิดแล้ว</Badge>);
-              }
-              if (session.waitingSince) {
-                const w = fbWindowFor(session);
-                if (session.channel === 'FACEBOOK' && !session.lastCustomerAt) {
-                  // ยังไม่มีค่า (ก่อน CLI เติม) — เซิร์ฟเวอร์จัดห้องนี้ไว้ใน "ตอบไม่ทัน" ป้ายห้ามพูด "รอ N" สวนกับกองที่มันอยู่
-                  pills.push(<Badge key="win" variant="secondary" appearance="light" className="text-[10px] px-1.5 py-0 h-5 leading-snug text-muted-foreground">ไม่ทราบเวลา</Badge>);
-                } else if (w === 'closed') {
-                  pills.push(<Badge key="win" variant="secondary" appearance="light" className="text-[10px] px-1.5 py-0 h-5 leading-snug text-muted-foreground">หมดเวลาตอบ</Badge>);
-                } else if (w === 'closing') {
-                  pills.push(<Badge key="win" variant="warning" appearance="light" className="text-[10px] px-1.5 py-0 h-5 leading-snug">เหลือ {fbWindowLeftText(session.lastCustomerAt)}</Badge>);
-                } else {
-                  pills.push(<Badge key="win" variant="destructive" appearance="light" className="text-[10px] px-1.5 py-0 h-5 leading-snug">รอ {formatWaitDuration(session.waitingSince)}</Badge>);
-                }
-              }
-              const appt = apptState(nextAppointment(session.todos)?.dueDate);
-              if (appt) {
-                pills.push(
-                  <Badge key="appt" variant={appt.tone === 'danger' ? 'destructive' : appt.tone === 'warn' ? 'warning' : 'secondary'} appearance="light" className="text-[10px] px-1.5 py-0 h-5 leading-snug inline-flex items-center gap-1">
-                    <CalendarClock className="size-3" />{appt.label}
-                  </Badge>,
-                );
-              }
-              if (session.priority && session.priority !== 'NORMAL' && session.priority !== 'LOW') {
-                const cfg = getStatusBadgeProps(session.priority, sessionPriorityMap);
-                // แผนที่กลางยังเป็น "HIGH"/"CRITICAL" — ในแถวรายชื่อพูดไทยเหมือนป้ายใบอื่น
-                const label = session.priority === 'CRITICAL' ? 'ด่วนมาก' : session.priority === 'HIGH' ? 'ด่วน' : cfg.label;
-                pills.push(<Badge key="pri" variant={cfg.variant} appearance={cfg.appearance} className="text-[10px] px-1.5 py-0 h-5">{label}</Badge>);
-              }
-              if (session.tags?.some((t: { tag: string }) => t.tag === 'overdue')) {
-                pills.push(<Badge key="tag" variant="destructive" appearance="light" className="text-[10px] px-1.5 py-0 h-5">ค้างชำระ</Badge>);
-              }
-              const ai = (
-                <AiStatusBadge
-                  key="ai"
-                  aiAutoEnabled={aiAutoEnabled}
-                  channel={session.channel}
-                  enabledChannels={enabledChannels}
-                  aiPaused={aiPaused}
-                  handoffMode={handoffMode}
-                />
-              );
-              if (aiPaused || handoffMode || (aiAutoEnabled && enabledChannels.includes(session.channel))) pills.push(ai);
-              const shown = pills.slice(0, MAX_ROW_PILLS);
-              const hidden = pills.length - shown.length;
-              return (
-                <>
-                  {shown}
-                  {hidden > 0 && (
-                    <span className="inline-flex h-5 items-center rounded-full border border-border/60 px-1.5 text-[10px] leading-none text-muted-foreground tabular-nums" title={`อีก ${hidden} ป้าย`}>
-                      +{hidden}
-                    </span>
-                  )}
-                </>
-              );
-            })()}
-            {session.assignedTo && (
-              <span className="text-[11px] text-muted-foreground ml-auto truncate max-w-[80px]">
-                {session.assignedTo.name}
-              </span>
+            {/* Tags + priority + assigned + AI status */}
+            {(session.resolvedAt ||
+              session.todos?.length ||
+              session.waitingSince ||
+              session.tags?.length ||
+              (session.priority && session.priority !== 'NORMAL' && session.priority !== 'LOW') ||
+              session.assignedTo ||
+              aiPaused ||
+              handoffMode ||
+              (aiAutoEnabled && enabledChannels.includes(session.channel))) && (
+              <div className="inbox-room-meta flex items-center gap-1.5 mt-2 overflow-hidden whitespace-nowrap">
+                {/* ป้ายไม่เกิน 2 ใบ ที่เหลือยุบเป็น +N (สเปก §7 แก้ไข 2026-09-05) — ลำดับล็อกไว้:
+                    ป้ายหน้าต่าง (เหลือ N / หมดเวลาตอบ / รอ N) → ด่วน → ค้างชำระ → สถานะบอท
+                    ป้ายหน้าต่างมาก่อนเสมอ เพราะเป็นใบเดียวที่แปลว่า "ทำงานต่อไม่ได้" · ของเดิมห้าใบเต็ม 235/235px แบบ nowrap */}
+                {(() => {
+                  const pills: ReactNode[] = [];
+                  if (session.resolvedAt) {
+                    pills.push(<Badge key="closed" variant="secondary" appearance="light" className="text-[10px] px-1.5 py-0 h-5 leading-snug text-muted-foreground">ปิดแล้ว</Badge>);
+                  }
+                  if (session.waitingSince) {
+                    const w = fbWindowFor(session);
+                    if (session.channel === 'FACEBOOK' && !session.lastCustomerAt) {
+                      // ยังไม่มีค่า (ก่อน CLI เติม) — เซิร์ฟเวอร์จัดห้องนี้ไว้ใน "ตอบไม่ทัน" ป้ายห้ามพูด "รอ N" สวนกับกองที่มันอยู่
+                      pills.push(<Badge key="win" variant="secondary" appearance="light" className="text-[10px] px-1.5 py-0 h-5 leading-snug text-muted-foreground">ไม่ทราบเวลา</Badge>);
+                    } else if (w === 'closed') {
+                      pills.push(<Badge key="win" variant="secondary" appearance="light" className="text-[10px] px-1.5 py-0 h-5 leading-snug text-muted-foreground">หมดเวลาตอบ</Badge>);
+                    } else if (w === 'closing') {
+                      pills.push(<Badge key="win" variant="warning" appearance="light" className="text-[10px] px-1.5 py-0 h-5 leading-snug">เหลือ {fbWindowLeftText(session.lastCustomerAt)}</Badge>);
+                    } else {
+                      pills.push(<Badge key="win" variant="destructive" appearance="light" className="text-[10px] px-1.5 py-0 h-5 leading-snug">รอ {formatWaitDuration(session.waitingSince)}</Badge>);
+                    }
+                  }
+                  const appt = apptState(nextAppointment(session.todos)?.dueDate);
+                  if (appt) {
+                    pills.push(
+                      <Badge key="appt" variant={appt.tone === 'danger' ? 'destructive' : appt.tone === 'warn' ? 'warning' : 'secondary'} appearance="light" className="text-[10px] px-1.5 py-0 h-5 leading-snug inline-flex items-center gap-1">
+                        <CalendarClock className="size-3" />{appt.label}
+                      </Badge>,
+                    );
+                  }
+                  if (session.priority && session.priority !== 'NORMAL' && session.priority !== 'LOW') {
+                    const cfg = getStatusBadgeProps(session.priority, sessionPriorityMap);
+                    // แผนที่กลางยังเป็น "HIGH"/"CRITICAL" — ในแถวรายชื่อพูดไทยเหมือนป้ายใบอื่น
+                    const label = session.priority === 'CRITICAL' ? 'ด่วนมาก' : session.priority === 'HIGH' ? 'ด่วน' : cfg.label;
+                    pills.push(<Badge key="pri" variant={cfg.variant} appearance={cfg.appearance} className="text-[10px] px-1.5 py-0 h-5">{label}</Badge>);
+                  }
+                  if (session.tags?.some((t: { tag: string }) => t.tag === 'overdue')) {
+                    pills.push(<Badge key="tag" variant="destructive" appearance="light" className="text-[10px] px-1.5 py-0 h-5">ค้างชำระ</Badge>);
+                  }
+                  const ai = (
+                    <AiStatusBadge
+                      key="ai"
+                      aiAutoEnabled={aiAutoEnabled}
+                      channel={session.channel}
+                      enabledChannels={enabledChannels}
+                      aiPaused={aiPaused}
+                      handoffMode={handoffMode}
+                    />
+                  );
+                  if (aiPaused || handoffMode || (aiAutoEnabled && enabledChannels.includes(session.channel))) pills.push(ai);
+                  const shown = pills.slice(0, MAX_ROW_PILLS);
+                  const hidden = pills.length - shown.length;
+                  return (
+                    <>
+                      {shown}
+                      {hidden > 0 && (
+                        <span className="inline-flex h-5 items-center rounded-full border border-border/60 px-1.5 text-[10px] leading-none text-muted-foreground tabular-nums" title={`อีก ${hidden} ป้าย`}>
+                          +{hidden}
+                        </span>
+                      )}
+                    </>
+                  );
+                })()}
+                {session.assignedTo && (
+                  <span className="text-[11px] text-muted-foreground ml-auto truncate max-w-[80px]">
+                    {session.assignedTo.name}
+                  </span>
+                )}
+              </div>
             )}
           </div>
-        )}
-      </div>
-
-      {/* Hover pin button */}
-      {onPin && (
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            onPin(session.id, isPinned);
-          }}
-          className={cn(
-            'absolute right-2 top-2 p-1 min-h-11 min-w-11 inline-flex items-center justify-center rounded-md transition-all',
-            isPinned
-              ? 'text-warning-strong opacity-100'
-              : 'text-muted-foreground opacity-0 group-hover:opacity-100 [@media(hover:none)]:opacity-100 hover:text-warning-strong hover:bg-muted',
+          {/* Reserve a separate column so the pin never covers unread/status badges. */}
+          {onPin && (
+            <button
+              type="button"
+              aria-pressed={isPinned}
+              onClick={(e) => {
+                e.stopPropagation();
+                onPin(session.id, isPinned);
+              }}
+              className={cn(
+                'shrink-0 p-1 size-11 inline-flex items-center justify-center rounded-md transition-colors focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary',
+                isPinned
+                  ? 'text-warning-strong opacity-100'
+                  : 'text-muted-foreground opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100 hover:text-warning-strong hover:bg-muted',
+              )}
+              title={isPinned ? 'ถอดหมุด' : 'ปักหมุด'}
+              aria-label={isPinned ? 'ถอดหมุด' : 'ปักหมุด'}
+            >
+              <Pin className="w-3 h-3" aria-hidden="true" />
+            </button>
           )}
-          title={isPinned ? 'ถอดหมุด' : 'ปักหมุด'}
-          aria-label={isPinned ? 'ถอดหมุด' : 'ปักหมุด'}
-        >
-          <Pin className="w-3 h-3" />
-        </button>
-      )}
+        </div>
+      </div>
     </div>
   );
 }

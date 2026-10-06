@@ -1,10 +1,12 @@
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import { expect } from '@playwright/test';
+import { checkConversationPins } from './check-local-conversation-pins.mjs';
 
 // Visual contract from docs/prototypes/chat-operations V2.4. Feature switches
 // may hide functionality, but must not revert the actual production page shell.
 export async function checkInboxDesign(browser, origin, output) {
+  await checkConversationPins(browser, origin, output);
   const info = await (await fetch(new URL('/api/admin/preview/info', origin))).json();
   assert.equal(info.isolated, true);
   const response = await fetch(new URL('/api/admin/preview/fixture', origin), { method: 'POST' });

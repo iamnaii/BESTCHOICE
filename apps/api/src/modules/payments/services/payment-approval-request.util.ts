@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { hasCrossBranchAccess } from '../../auth/branch-access.util';
+import { assertNoAdvanceExcessIncome } from '../../journal/advance-excess-income.util';
 import {
   getPaymentApprovalPermissions,
   type PaymentApprovalPermission,
@@ -50,6 +51,8 @@ export async function paymentApprovalSnapshot(
     const receipt = await tx.receipt.findFirst({ where: { id: targetId, deletedAt: null } });
     if (!receipt || receipt.isVoided) throw new BadRequestException('ไม่พบใบเสร็จที่กลับรายการได้');
     contractId = receipt.contractId;
+    // PR4 ต6ข: ด่านเดียวกับ ReceiptVoidService — ปฏิเสธตั้งแต่สร้างคำขอ ไม่ให้เข้าคิวแล้วไปตกตอนอนุมัติ
+    await assertNoAdvanceExcessIncome(tx, contractId);
   } else if (action !== 'EARLY_PAYOFF') {
     const payment = await tx.payment.findFirst({ where: { id: targetId, deletedAt: null } });
     if (!payment) throw new NotFoundException('ไม่พบงวดชำระ');

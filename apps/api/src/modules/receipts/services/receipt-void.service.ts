@@ -12,6 +12,7 @@ import {
   type AccrualVoidResult,
 } from '../../journal/cpa-templates/receipt-void-reversal.template';
 import { emitDeferredWarnings, type DeferredWarning } from '../../journal/deferred-warning';
+import { assertNoAdvanceExcessIncome } from '../../journal/advance-excess-income.util';
 import { reconstructPriorCleared } from '../../journal/reconstruct-prior';
 import { ReceiptNumberService } from './receipt-number.service';
 import { INSTALLMENT_MONEY_RECEIPT_TYPES } from '../receipt-types.constants';
@@ -295,6 +296,11 @@ export class ReceiptVoidService {
             `สัญญานี้อยู่ในสถานะปิดแล้ว (${contract.status}) — การยกเลิกใบเสร็จจะทำให้สถานะสัญญาและกรรมสิทธิ์สินค้าไม่สอดคล้อง กรุณาใช้ระบบคืนเงิน (Refund) หรือติดต่อผู้ดูแลระบบ`,
           );
         }
+        // PR4 ต6ข: สัญญาที่รอบกวาดลงรายได้เงินพักส่วนเกิน (42-1106) แล้ว — สัญญาที่ผ่อนครบทางรอบกลางคืนไม่ถูก flip
+        // COMPLETED จึงไม่ติดด่านสถานะข้างบน (ผลตรวจ I4) · void จะคืน 21-1103/คอลัมน์ขณะที่เงินอยู่ใน 42-1106 และ
+        // idempotency กันรายการที่สอง ⇒ ปฏิเสธจนกว่าฝ่ายบัญชีจะกลับรายการ (ด่านเดียวกันซ้ำที่จุดสร้างคำขอ —
+        // paymentApprovalSnapshot — เพื่อไม่ให้คำขอเข้าคิวแล้วมาตกที่นี่)
+        await assertNoAdvanceExcessIncome(tx, receipt.contractId);
 
         // Generate credit note number inside transaction (uses FOR UPDATE lock)
         const creditNoteNumber = await this.numbers.generateReceiptNumber(tx);

@@ -39,12 +39,26 @@ export interface SupplierPaymentPosition {
   payableOutstanding: Decimal;
   /** เงินที่จ่ายจริง (ไม่นับแถวที่ยกเลิก): มัดจำ + ชำระ − มัดจำที่ได้คืน */
   paidTotal: Decimal;
-  /** ยอดสุทธิ − paidTotal (ไม่ติดลบ) = เพดานที่ยังจ่ายได้ */
+  /**
+   * เพดานเงินที่จ่ายได้ทั้งใบ — ปกติ = ยอดสุทธิของใบ · ใบที่ "ปิดใบ รับไม่ครบ" (CLOSED_SHORT) = มูลค่าของที่รับจริงตามบัญชี
+   * (Σ Cr ของ S21-110x ที่ใบรับของตั้งไว้ — คำตัดสินเจ้าของ 2026-10-11: ยอดสุทธิของใบคงเดิม แต่จ่ายได้ไม่เกินของที่ได้รับ)
+   */
+  paymentCap: Decimal;
+  /** paymentCap − paidTotal (ไม่ติดลบ) = เพดานที่ยังจ่ายได้ */
   remainingOnPo: Decimal;
   /** เคยตั้งเจ้าหนี้ (รับของแล้วอย่างน้อยหนึ่งหน่วย) */
   hasBookedPayable: boolean;
   status: POPaymentStatus;
 }
+
+export interface SupplierPaymentPositionOptions {
+  /** true = เพดานจ่าย = มูลค่าของที่รับจริง (ใบ CLOSED_SHORT) แทนยอดสุทธิของใบ */
+  capToBooked?: boolean;
+}
+
+/** สถานะใบที่เพดานจ่ายเปลี่ยนจากยอดสุทธิเป็นมูลค่าของที่รับจริง */
+export const PO_STATUS_CLOSED_SHORT = 'CLOSED_SHORT';
+export const capsToBookedPayable = (status: string | null | undefined): boolean => status === PO_STATUS_CLOSED_SHORT;
 
 const ZERO = new Decimal(0);
 const dec = (value: DecimalLike | null | undefined) => new Decimal((value ?? 0).toString());
@@ -53,10 +67,12 @@ export function supplierPaymentPosition(
   netAmount: DecimalLike,
   rows: PaymentRowLike[],
   lines: LedgerLineLike[],
+  options: SupplierPaymentPositionOptions = {},
 ): SupplierPaymentPosition {
   const net = dec(netAmount);
   let deposit = ZERO;
   const payable: Record<string, Decimal> = {};
+  let bookedPayableGross = ZERO;
   let hasBookedPayable = false;
   for (const line of lines) {
     const dr = dec(line.debit);
@@ -65,7 +81,10 @@ export function supplierPaymentPosition(
       deposit = deposit.add(dr).sub(cr);
     } else if (SUPPLIER_PAYABLE_ACCOUNTS.includes(line.accountCode)) {
       payable[line.accountCode] = (payable[line.accountCode] ?? ZERO).add(cr).sub(dr);
-      if (cr.gt(ZERO)) hasBookedPayable = true;
+      if (cr.gt(ZERO)) {
+        hasBookedPayable = true;
+        bookedPayableGross = bookedPayableGross.add(cr);
+      }
     }
   }
   const payableByAccount: Record<string, Decimal> = {};
@@ -84,10 +103,12 @@ export function supplierPaymentPosition(
     else if (row.kind === 'DEPOSIT_REFUND') paidTotal = paidTotal.sub(amount);
   }
   if (paidTotal.lt(ZERO)) paidTotal = ZERO;
-  const remainingOnPo = Decimal.max(net.sub(paidTotal), ZERO);
+  // ใบปิดรับไม่ครบ: ของที่ไม่มาไม่มีวันตั้งเจ้าหนี้ — เพดานจึงเท่ามูลค่าที่ลงบัญชีรับเข้าแล้ว (หน่วยที่ยังรอถ่ายรูปจะเพิ่มเพดานเมื่อผ่านเข้าคลัง)
+  const paymentCap = options.capToBooked ? bookedPayableGross : net;
+  const remainingOnPo = Decimal.max(paymentCap.sub(paidTotal), ZERO);
   const status: POPaymentStatus = !paidTotal.gt(ZERO)
     ? 'UNPAID'
-    : net.gt(ZERO) && paidTotal.gte(net)
+    : paymentCap.gt(ZERO) && paidTotal.gte(paymentCap)
       ? 'FULLY_PAID'
       : hasBookedPayable
         ? 'PARTIALLY_PAID'
@@ -97,6 +118,7 @@ export function supplierPaymentPosition(
     payableByAccount,
     payableOutstanding,
     paidTotal,
+    paymentCap,
     remainingOnPo,
     hasBookedPayable,
     status,

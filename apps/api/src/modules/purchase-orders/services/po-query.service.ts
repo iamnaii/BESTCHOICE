@@ -15,7 +15,8 @@ const AP_OWED_WHERE: Prisma.PurchaseOrderWhereInput = {
   status: { notIn: ['CANCELLED', 'DRAFT'] },
   paymentStatus: { not: 'FULLY_PAID' },
   OR: [
-    { status: { in: ['PARTIALLY_RECEIVED', 'FULLY_RECEIVED'] } },
+    // ใบปิดรับไม่ครบ (CLOSED_SHORT) ยังเป็นเจ้าหนี้ของที่รับแล้ว — จนกว่าจะจ่ายถึงเพดาน (= ของที่รับจริง) แล้วเป็น FULLY_PAID
+    { status: { in: ['PARTIALLY_RECEIVED', 'FULLY_RECEIVED', 'CLOSED_SHORT'] } },
     { paidAmount: { gt: 0 } },
   ],
 };
@@ -49,6 +50,7 @@ export class PoQueryService {
           supplier: { select: { id: true, name: true, contactName: true, phone: true, hasVat: true } },
           createdBy: { select: { id: true, name: true } },
           approvedBy: { select: { id: true, name: true } },
+          closedBy: { select: { id: true, name: true } },
           items: true,
           _count: { select: { products: true } },
         },
@@ -69,6 +71,7 @@ export class PoQueryService {
         supplier: true,
         createdBy: { select: { id: true, name: true } },
         approvedBy: { select: { id: true, name: true } },
+        closedBy: { select: { id: true, name: true } },
         items: {
           include: {
             receivingItems: {

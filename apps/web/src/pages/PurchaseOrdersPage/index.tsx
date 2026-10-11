@@ -24,6 +24,7 @@ import { SupplierPaymentDialog, VoidSupplierPaymentDialog } from './components/S
 import TaxInvoiceDialog from './components/TaxInvoiceDialog';
 import type { GoodsReceivingRecord } from './types';
 import { CancelPODialog } from './components/CancelPODialog';
+import { ClosePOShortDialog } from './components/ClosePOShortDialog';
 import { GoodsReceivingModal } from './components/GoodsReceivingModal';
 import { PurchasingSummaryStrip } from './components/PurchasingSummaryStrip';
 import type { SummaryFilterAction } from './summaryStrip';
@@ -52,7 +53,10 @@ export default function PurchaseOrdersPage() {
   const canManagePO = user?.role === 'OWNER' || user?.role === 'BRANCH_MANAGER';
   const canApprovePO = user?.role === 'OWNER';
   const readOnly = !canManagePO;
-  const poPayments = usePoPayments(data.selectedPO?.id ?? null, data.isDetailModalOpen || data.isPaymentDialogOpen || !!data.cancelTarget);
+  const poPayments = usePoPayments(
+    data.selectedPO?.id ?? null,
+    data.isDetailModalOpen || data.isPaymentDialogOpen || !!data.cancelTarget || !!data.closeShortTarget,
+  );
   // แท็บเจ้าหนี้รายผู้จัดจำหน่าย (กระดาน 5) — ยอดจากสมุดบัญชี เลือกเดือน/ผู้จัดจำหน่ายได้
   const [ledgerMonth, setLedgerMonth] = useState(() => todayIso().slice(0, 7));
   const [ledgerSupplierId, setLedgerSupplierId] = useState<string | null>(null);
@@ -322,6 +326,7 @@ export default function PurchaseOrdersPage() {
           data.setVoidTarget(payment);
         }}
         onCancel={(po) => data.openCancelDialog(po)}
+        onCloseShort={(po) => data.openCloseShortDialog(po)}
         role={user?.role}
         readOnly={readOnly}
         onRecordTaxInvoice={(po, receiving) => {
@@ -367,6 +372,27 @@ export default function PurchaseOrdersPage() {
           data.cancelTarget &&
           data.cancelMutation.mutate(
             { id: data.cancelTarget.id, payload },
+            {
+              onSuccess: () => {
+                data.setIsDetailModalOpen(false);
+                data.setPODetail(null);
+              },
+            },
+          )
+        }
+      />
+
+      <ClosePOShortDialog
+        open={!!data.closeShortTarget}
+        po={data.closeShortTarget}
+        summary={poPayments.data?.summary ?? null}
+        summaryLoading={poPayments.isLoading}
+        pending={data.closeShortMutation.isPending}
+        onClose={() => data.setCloseShortTarget(null)}
+        onConfirm={(payload) =>
+          data.closeShortTarget &&
+          data.closeShortMutation.mutate(
+            { id: data.closeShortTarget.id, payload },
             {
               onSuccess: () => {
                 data.setIsDetailModalOpen(false);

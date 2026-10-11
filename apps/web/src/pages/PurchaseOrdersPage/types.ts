@@ -75,6 +75,10 @@ export interface PurchaseOrder {
   supplier: { id: string; name: string; contactName: string | null; phone: string; hasVat: boolean };
   createdBy: { id: string; name: string };
   approvedBy: { id: string; name: string } | null;
+  /** ปิดใบ รับไม่ครบ (CLOSED_SHORT — 2026-10-11): ใคร/เมื่อไร/ทำไม — null/ไม่มี = ไม่เคยปิดแบบนี้ */
+  closedAt?: string | null;
+  closedBy?: { id: string; name: string } | null;
+  closeReason?: string | null;
   items: POItem[];
   _count: { products: number };
 }
@@ -194,9 +198,11 @@ export type SupplierPaymentKind = 'DEPOSIT' | 'SETTLEMENT' | 'DEPOSIT_APPLIED' |
 
 export interface SupplierPaymentSummary {
   netAmount: string;
+  /** เพดานจ่ายทั้งใบ — = netAmount ปกติ · ใบปิดรับไม่ครบ = มูลค่าของที่รับจริงตามบัญชี (ไม่มี = API รุ่นก่อน ใช้ netAmount) */
+  paymentCap?: string;
   /** มัดจำ + ชำระ − มัดจำที่ได้คืน (ไม่นับรายการที่ยกเลิก) */
   paidTotal: string;
-  /** เพดานที่ยังจ่ายได้ = ยอดสุทธิ − paidTotal */
+  /** เพดานที่ยังจ่ายได้ = paymentCap − paidTotal */
   remainingOnPo: string;
   payableOutstanding: string;
   payableByAccount: Record<string, string>;
@@ -250,6 +256,16 @@ export interface CancelPOPayload {
   refundAmount?: number;
   slipUrl?: string;
   reason?: string;
+}
+
+/** ปิดใบ รับไม่ครบ — `POST /purchase-orders/:id/close-short` (เหตุผลบังคับ · มัดจำค้างส่งผลแบบเดียวกับยกเลิก) */
+export interface ClosePOShortPayload {
+  reason: string;
+  depositOutcome?: 'REFUNDED' | 'FORFEITED';
+  refundedAt?: string;
+  refundAmount?: number;
+  slipUrl?: string;
+  depositReason?: string;
 }
 
 // ───────────── เจ้าหนี้รายผู้จัดจำหน่ายจากสมุดบัญชี — `GET /purchase-orders/payables/ledger` ─────────────

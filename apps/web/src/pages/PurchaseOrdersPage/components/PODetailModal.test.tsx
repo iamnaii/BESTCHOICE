@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, within, fireEvent } from '@testing-library/react';
+import { render, screen, within, fireEvent, cleanup } from '@testing-library/react';
 import { MemoryRouter } from 'react-router';
 import { PODetailModal } from './PODetailModal';
 import type { PODetail, PurchaseOrder, PoPaymentsResponse } from '../types';
@@ -104,6 +104,43 @@ describe('PODetailModal (redesign A)', () => {
     fireEvent.click(screen.getAllByRole('button', { name: 'รับสินค้า' })[0]);
     expect(p.openReceiveModal).toHaveBeenCalledWith(expect.objectContaining({ id: 'po9' }));
     expect(document.querySelectorAll('button[type="submit"]')).toHaveLength(0);
+  });
+
+  // ปิดใบ รับไม่ครบ (2026-10-11): ปุ่มขึ้นเฉพาะใบรับบางส่วน · ใบที่ปิดแล้วมีแถบบอกเหตุผล/ผู้ปิด เพดานจ่าย = ของที่รับจริง ไม่มีปุ่มรับ/ยกเลิก/ปิดซ้ำ
+  it('ปิดใบ รับไม่ครบ: ปุ่มบนใบรับบางส่วน → onCloseShort · ใบที่ปิดแล้ว: แถบสถานะ + เพดานจ่ายจาก paymentCap + ไม่มีปุ่มรับ/ยกเลิก', () => {
+    const onCloseShort = vi.fn();
+    const partial = basePO({ id: 'po7', status: 'PARTIALLY_RECEIVED', items: [{ ...basePO().items[0], quantity: 5, receivedQty: 2 }] });
+    renderModal(partial, { onCancel: vi.fn(), onCloseShort });
+    fireEvent.click(screen.getByRole('button', { name: 'ปิดใบ รับไม่ครบ' }));
+    expect(onCloseShort).toHaveBeenCalledWith(expect.objectContaining({ id: 'po7' }));
+    expect(screen.queryByRole('button', { name: 'ยกเลิก PO' })).not.toBeInTheDocument();
+    cleanup();
+
+    const closed = basePO({
+      id: 'po8', status: 'CLOSED_SHORT', items: [{ ...basePO().items[0], quantity: 5, receivedQty: 2 }],
+      closedAt: '2026-10-11T04:20:00.000Z', closedBy: manager, closeReason: 'ของหมด ผู้ขายไม่ส่งที่เหลือ',
+    });
+    renderModal(closed, {
+      onCancel: vi.fn(),
+      onCloseShort,
+      paymentsData: {
+        summary: { netAmount: '10700.00', paymentCap: '4280.00', paidTotal: '1000.00', remainingOnPo: '3280.00', payableOutstanding: '3280.00', payableByAccount: { 'S21-1101': '3280.00' }, depositOutstanding: '0.00', hasBookedPayable: true, status: 'PARTIALLY_PAID' },
+        payments: [],
+        legacyPaidAmount: '0.00',
+      },
+    });
+    const banner = screen.getByRole('status');
+    expect(banner).toHaveTextContent('ปิดใบ รับไม่ครบ — รับ 2 / 5 ชิ้น · ไม่รับอีก 3 ชิ้น');
+    expect(banner).toHaveTextContent('ของหมด ผู้ขายไม่ส่งที่เหลือ');
+    expect(banner).toHaveTextContent(manager.name);
+    expect(screen.getByTestId('paid-progress').parentElement).toHaveTextContent('/ 4,280 บาท');
+    expect(screen.getByText('ของที่รับจริง − จ่ายแล้ว')).toBeInTheDocument();
+    expect(screen.getByText(/ปิดใบแล้ว รับไม่ครบ · ไม่รับอีก 3 ชิ้น/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'ปิดใบ รับไม่ครบ' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /รับสินค้า/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'ยกเลิก PO' })).not.toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: 'บันทึกการจ่าย' }).length).toBeGreaterThan(0); // ยังจ่ายค่าของที่รับแล้วได้
+    expect(screen.getAllByText('ปิดใบ รับไม่ครบ', { selector: 'span' }).length).toBeGreaterThanOrEqual(2); // ป้ายสถานะ + ประวัติ
   });
 
   it('a partially received PO with an accessory line: accessory row spans สภาพ/ความจุ/สี, QC tally shows, primary button counts what is left, GR appears in history with a print action', () => {

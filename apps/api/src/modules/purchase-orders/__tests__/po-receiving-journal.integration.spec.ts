@@ -613,7 +613,7 @@ describe('รับสินค้าเข้าลงบัญชี — flow 
     expect((await prisma.goodsReceivingItem.findUnique({ where: { productId: waitingPhotos.id } }))!.journalEntryId).toBe(accepted!.id);
 
     // (ข) กด "ไม่รับเข้าคลัง" → เครื่องหายจากสต๊อก ไม่มีรายการบัญชีใด ๆ ของเครื่องนี้
-    await service.rejectQC([rejected.id], 'ตรวจแล้วไม่ผ่าน ส่งคืนผู้จัดจำหน่าย');
+    await service.rejectQC([rejected.id], 'ตรวจแล้วไม่ผ่าน ส่งคืนผู้จัดจำหน่าย', adminId);
     expect((await prisma.product.findUnique({ where: { id: rejected.id } }))!.deletedAt).not.toBeNull();
 
     // (ค) เข้าคลังทาง PATCH (ผู้จัดการตั้งราคา + เปลี่ยนสถานะ) → ลงบัญชีเหมือนกัน
@@ -687,7 +687,7 @@ describe('รับสินค้าเข้าลงบัญชี — flow 
 
     // (ค) กด "ไม่รับเข้าคลัง" commit ไปก่อน แล้วคำขอยืนยันรูปที่อ่านค่าไว้ก่อนหน้า (ยังเห็นว่ารอถ่ายรูป)
     // มาเขียนสถานะทับ — จำลองลำดับเดียวกับที่ `completePhotos` ทำใน tx ของมัน
-    await service.rejectQC([raced.id], 'ตรวจแล้วไม่ผ่าน ส่งคืนผู้จัดจำหน่าย');
+    await service.rejectQC([raced.id], 'ตรวจแล้วไม่ผ่าน ส่งคืนผู้จัดจำหน่าย', adminId);
     const booking = new ReceivingAcceptanceJournal(prisma as never);
     await expect(
       prisma.$transaction(async (tx) => {

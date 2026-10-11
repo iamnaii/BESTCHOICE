@@ -38,6 +38,7 @@ import {
 import { ShopAccountResolver } from '../../journal/shop-account-resolver.service';
 import { CompanyResolverService } from '../../journal/company-resolver.service';
 import { SupplierPaymentService } from './supplier-payment.service';
+import { ensureDepositRejectTodo } from './po-deposit-reject-todo';
 import { loadVatRateDecimal } from '../../../utils/vat-rate.util';
 import { generateGRNumber, generatePONumber } from '../../../utils/sequence.util';
 import { syncPriceRowsFromColumns } from '../../../utils/product-price-sync.util';
@@ -882,7 +883,7 @@ export class PoReceivingService {
    * (ลงตอนผ่านเข้าคลัง — ReceivingAcceptanceJournal) จึงไม่มีอะไรต้องกลับรายการ. ขั้น QC_PENDING ถูกยกเลิก 2026-09-07 (ไม่มี flow ไหน
    * สร้างมันตั้งแต่ 2026-03-06 และปุ่มยืนยันเป็นช่องอ้อมด่านราคา) จึงรับเฉพาะ PHOTO_PENDING
    */
-  async rejectQC(productIds: string[], reason: string) {
+  async rejectQC(productIds: string[], reason: string, userId: string) {
     if (!productIds || productIds.length === 0) {
       throw new BadRequestException('กรุณาเลือกสินค้าที่ไม่ผ่าน QC อย่างน้อย 1 ชิ้น');
     }
@@ -932,10 +933,33 @@ export class PoReceivingService {
         );
       }
 
+      // คำตัดสินเจ้าของ 2026-10-06/11 (Todo ตีกลับ): ใบสั่งซื้อที่จ่ายมัดจำไว้แล้วมีเครื่องถูกตีกลับ — มัดจำส่วนของเครื่องนั้น
+      // ค้างใน S11-4201 โดยไม่มีเจ้าหนี้มาหัก ⇒ แจ้งฝ่ายบัญชีหนึ่งงานต่อใบ (ไม่ซ้ำ) · ปิดเองเมื่อปิดใบ/ยกเลิกใบระบุผลมัดจำ
+      const depositTodos: string[] = [];
+      const byPo = new Map<string, number>();
+      for (const p of products) if (p.poId) byPo.set(p.poId, (byPo.get(p.poId) ?? 0) + 1);
+      for (const [poId, rejectedCount] of byPo) {
+        const po = await tx.purchaseOrder.findUnique({ where: { id: poId }, select: { id: true, poNumber: true, netAmount: true, status: true } });
+        if (!po) continue;
+        const position = await this.journal.supplierPayments.positionInTx(tx, po);
+        if (!position.depositOutstanding.gt(0)) continue;
+        const created = await ensureDepositRejectTodo(tx, {
+          poId: po.id,
+          poNumber: po.poNumber,
+          depositOutstanding: position.depositOutstanding,
+          rejectedCount,
+          reason,
+          createdById: userId,
+        });
+        if (created) depositTodos.push(po.poNumber);
+      }
+
       return {
         rejected: productIds.length,
         reason,
         message: `บันทึกไม่ผ่าน QC ${productIds.length} ชิ้น (ตัดออกจากคลังแล้ว): ${reason}`,
+        /** ใบสั่งซื้อที่สร้างงานแจ้งฝ่ายบัญชีเรื่องมัดจำค้างในรอบนี้ (ไม่รวมใบที่มีงานเปิดอยู่แล้ว) */
+        depositTodosCreated: depositTodos,
       };
     });
   }

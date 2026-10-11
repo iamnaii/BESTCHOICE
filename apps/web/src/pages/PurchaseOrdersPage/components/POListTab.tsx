@@ -8,7 +8,7 @@ import { CancelPOPayload, PurchaseOrder, ApprovePOPayload } from '../types';
 import { ApprovePODialog } from './ApprovePODialog';
 import type { SupplierPaymentMethod } from './wizard/PaymentSection';
 import { cn } from '@/lib/utils';
-import { receiveProgress, isOverdue, supplierContactIsRedundant, canCancel, splitLeadingTag, pieceCount, itemsSummary } from '../po-list.util';
+import { receiveProgress, isOverdue, supplierContactIsRedundant, canCancel, isClosedShort, splitLeadingTag, pieceCount, itemsSummary } from '../po-list.util';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { POCard } from './POCard';
@@ -322,15 +322,20 @@ export function POListTab({
       render: (po) => {
         const { received, ordered, pct } = receiveProgress(po);
         const done = ordered > 0 && received >= ordered;
+        // ปิดใบ รับไม่ครบ: "รับแล้ว 3/5 (ปิด 2)" — ชิ้นที่ไม่รับแล้วไม่ใช่ของที่กำลังมา
+        const closedShort = isClosedShort(po);
         return (
           <div className="flex items-center gap-2.5">
             <span className="text-sm whitespace-nowrap tabular-nums leading-snug">
               <span className={cn('font-mono font-semibold', done && 'text-success')}>{received}</span>
               <span className="text-muted-foreground">/{ordered}</span>
+              {closedShort && ordered > received && (
+                <span className="ml-1 text-xs text-warning-strong">(ปิด {ordered - received})</span>
+              )}
             </span>
             {ordered > 0 && (
               <div className="h-1.5 flex-1 rounded-full bg-muted">
-                <div className={cn('h-1.5 rounded-full', done ? 'bg-success' : 'bg-primary')} style={{ width: `${pct}%` }} />
+                <div className={cn('h-1.5 rounded-full', done ? 'bg-success' : closedShort ? 'bg-warning' : 'bg-primary')} style={{ width: `${pct}%` }} />
               </div>
             )}
           </div>
@@ -445,6 +450,7 @@ export function POListTab({
           <option value="ORDERED">สั่งซื้อแล้ว</option>
           <option value="PARTIALLY_RECEIVED">รับบางส่วน</option>
           <option value="FULLY_RECEIVED">รับครบแล้ว</option>
+          <option value="CLOSED_SHORT">ปิดใบ รับไม่ครบ</option>
           <option value="CANCELLED">ยกเลิก</option>
         </select>
         <select

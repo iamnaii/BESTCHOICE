@@ -1,7 +1,7 @@
 import { Controller, Get, Post, Patch, Body, Param, Query, UseGuards, UseInterceptors, UploadedFile } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { PurchaseOrdersService } from './purchase-orders.service';
-import { CreatePODto, UpdatePODto, GoodsReceivingDto, UpdatePaymentDto, RejectPODto, OrderPODto, ApprovePODto, DirectReceiveDto, RejectQCDto, ReceivingDocCheckQueryDto, CancelPODto, RecordTaxInvoiceDto } from './dto/create-po.dto';
+import { CreatePODto, UpdatePODto, GoodsReceivingDto, UpdatePaymentDto, RejectPODto, OrderPODto, ApprovePODto, DirectReceiveDto, RejectQCDto, ReceivingDocCheckQueryDto, CancelPODto, ClosePOShortDto, RecordTaxInvoiceDto } from './dto/create-po.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { BranchGuard } from '../auth/guards/branch.guard';
@@ -90,8 +90,8 @@ export class PurchaseOrdersController {
 
   @Post('qc-reject')
   @Roles('OWNER', 'BRANCH_MANAGER')
-  rejectQC(@Body() dto: RejectQCDto) {
-    return this.purchaseOrdersService.rejectQC(dto.productIds, dto.reason);
+  rejectQC(@Body() dto: RejectQCDto, @CurrentUser() user: { id: string }) {
+    return this.purchaseOrdersService.rejectQC(dto.productIds, dto.reason, user.id);
   }
 
   @Post('direct-receive')
@@ -228,6 +228,19 @@ export class PurchaseOrdersController {
   @Roles('OWNER', 'BRANCH_MANAGER')
   cancel(@Param('id') id: string, @Body() dto: CancelPODto, @CurrentUser() user: { id: string }) {
     return this.purchaseOrdersService.cancel(id, user.id, dto?.depositOutcome ? { ...dto, depositOutcome: dto.depositOutcome } : undefined);
+  }
+
+  /** ปิดใบ รับไม่ครบ (คำตัดสินเจ้าของ 2026-10-11) — OWNER/BM · ใบ "รับบางส่วน" เท่านั้น · มัดจำค้างต้องระบุผลเหมือนยกเลิก */
+  @Post(':id/close-short')
+  @Roles('OWNER', 'BRANCH_MANAGER')
+  closeShort(@Param('id') id: string, @Body() dto: ClosePOShortDto, @CurrentUser() user: { id: string }) {
+    const { reason, depositReason, ...deposit } = dto;
+    return this.purchaseOrdersService.closeShort(id, user.id, {
+      reason,
+      deposit: deposit.depositOutcome
+        ? { ...deposit, depositOutcome: deposit.depositOutcome, reason: depositReason?.trim() || reason }
+        : undefined,
+    });
   }
 
   /** ก้อน 2: เส้นทางเขียนยอดจ่ายตรงถูกปิด — service ตอบ 410 ชี้ไป POST :id/payments */

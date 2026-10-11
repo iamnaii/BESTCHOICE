@@ -8,6 +8,7 @@ export const statusLabels: Record<string, string> = {
   PARTIALLY_RECEIVED: 'รับบางส่วน',
   FULLY_RECEIVED: 'รับครบแล้ว',
   CANCELLED: 'ยกเลิก',
+  CLOSED_SHORT: 'ปิดใบ รับไม่ครบ',
 };
 
 export const statusColors: Record<string, string> = {
@@ -18,6 +19,7 @@ export const statusColors: Record<string, string> = {
   PARTIALLY_RECEIVED: 'bg-warning/10 text-warning-strong dark:bg-warning/15',
   FULLY_RECEIVED: 'bg-success/10 text-success dark:bg-success/15',
   CANCELLED: 'bg-destructive/10 text-destructive dark:bg-destructive/15',
+  CLOSED_SHORT: 'bg-muted text-foreground',
 };
 
 export const paymentStatusLabels: Record<string, string> = {

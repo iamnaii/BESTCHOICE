@@ -37,7 +37,9 @@ const toMs = (iso: string | null | undefined): number | null => {
  * within a minute of creation).
  */
 export function poHistory(
-  po: Pick<PurchaseOrder, 'status' | 'orderDate' | 'orderedAt' | 'createdBy' | 'approvedBy'> & { createdAt?: string | null },
+  po: Pick<PurchaseOrder, 'status' | 'orderDate' | 'orderedAt' | 'createdBy' | 'approvedBy' | 'closedAt' | 'closedBy' | 'closeReason'> & {
+    createdAt?: string | null;
+  },
   receivings: GoodsReceivingRecord[] = [],
 ): POHistoryEvent[] {
   const events: POHistoryEvent[] = [];
@@ -101,6 +103,17 @@ export function poHistory(
 
   if (po.status === 'CANCELLED') {
     events.push({ key: 'cancelled', at: null, title: 'ยกเลิกใบสั่งซื้อ', by: null, detail: null, tone: 'destructive' });
+  }
+  // ปิดใบ รับไม่ครบ (2026-10-11) — มีเวลา/ผู้ปิด/เหตุผลบนใบ จึงขึ้นเป็นรายการจริงในประวัติ
+  if (po.status === 'CLOSED_SHORT') {
+    events.push({
+      key: 'closed-short',
+      at: po.closedAt ?? null,
+      title: 'ปิดใบ รับไม่ครบ',
+      by: po.closedBy?.name ?? null,
+      detail: po.closeReason ? `เหตุผล: ${po.closeReason} · ของที่มาทีหลังต้องเปิดใบใหม่` : 'ของที่มาทีหลังต้องเปิดใบใหม่',
+      tone: 'muted',
+    });
   }
 
   return events.reverse();

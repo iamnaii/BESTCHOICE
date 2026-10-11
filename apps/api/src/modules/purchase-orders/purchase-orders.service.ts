@@ -3,7 +3,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { decorateReceivingForRole, redactPoInputVat } from '../journal/input-vat/input-vat-visibility.util';
 import { CreatePODto, UpdatePODto, GoodsReceivingDto, UpdatePaymentDto, OrderPODto, ApprovePODto, DirectReceiveDto } from './dto/create-po.dto';
 import { PoQueryService } from './services/po-query.service';
-import { PoLifecycleService } from './services/po-lifecycle.service';
+import { ClosePOShortInput, PoLifecycleService } from './services/po-lifecycle.service';
 import { PoReceivingService } from './services/po-receiving.service';
 import { ShopGoodsReceivingTemplate } from '../journal/cpa-templates/shop-goods-receiving.template';
 import { ShopAccountResolver } from '../journal/shop-account-resolver.service';
@@ -90,6 +90,11 @@ export class PurchaseOrdersService {
     return this.lifecycle.cancel(id, userId, outcome);
   }
 
+  /** ปิดใบ รับไม่ครบ (2026-10-11) */
+  closeShort(id: string, userId: string, input: ClosePOShortInput) {
+    return this.lifecycle.closeShort(id, userId, input);
+  }
+
   updatePayment(id: string, dto: UpdatePaymentDto) {
     return this.lifecycle.updatePayment(id, dto);
   }
@@ -153,8 +158,8 @@ export class PurchaseOrdersService {
     return this.receiving.checkReceivingDoc(input);
   }
 
-  rejectQC(productIds: string[], reason: string) {
-    return this.receiving.rejectQC(productIds, reason);
+  rejectQC(productIds: string[], reason: string, userId: string) {
+    return this.receiving.rejectQC(productIds, reason, userId);
   }
 
   getQCPending(filters: { branchId?: string; poId?: string; includePhotoPending?: boolean; page?: number; limit?: number }) {

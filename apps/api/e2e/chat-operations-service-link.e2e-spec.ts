@@ -234,7 +234,6 @@ describe('Canonical after-sales case linking', () => {
       new AfterSalesDocNumberService(db),
       lookup as never,
       {} as never,
-      {} as never,
       { notifyMoment: notify } as never,
       links,
     );

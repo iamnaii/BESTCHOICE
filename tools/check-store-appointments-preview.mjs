@@ -46,8 +46,9 @@ try{
  await mobile.getByRole('button',{name:'10:45',exact:true}).click();await mobile.getByRole('button',{name:'ตรวจสอบนัดหมาย'}).click();await mobile.getByRole('button',{name:'ยืนยันนัดหมาย',exact:true}).click();await expect(mobile.getByRole('heading',{name:'แล้วพบกันที่ร้านครับ'})).toBeVisible();
  assert.equal(await mobile.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth),true);
  await mobile.screenshot({path:`${output}/customer-confirmed.png`,fullPage:true});
- await staff.reload();const selfCard=staff.locator('article').filter({hasText:customers[1].name}).filter({hasNotText:'ยกเลิกแล้ว'}).last();await expect(selfCard.getByText('นัดแล้ว',{exact:true})).toBeVisible();
- await selfCard.getByRole('button',{name:'ลูกค้ามาถึงแล้ว'}).click();await selfCard.getByRole('button',{name:'เริ่มบริการ'}).click();await selfCard.getByRole('button',{name:'เสร็จสิ้น',exact:true}).click();await expect(selfCard.getByText('เสร็จสิ้น',{exact:true})).toBeVisible();
+ const publicReference=(await mobile.locator('p').filter({hasText:/^เลขนัด /}).innerText()).replace('เลขนัด ','');
+ await staff.reload();const selfCard=staff.locator('article').filter({hasText:publicReference});await expect(selfCard.getByText('นัดแล้ว',{exact:true})).toBeVisible();
+ await selfCard.getByRole('button',{name:'ลูกค้ามาถึงแล้ว'}).click();await selfCard.getByRole('button',{name:'เริ่มบริการ'}).click();await selfCard.getByRole('button',{name:'เสร็จสิ้น',exact:true}).click();await expect(selfCard.locator('span').filter({hasText:/^เสร็จสิ้น$/})).toBeVisible();
  await staff.screenshot({path:`${output}/staff-appointments.png`,fullPage:true});
  // Prior links remain revocable after navigation/reload.
  await staff.getByText('ลิงก์ที่เคยออกให้ลูกค้า',{exact:true}).click();await staff.getByRole('button',{name:'ยกเลิกสิทธิ์ลิงก์'}).first().click();await expect(staff.locator('details').getByText('ยกเลิกแล้ว',{exact:true}).first()).toBeVisible();

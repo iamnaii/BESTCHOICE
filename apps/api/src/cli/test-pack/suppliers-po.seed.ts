@@ -19,7 +19,7 @@ const SUPPLIERS: Array<{ name: string; phone: string; isRepairCenter: boolean }>
 
 /**
  * ใบสั่งซื้อ 2 ใบ — สั่งแล้วรอรับของ กับ รับบางส่วนแล้ว
- * ค่า POStatus จริง: DRAFT APPROVED ORDERED PENDING PARTIALLY_RECEIVED FULLY_RECEIVED CANCELLED
+ * ค่า POStatus จริง: DRAFT APPROVED ORDERED PENDING PARTIALLY_RECEIVED FULLY_RECEIVED CANCELLED CLOSED_SHORT (ปิดใบ รับไม่ครบ 2026-10-11)
  * (**ไม่มี `PARTIAL`** — ชื่อเต็มคือ PARTIALLY_RECEIVED)
  *
  * seed สร้างแถวตรง ๆ จึงไม่โพสต์ JE — แต่ผู้ทดสอบที่ "รับของ" จากใบเหล่านี้บนหน้าจอจะได้รายการบัญชี

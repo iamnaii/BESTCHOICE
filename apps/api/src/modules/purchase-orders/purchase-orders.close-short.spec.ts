@@ -18,7 +18,8 @@ describe('PurchaseOrdersService.closeShort — ปิดใบ รับไม�
     return module.get<PurchaseOrdersService>(PurchaseOrdersService);
   };
 
-  const makePrisma = (status: string, opts: { photoPending?: number; depositLines?: { accountCode: string; debit: string; credit: string }[] } = {}) => {
+  type Line = { accountCode: string; debit: string; credit: string };
+  const makePrisma = (status: string, opts: { photoPending?: number; depositLines?: Line[]; entries?: { metadata: { flow: string }; lines: Line[] }[]; rows?: { kind: string; amount: string; voidedAt: null }[] } = {}) => {
     const po = {
       id: 'po-1', poNumber: 'PO-2026-10-007', status, deletedAt: null, netAmount: '15000', supplierId: 's1', paidAmount: '0',
       supplier: { id: 's1', name: 'S' },
@@ -33,9 +34,9 @@ describe('PurchaseOrdersService.closeShort — ปิดใบ รับไม�
       product: { count: jest.fn().mockResolvedValue(opts.photoPending ?? 0) },
       purchaseOrderPayment: {
         findFirst: jest.fn().mockResolvedValue(opts.depositLines ? { id: 'pay-1' } : null),
-        findMany: jest.fn().mockResolvedValue(opts.depositLines ? [{ kind: 'DEPOSIT', amount: '3000', voidedAt: null }] : []),
+        findMany: jest.fn().mockResolvedValue(opts.rows ?? (opts.depositLines ? [{ kind: 'DEPOSIT', amount: '3000', voidedAt: null }] : [])),
       },
-      journalEntry: { findMany: jest.fn().mockResolvedValue(opts.depositLines ? [{ lines: opts.depositLines }] : []) },
+      journalEntry: { findMany: jest.fn().mockResolvedValue(opts.entries ?? (opts.depositLines ? [{ lines: opts.depositLines }] : [])) },
       todo: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
       $queryRaw: jest.fn().mockResolvedValue([]),
     };
@@ -55,9 +56,27 @@ describe('PurchaseOrdersService.closeShort — ปิดใบ รับไม�
     const data = prisma.purchaseOrder.update.mock.calls[0][0].data;
     expect(data).toEqual(expect.objectContaining({ status: 'CLOSED_SHORT', closedById: 'bm-1', closeReason: 'ผู้จัดจำหน่ายแจ้งว่าของหมด ไม่ส่งที่เหลือ' }));
     expect(data.closedAt).toBeInstanceOf(Date);
+    // ผู้ตรวจอิสระ 2026-10-11 ข้อ 2: คอลัมน์สรุปคิดใหม่ด้วยเพดานของสถานะใหม่ใน tx เดียวกัน
+    expect(prisma.purchaseOrder.update).toHaveBeenCalledTimes(2);
+    expect(prisma.purchaseOrder.update.mock.calls[1][0].data).toEqual({ paidAmount: expect.anything(), paymentStatus: 'UNPAID' });
     expect(prisma.todo.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({ where: expect.objectContaining({ tags: { hasEvery: ['po-deposit-reject', 'po:po-1'] } }), data: { status: 'DONE' } }),
     );
+  });
+
+  it('รับของ 6,000 (จาก 15,000) และจ่ายครบ 6,000 แล้ว → หลังปิดใบ paymentStatus = FULLY_PAID (หลุดจากเจ้าหนี้ค้าง)', async () => {
+    const prisma = makePrisma('PARTIALLY_RECEIVED', {
+      rows: [{ kind: 'SETTLEMENT', amount: '6000', voidedAt: null }],
+      entries: [
+        { metadata: { flow: 'shop-goods-receiving' }, lines: [{ accountCode: 'S11-2001', debit: '6000', credit: '0' }, { accountCode: 'S21-1101', debit: '0', credit: '6000' }] },
+        { metadata: { flow: 'shop-supplier-payment' }, lines: [{ accountCode: 'S21-1101', debit: '6000', credit: '0' }, { accountCode: 'S11-1202', debit: '0', credit: '6000' }] },
+      ],
+    });
+    const service = await build(prisma);
+    await service.closeShort('po-1', 'owner-1', { reason: 'ของหมด' });
+    const summary = prisma.purchaseOrder.update.mock.calls[1][0].data;
+    expect(summary.paymentStatus).toBe('FULLY_PAID');
+    expect(summary.paidAmount.toFixed(2)).toBe('6000.00');
   });
 
   it('เหตุผลว่าง → 400 ไม่แตะฐานข้อมูล', async () => {

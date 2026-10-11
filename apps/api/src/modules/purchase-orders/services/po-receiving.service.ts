@@ -939,8 +939,12 @@ export class PoReceivingService {
       const byPo = new Map<string, number>();
       for (const p of products) if (p.poId) byPo.set(p.poId, (byPo.get(p.poId) ?? 0) + 1);
       for (const [poId, rejectedCount] of byPo) {
-        const po = await tx.purchaseOrder.findUnique({ where: { id: poId }, select: { id: true, poNumber: true, netAmount: true, status: true } });
-        if (!po) continue;
+        const po = await tx.purchaseOrder.findUnique({
+          where: { id: poId },
+          select: { id: true, poNumber: true, netAmount: true, status: true, items: { where: { deletedAt: null }, select: { quantity: true, receivedQty: true } } },
+        });
+        // ใบที่ยกเลิก/ปิดไปแล้วไม่มีทางออกให้ชี้ (วันนี้ไปไม่ถึง — ปิดใบปฏิเสธขณะมีเครื่องรอถ่ายรูป · ยกเลิกต้องยังไม่รับของ)
+        if (!po || po.status === 'CANCELLED' || po.status === 'CLOSED_SHORT') continue;
         const position = await this.journal.supplierPayments.positionInTx(tx, po);
         if (!position.depositOutstanding.gt(0)) continue;
         const created = await ensureDepositRejectTodo(tx, {
@@ -950,6 +954,8 @@ export class PoReceivingService {
           rejectedCount,
           reason,
           createdById: userId,
+          poStatus: po.status,
+          hasUnreceivedQty: po.items.some((i) => i.quantity > i.receivedQty),
         });
         if (created) depositTodos.push(po.poNumber);
       }

@@ -297,7 +297,7 @@ export class PoLifecycleService {
         await tx.$queryRaw`SELECT id FROM purchase_orders WHERE id = ${id} FOR UPDATE`;
         const fresh = await tx.purchaseOrder.findUnique({
           where: { id },
-          select: { status: true, items: { select: { quantity: true, receivedQty: true } } },
+          select: { status: true, netAmount: true, items: { where: { deletedAt: null }, select: { quantity: true, receivedQty: true } } },
         });
         if (!fresh || fresh.status !== 'PARTIALLY_RECEIVED') {
           throw new BadRequestException('ใบสั่งซื้อเปลี่ยนสถานะระหว่างทำรายการ — รีเฟรชแล้วลองใหม่');
@@ -314,6 +314,13 @@ export class PoLifecycleService {
           where: { id },
           data: { status: 'CLOSED_SHORT', closedAt: new Date(), closedById: userId, closeReason: reason },
         });
+        // เพดานจ่ายเปลี่ยนเป็นของที่รับจริงทันทีที่ปิด — คอลัมน์สรุป paidAmount/paymentStatus ต้องคิดใหม่ด้วยสถานะใหม่
+        // (ไม่งั้นใบที่จ่ายค่าของที่รับครบแล้วยังค้างใน AP / การ์ดค้างจ่าย — ผู้ตรวจอิสระ 2026-10-11 ข้อ 2)
+        await this.supplierPayments.refreshPoSummaryInTx(
+          tx,
+          id,
+          await this.supplierPayments.positionInTx(tx, { id, netAmount: fresh.netAmount, status: 'CLOSED_SHORT' }),
+        );
         // มัดจำค้างของใบเป็นศูนย์แล้วทุกกรณี (ไม่มี = null · มี = ปิดข้างบน) ⇒ งานตีกลับที่เปิดอยู่จบ
         const todosClosed = await closeDepositRejectTodos(tx, id);
         return { updated, depositClosed, unreceivedQty, todosClosed };

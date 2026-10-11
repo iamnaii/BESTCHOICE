@@ -22,7 +22,9 @@ describe('PurchaseOrdersService.rejectQC', () => {
         findMany: jest.fn().mockResolvedValue(bookedProductIds.map((productId) => ({ productId }))),
       },
       // Todo ตีกลับ (2026-10-11): ใบสั่งซื้อของเครื่อง + รายการบัญชีของใบ (มัดจำค้าง) + งานที่เปิดอยู่
-      purchaseOrder: { findUnique: jest.fn().mockResolvedValue({ id: 'po-1', poNumber: 'PO-2026-10-001', netAmount: '15000', status: 'PARTIALLY_RECEIVED' }) },
+      purchaseOrder: {
+        findUnique: jest.fn().mockResolvedValue({ id: 'po-1', poNumber: 'PO-2026-10-001', netAmount: '15000', status: 'PARTIALLY_RECEIVED', items: [{ quantity: 5, receivedQty: 3 }] }),
+      },
       journalEntry: { findMany: jest.fn().mockResolvedValue([]) },
       todo: { findFirst: jest.fn().mockResolvedValue(null), create: jest.fn().mockResolvedValue({ id: 't1' }) },
     };
@@ -74,7 +76,32 @@ describe('PurchaseOrdersService.rejectQC', () => {
       const data = tx.todo.create.mock.calls[0][0].data;
       expect(data).toEqual(expect.objectContaining({ priority: 'MEDIUM', tags: ['po-deposit-reject', 'po:po-1'], createdById: 'bm-1' }));
       expect(data.title).toMatch(/PO-2026-10-001.*2 ชิ้น.*3,000\.00/);
-      expect(data.description).toMatch(/ปิดใบ รับไม่ครบ/);
+      expect(data.description).toMatch(/รับของตามใบเดิม/);
+      expect(data.description).toMatch(/กด "ปิดใบ รับไม่ครบ"/);
+    });
+
+    // ผู้ตรวจอิสระ 2026-10-11 ข้อ 4: เครื่องที่ตีกลับยังนับเป็นรับแล้ว — ใบที่นับว่ารับครบจึงรับเพิ่ม/ปิดใบไม่ได้ ห้ามชี้ปุ่มที่กดไม่ได้
+    it('ใบนับว่ารับครบแล้ว (FULLY_RECEIVED) → งานบอกตรง ๆ ว่ายังไม่มีเมนู ไม่ชี้ปุ่มรับของ/ปิดใบ · ใบที่ปิด/ยกเลิกแล้ว → ไม่มีงาน', async () => {
+      const full = buildTx([{ id: 'p1', status: 'PHOTO_PENDING', name: 'iPhone', poId: 'po-1' }]);
+      full.purchaseOrder.findUnique.mockResolvedValue({ id: 'po-1', poNumber: 'PO-2026-10-001', netAmount: '15000', status: 'FULLY_RECEIVED', items: [{ quantity: 5, receivedQty: 5 }] });
+      full.journalEntry.findMany.mockResolvedValue([{ lines: depositLines }]);
+      prisma = { $transaction: jest.fn().mockImplementation((fn: any) => fn(full)) };
+      service = await build();
+      await service.rejectQC(['p1'], 'จอแตก', 'bm-1');
+      const desc = full.todo.create.mock.calls[0][0].data.description as string;
+      expect(desc).toMatch(/ยังไม่มีเมนู/);
+      expect(desc).not.toMatch(/กด "ปิดใบ รับไม่ครบ"/);
+      expect(desc).not.toMatch(/รับของตามใบเดิม/);
+
+      for (const status of ['CLOSED_SHORT', 'CANCELLED']) {
+        const closed = buildTx([{ id: 'p1', status: 'PHOTO_PENDING', name: 'iPhone', poId: 'po-1' }]);
+        closed.purchaseOrder.findUnique.mockResolvedValue({ id: 'po-1', poNumber: 'PO-2026-10-001', netAmount: '15000', status, items: [] });
+        closed.journalEntry.findMany.mockResolvedValue([{ lines: depositLines }]);
+        prisma = { $transaction: jest.fn().mockImplementation((fn: any) => fn(closed)) };
+        service = await build();
+        await service.rejectQC(['p1'], 'จอแตก', 'bm-1');
+        expect(closed.todo.create).not.toHaveBeenCalled();
+      }
     });
 
     it('มีงานเปิดอยู่แล้ว → ไม่สร้างซ้ำ · ใบไม่มีมัดจำค้าง / เครื่องไม่ได้มาจากใบสั่งซื้อ → ไม่มีงาน', async () => {

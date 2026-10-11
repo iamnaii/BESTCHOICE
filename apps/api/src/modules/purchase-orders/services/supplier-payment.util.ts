@@ -21,6 +21,12 @@ export interface LedgerLineLike {
   accountCode: string;
   debit: DecimalLike | null;
   credit: DecimalLike | null;
+  /**
+   * ที่มาของบรรทัด — RECEIVING = รายการรับสินค้าเข้า (ตั้งเจ้าหนี้) · PAYMENT = รายการจ่าย/หักมัดจำ/กลับรายการ (`shop-supplier-payment`)
+   * ไม่ระบุ = นับเหมือน RECEIVING (ผู้เรียกเก่า) · ใช้ตัดสิน "มูลค่าของที่รับจริง" — รายการกลับของการจ่ายที่ยกเลิกก็เครดิต S21-110x
+   * แต่ไม่ใช่ของที่รับ (ผู้ตรวจอิสระ 2026-10-11 ข้อ 1)
+   */
+  source?: 'RECEIVING' | 'PAYMENT';
 }
 export interface PaymentRowLike {
   kind: POPaymentKind;
@@ -81,7 +87,8 @@ export function supplierPaymentPosition(
       deposit = deposit.add(dr).sub(cr);
     } else if (SUPPLIER_PAYABLE_ACCOUNTS.includes(line.accountCode)) {
       payable[line.accountCode] = (payable[line.accountCode] ?? ZERO).add(cr).sub(dr);
-      if (cr.gt(ZERO)) {
+      // เฉพาะเครดิตจากการรับของ — เครดิตจากรายการกลับของการจ่ายที่ยกเลิก (flow การจ่าย) ไม่ใช่ของที่รับ
+      if (cr.gt(ZERO) && line.source !== 'PAYMENT') {
         hasBookedPayable = true;
         bookedPayableGross = bookedPayableGross.add(cr);
       }

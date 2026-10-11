@@ -204,7 +204,7 @@ export function AccountsPayableTab({ ledger, isLoading, month, setMonth, selecte
                     <div>
                       <div className="font-mono text-sm font-semibold">{po.poNumber}</div>
                       <div className="text-xs text-muted-foreground">
-                        คงค้าง <span className="font-mono tabular-nums text-destructive">{money(po.remaining)}</span> / {money(po.netAmount)}
+                        คงค้าง <span className="font-mono tabular-nums text-destructive">{money(po.remaining)}</span> / {money(po.paymentCap ?? po.netAmount)}
                         {po.dueDate ? ` · ครบกำหนด ${formatDateShort(po.dueDate)}` : ''}
                       </div>
                     </div>

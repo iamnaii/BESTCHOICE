@@ -274,6 +274,8 @@ export interface SupplierLedgerOpenPo {
   id: string;
   poNumber: string;
   netAmount: string;
+  /** เพดานจ่าย — = netAmount ปกติ · ใบปิดรับไม่ครบ = ของที่รับจริง (ไม่มี = API รุ่นก่อน) */
+  paymentCap?: string;
   paidAmount: string;
   remaining: string;
   dueDate: string | null;

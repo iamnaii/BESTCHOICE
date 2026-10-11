@@ -131,6 +131,25 @@ describe('supplierPaymentPosition — ใบปิดรับไม่ครบ
     expect(p.status).toBe('FULLY_PAID');
   });
 
+  // ผู้ตรวจอิสระ 2026-10-11 ข้อ 1: ยกเลิกรายการชำระ = รายการกลับเครดิต S21-110x เท่ากัน — ไม่ใช่ของที่รับ ห้ามนับเข้าเพดาน
+  it('รายการกลับของการจ่ายที่ยกเลิก (source PAYMENT) ไม่ทำให้เพดาน/ของที่รับจริงเพิ่ม', () => {
+    const src = (l: ReturnType<typeof line>, source: 'RECEIVING' | 'PAYMENT') => ({ ...l, source });
+    const lines = [
+      src(line('S11-2001', 6000, 0), 'RECEIVING'), src(line('S21-1101', 0, 6000), 'RECEIVING'),
+      src(line('S21-1101', 6000, 0), 'PAYMENT'), src(line('S11-1202', 0, 6000), 'PAYMENT'), // ชำระ
+      src(line('S21-1101', 0, 6000), 'PAYMENT'), src(line('S11-1202', 6000, 0), 'PAYMENT'), // ยกเลิกรายการชำระ (กระจก)
+    ];
+    const p = supplierPaymentPosition(d('15000'), [row('SETTLEMENT', 6000, new Date())], lines, { capToBooked: true });
+    expect(p.paymentCap.toFixed(2)).toBe('6000.00');
+    expect(p.paidTotal.toFixed(2)).toBe('0.00');
+    expect(p.remainingOnPo.toFixed(2)).toBe('6000.00');
+    expect(p.payableOutstanding.toFixed(2)).toBe('6000.00');
+    // ไม่เคยรับของเลย มีแต่กระจกของการจ่าย → ไม่ถือว่าเคยตั้งเจ้าหนี้
+    const onlyMirror = supplierPaymentPosition(d('15000'), [], [src(line('S21-1101', 0, 6000), 'PAYMENT')], { capToBooked: true });
+    expect(onlyMirror.hasBookedPayable).toBe(false);
+    expect(onlyMirror.paymentCap.toFixed(2)).toBe('0.00');
+  });
+
   it('ยังไม่มีหน่วยใดลงบัญชี (เพดาน 0) แต่เคยมัดจำ → ยังเป็นจ่ายมัดจำ ไม่ใช่จ่ายครบ', () => {
     const p = supplierPaymentPosition(d('15000'), [row('DEPOSIT', 3000)], [line('S11-4201', 3000, 0), line('S11-1202', 0, 3000)], { capToBooked: true });
     expect(p.paymentCap.toFixed(2)).toBe('0.00');

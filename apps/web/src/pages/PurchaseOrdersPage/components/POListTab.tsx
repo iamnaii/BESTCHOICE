@@ -9,6 +9,7 @@ import { ApprovePODialog } from './ApprovePODialog';
 import type { SupplierPaymentMethod } from './wizard/PaymentSection';
 import { cn } from '@/lib/utils';
 import { receiveProgress, isOverdue, supplierContactIsRedundant, canCancel, isClosedShort, splitLeadingTag, pieceCount, itemsSummary } from '../po-list.util';
+import { statusLabels } from '../constants';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { POCard } from './POCard';
@@ -485,16 +486,7 @@ export function POListTab({
           {search && <FilterChip label={`ค้นหา: "${search}"`} onRemove={() => setSearch('')} />}
           {statusFilter && (
             <FilterChip
-              label={`สถานะ: ${
-                {
-                  DRAFT: 'รออนุมัติ',
-                  APPROVED: 'อนุมัติแล้ว',
-                  ORDERED: 'สั่งซื้อแล้ว',
-                  PARTIALLY_RECEIVED: 'รับบางส่วน',
-                  FULLY_RECEIVED: 'รับครบแล้ว',
-                  CANCELLED: 'ยกเลิก',
-                }[statusFilter] || statusFilter
-              }`}
+              label={`สถานะ: ${statusLabels[statusFilter] || statusFilter}`}
               onRemove={() => setStatusFilter('')}
             />
           )}

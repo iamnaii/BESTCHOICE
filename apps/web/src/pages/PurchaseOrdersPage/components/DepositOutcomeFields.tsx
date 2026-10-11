@@ -78,7 +78,7 @@ export function DepositOutcomeFields({ state, idPrefix }: { state: DepositOutcom
   return (
     <>
       <label className={cn('flex cursor-pointer gap-3 rounded-xl border p-4', outcome === 'REFUNDED' ? 'border-primary bg-primary/5' : 'border-border bg-card')}>
-        <input type="radio" name="deposit-outcome" aria-label="ได้เงินมัดจำคืน" className="mt-1" checked={outcome === 'REFUNDED'} onChange={() => setOutcome('REFUNDED')} />
+        <input type="radio" name={`${idPrefix}-deposit-outcome`} aria-label="ได้เงินมัดจำคืน" className="mt-1" checked={outcome === 'REFUNDED'} onChange={() => setOutcome('REFUNDED')} />
         <div className="flex-1 space-y-3">
           <div>
             <div className="font-semibold">ได้เงินมัดจำคืน</div>
@@ -131,7 +131,7 @@ export function DepositOutcomeFields({ state, idPrefix }: { state: DepositOutcom
       </label>
 
       <label className={cn('flex cursor-pointer gap-3 rounded-xl border p-4', outcome === 'FORFEITED' ? 'border-primary bg-primary/5' : 'border-border bg-card')}>
-        <input type="radio" name="deposit-outcome" aria-label="ไม่ได้เงินมัดจำคืน" className="mt-1" checked={outcome === 'FORFEITED'} onChange={() => setOutcome('FORFEITED')} />
+        <input type="radio" name={`${idPrefix}-deposit-outcome`} aria-label="ไม่ได้เงินมัดจำคืน" className="mt-1" checked={outcome === 'FORFEITED'} onChange={() => setOutcome('FORFEITED')} />
         <div className="flex-1 space-y-3">
           <div>
             <div className="font-semibold">ไม่ได้เงินมัดจำคืน</div>

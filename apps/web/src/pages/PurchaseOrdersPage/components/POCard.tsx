@@ -30,6 +30,8 @@ export interface POCardProps {
   rejectPending: boolean;
   /** ดูอย่างเดียว (ผจก.การเงิน / ฝ่ายบัญชี — API ปฏิเสธการกระทำเหล่านี้อยู่แล้ว) ⇒ ไม่แสดงปุ่มกระทำเลย */
   readOnly?: boolean;
+  /** อนุมัติ/ปฏิเสธ = เจ้าของกิจการเท่านั้น (API @Roles('OWNER')) */
+  canApprove?: boolean;
 }
 
 function POCardImpl({
@@ -44,6 +46,7 @@ function POCardImpl({
   orderPending,
   rejectPending,
   readOnly = false,
+  canApprove = true,
 }: POCardProps) {
   const statusCfg = getStatusBadgeProps(po.status, poStatusMap);
   const payCfg = getStatusBadgeProps(po.paymentStatus || 'UNPAID', poPaymentStatusMap);
@@ -130,7 +133,7 @@ function POCardImpl({
       </div>
 
       {/* Status-specific actions (detail is the whole-card tap + PO# button) */}
-      {!readOnly && (canReceive || po.status === 'DRAFT') && (
+      {!readOnly && (canReceive || (canApprove && po.status === 'DRAFT')) && (
         <div className="mt-3 flex flex-wrap gap-2" onClick={(e) => e.stopPropagation()}>
           {po.status === 'APPROVED' && (
             <button
@@ -153,7 +156,7 @@ function POCardImpl({
               รับสินค้า
             </button>
           )}
-          {po.status === 'DRAFT' && (
+          {canApprove && po.status === 'DRAFT' && (
             <>
               <button
                 onClick={stop(() => onApprove(po))}

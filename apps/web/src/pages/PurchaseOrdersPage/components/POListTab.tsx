@@ -46,6 +46,8 @@ export interface POListTabProps {
   setOverdueOnly: (value: boolean) => void;
   /** ดูอย่างเดียว (ผจก.การเงิน / ฝ่ายบัญชี) — ซ่อนปุ่มกระทำทั้งตารางและการ์ด เหลือ "ดูรายละเอียด" */
   readOnly?: boolean;
+  /** อนุมัติ/ปฏิเสธใบรออนุมัติ = เจ้าของกิจการเท่านั้น (`POST :id/approve` / `:id/reject` @Roles('OWNER')) — ผจก.สาขาเห็นใบตัวเองแต่กดไม่ได้ */
+  canApprove?: boolean;
 }
 
 const periodOptions: { value: PeriodFilter; label: string }[] = [
@@ -91,6 +93,7 @@ export function POListTab({
   cancelMutation,
   onCancelPO,
   readOnly = false,
+  canApprove = true,
   setConfirmDialog,
   suppliers,
   overdueOnly,
@@ -291,6 +294,13 @@ export function POListTab({
       width: '132px',
       render: (po) => {
         const cfg = getStatusBadgeProps(po.paymentStatus || 'UNPAID', poPaymentStatusMap);
+        const badge = (
+          <Badge variant={cfg.variant} appearance={cfg.appearance} className="whitespace-nowrap">
+            {cfg.label}
+          </Badge>
+        );
+        // ดูอย่างเดียว: ป้ายเฉย ๆ — POST :id/payments เป็นของ OWNER/BM (การ์ดมือถือก็เป็นป้ายอยู่แล้ว)
+        if (readOnly) return badge;
         return (
           <button
             onClick={(e) => {
@@ -300,9 +310,7 @@ export function POListTab({
             className="cursor-pointer hover:opacity-80"
             title="บันทึกการจ่าย"
           >
-            <Badge variant={cfg.variant} appearance={cfg.appearance} className="whitespace-nowrap">
-              {cfg.label}
-            </Badge>
+            {badge}
           </button>
         );
       },
@@ -367,7 +375,7 @@ export function POListTab({
               <PackageCheck className="size-4" />
             </button>
           )}
-          {!readOnly && po.status === 'DRAFT' && (
+          {!readOnly && canApprove && po.status === 'DRAFT' && (
             <>
               <button
                 onClick={() => onApprove(po)}
@@ -534,6 +542,7 @@ export function POListTab({
                 orderPending={orderMutation.isPending}
                 rejectPending={rejectPOMutation.isPending}
                 readOnly={readOnly}
+                canApprove={canApprove}
               />
             ))}
           </div>

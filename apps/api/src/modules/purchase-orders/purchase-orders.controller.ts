@@ -82,7 +82,8 @@ export class PurchaseOrdersController {
 
   /** ข3 — ตัวตรวจก่อนกดยืนยันรับของ: เลขที่เอกสารซ้ำของผู้จัดจำหน่ายรายนี้ + งวดของวันที่ในเอกสารปิดแล้วหรือยัง (เตือน ไม่บล็อก) */
   @Get('receiving-doc-check')
-  @Roles('OWNER', 'BRANCH_MANAGER')
+  // ACCOUNTANT ด้วย — dialog ใบกำกับที่มาทีหลัง (Q1: OWNER/BM/ACCOUNTANT บันทึกได้) ใช้ตัวตรวจเลขซ้ำตัวเดียวกัน (อ่านอย่างเดียว · เตือน ไม่บล็อก)
+  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT')
   checkReceivingDoc(@Query() query: ReceivingDocCheckQueryDto) {
     return this.purchaseOrdersService.checkReceivingDoc(query);
   }

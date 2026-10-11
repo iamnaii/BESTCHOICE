@@ -38,19 +38,34 @@ const po = {
   _count: { products: 0 },
 } as PurchaseOrder;
 
-function renderModal(over: { readOnly?: boolean; canRecordPayments?: boolean }) {
+const receiving = {
+  id: 'gr-1',
+  grNumber: 'GR-20261001-001',
+  createdAt: '2026-10-02T03:00:00.000Z',
+  notes: null,
+  supplierDocType: 'DELIVERY_NOTE',
+  supplierDocNumber: 'DN-1',
+  supplierDocDate: '2026-10-01T17:00:00.000Z',
+  receivedBy: { id: 'u1', name: 'ก' },
+  items: [],
+  taxInvoice: null,
+} as never;
+
+function renderModal(over: { readOnly?: boolean; canRecordPayments?: boolean; role?: string; withReceiving?: boolean }) {
+  const { withReceiving, ...rest } = over;
   render(
     <MemoryRouter>
       <PODetailModal
         isOpen
         onClose={() => {}}
         selectedPO={po}
-        poDetail={null}
+        poDetail={withReceiving ? ({ ...po, goodsReceivings: [receiving] } as never) : null}
         openReceiveModal={vi.fn()}
         openPaymentModal={vi.fn()}
         onCancel={vi.fn()}
+        onRecordTaxInvoice={vi.fn()}
         role="ACCOUNTANT"
-        {...over}
+        {...rest}
       />
     </MemoryRouter>,
   );
@@ -70,5 +85,17 @@ describe('PODetailModal — ดูอย่างเดียว', () => {
     expect(screen.queryByRole('button', { name: 'ยกเลิก PO' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'บันทึกการจ่าย' })).toBeNull();
     expect(screen.getAllByText('PO-1').length).toBeGreaterThan(0);
+  });
+
+  it('readOnly ไม่ซ่อนสิ่งที่ฝ่ายบัญชีทำได้: บันทึกใบกำกับภาษี (Q1) และพิมพ์ใบรับของ', () => {
+    renderModal({ readOnly: true, canRecordPayments: false, role: 'ACCOUNTANT', withReceiving: true });
+    expect(screen.getByRole('button', { name: 'บันทึกใบกำกับภาษี' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'พิมพ์ใบรับของ GR-20261001-001' })).toBeInTheDocument();
+  });
+
+  it('readOnly ผจก.การเงิน: พิมพ์ใบรับของได้ แต่ไม่มีปุ่มใบกำกับภาษี (API ไม่เปิดให้ FM)', () => {
+    renderModal({ readOnly: true, canRecordPayments: false, role: 'FINANCE_MANAGER', withReceiving: true });
+    expect(screen.getByRole('button', { name: 'พิมพ์ใบรับของ GR-20261001-001' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /ใบกำกับภาษี/ })).toBeNull();
   });
 });

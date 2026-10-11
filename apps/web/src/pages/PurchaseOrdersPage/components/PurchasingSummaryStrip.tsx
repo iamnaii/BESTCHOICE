@@ -6,9 +6,11 @@ import { SUMMARY_CARDS, TONE_STYLES, type PurchasingSummary, type SummaryFilterA
 interface PurchasingSummaryStripProps {
   summary: PurchasingSummary | undefined;
   onCardClick: (action: SummaryFilterAction) => void;
+  /** ดูอย่างเดียว (ผจก.การเงิน / ฝ่ายบัญชี): การ์ดที่พาไปหน้าอื่นซึ่ง role นี้เข้าไม่ได้ (รอถ่ายรูป → /purchase-orders/qc) แสดงตัวเลขแต่กดไม่ได้ */
+  readOnly?: boolean;
 }
 
-export function PurchasingSummaryStrip({ summary, onCardClick }: PurchasingSummaryStripProps) {
+export function PurchasingSummaryStrip({ summary, onCardClick, readOnly = false }: PurchasingSummaryStripProps) {
   // No data yet (loading) or the B0 endpoint is unavailable → render nothing rather than crash.
   if (!summary) return null;
 
@@ -18,15 +20,17 @@ export function PurchasingSummaryStrip({ summary, onCardClick }: PurchasingSumma
         const Icon = card.icon;
         const styles = TONE_STYLES[card.tone];
         const count = summary[card.key] ?? 0;
+        const locked = readOnly && 'panel' in card.action;
         return (
           <button
             key={card.key}
             type="button"
+            disabled={locked}
             onClick={() => onCardClick(card.action)}
-            aria-label={`${card.label}: ${count} รายการ — คลิกเพื่อกรอง`}
-            className="text-left focus:outline-hidden focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 rounded-xl"
+            aria-label={locked ? `${card.label}: ${count} รายการ` : `${card.label}: ${count} รายการ — คลิกเพื่อกรอง`}
+            className="text-left focus:outline-hidden focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 rounded-xl disabled:cursor-default"
           >
-            <Card className="cursor-pointer group hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 overflow-hidden h-full">
+            <Card className={cn('group overflow-hidden h-full transition-all duration-200', locked ? '' : 'cursor-pointer hover:shadow-md hover:-translate-y-0.5')}>
               <CardContent className="p-4 relative">
                 <div className={cn('absolute inset-y-0 left-0 w-1 rounded-l-xl', styles.border)} />
                 <div className="pl-2">

@@ -4,7 +4,7 @@
  * แต่ยังแตะการ์ดเพื่อดูรายละเอียดได้
  */
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, cleanup } from '@testing-library/react';
 import { POCard } from '../POCard';
 import type { PurchaseOrder } from '../../types';
 
@@ -37,9 +37,9 @@ const po = (over: Partial<PurchaseOrder>): PurchaseOrder =>
     ...over,
   }) as PurchaseOrder;
 
-function renderCard(p: PurchaseOrder, readOnly: boolean) {
+function renderCard(p: PurchaseOrder, readOnly: boolean, canApprove = true) {
   const handlers = { openDetailModal: vi.fn(), openReceiveModal: vi.fn(), onApprove: vi.fn(), onOrder: vi.fn(), onReject: vi.fn(), onCancel: vi.fn() };
-  render(<POCard po={p} {...handlers} approvePending={false} orderPending={false} rejectPending={false} readOnly={readOnly} />);
+  render(<POCard po={p} {...handlers} approvePending={false} orderPending={false} rejectPending={false} readOnly={readOnly} canApprove={canApprove} />);
   return handlers;
 }
 
@@ -58,6 +58,16 @@ describe('POCard — ดูอย่างเดียว', () => {
     expect(screen.queryByRole('button', { name: 'ยกเลิก PO-1' })).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'PO-1' }));
     expect(h.openDetailModal).toHaveBeenCalledWith(expect.objectContaining({ id: 'po-1' }));
+  });
+
+  it('เจ้าของ: ใบรออนุมัติมีปุ่ม อนุมัติ / ปฏิเสธ · ผจก.สาขา (canApprove=false) ไม่มี — API @Roles(OWNER)', () => {
+    renderCard(po({ status: 'DRAFT' }), false);
+    expect(screen.getByRole('button', { name: 'อนุมัติ PO-1' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'ปฏิเสธ PO-1' })).toBeInTheDocument();
+    cleanup();
+    renderCard(po({ status: 'DRAFT' }), false, false);
+    expect(screen.queryByRole('button', { name: 'อนุมัติ PO-1' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'ปฏิเสธ PO-1' })).toBeNull();
   });
 
   it('readOnly: ใบรออนุมัติไม่มีปุ่ม อนุมัติ / ปฏิเสธ', () => {

@@ -400,7 +400,10 @@ export function PODetailModal({
                   )}
                   {paymentsData && paymentsData.payments.length === 0 && Number(paymentsData.legacyPaidAmount) > 0 && (
                     <p className="rounded-lg border border-warning/30 bg-warning/10 px-3 py-2 text-xs leading-snug text-warning-strong">
-                      ยอดจ่าย {money(paymentsData.legacyPaidAmount)} บาทที่กรอกไว้ก่อนมีเมนูจ่ายเงิน (ก่อน 10/2569) ไม่ได้ลงบัญชี — บันทึกใหม่ผ่านปุ่ม "บันทึกการจ่าย" ถ้าต้องการให้เข้าสมุดบัญชี
+                      ยอดจ่าย {money(paymentsData.legacyPaidAmount)} บาทที่กรอกไว้ก่อนมีเมนูจ่ายเงิน (ก่อน 10/2569) ไม่ได้ลงบัญชี —{' '}
+                      {canRecordPayments
+                        ? 'บันทึกใหม่ผ่านปุ่ม "บันทึกการจ่าย" ถ้าต้องการให้เข้าสมุดบัญชี'
+                        : 'เจ้าของกิจการหรือผู้จัดการสาขาบันทึกใหม่ผ่านปุ่ม "บันทึกการจ่าย" ได้ถ้าต้องการให้เข้าสมุดบัญชี'}
                     </p>
                   )}
                   {paymentsData && (
@@ -581,7 +584,9 @@ export function PODetailModal({
                 </ol>
                 {history.length === 1 && !cancelled && (
                   <p className="mt-3 rounded-lg bg-muted/50 px-3 py-2.5 text-xs leading-snug text-muted-foreground">
-                    ถัดไป: รับสินค้าเมื่อของมาถึง · บันทึกการจ่ายเมื่อโอนให้ผู้ขาย — จะขึ้นเป็นรายการในนี้เอง
+                    {readOnly
+                      ? 'ถัดไป: เจ้าของกิจการหรือผู้จัดการสาขารับสินค้าเมื่อของมาถึง และบันทึกการจ่ายเมื่อโอนให้ผู้ขาย — จะขึ้นเป็นรายการในนี้เอง'
+                      : 'ถัดไป: รับสินค้าเมื่อของมาถึง · บันทึกการจ่ายเมื่อโอนให้ผู้ขาย — จะขึ้นเป็นรายการในนี้เอง'}
                   </p>
                 )}
               </section>
@@ -613,7 +618,7 @@ export function PODetailModal({
               )}
             </div>
 
-            {(cancellable || receivable || !cancelled) && (
+            {(cancellable || receivable || (!cancelled && canRecordPayments)) && (
               <div className="sticky bottom-0 flex shrink-0 items-center justify-between gap-3 border-t bg-background/95 px-6 py-4 backdrop-blur-xs">
                 <div>
                   {cancellable && (

@@ -46,9 +46,11 @@ export default function PurchaseOrdersPage() {
   const [taxInvoiceTarget, setTaxInvoiceTarget] = useState<GoodsReceivingRecord | null>(null);
   const canRecordPayments = user?.role === 'OWNER' || user?.role === 'BRANCH_MANAGER';
   const canVoidPayments = user?.role === 'OWNER';
-  // คำตัดสินเจ้าของ 2026-10-11: ผจก.การเงิน / ฝ่ายบัญชี เข้าหน้านี้แบบดูอย่างเดียว — สร้าง/สั่งซื้อ/อนุมัติ/รับสินค้า/ยกเลิก
-  // เป็นของเจ้าของกิจการ + ผู้จัดการสาขา (ตรง @Roles ของ API ซึ่งตอบ 403 ให้สอง role นั้นอยู่แล้ว)
+  // คำตัดสินเจ้าของ 2026-10-11: ผจก.การเงิน / ฝ่ายบัญชี เข้าหน้านี้แบบดูอย่างเดียว — สร้าง/สั่งซื้อ/รับสินค้า/ยกเลิก/จ่ายเงิน
+  // เป็นของเจ้าของกิจการ + ผู้จัดการสาขา (@Roles('OWNER','BRANCH_MANAGER') ของ API ซึ่งตอบ 403 ให้สอง role นั้นอยู่แล้ว) ·
+  // อนุมัติ/ปฏิเสธใบรออนุมัติเป็นของเจ้าของกิจการคนเดียว (@Roles('OWNER')) · บัญชียังบันทึกใบกำกับภาษีได้ตาม Q1 (คุมใน taxInvoiceAction)
   const canManagePO = user?.role === 'OWNER' || user?.role === 'BRANCH_MANAGER';
+  const canApprovePO = user?.role === 'OWNER';
   const readOnly = !canManagePO;
   const poPayments = usePoPayments(data.selectedPO?.id ?? null, data.isDetailModalOpen || data.isPaymentDialogOpen || !!data.cancelTarget);
   // แท็บเจ้าหนี้รายผู้จัดจำหน่าย (กระดาน 5) — ยอดจากสมุดบัญชี เลือกเดือน/ผู้จัดจำหน่ายได้
@@ -127,6 +129,8 @@ export default function PurchaseOrdersPage() {
   const onSummaryCardClick = useCallback(
     (action: SummaryFilterAction) => {
       if ('panel' in action) {
+        // /purchase-orders/qc เป็น route ของ OWNER/BM เท่านั้น — การ์ดถูกทำให้กดไม่ได้สำหรับ role อื่นอยู่แล้ว (PurchasingSummaryStrip) นี่คือตาข่าย
+        if (!canManagePO) return;
         navigate('/purchase-orders/qc'); // รอถ่ายรูป → the photo queue page
         return;
       }
@@ -138,7 +142,7 @@ export default function PurchaseOrdersPage() {
       data.setStatusFilter(action.status);
       data.setOverdueOnly(action.overdueOnly);
     },
-    [data, navigate],
+    [canManagePO, data, navigate],
   );
 
   return (
@@ -206,7 +210,7 @@ export default function PurchaseOrdersPage() {
         }
       />
 
-      <PurchasingSummaryStrip summary={data.summary} onCardClick={onSummaryCardClick} />
+      <PurchasingSummaryStrip summary={data.summary} onCardClick={onSummaryCardClick} readOnly={readOnly} />
 
       {/* Tabs */}
       <div className="flex gap-1 mb-5 border-b border-border/60">
@@ -248,6 +252,7 @@ export default function PurchaseOrdersPage() {
           overdueOnly={data.overdueOnly}
           setOverdueOnly={data.setOverdueOnly}
           readOnly={readOnly}
+          canApprove={canApprovePO}
         />
       ) : (
         <AccountsPayableTab

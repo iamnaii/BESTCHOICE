@@ -219,7 +219,7 @@ export function AccountsPayableTab({ ledger, isLoading, month, setMonth, selecte
                 );
               })}
             </ul>
-            <p className="mt-3 text-xs text-muted-foreground">
+            <p className="mt-3 text-xs leading-snug text-muted-foreground">
               {readOnly
                 ? 'การจ่ายบันทึกโดยเจ้าของกิจการหรือผู้จัดการสาขาจากปุ่ม "บันทึกการจ่าย" ในใบ — ทุกการจ่ายลงบัญชีและแสดงที่นี่'
                 : 'บันทึกการจ่ายจากปุ่ม "บันทึกการจ่าย" ในใบ — ทุกการจ่ายลงบัญชีและกลับมาแสดงที่นี่'}

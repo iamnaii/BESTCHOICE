@@ -44,7 +44,7 @@ export class AppointmentLinksController {
 @Controller('store-appointments-public')
 @Public()
 @SkipCsrf()
-@Throttle({ default: { limit: 40, ttl: 60_000 } })
+@Throttle({ short: { limit: 40, ttl: 60_000 } })
 export class AppointmentPublicController {
   constructor(
     private readonly links: AppointmentLinksService,

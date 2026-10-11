@@ -440,3 +440,26 @@ it('lists prior capabilities without tokens so staff can revoke them after retur
   await links.revoke(rows[0].id, actor());
   await expect(links.resolve(issued.token)).rejects.toThrow();
 });
+
+it('enforces the public per-IP throttle using the deployed short bucket', async () => {
+  const { ThrottlerModule, ThrottlerGuard } = await import('@nestjs/throttler');
+  const { APP_GUARD } = await import('@nestjs/core');
+  const module = await Test.createTestingModule({
+    imports: [ThrottlerModule.forRoot([{ name: 'short', ttl: 1000, limit: 200 }])],
+    controllers: [AppointmentPublicController],
+    providers: [
+      { provide: APP_GUARD, useClass: ThrottlerGuard },
+      { provide: StoreAppointmentsService, useValue: appointments },
+      { provide: AppointmentLinksService, useValue: links },
+    ],
+  }).compile();
+  const app = module.createNestApplication();
+  await app.init();
+  try {
+    for (let i = 0; i < 40; i++)
+      await request(app.getHttpServer()).get('/store-appointments-public/context').expect(410);
+    await request(app.getHttpServer()).get('/store-appointments-public/context').expect(429);
+  } finally {
+    await app.close();
+  }
+});

@@ -7,6 +7,7 @@ import {
   remainingAccrualPortion,
 } from './build-accrual-2a-lines';
 import type { SplitReceiptResult } from './split-receipt';
+import { advanceVatOf } from './advance-vat';
 
 /**
  * ใบกำกับภาษีตามบัญชี (PR3 — คำตัดสินฝ่ายบัญชี D3–D5, 2026-09-28): ตัวเลขทุกสตางค์ที่พิมพ์บนใบเสร็จรับเงิน /
@@ -50,11 +51,8 @@ export interface ReceiptTaxBreakdown {
 const ZERO = new Decimal(0);
 const money = (d: Decimal) => d.toFixed(2);
 
-/** ภาษีของเงินที่รับไว้ล่วงหน้า / ที่หักเข้างวด = HALF_UP(|ยอด| × 7/107) เครื่องหมายเดียวกับยอด */
-export function advanceVatOf(amount: Decimal): Decimal {
-  const share = amount.abs().times(7).div(107).toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
-  return amount.isNegative() ? share.negated() : share;
-}
+/** สูตรเดียวอยู่ที่ advance-vat.ts (PR4) — re-export ให้ผู้เรียกเดิม ห้ามมีสูตรที่สอง */
+export { advanceVatOf };
 
 /**
  * ภาษีที่เอกสารแสดงไปแล้วของงวด ณ ก่อนใบนี้ — เล่นซ้ำกติกาเดียวกับรายการตั้งลูกหนี้งวด (partialAccrualPortion)

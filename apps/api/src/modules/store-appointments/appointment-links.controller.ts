@@ -25,7 +25,12 @@ import { IssueLinkDto, PublicBookDto, RescheduleDto, VersionDto } from './appoin
 @Roles('OWNER', 'BRANCH_MANAGER', 'SALES')
 export class AppointmentLinksController {
   constructor(private readonly links: AppointmentLinksService) {}
-  @Get() @Header('Cache-Control','no-store') list(@Query('customerId',ParseUUIDPipe) customerId:string,@Req() req:{user:{id:string}}){return this.links.list(customerId,{staffId:req.user.id});}
+  @Get() @Header('Cache-Control', 'no-store') list(
+    @Query('customerId', ParseUUIDPipe) customerId: string,
+    @Req() req: { user: { id: string } },
+  ) {
+    return this.links.list(customerId, { staffId: req.user.id });
+  }
   @Post() @Header('Cache-Control', 'no-store') issue(
     @Body() dto: IssueLinkDto,
     @Req() req: { user: { id: string } },

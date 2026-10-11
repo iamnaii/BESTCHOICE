@@ -521,7 +521,7 @@ export default function ChatPanel({
           : session.channel === 'TIKTOK' ? 'TikTok'
             : 'Web';
   const channelDotClass = isLine ? 'bg-[#06C755]' : session.channel === 'FACEBOOK' ? 'bg-[#1877F2]' : 'bg-foreground/60';
-  const roomAppt = nextAppointment(session.todos);
+  const roomAppt = nextAppointment([...(session.todos||[]),...(session.storeAppointment?[session.storeAppointment]:[])]);
   const roomApptState = apptState(roomAppt?.dueDate);
   const assigneeFullName: string | null = session.assignedTo?.name ?? session.assignedStaff?.name ?? null;
   // ชิปใช้ชื่อต้นอย่างเดียว (ชื่อเต็มอยู่ใน title) — บรรทัดสถานะแคบ ชื่อ-นามสกุลไทยยาวจะชนปุ่มขวา

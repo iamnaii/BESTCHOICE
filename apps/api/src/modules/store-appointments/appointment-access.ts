@@ -69,7 +69,8 @@ export async function customerAccess(
   actor: AppointmentActor,
   customerId: string,
 ) {
-  if(!customerId||! /^[0-9a-f-]{36}$/i.test(customerId))throw new BadRequestException('กรุณาเลือกลูกค้า');
+  if (!customerId || !/^[0-9a-f-]{36}$/i.test(customerId))
+    throw new BadRequestException('กรุณาเลือกลูกค้า');
   if ('staffId' in actor) await staffAccess(db, actor);
   else if ((await liveLink(db, actor.linkId)).customerId !== customerId)
     throw new ForbiddenException('ไม่มีสิทธิ์เข้าถึงนัดนี้');

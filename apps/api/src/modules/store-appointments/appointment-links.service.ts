@@ -140,6 +140,7 @@ export class AppointmentLinksService {
         customerId: link.customerId,
         deletedAt: null,
         status: { in: ['BOOKED', 'CHECKED_IN', 'IN_SERVICE'] },
+        ...(appointment ? { id: { not: appointment.id } } : {}),
       },
     });
     return {
@@ -147,7 +148,7 @@ export class AppointmentLinksService {
       eligibility,
       branches,
       appointment,
-      hasOtherAppointment: existing > 0 && !appointment,
+      hasOtherAppointment: existing > 0,
     };
   }
   async customerId(actor: { linkId: string }) {

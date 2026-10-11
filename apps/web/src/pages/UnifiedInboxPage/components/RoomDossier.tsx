@@ -1,3 +1,4 @@
+import CustomerAppointments from '@/components/appointments/CustomerAppointments';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import CloudCreditPicker from './CloudCreditPicker';
 import ChatServiceRequestSection from './ChatServiceRequestSection';
@@ -813,6 +814,7 @@ export default function RoomDossier({ onClose, room, customerId, activeRoomId, o
             <AdGroup room={room} />
 
             <div id="room-appointments" className="scroll-mt-2">
+              <CustomerAppointments customerId={customerId} roomId={room.id} />
               <ChatServiceRequestSection key={`service:${workIdentity}`} roomId={room.id} />
               <AppointmentsGroup todos={roomTodos.filter(t => !['CHAT_HANDOFF', 'CHAT_SERVICE'].includes(t.workKind ?? ''))} onNew={newAppointment} onEdit={todo => { setEditingAppt(todo); setApptOpen(true); }} />
             </div>

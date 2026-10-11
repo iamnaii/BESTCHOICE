@@ -1,3 +1,4 @@
+import ConfirmationMessage from '@/components/appointments/ConfirmationMessage';
 import { useState } from 'react';
 import { useSearchParams } from 'react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -103,11 +104,13 @@ export default function StoreAppointmentsPage() {
   };
   const mutation = useMutation({
     mutationFn: async (input: {
-      kind: 'book' | 'status' | 'reassign' | 'link' | 'revoke';
+      kind: 'book' | 'status' | 'reassign' | 'link' | 'revoke' | 'retryConfirmation';
       visit?: StaffVisit;
       status?: string;
       linkId?: string;
     }) => {
+      if (input.kind === 'retryConfirmation' && input.visit)
+        return api.post(`/store-appointments/${input.visit.id}/confirmation/retry`);
       if (input.kind === 'revoke')
         return api.post(`/store-appointment-links/${input.linkId || link?.id}/revoke`);
       if (input.kind === 'link') {
@@ -115,6 +118,7 @@ export default function StoreAppointmentsPage() {
           customerId: input.visit?.customer.id || currentCustomer?.id,
           branchIds: [input.visit?.branch.id || branchId],
           appointmentId: input.visit?.id,
+          sourceRoomId: params.get('roomId') || undefined,
         });
         setLink({ id: r.data.id, url: `${window.location.origin}/visit#${r.data.token}` });
         return r;
@@ -146,7 +150,12 @@ export default function StoreAppointmentsPage() {
       );
     },
     onSuccess: (_r, input) => {
-      if (input.kind !== 'link') toast.success('บันทึกแล้ว');
+      if (input.kind !== 'link')
+        toast.success(
+          input.kind === 'book'
+            ? 'ยืนยันนัดแล้ว ตรวจสอบผลการส่งข้อความได้ที่รายการนัด'
+            : 'บันทึกแล้ว',
+        );
       if (input.kind === 'revoke') setLink(null);
       setEditing(null);
       setAction(null);
@@ -516,6 +525,11 @@ export default function StoreAppointmentsPage() {
                           </Button>
                         )}
                       </div>
+                      <ConfirmationMessage
+                        confirmation={a.confirmations?.[0]}
+                        retrying={mutation.isPending}
+                        onRetry={() => mutation.mutate({ kind: 'retryConfirmation', visit: a })}
+                      />
                       {action?.visit.id === a.id && (
                         <div className="space-y-3 rounded-lg bg-muted p-3">
                           {action.kind === 'reassign' && (

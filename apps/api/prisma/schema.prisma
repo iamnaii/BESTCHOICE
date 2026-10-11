@@ -5891,6 +5891,8 @@ model CustomerLineLink {
 
 /// Chat room — ลูกค้า 1 คน 1 room ต่อ channel
 model ChatRoom {
+  appointmentMessages AppointmentConfirmation[]
+  appointmentLinks StoreAppointmentLink[] @relation("AppointmentLinkRoom")
   storeAppointments StoreAppointment[]
 
   libraryOperations ChatLibraryOperation[]
@@ -9464,6 +9466,7 @@ model StoreAppointment {
   window                          StaffAppointmentWindow  @relation(fields: [windowId], references: [id], onDelete: Restrict)
   creditCheck                     CreditCheck             @relation(fields: [creditCheckId], references: [id], onDelete: Restrict)
   sourceRoom                      ChatRoom?               @relation(fields: [sourceRoomId], references: [id], onDelete: Restrict)
+  confirmations                   AppointmentConfirmation[]
   events                          StoreAppointmentEvent[]
   linkAccess                      AppointmentLinkAccess[]
 
@@ -9477,6 +9480,8 @@ model StoreAppointment {
 }
 
 model StoreAppointmentLink {
+  sourceRoomId String? @map("source_room_id")
+  sourceRoom ChatRoom? @relation("AppointmentLinkRoom", fields: [sourceRoomId], references: [id], onDelete: Restrict)
   id               String                  @id @default(uuid())
   customerId       String                  @map("customer_id")
   tokenHash        String                  @unique @map("token_hash")
@@ -9490,6 +9495,7 @@ model StoreAppointmentLink {
   customer         Customer                @relation(fields: [customerId], references: [id], onDelete: Restrict)
   access           AppointmentLinkAccess[]
 
+  @@index([sourceRoomId])
   @@index([customerId])
   @@map("store_appointment_links")
 }
@@ -9537,4 +9543,28 @@ model AppointmentRequest {
 
   @@unique([actorKey, requestId])
   @@map("appointment_requests")
+}
+
+// Durable post-commit delivery; uncertain outcomes are never retried automatically.
+model AppointmentConfirmation {
+  id String @id @default(uuid())
+  appointmentId String @map("appointment_id")
+  version Int
+  kind String
+  roomId String? @map("room_id")
+  channel ChatChannel?
+  recipientId String? @map("recipient_id")
+  text String @db.Text
+  status String @default("PENDING")
+  attempts Int @default(0)
+  sentAt DateTime? @map("sent_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+  appointment StoreAppointment @relation(fields: [appointmentId], references: [id], onDelete: Restrict)
+  room ChatRoom? @relation(fields: [roomId], references: [id], onDelete: Restrict)
+  @@unique([appointmentId, version])
+  @@index([status, createdAt])
+  @@index([roomId])
+  @@map("appointment_confirmations")
 }

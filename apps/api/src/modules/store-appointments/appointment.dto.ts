@@ -49,6 +49,7 @@ export class WindowVersionDto {
   @IsInt() @Min(1) version!: number;
 }
 export class IssueLinkDto {
+  @IsOptional() @IsUUID() sourceRoomId?: string;
   @IsUUID() customerId!: string;
   @IsArray() @ArrayNotEmpty() @ArrayMaxSize(100) @IsUUID('4', { each: true }) branchIds!: string[];
   @IsOptional() @IsUUID() appointmentId?: string;

@@ -8,6 +8,7 @@ import {
   customerAccess,
   liveLink,
   staffAccess,
+  roomAccess,
 } from './appointment-access';
 import { DAY_MS } from './appointment-policy';
 import { transaction } from './appointment-transactions';
@@ -22,6 +23,7 @@ export function publicAppointment(row: AppointmentRow) {
     endsAt: row.endsAt,
     status: row.status,
     version: row.version,
+    confirmation: row.confirmations[0] ?? null,
   };
 }
 @Injectable()
@@ -35,6 +37,7 @@ export class AppointmentLinksService {
     return transaction(this.db, async (tx) => {
       const user = await staffAccess(tx, actor);
       await customerAccess(tx, actor, input.customerId);
+      if (input.sourceRoomId) await roomAccess(tx, actor, input.sourceRoomId, input.customerId);
       for (const id of input.branchIds) await branchAccess(tx, actor, id);
       const appointment = input.appointmentId
         ? await this.appointments.read(tx, input.appointmentId, actor)
@@ -50,6 +53,7 @@ export class AppointmentLinksService {
       const link = await tx.storeAppointmentLink.create({
         data: {
           customerId: input.customerId,
+          sourceRoomId: input.sourceRoomId || appointment?.sourceRoomId,
           allowedBranchIds: [...new Set(input.branchIds)],
           tokenHash: createHash('sha256').update(token).digest('hex'),
           bookingExpiresAt: new Date(Date.now() + 30 * DAY_MS),

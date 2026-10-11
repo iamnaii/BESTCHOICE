@@ -1,3 +1,4 @@
+import { AppointmentConfirmationService } from '../../src/modules/store-appointments/appointment-confirmation.service';
 import { StoreAppointmentsController } from '../../src/modules/store-appointments/store-appointments.controller';
 import { AppointmentLinksController, AppointmentPublicController } from '../../src/modules/store-appointments/appointment-links.controller';
 import { StoreAppointmentsService } from '../../src/modules/store-appointments/store-appointments.service';
@@ -549,7 +550,7 @@ async function main() {
       GlobalCreditCheckController,
       PreviewController,
     ],
-    providers: [StoreAppointmentsService, AppointmentScheduleService, AppointmentLinksService, ChatLibraryService, ChatLibraryDeliveryService, { provide: MessageRouterService, useValue: library.router }, ChatAnalyticsV2Service, ChatSalesAttributionService,
+    providers: [AppointmentConfirmationService, StoreAppointmentsService, AppointmentScheduleService, AppointmentLinksService, ChatLibraryService, ChatLibraryDeliveryService, { provide: MessageRouterService, useValue: library.router }, ChatAnalyticsV2Service, ChatSalesAttributionService,
       ChatServiceRequestService, ChatServiceCaseLinkService, ...afterSales.providers,
       FacebookCommentRefreshService, { provide: FacebookCommentIngestService, useValue: facebookComments.ingest }, FacebookCommentWorkService, FacebookCommentReplyService, { provide: FacebookCommentClient, useValue: facebookComments.client },
       ChatHandoffService, NoteMentionService, { provide: StaffMessageService, useValue: Object.assign(Object.create(StaffMessageService.prototype), { prisma: db }) }, ChatSalesDispositionService, TodosService, ChatFollowUpService, ChatSalesContextService, JourneySummaryService, JourneyStateService, ChatWorkQueryService, ChatWorkSettingsService, StaffInboxService, ChatWorkAccessService,
@@ -680,10 +681,13 @@ async function main() {
       stdio: ['ignore', 'inherit', 'inherit', 'ipc'],
     },
   );
+  const appointmentMessages = module.get(AppointmentConfirmationService);
+  const confirmationTimer = setInterval(() => void appointmentMessages.flush(), 1000);
   let stopping = false;
   const stop = async (code = 0) => {
     if (stopping) return;
     stopping = true;
+    clearInterval(confirmationTimer);
     if (vite.pid && vite.exitCode === null && vite.signalCode === null) {
       const exited = new Promise<void>(resolve => vite.once('exit', () => resolve()));
       vite.kill('SIGTERM');

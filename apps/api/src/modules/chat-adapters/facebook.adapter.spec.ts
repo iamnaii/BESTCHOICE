@@ -131,6 +131,15 @@ describe('FacebookAdapter.sendMessage — หน้าต่าง 24 ชม.', 
     });
   });
 
+  it('does not label automated confirmations as HUMAN_AGENT outside the response window', async () => {
+    fetchMock.mockResolvedValueOnce(response(400, OUTSIDE_WINDOW));
+    const result = await makeAdapter().sendMessage({ ...textMessage('ยืนยันนัดหมาย'), automated: true });
+    expect(result.success).toBe(false);
+    expect(result.definitelyNotSent).toBe(true);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(bodyOf(0)).not.toHaveProperty('tag');
+  });
+
   it('ลองแท็กแล้วยังไม่ผ่าน → บอกชัดว่าลองแล้ว ไม่ใช่ขึ้นแค่ "พ้น 24 ชม."', async () => {
     fetchMock
       .mockResolvedValueOnce(response(400, OUTSIDE_WINDOW))

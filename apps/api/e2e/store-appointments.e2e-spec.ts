@@ -1,3 +1,5 @@
+import { AppointmentConfirmationService } from '../src/modules/store-appointments/appointment-confirmation.service';
+import { MessageRouterService } from '../src/modules/chat-engine/services/message-router.service';
 import { Test } from '@nestjs/testing';
 import { ValidationPipe } from '@nestjs/common';
 import request from 'supertest';
@@ -493,4 +495,209 @@ it('enforces the public per-IP throttle using the deployed short bucket', async 
   } finally {
     await app.close();
   }
+});
+
+describe('automatic appointment confirmations', () => {
+  const sendMessage = jest.fn();
+  const worker = new AppointmentConfirmationService(db, {
+    getAdapter: () => ({ sendMessage }),
+  } as unknown as MessageRouterService);
+  async function setup(twoRooms = false) {
+    await window((await employee()).id);
+    const c = await customer();
+    const room = await db.chatRoom.create({
+      data: {
+        customerId: c.id,
+        channel: 'LINE_SHOP',
+        externalUserId: requestId(),
+        waitingSince: new Date(),
+      },
+    });
+    if (twoRooms)
+      await db.chatRoom.create({
+        data: { customerId: c.id, channel: 'FACEBOOK', externalUserId: requestId() },
+      });
+    sendMessage.mockReset().mockResolvedValue({ success: true });
+    return { c, room };
+  }
+  it('binds the originating room, queues once in the booking transaction and sends once across workers', async () => {
+    const { c, room } = await setup(true);
+    const link = await links.issue(
+      { customerId: c.id, branchIds: [branchId], sourceRoomId: room.id },
+      actor(),
+    );
+    const dto = { customerId: c.id, branchId, startsAt: time(10), requestId: requestId() };
+    const publicActor = await links.resolve(link.token);
+    const a = await appointments.create(dto, publicActor);
+    await appointments.create(dto, publicActor);
+    const jobs = await db.appointmentConfirmation.findMany({ where: { appointmentId: a.id } });
+    expect(jobs).toHaveLength(1);
+    expect(jobs[0].roomId).toBe(room.id);
+    await Promise.all([worker.deliver(jobs[0].id), worker.deliver(jobs[0].id)]);
+    await worker.deliver(jobs[0].id);
+    expect(sendMessage).toHaveBeenCalledTimes(1);
+    expect(sendMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        externalUserId: room.externalUserId,
+        text: expect.stringContaining('BESTCHOICE ยืนยันนัดหมาย'),
+      }),
+    );
+    const result = await links.context(link.token);
+    expect(result.appointment?.confirmation?.status).toBe('SENT');
+    expect(result.appointment?.confirmation).not.toHaveProperty('recipientId');
+    expect((await db.chatRoom.findUniqueOrThrow({ where: { id: room.id } })).waitingSince).toEqual(
+      room.waitingSince,
+    );
+    expect(
+      await db.chatMessage.count({
+        where: { roomId: room.id, intent: 'APPOINTMENT_CONFIRMATION' },
+      }),
+    ).toBe(1);
+  });
+  it('keeps the booking when delivery fails, retries only definitive failures and never resends an unknown outcome', async () => {
+    const { c } = await setup();
+    const a = await book(c.id);
+    const id = a.confirmations[0].id;
+    sendMessage.mockResolvedValueOnce({ success: false, definitelyNotSent: true });
+    await worker.deliver(id);
+    expect((await db.appointmentConfirmation.findUniqueOrThrow({ where: { id } })).status).toBe(
+      'FAILED',
+    );
+    expect((await db.storeAppointment.findUniqueOrThrow({ where: { id: a.id } })).status).toBe(
+      'BOOKED',
+    );
+    await appointments.retryConfirmation(a.id, actor());
+    sendMessage.mockRejectedValueOnce(new Error('connection lost'));
+    await worker.deliver(id);
+    expect((await db.appointmentConfirmation.findUniqueOrThrow({ where: { id } })).status).toBe(
+      'UNKNOWN',
+    );
+    await expect(appointments.retryConfirmation(a.id, actor())).rejects.toThrow();
+    await worker.deliver(id);
+    expect(sendMessage).toHaveBeenCalledTimes(2);
+  });
+  it('does not guess between rooms or send when the original room has been relinked', async () => {
+    const { c, room } = await setup(true);
+    const a = await book(c.id);
+    expect(a.confirmations[0].status).toBe('NO_CHANNEL');
+    const other = await customer();
+    await expect(
+      links.issue({ customerId: other.id, branchIds: [branchId], sourceRoomId: room.id }, actor()),
+    ).rejects.toThrow();
+    await appointments.transition(
+      a.id,
+      { status: 'CANCELED', version: a.version, requestId: requestId() },
+      actor(),
+    );
+    const a2 = await appointments.create(
+      {
+        customerId: c.id,
+        branchId,
+        startsAt: time(10),
+        sourceRoomId: room.id,
+        requestId: requestId(),
+      },
+      actor(),
+    );
+    await db.chatRoom.update({ where: { id: room.id }, data: { customerId: other.id } });
+    await worker.deliver(a2.confirmations[0].id);
+    expect(sendMessage).not.toHaveBeenCalled();
+    expect(
+      (
+        await db.appointmentConfirmation.findUniqueOrThrow({
+          where: { id: a2.confirmations[0].id },
+        })
+      ).status,
+    ).toBe('NO_CHANNEL');
+  });
+  it('serializes different versions so a slow booking send cannot arrive after cancellation', async () => {
+    const { c } = await setup();
+    const a = await book(c.id);
+    let release!: () => void;
+    let entered!: () => void;
+    const started = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    sendMessage.mockImplementationOnce(async () => {
+      entered();
+      await new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      return { success: true };
+    });
+    const inFlight = worker.deliver(a.confirmations[0].id);
+    await started;
+    const canceled = await appointments.transition(
+      a.id,
+      { status: 'CANCELED', version: a.version, requestId: requestId() },
+      actor(),
+    );
+    await worker.deliver(canceled.confirmations[0].id);
+    expect(sendMessage).toHaveBeenCalledTimes(1);
+    expect(
+      (
+        await db.appointmentConfirmation.findUniqueOrThrow({
+          where: { id: canceled.confirmations[0].id },
+        })
+      ).status,
+    ).toBe('PENDING');
+    release();
+    await inFlight;
+    await worker.deliver(canceled.confirmations[0].id);
+    expect(sendMessage).toHaveBeenCalledTimes(2);
+    expect(sendMessage.mock.calls[1][0].text).toContain('ยืนยันยกเลิกนัดหมาย');
+  });
+  it('blocks later messages when an earlier delivery is uncertain, and never treats WEB as delivered', async () => {
+    const { c, room } = await setup();
+    const a = await book(c.id);
+    sendMessage.mockRejectedValueOnce(new Error('lost ack'));
+    await worker.deliver(a.confirmations[0].id);
+    const moved = await appointments.reschedule(
+      a.id,
+      { branchId, startsAt: time(10, 45), version: a.version, requestId: requestId() },
+      actor(),
+    );
+    await worker.deliver(moved.confirmations[0].id);
+    expect(
+      (
+        await db.appointmentConfirmation.findUniqueOrThrow({
+          where: { id: moved.confirmations[0].id },
+        })
+      ).status,
+    ).toBe('BLOCKED');
+    expect(sendMessage).toHaveBeenCalledTimes(1);
+    await db.chatRoom.update({ where: { id: room.id }, data: { channel: 'WEB' } });
+    const canceled = await appointments.transition(
+      a.id,
+      { status: 'CANCELED', version: moved.version, requestId: requestId() },
+      actor(),
+    );
+    expect(canceled.confirmations[0].status).toBe('NO_CHANNEL');
+    await worker.deliver(canceled.confirmations[0].id);
+    expect(sendMessage).toHaveBeenCalledTimes(1);
+  });
+  it('supersedes pending old details on reschedule and sends the new time then cancellation', async () => {
+    const { c } = await setup();
+    const a = await book(c.id);
+    const moved = await appointments.reschedule(
+      a.id,
+      { branchId, startsAt: time(10, 45), version: a.version, requestId: requestId() },
+      actor(),
+    );
+    await worker.deliver(a.confirmations[0].id);
+    expect(sendMessage).not.toHaveBeenCalled();
+    await worker.deliver(moved.confirmations[0].id);
+    expect(sendMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ text: expect.stringContaining('10:45–11:30') }),
+    );
+    const canceled = await appointments.transition(
+      a.id,
+      { status: 'CANCELED', version: moved.version, requestId: requestId() },
+      actor(),
+    );
+    await worker.deliver(canceled.confirmations[0].id);
+    expect(sendMessage).toHaveBeenLastCalledWith(
+      expect.objectContaining({ text: expect.stringContaining('ยืนยันยกเลิกนัดหมาย') }),
+    );
+  });
 });

@@ -119,6 +119,11 @@ export const staffIsAvailable = (
   hasCompanyAccess(staff.role, staff.accessibleCompanies, 'SHOP');
 
 export const appointmentInclude = {
+  confirmations: {
+    orderBy: { version: 'desc' },
+    take: 1,
+    select: { id: true, kind: true, status: true, text: true, sentAt: true },
+  },
   staff: {
     select: {
       id: true,

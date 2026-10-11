@@ -1,3 +1,4 @@
+import { queueAppointmentConfirmation } from './appointment-confirmation';
 import {
   BadRequestException,
   ConflictException,
@@ -33,7 +34,12 @@ import {
   OPEN_STATUSES,
   SLOT_MS,
 } from './appointment-policy';
-import { lockBranchStaff, lockCustomer, requestMutation } from './appointment-transactions';
+import {
+  lockBranchStaff,
+  lockCustomer,
+  requestMutation,
+  transaction,
+} from './appointment-transactions';
 
 export interface CreateAppointmentInput {
   customerId: string;
@@ -354,6 +360,19 @@ export class StoreAppointmentsService {
     if (!valid.length) throw new ConflictException('ช่วงเวลานี้เต็มแล้ว กรุณาเลือกเวลาใหม่');
     return valid[0];
   }
+  async retryConfirmation(id: string, actor: AppointmentActor) {
+    return transaction(this.db, async (tx) => {
+      const row = await this.read(tx, id, actor);
+      const job = row.confirmations[0];
+      if (!job || job.status !== 'FAILED')
+        throw new BadRequestException('ส่งซ้ำได้เฉพาะข้อความที่ยืนยันแล้วว่าส่งไม่สำเร็จ');
+      await tx.appointmentConfirmation.updateMany({
+        where: { id: job.id, status: 'FAILED' },
+        data: { status: 'PENDING' },
+      });
+      return { queued: true };
+    });
+  }
   private async event(
     db: AppointmentDb,
     kind: string,
@@ -361,6 +380,8 @@ export class StoreAppointmentsService {
     row: AppointmentRow,
     old?: AppointmentRow,
   ) {
+    if (kind === 'BOOKED' || kind === 'RESCHEDULED' || kind === 'CANCELED')
+      await queueAppointmentConfirmation(db, row, kind);
     await db.storeAppointmentEvent.create({
       data: {
         appointmentId: row.id,
@@ -437,7 +458,10 @@ export class StoreAppointmentsService {
             branchId: input.branchId,
             staffUserId: window.staffUserId,
             windowId: window.id,
-            sourceRoomId: input.sourceRoomId,
+            sourceRoomId:
+              'linkId' in actor
+                ? (await liveLink(tx, actor.linkId)).sourceRoomId
+                : input.sourceRoomId,
             startsAt,
             endsAt: new Date(+startsAt + SLOT_MS),
             creditCheckId: credit.check.id,
@@ -450,7 +474,12 @@ export class StoreAppointmentsService {
         });
         await this.attachAccess(tx, row, actor);
         await this.event(tx, 'BOOKED', actor, row);
-        return appointmentView(row);
+        return appointmentView(
+          await tx.storeAppointment.findUniqueOrThrow({
+            where: { id: row.id },
+            include: appointmentInclude,
+          }),
+        );
       },
     );
   }
@@ -513,7 +542,12 @@ export class StoreAppointmentsService {
           data: { manageExpiresAt: new Date(+row.endsAt + DAY_MS) },
         });
         await this.event(tx, 'RESCHEDULED', actor, row, old);
-        return appointmentView(row);
+        return appointmentView(
+          await tx.storeAppointment.findUniqueOrThrow({
+            where: { id: row.id },
+            include: appointmentInclude,
+          }),
+        );
       },
     );
   }
@@ -557,7 +591,12 @@ export class StoreAppointmentsService {
           include: appointmentInclude,
         });
         await this.event(tx, 'REASSIGNED', actor, row, old);
-        return appointmentView(row);
+        return appointmentView(
+          await tx.storeAppointment.findUniqueOrThrow({
+            where: { id: row.id },
+            include: appointmentInclude,
+          }),
+        );
       },
     );
   }
@@ -614,7 +653,12 @@ export class StoreAppointmentsService {
           include: appointmentInclude,
         });
         await this.event(tx, input.status, actor, row, old);
-        return appointmentView(row);
+        return appointmentView(
+          await tx.storeAppointment.findUniqueOrThrow({
+            where: { id: row.id },
+            include: appointmentInclude,
+          }),
+        );
       },
     );
   }

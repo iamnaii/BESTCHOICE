@@ -22,6 +22,12 @@ export class StoreAppointmentsController {
     private readonly appointments: StoreAppointmentsService,
     private readonly schedule: AppointmentScheduleService,
   ) {}
+  @Post(':id/confirmation/retry') retryConfirmation(
+    @Param('id') id: string,
+    @Req() r: StaffRequest,
+  ) {
+    return this.appointments.retryConfirmation(id, { staffId: r.user.id });
+  }
   @Get('room-summaries') roomSummaries(@Query('roomIds') ids: string, @Req() r: StaffRequest) {
     return this.appointments.roomSummaries((ids || '').split(',').filter(Boolean), {
       staffId: r.user.id,

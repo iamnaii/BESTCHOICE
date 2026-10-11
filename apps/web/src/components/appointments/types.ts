@@ -9,7 +9,15 @@ export interface Slot {
   endsAt: string;
   available: number;
 }
+export interface Confirmation {
+  id: string;
+  kind: string;
+  status: string;
+  text: string;
+  sentAt: string | null;
+}
 export interface Visit {
+  confirmation?: Confirmation | null;
   id: string;
   reference: string;
   branch: Branch;
@@ -19,6 +27,7 @@ export interface Visit {
   version: number;
 }
 export interface StaffVisit extends Visit {
+  confirmations?: Confirmation[];
   customer: { id: string; name: string };
   staff: { id: string; name: string };
   branchId: string;

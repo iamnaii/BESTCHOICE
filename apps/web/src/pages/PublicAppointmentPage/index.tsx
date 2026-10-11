@@ -1,4 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import ConfirmationMessage from '@/components/appointments/ConfirmationMessage';
+import VisitTicket from '@/components/appointments/VisitTicket';
 import {
   QueryClient,
   QueryClientProvider,
@@ -6,7 +8,7 @@ import {
   useQuery,
   useQueryClient,
 } from '@tanstack/react-query';
-import { CalendarDays, Check, Clock, MapPin } from 'lucide-react';
+import { CalendarDays, Check, ArrowRight, MapPin, Phone } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { appointmentPublicApi as api, getErrorMessage } from '@/lib/api';
 import { getAppointmentToken } from '@/lib/appointment-token';
@@ -38,7 +40,10 @@ function VisitPage() {
     queryKey: ['visit-context'],
     queryFn: () => api.get<Context>(`${base}/context`, tokenHeaders()).then((r) => r.data),
     retry: false,
-    refetchInterval: 30_000,
+    refetchInterval: (query) =>
+      ['PENDING', 'SENDING'].includes(query.state.data?.appointment?.confirmation?.status || '')
+        ? 2_000
+        : 30_000,
   });
   const [selection, setSelection] = useState<Selection>({
     branchId: '',
@@ -78,7 +83,10 @@ function VisitPage() {
         tokenHeaders(),
       );
     },
-    onSuccess: () => {
+    onSuccess: (visit) => {
+      qc.setQueryData<Context>(['visit-context'], (previous) =>
+        previous ? { ...previous, appointment: visit.data } : previous,
+      );
       setEditing(false);
       setFresh(false);
       setReview(false);
@@ -92,13 +100,17 @@ function VisitPage() {
       void qc.invalidateQueries();
     },
   });
+  const heading = useRef<HTMLHeadingElement>(null);
+  useEffect(() => {
+    heading.current?.focus();
+  }, [review, editing, a?.id, a?.status, a?.version]);
   const canChange = a?.status === 'BOOKED' && new Date(a.startsAt) > new Date();
   return (
-    <div className="min-h-screen bg-muted/40 px-4 py-8 text-foreground leading-snug">
-      <main className="mx-auto max-w-md rounded-2xl border border-border bg-card p-5 shadow-sm sm:p-7">
-        <header className="mb-8 flex items-center gap-3 border-b border-border pb-5">
+    <div className="min-h-screen bg-background px-4 py-6 text-foreground leading-relaxed sm:py-10">
+      <main className="mx-auto max-w-xl rounded-2xl border border-border bg-card p-5 shadow-sm sm:p-8">
+        <header className="mb-6 flex items-center gap-3 border-b border-border pb-5">
           <div className="rounded-lg bg-primary p-2 text-primary-foreground">
-            <CalendarDays className="size-5" />
+            <CalendarDays aria-hidden="true" className="size-5" />
           </div>
           <div>
             <p className="font-bold tracking-wide">BESTCHOICE</p>
@@ -120,6 +132,26 @@ function VisitPage() {
         ) : (
           data && (
             <>
+              <ol
+                aria-label="ขั้นตอนนัดหมาย"
+                className="mb-7 grid grid-cols-3 gap-2 text-xs sm:text-sm"
+              >
+                {['เลือกเวลา', 'ตรวจสอบ', 'ยืนยันนัด'].map((label, index) => {
+                  const step = a && !editing && !fresh ? 2 : review ? 1 : 0;
+                  return (
+                    <li
+                      key={label}
+                      aria-current={index === step ? 'step' : undefined}
+                      className={`flex flex-col items-center gap-2 whitespace-nowrap border-b-2 pb-3 sm:flex-row ${index <= step ? 'border-primary text-primary' : 'border-border text-muted-foreground'}`}
+                    >
+                      <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-muted text-xs">
+                        {index < step ? <Check aria-hidden="true" className="size-3" /> : index + 1}
+                      </span>
+                      {label}
+                    </li>
+                  );
+                })}
+              </ol>
               {mutate.isError && (
                 <p
                   role="alert"
@@ -131,50 +163,48 @@ function VisitPage() {
               {a && !editing && !fresh ? (
                 <div className="space-y-5">
                   <div className="inline-flex items-center gap-2 rounded-full bg-primary/10 px-3 py-1 text-sm text-primary">
-                    <Check className="size-4" />
+                    <Check aria-hidden="true" className="size-4" />
                     {visitStatus[a.status]}
                   </div>
-                  <h1 className="text-2xl font-semibold">
-                    {a.status === 'BOOKED' ? 'แล้วพบกันที่ร้านครับ' : 'รายละเอียดนัดหมาย'}
-                  </h1>
-                  <div className="space-y-4 rounded-xl bg-muted/60 p-5">
-                    <p className="text-lg font-semibold">{thaiDate(a.startsAt)}</p>
-                    <p className="flex items-center gap-2">
-                      <Clock className="size-4" />
-                      {thaiTime(a.startsAt)} – {thaiTime(a.endsAt)}
+                  <div className="space-y-2">
+                    <h1
+                      ref={heading}
+                      tabIndex={-1}
+                      className="text-2xl font-semibold tracking-tight outline-none sm:text-3xl"
+                    >
+                      {a.status === 'BOOKED' ? 'ยืนยันนัดหมายแล้ว' : 'รายละเอียดนัดหมาย'}
+                    </h1>
+                    <p className="text-sm text-muted-foreground">
+                      {a.status === 'BOOKED'
+                        ? 'แล้วพบกันที่ร้านครับ แจ้งเลขนัดกับพนักงานเมื่อมาถึงได้เลย'
+                        : 'ตรวจสอบสถานะและรายละเอียดนัดล่าสุดได้ที่นี่'}
                     </p>
-                    <p className="flex items-center gap-2">
-                      <MapPin className="size-4" />
-                      {a.branch.name}
-                    </p>
-                    {a.branch.location && (
-                      <p className="text-sm text-muted-foreground">{a.branch.location}</p>
-                    )}
-                    <p className="text-xs text-muted-foreground">เลขนัด {a.reference}</p>
                   </div>
+                  <VisitTicket visit={a} />
+                  <ConfirmationMessage confirmation={a.confirmation} />
                   {a.branch.location && (
-                    <Button asChild variant="outline" className="w-full">
+                    <Button asChild className="h-12 w-full">
                       <a
                         href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(a.branch.location)}`}
                         target="_blank"
                         rel="noreferrer"
                       >
-                        ดูเส้นทางไปร้าน
+                        <MapPin aria-hidden="true" className="size-4" /> ดูเส้นทางไปร้าน
                       </a>
                     </Button>
                   )}
                   {a.branch.phone && (
                     <a
-                      className="block text-center text-sm text-primary underline"
+                      className="flex min-h-11 items-center justify-center gap-2 text-center text-sm text-primary underline"
                       href={`tel:${a.branch.phone}`}
                     >
-                      โทรติดต่อสาขา {a.branch.phone}
+                      <Phone aria-hidden="true" className="size-4" /> โทรติดต่อสาขา {a.branch.phone}
                     </a>
                   )}
                   {canChange && (
                     <div className="flex gap-2">
                       <Button
-                        className="flex-1"
+                        className="h-11 flex-1"
                         variant="outline"
                         disabled={mutate.isPending || !data.eligibility.eligible}
                         onClick={() => {
@@ -191,7 +221,7 @@ function VisitPage() {
                         เลื่อนนัด
                       </Button>
                       <Button
-                        className="flex-1"
+                        className="h-11 flex-1"
                         variant="ghost"
                         disabled={mutate.isPending}
                         onClick={() => {
@@ -261,23 +291,29 @@ function VisitPage() {
                     <p className="mb-2 text-sm font-medium text-primary">
                       {editing ? 'เลือกเวลาใหม่' : 'พร้อมนัดเข้าร้าน'}
                     </p>
-                    <h1 className="text-2xl font-semibold">
+                    <h1
+                      ref={heading}
+                      tabIndex={-1}
+                      className="text-2xl font-semibold tracking-tight outline-none sm:text-3xl"
+                    >
                       {review ? 'ตรวจสอบนัดของคุณ' : 'เลือกเวลาที่สะดวก'}
-                      <br />
-                      {!review && 'แล้วพบกันที่ร้าน'}
                     </h1>
                     <p className="mt-3 text-sm text-muted-foreground">
-                      ผ่านเครดิตเบื้องต้นแล้ว นัดเข้าร้านเพื่อดำเนินการต่อ ใช้เวลาประมาณ 45 นาที
+                      ผ่านเครดิตเบื้องต้นแล้ว เลือกวันและเวลาที่สะดวกเข้าร้าน ใช้เวลาประมาณ 45 นาที
                     </p>
                   </div>
                   {review ? (
                     <div className="space-y-3 rounded-xl bg-muted p-5">
                       <p className="font-medium">{chosenBranch?.name}</p>
                       <p>
-                        {thaiDate(selection.day)} · {thaiTime(selection.startsAt)}
+                        {thaiDate(selection.day)} · {thaiTime(selection.startsAt)}–
+                        {thaiTime(
+                          new Date(+new Date(selection.startsAt) + 45 * 60000).toISOString(),
+                        )}{' '}
+                        น.
                       </p>
                       <p className="text-sm text-muted-foreground">
-                        การนัดหมายยังไม่ใช่การอนุมัติสินเชื่อขั้นสุดท้าย
+                        เมื่อยืนยันแล้ว ระบบจะส่งรายละเอียดนัดเข้าแชทเดิมที่คุยกับ BESTCHOICE
                       </p>
                     </div>
                   ) : (
@@ -309,11 +345,12 @@ function VisitPage() {
                           ? 'ยืนยันเลื่อนนัด'
                           : 'ยืนยันนัดหมาย'
                         : 'ตรวจสอบนัดหมาย'}
+                    {!mutate.isPending && <ArrowRight aria-hidden="true" className="ml-2 size-4" />}
                   </Button>
                   {(review || editing) && (
                     <Button
                       variant="ghost"
-                      className="w-full"
+                      className="h-11 w-full"
                       disabled={mutate.isPending}
                       onClick={() => (review ? setReview(false) : setEditing(false))}
                     >

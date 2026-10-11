@@ -86,7 +86,18 @@ export async function seedAppointmentPreview(db: PrismaService, ownerId: string)
       });
       await db.creditCheck.create({ data: { customerId: customer.id, status: 'APPROVED' } });
     }
-    customers.push({ id: customer.id, name: customer.name });
+    let room = await db.chatRoom.findFirst({
+      where: { customerId: customer.id, channel: 'LINE_SHOP', deletedAt: null },
+    });
+    room ??= await db.chatRoom.create({
+      data: {
+        customerId: customer.id,
+        channel: 'LINE_SHOP',
+        externalUserId: `appointment-preview-${customer.id}`,
+        displayName: customer.name,
+      },
+    });
+    customers.push({ id: customer.id, name: customer.name, roomId: room.id });
   }
   return { branchId: branch.id, staffId: staff.id, customers };
 }

@@ -737,6 +737,7 @@ export default function RoomDossier({ onClose, room, customerId, activeRoomId, o
       <div className="inbox-dossier-content flex-1 min-h-0 overflow-y-auto bg-card">
         {tab === 'customer' && (
           <div className="flex flex-col gap-2.5 p-2.5">
+            <div id="room-store-appointment"><CustomerAppointments customerId={customerId} roomId={room.id} /></div>
             <Group label="ข้อมูลลูกค้า">
               <div className="mb-4 flex min-w-0 items-center gap-3">
                 <Avatar className="size-9 shrink-0"><AvatarImage src={room.pictureUrl ?? undefined} alt="" /><AvatarFallback className="bg-primary/5 text-primary">{name[0]}</AvatarFallback></Avatar>
@@ -814,7 +815,6 @@ export default function RoomDossier({ onClose, room, customerId, activeRoomId, o
             <AdGroup room={room} />
 
             <div id="room-appointments" className="scroll-mt-2">
-              <CustomerAppointments customerId={customerId} roomId={room.id} />
               <ChatServiceRequestSection key={`service:${workIdentity}`} roomId={room.id} />
               <AppointmentsGroup todos={roomTodos.filter(t => !['CHAT_HANDOFF', 'CHAT_SERVICE'].includes(t.workKind ?? ''))} onNew={newAppointment} onEdit={todo => { setEditingAppt(todo); setApptOpen(true); }} />
             </div>

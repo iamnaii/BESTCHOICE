@@ -22,22 +22,46 @@ import {
   visitStatus,
 } from '@/components/appointments/types';
 import Schedule from './Schedule';
+import AppointmentCalendar from './AppointmentCalendar';
 interface Options {
   branches: Branch[];
   staff: { id: string; name: string; branchId: string }[];
   canManage: boolean;
 }
 export default function StoreAppointmentsPage() {
+  const [params] = useSearchParams();
+  return (
+    <AppointmentWorkspace
+      key={`${params.get('customerId') || ''}:${params.get('appointmentId') || ''}:${params.get('roomId') || ''}`}
+    />
+  );
+}
+function AppointmentWorkspace() {
   useDocumentTitle('นัดเข้าร้าน');
   const qc = useQueryClient();
-  const [params] = useSearchParams();
-  const [customer, setCustomer] = useState<CustomerOption | null>(null),
-    [tab, setTab] = useState('appointments');
-  const [selection, setSelection] = useState<Selection>({
+  const [params, setParams] = useSearchParams();
+  const tab = params.get('view') || 'appointments';
+  const setTab = (view: string) =>
+    setParams((previous) => {
+      const next = new URLSearchParams(previous);
+      next.set('view', view);
+      return next;
+    });
+  const [customer, setCustomer] = useState<CustomerOption | null>(null);
+  const [localSelection, setSelection] = useState<Selection>({
     branchId: '',
     day: visitDay(),
     startsAt: '',
   });
+  const paramDay = params.get('day') || '';
+  const validDay =
+    /^\d{4}-\d{2}-\d{2}$/.test(paramDay) &&
+    Number.isFinite(Date.parse(`${paramDay}T12:00:00+07:00`));
+  const selection = {
+    ...localSelection,
+    branchId: params.get('branchId') || localSelection.branchId,
+    day: validDay ? paramDay : localSelection.day,
+  };
   const [editing, setEditing] = useState<StaffVisit | null>(null),
     [action, setAction] = useState<{ visit: StaffVisit; kind: 'CANCELED' | 'reassign' } | null>(
       null,
@@ -169,7 +193,17 @@ export default function StoreAppointmentsPage() {
     },
   });
   const change = (s: Selection) => {
+    if (!s.day) return;
     setSelection(s);
+    setParams(
+      (previous) => {
+        const next = new URLSearchParams(previous);
+        next.set('branchId', s.branchId || branchId);
+        next.set('day', s.day);
+        return next;
+      },
+      { replace: true },
+    );
     setRequestId(crypto.randomUUID());
   };
   const rows = list.data || [];
@@ -198,6 +232,12 @@ export default function StoreAppointmentsPage() {
               onClick={() => setTab('appointments')}
             >
               นัดหมาย
+            </Button>
+            <Button
+              variant={tab === 'calendar' ? 'primary' : 'outline'}
+              onClick={() => setTab('calendar')}
+            >
+              ปฏิทิน
             </Button>
             {options.data?.canManage && (
               <Button
@@ -234,7 +274,13 @@ export default function StoreAppointmentsPage() {
               />
             </label>
           </div>
-          {tab === 'schedule' ? (
+          {tab === 'calendar' ? (
+            <AppointmentCalendar
+              branchId={branchId}
+              day={selection.day}
+              onDay={(day) => change({ ...selection, branchId, day, startsAt: '' })}
+            />
+          ) : tab === 'schedule' ? (
             <Schedule
               key={branchId + selection.day}
               branchId={branchId}

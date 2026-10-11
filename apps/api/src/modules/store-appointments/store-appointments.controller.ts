@@ -28,6 +28,23 @@ export class StoreAppointmentsController {
   ) {
     return this.appointments.retryConfirmation(id, { staffId: r.user.id });
   }
+  @Get('calendar') calendar(
+    @Query('branchId') branchId: string,
+    @Query('month') month: string,
+    @Req() r: StaffRequest,
+  ) {
+    return this.appointments.calendar(branchId, month, { staffId: r.user.id });
+  }
+  @Get('calendar/day') calendarDay(
+    @Query('branchId') branchId: string,
+    @Query('day') day: string,
+    @Query('page') page: string | undefined,
+    @Req() r: StaffRequest,
+  ) {
+    return this.appointments.calendarDay(branchId, day, page === undefined ? 1 : Number(page), {
+      staffId: r.user.id,
+    });
+  }
   @Get('room-summaries') roomSummaries(@Query('roomIds') ids: string, @Req() r: StaffRequest) {
     return this.appointments.roomSummaries((ids || '').split(',').filter(Boolean), {
       staffId: r.user.id,

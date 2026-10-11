@@ -3,6 +3,22 @@ import { Button } from '@/components/ui/button';
 import { useCopyToClipboard } from '@/hooks/useCopyToClipboard';
 import type { Confirmation } from './types';
 
+export function confirmationStatusLabel(status: string) {
+  return status === 'SENT'
+    ? 'ส่งข้อความยืนยันเข้าแชทแล้ว'
+    : status === 'PENDING' || status === 'SENDING'
+      ? 'กำลังส่งข้อความยืนยันเข้าแชทเดิม'
+      : status === 'UNKNOWN'
+        ? 'ยังยืนยันผลการส่งข้อความไม่ได้'
+        : status === 'BLOCKED'
+          ? 'รอตรวจสอบผลข้อความก่อนหน้า'
+          : status === 'NO_CHANNEL'
+            ? 'ยังส่งข้อความเข้าแชทไม่ได้'
+            : status === 'SUPERSEDED'
+              ? 'ข้อความนี้ถูกแทนด้วยข้อมูลนัดล่าสุดแล้ว'
+              : 'ส่งข้อความยืนยันไม่สำเร็จ';
+}
+
 export default function ConfirmationMessage({
   confirmation,
   onRetry,
@@ -19,19 +35,7 @@ export default function ConfirmationMessage({
   const saved =
     confirmation.kind === 'CANCELED' ? 'บันทึกการยกเลิกนัดเรียบร้อยแล้ว' : 'บันทึกนัดเรียบร้อยแล้ว';
   const sent = status === 'SENT';
-  const label = sent
-    ? 'ส่งข้อความยืนยันเข้าแชทแล้ว'
-    : pending
-      ? 'กำลังส่งข้อความยืนยันเข้าแชทเดิม'
-      : status === 'UNKNOWN'
-        ? 'ยังยืนยันผลการส่งข้อความไม่ได้'
-        : status === 'BLOCKED'
-          ? 'รอตรวจสอบผลข้อความก่อนหน้า'
-          : status === 'NO_CHANNEL'
-            ? 'ยังส่งข้อความเข้าแชทไม่ได้'
-            : status === 'SUPERSEDED'
-              ? 'ข้อความนี้ถูกแทนด้วยข้อมูลนัดล่าสุดแล้ว'
-              : 'ส่งข้อความยืนยันไม่สำเร็จ';
+  const label = confirmationStatusLabel(status);
   return (
     <section
       className="rounded-xl border border-border bg-background p-4"

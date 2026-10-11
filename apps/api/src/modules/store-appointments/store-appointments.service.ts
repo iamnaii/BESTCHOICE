@@ -159,6 +159,93 @@ export class StoreAppointmentsService {
     const credit = await this.credit(this.db, row.customerId);
     return { ...appointmentView(row), creditEligible: credit.eligible };
   }
+  async calendar(branchId: string, month: string, actor: AppointmentActor) {
+    await staffAccess(this.db, actor);
+    await branchAccess(this.db, actor, branchId, true);
+    if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month || ''))
+      throw new BadRequestException('เดือนต้องอยู่ในรูป YYYY-MM');
+    const from = dayBounds(`${month}-01`)[0];
+    const next = new Date(`${month}-01T00:00:00Z`);
+    next.setUTCMonth(next.getUTCMonth() + 1);
+    const to = dayBounds(next.toISOString().slice(0, 10))[0];
+    const rows = await this.db.storeAppointment.findMany({
+      where: { branchId, deletedAt: null, startsAt: { gte: from, lt: to } },
+      select: { customerId: true, startsAt: true, status: true },
+    });
+    const days = new Map<
+      string,
+      {
+        day: string;
+        customers: Set<string>;
+        appointments: number;
+        booked: number;
+        checkedIn: number;
+        inService: number;
+        completed: number;
+        canceled: number;
+        noShow: number;
+      }
+    >();
+    const people = new Set<string>();
+    let appointments = 0;
+    for (const row of rows) {
+      const day = bangkokDay(row.startsAt);
+      const entry = days.get(day) || {
+        day,
+        customers: new Set<string>(),
+        appointments: 0,
+        booked: 0,
+        checkedIn: 0,
+        inService: 0,
+        completed: 0,
+        canceled: 0,
+        noShow: 0,
+      };
+      const key = {
+        BOOKED: 'booked',
+        CHECKED_IN: 'checkedIn',
+        IN_SERVICE: 'inService',
+        COMPLETED: 'completed',
+        CANCELED: 'canceled',
+        NO_SHOW: 'noShow',
+      } as const;
+      entry[key[row.status]]++;
+      if (!['CANCELED', 'NO_SHOW'].includes(row.status)) {
+        entry.customers.add(row.customerId);
+        entry.appointments++;
+        people.add(row.customerId);
+        appointments++;
+      }
+      days.set(day, entry);
+    }
+    return {
+      month,
+      customers: people.size,
+      appointments,
+      days: [...days.values()]
+        .sort((a, b) => a.day.localeCompare(b.day))
+        .map((entry) => ({ ...entry, customers: entry.customers.size })),
+    };
+  }
+  async calendarDay(branchId: string, day: string, page: number, actor: AppointmentActor) {
+    await staffAccess(this.db, actor);
+    await branchAccess(this.db, actor, branchId, true);
+    if (!Number.isInteger(page) || page < 1 || page > 10000)
+      throw new BadRequestException('หน้ารายการไม่ถูกต้อง');
+    const [from, to] = dayBounds(day);
+    const where = { branchId, deletedAt: null, startsAt: { gte: from, lt: to } };
+    const [rows, total] = await this.db.$transaction([
+      this.db.storeAppointment.findMany({
+        where,
+        include: appointmentInclude,
+        orderBy: [{ startsAt: 'asc' }, { id: 'asc' }],
+        take: 50,
+        skip: (page - 1) * 50,
+      }),
+      this.db.storeAppointment.count({ where }),
+    ]);
+    return { rows: rows.map(appointmentView), total, page, pageSize: 50 };
+  }
   async list(
     query: {
       day?: string;

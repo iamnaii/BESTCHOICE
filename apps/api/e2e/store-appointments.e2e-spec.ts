@@ -98,6 +98,85 @@ beforeEach(async () => {
 });
 
 describe('store appointments on isolated PostgreSQL', () => {
+  it('counts the full calendar beyond 200 rows, distinct customers and Bangkok boundaries, with paginated details', async () => {
+    const c = await customer(),
+      second = await customer(),
+      staff = await employee();
+    const w = await window(staff.id);
+    const month = day.slice(0, 7);
+    const first = dayBounds(`${month}-01`)[0];
+    const startsAt = new Date(first.getTime() + 10 * 3600000);
+    const base = {
+      customerId: c.id,
+      branchId,
+      staffUserId: staff.id,
+      windowId: w.id,
+      creditCheckId: c.check.id,
+      creditCheckTypeAtBooking: 'FULL',
+      source: 'STAFF',
+      startsAt,
+      endsAt: new Date(+startsAt + 45 * 60000),
+    };
+    const prefix = randomUUID();
+    await db.storeAppointment.createMany({
+      data: [
+        ...Array.from({ length: 205 }, (_, i) => ({
+          ...base,
+          reference: `${prefix}-${i}`,
+          status: 'COMPLETED' as const,
+        })),
+        { ...base, customerId: second.id, reference: `${prefix}-second`, status: 'BOOKED' },
+        { ...base, reference: `${prefix}-canceled`, status: 'CANCELED' },
+        { ...base, reference: `${prefix}-absent`, status: 'NO_SHOW' },
+        {
+          ...base,
+          reference: `${prefix}-previous`,
+          startsAt: new Date(+first - 1),
+          endsAt: new Date(+first - 1 + 45 * 60000),
+          status: 'COMPLETED',
+        },
+        {
+          ...base,
+          reference: `${prefix}-midnight`,
+          startsAt: first,
+          endsAt: new Date(+first + 45 * 60000),
+          status: 'COMPLETED',
+        },
+        { ...base, branchId: secondBranchId, reference: `${prefix}-branch`, status: 'COMPLETED' },
+        { ...base, reference: `${prefix}-deleted`, status: 'COMPLETED', deletedAt: new Date() },
+      ],
+    });
+    const result = await appointments.calendar(branchId, month, actor());
+    expect(result.customers).toBe(2);
+    expect(result.appointments).toBe(207);
+    expect(result.days.find((d) => d.day === `${month}-01`)).toMatchObject({
+      customers: 2,
+      appointments: 207,
+      completed: 206,
+      booked: 1,
+      noShow: 1,
+    });
+    const firstPage = await appointments.calendarDay(branchId, `${month}-01`, 1, actor());
+    const secondPage = await appointments.calendarDay(branchId, `${month}-01`, 2, actor());
+    expect(firstPage.rows).toHaveLength(50);
+    expect(secondPage.rows).toHaveLength(50);
+    expect(firstPage.total).toBeGreaterThanOrEqual(209);
+    expect(firstPage.rows[0].startsAt).toEqual(first);
+    expect(new Set([...firstPage.rows, ...secondPage.rows].map((r) => r.id)).size).toBe(100);
+    expect((await appointments.calendar(secondBranchId, month, actor())).appointments).toBe(1);
+  });
+  it('guards calendar scope and rejects malformed dates and pagination', async () => {
+    const sales = await employee();
+    const scoped = { staffId: sales.id };
+    await expect(appointments.calendar(secondBranchId, day.slice(0, 7), scoped)).rejects.toThrow();
+    await expect(appointments.calendarDay(secondBranchId, day, 1, scoped)).rejects.toThrow();
+    await expect(appointments.calendar(branchId, '2026-13', actor())).rejects.toThrow();
+    await expect(appointments.calendarDay(branchId, '2026-02-30', 1, actor())).rejects.toThrow();
+    await expect(appointments.calendarDay(branchId, day, 0, actor())).rejects.toThrow();
+    await expect(appointments.calendarDay(branchId, day, 1.5, actor())).rejects.toThrow();
+    await db.user.update({ where: { id: sales.id }, data: { accessibleCompanies: ['FINANCE'] } });
+    await expect(appointments.calendar(branchId, day.slice(0, 7), scoped)).rejects.toThrow();
+  });
   it('persists actual FULL decisions and does not resurrect approval after rejected then pending', async () => {
     const c = await customer();
     expect(c.check.checkType).toBe('FULL');

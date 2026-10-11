@@ -153,6 +153,8 @@ describe('ContractPaymentService.earlyPayoff — slipMatch (ไม่ผ่า�
       // balance of 21-1103 for this contract — the same policy JP5 already used —
       // so the ledger has to BACK the column here or the relief clamps to zero.
       // PR5: JP4 ล้างลูกหนี้ตามยอดในบัญชี — ยอดหลัง 6 งวดที่ตั้งลูกหนี้งวด + รับครบ (fixture เดียวกับ park spec)
+      // PR4: advanceVatOutstanding อ่าน stamp จาก journalEntry — ไม่มีรายการที่ประทับในฟิกซ์เจอร์นี้
+      journalEntry: { findMany: jest.fn().mockResolvedValue([]) },
       journalLine: { findMany: jest.fn(ledger) },
       badDebtProvision: {
         findFirst: jest.fn().mockResolvedValue(null),
@@ -175,6 +177,8 @@ describe('ContractPaymentService.earlyPayoff — slipMatch (ไม่ผ่า�
       },
       chartOfAccount: { findMany: jest.fn().mockResolvedValue([]) },
       // preview นอก tx (ยอดปิดก่อนเปิดธุรกรรม) อ่านยอดในบัญชีชุดเดียวกัน
+      // PR4: advanceVatOutstanding อ่าน stamp จาก journalEntry — ไม่มีรายการที่ประทับในฟิกซ์เจอร์นี้
+      journalEntry: { findMany: jest.fn().mockResolvedValue([]) },
       journalLine: { findMany: jest.fn(ledger) },
       companyInfo: {
         findFirst: jest

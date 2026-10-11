@@ -154,6 +154,8 @@ describe('ContractPaymentService.earlyPayoff — ถังพักงวดส�
       // That is exactly right: the 6a/6b fee JE credited 21-1103 by the parked
       // amount, so a contract whose column says `park` has a matching Cr balance.
       // PR5: JP4 ล้างลูกหนี้ตามยอดในบัญชี — ยอดหลัง 6 งวดที่ตั้งลูกหนี้งวด + รับครบ (ไม่มี 11-2102)
+      // PR4: advanceVatOutstanding อ่าน stamp จาก journalEntry — ไม่มีรายการที่ประทับในฟิกซ์เจอร์นี้
+      journalEntry: { findMany: jest.fn().mockResolvedValue([]) },
       journalLine: { findMany: jest.fn(ledger) },
       badDebtProvision: {
         findFirst: jest.fn().mockResolvedValue(null),
@@ -170,6 +172,8 @@ describe('ContractPaymentService.earlyPayoff — ถังพักงวดส�
       },
       chartOfAccount: { findMany: jest.fn().mockResolvedValue([]) },
       // preview (getEarlyPayoffQuote) อ่านยอดในบัญชีชุดเดียวกับที่ลงจริง
+      // PR4: advanceVatOutstanding อ่าน stamp จาก journalEntry — ไม่มีรายการที่ประทับในฟิกซ์เจอร์นี้
+      journalEntry: { findMany: jest.fn().mockResolvedValue([]) },
       journalLine: { findMany: jest.fn(ledger) },
       companyInfo: {
         findFirst: jest

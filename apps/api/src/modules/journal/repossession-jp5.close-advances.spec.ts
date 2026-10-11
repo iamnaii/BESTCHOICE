@@ -38,6 +38,8 @@ describe('RepossessionJP5Template — หักเงินของลูกค
       rescheduleAdvanceBalance?: string;
       creditBalance?: string;
     };
+    /** metadata ของรายการ POSTED ของสัญญา (stamp ภาษีของเงินรับล่วงหน้า — PR4) */
+    stamps?: Array<Record<string, unknown>>;
   }) {
     const contract = {
       id: 'contract-1',
@@ -71,6 +73,11 @@ describe('RepossessionJP5Template — หักเงินของลูกค
       contract: { findUniqueOrThrow: jest.fn().mockResolvedValue(contract) },
       installmentSchedule: { findMany: jest.fn().mockResolvedValue(installments) },
       payment: { findMany: jest.fn().mockResolvedValue(payments) },
+      journalEntry: {
+        findMany: jest
+          .fn()
+          .mockResolvedValue((opts.stamps ?? []).map((metadata) => ({ metadata }))),
+      },
       journalLine: {
         findMany: jest.fn(async (args: { where: { accountCode: string } }) => {
           const g = opts.gl[args.where.accountCode];
@@ -356,6 +363,76 @@ describe('RepossessionJP5Template — หักเงินของลูกค
           ?.dr.toFixed(2),
       ).toBe('2326.69');
       expect(sum(posted().lines, 'dr')).toBe(sum(posted().lines, 'cr'));
+    });
+  });
+
+  describe('PR4 (ต8) — ขากลับภาษีของเงินรับล่วงหน้า', () => {
+    it('ตัวอย่างข้อ 5 + เงินพัก 1,044 ที่พักภาษี 68.30 (21-2102 ในบัญชี 725.02): ขากลับ Dr 21-2101 / Cr 21-2102 68.30 ก่อนขาล้าง · ขาล้าง 21-2102 = 725.02 + 68.30 = 793.32 · ขาดทุน 5,126.68 − 1,044 = 4,082.68 (คู่ภาษีไม่แตะ plug)', async () => {
+      const { template, client, posted } = build({
+        gl: { ...EIGHT_REMAINING, '21-2102': { cr: '725.02' }, '21-1103': { cr: '1044.00' } },
+        columns: { rescheduleAdvanceBalance: '1044.00' },
+        stamps: [{ contractId: 'contract-1', advanceVatPark: '68.30' }],
+      });
+
+      await template.execute({ ...base, parkRelief: dec('1044.00') }, client as never);
+
+      expect(tuples(posted().lines)).toEqual([
+        '11-2107 7000.00 0.00',
+        '11-2106 4000.00 0.00',
+        '21-2101 68.30 0.00',
+        '21-2102 0.00 68.30',
+        '21-2102 793.32 0.00',
+        '11-2101 0.00 11333.36',
+        '11-2105 0.00 793.32',
+        '21-2101 0.00 793.32',
+        '41-1101 0.00 4000.00',
+        '21-1103 1044.00 0.00',
+        '51-1102 4082.68 0.00',
+      ]);
+      expect(sum(posted().lines, 'dr')).toBe(sum(posted().lines, 'cr'));
+      expect(posted().metadata).toMatchObject({
+        parkRelief: '1044.00',
+        advanceVatReversal: '68.30',
+        advanceVatConsume: '68.30',
+      });
+    });
+
+    it('ทุกงวดตั้งลูกหนี้แล้ว (21-2102 ในบัญชี −68.30) + เงินพัก 1,044 → ขากลับทำให้ 21-2102 เป็น 0 · ไม่มีขาล้าง 21-2102 / 21-2101', async () => {
+      const { template, client, posted } = build({
+        gl: {
+          '11-2103': { dr: '1515.83' },
+          '21-2102': { dr: '68.30' },
+          '21-1103': { cr: '1044.00' },
+        },
+        columns: { advanceBalance: '1044.00' },
+        stamps: [{ contractId: 'contract-1', advanceVatPark: '68.30' }],
+      });
+
+      await template.execute({ ...base, repossessionValue: dec('400.00') }, client as never);
+
+      expect(tuples(posted().lines)).toEqual([
+        '11-2107 400.00 0.00',
+        '21-2101 68.30 0.00',
+        '21-2102 0.00 68.30',
+        '11-2103 0.00 1515.83',
+        '21-1103 1044.00 0.00',
+        '51-1102 71.83 0.00',
+      ]);
+      expect(posted().metadata).toMatchObject({
+        advanceVatReversal: '68.30',
+        advanceVatConsume: '68.30',
+      });
+    });
+
+    it('ไม่มี stamp → รายการเดิมทุกไบต์ ไม่มี advanceVatReversal', async () => {
+      const { template, client, posted } = build({
+        gl: { ...EIGHT_REMAINING, '21-1103': { cr: '500.00' } },
+        columns: { advanceBalance: '500.00' },
+      });
+      await template.execute(base, client as never);
+      expect(posted().lines.filter((l) => l.accountCode === '21-2102')).toHaveLength(1);
+      expect(posted().metadata).not.toHaveProperty('advanceVatReversal');
+      expect(posted().metadata).not.toHaveProperty('advanceVatConsume');
     });
   });
 });

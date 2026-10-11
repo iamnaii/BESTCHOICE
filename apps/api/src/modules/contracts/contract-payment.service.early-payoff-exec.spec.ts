@@ -209,6 +209,8 @@ describe('ContractPaymentService.earlyPayoff (EXECUTION / money-posting golden)'
         }),
       },
       // JP4 (PR5) + releaseEclOnPayoff (C1) — glContractBalance reads journalLine.
+      // PR4: advanceVatOutstanding อ่าน stamp จาก journalEntry — ไม่มีรายการที่ประทับในฟิกซ์เจอร์นี้
+      journalEntry: { findMany: jest.fn().mockResolvedValue([]) },
       journalLine: { findMany: journalLineFindMany },
       badDebtProvision: {
         findFirst: badDebtProvisionFindFirst,
@@ -222,6 +224,8 @@ describe('ContractPaymentService.earlyPayoff (EXECUTION / money-posting golden)'
       installmentSchedule: { findMany: jest.fn().mockResolvedValue(installmentSchedules) },
       chartOfAccount: { findMany: jest.fn().mockResolvedValue([]) },
       // getEarlyPayoffQuote (preview) อ่านยอดในบัญชีชุดเดียวกับที่ลงจริง
+      // PR4: advanceVatOutstanding อ่าน stamp จาก journalEntry — ไม่มีรายการที่ประทับในฟิกซ์เจอร์นี้
+      journalEntry: { findMany: jest.fn().mockResolvedValue([]) },
       journalLine: { findMany: journalLineFindMany },
       // resolveFinanceCompanyId + resolveShopCompanyId
       companyInfo: {

@@ -46,6 +46,10 @@ export default function PurchaseOrdersPage() {
   const [taxInvoiceTarget, setTaxInvoiceTarget] = useState<GoodsReceivingRecord | null>(null);
   const canRecordPayments = user?.role === 'OWNER' || user?.role === 'BRANCH_MANAGER';
   const canVoidPayments = user?.role === 'OWNER';
+  // คำตัดสินเจ้าของ 2026-10-11: ผจก.การเงิน / ฝ่ายบัญชี เข้าหน้านี้แบบดูอย่างเดียว — สร้าง/สั่งซื้อ/อนุมัติ/รับสินค้า/ยกเลิก
+  // เป็นของเจ้าของกิจการ + ผู้จัดการสาขา (ตรง @Roles ของ API ซึ่งตอบ 403 ให้สอง role นั้นอยู่แล้ว)
+  const canManagePO = user?.role === 'OWNER' || user?.role === 'BRANCH_MANAGER';
+  const readOnly = !canManagePO;
   const poPayments = usePoPayments(data.selectedPO?.id ?? null, data.isDetailModalOpen || data.isPaymentDialogOpen || !!data.cancelTarget);
   // แท็บเจ้าหนี้รายผู้จัดจำหน่าย (กระดาน 5) — ยอดจากสมุดบัญชี เลือกเดือน/ผู้จัดจำหน่ายได้
   const [ledgerMonth, setLedgerMonth] = useState(() => todayIso().slice(0, 7));
@@ -141,10 +145,11 @@ export default function PurchaseOrdersPage() {
     <div>
       <PageHeader
         title="ใบสั่งซื้อ (PO)"
-        subtitle="จัดการการสั่งซื้อสินค้า"
+        subtitle={readOnly ? 'ดูอย่างเดียว — สร้าง รับสินค้า และจ่ายเงินทำโดยเจ้าของกิจการหรือผู้จัดการสาขา' : 'จัดการการสั่งซื้อสินค้า'}
         action={
           <div className="flex gap-2">
-            {(data.summary?.waitingQc ?? 0) > 0 && (
+            {/* /purchase-orders/qc เป็น route ของ OWNER/BM เท่านั้น — role ดูอย่างเดียวกดแล้วจะโดนเด้ง "ไม่มีสิทธิ์" */}
+            {canManagePO && (data.summary?.waitingQc ?? 0) > 0 && (
               <Link
                 to="/purchase-orders/qc"
                 className="inline-flex items-center gap-1.5 px-3 py-2 text-sm border border-input rounded-lg hover:bg-muted transition-colors"
@@ -189,12 +194,14 @@ export default function PurchaseOrdersPage() {
               </button>
             )}
             {/* One entry for both ways in (owner 2026-09-06): the wizard asks "ของถึงแล้วหรือยัง" on step 1 */}
-            <button
-              onClick={() => data.setIsCreateModalOpen(true)}
-              className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors"
-            >
-              + ซื้อสินค้า
-            </button>
+            {canManagePO && (
+              <button
+                onClick={() => data.setIsCreateModalOpen(true)}
+                className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors"
+              >
+                + ซื้อสินค้า
+              </button>
+            )}
           </div>
         }
       />
@@ -240,6 +247,7 @@ export default function PurchaseOrdersPage() {
           suppliers={data.suppliers}
           overdueOnly={data.overdueOnly}
           setOverdueOnly={data.setOverdueOnly}
+          readOnly={readOnly}
         />
       ) : (
         <AccountsPayableTab
@@ -255,6 +263,7 @@ export default function PurchaseOrdersPage() {
           movements={ledgerMovements.data}
           movementsLoading={ledgerMovements.isLoading}
           onOpenPo={openPoFromLedger}
+          readOnly={readOnly}
         />
       )}
 
@@ -309,6 +318,7 @@ export default function PurchaseOrdersPage() {
         }}
         onCancel={(po) => data.openCancelDialog(po)}
         role={user?.role}
+        readOnly={readOnly}
         onRecordTaxInvoice={(po, receiving) => {
           data.setSelectedPO(po);
           setTaxInvoiceTarget(receiving);

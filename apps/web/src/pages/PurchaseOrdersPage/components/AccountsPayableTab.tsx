@@ -18,6 +18,8 @@ export interface AccountsPayableTabProps {
   movementsLoading: boolean;
   /** เปิดใบสั่งซื้อ (หน้ารายละเอียดมีปุ่มบันทึกการจ่าย) */
   onOpenPo: (poId: string) => void;
+  /** ดูอย่างเดียว (ผจก.การเงิน / ฝ่ายบัญชี) — ข้อความต้องไม่ชี้ปุ่มที่สอง role นี้ไม่มี */
+  readOnly?: boolean;
 }
 
 const money = (v: string | number) => formatNumberDecimal(Number(v) || 0, 2);
@@ -56,7 +58,7 @@ const tdCls = 'px-3 py-2.5 align-middle';
  * เจ้าหนี้รายผู้จัดจำหน่ายจากสมุดบัญชี (ก้อน 2 · กระดาน 5 · คำตัดสินเจ้าของ 2026-10-05 ข้อ 2): ยอดอ่านจากบรรทัดรายการบัญชี
  * S21-1101 / S21-1102 / S11-4201 ตาม supplierId — ไม่ใช่จากช่อง "จ่ายแล้ว" ของใบ · กดชื่อเพื่อดูรายการเคลื่อนไหว + ใบค้างจ่าย
  */
-export function AccountsPayableTab({ ledger, isLoading, month, setMonth, selectedSupplierId, onSelectSupplier, movements, movementsLoading, onOpenPo }: AccountsPayableTabProps) {
+export function AccountsPayableTab({ ledger, isLoading, month, setMonth, selectedSupplierId, onSelectSupplier, movements, movementsLoading, onOpenPo, readOnly = false }: AccountsPayableTabProps) {
   const selected = ledger?.suppliers.find((r) => r.supplier.id === selectedSupplierId) ?? null;
   return (
     <div className="flex flex-col gap-5">
@@ -217,7 +219,11 @@ export function AccountsPayableTab({ ledger, isLoading, month, setMonth, selecte
                 );
               })}
             </ul>
-            <p className="mt-3 text-xs text-muted-foreground">บันทึกการจ่ายจากปุ่ม "บันทึกการจ่าย" ในใบ — ทุกการจ่ายลงบัญชีและกลับมาแสดงที่นี่</p>
+            <p className="mt-3 text-xs text-muted-foreground">
+              {readOnly
+                ? 'การจ่ายบันทึกโดยเจ้าของกิจการหรือผู้จัดการสาขาจากปุ่ม "บันทึกการจ่าย" ในใบ — ทุกการจ่ายลงบัญชีและแสดงที่นี่'
+                : 'บันทึกการจ่ายจากปุ่ม "บันทึกการจ่าย" ในใบ — ทุกการจ่ายลงบัญชีและกลับมาแสดงที่นี่'}
+            </p>
           </section>
         </div>
       )}

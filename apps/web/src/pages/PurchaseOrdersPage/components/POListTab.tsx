@@ -44,6 +44,8 @@ export interface POListTabProps {
   suppliers: { id: string; name: string; hasVat?: boolean; paymentMethods?: SupplierPaymentMethod[] }[];
   overdueOnly: boolean;
   setOverdueOnly: (value: boolean) => void;
+  /** ดูอย่างเดียว (ผจก.การเงิน / ฝ่ายบัญชี) — ซ่อนปุ่มกระทำทั้งตารางและการ์ด เหลือ "ดูรายละเอียด" */
+  readOnly?: boolean;
 }
 
 const periodOptions: { value: PeriodFilter; label: string }[] = [
@@ -88,6 +90,7 @@ export function POListTab({
   rejectPOMutation,
   cancelMutation,
   onCancelPO,
+  readOnly = false,
   setConfirmDialog,
   suppliers,
   overdueOnly,
@@ -343,7 +346,7 @@ export function POListTab({
           >
             <FileText className="size-4" />
           </button>
-          {po.status === 'APPROVED' && (
+          {!readOnly && po.status === 'APPROVED' && (
             <button
               onClick={() => onOrder(po)}
               disabled={orderMutation.isPending}
@@ -354,7 +357,7 @@ export function POListTab({
               <ShoppingCart className="size-4" />
             </button>
           )}
-          {['APPROVED', 'ORDERED', 'PARTIALLY_RECEIVED'].includes(po.status) && (
+          {!readOnly && ['APPROVED', 'ORDERED', 'PARTIALLY_RECEIVED'].includes(po.status) && (
             <button
               onClick={() => openReceiveModal(po)}
               className="p-1.5 rounded-md text-primary hover:bg-primary/10 transition-colors"
@@ -364,7 +367,7 @@ export function POListTab({
               <PackageCheck className="size-4" />
             </button>
           )}
-          {po.status === 'DRAFT' && (
+          {!readOnly && po.status === 'DRAFT' && (
             <>
               <button
                 onClick={() => onApprove(po)}
@@ -387,7 +390,7 @@ export function POListTab({
             </>
           )}
           {/* also for an ORDERED PO with nothing received yet (approve lands on ORDERED now) */}
-          {canCancel(po) && (
+          {!readOnly && canCancel(po) && (
             <button
               onClick={() => onCancel(po)}
               disabled={cancelMutation.isPending}
@@ -408,7 +411,9 @@ export function POListTab({
   const emptyTitle = hasFilter ? 'ไม่พบใบสั่งซื้อที่ตรงกับตัวกรอง' : 'ยังไม่มีใบสั่งซื้อ';
   const emptyDesc = hasFilter
     ? 'ลองล้างตัวกรองหรือเปลี่ยนคำค้นหา'
-    : 'กด "+ สร้าง PO" ที่มุมขวาบนเพื่อเริ่มสั่งซื้อสินค้าจากผู้จัดจำหน่าย';
+    : readOnly
+      ? 'ใบสั่งซื้อสร้างโดยเจ้าของกิจการหรือผู้จัดการสาขา — เมื่อมีใบแล้วจะแสดงที่นี่'
+      : 'กด "+ ซื้อสินค้า" ที่มุมขวาบนเพื่อเริ่มสั่งซื้อสินค้าจากผู้จัดจำหน่าย';
 
   return (
     <>
@@ -528,6 +533,7 @@ export function POListTab({
                 approvePending={approveMutation.isPending}
                 orderPending={orderMutation.isPending}
                 rejectPending={rejectPOMutation.isPending}
+                readOnly={readOnly}
               />
             ))}
           </div>

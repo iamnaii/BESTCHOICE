@@ -44,6 +44,11 @@ export interface PODetailModalProps {
   role?: string | null;
   /** ก้อน 5 (Q1) — เปิด dialog บันทึก/แก้ใบกำกับภาษีของใบรับของ */
   onRecordTaxInvoice?: (po: PurchaseOrder, receiving: GoodsReceivingRecord) => void;
+  /**
+   * ดูอย่างเดียว (ผจก.การเงิน / ฝ่ายบัญชี — คำตัดสินเจ้าของ 2026-10-11): ซ่อนปุ่ม รับสินค้า / ยกเลิก PO
+   * ซึ่ง API ตอบ 403 ให้สอง role นี้อยู่แล้ว · บันทึกการจ่ายคุมด้วย canRecordPayments · ปุ่มใบกำกับภาษีคุมด้วย role (Q1)
+   */
+  readOnly?: boolean;
 }
 
 /** Whole baht stay whole ("10,700"); satang show two places ("47,165.60"). */
@@ -98,6 +103,7 @@ export function PODetailModal({
   canVoidPayments = false,
   role,
   onRecordTaxInvoice,
+  readOnly = false,
 }: PODetailModalProps) {
   const navigate = useNavigate();
   const overlayRef = useRef<HTMLDivElement>(null);
@@ -148,8 +154,8 @@ export function PODetailModal({
     : null;
   const due = po ? dueStatus(po.dueDate, po.paymentStatus || 'UNPAID') : null;
   const cancelled = po?.status === 'CANCELLED';
-  const receivable = !!po && canReceive(po);
-  const cancellable = !!po && !!onCancel && canCancel(po);
+  const receivable = !readOnly && !!po && canReceive(po);
+  const cancellable = !readOnly && !!po && !!onCancel && canCancel(po);
   const statusCfg = po ? getStatusBadgeProps(po.status, poStatusMap) : null;
   const payCfg = po ? getStatusBadgeProps(po.paymentStatus || 'UNPAID', poPaymentStatusMap) : null;
   const history = po ? poHistory(po, poDetail?.goodsReceivings ?? []) : [];

@@ -209,6 +209,29 @@ describe('PaymentReceiptTemplate — ใบกำกับภาษีตาม�
     expect(out.warnings).toEqual([]);
   });
 
+  // PR4 ต5 — ทุกรายการที่มีขาภาษีของ PR4 ประทับ stamp ให้ advanceVatOutstanding อ่าน
+  it('พักเงินรับล่วงหน้า 500 ในใบเดียวกัน → stamp metadata.advanceVatPark = "32.71" และมีบรรทัด 21-2102/21-2101 · ไม่มีขาพัก = ไม่มี stamp', async () => {
+    const { tpl, tx, createAndPost } = build({});
+    await tpl.execute(
+      { ...base, delta: dec('2015.83'), advanceCredit: dec('500'), isFinalReceipt: true },
+      tx as never,
+    );
+    const je = createAndPost.mock.calls[0][0] as {
+      metadata: Record<string, unknown>;
+      lines: { accountCode: string; dr: Decimal; cr: Decimal }[];
+    };
+    expect(je.metadata.advanceVatPark).toBe('32.71');
+    expect(je.metadata.advanceVatConsume).toBeUndefined();
+    expect(je.lines.find((l) => l.accountCode === '21-2102')?.dr.toFixed(2)).toBe('32.71');
+    expect(je.lines.find((l) => l.accountCode === '21-2101')?.cr.toFixed(2)).toBe('32.71');
+
+    jest.clearAllMocks();
+    const plain = build({});
+    await plain.tpl.execute({ ...base, delta: dec('1515.83'), isFinalReceipt: true }, plain.tx as never);
+    const je2 = plain.createAndPost.mock.calls[0][0] as { metadata: Record<string, unknown> };
+    expect(je2.metadata.advanceVatPark).toBeUndefined();
+  });
+
   it('ไม่มี 2A ในใบนี้ (งวดตั้งครบแล้ว) → ไม่ตรวจทาน', async () => {
     const { tpl, tx } = build({ prior: ['700'], accrual: null });
 

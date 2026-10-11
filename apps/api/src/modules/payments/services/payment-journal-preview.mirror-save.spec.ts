@@ -294,6 +294,9 @@ describe('PaymentJournalPreviewService — preview mirrors the save (QA #1347 fo
       ['11-1101', '1869.83', '0.00'],
       ['11-2103', '0.00', '1515.83'],
       ['21-1103', '0.00', '354.00'],
+      // PR4: ขาพักภาษีขายของเงินที่พัก 354 = HALF_UP(354 × 7/107) = 23.16 (preview === posted ผ่าน buildReceiptLines)
+      ['21-2102', '23.16', '0.00'],
+      ['21-2101', '0.00', '23.16'],
     ]);
     expect(preview.isBalanced).toBe(true);
     expect(preview.accrualMode).toBe('CONSOLIDATED_PAYING_AHEAD');

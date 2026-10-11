@@ -199,5 +199,27 @@ describe('PaymentJournalPreviewService — park bucket (I-4 / M-1)', () => {
       expect(feeLine!.credit).toBe('354.00');
       expect(feeLine!.description).toBe('เงินรับล่วงหน้างวดสุดท้าย — ค่าธรรมเนียมปรับดิว (6a)');
     });
+
+    // PR4 ต2: preview === posted — ขาพักภาษีขายของ 6a ต้องโผล่ใน preview ด้วยคำอธิบายเดียวกับที่ลงจริง
+    it('mirrors the PR4 park legs: Dr 21-2102 / Cr 21-2101 = HALF_UP(354 × 7/107) = 23.16', async () => {
+      const { service } = makeService({ installmentNo: 6, totalMonths: 12 });
+
+      const out = await service.previewJournal({
+        contractId: 'c-1',
+        installmentNo: 6,
+        amountReceived: 0,
+        depositAccountCode: '11-1101',
+        case: 'RESCHEDULE',
+        splitMode: 'SPLIT',
+        daysToShift: 7,
+      });
+
+      const dr2102 = out.lines.find((l) => l.accountCode === '21-2102');
+      const cr2101 = out.lines.find((l) => l.accountCode === '21-2101');
+      expect(dr2102?.debit).toBe('23.16');
+      expect(cr2101?.credit).toBe('23.16');
+      expect(dr2102?.description).toBe('ภาษีขายของเงินรับล่วงหน้า (รับรู้ ณ วันรับ)');
+      expect(cr2101?.description).toBe('ภาษีขายของเงินรับล่วงหน้า (รับรู้ ณ วันรับ)');
+    });
   });
 });

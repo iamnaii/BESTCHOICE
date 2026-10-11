@@ -29,6 +29,7 @@ const consumeApproval = consumePaymentApproval as jest.Mock;
  */
 describe('PaymentsService — Financial Integration', () => {
   let service: PaymentsService;
+  let journalAuto: { createAndPost: jest.Mock };
 
   const makePayment = (no: number, amountDue = 1000) => ({
     id: `pay-${no}`,
@@ -122,6 +123,7 @@ describe('PaymentsService — Financial Integration', () => {
     }).compile();
 
     service = module.get(PaymentsService);
+    journalAuto = module.get(JournalAutoService);
   });
 
   describe('recordPayment', () => {
@@ -216,6 +218,27 @@ describe('PaymentsService — Financial Integration', () => {
       expect(result.totalAllocated).toBe(12000);
       expect(result.overpayment).toBe(1000);
       expect(result.overpaymentMessage).toBeTruthy();
+    });
+
+    // PR4 ต2(ง): เครดิตจากกระจายเงิน (Cr 21-5101) = เงินของลูกค้าที่รับไว้ก่อน ⇒ พักภาษีขาย HALF_UP(1000 × 7/107) = 65.42
+    it('overpayment-credit JE carries the PR4 park legs (Dr 21-2102 / Cr 21-2101 = 65.42) + metadata.advanceVatPark', async () => {
+      journalAuto.createAndPost.mockClear();
+      await service.autoAllocatePayment('c1', 13000, 'CASH', 'u1');
+      const call = journalAuto.createAndPost.mock.calls.find(
+        (c: unknown[]) => (c[0] as { metadata: { tag: string } }).metadata.tag === 'overpayment-credit',
+      );
+      expect(call).toBeDefined();
+      const je = call![0] as {
+        metadata: Record<string, unknown>;
+        lines: { accountCode: string; dr: { toFixed: (n: number) => string }; cr: { toFixed: (n: number) => string }; description?: string }[];
+      };
+      expect(je.metadata.advanceVatPark).toBe('65.42');
+      expect(je.lines.find((l) => l.accountCode === '21-5101')!.cr.toFixed(2)).toBe('1000.00');
+      expect(je.lines.find((l) => l.accountCode === '21-2102')!.dr.toFixed(2)).toBe('65.42');
+      expect(je.lines.find((l) => l.accountCode === '21-2101')!.cr.toFixed(2)).toBe('65.42');
+      expect(je.lines.find((l) => l.accountCode === '21-2102')!.description).toBe(
+        'ภาษีขายของเงินรับล่วงหน้า (รับรู้ ณ วันรับ)',
+      );
     });
 
     it('should reject zero amount', async () => {

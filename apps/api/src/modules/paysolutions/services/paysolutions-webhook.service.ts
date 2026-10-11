@@ -11,6 +11,11 @@ import { ProductsService } from '../../products/products.service';
 import { JournalAutoService } from '../../journal/journal-auto.service';
 import { PaymentReceiptTemplate } from '../../journal/cpa-templates/payment-receipt.template';
 import {
+  ADVANCE_VAT_META,
+  advanceVatOf,
+  buildAdvanceVatParkLines,
+} from '../../journal/advance-vat';
+import {
   emitDeferredWarnings,
   warningsOf,
   type DeferredWarning,
@@ -579,6 +584,8 @@ export class PaySolutionsWebhookService {
           // contract row is missing we skip the JE + advanceBalance update rather than
           // throw and roll back the whole webhook (consistency w/ the receipt-JE block). (review)
           if (remaining.gt(0) && contractForJe) {
+            // PR4 (ต2 ค): เงินเกินที่พักเป็นเงินรับล่วงหน้า ⇒ รับรู้ภาษีขาย ณ วันรับ ในรายการเดียวกัน
+            const surplusVat = advanceVatOf(remaining);
             await this.journalAutoService.createAndPost(
               {
                 description: `เงินรับล่วงหน้า (รับเกินผ่าน Pay Solutions) — refno ${refno}`,
@@ -588,6 +595,7 @@ export class PaySolutionsWebhookService {
                   contractId: paymentLink.contractId,
                   refno,
                   surplus: remaining.toString(),
+                  ...(surplusVat.gt(0) ? { [ADVANCE_VAT_META.park]: surplusVat.toFixed(2) } : {}),
                 },
                 lines: [
                   {
@@ -602,6 +610,7 @@ export class PaySolutionsWebhookService {
                     cr: remaining,
                     description: 'เงินรับล่วงหน้า',
                   },
+                  ...buildAdvanceVatParkLines(surplusVat),
                 ],
               },
               tx,

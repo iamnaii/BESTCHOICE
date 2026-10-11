@@ -1,5 +1,6 @@
 import { Decimal } from '@prisma/client/runtime/library';
 import { SplitReceiptResult } from './split-receipt';
+import { advanceVatOf, buildAdvanceVatParkLines } from './advance-vat';
 
 export interface ReceiptLine {
   accountCode: string;
@@ -41,6 +42,10 @@ export interface BuildReceiptLinesInput {
  *   Dr 52-1105 = lateFeeWaived
  *
  * Balance holds: Dr(delta + advanceConsume + waived) = Cr(principal + grossLateFee + ...).
+ *
+ * PR4 (ภาษีขายของเงินรับล่วงหน้า ณ วันรับ): เงินที่พักเป็นเงินรับล่วงหน้า (Cr 21-1103 advanceCredit) ได้ขาพักภาษี
+ * `Dr 21-2102 / Cr 21-2101 = HALF_UP(advanceCredit × 7/107)` ต่อท้ายในรายการเดียวกัน — คู่ที่สมดุลกันเอง ยอด 21-1103
+ * ยังเต็มจำนวน (แบบ X). preview ใช้ตัวสร้างนี้ตัวเดียวกัน จึงเห็นขาพักเหมือนรายการที่ลงจริง.
  */
 export function buildReceiptLines(input: BuildReceiptLinesInput): ReceiptLine[] {
   const { split } = input;
@@ -83,6 +88,7 @@ export function buildReceiptLines(input: BuildReceiptLinesInput): ReceiptLine[] 
   }
   if (input.advanceCredit.gt(0)) {
     lines.push({ accountCode: '21-1103', dr: zero, cr: input.advanceCredit, description: 'เงินรับล่วงหน้า' });
+    lines.push(...buildAdvanceVatParkLines(advanceVatOf(input.advanceCredit)));
   }
 
   return lines;

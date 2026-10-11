@@ -17,6 +17,11 @@ import { AuditService } from '../../audit/audit.service';
 import { JournalAutoService } from '../../journal/journal-auto.service';
 import { PaymentReceiptTemplate } from '../../journal/cpa-templates/payment-receipt.template';
 import {
+  ADVANCE_VAT_META,
+  advanceVatOf,
+  buildAdvanceVatParkLines,
+} from '../../journal/advance-vat';
+import {
   emitDeferredWarnings,
   warningsOf,
   type DeferredWarning,
@@ -1137,6 +1142,8 @@ export class PaymentReceiptOrchestrator {
                 resolvedDepositAccountCode)
               : resolvedDepositAccountCode;
           const zero = new Prisma.Decimal(0);
+          // PR4: ภาษีขายของเงินเกินที่ตั้งเป็นเครดิต (HALF_UP(overpayment × 7/107))
+          const overpaymentVat = advanceVatOf(overpayment);
           await this.journalAutoService.createAndPost(
             {
               description: `เงินเกินชำระ — สัญญา ${contract.contractNumber} บันทึกเครดิต ${overpayment.toFixed(2)} บาท`,
@@ -1150,6 +1157,10 @@ export class PaymentReceiptOrchestrator {
                 tag: 'overpayment-credit',
                 contractId: contract.id,
                 paymentId: referencePaymentId,
+                // PR4 (ต2 ง): เครดิตของลูกค้า = เงินที่รับไว้ก่อน ⇒ รับรู้ภาษีขาย ณ วันรับ (stamp ให้ outstanding อ่าน)
+                ...(overpaymentVat.gt(0)
+                  ? { [ADVANCE_VAT_META.park]: overpaymentVat.toFixed(2) }
+                  : {}),
               },
               lines: [
                 {
@@ -1164,6 +1175,7 @@ export class PaymentReceiptOrchestrator {
                   cr: overpayment,
                   description: 'เงินเกินของลูกค้า (Customer Credit Balance)',
                 },
+                ...buildAdvanceVatParkLines(overpaymentVat),
               ],
             },
             tx,

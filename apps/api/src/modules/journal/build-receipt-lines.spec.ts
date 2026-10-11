@@ -100,4 +100,35 @@ describe('buildReceiptLines', () => {
     });
     expect(credit.find((l) => l.accountCode === '21-1103' && l.cr.gt(0))?.cr.toFixed(2)).toBe('100.00');
   });
+
+  // PR4 ต2(ก) — เงินเข้าถัง (Cr 21-1103) = พักภาษีขาย Dr 21-2102 / Cr 21-2101 ในรายการเดียวกัน (G3: 500 → 32.71)
+  it('advanceCredit 500 → park VAT 32.71 (Dr 21-2102 / Cr 21-2101) right after Cr 21-1103, byte-identical description', () => {
+    const lines = buildReceiptLines({
+      split: split({ principalCleared: D('1515.83') }),
+      debitAccountCode: '11-1101', delta: D('2015.83'), advanceConsume: D(0),
+      advanceCredit: D('500'), lateFeeWaived: D(0), overpayCode: '53-1503', underpayCode: '52-1104',
+    });
+    const codes = lines.map((l) => l.accountCode);
+    const park = codes.indexOf('21-1103');
+    expect(codes.slice(park)).toEqual(['21-1103', '21-2102', '21-2101']);
+    const dr2102 = lines.find((l) => l.accountCode === '21-2102')!;
+    const cr2101 = lines.find((l) => l.accountCode === '21-2101')!;
+    expect(dr2102.dr.toFixed(2)).toBe('32.71');
+    expect(dr2102.cr.toFixed(2)).toBe('0.00');
+    expect(cr2101.cr.toFixed(2)).toBe('32.71');
+    expect(dr2102.description).toBe('ภาษีขายของเงินรับล่วงหน้า (รับรู้ ณ วันรับ)');
+    expect(cr2101.description).toBe(dr2102.description);
+    // ยอด Dr = Cr ยังสมดุล (คู่ภาษีสมดุลกันเอง)
+    const sum = (k: 'dr' | 'cr') => lines.reduce((s, l) => s.plus(l[k]), D(0));
+    expect(sum('dr').toFixed(2)).toBe(sum('cr').toFixed(2));
+  });
+
+  it('advanceCredit 0 → no 21-2102 / 21-2101 lines (ขาภาษีของเงินพักเท่านั้น)', () => {
+    const lines = buildReceiptLines({
+      split: split({ principalCleared: D('1515.83') }),
+      debitAccountCode: '11-1101', delta: D('1515.83'), advanceConsume: D(0),
+      advanceCredit: D(0), lateFeeWaived: D(0), overpayCode: '53-1503', underpayCode: '52-1104',
+    });
+    expect(lines.some((l) => l.accountCode === '21-2102' || l.accountCode === '21-2101')).toBe(false);
+  });
 });

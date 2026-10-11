@@ -17,6 +17,7 @@ import { splitReceipt, SplitReceiptResult } from '../split-receipt';
 import { buildReceiptLines } from '../build-receipt-lines';
 import { reconstructPriorCleared } from '../reconstruct-prior';
 import { computeInstallmentReceiptTax, ReceiptTaxBreakdown } from '../receipt-tax-breakdown';
+import { ADVANCE_VAT_META, advanceVatOf } from '../advance-vat';
 
 const TOLERANCE = new Decimal('1.00');
 
@@ -109,6 +110,8 @@ export interface PaymentReceiptResult {
  *     Cr 42-1103             lateFeePortion   (if > 0)
  *     Cr 53-1503             overpayRounding  (if > 0)
  *     Cr 21-1103             advanceCredit    (if > 0)
+ *   Dr 21-2102 / Cr 21-2101  advanceVatOf(advanceCredit)  (PR4 — ภาษีขายของเงินที่พัก ณ วันรับ; stamp
+ *                                                         metadata.advanceVatPark ให้ advanceVatOutstanding อ่าน)
  */
 @Injectable()
 export class PaymentReceiptTemplate {
@@ -346,6 +349,8 @@ export class PaymentReceiptTemplate {
 
     const overpayCode = this.roles?.tryCode('adj_overpay') ?? '53-1503';
     const underpayCode = this.roles?.tryCode('adj_underpay') ?? '52-1104';
+    // PR4 — ภาษีของเงินที่พักในใบนี้ (สูตรเดียวกับขาพักใน buildReceiptLines และกับแถวเงินรับล่วงหน้าของใบเสร็จ)
+    const advanceVatPark = advanceVatOf(advanceCredit);
 
     // Shared pure builder (also used by the wizard preview so the two can't drift).
     const lines = buildReceiptLines({
@@ -442,6 +447,9 @@ export class PaymentReceiptTemplate {
           ...(accrual ? { accrualEntryNumber: accrual.entryNo } : {}),
           // ใบกำกับภาษีตามบัญชี (PR3): ค่าที่ใบเสร็จของรายการนี้ต้องพิมพ์ — generateReceipt คัดลอกลงแถว Receipt
           receiptTax: { ...tax.breakdown },
+          // PR4: ภาษีขายที่พักพร้อมเงินรับล่วงหน้าในใบนี้ (บรรทัด 21-2102/21-2101 มาจาก buildReceiptLines) —
+          // stamp เป็นสตริง 2 ตำแหน่งให้ advanceVatOutstanding อ่านจากสมุด
+          ...(advanceVatPark.gt(0) ? { [ADVANCE_VAT_META.park]: advanceVatPark.toFixed(2) } : {}),
         },
         lines,
       },

@@ -5,6 +5,7 @@ import { AccountRoleService } from '../../journal/account-role.service';
 import { computeInstallmentBreakdown } from '../../journal/compute-installment-breakdown';
 import { splitReceipt } from '../../journal/split-receipt';
 import { buildReceiptLines } from '../../journal/build-receipt-lines';
+import { advanceVatOf, buildAdvanceVatParkLines } from '../../journal/advance-vat';
 import {
   Accrual2AKind,
   Accrual2APartResult,
@@ -260,6 +261,10 @@ export class PaymentJournalPreviewService {
             // contract is preview == posted.
             description: 'เงินรับล่วงหน้างวดสุดท้าย — ค่าธรรมเนียมปรับดิว (6a)',
           });
+          // PR4: ขาพักภาษีขายของ 6a — ตัวสร้างเดียวกับที่ RescheduleCollectService ลงจริง (preview === posted)
+          for (const l of buildAdvanceVatParkLines(advanceVatOf(feePortion))) {
+            rawLines.push({ code: l.accountCode, dr: l.dr, cr: l.cr, description: l.description });
+          }
         }
         if (netLateFee.gt(zero)) {
           rawLines.push({

@@ -40,6 +40,7 @@ describe('payment preview after an earlier receipt', () => {
           ],
         }] : [])),
       },
+      journalLine: { findMany: jest.fn().mockResolvedValue([]) }, // PR4: glContractBalance (ไม่มีบรรทัด = ไม่มีขากลับ)
       chartOfAccount: { findMany: jest.fn().mockResolvedValue([]) },
     };
     return new PaymentJournalPreviewService(prisma as never, undefined);

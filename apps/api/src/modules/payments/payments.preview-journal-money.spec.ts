@@ -187,6 +187,7 @@ describe('PaymentsService.previewJournal (characterization)', () => {
         createMany: jest.fn().mockResolvedValue({ count: 0 }),
         findUnique: jest.fn().mockImplementation(() => Promise.resolve(installment)),
       },
+      journalLine: { findMany: jest.fn().mockResolvedValue([]) }, // PR4: glContractBalance (ไม่มีบรรทัด = ไม่มีขากลับ)
       chartOfAccount: {
         // Names are irrelevant to the money assertions — return [] so the
         // service falls back to `nameMap.get(code) ?? code` (accountName = code).

@@ -17,7 +17,8 @@ import { splitReceipt, SplitReceiptResult } from '../split-receipt';
 import { buildReceiptLines } from '../build-receipt-lines';
 import { reconstructPriorCleared } from '../reconstruct-prior';
 import { computeInstallmentReceiptTax, ReceiptTaxBreakdown } from '../receipt-tax-breakdown';
-import { ADVANCE_VAT_META, advanceVatOf } from '../advance-vat';
+import { ADVANCE_VAT_META, advanceVatOf, resolveConsumeVat } from '../advance-vat';
+import { glContractBalance } from '../gl-contract-balance';
 
 const TOLERANCE = new Decimal('1.00');
 
@@ -112,6 +113,8 @@ export interface PaymentReceiptResult {
  *     Cr 21-1103             advanceCredit    (if > 0)
  *   Dr 21-2102 / Cr 21-2101  advanceVatOf(advanceCredit)  (PR4 — ภาษีขายของเงินที่พัก ณ วันรับ; stamp
  *                                                         metadata.advanceVatPark ให้ advanceVatOutstanding อ่าน)
+ *   Dr 21-2101 / Cr 21-2102  advanceVatConsume            (PR4 — ขากลับของเงินที่ออกจากถัง advanceConsume /
+ *                                                         Dr 21-5101 delta; resolveConsumeVat; stamp metadata.advanceVatConsume)
  */
 @Injectable()
 export class PaymentReceiptTemplate {
@@ -351,6 +354,20 @@ export class PaymentReceiptTemplate {
     const underpayCode = this.roles?.tryCode('adj_underpay') ?? '52-1104';
     // PR4 — ภาษีของเงินที่พักในใบนี้ (สูตรเดียวกับขาพักใน buildReceiptLines และกับแถวเงินรับล่วงหน้าของใบเสร็จ)
     const advanceVatPark = advanceVatOf(advanceCredit);
+    // PR4 (ต3 ก/ต4) — เงินออกจากถังในใบนี้: หักเงินรับล่วงหน้า (Dr 21-1103) + ใช้เครดิตชำระ (Dr 21-5101 = delta).
+    // ขากลับ = ภาษีที่รับรู้ตอนพักและยังค้างของสัญญา (อ่านจาก stamp ในสมุด) เพดานด้วย 7/107 ของยอดที่ออก;
+    // ใบที่ทำให้ 21-1103 + 21-5101 ของสัญญาเป็น 0 ใช้ภาษีที่ยังค้างทั้งก้อน (ใบสุดท้ายรับเศษ). อ่านในธุรกรรมนี้ —
+    // ไม่มีเงินออกจากถัง = ไม่มีคำค้นเพิ่ม.
+    const zeroVat = new Decimal(0);
+    const releaseAmount = advanceConsume.plus(input.debitAccountCode === '21-5101' ? delta : zeroVat);
+    let advanceVatConsume = zeroVat;
+    if (releaseAmount.gt(0)) {
+      const bucket = (await glContractBalance(readClient, c.id, '21-1103', 'cr')).plus(
+        await glContractBalance(readClient, c.id, '21-5101', 'cr'),
+      );
+      const emptiesBucket = bucket.minus(releaseAmount).lte(0);
+      advanceVatConsume = await resolveConsumeVat(readClient, c.id, releaseAmount, emptiesBucket);
+    }
 
     // Shared pure builder (also used by the wizard preview so the two can't drift).
     const lines = buildReceiptLines({
@@ -362,6 +379,7 @@ export class PaymentReceiptTemplate {
       lateFeeWaived,
       overpayCode,
       underpayCode,
+      advanceVatConsume,
     });
 
     // Review I-1: refuse to post a meaningless zero-line JE. Reachable when a
@@ -388,6 +406,10 @@ export class PaymentReceiptTemplate {
       lateFeeWaived,
       advanceConsume,
       advanceCredit,
+      // ต9: แถว "หักเงินรับล่วงหน้า" พิมพ์ภาษีตัวเดียวกับขากลับที่ลง — เฉพาะเมื่อขากลับเป็นของเงินรับล่วงหน้า (21-1103);
+      // ใบใช้เครดิตชำระ (Dr 21-5101) ไม่มีแถวหักบนเอกสาร จึงไม่ส่ง (ขากลับยังลงบัญชีตามปกติ)
+      advanceVatConsumed:
+        advanceConsume.gt(0) && input.debitAccountCode !== '21-5101' ? advanceVatConsume : undefined,
     });
     // ตรวจทาน (ไม่ใช่ด่าน): ภาษีของแถวค่างวดต้องเท่าภาษีขายของ 2A ที่ลงพร้อมกัน — ต่างกันได้เมื่องวดมีใบรับบางส่วน
     // ที่ไม่ได้ตั้ง 2A ของตัวเอง: ใบก่อน PR2ข · หรือใบตั้งแต่วันครบกำหนดในวันที่รอบกลางคืนไม่ได้ตั้งลูกหนี้งวด (ใบที่ทำให้
@@ -450,6 +472,10 @@ export class PaymentReceiptTemplate {
           // PR4: ภาษีขายที่พักพร้อมเงินรับล่วงหน้าในใบนี้ (บรรทัด 21-2102/21-2101 มาจาก buildReceiptLines) —
           // stamp เป็นสตริง 2 ตำแหน่งให้ advanceVatOutstanding อ่านจากสมุด
           ...(advanceVatPark.gt(0) ? { [ADVANCE_VAT_META.park]: advanceVatPark.toFixed(2) } : {}),
+          // PR4: ขากลับที่ลงในใบนี้ (บรรทัด 21-2101/21-2102 มาจาก buildReceiptLines) — ภ.พ.30 จัดประเภทจาก stamp นี้
+          ...(advanceVatConsume.gt(0)
+            ? { [ADVANCE_VAT_META.consume]: advanceVatConsume.toFixed(2) }
+            : {}),
         },
         lines,
       },

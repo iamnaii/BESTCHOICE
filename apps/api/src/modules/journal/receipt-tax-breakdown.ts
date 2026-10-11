@@ -89,6 +89,12 @@ export interface InstallmentReceiptTaxInput {
   lateFeeWaived: Decimal;
   advanceConsume: Decimal;
   advanceCredit: Decimal;
+  /**
+   * PR4 (ต9): ภาษีของขากลับที่รายการบัญชีลงจริงสำหรับเงินรับล่วงหน้าที่หักเข้างวดในใบนี้ (resolveConsumeVat —
+   * เพดาน "ยังค้าง" · ใบสุดท้ายรับเศษ) → แถว "หักเงินรับล่วงหน้า" พิมพ์ภาษีตัวเดียวกับบัญชี (ปิดช่อง ±0.01 ของ 250 + 250).
+   * ไม่ส่ง = สูตรเดิม HALF_UP(ยอดที่หัก × 7/107).
+   */
+  advanceVatConsumed?: Decimal;
 }
 
 export interface InstallmentReceiptTax {
@@ -109,7 +115,12 @@ export function computeInstallmentReceiptTax(
       ? partialAccrualPortion(input.basis, docBefore, cleared).vat
       : ZERO;
   const advanceAmount = input.advanceCredit.minus(input.advanceConsume);
-  const advanceVat = advanceVatOf(advanceAmount);
+  // พัก = ภาษีตามสูตร (เท่าขาพักของบัญชี) · หัก = ขากลับที่บัญชีลงจริงเมื่อผู้เรียกส่งมา ไม่งั้นสูตรเดิม
+  const consumedVat =
+    input.advanceVatConsumed !== undefined && input.advanceConsume.gt(0)
+      ? input.advanceVatConsumed
+      : advanceVatOf(input.advanceConsume);
+  const advanceVat = advanceVatOf(input.advanceCredit).minus(consumedVat);
   const vatAmount = installmentVat.plus(advanceVat);
   const amountBeforeVat = cleared.minus(installmentVat).plus(advanceAmount.minus(advanceVat));
   return {

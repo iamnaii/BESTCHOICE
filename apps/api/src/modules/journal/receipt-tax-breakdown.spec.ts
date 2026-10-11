@@ -46,6 +46,8 @@ const receipt = (o: {
   lateFeeWaived?: string;
   advanceConsume?: string;
   advanceCredit?: string;
+  /** PR4 ต9: ขากลับที่ลงจริง (ไม่ส่ง = สูตรเดิม 7/107 ของยอดที่หัก) */
+  advanceVatConsumed?: string;
   isFinalReceipt: boolean;
 }) => {
   const prior = (o.prior ?? []).map(D);
@@ -67,6 +69,7 @@ const receipt = (o: {
     lateFeeWaived: D(o.lateFeeWaived ?? '0'),
     advanceConsume: D(o.advanceConsume ?? '0'),
     advanceCredit: D(o.advanceCredit ?? '0'),
+    advanceVatConsumed: o.advanceVatConsumed === undefined ? undefined : D(o.advanceVatConsumed),
   });
 };
 
@@ -265,6 +268,29 @@ describe('computeInstallmentReceiptTax — เงินรับล่วงห�
     expect(out.breakdown.vatAmount).toBe('-2.61');
     expect(out.breakdown.amountBeforeVat).toBe('-37.39');
     expect(out.breakdown.lateFeeAmount).toBe('50.00');
+    expectBalanced(out.breakdown);
+  });
+
+  // PR4 ต9: ใบรับชำระที่หักเงินรับล่วงหน้าพิมพ์ภาษีของแถวหัก = ขากลับที่ลงจริง (ปิดช่อง ±0.01 ของ 250 + 250)
+  it('advanceVatConsumed 16.35 (ใบสุดท้ายรับเศษ) → แถวหัก −250.00 / −16.35 ไม่ใช่ −16.36 · ยอดรวมยังเท่าเงินที่รับ', () => {
+    const out = receipt({
+      basis: BASIS_17K,
+      delta: '1265.83',
+      advanceConsume: '250',
+      advanceVatConsumed: '16.35',
+      isFinalReceipt: true,
+    });
+    expect(out.installmentVat.toFixed(2)).toBe('99.17');
+    expect(out.breakdown.advanceAmount).toBe('-250.00');
+    expect(out.breakdown.advanceVatAmount).toBe('-16.35');
+    expect(out.breakdown.vatAmount).toBe('82.82');
+    expect(out.breakdown.amountBeforeVat).toBe('1183.01');
+    expectBalanced(out.breakdown);
+  });
+
+  it('ไม่ส่ง advanceVatConsumed → สูตรเดิม 7/107 ของยอดที่หัก (เงินก่อน PR4 ไม่มีขากลับ แต่เอกสารยังแสดงภาษีของแถว)', () => {
+    const out = receipt({ basis: BASIS_17K, delta: '1265.83', advanceConsume: '250', isFinalReceipt: true });
+    expect(out.breakdown.advanceVatAmount).toBe('-16.36');
     expectBalanced(out.breakdown);
   });
 

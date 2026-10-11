@@ -114,6 +114,8 @@ function makeService(overrides: {
     },
     payment: { findFirst: jest.fn().mockResolvedValue({ amountDue: D('1515.83'), amountPaid: D(0) }) },
     chartOfAccount: { findMany: jest.fn().mockResolvedValue([]) },
+    // PR4: glContractBalance ของ preview อ่านบรรทัดในสมุด — ไม่มี = ยอด 0 (ไม่มีขากลับ)
+    journalLine: { findMany: jest.fn().mockResolvedValue([]) },
     journalEntry: {
       findMany: jest.fn().mockImplementation((args: any) => {
         const or = args?.where?.OR ?? [];

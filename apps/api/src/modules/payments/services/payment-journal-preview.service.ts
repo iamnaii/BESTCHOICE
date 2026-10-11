@@ -5,7 +5,12 @@ import { AccountRoleService } from '../../journal/account-role.service';
 import { computeInstallmentBreakdown } from '../../journal/compute-installment-breakdown';
 import { splitReceipt } from '../../journal/split-receipt';
 import { buildReceiptLines } from '../../journal/build-receipt-lines';
-import { advanceVatOf, buildAdvanceVatParkLines } from '../../journal/advance-vat';
+import {
+  advanceVatOf,
+  buildAdvanceVatParkLines,
+  resolveConsumeVat,
+} from '../../journal/advance-vat';
+import { glContractBalance } from '../../journal/gl-contract-balance';
 import {
   Accrual2AKind,
   Accrual2APartResult,
@@ -511,6 +516,23 @@ export class PaymentJournalPreviewService {
       credit: l.cr,
       description: l.description as string | null,
     }));
+    // PR4 (ต3/ต4) — ขากลับของเงินที่ออกจากถัง: กติกาเดียวกับ PaymentReceiptTemplate (ยอดในบัญชี + stamp จากสมุด)
+    // เพื่อให้ preview === posted. ไม่มีเงินออกจากถัง = ไม่มีคำค้นเพิ่ม.
+    const releaseForVat = previewTotalConsume.plus(
+      input.depositAccountCode === '21-5101' ? amountReceived : zero,
+    );
+    let previewAdvanceVatConsume = zero;
+    if (releaseForVat.gt(zero)) {
+      const bucket = (await glContractBalance(this.prisma, input.contractId, '21-1103', 'cr')).plus(
+        await glContractBalance(this.prisma, input.contractId, '21-5101', 'cr'),
+      );
+      previewAdvanceVatConsume = await resolveConsumeVat(
+        this.prisma,
+        input.contractId,
+        releaseForVat,
+        bucket.minus(releaseForVat).lte(zero),
+      );
+    }
     // Share the posting allocation, including fee-first receipts, current
     // waivers, and rounding alongside advance consumption/credit.
     for (const line of buildReceiptLines({
@@ -522,6 +544,7 @@ export class PaymentJournalPreviewService {
       lateFeeWaived: lateFeeWaivedAmount,
       overpayCode: this.accountRoleService?.tryCode('adj_overpay') ?? '53-1503',
       underpayCode: this.accountRoleService?.tryCode('adj_underpay') ?? '52-1104',
+      advanceVatConsume: previewAdvanceVatConsume,
     })) {
       rawLines.push({ code: line.accountCode, dr: line.dr, cr: line.cr, description: line.description ?? '' });
     }

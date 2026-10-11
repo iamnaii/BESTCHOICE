@@ -4,6 +4,7 @@ import { bangkokStartOfDay } from '../../../utils/date.util';
 import { formatDateShort } from '../../../utils/thai-date.util';
 import { PaymentReceiptTemplate } from '../../journal/cpa-templates/payment-receipt.template';
 import { PaymentJournalPreviewService } from './payment-journal-preview.service';
+import { ledgerLines } from '../../journal/__tests__/ledger-lines-mock';
 
 /**
  * Preview ต้องเท่ากับที่ลงจริง.
@@ -61,6 +62,10 @@ describe('PaymentJournalPreviewService — preview mirrors the save (QA #1347 fo
       amountPaid?: string;
       /** ยอด Cr 11-2103 ของใบรับชำระก่อนหน้า (reconstructPriorCleared) */
       priorReceipts?: string[];
+      /** PR4: ยอดในบัญชีของสัญญา (glContractBalance) */
+      ledger?: Record<string, string>;
+      /** PR4: metadata ของรายการของสัญญา (advanceVatOutstanding) */
+      stamps?: Record<string, unknown>[];
     } = {},
   ) {
     const contract = {
@@ -95,13 +100,18 @@ describe('PaymentJournalPreviewService — preview mirrors the save (QA #1347 fo
           .mockResolvedValue({ amountDue: '1515.83', amountPaid: extra.amountPaid ?? '0' }),
       },
       journalEntry: {
-        findMany: jest.fn().mockResolvedValue(
-          (extra.priorReceipts ?? []).map((credit) => ({
+        findMany: jest.fn().mockImplementation(async (args: { where?: { metadata?: { path?: string[] } } }) => {
+          // PR4: advanceVatOutstanding ค้นด้วย metadata.contractId — คนละคำค้นกับ reconstructPriorCleared
+          if (args?.where?.metadata?.path?.[0] === 'contractId') {
+            return (extra.stamps ?? []).map((metadata) => ({ metadata }));
+          }
+          return (extra.priorReceipts ?? []).map((credit) => ({
             metadata: { tag: 'receipt', installmentScheduleId: 'inst-1' },
             lines: [{ accountCode: '11-2103', debit: '0', credit }],
-          })),
-        ),
+          }));
+        }),
       },
+      journalLine: { findMany: jest.fn(ledgerLines(extra.ledger ?? {})) },
       chartOfAccount: { findMany: jest.fn().mockResolvedValue([]) },
     } as never;
     return new PaymentJournalPreviewService(prisma, undefined);
@@ -497,6 +507,29 @@ describe('PaymentJournalPreviewService — preview mirrors the save (QA #1347 fo
       ['21-1103', '500.00', '0.00'],
       ['11-2103', '0.00', '1515.83'],
     ]);
+  });
+
+  // PR4 ต3: preview === posted — ขากลับของเงินรับล่วงหน้าที่หักเข้างวดต้องโผล่ใน preview ด้วยยอดเดียวกับที่ลงจริง
+  it('PR4: หักเครดิต 500 จนถังหมด (ยังค้าง 32.71) → preview มีขากลับ Dr 21-2101 / Cr 21-2102 32.71 หลังบรรทัดหักเงินรับล่วงหน้า', async () => {
+    const futureDue = new Date(Date.now() + 30 * 86_400_000);
+    const svc = buildService('JE-202606-00001', futureDue, 'ACTIVE', '500', {
+      ledger: { '21-1103': '500.00' },
+      stamps: [{ advanceVatPark: '32.71' }],
+    });
+
+    const preview = await svc.previewJournal(QR_CREDIT_REDUCED_REQUEST as never);
+
+    expect(triples(preview.lines as Line[])).toEqual([
+      ['11-1201', '1015.83', '0.00'],
+      ['21-1103', '500.00', '0.00'],
+      ['21-2101', '32.71', '0.00'],
+      ['21-2102', '0.00', '32.71'],
+      ['11-2103', '0.00', '1515.83'],
+    ]);
+    const dr2101 = (preview.lines as (Line & { description?: string | null })[]).find(
+      (l) => l.accountCode === '21-2101',
+    );
+    expect(dr2101?.description).toBe('ภาษีขายของเงินรับล่วงหน้าที่หักเข้างวด (รับรู้แล้วตอนรับ)');
   });
 
   it('R17 ด้านกลับ — สัญญาที่ถูกบอกเลิกแล้ว (TERMINATED): QR ยอดที่หักเครดิตออกแล้วไม่ได้ประโยคของ R17', async () => {

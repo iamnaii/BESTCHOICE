@@ -772,6 +772,9 @@ enum BuybackSelectType {
 // ============================================================
 
 model Branch {
+  appointmentWindows StaffAppointmentWindow[]
+  storeAppointments StoreAppointment[]
+
   chatLibraryFolders ChatLibraryFolder[]
   chatLibraryFiles ChatLibraryFile[]
   facebookCommentPages FacebookCommentPage[]
@@ -840,6 +843,9 @@ model Branch {
 }
 
 model User {
+  appointmentWindows StaffAppointmentWindow[] @relation("AppointmentStaffWindows")
+  storeAppointments StoreAppointment[] @relation("AppointmentStaff")
+
   libraryOperations ChatLibraryOperation[]
   chatLibraryFolders ChatLibraryFolder[]
   chatLibraryFiles ChatLibraryFile[]
@@ -1142,6 +1148,9 @@ model Contact {
 }
 
 model Customer {
+  storeAppointments StoreAppointment[]
+  appointmentLinks StoreAppointmentLink[]
+
   chatServiceRequests ChatServiceRequest[]
   facebookCommentThreads FacebookCommentThread[]
 
@@ -3376,6 +3385,10 @@ model ContractDocument {
 }
 
 model CreditCheck {
+  storeAppointments StoreAppointment[]
+  lastAppointmentDecision AppointmentCreditDecision @default(NONE) @map("last_appointment_decision")
+  appointmentDecisionRecordedAt DateTime? @map("appointment_decision_recorded_at")
+
   id               String            @id @default(uuid())
   contractId       String?           @unique @map("contract_id")
   customerId       String            @map("customer_id")
@@ -5878,6 +5891,8 @@ model CustomerLineLink {
 
 /// Chat room — ลูกค้า 1 คน 1 room ต่อ channel
 model ChatRoom {
+  storeAppointments StoreAppointment[]
+
   libraryOperations ChatLibraryOperation[]
   serviceRequests ChatServiceRequest[]
   facebookCommentThreads FacebookCommentThread[]
@@ -9379,4 +9394,147 @@ model ChatLibraryOperation {
   @@index([fileId])
   @@index([actorId])
   @@map("chat_library_operations")
+}
+
+enum AppointmentCreditDecision {
+  NONE
+  APPROVED
+  REJECTED
+  UNKNOWN
+}
+
+enum StoreAppointmentStatus {
+  BOOKED
+  CHECKED_IN
+  IN_SERVICE
+  COMPLETED
+  CANCELED
+  NO_SHOW
+}
+
+model StaffAppointmentWindow {
+  id           String             @id @default(uuid())
+  branchId     String             @map("branch_id")
+  staffUserId  String             @map("staff_user_id")
+  startsAt     DateTime           @map("starts_at")
+  endsAt       DateTime           @map("ends_at")
+  createdById  String             @map("created_by_id")
+  version      Int                @default(1)
+  createdAt    DateTime           @default(now()) @map("created_at")
+  updatedAt    DateTime           @updatedAt @map("updated_at")
+  deletedAt    DateTime?          @map("deleted_at")
+  branch       Branch             @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  staff        User               @relation("AppointmentStaffWindows", fields: [staffUserId], references: [id], onDelete: Restrict)
+  appointments StoreAppointment[]
+
+  @@index([branchId, startsAt])
+  @@index([staffUserId, startsAt])
+  @@map("staff_appointment_windows")
+}
+
+model StoreAppointment {
+  id                              String                  @id @default(uuid())
+  reference                       String                  @unique
+  customerId                      String                  @map("customer_id")
+  branchId                        String                  @map("branch_id")
+  staffUserId                     String                  @map("staff_user_id")
+  windowId                        String                  @map("window_id")
+  sourceRoomId                    String?                 @map("source_room_id")
+  creditCheckId                   String                  @map("credit_check_id")
+  creditCheckTypeAtBooking        String                  @map("credit_check_type_at_booking")
+  creditDecisionRecordedAtBooking DateTime?               @map("credit_decision_recorded_at_booking")
+  startsAt                        DateTime                @map("starts_at")
+  endsAt                          DateTime                @map("ends_at")
+  status                          StoreAppointmentStatus  @default(BOOKED)
+  source                          String
+  createdById                     String?                 @map("created_by_id")
+  checkedInAt                     DateTime?               @map("checked_in_at")
+  serviceStartedAt                DateTime?               @map("service_started_at")
+  completedAt                     DateTime?               @map("completed_at")
+  canceledAt                      DateTime?               @map("canceled_at")
+  noShowAt                        DateTime?               @map("no_show_at")
+  reason                          String?
+  version                         Int                     @default(1)
+  createdAt                       DateTime                @default(now()) @map("created_at")
+  updatedAt                       DateTime                @updatedAt @map("updated_at")
+  deletedAt                       DateTime?               @map("deleted_at")
+  customer                        Customer                @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  branch                          Branch                  @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  staff                           User                    @relation("AppointmentStaff", fields: [staffUserId], references: [id], onDelete: Restrict)
+  window                          StaffAppointmentWindow  @relation(fields: [windowId], references: [id], onDelete: Restrict)
+  creditCheck                     CreditCheck             @relation(fields: [creditCheckId], references: [id], onDelete: Restrict)
+  sourceRoom                      ChatRoom?               @relation(fields: [sourceRoomId], references: [id], onDelete: Restrict)
+  events                          StoreAppointmentEvent[]
+  linkAccess                      AppointmentLinkAccess[]
+
+  @@index([branchId, startsAt])
+  @@index([customerId, status])
+  @@index([staffUserId, startsAt])
+  @@index([sourceRoomId])
+  @@index([creditCheckId])
+  @@index([windowId])
+  @@map("store_appointments")
+}
+
+model StoreAppointmentLink {
+  id               String                  @id @default(uuid())
+  customerId       String                  @map("customer_id")
+  tokenHash        String                  @unique @map("token_hash")
+  allowedBranchIds String[]                @map("allowed_branch_ids")
+  bookingExpiresAt DateTime                @map("booking_expires_at")
+  revokedAt        DateTime?               @map("revoked_at")
+  issuedById       String                  @map("issued_by_id")
+  createdAt        DateTime                @default(now()) @map("created_at")
+  updatedAt        DateTime                @updatedAt @map("updated_at")
+  deletedAt        DateTime?               @map("deleted_at")
+  customer         Customer                @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  access           AppointmentLinkAccess[]
+
+  @@index([customerId])
+  @@map("store_appointment_links")
+}
+
+model AppointmentLinkAccess {
+  id              String               @id @default(uuid())
+  linkId          String               @map("link_id")
+  appointmentId   String               @map("appointment_id")
+  manageExpiresAt DateTime             @map("manage_expires_at")
+  createdAt       DateTime             @default(now()) @map("created_at")
+  updatedAt       DateTime             @updatedAt @map("updated_at")
+  deletedAt       DateTime?            @map("deleted_at")
+  link            StoreAppointmentLink @relation(fields: [linkId], references: [id], onDelete: Restrict)
+  appointment     StoreAppointment     @relation(fields: [appointmentId], references: [id], onDelete: Restrict)
+
+  @@unique([linkId, appointmentId])
+  @@index([appointmentId])
+  @@map("appointment_link_access")
+}
+
+/// Immutable history; updatedAt/deletedAt intentionally omitted.
+model StoreAppointmentEvent {
+  id            String           @id @default(uuid())
+  appointmentId String           @map("appointment_id")
+  kind          String
+  actorId       String           @map("actor_id")
+  actorType     String           @map("actor_type")
+  before        Json?
+  after         Json
+  createdAt     DateTime         @default(now()) @map("created_at")
+  appointment   StoreAppointment @relation(fields: [appointmentId], references: [id], onDelete: Restrict)
+
+  @@index([appointmentId, createdAt])
+  @@map("store_appointment_events")
+}
+
+/// Immutable idempotency result; updatedAt/deletedAt intentionally omitted.
+model AppointmentRequest {
+  id          String   @id @default(uuid())
+  actorKey    String   @map("actor_key")
+  requestId   String   @map("request_id")
+  requestHash String   @map("request_hash")
+  result      Json
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@unique([actorKey, requestId])
+  @@map("appointment_requests")
 }

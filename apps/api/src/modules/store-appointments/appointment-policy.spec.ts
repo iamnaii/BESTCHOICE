@@ -1,4 +1,11 @@
-import { availableSlots, bangkokDay, dayBounds, decisionForAppointments, assertTransition, assertBookableStart } from './appointment-policy';
+import {
+  availableSlots,
+  bangkokDay,
+  dayBounds,
+  decisionForAppointments,
+  assertTransition,
+  assertBookableStart,
+} from './appointment-policy';
 
 const at = (clock: string) => new Date(`2026-10-12T${clock}:00+07:00`);
 describe('appointment policy', () => {
@@ -16,8 +23,17 @@ describe('appointment policy', () => {
   });
   it('allows adjacent appointments and removes slots inside the lead period', () => {
     const w = [{ staffUserId: 'a', startsAt: at('10:00'), endsAt: at('11:30') }];
-    expect(availableSlots(w, [{ staffUserId: 'a', startsAt: at('09:15'), endsAt: at('10:00') }], '2026-10-12', at('09:30'))).toHaveLength(2);
-    expect(availableSlots(w, [], '2026-10-12', at('09:31')).map(s => s.startsAt)).toEqual(['2026-10-12T03:45:00.000Z']);
+    expect(
+      availableSlots(
+        w,
+        [{ staffUserId: 'a', startsAt: at('09:15'), endsAt: at('10:00') }],
+        '2026-10-12',
+        at('09:30'),
+      ),
+    ).toHaveLength(2);
+    expect(availableSlots(w, [], '2026-10-12', at('09:31')).map((s) => s.startsAt)).toEqual([
+      '2026-10-12T03:45:00.000Z',
+    ]);
   });
   it('uses Bangkok dates across UTC midnight and rejects invalid dates/horizon', () => {
     expect(bangkokDay(new Date('2026-10-11T18:00:00Z'))).toBe('2026-10-12');

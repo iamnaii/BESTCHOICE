@@ -34,10 +34,10 @@
 
 **Interfaces:** policy exports `SLOT_MS`, `OPEN_STATUSES`, Bangkok date bounds, slot generation, effective decision and transition validators. Database exposes staff windows, appointments, links/access, events and request deduplication; CreditCheck persists latest decisive status.
 
-- [ ] Write policy tests, including adjacent windows, past/closing times and UNKNOWN decisions. Example: `expect(availableSlots(windows, busy, day, now)).toEqual([{ startsAt, endsAt, available: 1 }])` for one uninterrupted 45-minute window.
-- [ ] Run `npm test --workspace=apps/api -- --runInBand appointment-policy.spec.ts`; observe missing behavior failure.
-- [ ] Implement typed pure policy, schema and migration. Preserve previous credit decision when status returns to pending; initialize legacy unresolved records UNKNOWN. Use real PostgreSQL enforcement to keep every writer atomic if narrower and safer than patching each writer.
-- [ ] Generate both Prisma clients, run policy tests and schema validation; expected pass. Commit task.
+- [x] Write policy tests, including adjacent windows, past/closing times and UNKNOWN decisions. Example: `expect(availableSlots(windows, busy, day, now)).toEqual([{ startsAt, endsAt, available: 1 }])` for one uninterrupted 45-minute window.
+- [x] Run `npm test --workspace=apps/api -- --runInBand appointment-policy.spec.ts`; observe missing behavior failure.
+- [x] Implement typed pure policy, schema and migration. Preserve previous credit decision when status returns to pending; initialize legacy unresolved records UNKNOWN. Use real PostgreSQL enforcement to keep every writer atomic if narrower and safer than patching each writer.
+- [x] Generate both Prisma clients, run policy tests and schema validation; expected pass. Commit task.
 
 ### Task 2: Staff schedule and transactional appointment service
 
@@ -45,10 +45,10 @@
 
 **Interfaces:** `/store-appointments/options`, `/windows`, `/availability`, `/eligibility/:customerId`, collection/detail, `/:id/reschedule`, `/:id/reassign`, `/:id/status`. Staff actor is `{ id, role, branchId, accessibleCompanies }`. Mutations carry requestId and existing appointment version; availability returns startsAt/endsAt/available.
 
-- [ ] Write real-DB tests before service implementation: credit pass, three staff/four concurrent requests, same customer/two requests, overlapping shifted slots, failed move rollback, deactivation/reassignment, branch and room denial.
-- [ ] Run isolated runner and observe failures from missing behavior.
-- [ ] Implement customer/employee locks, revalidation, partial unique index, CAS/version, idempotent mutations and immutable events. Schedule delete/edit checks affected appointments; account updates do not depend on appointments. Reject malformed dates, cross-midnight windows, ranges outside the horizon and unscoped actors.
-- [ ] Run database tests and API typecheck; expected pass. Commit task.
+- [x] Write real-DB tests before service implementation: credit pass, three staff/four concurrent requests, same customer/two requests, overlapping shifted slots, failed move rollback, deactivation/reassignment, branch and room denial.
+- [x] Run isolated runner and observe failures from missing behavior.
+- [x] Implement customer/employee locks, revalidation, partial unique index, CAS/version, idempotent mutations and immutable events. Schedule delete/edit checks affected appointments; account updates do not depend on appointments. Reject malformed dates, cross-midnight windows, ranges outside the horizon and unscoped actors.
+- [x] Run database tests and API typecheck; expected pass. Commit task.
 
 ### Task 3: Customer capability access
 
@@ -56,10 +56,10 @@
 
 **Interfaces:** staff `/links` issue/revoke; public `/store-appointments-public/context`, `/availability`, `/book`, `/:id/reschedule`, `/:id/cancel` use `X-Appointment-Token` and return allow-listed appointment/branch data only.
 
-- [ ] Write tests: day 29 book day 39, creation expiry still permits bound management; revoke blocks both; idempotent retry; unbound appointment and branch substitution denied; issuer account disabled does not revoke customer capability.
-- [ ] Run isolated tests and observe new cases fail.
-- [ ] Implement random token/hash, booking/access expiry separation, redacted header, transaction-bound link access, request validation and throttling. Use explicit CSRF exception on token-only public routes.
-- [ ] Run isolated suite and API typecheck; expected pass. Commit task.
+- [x] Write tests: day 29 book day 39, creation expiry still permits bound management; revoke blocks both; idempotent retry; unbound appointment and branch substitution denied; issuer account disabled does not revoke customer capability.
+- [x] Run isolated tests and observe new cases fail.
+- [x] Implement random token/hash, booking/access expiry separation, redacted header, transaction-bound link access, request validation and throttling. Use explicit CSRF exception on token-only public routes.
+- [x] Run isolated suite and API typecheck; expected pass. Commit task.
 
 ### Task 4: Staff and public pages
 
@@ -67,10 +67,10 @@
 
 **Interfaces:** components consume Task 2/3 APIs; public route `/visit#token`, staff route `/appointments?customerId=...&roomId=...`.
 
-- [ ] Add UI tests for schedule creation, selected time reset after branch/date changes, empty/full/error states, booking confirmation, conflict retry and cancel/reschedule. Example: render page with rejected availability request and assert visible retry instead of empty slots.
-- [ ] Run focused Vitest tests, observe failure before creating components.
-- [ ] Implement approved mobile design with real server state, scoped staff schedule/list lifecycle, copy link without sending, version-safe mutations and accessible inputs. Public uses memory-only fragment token; no auth refresh or analytics leakage.
-- [ ] Run focused tests and web typecheck; expected pass. Commit task.
+- [x] Add UI tests for schedule creation, selected time reset after branch/date changes, empty/full/error states, booking confirmation, conflict retry and cancel/reschedule. Example: render page with rejected availability request and assert visible retry instead of empty slots.
+- [x] Run focused Vitest tests, observe failure before creating components.
+- [x] Implement approved mobile design with real server state, scoped staff schedule/list lifecycle, copy link without sending, version-safe mutations and accessible inputs. Public uses memory-only fragment token; no auth refresh or analytics leakage.
+- [x] Run focused tests and web typecheck; expected pass. Commit task.
 
 ### Task 5: Customer, Inbox and journey integration
 
@@ -78,16 +78,16 @@
 
 **Interfaces:** appointment summaries include kind and allowed actions; never PATCH Todo for a store appointment. Summary queries use linked customerId with actor branch scope; events dedupe by event ID.
 
-- [ ] Add tests for a public booking without sourceRoomId appearing in linked rooms, room/scope denial, check-in routing and journey event dedupe.
-- [ ] Run tests and observe failure; implement shared summary queries/batched projections, entry points, due alerts and journey source.
-- [ ] Run focused web/API tests; expected pass. Commit task.
+- [x] Add tests for a public booking without sourceRoomId appearing in linked rooms, room/scope denial, check-in routing and journey event dedupe.
+- [x] Run tests and observe failure; implement shared summary queries/batched projections, entry points, due alerts and journey source.
+- [x] Run focused web/API tests; expected pass. Commit task.
 
 ### Task 6: Preview, browser acceptance and review
 
 **Files:** isolated test/preview harness extension, feature browser tests, `.tmp/local-preview` evidence (ignored).
 
-- [ ] Extend checkout-owned local preview with real appointment controllers/services on synthetic PostgreSQL. Seed synthetic credit-approved customers/staff windows, no outbound messages.
-- [ ] Run isolated database/HTTP suite and `npm run local:check` on an available port; expected no failing required checks.
-- [ ] Browser-test staff schedule → staff booking/link → public booking/conflict/reschedule/cancel → staff check-in/completion at desktop and mobile sizes; inspect screenshots and errors.
-- [ ] Request fresh read-only whole-branch review; address material findings with regression tests. Re-run affected checks after fixes.
-- [ ] Leave verified local preview running and report URL, test evidence and any material limitations accurately. Do not deploy or merge.
+- [x] Extend checkout-owned local preview with real appointment controllers/services on synthetic PostgreSQL. Seed synthetic credit-approved customers/staff windows, no outbound messages.
+- [x] Run isolated database/HTTP suite and `npm run local:check` on an available port; expected no failing required checks.
+- [x] Browser-test staff schedule → staff booking/link → public booking/conflict/reschedule/cancel → staff check-in/completion at desktop and mobile sizes; inspect screenshots and errors.
+- [x] Request fresh read-only whole-branch review; address material findings with regression tests. Re-run affected checks after fixes.
+- [x] Leave verified local preview running and report URL, test evidence and any material limitations accurately. Do not deploy or merge.

@@ -23,8 +23,8 @@ try{
  await staff.getByLabel('วันที่ดู',{exact:true}).fill(day);
  await staff.getByRole('button',{name:'ตารางพนักงาน',exact:true}).click();
  await staff.getByLabel('พนักงานรับนัด').selectOption(staffId);
- await staff.getByLabel('เริ่มรับนัด').fill('18:00');await staff.getByLabel('สิ้นสุดรับนัด').fill('18:45');
- await staff.getByRole('button',{name:'เพิ่มช่วงเวลา',exact:true}).click();await expect(staff.getByText('18:00–18:45')).toBeVisible();
+ await staff.getByLabel('เริ่มรับนัด').fill('18:30');await staff.getByLabel('สิ้นสุดรับนัด').fill('19:15');
+ await staff.getByRole('button',{name:'เพิ่มช่วงเวลา',exact:true}).click();await expect(staff.getByText('18:30–19:15')).toBeVisible();
  await staff.getByRole('button',{name:'นัดหมาย',exact:true}).click();
  await staff.getByRole('button',{name:'10:00',exact:true}).click();await staff.getByRole('button',{name:'ยืนยันนัดหมาย',exact:true}).click();
  const card=staff.locator('article').filter({hasText:customers[0].name}).filter({has:staff.getByText('นัดแล้ว',{exact:true})});await expect(card.getByText('นัดแล้ว',{exact:true})).toBeVisible();
@@ -43,8 +43,10 @@ try{
  await mobile.getByRole('button',{name:'ตรวจสอบนัดหมาย'}).click();
  const competitor=await api('/store-appointments',{customerId:customers[2].id,branchId,startsAt:`${day}T10:00:00+07:00`,requestId:crypto.randomUUID()});
  await mobile.getByRole('button',{name:'ยืนยันนัดหมาย',exact:true}).click();await expect(mobile.getByRole('alert').filter({hasText:'เต็มแล้ว'})).toBeVisible();
- await mobile.getByRole('button',{name:'10:45',exact:true}).click();await mobile.getByRole('button',{name:'ตรวจสอบนัดหมาย'}).click();await mobile.getByRole('button',{name:'ยืนยันนัดหมาย',exact:true}).click();await expect(mobile.getByRole('heading',{name:'แล้วพบกันที่ร้านครับ'})).toBeVisible();
+ await expect(mobile.getByRole('button',{name:'18:30',exact:true})).toBeVisible();
+ await mobile.getByRole('button',{name:'18:30',exact:true}).click();await mobile.getByRole('button',{name:'ตรวจสอบนัดหมาย'}).click();await mobile.getByRole('button',{name:'ยืนยันนัดหมาย',exact:true}).click();await expect(mobile.getByRole('heading',{name:'แล้วพบกันที่ร้านครับ'})).toBeVisible();
  assert.equal(await mobile.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth),true);
+ await expect(mobile.getByText('18:30 – 19:15')).toBeVisible();
  await mobile.screenshot({path:`${output}/customer-confirmed.png`,fullPage:true});
  const publicReference=(await mobile.locator('p').filter({hasText:/^เลขนัด /}).innerText()).replace('เลขนัด ','');
  await staff.reload();const selfCard=staff.locator('article').filter({hasText:publicReference});await expect(selfCard.getByText('นัดแล้ว',{exact:true})).toBeVisible();

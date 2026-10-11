@@ -42,6 +42,31 @@ describe('appointment policy', () => {
     expect(() => assertBookableStart(new Date('2026-10-26T03:00:00Z'), at('09:00'))).toThrow();
     expect(() => assertBookableStart(at('09:29'), at('09:00'))).toThrow();
   });
+  it('offers 18:30 as the final Bangkok start only when all 45 minutes are covered', () => {
+    const w = [{ staffUserId: 'a', startsAt: at('10:00'), endsAt: at('20:00') }];
+    const slots = availableSlots(w, [], '2026-10-12', at('09:00'));
+    expect(slots.at(-1)).toEqual({
+      startsAt: at('18:30').toISOString(),
+      endsAt: at('19:15').toISOString(),
+      available: 1,
+    });
+    expect(slots.every((s) => s.startsAt <= at('18:30').toISOString())).toBe(true);
+    expect(
+      availableSlots([{ ...w[0], endsAt: at('19:00') }], [], '2026-10-12', at('09:00')).some(
+        (s) => s.startsAt === at('18:30').toISOString(),
+      ),
+    ).toBe(false);
+    expect(
+      availableSlots(
+        w,
+        [{ staffUserId: 'a', startsAt: at('18:15'), endsAt: at('19:00') }],
+        '2026-10-12',
+        at('09:00'),
+      ).some((s) => s.startsAt === at('18:30').toISOString()),
+    ).toBe(false);
+    expect(() => assertBookableStart(at('18:30'), at('09:00'))).not.toThrow();
+    expect(() => assertBookableStart(at('18:31'), at('09:00'))).toThrow('18:30');
+  });
   it('retains an approval through a new undecided round but never skips rejection or unknown history', () => {
     expect(decisionForAppointments(['NONE', 'APPROVED'])).toBe('APPROVED');
     expect(decisionForAppointments(['NONE', 'REJECTED', 'APPROVED'])).toBe('REJECTED');

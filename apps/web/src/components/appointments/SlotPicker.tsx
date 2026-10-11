@@ -62,7 +62,10 @@ export default function SlotPicker({
       </label>
       <div className="space-y-3">
         <p className="text-sm font-medium">
-          เวลาที่สะดวก <span className="font-normal text-muted-foreground">· ครั้งละ 45 นาที</span>
+          เวลาที่สะดวก{' '}
+          <span className="font-normal text-muted-foreground">
+            · ครั้งละ 45 นาที · คิวสุดท้าย 18:30 น.
+          </span>
         </p>
         {query.isLoading ? (
           <p role="status">กำลังตรวจสอบเวลาว่าง…</p>

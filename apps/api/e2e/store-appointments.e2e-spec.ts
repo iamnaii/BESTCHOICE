@@ -109,6 +109,37 @@ describe('store appointments on isolated PostgreSQL', () => {
       (await db.creditCheck.findUniqueOrThrow({ where: { id: newer.id } })).lastAppointmentDecision,
     ).toBe('REJECTED');
   });
+  it('enforces the 18:30 cutoff for staff and public booking and rescheduling', async () => {
+    await window((await employee()).id, 10, 21);
+    const c = await customer();
+    const issued = await links.issue({ customerId: c.id, branchIds: [branchId] }, actor());
+    const publicActor = { linkId: issued.id };
+    await expect(book(c.id, time(18, 31))).rejects.toThrow('18:30');
+    await expect(
+      appointments.create(
+        { customerId: c.id, branchId, startsAt: time(19), requestId: requestId() },
+        publicActor,
+      ),
+    ).rejects.toThrow('18:30');
+    const booking = await appointments.create(
+      { customerId: c.id, branchId, startsAt: time(18, 30), requestId: requestId() },
+      publicActor,
+    );
+    expect(new Date(booking.endsAt).toISOString()).toBe(time(19, 15));
+    for (const user of [actor(), publicActor])
+      await expect(
+        appointments.reschedule(
+          booking.id,
+          { branchId, startsAt: time(18, 31), version: booking.version, requestId: requestId() },
+          user,
+        ),
+      ).rejects.toThrow('18:30');
+    expect(
+      (
+        await db.storeAppointment.findUniqueOrThrow({ where: { id: booking.id } })
+      ).startsAt.toISOString(),
+    ).toBe(time(18, 30));
+  });
   it('gives exactly three winners for four concurrent customers and three employees', async () => {
     for (let i = 0; i < 3; i++) await window((await employee()).id);
     const customers = await Promise.all([customer(), customer(), customer(), customer()]);

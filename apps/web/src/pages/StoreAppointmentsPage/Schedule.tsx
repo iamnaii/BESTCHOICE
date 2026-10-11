@@ -26,7 +26,7 @@ export default function Schedule({
   const [copyDay, setCopyDay] = useState('');
   const [employee, setEmployee] = useState(''),
     [start, setStart] = useState('10:00'),
-    [end, setEnd] = useState('18:00');
+    [end, setEnd] = useState('19:15');
   const [edit, setEdit] = useState<Window | null>(null);
   const windows = useQuery({
     queryKey: ['appointments', 'windows', branchId, day],
@@ -66,7 +66,8 @@ export default function Schedule({
     <section className="space-y-4 rounded-xl border border-border bg-card p-5">
       <h2 className="font-semibold">ตารางพนักงานรับนัด</h2>
       <p className="text-sm text-muted-foreground">
-        ระบุช่วงที่รับนัดได้จริง เว้นช่วงพักด้วยการแยกช่วงเวลา
+        ระบุช่วงที่รับนัดได้จริง เว้นช่วงพักด้วยการแยกช่วงเวลา คิวสุดท้ายเริ่ม 18:30 น.
+        ต้องมีพนักงานถึง 19:15 น.
       </p>
       <form
         className="flex flex-wrap items-end gap-3"

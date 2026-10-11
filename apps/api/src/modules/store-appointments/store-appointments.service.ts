@@ -29,6 +29,7 @@ import {
   bangkokDay,
   DAY_MS,
   dayBounds,
+  finalAppointmentStart,
   OPEN_STATUSES,
   SLOT_MS,
 } from './appointment-policy';
@@ -334,7 +335,9 @@ export class StoreAppointmentsService {
     const valid = candidates.filter(
       (w) =>
         staffIsAvailable(w.staff, branchId) &&
-        (!requireGrid || (+startsAt - +w.startsAt) % SLOT_MS === 0) &&
+        (!requireGrid ||
+          (+startsAt - +w.startsAt) % SLOT_MS === 0 ||
+          +startsAt === finalAppointmentStart(bangkokDay(startsAt))) &&
         !busy.some(
           (b) =>
             b.staffUserId === w.staffUserId &&

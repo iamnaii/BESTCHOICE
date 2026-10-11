@@ -48,6 +48,27 @@ export async function seedAppointmentPreview(db: PrismaService, ownerId: string)
         },
         { staffId: ownerId },
       );
+    const finalStartsAt = new Date(`${day}T18:30:00+07:00`);
+    const finalEndsAt = new Date(`${day}T19:15:00+07:00`);
+    if (
+      !(await db.staffAppointmentWindow.count({
+        where: {
+          staffUserId: staff.id,
+          deletedAt: null,
+          startsAt: { lt: finalEndsAt },
+          endsAt: { gt: finalStartsAt },
+        },
+      }))
+    )
+      await schedule.save(
+        {
+          branchId: branch.id,
+          staffUserId: staff.id,
+          startsAt: finalStartsAt.toISOString(),
+          endsAt: finalEndsAt.toISOString(),
+        },
+        { staffId: ownerId },
+      );
   }
   const customers = [];
   for (let i = 1; i <= 3; i++) {

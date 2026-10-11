@@ -15,6 +15,8 @@ export function dayBounds(day: string): [Date, Date] {
   return [start, new Date(start.getTime() + DAY_MS)];
 }
 
+export const finalAppointmentStart = (day: string) => new Date(`${day}T18:30:00+07:00`).getTime();
+
 export function assertBookableStart(start: Date, now = new Date()) {
   if (
     !Number.isFinite(start.getTime()) ||
@@ -23,6 +25,8 @@ export function assertBookableStart(start: Date, now = new Date()) {
   ) {
     throw new BadRequestException('กรุณาเลือกเวลาอย่างน้อย 30 นาทีล่วงหน้า ภายใน 14 วันรวมวันนี้');
   }
+  if (start.getTime() > finalAppointmentStart(bangkokDay(start)))
+    throw new BadRequestException('คิวสุดท้ายเริ่มเวลา 18:30 น.');
 }
 
 export function overlaps(a: { startsAt: Date; endsAt: Date }, b: { startsAt: Date; endsAt: Date }) {
@@ -38,8 +42,19 @@ export function availableSlots(
   const [from, to] = dayBounds(day);
   const horizon = dayBounds(bangkokDay(now))[0].getTime() + 14 * DAY_MS;
   const slots = new Map<number, Set<string>>();
+  const lastStart = finalAppointmentStart(day);
   for (const window of windows) {
-    for (let t = window.startsAt.getTime(); t + SLOT_MS <= window.endsAt.getTime(); t += SLOT_MS) {
+    const candidates = new Set<number>();
+    for (
+      let t = window.startsAt.getTime();
+      t + SLOT_MS <= window.endsAt.getTime() && t <= lastStart;
+      t += SLOT_MS
+    )
+      candidates.add(t);
+    // Include the final start even when the employee's 45-minute grid does not land on it.
+    if (window.startsAt.getTime() <= lastStart && lastStart + SLOT_MS <= window.endsAt.getTime())
+      candidates.add(lastStart);
+    for (const t of candidates) {
       if (
         t < from.getTime() ||
         t >= to.getTime() ||

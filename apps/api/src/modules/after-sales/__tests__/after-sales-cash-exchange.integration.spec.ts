@@ -43,7 +43,7 @@ import { AfterSalesExchangeService } from '../services/after-sales-exchange.serv
 import { AfterSalesLineService } from '../services/after-sales-line.service';
 import { AfterSalesDocNumberService } from '../services/after-sales-doc-number.service';
 import { AfterSalesDocumentService } from '../services/after-sales-document.service';
-import { AfterSalesPdfRenderer } from '../documents/after-sales-pdf.renderer';
+import type { AfterSalesPdfRenderer } from '../documents/after-sales-pdf.renderer';
 import { AfterSalesService } from '../after-sales.service';
 import {
   CASH_DAY7_REASON,
@@ -183,7 +183,12 @@ const stockAdjust = new StockAdjustmentsService(
   new StockAdjustmentNumberService(prisma as never),
   audit,
 );
-const docs = new AfterSalesDocumentService(prisma as never, storage, querySvc, new AfterSalesPdfRenderer());
+// CI job "Integration" ไม่มี Chromium — PDF จริงปักที่ doc-render.smoke.spec (job "PDF documents") · ที่นี่ทดสอบ
+// เส้นทาง compose/HTML/สิทธิ์/PRINTED บน DB จริง จึง stub htmlToPdf ให้คืน HTML ที่ compose ได้เป็น Buffer
+const pdfRenderer = {
+  htmlToPdf: async (html: string) => Buffer.from(html, 'utf8'),
+} as unknown as AfterSalesPdfRenderer;
+const docs = new AfterSalesDocumentService(prisma as never, storage, querySvc, pdfRenderer);
 
 // ---------------------------------------------------------------------------
 // Fixtures / run markers
@@ -587,7 +592,6 @@ describe('after-sales — เปลี่ยนรุ่นเดิมขาย
 
   afterAll(async () => {
     try {
-      await AfterSalesPdfRenderer.closeShared();
       const jeWhere: Prisma.JournalEntryWhereInput[] = [
         ...createdCaseIds.map((id) => ({ metadata: { path: ['afterSalesCaseId'], equals: id } as never })),
         ...createdAdjustmentIds.map((id) => ({ metadata: { path: ['adjustmentId'], equals: id } as never })),

@@ -361,7 +361,7 @@ describe('คำขอตัดสินค้า — flow จริงบน DB
     expect(rows.find((r) => r.id === product.id)?.poUnbooked).toBe(true);
 
     // ทางที่ถูก: ตีกลับผู้จัดจำหน่าย (soft delete · ไม่มีรายการบัญชี ตามคำตอบฝ่ายบัญชีข้อ 8)
-    await poService.rejectQC([product.id], 'ตีกลับผู้จัดจำหน่าย — ทดสอบ');
+    await poService.rejectQC([product.id], 'ตีกลับผู้จัดจำหน่าย — ทดสอบ', adminId); // #1690 เพิ่ม userId (Todo ตีกลับ)
     expect((await prisma.product.findUniqueOrThrow({ where: { id: product.id } })).deletedAt).not.toBeNull();
     // แถวใบรับของของเครื่องนี้ยังไม่มีรายการบัญชี (ตีกลับไม่ลงอะไร) และไม่มีใบตัดสินค้าเกิดขึ้นเลย
     const grItem = await prisma.goodsReceivingItem.findFirst({ where: { productId: product.id } });

@@ -13,7 +13,7 @@ import { STORE_COMMISSION_FALLBACK_RATE } from './store-commission.util';
  * transaction-scoped reads (`tx.systemConfig.findFirst`) and request-scoped
  * reads (`this.prisma.systemConfig.findFirst`) share the same util.
  */
-type SystemConfigReader = {
+export type SystemConfigReader = {
   systemConfig: {
     findFirst: (args: {
       where: { key: string; deletedAt: null };

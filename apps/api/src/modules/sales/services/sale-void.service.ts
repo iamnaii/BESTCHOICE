@@ -186,6 +186,8 @@ export class SaleVoidService {
         branchId: true,
         netAmount: true,
         tradeInCreditSnapshot: true,
+        exchangeCaseId: true, // PR 5 — G9
+        exchangeCase: { select: { caseNumber: true } },
       },
     });
     if (!sale) throw new NotFoundException('ไม่พบใบขายที่ต้องการยกเลิก');
@@ -195,6 +197,16 @@ export class SaleVoidService {
       throw new BadRequestException(
         `ใบขาย ${sale.saleNumber} ถูกยกเลิกไปแล้วเมื่อ ${sale.deletedAt.toLocaleString('th-TH')} — ` +
           'ถ้าต้องแก้ไขข้อมูลการขาย ให้บันทึกใบขายใหม่แทน',
+      );
+    }
+
+    // ── G9 (PR 5) — ใบขายที่สลับเครื่องแล้ว (เปลี่ยนรุ่นเดิมขายสด) ─────────────────
+    // JE สลับต้นทุน stamp saleId จึงอยู่ใน sweep ด้านล่างได้ แต่เครื่องเดิมอยู่ DEFECT_RETURN/ถูกตัดจำหน่าย
+    // และเครื่องทดแทนถูกส่งมอบไปแล้ว — ย้อนทั้งชุดเป็นงานฝ่ายบัญชี (คำตัดสินเจ้าของ ⑦ ปิดถาวร)
+    if (sale.exchangeCaseId) {
+      throw new BadRequestException(
+        `ใบขาย ${sale.saleNumber} เปลี่ยนเครื่องแล้ว (เคส ${sale.exchangeCase?.caseNumber ?? sale.exchangeCaseId}) — ` +
+          'ยกเลิกใบขายไม่ได้ ให้ฝ่ายบัญชีแก้รายการถ้าจำเป็น',
       );
     }
 

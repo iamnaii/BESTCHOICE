@@ -259,6 +259,16 @@ export class AfterSalesLineService {
         ? contract.shopWarrantyEndDate.toISOString()
         : null;
     }
+    // PR 5 — เคสขายสดไม่มีสัญญา: ประกันร้านของเครื่องทดแทนอยู่บนใบขายเดิม (ตั้งใหม่ตอนส่งมอบ)
+    if (!coveringContractId && c.outcome === 'CASH_SAME_MODEL_EXCHANGE' && c.saleId) {
+      const sale = await this.prisma.sale.findFirst({
+        where: { id: c.saleId, deletedAt: null },
+        select: { shopWarrantyEndDate: true },
+      });
+      shopWarrantyEndDate = sale?.shopWarrantyEndDate
+        ? sale.shopWarrantyEndDate.toISOString()
+        : null;
+    }
 
     return {
       brand: product.brand,

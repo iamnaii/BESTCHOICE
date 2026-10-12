@@ -1,3 +1,4 @@
+import { storeAppointmentSource } from './sources/store-appointment.source';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import type { JourneyEvent, JourneyEventGroup, JourneyListResponse, JourneySummary } from '@installment/shared';
 import type { PrismaService } from '../../prisma/prisma.service';
@@ -13,6 +14,7 @@ import { pointsSource } from './sources/points.source';
 import { saleSource } from './sources/sale.source';
 import { serviceSource } from './sources/service.source';
 
+jest.mock('./sources/store-appointment.source', () => ({ storeAppointmentSource: jest.fn() }));
 jest.mock('./sources/chat.source', () => ({ chatSource: jest.fn() }));
 jest.mock('./sources/credit.source', () => ({ creditSource: jest.fn() }));
 jest.mock('./sources/sale.source', () => ({ saleSource: jest.fn() }));
@@ -23,7 +25,7 @@ jest.mock('./sources/points.source', () => ({ pointsSource: jest.fn() }));
 jest.mock('./sources/entries.source', () => ({ entriesSourceFor: jest.fn() }));
 
 /** แหล่งจากตารางโดเมน — บันทึก entries/แท็กมาจาก entriesSourceFor(กลุ่ม) เท่านั้น (Task 8 fix รอบ 1) */
-const DOMAIN = [chatSource, creditSource, saleSource, paymentSource, collectionsSource, serviceSource, pointsSource];
+const DOMAIN = [storeAppointmentSource, chatSource, creditSource, saleSource, paymentSource, collectionsSource, serviceSource, pointsSource];
 const groupSet = (...groups: JourneyEventGroup[]) => new Set<JourneyEventGroup>(groups);
 const day = (n: number) => new Date(Date.UTC(2026, 8, 1 + n)).toISOString();
 const ev = (id: string, timestamp: string, group: JourneyEventGroup): JourneyEvent => ({ id, type: 'TEST', group, stage: null, timestamp, title: id, actor: null, reliability: 'exact', origin: 'SOURCE' });

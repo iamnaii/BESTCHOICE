@@ -79,6 +79,8 @@ export class SalesQueryService {
           // (deletedAt / voidReason เป็น scalar มากับ include อยู่แล้ว)
           voidedBy: { select: { id: true, name: true } },
           shopTenders: SALE_TENDERS_SELECT,
+          // PR 5 — ใบขายที่ถูกสลับเครื่องจากเคสเปลี่ยนรุ่นเดิมขายสด (ป้าย + ซ่อนปุ่มยกเลิก)
+          exchangeCase: { select: { id: true, caseNumber: true, approvedAt: true, deviceImei: true } },
         },
       }),
       db.sale.count({ where }),
@@ -160,6 +162,7 @@ export class SalesQueryService {
         salesperson: { select: { id: true, name: true } },
         voidedBy: { select: { id: true, name: true } },
         shopTenders: SALE_TENDERS_SELECT,
+        exchangeCase: { select: { id: true, caseNumber: true, approvedAt: true, deviceImei: true } }, // PR 5
         // Contract snapshots include private customer data; follow the contract
         // link through its own authorized endpoint for anything beyond this summary.
         contract: { select: CONTRACT_SALE_SELECT },

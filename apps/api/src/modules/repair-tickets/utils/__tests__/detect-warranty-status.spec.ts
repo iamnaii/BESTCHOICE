@@ -157,3 +157,27 @@ describe('detectWarrantyStatus — ประกันร้านจากใบ
     ).toBe('OUT_OF_WARRANTY');
   });
 });
+
+describe('PR 5 — ใบขายไม่มีสัญญา นับ 7 วันจาก sale.soldAt (วันที่ล้วน ไม่ดูหมวดเครื่อง)', () => {
+  it('ไม่มีสัญญา + soldAt 3 วันก่อน → IN_7DAY_DEFECT', () => {
+    expect(
+      detectWarrantyStatus({ sale: { soldAt: daysAgo(3), shopWarrantyEndDate: daysAhead(57) } }),
+    ).toBe('IN_7DAY_DEFECT');
+  });
+  it('ไม่มีสัญญา + soldAt 7 วันพอดี (ปฏิทินไทย) → ยัง IN_7DAY_DEFECT (สูตรเดียวกับ deviceReceivedAt)', () => {
+    expect(detectWarrantyStatus({ sale: { soldAt: bkkDaysAgo(7), shopWarrantyEndDate: daysAhead(50) } })).toBe(
+      'IN_7DAY_DEFECT',
+    );
+    expect(detectWarrantyStatus({ sale: { soldAt: bkkDaysAgo(8), shopWarrantyEndDate: daysAhead(50) } })).toBe(
+      'IN_SHOP_WARRANTY',
+    );
+  });
+  it('มีสัญญาแต่ deviceReceivedAt ว่าง → ไม่ใช้ soldAt ของใบขาย (ใบขาย INSTALLMENT มี createdAt เสมอ)', () => {
+    expect(
+      detectWarrantyStatus({
+        contract: { deviceReceivedAt: null, shopWarrantyEndDate: daysAhead(50) },
+        sale: { soldAt: daysAgo(1), shopWarrantyEndDate: null },
+      }),
+    ).toBe('IN_SHOP_WARRANTY');
+  });
+});

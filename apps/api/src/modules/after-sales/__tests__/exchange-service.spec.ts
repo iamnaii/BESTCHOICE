@@ -7,6 +7,13 @@ import {
 import { DEVICE_SWAP_CLOSED_MESSAGE } from '../../contract-exchange/device-swap-closed.policy';
 import { AfterSalesExchangeService } from '../services/after-sales-exchange.service';
 
+jest.mock('../../../utils/period-lock.util', () => ({
+  validatePeriodOpen: jest.fn().mockResolvedValue(undefined),
+}));
+jest.mock('../../../utils/reservation-preempt.util', () => ({
+  preemptReservationsInTx: jest.fn().mockResolvedValue(0),
+}));
+
 const MGR = { id: 'user-mgr', role: 'BRANCH_MANAGER', branchId: 'branch-1' };
 const SALES = { id: 'user-sales', role: 'SALES', branchId: 'branch-1' };
 const STAFF = SALES; // deliver/switchToRepair are STAFF-level — no internal role gate expected
@@ -15,6 +22,10 @@ const OWNER = { id: 'user-owner', role: 'OWNER', branchId: null };
 function buildCase(overrides: Record<string, unknown> = {}) {
   return {
     id: 'as-1',
+    caseNumber: 'AS-20261012-0001',
+    source: 'INSTALLMENT_CONTRACT',
+    saleId: null,
+    replacementSaleId: null,
     contractId: 'ct-1',
     outcome: 'SAME_MODEL_EXCHANGE',
     stage: 'AWAITING_APPROVAL',
@@ -45,6 +56,9 @@ describe('AfterSalesExchangeService', () => {
   let exchangeCancel: any;
   let lookup: any;
   let line: any;
+  let cashExchange: any;
+  let shopAccounts: any;
+  let companyResolver: any;
   let svc: AfterSalesExchangeService;
 
   beforeEach(() => {
@@ -55,11 +69,30 @@ describe('AfterSalesExchangeService', () => {
         updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       },
       contract: { findUnique: jest.fn() },
-      $transaction: jest.fn(),
+      // PR 5 — กิ่งขายสด
+      sale: { findUnique: jest.fn(), update: jest.fn().mockResolvedValue({ saleNumber: 'SL-0001' }) },
+      product: {
+        findUnique: jest.fn(),
+        findUniqueOrThrow: jest.fn(),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+      },
+      customer: {
+        findUniqueOrThrow: jest
+          .fn()
+          .mockResolvedValue({ id: 'cust-1', name: 'ก', phone: null, addressCurrent: null }),
+      },
+      systemConfig: {
+        findUnique: jest.fn().mockResolvedValue(null),
+        findFirst: jest.fn().mockResolvedValue(null),
+      },
+      $transaction: jest.fn().mockImplementation((cb: any) => cb(prisma)),
     };
     query = { getCase: jest.fn() };
     defect = { checkEligibility: jest.fn(), execute: jest.fn() };
-    repair = { createInTx: jest.fn() };
+    repair = {
+      createInTx: jest.fn(),
+      markReplacedBySale: jest.fn().mockResolvedValue({ fromStatus: 'IN_PROGRESS' }),
+    };
     audit = { log: jest.fn().mockResolvedValue(undefined) };
     // Task 6 deps — Task 5's tests below never touch these, but the constructor now
     // requires them (unused-but-present so this describe still compiles/constructs).
@@ -68,6 +101,18 @@ describe('AfterSalesExchangeService', () => {
     lookup = { lookup: jest.fn() };
     // Task 3 — พารามิเตอร์ท้ายสุดใหม่ของ constructor
     line = { notifyMoment: jest.fn().mockResolvedValue({ status: 'SENT' }) };
+    // PR 5 — deps ใหม่ของกิ่งขายสด
+    cashExchange = {
+      execute: jest.fn().mockResolvedValue({ entryNo: 'JE-CX-1', journalEntryId: 'je-cx-1' }),
+    };
+    shopAccounts = {
+      resolveProductAccounts: jest.fn().mockReturnValue({
+        inventoryAccountCode: 'S11-2002',
+        cogsAccountCode: 'S50-1102',
+        revenueAccountCode: 'S41-1102',
+      }),
+    };
+    companyResolver = { getShopCompanyId: jest.fn().mockResolvedValue('shop-co') };
 
     svc = new AfterSalesExchangeService(
       prisma as never,
@@ -79,6 +124,9 @@ describe('AfterSalesExchangeService', () => {
       exchangeCancel as never,
       lookup as never,
       line as never,
+      cashExchange as never,
+      shopAccounts as never,
+      companyResolver as never,
     );
   });
 
@@ -706,6 +754,347 @@ describe('AfterSalesExchangeService', () => {
       expect(prisma.$transaction).not.toHaveBeenCalled();
     });
   });
+
+  describe('confirmSameModel — กิ่งขายสด (PR 5)', () => {
+    const SOLD_3_DAYS_AGO = new Date(Date.now() - 3 * 86_400_000);
+    const SALE = {
+      id: 'sale-1',
+      saleNumber: 'SL-0001',
+      saleType: 'CASH',
+      productId: 'prod-old',
+      customerId: 'cust-1',
+      deletedAt: null,
+      exchangeCaseId: null,
+      shopWarrantyStartDate: SOLD_3_DAYS_AGO,
+      createdAt: SOLD_3_DAYS_AGO,
+      costSnapshot: { mainProductCost: { toString: () => '10700.00' } },
+    };
+    const NEW_PRODUCT = {
+      id: 'prod-new',
+      brand: 'Apple',
+      model: 'iPhone 13',
+      storage: '128GB',
+      imeiSerial: '359000000000002',
+      costPrice: { toString: () => '10500.00' },
+      category: 'PHONE_USED',
+      status: 'IN_STOCK',
+      branchId: 'branch-1',
+      deletedAt: null,
+      name: 'iPhone 13',
+      po: null,
+    };
+    const cashCase = (over: Record<string, unknown> = {}) =>
+      buildCase({
+        contractId: null,
+        saleId: 'sale-1',
+        source: 'CASH_SALE',
+        outcome: 'CASH_SAME_MODEL_EXCHANGE',
+        replacementSaleId: null,
+        ...over,
+      });
+
+    beforeEach(() => {
+      prisma.sale.findUnique.mockResolvedValue(SALE);
+      prisma.product.findUnique.mockImplementation(({ where }: { where: { id: string } }) =>
+        Promise.resolve(
+          where.id === 'prod-old'
+            ? { id: 'prod-old', brand: 'Apple', model: 'iPhone 13', storage: '128GB', category: 'PHONE_USED' }
+            : NEW_PRODUCT,
+        ),
+      );
+    });
+
+    it('ผ่านทุกด่าน → CAS จอง · flip เครื่องเดิม→DEFECT_RETURN / ทดแทน IN_STOCK→SOLD_CASH · JE ต้นทุน 10,700/10,500 · sale.productId สลับ + exchangeCaseId + snapshot ใหม่ · เคส READY + replacementSaleId · audit หลัง tx · LINE READY', async () => {
+      query.getCase.mockResolvedValue(cashCase());
+      const r = await svc.confirmSameModel('as-1', { note: 'ok' } as never, MGR);
+      expect(r).toEqual({
+        id: 'as-1',
+        stage: 'READY_FOR_PICKUP',
+        replacementSaleId: 'sale-1',
+        saleNumber: 'SL-0001',
+        journalEntryNo: 'JE-CX-1',
+      });
+      expect(defect.execute).not.toHaveBeenCalled();
+      expect(prisma.afterSalesCase.updateMany.mock.calls[0][0].where).toMatchObject({
+        id: 'as-1',
+        stage: { in: ['AWAITING_APPROVAL'] },
+        replacementSaleId: null,
+        approvedAt: null,
+      });
+      expect(prisma.product.updateMany).toHaveBeenNthCalledWith(1, {
+        where: { id: 'prod-old', status: 'SOLD_CASH', deletedAt: null },
+        data: { status: 'DEFECT_RETURN' },
+      });
+      expect(prisma.product.updateMany).toHaveBeenNthCalledWith(2, {
+        where: { id: 'prod-new', status: 'IN_STOCK', deletedAt: null },
+        data: { status: 'SOLD_CASH' },
+      });
+      expect(cashExchange.execute).toHaveBeenCalledWith(
+        expect.objectContaining({
+          afterSalesCaseId: 'as-1',
+          saleId: 'sale-1',
+          oldProductId: 'prod-old',
+          newProductId: 'prod-new',
+        }),
+        prisma,
+      );
+      const cx = cashExchange.execute.mock.calls[0][0];
+      expect(cx.oldCost.toFixed(2)).toBe('10700.00');
+      expect(cx.newCost.toFixed(2)).toBe('10500.00');
+      expect(prisma.sale.update).toHaveBeenCalledWith({
+        where: { id: 'sale-1' },
+        data: {
+          productId: 'prod-new',
+          exchangeCaseId: 'as-1',
+          costSnapshot: {
+            upsert: {
+              create: { mainProductCost: expect.anything() },
+              update: { mainProductCost: expect.anything() },
+            },
+          },
+        },
+        select: { saleNumber: true },
+      });
+      expect(prisma.afterSalesCase.update).toHaveBeenCalledWith({
+        where: { id: 'as-1' },
+        data: expect.objectContaining({
+          outcome: 'CASH_SAME_MODEL_EXCHANGE',
+          replacementProductId: 'prod-new',
+          replacementSaleId: 'sale-1',
+          stage: 'READY_FOR_PICKUP',
+          events: {
+            create: expect.objectContaining({
+              kind: 'APPROVED',
+              note: 'ยืนยันเปลี่ยนเครื่อง · ใบขาย SL-0001 · เครื่องทดแทน IMEI 359000000000002',
+            }),
+          },
+        }),
+      });
+      expect(audit.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: 'AFTER_SALES_CASH_EXCHANGE_CONFIRMED',
+          entityId: 'as-1',
+          newValue: expect.objectContaining({
+            oldCost: '10700.00',
+            newCost: '10500.00',
+            journalEntryNo: 'JE-CX-1',
+          }),
+        }),
+      );
+      expect(prisma.afterSalesCase.update.mock.invocationCallOrder[0]).toBeLessThan(
+        audit.log.mock.invocationCallOrder[0],
+      );
+      expect(line.notifyMoment).toHaveBeenCalledWith('as-1', 'READY', MGR.id);
+    });
+
+    it('SALES กด → 403 ก่อนอ่านอะไร', async () => {
+      await expect(svc.confirmSameModel('as-1', {} as never, SALES)).rejects.toBeInstanceOf(
+        ForbiddenException,
+      );
+      expect(query.getCase).not.toHaveBeenCalled();
+    });
+
+    it('CAS แพ้ (count 0) → 409 ไม่เปิด tx', async () => {
+      query.getCase.mockResolvedValue(cashCase());
+      prisma.afterSalesCase.updateMany.mockResolvedValueOnce({ count: 0 });
+      await expect(svc.confirmSameModel('as-1', {} as never, MGR)).rejects.toThrow(
+        new ConflictException('เคสนี้ถูกดำเนินการไปแล้ว'),
+      );
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('ไม่มี SaleCostSnapshot → 400 "ไม่พบต้นทุนที่ลงบัญชีตอนขาย" และปล่อยการจองคืน', async () => {
+      query.getCase.mockResolvedValue(cashCase());
+      prisma.sale.findUnique.mockResolvedValue({ ...SALE, costSnapshot: null });
+      await expect(svc.confirmSameModel('as-1', {} as never, MGR)).rejects.toThrow(
+        new BadRequestException('ไม่พบต้นทุนที่ลงบัญชีตอนขาย — ให้ฝ่ายบัญชีตรวจก่อน'),
+      );
+      expect(cashExchange.execute).not.toHaveBeenCalled();
+      expect(prisma.afterSalesCase.updateMany).toHaveBeenLastCalledWith(
+        expect.objectContaining({ data: { approvedAt: null, approvedById: null } }),
+      );
+    });
+
+    it('เครื่องทดแทนถูกขายไปแล้ว (updateMany count 0) → 409 "เครื่องทดแทนถูกขาย/จองไปแล้ว" ไม่ลง JE', async () => {
+      query.getCase.mockResolvedValue(cashCase());
+      prisma.product.updateMany
+        .mockResolvedValueOnce({ count: 1 })
+        .mockResolvedValueOnce({ count: 0 });
+      await expect(svc.confirmSameModel('as-1', {} as never, MGR)).rejects.toThrow(
+        new ConflictException('เครื่องทดแทนถูกขาย/จองไปแล้ว'),
+      );
+      expect(cashExchange.execute).not.toHaveBeenCalled();
+    });
+
+    it('fromRepair นอกกรอบ (ขาย 9 วันก่อน) → 400 "เกินกรอบ 7 วันแล้ว — ซ่อมเท่านั้น" แม้เป็น OWNER', async () => {
+      const soldAt = new Date(Date.now() - 9 * 86_400_000);
+      prisma.sale.findUnique.mockResolvedValue({
+        ...SALE,
+        shopWarrantyStartDate: soldAt,
+        createdAt: soldAt,
+      });
+      query.getCase.mockResolvedValue(
+        cashCase({
+          outcome: 'REPAIR',
+          stage: 'IN_REPAIR',
+          replacementProductId: null,
+          repairTicketId: 'rt-1',
+          repairTicket: { id: 'rt-1', status: 'IN_PROGRESS' },
+        }),
+      );
+      await expect(
+        svc.confirmSameModel('as-1', { replacementProductId: 'prod-new' } as never, OWNER),
+      ).rejects.toThrow(new BadRequestException('เกินกรอบ 7 วันแล้ว — ซ่อมเท่านั้น'));
+      expect(prisma.product.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('fromRepair ในกรอบ → markReplacedBySale ใน tx + audit REPAIR_TICKET_REPLACED_BY_SALE หลัง commit + note "จากใบซ่อม"', async () => {
+      query.getCase.mockResolvedValue(
+        cashCase({
+          outcome: 'REPAIR',
+          stage: 'IN_REPAIR',
+          replacementProductId: null,
+          repairTicketId: 'rt-1',
+          repairTicket: { id: 'rt-1', status: 'IN_PROGRESS' },
+        }),
+      );
+      await svc.confirmSameModel('as-1', { replacementProductId: 'prod-new' } as never, MGR);
+      expect(repair.markReplacedBySale).toHaveBeenCalledWith(
+        'rt-1',
+        { caseNumber: expect.any(String), saleNumber: 'SL-0001' },
+        MGR,
+        prisma,
+      );
+      expect(prisma.afterSalesCase.update.mock.calls[0][0].data.events.create.note).toContain(
+        'จากใบซ่อม (ซ่อมไม่ได้)',
+      );
+      expect(audit.log).toHaveBeenCalledWith(
+        expect.objectContaining({ action: 'REPAIR_TICKET_REPLACED_BY_SALE', entityId: 'rt-1' }),
+      );
+    });
+
+    it('ไฟแนนซ์นอก → ด่าน/flip ใช้ SOLD_INSTALLMENT · JE ยังลง', async () => {
+      prisma.sale.findUnique.mockResolvedValue({ ...SALE, saleType: 'EXTERNAL_FINANCE' });
+      query.getCase.mockResolvedValue(cashCase());
+      await svc.confirmSameModel('as-1', {} as never, MGR);
+      expect(prisma.product.updateMany).toHaveBeenNthCalledWith(1, {
+        where: { id: 'prod-old', status: 'SOLD_INSTALLMENT', deletedAt: null },
+        data: { status: 'DEFECT_RETURN' },
+      });
+      expect(prisma.product.updateMany).toHaveBeenNthCalledWith(2, {
+        where: { id: 'prod-new', status: 'IN_STOCK', deletedAt: null },
+        data: { status: 'SOLD_INSTALLMENT' },
+      });
+      expect(cashExchange.execute).toHaveBeenCalled();
+    });
+
+    it('cashExchangePreview (MGR) → ต้นทุนเดิม/ใหม่ + 4 บรรทัดที่จะลง · SALES → 403', async () => {
+      query.getCase.mockResolvedValue(cashCase());
+      const r = await svc.cashExchangePreview('as-1', undefined, MGR);
+      expect(r).toEqual({
+        saleNumber: 'SL-0001',
+        oldCost: '10700.00',
+        newCost: '10500.00',
+        replacementProductId: 'prod-new',
+        lines: [
+          { accountCode: 'S11-2002', dr: '10700.00', cr: '0.00' },
+          { accountCode: 'S50-1102', dr: '0.00', cr: '10700.00' },
+          { accountCode: 'S50-1102', dr: '10500.00', cr: '0.00' },
+          { accountCode: 'S11-2002', dr: '0.00', cr: '10500.00' },
+        ],
+      });
+      await expect(svc.cashExchangePreview('as-1', undefined, SALES)).rejects.toBeInstanceOf(
+        ForbiddenException,
+      );
+    });
+  });
+
+  describe('deliver — กิ่งขายสด (PR 5)', () => {
+    const cashReady = () =>
+      buildCase({
+        contractId: null,
+        saleId: 'sale-1',
+        source: 'CASH_SALE',
+        outcome: 'CASH_SAME_MODEL_EXCHANGE',
+        stage: 'READY_FOR_PICKUP',
+        replacementSaleId: 'sale-1',
+        replacementProductId: 'prod-new',
+        caseNumber: 'AS-1',
+      });
+
+    it('มือสอง → ตั้ง start = now · end = +60 วัน · ปิดเคส DELIVERED(อุปกรณ์)+CLOSED · audit · LINE CLOSED · ไม่แตะสัญญา', async () => {
+      query.getCase.mockResolvedValue(cashReady());
+      prisma.product.findUniqueOrThrow.mockResolvedValue({
+        category: 'PHONE_USED',
+        shopWarrantyDays: null,
+        deviceOrigin: null,
+        warrantyTerms: null,
+      });
+      prisma.afterSalesCase.update.mockResolvedValue({ id: 'as-1', stage: 'CLOSED' });
+      const r = await svc.deliver('as-1', STAFF, {
+        accessories: { box: true, charger: true },
+      } as never);
+      expect(r).toEqual({ id: 'as-1', stage: 'CLOSED' });
+      const saleData = prisma.sale.update.mock.calls[0][0].data;
+      expect(saleData.shopWarrantyStartDate).toBeInstanceOf(Date);
+      expect(
+        Math.round(
+          (saleData.shopWarrantyEndDate.getTime() - saleData.shopWarrantyStartDate.getTime()) /
+            86_400_000,
+        ),
+      ).toBe(60);
+      expect(prisma.afterSalesCase.update).toHaveBeenCalledWith({
+        where: { id: 'as-1' },
+        data: expect.objectContaining({
+          stage: 'CLOSED',
+          closedAt: expect.any(Date),
+          events: {
+            create: [
+              expect.objectContaining({
+                kind: 'DELIVERED',
+                note: 'ส่งมอบเครื่องทดแทน · ใบขาย SL-0001 · อุปกรณ์: กล่อง, สายชาร์จ',
+              }),
+              expect.objectContaining({ kind: 'CLOSED' }),
+            ],
+          },
+        }),
+      });
+      expect(prisma.contract.findUnique).not.toHaveBeenCalled();
+      expect(audit.log).toHaveBeenCalledWith(
+        expect.objectContaining({ action: 'AFTER_SALES_CASH_EXCHANGE_DELIVERED' }),
+      );
+      expect(line.notifyMoment).toHaveBeenCalledWith('as-1', 'CLOSED', STAFF.id);
+    });
+
+    it('เครื่องไม่มีนโยบายประกัน (days null) → start ตั้ง · end null · ไม่ล้ม', async () => {
+      query.getCase.mockResolvedValue(cashReady());
+      prisma.product.findUniqueOrThrow.mockResolvedValue({
+        category: 'PHONE_USED',
+        shopWarrantyDays: 0,
+        deviceOrigin: null,
+        warrantyTerms: null,
+      });
+      await svc.deliver('as-1', STAFF, {} as never);
+      const saleData = prisma.sale.update.mock.calls[0][0].data;
+      expect(saleData.shopWarrantyStartDate).toBeInstanceOf(Date);
+      expect(saleData.shopWarrantyEndDate).toBeNull();
+    });
+
+    it('ยังไม่ยืนยัน (ไม่มี replacementSaleId) → 400', async () => {
+      query.getCase.mockResolvedValue(
+        buildCase({
+          contractId: null,
+          saleId: 'sale-1',
+          outcome: 'CASH_SAME_MODEL_EXCHANGE',
+          stage: 'AWAITING_APPROVAL',
+          replacementSaleId: null,
+        }),
+      );
+      await expect(svc.deliver('as-1', STAFF, {} as never)).rejects.toThrow(
+        new BadRequestException('เคสนี้ยังไม่ได้ยืนยันเปลี่ยนเครื่อง'),
+      );
+    });
+  });
 });
 
 /**
@@ -753,6 +1142,9 @@ describe('AfterSalesExchangeService — priced exchange proxy (Task 6)', () => {
   let exchangeCancel: any;
   let lookup: any;
   let line: any;
+  let cashExchange: any;
+  let shopAccounts: any;
+  let companyResolver: any;
   let svc: AfterSalesExchangeService;
 
   beforeEach(() => {
@@ -775,6 +1167,18 @@ describe('AfterSalesExchangeService — priced exchange proxy (Task 6)', () => {
     lookup = { lookup: jest.fn() };
     // Task 3 — พารามิเตอร์ท้ายสุดใหม่ของ constructor
     line = { notifyMoment: jest.fn().mockResolvedValue({ status: 'SENT' }) };
+    // PR 5 — deps ใหม่ของกิ่งขายสด
+    cashExchange = {
+      execute: jest.fn().mockResolvedValue({ entryNo: 'JE-CX-1', journalEntryId: 'je-cx-1' }),
+    };
+    shopAccounts = {
+      resolveProductAccounts: jest.fn().mockReturnValue({
+        inventoryAccountCode: 'S11-2002',
+        cogsAccountCode: 'S50-1102',
+        revenueAccountCode: 'S41-1102',
+      }),
+    };
+    companyResolver = { getShopCompanyId: jest.fn().mockResolvedValue('shop-co') };
 
     svc = new AfterSalesExchangeService(
       prisma as never,
@@ -786,6 +1190,9 @@ describe('AfterSalesExchangeService — priced exchange proxy (Task 6)', () => {
       exchangeCancel as never,
       lookup as never,
       line as never,
+      cashExchange as never,
+      shopAccounts as never,
+      companyResolver as never,
     );
   });
 

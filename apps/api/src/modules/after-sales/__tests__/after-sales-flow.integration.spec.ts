@@ -405,14 +405,15 @@ describe('after-sales flow — DB จริง (Task 7, PR1)', () => {
   });
 
   // -------------------------------------------------------------------------
-  it('2) lookup({imei}) → found=true, source=CASH_SALE, REPAIR เปิด, CASH_SAME_MODEL_EXCHANGE ปิด', async () => {
+  it('2) lookup({imei}) → found=true, source=CASH_SALE, REPAIR เปิด, CASH_SAME_MODEL_EXCHANGE เปิด (PR 5 — มือสองใน 7 วัน)', async () => {
     const result = await svc.lookup({ imei: IMEI }, OWNER());
     expect(result.found).toBe(true);
     expect(result.source).toBe('CASH_SALE');
     expect(result.outcomes[0]).toMatchObject({ outcome: 'REPAIR', enabled: true });
     expect(result.outcomes[1]).toMatchObject({
       outcome: 'CASH_SAME_MODEL_EXCHANGE',
-      enabled: false,
+      enabled: true,
+      implemented: true,
     });
   });
 

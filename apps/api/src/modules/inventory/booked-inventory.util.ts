@@ -17,6 +17,8 @@ import { Decimal } from '@prisma/client/runtime/library';
  *     (final review C1: เดิมค้นเฉพาะ BUYBACK ทำให้เครื่องรับเทิร์นถูกตัดสินว่า "ไม่เคยลงบัญชี")
  *  3. รับคืนเครื่อง: JE flow `shop-repossession-intake` ที่ `metadata.productId` ตรง
  *  4. เปลี่ยนเครื่อง A.4: JE flow `shop-exchange-return` ที่ `metadata.oldProductId` ตรง และยังไม่ถูกกลับรายการ
+ *     — PR 5: รวม flow `shop-cash-exchange` (เปลี่ยนรุ่นเดิมขายสด — เครื่องเดิมกลับเข้าคลังที่ต้นทุนเดิม `Dr S11-200x`)
+ *       ใช้ source `EXCHANGE_RETURN` เดียวกัน (ความหมายเดียวกัน: เครื่องเดิมจากการเปลี่ยนเครื่อง)
  * ยอดที่ลง = บรรทัด Dr บนบัญชี S11-200x ของรายการนั้น (ไม่มีบรรทัด = ไม่นับ)
  */
 export type BookedSource = 'GOODS_RECEIVING' | 'TRADE_IN' | 'REPOSSESSION' | 'EXCHANGE_RETURN';
@@ -71,7 +73,7 @@ export async function resolveBookedInventory(
   const repo = await findInventoryJe(tx, ['shop-repossession-intake'], 'productId', productId);
   if (repo) return { ...repo, source: 'REPOSSESSION' };
 
-  const exchange = await findInventoryJe(tx, ['shop-exchange-return'], 'oldProductId', productId);
+  const exchange = await findInventoryJe(tx, EXCHANGE_RETURN_FLOWS, 'oldProductId', productId);
   if (exchange) return { ...exchange, source: 'EXCHANGE_RETURN' };
 
   return NOT_BOOKED;
@@ -79,6 +81,8 @@ export async function resolveBookedInventory(
 
 /** JE ที่เดบิตสินค้าคงคลังให้เครื่องรับซื้อ/รับเทิร์น — คนละ flow แต่ stamp `metadata.tradeInId` เหมือนกัน */
 const TRADE_IN_FLOWS = ['shop-trade-in', 'shop-trade-in-credit-issued'] as const;
+/** เครื่องเดิมที่กลับเข้าคลังจากการเปลี่ยนเครื่อง — A.4 (สัญญาผ่อน) และ PR 5 (ขายสด) stamp `metadata.oldProductId` เหมือนกัน */
+const EXCHANGE_RETURN_FLOWS = ['shop-exchange-return', 'shop-cash-exchange'] as const;
 
 async function findInventoryJe(
   tx: Prisma.TransactionClient,

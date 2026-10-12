@@ -27,12 +27,14 @@ import {
   SwitchToRepairDialog,
   CancelSwapDialog,
   DeliverExchangeConfirm,
+  DeliverCashExchangeDialog,
 } from './after-sales/ExchangeActionDialogs';
 import {
   afterSalesKeys,
   baht,
   CASE_DOC_LABEL,
   canPrintHandover,
+  canPrintCashExchangeDocs,
   dayOf,
   dayTimeOf,
   OUTCOME_LABEL,
@@ -335,6 +337,16 @@ export default function AfterSalesCasePage() {
                             พิมพ์ใบส่งมอบ
                           </Button>
                         )}
+                        {canPrintCashExchangeDocs(data) && (
+                          <Button
+                            variant="outline"
+                            size="md"
+                            onClick={() => setDocPreview('exchange-docs')}
+                          >
+                            <Printer aria-hidden className="h-4 w-4" />
+                            พิมพ์ใบรับคืน + ใบส่งมอบ (2 ใบ)
+                          </Button>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -593,11 +605,20 @@ export default function AfterSalesCasePage() {
               onOpenChange={(next) => setDialog(next ? 'exchange-confirm' : null)}
               data={data}
             />
-            <DeliverExchangeConfirm
-              caseId={data.id}
-              open={dialog === 'exchange-deliver'}
-              onOpenChange={(next) => setDialog(next ? 'exchange-deliver' : null)}
-            />
+            {data.outcome === 'CASH_SAME_MODEL_EXCHANGE' ? (
+              <DeliverCashExchangeDialog
+                caseId={data.id}
+                open={dialog === 'exchange-deliver'}
+                onOpenChange={(next) => setDialog(next ? 'exchange-deliver' : null)}
+                onPrintDocs={() => setDocPreview('exchange-docs')}
+              />
+            ) : (
+              <DeliverExchangeConfirm
+                caseId={data.id}
+                open={dialog === 'exchange-deliver'}
+                onOpenChange={(next) => setDialog(next ? 'exchange-deliver' : null)}
+              />
+            )}
             <RejectExchangeDialog
               caseId={data.id}
               open={dialog === 'exchange-reject'}

@@ -1,11 +1,13 @@
 import {
   composeHandoverDoc,
   composeReceiptDoc,
+  composeReplacementHandoverDoc,
+  composeReturnDoc,
   handoverBlockReason,
-  HANDOVER_CASH_UNSUPPORTED_MSG,
   HANDOVER_NOT_READY_MSG,
   OTHER_MAX,
   RECEIPT_CONDITIONS,
+  returnBlockReason,
   SYMPTOM_MAX,
   type DocSource,
 } from '../documents/after-sales-doc-compose';
@@ -308,6 +310,14 @@ describe('composeHandoverDoc — ใบส่งมอบ', () => {
         replacementContractNumber: outcome === 'PRICED_EXCHANGE' ? 'CT-2026-0951' : 'CT-2026-0960',
         newShopWarrantyEnd: new Date('2026-11-28T00:00:00.000Z'),
         newManufacturerWarrantyEnd: new Date('2027-09-03T00:00:00.000Z'),
+        // PR 5 — ฟิลด์ของเคสขายสด (เคสผ่อนเป็น null)
+        saleType: null,
+        financeCompany: null,
+        sevenDayEnd: null,
+        deliveredNote: null,
+        approvedByName: null,
+        approvedAt: null,
+        repairTicketNumber: null,
         ...ex,
       },
     });
@@ -450,15 +460,115 @@ describe('handoverBlockReason', () => {
     ).toBe('ไม่พบใบซ่อมของเคสนี้');
   });
 
-  it('(k) เปลี่ยนรุ่นเดิมขายสด (ยังไม่เปิดใช้ — PR 5) → ยังไม่รองรับ ไม่ใช้ถ้อยคำสัญญาผ่อน', () => {
-    for (const stage of ['READY_FOR_PICKUP', 'CLOSED', 'RECEIVED'] as const)
+  describe('PR 5 — เคสขายสด: ใบรับคืนเครื่อง + ใบส่งมอบเครื่องทดแทน', () => {
+    const cash = (): DocSource =>
+      source({
+        source: 'CASH_SALE',
+        contractNumber: null,
+        saleNumber: 'SL-0001',
+        outcome: 'CASH_SAME_MODEL_EXCHANGE',
+        stage: 'CLOSED',
+        closedAt: new Date('2026-10-14T04:00:00.000Z'),
+        repair: null,
+        warranty: {
+          purchasedAt: new Date('2026-10-09T05:00:00.000Z'),
+          shopWarrantyEnd: new Date('2026-12-08T00:00:00.000Z'),
+          manufacturerWarrantyEnd: null,
+          within7Days: true,
+        },
+        exchange: {
+          mode: null,
+          fromRepair: false,
+          oldDeviceLabel: 'Apple iPhone 13 128GB',
+          oldImei: '359000000000001',
+          newDeviceLabel: 'Apple iPhone 13 128GB · Blue',
+          newImei: '359000000000002',
+          replacementContractNumber: null,
+          newShopWarrantyEnd: new Date('2026-12-13T00:00:00.000Z'),
+          newManufacturerWarrantyEnd: null,
+          saleType: 'CASH',
+          financeCompany: null,
+          sevenDayEnd: new Date('2026-10-20T00:00:00.000Z'),
+          deliveredNote: 'ส่งมอบเครื่องทดแทน · ใบขาย SL-0001 · อุปกรณ์: กล่อง, สายชาร์จ',
+          approvedByName: 'นิภา',
+          approvedAt: new Date('2026-10-12T06:00:00.000Z'),
+          repairTicketNumber: null,
+        },
+      });
+    const text = (d: AfterSalesDoc) => JSON.stringify(d);
+
+    it('handoverBlockReason ของขายสด: READY/CLOSED พิมพ์ได้ · AWAITING ไม่ได้', () => {
       expect(
         handoverBlockReason({
           outcome: 'CASH_SAME_MODEL_EXCHANGE',
-          stage,
+          stage: 'CLOSED',
           hasRepairTicket: false,
         }),
-      ).toBe(HANDOVER_CASH_UNSUPPORTED_MSG);
-    expect(HANDOVER_CASH_UNSUPPORTED_MSG).toBe('ใบส่งมอบของการเปลี่ยนเครื่องขายสดยังไม่รองรับ');
+      ).toBeNull();
+      expect(
+        handoverBlockReason({
+          outcome: 'CASH_SAME_MODEL_EXCHANGE',
+          stage: 'AWAITING_APPROVAL',
+          hasRepairTicket: false,
+        }),
+      ).toBe(HANDOVER_NOT_READY_MSG);
+      expect(
+        returnBlockReason({ outcome: 'CASH_SAME_MODEL_EXCHANGE', stage: 'READY_FOR_PICKUP' }),
+      ).toBeNull();
+      expect(returnBlockReason({ outcome: 'SAME_MODEL_EXCHANGE', stage: 'CLOSED' })).toBe(
+        'ใบรับคืนเครื่องพิมพ์ได้เฉพาะเคสเปลี่ยนรุ่นเดิมขายสดที่ยืนยันแล้ว',
+      );
+    });
+
+    it('ใบรับคืน: อ้างใบขาย · เหตุผล 7 วัน · ผลของการรับคืน 3 ข้อ · ลายเซ็นผู้ส่งคืน/ผู้รับคืน · ไม่มีราคา · ไม่มีคำว่า "รับเครื่อง"', () => {
+      const d = composeReturnDoc(cash());
+      expect(d.title).toBe('ใบรับคืนเครื่อง');
+      expect(d.kicker).toContain('ใบที่ 1/2');
+      expect(d.meta).toEqual(
+        expect.arrayContaining([
+          { label: 'เลขเคส', value: 'AS-20260907-0004' },
+          { label: 'อ้างอิงใบขาย', value: 'SL-0001' },
+        ]),
+      );
+      const t = text(d);
+      expect(t).toContain('เครื่องมีปัญหาภายใน 7 วันนับจากวันซื้อ');
+      expect(t).toContain('ไม่มีการคืนเงินหรือเงินเพิ่ม');
+      expect(t).toContain('เครื่องเดิมเป็นของร้าน รอส่งเคลมผู้จัดจำหน่าย');
+      expect(t).toContain('ใบขายเดิมยังเป็นหลักฐานการซื้อ');
+      expect(d.signatures[0].role).toBe('ลูกค้า (ผู้ส่งคืน)');
+      expect(d.signatures[1].role).toBe('พนักงานผู้รับคืน');
+      expect(t).not.toMatch(/บาท/);
+      expect(t).not.toContain('รับเครื่อง');
+    });
+
+    it('ใบรับคืน fromRepair → เหตุผล "ซ่อมไม่ได้ — เปลี่ยนรุ่นเดิมแทน (ใบซ่อม RT-…)"', () => {
+      const s = cash();
+      s.exchange!.fromRepair = true;
+      s.exchange!.repairTicketNumber = 'RT-20261010-0003';
+      expect(text(composeReturnDoc(s))).toContain(
+        'ซ่อมไม่ได้ — เปลี่ยนรุ่นเดิมแทน (ใบซ่อม RT-20261010-0003)',
+      );
+    });
+
+    it('ใบส่งมอบเครื่องทดแทน: ราคาขายเท่าเดิม · ไม่มีเงินเปลี่ยนมือ · ประกันร้าน/กรอบ 7 วันนับใหม่ · ประกันศูนย์ "— (มือสอง ไม่มี)" · อุปกรณ์จาก DELIVERED', () => {
+      const d = composeReplacementHandoverDoc(cash());
+      expect(d.title).toBe('ใบส่งมอบเครื่องทดแทน');
+      expect(d.kicker).toContain('ใบที่ 2/2');
+      const t = text(d);
+      expect(t).toContain('ราคาขายเท่าเดิม');
+      expect(t).toContain('ชำระแล้วตามใบขายเดิม ไม่มีเงินเปลี่ยนมือ');
+      expect(t).toContain('กรอบ 7 วัน');
+      expect(t).toContain('— (มือสอง ไม่มี)');
+      expect(t).toContain('กล่อง, สายชาร์จ');
+      expect(t).not.toMatch(/บาท/);
+      expect(t).not.toContain('รับเครื่อง');
+    });
+
+    it('ไฟแนนซ์นอก → การชำระ "ตามใบขายเดิม (ไฟแนนซ์ GFIN)"', () => {
+      const s = cash();
+      s.exchange!.saleType = 'EXTERNAL_FINANCE';
+      s.exchange!.financeCompany = 'GFIN';
+      expect(text(composeReplacementHandoverDoc(s))).toContain('ตามใบขายเดิม (ไฟแนนซ์ GFIN)');
+    });
   });
 });

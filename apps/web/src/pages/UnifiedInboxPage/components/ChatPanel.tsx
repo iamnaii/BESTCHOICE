@@ -521,7 +521,7 @@ export default function ChatPanel({
           : session.channel === 'TIKTOK' ? 'TikTok'
             : 'Web';
   const channelDotClass = isLine ? 'bg-[#06C755]' : session.channel === 'FACEBOOK' ? 'bg-[#1877F2]' : 'bg-foreground/60';
-  const roomAppt = nextAppointment(session.todos);
+  const roomAppt = nextAppointment([...(session.todos||[]),...(session.storeAppointment?[session.storeAppointment]:[])]);
   const roomApptState = apptState(roomAppt?.dueDate);
   const assigneeFullName: string | null = session.assignedTo?.name ?? session.assignedStaff?.name ?? null;
   // ชิปใช้ชื่อต้นอย่างเดียว (ชื่อเต็มอยู่ใน title) — บรรทัดสถานะแคบ ชื่อ-นามสกุลไทยยาวจะชนปุ่มขวา
@@ -615,7 +615,7 @@ export default function ChatPanel({
                   title={`${roomAppt.title} — กดเพื่อดูนัดในแผงขวา`}
                   onClick={() => {
                     if (window.innerWidth < 1280) onShowCustomerInfo?.();
-                    document.getElementById('room-appointments')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    document.getElementById(roomAppt.id === session.storeAppointment?.id ? 'room-store-appointment' : 'room-appointments')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
                   }}
                   className={cn(
                     'inline-flex h-5 max-w-[11rem] items-center gap-1 truncate rounded-full border px-2 text-[11.5px] font-semibold leading-none transition-colors',

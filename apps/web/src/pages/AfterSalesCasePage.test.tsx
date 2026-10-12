@@ -108,6 +108,7 @@ function caseDetail(over: Partial<CaseDetail> = {}): CaseDetail {
     saleId: null,
     replacementProductId: null,
     replacementContractId: null,
+    replacementSaleId: null, // PR 5
     repairTicketId: null,
     exchangeRequestId: null,
     exchange: null,
@@ -176,6 +177,7 @@ function sameModelExchange(over: Partial<NonNullable<CaseDetail['exchange']>> = 
       storage: '128GB',
       imeiSerial: '3542...2260',
     },
+    sale: null, // PR 5 — เคสผ่อนไม่มีใบขาย
     replacementContract: null,
     requestedBy: { id: 'u1', name: 'นิภา' },
     ...over,
@@ -193,6 +195,7 @@ function pricedExchange(over: Partial<NonNullable<CaseDetail['exchange']>> = {})
     approverRole: 'BRANCH_MANAGER' as const,
     oldProduct: null,
     newProduct: null,
+    sale: null, // PR 5 — เคสผ่อนไม่มีใบขาย
     replacementContract: null,
     requestedBy: { id: 'u1', name: 'นิภา' },
     ...over,
@@ -509,6 +512,7 @@ describe('AfterSalesCasePage — หน้าเคส /after-sales/:id', () => 
       repairTicket: null,
       replacementContractId: 'ct-2',
       exchange: sameModelExchange({
+        sale: null, // PR 5 — เคสผ่อนไม่มีใบขาย
         replacementContract: { id: 'ct-2', contractNumber: 'CT-2026-0099', status: 'DRAFT' },
       }),
     });
@@ -539,6 +543,7 @@ describe('AfterSalesCasePage — หน้าเคส /after-sales/:id', () => 
       repairTicket: null,
       replacementContractId: 'ct-2',
       exchange: sameModelExchange({
+        sale: null, // PR 5 — เคสผ่อนไม่มีใบขาย
         replacementContract: { id: 'ct-2', contractNumber: 'CT-2026-0099', status: 'DRAFT' },
       }),
     });
@@ -559,6 +564,7 @@ describe('AfterSalesCasePage — หน้าเคส /after-sales/:id', () => 
       repairTicket: null,
       replacementContractId: 'ct-2',
       exchange: sameModelExchange({
+        sale: null, // PR 5 — เคสผ่อนไม่มีใบขาย
         replacementContract: { id: 'ct-2', contractNumber: 'CT-2026-0099', status: 'ACTIVE' },
       }),
     });
@@ -589,6 +595,7 @@ describe('AfterSalesCasePage — หน้าเคส /after-sales/:id', () => 
       exchangeRequestId: 'req-1',
       exchange: pricedExchange({
         requestStatus: 'APPROVED',
+        sale: null, // PR 5 — เคสผ่อนไม่มีใบขาย
         replacementContract: { id: 'ct-9', contractNumber: 'CT-2026-0100', status: 'DRAFT' },
       }),
     });

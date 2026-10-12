@@ -22,6 +22,8 @@ import { AfterSalesLookupService, LookupResult } from './after-sales-lookup.serv
 import { AfterSalesLineService } from './after-sales-line.service';
 import { reconcileStage, RECONCILE_SELECT } from './after-sales-stage-reconcile';
 import { WINDOW_REASON_RE } from '../utils/after-sales-outcomes.util';
+import { assertCashReplacement } from '../utils/assert-cash-replacement';
+import type { AfterSalesLineMoment } from '../utils/after-sales-line-copy.util';
 import { CreateCaseDto } from '../dto/create-case.dto';
 import { assertEvidenceImage, evidenceImageExtension } from '../../../utils/upload-image.util';
 import { hashLockKey } from '../../../utils/advisory-lock.util';
@@ -148,11 +150,17 @@ export class AfterSalesCaseService {
 
     // Task 4 — เปิดทางออกเปลี่ยนเครื่องตอนแจ้งปัญหา (SAME_MODEL_EXCHANGE — PRICED_EXCHANGE ถูกปิด 410 ด้านบน)
     const isSameModel = dto.outcome === 'SAME_MODEL_EXCHANGE';
-    if (isSameModel && !dto.replacementProductId) {
+    // PR 5 — เปลี่ยนรุ่นเดิมขายสด: ไม่มีสัญญา ด่านเครื่องทดแทนเป็น assertCashReplacement (ตัวเดียวกับตอนยืนยัน)
+    // (PRICED_EXCHANGE ปิด 410 ตั้งแต่ต้นเมธอด 2026-10-06 จึงไม่มีกิ่งของมันที่นี่)
+    const isCashSameModel = dto.outcome === 'CASH_SAME_MODEL_EXCHANGE';
+    if ((isSameModel || isCashSameModel) && !dto.replacementProductId) {
       throw new BadRequestException('ต้องเลือกเครื่องทดแทนจากสต๊อก');
     }
     if (isSameModel && !look.contract) {
       throw new BadRequestException('ทางออกนี้ใช้ได้กับสัญญาผ่อนเท่านั้น');
+    }
+    if (isCashSameModel && (!look.sale || look.contract || !look.product)) {
+      throw new BadRequestException('ทางออกนี้ใช้ได้กับใบขายสด/ไฟแนนซ์นอกเท่านั้น');
     }
     // R28 — ข้อมูลเครื่องทดแทน (สำหรับข้อความ event OUTCOME_SET ของ (a)) ต้องมาจากการค้นจริง
     // ไม่ใช่จาก DefectExchangeService.checkEligibility ซึ่งไม่คืน imeiSerial กลับมา
@@ -177,6 +185,22 @@ export class AfterSalesCaseService {
         where: { id: dto.replacementProductId, deletedAt: null },
         select: { brand: true, model: true, storage: true, imeiSerial: true },
       });
+    }
+    if (isCashSameModel) {
+      const p = await assertCashReplacement(
+        this.prisma,
+        {
+          sale: { id: look.sale!.id, productId: look.product!.id, customerId },
+          caseBranchId: dto.branchId,
+        },
+        dto.replacementProductId!,
+      );
+      replacementProduct = {
+        brand: p.brand,
+        model: p.model,
+        storage: p.storage,
+        imeiSerial: p.imeiSerial,
+      };
     }
 
     const imei = look.product?.imeiSerial ?? dto.imei;
@@ -338,10 +362,10 @@ export class AfterSalesCaseService {
           return repairResult;
         }
 
-        // กิ่งเปลี่ยนเครื่อง (SAME_MODEL_EXCHANGE) — ไม่เรียก repair.createInTx
-        // events: RECEIVED เสมอ + OUTCOME_SET (ข้อความ (a)) · PRICED_EXCHANGE ปิด 410 ตั้งแต่ต้นเมธอด
+        // กิ่งเปลี่ยนเครื่อง (SAME_MODEL_EXCHANGE / CASH_SAME_MODEL_EXCHANGE) — ไม่เรียก repair.createInTx
+        // events: RECEIVED เสมอ + OUTCOME_SET (ผ่อน/ขายสด — ข้อความ (a)) · PRICED_EXCHANGE ปิด 410 ตั้งแต่ต้นเมธอด
         // (2026-10-06) จึงไม่มีกิ่ง submit หลัง commit อีกต่อไป
-        const exchangeEvents = isSameModel
+        const exchangeEvents = isSameModel || isCashSameModel
           ? [
               receivedEvent,
               {

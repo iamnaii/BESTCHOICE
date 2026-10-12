@@ -77,8 +77,10 @@ export class CreateCaseDto {
   @IsString()
   note?: string;
 
-  @IsIn(['REPAIR', 'SAME_MODEL_EXCHANGE', 'PRICED_EXCHANGE'], { message: 'ทางออกไม่ถูกต้อง' })
-  outcome!: 'REPAIR' | 'SAME_MODEL_EXCHANGE' | 'PRICED_EXCHANGE'; // PR 2: เพิ่มสองทางออกเปลี่ยนเครื่อง
+  @IsIn(['REPAIR', 'SAME_MODEL_EXCHANGE', 'PRICED_EXCHANGE', 'CASH_SAME_MODEL_EXCHANGE'], {
+    message: 'ทางออกไม่ถูกต้อง',
+  })
+  outcome!: 'REPAIR' | 'SAME_MODEL_EXCHANGE' | 'PRICED_EXCHANGE' | 'CASH_SAME_MODEL_EXCHANGE'; // PR 2 + PR 5
 
   @IsOptional()
   @IsIn(['SHOP', 'CUSTOMER', 'SUPPLIER_CLAIM'])

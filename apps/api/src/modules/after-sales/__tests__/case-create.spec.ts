@@ -614,14 +614,141 @@ describe('AfterSalesCaseService.createCase', () => {
         }
       });
 
-      it('ปฏิเสธ outcome นอก enum (เช่น CASH_SAME_MODEL_EXCHANGE) ด้วยข้อความ "ทางออกไม่ถูกต้อง"', async () => {
+      it('ปฏิเสธ outcome นอก enum (เช่น BOGUS_OUTCOME) ด้วยข้อความ "ทางออกไม่ถูกต้อง"', async () => {
         const errors = await validate(
-          plainToInstance(CreateCaseDto, { ...validPayload, outcome: 'CASH_SAME_MODEL_EXCHANGE' }),
+          plainToInstance(CreateCaseDto, { ...validPayload, outcome: 'BOGUS_OUTCOME' }),
         );
         const outcomeError = errors.find((e) => e.property === 'outcome');
         expect(outcomeError).toBeDefined();
         expect(Object.values(outcomeError!.constraints ?? {})).toContain('ทางออกไม่ถูกต้อง');
       });
+    });
+  });
+  describe('PR 5 — CASH_SAME_MODEL_EXCHANGE ตอนแจ้งปัญหา', () => {
+    const cashLookup = () =>
+      buildLookupResult({
+        source: 'CASH_SALE',
+        contract: null,
+        sale: { id: 'sale-1', saleType: 'CASH' },
+        product: {
+          id: 'p-1',
+          brand: 'Apple',
+          model: 'iPhone 13',
+          storage: '128GB',
+          imeiSerial: BASE_DTO.imei,
+          category: 'PHONE_USED',
+        },
+        warranty: {
+          status: 'IN_7DAY_DEFECT',
+          daysRemainingIn7Day: 4,
+          purchasedAt: '2026-10-09T00:00:00.000Z',
+          shopWarrantyEndDate: '2026-12-08T00:00:00.000Z',
+          manufacturerWarrantyEndDate: null,
+          checkedAt: '2026-10-12T00:00:00.000Z',
+        },
+        outcomes: [
+          { outcome: 'REPAIR', enabled: true, implemented: true, payerDefault: 'SHOP' },
+          {
+            outcome: 'CASH_SAME_MODEL_EXCHANGE',
+            enabled: true,
+            implemented: true,
+            note: 'ผจก.สาขา ต้องยืนยัน',
+          },
+        ],
+      });
+    const dto = {
+      ...BASE_DTO,
+      outcome: 'CASH_SAME_MODEL_EXCHANGE' as const,
+      replacementProductId: 'p-new',
+    };
+    // เครื่องเดิมของใบขายต้องเป็นมือสอง (ด่าน OLD_NOT_USED ของ assertCashReplacement — คำตัดสินเจ้าของ ①)
+    const oldProduct = {
+      id: 'p-1',
+      brand: 'Apple',
+      model: 'iPhone 13',
+      storage: '128GB',
+      category: 'PHONE_USED',
+    };
+    const newProduct = (overrides: Record<string, unknown> = {}) => ({
+      id: 'p-new',
+      brand: 'Apple',
+      model: 'iPhone 13',
+      storage: '128GB',
+      imeiSerial: REPLACEMENT_PRODUCT.imeiSerial,
+      costPrice: 10500,
+      category: 'PHONE_USED',
+      status: 'IN_STOCK',
+      branchId: 'b-1',
+      deletedAt: null,
+      name: 'iPhone 13',
+      po: null,
+      ...overrides,
+    });
+
+    it('ไม่ส่ง replacementProductId → 400 ก่อนอัปโหลด/สร้างอะไร', async () => {
+      lookupSvc.lookup.mockResolvedValue(cashLookup());
+      await expect(
+        svc.createCase({ ...dto, replacementProductId: undefined } as never, [mockFile()], USER),
+      ).rejects.toThrow(new BadRequestException('ต้องเลือกเครื่องทดแทนจากสต๊อก'));
+      expect(storage.upload).not.toHaveBeenCalled();
+      expect(tx.afterSalesCase.create).not.toHaveBeenCalled();
+    });
+
+    it('ผ่านด่าน → สร้างเคส stage AWAITING_APPROVAL · outcome CASH · replacementProductId · event OUTCOME_SET ระบุเครื่องทดแทน · ไม่เรียก defect.checkEligibility', async () => {
+      lookupSvc.lookup.mockResolvedValue(cashLookup());
+      prisma.product.findUnique.mockImplementation(({ where }: { where: { id: string } }) =>
+        Promise.resolve(where.id === 'p-1' ? oldProduct : newProduct()),
+      );
+      prisma.customer = {
+        findUniqueOrThrow: jest
+          .fn()
+          .mockResolvedValue({ name: 'นาย ก', phone: '0800000000', addressCurrent: null }),
+      };
+      tx.afterSalesCase.create.mockResolvedValue({
+        id: 'as-c',
+        caseNumber: 'AS-20261012-0001',
+        repairTicketId: null,
+      });
+
+      const result = await svc.createCase(dto as never, [mockFile()], USER);
+
+      expect(result).toMatchObject({
+        outcome: 'CASH_SAME_MODEL_EXCHANGE',
+        stage: 'AWAITING_APPROVAL',
+        repairTicketId: null,
+      });
+      expect(defect.checkEligibility).not.toHaveBeenCalled();
+      const data = tx.afterSalesCase.create.mock.calls[0][0].data;
+      expect(data).toMatchObject({
+        outcome: 'CASH_SAME_MODEL_EXCHANGE',
+        replacementProductId: 'p-new',
+        stage: 'AWAITING_APPROVAL',
+        saleId: 'sale-1',
+        contractId: null,
+      });
+      expect(data.events.create.map((e: { kind: string }) => e.kind)).toEqual([
+        'RECEIVED',
+        'OUTCOME_SET',
+      ]);
+      expect(data.events.create[1].note).toContain(REPLACEMENT_PRODUCT.imeiSerial);
+    });
+
+    it('เครื่องทดแทนเป็น PHONE_NEW → 400 จาก assertCashReplacement และไม่สร้างเคส', async () => {
+      lookupSvc.lookup.mockResolvedValue(cashLookup());
+      prisma.product.findUnique.mockImplementation(({ where }: { where: { id: string } }) =>
+        Promise.resolve(
+          where.id === 'p-1' ? oldProduct : newProduct({ category: 'PHONE_NEW', imeiSerial: 'x' }),
+        ),
+      );
+      prisma.customer = {
+        findUniqueOrThrow: jest
+          .fn()
+          .mockResolvedValue({ name: 'นาย ก', phone: null, addressCurrent: null }),
+      };
+      await expect(svc.createCase(dto as never, [mockFile()], USER)).rejects.toThrow(
+        new BadRequestException('เปลี่ยนรุ่นเดิมขายสดใช้ได้เฉพาะเครื่องมือสอง (PHONE_USED)'),
+      );
+      expect(tx.afterSalesCase.create).not.toHaveBeenCalled();
     });
   });
 });

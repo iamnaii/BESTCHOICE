@@ -8,6 +8,7 @@ import { ContractExchangeModule } from '../contract-exchange/contract-exchange.m
 import { QualityControlModule } from '../quality-control/quality-control.module'; // exports ProductPhotosService แล้ว
 import { NotificationsModule } from '../notifications/notifications.module';
 import { IntegrationsModule } from '../integrations/integrations.module';
+import { JournalModule } from '../journal/journal.module'; // PR 5 — ShopCashExchangeTemplate / ShopAccountResolver / CompanyResolverService
 import { AfterSalesController } from './after-sales.controller';
 import { AfterSalesService } from './after-sales.service';
 import { AfterSalesDocNumberService } from './services/after-sales-doc-number.service';
@@ -30,6 +31,7 @@ import { AfterSalesPdfRenderer } from './documents/after-sales-pdf.renderer';
     QualityControlModule,
     NotificationsModule,
     IntegrationsModule,
+    JournalModule,
   ],
   controllers: [AfterSalesController],
   providers: [

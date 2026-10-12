@@ -1,4 +1,8 @@
 import {
+  CASH_DAY7_REASON,
+  CASH_EXCHANGE_NOTE,
+  CASH_NOT_USED_REASON,
+  CASH_OUT_OF_WINDOW_REASON,
   computeOutcomes,
   dropOffOutcome,
   SWITCHED_TO_REPAIR_NOTE,
@@ -128,26 +132,55 @@ describe('computeOutcomes — ตารางทางออก (spec 4.3)', () 
     expect(pick(o, 'PRICED_EXCHANGE').reason).not.toMatch(/7 วัน|หมดประกัน/);
   });
 
-  it('ขายสด ≤7 วัน: ซ่อม + เปลี่ยนรุ่นเดิม(ขายสด) แต่ปิดรอกติกาบัญชี · ไม่มีเปลี่ยนแบบมีราคา', () => {
-    const o = computeOutcomes({ ...base, source: 'CASH_SALE', contractStatus: undefined });
-    expect(o.map((x) => x.outcome)).toEqual(['REPAIR', 'CASH_SAME_MODEL_EXCHANGE']);
-    expect(pick(o, 'CASH_SAME_MODEL_EXCHANGE')).toMatchObject({
-      enabled: false,
-      reason: 'รอกติกาบัญชี (สเปกข้อ 10)',
-    });
-  });
-
-  it('ขายสด เกิน 7 วัน: ซ่อมอย่างเดียว เหตุผลบอกวัน', () => {
-    const o = computeOutcomes({
+  describe('CASH_SALE (PR 5) — เปลี่ยนรุ่นเดิมขายสด', () => {
+    const cash = {
       ...base,
-      source: 'CASH_SALE',
+      source: 'CASH_SALE' as const,
       contractStatus: undefined,
-      warrantyStatus: 'IN_SHOP_WARRANTY',
-      daysRemainingIn7Day: 0,
+      productCategory: 'PHONE_USED' as const,
+    };
+    it('มือสอง ใน 7 วัน (เหลือ 2 วัน) → เปิด + implemented · note ผจก. · ไม่มีเปลี่ยนแบบมีราคา', () => {
+      const o = computeOutcomes(cash);
+      expect(o.map((x) => x.outcome)).toEqual(['REPAIR', 'CASH_SAME_MODEL_EXCHANGE']);
+      expect(pick(o, 'CASH_SAME_MODEL_EXCHANGE')).toEqual({
+        outcome: 'CASH_SAME_MODEL_EXCHANGE',
+        enabled: true,
+        implemented: true,
+        note: CASH_EXCHANGE_NOTE,
+      });
     });
-    expect(pick(o, 'CASH_SAME_MODEL_EXCHANGE')).toMatchObject({
-      enabled: false,
-      reason: 'เกินกรอบ 7 วันแล้ว',
+    it('วันที่ 7 (status ยัง IN_7DAY_DEFECT แต่ daysRemaining 0) → ปิด "ครบกำหนด 7 วันแล้ว — ซ่อมเท่านั้น" แม้เป็น OWNER', () => {
+      const o = computeOutcomes({ ...cash, daysRemainingIn7Day: 0, viewerRole: 'OWNER' });
+      expect(pick(o, 'CASH_SAME_MODEL_EXCHANGE')).toMatchObject({
+        enabled: false,
+        reason: CASH_DAY7_REASON,
+      });
+    });
+    it('เกิน 7 วัน (IN_SHOP_WARRANTY) → ปิด "เกินกรอบ 7 วันแล้ว — ซ่อมเท่านั้น" ไม่มี override ของ BM', () => {
+      const o = computeOutcomes({
+        ...cash,
+        warrantyStatus: 'IN_SHOP_WARRANTY',
+        daysRemainingIn7Day: 0,
+        viewerRole: 'BRANCH_MANAGER',
+      });
+      expect(pick(o, 'CASH_SAME_MODEL_EXCHANGE')).toMatchObject({
+        enabled: false,
+        reason: CASH_OUT_OF_WINDOW_REASON,
+      });
+    });
+    it('เครื่องใหม่ขายสด ใน 7 วัน → ปิด "เปลี่ยนรุ่นเดิมเฉพาะมือสอง"', () => {
+      const o = computeOutcomes({ ...cash, productCategory: 'PHONE_NEW' });
+      expect(pick(o, 'CASH_SAME_MODEL_EXCHANGE')).toMatchObject({
+        enabled: false,
+        reason: CASH_NOT_USED_REASON,
+      });
+    });
+    it('ไม่รู้หมวด (productCategory ว่าง) → ปิดแบบเดียวกับเครื่องใหม่ (fail-closed)', () => {
+      const o = computeOutcomes({ ...cash, productCategory: null });
+      expect(pick(o, 'CASH_SAME_MODEL_EXCHANGE')).toMatchObject({
+        enabled: false,
+        reason: CASH_NOT_USED_REASON,
+      });
     });
   });
 
@@ -163,10 +196,10 @@ describe('computeOutcomes — ตารางทางออก (spec 4.3)', () 
     expect(o[0]).toMatchObject({ outcome: 'REPAIR', enabled: true, payerDefault: 'CUSTOMER' });
   });
 
-  it('SAME_MODEL_EXCHANGE implemented=true · PRICED_EXCHANGE implemented=false ตั้งแต่ปิดเมนู 2026-10-06 · CASH_SAME_MODEL_EXCHANGE ยัง false', () => {
+  it('SAME_MODEL_EXCHANGE implemented=true · PRICED_EXCHANGE implemented=false ตั้งแต่ปิดเมนู 2026-10-06 · CASH_SAME_MODEL_EXCHANGE ไม่รู้หมวดเครื่อง = false (fail-closed — PR 5 เปิดเมื่อ PHONE_USED)', () => {
     // ผ่อน ≤7 วัน: ซ่อม + เปลี่ยนรุ่นเดิมเปิด · เปลี่ยนแบบมีราคาปิดทั้งเมนู (คำตัดสินเจ้าของ)
     expect(computeOutcomes(base).map((x) => x.implemented)).toEqual([true, true, false]);
-    // ขายสด — เปลี่ยนรุ่นเดิม(ขายสด) ยังรอกติกาบัญชี (สเปกข้อ 10) ไม่เกี่ยวกับ PR 2 นี้
+    // ขายสด — ไม่ส่ง productCategory ⇒ ปิดแบบเดียวกับเครื่องใหม่ (กติกา PR 5 · เคสมือสองอยู่ใน describe ด้านบน)
     const cash = computeOutcomes({ ...base, source: 'CASH_SALE', contractStatus: undefined });
     expect(pick(cash, 'CASH_SAME_MODEL_EXCHANGE').implemented).toBe(false);
   });

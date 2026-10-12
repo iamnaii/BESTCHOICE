@@ -20,6 +20,8 @@ import {
   DEVICE_SWAP_CLOSED_TEXT,
   stripLineTag,
   canPrintHandover,
+  canPrintCashExchangeDocs,
+  CASE_DOC_LABEL,
   type AfterSalesOutcome,
   type CaseDetail,
 } from './after-sales';
@@ -67,6 +69,7 @@ function detail(over: Partial<CaseDetail> = {}): CaseDetail {
     saleId: null,
     replacementProductId: null,
     replacementContractId: null,
+    replacementSaleId: null,
     repairTicketId: null,
     exchangeRequestId: null,
   };
@@ -293,6 +296,7 @@ describe('Task 11: primaryAction — ปุ่มหลักตาม outcome �
         approverRole: 'BRANCH_MANAGER',
         oldProduct: null,
         newProduct: null,
+        sale: null, // PR 5 — เคสผ่อนไม่มีใบขาย
         replacementContract: { id: 'ct-2', contractNumber: 'CT-2026-0099', status: 'DRAFT' },
         requestedBy: null,
       },
@@ -319,6 +323,7 @@ describe('Task 11: primaryAction — ปุ่มหลักตาม outcome �
       approverRole: 'BRANCH_MANAGER' as const,
       oldProduct: null,
       newProduct: null,
+      sale: null, // PR 5 — เคสผ่อนไม่มีใบขาย
       replacementContract: { id: 'ct-2', contractNumber: 'CT-2026-0099', status: 'ACTIVE' },
       requestedBy: null,
     };
@@ -341,6 +346,7 @@ describe('Task 11: primaryAction — ปุ่มหลักตาม outcome �
       replacementContractId: 'ct-2',
       exchange: {
         ...exchange,
+        sale: null, // PR 5 — เคสผ่อนไม่มีใบขาย
         replacementContract: { ...exchange.replacementContract, status: 'CANCELED' },
       },
     });
@@ -374,6 +380,7 @@ describe('Task 11: primaryAction — ปุ่มหลักตาม outcome �
       approverRole: 'BRANCH_MANAGER' as const,
       oldProduct: null,
       newProduct: null,
+      sale: null, // PR 5 — เคสผ่อนไม่มีใบขาย
       replacementContract: null,
       requestedBy: null,
     };
@@ -417,6 +424,7 @@ describe('Task 11: primaryAction — ปุ่มหลักตาม outcome �
         approverRole: 'BRANCH_MANAGER',
         oldProduct: null,
         newProduct: null,
+        sale: null, // PR 5 — เคสผ่อนไม่มีใบขาย
         replacementContract: { id: 'ct-3', contractNumber: 'CT-2026-0100', status: 'DRAFT' },
         requestedBy: null,
       },
@@ -446,9 +454,71 @@ describe('Task 11: primaryAction — ปุ่มหลักตาม outcome �
     }
   });
 
-  it('CASH_SAME_MODEL_EXCHANGE — ยังไม่มีปุ่มใดๆ (engine ปฏิเสธเมื่อไม่มีสัญญาผ่อน)', () => {
-    const d = detail({ outcome: 'CASH_SAME_MODEL_EXCHANGE', stage: 'AWAITING_APPROVAL' });
-    for (const role of ALL_ROLES) expect(primaryAction(d, role)).toBeNull();
+  describe('PR 5 — CASH_SAME_MODEL_EXCHANGE', () => {
+    const cash = (over: Partial<CaseDetail> = {}) =>
+      detail({
+        source: 'CASH_SALE',
+        contractId: null,
+        saleId: 'sale-1',
+        outcome: 'CASH_SAME_MODEL_EXCHANGE',
+        stage: 'AWAITING_APPROVAL',
+        replacementProductId: 'p-new',
+        ...over,
+      });
+    it('AWAITING_APPROVAL → MGR "ยืนยันเปลี่ยนเครื่อง" (exchange-confirm) · อื่นรอ ผจก.', () => {
+      for (const role of ['OWNER', 'BRANCH_MANAGER'])
+        expect(primaryAction(cash(), role)).toEqual({
+          label: 'ยืนยันเปลี่ยนเครื่อง',
+          dialog: 'exchange-confirm',
+        });
+      for (const role of ['SALES', 'FINANCE_MANAGER', 'ACCOUNTANT'])
+        expect(primaryAction(cash(), role)).toEqual({ waitingText: 'รอ ผจก.สาขา ยืนยัน' });
+      expect(secondaryActions(cash(), 'BRANCH_MANAGER').map((a) => a.label)).toEqual([
+        'ปฏิเสธ (ใส่เหตุผล)',
+        "เปลี่ยนเป็น 'ซ่อม' แทน",
+      ]);
+    });
+    it('READY_FOR_PICKUP (replacementSaleId) → STAFF "ส่งมอบเครื่องทดแทน" (exchange-deliver) · FM/ACC ไม่มีปุ่ม · ไม่มีลิงก์สัญญา', () => {
+      const d = cash({ stage: 'READY_FOR_PICKUP', replacementSaleId: 'sale-1' });
+      for (const role of ['OWNER', 'BRANCH_MANAGER', 'SALES'])
+        expect(primaryAction(d, role)).toEqual({
+          label: 'ส่งมอบเครื่องทดแทน',
+          dialog: 'exchange-deliver',
+        });
+      for (const role of ['FINANCE_MANAGER', 'ACCOUNTANT']) expect(primaryAction(d, role)).toBeNull();
+      expect(secondaryActions(d, 'OWNER')).toEqual([]);
+    });
+    it('REPAIR ของใบขายสด (RECEIVED/IN_REPAIR) → MGR มีปุ่มรอง "ซ่อมไม่ได้ → เปลี่ยนรุ่นเดิม"', () => {
+      for (const stage of ['RECEIVED', 'IN_REPAIR'] as const) {
+        const d = detail({
+          source: 'CASH_SALE',
+          contractId: null,
+          saleId: 'sale-1',
+          outcome: 'REPAIR',
+          stage,
+          repairTicket: rt({ repairSupplier: { id: 's', name: 'ศูนย์' } }),
+        });
+        expect(secondaryActions(d, 'BRANCH_MANAGER').map((a) => a.label)).toContain(
+          'ซ่อมไม่ได้ → เปลี่ยนรุ่นเดิม',
+        );
+        expect(secondaryActions(d, 'SALES').map((a) => a.label)).not.toContain(
+          'ซ่อมไม่ได้ → เปลี่ยนรุ่นเดิม',
+        );
+      }
+    });
+    it('canPrintHandover / canPrintCashExchangeDocs: READY/CLOSED พิมพ์ได้ · AWAITING ไม่ได้', () => {
+      for (const stage of ['READY_FOR_PICKUP', 'CLOSED'] as const) {
+        expect(
+          canPrintHandover({ outcome: 'CASH_SAME_MODEL_EXCHANGE', stage, repairTicket: null }),
+        ).toBe(true);
+        expect(canPrintCashExchangeDocs({ outcome: 'CASH_SAME_MODEL_EXCHANGE', stage })).toBe(true);
+      }
+      expect(
+        canPrintCashExchangeDocs({ outcome: 'CASH_SAME_MODEL_EXCHANGE', stage: 'AWAITING_APPROVAL' }),
+      ).toBe(false);
+      expect(canPrintCashExchangeDocs({ outcome: 'SAME_MODEL_EXCHANGE', stage: 'CLOSED' })).toBe(false);
+      expect(CASE_DOC_LABEL['exchange-docs']).toBe('ใบรับคืน + ใบส่งมอบ (2 ใบ)');
+    });
   });
 });
 
@@ -550,6 +620,7 @@ describe('Task 11: secondaryActions — ปุ่มรองตาม outcome �
         approverRole: 'BRANCH_MANAGER',
         oldProduct: null,
         newProduct: null,
+        sale: null, // PR 5 — เคสผ่อนไม่มีใบขาย
         replacementContract: { id: 'ct-2', contractNumber: 'CT-2026-0099', status: 'DRAFT' },
         requestedBy: null,
       },
@@ -559,6 +630,7 @@ describe('Task 11: secondaryActions — ปุ่มรองตาม outcome �
       ...d,
       exchange: {
         ...d.exchange!,
+        sale: null, // PR 5 — เคสผ่อนไม่มีใบขาย
         replacementContract: { id: 'ct-2', contractNumber: 'CT-2026-0099', status: 'ACTIVE' },
       },
     };
@@ -582,6 +654,7 @@ describe('Task 11: secondaryActions — ปุ่มรองตาม outcome �
         approverRole: 'BRANCH_MANAGER',
         oldProduct: null,
         newProduct: null,
+        sale: null, // PR 5 — เคสผ่อนไม่มีใบขาย
         replacementContract: null,
         requestedBy: null,
       },
@@ -621,6 +694,7 @@ describe('Task 11: secondaryActions — ปุ่มรองตาม outcome �
       approverRole: 'BRANCH_MANAGER' as const,
       oldProduct: null,
       newProduct: null,
+      sale: null, // PR 5 — เคสผ่อนไม่มีใบขาย
       replacementContract: null,
       requestedBy: null,
     };
@@ -691,11 +765,5 @@ describe('canPrintHandover — mirror ของ handoverBlockReason ฝั่ง
     expect(canPrintHandover({ outcome: 'REPAIR', stage: 'CLOSED', repairTicket: null })).toBe(
       false,
     );
-  });
-  it('(c) เปลี่ยนรุ่นเดิมขายสด → ไม่โชว์ปุ่ม (API ยังไม่รองรับใบส่งมอบของขายสด)', () => {
-    for (const stage of ['READY_FOR_PICKUP', 'CLOSED'] as const)
-      expect(
-        canPrintHandover({ outcome: 'CASH_SAME_MODEL_EXCHANGE', stage, repairTicket: null }),
-      ).toBe(false);
   });
 });

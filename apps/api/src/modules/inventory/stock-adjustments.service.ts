@@ -163,7 +163,10 @@ const FOUND_POLICY = {
     hint: 'เครื่องที่รอถ่ายรูป 6 มุม — เข้าคลังโดยอัปโหลดรูปให้ครบแล้วกดยืนยันรูป (ต้องมีราคาขายก่อน)',
   },
   INSPECTION: { toInStock: false, hint: 'เครื่องที่อยู่ระหว่างตรวจสภาพ — เข้าคลังเมื่อตรวจเสร็จตามขั้นตอน' },
-  DEFECT_RETURN: { toInStock: false, hint: 'เครื่องเคลม/ส่งซ่อม — จัดการผ่านใบซ่อม/เปลี่ยนเครื่องชำรุด' },
+  DEFECT_RETURN: {
+    toInStock: false,
+    hint: 'เครื่องรอเคลมผู้จัดจำหน่าย — เคลมไม่ได้ให้ขอตัดจำหน่าย', // PR 5 ③ — เครื่องเดิมหลังเปลี่ยนรุ่นเดิม
+  },
   IN_STOCK: { toInStock: false, hint: 'เครื่องนี้อยู่ในคลังอยู่แล้ว' },
   ADJUSTMENT_PENDING: {
     toInStock: false,
@@ -350,7 +353,8 @@ export class StockAdjustmentsService {
     if (!EXIT_REASONS.has(reason)) return; // CORRECTION / OTHER — บันทึกอย่างเดียว
     const allowed =
       REQUESTABLE_STATUSES.EXIT.includes(product.status) ||
-      (reason === 'WRITE_OFF' && product.status === 'DAMAGED');
+      // DAMAGED (ของเสียที่เก็บไว้) และ DEFECT_RETURN (เครื่องเดิมหลังเปลี่ยนรุ่นเดิม รอเคลม — PR 5 ③) ตัดจำหน่ายได้ทางเดียว
+      (reason === 'WRITE_OFF' && (product.status === 'DAMAGED' || product.status === 'DEFECT_RETURN'));
     if (allowed) return;
     if (product.status === 'ADJUSTMENT_PENDING') {
       throw new ConflictException('เครื่องนี้มีคำขอตัดสินค้ารออนุมัติอยู่แล้ว — รอเจ้าของพิจารณา หรือยกเลิกคำขอเดิมก่อน');
@@ -359,7 +363,7 @@ export class StockAdjustmentsService {
     throw new BadRequestException(
       `ขอ${REASON_LABEL[reason]}ไม่ได้ — เครื่องอยู่สถานะ ${product.status} ` +
         `(ขอได้เฉพาะเครื่องที่อยู่ในมือร้าน: ${REQUESTABLE_STATUSES.EXIT.join(', ')}` +
-        (reason === 'WRITE_OFF' ? ', DAMAGED' : '') +
+        (reason === 'WRITE_OFF' ? ', DAMAGED, DEFECT_RETURN' : '') +
         `)${hint ? `: ${hint}` : ''}`,
     );
   }

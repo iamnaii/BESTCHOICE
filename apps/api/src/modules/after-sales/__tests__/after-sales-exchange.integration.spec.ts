@@ -14,6 +14,7 @@ import { ShopExchangeReturnTemplate } from '../../journal/cpa-templates/shop-exc
 import { ExchangeEclReversalTemplate } from '../../journal/cpa-templates/exchange-ecl-reversal.template';
 import { ExchangeCancelReversalTemplate } from '../../journal/cpa-templates/exchange-cancel-reversal.template';
 import { ShopInventoryTransferTemplate } from '../../journal/cpa-templates/shop-inventory-transfer.template';
+import { ShopCashExchangeTemplate } from '../../journal/cpa-templates/shop-cash-exchange.template';
 import { ShopAccountResolver } from '../../journal/shop-account-resolver.service';
 import { ContractExchangeService } from '../../contract-exchange/contract-exchange.service';
 import { ExchangeCancelService } from '../../contract-exchange/contract-exchange-cancel.service';
@@ -195,7 +196,18 @@ const exchangeSvc = new AfterSalesExchangeService(
   exchangeCancel,
   lookupSvc,
   line,
+  // PR 5 — deps ของกิ่งขายสด
+  new ShopCashExchangeTemplate(journal, prisma as never, companyResolver),
+  new ShopAccountResolver(prisma as never),
+  companyResolver,
 );
+
+/** PR 5 — confirmSameModel คืน union (กิ่งผ่อน | กิ่งขายสด); เทสชุดนี้เป็นกิ่งผ่อนทั้งหมด จึง narrow ตรงนี้ */
+type ConfirmResult = Awaited<ReturnType<AfterSalesExchangeService['confirmSameModel']>>;
+const asInstallment = (r: ConfirmResult): Extract<ConfirmResult, { replacementContractId: string }> => {
+  if (!('replacementContractId' in r)) throw new Error('expected installment confirm result');
+  return r;
+};
 
 // Facade จริง (Task 8) — เรียกผ่านนี้เพื่อพิสูจน์การ delegate ของ facade เองด้วย เหมือนที่
 // after-sales-flow.integration.spec.ts ทำกับ REPAIR (fix round 1 minor note)
@@ -556,7 +568,9 @@ describe('after-sales exchange — DB จริง (Task 8, PR2)', () => {
   });
 
   it('4) BM confirm → เคส READY_FOR_PICKUP · replacementContractId ชี้สัญญาใหม่ DRAFT · สัญญาเดิม DEFECT_EXCHANGED · เครื่องเดิม DEFECT_RETURN · เครื่องใหม่ RESERVED (engine ทำงานจริง)', async () => {
-    const result = await exchangeSvc.confirmSameModel(mainCaseId, {} as never, BM_USER());
+    const result = asInstallment(
+      await exchangeSvc.confirmSameModel(mainCaseId, {} as never, BM_USER()),
+    );
     expect(result.stage).toBe('READY_FOR_PICKUP');
     expect(result.replacementContractId).toBeTruthy();
     mainNewContractId = result.replacementContractId as string;
@@ -924,10 +938,12 @@ describe('after-sales exchange — DB จริง (Task 8, PR2)', () => {
     const ticketId = created.repairTicketId as string;
     createdRepairTicketIds.push(ticketId);
 
-    const result = await exchangeSvc.confirmSameModel(
-      created.id,
-      { replacementProductId: np.id } as never,
-      BM_USER(),
+    const result = asInstallment(
+      await exchangeSvc.confirmSameModel(
+        created.id,
+        { replacementProductId: np.id } as never,
+        BM_USER(),
+      ),
     );
     createdContractIds.push(result.replacementContractId as string);
     expect(result.stage).toBe('READY_FOR_PICKUP');
@@ -979,7 +995,9 @@ describe('after-sales exchange — DB จริง (Task 8, PR2)', () => {
       exchangeSvc.confirmSameModel(created.id, {} as never, SALES_USER()),
     ).rejects.toThrow(ForbiddenException);
 
-    const result = await exchangeSvc.confirmSameModel(created.id, {} as never, BM_USER());
+    const result = asInstallment(
+      await exchangeSvc.confirmSameModel(created.id, {} as never, BM_USER()),
+    );
     createdContractIds.push(result.replacementContractId as string);
     expect(result.stage).toBe('READY_FOR_PICKUP');
 
@@ -1026,7 +1044,9 @@ describe('after-sales exchange — DB จริง (Task 8, PR2)', () => {
     );
     createdCaseIds.push(created.id);
 
-    const result = await exchangeSvc.confirmSameModel(created.id, {} as never, BM_USER());
+    const result = asInstallment(
+      await exchangeSvc.confirmSameModel(created.id, {} as never, BM_USER()),
+    );
     createdContractIds.push(result.replacementContractId as string);
     expect(result.stage).toBe('READY_FOR_PICKUP');
 

@@ -298,6 +298,10 @@ IN_STOCK / PHOTO_PENDING / QC_PENDING / INSPECTION / REFURBISHED / PO_RECEIVED  
 LOST / DAMAGED / WRITTEN_OFF (รวมแถวที่ถูกลบ) ──คำขอ FOUND + อนุมัติ──▶ IN_STOCK (+ bookIfPending) · แถวที่ถูกลบสถานะอื่น → กู้แถว คงสถานะเดิม
 ```
 
+- **เครื่องจากใบสั่งซื้อที่ยังไม่เข้าคลัง ขอตัดสินค้าไม่ได้ (2026-10-06 — เจ้าของ "เครื่องไม่ผ่าน คืน supplier เลย")**: มีแถว `GoodsReceivingItem`
+  ที่ `journalEntryId` ว่าง + ยังอยู่ในคิวรอถ่ายรูป `PHOTO_PENDING` (ปุ่มตีกลับมีจริงเฉพาะสถานะนี้) ⇒ `StockAdjustmentsService.poUnbookedBlock` ปฏิเสธคำขอ `LOST`/`DAMAGED`/`WRITE_OFF` ที่ `createRequest`
+  (400 ชี้เมนู รอถ่ายรูป › ไม่รับเข้าคลัง = `PoReceivingService.rejectQC` ซึ่งรับเฉพาะ `PHOTO_PENDING`) และ `preview.blockedReason` ปิดปุ่มส่งบนฟอร์ม ·
+  `CORRECTION`/`OTHER` ยังขอได้ · เครื่องที่ไม่มีใบรับของ (ยอดยกมา / เพิ่มด้วยมือ) ยังตัดได้แบบไม่มี JE + Todo แจ้งฝ่ายบัญชีตามเดิม · เครื่องจาก PO ที่ถูกเปลี่ยนสถานะมือออกจากคิว (INSPECTION/REFURBISHED/DAMAGED ฯลฯ) **ไม่บล็อก** — ไม่มีปุ่มตีกลับและไม่มีหน้าจอตั้ง PHOTO_PENDING กลับ จึงใช้ทางเดิม (ไม่มี JE + Todo แจ้งฝ่ายบัญชี; ผลตรวจทานอิสระ 2026-10-06).
 - `ADJUSTMENT_PENDING` เป็นสถานะที่ **service คำขอตั้ง/ปลดเองเท่านั้น** — `assertManualStatusChangeAllowed` ปฏิเสธทั้งปลายทาง
   (`ADJUSTMENT_TARGET_DENY` = `DAMAGED`/`LOST`/`WRITTEN_OFF`/`ADJUSTMENT_PENDING` → ข้อความชี้เมนู คลังสินค้า › ตัดสินค้า) และต้นทาง
   (`ADJUSTMENT_PENDING → *` → ให้เจ้าของพิจารณา/ยกเลิกคำขอก่อน). `DAMAGED → REFURBISHED` (ซ่อมเสร็จ) ยังแก้มือได้ตามเดิม.

@@ -45,6 +45,8 @@ interface OutputVatBreakdown {
   settledGross: string;
   reductionReversal: string;
   reductionCreditNote: string;
+  /** PR4 ต10 — ขากลับของภาษีเงินรับล่วงหน้าที่หักเข้างวด (API รุ่นก่อน PR4 ไม่ส่ง → แสดง 0.00) */
+  reductionAdvanceApplied?: string;
   reductionOther: string;
   reductionTotal: string;
   settledNet: string;
@@ -121,6 +123,10 @@ const OUTPUT_VAT_ROWS: BreakdownRow[] = [
   { key: 'settledGross', label: 'ภาษีขายที่ตั้งในเดือน (เครดิต 21-2101)' },
   { key: 'reductionReversal', label: 'หัก กลับรายการ' },
   { key: 'reductionCreditNote', label: 'หัก ใบลดหนี้ (ม.82/5)' },
+  {
+    key: 'reductionAdvanceApplied',
+    label: 'หัก เงินรับล่วงหน้าที่หักเข้างวด (รับรู้ภาษีแล้วตอนรับ)',
+  },
   { key: 'reductionOther', label: 'หัก รายการอื่นที่ลดภาษีขาย' },
   { key: 'totalOutputVat', label: 'ภาษีขายเดือนนี้ (ภ.พ.30)', total: true },
 ];
@@ -146,7 +152,7 @@ function BreakdownRows({ data, rows }: { data: OutputVatBreakdown; rows: Breakdo
         >
           <dt>{row.label}</dt>
           <dd className="font-mono tabular-nums text-foreground">
-            {`${formatNumberDecimal(data[row.key], 2)} ฿`}
+            {`${formatNumberDecimal(data[row.key] ?? '0', 2)} ฿`}
           </dd>
         </div>
       ))}

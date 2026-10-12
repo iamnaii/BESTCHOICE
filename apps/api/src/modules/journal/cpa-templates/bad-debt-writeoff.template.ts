@@ -7,6 +7,11 @@ import { PrismaService } from '../../../prisma/prisma.service';
 import { computeCnBreakdown } from '../compute-cn-breakdown';
 import { glContractBalance } from '../gl-contract-balance';
 import { readContractCloseAdvances } from '../contract-close-advances';
+import {
+  ADVANCE_VAT_META,
+  advanceVatOutstanding,
+  buildAdvanceVatConsumeLines,
+} from '../advance-vat';
 import { DeferredWarning, emitDeferredWarnings } from '../deferred-warning';
 
 export interface BadDebtWriteOffInput {
@@ -43,7 +48,8 @@ export interface BadDebtWriteOffResult {
  * JE:
  *   Dr 21-2101  cnVat (pro-rated per accrued+unpaid installment — computeCnBreakdown)   ← ใบลดหนี้ VAT (ม.82/5), only if any accrued+unpaid
  *   Dr 11-2106  glBalance(11-2106)                          ← ล้าง unearned interest คงเหลือ
- *   Dr 21-2102  glBalance(21-2102, cr side)                 ← ล้างภาษีขายรอเรียกเก็บคงเหลือ
+ *   Dr 21-2101 / Cr 21-2102  advanceVatOutstanding      ← ขากลับภาษีของเงินรับล่วงหน้าที่รับรู้ตอนพัก (PR4 ต8 — ทั้งก้อน)
+ *   Dr 21-2102  glBalance(21-2102, cr side) + advanceVatOutstanding  ← ล้างภาษีขายรอเรียกเก็บที่เหลือจริง (PR4)
  *   Dr 11-2102  provisionConsumed                           ← ใช้ค่าเผื่อก่อน (เดิม)
  *   Dr 11-2102  releasedProvision (when provision > loss)   ← คืนค่าเผื่อส่วนเกิน (Task 6, symmetric to JP5)
  *   Dr 21-1103  glBalance(21-1103, cr side)                 ← หักเงินรับล่วงหน้าทุกถัง (PR6 — ฝ่ายบัญชี เล่ม 1 ข้อ 6)
@@ -127,6 +133,10 @@ export class BadDebtWriteOffTemplate {
     const bal2106 = await glBal('11-2106', 'cr');
     const bal2105 = await glBal('11-2105', 'dr');
     const bal21_2102 = await glBal('21-2102', 'cr');
+    // PR4 (ต8): ภาษีของเงินรับล่วงหน้าที่รับรู้ตอนพักแล้วและยังค้าง — รายการนี้หักถังทุกใบจนเป็น 0 ⇒ ขากลับ = ทั้งก้อน
+    // และขาล้าง 21-2102 = ยอดในบัญชี + ภาษีที่ยังค้าง (ทุกงวดตั้งลูกหนี้แล้ว 21-2102 ติดลบเท่าภาษีพัก → 0 ไม่มีขาล้าง — G8)
+    const advanceVatReversal = await advanceVatOutstanding(client, contractId);
+    const deferredVatToClear = bal21_2102.plus(advanceVatReversal);
     const provisionBalance = await glBal('11-2102', 'cr');
     // M1 (final-review 2026-07-26, mirrors RepossessionJP5Template): a
     // negative pre-JE 11-2102 balance (Dr > Cr — e.g. a past mis-posted JE)
@@ -196,10 +206,12 @@ export class BadDebtWriteOffTemplate {
         description: 'ยกเลิกรายได้รอตัดบัญชี-ดอกเบี้ย',
       });
     }
-    if (bal21_2102.gt(0)) {
+    // PR4 (ต8): ขากลับภาษีของเงินรับล่วงหน้า — วางก่อนขาล้าง 21-2102 (ไม่มีบรรทัดเมื่อ 0)
+    lines.push(...buildAdvanceVatConsumeLines(advanceVatReversal));
+    if (deferredVatToClear.gt(0)) {
       lines.push({
         accountCode: '21-2102',
-        dr: bal21_2102,
+        dr: deferredVatToClear,
         cr: zero,
         description: 'ล้างภาษีขายรอเรียกเก็บ',
       });
@@ -229,11 +241,11 @@ export class BadDebtWriteOffTemplate {
         description: 'ล้างลูกหนี้ภาษีขายรอฯ',
       });
     }
-    if (bal21_2102.gt(0)) {
+    if (deferredVatToClear.gt(0)) {
       lines.push({
         accountCode: '21-2101',
         dr: zero,
-        cr: bal21_2102,
+        cr: deferredVatToClear,
         description: 'ภาษีขาย ภ.พ.30 ถึงกำหนด (deferred, ม.82/3)',
       });
     }
@@ -343,6 +355,13 @@ export class BadDebtWriteOffTemplate {
             // PR6 — stamp เฉพาะเมื่อมีจริง เพื่อไม่ให้ metadata ของสัญญาทั่วไปเปลี่ยนรูป
             ...(advances.advance.gt(0) ? { advanceRelief: advances.advance.toFixed(2) } : {}),
             ...(advances.credit.gt(0) ? { creditRelief: advances.credit.toFixed(2) } : {}),
+            // PR4 (ต8) — ขากลับภาษีของเงินรับล่วงหน้า + stamp consume (advanceVatOutstanding ของสัญญาเป็น 0 หลังตัดหนี้สูญ)
+            ...(advanceVatReversal.gt(0)
+              ? {
+                  advanceVatReversal: advanceVatReversal.toFixed(2),
+                  [ADVANCE_VAT_META.consume]: advanceVatReversal.toFixed(2),
+                }
+              : {}),
           },
           lines,
         },

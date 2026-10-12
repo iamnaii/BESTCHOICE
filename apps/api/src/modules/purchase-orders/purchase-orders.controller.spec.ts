@@ -58,6 +58,10 @@ describe('PurchaseOrdersController — จ่ายเงินผู้จั�
     expect(roles('recordTaxInvoice')).toEqual(['OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT']);
   });
 
+  it('GET receiving-doc-check → OWNER/BM/ACCOUNTANT — ตัวตรวจเลขซ้ำของ dialog ใบกำกับภาษี ต้องเปิดให้ทุก role ที่บันทึกใบกำกับได้ (Q1)', () => {
+    expect(roles('checkReceivingDoc')).toEqual(['OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT']);
+  });
+
   it('ก้อน 5 (Q5): GET :id และ GET :id/goods-receivings/:receivingId ส่ง role ของผู้เรียกให้ service ตัด receivedVat', async () => {
     await controller.findOne('po-1', { role: 'BRANCH_MANAGER' });
     expect(service.findOne).toHaveBeenCalledWith('po-1', 'BRANCH_MANAGER');

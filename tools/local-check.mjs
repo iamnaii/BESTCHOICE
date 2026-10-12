@@ -61,7 +61,7 @@ try {
     await checkInboxVoice(browser, info.url, output);
     report.checks.push({ label: 'Inbox voice: simulated Thai speech/delivery, desktop/mobile, manual send and room isolation', status: 'PASS' });
     await checkInboxDesign(browser, info.url, output);
-    report.checks.push({ label: 'Approved Inbox V2.4 shell, expanded/collapsed sidebar, flags off, light/dark at 320–1512px', status: 'PASS' });
+    report.checks.push({ label: 'Inbox shell: 72px rail without app sidebar on desktop, compact header on phones, flags off, light/dark at 320–1512px', status: 'PASS' });
     await checkChatSetup(browser, info.url, output);
     report.checks.push({ label: 'Owner setup from disabled navigation, explicit simulated feed subscription, queue activation at 320/1440px', status: 'PASS' });
     await checkInboxLayout(browser, info.url, output);

@@ -91,7 +91,6 @@ export function previewAfterSales(
     repair,
     new AfterSalesDocNumberService(db),
     lookup,
-    { submit: unavailable } as never,
     defect,
     line,
     links,

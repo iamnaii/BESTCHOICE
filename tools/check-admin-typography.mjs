@@ -119,9 +119,11 @@ try {
           'font-size',
           width < 1024 ? '22px' : '24px',
         );
+      // The desktop Inbox is its own workspace (2026-10-07): MainLayout renders no app
+      // sidebar there, so its wrapper has no left padding at any width.
       await expect(page.locator('.wrapper')).toHaveCSS(
         'padding-left',
-        width < 1024 ? '0px' : /^(70|264)px$/,
+        width < 1024 || path === '/inbox' ? '0px' : /^(70|264)px$/,
       );
       if (path === '/finance-portfolio' && width >= 1024) {
         const expand = page.getByRole('button', { name: 'ขยายเมนู', exact: true });

@@ -121,4 +121,32 @@ describe('RequestAdjustmentDialog', () => {
     expect((body as FormData).has('approverId')).toBe(false);
     await waitFor(() => expect(onCreated).toHaveBeenCalled());
   });
+
+  it('เครื่องจากใบสั่งซื้อที่ยังไม่เข้าคลัง: แถวค้นหาติดป้าย · preview ส่ง blockedReason → แสดงข้อความตีกลับ + ปุ่มส่งปิด', async () => {
+    const BLOCKED = 'ขอสูญหายไม่ได้ — เครื่องนี้มาจากใบรับของ GR-20261006-001 และยังไม่เข้าคลัง (ยังไม่ลงบัญชีรับเข้า) ให้ตีกลับผู้จัดจำหน่ายแทน ที่เมนู รอถ่ายรูป › ไม่รับเข้าคลัง';
+    apiGet.mockImplementation(async (url: string) => {
+      if (url === '/stock-adjustments/lookup') return { data: [{ ...PRODUCT, status: 'PHOTO_PENDING', category: 'PHONE_USED', poUnbooked: true }] };
+      if (url === '/stock-adjustments/preview')
+        return {
+          data: {
+            ...PREVIEW,
+            booked: { booked: false, source: null, bookedAmount: null, journalEntryNo: null, grNumber: 'GR-20261006-001' },
+            journalLines: [],
+            journalNote: 'ไม่ลงบัญชี — เครื่องยังไม่เข้าคลัง ขอตัดสินค้าไม่ได้ ต้องตีกลับผู้จัดจำหน่าย',
+            blockedReason: BLOCKED,
+          },
+        };
+      return { data: [] };
+    });
+    const user = userEvent.setup();
+    render(wrap(<RequestAdjustmentDialog open onClose={() => {}} />));
+    await user.type(screen.getByPlaceholderText(/IMEI/), '3500');
+    const hit = await screen.findByRole('button', { name: /iPhone 15/ }, { timeout: 3000 });
+    expect(hit).toHaveTextContent(/ยังไม่เข้าคลัง/);
+    await user.click(hit);
+    await user.click(screen.getByRole('radio', { name: /สูญหาย/ }));
+    expect(await screen.findByText(BLOCKED, {}, { timeout: 3000 })).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole('button', { name: /ส่งคำขอ/ })).toBeDisabled());
+    expect(apiPost).not.toHaveBeenCalled();
+  });
 });

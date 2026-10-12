@@ -27,6 +27,7 @@ import {
   buildEarlyPayoffJournal,
 } from '../journal/compute-early-payoff-je';
 import { emitDeferredWarnings, type DeferredWarning } from '../journal/deferred-warning';
+import { ADVANCE_VAT_CONSUME_DESCRIPTION, ADVANCE_VAT_META } from '../journal/advance-vat';
 import { computeInstallmentBreakdown } from '../journal/compute-installment-breakdown';
 import { reconstructPriorCleared } from '../journal/reconstruct-prior';
 import { computePayoffQuote } from './compute-payoff-quote';
@@ -326,7 +327,11 @@ export class ContractPaymentService {
       accountName: nameOf(l.accountCode),
       debit: l.dr.toFixed(2),
       credit: l.cr.toFixed(2),
-      description: l.generalAdvance ? '' : (epDescriptions[l.accountCode] ?? ''),
+      description: l.advanceVatReversal
+        ? ADVANCE_VAT_CONSUME_DESCRIPTION
+        : l.generalAdvance
+          ? ''
+          : (epDescriptions[l.accountCode] ?? ''),
     }));
 
     let jeTotalDr = new Decimal(0);
@@ -599,6 +604,13 @@ export class ContractPaymentService {
             ...(epJe.advanceRelief.gt(0) ? { advanceRelief: epJe.advanceRelief.toFixed(2) } : {}),
             ...(epJe.creditRelief.gt(0) ? { creditRelief: epJe.creditRelief.toFixed(2) } : {}),
             ...(epJe.roundingGain.gt(0) ? { roundingGain: epJe.roundingGain.toFixed(2) } : {}),
+            // PR4 (ต8): ขากลับภาษีของเงินรับล่วงหน้าที่ยอดปิดหัก + stamp consume (advanceVatOutstanding ของสัญญาลดลงเท่านี้)
+            ...(epJe.advanceVatReversal.gt(0)
+              ? {
+                  advanceVatReversal: epJe.advanceVatReversal.toFixed(2),
+                  [ADVANCE_VAT_META.consume]: epJe.advanceVatReversal.toFixed(2),
+                }
+              : {}),
             // ส่วนของ 52-1106 ที่เกินฐานข้อ 5.2 (% ส่วนลด × ดอกเบี้ยรอตัดบัญชี) — เกิน 1.00 เท่านั้น (ไม่นับเศษสตางค์)
             ...(epJe.discountBeyondDeferredBase.gt(EARLY_PAYOFF_ROUNDING_TOLERANCE)
               ? { discountBeyondDeferredBase: epJe.discountBeyondDeferredBase.toFixed(2) }
@@ -626,7 +638,11 @@ export class ContractPaymentService {
                 accountCode: l.accountCode,
                 dr: l.dr,
                 cr: l.cr,
-                description: l.generalAdvance ? '' : (epDescriptions[l.accountCode] ?? ''),
+                description: l.advanceVatReversal
+                  ? ADVANCE_VAT_CONSUME_DESCRIPTION
+                  : l.generalAdvance
+                    ? ''
+                    : (epDescriptions[l.accountCode] ?? ''),
               })),
             },
             tx,

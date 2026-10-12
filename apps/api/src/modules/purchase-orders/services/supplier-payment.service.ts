@@ -12,13 +12,16 @@ import { CompanyResolverService } from '../../journal/company-resolver.service';
 import { isPeriodClosedForBackdating } from './supplier-doc.util';
 import { validatePeriodOpen } from '../../../utils/period-lock.util';
 import {
+  PO_STATUS_CLOSED_SHORT,
   PayableLine,
   SupplierPaymentPosition,
+  capsToBookedPayable,
   parsePaidAt,
   splitSettlement,
   supplierPaymentPosition,
 } from './supplier-payment.util';
 import { bangkokCalendarParts } from '../../../utils/date.util';
+import { closeDepositRejectTodos } from './po-deposit-reject-todo';
 import { formatDateShort, formatMonthName } from '../../../utils/thai-date.util';
 
 /**
@@ -90,6 +93,8 @@ export interface SupplierPaymentView {
 
 export interface SupplierPaymentSummary {
   netAmount: string;
+  /** เพดานจ่ายทั้งใบ — = netAmount ปกติ · ใบ CLOSED_SHORT = มูลค่าของที่รับจริงตามบัญชี */
+  paymentCap: string;
   paidTotal: string;
   remainingOnPo: string;
   payableOutstanding: string;
@@ -111,8 +116,10 @@ export interface RecordSupplierPaymentResult {
 export const SUPPLIER_PAYMENT_PERIOD_TODO_TAG = 'supplier-payment-period';
 export const supplierPaymentTodoKey = (paymentId: string) => `po-payment:${paymentId}`;
 
-/** สถานะใบสั่งซื้อที่บันทึกการจ่ายได้ — ร่างยังไม่อนุมัติ / รออนุมัติ / ยกเลิก ไม่ได้ */
-const PAYABLE_PO_STATUSES = ['APPROVED', 'ORDERED', 'PARTIALLY_RECEIVED', 'FULLY_RECEIVED'];
+/** flow ของรายการจ่าย/หักมัดจำ/กลับรายการ (ShopSupplierPaymentTemplate) — ต้องตรงกับ `FLOW` ใน template (ตัวกรองของ positionInTx อ้างค่าเดียวกัน) */
+const SUPPLIER_PAYMENT_FLOW = 'shop-supplier-payment';
+/** สถานะใบสั่งซื้อที่บันทึกการจ่ายได้ — ร่างยังไม่อนุมัติ / รออนุมัติ / ยกเลิก ไม่ได้ · ใบปิดรับไม่ครบยังจ่ายค่าของที่รับแล้วได้ (เพดาน = ของที่รับจริง) */
+const PAYABLE_PO_STATUSES = ['APPROVED', 'ORDERED', 'PARTIALLY_RECEIVED', 'FULLY_RECEIVED', PO_STATUS_CLOSED_SHORT];
 const VOIDABLE_KINDS: POPaymentKind[] = ['DEPOSIT', 'SETTLEMENT'];
 const ZERO = new Decimal(0);
 
@@ -196,9 +203,11 @@ export class SupplierPaymentService {
       throw new BadRequestException('บันทึกการจ่ายได้เฉพาะใบสั่งซื้อที่อนุมัติแล้วและยังไม่ถูกยกเลิก');
     }
     const before = await this.positionInTx(tx, po);
-    if (before.paidTotal.add(amount).gt(po.netAmount)) {
+    if (before.paidTotal.add(amount).gt(before.paymentCap)) {
       throw new BadRequestException(
-        `ยอดจ่ายรวมเกินยอดสุทธิของใบสั่งซื้อ — จ่ายได้อีกไม่เกิน ${before.remainingOnPo.toFixed(2)} บาท`,
+        capsToBookedPayable(po.status)
+          ? `ใบนี้ปิดใบ รับไม่ครบแล้ว — จ่ายได้ไม่เกินมูลค่าของที่รับจริง ${before.paymentCap.toFixed(2)} บาท (จ่ายได้อีกไม่เกิน ${before.remainingOnPo.toFixed(2)} บาท)`
+          : `ยอดจ่ายรวมเกินยอดสุทธิของใบสั่งซื้อ — จ่ายได้อีกไม่เกิน ${before.remainingOnPo.toFixed(2)} บาท`,
       );
     }
     const shopCompanyId = await this.deps.companies.getShopCompanyId(tx);
@@ -317,7 +326,10 @@ export class SupplierPaymentService {
       tx,
     );
     await tx.purchaseOrderPayment.update({ where: { id: row.id }, data: { journalEntryId: je.journalEntryId } });
-    await this.refreshPoSummaryInTx(tx, po.id, await this.positionInTx(tx, po));
+    const after = await this.positionInTx(tx, po);
+    await this.refreshPoSummaryInTx(tx, po.id, after);
+    // งานตีกลับ (po-deposit-reject) สัญญาว่าจะปิดเองเมื่อมัดจำค้างเป็นศูนย์ — รวมกรณีมัดจำถูกหักเข้าเจ้าหนี้ของเครื่องอื่นจนหมด
+    if (!after.depositOutstanding.gt(ZERO)) await closeDepositRejectTodos(tx, po.id);
     return { paymentId: row.id, amount: amount.toFixed(2), journalEntryNo: je.entryNo, lines, postedAt };
   }
 
@@ -381,6 +393,8 @@ export class SupplierPaymentService {
     outcome: DepositOutcomeInput | undefined,
     userId: string,
     now: Date = new Date(),
+    /** คำกริยาในข้อความ 400 — ยกเลิกใบ (ค่าเริ่มต้น) หรือ ปิดใบ รับไม่ครบ ใช้ทางเดียวกัน */
+    action: 'ยกเลิก' | 'ปิดใบ' = 'ยกเลิก',
   ): Promise<{ poNumber: string; payments: SupplierPaymentView[]; depositOutstanding: string; periodClosed: boolean; postedAt: Date } | null> {
     // ล็อกแถวใบก่อนอ่านมัดจำเสมอ (ผู้ตรวจอิสระ 05/10 ข้อ 1 — ทางลัดก่อนล็อกมองไม่เห็นมัดจำที่อีกคนกำลังบันทึก)
     const po = await this.lockPo(tx, poId);
@@ -394,7 +408,7 @@ export class SupplierPaymentService {
     if (!outstanding.gt(ZERO)) return null;
     if (!outcome?.depositOutcome) {
       throw new BadRequestException(
-        `ใบสั่งซื้อนี้มีเงินมัดจำค้าง ${outstanding.toFixed(2)} บาท — ต้องระบุว่าได้เงินคืนหรือไม่ก่อนยกเลิก`,
+        `ใบสั่งซื้อนี้มีเงินมัดจำค้าง ${outstanding.toFixed(2)} บาท — ต้องระบุว่าได้เงินคืนหรือไม่ก่อน${action}`,
       );
     }
     const shopCompanyId = await this.deps.companies.getShopCompanyId(tx);
@@ -497,8 +511,8 @@ export class SupplierPaymentService {
     };
   }
 
-  /** ฐานะของใบสั่งซื้อจากสมุดบัญชี + แถวการจ่าย (ใช้ทั้งก่อน/หลังเขียน) */
-  async positionInTx(tx: Prisma.TransactionClient, po: { id: string; netAmount: Decimal }): Promise<SupplierPaymentPosition> {
+  /** ฐานะของใบสั่งซื้อจากสมุดบัญชี + แถวการจ่าย (ใช้ทั้งก่อน/หลังเขียน) — ใบ CLOSED_SHORT เพดานจ่าย = ของที่รับจริง */
+  async positionInTx(tx: Prisma.TransactionClient, po: { id: string; netAmount: Decimal; status: string }): Promise<SupplierPaymentPosition> {
     const rows = await tx.purchaseOrderPayment.findMany({
       where: { poId: po.id, deletedAt: null },
       select: { kind: true, amount: true, voidedAt: true },
@@ -510,12 +524,18 @@ export class SupplierPaymentService {
         AND: [{ metadata: { path: ['poId'], equals: po.id } as any }],
         OR: [
           { metadata: { path: ['flow'], equals: 'shop-goods-receiving' } as any },
-          { metadata: { path: ['flow'], equals: 'shop-supplier-payment' } as any },
+          { metadata: { path: ['flow'], equals: SUPPLIER_PAYMENT_FLOW } as any },
         ],
       },
-      select: { lines: { where: { deletedAt: null }, select: { accountCode: true, debit: true, credit: true } } },
+      select: { metadata: true, lines: { where: { deletedAt: null }, select: { accountCode: true, debit: true, credit: true } } },
     });
-    return supplierPaymentPosition(po.netAmount, rows, entries.flatMap((e) => e.lines));
+    // ป้ายที่มาต่อบรรทัด: รายการ flow การจ่าย (รวมรายการกลับตอนยกเลิกการจ่าย) ต้องไม่ถูกนับเป็น "ของที่รับจริง" (ผู้ตรวจอิสระ 2026-10-11 ข้อ 1)
+    const lines = entries.flatMap((e) => {
+      const flow = (e.metadata as { flow?: string } | null)?.flow;
+      const source = flow === SUPPLIER_PAYMENT_FLOW ? ('PAYMENT' as const) : ('RECEIVING' as const);
+      return e.lines.map((line) => ({ ...line, source }));
+    });
+    return supplierPaymentPosition(po.netAmount, rows, lines, { capToBooked: capsToBookedPayable(po.status) });
   }
 
   /** คอลัมน์สรุปบนใบสั่งซื้อ = ผลรวมจากตารางการจ่าย (หน้าเดิมยังอ่านได้ แต่ห้ามเขียนตรง) */
@@ -568,6 +588,7 @@ export class SupplierPaymentService {
   private toSummary(netAmount: Decimal, position: SupplierPaymentPosition): SupplierPaymentSummary {
     return {
       netAmount: new Decimal(netAmount.toString()).toFixed(2),
+      paymentCap: position.paymentCap.toFixed(2),
       paidTotal: position.paidTotal.toFixed(2),
       remainingOnPo: position.remainingOnPo.toFixed(2),
       payableOutstanding: position.payableOutstanding.toFixed(2),

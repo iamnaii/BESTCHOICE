@@ -64,6 +64,7 @@ describe('PaymentReceiptTemplate — ตั้งลูกหนี้งวด�
           })),
         ),
       },
+      journalLine: { findMany: jest.fn().mockResolvedValue([]) }, // PR4: glContractBalance (ไม่มีบรรทัด = ไม่มีขากลับ)
       systemConfig: { findFirst: jest.fn().mockResolvedValue(null) },
     };
     const createAndPost = jest.fn().mockImplementation(async () => {

@@ -8,7 +8,8 @@ import { CancelPOPayload, PurchaseOrder, ApprovePOPayload } from '../types';
 import { ApprovePODialog } from './ApprovePODialog';
 import type { SupplierPaymentMethod } from './wizard/PaymentSection';
 import { cn } from '@/lib/utils';
-import { receiveProgress, isOverdue, supplierContactIsRedundant, canCancel, splitLeadingTag, pieceCount, itemsSummary } from '../po-list.util';
+import { receiveProgress, isOverdue, supplierContactIsRedundant, canCancel, isClosedShort, splitLeadingTag, pieceCount, itemsSummary } from '../po-list.util';
+import { statusLabels } from '../constants';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { POCard } from './POCard';
@@ -44,6 +45,10 @@ export interface POListTabProps {
   suppliers: { id: string; name: string; hasVat?: boolean; paymentMethods?: SupplierPaymentMethod[] }[];
   overdueOnly: boolean;
   setOverdueOnly: (value: boolean) => void;
+  /** ดูอย่างเดียว (ผจก.การเงิน / ฝ่ายบัญชี) — ซ่อนปุ่มกระทำทั้งตารางและการ์ด เหลือ "ดูรายละเอียด" */
+  readOnly?: boolean;
+  /** อนุมัติ/ปฏิเสธใบรออนุมัติ = เจ้าของกิจการเท่านั้น (`POST :id/approve` / `:id/reject` @Roles('OWNER')) — ผจก.สาขาเห็นใบตัวเองแต่กดไม่ได้ */
+  canApprove?: boolean;
 }
 
 const periodOptions: { value: PeriodFilter; label: string }[] = [
@@ -88,6 +93,8 @@ export function POListTab({
   rejectPOMutation,
   cancelMutation,
   onCancelPO,
+  readOnly = false,
+  canApprove = true,
   setConfirmDialog,
   suppliers,
   overdueOnly,
@@ -288,6 +295,13 @@ export function POListTab({
       width: '132px',
       render: (po) => {
         const cfg = getStatusBadgeProps(po.paymentStatus || 'UNPAID', poPaymentStatusMap);
+        const badge = (
+          <Badge variant={cfg.variant} appearance={cfg.appearance} className="whitespace-nowrap">
+            {cfg.label}
+          </Badge>
+        );
+        // ดูอย่างเดียว: ป้ายเฉย ๆ — POST :id/payments เป็นของ OWNER/BM (การ์ดมือถือก็เป็นป้ายอยู่แล้ว)
+        if (readOnly) return badge;
         return (
           <button
             onClick={(e) => {
@@ -297,9 +311,7 @@ export function POListTab({
             className="cursor-pointer hover:opacity-80"
             title="บันทึกการจ่าย"
           >
-            <Badge variant={cfg.variant} appearance={cfg.appearance} className="whitespace-nowrap">
-              {cfg.label}
-            </Badge>
+            {badge}
           </button>
         );
       },
@@ -311,15 +323,20 @@ export function POListTab({
       render: (po) => {
         const { received, ordered, pct } = receiveProgress(po);
         const done = ordered > 0 && received >= ordered;
+        // ปิดใบ รับไม่ครบ: "รับแล้ว 3/5 (ปิด 2)" — ชิ้นที่ไม่รับแล้วไม่ใช่ของที่กำลังมา
+        const closedShort = isClosedShort(po);
         return (
           <div className="flex items-center gap-2.5">
             <span className="text-sm whitespace-nowrap tabular-nums leading-snug">
               <span className={cn('font-mono font-semibold', done && 'text-success')}>{received}</span>
               <span className="text-muted-foreground">/{ordered}</span>
+              {closedShort && ordered > received && (
+                <span className="ml-1 text-xs text-warning-strong">(ปิด {ordered - received})</span>
+              )}
             </span>
             {ordered > 0 && (
               <div className="h-1.5 flex-1 rounded-full bg-muted">
-                <div className={cn('h-1.5 rounded-full', done ? 'bg-success' : 'bg-primary')} style={{ width: `${pct}%` }} />
+                <div className={cn('h-1.5 rounded-full', done ? 'bg-success' : closedShort ? 'bg-warning' : 'bg-primary')} style={{ width: `${pct}%` }} />
               </div>
             )}
           </div>
@@ -343,7 +360,7 @@ export function POListTab({
           >
             <FileText className="size-4" />
           </button>
-          {po.status === 'APPROVED' && (
+          {!readOnly && po.status === 'APPROVED' && (
             <button
               onClick={() => onOrder(po)}
               disabled={orderMutation.isPending}
@@ -354,7 +371,7 @@ export function POListTab({
               <ShoppingCart className="size-4" />
             </button>
           )}
-          {['APPROVED', 'ORDERED', 'PARTIALLY_RECEIVED'].includes(po.status) && (
+          {!readOnly && ['APPROVED', 'ORDERED', 'PARTIALLY_RECEIVED'].includes(po.status) && (
             <button
               onClick={() => openReceiveModal(po)}
               className="p-1.5 rounded-md text-primary hover:bg-primary/10 transition-colors"
@@ -364,7 +381,7 @@ export function POListTab({
               <PackageCheck className="size-4" />
             </button>
           )}
-          {po.status === 'DRAFT' && (
+          {!readOnly && canApprove && po.status === 'DRAFT' && (
             <>
               <button
                 onClick={() => onApprove(po)}
@@ -387,7 +404,7 @@ export function POListTab({
             </>
           )}
           {/* also for an ORDERED PO with nothing received yet (approve lands on ORDERED now) */}
-          {canCancel(po) && (
+          {!readOnly && canCancel(po) && (
             <button
               onClick={() => onCancel(po)}
               disabled={cancelMutation.isPending}
@@ -408,7 +425,9 @@ export function POListTab({
   const emptyTitle = hasFilter ? 'ไม่พบใบสั่งซื้อที่ตรงกับตัวกรอง' : 'ยังไม่มีใบสั่งซื้อ';
   const emptyDesc = hasFilter
     ? 'ลองล้างตัวกรองหรือเปลี่ยนคำค้นหา'
-    : 'กด "+ สร้าง PO" ที่มุมขวาบนเพื่อเริ่มสั่งซื้อสินค้าจากผู้จัดจำหน่าย';
+    : readOnly
+      ? 'ใบสั่งซื้อสร้างโดยเจ้าของกิจการหรือผู้จัดการสาขา — เมื่อมีใบแล้วจะแสดงที่นี่'
+      : 'กด "+ ซื้อสินค้า" ที่มุมขวาบนเพื่อเริ่มสั่งซื้อสินค้าจากผู้จัดจำหน่าย';
 
   return (
     <>
@@ -432,6 +451,7 @@ export function POListTab({
           <option value="ORDERED">สั่งซื้อแล้ว</option>
           <option value="PARTIALLY_RECEIVED">รับบางส่วน</option>
           <option value="FULLY_RECEIVED">รับครบแล้ว</option>
+          <option value="CLOSED_SHORT">ปิดใบ รับไม่ครบ</option>
           <option value="CANCELLED">ยกเลิก</option>
         </select>
         <select
@@ -466,16 +486,7 @@ export function POListTab({
           {search && <FilterChip label={`ค้นหา: "${search}"`} onRemove={() => setSearch('')} />}
           {statusFilter && (
             <FilterChip
-              label={`สถานะ: ${
-                {
-                  DRAFT: 'รออนุมัติ',
-                  APPROVED: 'อนุมัติแล้ว',
-                  ORDERED: 'สั่งซื้อแล้ว',
-                  PARTIALLY_RECEIVED: 'รับบางส่วน',
-                  FULLY_RECEIVED: 'รับครบแล้ว',
-                  CANCELLED: 'ยกเลิก',
-                }[statusFilter] || statusFilter
-              }`}
+              label={`สถานะ: ${statusLabels[statusFilter] || statusFilter}`}
               onRemove={() => setStatusFilter('')}
             />
           )}
@@ -528,6 +539,8 @@ export function POListTab({
                 approvePending={approveMutation.isPending}
                 orderPending={orderMutation.isPending}
                 rejectPending={rejectPOMutation.isPending}
+                readOnly={readOnly}
+                canApprove={canApprove}
               />
             ))}
           </div>

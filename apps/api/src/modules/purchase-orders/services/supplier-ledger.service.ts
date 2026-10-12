@@ -13,7 +13,9 @@ import { SUPPLIER_PAYABLE_ACCOUNTS } from './supplier-payment.util';
  * ไม่เพิ่มรหัสบัญชีในผัง (รอคำตอบบัญชีข้อ 4 ของเอกสาร 05/10 ว่าต้องการรหัสย่อยจริงไหม)
  */
 const LEDGER_TAGS = ['SHOP_GOODS_RECEIVING', 'SHOP_SUPPLIER_PAYMENT', 'SHOP_SUPPLIER_PAYMENT_REVERSAL'];
-const OPEN_PO_STATUSES = ['APPROVED', 'ORDERED', 'PARTIALLY_RECEIVED', 'FULLY_RECEIVED'];
+/** ใบที่ยังเป็นเจ้าหนี้ได้ — รวมใบปิดรับไม่ครบ (CLOSED_SHORT 2026-10-11: ยังค้างค่าของที่รับแล้วจนจ่ายถึงเพดาน) */
+const OPEN_PO_STATUSES = ['APPROVED', 'ORDERED', 'PARTIALLY_RECEIVED', 'FULLY_RECEIVED', 'CLOSED_SHORT'];
+const PO_STATUS_CLOSED_SHORT = 'CLOSED_SHORT';
 const DUE_SOON_DAYS = 7;
 const ZERO = new Decimal(0);
 const money = (v: Decimal) => v.toFixed(2);
@@ -57,7 +59,10 @@ export interface SupplierLedgerOpenPo {
   id: string;
   poNumber: string;
   netAmount: string;
+  /** เพดานจ่ายของใบ — = netAmount ปกติ · ใบปิดรับไม่ครบ = มูลค่าของที่รับจริง (Σ เครดิตเจ้าหนี้จากรายการรับของ) */
+  paymentCap: string;
   paidAmount: string;
+  /** paymentCap − paidAmount (ไม่ติดลบ) */
   remaining: string;
   dueDate: string | null;
   status: string;
@@ -74,7 +79,13 @@ export class SupplierLedgerService {
     const { label, periodStart, periodEnd } = this.parseMonth(month);
     const entries = await this.loadEntries(periodEnd);
     const aggs = new Map<string, SupplierAgg>();
+    // มูลค่าของที่รับจริงต่อใบ (เครดิตเจ้าหนี้จากรายการรับของเท่านั้น) — เพดานจ่ายของใบปิดรับไม่ครบ
+    const bookedByPo = new Map<string, Decimal>();
     for (const entry of entries) {
+      if (entry.meta.tag === 'SHOP_GOODS_RECEIVING' && entry.meta.poId) {
+        const booked = entry.lines.filter((l) => SUPPLIER_PAYABLE_ACCOUNTS.includes(l.accountCode)).reduce((sum, l) => sum.add(l.credit), ZERO);
+        if (booked.gt(ZERO)) bookedByPo.set(entry.meta.poId, (bookedByPo.get(entry.meta.poId) ?? ZERO).add(booked));
+      }
       if (!entry.supplierId) continue;
       const agg = aggs.get(entry.supplierId) ?? { opening: ZERO, receipts: ZERO, payments: ZERO, deposits: ZERO, payableByAccount: {} };
       const inPeriod = entry.entryDate >= periodStart;
@@ -115,12 +126,14 @@ export class SupplierLedgerService {
       if (po.dueDate && (!cur.nextDue || po.dueDate < cur.nextDue)) cur.nextDue = po.dueDate;
       const net = new Decimal(po.netAmount.toString());
       const paid = new Decimal(po.paidAmount.toString());
+      const cap = po.status === PO_STATUS_CLOSED_SHORT ? (bookedByPo.get(po.id) ?? ZERO) : net;
       cur.pos.push({
         id: po.id,
         poNumber: po.poNumber,
         netAmount: money(net),
+        paymentCap: money(cap),
         paidAmount: money(paid),
-        remaining: money(Decimal.max(net.sub(paid), ZERO)),
+        remaining: money(Decimal.max(cap.sub(paid), ZERO)),
         dueDate: po.dueDate ? po.dueDate.toISOString() : null,
         status: po.status,
         paymentStatus: po.paymentStatus,

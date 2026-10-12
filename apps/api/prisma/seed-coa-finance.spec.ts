@@ -38,15 +38,20 @@ describe('seedFinanceCoa', () => {
     expect(deferred?.normalBalance).toBe('Cr');
   });
 
-  // CPA/owner 2026-08-03: both accounts removed from the chart (was: "open but
-  // dormant"). 42-1106 superseded by Cr 51-1103; 42-1107's cancel-penalty rule
-  // was scrapped. Inverse of the old exchange-coa assertions — a re-introduction
-  // via the seeder must fail here.
-  it('does NOT seed the removed 42-1106 / 42-1107 accounts', async () => {
+  // CPA/owner 2026-08-03: both accounts removed from the chart. PR4 ต7 (2026-10-11):
+  // 42-1106 reopened under a NEW name (เงินพักค่าปรับดิวสะสมเกิน — income of the
+  // advance-excess sweep); 42-1107 stays removed and must never come back via the seeder.
+  it('seeds 42-1106 under its PR4 name but still NOT the removed 42-1107', async () => {
     await seedFinanceCoa(prisma);
-    const removed = await prisma.chartOfAccount.findMany({
-      where: { code: { in: ['42-1106', '42-1107'] } },
+    const reopened = await prisma.chartOfAccount.findUnique({ where: { code: '42-1106' } });
+    expect(reopened).toMatchObject({
+      name: 'เงินพักค่าปรับดิวสะสมเกิน',
+      type: 'รายได้',
+      normalBalance: 'Cr',
+      vatApplicable: false,
+      status: 'ใช้งาน',
     });
+    const removed = await prisma.chartOfAccount.findMany({ where: { code: '42-1107' } });
     expect(removed).toEqual([]);
   });
 

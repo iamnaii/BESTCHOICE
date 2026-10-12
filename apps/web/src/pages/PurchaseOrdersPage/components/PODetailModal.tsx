@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router';
-import { Coins, History, Package, Paperclip, PencilLine, Phone, Printer, Truck, X } from 'lucide-react';
+import { Coins, History, Package, PackageX, Paperclip, PencilLine, Phone, Printer, Truck, X } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { getStatusBadgeProps, poStatusMap, poPaymentStatusMap } from '@/lib/status-badges';
@@ -8,7 +8,7 @@ import { formatDateShort, formatDateMedium, formatDateTime, formatNumber, format
 import type { PurchaseOrder, PODetail, POItem, PoPaymentsResponse, SupplierPayment, GoodsReceivingRecord } from '../types';
 import { PAYMENT_KIND_LABEL, openSlip } from '../supplier-payment.util';
 import { paymentMethodLabels } from '../constants';
-import { canCancel } from '../po-list.util';
+import { canCancel, canCloseShort } from '../po-list.util';
 import { supplierDocSummary, formatIsoDate } from '../supplier-doc.util';
 import { taxInvoiceAction, taxInvoiceBadge } from '../tax-invoice.util';
 import { canSeeInputVat } from '@/lib/input-vat';
@@ -34,6 +34,8 @@ export interface PODetailModalProps {
   openPaymentModal: (po: PurchaseOrder) => void;
   /** Footer "ยกเลิก PO" — shown only when given and the PO is still cancellable. */
   onCancel?: (po: PurchaseOrder) => void;
+  /** ปิดใบ รับไม่ครบ (2026-10-11) — ไม่ส่ง = ไม่มีปุ่ม (เช่นหน้าดูอย่างเดียว) */
+  onCloseShort?: (po: PurchaseOrder) => void;
   /** ก้อน 2: รายการจ่าย + ฐานะจากสมุดบัญชี (`GET :id/payments`) — ไม่มี = ใช้คอลัมน์สรุปบนใบแทน */
   paymentsData?: PoPaymentsResponse | null;
   /** ยกเลิกรายการที่บันทึกผิด (เจ้าของเท่านั้น) */
@@ -44,6 +46,11 @@ export interface PODetailModalProps {
   role?: string | null;
   /** ก้อน 5 (Q1) — เปิด dialog บันทึก/แก้ใบกำกับภาษีของใบรับของ */
   onRecordTaxInvoice?: (po: PurchaseOrder, receiving: GoodsReceivingRecord) => void;
+  /**
+   * ดูอย่างเดียว (ผจก.การเงิน / ฝ่ายบัญชี — คำตัดสินเจ้าของ 2026-10-11): ซ่อนปุ่ม รับสินค้า / ยกเลิก PO
+   * ซึ่ง API ตอบ 403 ให้สอง role นี้อยู่แล้ว · บันทึกการจ่ายคุมด้วย canRecordPayments · ปุ่มใบกำกับภาษีคุมด้วย role (Q1)
+   */
+  readOnly?: boolean;
 }
 
 /** Whole baht stay whole ("10,700"); satang show two places ("47,165.60"). */
@@ -92,12 +99,14 @@ export function PODetailModal({
   openReceiveModal,
   openPaymentModal,
   onCancel,
+  onCloseShort,
   paymentsData,
   onVoidPayment,
   canRecordPayments = true,
   canVoidPayments = false,
   role,
   onRecordTaxInvoice,
+  readOnly = false,
 }: PODetailModalProps) {
   const navigate = useNavigate();
   const overlayRef = useRef<HTMLDivElement>(null);
@@ -137,19 +146,26 @@ export function PODetailModal({
   const goods = po ? receivingProgress(po) : null;
   // ก้อน 2: ยอดจ่ายจากตารางการจ่าย (สมุดบัญชี) เมื่อโหลดมาแล้ว — ก่อนโหลดใช้คอลัมน์สรุปบนใบ (ค่าเดียวกัน service เขียนทับให้)
   const paySummary = paymentsData?.summary ?? null;
+  // ปิดใบ รับไม่ครบ: ยอดสุทธิ (net) คงเดิม แต่เพดานจ่าย (cap) = ของที่รับจริงตามบัญชี — ความคืบหน้า/คงค้างคิดจาก cap
   const pay = po
     ? paySummary
       ? (() => {
           const net = Number(paySummary.netAmount) || 0;
+          const cap = Number(paySummary.paymentCap ?? paySummary.netAmount) || 0;
           const paid = Number(paySummary.paidTotal) || 0;
-          return { paid, net, remaining: Math.max(net - paid, 0), pct: net > 0 ? Math.min(Math.round((paid / net) * 100), 100) : 0 };
+          return { paid, net, cap, remaining: Math.max(cap - paid, 0), pct: cap > 0 ? Math.min(Math.round((paid / cap) * 100), 100) : 0 };
         })()
-      : paymentProgress(po)
+      : (() => {
+          const p = paymentProgress(po);
+          return { ...p, cap: p.net };
+        })()
     : null;
   const due = po ? dueStatus(po.dueDate, po.paymentStatus || 'UNPAID') : null;
   const cancelled = po?.status === 'CANCELLED';
-  const receivable = !!po && canReceive(po);
-  const cancellable = !!po && !!onCancel && canCancel(po);
+  const closedShort = po?.status === 'CLOSED_SHORT';
+  const receivable = !readOnly && !!po && canReceive(po);
+  const cancellable = !readOnly && !!po && !!onCancel && canCancel(po);
+  const closableShort = !readOnly && !!po && !!onCloseShort && canCloseShort(po);
   const statusCfg = po ? getStatusBadgeProps(po.status, poStatusMap) : null;
   const payCfg = po ? getStatusBadgeProps(po.paymentStatus || 'UNPAID', poPaymentStatusMap) : null;
   const history = po ? poHistory(po, poDetail?.goodsReceivings ?? []) : [];
@@ -206,6 +222,22 @@ export function PODetailModal({
         {po && goods && pay && due && (
           <>
             <div className="flex-1 space-y-5 overflow-y-auto p-6">
+              {closedShort && (
+                <div role="status" className="flex items-start gap-2.5 rounded-xl border border-warning/30 bg-warning/10 px-4 py-3 text-sm text-warning-strong">
+                  <PackageX className="mt-0.5 size-4 shrink-0" aria-hidden />
+                  <div className="min-w-0 leading-snug">
+                    <div className="font-semibold">
+                      ปิดใบ รับไม่ครบ — รับ {goods.received} / {goods.total} ชิ้น · ไม่รับอีก {goods.remaining} ชิ้น
+                    </div>
+                    <div className="mt-0.5 text-xs">
+                      {po.closeReason && <span>เหตุผล: {po.closeReason} · </span>}
+                      {po.closedBy && <span>โดย {po.closedBy.name} · </span>}
+                      {po.closedAt && <span>{formatDateTime(po.closedAt)} · </span>}
+                      ของที่มาทีหลังต้องเปิดใบใหม่ · จ่ายได้ไม่เกินมูลค่าของที่รับจริง
+                    </div>
+                  </div>
+                </div>
+              )}
               {/* Supplier + the four facts */}
               <section className={cardCls} aria-label="สรุปใบสั่งซื้อ">
                 <div className="mb-4 flex items-start justify-between gap-4 border-b border-border/50 pb-4">
@@ -282,7 +314,9 @@ export function PODetailModal({
                   </div>
                   <ProgressBar pct={goods.pct} tone={goods.remaining === 0 && goods.total > 0 ? 'success' : 'warning'} />
                   <p className="text-xs leading-snug text-muted-foreground">
-                    {goods.total > 0 && goods.remaining === 0
+                    {closedShort
+                      ? `ปิดใบแล้ว รับไม่ครบ · ไม่รับอีก ${goods.remaining} ชิ้น`
+                      : goods.total > 0 && goods.remaining === 0
                       ? 'รับครบแล้ว'
                       : goods.received === 0
                         ? `ยังไม่ได้รับของ${po.expectedDate ? ` · คาดว่าจะได้รับ ${formatDateShort(po.expectedDate)}` : ''}`
@@ -309,8 +343,11 @@ export function PODetailModal({
                       <div className={cn(labelCls, 'mb-0.5')}>จ่ายแล้ว</div>
                       <div className="flex items-baseline gap-1.5">
                         <span className="font-mono text-2xl font-semibold tabular-nums text-foreground" data-testid="paid-progress">{money(pay.paid)}</span>
-                        <span className="text-sm text-muted-foreground">/ {money(pay.net)} บาท</span>
+                        <span className="text-sm text-muted-foreground">/ {money(pay.cap)} บาท</span>
                       </div>
+                      {closedShort && paySummary && (
+                        <div className="text-xs leading-snug text-muted-foreground">เพดาน = ของที่รับจริง · ยอดสุทธิใบ {money(pay.net)}</div>
+                      )}
                     </div>
                     {paySummary && (
                       <>
@@ -327,7 +364,7 @@ export function PODetailModal({
                         <div>
                           <div className={cn(labelCls, 'mb-0.5')}>จ่ายได้อีกไม่เกิน</div>
                           <div className="font-mono text-lg font-semibold tabular-nums text-foreground">{money(paySummary.remainingOnPo)}</div>
-                          <div className="text-xs leading-snug text-muted-foreground">ยอดสุทธิ − จ่ายแล้ว</div>
+                          <div className="text-xs leading-snug text-muted-foreground">{closedShort ? 'ของที่รับจริง − จ่ายแล้ว' : 'ยอดสุทธิ − จ่ายแล้ว'}</div>
                         </div>
                       </>
                     )}
@@ -394,7 +431,10 @@ export function PODetailModal({
                   )}
                   {paymentsData && paymentsData.payments.length === 0 && Number(paymentsData.legacyPaidAmount) > 0 && (
                     <p className="rounded-lg border border-warning/30 bg-warning/10 px-3 py-2 text-xs leading-snug text-warning-strong">
-                      ยอดจ่าย {money(paymentsData.legacyPaidAmount)} บาทที่กรอกไว้ก่อนมีเมนูจ่ายเงิน (ก่อน 10/2569) ไม่ได้ลงบัญชี — บันทึกใหม่ผ่านปุ่ม "บันทึกการจ่าย" ถ้าต้องการให้เข้าสมุดบัญชี
+                      ยอดจ่าย {money(paymentsData.legacyPaidAmount)} บาทที่กรอกไว้ก่อนมีเมนูจ่ายเงิน (ก่อน 10/2569) ไม่ได้ลงบัญชี —{' '}
+                      {canRecordPayments
+                        ? 'บันทึกใหม่ผ่านปุ่ม "บันทึกการจ่าย" ถ้าต้องการให้เข้าสมุดบัญชี'
+                        : 'เจ้าของกิจการหรือผู้จัดการสาขาบันทึกใหม่ผ่านปุ่ม "บันทึกการจ่าย" ได้ถ้าต้องการให้เข้าสมุดบัญชี'}
                     </p>
                   )}
                   {paymentsData && (
@@ -575,7 +615,9 @@ export function PODetailModal({
                 </ol>
                 {history.length === 1 && !cancelled && (
                   <p className="mt-3 rounded-lg bg-muted/50 px-3 py-2.5 text-xs leading-snug text-muted-foreground">
-                    ถัดไป: รับสินค้าเมื่อของมาถึง · บันทึกการจ่ายเมื่อโอนให้ผู้ขาย — จะขึ้นเป็นรายการในนี้เอง
+                    {readOnly
+                      ? 'ถัดไป: เจ้าของกิจการหรือผู้จัดการสาขารับสินค้าเมื่อของมาถึง และบันทึกการจ่ายเมื่อโอนให้ผู้ขาย — จะขึ้นเป็นรายการในนี้เอง'
+                      : 'ถัดไป: รับสินค้าเมื่อของมาถึง · บันทึกการจ่ายเมื่อโอนให้ผู้ขาย — จะขึ้นเป็นรายการในนี้เอง'}
                   </p>
                 )}
               </section>
@@ -607,12 +649,18 @@ export function PODetailModal({
               )}
             </div>
 
-            {(cancellable || receivable || !cancelled) && (
+            {(cancellable || closableShort || receivable || (!cancelled && canRecordPayments)) && (
               <div className="sticky bottom-0 flex shrink-0 items-center justify-between gap-3 border-t bg-background/95 px-6 py-4 backdrop-blur-xs">
-                <div>
+                <div className="flex items-center gap-1">
                   {cancellable && (
                     <button type="button" onClick={() => onCancel!(po)} className="rounded-lg px-3 py-2 text-sm font-medium text-destructive transition-colors hover:bg-destructive/10">
                       ยกเลิก PO
+                    </button>
+                  )}
+                  {closableShort && (
+                    <button type="button" onClick={() => onCloseShort!(po)} className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium text-warning-strong transition-colors hover:bg-warning/10">
+                      <PackageX className="size-4" aria-hidden />
+                      ปิดใบ รับไม่ครบ
                     </button>
                   )}
                 </div>

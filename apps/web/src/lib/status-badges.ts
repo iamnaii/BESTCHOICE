@@ -176,6 +176,8 @@ export const poStatusMap: Record<string, StatusConfig> = {
   PARTIALLY_RECEIVED: { variant: 'warning', appearance: 'light', label: 'รับบางส่วน' },
   FULLY_RECEIVED: { variant: 'success', appearance: 'light', label: 'รับครบแล้ว' },
   CANCELLED: { variant: 'destructive', appearance: 'light', label: 'ยกเลิก' },
+  /** ปิดถาวรหลังรับของบางส่วน (2026-10-11) — ไม่ใช่ความผิดพลาดแบบยกเลิก จึงเป็นป้ายกลาง ๆ */
+  CLOSED_SHORT: { variant: 'secondary', label: 'ปิดใบ รับไม่ครบ' },
 };
 
 // ─── Purchase Order payment statuses ─────────────────────────────────────────

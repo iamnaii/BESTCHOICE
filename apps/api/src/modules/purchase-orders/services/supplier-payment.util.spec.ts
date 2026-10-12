@@ -89,6 +89,74 @@ describe('supplierPaymentPosition — ฐานะจากสมุดบัญ
   });
 });
 
+// ปิดใบ รับไม่ครบ (คำตัดสินเจ้าของ 2026-10-11 ข้อ 3): ยอดสุทธิของใบคงเดิม แต่เพดานจ่าย = มูลค่าของที่รับจริงตามบัญชี
+describe('supplierPaymentPosition — ใบปิดรับไม่ครบ (capToBooked)', () => {
+  const receivedTwoOfFive = [line('S11-2001', 6000, 0), line('S21-1101', 0, 6000)]; // สั่ง 5 ชิ้น 15,000 · รับ 2 ชิ้น 6,000
+
+  it('เพดานจ่าย = Σ เจ้าหนี้ที่ตั้งจากการรับของ ไม่ใช่ยอดสุทธิ · ยอดสุทธิที่ส่งเข้ามาไม่ถูกแตะ', () => {
+    const p = supplierPaymentPosition(d('15000'), [], receivedTwoOfFive, { capToBooked: true });
+    expect(p.paymentCap.toFixed(2)).toBe('6000.00');
+    expect(p.remainingOnPo.toFixed(2)).toBe('6000.00');
+    expect(p.payableOutstanding.toFixed(2)).toBe('6000.00');
+    const normal = supplierPaymentPosition(d('15000'), [], receivedTwoOfFive);
+    expect(normal.paymentCap.toFixed(2)).toBe('15000.00');
+    expect(normal.remainingOnPo.toFixed(2)).toBe('15000.00');
+  });
+
+  it('จ่ายถึงมูลค่าของที่รับ → จ่ายครบแล้ว (ใบปกติยอดเดียวกันยังจ่ายบางส่วน)', () => {
+    const rows = [row('SETTLEMENT', 6000)];
+    const lines = [...receivedTwoOfFive, line('S21-1101', 6000, 0), line('S11-1202', 0, 6000)];
+    const closed = supplierPaymentPosition(d('15000'), rows, lines, { capToBooked: true });
+    expect(closed.status).toBe('FULLY_PAID');
+    expect(closed.remainingOnPo.toFixed(2)).toBe('0.00');
+    const normal = supplierPaymentPosition(d('15000'), rows, lines);
+    expect(normal.status).toBe('PARTIALLY_PAID');
+    expect(normal.remainingOnPo.toFixed(2)).toBe('9000.00');
+  });
+
+  it('ริบมัดจำที่เกินของที่รับ → เงินที่จ่ายเกินเพดาน = จ่ายครบแล้ว เพดานไม่ติดลบ', () => {
+    // มัดจำ 8,000 · รับของ 6,000 (หักมัดจำ 6,000) · ปิดใบ ริบที่เหลือ 2,000
+    const rows = [row('DEPOSIT', 8000), row('DEPOSIT_APPLIED', 6000), row('DEPOSIT_FORFEIT', 2000)];
+    const lines = [
+      line('S11-4201', 8000, 0), line('S11-1202', 0, 8000),
+      ...receivedTwoOfFive,
+      line('S21-1101', 6000, 0), line('S11-4201', 0, 6000),
+      line('S53-1105', 2000, 0), line('S11-4201', 0, 2000),
+    ];
+    const p = supplierPaymentPosition(d('15000'), rows, lines, { capToBooked: true });
+    expect(p.depositOutstanding.toFixed(2)).toBe('0.00');
+    expect(p.paidTotal.toFixed(2)).toBe('8000.00');
+    expect(p.paymentCap.toFixed(2)).toBe('6000.00');
+    expect(p.remainingOnPo.toFixed(2)).toBe('0.00');
+    expect(p.status).toBe('FULLY_PAID');
+  });
+
+  // ผู้ตรวจอิสระ 2026-10-11 ข้อ 1: ยกเลิกรายการชำระ = รายการกลับเครดิต S21-110x เท่ากัน — ไม่ใช่ของที่รับ ห้ามนับเข้าเพดาน
+  it('รายการกลับของการจ่ายที่ยกเลิก (source PAYMENT) ไม่ทำให้เพดาน/ของที่รับจริงเพิ่ม', () => {
+    const src = (l: ReturnType<typeof line>, source: 'RECEIVING' | 'PAYMENT') => ({ ...l, source });
+    const lines = [
+      src(line('S11-2001', 6000, 0), 'RECEIVING'), src(line('S21-1101', 0, 6000), 'RECEIVING'),
+      src(line('S21-1101', 6000, 0), 'PAYMENT'), src(line('S11-1202', 0, 6000), 'PAYMENT'), // ชำระ
+      src(line('S21-1101', 0, 6000), 'PAYMENT'), src(line('S11-1202', 6000, 0), 'PAYMENT'), // ยกเลิกรายการชำระ (กระจก)
+    ];
+    const p = supplierPaymentPosition(d('15000'), [row('SETTLEMENT', 6000, new Date())], lines, { capToBooked: true });
+    expect(p.paymentCap.toFixed(2)).toBe('6000.00');
+    expect(p.paidTotal.toFixed(2)).toBe('0.00');
+    expect(p.remainingOnPo.toFixed(2)).toBe('6000.00');
+    expect(p.payableOutstanding.toFixed(2)).toBe('6000.00');
+    // ไม่เคยรับของเลย มีแต่กระจกของการจ่าย → ไม่ถือว่าเคยตั้งเจ้าหนี้
+    const onlyMirror = supplierPaymentPosition(d('15000'), [], [src(line('S21-1101', 0, 6000), 'PAYMENT')], { capToBooked: true });
+    expect(onlyMirror.hasBookedPayable).toBe(false);
+    expect(onlyMirror.paymentCap.toFixed(2)).toBe('0.00');
+  });
+
+  it('ยังไม่มีหน่วยใดลงบัญชี (เพดาน 0) แต่เคยมัดจำ → ยังเป็นจ่ายมัดจำ ไม่ใช่จ่ายครบ', () => {
+    const p = supplierPaymentPosition(d('15000'), [row('DEPOSIT', 3000)], [line('S11-4201', 3000, 0), line('S11-1202', 0, 3000)], { capToBooked: true });
+    expect(p.paymentCap.toFixed(2)).toBe('0.00');
+    expect(p.status).toBe('DEPOSIT_PAID');
+  });
+});
+
 describe('splitSettlement / allocatePayable — ปันยอดตามเจ้าหนี้', () => {
   it('ปันเรียงรหัสบัญชี เต็มเจ้าหนี้ทีละบัญชี ส่วนเกิน = มัดจำ', () => {
     const exact = splitSettlement(d('10729'), { 'S21-1102': d('2729'), 'S21-1101': d('8000') });

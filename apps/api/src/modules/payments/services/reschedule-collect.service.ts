@@ -18,6 +18,11 @@ import { d } from '../../../utils/decimal.util';
 import { addBkkDays } from '../../../utils/date.util';
 import { resolveUserDefaultCashAccount, resolveFinanceCompanyId } from './payment-helpers';
 import { RESCHEDULE_ADVANCE_UNPARKED } from '../../receipts/services/receipt-void.service';
+import {
+  ADVANCE_VAT_META,
+  advanceVatOf,
+  buildAdvanceVatParkLines,
+} from '../../journal/advance-vat';
 
 export interface RescheduleCollectInput {
   contractId: string;
@@ -253,6 +258,9 @@ export class RescheduleCollectService {
         // 3. Collect JE — only when there is money to collect HERE (6b bundled
         // phase 2 collected everything through the orchestrator already).
         let journalEntryNo: string | null = null;
+        // PR4: ภาษีขายของเงินพัก 6a (0 เมื่อ 6b / ไม่มีค่าธรรมเนียม) — ใช้ทั้งบรรทัดและ stamp
+        const advanceVatPark =
+          q.variant === '6a' && q.rescheduleFee.gt(0) ? advanceVatOf(q.rescheduleFee) : new Prisma.Decimal(0);
         if (collectHere.gt(0)) {
           const zero = new Prisma.Decimal(0);
           const lines: {
@@ -279,6 +287,9 @@ export class RescheduleCollectService {
               // whichever installment accrues next. CPA CSV wording.
               description: 'เงินรับล่วงหน้างวดสุดท้าย — ค่าธรรมเนียมปรับดิว (6a)',
             });
+            // PR4 (ต2 ข): ค่าธรรมเนียม 6a = เงินค่างวดที่รับไว้ก่อน ⇒ รับรู้ภาษีขาย ณ วันรับ ในรายการเดียวกัน
+            // (Dr 21-2102 / Cr 21-2101 = HALF_UP(fee × 7/107)) — ค่าปรับ 42-1103 ไม่มี VAT จึงไม่อยู่ในฐาน
+            lines.push(...buildAdvanceVatParkLines(advanceVatPark));
           }
           if (q.lateFee.gt(0)) {
             lines.push({
@@ -302,6 +313,9 @@ export class RescheduleCollectService {
                 daysToShift: input.daysToShift,
                 rescheduleFee: q.rescheduleFee.toString(),
                 lateFeeCollected: q.lateFee.toString(),
+                ...(advanceVatPark.gt(0)
+                  ? { [ADVANCE_VAT_META.park]: advanceVatPark.toFixed(2) }
+                  : {}),
               },
               lines,
             },

@@ -64,7 +64,7 @@ REVOKE ALL ON public."booking_items" FROM mcp_ro;
 GRANT SELECT ("id", "booking_id", "product_id", "quantity", "unit_price", "amount", "created_at") ON public."booking_items" TO mcp_ro;
 
 REVOKE ALL ON public."bookings" FROM mcp_ro;
-GRANT SELECT ("id", "booking_number", "customer_id", "branch_id", "status", "deposit_amount", "total_amount", "expire_date", "deposit_paid_at", "deposit_method", "deposit_account_code", "deposit_received_by_id", "canceled_at", "canceled_by_id", "cancel_reason", "converted_to_sale_id", "converted_at", "created_by_id", "created_at", "updated_at", "deleted_at") ON public."bookings" TO mcp_ro;
+GRANT SELECT ("id", "booking_number", "customer_id", "branch_id", "status", "deposit_amount", "total_amount", "expire_date", "deposit_paid_at", "deposit_method", "deposit_account_code", "deposit_received_by_id", "canceled_at", "canceled_by_id", "cancel_reason", "converted_to_sale_id", "converted_at", "created_by_id", "created_at", "updated_at", "deleted_at", "locked_product_id", "locked_at", "unlocked_at", "source_room_id", "expiry_reminder_sent_at", "expiry_reminder_skip_reason") ON public."bookings" TO mcp_ro;
 
 REVOKE ALL ON public."bot_detection_logs" FROM mcp_ro;
 GRANT SELECT ("id", "created_at") ON public."bot_detection_logs" TO mcp_ro;
@@ -91,7 +91,7 @@ REVOKE ALL ON public."buyback_questions" FROM mcp_ro;
 GRANT SELECT ("id", "key", "title", "help_text", "select_type", "sort_order", "is_active", "created_at", "updated_at", "deleted_at") ON public."buyback_questions" TO mcp_ro;
 
 REVOKE ALL ON public."call_logs" FROM mcp_ro;
-GRANT SELECT ("id", "contract_id", "caller_id", "called_at", "result", "created_at", "updated_at", "deleted_at", "settlement_date", "yeastar_call_id", "call_direction", "duration", "recording_url", "recording_storage_tier", "recording_downloaded_at", "yeastar_recording_path", "auto_logged", "broken_at", "call_result", "negotiation_result", "voice_memo_url", "voice_memo_tier", "voice_memo_glacier_restore_expires_at", "settlement_amount", "second_settlement_date", "second_settlement_amount", "superseded_at", "superseded_by_call_log_id", "reschedule_count", "kept_at", "canceled_at", "canceled_reason", "cycle_started_at", "cycle_deadline", "target_installment_ids") ON public."call_logs" TO mcp_ro;
+GRANT SELECT ("id", "contract_id", "caller_id", "called_at", "result", "created_at", "updated_at", "deleted_at", "settlement_date", "broken_at", "call_result", "negotiation_result", "voice_memo_url", "voice_memo_tier", "voice_memo_glacier_restore_expires_at", "yeastar_call_id", "call_direction", "duration", "recording_url", "recording_storage_tier", "recording_downloaded_at", "yeastar_recording_path", "auto_logged", "settlement_amount", "second_settlement_date", "second_settlement_amount", "superseded_at", "superseded_by_call_log_id", "reschedule_count", "kept_at", "canceled_at", "canceled_reason", "cycle_started_at", "cycle_deadline", "target_installment_ids") ON public."call_logs" TO mcp_ro;
 
 REVOKE ALL ON public."canned_response_bubbles" FROM mcp_ro;
 GRANT SELECT ("id", "canned_response_id", "type", "sort_order", "thumbnail_url", "sticker_package_id", "sticker_id", "created_at", "updated_at", "deleted_at", "channels", "latitude", "longitude", "location_title", "json") ON public."canned_response_bubbles" TO mcp_ro;
@@ -117,14 +117,38 @@ GRANT SELECT ("id", "session_id", "customer_question", "staff_answer", "suggeste
 REVOKE ALL ON public."chat_knowledge_base" FROM mcp_ro;
 GRANT SELECT ("id", "channel", "category", "intent", "trigger_keywords", "example_questions", "response_template", "response_type", "requires_auth", "requires_tools", "active", "priority", "created_at", "updated_at", "deleted_at") ON public."chat_knowledge_base" TO mcp_ro;
 
+REVOKE ALL ON public."chat_library_files" FROM mcp_ro;
+GRANT SELECT ("id", "company", "branch_id", "creator_id", "folder_id", "key", "mime_type", "size", "request_key", "fingerprint", "created_at", "updated_at", "deleted_at") ON public."chat_library_files" TO mcp_ro;
+
+REVOKE ALL ON public."chat_library_folders" FROM mcp_ro;
+GRANT SELECT ("id", "company", "branch_id", "creator_id", "created_at", "updated_at", "deleted_at") ON public."chat_library_folders" TO mcp_ro;
+
+REVOKE ALL ON public."chat_library_operations" FROM mcp_ro;
+GRANT SELECT ("id", "request_key", "company", "action", "actor_id", "room_id", "file_id", "created_at") ON public."chat_library_operations" TO mcp_ro;
+
 REVOKE ALL ON public."chat_messages" FROM mcp_ro;
 GRANT SELECT ("id", "room_id", "role", "type", "text", "media_url", "intent", "confidence", "model_used", "input_tokens", "output_tokens", "cost_usd", "payment_id", "receipt_id", "created_at", "deleted_at", "staff_id", "delivered_at", "read_at", "delivery_status", "outbound_sent_at") ON public."chat_messages" TO mcp_ro;
 
+REVOKE ALL ON public."chat_note_mentions" FROM mcp_ro;
+GRANT SELECT ("id", "user_id", "created_at") ON public."chat_note_mentions" TO mcp_ro;
+
 REVOKE ALL ON public."chat_notes" FROM mcp_ro;
-GRANT SELECT ("id", "room_id", "staff_id", "created_at", "updated_at", "deleted_at", "pinned_at", "pinned_by_id") ON public."chat_notes" TO mcp_ro;
+GRANT SELECT ("id", "room_id", "staff_id", "created_at", "updated_at", "deleted_at", "pinned_at", "pinned_by_id", "request_key") ON public."chat_notes" TO mcp_ro;
+
+REVOKE ALL ON public."chat_response_cycles" FROM mcp_ro;
+GRANT SELECT ("id", "room_id", "started_at", "first_customer_message_id", "first_bot_sent_at", "first_human_sent_at", "first_human_staff_id", "assigned_at_open_id", "ended_at", "end_reason", "origin", "policy_version", "alert_eligible_at", "merged_into_id", "created_at", "updated_at", "deleted_at") ON public."chat_response_cycles" TO mcp_ro;
 
 REVOKE ALL ON public."chat_rooms" FROM mcp_ro;
 GRANT SELECT ("id", "customer_id", "channel", "status", "verified_at", "verification_attempts", "handoff_mode", "handoff_tagged_at", "handoff_staff_id", "total_messages", "last_message_at", "created_at", "updated_at", "deleted_at", "priority", "assigned_to_id", "first_response_at", "resolved_at", "lead_score", "lead_temperature", "pinned_at", "pinned_by_id", "unread_count", "display_name", "ai_paused", "ai_paused_at", "ai_paused_by_id") ON public."chat_rooms" TO mcp_ro;
+
+REVOKE ALL ON public."chat_service_request_events" FROM mcp_ro;
+GRANT SELECT ("id", "request_id", "kind", "from_status", "to_status", "actor_id", "reason", "created_at") ON public."chat_service_request_events" TO mcp_ro;
+
+REVOKE ALL ON public."chat_service_request_sources" FROM mcp_ro;
+GRANT SELECT ("request_id", "message_id") ON public."chat_service_request_sources" TO mcp_ro;
+
+REVOKE ALL ON public."chat_service_requests" FROM mcp_ro;
+GRANT SELECT ("id", "room_id", "customer_id", "requested_product_id", "contract_id", "sale_id", "todo_id", "after_sales_case_id", "created_by_id", "request_key", "request_fingerprint", "symptom", "status", "revision", "created_at", "updated_at", "deleted_at") ON public."chat_service_requests" TO mcp_ro;
 
 REVOKE ALL ON public."chat_side_messages" FROM mcp_ro;
 GRANT SELECT ("id", "room_id", "staff_id", "created_at", "deleted_at") ON public."chat_side_messages" TO mcp_ro;
@@ -288,6 +312,21 @@ GRANT SELECT ("id", "external_finance_company_id", "customer_id", "financed_amou
 REVOKE ALL ON public."external_finance_companies" FROM mcp_ro;
 GRANT SELECT ("id", "contact_person", "default_commission_rate", "is_active", "created_at", "updated_at", "deleted_at", "credit_term_days", "line_oa_id", "contact_id", "line_group_id", "precheck_template") ON public."external_finance_companies" TO mcp_ro;
 
+REVOKE ALL ON public."facebook_comment_events" FROM mcp_ro;
+GRANT SELECT ("id", "thread_id", "page_id", "event_key", "verb", "provider_revision", "provider_at", "created_at") ON public."facebook_comment_events" TO mcp_ro;
+
+REVOKE ALL ON public."facebook_comment_pages" FROM mcp_ro;
+GRANT SELECT ("page_id", "company", "branch_id", "enabled", "created_at") ON public."facebook_comment_pages" TO mcp_ro;
+
+REVOKE ALL ON public."facebook_comment_records" FROM mcp_ro;
+GRANT SELECT ("id", "thread_id", "page_id", "parent_id", "author_id", "provider_revision", "needs_reconciliation", "deleted_at", "created_at", "updated_at") ON public."facebook_comment_records" TO mcp_ro;
+
+REVOKE ALL ON public."facebook_comment_replies" FROM mcp_ro;
+GRANT SELECT ("id", "thread_id", "page_id", "author_id", "request_key", "status", "external_id", "error_code", "inbound_sequence", "attempted_at", "confirmed_at", "updated_at") ON public."facebook_comment_replies" TO mcp_ro;
+
+REVOKE ALL ON public."facebook_comment_threads" FROM mcp_ro;
+GRANT SELECT ("id", "page_id", "post_id", "company", "branch_id", "assignee_id", "customer_id", "room_id", "status", "revision", "inbound_sequence", "waiting_since", "last_customer_at", "root_deleted", "needs_reconciliation", "created_at", "updated_at") ON public."facebook_comment_threads" TO mcp_ro;
+
 REVOKE ALL ON public."fee_waiver_approvals" FROM mcp_ro;
 GRANT SELECT ("id", "waiver_payment_id", "approver_id", "approved_at") ON public."fee_waiver_approvals" TO mcp_ro;
 
@@ -316,10 +355,10 @@ REVOKE ALL ON public."gfin_rate_factors" FROM mcp_ro;
 GRANT SELECT ("id", "months", "factor", "fee_per_installment", "is_active", "created_at", "updated_at", "deleted_at", "shop_commission_pct") ON public."gfin_rate_factors" TO mcp_ro;
 
 REVOKE ALL ON public."goods_receiving_items" FROM mcp_ro;
-GRANT SELECT ("id", "receiving_id", "po_item_id", "imei_serial", "serial_number", "status", "reject_reason", "product_id", "created_at", "battery_health", "warranty_expired", "warranty_expire_date", "has_box", "checklist_results", "updated_at", "deleted_at", "defect_reason") ON public."goods_receiving_items" TO mcp_ro;
+GRANT SELECT ("id", "receiving_id", "po_item_id", "imei_serial", "serial_number", "status", "reject_reason", "product_id", "created_at", "battery_health", "warranty_expired", "warranty_expire_date", "has_box", "checklist_results", "updated_at", "deleted_at", "defect_reason", "received_cost", "journal_entry_id", "received_vat") ON public."goods_receiving_items" TO mcp_ro;
 
 REVOKE ALL ON public."goods_receivings" FROM mcp_ro;
-GRANT SELECT ("id", "po_id", "received_by_id", "created_at", "updated_at", "deleted_at", "gr_number") ON public."goods_receivings" TO mcp_ro;
+GRANT SELECT ("id", "po_id", "received_by_id", "created_at", "updated_at", "deleted_at", "gr_number", "supplier_doc_type", "supplier_doc_number", "supplier_doc_date", "tax_invoice_number", "tax_invoice_date", "tax_invoice_recorded_at", "tax_invoice_recorded_by_id") ON public."goods_receivings" TO mcp_ro;
 
 REVOKE ALL ON public."imported_sales" FROM mcp_ro;
 GRANT SELECT ("id") ON public."imported_sales" TO mcp_ro;
@@ -337,7 +376,7 @@ REVOKE ALL ON public."inspections" FROM mcp_ro;
 GRANT SELECT ("id", "product_id", "template_id", "inspector_id", "inspected_at", "overall_grade", "grade_override", "override_reason", "is_completed", "created_at", "updated_at", "deleted_at") ON public."inspections" TO mcp_ro;
 
 REVOKE ALL ON public."installment_schedules" FROM mcp_ro;
-GRANT SELECT ("id", "contract_id", "installment_no", "due_date", "principal", "interest", "rescheduled_from_date", "reschedule_count", "accrual_journal_entry_id", "vat_60day_journal_entry_id", "created_at", "updated_at", "deleted_at", "amount_due") ON public."installment_schedules" TO mcp_ro;
+GRANT SELECT ("id", "contract_id", "installment_no", "due_date", "principal", "interest", "rescheduled_from_date", "reschedule_count", "accrual_journal_entry_id", "vat_60day_journal_entry_id", "created_at", "updated_at", "deleted_at", "amount_due", "accrued_amount", "accrued_interest", "accrued_vat") ON public."installment_schedules" TO mcp_ro;
 
 REVOKE ALL ON public."inter_co_settlement_batches" FROM mcp_ro;
 GRANT SELECT ("id", "batch_number", "status", "transfer_date", "posted_at", "finance_bank_code", "shop_bank_code", "total_financed", "total_commission", "total_amount", "shop_posted_amount", "transfer_ref", "slip_file_key", "maker_id", "approver_id", "finance_journal_entry_id", "shop_journal_entry_id", "reverse_reason", "created_at", "updated_at", "deleted_at", "total_deduction", "net_transfer_amount", "shop_net_amount") ON public."inter_co_settlement_batches" TO mcp_ro;
@@ -493,7 +532,7 @@ REVOKE ALL ON public."product_reservations" FROM mcp_ro;
 GRANT SELECT ("id", "product_id", "customer_id", "session_id", "reserved_at", "expires_at", "status", "consumed_by_id", "created_at", "updated_at", "preempt_notified_at") ON public."product_reservations" TO mcp_ro;
 
 REVOKE ALL ON public."products" FROM mcp_ro;
-GRANT SELECT ("id", "brand", "model", "imei_serial", "category", "cost_price", "supplier_id", "po_id", "branch_id", "status", "inspection_id", "created_at", "updated_at", "deleted_at", "color", "storage", "serial_number", "battery_health", "warranty_expired", "warranty_expire_date", "has_box", "accessory_type", "accessory_brand", "stock_in_date", "checklist_results", "legacy_product_code", "owned_by_company_id", "shop_warranty_days", "was_previously_damaged", "restored_from_terminal_at", "condition_grade", "gallery", "gallery360", "is_online_visible", "cash_price", "installment_price", "accessories_included", "price_autofilled_at", "device_origin", "warranty_terms", "parts_history", "parts_history_note") ON public."products" TO mcp_ro;
+GRANT SELECT ("id", "brand", "model", "imei_serial", "category", "cost_price", "supplier_id", "po_id", "branch_id", "status", "inspection_id", "created_at", "updated_at", "deleted_at", "color", "storage", "serial_number", "battery_health", "warranty_expired", "warranty_expire_date", "has_box", "accessory_type", "accessory_brand", "stock_in_date", "checklist_results", "legacy_product_code", "owned_by_company_id", "shop_warranty_days", "was_previously_damaged", "restored_from_terminal_at", "condition_grade", "gallery", "gallery360", "is_online_visible", "cash_price", "installment_price", "accessories_included", "price_autofilled_at", "device_origin", "warranty_terms", "parts_history") ON public."products" TO mcp_ro;
 
 REVOKE ALL ON public."promise_slots" FROM mcp_ro;
 GRANT SELECT ("id", "call_log_id", "slot_index", "settlement_date", "settlement_amount", "paid_amount", "kept_at", "broken_at", "locked_at", "created_at", "updated_at") ON public."promise_slots" TO mcp_ro;
@@ -503,6 +542,9 @@ GRANT SELECT ("id", "promotion_id", "sale_id", "customer_id", "discount_applied"
 
 REVOKE ALL ON public."promotions" FROM mcp_ro;
 GRANT SELECT ("id", "type", "discount_value", "special_interest_rate", "conditions", "start_date", "end_date", "max_usage_count", "current_usage_count", "is_active", "created_at", "updated_at", "deleted_at") ON public."promotions" TO mcp_ro;
+
+REVOKE ALL ON public."purchase_order_payments" FROM mcp_ro;
+GRANT SELECT ("id", "po_id", "supplier_id", "kind", "amount", "paid_at", "posted_at", "slip_url", "receiving_id", "journal_entry_id", "created_by_id", "request_id", "voided_at", "voided_by_id", "void_reason", "reversal_journal_entry_id", "created_at", "updated_at", "deleted_at") ON public."purchase_order_payments" TO mcp_ro;
 
 REVOKE ALL ON public."purchase_orders" FROM mcp_ro;
 GRANT SELECT ("id", "po_number", "supplier_id", "order_date", "expected_date", "status", "total_amount", "created_by_id", "approved_by_id", "created_at", "updated_at", "payment_status", "paid_amount", "discount", "vat_amount", "net_amount", "payment_method", "due_date", "stock_check_ref", "reject_reason", "deleted_at", "discount_after_vat", "ordered_at", "is_direct_receive") ON public."purchase_orders" TO mcp_ro;
@@ -514,7 +556,7 @@ REVOKE ALL ON public."quotes" FROM mcp_ro;
 GRANT SELECT ("id", "quote_number", "customer_id", "branch_id", "status", "valid_until", "subtotal", "discount", "vat_amount", "total", "converted_to_sale_id", "sent_at", "accepted_at", "rejected_at", "converted_at", "created_by_id", "created_at", "updated_at", "deleted_at") ON public."quotes" TO mcp_ro;
 
 REVOKE ALL ON public."receipts" FROM mcp_ro;
-GRANT SELECT ("id", "receipt_number", "contract_id", "payment_id", "amount", "installment_no", "remaining_balance", "remaining_months", "payment_method", "transaction_ref", "paid_date", "file_url", "is_voided", "void_reason", "voided_receipt_id", "issued_by_id", "created_at", "receiptType", "deleted_at", "updated_at", "amount_before_vat", "vat_amount", "void_approved_by_id", "void_approved_at", "payment_status", "installment_partial_seq", "remaining_amount", "cn_source", "public_token_expires_at", "source_journal_entry_id") ON public."receipts" TO mcp_ro;
+GRANT SELECT ("id", "receipt_number", "contract_id", "payment_id", "amount", "installment_no", "remaining_balance", "remaining_months", "payment_method", "transaction_ref", "paid_date", "file_url", "is_voided", "void_reason", "voided_receipt_id", "issued_by_id", "created_at", "receiptType", "deleted_at", "updated_at", "amount_before_vat", "vat_amount", "void_approved_by_id", "void_approved_at", "payment_status", "installment_partial_seq", "remaining_amount", "cn_source", "public_token_expires_at", "source_journal_entry_id", "advance_amount", "advance_vat_amount", "late_fee_amount", "late_fee_waived_amount", "rounding_amount") ON public."receipts" TO mcp_ro;
 
 REVOKE ALL ON public."receivable_recon_logs" FROM mcp_ro;
 GRANT SELECT ("id", "run_date", "branch_id", "journal_balance", "contract_outstanding", "gap", "threshold", "breached", "created_at") ON public."receivable_recon_logs" TO mcp_ro;
@@ -594,11 +636,14 @@ GRANT SELECT ("id", "max_contribution", "effective_from", "effective_to", "is_ac
 REVOKE ALL ON public."staff_chat_activities" FROM mcp_ro;
 GRANT SELECT ("id", "staff_id", "action", "created_at") ON public."staff_chat_activities" TO mcp_ro;
 
+REVOKE ALL ON public."staff_inbox_items" FROM mcp_ro;
+GRANT SELECT ("id", "kind", "room_id", "todo_id", "dedupe_key", "title", "target_type", "target_id", "read_at", "created_at", "updated_at", "deleted_at") ON public."staff_inbox_items" TO mcp_ro;
+
 REVOKE ALL ON public."sticker_templates" FROM mcp_ro;
 GRANT SELECT ("id", "size_width_mm", "size_height_mm", "layout_config", "placeholders", "is_active", "created_at", "updated_at", "deleted_at") ON public."sticker_templates" TO mcp_ro;
 
 REVOKE ALL ON public."stock_adjustments" FROM mcp_ro;
-GRANT SELECT ("id", "product_id", "branch_id", "reason", "previous_status", "adjusted_by_id", "created_at", "updated_at", "deleted_at", "approved_by_id", "approved_at") ON public."stock_adjustments" TO mcp_ro;
+GRANT SELECT ("id", "product_id", "branch_id", "reason", "previous_status", "adjusted_by_id", "created_at", "updated_at", "deleted_at", "approved_by_id", "approved_at", "status", "request_number", "rejected_by_id", "rejected_at", "rejected_reason", "canceled_by_id", "canceled_at", "cost_amount", "inventory_account_code", "inventory_booked", "booked_source", "journal_entry_id", "reverses_adjustment_id") ON public."stock_adjustments" TO mcp_ro;
 
 REVOKE ALL ON public."stock_alerts" FROM mcp_ro;
 GRANT SELECT ("id", "reorder_point_id", "brand", "model", "storage", "category", "branch_id", "current_stock", "min_quantity", "reorder_quantity", "status", "po_id", "resolved_at", "created_at", "updated_at", "deleted_at") ON public."stock_alerts" TO mcp_ro;
@@ -630,8 +675,11 @@ GRANT SELECT ("id", "created_at", "updated_at", "deleted_at") ON public."templat
 REVOKE ALL ON public."todo_comments" FROM mcp_ro;
 GRANT SELECT ("id", "todo_id", "user_id", "created_at") ON public."todo_comments" TO mcp_ro;
 
+REVOKE ALL ON public."todo_work_events" FROM mcp_ro;
+GRANT SELECT ("id", "todo_id", "actor_id", "kind", "from_due_at", "to_due_at", "from_assignee_id", "to_assignee_id", "from_status", "to_status", "created_at") ON public."todo_work_events" TO mcp_ro;
+
 REVOKE ALL ON public."todos" FROM mcp_ro;
-GRANT SELECT ("id", "title", "status", "priority", "due_date", "completed_at", "created_by_id", "assignee_id", "branch_id", "tags", "checklist", "created_at", "updated_at", "deleted_at", "room_id") ON public."todos" TO mcp_ro;
+GRANT SELECT ("id", "title", "status", "priority", "due_date", "completed_at", "created_by_id", "assignee_id", "branch_id", "tags", "checklist", "created_at", "updated_at", "deleted_at", "room_id", "work_kind", "revision", "due_revision", "request_key", "request_fingerprint") ON public."todos" TO mcp_ro;
 
 REVOKE ALL ON public."trade_in_credit_redemptions" FROM mcp_ro;
 GRANT SELECT ("id", "trade_in_id", "sale_id", "contract_id", "base_amount", "bonus_amount", "created_by_id", "created_at", "application_journal_entry_id", "released_at", "released_by_id", "release_reason") ON public."trade_in_credit_redemptions" TO mcp_ro;

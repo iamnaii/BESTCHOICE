@@ -22,10 +22,11 @@ const po = (over: Partial<PurchaseOrder>): PurchaseOrder =>
   }) as PurchaseOrder;
 
 const mut = { isPending: false, mutate: vi.fn() } as never;
-function renderTab(pos: PurchaseOrder[]) {
+function renderTab(pos: PurchaseOrder[], readOnly = false) {
   const openDetailModal = vi.fn();
   render(
     <POListTab
+      readOnly={readOnly}
       statusFilter=""
       setStatusFilter={vi.fn()}
       pos={pos}
@@ -102,5 +103,24 @@ describe('POListTab — sorting after the date moved under the PO number', () =>
     ]);
     fireEvent.click(screen.getByRole('columnheader', { name: /ผู้จัดจำหน่าย/ }));
     expect(screen.getAllByRole('button', { name: /^PO-2026/ }).map((b) => b.textContent)).toEqual(['PO-2026-09-010', 'PO-2026-09-011']);
+  });
+});
+
+describe('POListTab — ดูอย่างเดียว (ผจก.การเงิน / ฝ่ายบัญชี · คำตัดสินเจ้าของ 2026-10-11)', () => {
+  it('readOnly: คอลัมน์กระทำเหลือ "ดูรายละเอียด" และป้ายสถานะจ่ายเงินไม่ใช่ปุ่ม', () => {
+    renderTab([po({ status: 'ORDERED', items: [item({ receivedQty: 0 })] })], true);
+    const row = screen.getByRole('button', { name: 'PO-2026-09-010' }).closest('tr') as HTMLElement;
+    expect(within(row).getByRole('button', { name: 'ดูรายละเอียด PO-2026-09-010' })).toBeInTheDocument();
+    expect(within(row).queryByRole('button', { name: 'รับสินค้า PO-2026-09-010' })).toBeNull();
+    expect(within(row).queryByRole('button', { name: 'ยกเลิก PO-2026-09-010' })).toBeNull();
+    expect(within(row).queryByTitle('บันทึกการจ่าย')).toBeNull();
+    expect(within(row).getByText('ยังไม่จ่าย')).toBeInTheDocument();
+  });
+
+  it('ไม่ readOnly: ป้ายสถานะจ่ายเงินยังเป็นปุ่มเปิดบันทึกการจ่าย', () => {
+    renderTab([po({ status: 'ORDERED', items: [item({ receivedQty: 0 })] })]);
+    const row = screen.getByRole('button', { name: 'PO-2026-09-010' }).closest('tr') as HTMLElement;
+    expect(within(row).getByTitle('บันทึกการจ่าย')).toBeInTheDocument();
+    expect(within(row).getByRole('button', { name: 'รับสินค้า PO-2026-09-010' })).toBeInTheDocument();
   });
 });

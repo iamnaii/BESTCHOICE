@@ -79,6 +79,8 @@ describe('หน้าจอยึดคืน — ตัวอย่างข�
       payment: {
         findMany: jest.fn().mockResolvedValue(payments.filter((p) => p.status === 'PAID')),
       },
+      // PR4: advanceVatOutstanding อ่าน stamp จาก journalEntry — ไม่มีรายการที่ประทับในฟิกซ์เจอร์นี้
+      journalEntry: { findMany: jest.fn().mockResolvedValue([]) },
       journalLine: {
         findMany: jest.fn(async (args: { where: { accountCode: string } }) => {
           const g = gl[args.where.accountCode];

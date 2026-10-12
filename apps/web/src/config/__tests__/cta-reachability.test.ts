@@ -50,6 +50,13 @@ const RENDERED_CTAS: Array<{ where: string; label: string; path: string; roles: 
     // = @Roles ของ POST /customers
     roles: ['OWNER', 'BRANCH_MANAGER', 'SALES'],
   },
+  {
+    where: 'PurchaseOrdersPage/index.tsx — ลิงก์หัวหน้า + การ์ด "รอถ่ายรูป" ในแถบสรุป gate ด้วย `canManagePO` (FM/ACC ดูอย่างเดียว 2026-10-11)',
+    label: 'รอถ่ายรูป',
+    path: '/purchase-orders/qc',
+    // = ProtectedRoute ของ /purchase-orders/qc ใน App.tsx
+    roles: ['OWNER', 'BRANCH_MANAGER'],
+  },
 ];
 
 describe('ปุ่มในหน้าจอต้องพาไปหน้าที่ role นั้นเข้าได้จริง', () => {

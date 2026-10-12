@@ -178,6 +178,38 @@ export class CancelPODto {
   reason?: string;
 }
 
+/**
+ * ปิดใบ รับไม่ครบ (คำตัดสินเจ้าของ 2026-10-11): เหตุผลบังคับ · ใบที่มีมัดจำค้างส่งผลมัดจำแบบเดียวกับ CancelPODto
+ * (`depositReason` = หมายเหตุ/เหตุผลของฝั่งมัดจำ — ไม่ส่ง = ใช้เหตุผลที่ปิดใบ)
+ */
+export class ClosePOShortDto {
+  @IsString()
+  @IsNotEmpty({ message: 'กรุณาระบุเหตุผลที่ปิดใบ' })
+  @MaxLength(500)
+  reason!: string;
+
+  @IsIn(['REFUNDED', 'FORFEITED'])
+  @IsOptional()
+  depositOutcome?: 'REFUNDED' | 'FORFEITED';
+
+  @IsOptional() @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: 'วันที่ได้รับเงินคืนไม่ถูกต้อง' })
+  refundedAt?: string;
+
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  refundAmount?: number;
+
+  @IsString()
+  @IsOptional()
+  slipUrl?: string;
+
+  @IsString()
+  @IsOptional()
+  @MaxLength(500)
+  depositReason?: string;
+}
+
 export class UpdatePaymentDto {
   @IsIn(['UNPAID', 'DEPOSIT_PAID', 'PARTIALLY_PAID', 'FULLY_PAID'])
   paymentStatus: string;

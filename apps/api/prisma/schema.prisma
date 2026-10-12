@@ -303,6 +303,8 @@ enum POStatus {
   PARTIALLY_RECEIVED
   FULLY_RECEIVED
   CANCELLED
+  /// ปิดใบ รับไม่ครบ (คำตัดสินเจ้าของ 2026-10-11): รับของบางส่วนแล้วผู้จัดจำหน่ายไม่ส่งที่เหลือ — ปิดถาวร ของที่มาทีหลังต้องเปิดใบใหม่
+  CLOSED_SHORT
 }
 
 enum DefectReason {
@@ -914,6 +916,7 @@ model User {
   auditLogs                   AuditLog[]
   purchaseOrdersCreated       PurchaseOrder[]           @relation("POCreatedBy")
   purchaseOrdersApproved      PurchaseOrder[]           @relation("POApprovedBy")
+  purchaseOrdersClosed        PurchaseOrder[]           @relation("POClosedBy")
   repossessionsAppraised      Repossession[]            @relation("AppraisedBy")
   deviceReturnsReceived       DeviceReturn[]            @relation("DeviceReturnReceivedBy")
   goodsReceivings             GoodsReceiving[]          @relation("GoodsReceivedBy")
@@ -1937,6 +1940,10 @@ model PurchaseOrder {
   bankNameSnapshot    String?         @map("bank_name_snapshot")
   createdById         String          @map("created_by_id")
   approvedById        String?         @map("approved_by_id")
+  /// ปิดใบ รับไม่ครบ (CLOSED_SHORT) — ใคร/เมื่อไร/ทำไม (null = ไม่เคยปิดแบบนี้)
+  closedAt            DateTime?       @map("closed_at")
+  closedById          String?         @map("closed_by_id")
+  closeReason         String?         @map("close_reason")
   createdAt           DateTime        @default(now()) @map("created_at")
   updatedAt           DateTime        @updatedAt @map("updated_at")
   deletedAt           DateTime?       @map("deleted_at")
@@ -1944,6 +1951,7 @@ model PurchaseOrder {
   supplier   Supplier @relation(fields: [supplierId], references: [id])
   createdBy  User     @relation("POCreatedBy", fields: [createdById], references: [id])
   approvedBy User?    @relation("POApprovedBy", fields: [approvedById], references: [id])
+  closedBy   User?    @relation("POClosedBy", fields: [closedById], references: [id])
 
   items           POItem[]
   products        Product[]

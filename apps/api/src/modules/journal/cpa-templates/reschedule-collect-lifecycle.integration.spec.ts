@@ -255,6 +255,10 @@ describe('reschedule-collect 6a → 2A accrual → advance consume lifecycle (in
     expect(dr('11-1101')).toBe('454.00'); // user default cash account
     expect(cr('21-1103')).toBe('354.00');
     expect(cr('42-1103')).toBe('100.00');
+    // PR4 (ต2 ข): ค่าธรรมเนียม 6a เข้าถัง ⇒ พักภาษีขาย HALF_UP(354 × 7/107) = 23.16 ในรายการเดียวกัน + stamp
+    expect(dr('21-2102')).toBe('23.16');
+    expect(cr('21-2101')).toBe('23.16');
+    expect((je!.metadata as Record<string, unknown>).advanceVatPark).toBe('23.16');
     const totalDr = je!.lines.reduce(
       (s, l) => s.plus(new Decimal(l.debit.toString())),
       new Decimal(0),
@@ -263,8 +267,8 @@ describe('reschedule-collect 6a → 2A accrual → advance consume lifecycle (in
       (s, l) => s.plus(new Decimal(l.credit.toString())),
       new Decimal(0),
     );
-    expect(totalDr.toFixed(2)).toBe('454.00');
-    expect(totalCr.toFixed(2)).toBe('454.00');
+    expect(totalDr.toFixed(2)).toBe('477.16'); // 454.00 + ขาพักภาษี 23.16 (คู่ที่สมดุลกันเอง)
+    expect(totalCr.toFixed(2)).toBe('477.16');
 
     // 6a fee = PREPAYMENT, park-at-last-installment (2026-08-16): the fee lands
     // on the DEDICATED park bucket — Contract.advanceBalance (generic) is

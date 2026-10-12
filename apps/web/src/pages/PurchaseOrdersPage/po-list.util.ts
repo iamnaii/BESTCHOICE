@@ -47,6 +47,21 @@ export function canCancel(po: { status: string; items: { receivedQty: number }[]
 }
 
 /**
+ * ปิดใบ รับไม่ครบ ได้ไหม — mirrors PoLifecycleService.closeShort(): เฉพาะใบ "รับบางส่วน" (คำตัดสินเจ้าของ 2026-10-11 ข้อ 1).
+ * ใบที่ยังไม่ได้รับของใช้ canCancel แทน · ใบที่ปิดแล้ว (CLOSED_SHORT) รับของ/ยกเลิก/ปิดซ้ำไม่ได้ (ข้อ 2)
+ */
+export function canCloseShort(po: { status: string }): boolean {
+  return po.status === 'PARTIALLY_RECEIVED';
+}
+
+export const isClosedShort = (po: { status: string }): boolean => po.status === 'CLOSED_SHORT';
+
+/** ชิ้นที่สั่งแล้วไม่ได้รับ (ไม่ติดลบ) — ป้าย "(ปิด N)" ของใบปิดรับไม่ครบ และกล่องยืนยันก่อนปิด */
+export function unreceivedQty(po: { items: { quantity: number; receivedQty: number }[] }): number {
+  return po.items.reduce((s, i) => s + Math.max(i.quantity - i.receivedQty, 0), 0);
+}
+
+/**
  * A leading "[tag]" on a name (the way test data is marked) — the list shows it as a small chip
  * beside the name instead of letting it push the name onto a second line.
  */

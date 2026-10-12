@@ -65,7 +65,6 @@ describe('AfterSalesCaseService.createCase — real assertEvidenceImage validato
   let repair: any;
   let docNumber: any;
   let lookupSvc: any;
-  let contractExchange: any;
   let defect: any;
   let line: any;
   let svc: AfterSalesCaseService;
@@ -84,7 +83,6 @@ describe('AfterSalesCaseService.createCase — real assertEvidenceImage validato
     repair = { createInTx: jest.fn() };
     docNumber = { nextCaseNumber: jest.fn() };
     lookupSvc = { lookup: jest.fn().mockResolvedValue(buildLookupResult()) };
-    contractExchange = { submit: jest.fn() };
     defect = { checkEligibility: jest.fn() };
     line = { notifyMoment: jest.fn().mockResolvedValue({ status: 'SENT' }) };
 
@@ -95,7 +93,6 @@ describe('AfterSalesCaseService.createCase — real assertEvidenceImage validato
       repair as never,
       docNumber as never,
       lookupSvc as never,
-      contractExchange as never,
       defect as never,
       line as never,
     );

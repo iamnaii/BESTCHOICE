@@ -11,7 +11,7 @@ import IntakeBox from './after-sales/IntakeBox';
 import SummaryStrip from './after-sales/SummaryStrip';
 import CaseTable from './after-sales/CaseTable';
 import ApprovalTable, { type ApprovalAction } from './after-sales/ApprovalTable';
-import { ApprovePricedDialog, RejectExchangeDialog } from './after-sales/ExchangeActionDialogs';
+import { RejectExchangeDialog } from './after-sales/ExchangeActionDialogs';
 import Pager from './after-sales/Pager';
 import { afterSalesKeys, type CaseRow, type ListResponse } from './after-sales/after-sales';
 
@@ -74,10 +74,6 @@ export default function AfterSalesPage() {
     ...INITIAL_FILTERS,
     tab: initialTabFrom(searchParams.get('tab'), user?.role),
   }));
-  const [approveDialog, setApproveDialog] = useState<{
-    id: string;
-    mode: 'MEMO' | 'PRICED';
-  } | null>(null);
   const [rejectDialog, setRejectDialog] = useState<{
     id: string;
     kind: 'SAME_MODEL' | 'PRICED';
@@ -90,10 +86,6 @@ export default function AfterSalesPage() {
     }
     if (action === 'open') {
       navigate(`/after-sales/${row.id}`);
-      return;
-    }
-    if (action === 'approve') {
-      setApproveDialog({ id: row.id, mode: row.exchange?.mode === 'MEMO' ? 'MEMO' : 'PRICED' });
       return;
     }
     setRejectDialog({
@@ -277,16 +269,6 @@ export default function AfterSalesPage() {
         ป้ายค้างนาน: ส่งซ่อมเกิน 14 วัน · รอรับเกิน 7 วัน · รออนุมัติเกิน 2 วัน
       </p>
 
-      {approveDialog && (
-        <ApprovePricedDialog
-          caseId={approveDialog.id}
-          open
-          onOpenChange={(next) => {
-            if (!next) setApproveDialog(null);
-          }}
-          mode={approveDialog.mode}
-        />
-      )}
       {rejectDialog && (
         <RejectExchangeDialog
           caseId={rejectDialog.id}

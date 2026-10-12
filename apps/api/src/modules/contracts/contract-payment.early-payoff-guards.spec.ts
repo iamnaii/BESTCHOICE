@@ -164,6 +164,8 @@ describe('ContractPaymentService early-payoff guards (Wave 3 MED gap-fill)', () 
       },
       // JP4 (PR5) + releaseEclOnPayoff (C1) read journalLine via glContractBalance; no prior
       // 11-2102 lines in this fixture → bal 0 → EclStageReverseTemplate skipped.
+      // PR4: advanceVatOutstanding อ่าน stamp จาก journalEntry — ไม่มีรายการที่ประทับในฟิกซ์เจอร์นี้
+      journalEntry: { findMany: jest.fn().mockResolvedValue([]) },
       journalLine: { findMany: jest.fn(ledgerAfterSixPaid) },
       badDebtProvision: {
         findFirst: jest.fn().mockResolvedValue(null),
@@ -175,6 +177,8 @@ describe('ContractPaymentService early-payoff guards (Wave 3 MED gap-fill)', () 
       contract: { findUnique: jest.fn().mockResolvedValue(contract) },
       installmentSchedule: { findMany: jest.fn().mockResolvedValue(schedules) },
       chartOfAccount: { findMany: jest.fn().mockResolvedValue([]) },
+      // PR4: advanceVatOutstanding อ่าน stamp จาก journalEntry — ไม่มีรายการที่ประทับในฟิกซ์เจอร์นี้
+      journalEntry: { findMany: jest.fn().mockResolvedValue([]) },
       journalLine: { findMany: jest.fn(ledgerAfterSixPaid) },
       companyInfo: {
         findFirst: jest.fn().mockImplementation((args: { where: { companyCode: string } }) => {

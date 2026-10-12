@@ -110,13 +110,37 @@ const META_VAT60 = {
   vatPerInst: '99.17',
 };
 const META_VAT60_REV = { tag: 'VAT60-REVERSAL', flow: 'reversal', contractId: 'c-1' };
+// PR4 (ต2): ขาพักภาษีของเงินรับล่วงหน้า อยู่ในรายการรับเงิน (6a) — stamp advanceVatPark · เครดิต 21-2101
+const META_6A_PARK = {
+  tag: 'reschedule-collect',
+  flow: 'reschedule-collect',
+  contractId: 'c-5',
+  advanceVatPark: '92.83',
+};
+// PR4 (ต3/ต10): ขากลับเมื่อเงินพักถูกหักเข้างวดสุดท้าย (รอบกลางคืน) — stamp advanceVatConsume · เดบิต 21-2101
+const META_PARK_CONSUME = {
+  tag: '2B',
+  flow: 'reschedule-park-consume',
+  contractId: 'c-5',
+  installmentScheduleId: 'inst-12',
+  advanceVatConsume: '92.83',
+};
+// รายการรายได้เงินพักส่วนเกิน (ต6) — ไม่มีขา 21-2101 แต่ stamp consume เช่นกัน (ไม่เข้าตัวคำนวณนี้ — ปักให้ชัด)
+const META_ADVANCE_EXCESS = {
+  tag: 'ADVANCE_EXCESS',
+  flow: 'advance-excess-income',
+  contractId: 'c-5',
+  advanceVatConsume: '86.49',
+};
 
 /**
  * กฎกระทบยอดที่ต้องจริงทุกกรณี: รวม − หัก = สุทธิ · ภาษีขาย = สุทธิ 21-2101 (+ สุทธิ 21-2103 เฉพาะเมื่อรวม 60 วัน)
  */
 function expectReconciles(s: Pp30OutputVatSummary) {
-  const { reversal, creditNote, other, total } = s.reductions;
-  expect(reversal.plus(creditNote).plus(other).toFixed(2)).toBe(total.toFixed(2));
+  const { reversal, creditNote, advanceApplied, other, total } = s.reductions;
+  expect(reversal.plus(creditNote).plus(advanceApplied).plus(other).toFixed(2)).toBe(
+    total.toFixed(2),
+  );
   expect(s.settledGross.minus(total).toFixed(2)).toBe(s.settledNet.toFixed(2));
   expect(s.mandatory60Day.credit.minus(s.mandatory60Day.debit).toFixed(2)).toBe(
     s.mandatory60Day.net.toFixed(2),
@@ -127,7 +151,107 @@ function expectReconciles(s: Pp30OutputVatSummary) {
   expect(expectedTotal.toFixed(2)).toBe(s.totalOutputVat.toFixed(2));
 }
 
+describe('classifyOutputVatReduction — ADVANCE_APPLIED (PR4 ต10)', () => {
+  it('ขากลับที่ stamp advanceVatConsume = เงินรับล่วงหน้าที่หักเข้างวด (รับรู้ภาษีแล้วตอนรับ)', () => {
+    expect(classifyOutputVatReduction({ referenceType: 'AUTO', metadata: META_PARK_CONSUME })).toBe(
+      'ADVANCE_APPLIED',
+    );
+    expect(
+      classifyOutputVatReduction({
+        referenceType: 'AUTO',
+        metadata: { tag: 'receipt', advanceVatConsume: '32.71' },
+      }),
+    ).toBe('ADVANCE_APPLIED');
+  });
+
+  it('ตรวจหลังกลับรายการและใบลดหนี้: กระจก (tag REVERSAL) ยังเป็น REVERSAL · JP5/ตัดหนี้สูญที่มี stamp ยังเป็น CREDIT_NOTE', () => {
+    expect(
+      classifyOutputVatReduction({
+        referenceType: 'AUTO',
+        metadata: { tag: 'REVERSAL', flow: 'receipt-void', advanceVatConsume: '32.71' },
+      }),
+    ).toBe('REVERSAL');
+    expect(
+      classifyOutputVatReduction({
+        referenceType: 'AUTO',
+        metadata: { ...META_JP5, advanceVatConsume: '92.83' },
+      }),
+    ).toBe('CREDIT_NOTE');
+    expect(
+      classifyOutputVatReduction({
+        referenceType: 'AUTO',
+        metadata: { ...META_WRITE_OFF, advanceVatConsume: '92.83' },
+      }),
+    ).toBe('CREDIT_NOTE');
+  });
+
+  it('stamp ว่าง/ศูนย์/ไม่ใช่ตัวเลข หรือมีแต่ขาพัก (advanceVatPark) = ไม่ใช่ ADVANCE_APPLIED', () => {
+    expect(classifyOutputVatReduction({ referenceType: 'AUTO', metadata: META_6A_PARK })).toBe(
+      'OTHER',
+    );
+    expect(
+      classifyOutputVatReduction({
+        referenceType: 'AUTO',
+        metadata: { tag: 'receipt', advanceVatConsume: '0.00' },
+      }),
+    ).toBe('OTHER');
+    expect(
+      classifyOutputVatReduction({
+        referenceType: 'AUTO',
+        metadata: { tag: 'receipt', advanceVatConsume: 'abc' },
+      }),
+    ).toBe('OTHER');
+  });
+});
+
 describe('summarizePp30OutputVat', () => {
+  it('G2 ในเดือนเดียว: พัก 6a 92.83 · 2A งวด 12 99.13 · ขากลับ 92.83 ⇒ ตั้ง 191.96 หัก ADVANCE_APPLIED 92.83 สุทธิ 99.13 (ไม่ใช่ "อื่น ๆ")', () => {
+    const consumeLine = line('21-2101', '92.83', '0', { metadata: META_PARK_CONSUME });
+    const s = summarizePp30OutputVat([
+      line('21-2101', '0', '92.83', { metadata: META_6A_PARK }),
+      line('21-2101', '0', '99.13', { metadata: { ...META_2A, installmentScheduleId: 'inst-12' } }),
+      consumeLine,
+    ]);
+
+    expect(toPp30OutputVatJson(s)).toEqual({
+      settledGross: '191.96',
+      reductionReversal: '0.00',
+      reductionCreditNote: '0.00',
+      reductionAdvanceApplied: '92.83',
+      reductionOther: '0.00',
+      reductionTotal: '92.83',
+      settledNet: '99.13',
+      mandatory60DayCredit: '0.00',
+      mandatory60DayDebit: '0.00',
+      mandatory60DayNet: '0.00',
+      mandatory60DayIncluded: false,
+      totalOutputVat: '99.13',
+    });
+    expect(s.reductions.advanceApplied.toFixed(2)).toBe('92.83');
+    expect(s.reductionLines).toEqual([
+      {
+        entryId: consumeLine.journalEntry.id,
+        entryNumber: consumeLine.journalEntry.entryNumber,
+        entryDate: consumeLine.journalEntry.entryDate,
+        description: consumeLine.journalEntry.description,
+        kind: 'ADVANCE_APPLIED',
+        amount: D('92.83'),
+      },
+    ]);
+    expectReconciles(s);
+  });
+
+  it('รายการรายได้เงินพักส่วนเกิน (ต6) ไม่มีขา 21-2101 — stamp consume ของมันไม่กระทบ ภ.พ.30', () => {
+    const s = summarizePp30OutputVat([
+      line('21-2101', '0', '99.17', { metadata: META_2A }),
+      line('21-2102', '0', '86.49', { metadata: META_ADVANCE_EXCESS }),
+      line('42-1106', '0', '1235.64', { metadata: META_ADVANCE_EXCESS }),
+    ]);
+    expect(s.reductions.advanceApplied.toFixed(2)).toBe('0.00');
+    expect(s.totalOutputVat.toFixed(2)).toBe('99.17');
+    expectReconciles(s);
+  });
+
   it('ยกเลิกใบเสร็จแล้วตั้งลูกหนี้งวดใหม่ในเดือนเดียวกัน: เครดิต 99.17 · กลับ 99.17 · ตั้งใหม่ 99.17 ⇒ 99.17 (เดิมนับได้ 198.34)', () => {
     const reversalLine = line('21-2101', '99.17', '0', { metadata: META_RECEIPT_ACCRUAL_VOID });
     const s = summarizePp30OutputVat([
@@ -140,6 +264,7 @@ describe('summarizePp30OutputVat', () => {
       settledGross: '198.34',
       reductionReversal: '99.17',
       reductionCreditNote: '0.00',
+      reductionAdvanceApplied: '0.00',
       reductionOther: '0.00',
       reductionTotal: '99.17',
       settledNet: '99.17',
@@ -249,6 +374,7 @@ describe('summarizePp30OutputVat', () => {
       settledGross: '0.00',
       reductionReversal: '0.00',
       reductionCreditNote: '0.00',
+      reductionAdvanceApplied: '0.00',
       reductionOther: '0.00',
       reductionTotal: '0.00',
       settledNet: '0.00',
@@ -288,6 +414,7 @@ describe('summarizePp30OutputVat', () => {
       settledGross: '991.66',
       reductionReversal: '99.17',
       reductionCreditNote: '99.17',
+      reductionAdvanceApplied: '0.00',
       reductionOther: '0.00',
       reductionTotal: '198.34',
       settledNet: '793.32',
@@ -372,6 +499,7 @@ describe('summarizePp30OutputVat', () => {
       settledGross: '99.17',
       reductionReversal: '0.00',
       reductionCreditNote: '0.00',
+      reductionAdvanceApplied: '0.00',
       reductionOther: '0.00',
       reductionTotal: '0.00',
       settledNet: '99.17',

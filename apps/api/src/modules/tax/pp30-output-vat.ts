@@ -1,6 +1,7 @@
 import { BadRequestException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { bangkokMidnight } from '../../utils/date.util';
+import { ADVANCE_VAT_META } from '../journal/advance-vat';
 
 /**
  * ภาษีขายของแบบ ภ.พ.30 — การคำนวณเดียวของระบบ (2026-09-30)
@@ -54,8 +55,12 @@ export const PP30_VAT_SETTLEMENT_ACCOUNT = '21-3201';
  */
 export const PP30_INCLUDES_MANDATORY_60DAY = false; // รอฝ่ายบัญชีตอบ
 
-/** ที่มาของเดบิต 21-2101 — REVERSAL = กลับรายการ · CREDIT_NOTE = ใบลดหนี้ ม.82/5 · OTHER = ระบุที่มาไม่ได้ */
-export type Pp30ReductionKind = 'REVERSAL' | 'CREDIT_NOTE' | 'OTHER';
+/**
+ * ที่มาของเดบิต 21-2101 — REVERSAL = กลับรายการ · CREDIT_NOTE = ใบลดหนี้ ม.82/5 ·
+ * ADVANCE_APPLIED = เงินรับล่วงหน้าที่ถูกหักเข้างวด (ภาษีรับรู้ไปแล้ว ณ วันรับเงิน — PR4 ต3/ต10) ·
+ * OTHER = ระบุที่มาไม่ได้
+ */
+export type Pp30ReductionKind = 'REVERSAL' | 'CREDIT_NOTE' | 'ADVANCE_APPLIED' | 'OTHER';
 
 /** บรรทัดสมุดบัญชีที่ตัวคำนวณอ่าน — รูปเดียวกับที่ `loadPp30OutputVatLines` select */
 export interface Pp30OutputVatLine {
@@ -92,10 +97,12 @@ export interface Pp30ReductionLine {
 export interface Pp30OutputVatSummary {
   /** Σ เครดิต 21-2101 ของเดือน (ทุกบรรทัด ทุกที่มา) */
   settledGross: Prisma.Decimal;
-  /** Σ เดบิต 21-2101 แยกที่มา — total = reversal + creditNote + other */
+  /** Σ เดบิต 21-2101 แยกที่มา — total = reversal + creditNote + advanceApplied + other */
   reductions: {
     reversal: Prisma.Decimal;
     creditNote: Prisma.Decimal;
+    /** ขากลับของภาษีเงินรับล่วงหน้าเมื่อเงินนั้นถูกหักเข้างวด (stamp `advanceVatConsume`) — PR4 ต10 */
+    advanceApplied: Prisma.Decimal;
     other: Prisma.Decimal;
     total: Prisma.Decimal;
   };
@@ -128,6 +135,7 @@ export interface Pp30OutputVatJson {
   settledGross: string;
   reductionReversal: string;
   reductionCreditNote: string;
+  reductionAdvanceApplied: string;
   reductionOther: string;
   reductionTotal: string;
   settledNet: string;
@@ -164,6 +172,9 @@ function asObject(value: Prisma.JsonValue | null | undefined): Record<string, un
  *     ในรอบนี้ ดู `.claude/rules/accounting.md` หัวข้อ ภ.พ.30 ส่วน "ยังเปิดอยู่")
  *   - เอกสารรายได้อื่นแบบกลับรายการ (`-R`): `metadata.source === 'OTHER_INCOME'` และ `otherIncomeId` ลงท้าย `:reversal`
  *   - ใบลดหนี้ ม.82/5: ยึดคืน (`tag 'JP5'` + `flow 'repossession'`) · ตัดหนี้สูญ (`tag 'BAD-DEBT'` + `flow 'write-off'`)
+ *   - เงินรับล่วงหน้าที่หักเข้างวด (PR4 ต10): รายการที่ stamp `advanceVatConsume` เป็นตัวเลข > 0 — ขากลับ
+ *     `Dr 21-2101 / Cr 21-2102` ของภาษีที่รับรู้ไปแล้ว ณ วันรับเงิน (ต2) จึงไม่ใช่ "อื่น ๆ". ตรวจ**หลัง**สองแบบบน:
+ *     รายการกลับแบบกระจก/ใบลดหนี้ที่ copy stamp มาด้วยยังเป็น REVERSAL/CREDIT_NOTE ตามเดิม
  *   - นอกนั้น = OTHER
  */
 export function classifyOutputVatReduction(entry: {
@@ -186,7 +197,19 @@ export function classifyOutputVatReduction(entry: {
   ) {
     return 'CREDIT_NOTE';
   }
+  if (isPositiveAmount(meta[ADVANCE_VAT_META.consume])) return 'ADVANCE_APPLIED';
   return 'OTHER';
+}
+
+/** stamp จำนวนเงินใน metadata เป็นสตริง/ตัวเลขที่ parse ได้และ > 0 (ว่าง · ศูนย์ · ไม่ใช่ตัวเลข = false) */
+function isPositiveAmount(value: unknown): boolean {
+  if (typeof value !== 'string' && typeof value !== 'number') return false;
+  if (typeof value === 'string' && value.trim() === '') return false;
+  try {
+    return new Prisma.Decimal(value).gt(0);
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -218,6 +241,7 @@ export function summarizePp30OutputVat(lines: Pp30OutputVatLine[]): Pp30OutputVa
   let settledGross = ZERO;
   let reversal = ZERO;
   let creditNote = ZERO;
+  let advanceApplied = ZERO;
   let other = ZERO;
   let m60Credit = ZERO;
   let m60Debit = ZERO;
@@ -241,6 +265,7 @@ export function summarizePp30OutputVat(lines: Pp30OutputVatLine[]): Pp30OutputVa
     const kind = classifyOutputVatReduction(line.journalEntry);
     if (kind === 'REVERSAL') reversal = reversal.plus(debit);
     else if (kind === 'CREDIT_NOTE') creditNote = creditNote.plus(debit);
+    else if (kind === 'ADVANCE_APPLIED') advanceApplied = advanceApplied.plus(debit);
     else other = other.plus(debit);
     reductionLines.push({
       entryId: line.journalEntry.id,
@@ -252,12 +277,12 @@ export function summarizePp30OutputVat(lines: Pp30OutputVatLine[]): Pp30OutputVa
     });
   }
 
-  const total = reversal.plus(creditNote).plus(other);
+  const total = reversal.plus(creditNote).plus(advanceApplied).plus(other);
   const settledNet = settledGross.minus(total);
   const m60Net = m60Credit.minus(m60Debit);
   return {
     settledGross,
-    reductions: { reversal, creditNote, other, total },
+    reductions: { reversal, creditNote, advanceApplied, other, total },
     settledNet,
     mandatory60Day: { credit: m60Credit, debit: m60Debit, net: m60Net },
     mandatory60DayIncluded: PP30_INCLUDES_MANDATORY_60DAY,
@@ -271,6 +296,7 @@ export function toPp30OutputVatJson(summary: Pp30OutputVatSummary): Pp30OutputVa
     settledGross: summary.settledGross.toFixed(2),
     reductionReversal: summary.reductions.reversal.toFixed(2),
     reductionCreditNote: summary.reductions.creditNote.toFixed(2),
+    reductionAdvanceApplied: summary.reductions.advanceApplied.toFixed(2),
     reductionOther: summary.reductions.other.toFixed(2),
     reductionTotal: summary.reductions.total.toFixed(2),
     settledNet: summary.settledNet.toFixed(2),

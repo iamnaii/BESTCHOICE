@@ -216,6 +216,7 @@ describe('FinanceTaxService', () => {
         settledGross: '991.66',
         reductionReversal: '99.17',
         reductionCreditNote: '99.17',
+        reductionAdvanceApplied: '0.00',
         reductionOther: '0.00',
         reductionTotal: '198.34',
         settledNet: '793.32',

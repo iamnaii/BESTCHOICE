@@ -157,7 +157,7 @@ export function configureApp(app: INestApplication, options: ConfigureAppOptions
     },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'X-CSRF-Token', 'X-Liff-Id-Token'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'X-CSRF-Token', 'X-Liff-Id-Token', 'X-Appointment-Token'],
     exposedHeaders: ['Retry-After', 'Retry-After-short'],
     maxAge: 86400,
   });

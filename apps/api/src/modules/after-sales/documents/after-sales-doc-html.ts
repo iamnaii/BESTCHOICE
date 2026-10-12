@@ -243,34 +243,45 @@ function signatures(sigs: [DocSignature, DocSignature]): string {
     .join('')}</div>`;
 }
 
-export function buildAfterSalesDocHtml(doc: AfterSalesDoc): string {
-  const hasPhotos = doc.blocks.some(
-    (b) =>
-      b.type === 'photos' &&
-      b.photos.some((p) => !!p.dataUrl && SAFE_IMAGE_DATA_URL.test(p.dataUrl)),
-  );
-  return `<!DOCTYPE html>
-<html lang="th">
-<head>
-<meta charset="UTF-8">
-<title>${escapeHtml(doc.title)}</title>
-<style>
-${DOCUMENT_WEB_FONT_FACES}
-${TRANSACTION_PAGE_CSS}
-${transactionDocumentCss('body')}
-html, body { margin: 0; padding: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-${AS_CSS}
-</style>
-</head>
-<body>
-${header(doc)}
+const PAGE_BREAK = '<div class="as-page-break"></div>';
+
+function renderDocBody(doc: AfterSalesDoc): string {
+  return `${header(doc)}
 ${doc.blocks.map(renderBlock).join('\n')}
 <div class="as-closing">
 ${doc.conditions ? renderConditions(doc.conditions) : ''}
 <p class="as-ack">${escapeHtml(doc.ack)}</p>
 ${signatures(doc.signatures)}
 <div class="bc-doc-footer"><span>${escapeHtml(doc.footer)}</span><span>${DOC_NOT_RECEIPT}</span></div>
-</div>
+</div>`;
+}
+
+/** PR 5 — รับหลายเอกสาร (ใบรับคืน + ใบส่งมอบเครื่องทดแทน) คั่นด้วย page-break ⇒ PDF เดียวหลายหน้า */
+export function buildAfterSalesDocHtml(input: AfterSalesDoc | AfterSalesDoc[]): string {
+  const docs = Array.isArray(input) ? input : [input];
+  const hasPhotos = docs.some((doc) =>
+    doc.blocks.some(
+      (b) =>
+        b.type === 'photos' &&
+        b.photos.some((p) => !!p.dataUrl && SAFE_IMAGE_DATA_URL.test(p.dataUrl)),
+    ),
+  );
+  return `<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<title>${escapeHtml(docs[0].title)}</title>
+<style>
+${DOCUMENT_WEB_FONT_FACES}
+${TRANSACTION_PAGE_CSS}
+${transactionDocumentCss('body')}
+html, body { margin: 0; padding: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+${AS_CSS}
+.as-page-break { page-break-after: always; break-after: page; }
+</style>
+</head>
+<body>
+${docs.map(renderDocBody).join(`\n${PAGE_BREAK}\n`)}
 ${hasPhotos ? THUMB_SCRIPT : ''}
 </body>
 </html>`;

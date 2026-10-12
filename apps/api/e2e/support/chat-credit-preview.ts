@@ -1,3 +1,10 @@
+import { AppointmentConfirmationService } from '../../src/modules/store-appointments/appointment-confirmation.service';
+import { StoreAppointmentsController } from '../../src/modules/store-appointments/store-appointments.controller';
+import { AppointmentLinksController, AppointmentPublicController } from '../../src/modules/store-appointments/appointment-links.controller';
+import { StoreAppointmentsService } from '../../src/modules/store-appointments/store-appointments.service';
+import { AppointmentScheduleService } from '../../src/modules/store-appointments/appointment-schedule.service';
+import { AppointmentLinksService } from '../../src/modules/store-appointments/appointment-links.service';
+import { seedAppointmentPreview } from './preview-appointments-fixture';
 import { FacebookCommentRefreshService } from '../../src/modules/staff-chat/services/facebook-comment-refresh.service';
 import { FacebookCommentIngestService } from '../../src/modules/chat-adapters/facebook-comment-ingest.service';
 import { ChatLibraryController } from '../../src/modules/staff-chat/chat-library.controller';
@@ -526,10 +533,11 @@ async function main() {
   const facebookComments = await previewFacebookComments(db, actor.id);
   await db.systemConfig.upsert({where:{key:'chat_cloud_library_enabled'},create:{key:'chat_cloud_library_enabled',value:'true'},update:{value:'true',deletedAt:null}});
   await db.cannedResponse.upsert({where:{shortcut:'/preview-thanks'},create:{shortcut:'/preview-thanks',title:'ขอบคุณ (ตัวอย่าง)',content:'ขอบคุณที่สนใจ BESTCHOICE ครับ'},update:{}});
+  const appointmentFixture = await seedAppointmentPreview(db, actor.id);
   const library = previewChatLibrary(db, manager, storageForPreview as StorageService, () => actor.id);
   const afterSales = previewAfterSales(db, storageForPreview as StorageService, () => actor);
   const module = await Test.createTestingModule({
-    controllers: [ChatLibraryController, library.controller, previewChatAnalytics(db,manager,()=>actor.id,previewActors.receiver.id), ChatAnalyticsController,
+    controllers: [StoreAppointmentsController, AppointmentLinksController, AppointmentPublicController, ChatLibraryController, library.controller, previewChatAnalytics(db,manager,()=>actor.id,previewActors.receiver.id), ChatAnalyticsController,
       ChatServiceRequestController, AfterSalesController, afterSales.controller,
       FacebookCommentsController, facebookComments.controller,
       ChatHandoffController, RoomNotesController, TodosController, ChatFollowUpController, ChatSalesContextController, ChatWorkController, ChatWorkSettingsController, StaffInboxController, previewWorkController(db, manager, () => actor.id),
@@ -542,7 +550,7 @@ async function main() {
       GlobalCreditCheckController,
       PreviewController,
     ],
-    providers: [ChatLibraryService, ChatLibraryDeliveryService, { provide: MessageRouterService, useValue: library.router }, ChatAnalyticsV2Service, ChatSalesAttributionService,
+    providers: [AppointmentConfirmationService, StoreAppointmentsService, AppointmentScheduleService, AppointmentLinksService, ChatLibraryService, ChatLibraryDeliveryService, { provide: MessageRouterService, useValue: library.router }, ChatAnalyticsV2Service, ChatSalesAttributionService,
       ChatServiceRequestService, ChatServiceCaseLinkService, ...afterSales.providers,
       FacebookCommentRefreshService, { provide: FacebookCommentIngestService, useValue: facebookComments.ingest }, FacebookCommentWorkService, FacebookCommentReplyService, { provide: FacebookCommentClient, useValue: facebookComments.client },
       ChatHandoffService, NoteMentionService, { provide: StaffMessageService, useValue: Object.assign(Object.create(StaffMessageService.prototype), { prisma: db }) }, ChatSalesDispositionService, TodosService, ChatFollowUpService, ChatSalesContextService, JourneySummaryService, JourneyStateService, ChatWorkQueryService, ChatWorkSettingsService, StaffInboxService, ChatWorkAccessService,
@@ -637,6 +645,7 @@ async function main() {
     )
       return res.json({ data: [], total: 0 });
     if (
+      /^\/api\/(store-appointments|store-appointment-links|store-appointments-public)(\/|$)/.test(path) ||
       /^\/api\/(todos|trade-ins|contacts|promotions|gfin-config|documents|preview|auth\/me|credit-checks|ocr\/bank-statement|products|contracts|interest-configs|sales|bookings)/.test(path) || path.startsWith('/api/chat-analytics/v2/') || path.startsWith('/api/staff-chat/facebook-comments') || path.startsWith('/api/staff-chat/service-requests/') || path.startsWith('/api/after-sales') || path === '/api/customers' || path === '/api/users' ||
       /^\/api\/customers\/(search|[^/]+(?:\/credit-check.*|\/detail|\/journey(?:\/summary)?)?)$/.test(path) ||
       (path === '/api/staff-chat/canned-responses' || /^\/api\/staff-chat\/rooms\/[^/]+\/canned-responses\/[^/]+\/preview$/.test(path)) ||
@@ -672,10 +681,13 @@ async function main() {
       stdio: ['ignore', 'inherit', 'inherit', 'ipc'],
     },
   );
+  const appointmentMessages = module.get(AppointmentConfirmationService);
+  const confirmationTimer = setInterval(() => void appointmentMessages.flush(), 1000);
   let stopping = false;
   const stop = async (code = 0) => {
     if (stopping) return;
     stopping = true;
+    clearInterval(confirmationTimer);
     if (vite.pid && vite.exitCode === null && vite.signalCode === null) {
       const exited = new Promise<void>(resolve => vite.once('exit', () => resolve()));
       vite.kill('SIGTERM');
@@ -695,6 +707,7 @@ async function main() {
     vite.once('message', () => { clearTimeout(timeout); ready(); });
   });
   info = {
+    appointmentFixture,
     chatWorkRooms,
     previewActors,
     isolated: true,

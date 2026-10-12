@@ -47,7 +47,7 @@ export class LineApiClientService {
 
     if (!response.ok) {
       const errorBody = await response.text();
-      throw new InternalServerErrorException(`LINE API error ${response.status}: ${errorBody}`);
+      throw Object.assign(new InternalServerErrorException(`LINE API error ${response.status}: ${errorBody}`), { definitelyNotSent: [400, 401, 403, 404, 413, 422].includes(response.status) });
     }
 
     return response.json();
@@ -168,7 +168,7 @@ export class LineApiClientService {
   ): Promise<void> {
     const token = await this.getChannelToken(channelKey);
     if (!token) {
-      throw new BadRequestException(`LINE ${channelKey} channelToken not configured`);
+      throw Object.assign(new BadRequestException(`LINE ${channelKey} channelToken not configured`), { definitelyNotSent: true });
     }
 
     try {
@@ -192,12 +192,12 @@ export class LineApiClientService {
         if (response.status === 429) {
           const retryAfterRaw = response.headers.get('retry-after');
           const retryAfter = retryAfterRaw ? Number.parseInt(retryAfterRaw, 10) : 0;
-          throw new InternalServerErrorException(
+          throw Object.assign(new InternalServerErrorException(
             `LINE API 429 rate limit; retry after ${retryAfter || 60}s`,
-          );
+          ), { definitelyNotSent: true });
         }
         const errorBody = await response.text();
-        throw new InternalServerErrorException(`LINE API error ${response.status}: ${errorBody}`);
+        throw Object.assign(new InternalServerErrorException(`LINE API error ${response.status}: ${errorBody}`), { definitelyNotSent: [400, 401, 403, 404, 413, 422].includes(response.status) });
       }
     } catch (err) {
       if (err instanceof Error && err.name === 'TimeoutError') {

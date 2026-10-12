@@ -132,17 +132,31 @@ describe('deriveStage', () => {
     });
   });
 
-  describe('CASH_SAME_MODEL_EXCHANGE outcome (ยังไม่เปิด flow — คงค่าเดิม)', () => {
-    it('ไม่มี replacementContractId/closedAt → AWAITING_APPROVAL เหมือน SAME_MODEL_EXCHANGE', () => {
-      expect(
-        deriveStage({
-          outcome: 'CASH_SAME_MODEL_EXCHANGE',
-          cancelledAt: null,
-          closedAt: null,
-          repairStatus: null,
-          replacementContractId: null,
-        } as never),
-      ).toBe('AWAITING_APPROVAL');
+  describe('CASH_SAME_MODEL_EXCHANGE (PR 5) — marker คือ replacementSaleId (ไม่มีสัญญาใหม่)', () => {
+    it.each([
+      [
+        { outcome: 'CASH_SAME_MODEL_EXCHANGE', cancelledAt: null, closedAt: null, repairStatus: null, replacementContractId: null, replacementSaleId: null },
+        'AWAITING_APPROVAL',
+      ],
+      [
+        { outcome: 'CASH_SAME_MODEL_EXCHANGE', cancelledAt: null, closedAt: null, repairStatus: null, replacementContractId: null, replacementSaleId: 'sale-1' },
+        'READY_FOR_PICKUP',
+      ],
+      [
+        { outcome: 'CASH_SAME_MODEL_EXCHANGE', cancelledAt: null, closedAt: new Date(), repairStatus: null, replacementContractId: null, replacementSaleId: 'sale-1' },
+        'CLOSED',
+      ],
+      [
+        { outcome: 'CASH_SAME_MODEL_EXCHANGE', cancelledAt: new Date(), closedAt: null, repairStatus: null, replacementContractId: null, replacementSaleId: 'sale-1' },
+        'CANCELLED',
+      ],
+      // เคสซ่อมของใบขายสดที่ซ่อมไม่ได้ → markReplacedBySale ตั้ง REPLACED + replacementSaleId
+      [
+        { outcome: 'REPAIR', cancelledAt: null, closedAt: null, repairStatus: 'REPLACED', replacementContractId: null, replacementSaleId: 'sale-1' },
+        'READY_FOR_PICKUP',
+      ],
+    ] as const)('%j → %s', (input, expected) => {
+      expect(deriveStage(input as never)).toBe(expected);
     });
   });
 

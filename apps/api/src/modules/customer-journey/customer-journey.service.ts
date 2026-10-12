@@ -1,3 +1,4 @@
+import { storeAppointmentSource } from './sources/store-appointment.source';
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import {
   JOURNEY_DEFAULT_GROUPS,
@@ -27,7 +28,7 @@ export const JOURNEY_COUNT_CAP = 100;
 
 /** แหล่งเฉพาะกลุ่ม — บันทึก entries/แท็กมาจาก entriesSourceFor(groups) ตัวเดียวที่ sourcesForGroups ต่อท้ายให้ */
 const SOURCES_BY_GROUP: Record<JourneyEventGroup, readonly JourneySource[]> = {
-  chat: [chatSource], credit: [creditSource], sale: [saleSource],
+  chat: [chatSource, storeAppointmentSource], credit: [creditSource], sale: [saleSource],
   payment: [paymentSource], collections: [collectionsSource], service: [serviceSource], points: [pointsSource], system: [],
 };
 

@@ -7,7 +7,7 @@ import { isAccessoryCompatible, type AccessoryDevice } from '@installment/shared
 import { TradeInCreditService } from '../../trade-in/services/trade-in-credit.service';
 import { BadRequestException, ConflictException, Injectable } from '@nestjs/common';
 import { captureProductDisclosure } from '../../../utils/product-disclosure.util';
-import { readStringFlag } from '../../../utils/config.util';
+import { shopWarrantyDatesFor } from './sale-shop-warranty.util';
 import { closeRepossessionOnSale } from '../../repossessions/repossession-resale.util';
 import { PaymentMethod, Prisma } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
@@ -20,11 +20,6 @@ import { ShopExternalFinanceSaleTemplate } from '../../journal/cpa-templates/sho
 import { ShopAccountResolver } from '../../journal/shop-account-resolver.service';
 import { allocateCashSaleByCost } from '../shop-cash-sale-allocation.util';
 import { preemptReservationsInTx } from '../../../utils/reservation-preempt.util';
-import { addDays } from 'date-fns';
-import {
-  resolveShopWarrantyDays,
-  SHOP_WARRANTY_DAYS_CONFIG_KEY,
-} from '../../warranty/shop-warranty-policy';
 
 /**
  * Per-sale-type transactional writers extracted from SalesService.
@@ -133,11 +128,14 @@ export class SaleWriterService {
     product: { category: string; shopWarrantyDays: number | null; deviceOrigin?: import('@prisma/client').DeviceOrigin | null; warrantyTerms?: string | null },
     soldAt: Date,
   ): Promise<{ shopWarrantyStartDate?: Date; shopWarrantyEndDate?: Date; productDisclosure: ReturnType<typeof captureProductDisclosure> }> {
-    const defaultDays = await readStringFlag(tx, SHOP_WARRANTY_DAYS_CONFIG_KEY, '');
-    const days = resolveShopWarrantyDays(product, defaultDays);
-    const productDisclosure = captureProductDisclosure(product, defaultDays);
-    if (days === null) return { productDisclosure };
-    return { productDisclosure, shopWarrantyStartDate: soldAt, shopWarrantyEndDate: addDays(soldAt, days) };
+    // PR 5 T8 — ตัวคำนวณเดียวกับส่งมอบเครื่องทดแทน (`shopWarrantyDatesFor`) · รูปผลลัพธ์ของเมธอดนี้คงเดิม
+    const w = await shopWarrantyDatesFor(tx, product, soldAt);
+    if (w.days === null) return { productDisclosure: w.productDisclosure };
+    return {
+      productDisclosure: w.productDisclosure,
+      shopWarrantyStartDate: w.shopWarrantyStartDate,
+      shopWarrantyEndDate: w.shopWarrantyEndDate!,
+    };
   }
 
   /** Mark bundle (freebie) products as SOLD_CASH */

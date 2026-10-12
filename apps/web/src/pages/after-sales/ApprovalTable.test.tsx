@@ -39,6 +39,7 @@ function pricedRow(over: Partial<CaseRow> = {}): CaseRow {
         storage: '128GB',
         imeiSerial: 'IMEI-NEW',
       },
+      sale: null, // PR 5 — เคสผ่อนไม่มีใบขาย
       replacementContract: null,
       requestedBy: { id: 'user-1', name: 'ธนา' },
     },
@@ -79,6 +80,7 @@ function sameModelRow(over: Partial<CaseRow> = {}): CaseRow {
         storage: '128GB',
         imeiSerial: 'IMEI-NEW-2',
       },
+      sale: null, // PR 5 — เคสผ่อนไม่มีใบขาย
       replacementContract: null,
       requestedBy: { id: 'user-2', name: 'นิภา' },
     },
@@ -113,6 +115,7 @@ function escalateRow(over: Partial<CaseRow> = {}): CaseRow {
       approverRole: 'OWNER',
       oldProduct: { brand: 'Apple', model: 'iPhone 12', storage: '64GB', imeiSerial: 'IMEI-OLD-3' },
       newProduct: null,
+      sale: null, // PR 5 — เคสผ่อนไม่มีใบขาย
       replacementContract: {
         id: 'contract-9',
         contractNumber: 'CT-20260924-0009',

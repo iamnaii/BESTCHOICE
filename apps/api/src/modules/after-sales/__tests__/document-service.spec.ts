@@ -8,6 +8,8 @@ import { AfterSalesDocumentService } from '../services/after-sales-document.serv
 import { HANDOVER_NOT_READY_MSG } from '../documents/after-sales-doc-compose';
 import { PRICED_EXCHANGE_COST_LINE } from '../utils/after-sales-line-copy.util';
 import { SWITCHED_TO_REPAIR_NOTE } from '../utils/after-sales-outcomes.util';
+import { addDays } from 'date-fns';
+import { formatThaiDateText } from '../../../utils/thai-date.util';
 
 const CASE_ID = '11111111-1111-4111-8111-111111111111';
 const user = { id: 'u-1', role: 'SALES', branchId: 'br-1' };
@@ -76,6 +78,7 @@ function setup(detail = caseDetail(), photoKeys: string[] = []) {
       }),
     },
     companyInfo: { findFirst: jest.fn().mockResolvedValue(null) },
+    systemConfig: { findFirst: jest.fn().mockResolvedValue(null) },
     contract: {
       findUnique: jest.fn().mockResolvedValue({
         contractNumber: 'CT-2026-0912',
@@ -505,6 +508,40 @@ describe('AfterSalesDocumentService.render', () => {
           data: expect.objectContaining({ kind: 'PRINTED', note: 'ใบส่งมอบเครื่องทดแทน' }),
         }),
       );
+    });
+
+    it('HANDOVER ตอน READY_FOR_PICKUP (พิมพ์ก่อนกดส่งมอบ) → ประกันร้าน/กรอบ 7 วันคิดจากวันพิมพ์ด้วย shopWarrantyDatesFor ไม่ใช่วันของใบขายเดิม', async () => {
+      const t = setup(cashCase({ stage: 'READY_FOR_PICKUP', closedAt: null, timeline: [] }));
+      // ใบขายเดิมยังถือวันของการขายรอบแรก — deliverCash ยังไม่ได้ตั้งใหม่
+      t.prisma.sale.findUnique.mockResolvedValue({
+        ...cashSale,
+        createdAt: new Date('2026-01-05T05:00:00.000Z'),
+        shopWarrantyStartDate: new Date('2026-01-05T05:00:00.000Z'),
+        shopWarrantyEndDate: new Date('2026-03-06T05:00:00.000Z'),
+      });
+      t.prisma.product.findUnique.mockImplementation(({ where }: { where: { id: string } }) =>
+        Promise.resolve(
+          where.id === 'p-new'
+            ? {
+                color: 'ดำ',
+                category: 'PHONE_USED',
+                warrantyExpireDate: null,
+                shopWarrantyDays: 60,
+                deviceOrigin: null,
+                warrantyTerms: null,
+              }
+            : { color: 'ดำ', category: 'PHONE_USED', warrantyExpireDate: null },
+        ),
+      );
+      const printedAt = new Date();
+      await t.svc.render(CASE_ID, 'HANDOVER', user);
+      const html = t.html();
+      // ไม่ใช่กรอบ 7 วัน (05/01 + 6) และไม่ใช่ประกันร้านของเครื่องเดิม
+      expect(html).not.toContain(formatThaiDateText(new Date('2026-01-11T05:00:00.000Z')));
+      expect(html).not.toContain(formatThaiDateText(new Date('2026-03-06T05:00:00.000Z')));
+      // ตัวเลขเดียวกับที่ deliverCash จะเขียนลงใบขาย: วันพิมพ์ + 6 และ วันพิมพ์ + 60 (shopWarrantyDays ของเครื่องทดแทน)
+      expect(html).toContain(`ถึง ${formatThaiDateText(addDays(printedAt, 6))}`);
+      expect(html).toContain(`ถึง ${formatThaiDateText(addDays(printedAt, 60))}`);
     });
 
     it('RETURN ตอน AWAITING_APPROVAL → 400 ไม่แตะ Chromium', async () => {

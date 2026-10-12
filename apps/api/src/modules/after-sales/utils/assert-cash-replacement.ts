@@ -2,6 +2,7 @@ import { BadRequestException } from '@nestjs/common';
 import type { Prisma, ProductCategory, ProductStatus } from '@prisma/client';
 import type { PrismaService } from '../../../prisma/prisma.service';
 import { assertSameTestSide, TEST_SIDE_CUSTOMER_SELECT } from '../../../utils/test-data-markers';
+import { CASH_NOT_USED_REASON } from './after-sales-outcomes.util';
 
 /**
  * PR 5 §3.3 — ด่านเครื่องทดแทนของเปลี่ยนรุ่นเดิม **ขายสด** (ไม่มีสัญญา จึงใช้
@@ -13,6 +14,8 @@ export const CASH_REPLACEMENT_MSG = {
   NOT_FOUND: 'ไม่พบเครื่องทดแทนในระบบ',
   SAME_DEVICE: 'เครื่องทดแทนต้องไม่ใช่เครื่องเดิมของใบขาย',
   NOT_USED: 'เปลี่ยนรุ่นเดิมขายสดใช้ได้เฉพาะเครื่องมือสอง (PHONE_USED)',
+  /** เครื่องเดิมของใบขายต้องเป็นมือสอง (คำตัดสินเจ้าของ ①) — เส้น fromRepair ไม่ผ่าน computeOutcomes จึงกันที่นี่ */
+  OLD_NOT_USED: CASH_NOT_USED_REASON,
   NOT_IN_STOCK: 'เครื่องทดแทนต้องอยู่ในสต๊อกพร้อมขาย (IN_STOCK)',
   WRONG_BRANCH: 'เครื่องทดแทนต้องอยู่สาขาเดียวกับเคส',
   MODEL_MISMATCH: 'เครื่องทดแทนต้องเป็นยี่ห้อ/รุ่น/ความจุเดียวกับเครื่องเดิม',
@@ -46,7 +49,7 @@ export async function assertCashReplacement(
   const [old, next, customer] = await Promise.all([
     client.product.findUnique({
       where: { id: input.sale.productId },
-      select: { id: true, brand: true, model: true, storage: true },
+      select: { id: true, brand: true, model: true, storage: true, category: true },
     }),
     // รั้วข้อมูลทดสอบต้องเห็น PO ต้นทาง (ชนิดของ TestSideProduct บังคับ) — รูปเดียวกับ DefectExchangeService
     client.product.findUnique({
@@ -59,6 +62,7 @@ export async function assertCashReplacement(
     }),
   ]);
   if (!old) throw new BadRequestException('ไม่พบเครื่องเดิมของใบขาย');
+  if (old.category !== 'PHONE_USED') throw new BadRequestException(CASH_REPLACEMENT_MSG.OLD_NOT_USED);
   if (!next || next.deletedAt) throw new BadRequestException(CASH_REPLACEMENT_MSG.NOT_FOUND);
   if (next.category !== 'PHONE_USED') throw new BadRequestException(CASH_REPLACEMENT_MSG.NOT_USED);
   if (next.status !== 'IN_STOCK') throw new BadRequestException(CASH_REPLACEMENT_MSG.NOT_IN_STOCK);

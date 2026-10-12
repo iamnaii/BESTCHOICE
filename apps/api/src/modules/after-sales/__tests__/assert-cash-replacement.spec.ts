@@ -2,7 +2,7 @@ import { BadRequestException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { assertCashReplacement, CASH_REPLACEMENT_MSG } from '../utils/assert-cash-replacement';
 
-const OLD = { id: 'p-old', brand: 'Apple', model: 'iPhone 13', storage: '128GB' };
+const OLD = { id: 'p-old', brand: 'Apple', model: 'iPhone 13', storage: '128GB', category: 'PHONE_USED' };
 const CUSTOMER = { name: 'สมชาย ใจดี', phone: '0812345678', addressCurrent: 'ลพบุรี' };
 const NEW = {
   id: 'p-new',
@@ -20,13 +20,16 @@ const NEW = {
 };
 const INPUT = { sale: { id: 's-1', productId: 'p-old', customerId: 'c-1' }, caseBranchId: 'b-1' };
 
-function client(newProduct: Record<string, unknown> | null = NEW) {
+function client(
+  newProduct: Record<string, unknown> | null = NEW,
+  oldProduct: Record<string, unknown> = OLD,
+) {
   return {
     product: {
       findUnique: jest
         .fn()
         .mockImplementation(({ where }: { where: { id: string } }) =>
-          Promise.resolve(where.id === 'p-old' ? OLD : newProduct),
+          Promise.resolve(where.id === 'p-old' ? oldProduct : newProduct),
         ),
     },
     customer: { findUniqueOrThrow: jest.fn().mockResolvedValue(CUSTOMER) },
@@ -54,6 +57,12 @@ describe('assertCashReplacement (PR 5 §3.3) — ด่านเครื่อ�
         product?.id === 'p-old' ? 'p-old' : 'p-new',
       ),
     ).rejects.toThrow(new BadRequestException(msg));
+  });
+
+  it('เครื่องเดิมของใบขายเป็นเครื่องใหม่ (PHONE_NEW) → 400 "เปลี่ยนรุ่นเดิมเฉพาะมือสอง" (คำตัดสินเจ้าของ ① — เส้น fromRepair ไม่ผ่าน computeOutcomes จึงต้องกันที่ด่านนี้)', async () => {
+    await expect(
+      assertCashReplacement(client(NEW, { ...OLD, category: 'PHONE_NEW' }) as never, INPUT, 'p-new'),
+    ).rejects.toThrow(/เปลี่ยนรุ่นเดิมเฉพาะมือสอง/);
   });
 
   it('รั้วข้อมูลทดสอบ: ลูกค้าจริง + เครื่องทดสอบ (IMEI ขึ้นต้น TEST-) → โยนจาก assertSameTestSide', async () => {

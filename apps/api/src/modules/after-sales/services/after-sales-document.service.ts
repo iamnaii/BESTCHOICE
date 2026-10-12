@@ -17,6 +17,8 @@ import {
   type DocSource,
 } from '../documents/after-sales-doc-compose';
 import { dropOffOutcome } from '../utils/after-sales-outcomes.util';
+import { addDays } from 'date-fns';
+import { shopWarrantyDatesFor } from '../../sales/services/sale-shop-warranty.util';
 
 type ReqUser = { id: string; role: string; branchId?: string | null };
 type CaseDetail = Awaited<ReturnType<AfterSalesQueryService['getCase']>>;
@@ -134,6 +136,7 @@ export class AfterSalesDocumentService {
     user: ReqUser,
   ): Promise<DocSource> {
     const ex = c.exchange;
+    const printedAt = new Date();
     const [row, printer, company, contract, sale, product, newContract, newProduct, approver] =
       await Promise.all([
         this.prisma.afterSalesCase.findUniqueOrThrow({
@@ -176,7 +179,15 @@ export class AfterSalesDocumentService {
         (kind === 'HANDOVER' || kind === 'REPLACEMENT_HANDOVER') && ex?.newProduct
           ? this.prisma.product.findUnique({
               where: { id: ex.newProduct.id },
-              select: { color: true, category: true, warrantyExpireDate: true },
+              // PR 5 — shopWarrantyDays/deviceOrigin/warrantyTerms ให้ shopWarrantyDatesFor ของใบส่งมอบที่พิมพ์ก่อนส่งมอบ
+              select: {
+                color: true,
+                category: true,
+                warrantyExpireDate: true,
+                shopWarrantyDays: true,
+                deviceOrigin: true,
+                warrantyTerms: true,
+              },
             })
           : null,
         // PR 5 — ผู้ยืนยันเปลี่ยนเครื่อง (พิมพ์บนใบรับคืน)
@@ -189,6 +200,13 @@ export class AfterSalesDocumentService {
     const a = (c.accessories ?? {}) as Record<string, unknown>;
     const t = c.repairTicket && !c.repairTicket.deletedAt ? c.repairTicket : null;
     const shopWarrantyEnd = toDate(w.shopWarrantyEndDate);
+    // PR 5 — ใบส่งมอบเครื่องทดแทนที่พิมพ์ก่อนกดส่งมอบ (READY_FOR_PICKUP): แถว Sale ยังถือวันของการขายรอบแรก
+    // (deliverCash ตั้งใหม่ตอนส่งมอบเท่านั้น) ⇒ คิดล่วงหน้าด้วยตัวคำนวณเดียวกับ deliverCash จากวันพิมพ์
+    // (ตัวเลขบนใบที่ลูกค้าเซ็น = ตัวเลขที่จะเขียนลงใบขาย) · หลังปิดเคสอ่านค่าที่ deliverCash เขียนไว้ตามเดิม
+    const cashPending =
+      c.outcome === 'CASH_SAME_MODEL_EXCHANGE' && !c.closedAt && newProduct
+        ? await shopWarrantyDatesFor(this.prisma, newProduct, printedAt)
+        : null;
 
     return {
       company,
@@ -196,7 +214,7 @@ export class AfterSalesDocumentService {
       branchName: c.branch.name,
       receivedAt: c.receivedAt,
       receivedByName: c.receivedBy.name,
-      printedAt: new Date(),
+      printedAt,
       printedByName: printer?.name ?? '—',
       customerName: c.customer.name,
       customerPhone: c.customer.phone ?? null,
@@ -278,7 +296,9 @@ export class AfterSalesDocumentService {
             // PR 5 — เคสขายสด: ประกันร้านของเครื่องทดแทนอยู่บนใบขาย (ตั้งใหม่ตอนส่งมอบ)
             newShopWarrantyEnd:
               c.outcome === 'CASH_SAME_MODEL_EXCHANGE'
-                ? (sale?.shopWarrantyEndDate ?? null)
+                ? cashPending
+                  ? cashPending.shopWarrantyEndDate
+                  : (sale?.shopWarrantyEndDate ?? null)
                 : (newContract?.shopWarrantyEndDate ??
                   contract?.shopWarrantyEndDate ??
                   shopWarrantyEnd),
@@ -289,9 +309,13 @@ export class AfterSalesDocumentService {
                 : null,
             financeCompany: sale?.financeCompany ?? null,
             sevenDayEnd:
-              c.outcome === 'CASH_SAME_MODEL_EXCHANGE' && sale?.shopWarrantyStartDate
-                ? new Date(sale.shopWarrantyStartDate.getTime() + 6 * 86_400_000)
-                : null,
+              c.outcome !== 'CASH_SAME_MODEL_EXCHANGE'
+                ? null
+                : cashPending
+                  ? addDays(printedAt, 6)
+                  : sale?.shopWarrantyStartDate
+                    ? new Date(sale.shopWarrantyStartDate.getTime() + 6 * 86_400_000)
+                    : null,
             deliveredNote: c.timeline.find((e) => e.kind === 'DELIVERED')?.note ?? null,
             approvedByName: approver?.name ?? null,
             approvedAt: c.approvedAt ?? null,

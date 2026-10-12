@@ -904,7 +904,14 @@ describe('AfterSalesCaseService.createCase', () => {
       outcome: 'CASH_SAME_MODEL_EXCHANGE' as const,
       replacementProductId: 'p-new',
     };
-    const oldProduct = { id: 'p-1', brand: 'Apple', model: 'iPhone 13', storage: '128GB' };
+    // เครื่องเดิมของใบขายต้องเป็นมือสอง (ด่าน OLD_NOT_USED ของ assertCashReplacement — คำตัดสินเจ้าของ ①)
+    const oldProduct = {
+      id: 'p-1',
+      brand: 'Apple',
+      model: 'iPhone 13',
+      storage: '128GB',
+      category: 'PHONE_USED',
+    };
     const newProduct = (overrides: Record<string, unknown> = {}) => ({
       id: 'p-new',
       brand: 'Apple',

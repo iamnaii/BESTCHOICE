@@ -3191,3 +3191,7 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 
 - ผู้ตรวจอิสระ (fresh context, โมเดลสูงสุด) อ่านทั้งสาขาจาก review package + สเปก + Review Focus ด้านบน + `Ruling:` ใน ledger · Critical/Important แก้ใน 1 รอบด้วย TDD · Minor ลง ledger
 - push + เปิด PR base `main` (PR body: สรุป · ตาราง JE · คำตัดสินเจ้าของ ①–⑧ · สมมติฐาน 5 ข้อ · minor ที่ deferred · ลงท้าย `🤖 Generated with [Claude Code](https://claude.com/claude-code)`) · **merge = เจ้าของพิมพ์คำสั่งเอง**
+
+---
+
+**สถานะ 2026-10-12:** ทำครบ 16 tasks บนสาขา `feat/after-sales-pr5-cash-exchange` (ledger `.superpowers/sdd/2026-10-12-after-sales-pr5-cash-exchange/progress.md`) — รอผู้ตรวจอิสระ → push → PR (merge = เจ้าของ)

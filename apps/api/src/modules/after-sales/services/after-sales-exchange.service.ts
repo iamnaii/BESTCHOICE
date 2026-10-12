@@ -305,6 +305,28 @@ export class AfterSalesExchangeService {
    * ไม่งั้นลูกค้าจะถือเครื่องที่ยังไม่มีสัญญาผูกจริง (โครงสร้างเดียวกับสัญญาใหม่ทั่วไปที่ต้องเปิดใช้
    * ก่อนจึงนับว่าขายจริง)
    */
+  /**
+   * M1 (final review PR5) — ปิดเคสตอนส่งมอบแบบ compare-and-set: updateMany where stage READY_FOR_PICKUP
+   * + closedAt null · count 0 = ถูกส่งมอบไปแล้ว (กดซ้อน) → 409 ทั้งธุรกรรมย้อนกลับ · events เขียนแยกผ่าน
+   * createMany ใน tx เดียวกัน (nested create ของ update ใช้กับ updateMany ไม่ได้) · ใช้ร่วมทั้งกิ่งผ่อนและขายสด
+   */
+  private async closeDeliveredCase(
+    tx: Prisma.TransactionClient,
+    caseId: string,
+    actorId: string,
+    events: { kind: 'DELIVERED' | 'CLOSED'; note: string }[],
+  ) {
+    const claimed = await tx.afterSalesCase.updateMany({
+      where: { id: caseId, stage: 'READY_FOR_PICKUP', closedAt: null },
+      data: { stage: 'CLOSED', closedAt: new Date() },
+    });
+    if (claimed.count !== 1) throw new ConflictException('เคสนี้ถูกส่งมอบไปแล้ว');
+    await tx.afterSalesEvent.createMany({
+      data: events.map((e) => ({ caseId, kind: e.kind, actorId, note: e.note })),
+    });
+    return tx.afterSalesCase.findUniqueOrThrow({ where: { id: caseId } });
+  }
+
   async deliver(caseId: string, user: ReqUser, dto?: ExchangeDeliverDto) {
     const c: ExchangeCase = await this.query.getCase(caseId, user);
     if (c.outcome === 'CASH_SAME_MODEL_EXCHANGE') return this.deliverCash(c, dto ?? {}, user);
@@ -326,23 +348,18 @@ export class AfterSalesExchangeService {
       );
     }
 
-    const updated = await this.prisma.afterSalesCase.update({
-      where: { id: caseId },
-      data: {
-        closedAt: new Date(),
-        stage: 'CLOSED',
-        events: {
-          create: [
-            {
-              kind: 'DELIVERED',
-              actorId: user.id,
-              note: `ส่งมอบเครื่องใหม่ · สัญญา ${newContract.contractNumber}`,
-            },
-            { kind: 'CLOSED', actorId: user.id, note: 'ปิดเคส' },
-          ],
+    // M1 (final review PR5) — กดซ้อน/ดับเบิลคลิกต้องไม่ได้ event DELIVERED+CLOSED/LINE สองชุด:
+    // CAS บน stage READY_FOR_PICKUP + closedAt null (updateMany count 0 = คนอื่นส่งมอบไปแล้ว → 409)
+    // แล้วค่อยเขียน events ใน tx เดียวกัน
+    const updated = await this.prisma.$transaction(async (tx) =>
+      this.closeDeliveredCase(tx, caseId, user.id, [
+        {
+          kind: 'DELIVERED',
+          note: `ส่งมอบเครื่องใหม่ · สัญญา ${newContract.contractNumber}`,
         },
-      },
-    });
+        { kind: 'CLOSED', note: 'ปิดเคส' },
+      ]),
+    );
 
     await this.audit.log({
       userId: user.id,
@@ -616,19 +633,11 @@ export class AfterSalesExchangeService {
         });
         const accessories = deliveredAccessoriesText(dto.accessories);
         const note = `ส่งมอบเครื่องทดแทน · ใบขาย ${sale.saleNumber}${accessories ? ` · อุปกรณ์: ${accessories}` : ''}${dto.note?.trim() ? ` · ${dto.note.trim()}` : ''}`;
-        const updated = await tx.afterSalesCase.update({
-          where: { id: c.id },
-          data: {
-            closedAt: now,
-            stage: 'CLOSED',
-            events: {
-              create: [
-                { kind: 'DELIVERED', actorId: user.id, note },
-                { kind: 'CLOSED', actorId: user.id, note: 'ปิดเคส' },
-              ],
-            },
-          },
-        });
+        // M1 — CAS เดียวกับกิ่งผ่อน: แพ้ = 409 และ tx ย้อนประกันที่เพิ่งเขียนกลับด้วย
+        const updated = await this.closeDeliveredCase(tx, c.id, user.id, [
+          { kind: 'DELIVERED', note },
+          { kind: 'CLOSED', note: 'ปิดเคส' },
+        ]);
         return { updated, saleNumber: sale.saleNumber, shopWarrantyEndDate: w.shopWarrantyEndDate };
       },
     );
@@ -659,8 +668,9 @@ export class AfterSalesExchangeService {
     if (!c.saleId || c.contractId) throw new BadRequestException('เคสนี้ไม่ใช่เคสขายสด');
     const newProductId = replacementProductId ?? c.replacementProductId;
     if (!newProductId) throw new BadRequestException('ต้องเลือกเครื่องทดแทนจากสต๊อก');
-    const sale = await this.prisma.sale.findUnique({
-      where: { id: c.saleId },
+    // M2 (final review PR5) — ใบขายที่ยกเลิกแล้ว (soft delete) ไม่ควร preview ได้ (confirm ตรวจอยู่แล้ว)
+    const sale = await this.prisma.sale.findFirst({
+      where: { id: c.saleId, deletedAt: null },
       select: {
         saleNumber: true,
         productId: true,

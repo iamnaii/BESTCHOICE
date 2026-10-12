@@ -15,6 +15,7 @@ import { assertProductNotHeld } from '../../products/product-hold.util';
 import { reopenRepossessionOnUnsale } from '../../repossessions/repossession-resale.util';
 import { ExchangeCancelReversalTemplate } from '../../journal/cpa-templates/exchange-cancel-reversal.template';
 import { validatePeriodOpen } from '../../../utils/period-lock.util';
+import { SALE_TYPE_PRODUCT_STATUS } from './sale-product-status.util';
 
 /**
  * ยกเลิกใบขาย (void sale) — spec `docs/superpowers/specs/2026-08-22-void-sale-design.md`
@@ -35,10 +36,7 @@ import { validatePeriodOpen } from '../../../utils/period-lock.util';
  * `sale-writer.service.ts`: ขายสดตั้ง `SOLD_CASH` (บรรทัด ~203) / ขายผ่านไฟแนนซ์ภายนอก
  * ตั้ง `SOLD_INSTALLMENT` (บรรทัด ~505) ⇒ สถานะที่ยังตรงกับค่านี้ = ไม่มีใครมาผูกเครื่องต่อ
  */
-const SALE_TYPE_PRODUCT_STATUS: Readonly<Record<'CASH' | 'EXTERNAL_FINANCE', ProductStatus>> = {
-  CASH: ProductStatus.SOLD_CASH,
-  EXTERNAL_FINANCE: ProductStatus.SOLD_INSTALLMENT,
-};
+// PR 5 — แผนที่ย้ายไป sale-product-status.util.ts (ใช้ร่วมกับเปลี่ยนรุ่นเดิมขายสด) — ชื่อเดิมใช้ต่อได้ทุกจุด
 
 /**
  * **ของแถมเป็น `SOLD_CASH` เสมอ ไม่ว่าใบขายจะเป็นแบบไหน** — `markBundleProductsSold`

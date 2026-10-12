@@ -142,6 +142,7 @@ export class AfterSalesLookupService {
         cancelledAt: true,
         closedAt: true,
         replacementContractId: true,
+        replacementSaleId: true, // PR 5
         repairTicket: { select: { status: true, deletedAt: true, returnedToCustomerAt: true } },
         exchangeRequest: {
           select: {

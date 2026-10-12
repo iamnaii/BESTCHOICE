@@ -53,6 +53,8 @@ const CASE_FOR_LINE_SELECT = {
   warrantySnapshot: true,
   replacementProductId: true,
   replacementContractId: true,
+  saleId: true, // PR 5 — loadReplacement อ่านประกันร้านจากใบขายของเคสขายสด
+  replacementSaleId: true, // PR 5 — marker ของเคสขายสด
   // final fix I-5 — PRICED_EXCHANGE: เครื่อง/สัญญาที่คุ้มครองเครื่องทดแทนอยู่บนคำขอ ไม่ใช่บนเคส
   exchangeRequest: {
     select: { mode: true, oldContractId: true, newContractId: true, newProductId: true },

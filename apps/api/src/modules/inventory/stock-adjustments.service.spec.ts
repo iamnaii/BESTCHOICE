@@ -284,6 +284,23 @@ describe('StockAdjustmentsService.createRequest', () => {
     const { service } = build(baseProduct({ status: 'DAMAGED' }));
     await expect(service.createRequest({ productId: 'p1', reason: 'LOST' }, [], OWNER)).rejects.toBeInstanceOf(BadRequestException);
   });
+
+  it('(g4b PR 5) WRITE_OFF บนเครื่อง DEFECT_RETURN (รอเคลม) → ทำได้ · พักขายจากสถานะเดิม', async () => {
+    const { service, prisma } = build(baseProduct({ status: 'DEFECT_RETURN' }));
+    await service.createRequest({ productId: 'p1', reason: 'WRITE_OFF' }, [], OWNER);
+    expect(prisma.stockAdjustment.create).toHaveBeenCalled();
+    expect(prisma.product.updateMany).toHaveBeenCalledWith({
+      where: { id: 'p1', status: 'DEFECT_RETURN', deletedAt: null },
+      data: { status: 'ADJUSTMENT_PENDING' },
+    });
+  });
+
+  it('(g5b PR 5) LOST บนเครื่อง DEFECT_RETURN → 400 พร้อม hint "เครื่องรอเคลมผู้จัดจำหน่าย — เคลมไม่ได้ให้ขอตัดจำหน่าย"', async () => {
+    const { service } = build(baseProduct({ status: 'DEFECT_RETURN' }));
+    await expect(
+      service.createRequest({ productId: 'p1', reason: 'LOST' }, [], OWNER),
+    ).rejects.toThrow(/เครื่องรอเคลมผู้จัดจำหน่าย — เคลมไม่ได้ให้ขอตัดจำหน่าย/);
+  });
 });
 
 describe('StockAdjustmentsService.cancel', () => {

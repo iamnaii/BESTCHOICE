@@ -15,6 +15,7 @@ import { assertProductNotHeld } from '../../products/product-hold.util';
 import { reopenRepossessionOnUnsale } from '../../repossessions/repossession-resale.util';
 import { ExchangeCancelReversalTemplate } from '../../journal/cpa-templates/exchange-cancel-reversal.template';
 import { validatePeriodOpen } from '../../../utils/period-lock.util';
+import { SALE_TYPE_PRODUCT_STATUS } from './sale-product-status.util';
 
 /**
  * ยกเลิกใบขาย (void sale) — spec `docs/superpowers/specs/2026-08-22-void-sale-design.md`
@@ -35,10 +36,7 @@ import { validatePeriodOpen } from '../../../utils/period-lock.util';
  * `sale-writer.service.ts`: ขายสดตั้ง `SOLD_CASH` (บรรทัด ~203) / ขายผ่านไฟแนนซ์ภายนอก
  * ตั้ง `SOLD_INSTALLMENT` (บรรทัด ~505) ⇒ สถานะที่ยังตรงกับค่านี้ = ไม่มีใครมาผูกเครื่องต่อ
  */
-const SALE_TYPE_PRODUCT_STATUS: Readonly<Record<'CASH' | 'EXTERNAL_FINANCE', ProductStatus>> = {
-  CASH: ProductStatus.SOLD_CASH,
-  EXTERNAL_FINANCE: ProductStatus.SOLD_INSTALLMENT,
-};
+// PR 5 — แผนที่ย้ายไป sale-product-status.util.ts (ใช้ร่วมกับเปลี่ยนรุ่นเดิมขายสด) — ชื่อเดิมใช้ต่อได้ทุกจุด
 
 /**
  * **ของแถมเป็น `SOLD_CASH` เสมอ ไม่ว่าใบขายจะเป็นแบบไหน** — `markBundleProductsSold`
@@ -188,6 +186,8 @@ export class SaleVoidService {
         branchId: true,
         netAmount: true,
         tradeInCreditSnapshot: true,
+        exchangeCaseId: true, // PR 5 — G9
+        exchangeCase: { select: { caseNumber: true } },
       },
     });
     if (!sale) throw new NotFoundException('ไม่พบใบขายที่ต้องการยกเลิก');
@@ -197,6 +197,16 @@ export class SaleVoidService {
       throw new BadRequestException(
         `ใบขาย ${sale.saleNumber} ถูกยกเลิกไปแล้วเมื่อ ${sale.deletedAt.toLocaleString('th-TH')} — ` +
           'ถ้าต้องแก้ไขข้อมูลการขาย ให้บันทึกใบขายใหม่แทน',
+      );
+    }
+
+    // ── G9 (PR 5) — ใบขายที่สลับเครื่องแล้ว (เปลี่ยนรุ่นเดิมขายสด) ─────────────────
+    // JE สลับต้นทุน stamp saleId จึงอยู่ใน sweep ด้านล่างได้ แต่เครื่องเดิมอยู่ DEFECT_RETURN/ถูกตัดจำหน่าย
+    // และเครื่องทดแทนถูกส่งมอบไปแล้ว — ย้อนทั้งชุดเป็นงานฝ่ายบัญชี (คำตัดสินเจ้าของ ⑦ ปิดถาวร)
+    if (sale.exchangeCaseId) {
+      throw new BadRequestException(
+        `ใบขาย ${sale.saleNumber} เปลี่ยนเครื่องแล้ว (เคส ${sale.exchangeCase?.caseNumber ?? sale.exchangeCaseId}) — ` +
+          'ยกเลิกใบขายไม่ได้ ให้ฝ่ายบัญชีแก้รายการถ้าจำเป็น',
       );
     }
 

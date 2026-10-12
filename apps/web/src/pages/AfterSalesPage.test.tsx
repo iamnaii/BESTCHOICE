@@ -443,6 +443,7 @@ describe('AfterSalesPage — Task 12: แท็บรออนุมัติ (A
           storage: '128GB',
           imeiSerial: 'IMEI-NEW',
         },
+        sale: null, // PR 5 — เคสผ่อนไม่มีใบขาย
         replacementContract: null,
         requestedBy: { id: 'user-1', name: 'ธนา' },
       },
@@ -472,6 +473,7 @@ describe('AfterSalesPage — Task 12: แท็บรออนุมัติ (A
           storage: '128GB',
           imeiSerial: 'IMEI-NEW-2',
         },
+        sale: null, // PR 5 — เคสผ่อนไม่มีใบขาย
         replacementContract: null,
         requestedBy: { id: 'user-2', name: 'นิภา' },
       },

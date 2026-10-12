@@ -32,6 +32,8 @@ describe('SaleVoidService.voidSale', () => {
     deletedAt: null,
     branchId: 'branch-1',
     netAmount: new Decimal(12000),
+    exchangeCaseId: null, // PR 5 — ใบขายที่ยังไม่เคยสลับเครื่อง
+    exchangeCase: null,
   };
 
   /** ผู้กดยกเลิก default ของเทสเดิม — OWNER ข้ามสาขาได้ (CROSS_BRANCH_ROLES) */
@@ -159,6 +161,21 @@ describe('SaleVoidService.voidSale', () => {
   it('G1: ใบขายถูกยกเลิกไปแล้ว → ปฏิเสธ และไม่เขียนอะไร', async () => {
     tx.sale.findUnique.mockResolvedValue({ ...CASH_SALE, deletedAt: new Date('2026-08-01') });
     await expect(service.voidSale('s1', OWNER, 'คีย์ผิดรุ่น')).rejects.toThrow(/ยกเลิกไปแล้ว/);
+    expectNothingWritten();
+  });
+
+  // ── G9 (PR 5) ─────────────────────────────────────────────────────────────
+  it('G9 (PR 5): ใบขายที่เปลี่ยนเครื่องแล้ว (exchangeCaseId) → ปฏิเสธถาวร ระบุเลขเคส และไม่เขียนอะไร', async () => {
+    tx.sale.findUnique.mockResolvedValue({
+      ...CASH_SALE,
+      exchangeCaseId: 'as-1',
+      exchangeCase: { caseNumber: 'AS-20261012-0001' },
+    });
+    await expect(service.voidSale('s1', OWNER, 'ลูกค้าเปลี่ยนใจไม่ซื้อแล้ว')).rejects.toThrow(
+      new BadRequestException(
+        'ใบขาย SA-0001 เปลี่ยนเครื่องแล้ว (เคส AS-20261012-0001) — ยกเลิกใบขายไม่ได้ ให้ฝ่ายบัญชีแก้รายการถ้าจำเป็น',
+      ),
+    );
     expectNothingWritten();
   });
 

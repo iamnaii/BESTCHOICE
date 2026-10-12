@@ -3076,6 +3076,8 @@ model Sale {
   /// (ผู้อ่าน 10 จุดกรอง deletedAt: null อยู่แล้ว) — สองคอลัมน์นี้เก็บ "ทำไม" กับ "ใคร"
   voidReason        String?        @map("void_reason")
   voidedById        String?        @map("voided_by_id")
+  /// PR 5 หลังการขาย — เคสเปลี่ยนรุ่นเดิมขายสดครั้งล่าสุดที่สลับเครื่องบนใบนี้ (เครื่องเดิม/เวลา = case.productId/approvedAt)
+  exchangeCaseId    String?        @map("exchange_case_id")
   createdAt         DateTime       @default(now()) @map("created_at")
   updatedAt         DateTime       @updatedAt @map("updated_at")
   deletedAt         DateTime?      @map("deleted_at")
@@ -3086,6 +3088,7 @@ model Sale {
   salesperson              User                      @relation("SalesSalesperson", fields: [salespersonId], references: [id])
   voidedBy                 User?                     @relation("SaleVoidedBy", fields: [voidedById], references: [id], onDelete: Restrict)
   contract                 Contract?                 @relation(fields: [contractId], references: [id])
+  exchangeCase             AfterSalesCase?           @relation("SaleExchangeCase", fields: [exchangeCaseId], references: [id], onDelete: Restrict)
   financeReceivable        FinanceReceivable?
   interCompanyTransactions InterCompanyTransaction[]
   commissions              SalesCommission[]
@@ -3099,6 +3102,7 @@ model Sale {
   // สมุดเงินเข้า/ออกหน้าร้าน — เงินที่รับ/คืนของใบขาย
   shopTenders ShopTender[]
 
+  @@index([exchangeCaseId])
   @@index([saleType])
   @@index([branchId])
   @@index([createdAt])
@@ -8126,6 +8130,7 @@ model AfterSalesCase {
   receivedBy    User              @relation("AfterSalesCaseReceivedBy", fields: [receivedById], references: [id])
   repairTicket  RepairTicket?     @relation("AfterSalesCaseRepairTicket", fields: [repairTicketId], references: [id])
   events        AfterSalesEvent[]
+  exchangedSales Sale[]            @relation("SaleExchangeCase")
   @@index([branchId, stage, deletedAt])
   @@index([customerId, deletedAt])
   @@index([deviceImei])

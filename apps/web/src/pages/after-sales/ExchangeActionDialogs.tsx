@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import api, { getErrorMessage } from '@/lib/api';
 import { Button } from '@/components/ui/button';
@@ -14,7 +14,14 @@ import {
 } from '@/components/ui/dialog';
 import { RepairCenterCombobox } from '@/pages/after-sales/RepairCenterCombobox';
 import ReplacementProductPicker from './ReplacementProductPicker';
-import { afterSalesKeys, PAYER_LABEL, type CaseDetail, type Payer } from './after-sales';
+import {
+  afterSalesKeys,
+  baht,
+  isCashCase,
+  PAYER_LABEL,
+  type CaseDetail,
+  type Payer,
+} from './after-sales';
 
 /**
  * ห้า dialog + 1 ConfirmDialog wrapper ของ Step 5 (เปลี่ยนเครื่อง — Task 11). ทุก mutation:
@@ -48,6 +55,8 @@ export function ConfirmExchangeDialog({
 }: DialogBaseProps & { data: CaseDetail }) {
   const queryClient = useQueryClient();
   const fromRepair = data.outcome === 'REPAIR';
+  // PR 5 — เคสขายสด: สลับเครื่องบนใบขายเดิม ไม่มีสัญญาใหม่ · เอกสารออกตอนส่งมอบ
+  const isCash = isCashCase(data);
   const [checkCondition, setCheckCondition] = useState(false);
   const [checkImei, setCheckImei] = useState(false);
   const [checkSigned, setCheckSigned] = useState(false);
@@ -65,6 +74,24 @@ export function ConfirmExchangeDialog({
   }, [open]);
 
   const valid = checkCondition && checkImei && (!fromRepair || !!replacementProductId);
+
+  // PR 5 — กล่อง "รายการบัญชีที่จะลง" (MGR เห็นต้นทุนได้ทั้งคู่) — คำนวณจากแหล่งเดียวกับตอนยืนยันจริง
+  const previewId = fromRepair ? replacementProductId : data.replacementProductId;
+  const preview = useQuery<{
+    saleNumber: string;
+    oldCost: string;
+    newCost: string;
+    lines: { accountCode: string; dr: string; cr: string }[];
+  }>({
+    queryKey: ['after-sales', 'cash-preview', caseId, previewId],
+    queryFn: async () =>
+      (
+        await api.get(`/after-sales/${caseId}/exchange/cash-preview`, {
+          params: previewId ? { replacementProductId: previewId } : {},
+        })
+      ).data,
+    enabled: open && isCash && !!previewId,
+  });
 
   const mutate = useMutation({
     mutationFn: async () => {
@@ -87,9 +114,11 @@ export function ConfirmExchangeDialog({
         <DialogHeader>
           <DialogTitle>ยืนยันเปลี่ยนเครื่อง</DialogTitle>
           <DialogDescription>
-            {fromRepair
-              ? 'เลือกเครื่องทดแทนจากสต๊อกก่อนยืนยัน — ระบบจะเปิดสัญญาใหม่ให้ทันที'
-              : 'ตรวจสอบเครื่องเดิม/เครื่องใหม่ก่อนยืนยัน'}
+            {isCash
+              ? 'ตรวจสอบเครื่องเดิม/เครื่องทดแทนก่อนยืนยัน — สลับเครื่องบนใบขายเดิม ราคาเท่าเดิม'
+              : fromRepair
+                ? 'เลือกเครื่องทดแทนจากสต๊อกก่อนยืนยัน — ระบบจะเปิดสัญญาใหม่ให้ทันที'
+                : 'ตรวจสอบเครื่องเดิม/เครื่องใหม่ก่อนยืนยัน'}
           </DialogDescription>
         </DialogHeader>
 
@@ -121,15 +150,17 @@ export function ConfirmExchangeDialog({
             />
             เครื่องใหม่จากสต๊อกสาขานี้ IMEI ตรง
           </label>
-          <label className="flex items-center gap-2 text-sm leading-snug text-foreground">
-            <input
-              type="checkbox"
-              checked={checkSigned}
-              onChange={(e) => setCheckSigned(e.target.checked)}
-              className="h-4.5 w-4.5"
-            />
-            ลูกค้าเซ็นใบส่งมอบแล้ว
-          </label>
+          {!isCash && (
+            <label className="flex items-center gap-2 text-sm leading-snug text-foreground">
+              <input
+                type="checkbox"
+                checked={checkSigned}
+                onChange={(e) => setCheckSigned(e.target.checked)}
+                className="h-4.5 w-4.5"
+              />
+              ลูกค้าเซ็นใบส่งมอบแล้ว
+            </label>
+          )}
         </div>
 
         <div className="space-y-1">
@@ -148,14 +179,48 @@ export function ConfirmExchangeDialog({
 
         <div className="space-y-1 rounded-lg border border-warning/40 bg-warning/10 p-3 text-xs leading-snug text-warning-strong">
           <p className="font-semibold">เมื่อกดยืนยัน ระบบจะทำให้:</p>
-          <ul className="list-disc space-y-0.5 pl-4">
-            <li>สัญญาเดิมปิดเป็น &quot;เปลี่ยนเครื่องชำรุด&quot; และกลับรายการบัญชีอัตโนมัติ</li>
-            <li>
-              เปิดสัญญาใหม่เงื่อนไขเดิมด้วยเครื่องที่เลือก — ต้องเปิดใช้ที่หน้าสัญญาก่อนส่งมอบ
-            </li>
-            <li>เครื่องเดิม → รอส่งเคลมผู้จัดจำหน่าย · บันทึกผู้ยืนยันในไทม์ไลน์</li>
-          </ul>
+          {isCash ? (
+            <ul className="list-disc space-y-0.5 pl-4">
+              <li>สลับเครื่องบนใบขายเดิม — เลขใบขายเดิม ราคาเดิม ไม่มีเงินเปลี่ยนมือ</li>
+              <li>ลงรายการบัญชีสลับต้นทุน (เครื่องเดิมกลับเข้าคลัง · ต้นทุนขายเป็นของเครื่องทดแทน)</li>
+              <li>เครื่องเดิม → รอเคลมผู้จัดจำหน่าย (ขอตัดจำหน่ายได้ที่เมนูตัดสินค้า)</li>
+              <li>ส่ง LINE &quot;มารับได้แล้ว&quot; ให้ลูกค้า</li>
+              <li>บันทึกผู้ยืนยันในไทม์ไลน์ · ประกันร้านและกรอบ 7 วันนับใหม่ตอนส่งมอบ</li>
+            </ul>
+          ) : (
+            <ul className="list-disc space-y-0.5 pl-4">
+              <li>สัญญาเดิมปิดเป็น &quot;เปลี่ยนเครื่องชำรุด&quot; และกลับรายการบัญชีอัตโนมัติ</li>
+              <li>
+                เปิดสัญญาใหม่เงื่อนไขเดิมด้วยเครื่องที่เลือก — ต้องเปิดใช้ที่หน้าสัญญาก่อนส่งมอบ
+              </li>
+              <li>เครื่องเดิม → รอส่งเคลมผู้จัดจำหน่าย · บันทึกผู้ยืนยันในไทม์ไลน์</li>
+            </ul>
+          )}
         </div>
+
+        {isCash && preview.data && (
+          <div className="space-y-1 rounded-lg border border-border bg-muted p-3 text-xs leading-snug">
+            <p className="font-semibold text-foreground">
+              รายการบัญชีที่จะลง (ต้นทุนเดิม {baht(preview.data.oldCost)} → เครื่องทดแทน{' '}
+              {baht(preview.data.newCost)})
+            </p>
+            <table className="w-full">
+              <tbody>
+                {preview.data.lines.map((l, i) => (
+                  <tr key={i}>
+                    <td className="py-0.5 pr-2 font-mono">{l.accountCode}</td>
+                    <td className="py-0.5 pr-2 text-right">{l.dr !== '0.00' ? `Dr ${baht(l.dr)}` : ''}</td>
+                    <td className="py-0.5 text-right">{l.cr !== '0.00' ? `Cr ${baht(l.cr)}` : ''}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <p className="text-muted-foreground">รายได้ {preview.data.saleNumber} และเงินสดไม่เปลี่ยน</p>
+          </div>
+        )}
+        {isCash && preview.isError && (
+          <p className="text-xs leading-snug text-destructive">{getErrorMessage(preview.error)}</p>
+        )}
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={mutate.isPending}>
@@ -516,5 +581,134 @@ export function DeliverExchangeConfirm({ caseId, open, onOpenChange }: DialogBas
       loading={mutate.isPending}
       onConfirm={() => mutate.mutate()}
     />
+  );
+}
+
+/** PR 5 — ส่งมอบเครื่องทดแทนของเคสขายสด (กระดาน 12): พิมพ์ 2 ใบ · ติ๊ก 2 ข้อ · อุปกรณ์ · ปิดเคส */
+export function DeliverCashExchangeDialog({
+  caseId,
+  open,
+  onOpenChange,
+  onPrintDocs,
+}: DialogBaseProps & { onPrintDocs: () => void }) {
+  const queryClient = useQueryClient();
+  const [checkedDocs, setCheckedDocs] = useState(false);
+  const [checkedDevice, setCheckedDevice] = useState(false);
+  const [acc, setAcc] = useState({ box: false, charger: false, case: false, other: '' });
+  const [note, setNote] = useState('');
+
+  useEffect(() => {
+    if (open) {
+      setCheckedDocs(false);
+      setCheckedDevice(false);
+      setAcc({ box: false, charger: false, case: false, other: '' });
+      setNote('');
+    }
+  }, [open]);
+
+  const mutate = useMutation({
+    mutationFn: async () =>
+      (
+        await api.post(`/after-sales/${caseId}/exchange/deliver`, {
+          accessories: {
+            box: acc.box,
+            charger: acc.charger,
+            case: acc.case,
+            ...(acc.other.trim() ? { other: acc.other.trim() } : {}),
+          },
+          ...(note.trim() ? { note: note.trim() } : {}),
+        })
+      ).data,
+    onSuccess: () => {
+      toast.success('ส่งมอบเครื่องทดแทนแล้ว — ปิดเคส');
+      queryClient.invalidateQueries({ queryKey: afterSalesKeys.all });
+      onOpenChange(false);
+    },
+    onError: (err) => toast.error(getErrorMessage(err)),
+  });
+
+  const valid = checkedDocs && checkedDevice;
+  const ACC_LABEL = { box: 'กล่อง', charger: 'สายชาร์จ', case: 'เคส' } as const;
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>ส่งมอบเครื่องทดแทน</DialogTitle>
+          <DialogDescription>
+            พิมพ์ใบรับคืน + ใบส่งมอบให้ลูกค้าเซ็นก่อน แล้วยืนยันส่งมอบ — ประกันร้านและกรอบ 7 วันเริ่มนับใหม่วันนี้
+          </DialogDescription>
+        </DialogHeader>
+
+        <Button variant="outline" onClick={onPrintDocs}>
+          พิมพ์ใบรับคืน + ใบส่งมอบ (2 ใบ)
+        </Button>
+
+        <fieldset className="space-y-2">
+          <legend className="text-xs leading-snug text-muted-foreground">อุปกรณ์ที่ส่งมอบ</legend>
+          {(['box', 'charger', 'case'] as const).map((k) => (
+            <label key={k} className="flex items-center gap-2 text-sm leading-snug text-foreground">
+              <input
+                type="checkbox"
+                checked={acc[k]}
+                onChange={(e) => setAcc({ ...acc, [k]: e.target.checked })}
+                className="h-4.5 w-4.5"
+              />
+              {ACC_LABEL[k]}
+            </label>
+          ))}
+          <input
+            className={inputClass}
+            placeholder="อื่น ๆ"
+            maxLength={60}
+            value={acc.other}
+            onChange={(e) => setAcc({ ...acc, other: e.target.value })}
+          />
+        </fieldset>
+
+        <div className="space-y-2">
+          <label className="flex items-center gap-2 text-sm leading-snug text-foreground">
+            <input
+              type="checkbox"
+              checked={checkedDocs}
+              onChange={(e) => setCheckedDocs(e.target.checked)}
+              className="h-4.5 w-4.5"
+            />
+            ลูกค้าเซ็นใบรับคืน + ใบส่งมอบแล้ว
+          </label>
+          <label className="flex items-center gap-2 text-sm leading-snug text-foreground">
+            <input
+              type="checkbox"
+              checked={checkedDevice}
+              onChange={(e) => setCheckedDevice(e.target.checked)}
+              className="h-4.5 w-4.5"
+            />
+            ลูกค้าตรวจเครื่องทดแทน IMEI ตรง เปิดใช้งานได้
+          </label>
+        </div>
+
+        <textarea
+          rows={2}
+          maxLength={300}
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          className={areaClass}
+          placeholder="หมายเหตุ"
+        />
+
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={mutate.isPending}>
+            ยกเลิก
+          </Button>
+          <Button
+            variant="primary"
+            disabled={!valid || mutate.isPending}
+            onClick={() => mutate.mutate()}
+          >
+            {mutate.isPending ? 'กำลังบันทึก…' : 'ยืนยันส่งมอบ + ปิดเคส'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

@@ -17,8 +17,12 @@ export const ADVANCE_EXCESS_INCOME_FLOW = 'advance-excess-income';
 export const ADVANCE_EXCESS_INCOME_TAG = 'ADVANCE_EXCESS';
 export const ADVANCE_EXCESS_INCOME_ACCOUNT = '42-1106';
 export const ADVANCE_EXCESS_INCOME_AUDIT_ACTION = 'ADVANCE_EXCESS_RECOGNIZED';
-export const ADVANCE_EXCESS_VOID_BLOCKED_MESSAGE =
-  'สัญญานี้ลงรายได้เงินพักส่วนเกิน (42-1106) แล้ว — ต้องให้ฝ่ายบัญชีกลับรายการก่อน';
+/** flow ของรายการกลับแบบกระจกของรอบกวาด (final review I2) — ผู้เขียนตัวเดียวคือ `AdvanceExcessIncomeTemplate.reverse` */
+export const ADVANCE_EXCESS_INCOME_REVERSE_FLOW = 'advance-excess-income-reverse';
+export const ADVANCE_EXCESS_REVERSED_AUDIT_ACTION = 'ADVANCE_EXCESS_REVERSED';
+/** ชื่อคำสั่ง npm (apps/api) ที่ผู้ดูแลระบบใช้กลับรายการกวาด — ข้อความ error/งานต้องชี้ทางที่มีจริงเท่านั้น */
+export const ADVANCE_EXCESS_REVERSE_CLI = 'advance-excess:reverse';
+export const ADVANCE_EXCESS_VOID_BLOCKED_MESSAGE = `สัญญานี้ลงรายได้เงินพักส่วนเกิน (42-1106) แล้ว — ต้องให้ผู้ดูแลระบบกลับรายการกวาดก่อน (คำสั่ง ${ADVANCE_EXCESS_REVERSE_CLI})`;
 
 type Client = Prisma.TransactionClient | PrismaClient;
 
@@ -44,6 +48,26 @@ export function isActiveAdvanceExcessEntry(entry: { metadata: unknown }): boolea
  * idempotencyKey เมื่อต้องลงใหม่หลังกลับรายการ). กรอง `reversed` ใน JS: JSON-path equality บนคีย์ที่ไม่มี
  * เป็น NULL ใน SQL — `NOT(...)` จะทิ้งรายการที่ไม่เคยถูกกลับไปด้วย (กติกาเดียวกับตัวจับคู่ของการยกเลิกใบเสร็จ).
  */
+/**
+ * จำนวนแถวของ flow นี้ของสัญญา **ทุกสถานะ** (POSTED · VOIDED · ถูกลบ) — ใช้ตั้งลำดับ idempotencyKey/reference
+ * ของรายการกวาดครั้งถัดไป: unique index `journal_entries_idempotency_idx` (flow+key) และ `journal_entries_ref_unique`
+ * ไม่ดูสถานะ ⇒ ต้นฉบับที่ถูก `JournalService.void` (VOIDED — `listAdvanceExcessIncomeEntries` ไม่เห็น) ยังถือ key เดิม
+ * (final review I2)
+ */
+export async function countAdvanceExcessIncomeEntries(
+  client: Client,
+  contractId: string,
+): Promise<number> {
+  return client.journalEntry.count({
+    where: {
+      AND: [
+        { metadata: { path: ['flow'], equals: ADVANCE_EXCESS_INCOME_FLOW } },
+        { metadata: { path: ['contractId'], equals: contractId } },
+      ],
+    },
+  });
+}
+
 export async function listAdvanceExcessIncomeEntries(
   client: Client,
   contractId: string,

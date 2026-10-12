@@ -296,7 +296,7 @@ describe('ReceiptVoidService — กลับรายการตั้งล�
     const { run, tx, accrualVoid } = setup({ activeExcessIncome: true });
 
     await expect(run()).rejects.toThrow(
-      'สัญญานี้ลงรายได้เงินพักส่วนเกิน (42-1106) แล้ว — ต้องให้ฝ่ายบัญชีกลับรายการก่อน',
+      'สัญญานี้ลงรายได้เงินพักส่วนเกิน (42-1106) แล้ว — ต้องให้ผู้ดูแลระบบกลับรายการกวาดก่อน (คำสั่ง advance-excess:reverse)',
     );
     expect(tx.receipt.create).not.toHaveBeenCalled();
     expect(tx.payment.update).not.toHaveBeenCalled();

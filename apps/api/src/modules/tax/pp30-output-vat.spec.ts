@@ -1,5 +1,6 @@
 import { BadRequestException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import { ADVANCE_VAT_CONSUME_DESCRIPTION } from '../journal/advance-vat';
 import {
   PP30_INCLUDES_MANDATORY_60DAY,
   Pp30Client,
@@ -183,6 +184,57 @@ describe('classifyOutputVatReduction — ADVANCE_APPLIED (PR4 ต10)', () => {
         metadata: { ...META_WRITE_OFF, advanceVatConsume: '92.83' },
       }),
     ).toBe('CREDIT_NOTE');
+  });
+
+  it('final review I1: รายการ JP5 / ตัดหนี้สูญ มีทั้งบรรทัดใบลดหนี้และขากลับ (Dr 21-2101 สองบรรทัด) — ตัดสินต่อบรรทัด: บรรทัดที่คำอธิบาย = ADVANCE_VAT_CONSUME_DESCRIPTION เป็น ADVANCE_APPLIED บรรทัดใบลดหนี้ยังเป็น CREDIT_NOTE', () => {
+    for (const base of [META_JP5, META_WRITE_OFF]) {
+      const meta = { ...base, advanceVatReversal: '92.83', advanceVatConsume: '92.83' };
+      const cn = line('21-2101', '99.17', '0', { metadata: meta });
+      cn.description = 'ใบลดหนี้ VAT (ม.82/5) งวดค้าง';
+      const rev = line('21-2101', '92.83', '0', { metadata: meta });
+      rev.description = ADVANCE_VAT_CONSUME_DESCRIPTION;
+      const settled = line('21-2101', '0', '793.32', { metadata: meta });
+      settled.description = 'ภาษีขายถึงกำหนด';
+
+      expect(classifyOutputVatReduction(cn.journalEntry, cn)).toBe('CREDIT_NOTE');
+      expect(classifyOutputVatReduction(rev.journalEntry, rev)).toBe('ADVANCE_APPLIED');
+      // ไม่ส่งบรรทัด (ผู้เรียกเดิม) = ตัดสินระดับรายการเหมือนเดิม
+      expect(classifyOutputVatReduction(rev.journalEntry)).toBe('CREDIT_NOTE');
+
+      const s = summarizePp30OutputVat([settled, cn, rev]);
+      expect(s.reductions.creditNote.toFixed(2)).toBe('99.17');
+      expect(s.reductions.advanceApplied.toFixed(2)).toBe('92.83');
+      expect(s.reductions.other.toFixed(2)).toBe('0.00');
+      expect(s.reductionLines.map((l) => l.kind)).toEqual(['CREDIT_NOTE', 'ADVANCE_APPLIED']);
+      expect(toPp30OutputVatJson(s)).toMatchObject({
+        settledGross: '793.32',
+        reductionCreditNote: '99.17',
+        reductionAdvanceApplied: '92.83',
+        reductionTotal: '192.00',
+        settledNet: '601.32',
+      });
+      expectReconciles(s);
+    }
+  });
+
+  it('final review I1: กระจกของรายการที่มีขาภาษีเงินรับล่วงหน้า (tag REVERSAL · คำอธิบายถูก copy พร้อม prefix) ยังเป็น REVERSAL ไม่ว่าบรรทัดใด', () => {
+    const meta = {
+      tag: 'REVERSAL',
+      flow: 'receipt-void',
+      contractId: 'c-5',
+      originalEntryId: 'je-0',
+    };
+    const mirrorOfSettled = line('21-2101', '99.17', '0', { metadata: meta });
+    mirrorOfSettled.description = '[กลับรายการ] ภาษีขายถึงกำหนด';
+    const mirrorOfParkCr = line('21-2101', '92.83', '0', { metadata: meta });
+    mirrorOfParkCr.description = `[กลับรายการ] ${ADVANCE_VAT_CONSUME_DESCRIPTION}`;
+    const exactCopy = line('21-2101', '92.83', '0', {
+      metadata: { ...meta, advanceVatConsume: '92.83' },
+    });
+    exactCopy.description = ADVANCE_VAT_CONSUME_DESCRIPTION;
+    for (const l of [mirrorOfSettled, mirrorOfParkCr, exactCopy]) {
+      expect(classifyOutputVatReduction(l.journalEntry, l)).toBe('REVERSAL');
+    }
   });
 
   it('stamp ว่าง/ศูนย์/ไม่ใช่ตัวเลข หรือมีแต่ขาพัก (advanceVatPark) = ไม่ใช่ ADVANCE_APPLIED', () => {
@@ -653,6 +705,7 @@ describe('computePp30OutputVat — query ของเดือน', () => {
         accountCode: true,
         debit: true,
         credit: true,
+        description: true,
         journalEntry: {
           select: {
             id: true,

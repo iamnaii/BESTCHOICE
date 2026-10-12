@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
 import { PrismaService } from '../../../prisma/prisma.service';
@@ -16,7 +16,10 @@ import {
   ADVANCE_EXCESS_INCOME_ACCOUNT,
   ADVANCE_EXCESS_INCOME_AUDIT_ACTION,
   ADVANCE_EXCESS_INCOME_FLOW,
+  ADVANCE_EXCESS_INCOME_REVERSE_FLOW,
   ADVANCE_EXCESS_INCOME_TAG,
+  ADVANCE_EXCESS_REVERSED_AUDIT_ACTION,
+  countAdvanceExcessIncomeEntries,
   isActiveAdvanceExcessEntry,
   listAdvanceExcessIncomeEntries,
 } from '../advance-excess-income.util';
@@ -38,8 +41,16 @@ import {
  *
  * คอลัมน์ `advanceBalance` / `rescheduleAdvanceBalance` = 0 ในธุรกรรมเดียวกัน (`creditBalance` ไม่แตะ — ถ3) · audit
  * `ADVANCE_EXCESS_RECOGNIZED` ผ่าน `tx.auditLog.create` (atomic กับรายการ — แถวหลุด Merkle chain โดยตั้งใจ) ·
- * idempotency `flow + idempotencyKey` (`advance-excess-income:<contractId>` · ลงใหม่หลังฝ่ายบัญชีกลับรายการ =
- * ต่อท้าย `:<ลำดับ>`) + จับ P2002 ⇒ `ALREADY_POSTED` · สัญญาณเตือนคอลัมน์ ≠ บัญชี ส่งหลัง commit (`emitDeferredWarnings`).
+ * idempotency `flow + idempotencyKey` (`advance-excess-income:<contractId>` · ลงใหม่หลังกลับรายการ = ต่อท้าย `:<ลำดับ>`
+ * โดยลำดับนับ**ทุกแถว**ของ flow รวม VOIDED/ลบ — `countAdvanceExcessIncomeEntries`) + จับ P2002 ⇒ `ALREADY_POSTED` ·
+ * สัญญาณเตือนคอลัมน์ ≠ บัญชี ส่งหลัง commit (`emitDeferredWarnings`).
+ *
+ * **กลับรายการ (final review I2):** `reverse(contractId, { reason, actorUserId })` — กระจกทุกบรรทัดของรายการกวาดที่ยังมีผล
+ * (`Cr 21-1103 / Dr 42-1106 / Dr 21-2102`) flow `advance-excess-income-reverse` · tag `REVERSAL` · key ต่อต้นฉบับ ·
+ * **ไม่ copy stamp** `advanceVatConsume` (ต5 — ต้นฉบับถูก stamp `reversed` ⇒ `advanceVatOutstanding` กลับขึ้นเอง) · คืนคอลัมน์
+ * `advanceBalance` / `rescheduleAdvanceBalance` จาก `*Before` ใน metadata · audit `ADVANCE_EXCESS_REVERSED` · เรียกจาก CLI
+ * `advance-excess:reverse` (`src/cli/advance-excess-income-reverse.cli.ts`) — `JournalService.void` ปฏิเสธรายการ flow นี้
+ * เพราะมันตั้ง VOIDED + รายการกลับไม่มี metadata (21-1103 ทั้งบัญชีเกินจริง · 42-1106 ติดลบ · รอบกวาดลงซ้ำไม่ได้).
  */
 export type AdvanceExcessIncomeResult =
   | {
@@ -63,7 +74,22 @@ export type AdvanceExcessIncomeResult =
     }
   | { outcome: 'NOTHING'; contractId: string; contractNumber: string };
 
+export type AdvanceExcessReverseResult =
+  | {
+      outcome: 'REVERSED';
+      contractId: string;
+      contractNumber: string;
+      /** เลขที่รายการกระจก */
+      entryNo: string;
+      /** เลขที่รายการกวาดที่ถูกกลับ */
+      reversedEntryNo: string;
+      amount: Decimal;
+    }
+  | { outcome: 'NOTHING_TO_REVERSE'; contractId: string }
+  | { outcome: 'ALREADY_REVERSED'; contractId: string };
+
 const ZERO = new Decimal(0);
+const REVERSE_REASON_MIN = 10;
 const LINE_DESCRIPTION = 'รับรู้เงินพักส่วนเกินเป็นรายได้ (เงินพักค่าปรับดิวสะสมเกิน)';
 const toDecimal = (v: Prisma.Decimal | string | number | null | undefined): Decimal =>
   new Decimal((v ?? 0).toString());
@@ -186,7 +212,8 @@ export class AdvanceExcessIncomeTemplate {
     if (vat.gt(amount)) vat = amount;
     const income = amount.minus(vat);
 
-    const seq = priorEntries.length + 1;
+    // ลำดับนับทุกแถวของ flow (รวม VOIDED/ลบ) — `priorEntries` เห็นเฉพาะ POSTED จึงใช้ตัดสิน "มีผล" เท่านั้น (final review I2)
+    const seq = (await countAdvanceExcessIncomeEntries(tx, contractId)) + 1;
     const keyBase = `${ADVANCE_EXCESS_INCOME_FLOW}:${contractId}`;
     const idempotencyKey = seq === 1 ? keyBase : `${keyBase}:${seq}`;
 
@@ -252,15 +279,7 @@ export class AdvanceExcessIncomeTemplate {
     });
 
     const warnings: DeferredWarning[] = [...advances.warnings];
-    const auditUser =
-      (await tx.user.findFirst({
-        where: { isSystemUser: true, deletedAt: null },
-        select: { id: true },
-      })) ??
-      (await tx.user.findFirst({
-        where: { email: 'admin@bestchoice.com', deletedAt: null },
-        select: { id: true },
-      }));
+    const auditUser = await this.resolveAuditUser(tx);
     if (auditUser) {
       await tx.auditLog.create({
         data: {
@@ -305,5 +324,167 @@ export class AdvanceExcessIncomeTemplate {
       warnings,
       contractNumber,
     };
+  }
+
+  /** ผู้ใช้สำหรับ audit ของงานระบบ — SYSTEM ก่อน แล้ว admin@bestchoice.com (pattern JournalAutoService) · ไม่มี = null */
+  private async resolveAuditUser(tx: Prisma.TransactionClient): Promise<{ id: string } | null> {
+    return (
+      (await tx.user.findFirst({
+        where: { isSystemUser: true, deletedAt: null },
+        select: { id: true },
+      })) ??
+      (await tx.user.findFirst({
+        where: { email: 'admin@bestchoice.com', deletedAt: null },
+        select: { id: true },
+      }))
+    );
+  }
+
+  /**
+   * กลับรายการกวาดที่ยังมีผลของสัญญาแบบกระจก (final review I2) — ดู doc ของคลาส. ผู้เรียก: CLI `advance-excess:reverse`.
+   * ไม่มีรายการที่มีผล = `NOTHING_TO_REVERSE` · P2002 (กดพร้อมกัน) = `ALREADY_REVERSED`.
+   */
+  async reverse(
+    contractId: string,
+    input: { reason: string; actorUserId?: string | null },
+    opts: { postedAt?: Date } = {},
+  ): Promise<AdvanceExcessReverseResult> {
+    const reason = (input.reason ?? '').trim();
+    if (reason.length < REVERSE_REASON_MIN) {
+      throw new BadRequestException(
+        `ต้องระบุเหตุผลการกลับรายการอย่างน้อย ${REVERSE_REASON_MIN} ตัวอักษร`,
+      );
+    }
+    const postedAt = opts.postedAt ?? new Date();
+    try {
+      return await this.prisma.$transaction(
+        async (tx): Promise<AdvanceExcessReverseResult> => {
+          const entries = await listAdvanceExcessIncomeEntries(tx, contractId);
+          const active = entries.find(isActiveAdvanceExcessEntry);
+          if (!active) return { outcome: 'NOTHING_TO_REVERSE', contractId };
+
+          const original = await tx.journalEntry.findUniqueOrThrow({
+            where: { id: active.id },
+            include: { lines: { where: { deletedAt: null } } },
+          });
+          const meta = (original.metadata ?? {}) as Record<string, unknown>;
+          const contractNumber =
+            typeof meta.contractNumber === 'string'
+              ? meta.contractNumber
+              : (
+                  await tx.contract.findUniqueOrThrow({
+                    where: { id: contractId },
+                    select: { contractNumber: true },
+                  })
+                ).contractNumber;
+          const str = (v: unknown): string =>
+            typeof v === 'string' ? v : toDecimal(v as never).toFixed(2);
+          const amount = toDecimal(meta.amount as never);
+
+          await validatePeriodOpen(tx, postedAt, original.companyId);
+
+          const lines: JeLineInput[] = original.lines.map((l) => ({
+            accountCode: l.accountCode,
+            dr: toDecimal(l.credit),
+            cr: toDecimal(l.debit),
+            description: `[กลับรายการ] ${l.description ?? ''}`.trim(),
+          }));
+
+          // ไม่ copy stamp advanceVatPark/advanceVatConsume (ต5) — ต้นฉบับถูกประทับ reversed ⇒ outstanding กลับขึ้นเอง
+          const posted = await this.journal.createAndPost(
+            {
+              description: `[กลับรายการ] รับรู้เงินพักส่วนเกินเป็นรายได้ (42-1106) — สัญญา ${contractNumber} · ${original.entryNumber}`,
+              reference: `${original.id}:${ADVANCE_EXCESS_INCOME_REVERSE_FLOW}`,
+              companyId: original.companyId,
+              postedAt,
+              metadata: {
+                tag: 'REVERSAL',
+                flow: ADVANCE_EXCESS_INCOME_REVERSE_FLOW,
+                idempotencyKey: `${ADVANCE_EXCESS_INCOME_REVERSE_FLOW}:${original.id}`,
+                originalEntryId: original.id,
+                reversesEntryId: original.id,
+                originalEntryNumber: original.entryNumber,
+                contractId,
+                contractNumber,
+                reason,
+                amount: amount.toFixed(2),
+                income: str(meta.income),
+                vat: str(meta.vat),
+              },
+              lines,
+            },
+            tx,
+          );
+
+          await tx.journalEntry.update({
+            where: { id: original.id },
+            data: {
+              metadata: {
+                ...(meta as Prisma.InputJsonObject),
+                reversed: true,
+                reversedByEntryNumber: posted.entryNumber,
+              },
+            },
+          });
+
+          // คืนคอลัมน์ถังตามที่รายการกวาดบันทึกไว้ก่อนตั้งเป็น 0 (GL 21-1103 กลับมาด้วยกระจก ⇒ คอลัมน์ต้องตามบัญชี)
+          const restoredAdvance = toDecimal(meta.advanceBalanceBefore as never);
+          const restoredPark = toDecimal(meta.rescheduleAdvanceBalanceBefore as never);
+          await tx.contract.update({
+            where: { id: contractId },
+            data: { advanceBalance: restoredAdvance, rescheduleAdvanceBalance: restoredPark },
+          });
+
+          const auditUserId = input.actorUserId ?? (await this.resolveAuditUser(tx))?.id ?? null;
+          if (auditUserId) {
+            await tx.auditLog.create({
+              data: {
+                action: ADVANCE_EXCESS_REVERSED_AUDIT_ACTION,
+                entity: 'contract',
+                entityId: contractId,
+                userId: auditUserId,
+                newValue: {
+                  entryNumber: posted.entryNumber,
+                  reversedEntryNumber: original.entryNumber,
+                  contractNumber,
+                  amount: amount.toFixed(2),
+                  income: str(meta.income),
+                  vat: str(meta.vat),
+                  reason,
+                  restoredColumns: {
+                    advanceBalance: restoredAdvance.toFixed(2),
+                    rescheduleAdvanceBalance: restoredPark.toFixed(2),
+                  },
+                  postedAt: postedAt.toISOString(),
+                  source: 'ADVANCE_EXCESS_REVERSE',
+                },
+              },
+            });
+          } else {
+            this.logger.warn(
+              `[advance-excess-income] no actor/SYSTEM/admin user — ADVANCE_EXCESS_REVERSED audit skipped (contract ${contractId})`,
+            );
+          }
+
+          return {
+            outcome: 'REVERSED',
+            contractId,
+            contractNumber,
+            entryNo: posted.entryNumber,
+            reversedEntryNo: original.entryNumber,
+            amount,
+          };
+        },
+        { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+      );
+    } catch (err) {
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+        this.logger.log(
+          `[advance-excess-income] P2002 on reverse for contract ${contractId} — already reversed (ALREADY_REVERSED)`,
+        );
+        return { outcome: 'ALREADY_REVERSED', contractId };
+      }
+      throw err;
+    }
   }
 }

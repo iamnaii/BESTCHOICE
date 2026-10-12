@@ -1,7 +1,7 @@
 import { BadRequestException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { bangkokMidnight } from '../../utils/date.util';
-import { ADVANCE_VAT_META } from '../journal/advance-vat';
+import { ADVANCE_VAT_CONSUME_DESCRIPTION, ADVANCE_VAT_META } from '../journal/advance-vat';
 
 /**
  * ภาษีขายของแบบ ภ.พ.30 — การคำนวณเดียวของระบบ (2026-09-30)
@@ -67,6 +67,12 @@ export interface Pp30OutputVatLine {
   accountCode: string;
   debit: Prisma.Decimal;
   credit: Prisma.Decimal;
+  /**
+   * คำอธิบายของ**บรรทัด** (ไม่ใช่ของรายการ) — ใช้ตัดสินต่อบรรทัดเมื่อรายการเดียวมีเดบิต 21-2101 สองที่มา
+   * (JP5 / ตัดหนี้สูญ: บรรทัดใบลดหนี้ ม.82/5 + บรรทัดขากลับภาษีเงินรับล่วงหน้า — PR4 final review I1). undefined/null =
+   * ตัดสินระดับรายการตามเดิม (mock เดิมที่ไม่ส่งฟิลด์นี้ทำงานได้เหมือนเดิม)
+   */
+  description?: string | null;
   journalEntry: {
     id: string;
     entryNumber: string;
@@ -173,14 +179,20 @@ function asObject(value: Prisma.JsonValue | null | undefined): Record<string, un
  *   - เอกสารรายได้อื่นแบบกลับรายการ (`-R`): `metadata.source === 'OTHER_INCOME'` และ `otherIncomeId` ลงท้าย `:reversal`
  *   - ใบลดหนี้ ม.82/5: ยึดคืน (`tag 'JP5'` + `flow 'repossession'`) · ตัดหนี้สูญ (`tag 'BAD-DEBT'` + `flow 'write-off'`)
  *   - เงินรับล่วงหน้าที่หักเข้างวด (PR4 ต10): รายการที่ stamp `advanceVatConsume` เป็นตัวเลข > 0 — ขากลับ
- *     `Dr 21-2101 / Cr 21-2102` ของภาษีที่รับรู้ไปแล้ว ณ วันรับเงิน (ต2) จึงไม่ใช่ "อื่น ๆ". ตรวจ**หลัง**สองแบบบน:
- *     รายการกลับแบบกระจก/ใบลดหนี้ที่ copy stamp มาด้วยยังเป็น REVERSAL/CREDIT_NOTE ตามเดิม
+ *     `Dr 21-2101 / Cr 21-2102` ของภาษีที่รับรู้ไปแล้ว ณ วันรับเงิน (ต2) จึงไม่ใช่ "อื่น ๆ". ตรวจ**หลัง**กลับรายการ:
+ *     รายการกลับแบบกระจกที่ copy stamp/คำอธิบายมาด้วยยังเป็น REVERSAL ตามเดิม. **ตัดสินต่อบรรทัดเมื่อผู้เรียกส่ง `line`**
+ *     (final review I1): รายการ JP5 / ตัดหนี้สูญ มีเดบิต 21-2101 สองที่มาในรายการเดียว — บรรทัดใบลดหนี้ ม.82/5 และ
+ *     บรรทัดขากลับ (คำอธิบาย = `ADVANCE_VAT_CONSUME_DESCRIPTION` จาก `buildAdvanceVatConsumeLines`) ⇒ บรรทัดขากลับ
+ *     เป็น ADVANCE_APPLIED บรรทัดใบลดหนี้เป็น CREDIT_NOTE. ไม่ส่ง `line` = ตัดสินระดับรายการ (ใบลดหนี้ชนะ stamp)
  *   - นอกนั้น = OTHER
  */
-export function classifyOutputVatReduction(entry: {
-  referenceType: string | null;
-  metadata: Prisma.JsonValue | null;
-}): Pp30ReductionKind {
+export function classifyOutputVatReduction(
+  entry: {
+    referenceType: string | null;
+    metadata: Prisma.JsonValue | null;
+  },
+  line?: { description?: string | null },
+): Pp30ReductionKind {
   const meta = asObject(entry.metadata);
   if (meta.tag === 'REVERSAL') return 'REVERSAL';
   if (entry.referenceType === 'REVERSAL') return 'REVERSAL';
@@ -191,13 +203,17 @@ export function classifyOutputVatReduction(entry: {
   ) {
     return 'REVERSAL';
   }
+  const hasConsumeStamp = isPositiveAmount(meta[ADVANCE_VAT_META.consume]);
+  // final review I1 — บรรทัดขากลับในรายการที่มีใบลดหนี้ด้วย (JP5 / ตัดหนี้สูญ) ต้องไม่ถูกนับเป็นใบลดหนี้
+  if (hasConsumeStamp && line?.description === ADVANCE_VAT_CONSUME_DESCRIPTION)
+    return 'ADVANCE_APPLIED';
   if (
     (meta.tag === 'JP5' && meta.flow === 'repossession') ||
     (meta.tag === 'BAD-DEBT' && meta.flow === 'write-off')
   ) {
     return 'CREDIT_NOTE';
   }
-  if (isPositiveAmount(meta[ADVANCE_VAT_META.consume])) return 'ADVANCE_APPLIED';
+  if (hasConsumeStamp) return 'ADVANCE_APPLIED';
   return 'OTHER';
 }
 
@@ -262,7 +278,7 @@ export function summarizePp30OutputVat(lines: Pp30OutputVatLine[]): Pp30OutputVa
     if (!countsAsPp30SettledVat(line)) continue; // บัญชีอื่นที่ไม่ใช่ 21-2101/21-2103 ถูกข้าม
     settledGross = settledGross.plus(credit);
     if (debit.isZero()) continue;
-    const kind = classifyOutputVatReduction(line.journalEntry);
+    const kind = classifyOutputVatReduction(line.journalEntry, line);
     if (kind === 'REVERSAL') reversal = reversal.plus(debit);
     else if (kind === 'CREDIT_NOTE') creditNote = creditNote.plus(debit);
     else if (kind === 'ADVANCE_APPLIED') advanceApplied = advanceApplied.plus(debit);
@@ -397,6 +413,7 @@ export async function loadPp30OutputVatLines(
         accountCode: true,
         debit: true,
         credit: true,
+        description: true,
         journalEntry: {
           select: {
             id: true,

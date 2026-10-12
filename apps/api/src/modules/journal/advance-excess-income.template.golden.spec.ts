@@ -26,6 +26,7 @@ describe('AdvanceExcessIncomeTemplate (golden G6 / G9 / ต4 · mock-based)', ()
   const dec = (v: string) => new Decimal(v);
   type Line = { accountCode: string; dr: Decimal; cr: Decimal; description?: string };
   type Posted = {
+    reference?: string;
     description: string;
     metadata: Record<string, unknown>;
     lines: Line[];
@@ -47,8 +48,17 @@ describe('AdvanceExcessIncomeTemplate (golden G6 / G9 / ต4 · mock-based)', ()
       rescheduleAdvanceBalance?: string;
       creditBalance?: string;
     };
-    /** รายการ flow advance-excess-income ที่มีอยู่แล้วของสัญญา (รวมที่ถูกกลับ) */
+    /** รายการ flow advance-excess-income ที่มีอยู่แล้วของสัญญา (รวมที่ถูกกลับ) — POSTED ที่ list เห็น */
     existing?: Array<Record<string, unknown>>;
+    /** จำนวนแถวของ flow ทุกสถานะ (รวม VOIDED/ลบ) ที่ `journalEntry.count` คืน — ไม่ส่ง = existing.length */
+    flowRowCount?: number;
+    /** บรรทัดของต้นฉบับที่ `reverse()` อ่านผ่าน findUniqueOrThrow (เรียงตามที่ลง) */
+    originalLines?: Array<{
+      accountCode: string;
+      debit: string;
+      credit: string;
+      description?: string;
+    }>;
     createAndPost?: jest.Mock;
     systemUser?: { id: string } | null;
     status?: string;
@@ -77,6 +87,25 @@ describe('AdvanceExcessIncomeTemplate (golden G6 / G9 / ต4 · mock-based)', ()
               }))
             : (opts.stamps ?? []).map((metadata) => ({ metadata })),
         ),
+        count: jest.fn(async () => opts.flowRowCount ?? (opts.existing ?? []).length),
+        findUniqueOrThrow: jest.fn(async (args: { where: { id: string } }) => {
+          const i = Number(args.where.id.replace('je-x-', ''));
+          return {
+            id: args.where.id,
+            entryNumber: `JE-X-${i}`,
+            companyId: 'fin-1',
+            description: 'รับรู้เงินพักส่วนเกินเป็นรายได้ (42-1106) — สัญญา CT-0001',
+            metadata: (opts.existing ?? [])[i],
+            lines: (opts.originalLines ?? []).map((l, k) => ({
+              id: `ln-${k}`,
+              accountCode: l.accountCode,
+              debit: dec(l.debit),
+              credit: dec(l.credit),
+              description: l.description ?? null,
+            })),
+          };
+        }),
+        update: jest.fn().mockResolvedValue({}),
       },
       journalLine: { findMany: jest.fn(ledgerLines(opts.ledger)) },
       user: {
@@ -105,6 +134,168 @@ describe('AdvanceExcessIncomeTemplate (golden G6 / G9 / ต4 · mock-based)', ()
 
   beforeEach(() => {
     (Sentry.captureMessage as jest.Mock).mockClear();
+  });
+
+  it('final review I2: ต้นฉบับที่ถูก JournalService.void (VOIDED — list ไม่เห็น) ยังถือ key เดิม ⇒ seq นับทุกแถวของ flow ไม่กรองสถานะ → key :2', async () => {
+    const { template, posted } = build({
+      ledger: { '21-1103': '500.00' },
+      existing: [],
+      flowRowCount: 1,
+    });
+    const r = await template.execute('contract-1', {
+      postedAt: new Date('2026-10-12T00:40:00+07:00'),
+    });
+    expect(r.outcome).toBe('POSTED');
+    expect(posted().metadata.idempotencyKey).toBe('advance-excess-income:contract-1:2');
+    expect(posted().reference).toBe('contract-1:advance-excess-income:2');
+  });
+
+  describe('reverse() — กลับรายการกวาดแบบกระจก (final review I2)', () => {
+    const ACTIVE = {
+      tag: 'ADVANCE_EXCESS',
+      flow: 'advance-excess-income',
+      idempotencyKey: 'advance-excess-income:contract-1',
+      contractId: 'contract-1',
+      contractNumber: 'CT-0001',
+      amount: '1322.13',
+      income: '1235.64',
+      vat: '86.49',
+      advanceBalanceBefore: '1322.13',
+      rescheduleAdvanceBalanceBefore: '0.00',
+      creditBalanceBefore: '0.00',
+      advanceVatConsume: '86.49',
+    };
+    const LINES = [
+      {
+        accountCode: '21-1103',
+        debit: '1322.13',
+        credit: '0',
+        description: 'รับรู้เงินพักส่วนเกินเป็นรายได้ (เงินพักค่าปรับดิวสะสมเกิน)',
+      },
+      {
+        accountCode: '42-1106',
+        debit: '0',
+        credit: '1235.64',
+        description: 'รับรู้เงินพักส่วนเกินเป็นรายได้ (เงินพักค่าปรับดิวสะสมเกิน)',
+      },
+      {
+        accountCode: '21-2102',
+        debit: '0',
+        credit: '86.49',
+        description: ADVANCE_VAT_CONSUME_DESCRIPTION,
+      },
+    ];
+
+    it('กระจกทุกบรรทัด (Cr 21-1103 / Dr 42-1106 / Dr 21-2102) · tag REVERSAL · flow advance-excess-income-reverse · key ต่อต้นฉบับ · ไม่ copy stamp consume · stamp reversed บนต้นฉบับ · คืนคอลัมน์จาก *Before · audit ADVANCE_EXCESS_REVERSED', async () => {
+      const createAndPost = jest
+        .fn()
+        .mockResolvedValue({ id: 'je-rev', entryNumber: 'JE-REV-0001' });
+      const { template, tx, prisma } = build({
+        ledger: { '21-1103': '0' },
+        existing: [ACTIVE],
+        originalLines: LINES,
+        createAndPost,
+      });
+      const r = await template.reverse('contract-1', {
+        reason: 'ฝ่ายบัญชีสั่งคืนเงินลูกค้า — ตรวจแล้ว',
+        actorUserId: 'acc-1',
+      });
+      expect(r.outcome).toBe('REVERSED');
+      if (r.outcome !== 'REVERSED') throw new Error('unreachable');
+      expect(r.entryNo).toBe('JE-REV-0001');
+      expect(r.reversedEntryNo).toBe('JE-X-0');
+      expect(r.amount.toFixed(2)).toBe('1322.13');
+      expect(prisma.$transaction).toHaveBeenCalledWith(expect.any(Function), {
+        isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+      });
+
+      const p = createAndPost.mock.calls[0][0] as Posted;
+      expect(tuples(p.lines)).toEqual([
+        '21-1103 0.00 1322.13',
+        '42-1106 1235.64 0.00',
+        '21-2102 86.49 0.00',
+      ]);
+      expect(p.companyId).toBe('fin-1');
+      expect(p.reference).toBe('je-x-0:advance-excess-income-reverse');
+      expect(p.metadata).toMatchObject({
+        tag: 'REVERSAL',
+        flow: 'advance-excess-income-reverse',
+        idempotencyKey: 'advance-excess-income-reverse:je-x-0',
+        originalEntryId: 'je-x-0',
+        reversesEntryId: 'je-x-0',
+        originalEntryNumber: 'JE-X-0',
+        contractId: 'contract-1',
+        contractNumber: 'CT-0001',
+        reason: 'ฝ่ายบัญชีสั่งคืนเงินลูกค้า — ตรวจแล้ว',
+        amount: '1322.13',
+      });
+      expect(p.metadata).not.toHaveProperty(ADVANCE_VAT_META.consume);
+      expect(p.metadata).not.toHaveProperty(ADVANCE_VAT_META.park);
+
+      expect(tx.journalEntry.update).toHaveBeenCalledWith({
+        where: { id: 'je-x-0' },
+        data: { metadata: { ...ACTIVE, reversed: true, reversedByEntryNumber: 'JE-REV-0001' } },
+      });
+      const colUpdate = tx.contract.update.mock.calls[0][0];
+      expect(colUpdate.where).toEqual({ id: 'contract-1' });
+      expect(colUpdate.data.advanceBalance.toString()).toBe('1322.13');
+      expect(colUpdate.data.rescheduleAdvanceBalance.toString()).toBe('0');
+
+      const audit = tx.auditLog.create.mock.calls[0][0].data;
+      expect(audit).toMatchObject({
+        action: 'ADVANCE_EXCESS_REVERSED',
+        entity: 'contract',
+        entityId: 'contract-1',
+        userId: 'acc-1',
+      });
+      expect(audit.newValue).toMatchObject({
+        entryNumber: 'JE-REV-0001',
+        reversedEntryNumber: 'JE-X-0',
+        amount: '1322.13',
+        reason: 'ฝ่ายบัญชีสั่งคืนเงินลูกค้า — ตรวจแล้ว',
+      });
+    });
+
+    it('ไม่มีรายการที่มีผล (ถูกกลับไปแล้ว / ไม่เคยกวาด) → NOTHING_TO_REVERSE ไม่ post ไม่แตะคอลัมน์', async () => {
+      const createAndPost = jest.fn();
+      const { template, tx } = build({
+        ledger: { '21-1103': '0' },
+        existing: [{ ...ACTIVE, reversed: true, reversedByEntryNumber: 'JE-REV-0000' }],
+        createAndPost,
+      });
+      const r = await template.reverse('contract-1', { reason: 'ทดสอบเหตุผลยาวพอสิบตัว' });
+      expect(r.outcome).toBe('NOTHING_TO_REVERSE');
+      expect(createAndPost).not.toHaveBeenCalled();
+      expect(tx.contract.update).not.toHaveBeenCalled();
+    });
+
+    it('P2002 (สองคนกดพร้อมกัน — key ต่อต้นฉบับชน) → ALREADY_REVERSED', async () => {
+      const err = new Prisma.PrismaClientKnownRequestError('dup', {
+        code: 'P2002',
+        clientVersion: 'x',
+      });
+      const createAndPost = jest.fn().mockRejectedValue(err);
+      const { template } = build({
+        ledger: { '21-1103': '0' },
+        existing: [ACTIVE],
+        originalLines: LINES,
+        createAndPost,
+      });
+      const r = await template.reverse('contract-1', { reason: 'ทดสอบเหตุผลยาวพอสิบตัว' });
+      expect(r.outcome).toBe('ALREADY_REVERSED');
+    });
+
+    it('หลังกลับรายการ รอบกวาดครั้งถัดไปลงใหม่ได้ด้วย key :2 (ต้นฉบับยัง POSTED แต่ reversed)', async () => {
+      const { template, posted } = build({
+        ledger: { '21-1103': '1322.13' },
+        existing: [{ ...ACTIVE, reversed: true, reversedByEntryNumber: 'JE-REV-0001' }],
+      });
+      const r = await template.execute('contract-1', {
+        postedAt: new Date('2026-10-13T00:40:00+07:00'),
+      });
+      expect(r.outcome).toBe('POSTED');
+      expect(posted().metadata.idempotencyKey).toBe('advance-excess-income:contract-1:2');
+    });
   });
 
   it('G6: 21-1103 1,322.13 · ภาษีค้าง 86.49 → Dr 21-1103 1,322.13 / Cr 42-1106 1,235.64 / Cr 21-2102 86.49 + stamp consume + คอลัมน์ = 0 + audit', async () => {

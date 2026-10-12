@@ -4,6 +4,7 @@ jest.mock('../../utils/period-lock.util', () => ({ validatePeriodOpen: jest.fn()
 
 import { Test, TestingModule } from '@nestjs/testing';
 import { Prisma } from '@prisma/client';
+import { ADVANCE_EXCESS_VOID_BLOCKED_MESSAGE } from '../journal/advance-excess-income.util';
 import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { RefundsService } from './refunds.service';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -147,6 +148,44 @@ describe('RefundsService', () => {
       await expect(
         service.requestRefund({ paymentId: 'pay-1', amount: 500, reason: 'xxxxxxxxxx' }, 'u-staff'),
       ).rejects.toThrow(BadRequestException);
+    });
+  });
+
+  describe('ด่าน PR4 ต6ข — สัญญาที่ลงรายได้เงินพักส่วนเกิน (42-1106) แล้ว (final review I3: ทางคืนเงินต้องติดด่านเดียวกับยกเลิกใบเสร็จ)', () => {
+    const activeSweep = [
+      {
+        id: 'je-aei',
+        entryNumber: 'JE-AEI-0001',
+        metadata: { flow: 'advance-excess-income', tag: 'ADVANCE_EXCESS', contractId: 'con-1' },
+      },
+    ];
+
+    it('requestRefund ปฏิเสธด้วยข้อความด่านเดียวกัน — ไม่สร้างคำขอ', async () => {
+      prisma.journalEntry.findMany.mockResolvedValue(activeSweep);
+      await expect(
+        service.requestRefund(
+          { paymentId: 'pay-1', amount: 1000, reason: 'customer double-paid ชำระซ้ำ' },
+          'u-staff',
+        ),
+      ).rejects.toThrow(ADVANCE_EXCESS_VOID_BLOCKED_MESSAGE);
+      expect(prisma.refund.create).not.toHaveBeenCalled();
+    });
+
+    it('markReversed ปฏิเสธก่อนแตะอะไร — ไม่กลับรายการ ไม่คืนงวดเป็นค้าง ไม่ flip PROCESSED', async () => {
+      prisma.refund.findUnique.mockResolvedValue(refundRecord({ status: 'APPROVED' }));
+      prisma.payment.findUnique.mockResolvedValue(paidPayment({ amountPaid: new Prisma.Decimal(500) }));
+      prisma.journalEntry.findMany.mockResolvedValue(activeSweep);
+      await expect(
+        service.markReversed(
+          'rf-1',
+          { bankReversalRef: 'KBANK-12345', notes: 'confirmed phone call' },
+          'u-fm',
+          'FINANCE_MANAGER',
+        ),
+      ).rejects.toThrow(ADVANCE_EXCESS_VOID_BLOCKED_MESSAGE);
+      expect(template.voidReceipt).not.toHaveBeenCalled();
+      expect(prisma.payment.update).not.toHaveBeenCalled();
+      expect(prisma.refund.updateMany).not.toHaveBeenCalled();
     });
   });
 
@@ -314,7 +353,8 @@ describe('RefundsService', () => {
 
       // The WHERE's tag OR-filter must NOT include 'overpayment-credit' — that is the
       // exact exclusion that protects the customer credit balance from a phantom reversal.
-      const whereArg = prisma.journalEntry.findMany.mock.calls[0][0].where;
+      // PR4 ต6ข: findMany ครั้งแรกเป็นด่าน assertNoAdvanceExcessIncome — query ใบรับชำระคือครั้งสุดท้าย
+      const whereArg = prisma.journalEntry.findMany.mock.calls.at(-1)[0].where;
       const orClause = whereArg.AND.find((c: any) => Array.isArray(c.OR))?.OR ?? [];
       const tags = orClause.map((c: any) => c.metadata?.equals);
       expect(tags).toEqual(expect.arrayContaining(['receipt', '2B', 'credit-allocation']));

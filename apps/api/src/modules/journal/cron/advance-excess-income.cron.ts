@@ -309,7 +309,8 @@ export class AdvanceExcessIncomeCron {
         (r.columnsMismatch
           ? ` · คอลัมน์ก่อนลงไม่ตรงยอดในบัญชี (Sentry close-advance-ledger-mismatch) — ลงตามบัญชี กรุณาตรวจประวัติ`
           : '') +
-        ` · การยกเลิกใบเสร็จของสัญญานี้ถูกปิดไว้จนกว่าฝ่ายบัญชีจะกลับรายการนี้ · contractId: ${r.contractId}`,
+        ` · การยกเลิกใบเสร็จ/คืนเงินของสัญญานี้ถูกปิดไว้จนกว่าผู้ดูแลระบบจะกลับรายการนี้ด้วยคำสั่ง advance-excess:reverse ` +
+        `(ห้ามยกเลิกรายการบัญชีด้วยมือ) · contractId: ${r.contractId}`,
     );
   }
 

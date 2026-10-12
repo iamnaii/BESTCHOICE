@@ -64,7 +64,7 @@ describe('advance-excess-income.util — ด่าน ต6ข', () => {
       ADVANCE_EXCESS_VOID_BLOCKED_MESSAGE,
     );
     expect(ADVANCE_EXCESS_VOID_BLOCKED_MESSAGE).toBe(
-      'สัญญานี้ลงรายได้เงินพักส่วนเกิน (42-1106) แล้ว — ต้องให้ฝ่ายบัญชีกลับรายการก่อน',
+      'สัญญานี้ลงรายได้เงินพักส่วนเกิน (42-1106) แล้ว — ต้องให้ผู้ดูแลระบบกลับรายการกวาดก่อน (คำสั่ง advance-excess:reverse)',
     );
   });
 

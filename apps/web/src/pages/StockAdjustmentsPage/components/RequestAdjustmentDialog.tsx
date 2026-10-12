@@ -64,10 +64,12 @@ export default function RequestAdjustmentDialog({ open, onClose, onCreated, init
     [product, reason, files.length, notes],
   );
   const previewHolds = preview.data?.holdsProduct ?? option?.holdsProduct ?? false;
+  // เครื่องจากใบสั่งซื้อที่ยังไม่เข้าคลัง — API ปฏิเสธด้วยข้อความเดียวกัน (คำตัดสินเจ้าของ 2026-10-06: ตีกลับผู้จัดจำหน่ายเท่านั้น)
+  const blocked = preview.data?.blockedReason ?? null;
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (errors.length || !product) return;
+    if (errors.length || !product || blocked) return;
     createRequest.mutate(buildRequestFormData({ productId: product.id, reason, photoCount: files.length, notes }, files), {
       onSuccess: (row) => {
         onCreated?.(row);
@@ -157,6 +159,11 @@ export default function RequestAdjustmentDialog({ open, onClose, onCreated, init
                         <span className="text-xs text-muted-foreground ml-2">
                           {getStatusBadgeProps(p.status, productStatusMap).label} · {p.branch.name}
                         </span>
+                        {p.poUnbooked && (
+                          <Badge variant="warning" appearance="light" className="ml-2">
+                            ยังไม่เข้าคลัง — ต้องตีกลับผู้จัดจำหน่าย
+                          </Badge>
+                        )}
                       </button>
                     ))
                   ) : (
@@ -253,11 +260,21 @@ export default function RequestAdjustmentDialog({ open, onClose, onCreated, init
         {product && reason && (
           <>
             <JournalPreviewBox preview={preview.data} isLoading={preview.isLoading} />
-            {previewHolds && (
-              <div className="flex items-start gap-2 rounded-lg border border-warning/40 bg-warning/10 p-3 text-xs text-warning-strong leading-snug">
+            {blocked ? (
+              <div
+                role="alert"
+                className="flex items-start gap-2 rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive leading-snug"
+              >
                 <AlertTriangle className="size-4 shrink-0 mt-0.5" />
-                <span>ส่งคำขอแล้วเครื่องนี้จะถูกพักขายทันที (ขาย/จอง/โอนไม่ได้) จนกว่าเจ้าของจะพิจารณา</span>
+                <span>{blocked}</span>
               </div>
+            ) : (
+              previewHolds && (
+                <div className="flex items-start gap-2 rounded-lg border border-warning/40 bg-warning/10 p-3 text-xs text-warning-strong leading-snug">
+                  <AlertTriangle className="size-4 shrink-0 mt-0.5" />
+                  <span>ส่งคำขอแล้วเครื่องนี้จะถูกพักขายทันที (ขาย/จอง/โอนไม่ได้) จนกว่าเจ้าของจะพิจารณา</span>
+                </div>
+              )
             )}
           </>
         )}
@@ -274,7 +291,7 @@ export default function RequestAdjustmentDialog({ open, onClose, onCreated, init
           <Button type="button" variant="outline" onClick={onClose}>
             ปิด
           </Button>
-          <Button type="submit" disabled={errors.length > 0 || createRequest.isPending}>
+          <Button type="submit" disabled={errors.length > 0 || !!blocked || createRequest.isPending}>
             {createRequest.isPending ? 'กำลังส่ง...' : 'ส่งคำขอ'}
           </Button>
         </div>

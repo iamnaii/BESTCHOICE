@@ -145,6 +145,7 @@ const storage = {
   getSignedDownloadUrl: async (k: string) => `https://signed/${k}`,
 } as never;
 
+// #1686 ถอด contractExchange ออกจาก ctor ของ AfterSalesCaseService (PRICED_EXCHANGE ปิด 410)
 const caseSvc = new AfterSalesCaseService(
   prisma as never,
   storage,
@@ -152,7 +153,6 @@ const caseSvc = new AfterSalesCaseService(
   repairTickets,
   afterSalesDocNumber,
   lookupSvc,
-  contractExchange,
   defect,
   line,
 );

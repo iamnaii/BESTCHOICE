@@ -437,4 +437,102 @@ describe('AfterSalesDocumentService.render', () => {
     expect(t.html()).toContain('<span>ทางออก</span><span><strong>ซ่อม</strong></span>');
     expect(t.html()).toContain('<span>ผู้จ่ายค่าซ่อม</span><span>ร้าน</span>');
   });
+  describe('PR 5 — เคสขายสด', () => {
+    const cashCase = (over: Record<string, unknown> = {}) =>
+      caseDetail({
+        source: 'CASH_SALE',
+        contractId: null,
+        saleId: 'sale-1',
+        outcome: 'CASH_SAME_MODEL_EXCHANGE',
+        stage: 'CLOSED',
+        closedAt: new Date('2026-10-14T04:00:00.000Z'),
+        replacementSaleId: 'sale-1',
+        replacementProductId: 'p-new',
+        approvedById: 'u-9',
+        repairTicket: null,
+        exchange: {
+          kind: 'SAME_MODEL',
+          mode: null,
+          approvalTier: null,
+          requestStatus: null,
+          buybackPrice: null,
+          ncvSnapshot: null,
+          approverRole: 'BRANCH_MANAGER',
+          oldProduct: {
+            brand: 'Apple',
+            model: 'iPhone 13',
+            storage: '128GB',
+            imeiSerial: '359000000000001',
+          },
+          newProduct: {
+            id: 'p-new',
+            brand: 'Apple',
+            model: 'iPhone 13',
+            storage: '128GB',
+            imeiSerial: '359000000000002',
+          },
+          replacementContract: null,
+          sale: { id: 'sale-1', saleNumber: 'SL-0001' },
+          requestedBy: null,
+        },
+        timeline: [
+          {
+            kind: 'DELIVERED',
+            note: 'ส่งมอบเครื่องทดแทน · ใบขาย SL-0001 · อุปกรณ์: กล่อง',
+            at: '2026-10-14T04:00:00.000Z',
+          },
+        ],
+        ...over,
+      });
+    const cashSale = {
+      saleNumber: 'SL-0001',
+      saleType: 'CASH',
+      financeCompany: null,
+      createdAt: new Date('2026-10-09T05:00:00.000Z'),
+      shopWarrantyStartDate: new Date('2026-10-14T04:00:00.000Z'),
+      shopWarrantyEndDate: new Date('2026-12-13T04:00:00.000Z'),
+    };
+
+    it('HANDOVER ของเคสขายสด → compose ใบส่งมอบเครื่องทดแทน (ไม่ใช่ใบส่งมอบของสัญญา) · โหลด Sale · PRINTED note "ใบส่งมอบเครื่องทดแทน"', async () => {
+      const t = setup(cashCase());
+      t.prisma.sale.findUnique.mockResolvedValue(cashSale);
+      const { pdf } = await t.svc.render(CASE_ID, 'HANDOVER', user);
+      expect(pdf).toBeInstanceOf(Buffer);
+      expect(t.html()).toContain('<title>ใบส่งมอบเครื่องทดแทน</title>');
+      expect(t.html()).toContain('กรอบ 7 วัน');
+      expect(t.prisma.afterSalesEvent.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ kind: 'PRINTED', note: 'ใบส่งมอบเครื่องทดแทน' }),
+        }),
+      );
+    });
+
+    it('RETURN ตอน AWAITING_APPROVAL → 400 ไม่แตะ Chromium', async () => {
+      const t = setup(
+        cashCase({ stage: 'AWAITING_APPROVAL', replacementSaleId: null, closedAt: null }),
+      );
+      await expect(t.svc.render(CASE_ID, 'RETURN', user)).rejects.toBeInstanceOf(
+        BadRequestException,
+      );
+      expect(t.renderer.htmlToPdf).not.toHaveBeenCalled();
+    });
+
+    it('renderCashExchangeDocs → HTML มี 2 ใบคั่น page-break · PRINTED ใบเดียว note รวม', async () => {
+      const t = setup(cashCase());
+      t.prisma.sale.findUnique.mockResolvedValue({
+        ...cashSale,
+        createdAt: new Date(),
+        shopWarrantyStartDate: new Date(),
+        shopWarrantyEndDate: null,
+      });
+      await t.svc.renderCashExchangeDocs(CASE_ID, user);
+      expect(t.html()).toContain('ใบรับคืนเครื่อง');
+      expect(t.html()).toContain('as-page-break');
+      expect(t.html()).toContain('ใบส่งมอบเครื่องทดแทน');
+      expect(t.prisma.afterSalesEvent.create).toHaveBeenCalledTimes(1);
+      expect(t.prisma.afterSalesEvent.create.mock.calls[0][0].data.note).toBe(
+        'พิมพ์ใบรับคืนเครื่อง + ใบส่งมอบเครื่องทดแทน',
+      );
+    });
+  });
 });

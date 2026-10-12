@@ -256,6 +256,30 @@ export class AfterSalesController {
     sendPdf(res, pdf, `after-sales-handover-${caseNumber}.pdf`);
   }
 
+  /** PR 5 — ใบรับคืนเครื่อง (เคสขายสดที่ยืนยันแล้ว) */
+  @Get(':id/return.pdf')
+  @Roles(...ALL)
+  async returnPdf(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: any,
+    @Res() res: Response,
+  ) {
+    const { pdf, caseNumber } = await this.docs.render(id, 'RETURN', user);
+    sendPdf(res, pdf, `after-sales-return-${caseNumber}.pdf`);
+  }
+
+  /** PR 5 — ใบรับคืน + ใบส่งมอบเครื่องทดแทน ใน PDF เดียว 2 หน้า */
+  @Get(':id/exchange-docs.pdf')
+  @Roles(...ALL)
+  async exchangeDocsPdf(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: any,
+    @Res() res: Response,
+  ) {
+    const { pdf, caseNumber } = await this.docs.renderCashExchangeDocs(id, user);
+    sendPdf(res, pdf, `after-sales-exchange-docs-${caseNumber}.pdf`);
+  }
+
   @Post(':id/photos')
   @Roles(...STAFF)
   @UseInterceptors(FileInterceptor('file', { limits: { fileSize: EVIDENCE_IMAGE_MAX_BYTES } }))

@@ -8,6 +8,8 @@ import { PrismaModule } from '../../prisma/prisma.module';
 import { ContractActivation1ATemplate } from './cpa-templates/contract-activation-1a.template';
 import { InstallmentAccrual2ATemplate } from './cpa-templates/installment-accrual-2a.template';
 import { InstallmentAccrualCron } from './cron/installment-accrual.cron';
+import { AdvanceExcessIncomeTemplate } from './cpa-templates/advance-excess-income.template';
+import { AdvanceExcessIncomeCron } from './cron/advance-excess-income.cron';
 import { PaymentReceiptTemplate } from './cpa-templates/payment-receipt.template';
 import { EarlyPayoffJP4Template } from './cpa-templates/early-payoff-jp4.template';
 import { RepossessionJP5Template } from './cpa-templates/repossession-jp5.template';
@@ -88,6 +90,8 @@ import { RefundWaiveTemplate } from './cpa-templates/refund-waive.template';
     ContractActivation1ATemplate,
     InstallmentAccrual2ATemplate,
     InstallmentAccrualCron,
+    AdvanceExcessIncomeTemplate,
+    AdvanceExcessIncomeCron,
     PaymentReceiptTemplate,
     EarlyPayoffJP4Template,
     RepossessionJP5Template,

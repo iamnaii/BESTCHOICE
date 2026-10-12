@@ -38,14 +38,28 @@ function setup(
     /** รายการที่ยังล้างลูกหนี้ของงวดอยู่หลังกลับใบรับชำระ (เช่น เงินรับล่วงหน้าที่รอบกลางคืนหัก) */
     survivingEntries?: unknown[];
     accrualVoid?: jest.Mock;
+    /** PR4 ต6ข: สัญญามีรายการรายได้เงินพักส่วนเกิน (42-1106) ที่มีผล → ด่านปฏิเสธการยกเลิก */
+    activeExcessIncome?: boolean;
   } = {},
 ) {
   const calls: string[] = [];
   const journalFindMany = jest
     .fn()
-    // ครั้งที่ 1: ตัวจับคู่ใบรับชำระของ Payment — fixture นี้ไม่มีรายการให้กลับ
+    // ครั้งที่ 1 (PR4 ต6ข): ด่าน advance-excess-income ของสัญญา — คู่กับ UNPAY_BLOCKED ในธุรกรรมเดียวกัน
+    .mockResolvedValueOnce(
+      opts.activeExcessIncome
+        ? [
+            {
+              id: 'je-aei',
+              entryNumber: 'JE-AEI-0001',
+              metadata: { flow: 'advance-excess-income' },
+            },
+          ]
+        : [],
+    )
+    // ครั้งที่ 2: ตัวจับคู่ใบรับชำระของ Payment — fixture นี้ไม่มีรายการให้กลับ
     .mockResolvedValueOnce([])
-    // ครั้งที่ 2: reconstructPriorCleared หลังกลับใบรับชำระ
+    // ครั้งที่ 3: reconstructPriorCleared หลังกลับใบรับชำระ
     .mockResolvedValueOnce(opts.survivingEntries ?? []);
 
   const tx = {
@@ -276,5 +290,16 @@ describe('ReceiptVoidService — กลับรายการตั้งล�
     const out = await run();
 
     expect(Object.keys(out).sort()).toEqual(['creditNote', 'paymentReverted', 'voidedReceipt']);
+  });
+
+  it('PR4 ต6ข: สัญญาลงรายได้เงินพักส่วนเกิน (42-1106) แล้ว → ปฏิเสธก่อนออกใบลดหนี้ ด้วยข้อความชี้ให้ฝ่ายบัญชีกลับรายการก่อน', async () => {
+    const { run, tx, accrualVoid } = setup({ activeExcessIncome: true });
+
+    await expect(run()).rejects.toThrow(
+      'สัญญานี้ลงรายได้เงินพักส่วนเกิน (42-1106) แล้ว — ต้องให้ผู้ดูแลระบบกลับรายการกวาดก่อน (คำสั่ง advance-excess:reverse)',
+    );
+    expect(tx.receipt.create).not.toHaveBeenCalled();
+    expect(tx.payment.update).not.toHaveBeenCalled();
+    expect(accrualVoid).not.toHaveBeenCalled();
   });
 });

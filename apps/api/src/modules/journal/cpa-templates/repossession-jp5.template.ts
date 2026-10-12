@@ -7,6 +7,11 @@ import { PrismaService } from '../../../prisma/prisma.service';
 import { computeCnBreakdown } from '../compute-cn-breakdown';
 import { glContractBalance } from '../gl-contract-balance';
 import { readContractCloseAdvances } from '../contract-close-advances';
+import {
+  ADVANCE_VAT_META,
+  advanceVatOutstanding,
+  buildAdvanceVatConsumeLines,
+} from '../advance-vat';
 import { DeferredWarning, emitDeferredWarnings } from '../deferred-warning';
 
 export interface RepossessionInput {
@@ -156,6 +161,11 @@ export interface RepossessionJP5Result {
  *   Dr 21-5101  glBalance(21-5101)                ← เงินเกินของลูกค้า
  * ⇒ 21-1103 / 21-5101 ของสัญญาเป็นศูนย์หลังยึด · ผู้เรียกตั้งคอลัมน์ของสัญญาเป็นศูนย์ในธุรกรรมเดียวกัน
  *
+ * ภาษีขายของเงินรับล่วงหน้า (PR4 ต8): เงินในถังรับรู้ภาษีขายไว้แล้วตอนรับ (`Dr 21-2102 / Cr 21-2101` + stamp) — รายการนี้
+ * หักถังจนเป็น 0 จึงกลับภาษีที่ยังค้างทั้งก้อน `Dr 21-2101 / Cr 21-2102` (วางก่อนขาล้าง 21-2102) และขาล้าง 21-2102 =
+ * ยอดในบัญชี + ภาษีที่ยังค้าง (= ภาษีรอเรียกเก็บที่เหลือจริง) ⇒ Σ Cr 21-2101 ของสัญญา = VAT วันเปิดสัญญา · คู่ภาษีสมดุล
+ * กันเอง plug ไม่ขยับ (G5) · ทุกงวดตั้งลูกหนี้แล้วและ 21-2102 ติดลบเท่าภาษีพัก → ขากลับทำให้เป็น 0 ไม่มีขาล้าง (G8)
+ *
  * ส่วนลดยอดปิด (PR6 — คำตอบฝ่ายบัญชี ฉบับรวม ข้อ 5, 30/09/2569 แบบ (ก)) วางก่อน plug เช่นกัน:
  *   Dr 52-1106  input.discount                    ← ส่วนลดตัวเดียวกับหน้าจอ (computePayoffQuote)
  * ⇒ 51-1102 = ยอดในบัญชีที่ล้าง − ราคาประเมิน − เงินของลูกค้าที่หัก − ส่วนลด (ค่าเผื่อฯ หักกับยอดนี้เท่านั้น)
@@ -251,6 +261,9 @@ export class RepossessionJP5Template {
     const bal2101 = await glBal('11-2101', 'dr'); // deferred Gross (excl. VAT) remaining
     const bal2105 = await glBal('11-2105', 'dr'); // deferred VAT receivable remaining
     const bal21_2102 = await glBal('21-2102', 'cr'); // deferred VAT liability remaining
+    // PR4 (ต8): ภาษีของเงินรับล่วงหน้าที่รับรู้ตอนพักแล้วและยังค้าง — รายการนี้หักถังทุกใบจนเป็น 0 ⇒ ขากลับ = ทั้งก้อน
+    const advanceVatReversal = await advanceVatOutstanding(client, c.id);
+    const deferredVatToClear = bal21_2102.plus(advanceVatReversal);
     const bal2106 = await glBal('11-2106', 'cr'); // unearned interest remaining
 
     const zero = new Decimal(0);
@@ -283,10 +296,12 @@ export class RepossessionJP5Template {
         description: 'ยกเลิกรายได้รอตัดบัญชี-ดอกเบี้ย',
       });
     }
-    if (bal21_2102.gt(0)) {
+    // PR4 (ต8): ขากลับภาษีของเงินรับล่วงหน้า — วางก่อนขาล้าง 21-2102 (ไม่มีบรรทัดเมื่อ 0)
+    lines.push(...buildAdvanceVatConsumeLines(advanceVatReversal));
+    if (deferredVatToClear.gt(0)) {
       lines.push({
         accountCode: '21-2102',
-        dr: bal21_2102,
+        dr: deferredVatToClear,
         cr: zero,
         description: 'ล้างภาษีขายรอเรียกเก็บ',
       });
@@ -315,11 +330,11 @@ export class RepossessionJP5Template {
         description: 'ล้างลูกหนี้ภาษีขายรอฯ',
       });
     }
-    if (bal21_2102.gt(0)) {
+    if (deferredVatToClear.gt(0)) {
       lines.push({
         accountCode: '21-2101',
         dr: zero,
-        cr: bal21_2102,
+        cr: deferredVatToClear,
         description: 'ภาษีขาย ภ.พ.30 ถึงกำหนด (deferred, ม.82/3)',
       });
     }
@@ -483,6 +498,7 @@ export class RepossessionJP5Template {
       advanceRelief,
       creditRelief,
       discount,
+      advanceVatReversal,
       warnings: advances.warnings,
       lines,
     };
@@ -526,6 +542,13 @@ export class RepossessionJP5Template {
           ...(built.creditRelief.gt(0) ? { creditRelief: built.creditRelief.toFixed(2) } : {}),
           // PR6 — ส่วนลดยอดปิดที่ลง 52-1106 (แบบ (ก)): stamp เฉพาะเมื่อมีจริง
           ...(built.discount.gt(0) ? { discount: built.discount.toFixed(2) } : {}),
+          // PR4 (ต8) — ขากลับภาษีของเงินรับล่วงหน้า + stamp consume (advanceVatOutstanding ของสัญญาเป็น 0 หลังยึด)
+          ...(built.advanceVatReversal.gt(0)
+            ? {
+                advanceVatReversal: built.advanceVatReversal.toFixed(2),
+                [ADVANCE_VAT_META.consume]: built.advanceVatReversal.toFixed(2),
+              }
+            : {}),
           ...(input.shopReceivableType
             ? {
                 shopReceivable: input.depositAccountCode,

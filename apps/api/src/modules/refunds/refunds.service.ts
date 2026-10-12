@@ -18,6 +18,7 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { ReceiptVoidReversalTemplate } from '../journal/cpa-templates/receipt-void-reversal.template';
+import { assertNoAdvanceExcessIncome } from '../journal/advance-excess-income.util';
 import { validatePeriodOpen } from '../../utils/period-lock.util';
 import {
   RequestRefundDto,
@@ -65,6 +66,9 @@ export class RefundsService {
           `ขอคืนเงินได้เฉพาะงวดที่ชำระแล้ว (สถานะปัจจุบัน: ${payment.status})`,
         );
       }
+      // PR4 ต6ข (final review I3): สัญญาที่รอบกวาดลงเงินพักส่วนเกินเป็นรายได้ 42-1106 แล้ว — ด่านเดียวกับยกเลิกใบเสร็จ
+      // (คืนเงิน = un-pay งวดเดียวกัน) · ให้ผู้ดูแลระบบกลับรายการกวาดด้วย advance-excess:reverse ก่อน
+      await assertNoAdvanceExcessIncome(tx, payment.contractId);
 
       const openRefund = payment.refunds.find(
         (r) => r.status === 'REQUESTED' || r.status === 'APPROVED',
@@ -223,6 +227,8 @@ export class RefundsService {
       const refund = await tx.refund.findUnique({ where: { id: refundId } });
       if (!refund || refund.deletedAt) throw new NotFoundException('ไม่พบคำขอคืนเงิน');
       await this.assertContractAccess(tx, actor, refund.contractId);
+      // PR4 ต6ข (final review I3): ตรวจซ้ำตอนดำเนินการ — รอบกวาดอาจลงรายการระหว่างคำขอค้างคิว (วางก่อนแตะ Payment/JE ใด)
+      await assertNoAdvanceExcessIncome(tx, refund.contractId);
       if (refund.status !== 'APPROVED') {
         throw new BadRequestException(
           `บันทึกว่าธนาคาร reverse สำเร็จได้เฉพาะคำขอสถานะ APPROVED ` +

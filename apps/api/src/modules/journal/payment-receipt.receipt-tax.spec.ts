@@ -1,4 +1,5 @@
 import { Decimal } from '@prisma/client/runtime/library';
+import { ledgerLines } from './__tests__/ledger-lines-mock';
 import * as Sentry from '@sentry/nestjs';
 import { PaymentReceiptTemplate } from './cpa-templates/payment-receipt.template';
 
@@ -35,6 +36,10 @@ describe('PaymentReceiptTemplate — ใบกำกับภาษีตาม�
     /** Cr 11-2103 ของรายการก่อนหน้าของงวด (reconstructPriorCleared อ่านจาก journalEntry.findMany) */
     prior?: string[];
     accrual?: { kind: string; amount: string; vat: string; completes: boolean } | null;
+    /** PR4: ยอดในบัญชีของสัญญา (glContractBalance → journalLine.findMany) */
+    ledger?: Record<string, string>;
+    /** PR4: metadata ของรายการของสัญญาที่ advanceVatOutstanding อ่าน (journalEntry.findMany path contractId) */
+    stamps?: Record<string, unknown>[];
   }) {
     const tx = {
       installmentSchedule: {
@@ -48,13 +53,18 @@ describe('PaymentReceiptTemplate — ใบกำกับภาษีตาม�
         }),
       },
       journalEntry: {
-        findMany: jest.fn().mockResolvedValue(
-          (opts.prior ?? []).map((credit) => ({
+        findMany: jest.fn().mockImplementation(async (args: { where?: { metadata?: { path?: string[] } } }) => {
+          // PR4: advanceVatOutstanding ค้นด้วย metadata.contractId — คนละคำค้นกับ reconstructPriorCleared
+          if (args?.where?.metadata?.path?.[0] === 'contractId') {
+            return (opts.stamps ?? []).map((metadata) => ({ metadata }));
+          }
+          return (opts.prior ?? []).map((credit) => ({
             metadata: { tag: 'receipt', installmentScheduleId: 'inst-3' },
             lines: [{ accountCode: '11-2103', debit: dec(0), credit: dec(credit) }],
-          })),
-        ),
+          }));
+        }),
       },
+      journalLine: { findMany: jest.fn(ledgerLines(opts.ledger ?? {})) },
       systemConfig: { findFirst: jest.fn().mockResolvedValue(null) },
     };
     const createAndPost = jest
@@ -189,8 +199,12 @@ describe('PaymentReceiptTemplate — ใบกำกับภาษีตาม�
     expect(Sentry.captureMessage).not.toHaveBeenCalled();
   });
 
-  it('หักเงินรับล่วงหน้า 500 ในใบเดียวกัน → แถวค่างวด VAT 99.17 (= 2A) · แถวหัก −500.00 / −32.71 · ไม่มีสัญญาณเตือน', async () => {
-    const { tpl, tx, createAndPost } = build({});
+  it('หักเงินรับล่วงหน้า 500 ในใบเดียวกัน → แถวค่างวด VAT 99.17 (= 2A) · แถวหัก −500.00 / −32.71 (เงินที่พักพร้อมภาษี) · ไม่มีสัญญาณเตือน', async () => {
+    // PR4: เงินที่พักหลัง deploy มี stamp park ⇒ ขากลับ 32.71 ลงบัญชี และแถวหักพิมพ์ตัวเลขเดียวกัน
+    const { tpl, tx, createAndPost } = build({
+      ledger: { '21-1103': '500.00' },
+      stamps: [{ advanceVatPark: '32.71' }],
+    });
 
     const out = await tpl.execute(
       { ...base, delta: dec('1015.83'), advanceConsume: dec('500'), isFinalReceipt: true },
@@ -206,6 +220,125 @@ describe('PaymentReceiptTemplate — ใบกำกับภาษีตาม�
         amountBeforeVat: '949.37',
       }),
     );
+    expect(out.warnings).toEqual([]);
+  });
+
+  // PR4 ต5 — ทุกรายการที่มีขาภาษีของ PR4 ประทับ stamp ให้ advanceVatOutstanding อ่าน
+  it('พักเงินรับล่วงหน้า 500 ในใบเดียวกัน → stamp metadata.advanceVatPark = "32.71" และมีบรรทัด 21-2102/21-2101 · ไม่มีขาพัก = ไม่มี stamp', async () => {
+    const { tpl, tx, createAndPost } = build({});
+    await tpl.execute(
+      { ...base, delta: dec('2015.83'), advanceCredit: dec('500'), isFinalReceipt: true },
+      tx as never,
+    );
+    const je = createAndPost.mock.calls[0][0] as {
+      metadata: Record<string, unknown>;
+      lines: { accountCode: string; dr: Decimal; cr: Decimal }[];
+    };
+    expect(je.metadata.advanceVatPark).toBe('32.71');
+    expect(je.metadata.advanceVatConsume).toBeUndefined();
+    expect(je.lines.find((l) => l.accountCode === '21-2102')?.dr.toFixed(2)).toBe('32.71');
+    expect(je.lines.find((l) => l.accountCode === '21-2101')?.cr.toFixed(2)).toBe('32.71');
+
+    jest.clearAllMocks();
+    const plain = build({});
+    await plain.tpl.execute({ ...base, delta: dec('1515.83'), isFinalReceipt: true }, plain.tx as never);
+    const je2 = plain.createAndPost.mock.calls[0][0] as { metadata: Record<string, unknown> };
+    expect(je2.metadata.advanceVatPark).toBeUndefined();
+  });
+
+  // PR4 ต3/ต4/ต9 — ขากลับตอนหักเงินรับล่วงหน้า อ่าน "ยังค้าง" จากสมุด · ใบสุดท้ายรับเศษ · เอกสาร = บัญชี
+  describe('PR4 — ขากลับตอนหักเงินรับล่วงหน้า', () => {
+    type Je = { metadata: Record<string, unknown>; lines: { accountCode: string; dr: Decimal; cr: Decimal }[] };
+    const je = (createAndPost: jest.Mock) => createAndPost.mock.calls[0][0] as Je;
+
+    it('G3 หัก 250 จากถัง 500 (ยังค้าง 32.71 · ถังไม่หมด) → ขากลับ 16.36 · stamp advanceVatConsume · ใบพิมพ์ −16.36', async () => {
+      const { tpl, tx, createAndPost } = build({
+        ledger: { '21-1103': '500.00' },
+        stamps: [{ advanceVatPark: '32.71' }],
+      });
+      const out = await tpl.execute(
+        { ...base, delta: dec('1265.83'), advanceConsume: dec('250'), isFinalReceipt: true },
+        tx as never,
+      );
+      const posted = je(createAndPost);
+      expect(posted.lines.find((l) => l.accountCode === '21-2101')?.dr.toFixed(2)).toBe('16.36');
+      expect(posted.lines.find((l) => l.accountCode === '21-2102')?.cr.toFixed(2)).toBe('16.36');
+      expect(posted.metadata.advanceVatConsume).toBe('16.36');
+      expect(posted.metadata.advanceVatPark).toBeUndefined();
+      expect(out.receiptTax.advanceVatAmount).toBe('-16.36');
+    });
+
+    it('G3 ใบที่สอง หัก 250 ที่เหลือ (ยังค้าง 16.35 · ถังหมด) → ขากลับ 16.35 ทั้งก้อน ไม่ใช่ 16.36 · ใบพิมพ์ −16.35', async () => {
+      const { tpl, tx, createAndPost } = build({
+        ledger: { '21-1103': '250.00' },
+        stamps: [{ advanceVatPark: '32.71' }, { advanceVatConsume: '16.36' }],
+      });
+      const out = await tpl.execute(
+        { ...base, delta: dec('1265.83'), advanceConsume: dec('250'), isFinalReceipt: true },
+        tx as never,
+      );
+      const posted = je(createAndPost);
+      expect(posted.lines.find((l) => l.accountCode === '21-2101')?.dr.toFixed(2)).toBe('16.35');
+      expect(posted.metadata.advanceVatConsume).toBe('16.35');
+      expect(out.receiptTax.advanceVatAmount).toBe('-16.35');
+      expect(out.receiptTax.vatAmount).toBe('82.82');
+      expect(out.receiptTax.amountBeforeVat).toBe('1183.01');
+    });
+
+    it('G7 ใช้เครดิตจากเปลี่ยนเครื่องเสีย (Dr 21-5101 · ไม่มี stamp) → ไม่มีขากลับ ไม่มี stamp — 2A รับรู้เต็มเหมือนเดิม', async () => {
+      const { tpl, tx, createAndPost } = build({ ledger: { '21-5101': '2000.00' }, stamps: [] });
+      await tpl.execute(
+        { ...base, debitAccountCode: '21-5101', delta: dec('1515.83'), isFinalReceipt: true },
+        tx as never,
+      );
+      const posted = je(createAndPost);
+      expect(posted.lines.some((l) => l.accountCode === '21-2101' || l.accountCode === '21-2102')).toBe(false);
+      expect(posted.metadata.advanceVatConsume).toBeUndefined();
+    });
+
+    it('ใช้เครดิตที่มี stamp park (overpayment-credit) ชำระจนถังหมด → ขากลับ = ยังค้างทั้งก้อน · เอกสารใบใช้เครดิตไม่เปลี่ยน (ไม่มีแถวหัก)', async () => {
+      const { tpl, tx, createAndPost } = build({
+        ledger: { '21-5101': '1515.83' },
+        stamps: [{ advanceVatPark: '99.17' }],
+      });
+      const out = await tpl.execute(
+        { ...base, debitAccountCode: '21-5101', delta: dec('1515.83'), isFinalReceipt: true },
+        tx as never,
+      );
+      const posted = je(createAndPost);
+      expect(posted.lines.find((l) => l.accountCode === '21-2101')?.dr.toFixed(2)).toBe('99.17');
+      expect(posted.metadata.advanceVatConsume).toBe('99.17');
+      expect(out.receiptTax.advanceAmount).toBe('0.00');
+      expect(out.receiptTax.advanceVatAmount).toBe('0.00');
+    });
+
+    it('ไม่มีเงินออกจากถัง (เงินสดล้วน) → ไม่อ่านยอดในบัญชี/stamp เลย (ไม่เพิ่มคำค้นให้ใบรับชำระปกติ)', async () => {
+      const { tpl, tx, createAndPost } = build({});
+      await tpl.execute({ ...base, delta: dec('1515.83'), isFinalReceipt: true }, tx as never);
+      expect(tx.journalLine.findMany).not.toHaveBeenCalled();
+      expect(je(createAndPost).metadata.advanceVatConsume).toBeUndefined();
+    });
+  });
+
+  it('หักเงินรับล่วงหน้าที่พักก่อน PR4 (ไม่มี stamp — ไม่มีขากลับ) → แถวหัก −500.00 / 0.00 · ภาษีของใบ = 99.17 ตามบัญชี (ต9: เอกสาร = บัญชี)', async () => {
+    const { tpl, tx, createAndPost } = build({ ledger: { '21-1103': '500.00' }, stamps: [] });
+
+    const out = await tpl.execute(
+      { ...base, delta: dec('1015.83'), advanceConsume: dec('500'), isFinalReceipt: true },
+      tx as never,
+    );
+
+    expect(stamped(createAndPost)).toEqual(
+      expect.objectContaining({
+        advanceAmount: '-500.00',
+        advanceVatAmount: '0.00',
+        vatAmount: '99.17',
+        amountBeforeVat: '916.66',
+      }),
+    );
+    expect(
+      (createAndPost.mock.calls[0][0] as { metadata: Record<string, unknown> }).metadata.advanceVatConsume,
+    ).toBeUndefined();
     expect(out.warnings).toEqual([]);
   });
 

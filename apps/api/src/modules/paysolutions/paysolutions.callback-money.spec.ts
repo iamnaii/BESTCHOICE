@@ -406,7 +406,14 @@ describe('PaySolutionsService.handlePaymentCallback — FIFO money + close (char
       expect(jeTx).toBe(tx); // inside the serializable tx
       expect(jeInput.reference).toBe(`${refno}-surplus`);
       expect(jeInput.metadata.tag).toBe('paysolutions-surplus-advance');
-      expect(jeInput.lines).toHaveLength(2);
+      // PR4 ต2(ค): เงินเกินเข้าถัง 21-1103 ⇒ พักภาษีขาย HALF_UP(500 × 7/107) = 32.71 ในรายการเดียวกัน + stamp
+      expect(jeInput.lines).toHaveLength(4);
+      expect(jeInput.metadata.advanceVatPark).toBe('32.71');
+      const park2102 = jeInput.lines.find((l: { accountCode: string }) => l.accountCode === '21-2102');
+      const park2101 = jeInput.lines.find((l: { accountCode: string }) => l.accountCode === '21-2101');
+      expect(park2102.dr.toString()).toBe('32.71');
+      expect(park2101.cr.toString()).toBe('32.71');
+      expect(park2102.description).toBe('ภาษีขายของเงินรับล่วงหน้า (รับรู้ ณ วันรับ)');
       const drLine = jeInput.lines.find((l: { accountCode: string }) => l.accountCode === '11-1202');
       const crLine = jeInput.lines.find((l: { accountCode: string }) => l.accountCode === '21-1103');
       expect(drLine).toBeDefined();

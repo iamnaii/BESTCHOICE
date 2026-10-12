@@ -138,6 +138,8 @@ describe('ContractPaymentService — ปิดยอดก่อนกำหน�
       },
       installmentSchedule: { findMany: jest.fn().mockResolvedValue(schedules) },
       chartOfAccount: { findMany: jest.fn().mockResolvedValue([]) },
+      // PR4: advanceVatOutstanding อ่าน stamp จาก journalEntry — ไม่มีรายการที่ประทับในฟิกซ์เจอร์นี้
+      journalEntry: { findMany: jest.fn().mockResolvedValue([]) },
       journalLine: { findMany: jest.fn(txLedger) },
       badDebtProvision: {
         findFirst: jest.fn().mockResolvedValue(null),
@@ -149,6 +151,8 @@ describe('ContractPaymentService — ปิดยอดก่อนกำหน�
       contract: { findUnique: jest.fn().mockResolvedValue(contract) },
       installmentSchedule: { findMany: jest.fn().mockResolvedValue(schedules) },
       chartOfAccount: { findMany: jest.fn().mockResolvedValue([]) },
+      // PR4: advanceVatOutstanding อ่าน stamp จาก journalEntry — ไม่มีรายการที่ประทับในฟิกซ์เจอร์นี้
+      journalEntry: { findMany: jest.fn().mockResolvedValue([]) },
       journalLine: { findMany: jest.fn(ledger) },
       companyInfo: {
         findFirst: jest

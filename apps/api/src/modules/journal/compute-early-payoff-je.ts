@@ -3,6 +3,7 @@ import { Decimal } from '@prisma/client/runtime/library';
 import { ContractAdvanceColumns, readContractCloseAdvances } from './contract-close-advances';
 import type { DeferredWarning } from './deferred-warning';
 import { glContractBalance } from './gl-contract-balance';
+import { advanceVatOutstanding, consumeVatFor } from './advance-vat';
 
 /**
  * Early-Payoff (JP4) journal entry — ล้างตามยอดในบัญชีของสัญญา (PR5 · คำตอบฝ่ายบัญชี เล่ม 1 ข้อ 5.1–5.4, 29/09/2569).
@@ -34,6 +35,11 @@ export interface EarlyPayoffJeLine {
    * ผู้เรียกไม่ใส่คำอธิบายให้บรรทัดนี้ (การ์ดรายการแสดงชื่อบัญชีจากผังบัญชี — ไม่มีข้อความใหม่บนจอ)
    */
   generalAdvance?: true;
+  /**
+   * บรรทัดขากลับภาษีของเงินรับล่วงหน้า (PR4 ต8 — `Dr 21-2101 / Cr 21-2102`) ของเงินของลูกค้าที่ยอดปิดหัก ·
+   * ผู้เรียกใส่คำอธิบาย `ADVANCE_VAT_CONSUME_DESCRIPTION` (ไม่ใช่คำอธิบายขาล้างของบัญชีเดียวกัน)
+   */
+  advanceVatReversal?: true;
 }
 
 // ─── PR5 — ปิดยอดก่อนกำหนดล้างตามยอดในบัญชี (คำตอบฝ่ายบัญชี เล่ม 1 ข้อ 5.1–5.4 · 29/09/2569) ───────────────
@@ -102,6 +108,13 @@ export interface BuildEarlyPayoffJeInput {
   creditRelief?: DecimalInput | null;
   /** % ส่วนลดของยอดปิด (0–100) — ใช้วัดส่วนของ 52-1106 ที่เกินฐานข้อ 5.2 เท่านั้น (ไม่กระทบบรรทัดของรายการ) */
   discountPercent: DecimalInput;
+  /**
+   * PR4 (ต8): ภาษีขายของเงินรับล่วงหน้าที่รับรู้ตอนพักแล้วและยังค้างของสัญญา (p — `advanceVatOutstanding`) · ขาล้าง 21-2102
+   * = ยอดในบัญชี + p (**ไม่ใช่** + ขากลับ — ถังใหญ่กว่ายอดปิด: 21-2102 หลังรายการ = −(p − r) ให้รอบกวาดเงินพักส่วนเกินล้าง)
+   */
+  advanceVatOutstanding?: DecimalInput | null;
+  /** PR4 (ต8): ขากลับ `Dr 21-2101 / Cr 21-2102` (r — `consumeVatFor` ของเงินของลูกค้าที่หัก) — ต้องไม่เกิน p */
+  advanceVatReversal?: DecimalInput | null;
 }
 
 /** รายการ JP4 ตามยอดในบัญชี + ยอดที่ใช้ประกอบ */
@@ -126,6 +139,10 @@ export interface EarlyPayoffJe {
   advanceRelief: Decimal;
   /** Dr 21-5101 */
   creditRelief: Decimal;
+  /** PR4: ภาษีของเงินรับล่วงหน้าที่ยังค้างก่อนรายการ (p) — บวกเข้าขาล้าง 21-2102 */
+  advanceVatOutstanding: Decimal;
+  /** PR4: Dr 21-2101 = Cr 21-2102 ขากลับ (r ≤ p · 0 = ไม่มีบรรทัด) */
+  advanceVatReversal: Decimal;
   /** Dr 52-1106 — ส่วนลดที่ให้ลูกค้าจริง (ข้อ 5.3) */
   discount: Decimal;
   /** Cr 53-1503 — เงินที่รับเกินลูกหนี้ตามบัญชีไม่เกิน 1.00 (เศษสตางค์ของค่างวด) */
@@ -157,7 +174,8 @@ function moneyInput(name: string, v: DecimalInput | null | undefined): Decimal {
  *
  *   Dr <บัญชีรับเงิน>  เงินที่รับจริง
  *   Dr 11-2106        ดอกเบี้ยรอตัดบัญชีคงเหลือ          ┐ ส่วนที่ยังไม่ถึงกำหนด: รับรู้ดอกเบี้ยและภาษีขายวันปิดยอด
- *   Dr 21-2102        ภาษีขายรอเรียกเก็บคงเหลือ          ┘
+ *   Dr 21-2101 / Cr 21-2102  ขากลับภาษีของเงินรับล่วงหน้าที่ยอดปิดหัก (PR4 ต8 — r · วางก่อนขาล้าง · 0 = ไม่มีบรรทัด)
+ *   Dr 21-2102        ภาษีขายรอเรียกเก็บคงเหลือ + ภาษีที่ยังค้างของเงินรับล่วงหน้า (p)  ┘
  *   Dr 52-1106        ส่วนลดที่ให้จริง (ส่วนที่เหลือให้สมดุล ≥ 0)
  *   Dr 21-1103        เงินพักค่าปรับดิวที่ยอดปิดหักให้
  *   Dr 21-1103        เงินรับล่วงหน้าถังรวมที่ยอดปิดหักให้ (PR5ข — บรรทัดแยก `generalAdvance`)
@@ -180,9 +198,17 @@ export function buildEarlyPayoffJE(input: BuildEarlyPayoffJeInput): EarlyPayoffJ
   const parkRelief = moneyInput('parkRelief', input.parkRelief);
   const advanceRelief = moneyInput('advanceRelief', input.advanceRelief);
   const creditRelief = moneyInput('creditRelief', input.creditRelief);
+  const advanceVatOutstanding = moneyInput('advanceVatOutstanding', input.advanceVatOutstanding);
+  const advanceVatReversal = moneyInput('advanceVatReversal', input.advanceVatReversal);
+  if (advanceVatReversal.gt(advanceVatOutstanding)) {
+    throw new Error(
+      `buildEarlyPayoffJE: advanceVatReversal (${advanceVatReversal.toFixed(2)}) exceeds advanceVatOutstanding (${advanceVatOutstanding.toFixed(2)})`,
+    );
+  }
   const { ledger } = input;
   const deferredInterest = Decimal.max(zero, ledger.deferredInterest);
-  const deferredVat = Decimal.max(zero, ledger.deferredVat);
+  // PR4 (ต8): ขาล้างรวมภาษีที่ยังค้างของเงินรับล่วงหน้าทั้งก้อน (p) — ไม่ใช่เฉพาะส่วนที่กลับ (r)
+  const deferredVat = Decimal.max(zero, ledger.deferredVat.plus(advanceVatOutstanding));
   const receivableCleared = ledger.gross.plus(ledger.accrued).plus(ledger.vatReceivable);
   const deferredInterestDiscountBase = deferredInterest
     .times(new Decimal(input.discountPercent))
@@ -218,6 +244,21 @@ export function buildEarlyPayoffJE(input: BuildEarlyPayoffJeInput): EarlyPayoffJ
   };
 
   debit('11-2106', deferredInterest);
+  // PR4 (ต8): ขากลับภาษีของเงินรับล่วงหน้าที่ยอดปิดหัก — วางก่อนขาล้าง 21-2102
+  if (advanceVatReversal.gt(0)) {
+    lines.push({
+      accountCode: '21-2101',
+      dr: advanceVatReversal,
+      cr: zero,
+      advanceVatReversal: true,
+    });
+    lines.push({
+      accountCode: '21-2102',
+      dr: zero,
+      cr: advanceVatReversal,
+      advanceVatReversal: true,
+    });
+  }
   debit('21-2102', deferredVat);
   debit('52-1106', discount);
   debit('21-1103', parkRelief);
@@ -244,6 +285,8 @@ export function buildEarlyPayoffJE(input: BuildEarlyPayoffJeInput): EarlyPayoffJ
     parkRelief,
     advanceRelief,
     creditRelief,
+    advanceVatOutstanding,
+    advanceVatReversal,
     discount,
     roundingGain,
     excessReceived,
@@ -306,6 +349,13 @@ export async function buildEarlyPayoffJournal(
     0,
     Decimal.min(new Decimal((input.contract.creditBalance ?? 0).toString()), advances.credit),
   );
+  // PR4 (ต8): ภาษีที่รับรู้ตอนพักแล้วและยังค้าง (p) อ่านจาก stamp ของรายการที่ POSTED · ขากลับ (r) ตามเงินของลูกค้าที่ยอดปิด
+  // หัก — รายการนี้ทำให้ถัง (21-1103 + 21-5101) ของสัญญาเป็น 0 ⇒ r = p · ถังใหญ่กว่ายอดปิด ⇒ r = HALF_UP(ยอดที่หัก × 7/107)
+  // ไม่เกิน p และ 21-2102 หลังรายการ = −(p − r) ให้รอบกวาดเงินพักส่วนเกินล้างเมื่อเงินที่เหลือออกจากถัง (G9)
+  const vatOutstanding = await advanceVatOutstanding(client, input.contract.id);
+  const release = parkRelief.plus(advanceRelief).plus(creditRelief);
+  const emptiesBucket = advances.advance.plus(advances.credit).minus(release).lte(0);
+  const vatReversal = consumeVatFor(vatOutstanding, release, emptiesBucket);
   const je = buildEarlyPayoffJE({
     depositAccountCode: input.depositAccountCode,
     cashReceived: input.cashReceived,
@@ -314,6 +364,8 @@ export async function buildEarlyPayoffJournal(
     parkRelief,
     advanceRelief,
     creditRelief,
+    advanceVatOutstanding: vatOutstanding,
+    advanceVatReversal: vatReversal,
     discountPercent: input.discountPercent,
   });
   const warnings: DeferredWarning[] = [...advances.warnings];

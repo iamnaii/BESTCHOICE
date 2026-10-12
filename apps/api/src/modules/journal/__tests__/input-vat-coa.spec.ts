@@ -19,10 +19,10 @@ describe('ผังบัญชี FINANCE — 42-1108 รายได้อื�
     });
   });
 
-  it('42-1106 / 42-1107 ยังไม่ถูกเพิ่มกลับ', () => {
-    const codes = loadCoaFromCsv(csv).map((r) => r.code);
-    expect(codes).not.toContain('42-1106');
-    expect(codes).not.toContain('42-1107');
+  it('42-1107 ยังไม่ถูกเพิ่มกลับ · 42-1106 เปิดใหม่ภายใต้ชื่อใหม่ (PR4 ต7 — ไม่ใช่การฟื้นชื่อเดิม)', () => {
+    const rows = loadCoaFromCsv(csv);
+    expect(rows.map((r) => r.code)).not.toContain('42-1107');
+    expect(rows.find((r) => r.code === '42-1106')?.name).toBe('เงินพักค่าปรับดิวสะสมเกิน');
   });
 
   it('migration เพิ่ม 42-1108 แบบ ON CONFLICT DO NOTHING (prod ได้ตอน deploy โดยไม่ต้อง seed:coa)', () => {

@@ -1,4 +1,5 @@
 import { Decimal } from '@prisma/client/runtime/library';
+import { ledgerLines } from './__tests__/ledger-lines-mock';
 import { InstallmentAccrual2ATemplate } from './cpa-templates/installment-accrual-2a.template';
 
 /**
@@ -38,6 +39,10 @@ describe('InstallmentAccrual2ATemplate.execute (golden · mock-based)', () => {
     rescheduleAdvanceBalance?: string;
     payment: { amountDue: string; amountPaid: string };
     priorReceiptCredits: string[];
+    /** PR4: ยอดในบัญชีของสัญญา (glContractBalance → journalLine.findMany) */
+    ledger?: Record<string, string>;
+    /** PR4: metadata ของรายการของสัญญา (advanceVatOutstanding) */
+    stamps?: Record<string, unknown>[];
   };
 
   const buildFor = (
@@ -82,14 +87,18 @@ describe('InstallmentAccrual2ATemplate.execute (golden · mock-based)', () => {
       journalEntry: {
         // ยังไม่เคยมีรายการ 2A ของงวดนี้ → reference เดิม (id ของแถวตารางงวด)
         findFirst: jest.fn().mockResolvedValue(null),
-        // reconstructPriorCleared — ใบรับชำระก่อนหน้าของงวด
-        findMany: jest.fn().mockResolvedValue(
-          (advance?.priorReceiptCredits ?? []).map((credit) => ({
+        // reconstructPriorCleared — ใบรับชำระก่อนหน้าของงวด · PR4: advanceVatOutstanding ค้นด้วย metadata.contractId
+        findMany: jest.fn().mockImplementation(async (args: { where?: { metadata?: { path?: string[] } } }) => {
+          if (args?.where?.metadata?.path?.[0] === 'contractId') {
+            return (advance?.stamps ?? []).map((metadata) => ({ metadata }));
+          }
+          return (advance?.priorReceiptCredits ?? []).map((credit) => ({
             metadata: { tag: 'receipt', installmentScheduleId: inst.id },
             lines: [{ accountCode: '11-2103', debit: '0', credit }],
-          })),
-        ),
+          }));
+        }),
       },
+      journalLine: { findMany: jest.fn(ledgerLines(advance?.ledger ?? {})) },
       payment: {
         findFirst: jest.fn().mockResolvedValue(
           advance
@@ -225,6 +234,83 @@ describe('InstallmentAccrual2ATemplate.execute (golden · mock-based)', () => {
     };
     expect(paid.data.amountPaid.toFixed(2)).toBe('1515.87');
     expect(paid.data.status).toBe('PARTIALLY_PAID');
+  });
+
+  // PR4 ต3(ข)/ต4/ต5 — ขากลับของรอบกลางคืน: ถังรวม + ถังพัก · ใบสุดท้ายรับเศษ · stamp
+  it('G2 งวดสุดท้าย หักเงินพัก 1,419 (ถังหมด · ยังค้าง 92.83) → รายการพักมี Dr 21-2101 / Cr 21-2102 92.83 + stamp · 2A ยังลงภาษีเต็มงวด 99.13', async () => {
+    await run(12, undefined, {
+      rescheduleAdvanceBalance: '1419',
+      payment: { amountDue: '1515.87', amountPaid: '0' },
+      priorReceiptCredits: [],
+      ledger: { '21-1103': '1419.00' },
+      stamps: [{ advanceVatPark: '92.83' }],
+    });
+    expect(createAndPost).toHaveBeenCalledTimes(2);
+    const core = createAndPost.mock.calls[0][0] as CapturedJe;
+    expect(lineFor(core, '21-2101')!.cr.toFixed(2)).toBe('99.13');
+    expect((core.metadata as Record<string, unknown>).advanceVatConsume).toBeUndefined();
+    const park = createAndPost.mock.calls[1][0] as CapturedJe;
+    expect((park.metadata as Record<string, string>).flow).toBe('reschedule-park-consume');
+    expect(lineFor(park, '21-1103')!.dr.toFixed(2)).toBe('1419.00');
+    expect(lineFor(park, '21-2101')!.dr.toFixed(2)).toBe('92.83');
+    expect(lineFor(park, '21-2102')!.cr.toFixed(2)).toBe('92.83');
+    expect((park.metadata as Record<string, string>).advanceVatConsume).toBe('92.83');
+    expect(balanced(park)).toBe(true);
+  });
+
+  it('G3 ถังรวม 500 หักเข้างวด 250 (ถังไม่หมด) → ขากลับ 16.36 · รอบถัดไปหัก 250 ที่เหลือ (ค้าง 16.35) → 16.35 ไม่ใช่ 16.36', async () => {
+    await run(3, { amount: '1265.83', vat: '82.82', interest: '417.42' }, {
+      advanceBalance: '500',
+      payment: { amountDue: '1515.83', amountPaid: '1265.83' },
+      priorReceiptCredits: ['1265.83'],
+      ledger: { '21-1103': '500.00' },
+      stamps: [{ advanceVatPark: '32.71' }],
+    });
+    const first = createAndPost.mock.calls[1][0] as CapturedJe;
+    expect(lineFor(first, '21-1103')!.dr.toFixed(2)).toBe('250.00');
+    expect(lineFor(first, '21-2101')!.dr.toFixed(2)).toBe('16.36');
+    expect((first.metadata as Record<string, string>).advanceVatConsume).toBe('16.36');
+
+    await run(4, { amount: '1265.83', vat: '82.82', interest: '417.42' }, {
+      advanceBalance: '250',
+      payment: { amountDue: '1515.83', amountPaid: '1265.83' },
+      priorReceiptCredits: ['1265.83'],
+      ledger: { '21-1103': '250.00' },
+      stamps: [{ advanceVatPark: '32.71' }, { advanceVatConsume: '16.36' }],
+    });
+    const second = createAndPost.mock.calls[1][0] as CapturedJe;
+    expect(lineFor(second, '21-1103')!.dr.toFixed(2)).toBe('250.00');
+    expect(lineFor(second, '21-2101')!.dr.toFixed(2)).toBe('16.35');
+    expect((second.metadata as Record<string, string>).advanceVatConsume).toBe('16.35');
+    expect(balanced(second)).toBe(true);
+  });
+
+  it('งวดสุดท้ายที่หักทั้งถังรวม 300 และถังพัก (ถังยังไม่หมด) → ขากลับทีละรายการตามยอดที่ออก 19.63 / 79.54 ไม่กินเกินยังค้าง', async () => {
+    await run(12, undefined, {
+      advanceBalance: '300',
+      rescheduleAdvanceBalance: '1419',
+      payment: { amountDue: '1515.87', amountPaid: '0' },
+      priorReceiptCredits: [],
+      ledger: { '21-1103': '1719.00' },
+      stamps: [{ advanceVatPark: '92.83' }, { advanceVatPark: '19.63' }],
+    });
+    expect(createAndPost).toHaveBeenCalledTimes(3);
+    const generic = createAndPost.mock.calls[1][0] as CapturedJe;
+    const park = createAndPost.mock.calls[2][0] as CapturedJe;
+    expect((generic.metadata as Record<string, string>).flow).toBe('advance-consume-on-accrual');
+    expect(lineFor(generic, '21-1103')!.dr.toFixed(2)).toBe('300.00');
+    expect(lineFor(generic, '21-2101')!.dr.toFixed(2)).toBe('19.63');
+    expect((generic.metadata as Record<string, string>).advanceVatConsume).toBe('19.63');
+    expect((park.metadata as Record<string, string>).flow).toBe('reschedule-park-consume');
+    expect(lineFor(park, '21-1103')!.dr.toFixed(2)).toBe('1215.87');
+    expect(lineFor(park, '21-2101')!.dr.toFixed(2)).toBe('79.54');
+    expect((park.metadata as Record<string, string>).advanceVatConsume).toBe('79.54');
+    // คอลัมน์/แถวงวดยังเดินเหมือนเดิม: ถังรวม −300 · ถังพัก −1,215.87 · amountPaid 1,515.87 PAID
+    const paid = paymentUpdate.mock.calls[paymentUpdate.mock.calls.length - 1][0] as {
+      data: { amountPaid: Decimal; status: string };
+    };
+    expect(paid.data.amountPaid.toFixed(2)).toBe('1515.87');
+    expect(paid.data.status).toBe('PAID');
   });
 
   it('ไม่มีเงินรับล่วงหน้าและไม่มีถังพัก → ไม่อ่านใบรับชำระก่อนหน้าเลย (ไม่มีคำค้นเพิ่มในรอบกลางคืนปกติ)', async () => {

@@ -1180,6 +1180,9 @@ describe('ตั้งลูกหนี้งวด ณ วันรับเ�
         '11-1101:869.83:0.00',
         '11-2103:0.00:515.83',
         '21-1103:0.00:354.00',
+        // PR4: เงินที่พัก 354 ได้ขาพักภาษี 23.16 ในใบเดียวกัน (preview === posted)
+        '21-2101:0.00:23.16',
+        '21-2102:23.16:0.00',
       ]);
       expect(await accruedOf(c.id, 1)).toEqual(['1515.83', '99.17', '500.00']);
       expect(await balance(c.id, '11-2103', 'dr')).toBe('0.00');
@@ -1396,7 +1399,13 @@ describe('ตั้งลูกหนี้งวด ณ วันรับเ�
       expect(await accrualEntries(sched.id)).toHaveLength(2); // ใบบางส่วน 1,000 + ส่วนที่เหลือ 515.83
       const consumes = await flowEntries(c.id, 'advance-consume-on-accrual');
       expect(consumes).toHaveLength(1);
-      expect(sortedLines(consumes[0])).toEqual(['11-2103:0.00:515.83', '21-1103:515.83:0.00']);
+      expect(sortedLines(consumes[0])).toEqual([
+        '11-2103:0.00:515.83',
+        '21-1103:515.83:0.00',
+        // PR4: เงินรับล่วงหน้า 2,000 ที่พักพร้อมภาษี 130.84 — หัก 515.83 (ถังไม่หมด) ⇒ ขากลับ HALF_UP(515.83 × 7/107) = 33.75
+        '21-2101:33.75:0.00',
+        '21-2102:0.00:33.75',
+      ]);
       expect(await advanceOf(c.id)).toEqual({ generic: '1484.17', park: '0.00' });
       expect(await paidOf(c.id, 2)).toEqual({ amountPaid: '1515.83', status: 'PAID' });
       // งวด 1 สุทธิ 0 · งวด 2: Dr 1,000 + 515.83 (2A) − Cr 1,000 (ใบรับชำระ) − Cr 515.83 (หักเงินรับล่วงหน้า)
@@ -1420,7 +1429,13 @@ describe('ตั้งลูกหนี้งวด ณ วันรับเ�
 
       const consumes = await flowEntries(c.id, 'advance-consume-on-accrual');
       expect(consumes).toHaveLength(1);
-      expect(sortedLines(consumes[0])).toEqual(['11-2103:0.00:515.83', '21-1103:515.83:0.00']);
+      expect(sortedLines(consumes[0])).toEqual([
+        '11-2103:0.00:515.83',
+        '21-1103:515.83:0.00',
+        // PR4: เงินรับล่วงหน้า 2,000 ที่พักพร้อมภาษี 130.84 — หัก 515.83 (ถังไม่หมด) ⇒ ขากลับ HALF_UP(515.83 × 7/107) = 33.75
+        '21-2101:33.75:0.00',
+        '21-2102:0.00:33.75',
+      ]);
       expect(await advanceOf(c.id)).toEqual({ generic: '1484.17', park: '0.00' });
       // 1,000 + 515.83 < ยอดเรียกเก็บ 1,516.00 → แถวงวดยังค้าง 0.17 (เศษของยอดเรียกเก็บ ไม่ใช่ลูกหนี้ในบัญชี)
       expect(await paidOf(c.id, 2)).toEqual({ amountPaid: '1515.83', status: 'PARTIALLY_PAID' });

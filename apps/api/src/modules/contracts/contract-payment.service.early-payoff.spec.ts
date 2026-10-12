@@ -90,6 +90,7 @@ describe('ContractPaymentService.getEarlyPayoffQuote (early-payoff golden)', () 
     contract: { findUnique: jest.Mock };
     installmentSchedule: { findMany: jest.Mock };
     chartOfAccount: { findMany: jest.Mock };
+    journalEntry: { findMany: jest.Mock };
     journalLine: { findMany: jest.Mock };
   };
   let service: ContractPaymentService;
@@ -99,6 +100,8 @@ describe('ContractPaymentService.getEarlyPayoffQuote (early-payoff golden)', () 
       contract: { findUnique: jest.fn().mockResolvedValue(contract) },
       installmentSchedule: { findMany: jest.fn().mockResolvedValue(installmentSchedules) },
       chartOfAccount: { findMany: jest.fn().mockResolvedValue([]) },
+      // PR4: advanceVatOutstanding อ่าน stamp จาก journalEntry — ไม่มีรายการที่ประทับในฟิกซ์เจอร์นี้
+      journalEntry: { findMany: jest.fn().mockResolvedValue([]) },
       journalLine: { findMany: jest.fn(ledgerLines(ledgerAfterSixPaid)) },
     };
 

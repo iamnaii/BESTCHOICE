@@ -1440,7 +1440,7 @@ describe('RepairTicketsService.warrantyLookup', () => {
 
   // ประกันร้านของขายสด/ไฟแนนซ์นอก (คำสั่งเจ้าของ 2026-08-27) — ก่อนหน้านี้เส้นค้นด้วย
   // ลูกค้าอ่านแต่ตาราง contracts ⇒ ลูกค้าเงินสดได้ devices: [] เสมอ เหมือนไม่เคยซื้ออะไร
-  it('ลูกค้าซื้อเงินสด (ไม่มีสัญญา) ต้องเห็นเครื่อง + ประกันร้านจากใบขาย', async () => {
+  it('ลูกค้าซื้อเงินสด (ไม่มีสัญญา) ต้องเห็นเครื่อง + ประกันร้านจากใบขาย + สิทธิ์เปลี่ยนรุ่นเดิมใน 7 วัน (PR 5)', async () => {
     const customer = { id: 'c-9', name: 'นาย เงินสด', phone: '0800000000' };
     const product = {
       id: 'p-9',
@@ -1471,8 +1471,9 @@ describe('RepairTicketsService.warrantyLookup', () => {
     expect(result.devices[0].warrantyWindows.shopWarranty).toBeGreaterThanOrEqual(29);
     expect(result.devices[0].warrantyWindows.shopWarranty).toBeLessThanOrEqual(30);
     expect(result.devices[0].contract).toBeNull();
-    // สิทธิ์เปลี่ยนเครื่อง 7 วันผูกกับสัญญา — ใบขายไม่มี id สัญญา จึงต้องเป็น false
-    expect(result.devices[0].eligibility.forExchange).toBe(false);
+    // PR 5 (spec §3.1): ใบขายสดมือสองภายใน 7 วันนับจาก soldAt (shopWarrantyStartDate ?? createdAt)
+    // ได้สิทธิ์เปลี่ยนรุ่นเดิมเหมือนสัญญาผ่อน — ขายวันนี้ = วันที่ 0 จึงต้องเป็น true
+    expect(result.devices[0].eligibility.forExchange).toBe(true);
   });
 
   // Test 2: lookup by IMEI returns single device

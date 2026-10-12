@@ -29,11 +29,10 @@ import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch, SwitchWrapper } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
+import { voidGate } from './sales-history/void-gate';
 
 /** ตรงกับ `VoidSaleDto.reason` ฝั่ง API (MinLength 10) — กันยิงคำขอที่ 400 แน่ ๆ */
 const VOID_REASON_MIN = 10;
-/** ใบ INSTALLMENT ยกเลิกผ่านเส้นทางยกเลิกสัญญา — API ปฏิเสธอยู่แล้ว จึงซ่อนปุ่ม */
-const VOIDABLE_SALE_TYPES = new Set(['CASH', 'EXTERNAL_FINANCE']);
 
 interface Sale {
   costPriceSnapshot?: string | null;
@@ -60,6 +59,8 @@ interface Sale {
   deletedAt?: string | null;
   voidReason?: string | null;
   voidedBy?: { id: string; name: string } | null;
+  /** PR 5 — ใบขายที่ถูกสลับเครื่องจากเคสเปลี่ยนรุ่นเดิมขายสด (ยกเลิกใบขายไม่ได้อีก) */
+  exchangeCase?: { id: string; caseNumber: string; approvedAt: string | null; deviceImei: string | null } | null;
   customer: { id: string; name: string; phone: string };
   product: { id: string; name: string; brand: string; model: string; imeiSerial: string | null; serialNumber: string | null; costPrice?: string };
   branch: { id: string; name: string };
@@ -434,6 +435,11 @@ export default function SalesHistoryPage() {
           {(s.product.imeiSerial || s.product.serialNumber) && (
             <div className="text-xs text-muted-foreground font-mono">{s.product.imeiSerial || s.product.serialNumber}</div>
           )}
+          {s.exchangeCase && (
+            <span className="block text-2xs text-muted-foreground leading-snug">
+              เปลี่ยนเครื่อง {s.exchangeCase.approvedAt ? formatDateTime(s.exchangeCase.approvedAt) : '—'} · เดิม IMEI {s.exchangeCase.deviceImei ?? '—'}
+            </span>
+          )}
         </div>
       ),
     },
@@ -537,11 +543,12 @@ export default function SalesHistoryPage() {
       key: 'actions',
       label: '',
       render: (s: Sale) => {
-        if (s.deletedAt) return null;
-        if (!VOIDABLE_SALE_TYPES.has(s.saleType)) {
+        const gate = voidGate(s);
+        if (gate.kind === 'none') return null;
+        if (gate.kind === 'text') {
           return (
-            <span className="text-2xs text-muted-foreground leading-snug" title="ใบขายผ่อนร้านยกเลิกผ่านหน้าสัญญา (ยกเลิกสัญญา) ไม่ใช่ที่นี่">
-              ยกเลิกผ่านสัญญา
+            <span className="text-2xs text-muted-foreground leading-snug" title={gate.title}>
+              {gate.text}
             </span>
           );
         }

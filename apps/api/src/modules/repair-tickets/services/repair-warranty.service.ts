@@ -2,6 +2,7 @@ import { Injectable, NotFoundException, BadRequestException } from '@nestjs/comm
 import { PrismaService } from '../../../prisma/prisma.service';
 import { AuditService } from '../../audit/audit.service';
 import { detectWarrantyStatus, defaultPayer } from '../utils/detect-warranty-status';
+import { saleSoldAt } from '../utils/sale-sold-at';
 import { WarrantyPreviewDto } from '../dto/warranty-preview.dto';
 import { WarrantyLookupDto } from '../dto/warranty-lookup.dto';
 import { hasCrossBranchAccess } from '../../auth/branch-access.util';
@@ -185,7 +186,7 @@ export class RepairWarrantyService {
       // ขายสด/ไฟแนนซ์นอกไม่มีสัญญา — ประกันร้านอยู่บนใบขาย (migration 20261000200000)
       // ก่อนหน้านี้เส้นนี้ query แต่ตาราง contracts ⇒ ลูกค้าเงินสดได้ devices: [] เสมอ
       // เหมือนไม่เคยซื้ออะไร. ปั้นให้เป็นแถว "รูปสัญญา" เพื่อให้ตัว map ด้านล่างใช้ซ้ำได้ทั้งก้อน
-      // — ไม่มี `id` ⇒ forExchange เป็น false เอง (สิทธิ์เปลี่ยนเครื่อง 7 วันผูกกับสัญญาเท่านั้น)
+      // — ไม่มี `id` ⇒ ไม่ใช่สัญญา · PR 5: ใบขายได้สิทธิ์ 7 วันจาก soldAt (มือสองเท่านั้น — ดู forExchange)
       const contractlessSales = await this.prisma.sale.findMany({
         where: {
           customerId: dto.customerId,
@@ -205,6 +206,7 @@ export class RepairWarrantyService {
           saleId: s.id,
           saleType: s.saleType,
           purchasedAt: s.createdAt,
+          soldAt: saleSoldAt(s), // PR 5 — ฐานกรอบ 7 วันของใบขาย
         })),
       );
     } else if (dto.imei || dto.serial) {
@@ -250,8 +252,10 @@ export class RepairWarrantyService {
 
     const devices = contracts
       .map((c: any) => {
+        // PR 5 — ฐานกรอบ 7 วัน: สัญญา = วันรับเครื่อง · ใบขายสด = วันขาย (soldAt)
+        const anchor: Date | null = c.deviceReceivedAt ?? c.soldAt ?? null;
         const warrantyWindows = this.computeWarrantyWindows(
-          c.deviceReceivedAt,
+          anchor,
           c.shopWarrantyEndDate,
           c.product?.warrantyExpireDate,
         );
@@ -260,12 +264,19 @@ export class RepairWarrantyService {
         // sevenDayDefect bottoms at 0 via Math.max, making sevenDayDefect === 0 ambiguous
         // (could be day-7 in-window OR any expired day). warrantyStatus === IN_7DAY_DEFECT
         // correctly captures the inclusive-7 boundary from BKK calendar-day arithmetic.
-        const warrantyStatus = detectWarrantyStatus({ contract: c, product: c.product });
+        const warrantyStatus = detectWarrantyStatus(
+          c.id
+            ? { contract: c, product: c.product }
+            : {
+                sale: { shopWarrantyEndDate: c.shopWarrantyEndDate, soldAt: c.soldAt ?? null },
+                product: c.product,
+              },
+        );
+        // สิทธิ์เปลี่ยนรุ่นเดิม: สัญญาต้อง ACTIVE · ใบขายสด (PR 5) ต้องมีใบขายจริง · ทั้งคู่เฉพาะมือสอง
         const forExchange =
           warrantyStatus === 'IN_7DAY_DEFECT' &&
-          !!c.id &&
-          c.status === 'ACTIVE' &&
-          c.product?.category === 'PHONE_USED';
+          c.product?.category === 'PHONE_USED' &&
+          (c.id ? c.status === 'ACTIVE' : !!c.saleId);
 
         return {
           product: c.product
@@ -346,6 +357,7 @@ export class RepairWarrantyService {
         createdAt: true,
         // ประกันร้านของขายสด/ไฟแนนซ์นอกอยู่บนใบขาย (ขาผ่อนอยู่บน contract ตามเดิม)
         shopWarrantyEndDate: true,
+        shopWarrantyStartDate: true,
         customer: { select: { id: true, name: true, phone: true } },
         contract: {
           select: {
@@ -364,7 +376,10 @@ export class RepairWarrantyService {
     // discipline in detect-warranty-status.ts.
     const warrantyStatus = detectWarrantyStatus({
       contract: sale?.contract ?? null,
-      sale: sale ?? null,
+      // PR 5 — ใบขายไม่มีสัญญา: ฐานกรอบ 7 วัน = วันขาย (สัญญาผ่อนยังใช้ deviceReceivedAt ของสัญญา)
+      sale: sale
+        ? { shopWarrantyEndDate: sale.shopWarrantyEndDate, soldAt: sale.contract ? null : saleSoldAt(sale) }
+        : null,
       product,
     });
 
@@ -388,7 +403,9 @@ export class RepairWarrantyService {
           }
         : null,
       warrantyStatus,
-      daysRemainingIn7Day: this.computeDaysRemainingIn7Day(sale?.contract),
+      daysRemainingIn7Day: this.computeDaysRemainingIn7Day(
+        sale?.contract ? sale.contract.deviceReceivedAt : saleSoldAt(sale),
+      ),
       // วันที่ซื้อ + วันที่หมดประกัน (both warranties when present)
       purchasedAt: sale?.createdAt ?? null,
       shopWarrantyEndDate: sale?.contract?.shopWarrantyEndDate ?? sale?.shopWarrantyEndDate ?? null,
@@ -396,8 +413,9 @@ export class RepairWarrantyService {
     } as const;
   }
 
-  private computeDaysRemainingIn7Day(contract: { deviceReceivedAt?: Date | null } | null | undefined): number | null {
-    if (!contract?.deviceReceivedAt) return null;
+  /** เหลืออีกกี่วันในกรอบ 7 วัน นับจากวันฐาน (วันรับเครื่องของสัญญา หรือวันขายของใบขายสด — PR 5) */
+  private computeDaysRemainingIn7Day(anchor: Date | null | undefined): number | null {
+    if (!anchor) return null;
     // BKK calendar-day arithmetic (matches detect-warranty-status.ts convention).
     // A device received at 23:00 BKK on day 0 → still has 7 days remaining at midnight UTC.
     const bkkOffsetMs = 7 * 60 * 60 * 1000;
@@ -406,7 +424,7 @@ export class RepairWarrantyService {
       return new Date(bkk.getUTCFullYear(), bkk.getUTCMonth(), bkk.getUTCDate());
     };
     const daysSince =
-      (toBkkMidnight(new Date()).getTime() - toBkkMidnight(new Date(contract.deviceReceivedAt)).getTime()) /
+      (toBkkMidnight(new Date()).getTime() - toBkkMidnight(new Date(anchor)).getTime()) /
       86_400_000;
     const remaining = 7 - daysSince;
     return remaining < 0 ? 0 : Math.ceil(remaining);

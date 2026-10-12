@@ -59,6 +59,7 @@ const SENSITIVE_REQUEST_KEYS = ['nationalId', 'password', 'phone', 'signatureIma
  */
 function redactSensitiveRequestData(event: Sentry.Event): void {
   const request = event.request;
+  if(request?.headers)for(const key of Object.keys(request.headers))if(key.toLowerCase()==='x-appointment-token')request.headers[key]='[REDACTED]';
   if (!request || request.data == null) return;
   if (typeof request.data === 'string') {
     const body = request.data;

@@ -53,7 +53,7 @@ export class LineShopAdapter implements IChannelAdapter {
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : String(err);
       this.logger.error(`[LineShopAdapter] send failed: ${errorMsg}`);
-      return { success: false, error: errorMsg };
+      return { success: false, error: errorMsg, definitelyNotSent: !!err && typeof err === 'object' && 'definitelyNotSent' in err && err.definitelyNotSent === true };
     }
   }
 

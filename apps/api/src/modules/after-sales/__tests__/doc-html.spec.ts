@@ -281,4 +281,17 @@ describe('buildAfterSalesDocHtml', () => {
     expect(html).toContain(asPageRule);
     expect(html.indexOf(asPageRule)).toBeGreaterThan(html.indexOf(sharedPageRule));
   });
+
+  it('PR 5 — รับ array → หน้าแรกจบด้วย page-break แล้วตามด้วยเอกสารที่สอง · title ของเอกสารแรก', () => {
+    const html = buildAfterSalesDocHtml([
+      doc({ title: 'ใบรับคืนเครื่อง' }),
+      doc({ title: 'ใบส่งมอบเครื่องทดแทน' }),
+    ]);
+    expect(html).toContain('<title>ใบรับคืนเครื่อง</title>');
+    expect(html).toContain('class="as-page-break"');
+    expect(html.indexOf('ใบรับคืนเครื่อง')).toBeLessThan(html.indexOf('as-page-break'));
+    expect(html.indexOf('as-page-break')).toBeLessThan(html.indexOf('ใบส่งมอบเครื่องทดแทน'));
+    expect(html.match(/class="bc-doc-footer"/g)).toHaveLength(2);
+    expect(html).toContain('.as-page-break { page-break-after: always; break-after: page; }');
+  });
 });

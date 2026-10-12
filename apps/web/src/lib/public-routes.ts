@@ -36,6 +36,7 @@ export function currentLocation(): PageLocation {
  * (`/registers` ไม่นับ) กัน prefix ชนกันโดยไม่ตั้งใจ
  */
 const PUBLIC_SECTIONS = [
+  '/visit',
   // เปิดจากลิงก์ในอีเมล — cold load ที่ไม่มี session เสมอ
   '/reset-password',
   '/forgot-password',

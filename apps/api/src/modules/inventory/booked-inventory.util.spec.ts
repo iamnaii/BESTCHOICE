@@ -95,6 +95,15 @@ describe('resolveBookedInventory', () => {
     expect(await resolveBookedInventory(buildTx({ jeByFlow: { 'shop-exchange-return': reversed } }), 'p1')).toMatchObject({ booked: false, source: null });
   });
 
+  it('PR 5 — เปลี่ยนรุ่นเดิมขายสด (shop-cash-exchange metadata.oldProductId) → EXCHANGE_RETURN ที่ต้นทุนเดิม · ถ้าใบถูกกลับรายการแล้วไม่นับ', async () => {
+    const je: Je = { id: 'je-cx', entryNumber: 'JE-CX', metadata: { oldProductId: 'p1', newProductId: 'p2' }, lines: [line('S11-2002', '10700'), { accountCode: 'S50-1102', debit: new Decimal(0), credit: new Decimal('10700') }, line('S50-1102', '10500'), { accountCode: 'S11-2002', debit: new Decimal(0), credit: new Decimal('10500') }] };
+    const out = await resolveBookedInventory(buildTx({ jeByFlow: { 'shop-cash-exchange': je } }), 'p1');
+    expect(out).toMatchObject({ booked: true, source: 'EXCHANGE_RETURN', journalEntryNo: 'JE-CX' });
+    expect(out.bookedAmount?.toFixed(2)).toBe('10700.00');
+    const reversed = { ...je, metadata: { ...je.metadata, reversed: true } };
+    expect(await resolveBookedInventory(buildTx({ jeByFlow: { 'shop-cash-exchange': reversed } }), 'p1')).toMatchObject({ booked: false, source: null });
+  });
+
   it('รายการที่เจอไม่มีบรรทัด Dr S11-200x → ไม่นับว่า booked', async () => {
     const tx = buildTx({ jeByFlow: { 'shop-repossession-intake': { id: 'je-r', entryNumber: 'JE-R', metadata: { productId: 'p1' }, lines: [line('S21-1104', '5000')] } } });
     expect(await resolveBookedInventory(tx, 'p1')).toMatchObject({ booked: false, source: null, bookedAmount: null });

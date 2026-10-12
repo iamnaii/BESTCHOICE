@@ -1,3 +1,4 @@
+import CustomerAppointments from '@/components/appointments/CustomerAppointments';
 import { useEffect, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useParams, useSearchParams } from 'react-router';
@@ -128,6 +129,7 @@ export default function CustomerDetailPage() {
 
       <KpiTiles tiles={kpiTiles(customer, loyaltyPoints?.balance ?? null, journeySummary)} />
 
+      <CustomerAppointments customerId={customer.id} />
       {journeySummary && <JourneyStageStrip summary={journeySummary} customerId={customer.id} canRecord={canRecord} />}
 
       <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">

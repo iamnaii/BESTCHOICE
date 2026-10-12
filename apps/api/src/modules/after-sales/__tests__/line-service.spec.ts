@@ -72,6 +72,7 @@ describe('AfterSalesLineService', () => {
       systemConfig: { findFirst: jest.fn().mockResolvedValue(null) }, // missing row → readBoolFlag fallback (true)
       product: { findFirst: jest.fn() },
       contract: { findFirst: jest.fn() },
+      sale: { findFirst: jest.fn() }, // PR 5 — ประกันร้านของเคสขายสดอ่านจากใบขาย
     };
     notifications = {
       sendFromTemplate: jest.fn().mockResolvedValue({ id: 'log-1', status: 'SENT' }),
@@ -719,6 +720,39 @@ describe('AfterSalesLineService', () => {
       const data = notifications.sendFromTemplate.mock.calls[0][1];
       expect(data.warrantyLines).toBe('ประกันร้าน ถึง 17 พ.ย. 69');
       expect(data.warrantyLines).not.toContain('นับใหม่');
+    });
+
+    it('PR 5 — CLOSED ของเคสขายสด: วันหมดประกันร้านอ่านจาก Sale.shopWarrantyEndDate (ไม่มีสัญญา) → "ประกันร้าน ถึง 11 ธ.ค. 69"', async () => {
+      prisma.afterSalesCase.findFirst.mockResolvedValue(
+        makeCase({
+          outcome: 'CASH_SAME_MODEL_EXCHANGE',
+          stage: 'CLOSED',
+          saleId: 'sale-1',
+          replacementSaleId: 'sale-1',
+          replacementProductId: 'prod-new',
+          replacementContractId: null,
+          repairTicket: null,
+        }),
+      );
+      prisma.product.findFirst.mockResolvedValue({
+        brand: 'Apple',
+        model: 'iPhone 13',
+        storage: '128GB',
+        imeiSerial: '359000000000002',
+      });
+      prisma.sale.findFirst.mockResolvedValue({
+        shopWarrantyEndDate: new Date('2026-12-11T00:00:00.000Z'),
+      });
+
+      await service.notifyMoment('case-1', 'CLOSED', 'u-1');
+
+      expect(prisma.contract.findFirst).not.toHaveBeenCalled();
+      expect(prisma.sale.findFirst).toHaveBeenCalledWith({
+        where: { id: 'sale-1', deletedAt: null },
+        select: { shopWarrantyEndDate: true },
+      });
+      const data = notifications.sendFromTemplate.mock.calls[0][1];
+      expect(JSON.stringify(data)).toContain('ประกันร้าน ถึง 11 ธ.ค. 69');
     });
   });
 

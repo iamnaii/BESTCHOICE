@@ -1,3 +1,5 @@
+import { getRequestCompany } from '@/lib/company-scope';
+import { hasCompanyAccess } from '@installment/shared';
 import './inbox-workspace.css';
 import InboxWorkTools from './components/InboxWorkTools';
 import { useRoomNotes } from './hooks/useRoomNotes';
@@ -223,16 +225,18 @@ export default function UnifiedInboxPage() {
       lastPage.page * lastPage.limit < lastPage.total ? lastPage.page + 1 : undefined,
   });
 
+  const appointmentRoomIds = [...new Set<string>([...(sessionsQuery.data?.pages.flatMap((p: {data?: {id:string}[]})=>(p.data||[]).map(r=>r.id))||[]),...(activeRoomId?[activeRoomId]:[])])].slice(0,500);
+  const appointmentSummaries=useQuery({queryKey:['appointments','room-summaries',appointmentRoomIds],queryFn:()=>api.get('/store-appointments/room-summaries',{params:{roomIds:appointmentRoomIds.join(',')}}).then(r=>r.data),enabled:getRequestCompany()!=='FINANCE'&&!!appointmentRoomIds.length&&!!user&&['OWNER','BRANCH_MANAGER','SALES'].includes(user.role)&&hasCompanyAccess(user.role,user.accessibleCompanies,'SHOP'),refetchInterval:30_000});
   const sessions = useMemo(() => {
     const flat = sessionsQuery.data?.pages.flatMap((p: any) => p.data ?? []) ?? [];
     // Offset pagination over a mutable lastMessageAt order can repeat a room at a
     // page boundary if rooms shift between fetches — dedup by id to avoid React
     // key collisions / double rows. Map preserves first-seen (server) order.
-    const list = [...new Map(flat.map((r: any) => [r.id, r])).values()];
+    const list = [...new Map(flat.map((r: any) => [r.id, r])).values()].map((r:any)=>({...r,storeAppointment:appointmentSummaries.data?.[r.id]}));
     // ห้องที่ถึงนัด/ใกล้ถึง (≤15 นาที) ลอยขึ้นบนสุด — ชั้น 1 (เจ้าของเคาะ 2026-09-06) · ลำดับเดิมคงที่ในแต่ละกลุ่ม
-    const urgent = (r: any) => !!apptState(nextAppointment(r.todos)?.dueDate)?.urgent;
+    const urgent = (r: any) => !!apptState(nextAppointment([...(r.todos||[]),...(r.storeAppointment?[r.storeAppointment]:[])])?.dueDate)?.urgent;
     return [...list.filter(urgent), ...list.filter((r) => !urgent(r))];
-  }, [sessionsQuery.data?.pages]);
+  }, [sessionsQuery.data?.pages,appointmentSummaries.data]);
 
   // ตัวนับจากเซิร์ฟเวอร์ — นับทั้งจักรวาลห้อง ไม่ใช่แค่หน้าที่โหลดมา
   // ส่ง tab ไปด้วยเพราะเมนูช่องทางต้องนับในจักรวาลของแท็บที่เปิดอยู่
@@ -388,7 +392,7 @@ export default function UnifiedInboxPage() {
           </div>
         ) : (
         <ChatPanel
-          session={sessionQuery.data}
+          session={sessionQuery.data ? {...sessionQuery.data,storeAppointment:appointmentSummaries.data?.[activeRoomId!]} : undefined}
           messages={messagesQuery.data ?? []}
           notes={Array.isArray(notesQuery.data) ? notesQuery.data : []}
           pinnedNote={sessionQuery.data?.notes?.[0] ?? null}

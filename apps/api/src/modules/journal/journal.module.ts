@@ -45,6 +45,7 @@ import { CompanyResolverService } from './company-resolver.service';
 import { ShopAccountResolver } from './shop-account-resolver.service';
 import { PairedJournalService } from './paired-journal.service';
 import { ShopCashSaleTemplate } from './cpa-templates/shop-cash-sale.template';
+import { ShopCashExchangeTemplate } from './cpa-templates/shop-cash-exchange.template';
 import { ShopDownPaymentTemplate } from './cpa-templates/shop-down-payment.template';
 import { ShopBookingDepositTemplate } from './cpa-templates/shop-booking-deposit.template';
 import { ShopBookingForfeitTemplate } from './cpa-templates/shop-booking-forfeit.template';
@@ -126,6 +127,7 @@ import { RefundWaiveTemplate } from './cpa-templates/refund-waive.template';
     ShopAccountResolver,
     PairedJournalService,
     ShopCashSaleTemplate,
+    ShopCashExchangeTemplate,
     ShopDownPaymentTemplate,
     ShopBookingDepositTemplate,
     ShopBookingForfeitTemplate,
@@ -196,6 +198,7 @@ import { RefundWaiveTemplate } from './cpa-templates/refund-waive.template';
     ShopAccountResolver,
     PairedJournalService,
     ShopCashSaleTemplate,
+    ShopCashExchangeTemplate,
     ShopDownPaymentTemplate,
     ShopBookingDepositTemplate,
     ShopBookingForfeitTemplate,

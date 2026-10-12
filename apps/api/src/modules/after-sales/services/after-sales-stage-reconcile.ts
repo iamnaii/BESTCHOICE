@@ -38,6 +38,7 @@ export interface ReconcilableCase {
   cancelledAt: Date | null;
   closedAt: Date | null;
   replacementContractId: string | null;
+  replacementSaleId: string | null; // PR 5 — marker ของเคสขายสด (ไม่มีสัญญาใหม่)
   repairTicket: {
     status: RepairStatus;
     deletedAt: Date | null;
@@ -63,6 +64,7 @@ export const RECONCILE_SELECT = {
   cancelledAt: true,
   closedAt: true,
   replacementContractId: true,
+  replacementSaleId: true,
   repairTicket: { select: { status: true, deletedAt: true, returnedToCustomerAt: true } },
   exchangeRequest: {
     select: {
@@ -89,6 +91,7 @@ export async function reconcileStage<T extends ReconcilableCase>(
     repairStatus: row.repairTicket?.status ?? null,
     repairDeleted: !!row.repairTicket?.deletedAt,
     replacementContractId: row.replacementContractId,
+    replacementSaleId: row.replacementSaleId,
     exchange: row.exchangeRequest
       ? {
           status: row.exchangeRequest.status,

@@ -259,7 +259,10 @@ function AfterSalesNewForm({ prefill }: { prefill?: ChatServicePrefill }) {
   const sameModelOption = lookup.data?.outcomes.find((o) => o.outcome === 'SAME_MODEL_EXCHANGE');
   const outOfWindow = !!sameModelOption?.note?.includes('ข้ามกรอบ 7 วัน');
   const needsReplacement =
-    (outcome === 'SAME_MODEL_EXCHANGE' || outcome === 'PRICED_EXCHANGE') && !replacementProductId;
+    (outcome === 'SAME_MODEL_EXCHANGE' ||
+      outcome === 'PRICED_EXCHANGE' ||
+      outcome === 'CASH_SAME_MODEL_EXCHANGE') &&
+    !replacementProductId;
   const pricedBlocked =
     outcome === 'PRICED_EXCHANGE' &&
     !!(pricedPreview?.blockers.overdueBlocked || pricedPreview?.blockers.advanceBlocked);
@@ -294,6 +297,10 @@ function AfterSalesNewForm({ prefill }: { prefill?: ChatServicePrefill }) {
       parts.push(
         `ทางออก "${OUTCOME_LABEL.SAME_MODEL_EXCHANGE}" · รอ ผจก.สาขา ยืนยัน · เครื่องทดแทน ${replacementText}`,
       );
+    } else if (outcome === 'CASH_SAME_MODEL_EXCHANGE') {
+      parts.push(
+        `ทางออก "${OUTCOME_LABEL.CASH_SAME_MODEL_EXCHANGE}" · รอ ผจก.สาขา ยืนยัน · เครื่องทดแทน ${replacementText}`,
+      );
     } else if (outcome === 'PRICED_EXCHANGE') {
       const tierText = pricedPreview?.tier ? ` · ${tierApproverText(pricedPreview.tier)}` : '';
       parts.push(
@@ -327,7 +334,9 @@ function AfterSalesNewForm({ prefill }: { prefill?: ChatServicePrefill }) {
       return;
     }
     if (
-      (outcome === 'SAME_MODEL_EXCHANGE' || outcome === 'PRICED_EXCHANGE') &&
+      (outcome === 'SAME_MODEL_EXCHANGE' ||
+        outcome === 'PRICED_EXCHANGE' ||
+        outcome === 'CASH_SAME_MODEL_EXCHANGE') &&
       !replacementProductId
     ) {
       toast.error('ต้องเลือกเครื่องทดแทนก่อนบันทึก');
@@ -361,7 +370,11 @@ function AfterSalesNewForm({ prefill }: { prefill?: ChatServicePrefill }) {
       if (estimatedCost.trim()) form.append('estimatedCost', estimatedCost.trim());
       if (repairSupplier) form.append('repairSupplierId', repairSupplier.id);
     }
-    if (outcome === 'SAME_MODEL_EXCHANGE' || outcome === 'PRICED_EXCHANGE') {
+    if (
+      outcome === 'SAME_MODEL_EXCHANGE' ||
+      outcome === 'PRICED_EXCHANGE' ||
+      outcome === 'CASH_SAME_MODEL_EXCHANGE'
+    ) {
       form.append('replacementProductId', replacementProductId!);
     }
     if (outcome === 'PRICED_EXCHANGE') {
@@ -715,6 +728,22 @@ function AfterSalesNewForm({ prefill }: { prefill?: ChatServicePrefill }) {
                   <div className="rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm leading-snug text-warning-strong">
                     <p>ผจก.สาขา ต้องยืนยันก่อนเปลี่ยน · ราคาเท่าเดิม ไม่มีเงินเปลี่ยนมือ</p>
                     {outOfWindow && <p>ข้ามกรอบ 7 วัน — ต้องให้ ผจก. ยืนยัน</p>}
+                  </div>
+                </div>
+              )}
+
+              {outcome === 'CASH_SAME_MODEL_EXCHANGE' && (
+                <div className="space-y-3">
+                  <ReplacementProductPicker
+                    imei={imei}
+                    sameModel
+                    value={replacementProductId}
+                    onChange={setReplacementProductId}
+                    onProductsChange={setReplacementProducts}
+                  />
+                  <div className="rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm leading-snug text-warning-strong">
+                    <p>ผจก.สาขา ต้องยืนยันก่อนเปลี่ยน · สลับเครื่องบนใบขายเดิม ราคาเท่าเดิม ไม่มีเงินเปลี่ยนมือ</p>
+                    <p>ประกันร้านและกรอบ 7 วันของเครื่องทดแทนนับใหม่จากวันส่งมอบ</p>
                   </div>
                 </div>
               )}

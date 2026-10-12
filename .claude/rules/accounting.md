@@ -1599,6 +1599,7 @@ All live at `apps/api/src/modules/journal/cpa-templates/`. Each is idempotent vi
 | Template | Trigger | Companies | Notes |
 |---|---|---|---|
 | `ShopCashSaleTemplate` | Sale w/ `saleType=CASH` (**LIVE** since 2026-06-23, `sale-writer.service.ts`) | SHOP only | Dr cash / Cr revenue + Dr COGS / Cr inventory. No FINANCE involvement. **One JE per (sale, product)** — bundle items get their own JE (skipped when allocated revenue = 0, e.g. zero-cost freebie). `productId` is a REQUIRED input; `reference = sale:<saleId>:<productId>`, `idempotencyKey = shop-cash-sale:<saleId>:<productId>`, `metadata.saleId` stamped (the void sweep key). F1 fix 2026-08-23 — see "ยกเลิกใบขาย (void sale)". |
+| `ShopCashExchangeTemplate` | PR 5 — ผจก. ยืนยันเปลี่ยนรุ่นเดิมบนใบขายสด/ไฟแนนซ์นอก (`AfterSalesExchangeService.runCashConfirm`, **LIVE** 2026-10-12) | SHOP only | `Dr S11-200x oldCost / Cr S50-110x` + `Dr S50-110x newCost / Cr S11-200x` — สลับต้นทุน ไม่แตะรายได้/เงินสด · flow `shop-cash-exchange` · key `shop-cash-exchange:<caseId>` · reference `sale:<saleId>:exchange:<caseId>` · stamp `saleId` ไม่ stamp `contractId` · คู่ยอด 0 ไม่ลง · ดูหัวข้อ "เปลี่ยนรุ่นเดิมขายสด" |
 | `ShopDownPaymentTemplate` | Customer pays down at contract creation | SHOP only | Dr cash / Cr S21-2001 (down payable). Cleared by `ShopInventoryTransferTemplate` at activation (NOT by settlement — that's the C1 bug fixed). |
 | `ShopDownPaymentReversalTemplate` (W2) | Contract canceled BEFORE activation | SHOP only | Dr S21-2001 / Cr cash. Stamps `metadata.reversedByIdempotencyKey` onto the original down JE. |
 | `ShopInventoryTransferTemplate` | Contract activated (ownership SHOP→FINANCE) | SHOP only* | Posts TWO JEs in one `$transaction` sharing `metadata.batchId`: (A) Dr S50-XXXX / Cr S11-200X (COGS); (B) Dr S11-3001 + Dr S11-3002 + Dr S21-2001 / Cr S41-XXXX + Cr S41-1201 (revenue + receivables + down clearance). ASSERTS `financedAmount + downAmount === salePrice`. |
@@ -1809,6 +1810,51 @@ SALES/BM (สาขาตัวเอง) + OWNER · ระหว่างรอ
 - **ด่าน:** สาขา (OWNER ทุกสาขา · อื่น ๆ สาขาตัวเอง fail-closed) · ส่งคำขอ: ล็อกแถวเครื่อง `FOR UPDATE` แล้วพักขายแบบ compare-and-set (`updateMany where status = ที่อ่านใต้ล็อก` · count ≠ 1 → 409 — กันใบขาย/จองที่ commit ระหว่างนั้นถูกเขียนทับ) · **SALES ไม่เห็นต้นทุน** ทุก endpoint (`canSeeCost` — `costPrice`/`costAmount`/`journalLines`/`bookedAmount` ถูกตัดฝั่ง server · Todo ไม่พิมพ์ต้นทุน) · `assertProductNotHeld(..., 'STOCK_ADJUST')` · สถานะที่ขอได้ `IN_STOCK`/`PHOTO_PENDING`/`QC_PENDING`/`INSPECTION`/`REFURBISHED`/`PO_RECEIVED` (+`DAMAGED` เฉพาะ WRITE_OFF) · อนุมัติ: ล็อกใบ+เครื่อง `FOR UPDATE` เครื่องต้องยัง `ADJUSTMENT_PENDING` (409) · ไม่อนุมัติ/ยกเลิก = `updateMany where status ADJUSTMENT_PENDING` คืน `previousStatus` (ไม่ใช่ IN_STOCK เสมอ) · Todo เจ้าของ HIGH แท็ก `stock-adjustment` + `sa:<เลข>` ปิดอัตโนมัติเมื่อพิจารณา/ยกเลิก · AuditLog `STOCK_ADJUSTMENT_REQUESTED/APPROVED/REJECTED/CANCELED` หลัง commit · รูป = key `stock-adjustments/<yyyymmdd>/<uuid>.<ext>` ใน storage (ไม่ใช่ data URI) ลบทิ้ง best-effort เมื่อ tx ล้ม
 - **ช่องทางอื่นที่ปิด (Task 8):** `PATCH /products/:id` ตั้ง `DAMAGED`/`LOST`/`WRITTEN_OFF`/`ADJUSTMENT_PENDING` ไม่ได้ และแก้สถานะเครื่องที่ `ADJUSTMENT_PENDING` ไม่ได้ (`ADJUSTMENT_TARGET_DENY`) · `DELETE /products/:id` ปฏิเสธเครื่องที่ลงบัญชีรับเข้าแล้ว · POS / จอง / ด่านขาย กรอง `IN_STOCK` อยู่แล้วจึงมองไม่เห็นเครื่องที่รออนุมัติ (ไม่โชว์แถว "กดไม่ได้" ตาม mockup กระดาน 5 — ตั้งใจ)
 - **สิ่งที่ยังไม่ลง / ยังเปิดอยู่:** ยอดยกมา Tooltify และเครื่องที่เพิ่มด้วยมือ (ตัดได้ ไม่มี JE แจ้งบัญชี) · เครดิตโน้ตจากผู้จัดจำหน่ายกรณีเคลมเครื่องเสีย (ไม่มีในกติกา — WRITE_OFF ลงขาดทุนเต็ม) · เครื่องเสียหายขายต่อ: ต้อง `FOUND` ก่อน (เข้า IN_STOCK โดยไม่ผ่านปุ่มยืนยันราคา — carry เดิมของ Phase 5 two-hop ข้อ 2 ยังอยู่ แต่ตอนนี้ต้องเจ้าของอนุมัติ) · `getSummary` นับเฉพาะใบ `APPROVED`
+
+---
+
+## เปลี่ยนรุ่นเดิมขายสด — สลับเครื่องบนใบขายเดิม + JE สลับต้นทุน (PR 5 · 2026-10-12)
+
+Spec: `docs/superpowers/specs/2026-10-12-after-sales-cash-same-model-exchange-design.md` · Plan:
+`docs/superpowers/plans/2026-10-12-after-sales-pr5-cash-exchange.md` · คำตอบฝ่ายบัญชีฉบับรวม **ข้อ 10 (30/09/2569)**:
+ราคาขาย/รายได้/เงินสดไม่แตะ · เครื่องเดิมกลับเข้าคลังที่ต้นทุนเดิมที่ลงตอนขาย · ต้นทุนขายของบิลนี้เปลี่ยนเป็นของเครื่องทดแทน ·
+คำตัดสินเจ้าของ ①–⑧ (มือสองเท่านั้น · เอกสารออกตอนส่งมอบ 2 ใบ · จบที่ส่งมอบ + ขอตัดจำหน่ายได้ · ทาง ก สลับเครื่องบนใบขายเดิม ·
+ประกัน/กรอบ 7 วันนับใหม่จากวันส่งมอบ · เกิน 7 วัน = ซ่อมเท่านั้น ไม่มี override · ใบขายที่เปลี่ยนเครื่องแล้วปิดถาวร).
+โค้ด: `after-sales/services/after-sales-exchange.service.ts` (`confirmCashSameModel` / `runCashConfirm` / `deliverCash` /
+`cashExchangePreview`) · `journal/cpa-templates/shop-cash-exchange.template.ts` · `after-sales/utils/assert-cash-replacement.ts` ·
+`after-sales/utils/cash-exchange-window.ts` · `repair-tickets/utils/sale-sold-at.ts` · `sales/services/sale-shop-warranty.util.ts` ·
+`sales/services/sale-product-status.util.ts` · Integration: `after-sales/__tests__/after-sales-cash-exchange.integration.spec.ts`
+(CI glob `AFTERSALES_FILES`) · smoke PDF `after-sales/__tests__/doc-render.smoke.spec.ts` (2 หน้าพอดี).
+
+```
+SHOP — ShopCashExchangeTemplate (ตอน ผจก. ยืนยัน — tx Serializable เดียวกับการสลับเครื่อง)
+  Dr S11-200x สินค้าคงคลัง            [oldCost 10,700.00]   ← เครื่องเดิมกลับคลัง (รอเคลม) ต้นทุนเดิมที่ลงตอนขาย
+     Cr S50-110x ต้นทุนขาย                [oldCost 10,700.00]
+  Dr S50-110x ต้นทุนขาย                [newCost 10,500.00]   ← ต้นทุนขายของเครื่องทดแทน
+     Cr S11-200x สินค้าคงคลัง             [newCost 10,500.00]
+```
+(รหัสบัญชีตามหมวดของแต่ละเครื่องผ่าน `ShopAccountResolver.resolveProductAccounts` · คู่ที่ยอด 0 ไม่ลง · ทั้งสองคู่ 0 = ไม่มีรายการ
+· flow `shop-cash-exchange` · tag `SHOP_CASH_EXCHANGE` · key `shop-cash-exchange:<caseId>` · reference
+`sale:<saleId>:exchange:<caseId>` · metadata `saleId` `afterSalesCaseId` `oldProductId` `newProductId` `oldCost` `newCost`
+`companyCode: 'SHOP'` — **stamp `saleId` (sweep ยกเลิกใบขายเห็น) ไม่ stamp `contractId`**)
+
+| เรื่อง | กติกา |
+|---|---|
+| ใครได้สิทธิ์ | ใบขาย `CASH` / `EXTERNAL_FINANCE` ที่เครื่องหลักเป็น **มือสอง (`PHONE_USED`)** และยังอยู่ในกรอบ 7 วัน (`computeOutcomes` — `CASH_NOT_USED_REASON` / `CASH_DAY7_REASON` / `CASH_OUT_OF_WINDOW_REASON`) · เครื่องใหม่ขายสด = ส่งเคลมศูนย์ (ซ่อม) เท่านั้น |
+| กรอบ 7 วัน | `soldAt = Sale.shopWarrantyStartDate ?? Sale.createdAt` (`saleSoldAt`) · สถานะ `IN_7DAY_DEFECT` = ต่างกัน ≤ 7 วันปฏิทินไทย · ปุ่ม/การยืนยันเปิดเฉพาะวัน 0–6 (`cashExchangeWindowOpen` — ตรวจด้วยข้อมูลสดตอนยืนยันอีกครั้ง) · วันที่ 7 ปิด "ครบกำหนด 7 วันแล้ว — ซ่อมเท่านั้น" · **ไม่มี override ของ ผจก./เจ้าของ** (ต่างจากสัญญาผ่อน) |
+| ยืนยัน (MGR) | CAS จองเคส (`approvedAt`) → tx Serializable: ใบขายยังอยู่/เครื่องยังตรง · `mainProductStatusFor(saleType)` (CASH→`SOLD_CASH` · EXTERNAL_FINANCE→`SOLD_INSTALLMENT`) · `assertCashReplacement` (มือสอง · `IN_STOCK` · สาขาเดียวกับเคส · ยี่ห้อ/รุ่น/ความจุตรง · ไม่ใช่เครื่องเดิม · รั้วข้อมูลทดสอบ) · **ต้นทุนเดิมจาก `SaleCostSnapshot.mainProductCost` — ไม่มี = 400 "ไม่พบต้นทุนที่ลงบัญชีตอนขาย"** · ต้นทุนใหม่ = `Product.costPrice` ของเครื่องทดแทน · `validatePeriodOpen` SHOP · flip เครื่องเดิม → `DEFECT_RETURN` และเครื่องทดแทน `IN_STOCK` → สถานะของใบขาย (CAS ทั้งคู่ — แพ้ = 409) · `preemptReservationsInTx` · JE ข้างบน · `Sale.productId` = เครื่องทดแทน + `Sale.exchangeCaseId` = เคส + snapshot ต้นทุน = newCost · ซ่อมไม่ได้จากใบซ่อม → `markReplacedBySale` (REPLACED · `replacementContractId` คง null) · เคส `replacementSaleId` = ใบขาย + stage `READY_FOR_PICKUP` · audit `AFTER_SALES_CASH_EXCHANGE_CONFIRMED` (+ `REPAIR_TICKET_REPLACED_BY_SALE`) หลัง commit · P2034/P2002 → 409 |
+| marker ของ stage | `AfterSalesCase.replacementSaleId` (ไม่ใช่ `approvedAt` ซึ่งถูกตั้งตอนจองก่อน engine สำเร็จ) — `deriveStage`: มี `replacementContractId` **หรือ** `replacementSaleId` = `READY_FOR_PICKUP` · ทุก select ที่ reconcile (`RECONCILE_SELECT` / `ROW_SELECT` / lookup / LINE) เลือกคอลัมน์นี้ |
+| ส่งมอบ (STAFF) | `deliverCash`: `shopWarrantyDatesFor(tx, เครื่องทดแทน, now)` (ตัวเดียวกับ POS) → `Sale.shopWarrantyStartDate = วันส่งมอบ` **เสมอ** (ฐานกรอบ 7 วันรอบใหม่) · `shopWarrantyEndDate` = +วันตามนโยบาย หรือ null · event `DELIVERED` "ส่งมอบเครื่องทดแทน · ใบขาย <no>[ · อุปกรณ์: …][ · note]" + `CLOSED` · **ไม่มี JE** · audit `AFTER_SALES_CASH_EXCHANGE_DELIVERED` · เปลี่ยนซ้ำบนเครื่องทดแทน = เคสใหม่ นับกรอบจากวันส่งมอบ |
+| เอกสาร | ออกตอนส่งมอบ 2 ใบในเลขเคสเดียวกัน (`composeReturnDoc` ใบรับคืนเครื่อง 1/2 · `composeReplacementHandoverDoc` ใบส่งมอบเครื่องทดแทน 2/2) — `GET /after-sales/:id/return.pdf` · `/exchange-docs.pdf` (PDF เดียว 2 หน้า `.as-page-break`) · `/handover.pdf` ของเคสขายสด = ใบส่งมอบเครื่องทดแทน · พิมพ์ได้เมื่อ `READY_FOR_PICKUP`/`CLOSED` (`returnBlockReason`) · ไม่มีราคา/บาท · ไม่มีเงินเปลี่ยนมือ · PRINTED note แยกตามใบ |
+| เครื่องเดิม | `DEFECT_RETURN` (รอเคลมผู้จัดจำหน่าย) · **ขอตัดจำหน่าย (`WRITE_OFF`) ได้จาก `DEFECT_RETURN`** (ก้อน 3) — `resolveBookedInventory` รู้จัก JE flow `shop-cash-exchange` (`metadata.oldProductId` · source `EXCHANGE_RETURN`) ⇒ ลง `Dr S53-1102 / Cr S11-200x` ที่ต้นทุนเดิม · `LOST` ไม่ได้ (hint "เครื่องรอเคลมผู้จัดจำหน่าย — เคลมไม่ได้ให้ขอตัดจำหน่าย") |
+| ยกเลิกใบขาย | **G9**: `Sale.exchangeCaseId` ตั้งแล้ว → 400 ถาวร "ใบขาย <no> เปลี่ยนเครื่องแล้ว (เคส <no>) — ยกเลิกใบขายไม่ได้ ให้ฝ่ายบัญชีแก้รายการถ้าจำเป็น" (คำตัดสิน ⑦) · หน้าประวัติการขายซ่อนปุ่ม + ป้าย "เปลี่ยนเครื่องแล้ว · AS-…" (`voidGate`) |
+| ไม่แตะ | รายได้ `S41-110x` · เงินสด/ธนาคาร · ภาษี (SHOP ไม่จด VAT) · `Sale.sellingPrice/netAmount` · เลขใบขาย · ค่าคอม · ลูกหนี้ไฟแนนซ์นอก |
+| LINE | จังหวะ READY/CLOSED เหมือนเปลี่ยนรุ่นเดิมผ่อน · วันหมดประกันร้านของเครื่องทดแทนอ่านจาก `Sale.shopWarrantyEndDate` (`loadReplacement`) |
+| การ์ดสรุป | `openExchange` / `exchanges` นับ `CASH_SAME_MODEL_EXCHANGE` ด้วย (`EXCHANGE_OUTCOMES` สามทางออก) |
+
+**ที่ยังเปิดอยู่ (ไม่ใน PR 5):** ได้เครื่องแทนจากผู้จัดจำหน่ายหลังเคลม (ยังไม่มีเส้นทางรับเข้าแทน `DEFECT_RETURN`) ·
+LIFF ลูกค้าไม่เห็นเคสขายสด · ย้อนรายการสลับต้นทุน/ยกเลิกการเปลี่ยนเครื่องหลังยืนยัน = ฝ่ายบัญชีแก้ด้วยมือ (ปิดถาวร ⑦) ·
+งวดบัญชี SHOP ที่ปิดแล้วของเดือนปัจจุบันยังลงได้ในช่วงผ่อนผัน (`validatePeriodOpen` เหมือนทุกรายการ — ไม่ได้บล็อกเฉพาะทางนี้).
 
 ---
 
@@ -2055,6 +2101,7 @@ PR #1285 (2026-06-23) ทำให้ `ShopCashSaleTemplate` โพสต์ **J
 | ข้อมูลเพี้ยน | `contractId` บนใบ CASH/EXTERNAL_FINANCE | reject (เดินต่อ = ทิ้งสัญญาลอย) |
 | G6 | `onlineOrderId` | reject — **ยังไม่มีเส้นทางล้างสองฝั่ง** (`cancelOrder` ไม่แตะ Sale/product/JE; `markRefunded` รับเฉพาะ `PAYMENT_RECEIVED_UNFULFILLABLE` ซึ่งโดยนิยามไม่มีใบขาย) ⇒ ข้อความบอกให้เจ้าของตรวจก่อน ไม่ชี้ประตูที่ไม่มีจริง |
 | **G8** | `Booking` ที่ `convertedToSaleId = sale.id` + `deletedAt: null` (relation `SaleBooking` — FK อยู่ฝั่ง Booking, `Sale` ไม่มี bookingId) | reject (sibling ของ G6, final review 2026-08-23) — `convertToSale` ตั้ง `downPaymentAmount = depositAmount` (มัดจำรับจริง) และ flip Booking → `CONVERTED` (สถานะสุดท้าย, `cancel()` ไม่รับ) ⇒ void = ใบจองชี้ไปใบที่ยกเลิก + มัดจำหายจากรายงาน. ข้อความระบุเลขใบจอง+ยอดมัดจำ ให้เจ้าของตรวจก่อน. หมายเหตุ pre-existing: ใบขายจากใบจอง**ไม่โพสต์ SHOP JE** — **CPA ตอบแล้ว 2026-08-24 (ข้อ C4): แก้ไปข้างหน้าอย่างเดียว ไม่บันทึกย้อนหลัง** (ยังไม่แก้โค้ด). ตรวจเพิ่มแล้วพบว่ากว้างกว่านั้น: โมดูล `bookings` **ไม่โพสต์ JE เลยแม้แต่ใบเดียว** ⇒ เงินมัดจำที่รับจริงก็ไม่เคยขึ้นสมุด และ `S21-2002` ไม่มีผู้สร้างรายการที่ไหนเลย. **สำคัญ: ถ้าแก้ให้โพสต์ JE ด่าน G8 นี้จะยิ่งจำเป็น ไม่ใช่เลิกจำเป็น** — เพราะ void จะกลับรายการเป็น `Cr เงินสด` ทั้งที่ไม่มีเมนูคืนมัดจำจริง. ดู `docs/accounting/cpa-answers-2026-08-24.md` ข้อ C4 |
+| **G9** | `Sale.exchangeCaseId` (relation `exchangeCase` — PR 5) | reject ถาวร ระบุเลขเคส (คำตัดสินเจ้าของ ⑦) — JE สลับต้นทุน stamp `saleId` จึงอยู่ใน sweep ได้ แต่เครื่องเดิมอยู่ `DEFECT_RETURN`/ถูกตัดจำหน่าย และเครื่องทดแทนส่งมอบแล้ว ⇒ ย้อนทั้งชุดเป็นงานฝ่ายบัญชี · ตรวจหลัง G1 ก่อนขอบเขตสาขา |
 | G7 | `RepairTicket` ที่ `productId ∈ {หลัก, ของแถม}` และ `status notIn [CLOSED, CANCELLED, REPLACED]` | **`RepairTicket` ไม่มี `saleId`** (spec เดิมเขียนว่า "อ้างอิงใบขายนี้") จึงตรวจผ่าน `productId`; enum จริงคือ `RepairStatus` |
 | G5 | `assertProductNotHeld(tx, { ...p, expectedStatus }, 'RESTORE_TO_STOCK')` ทุกชิ้น | action ที่ 4 บน helper เดิม (ห้ามมีด่านชุดที่สอง). `expectedStatus` = `SOLD_CASH` (CASH) / `SOLD_INSTALLMENT` (EXTERNAL_FINANCE หลัก) — **ของแถมเป็น `SOLD_CASH` เสมอ** (`markBundleProductsSold` hardcode) จึงใบ EXTERNAL_FINANCE มีสองสถานะในใบเดียว. นับจำนวน product **ก่อน** วนด่าน |
 | G3 | `FinanceReceivable` ของใบ (ไม่ผูก saleType) | บล็อกเมื่อ `status ∈ {RECEIVED, PARTIALLY_RECEIVED}` **หรือ** `receivedAmount > 0` — allow-list ตาม D2 (`DISPUTED`/`OVERDUE` = ยังไม่ได้เงิน; สเปคเดิม `status != PENDING` ล็อกใบถาวร) |

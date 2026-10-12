@@ -256,3 +256,10 @@ export function getErrorMessage(error: unknown): string {
 }
 
 export default api;
+
+/** Token-only customer appointments: no staff JWT, cookies or refresh interceptor. */
+export const appointmentPublicApi = axios.create({ ...sharedConfig, withCredentials: false });
+appointmentPublicApi.interceptors.response.use(response => {
+  if (response.data && typeof response.data === 'object' && 'success' in response.data && 'data' in response.data) response.data = response.data.data;
+  return response;
+});

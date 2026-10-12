@@ -183,7 +183,7 @@ export class FacebookAdapter implements IChannelAdapter {
       // ลองซ้ำครั้งเดียวด้วยแท็ก HUMAN_AGENT ซึ่งยืดเป็น 7 วัน
       // ปลอดภัยกับของเดิม: ในหน้าต่าง 24 ชม. ไม่มีอะไรเปลี่ยน และถ้าเพจยังไม่ได้รับอนุมัติ
       // ฟีเจอร์ Human Agent ก็แค่ล้มเหมือนเดิม ไม่ได้แย่ลง
-      const retriedHumanAgent = !attempt.ok && isOutsideWindowError(attempt.errBody);
+      const retriedHumanAgent = !message.automated && !attempt.ok && isOutsideWindowError(attempt.errBody);
       if (retriedHumanAgent) {
         this.logger.warn(
           `[FB] พ้นหน้าต่าง 24 ชม. สำหรับ ${message.externalUserId} — ลองใหม่ด้วยแท็ก HUMAN_AGENT`,

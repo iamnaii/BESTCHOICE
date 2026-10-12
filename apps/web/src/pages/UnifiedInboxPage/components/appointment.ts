@@ -62,7 +62,7 @@ export function apptState(due: string | Date | null | undefined, now: Date = new
 /** นัดถัดไปของห้องจาก include `todos` (API ส่งมาแค่ใบใกล้สุดที่ยังไม่เสร็จ) */
 export function nextAppointment(todos?: RoomAppointment[] | null): RoomAppointment | null {
   if (!todos?.length) return null;
-  const open = todos.filter((t) => t.dueDate && !['DONE', 'CANCELLED'].includes(t.status));
+  const open = todos.filter((t) => t.dueDate && !['DONE', 'CANCELLED', 'CANCELED', 'CHECKED_IN', 'IN_SERVICE', 'COMPLETED', 'NO_SHOW'].includes(t.status));
   if (!open.length) return null;
   return [...open].sort((a, b) => String(a.dueDate).localeCompare(String(b.dueDate)))[0];
 }

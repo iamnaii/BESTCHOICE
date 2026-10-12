@@ -152,6 +152,7 @@ const SALES_CONFIG: RoleMenuConfig = {
       items: [
         { label: NAV_LABELS.sales, path: '/pos', icon: ShoppingCart },
         { label: 'การจอง / มัดจำ', path: '/bookings', icon: CalendarDays },
+        { label: 'นัดเข้าร้าน', path: '/appointments', icon: CalendarDays },
         { label: 'ลูกค้า', path: '/customers', icon: Users },
         { label: 'ตรวจเครดิต', path: '/credit-checks', icon: ShieldCheck },
         { label: 'รับซื้อมือสอง', path: '/trade-in', icon: Smartphone },
@@ -223,6 +224,7 @@ const BRANCH_MANAGER_CONFIG: RoleMenuConfig = {
       items: [
         { label: NAV_LABELS.sales, path: '/pos', icon: ShoppingCart },
         { label: 'การจอง / มัดจำ', path: '/bookings', icon: CalendarDays },
+        { label: 'นัดเข้าร้าน', path: '/appointments', icon: CalendarDays },
         { label: 'ลูกค้า', path: '/customers', icon: Users },
         { label: 'ตรวจเครดิต', path: '/credit-checks', icon: ShieldCheck },
         { label: 'รับซื้อมือสอง', path: '/trade-in', icon: Smartphone },
@@ -647,6 +649,7 @@ const OWNER_CONFIG: RoleMenuConfig = {
         { label: 'ตรวจเครดิต', path: '/credit-checks', icon: ShieldCheck },
         { label: NAV_LABELS.sales, path: '/pos', icon: ShoppingCart },
         { label: 'การจอง / มัดจำ', path: '/bookings', icon: CalendarDays },
+        { label: 'นัดเข้าร้าน', path: '/appointments', icon: CalendarDays },
         { label: NAV_LABELS.contracts, path: '/contracts', icon: FileCheck },
         // route อนุญาต role นี้อยู่แล้ว แต่เดิมไม่มีในเมนู ⇒ MainLayout เด้งกลับ Dashboard
         // พร้อม toast "ไม่มีสิทธิ์" ทั้งที่มีสิทธิ์ (E2E role-access จับไว้ ปักที่ route-reachability.test.ts)

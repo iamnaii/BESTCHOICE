@@ -64,6 +64,8 @@ export interface OutboundQuickReply {
  * The engine produces this; adapters convert it to platform format.
  */
 export interface OutboundMessage {
+  /** Automated notifications must not use a human-agent fallback. */
+  automated?: boolean;
   /** Target user on the platform */
   externalUserId: string;
   /** Which channel to send through */

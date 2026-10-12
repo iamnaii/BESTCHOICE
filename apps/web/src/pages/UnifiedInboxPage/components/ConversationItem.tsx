@@ -90,6 +90,7 @@ interface ConversationItemProps {
     resolvedAt?: string | null;
     /** นัดถัดไปของห้อง (API ส่งใบใกล้สุดที่ยังไม่เสร็จ) — ป้ายนัดตามความใกล้ */
     todos?: RoomAppointment[] | null;
+    storeAppointment?: RoomAppointment | null;
     /** ข้อความล่าสุดของลูกค้า — ฐานนับหน้าต่าง 24 ชม. ของ Facebook */
     lastCustomerAt?: string | null;
     customer?: { id: string; name: string; phone?: string; avatarUrl?: string | null; lineAvatarUrl?: string | null } | null;
@@ -267,7 +268,7 @@ function ConversationItem({ session, isActive, onSelect, onPin, aiSettings }: Co
                       pills.push(<Badge key="win" variant="destructive" appearance="light" className="text-[10px] px-1.5 py-0 h-5 leading-snug">รอ {formatWaitDuration(session.waitingSince)}</Badge>);
                     }
                   }
-                  const appt = apptState(nextAppointment(session.todos)?.dueDate);
+                  const appt = apptState(nextAppointment([...(session.todos||[]),...(session.storeAppointment?[session.storeAppointment]:[])])?.dueDate);
                   if (appt) {
                     pills.push(
                       <Badge key="appt" variant={appt.tone === 'danger' ? 'destructive' : appt.tone === 'warn' ? 'warning' : 'secondary'} appearance="light" className="text-[10px] px-1.5 py-0 h-5 leading-snug inline-flex items-center gap-1">

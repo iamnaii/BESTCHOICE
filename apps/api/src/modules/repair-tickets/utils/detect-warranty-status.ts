@@ -22,7 +22,7 @@ export interface DetectWarrantyInput {
    * ได้โดยไม่ต้องกลัวชนกัน แต่ถ้าวันหนึ่งมีทั้งสองค่า **Contract ชนะ** (ดูลำดับใน
    * `shopWarrantyEndOf` ข้างล่าง) เพราะสัญญาคือเอกสารที่ลูกค้าเซ็น
    */
-  sale?: { shopWarrantyEndDate?: Date | null } | null;
+  sale?: { shopWarrantyEndDate?: Date | null; soldAt?: Date | null } | null;
   product?: { warrantyExpireDate?: Date | null } | null;
 }
 
@@ -50,14 +50,15 @@ export function detectWarrantyStatus(input: DetectWarrantyInput): WarrantyStatus
   // (ใบขายอย่างเดียวก็นับว่า "มีบริบท" — ลูกค้าเงินสดไม่ใช่ walk-in)
   if (!c && !p && !input.sale) return 'WALK_IN';
 
-  // 7-day defect window (counted from device receipt, inclusive).
-  // W8: use BKK calendar-day arithmetic (UTC+7) — matches defect-exchange.service
-  // convention (setDate-based window) and avoids edge cases where a device
-  // received at 23:00 BKK is 0.99 days old in UTC but 1 calendar day in BKK.
-  if (c?.deviceReceivedAt) {
+  // 7-day defect window (inclusive, BKK calendar days). สัญญา = วันรับเครื่อง ·
+  // ใบขายที่ไม่มีสัญญา (PR 5) = วันขาย `sale.soldAt` — ใช้เฉพาะเมื่อ **ไม่มีสัญญา** เพราะใบขาย
+  // INSTALLMENT ของสัญญามี createdAt เสมอ แต่สัญญาที่ยังไม่รับเครื่องต้องไม่ได้สิทธิ์ 7 วัน.
+  // หมวดเครื่อง (มือสองเท่านั้น) ไม่ตัดสินที่ชั้นนี้ — อยู่ที่ forExchange/computeOutcomes
+  // W8: BKK calendar-day arithmetic (UTC+7) — matches defect-exchange.service convention.
+  const anchor = c ? (c.deviceReceivedAt ?? null) : (input.sale?.soldAt ?? null);
+  if (anchor) {
     const daysSinceReceipt =
-      (toBkkCalendarDay(now).getTime() - toBkkCalendarDay(c.deviceReceivedAt).getTime()) /
-      86400_000;
+      (toBkkCalendarDay(now).getTime() - toBkkCalendarDay(anchor).getTime()) / 86400_000;
     if (daysSinceReceipt <= 7) return 'IN_7DAY_DEFECT';
   }
 

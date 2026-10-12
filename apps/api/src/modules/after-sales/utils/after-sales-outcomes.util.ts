@@ -1,4 +1,4 @@
-import type { AfterSalesOutcome, AfterSalesSource, WarrantyStatus } from '@prisma/client';
+import type { AfterSalesOutcome, AfterSalesSource, ProductCategory, WarrantyStatus } from '@prisma/client';
 
 export interface OutcomeInput {
   source: AfterSalesSource;
@@ -8,6 +8,7 @@ export interface OutcomeInput {
   defectEligible: boolean; // จาก DefectExchangeService.checkEligibility(...).eligible
   defectReasons: string[]; // ...reasons
   viewerRole: string;
+  productCategory?: ProductCategory | null; // PR 5 — gate "มือสองเท่านั้น" ของขายสดอยู่ชั้นนี้ ไม่ใช่ใน warrantyStatus
 }
 
 export interface OutcomeOption {
@@ -48,6 +49,12 @@ export function payerDefaultFor(status: WarrantyStatus): 'SHOP' | 'CUSTOMER' | '
   return PAYER[status] as 'SHOP' | 'CUSTOMER' | 'SUPPLIER_CLAIM';
 }
 
+/** PR 5 — ถ้อยคำกิ่งขายสด (ปุ่ม/เหตุผลใต้ปุ่ม) — export ให้ UI/เทสอ้างตัวเดียวกัน */
+export const CASH_EXCHANGE_NOTE = 'ผจก.สาขา ต้องยืนยัน';
+export const CASH_DAY7_REASON = 'ครบกำหนด 7 วันแล้ว — ซ่อมเท่านั้น';
+export const CASH_OUT_OF_WINDOW_REASON = 'เกินกรอบ 7 วันแล้ว — ซ่อมเท่านั้น';
+export const CASH_NOT_USED_REASON = 'เปลี่ยนรุ่นเดิมเฉพาะมือสอง — เครื่องใหม่ส่งเคลมศูนย์';
+
 export function computeOutcomes(i: OutcomeInput): OutcomeOption[] {
   const within7 = i.warrantyStatus === 'IN_7DAY_DEFECT' && i.daysRemainingIn7Day > 0;
   const managerUp = MANAGER_UP.has(i.viewerRole);
@@ -60,12 +67,36 @@ export function computeOutcomes(i: OutcomeInput): OutcomeOption[] {
   if (i.source === 'WALK_IN') return [repair];
 
   if (i.source === 'CASH_SALE') {
-    const cash: OutcomeOption = {
-      outcome: 'CASH_SAME_MODEL_EXCHANGE',
-      enabled: false,
-      implemented: false,
-      reason: within7 ? 'รอกติกาบัญชี (สเปกข้อ 10)' : 'เกินกรอบ 7 วันแล้ว',
-    };
+    // PR 5 — ไม่มี override ของ ผจก. (คำตัดสินเจ้าของ ⑥) · วันที่ 7: status ยัง IN_7DAY_DEFECT (≤ 7)
+    // แต่ daysRemaining = 0 ⇒ ปุ่มปิดด้วยถ้อยคำของตัวเอง ไม่ใช่ "เกินกรอบ"
+    const used = i.productCategory === 'PHONE_USED';
+    const cash: OutcomeOption = !used
+      ? {
+          outcome: 'CASH_SAME_MODEL_EXCHANGE',
+          enabled: false,
+          implemented: false,
+          reason: CASH_NOT_USED_REASON,
+        }
+      : within7
+        ? {
+            outcome: 'CASH_SAME_MODEL_EXCHANGE',
+            enabled: true,
+            implemented: true,
+            note: CASH_EXCHANGE_NOTE,
+          }
+        : i.warrantyStatus === 'IN_7DAY_DEFECT'
+          ? {
+              outcome: 'CASH_SAME_MODEL_EXCHANGE',
+              enabled: false,
+              implemented: false,
+              reason: CASH_DAY7_REASON,
+            }
+          : {
+              outcome: 'CASH_SAME_MODEL_EXCHANGE',
+              enabled: false,
+              implemented: false,
+              reason: CASH_OUT_OF_WINDOW_REASON,
+            };
     return [repair, cash];
   }
 

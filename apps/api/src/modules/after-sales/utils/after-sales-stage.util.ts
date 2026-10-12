@@ -7,6 +7,9 @@ export interface StageInput {
   repairStatus: RepairStatus | null;
   repairDeleted?: boolean;
   replacementContractId?: string | null;
+  /** PR 5 — เคสขายสดไม่มีสัญญาใหม่: marker "ยืนยันแล้ว" คือ replacementSaleId (= ใบขายเดิมที่ถูกสลับเครื่อง)
+   * เขียนใน tx เดียวกับการยืนยัน — ห้ามใช้ approvedAt (กิ่งสัญญาผ่อนตั้งมันตอนจองเคสก่อน engine สำเร็จ) */
+  replacementSaleId?: string | null;
   // PR 2 — จาก ContractExchangeRequest ที่ผูกอยู่ (เฉพาะ outcome PRICED_EXCHANGE)
   exchange?: {
     status: 'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELED';
@@ -36,7 +39,7 @@ export const STALE_DAYS: Partial<Record<AfterSalesStage, number>> = {
  * กติกาเดียวกันทั้งสามทาง จึงแยกออกมาเป็นฟังก์ชันเดียว */
 const OPEN_EXCHANGE_STAGE = (i: StageInput): AfterSalesStage => {
   if (i.closedAt) return 'CLOSED';
-  if (i.replacementContractId) return 'READY_FOR_PICKUP';
+  if (i.replacementContractId || i.replacementSaleId) return 'READY_FOR_PICKUP';
   return 'AWAITING_APPROVAL';
 };
 

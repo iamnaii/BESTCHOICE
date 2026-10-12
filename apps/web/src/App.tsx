@@ -78,6 +78,8 @@ const GeneralSettingsPage = lazy(() => import('@/pages/SettingsPage/GeneralSetti
 const DocumentConfigPage = lazy(() => import('@/pages/DocumentConfigPage'));
 // SP5 — SHOP-side additions
 // P2-SP4 — การจอง / มัดจำ (SHOP-side reservation)
+const StoreAppointmentsPage = lazy(() => import('@/pages/StoreAppointmentsPage'));
+const PublicAppointmentPage = lazy(() => import('@/pages/PublicAppointmentPage'));
 const BookingsPage = lazy(() => import('@/pages/BookingsPage'));
 const AuditLogsPage = lazy(() => import('@/pages/AuditLogsPage'));
 const FinancialAuditPage = lazy(() => import('@/pages/FinancialAuditPage'));
@@ -291,6 +293,7 @@ function App() {
         <Route path="/cn/:token" element={<CreditNoteViewPage />} />
 
         {/* LIFF Pages (public, opened from LINE) */}
+        <Route path="/visit" element={<PublicAppointmentPage />} />
         <Route path="/pay/:token" element={<LiffPayment />} />
         {/* Bare /liff and unknown /liff/* → redirect to primary LIFF page.
             Guards against Endpoint URL mis-configs and catch-all "*→/" hijacking
@@ -692,6 +695,7 @@ function App() {
               </ProtectedRoute>
             }
           />
+          <Route path="/appointments" element={<ProtectedRoute roles={['OWNER','BRANCH_MANAGER','SALES']}><StoreAppointmentsPage /></ProtectedRoute>} />
           {/* SP5 — SHOP-side additions */}
           {/* P2-SP4 — การจอง / มัดจำ */}
           <Route

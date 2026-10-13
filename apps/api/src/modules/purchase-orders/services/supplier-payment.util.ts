@@ -165,11 +165,11 @@ export function allocatePayable(amount: Decimal, payable: PayableLine[]): Payabl
 /** `YYYY-MM-DD` (ปฏิทินไทย) → เที่ยงคืนเวลาไทย · ห้ามอนาคต · ย้อนหลังไม่เกิน 365 วัน (กันพิมพ์ปีผิด) */
 export function parsePaidAt(value: string, now: Date = new Date()): Date {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec((value ?? '').trim());
-  if (!match) throw new BadRequestException('วันที่โอนไม่ถูกต้อง');
+  if (!match) throw new BadRequestException('วันที่จ่ายไม่ถูกต้อง (YYYY-MM-DD)');
   const [year, month, day] = [Number(match[1]), Number(match[2]) - 1, Number(match[3])];
   const probe = new Date(Date.UTC(year, month, day));
   if (probe.getUTCFullYear() !== year || probe.getUTCMonth() !== month || probe.getUTCDate() !== day) {
-    throw new BadRequestException('วันที่โอนไม่ถูกต้อง');
+    throw new BadRequestException('วันที่จ่ายไม่ถูกต้อง (YYYY-MM-DD)');
   }
   const date = bangkokMidnight(year, month, day);
   if (isFutureBkkDay(date, now)) {

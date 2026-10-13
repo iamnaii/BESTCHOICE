@@ -18,6 +18,14 @@ describe('ผังบัญชีหน้าร้าน — บัญชี�
     expect(row!.name).toContain('มัดจำ');
   });
 
+  it('S11-1106 เงินสด - เงินสดย่อย เป็นสินทรัพย์ ยอดปกติ Dr (ข้อเสนอ 2026-10-13 — บัญชีจ่ายผู้จัดจำหน่ายแบบเงินสด)', () => {
+    const row = byCode.get('S11-1106');
+    expect(row).toBeDefined();
+    expect(row!.type).toBe('สินทรัพย์');
+    expect(row!.normalBalance).toBe('Dr');
+    expect(row!.name).toContain('เงินสดย่อย');
+  });
+
   it('S53-1105 ค่าใช้จ่าย – มัดจำที่ไม่ได้คืน เป็นค่าใช้จ่าย ยอดปกติ Dr', () => {
     const row = byCode.get('S53-1105');
     expect(row).toBeDefined();

@@ -506,6 +506,32 @@ describe('Task 11: primaryAction — ปุ่มหลักตาม outcome �
         );
       }
     });
+    it('M4 (final review PR5) — REPAIR ของใบขายสดที่ครบ/เกินกรอบ 7 วันตอนเปิดเคส (daysRemainingIn7Day 0) → ไม่มีปุ่ม "ซ่อมไม่ได้ → เปลี่ยนรุ่นเดิม" (⑥ ไม่มี override · กรอบมีแต่หดลง)', () => {
+      for (const stage of ['RECEIVED', 'IN_REPAIR'] as const) {
+        const d = detail({
+          source: 'CASH_SALE',
+          contractId: null,
+          saleId: 'sale-1',
+          outcome: 'REPAIR',
+          stage,
+          repairTicket: rt({ repairSupplier: { id: 's', name: 'ศูนย์' } }),
+          warrantySnapshot: { ...detail().warrantySnapshot, daysRemainingIn7Day: 0 },
+        });
+        expect(secondaryActions(d, 'BRANCH_MANAGER').map((a) => a.label)).not.toContain(
+          'ซ่อมไม่ได้ → เปลี่ยนรุ่นเดิม',
+        );
+      }
+      // สัญญาผ่อนไม่เปลี่ยน — ผจก. ข้ามกรอบได้ตอนยืนยัน จึงยังเห็นปุ่ม
+      const inst = detail({
+        outcome: 'REPAIR',
+        stage: 'RECEIVED',
+        repairTicket: rt({ repairSupplier: { id: 's', name: 'ศูนย์' } }),
+        warrantySnapshot: { ...detail().warrantySnapshot, daysRemainingIn7Day: 0 },
+      });
+      expect(secondaryActions(inst, 'BRANCH_MANAGER').map((a) => a.label)).toContain(
+        'ซ่อมไม่ได้ → เปลี่ยนรุ่นเดิม',
+      );
+    });
     it('canPrintHandover / canPrintCashExchangeDocs: READY/CLOSED พิมพ์ได้ · AWAITING ไม่ได้', () => {
       for (const stage of ['READY_FOR_PICKUP', 'CLOSED'] as const) {
         expect(

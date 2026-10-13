@@ -528,11 +528,20 @@ export function secondaryActions(data: CaseDetail, role: string): SecondaryActio
     !data.replacementContractId &&
     !data.exchangeRequestId;
 
+  // M4 (final review PR5) — ขายสดไม่มี override (⑥): กรอบ 7 วันมีแต่หดลงจาก snapshot ตอนเปิดเคส
+  // ถ้าตอนเปิดเคสก็ครบ/เกินแล้ว ปุ่ม "ซ่อมไม่ได้ → เปลี่ยนรุ่นเดิม" ย่อมได้ 400 เสมอ จึงไม่ต้องโชว์
+  // (API ยังตรวจด้วยข้อมูลสดตอนยืนยันอีกชั้น) · สัญญาผ่อนคงเดิม — ผจก. ข้ามกรอบได้ตอนยืนยัน
+  const canOfferSameModelFromRepair =
+    !!data.contractId ||
+    (isCashCase(data) &&
+      Number.isFinite(data.warrantySnapshot?.daysRemainingIn7Day) &&
+      data.warrantySnapshot.daysRemainingIn7Day > 0);
+
   if (outcome === 'REPAIR') {
     if (stage === 'RECEIVED') {
       const hasCenter = !!data.repairTicket?.repairSupplier;
       if (!hasCenter && isStaff) out.push({ kind: 'dialog', label: 'ส่งซ่อม', dialog: 'send' });
-      if (isMgr && (data.contractId || isCashCase(data))) {
+      if (isMgr && canOfferSameModelFromRepair) {
         out.push({
           kind: 'dialog',
           label: 'ซ่อมไม่ได้ → เปลี่ยนรุ่นเดิม',
@@ -542,7 +551,7 @@ export function secondaryActions(data: CaseDetail, role: string): SecondaryActio
       if (isMgr)
         out.push({ kind: 'dialog', label: 'ยกเลิกเคส', dialog: 'cancel', destructive: true });
     } else if (stage === 'IN_REPAIR') {
-      if (isMgr && (data.contractId || isCashCase(data))) {
+      if (isMgr && canOfferSameModelFromRepair) {
         out.push({
           kind: 'dialog',
           label: 'ซ่อมไม่ได้ → เปลี่ยนรุ่นเดิม',

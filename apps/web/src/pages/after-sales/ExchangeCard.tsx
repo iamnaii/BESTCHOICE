@@ -51,10 +51,13 @@ export default function ExchangeCard({ data }: { data: CaseDetail }) {
                 อยู่ในกรอบ 7 วัน · เหลือ {daysRemaining} วัน
               </span>
             ) : isCashCase(data) ? (
-              // PR 5 — ขายสดไม่มี override ของ ผจก. (คำตัดสินเจ้าของ ⑥)
-              <span className="inline-flex items-center rounded-full border border-warning/40 bg-warning/10 px-2.5 py-0.5 text-xs font-semibold leading-snug text-warning-strong">
-                ครบกำหนด 7 วันแล้ว
-              </span>
+              // PR 5 — ขายสดไม่มี override ของ ผจก. (คำตัดสินเจ้าของ ⑥) · M5 (final review): ค่านี้เป็น
+              // snapshot ตอนเปิดเคส — หลังยืนยันแล้ว (replacementSaleId ตั้ง) ไม่มีความหมายจึงไม่ขึ้น
+              data.replacementSaleId ? null : (
+                <span className="inline-flex items-center rounded-full border border-warning/40 bg-warning/10 px-2.5 py-0.5 text-xs font-semibold leading-snug text-warning-strong">
+                  ครบกำหนด 7 วันแล้ว
+                </span>
+              )
             ) : (
               <span className="inline-flex items-center rounded-full border border-warning/40 bg-warning/10 px-2.5 py-0.5 text-xs font-semibold leading-snug text-warning-strong">
                 พ้นกรอบ 7 วัน — ผจก. ยืนยันได้

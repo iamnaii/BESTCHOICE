@@ -48,6 +48,7 @@ import { assertCashReplacement } from '../utils/assert-cash-replacement';
 import { cashExchangeWindowOpen } from '../utils/cash-exchange-window';
 import { CASH_OUT_OF_WINDOW_REASON } from '../utils/after-sales-outcomes.util';
 import { ExchangeDeliverDto, deliveredAccessoriesText } from '../dto/exchange-deliver.dto';
+import { normalizeDeliveredAccessories } from '../utils/delivered-accessories';
 
 type ReqUser = { id: string; role: string; branchId?: string | null };
 
@@ -315,10 +316,11 @@ export class AfterSalesExchangeService {
     caseId: string,
     actorId: string,
     events: { kind: 'DELIVERED' | 'CLOSED'; note: string }[],
+    extra: Prisma.AfterSalesCaseUpdateManyMutationInput = {},
   ) {
     const claimed = await tx.afterSalesCase.updateMany({
       where: { id: caseId, stage: 'READY_FOR_PICKUP', closedAt: null },
-      data: { stage: 'CLOSED', closedAt: new Date() },
+      data: { stage: 'CLOSED', closedAt: new Date(), ...extra },
     });
     if (claimed.count !== 1) throw new ConflictException('เคสนี้ถูกส่งมอบไปแล้ว');
     await tx.afterSalesEvent.createMany({
@@ -634,10 +636,17 @@ export class AfterSalesExchangeService {
         const accessories = deliveredAccessoriesText(dto.accessories);
         const note = `ส่งมอบเครื่องทดแทน · ใบขาย ${sale.saleNumber}${accessories ? ` · อุปกรณ์: ${accessories}` : ''}${dto.note?.trim() ? ` · ${dto.note.trim()}` : ''}`;
         // M1 — CAS เดียวกับกิ่งผ่อน: แพ้ = 409 และ tx ย้อนประกันที่เพิ่งเขียนกลับด้วย
-        const updated = await this.closeDeliveredCase(tx, c.id, user.id, [
-          { kind: 'DELIVERED', note },
-          { kind: 'CLOSED', note: 'ปิดเคส' },
-        ]);
+        // M3 — เก็บอุปกรณ์แบบโครงสร้างบนเคส (ใบส่งมอบอ่านจากตรงนี้ · note ยังมีข้อความไว้ให้คนอ่าน)
+        const updated = await this.closeDeliveredCase(
+          tx,
+          c.id,
+          user.id,
+          [
+            { kind: 'DELIVERED', note },
+            { kind: 'CLOSED', note: 'ปิดเคส' },
+          ],
+          dto.accessories ? { deliveredAccessories: normalizeDeliveredAccessories(dto.accessories) } : {},
+        );
         return { updated, saleNumber: sale.saleNumber, shopWarrantyEndDate: w.shopWarrantyEndDate };
       },
     );

@@ -1,6 +1,7 @@
 import type { AfterSalesOutcome, AfterSalesStage } from '@prisma/client';
 import { formatThaiDateText } from '../../../utils/thai-date.util';
 import { PRICED_EXCHANGE_COST_LINE } from '../utils/after-sales-line-copy.util';
+import { deliveredAccessoriesText } from '../utils/delivered-accessories';
 import type { AfterSalesDoc, DocBlock, DocCheck, DocCompany, DocKv } from './after-sales-doc-html';
 
 /**
@@ -72,7 +73,9 @@ export interface DocSource {
     saleType: 'CASH' | 'EXTERNAL_FINANCE' | null;
     financeCompany: string | null;
     sevenDayEnd: Date | null; // วันสุดท้ายของกรอบ 7 วันของเครื่องทดแทน (วันส่งมอบ + 6)
-    deliveredNote: string | null; // note ของ event DELIVERED (มีอุปกรณ์ที่ส่งมอบ)
+    deliveredNote: string | null; // note ของ event DELIVERED (มีอุปกรณ์ที่ส่งมอบ) — เคสก่อน M3 ถอดอุปกรณ์จากข้อความนี้
+    /** M3 — อุปกรณ์ที่ส่งมอบแบบโครงสร้าง (`AfterSalesCase.deliveredAccessories`) · null = เคสเก่าก่อน M3 */
+    deliveredAccessories: { box?: boolean; charger?: boolean; case?: boolean; other?: string | null } | null;
     approvedByName: string | null;
     approvedAt: Date | null;
     repairTicketNumber: string | null;
@@ -626,11 +629,13 @@ export function composeReplacementHandoverDoc(s: DocSource): AfterSalesDoc {
     ex?.saleType === 'EXTERNAL_FINANCE'
       ? `ตามใบขายเดิม (ไฟแนนซ์ ${ex.financeCompany ?? '—'})`
       : 'ชำระแล้วตามใบขายเดิม ไม่มีเงินเปลี่ยนมือ';
-  const delivered =
-    ex?.deliveredNote
-      ?.split(' · ')
-      .find((p) => p.startsWith('อุปกรณ์: '))
-      ?.replace('อุปกรณ์: ', '') ?? null;
+  // M3 — ข้อมูลโครงสร้างมาก่อน (ไม่มีอุปกรณ์ = "ไม่มี") · เคสก่อน M3 (null) ถอดจากข้อความ note ของ event DELIVERED
+  const delivered = ex?.deliveredAccessories
+    ? (deliveredAccessoriesText(ex.deliveredAccessories) ?? 'ไม่มี')
+    : (ex?.deliveredNote
+        ?.split(' · ')
+        .find((p) => p.startsWith('อุปกรณ์: '))
+        ?.replace('อุปกรณ์: ', '') ?? null);
   const blocks: DocBlock[] = [
     {
       type: 'pair',

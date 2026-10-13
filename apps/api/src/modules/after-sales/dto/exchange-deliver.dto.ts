@@ -21,13 +21,4 @@ export class ExchangeDeliverDto {
   note?: string;
 }
 
-export function deliveredAccessoriesText(a?: DeliveredAccessoriesDto | null): string | null {
-  if (!a) return null;
-  const parts = [
-    a.box && 'กล่อง',
-    a.charger && 'สายชาร์จ',
-    a.case && 'เคส',
-    a.other?.trim() && `อื่น ๆ — ${a.other.trim()}`,
-  ].filter(Boolean) as string[];
-  return parts.length ? parts.join(', ') : null;
-}
+export { deliveredAccessoriesText } from '../utils/delivered-accessories';

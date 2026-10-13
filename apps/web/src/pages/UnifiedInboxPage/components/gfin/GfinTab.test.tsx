@@ -195,7 +195,8 @@ describe('GfinTab', () => {
     const gfin = model({
       current: app({ status: 'MORE_INFO', customerId: 'c1', productId: 'p1', messageText: 'FRESH TEXT', sentAt: '2026-09-24T12:04:00Z', shareExpiresAt: '2099-10-01T12:04:00Z', files: [{ id: 'f9', slot: 'DEVICE_SCREEN', sourceMessageId: null, mimeType: 'image/jpeg', size: 1, originalName: 'screen.jpg', source: 'UPLOAD', sourceAngle: null, sortOrder: 0, sentAt: null, createdAt: '' }] }),
       resend: vi.fn().mockResolvedValue({ application: {}, messageText: 'RESEND TEXT WITH OLD LINK', shareUrl: 'https://x/api/g/old', rotated: false }),
-      extend: vi.fn().mockResolvedValue({ expiresAt: '', url: 'https://x/api/g/new', rotated: true }),
+      // หน่วงให้ .then(setLastResend(null)) ของ extend มาทีหลัง — เลียน CI ที่ช้า (เทสเคยไม่นิ่ง 13/10)
+      extend: vi.fn().mockImplementation(() => new Promise((r) => setTimeout(() => r({ expiresAt: '', url: 'https://x/api/g/new', rotated: true }), 50))),
       step: 4,
     });
     renderTab(gfin, 'c1');
@@ -204,6 +205,9 @@ describe('GfinTab', () => {
     await waitFor(() => expect(gfin.resend).toHaveBeenCalled());
     fireEvent.click(screen.getByRole('button', { name: 'ต่ออายุ' }));
     await waitFor(() => expect(gfin.extend).toHaveBeenCalled());
+    // รอให้ state ตาม .then ของ extend ลงจริง (lastResend ถูกล้าง ⇒ ปุ่มคัดลอกไม่มี title "ส่งเพิ่ม") ก่อนคลิก
+    // — เดิมคลิกทันทีหลัง extend ถูกเรียก ทำให้บน CI ช้าคัดลอกข้อความ resend เก่า (เทสไม่นิ่ง)
+    await waitFor(() => expect(screen.getByRole('button', { name: /คัดลอกข้อความอีกครั้ง/ })).not.toHaveAttribute('title'));
     fireEvent.click(screen.getByRole('button', { name: /คัดลอกข้อความอีกครั้ง/ }));
     await waitFor(() => expect(writeText).toHaveBeenLastCalledWith('FRESH TEXT'));
   });

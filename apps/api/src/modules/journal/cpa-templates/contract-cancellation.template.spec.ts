@@ -90,6 +90,8 @@ describe('ContractCancellationTemplate (Phase 3 C-1 — sweep + ECL release)', (
         'shop-collect-settlement',
         'shop-down-payment',
         'reschedule-collect',
+        // ข้อ 6 (ฝ่ายบัญชี 13/10/2569 — ปรับแก้ 2.5): ยกเลิกสัญญาไม่กลับรายการภาษีซื้อ การเคลมติดกับใบกำกับ
+        'finance-input-vat-installment',
       ],
       flowLabel: 'contract-cancellation',
       descriptionPrefix: '[ยกเลิกสัญญา]',

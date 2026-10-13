@@ -179,7 +179,8 @@ describe('ExchangeCancelService (spec §9)', () => {
     expect(r.penaltyAmount).toBeNull();
     // Mirror-reverse the full JE chain incl. A.5 ECL reversal
     expect(reversal.reverse).toHaveBeenCalledWith(
-      { jeIds: ['je1', 'je2', 'je3', 'je4', 'je5'], newContractId: 'newC1' },
+      // ข้อ 6 (ฝ่ายบัญชี 13/10/2569): JE ภาษีซื้อของสัญญาใหม่ไม่ถูกกลับรายการ — การเคลมติดกับใบกำกับ
+      { jeIds: ['je1', 'je2', 'je3', 'je4', 'je5'], newContractId: 'newC1', excludeFlows: ['finance-input-vat-installment'] },
       txMock,
     );
     // Restore: old contract back to ACTIVE, exchangedAt cleared

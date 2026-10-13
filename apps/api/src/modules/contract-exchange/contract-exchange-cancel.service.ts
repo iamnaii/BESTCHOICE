@@ -13,6 +13,7 @@ import { hasCrossBranchAccess } from '../auth/branch-access.util';
 import { CompanyResolverService } from '../journal/company-resolver.service';
 import { ExchangeCancelReversalTemplate } from '../journal/cpa-templates/exchange-cancel-reversal.template';
 import { markInputVatReversedIfSwept } from '../journal/input-vat/installment-input-vat.claim';
+import { INPUT_VAT_INSTALLMENT_FLOW } from '../journal/cpa-templates/contract-cancellation.template';
 import {
   C2_REDIRECTS,
   C2_REDIRECT_SOURCES,
@@ -339,6 +340,9 @@ export class ExchangeCancelService {
         {
           jeIds,
           newContractId: req.newContractId,
+          // ข้อ 6 (ฝ่ายบัญชี 13/10/2569): JE ภาษีซื้อของสัญญาใหม่ไม่ถูกกลับรายการ — การเคลมติดกับใบกำกับ
+          // (ข้อยกเว้นเดียวของ "ไม่ port excludeFlows" ข้างบน — เหตุผลของ provision ไม่เกี่ยวกับใบนี้)
+          excludeFlows: [INPUT_VAT_INSTALLMENT_FLOW],
           // C-2 เท่านั้น: redirect เจ้าหนี้/ลูกหนี้รอบจ่ายที่ตัดจ่ายแล้ว →
           // ลูกหนี้เรียกคืน [PAYOUT_RECALL]. flowLabel/descriptionPrefix ไม่ส่ง —
           // คงค่า default ของ exchange ('exchange-cancel' / '[ยกเลิกเปลี่ยนเครื่อง]')

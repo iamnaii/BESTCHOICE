@@ -72,12 +72,19 @@ import { glContractBalance } from '../gl-contract-balance';
  * whose JEs move REAL cash (mirror = fabricated cash movement). Shared by the
  * sweep call AND the cash tripwire below so the two can never drift.
  */
+/** ก้อน 5 — JE ภาษีซื้อของเครื่องขายผ่อน (`InstallmentInputVatTemplate`) */
+export const INPUT_VAT_INSTALLMENT_FLOW = 'finance-input-vat-installment';
+
 const C1_EXCLUDED_FLOWS = [
   'provision',
   'stage-reverse',
   'shop-collect-settlement',
   'shop-down-payment',
   'reschedule-collect',
+  // ข้อ 6 (ฝ่ายบัญชี 13/10/2569 — ปรับแก้คำตอบ 2.5): ยกเลิกสัญญา**ไม่กลับรายการภาษีซื้อ** — ภาษีซื้อมาจากการซื้อ
+  // ไม่ใช่การขาย การเคลมติดกับใบกำกับใบนั้น (เคลมได้ครั้งเดียว) · สัญญาที่ยกเลิกคง CLAIMED และสัญญาใหม่บนเครื่องเดิม
+  // ได้ NOT_ELIGIBLE ALREADY_CLAIMED (`findConflictingClaim` ไม่กรองสถานะสัญญา)
+  INPUT_VAT_INSTALLMENT_FLOW,
 ];
 
 /**

@@ -1,4 +1,5 @@
 import { ConflictException, Logger } from '@nestjs/common';
+import type { ProductStatus } from '@prisma/client';
 import { Prisma, ProductCategory } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { validatePeriodOpen } from '../../../utils/period-lock.util';
@@ -15,7 +16,7 @@ import { bangkokCalendarParts } from '../../../utils/date.util';
 /**
  * วันที่ลงบัญชีรับสินค้าของใบรับของ — จุดเดียวที่ตัดสิน ใช้ทั้งรายการตอนรับของและหน่วยที่ลงตอนผ่านเข้าคลัง.
  * ลำดับที่ลอง (วันแรกที่ใช้ได้ชนะ): **วันที่ในเอกสารของผู้จัดจำหน่าย** (คำตอบฝ่ายบัญชีข้อ ข3 2026-09-29 · แบบหน้าจอที่เจ้าของเคาะ
- * 2026-10-01) → **วันที่รับของ** (แบบ ข: งวดของวันที่ในเอกสารปิดแล้ว — ตัดสินด้วย `isPeriodClosedForBackdating` ไม่มีช่วงผ่อนผัน).
+ * 2026-10-01) → **วันที่รับของ** (ใบรับของ — แบบ ข: งวดของวันที่ในเอกสารปิดแล้ว — ตัดสินด้วย `isPeriodClosedForBackdating` ไม่มีช่วงผ่อนผัน).
  * ไม่มีเอกสาร / ใบรับของก่อนมีช่องนี้ = วันที่รับของอย่างเดียว. หน่วยที่ผ่านเข้าคลังทีหลังต่อท้ายด้วยวันที่รับเข้าคลังเอง
  */
 export function receivingPostingCandidates(receiving: { createdAt: Date; supplierDocDate?: Date | null }): Date[] {
@@ -94,7 +95,13 @@ export class ReceivingAcceptanceJournal {
     tx: Prisma.TransactionClient,
     productId: string,
     acceptedAt: Date = new Date(),
+    opts: {
+      /** สถานะเครื่องที่ยอมให้ลง (ค่าเริ่มต้น IN_STOCK = ประตูเข้าคลัง) · ข้อ 7 (ฝ่ายบัญชี 13/10/2569): ตัดสินค้าเครื่องจากใบรับของ
+       * ที่ยังไม่ลงบัญชี → ลงรับเข้าก่อนตัด ขณะเครื่องอยู่ ADJUSTMENT_PENDING */
+      allowedStatuses?: readonly ProductStatus[];
+    } = {},
   ): Promise<AcceptedUnitJournal | null> {
+    const allowedStatuses = opts.allowedStatuses ?? ['IN_STOCK'];
     const item = await tx.goodsReceivingItem.findFirst({
       where: { productId, status: 'PASS', deletedAt: null },
       select: { id: true, receivedCost: true, journalEntryId: true },
@@ -125,20 +132,21 @@ export class ReceivingAcceptanceJournal {
       },
     });
     if (!locked || locked.journalEntryId || locked.receivedCost === null || !locked.product) return null;
-    if (locked.product.deletedAt || locked.product.status !== 'IN_STOCK') {
+    if (locked.product.deletedAt || !allowedStatuses.includes(locked.product.status)) {
       throw new ConflictException(
         'เครื่องนี้เพิ่งถูกตีกลับจากคิวรอถ่ายรูปหรือถูกเปลี่ยนสถานะระหว่างทำรายการ — กรุณารีเฟรชหน้าจอแล้วตรวจสถานะเครื่องอีกครั้ง',
       );
     }
 
     const shopCompanyId = await this.deps.companies.getShopCompanyId(tx);
-    const lotCandidates = receivingPostingCandidates(locked.receiving);
-    const candidates = [...lotCandidates, acceptedAt];
+    // ข้อ 2 (ฝ่ายบัญชี 13/10/2569 — แบบ ก): หน่วยที่เข้าคลังทีหลัง "ลงวันที่รับของเสมอ ไม่ใช้วันที่ในเอกสาร
+    // ถ้างวดปิดแล้วลงวันเข้าคลัง" — ต่างจากใบรับของ (ข3: วันที่ในเอกสารก่อน) ซึ่งคงเดิม · เอกสารยัง stamp ไว้อ้างอิง
+    const candidates = [locked.receiving.createdAt, acceptedAt];
     const chosen = await this.firstOpenDate(tx, candidates, shopCompanyId);
     const postedAt = candidates[chosen];
     const postedOnAcceptanceDate = chosen === candidates.length - 1;
-    // มีวันที่ในเอกสาร (สองวันแรก = เอกสาร · รับของ) แล้วงวดของวันในเอกสารปิด = ลงวันที่รับของแบบเดียวกับใบรับของ
-    const postedOnReceiveDate = lotCandidates.length === 2 && chosen === 1;
+    // ไม่มีวันที่ในเอกสารให้ "ถอย" มาวันที่รับของอีกแล้ว — stamp นี้คงไว้ในรูปผลลัพธ์เพื่อผู้อ่านเดิม แต่เป็น false เสมอ
+    const postedOnReceiveDate = false;
     const supplierDoc = {
       type: locked.receiving.supplierDocType,
       number: locked.receiving.supplierDocNumber,
@@ -192,9 +200,8 @@ export class ReceivingAcceptanceJournal {
         `[receiving-acceptance] ${locked.receiving.grNumber} product=${productId}: งวดบัญชีของวันที่ใบรับของปิดแล้ว ` +
           `— ลงวันที่${postedOnAcceptanceDate ? 'รับเข้าคลัง' : 'รับของ'} ${postedAt.toISOString()} แทน (${posted.entryNo})`,
       );
-      // ทุกวันที่ที่ถูกข้าม (เอกสาร · รับของ) — ปิดสองเดือนต้องบอกทั้งสองเดือน ไม่ใช่แค่เดือนล่าสุด
-      const labels = lotCandidates.length === 2 ? ['วันที่ในเอกสาร', 'วันที่รับของ'] : ['วันที่รับของ'];
-      const skipped = candidates.slice(0, chosen).map((date, i) => ({ label: labels[i], date }));
+      // วันที่ที่ถูกข้ามมีได้แค่วันที่รับของ (แบบ ก — ไม่ใช้วันที่ในเอกสารสำหรับหน่วยที่เข้าคลังทีหลัง)
+      const skipped = candidates.slice(0, chosen).map((date) => ({ label: 'วันที่รับของ', date }));
       await this.notifyAccounting(tx, locked.receiving, posted.entryNo, postedAt, skipped, postedOnAcceptanceDate);
     }
     return { ...posted, postedAt, postedOnAcceptanceDate, postedOnReceiveDate };

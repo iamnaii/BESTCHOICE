@@ -369,6 +369,35 @@ describe('คำขอตัดสินค้า — flow จริงบน DB
     expect(await prisma.stockAdjustment.count({ where: { productId: product.id } })).toBe(0);
   }, 120_000);
 
+  it('4b. ข้อ 7 (ฝ่ายบัญชี 13/10/2569 แบบ ข): เครื่องจากใบรับของที่หลุดจากคิวรอถ่ายรูปด้วยมือ (INSPECTION) → WRITE_OFF อนุมัติ → ลงรับเข้า Dr S11-2002 / Cr S21-1101 ก่อน แล้วตัด Dr S53-1102 / Cr S11-2002 · ไม่มี Todo unbooked', async () => {
+    const { product } = await receiveOne('UNBOOKED2', 'PHONE_USED', 3000);
+    expect(product.status).toBe('PHOTO_PENDING');
+    // หลุดจากคิวด้วยมือ (ไม่มีปุ่มตีกลับที่สถานะนี้) — เดิมตัดได้แต่ไม่มี JE + Todo
+    await productsService.update(product.id, { status: 'INSPECTION' } as never, adminId);
+    const req = await service.createRequest({ productId: product.id, reason: 'WRITE_OFF', notes: 'เคลมไม่ได้' } as never, [], owner());
+    const res = await service.approve(req.id, owner());
+
+    const grItem = await prisma.goodsReceivingItem.findFirstOrThrow({ where: { productId: product.id }, select: { journalEntryId: true, receivedCost: true } });
+    expect(grItem.journalEntryId).not.toBeNull();
+    const grJe = await prisma.journalEntry.findUniqueOrThrow({ where: { id: grItem.journalEntryId! }, include: { lines: { where: { deletedAt: null } } } });
+    expect(grJe.lines.map((l) => [l.accountCode, dec(l.debit ?? 0).toFixed(2), dec(l.credit ?? 0).toFixed(2)]).sort()).toEqual([
+      ['S11-2002', dec(grItem.receivedCost!).toFixed(2), '0.00'],
+      ['S21-1101', '0.00', dec(grItem.receivedCost!).toFixed(2)],
+    ]);
+    expect(res.journalEntryNo).not.toBeNull();
+    expect(res.accountingNotified).toBe(false);
+    const wo = await writeoffEntriesOf(req.id);
+    expect(wo).toHaveLength(1);
+    expect(wo[0].lines.map((l) => [l.accountCode, dec(l.debit ?? 0).toFixed(2), dec(l.credit ?? 0).toFixed(2)]).sort()).toEqual([
+      ['S11-2002', '0.00', dec(product.costPrice).toFixed(2)],
+      ['S53-1102', dec(product.costPrice).toFixed(2), '0.00'],
+    ]);
+    // สุทธิ: สินค้าคงคลังของเครื่องกลับเป็น 0 · เจ้าหนี้ตั้ง · ขาดทุนตัดจำหน่าย
+    expect(await netOf('S11-2002', [grJe.id, wo[0].id])).toBe('0.00');
+    expect(await prisma.todo.count({ where: { tags: { has: 'stock-adjustment-unbooked' }, title: { contains: req.requestNumber ?? '' } } })).toBe(0);
+    expect((await prisma.product.findUniqueOrThrow({ where: { id: product.id } })).status).toBe('WRITTEN_OFF');
+  }, 120_000);
+
   it('5. reject คืน IN_STOCK · cancel โดยผู้ขอคืน PHOTO_PENDING (สถานะเดิม ไม่ใช่ IN_STOCK)', async () => {
     const a = await receiveOne('REJ1', 'PHONE_NEW');
     const reqA = await service.createRequest({ productId: a.product.id, reason: 'LOST' }, [], salesOf(a.product.branchId));

@@ -545,6 +545,31 @@ describe('StockAdjustmentsService.approve', () => {
     );
   });
 
+  it('(b2) ข้อ 7 (ฝ่ายบัญชี 13/10/2569 แบบ ข) WRITE_OFF บนเครื่องจากใบรับของที่ยังไม่ลงบัญชี (หลุดจากคิวรอถ่ายรูปด้วยมือ) → ลงรับเข้าก่อน (bookIfPending ยอม ADJUSTMENT_PENDING) แล้วลง JE ตัด · ไม่มี Todo unbooked', async () => {
+    const { service, prisma, template } = build(baseProduct({ status: 'ADJUSTMENT_PENDING' }));
+    // bookIfPending ถูก spy (ไม่แตะ prisma) — จำลองผลของมัน: resolveBookedInventory ที่อ่านหลังจากนั้นเห็นแถวใบรับของผูก JE แล้ว
+    prisma.goodsReceivingItem.findFirst.mockResolvedValue({
+      receivedCost: new Prisma.Decimal('12000.00'),
+      journalEntryId: 'je-gr',
+      receiving: { grNumber: 'GR-20261001-001', po: { poNumber: 'PO-1' } },
+    });
+    prisma.journalEntry.findUnique.mockResolvedValue({ entryNumber: 'JE-202610-00012' });
+    bookIfPending.mockResolvedValue({ journalEntryId: 'je-gr', entryNo: 'JE-202610-00012', postedAt: new Date(), postedOnAcceptanceDate: true, postedOnReceiveDate: false });
+    prisma.stockAdjustment.findUnique.mockResolvedValue(pendingRow({ reason: 'WRITE_OFF' }));
+    template.execute.mockResolvedValue({ journalEntryId: 'je-wo', entryNo: 'JE-202610-00020' });
+
+    const result = await service.approve('adj-1', OWNER);
+
+    // รับเข้าก่อน — เครื่องอยู่ ADJUSTMENT_PENDING (ไม่ใช่ IN_STOCK) จึงต้องยอมสถานะนี้
+    expect(bookIfPending).toHaveBeenCalledWith(prisma, 'p1', expect.any(Date), expect.objectContaining({ allowedStatuses: expect.arrayContaining(['ADJUSTMENT_PENDING']) }));
+    // แล้วตัด: Dr S53-1102 / Cr S11-2001 ที่ต้นทุน
+    expect(template.execute).toHaveBeenCalledWith(expect.objectContaining({ idempotencyKey: 'shop-stock-writeoff:adj-1', reason: 'WRITE_OFF' }), prisma);
+    expect(bookIfPending.mock.invocationCallOrder[0]).toBeLessThan(template.execute.mock.invocationCallOrder[0]);
+    expect(prisma.todo.create).not.toHaveBeenCalled();
+    expect(result.journalEntryNo).toBe('JE-202610-00020');
+    expect(result.accountingNotified).toBe(false);
+  });
+
   it('(c) DAMAGED → ไม่ลง JE · เครื่อง DAMAGED คงในสต๊อก (ไม่ลบ) · ไม่มี Todo บัญชี', async () => {
     const { service, prisma, template } = build(baseProduct({ status: 'ADJUSTMENT_PENDING' }));
     booked(prisma);

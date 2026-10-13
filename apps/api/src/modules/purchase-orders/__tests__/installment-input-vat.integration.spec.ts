@@ -333,7 +333,7 @@ describe('ก้อน 5 — ภาษีซื้อเครื่องขา
     expect(ownerContract).toContain('"amount":"686.00"');
   }, 180_000);
 
-  it('2. ยกเลิกสัญญา (C-1) → ตัวกวาดกระจก JE ภาษีซื้อ · สัญญา REVERSED · เปิดสัญญาใหม่บนเครื่องเดิม → เคลมใหม่', async () => {
+  it('2. ยกเลิกสัญญา (C-1) → ไม่กลับรายการ JE ภาษีซื้อ (ข้อ 6 บัญชี 13/10 ปรับแก้ 2.5) · สัญญายัง CLAIMED · เปิดสัญญาใหม่บนเครื่องเดิม → ไม่เคลมซ้ำ (ALREADY_CLAIMED)', async () => {
     const supplier = await seedSupplier('VAT2', true);
     const po = await createOrderedPo(supplier.id);
     const { a } = await receiveBoth(po, { supplierDocType: 'TAX_INVOICE', supplierDocNumber: `IV-${RUN}-2` });
@@ -345,23 +345,25 @@ describe('ก้อน 5 — ภาษีซื้อเครื่องขา
     const req = await cancellations.requestCancellation(c1.id, adminId, 'ทดสอบยกเลิกก้อน 5', 0);
     await cancellations.approveCancellation(req.id, adminId);
 
-    const mirror = await prisma.journalEntry.findFirst({ where: { metadata: { path: ['reversesEntryId'], equals: original.id } as never, deletedAt: null }, include: { lines: true } });
-    expect(mirror).not.toBeNull();
-    expect(mirror!.lines.map((l) => [l.accountCode, dec(l.debit ?? 0).toFixed(2), dec(l.credit ?? 0).toFixed(2)]).sort()).toEqual([
-      ['11-4101', '0.00', '686.00'],
-      ['42-1108', '686.00', '0.00'],
-    ]);
-    expect(((await prisma.journalEntry.findUniqueOrThrow({ where: { id: original.id } })).metadata as Record<string, unknown>).reversed).toBe(true);
-    expect(await contractRow(c1.id)).toMatchObject({ status: 'CANCELED', inputVatStatus: 'REVERSED' });
+    // ข้อ 6 (ฝ่ายบัญชี 13/10/2569 — "ทั้งกรณีไม่ได้ยกเลิก และกรณีสัญญาเดิมยกเลิก ไม่ต้องเคลมซ้ำ"): ภาษีซื้อมาจากการซื้อ
+    // ไม่ใช่การขาย — ยกเลิกสัญญาจึงไม่กลับรายการ JE ภาษีซื้อ (ตัวกวาด C-1 ข้าม flow นี้) และการเคลมติดกับใบกำกับใบนั้น
+    const mirror = await prisma.journalEntry.findFirst({ where: { metadata: { path: ['reversesEntryId'], equals: original.id } as never, deletedAt: null } });
+    expect(mirror).toBeNull();
+    const originalAfter = await prisma.journalEntry.findUniqueOrThrow({ where: { id: original.id } });
+    expect(originalAfter.status).toBe('POSTED');
+    expect((originalAfter.metadata as Record<string, unknown>).reversed).not.toBe(true);
+    const c1Row = await prisma.contract.findUniqueOrThrow({ where: { id: c1.id }, select: { contractNumber: true, status: true, inputVatStatus: true, inputVatJournalEntryId: true } });
+    expect(c1Row).toMatchObject({ status: 'CANCELED', inputVatStatus: 'CLAIMED', inputVatJournalEntryId: original.id });
 
-    // เครื่องกลับ SHOP IN_STOCK → เปิดสัญญาใหม่ → เคลมใหม่ด้วย key ของสัญญาใหม่
+    // เครื่องกลับ SHOP IN_STOCK → เปิดสัญญาใหม่บนเครื่องเดิม → ไม่เคลมซ้ำ (ใบกำกับใบเดียวเคลมได้ครั้งเดียว — ชี้สัญญาที่เคลมไว้)
     const fresh = await prisma.product.findUniqueOrThrow({ where: { id: a.id } });
     expect(fresh.status).toBe('IN_STOCK');
     const c2 = await seedSignedDraftContract('C2B', customer.id, a);
     await workflow.activate(c2.id);
-    const [second] = await inputVatEntries(c2.id);
-    expect(second.id).not.toBe(original.id);
-    expect(await contractRow(c2.id)).toMatchObject({ inputVatStatus: 'CLAIMED', inputVatJournalEntryId: second.id });
+    expect(await inputVatEntries(c2.id)).toHaveLength(0);
+    const c2Row = await contractRow(c2.id);
+    expect(c2Row).toMatchObject({ inputVatStatus: 'NOT_ELIGIBLE' });
+    expect(c2Row.inputVatReason ?? '').toContain(c1Row.contractNumber);
   }, 180_000);
 
   it('3. รับด้วยใบส่งของ → เปิดสัญญา = PENDING_INVOICE ไม่มี JE → บันทึกใบกำกับ → JE ลงวันเปิดสัญญา · CLAIMED · บันทึกซ้ำ (OWNER) ไม่ได้ JE ใบใหม่', async () => {
@@ -429,14 +431,14 @@ describe('ก้อน 5 — ภาษีซื้อเครื่องขา
     expect(await inputVatEntries(contract.id)).toHaveLength(0);
   }, 180_000);
 
-  it('6. getVatMonthly: vatInputInstallment รวมยอดเคลมของเดือนนี้ (สุทธิหลังกระจก) และบรรทัดอยู่ใน installmentInputVatLines', async () => {
+  it('6. getVatMonthly: vatInputInstallment รวมยอดเคลมของเดือนนี้ และบรรทัดอยู่ใน installmentInputVatLines (ไม่มีกระจกจากยกเลิกสัญญา — ข้อ 6)', async () => {
     const { year, month } = bangkokCalendarParts(new Date());
     const report = await financeTax.getVatMonthly(year, month + 1, financeCompanyId);
     const mine = report.installmentInputVatLines.filter((l) => l.contractNumber?.startsWith(PREFIX));
-    // เคส 1 (+686) · เคส 2 (+686 กระจก −686 +686) · เคส 3 (+686) = 686 × 3 สุทธิ จากสัญญาของไฟล์นี้
+    // เคส 1 (+686) · เคส 2 (+686 ของ C2A — ข้อ 6: ยกเลิกไม่กลับรายการ และ C2B ไม่เคลมซ้ำ) · เคส 3 (+686) = 686 × 3
     const sum = mine.reduce((s, l) => s.plus(l.amount), dec(0));
     expect(sum.toFixed(2)).toBe('2058.00');
-    expect(mine.some((l) => l.reversal)).toBe(true);
+    expect(mine.some((l) => l.reversal)).toBe(false); // ไม่มีกระจกจากการยกเลิกสัญญาอีกแล้ว (ข้อ 6 — 13/10/2569)
     expect(dec(report.vatInputInstallment).gte(sum)).toBe(true);
     expect(dec(report.vatInput).toFixed(2)).toBe(dec(report.vatInputExpense).plus(report.vatInputInstallment).toFixed(2));
   }, 60_000);

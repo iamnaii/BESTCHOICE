@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { INPUT_VAT_INSTALLMENT_FLOW } from './contract-cancellation.template';
 import { Decimal } from '@prisma/client/runtime/library';
 import { Prisma } from '@prisma/client';
 import { JournalAutoService } from '../journal-auto.service';
@@ -81,6 +82,12 @@ export class DefectExchangeReversalTemplate {
       // dedicated tag check below, which is load-bearing, not defensive — see
       // that check's own comment.
       const flow = (meta['flow'] as string | undefined) ?? '';
+      // ข้อ 6 (ฝ่ายบัญชี 13/10/2569): ภาษีซื้อของเครื่องเดิมไม่กลับรายการตอนเปลี่ยนเครื่องตำหนิ —
+      // การเคลมติดกับใบกำกับ เครื่องเดิมที่กลับมาขายผ่อนอีกจะไม่เคลมซ้ำ (ALREADY_CLAIMED)
+      if (flow === INPUT_VAT_INSTALLMENT_FLOW) {
+        this.logger.log(`[A.5a] DefectExchangeReversal — JE ${je.entryNumber} is the input-VAT claim (kept, not reversed)`);
+        continue;
+      }
       if (PAYMENT_FLOWS.includes(flow)) {
         this.logger.warn(
           `[A.5a] DefectExchangeReversal — JE ${je.entryNumber} has payment flow '${flow}', skipping (unexpected in 7-day window)`,

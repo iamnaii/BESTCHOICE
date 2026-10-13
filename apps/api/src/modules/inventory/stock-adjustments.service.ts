@@ -667,6 +667,15 @@ export class StockAdjustmentsService {
         const cost = new Prisma.Decimal(product.costPrice);
         const inventoryAccountCode = this.accounts.resolveProductAccounts(product.category).inventoryAccountCode;
         const booksInventory = BOOKED_EXIT_REASONS.has(reason);
+        // ข้อ 7 (ฝ่ายบัญชี 13/10/2569 — แบบ ข "ทำรับเข้าแล้วตัดบัญชีเลย เหมือนรับเข้าแบบถ่ายรูปแล้ว"): เครื่องจากใบรับของ
+        // ที่ยังไม่ลงบัญชี (หลุดจากคิวรอถ่ายรูปด้วยมือ / ใบเก่า) → ลงรับเข้าก่อน (Dr S11-200x / Cr S21-110x ที่ต้นทุนที่ปันไว้
+        // · เจ้าหนี้ของเครื่องถูกตั้งด้วย) แล้วค่อยตัดด้านล่างตามปกติ · PHOTO_PENDING ยังถูกกันตั้งแต่ createRequest (ตีกลับเท่านั้น)
+        // · ไม่มีใบรับของ (ยอดยกมา/เพิ่มด้วยมือ) → bookIfPending คืน null → ทาง Todo เดิม
+        if (booksInventory && (reason === 'LOST' || reason === 'WRITE_OFF') && cost.gt(0)) {
+          await new ReceivingAcceptanceJournal(this.prisma).bookIfPending(tx, product.id, now, {
+            allowedStatuses: ['ADJUSTMENT_PENDING'],
+          });
+        }
         const booked = booksInventory ? await resolveBookedInventory(tx, product.id) : null;
 
         let journalEntryId: string | null = null;

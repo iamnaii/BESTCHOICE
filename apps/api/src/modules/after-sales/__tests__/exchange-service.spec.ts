@@ -1101,6 +1101,11 @@ describe('AfterSalesExchangeService', () => {
         warrantyTerms: null,
       });
       await svc.deliver('as-1', STAFF, {} as never);
+      // M3 — ไม่ส่งรายการอุปกรณ์ → ไม่เขียนคอลัมน์ (data ไม่มีคีย์ deliveredAccessories)
+      expect(prisma.afterSalesCase.updateMany).toHaveBeenCalledWith({
+        where: { id: 'as-1', stage: 'READY_FOR_PICKUP', closedAt: null },
+        data: { stage: 'CLOSED', closedAt: expect.any(Date) },
+      });
       const saleData = prisma.sale.update.mock.calls[0][0].data;
       expect(saleData.shopWarrantyStartDate).toBeInstanceOf(Date);
       expect(saleData.shopWarrantyEndDate).toBeNull();

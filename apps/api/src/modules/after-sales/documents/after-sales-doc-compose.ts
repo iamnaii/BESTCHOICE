@@ -1,7 +1,7 @@
 import type { AfterSalesOutcome, AfterSalesStage } from '@prisma/client';
 import { formatThaiDateText } from '../../../utils/thai-date.util';
 import { PRICED_EXCHANGE_COST_LINE } from '../utils/after-sales-line-copy.util';
-import { deliveredAccessoriesText } from '../utils/delivered-accessories';
+import { deliveredAccessoriesText, type DeliveredAccessories } from '../utils/delivered-accessories';
 import type { AfterSalesDoc, DocBlock, DocCheck, DocCompany, DocKv } from './after-sales-doc-html';
 
 /**
@@ -74,8 +74,9 @@ export interface DocSource {
     financeCompany: string | null;
     sevenDayEnd: Date | null; // วันสุดท้ายของกรอบ 7 วันของเครื่องทดแทน (วันส่งมอบ + 6)
     deliveredNote: string | null; // note ของ event DELIVERED (มีอุปกรณ์ที่ส่งมอบ) — เคสก่อน M3 ถอดอุปกรณ์จากข้อความนี้
-    /** M3 — อุปกรณ์ที่ส่งมอบแบบโครงสร้าง (`AfterSalesCase.deliveredAccessories`) · null = เคสเก่าก่อน M3 */
-    deliveredAccessories: { box?: boolean; charger?: boolean; case?: boolean; other?: string | null } | null;
+    /** M3 — อุปกรณ์ที่ส่งมอบแบบโครงสร้าง (`AfterSalesCase.deliveredAccessories`) · null = ยังไม่ส่งมอบ (พิมพ์ก่อนกดส่งมอบ) /
+     * ส่งมอบโดยไม่ส่งรายการอุปกรณ์ / เคสก่อน M3 / เคสที่ไม่ใช่ขายสด — ตอนนั้นถอดจาก `deliveredNote` ถ้ามี */
+    deliveredAccessories: DeliveredAccessories | null;
     approvedByName: string | null;
     approvedAt: Date | null;
     repairTicketNumber: string | null;

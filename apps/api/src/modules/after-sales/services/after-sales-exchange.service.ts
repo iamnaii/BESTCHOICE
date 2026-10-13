@@ -47,8 +47,8 @@ import { saleSoldAt } from '../../repair-tickets/utils/sale-sold-at';
 import { assertCashReplacement } from '../utils/assert-cash-replacement';
 import { cashExchangeWindowOpen } from '../utils/cash-exchange-window';
 import { CASH_OUT_OF_WINDOW_REASON } from '../utils/after-sales-outcomes.util';
-import { ExchangeDeliverDto, deliveredAccessoriesText } from '../dto/exchange-deliver.dto';
-import { normalizeDeliveredAccessories } from '../utils/delivered-accessories';
+import { ExchangeDeliverDto } from '../dto/exchange-deliver.dto';
+import { deliveredAccessoriesText, normalizeDeliveredAccessories } from '../utils/delivered-accessories';
 
 type ReqUser = { id: string; role: string; branchId?: string | null };
 
@@ -316,11 +316,11 @@ export class AfterSalesExchangeService {
     caseId: string,
     actorId: string,
     events: { kind: 'DELIVERED' | 'CLOSED'; note: string }[],
-    extra: Prisma.AfterSalesCaseUpdateManyMutationInput = {},
+    extra: { deliveredAccessories?: Prisma.InputJsonValue } = {},
   ) {
     const claimed = await tx.afterSalesCase.updateMany({
       where: { id: caseId, stage: 'READY_FOR_PICKUP', closedAt: null },
-      data: { stage: 'CLOSED', closedAt: new Date(), ...extra },
+      data: { ...extra, stage: 'CLOSED', closedAt: new Date() },
     });
     if (claimed.count !== 1) throw new ConflictException('เคสนี้ถูกส่งมอบไปแล้ว');
     await tx.afterSalesEvent.createMany({

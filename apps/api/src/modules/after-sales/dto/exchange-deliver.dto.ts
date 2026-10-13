@@ -21,4 +21,3 @@ export class ExchangeDeliverDto {
   note?: string;
 }
 
-export { deliveredAccessoriesText } from '../utils/delivered-accessories';

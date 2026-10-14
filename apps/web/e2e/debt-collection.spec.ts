@@ -16,11 +16,13 @@ test.describe('ยึดคืน & ขายต่อ', () => {
     await expect(page.getByText(/ยึดคืน/).first()).toBeVisible({ timeout: 15000 });
   });
 
-  test('should display subtitle', async ({ page }) => {
+  test('shows a short subtitle and expandable return instructions', async ({ page }) => {
     if (await hasErrorBoundary(page)) return;
-    // subtitle เปลี่ยนเมื่อ 2026-09-05 (#1513 ย้ายทางเข้ายึดเครื่องมาหน้านี้) — ข้อความเดิม
-    // "จัดการเครื่องที่ยึดคืน" ไม่มีบนหน้าจออีกแล้ว เทสจึงแดงทุก PR ตั้งแต่นั้น
-    await expect(page.getByText(/เพื่อบันทึกการยึดคืน/).first()).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText('บันทึกรับเครื่องคืนและติดตามการยืนยัน', { exact: true })).toBeVisible();
+    const instructions = page.getByText(/สาขากดรับเครื่องคืนเพื่อบันทึกใบรับ/);
+    await expect(instructions).toBeHidden();
+    await page.getByText('ขั้นตอนรับเครื่องคืน', { exact: true }).click();
+    await expect(instructions).toBeVisible();
   });
 
   test('should show repossession list or empty state', async ({ page }) => {

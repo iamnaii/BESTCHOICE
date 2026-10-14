@@ -32,6 +32,7 @@ test.describe('Customer inbox and legacy /chat links', () => {
     await page.goto('/chat', { waitUntil: 'domcontentloaded' });
     await expect(page).toHaveURL((url) => url.pathname === '/inbox');
     await expect(page.getByRole('button', { name: /^รอตอบ/ })).toBeVisible();
+    await page.getByRole('button', { name: 'ตัวกรองและเครื่องมือ', exact: true }).click();
     await expect(page.getByRole('combobox', { name: 'กรองตามช่องทาง' })).toBeVisible();
     const width = await page.evaluate(() => ({ viewport: innerWidth, content: document.documentElement.scrollWidth }));
     expect(width.content).toBeLessThanOrEqual(width.viewport + 1);

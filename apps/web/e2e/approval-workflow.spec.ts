@@ -16,7 +16,7 @@ import { gotoWithRetry } from './helpers/navigation';
    - ปุ่มบนหน้า /expenses/:id มาจาก InternalControlActionBar:
        DRAFT + makerCheckerEnabled → "ส่งให้อนุมัติ"
        DRAFT + !makerCheckerEnabled → "บันทึกและลงบัญชี"
-       READY + isViewerApprover    → "อนุมัติ & POST" / "ปฏิเสธ"
+       READY + isViewerApprover    → "อนุมัติและลงบัญชี" / "ปฏิเสธ"
      `makerCheckerEnabled` = flag ระดับระบบ (`approval_enabled`) **ไม่ได้ดูยอด/ชนิด
      เอกสาร** ⇒ DRAFT ทุกใบเห็นปุ่ม "ส่งให้อนุมัติ" เหมือนกันหมด. ด่าน
      threshold/doctype ที่ต่างกันจริงอยู่ฝั่ง server (`post()` ปฏิเสธ DRAFT ที่เข้า
@@ -25,8 +25,7 @@ import { gotoWithRetry } from './helpers/navigation';
      `accounting_permissions` (OWNER ได้ครบทุกสิทธิ์เสมอ) — #1542 เปลี่ยนจากการ
      เช็ค role ตรง ๆ มาเป็นรายชื่อ
    - ⚠️ #1542 ถอดเงื่อนไข `doc.createdBy.id !== user.id` ออกจาก `isViewerApprover`
-     ด้วย และ InternalControlActionBar ก็ไม่ได้เช็ค `isOwnDoc` ตรงปุ่ม "อนุมัติ &
-     POST" (เช็คแค่กิ่ง READY + !isViewerApprover) ส่วน `approve()` ฝั่งเซิร์ฟเวอร์
+     ด้วย และ InternalControlActionBar ก็ไม่ได้เช็ค `isOwnDoc` ตรงปุ่ม "อนุมัติและลงบัญชี" (เช็คแค่กิ่ง READY + !isViewerApprover) ส่วน `approve()` ฝั่งเซิร์ฟเวอร์
      ไม่เคยมีด่านนี้เลยทั้งก่อนและหลัง ⇒ ตอนนี้คนที่ได้สิทธิ์อนุมัติเอกสารที่ตัวเอง
      สร้างได้ รอเจ้าของตัดสินว่าจะคืนด่าน maker≠checker หรือไม่ (ยังไม่แตะในนี้)
 
@@ -238,7 +237,7 @@ test.describe('Approval Workflow (D1.2.1)', () => {
     const ok = await gotoWithRetry(page, `/expenses/${doc.id}`);
     if (!ok) return;
 
-    const approveBtn = page.getByRole('button', { name: /อนุมัติ & POST/ });
+    const approveBtn = page.getByRole('button', { name: 'อนุมัติและลงบัญชี', exact: true });
     await expect(approveBtn).toBeVisible({ timeout: 15000 });
     await approveBtn.click();
 
@@ -265,7 +264,7 @@ test.describe('Approval Workflow (D1.2.1)', () => {
 
     // …และหน้าจอต้องไม่เสนอปุ่มอนุมัติให้ SALES เลย
     await gotoWithRetry(page, `/expenses/${doc.id}`);
-    await expect(page.getByRole('button', { name: /อนุมัติ & POST/ })).toBeHidden();
+    await expect(page.getByRole('button', { name: 'อนุมัติและลงบัญชี', exact: true })).toBeHidden();
   });
 
   test('Approver-list user can approve', async ({ page }) => {
@@ -286,7 +285,7 @@ test.describe('Approval Workflow (D1.2.1)', () => {
     const ok = await gotoWithRetry(page, `/expenses/${doc.id}`);
     if (!ok) return;
 
-    const approveBtn = page.getByRole('button', { name: /อนุมัติ & POST/ });
+    const approveBtn = page.getByRole('button', { name: 'อนุมัติและลงบัญชี', exact: true });
     await expect(approveBtn).toBeVisible({ timeout: 15000 });
     await approveBtn.click();
 

@@ -1,12 +1,12 @@
 {
-  "scope": "Local implementation and verification only; no staging or physical devices available; no commit/push/merge/deploy",
+  "scope": "Verification snapshot before merge; shipping status is tracked in GitHub PR #1699. No staging or physical devices available.",
   "localCheck": {
     "status": "PASS",
     "scope": "Basic checks + synthetic Inbox, customers, dashboard, FINANCE portfolio, work-company navigation and trade-in-to-stock flow; not a full backend/financial regression",
     "repo": "/Users/iamnaii/Desktop/App/BESTCHOICE-layout-audit",
-    "revision": "444c44502",
-    "sourceFingerprint": "429b3903b65991beba470a53aa140bef9084649f738567a05dd64d572e6345a6",
-    "startedAt": "2026-10-13T19:56:23.400Z",
+    "revision": "f07ec3b91",
+    "sourceFingerprint": "bfe290dad8716b86007814576a319d695e183ce19aa6105e169888ada4245702",
+    "startedAt": "2026-10-14T02:07:23.634Z",
     "checks": [
       {
         "label": "Local tooling",
@@ -166,7 +166,7 @@
       }
     ],
     "url": "http://localhost:5206/inbox",
-    "finishedAt": "2026-10-13T20:01:53.614Z"
+    "finishedAt": "2026-10-14T02:13:01.537Z"
   },
   "testCounts": {
     "Web": 3323,
@@ -238,7 +238,7 @@
     "running": true,
     "current": true,
     "url": "http://localhost:5206/finance-portfolio",
-    "sourceFingerprint": "429b3903b65991beba470a53aa140bef9084649f738567a05dd64d572e6345a6",
+    "sourceFingerprint": "bfe290dad8716b86007814576a319d695e183ce19aa6105e169888ada4245702",
     "isolated": true
   },
   "remainingVerification": [
@@ -247,5 +247,17 @@
     "No real PBX/payment/printer integration",
     "Not exhaustive production records or every role/action on every page"
   ],
-  "review": "Independent review findings repaired; no outstanding Critical/Important issue in bounded reviewed changes"
+  "review": "Independent review findings repaired; no outstanding Critical/Important issue in bounded reviewed changes",
+  "ciFollowup": {
+    "pr": "https://github.com/iamnaii/BESTCHOICE/pull/1699",
+    "initialCommit": "f07ec3b917414be3cc65592ce8a459f5825c83c0",
+    "requiredGate": "Lint & Test PASS",
+    "apiTests": {
+      "passed": 11293,
+      "skipped": 15,
+      "passedSuites": 904
+    },
+    "e2eCorrection": "Update three existing E2E selectors to the current accessible label บันทึกและลงบัญชี; preserve disabled, visible, and approval absence assertions. No runtime code changed. Four affected positive/disabled browser cases passed against an isolated AppModule and PostgreSQL. The PAYROLL approval case also passed with the same approval-enabled fixture as CI (5 affected browser cases total).",
+    "review": "Read-only review found no issues in the three selector corrections."
+  }
 }

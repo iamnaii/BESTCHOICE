@@ -15,7 +15,7 @@ import { gotoWithRetry } from './helpers/navigation';
      `approval_threshold` default = 50,000 (approval-config.util + lifecycle service)
    - ปุ่มบนหน้า /expenses/:id มาจาก InternalControlActionBar:
        DRAFT + makerCheckerEnabled → "ส่งให้อนุมัติ"
-       DRAFT + !makerCheckerEnabled → "บันทึก & POST"
+       DRAFT + !makerCheckerEnabled → "บันทึกและลงบัญชี"
        READY + isViewerApprover    → "อนุมัติ & POST" / "ปฏิเสธ"
      `makerCheckerEnabled` = flag ระดับระบบ (`approval_enabled`) **ไม่ได้ดูยอด/ชนิด
      เอกสาร** ⇒ DRAFT ทุกใบเห็นปุ่ม "ส่งให้อนุมัติ" เหมือนกันหมด. ด่าน
@@ -171,8 +171,8 @@ test.describe('Approval Workflow (D1.2.1)', () => {
     const submitBtn = page.getByRole('button', { name: /ส่งให้อนุมัติ/ });
     await expect(submitBtn).toBeVisible({ timeout: 15000 });
 
-    // ปุ่มโพสต์ตรง ("บันทึก & POST") ต้องไม่ถูกเสนอเมื่อ workflow ขออนุมัติเปิดอยู่
-    await expect(page.getByRole('button', { name: /บันทึก & POST/ })).toHaveCount(0);
+    // ปุ่มลงบัญชีตรงต้องไม่ถูกเสนอเมื่อ workflow ขออนุมัติเปิดอยู่
+    await expect(page.getByRole('button', { name: 'บันทึกและลงบัญชี', exact: true })).toHaveCount(0);
 
     await submitBtn.click();
     await expect(page.getByText('รออนุมัติ').first()).toBeVisible({ timeout: 15000 });

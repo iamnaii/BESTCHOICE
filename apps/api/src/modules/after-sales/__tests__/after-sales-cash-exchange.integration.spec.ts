@@ -491,6 +491,7 @@ describe('after-sales — เปลี่ยนรุ่นเดิมขาย
     expect(row.stage).toBe('CLOSED');
     expect(row.closedAt).not.toBeNull();
     expect(row.events.find((e) => e.kind === 'DELIVERED')!.note).toContain('อุปกรณ์: กล่อง, สายชาร์จ');
+    expect(row.deliveredAccessories).toEqual({ box: true, charger: true, case: false, other: null }); // M3
     // เปลี่ยนซ้ำ: เครื่องทดแทนมีปัญหาอีก → lookup ด้วย IMEI ทดแทน → กรอบนับจากวันส่งมอบ (วันนี้) ⇒ เปิด
     const again = await svc.lookup({ imei: next.imeiSerial! }, OWNER());
     expect(again.sale?.id).toBe(fx.saleId);

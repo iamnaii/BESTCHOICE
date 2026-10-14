@@ -103,17 +103,26 @@ describe('UX/UI route inventory on isolated full API', () => {
             for (const theme of ['light', 'dark']) {
               await page.evaluate((value) => document.documentElement.classList.toggle('dark', value === 'dark'), theme);
               await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
-              // Capture first: Playwright finishes finite CSS transitions before the
-              // screenshot. Measuring beforehand reported temporary layout widths.
-              const file = `route-${row.no}-${viewport.width}-${theme}.png`;
-              const artifact = saveArtifact('uxui-pages', file, await page.screenshot({ animations: 'disabled' })).relativePath;
-              const metrics = await page.evaluate(() => {
+              // Read readiness and geometry in one browser callback for EACH theme.
+              // A company/lazy-load remount can start after the earlier route wait.
+              const readyMetrics = await page.waitForFunction(() => {
                 const main = document.querySelector('#main') ?? document.querySelector('main') ?? document.body;
                 const visible = (e: Element) => e.getClientRects().length > 0 && getComputedStyle(e).visibility !== 'hidden';
+                if (!(main as HTMLElement).innerText.trim() || [...main.querySelectorAll('[data-slot="skeleton"], [role="status"][aria-label="กำลังโหลด"]')].some(visible)) return false;
+                // Match Playwright's static screenshot treatment of finite animations.
+                for (const animation of document.getAnimations()) {
+                  if (animation.playState === 'running' && Number.isFinite(animation.effect?.getComputedTiming().endTime)) animation.finish();
+                }
                 const headings = [...main.querySelectorAll('h1,h2')].filter(visible).map(e => ({ text: e.textContent?.trim(), width: e.getBoundingClientRect().width, right: e.getBoundingClientRect().right }));
                 const overflowingElements = [...main.querySelectorAll('*')].filter(e => visible(e) && e.getBoundingClientRect().right > innerWidth + 1).slice(0, 30).map(e => ({ tag: e.tagName, className: e.getAttribute('class'), right: e.getBoundingClientRect().right, text: e.textContent?.slice(0, 100) }));
                 return { overflowingElements, overflow: document.documentElement.scrollWidth > innerWidth + 1, scrollWidth: document.documentElement.scrollWidth, text: (main as HTMLElement).innerText.slice(0, 1200), headings, loading: [...main.querySelectorAll('[role="status"]')].filter(visible).map(e => e.getAttribute('aria-label') || e.textContent?.trim()) };
-              });
+              }, undefined, { timeout: 30000 });
+              // Readiness alone is polled: overflowing geometry is returned immediately
+              // and still fails below. Never wait for a bad layout to disappear.
+              const metrics = await readyMetrics.jsonValue();
+              await readyMetrics.dispose();
+              const file = `route-${row.no}-${viewport.width}-${theme}.png`;
+              const artifact = saveArtifact('uxui-pages', file, await page.screenshot({ animations: 'disabled' })).relativePath;
               item.themes.push({ theme, ...metrics, artifact });
             }
             item.finalPath = new URL(page.url()).pathname + new URL(page.url()).search + new URL(page.url()).hash;

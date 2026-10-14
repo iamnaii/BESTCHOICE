@@ -93,3 +93,8 @@ PR #1699's `cefa16ec6` passed Lint & Test and the complete E2E run (814 passed, 
 - CI now runs 23 domain suites and the route inventory in independent jobs at 1440/390/320px. Jest's discovered suite lists confirm all 24 original suites remain covered. Populated-layout fixtures are explicit and do not depend on records left by other suites.
 
 The latest pre-merge local check passed all 39 stages; the fresh full route rerun was still in progress when this snapshot was committed. Results and scope are recorded in `FINAL-CHECKS.json`; the authoritative shipping status and CI outcomes remain on [PR #1699](https://github.com/iamnaii/BESTCHOICE/pull/1699).
+
+
+### Per-theme readiness follow-up
+
+The fresh local 807-state run passed. CI also passed both mobile inventories, but the 1440px run captured row 96's light theme while its query had re-entered a loading skeleton; the dark capture rendered normally, with no overflow or JavaScript error. The inventory now checks readiness and records geometry atomically for each theme, finishes finite animations before measuring, then captures the image. It still returns overflowing geometry immediately and fails unresolved readiness timeouts. Application code is unchanged by this follow-up. The focused 12-route × 3-width × 2-theme run passed, followed by all 39 local-check stages; the complete new-head CI results are tracked on PR #1699.

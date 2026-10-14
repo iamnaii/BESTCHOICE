@@ -52,7 +52,7 @@ export default function DashboardKPIs({ kpis, comparativePL }: DashboardKPIsProp
   const stockMoM = kpis.stockMoM ?? null;
 
   return (
-    <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-5">
+    <div className="grid grid-cols-1 min-[480px]:grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-5">
       {/* KPI: สัญญาทั้งหมด */}
       <Card
         className="cursor-pointer group hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 overflow-hidden"

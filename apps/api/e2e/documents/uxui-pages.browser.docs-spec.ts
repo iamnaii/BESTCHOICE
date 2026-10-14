@@ -14,13 +14,11 @@ const inventory: Array<{ no: string; path: string; type: string; component: stri
 ).filter((row: { no: string }) => !process.env.UXUI_ROWS || process.env.UXUI_ROWS.split(',').includes(row.no));
 describe('UX/UI route inventory on isolated full API', () => {
   let h: DocumentsHarness, web: WebRuntime, world: DocumentsWorld;
-  let token: string;
   const results: any[] = [];
   const missingId = randomUUID();
   beforeAll(async () => {
     h = await startDocumentsApp();
     world = await seedDocumentsWorld(h.prisma);
-    token = (await h.login(world.users.owner.email, world.password)).token;
     web = await startWeb(h);
   }, 180000);
   afterAll(async () => { await web?.close(); await h?.close(); });
@@ -53,6 +51,8 @@ describe('UX/UI route inventory on isolated full API', () => {
 
   for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844 }, { width: 320, height: 740 }].filter(v => !process.env.UXUI_WIDTHS || process.env.UXUI_WIDTHS.split(',').includes(String(v.width)))) {
     it(`records every inventory row at ${viewport.width}px in light and dark, with settled API state and layout evidence`, async () => {
+      // A complete inventory can outlive a single access token on CI.
+      const token = (await h.login(world.users.owner.email, world.password)).token;
       const opened = await web.page(viewport);
       const page = opened.page;
       await page.addInitScript((accessToken) => {
@@ -86,6 +86,13 @@ describe('UX/UI route inventory on isolated full API', () => {
             await page.waitForTimeout(600);
             await page.waitForLoadState('networkidle', { timeout: 4000 }).catch(() => {});
             await page.locator('[role="status"][aria-label="กำลังโหลด"]').first().waitFor({ state: 'hidden', timeout: 15000 }).catch(() => {});
+            // Redirects can mount a second, textless skeleton after networkidle.
+            // Wait for actual page content instead of recording that intermediate state.
+            await page.waitForFunction(() => {
+              const main = document.querySelector<HTMLElement>('#main, main') ?? document.body;
+              const loading = [...main.querySelectorAll('[data-slot="skeleton"], [role="status"][aria-label="กำลังโหลด"]')].some(e => e.getClientRects().length > 0 && getComputedStyle(e).visibility !== 'hidden');
+              return Boolean(main.innerText.trim()) && !loading;
+            }, undefined, { timeout: 30000 });
             await page.evaluate(() => document.fonts.ready);
             if (row.type === 'settings-inline') {
               const panel = page.locator(`[id="${row.path.split('#')[1]}"]`);
@@ -95,14 +102,18 @@ describe('UX/UI route inventory on isolated full API', () => {
             }
             for (const theme of ['light', 'dark']) {
               await page.evaluate((value) => document.documentElement.classList.toggle('dark', value === 'dark'), theme);
+              await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+              // Capture first: Playwright finishes finite CSS transitions before the
+              // screenshot. Measuring beforehand reported temporary layout widths.
+              const file = `route-${row.no}-${viewport.width}-${theme}.png`;
+              const artifact = saveArtifact('uxui-pages', file, await page.screenshot({ animations: 'disabled' })).relativePath;
               const metrics = await page.evaluate(() => {
                 const main = document.querySelector('#main') ?? document.querySelector('main') ?? document.body;
                 const visible = (e: Element) => e.getClientRects().length > 0 && getComputedStyle(e).visibility !== 'hidden';
                 const headings = [...main.querySelectorAll('h1,h2')].filter(visible).map(e => ({ text: e.textContent?.trim(), width: e.getBoundingClientRect().width, right: e.getBoundingClientRect().right }));
-                return { overflow: document.documentElement.scrollWidth > innerWidth + 1, scrollWidth: document.documentElement.scrollWidth, text: (main as HTMLElement).innerText.slice(0, 1200), headings, loading: [...main.querySelectorAll('[role="status"]')].filter(visible).map(e => e.getAttribute('aria-label') || e.textContent?.trim()) };
+                const overflowingElements = [...main.querySelectorAll('*')].filter(e => visible(e) && e.getBoundingClientRect().right > innerWidth + 1).slice(0, 30).map(e => ({ tag: e.tagName, className: e.getAttribute('class'), right: e.getBoundingClientRect().right, text: e.textContent?.slice(0, 100) }));
+                return { overflowingElements, overflow: document.documentElement.scrollWidth > innerWidth + 1, scrollWidth: document.documentElement.scrollWidth, text: (main as HTMLElement).innerText.slice(0, 1200), headings, loading: [...main.querySelectorAll('[role="status"]')].filter(visible).map(e => e.getAttribute('aria-label') || e.textContent?.trim()) };
               });
-              const file = `route-${row.no}-${viewport.width}-${theme}.png`;
-              const artifact = saveArtifact('uxui-pages', file, await page.screenshot({ animations: 'disabled' })).relativePath;
               item.themes.push({ theme, ...metrics, artifact });
             }
             item.finalPath = new URL(page.url()).pathname + new URL(page.url()).search + new URL(page.url()).hash;
@@ -118,7 +129,7 @@ describe('UX/UI route inventory on isolated full API', () => {
       } finally { await opened.context.close(); }
       // Keep every row's evidence even when one fails; triage the explicit REVIEW list.
       expect(results.filter(r => r.width === viewport.width)).toHaveLength(inventory.length);
-      expect(results.filter(r => r.width === viewport.width && r.status === 'REVIEW').map(r => ({ no: r.no, path: r.path, error: r.error, pageErrors: r.pageErrors, overflow: r.themes?.filter((t: any) => t.overflow).map((t: any) => t.theme) }))).toEqual([]);
+      expect(results.filter(r => r.width === viewport.width && r.status === 'REVIEW').map(r => ({ no: r.no, path: r.path, error: r.error, pageErrors: r.pageErrors, rootError: r.rootError, blankThemes: r.themes?.filter((t: any) => !t.text.trim()).map((t: any) => t.theme), overflow: r.themes?.filter((t: any) => t.overflow).map((t: any) => t.theme) }))).toEqual([]);
       expect(h.external.calls).toEqual([]);
     }, 1800000);
   }

@@ -82,4 +82,65 @@ describe('UX/UI mobile controls on the real isolated API', () => {
     } finally { await context.close(); }
   }, 60000);
 
+  for (const width of [320, 390]) {
+    it(`keeps populated dashboard and equity tables usable at ${width}px in both themes`, async () => {
+      const { page, context, errors } = await web.page({ width, height: 844 });
+      // Deliberately long visual fixtures, independent of other suites' database writes.
+      // API/accounting correctness remains covered by the domain suites.
+      const longName = 'ทดสอบระบบ ผู้ถือหุ้นชื่อยาว บริษัทตัวอย่างเพื่อทดสอบการแสดงผล จำกัด';
+      const fixtures: Record<string, unknown> = {
+        '/dashboard/kpis': { contracts: { total: 194, active: 13, overdue: 130, default: 0, completed: 51 }, products: { total: 249, inStock: 90 }, financial: { totalReceivable: 1234567, totalLateFees: 23456, todayPayments: 1234567, todayPaymentCount: 43 }, overdueRate: 67 },
+        '/dashboard/watch-list': { total: 1, highCount: 1, mediumCount: 0, watchList: [{ contractId: 'layout-watch', customerId: 'layout-customer', customerName: longName, customerPhone: '0890000000', contractNumber: 'CT-TEST-0001', riskLevel: 'HIGH', reasons: ['ทดสอบระบบ'] }] },
+        '/customers/upsell-candidates': { total: 1, candidates: [{ contractId: 'layout-upsell', customerId: 'layout-customer', customerName: longName, customerPhone: '0890000000', productModel: 'ทดสอบระบบ iPhone', paidRatio: 0.9, paidCount: 18, totalMonths: 20, reason: 'ทดสอบระบบ' }] },
+        '/overdue/pipeline': { totalContracts: 130, totalAmount: 1234567, stages: [{ stage: 'NOTICE', label: 'ส่งหนังสือทวงถามและแจ้งเตือนแล้ว', count: 130, totalAmount: 1234567 }] },
+        '/equity/documents': { data: [{ id: 'layout-document', docNumber: 'EQ-20261120-0001', txnDate: '2026-11-20', txnType: 'DIV_PAY', status: 'POSTED', description: longName, lines: [{ amount: '1234567', premium: '0' }] }], total: 1, page: 1, limit: 100 },
+        '/equity/shareholders': [{ id: 'layout-shareholder', name: longName, taxId: '0105500000028', shares: 123456, type: 'JURISTIC_TH', isActive: true }],
+        '/equity/dividend-register': { year: new Date().getFullYear(), rows: [{ shareholderId: 'layout-shareholder', name: longName, taxId: '0105500000028', payCount: 12, gross: '1234567', wht: '123456.70', net: '1111110.30', docNumbers: ['EQ-20261120-0001', 'EQ-20261220-0001'] }], totals: { gross: '1234567', wht: '123456.70', net: '1111110.30' } },
+      };
+      try {
+        await page.addInitScript(accessToken => { localStorage.setItem('access_token', accessToken); localStorage.setItem('bc.sidebar.lastZone', 'shop'); }, token);
+        await page.route('**/api/admin/**', route => {
+          const path = new URL(route.request().url()).pathname.replace('/api/admin', '');
+          return path in fixtures ? route.fulfill({ json: { success: true, data: fixtures[path] } }) : route.continue();
+        });
+        await page.goto(`${web.origin}/`);
+        const verifyLayout = async (name: string) => {
+          await page.waitForLoadState('networkidle');
+          await page.evaluate(() => document.fonts.ready);
+          // AnimatedCounter runs in requestAnimationFrame for 1200ms.
+          await page.waitForTimeout(1300);
+          for (const dark of [false, true]) {
+            await page.evaluate(value => document.documentElement.classList.toggle('dark', value), dark);
+            saveArtifact('uxui-interactions', `populated-${name}-${width}-${dark ? 'dark' : 'light'}.png`, await page.screenshot({ fullPage: true, animations: 'disabled' }));
+            expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
+          }
+        };
+        await page.getByText('ส่งหนังสือทวงถามและแจ้งเตือนแล้ว', { exact: true }).waitFor();
+        await page.getByText(longName, { exact: true }).first().waitFor();
+        await verifyLayout('dashboard');
+        await web.navigate(page, '/finance/equity');
+        await page.getByText('EQ-20261120-0001', { exact: true }).waitFor();
+        await verifyLayout('equity');
+        const scrollTable = async () => {
+          const table = page.locator('table').first();
+          expect(await table.evaluate(element => {
+            const scroller = element.parentElement!;
+            scroller.scrollLeft = scroller.scrollWidth;
+            return scroller.scrollWidth > scroller.clientWidth && scroller.scrollLeft > 0;
+          })).toBe(true);
+        };
+        await scrollTable();
+        await page.getByRole('button', { name: 'ทะเบียนผู้ถือหุ้น', exact: true }).click();
+        await page.getByText(longName, { exact: true }).waitFor();
+        await verifyLayout('shareholders');
+        await scrollTable();
+        await web.navigate(page, '/finance/dividend-register');
+        await page.getByRole('button', { name: 'หนังสือรับรอง', exact: true }).waitFor();
+        await verifyLayout('dividends');
+        await scrollTable();
+        expect(errors.filter(error => error.startsWith('pageerror:'))).toEqual([]);
+      } finally { await context.close(); }
+    }, 120000);
+  }
+
 });

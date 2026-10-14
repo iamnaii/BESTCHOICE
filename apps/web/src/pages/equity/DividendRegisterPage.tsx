@@ -76,7 +76,7 @@ export default function DividendRegisterPage() {
             </option>
           ))}
         </select>
-        <div className="ml-auto flex items-center gap-2">
+        <div className="ml-auto flex flex-wrap items-center gap-2">
           <select
             className="border border-border rounded-md px-3 py-2 text-sm bg-background"
             value={xlsxMonth}
@@ -102,7 +102,8 @@ export default function DividendRegisterPage() {
       >
         <Card>
           <CardContent className="pt-4">
-            <table className="w-full text-sm">
+            <div className="overflow-x-auto print:overflow-visible">
+            <table className="w-full min-w-[800px] text-sm print:min-w-0">
               <thead>
                 <tr className="border-b border-border text-left text-xs text-muted-foreground uppercase">
                   <th className="py-2 print:w-[25%]">ผู้ถือหุ้น</th>
@@ -172,6 +173,7 @@ export default function DividendRegisterPage() {
                 </tfoot>
               )}
             </table>
+            </div>
           </CardContent>
         </Card>
       </QueryBoundary>

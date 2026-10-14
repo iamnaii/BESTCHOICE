@@ -80,3 +80,16 @@ Migration ใหม่: `apps/api/prisma/migrations/20261026000000_repair_chat_s
 Preview ที่ตรวจ: http://localhost:5206/finance-portfolio และ http://localhost:5206/inbox — managed preview ใช้ API/data/AI สังเคราะห์ในขอบเขตที่ repo รองรับ ส่วน full API หลายหน้าใช้ harness ฐานข้อมูลแยกซึ่งปิดหลังเก็บผลแล้ว ไม่ได้อ้างว่า preview นี้ให้บริการทุก endpoint
 
 Verified source fingerprint: `429b3903b65991beba470a53aa140bef9084649f738567a05dd64d572e6345a6`
+
+
+## PR CI follow-up — populated mobile states
+
+PR #1699's `cefa16ec6` passed Lint & Test and the complete E2E run (814 passed, 10 skipped, no retried failures). The full documents job reached its 45-minute limit and exposed additional findings; this snapshot does not label that run a pass.
+
+- Populated equity/shareholder and dividend tables now scroll within their cards. Dividend print retains its natural width and visible overflow.
+- The dashboard collection pipeline now wraps its progress bar below the label/count on phones; watch/upsell tables scroll, and KPI cards use one column below 480px so populated values remain readable.
+- The receipt cancellation check clears the intentionally created 503 toast before checking for a new error toast; download-count/cancellation assertions remain intact. The updated receipt + interaction run passed 13/13 tests and 4/4 PDF artifacts. Expanded long-name/high-value fixtures then passed 5/5 interaction tests.
+- Route checks wait for real content and visible skeletons to finish, then capture before measuring so completed CSS transitions match the recorded image. Each viewport gets a fresh access token; failed layout evidence includes overflowing elements.
+- CI now runs 23 domain suites and the route inventory in independent jobs at 1440/390/320px. Jest's discovered suite lists confirm all 24 original suites remain covered. Populated-layout fixtures are explicit and do not depend on records left by other suites.
+
+The latest pre-merge local check passed all 39 stages; the fresh full route rerun was still in progress when this snapshot was committed. Results and scope are recorded in `FINAL-CHECKS.json`; the authoritative shipping status and CI outcomes remain on [PR #1699](https://github.com/iamnaii/BESTCHOICE/pull/1699).

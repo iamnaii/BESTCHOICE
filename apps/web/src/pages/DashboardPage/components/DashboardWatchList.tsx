@@ -44,6 +44,7 @@ export default function DashboardWatchList({ watchListData, upsell }: DashboardW
             </CardToolbar>
           </CardHeader>
           <CardTable>
+            <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-muted/40 border-b border-border/60">
@@ -88,6 +89,7 @@ export default function DashboardWatchList({ watchListData, upsell }: DashboardW
                 })}
               </tbody>
             </table>
+          </div>
           </CardTable>
         </Card>
       )}
@@ -113,6 +115,7 @@ export default function DashboardWatchList({ watchListData, upsell }: DashboardW
             </CardToolbar>
           </CardHeader>
           <CardTable>
+            <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-muted/40 border-b border-border/60">
@@ -160,6 +163,7 @@ export default function DashboardWatchList({ watchListData, upsell }: DashboardW
                 ))}
               </tbody>
             </table>
+          </div>
           </CardTable>
         </Card>
       )}

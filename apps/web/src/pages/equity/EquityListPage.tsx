@@ -89,7 +89,8 @@ function ShareholdersTab() {
               <Plus className="h-4 w-4 mr-1" /> เพิ่ม
             </Button>
           </div>
-          <table className="w-full text-sm">
+          <div className="overflow-x-auto">
+          <table className="w-full min-w-[640px] text-sm">
             <thead>
               <tr className="border-b border-border text-left text-xs text-muted-foreground uppercase">
                 <th className="py-2">ชื่อ</th>
@@ -118,6 +119,7 @@ function ShareholdersTab() {
               )}
             </tbody>
           </table>
+          </div>
         </CardContent>
       </Card>
     </QueryBoundary>
@@ -205,7 +207,8 @@ export default function EquityListPage() {
                   ))}
                 </select>
               </div>
-              <table className="w-full text-sm">
+              <div className="overflow-x-auto">
+          <table className="w-full min-w-[640px] text-sm">
                 <thead>
                   <tr className="border-b border-border text-left text-xs text-muted-foreground uppercase">
                     <th className="py-2">เลขที่</th>
@@ -249,6 +252,7 @@ export default function EquityListPage() {
                   )}
                 </tbody>
               </table>
+          </div>
             </CardContent>
           </Card>
         </QueryBoundary>

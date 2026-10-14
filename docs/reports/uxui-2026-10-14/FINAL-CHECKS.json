@@ -4,9 +4,9 @@
     "status": "PASS",
     "scope": "Basic checks + synthetic Inbox, customers, dashboard, FINANCE portfolio, work-company navigation and trade-in-to-stock flow; not a full backend/financial regression",
     "repo": "/Users/iamnaii/Desktop/App/BESTCHOICE-layout-audit",
-    "revision": "979c26311",
-    "sourceFingerprint": "1498d871d806c599c7b073fb4275dab7d12f7070bbe4fabf008d19cff851e8ac",
-    "startedAt": "2026-10-14T02:14:37.240Z",
+    "revision": "cefa16ec6",
+    "sourceFingerprint": "b67e444037c67356a13753ee2e9887c68bd946673dd1f07eedaab0aafa56f1aa",
+    "startedAt": "2026-10-14T03:57:01.708Z",
     "checks": [
       {
         "label": "Local tooling",
@@ -166,7 +166,7 @@
       }
     ],
     "url": "http://localhost:5206/inbox",
-    "finishedAt": "2026-10-14T02:20:08.883Z"
+    "finishedAt": "2026-10-14T04:02:53.490Z"
   },
   "testCounts": {
     "Web": 3323,
@@ -262,6 +262,49 @@
     "ciInfrastructureObservations": [
       "Initial documents run: Chromium process received signal 11 while launching for a letter PDF, causing dependent letter scenarios to fail; superseded CI reruns retain the full suite.",
       "Second integration run: an existing serialized-response substring assertion for 686 matched a random payment UUID; the VAT amount fields were correctly null. No accounting runtime change was made; the final commit receives a fresh required-gate run."
-    ]
+    ],
+    "populatedMobileFollowup": {
+      "priorHead": "cefa16ec65d03b475bd08d5947085854225b472a",
+      "priorHeadCI": {
+        "requiredGate": "PASS",
+        "e2e": {
+          "passed": 814,
+          "skipped": 10,
+          "retriedFailures": 0
+        },
+        "documents": "45-minute timeout; receipt toast isolation, route readiness and populated mobile layout findings repaired in this follow-up"
+      },
+      "fixes": [
+        "Equity/shareholder/dividend table scroll containers; preserve dividend print sizing",
+        "Responsive dashboard pipeline, watch/upsell tables and KPI cards",
+        "Receipt test clears intentional 503 toast and checks new error toasts only",
+        "Inventory waits for visible loading skeletons, measures after settled screenshot, refreshes token per viewport"
+      ],
+      "targetedValidation": {
+        "receiptAndMobileTests": 13,
+        "pdfArtifacts": 4,
+        "expandedPopulatedMobileTests": 5,
+        "viewportWidths": [
+          320,
+          390
+        ],
+        "themes": [
+          "light",
+          "dark"
+        ]
+      },
+      "inventoryValidation": "A fresh 807-state local run is still in progress at this pre-merge snapshot, with 1440px and 390px complete without REVIEW. Final results are linked from PR #1699.",
+      "ciPartition": {
+        "domainSuites": 23,
+        "inventorySuites": 1,
+        "widths": [
+          1440,
+          390,
+          320
+        ],
+        "all24DiscoveredSuitesRetained": true
+      },
+      "review": "Independent read-only review: no blocking findings. Populated fixtures are visual test responses; API/accounting behavior remains covered by domain suites."
+    }
   }
 }

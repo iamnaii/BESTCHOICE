@@ -905,7 +905,7 @@ const ZONE_CONFIG: Record<string, RoleZoneConfig> = {
       shop: [
         { label: NAV_LABELS.home, path: '/', icon: Home },
         { label: NAV_LABELS.stock, path: '/stock', icon: Warehouse },
-        { label: NAV_LABELS.contracts, path: '/contracts', icon: FileCheck },
+        { label: 'สัญญา', path: '/contracts', icon: FileCheck },
         { label: 'แชท', path: '/inbox', icon: MessageSquareMore, badgeKey: 'chat-unread' },
         { label: 'เพิ่มเติม', path: '#more', icon: MoreHorizontal, action: 'sidebar' },
       ],
@@ -937,7 +937,7 @@ const ZONE_CONFIG: Record<string, RoleZoneConfig> = {
       shop: BRANCH_MANAGER_CONFIG.bottomNav,
       fin: [
         { label: 'ค้างชำระ', path: '/overdue', icon: AlertTriangle },
-        { label: 'จัดการจดหมาย', path: '/letters', icon: Mail },
+        { label: 'จดหมาย', path: '/letters', icon: Mail },
         { label: 'รายงาน', path: '/reports', icon: BarChart3 },
         { label: 'แชท', path: '/inbox', icon: MessageSquareMore, badgeKey: 'chat-unread' },
         { label: 'เพิ่มเติม', path: '#more', icon: MoreHorizontal, action: 'sidebar' },

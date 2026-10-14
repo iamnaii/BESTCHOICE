@@ -1,3 +1,4 @@
+import { chooseComposerMode, openComposerTool, showWorkControl, toggleChatTheme } from './chat-ui.mjs';
 import assert from 'node:assert/strict';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -16,7 +17,7 @@ export async function checkChatTeam(page, origin, output, width) {
     await page.goto(roomUrl);
     const chatDraft = page.getByRole('textbox', { name: 'พิมพ์ข้อความ', exact: true });
     await chatDraft.fill('ฉบับร่างถึงลูกค้า');
-    await page.getByRole('radio', { name: 'โน้ตภายใน', exact: true }).click();
+    await chooseComposerMode(page, 'note');
     const note = page.getByRole('textbox', { name: 'พิมพ์โน้ตภายใน', exact: true });
     await expect(note).toHaveValue('');
     await note.fill(`ฝากตรวจภายใน ${width}`);
@@ -27,7 +28,7 @@ export async function checkChatTeam(page, origin, output, width) {
     const savedNote = await noteResponse; assert.equal(savedNote.status(), 201);
     const noteId = (await savedNote.json()).id;
     await expect(note).toHaveValue('');
-    await page.getByRole('radio', { name: 'ตอบลูกค้า', exact: true }).click();
+    await chooseComposerMode(page, 'chat');
     await expect(chatDraft).toHaveValue('ฉบับร่างถึงลูกค้า');
     await chatDraft.fill('');
     if (width < 1280) await page.getByRole('button', { name: 'ข้อมูลลูกค้า', exact: true }).click();
@@ -50,7 +51,7 @@ export async function checkChatTeam(page, origin, output, width) {
     const notice = notifications.find(n => n.targetId === task.id); assert.ok(notice); assert.equal(notice.readAt, null);
     assert.ok(notifications.some(n => n.targetId === noteId));
     // Neither viewing the room nor opening its notification accepts the task.
-    await page.getByRole('button', { name: /^การแจ้งเตือนงาน/ }).click();
+    await (await showWorkControl(page, /^การแจ้งเตือนงาน/)).click();
     await page.getByRole('button', { name: /มีงานในแชทถึงคุณ/ }).first().click();
     dialog = page.getByRole('dialog', { name: title, exact: true });
     await expect(dialog.getByText('สถานะ: รอรับงาน', { exact: true })).toBeVisible();

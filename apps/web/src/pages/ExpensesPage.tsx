@@ -15,8 +15,7 @@ import DataTable from '@/components/ui/DataTable';
 import QueryBoundary from '@/components/QueryBoundary';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { ReverseConfirmDialog } from '@/components/accounting';
-import { useAuth } from '@/contexts/AuthContext';
-import { Receipt, Plus, Pencil, MoreVertical, Bookmark, Wallet, BarChart3, Search, SlidersHorizontal, Eye, ArrowRight, UserCircle2, ChevronDown, FileText, CreditCard, Send, CheckCircle2 } from 'lucide-react';
+import { Receipt, Plus, Pencil, MoreVertical, Bookmark, Wallet, BarChart3, Search, SlidersHorizontal, Eye, ArrowRight, ChevronDown, FileText, CreditCard, Send, CheckCircle2 } from 'lucide-react';
 import ThaiDateInput from '@/components/ui/ThaiDateInput';
 import { Button } from '@/components/ui/button';
 import { formatDateShortThai, formatNumberDecimal } from '@/utils/formatters';
@@ -122,7 +121,6 @@ function fmt(n: string | number | null | undefined): string {
 // ─── Main Page ───
 export default function ExpensesPage() {
   const queryClient = useQueryClient();
-  const { user: currentUser } = useAuth();
   // D1.2.4 follow-up — feature flag for the Expense Templates ("รายการโปรด")
   // surface. When OWNER disables, the favorites tab + entry button are
   // hidden. Default true so first paint matches legacy behaviour.
@@ -490,8 +488,8 @@ export default function ExpensesPage() {
             <Receipt className="size-5 text-primary" />
           </div>
           <div className="min-w-0">
-            <h1 className="text-base font-semibold leading-snug text-foreground break-words">ระบบบันทึกค่าใช้จ่ายกิจการ</h1>
-            <p className="text-xs text-muted-foreground leading-snug">Business Expense Module · v1.0</p>
+            <h1 className="text-base font-semibold leading-snug text-foreground break-words">ค่าใช้จ่าย</h1>
+            <p className="text-sm text-muted-foreground leading-snug">บันทึกรายจ่ายและติดตามการจ่ายเงิน</p>
           </div>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
@@ -506,21 +504,15 @@ export default function ExpensesPage() {
               <span className="text-primary font-semibold ml-0.5 font-mono">0</span>
             </button>
           )}
-          <button className="px-3 py-1.5 rounded-lg border border-border text-xs flex items-center gap-1.5 hover:bg-muted transition-colors">
+          <button type="button" onClick={() => navigate('/expenses/ap-aging')} className="px-3 py-1.5 rounded-lg border border-border text-xs flex items-center gap-1.5 hover:bg-muted transition-colors">
             <Wallet className="size-3.5 text-muted-foreground" />
             <span className="text-foreground">เจ้าหนี้คงค้าง</span>
             <span className="text-primary font-semibold ml-0.5 font-mono">{fmt(unpaidTotal)}</span>
           </button>
-          <button className="px-3 py-1.5 rounded-lg border border-border text-xs flex items-center gap-1.5 hover:bg-muted transition-colors">
+          <button type="button" onClick={() => navigate('/expenses/daily-summary')} className="px-3 py-1.5 rounded-lg border border-border text-xs flex items-center gap-1.5 hover:bg-muted transition-colors">
             <BarChart3 className="size-3.5 text-muted-foreground" />
             <span className="text-foreground">สรุปรายวัน</span>
           </button>
-          {currentUser && (
-            <div className="px-3 py-1.5 rounded-lg border border-border text-xs flex items-center gap-1.5 bg-card">
-              <UserCircle2 className="size-3.5 text-muted-foreground" />
-              <span className="font-medium text-foreground">{currentUser.name}</span>
-            </div>
-          )}
         </div>
       </div>
 
@@ -580,7 +572,7 @@ export default function ExpensesPage() {
 
       {/* Search + filter toggle + type select + create */}
       <div className="flex items-center gap-3 mb-5 flex-wrap">
-        <div className="flex-1 min-w-[260px] relative">
+        <div className="flex-1 min-w-0 basis-[calc(100%-3.5rem)] sm:basis-auto sm:min-w-[260px] relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground pointer-events-none" />
           <input
             type="text"

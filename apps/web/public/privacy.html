@@ -13,6 +13,9 @@
   <meta property="og:description" content="นโยบายความเป็นส่วนตัวของ BESTCHOICE — Privacy Policy" />
   <meta property="og:url" content="https://bestchoicephone.app/privacy.html" />
 
+  <link rel="stylesheet" href="/fonts/noto-sans-thai-looped/fonts.css" />
+  <link rel="preload" href="/fonts/noto-sans-thai-looped/noto-sans-thai-looped-thai-variable.woff2" as="font" type="font/woff2" crossorigin />
+
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     html, body {
@@ -97,6 +100,14 @@
     }
     a { color: #2563eb; text-decoration: underline; }
     a:hover { color: #1d4ed8; }
+    /* Screen UI follows the app; printed policy typography stays unchanged. */
+    @media screen {
+      html, body, code { font-family: "Noto Sans Thai Looped", system-ui, sans-serif; }
+      code, a { overflow-wrap: anywhere; }
+      .table-scroll { max-width: 100%; overflow-x: auto; }
+      .table-scroll:focus-visible { outline: 2px solid #2563eb; outline-offset: 2px; }
+      .table-scroll table { min-width: 560px; }
+    }
   </style>
 </head>
 <body>
@@ -198,6 +209,7 @@
       </p>
 
       <h3>8.1 What we collect</h3>
+      <div class="table-scroll" role="region" aria-label="ข้อมูลที่เก็บรวบรวม เลื่อนเพื่อดูทุกคอลัมน์" tabindex="0">
       <table>
         <thead>
           <tr>
@@ -240,6 +252,7 @@
           </tr>
         </tbody>
       </table>
+      </div>
 
       <h3>8.2 How we use it</h3>
       <ul>

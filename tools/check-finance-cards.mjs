@@ -234,7 +234,7 @@ async function check(page, label) {
   console.log('PASS', label, `${audit.length} values fit`);
 }
 try {
-  for (const width of [390, 768, 1056, 1440]) {
+  for (const width of [320, 375, 390, 768, 1056, 1440]) {
     const page = await browser.newPage({
       viewport: { width, height: 1000 },
       reducedMotion: 'reduce',

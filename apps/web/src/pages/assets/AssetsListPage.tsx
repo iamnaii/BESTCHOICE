@@ -312,7 +312,7 @@ export default function AssetsListPage() {
       <AssetHubTabs />
       <PageHeader
         title="ซื้อสินทรัพย์ถาวร"
-        subtitle="จัดการการซื้อสินทรัพย์ถาวร (กลุ่ม 12-21XX) — อุปกรณ์ · ส่วนปรับปรุง · ตกแต่ง · ยานพาหนะ · TFRS + Accrual VAT"
+        subtitle="จัดการสินทรัพย์ถาวรและติดตามค่าเสื่อมราคา"
         icon={<Boxes className="size-5" />}
         breadcrumb={
           <Breadcrumb>

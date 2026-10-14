@@ -283,7 +283,7 @@ function ProspectCard({ room, canFill, onFill, onLink, onOpenProfile, hints }: {
         <span className="text-muted-foreground">›</span>
       </button>
       <p className="m-0 mt-2 text-xs leading-relaxed text-muted-foreground">
-        เติมเบอร์แล้วจะเช็คเครดิต ทำสัญญา และเห็นแชทช่องทางอื่นของคนนี้ได้ · ถ้าเป็นลูกค้าเดิมอยู่แล้ว ผูกกับคนเดิมได้เลย
+        เพิ่มเบอร์หรือผูกลูกค้าเดิม เพื่อเช็กเครดิต ทำสัญญา และดูแชทอื่น
       </p>
       <div className="mt-2 flex gap-1.5">
         <Button
@@ -353,12 +353,12 @@ function ChannelsGroup({
         </button>
       ))}
       {placeholder && (
-        <p className="mb-0 mt-2 text-xs leading-relaxed text-muted-foreground">ยังไม่รู้ว่ามีช่องทางอื่นไหม — จะเห็นเมื่อเติมเบอร์ หรือผูกกับลูกค้าเดิม</p>
+        <p className="mb-0 mt-2 text-xs leading-relaxed text-muted-foreground">เพิ่มเบอร์หรือผูกลูกค้าเดิมเพื่อดูแชทช่องทางอื่น</p>
       )}
       {!linked && !placeholder && (
         <>
           <p className="mb-2 mt-2 text-xs leading-relaxed text-muted-foreground">
-            ห้องนี้ยังไม่ได้ผูกกับลูกค้า จึงยังไม่รู้ว่าลูกค้ารายนี้มีแชทช่องทางอื่นอีกหรือไม่
+            ผูกลูกค้าเพื่อดูแชทช่องทางอื่น
           </p>
           <Button variant="outline" size="sm" className="w-full" onClick={onLink}>
             <Search className="mr-1.5 size-3.5" /> ผูกห้องนี้กับลูกค้าเพื่อดูช่องทางอื่น
@@ -764,7 +764,7 @@ export default function RoomDossier({ onClose, room, customerId, activeRoomId, o
               ) : (
                 <div className="rounded-[10px] border border-dashed border-warning bg-warning/10 p-3 text-xs leading-relaxed text-foreground">
                   <p className="m-0 font-bold">⚠ ห้องนี้ยังไม่ได้ผูกกับลูกค้า</p>
-                  <p className="m-0 text-foreground/80">ข้อมูลสัญญา การชำระ และแชทช่องทางอื่นของคนเดียวกัน จะใช้งานไม่ได้จนกว่าจะผูก — ปกติทำตอนทำสัญญาที่ร้าน</p>
+                  <p className="m-0 text-foreground/80">ผูกลูกค้าเพื่อเปิดดูสัญญา การชำระเงิน และแชทช่องทางอื่น</p>
                   <div className="mt-2 flex gap-1.5">
                     <Button variant="outline" size="sm" className="flex-1" onClick={() => setLinkOpen(true)}>
                       <Search className="mr-1 size-3.5" /> ค้นหาลูกค้าเดิม
@@ -854,8 +854,8 @@ export default function RoomDossier({ onClose, room, customerId, activeRoomId, o
             ) : placeholder ? (
               /* ผู้สนใจมีเจ้าของแล้ว — ทางไปต่อจริงคือเติมเบอร์ หรือผูกกับลูกค้าเดิม (ไม่ใช่ "ผูกลูกค้า") */
               <>
-                <Group label="สัญญา"><Hint>ยังไม่มี — เติมเบอร์หรือผูกกับลูกค้าเดิมแล้วจะเห็นสัญญาและค่างวด</Hint></Group>
-                <Group label="ประวัติการชำระ"><Hint>ยังไม่มี — เติมเบอร์หรือผูกกับลูกค้าเดิมแล้วจะเห็นสัญญาและค่างวด</Hint></Group>
+                <Group label="สัญญา"><Hint>เพิ่มเบอร์หรือผูกลูกค้าเดิมเพื่อดูสัญญาและค่างวด</Hint></Group>
+                <Group label="ประวัติการชำระ"><Hint>เพิ่มเบอร์หรือผูกลูกค้าเดิมเพื่อดูสัญญาและค่างวด</Hint></Group>
                 <Group label="บันทึกการโทร"><Hint>ยังไม่มี — ผู้สนใจคนนี้ยังไม่มีเบอร์</Hint></Group>
               </>
             ) : (

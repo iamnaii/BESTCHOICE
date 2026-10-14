@@ -126,10 +126,10 @@ export default function LettersPage() {
   };
 
   return (
-    <div className="p-4 pb-20 max-w-7xl mx-auto">
-      <div className="flex items-center justify-between mb-4">
+    <div className="pb-20 pt-5 sm:p-4 sm:pb-20 max-w-7xl mx-auto">
+      <div className="flex flex-col items-start gap-3 mb-4 sm:flex-row sm:items-center sm:justify-between">
         <h1 className="text-xl font-semibold flex items-center gap-2">
-          <Mail className="size-5" /> จัดการจดหมาย
+          <Mail className="size-5 shrink-0" aria-hidden="true" /> จัดการจดหมาย
         </h1>
         <ExportExcelButton filters={fullFilters} />
       </div>

@@ -206,14 +206,17 @@ describe('Inbox rail on desktop', () => {
     expect(screen.queryByRole('tablist', { name: 'หมวดงาน' })).toBeNull();
     expect(screen.getByText('หน้าร้าน')).toBeInTheDocument();
   });
-  it('keeps the compact header on small screens', () => {
+  it('keeps customer and team entry points visible and moves utilities into the mobile menu', () => {
     mocks.mobile = true;
     view(vi.fn());
     expect(screen.queryByRole('complementary', { name: 'ศูนย์การสื่อสาร' })).toBeNull();
     expect(screen.queryByRole('link', { name: 'กลับหน้าหลัก' })).toBeNull();
     expect(document.querySelector('.inbox-workspace-header')).not.toBeNull();
-    expect(screen.getByRole('heading', { name: 'ศูนย์การสื่อสาร' })).not.toHaveClass('sr-only');
-    expect(screen.getByRole('button', { name: 'คิวงาน' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'แชท' })).not.toHaveClass('sr-only');
+    expect(screen.getByRole('button', { name: 'แชทลูกค้า' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'คิวงาน' })).toHaveTextContent('งานทีม');
+    expect(screen.queryByRole('button', { name: 'สลับธีม' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'เมนูงานแชท' }));
     expect(screen.getByRole('button', { name: 'สลับธีม' })).toBeInTheDocument();
   });
 });

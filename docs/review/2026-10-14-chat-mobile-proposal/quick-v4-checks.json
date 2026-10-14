@@ -1,0 +1,208 @@
+{
+  "date": "2026-10-14T18:10:59.819Z",
+  "scope": "Synthetic interactive prototype only; no physical device or production verification",
+  "status": "pass",
+  "results": [
+    {
+      "width": 320,
+      "height": 667,
+      "theme": "light",
+      "status": "pass",
+      "checks": [
+        "layout",
+        "touch-targets",
+        "search",
+        "category",
+        "empty-reset",
+        "preview",
+        "edit-retained",
+        "blank-disabled",
+        "escape-focus",
+        "append-draft",
+        "media-staged",
+        "no-auto-send",
+        "separate-note-draft"
+      ]
+    },
+    {
+      "width": 320,
+      "height": 667,
+      "theme": "dark",
+      "status": "pass",
+      "checks": [
+        "layout",
+        "touch-targets",
+        "search",
+        "category",
+        "empty-reset",
+        "preview",
+        "edit-retained",
+        "blank-disabled",
+        "escape-focus",
+        "append-draft",
+        "media-staged",
+        "no-auto-send",
+        "separate-note-draft"
+      ]
+    },
+    {
+      "width": 375,
+      "height": 667,
+      "theme": "light",
+      "status": "pass",
+      "checks": [
+        "layout",
+        "touch-targets",
+        "search",
+        "category",
+        "empty-reset",
+        "preview",
+        "edit-retained",
+        "blank-disabled",
+        "escape-focus",
+        "append-draft",
+        "media-staged",
+        "no-auto-send",
+        "separate-note-draft"
+      ]
+    },
+    {
+      "width": 375,
+      "height": 667,
+      "theme": "dark",
+      "status": "pass",
+      "checks": [
+        "layout",
+        "touch-targets",
+        "search",
+        "category",
+        "empty-reset",
+        "preview",
+        "edit-retained",
+        "blank-disabled",
+        "escape-focus",
+        "append-draft",
+        "media-staged",
+        "no-auto-send",
+        "separate-note-draft"
+      ]
+    },
+    {
+      "width": 390,
+      "height": 667,
+      "theme": "light",
+      "status": "pass",
+      "checks": [
+        "layout",
+        "touch-targets",
+        "search",
+        "category",
+        "empty-reset",
+        "preview",
+        "edit-retained",
+        "blank-disabled",
+        "escape-focus",
+        "append-draft",
+        "media-staged",
+        "no-auto-send",
+        "separate-note-draft"
+      ]
+    },
+    {
+      "width": 390,
+      "height": 667,
+      "theme": "dark",
+      "status": "pass",
+      "checks": [
+        "layout",
+        "touch-targets",
+        "search",
+        "category",
+        "empty-reset",
+        "preview",
+        "edit-retained",
+        "blank-disabled",
+        "escape-focus",
+        "append-draft",
+        "media-staged",
+        "no-auto-send",
+        "separate-note-draft"
+      ]
+    },
+    {
+      "width": 430,
+      "height": 667,
+      "theme": "light",
+      "status": "pass",
+      "checks": [
+        "layout",
+        "touch-targets",
+        "search",
+        "category",
+        "empty-reset",
+        "preview",
+        "edit-retained",
+        "blank-disabled",
+        "escape-focus",
+        "append-draft",
+        "media-staged",
+        "no-auto-send",
+        "separate-note-draft"
+      ]
+    },
+    {
+      "width": 430,
+      "height": 667,
+      "theme": "dark",
+      "status": "pass",
+      "checks": [
+        "layout",
+        "touch-targets",
+        "search",
+        "category",
+        "empty-reset",
+        "preview",
+        "edit-retained",
+        "blank-disabled",
+        "escape-focus",
+        "append-draft",
+        "media-staged",
+        "no-auto-send",
+        "separate-note-draft"
+      ]
+    },
+    {
+      "width": 320,
+      "height": 568,
+      "theme": "dark",
+      "status": "pass",
+      "checks": [
+        "preview-action-visible",
+        "overflow",
+        "escape-navigation"
+      ]
+    },
+    {
+      "width": 375,
+      "height": 440,
+      "theme": "dark",
+      "status": "pass",
+      "checks": [
+        "preview-action-visible",
+        "overflow",
+        "escape-navigation"
+      ]
+    },
+    {
+      "width": 844,
+      "height": 390,
+      "theme": "dark",
+      "status": "pass",
+      "checks": [
+        "preview-action-visible",
+        "overflow",
+        "escape-navigation"
+      ]
+    }
+  ]
+}

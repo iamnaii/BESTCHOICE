@@ -3,8 +3,8 @@
 @import './styles/tokens.css';
 @import './styles/motion.css';
 
-/* Prompt is the single storefront face. Its wider loopless shapes use a
-   16px body and generous leading; display size/weight establish hierarchy. */
+/* Noto Sans Thai Looped is shared with the admin/customer UI.
+   Thai headings retain room for stacked vowel and tone marks. */
 
 @layer base {
   body {
@@ -21,7 +21,7 @@
   h5,
   h6 {
     font-family: var(--font-head);
-    line-height: 1.35;
+    line-height: 1.5;
   }
   button,
   input,
@@ -38,7 +38,7 @@
   .font-display {
     font-family: var(--font-head);
     letter-spacing: normal;
-    line-height: 1.35;
+    line-height: 1.5;
   }
   /* Prices and counts use the same family; tabular figures align totals. */
   .num {
@@ -46,8 +46,7 @@
     font-feature-settings: 'tnum';
     letter-spacing: normal;
   }
-  /* Latin lockup: the BESTCHOICE wordmark. Prompt carries real 700–800
-     weights so no faux-bold. */
+  /* The text wordmark uses the same variable family and real bold weights. */
   .font-brand {
     font-family: var(--font-head);
     letter-spacing: 0.02em;

@@ -308,8 +308,8 @@ describe('RoomDossier — การ์ดผู้สนใจจากแชท
     expect(screen.getByRole('button', { name: /ผูกกับลูกค้าเดิม/ })).toBeEnabled();
     expect(screen.queryByText('⚠ ห้องนี้ยังไม่ได้ผูกกับลูกค้า')).toBeNull();
     expect(screen.queryByRole('button', { name: /สร้างลูกค้าใหม่/ })).toBeNull();
-    expect(screen.getByText(/เติมเบอร์แล้วจะเช็คเครดิต ทำสัญญา และเห็นแชทช่องทางอื่นของคนนี้ได้/)).toBeInTheDocument();
-    expect(screen.getByText(/ยังไม่รู้ว่ามีช่องทางอื่นไหม — จะเห็นเมื่อเติมเบอร์ หรือผูกกับลูกค้าเดิม/)).toBeInTheDocument();
+    expect(screen.getByText('เพิ่มเบอร์หรือผูกลูกค้าเดิม เพื่อเช็กเครดิต ทำสัญญา และดูแชทอื่น')).toBeInTheDocument();
+    expect(screen.getByText('เพิ่มเบอร์หรือผูกลูกค้าเดิมเพื่อดูแชทช่องทางอื่น')).toBeInTheDocument();
     expect(apiGet).not.toHaveBeenCalledWith(expect.stringContaining('/cross-channel'));
     expect(apiGet).not.toHaveBeenCalledWith(expect.stringContaining('/chat-summary'));
     expect(screen.getByRole('button', { name: 'เปิดโปรไฟล์ลูกค้าเต็มหน้า' })).toBeEnabled();
@@ -414,7 +414,7 @@ describe('RoomDossier — การ์ดผู้สนใจจากแชท
   it('แท็บสัญญา/ชำระ + ประกัน ของห้องผู้สนใจ บอกทางเติมเบอร์/ผูกลูกค้าเดิม ไม่ใช่ "ผูกลูกค้า"', () => {
     wrap(<RoomDossier room={PROSPECT_ROOM} customerId="p1" activeRoomId="r-1" />);
     fireEvent.click(screen.getByRole('tab', { name: /สัญญา\/ชำระ/ }));
-    expect(screen.getAllByText('ยังไม่มี — เติมเบอร์หรือผูกกับลูกค้าเดิมแล้วจะเห็นสัญญาและค่างวด')).toHaveLength(2);
+    expect(screen.getAllByText('เพิ่มเบอร์หรือผูกลูกค้าเดิมเพื่อดูสัญญาและค่างวด')).toHaveLength(2);
     expect(screen.getByText('ยังไม่มี — ผู้สนใจคนนี้ยังไม่มีเบอร์')).toBeInTheDocument();
     expect(screen.queryByText(/ผูกลูกค้าแล้วจะเห็น/)).toBeNull();
     expect(screen.queryByText(/ยังไม่ผูกลูกค้า/)).toBeNull();

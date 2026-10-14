@@ -1,4 +1,4 @@
-import { useId, useRef, useState } from 'react';
+import { useId, useRef, useState, useSyncExternalStore } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Lock, X } from 'lucide-react';
 import api from '@/lib/api';
@@ -15,6 +15,37 @@ export interface MentionPerson {
   role?: string;
   detail?: string;
 }
+export interface SavedNoteDraft {
+  content: string;
+  selected: MentionPerson[];
+  intent: { fingerprint: string; id: string } | null;
+}
+const EMPTY_NOTE: SavedNoteDraft = { content: '', selected: [], intent: null };
+export function createNoteDraftStore() {
+  const drafts = new Map<string, SavedNoteDraft>();
+  const listeners = new Set<() => void>();
+  return {
+    get: (key: string) => drafts.get(key) ?? EMPTY_NOTE,
+    set: (key: string, draft: SavedNoteDraft) => {
+      drafts.set(key, draft);
+      listeners.forEach((notify) => notify());
+    },
+    subscribe: (notify: () => void) => {
+      listeners.add(notify);
+      return () => {
+        listeners.delete(notify);
+      };
+    },
+  };
+}
+type NoteDraftStore = ReturnType<typeof createNoteDraftStore>;
+const noSubscription = () => () => {};
+const noteFingerprint = (draft: SavedNoteDraft) =>
+  JSON.stringify({
+    content: draft.content.trim(),
+    mentionedUserIds: draft.selected.map((person) => person.id),
+  });
+
 export function NoteMentionComposer({
   people,
   loading,
@@ -22,6 +53,8 @@ export function NoteMentionComposer({
   onRetry,
   onSave,
   mentionsEnabled = true,
+  draftCache,
+  draftKey,
 }: {
   people: MentionPerson[];
   loading?: boolean;
@@ -29,16 +62,39 @@ export function NoteMentionComposer({
   onRetry: () => void;
   onSave: (draft: NoteDraft) => void | Promise<boolean | void>;
   mentionsEnabled?: boolean;
+  draftCache?: NoteDraftStore;
+  draftKey?: string;
 }) {
-  const [content, setContent] = useState('');
-  const [selected, setSelected] = useState<MentionPerson[]>([]);
+  const shared = useSyncExternalStore(draftCache?.subscribe ?? noSubscription, () =>
+    draftCache && draftKey ? draftCache.get(draftKey) : EMPTY_NOTE,
+  );
+  const [localContent, setLocalContent] = useState('');
+  const [localSelected, setLocalSelected] = useState<MentionPerson[]>([]);
+  const content = draftCache && draftKey ? shared.content : localContent;
+  const selected = draftCache && draftKey ? shared.selected : localSelected;
+  const setContent = (value: string) => {
+    if (draftCache && draftKey)
+      draftCache.set(draftKey, { ...draftCache.get(draftKey), content: value });
+    else setLocalContent(value);
+  };
+  const setSelected = (
+    value: MentionPerson[] | ((previous: MentionPerson[]) => MentionPerson[]),
+  ) => {
+    if (draftCache && draftKey) {
+      const current = draftCache.get(draftKey);
+      draftCache.set(draftKey, {
+        ...current,
+        selected: typeof value === 'function' ? value(current.selected) : value,
+      });
+    } else setLocalSelected(value);
+  };
   const [search, setSearch] = useState('');
   const [expanded, setExpanded] = useState(false);
   const [active, setActive] = useState(0);
   const [saving, setSaving] = useState(false);
   const [failed, setFailed] = useState(false);
   const listId = useId();
-  const intent = useRef<{ fingerprint: string; id: string } | null>(null);
+  const intent = useRef<{ fingerprint: string; id: string } | null>(shared.intent);
   const fingerprint = JSON.stringify({
     content: content.trim(),
     mentionedUserIds: selected.map((p) => p.id),
@@ -60,8 +116,12 @@ export function NoteMentionComposer({
   const save = async () => {
     if (saving || !content.trim()) return;
     const snapshot = fingerprint;
-    if (intent.current?.fingerprint !== snapshot)
-      intent.current = { fingerprint: snapshot, id: crypto.randomUUID() };
+    const previousIntent = draftCache && draftKey ? draftCache.get(draftKey).intent : intent.current;
+    intent.current = previousIntent?.fingerprint === snapshot
+      ? previousIntent
+      : { fingerprint: snapshot, id: crypto.randomUUID() };
+    if (draftCache && draftKey)
+      draftCache.set(draftKey, { ...draftCache.get(draftKey), intent: intent.current });
     setSaving(true);
     setFailed(false);
     try {
@@ -74,9 +134,14 @@ export function NoteMentionComposer({
         setFailed(true);
         return;
       }
-      if (live.current === snapshot) {
-        setContent('');
-        setSelected([]);
+      const currentFingerprint =
+        draftCache && draftKey ? noteFingerprint(draftCache.get(draftKey)) : live.current;
+      if (currentFingerprint === snapshot) {
+        if (draftCache && draftKey) draftCache.set(draftKey, EMPTY_NOTE);
+        else {
+          setLocalContent('');
+          setLocalSelected([]);
+        }
         setSearch('');
         intent.current = null;
       }
@@ -87,12 +152,12 @@ export function NoteMentionComposer({
     }
   };
   return (
-    <div className="min-w-0 space-y-2 p-3">
+    <div className="inbox-note-composer min-w-0 space-y-2 p-3">
       <textarea
         data-chat-composer-input
         aria-label="พิมพ์โน้ตภายใน"
         placeholder="ฝากข้อมูลให้ทีม ลูกค้าไม่เห็นข้อความนี้"
-        rows={3}
+        rows={2}
         maxLength={5000}
         value={content}
         onChange={(e) => setContent(e.target.value)}
@@ -100,6 +165,7 @@ export function NoteMentionComposer({
           if (
             e.key === 'Enter' &&
             !e.shiftKey &&
+            !window.matchMedia?.('(max-width: 1023px)').matches &&
             !e.nativeEvent.isComposing &&
             e.nativeEvent.keyCode !== 229
           ) {
@@ -144,8 +210,10 @@ export function NoteMentionComposer({
               aria-activedescendant={
                 expanded && candidates[active] ? `${listId}-${candidates[active].id}` : undefined
               }
-              placeholder={selected.length >= 20 ? 'เลือกผู้รับครบ 20 คนแล้ว' : '@ เลือกผู้รับแจ้งเตือน'}
-            disabled={selected.length >= 20}
+              placeholder={
+                selected.length >= 20 ? 'เลือกผู้รับครบ 20 คนแล้ว' : '@ เลือกผู้รับแจ้งเตือน'
+              }
+              disabled={selected.length >= 20}
               value={search}
               onFocus={() => setExpanded(true)}
               onBlur={() => setExpanded(false)}
@@ -245,12 +313,15 @@ export function NoteMentionComposer({
 export default function NoteMentionInput({
   roomId,
   onSave,
+  draftCache,
 }: {
   roomId: string;
   onSave: (draft: NoteDraft) => void | Promise<boolean | void>;
+  draftCache?: NoteDraftStore;
 }) {
   const work = useChatWorkSettings();
   const enabled = !!work.settings.data?.flags.chat_mentions_enabled;
+  const draftKey = `${work.key.join(':')}:${roomId}`;
   const staff = useQuery({
     queryKey: [...work.key, 'eligible', roomId],
     queryFn: () =>
@@ -261,7 +332,9 @@ export default function NoteMentionInput({
   });
   return (
     <NoteMentionComposer
-      key={`${work.key.join(':')}:${roomId}`}
+      key={draftKey}
+      draftCache={draftCache}
+      draftKey={draftKey}
       people={staff.data ?? []}
       loading={staff.isLoading}
       error={staff.isError}

@@ -480,9 +480,8 @@ function ConfigDrawer({
                   <div className="mt-3 rounded-lg border border-border p-3">
                     <div className="text-sm font-medium">ปุ่ม Get Started + เมนู Messenger</div>
                     <p className="mt-0.5 text-xs text-muted-foreground leading-snug">
-                      ตั้งปุ่มเริ่มต้นใช้งาน + ข้อความทักทาย + เมนูของเพจ — ต้องกด 1 ครั้งหลังตั้งค่า
-                      Facebook ไม่งั้นลิงก์ Messenger จากหน้าสินค้าจะไม่บอกว่าลูกค้ามาจากเครื่องไหน
-                      (กดซ้ำได้ ไม่มีผลข้างเคียง)
+                      ตั้งค่าครั้งแรกเพื่อให้แชทจากหน้าสินค้าระบุเครื่องที่ลูกค้าสนใจ
+                      พร้อมสร้างข้อความทักทายและเมนูเพจ กดซ้ำได้
                     </p>
                     <Button
                       type="button"
@@ -505,8 +504,8 @@ function ConfigDrawer({
                   <div className="mt-3 rounded-lg border border-border p-3">
                     <div className="text-sm font-medium">รูปโปรไฟล์ลูกค้า (Facebook)</div>
                     <p className="mt-0.5 text-xs text-muted-foreground leading-snug">
-                      ดึงชื่อ + รูปโปรไฟล์ของห้องแชทเก่าที่ยังไม่มีรูป — กดซ้ำได้จนกว่า “เหลือ” จะเป็น 0
-                      (บันทึก Page Access Token ที่ใช้ได้ก่อน)
+                      เติมชื่อและรูปให้แชทเก่า หลังบันทึก Page Access Token แล้ว
+                      กดซ้ำได้จนรายการคงเหลือเป็น 0
                     </p>
                     <Button
                       type="button"

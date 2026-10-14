@@ -269,7 +269,9 @@ export default function StickerPrintPage() {
         <PageHeader
           icon={<Tag aria-hidden="true" className="size-4" strokeWidth={1.75} />}
           title="พิมพ์สติกเกอร์"
-          subtitle="เลือกเครื่องจากสต็อกพร้อมขาย เพิ่มเข้าคิว แล้วสั่งพิมพ์ทีเดียว · thermal 50 × 30 mm · ราคาและค่างวดจากตัวเครื่อง"
+        subtitle="เลือกเครื่องเข้าคิวเพื่อพิมพ์สติกเกอร์ 50 × 30 มม."
+        helpLabel="วิธีพิมพ์สติกเกอร์"
+        help="เลือกเครื่องจากสต็อกพร้อมขายแล้วพิมพ์พร้อมกันได้หลายเครื่อง ราคาและค่างวดอ้างอิงข้อมูลของแต่ละเครื่อง ใช้กับเครื่องพิมพ์ความร้อนขนาด 50 × 30 มม."
           action={
             <div className="hidden items-center gap-3 rounded-md border border-border bg-card px-3.5 py-1.5 text-xs sm:flex">
               <span>

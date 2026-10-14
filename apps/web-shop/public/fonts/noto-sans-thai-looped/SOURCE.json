@@ -1,0 +1,33 @@
+{
+  "family": "Noto Sans Thai Looped",
+  "version": "Google Fonts v16",
+  "downloadedAt": "2026-10-14",
+  "weights": "100\u2013900",
+  "style": "normal",
+  "width": "100%",
+  "license": "SIL Open Font License 1.1; see OFL.txt",
+  "cssSource": "https://fonts.googleapis.com/css2?family=Noto+Sans+Thai+Looped:wght@100..900&display=swap",
+  "assets": [
+    {
+      "subset": "thai",
+      "file": "noto-sans-thai-looped-thai-variable.woff2",
+      "source": "https://fonts.gstatic.com/s/notosansthailooped/v16/B50iF6pOpWTRcGrhOVJJ3-oPfY7WQuFu5R36MIjwurFMX_p0KVmQBWnPNHjjNyJ9-g.woff2",
+      "sha256": "bb3843f1db73e4a3c754052dd344c2558d883e7d6a5868caeb4c15b02b76d746",
+      "bytes": 29508
+    },
+    {
+      "subset": "latin-ext",
+      "file": "noto-sans-thai-looped-latin-ext-variable.woff2",
+      "source": "https://fonts.gstatic.com/s/notosansthailooped/v16/B50iF6pOpWTRcGrhOVJJ3-oPfY7WQuFu5R36MIjwurFMX_p0KVmQBXPPNHjjNyJ9-g.woff2",
+      "sha256": "cb8ea05ec9adaa61875903abc6484476f600d8aad0413b170930f13b391a4e0e",
+      "bytes": 14496
+    },
+    {
+      "subset": "latin",
+      "file": "noto-sans-thai-looped-latin-variable.woff2",
+      "source": "https://fonts.gstatic.com/s/notosansthailooped/v16/B50iF6pOpWTRcGrhOVJJ3-oPfY7WQuFu5R36MIjwurFMX_p0KVmQBX3PNHjjNyI.woff2",
+      "sha256": "cef08a2ed891a8fb97603c6845586ff57cb92410797689222a2a4dfd723a6afa",
+      "bytes": 26136
+    }
+  ]
+}

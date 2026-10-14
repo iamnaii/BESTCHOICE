@@ -1,0 +1,320 @@
+{
+  "date": "2026-10-14T18:23:18.639Z",
+  "status": "pass",
+  "scope": "Interactive synthetic prototype; viewport resizing is not a physical mobile keyboard test; no production API",
+  "results": [
+    {
+      "width": 320,
+      "height": 568,
+      "theme": "light",
+      "status": "pass",
+      "layout": {
+        "overflow": false,
+        "header": 64,
+        "composer": 103,
+        "history": 381,
+        "small": [],
+        "composerBottom": 568,
+        "height": 568
+      },
+      "checks": [
+        "list-filter-search",
+        "room-back",
+        "browser-back",
+        "room-drafts",
+        "chat-note-drafts",
+        "quick-reply-recipient",
+        "quote-cancel",
+        "file-staging",
+        "no-auto-send",
+        "note-save-isolation",
+        "bot-state",
+        "team-task-opens-note",
+        "team-task-not-completed-by-opening"
+      ]
+    },
+    {
+      "width": 320,
+      "height": 568,
+      "theme": "dark",
+      "status": "pass",
+      "layout": {
+        "overflow": false,
+        "header": 64,
+        "composer": 103,
+        "history": 381,
+        "small": [],
+        "composerBottom": 568,
+        "height": 568
+      },
+      "checks": [
+        "list-filter-search",
+        "room-back",
+        "browser-back",
+        "room-drafts",
+        "chat-note-drafts",
+        "quick-reply-recipient",
+        "quote-cancel",
+        "file-staging",
+        "no-auto-send",
+        "note-save-isolation",
+        "bot-state",
+        "team-task-opens-note",
+        "team-task-not-completed-by-opening"
+      ]
+    },
+    {
+      "width": 375,
+      "height": 667,
+      "theme": "light",
+      "status": "pass",
+      "layout": {
+        "overflow": false,
+        "header": 64,
+        "composer": 103,
+        "history": 480,
+        "small": [],
+        "composerBottom": 667,
+        "height": 667
+      },
+      "checks": [
+        "list-filter-search",
+        "room-back",
+        "browser-back",
+        "room-drafts",
+        "chat-note-drafts",
+        "quick-reply-recipient",
+        "quote-cancel",
+        "file-staging",
+        "no-auto-send",
+        "note-save-isolation",
+        "bot-state",
+        "team-task-opens-note",
+        "team-task-not-completed-by-opening"
+      ]
+    },
+    {
+      "width": 375,
+      "height": 667,
+      "theme": "dark",
+      "status": "pass",
+      "layout": {
+        "overflow": false,
+        "header": 64,
+        "composer": 103,
+        "history": 480,
+        "small": [],
+        "composerBottom": 667,
+        "height": 667
+      },
+      "checks": [
+        "list-filter-search",
+        "room-back",
+        "browser-back",
+        "room-drafts",
+        "chat-note-drafts",
+        "quick-reply-recipient",
+        "quote-cancel",
+        "file-staging",
+        "no-auto-send",
+        "note-save-isolation",
+        "bot-state",
+        "team-task-opens-note",
+        "team-task-not-completed-by-opening"
+      ]
+    },
+    {
+      "width": 390,
+      "height": 844,
+      "theme": "light",
+      "status": "pass",
+      "layout": {
+        "overflow": false,
+        "header": 64,
+        "composer": 103,
+        "history": 657,
+        "small": [],
+        "composerBottom": 844,
+        "height": 844
+      },
+      "checks": [
+        "list-filter-search",
+        "room-back",
+        "browser-back",
+        "room-drafts",
+        "chat-note-drafts",
+        "quick-reply-recipient",
+        "quote-cancel",
+        "file-staging",
+        "no-auto-send",
+        "note-save-isolation",
+        "bot-state",
+        "team-task-opens-note",
+        "team-task-not-completed-by-opening"
+      ]
+    },
+    {
+      "width": 390,
+      "height": 844,
+      "theme": "dark",
+      "status": "pass",
+      "layout": {
+        "overflow": false,
+        "header": 64,
+        "composer": 103,
+        "history": 657,
+        "small": [],
+        "composerBottom": 844,
+        "height": 844
+      },
+      "checks": [
+        "list-filter-search",
+        "room-back",
+        "browser-back",
+        "room-drafts",
+        "chat-note-drafts",
+        "quick-reply-recipient",
+        "quote-cancel",
+        "file-staging",
+        "no-auto-send",
+        "note-save-isolation",
+        "bot-state",
+        "team-task-opens-note",
+        "team-task-not-completed-by-opening"
+      ]
+    },
+    {
+      "width": 430,
+      "height": 932,
+      "theme": "light",
+      "status": "pass",
+      "layout": {
+        "overflow": false,
+        "header": 64,
+        "composer": 103,
+        "history": 745,
+        "small": [],
+        "composerBottom": 932,
+        "height": 932
+      },
+      "checks": [
+        "list-filter-search",
+        "room-back",
+        "browser-back",
+        "room-drafts",
+        "chat-note-drafts",
+        "quick-reply-recipient",
+        "quote-cancel",
+        "file-staging",
+        "no-auto-send",
+        "note-save-isolation",
+        "bot-state",
+        "team-task-opens-note",
+        "team-task-not-completed-by-opening"
+      ]
+    },
+    {
+      "width": 430,
+      "height": 932,
+      "theme": "dark",
+      "status": "pass",
+      "layout": {
+        "overflow": false,
+        "header": 64,
+        "composer": 103,
+        "history": 745,
+        "small": [],
+        "composerBottom": 932,
+        "height": 932
+      },
+      "checks": [
+        "list-filter-search",
+        "room-back",
+        "browser-back",
+        "room-drafts",
+        "chat-note-drafts",
+        "quick-reply-recipient",
+        "quote-cancel",
+        "file-staging",
+        "no-auto-send",
+        "note-save-isolation",
+        "bot-state",
+        "team-task-opens-note",
+        "team-task-not-completed-by-opening"
+      ]
+    },
+    {
+      "width": 375,
+      "height": 440,
+      "theme": "light",
+      "status": "pass",
+      "checks": [
+        "short-landscape-tablet",
+        "reduced-motion",
+        "composer-visible",
+        "touch-targets"
+      ]
+    },
+    {
+      "width": 375,
+      "height": 440,
+      "theme": "dark",
+      "status": "pass",
+      "checks": [
+        "short-landscape-tablet",
+        "reduced-motion",
+        "composer-visible",
+        "touch-targets"
+      ]
+    },
+    {
+      "width": 844,
+      "height": 390,
+      "theme": "light",
+      "status": "pass",
+      "checks": [
+        "short-landscape-tablet",
+        "reduced-motion",
+        "composer-visible",
+        "touch-targets"
+      ]
+    },
+    {
+      "width": 844,
+      "height": 390,
+      "theme": "dark",
+      "status": "pass",
+      "checks": [
+        "short-landscape-tablet",
+        "reduced-motion",
+        "composer-visible",
+        "touch-targets"
+      ]
+    },
+    {
+      "width": 768,
+      "height": 1024,
+      "theme": "light",
+      "status": "pass",
+      "checks": [
+        "short-landscape-tablet",
+        "reduced-motion",
+        "composer-visible",
+        "touch-targets"
+      ]
+    },
+    {
+      "width": 768,
+      "height": 1024,
+      "theme": "dark",
+      "status": "pass",
+      "checks": [
+        "short-landscape-tablet",
+        "reduced-motion",
+        "composer-visible",
+        "touch-targets"
+      ]
+    }
+  ],
+  "errors": []
+}

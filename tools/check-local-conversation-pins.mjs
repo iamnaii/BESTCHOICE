@@ -1,3 +1,4 @@
+import { showWorkControl, toggleChatTheme } from './chat-ui.mjs';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import { expect } from '@playwright/test';
@@ -36,7 +37,7 @@ export async function checkConversationPins(browser, origin, output) {
       await expect(row).toBeVisible();
       const initialUrl = page.url();
       for (const dark of [false, true]) {
-        if (dark) await page.getByRole('button', { name: 'สลับธีม', exact: true }).click();
+        if (dark) await toggleChatTheme(page);
         for (const item of await page.locator('.inbox-room-item').all()) {
           const pin = item.getByRole('button', { name: /^(ปักหมุด|ถอดหมุด)$/ });
           await item.hover();
@@ -51,7 +52,7 @@ export async function checkConversationPins(browser, origin, output) {
           }
         }
         await expect(row.getByText('29', { exact: true })).toBeVisible();
-        await expect(page.getByText('99+', { exact: true })).toBeVisible();
+        await expect(page.locator('.inbox-room-item').filter({ hasText: 'ลูกค้าทดสอบปักหมุด 2' }).getByText('99+', { exact: true })).toBeVisible();
         assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
         await page.screenshot({ path: join(output, `conversation-pin-${width}-${dark ? 'dark' : 'light'}.png`) });
       }

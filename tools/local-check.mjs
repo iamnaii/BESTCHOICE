@@ -76,6 +76,7 @@ try {
       page.on('console', message => { if (message.type() === 'error') errors.push(`${message.text()} (${message.location().url})`); });
       await page.goto(info.url, { waitUntil: 'domcontentloaded' });
       await expect(page.getByRole('button', { name: /^รอตอบ/ })).toBeVisible();
+      if (viewport.width < 1024) await page.getByRole('button', { name: 'ตัวกรองและเครื่องมือ', exact: true }).click();
       await expect(page.getByRole('combobox', { name: 'กรองตามช่องทาง' })).toBeVisible();
       await expect(page.getByText('เกิดข้อผิดพลาด', { exact: true })).toHaveCount(0);
       const width = await page.evaluate(() => ({ viewport: innerWidth, content: document.documentElement.scrollWidth }));

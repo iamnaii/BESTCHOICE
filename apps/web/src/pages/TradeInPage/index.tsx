@@ -76,7 +76,7 @@ function Segmented<T extends string>({
               aria-checked={active}
               onClick={() => onChange(key)}
               className={cn(
-                'rounded-md leading-snug whitespace-nowrap transition-colors',
+                'min-h-11 sm:min-h-0 rounded-md leading-snug whitespace-nowrap transition-colors',
                 size === 'sm' ? 'px-2.5 py-1.5 text-xs' : 'px-3.5 py-1.5 text-sm',
                 active
                   ? 'bg-card font-medium text-foreground shadow-xs'

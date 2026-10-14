@@ -14,7 +14,7 @@ import { showChatNotification, requestNotificationPermissionIfNeeded } from './c
 import AppointmentAlertBar from './components/AppointmentAlertBar';
 import { apptState, nextAppointment } from './components/appointment';
 import { toast } from 'sonner';
-import { Lock } from 'lucide-react';
+import { ArrowLeft, Lock } from 'lucide-react';
 import QueryBoundary from '@/components/QueryBoundary';
 import ConversationList, { type InboxFilters } from './components/ConversationList';
 import { describeSendError } from './components/send-error';
@@ -46,6 +46,7 @@ export default function UnifiedInboxPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const { roomId: roomIdParam } = useParams<{ roomId: string }>();
+  const workspaceRef = useRef<HTMLDivElement>(null);
   const [activeRoomId, setActiveRoomId] = useState<string | null>(null);
   const [customerPanelOpen, setCustomerPanelOpen] = useState(false);
   const [creditFocus, setCreditFocus] = useState<{ roomId: string; tick: number } | null>(null);
@@ -335,18 +336,57 @@ export default function UnifiedInboxPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- ทำงานเฉพาะเมื่อ URL เปลี่ยน
   }, [roomIdParam]);
 
+  // iOS browser chrome/keyboard can resize visualViewport without changing dvh.
+  useEffect(() => {
+    const viewport = window.visualViewport;
+    const update = () => {
+      const root = workspaceRef.current;
+      if (!root) return;
+      if (roomIdParam && window.innerWidth < 1024 && (!viewport || viewport.scale === 1)) {
+        const bannerHeight = document.querySelector('[data-testid="test-mode-banner"]')?.getBoundingClientRect().height ?? 0;
+        root.style.setProperty('--inbox-viewport-height', `${(viewport?.height ?? window.innerHeight) - bannerHeight}px`);
+        root.style.setProperty('--inbox-viewport-top', `${(viewport?.offsetTop ?? 0) + bannerHeight}px`);
+      } else {
+        root.style.removeProperty('--inbox-viewport-height');
+        root.style.removeProperty('--inbox-viewport-top');
+      }
+    };
+    const bannerResize = new ResizeObserver(update);
+    const watchBanner = () => {
+      bannerResize.disconnect();
+      const banner = document.querySelector('[data-testid="test-mode-banner"]');
+      if (banner) bannerResize.observe(banner);
+      update();
+    };
+    const shellChanges = new MutationObserver(watchBanner);
+    const shell = workspaceRef.current?.closest('.app-shell');
+    if (shell) shellChanges.observe(shell, { childList: true });
+    watchBanner();
+    update();
+    viewport?.addEventListener('resize', update);
+    viewport?.addEventListener('scroll', update);
+    window.addEventListener('resize', update);
+    return () => {
+      bannerResize.disconnect();
+      shellChanges.disconnect();
+      viewport?.removeEventListener('resize', update);
+      viewport?.removeEventListener('scroll', update);
+      window.removeEventListener('resize', update);
+    };
+  }, [roomIdParam]);
+
   const customerId = sessionQuery.data?.customerId ?? null;
 
   // Exclude yourself so your own second tab never warns about you.
   const otherViewers = roomViewers.filter((v) => v.userId !== user?.id);
 
   return (
-    <div className="inbox-workspace h-dvh flex flex-col lg:flex-row bg-card overflow-hidden pb-[calc(64px+env(safe-area-inset-bottom))] lg:pb-0">
+    <div ref={workspaceRef} className={`inbox-workspace h-dvh flex flex-col lg:flex-row bg-card overflow-hidden ${roomIdParam ? 'inbox-room-open' : 'pb-[calc(64px+env(safe-area-inset-bottom))]'} lg:pb-0`}>
       {/* จอใหญ่: แถบข้าง 72px ซ้ายสุด (ไม่มีเมนูระบบบนหน้านี้) · จอเล็ก: แถบหัวแบบย่อด้านบน */}
       <InboxWorkTools onSelectRoom={handleSelectRoom} branchName={user?.branchName ?? undefined} />
       <div className="flex flex-1 flex-col min-w-0 min-h-0">
       {/* แถบเตือนนัดเหนือทุกแผง (ชั้น 2 ท่า OBI apptAlert) — โผล่เฉพาะเมื่อมีนัดถึงเวลา/ใกล้ถึง */}
-      <AppointmentAlertBar onGoToRoom={handleSelectRoom} />
+      <div className="inbox-global-appointments"><AppointmentAlertBar onGoToRoom={handleSelectRoom} /></div>
       <div className="flex flex-1 min-h-0">
       {/* Left panel: Conversation list */}
       <div className={`inbox-conversations w-80 flex-shrink-0 min-h-0 ${activeRoomId ? 'hidden lg:flex lg:flex-col' : 'flex flex-col w-full lg:w-80'}`}>
@@ -383,7 +423,8 @@ export default function UnifiedInboxPage() {
           /* เดิม sessionQuery ไม่มี error handling ⇒ 403 ทำให้ ChatPanel ได้ session = undefined
              แล้วเรนเดอร์หน้าว่าง "เลือกการสนทนา" เหมือนยังไม่ได้คลิกอะไร พนักงานจึงงงว่ากดไม่ติด
              ทั้งที่ห้องยังอยู่ในรายการของทุกคน (SALES เปิดห้องที่เพื่อนรับไปแล้วไม่ได้) */
-          <div className="flex-1 flex items-center justify-center p-6">
+          <div className="relative flex-1 flex items-center justify-center p-6">
+            <button type="button" aria-label="กลับ" className="inbox-touch absolute left-2 top-2 lg:hidden" onClick={() => navigate('/inbox')}><ArrowLeft className="size-5" /></button>
             <div className="max-w-sm text-center space-y-2">
               <Lock className="size-8 mx-auto text-muted-foreground" />
               <p className="text-sm font-medium text-foreground">เปิดห้องนี้ไม่ได้</p>

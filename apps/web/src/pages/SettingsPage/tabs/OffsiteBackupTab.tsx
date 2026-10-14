@@ -1,4 +1,5 @@
 import { formatDuration } from '@/lib/format-duration';
+import InlineHelp from '@/components/ui/InlineHelp';
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -137,12 +138,10 @@ export function OffsiteBackupTab() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Database className="size-5" />
-            Off-site Backup Replication
+            สำรองข้อมูลต่างภูมิภาค
           </CardTitle>
           <CardDescription className="leading-snug">
-            สำเนาข้อมูลสำคัญ (Cloud SQL dumps + เอกสารใน GCS) ไปยัง bucket อีก
-            ภูมิภาคหนึ่งวันละครั้ง (03:30 น. ตามเวลาไทย) เพื่อป้องกันเหตุการณ์
-            ภูมิภาคหลักล่ม / ลบข้อมูลโดยไม่ตั้งใจ
+            สำรองข้อมูลไปอีกภูมิภาคทุกวัน เวลา 03:30 น. ตามเวลาไทย
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -150,11 +149,13 @@ export function OffsiteBackupTab() {
             <div className="min-w-0 flex-1">
               <p className="text-sm font-medium text-foreground leading-snug">เปิดใช้งาน Off-site Backup</p>
               <p className="text-xs text-muted-foreground leading-snug mt-1">
-                เมื่อเปิดอยู่ cron จะรันทุกวัน 03:30 น. และเขียนประวัติการรันลงตาราง
-                ด้านล่าง — ก่อนเปิดต้องให้ owner สร้าง destination bucket
-                และ grant สิทธิ์ให้ Cloud Run service account ก่อน
-                (ดู <code className="break-all text-foreground">docs/guides/OFFSITE-BACKUP.md</code>)
+                ให้ผู้ดูแลตั้งค่าที่เก็บสำรองและสิทธิ์เข้าถึงก่อนเปิดใช้งาน
               </p>
+              <InlineHelp label="รายละเอียดการตั้งค่า">
+                สำรองเอกสารใน GCS และ SQL dump ไปยัง destination bucket ผู้ดูแลต้องให้สิทธิ์
+                Cloud Run service account ตามคู่มือ{' '}
+                <code className="break-all">docs/guides/OFFSITE-BACKUP.md</code>
+              </InlineHelp>
             </div>
             <Switch
               checked={data.enabled}
@@ -224,8 +225,7 @@ export function OffsiteBackupTab() {
         <CardHeader>
           <CardTitle>ประวัติการสำรองข้อมูล (7 ครั้งล่าสุด)</CardTitle>
           <CardDescription className="leading-snug">
-            แสดงการรันทั้งจาก cron และ manual trigger — รวมรอบที่ถูกข้ามเพราะ
-            Off-site Backup ปิดอยู่ ณ ขณะที่ cron ตื่น
+            รวมรอบอัตโนมัติ รอบที่สั่งเอง และรอบที่ข้ามเมื่อปิดการสำรอง
           </CardDescription>
         </CardHeader>
         <CardContent>

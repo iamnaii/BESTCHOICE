@@ -1,7 +1,19 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { nextRoomIndex } from './list-nav';
 import { isEditableTarget } from '../hooks/useKeyboardShortcuts';
-import { Search, MessageCircle, X, Bell, BellOff, CheckCheck, Loader2, ArrowRight, ArrowLeft, Clock } from 'lucide-react';
+import {
+  SlidersHorizontal,
+  Search,
+  MessageCircle,
+  X,
+  Bell,
+  BellOff,
+  CheckCheck,
+  Loader2,
+  ArrowRight,
+  ArrowLeft,
+  Clock,
+} from 'lucide-react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useDebounce } from '@/hooks/useDebounce';
 import { cn } from '@/lib/utils';
@@ -35,7 +47,13 @@ interface ConversationListProps {
   connectionStatus?: 'connecting' | 'connected' | 'reconnecting' | 'disconnected';
   muteAll?: boolean;
   onToggleMuteAll?: () => void;
-  serverCounts?: { mine: number; all: number; waiting: number; expired?: number; byChannel: Record<string, number> };
+  serverCounts?: {
+    mine: number;
+    all: number;
+    waiting: number;
+    expired?: number;
+    byChannel: Record<string, number>;
+  };
   hasMore?: boolean;
   isLoadingMore?: boolean;
   onLoadMore?: () => void;
@@ -59,6 +77,7 @@ export default function ConversationList({
   isLoadingMore,
   onLoadMore,
 }: ConversationListProps) {
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [searchInput, setSearchInput] = useState(filters.search ?? '');
   const [searchFocused, setSearchFocused] = useState(false);
   const debouncedSearch = useDebounce(searchInput, 300);
@@ -97,12 +116,16 @@ export default function ConversationList({
 
   // ตัวกรอง "รายการ" (ช่องทาง/ผู้ดูแล) ไม่แตะเลขบนแท็บ — แต่ต้องบอกหน้าว่างให้ตรงความจริง
   // แท็บของฉันล็อกผู้ดูแลเป็นตัวเองอยู่แล้ว เมนูผู้ดูแลจึงไม่นับเป็นตัวกรอง
-  const listFilterActive = filters.channel !== null || (filters.tab !== 'mine' && filters.who !== 'all');
+  const listFilterActive =
+    filters.channel !== null || (filters.tab !== 'mine' && filters.who !== 'all');
   const expiredCount = serverCounts?.expired ?? 0;
   const allClear =
     filters.tab === 'waiting' && filters.view !== 'expired' && !filters.search && !listFilterActive;
 
-  const tabCounts = useMemo(() => deriveTabCounts(sessions, currentUserId), [sessions, currentUserId]);
+  const tabCounts = useMemo(
+    () => deriveTabCounts(sessions, currentUserId),
+    [sessions, currentUserId],
+  );
   const channelCounts = useMemo(() => deriveChannelCounts(sessions), [sessions]);
 
   const unreadInView = useMemo(
@@ -134,22 +157,30 @@ export default function ConversationList({
       if (next < 0) return;
       const room = visibleRooms[next];
       onSelectRoom(room.id);
-      document
-        .querySelector(`[data-room-id="${room.id}"]`)
-        ?.scrollIntoView({ block: 'nearest' });
+      document.querySelector(`[data-room-id="${room.id}"]`)?.scrollIntoView({ block: 'nearest' });
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [visibleRooms, activeRoomId, onSelectRoom]);
 
   return (
-    <div className="inbox-queue flex flex-col h-full border-r border-border">
-      <div className="flex items-center justify-between px-4 pt-5 pb-2"><h2 className="text-base font-semibold leading-snug">กล่องข้อความ</h2><span className="rounded-md bg-muted px-2 py-1 text-xs text-muted-foreground">{serverCounts?.all ?? sessions.length} ห้อง</span></div>
+    <div
+      className={cn(
+        'inbox-queue flex flex-col h-full border-r border-border',
+        filtersOpen && 'inbox-list-filters-open',
+      )}
+    >
+      <div className="hidden lg:flex items-center justify-between px-4 pt-5 pb-2">
+        <h2 className="text-base font-semibold leading-snug">กล่องข้อความ</h2>
+        <span className="rounded-md bg-muted px-2 py-1 text-xs text-muted-foreground">
+          {serverCounts?.all ?? sessions.length} ห้อง
+        </span>
+      </div>
       {/* Search + Filters */}
-      <div className="px-4 pt-0 pb-2">
+      <div className="px-4 pt-2 lg:pt-0 pb-2">
         {/* Header row: connection pill (when not connected) + global bell toggle */}
         {(connectionStatus && connectionStatus !== 'connected') || onToggleMuteAll ? (
-          <div className="mb-2 flex items-center justify-between gap-2">
+          <div className="inbox-list-controls mb-2 flex items-center justify-between gap-2">
             {/* Connection status pill — shown only when not connected */}
             {connectionStatus && connectionStatus !== 'connected' ? (
               <div
@@ -163,7 +194,9 @@ export default function ConversationList({
                 <span
                   className={cn(
                     'size-1.5 rounded-full',
-                    connectionStatus === 'disconnected' ? 'bg-destructive' : 'bg-warning animate-pulse',
+                    connectionStatus === 'disconnected'
+                      ? 'bg-destructive'
+                      : 'bg-warning animate-pulse',
                   )}
                 />
                 {connectionStatus === 'disconnected'
@@ -206,8 +239,27 @@ export default function ConversationList({
             </div>
           </div>
         ) : null}
+        {connectionStatus && connectionStatus !== 'connected' && !filtersOpen && (
+          <p className="lg:hidden mb-1 text-xs text-warning-strong" role="status">
+            {connectionStatus === 'disconnected'
+              ? 'ออฟไลน์ · กำลังลองเชื่อมต่อ'
+              : 'กำลังเชื่อมต่อ…'}
+          </p>
+        )}
         {/* Search */}
-        <div className="relative mb-2">
+        <div className="relative mb-2 mr-12 lg:mr-0">
+          <button
+            type="button"
+            className={cn(
+              'inbox-touch absolute -right-12 top-0 lg:hidden',
+              listFilterActive && 'text-primary bg-primary/10',
+            )}
+            aria-label="ตัวกรองและเครื่องมือ"
+            aria-expanded={filtersOpen}
+            onClick={() => setFiltersOpen((value) => !value)}
+          >
+            <SlidersHorizontal className="size-5" />
+          </button>
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground/60" />
           <input
             type="text"
@@ -239,7 +291,14 @@ export default function ConversationList({
           เปลี่ยนแท็บ = กลับคิวปกติเสมอ กันค้างอยู่ในมุมมอง "ตอบไม่ทัน" โดยไม่รู้ตัว */}
       <ChannelFilter
         activeTab={filters.tab}
-        onTabChange={(tab) => onFiltersChange({ ...filters, tab, view: 'queue', who: tab === 'mine' ? 'all' : filters.who })}
+        onTabChange={(tab) =>
+          onFiltersChange({
+            ...filters,
+            tab,
+            view: 'queue',
+            who: tab === 'mine' ? 'all' : filters.who,
+          })
+        }
         channel={filters.channel}
         onChannelChange={(channel) => onFiltersChange({ ...filters, channel })}
         who={filters.who}
@@ -248,7 +307,9 @@ export default function ConversationList({
         currentUserId={currentUserId}
         counts={serverCounts ?? tabCounts}
         // byChannel ของเซิร์ฟเวอร์นับในจักรวาล "รอตอบ" — มุมมองตอบไม่ทันเป็นคนละกอง ใช้เลขจากแถวที่โหลดมา
-        channelCounts={filters.view === 'expired' ? channelCounts : (serverCounts?.byChannel ?? channelCounts)}
+        channelCounts={
+          filters.view === 'expired' ? channelCounts : (serverCounts?.byChannel ?? channelCounts)
+        }
       />
 
       {/* Divider */}
@@ -257,7 +318,12 @@ export default function ConversationList({
       {/* บรรทัดสถานะของกอง "รอตอบ" — บอกกติกาเรียง และทางเข้ามุมมอง "ตอบไม่ทัน" (สเปก §7 แก้ไข 2026-09-05)
           ห้องที่พ้น 24 ชม. ไม่อยู่ในคิว เพราะตอบไปก็ส่งไม่ถึง — แต่ต้องมีที่ให้ดู ไม่ใช่หายไปเฉย ๆ */}
       {filters.tab === 'waiting' && filters.view !== 'expired' && (
-        <div className="flex items-center gap-2 border-b border-border/60 bg-muted/30 px-4 py-2 text-[11px] leading-snug text-muted-foreground">
+        <div
+          className={cn(
+            'inbox-queue-order items-center gap-2 border-b border-border/60 bg-muted/30 px-4 py-2 text-xs leading-snug text-muted-foreground',
+            (serverCounts?.expired ?? 0) > 0 ? 'flex' : 'hidden lg:flex',
+          )}
+        >
           <span className="truncate">เรียง: ใกล้หมดเวลาก่อน แล้วรอนานก่อน</span>
           {(serverCounts?.expired ?? 0) > 0 && (
             <button
@@ -274,7 +340,12 @@ export default function ConversationList({
         <div className="flex items-center gap-2 border-b border-border/60 bg-muted px-4 py-2 text-[11px] leading-snug text-muted-foreground">
           <Clock className="size-3 shrink-0" />
           {/* สั้นพอกับ 320px — ผลของการพ้นหน้าต่างอธิบายในแถบเหนือช่องพิมพ์เมื่อเปิดห้อง */}
-          <span className="truncate"><span className="font-medium text-foreground">ตอบไม่ทัน {serverCounts?.expired ?? 0}</span> · พ้น 24 ชม. แล้ว</span>
+          <span className="truncate">
+            <span className="font-medium text-foreground">
+              ตอบไม่ทัน {serverCounts?.expired ?? 0}
+            </span>{' '}
+            · พ้น 24 ชม. แล้ว
+          </span>
           <button
             type="button"
             onClick={() => onFiltersChange({ ...filters, view: 'queue' })}
@@ -327,9 +398,14 @@ export default function ConversationList({
                   ลูกค้าที่ทักมาใหม่จะขึ้นที่นี่
                 </p>
               </>
-            ) : filters.tab === 'waiting' && filters.view === 'expired' && !listFilterActive && !filters.search ? (
+            ) : filters.tab === 'waiting' &&
+              filters.view === 'expired' &&
+              !listFilterActive &&
+              !filters.search ? (
               <>
-                <p className="text-sm font-medium text-muted-foreground leading-snug">ไม่มีห้องที่ตอบไม่ทัน</p>
+                <p className="text-sm font-medium text-muted-foreground leading-snug">
+                  ไม่มีห้องที่ตอบไม่ทัน
+                </p>
                 <button
                   type="button"
                   onClick={() => onFiltersChange({ ...filters, view: 'queue' })}
@@ -341,7 +417,9 @@ export default function ConversationList({
             ) : listFilterActive && !filters.search ? (
               <>
                 {/* มีตัวกรองรายการเปิดอยู่ — บอกว่า "ในตัวกรองนี้" ไม่ใช่ "ตอบครบแล้ว" และปุ่มปลดตัวกรองโดยไม่เปลี่ยนแท็บ */}
-                <p className="text-sm font-medium text-muted-foreground leading-snug">ไม่มีแชทในตัวกรองนี้</p>
+                <p className="text-sm font-medium text-muted-foreground leading-snug">
+                  ไม่มีแชทในตัวกรองนี้
+                </p>
                 <button
                   type="button"
                   onClick={() => onFiltersChange({ ...filters, channel: null, who: 'all' })}
@@ -352,7 +430,9 @@ export default function ConversationList({
               </>
             ) : sessions.length === 0 ? (
               <>
-                <p className="text-sm font-medium text-muted-foreground leading-snug">ยังไม่มีการสนทนา</p>
+                <p className="text-sm font-medium text-muted-foreground leading-snug">
+                  ยังไม่มีการสนทนา
+                </p>
                 <p className="text-xs text-muted-foreground/80 mt-0.5 leading-snug">
                   เมื่อมีลูกค้าทักเข้ามา แชทจะแสดงที่นี่
                 </p>
@@ -375,11 +455,19 @@ export default function ConversationList({
               </>
             ) : (
               <>
-                <p className="text-sm font-medium text-muted-foreground leading-snug">ไม่มีแชทในตัวกรองนี้</p>
+                <p className="text-sm font-medium text-muted-foreground leading-snug">
+                  ไม่มีแชทในตัวกรองนี้
+                </p>
                 <button
                   type="button"
                   onClick={() => {
-                    onFiltersChange({ ...filters, channel: null, who: 'all', view: 'queue', tab: 'all' });
+                    onFiltersChange({
+                      ...filters,
+                      channel: null,
+                      who: 'all',
+                      view: 'queue',
+                      tab: 'all',
+                    });
                   }}
                   className="text-xs text-primary hover:underline mt-1"
                 >

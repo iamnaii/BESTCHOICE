@@ -117,6 +117,9 @@
     & .finance-card-grid > *:not(:where(.voucher-sheet, .document-sheet, .bc-document, .document-landscape, .document-print-dialog, .template-paper, .font-sarabun, .mobile-receipt, .sticker, .print-stickers, .tiptap, iframe, .voucher-sheet *, .document-sheet *, .bc-document *, .document-landscape *, .document-print-dialog *, .template-paper *, .font-sarabun *, .mobile-receipt *, .sticker *, .print-stickers *, .tiptap *, iframe *)),
     & .finance-card-grid [data-slot='card-content']:not(:where(.voucher-sheet, .document-sheet, .bc-document, .document-landscape, .document-print-dialog, .template-paper, .font-sarabun, .mobile-receipt, .sticker, .print-stickers, .tiptap, iframe, .voucher-sheet *, .document-sheet *, .bc-document *, .document-landscape *, .document-print-dialog *, .template-paper *, .font-sarabun *, .mobile-receipt *, .sticker *, .print-stickers *, .tiptap *, iframe *)) {
       min-width: 0;
+      @media (max-width: 767px) {
+        &[data-slot='card-content'] { padding-inline: 1rem; }
+      }
     }
 
     & .finance-summary-tabs:not(:where(.voucher-sheet, .document-sheet, .bc-document, .document-landscape, .document-print-dialog, .template-paper, .font-sarabun, .mobile-receipt, .sticker, .print-stickers, .tiptap, iframe, .voucher-sheet *, .document-sheet *, .bc-document *, .document-landscape *, .document-print-dialog *, .template-paper *, .font-sarabun *, .mobile-receipt *, .sticker *, .print-stickers *, .tiptap *, iframe *)) {
@@ -136,7 +139,8 @@
       overflow-x: auto;
       text-overflow: clip;
       font-size: clamp(1.125rem, 8cqi, 1.375rem);
-      line-height: 1.4;
+      /* Noto's Thai/numeral metrics need room inside the local value scroller. */
+      line-height: 1.65;
       font-variant-numeric: tabular-nums;
     }
 
@@ -151,16 +155,23 @@
       line-height: 1.5;
     }
 
-    /* Stable rows: 4 summaries become 2×2 until there is room for all four.
-     * Five summaries use 2 columns on phones and 5 on wide content areas. */
-    & .finance-card-grid > :nth-child(5):last-child {
+    /* Keep million-baht amounts readable without reducing the 18px minimum. */
+    @media (max-width: 389px) {
+      & .finance-card-grid:not(.finance-card-grid-compact):not(:where(.voucher-sheet, .document-sheet, .bc-document, .document-landscape, .document-print-dialog, .template-paper, .font-sarabun, .mobile-receipt, .sticker, .print-stickers, .tiptap, iframe, .voucher-sheet *, .document-sheet *, .bc-document *, .document-landscape *, .document-print-dialog *, .template-paper *, .font-sarabun *, .mobile-receipt *, .sticker *, .print-stickers *, .tiptap *, iframe *)) {
+        grid-template-columns: minmax(0, 1fr);
+      }
+    }
+    /* Stable rows: 2×2 on larger phones, four columns on wide screens.
+     * Five summaries use 2 columns at 390px+ and 5 on wide content areas. */
+    & .finance-card-grid:not(:where(.voucher-sheet, .document-sheet, .bc-document, .document-landscape, .document-print-dialog, .template-paper, .font-sarabun, .mobile-receipt, .sticker, .print-stickers, .tiptap, iframe, .voucher-sheet *, .document-sheet *, .bc-document *, .document-landscape *, .document-print-dialog *, .template-paper *, .font-sarabun *, .mobile-receipt *, .sticker *, .print-stickers *, .tiptap *, iframe *)) > :is(:nth-child(3), :nth-child(5)):last-child {
       grid-column: 1 / -1;
     }
     @media (min-width: 1280px) {
       & .finance-card-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+      & .finance-card-grid:not(:where(.voucher-sheet, .document-sheet, .bc-document, .document-landscape, .document-print-dialog, .template-paper, .font-sarabun, .mobile-receipt, .sticker, .print-stickers, .tiptap, iframe, .voucher-sheet *, .document-sheet *, .bc-document *, .document-landscape *, .document-print-dialog *, .template-paper *, .font-sarabun *, .mobile-receipt *, .sticker *, .print-stickers *, .tiptap *, iframe *)):has(> :nth-child(3):last-child) { grid-template-columns: repeat(3, minmax(0, 1fr)); }
       & .finance-card-grid:has(> :nth-child(5):last-child),
       & .finance-portfolio-summary { grid-template-columns: repeat(5, minmax(0, 1fr)); }
-      & .finance-card-grid > :nth-child(5):last-child { grid-column: auto; }
+      & .finance-card-grid:not(:where(.voucher-sheet, .document-sheet, .bc-document, .document-landscape, .document-print-dialog, .template-paper, .font-sarabun, .mobile-receipt, .sticker, .print-stickers, .tiptap, iframe, .voucher-sheet *, .document-sheet *, .bc-document *, .document-landscape *, .document-print-dialog *, .template-paper *, .font-sarabun *, .mobile-receipt *, .sticker *, .print-stickers *, .tiptap *, iframe *)) > :is(:nth-child(3), :nth-child(5)):last-child { grid-column: auto; }
     }
 
     @media (max-width: 1023px) {

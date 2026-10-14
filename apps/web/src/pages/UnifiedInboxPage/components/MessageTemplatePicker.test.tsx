@@ -27,7 +27,7 @@ describe('MessageTemplatePicker', () => {
         />,
       ),
     );
-    expect(screen.getByText('เลือกข้อความสำเร็จรูป')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'ตอบด่วน' })).toBeInTheDocument();
   });
 
   it('does not render when isOpen=false', () => {

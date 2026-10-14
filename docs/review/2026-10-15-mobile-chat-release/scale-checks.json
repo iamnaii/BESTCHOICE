@@ -1,0 +1,130 @@
+[
+  {
+    "width": 320,
+    "height": 568,
+    "theme": "light",
+    "history": 362,
+    "composer": 98,
+    "status": "PASS"
+  },
+  {
+    "width": 320,
+    "height": 568,
+    "theme": "dark",
+    "history": 362,
+    "composer": 98,
+    "status": "PASS"
+  },
+  {
+    "width": 375,
+    "height": 667,
+    "theme": "light",
+    "history": 461,
+    "composer": 98,
+    "status": "PASS"
+  },
+  {
+    "width": 375,
+    "height": 667,
+    "theme": "dark",
+    "history": 461,
+    "composer": 98,
+    "status": "PASS"
+  },
+  {
+    "width": 390,
+    "height": 844,
+    "theme": "light",
+    "history": 638,
+    "composer": 98,
+    "status": "PASS"
+  },
+  {
+    "width": 390,
+    "height": 844,
+    "theme": "dark",
+    "history": 638,
+    "composer": 98,
+    "status": "PASS"
+  },
+  {
+    "width": 430,
+    "height": 932,
+    "theme": "light",
+    "history": 726,
+    "composer": 98,
+    "status": "PASS"
+  },
+  {
+    "width": 430,
+    "height": 932,
+    "theme": "dark",
+    "history": 726,
+    "composer": 98,
+    "status": "PASS"
+  },
+  {
+    "width": 375,
+    "height": 440,
+    "theme": "light",
+    "history": 234,
+    "composer": 98,
+    "status": "PASS"
+  },
+  {
+    "width": 375,
+    "height": 440,
+    "theme": "dark",
+    "history": 234,
+    "composer": 98,
+    "status": "PASS"
+  },
+  {
+    "width": 844,
+    "height": 390,
+    "theme": "light",
+    "history": 184,
+    "composer": 98,
+    "status": "PASS"
+  },
+  {
+    "width": 844,
+    "height": 390,
+    "theme": "dark",
+    "history": 184,
+    "composer": 98,
+    "status": "PASS"
+  },
+  {
+    "width": 768,
+    "height": 1024,
+    "theme": "light",
+    "history": 818,
+    "composer": 98,
+    "status": "PASS"
+  },
+  {
+    "width": 768,
+    "height": 1024,
+    "theme": "dark",
+    "history": 818,
+    "composer": 98,
+    "status": "PASS"
+  },
+  {
+    "width": 1440,
+    "height": 900,
+    "theme": "light",
+    "history": 520.25,
+    "composer": 245,
+    "status": "PASS"
+  },
+  {
+    "width": 1440,
+    "height": 900,
+    "theme": "dark",
+    "history": 520.25,
+    "composer": 245,
+    "status": "PASS"
+  }
+]

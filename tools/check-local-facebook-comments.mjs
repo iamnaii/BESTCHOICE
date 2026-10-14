@@ -1,3 +1,4 @@
+import { showWorkControl } from './chat-ui.mjs';
 import assert from 'node:assert/strict';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -60,7 +61,7 @@ export async function checkFacebookComments(page, origin, output, width) {
   await page.screenshot({ path: join(output, `facebook-comments-capability-${width}.png`), animations: 'disabled' });
   await post('preview/facebook-comments/mode', { mode: 'confirmed' });
   await page.keyboard.press('Escape');
-  await page.getByRole('button', { name: 'คอมเมนต์', exact: true }).click();
+  await (await showWorkControl(page, 'คอมเมนต์')).click();
   await expect(page.getByRole('heading', { name: 'คอมเมนต์ Facebook' })).toBeVisible();
   await page.keyboard.press('Escape');
   const stuck = await (await post('preview/facebook-comments/fixture', { text: 'รอตรวจต้นทาง', unversioned: true, readUnavailable: true })).json();

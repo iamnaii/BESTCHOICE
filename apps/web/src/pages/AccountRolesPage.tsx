@@ -82,7 +82,7 @@ export default function AccountRolesPage() {
     <div className="flex flex-col gap-4">
       <PageHeader
         title="บัญชีตาม Role"
-        subtitle="กำหนดรหัสบัญชี (Chart of Accounts) สำหรับ semantic role แต่ละตัวที่ใช้ใน JE templates — แก้ไขเฉพาะ OWNER"
+        subtitle="กำหนดบัญชีสำหรับรายการอัตโนมัติ · แก้ไขได้เฉพาะเจ้าของ"
       />
 
       <QueryBoundary
@@ -260,7 +260,7 @@ function EditRoleMapDialog({
             แก้ไข role: <code className="font-mono text-sm">{row.role}</code>
           </DialogTitle>
           <DialogDescription className="leading-snug">
-            การเปลี่ยนแปลงจะมีผลกับ JE templates ที่อ้างถึง role นี้ทันที (ผ่าน in-memory cache)
+            การเปลี่ยนบัญชีมีผลกับรายการอัตโนมัติที่ใช้บทบาทนี้ทันที
           </DialogDescription>
         </DialogHeader>
 
@@ -344,7 +344,7 @@ function EditRoleMapDialog({
                 </p>
               ) : (
                 <p className="text-xs text-muted-foreground leading-snug">
-                  ปิดการใช้งานจะทำให้ JE templates ที่อ้างถึง role นี้ throw error
+                  เมื่อปิด ระบบจะบันทึกรายการอัตโนมัติที่ใช้บทบาทนี้ไม่ได้
                 </p>
               )}
             </div>

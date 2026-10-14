@@ -440,7 +440,7 @@ export default function DunningSettingsPage() {
             <Badge variant="secondary" appearance="outline" size="sm">read-only</Badge>
           </div>
           <p className="text-xs text-muted-foreground mb-4">
-            Rules ที่ยิงตามเหตุการณ์ (ไม่ใช่ตามวัน) เช่น collector บันทึก NO_ANSWER → ส่ง LINE อัตโนมัติ
+            ส่งข้อความตามเหตุการณ์ เช่น ส่ง LINE เมื่อติดต่อแล้วไม่รับสาย
           </p>
           <div className="space-y-2">
             {eventRules.map((r) => {
@@ -697,7 +697,7 @@ export default function DunningSettingsPage() {
                   ))}
               </select>
               <p className="text-xs text-muted-foreground mt-1 leading-snug">
-                เมื่อตั้งค่าแล้ว ระบบจะใช้ body จาก template นี้แทนข้อความ inline ด้านล่าง — หาก template ถูกลบจะ fallback กลับมาที่ข้อความ inline อัตโนมัติ
+                ใช้ข้อความจากเทมเพลตที่เลือก หากเทมเพลตถูกลบจะใช้ข้อความสำรองด้านล่าง
               </p>
             </div>
           )}

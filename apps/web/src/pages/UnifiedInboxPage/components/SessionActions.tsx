@@ -99,7 +99,7 @@ export default function SessionActions({
   const canTakeOver = !session?.aiPaused && !session?.handoffMode;
 
   return (
-    <div className="border-b border-border bg-muted px-4 py-2">
+    <div className="inbox-session-actions border-b border-border bg-muted px-4 py-2">
       <div className="flex items-center gap-2 flex-wrap">
         {/* Assign to me */}
         {!assignedToMe && (

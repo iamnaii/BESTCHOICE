@@ -42,7 +42,7 @@ describe('UX/UI route inventory on isolated full API', () => {
     if (path.includes(':number')) { path = path.replace(':number', 'PV-200001-99999'); state = 'missing voucher'; }
     if (path.includes(':identifier')) { path = path.replace(':identifier', 'PV-200001-99999'); state = 'legacy voucher missing-record recovery'; }
     path = path.replace(':receivingId', missingId).replace('*', 'uxui-not-found');
-    if (path.startsWith('/liff') || ['/contract', '/history', '/early-payoff'].includes(path)) {
+    if (path.startsWith('/liff') || path.startsWith('/pay/') || ['/contract', '/history', '/early-payoff'].includes(path)) {
       path += '?login_error=true'; state = 'LINE login cancelled (no external credentials)';
     }
     if (!path.startsWith('/')) path = `/${path}`;
@@ -114,8 +114,13 @@ describe('UX/UI route inventory on isolated full API', () => {
                   if (animation.playState === 'running' && Number.isFinite(animation.effect?.getComputedTiming().endTime)) animation.finish();
                 }
                 const headings = [...main.querySelectorAll('h1,h2')].filter(visible).map(e => ({ text: e.textContent?.trim(), width: e.getBoundingClientRect().width, right: e.getBoundingClientRect().right }));
+                // Report wrappers include UI controls; only actual paper/editor subtrees
+                // retain their legacy font. Inspect body to include portalled controls.
+                const paper = '.voucher-sheet,.document-sheet,.bc-document,.template-paper,.font-sarabun,.mobile-receipt,.sticker,.print-stickers,.tiptap,svg,iframe';
+                const wrongFonts = [...document.body.querySelectorAll('*')].filter(e => visible(e) && !e.closest(paper) && [...e.childNodes].some(n => n.nodeType === Node.TEXT_NODE && n.textContent?.trim()) && !getComputedStyle(e).fontFamily.includes('Noto Sans Thai Looped')).map(e => ({ tag: e.tagName, text: e.textContent?.slice(0, 80), font: getComputedStyle(e).fontFamily })).slice(0, 20);
+                const fontLoaded = [...document.fonts].some(f => f.family.includes('Noto Sans Thai Looped') && f.status === 'loaded');
                 const overflowingElements = [...main.querySelectorAll('*')].filter(e => visible(e) && e.getBoundingClientRect().right > innerWidth + 1).slice(0, 30).map(e => ({ tag: e.tagName, className: e.getAttribute('class'), right: e.getBoundingClientRect().right, text: e.textContent?.slice(0, 100) }));
-                return { overflowingElements, overflow: document.documentElement.scrollWidth > innerWidth + 1, scrollWidth: document.documentElement.scrollWidth, text: (main as HTMLElement).innerText.slice(0, 1200), headings, loading: [...main.querySelectorAll('[role="status"]')].filter(visible).map(e => e.getAttribute('aria-label') || e.textContent?.trim()) };
+                return { wrongFonts, fontLoaded, overflowingElements, overflow: document.documentElement.scrollWidth > innerWidth + 1, scrollWidth: document.documentElement.scrollWidth, text: (main as HTMLElement).innerText.slice(0, 1200), headings, loading: [...main.querySelectorAll('[role="status"]')].filter(visible).map(e => e.getAttribute('aria-label') || e.textContent?.trim()) };
               }, undefined, { timeout: 30000 });
               // Readiness alone is polled: overflowing geometry is returned immediately
               // and still fails below. Never wait for a bad layout to disappear.
@@ -129,7 +134,7 @@ describe('UX/UI route inventory on isolated full API', () => {
             item.apiErrors = apiErrors.slice(startApi);
             item.pageErrors = opened.errors.slice(startError).filter(e => e.startsWith('pageerror:'));
             item.rootError = await page.getByRole('button', { name: 'โหลดหน้าใหม่', exact: true }).count() > 0;
-            item.status = item.rootError || item.pageErrors.length || item.themes.some((v: any) => v.overflow || !v.text.trim()) ? 'REVIEW' : 'rendered';
+            item.status = item.rootError || item.pageErrors.length || item.themes.some((v: any) => v.overflow || !v.text.trim() || v.wrongFonts.length || !v.fontLoaded) ? 'REVIEW' : 'rendered';
           } catch (error) { item.status = 'REVIEW'; item.error = String(error).slice(0, 700); }
           results.push(item);
           saveArtifact('uxui-pages', 'inventory-results.json', JSON.stringify(results, null, 2));

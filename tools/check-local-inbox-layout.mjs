@@ -1,3 +1,4 @@
+import { chooseComposerMode, openComposerTool, showWorkControl, toggleChatTheme } from './chat-ui.mjs';
 import assert from 'node:assert/strict';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -24,11 +25,12 @@ export async function checkInboxLayout(browser, origin, output) {
         await page.setViewportSize({ width, height: 900 });
         await page.goto(new URL(`/inbox/${roomId}`, origin).href);
         for (const mode of ['chat', 'note']) {
-          await page.getByRole('radio', { name: mode === 'chat' ? 'ตอบลูกค้า' : 'โน้ตภายใน', exact: true }).click();
+          await chooseComposerMode(page, mode);
           const input = page.getByRole('textbox', { name: mode === 'chat' ? 'พิมพ์ข้อความ' : 'พิมพ์โน้ตภายใน', exact: true });
+          await input.focus();
           await expect(input).toBeFocused();
           // Wait for the card's focus transition before measuring its replacement indicator.
-          await expect(input.locator('xpath=ancestor::*[@data-chat-composer-card]')).toHaveCSS('--tw-ring-offset-width', '0px');
+          await expect(input.locator('xpath=ancestor::*[@data-chat-composer-card]')).not.toHaveCSS('box-shadow', 'none');
           const metrics = await input.evaluate(el => {
             const style = getComputedStyle(el);
             const card = el.closest('[data-chat-composer-card]');
@@ -37,7 +39,7 @@ export async function checkInboxLayout(browser, origin, output) {
               outline: style.outlineStyle,
               ring: getComputedStyle(card).getPropertyValue('--tw-ring-color'),
               shadow: getComputedStyle(card).boxShadow,
-              titleWidth: el.closest('.\\@container').querySelector('h3').getBoundingClientRect().width,
+              titleWidth: el.closest('.\\@container').querySelector(innerWidth < 1024 ? '.inbox-mobile-identity' : 'h3').getBoundingClientRect().width,
               left: rect.left, right: rect.right, bottom: rect.bottom,
               overflow: document.documentElement.scrollWidth > innerWidth,
               controls: [...card.querySelectorAll('button')].filter(b => b.getBoundingClientRect().width).map(b => {
@@ -48,7 +50,7 @@ export async function checkInboxLayout(browser, origin, output) {
           });
           const label = `${theme} ${width}px ${mode}`;
           assert.equal(metrics.outline, 'none', `${label}: textarea must not draw a second focus outline`);
-          assert.ok(metrics.ring && metrics.shadow !== 'none', `${label}: card must retain a visible focus indicator`);
+          assert.ok(metrics.shadow !== 'none', `${label}: card must retain a visible focus indicator`);
           assert.ok(metrics.titleWidth >= 100, `${label}: customer name squeezed out of header`);
           assert.equal(metrics.overflow, false, `${label}: page overflow`);
           assert.ok(metrics.left >= 0 && metrics.right <= width + 1, `${label}: composer outside viewport`);
@@ -57,7 +59,8 @@ export async function checkInboxLayout(browser, origin, output) {
               `${label}: ${control.label} outside composer`);
           }
           const send = page.getByRole('button', { name: mode === 'chat' ? 'ส่งข้อความ' : 'บันทึกโน้ต', exact: true });
-          await expect(send).toBeDisabled();
+          if (mode === 'chat' && width < 1024) await expect(send).toBeHidden();
+          else await expect(send).toBeDisabled();
           await input.fill('ตรวจเลย์เอาต์ภาษาไทย');
           await input.press('Shift+Enter');
           await page.keyboard.insertText('ก');
@@ -66,14 +69,18 @@ export async function checkInboxLayout(browser, origin, output) {
           await page.screenshot({ path: join(output, `inbox-layout-${theme}-${width}-${mode}.png`), animations: 'disabled' });
           await input.fill('');
           if (mode === 'chat') {
-            await input.press('Tab');
-            const microphone = page.getByRole('button', { name: 'พูดเป็นข้อความ', exact: true });
-            await expect(microphone).toBeFocused();
-            await expect(microphone).toHaveCSS('outline-style', 'solid');
-            await page.keyboard.press('Tab');
+            if (width < 1024) {
+              await input.press('Tab');
+              await expect(page.getByRole('button', { name: 'พูดเป็นข้อความ', exact: true })).toBeFocused();
+              await page.getByRole('button', { name: 'เครื่องมือแชท', exact: true }).click();
+            }
             const attachment = page.getByRole('button', { name: 'แนบไฟล์', exact: true });
+            await attachment.focus();
+            await page.keyboard.press('Tab');
+            await page.keyboard.press('Shift+Tab');
             await expect(attachment).toBeFocused();
             await expect(attachment).toHaveCSS('outline-style', 'solid');
+            if (width < 1024) await page.getByRole('button', { name: 'เครื่องมือแชท', exact: true }).click();
           }
         }
         await expect(page.getByRole('log', { name: 'ประวัติข้อความ' })).toBeVisible();

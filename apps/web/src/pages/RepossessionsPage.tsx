@@ -523,7 +523,9 @@ export default function RepossessionsPage() {
     <div>
       <PageHeader
         title="รับเครื่องคืน / ยึดคืน & ขายต่อ"
-        subtitle="สาขาบันทึกใบรับเครื่องคืนที่นี่ (ปุ่มด้านขวา หรือปุ่ม รับเครื่องคืน ในรายการรอยึดเครื่อง) เพื่อบันทึกการยึดคืน — FINANCE กดยืนยันจากตารางรอยืนยัน แล้วบัญชี JP5 ลงพร้อมขาคู่ SHOP"
+        subtitle="บันทึกรับเครื่องคืนและติดตามการยืนยัน"
+        helpLabel="ขั้นตอนรับเครื่องคืน"
+        help="สาขากดรับเครื่องคืนเพื่อบันทึกใบรับ จากนั้นฝ่ายการเงินตรวจสอบและยืนยันในตารางรอยืนยัน ระบบจึงลงบัญชี JP5 พร้อมรายการคู่ฝั่ง SHOP"
         action={
           canCreateReturn ? (
             <button
@@ -643,7 +645,7 @@ export default function RepossessionsPage() {
             <CardContent className="p-4">
               <div className="text-sm text-muted-foreground">ราคาตีรวม</div>
               <div className="text-lg font-bold">
-                {(profitLoss.summary.totalAppraisal ?? 0).toLocaleString()} บาท
+                {(profitLoss.summary.totalAppraisal ?? 0).toLocaleString()} ฿
               </div>
             </CardContent>
           </Card>
@@ -651,7 +653,7 @@ export default function RepossessionsPage() {
             <CardContent className="p-4">
               <div className="text-sm text-muted-foreground">ค่าซ่อมรวม</div>
               <div className="text-lg font-bold">
-                {(profitLoss.summary.totalRepairCost ?? 0).toLocaleString()} บาท
+                {(profitLoss.summary.totalRepairCost ?? 0).toLocaleString()} ฿
               </div>
             </CardContent>
           </Card>
@@ -659,7 +661,7 @@ export default function RepossessionsPage() {
             <CardContent className="p-4">
               <div className="text-sm text-muted-foreground">ราคาขายรวม</div>
               <div className="text-lg font-bold">
-                {(profitLoss.summary.totalResellPrice ?? 0).toLocaleString()} บาท
+                {(profitLoss.summary.totalResellPrice ?? 0).toLocaleString()} ฿
               </div>
             </CardContent>
           </Card>
@@ -669,7 +671,7 @@ export default function RepossessionsPage() {
               <div
                 className={`text-lg font-bold ${(profitLoss.summary.totalProfit ?? 0) >= 0 ? 'text-success' : 'text-destructive'}`}
               >
-                {(profitLoss.summary.totalProfit ?? 0).toLocaleString()} บาท
+                {(profitLoss.summary.totalProfit ?? 0).toLocaleString()} ฿
               </div>
             </CardContent>
           </Card>

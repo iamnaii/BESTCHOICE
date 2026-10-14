@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { randomUUID } from 'crypto';
 import { sign } from 'jsonwebtoken';
-import type { BrowserContext, Page } from '@playwright/test';
+import { expect as browserExpect, type BrowserContext, type Page } from '@playwright/test';
 import { DOCUMENT_STYLE, SELF_APPROVAL_DENIED_MESSAGE } from '@installment/shared';
 import { bodyBuffer, DocumentsHarness, Session, startDocumentsApp } from './support/harness';
 import { DocumentsWorld, seedDocumentsWorld, WorldUser } from './support/fixtures';
@@ -827,10 +827,15 @@ describe('DOC-03 expense vouchers, petty cash and daily summary — real command
       expect(await page.locator('article.voucher-sheet').count()).toBe(0);
       const unknownShot = saveArtifact(DOMAIN, 'print-entry-unknown-id.png', await page.screenshot({ fullPage: true })).relativePath;
 
+      const deniedDetail = page.waitForResponse((response) =>
+        new URL(response.url()).pathname.endsWith(`/expense-documents/${docs.cash!.id}`)
+        && response.request().method() === 'GET');
       await runtime.navigate(page, `/expenses/${docs.cash!.id}/voucher`);
-      await alert.waitFor({ state: 'visible', timeout: 60_000 });
+      expect((await deniedDetail).status()).toBe(403);
+      // SPA navigation can leave the previous 404 alert visible until React
+      // commits the next query. Wait for this document's denial, not any alert.
+      await browserExpect(alert).toContainText('ไม่มีสิทธิ์เข้าถึงข้อมูล', { timeout: 60_000 });
       const foreignText = await alert.innerText();
-      expect(foreignText).toContain('ไม่มีสิทธิ์เข้าถึงข้อมูล');
       expect(await page.locator('article.voucher-sheet').count()).toBe(0);
       expect(await page.content()).not.toContain(docs.cash!.number);
       const foreignShot = saveArtifact(DOMAIN, 'print-entry-other-branch.png', await page.screenshot({ fullPage: true })).relativePath;

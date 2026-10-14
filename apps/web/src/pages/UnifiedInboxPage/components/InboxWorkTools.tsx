@@ -19,6 +19,7 @@ import {
   LockKeyhole,
   LogOut,
   Moon,
+  MoreHorizontal,
   Settings2,
   ShoppingCart,
   Sun,
@@ -53,11 +54,15 @@ export default function InboxWorkTools({
   const navigate = useNavigate();
   // จอใหญ่ = แถบข้าง 72px (เมนูระบบไม่ถูกวาดบน /inbox — ดู MainLayout) · จอเล็ก = แถบหัวแบบย่อเหมือนเดิม
   const isMobile = useIsMobile();
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const { resolvedTheme, setTheme } = useTheme();
   const [view, setView] = useState<WorkQueueView>('WAITING');
   const [page, setPage] = useState(1);
   const [panel, setPanel] = useState<'queue' | 'inbox' | 'comments' | null>(null);
+  useEffect(() => {
+    if (panel) setMobileMenuOpen(false);
+  }, [panel]);
   const [selected, setSelected] = useState<{
     type: ChatWorkTarget;
     id: string;
@@ -159,54 +164,125 @@ export default function InboxWorkTools({
   const homeLink = (
     <Link to="/" className="inbox-rail-home" aria-label="กลับหน้าหลัก" title="กลับหน้าหลัก">
       <img src="/logo-icon.svg" alt="" />
-      <span><ArrowLeft aria-hidden="true" />หน้าหลัก</span>
+      <span>
+        <ArrowLeft aria-hidden="true" />
+        หน้าหลัก
+      </span>
     </Link>
   );
   const workNavigation = (
     <nav aria-label="การสื่อสารและงานทีม" className="inbox-work-navigation">
-      <Button variant="ghost" aria-current={chatActive ? 'page' : undefined}
-        className={chatActive ? 'inbox-navigation-active' : ''} onClick={() => setPanel(null)}>
-        <Inbox className="size-4" aria-hidden="true" /><span>แชทลูกค้า</span>
+      <Button
+        variant="ghost"
+        aria-current={chatActive ? 'page' : undefined}
+        className={chatActive ? 'inbox-navigation-active' : ''}
+        onClick={() => setPanel(null)}
+      >
+        <Inbox className="size-4" aria-hidden="true" />
+        <span>แชทลูกค้า</span>
       </Button>
-      <Button variant="ghost" aria-label="คิวงาน" disabled={!work.enabled}
-        aria-description={!work.enabled ? 'คิวงานยังไม่เปิดใช้งาน' :
-          work.queue.isError ? 'โหลดจำนวนงานไม่ได้ เปิดคิวงานเพื่อลองใหม่' :
-          waitingCount === undefined ? 'กำลังโหลดจำนวนงาน' : `งานรอดำเนินการ ${waitingCount}`}
+      <Button
+        variant="ghost"
+        aria-label="คิวงาน"
+        disabled={!work.enabled}
+        aria-description={
+          !work.enabled
+            ? 'คิวงานยังไม่เปิดใช้งาน'
+            : work.queue.isError
+              ? 'โหลดจำนวนงานไม่ได้ เปิดคิวงานเพื่อลองใหม่'
+              : waitingCount === undefined
+                ? 'กำลังโหลดจำนวนงาน'
+                : `งานรอดำเนินการ ${waitingCount}`
+        }
         title={!work.enabled ? 'คิวงานยังไม่เปิดใช้งาน' : undefined}
-        aria-haspopup="dialog" aria-expanded={panel === 'queue'}
-        className={panel === 'queue' ? 'inbox-navigation-active' : ''} onClick={() => setPanel('queue')}>
-        <ListTodo className="size-4" aria-hidden="true" /><span>คิวงาน</span>
-        {!work.enabled ? <LockKeyhole className="inbox-navigation-lock" aria-hidden="true" /> :
-          waitingCount !== undefined && waitingCount > 0 && <span className="inbox-navigation-count" aria-hidden="true">{waitingCount > 99 ? '99+' : waitingCount}</span>}
+        aria-haspopup="dialog"
+        aria-expanded={panel === 'queue'}
+        className={panel === 'queue' ? 'inbox-navigation-active' : ''}
+        onClick={() => setPanel('queue')}
+      >
+        <ListTodo className="size-4" aria-hidden="true" />
+        <span>คิวงาน</span>
+        {!work.enabled ? (
+          <LockKeyhole className="inbox-navigation-lock" aria-hidden="true" />
+        ) : (
+          waitingCount !== undefined &&
+          waitingCount > 0 && (
+            <span className="inbox-navigation-count" aria-hidden="true">
+              {waitingCount > 99 ? '99+' : waitingCount}
+            </span>
+          )
+        )}
       </Button>
       {work.company === 'SHOP' && (
-        <Button variant="ghost" disabled={!flags?.chat_facebook_comments_enabled}
-          aria-description={!flags?.chat_facebook_comments_enabled ? 'คอมเมนต์ยังไม่เปิดใช้งาน' : undefined}
+        <Button
+          variant="ghost"
+          disabled={!flags?.chat_facebook_comments_enabled}
+          aria-description={
+            !flags?.chat_facebook_comments_enabled ? 'คอมเมนต์ยังไม่เปิดใช้งาน' : undefined
+          }
           title={!flags?.chat_facebook_comments_enabled ? 'คอมเมนต์ยังไม่เปิดใช้งาน' : undefined}
-          aria-haspopup="dialog" aria-expanded={panel === 'comments'}
-          className={panel === 'comments' ? 'inbox-navigation-active' : ''} onClick={() => setPanel('comments')}>
-          <Globe className="size-4" aria-hidden="true" /><span>คอมเมนต์</span>
-          {!flags?.chat_facebook_comments_enabled && <LockKeyhole className="inbox-navigation-lock" aria-hidden="true" />}
+          aria-haspopup="dialog"
+          aria-expanded={panel === 'comments'}
+          className={panel === 'comments' ? 'inbox-navigation-active' : ''}
+          onClick={() => setPanel('comments')}
+        >
+          <Globe className="size-4" aria-hidden="true" />
+          <span>คอมเมนต์</span>
+          {!flags?.chat_facebook_comments_enabled && (
+            <LockKeyhole className="inbox-navigation-lock" aria-hidden="true" />
+          )}
         </Button>
       )}
       <Button asChild variant="ghost">
-        <Link to={`/chat-analytics?zone=${work.company === 'SHOP' ? 'shop' : 'fin'}`} aria-label="ภาพรวมงานแชท">
-          <BarChart3 className="size-4" aria-hidden="true" /><span>ภาพรวมทีม</span>
+        <Link
+          to={`/chat-analytics?zone=${work.company === 'SHOP' ? 'shop' : 'fin'}`}
+          aria-label="ภาพรวมงานแชท"
+        >
+          <BarChart3 className="size-4" aria-hidden="true" />
+          <span>ภาพรวมทีม</span>
         </Link>
       </Button>
     </nav>
   );
   const utilities = (
     <div className="inbox-workspace-utilities">
-      {user?.role === 'OWNER' && <Button variant="ghost" size="icon" aria-label="ตั้งค่างานแชท" title="ตั้งค่างานแชทและตรวจการเชื่อมต่อ" onClick={() => setSettingsOpen(true)}>
-        <Settings2 className="size-4" />
-      </Button>}
-      <Button variant="ghost" size="icon" aria-label="สลับธีม" title="สลับธีม" onClick={() => setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')}>
+      {user?.role === 'OWNER' && (
+        <Button
+          variant="ghost"
+          size="icon"
+          aria-label="ตั้งค่างานแชท"
+          title="ตั้งค่างานแชทและตรวจการเชื่อมต่อ"
+          onClick={() => {
+            setMobileMenuOpen(false);
+            setSettingsOpen(true);
+          }}
+        >
+          <Settings2 className="size-4" />
+        </Button>
+      )}
+      <Button
+        variant="ghost"
+        size="icon"
+        aria-label="สลับธีม"
+        title="สลับธีม"
+        onClick={() => setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')}
+      >
         {resolvedTheme === 'dark' ? <Sun className="size-4" /> : <Moon className="size-4" />}
       </Button>
-      <Button variant="ghost" size="icon" aria-label={`การแจ้งเตือนงาน ${work.inbox.data?.unreadCount ?? 'กำลังโหลด'}`} title="การแจ้งเตือนงาน" onClick={() => setPanel('inbox')} className="relative">
+      <Button
+        variant="ghost"
+        size="icon"
+        aria-label={`การแจ้งเตือนงาน ${work.inbox.data?.unreadCount ?? 'กำลังโหลด'}`}
+        title="การแจ้งเตือนงาน"
+        onClick={() => setPanel('inbox')}
+        className="relative"
+      >
         <Bell className="size-4" />
-        {!!work.inbox.data?.unreadCount && <span className="absolute -right-1 -top-1 rounded-full bg-primary px-1.5 text-[10px] tabular-nums text-primary-foreground">{work.inbox.data.unreadCount > 99 ? '99+' : work.inbox.data.unreadCount}</span>}
+        {!!work.inbox.data?.unreadCount && (
+          <span className="absolute -right-1 -top-1 rounded-full bg-primary px-1.5 text-[10px] tabular-nums text-primary-foreground">
+            {work.inbox.data.unreadCount > 99 ? '99+' : work.inbox.data.unreadCount}
+          </span>
+        )}
       </Button>
     </div>
   );
@@ -221,7 +297,9 @@ export default function InboxWorkTools({
     ) : (
       <aside className="inbox-rail" aria-label="ศูนย์การสื่อสาร">
         {homeLink}
-        <p className="inbox-rail-alert" role="alert">โหลดเมนูคิวงานไม่ได้</p>
+        <p className="inbox-rail-alert" role="alert">
+          โหลดเมนูคิวงานไม่ได้
+        </p>
         <Button variant="ghost" size="sm" onClick={() => work.settings.refetch()}>
           ลองใหม่
         </Button>
@@ -237,21 +315,42 @@ export default function InboxWorkTools({
       {workZones.length >= 2 && (
         <div role="tablist" aria-label="หมวดงาน" className="inbox-rail-zones">
           {workZones.map(({ zone, label, Icon }) => (
-            <button key={zone} type="button" role="tab" aria-selected={zone === currentZone} aria-label={label} title={label}
-              onClick={() => { if (zone !== currentZone) navigate(getWorkZoneHref('/inbox', zone)); }}>
+            <button
+              key={zone}
+              type="button"
+              role="tab"
+              aria-selected={zone === currentZone}
+              aria-label={label}
+              title={label}
+              onClick={() => {
+                if (zone !== currentZone) navigate(getWorkZoneHref('/inbox', zone));
+              }}
+            >
               <Icon aria-hidden="true" />
             </button>
           ))}
         </div>
       )}
-      <p className="inbox-rail-zone" title={identityLabel}>{zoneShort}</p>
+      <p className="inbox-rail-zone" title={identityLabel}>
+        {zoneShort}
+      </p>
       <h1 className="sr-only">ศูนย์การสื่อสาร</h1>
       {workNavigation}
       <span className="inbox-rail-spacer" aria-hidden="true" />
       {utilities}
       <div className="inbox-rail-user">
-        {user && <div className="inbox-rail-avatar" title={user.name} aria-hidden="true">{user.name?.charAt(0)}</div>}
-        <Button variant="ghost" size="icon" aria-label="ออกจากระบบ" title="ออกจากระบบ" onClick={logout}>
+        {user && (
+          <div className="inbox-rail-avatar" title={user.name} aria-hidden="true">
+            {user.name?.charAt(0)}
+          </div>
+        )}
+        <Button
+          variant="ghost"
+          size="icon"
+          aria-label="ออกจากระบบ"
+          title="ออกจากระบบ"
+          onClick={logout}
+        >
           <LogOut className="size-4" />
         </Button>
       </div>
@@ -260,17 +359,52 @@ export default function InboxWorkTools({
   const header = (
     <header className="inbox-workspace-header">
       <div className="inbox-workspace-identity">
-        <p className="text-xs leading-snug text-muted-foreground" title={branchName}>{identityLabel}</p>
-        <h1 className="font-semibold leading-snug">ศูนย์การสื่อสาร</h1>
+        <h1 className="font-semibold leading-snug">แชท</h1>
+        <p className="text-xs leading-snug text-muted-foreground" title={branchName}>
+          {identityLabel}
+        </p>
       </div>
-      <div className="inbox-header-navigation">{workNavigation}</div>
-      {utilities}
+      <button
+        type="button"
+        aria-label="เมนูงานแชท"
+        onClick={() => setMobileMenuOpen(true)}
+        className="inbox-touch"
+      >
+        <MoreHorizontal className="size-5" />
+      </button>
+      <nav className="inbox-mobile-work-tabs" aria-label="การสื่อสารและงานทีม">
+        <button type="button" aria-current="page" onClick={() => setPanel(null)}>
+          <Inbox className="size-4" />
+          แชทลูกค้า
+        </button>
+        <button
+          type="button"
+          aria-label="คิวงาน"
+          disabled={!work.enabled}
+          onClick={() => setPanel('queue')}
+        >
+          <ListTodo className="size-4" />
+          งานทีม {waitingCount ? <span>{waitingCount > 99 ? '99+' : waitingCount}</span> : null}
+        </button>
+      </nav>
     </header>
   );
   return (
     <>
       {isMobile ? header : rail}
-      {settingsOpen && user?.role === 'OWNER' && <ChatWorkSettingsDialog key={work.identity} onClose={() => setSettingsOpen(false)} />}
+      <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
+        <SheetContent side="bottom" className="inbox-mobile-sheet">
+          <SheetTitle>เมนูงานแชท</SheetTitle>
+          <SheetDescription>{identityLabel}</SheetDescription>
+          <div className="inbox-mobile-work-menu">
+            {workNavigation}
+            {utilities}
+          </div>
+        </SheetContent>
+      </Sheet>
+      {settingsOpen && user?.role === 'OWNER' && (
+        <ChatWorkSettingsDialog key={work.identity} onClose={() => setSettingsOpen(false)} />
+      )}
       <Sheet open={!!panel} onOpenChange={(o) => !o && setPanel(null)}>
         <SheetContent
           side="left"

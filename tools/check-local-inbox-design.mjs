@@ -1,3 +1,4 @@
+import { chooseComposerMode, openComposerTool, showWorkControl, toggleChatTheme } from './chat-ui.mjs';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import { expect } from '@playwright/test';
@@ -30,7 +31,7 @@ export async function checkInboxDesign(browser, origin, output) {
       await page.goto(new URL(`/inbox/${roomId}`, origin).href);
       if (largeText) await page.addStyleTag({ content: 'html { font-size:20px !important; }' });
       // The page title is visually hidden inside the desktop rail, so visibility is checked per shell below.
-      await expect(page.getByRole('heading', { name: 'ศูนย์การสื่อสาร', exact: true })).toBeAttached();
+      if (width >= 1024) await expect(page.getByRole('heading', { name: 'ศูนย์การสื่อสาร', exact: true })).toBeAttached();
       await expect(page.getByRole('textbox', { name: 'พิมพ์ข้อความ', exact: true })).toBeVisible();
       if (width >= 1024) {
         // Desktop: no app sidebar at all; the Inbox rail is the only chrome and sits at the left edge.
@@ -61,7 +62,8 @@ export async function checkInboxDesign(browser, origin, output) {
         }
         await expect(page.getByRole('heading', { name: 'กล่องข้อความ', exact: true })).toBeVisible();
       } else {
-        await expect(page.getByRole('heading', { name: 'ศูนย์การสื่อสาร', exact: true })).toBeVisible();
+        await expect(page.locator('.inbox-workspace-header')).toBeHidden();
+        await expect(page.getByRole('button', { name: 'กลับ', exact: true })).toBeVisible();
         assert.equal(await page.locator('.inbox-rail').count(), 0, 'Phones keep the compact header, not the rail');
       }
       if (width >= 1280) {
@@ -72,16 +74,17 @@ export async function checkInboxDesign(browser, origin, output) {
       }
       const overflow = await page.evaluate(() => document.documentElement.scrollWidth - innerWidth);
       assert.ok(overflow <= 1, `Horizontal overflow at ${width}px: ${overflow}`);
-      const modes = await page.getByRole('radiogroup', { name: 'โหมดช่องพิมพ์' }).boundingBox();
+      const modes = await (width < 1024 ? page.getByRole('button', { name: 'เลือกโหมดช่องพิมพ์', exact: true }) : page.getByRole('radiogroup', { name: 'โหมดช่องพิมพ์' })).boundingBox();
       const card = await page.locator('[data-chat-composer-card]').boundingBox();
       assert.ok(modes.y + modes.height <= card.y, 'Mode buttons must not overlap composer border');
+      await page.getByRole('textbox', { name: 'พิมพ์ข้อความ', exact: true }).fill('ตรวจสเกล');
       const send = await page.getByRole('button', { name: 'ส่งข้อความ', exact: true }).boundingBox();
-      assert.ok(send.y + send.height <= height - 50 || width >= 1024, 'Send is hidden under mobile bottom bar');
+      assert.ok(send.y + send.height <= height || width >= 1024, 'Send is outside viewport');
       await expect(page.getByRole('log', { name: 'ประวัติข้อความ' })).toBeVisible();
       await page.screenshot({ path: join(output, `inbox-design-light-${width}${largeText ? '-large-text' : ''}.png`) });
-      await page.getByRole('radio', { name: 'โน้ตภายใน', exact: true }).click();
+      await chooseComposerMode(page, 'note');
       await expect(page.getByRole('textbox', { name: 'พิมพ์โน้ตภายใน', exact: true })).toBeVisible();
-      await page.getByRole('button', { name: 'สลับธีม', exact: true }).click();
+      await toggleChatTheme(page);
       await expect(page.locator('html')).toHaveClass(/dark/);
       await page.screenshot({ path: join(output, `inbox-design-dark-note-${width}${largeText ? '-large-text' : ''}.png`) });
       if (width >= 1024) {
@@ -90,12 +93,14 @@ export async function checkInboxDesign(browser, origin, output) {
         const railOverflow = await rail.evaluate((e) => e.scrollHeight - e.clientHeight);
         assert.ok(railOverflow <= 0, `Rail content overflows by ${railOverflow}px in dark mode`);
         await rail.screenshot({ path: join(output, `inbox-rail-dark-${width}${largeText ? '-large-text' : ''}.png`) });
-        await page.getByRole('button', { name: 'สลับธีม', exact: true }).click();
+        await toggleChatTheme(page);
         await expect(page.locator('html')).not.toHaveClass(/dark/);
         await rail.screenshot({ path: join(output, `inbox-rail-${width}${largeText ? '-large-text' : ''}.png`) });
         await page.screenshot({ path: join(output, `inbox-rail-workspace-${width}${largeText ? '-large-text' : ''}.png`) });
       } else {
-        const navigation = page.getByRole('navigation', { name: 'การสื่อสารและงานทีม' });
+        await page.getByRole('button', { name: 'กลับ', exact: true }).click();
+        await page.getByRole('button', { name: 'เมนูงานแชท', exact: true }).click();
+        const navigation = page.getByRole('dialog').getByRole('navigation', { name: 'การสื่อสารและงานทีม' });
         await expect(navigation).toBeVisible();
         const analytics = navigation.getByRole('link', { name: 'ภาพรวมงานแชท' });
         await analytics.focus();

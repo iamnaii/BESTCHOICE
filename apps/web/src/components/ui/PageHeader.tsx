@@ -1,9 +1,13 @@
 import { cn } from '@/lib/utils';
 import type { ReactNode } from 'react';
+import InlineHelp from './InlineHelp';
 
 interface PageHeaderProps {
   title: string;
   subtitle?: string;
+  /** Optional background instructions; essential conditions belong in the visible page. */
+  help?: ReactNode;
+  helpLabel?: string;
   icon?: ReactNode;
   action?: ReactNode;
   breadcrumb?: ReactNode;
@@ -19,6 +23,8 @@ interface PageHeaderProps {
 export default function PageHeader({
   title,
   subtitle,
+  help,
+  helpLabel,
   icon,
   action,
   breadcrumb,
@@ -58,13 +64,22 @@ export default function PageHeader({
           )}
           <div className="min-w-0">
             <div className="flex min-w-0 flex-wrap items-center gap-2">
-              <h1 className="text-[1.375rem] lg:text-2xl leading-snug font-semibold text-foreground break-words">{title}</h1>
+              <h1 className="text-[1.375rem] lg:text-2xl leading-snug font-semibold text-foreground break-words">
+                {title}
+              </h1>
               {badge}
             </div>
-            {subtitle && <p className="mt-1 text-sm leading-relaxed text-muted-foreground break-words">{subtitle}</p>}
+            {subtitle && (
+              <p className="mt-1 max-w-prose text-sm leading-relaxed text-muted-foreground break-words">
+                {subtitle}
+              </p>
+            )}
+            {help && <InlineHelp label={helpLabel}>{help}</InlineHelp>}
           </div>
         </div>
-        {action && <div className="flex min-w-0 max-w-full flex-wrap items-center gap-2.5">{action}</div>}
+        {action && (
+          <div className="flex min-w-0 max-w-full flex-wrap items-center gap-2.5">{action}</div>
+        )}
       </div>
     </div>
   );

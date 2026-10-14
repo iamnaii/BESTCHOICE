@@ -133,7 +133,7 @@
 
   /* One family throughout the storefront, including controls and portals.
      Keep font-head as an alias for existing components, not a second face. */
-  --font-sans: 'Prompt', 'Noto Sans Thai', sans-serif;
+  --font-sans: 'Noto Sans Thai Looped', system-ui, sans-serif;
   --font-head: var(--font-sans);
 
   /* Thai needs room for stacked vowels/tone marks. Sizes use rem so the

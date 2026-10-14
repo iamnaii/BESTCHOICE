@@ -1,3 +1,4 @@
+import { openComposerTool } from './chat-ui.mjs';
 /** Synthetic-only integrated browser check. Start preview-chat-credit.sh first. */
 import assert from 'node:assert/strict';
 import { mkdir, writeFile } from 'node:fs/promises';
@@ -28,7 +29,7 @@ try {
     page.on('pageerror', (error) => errors.push(error.message));
     page.on('request', (req) => { if (req.method() === 'POST') writes.push(new URL(req.url()).pathname); });
     await page.goto(`${origin}/inbox/${fixture.roomId}`);
-    await page.getByRole('button', { name: 'เตรียมข้อเสนอ', exact: true }).click();
+    await openComposerTool(page, 'เตรียมข้อเสนอ');
     await expect(page.getByRole('dialog')).toBeVisible();
     assert.ok(!writes.some((path) => path.endsWith('/prepare-offer')));
     await page.getByRole('button', { name: 'สรุปและค้นข้อเสนอ', exact: true }).click();

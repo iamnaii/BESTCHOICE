@@ -1,5 +1,6 @@
 import { Banknote, CalendarDays, Clock, Pencil, ShoppingCart } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import InlineHelp from '@/components/ui/InlineHelp';
 
 const STEPS = [
   {
@@ -35,8 +36,7 @@ export default function BookingEmptyState({
         </span>
         <h2 className="mt-2 text-lg font-semibold">ยังไม่มีใบจอง</h2>
         <p className="text-sm leading-snug text-muted-foreground">
-          ใบจองใช้รับมัดจำเครื่องไว้ให้ลูกค้า เมื่อลูกค้ามารับและจ่ายส่วนที่เหลือ
-          ระบบปิดเป็นใบขายให้โดยนำมัดจำมาหักยอดอัตโนมัติ
+          รับมัดจำจองเครื่อง แล้วหักจากยอดขายเมื่อลูกค้ามารับ
         </p>
         {canCreate && (
           <Button size="lg" className="mt-1.5" onClick={onCreate}>
@@ -44,25 +44,27 @@ export default function BookingEmptyState({
           </Button>
         )}
       </div>
-      <ol className="grid w-full max-w-4xl gap-6 border-t border-border pt-7 md:grid-cols-3">
-        {STEPS.map((s, i) => (
-          <li key={s.title} className="flex gap-3">
-            <span className="inline-flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
-              <s.icon className="size-4" />
-            </span>
-            <div className="leading-snug">
-              <div className="text-sm font-semibold">
-                {i + 1}. {s.title}
+      <InlineHelp label="วิธีใช้งานใบจอง" className="w-full max-w-4xl">
+        <ol className="grid gap-5 py-3 md:grid-cols-3">
+          {STEPS.map((s, i) => (
+            <li key={s.title} className="flex gap-3">
+              <span className="inline-flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+                <s.icon className="size-4" />
+              </span>
+              <div className="leading-snug">
+                <div className="text-sm font-semibold">
+                  {i + 1}. {s.title}
+                </div>
+                <div className="mt-0.5 text-[13px] text-muted-foreground">{s.text}</div>
               </div>
-              <div className="mt-0.5 text-[13px] text-muted-foreground">{s.text}</div>
-            </div>
-          </li>
-        ))}
-      </ol>
-      <p className="flex items-center gap-1.5 text-xs leading-snug text-muted-foreground">
-        <Clock className="size-3.5" />
-        ใบจองใช้ได้ 7 วันโดยค่าเริ่มต้น (แก้ได้ทุกใบ) · รับมัดจำแล้วเครื่องถูกล็อกให้ลูกค้า ·
-        เลยกำหนดแล้วมัดจำที่รับไว้จะถูกริบ · ยกเลิกก่อนหมดอายุคืนมัดจำเต็มจำนวน
+            </li>
+          ))}
+        </ol>
+      </InlineHelp>
+      <p className="flex max-w-prose items-start gap-2 text-xs leading-relaxed text-muted-foreground">
+        <Clock className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
+        อายุเริ่มต้น 7 วัน (ปรับได้) · รับมัดจำแล้วล็อกเครื่อง · หมดอายุริบมัดจำ ·
+        ยกเลิกก่อนหมดอายุคืนมัดจำเต็มจำนวน
       </p>
     </section>
   );

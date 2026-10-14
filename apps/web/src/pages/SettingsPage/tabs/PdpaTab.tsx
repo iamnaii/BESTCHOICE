@@ -171,12 +171,10 @@ export function PdpaTab() {
             ) : (
               <ShieldAlert className="size-5 text-amber-600 dark:text-amber-400" />
             )}
-            PDPA Strict Mode (PII column-level encryption)
+            อ่านเฉพาะข้อมูลที่เข้ารหัส
           </CardTitle>
           <CardDescription className="leading-snug">
-            เมื่อเปิด strict mode ระบบจะอ่านข้อมูลส่วนบุคคล (เลขบัตรประชาชน,
-            เบอร์โทร, อีเมล, ที่อยู่) จากคอลัมน์ encrypted เท่านั้น —
-            ป้องกันการรั่วไหลของข้อมูลแม้ DB ถูกขโมย (PDPA พ.ร.บ. 2562)
+            ใช้ข้อมูลเลขบัตรประชาชน เบอร์โทร อีเมล และที่อยู่จากส่วนที่เข้ารหัสแล้วเท่านั้น
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -184,8 +182,7 @@ export function PdpaTab() {
             <div className="min-w-0 flex-1">
               <p className="text-sm font-medium text-foreground leading-snug">เปิดใช้งาน Strict Mode</p>
               <p className="text-xs text-muted-foreground leading-snug mt-1">
-                ก่อนเปิด — ต้องรัน Backfill ให้คอลัมน์ encrypted ครบทุกแถวก่อน
-                ไม่อย่างนั้นทุก API ที่อ่าน Customer จะ 400
+                ต้องเข้ารหัสข้อมูลเดิมให้ครบก่อนเปิด มิฉะนั้นจะอ่านข้อมูลลูกค้าที่ยังไม่เข้ารหัสไม่ได้
               </p>
             </div>
             <Switch
@@ -255,11 +252,10 @@ export function PdpaTab() {
             ) : (
               <Unlock className="size-5 text-amber-600 dark:text-amber-400" />
             )}
-            Backfill PII Encryption
+            เข้ารหัสข้อมูลลูกค้าเดิม
           </CardTitle>
           <CardDescription className="leading-snug">
-            เข้ารหัสคอลัมน์ PII (nationalId, phone, email, address) สำหรับ
-            ลูกค้าที่ยังไม่ได้เข้ารหัส — รันได้หลายครั้ง (idempotent)
+            เข้ารหัสเลขบัตรประชาชน เบอร์โทร อีเมล และที่อยู่ที่ยังตกค้าง เรียกซ้ำได้
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -343,8 +339,7 @@ export function PdpaTab() {
         <CardHeader>
           <CardTitle>ประวัติ Backfill (7 ครั้งล่าสุด)</CardTitle>
           <CardDescription className="leading-snug">
-            ทั้งจาก CLI (npm run backfill:encrypt-pii) และจากการคลิกปุ่มใน
-            หน้านี้
+            รวมการสั่งจากหน้านี้และคำสั่งของผู้ดูแลระบบ
           </CardDescription>
         </CardHeader>
         <CardContent>

@@ -327,7 +327,7 @@ function App() {
         {/* ประกันของฉัน — ลูกค้าเปิดจาก LINE OA ร้าน (ช่อง SHOP) ครอบทั้งขายสด/ไฟแนนซ์นอก/ผ่อน */}
         <Route path="/liff/warranty" element={<LiffWarranty />} />
         <Route path="/liff/notifications" element={<LiffNotificationSettings />} />
-        <Route path="/liff/debug" element={<div style={{padding:20,fontFamily:'monospace'}}>
+        <Route path="/liff/debug" element={<div style={{padding:20,fontFamily:'var(--font-sans)'}}>
           <h2>LIFF Debug</h2>
           <p>pathname: {window.location.pathname}</p>
           <p>search: {window.location.search}</p>

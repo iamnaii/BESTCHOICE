@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
 import { toast } from 'sonner';
 import PageHeader from '@/components/ui/PageHeader';
+import InlineHelp from '@/components/ui/InlineHelp';
 import QueryBoundary from '@/components/QueryBoundary';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
@@ -312,16 +313,15 @@ function ShopBotSetupForm() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="claude">
-                Claude (Anthropic) — default, persona-refined Thai
+                Claude (Anthropic)
               </SelectItem>
               <SelectItem value="gemini">
-                Gemini 2.5-flash (Vertex) — ~8x ถูกกว่า, thinking-mode ปิด
+                Gemini 2.5 Flash (Google)
               </SelectItem>
             </SelectContent>
           </Select>
           <p className="text-xs text-muted-foreground leading-snug">
-            เปลี่ยน provider จะมีผลทันทีหลังกดบันทึก (cache ถูกล้างพร้อมกัน) —
-            ไม่ต้องรอ 60 วินาที, ไม่ต้อง redeploy
+            ผู้ให้บริการใหม่มีผลทันทีเมื่อบันทึก
           </p>
         </div>
         <div className="flex justify-end gap-2">
@@ -332,7 +332,7 @@ function ShopBotSetupForm() {
               testSendMutation.isPending || !shopBotQuery.data?.shopBotTestUserId
             }
           >
-            {testSendMutation.isPending ? 'กำลังส่ง...' : '🧪 ส่งข้อความทดสอบไปยัง LINE'}
+            {testSendMutation.isPending ? 'กำลังส่ง...' : 'ส่งข้อความทดสอบไปยัง LINE'}
           </Button>
           <Button
             onClick={() => saveMutation.mutate()}
@@ -365,12 +365,11 @@ function ChannelRoutingCard() {
       </CardHeader>
       <CardContent className="space-y-2">
         <p className="text-xs text-muted-foreground leading-snug mb-3">
-          การจับคู่อ้างอิงประเภทห้องแชท: ห้องที่มาจาก LINE FINANCE ใช้ Service Bot ส่วนช่องทางอื่น ๆ ใช้ Sales Bot
-          ตัวเดียวกัน (knowledge base เดียวกัน — สินค้า/ราคา/โปร/สาขา)
+          LINE FINANCE ใช้บอทบริการลูกค้า ช่องทางอื่นใช้บอทขายและฐานความรู้ร่วมกัน
         </p>
         <div className="rounded-lg border border-border divide-y divide-border">
           {CHANNEL_BOT_ROUTING.map((row) => (
-            <div key={row.channel} className="flex items-start justify-between gap-3 p-3">
+            <div key={row.channel} className="flex flex-wrap items-start justify-between gap-3 p-3">
               <div className="flex-1 min-w-0">
                 <p className="font-medium text-foreground leading-snug">{row.channel}</p>
                 <p className="text-xs text-muted-foreground leading-snug mt-0.5">{row.desc}</p>
@@ -469,10 +468,12 @@ export default function AiSettingsPage() {
 
   return (
     <div>
-      <PageHeader title="AI Settings" subtitle="ตั้งค่า AI Auto Mode สำหรับตอบแชทอัตโนมัติ" />
+      <PageHeader title="ตั้งค่า AI" subtitle="เลือกช่องทางและเงื่อนไขการตอบแชทอัตโนมัติ" />
       <div className="max-w-2xl space-y-6">
         {statusQuery.data && <AiRuntimeStatusStrip status={statusQuery.data} />}
-        <ChannelRoutingCard />
+        <InlineHelp label="บอทที่ตอบแต่ละช่องทาง">
+          <ChannelRoutingCard />
+        </InlineHelp>
         <QueryBoundary
           isLoading={settingsQuery.isLoading}
           isError={settingsQuery.isError}

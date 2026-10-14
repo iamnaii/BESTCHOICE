@@ -332,8 +332,8 @@ function DataTable<T extends { id: string }>({
     .filter((col) => col.id !== '_select' && col.getCanHide() && !col.getIsVisible()).length;
   const columnToggleLabel =
     hiddenColumnCount > 0 ? `คอลัมน์ · ซ่อนอยู่ ${hiddenColumnCount}` : 'คอลัมน์';
-  const hasToolbar =
-    searchable || columnToggle || toolbar || (selectable && selectedRows.length > 0);
+  const hasMainToolbar = searchable || toolbar || (selectable && selectedRows.length > 0);
+  const hasToolbar = hasMainToolbar || columnToggle;
 
   return (
     <div
@@ -345,10 +345,10 @@ function DataTable<T extends { id: string }>({
       {/* Toolbar */}
       {hasToolbar && (
         <div className="flex items-center justify-between gap-3 flex-wrap px-5 py-3 border-b border-border/60">
-          <div className="flex items-center gap-3 flex-1 min-w-0">
+          {hasMainToolbar && <div className="flex w-full min-w-0 flex-wrap items-center gap-3 sm:w-auto sm:flex-1">
             {/* Search */}
             {searchable && (
-              <div className="relative max-w-sm">
+              <div className="relative w-full max-w-sm sm:w-auto">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
                   placeholder={searchPlaceholder}
@@ -364,7 +364,7 @@ function DataTable<T extends { id: string }>({
 
             {/* Bulk actions bar */}
             {selectable && selectedRows.length > 0 && (
-              <div className="flex items-center gap-2 ml-auto">
+              <div className="flex flex-wrap items-center gap-2 sm:ml-auto">
                 <span className="text-2sm text-muted-foreground font-medium">
                   เลือก {selectedRows.length} รายการ
                 </span>
@@ -393,7 +393,7 @@ function DataTable<T extends { id: string }>({
                 </Button>
               </div>
             )}
-          </div>
+          </div>}
 
           {/* Column visibility toggle */}
           {columnToggle && (

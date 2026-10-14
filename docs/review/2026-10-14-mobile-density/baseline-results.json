@@ -1,0 +1,66 @@
+{
+  "results": [
+    {
+      "name": "other-income-320-light",
+      "status": "FAIL",
+      "error": "Status cards lose width to a nested page inset"
+    },
+    {
+      "name": "letters-320-light",
+      "status": "FAIL",
+      "error": "Letter title is squeezed beside export"
+    },
+    {
+      "name": "trade-in-320-light",
+      "status": "FAIL",
+      "error": "Search is squeezed by the column chooser"
+    },
+    {
+      "name": "customers-320-light",
+      "status": "FAIL",
+      "error": "Count filters push search too far down the phone screen"
+    },
+    {
+      "name": "expenses-320-light",
+      "status": "FAIL",
+      "error": "Expense heading takes multiple lines"
+    },
+    {
+      "name": "storefront-320",
+      "status": "FAIL",
+      "error": "Catalog control touch target is too short"
+    }
+  ],
+  "failures": [
+    {
+      "name": "other-income-320-light",
+      "status": "FAIL",
+      "error": "Status cards lose width to a nested page inset"
+    },
+    {
+      "name": "letters-320-light",
+      "status": "FAIL",
+      "error": "Letter title is squeezed beside export"
+    },
+    {
+      "name": "trade-in-320-light",
+      "status": "FAIL",
+      "error": "Search is squeezed by the column chooser"
+    },
+    {
+      "name": "customers-320-light",
+      "status": "FAIL",
+      "error": "Count filters push search too far down the phone screen"
+    },
+    {
+      "name": "expenses-320-light",
+      "status": "FAIL",
+      "error": "Expense heading takes multiple lines"
+    },
+    {
+      "name": "storefront-320",
+      "status": "FAIL",
+      "error": "Catalog control touch target is too short"
+    }
+  ]
+}

@@ -76,7 +76,7 @@ export default function PeakExportPage() {
     <div className="container mx-auto px-4 py-6 max-w-3xl">
       <PageHeader
         title="ส่งออกสมุดรายวันสำหรับ PEAK"
-        subtitle="สร้างไฟล์ CSV ของรายการบันทึกบัญชีในช่วงที่เลือก พร้อมรหัสบัญชีฝั่ง PEAK เพื่อนำเข้าโปรแกรม peakaccount.com"
+        subtitle="ส่งออกรายการบัญชีเป็น CSV สำหรับนำเข้า PEAK"
         icon={<FileSpreadsheet className="size-5" aria-hidden />}
       />
 

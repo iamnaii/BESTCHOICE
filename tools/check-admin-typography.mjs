@@ -336,11 +336,11 @@ try {
       for (const disabled of [true, false]) {
         snapshots.push(
           await page.evaluate(async (disabled) => {
-            const style = document.querySelector(
-              'style[data-vite-dev-id$="/styles/admin-typography.css"]',
-            );
-            if (!style?.sheet) throw new Error('Admin stylesheet missing');
-            style.sheet.disabled = disabled;
+            for (const file of ['admin-typography', 'admin-colors']) {
+              const style = document.querySelector(`style[data-vite-dev-id$="/styles/${file}.css"]`);
+              if (!style?.sheet) throw new Error(`${file} stylesheet missing`);
+              style.sheet.disabled = disabled;
+            }
             await new Promise((resolve) =>
               requestAnimationFrame(() => requestAnimationFrame(resolve)),
             );
@@ -349,6 +349,7 @@ try {
             ].map((e) => {
               const s = getComputedStyle(e),
                 r = e.getBoundingClientRect();
+              const paper = e.closest('.mobile-receipt, .template-paper, .sticker');
               return [
                 e.tagName,
                 s.fontFamily,
@@ -358,6 +359,7 @@ try {
                 s.letterSpacing,
                 r.width,
                 r.height,
+                ...(paper ? [s.color, s.backgroundColor, s.borderColor] : []),
               ];
             });
           }, disabled),
@@ -366,7 +368,7 @@ try {
       assert.deepEqual(
         snapshots[1],
         snapshots[0],
-        `${kind}: unchanged typography and geometry in ${media}`,
+        `${kind}: unchanged typography, geometry and paper colors in ${media}`,
       );
     }
     await page.emulateMedia({ media: 'screen' });

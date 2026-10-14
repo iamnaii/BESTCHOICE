@@ -1,3 +1,4 @@
+import { toBangkokDateString } from '@/lib/date';
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { useMutation, useQuery } from '@tanstack/react-query';
@@ -63,7 +64,7 @@ export default function EquityEntryPage() {
   const [step, setStep] = useState(1);
   const [form, setForm] = useState<EquityFormValues>({
     txnType: 'CAP_INC',
-    txnDate: new Date().toISOString().slice(0, 10),
+    txnDate: toBangkokDateString(),
     lines: [emptyLine()],
   });
   const [preview, setPreview] = useState<JournalPreview | null>(null);

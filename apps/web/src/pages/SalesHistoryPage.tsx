@@ -566,7 +566,7 @@ export default function SalesHistoryPage() {
     }] : []),
   ].filter(column => ['saleNumber', 'createdAt', 'saleType', 'product', 'customer', 'netAmount', 'actions'].includes(column.key)), [navigate, searchParams, salesData?.page, limit, isOwner, isOwnerOrManager]);
 
-  const inputClass = 'px-3 py-2 border border-input rounded-lg text-sm bg-background';
+  const inputClass = 'min-w-0 max-w-full px-3 py-2 border border-input rounded-lg text-sm bg-background';
 
   return (
     <div>
@@ -574,7 +574,7 @@ export default function SalesHistoryPage() {
 
       {/* Summary Cards */}
       {summary && salesData && (
-        <div className={`grid grid-cols-2 ${isOwner ? 'md:grid-cols-5' : 'md:grid-cols-4'} gap-5 mb-6`}>
+        <div className={`grid grid-cols-2 ${isOwner ? 'xl:grid-cols-5 [&>div:last-child]:max-xl:col-span-2' : 'xl:grid-cols-4'} gap-5 mb-6`}>
           <Card className="rounded-xl border border-border/50 bg-card shadow-sm overflow-hidden hover:shadow-card-hover transition-all">
             <div className="flex h-full">
               <div className="w-1 shrink-0 rounded-r-full bg-foreground/30" />

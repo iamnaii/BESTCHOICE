@@ -39,7 +39,7 @@ export function AssetEntrySection4Journal({ calc }: { calc: CalculationResult })
       <CardContent>
         {!hasLines ? (
           <div className="rounded-lg border border-dashed border-border bg-muted/30 p-8 text-center text-sm text-muted-foreground">
-            กรอกข้อมูลให้ครบเพื่อดู Auto Journal Preview
+            กรอกข้อมูลให้ครบเพื่อดูตัวอย่างรายการบัญชี
           </div>
         ) : (
           <table className="w-full text-sm">

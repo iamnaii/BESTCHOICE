@@ -19,6 +19,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { LIFF_ERRORS } from '@/constants/liff-errors';
+import { queryErrorMessage } from '@/lib/query-error-message';
 
 import type {
   LiffEarlyPayoffQuote as EarlyPayoffQuote,
@@ -33,7 +34,7 @@ export default function LiffEarlyPayoff() {
   const params = new URLSearchParams(window.location.search);
   const urlContractId = params.get('contractId') || '';
 
-  const { data: contractList, isLoading: listLoading } = useQuery<LiffContractResponse>({
+  const { data: contractList, isLoading: listLoading, error: listError } = useQuery<LiffContractResponse>({
     queryKey: ['liff-contracts', lineId],
     queryFn: async () => {
       const { data: result } = await liffApi.get(
@@ -114,6 +115,30 @@ export default function LiffEarlyPayoff() {
           <Skeleton className="h-64 w-full rounded-[22px]" />
           <Skeleton className="h-14 w-full rounded-[20px]" />
         </div>
+      </Shell>
+    );
+  }
+
+  // ─── Error ────────────────────────────────────────────
+  const errorMsg = error || (listError ? queryErrorMessage(listError) : null) || (quoteError ? queryErrorMessage(quoteError) : null);
+  if (errorMsg) {
+    return (
+      <Shell theme="early-payoff">
+        <TopBar theme="early-payoff" title="ปิดยอดก่อนกำหนด" initial={customerInitial} />
+        <section className="relative z-[1] px-5 pt-10 pb-8 flex flex-col items-center text-center">
+          <div className="grid h-20 w-20 place-items-center rounded-full bg-destructive/10 border border-destructive/30 mb-5">
+            <span className="text-destructive text-4xl font-light leading-none">!</span>
+          </div>
+          <h2 className="text-[18px] font-semibold text-foreground tracking-tight leading-snug">
+            ไม่สามารถดำเนินการได้
+          </h2>
+          <p className="mt-2 text-[13px] text-muted-foreground leading-snug max-w-[280px]">{errorMsg}</p>
+          <Button variant="outline" size="lg" className="mt-8 w-full max-w-xs" asChild>
+            <a href={`/liff/contract${lineId ? `?lineId=${encodeURIComponent(lineId)}` : ''}`}>
+              กลับไปดูสัญญา
+            </a>
+          </Button>
+        </section>
       </Shell>
     );
   }
@@ -206,7 +231,7 @@ export default function LiffEarlyPayoff() {
             <CheckCircle2 className="size-10 text-emerald-600" strokeWidth={1.5} />
           </div>
           <h2 className="text-[18px] font-semibold text-foreground tracking-tight leading-snug">
-            ทุกสัญญาชำระครบแล้ว
+            ไม่มีสัญญาที่ปิดยอดได้
           </h2>
           <p className="mt-2 text-[13px] text-muted-foreground leading-snug max-w-[280px]">
             ขณะนี้ไม่มีสัญญาค้างชำระที่สามารถปิดยอดก่อนกำหนดได้
@@ -214,30 +239,6 @@ export default function LiffEarlyPayoff() {
           <Button variant="outline" size="lg" className="mt-8 w-full max-w-xs" asChild>
             <a href={`/liff/contract${lineId ? `?lineId=${encodeURIComponent(lineId)}` : ''}`}>
               ดูสัญญาทั้งหมด
-            </a>
-          </Button>
-        </section>
-      </Shell>
-    );
-  }
-
-  // ─── Error ────────────────────────────────────────────
-  const errorMsg = error || (quoteError as Error)?.message;
-  if (errorMsg) {
-    return (
-      <Shell theme="early-payoff">
-        <TopBar theme="early-payoff" title="ปิดยอดก่อนกำหนด" initial={customerInitial} />
-        <section className="relative z-[1] px-5 pt-10 pb-8 flex flex-col items-center text-center">
-          <div className="grid h-20 w-20 place-items-center rounded-full bg-destructive/10 border border-destructive/30 mb-5">
-            <span className="text-destructive text-4xl font-light leading-none">!</span>
-          </div>
-          <h2 className="text-[18px] font-semibold text-foreground tracking-tight leading-snug">
-            ไม่สามารถดำเนินการได้
-          </h2>
-          <p className="mt-2 text-[13px] text-muted-foreground leading-snug max-w-[280px]">{errorMsg}</p>
-          <Button variant="outline" size="lg" className="mt-8 w-full max-w-xs" asChild>
-            <a href={`/liff/contract${lineId ? `?lineId=${encodeURIComponent(lineId)}` : ''}`}>
-              กลับไปดูสัญญา
             </a>
           </Button>
         </section>

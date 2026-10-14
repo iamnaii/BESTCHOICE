@@ -1,3 +1,4 @@
+import { toBangkokDateString, getReportDateRange } from '@/lib/date';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
@@ -76,13 +77,11 @@ function fmtMoney(value: string | number | null | undefined): string {
 }
 
 function todayStr(): string {
-  return new Date().toISOString().slice(0, 10);
+  return toBangkokDateString();
 }
 
 function monthStart(): string {
-  const d = new Date();
-  d.setDate(1);
-  return d.toISOString().slice(0, 10);
+  return getReportDateRange('this_month').startDate;
 }
 
 export default function ShopAccountingPage() {

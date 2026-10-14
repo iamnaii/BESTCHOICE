@@ -65,7 +65,7 @@ export default function LandingPage() {
                 <h1 className="text-3xl lg:text-4xl xl:text-5xl font-bold text-primary-foreground leading-tight">
                   สินค้าคุณภาพ
                   <br />
-                  <span className="text-gradient">ผ่อนสบาย</span>
+                  <span className="text-primary-foreground underline decoration-primary-foreground/40 underline-offset-8">ผ่อนสบาย</span>
                   <br />
                   ราคาเป็นกันเอง
                 </h1>

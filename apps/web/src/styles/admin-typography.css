@@ -1,61 +1,45 @@
-/* Screen UI only. Keep the global font/size tokens and all paper CSS intact.
- * Disable these rules for the whole screen when a document is present: merely
- * excluding its descendants would still allow typography to inherit into paper.
- * Portals (dialogs, sheets, menus and Sonner) share this guard with the app shell.
- */
+/* Admin screen styles stay active when paper or an editor is mounted.
+ * Document subtrees keep their own palette and original type metrics. */
 @media screen {
-  body:has(.app-shell):not(:has(
-    .voucher-sheet,
-    .document-sheet,
-    .bc-document,
-    .document-landscape,
-    .document-print-dialog,
-    .template-paper,
-    .font-sarabun,
-    .mobile-receipt,
-    .sticker,
-    .print-stickers,
-    .tiptap,
-    iframe
-  )) {
+  body:has(.app-shell) {
     /* One UI font stack for text, amounts, identifiers and keyboard hints.
      * Do not change --font-mono globally: stickers and paper still use it.
      */
-    & :is(.font-mono, pre, code, kbd, samp) {
+    & :is(.font-mono, pre, code, kbd, samp):not(:where(.voucher-sheet, .document-sheet, .bc-document, .document-landscape, .document-print-dialog, .template-paper, .font-sarabun, .mobile-receipt, .sticker, .print-stickers, .tiptap, iframe, .voucher-sheet *, .document-sheet *, .bc-document *, .document-landscape *, .document-print-dialog *, .template-paper *, .font-sarabun *, .mobile-receipt *, .sticker *, .print-stickers *, .tiptap *, iframe *)) {
       font-family: var(--font-sans);
       font-variant-numeric: tabular-nums;
     }
 
     /* Secondary labels and counters must remain legible at compact density. */
-    & :is(.text-2xs, .text-\[7px\], .text-\[9px\], .text-\[9\.5px\], .text-\[10px\], .text-\[10\.5px\], .text-\[11px\], .text-\[11\.5px\], .text-\[0\.6875rem\]) {
+    & :is(.text-2xs, .text-\[7px\], .text-\[9px\], .text-\[9\.5px\], .text-\[10px\], .text-\[10\.5px\], .text-\[11px\], .text-\[11\.5px\], .text-\[0\.6875rem\]):not(:where(.voucher-sheet, .document-sheet, .bc-document, .document-landscape, .document-print-dialog, .template-paper, .font-sarabun, .mobile-receipt, .sticker, .print-stickers, .tiptap, iframe, .voucher-sheet *, .document-sheet *, .bc-document *, .document-landscape *, .document-print-dialog *, .template-paper *, .font-sarabun *, .mobile-receipt *, .sticker *, .print-stickers *, .tiptap *, iframe *)) {
       font-size: 0.75rem;
       line-height: 1.5;
     }
 
-    & :is(.text-xs, .text-2sm, .text-sm, .text-\[12px\], .text-\[13px\], .text-\[14px\]) {
+    & :is(.text-xs, .text-2sm, .text-sm, .text-\[12px\], .text-\[13px\], .text-\[14px\]):not(:where(.voucher-sheet, .document-sheet, .bc-document, .document-landscape, .document-print-dialog, .template-paper, .font-sarabun, .mobile-receipt, .sticker, .print-stickers, .tiptap, iframe, .voucher-sheet *, .document-sheet *, .bc-document *, .document-landscape *, .document-print-dialog *, .template-paper *, .font-sarabun *, .mobile-receipt *, .sticker *, .print-stickers *, .tiptap *, iframe *)) {
       line-height: 1.5;
     }
 
     /* Normal controls are 14px; retain small badge/secondary-text variants. */
-    & :is(button, [role='button'], [role='combobox']):is(.text-2sm, .text-\[13px\], .text-\[0\.8125rem\]) {
+    & :is(button, [role='button'], [role='combobox']):is(.text-2sm, .text-\[13px\], .text-\[0\.8125rem\]):not(:where(.voucher-sheet, .document-sheet, .bc-document, .document-landscape, .document-print-dialog, .template-paper, .font-sarabun, .mobile-receipt, .sticker, .print-stickers, .tiptap, iframe, .voucher-sheet *, .document-sheet *, .bc-document *, .document-landscape *, .document-print-dialog *, .template-paper *, .font-sarabun *, .mobile-receipt *, .sticker *, .print-stickers *, .tiptap *, iframe *)) {
       font-size: 0.875rem;
       line-height: 1.5;
     }
 
-    & :is(input, textarea, select):is(.text-xs, .text-2sm, .text-sm, .text-\[12px\], .text-\[13px\], .text-\[0\.8125rem\]):not(.text-lg, .text-xl, .text-2xl, .text-3xl, .text-4xl, .text-\[18px\], .text-\[20px\], .text-\[24px\]) {
+    & :is(input, textarea, select):is(.text-xs, .text-2sm, .text-sm, .text-\[12px\], .text-\[13px\], .text-\[0\.8125rem\]):not(.text-lg, .text-xl, .text-2xl, .text-3xl, .text-4xl, .text-\[18px\], .text-\[20px\], .text-\[24px\]):not(:where(.voucher-sheet, .document-sheet, .bc-document, .document-landscape, .document-print-dialog, .template-paper, .font-sarabun, .mobile-receipt, .sticker, .print-stickers, .tiptap, iframe, .voucher-sheet *, .document-sheet *, .bc-document *, .document-landscape *, .document-print-dialog *, .template-paper *, .font-sarabun *, .mobile-receipt *, .sticker *, .print-stickers *, .tiptap *, iframe *)) {
       font-size: 0.875rem;
       line-height: 1.5;
     }
 
-    & #main h1 {
+    & #main h1:not(:where(.voucher-sheet, .document-sheet, .bc-document, .document-landscape, .document-print-dialog, .template-paper, .font-sarabun, .mobile-receipt, .sticker, .print-stickers, .tiptap, iframe, .voucher-sheet *, .document-sheet *, .bc-document *, .document-landscape *, .document-print-dialog *, .template-paper *, .font-sarabun *, .mobile-receipt *, .sticker *, .print-stickers *, .tiptap *, iframe *)) {
       font-size: 1.5rem;
       line-height: 1.5;
       font-weight: 600;
     }
 
     /* Numeric columns keep the existing alignment and font family. */
-    & :is(td, th).text-right,
-    & [data-testid='data-table'] .text-right {
+    & :is(td, th).text-right:not(:where(.voucher-sheet, .document-sheet, .bc-document, .document-landscape, .document-print-dialog, .template-paper, .font-sarabun, .mobile-receipt, .sticker, .print-stickers, .tiptap, iframe, .voucher-sheet *, .document-sheet *, .bc-document *, .document-landscape *, .document-print-dialog *, .template-paper *, .font-sarabun *, .mobile-receipt *, .sticker *, .print-stickers *, .tiptap *, iframe *)),
+    & [data-testid='data-table'] .text-right:not(:where(.voucher-sheet, .document-sheet, .bc-document, .document-landscape, .document-print-dialog, .template-paper, .font-sarabun, .mobile-receipt, .sticker, .print-stickers, .tiptap, iframe, .voucher-sheet *, .document-sheet *, .bc-document *, .document-landscape *, .document-print-dialog *, .template-paper *, .font-sarabun *, .mobile-receipt *, .sticker *, .print-stickers *, .tiptap *, iframe *)) {
       font-variant-numeric: tabular-nums;
     }
 
@@ -63,16 +47,16 @@
      * The existing table scroller handles widths below the content minimum.
      * Screen-only so printed reports retain their original cell spacing.
      */
-    & .finance-portfolio-table :is(th, td) {
+    & .finance-portfolio-table :is(th, td):not(:where(.voucher-sheet, .document-sheet, .bc-document, .document-landscape, .document-print-dialog, .template-paper, .font-sarabun, .mobile-receipt, .sticker, .print-stickers, .tiptap, iframe, .voucher-sheet *, .document-sheet *, .bc-document *, .document-landscape *, .document-print-dialog *, .template-paper *, .font-sarabun *, .mobile-receipt *, .sticker *, .print-stickers *, .tiptap *, iframe *)) {
       padding-inline: 0.75rem;
     }
 
-    & .finance-portfolio-table :is(th, td):nth-child(n + 4) {
+    & .finance-portfolio-table :is(th, td):nth-child(n + 4):not(:where(.voucher-sheet, .document-sheet, .bc-document, .document-landscape, .document-print-dialog, .template-paper, .font-sarabun, .mobile-receipt, .sticker, .print-stickers, .tiptap, iframe, .voucher-sheet *, .document-sheet *, .bc-document *, .document-landscape *, .document-print-dialog *, .template-paper *, .font-sarabun *, .mobile-receipt *, .sticker *, .print-stickers *, .tiptap *, iframe *)) {
       white-space: nowrap;
     }
 
     /* Opt in short, finite status labels; arbitrary tags may still wrap. */
-    & .admin-status-badge {
+    & .admin-status-badge:not(:where(.voucher-sheet, .document-sheet, .bc-document, .document-landscape, .document-print-dialog, .template-paper, .font-sarabun, .mobile-receipt, .sticker, .print-stickers, .tiptap, iframe, .voucher-sheet *, .document-sheet *, .bc-document *, .document-landscape *, .document-print-dialog *, .template-paper *, .font-sarabun *, .mobile-receipt *, .sticker *, .print-stickers *, .tiptap *, iframe *)) {
       display: inline-flex;
       align-items: center;
       white-space: nowrap;
@@ -82,33 +66,33 @@
     /* Size cards by usable content width, including an expanded sidebar.
      * Give the amount its own row so the icon cannot squeeze the currency.
      */
-    & .finance-portfolio-summary {
-      grid-template-columns: repeat(auto-fit, minmax(min(100%, 10rem), 1fr));
+    & .finance-portfolio-summary:not(:where(.voucher-sheet, .document-sheet, .bc-document, .document-landscape, .document-print-dialog, .template-paper, .font-sarabun, .mobile-receipt, .sticker, .print-stickers, .tiptap, iframe, .voucher-sheet *, .document-sheet *, .bc-document *, .document-landscape *, .document-print-dialog *, .template-paper *, .font-sarabun *, .mobile-receipt *, .sticker *, .print-stickers *, .tiptap *, iframe *)) {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
-    & .finance-summary-content {
+    & .finance-summary-content:not(:where(.voucher-sheet, .document-sheet, .bc-document, .document-landscape, .document-print-dialog, .template-paper, .font-sarabun, .mobile-receipt, .sticker, .print-stickers, .tiptap, iframe, .voucher-sheet *, .document-sheet *, .bc-document *, .document-landscape *, .document-print-dialog *, .template-paper *, .font-sarabun *, .mobile-receipt *, .sticker *, .print-stickers *, .tiptap *, iframe *)) {
       display: grid;
       grid-template-columns: minmax(0, 1fr) auto;
       align-items: start;
     }
 
-    & .finance-summary-content > .min-w-0 {
+    & .finance-summary-content > .min-w-0:not(:where(.voucher-sheet, .document-sheet, .bc-document, .document-landscape, .document-print-dialog, .template-paper, .font-sarabun, .mobile-receipt, .sticker, .print-stickers, .tiptap, iframe, .voucher-sheet *, .document-sheet *, .bc-document *, .document-landscape *, .document-print-dialog *, .template-paper *, .font-sarabun *, .mobile-receipt *, .sticker *, .print-stickers *, .tiptap *, iframe *)) {
       display: contents;
     }
 
-    & .finance-summary-content p:first-child {
+    & .finance-summary-content p:first-child:not(:where(.voucher-sheet, .document-sheet, .bc-document, .document-landscape, .document-print-dialog, .template-paper, .font-sarabun, .mobile-receipt, .sticker, .print-stickers, .tiptap, iframe, .voucher-sheet *, .document-sheet *, .bc-document *, .document-landscape *, .document-print-dialog *, .template-paper *, .font-sarabun *, .mobile-receipt *, .sticker *, .print-stickers *, .tiptap *, iframe *)) {
       white-space: normal;
       overflow: visible;
     }
 
-    & .finance-summary-content p:last-child {
+    & .finance-summary-content p:last-child:not(:where(.voucher-sheet, .document-sheet, .bc-document, .document-landscape, .document-print-dialog, .template-paper, .font-sarabun, .mobile-receipt, .sticker, .print-stickers, .tiptap, iframe, .voucher-sheet *, .document-sheet *, .bc-document *, .document-landscape *, .document-print-dialog *, .template-paper *, .font-sarabun *, .mobile-receipt *, .sticker *, .print-stickers *, .tiptap *, iframe *)) {
       grid-row: 2;
       grid-column: 1 / -1;
       margin-top: 0;
       overflow-wrap: anywhere;
     }
 
-    & .finance-summary-content > :last-child {
+    & .finance-summary-content > :last-child:not(:where(.voucher-sheet, .document-sheet, .bc-document, .document-landscape, .document-print-dialog, .template-paper, .font-sarabun, .mobile-receipt, .sticker, .print-stickers, .tiptap, iframe, .voucher-sheet *, .document-sheet *, .bc-document *, .document-landscape *, .document-print-dialog *, .template-paper *, .font-sarabun *, .mobile-receipt *, .sticker *, .print-stickers *, .tiptap *, iframe *)) {
       grid-row: 1;
       grid-column: 2;
     }
@@ -117,35 +101,35 @@
      * Keep money complete; extreme values can scroll within their own line.
      * These hooks are inert in print and protected document screens.
      */
-    & .finance-card-grid {
-      grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr));
+    & .finance-card-grid:not(:where(.voucher-sheet, .document-sheet, .bc-document, .document-landscape, .document-print-dialog, .template-paper, .font-sarabun, .mobile-receipt, .sticker, .print-stickers, .tiptap, iframe, .voucher-sheet *, .document-sheet *, .bc-document *, .document-landscape *, .document-print-dialog *, .template-paper *, .font-sarabun *, .mobile-receipt *, .sticker *, .print-stickers *, .tiptap *, iframe *)) {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
       align-items: stretch;
     }
 
-    & .finance-card-grid-compact {
-      grid-template-columns: repeat(auto-fit, minmax(min(100%, 10rem), 1fr));
+    & .finance-card-grid-compact:not(:where(.voucher-sheet, .document-sheet, .bc-document, .document-landscape, .document-print-dialog, .template-paper, .font-sarabun, .mobile-receipt, .sticker, .print-stickers, .tiptap, iframe, .voucher-sheet *, .document-sheet *, .bc-document *, .document-landscape *, .document-print-dialog *, .template-paper *, .font-sarabun *, .mobile-receipt *, .sticker *, .print-stickers *, .tiptap *, iframe *)) {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
-    & .finance-card-grid > * {
+    & .finance-card-grid > *:not(:where(.voucher-sheet, .document-sheet, .bc-document, .document-landscape, .document-print-dialog, .template-paper, .font-sarabun, .mobile-receipt, .sticker, .print-stickers, .tiptap, iframe, .voucher-sheet *, .document-sheet *, .bc-document *, .document-landscape *, .document-print-dialog *, .template-paper *, .font-sarabun *, .mobile-receipt *, .sticker *, .print-stickers *, .tiptap *, iframe *)) {
       container-type: inline-size;
     }
 
-    & .finance-card-grid > *,
-    & .finance-card-grid [data-slot='card-content'] {
+    & .finance-card-grid > *:not(:where(.voucher-sheet, .document-sheet, .bc-document, .document-landscape, .document-print-dialog, .template-paper, .font-sarabun, .mobile-receipt, .sticker, .print-stickers, .tiptap, iframe, .voucher-sheet *, .document-sheet *, .bc-document *, .document-landscape *, .document-print-dialog *, .template-paper *, .font-sarabun *, .mobile-receipt *, .sticker *, .print-stickers *, .tiptap *, iframe *)),
+    & .finance-card-grid [data-slot='card-content']:not(:where(.voucher-sheet, .document-sheet, .bc-document, .document-landscape, .document-print-dialog, .template-paper, .font-sarabun, .mobile-receipt, .sticker, .print-stickers, .tiptap, iframe, .voucher-sheet *, .document-sheet *, .bc-document *, .document-landscape *, .document-print-dialog *, .template-paper *, .font-sarabun *, .mobile-receipt *, .sticker *, .print-stickers *, .tiptap *, iframe *)) {
       min-width: 0;
     }
 
-    & .finance-summary-tabs {
+    & .finance-summary-tabs:not(:where(.voucher-sheet, .document-sheet, .bc-document, .document-landscape, .document-print-dialog, .template-paper, .font-sarabun, .mobile-receipt, .sticker, .print-stickers, .tiptap, iframe, .voucher-sheet *, .document-sheet *, .bc-document *, .document-landscape *, .document-print-dialog *, .template-paper *, .font-sarabun *, .mobile-receipt *, .sticker *, .print-stickers *, .tiptap *, iframe *)) {
       overflow-x: auto;
     }
 
-    & .finance-summary-tabs > button {
+    & .finance-summary-tabs > button:not(:where(.voucher-sheet, .document-sheet, .bc-document, .document-landscape, .document-print-dialog, .template-paper, .font-sarabun, .mobile-receipt, .sticker, .print-stickers, .tiptap, iframe, .voucher-sheet *, .document-sheet *, .bc-document *, .document-landscape *, .document-print-dialog *, .template-paper *, .font-sarabun *, .mobile-receipt *, .sticker *, .print-stickers *, .tiptap *, iframe *)) {
       flex-shrink: 0;
       white-space: nowrap;
     }
 
-    & .finance-card-grid :is(.text-lg, .text-xl, .text-2xl):is(.font-bold, .font-semibold),
-    & .finance-card-value {
+    & .finance-card-grid :is(.text-lg, .text-xl, .text-2xl):is(.font-bold, .font-semibold):not(:where(.voucher-sheet, .document-sheet, .bc-document, .document-landscape, .document-print-dialog, .template-paper, .font-sarabun, .mobile-receipt, .sticker, .print-stickers, .tiptap, iframe, .voucher-sheet *, .document-sheet *, .bc-document *, .document-landscape *, .document-print-dialog *, .template-paper *, .font-sarabun *, .mobile-receipt *, .sticker *, .print-stickers *, .tiptap *, iframe *)),
+    & .finance-card-value:not(:where(.voucher-sheet, .document-sheet, .bc-document, .document-landscape, .document-print-dialog, .template-paper, .font-sarabun, .mobile-receipt, .sticker, .print-stickers, .tiptap, iframe, .voucher-sheet *, .document-sheet *, .bc-document *, .document-landscape *, .document-print-dialog *, .template-paper *, .font-sarabun *, .mobile-receipt *, .sticker *, .print-stickers *, .tiptap *, iframe *)) {
       min-width: 0;
       max-width: 100%;
       white-space: nowrap;
@@ -156,7 +140,7 @@
       font-variant-numeric: tabular-nums;
     }
 
-    & .finance-closing-summary {
+    & .finance-closing-summary:not(:where(.voucher-sheet, .document-sheet, .bc-document, .document-landscape, .document-print-dialog, .template-paper, .font-sarabun, .mobile-receipt, .sticker, .print-stickers, .tiptap, iframe, .voucher-sheet *, .document-sheet *, .bc-document *, .document-landscape *, .document-print-dialog *, .template-paper *, .font-sarabun *, .mobile-receipt *, .sticker *, .print-stickers *, .tiptap *, iframe *)) {
       flex-direction: column;
       align-items: flex-start;
     }
@@ -167,16 +151,30 @@
       line-height: 1.5;
     }
 
+    /* Stable rows: 4 summaries become 2×2 until there is room for all four.
+     * Five summaries use 2 columns on phones and 5 on wide content areas. */
+    & .finance-card-grid > :nth-child(5):last-child {
+      grid-column: 1 / -1;
+    }
+    @media (min-width: 1280px) {
+      & .finance-card-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+      & .finance-card-grid:has(> :nth-child(5):last-child),
+      & .finance-portfolio-summary { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+      & .finance-card-grid > :nth-child(5):last-child { grid-column: auto; }
+    }
+
     @media (max-width: 1023px) {
-      & #main h1 {
+      & #main h1:not(:where(.voucher-sheet, .document-sheet, .bc-document, .document-landscape, .document-print-dialog, .template-paper, .font-sarabun, .mobile-receipt, .sticker, .print-stickers, .tiptap, iframe, .voucher-sheet *, .document-sheet *, .bc-document *, .document-landscape *, .document-print-dialog *, .template-paper *, .font-sarabun *, .mobile-receipt *, .sticker *, .print-stickers *, .tiptap *, iframe *)) {
         font-size: 1.375rem;
       }
 
       /* iOS keeps the viewport steady when focusing a 16px text control. */
-      & :is(input:not([type='checkbox'], [type='radio'], [type='range'], [type='color'], [type='hidden']), textarea, select, [data-slot='select-trigger']):not(.text-lg, .text-xl, .text-2xl, .text-3xl, .text-4xl, .text-\[18px\], .text-\[20px\], .text-\[24px\]) {
+      & :is(input:not([type='checkbox'], [type='radio'], [type='range'], [type='color'], [type='hidden']), textarea, select, [data-slot='select-trigger']):not(.text-lg, .text-xl, .text-2xl, .text-3xl, .text-4xl, .text-\[18px\], .text-\[20px\], .text-\[24px\]):not(:where(.voucher-sheet, .document-sheet, .bc-document, .document-landscape, .document-print-dialog, .template-paper, .font-sarabun, .mobile-receipt, .sticker, .print-stickers, .tiptap, iframe, .voucher-sheet *, .document-sheet *, .bc-document *, .document-landscape *, .document-print-dialog *, .template-paper *, .font-sarabun *, .mobile-receipt *, .sticker *, .print-stickers *, .tiptap *, iframe *)) {
         font-size: 1rem;
         line-height: 1.5;
-        min-height: 2.5rem;
+        min-height: 2.75rem;
+        min-width: 0;
+        max-width: 100%;
       }
     }
   }

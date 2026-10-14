@@ -1,3 +1,4 @@
+import { getReportDateRange } from '@/lib/date';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
@@ -140,10 +141,9 @@ function SummaryCard({
 }
 
 export function CashFlowPage() {
-  const now = new Date();
-  const firstOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-  const [startDate, setStartDate] = useState(firstOfMonth.toISOString().split('T')[0]);
-  const [endDate, setEndDate] = useState(now.toISOString().split('T')[0]);
+  const range = getReportDateRange('this_month');
+  const [startDate, setStartDate] = useState(range.startDate);
+  const [endDate, setEndDate] = useState(range.endDate);
   const [companyId, setCompanyId] = useState('');
   const { cacheTtlReports } = useUiFlags();
   const reportsStaleTime = cacheTtlReports * 1000;
@@ -203,24 +203,22 @@ export function CashFlowPage() {
             {
               label: 'เดือนนี้',
               fn: () => {
-                setStartDate(firstOfMonth.toISOString().split('T')[0]);
-                setEndDate(now.toISOString().split('T')[0]);
+                setStartDate(range.startDate);
+                setEndDate(range.endDate);
               },
             },
             {
               label: '3 เดือนล่าสุด',
               fn: () => {
-                const d = new Date();
-                d.setMonth(d.getMonth() - 3);
-                setStartDate(d.toISOString().split('T')[0]);
-                setEndDate(now.toISOString().split('T')[0]);
+                setStartDate(getReportDateRange('last_three_months').startDate);
+                setEndDate(range.endDate);
               },
             },
             {
               label: 'ปีนี้',
               fn: () => {
-                setStartDate(`${now.getFullYear()}-01-01`);
-                setEndDate(now.toISOString().split('T')[0]);
+                setStartDate(getReportDateRange('this_year').startDate);
+                setEndDate(range.endDate);
               },
             },
           ].map((p) => (

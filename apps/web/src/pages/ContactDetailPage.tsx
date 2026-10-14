@@ -118,7 +118,7 @@ function IdentityHero({
           </div>
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
-              <h1 className="text-lg font-semibold text-foreground leading-snug">{data.name}</h1>
+              <h1 className="text-lg font-semibold text-foreground leading-snug break-words">{data.name}</h1>
               {roles.map((r) => (
                 <Badge key={r} variant={ROLE_BADGE_VARIANT[r]} appearance="light" size="sm">
                   {ROLE_LABELS[r]}
@@ -130,11 +130,11 @@ function IdentityHero({
                 </Badge>
               )}
             </div>
-            <p className="text-sm text-muted-foreground leading-snug mt-0.5">
+            <p className="text-sm text-muted-foreground leading-snug mt-0.5 break-all">
               {data.contactCode} · {entityType}
             </p>
           </div>
-          <div className="flex flex-none flex-wrap items-center justify-end gap-2">
+          <div className="flex min-w-0 w-full max-w-full flex-wrap items-center gap-2 sm:w-auto sm:justify-end">
             {data.phone && (
               <Button asChild variant="outline" size="sm">
                 <a href={`tel:${data.phone}`}>

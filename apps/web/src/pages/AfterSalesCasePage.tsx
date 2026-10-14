@@ -562,7 +562,7 @@ export default function AfterSalesCasePage() {
             {showPrimaryButton && (
               <div
                 data-testid="mobile-bar"
-                className="sticky bottom-14 z-20 -mx-4 border-t border-border bg-card px-4 py-3 md:hidden"
+                className="sticky bottom-[calc(64px+env(safe-area-inset-bottom,0px))] z-20 -mx-4 border-t border-border bg-card px-4 py-3 md:hidden"
               >
                 {renderPrimary('w-full')}
               </div>

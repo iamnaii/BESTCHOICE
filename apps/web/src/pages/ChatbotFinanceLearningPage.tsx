@@ -4,6 +4,7 @@ import api, { getErrorMessage } from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
 import { toast } from 'sonner';
 import QueryBoundary from '@/components/QueryBoundary';
+import EmptyState from '@/components/ui/EmptyState';
 import { Badge } from '@/components/ui/badge';
 import { getStatusBadgeProps, kbSuggestionStatusMap, kbSuggestionSourceMap } from '@/lib/status-badges';
 import { formatDateMedium, formatDateTime } from '@/utils/formatters';
@@ -124,10 +125,10 @@ export default function ChatbotFinanceLearningPage() {
         onRetry={stats.refetch}
         errorTitle="ไม่สามารถโหลดสถิติได้"
       >
-        <div className="grid grid-cols-5 gap-3 mb-6">
-          <StatCard label="Pending" value={stats.data?.suggestions.pending ?? 0} accent="orange" />
-          <StatCard label="Approved" value={stats.data?.suggestions.approved ?? 0} accent="green" />
-          <StatCard label="Rejected" value={stats.data?.suggestions.rejected ?? 0} />
+        <div className="grid grid-cols-2 xl:grid-cols-5 [&>div:last-child]:max-xl:col-span-2 gap-3 mb-6">
+          <StatCard label="รอตรวจสอบ" value={stats.data?.suggestions.pending ?? 0} accent="orange" />
+          <StatCard label="อนุมัติแล้ว" value={stats.data?.suggestions.approved ?? 0} accent="green" />
+          <StatCard label="ปฏิเสธแล้ว" value={stats.data?.suggestions.rejected ?? 0} />
           <StatCard label="Feedback ทั้งหมด" value={stats.data?.feedback.total ?? 0} />
           <StatCard
             label="Feedback บวก"
@@ -141,7 +142,7 @@ export default function ChatbotFinanceLearningPage() {
       </QueryBoundary>
 
       {/* Filter tabs */}
-      <div className="flex gap-2 mb-4">
+      <div className="flex flex-wrap gap-2 mb-4">
         {['PENDING', 'APPROVED', 'REJECTED'].map((s) => (
           <button
             key={s}
@@ -152,23 +153,23 @@ export default function ChatbotFinanceLearningPage() {
                 : 'bg-muted text-muted-foreground hover:bg-muted/80'
             }`}
           >
-            {s} {s === 'PENDING' && stats.data?.suggestions.pending ? `(${stats.data.suggestions.pending})` : ''}
+            {{ PENDING: 'รอตรวจสอบ', APPROVED: 'อนุมัติแล้ว', REJECTED: 'ปฏิเสธแล้ว' }[s]} {s === 'PENDING' && stats.data?.suggestions.pending ? `(${stats.data.suggestions.pending})` : ''}
           </button>
         ))}
       </div>
 
       {/* Suggestions list + detail */}
       <div className="grid grid-cols-12 gap-4">
-        <div className="col-span-5 space-y-2 max-h-[70vh] overflow-y-auto">
+        <div className="col-span-12 lg:col-span-5 min-w-0 space-y-2 max-h-[70vh] overflow-y-auto">
           <QueryBoundary
             isLoading={suggestions.isLoading && !suggestions.data}
             isError={suggestions.isError}
             error={suggestions.error}
             onRetry={suggestions.refetch}
-            errorTitle="ไม่สามารถโหลด suggestions ได้"
+            errorTitle="ไม่สามารถโหลดข้อเสนอแนะได้"
           >
             {suggestions.data?.items.length === 0 ? (
-              <p className="text-sm text-muted-foreground p-4">ไม่มี suggestions สถานะ {statusFilter}</p>
+              <EmptyState title="ไม่พบข้อเสนอแนะในสถานะนี้" description="เลือกสถานะอื่นเพื่อตรวจสอบข้อเสนอแนะ" className="py-8" />
             ) : (
               suggestions.data?.items.map((s) => (
                 <div
@@ -195,9 +196,9 @@ export default function ChatbotFinanceLearningPage() {
         </div>
 
         {/* Detail */}
-        <div className="col-span-7 bg-card border rounded-xl p-5">
+        <div className="col-span-12 lg:col-span-7 min-w-0 bg-card border rounded-xl p-5">
           {!selectedSuggestion ? (
-            <p className="text-muted-foreground text-sm">เลือก suggestion จากด้านซ้ายเพื่อดูรายละเอียด</p>
+            <p className="text-muted-foreground text-sm">เลือกข้อเสนอแนะจากรายการเพื่อดูรายละเอียด</p>
           ) : (
             <div className="space-y-4">
               <div className="flex justify-between items-start">

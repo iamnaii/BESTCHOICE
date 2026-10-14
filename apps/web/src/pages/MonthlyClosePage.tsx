@@ -368,7 +368,7 @@ export default function MonthlyClosePage() {
       />
 
       {/* Controls */}
-      <div className="flex flex-wrap items-center gap-4">
+      <div className="flex flex-wrap items-center gap-4 [&>div]:min-w-0 [&>div]:max-w-full">
         {/* Company selector */}
         {companies.length > 0 && (
           <div>

@@ -1,3 +1,4 @@
+import { getReportDateRange, toBangkokDateString } from '@/lib/date';
 import { useState } from 'react';
 import { useSearchParams } from 'react-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -224,7 +225,7 @@ export default function FinanceReceivablePage() {
   const [isDisputeModalOpen, setIsDisputeModalOpen] = useState(false);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
-  const [receiveForm, setReceiveForm] = useState({ receivedAmount: '', receivedDate: new Date().toISOString().split('T')[0], bankRef: '', note: '' });
+  const [receiveForm, setReceiveForm] = useState({ receivedAmount: '', receivedDate: toBangkokDateString(), bankRef: '', note: '' });
   const [editForm, setEditForm] = useState({ financeRefNumber: '', commissionRate: '', expectedDate: '', note: '' });
   const [disputeReason, setDisputeReason] = useState('');
 
@@ -235,11 +236,19 @@ export default function FinanceReceivablePage() {
     setSearchParams(params, { replace: true });
   };
 
-  const now = new Date();
+  const setDateRange = (range: { startDate: string; endDate: string }) => {
+    const params = new URLSearchParams(searchParams);
+    for (const [key, value] of Object.entries(range)) {
+      if (value) params.set(key, value); else params.delete(key);
+    }
+    params.delete('page');
+    setSearchParams(params, { replace: true });
+  };
+
   const quickPresets = [
-    { label: 'เดือนนี้', fn: () => { setFilter('startDate', new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0]); setFilter('endDate', now.toISOString().split('T')[0]); } },
-    { label: '3 เดือน', fn: () => { const d = new Date(); d.setMonth(d.getMonth() - 3); setFilter('startDate', d.toISOString().split('T')[0]); setFilter('endDate', now.toISOString().split('T')[0]); } },
-    { label: 'ทั้งหมด', fn: () => { setFilter('startDate', ''); setFilter('endDate', ''); } },
+    { label: 'เดือนนี้', fn: () => setDateRange(getReportDateRange('this_month')) },
+    { label: '3 เดือน', fn: () => setDateRange(getReportDateRange('last_three_months')) },
+    { label: 'ทั้งหมด', fn: () => setDateRange({ startDate: '', endDate: '' }) },
   ];
 
   const invalidateAll = () => { queryClient.invalidateQueries({ queryKey: ['finance-receivable'] }); queryClient.invalidateQueries({ queryKey: ['finance-receivable-summary'] }); };
@@ -247,12 +256,12 @@ export default function FinanceReceivablePage() {
   const { data: branches = [] } = useQuery<{ id: string; name: string }[]>({ queryKey: ['branches'], queryFn: async () => (await api.get('/branches')).data });
   const { data: companies = [] } = useQuery<string[]>({ queryKey: ['finance-companies'], queryFn: async () => (await api.get('/finance-receivable/companies')).data });
 
-  const { data: summary } = useQuery<Summary>({
+  const { data: summary, isLoading: summaryLoading, isError: summaryError, error: summaryErrorDetail, refetch: refetchSummary } = useQuery<Summary>({
     queryKey: ['finance-receivable-summary', branchFilter],
     queryFn: async () => { const p = new URLSearchParams(); if (branchFilter) p.set('branchId', branchFilter); return (await api.get(`/finance-receivable/summary?${p}`)).data; },
   });
 
-  const { data: receivables, isLoading } = useQuery<{ data: FinanceReceivable[]; total: number }>({
+  const { data: receivables, isLoading, isError, error, refetch } = useQuery<{ data: FinanceReceivable[]; total: number }>({
     queryKey: ['finance-receivable', statusFilter, companyFilter, branchFilter, startDate, endDate, debouncedSearch, page, brokenPromiseOnly],
     queryFn: async () => {
       const p = new URLSearchParams({ limit: '20', page: String(page) });
@@ -286,7 +295,7 @@ export default function FinanceReceivablePage() {
     onError: (err: unknown) => toast.error(getErrorMessage(err)),
   });
 
-  const openReceiveModal = (r: FinanceReceivable) => { setSelectedRecord(r); setReceiveForm({ receivedAmount: r.netExpectedAmount, receivedDate: new Date().toISOString().split('T')[0], bankRef: '', note: '' }); setIsReceiveModalOpen(true); setOpenMenuId(null); };
+  const openReceiveModal = (r: FinanceReceivable) => { setSelectedRecord(r); setReceiveForm({ receivedAmount: r.netExpectedAmount, receivedDate: toBangkokDateString(), bankRef: '', note: '' }); setIsReceiveModalOpen(true); setOpenMenuId(null); };
   const openEditModal = (r: FinanceReceivable) => { setSelectedRecord(r); setEditForm({ financeRefNumber: r.financeRefNumber || '', commissionRate: r.commissionRate ? (Number(r.commissionRate) * 100).toString() : '', expectedDate: r.expectedDate.slice(0, 10), note: r.note || '' }); setIsEditModalOpen(true); setOpenMenuId(null); };
   const openDisputeModal = (r: FinanceReceivable) => { setSelectedRecord(r); setDisputeReason(''); setIsDisputeModalOpen(true); setOpenMenuId(null); };
   const openDetailModal = (r: FinanceReceivable) => { setSelectedRecord(r); setIsDetailModalOpen(true); };
@@ -389,7 +398,7 @@ export default function FinanceReceivablePage() {
 
   return (
     <div onClick={() => setOpenMenuId(null)} onKeyDown={(e) => { if (e.key === 'Escape') setOpenMenuId(null); }}>
-      <PageHeader title="เงินรับจากไฟแนนซ์" subtitle={`ทั้งหมด ${receivables?.total || 0} รายการ`} />
+      <PageHeader title="เงินรับจากไฟแนนซ์" subtitle={isError ? 'โหลดรายการไม่สำเร็จ' : isLoading ? 'กำลังโหลดรายการ' : `ทั้งหมด ${receivables?.total ?? 0} รายการ`} />
 
       <Tabs defaultValue="external" className="mb-6">
         <TabsList variant="line" size="lg" className="mb-6">
@@ -400,6 +409,7 @@ export default function FinanceReceivablePage() {
         <TabsContent value="external">
 
       {/* Summary Cards — color stripe */}
+      <QueryBoundary isLoading={summaryLoading} isError={summaryError} error={summaryErrorDetail} onRetry={refetchSummary} errorTitle="ไม่สามารถโหลดสรุปเงินรับได้">
       <div className="finance-card-grid grid grid-cols-2 lg:grid-cols-4 gap-5 mb-6">
         {summaryCards.map((card) => (
           <Card key={card.label} className="rounded-xl border border-border/50 bg-card shadow-sm h-full overflow-hidden hover:shadow-card-hover transition-all">
@@ -434,6 +444,7 @@ export default function FinanceReceivablePage() {
       </div>
 
       {/* Filters — grouped in card */}
+      </QueryBoundary>
       <div className="flex flex-wrap gap-4 mb-5 bg-card rounded-xl border border-border p-4">
         <div>
           <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">สถานะ</label>
@@ -484,7 +495,9 @@ export default function FinanceReceivablePage() {
         </label>
       </div>
 
-      <DataTable columns={columns} data={receivables?.data || []} isLoading={isLoading} emptyMessage="ไม่พบรายการเงินรับจากไฟแนนซ์" />
+      <QueryBoundary isLoading={isLoading} isError={isError} error={error} onRetry={refetch} errorTitle="ไม่สามารถโหลดรายการเงินรับได้">
+        <DataTable columns={columns} data={receivables?.data || []} isLoading={isLoading} emptyMessage="ไม่พบรายการเงินรับจากไฟแนนซ์" />
+      </QueryBoundary>
 
       {/* Pagination */}
       {totalPages > 1 && (

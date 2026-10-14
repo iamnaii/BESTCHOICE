@@ -1,5 +1,6 @@
+import { safeLoginReturnPath } from '@/lib/verification-links';
 import { useState, FormEvent } from 'react';
-import { useNavigate, Link } from 'react-router';
+import { useNavigate, useLocation, Link } from 'react-router';
 import { useAuth } from '@/contexts/AuthContext';
 import { getLandingPathForRole } from '@/config/menu';
 import { toast } from 'sonner';
@@ -14,6 +15,7 @@ export default function LoginPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { login } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -22,7 +24,7 @@ export default function LoginPage() {
     try {
       const result = await login(email, password);
       toast.success('เข้าสู่ระบบสำเร็จ');
-      navigate(getLandingPathForRole(result.role ?? ''));
+      navigate(safeLoginReturnPath(location.state?.from, getLandingPathForRole(result.role ?? '')), { replace: true });
     } catch (error: unknown) {
       const err = error as {
         response?: { status?: number; data?: { message?: string } };
@@ -51,7 +53,7 @@ export default function LoginPage() {
       setPassword(pw);
       const result = await login(emailVal, pw);
       toast.success(`เข้าสู่ระบบเป็น ${label}`);
-      navigate(getLandingPathForRole(result.role ?? ''));
+      navigate(safeLoginReturnPath(location.state?.from, getLandingPathForRole(result.role ?? '')), { replace: true });
     } catch {
       toast.error('เข้าสู่ระบบไม่สำเร็จ');
     } finally {

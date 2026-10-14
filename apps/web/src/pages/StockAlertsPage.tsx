@@ -434,7 +434,7 @@ export default function StockAlertsPage() {
       </div>
 
       {/* Branch filter */}
-      <div className="flex gap-3 mb-4">
+      <div className="flex flex-wrap gap-3 mb-4">
         <select
           value={filterBranch}
           onChange={(e) => setFilterBranch(e.target.value)}

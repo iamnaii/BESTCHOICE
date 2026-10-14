@@ -249,14 +249,16 @@ function AppointmentWorkspace() {
             )}
           </div>
           <div className="flex flex-wrap items-end gap-3">
-            <label className="space-y-1 text-sm">
+            <label className="w-full min-w-0 space-y-1 text-sm sm:w-auto sm:min-w-48">
               สาขาที่ดู
               <select
                 aria-label="สาขาที่ดู"
                 value={branchId}
                 onChange={(e) => change({ ...selection, branchId: e.target.value, startsAt: '' })}
-                className="block h-10 rounded-md border border-input bg-background px-3"
+                className="block min-h-11 w-full min-w-0 rounded-md border border-input bg-background px-3"
+                disabled={!options.data?.branches.length}
               >
+                {!options.data?.branches.length && <option value="">ไม่มีสาขาที่เข้าถึงได้</option>}
                 {options.data?.branches.map((b) => (
                   <option key={b.id} value={b.id}>
                     {b.name}
@@ -264,7 +266,7 @@ function AppointmentWorkspace() {
                 ))}
               </select>
             </label>
-            <label className="space-y-1 text-sm">
+            <label className="w-full min-w-0 space-y-1 text-sm sm:w-auto sm:min-w-48">
               วันที่ดู
               <Input
                 aria-label="วันที่ดู"

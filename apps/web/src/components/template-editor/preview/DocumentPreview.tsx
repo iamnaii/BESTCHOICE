@@ -21,7 +21,7 @@ export default function DocumentPreview({ compact }: Props) {
   const [wrapperHeight, setWrapperHeight] = useState<number | undefined>(undefined);
 
   const updateScale = useCallback(() => {
-    if (!compact || !containerRef.current) {
+    if (!containerRef.current) {
       setScale(1);
       setWrapperHeight(undefined);
       return;
@@ -31,7 +31,7 @@ export default function DocumentPreview({ compact }: Props) {
     const padding = 32; // 16px padding each side
     const availableWidth = containerWidth - padding;
     const a4WidthPx = 793.7;
-    const newScale = Math.min(1, availableWidth / a4WidthPx);
+    const newScale = Math.min(1, Math.max(0.1, availableWidth / a4WidthPx));
     setScale(newScale);
   }, [compact]);
 
@@ -65,7 +65,7 @@ export default function DocumentPreview({ compact }: Props) {
   return (
     <div ref={containerRef} className="flex-1 bg-muted overflow-y-auto overflow-x-hidden p-4" style={{ height: '100%' }}>
       {/* Wrapper — negative marginBottom collapses extra space from CSS scale without clipping */}
-      <div style={{ marginBottom: wrapperHeight }}>
+      <div className="mx-auto" style={{ marginBottom: wrapperHeight, width: scale < 1 ? `${793.7 * scale}px` : undefined }}>
         {/* A4 Paper simulation */}
         <div
           ref={paperRef}
@@ -79,7 +79,7 @@ export default function DocumentPreview({ compact }: Props) {
             boxShadow: '0 4px 24px rgba(0,0,0,0.12), 0 1px 4px rgba(0,0,0,0.08)',
             color: '#1a1a1a',
             transform: scale < 1 ? `scale(${scale})` : undefined,
-            transformOrigin: 'top center',
+            transformOrigin: 'top left',
           }}
         >
           <style>{documentTypographyCss('.template-paper', settings.fontSize)}</style>

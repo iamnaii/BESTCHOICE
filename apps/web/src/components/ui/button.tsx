@@ -36,10 +36,10 @@ const buttonVariants = cva(
         dashed: '',
       },
       size: {
-        lg: 'h-10 rounded-md px-4 text-sm gap-1.5 [&_svg:not([class*=size-])]:size-4',
-        md: 'h-8.5 rounded-md px-3 gap-1.5 text-[0.8125rem] leading-(--text-sm--line-height) [&_svg:not([class*=size-])]:size-4',
-        sm: 'h-7 rounded-md px-2.5 gap-[5px] text-xs [&_svg:not([class*=size-])]:size-3.5',
-        icon: 'size-8.5 rounded-md [&_svg:not([class*=size-])]:size-4 shrink-0',
+        lg: 'max-lg:min-h-11 h-10 rounded-md px-4 text-sm gap-1.5 [&_svg:not([class*=size-])]:size-4',
+        md: 'max-lg:min-h-11 h-8.5 rounded-md px-3 gap-1.5 text-[0.8125rem] leading-(--text-sm--line-height) [&_svg:not([class*=size-])]:size-4',
+        sm: 'max-lg:min-h-11 h-7 rounded-md px-2.5 gap-[5px] text-xs [&_svg:not([class*=size-])]:size-3.5',
+        icon: 'max-lg:min-h-11 max-lg:min-w-11 size-8.5 rounded-md [&_svg:not([class*=size-])]:size-4 shrink-0',
       },
       autoHeight: {
         true: '',

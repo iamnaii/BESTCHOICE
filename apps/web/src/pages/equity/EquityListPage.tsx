@@ -140,7 +140,7 @@ export default function EquityListPage() {
         subtitle="เพิ่มทุน · ลดทุน · ปันผล · กรรมการถอนเงิน · ปรับปรุงย้อนหลัง"
         icon={<Landmark size={20} />}
         action={
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <Button variant="outline" asChild>
               <Link to="/finance/dividend-register">
                 <Coins className="h-4 w-4 mr-1" /> ทะเบียนปันผล

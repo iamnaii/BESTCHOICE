@@ -1,23 +1,7 @@
-/* Admin screen palette: emerald + neutral gray.
- * Keep the original root palette for documents, editors, standalone print views
- * and print media. Disable the complete override when paper is mounted so
- * inherited tokens cannot recolor a document (including portaled previews).
- */
+/* Admin screen styles stay active when paper or an editor is mounted.
+ * Document subtrees keep their own palette and original type metrics. */
 @media screen {
-  body:has(.app-shell):not(:has(
-    .voucher-sheet,
-    .document-sheet,
-    .bc-document,
-    .document-landscape,
-    .document-print-dialog,
-    .template-paper,
-    .font-sarabun,
-    .mobile-receipt,
-    .sticker,
-    .print-stickers,
-    .tiptap,
-    iframe
-  )) {
+  body:has(.app-shell) {
     /* Rebind Tailwind aliases here: root aliases otherwise retain root values. */
     --background: 0 0% 97%;
     --foreground: 0 0% 13%;
@@ -134,16 +118,142 @@
       --accent-sky-foreground: 199 80% 10%;
     }
 
-    & :is(input, textarea)::placeholder {
+    & :is(input, textarea):not(:where(.voucher-sheet, .document-sheet, .bc-document, .document-landscape, .document-print-dialog, .template-paper, .font-sarabun, .mobile-receipt, .sticker, .print-stickers, .tiptap, iframe, .voucher-sheet *, .document-sheet *, .bc-document *, .document-landscape *, .document-print-dialog *, .template-paper *, .font-sarabun *, .mobile-receipt *, .sticker *, .print-stickers *, .tiptap *, iframe *))::placeholder {
       color: hsl(var(--muted-foreground));
       opacity: 1;
     }
 
     /* Visible keyboard focus on light/dark surfaces and solid buttons. */
     /* The chat textarea uses its surrounding card's focus-within indicator. */
-    & :is(button, a, input, textarea, select, [tabindex]):not([data-chat-composer-input]):focus-visible {
+    & :is(button, a, input, textarea, select, [tabindex]):not([data-chat-composer-input]):focus-visible:not(:where(.voucher-sheet, .document-sheet, .bc-document, .document-landscape, .document-print-dialog, .template-paper, .font-sarabun, .mobile-receipt, .sticker, .print-stickers, .tiptap, iframe, .voucher-sheet *, .document-sheet *, .bc-document *, .document-landscape *, .document-print-dialog *, .template-paper *, .font-sarabun *, .mobile-receipt *, .sticker *, .print-stickers *, .tiptap *, iframe *)) {
       outline: 2px solid hsl(var(--ring));
       outline-offset: 3px;
     }
+  }
+}
+
+/* Resolve original root values before the admin body overrides them.
+ * CSS custom properties inherit their computed value, including the active root theme. */
+@media screen {
+  :root {
+    --document-base-background: var(--background);
+    --document-base-foreground: var(--foreground);
+    --document-base-card: var(--card);
+    --document-base-card-foreground: var(--card-foreground);
+    --document-base-popover: var(--popover);
+    --document-base-popover-foreground: var(--popover-foreground);
+    --document-base-primary: var(--primary);
+    --document-base-primary-foreground: var(--primary-foreground);
+    --document-base-secondary: var(--secondary);
+    --document-base-secondary-foreground: var(--secondary-foreground);
+    --document-base-muted: var(--muted);
+    --document-base-muted-foreground: var(--muted-foreground);
+    --document-base-accent: var(--accent);
+    --document-base-accent-foreground: var(--accent-foreground);
+    --document-base-destructive: var(--destructive);
+    --document-base-destructive-foreground: var(--destructive-foreground);
+    --document-base-success: var(--success);
+    --document-base-success-foreground: var(--success-foreground);
+    --document-base-warning: var(--warning);
+    --document-base-warning-foreground: var(--warning-foreground);
+    --document-base-warning-strong: var(--warning-strong);
+    --document-base-orange: var(--orange);
+    --document-base-orange-foreground: var(--orange-foreground);
+    --document-base-info: var(--info);
+    --document-base-info-foreground: var(--info-foreground);
+    --document-base-border: var(--border);
+    --document-base-input: var(--input);
+    --document-base-ring: var(--ring);
+    --document-base-sidebar-bg: var(--sidebar-bg);
+    --document-base-sidebar-fg: var(--sidebar-fg);
+    --document-base-sidebar-active: var(--sidebar-active);
+    --document-base-sidebar-hover: var(--sidebar-hover);
+    --document-base-sidebar-border: var(--sidebar-border);
+    --document-base-accent-purple: var(--accent-purple);
+    --document-base-accent-purple-foreground: var(--accent-purple-foreground);
+    --document-base-accent-sky: var(--accent-sky);
+    --document-base-accent-sky-foreground: var(--accent-sky-foreground);
+  }
+
+  body:has(.app-shell) :is(.voucher-sheet, .document-sheet, .bc-document, .document-landscape, .document-print-dialog, .template-paper, .font-sarabun, .mobile-receipt, .sticker, .print-stickers, .tiptap, iframe) {
+    --background: var(--document-base-background);
+    --color-background: hsl(var(--background));
+    --foreground: var(--document-base-foreground);
+    --color-foreground: hsl(var(--foreground));
+    --card: var(--document-base-card);
+    --color-card: hsl(var(--card));
+    --card-foreground: var(--document-base-card-foreground);
+    --color-card-foreground: hsl(var(--card-foreground));
+    --popover: var(--document-base-popover);
+    --color-popover: hsl(var(--popover));
+    --popover-foreground: var(--document-base-popover-foreground);
+    --color-popover-foreground: hsl(var(--popover-foreground));
+    --primary: var(--document-base-primary);
+    --color-primary: hsl(var(--primary));
+    --primary-foreground: var(--document-base-primary-foreground);
+    --color-primary-foreground: hsl(var(--primary-foreground));
+    --secondary: var(--document-base-secondary);
+    --color-secondary: hsl(var(--secondary));
+    --secondary-foreground: var(--document-base-secondary-foreground);
+    --color-secondary-foreground: hsl(var(--secondary-foreground));
+    --muted: var(--document-base-muted);
+    --color-muted: hsl(var(--muted));
+    --muted-foreground: var(--document-base-muted-foreground);
+    --color-muted-foreground: hsl(var(--muted-foreground));
+    --accent: var(--document-base-accent);
+    --color-accent: hsl(var(--accent));
+    --accent-foreground: var(--document-base-accent-foreground);
+    --color-accent-foreground: hsl(var(--accent-foreground));
+    --destructive: var(--document-base-destructive);
+    --color-destructive: hsl(var(--destructive));
+    --destructive-foreground: var(--document-base-destructive-foreground);
+    --color-destructive-foreground: hsl(var(--destructive-foreground));
+    --success: var(--document-base-success);
+    --color-success: hsl(var(--success));
+    --success-foreground: var(--document-base-success-foreground);
+    --color-success-foreground: hsl(var(--success-foreground));
+    --warning: var(--document-base-warning);
+    --color-warning: hsl(var(--warning));
+    --warning-foreground: var(--document-base-warning-foreground);
+    --color-warning-foreground: hsl(var(--warning-foreground));
+    --warning-strong: var(--document-base-warning-strong);
+    --color-warning-strong: hsl(var(--warning-strong));
+    --orange: var(--document-base-orange);
+    --color-orange: hsl(var(--orange));
+    --orange-foreground: var(--document-base-orange-foreground);
+    --color-orange-foreground: hsl(var(--orange-foreground));
+    --info: var(--document-base-info);
+    --color-info: hsl(var(--info));
+    --info-foreground: var(--document-base-info-foreground);
+    --color-info-foreground: hsl(var(--info-foreground));
+    --border: var(--document-base-border);
+    --color-border: hsl(var(--border));
+    --input: var(--document-base-input);
+    --color-input: hsl(var(--input));
+    --ring: var(--document-base-ring);
+    --color-ring: hsl(var(--ring));
+    --sidebar-bg: var(--document-base-sidebar-bg);
+    --color-sidebar-bg: hsl(var(--sidebar-bg));
+    --sidebar-fg: var(--document-base-sidebar-fg);
+    --color-sidebar-fg: hsl(var(--sidebar-fg));
+    --sidebar-active: var(--document-base-sidebar-active);
+    --color-sidebar-active: hsl(var(--sidebar-active));
+    --sidebar-hover: var(--document-base-sidebar-hover);
+    --color-sidebar-hover: hsl(var(--sidebar-hover));
+    --sidebar-border: var(--document-base-sidebar-border);
+    --color-sidebar-border: hsl(var(--sidebar-border));
+    --accent-purple: var(--document-base-accent-purple);
+    --color-accent-purple: hsl(var(--accent-purple));
+    --accent-purple-foreground: var(--document-base-accent-purple-foreground);
+    --color-accent-purple-foreground: hsl(var(--accent-purple-foreground));
+    --accent-sky: var(--document-base-accent-sky);
+    --color-accent-sky: hsl(var(--accent-sky));
+    --accent-sky-foreground: var(--document-base-accent-sky-foreground);
+    --color-accent-sky-foreground: hsl(var(--accent-sky-foreground));
+  }
+
+  /* Restore inherited text without overriding paper-owned colors (e.g. black stickers). */
+  :where(body:has(.app-shell) :is(.voucher-sheet, .document-sheet, .bc-document, .document-landscape, .document-print-dialog, .template-paper, .font-sarabun, .mobile-receipt, .sticker, .print-stickers, .tiptap, iframe)) {
+    color: hsl(var(--foreground));
   }
 }

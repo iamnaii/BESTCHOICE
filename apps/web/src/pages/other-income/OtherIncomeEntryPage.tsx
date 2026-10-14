@@ -382,7 +382,7 @@ export default function OtherIncomeEntryPage() {
       );
     },
     onSuccess: (doc) => {
-      toast.success('บันทึกและ POST เอกสารแล้ว');
+      toast.success('บันทึกและลงบัญชีเอกสารแล้ว');
       queryClient.invalidateQueries({ queryKey: ['other-income'] });
       navigate(`/other-income/${doc.id}`);
     },
@@ -391,7 +391,7 @@ export default function OtherIncomeEntryPage() {
       if (Array.isArray(apiErrors)) {
         apiErrors.forEach((e: any) => toast.error(`${e.rule}: ${e.msg}`));
       } else {
-        toast.error(err?.response?.data?.message ?? 'ไม่สามารถ POST เอกสารได้');
+        toast.error(err?.response?.data?.message ?? 'ไม่สามารถลงบัญชีเอกสารได้');
       }
     },
   });
@@ -676,7 +676,7 @@ export default function OtherIncomeEntryPage() {
               {isEdit ? 'แก้ไขเอกสารรายได้อื่น' : 'บันทึกรายได้อื่น'}
             </h1>
             <p className="text-xs text-muted-foreground mt-0.5">
-              กลุ่มบัญชี 42-XXXX · Auto Journal · Validation V1-V10
+              บันทึกรายได้อื่นและตรวจสอบรายการบัญชีก่อนยืนยัน
             </p>
           </div>
           <div className="text-right shrink-0">
@@ -831,7 +831,7 @@ export default function OtherIncomeEntryPage() {
                   </ul>
                   <p className="text-[11px] text-muted-foreground leading-snug pt-1">
                     คำเตือนนี้ไม่บล็อกการบันทึก กรุณายืนยันว่า lateFee
-                    ของงวดเดิมไม่ทับซ้อนกับรายการนี้ก่อนกด POST
+                    ของงวดเดิมไม่ทับซ้อนกับรายการนี้ก่อนลงบัญชี
                   </p>
                 </div>
               </div>
@@ -1038,7 +1038,7 @@ export default function OtherIncomeEntryPage() {
                 <XCircle size={16} className="text-destructive shrink-0 mt-0.5" />
                 <div className="min-w-0">
                   <p className="text-sm font-bold text-destructive">
-                    ต้องแก้ไข {validationMessages.length} ข้อก่อน POST:
+                    ต้องแก้ไข {validationMessages.length} ข้อก่อนลงบัญชี:
                   </p>
                   <ul className="mt-1 space-y-0.5 text-xs text-destructive/90">
                     {validationMessages.map((m, i) => (
@@ -1133,7 +1133,7 @@ export default function OtherIncomeEntryPage() {
                   <div className="flex items-start gap-2 mb-3 text-xs text-warning-strong">
                     <AlertTriangle size={14} className="shrink-0 mt-0.5" />
                     <span>
-                      ยอดรับ ≥ {formatNumber(attachmentThreshold)} ฿ — ต้องแนบไฟล์ประกอบเพื่อ POST
+                      ยอดรับ ≥ {formatNumber(attachmentThreshold)} ฿ — ต้องแนบไฟล์ประกอบเพื่อลงบัญชี
                     </span>
                   </div>
                 )}
@@ -1260,7 +1260,7 @@ export default function OtherIncomeEntryPage() {
         </form>
       </div>
 
-      {!makerCheckerEnabled && !permissions.can('INCOME_POST') && <p className="mt-4 text-sm text-muted-foreground" role="status">ไม่มีสิทธิ์ POST รายรับ — สามารถบันทึกร่างได้</p>}
+      {!makerCheckerEnabled && !permissions.can('INCOME_POST') && <p className="mt-4 text-sm text-muted-foreground" role="status">ไม่มีสิทธิ์ลงบัญชีรายรับ — สามารถบันทึกร่างได้</p>}
       {/* InternalControlActionBar — shared across 3 accounting modules.
           Entry page only renders the DRAFT state, so no audit log is needed
           (the document doesn't exist yet) — we pass an empty array. */}

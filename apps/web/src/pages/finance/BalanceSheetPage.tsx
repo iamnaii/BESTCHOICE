@@ -1,3 +1,4 @@
+import { toBangkokDateString } from '@/lib/date';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
@@ -82,7 +83,7 @@ function BSSection({ section }: { section: BSSection }) {
 
 export default function BalanceSheetPage() {
   const now = new Date();
-  const [asOfDate, setAsOfDate] = useState(now.toISOString().split('T')[0]);
+  const [asOfDate, setAsOfDate] = useState(toBangkokDateString(now));
   const [companyId, setCompanyId] = useState('');
   const { cacheTtlReports } = useUiFlags();
 

@@ -1,3 +1,4 @@
+import { toBangkokDateString, computeDefaultTimeRange } from '@/lib/date';
 import { useState, useEffect } from 'react';
 import Modal from '@/components/ui/Modal';
 import { formatNumber } from '@/utils/formatters';
@@ -29,13 +30,11 @@ const QUICK_DATE_OPTIONS: Array<{ label: string; offsetDays?: number; endOfMonth
 function dateOffset(days: number): string {
   const d = new Date();
   d.setDate(d.getDate() + days);
-  return d.toISOString().split('T')[0];
+  return toBangkokDateString(d);
 }
 
 function endOfThisMonth(): string {
-  const d = new Date();
-  const last = new Date(d.getFullYear(), d.getMonth() + 1, 0);
-  return last.toISOString().split('T')[0];
+  return computeDefaultTimeRange('this_month').endDate;
 }
 
 function getTomorrow(): string {

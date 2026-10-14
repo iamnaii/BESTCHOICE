@@ -93,8 +93,8 @@ export class AdminAnalyticsService {
       this.prisma.$queryRaw<{ intent: string; count: bigint }[]>`
         SELECT intent, COUNT(*)::bigint AS count
         FROM chat_messages cm
-        JOIN chat_sessions cs ON cs.id = cm.session_id
-        WHERE cs.channel = 'LINE_FINANCE'
+        JOIN chat_rooms cr ON cr.id = cm.room_id
+        WHERE cr.channel = 'LINE_FINANCE'
           AND cm.intent IS NOT NULL
           AND cm.created_at >= ${sevenDaysAgo}
         GROUP BY intent
@@ -104,8 +104,8 @@ export class AdminAnalyticsService {
       this.prisma.$queryRaw<{ date: Date; count: bigint }[]>`
         SELECT date_trunc('day', cm.created_at) AS date, COUNT(*)::bigint AS count
         FROM chat_messages cm
-        JOIN chat_sessions cs ON cs.id = cm.session_id
-        WHERE cs.channel = 'LINE_FINANCE'
+        JOIN chat_rooms cr ON cr.id = cm.room_id
+        WHERE cr.channel = 'LINE_FINANCE'
           AND cm.created_at >= ${sevenDaysAgo}
         GROUP BY date_trunc('day', cm.created_at)
         ORDER BY date ASC
@@ -147,8 +147,8 @@ export class AdminAnalyticsService {
           COUNT(*)::bigint AS messages,
           COALESCE(SUM(cm.cost_usd), 0)::float AS cost
         FROM chat_messages cm
-        JOIN chat_sessions cs ON cs.id = cm.session_id
-        WHERE cs.channel = 'LINE_FINANCE'
+        JOIN chat_rooms cr ON cr.id = cm.room_id
+        WHERE cr.channel = 'LINE_FINANCE'
           AND cm.created_at >= ${startDate}
           AND cm.created_at <= ${endDate}
         GROUP BY date_trunc('day', cm.created_at)

@@ -47,8 +47,8 @@ function StatusDot({ ok }: { ok: boolean }) {
 function A4Page({ pageNum, totalPages, children }: { pageNum: number; totalPages: number; children: React.ReactNode }) {
   return (
     <div
-      className="rounded-xl border border-border/50 bg-card shadow-sm mx-auto mb-6 relative"
-      style={{ width: '210mm', minHeight: '297mm', maxWidth: '100%', padding: '20mm 18mm 25mm 18mm' }}
+      className="rounded-xl border border-border/50 bg-card shadow-sm mx-auto mb-6 relative min-w-0 p-4 pb-16 sm:pt-[20mm] sm:px-[18mm] sm:pb-[25mm] print:pt-[20mm] print:px-[18mm] print:pb-[25mm]"
+      style={{ width: '210mm', minHeight: '297mm', maxWidth: '100%' }}
     >
       {children}
       {/* Page number footer */}
@@ -158,7 +158,7 @@ export default function SystemStatusPage() {
           />
 
           {/* Branch lines to DB and AI */}
-          <div className="w-80 h-10 relative">
+          <div className="w-80 max-w-full h-10 relative">
             <svg className="w-full h-full" viewBox="0 0 320 40" preserveAspectRatio="none">
               <path d="M160,0 L160,20 L60,20 L60,40" fill="none" stroke={data.database.connected ? 'hsl(var(--success))' : 'hsl(var(--destructive))'} strokeWidth="2" />
               <path d="M160,0 L160,20 L260,20 L260,40" fill="none" stroke={data.ai.connected ? 'hsl(var(--success))' : 'hsl(var(--destructive))'} strokeWidth="2" />
@@ -166,7 +166,7 @@ export default function SystemStatusPage() {
           </div>
 
           {/* Database & AI side by side */}
-          <div className="flex gap-6 w-full max-w-lg">
+          <div className="flex flex-col sm:flex-row print:flex-row gap-6 w-full max-w-lg [&>div]:min-w-0">
             <div className="flex-1">
               <ServiceCard
                 icon={<DatabaseIcon />}
@@ -212,7 +212,7 @@ export default function SystemStatusPage() {
 
         {/* Summary Table */}
         <h2 className="text-base font-bold text-foreground mb-4 border-b pb-2">สรุปสถานะบริการ</h2>
-        <table className="w-full text-sm mb-8 border-collapse">
+        <div className="max-w-full overflow-x-auto print:overflow-visible"><table className="w-full text-sm mb-8 border-collapse">
           <thead>
             <tr className="bg-muted/40">
               <th className="text-left p-3 border border-border font-semibold text-foreground">บริการ</th>
@@ -257,11 +257,11 @@ export default function SystemStatusPage() {
               </td>
             </tr>
           </tbody>
-        </table>
+        </table></div>
 
         {/* Memory */}
         <h2 className="text-base font-bold text-foreground mb-4 border-b pb-2">ทรัพยากรระบบ</h2>
-        <div className="grid grid-cols-3 gap-4 mb-8">
+        <div className="grid grid-cols-1 sm:grid-cols-3 print:grid-cols-3 gap-4 mb-8">
           <MemoryCard label="Heap ใช้งาน" value={`${data.memory.heapUsedMB} MB`} total={`${data.memory.heapTotalMB} MB`} pct={Math.round((data.memory.heapUsedMB / data.memory.heapTotalMB) * 100)} />
           <MemoryCard label="Heap ทั้งหมด" value={`${data.memory.heapTotalMB} MB`} />
           <MemoryCard label="RSS (ทั้งหมด)" value={`${data.memory.rssMB} MB`} />
@@ -269,7 +269,7 @@ export default function SystemStatusPage() {
 
         {/* AI Features */}
         <h2 className="text-base font-bold text-foreground mb-4 border-b pb-2">ฟีเจอร์ที่ต้องใช้ AI</h2>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 print:grid-cols-2 gap-3">
           {[
             { name: 'สร้างเทมเพลตจากไฟล์', desc: 'สร้าง contract template จากไฟล์ PDF/รูปภาพ' },
             { name: 'อ่านบัตรประชาชน (OCR)', desc: 'สแกนข้อมูลจากบัตรประชาชนอัตโนมัติ' },
@@ -294,7 +294,7 @@ export default function SystemStatusPage() {
       <A4Page pageNum={3} totalPages={totalPages}>
         <h2 className="text-lg font-bold mb-6 border-b pb-3">สถานะบริการเชื่อมต่อ (Integrations)</h2>
 
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 print:grid-cols-2 gap-4">
           {/* Redis */}
           <IntegrationCard
             name="Redis Cache"
@@ -376,7 +376,7 @@ export default function SystemStatusPage() {
         {/* Config Checklist */}
         <div className="mt-8 border-t pt-4">
           <h3 className="text-sm font-semibold mb-3">Checklist ก่อน Go-Live</h3>
-          <div className="grid grid-cols-2 gap-2 text-xs">
+          <div className="grid grid-cols-1 sm:grid-cols-2 print:grid-cols-2 gap-2 text-xs">
             {[
               { label: 'Database', ok: data.database.connected },
               { label: 'AI (Anthropic)', ok: data.ai.connected },
@@ -486,7 +486,7 @@ function ServiceCard({
   };
 
   return (
-    <div className={`rounded-xl border shadow-sm p-4 ${bgColors[color] || 'bg-muted border-border/50'} ${full ? 'w-full' : 'w-72'}`}>
+    <div className={`min-w-0 max-w-full rounded-xl border shadow-sm p-4 ${bgColors[color] || 'bg-muted border-border/50'} ${full ? 'w-full' : 'w-72'}`}>
       <div className="flex items-center gap-2 mb-2">
         <div className={iconColors[color] || 'text-muted-foreground'}>{icon}</div>
         <h3 className="text-sm font-semibold text-foreground">{title}</h3>

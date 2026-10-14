@@ -6,7 +6,7 @@ import { cva, type VariantProps } from 'class-variance-authority';
 import * as TabsPrimitive from '@radix-ui/react-tabs';
 
 // Variants for TabsList
-const tabsListVariants = cva('flex items-center shrink-0', {
+const tabsListVariants = cva('flex min-w-0 max-w-full items-center shrink-0 overflow-x-auto', {
   variants: {
     variant: {
       default: 'bg-accent p-1',
@@ -79,7 +79,7 @@ const tabsListVariants = cva('flex items-center shrink-0', {
 
 // Variants for TabsTrigger
 const tabsTriggerVariants = cva(
-  'shrink-0 cursor-pointer whitespace-nowrap inline-flex justify-center items-center font-medium ring-offset-background transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:shrink-0 [&_svg]:text-muted-foreground [&:hover_svg]:text-primary [&[data-state=active]_svg]:text-primary',
+  'max-lg:min-h-11 shrink-0 cursor-pointer whitespace-nowrap inline-flex justify-center items-center font-medium ring-offset-background transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:shrink-0 [&_svg]:text-muted-foreground [&:hover_svg]:text-primary [&[data-state=active]_svg]:text-primary',
   {
     variants: {
       variant: {
@@ -146,7 +146,7 @@ const TabsContext = React.createContext<TabsContextType>({
 
 // Components
 function Tabs({ className, ...props }: React.ComponentProps<typeof TabsPrimitive.Root>) {
-  return <TabsPrimitive.Root data-slot="tabs" className={cn('', className)} {...props} />;
+  return <TabsPrimitive.Root data-slot="tabs" className={cn('min-w-0 max-w-full', className)} {...props} />;
 }
 
 function TabsList({

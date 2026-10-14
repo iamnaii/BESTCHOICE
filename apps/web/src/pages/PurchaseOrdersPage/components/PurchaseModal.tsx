@@ -1,3 +1,4 @@
+import { toBangkokDateString } from '@/lib/date';
 import { useEffect, useState } from 'react';
 import { UseMutationResult } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -77,7 +78,7 @@ const primaryBtn =
   'px-6 py-2.5 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50 font-semibold transition-colors shadow-sm whitespace-nowrap';
 const outlineBtn = 'px-6 py-2.5 text-sm border border-input rounded-lg hover:bg-muted transition-colors';
 
-const todayIso = () => new Date().toISOString().split('T')[0];
+const todayIso = () => toBangkokDateString();
 
 /**
  * ซื้อสินค้า — one wizard for both ways in (owner 2026-09-06 "รวมกันได้เลยไหม"). Step 1 holds the

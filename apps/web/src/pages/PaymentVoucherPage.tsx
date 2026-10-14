@@ -621,11 +621,11 @@ function Sheet({
   const partialPaid = parseFloat(net || '0');
   const partialRemaining = Math.max(0, partialOriginal - partialPaid);
   const isCustomerCopy = copyVariant === 'customer';
-  // D1.2.2.7 — verification QR linking to /verify/<doc.number>. Default
+  // Link to the authenticated source document, not the legacy contract/receipt resolver. Default
   // on; OWNER can disable via SystemConfig `voucher_show_qr_code = false`.
   const verifyUrl = typeof window !== 'undefined'
-    ? `${window.location.origin}/verify/${doc.number}`
-    : `/verify/${doc.number}`;
+    ? `${window.location.origin}/expenses/verify/${encodeURIComponent(doc.id)}`
+    : `/expenses/verify/${encodeURIComponent(doc.id)}`;
   return (
     <article
       className="voucher-sheet bc-document standard-voucher bg-white border border-border rounded-md p-8 shadow-sm print:border-0 print:p-0 print:shadow-none"

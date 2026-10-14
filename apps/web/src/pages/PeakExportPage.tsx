@@ -1,3 +1,4 @@
+import { computeDefaultTimeRange } from '@/lib/date';
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router';
 import { Download, AlertTriangle, FileSpreadsheet } from 'lucide-react';
@@ -19,12 +20,10 @@ import { Badge } from '@/components/ui/badge';
  */
 
 function firstOfPreviousMonth(today = new Date()): string {
-  const d = new Date(today.getFullYear(), today.getMonth() - 1, 1);
-  return d.toISOString().slice(0, 10);
+  return computeDefaultTimeRange('last_month', today).startDate;
 }
 function lastOfPreviousMonth(today = new Date()): string {
-  const d = new Date(today.getFullYear(), today.getMonth(), 0); // day 0 of this month = last of previous
-  return d.toISOString().slice(0, 10);
+  return computeDefaultTimeRange('last_month', today).endDate;
 }
 
 export default function PeakExportPage() {

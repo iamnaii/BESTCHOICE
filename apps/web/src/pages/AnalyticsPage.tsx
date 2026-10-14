@@ -366,14 +366,14 @@ export default function AnalyticsPage() {
       />
 
       {/* Tabs */}
-      <div className="flex gap-1 border-b border-border">
+      <div className="flex min-w-0 max-w-full overflow-x-auto gap-1 border-b border-border" role="tablist" aria-label="รายงานวิเคราะห์">
         {TABS.map((tab) => {
           const Icon = tab.icon;
           return (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
-              className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium rounded-t-lg transition-colors ${
+              className={`flex shrink-0 min-h-11 items-center gap-2 px-4 py-2.5 text-sm font-medium rounded-t-lg transition-colors ${
                 activeTab === tab.id
                   ? 'bg-card border border-b-card border-border text-primary -mb-px'
                   : 'text-muted-foreground hover:text-foreground/80 hover:bg-muted'

@@ -341,7 +341,7 @@ export default function UnifiedInboxPage() {
   const otherViewers = roomViewers.filter((v) => v.userId !== user?.id);
 
   return (
-    <div className="inbox-workspace h-dvh flex flex-col lg:flex-row bg-card overflow-hidden pb-[calc(56px+env(safe-area-inset-bottom))] lg:pb-0">
+    <div className="inbox-workspace h-dvh flex flex-col lg:flex-row bg-card overflow-hidden pb-[calc(64px+env(safe-area-inset-bottom))] lg:pb-0">
       {/* จอใหญ่: แถบข้าง 72px ซ้ายสุด (ไม่มีเมนูระบบบนหน้านี้) · จอเล็ก: แถบหัวแบบย่อด้านบน */}
       <InboxWorkTools onSelectRoom={handleSelectRoom} branchName={user?.branchName ?? undefined} />
       <div className="flex flex-1 flex-col min-w-0 min-h-0">

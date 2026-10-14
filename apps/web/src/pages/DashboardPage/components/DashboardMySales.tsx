@@ -1,3 +1,4 @@
+import { getReportDateRange } from '@/lib/date';
 import QueryBoundary from '@/components/QueryBoundary';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
@@ -21,9 +22,7 @@ export default function DashboardMySales() {
     queryKey: ['dashboard-my-sales', user?.id],
     enabled: Boolean(user?.id),
     queryFn: async () => {
-      const now = new Date();
-      const startDate = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
-      const endDate = now.toISOString().slice(0, 10);
+      const { startDate, endDate } = getReportDateRange('this_month');
       const { data } = await api.get(
         `/commissions?salespersonId=me&startDate=${startDate}&endDate=${endDate}`,
       );

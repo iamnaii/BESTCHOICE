@@ -1,3 +1,4 @@
+import { getReportDateRange } from '@/lib/date';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
@@ -44,10 +45,9 @@ const inputClass =
   'w-full px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden';
 
 export default function GeneralJournalPage() {
-  const now = new Date();
-  const firstOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-  const [startDate, setStartDate] = useState(firstOfMonth.toISOString().split('T')[0]);
-  const [endDate, setEndDate] = useState(now.toISOString().split('T')[0]);
+  const range = getReportDateRange('this_month');
+  const [startDate, setStartDate] = useState(range.startDate);
+  const [endDate, setEndDate] = useState(range.endDate);
   const [page, setPage] = useState(1);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [companyId, setCompanyId] = useState('');
@@ -118,16 +118,16 @@ export default function GeneralJournalPage() {
             {
               label: 'เดือนนี้',
               fn: () => {
-                setStartDate(firstOfMonth.toISOString().split('T')[0]);
-                setEndDate(now.toISOString().split('T')[0]);
+                setStartDate(range.startDate);
+                setEndDate(range.endDate);
                 setPage(1);
               },
             },
             {
               label: 'ปีนี้',
               fn: () => {
-                setStartDate(`${now.getFullYear()}-01-01`);
-                setEndDate(now.toISOString().split('T')[0]);
+                setStartDate(getReportDateRange('this_year').startDate);
+                setEndDate(range.endDate);
                 setPage(1);
               },
             },

@@ -139,7 +139,7 @@ export default function CollectionDashboardPage() {
         title="Collection Dashboard"
         subtitle="ติดตามและวิเคราะห์การเก็บเงินค้างชำระ"
         action={
-          <div className="hidden sm:flex items-center gap-2 text-xs text-primary-foreground/70 bg-primary-foreground/10 border border-primary-foreground/15 rounded-lg px-3 py-2">
+          <div className="hidden sm:flex items-center gap-2 text-xs text-muted-foreground bg-primary-foreground/10 border border-primary-foreground/15 rounded-lg px-3 py-2">
             <RefreshCw className="size-3 animate-spin [animation-duration:10s]" />
             <span>อัปเดตอัตโนมัติทุก 60 วินาที</span>
           </div>

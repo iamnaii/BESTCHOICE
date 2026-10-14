@@ -1,0 +1,251 @@
+{
+  "scope": "Local implementation and verification only; no staging or physical devices available; no commit/push/merge/deploy",
+  "localCheck": {
+    "status": "PASS",
+    "scope": "Basic checks + synthetic Inbox, customers, dashboard, FINANCE portfolio, work-company navigation and trade-in-to-stock flow; not a full backend/financial regression",
+    "repo": "/Users/iamnaii/Desktop/App/BESTCHOICE-layout-audit",
+    "revision": "444c44502",
+    "sourceFingerprint": "429b3903b65991beba470a53aa140bef9084649f738567a05dd64d572e6345a6",
+    "startedAt": "2026-10-13T19:56:23.400Z",
+    "checks": [
+      {
+        "label": "Local tooling",
+        "status": "PASS"
+      },
+      {
+        "label": "Prisma SHOP",
+        "status": "PASS"
+      },
+      {
+        "label": "Prisma FINANCE",
+        "status": "PASS"
+      },
+      {
+        "label": "API + Web types",
+        "status": "PASS"
+      },
+      {
+        "label": "API lint (no autofix)",
+        "status": "PASS"
+      },
+      {
+        "label": "Web lint",
+        "status": "PASS"
+      },
+      {
+        "label": "Web tests",
+        "status": "PASS"
+      },
+      {
+        "label": "Shared tests",
+        "status": "PASS"
+      },
+      {
+        "label": "Storefront tests",
+        "status": "PASS"
+      },
+      {
+        "label": "Storefront build + types",
+        "status": "PASS"
+      },
+      {
+        "label": "Web build",
+        "status": "PASS"
+      },
+      {
+        "label": "Inbox voice: simulated Thai speech/delivery, desktop/mobile, manual send and room isolation",
+        "status": "PASS"
+      },
+      {
+        "label": "Inbox shell: 72px rail without app sidebar on desktop, compact header on phones, flags off, light/dark at 320–1512px",
+        "status": "PASS"
+      },
+      {
+        "label": "Owner setup from disabled navigation, explicit simulated feed subscription, queue activation at 320/1440px",
+        "status": "PASS"
+      },
+      {
+        "label": "Inbox layout: light/dark, 320–1920px, chat/note focus and multiline drafts",
+        "status": "PASS"
+      },
+      {
+        "label": "Inbox 1440px",
+        "status": "PASS"
+      },
+      {
+        "label": "Scoped chat queue, read/fail/success and exact task target 1440px",
+        "status": "PASS"
+      },
+      {
+        "label": "Sales evidence, follow-up conflict/cancellation and lost/reopen 1440px",
+        "status": "PASS"
+      },
+      {
+        "label": "Note mentions and A/B handoff 1440px",
+        "status": "PASS"
+      },
+      {
+        "label": "Signed synthetic Facebook comments + uncertain send 1440px; live Meta unverified",
+        "status": "PASS"
+      },
+      {
+        "label": "Chat intake, physical-receipt validation, canonical repair and closure 1440px",
+        "status": "PASS"
+      },
+      {
+        "label": "Human/bot, responder/sales owner, deduplicated sales and analytics drilldowns 1440px",
+        "status": "PASS"
+      },
+      {
+        "label": "Private library folders/upload/search/staging, ACK retry, credit copy and composer parity 1440px",
+        "status": "PASS"
+      },
+      {
+        "label": "Customers + FINANCE portfolio (filters, pagination, empty report) 1440px",
+        "status": "PASS"
+      },
+      {
+        "label": "SHOP/FINANCE navigation (requests, reload, back/forward) 1440px",
+        "status": "PASS"
+      },
+      {
+        "label": "Trade-in purchase, voucher, price and six-angle stock handoff 1440px",
+        "status": "PASS"
+      },
+      {
+        "label": "iPhone inspection, computed price and saved snapshot 1440px",
+        "status": "PASS"
+      },
+      {
+        "label": "Inbox 390px",
+        "status": "PASS"
+      },
+      {
+        "label": "Scoped chat queue, read/fail/success and exact task target 390px",
+        "status": "PASS"
+      },
+      {
+        "label": "Sales evidence, follow-up conflict/cancellation and lost/reopen 390px",
+        "status": "PASS"
+      },
+      {
+        "label": "Note mentions and A/B handoff 390px",
+        "status": "PASS"
+      },
+      {
+        "label": "Signed synthetic Facebook comments + uncertain send 390px; live Meta unverified",
+        "status": "PASS"
+      },
+      {
+        "label": "Chat intake, physical-receipt validation, canonical repair and closure 390px",
+        "status": "PASS"
+      },
+      {
+        "label": "Human/bot, responder/sales owner, deduplicated sales and analytics drilldowns 390px",
+        "status": "PASS"
+      },
+      {
+        "label": "Private library folders/upload/search/staging, ACK retry, credit copy and composer parity 390px",
+        "status": "PASS"
+      },
+      {
+        "label": "Customers + FINANCE portfolio (filters, pagination, empty report) 390px",
+        "status": "PASS"
+      },
+      {
+        "label": "SHOP/FINANCE navigation (requests, reload, back/forward) 390px",
+        "status": "PASS"
+      },
+      {
+        "label": "Trade-in purchase, voucher, price and six-angle stock handoff 390px",
+        "status": "PASS"
+      },
+      {
+        "label": "iPhone inspection, computed price and saved snapshot 390px",
+        "status": "PASS"
+      }
+    ],
+    "url": "http://localhost:5206/inbox",
+    "finishedAt": "2026-10-13T20:01:53.614Z"
+  },
+  "testCounts": {
+    "Web": 3323,
+    "Shared": 149,
+    "Storefront": 46,
+    "total": 3518
+  },
+  "lint": {
+    "API": {
+      "errors": 0,
+      "warnings": 3014
+    },
+    "Web": {
+      "errors": 0,
+      "warnings": 473
+    }
+  },
+  "routeInventory": {
+    "rows": 269,
+    "viewportStates": 807,
+    "themes": [
+      "light",
+      "dark"
+    ],
+    "widths": [
+      320,
+      390,
+      1440
+    ],
+    "screenshots": 1614,
+    "overflowOrRootCrashAfterTargetedReruns": 0,
+    "combinedResults": "PAGE-VERIFICATION-RESULTS.json",
+    "limitations": "Initial and explicit recovery states, not every interaction/role; Yeastar unconfigured in fixtures"
+  },
+  "documentRegression": {
+    "tests": 145,
+    "suites": 20,
+    "status": "PASS after explicit reruns",
+    "details": "DOCUMENT-REGRESSION-RESULTS.json"
+  },
+  "latestAffectedApi": {
+    "run": "20261013T195354Z-57926",
+    "tests": 24,
+    "pdfArtifacts": 11,
+    "status": "PASS",
+    "scope": "Expense vouchers incl daily-summary print; chatbot migration/API; mobile editor/tabs/retry; eight role/company configurations"
+  },
+  "uxRegression": {
+    "cases": 88,
+    "status": "PASS",
+    "details": "evidence/uxui-final/results.json"
+  },
+  "typography": {
+    "status": "PASS",
+    "scope": "6 routes x4 widths, standard/large controls, paper screen/print typography, geometry and colors"
+  },
+  "liffBrowser": {
+    "tests": 84,
+    "status": "PASS",
+    "projects": [
+      "android-light",
+      "android-dark",
+      "iphone-light",
+      "iphone-dark"
+    ],
+    "scope": "Chromium/WebKit emulation with SDK/API fixtures; not physical LINE"
+  },
+  "preview": {
+    "running": true,
+    "current": true,
+    "url": "http://localhost:5206/finance-portfolio",
+    "sourceFingerprint": "429b3903b65991beba470a53aa140bef9084649f738567a05dd64d572e6345a6",
+    "isolated": true
+  },
+  "remainingVerification": [
+    "No staging or physical iOS/Android",
+    "No native LINE OAuth/WebView/camera/keyboard/safe-area",
+    "No real PBX/payment/printer integration",
+    "Not exhaustive production records or every role/action on every page"
+  ],
+  "review": "Independent review findings repaired; no outstanding Critical/Important issue in bounded reviewed changes"
+}

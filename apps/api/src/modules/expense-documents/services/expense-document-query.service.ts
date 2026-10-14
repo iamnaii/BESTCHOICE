@@ -29,6 +29,24 @@ export class ExpenseDocumentQueryService {
   ) {}
 
   // ─── List ────────────────────────────────────────────────────────────
+  /** Resolve issued QR numbers exactly, including voided documents, within the viewer's scope. */
+  async resolveNumber(number: string, user: { branchId?: string | null; role?: string }) {
+    const where: Prisma.ExpenseDocumentWhereInput = {
+      number: { equals: number, mode: 'insensitive' },
+      deletedAt: null,
+    };
+    if (!hasCrossBranchAccess(user)) {
+      if (!user.branchId) throw new ForbiddenException('ผู้ใช้ไม่มีสาขาที่ได้รับมอบหมาย');
+      where.branchId = user.branchId;
+    }
+    const doc = await this.prisma.expenseDocument.findFirst({
+      where,
+      select: { id: true, number: true },
+    });
+    if (!doc) throw new NotFoundException('ไม่พบเอกสารในบริษัทและสาขาที่คุณมีสิทธิ์เข้าถึง');
+    return doc;
+  }
+
   async list(
     query: ListExpenseDocumentsQueryDto,
     user: { branchId?: string | null; role?: string },

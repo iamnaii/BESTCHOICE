@@ -1,3 +1,4 @@
+import { getReportDateRange } from '@/lib/date';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
@@ -35,10 +36,9 @@ const inputClass =
   'w-full px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden';
 
 export default function BadDebtReportPage() {
-  const now = new Date();
-  const firstOfYear = `${now.getFullYear()}-01-01`;
-  const [startDate, setStartDate] = useState(firstOfYear);
-  const [endDate, setEndDate] = useState(now.toISOString().split('T')[0]);
+  const range = getReportDateRange('this_year');
+  const [startDate, setStartDate] = useState(range.startDate);
+  const [endDate, setEndDate] = useState(range.endDate);
   const [companyId, setCompanyId] = useState('');
   const { cacheTtlReports } = useUiFlags();
 
@@ -94,8 +94,8 @@ export default function BadDebtReportPage() {
             {
               label: 'ปีนี้',
               fn: () => {
-                setStartDate(firstOfYear);
-                setEndDate(now.toISOString().split('T')[0]);
+                setStartDate(range.startDate);
+                setEndDate(range.endDate);
               },
             },
           ].map((p) => (

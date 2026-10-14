@@ -29,21 +29,23 @@ export default function PriceCard({ prices, onAdd, onRemove, onUpdate }: PriceCa
       <CardContent>
         <div className="space-y-3">
           {prices.map((price, index) => (
-            <div key={index} className="flex items-center gap-3">
+            <div key={index} className="flex min-w-0 flex-wrap items-center gap-3">
               <input
                 type="text"
                 placeholder="ชื่อราคา เช่น ราคาผ่อน"
+                aria-label={`ชื่อราคา ${index + 1}`}
                 value={price.label}
                 onChange={(e) => onUpdate(index, 'label', e.target.value)}
-                className="flex-1 px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden text-sm"
+                className="min-w-0 w-full sm:flex-1 sm:basis-40 px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden text-sm"
               />
               <input
                 type="number"
                 step="0.01"
                 placeholder="จำนวนเงิน"
+                aria-label={`จำนวนเงินราคา ${index + 1}`}
                 value={price.amount}
                 onChange={(e) => onUpdate(index, 'amount', e.target.value)}
-                className="w-40 px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden text-sm"
+                className="min-w-0 w-full sm:w-40 px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden text-sm"
               />
               <label className="flex items-center gap-1.5 text-sm text-muted-foreground whitespace-nowrap cursor-pointer">
                 <input
@@ -59,7 +61,8 @@ export default function PriceCard({ prices, onAdd, onRemove, onUpdate }: PriceCa
                 <button
                   type="button"
                   onClick={() => onRemove(index)}
-                  className="text-destructive/70 hover:text-destructive text-lg"
+                  aria-label={`ลบราคา ${index + 1}`}
+                  className="min-h-11 min-w-11 text-destructive/70 hover:text-destructive text-lg"
                 >
                   &times;
                 </button>

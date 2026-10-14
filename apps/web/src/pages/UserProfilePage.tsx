@@ -74,7 +74,7 @@ export default function UserProfilePage() {
             <CardTitle className="text-base">ข้อมูลบัญชี</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
-            <div className="grid grid-cols-2 gap-4 text-sm">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm [&>div]:min-w-0 [&_p]:break-words">
               <div>
                 <p className="text-muted-foreground leading-snug">ชื่อ</p>
                 <p className="font-medium leading-snug">{user.name}</p>

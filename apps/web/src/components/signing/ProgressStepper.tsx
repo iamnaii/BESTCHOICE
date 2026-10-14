@@ -10,8 +10,8 @@ interface ProgressStepperProps {
 
 export default function ProgressStepper({ steps, currentStep }: ProgressStepperProps) {
   return (
-    <div className="w-full px-4 py-4">
-      <div className="flex items-center justify-between max-w-2xl mx-auto">
+    <div className="w-full min-w-0 max-w-full overflow-x-auto px-2 sm:px-4 py-4" aria-label="ขั้นตอนลงนามสัญญา">
+      <div className="flex items-center justify-between min-w-[19rem] max-w-2xl mx-auto">
         {steps.map((step, i) => {
           const isCompleted = i < currentStep;
           const isCurrent = i === currentStep;

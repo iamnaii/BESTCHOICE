@@ -1,3 +1,4 @@
+import { toBangkokDateString } from '@/lib/date';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { ItemForm } from '../types';
@@ -14,7 +15,7 @@ interface UsePOFormOptions {
 export function usePOForm({ createMutation, suppliers }: UsePOFormOptions) {
   const [form, setForm] = useState({
     supplierId: '',
-    orderDate: new Date().toISOString().split('T')[0],
+    orderDate: toBangkokDateString(),
     expectedDate: '',
     notes: '',
     discount: '',
@@ -31,7 +32,7 @@ export function usePOForm({ createMutation, suppliers }: UsePOFormOptions) {
   const [formAttachments, setFormAttachments] = useState<string[]>([]);
 
   const resetForm = () => {
-    setForm({ supplierId: '', orderDate: new Date().toISOString().split('T')[0], expectedDate: '', notes: '', discount: '', discountAfterVat: '', paymentStatus: 'UNPAID', paymentMethod: '', paidAmount: '', paymentNotes: '' });
+    setForm({ supplierId: '', orderDate: toBangkokDateString(), expectedDate: '', notes: '', discount: '', discountAfterVat: '', paymentStatus: 'UNPAID', paymentMethod: '', paidAmount: '', paymentNotes: '' });
     setItems([]);
     setFormAttachments([]);
     setAttachmentUrl('');

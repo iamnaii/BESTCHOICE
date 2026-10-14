@@ -484,7 +484,11 @@ describe('DOC-06 asset receipts and the asset register — real commands, real j
       await printButton.click();
       await dialog.waitFor({ state: 'visible', timeout: 30_000 });
       await dialog.getByText('ตัวอย่างเอกสารสินทรัพย์').first().waitFor({ timeout: 30_000 });
-      await dialog.locator('iframe').waitFor({ state: 'attached', timeout: 60_000 });
+      await dialog.locator('iframe').waitFor({ state: 'attached', timeout: 60_000 }).catch(async (error) => {
+        saveArtifact(DOMAIN, 'preview-failure.png', await page.screenshot({ fullPage: true }));
+        saveArtifact(DOMAIN, 'preview-failure.json', JSON.stringify({ errors, dialog: await dialog.innerText() }, null, 2));
+        throw error;
+      });
       await dialog.getByRole('link', { name: /ดาวน์โหลด PDF/ }).waitFor({ state: 'visible', timeout: 30_000 });
       expect(await dialog.getByRole('link', { name: /ดาวน์โหลด PDF/ }).getAttribute('download')).toBe(`${assets.a.assetCode}.pdf`);
       const shown = await parsePdf(await previewBytes(page));

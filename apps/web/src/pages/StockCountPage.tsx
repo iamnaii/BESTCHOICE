@@ -173,11 +173,12 @@ export default function StockCountPage() {
     <div>
       <PageHeader title="ตรวจนับสต๊อก" subtitle="ตรวจนับสินค้าจริงเทียบกับในระบบ" />
 
-      <div className="flex items-center gap-3 mb-5">
+      <div className="flex flex-wrap items-center gap-3 mb-5">
         <select
+          aria-label="สาขาที่ตรวจนับ"
           value={selectedBranch}
           onChange={(e) => setSelectedBranch(e.target.value)}
-          className="px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
+          className="min-w-0 max-w-full w-full sm:w-auto min-h-11 px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
         >
           <option value="">ทุกสาขา</option>
           {(branches || []).map((b: { id: string; name: string }) => (
@@ -186,7 +187,7 @@ export default function StockCountPage() {
         </select>
         <button
           onClick={() => setIsCreateModalOpen(true)}
-          className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors"
+          className="min-h-11 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors"
         >
           + สร้างรายการตรวจนับ
         </button>

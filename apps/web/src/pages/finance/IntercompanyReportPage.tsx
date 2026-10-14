@@ -1,3 +1,4 @@
+import { getReportDateRange } from '@/lib/date';
 import { useState } from 'react';
 import { Link } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
@@ -120,10 +121,9 @@ function SummaryCard({ line }: SummaryCardProps) {
 // ── Main page ──────────────────────────────────────────────────────
 
 export default function IntercompanyReportPage() {
-  const now = new Date();
-  const firstOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-  const [startDate, setStartDate] = useState(firstOfMonth.toISOString().split('T')[0]);
-  const [endDate, setEndDate] = useState(now.toISOString().split('T')[0]);
+  const range = getReportDateRange('this_month');
+  const [startDate, setStartDate] = useState(range.startDate);
+  const [endDate, setEndDate] = useState(range.endDate);
 
   // Summary report
   const {

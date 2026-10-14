@@ -1,3 +1,4 @@
+import PageShell from '@/components/ui/PageShell';
 import { useEffect, useRef } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router';
 import { toast } from 'sonner';
@@ -193,9 +194,9 @@ function MainContent() {
           {isFullBleed ? (
             <Outlet />
           ) : (
-            <div className="container-fluid px-5 lg:px-7 pt-0 pb-20 lg:pb-8 animate-fadeIn">
+            <PageShell kind={/\/(?:new|create|edit)(?:\/|$)/.test(pathname) ? 'form' : /(?:report|statement|ledger|journal|cash-flow|profit-loss)/.test(pathname) ? 'report' : 'data'}>
               <Outlet />
-            </div>
+            </PageShell>
           )}
         </main>
       </div>

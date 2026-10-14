@@ -1,3 +1,5 @@
+import { OVERDUE_BUCKETS } from '@/lib/aging-presentation';
+import { toBangkokDateString } from '@/lib/date';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router';
@@ -31,40 +33,11 @@ interface AgingData {
   customers: AgingCustomer[];
 }
 
-const BUCKET_KEYS = [
-  'bucket_0_30',
-  'bucket_31_60',
-  'bucket_61_90',
-  'bucket_90_plus',
-] as const;
-
-const BUCKET_LABELS: Record<string, string> = {
-  bucket_0_30: '0–30 วัน',
-  bucket_31_60: '31–60 วัน',
-  bucket_61_90: '61–90 วัน',
-  bucket_90_plus: '90+ วัน',
-};
-
-const BUCKET_BAR_COLORS: Record<string, string> = {
-  bucket_0_30: 'bg-success',
-  bucket_31_60: 'bg-warning',
-  bucket_61_90: 'bg-orange-500',
-  bucket_90_plus: 'bg-destructive',
-};
-
-const BUCKET_VALUE_COLORS: Record<string, string> = {
-  bucket_0_30: 'text-success',
-  bucket_31_60: 'text-warning-strong',
-  bucket_61_90: 'text-orange-500',
-  bucket_90_plus: 'text-destructive',
-};
-
-const BUCKET_BADGE_COLORS: Record<string, string> = {
-  bucket_0_30: 'bg-success/10 text-success',
-  bucket_31_60: 'bg-warning/10 text-warning-strong',
-  bucket_61_90: 'bg-orange-500/10 text-orange-600',
-  bucket_90_plus: 'bg-destructive/10 text-destructive',
-};
+const BUCKET_KEYS = OVERDUE_BUCKETS.map(bucket => bucket.key);
+const BUCKET_LABELS: Record<string, string> = Object.fromEntries(OVERDUE_BUCKETS.map(b => [b.key, b.label]));
+const BUCKET_BAR_COLORS: Record<string, string> = Object.fromEntries(OVERDUE_BUCKETS.map(b => [b.key, b.bar]));
+const BUCKET_VALUE_COLORS: Record<string, string> = Object.fromEntries(OVERDUE_BUCKETS.map(b => [b.key, b.text]));
+const BUCKET_BADGE_COLORS: Record<string, string> = Object.fromEntries(OVERDUE_BUCKETS.map(b => [b.key, b.badge]));
 
 function fmt(n: number | null | undefined): string {
   if (n == null) return '0.00';
@@ -76,7 +49,7 @@ const inputClass =
 
 export default function AgingReportPage() {
   const now = new Date();
-  const [asOfDate, setAsOfDate] = useState(now.toISOString().split('T')[0]);
+  const [asOfDate, setAsOfDate] = useState(toBangkokDateString(now));
   const { cacheTtlReports } = useUiFlags();
 
   const {
@@ -99,7 +72,7 @@ export default function AgingReportPage() {
     <div>
       <PageHeader
         title="รายงานลูกหนี้ + วิเคราะห์อายุหนี้"
-        subtitle="Aging Report — แยกตามอายุหนี้ที่ค้างชำระ"
+        subtitle="นับวันเกินกำหนดชำระ ไม่รวมยอดที่ยังไม่ถึงกำหนด"
         icon={<AlertTriangle className="size-6" />}
       />
 

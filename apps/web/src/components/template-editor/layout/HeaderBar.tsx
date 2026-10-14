@@ -1,9 +1,10 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef } from 'react';
 import { ArrowLeft, Settings, Plus, Save, Undo2, Download, Loader2, BookOpen, Columns2, PenLine, Eye, FileUp } from 'lucide-react';
 import { useTemplateStore } from '@/store/templateStore';
 import api from '@/lib/api';
 import { toast } from 'sonner';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import type { BlockType } from '@/types/template';
 import type { ViewMode } from '@/pages/ContractTemplatesPage';
 
@@ -41,10 +42,8 @@ export default function HeaderBar({ onBack, onToggleCheatSheet, showCheatSheet, 
     previewMode, setPreviewMode,
   } = useTemplateStore();
 
-  const [showAddMenu, setShowAddMenu] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [confirmDialog, setConfirmDialog] = useState<{ open: boolean; message: string; action: () => void }>({ open: false, message: '', action: () => {} });
-  const addMenuRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleGenerateFromFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -77,18 +76,6 @@ export default function HeaderBar({ onBack, onToggleCheatSheet, showCheatSheet, 
     e.target.value = '';
   };
 
-  // Close menu on outside click
-  useEffect(() => {
-    if (!showAddMenu) return;
-    const handleClick = (e: MouseEvent) => {
-      if (addMenuRef.current && !addMenuRef.current.contains(e.target as Node)) {
-        setShowAddMenu(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClick);
-    return () => document.removeEventListener('mousedown', handleClick);
-  }, [showAddMenu]);
-
   const handleTemplateChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const id = e.target.value;
     if (id && id !== currentTemplate.id) {
@@ -100,17 +87,13 @@ export default function HeaderBar({ onBack, onToggleCheatSheet, showCheatSheet, 
     }
   };
 
-  const handleAddBlock = (type: BlockType) => {
-    addBlock(type);
-    setShowAddMenu(false);
-  };
-
   return (
-    <div className="h-14 bg-card border-b border-border flex items-center px-4 gap-1.5">
+    <div className="min-h-14 min-w-0 shrink-0 bg-card border-b border-border flex flex-wrap items-center p-3 gap-2 [&_button]:min-h-11 [&_button]:min-w-11 [&_svg]:shrink-0">
       {/* === Left: Navigation & Template === */}
       {onBack && (
         <button
           onClick={onBack}
+          aria-label="กลับ"
           className="flex items-center gap-1 p-2 text-muted-foreground hover:text-foreground rounded-lg hover:bg-muted transition-colors"
         >
           <ArrowLeft size={20} />
@@ -118,10 +101,11 @@ export default function HeaderBar({ onBack, onToggleCheatSheet, showCheatSheet, 
       )}
 
       <select
+        aria-label="เทมเพลตสัญญา"
         value={currentTemplate.id}
         onChange={handleTemplateChange}
         disabled={isLoading}
-        className="px-3 py-2 text-base font-medium border border-input rounded-lg bg-background focus:ring-2 focus:ring-primary focus:border-primary max-w-[320px] disabled:opacity-50"
+        className="min-h-11 min-w-0 flex-1 basis-48 px-3 py-2 text-base font-medium border border-input rounded-lg bg-background focus:ring-2 focus:ring-primary focus:border-primary max-w-full lg:max-w-80 disabled:opacity-50"
       >
         {templates.length === 0 && (
           <option value="">กำลังโหลด...</option>
@@ -181,6 +165,7 @@ export default function HeaderBar({ onBack, onToggleCheatSheet, showCheatSheet, 
 
         <button
           onClick={() => setShowSettings(true)}
+          aria-label="ตั้งค่าเทมเพลต"
           className="flex items-center gap-1.5 px-3 py-2 text-base text-muted-foreground border border-input rounded-lg hover:bg-muted transition-colors"
         >
           <Settings size={17} />
@@ -194,32 +179,26 @@ export default function HeaderBar({ onBack, onToggleCheatSheet, showCheatSheet, 
       {/* === Right: Actions === */}
       <div className="flex items-center gap-1.5">
         {/* Add block dropdown */}
-        <div className="relative" ref={addMenuRef}>
-          <button
-            onClick={() => setShowAddMenu(!showAddMenu)}
-            className="flex items-center gap-1.5 px-3 py-2 text-base text-foreground border border-input rounded-lg hover:bg-muted transition-colors"
-          >
-            <Plus size={17} />
-            เพิ่ม
-          </button>
-          {showAddMenu && (
-            <div className="absolute right-0 top-full mt-1.5 bg-card border border-border rounded-xl shadow-xl z-50 w-52 py-1.5">
-              {QUICK_ADD_BLOCKS.map(b => (
-                <button
-                  key={b.type}
-                  onClick={() => handleAddBlock(b.type)}
-                  className="w-full text-left px-4 py-2.5 text-base text-foreground hover:bg-primary/10 hover:text-primary transition-colors"
-                >
-                  {b.label}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button className="flex items-center gap-1.5 px-3 py-2 text-base text-foreground border border-input rounded-lg hover:bg-muted transition-colors">
+              <Plus size={17} />
+              เพิ่ม
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" collisionPadding={8} className="w-52 max-w-[calc(100vw-1rem)] max-h-[var(--radix-dropdown-menu-content-available-height)] overflow-y-auto">
+            {QUICK_ADD_BLOCKS.map(b => (
+              <DropdownMenuItem key={b.type} onSelect={() => addBlock(b.type)} className="min-h-11 px-3 text-base">
+                {b.label}
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
 
         <input ref={fileInputRef} type="file" accept=".pdf,.doc,.docx,.html,.txt" onChange={handleGenerateFromFile} className="hidden" />
         <button
           onClick={() => fileInputRef.current?.click()}
+          aria-label="สร้างเทมเพลตจากไฟล์"
           disabled={isGenerating}
           className="flex items-center gap-1.5 px-3 py-2 text-base text-foreground border border-input rounded-lg hover:bg-muted transition-colors disabled:opacity-50"
           title="สร้างเทมเพลตจากไฟล์ (OCR)"
@@ -230,6 +209,7 @@ export default function HeaderBar({ onBack, onToggleCheatSheet, showCheatSheet, 
 
         <button
           onClick={() => saveTemplateToApi()}
+          aria-label="บันทึกเทมเพลต"
           disabled={isSaving}
           className="flex items-center gap-1.5 px-3 py-2 text-base text-foreground border border-input rounded-lg hover:bg-muted transition-colors disabled:opacity-50"
         >
@@ -257,7 +237,7 @@ export default function HeaderBar({ onBack, onToggleCheatSheet, showCheatSheet, 
             <button
               key={mode}
               onClick={() => onViewModeChange(mode)}
-              className={`flex items-center gap-1.5 px-3 py-2 text-base transition-colors ${
+              className={`${mode === 'split' ? 'hidden lg:flex' : 'flex'} items-center gap-1.5 px-3 py-2 text-base transition-colors ${
                 viewMode === mode
                   ? 'bg-primary text-primary-foreground'
                   : 'text-muted-foreground hover:bg-muted'

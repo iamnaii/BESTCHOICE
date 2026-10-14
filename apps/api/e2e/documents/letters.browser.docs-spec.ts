@@ -269,7 +269,7 @@ describe('DOC-09 browser evidence — /letters bulk print, confirmation, stored 
       expect(mergedReprint.pageCount).toBe((await parsePdf(legacy.bytes)).pageCount + numbersByPage(mergedReprint).filter((n) => n === printedNoFile.letterNumber).length);
       // Already printed letters offer no confirmation panel, so nothing changes.
       expect(await dialog.getByRole('button', { name: 'ยืนยันพิมพ์แล้ว' }).count()).toBe(0);
-      await dialog.getByRole('button', { name: 'ปิด' }).click();
+      await dialog.getByRole('button', { name: 'ปิด', exact: true }).first().click();
       await dialog.waitFor({ state: 'detached', timeout: 10_000 });
       expect((await status(legacy.id))).toEqual({ status: 'PDF_GENERATED', pdfUrl: files.url(legacy.key) });
       const artifacts = [shotOutage, shotBulkOutage, saveArtifact(DOMAIN, `${legacy.letterNumber}-stored-download.pdf`, bytes).relativePath, saveArtifact(DOMAIN, 'reprint-stored-plus-regenerated.pdf', reprint.bytes).relativePath, saveArtifact(DOMAIN, 'stored-file-server.json', JSON.stringify({ origin: files.origin, requests: files.requests }, null, 2)).relativePath];
@@ -349,7 +349,7 @@ describe('DOC-09 browser evidence — /letters bulk print, confirmation, stored 
       await page.getByRole('button', { name: 'พิมพ์รวม' }).click();
       let dialog = page.getByRole('dialog');
       await dialog.getByText('กำลังสร้าง PDF...').waitFor({ timeout: 15_000 }).catch(() => undefined);
-      await dialog.getByRole('button', { name: 'ปิด' }).click();
+      await dialog.getByRole('button', { name: 'ปิด', exact: true }).first().click();
       await dialog.waitFor({ state: 'detached', timeout: 15_000 });
       // Closing the dialog clears the selection (the page's onClose) — select again and reopen.
       for (const t of targets) await page.getByLabel(`เลือก ${t.letterNumber}`).click();

@@ -1,9 +1,12 @@
+import { toBangkokDateString } from '@/lib/date';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
 import { Link } from 'react-router';
 import QueryBoundary from '@/components/QueryBoundary';
 import PageHeader from '@/components/ui/PageHeader';
+import DateRangeField from '@/components/ui/DateRangeField';
+import EmptyState from '@/components/ui/EmptyState';
 
 interface AnalyticsOverview {
   today: {
@@ -48,8 +51,8 @@ function StatCard({ label, value, hint, accent }: { label: string; value: string
 }
 
 export default function ChatbotFinanceAnalyticsPage() {
-  const thirtyDaysAgo = new Date(Date.now() - 30 * 86400_000).toISOString().slice(0, 10);
-  const todayStr = new Date().toISOString().slice(0, 10);
+  const thirtyDaysAgo = toBangkokDateString(new Date(Date.now() - 30 * 86400_000));
+  const todayStr = toBangkokDateString();
   const [startDate, setStartDate] = useState(thirtyDaysAgo);
   const [endDate, setEndDate] = useState(todayStr);
 
@@ -74,30 +77,31 @@ export default function ChatbotFinanceAnalyticsPage() {
 
   if (isLoading || isError) {
     return (
-      <div className="p-6">
+      <div>
+        <PageHeader title="สถิติผู้ช่วยแชทการเงิน" subtitle="สถิติการใช้งานและบทสนทนา" />
         <QueryBoundary
           isLoading={isLoading}
           isError={isError}
           error={error}
           onRetry={refetch}
-          errorTitle="ไม่สามารถโหลด Analytics ได้"
+          errorTitle="ไม่สามารถโหลดสถิติได้"
         >
           {null}
         </QueryBoundary>
       </div>
     );
   }
-  if (!data) return null;
+  if (!data) return <EmptyState title="ยังไม่มีข้อมูลสถิติ" actionLabel="ลองใหม่" onAction={() => void refetch()} />;
 
   const maxMessages = Math.max(...data.recentDays.map((d) => d.messages), 1);
 
   return (
     <div className="space-y-6">
       <PageHeader
-        title="น้องเบส — Finance Bot Analytics"
-        subtitle="สถิติการใช้งาน AI Finance Bot"
+        title="สถิติผู้ช่วยแชทการเงิน"
+        subtitle="สถิติการใช้งานและบทสนทนา"
         action={
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <Link
               to="/chatbot-finance/sessions"
               className="px-4 py-2 rounded-lg border border-border text-foreground text-sm hover:bg-accent"
@@ -157,7 +161,7 @@ export default function ChatbotFinanceAnalyticsPage() {
         <h2 className="text-sm font-semibold text-foreground/80 mb-3">ข้อความ 7 วันย้อนหลัง</h2>
         <div className="space-y-2">
           {data.recentDays.length === 0 ? (
-            <p className="text-sm text-muted-foreground">ยังไม่มีข้อมูล</p>
+            <EmptyState title="ยังไม่มีข้อมูลในช่วงนี้" description="ข้อมูลจะแสดงเมื่อมีบทสนทนาในช่วงเวลาที่เลือก" className="py-6" />
           ) : (
             data.recentDays.map((d) => (
               <div key={d.date} className="flex items-center gap-3">
@@ -179,7 +183,7 @@ export default function ChatbotFinanceAnalyticsPage() {
       <section className="bg-card border border-border rounded-xl p-4">
         <h2 className="text-sm font-semibold text-foreground/80 mb-3">Top Intents (7 วัน)</h2>
         {data.topIntents.length === 0 ? (
-          <p className="text-sm text-muted-foreground">ยังไม่มีข้อมูล</p>
+          <EmptyState title="ยังไม่มีข้อมูลในช่วงนี้" description="ข้อมูลจะแสดงเมื่อมีบทสนทนาในช่วงเวลาที่เลือก" className="py-6" />
         ) : (
           <div className="space-y-2">
             {data.topIntents.map((i) => (
@@ -194,23 +198,9 @@ export default function ChatbotFinanceAnalyticsPage() {
 
       {/* Date range analytics + cost */}
       <section className="bg-card border border-border rounded-xl p-4">
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex flex-wrap items-end justify-between gap-3 mb-4">
           <h2 className="text-sm font-semibold text-foreground/80">ข้อความ + Cost ตามช่วงเวลา</h2>
-          <div className="flex items-center gap-2">
-            <input
-              type="date"
-              value={startDate}
-              onChange={(e) => setStartDate(e.target.value)}
-              className="px-2 py-1 border rounded text-xs"
-            />
-            <span className="text-xs text-muted-foreground">ถึง</span>
-            <input
-              type="date"
-              value={endDate}
-              onChange={(e) => setEndDate(e.target.value)}
-              className="px-2 py-1 border rounded text-xs"
-            />
-          </div>
+          <DateRangeField from={startDate} to={endDate} onFromChange={setStartDate} onToChange={setEndDate} className="w-full sm:w-auto" />
         </div>
 
         <QueryBoundary
@@ -222,7 +212,7 @@ export default function ChatbotFinanceAnalyticsPage() {
         >
           {dateRange.data && (
             <>
-              <div className="grid grid-cols-3 gap-3 mb-4">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
                 <StatCard label="ข้อความรวม" value={dateRange.data.totalMessages} accent="blue" />
                 <StatCard label="API Cost รวม" value={`$${dateRange.data.totalCost.toFixed(4)}`} accent="orange" />
                 <StatCard label="Handoff" value={dateRange.data.handoffs} accent="red" />
@@ -230,7 +220,7 @@ export default function ChatbotFinanceAnalyticsPage() {
 
               <div className="space-y-1">
                 {dateRange.data.dailyStats.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">ไม่มีข้อมูลในช่วงนี้</p>
+                  <EmptyState title="ไม่พบข้อมูลในช่วงวันที่เลือก" description="เปลี่ยนช่วงวันที่เพื่อตรวจสอบข้อมูลช่วงอื่น" actionLabel="ดู 30 วันล่าสุด" onAction={() => { setStartDate(thirtyDaysAgo); setEndDate(todayStr); }} className="py-6" />
                 ) : (
                   dateRange.data.dailyStats.map((d) => {
                     const maxMsg = Math.max(...dateRange.data!.dailyStats.map((x) => x.messages), 1);

@@ -1,3 +1,4 @@
+import { toBangkokDateString } from '@/lib/date';
 // Asset module — Custodian/location transfer dialog (Phase 1)
 // Records AssetTransfer history row + updates Asset.custodian/location.
 // At least one of custodian/location must change. Reason required (min 5 chars).
@@ -39,7 +40,7 @@ export function TransferAssetDialog({
   onConfirm,
   isPending,
 }: TransferAssetDialogProps) {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = toBangkokDateString();
   const custodianNames = useUserNames();
   const [transferDate, setTransferDate] = useState(today);
   const [toCustodian, setToCustodian] = useState(asset.custodian ?? '');

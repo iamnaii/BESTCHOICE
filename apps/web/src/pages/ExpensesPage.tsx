@@ -1,3 +1,4 @@
+import { getReportDateRange } from '@/lib/date';
 import { useAccountingPermissions } from '@/hooks/useAccountingPermissions';
 import { useState, useMemo } from 'react';
 import { useSearchParams, useNavigate } from 'react-router';
@@ -168,11 +169,19 @@ export default function ExpensesPage() {
     setSearchParams(params, { replace: true });
   };
 
-  const now = new Date();
+  const setDateRange = (range: { startDate: string; endDate: string }) => {
+    const params = new URLSearchParams(searchParams);
+    for (const [key, value] of Object.entries(range)) {
+      if (value) params.set(key, value); else params.delete(key);
+    }
+    params.delete('page');
+    setSearchParams(params, { replace: true });
+  };
+
   const quickPresets = [
-    { label: 'เดือนนี้', fn: () => { setFilter('startDate', new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0]); setFilter('endDate', now.toISOString().split('T')[0]); } },
-    { label: '3 เดือน', fn: () => { const d = new Date(); d.setMonth(d.getMonth() - 3); setFilter('startDate', d.toISOString().split('T')[0]); setFilter('endDate', now.toISOString().split('T')[0]); } },
-    { label: 'ปีนี้', fn: () => { setFilter('startDate', `${now.getFullYear()}-01-01`); setFilter('endDate', now.toISOString().split('T')[0]); } },
+    { label: 'เดือนนี้', fn: () => setDateRange(getReportDateRange('this_month')) },
+    { label: '3 เดือน', fn: () => setDateRange(getReportDateRange('last_three_months')) },
+    { label: 'ปีนี้', fn: () => setDateRange(getReportDateRange('this_year')) },
   ];
 
   const invalidateAll = () => { queryClient.invalidateQueries({ queryKey: ['expenses'] }); queryClient.invalidateQueries({ queryKey: ['expenses-summary'] }); };
@@ -481,7 +490,7 @@ export default function ExpensesPage() {
             <Receipt className="size-5 text-primary" />
           </div>
           <div className="min-w-0">
-            <h1 className="text-base font-semibold leading-snug text-foreground truncate">ระบบบันทึกค่าใช้จ่ายกิจการ</h1>
+            <h1 className="text-base font-semibold leading-snug text-foreground break-words">ระบบบันทึกค่าใช้จ่ายกิจการ</h1>
             <p className="text-xs text-muted-foreground leading-snug">Business Expense Module · v1.0</p>
           </div>
         </div>

@@ -80,8 +80,8 @@ export function clearLiffSessionCache(): void {
  * Initialize LINE identity — works in both LIFF (LINE app) and regular browsers.
  *
  * Priority:
- * 1. Session cache — reuse identity set by a prior page in the same tab
- * 2. LINE Login callback params (line_login=true in URL) — browser fallback
+ * 1. LINE Login callback params — a new login supersedes any cached identity
+ * 2. Session cache — reuse identity on ordinary navigation in the same tab
  * 3. LIFF SDK init — inside LINE app
  * 4. Redirect to LINE Login OAuth — browser fallback when LIFF fails
  */
@@ -97,8 +97,15 @@ export function useLiffInit(): UseLiffInitResult {
 
     async function init() {
       try {
-        // ─── Session cache first — avoids re-auth when navigating between LIFF pages ───
-        const cached = readSessionCache();
+        const params = new URLSearchParams(window.location.search);
+        const hasLoginResult = params.get('line_login') === 'true' || params.get('login_error') === 'true';
+        // A callback may represent a different LINE account. Never let the old
+        // cache hide a new identity, a missing token, or a cancelled login.
+        if (hasLoginResult) {
+          clearLiffSessionCache();
+          setLiffIdToken(null);
+        }
+        const cached = hasLoginResult ? null : readSessionCache();
         if (cached) {
           if (!cancelled) {
             setLineId(cached.lineId);
@@ -110,8 +117,6 @@ export function useLiffInit(): UseLiffInitResult {
         }
 
         // ─── Check LINE Login callback params ───
-        const params = new URLSearchParams(window.location.search);
-
         if (params.get('login_error') === 'true') {
           if (!cancelled) setError('ไม่สามารถเข้าสู่ระบบ LINE ได้ กรุณาลองใหม่');
           return;
@@ -158,6 +163,8 @@ export function useLiffInit(): UseLiffInitResult {
             }
             return;
           }
+          if (!cancelled) setError('ข้อมูลเข้าสู่ระบบ LINE ไม่ครบ กรุณาปิดหน้านี้แล้วเปิดใหม่จาก LINE OA');
+          return;
         }
 
         // ─── Try LIFF SDK init (only works when URL is under LIFF endpoint) ───

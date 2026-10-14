@@ -1,3 +1,5 @@
+import { useLocation } from 'react-router';
+import { safeLoginReturnPath } from '@/lib/verification-links';
 import { lazy, Suspense, useEffect } from 'react';
 import { Routes, Route, Navigate } from 'react-router';
 import { useAuth } from '@/contexts/AuthContext';
@@ -11,6 +13,11 @@ function ExternalRedirect({ to }: { to: string }) {
     window.location.replace(to);
   }, [to]);
   return null;
+}
+
+function LiffRedirect({ to }: { to: string }) {
+  const { search, hash } = useLocation();
+  return <Navigate to={`${to}${search}${hash}`} replace />;
 }
 
 // Redirect /accounting/periods → /settings/accounting#periods (preserves hash via window.location.replace).
@@ -247,7 +254,11 @@ const PageLoader = () => (
   </div>
 );
 
+const LegacyVerifyPage = lazy(() => import('./pages/LegacyVerifyPage'));
+const ExpenseVerifyNumberPage = lazy(() => import('./pages/ExpenseVerifyNumberPage'));
+
 function App() {
+  const loginLocation = useLocation();
   const { isAuthenticated, isLoading } = useAuth();
 
   if (isLoading) {
@@ -271,7 +282,7 @@ function App() {
         />
         <Route
           path="/login"
-          element={isAuthenticated ? <Navigate to="/" replace /> : <LoginPage />}
+          element={isAuthenticated ? <Navigate to={safeLoginReturnPath(loginLocation.state?.from, '/')} replace /> : <LoginPage />}
         />
         <Route path="/privacy" element={<PrivacyPolicyPage />} />
         <Route path="/privacy/data-deletion" element={<DataDeletionPage />} />
@@ -287,7 +298,8 @@ function App() {
 
         {/* Public Customer Portal (token-based access, no auth) */}
         <Route path="/customer-access/:token" element={<CustomerPortalPage />} />
-        <Route path="/verify/:id" element={<ContractVerifyPage />} />
+        <Route path="/verify/contracts/:id" element={<ContractVerifyPage />} />
+        <Route path="/verify/:identifier" element={<LegacyVerifyPage />} />
         {/* Public ใบลดหนี้ (Credit Note) viewer — opened from the CN LINE Flex
             message link (receipts-public.controller.ts, token-based, no auth). */}
         <Route path="/cn/:token" element={<CreditNoteViewPage />} />
@@ -298,12 +310,12 @@ function App() {
         {/* Bare /liff and unknown /liff/* → redirect to primary LIFF page.
             Guards against Endpoint URL mis-configs and catch-all "*→/" hijacking
             LIFF traffic into ProtectedRoute. */}
-        <Route path="/liff" element={<Navigate to="/liff/contract" replace />} />
+        <Route path="/liff" element={<LiffRedirect to="/liff/contract" />} />
         {/* Shorthand aliases for rich-menu LIFF URIs (https://liff.line.me/<id>/contract).
             LINE rewrites them via liff.state so the landing pathname is the bare sub-path. */}
-        <Route path="/contract" element={<Navigate to="/liff/contract" replace />} />
-        <Route path="/history" element={<Navigate to="/liff/history" replace />} />
-        <Route path="/early-payoff" element={<Navigate to="/liff/early-payoff" replace />} />
+        <Route path="/contract" element={<LiffRedirect to="/liff/contract" />} />
+        <Route path="/history" element={<LiffRedirect to="/liff/history" />} />
+        <Route path="/early-payoff" element={<LiffRedirect to="/liff/early-payoff" />} />
         <Route path="/liff/contract" element={<LiffContract />} />
         <Route path="/liff/register" element={<LiffRegister />} />
         <Route path="/liff/history" element={<LiffHistory />} />
@@ -323,7 +335,7 @@ function App() {
           <p>time: {new Date().toISOString()}</p>
         </div>} />
         {/* Unknown /liff/* sub-paths fall back to primary LIFF page (not catch-all "*→/"). */}
-        <Route path="/liff/*" element={<Navigate to="/liff/contract" replace />} />
+        <Route path="/liff/*" element={<LiffRedirect to="/liff/contract" />} />
 
 
         {/* Keep old chat bookmarks working without mounting the retired page/layout. */}
@@ -615,6 +627,22 @@ function App() {
             }
           />
           <Route
+            path="/expenses/verify-number/:number"
+            element={
+              <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
+                <ExpenseVerifyNumberPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/expenses/verify/:id"
+            element={
+              <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
+                <ExpenseDetailPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
             path="/expenses/:id"
             element={
               <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
@@ -663,7 +691,7 @@ function App() {
             }
           />
           <Route path="/receipts" element={<Navigate to="/payments?tab=receipts" replace />} />
-          <Route path="/verify/:receiptNumber" element={<ReceiptVerifyPage />} />
+          <Route path="/receipts/verify/:receiptNumber" element={<ReceiptVerifyPage />} />
           {/* /overdue → /collections (Task 18 of 2026-04-25-collections-ui-p1).
               Old route kept as a redirect so external bookmarks/LINE links keep
               working. MigrationBanner on /collections nudges users to update. */}

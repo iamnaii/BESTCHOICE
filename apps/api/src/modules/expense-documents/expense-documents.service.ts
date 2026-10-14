@@ -151,6 +151,10 @@ export class ExpenseDocumentsService implements OnModuleInit {
   }
 
   // ─── List ────────────────────────────────────────────────────────────
+  resolveNumber(number: string, user: { branchId?: string | null; role?: string }) {
+    return this.query.resolveNumber(number, user);
+  }
+
   // Phase 1 decompose — delegates to ExpenseDocumentQueryService.
   async list(
     query: ListExpenseDocumentsQueryDto,

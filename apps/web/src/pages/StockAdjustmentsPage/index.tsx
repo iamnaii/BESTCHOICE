@@ -1,3 +1,4 @@
+import { getReportDateRange } from '@/lib/date';
 import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router';
 import { PackageMinus, Plus } from 'lucide-react';
@@ -19,8 +20,7 @@ const INPUT_CLS =
   'px-3 py-2 border border-input rounded-lg text-sm bg-background focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden';
 
 const monthStart = () => {
-  const d = new Date();
-  return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().slice(0, 10);
+  return getReportDateRange('this_month').startDate;
 };
 
 /**

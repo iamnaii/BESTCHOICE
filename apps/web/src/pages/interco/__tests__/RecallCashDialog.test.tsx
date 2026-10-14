@@ -119,7 +119,7 @@ describe('RecallCashDialog — kind', () => {
     expect(screen.getByLabelText(/ยอดรับเงินค่าเครื่องคืน/)).toBeDisabled();
     for (const account of screen.getAllByRole('combobox')) expect(account).toBeDisabled();
     fireEvent.click(screen.getByRole('button', { name: 'ยกเลิก' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+    fireEvent.click(screen.getByRole('button', { name: 'ปิด' }));
     fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
     expect(onClose).not.toHaveBeenCalled();
     await act(async () => {

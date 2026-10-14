@@ -1,3 +1,4 @@
+import { getReportDateRange } from '@/lib/date';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
@@ -64,10 +65,9 @@ function fmtDate(s: string): string {
 }
 
 export function EquityStatementPage() {
-  const now = new Date();
-  const firstOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-  const [startDate, setStartDate] = useState(firstOfMonth.toISOString().split('T')[0]);
-  const [endDate, setEndDate] = useState(now.toISOString().split('T')[0]);
+  const range = getReportDateRange('this_month');
+  const [startDate, setStartDate] = useState(range.startDate);
+  const [endDate, setEndDate] = useState(range.endDate);
   const [companyId, setCompanyId] = useState('');
   const [drillRow, setDrillRow] = useState<EquityRow | null>(null);
   const { cacheTtlReports } = useUiFlags();
@@ -125,15 +125,15 @@ export function EquityStatementPage() {
             {
               label: 'เดือนนี้',
               fn: () => {
-                setStartDate(firstOfMonth.toISOString().split('T')[0]);
-                setEndDate(now.toISOString().split('T')[0]);
+                setStartDate(range.startDate);
+                setEndDate(range.endDate);
               },
             },
             {
               label: 'ปีนี้',
               fn: () => {
-                setStartDate(`${now.getFullYear()}-01-01`);
-                setEndDate(now.toISOString().split('T')[0]);
+                setStartDate(getReportDateRange('this_year').startDate);
+                setEndDate(range.endDate);
               },
             },
           ].map((p) => (
@@ -173,7 +173,7 @@ export function EquityStatementPage() {
             {/* Caveat banner */}
             <div className="flex items-start gap-2 rounded-lg border border-warning/50 bg-warning/10 p-3 my-4 leading-snug">
               <AlertTriangle className="size-5 text-warning-strong shrink-0 mt-0.5" />
-              <div className="text-sm text-warning-foreground">
+              <div className="text-sm text-foreground">
                 <strong>หมายเหตุ:</strong> {equity.caveat}
                 {' — '}
                 <span className="tabular-nums">

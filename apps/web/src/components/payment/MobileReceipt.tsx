@@ -1,3 +1,4 @@
+import { receiptVerificationPath } from '@/lib/verification-links';
 import type { Receipt } from '@/types/receipt';
 import { formatDateMedium } from '@/utils/formatters';
 import { QRCodeSVG } from 'qrcode.react';
@@ -22,7 +23,7 @@ export default function MobileReceipt({ receipt }: MobileReceiptProps) {
   const thaiDate = formatDateMedium(receipt.paidDate);
 
   // Generate verify URL for QR code
-  const verifyUrl = `${window.location.origin}/verify/${receipt.receiptNumber}`;
+  const verifyUrl = `${window.location.origin}${receiptVerificationPath(receipt.receiptNumber)}`;
 
   return (
     <div className="mobile-receipt w-full max-w-md mx-auto bg-white rounded-xl shadow-lg overflow-hidden">

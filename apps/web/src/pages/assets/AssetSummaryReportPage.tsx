@@ -1,3 +1,4 @@
+import { toBangkokDateString } from '@/lib/date';
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
@@ -15,7 +16,7 @@ import { CATEGORY_LABEL, type AssetCategory } from './types';
 import type { SummaryRow, AssetTransferRow } from './types';
 import AssetHubTabs from './components/AssetHubTabs';
 
-const today = () => new Date().toISOString().slice(0, 10);
+const today = () => toBangkokDateString();
 
 const CATEGORY_ICON: Record<AssetCategory, LucideIcon> = {
   EQUIPMENT: Monitor,

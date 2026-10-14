@@ -1,0 +1,136 @@
+{
+  "status": "PASS after explicit reruns",
+  "suites": 20,
+  "tests": 145,
+  "sourceRuns": [
+    "20261013T192816Z-45945",
+    "20261013T193945Z-52088",
+    "20261013T195354Z-57926"
+  ],
+  "rerunReason": {
+    "payroll": "Close locator became ambiguous after accessible dialog close labels; target exact close",
+    "assets": "PDF iframe timeout in broad concurrent run; diagnostic added; rerun passed"
+  },
+  "results": [
+    {
+      "suite": "expense-vouchers.docs-spec.ts",
+      "run": "20261013T195354Z-57926",
+      "tests": 17,
+      "status": "passed"
+    },
+    {
+      "suite": "other-income.docs-spec.ts",
+      "run": "20261013T192816Z-45945",
+      "tests": 9,
+      "status": "passed"
+    },
+    {
+      "suite": "payroll.docs-spec.ts",
+      "run": "20261013T193945Z-52088",
+      "tests": 11,
+      "status": "passed"
+    },
+    {
+      "suite": "receiving.docs-spec.ts",
+      "run": "20261013T192816Z-45945",
+      "tests": 4,
+      "status": "passed"
+    },
+    {
+      "suite": "assets.docs-spec.ts",
+      "run": "20261013T193945Z-52088",
+      "tests": 6,
+      "status": "passed"
+    },
+    {
+      "suite": "dividend-wht.docs-spec.ts",
+      "run": "20261013T192816Z-45945",
+      "tests": 5,
+      "status": "passed"
+    },
+    {
+      "suite": "receipts.docs-spec.ts",
+      "run": "20261013T192816Z-45945",
+      "tests": 11,
+      "status": "passed"
+    },
+    {
+      "suite": "letters.docs-spec.ts",
+      "run": "20261013T192816Z-45945",
+      "tests": 9,
+      "status": "passed"
+    },
+    {
+      "suite": "e-tax.docs-spec.ts",
+      "run": "20261013T192816Z-45945",
+      "tests": 6,
+      "status": "passed"
+    },
+    {
+      "suite": "device-return.browser.docs-spec.ts",
+      "run": "20261013T192816Z-45945",
+      "tests": 5,
+      "status": "passed"
+    },
+    {
+      "suite": "letters.browser.docs-spec.ts",
+      "run": "20261013T192816Z-45945",
+      "tests": 8,
+      "status": "passed"
+    },
+    {
+      "suite": "contract-pdpa.docs-spec.ts",
+      "run": "20261013T192816Z-45945",
+      "tests": 12,
+      "status": "passed"
+    },
+    {
+      "suite": "collections-report.browser.docs-spec.ts",
+      "run": "20261013T192816Z-45945",
+      "tests": 8,
+      "status": "passed"
+    },
+    {
+      "suite": "collections-report.docs-spec.ts",
+      "run": "20261013T192816Z-45945",
+      "tests": 6,
+      "status": "passed"
+    },
+    {
+      "suite": "e-tax.browser.docs-spec.ts",
+      "run": "20261013T192816Z-45945",
+      "tests": 7,
+      "status": "passed"
+    },
+    {
+      "suite": "legacy-sales-audit.docs-spec.ts",
+      "run": "20261013T192816Z-45945",
+      "tests": 4,
+      "status": "passed"
+    },
+    {
+      "suite": "receipts.browser.docs-spec.ts",
+      "run": "20261013T192816Z-45945",
+      "tests": 8,
+      "status": "passed"
+    },
+    {
+      "suite": "stickers.browser.docs-spec.ts",
+      "run": "20261013T192816Z-45945",
+      "tests": 2,
+      "status": "passed"
+    },
+    {
+      "suite": "kyc-evidence.docs-spec.ts",
+      "run": "20261013T192816Z-45945",
+      "tests": 5,
+      "status": "passed"
+    },
+    {
+      "suite": "scheduler.docs-spec.ts",
+      "run": "20261013T192816Z-45945",
+      "tests": 2,
+      "status": "passed"
+    }
+  ]
+}

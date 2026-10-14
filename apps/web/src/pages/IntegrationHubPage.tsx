@@ -116,13 +116,13 @@ function IntegrationCard({
         'hover:shadow-md hover:border-primary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
       )}
     >
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex items-center gap-3">
+      <div className="flex min-w-0 flex-wrap items-start gap-3">
+        <div className="flex min-w-0 flex-[1_1_10rem] items-center gap-3">
           <div className="flex items-center justify-center size-10 rounded-lg bg-muted shrink-0">
             <Icon className="size-5 text-muted-foreground" />
           </div>
           <div className="min-w-0">
-            <p className="text-sm font-semibold text-foreground truncate">{integration.name}</p>
+            <p className="text-sm font-semibold text-foreground break-words">{integration.name}</p>
             <p className="text-xs text-muted-foreground line-clamp-2 mt-0.5">
               {integration.description}
             </p>

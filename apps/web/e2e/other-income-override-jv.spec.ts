@@ -77,7 +77,7 @@ async function enterOverrideMode(page: Page) {
 
 /** ปุ่ม POST บนแถบล่าง — maker-checker ของ other-income ปิดอยู่ (คีย์ไม่ถูก seed) */
 function postButton(page: Page) {
-  return page.getByRole('button', { name: /บันทึก & POST/ });
+  return page.getByRole('button', { name: 'บันทึกและลงบัญชี', exact: true });
 }
 
 test.describe('Other Income — Override JV', () => {

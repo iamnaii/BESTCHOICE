@@ -32,6 +32,8 @@ function formatThaiDisplay(value: string): string {
 }
 
 interface ThaiDateInputProps {
+  id?: string;
+  'aria-describedby'?: string;
   value: string; // YYYY-MM-DD (CE)
   onChange: (e: { target: { value: string } }) => void;
   className?: string;

@@ -544,7 +544,7 @@ describe('DOC-04 payroll slips and annual 50 ทวิ — real workflow, real j
       for (const token of ['ทดสอบระบบ บริษัทไฟแนนซ์', '0000000000000', 'ทดสอบระบบ พนักงาน e1', e1.nationalId, '37,000.00', '350.00', 'ลงชื่อ ผู้จ่ายเงิน']) expect(certStream).toContain(foldThai(token));
       for (const other of ['ทดสอบระบบ พนักงาน e2', 'ทดสอบระบบ พนักงาน e4', 'ภ.ง.ด.1ก + ใบ 50 ทวิ — สรุปรายปี', 'ดาวน์โหลด Excel']) expect(certStream).not.toContain(foldThai(other));
       expect(pageContaining(certPrint.pdf, 'ลงชื่อ ผู้จ่ายเงิน')).toBe(pageContaining(certPrint.pdf, 'ภาษีที่หักนำส่ง'));
-      await dialog.getByRole('button', { name: 'ปิด' }).click();
+      await dialog.getByRole('button', { name: 'ปิด', exact: true }).first().click();
       await dialog.waitFor({ state: 'hidden', timeout: 15_000 });
 
       // Certificate for e2 (tax id from the profile override) and for the free-text employee (no tax id → dotted line).
@@ -554,13 +554,13 @@ describe('DOC-04 payroll slips and annual 50 ทวิ — real workflow, real j
       const cert2Print = await printToPdf(page, 'wht-certificate-e2-print');
       expect(streamText(cert2Print.pdf)).toContain(foldThai(e2.taxId));
       expect(streamText(cert2Print.pdf)).not.toContain(foldThai('ทดสอบระบบ พนักงาน e1'));
-      await dialog.getByRole('button', { name: 'ปิด' }).click();
+      await dialog.getByRole('button', { name: 'ปิด', exact: true }).first().click();
       await dialog.waitFor({ state: 'hidden', timeout: 15_000 });
       const cert3 = await openCertificate(E3_NAME(), 'wht-certificate-e3');
       expect(cert3).toContain(E3_NAME());
       expect(cert3).toContain('เลขประจำตัวผู้เสียภาษี ................................');
       expect(cert3).toContain('18,000.00');
-      await dialog.getByRole('button', { name: 'ปิด' }).click();
+      await dialog.getByRole('button', { name: 'ปิด', exact: true }).first().click();
       await dialog.waitFor({ state: 'hidden', timeout: 15_000 });
 
       // Another tax year: the table empties and no certificate is offered.
@@ -589,7 +589,7 @@ describe('DOC-04 payroll slips and annual 50 ทวิ — real workflow, real j
         expect(noFinance).not.toContain('ทดสอบระบบ พนักงาน e1');
         expect(await dialog.getByRole('button', { name: 'พิมพ์' }).count()).toBe(0);
         noFinanceShot = saveArtifact(DOMAIN, 'wht-certificate-no-finance-1440.png', await page.screenshot({ fullPage: true })).relativePath;
-        await dialog.getByRole('button', { name: 'ปิด' }).click();
+        await dialog.getByRole('button', { name: 'ปิด', exact: true }).first().click();
         await dialog.waitFor({ state: 'hidden', timeout: 15_000 });
       } finally {
         await h.prisma.companyInfo.update({ where: { id: financeRow.id }, data: { companyCode: 'FINANCE' } });

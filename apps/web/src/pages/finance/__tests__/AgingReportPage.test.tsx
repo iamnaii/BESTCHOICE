@@ -76,10 +76,10 @@ describe('AgingReportPage', () => {
     renderPage();
     await waitFor(() => expect(screen.getByTestId('aging-buckets')).toBeInTheDocument());
     // Use getAllByText because bucket labels appear both in cards AND in badge column
-    expect(screen.getAllByText('0–30 วัน').length).toBeGreaterThan(0);
-    expect(screen.getAllByText('31–60 วัน').length).toBeGreaterThan(0);
-    expect(screen.getAllByText('61–90 วัน').length).toBeGreaterThan(0);
-    expect(screen.getAllByText('90+ วัน').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('ค้าง 0–30 วัน').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('ค้าง 31–60 วัน').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('ค้าง 61–90 วัน').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('ค้างเกิน 90 วัน').length).toBeGreaterThan(0);
   });
 
   it('renders customer rows with names', async () => {

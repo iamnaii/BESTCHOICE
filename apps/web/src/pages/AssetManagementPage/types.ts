@@ -1,3 +1,4 @@
+import { toBangkokDateString } from '@/lib/date';
 // ─── Shared types & constants for AssetManagementPage ───
 
 export interface Asset {
@@ -57,7 +58,7 @@ export function fmt(n: string | number | null | undefined): string {
   return Number(n).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-export const emptyForm = {
+export const createEmptyForm = () => ({
   assetCode: '',
   name: '',
   description: '',
@@ -66,10 +67,10 @@ export const emptyForm = {
   costValue: '',
   salvageValue: '0',
   usefulLife: '5',
-  purchaseDate: new Date().toISOString().split('T')[0],
+  purchaseDate: toBangkokDateString(),
   depreciationAccountCode: '',
   accumulatedDepreAccountCode: '',
   assetAccountCode: '',
-};
+});
 
-export type AssetForm = typeof emptyForm;
+export type AssetForm = ReturnType<typeof createEmptyForm>;

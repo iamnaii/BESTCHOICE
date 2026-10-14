@@ -1,3 +1,4 @@
+import { toBangkokDateString } from '@/lib/date';
 import { printDocument } from '@/lib/print-document';
 // Asset module — Phase 3 register page
 // As-of-date register with 4 stat cards, filters (category/status/search),
@@ -40,7 +41,7 @@ import AssetHubTabs from './components/AssetHubTabs';
 // D1.2.3.2 — fallback when useUiFlags() hasn't resolved yet.
 const PAGE_SIZE_FALLBACK = 50;
 
-const today = () => new Date().toISOString().slice(0, 10);
+const today = () => toBangkokDateString();
 
 export default function AssetRegisterPage() {
   const navigate = useNavigate();

@@ -3,7 +3,7 @@ import { useContactedTodayRows } from '../hooks/useContactedTodayRows';
 import { useState } from 'react';
 import { AlertTriangle, Calendar, CheckCircle2, Phone, Timer } from 'lucide-react';
 import { useDebounce } from '@/hooks/useDebounce';
-import { formatThaiDateShort } from '@/lib/date';
+import { formatThaiDateShort, toBangkokDateString } from '@/lib/date';
 import QueryBoundary from '@/components/QueryBoundary';
 import ContractCard from '../components/ContractCard';
 import TruncatedBanner from '../components/TruncatedBanner';
@@ -17,19 +17,19 @@ import type { ContractRow } from '../types';
 const LIMIT = 50;
 
 function todayDateString(): string {
-  return new Date().toISOString().split('T')[0];
+  return toBangkokDateString();
 }
 
 function tomorrowDateString(): string {
   const d = new Date();
   d.setDate(d.getDate() + 1);
-  return d.toISOString().split('T')[0];
+  return toBangkokDateString(d);
 }
 
 function thirtyDaysFromNow(): string {
   const d = new Date();
   d.setDate(d.getDate() + 30);
-  return d.toISOString().split('T')[0];
+  return toBangkokDateString(d);
 }
 
 interface GroupedRows {

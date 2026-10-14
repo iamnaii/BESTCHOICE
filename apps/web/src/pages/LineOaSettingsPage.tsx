@@ -400,7 +400,7 @@ export default function LineOaSettingsPage() {
                 <li>ตั้งค่า:
                   <ul className="ml-5 mt-1 space-y-0.5 list-disc">
                     <li><strong>Size</strong>: Full</li>
-                    <li><strong>Endpoint URL</strong>: <code className="bg-warning/20 px-1 rounded">{`${window.location.origin}/liff/register`}</code></li>
+                    <li><strong>Endpoint URL</strong>: <code className="break-all bg-warning/20 px-1 rounded">{`${window.location.origin}/liff/register`}</code></li>
                     <li><strong>Scope</strong>: เลือก <strong>profile</strong> และ <strong>openid</strong></li>
                     <li><strong>Bot link feature</strong>: Aggressive</li>
                   </ul>

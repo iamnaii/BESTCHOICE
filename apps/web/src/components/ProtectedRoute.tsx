@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { Navigate } from 'react-router';
+import { Navigate, useLocation } from 'react-router';
 import { useAuth } from '@/contexts/AuthContext';
 
 interface ProtectedRouteProps {
@@ -9,6 +9,7 @@ interface ProtectedRouteProps {
 }
 
 export default function ProtectedRoute({ children, roles }: ProtectedRouteProps) {
+  const location = useLocation();
   const { isAuthenticated, isLoading, user, sessionError, refresh } = useAuth();
   const [retrying, setRetrying] = useState(false);
 
@@ -35,7 +36,7 @@ export default function ProtectedRoute({ children, roles }: ProtectedRouteProps)
   }
 
   if (!isAuthenticated) {
-    return <Navigate to="/login" replace />;
+    return <Navigate to="/login" replace state={{ from: location.pathname + location.search + location.hash }} />;
   }
 
   if (roles && user && !roles.includes(user.role)) {

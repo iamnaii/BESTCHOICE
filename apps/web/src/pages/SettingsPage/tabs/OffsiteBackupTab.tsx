@@ -147,13 +147,13 @@ export function OffsiteBackupTab() {
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex items-start justify-between gap-4 rounded-lg border border-border/60 bg-muted p-4">
-            <div className="flex-1">
+            <div className="min-w-0 flex-1">
               <p className="text-sm font-medium text-foreground leading-snug">เปิดใช้งาน Off-site Backup</p>
               <p className="text-xs text-muted-foreground leading-snug mt-1">
                 เมื่อเปิดอยู่ cron จะรันทุกวัน 03:30 น. และเขียนประวัติการรันลงตาราง
                 ด้านล่าง — ก่อนเปิดต้องให้ owner สร้าง destination bucket
                 และ grant สิทธิ์ให้ Cloud Run service account ก่อน
-                (ดู <code className="text-foreground">docs/guides/OFFSITE-BACKUP.md</code>)
+                (ดู <code className="break-all text-foreground">docs/guides/OFFSITE-BACKUP.md</code>)
               </p>
             </div>
             <Switch
@@ -198,8 +198,8 @@ export function OffsiteBackupTab() {
           {data.destBucket !== null && !data.sqlSourceBucket && (
             <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-900 p-3 text-sm">
               <ShieldAlert className="size-4 mt-0.5 shrink-0 text-amber-600 dark:text-amber-400" />
-              <p className="text-amber-900 dark:text-amber-200 leading-snug">
-                ตั้งค่า <code>OFFSITE_BACKUP_SQL_SOURCE_BUCKET</code> เพื่อสำรอง SQL dump ด้วย
+              <p className="min-w-0 text-amber-900 dark:text-amber-200 leading-snug">
+                ตั้งค่า <code className="break-all">OFFSITE_BACKUP_SQL_SOURCE_BUCKET</code> เพื่อสำรอง SQL dump ด้วย
                 หากไม่ตั้ง จะมีเฉพาะเอกสาร (GCS) เท่านั้น
               </p>
             </div>

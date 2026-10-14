@@ -162,16 +162,16 @@ export default function DashboardTables({
                 return (
                   <div
                     key={stage.stage}
-                    className="flex items-center gap-3 cursor-pointer rounded-lg px-1 -mx-1 py-1 hover:bg-muted/50 transition-colors"
+                    className="grid grid-cols-[minmax(0,1fr)_auto] sm:flex items-center gap-3 cursor-pointer rounded-lg px-1 -mx-1 py-1 hover:bg-muted/50 transition-colors"
                     onClick={() => navigate(drillDownUrl)}
                     role="button"
                     tabIndex={0}
                     onKeyDown={(e) => { if (e.key === 'Enter') navigate(drillDownUrl); }}
                   >
-                    <div className="w-44 shrink-0">
+                    <div className="min-w-0 sm:w-44 sm:shrink-0">
                       <span className={cn('text-xs', textColor)}>{stage.label}</span>
                     </div>
-                    <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
+                    <div className="col-span-2 order-last sm:order-none sm:flex-1 h-2 bg-muted rounded-full overflow-hidden">
                       <div
                         className={cn('h-full rounded-full transition-all duration-500', barColor)}
                         style={{ width: `${pct}%` }}
@@ -187,7 +187,7 @@ export default function DashboardTables({
                 );
               })}
             </div>
-            <div className="mt-4 pt-3 border-t border-border/50 flex items-center justify-between text-xs text-muted-foreground">
+            <div className="mt-4 pt-3 border-t border-border/50 flex flex-wrap gap-2 items-center justify-between text-xs text-muted-foreground">
               <span>ยอดค้างชำระรวม</span>
               <span className="font-semibold text-destructive text-sm">
                 {collectionPipeline.totalAmount.toLocaleString('th-TH', { minimumFractionDigits: 0 })} บาท

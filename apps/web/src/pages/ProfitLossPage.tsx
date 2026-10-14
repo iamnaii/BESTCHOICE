@@ -1,3 +1,4 @@
+import { getReportDateRange } from '@/lib/date';
 import { useState, lazy, Suspense } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
@@ -99,10 +100,9 @@ function SectionHeader({ title, code }: { title: string; code: string }) {
 }
 
 export default function ProfitLossPage() {
-  const now = new Date();
-  const firstOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-  const [startDate, setStartDate] = useState(firstOfMonth.toISOString().split('T')[0]);
-  const [endDate, setEndDate] = useState(now.toISOString().split('T')[0]);
+  const range = getReportDateRange('this_month');
+  const [startDate, setStartDate] = useState(range.startDate);
+  const [endDate, setEndDate] = useState(range.endDate);
   const [branchId, setBranchId] = useState('');
   const [companyId, setCompanyId] = useState('');
   // D1.4.2.3 — OWNER-configurable staleTime (seconds) for report queries.
@@ -171,9 +171,9 @@ export default function ProfitLossPage() {
         {/* Quick presets */}
         <div className="flex items-end gap-1">
           {[
-            { label: 'เดือนนี้', fn: () => { setStartDate(firstOfMonth.toISOString().split('T')[0]); setEndDate(now.toISOString().split('T')[0]); } },
-            { label: '3 เดือน', fn: () => { const d = new Date(); d.setMonth(d.getMonth() - 3); setStartDate(d.toISOString().split('T')[0]); setEndDate(now.toISOString().split('T')[0]); } },
-            { label: 'ปีนี้', fn: () => { setStartDate(`${now.getFullYear()}-01-01`); setEndDate(now.toISOString().split('T')[0]); } },
+            { label: 'เดือนนี้', fn: () => { setStartDate(range.startDate); setEndDate(range.endDate); } },
+            { label: '3 เดือน', fn: () => { setStartDate(getReportDateRange('last_three_months').startDate); setEndDate(range.endDate); } },
+            { label: 'ปีนี้', fn: () => { setStartDate(getReportDateRange('this_year').startDate); setEndDate(range.endDate); } },
           ].map((p) => (
             <button key={p.label} onClick={p.fn} className="px-3 py-2 text-xs border border-input rounded-lg hover:bg-muted transition-colors">
               {p.label}

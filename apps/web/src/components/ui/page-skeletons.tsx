@@ -8,11 +8,11 @@ import { Skeleton } from '@/components/ui/skeleton';
 /** Dashboard: KPI banner + shortcut cards + charts */
 export function DashboardSkeleton() {
   return (
-    <div className="flex flex-col gap-5 lg:gap-7 animate-in fade-in-0 duration-300">
+    <div className="min-w-0 flex flex-col gap-5 lg:gap-7 animate-in fade-in-0 duration-300">
       {/* Page title */}
       <div>
         <Skeleton className="h-6 w-32 mb-1.5" />
-        <Skeleton className="h-4 w-56" />
+        <Skeleton className="h-4 w-56 max-w-full" />
       </div>
 
       {/* KPI Banner */}
@@ -45,16 +45,16 @@ export function DashboardSkeleton() {
 /** Detail page: header + info cards + tabs */
 export function DetailPageSkeleton() {
   return (
-    <div className="flex flex-col gap-5 animate-in fade-in-0 duration-300">
+    <div className="min-w-0 flex flex-col gap-5 animate-in fade-in-0 duration-300">
       {/* Page header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <Skeleton className="h-6 w-44 mb-1.5" />
           <Skeleton className="h-4 w-32" />
         </div>
         <div className="flex gap-2">
-          <Skeleton className="h-9 w-24 rounded-lg" />
-          <Skeleton className="h-9 w-24 rounded-lg" />
+          <Skeleton className="h-9 w-20 rounded-lg" />
+          <Skeleton className="h-9 w-20 rounded-lg" />
         </div>
       </div>
 
@@ -66,7 +66,7 @@ export function DetailPageSkeleton() {
       </div>
 
       {/* Tabs */}
-      <Skeleton className="h-10 w-80 rounded-lg" />
+      <Skeleton className="h-10 w-full max-w-80 rounded-lg" />
 
       {/* Content area */}
       <Skeleton className="h-[400px] rounded-xl" />
@@ -77,9 +77,9 @@ export function DetailPageSkeleton() {
 /** List page: filters + table */
 export function ListPageSkeleton() {
   return (
-    <div className="flex flex-col gap-5 animate-in fade-in-0 duration-300">
+    <div className="min-w-0 flex flex-col gap-5 animate-in fade-in-0 duration-300">
       {/* Page header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <Skeleton className="h-6 w-36 mb-1.5" />
           <Skeleton className="h-4 w-48" />
@@ -123,10 +123,10 @@ export function ListPageSkeleton() {
 /** Form page: stepper + form fields */
 export function FormPageSkeleton() {
   return (
-    <div className="flex flex-col gap-5 animate-in fade-in-0 duration-300">
+    <div className="min-w-0 flex flex-col gap-5 animate-in fade-in-0 duration-300">
       {/* Header */}
       <div>
-        <Skeleton className="h-6 w-48 mb-1.5" />
+        <Skeleton className="h-6 w-48 max-w-full mb-1.5" />
         <Skeleton className="h-4 w-32" />
       </div>
 

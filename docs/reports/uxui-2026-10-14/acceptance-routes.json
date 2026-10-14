@@ -1,0 +1,1616 @@
+[
+  {
+    "no": "1",
+    "path": "/landing",
+    "type": "page",
+    "component": "LandingPage"
+  },
+  {
+    "no": "2",
+    "path": "/login",
+    "type": "conditional-page",
+    "component": "LoginPage"
+  },
+  {
+    "no": "3",
+    "path": "/privacy",
+    "type": "page",
+    "component": "PrivacyPolicyPage"
+  },
+  {
+    "no": "4",
+    "path": "/privacy/data-deletion",
+    "type": "page",
+    "component": "DataDeletionPage"
+  },
+  {
+    "no": "5",
+    "path": "/terms",
+    "type": "redirect",
+    "component": "ExternalRedirect"
+  },
+  {
+    "no": "6",
+    "path": "/forgot-password",
+    "type": "page",
+    "component": "ForgotPasswordPage"
+  },
+  {
+    "no": "7",
+    "path": "/reset-password",
+    "type": "page",
+    "component": "ResetPasswordPage"
+  },
+  {
+    "no": "8",
+    "path": "/register",
+    "type": "page",
+    "component": "RegisterInvitePage"
+  },
+  {
+    "no": "9",
+    "path": "/customer-access/:token",
+    "type": "page",
+    "component": "CustomerPortalPage"
+  },
+  {
+    "no": "10",
+    "path": "/verify/contracts/:id",
+    "type": "page",
+    "component": "ContractVerifyPage"
+  },
+  {
+    "no": "11",
+    "path": "/cn/:token",
+    "type": "page",
+    "component": "CreditNoteViewPage"
+  },
+  {
+    "no": "12",
+    "path": "/visit",
+    "type": "page",
+    "component": "PublicAppointmentPage"
+  },
+  {
+    "no": "13",
+    "path": "/pay/:token",
+    "type": "page",
+    "component": "LiffPayment"
+  },
+  {
+    "no": "14",
+    "path": "/liff",
+    "type": "redirect",
+    "component": ""
+  },
+  {
+    "no": "15",
+    "path": "/contract",
+    "type": "redirect",
+    "component": ""
+  },
+  {
+    "no": "16",
+    "path": "/history",
+    "type": "redirect",
+    "component": ""
+  },
+  {
+    "no": "17",
+    "path": "/early-payoff",
+    "type": "redirect",
+    "component": ""
+  },
+  {
+    "no": "18",
+    "path": "/liff/contract",
+    "type": "page",
+    "component": "LiffContract"
+  },
+  {
+    "no": "19",
+    "path": "/liff/register",
+    "type": "page",
+    "component": "LiffRegister"
+  },
+  {
+    "no": "20",
+    "path": "/liff/history",
+    "type": "page",
+    "component": "LiffHistory"
+  },
+  {
+    "no": "21",
+    "path": "/liff/profile",
+    "type": "page",
+    "component": "LiffProfile"
+  },
+  {
+    "no": "22",
+    "path": "/liff/early-payoff",
+    "type": "page",
+    "component": "LiffEarlyPayoff"
+  },
+  {
+    "no": "23",
+    "path": "/liff/finance-verify",
+    "type": "page",
+    "component": "LiffFinanceVerify"
+  },
+  {
+    "no": "24",
+    "path": "/liff/branches",
+    "type": "page",
+    "component": "LiffBranches"
+  },
+  {
+    "no": "25",
+    "path": "/liff/receipts",
+    "type": "page",
+    "component": "LiffReceipts"
+  },
+  {
+    "no": "26",
+    "path": "/liff/warranty",
+    "type": "page",
+    "component": "LiffWarranty"
+  },
+  {
+    "no": "27",
+    "path": "/liff/notifications",
+    "type": "page",
+    "component": "LiffNotificationSettings"
+  },
+  {
+    "no": "28",
+    "path": "/liff/debug",
+    "type": "page",
+    "component": ""
+  },
+  {
+    "no": "29",
+    "path": "/liff/*",
+    "type": "redirect",
+    "component": ""
+  },
+  {
+    "no": "30",
+    "path": "/chat",
+    "type": "redirect",
+    "component": ""
+  },
+  {
+    "no": "31",
+    "path": "/",
+    "type": "page",
+    "component": "DashboardPage"
+  },
+  {
+    "no": "32",
+    "path": "/branches",
+    "type": "page",
+    "component": "BranchesPage"
+  },
+  {
+    "no": "33",
+    "path": "/inventory",
+    "type": "redirect",
+    "component": ""
+  },
+  {
+    "no": "34",
+    "path": "/purchase-orders",
+    "type": "page",
+    "component": "PurchaseOrdersPage"
+  },
+  {
+    "no": "35",
+    "path": "/purchase-orders/qc",
+    "type": "page",
+    "component": "QcCenterPage"
+  },
+  {
+    "no": "36",
+    "path": "/purchase-orders/:id/goods-receivings/:receivingId/print",
+    "type": "page",
+    "component": "GoodsReceiptPrintPage"
+  },
+  {
+    "no": "37",
+    "path": "/stock",
+    "type": "page",
+    "component": "StockOverviewPage"
+  },
+  {
+    "no": "38",
+    "path": "/stock/products",
+    "type": "page",
+    "component": "StockProductsPage"
+  },
+  {
+    "no": "39",
+    "path": "/products",
+    "type": "redirect",
+    "component": ""
+  },
+  {
+    "no": "40",
+    "path": "/stock/transfers",
+    "type": "page",
+    "component": "StockTransfersPage"
+  },
+  {
+    "no": "41",
+    "path": "/stock/alerts",
+    "type": "page",
+    "component": "StockAlertsPage"
+  },
+  {
+    "no": "42",
+    "path": "/stock/adjustments",
+    "type": "page",
+    "component": "StockAdjustmentsPage"
+  },
+  {
+    "no": "43",
+    "path": "/stock/count",
+    "type": "page",
+    "component": "StockCountPage"
+  },
+  {
+    "no": "44",
+    "path": "/stock/workflow",
+    "type": "page",
+    "component": "InventoryWorkflowPage"
+  },
+  {
+    "no": "45",
+    "path": "/stock/branch-receiving",
+    "type": "redirect",
+    "component": ""
+  },
+  {
+    "no": "46",
+    "path": "/inspections",
+    "type": "page",
+    "component": "InspectionPage"
+  },
+  {
+    "no": "47",
+    "path": "/inspections/:id",
+    "type": "page",
+    "component": "InspectionDetailPage"
+  },
+  {
+    "no": "48",
+    "path": "/suppliers",
+    "type": "page",
+    "component": "SuppliersPage"
+  },
+  {
+    "no": "49",
+    "path": "/suppliers/:id",
+    "type": "page",
+    "component": "SupplierDetailPage"
+  },
+  {
+    "no": "50",
+    "path": "/products/create",
+    "type": "page",
+    "component": "ProductCreatePage"
+  },
+  {
+    "no": "51",
+    "path": "/products/:id",
+    "type": "page",
+    "component": "ProductDetailPage"
+  },
+  {
+    "no": "52",
+    "path": "/stickers",
+    "type": "page",
+    "component": "StickerPrintPage"
+  },
+  {
+    "no": "53",
+    "path": "/pos",
+    "type": "page",
+    "component": "POSPage"
+  },
+  {
+    "no": "54",
+    "path": "/sales",
+    "type": "page",
+    "component": "SalesHistoryPage"
+  },
+  {
+    "no": "55",
+    "path": "/shop/daily-cash",
+    "type": "page",
+    "component": "ShopDailyCashPage"
+  },
+  {
+    "no": "56",
+    "path": "/after-sales",
+    "type": "page",
+    "component": "AfterSalesPage"
+  },
+  {
+    "no": "57",
+    "path": "/after-sales/new",
+    "type": "page",
+    "component": "AfterSalesNewPage"
+  },
+  {
+    "no": "58",
+    "path": "/after-sales/:id",
+    "type": "page",
+    "component": "AfterSalesCasePage"
+  },
+  {
+    "no": "59",
+    "path": "/imported-sales",
+    "type": "page",
+    "component": "ImportedSalesPage"
+  },
+  {
+    "no": "60",
+    "path": "/todos",
+    "type": "page",
+    "component": "TodosPage"
+  },
+  {
+    "no": "61",
+    "path": "/inbox/:roomId?",
+    "type": "page",
+    "component": "UnifiedInboxPage"
+  },
+  {
+    "no": "62",
+    "path": "/settings/channels",
+    "type": "redirect",
+    "component": ""
+  },
+  {
+    "no": "63",
+    "path": "/settings/payment-methods",
+    "type": "redirect",
+    "component": ""
+  },
+  {
+    "no": "64",
+    "path": "/settings/stickers",
+    "type": "redirect",
+    "component": ""
+  },
+  {
+    "no": "65",
+    "path": "/settings/collections",
+    "type": "redirect",
+    "component": ""
+  },
+  {
+    "no": "66",
+    "path": "/settings/general",
+    "type": "page",
+    "component": "GeneralSettingsPage"
+  },
+  {
+    "no": "67",
+    "path": "/settings/document-config",
+    "type": "page",
+    "component": "DocumentConfigPage"
+  },
+  {
+    "no": "68",
+    "path": "/chatbot-finance",
+    "type": "page",
+    "component": "ChatbotFinanceAnalyticsPage"
+  },
+  {
+    "no": "69",
+    "path": "/chatbot-finance/sessions",
+    "type": "page",
+    "component": "ChatbotFinanceSessionsPage"
+  },
+  {
+    "no": "70",
+    "path": "/chatbot-finance/knowledge",
+    "type": "page",
+    "component": "ChatbotFinanceKnowledgePage"
+  },
+  {
+    "no": "71",
+    "path": "/chatbot-finance/learning",
+    "type": "page",
+    "component": "ChatbotFinanceLearningPage"
+  },
+  {
+    "no": "72",
+    "path": "/customers",
+    "type": "page",
+    "component": "CustomersPage"
+  },
+  {
+    "no": "73",
+    "path": "/credit-checks",
+    "type": "page",
+    "component": "CreditChecksPage"
+  },
+  {
+    "no": "74",
+    "path": "/customers/:id",
+    "type": "page",
+    "component": "CustomerDetailPage"
+  },
+  {
+    "no": "75",
+    "path": "/contacts",
+    "type": "page",
+    "component": "ContactsPage"
+  },
+  {
+    "no": "76",
+    "path": "/contacts/:id",
+    "type": "page",
+    "component": "ContactDetailPage"
+  },
+  {
+    "no": "77",
+    "path": "/customer-intake",
+    "type": "redirect",
+    "component": ""
+  },
+  {
+    "no": "78",
+    "path": "/contracts",
+    "type": "page",
+    "component": "ContractsPage"
+  },
+  {
+    "no": "79",
+    "path": "/contracts/create",
+    "type": "page",
+    "component": "ContractCreatePage"
+  },
+  {
+    "no": "80",
+    "path": "/contracts/:id",
+    "type": "page",
+    "component": "ContractDetailPage"
+  },
+  {
+    "no": "81",
+    "path": "/contracts/:id/sign",
+    "type": "page",
+    "component": "ContractSignPage"
+  },
+  {
+    "no": "82",
+    "path": "/contract-templates",
+    "type": "page",
+    "component": "ContractTemplatesPage"
+  },
+  {
+    "no": "83",
+    "path": "/payments",
+    "type": "page",
+    "component": "PaymentsPage"
+  },
+  {
+    "no": "84",
+    "path": "/finance-receivable",
+    "type": "page",
+    "component": "FinanceReceivablePage"
+  },
+  {
+    "no": "85",
+    "path": "/finance-portfolio",
+    "type": "page",
+    "component": "FinancePortfolioPage"
+  },
+  {
+    "no": "86",
+    "path": "/external-finance-companies/:id",
+    "type": "page",
+    "component": "ExternalFinanceCompanyDetailPage"
+  },
+  {
+    "no": "87",
+    "path": "/expenses/new",
+    "type": "page",
+    "component": "ExpenseDocumentNewPage"
+  },
+  {
+    "no": "88",
+    "path": "/expenses/favorites",
+    "type": "page",
+    "component": "ExpenseFavoritesPage"
+  },
+  {
+    "no": "89",
+    "path": "/expenses/daily-summary",
+    "type": "page",
+    "component": "ExpenseDailySummaryPage"
+  },
+  {
+    "no": "90",
+    "path": "/expenses/ap-aging",
+    "type": "page",
+    "component": "APAgingPage"
+  },
+  {
+    "no": "91",
+    "path": "/expenses/:id/voucher",
+    "type": "page",
+    "component": "PaymentVoucherPage"
+  },
+  {
+    "no": "92",
+    "path": "/expenses/:id",
+    "type": "page",
+    "component": "ExpenseDetailPage"
+  },
+  {
+    "no": "93",
+    "path": "/expenses",
+    "type": "page",
+    "component": "ExpensesPage"
+  },
+  {
+    "no": "94",
+    "path": "/commissions",
+    "type": "page",
+    "component": "CommissionsPage"
+  },
+  {
+    "no": "95",
+    "path": "/payments/import-csv",
+    "type": "page",
+    "component": "PaymentCsvImportPage"
+  },
+  {
+    "no": "96",
+    "path": "/document-dashboard",
+    "type": "page",
+    "component": "DocumentDashboardPage"
+  },
+  {
+    "no": "97",
+    "path": "/pdpa",
+    "type": "page",
+    "component": "PDPAPage"
+  },
+  {
+    "no": "98",
+    "path": "/receipts",
+    "type": "redirect",
+    "component": ""
+  },
+  {
+    "no": "99",
+    "path": "/receipts/verify/:receiptNumber",
+    "type": "page",
+    "component": "ReceiptVerifyPage"
+  },
+  {
+    "no": "100",
+    "path": "/overdue",
+    "type": "redirect",
+    "component": ""
+  },
+  {
+    "no": "101",
+    "path": "/overdue/*",
+    "type": "redirect",
+    "component": ""
+  },
+  {
+    "no": "102",
+    "path": "/collections",
+    "type": "page",
+    "component": "CollectionsPage"
+  },
+  {
+    "no": "103",
+    "path": "/letters",
+    "type": "page",
+    "component": "LettersPage"
+  },
+  {
+    "no": "104",
+    "path": "/collection-dashboard",
+    "type": "page",
+    "component": "CollectionDashboardPage"
+  },
+  {
+    "no": "105",
+    "path": "/appointments",
+    "type": "page",
+    "component": "StoreAppointmentsPage"
+  },
+  {
+    "no": "106",
+    "path": "/bookings",
+    "type": "page",
+    "component": "BookingsPage"
+  },
+  {
+    "no": "107",
+    "path": "/insurance",
+    "type": "redirect",
+    "component": ""
+  },
+  {
+    "no": "108",
+    "path": "/insurance/new",
+    "type": "redirect",
+    "component": ""
+  },
+  {
+    "no": "109",
+    "path": "/insurance/warranty-check",
+    "type": "redirect",
+    "component": ""
+  },
+  {
+    "no": "110",
+    "path": "/insurance/exchange-request/new",
+    "type": "redirect",
+    "component": ""
+  },
+  {
+    "no": "111",
+    "path": "/insurance/exchange-requests",
+    "type": "redirect",
+    "component": ""
+  },
+  {
+    "no": "112",
+    "path": "/defect-exchange",
+    "type": "redirect",
+    "component": ""
+  },
+  {
+    "no": "113",
+    "path": "/insurance/:id",
+    "type": "redirect",
+    "component": "TicketRedirect"
+  },
+  {
+    "no": "114",
+    "path": "/repossessions",
+    "type": "page",
+    "component": "RepossessionsPage"
+  },
+  {
+    "no": "115",
+    "path": "/notifications",
+    "type": "page",
+    "component": "NotificationsPage"
+  },
+  {
+    "no": "116",
+    "path": "/slip-review",
+    "type": "redirect",
+    "component": ""
+  },
+  {
+    "no": "117",
+    "path": "/reports",
+    "type": "page",
+    "component": "ReportsPage"
+  },
+  {
+    "no": "118",
+    "path": "/profit-loss",
+    "type": "page",
+    "component": "ProfitLossPage"
+  },
+  {
+    "no": "119",
+    "path": "/users",
+    "type": "page",
+    "component": "UsersPage"
+  },
+  {
+    "no": "120",
+    "path": "/users/new",
+    "type": "page",
+    "component": "UserDetailPage"
+  },
+  {
+    "no": "121",
+    "path": "/users/:id",
+    "type": "page",
+    "component": "UserDetailPage"
+  },
+  {
+    "no": "122",
+    "path": "/settings",
+    "type": "redirect",
+    "component": "SettingsIndexRedirect"
+  },
+  {
+    "no": "123",
+    "path": "/settings/:categoryId",
+    "type": "settings-shell",
+    "component": "SettingsLayout"
+  },
+  {
+    "no": "124",
+    "path": "/settings/:categoryId/:itemId",
+    "type": "settings-shell",
+    "component": "SettingsItemRoute"
+  },
+  {
+    "no": "125",
+    "path": "/settings/interest-config",
+    "type": "redirect",
+    "component": ""
+  },
+  {
+    "no": "126",
+    "path": "/settings/pricing-templates",
+    "type": "redirect",
+    "component": ""
+  },
+  {
+    "no": "127",
+    "path": "/settings/gfin-rates",
+    "type": "redirect",
+    "component": ""
+  },
+  {
+    "no": "128",
+    "path": "/audit-logs",
+    "type": "page",
+    "component": "AuditLogsPage"
+  },
+  {
+    "no": "129",
+    "path": "/financial-audit",
+    "type": "page",
+    "component": "FinancialAuditPage"
+  },
+  {
+    "no": "130",
+    "path": "/monthly-close",
+    "type": "page",
+    "component": "MonthlyClosePage"
+  },
+  {
+    "no": "131",
+    "path": "/finance/year-end-closing",
+    "type": "page",
+    "component": "YearEndClosingPage"
+  },
+  {
+    "no": "132",
+    "path": "/finance/equity",
+    "type": "page",
+    "component": "EquityListPage"
+  },
+  {
+    "no": "133",
+    "path": "/finance/equity/new",
+    "type": "page",
+    "component": "EquityEntryPage"
+  },
+  {
+    "no": "134",
+    "path": "/finance/equity/:id/edit",
+    "type": "page",
+    "component": "EquityEntryPage"
+  },
+  {
+    "no": "135",
+    "path": "/finance/equity/:id",
+    "type": "page",
+    "component": "EquityViewPage"
+  },
+  {
+    "no": "136",
+    "path": "/finance/dividend-register",
+    "type": "page",
+    "component": "DividendRegisterPage"
+  },
+  {
+    "no": "137",
+    "path": "/shop/accounting",
+    "type": "page",
+    "component": "ShopAccountingPage"
+  },
+  {
+    "no": "138",
+    "path": "/accounting/intercompany",
+    "type": "page",
+    "component": "IntercompanySettlementPage"
+  },
+  {
+    "no": "139",
+    "path": "/finance/cash-flow",
+    "type": "page",
+    "component": "CashFlowPage"
+  },
+  {
+    "no": "140",
+    "path": "/finance/equity-statement",
+    "type": "page",
+    "component": "EquityStatementPage"
+  },
+  {
+    "no": "141",
+    "path": "/finance/general-ledger",
+    "type": "page",
+    "component": "GeneralLedgerPage"
+  },
+  {
+    "no": "142",
+    "path": "/system-status",
+    "type": "page",
+    "component": "SystemStatusPage"
+  },
+  {
+    "no": "143",
+    "path": "/migration",
+    "type": "page",
+    "component": "MigrationPage"
+  },
+  {
+    "no": "144",
+    "path": "/settings/line-oa",
+    "type": "redirect",
+    "component": ""
+  },
+  {
+    "no": "145",
+    "path": "/finance/vat",
+    "type": "page",
+    "component": "VatPage"
+  },
+  {
+    "no": "146",
+    "path": "/finance/wht",
+    "type": "page",
+    "component": "WhtPage"
+  },
+  {
+    "no": "147",
+    "path": "/finance/wht-report",
+    "type": "page",
+    "component": "WhtReportPage"
+  },
+  {
+    "no": "148",
+    "path": "/finance/sso-report",
+    "type": "page",
+    "component": "SsoReportPage"
+  },
+  {
+    "no": "149",
+    "path": "/finance/wht-annual",
+    "type": "page",
+    "component": "WhtAnnualPage"
+  },
+  {
+    "no": "150",
+    "path": "/finance/e-tax",
+    "type": "page",
+    "component": "ETaxPage"
+  },
+  {
+    "no": "151",
+    "path": "/finance/vat-auto-journal",
+    "type": "page",
+    "component": "VatAutoJournalPage"
+  },
+  {
+    "no": "152",
+    "path": "/settings/e-tax-config",
+    "type": "redirect",
+    "component": ""
+  },
+  {
+    "no": "153",
+    "path": "/tax-reports",
+    "type": "redirect",
+    "component": ""
+  },
+  {
+    "no": "154",
+    "path": "/settings/companies",
+    "type": "redirect",
+    "component": ""
+  },
+  {
+    "no": "155",
+    "path": "/settings/dunning",
+    "type": "redirect",
+    "component": ""
+  },
+  {
+    "no": "156",
+    "path": "/settings/sms-templates",
+    "type": "redirect",
+    "component": ""
+  },
+  {
+    "no": "157",
+    "path": "/settings/peak-sync",
+    "type": "redirect",
+    "component": ""
+  },
+  {
+    "no": "158",
+    "path": "/finance/peak-export",
+    "type": "page",
+    "component": "PeakExportPage"
+  },
+  {
+    "no": "159",
+    "path": "/trade-in",
+    "type": "page",
+    "component": "TradeInPage"
+  },
+  {
+    "no": "160",
+    "path": "/promotions",
+    "type": "page",
+    "component": "PromotionsPage"
+  },
+  {
+    "no": "161",
+    "path": "/assets",
+    "type": "page",
+    "component": "AssetsListPage"
+  },
+  {
+    "no": "162",
+    "path": "/assets/new",
+    "type": "page",
+    "component": "AssetEntryPage"
+  },
+  {
+    "no": "163",
+    "path": "/assets/:id/edit",
+    "type": "page",
+    "component": "AssetEntryPage"
+  },
+  {
+    "no": "164",
+    "path": "/assets/transfers",
+    "type": "page",
+    "component": "AssetTransfersListPage"
+  },
+  {
+    "no": "165",
+    "path": "/assets/register",
+    "type": "page",
+    "component": "AssetRegisterPage"
+  },
+  {
+    "no": "166",
+    "path": "/assets/journal",
+    "type": "page",
+    "component": "AssetJournalPage"
+  },
+  {
+    "no": "167",
+    "path": "/assets/summary-report",
+    "type": "page",
+    "component": "AssetSummaryReportPage"
+  },
+  {
+    "no": "168",
+    "path": "/assets/period-close",
+    "type": "page",
+    "component": "AssetPeriodClosePage"
+  },
+  {
+    "no": "169",
+    "path": "/assets/depreciation",
+    "type": "page",
+    "component": "DepreciationPage"
+  },
+  {
+    "no": "170",
+    "path": "/assets/audit",
+    "type": "page",
+    "component": "AssetAuditPage"
+  },
+  {
+    "no": "171",
+    "path": "/assets/:id",
+    "type": "page",
+    "component": "AssetDetailPage"
+  },
+  {
+    "no": "172",
+    "path": "/assets/:id/dispose",
+    "type": "page",
+    "component": "AssetDisposePage"
+  },
+  {
+    "no": "173",
+    "path": "/assets/:id/schedule",
+    "type": "page",
+    "component": "AssetSchedulePage"
+  },
+  {
+    "no": "174",
+    "path": "/assets/:id/audit",
+    "type": "page",
+    "component": "AssetAuditPage"
+  },
+  {
+    "no": "175",
+    "path": "/depreciation",
+    "type": "redirect",
+    "component": ""
+  },
+  {
+    "no": "176",
+    "path": "/settings/chart-of-accounts",
+    "type": "redirect",
+    "component": ""
+  },
+  {
+    "no": "177",
+    "path": "/finance/bank-accounts",
+    "type": "page",
+    "component": "BankAccountsPage"
+  },
+  {
+    "no": "178",
+    "path": "/settings/account-roles",
+    "type": "redirect",
+    "component": ""
+  },
+  {
+    "no": "179",
+    "path": "/analytics",
+    "type": "page",
+    "component": "AnalyticsPage"
+  },
+  {
+    "no": "180",
+    "path": "/webhooks",
+    "type": "page",
+    "component": "WebhooksPage"
+  },
+  {
+    "no": "181",
+    "path": "/chat-analytics",
+    "type": "page",
+    "component": "ChatAnalyticsPage"
+  },
+  {
+    "no": "182",
+    "path": "/canned-responses",
+    "type": "page",
+    "component": "CannedResponseAdminPage"
+  },
+  {
+    "no": "183",
+    "path": "/settings/ai-chat",
+    "type": "redirect",
+    "component": ""
+  },
+  {
+    "no": "184",
+    "path": "/settings/ai-training",
+    "type": "redirect",
+    "component": ""
+  },
+  {
+    "no": "185",
+    "path": "/settings/ai-performance",
+    "type": "redirect",
+    "component": ""
+  },
+  {
+    "no": "186",
+    "path": "/settings/ai-admin",
+    "type": "redirect",
+    "component": ""
+  },
+  {
+    "no": "187",
+    "path": "/settings/ai-persona",
+    "type": "redirect",
+    "component": ""
+  },
+  {
+    "no": "188",
+    "path": "/settings/system/integrations",
+    "type": "redirect",
+    "component": ""
+  },
+  {
+    "no": "189",
+    "path": "/settings/system/mdm",
+    "type": "redirect",
+    "component": ""
+  },
+  {
+    "no": "190",
+    "path": "/settings/mdm-test",
+    "type": "redirect",
+    "component": ""
+  },
+  {
+    "no": "191",
+    "path": "/mdm",
+    "type": "page",
+    "component": "MdmDashboardPage"
+  },
+  {
+    "no": "192",
+    "path": "/settings/rich-menu",
+    "type": "page",
+    "component": "RichMenuPage"
+  },
+  {
+    "no": "193",
+    "path": "/settings/line-greeting",
+    "type": "redirect",
+    "component": ""
+  },
+  {
+    "no": "194",
+    "path": "/profile",
+    "type": "page",
+    "component": "UserProfilePage"
+  },
+  {
+    "no": "195",
+    "path": "/other-income",
+    "type": "page",
+    "component": "OtherIncomeListPage"
+  },
+  {
+    "no": "196",
+    "path": "/other-income/new",
+    "type": "page",
+    "component": "OtherIncomeEntryPage"
+  },
+  {
+    "no": "197",
+    "path": "/other-income/daily-sheet",
+    "type": "page",
+    "component": "OtherIncomeDailySheetPage"
+  },
+  {
+    "no": "198",
+    "path": "/other-income/pending-approval",
+    "type": "page",
+    "component": "OtherIncomePendingApprovalPage"
+  },
+  {
+    "no": "199",
+    "path": "/other-income/templates",
+    "type": "page",
+    "component": "OtherIncomeTemplatesPage"
+  },
+  {
+    "no": "200",
+    "path": "/other-income/:id",
+    "type": "page",
+    "component": "OtherIncomeViewPage"
+  },
+  {
+    "no": "201",
+    "path": "/other-income/:id/edit",
+    "type": "page",
+    "component": "OtherIncomeEntryPage"
+  },
+  {
+    "no": "202",
+    "path": "/accounting/periods",
+    "type": "redirect",
+    "component": "PeriodsRedirect"
+  },
+  {
+    "no": "203",
+    "path": "/accounting/tax-disallowed-summary",
+    "type": "page",
+    "component": "TaxDisallowedSummaryPage"
+  },
+  {
+    "no": "204",
+    "path": "/settings/brands",
+    "type": "placeholder",
+    "component": "ComingSoonPage"
+  },
+  {
+    "no": "205",
+    "path": "/settings/backup",
+    "type": "placeholder",
+    "component": "ComingSoonPage"
+  },
+  {
+    "no": "206",
+    "path": "/finance/contract-cancellation",
+    "type": "page",
+    "component": "ContractCancellationPage"
+  },
+  {
+    "no": "207",
+    "path": "/finance/balance-sheet",
+    "type": "page",
+    "component": "BalanceSheetPage"
+  },
+  {
+    "no": "208",
+    "path": "/finance/aging-report",
+    "type": "page",
+    "component": "AgingReportPage"
+  },
+  {
+    "no": "209",
+    "path": "/finance/general-journal",
+    "type": "page",
+    "component": "GeneralJournalPage"
+  },
+  {
+    "no": "210",
+    "path": "/finance/bad-debt-report",
+    "type": "page",
+    "component": "BadDebtReportPage"
+  },
+  {
+    "no": "211",
+    "path": "/finance/intercompany-report",
+    "type": "page",
+    "component": "IntercompanyReportPage"
+  },
+  {
+    "no": "212",
+    "path": "/finance/e-receipt-auto",
+    "type": "page",
+    "component": "EReceiptAutoPage"
+  },
+  {
+    "no": "213",
+    "path": "*",
+    "type": "redirect",
+    "component": ""
+  },
+  {
+    "no": "214",
+    "path": "/settings/company",
+    "type": "settings-category",
+    "component": "SettingsCategoryRoute"
+  },
+  {
+    "no": "215",
+    "path": "/settings/company#company-info",
+    "type": "settings-inline",
+    "component": "CompanyTab"
+  },
+  {
+    "no": "216",
+    "path": "/settings/company/entities",
+    "type": "settings-route",
+    "component": "CompanySettingsPage"
+  },
+  {
+    "no": "217",
+    "path": "/branches",
+    "type": "settings-external",
+    "component": ""
+  },
+  {
+    "no": "218",
+    "path": "/settings/access",
+    "type": "settings-category",
+    "component": "SettingsCategoryRoute"
+  },
+  {
+    "no": "219",
+    "path": "/users",
+    "type": "settings-external",
+    "component": ""
+  },
+  {
+    "no": "220",
+    "path": "/settings/access/account-roles",
+    "type": "settings-route",
+    "component": "AccountRolesPage"
+  },
+  {
+    "no": "221",
+    "path": "/settings/access#maker-checker",
+    "type": "settings-inline",
+    "component": "MakerCheckerToggle"
+  },
+  {
+    "no": "222",
+    "path": "/settings/access#accounting-permissions",
+    "type": "settings-inline",
+    "component": "AccountingPermissionsCard"
+  },
+  {
+    "no": "223",
+    "path": "/settings/access#payment-approval-permissions",
+    "type": "settings-inline",
+    "component": "PaymentApprovalPermissionsCard"
+  },
+  {
+    "no": "224",
+    "path": "/settings/access#reverse-permission",
+    "type": "settings-inline",
+    "component": "ReversePermissionCard"
+  },
+  {
+    "no": "225",
+    "path": "/settings/access#reverse-reasons",
+    "type": "settings-inline",
+    "component": "ReverseReasonsManagementCard"
+  },
+  {
+    "no": "226",
+    "path": "/settings/access#attachment",
+    "type": "settings-inline",
+    "component": "AttachmentTab"
+  },
+  {
+    "no": "227",
+    "path": "/settings/accounting",
+    "type": "settings-category",
+    "component": "SettingsCategoryRoute"
+  },
+  {
+    "no": "228",
+    "path": "/settings/accounting#vat",
+    "type": "settings-inline",
+    "component": "VatTab"
+  },
+  {
+    "no": "229",
+    "path": "/settings/accounting#periods",
+    "type": "settings-inline",
+    "component": "PeriodsTab"
+  },
+  {
+    "no": "230",
+    "path": "/settings/accounting/chart",
+    "type": "settings-route",
+    "component": "ChartOfAccountsPage"
+  },
+  {
+    "no": "231",
+    "path": "/settings/accounting/peak-sync",
+    "type": "settings-route",
+    "component": "PeakSyncPage"
+  },
+  {
+    "no": "232",
+    "path": "/settings/accounting/e-tax",
+    "type": "settings-route",
+    "component": "ETaxConfigPage"
+  },
+  {
+    "no": "233",
+    "path": "/settings/document-config",
+    "type": "settings-external",
+    "component": ""
+  },
+  {
+    "no": "234",
+    "path": "/settings/finance",
+    "type": "settings-category",
+    "component": "SettingsCategoryRoute"
+  },
+  {
+    "no": "235",
+    "path": "/settings/finance/interest",
+    "type": "settings-route",
+    "component": "InterestConfigPage"
+  },
+  {
+    "no": "236",
+    "path": "/settings/finance#late-fee",
+    "type": "settings-inline",
+    "component": "LateFeeSettingsCard"
+  },
+  {
+    "no": "237",
+    "path": "/settings/finance/gfin",
+    "type": "settings-route",
+    "component": "GfinConfigPage"
+  },
+  {
+    "no": "238",
+    "path": "/settings/finance/payment-methods",
+    "type": "settings-route",
+    "component": "PaymentMethodSettingsPage"
+  },
+  {
+    "no": "239",
+    "path": "/settings/products",
+    "type": "settings-category",
+    "component": "SettingsCategoryRoute"
+  },
+  {
+    "no": "240",
+    "path": "/settings/products/pricing",
+    "type": "settings-route",
+    "component": "PricingTemplatesPage"
+  },
+  {
+    "no": "241",
+    "path": "/settings/products/stickers",
+    "type": "settings-route",
+    "component": "StickersSettingsPage"
+  },
+  {
+    "no": "242",
+    "path": "/promotions",
+    "type": "settings-external",
+    "component": ""
+  },
+  {
+    "no": "243",
+    "path": "/contract-templates",
+    "type": "settings-external",
+    "component": ""
+  },
+  {
+    "no": "244",
+    "path": "/settings/comms",
+    "type": "settings-category",
+    "component": "SettingsCategoryRoute"
+  },
+  {
+    "no": "245",
+    "path": "/settings/comms/line-oa",
+    "type": "settings-route",
+    "component": "LineOaSettingsPage"
+  },
+  {
+    "no": "246",
+    "path": "/settings/rich-menu",
+    "type": "settings-external",
+    "component": ""
+  },
+  {
+    "no": "247",
+    "path": "/settings/comms/greeting",
+    "type": "settings-route",
+    "component": "LineGreetingPage"
+  },
+  {
+    "no": "248",
+    "path": "/settings/comms/sms",
+    "type": "settings-route",
+    "component": "SmsTemplatesPage"
+  },
+  {
+    "no": "249",
+    "path": "/settings/comms/channels",
+    "type": "settings-route",
+    "component": "ChannelSettingsPage"
+  },
+  {
+    "no": "250",
+    "path": "/settings/comms/dunning",
+    "type": "settings-route",
+    "component": "DunningSettingsPage"
+  },
+  {
+    "no": "251",
+    "path": "/settings/comms/collections",
+    "type": "settings-route",
+    "component": "CollectionsSettingsPage"
+  },
+  {
+    "no": "252",
+    "path": "/settings/ai",
+    "type": "settings-category",
+    "component": "SettingsCategoryRoute"
+  },
+  {
+    "no": "253",
+    "path": "/settings/ai/admin",
+    "type": "settings-route",
+    "component": "AiAdminPage"
+  },
+  {
+    "no": "254",
+    "path": "/settings/ai/persona",
+    "type": "settings-route",
+    "component": "AiPersonaPage"
+  },
+  {
+    "no": "255",
+    "path": "/settings/ai/assistant",
+    "type": "settings-route",
+    "component": "AiSettingsPage"
+  },
+  {
+    "no": "256",
+    "path": "/settings/ai/training",
+    "type": "settings-route",
+    "component": "AiTrainingPage"
+  },
+  {
+    "no": "257",
+    "path": "/settings/ai/performance",
+    "type": "settings-route",
+    "component": "AiPerformancePage"
+  },
+  {
+    "no": "258",
+    "path": "/settings/integrations",
+    "type": "settings-category",
+    "component": "SettingsCategoryRoute"
+  },
+  {
+    "no": "259",
+    "path": "/settings/integrations/hub",
+    "type": "settings-route",
+    "component": "IntegrationHubPage"
+  },
+  {
+    "no": "260",
+    "path": "/settings/integrations/mdm",
+    "type": "settings-route",
+    "component": "MdmTestPage"
+  },
+  {
+    "no": "261",
+    "path": "/settings/system",
+    "type": "settings-category",
+    "component": "SettingsCategoryRoute"
+  },
+  {
+    "no": "262",
+    "path": "/settings/system#test-mode",
+    "type": "settings-inline",
+    "component": "TestModeToggle"
+  },
+  {
+    "no": "263",
+    "path": "/settings/system#pdpa",
+    "type": "settings-inline",
+    "component": "PdpaTab"
+  },
+  {
+    "no": "264",
+    "path": "/settings/system#backup",
+    "type": "settings-inline",
+    "component": "OffsiteBackupTab"
+  },
+  {
+    "no": "265",
+    "path": "/audit-logs",
+    "type": "settings-external",
+    "component": ""
+  },
+  {
+    "no": "266",
+    "path": "/system-status",
+    "type": "settings-external",
+    "component": ""
+  },
+  {
+    "no": "267",
+    "path": "/verify/:identifier",
+    "type": "page",
+    "component": "LegacyVerifyPage"
+  },
+  {
+    "no": "268",
+    "path": "/expenses/verify-number/:number",
+    "type": "page",
+    "component": "ExpenseVerifyNumberPage"
+  },
+  {
+    "no": "269",
+    "path": "/expenses/verify/:id",
+    "type": "page",
+    "component": "ExpenseDetailPage"
+  }
+]

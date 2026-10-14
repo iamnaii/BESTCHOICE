@@ -933,7 +933,7 @@ const deleteMutation = useMutation({
       />
 
       {/* Tabs: Schedule / Documents / Credit Check / Preview */}
-      <div className="flex gap-1 mb-4 border-b border-border/60">
+      <div className="flex min-w-0 max-w-full overflow-x-auto gap-1 mb-4 border-b border-border/60 [&>button]:shrink-0 [&>button]:min-h-11">
         <button
           onClick={() => setActiveTab('schedule')}
           className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${activeTab === 'schedule' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}

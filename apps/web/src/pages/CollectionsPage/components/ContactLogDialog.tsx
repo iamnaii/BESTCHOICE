@@ -4,7 +4,7 @@ import { Phone, PhoneIncoming, PhoneOutgoing, Clock } from 'lucide-react';
 import api from '@/lib/api';
 import Modal from '@/components/ui/Modal';
 import { formatNumber } from '@/utils/formatters';
-import { formatThaiDateShort } from '@/lib/date';
+import { formatThaiDateShort, toBangkokDateString, computeDefaultTimeRange } from '@/lib/date';
 import { useContactLog } from '../hooks/useContactLog';
 import { usePromiseSlots } from '../hooks/usePromiseSlots';
 import SupersedePromiseConfirmDialog from './SupersedePromiseConfirmDialog';
@@ -81,13 +81,11 @@ const QUICK_DATE_OPTIONS: Array<{
 function dateOffset(days: number): string {
   const d = new Date();
   d.setDate(d.getDate() + days);
-  return d.toISOString().split('T')[0];
+  return toBangkokDateString(d);
 }
 
 function endOfThisMonth(): string {
-  const d = new Date();
-  const last = new Date(d.getFullYear(), d.getMonth() + 1, 0);
-  return last.toISOString().split('T')[0];
+  return computeDefaultTimeRange('this_month').endDate;
 }
 
 function getTomorrow(): string {

@@ -1,3 +1,4 @@
+import DateRangeField from '@/components/ui/DateRangeField';
 import { useState, useEffect } from 'react';
 import { Search } from 'lucide-react';
 import { Input } from '@/components/ui/input';
@@ -23,10 +24,11 @@ export default function LetterFiltersBar({ value, onChange, branches, canSelectB
   }, [debouncedSearch]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
-    <div className="flex flex-wrap gap-3 items-center mb-4">
-      <div className="relative flex-1 min-w-[200px]">
+    <div className="flex flex-wrap gap-3 items-end mb-4">
+      <div className="relative w-full min-w-0 sm:flex-1 sm:min-w-[200px]">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
         <Input
+          aria-label="ค้นหาจดหมาย"
           placeholder="ค้นหา (เลขจดหมาย/เลขสัญญา/ชื่อลูกค้า)"
           value={searchInput}
           onChange={(e) => setSearchInput(e.target.value)}
@@ -39,7 +41,7 @@ export default function LetterFiltersBar({ value, onChange, branches, canSelectB
           value={value.branchId ?? 'all'}
           onValueChange={(v) => onChange({ ...value, branchId: v === 'all' ? undefined : v })}
         >
-          <SelectTrigger className="w-[160px]"><SelectValue placeholder="สาขา" /></SelectTrigger>
+          <SelectTrigger className="w-full sm:w-[160px]" aria-label="สาขา"><SelectValue placeholder="สาขา" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">ทุกสาขา</SelectItem>
             {branches.map((b) => (
@@ -55,7 +57,7 @@ export default function LetterFiltersBar({ value, onChange, branches, canSelectB
           onChange({ ...value, letterType: v === 'all' ? undefined : (v as LetterType) })
         }
       >
-        <SelectTrigger className="w-[180px]"><SelectValue placeholder="ประเภท" /></SelectTrigger>
+        <SelectTrigger className="w-full sm:w-[180px]" aria-label="ประเภทจดหมาย"><SelectValue placeholder="ประเภท" /></SelectTrigger>
         <SelectContent>
           <SelectItem value="all">ทุกประเภท</SelectItem>
           <SelectItem value="RETURN_DEVICE_45D">เก็บอุปกรณ์ 45 วัน</SelectItem>
@@ -63,18 +65,12 @@ export default function LetterFiltersBar({ value, onChange, branches, canSelectB
         </SelectContent>
       </Select>
 
-      <Input
-        type="date"
-        value={value.from ?? ''}
-        onChange={(e) => onChange({ ...value, from: e.target.value || undefined })}
-        className="w-[150px]"
-      />
-      <span className="text-muted-foreground">ถึง</span>
-      <Input
-        type="date"
-        value={value.to ?? ''}
-        onChange={(e) => onChange({ ...value, to: e.target.value || undefined })}
-        className="w-[150px]"
+      <DateRangeField
+        from={value.from ?? ''}
+        to={value.to ?? ''}
+        onFromChange={(from) => onChange({ ...value, from: from || undefined })}
+        onToChange={(to) => onChange({ ...value, to: to || undefined })}
+        className="w-full sm:w-auto sm:min-w-72"
       />
     </div>
   );

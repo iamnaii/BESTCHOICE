@@ -1,3 +1,4 @@
+import { toBangkokDateString } from '@/lib/date';
 // Asset module — Disposal page (Phase 2)
 // 3-section form (วิธีจำหน่าย / รายละเอียด / Auto JE Preview).
 // SALE → cash + sale-discount fields visible. WRITE_OFF → reason only.
@@ -33,7 +34,7 @@ import { CATEGORY_LABEL, CASH_ACCOUNTS } from './types';
 import { disposalSchema, type DisposalFormValues } from './disposal-schema';
 import { useDisposalCalculation } from './hooks/useDisposalCalculation';
 
-const today = () => new Date().toISOString().slice(0, 10);
+const today = () => toBangkokDateString();
 
 export default function AssetDisposePage() {
   const { id } = useParams<{ id: string }>();

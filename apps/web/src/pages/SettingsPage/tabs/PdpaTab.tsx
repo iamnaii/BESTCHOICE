@@ -181,7 +181,7 @@ export function PdpaTab() {
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex items-start justify-between gap-4 rounded-lg border border-border/60 bg-muted p-4">
-            <div className="flex-1">
+            <div className="min-w-0 flex-1">
               <p className="text-sm font-medium text-foreground leading-snug">เปิดใช้งาน Strict Mode</p>
               <p className="text-xs text-muted-foreground leading-snug mt-1">
                 ก่อนเปิด — ต้องรัน Backfill ให้คอลัมน์ encrypted ครบทุกแถวก่อน
@@ -206,7 +206,7 @@ export function PdpaTab() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div className="rounded-lg bg-muted p-3 flex items-center gap-3">
               <KeyRound className="size-5 text-muted-foreground" />
-              <div className="flex-1">
+              <div className="min-w-0 flex-1">
                 <p className="text-xs text-muted-foreground leading-snug">PII_ENCRYPTION_KEY</p>
                 <p className="text-sm font-medium text-foreground leading-snug">
                   {status.encryptionKeyConfigured ? (
@@ -219,7 +219,7 @@ export function PdpaTab() {
             </div>
             <div className="rounded-lg bg-muted p-3 flex items-center gap-3">
               <KeyRound className="size-5 text-muted-foreground" />
-              <div className="flex-1">
+              <div className="min-w-0 flex-1">
                 <p className="text-xs text-muted-foreground leading-snug">PII_HASH_SALT</p>
                 <p className="text-sm font-medium text-foreground leading-snug">
                   {status.hashSaltConfigured ? (
@@ -235,11 +235,11 @@ export function PdpaTab() {
           {!envReady && (
             <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-900 p-3 text-sm">
               <ShieldAlert className="size-4 mt-0.5 shrink-0 text-amber-600 dark:text-amber-400" />
-              <p className="text-amber-900 dark:text-amber-200 leading-snug">
-                ตั้ง <code className="font-mono">PII_ENCRYPTION_KEY</code> (64
-                hex chars) และ <code className="font-mono">PII_HASH_SALT</code> (≥32
+              <p className="min-w-0 text-amber-900 dark:text-amber-200 leading-snug">
+                ตั้ง <code className="break-all font-mono">PII_ENCRYPTION_KEY</code> (64
+                hex chars) และ <code className="break-all font-mono">PII_HASH_SALT</code> (≥32
                 chars) ใน env vars ก่อน — สร้างด้วย{' '}
-                <code className="font-mono">openssl rand -hex 32</code>
+                <code className="break-all font-mono">openssl rand -hex 32</code>
               </p>
             </div>
           )}
@@ -265,7 +265,7 @@ export function PdpaTab() {
         <CardContent className="space-y-4">
           {/* Encryption progress */}
           <div className="space-y-2">
-            <div className="flex items-center justify-between gap-2">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <p className="text-sm font-medium text-foreground leading-snug">
                 เข้ารหัสไปแล้ว{' '}
                 <span className="tabular-nums">{status.encryptedCount.toLocaleString('th-TH')}</span>
@@ -301,7 +301,7 @@ export function PdpaTab() {
             <div className="rounded-lg border border-amber-200 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-900 p-3 text-sm">
               <div className="flex items-start gap-2">
                 <ShieldAlert className="size-4 mt-0.5 shrink-0 text-amber-600 dark:text-amber-400" />
-                <p className="text-amber-900 dark:text-amber-200 leading-snug">
+                <p className="min-w-0 text-amber-900 dark:text-amber-200 leading-snug">
                   ลูกค้า {status.plaintextCount.toLocaleString('th-TH')} คน
                   ยังไม่ได้เข้ารหัส — รัน Backfill ก่อนเปิด Strict Mode
                 </p>

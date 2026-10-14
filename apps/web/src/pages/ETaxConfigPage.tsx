@@ -232,7 +232,7 @@ export function ETaxConfigPage() {
                   />
                   <p className="text-xs text-muted-foreground mt-1 leading-snug">
                     Staging (default) / Production:
-                    <code className="px-1 ml-1 bg-muted rounded">
+                    <code className="break-all px-1 ml-1 bg-muted rounded">
                       https://etax.rd.go.th/etax_v2/etaxws
                     </code>
                   </p>

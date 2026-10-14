@@ -15,6 +15,8 @@
  * เพิ่มหน้าสาธารณะใหม่ที่นี่ที่เดียว — อย่าคัดลอกรายการกลับไปไว้ในไฟล์อื่นอีก
  */
 
+import { isAmbiguousLegacyNumber, legacyVerificationPath } from './verification-links';
+
 export type PageLocation = {
   hostname: string;
   pathname: string;
@@ -46,6 +48,9 @@ const PUBLIC_SECTIONS = [
   '/terms',
   // พอร์ทัลลูกค้า / LIFF ที่ยืนยันตัวด้วย token ในลิงก์
   '/liff',
+  '/contract',
+  '/history',
+  '/early-payoff',
   '/pay',
   '/customer-access',
   '/verify',
@@ -72,6 +77,10 @@ function inAnySection(pathname: string, sections: string[]): boolean {
  * `true` = ห้ามยิง /auth/me บนหน้านี้ (และห้ามเด้งไป /login ด้วย — ดู shouldSkipLoginRedirect)
  */
 export function isPublicPage({ hostname, pathname, search }: PageLocation): boolean {
+  // Issued receipt/voucher links need a session; UUID contract links stay public.
+  const identifier = pathname.match(/^\/verify\/([^/]+)\/?$/)?.[1] ?? '';
+  const legacy = legacyVerificationPath(identifier);
+  if (isAmbiguousLegacyNumber(identifier) || (legacy && !legacy.startsWith('/verify/contracts/'))) return false;
   // โดเมนย่อยของลูกค้า/LIFF ไม่มี cookie ของแอดมินเลย
   if (hostname.startsWith('customer.') || hostname.startsWith('liff.')) return true;
   // LINE ส่งกลับมาที่ path ไหนก็ได้พร้อม liff.state
@@ -84,6 +93,10 @@ export function isPublicPage({ hostname, pathname, search }: PageLocation): bool
  */
 export function shouldSkipLoginRedirect(location: PageLocation): boolean {
   return (
+    /^\/verify\/[^/]+\/?$/.test(location.pathname) ||
+    location.pathname.startsWith('/receipts/verify/') ||
+    location.pathname.startsWith('/expenses/verify/') ||
+    location.pathname.startsWith('/expenses/verify-number/') ||
     isPublicPage(location) || inAnySection(location.pathname, NO_REDIRECT_SECTIONS)
   );
 }

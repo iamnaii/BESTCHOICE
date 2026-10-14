@@ -28,8 +28,8 @@ describe('resolvePageTitle — ชื่อหน้าใน breadcrumb แถ�
     expect(resolvePageTitle('/after-sales/new')).toBe('แจ้งปัญหาเครื่อง');
   });
 
-  it('path ที่ไม่รู้จัก → ใช้ segment สุดท้าย (ขีดกลางเป็นเว้นวรรค)', () => {
-    expect(resolvePageTitle('/some/unknown-page')).toBe('unknown page');
+  it('path ที่ไม่รู้จัก → ไม่แสดง slug หรือ ID', () => {
+    expect(resolvePageTitle('/some/unknown-page')).toBe('รายละเอียด');
   });
 });
 
@@ -38,7 +38,7 @@ it('uses the longest matching menu path and normalizes query strings', () => {
   expect(resolvePageTitle('/purchase-orders/qc')).toBe('รอถ่ายรูป');
   expect(resolvePageTitle('/purchase-orders/qc/?view=pending')).toBe('รอถ่ายรูป');
   expect(resolvePageTitle('/purchase-orders/qc/example')).toBe('รอถ่ายรูป');
-  expect(resolvePageTitle('/salesman')).toBe('salesman');
+  expect(resolvePageTitle('/salesman')).toBe('รายละเอียด');
 });
 
 it('uses current menu labels across every role, with OWNER first for duplicate paths', () => {

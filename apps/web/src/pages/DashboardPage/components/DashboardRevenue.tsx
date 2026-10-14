@@ -1,3 +1,4 @@
+import { getReportDateRange } from '@/lib/date';
 import { useState } from 'react';
 import { useNavigate } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
@@ -62,9 +63,7 @@ export default function DashboardRevenue({
   const { data: filteredEntityProfit, isError: filteredEntityProfitError } = useQuery<EntityProfit>({
     queryKey: ['dashboard-entity-profit', companyId],
     queryFn: async () => {
-      const now = new Date();
-      const startDate = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
-      const endDate = now.toISOString().slice(0, 10);
+      const { startDate, endDate } = getReportDateRange('this_month');
       const params = new URLSearchParams({ startDate, endDate });
       if (companyId) params.set('companyId', companyId);
       return (await api.get(`/reports/entity-profit?${params}`)).data;

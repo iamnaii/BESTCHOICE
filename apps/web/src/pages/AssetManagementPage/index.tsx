@@ -14,7 +14,7 @@ import { Building2, Plus, Play, Package, TrendingDown, Banknote, Calculator } fr
 import AssetTable from './components/AssetTable';
 import AssetForm from './components/AssetForm';
 import DepreciationPanel from './components/DepreciationPanel';
-import { Asset, AssetSummary, Branch, emptyForm } from './types';
+import { Asset, AssetSummary, Branch, createEmptyForm } from './types';
 
 export default function AssetManagementPage() {
   const queryClient = useQueryClient();
@@ -31,7 +31,7 @@ export default function AssetManagementPage() {
 
   const [showModal, setShowModal] = useState(false);
   const [editingAsset, setEditingAsset] = useState<Asset | null>(null);
-  const [form, setForm] = useState(emptyForm);
+  const [form, setForm] = useState(createEmptyForm);
 
   const [viewAsset, setViewAsset] = useState<Asset | null>(null);
   const [disposeTarget, setDisposeTarget] = useState<Asset | null>(null);
@@ -124,12 +124,12 @@ export default function AssetManagementPage() {
   function closeModal() {
     setShowModal(false);
     setEditingAsset(null);
-    setForm(emptyForm);
+    setForm(createEmptyForm());
   }
 
   function openCreate() {
     setEditingAsset(null);
-    setForm(emptyForm);
+    setForm(createEmptyForm());
     setShowModal(true);
   }
 

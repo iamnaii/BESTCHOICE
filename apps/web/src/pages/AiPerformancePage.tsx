@@ -1,3 +1,4 @@
+import { toBangkokDateString } from '@/lib/date';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
@@ -38,7 +39,7 @@ function StatCard({ icon, label, value, sub, color = 'text-foreground' }: StatCa
 }
 
 function toDateInput(d: Date): string {
-  return d.toISOString().slice(0, 10);
+  return toBangkokDateString(d);
 }
 
 export default function AiPerformancePage() {

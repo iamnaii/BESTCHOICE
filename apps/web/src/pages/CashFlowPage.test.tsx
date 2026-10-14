@@ -116,3 +116,17 @@ describe('CashFlowPage', () => {
     });
   });
 });
+
+it('requests Bangkok month-to-date across the UTC month boundary', async () => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(new Date('2026-09-30T17:30:00Z'));
+  try {
+    apiGet.mockReset();
+    apiGet.mockResolvedValue({ data: sampleResponse });
+    renderPage();
+    await waitFor(() => expect(apiGet).toHaveBeenCalled());
+    const query = new URL(apiGet.mock.calls[0][0], 'https://example.invalid').searchParams;
+    expect(query.get('periodStart')).toBe('2026-10-01');
+    expect(query.get('periodEnd')).toBe('2026-10-01');
+  } finally { vi.useRealTimers(); }
+});

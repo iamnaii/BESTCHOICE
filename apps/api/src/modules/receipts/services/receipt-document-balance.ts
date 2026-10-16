@@ -4,7 +4,11 @@ import {
   computeInstallmentBreakdown,
   InstallmentBreakdownInput,
 } from '../../journal/compute-installment-breakdown';
-import { INSTALLMENT_MONEY_RECEIPT_TYPES } from '../receipt-types.constants';
+import {
+  ADVANCE_SURPLUS_RECEIPT_TYPE,
+  DOCUMENT_BALANCE_RECEIPT_TYPES,
+  INSTALLMENT_MONEY_RECEIPT_TYPES,
+} from '../receipt-types.constants';
 
 type Client = PrismaService | Prisma.TransactionClient;
 type Source = Pick<
@@ -17,14 +21,20 @@ export interface ReceiptDocumentBalance {
   documentRemainingMonths: number | null;
   documentInstallmentAmountDue: string | null;
   documentInstallmentAmountPaid: string | null;
+  /**
+   * PR4ข: เงินของลูกค้าที่ยังไม่ได้ใช้ ณ วันออกใบ (21-1103 + 21-5101 สุทธิของสัญญา) — แถว "เงินรับล่วงหน้าค้าง" บนใบปรับดิว /
+   * ใบส่วนเกินลิงก์ชำระ. snapshot ที่เก็บก่อน PR4ข ไม่มีช่องนี้ = null
+   */
+  documentUnappliedFunds: string | null;
 }
 const unknownBalance: ReceiptDocumentBalance = {
   documentRemainingBalance: null,
   documentRemainingMonths: null,
   documentInstallmentAmountDue: null,
   documentInstallmentAmountPaid: null,
+  documentUnappliedFunds: null,
 };
-const sourceTypes = [...INSTALLMENT_MONEY_RECEIPT_TYPES, 'RESCHEDULE_FEE'];
+const sourceTypes: string[] = [...DOCUMENT_BALANCE_RECEIPT_TYPES];
 export const RECEIPT_DOCUMENT_BALANCE_ACTION = 'RECEIPT_DOCUMENT_BALANCE_V1';
 
 /** One atomic receipt + document snapshot write; unknown is a value, not a cache miss. */
@@ -91,11 +101,16 @@ function readSnapshot(value: Prisma.JsonValue | null, receipt: Source): ReceiptD
     !(money(due) && money(paid) && new Prisma.Decimal(paid).lte(due))
   )
     return unknownBalance;
+  // PR4ข: ช่องเพิ่ม — snapshot เก่าไม่มี = null · มีแต่รูปผิด = ไม่ทราบยอดทั้งใบ (fail closed แบบช่องอื่น)
+  const unappliedRaw = snapshot.documentUnappliedFunds;
+  if (unappliedRaw !== undefined && unappliedRaw !== null && !money(unappliedRaw))
+    return unknownBalance;
   return {
     documentRemainingBalance: snapshot.documentRemainingBalance,
     documentRemainingMonths: snapshot.documentRemainingMonths,
     documentInstallmentAmountDue: due as string | null,
     documentInstallmentAmountPaid: paid as string | null,
+    documentUnappliedFunds: unappliedRaw == null ? null : (unappliedRaw as string),
   };
 }
 
@@ -105,6 +120,8 @@ const collectionTags = new Set([
   'credit-allocation',
   'reschedule-collect',
   'overpayment-credit',
+  // PR4ข: ส่วนเกินลิงก์ชำระ Pay Solutions ที่พักเป็นเงินรับล่วงหน้า (Cr 21-1103) = เงินของลูกค้าที่ยังไม่ได้ใช้
+  'paysolutions-surplus-advance',
 ]);
 const relevantCodes = new Set(['11-2103', '21-1103', '21-5101']);
 const obj = (value: Prisma.JsonValue | null): Record<string, unknown> =>
@@ -112,7 +129,12 @@ const obj = (value: Prisma.JsonValue | null): Record<string, unknown> =>
 const day = (value: Date) =>
   new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Bangkok' }).format(value);
 const cash = (meta: Record<string, unknown>): Prisma.Decimal | null => {
-  const value = meta.tag === 'reschedule-collect' ? meta.rescheduleFee : meta.deltaApplied;
+  const value =
+    meta.tag === 'reschedule-collect'
+      ? meta.rescheduleFee
+      : meta.tag === 'paysolutions-surplus-advance'
+        ? meta.surplus
+        : meta.deltaApplied;
   if (typeof value !== 'string' && typeof value !== 'number') return null;
   try {
     const amount = new Prisma.Decimal(value);
@@ -272,10 +294,13 @@ export async function getReceiptDocumentBalance(
     const eligible = financial.filter((entry) => {
       const meta = obj(entry.metadata);
       return (
-        meta.paymentId === row.paymentId &&
+        // รายการส่วนเกินลิงก์ชำระไม่มี paymentId (ใบ ADVANCE_SURPLUS ก็ไม่มี) — เทียบแบบ null = ไม่มี
+        (meta.paymentId ?? null) === (row.paymentId ?? null) &&
         (row.receiptType === 'RESCHEDULE_FEE'
           ? meta.tag === 'reschedule-collect'
-          : ['receipt', '2B'].includes(String(meta.tag))) &&
+          : row.receiptType === ADVANCE_SURPLUS_RECEIPT_TYPE
+            ? meta.tag === 'paysolutions-surplus-advance'
+            : ['receipt', '2B'].includes(String(meta.tag))) &&
         (row.sourceJournalEntryId
           ? row.sourceJournalEntryId === entry.id
           : cash(meta)?.eq(row.amount) &&
@@ -372,5 +397,6 @@ export async function getReceiptDocumentBalance(
     documentInstallmentAmountPaid: current
       ? current.amountDue.minus(current.remaining).toFixed(2)
       : null,
+    documentUnappliedFunds: unapplied.toFixed(2),
   };
 }

@@ -4,6 +4,7 @@ import { Prisma } from '@prisma/client';
 import * as Sentry from '@sentry/nestjs';
 import { JournalAutoService } from '../journal-auto.service';
 import { PrismaService } from '../../../prisma/prisma.service';
+import { Vat60dayReversalTemplate } from './vat-60day-reversal.template';
 import {
   Accrual2AKind,
   Accrual2APartResult,
@@ -133,10 +134,18 @@ export interface AccrueAtReceiptResult {
  */
 @Injectable()
 export class InstallmentAccrual2ATemplate {
+  /**
+   * ตัวกลับภาษีขาย 60 วัน (Dr 21-2103 / Cr 11-2104) — สร้างภายในจากของที่มีอยู่ (ไม่เพิ่ม dependency ให้ constructor:
+   * spec หลายไฟล์ `new` คลาสนี้ด้วยสองอาร์กิวเมนต์) ใช้เฉพาะเส้นทางรอบกลางคืน `run` — เส้นทางรับชำระกลับเองที่ orchestrator
+   */
+  private readonly vat60Reversal: Vat60dayReversalTemplate;
+
   constructor(
     private readonly journal: JournalAutoService,
     private readonly prisma: PrismaService,
-  ) {}
+  ) {
+    this.vat60Reversal = new Vat60dayReversalTemplate(journal, prisma);
+  }
 
   async execute(
     installmentScheduleId: string,
@@ -422,6 +431,14 @@ export class InstallmentAccrual2ATemplate {
     const part = this.buildPart(inst, c);
     if (!part.portion.total.gt(0)) return null;
     const core = await this.postPart(inst, c, part, tx, { postedAt: inst.dueDate });
+
+    // ฝ่ายบัญชี 16/10/2569 ข้อ 11.1 (ผู้ตรวจอิสระ I1) — งวดนี้อาจถูกตั้งภาษีขาย 60 วัน (Cr 21-2103) ไว้ก่อน ขณะที่รอบนี้
+    // ยังลงไม่ได้ (งวดบัญชีของวันครบกำหนดปิดแล้วเปิดใหม่ · สัญญากลับมาเดินหลังส่งกลับใบรับเครื่องคืน · รอบก่อนลงไม่สำเร็จ).
+    // ตอนนี้ภาษีของงวดเข้า 21-2101 แล้ว ต้องกลับ 21-2103 ในธุรกรรมเดียวกัน (เหมือนเส้นทางรับชำระ) ไม่งั้นภาษีของงวดเดียวกัน
+    // อยู่ทั้งสองบัญชี และ ภ.พ.30 (ซึ่งรวม 21-2103 สุทธิ) นับซ้ำในเดือนนี้. template กลับรายการ idempotent — ลิงก์ว่าง = ไม่ทำอะไร
+    if (inst.vat60dayJournalEntryId) {
+      await this.vat60Reversal.execute(inst.id, tx);
+    }
     const installmentTotal = part.installmentTotal;
     const zero = new Decimal(0);
 

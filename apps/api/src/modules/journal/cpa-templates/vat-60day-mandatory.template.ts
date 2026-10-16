@@ -4,6 +4,7 @@ import { Prisma } from '@prisma/client';
 import { JournalAutoService } from '../journal-auto.service';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { computeInstallmentBreakdown } from '../compute-installment-breakdown';
+import { isAccrualExcludedStatus } from '../accrual-contract-status';
 
 /**
  * Template Feature I — VAT 60-Day Mandatory
@@ -36,6 +37,12 @@ import { computeInstallmentBreakdown } from '../compute-installment-breakdown';
  * Contract fields change between mandatory and reversal).
  *
  * Idempotent: returns null if vat60dayJournalEntryId is already set.
+ *
+ * ฝ่ายบัญชี 16/10/2569 (ข้อ 11.1 / 11.2): ภาษีขาย 60 วันคือภาษีที่ไฟแนนซ์จ่ายแทนลูกค้า — ถ้างวดนั้นตั้งภาษีขาย
+ * เข้า 21-2101 ไปแล้ว (รายการตั้งลูกหนี้งวด 2A ทั้งงวดหรือบางส่วน) ห้ามตั้ง 21-2103 ซ้ำ และสัญญาที่ยึดคืน/ปิด/ยกเลิก
+ * แล้ว (`ACCRUAL_EXCLUDED_CONTRACT_STATUSES` — รายการเดียวกับรอบตั้งลูกหนี้งวด) ไม่ต้องจ่ายภาษีขาย 60 วัน
+ * ⇒ คืน null โดยไม่ลงรายการและไม่ประทับ vat60dayJournalEntryId (รอบ cron คัดงวดเหล่านี้ออกตั้งแต่ตัวเลือกผู้สมัคร
+ * — ด่านนี้เป็นตาข่ายสำหรับผู้เรียกอื่น).
  */
 @Injectable()
 export class Vat60dayMandatoryTemplate {
@@ -56,7 +63,14 @@ export class Vat60dayMandatoryTemplate {
       // Idempotency guard — already processed
       if (inst.vat60dayJournalEntryId) return null;
 
+      // ข้อ 11.1 — งวดที่ตั้งภาษีขายเข้า 21-2101 แล้ว (2A เต็มงวด = ลิงก์ · บางส่วน = คอลัมน์ยอดสะสมตัวใดตัวหนึ่ง > 0 —
+      // ยอดรับที่เล็กจนภาษีปัดเป็น 0 ยังมี accruedAmount > 0) ไม่ตั้ง 21-2103 ซ้ำ
+      if (inst.accrualJournalEntryId || inst.accruedAmount.gt(0) || inst.accruedVat.gt(0)) return null;
+
       const c = await tx.contract.findUniqueOrThrow({ where: { id: inst.contractId } });
+
+      // ข้อ 11.2 — สัญญาที่ยึดคืน/ปิด/ยกเลิกแล้ว ไม่ต้องจ่ายภาษีขาย 60 วัน
+      if (isAccrualExcludedStatus(c.status)) return null;
 
       // vatPerInst via the shared single source of truth (same rounding as 2A):
       // (financed + commission[10%] + interest) × 7% / totalMonths, ROUND_HALF_UP.

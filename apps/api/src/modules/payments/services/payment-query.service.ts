@@ -530,7 +530,7 @@ export class PaymentQueryService {
   //   outstandingPrincipal  ค่างวดที่ยังไม่เก็บ (amountDue − amountPaid)
   //   outstandingLateFee     → Cr 42-1103 (ค่าปรับชำระล่าช้า) once collected
   //   waivedLateFee          → Dr 52-1105 (ส่วนลด/อนุโลมค่าปรับ)
-  //   overdue60Count         → trigger 21-2103 (VAT บังคับ-ลูกหนี้ค้าง 60 วัน)
+  //   overdue60Count         → trigger 21-2103 (VAT บังคับ-ลูกหนี้ค้าง 60 วัน) เฉพาะงวดที่ยังไม่ตั้งลูกหนี้งวด (16/10/2569)
   //   collected*             ยอด/รายการที่เก็บได้แล้วของงวดในช่วงนี้
   async getPendingSummary(filters: { branchId?: string; dueFrom?: string; dueTo?: string }) {
     // Only count APPROVED contracts — mirrors getPendingPayments so the cards

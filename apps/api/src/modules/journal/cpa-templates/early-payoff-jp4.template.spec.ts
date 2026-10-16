@@ -383,9 +383,37 @@ describe('EarlyPayoffJP4Template', () => {
       where: { id: { in: [insts[6].id, insts[7].id] } },
       data: { dueDate: new Date(Date.now() - 70 * 24 * 60 * 60 * 1000) },
     });
+    // ตั้งแต่ 16/10/2569 (ฝ่ายบัญชีข้อ 11.1) Vat60dayMandatoryTemplate **ไม่ตั้ง** ให้งวดที่ตั้งลูกหนี้งวดแล้ว — ปักกติกาใหม่ไว้ตรงนี้ด้วย
     const mandatory = new Vat60dayMandatoryTemplate(journal, prisma as any);
-    await mandatory.execute(insts[6].id);
-    await mandatory.execute(insts[7].id);
+    expect(await mandatory.execute(insts[6].id)).toBeNull();
+    expect(await mandatory.execute(insts[7].id)).toBeNull();
+
+    // จำลองแถวยุคก่อน 16/10 (งวดที่ตั้งลูกหนี้แล้ว **และ** ถูกตั้ง 60 วันซ้ำไว้ — ข้อมูลทดสอบบน prod เป็นแบบนี้) ด้วยการลงรายการ
+    // ตรงรูปเดียวกับ template เพื่อยังพิสูจน์ว่า JP4 กลับ 21-2103 / 11-2104 ให้ทุกงวดที่ยังถือธง
+    const postLegacyMandatory = async (inst: { id: string; installmentNo: number }) => {
+      const r = await journal.createAndPost({
+        description: `VAT 60-day mandatory งวด #${inst.installmentNo} (legacy — ตั้งซ้ำกับ 2A ยุคก่อน 16/10/2569)`,
+        reference: `${inst.id}:vat60-mandatory`,
+        metadata: {
+          tag: 'VAT60-MANDATORY',
+          flow: 'mandatory',
+          contractId: c.id,
+          installmentScheduleId: inst.id,
+          installmentNo: inst.installmentNo,
+          vatPerInst: '99.17',
+        },
+        lines: [
+          { accountCode: '11-2104', dr: new Decimal('99.17'), cr: new Decimal(0), description: 'ลูกหนี้-VAT ที่ออกแทน' },
+          { accountCode: '21-2103', dr: new Decimal(0), cr: new Decimal('99.17'), description: 'VAT บังคับ-ลูกหนี้ค้าง 60 วัน' },
+        ],
+      });
+      await prisma.installmentSchedule.update({
+        where: { id: inst.id },
+        data: { vat60dayJournalEntryId: r.entryNumber },
+      });
+    };
+    await postLegacyMandatory(insts[6]);
+    await postLegacyMandatory(insts[7]);
 
     // Verify mandatory flags are set
     const flaggedBefore = await prisma.installmentSchedule.findMany({

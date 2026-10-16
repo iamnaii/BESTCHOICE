@@ -469,10 +469,30 @@ UI: tolerance approval modal in `PaymentForm` — opens when delta <=1 THB on un
 
 ## VAT 60-Day Rule
 
-- Cron runs daily at 02:00 Asia/Bangkok
+- Cron runs daily at 02:00 Asia/Bangkok (`journal/cron/vat-60day.cron.ts`)
 - Finds installments overdue 60+ days with no PAID payment in the period
 - Posts `Vat60dayMandatoryTemplate` JE (Dr 11-2104 / Cr 21-2103)
-- When overdue payment is subsequently received: `PaymentReceipt2BTemplate` auto-triggers `Vat60dayReversalTemplate`
+- กลับรายการ (`Vat60dayReversalTemplate` — Dr 21-2103 / Cr 11-2104 + ล้าง `vat60dayJournalEntryId`) เกิดที่ **3 ทาง**: ใบรับชำระของงวดนั้น
+  (`payment-receipt-orchestrator.ts` ทุกเส้นทาง + `paysolutions-webhook.service.ts` — ไม่ใช่ `PaymentReceipt2BTemplate` ตามข้อความเดิม) ·
+  **รอบ 2A ที่ตั้งลูกหนี้งวดทีหลัง** (`InstallmentAccrual2ATemplate.run` — เพิ่ม 16/10/2569 ดูข้อถัดไป) · `EarlyPayoffJP4Template` (ไม่มีผู้เรียกใน production)
+- **ฝ่ายบัญชี 16/10/2569 ข้อ 11.1 / 11.2 (PR ภาษีขาย 60 วัน ไม่ตั้งซ้ำ):** ภาษีขาย 60 วันคือภาษีที่ไฟแนนซ์นำส่งแทนลูกค้า — ตั้งเฉพาะ
+  งวดที่**ยังไม่ได้ตั้งภาษีขายเข้า 21-2101** (`accrualJournalEntryId` ว่าง **และ** `accruedAmount = accruedVat = 0` — 2A ทั้งงวดหรือบางส่วนถือว่าตั้งแล้ว;
+  ใช้ทั้งสองคอลัมน์เพราะยอดรับบางส่วนที่เล็กจนภาษีปัดเป็น 0 ยังมี `accruedAmount > 0`) และ**ไม่ตั้งกับสัญญาที่ยึดคืน/ปิด/ยกเลิกแล้ว**
+  (`ACCRUAL_EXCLUDED_CONTRACT_STATUSES` — รายการเดียวกับรอบตั้งลูกหนี้งวด · รวม `TERMINATED` = บอกเลิกแล้วยังไม่ยึด ซึ่งก่อน 16/10 รอบนี้ยังตั้งให้ —
+  ภาษีของงวดเหล่านั้นจึงไม่อยู่ทั้ง 21-2101 และ 21-2103 จน JP5 กวาด 21-2102 เข้า 21-2101; แจ้งฝ่ายบัญชีเพื่อทราบ). กันสองชั้น:
+  cron คัดออกตั้งแต่ตัวเลือกผู้สมัคร (`where` เพิ่ม `accrualJournalEntryId: null` · `accruedAmount/accruedVat: { lte: 0 }` · `contract.status notIn`)
+  และ `Vat60dayMandatoryTemplate.execute` คืน `null` โดยไม่ลงรายการและไม่ประทับ `vat60dayJournalEntryId` (ตาข่ายสำหรับผู้เรียกอื่น).
+  **ลำดับกลับกัน (ผู้ตรวจอิสระ I1):** งวดอาจถูกตั้ง 21-2103 ไปก่อนขณะที่รอบ 2A ลงไม่ได้ (งวดบัญชีของวันครบกำหนดปิด — รอบ 2A ตรวจงวดของ
+  `dueDate` ส่วนรอบ 60 วันตรวจงวดของวันนี้ · สัญญากลับมา ACTIVE หลังส่งกลับใบรับเครื่องคืน · รอบก่อนลงไม่สำเร็จ) ⇒ `InstallmentAccrual2ATemplate.run`
+  (เส้นทางรอบกลางคืน) กลับ 21-2103 ในธุรกรรมเดียวกับ 2A เมื่อ `vat60dayJournalEntryId` มีค่า — ภาษีของงวดจึงอยู่ใน 21-2101 **หรือ** 21-2103 อย่างใด
+  อย่างหนึ่งเสมอ และ ภ.พ.30 (ซึ่งรวม 21-2103 สุทธิ — แถวถัดไป) นับครั้งเดียว. บรรทัด 21-2103 ซ้ำที่ลงก่อน 16/10/2569 เป็นข้อมูลทดสอบ
+  (prod ไม่มีสัญญาจริง — ล้างก่อนเริ่มใช้จริง) ไม่มี backfill.
+  ปัก: `vat-60day-mandatory.template.spec.ts` (ข้อ 11.1 เต็มงวด/บางส่วน · ข้อ 11.2) + `cron/vat-60day.cron.spec.ts` (ตัวเลือกผู้สมัคร · I1 — CI `JOURNAL_FILES`).
+- **ยังเปิดอยู่ (ผู้ตรวจอิสระ I1 — residual):** JP5 (`repossession-jp5.template.ts`) · ตัดหนี้สูญ (`bad-debt-writeoff.template.ts`) ·
+  ปิดยอดก่อนกำหนดจริง (`ContractPaymentService.earlyPayoff`) **ไม่กลับ 21-2103** ของงวดที่เคยตั้ง 60 วันไว้ ขณะที่ขาล้าง `Dr 21-2102 / Cr 21-2101`
+  ของมันครอบภาษีของงวดนั้นด้วย ⇒ ภาษีของงวดอยู่ทั้ง 21-2101 และ 21-2103 **ถาวร** (11-2104 ค้างด้วย) และ ภ.พ.30 เดือนที่ปิด/ยึดนับซ้ำ —
+  เกิดได้เฉพาะสัญญาที่ถูกตั้ง 60 วันขณะยัง ACTIVE แล้วค่อย TERMINATED → JP5 / ตัดหนี้สูญ / ปิดยอด. งานต่อ: เรียก `Vat60dayReversalTemplate`
+  ในสามเส้นทางนั้น (ก่อนขาล้าง 21-2102) — ยังไม่ทำใน PR นี้.
 
 ---
 
@@ -490,7 +510,7 @@ snapshot ปิดงวด `MonthlyCloseService.generateReportSnapshots` → `r
 | เรื่อง | กติกา |
 |---|---|
 | ยอด | ภาษีขาย = Σ(เครดิต − เดบิต) ของ `21-2101` · `Prisma.Decimal` เท่านั้น · ยอดติดลบได้ (เดือนที่มีแต่รายการกลับรายการ) — แสดงตามจริง ไม่ปัดเป็นศูนย์ |
-| ภาษีขาย 60 วัน (`21-2103`) | **ไม่รวมในยอด จนกว่าฝ่ายบัญชีจะตอบ** — `PP30_INCLUDES_MANDATORY_60DAY = false` (คำตัดสินผู้คุมงาน 2026-09-30 · **กลับคำตัดสิน "Critical #2"** เดิมใน `previewPP30` ที่รวม 21-2103): 2A ตั้งภาษีขายของทุกงวดเข้า 21-2101 ณ วันครบกำหนดแล้ว แต่รอบภาษีขาย 60 วัน (`vat-60day.cron.ts`) ตั้ง 21-2103 ซ้ำโดยไม่ดู `accrualJournalEntryId` และสถานะสัญญา · แสดงแยกเป็นข้อมูลประกอบ ตั้ง / กลับ / สุทธิ ทุกช่องทาง (หน้า `/finance/vat` · ไฟล์ Excel สามแถวหมวด "ข้อมูลประกอบ" · `outputVatBreakdown.mandatory60Day*` + `mandatory60DayIncluded: false` ใน preview · `TaxReport.generatedData` · snapshot ปิดงวด) · เปลี่ยนค่าต้องแก้ข้อความ "ยังไม่รวม" บนหน้าและในไฟล์ Excel พร้อมกัน (เทส `PP30_INCLUDES_MANDATORY_60DAY` ปักไว้) |
+| ภาษีขาย 60 วัน (`21-2103`) | **รวมสุทธิในยอดตั้งแต่ 16/10/2569** — `PP30_INCLUDES_MANDATORY_60DAY = true` (ฝ่ายบัญชีข้อ 11.1: ภาษีที่ไฟแนนซ์นำส่งแทนลูกค้าอยู่ใน ภ.พ.30 แต่ต้องไม่ซ้ำกับงวดที่ตั้ง 21-2101 แล้ว — การกันซ้ำอยู่ที่ต้นทาง `vat-60day.cron.ts` + `Vat60dayMandatoryTemplate` หัวข้อ "VAT 60-Day Rule") ⇒ `totalOutputVat = settledNet + mandatory60DayNet` · ยังแสดงแยก ตั้ง / กลับ / สุทธิ ทุกช่องทาง (หน้า `/finance/vat` เพิ่มแถว "ภาษีขาย 21-2101 สุทธิ" + "บวก ภาษีขาย 60 วัน (21-2103) สุทธิ" ก่อนแถวรวม · ไฟล์ Excel แถวสุทธิระบุ "รวมในยอดภาษีขายข้างบนแล้ว") · **หน้าและ Excel อ่านธง `mandatory60DayIncluded` จากข้อมูล ไม่ใช่ค่าคงที่** — snapshot ปิดงวด / `TaxReport.generatedData` ที่เก็บก่อน 16/10 ยังเป็น `false` จึงแสดงแถว/ข้อความเดิม ("ยังไม่รวม") ได้ถูก · ประวัติ: 2026-09-30 ตั้งเป็น `false` ระหว่างรอฝ่ายบัญชี (**กลับคำตัดสิน "Critical #2"** เดิมเพราะรอบ 60 วันเดิมตั้งซ้ำกับ 2A) · ตัวเลขทอง ต.ค.: 21-2101 สุทธิ 793.32 + 60 วันสุทธิ 99.17 = **892.49** (`pp30-output-vat.integration.spec.ts`) |
 | รายการที่นับ | `status: POSTED` · รายการและบรรทัดไม่ถูกลบ · `companyId` ที่ผู้เรียกส่ง (ว่าง = 400 "กรุณาระบุบริษัท" — เดิม `GET /tax/pp30-preview` ที่ไม่ส่งบริษัทได้ยอดรวมทุกบริษัท) — หน้า `/finance/vat` ไม่ส่ง ⇒ บริษัท `FINANCE` (บริษัทเดียวที่จดภาษีมูลค่าเพิ่ม · ไม่พบ = 400 ภาษาไทย) |
 | เดือน | `entryDate` ภายใน [วันที่ 1 00:00 น., วันที่ 1 ของเดือนถัดไป 00:00 น.) ตามปฏิทินไทย (`pp30MonthRange` ใช้ `bangkokMidnight` — ไม่ขึ้นกับ TZ ของโปรเซส) · เดิม preview ใช้ `postedAt` ซึ่งเท่ากันสำหรับรายการที่ระบบลง ต่างกันเฉพาะรายการที่ลงเองแบบย้อนวัน (นับในเดือนของวันที่รายการ) · ปี/เดือนผิดรูป = 400 "ปี/เดือนไม่ถูกต้อง" · ตารางรายการบนหน้า `/finance/vat` แสดงวันที่ post (`postedAt`) — ของเดิม |
 | ลำดับรายการ (`loadPp30OutputVatLines`) | เรียงบรรทัด `21-2101`/`21-2103` ของเดือนตาม `entryDate` ก่อน แล้ว `entryNumber` แล้ว id ของบรรทัด (`entryDate` อย่างเดียวไม่พอ — รายการอัตโนมัติหลายใบในทรานแซกชันเดียวกันประทับเวลาเดียวกัน ลำดับจึงไม่แน่นอนถ้าเรียงแค่นั้น) — กำหนดลำดับของ `lines`/`reductionLines` ที่ตัวคำนวณคืน ซึ่งไหลต่อเป็นลำดับของ `lineItems.outputVatReductions` ใน preview (ตารางรายการของหน้า `/finance/vat` เป็นคนละ query แยกจากตัวคำนวณ — ดูแถว "รายการปิด/ชำระภาษีขาย" ด้านล่าง) |
@@ -499,9 +519,9 @@ snapshot ปิดงวด `MonthlyCloseService.generateReportSnapshots` → `r
 | รายละเอียดที่ส่งออก | `toPp30OutputVatJson` (ยอดเป็นสตริง 2 ตำแหน่ง): `settledGross` · `reductionReversal` · `reductionCreditNote` · `reductionAdvanceApplied` (PR4 ต10 — หน้า `/finance/vat` แถว "หัก เงินรับล่วงหน้าที่หักเข้างวด (รับรู้ภาษีแล้วตอนรับ)" · snapshot/TaxReport ที่เก็บก่อน PR4 ไม่มีคีย์ หน้าแสดง 0.00) · `reductionOther` · `reductionTotal` · `settledNet` · `mandatory60DayCredit` · `mandatory60DayDebit` · `mandatory60DayNet` · `mandatory60DayIncluded` · `totalOutputVat` — กระทบยอดได้เสมอ (ตั้ง − หัก = สุทธิ) · preview ส่งเป็น `outputVatBreakdown` + `lineItems.outputVatReductions` (รายการที่ลดยอดพร้อมที่มา) · หน้า `/finance/vat` ส่งเป็น `outputVat` |
 | เดือนของการลด | รายการกลับรายการ/ใบลดหนี้ลดภาษีขายของ**เดือนที่ลงรายการ** ไม่แก้เดือนเดิม · ยึดคืนลงย้อนวันได้เฉพาะในเดือนปัจจุบัน (`assertRepossessionPeriodsOpen`) ใบลดหนี้จึงอยู่เดือนเดียวกับรายการ |
 | ภาษีซื้อ | **ไม่อยู่ในตัวคำนวณนี้** — `previewPP30` (เดบิต 11-4101 flow `expense-*` ของสาขาในบริษัท) คงกติกาเดิมทั้งหมด (ไม่กันรายการปิดภาษีออก) · `getVatMonthly` (11-4101 สุทธิทุก flow ไม่กรองบริษัทเมื่อไม่ส่ง) คงกติกาเดิมเช่นกัน **ยกเว้นข้อเดียว**: ตั้งแต่ fix round 1 กันบรรทัด 11-4101 ของรายการปิด/ชำระภาษีขาย (ผ่าน 21-3201) ออกด้วยแล้ว (ดูแถว "รายการปิด/ชำระภาษีขาย" ด้านบน) ส่วนภาษีซื้อของไฟล์ ภ.พ.30/รายงานภาษีที่กดสร้าง (Excel/TaxReport, `previewPP30`) ยังไม่เปลี่ยน ⇒ "ภาษีที่ต้องชำระ" สองที่ยังต่างกันได้ จนกว่าจะได้คำตอบฝ่ายบัญชีเรื่องภาษีซื้อ |
-| field เดิมที่ความหมายเปลี่ยน | `previewPP30.totalVatOutput` = 21-2101 สุทธิ (**ไม่รวม 21-2103 แล้ว**) · `totalVatSettled` = 21-2101 **สุทธิ** · `totalVatMandatory60Day` = 21-2103 **สุทธิ** (ข้อมูลประกอบ) · `lineItems.mandatoryVat60Day[].vatAmount` = เครดิต − เดบิต · `vatOutputBySource` = 21-2101 **สุทธิ** ตาม `referenceType` (รวมกัน = `totalVatSettled`) · `getVatMonthly` คืนยอดเป็นสตริงทศนิยม 2 ตำแหน่ง, `vatOutput` = 21-2101 สุทธิของ FINANCE และตาราง `lines` มีแถว 21-2103 |
+| field เดิมที่ความหมายเปลี่ยน | `previewPP30.totalVatOutput` = 21-2101 สุทธิ **+ 21-2103 สุทธิ** (รวมตั้งแต่ 16/10/2569 — ระหว่าง 30/09–16/10 ไม่รวม) · `totalVatSettled` = 21-2101 **สุทธิ** · `totalVatMandatory60Day` = 21-2103 **สุทธิ** (แสดงแยก และรวมอยู่ใน `totalVatOutput`) · `lineItems.mandatoryVat60Day[].vatAmount` = เครดิต − เดบิต · `vatOutputBySource` = 21-2101 **สุทธิ** ตาม `referenceType` (รวมกัน = `totalVatSettled`) · `getVatMonthly` คืนยอดเป็นสตริงทศนิยม 2 ตำแหน่ง, `vatOutput` = 21-2101 สุทธิ + 21-2103 สุทธิ ของ FINANCE และตาราง `lines` มีแถว 21-2103 |
 
-**ยังเปิดอยู่:** ฝ่ายบัญชีต้องตอบเรื่องภาษีขาย 60 วัน — (ก) รวมกลับเข้ายอด (ข) ไม่รวม (ค) รวมเฉพาะงวดที่ยังไม่ตั้งลูกหนี้งวด และควรตั้งภาษีขาย 60 วันกับสัญญาที่ยึดคืน/ปิดแล้วหรือไม่ (ตัวอย่างบน prod: `JE-202609-00055` ลงหลังยึดคืน) · หน้า `VatReportPage` (ผู้เรียก `/tax/pp30-preview` + ไฟล์ส่งออก) ยังไม่มีเส้นทางในเว็บ — ป้าย "ภาษีขาย (Cr 21-2101)" บนหน้านั้นต้องแก้ตอนเปิดใช้ · ปุ่ม Excel/XML บน `/finance/vat` ยังเป็นปุ่มเปล่า · ตรวจข้อมูล `checkVatMismatch` / `checkLateFeeVatLeak` / `traceVatTotal` ยังเทียบเครดิต 21-2101 กับ `Payment.vatAmount` (คนละตัววัด — ต้องออกแบบใหม่) · ยกเลิกรายการบัญชีด้วยมือ (`JournalService.void`) ยังเปลี่ยนรายการเดิมเป็น `VOIDED` ⇒ ภาษีขายของเดือนเดิมถูกแก้ย้อนหลังและเดือนที่ยกเลิกถูกหักอีกครั้ง — งานแยกถัดไป (prod ยังไม่เคยมีการยกเลิกแบบนี้)
+**ยังเปิดอยู่:** ~~ฝ่ายบัญชีต้องตอบเรื่องภาษีขาย 60 วัน~~ — **ตอบแล้ว 16/10/2569 = (ค)** รวมเฉพาะงวดที่ยังไม่ตั้งลูกหนี้งวด และไม่ตั้งกับสัญญาที่ยึดคืน/ปิดแล้ว (ทำแล้ว — หัวข้อ "VAT 60-Day Rule"; `JE-202609-00055` ที่ลงหลังยึดคืนเป็นข้อมูลทดสอบ) · หน้า `VatReportPage` (ผู้เรียก `/tax/pp30-preview` + ไฟล์ส่งออก) ยังไม่มีเส้นทางในเว็บ — ป้าย "ภาษีขาย (Cr 21-2101)" บนหน้านั้นต้องแก้ตอนเปิดใช้ · ปุ่ม Excel/XML บน `/finance/vat` ยังเป็นปุ่มเปล่า · ตรวจข้อมูล `checkVatMismatch` / `checkLateFeeVatLeak` / `traceVatTotal` ยังเทียบเครดิต 21-2101 กับ `Payment.vatAmount` (คนละตัววัด — ต้องออกแบบใหม่) · ยกเลิกรายการบัญชีด้วยมือ (`JournalService.void`) ยังเปลี่ยนรายการเดิมเป็น `VOIDED` ⇒ ภาษีขายของเดือนเดิมถูกแก้ย้อนหลังและเดือนที่ยกเลิกถูกหักอีกครั้ง — งานแยกถัดไป (prod ยังไม่เคยมีการยกเลิกแบบนี้)
 
 ---
 

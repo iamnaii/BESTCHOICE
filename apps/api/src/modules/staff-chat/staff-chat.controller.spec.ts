@@ -60,6 +60,9 @@ describe('StaffChatController', () => {
         {
           provide: RoomManagerService,
           useValue: {
+            listRooms: jest.fn().mockResolvedValue({ data: [], total: 0 }),
+            getRoomBadgeCounts: jest.fn().mockResolvedValue({}),
+            getUnreadCount: jest.fn().mockResolvedValue({ unread: 0 }),
             pinRoom: jest.fn(),
             unpinRoom: jest.fn(),
             markAsRead: jest.fn(),
@@ -144,6 +147,18 @@ describe('StaffChatController', () => {
     aiAssistant = module.get(AiAssistantService);
     aiSuggest = module.get(AiSuggestService);
     config = module.get(ConfigService);
+  });
+
+  describe('inbox work-company selection', () => {
+    it.each(['SHOP', 'FINANCE'] as const)('passes the authorized %s scope to room rows and counts', async (company) => {
+      const req = { user: { id: 'staff-1' }, entityScope: company };
+      await controller.listRooms({ waiting: true }, req);
+      expect(roomManager.listRooms).toHaveBeenCalledWith(expect.objectContaining({ company, waiting: true }));
+      await controller.getRoomCounts(req, { tab: 'waiting' });
+      expect(roomManager.getRoomBadgeCounts).toHaveBeenCalledWith('staff-1', expect.objectContaining({ company, tab: 'waiting' }));
+      await controller.getUnreadCount(req);
+      expect(roomManager.getUnreadCount).toHaveBeenCalledWith('staff-1', company);
+    });
   });
 
   describe('room AI access and authenticated attribution', () => {

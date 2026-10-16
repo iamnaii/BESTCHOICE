@@ -382,7 +382,7 @@ export default function UnifiedInboxPage() {
 
   return (
     <div ref={workspaceRef} className={`inbox-workspace h-dvh flex flex-col lg:flex-row bg-card overflow-hidden ${roomIdParam ? 'inbox-room-open' : 'pb-[calc(64px+env(safe-area-inset-bottom))]'} lg:pb-0`}>
-      {/* จอใหญ่: แถบข้าง 72px ซ้ายสุด (ไม่มีเมนูระบบบนหน้านี้) · จอเล็ก: แถบหัวแบบย่อด้านบน */}
+      {/* จอใหญ่: แถบข้างแบบย่อซ้ายสุด (ไม่มีเมนูระบบบนหน้านี้) · จอเล็ก: แถบหัวแบบย่อด้านบน */}
       <InboxWorkTools onSelectRoom={handleSelectRoom} branchName={user?.branchName ?? undefined} />
       <div className="flex flex-1 flex-col min-w-0 min-h-0">
       {/* แถบเตือนนัดเหนือทุกแผง (ชั้น 2 ท่า OBI apptAlert) — โผล่เฉพาะเมื่อมีนัดถึงเวลา/ใกล้ถึง */}

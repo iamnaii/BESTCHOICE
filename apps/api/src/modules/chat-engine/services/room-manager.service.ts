@@ -1,4 +1,4 @@
-import { ChatWorkAccessService } from '../../staff-chat/services/chat-work-access.service';
+import { ChatWorkAccessService, WORK_CHANNELS } from '../../staff-chat/services/chat-work-access.service';
 import type { WorkScope } from '@installment/shared';
 import { ResponseCycleService } from './response-cycle.service';
 import type { InboundAttribution } from '../interfaces/channel-adapter.interface';
@@ -47,6 +47,8 @@ const ROOM_NEXT_APPOINTMENT = {
 };
 
 export interface RoomFilterParams {
+  /** Authorized request scope; combined with channel filters, never replaced by them. */
+  company?: WorkScope['company'];
   channel?: ChatChannel;
   status?: ChatRoomStatus;
   priority?: ChatPriority;
@@ -1102,6 +1104,7 @@ export class RoomManagerService {
     // เงื่อนไขที่มี OR ของตัวเอง (ค้นหา / รอตอบ / ตอบไม่ทัน / ช่องทางหลายอัน) ต้องซ้อนใน AND
     // — เดิมเขียน where.OR ทับกัน: ค้นหาบนแท็บรอตอบถูกทิ้งเงียบ ๆ และ expired+channels ทับ channel=FACEBOOK
     const and: Prisma.ChatRoomWhereInput[] = [];
+    if (params.company) and.push({ channel: { in: WORK_CHANNELS[params.company] } });
 
     if (params.channel) where.channel = params.channel;
     if (params.status) where.status = params.status;
@@ -1197,7 +1200,7 @@ export class RoomManagerService {
       });
       const pageIds = keys.slice(skip, skip + limit).map((k) => k.id);
       const rows = pageIds.length
-        ? await this.prisma.chatRoom.findMany({ where: { id: { in: pageIds } }, include })
+        ? await this.prisma.chatRoom.findMany({ where: { ...where, id: { in: pageIds } }, include })
         : [];
       const byId = new Map(rows.map((r) => [r.id, r]));
       const data = pageIds.map((id) => byId.get(id)!).filter(Boolean);
@@ -1251,9 +1254,9 @@ export class RoomManagerService {
   }
 
   /** Get active room count for a staff member (or all if no staffId) */
-  async getUnreadCount(staffId?: string) {
+  async getUnreadCount(staffId?: string, company?: WorkScope['company']) {
     const where: Prisma.ChatRoomWhereInput = {
-      deletedAt: null,
+      ...this.buildRoomWhere({ company }),
       status: ChatRoomStatus.ACTIVE,
       handoffMode: true,
     };
@@ -1278,7 +1281,7 @@ export class RoomManagerService {
    */
   async getRoomBadgeCounts(
     staffId?: string,
-    params?: { tab?: InboxTabKey; aiStatus?: 'ai' | 'human' | 'pending' },
+    params?: { tab?: InboxTabKey; aiStatus?: 'ai' | 'human' | 'pending'; company?: WorkScope['company'] },
   ): Promise<{
     /** ห้องที่ฉันดูแล — ทุกห้อง ไม่ใช่เฉพาะที่ยังไม่อ่าน */
     mine: number;
@@ -1291,9 +1294,10 @@ export class RoomManagerService {
     byChannel: Record<string, number>;
   }> {
     // ตัวกรองพื้นฐาน = สิ่งที่ผู้ใช้เลือกไว้นอกเหนือแท็บ (สถานะบอท) — ชุดเดียวกับรายการ
-    const base = this.buildRoomWhere({ aiStatus: params?.aiStatus });
-    const waitingWhere = this.buildRoomWhere({ aiStatus: params?.aiStatus, waiting: true });
-    const expiredWhere = this.buildRoomWhere({ aiStatus: params?.aiStatus, expired: true });
+    const filters = { aiStatus: params?.aiStatus, company: params?.company };
+    const base = this.buildRoomWhere(filters);
+    const waitingWhere = this.buildRoomWhere({ ...filters, waiting: true });
+    const expiredWhere = this.buildRoomWhere({ ...filters, expired: true });
     // ไม่รู้ว่าใครถาม = ไม่มี "ของฉัน" ให้นับ — ปล่อย assignedToId เป็น undefined ไม่ได้
     // เพราะ Prisma อ่านว่า "ไม่กรอง" ⇒ ทุกห้องกลายเป็นห้องของคนคนนั้น
     // "ของฉัน" = งานที่ยังเปิดของฉัน — ห้องที่ปิดงานแล้วไม่นับ (ชุดเดียวกับรายการ openOnly)

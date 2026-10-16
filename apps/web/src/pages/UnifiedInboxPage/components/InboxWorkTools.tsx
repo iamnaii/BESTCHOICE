@@ -52,7 +52,7 @@ export default function InboxWorkTools({
 }) {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
-  // จอใหญ่ = แถบข้าง 72px (เมนูระบบไม่ถูกวาดบน /inbox — ดู MainLayout) · จอเล็ก = แถบหัวแบบย่อเหมือนเดิม
+  // จอใหญ่ = แถบข้างแบบย่อ (เมนูระบบไม่ถูกวาดบน /inbox — ดู MainLayout) · จอเล็ก = แถบหัวแบบย่อเหมือนเดิม
   const isMobile = useIsMobile();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -170,12 +170,14 @@ export default function InboxWorkTools({
       </span>
     </Link>
   );
+  // Override the default md text utility for both buttons and links. Otherwise the
+  // admin control scale enlarges only buttons, leaving the analytics link smaller.
   const workNavigation = (
     <nav aria-label="การสื่อสารและงานทีม" className="inbox-work-navigation">
       <Button
         variant="ghost"
         aria-current={chatActive ? 'page' : undefined}
-        className={chatActive ? 'inbox-navigation-active' : ''}
+        className={chatActive ? 'text-sm inbox-navigation-active' : 'text-sm'}
         onClick={() => setPanel(null)}
       >
         <Inbox className="size-4" aria-hidden="true" />
@@ -197,7 +199,7 @@ export default function InboxWorkTools({
         title={!work.enabled ? 'คิวงานยังไม่เปิดใช้งาน' : undefined}
         aria-haspopup="dialog"
         aria-expanded={panel === 'queue'}
-        className={panel === 'queue' ? 'inbox-navigation-active' : ''}
+        className={panel === 'queue' ? 'text-sm inbox-navigation-active' : 'text-sm'}
         onClick={() => setPanel('queue')}
       >
         <ListTodo className="size-4" aria-hidden="true" />
@@ -223,7 +225,7 @@ export default function InboxWorkTools({
           title={!flags?.chat_facebook_comments_enabled ? 'คอมเมนต์ยังไม่เปิดใช้งาน' : undefined}
           aria-haspopup="dialog"
           aria-expanded={panel === 'comments'}
-          className={panel === 'comments' ? 'inbox-navigation-active' : ''}
+          className={panel === 'comments' ? 'text-sm inbox-navigation-active' : 'text-sm'}
           onClick={() => setPanel('comments')}
         >
           <Globe className="size-4" aria-hidden="true" />
@@ -233,7 +235,7 @@ export default function InboxWorkTools({
           )}
         </Button>
       )}
-      <Button asChild variant="ghost">
+      <Button asChild variant="ghost" className="text-sm">
         <Link
           to={`/chat-analytics?zone=${work.company === 'SHOP' ? 'shop' : 'fin'}`}
           aria-label="ภาพรวมงานแชท"

@@ -643,7 +643,7 @@ describe('RoomManagerService', () => {
       expect(res.total).toBe(4);
       // hydrate เฉพาะหน้าที่ขอ
       const rowArgs = prisma.chatRoom.findMany.mock.calls[1][0];
-      expect(rowArgs.where).toEqual({ id: { in: ['fb-closing', 'line-old', 'fb-nudged', 'fb-fresh'] } });
+      expect(rowArgs.where).toEqual({ ...keyArgs.where, id: { in: ['fb-closing', 'line-old', 'fb-nudged', 'fb-fresh'] } });
       // พรีวิวรายการซ้าย = ข้อความสนทนาล่าสุด — ข้อความระบบห้ามมาแทนที่ข้อความลูกค้า
       expect(rowArgs.include.messages.where).toEqual({ deletedAt: null, role: { not: MessageRole.SYSTEM } });
     });

@@ -29,6 +29,9 @@ const typeLabels: Record<string, string> = {
   DOWN_PAYMENT: 'ใบเสร็จเงินดาวน์',
   EARLY_PAYOFF: 'ใบเสร็จปิดยอด',
   CREDIT_NOTE: 'ใบลดหนี้',
+  // PR4ข: ใบปรับดิว 6a (ใบกำกับภาษี) + ใบรับเงินส่วนเกินลิงก์ชำระ
+  RESCHEDULE_FEE: 'ใบเสร็จค่าธรรมเนียมปรับดิว',
+  ADVANCE_SURPLUS: 'ใบเสร็จเงินรับล่วงหน้า',
 };
 
 const methodLabels: Record<string, string> = {

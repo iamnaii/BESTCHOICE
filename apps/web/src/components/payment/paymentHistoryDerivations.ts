@@ -252,6 +252,9 @@ export function caseForReceipt(
   r: CaseReceiptRow,
   p: CasePaymentRow | undefined,
 ): { label: string; tone: CaseTone } {
+  // PR4ข: ใบรับเงินส่วนเกินลิงก์ชำระ — ไม่ใช่การชำระงวด (paymentId null) จึงไม่เทียบกับยอดงวด
+  // และไม่ใช้ paymentCase ของงวดใด ๆ ที่ API อาจติดมา
+  if (r.receiptType === 'ADVANCE_SURPLUS') return { label: 'เงินรับล่วงหน้า', tone: 'info' };
   if (r.paymentCase && Object.prototype.hasOwnProperty.call(PAYMENT_CASE_LABELS, r.paymentCase))
     return PAYMENT_CASE_LABELS[r.paymentCase];
   if (r.receiptType === 'EARLY_PAYOFF') return { label: 'ปิดยอด', tone: 'warning' };

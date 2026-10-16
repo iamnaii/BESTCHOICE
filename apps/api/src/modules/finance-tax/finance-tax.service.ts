@@ -12,7 +12,7 @@ import {
 } from '../tax/pp30-output-vat';
 
 // VAT accounts used across tasks
-// 21-2101 + 21-2103 = แถวภาษีขายของตาราง `lines` (แสดงผลเท่านั้น) — ยอดมาจาก computePp30OutputVat (21-2103 ยังไม่รวม)
+// 21-2101 + 21-2103 = แถวภาษีขายของตาราง `lines` (แสดงผลเท่านั้น) — ยอดมาจาก computePp30OutputVat (21-2103 สุทธิรวมในยอดตั้งแต่ 16/10/2569)
 const VAT_OUTPUT_ACCOUNTS = ['21-2101', '21-2103'];
 const VAT_DEFERRED_ACCOUNTS = ['21-2102'];
 const VAT_INPUT_ACCOUNTS = ['11-4101'];
@@ -72,7 +72,7 @@ export class FinanceTaxService {
    * Task 2 — VAT monthly aggregation (หน้า /finance/vat เมนู "VAT (ภ.พ.30)")
    *
    * ภาษีขาย (`vatOutput` + `outputVat`) มาจากตัวคำนวณเดียวของ ภ.พ.30 `computePp30OutputVat` (21-2101 สุทธิ · ภาษีขาย
-   * 60 วัน 21-2103 อยู่ใน `outputVat.mandatory60Day*` เป็นข้อมูลประกอบ ยังไม่รวม — `PP30_INCLUDES_MANDATORY_60DAY`)
+   * 60 วัน 21-2103 อยู่ใน `outputVat.mandatory60Day*` และรวมสุทธิในยอดตั้งแต่ 16/10/2569 — `PP30_INCLUDES_MANDATORY_60DAY`)
    * — ตัวเดียวกับ `TaxPreviewService.previewPP30`. หน้าเมนูไม่ส่ง `companyId` ⇒ ภาษีขายเป็นของบริษัท FINANCE.
    * ภาษีซื้อ / ภาษีขายรอเรียกเก็บ / ตารางรายการ: บัญชี สถานะ และเครื่องหมายเดิม ไม่กรองบริษัทเมื่อไม่ส่ง `companyId` (กติกาเดิม)
    * — เปลี่ยนเฉพาะการบวกเป็น Decimal และขอบเดือนเป็นปฏิทินไทย (เท่าเดิมบน prod ที่รัน TZ=Asia/Bangkok).

@@ -480,7 +480,9 @@ describe('ReceiptPdfService — Credit Note rendering (Phase 3 Task 4)', () => {
           documentRemainingBalance: '30260.00',
           documentRemainingMonths: 7,
           documentUnappliedFunds: null,
-          rescheduleContext: null,
+          // ใบ 6a เก่าก็ผูกรายการมาตั้งแต่ base ⇒ query คืน context ได้ (daysToShift มี · newDueDate ไม่มี) —
+          // ใบเก่าต้องพิมพ์เหมือนเดิมทุกตัวอักษร จึงห้ามพิมพ์บรรทัด "เลื่อนนัดชำระ" (final review I1)
+          rescheduleContext: { installmentNo: 4, daysToShift: 30, newDueDate: null },
           surplusContext: null,
         }),
       );
@@ -489,6 +491,7 @@ describe('ReceiptPdfService — Credit Note rendering (Phase 3 Task 4)', () => {
       expect(capturedHtml).not.toContain('ใบเสร็จรับเงิน / ใบกำกับภาษี');
       expect(capturedHtml).not.toContain('ภาษีมูลค่าเพิ่มรับรู้ ณ วันรับเงินนี้แล้ว');
       expect(capturedHtml).not.toContain('เงินรับล่วงหน้าค้าง');
+      expect(capturedHtml).not.toContain('เลื่อนนัดชำระ');
       expect(capturedHtml).toContain('เงินรับล่วงหน้างวดที่ 10/10 — ปรับดิว');
     });
 

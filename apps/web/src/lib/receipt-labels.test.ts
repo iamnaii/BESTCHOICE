@@ -28,4 +28,9 @@ describe('ป้ายรายการใบเสร็จ (PR3)', () => {
     expect(LIFF_RECEIPT_TYPE_LABELS.INSTALLMENT).toEqual({ label: 'ค่างวด', variant: 'success' });
     expect(LIFF_RECEIPT_TYPE_LABELS.PAYMENT.label).toBe('ค่างวด');
   });
+
+  it('PR4ข: ใบรับเงินส่วนเกินลิงก์ชำระ (ADVANCE_SURPLUS) มีป้ายไทยทั้งรายการพนักงานและ LIFF — ไม่โชว์รหัสดิบ', () => {
+    expect(RECEIPT_TYPE_LABELS.ADVANCE_SURPLUS).toBe('เงินรับล่วงหน้า (ลิงก์ชำระ)');
+    expect(LIFF_RECEIPT_TYPE_LABELS.ADVANCE_SURPLUS).toEqual({ label: 'เงินรับล่วงหน้า', variant: 'info' });
+  });
 });

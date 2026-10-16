@@ -234,6 +234,8 @@ export class ReceiptPdfService {
       advanceOnly,
       displayedInstallmentNo,
     } = receiptDocumentMoney(receipt);
+    // PR4ข: ใบ 6a ที่เก็บค่า (= ใบกำกับภาษี) — ใบ 6a เก่าไม่มีค่าที่เก็บต้องพิมพ์เหมือนเดิมทุกตัวอักษร (final review I1)
+    const isStored6a = receiptType === 'RESCHEDULE_FEE' && vatBearing && advancePortion.gt(0);
     /** ยอดติดลบพิมพ์ด้วยเครื่องหมายลบแบบเดียวกับแถวอนุโลมค่าปรับ */
     const signed = (v: Prisma.Decimal) => (v.isNegative() ? `−${fmt(v.abs())}` : fmt(v));
     const advanceRowHtml = (row: DocumentAdvanceRow) =>
@@ -241,7 +243,7 @@ export class ReceiptPdfService {
         ? `
       <tr class="alt">
         <td><div class="item-name">เงินรับล่วงหน้างวดที่ ${row.installmentNo}/${receipt.contract?.totalMonths} — ปรับดิว</div>
-          <div class="item-meta">${receiptType === 'RESCHEDULE_FEE' ? 'ค่าธรรมเนียมเลื่อนนัดชำระ (ปรับดิว) · พักไว้หักค่างวดสุดท้าย' : 'พักไว้หักค่างวดสุดท้าย'}</div></td>
+          <div class="item-meta">${isStored6a ? 'ค่าธรรมเนียมเลื่อนนัดชำระ (ปรับดิว) · พักไว้หักค่างวดสุดท้าย' : 'พักไว้หักค่างวดสุดท้าย'}</div></td>
         <td class="right">${fmt(row.beforeVat)}</td>
         <td class="right">${row.vat.gt(0) ? fmt(row.vat) : '<span class="vat-exempt">–</span>'}</td>
         <td class="right"><strong>${fmt(row.amount)}</strong></td>
@@ -278,13 +280,13 @@ export class ReceiptPdfService {
     };
 
     // ── PR4ข: บริบท/กล่องเตือนของใบปรับดิว 6a (ที่เก็บค่า = ใบกำกับภาษี) และใบส่วนเกินลิงก์ชำระ ──
-    const isStored6a = receiptType === 'RESCHEDULE_FEE' && vatBearing && advancePortion.gt(0);
     const isSurplus = receiptType === ADVANCE_SURPLUS_RECEIPT_TYPE;
     const rescheduleTarget = advanceRows.find((r) => r.kind === 'RESCHEDULE')?.installmentNo;
     const rc = receipt.rescheduleContext ?? null;
     const sc = receipt.surplusContext ?? null;
+    // ใบ 6a เก่า (ไม่มีค่าที่เก็บ) ก็ผูกรายการและได้ context — แต่ต้องพิมพ์เหมือนเดิมทุกตัวอักษร (final review I1)
     const rescheduleLine =
-      receiptType === 'RESCHEDULE_FEE' && rc
+      isStored6a && rc
         ? `<div class="party-line"><strong>เลื่อนนัดชำระ</strong> งวดที่ ${rc.installmentNo} เลื่อน ${rc.daysToShift} วัน${rc.newDueDate ? ` (ครบกำหนดใหม่ ${formatDateShort(rc.newDueDate)})` : ''}</div>`
         : '';
     const surplusLine = (() => {

@@ -269,6 +269,50 @@ describe('receiptDocumentMoney — ใบที่เก็บค่า ณ ต�
     expect(m.displayedInstallmentNo).toBeNull();
   });
 
+  it('PR4ข (final review I3): ใบ 6a ที่เก็บค่าแต่ประวัติไม่บอกงวดเป้าหมาย → ไม่พิมพ์งวดบนหัวเอกสาร (ไม่ถอยไปใช้งวดที่ถูกเลื่อน)', () => {
+    const m = receiptDocumentMoney(
+      storedView({
+        receiptType: 'RESCHEDULE_FEE',
+        amount: D('1566'),
+        amountBeforeVat: D('1416.82'),
+        vatAmount: D('99.18'),
+        roundingAmount: D('0'),
+        lateFeeAmount: D('50'),
+        lateFeeWaivedAmount: D('0'),
+        advanceAmount: D('1516'),
+        advanceVatAmount: D('99.18'),
+        installmentNo: 4,
+        installmentAllocations: null,
+      }),
+    );
+
+    expect(m.advanceOnly).toBe(true);
+    expect(m.advanceRows.map((r) => [r.kind, r.installmentNo ?? null])).toEqual([['GENERIC', null]]);
+    expect(m.displayedInstallmentNo).toBeNull();
+  });
+
+  it('PR4ข (final review I3): ใบค่างวดที่เงินทั้งก้อนเป็นเงินรับล่วงหน้าทั่วไป (ปัดเศษ 0.17 + พัก 999.83) → ยังเป็น "งวดที่ชำระ N" ตาม PR3 ไม่ใช่ "งวดที่รับล่วงหน้า"', () => {
+    const m = receiptDocumentMoney(
+      storedView({
+        receiptType: 'INSTALLMENT',
+        amount: D('1000'),
+        amountBeforeVat: D('934.42'),
+        vatAmount: D('65.41'),
+        roundingAmount: D('0.17'),
+        lateFeeAmount: D('0'),
+        lateFeeWaivedAmount: D('0'),
+        advanceAmount: D('999.83'),
+        advanceVatAmount: D('65.41'),
+        installmentNo: 5,
+        installmentAllocations: null,
+      }),
+    );
+
+    expect(f(m.installmentPortion)).toBe('0.00');
+    expect(m.advanceOnly).toBe(false);
+    expect(m.displayedInstallmentNo).toBe(5);
+  });
+
   it('PR4ข: ใบปรับดิวเก่าที่ไม่มีค่าที่เก็บ → ตรรกะเดิมทุกตัวอักษร (ไม่ใช่ใบกำกับภาษี — forward-only)', () => {
     const m = receiptDocumentMoney(
       view({

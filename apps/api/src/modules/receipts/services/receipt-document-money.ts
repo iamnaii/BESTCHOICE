@@ -1,7 +1,7 @@
 import { BadRequestException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { computeInstallmentBreakdown } from '../../journal/compute-installment-breakdown';
-import { INSTALLMENT_MONEY_RECEIPT_TYPES } from '../receipt-types.constants';
+import { ADVANCE_SURPLUS_RECEIPT_TYPE, INSTALLMENT_MONEY_RECEIPT_TYPES } from '../receipt-types.constants';
 
 type Money = Prisma.Decimal;
 type DecimalLike = { toString(): string } | number | string | null | undefined;
@@ -326,8 +326,12 @@ export function storedReceiptDocumentMoney(view: ReceiptMoneyView): ReceiptDocum
         },
       ];
   // PR4ข: ใบที่มีแต่เงินรับล่วงหน้า (ใบปรับดิว 6a · ใบส่วนเกินลิงก์ชำระ) — หัวเอกสารแสดง "งวดที่รับล่วงหน้า" ของงวดเป้าหมาย
-  // (ไม่รู้งวด = ไม่แสดง) เหมือนตรรกะเดิม; ใบที่มีค่างวดด้วย (6b รวมใบ) แสดงงวดที่ชำระตามเดิม
-  const advanceOnly = installmentPortion.isZero() && advance.gt(0);
+  // (ไม่รู้งวด = ไม่แสดง — ห้ามถอยไปใช้งวดที่ถูกเลื่อนของใบ 6a · final review I3) · เฉพาะสองชนิดนี้เท่านั้น: ใบค่างวดที่เงินทั้งก้อน
+  // กลายเป็นเงินรับล่วงหน้าทั่วไป (ปัดเศษ + พัก) ยังเป็น "งวดที่ชำระ N" ตาม PR3
+  const advanceOnly =
+    (receiptType === 'RESCHEDULE_FEE' || receiptType === ADVANCE_SURPLUS_RECEIPT_TYPE) &&
+    installmentPortion.isZero() &&
+    advance.gt(0);
   return {
     // ใบที่เก็บค่าแล้วเป็นใบกำกับภาษีทุกชนิดยกเว้นเงินดาวน์ (SHOP ไม่จด VAT) — ใบปรับดิว 6a เก็บค่าตั้งแต่ PR4ข
     // (ภาษีรับรู้ ณ วันรับตั้งแต่ PR4) · ใบปรับดิวเก่าไม่มีค่าที่เก็บจึงไม่ผ่านทางนี้ (legacy — ไม่มี VAT ตามเดิม)
@@ -344,7 +348,7 @@ export function storedReceiptDocumentMoney(view: ReceiptMoneyView): ReceiptDocum
     exclVat: toDec(view.amountBeforeVat),
     vatPart: vat,
     advanceOnly,
-    displayedInstallmentNo: advanceOnly ? (rescheduleTarget ?? view.installmentNo) : view.installmentNo,
+    displayedInstallmentNo: advanceOnly ? (rescheduleTarget ?? null) : view.installmentNo,
   };
 }
 

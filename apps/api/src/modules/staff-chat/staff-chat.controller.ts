@@ -99,8 +99,12 @@ export class StaffChatController {
 
   @Get('rooms')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES')
-  async listRooms(@Query() query: SessionQueryDto) {
+  async listRooms(
+    @Query() query: SessionQueryDto,
+    @Req() req: { entityScope?: WorkScope['company'] },
+  ) {
     return this.roomManager.listRooms({
+      company: req.entityScope,
       channel: query.channel as ChatChannel | undefined,
       status: query.status as ChatRoomStatus | undefined,
       priority: query.priority as ChatPriority | undefined,
@@ -131,12 +135,13 @@ export class StaffChatController {
   @Get('rooms/counts')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES')
   async getRoomCounts(
-    @Req() req: { user: { id: string } },
+    @Req() req: { user: { id: string }; entityScope?: WorkScope['company'] },
     // ชิปช่องทางต้องนับในจักรวาลของแท็บที่เปิดอยู่ ไม่ใช่ทั้งบริษัท — ไม่ส่ง tab มา
     // จะได้ตัวเลขของแท็บ "ทั้งหมด" ซึ่งเป็นค่าเริ่มต้นที่ปลอดภัยที่สุด
     @Query() query: { tab?: string; aiStatus?: string },
   ) {
     return this.roomManager.getRoomBadgeCounts(req.user.id, {
+      company: req.entityScope,
       tab: query.tab === 'waiting' || query.tab === 'mine' ? query.tab : 'all',
       aiStatus:
         query.aiStatus === 'ai' || query.aiStatus === 'human' || query.aiStatus === 'pending'
@@ -233,8 +238,8 @@ export class StaffChatController {
 
   @Get('unread-count')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES')
-  async getUnreadCount(@Req() req: any) {
-    return this.roomManager.getUnreadCount(req.user.id);
+  async getUnreadCount(@Req() req: { user: { id: string }; entityScope?: WorkScope['company'] }) {
+    return this.roomManager.getUnreadCount(req.user.id, req.entityScope);
   }
 
   @Get('search')

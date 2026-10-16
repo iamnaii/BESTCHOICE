@@ -1,14 +1,14 @@
 /* Approved chat workbench V2.4, revised 2026-10-07 (owner: "เข้าแชทแล้วยุบเมนูอื่นออก ค่อยกดกลับหน้าหลัก").
    On desktop the Inbox is its own full-width workspace: MainLayout renders no app sidebar
-   here, and this 72px rail is the only chrome — home link, work zone, chat navigation,
+   here, and this compact rail is the only chrome — home link, work zone, chat navigation,
    tools and sign-out. Phones/tablets (<1024px) keep the compact header. Scoped to Inbox;
    other SHOP/FINANCE pages retain their navigation. Domain behavior stays in React. */
-.inbox-rail { width:72px; flex-shrink:0; min-height:0; display:flex; flex-direction:column; gap:4px; padding:10px 6px; overflow-y:auto; scrollbar-width:none; background:hsl(var(--card)); border-right:1px solid hsl(var(--border)); }
+.inbox-rail { width:5.5rem; flex-shrink:0; min-height:0; display:flex; flex-direction:column; gap:4px; padding:10px .375rem; overflow-y:auto; scrollbar-width:none; background:hsl(var(--card)); border-right:1px solid hsl(var(--border)); }
 .inbox-rail::-webkit-scrollbar { display:none; }
 /* Breakpoint guards: useIsMobile resolves after mount, so the markup may briefly be the wrong shell. */
 @media(min-width:1024px) { .inbox-workspace-header { display:none; } }
 @media(max-width:1023px) { .inbox-rail { display:none; } }
-.inbox-rail-home { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px; min-height:58px; border-radius:8px; color:hsl(var(--muted-foreground)); font-size:10.5px; font-weight:500; line-height:1.375; text-decoration:none; }
+.inbox-rail-home { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px; min-height:64px; border-radius:8px; color:hsl(var(--muted-foreground)); font-size:.875rem; font-weight:500; line-height:1.5; text-decoration:none; }
 .inbox-rail-home:hover { background:hsl(var(--muted)/.55); color:hsl(var(--foreground)); }
 .inbox-rail-home img { width:28px; height:28px; }
 .inbox-rail-home span { display:inline-flex; align-items:center; gap:3px; }
@@ -19,11 +19,11 @@
 .inbox-rail-zones > button svg { width:14px; height:14px; }
 .inbox-rail-zones > button:hover { color:hsl(var(--foreground)); }
 .inbox-rail-zones > button[aria-selected=true] { background:hsl(var(--primary)); color:hsl(var(--primary-foreground)); }
-.inbox-rail-zone { margin:2px 0 0; text-align:center; font-size:10px; line-height:1.4; color:hsl(var(--muted-foreground)); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.inbox-rail-zone { margin:2px 0 0; text-align:center; font-size:.75rem; line-height:1.5; color:hsl(var(--muted-foreground)); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .inbox-rail-spacer { flex:1; }
 .inbox-rail-alert { margin:8px 0 0; text-align:center; font-size:10.5px; line-height:1.4; color:hsl(var(--destructive)); }
 .inbox-work-navigation { display:flex; flex-direction:column; gap:4px; margin-top:6px; padding-top:8px; border-top:1px solid hsl(var(--border)); }
-.inbox-work-navigation > :is(button,a) { position:relative; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:5px; width:100%; min-height:58px; height:auto; padding:0; border:0; box-shadow:none; border-radius:8px; background:transparent; font-size:10.5px; font-weight:500; line-height:1.375; color:hsl(var(--muted-foreground)); text-decoration:none; }
+.inbox-work-navigation > :is(button,a) { position:relative; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:5px; width:100%; min-height:64px; height:auto; padding:6px 4px; border:0; box-shadow:none; border-radius:8px; background:transparent; font-size:.875rem; font-weight:500; line-height:1.5; color:hsl(var(--muted-foreground)); text-decoration:none; }
 .inbox-work-navigation > :is(button,a):hover { background:hsl(var(--muted)/.55); color:hsl(var(--foreground)); }
 .inbox-work-navigation > :is(button,a) > svg { width:18px; height:18px; }
 .inbox-work-navigation > .inbox-navigation-active { background:hsl(var(--primary)/.09); color:hsl(var(--primary)); font-weight:600; }
@@ -151,6 +151,7 @@
 .inbox-mobile-sheet [data-slot=sheet-title],.inbox-mobile-sheet [data-slot=sheet-description] { padding-right:32px; overflow-wrap:anywhere; }
 .inbox-mobile-sheet button { min-height:44px; }
 .inbox-mobile-work-menu .inbox-work-navigation { display:grid; grid-template-columns:1fr 1fr; }
+.inbox-mobile-work-menu .inbox-work-navigation > :is(button,a) { min-height:64px; }
 .inbox-mobile-work-menu .inbox-workspace-utilities { flex-direction:row; justify-content:space-around; }
 @media(min-width:1024px) {
   .inbox-composer { padding:8px 12px 12px; }

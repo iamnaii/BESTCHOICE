@@ -5,9 +5,47 @@ import { expect } from '@playwright/test';
 import { checkConversationPins } from './check-local-conversation-pins.mjs';
 
 // Visual contract from docs/prototypes/chat-operations V2.4, revised 2026-10-07
-// (owner: desktop Inbox is its own workspace — no app sidebar, a 72px rail on the
+// (owner: desktop Inbox is its own workspace — no app sidebar, a compact rail on the
 // left; phones keep the compact header). Feature switches may hide functionality,
 // but must not revert the actual production page shell.
+export async function checkInboxNavigationScale(navigation) {
+  const items = await navigation.evaluate(async element => {
+    await document.fonts.ready;
+    return [...element.children].map(control => {
+      const label = control.querySelector('span:not(.inbox-navigation-count)');
+      const icon = control.querySelector('svg');
+      const box = control.getBoundingClientRect();
+      const text = label.getBoundingClientRect();
+      const style = getComputedStyle(label);
+      return {
+        label: label.textContent,
+        font: style.fontFamily,
+        size: parseFloat(style.fontSize),
+        expectedSize: parseFloat(getComputedStyle(document.documentElement).fontSize) * .875,
+        lineHeight: parseFloat(style.lineHeight),
+        width: box.width,
+        height: box.height,
+        leftInset: text.left - box.left,
+        rightInset: box.right - text.right,
+        iconWidth: icon.getBoundingClientRect().width,
+        iconHeight: icon.getBoundingClientRect().height,
+      };
+    });
+  });
+  assert.ok(items.length >= 3, 'Navigation includes chat, queue and analytics');
+  for (const item of items) {
+    assert.match(item.font, /Noto Sans Thai Looped/, `${item.label}: UI font`);
+    assert.equal(item.size, item.expectedSize, `${item.label}: button and link labels share the same scale`);
+    assert.equal(item.lineHeight, item.size * 1.5, `${item.label}: Thai line height`);
+    assert.ok(item.leftInset >= 3.9 && item.rightInset >= 3.9, `${item.label}: needs space on both sides`);
+    assert.equal(item.iconWidth, 18, `${item.label}: primary icon width`);
+    assert.equal(item.iconHeight, 18, `${item.label}: primary icon height`);
+    assert.ok(item.width >= 44 && item.height >= 44, `${item.label}: usable target size`);
+    assert.ok(Math.abs(item.height - items[0].height) < .5, `${item.label}: button and link rows have equal height`);
+  }
+  return items;
+}
+
 export async function checkInboxDesign(browser, origin, output) {
   await checkConversationPins(browser, origin, output);
   const info = await (await fetch(new URL('/api/admin/preview/info', origin))).json();
@@ -43,7 +81,7 @@ export async function checkInboxDesign(browser, origin, output) {
         const railBox = await rail.boundingBox();
         const queue = await page.locator('.inbox-conversations').boundingBox();
         assert.equal(railBox.x, 0);
-        assert.equal(railBox.width, 72);
+        assert.equal(railBox.width, largeText ? 110 : 88);
         assert.ok(railBox.height >= height - 1, 'Rail spans the full viewport height');
         assert.equal(queue.x, railBox.x + railBox.width, 'Rail must not cover the conversation list');
         assert.equal(queue.width, 288);
@@ -51,6 +89,7 @@ export async function checkInboxDesign(browser, origin, output) {
         assert.ok(railOverflow <= 0, `Rail content overflows by ${railOverflow}px at ${width}x${height}`);
         await expect(rail.getByRole('link', { name: 'กลับหน้าหลัก', exact: true })).toBeVisible();
         await expect(rail.getByRole('navigation', { name: 'การสื่อสารและงานทีม' })).toBeVisible();
+        await checkInboxNavigationScale(rail.locator('.inbox-work-navigation'));
         await expect(rail.getByRole('button', { name: 'แชทลูกค้า', exact: true })).toBeVisible();
         await expect(rail.getByRole('button', { name: 'คิวงาน', exact: true })).toBeDisabled();
         await expect(rail.getByRole('link', { name: 'ภาพรวมงานแชท', exact: true })).toBeVisible();
@@ -90,6 +129,7 @@ export async function checkInboxDesign(browser, origin, output) {
       if (width >= 1024) {
         // Dark mode must keep the rail readable and within the viewport too.
         const rail = page.locator('.inbox-rail');
+        await checkInboxNavigationScale(rail.locator('.inbox-work-navigation'));
         const railOverflow = await rail.evaluate((e) => e.scrollHeight - e.clientHeight);
         assert.ok(railOverflow <= 0, `Rail content overflows by ${railOverflow}px in dark mode`);
         await rail.screenshot({ path: join(output, `inbox-rail-dark-${width}${largeText ? '-large-text' : ''}.png`) });
@@ -102,6 +142,7 @@ export async function checkInboxDesign(browser, origin, output) {
         await page.getByRole('button', { name: 'เมนูงานแชท', exact: true }).click();
         const navigation = page.getByRole('dialog').getByRole('navigation', { name: 'การสื่อสารและงานทีม' });
         await expect(navigation).toBeVisible();
+        await checkInboxNavigationScale(navigation);
         const analytics = navigation.getByRole('link', { name: 'ภาพรวมงานแชท' });
         await analytics.focus();
         await expect(analytics).toBeInViewport();

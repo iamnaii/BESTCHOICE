@@ -152,7 +152,7 @@ function MainContent() {
   const isFullBleed = FULL_BLEED_ROUTES.some((r) => pathname === r || pathname.startsWith(r + '/'));
 
   /* /inbox บนจอใหญ่ = พื้นที่งานแชทเต็มจอ ไม่วาดเมนูระบบ (เจ้าของเคาะ 2026-10-07: "เข้าแชทแล้วยุบเมนูอื่นออกเลย
-     ค่อยกดกลับหน้าหลัก") — แถบข้าง 72px ของ inbox เอง (InboxWorkTools) เป็นทางกลับหน้าหลักและสวิตช์หมวดงาน */
+     ค่อยกดกลับหน้าหลัก") — แถบข้างแบบย่อ ของ inbox เอง (InboxWorkTools) เป็นทางกลับหน้าหลักและสวิตช์หมวดงาน */
   const hideShellSidebar = isFullBleed && !isMobile;
 
   /* Sidebar offset applied via padding-left so the content

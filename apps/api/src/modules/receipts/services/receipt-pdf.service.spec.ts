@@ -549,6 +549,54 @@ describe('ReceiptPdfService — Credit Note rendering (Phase 3 Task 4)', () => {
       expect(capturedHtml).not.toContain('ค่างวดเช่าซื้อ');
       expect(capturedHtml).not.toContain('ค่าปรับชำระล่าช้า');
     });
+
+    it('ใบส่วนเกินลิงก์ชำระ เมื่อไม่มีงวดถัดไป (เงินครอบทุกงวดแล้ว — กรณีจริงของส่วนเกิน): ไม่อ้างว่าจะหักเข้างวดถัดไป · ยังบอกว่าเก็บเป็นเงินรับล่วงหน้า + ไม่ต้องขอคืน', async () => {
+      query.getReceipt.mockResolvedValue(
+        baseReceipt({
+          receiptType: 'ADVANCE_SURPLUS',
+          amount: new Decimal('500'),
+          amountBeforeVat: new Decimal('467.29'),
+          vatAmount: new Decimal('32.71'),
+          roundingAmount: new Decimal('0'),
+          lateFeeAmount: new Decimal('0'),
+          lateFeeWaivedAmount: new Decimal('0'),
+          advanceAmount: new Decimal('500'),
+          advanceVatAmount: new Decimal('32.71'),
+          installmentNo: null,
+          paymentId: null,
+          paymentMethod: 'ONLINE_GATEWAY',
+          transactionRef: 'REF-10',
+          paidDate: new Date('2026-10-12T17:00:00.000Z'),
+          issuer: { name: 'Admin Owner', role: 'OWNER' },
+          installmentAllocations: null,
+          documentRemainingBalance: '0.00',
+          documentRemainingMonths: 0,
+          documentInstallmentAmountDue: null,
+          documentInstallmentAmountPaid: null,
+          documentUnappliedFunds: '500.00',
+          rescheduleContext: null,
+          surplusContext: {
+            refno: 'REF-10',
+            paidAmount: '2015.83',
+            appliedAmount: '1515.83',
+            installmentNos: [12],
+            nextInstallmentNo: null,
+            siblingReceipts: [{ receiptNumber: 'RT-202610-00040', installmentNo: 12 }],
+          },
+        }),
+      );
+      await service.generatePDF('r-surplus-last');
+
+      expect(capturedHtml).toContain('ใบเสร็จรับเงิน / ใบกำกับภาษี');
+      expect(capturedHtml).toContain('ชำระเกินผ่านลิงก์ชำระ (Pay Solutions)</div>');
+      expect(capturedHtml).toContain('เงินส่วนเกิน 500.00 บาท จากการชำระผ่านลิงก์ เก็บไว้เป็นเงินรับล่วงหน้าของสัญญา');
+      expect(capturedHtml).toContain('ภาษีมูลค่าเพิ่มรับรู้ ณ วันรับเงินนี้แล้ว');
+      expect(capturedHtml).toContain('ไม่ต้องติดต่อร้านเพื่อขอคืน');
+      expect(capturedHtml).toContain('500.00 บาท</span>');
+      expect(capturedHtml).not.toContain('หักเข้างวดถัดไป');
+      expect(capturedHtml).not.toContain('หักงวดถัดไป');
+      expect(capturedHtml).not.toContain('(งวดที่ ');
+    });
   });
 });
 

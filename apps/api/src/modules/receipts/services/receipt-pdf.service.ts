@@ -198,6 +198,10 @@ export class ReceiptPdfService {
       receipt.receiptType ?? 'PAYMENT',
     );
     const balanceKnown = !documentBalanceApplies || receipt.documentRemainingBalance != null;
+    // PR4ข: ใบส่วนเกินลิงก์ชำระ — มีงวดถัดไปให้หักหรือไม่ (ส่วนเกินปกติเกิดเมื่อเงินครอบทุกงวดแล้ว ⇒ null)
+    const surplusHasNext =
+      receipt.receiptType === ADVANCE_SURPLUS_RECEIPT_TYPE &&
+      receipt.surplusContext?.nextInstallmentNo != null;
     const remainingBalance = toDec(documentBalanceApplies
       ? receipt.documentRemainingBalance : receipt.remainingBalance);
     const remainingMonths = documentBalanceApplies
@@ -245,7 +249,7 @@ export class ReceiptPdfService {
         : row.kind === 'GENERIC'
           ? `
       <tr class="alt">
-        <td><div class="item-name">เงินรับล่วงหน้าในสัญญา</div>${receiptType === ADVANCE_SURPLUS_RECEIPT_TYPE ? '<div class="item-meta">ชำระเกินผ่านลิงก์ชำระ (Pay Solutions) · หักเข้างวดถัดไปอัตโนมัติ</div>' : ''}</td>
+        <td><div class="item-name">เงินรับล่วงหน้าในสัญญา</div>${receiptType === ADVANCE_SURPLUS_RECEIPT_TYPE ? `<div class="item-meta">ชำระเกินผ่านลิงก์ชำระ (Pay Solutions)${surplusHasNext ? ' · หักเข้างวดถัดไปอัตโนมัติ' : ''}</div>` : ''}</td>
         <td class="right">${fmt(row.beforeVat)}</td>
         <td class="right">${row.vat.gt(0) ? fmt(row.vat) : '<span class="vat-exempt">–</span>'}</td>
         <td class="right"><strong>${fmt(row.amount)}</strong></td>
@@ -303,7 +307,10 @@ export class ReceiptPdfService {
     const advanceNotice = isStored6a
       ? `<div class="adv-notice">เงินรับล่วงหน้า ${fmt(advancePortion)} บาท พักไว้หักค่างวดสุดท้าย${rescheduleTarget ? ` (งวดที่ ${rescheduleTarget})` : ''} — ภาษีมูลค่าเพิ่มรับรู้ ณ วันรับเงินนี้แล้ว ใบรับชำระงวดสุดท้ายจะแสดงแถว "หักเงินรับล่วงหน้า" โดยไม่คิดภาษีซ้ำ</div>`
       : isSurplus
-        ? `<div class="adv-notice">เงินส่วนเกิน ${fmt(total)} บาท จากการชำระผ่านลิงก์ เก็บไว้เป็นเงินรับล่วงหน้าของสัญญา และจะหักเข้างวดถัดไป${sc?.nextInstallmentNo ? ` (งวดที่ ${sc.nextInstallmentNo})` : ''} ให้อัตโนมัติ ใบรับชำระงวดนั้นจะแสดงแถว "หักเงินรับล่วงหน้า" โดยไม่คิดภาษีซ้ำ · ไม่ต้องติดต่อร้านเพื่อขอคืน</div>`
+        ? surplusHasNext
+          ? `<div class="adv-notice">เงินส่วนเกิน ${fmt(total)} บาท จากการชำระผ่านลิงก์ เก็บไว้เป็นเงินรับล่วงหน้าของสัญญา และจะหักเข้างวดถัดไป (งวดที่ ${sc!.nextInstallmentNo}) ให้อัตโนมัติ ใบรับชำระงวดนั้นจะแสดงแถว "หักเงินรับล่วงหน้า" โดยไม่คิดภาษีซ้ำ · ไม่ต้องติดต่อร้านเพื่อขอคืน</div>`
+          : // ส่วนเกินปกติเกิดเมื่อเงินครอบทุกงวดแล้ว (ไม่มีงวดถัดไปให้หัก) — ห้ามสัญญาว่าจะหักเข้างวด
+            `<div class="adv-notice">เงินส่วนเกิน ${fmt(total)} บาท จากการชำระผ่านลิงก์ เก็บไว้เป็นเงินรับล่วงหน้าของสัญญา — ภาษีมูลค่าเพิ่มรับรู้ ณ วันรับเงินนี้แล้ว · ไม่ต้องติดต่อร้านเพื่อขอคืน</div>`
         : '';
     const unappliedFunds =
       (isStored6a || isSurplus) && receipt.documentUnappliedFunds != null
@@ -311,7 +318,7 @@ export class ReceiptPdfService {
         : null;
     const unappliedLine =
       unappliedFunds && unappliedFunds.gt(0)
-        ? `<span class="k">เงินรับล่วงหน้าค้าง</span><span class="v">${fmt(unappliedFunds)} บาท${isSurplus ? ' (หักงวดถัดไป)' : rescheduleTarget ? ` (พักหักงวดที่ ${rescheduleTarget})` : ''}</span>`
+        ? `<span class="k">เงินรับล่วงหน้าค้าง</span><span class="v">${fmt(unappliedFunds)} บาท${isSurplus ? (surplusHasNext ? ' (หักงวดถัดไป)' : '') : rescheduleTarget ? ` (พักหักงวดที่ ${rescheduleTarget})` : ''}</span>`
         : '';
     const installmentLabel = receipt.installmentNo
       ? `ค่างวดเช่าซื้อ งวดที่ ${receipt.installmentNo}${receipt.contract?.totalMonths ? `/${receipt.contract.totalMonths}` : ''}`

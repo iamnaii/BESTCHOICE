@@ -325,8 +325,13 @@ export function storedReceiptDocumentMoney(view: ReceiptMoneyView): ReceiptDocum
           beforeVat: advance.minus(advanceVat),
         },
       ];
+  // PR4ข: ใบที่มีแต่เงินรับล่วงหน้า (ใบปรับดิว 6a · ใบส่วนเกินลิงก์ชำระ) — หัวเอกสารแสดง "งวดที่รับล่วงหน้า" ของงวดเป้าหมาย
+  // (ไม่รู้งวด = ไม่แสดง) เหมือนตรรกะเดิม; ใบที่มีค่างวดด้วย (6b รวมใบ) แสดงงวดที่ชำระตามเดิม
+  const advanceOnly = installmentPortion.isZero() && advance.gt(0);
   return {
-    vatBearing: !['DOWN_PAYMENT', 'RESCHEDULE_FEE'].includes(receiptType),
+    // ใบที่เก็บค่าแล้วเป็นใบกำกับภาษีทุกชนิดยกเว้นเงินดาวน์ (SHOP ไม่จด VAT) — ใบปรับดิว 6a เก็บค่าตั้งแต่ PR4ข
+    // (ภาษีรับรู้ ณ วันรับตั้งแต่ PR4) · ใบปรับดิวเก่าไม่มีค่าที่เก็บจึงไม่ผ่านทางนี้ (legacy — ไม่มี VAT ตามเดิม)
+    vatBearing: receiptType !== 'DOWN_PAYMENT',
     installmentPortion,
     installmentExclVat: installmentPortion.minus(installmentVat),
     installmentVat,
@@ -338,8 +343,8 @@ export function storedReceiptDocumentMoney(view: ReceiptMoneyView): ReceiptDocum
     rounding,
     exclVat: toDec(view.amountBeforeVat),
     vatPart: vat,
-    advanceOnly: false,
-    displayedInstallmentNo: view.installmentNo,
+    advanceOnly,
+    displayedInstallmentNo: advanceOnly ? (rescheduleTarget ?? view.installmentNo) : view.installmentNo,
   };
 }
 

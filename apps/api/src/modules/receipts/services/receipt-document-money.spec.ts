@@ -217,6 +217,75 @@ describe('receiptDocumentMoney — ใบที่เก็บค่า ณ ต�
     const m = receiptDocumentMoney(cn);
     expect([f(m.exclVat), f(m.vatPart)]).toEqual(['4249.98', '297.51']);
   });
+
+  // ── PR4ข (ฝ่ายบัญชี 16/10/2569 ข้อ 14 / 23.1 / 23.2): ใบปรับดิว 6a ที่เก็บค่าเป็นใบกำกับภาษี · ใบที่มีแต่เงินรับล่วงหน้า ──
+  it('PR4ข: ใบปรับดิว 6a ที่เก็บค่า (1,516 + ค่าปรับ 50) → ใบกำกับภาษี: แถวเงินพักงวด 12 1,416.82 / 99.18 · ค่าปรับ 50 · ไม่มีแถวค่างวด · หัวเอกสาร "งวดที่รับล่วงหน้า 12"', () => {
+    const m = receiptDocumentMoney(
+      storedView({
+        receiptType: 'RESCHEDULE_FEE',
+        amount: D('1566'),
+        amountBeforeVat: D('1416.82'),
+        vatAmount: D('99.18'),
+        roundingAmount: D('0'),
+        lateFeeAmount: D('50'),
+        lateFeeWaivedAmount: D('0'),
+        advanceAmount: D('1516'),
+        advanceVatAmount: D('99.18'),
+        installmentNo: 4,
+        installmentAllocations: [{ installmentNo: 12, amount: '1516.00', kind: 'RESCHEDULE_ADVANCE' }],
+      }),
+    );
+
+    expect(m.vatBearing).toBe(true);
+    expect(f(m.installmentPortion)).toBe('0.00');
+    expect(m.advanceRows.map((r) => [r.kind, r.installmentNo, f(r.amount), f(r.beforeVat), f(r.vat)])).toEqual([
+      ['RESCHEDULE', 12, '1516.00', '1416.82', '99.18'],
+    ]);
+    expect([f(m.feePortion), f(m.exclVat), f(m.vatPart)]).toEqual(['50.00', '1416.82', '99.18']);
+    expect(m.advanceOnly).toBe(true);
+    expect(m.displayedInstallmentNo).toBe(12);
+  });
+
+  it('PR4ข: ใบส่วนเกินลิงก์ชำระ (ADVANCE_SURPLUS · ไม่มีงวด) → แถว "เงินรับล่วงหน้าในสัญญา" 467.29 / 32.71 / 500 · ใบกำกับภาษี · ไม่มีงวดบนหัวเอกสาร', () => {
+    const m = receiptDocumentMoney(
+      storedView({
+        receiptType: 'ADVANCE_SURPLUS',
+        amount: D('500'),
+        amountBeforeVat: D('467.29'),
+        vatAmount: D('32.71'),
+        advanceAmount: D('500'),
+        advanceVatAmount: D('32.71'),
+        installmentNo: null,
+        installmentAllocations: null,
+      }),
+    );
+
+    expect(m.vatBearing).toBe(true);
+    expect(m.advanceRows.map((r) => [r.kind, f(r.amount), f(r.beforeVat), f(r.vat)])).toEqual([
+      ['GENERIC', '500.00', '467.29', '32.71'],
+    ]);
+    expect(f(m.installmentPortion)).toBe('0.00');
+    expect(m.advanceOnly).toBe(true);
+    expect(m.displayedInstallmentNo).toBeNull();
+  });
+
+  it('PR4ข: ใบปรับดิวเก่าที่ไม่มีค่าที่เก็บ → ตรรกะเดิมทุกตัวอักษร (ไม่ใช่ใบกำกับภาษี — forward-only)', () => {
+    const m = receiptDocumentMoney(
+      view({
+        receiptType: 'RESCHEDULE_FEE',
+        amount: D('1144'),
+        lateFeeCollected: '100.00',
+        lateFeeWaivedThisReceipt: '0.00',
+        installmentNo: 4,
+        installmentAllocations: [{ installmentNo: 10, amount: '1044.00', kind: 'RESCHEDULE_ADVANCE' }],
+      }),
+    );
+
+    expect(m.vatBearing).toBe(false);
+    expect(f(m.vatPart)).toBe('0.00');
+    expect(m.advanceOnly).toBe(true);
+    expect(m.displayedInstallmentNo).toBe(10);
+  });
 });
 
 describe('documentMoneyColumns — ค่าที่ใบลดหนี้คัดลอก (Q5)', () => {

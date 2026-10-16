@@ -326,15 +326,15 @@ describe('reschedule-collect 6a → 2A accrual → advance consume lifecycle (in
     // PR4ข: ใบ 6a เป็นใบกำกับภาษี — เก็บค่าที่พิมพ์จากรายการ 6a (advanceVatPark 23.16 · ค่าปรับนอกฐานภาษี)
     // และผูกรายการ reschedule-collect ⇒ ใบ = บัญชี · amountBeforeVat + vat + rounding + lateFee = amount
     expect(receipt!.sourceJournalEntryId).toBe(je!.id);
-    const money = (k: keyof typeof receipt) =>
-      receipt![k] == null ? null : new Decimal((receipt![k] as { toString(): string }).toString()).toFixed(2);
-    expect(money('amountBeforeVat')).toBe('330.84');
-    expect(money('vatAmount')).toBe('23.16');
-    expect(money('roundingAmount')).toBe('0.00');
-    expect(money('lateFeeAmount')).toBe('100.00');
-    expect(money('lateFeeWaivedAmount')).toBe('0.00');
-    expect(money('advanceAmount')).toBe('354.00');
-    expect(money('advanceVatAmount')).toBe('23.16');
+    const money = (v: { toString(): string } | null) =>
+      v == null ? null : new Decimal(v.toString()).toFixed(2);
+    expect(money(receipt!.amountBeforeVat)).toBe('330.84');
+    expect(money(receipt!.vatAmount)).toBe('23.16');
+    expect(money(receipt!.roundingAmount)).toBe('0.00');
+    expect(money(receipt!.lateFeeAmount)).toBe('100.00');
+    expect(money(receipt!.lateFeeWaivedAmount)).toBe('0.00');
+    expect(money(receipt!.advanceAmount)).toBe('354.00');
+    expect(money(receipt!.advanceVatAmount)).toBe('23.16');
   });
 
   it('2A accrual on the shifted installment #1 (NOT the last installment) does NOT touch the park bucket at all', async () => {

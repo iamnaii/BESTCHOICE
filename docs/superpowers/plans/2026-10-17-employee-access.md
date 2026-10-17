@@ -47,10 +47,10 @@
 
 **Interfaces:** Export `PermissionKey`, `PERMISSION_CATALOG`, `DEFAULT_ACCESS_POSITIONS`, `AccessGrant`, `AccessSnapshot`, `AccessResource`, `canAccess(snapshot, permission, resource): boolean`, `accessibleBranchIds(snapshot, permission, company): string[] | 'ALL'`. A grant binds positionId, permissions, company ('SHOP'|'FINANCE'), scope ('BRANCHES'|'ASSIGNED'|'COMPANY'), branchIds. Resource carries company, optional branchId and assignedUserIds. Snapshot carries userId, isOwner, managed, revision, grants. Owner is a trusted persisted account property, never a configurable position code.
 
-- [ ] Write behavioral tests proving manager A + sales B cannot approve B, accountant A + sales B cannot see B cost, company isolation, assigned-case access, missing resource context deny, and configurable cost/profit defaults. Observe RED.
-- [ ] Implement catalog covering current application domains (inspect menus/settings and controller modules), read/create/update/delete/approve/export where applicable, sensitive cost/profit/salary permissions, reserved owner operations, and nine default positions. Give catalog Thai labels and group metadata. Reserve owner rights structurally; reject unknown permissions. No guessed discount caps.
-- [ ] Implement tuple-preserving evaluator and branch extraction. Empty scoped branch lists deny. Company-wide access requires explicit COMPANY grant. All active staff may see activity summaries independently of positions; details use source grants.
-- [ ] Run shared tests and build; record GREEN, self-review, commit.
+- [x] Write behavioral tests proving manager A + sales B cannot approve B, accountant A + sales B cannot see B cost, company isolation, assigned-case access, missing resource context deny, and configurable cost/profit defaults. Observe RED.
+- [x] Implement catalog covering current application domains (inspect menus/settings and controller modules), read/create/update/delete/approve/export where applicable, sensitive cost/profit/salary permissions, reserved owner operations, and nine default positions. Give catalog Thai labels and group metadata. Reserve owner rights structurally; reject unknown permissions. No guessed discount caps.
+- [x] Implement tuple-preserving evaluator and branch extraction. Empty scoped branch lists deny. Company-wide access requires explicit COMPANY grant. All active staff may see activity summaries independently of positions; details use source grants.
+- [x] Run shared tests and build; record GREEN, self-review, commit.
 
 ### Task 2: Position persistence, owner management, current snapshots, migration proposals
 
@@ -58,11 +58,11 @@
 
 **Interfaces:** Consume Task 1 types. Export injectable `AccessSnapshotService.forUser(userId): Promise<AccessSnapshot>` and assertion helpers usable in transactions. REST under `/employee-access`: `GET me`, `GET catalog`, owner `GET/POST positions`, `PATCH positions/:id`, `GET employees`, `PUT employees/:id/assignments`, `GET migration-preview`. Version mutations and use expected revision conflict checks. `GET me` returns the current snapshot to active staff. Owner CRUD responses include affected employee counts; migration preview is read-only.
 
-- [ ] Write failing tests for non-owner denial including forged position code, invalid scope/company/branches, permission validation, protected last-owner status, stale revision conflict, rollback when durable audit fails, and position edits taking effect for all assignments.
-- [ ] Add positions with permission arrays, active/deleted state, revision; assignment tuples tied to users and branches/company with explicit scope; managed flag/revision on users. Preserve legacy fields and data. No automatic account migration based on guessed real duties. Seed default templates idempotently through an owner action or isolated fixtures; never seed new users with OWNER rights.
-- [ ] Implement scoped assignment replacement and position edits in transactions with durable existing audit entries; validate referenced active positions/branches. Return clear Thai errors. Disable/delete positions safely and prevent reserved rights being granted by editable templates.
-- [ ] Build current uncached snapshots, including account disabled/deleted checks. For unmigrated users, return explicit managed=false and proposals based on legacy role/company/branch and enumerate legacy personal grants requiring review. Management changes must not silently retain per-user overrides for managed users.
-- [ ] Generate Prisma, build shared/API types, focused tests; commit and report schemas/endpoints for downstream consumers.
+- [x] Write failing tests for non-owner denial including forged position code, invalid scope/company/branches, permission validation, protected last-owner status, stale revision conflict, rollback when durable audit fails, and position edits taking effect for all assignments.
+- [x] Add positions with permission arrays, active/deleted state, revision; assignment tuples tied to users and branches/company with explicit scope; managed flag/revision on users. Preserve legacy fields and data. No automatic account migration based on guessed real duties. Seed default templates idempotently through an owner action or isolated fixtures; never seed new users with OWNER rights.
+- [x] Implement scoped assignment replacement and position edits in transactions with durable existing audit entries; validate referenced active positions/branches. Return clear Thai errors. Disable/delete positions safely and prevent reserved rights being granted by editable templates.
+- [x] Build current uncached snapshots, including account disabled/deleted checks. For unmigrated users, return explicit managed=false and proposals based on legacy role/company/branch and enumerate legacy personal grants requiring review. Management changes must not silently retain per-user overrides for managed users.
+- [x] Generate Prisma, build shared/API types, focused tests; commit and report schemas/endpoints for downstream consumers.
 
 ### Task 3: Authenticated runtime boundary and complete route inventory
 
@@ -70,11 +70,11 @@
 
 **Interfaces:** Use current snapshot from Task 2. Attach `user.access: AccessSnapshot` without changing user.role. Expose `assertAccess(user, permission, resource)` and permission-specific scope helpers for services. Route policy metadata declares required permission, company resolution and resource resolver; include explicit public/customer/integration/self-service classifications. A managed staff request may not silently fall back to legacy role authorization.
 
-- [ ] Test role-vs-position independence, direct URL/API bypass, revocation on next request, unmapped managed staff route denial, CUSTOMER token rejection on staff routes, preserved public webhook authentication, and denied access capture integration hook.
-- [ ] Inventory all controller methods, exports/files and socket commands from actual code. Implement checked registry/metadata; a coverage command must fail for newly unclassified entrypoints. Avoid inferring sensitive actions solely from HTTP verb or mapping everything to OWNER.
-- [ ] Resolve current snapshots after authentication; guard ordering must work (global guards run before controller JWT guards). For managed users enforce capability at the proper boundary and remove legacy RolesGuard veto after a successful explicit policy check; no role spoofing. Preserve legacy path only for explicitly unmigrated accounts and expose that status.
-- [ ] Define resource/scope requirements for domains and fail closed if context cannot be resolved; Task 4 completes actual list/query and ID-record enforcement before delivery. Socket operations using staff identities must revalidate current grants; maintain public integrations separately.
-- [ ] Record current coverage and remaining domain integrations in the guide, run tests/types, commit. Do not claim whole-program enforcement while Task 4 is incomplete.
+- [x] Test role-vs-position independence, direct URL/API bypass, revocation on next request, unmapped managed staff route denial, CUSTOMER token rejection on staff routes, preserved public webhook authentication, and denied access capture integration hook.
+- [x] Inventory all controller methods, exports/files and socket commands from actual code. Implement checked registry/metadata; a coverage command must fail for newly unclassified entrypoints. Avoid inferring sensitive actions solely from HTTP verb or mapping everything to OWNER.
+- [x] Resolve current snapshots after authentication; guard ordering must work (global guards run before controller JWT guards). For managed users enforce capability at the proper boundary and remove legacy RolesGuard veto after a successful explicit policy check; no role spoofing. Preserve legacy path only for explicitly unmigrated accounts and expose that status.
+- [x] Define resource/scope requirements for domains and fail closed if context cannot be resolved; Task 4 completes actual list/query and ID-record enforcement before delivery. Socket operations using staff identities must revalidate current grants; maintain public integrations separately.
+- [x] Record current coverage and remaining domain integrations in the guide, run tests/types, commit. Do not claim whole-program enforcement while Task 4 is incomplete.
 
 ### Task 4: Domain scope integration and sensitive data protection
 
@@ -111,11 +111,11 @@ This is the first serial unit of Task 4.1. The named SHOP phase contains 238 dom
 
 **Interfaces:** Produce the reusable typed contracts described in Task 4.1 for later units and FINANCE/operations phases. Use Task 3 discriminated decisions and validated scoped executors; no representative branch, unscoped collection fallback, role impersonation or ready-flag authorization. Record paths also require sensitive projection; writes recheck current scope transactionally.
 
-- [ ] RED tests for permission-specific tuple OR predicates, missing ownership/company, assigned identity, manager A + sales B, accountant A + sales B, scoped list/count/pagination and ID substitution. Prove representative predicates with isolated PostgreSQL, not only query mocks.
-- [ ] Implement products read/search/filter/grouped stock and raw-SQL aggregates with scope before rows/count/aggregation. Resolve existing source-company semantics explicitly. Preserve existing response shapes, DTO/filter validation and service workflows.
-- [ ] Implement product create/update/status/bulk/photo/inspection and transfer actions. Check all affected products and required source/destination scopes for each stage; caller branch is not proof. Preserve independent transfer/quality-control workflow and file behavior.
-- [ ] Implement configurable source-aware product cost/profit projection for nested records and errors/files; purchasing cost capability works regardless of legacy role. Permit internal cost calculations without returning sensitive values.
-- [ ] Register every in-scope entrypoint with working adapters, tests for authorized success and denial, types/coverage; document exact contracts and remaining scope, self-review, commit.
+- [x] RED tests for permission-specific tuple OR predicates, missing ownership/company, assigned identity, manager A + sales B, accountant A + sales B, scoped list/count/pagination and ID substitution. Prove representative predicates with isolated PostgreSQL, not only query mocks.
+- [x] Implement products read/search/filter/grouped stock and raw-SQL aggregates with scope before rows/count/aggregation. Resolve existing source-company semantics explicitly. Preserve existing response shapes, DTO/filter validation and service workflows.
+- [x] Implement product create/update/status/bulk/photo/inspection and transfer actions. Check all affected products and required source/destination scopes for each stage; caller branch is not proof. Preserve independent transfer/quality-control workflow and file behavior.
+- [x] Implement configurable source-aware product cost/profit projection for nested records and errors/files; purchasing cost capability works regardless of legacy role. Permit internal cost calculations without returning sensitive values.
+- [x] Register every in-scope entrypoint with working adapters, tests for authorized success and denial, types/coverage; document exact contracts and remaining scope, self-review, commit.
 
 ### Task 4.1.2: Procurement and inventory boundaries
 
@@ -132,18 +132,19 @@ Task 4.1.2 is executed as three serial reviewable units (32 + 21 + 10 routes); t
 
 **Files:** Same access engine/registrar plus `purchase-orders`, `suppliers`, goods-receiving/input-VAT services and narrowly necessary audit/transaction helpers. Current surface: PurchaseOrdersController (25) and SuppliersController (7).
 
-- [ ] RED real DB/HTTP tests for all in-scope boundary families, pre-pagination source/count parity, scoped PO/supplier histories/GL/payment data, purchasing cost visibility, unauthorized cost overrides and caller-selected company/branch substitution.
-- [ ] Add genuine authenticated source/origin handling where PO/supplier rows lack resolvable existing relationships; no guessed historical backfill. Preserve usable new-record creation and describe required UI inputs. Implement safe nested procurement/receiving projections consumed by existing product workflows.
-- [ ] Extend outer execution with an explicit isolation/retry/effect contract before joining services that require Serializable. Do not silently discard inner isolation requirements, retry inside an aborted transaction, or commit dependent work separately. Prove current authority after waiting for access locks under Serializable with real concurrent revocation; restart whole authorization/source resolution on retry.
-- [ ] Preserve original PO receive, late input-VAT, supplier payment/GL and journal state machines. Scope JSON-tag/raw-SQL journal lookups through real company/source provenance before balances/aggregates. A supplier permission alone must not expose all cross-scope journal history or confer payment authority.
-- [ ] Keep durable financial evidence in the existing AuditLog/outbox within the actual mutation transaction; no premature success event from an inner transaction that has only joined an outer one. Handle post-commit notifications/effects and cleanup of newly uploaded files on outer failure explicitly. No new bank transfer integration or changed money formulas.
-- [ ] Verify all 32 routes with authorized success and denial, financial rollback/retry/isolation semantics, types/lint/coverage. Document reusable transaction/projection/origin contracts and remaining UI/source seams, self-review and commit. Root owns integrated local:check/preview.
+- [x] RED real DB/HTTP tests for all in-scope boundary families, pre-pagination source/count parity, scoped PO/supplier histories/GL/payment data, purchasing cost visibility, unauthorized cost overrides and caller-selected company/branch substitution.
+- [x] Add genuine authenticated source/origin handling where PO/supplier rows lack resolvable existing relationships; no guessed historical backfill. Preserve usable new-record creation and describe required UI inputs. Implement safe nested procurement/receiving projections consumed by existing product workflows.
+- [x] Extend outer execution with an explicit isolation/retry/effect contract before joining services that require Serializable. Do not silently discard inner isolation requirements, retry inside an aborted transaction, or commit dependent work separately. Prove current authority after waiting for access locks under Serializable with real concurrent revocation; restart whole authorization/source resolution on retry.
+- [x] Preserve original PO receive, late input-VAT, supplier payment/GL and journal state machines. Scope JSON-tag/raw-SQL journal lookups through real company/source provenance before balances/aggregates. A supplier permission alone must not expose all cross-scope journal history or confer payment authority.
+- [x] Keep durable financial evidence in the existing AuditLog/outbox within the actual mutation transaction; no premature success event from an inner transaction that has only joined an outer one. Handle post-commit notifications/effects and cleanup of newly uploaded files on outer failure explicitly. No new bank transfer integration or changed money formulas.
+- [x] Verify all 32 routes with authorized success and denial, financial rollback/retry/isolation semantics, types/lint/coverage. Document reusable transaction/projection/origin contracts and remaining UI/source seams, self-review and commit. Root owns integrated local:check/preview.
 
 ### Task 4.1.2.2: Branch receiving, stock counts, reorder and forecast
 
 **Files:** Same access engine plus `inventory` BranchReceivingController (4), InventoryForecastController (1), ReorderPointsController (10), StockCountController (6): 21 routes.
 
 - [ ] Consume reviewed procurement/receiving source contracts from 4.1.2.1. RED isolated tests for count/receive scope, record/branch substitution, exact bulk targets, before-count aggregation and forecast related Sale reads.
+- [ ] Add the missing safe approved-PO lookup for STOCK-only receiving users under stock-receiving.read, using the real selected destination and reviewed PO company/state/projection contracts. Return required PO/item identifiers and approved outstanding quantities without costs or unrelated receiving history; validate current scope, update the checked inventory, and cover success/denial. This new route is additional to the 21 existing entries and must be ready for Task7 UI consumption.
 - [ ] Implement every listed record/query/bulk boundary with current source assertions and scoped projection. Stock staff may receive approved quantities with server-derived cost kept internal; unauthorized cost override fields must not pass through.
 - [ ] Preserve count/receive/reorder workflows and concurrency; scope reorder batches before mutation and forecast inputs before calculation, including their original company/source semantics.
 - [ ] All in-scope authorized-success/denial evidence, rollback where relevant, types/lint/coverage, downstream contract report, self-review, commit.
@@ -155,7 +156,7 @@ Task 4.1.2 is executed as three serial reviewable units (32 + 21 + 10 routes); t
 - [ ] RED isolated tests for scoped requests/approval/execution, source and destination substitution, sensitive valuation/file output and duplicate/concurrent adjustment behavior.
 - [ ] Implement actual capability-aware former role gates, current transactional source authorization, accounting/journal/document boundaries, and independent workflow constraints. Do not grant monetary approval merely from generic stock access.
 - [ ] Preserve financial math, serializable/retry and durable evidence contract; prove money/stock/journal/audit rollback together on failure and exact authorized success.
-- [ ] Types/lint/coverage/focused regressions and complete 63-route parent reconciliation, report, self-review, commit. Mark parent 4.1.2 complete only after independent review of all units.
+- [ ] Types/lint/coverage/focused regressions and complete reconciliation of the original 63 parent routes plus the added safe receiving lookup and any newly introduced routes, report, self-review, commit. Mark parent 4.1.2 complete only after independent review of all units.
 
 ### Task 4.1.3: Sales, bookings and trade-in boundaries
 

@@ -8,7 +8,7 @@ At Task 3: **1,394 entrypoints in 178 files**: 1,294 staff, 48 public, 31 custom
 
 ## Current implementation checkpoint
 
-The sections below record contracts as their units were introduced; this checkpoint supersedes historical remaining-work counts. Through the independently reviewed after-sales stream unit (`10f99f0b1`), **208 SHOP domain adapters** have actual authorized-success and denial evidence:
+The sections below record contracts as their units were introduced; this checkpoint supersedes historical remaining-work counts. Through the independently reviewed party write unit (`52b92e244`), **212 SHOP domain adapters** have actual authorized-success and denial evidence:
 
 | Reviewed unit | Adapters | Final implementation commit |
 | --- | ---: | --- |
@@ -24,8 +24,9 @@ The sections below record contracts as their units were introduced; this checkpo
 | After-sales exchange actions | 7 | `1301fc9da` |
 | After-sales intake | 1 | `7ed064a2a` |
 | After-sales document/photo streams | 4 | `10f99f0b1` |
+| Customer/contact canonical writes | 4 | `52b92e244` |
 
-Reviewed exchange source/transaction and customer-quote provenance producers add **zero exposed routes** by themselves. All 24 after-sales and 15 repair routes are independently reviewed, with the exact 39 registrations reconciled against their actual execution reports. Shared customer/contact/journey 31, residual SHOP 39, FINANCE 544, operations 267 and audit 4 domain allocations remain, plus the separately inventoried 202 staff routes without domain resource classification. These 202 include privileged settings/provisioning and ordinary reads; classification does not establish their appropriate current capability/source boundary. Seven employee-access owner-management routes were reviewed in Task 2, separately from the 208 SHOP count.
+Reviewed exchange source/transaction and customer-quote provenance producers add **zero exposed routes** by themselves. All 24 after-sales and 15 repair routes are independently reviewed, with the exact 39 registrations reconciled against their actual execution reports. The remaining shared customer/contact/journey 27, residual SHOP 39, FINANCE 544, operations 267 and audit 4 domain allocations remain, plus the separately inventoried 202 staff routes without domain resource classification. These 202 include privileged settings/provisioning and ordinary reads; classification does not establish their appropriate current capability/source boundary. Seven employee-access owner-management routes were reviewed in Task 2, separately from the 212 SHOP count.
 
 The receiving lookup increased the inventory to **1,395 classified HTTP/socket entrypoints**, including 1,093 domain rows. The scanner does not enumerate Cron/queue/bootstrap methods; those require their own source, system/initiator, current employee authority, recipient and durable-evidence reconciliation. Existing actor-fixture HTTP tests do not establish actual JWT/guard/browser integration. Full audit, immutable approvals, UI, whole-program coverage/performance and final local:check/verified preview remain pending. No real account migration is authorized by this checkpoint.
 
@@ -59,7 +60,21 @@ Verification: 43/43 owned-PG/Nest tests, then two additional focused independent
 
 ### Customer identity capability producer
 
-The independently reviewed catalog-only change `7a0717005` adds owner-editable `sensitive.customer-identity.read` (ดูเลขประจำตัวลูกค้าและผู้ปกครองเต็มเลข). Only future BRANCH_MANAGER, FINANCE_MANAGER and ACCOUNTANT templates receive it by default; persisted OWNER authority remains unchanged. Existing saved positions and assignments are not rewritten, and no base customer/contact source grant accompanies the key. Shared45 and saved-template12 tests passed. This adds zero runtime adapters and does not itself enforce disclosure or masking; customer origin/writes/queries, other consumers and UI remain pending.
+The independently reviewed catalog-only change `7a0717005` adds owner-editable `sensitive.customer-identity.read` (ดูเลขประจำตัวลูกค้าและผู้ปกครองเต็มเลข). Only future BRANCH_MANAGER, FINANCE_MANAGER and ACCOUNTANT templates receive it by default; persisted OWNER authority remains unchanged. Existing saved positions and assignments are not rewritten, and no base customer/contact source grant accompanies the key. Shared45 and saved-template12 tests passed. This adds zero runtime adapters and does not itself enforce disclosure or masking; the reviewed four canonical party writes consume the producer below, while public queries, other consumers and UI remain pending.
+
+### Reviewed party origin and canonical writes
+
+Task4.1.5.1.2 is independently reviewed through `52b92e244`: Customers.create/update/remove and Contacts.ensureRole. Shared `PartyAccessIdentity` carries nullable immutable `accessCompanyCode`/`accessBranchId` and explicit current `assignedToId`; additive migration `20261057000000_party_access_origins` makes no historical backfill or default assignment. New SHOP identities require a live SHOP branch; FINANCE may be central or carry an actual live SHOP origin branch. Authenticated work context supplies company. Existing identities keep their origin through reuse, revival and enrichment. No real accounts or saved positions are migrated.
+
+Customer core mutation requires base read plus the actual action at all proven affected sources across companies. Contact role/identity mutation additionally includes genuine linked Customer/Supplier/direct seller sources; a live global lender dependency requires COMPANY contacts.read/update in both SHOP and FINANCE. Assignment changes require non-ASSIGNED update authority over the same affected set and an active non-system target. Assignment changes business ownership, never employee grants. Pure idempotent child reuse independently checks actual child read; genuine child creation checks its own action and destination. Read-only referrer selection uses any authorized usable source, so an invalid sibling cannot suppress valid read evidence.
+
+A unique archived active Contact may be narrowly restored only with all original-source read/update authority and durable evidence, retaining its code, origin, assignment and identity. The exact archived ghost link is preserved; conflicting live matches, ambiguous/inactive archives and unknown provenance return generic failures. No silent replacement identity or merge is introduced. General reads still exclude deleted identities.
+
+Canonical normalization, encryption/hash, phone-before-contact-code locking and global numbering remain. Actual Customer/Contact/PII/journey/audit writers join the existing owned retryable Serializable transaction; required-evidence failures abort the operation. Source and current assignment/lender rows are locked. Managed responses are narrow `{id}` or `{contactId,role,customerId?,supplierId?,provisioned}` acknowledgements; unknown duplicates expose no hidden identity/history/count. Full-ID helpers require base read and sensitive.customer-identity.read at the same proven source, and never expose cipher/hash. Six public queries remain pending, so these helpers do not establish search/detail/history privacy.
+
+Create/update accept explicit Customer assignment; ensureRole has `assignedToId` for Contact and `customerAssignedToId` only for a genuinely new Customer child. An identical existing child assignment can be a verified retry/no-op; a differing value must use Customer update. Neither API accepts mutable origin fields. Ordinary FINANCE Contract and canonical work-channel room source helpers are published for later independent child reads; they do not authorize all customer history or widen exchange approval.
+
+Evidence: full30 PostgreSQL/Nest HTTP cases before final archive/lender additions, followed by archive7, lender/privacy3, and final referral7 focused passes (41 final definitions, no final full41 rerun). Earlier consumer95 and canonical103 tests passed with affected resolver refreshes; final API types and affected lint passed. The final referral fix also resolves a separately reproduced Prisma500 caused by scalar referral FK mixed with checked nested relation inputs. One earlier initial Customer POST404 remains unexplained/unreproduced and is retained for Task8 integration follow-up. Fixture guards, expected fault logs and inherited Jest forceExit do not establish actual full JWT/browser/preview behavior.
 
 ## Authentication order and compatibility
 

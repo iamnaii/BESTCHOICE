@@ -62,6 +62,13 @@ describe('UsersService.updateFull', () => {
     });
   });
 
+  it.each([{ isActive: false }, { password: 'newpass1234' }])('propagates token-revocation failure for %j', async (dto) => {
+    userFindUnique.mockResolvedValue({ id: 'u1', isActive: true });
+    refreshUpdateMany.mockRejectedValueOnce(new Error('token write failed'));
+    await expect(svc.updateFull('u1', dto, { userId: 'owner' })).rejects.toThrow('token write failed');
+    expect(svc.findOneFull).not.toHaveBeenCalled();
+  });
+
   it('does NOT touch employee profile when employee is null', async () => {
     userFindUnique.mockResolvedValue({ id: 'u1', isActive: true });
     await svc.updateFull('u1', { name: 'A', employee: null }, { userId: 'owner' });

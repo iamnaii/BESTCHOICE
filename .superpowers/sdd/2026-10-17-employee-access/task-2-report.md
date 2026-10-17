@@ -62,3 +62,25 @@ Added 8 employee-access files (module/controller/service/DTO/snapshot + 3 specs)
 - Migration preview deliberately proposes legacy role/company/branch mappings and reports personal grants; it cannot infer real employee duties or assert a complete live effective-permission diff. Owners must review before enabling.
 - Controller/DTO live HTTP/browser verification and local:check remain final integration work, not claimed by these service/DB tests.
 - Test harness owns a mktemp cluster and stops/removes it on EXIT. Earlier baseline-clone database `bc_access_task2` was dropped, and restarted baseline PostgreSQL `/tmp/bc-access-baseline.JkcPJV/data` was stopped. Baseline databases retained unchanged. No owned test DB server left running.
+
+## Review fix round 1 — atomic account changes and token revocation
+
+Base: `a431c2f0b`. Reviewer found that UsersService.update caught a token-revocation write failure inside the new PostgreSQL transaction. A SQL error aborts that transaction even when caught in JavaScript, so the caller could receive a success result for a rolled-back password change or deactivation.
+
+Fix: removed that catch. Account mutation and refresh-token revocation now commit together or reject together, matching updateFull's existing atomic behavior. No best-effort password/account change remains in this path.
+
+Added two focused failure cases to users.service.spec.ts, two to users/__tests__/users-update-full.spec.ts, and four real-DB cases to employee-access.integration.spec.ts. The integration fixture installs an isolated BEFORE UPDATE trigger on refresh_tokens that raises a PostgreSQL exception; this is a real aborted SQL transaction, not a mocked JS rejection. Each case checks the reported outcome and verifies that the original password/active state and live token remain unchanged on failure. Trigger/function cleanup uses finally; the harness stops/removes its owned cluster.
+
+Observed RED before implementation:
+
+- `npm test --workspace=@installment/api -- --runTestsByPath src/modules/users/users.service.spec.ts src/modules/users/__tests__/users-update-full.spec.ts`: 28 passed / 2 failed. Both update() cases resolved instead of rejecting; updateFull cases already passed.
+- `tools/test-employee-access-persistence.sh`: 13 passed / 2 failed. PostgreSQL rolled back both update() account changes and left tokens live, but outcome.status was fulfilled instead of rejected. This reproduces the review finding exactly.
+
+Observed GREEN after removing the catch:
+
+- Same focused unit command: 2 suites / 30 tests passed.
+- Same isolated PostgreSQL harness: 1 suite / 15 tests passed, including deactivation and password-change failures through both update() and updateFull().
+- `npx tsc --noEmit -p apps/api/tsconfig.json`: passed.
+- `git diff --check`: passed.
+
+Only the covering suites were run for this fix. No API contracts changed. No owned test database server remains running; full preview verification remains final integration work.

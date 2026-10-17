@@ -296,21 +296,13 @@ export class UsersService {
       });
 
       if (mustRevokeSessions) {
-        // Revoke every live refresh token so the just-deactivated user cannot
-        // continue to mint new access tokens from cookies already issued to
-        // their browser. Best-effort: never block the user update itself.
-        try {
-          // รูปเดียวกับ `updateFull` + `AuthService.revokeAllUserTokens`: ต้องเขียน
-          // `isRevoked` ด้วย เพราะนั่นคือฟิลด์ที่ `refreshToken()` ใช้ตัดสิน — เขียนแต่
-          // `revokedAt` แถวจะยังอ่านว่าเป็น session ที่ยังไม่ถูกเพิกถอน
-          await tx.refreshToken.updateMany({
-            where: { userId: id, isRevoked: false },
-            data: { isRevoked: true, revokedAt: new Date() },
-          });
-        } catch {
-          // Intentionally swallowed — tokens will also be rejected by the
-          // isActive check in the auth guard, so this is defence-in-depth.
-        }
+        // Account changes and session revocation are atomic. Propagate failures:
+        // a PostgreSQL statement error aborts this transaction even if caught in JS.
+        // Write both fields because refreshToken() checks isRevoked.
+        await tx.refreshToken.updateMany({
+          where: { userId: id, isRevoked: false },
+          data: { isRevoked: true, revokedAt: new Date() },
+        });
       }
 
       return updated;

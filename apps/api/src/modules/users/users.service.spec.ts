@@ -64,6 +64,13 @@ describe('UsersService.update — T7-C7 deactivation revokes refresh tokens', ()
     });
   });
 
+  it.each([{ isActive: false }, { password: 'newpass1234' }])('propagates token-revocation failure for %j', async (dto) => {
+    prisma.user.findUnique.mockResolvedValue({ id: 'u1', isActive: true });
+    prisma.user.update.mockResolvedValue({ id: 'u1' });
+    prisma.refreshToken.updateMany.mockRejectedValueOnce(new Error('token write failed'));
+    await expect(service.update('u1', dto)).rejects.toThrow('token write failed');
+  });
+
   it('does NOT touch refresh tokens on unrelated update (e.g. name change)', async () => {
     prisma.user.findUnique.mockResolvedValue({ id: 'u1', isActive: true });
     prisma.user.update.mockResolvedValue({ id: 'u1', isActive: true });

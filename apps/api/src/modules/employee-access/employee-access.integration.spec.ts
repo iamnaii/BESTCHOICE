@@ -290,3 +290,51 @@ test('concurrent removals cannot remove the final two owners', async () => {
     }),
   ).toBe(1);
 });
+
+test.each([
+  ['update', { isActive: false }],
+  ['update', { password: 'replacement-password' }],
+  ['updateFull', { isActive: false }],
+  ['updateFull', { password: 'replacement-password' }],
+] as const)(
+  '%s rejects and rolls back account/token changes when revocation SQL fails: %j',
+  async (method, dto) => {
+    const target = await db.user.create({
+      data: {
+        name: 'TEST Atomic Revocation',
+        email: `${randomUUID()}@test.invalid`,
+        password: 'unchanged-password-hash',
+        role: 'SALES',
+      },
+    });
+    const token = await db.refreshToken.create({
+      data: {
+        userId: target.id,
+        token: randomUUID(),
+        expiresAt: new Date(Date.now() + 60000),
+      },
+    });
+    // A real PostgreSQL statement failure aborts the transaction. A JS-only mock cannot prove this.
+    await db.$executeRawUnsafe(
+      `CREATE FUNCTION test_reject_refresh_revocation() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'test refresh-token write failure'; END; $$`,
+    );
+    await db.$executeRawUnsafe(
+      `CREATE TRIGGER test_reject_refresh_revocation BEFORE UPDATE ON refresh_tokens FOR EACH ROW EXECUTE FUNCTION test_reject_refresh_revocation()`,
+    );
+    try {
+      const [outcome] = await Promise.allSettled([users[method](target.id, dto)]);
+      expect(await db.user.findUniqueOrThrow({ where: { id: target.id } })).toMatchObject({
+        isActive: true,
+        password: 'unchanged-password-hash',
+      });
+      expect(await db.refreshToken.findUniqueOrThrow({ where: { id: token.id } })).toMatchObject({
+        isRevoked: false,
+        revokedAt: null,
+      });
+      expect(outcome.status).toBe('rejected');
+    } finally {
+      await db.$executeRawUnsafe('DROP TRIGGER test_reject_refresh_revocation ON refresh_tokens');
+      await db.$executeRawUnsafe('DROP FUNCTION test_reject_refresh_revocation()');
+    }
+  },
+);

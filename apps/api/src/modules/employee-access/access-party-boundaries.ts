@@ -1,3 +1,6 @@
+import { procurementPreparation } from './access-preparation-context';
+import { CustomerDocumentsService } from '../customers/services/customer-documents.service';
+import { UploadDocumentDto } from '../customers/dto/document.dto';
 import { PartyMergeSources } from './access-party-merge-source';
 import { ModuleRef } from '@nestjs/core';
 import { plainToInstance } from 'class-transformer';
@@ -16,6 +19,12 @@ import { AccessResourceService } from './access-resource.service';
 import { currentDomainAccess } from './access-execution-context';
 import { requestedAccessCompany } from './access-shop-boundaries';
 
+export const PARTY_DOCUMENT_ROUTES = [
+  'CustomersController.uploadDocument',
+  'CustomersController.deleteDocument',
+  'CustomersController.listDocuments',
+  'CustomersController.readDocument',
+] as const;
 export const PARTY_WRITE_ROUTES = [
   'CustomersController.create',
   'CustomersController.update',
@@ -55,6 +64,53 @@ export class AccessPartyBoundaries implements OnModuleInit {
     private readonly modules: ModuleRef,
   ) {}
   onModuleInit() {
+    for (const route of PARTY_DOCUMENT_ROUTES)
+      ACCESS_BOUNDARIES.set(route, async (req, snapshot, permission) => {
+        const company = requestedAccessCompany(req);
+        const run = async <T>(handler: () => Promise<T>) =>
+          (
+            await this.resources.execute(
+              snapshot.userId,
+              permission,
+              company,
+              undefined,
+              async () => {
+                const ctx = currentDomainAccess()!;
+                const actor = await ctx.client.user.findUniqueOrThrow({
+                  where: { id: ctx.snapshot.userId },
+                });
+                req.user = { ...req.user, id: actor.id, role: actor.role, access: ctx.snapshot };
+                return handler();
+              },
+              false,
+              { domain: 'parties', isolationLevel: 'Serializable', maxAttempts: 3 },
+            )
+          ).result;
+        return {
+          kind: 'selection',
+          company,
+          execute:
+            route === 'CustomersController.uploadDocument'
+              ? (handler) =>
+                  procurementPreparation.run(
+                    {
+                      execute: run,
+                      authorize: () =>
+                        run(async () => {
+                          const dto = plainToInstance(UploadDocumentDto, req.body ?? {});
+                          if ((await validate(dto)).length || !dto.sourceKind || !dto.sourceId)
+                            throw new BadRequestException('กรุณาระบุแหล่งเอกสาร');
+                          await this.modules
+                            .get(CustomerDocumentsService, { strict: false })
+                            .preauthorize(String(req.params?.id ?? ''), dto);
+                        }),
+                    },
+                    handler,
+                  )
+              : run,
+        };
+      });
+
     for (const route of [...PARTY_QUERY_ROUTES, ...PARTY_DERIVED_ROUTES])
       ACCESS_BOUNDARIES.set(route, async (req, snapshot, permission) => {
         const company = requestedAccessCompany(req);

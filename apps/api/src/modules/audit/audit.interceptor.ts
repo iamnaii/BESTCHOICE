@@ -17,7 +17,16 @@ export class AuditInterceptor implements NestInterceptor {
     const { method, url, body, user } = request;
 
     // Only audit mutating operations
-    if (['GET', 'HEAD', 'OPTIONS'].includes(method)) {
+    const managedDocument =
+      request.user?.access?.managed === true &&
+      context.getClass() === CustomersController &&
+      [
+        CustomersController.prototype.uploadDocument,
+        CustomersController.prototype.deleteDocument,
+        CustomersController.prototype.listDocuments,
+        CustomersController.prototype.readDocument,
+      ].some((candidate) => candidate === context.getHandler());
+    if (['GET', 'HEAD', 'OPTIONS'].includes(method) && !managedDocument) {
       return next.handle();
     }
 
@@ -95,8 +104,17 @@ export class AuditInterceptor implements NestInterceptor {
     const handler = context.getHandler();
     const controller = context.getClass();
     if (controller !== CustomersController && controller !== ContactsController) return undefined;
-    const fields =
-      controller === ContactsController && handler === ContactsController.prototype.merge
+    const documentHandler =
+      controller === CustomersController &&
+      [
+        CustomersController.prototype.uploadDocument,
+        CustomersController.prototype.deleteDocument,
+        CustomersController.prototype.listDocuments,
+        CustomersController.prototype.readDocument,
+      ].some((candidate) => candidate === handler);
+    const fields = documentHandler
+      ? ['sourceKind', 'sourceId', 'attachmentId']
+      : controller === ContactsController && handler === ContactsController.prototype.merge
         ? ['primaryId', 'duplicateId']
         : controller === CustomersController && handler === CustomersController.prototype.absorbInto
           ? []

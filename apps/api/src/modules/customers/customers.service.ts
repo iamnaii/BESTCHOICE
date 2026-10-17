@@ -1,3 +1,6 @@
+import { CustomerDocumentsService } from './services/customer-documents.service';
+import { UploadDocumentDto } from './dto/document.dto';
+import { Optional } from '@nestjs/common';
 import { Injectable } from '@nestjs/common';
 import { CreateCustomerDto, UpdateCustomerDto } from './dto/customer.dto';
 import { FillProspectContactDto } from './dto/fill-prospect-contact.dto';
@@ -31,6 +34,7 @@ export class CustomersService {
     private readonly query: CustomerQueryService,
     private readonly write: CustomerWriteService,
     private readonly analytics: CustomerAnalyticsService,
+    @Optional() private readonly documents?: CustomerDocumentsService,
   ) {}
 
   exportRows(filters: CustomersReadFilters) {
@@ -91,12 +95,15 @@ export class CustomersService {
     return this.analytics.getRiskFlag(id);
   }
 
-  uploadDocument(id: string, dto: { fileName: string; fileUrl: string; mimeType: string; fileSize: number }) {
-    return this.write.uploadDocument(id, dto);
+  listDocuments(id: string) { return this.documents!.list(id); }
+  readDocument(id: string, attachmentId: string) { return this.documents!.content(id, attachmentId); }
+
+  uploadDocument(id: string, dto: UploadDocumentDto, file?: Express.Multer.File) {
+    return this.write.uploadDocument(id, dto, file);
   }
 
-  deleteDocument(id: string, fileUrl: string) {
-    return this.write.deleteDocument(id, fileUrl);
+  deleteDocument(id: string, fileUrl: string, attachmentId?: string) {
+    return this.write.deleteDocument(id, fileUrl, attachmentId);
   }
 
   getUpsellCandidates(branchId?: string, limit = 20) {

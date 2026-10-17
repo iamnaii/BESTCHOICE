@@ -1,3 +1,5 @@
+import { FileInterceptor } from '@nestjs/platform-express';
+import { UploadedFile, UseInterceptors, Header } from '@nestjs/common';
 import { partyWriteExecution } from '../employee-access/access-party-source.service';
 import { currentPartyQuery } from '../employee-access/access-party-query-plan';
 import { Throttle } from '@nestjs/throttler';
@@ -410,13 +412,27 @@ export class CustomersController {
 
   @Post(':id/documents')
   @Roles('OWNER', 'BRANCH_MANAGER', 'SALES')
-  uploadDocument(@Param('id') id: string, @Body() dto: UploadDocumentDto) {
-    return this.customersService.uploadDocument(id, dto);
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 10 * 1024 * 1024, files: 1, fields: 8, fieldSize: 4096 } }))
+  uploadDocument(@Param('id') id: string, @Body() dto: UploadDocumentDto, @UploadedFile() file?: Express.Multer.File) {
+    return this.customersService.uploadDocument(id, dto, file);
   }
 
   @Delete(':id/documents')
   @Roles('OWNER', 'BRANCH_MANAGER')
   deleteDocument(@Param('id') id: string, @Body() dto: DeleteDocumentDto) {
-    return this.customersService.deleteDocument(id, dto.fileUrl);
+    return this.customersService.deleteDocument(id, dto.fileUrl, dto.attachmentId);
+  }
+
+  @Get(':id/documents')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
+  @Header('Cache-Control', 'private, no-store')
+  listDocuments(@Param('id') id: string) { return this.customersService.listDocuments(id); }
+
+  @Get(':id/documents/:attachmentId/content')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
+  @Header('Cache-Control', 'private, no-store')
+  @Header('X-Content-Type-Options', 'nosniff')
+  readDocument(@Param('id') id: string, @Param('attachmentId') attachmentId: string) {
+    return this.customersService.readDocument(id, attachmentId);
   }
 }

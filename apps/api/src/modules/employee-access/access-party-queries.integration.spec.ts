@@ -933,17 +933,17 @@ it('preserves SHOP-only warranty purchases without FINANCE amounts or full-contr
     ).body.total,
   ).toBe(0);
 });
-it('requires full-ID authority on the same document source for unclassified document URLs', async () => {
+it('requires all sensitive capabilities on the same document source for unclassified document URLs', async () => {
   const id = await reader(['customers.read', 'documents.read'], 'SHOP', [branchA]);
   const c = await customer({ documents: ['https://example.invalid/national-id.pdf'] });
   expect(
     (await http('get', '/customers/' + c.id, undefined, id).expect(200)).body.documents,
   ).toBeNull();
-  await grant(id, ['sensitive.customer-identity.read'], 'SHOP', [branchB]);
+  await grant(id, ['sensitive.customer-identity.read', 'sensitive.cost.read', 'sensitive.profit.read', 'sensitive.salary.read', 'sensitive.seller-bank.read'], 'SHOP', [branchB]);
   expect(
     (await http('get', '/customers/' + c.id, undefined, id).expect(200)).body.documents,
   ).toBeNull();
-  await grant(id, ['sensitive.customer-identity.read'], 'SHOP', [branchA]);
+  await grant(id, ['sensitive.customer-identity.read', 'sensitive.cost.read', 'sensitive.profit.read', 'sensitive.salary.read', 'sensitive.seller-bank.read'], 'SHOP', [branchA]);
   expect(
     (await http('get', '/customers/' + c.id, undefined, id).expect(200)).body.documents,
   ).toEqual(c.documents);

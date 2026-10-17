@@ -845,6 +845,7 @@ model Branch {
 }
 
 model User {
+  createdCustomerAttachments CustomerAttachment[]
   assignedContacts Contact[] @relation("ContactAssignedTo")
   assignedCustomers Customer[] @relation("CustomerAssignedTo")
   accessManaged Boolean @default(false) @map("access_managed")
@@ -1326,6 +1327,7 @@ model Customer {
   // คู่กับ deletedAt · chain ถูกยุบเหลือชั้นเดียวเสมอ (ปลายทางของทุกแถวคือลูกค้าที่ยังไม่ถูกรวม)
   mergedIntoId   String?                @map("merged_into_id")
   mergedInto     Customer?              @relation("CustomerMergedInto", fields: [mergedIntoId], references: [id])
+  attachments    CustomerAttachment[]
   absorbed       Customer[]             @relation("CustomerMergedInto")
   journeyEntries CustomerJourneyEntry[]
   journeyState   CustomerJourneyState?
@@ -9484,4 +9486,27 @@ model EmployeeAccessAssignmentBranch {
   @@id([assignmentId, branchId])
   @@index([branchId])
   @@map("employee_access_assignment_branches")
+}
+
+/// Owned private bytes; immutable origin/source/object metadata. Removal retains bytes.
+model CustomerAttachment {
+  id String @id @default(uuid())
+  originCustomerId String @map("origin_customer_id")
+  originCustomer Customer @relation(fields: [originCustomerId], references: [id], onDelete: Restrict)
+  sourceKind String @map("source_kind")
+  sourceId String @map("source_id")
+  accessCompanyCode String @map("access_company_code")
+  accessBranchId String? @map("access_branch_id")
+  storageKey String @unique @map("storage_key")
+  fileName String @map("file_name")
+  mimeType String @map("mime_type")
+  fileSize Int @map("file_size")
+  sha256 String
+  createdById String @map("created_by_id")
+  createdBy User @relation(fields: [createdById], references: [id], onDelete: Restrict)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+  @@index([originCustomerId, deletedAt])
+  @@map("customer_attachments")
 }

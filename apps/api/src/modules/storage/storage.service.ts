@@ -140,6 +140,67 @@ export class StorageService {
     return key;
   }
 
+  /** Narrow create-only primitive for provenance-backed Customer attachments.
+   * Token metadata is operation ownership, never a caller filename/key prefix. */
+  async uploadOwned(key: string, body: Buffer, contentType: string, operationToken: string): Promise<void> {
+    if (!this.configured) throw new BadRequestException('Storage not configured');
+    if (this.backend === 'local') {
+      const target = this.localPath(key);
+      await fsp.mkdir(dirname(target), { recursive: true });
+      const handle = await fsp.open(target, 'wx', 0o600); // collision: no ownership acquired
+      try {
+        await handle.writeFile(body);
+        const stat = await handle.stat();
+        await fsp.writeFile(target + '.owner', JSON.stringify({ operationToken, ino: stat.ino }), { flag: 'wx', mode: 0o600 });
+      } catch (error) {
+        await fsp.rm(target, { force: true }); // only our exclusive-open object
+        throw error;
+      } finally { await handle.close(); }
+      return;
+    }
+    if (this.backend === 'gcs' && this.gcs) {
+      await this.gcs.bucket(this.bucket).file(key).save(body, { resumable: false, contentType, preconditionOpts: { ifGenerationMatch: 0 }, metadata: { metadata: { customerAttachmentOperation: operationToken } } });
+      return;
+    }
+    if (this.backend === 's3' && this.s3) {
+      await this.s3.send(new PutObjectCommand({ Bucket: this.bucket, Key: key, Body: body, ContentType: contentType, IfNoneMatch: '*', Metadata: { 'customer-attachment-operation': operationToken } }));
+      return;
+    }
+    throw new BadRequestException('Storage not configured');
+  }
+
+  /** Terminal rollback only. An ambiguous failed upload never authorizes deleting
+   * another object; matching token and current provider version are both required. */
+  async deleteOwned(key: string, operationToken: string): Promise<void> {
+    if (this.backend === 'local') {
+      const target = this.localPath(key);
+      let owner: { operationToken: string; ino: number };
+      try { owner = JSON.parse(await fsp.readFile(target + '.owner', 'utf8')); }
+      catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return; throw error; }
+      if (owner.operationToken !== operationToken) return;
+      const stat = await fsp.stat(target).catch(error => { if (error.code === 'ENOENT') return null; throw error; });
+      if (stat && stat.ino !== owner.ino) return;
+      await fsp.rm(target, { force: true });
+      await fsp.rm(target + '.owner', { force: true });
+      return;
+    }
+    if (this.backend === 'gcs' && this.gcs) {
+      const file = this.gcs.bucket(this.bucket).file(key);
+      let metadata;
+      try { [metadata] = await file.getMetadata(); } catch (error) { if ((error as { code?: number }).code === 404) return; throw error; }
+      if (metadata.metadata?.customerAttachmentOperation !== operationToken || !metadata.generation) return;
+      await file.delete({ ifGenerationMatch: metadata.generation });
+      return;
+    }
+    if (this.backend === 's3' && this.s3) {
+      let head;
+      try { head = await this.s3.send(new HeadObjectCommand({ Bucket: this.bucket, Key: key })); }
+      catch (error) { if ((error as { $metadata?: { httpStatusCode?: number } }).$metadata?.httpStatusCode === 404) return; throw error; }
+      if (head.Metadata?.['customer-attachment-operation'] !== operationToken || !head.ETag) return;
+      await this.s3.send(new DeleteObjectCommand({ Bucket: this.bucket, Key: key, IfMatch: head.ETag }));
+    }
+  }
+
   async getStream(key: string): Promise<Readable> {
     if (this.backend === 'local') {
       const target = this.localPath(key);

@@ -11,6 +11,7 @@ jest.mock('@google-cloud/storage', () => ({
     bucket: jest.fn().mockReturnValue({
       file: jest.fn().mockReturnValue({
         save: jest.fn().mockResolvedValue(undefined),
+        getMetadata: jest.fn().mockResolvedValue([{ generation: '123', metadata: {} }]),
         exists: jest.fn().mockResolvedValue([true]),
         createReadStream: jest.fn().mockReturnValue('mock-gcs-stream'),
         delete: jest.fn().mockResolvedValue(undefined),
@@ -27,6 +28,7 @@ jest.mock('@aws-sdk/client-s3', () => {
     S3Client: jest.fn().mockImplementation(() => ({ send: mockSend })),
     PutObjectCommand: jest.fn(),
     GetObjectCommand: jest.fn(),
+    HeadObjectCommand: jest.fn(),
     DeleteObjectCommand: jest.fn(),
     __mockSend: mockSend,
   };
@@ -229,5 +231,33 @@ describe('StorageService', () => {
       const prod = await make({ STORAGE_LOCAL_DIR: root, NODE_ENV: 'production' });
       expect(prod.describe().backend).toBe('gcs');
     });
+  });
+});
+
+// Provider request-contract controls only; no real bucket or ACL claims.
+describe('Customer attachment conditional provider ownership', () => {
+  it('S3 creates conditionally and deletes only matching token/current ETag', async () => {
+    const sdk = jest.requireMock('@aws-sdk/client-s3');
+    sdk.__mockSend.mockReset(); sdk.PutObjectCommand.mockClear(); sdk.DeleteObjectCommand.mockClear();
+    const service = new StorageService(new ConfigService({ STORAGE_LOCAL_DIR: '', S3_ENDPOINT: 'http://test.invalid', S3_ACCESS_KEY: 'test', S3_SECRET_KEY: 'test', S3_BUCKET: 'test' }));
+    sdk.__mockSend.mockResolvedValueOnce({});
+    await service.uploadOwned('new-key', Buffer.from('data'), 'image/png', 'own-token');
+    expect(sdk.PutObjectCommand).toHaveBeenCalledWith(expect.objectContaining({ IfNoneMatch: '*', Metadata: { 'customer-attachment-operation': 'own-token' } }));
+    sdk.__mockSend.mockResolvedValueOnce({ ETag: 'etag', Metadata: { 'customer-attachment-operation': 'other-token' } });
+    await service.deleteOwned('new-key', 'own-token'); expect(sdk.DeleteObjectCommand).not.toHaveBeenCalled();
+    sdk.__mockSend.mockResolvedValueOnce({ ETag: 'etag', Metadata: { 'customer-attachment-operation': 'own-token' } }).mockResolvedValueOnce({});
+    await service.deleteOwned('new-key', 'own-token');
+    expect(sdk.DeleteObjectCommand).toHaveBeenCalledWith(expect.objectContaining({ Key: 'new-key', IfMatch: 'etag' }));
+  });
+  it('GCS creates with generation0 and cleans only matching token/current generation', async () => {
+    const sdk = jest.requireMock('@google-cloud/storage');
+    const service = new StorageService(new ConfigService({ STORAGE_LOCAL_DIR: '', S3_ENDPOINT: '', GCS_BUCKET: 'test' }));
+    const gcs = sdk.Storage.mock.results.at(-1).value, file = gcs.bucket().file();
+    await service.uploadOwned('new-key', Buffer.from('data'), 'image/png', 'own-token');
+    expect(file.save).toHaveBeenCalledWith(expect.any(Buffer), expect.objectContaining({ preconditionOpts: { ifGenerationMatch: 0 }, metadata: { metadata: { customerAttachmentOperation: 'own-token' } } }));
+    file.getMetadata.mockResolvedValueOnce([{ generation: '123', metadata: { customerAttachmentOperation: 'other-token' } }]);
+    await service.deleteOwned('new-key', 'own-token'); expect(file.delete).not.toHaveBeenCalled();
+    file.getMetadata.mockResolvedValueOnce([{ generation: '124', metadata: { customerAttachmentOperation: 'own-token' } }]);
+    await service.deleteOwned('new-key', 'own-token'); expect(file.delete).toHaveBeenCalledWith({ ifGenerationMatch: '124' });
   });
 });

@@ -1,3 +1,6 @@
+import { CustomerDocumentsService } from './customer-documents.service';
+import { UploadDocumentDto } from '../dto/document.dto';
+import { procurementPreparation } from '../../employee-access/access-preparation-context';
 import { domainAccessClient } from '../../employee-access/access-execution-context';
 import { AccessPartySourceService, partyWriteExecution } from '../../employee-access/access-party-source.service';
 import type { CustomerFillContactAcknowledgement, CustomerContactChangedField } from '@installment/shared';
@@ -84,6 +87,7 @@ export class CustomerWriteService {
     // การเดินทางของลูกค้า — CONTACT_ADDED (body ใน audit ถูก REDACTED จึงย้อนหาเวลาที่ได้เบอร์ไม่ได้)
     @Optional() private readonly journey?: JourneyEntryWriter,
     @Optional() private readonly parties?: AccessPartySourceService,
+    @Optional() private readonly documents?: CustomerDocumentsService,
   ) {}
 
   private get prisma(): PrismaService { return domainAccessClient(this.basePrisma); }
@@ -615,7 +619,9 @@ export class CustomerWriteService {
     return row;
   }
 
-  async uploadDocument(id: string, dto: { fileName: string; fileUrl: string; mimeType: string; fileSize: number }) {
+  async uploadDocument(id: string, dto: UploadDocumentDto, file?: Express.Multer.File) {
+    if (procurementPreparation.getStore()) return this.documents!.upload(id, dto, file);
+    if (partyWriteExecution() || !dto.fileUrl || !dto.fileName || !dto.mimeType || !dto.fileSize) throw new BadRequestException('กรุณาระบุเอกสาร');
     const customer = await this.query.findOne(id);
     const currentDocs = customer.documents || [];
     const updatedDocs = [...currentDocs, dto.fileUrl];
@@ -625,7 +631,9 @@ export class CustomerWriteService {
     });
   }
 
-  async deleteDocument(id: string, fileUrl: string) {
+  async deleteDocument(id: string, fileUrl: string, attachmentId?: string) {
+    if (partyWriteExecution()) return this.documents!.remove(id, attachmentId ?? '');
+    if (!fileUrl) throw new BadRequestException('กรุณาระบุเอกสาร');
     const customer = await this.query.findOne(id);
     const currentDocs = customer.documents || [];
     const updatedDocs = currentDocs.filter((doc) => doc !== fileUrl);

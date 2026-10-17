@@ -1,3 +1,4 @@
+import { CUSTOMER_ATTACHMENT_SENSITIVE_KEYS } from '@installment/shared';
 import { hashPII } from '../../utils/pii.util';
 import { CustomerTagsService } from '../customer-tags/customer-tags.service';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -626,8 +627,9 @@ export class PartyQueryPlan {
         delete result[key];
     const documentsAvailable = sources.some(
       (source) =>
+        this.allows('customers.read', source) &&
         this.allows('documents.read', source) &&
-        this.allows('sensitive.customer-identity.read', source),
+        CUSTOMER_ATTACHMENT_SENSITIVE_KEYS.every(key => this.allows(key, source)),
     );
     if ('documents' in result && !documentsAvailable) result.documents = null;
     // Re-read canonical metadata, not an already projected null from findOne.

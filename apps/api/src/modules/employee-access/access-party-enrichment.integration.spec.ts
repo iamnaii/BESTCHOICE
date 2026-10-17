@@ -665,7 +665,7 @@ it('canonical encrypted-only identity is not a fillable chat placeholder', async
   });
   await http('post', path(c.id, 'fill-contact'), fill()).expect(409);
 });
-it('keeps reviewed enrichment and merge registrations while document boundaries stay pending', () => {
+it('keeps reviewed enrichment and merge registrations alongside document boundaries', () => {
   for (const route of ['CustomersController.fillContact', 'CustomersController.updateContact']) {
     expect(PARTY_WRITE_ROUTES).toContain(route);
     expect(ACCESS_BOUNDARIES.has(route)).toBe(true);
@@ -682,7 +682,7 @@ it('keeps reviewed enrichment and merge registrations while document boundaries 
     'CustomersController.uploadDocument',
     'CustomersController.deleteDocument',
   ])
-    expect(ACCESS_BOUNDARIES.has(route)).toBe(false);
+    expect(ACCESS_BOUNDARIES.has(route)).toBe(true);
 });
 it('keeps legacy HTTP fill response and room helper outside managed execution', async () => {
   const legacy = await user();

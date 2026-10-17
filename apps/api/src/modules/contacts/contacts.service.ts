@@ -1,3 +1,6 @@
+import type { ContactRoleDestination } from '@installment/shared';
+import { domainAccessClient } from '../employee-access/access-execution-context';
+import { partyWriteExecution } from '../employee-access/access-party-source.service';
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { ContactRole, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -9,10 +12,12 @@ import { MergeContactsDto } from './dto/merge-contacts.dto';
 @Injectable()
 export class ContactsService {
   constructor(
-    private readonly prisma: PrismaService,
+    private readonly basePrisma: PrismaService,
     private readonly audit: AuditService,
     private readonly contactResolver: ContactResolverService,
   ) {}
+
+  private get prisma(): PrismaService { return domainAccessClient(this.basePrisma); }
 
   async list(dto: ListContactsDto) {
     const page = dto.page ?? 1;
@@ -173,27 +178,33 @@ export class ContactsService {
     id: string,
     role: 'SUPPLIER' | 'CUSTOMER' | 'TRADE_IN_SELLER',
     actor: { userId?: string; ipAddress?: string; userAgent?: string },
+    destination?: ContactRoleDestination,
   ) {
+    const ctx = partyWriteExecution();
+    if (ctx && ctx.snapshot.userId !== actor.userId) throw new Error('Contact actor mismatch');
+    const before = ctx ? await ctx.client.contact.findUnique({ where: { id }, select: { assignedToId: true } }) : undefined;
     const result = await this.prisma.$transaction((tx) =>
       // role is the narrow caller union (⊆ ContactRole); cast bridges Prisma's
       // enum type. Resolver guards non-SUPPLIER roles at runtime.
-      this.contactResolver.ensureRole(tx, id, role as ContactRole),
+      this.contactResolver.ensureRole(tx, id, role as ContactRole, destination),
     );
 
     if (result.provisioned) {
       await this.audit.log({
         userId: actor.userId,
         action: 'CONTACT_ROLE_ADDED',
+        oldValue: ctx ? { assignedToId: before?.assignedToId ?? null } : undefined,
         entity: 'contact',
         entityId: id,
         newValue: {
           role: result.role,
+          ...(ctx ? { assignedToId: destination?.assignedToId !== undefined ? destination.assignedToId : before?.assignedToId ?? null, customerAssignedToId: destination?.customerAssignedToId ?? null } : {}),
           supplierId: result.supplierId,
           ...(result.customerId !== undefined && { customerId: result.customerId }),
         },
         ipAddress: actor.ipAddress,
         userAgent: actor.userAgent,
-      });
+      }, ctx?.client);
     }
 
     return result;

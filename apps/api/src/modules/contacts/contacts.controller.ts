@@ -44,6 +44,6 @@ export class ContactsController {
       userId: req.user?.id,
       ipAddress: req.ip,
       userAgent: req.headers['user-agent'] as string | undefined,
-    });
+    }, dto);
   }
 }

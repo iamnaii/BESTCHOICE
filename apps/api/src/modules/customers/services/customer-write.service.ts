@@ -1,5 +1,7 @@
+import { domainAccessClient } from '../../employee-access/access-execution-context';
+import { AccessPartySourceService, partyWriteExecution } from '../../employee-access/access-party-source.service';
 import { isValidThaiNationalId } from '@installment/shared';
-import { Injectable, ConflictException, BadRequestException, NotFoundException, Optional } from '@nestjs/common';
+import { Injectable, ConflictException, BadRequestException, NotFoundException, ForbiddenException, Optional } from '@nestjs/common';
 import { ContractStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { CreateCustomerDto, UpdateCustomerDto } from '../dto/customer.dto';
@@ -73,14 +75,33 @@ export function uniqueClashToConflict(err: Prisma.PrismaClientKnownRequestError)
 @Injectable()
 export class CustomerWriteService {
   constructor(
-    private prisma: PrismaService,
+    private readonly basePrisma: PrismaService,
     private readonly contactResolver: ContactResolverService,
     private readonly query: CustomerQueryService,
     @Optional() private readonly piiService?: CustomerPiiService,
     @Optional() private readonly audit?: AuditService,
     // การเดินทางของลูกค้า — CONTACT_ADDED (body ใน audit ถูก REDACTED จึงย้อนหาเวลาที่ได้เบอร์ไม่ได้)
     @Optional() private readonly journey?: JourneyEntryWriter,
+    @Optional() private readonly parties?: AccessPartySourceService,
   ) {}
+
+  private get prisma(): PrismaService { return domainAccessClient(this.basePrisma); }
+
+  private async managedAudit(action: string, id: string, oldAssigned?: string | null, newAssigned?: string | null, contactId?: string | null) {
+    const ctx = partyWriteExecution();
+    if (!ctx) return;
+    if (!this.audit) throw new Error('Required customer audit writer unavailable');
+    await this.audit.log({ userId: ctx.snapshot.userId, action, entity: 'customer', entityId: id,
+      oldValue: { assignedToId: oldAssigned ?? null }, newValue: { assignedToId: newAssigned ?? null, ...(contactId !== undefined ? { contactId } : {}) } }, ctx.client);
+  }
+
+  private async existingIdentityMutation(tx: Prisma.TransactionClient, kind: 'customer' | 'contact', id: string, revival = false) {
+    try { return await this.parties!.mutation(tx, kind, id, kind === 'customer' ? 'customers.update' : 'contacts.update', revival); }
+    catch (error) {
+      if (error instanceof ForbiddenException) throw new ConflictException('ข้อมูลซ้ำกับรายการที่มีอยู่แล้ว');
+      throw error;
+    }
+  }
 
   private get piiKey(): string {
     return process.env.PII_ENCRYPTION_KEY || '';
@@ -200,6 +221,7 @@ export class CustomerWriteService {
    * ระหว่างถือล็อก (pool เต็ม = รอจนทรานแซกชันหมดเวลา → P2028 500 แทน 409 ไทย)
    */
   private async toExistingCustomerRef(db: Db, row: ExistingCustomerRow) {
+    if (partyWriteExecution()) return undefined;
     const purchased = (await db.customer.count({ where: { AND: [{ id: row.id }, BOUGHT_WHERE] } })) > 0;
     return {
       id: row.id,
@@ -316,7 +338,17 @@ export class CustomerWriteService {
     return existing;
   }
 
-  async create(dto: CreateCustomerDto) {
+  async create(input: CreateCustomerDto) {
+    const { branchId, assignedToId, ...dto } = input;
+    const ctx = partyWriteExecution();
+    if (ctx) await lockCustomerPhone(ctx.client, this.piiService, dto.phone);
+    const origin = ctx ? await this.parties!.destination(ctx.client, ctx.scope.company, branchId) : undefined;
+    if (ctx && origin) {
+      const source = { company: origin.accessCompanyCode, ...(origin.accessBranchId ? { branchId: origin.accessBranchId } : {}) };
+      this.parties!.assert(ctx.snapshot, 'customers.create', [source]);
+    }
+
+    if (ctx && dto.referredById) this.parties!.assert(ctx.snapshot, 'customers.read', await this.parties!.customer(ctx.client, dto.referredById), false);
     // nationalId is optional (walk-in quick-create path omits it).
     // When provided, normalize + deduplicate; when absent, skip all nationalId checks.
     const normalizedNid = dto.nationalId ? this.normalizeNationalId(dto.nationalId) : undefined;
@@ -379,12 +411,19 @@ export class CustomerWriteService {
       // ล็อกเบอร์หลักเป็นคำสั่งแรกของทรานแซกชัน (ก่อน contact:code ใน findOrCreateByNaturalKey) —
       // กติกาลำดับล็อก .claude/rules/database.md
       await lockCustomerPhone(tx, this.piiService, normalizedPhone);
+      if (ctx && reviveGhostId) {
+        const sources = await this.existingIdentityMutation(tx, 'customer', reviveGhostId, true);
+        await this.parties!.assignment(tx, 'customer', reviveGhostId, assignedToId, sources);
+      }
+      let reusedContactId: string | undefined;
       const contact = await this.contactResolver.findOrCreateByNaturalKey(tx, {
         name: dto.name,
         taxId: null,
         nationalIdHash,
         phone: dataPlaintext.phone ?? null,
         role: 'CUSTOMER',
+        ...(ctx && reviveGhostId ? { reviveCustomerId: reviveGhostId } : {}),
+        ...(origin ? { origin, onExisting: (id: string) => { reusedContactId = id; } } : {}),
       });
       const contactConnect: Prisma.ContactCreateNestedOneWithoutCustomersInput = {
         connect: { id: contact.id },
@@ -405,6 +444,14 @@ export class CustomerWriteService {
             where: { contactId: contact.id, deletedAt: null },
             select: { id: true },
           });
+      if (ctx && reusedContactId && !reviveGhostId && !existingStub) await this.existingIdentityMutation(tx, 'contact', reusedContactId);
+      if (ctx && existingStub) {
+        const sources = await this.existingIdentityMutation(tx, 'customer', existingStub.id);
+        await this.parties!.assignment(tx, 'customer', existingStub.id, assignedToId, sources);
+      }
+      const oldAssigned = ctx && (reviveGhostId || existingStub?.id)
+        ? (await tx.customer.findUniqueOrThrow({ where: { id: reviveGhostId ?? existingStub!.id }, select: { assignedToId: true } })).assignedToId : null;
+      const assignment = ctx && assignedToId !== undefined ? { assignedTo: assignedToId ? { connect: { id: assignedToId } } : { disconnect: true } } : {};
       // T3-C9: reject duplicate phone / email at application level — บนคอนเนกชันที่ถือล็อก
       await this.assertContactNotDuplicate(tx, normalizedPhone, normalizedEmail, existingStub?.id);
       if (reviveGhostId) {
@@ -412,26 +459,47 @@ export class CustomerWriteService {
         // form submission. The admin is creating a customer whose nationalId
         // matches a soft-deleted ghost — Prisma.CustomerCreateInput shares
         // enough fields with UpdateInput to be compatible here.
-        return tx.customer.update({
+        const row = await tx.customer.update({
           where: { id: reviveGhostId },
-          data: { ...(data as Prisma.CustomerUpdateInput), contact: contactConnect, deletedAt: null },
+          data: { ...(data as Prisma.CustomerUpdateInput), ...assignment, contact: contactConnect, deletedAt: null },
         });
+        await this.managedAudit('CUSTOMER_REVIVED', row.id, oldAssigned, row.assignedToId, row.contactId);
+        return row;
       }
       if (existingStub) {
         // Upgrade the stub: overwrite with full create data (including all
         // PII-encrypted fields) — same logic as a regular create, just on
         // an existing row.
-        return tx.customer.update({
+        const row = await tx.customer.update({
           where: { id: existingStub.id },
-          data: { ...(data as Prisma.CustomerUpdateInput), contact: contactConnect },
+          data: { ...(data as Prisma.CustomerUpdateInput), ...assignment, contact: contactConnect },
         });
+        await this.managedAudit('CUSTOMER_ENRICHED', row.id, oldAssigned, row.assignedToId, row.contactId);
+        return row;
       }
-      return tx.customer.create({ data: { ...data, contact: contactConnect } });
+      if (ctx && origin) await this.parties!.assignment(tx, 'customer', null, assignedToId, [{ company: origin.accessCompanyCode, ...(origin.accessBranchId ? { branchId: origin.accessBranchId } : {}) }]);
+      const row = await tx.customer.create({ data: { ...data, contact: contactConnect,
+        ...(origin ? { accessCompany: { connect: { companyCode: origin.accessCompanyCode } }, ...(origin.accessBranchId ? { accessBranch: { connect: { id: origin.accessBranchId } } } : {}) } : {}),
+        ...(ctx && assignedToId ? { assignedTo: { connect: { id: assignedToId } } } : {}),
+      } });
+      await this.managedAudit('CUSTOMER_CREATED', row.id, null, row.assignedToId, row.contactId);
+      return row;
     });
   }
 
-  async update(id: string, dto: UpdateCustomerDto, actor?: { id: string; role: string }) {
-    const before = await this.query.findOne(id);
+  async update(id: string, input: UpdateCustomerDto, actor?: { id: string; role: string }) {
+    const { assignedToId, ...dto } = input;
+    const ctx = partyWriteExecution();
+    if (ctx && actor?.id !== ctx.snapshot.userId) throw new Error('Customer actor mismatch');
+    if (ctx) {
+      await lockCustomerPhone(ctx.client, this.piiService, dto.phone);
+      const sources = await this.parties!.mutation(ctx.client, 'customer', id, 'customers.update');
+      await this.parties!.assignment(ctx.client, 'customer', id, assignedToId, sources);
+    }
+    if (ctx && dto.referredById) this.parties!.assert(ctx.snapshot, 'customers.read', await this.parties!.customer(ctx.client, dto.referredById), false);
+    const rawBefore = ctx ? await ctx.client.customer.findUniqueOrThrow({ where: { id } }) : undefined;
+    if (ctx && !this.piiService) throw new Error('Required customer PII writer unavailable');
+    const before = ctx ? this.piiService!.decryptCustomerFields(rawBefore!, { strict: await this.piiService!.isStrictMode(ctx.client) })! : await this.query.findOne(id);
     // NID is intentionally not in UpdateCustomerDto — customers can't change
     // their ID through this endpoint. If NID needs correction, create a
     // dedicated admin-only flow that writes to an audit log.
@@ -469,6 +537,7 @@ export class CustomerWriteService {
 
     const data: Prisma.CustomerUpdateInput = {
       ...dto,
+      ...(ctx && assignedToId !== undefined ? { assignedTo: assignedToId ? { connect: { id: assignedToId } } : { disconnect: true } } : {}),
       ...(normalizedPhone !== undefined ? { phone: normalizedPhone ?? dto.phone } : {}),
       ...(normalizedPhoneSecondary !== undefined
         ? { phoneSecondary: normalizedPhoneSecondary }
@@ -492,21 +561,26 @@ export class CustomerWriteService {
     // CONTACT_ADDED — เบอร์จากว่าง → มีค่า เทียบในโค้ด ไม่เก็บตัวเบอร์ · เปลี่ยนเบอร์ที่มีอยู่แล้วไม่นับ
     // (nationalId ไม่อยู่ใน UpdateCustomerDto ⇒ ทางนี้ได้แค่เบอร์)
     if (finalPhone !== undefined && !isBlankContact(finalPhone) && isBlankContact(before.phone)) {
-      await this.journey?.recordAfterCommit(
-        contactAddedEntry({
+      const entry = contactAddedEntry({
           customerId: id,
           fields: ['phone'],
           via: 'UPDATE',
           actorUserId: actor?.id ?? null,
           occurredAt: new Date(),
-        }),
-      );
+        });
+      if (ctx) {
+        if (!this.journey) throw new Error('Required customer journey writer unavailable');
+        await this.journey.recordInTx(ctx.client, entry);
+      } else await this.journey?.recordAfterCommit(entry);
     }
+    await this.managedAudit('CUSTOMER_UPDATED', id, before.assignedToId, updated.assignedToId);
     return updated;
   }
 
   async remove(id: string) {
-    await this.query.findOne(id);
+    const ctx = partyWriteExecution();
+    if (ctx) await this.parties!.mutation(ctx.client, 'customer', id, 'customers.delete');
+    else await this.query.findOne(id);
 
     const activeContracts = await this.prisma.contract.count({
       where: {
@@ -517,14 +591,13 @@ export class CustomerWriteService {
     });
     if (activeContracts > 0) {
       throw new BadRequestException(
-        `ไม่สามารถลบลูกค้าได้: มีสัญญาที่ยังเปิดอยู่ ${activeContracts} สัญญา`,
+        ctx ? 'ไม่สามารถลบลูกค้าในสถานะปัจจุบันได้' : `ไม่สามารถลบลูกค้าได้: มีสัญญาที่ยังเปิดอยู่ ${activeContracts} สัญญา`,
       );
     }
 
-    return this.prisma.customer.update({
-      where: { id },
-      data: { deletedAt: new Date() },
-    });
+    const row = await this.prisma.customer.update({ where: { id }, data: { deletedAt: new Date() } });
+    await this.managedAudit('CUSTOMER_DELETED', id, row.assignedToId, row.assignedToId);
+    return row;
   }
 
   async uploadDocument(id: string, dto: { fileName: string; fileUrl: string; mimeType: string; fileSize: number }) {

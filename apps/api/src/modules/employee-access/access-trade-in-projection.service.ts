@@ -1,6 +1,5 @@
-import { serviceCustomerEvidenceWhere } from './access-service-origin';
+import { customerPartyWhere, contactPartyWhere } from './access-party-scope';
 import { saleSource } from './access-sales-scope';
-import { inventorySaleScopeWhere } from './access-inventory-scope';
 import { Injectable } from '@nestjs/common';
 import { AccessSnapshot, PermissionKey, canAccess } from '@installment/shared';
 import { Prisma } from '@prisma/client';
@@ -9,7 +8,6 @@ import { permissionScopes } from './access-context';
 import { currentDomainAccess } from './access-execution-context';
 import {
   tradeInSource,
-  tradeInScopeWhere,
   tradeInCreditJournalSource,
 } from './access-trade-in-scope';
 import { AccessResourceService } from './access-resource.service';
@@ -32,25 +30,13 @@ export class AccessTradeInProjectionService {
       permission,
       tuples: permissionScopes({ id: snapshot.userId, access: snapshot }, permission, 'SHOP'),
     };
-    if (!scope.tuples.some(tuple => tuple.userId === scope.userId && (tuple.scope !== 'BRANCHES' || tuple.branchIds.length > 0))) return false;
-    if (
-      await tx.tradeIn.findFirst({
-        where: { [field]: id, AND: tradeInScopeWhere(scope) },
-        select: { id: true },
-      })
-    )
-      return true;
-    if (await tx.sale.findFirst({
-      where: {
-        ...(field === 'customerId' ? { customerId: id } : { customer: { contactId: id } }),
-        AND: inventorySaleScopeWhere(scope),
-      },
-      select: { id: true },
-    })) return true;
-    return field === 'customerId' && !!(await tx.customer.findFirst({
-      where: { id, AND: serviceCustomerEvidenceWhere(scope) }, select: { id: true },
-    }));
+    const live = await tx.companyInfo.count({ where: { companyCode: scope.company, isActive: true, deletedAt: null } });
+    if (!live) return false;
+    return field === 'customerId'
+      ? !!await tx.customer.count({ where: { id, AND: customerPartyWhere(scope) } })
+      : !!await tx.contact.count({ where: { id, AND: contactPartyWhere(scope) } });
   }
+
   async project<T>(value: T, sourceId?: string, reference = false): Promise<T> {
     const ctx = currentDomainAccess();
     if (!ctx) return value;

@@ -29,13 +29,14 @@ describe('ContactsController.ensureRole', () => {
       headers: { 'user-agent': 'jest' },
     } as any;
 
-    const result = await controller.ensureRole('c1', { role: 'SUPPLIER' }, req);
+    const dto = { role: 'SUPPLIER' as const, branchId: 'branch-a' };
+    const result = await controller.ensureRole('c1', dto, req);
 
     expect(service.ensureRole).toHaveBeenCalledWith('c1', 'SUPPLIER', {
       userId: 'u1',
       ipAddress: '10.0.0.1',
       userAgent: 'jest',
-    });
+    }, dto);
     expect(result).toEqual({ supplierId: 'sup1', provisioned: true });
   });
 });

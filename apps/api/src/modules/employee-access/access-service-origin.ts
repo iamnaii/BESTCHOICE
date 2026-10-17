@@ -1,3 +1,4 @@
+import { partyOriginWhere } from './access-party-scope';
 import { Prisma } from '@prisma/client';
 import { CollectionScope } from './access-policy.registry';
 
@@ -34,6 +35,6 @@ export function serviceCustomerEvidenceWhere(scope: CollectionScope): Prisma.Cus
   const origin = shopServiceOriginWhere(scope);
   return {
     deletedAt: null,
-    OR: [{ contracts: { some: origin } }, { repairTickets: { some: origin } }],
+    OR: [partyOriginWhere(scope), { contracts: { some: origin } }, { repairTickets: { some: origin } }],
   };
 }

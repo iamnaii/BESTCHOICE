@@ -1,11 +1,9 @@
-import { serviceCustomerEvidenceWhere } from './access-service-origin';
-import { tradeInScopeWhere } from './access-trade-in-scope';
+import { customerPartyWhere } from './access-party-scope';
 import { ForbiddenException } from '@nestjs/common';
 import { AccessResource } from '@installment/shared';
 import { Prisma } from '@prisma/client';
 import { AccessClient } from './access-snapshot.service';
 import { CollectionScope } from './access-policy.registry';
-import { inventorySaleScopeWhere } from './access-inventory-scope';
 import { currentDomainAccess, currentPermissionScope } from './access-execution-context';
 
 /** Voided Sale history retains its actual SHOP source; callers choose archive filters. */
@@ -116,22 +114,5 @@ export async function bookingSource(
 
 /** Same-party evidence predicate for searches; apply before counts/pagination. */
 export function currentCustomerReadWhere(): Prisma.CustomerWhereInput | undefined {
-  const ctx = currentDomainAccess();
-  if (!ctx) return undefined;
-  const scope = currentPermissionScope('customers.read')!;
-  if (
-    !scope.tuples.some(
-      (tuple) =>
-        tuple.userId === scope.userId && (tuple.scope !== 'BRANCHES' || tuple.branchIds.length > 0),
-    )
-  )
-    return { id: { in: [] } };
-  return {
-    deletedAt: null,
-    OR: [
-      { tradeIns: { some: tradeInScopeWhere(scope) } },
-      { sales: { some: inventorySaleScopeWhere(scope) } },
-      serviceCustomerEvidenceWhere(scope),
-    ],
-  };
+  return currentDomainAccess() ? customerPartyWhere(currentPermissionScope('customers.read')!) : undefined;
 }

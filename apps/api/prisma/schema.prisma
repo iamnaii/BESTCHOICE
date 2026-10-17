@@ -772,6 +772,8 @@ enum BuybackSelectType {
 // ============================================================
 
 model Branch {
+  accessContacts Contact[] @relation("ContactAccessBranch")
+  accessCustomers Customer[] @relation("CustomerAccessBranch")
   accessSuppliers Supplier[] @relation("SupplierAccessBranch")
   accessPurchaseOrders PurchaseOrder[] @relation("PurchaseOrderAccessBranch")
   accessAssignmentBranches EmployeeAccessAssignmentBranch[]
@@ -843,6 +845,8 @@ model Branch {
 }
 
 model User {
+  assignedContacts Contact[] @relation("ContactAssignedTo")
+  assignedCustomers Customer[] @relation("CustomerAssignedTo")
   accessManaged Boolean @default(false) @map("access_managed")
   accessRevision Int @default(0) @map("access_revision")
   accessAssignments EmployeeAccessAssignment[]
@@ -1121,6 +1125,17 @@ model EmployeeProfile {
 }
 
 model Contact {
+  /// Immutable authenticated origin. Historical nulls are never backfilled.
+  accessCompanyCode String? @map("access_company_code")
+  accessBranchId String? @map("access_branch_id")
+  accessCompany CompanyInfo? @relation("ContactAccessCompany", fields: [accessCompanyCode], references: [companyCode], onDelete: Restrict)
+  accessBranch Branch? @relation("ContactAccessBranch", fields: [accessBranchId], references: [id], onDelete: Restrict)
+  /// Current business assignee; never an employee access grant.
+  assignedToId String? @map("assigned_to_id")
+  assignedTo User? @relation("ContactAssignedTo", fields: [assignedToId], references: [id], onDelete: Restrict)
+  @@index([accessCompanyCode, accessBranchId])
+  @@index([assignedToId])
+
   id              String        @id @default(uuid())
   contactCode     String        @unique @map("contact_code") // P-00001 (internal)
   peakContactCode String?       @map("peak_contact_code") // C00790 (PEAK mapping, owner-filled)
@@ -1148,6 +1163,17 @@ model Contact {
 }
 
 model Customer {
+  /// Immutable authenticated origin. Historical nulls are never backfilled.
+  accessCompanyCode String? @map("access_company_code")
+  accessBranchId String? @map("access_branch_id")
+  accessCompany CompanyInfo? @relation("CustomerAccessCompany", fields: [accessCompanyCode], references: [companyCode], onDelete: Restrict)
+  accessBranch Branch? @relation("CustomerAccessBranch", fields: [accessBranchId], references: [id], onDelete: Restrict)
+  /// Current business assignee; never an employee access grant.
+  assignedToId String? @map("assigned_to_id")
+  assignedTo User? @relation("CustomerAssignedTo", fields: [assignedToId], references: [id], onDelete: Restrict)
+  @@index([accessCompanyCode, accessBranchId])
+  @@index([assignedToId])
+
   chatServiceRequests ChatServiceRequest[]
   facebookCommentThreads FacebookCommentThread[]
 
@@ -3928,6 +3954,8 @@ model DocumentAuditLog {
 // ============================================================
 
 model CompanyInfo {
+  accessContacts Contact[] @relation("ContactAccessCompany")
+  accessCustomers Customer[] @relation("CustomerAccessCompany")
   accessSuppliers Supplier[] @relation("SupplierAccessCompany")
   accessPurchaseOrders PurchaseOrder[] @relation("PurchaseOrderAccessCompany")
   inspectionTemplates InspectionTemplate[]

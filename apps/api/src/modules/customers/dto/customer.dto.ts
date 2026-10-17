@@ -1,7 +1,11 @@
-import { IsString, IsOptional, IsArray, IsBoolean, IsDateString, IsEmail, IsNumber, Length, Matches, ValidateIf } from 'class-validator';
+import type { PartyDestination } from '@installment/shared';
+import { IsString, IsOptional, IsArray, IsBoolean, IsDateString, IsEmail, IsNumber, Length, Matches, ValidateIf, IsUUID } from 'class-validator';
 import { Transform, Type } from 'class-transformer';
 
-export class CreateCustomerDto {
+export class CreateCustomerDto implements PartyDestination {
+  @IsOptional() @IsUUID() branchId?: string | null;
+  @IsOptional() @IsUUID() assignedToId?: string | null;
+
   /**
    * เลขบัตรประชาชน — optional for walk-in quick-create (staff fills later).
    * When provided, must be exactly 13 digits.
@@ -118,6 +122,8 @@ export class CreateCustomerDto {
 }
 
 export class UpdateCustomerDto {
+  @IsOptional() @IsUUID() assignedToId?: string | null;
+
   @IsString()
   @IsOptional()
   prefix?: string;

@@ -9,7 +9,7 @@ import { productScopeWhere } from './access-query-scope';
 import { Prisma } from '@prisma/client';
 
 export interface AccessExecutionOptions {
-  domain?: 'procurement' | 'inventory' | 'adjustments' | 'trade-in';
+  domain?: 'procurement' | 'inventory' | 'adjustments' | 'trade-in' | 'parties';
   isolationLevel?: Prisma.TransactionIsolationLevel;
   /** Whole-attempt retries, including fresh authorization and source resolution. */
   maxAttempts?: 1 | 2 | 3;

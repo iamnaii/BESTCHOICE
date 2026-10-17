@@ -1410,3 +1410,228 @@ it.each([
     } else expect(changed).toMatchObject({ customerId: target.id, deletedAt: null });
   },
 );
+
+// Fix1: maintenance-only sources must wait on the evidence row itself. Locking
+// its old branch, or Serializable without that row lock, is not a current read.
+type MergeEvidenceKind = 'sale' | 'repair' | 'booking';
+const mergeEvidenceTables = {
+  sale: 'sales',
+  repair: 'repair_tickets',
+  booking: 'bookings',
+} as const;
+async function mergeEvidence(kind: MergeEvidenceKind, customerId: string) {
+  const common = { customerId, branchId: branchA, deletedAt: new Date() };
+  if (kind === 'sale') {
+    const product = await db.product.create({
+      data: {
+        name: 'Lock evidence',
+        brand: 'Apple',
+        model: 'Fixture',
+        category: 'PHONE_NEW',
+        costPrice: 100,
+        branchId: branchA,
+      },
+    });
+    return db.sale.create({
+      data: {
+        ...common,
+        saleNumber: randomUUID(),
+        saleType: 'CASH',
+        productId: product.id,
+        salespersonId: actor,
+        sellingPrice: 1000,
+        netAmount: 1000,
+      },
+    });
+  }
+  if (kind === 'repair')
+    return db.repairTicket.create({
+      data: {
+        ...common,
+        ticketNumber: randomUUID(),
+        defectDescription: 'Fixture',
+        createdById: actor,
+      },
+    });
+  return db.booking.create({
+    data: {
+      ...common,
+      bookingNumber: randomUUID(),
+      depositAmount: 100,
+      totalAmount: 1000,
+      expireDate: new Date('2030-01-01'),
+      createdById: actor,
+    },
+  });
+}
+async function withLockedMergeEvidence(
+  kind: MergeEvidenceKind,
+  id: string,
+  change: { branchId?: string; customerId?: string },
+  action: () => Promise<request.Response>,
+) {
+  let release!: () => void, ready!: () => void;
+  const gate = new Promise<void>((r) => (release = r)),
+    locked = new Promise<void>((r) => (ready = r));
+  let blockerPid = 0,
+    completed = false,
+    waitingQuery: string | undefined;
+  const blocker = db.$transaction(
+    async (tx) => {
+      blockerPid = (await tx.$queryRaw<Array<{ pid: number }>>`SELECT pg_backend_pid() AS pid`)[0]
+        .pid;
+      await tx.$queryRaw(
+        Prisma.sql`SELECT id FROM ${Prisma.raw(mergeEvidenceTables[kind])} WHERE id=${id} FOR UPDATE`,
+      );
+      // Commit the source/link change only AFTER observing this exact blocker (or
+      // the unpatched request incorrectly completing against the prior MVCC row).
+      if (kind === 'sale')
+        await tx.sale.update({
+          where: { id },
+          data: { notes: 'Concurrent source writer', ...change },
+        });
+      else if (kind === 'repair')
+        await tx.repairTicket.update({
+          where: { id },
+          data: { notes: 'Concurrent source writer', ...change },
+        });
+      else
+        await tx.booking.update({
+          where: { id },
+          data: { notes: 'Concurrent source writer', ...change },
+        });
+      ready();
+      await gate;
+    },
+    { timeout: 15000 },
+  );
+  await locked;
+  const pending = action().then((response) => {
+    completed = true;
+    return response;
+  });
+  try {
+    for (let attempt = 0; attempt < 100 && !completed; attempt++) {
+      const rows = await db.$queryRaw<
+        Array<{ query: string }>
+      >`SELECT query FROM pg_stat_activity WHERE datname=current_database() AND wait_event_type='Lock' AND ${blockerPid} = ANY(pg_blocking_pids(pid))`;
+      if (rows.length) {
+        waitingQuery = rows[0].query;
+        break;
+      }
+      await new Promise((r) => setTimeout(r, 20));
+    }
+  } finally {
+    release();
+    await blocker;
+  }
+  return { response: await pending, waitingQuery };
+}
+it.each(['sale', 'repair', 'booking'] as const)(
+  'Fix1 rechecks archived Contact child %s provenance after its evidence-row wait',
+  async (kind) => {
+    const primary = await contact(),
+      duplicate = await contact();
+    const child = await customer({ contactId: duplicate.id, deletedAt: new Date() });
+    const evidence = await mergeEvidence(kind, child.id);
+    const staff = await reader(['contacts.read', 'contacts.update']);
+    await grant(staff, customerPermissions, 'SHOP', [branchA]);
+    const { response, waitingQuery } = await withLockedMergeEvidence(
+      kind,
+      evidence.id,
+      { branchId: branchB },
+      () => merge(primary.id, duplicate.id, staff).then((r) => r),
+    );
+    expect(response.status).toBe(403);
+    expect(waitingQuery).toContain(mergeEvidenceTables[kind]);
+    expect(waitingQuery).toMatch(/FOR (SHARE|UPDATE)/i);
+    expect(await db.contact.findUniqueOrThrow({ where: { id: primary.id } })).toEqual(primary);
+    expect(await db.contact.findUniqueOrThrow({ where: { id: duplicate.id } })).toEqual(duplicate);
+    expect(
+      await db.$queryRaw(
+        Prisma.sql`SELECT branch_id FROM ${Prisma.raw(mergeEvidenceTables[kind])} WHERE id=${evidence.id}`,
+      ),
+    ).toEqual([{ branch_id: branchB }]);
+    expect(await db.customer.findUniqueOrThrow({ where: { id: child.id } })).toEqual(child);
+    expect(
+      await db.auditLog.count({ where: { entityId: primary.id, action: 'CONTACTS_MERGED' } }),
+    ).toBe(0);
+  },
+);
+it.each(['sale', 'booking'] as const)(
+  'Fix1 rechecks typed Journey %s correlation across an archived alias after its evidence-row wait',
+  async (kind) => {
+    const { source, target } = await pair();
+    const alias = await customer({ mergedIntoId: source.id, deletedAt: new Date() }),
+      unrelated = await customer();
+    const evidence = await mergeEvidence(kind, alias.id);
+    const historic = await entry(source.id, {
+      originCustomerId: alias.id,
+      refType: kind,
+      refId: evidence.id,
+    });
+    const { response, waitingQuery } = await withLockedMergeEvidence(
+      kind,
+      evidence.id,
+      { customerId: unrelated.id },
+      () => absorb(source.id, target.id).then((r) => r),
+    );
+    expect(response.status).toBe(403);
+    expect(waitingQuery).toContain(mergeEvidenceTables[kind]);
+    expect(waitingQuery).toMatch(/FOR (SHARE|UPDATE)/i);
+    expect(await db.customer.findUniqueOrThrow({ where: { id: source.id } })).toEqual(source);
+    expect(await db.customer.findUniqueOrThrow({ where: { id: target.id } })).toEqual(target);
+    expect(
+      await db.$queryRaw(
+        Prisma.sql`SELECT customer_id FROM ${Prisma.raw(mergeEvidenceTables[kind])} WHERE id=${evidence.id}`,
+      ),
+    ).toEqual([{ customer_id: unrelated.id }]);
+    expect(await db.customer.findUniqueOrThrow({ where: { id: alias.id } })).toEqual(alias);
+    expect(await db.customerJourneyEntry.findUniqueOrThrow({ where: { id: historic.id } })).toEqual(
+      historic,
+    );
+    expect(
+      await db.auditLog.count({
+        where: { entityId: target.id, action: 'CUSTOMER_PLACEHOLDER_MERGED' },
+      }),
+    ).toBe(0);
+    expect(await db.customerJourneyEntry.count({ where: { customerId: target.id } })).toBe(0);
+  },
+);
+it.each(['contact', 'journey'] as const)(
+  'Fix1 allows still-authorized %s maintenance after a real Booking evidence-row wait',
+  async (kind) => {
+    const primary = await contact(),
+      duplicate = await contact(),
+      { source, target } = await pair();
+    const child =
+      kind === 'contact'
+        ? await customer({ contactId: duplicate.id, deletedAt: new Date() })
+        : await customer({ mergedIntoId: source.id, deletedAt: new Date() });
+    const evidence = await mergeEvidence('booking', child.id);
+    if (kind === 'journey')
+      await entry(source.id, {
+        originCustomerId: child.id,
+        refType: 'booking',
+        refId: evidence.id,
+      });
+    const { response, waitingQuery } = await withLockedMergeEvidence(
+      'booking',
+      evidence.id,
+      {},
+      () =>
+        (kind === 'contact' ? merge(primary.id, duplicate.id) : absorb(source.id, target.id)).then(
+          (r) => r,
+        ),
+    );
+    expect(response.status).toBe(201);
+    expect(waitingQuery).toContain('bookings');
+    expect(waitingQuery).toMatch(/FOR (SHARE|UPDATE)/i);
+    expect(await db.booking.findUniqueOrThrow({ where: { id: evidence.id } })).toMatchObject({
+      branchId: branchA,
+      customerId: child.id,
+      deletedAt: evidence.deletedAt,
+      notes: 'Concurrent source writer',
+    });
+  },
+);

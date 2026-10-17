@@ -103,6 +103,9 @@ export class PartyMergeSources {
     const result: PartySource[] = [];
     if (row.accessCompanyCode)
       result.push(await this.origin(row.accessCompanyCode, row.accessBranchId));
+    // Maintenance includes archives/aliases omitted by ordinary source locks.
+    // Lock current evidence versions, not just the branch they used to point to.
+    await this.tx.$queryRaw`SELECT id FROM sales WHERE customer_id=${id} ORDER BY id FOR SHARE`;
     for (const r of await this.tx.sale.findMany({
       where: { customerId: id },
       orderBy: { id: 'asc' },
@@ -119,11 +122,14 @@ export class PartyMergeSources {
       orderBy: { id: 'asc' },
     }))
       result.push(await this.tradeIn(r.id));
+    await this.tx
+      .$queryRaw`SELECT id FROM repair_tickets WHERE customer_id=${id} ORDER BY id FOR SHARE`;
     for (const r of await this.tx.repairTicket.findMany({
       where: { customerId: id },
       orderBy: { id: 'asc' },
     }))
       result.push(await this.origin('SHOP', r.branchId));
+    await this.tx.$queryRaw`SELECT id FROM bookings WHERE customer_id=${id} ORDER BY id FOR SHARE`;
     for (const r of await this.tx.booking.findMany({
       where: { customerId: id },
       orderBy: { id: 'asc' },
@@ -316,6 +322,7 @@ export class PartyMergeSources {
             'customers.update',
           );
         else if (row.refType === 'sale') {
+          await this.tx.$queryRaw`SELECT id FROM sales WHERE id=${row.refId} FOR SHARE`;
           const ref = await this.tx.sale.findUnique({ where: { id: row.refId } });
           if (!ref || !sourceFamily.has(ref.customerId)) throw unavailable();
           this.assert(
@@ -324,6 +331,7 @@ export class PartyMergeSources {
             'customers.update',
           );
         } else if (row.refType === 'booking') {
+          await this.tx.$queryRaw`SELECT id FROM bookings WHERE id=${row.refId} FOR SHARE`;
           const ref = await this.tx.booking.findUnique({ where: { id: row.refId } });
           if (!ref || !sourceFamily.has(ref.customerId)) throw unavailable();
           this.assert(

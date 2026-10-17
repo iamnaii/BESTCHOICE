@@ -17,6 +17,7 @@ describe('AuthController /auth/refresh (T7-C5 cookie-only)', () => {
       refreshToken: jest.fn().mockResolvedValue({
         accessToken: 'new-access-token',
         refreshToken: 'rotated-refresh-token',
+        user: { id: 'u', access: { managed: true, revision: 2, grants: [] } },
       }),
     } as unknown as jest.Mocked<Pick<AuthService, 'refreshToken'>>;
 
@@ -56,7 +57,7 @@ describe('AuthController /auth/refresh (T7-C5 cookie-only)', () => {
 
     expect(authService.refreshToken).toHaveBeenCalledTimes(1);
     expect(authService.refreshToken).toHaveBeenCalledWith('cookie-token');
-    expect(result).toEqual({ accessToken: 'new-access-token' });
+    expect(result).toEqual({ accessToken: 'new-access-token', user: { id: 'u', access: { managed: true, revision: 2, grants: [] } } });
     expect((res.cookie as jest.Mock)).toHaveBeenCalledWith(
       'refresh_token',
       'rotated-refresh-token',

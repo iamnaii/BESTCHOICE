@@ -1,3 +1,4 @@
+import { ACCESS_AUTHORIZED } from '../../employee-access/access-policy';
 import {
   Injectable,
   CanActivate,
@@ -30,6 +31,11 @@ export class BranchGuard implements CanActivate {
     // Must be used after JwtAuthGuard
     if (!user) {
       throw new ForbiddenException('ไม่พบข้อมูลผู้ใช้');
+    }
+
+    if (user.access?.managed) {
+      if (request[ACCESS_AUTHORIZED] !== `${context.getClass().name}.${context.getHandler().name}`) throw new ForbiddenException('ไม่พบการตรวจสิทธิ์ปัจจุบัน');
+      return true;
     }
 
     // Cross-branch roles see everything

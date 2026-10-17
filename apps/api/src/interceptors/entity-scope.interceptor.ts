@@ -1,3 +1,4 @@
+import { ACCESS_SELF_SERVICE } from '../modules/employee-access/access-policy';
 import {
   CallHandler,
   ExecutionContext,
@@ -56,6 +57,7 @@ export class EntityScopeInterceptor implements NestInterceptor {
     const req = context.switchToHttp().getRequest<Request>();
     const user = req.user as
       | {
+          access?: import('@installment/shared').AccessSnapshot;
           role?: string;
           accessibleCompanies?: string[];
           primaryCompany?: string | null;
@@ -73,6 +75,13 @@ export class EntityScopeInterceptor implements NestInterceptor {
 
     // ยกเว้น 3: ไม่ได้ระบุ company มา = ไม่ตรวจ และไม่เขียน entityScope (ดู docblock)
     if (!requested) return next.handle();
+
+    if (user.access?.managed) {
+      if (req[ACCESS_SELF_SERVICE]) return next.handle();
+      if (!user.access.isOwner && !user.access.grants.some(g => g.company === requested)) throw new ForbiddenException('ไม่มีสิทธิ์ในส่วนงานนี้');
+      req.entityScope = requested;
+      return next.handle();
+    }
 
     const access = resolveCompanyAccess(
       user.role ?? '',

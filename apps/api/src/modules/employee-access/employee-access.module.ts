@@ -1,3 +1,5 @@
+import { AccessSocketBoundary } from './access-socket-boundary';
+import { AccessPolicyService } from './access-policy';
 import { Global, Module } from '@nestjs/common';
 import { EmployeeAccessController } from './employee-access.controller';
 import { EmployeeAccessService } from './employee-access.service';
@@ -7,7 +9,7 @@ import { AccessSnapshotService } from './access-snapshot.service';
 @Global()
 @Module({
   controllers: [EmployeeAccessController],
-  providers: [EmployeeAccessService, AccessSnapshotService],
-  exports: [EmployeeAccessService, AccessSnapshotService],
+  providers: [EmployeeAccessService, AccessSnapshotService, AccessPolicyService, AccessSocketBoundary],
+  exports: [EmployeeAccessService, AccessSnapshotService, AccessPolicyService, AccessSocketBoundary],
 })
 export class EmployeeAccessModule {}

@@ -122,6 +122,15 @@ describe('AuthService', () => {
     prisma = module.get<PrismaService>(PrismaService);
   });
 
+  it.each(['login', 'refresh'] as const)('hydrates managed access on %s before /auth/me', async mode => {
+    (prisma.user.findUnique as jest.Mock).mockResolvedValue(mockUser);
+    const snapshot = { userId: 'user-1', managed: true, isOwner: false, revision: 9, grants: [{ positionId: 'p', company: 'FINANCE', permissions: ['payments.read'], scope: 'BRANCHES', branchIds: ['shop-origin'] }] };
+    (service as any).accessSnapshots.forUser.mockResolvedValue(snapshot);
+    (prisma.refreshToken.findUnique as jest.Mock).mockResolvedValue({ id: 'rt-1', userId: 'user-1', expiresAt: new Date(Date.now() + 60000), isRevoked: false });
+    const result = mode === 'login' ? await service.login({ email: mockUser.email, password: 'password123' }) : await service.refreshToken('valid');
+    expect(result).toMatchObject({ user: { role: 'SALES', access: snapshot, accessibleCompanies: ['FINANCE'], primaryCompany: 'FINANCE' } });
+  });
+
   describe('login', () => {
     it('should return AUTHENTICATED state with tokens on successful login', async () => {
       (prisma.user.findUnique as jest.Mock).mockResolvedValue(mockUser);

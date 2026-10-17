@@ -1,3 +1,4 @@
+import { accessCompanies } from '../employee-access/access-context';
 import { AccessSnapshotService } from '../employee-access/access-snapshot.service';
 import {
   Injectable,
@@ -11,7 +12,6 @@ import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcrypt';
 import * as crypto from 'crypto';
 import { Prisma } from '@prisma/client';
-import { resolveCompanyAccess } from '@installment/shared';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoginDto } from './dto/login.dto';
 import { ForgotPasswordDto, ResetPasswordDto } from './dto/password-reset.dto';
@@ -193,7 +193,8 @@ export class AuthService {
     // สิทธิ์บริษัทที่ส่งออกจาก login ต้องเป็นค่าที่ resolve แล้ว ไม่ใช่ค่าดิบจากแถว User —
     // เว็บอ่าน accessibleCompanies จาก response body ของ login/me ไปเก็บใน AuthContext
     // ถ้าปล่อยค่าว่างออกไป หน้าจอต้องพึ่ง fallback ฝั่งเว็บอย่างเดียว (จุดเดียวพัง = ล็อกทั้งระบบ)
-    const access = resolveCompanyAccess(user.role, user.accessibleCompanies, user.primaryCompany);
+    const snapshot = await this.accessSnapshots.forUser(user.id);
+    const companyAccess = accessCompanies(snapshot, user.role, user.accessibleCompanies, user.primaryCompany);
 
     const payload = {
       sub: user.id,
@@ -205,8 +206,7 @@ export class AuthService {
       aud: 'admin',
       scope: 'admin:full',
       // SP7.1 — dual-entity authorization
-      accessibleCompanies: [...access.accessible],
-      primaryCompany: access.primary,
+      ...companyAccess,
     };
 
     const accessToken = this.jwtService.sign(payload, {
@@ -227,12 +227,12 @@ export class AuthService {
         role: user.role,
         branchId: user.branchId,
         branchName: user.branch?.name || null,
-        accessibleCompanies: [...access.accessible],
-        primaryCompany: access.primary,
+        ...companyAccess,
         // InternalControlActionBar — per-user reverse override (CUSTOM mode).
         // Without this, a freshly-logged-in user keeps canReverseOverride
         // undefined until the next /auth/me, hiding the reverse button.
-        canReverseOverride: user.canReverseOverride ?? null,
+        access: snapshot,
+        canReverseOverride: snapshot.managed ? null : user.canReverseOverride ?? null,
       },
     };
   }
@@ -293,7 +293,8 @@ export class AuthService {
       throw new UnauthorizedException('ผู้ใช้งานไม่ถูกต้อง');
     }
 
-    const access = resolveCompanyAccess(user.role, user.accessibleCompanies, user.primaryCompany);
+    const snapshot = await this.accessSnapshots.forUser(user.id);
+    const companyAccess = accessCompanies(snapshot, user.role, user.accessibleCompanies, user.primaryCompany);
 
     const payload = {
       sub: user.id,
@@ -303,8 +304,7 @@ export class AuthService {
       aud: 'admin',
       scope: 'admin:full',
       // SP7.1 — dual-entity authorization (ค่าที่ resolve แล้ว ดูเหตุผลที่ login)
-      accessibleCompanies: [...access.accessible],
-      primaryCompany: access.primary,
+      ...companyAccess,
     };
 
     const accessToken = this.jwtService.sign(payload, {
@@ -331,7 +331,7 @@ export class AuthService {
       }),
     ]);
 
-    return { accessToken, refreshToken: newRawToken };
+    return { accessToken, refreshToken: newRawToken, user: { id: user.id, email: user.email, name: user.name, role: user.role, branchId: user.branchId, ...companyAccess, access: snapshot } };
   }
 
   async logout(refreshToken: string, userId: string) {
@@ -369,8 +369,8 @@ export class AuthService {
 
     // /auth/me คือแหล่งที่ AuthContext ใช้เติมสิทธิ์ตอนรีเฟรชหน้า — ต้องคืนค่าที่ resolve แล้ว
     // ให้ตรงกับ login ไม่งั้นผู้ใช้เดิมจะได้ค่าต่างกันแล้วแต่ว่าเพิ่งล็อกอินหรือรีเฟรชหน้า
-    const access = resolveCompanyAccess(user.role, user.accessibleCompanies, user.primaryCompany);
-    return { ...user, accessibleCompanies: [...access.accessible], primaryCompany: access.primary, access: await this.accessSnapshots.forUser(userId) };
+    const snapshot = await this.accessSnapshots.forUser(userId);
+    return { ...user, ...accessCompanies(snapshot, user.role, user.accessibleCompanies, user.primaryCompany), canReverseOverride: snapshot.managed ? null : user.canReverseOverride, access: snapshot };
   }
 
   /**
@@ -625,7 +625,8 @@ export class AuthService {
         throw new UnauthorizedException('ผู้ใช้งานไม่ถูกต้อง');
       }
 
-      const access = resolveCompanyAccess(user.role, user.accessibleCompanies, user.primaryCompany);
+      const snapshot = await this.accessSnapshots.forUser(user.id);
+      const companyAccess = accessCompanies(snapshot, user.role, user.accessibleCompanies, user.primaryCompany);
 
       const newPayload = {
         sub: user.id,
@@ -635,8 +636,7 @@ export class AuthService {
         aud: 'admin',
         scope: 'admin:full',
         // SP7.1 — dual-entity authorization (ค่าที่ resolve แล้ว ดูเหตุผลที่ login)
-        accessibleCompanies: [...access.accessible],
-        primaryCompany: access.primary,
+        ...companyAccess,
       };
 
       const accessToken = this.jwtService.sign(newPayload, {
@@ -647,7 +647,7 @@ export class AuthService {
       // Migrate to DB-based token on next refresh
       const newRefreshToken = await this.createRefreshToken(user.id);
 
-      return { accessToken, refreshToken: newRefreshToken };
+      return { accessToken, refreshToken: newRefreshToken, user: { id: user.id, email: user.email, name: user.name, role: user.role, branchId: user.branchId, ...companyAccess, access: snapshot } };
     } catch (err) {
       if (err instanceof UnauthorizedException) throw err;
       throw new UnauthorizedException('โทเค็นไม่ถูกต้องหรือหมดอายุ');

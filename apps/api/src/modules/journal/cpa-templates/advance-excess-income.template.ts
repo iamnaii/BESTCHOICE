@@ -31,15 +31,17 @@ import {
  * หมายเหตุ 4 ของแผน) — ลงใน `$transaction` Serializable ของตัวเอง **ห้ามเรียกจากธุรกรรมรับชำระ** (ผลตรวจ C1:
  * `checkContractCompletion` เกิดก่อนใบรับชำระจะหัก 21-1103 ⇒ อ่านที่นั่นจะหักซ้ำ).
  *
- *   Dr 21-1103 เงินรับล่วงหน้า        [ยอด Cr คงเหลือของสัญญาในบัญชี — ทุกถัง (ถ8)]
- *      Cr 42-1106 เงินพักค่าปรับดิวสะสมเกิน   [ยอด − ภาษี]
+ *   Dr 21-1103 เงินรับล่วงหน้า        [ยอด Cr คงเหลือของสัญญาในบัญชี — ทุกถัง (ถ8) · 0 = ไม่มีบรรทัด]
+ *   Dr 21-5101 เงินเกินของลูกค้า      [ยอด Cr คงเหลือของสัญญาในบัญชี — 22.2 (ฝ่ายบัญชี 16/10/2569) · 0 = ไม่มีบรรทัด]
+ *      Cr 42-1106 เงินพักค่าปรับดิวสะสมเกิน   [ยอดรวม − ภาษี]
  *      Cr 21-2102 ภาษีขายรอเรียกเก็บ           [ภาษีที่รับรู้ตอนพักและยังค้าง — resolveConsumeVat (ต4)]
  *
- * `emptiesBucket = (GL 21-5101 ของสัญญา == 0)`: รายการนี้ล้างเฉพาะ 21-1103 — ถ้ายังมีเครดิต 21-5101 ค้าง (ถ3) ภาษีของเครดิต
- * นั้นต้องคงค้างไว้ ไม่ถูกกลับพร้อมเงินพัก. ขาภาษีประทับ `advanceVatConsume` ให้ `advanceVatOutstanding` ลดลง (T4 → T5).
- * ภาษีขายของยอดนี้รับรู้ไปแล้ว ณ วันรับเงิน (21-2101) จึงไม่มีขา 21-2101 ที่นี่.
+ * 22.2 (ฝ่ายบัญชี 16/10/2569 — ปิด ถ3): รายการนี้ล้าง**ทั้ง** 21-1103 และ 21-5101 ของสัญญา ⇒ ถังของสัญญาเป็น 0 เสมอ
+ * (`emptiesBucket = true`) และภาษีที่ยังค้างทั้งก้อนถูกกลับพร้อมกัน. ครอบ X2 (ลิงก์ชำระตั้ง `creditBalance` 0 โดยไม่มีรายการ —
+ * บัญชี 21-5101 ค้างอย่างเดียว) ด้วย: ผู้เรียกคัดเลือกจากบัญชีทั้งสองตัว. ขาภาษีประทับ `advanceVatConsume` ให้
+ * `advanceVatOutstanding` ลดลง (T4 → T5). ภาษีขายของยอดนี้รับรู้ไปแล้ว ณ วันรับเงิน (21-2101) จึงไม่มีขา 21-2101 ที่นี่.
  *
- * คอลัมน์ `advanceBalance` / `rescheduleAdvanceBalance` = 0 ในธุรกรรมเดียวกัน (`creditBalance` ไม่แตะ — ถ3) · audit
+ * คอลัมน์ `advanceBalance` / `rescheduleAdvanceBalance` / `creditBalance` = 0 ในธุรกรรมเดียวกัน · audit
  * `ADVANCE_EXCESS_RECOGNIZED` ผ่าน `tx.auditLog.create` (atomic กับรายการ — แถวหลุด Merkle chain โดยตั้งใจ) ·
  * idempotency `flow + idempotencyKey` (`advance-excess-income:<contractId>` · ลงใหม่หลังกลับรายการ = ต่อท้าย `:<ลำดับ>`
  * โดยลำดับนับ**ทุกแถว**ของ flow รวม VOIDED/ลบ — `countAdvanceExcessIncomeEntries`) + จับ P2002 ⇒ `ALREADY_POSTED` ·
@@ -48,7 +50,8 @@ import {
  * **กลับรายการ (final review I2):** `reverse(contractId, { reason, actorUserId })` — กระจกทุกบรรทัดของรายการกวาดที่ยังมีผล
  * (`Cr 21-1103 / Dr 42-1106 / Dr 21-2102`) flow `advance-excess-income-reverse` · tag `REVERSAL` · key ต่อต้นฉบับ ·
  * **ไม่ copy stamp** `advanceVatConsume` (ต5 — ต้นฉบับถูก stamp `reversed` ⇒ `advanceVatOutstanding` กลับขึ้นเอง) · คืนคอลัมน์
- * `advanceBalance` / `rescheduleAdvanceBalance` จาก `*Before` ใน metadata · audit `ADVANCE_EXCESS_REVERSED` · เรียกจาก CLI
+ * `advanceBalance` / `rescheduleAdvanceBalance` / `creditBalance` จาก `*Before` ใน metadata (รายการก่อน 22.2 ไม่มี
+ * `creditBalanceBefore` = 0) · audit `ADVANCE_EXCESS_REVERSED` · เรียกจาก CLI
  * `advance-excess:reverse` (`src/cli/advance-excess-income-reverse.cli.ts`) — `JournalService.void` ปฏิเสธรายการ flow นี้
  * เพราะมันตั้ง VOIDED + รายการกลับไม่มี metadata (21-1103 ทั้งบัญชีเกินจริง · 42-1106 ติดลบ · รอบกวาดลงซ้ำไม่ได้).
  */
@@ -58,7 +61,12 @@ export type AdvanceExcessIncomeResult =
       contractId: string;
       contractNumber: string;
       entryNo: string;
+      /** ยอดรวมที่ล้าง = `advance` + `credit` */
       amount: Decimal;
+      /** Dr 21-1103 (0 = ไม่มีบรรทัด) */
+      advance: Decimal;
+      /** Dr 21-5101 (22.2 · 0 = ไม่มีบรรทัด) */
+      credit: Decimal;
       income: Decimal;
       vat: Decimal;
       /** คอลัมน์ถังของสัญญาไม่ตรงยอดในบัญชี (สัญญาณเตือนส่งแล้ว) */
@@ -71,6 +79,8 @@ export type AdvanceExcessIncomeResult =
       contractNumber: string;
       advanceBalance: Decimal;
       rescheduleAdvanceBalance: Decimal;
+      /** คอลัมน์เครดิตที่ค้างโดยบัญชี 21-5101 = 0 (22.2) */
+      creditBalance: Decimal;
     }
   | { outcome: 'NOTHING'; contractId: string; contractNumber: string };
 
@@ -91,6 +101,9 @@ export type AdvanceExcessReverseResult =
 const ZERO = new Decimal(0);
 const REVERSE_REASON_MIN = 10;
 const LINE_DESCRIPTION = 'รับรู้เงินพักส่วนเกินเป็นรายได้ (เงินพักค่าปรับดิวสะสมเกิน)';
+/** บรรทัด Dr 21-5101 (22.2) — เครดิตของลูกค้าที่เหลือหลังสัญญาปิด */
+const CREDIT_LINE_DESCRIPTION =
+  'รับรู้เครดิตที่เหลือหลังปิดสัญญาเป็นรายได้ (เงินพักค่าปรับดิวสะสมเกิน)';
 const toDecimal = (v: Prisma.Decimal | string | number | null | undefined): Decimal =>
   new Decimal((v ?? 0).toString());
 
@@ -178,10 +191,14 @@ export class AdvanceExcessIncomeTemplate {
     const parkBalanceBefore = toDecimal(contract.rescheduleAdvanceBalance);
     const creditBalanceBefore = toDecimal(contract.creditBalance);
 
-    if (!advances.advance.gt(0)) {
+    // 22.2: รายการนี้ล้างทั้ง 21-1103 (ทุกถัง) และ 21-5101 ของสัญญา
+    const advance = advances.advance;
+    const credit = advances.credit;
+    const amount = advance.plus(credit);
+    if (!amount.gt(0)) {
       // บัญชีไม่มีให้ลง — คอลัมน์ที่ยังค้างคือคอลัมน์ไม่ตรงบัญชี (สัญญาณเตือนจาก readContractCloseAdvances +
       // ผู้เรียกสร้างงานแจ้งให้ตรวจ แทน alarm เดิมที่อ่านจากคอลัมน์)
-      if (advanceBalanceBefore.plus(parkBalanceBefore).gt(0)) {
+      if (advanceBalanceBefore.plus(parkBalanceBefore).plus(creditBalanceBefore).gt(0)) {
         return {
           result: {
             outcome: 'COLUMNS_ONLY',
@@ -189,6 +206,7 @@ export class AdvanceExcessIncomeTemplate {
             contractNumber,
             advanceBalance: advanceBalanceBefore,
             rescheduleAdvanceBalance: parkBalanceBefore,
+            creditBalance: creditBalanceBefore,
           },
           warnings: advances.warnings,
           contractNumber,
@@ -204,10 +222,8 @@ export class AdvanceExcessIncomeTemplate {
     const financeCompanyId = await this.companyResolver.getFinanceCompanyId(tx);
     await validatePeriodOpen(tx, postedAt, financeCompanyId);
 
-    const amount = advances.advance;
-    // ต4: รายการนี้ล้าง 21-1103 ทั้งยอด — "ทำให้ถังของสัญญาเป็น 0" ก็ต่อเมื่อไม่มีเครดิต 21-5101 ค้าง
-    const emptiesBucket = advances.credit.lte(0);
-    let vat = await resolveConsumeVat(tx, contractId, amount, emptiesBucket);
+    // ต4 + 22.2: รายการนี้ล้าง 21-1103 และ 21-5101 ทั้งยอด ⇒ ถังของสัญญาเป็น 0 เสมอ → ภาษีที่ยังค้างทั้งก้อน
+    let vat = await resolveConsumeVat(tx, contractId, amount, true);
     // เพดานกันรายการพิกล (stamp ค้างเกินเงินที่เหลือ — เช่นหลัง void ที่ไม่ได้ประทับ reversed): ภาษีไม่เกินยอดที่ลง
     if (vat.gt(amount)) vat = amount;
     const income = amount.minus(vat);
@@ -217,9 +233,18 @@ export class AdvanceExcessIncomeTemplate {
     const keyBase = `${ADVANCE_EXCESS_INCOME_FLOW}:${contractId}`;
     const idempotencyKey = seq === 1 ? keyBase : `${keyBase}:${seq}`;
 
-    const lines: JeLineInput[] = [
-      { accountCode: '21-1103', dr: amount, cr: ZERO, description: LINE_DESCRIPTION },
-    ];
+    const lines: JeLineInput[] = [];
+    if (advance.gt(0)) {
+      lines.push({ accountCode: '21-1103', dr: advance, cr: ZERO, description: LINE_DESCRIPTION });
+    }
+    if (credit.gt(0)) {
+      lines.push({
+        accountCode: '21-5101',
+        dr: credit,
+        cr: ZERO,
+        description: CREDIT_LINE_DESCRIPTION,
+      });
+    }
     if (income.gt(0)) {
       lines.push({
         accountCode: ADVANCE_EXCESS_INCOME_ACCOUNT,
@@ -240,13 +265,15 @@ export class AdvanceExcessIncomeTemplate {
     const columnsMismatch = advances.warnings.length > 0;
     const money = {
       amount: amount.toFixed(2),
+      advance: advance.toFixed(2),
+      credit: credit.toFixed(2),
       income: income.toFixed(2),
       vat: vat.toFixed(2),
       advanceBalanceBefore: advanceBalanceBefore.toFixed(2),
       rescheduleAdvanceBalanceBefore: parkBalanceBefore.toFixed(2),
       creditBalanceBefore: creditBalanceBefore.toFixed(2),
-      ledger21_1103: amount.toFixed(2),
-      ledger21_5101: advances.credit.toFixed(2),
+      ledger21_1103: advance.toFixed(2),
+      ledger21_5101: credit.toFixed(2),
     };
 
     const posted = await this.journal.createAndPost(
@@ -275,7 +302,7 @@ export class AdvanceExcessIncomeTemplate {
 
     await tx.contract.update({
       where: { id: contractId },
-      data: { advanceBalance: 0, rescheduleAdvanceBalance: 0 },
+      data: { advanceBalance: 0, rescheduleAdvanceBalance: 0, creditBalance: 0 },
     });
 
     const warnings: DeferredWarning[] = [...advances.warnings];
@@ -308,7 +335,7 @@ export class AdvanceExcessIncomeTemplate {
     }
 
     this.logger.log(
-      `[advance-excess-income] ${contractNumber}: ${posted.entryNumber} amount=${money.amount} income=${money.income} vat=${money.vat}`,
+      `[advance-excess-income] ${contractNumber}: ${posted.entryNumber} amount=${money.amount} (21-1103 ${money.advance} · 21-5101 ${money.credit}) income=${money.income} vat=${money.vat}`,
     );
     return {
       result: {
@@ -317,6 +344,8 @@ export class AdvanceExcessIncomeTemplate {
         contractNumber,
         entryNo: posted.entryNumber,
         amount,
+        advance,
+        credit,
         income,
         vat,
         columnsMismatch,
@@ -427,12 +456,18 @@ export class AdvanceExcessIncomeTemplate {
             },
           });
 
-          // คืนคอลัมน์ถังตามที่รายการกวาดบันทึกไว้ก่อนตั้งเป็น 0 (GL 21-1103 กลับมาด้วยกระจก ⇒ คอลัมน์ต้องตามบัญชี)
+          // คืนคอลัมน์ถังตามที่รายการกวาดบันทึกไว้ก่อนตั้งเป็น 0 (GL 21-1103 / 21-5101 กลับมาด้วยกระจก ⇒ คอลัมน์ต้องตามบัญชี) ·
+          // รายการก่อน 22.2 ไม่มี creditBalanceBefore (ไม่เคยแตะ creditBalance) ⇒ 0
           const restoredAdvance = toDecimal(meta.advanceBalanceBefore as never);
           const restoredPark = toDecimal(meta.rescheduleAdvanceBalanceBefore as never);
+          const restoredCredit = toDecimal(meta.creditBalanceBefore as never);
           await tx.contract.update({
             where: { id: contractId },
-            data: { advanceBalance: restoredAdvance, rescheduleAdvanceBalance: restoredPark },
+            data: {
+              advanceBalance: restoredAdvance,
+              rescheduleAdvanceBalance: restoredPark,
+              creditBalance: restoredCredit,
+            },
           });
 
           const auditUserId = input.actorUserId ?? (await this.resolveAuditUser(tx))?.id ?? null;
@@ -454,6 +489,7 @@ export class AdvanceExcessIncomeTemplate {
                   restoredColumns: {
                     advanceBalance: restoredAdvance.toFixed(2),
                     rescheduleAdvanceBalance: restoredPark.toFixed(2),
+                    creditBalance: restoredCredit.toFixed(2),
                   },
                   postedAt: postedAt.toISOString(),
                   source: 'ADVANCE_EXCESS_REVERSE',

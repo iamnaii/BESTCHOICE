@@ -22,7 +22,7 @@ jest.mock('@sentry/nestjs', () => ({
  * G6 (แผน): ปรับดิว 2 ครั้ง 1,419.00 × 2 (ภาษีรับรู้ 92.83 × 2 = 185.66) · รอบกลางคืนงวด 12 หัก 1,515.87 ขากลับ 99.17 ⇒
  * 21-1103 เหลือ 1,322.13 · ภาษียังค้าง 86.49 ⇒ `Dr 21-1103 1,322.13 / Cr 42-1106 1,235.64 / Cr 21-2102 86.49`
  */
-describe('AdvanceExcessIncomeTemplate (golden G6 / G9 / ต4 · mock-based)', () => {
+describe('AdvanceExcessIncomeTemplate (golden G6 / G9 / 22.2 · mock-based)', () => {
   const dec = (v: string) => new Decimal(v);
   type Line = { accountCode: string; dr: Decimal; cr: Decimal; description?: string };
   type Posted = {
@@ -157,13 +157,15 @@ describe('AdvanceExcessIncomeTemplate (golden G6 / G9 / ต4 · mock-based)', ()
       idempotencyKey: 'advance-excess-income:contract-1',
       contractId: 'contract-1',
       contractNumber: 'CT-0001',
-      amount: '1322.13',
-      income: '1235.64',
-      vat: '86.49',
+      amount: '1622.13',
+      advance: '1322.13',
+      credit: '300.00',
+      income: '1516.01',
+      vat: '106.12',
       advanceBalanceBefore: '1322.13',
       rescheduleAdvanceBalanceBefore: '0.00',
-      creditBalanceBefore: '0.00',
-      advanceVatConsume: '86.49',
+      creditBalanceBefore: '300.00',
+      advanceVatConsume: '106.12',
     };
     const LINES = [
       {
@@ -173,20 +175,26 @@ describe('AdvanceExcessIncomeTemplate (golden G6 / G9 / ต4 · mock-based)', ()
         description: 'รับรู้เงินพักส่วนเกินเป็นรายได้ (เงินพักค่าปรับดิวสะสมเกิน)',
       },
       {
+        accountCode: '21-5101',
+        debit: '300.00',
+        credit: '0',
+        description: 'รับรู้เครดิตที่เหลือหลังปิดสัญญาเป็นรายได้ (เงินพักค่าปรับดิวสะสมเกิน)',
+      },
+      {
         accountCode: '42-1106',
         debit: '0',
-        credit: '1235.64',
+        credit: '1516.01',
         description: 'รับรู้เงินพักส่วนเกินเป็นรายได้ (เงินพักค่าปรับดิวสะสมเกิน)',
       },
       {
         accountCode: '21-2102',
         debit: '0',
-        credit: '86.49',
+        credit: '106.12',
         description: ADVANCE_VAT_CONSUME_DESCRIPTION,
       },
     ];
 
-    it('กระจกทุกบรรทัด (Cr 21-1103 / Dr 42-1106 / Dr 21-2102) · tag REVERSAL · flow advance-excess-income-reverse · key ต่อต้นฉบับ · ไม่ copy stamp consume · stamp reversed บนต้นฉบับ · คืนคอลัมน์จาก *Before · audit ADVANCE_EXCESS_REVERSED', async () => {
+    it('กระจกทุกบรรทัด (Cr 21-1103 / Cr 21-5101 / Dr 42-1106 / Dr 21-2102) · tag REVERSAL · flow advance-excess-income-reverse · key ต่อต้นฉบับ · ไม่ copy stamp consume · stamp reversed บนต้นฉบับ · คืนคอลัมน์ทั้งสาม (รวม creditBalance — 22.2) จาก *Before · audit ADVANCE_EXCESS_REVERSED', async () => {
       const createAndPost = jest
         .fn()
         .mockResolvedValue({ id: 'je-rev', entryNumber: 'JE-REV-0001' });
@@ -204,7 +212,7 @@ describe('AdvanceExcessIncomeTemplate (golden G6 / G9 / ต4 · mock-based)', ()
       if (r.outcome !== 'REVERSED') throw new Error('unreachable');
       expect(r.entryNo).toBe('JE-REV-0001');
       expect(r.reversedEntryNo).toBe('JE-X-0');
-      expect(r.amount.toFixed(2)).toBe('1322.13');
+      expect(r.amount.toFixed(2)).toBe('1622.13');
       expect(prisma.$transaction).toHaveBeenCalledWith(expect.any(Function), {
         isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
       });
@@ -212,8 +220,9 @@ describe('AdvanceExcessIncomeTemplate (golden G6 / G9 / ต4 · mock-based)', ()
       const p = createAndPost.mock.calls[0][0] as Posted;
       expect(tuples(p.lines)).toEqual([
         '21-1103 0.00 1322.13',
-        '42-1106 1235.64 0.00',
-        '21-2102 86.49 0.00',
+        '21-5101 0.00 300.00',
+        '42-1106 1516.01 0.00',
+        '21-2102 106.12 0.00',
       ]);
       expect(p.companyId).toBe('fin-1');
       expect(p.reference).toBe('je-x-0:advance-excess-income-reverse');
@@ -227,7 +236,7 @@ describe('AdvanceExcessIncomeTemplate (golden G6 / G9 / ต4 · mock-based)', ()
         contractId: 'contract-1',
         contractNumber: 'CT-0001',
         reason: 'ฝ่ายบัญชีสั่งคืนเงินลูกค้า — ตรวจแล้ว',
-        amount: '1322.13',
+        amount: '1622.13',
       });
       expect(p.metadata).not.toHaveProperty(ADVANCE_VAT_META.consume);
       expect(p.metadata).not.toHaveProperty(ADVANCE_VAT_META.park);
@@ -240,6 +249,7 @@ describe('AdvanceExcessIncomeTemplate (golden G6 / G9 / ต4 · mock-based)', ()
       expect(colUpdate.where).toEqual({ id: 'contract-1' });
       expect(colUpdate.data.advanceBalance.toString()).toBe('1322.13');
       expect(colUpdate.data.rescheduleAdvanceBalance.toString()).toBe('0');
+      expect(colUpdate.data.creditBalance.toString()).toBe('300');
 
       const audit = tx.auditLog.create.mock.calls[0][0].data;
       expect(audit).toMatchObject({
@@ -251,8 +261,13 @@ describe('AdvanceExcessIncomeTemplate (golden G6 / G9 / ต4 · mock-based)', ()
       expect(audit.newValue).toMatchObject({
         entryNumber: 'JE-REV-0001',
         reversedEntryNumber: 'JE-X-0',
-        amount: '1322.13',
+        amount: '1622.13',
         reason: 'ฝ่ายบัญชีสั่งคืนเงินลูกค้า — ตรวจแล้ว',
+      });
+      expect(audit.newValue.restoredColumns).toEqual({
+        advanceBalance: '1322.13',
+        rescheduleAdvanceBalance: '0.00',
+        creditBalance: '300.00',
       });
     });
 
@@ -346,7 +361,7 @@ describe('AdvanceExcessIncomeTemplate (golden G6 / G9 / ต4 · mock-based)', ()
     });
     expect(tx.contract.update).toHaveBeenCalledWith({
       where: { id: 'contract-1' },
-      data: { advanceBalance: 0, rescheduleAdvanceBalance: 0 },
+      data: { advanceBalance: 0, rescheduleAdvanceBalance: 0, creditBalance: 0 },
     });
     expect(tx.auditLog.create).toHaveBeenCalledTimes(1);
     const audit = tx.auditLog.create.mock.calls[0][0].data;
@@ -382,7 +397,7 @@ describe('AdvanceExcessIncomeTemplate (golden G6 / G9 / ต4 · mock-based)', ()
     ]);
   });
 
-  it('ต4: มี 21-5101 300 ค้าง (ภาษี 19.63) → ขากลับใช้ HALF_UP ของ 21-1103 (32.71) ไม่กินภาษีของเครดิต · ไม่แตะ 21-5101/creditBalance', async () => {
+  it('22.2 (ฝ่ายบัญชี 16/10/2569): มี 21-5101 300 ค้าง (ภาษี 19.63) → กวาดทั้ง 21-1103 500 และ 21-5101 300 ในรายการเดียว · ภาษีค้างทั้งก้อน 52.34 · creditBalance = 0', async () => {
     const { template, tx, posted } = build({
       ledger: { '21-1103': '500.00', '21-5101': '300.00' },
       stamps: [{ [ADVANCE_VAT_META.park]: '32.71' }, { [ADVANCE_VAT_META.park]: '19.63' }],
@@ -390,18 +405,65 @@ describe('AdvanceExcessIncomeTemplate (golden G6 / G9 / ต4 · mock-based)', ()
     });
     const result = await template.execute('contract-1');
     expect(result.outcome).toBe('POSTED');
+    if (result.outcome !== 'POSTED') throw new Error('unreachable');
+    expect(result.amount.toFixed(2)).toBe('800.00');
+    expect(result.advance.toFixed(2)).toBe('500.00');
+    expect(result.credit.toFixed(2)).toBe('300.00');
+    expect(result.columnsMismatch).toBe(false);
     expect(tuples(posted().lines)).toEqual([
       '21-1103 500.00 0.00',
-      '42-1106 0.00 467.29',
-      '21-2102 0.00 32.71',
+      '21-5101 300.00 0.00',
+      '42-1106 0.00 747.66',
+      '21-2102 0.00 52.34',
     ]);
-    expect(posted().metadata[ADVANCE_VAT_META.consume]).toBe('32.71');
-    expect(posted().metadata.ledger21_5101).toBe('300.00');
-    // คอลัมน์ถังทั้งสองเป็น 0 — creditBalance ไม่ถูกแตะ (ถ3)
+    expect(posted().lines[1].description).toBe(
+      'รับรู้เครดิตที่เหลือหลังปิดสัญญาเป็นรายได้ (เงินพักค่าปรับดิวสะสมเกิน)',
+    );
+    expect(posted().metadata[ADVANCE_VAT_META.consume]).toBe('52.34');
+    expect(posted().metadata).toMatchObject({
+      amount: '800.00',
+      advance: '500.00',
+      credit: '300.00',
+      income: '747.66',
+      vat: '52.34',
+      ledger21_1103: '500.00',
+      ledger21_5101: '300.00',
+      creditBalanceBefore: '300.00',
+    });
+    // รายการนี้ล้างทั้งสองบัญชี ⇒ คอลัมน์ทั้งสามเป็น 0
     expect(tx.contract.update).toHaveBeenCalledWith({
       where: { id: 'contract-1' },
-      data: { advanceBalance: 0, rescheduleAdvanceBalance: 0 },
+      data: { advanceBalance: 0, rescheduleAdvanceBalance: 0, creditBalance: 0 },
     });
+    expect(Sentry.captureMessage).not.toHaveBeenCalled();
+  });
+
+  it('22.2 / X2: มีเฉพาะ 21-5101 2,000 (21-1103 = 0 · คอลัมน์ creditBalance 0 — ลิงก์ชำระตั้ง 0 โดยไม่มีรายการ) → Dr 21-5101 2,000 / Cr 42-1106 1,869.16 / Cr 21-2102 130.84 + columnsMismatch', async () => {
+    const { template, tx, posted } = build({
+      ledger: { '21-5101': '2000.00' },
+      stamps: [{ [ADVANCE_VAT_META.park]: '130.84' }],
+      status: 'EARLY_PAYOFF',
+    });
+    const result = await template.execute('contract-1');
+    expect(result.outcome).toBe('POSTED');
+    if (result.outcome !== 'POSTED') throw new Error('unreachable');
+    expect(result.advance.toFixed(2)).toBe('0.00');
+    expect(result.credit.toFixed(2)).toBe('2000.00');
+    expect(result.columnsMismatch).toBe(true);
+    expect(tuples(posted().lines)).toEqual([
+      '21-5101 2000.00 0.00',
+      '42-1106 0.00 1869.16',
+      '21-2102 0.00 130.84',
+    ]);
+    expect(posted().metadata).toMatchObject({ columnsMismatch: true, ledger21_1103: '0.00' });
+    expect(tx.contract.update).toHaveBeenCalledWith({
+      where: { id: 'contract-1' },
+      data: { advanceBalance: 0, rescheduleAdvanceBalance: 0, creditBalance: 0 },
+    });
+    expect(Sentry.captureMessage).toHaveBeenCalledWith(
+      CLOSE_ADVANCE_MISMATCH_MESSAGE,
+      expect.objectContaining({ tags: expect.objectContaining({ flow: 'excess-income' }) }),
+    );
   });
 
   it('ไม่มี stamp (เงินก่อน PR4): ภาษี 0 → ไม่มีบรรทัด 21-2102 · รายได้ = ทั้งยอด · ไม่ stamp consume', async () => {
@@ -446,6 +508,7 @@ describe('AdvanceExcessIncomeTemplate (golden G6 / G9 / ต4 · mock-based)', ()
     if (result.outcome !== 'COLUMNS_ONLY') throw new Error('unreachable');
     expect(result.advanceBalance.toFixed(2)).toBe('0.00');
     expect(result.rescheduleAdvanceBalance.toFixed(2)).toBe('100.00');
+    expect(result.creditBalance.toFixed(2)).toBe('0.00');
     expect(createAndPost).not.toHaveBeenCalled();
     expect(tx.contract.update).not.toHaveBeenCalled();
     expect(Sentry.captureMessage).toHaveBeenCalledWith(
@@ -454,7 +517,21 @@ describe('AdvanceExcessIncomeTemplate (golden G6 / G9 / ต4 · mock-based)', ()
     );
   });
 
-  it('บัญชี 21-1103 = 0 และคอลัมน์ = 0 → NOTHING', async () => {
+  it('22.2: บัญชี 21-1103 / 21-5101 = 0 แต่คอลัมน์ creditBalance 50 → COLUMNS_ONLY (creditBalance 50.00) ไม่ลงรายการ', async () => {
+    const { template, tx, createAndPost } = build({
+      ledger: {},
+      columns: { creditBalance: '50.00' },
+    });
+    const result = await template.execute('contract-1');
+    expect(result.outcome).toBe('COLUMNS_ONLY');
+    if (result.outcome !== 'COLUMNS_ONLY') throw new Error('unreachable');
+    expect(result.creditBalance.toFixed(2)).toBe('50.00');
+    expect(result.advanceBalance.toFixed(2)).toBe('0.00');
+    expect(createAndPost).not.toHaveBeenCalled();
+    expect(tx.contract.update).not.toHaveBeenCalled();
+  });
+
+  it('บัญชี 21-1103 / 21-5101 = 0 และคอลัมน์ = 0 → NOTHING', async () => {
     const { template, createAndPost } = build({ ledger: {} });
     const result = await template.execute('contract-1');
     expect(result.outcome).toBe('NOTHING');

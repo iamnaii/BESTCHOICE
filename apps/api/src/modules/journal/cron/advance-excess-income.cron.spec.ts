@@ -355,7 +355,7 @@ describe('AdvanceExcessIncomeCron — รอบกวาดเงินพัก
     ).rejects.toThrow(ADVANCE_EXCESS_VOID_BLOCKED_MESSAGE);
   });
 
-  it('คัดเลือกสัญญา: COMPLETED (QR) · EARLY_PAYOFF G9 · 21-5101 ค้าง (ต4) · คำขอ void ค้างคิว → ข้าม · TERMINATED / ยังมีงวดค้าง → ไม่แตะ · คอลัมน์ > 0 บัญชี 0 → งานแจ้งไม่ลงรายการ', async () => {
+  it('คัดเลือกสัญญา: COMPLETED (QR) · EARLY_PAYOFF G9 · 21-5101 ค้าง (22.2 กวาดด้วย) · เฉพาะ 21-5101 (X2) · คำขอ void ค้างคิว → ข้าม · TERMINATED / ยังมีงวดค้าง → ไม่แตะ · คอลัมน์ > 0 บัญชี 0 → งานแจ้งไม่ลงรายการ', async () => {
     // B — ปิดสัญญาทางลิงก์ชำระ (COMPLETED โดยไม่ผ่าน checkContractCompletion) เงินเกิน 700 พักไว้พร้อมภาษี 45.79
     const B = await seedStandard17k12m(prisma);
     await prisma.contract.update({
@@ -409,7 +409,7 @@ describe('AdvanceExcessIncomeCron — รอบกวาดเงินพัก
       '-32.71',
     );
 
-    // D — ต4: 21-1103 500 + เครดิต 21-5101 300 (ภาษีพักรวม 52.34) → ขากลับใช้ HALF_UP ของ 500 = 32.71 ไม่กินภาษีของเครดิต
+    // D — 22.2: 21-1103 500 + เครดิต 21-5101 300 (ภาษีพักรวม 52.34) → กวาดทั้งสองบัญชีในรายการเดียว ภาษีค้างทั้งก้อน
     const Dc = await seedStandard17k12m(prisma);
     await prisma.contract.update({
       where: { id: Dc.id },
@@ -426,6 +426,23 @@ describe('AdvanceExcessIncomeCron — รอบกวาดเงินพัก
       ],
       { [ADVANCE_VAT_META.park]: '52.34' },
     );
+
+    // K — X2: ลิงก์ชำระปิดสัญญาเองเป็น EARLY_PAYOFF ตั้ง creditBalance 0 โดยไม่มีรายการ ⇒ 21-5101 2,000 ค้างในบัญชีอย่างเดียว
+    // (21-1103 = 0 · คอลัมน์ทั้งสาม 0) → ต้องถูกเลือกจากบัญชี 21-5101 และกวาดเป็นรายได้ + columnsMismatch
+    const K = await seedStandard17k12m(prisma);
+    await prisma.contract.update({ where: { id: K.id }, data: { status: 'EARLY_PAYOFF' } });
+    await postSynthetic(
+      K.id,
+      [
+        ['11-1201', '2000.00', '0'],
+        ['21-5101', '0', '2000.00'],
+        ['21-2102', '130.84', '0'],
+        ['21-2101', '0', '130.84'],
+      ],
+      { [ADVANCE_VAT_META.park]: '130.84' },
+    );
+    const kNumber = (await prisma.contract.findUniqueOrThrow({ where: { id: K.id } }))
+      .contractNumber;
 
     // E — มีคำขอยกเลิกใบเสร็จค้างคิว → ข้ามจนกว่าคำขอจะถูกพิจารณา
     const E = await seedStandard17k12m(prisma);
@@ -515,12 +532,14 @@ describe('AdvanceExcessIncomeCron — รอบกวาดเงินพัก
 
     const r1 = await cron.tick();
     expect(r1.failed).toBe(0);
-    expect(r1.posted).toBe(3); // B · G · D
+    expect(r1.posted).toBe(4); // B · G · D · K
     expect(r1.skippedPendingVoid).toBe(1); // E
     expect(r1.columnsOnly).toBe(1); // F
 
-    const [bEntries, gEntries, dEntries, eEntries, tEntries, xEntries, fEntries] =
-      await Promise.all([B.id, G.id, Dc.id, E.id, T.id, X.id, F.id].map((id) => sweepEntries(id)));
+    const [bEntries, gEntries, dEntries, kEntries, eEntries, tEntries, xEntries, fEntries] =
+      await Promise.all(
+        [B.id, G.id, Dc.id, K.id, E.id, T.id, X.id, F.id].map((id) => sweepEntries(id)),
+      );
     expect(tuples(bEntries[0])).toEqual([
       { accountCode: '21-1103', dr: '700.00', cr: '0.00' },
       { accountCode: '42-1106', dr: '0.00', cr: '654.21' },
@@ -535,17 +554,34 @@ describe('AdvanceExcessIncomeCron — รอบกวาดเงินพัก
     expect((await glContractBalance(prisma as any, G.id, '21-2102', 'cr')).toFixed(2)).toBe('0.00');
     expect(tuples(dEntries[0])).toEqual([
       { accountCode: '21-1103', dr: '500.00', cr: '0.00' },
-      { accountCode: '42-1106', dr: '0.00', cr: '467.29' },
-      { accountCode: '21-2102', dr: '0.00', cr: '32.71' },
+      { accountCode: '21-5101', dr: '300.00', cr: '0.00' },
+      { accountCode: '42-1106', dr: '0.00', cr: '747.66' },
+      { accountCode: '21-2102', dr: '0.00', cr: '52.34' },
     ]);
-    // ต4/ถ3: ภาษีของเครดิต 21-5101 ยังค้าง · เครดิตและคอลัมน์ creditBalance ไม่ถูกแตะ
-    expect((await advanceVatOutstanding(prisma as any, Dc.id)).toFixed(2)).toBe('19.63');
+    // 22.2: เครดิต 21-5101 ถูกกวาดพร้อมเงินพัก ⇒ ภาษีค้าง 0 · 21-5101 = 0 · creditBalance = 0
+    expect((await advanceVatOutstanding(prisma as any, Dc.id)).toFixed(2)).toBe('0.00');
     expect((await glContractBalance(prisma as any, Dc.id, '21-5101', 'cr')).toFixed(2)).toBe(
-      '300.00',
+      '0.00',
     );
     const dAfter = await prisma.contract.findUniqueOrThrow({ where: { id: Dc.id } });
-    expect(dAfter.creditBalance.toFixed(2)).toBe('300.00');
+    expect(dAfter.creditBalance.toFixed(2)).toBe('0.00');
     expect(dAfter.advanceBalance.toFixed(2)).toBe('0.00');
+    // X2: เลือกจากบัญชี 21-5101 ทั้งที่คอลัมน์ทั้งสามเป็น 0 → กวาดเป็นรายได้ + columnsMismatch
+    expect(tuples(kEntries[0])).toEqual([
+      { accountCode: '21-5101', dr: '2000.00', cr: '0.00' },
+      { accountCode: '42-1106', dr: '0.00', cr: '1869.16' },
+      { accountCode: '21-2102', dr: '0.00', cr: '130.84' },
+    ]);
+    expect((kEntries[0].metadata as Record<string, unknown>).columnsMismatch).toBe(true);
+    expect((await glContractBalance(prisma as any, K.id, '21-5101', 'cr')).toFixed(2)).toBe(
+      '0.00',
+    );
+    expect((await advanceVatOutstanding(prisma as any, K.id)).toFixed(2)).toBe('0.00');
+    const kTodos = await prisma.todo.findMany({
+      where: { tags: { has: RESIDUAL_PARK_TODO_TAG }, title: { contains: kNumber } },
+    });
+    expect(kTodos).toHaveLength(1);
+    expect(kTodos[0].description).toContain('Dr 21-5101 2000.00');
     expect(eEntries).toHaveLength(0);
     expect(tEntries).toHaveLength(0);
     expect(xEntries).toHaveLength(0);

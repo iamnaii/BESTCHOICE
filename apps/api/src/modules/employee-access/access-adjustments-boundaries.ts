@@ -337,8 +337,13 @@ export class AccessAdjustmentsBoundaries implements OnModuleInit {
           typeof bookedView?.journalEntryNo === 'string'
             ? { number: bookedView.journalEntryNo }
             : null;
-        const original =
-          previewReason === 'FOUND'
+        const originalId =
+          typeof row.reversesAdjustmentId === 'string' ? row.reversesAdjustmentId : undefined;
+        const original = originalId
+          ? await ctx.client.stockAdjustment.findFirst({
+              where: { id: originalId, productId, deletedAt: null },
+            })
+          : previewReason === 'FOUND'
             ? await ctx.client.stockAdjustment.findFirst({
                 where: {
                   productId,
@@ -354,11 +359,13 @@ export class AccessAdjustmentsBoundaries implements OnModuleInit {
         let cost = await adjustmentAllows(productId, 'sensitive.cost.read', branchId);
         if (ownJournal)
           cost = cost && (await adjustmentJournalAllows(ownJournal, 'sensitive.cost.read'));
-        if (originalJournal)
+        if (originalId && !original) cost = false;
+        if (original)
           cost =
             cost &&
-            (await adjustmentAllows(productId, 'sensitive.cost.read', original!.branchId)) &&
-            (await adjustmentJournalAllows(originalJournal, 'sensitive.cost.read'));
+            (await adjustmentAllows(original.productId, 'sensitive.cost.read', original.branchId));
+        if (originalJournal)
+          cost = cost && (await adjustmentJournalAllows(originalJournal, 'sensitive.cost.read'));
         let journal = cost && (await adjustmentAllows(productId, 'journal.read', branchId));
         for (const reference of [ownJournal, bookedJournal, originalJournal])
           if (reference)
@@ -366,6 +373,16 @@ export class AccessAdjustmentsBoundaries implements OnModuleInit {
         if (original)
           journal =
             journal && (await adjustmentAllows(productId, 'journal.read', original.branchId));
+        if (originalId) {
+          const canReadOriginal =
+            !!original &&
+            (await adjustmentAllows(
+              original.productId,
+              'stock-adjustments.read',
+              original.branchId,
+            ));
+          if (!canReadOriginal) out.reversesAdjustmentId = null;
+        }
         const bookedCost =
           cost &&
           (!bookedJournal || (await adjustmentJournalAllows(bookedJournal, 'sensitive.cost.read')));

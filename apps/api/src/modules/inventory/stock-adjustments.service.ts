@@ -1162,9 +1162,30 @@ export class StockAdjustmentsService {
     productId: string;
     branchId: string;
     journalEntryId: string | null;
+    reversesAdjustmentId: string | null;
   }): Promise<boolean> {
     const sourceCost = await adjustmentAllows(row.productId, 'sensitive.cost.read', row.branchId);
-    if (!sourceCost || !row.journalEntryId) return sourceCost;
+    if (!sourceCost) return false;
+    if (row.reversesAdjustmentId) {
+      const original = await this.prisma.stockAdjustment.findFirst({
+        where: { id: row.reversesAdjustmentId, productId: row.productId, deletedAt: null },
+      });
+      if (!original) return false;
+      const originalCost = await adjustmentAllows(
+        original.productId,
+        'sensitive.cost.read',
+        original.branchId,
+      );
+      if (!originalCost) return false;
+      if (original.journalEntryId) {
+        const originalJournalCost = await adjustmentJournalAllows(
+          { id: original.journalEntryId },
+          'sensitive.cost.read',
+        );
+        if (!originalJournalCost) return false;
+      }
+    }
+    if (!row.journalEntryId) return true;
     return adjustmentJournalAllows({ id: row.journalEntryId }, 'sensitive.cost.read');
   }
 
@@ -1185,7 +1206,7 @@ export class StockAdjustmentsService {
     const grouped = await this.prisma.stockAdjustment.groupBy({ by: ['reason'], where, _count: true });
     const adjustments = await this.prisma.stockAdjustment.findMany({
       where,
-      select: { productId: true, branchId: true, journalEntryId: true, reason: true, costAmount: true, product: { select: { costPrice: true } } },
+      select: { productId: true, branchId: true, journalEntryId: true, reversesAdjustmentId: true, reason: true, costAmount: true, product: { select: { costPrice: true } } },
     });
 
     const byReason: Record<string, { count: number; totalValue: string }> = {};

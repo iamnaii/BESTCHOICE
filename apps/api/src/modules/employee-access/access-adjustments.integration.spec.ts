@@ -1083,6 +1083,64 @@ test('summary requires cost on the stamped posting branch as well as original an
   expect(visible.totalValue).not.toBeNull();
 });
 
+test('completed FOUND detail and list independently project the original adjustment source', async () => {
+  const shop = await db.companyInfo.findUniqueOrThrow({ where: { companyCode: 'SHOP' } });
+  const branchC = (
+    await db.branch.create({ data: { name: 'FOUND posting C', companyId: shop.id } })
+  ).id;
+  const recoveryB = (
+    await db.branch.create({ data: { name: 'FOUND recovery B', companyId: shop.id } })
+  ).id;
+  const owner = await user('OWNER');
+  const p = await bookedProduct();
+  const original = await createAdjustment(p.id);
+  await db.product.update({ where: { id: p.id }, data: { branchId: branchC } });
+  await post(`/stock-adjustments/${original.id}/approve`, {}, owner).expect(201);
+  await db.product.update({ where: { id: p.id }, data: { branchId: recoveryB } });
+  const found = await createAdjustment(p.id, 'FOUND', owner);
+  await post(`/stock-adjustments/${found.id}/approve`, {}, owner).expect(201);
+  const reader = await user();
+  await grant(
+    reader,
+    ['stock-adjustments.read', 'sensitive.cost.read', 'journal.read', 'products.read'],
+    [recoveryB, branchC],
+  );
+  const views = async () => {
+    const detail = (await get(`/stock-adjustments/${found.id}`, reader).expect(200)).body;
+    const list = (await get(`/stock-adjustments?productId=${p.id}`, reader).expect(200)).body;
+    return [detail, list.data.find((row: { id: string }) => row.id === found.id)];
+  };
+  for (const row of await views()) {
+    expect(row.reversesAdjustmentId).toBeNull();
+    expect(row.costAmount).toBeNull();
+    expect(row.journalEntryId).toBeNull();
+    expect(row.product.costPrice).toBeNull();
+  }
+  expect(
+    (await get(`/stock-adjustments/summary?branchId=${recoveryB}`, reader).expect(200)).body
+      .totalValue,
+  ).toBeNull();
+  await grant(reader, ['sensitive.cost.read'], [branchA]);
+  for (const row of await views()) {
+    expect(row.costAmount).toBeNull();
+    expect(row.product.costPrice).toBe('100');
+    expect(row.reversesAdjustmentId).toBeNull();
+  }
+  await grant(reader, ['journal.read'], [branchA]);
+  for (const row of await views()) expect(row.reversesAdjustmentId).toBeNull();
+  await grant(reader, ['stock-adjustments.read'], [branchA]);
+  for (const row of await views()) {
+    expect(row.reversesAdjustmentId).toBe(original.id);
+    expect(row.costAmount).toBeNull();
+    expect(row.product.costPrice).toBe('100');
+    expect(row.journalEntryId).not.toBeNull();
+  }
+  expect(
+    (await get(`/stock-adjustments/summary?branchId=${recoveryB}`, reader).expect(200)).body
+      .totalValue,
+  ).not.toBeNull();
+});
+
 test('original branch company liveness is consistent between collection and record boundaries', async () => {
   const shop = await db.companyInfo.findUniqueOrThrow({ where: { companyCode: 'SHOP' } });
   const finance = await db.companyInfo.findUniqueOrThrow({ where: { companyCode: 'FINANCE' } });

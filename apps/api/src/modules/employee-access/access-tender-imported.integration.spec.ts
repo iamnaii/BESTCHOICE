@@ -447,6 +447,121 @@ describe('Current scope, canonical money contributors and private projections', 
     expect(overview.strip.rows[0].cells).toBeNull();
     expect(overview.holdings).toBeNull();
   });
+  it.each(['OWNER_HOLD', 'BANK_DEPOSIT', 'BRANCH_SAFE'] as const)(
+    'blind overview selection stays stable across settlement with later %s close',
+    async (destination) => {
+      const f = await cashCase();
+      const fullReader = await user();
+      await grant(fullReader, ['shop-tenders.read', 'sensitive.cost.read'], 'SHOP', [f.branch]);
+      const date = bangkokDateString(new Date(Date.now() - 86400000));
+      const earlier = await closeCase(f.branch, f.actor);
+      const later = await closeCase(f.branch, f.actor);
+      await db.shopCashClose.update({
+        where: { id: earlier.id },
+        data: {
+          status: 'CONFIRMED',
+          destination: 'BRANCH_SAFE',
+          receivedAmount: '70',
+          countedAt: new Date(`${date}T01:00:00Z`),
+          confirmedAt: new Date(`${date}T04:00:00Z`),
+          confirmedById: owner,
+        },
+      });
+      await db.shopCashClose.update({
+        where: { id: later.id },
+        data: {
+          status: 'CONFIRMED',
+          destination,
+          receivedAmount: '70',
+          countedAt: new Date(`${date}T02:00:00Z`),
+          // Reverse confirmation order to exercise actual ledger allocation too.
+          confirmedAt: new Date(`${date}T03:00:00Z`),
+          confirmedById: owner,
+        },
+      });
+      const overview = async (actor: string) => {
+        const { asOf, ...body } = (
+          await http(
+            `/shop-tenders/cash-close/overview?company=SHOP&branchId=${f.branch}&date=${date}`,
+            actor,
+          ).expect(200)
+        ).body;
+        expect(asOf).toEqual(expect.any(String));
+        return body;
+      };
+      const blindBefore = await overview(f.actor);
+      const fullBefore = await overview(fullReader);
+      expect(fullBefore.rows[0].close.id).toBe(
+        destination === 'BRANCH_SAFE' ? later.id : earlier.id,
+      );
+      expect(fullBefore.rows[0].state).toBe('AT_BRANCH');
+      await db.shopCashDeposit.create({
+        data: {
+          branchId: f.branch,
+          source: 'BRANCH_SAFE',
+          amount: '70',
+          reference: 'Owned settlement-only fixture',
+          slipKey: 'owned-unused-fixture',
+          depositedById: owner,
+        },
+      });
+      const blindAfter = await overview(f.actor);
+      const fullAfter = await overview(fullReader);
+      expect(fullAfter.rows[0].close.id).toBe(
+        destination === 'BRANCH_SAFE' ? earlier.id : later.id,
+      );
+      expect(fullAfter.rows[0].state).toBe(destination === 'BRANCH_SAFE' ? 'AT_BRANCH' : 'REACHED');
+      expect(blindAfter).toEqual(blindBefore);
+      expect(blindBefore.rows[0].close).toMatchObject({
+        id: later.id,
+        status: 'CONFIRMED',
+        moneyState: null,
+      });
+    },
+  );
+  it('blind overview prioritizes raw pending workflow with deterministic countedAt and ID ties', async () => {
+    const f = await cashCase();
+    const date = bangkokDateString(new Date(Date.now() - 86400000));
+    const pending = await Promise.all([closeCase(f.branch, f.actor), closeCase(f.branch, f.actor)]);
+    const sorted = pending.map((close) => close.id).sort();
+    // Update the greatest ID first: insertion/update order must not decide a time tie.
+    for (const id of [...sorted].reverse())
+      await db.shopCashClose.update({
+        where: { id },
+        data: { countedAt: new Date(`${date}T01:00:00Z`) },
+      });
+    const confirmed = await closeCase(f.branch, f.actor);
+    await db.shopCashClose.update({
+      where: { id: confirmed.id },
+      data: {
+        status: 'CONFIRMED',
+        destination: 'OWNER_HOLD',
+        receivedAmount: '70',
+        countedAt: new Date(`${date}T03:00:00Z`),
+        confirmedAt: new Date(`${date}T04:00:00Z`),
+        confirmedById: owner,
+      },
+    });
+    const overview = async () =>
+      (
+        await http(
+          `/shop-tenders/cash-close/overview?company=SHOP&branchId=${f.branch}&date=${date}`,
+          f.actor,
+        ).expect(200)
+      ).body;
+    expect((await overview()).rows[0].close).toMatchObject({
+      id: sorted[1],
+      status: 'PENDING_CONFIRM',
+    });
+    await db.shopCashClose.update({
+      where: { id: sorted[0] },
+      data: { countedAt: new Date(`${date}T02:00:00Z`) },
+    });
+    expect((await overview()).rows[0].close).toMatchObject({
+      id: sorted[0],
+      status: 'PENDING_CONFIRM',
+    });
+  });
   it('rejects current revocation even with an earlier granted HTTP snapshot', async () => {
     const actor = await user(),
       assignment = await grant(actor, ['imported-sales.read']);

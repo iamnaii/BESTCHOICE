@@ -43,15 +43,16 @@ import {
  *
  * คอลัมน์ `advanceBalance` / `rescheduleAdvanceBalance` / `creditBalance` = 0 ในธุรกรรมเดียวกัน · audit
  * `ADVANCE_EXCESS_RECOGNIZED` ผ่าน `tx.auditLog.create` (atomic กับรายการ — แถวหลุด Merkle chain โดยตั้งใจ) ·
- * idempotency `flow + idempotencyKey` (`advance-excess-income:<contractId>` · ลงใหม่หลังกลับรายการ = ต่อท้าย `:<ลำดับ>`
- * โดยลำดับนับ**ทุกแถว**ของ flow รวม VOIDED/ลบ — `countAdvanceExcessIncomeEntries`) + จับ P2002 ⇒ `ALREADY_POSTED` ·
+ * idempotency `flow + idempotencyKey` (`advance-excess-income:<contractId>` · รายการถัดไป = ต่อท้าย `:<ลำดับ>` โดยลำดับนับ**ทุกแถว**ของ flow
+ * รวม VOIDED/ลบ — `countAdvanceExcessIncomeEntries`) — "มีรายการแล้ว" ไม่ใช่ตัวกัน: ยอดในบัญชี > 0 ลงรายการถัดไปเสมอ (เงินที่เข้า
+ * หลังกวาด / 21-5101 ที่รายการยุคก่อน 22.2 ไม่ได้ล้าง — final review I1) · ยอด 0 + มีรายการที่มีผล = `ALREADY_POSTED` · P2002 ⇒ `ALREADY_POSTED` ·
  * สัญญาณเตือนคอลัมน์ ≠ บัญชี ส่งหลัง commit (`emitDeferredWarnings`).
  *
  * **กลับรายการ (final review I2):** `reverse(contractId, { reason, actorUserId })` — กระจกทุกบรรทัดของรายการกวาดที่ยังมีผล
  * (`Cr 21-1103 / Dr 42-1106 / Dr 21-2102`) flow `advance-excess-income-reverse` · tag `REVERSAL` · key ต่อต้นฉบับ ·
  * **ไม่ copy stamp** `advanceVatConsume` (ต5 — ต้นฉบับถูก stamp `reversed` ⇒ `advanceVatOutstanding` กลับขึ้นเอง) · คืนคอลัมน์
- * `advanceBalance` / `rescheduleAdvanceBalance` / `creditBalance` จาก `*Before` ใน metadata (รายการก่อน 22.2 ไม่มี
- * `creditBalanceBefore` = 0) · audit `ADVANCE_EXCESS_REVERSED` · เรียกจาก CLI
+ * `advanceBalance` / `rescheduleAdvanceBalance` / `creditBalance` จาก `*Before` ใน metadata (รายการก่อน 22.2 stamp
+ * `creditBalanceBefore` ไว้แล้วแต่ไม่เคยตั้งคอลัมน์เป็น 0 ⇒ คืนค่าเดิม) · audit `ADVANCE_EXCESS_REVERSED` · เรียกจาก CLI
  * `advance-excess:reverse` (`src/cli/advance-excess-income-reverse.cli.ts`) — `JournalService.void` ปฏิเสธรายการ flow นี้
  * เพราะมันตั้ง VOIDED + รายการกลับไม่มี metadata (21-1103 ทั้งบัญชีเกินจริง · 42-1106 ติดลบ · รอบกวาดลงซ้ำไม่ได้).
  */
@@ -170,21 +171,12 @@ export class AdvanceExcessIncomeTemplate {
     });
     const contractNumber = contract.contractNumber;
 
-    // idempotency ชั้นแรก (ชั้นสองคือ unique index ⇒ P2002 ใน execute)
+    // idempotency ชั้นแรก (ชั้นสองคือ unique index ⇒ P2002 ใน execute) — ตัดสินจาก**ยอดในบัญชี** ไม่ใช่จากการมีรายการ
+    // (final review I1 · 2026-10-17): รายการกวาดยุคก่อน 22.2 ล้างเฉพาะ 21-1103 ⇒ สัญญาที่ 21-5101 ยังค้างจะถูกเลือกทุกคืน
+    // ถ้าคืน ALREADY_POSTED เพราะ "มีรายการแล้ว" เงินนั้นจะค้างตลอดไปโดยไม่มีสัญญาณ ⇒ ยอดในบัญชี > 0 = ลงรายการถัดไป
+    // (key `:<seq>` รองรับหลายรายการอยู่แล้ว) · ยอด = 0 และมีรายการที่มีผล = ALREADY_POSTED (รันซ้ำ)
     const priorEntries = await listAdvanceExcessIncomeEntries(tx, contractId);
     const active = priorEntries.filter(isActiveAdvanceExcessEntry);
-    if (active.length > 0) {
-      return {
-        result: {
-          outcome: 'ALREADY_POSTED',
-          contractId,
-          contractNumber,
-          entryNo: active[0].entryNumber,
-        },
-        warnings: [],
-        contractNumber,
-      };
-    }
 
     const advances = await readContractCloseAdvances(tx, contract, 'excess-income');
     const advanceBalanceBefore = toDecimal(contract.advanceBalance);
@@ -196,6 +188,18 @@ export class AdvanceExcessIncomeTemplate {
     const credit = advances.credit;
     const amount = advance.plus(credit);
     if (!amount.gt(0)) {
+      if (active.length > 0) {
+        return {
+          result: {
+            outcome: 'ALREADY_POSTED',
+            contractId,
+            contractNumber,
+            entryNo: active[0].entryNumber,
+          },
+          warnings: [],
+          contractNumber,
+        };
+      }
       // บัญชีไม่มีให้ลง — คอลัมน์ที่ยังค้างคือคอลัมน์ไม่ตรงบัญชี (สัญญาณเตือนจาก readContractCloseAdvances +
       // ผู้เรียกสร้างงานแจ้งให้ตรวจ แทน alarm เดิมที่อ่านจากคอลัมน์)
       if (advanceBalanceBefore.plus(parkBalanceBefore).plus(creditBalanceBefore).gt(0)) {
@@ -457,7 +461,7 @@ export class AdvanceExcessIncomeTemplate {
           });
 
           // คืนคอลัมน์ถังตามที่รายการกวาดบันทึกไว้ก่อนตั้งเป็น 0 (GL 21-1103 / 21-5101 กลับมาด้วยกระจก ⇒ คอลัมน์ต้องตามบัญชี) ·
-          // รายการก่อน 22.2 ไม่มี creditBalanceBefore (ไม่เคยแตะ creditBalance) ⇒ 0
+          // รายการก่อน 22.2 ก็ stamp creditBalanceBefore ไว้แล้ว (แต่ไม่เคยตั้ง creditBalance เป็น 0) ⇒ การคืนเป็นค่าเดิม = ไม่เปลี่ยนอะไร
           const restoredAdvance = toDecimal(meta.advanceBalanceBefore as never);
           const restoredPark = toDecimal(meta.rescheduleAdvanceBalanceBefore as never);
           const restoredCredit = toDecimal(meta.creditBalanceBefore as never);

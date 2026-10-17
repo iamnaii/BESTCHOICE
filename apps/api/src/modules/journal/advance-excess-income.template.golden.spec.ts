@@ -475,9 +475,9 @@ describe('AdvanceExcessIncomeTemplate (golden G6 / G9 / 22.2 · mock-based)', ()
     expect(posted().metadata[ADVANCE_VAT_META.consume]).toBeUndefined();
   });
 
-  it('มีรายการ advance-excess-income ที่มีผลอยู่แล้ว → ALREADY_POSTED ไม่ลงซ้ำ ไม่แตะคอลัมน์', async () => {
+  it('มีรายการ advance-excess-income ที่มีผลอยู่แล้วและบัญชีเป็น 0 (รันซ้ำ) → ALREADY_POSTED ไม่ลงซ้ำ ไม่แตะคอลัมน์', async () => {
     const { template, tx, createAndPost } = build({
-      ledger: { '21-1103': '1322.13' },
+      ledger: {},
       existing: [
         { flow: ADVANCE_EXCESS_INCOME_FLOW, idempotencyKey: 'advance-excess-income:contract-1' },
       ],
@@ -486,6 +486,38 @@ describe('AdvanceExcessIncomeTemplate (golden G6 / G9 / 22.2 · mock-based)', ()
     expect(result.outcome).toBe('ALREADY_POSTED');
     expect(createAndPost).not.toHaveBeenCalled();
     expect(tx.contract.update).not.toHaveBeenCalled();
+  });
+
+  it('final review I1: รายการกวาดยุคก่อน 22.2 ยังมีผล (ล้างเฉพาะ 21-1103) แต่ 21-5101 ยังค้าง 300 → ลงรายการที่สอง key :2 Dr 21-5101 300 / Cr 42-1106 280.37 / Cr 21-2102 19.63 — ไม่ใช่ ALREADY_POSTED เงียบ', async () => {
+    const { template, tx, posted } = build({
+      ledger: { '21-5101': '300.00' },
+      stamps: [{ [ADVANCE_VAT_META.park]: '52.34' }, { [ADVANCE_VAT_META.consume]: '32.71' }],
+      columns: { creditBalance: '300.00' },
+      existing: [
+        {
+          flow: ADVANCE_EXCESS_INCOME_FLOW,
+          idempotencyKey: 'advance-excess-income:contract-1',
+          amount: '500.00',
+          creditBalanceBefore: '300.00',
+        },
+      ],
+    });
+    const result = await template.execute('contract-1');
+    expect(result.outcome).toBe('POSTED');
+    if (result.outcome !== 'POSTED') throw new Error('unreachable');
+    expect(result.advance.toFixed(2)).toBe('0.00');
+    expect(result.credit.toFixed(2)).toBe('300.00');
+    expect(tuples(posted().lines)).toEqual([
+      '21-5101 300.00 0.00',
+      '42-1106 0.00 280.37',
+      '21-2102 0.00 19.63',
+    ]);
+    expect(posted().metadata.idempotencyKey).toBe('advance-excess-income:contract-1:2');
+    expect(posted().reference).toBe('contract-1:advance-excess-income:2');
+    expect(tx.contract.update).toHaveBeenCalledWith({
+      where: { id: 'contract-1' },
+      data: { advanceBalance: 0, rescheduleAdvanceBalance: 0, creditBalance: 0 },
+    });
   });
 
   it('รายการเดิมถูกฝ่ายบัญชีกลับแล้ว (reversed) และ 21-1103 กลับมามียอด → ลงใหม่ด้วย idempotencyKey ลำดับ :2', async () => {

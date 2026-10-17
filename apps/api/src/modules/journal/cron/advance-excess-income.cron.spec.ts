@@ -622,4 +622,71 @@ describe('AdvanceExcessIncomeCron — รอบกวาดเงินพัก
       { accountCode: '21-2102', dr: '0.00', cr: '13.08' },
     ]);
   });
+
+  it('final review I1: สัญญาที่รอบกวาดยุคก่อน 22.2 ล้างเฉพาะ 21-1103 แล้ว (รายการยังมีผล) แต่ 21-5101 ค้าง 300 → ถูกเลือกจากบัญชี 21-5101 และลงรายการที่สอง (key :2) · รอบถัดไป ALREADY_POSTED', async () => {
+    const P = await seedStandard17k12m(prisma);
+    await prisma.contract.update({
+      where: { id: P.id },
+      data: { status: 'COMPLETED', creditBalance: D('300') },
+    });
+    // เงินเข้า: พัก 500 + เครดิต 300 (ภาษีพักรวม 52.34)
+    await postSynthetic(
+      P.id,
+      [
+        ['11-1201', '800.00', '0'],
+        ['21-1103', '0', '500.00'],
+        ['21-5101', '0', '300.00'],
+        ['21-2102', '52.34', '0'],
+        ['21-2101', '0', '52.34'],
+      ],
+      { [ADVANCE_VAT_META.park]: '52.34' },
+    );
+    // รายการกวาดยุคก่อน 22.2 — ล้างเฉพาะ 21-1103 500 ขากลับ HALF_UP 32.71 (ภาษีของเครดิต 19.63 ยังค้าง)
+    await journal.createAndPost({
+      description: `รับรู้เงินพักส่วนเกินเป็นรายได้ (42-1106) — สัญญา ${P.id}`,
+      reference: `${P.id}:${ADVANCE_EXCESS_INCOME_FLOW}`,
+      metadata: {
+        tag: 'ADVANCE_EXCESS',
+        flow: ADVANCE_EXCESS_INCOME_FLOW,
+        idempotencyKey: `${ADVANCE_EXCESS_INCOME_FLOW}:${P.id}`,
+        contractId: P.id,
+        amount: '500.00',
+        income: '467.29',
+        vat: '32.71',
+        [ADVANCE_VAT_META.consume]: '32.71',
+        advanceBalanceBefore: '500.00',
+        rescheduleAdvanceBalanceBefore: '0.00',
+        creditBalanceBefore: '300.00',
+      },
+      lines: [
+        { accountCode: '21-1103', dr: D('500'), cr: D(0) },
+        { accountCode: '42-1106', dr: D(0), cr: D('467.29') },
+        { accountCode: '21-2102', dr: D(0), cr: D('32.71') },
+      ],
+    });
+    expect((await glContractBalance(prisma as any, P.id, '21-1103', 'cr')).toFixed(2)).toBe('0.00');
+    expect((await advanceVatOutstanding(prisma as any, P.id)).toFixed(2)).toBe('19.63');
+
+    const r1 = await cron.tick();
+    expect(r1.failed).toBe(0);
+    expect(r1.posted).toBe(1); // P เท่านั้น (สัญญาอื่นของเทสก่อนหน้ากวาดไปแล้ว)
+    const entries = await sweepEntries(P.id);
+    expect(entries).toHaveLength(2);
+    const second = entries.find((e) => (e.metadata as Record<string, unknown>).idempotencyKey === `${ADVANCE_EXCESS_INCOME_FLOW}:${P.id}:2`);
+    expect(second).toBeDefined();
+    expect(tuples(second!)).toEqual([
+      { accountCode: '21-5101', dr: '300.00', cr: '0.00' },
+      { accountCode: '42-1106', dr: '0.00', cr: '280.37' },
+      { accountCode: '21-2102', dr: '0.00', cr: '19.63' },
+    ]);
+    expect((await glContractBalance(prisma as any, P.id, '21-5101', 'cr')).toFixed(2)).toBe('0.00');
+    expect((await advanceVatOutstanding(prisma as any, P.id)).toFixed(2)).toBe('0.00');
+    expect(
+      (await prisma.contract.findUniqueOrThrow({ where: { id: P.id } })).creditBalance.toFixed(2),
+    ).toBe('0.00');
+
+    const r2 = await cron.tick();
+    expect(r2.posted).toBe(0);
+    expect(await sweepEntries(P.id)).toHaveLength(2);
+  });
 });

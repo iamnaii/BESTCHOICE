@@ -369,6 +369,7 @@ const PERMISSION_DEFINITIONS = {
   'penalty-waivers.request': ['ขอยกเว้นค่าปรับ', 'finance', 'GRANT'],
   'penalty-waivers.approve': ['อนุมัติยกเว้นค่าปรับ', 'finance', 'OWNER'],
   'sensitive.seller-bank.read': ['ดูเลขบัญชีรับเงินของผู้ขาย', 'sensitive', 'GRANT'],
+  'sensitive.customer-identity.read': ['ดูเลขประจำตัวลูกค้าและผู้ปกครองเต็มเลข', 'sensitive', 'GRANT'],
   'sensitive.cost.read': ['ดูราคาซื้อและต้นทุน', 'sensitive', 'GRANT'],
   'sensitive.profit.read': ['ดูรายงานกำไร', 'sensitive', 'GRANT'],
   'sensitive.salary.read': ['ดูข้อมูลเงินเดือน', 'sensitive', 'GRANT'],
@@ -561,6 +562,7 @@ const DEFAULT_POSITION_DEFINITIONS = [
     name: 'ผู้จัดการสาขา',
     assignable: true,
     permissions: [
+      'sensitive.customer-identity.read',
       'dashboard.read',
       'customers.read',
       'customers.create',
@@ -718,6 +720,7 @@ const DEFAULT_POSITION_DEFINITIONS = [
     name: 'ผู้จัดการการเงิน',
     assignable: true,
     permissions: [
+      'sensitive.customer-identity.read',
       'customers.read',
       'contracts.read',
       'contracts.update',
@@ -777,6 +780,7 @@ const DEFAULT_POSITION_DEFINITIONS = [
     name: 'ฝ่ายบัญชี',
     assignable: true,
     permissions: [
+      'sensitive.customer-identity.read',
       'accounting.read',
       'accounting.create',
       'accounting.update',

@@ -60,6 +60,22 @@ describe('employee access persistence boundary', () => {
       service.createPosition('actor', { code: 'OWNER', name: 'เจ้าของ', permissions: [] }),
     ).rejects.toThrow(BadRequestException);
   });
+
+  it('does not retrofit customer identity disclosure into saved template positions', async () => {
+    const saved = { id: 'existing-manager', code: 'BRANCH_MANAGER', permissions: ['customers.read'] };
+    db.accessPosition.findUnique.mockResolvedValue(saved);
+
+    await expect(service.seedTemplates('actor')).resolves.toEqual({
+      createdCount: 0,
+      affectedEmployeeCount: 0,
+    });
+
+    expect(saved.permissions).toEqual(['customers.read']);
+    expect(db.accessPosition.create).not.toHaveBeenCalled();
+    expect(db.accessPosition.updateMany).not.toHaveBeenCalled();
+    expect(db.employeeAccessAssignment.create).not.toHaveBeenCalled();
+    expect(db.employeeAccessAssignment.updateMany).not.toHaveBeenCalled();
+  });
   it('rejects a stale position revision before mutation', async () => {
     db.accessPosition.findUnique.mockResolvedValue({ id: 'p', revision: 2, deletedAt: null });
     await expect(

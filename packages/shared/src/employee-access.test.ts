@@ -325,3 +325,35 @@ describe('after-sales canonical repair defaults', () => {
     },
   );
 });
+
+describe('customer identity disclosure capability', () => {
+  const permission = 'sensitive.customer-identity.read';
+
+  it('publishes an owner-editable capability with the reviewed Thai label', () => {
+    expect(isAssignablePermissionKey(permission)).toBe(true);
+    expect(PERMISSION_CATALOG.find(item => item.key === permission)).toMatchObject({
+      label: 'ดูเลขประจำตัวลูกค้าและผู้ปกครองเต็มเลข',
+      group: 'sensitive',
+      ownerOnly: false,
+      allStaff: false,
+    });
+  });
+
+  it('defaults only future manager and accountant templates to full-ID disclosure', () => {
+    expect(DEFAULT_ACCESS_POSITIONS.filter(position =>
+      (position.permissions as readonly string[]).includes(permission),
+    ).map(position => position.code).sort()).toEqual([
+      'ACCOUNTANT', 'BRANCH_MANAGER', 'FINANCE_MANAGER',
+    ]);
+    expect(canAccess(snapshot([], { isOwner: true }), permission, shopA)).toBe(true);
+  });
+
+  it('preserves editable scoped grants without adding customer-read authority', () => {
+    const changed = snapshot([grant([permission], { positionId: 'SALES' })]);
+    expect(canAccess(changed, permission, shopA)).toBe(true);
+    expect(canAccess(changed, permission, shopB)).toBe(false);
+    expect(canAccess(changed, permission, { company: 'FINANCE', branchId: 'A' })).toBe(false);
+    expect(canAccess(changed, 'customers.read', shopA)).toBe(false);
+    expect(canAccess(snapshot([grant([], { positionId: 'ACCOUNTANT' })]), permission, shopA)).toBe(false);
+  });
+});

@@ -8,7 +8,7 @@ At Task 3: **1,394 entrypoints in 178 files**: 1,294 staff, 48 public, 31 custom
 
 ## Current implementation checkpoint
 
-The sections below record contracts as their units were introduced; this checkpoint supersedes historical remaining-work counts. Through the independently reviewed after-sales read unit and its fix (`0533afd3e`), **190 SHOP domain adapters** have actual authorized-success and denial evidence:
+The sections below record contracts as their units were introduced; this checkpoint supersedes historical remaining-work counts. Through the independently reviewed after-sales repair/photo action unit (`77412da46`), **196 SHOP domain adapters** have actual authorized-success and denial evidence:
 
 | Reviewed unit | Adapters | Final implementation commit |
 | --- | ---: | --- |
@@ -20,12 +20,15 @@ The sections below record contracts as their units were introduced; this checkpo
 | Sales / bookings | 18 | `595c5c26f` |
 | Repair / warranty | 15 | `7fb1c9df6` |
 | After-sales reads | 6 | `0533afd3e` |
+| After-sales repair/photo actions | 6 | `77412da46` |
 
-Reviewed exchange source/transaction and customer-quote provenance producers add **zero exposed routes** by themselves. After-sales still needs 14 mutations and four document/photo streams. Shared customer/contact/journey 31, residual SHOP 39, FINANCE 544, operations 267 and audit 4 domain allocations remain, plus the separately inventoried 202 staff routes without domain resource classification. These 202 include privileged settings/provisioning and ordinary reads; classification does not establish their appropriate current capability/source boundary. Seven employee-access owner-management routes were reviewed in Task 2, separately from the 190 SHOP count.
+Reviewed exchange source/transaction and customer-quote provenance producers add **zero exposed routes** by themselves. After-sales still needs seven exchange mutations, one intake/create operation and four document/photo streams. Shared customer/contact/journey 31, residual SHOP 39, FINANCE 544, operations 267 and audit 4 domain allocations remain, plus the separately inventoried 202 staff routes without domain resource classification. These 202 include privileged settings/provisioning and ordinary reads; classification does not establish their appropriate current capability/source boundary. Seven employee-access owner-management routes were reviewed in Task 2, separately from the 196 SHOP count.
 
 The receiving lookup increased the inventory to **1,395 classified HTTP/socket entrypoints**, including 1,093 domain rows. The scanner does not enumerate Cron/queue/bootstrap methods; those require their own source, system/initiator, current employee authority, recipient and durable-evidence reconciliation. Existing actor-fixture HTTP tests do not establish actual JWT/guard/browser integration. Full audit, immutable approvals, UI, whole-program coverage/performance and final local:check/verified preview remain pending. No real account migration is authorized by this checkpoint.
 
 After-sales managed views use exact-transaction source facts and nullable independently authorized children. `stageVerified:false` means stored case metadata; current-stage age/staleness values are unavailable and summaries expose `currentStageUnavailable`. Raw internal getCase is not a public/renderer authorization contract. Authorized exchange tier/approverRole metadata remains compatible; action execution must independently check current capabilities. The final focused read suite records 24/24 real PostgreSQL/HTTP tests plus 267 covering regressions from the implementation run; independent review closed the metadata compatibility finding.
+
+The six repair/photo actions use a separate exact-action internal loader and retain narrow `{id,stage}` or `{photoCount,stage}` acknowledgements without granting general case reads. Five lifecycle operations require after-sales.update; addPhoto uses after-sales.create. Actual canonical repair/financial drafts, case/status and existing durable evidence share the owned outer transaction. Photo staging occurs once outside its lock, reauthorizes on write and cleans only newly owned failed keys; LINE effects run after the actual commit. The owned-PG suite passed 23/23 and affected regressions 207/207; final actual guards/browser remain pending. Future SALES/BM template repair.read/create/update dependencies were separately reviewed at `a7f64c4d1`; saved positions are unchanged.
 
 ## Authentication order and compatibility
 

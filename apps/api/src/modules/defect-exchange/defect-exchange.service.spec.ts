@@ -157,9 +157,9 @@ describe('DefectExchangeService', () => {
         updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       },
       payment: {
-        count: jest.fn(),
         createMany: jest.fn().mockResolvedValue({ count: 0 }),
       },
+      receipt: { findUnique: jest.fn(), findMany: jest.fn().mockResolvedValue([]) },
       auditLog: {
         create: jest.fn().mockResolvedValue({ id: 'audit-1' }),
       },
@@ -181,6 +181,7 @@ describe('DefectExchangeService', () => {
       product: {
         findUnique: jest.fn(),
       },
+      companyInfo: { findFirst: jest.fn().mockResolvedValue(null) },
       $transaction: jest.fn().mockImplementation(async (cb: any) => cb(txMock)),
       __tx: txMock,
     };
@@ -194,7 +195,7 @@ describe('DefectExchangeService', () => {
       providers: [
         DefectExchangeService,
         { provide: PrismaService, useValue: prisma },
-        { provide: JournalAutoService, useValue: {} },
+        { provide: JournalAutoService, useValue: { createAndPost: jest.fn().mockResolvedValue({ entryNumber: 'JE-T' }) } },
         { provide: DefectExchangeReversalTemplate, useValue: reversal },
         { provide: RepairTicketsService, useValue: repairTickets },
         { provide: ReceiptVoidReversalTemplate, useValue: { voidReceipt: jest.fn(), voidAccrualPostedAtReceipt: jest.fn() } },
@@ -210,7 +211,6 @@ describe('DefectExchangeService', () => {
     prisma.product.findUnique.mockResolvedValue(newProductRec);
     prisma.__tx.contract.findUnique.mockResolvedValue(baseContract());
     prisma.__tx.product.findUnique.mockResolvedValue(newProductRec);
-    prisma.__tx.payment.count.mockResolvedValue(0);
     jest.spyOn(creditApproval, 'bindExchangeCreditCheck').mockRejectedValue(new BadRequestException('ต้องตรวจเครดิตรอบใหม่'));
     await expect(service.execute({ oldContractId, newProductId, defectReason: 'screen broken' } as any, userId)).rejects.toThrow(/รอบใหม่/);
     expect(prisma.__tx.product.update).not.toHaveBeenCalledWith(expect.objectContaining({ where: { id: newProductId } }));
@@ -225,7 +225,6 @@ describe('DefectExchangeService', () => {
       prisma.contract.findUnique.mockResolvedValue(baseContract());
       prisma.product.findUnique.mockResolvedValue(newProductRec);
       const tx = prisma.__tx;
-      tx.payment.count.mockResolvedValue(0);
       tx.contract.findUnique.mockResolvedValue(baseContract());
       tx.product.findUnique.mockResolvedValue(newProductRec);
       return tx;
@@ -267,41 +266,7 @@ describe('DefectExchangeService', () => {
     });
   });
 
-  describe('execute — Wave 3 T2 payment guard (ปพพ.386 C-6)', () => {
-    it('throws BadRequestException when contract has any PAID payment record', async () => {
-      const contract = baseContract();
-
-      // checkEligibility uses the top-level prisma (not tx) — return contract there.
-      prisma.contract.findUnique.mockResolvedValue(contract);
-      prisma.product.findUnique.mockResolvedValue(newProductRec);
-
-      // Tx: payment.count returns 1 (paid record exists) → guard trips.
-      const tx = prisma.__tx;
-      tx.payment.count.mockResolvedValue(1);
-
-      await expect(
-        service.execute(
-          {
-            oldContractId,
-            newProductId,
-            defectReason: 'screen broken',
-          } as any,
-          userId,
-        ),
-      ).rejects.toThrow(BadRequestException);
-
-      await expect(
-        service.execute(
-          {
-            oldContractId,
-            newProductId,
-            defectReason: 'screen broken',
-          } as any,
-          userId,
-        ),
-      ).rejects.toThrow(/มีรายการชำระเงินแล้ว/);
-    });
-
+  describe('execute — เส้นทางหลัก (ด่าน C-6 ถอดแล้ว 15ข)', () => {
     it('ก้อน 5 (final review C2): หลัง reverseContract ต้องเรียก markInputVatReversedIfSwept ของสัญญาเดิมใน tx เดียวกัน', async () => {
       const spy = jest.spyOn(inputVatClaim, 'markInputVatReversedIfSwept').mockResolvedValue('UNCHANGED');
       try {
@@ -309,7 +274,6 @@ describe('DefectExchangeService', () => {
         prisma.contract.findUnique.mockResolvedValue(contract);
         prisma.product.findUnique.mockResolvedValue(newProductRec);
         const tx = prisma.__tx;
-        tx.payment.count.mockResolvedValue(0);
         tx.contract.findUnique.mockResolvedValue(contract);
         tx.product.findUnique.mockResolvedValue(newProductRec);
         await service.execute({ oldContractId, newProductId, defectReason: 'screen broken' } as any, userId);
@@ -327,7 +291,6 @@ describe('DefectExchangeService', () => {
       prisma.product.findUnique.mockResolvedValue(newProductRec);
 
       const tx = prisma.__tx;
-      tx.payment.count.mockResolvedValue(0);
       tx.contract.findUnique.mockResolvedValue(contract);
       tx.product.findUnique.mockResolvedValue(newProductRec);
 
@@ -345,13 +308,7 @@ describe('DefectExchangeService', () => {
         productDisclosure: { version: 1, deviceOrigin: 'IMPORTED', shopWarrantyDays: 30, warrantyTerms: 'Replacement warranty' },
       }) }));
       expect(result.oldContract.status).toBe('DEFECT_EXCHANGED');
-      expect(tx.payment.count).toHaveBeenCalledWith({
-        where: {
-          contractId: oldContractId,
-          deletedAt: null,
-          OR: [{ status: 'PAID' }, { amountPaid: { gt: 0 } }],
-        },
-      });
+      expect(result.transferredCredit).toBe('0.00');
     });
 
     it('B5: ตัด hold ของเว็บใน tx เดียวกับที่เครื่องออกจาก IN_STOCK', async () => {
@@ -360,7 +317,6 @@ describe('DefectExchangeService', () => {
       prisma.product.findUnique.mockResolvedValue(newProductRec);
 
       const tx = prisma.__tx;
-      tx.payment.count.mockResolvedValue(0);
       tx.contract.findUnique.mockResolvedValue(contract);
       tx.product.findUnique.mockResolvedValue(newProductRec);
       tx.productReservation.updateMany.mockResolvedValue({ count: 1 });
@@ -380,25 +336,6 @@ describe('DefectExchangeService', () => {
       expect(call.data).toEqual({ status: 'PREEMPTED' });
     });
 
-    it('payment guard message includes the count of payment records', async () => {
-      const contract = baseContract();
-      prisma.contract.findUnique.mockResolvedValue(contract);
-      prisma.product.findUnique.mockResolvedValue(newProductRec);
-
-      const tx = prisma.__tx;
-      tx.payment.count.mockResolvedValue(3);
-
-      await expect(
-        service.execute(
-          {
-            oldContractId,
-            newProductId,
-            defectReason: 'screen broken',
-          } as any,
-          userId,
-        ),
-      ).rejects.toThrow(/3 รายการ/);
-    });
   });
 
   // Reference futureWindowEnd to silence unused-var warning if test grows.
@@ -466,7 +403,6 @@ describe('DefectExchangeService', () => {
       };
       tx.repairTicket.findUnique.mockResolvedValue(mismatchTicket);
 
-      tx.payment.count.mockResolvedValue(0);
       tx.contract.findUnique.mockResolvedValue(baseContract()); // customerId = 'cust-1'
       tx.product.findUnique.mockResolvedValue(newProductRec);
       // newContract.customerId = 'cust-1' → mismatch with ticket's 'cust-DIFFERENT'
@@ -497,7 +433,6 @@ describe('DefectExchangeService', () => {
         // Second call: customer match check (select: { customerId })
         .mockResolvedValueOnce({ customerId: 'cust-1' });
 
-      tx.payment.count.mockResolvedValue(0);
       tx.contract.findUnique.mockResolvedValue(baseContract());
       tx.product.findUnique.mockResolvedValue(newProductRec);
       tx.contract.create.mockResolvedValue({
@@ -552,7 +487,6 @@ describe('DefectExchangeService', () => {
         outcome: 'SAME_MODEL_EXCHANGE',
         cancelledAt: null,
       });
-      tx.payment.count.mockResolvedValue(0);
       tx.contract.findUnique.mockResolvedValue(baseContract());
       tx.product.findUnique.mockResolvedValue(newProductRec);
       prisma.contract.findUnique.mockResolvedValue(baseContract());
@@ -614,7 +548,6 @@ describe('DefectExchangeService', () => {
       prisma.contract.findUnique.mockResolvedValue(contract);
       prisma.product.findUnique.mockResolvedValue(product);
       const tx = prisma.__tx;
-      tx.payment.count.mockResolvedValue(0);
       tx.contract.findUnique.mockResolvedValue(contract);
       tx.product.findUnique.mockResolvedValue(product);
       return tx;

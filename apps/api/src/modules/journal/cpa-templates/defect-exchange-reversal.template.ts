@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { INPUT_VAT_INSTALLMENT_FLOW } from './contract-cancellation.template';
 import { Decimal } from '@prisma/client/runtime/library';
 import { Prisma } from '@prisma/client';
@@ -6,6 +6,18 @@ import { JournalAutoService } from '../journal-auto.service';
 import { PrismaService } from '../../../prisma/prisma.service';
 
 const PAYMENT_FLOWS = ['payment', 'split-payment', 'early-payoff', 'reschedule'];
+
+/** flow ของรายการย้ายเครดิตตอนเปลี่ยนเครื่องตำหนิ (15ข) — ผู้กวาดรายการตามสัญญาต้องข้าม */
+export const DEFECT_EXCHANGE_CREDIT_OUT_FLOW = 'defect-exchange-credit-out';
+export const DEFECT_EXCHANGE_CREDIT_IN_FLOW = 'defect-exchange-credit-in';
+const CREDIT_TRANSFER_FLOWS: readonly string[] = [DEFECT_EXCHANGE_CREDIT_OUT_FLOW, DEFECT_EXCHANGE_CREDIT_IN_FLOW];
+
+/** บัญชีเงินสด/ธนาคารของ FINANCE — รายการที่แตะบัญชีกลุ่มนี้ห้ามถูก mirror (เงินจริงไม่ได้ออก) */
+export const CASH_ACCOUNT_PREFIXES = ['11-11', '11-12'] as const;
+/** บัญชีเงินของลูกค้า + ภาษีที่พักคู่กัน — รายการเงินสดที่คู่อยู่ในกลุ่มนี้ล้วน = เงินลูกค้าที่ขั้น ข ของเปลี่ยนเครื่องจะย้ายออกเอง */
+export const CUSTOMER_MONEY_ACCOUNTS = ['21-1103', '21-5101', '21-2101', '21-2102'] as const;
+
+const isCashAccount = (code: string) => CASH_ACCOUNT_PREFIXES.some((p) => code.startsWith(p));
 
 /**
  * Template — Defect Exchange Reversal.
@@ -66,6 +78,9 @@ export class DefectExchangeReversalTemplate {
 
     const entryNos: string[] = [];
 
+    // 15ข — จำแนกก่อน post ใบใดเลย: รายการที่ต้องปฏิเสธ (ขาเงินสดที่คู่ไม่ใช่เงินลูกค้า) ทำให้ทั้งรายการล้มตั้งแต่ต้น
+    // ไม่ทิ้งกระจกบางใบไว้ก่อน throw (tx rollback ครอบอยู่แล้ว แต่ fail-fast ชัดกว่า — แบบ tripwire ของ C-1)
+    const candidates: typeof originalJes = [];
     for (const je of originalJes) {
       const meta = (je.metadata ?? {}) as Record<string, unknown>;
 
@@ -94,6 +109,11 @@ export class DefectExchangeReversalTemplate {
         );
         continue;
       }
+      // 15ข: การย้ายเครดิตของเปลี่ยนเครื่อง (ขั้น ข/ง) ไม่ใช่รายการของสัญญาที่ต้องถอน — mirror = เครดิตหาย/ซ้ำ
+      if (CREDIT_TRANSFER_FLOWS.includes(flow)) {
+        this.logger.log(`[A.5a] DefectExchangeReversal — JE ${je.entryNumber} is a credit transfer (${flow}), skipping`);
+        continue;
+      }
       // ข้ามรายการกลับรายการทุก flow (receipt-void / refund-reversal / defect-exchange /
       // exchange-cancel …) — ตั้งแต่ 2026-09-28 รายการเหล่านี้ผูก contractId จึงถูกกวาดเจอ;
       // mirror ซ้ำ = ลงรายการเดิมกลับเข้ามาใหม่โดยไม่มีเงินจริง
@@ -103,6 +123,33 @@ export class DefectExchangeReversalTemplate {
         );
         continue;
       }
+      // 15ข: รายการที่แตะเงินสด/ธนาคาร — mirror จะทำให้เงินออกจากธนาคารทั้งที่ไม่มีการคืนเงินจริง.
+      //   คู่เป็นเงินของลูกค้าล้วน (จ่ายเกิน → 21-5101 · ส่วนเกินลิงก์ชำระ → 21-1103 + ภาษีพัก) = ข้าม:
+      //   ขั้น ข ของเปลี่ยนเครื่องอ่านยอด 21-1103/21-5101 ในบัญชีแล้วย้ายเป็นเครดิตเอง.
+      //   คู่เป็นอย่างอื่น (เช่น ใบรับชำระที่ไม่มีใบเสร็จจึงไม่ถูกยกเลิกในขั้น ก) = ปฏิเสธ ไม่เดา.
+      //   (ตรวจหลังข้าม tag REVERSAL — กระจกใบรับชำระก็มีขาเงินสด แต่ถูกข้ามด้วยกติกาข้างบนอยู่แล้ว)
+      const cashLines = je.lines.filter((l) => isCashAccount(l.accountCode));
+      if (cashLines.length > 0) {
+        const others = je.lines.filter((l) => !isCashAccount(l.accountCode));
+        const customerMoneyOnly = others.every((l) =>
+          (CUSTOMER_MONEY_ACCOUNTS as readonly string[]).includes(l.accountCode),
+        );
+        if (customerMoneyOnly) {
+          this.logger.log(
+            `[A.5a] DefectExchangeReversal — JE ${je.entryNumber} is customer money (cash ↔ 21-1103/21-5101), left for the credit transfer`,
+          );
+          continue;
+        }
+        throw new BadRequestException(
+          `รายการบัญชี ${je.entryNumber} ของสัญญา ${contract.contractNumber} มีขาเงินสด/ธนาคารที่ระบบกลับรายการให้ไม่ได้ ` +
+            '(เช่น ใบรับชำระที่ยังไม่มีใบเสร็จ) — ให้ฝ่ายบัญชีตรวจรายการนี้ก่อนเปลี่ยนเครื่อง',
+        );
+      }
+      candidates.push(je);
+    }
+
+    for (const je of candidates) {
+      const meta = (je.metadata ?? {}) as Record<string, unknown>;
 
       // Idempotency: check if reversal JE already exists for this original
       const existingReversal = await client.journalEntry.findFirst({

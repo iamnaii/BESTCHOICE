@@ -83,7 +83,7 @@ export default function ForgotPasswordPage() {
             <Button
               type="submit"
               disabled={isSubmitting}
-              className="w-full"
+              className="w-full h-11 min-h-11"
               variant="primary"
               size="lg"
             >

@@ -772,6 +772,8 @@ enum BuybackSelectType {
 // ============================================================
 
 model Branch {
+  accessSuppliers Supplier[] @relation("SupplierAccessBranch")
+  accessPurchaseOrders PurchaseOrder[] @relation("PurchaseOrderAccessBranch")
   accessAssignmentBranches EmployeeAccessAssignmentBranch[]
   chatLibraryFolders ChatLibraryFolder[]
   chatLibraryFiles ChatLibraryFile[]
@@ -1833,6 +1835,12 @@ model Refund {
 // ============================================================
 
 model Supplier {
+  /// Explicit authenticated origin for managed creation. Historical rows remain null.
+  accessCompanyCode String? @map("access_company_code")
+  accessBranchId String? @map("access_branch_id")
+  accessCompany CompanyInfo? @relation("SupplierAccessCompany", fields: [accessCompanyCode], references: [companyCode], onDelete: Restrict)
+  accessBranch Branch? @relation("SupplierAccessBranch", fields: [accessBranchId], references: [id], onDelete: Restrict)
+  @@index([accessCompanyCode, accessBranchId])
   id              String       @id @default(uuid())
   /// Entity type: JURISTIC = บริษัท/นิติบุคคล, INDIVIDUAL = บุคคลธรรมดา
   type            SupplierType @default(JURISTIC)
@@ -1901,6 +1909,12 @@ model SupplierPaymentMethod {
 }
 
 model PurchaseOrder {
+  /// Explicit authenticated origin for managed creation. Historical rows remain null.
+  accessCompanyCode String? @map("access_company_code")
+  accessBranchId String? @map("access_branch_id")
+  accessCompany CompanyInfo? @relation("PurchaseOrderAccessCompany", fields: [accessCompanyCode], references: [companyCode], onDelete: Restrict)
+  accessBranch Branch? @relation("PurchaseOrderAccessBranch", fields: [accessBranchId], references: [id], onDelete: Restrict)
+  @@index([accessCompanyCode, accessBranchId])
   id                  String          @id @default(uuid())
   poNumber            String          @unique @map("po_number")
   supplierId          String          @map("supplier_id")
@@ -3914,6 +3928,8 @@ model DocumentAuditLog {
 // ============================================================
 
 model CompanyInfo {
+  accessSuppliers Supplier[] @relation("SupplierAccessCompany")
+  accessPurchaseOrders PurchaseOrder[] @relation("PurchaseOrderAccessCompany")
   inspectionTemplates InspectionTemplate[]
   accessAssignments EmployeeAccessAssignment[]
   id                 String  @id @default(uuid())

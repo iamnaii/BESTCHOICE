@@ -1,4 +1,5 @@
-import { Injectable } from '@nestjs/common';
+import { AccessProcurementProjectionService } from './access-procurement-projection.service';
+import { Injectable, Optional } from '@nestjs/common';
 import { AccessResource, PermissionKey, canAccess } from '@installment/shared';
 import { Prisma } from '@prisma/client';
 import { currentDomainAccess } from './access-execution-context';
@@ -13,7 +14,7 @@ export const PRODUCT_COST_FIELDS = new Set(['costPrice', 'costPriceMax', 'lastCo
 export const PRODUCT_PROFIT_FIELDS = new Set(['margin', 'profit', 'totalMargin', 'avgMarginPct', 'avgMarginPerUnit', 'marginOverview']);
 @Injectable()
 export class AccessSensitiveService {
-  constructor(private readonly resources: AccessResourceService) {}
+  constructor(private readonly resources: AccessResourceService, @Optional() private readonly procurement?: AccessProcurementProjectionService) {}
   /** Aggregate values/order can be disclosed only if every contributing source is visible.
    * Checks the entire authorized query domain, conservatively including extra filters.
    */
@@ -52,6 +53,14 @@ export class AccessSensitiveService {
         if (PRODUCT_PROFIT_FIELDS.has(key) && !profit) { out[key] = null; continue; }
         // Independently scoped source details are provided by later domain adapters.
         // Do not infer FINANCE contract/booking/PO authority from product access.
+        if (key === 'receivingItem' && this.procurement && entry && typeof entry === 'object' && 'id' in entry && typeof entry.id === 'string') {
+          out[key] = await this.procurement.receivingItem(entry.id);
+          continue;
+        }
+        if (key === 'po' && this.procurement && entry && typeof entry === 'object' && 'id' in entry && typeof entry.id === 'string') {
+          out[key] = await this.procurement.permitsPO(entry.id, 'purchase-orders.read') ? await this.procurement.project(entry) : null;
+          continue;
+        }
         if (key === 'po' && entry && typeof (entry as any).id === 'string') {
           const products = await ctx.client.product.findMany({ where: { poId: (entry as any).id }, select: { id: true } });
           const origins = await Promise.all(products.map(product => resolve(product.id)));

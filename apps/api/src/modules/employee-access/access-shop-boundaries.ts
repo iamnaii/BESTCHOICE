@@ -1,4 +1,4 @@
-import { ProductStatus, ProductCategory, TransferStatus } from '@prisma/client';
+import { Prisma, ProductStatus, ProductCategory, TransferStatus } from '@prisma/client';
 import { BadRequestException, ForbiddenException, Injectable, OnModuleInit, ValidationPipe } from '@nestjs/common';
 import { ModuleRef } from '@nestjs/core';
 import { Company, PermissionKey, canAccess } from '@installment/shared';
@@ -95,7 +95,8 @@ export class AccessShopBoundaries implements OnModuleInit {
             if (req.query?.sortBy === 'costPrice' && !await this.sensitive.permitsProductAggregate('sensitive.cost.read', typeof req.query?.branchId === 'string' ? { branchId: req.query.branchId } : {})) throw new ForbiddenException('ไม่มีสิทธิ์เรียงข้อมูลราคาทุน');
             const result = await handler();
             return this.sensitive.projectProductResult(result);
-          }, policy.resolution === 'collection' || route === 'ProductsController.bulkOnlineVisibility');
+          }, policy.resolution === 'collection' || route === 'ProductsController.bulkOnlineVisibility',
+          route === 'ProductsController.findAll' ? { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead, maxAttempts: 3 } : undefined);
           return execution.result;
         };
         if (policy.resolution === 'collection') {

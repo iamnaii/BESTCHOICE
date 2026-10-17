@@ -1,3 +1,6 @@
+import { AccessProcurementBoundaries } from './access-procurement-boundaries';
+import { AccessProcurementSourceService } from './access-procurement-source.service';
+import { AccessProcurementProjectionService } from './access-procurement-projection.service';
 import { AccessResourceService } from './access-resource.service';
 import { AccessSensitiveService } from './access-sensitive.service';
 import { AccessShopBoundaries } from './access-shop-boundaries';
@@ -12,7 +15,7 @@ import { AccessSnapshotService } from './access-snapshot.service';
 @Global()
 @Module({
   controllers: [EmployeeAccessController],
-  providers: [AccessResourceService, AccessSensitiveService, AccessShopBoundaries, EmployeeAccessService, AccessSnapshotService, AccessPolicyService, AccessSocketBoundary],
-  exports: [AccessResourceService, AccessSensitiveService, EmployeeAccessService, AccessSnapshotService, AccessPolicyService, AccessSocketBoundary],
+  providers: [AccessProcurementBoundaries, AccessProcurementSourceService, AccessProcurementProjectionService, AccessResourceService, AccessSensitiveService, AccessShopBoundaries, EmployeeAccessService, AccessSnapshotService, AccessPolicyService, AccessSocketBoundary],
+  exports: [AccessProcurementSourceService, AccessProcurementProjectionService, AccessResourceService, AccessSensitiveService, EmployeeAccessService, AccessSnapshotService, AccessPolicyService, AccessSocketBoundary],
 })
 export class EmployeeAccessModule {}

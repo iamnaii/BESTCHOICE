@@ -1,6 +1,7 @@
+import { domainAccessClient, currentDomainAccess } from '../employee-access/access-execution-context';
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-import { decorateReceivingForRole, redactPoInputVat } from '../journal/input-vat/input-vat-visibility.util';
+import { decorateReceivingForRole, redactPoInputVat, receivingTaxInvoiceView } from '../journal/input-vat/input-vat-visibility.util';
 import { CreatePODto, UpdatePODto, GoodsReceivingDto, UpdatePaymentDto, OrderPODto, ApprovePODto, DirectReceiveDto } from './dto/create-po.dto';
 import { PoQueryService } from './services/po-query.service';
 import { PoLifecycleService } from './services/po-lifecycle.service';
@@ -32,23 +33,25 @@ export class PurchaseOrdersService {
   private readonly supplierPayments: SupplierPaymentService;
   private readonly supplierLedger: SupplierLedgerService;
 
+  private get prisma(): PrismaService { return domainAccessClient(this.basePrisma); }
+
   constructor(
-    private prisma: PrismaService,
+    private basePrisma: PrismaService,
     goodsReceivingTemplate: ShopGoodsReceivingTemplate,
     shopAccountResolver: ShopAccountResolver,
     companyResolver: CompanyResolverService,
     supplierPaymentTemplate: ShopSupplierPaymentTemplate,
   ) {
-    this.query = new PoQueryService(prisma);
+    this.query = new PoQueryService(basePrisma);
     // ก้อน 2 (2026-10-05) — จ่ายเงินผู้จัดจำหน่าย / มัดจำ: template มาจาก JournalModule เช่นเดียวกับรับของ
-    this.supplierPayments = new SupplierPaymentService(prisma, {
+    this.supplierPayments = new SupplierPaymentService(basePrisma, {
       template: supplierPaymentTemplate,
       accounts: shopAccountResolver,
       companies: companyResolver,
     });
-    this.supplierLedger = new SupplierLedgerService(prisma, companyResolver);
-    this.lifecycle = new PoLifecycleService(prisma, this.query, this.supplierPayments);
-    this.receiving = new PoReceivingService(prisma, {
+    this.supplierLedger = new SupplierLedgerService(basePrisma, companyResolver);
+    this.lifecycle = new PoLifecycleService(basePrisma, this.query, this.supplierPayments);
+    this.receiving = new PoReceivingService(basePrisma, {
       goodsReceivingTemplate,
       shopAccountResolver,
       companyResolver,
@@ -63,7 +66,7 @@ export class PurchaseOrdersService {
   /** ก้อน 5 — ใบรับของแต่ละใบได้ `taxInvoice` และ `items[].receivedVat` ถูกตัดตาม role (Q5) */
   async findOne(id: string, role?: string) {
     const po = await this.query.findOne(id);
-    return redactPoInputVat(po, role);
+    return currentDomainAccess() ? { ...po, goodsReceivings: po.goodsReceivings.map(gr => ({ ...gr, taxInvoice: receivingTaxInvoiceView(gr) })) } : redactPoInputVat(po, role);
   }
 
   create(dto: CreatePODto, userId: string, userRole?: string) {
@@ -127,11 +130,12 @@ export class PurchaseOrdersService {
     limit?: number;
   } = {}, role?: string) {
     const page = await this.query.getGoodsReceivings(poId, filters);
-    return { ...page, data: page.data.map((gr) => decorateReceivingForRole(gr, role)) };
+    return { ...page, data: page.data.map((gr) => currentDomainAccess() ? { ...gr, taxInvoice: receivingTaxInvoiceView(gr) } : decorateReceivingForRole(gr, role)) };
   }
 
   async getGoodsReceivingById(poId: string, receivingId: string, role?: string) {
-    return decorateReceivingForRole(await this.query.getGoodsReceivingById(poId, receivingId), role);
+    const gr = await this.query.getGoodsReceivingById(poId, receivingId);
+    return currentDomainAccess() ? { ...gr, taxInvoice: receivingTaxInvoiceView(gr) } : decorateReceivingForRole(gr, role);
   }
 
   getReceivingSummary(poId: string, filters: {

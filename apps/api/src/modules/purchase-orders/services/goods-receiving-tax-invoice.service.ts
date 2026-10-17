@@ -1,3 +1,5 @@
+import { procurementPreparation } from '../../employee-access/access-preparation-context';
+import { domainAccessClient, currentDomainAccess } from '../../employee-access/access-execution-context';
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { randomUUID } from 'crypto';
@@ -13,6 +15,11 @@ import { bkkYyyymmdd } from '../../../utils/document-number-format.util';
 import { bangkokDateString } from '../../../utils/date.util';
 import { RecordTaxInvoiceDto } from '../dto/create-po.dto';
 
+export interface TaxInvoiceRecordResult {
+  receiving: { id: string; grNumber: string; taxInvoice: { number: string; date: string; source: 'LATER' } };
+  claimed: Array<Omit<ClaimedForReceiving, 'amount'> & { amount: string | null }>;
+  accountingNotified: boolean;
+}
 export interface TaxInvoiceActor { id: string; role: string }
 const EDIT_ROLES = ['OWNER', 'ACCOUNTANT'];
 
@@ -40,14 +47,28 @@ export function isConcurrentWriteConflict(err: unknown): boolean {
 export class GoodsReceivingTaxInvoiceService {
   private readonly logger = new Logger(GoodsReceivingTaxInvoiceService.name);
 
+  private get prisma(): PrismaService { return domainAccessClient(this.basePrisma); }
+
   constructor(
-    private readonly prisma: PrismaService,
+    private readonly basePrisma: PrismaService,
     private readonly inputVatTemplate: InstallmentInputVatTemplate,
     private readonly storage: StorageService,
     private readonly audit: AuditService,
   ) {}
 
-  async record(poId: string, receivingId: string, dto: RecordTaxInvoiceDto, photo: Express.Multer.File | undefined, actor: TaxInvoiceActor) {
+  async record(poId: string, receivingId: string, dto: RecordTaxInvoiceDto, photo: Express.Multer.File | undefined, actor: TaxInvoiceActor, stagedPhotoKey?: string): Promise<TaxInvoiceRecordResult> {
+    const preparation = procurementPreparation.getStore();
+    if (preparation && !currentDomainAccess()) {
+      if (photo && !isEvidenceImage(photo)) throw new BadRequestException('รูปใบกำกับภาษีต้องเป็น JPEG, PNG หรือ WEBP');
+      const staged = photo ? `goods-receivings/tax-invoices/${bkkYyyymmdd(new Date())}/${randomUUID()}.${evidenceImageExtension(photo.mimetype)}` : undefined;
+      try {
+        if (photo && staged) await this.storage.upload(staged, photo.buffer, photo.mimetype);
+        return await preparation.execute(() => this.record(poId, receivingId, dto, undefined, actor, staged));
+      } catch (error) {
+        if (staged) await this.storage.delete(staged);
+        throw error;
+      }
+    }
     const now = new Date();
     const doc = normalizeSupplierDoc({ supplierDocType: 'TAX_INVOICE', supplierDocNumber: dto.number, supplierDocDate: dto.date }, now);
     if (photo && !isEvidenceImage(photo)) throw new BadRequestException('รูปใบกำกับภาษีต้องเป็น JPEG, PNG หรือ WEBP');
@@ -60,11 +81,11 @@ export class GoodsReceivingTaxInvoiceService {
     if (before.supplierDocType === 'TAX_INVOICE') throw new BadRequestException('ใบรับของนี้รับด้วยใบกำกับภาษีอยู่แล้ว');
     if (!before.po.supplier.hasVat) throw new BadRequestException('ผู้จัดจำหน่ายไม่จด VAT — ไม่มีภาษีซื้อให้เคลม');
     const isUpdate = !!before.taxInvoiceNumber;
-    if (isUpdate && !EDIT_ROLES.includes(actor.role)) {
+    if (isUpdate && !currentDomainAccess() && !EDIT_ROLES.includes(actor.role)) {
       throw new ForbiddenException('แก้ใบกำกับที่บันทึกแล้วได้เฉพาะเจ้าของหรือฝ่ายบัญชี');
     }
 
-    let photoKey: string | null = null;
+    let photoKey: string | null = stagedPhotoKey ?? null;
     if (photo) {
       photoKey = `goods-receivings/tax-invoices/${bkkYyyymmdd(now)}/${randomUUID()}.${evidenceImageExtension(photo.mimetype)}`;
       await this.storage.upload(photoKey, photo.buffer, photo.mimetype);
@@ -78,7 +99,7 @@ export class GoodsReceivingTaxInvoiceService {
           await tx.$queryRaw`SELECT id FROM goods_receivings WHERE id = ${receivingId} FOR UPDATE`;
           const fresh = await tx.goodsReceiving.findFirst({ where: { id: receivingId, deletedAt: null }, select: { taxInvoiceNumber: true } });
           if (!fresh) throw new NotFoundException('ไม่พบใบรับของ');
-          if (!!fresh.taxInvoiceNumber && !EDIT_ROLES.includes(actor.role)) {
+          if (!!fresh.taxInvoiceNumber && !currentDomainAccess() && !EDIT_ROLES.includes(actor.role)) {
             throw new ForbiddenException('แก้ใบกำกับที่บันทึกแล้วได้เฉพาะเจ้าของหรือฝ่ายบัญชี');
           }
           await tx.goodsReceiving.update({
@@ -100,24 +121,28 @@ export class GoodsReceivingTaxInvoiceService {
         { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, timeout: 30_000 },
       );
     } catch (err) {
-      if (photoKey) await this.storage.delete(photoKey).catch((e) => this.logger.warn(`ลบรูปที่อัปโหลดค้างไม่สำเร็จ ${photoKey}: ${(e as Error).message}`));
+      if (photoKey && !stagedPhotoKey) await this.storage.delete(photoKey).catch((e) => this.logger.warn(`ลบรูปที่อัปโหลดค้างไม่สำเร็จ ${photoKey}: ${(e as Error).message}`));
+      if (currentDomainAccess()) throw err;
       if (isConcurrentWriteConflict(err)) {
         throw new ConflictException('มีการบันทึกใบกำกับของใบรับของนี้พร้อมกัน — กรุณาโหลดหน้าใหม่แล้วตรวจผล');
       }
       throw err;
     }
 
-    await this.audit.log({
+    const auditEntry = {
       userId: actor.id,
       action: isUpdate ? 'GOODS_RECEIVING_TAX_INVOICE_UPDATED' : 'GOODS_RECEIVING_TAX_INVOICE_RECORDED',
       entity: 'goods_receiving',
       entityId: receivingId,
       ...(isUpdate ? { oldValue: { taxInvoiceNumber: before.taxInvoiceNumber, taxInvoiceDate: before.taxInvoiceDate ? bangkokDateString(before.taxInvoiceDate) : null } } : {}),
       newValue: { grNumber: before.grNumber, poNumber: before.po.poNumber, taxInvoiceNumber: doc.number, taxInvoiceDate: bangkokDateString(doc.date!), photoKey, claimed: claimed.map((c) => c.contractNumber), accountingNotified },
-    });
+    };
+    const execution = currentDomainAccess();
+    if (execution) await this.audit.log(auditEntry, execution.client);
+    else await this.audit.log(auditEntry);
 
     // Q5 — BM บันทึกได้แต่ไม่เห็นยอด: ตัด amount ออกจากผลลัพธ์สำหรับ role ที่ไม่มีสิทธิ์
-    const visibleClaimed = canSeeInputVat(actor.role) ? claimed : claimed.map((c) => ({ ...c, amount: null }));
+    const visibleClaimed = (currentDomainAccess() || canSeeInputVat(actor.role)) ? claimed : claimed.map((c) => ({ ...c, amount: null }));
     return {
       receiving: { id: before.id, grNumber: before.grNumber, taxInvoice: { number: doc.number!, date: bangkokDateString(doc.date!), source: 'LATER' as const } },
       claimed: visibleClaimed as Array<Omit<ClaimedForReceiving, 'amount'> & { amount: string | null }>,

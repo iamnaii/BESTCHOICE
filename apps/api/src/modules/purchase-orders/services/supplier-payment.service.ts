@@ -1,3 +1,4 @@
+import { domainAccessClient, currentDomainAccess } from '../../employee-access/access-execution-context';
 import { BadRequestException, Logger, NotFoundException } from '@nestjs/common';
 import * as Sentry from '@sentry/node';
 import { POPaymentKind, Prisma } from '@prisma/client';
@@ -138,8 +139,10 @@ function toMoney(value: number, label = 'จำนวนเงิน'): Decimal 
 export class SupplierPaymentService {
   private readonly logger = new Logger(SupplierPaymentService.name);
 
+  private get prisma(): PrismaService { return domainAccessClient(this.basePrisma); }
+
   constructor(
-    private readonly prisma: PrismaService,
+    private readonly basePrisma: PrismaService,
     private readonly deps: SupplierPaymentDeps,
   ) {}
 
@@ -611,6 +614,7 @@ export class SupplierPaymentService {
   }
 
   /** หลัง commit: งวดของวันโอนปิดแล้ว → งานแจ้งฝ่ายบัญชี (ห้าม throw — เงินจ่ายและลงบัญชีไปแล้ว) · ผู้เรียกภายนอก (ยกเลิกใบ / รับเข้าตรง) เรียกเองหลัง commit */
+  // Managed execution writes the Todo in the owning transaction and propagates failure.
   async notifyPeriodClosed(
     result: { poNumber: string; payments: SupplierPaymentView[]; periodClosed: boolean; postedAt: Date },
     userId: string,
@@ -635,6 +639,7 @@ export class SupplierPaymentService {
       });
       return true;
     } catch (error) {
+      if (currentDomainAccess()) throw error;
       this.logger.error(
         `สร้างงานแจ้งฝ่ายบัญชีไม่สำเร็จ (${result.poNumber} งวดของวันโอนปิดแล้ว)`,
         error instanceof Error ? error.stack : String(error),

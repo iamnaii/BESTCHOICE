@@ -1,5 +1,5 @@
+import { purchaseOrderScopeWhere } from '../employee-access/access-procurement-scope';
 import { permissionScopes } from '../employee-access/access-context';
-import { productScopeWhere } from '../employee-access/access-query-scope';
 import { domainAccessClient, currentDomainAccess, currentProductScopeSql, transferScopeWhere } from '../employee-access/access-execution-context';
 import {
   Injectable,
@@ -685,9 +685,8 @@ export class ProductsService {
     const access = currentDomainAccess();
     if (access && !access.snapshot.isOwner && product.po) {
       const procurementScope = { ...access.scope, permission: 'purchase-orders.read' as const, tuples: permissionScopes({ id: access.snapshot.userId, access: access.snapshot }, 'purchase-orders.read', access.scope.company) };
-      const predicate = productScopeWhere(procurementScope);
-      const permitted = await access.client.purchaseOrder.findFirst({ where: { id: product.po.id, products: { some: predicate, every: predicate } }, select: { id: true } });
-      if (!permitted) { product.po = null; product.poId = null; product.receivingItem = null; }
+      const permitted = await access.client.purchaseOrder.findFirst({ where: { id: product.po.id, ...purchaseOrderScopeWhere(procurementScope) }, select: { id: true } });
+      if (!permitted) { product.po = null; product.poId = null; }
     }
 
     // Get photo completion count without loading base64 data

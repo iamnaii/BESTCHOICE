@@ -1,7 +1,9 @@
+import { purchaseOrderScopeWhere, supplierScopeWhere } from './access-procurement-scope';
 import { permissionScopes } from './access-context';
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { Prisma } from '@prisma/client';
 import { AccessSnapshot } from '@installment/shared';
+import { PermissionKey } from '@installment/shared';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CollectionScope } from './access-policy.registry';
 import { productScopeSql, productScopeWhere, scopeWhere, inspectionTemplateScopeWhere, inspectionScopeWhere } from './access-query-scope';
@@ -12,9 +14,29 @@ export interface DomainAccessExecution {
   readonly client: Prisma.TransactionClient;
   readonly scopeReads: boolean;
   readonly authorizedProductIds?: readonly string[];
+  readonly domain?: 'procurement';
+  readonly receivingBranchId?: string;
+  readonly isolationLevel?: Prisma.TransactionIsolationLevel;
+  readonly effects?: { commit: Array<() => Promise<void>>; rollback: Array<() => Promise<void>> };
 }
 export const domainAccessExecution = new AsyncLocalStorage<DomainAccessExecution>();
 export function currentDomainAccess(): DomainAccessExecution | undefined { return domainAccessExecution.getStore(); }
+export function currentPermissionScope(permission: PermissionKey): CollectionScope | undefined {
+  const ctx = currentDomainAccess();
+  return ctx ? { ...ctx.scope, permission, tuples: permissionScopes({ id: ctx.snapshot.userId, access: ctx.snapshot }, permission, ctx.scope.company) } : undefined;
+}
+/** Effects are owned by the OUTER transaction attempt. Never run a success effect
+ * after a nested callback has merely joined it. Callbacks run outside its context. */
+export function onDomainCommit(effect: () => Promise<void>): void {
+  const effects = currentDomainAccess()?.effects;
+  if (!effects) throw new Error('Domain commit effect requires an owned execution');
+  effects.commit.push(effect);
+}
+export function onDomainRollback(effect: () => Promise<void>): void {
+  const effects = currentDomainAccess()?.effects;
+  if (!effects) throw new Error('Domain rollback effect requires an owned execution');
+  effects.rollback.push(effect);
+}
 export function currentProductScopeSql(alias: 'p' | 'p2' = 'p'): Prisma.Sql {
   const execution = currentDomainAccess();
   return execution ? productScopeSql(execution.scope, alias) : Prisma.sql`TRUE`;
@@ -39,7 +61,7 @@ export function domainAccessClient(base: PrismaService): PrismaService {
   const tx = execution.client;
   const scope = execution.scope;
   const product = { AND: [productScopeWhere(scope), execution.authorizedProductIds ? { id: { in: [...execution.authorizedProductIds] } } : {}] };
-  const procurement = productScopeWhere({ ...scope, permission: 'purchase-orders.read', tuples: permissionScopes({ id: scope.userId, access: execution.snapshot }, 'purchase-orders.read', scope.company) });
+  const procurement = purchaseOrderScopeWhere(execution.domain === 'procurement' ? scope : { ...scope, permission: 'purchase-orders.read', tuples: permissionScopes({ id: scope.userId, access: execution.snapshot }, 'purchase-orders.read', scope.company) });
   const readOperations = new Set(['findMany', 'findFirst', 'findUnique', 'findUniqueOrThrow', 'findFirstOrThrow', 'count', 'aggregate', 'groupBy']);
   const scopedPredicates = {
     product,
@@ -47,8 +69,9 @@ export function domainAccessClient(base: PrismaService): PrismaService {
     stockTransfer: transferScopeWhere(scope),
     inspection: inspectionScopeWhere(scope, product),
     branch: { products: { some: product } },
-    purchaseOrder: { products: { some: procurement, every: procurement }, goodsReceivings: { every: { items: { every: { product: { is: procurement } } } } } },
-    supplier: { products: { some: product } },
+    purchaseOrder: procurement,
+    ...(execution.domain === 'procurement' ? { goodsReceiving: { po: procurement }, goodsReceivingItem: { receiving: { po: procurement } }, purchaseOrderPayment: { purchaseOrder: procurement } } : {}),
+    supplier: execution.domain === 'procurement' ? supplierScopeWhere(scope) : { products: { some: product } },
   } satisfies {
     product: Prisma.ProductWhereInput;
     inspectionTemplate: Prisma.InspectionTemplateWhereInput;
@@ -57,11 +80,16 @@ export function domainAccessClient(base: PrismaService): PrismaService {
     branch: Prisma.BranchWhereInput;
     purchaseOrder: Prisma.PurchaseOrderWhereInput;
     supplier: Prisma.SupplierWhereInput;
+    goodsReceiving?: Prisma.GoodsReceivingWhereInput;
+    goodsReceivingItem?: Prisma.GoodsReceivingItemWhereInput;
+    purchaseOrderPayment?: Prisma.PurchaseOrderPaymentWhereInput;
   };
   const predicates: Record<string, unknown> = execution.scopeReads ? scopedPredicates : {};
   return new Proxy(tx as unknown as PrismaService, {
     get(target, key) {
-      if (key === '$transaction') return async (work: unknown) => {
+      if (key === '$transaction') return async (work: unknown, options?: { isolationLevel?: Prisma.TransactionIsolationLevel }) => {
+        const levels: Record<Prisma.TransactionIsolationLevel, number> = { ReadUncommitted: 0, ReadCommitted: 1, RepeatableRead: 2, Serializable: 3 };
+        if (options?.isolationLevel && levels[options.isolationLevel] > levels[execution.isolationLevel ?? 'ReadCommitted']) throw new Error('Nested transaction requires stronger isolation than its outer execution');
         if (typeof work === 'function') return work(domainAccessClient(base));
         // Existing domain code uses interactive transactions only. Do not silently
         // accept a future array of already-started operations as an atomic boundary.

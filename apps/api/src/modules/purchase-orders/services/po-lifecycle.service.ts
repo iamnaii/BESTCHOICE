@@ -1,3 +1,4 @@
+import { domainAccessClient, currentDomainAccess } from '../../employee-access/access-execution-context';
 import { NotFoundException, BadRequestException, GoneException } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { CreatePODto, UpdatePODto, UpdatePaymentDto, OrderPODto, ApprovePODto } from '../dto/create-po.dto';
@@ -47,8 +48,10 @@ function assertExpectedNotBeforeOrder(expectedDate: string | undefined, orderDat
  * PurchaseOrdersService facade.
  */
 export class PoLifecycleService {
+  private get prisma(): PrismaService { return domainAccessClient(this.basePrisma); }
+
   constructor(
-    private prisma: PrismaService,
+    private basePrisma: PrismaService,
     private query: PoQueryService,
     private supplierPayments: SupplierPaymentService,
   ) {}
@@ -58,7 +61,7 @@ export class PoLifecycleService {
     assertNoInlinePayment(dto);
     // Owner decision 2026-09-06: the OWNER does not approve their own PO — it is ordered at
     // once. A BRANCH_MANAGER's PO still starts DRAFT and waits for the owner (branch spend gate).
-    const ownerCreated = userRole === 'OWNER';
+    const ownerCreated = currentDomainAccess()?.snapshot.isOwner ?? (userRole === 'OWNER');
 
     // Validate supplier exists & get credit terms
     const supplier = await this.prisma.supplier.findUnique({
@@ -92,6 +95,7 @@ export class PoLifecycleService {
         data: {
           ...(ownerCreated ? { approvedById: userId, orderedAt: new Date() } : {}),
           poNumber,
+          ...(currentDomainAccess() ? { accessCompanyCode: currentDomainAccess()!.scope.company, accessBranchId: dto.accessBranchId ?? null } : {}),
           supplierId: dto.supplierId,
           orderDate: orderDateObj,
           expectedDate: dto.expectedDate ? new Date(dto.expectedDate) : null,

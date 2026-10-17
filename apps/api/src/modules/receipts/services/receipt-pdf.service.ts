@@ -243,7 +243,7 @@ export class ReceiptPdfService {
         ? `
       <tr class="alt">
         <td><div class="item-name">เงินรับล่วงหน้างวดที่ ${row.installmentNo}/${receipt.contract?.totalMonths} — ปรับดิว</div>
-          <div class="item-meta">${isStored6a ? 'ค่าธรรมเนียมเลื่อนนัดชำระ (ปรับดิว) · พักไว้หักค่างวดสุดท้าย' : 'พักไว้หักค่างวดสุดท้าย'}</div></td>
+          <div class="item-meta">${isStored6a ? 'ค่าธรรมเนียมเลื่อนนัดชำระ · พักไว้หักค่างวดสุดท้าย' : 'พักไว้หักค่างวดสุดท้าย'}</div></td>
         <td class="right">${fmt(row.beforeVat)}</td>
         <td class="right">${row.vat.gt(0) ? fmt(row.vat) : '<span class="vat-exempt">–</span>'}</td>
         <td class="right"><strong>${fmt(row.amount)}</strong></td>
@@ -287,17 +287,29 @@ export class ReceiptPdfService {
     // ใบ 6a เก่า (ไม่มีค่าที่เก็บ) ก็ผูกรายการและได้ context — แต่ต้องพิมพ์เหมือนเดิมทุกตัวอักษร (final review I1)
     const rescheduleLine =
       isStored6a && rc
-        ? `<div class="party-line"><strong>เลื่อนนัดชำระ</strong> งวดที่ ${rc.installmentNo} เลื่อน ${rc.daysToShift} วัน${rc.newDueDate ? ` (ครบกำหนดใหม่ ${formatDateShort(rc.newDueDate)})` : ''}</div>`
+        ? `<div class="party-line"><strong>เลื่อนนัดชำระ</strong> งวดที่ ${rc.installmentNo} เลื่อน ${rc.daysToShift} วัน${rc.newDueDate ? ` เป็น ${formatDateShort(rc.newDueDate)}` : ''}</div>`
         : '';
     const surplusLine = (() => {
       if (!isSurplus || !sc) return '';
       const parts: string[] = [];
-      if (sc.siblingReceipts.length) {
+      // ส่วนเกินเกิดเมื่อลิงก์ครอบทุกงวดที่เหลือ (ใบรับชำระต่องวด อาจเป็นสิบกว่าใบ) — เกิน 2 ใบพิมพ์เป็นช่วง ไม่งั้นบรรทัดนี้
+      // ยาวหลายบรรทัดจนใบล้นเป็น 2 หน้า (ก้อนปิดท้าย break-inside:avoid กระโดดทั้งก้อน)
+      const range = (nos: number[]) => {
+        const sorted = [...nos].sort((a, b) => a - b);
+        return `งวดที่ ${sorted[0]} ถึง ${sorted[sorted.length - 1]} (${sorted.length} งวด)`;
+      };
+      if (sc.siblingReceipts.length > 2) {
+        parts.push(
+          range(sc.siblingReceipts.map((r) => r.installmentNo).filter((n): n is number => n != null)),
+        );
+      } else if (sc.siblingReceipts.length) {
         parts.push(
           sc.siblingReceipts
             .map((r) => `งวดที่ ${r.installmentNo ?? '-'} (ใบ ${this.escapeHtml(r.receiptNumber)})`)
             .join(', '),
         );
+      } else if (sc.installmentNos.length > 2) {
+        parts.push(range(sc.installmentNos));
       } else if (sc.installmentNos.length) {
         parts.push(`งวดที่ ${sc.installmentNos.join(', ')}`);
       }
@@ -307,12 +319,12 @@ export class ReceiptPdfService {
       return `<div class="party-line"><strong>ชำระผ่านลิงก์</strong> ${parts.join(' · ')}</div>`;
     })();
     const advanceNotice = isStored6a
-      ? `<div class="adv-notice">เงินรับล่วงหน้า ${fmt(advancePortion)} บาท พักไว้หักค่างวดสุดท้าย${rescheduleTarget ? ` (งวดที่ ${rescheduleTarget})` : ''} — ภาษีมูลค่าเพิ่มรับรู้ ณ วันรับเงินนี้แล้ว ใบรับชำระงวดสุดท้ายจะแสดงแถว "หักเงินรับล่วงหน้า" โดยไม่คิดภาษีซ้ำ</div>`
+      ? `<div class="adv-notice">เงินรับล่วงหน้า ${fmt(advancePortion)} บาท พักไว้หักค่างวดสุดท้าย${rescheduleTarget ? ` (งวดที่ ${rescheduleTarget})` : ''} — ภาษีมูลค่าเพิ่มรับรู้ ณ วันรับเงินนี้แล้ว ใบงวดสุดท้ายไม่คิดภาษีซ้ำ</div>`
       : isSurplus
         ? surplusHasNext
-          ? `<div class="adv-notice">เงินส่วนเกิน ${fmt(total)} บาท จากการชำระผ่านลิงก์ เก็บไว้เป็นเงินรับล่วงหน้าของสัญญา และจะหักเข้างวดถัดไป (งวดที่ ${sc!.nextInstallmentNo}) ให้อัตโนมัติ ใบรับชำระงวดนั้นจะแสดงแถว "หักเงินรับล่วงหน้า" โดยไม่คิดภาษีซ้ำ · ไม่ต้องติดต่อร้านเพื่อขอคืน</div>`
+          ? `<div class="adv-notice">เงินส่วนเกิน ${fmt(total)} บาท จากการชำระผ่านลิงก์ เก็บไว้เป็นเงินรับล่วงหน้าของสัญญา หักเข้างวดถัดไป (งวดที่ ${sc!.nextInstallmentNo}) อัตโนมัติ — ภาษีมูลค่าเพิ่มรับรู้แล้ว ไม่คิดซ้ำ · ไม่ต้องติดต่อร้านเพื่อขอคืน</div>`
           : // ส่วนเกินปกติเกิดเมื่อเงินครอบทุกงวดแล้ว (ไม่มีงวดถัดไปให้หัก) — ห้ามสัญญาว่าจะหักเข้างวด
-            `<div class="adv-notice">เงินส่วนเกิน ${fmt(total)} บาท จากการชำระผ่านลิงก์ เก็บไว้เป็นเงินรับล่วงหน้าของสัญญา — ภาษีมูลค่าเพิ่มรับรู้ ณ วันรับเงินนี้แล้ว · ไม่ต้องติดต่อร้านเพื่อขอคืน</div>`
+            `<div class="adv-notice">เงินส่วนเกิน ${fmt(total)} บาท จากการชำระผ่านลิงก์ เก็บไว้เป็นเงินรับล่วงหน้าของสัญญา — ภาษีมูลค่าเพิ่มรับรู้แล้ว · ไม่ต้องติดต่อร้านเพื่อขอคืน</div>`
         : '';
     const unappliedFunds =
       (isStored6a || isSurplus) && receipt.documentUnappliedFunds != null
@@ -386,7 +398,7 @@ export class ReceiptPdfService {
     /* ── Credit-note reference notice ── */
     .cn-notice { margin:10px 0 0; background:var(--amber-50); border:1px solid var(--amber-200); border-radius:8px; padding:8px 14px; font-size:10pt; color:var(--amber-800); }
     .cn-notice strong { font-weight:700; }
-    .adv-notice { margin:10px 0 0; background:var(--amber-50); border:1px solid var(--amber-200); border-radius:8px; padding:8px 14px; font-size:10pt; color:var(--amber-800); }
+    .adv-notice { margin:8px 0 0; background:var(--amber-50); border:1px solid var(--amber-200); border-radius:8px; padding:5px 12px; font-size:9.5pt; line-height:1.4; color:var(--amber-800); }
 
     /* ── Items table ── */
     table.items { width:100%; border-collapse:collapse; margin-top:14px; font-size:10.5pt; }
@@ -475,6 +487,7 @@ ${PAPER_SPACING_CSS}
     body.bc-paper-compact .footer { margin-top: 4px; }
     body.bc-paper-compact .qr-pane img { width: 72px; height: 72px; }
     body.bc-paper-compact .doc-note { margin-top: 2px; padding-top: 2px; }
+    body.bc-paper-compact .adv-notice { margin-top: 4px; padding: 3px 10px; }
 </style>
 </head>
 <body data-bc-paper>

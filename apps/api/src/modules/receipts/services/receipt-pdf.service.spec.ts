@@ -440,7 +440,7 @@ describe('ReceiptPdfService — Credit Note rendering (Phase 3 Task 4)', () => {
       expect(capturedHtml).toContain('ใบเสร็จรับเงิน / ใบกำกับภาษี');
       expect(capturedHtml).toContain('งวดที่รับล่วงหน้า</strong> 12 จาก 12 งวด');
       expect(capturedHtml).toContain('เงินรับล่วงหน้างวดที่ 12/12 — ปรับดิว');
-      expect(capturedHtml).toContain('ค่าธรรมเนียมเลื่อนนัดชำระ (ปรับดิว) · พักไว้หักค่างวดสุดท้าย');
+      expect(capturedHtml).toContain('ค่าธรรมเนียมเลื่อนนัดชำระ · พักไว้หักค่างวดสุดท้าย');
       expect(capturedHtml).toContain('<td class="right">1,416.82</td>');
       expect(capturedHtml).toContain('<td class="right">99.18</td>');
       expect(capturedHtml).toContain('<strong>1,516.00</strong>');
@@ -449,10 +449,10 @@ describe('ReceiptPdfService — Credit Note rendering (Phase 3 Task 4)', () => {
       expect(capturedHtml).toContain('มูลค่าสินค้า/บริการก่อนภาษี');
       expect(capturedHtml).toContain('ค่าปรับ (ยกเว้นภาษี)');
       expect(capturedHtml).toContain('1,566.00');
-      expect(capturedHtml).toMatch(/เลื่อนนัดชำระ<\/strong> งวดที่ 4 เลื่อน 30 วัน \(ครบกำหนดใหม่ 12\/11\/(2569|2026)\)/);
+      expect(capturedHtml).toMatch(/เลื่อนนัดชำระ<\/strong> งวดที่ 4 เลื่อน 30 วัน เป็น 12\/11\/(2569|2026)</);
       expect(capturedHtml).toContain('เงินรับล่วงหน้า 1,516.00 บาท');
       expect(capturedHtml).toContain('พักไว้หักค่างวดสุดท้าย (งวดที่ 12)');
-      expect(capturedHtml).toContain('โดยไม่คิดภาษีซ้ำ');
+      expect(capturedHtml).toContain('ใบงวดสุดท้ายไม่คิดภาษีซ้ำ');
       expect(capturedHtml).toContain('12,126.47 บาท');
       expect(capturedHtml).toContain('เงินรับล่วงหน้าค้าง');
       expect(capturedHtml).toContain('1,516.00 บาท (พักหักงวดที่ 12)');
@@ -466,7 +466,7 @@ describe('ReceiptPdfService — Credit Note rendering (Phase 3 Task 4)', () => {
       await service.generatePDF('r-6a-old-je');
 
       expect(capturedHtml).toContain('เลื่อนนัดชำระ</strong> งวดที่ 4 เลื่อน 30 วัน<');
-      expect(capturedHtml).not.toContain('ครบกำหนดใหม่');
+      expect(capturedHtml).not.toContain('เลื่อน 30 วัน เป็น');
     });
 
     it('ใบ 6a เก่าที่ไม่มีค่าที่เก็บ (forward-only) → ไม่มีคำว่าใบกำกับภาษี · ไม่มีกล่องเตือน · ไม่มีแถวเงินรับล่วงหน้าค้าง', async () => {
@@ -553,6 +553,54 @@ describe('ReceiptPdfService — Credit Note rendering (Phase 3 Task 4)', () => {
       expect(capturedHtml).not.toContain('ค่าปรับชำระล่าช้า');
     });
 
+    it('ใบส่วนเกินลิงก์ชำระที่ลิงก์ครอบหลายงวด (ใบรับชำระ 12 ใบ) → บรรทัดชำระผ่านลิงก์พิมพ์เป็นช่วง "งวดที่ 1 ถึง 12 (12 งวด)" ไม่ไล่เลขใบ (กันใบล้นเป็น 2 หน้า)', async () => {
+      const siblingReceipts = Array.from({ length: 12 }, (_, i) => ({
+        receiptNumber: `RT-202610-${String(100 + i)}`,
+        installmentNo: i + 1,
+      }));
+      query.getReceipt.mockResolvedValue(
+        baseReceipt({
+          receiptType: 'ADVANCE_SURPLUS',
+          amount: new Decimal('500'),
+          amountBeforeVat: new Decimal('467.29'),
+          vatAmount: new Decimal('32.71'),
+          roundingAmount: new Decimal('0'),
+          lateFeeAmount: new Decimal('0'),
+          lateFeeWaivedAmount: new Decimal('0'),
+          advanceAmount: new Decimal('500'),
+          advanceVatAmount: new Decimal('32.71'),
+          installmentNo: null,
+          paymentId: null,
+          paymentMethod: 'ONLINE_GATEWAY',
+          transactionRef: 'REF-12',
+          paidDate: new Date('2026-10-12T17:00:00.000Z'),
+          issuer: { name: 'Admin Owner', role: 'OWNER' },
+          installmentAllocations: null,
+          documentRemainingBalance: '0.00',
+          documentRemainingMonths: 0,
+          documentInstallmentAmountDue: null,
+          documentInstallmentAmountPaid: null,
+          documentUnappliedFunds: '500.00',
+          rescheduleContext: null,
+          surplusContext: {
+            refno: 'REF-12',
+            paidAmount: '18690.00',
+            appliedAmount: '18190.00',
+            installmentNos: siblingReceipts.map((r) => r.installmentNo),
+            nextInstallmentNo: null,
+            siblingReceipts,
+          },
+        }),
+      );
+      await service.generatePDF('r-surplus-12');
+
+      expect(capturedHtml).toContain(
+        'ชำระผ่านลิงก์</strong> งวดที่ 1 ถึง 12 (12 งวด) · ยอดโอน 18,690.00 · เข้างวด 18,190.00 · ส่วนเกิน 500.00',
+      );
+      expect(capturedHtml).not.toContain('RT-202610-100');
+      expect(capturedHtml).not.toContain('RT-202610-111');
+    });
+
     it('ใบส่วนเกินลิงก์ชำระ เมื่อไม่มีงวดถัดไป (เงินครอบทุกงวดแล้ว — กรณีจริงของส่วนเกิน): ไม่อ้างว่าจะหักเข้างวดถัดไป · ยังบอกว่าเก็บเป็นเงินรับล่วงหน้า + ไม่ต้องขอคืน', async () => {
       query.getReceipt.mockResolvedValue(
         baseReceipt({
@@ -593,7 +641,7 @@ describe('ReceiptPdfService — Credit Note rendering (Phase 3 Task 4)', () => {
       expect(capturedHtml).toContain('ใบเสร็จรับเงิน / ใบกำกับภาษี');
       expect(capturedHtml).toContain('ชำระเกินผ่านลิงก์ชำระ (Pay Solutions)</div>');
       expect(capturedHtml).toContain('เงินส่วนเกิน 500.00 บาท จากการชำระผ่านลิงก์ เก็บไว้เป็นเงินรับล่วงหน้าของสัญญา');
-      expect(capturedHtml).toContain('ภาษีมูลค่าเพิ่มรับรู้ ณ วันรับเงินนี้แล้ว');
+      expect(capturedHtml).toContain('ภาษีมูลค่าเพิ่มรับรู้แล้ว');
       expect(capturedHtml).toContain('ไม่ต้องติดต่อร้านเพื่อขอคืน');
       expect(capturedHtml).toContain('500.00 บาท</span>');
       expect(capturedHtml).not.toContain('หักเข้างวดถัดไป');

@@ -261,6 +261,48 @@ Execute as two serial reviewed units: trade-in/source-credit producer (38 routes
 - [ ] Add repair-tickets.read/create/update to future default SALES and BRANCH_MANAGER templates with tests because canonical children require them; never mutate saved positions or add cost/profit/exchange approval/posting rights. Publish exact UI action dependencies. Preserve reviewed customer-charge provenance across all effects regardless of staff cost grants.
 - [ ] Prove actual canonical financial/repair rollback, duplicate/concurrency, current revocation, owned-file lifetime and source-safe errors/outputs; final covering tests/types/lint/coverage, exact Task5/6/7 seams, self-review/report/commit. Final immutable approvals remain6, full actual activation/direct exchange adapters remain allocated later.
 
+#### Serial execution of Task 4.1.4.2.2.3
+
+The fourteen mutations require three distinct canonical integration rewrites. Execute the following units in order with independent review; all parent requirements above remain binding. Default templates add zero routes. The parent completes only after all fourteen actual entrypoints and cross-unit contracts are reconciled.
+
+### Task 4.1.4.2.2.3.1: Future sales/manager repair capability defaults
+
+**Files:** `packages/shared/src/employee-access.ts` and its focused shared tests. Zero runtime routes.
+
+- [ ] RED/GREEN proving future SALES and BRANCH_MANAGER templates include repair-tickets.read, repair-tickets.create and repair-tickets.update, while other positions and configurable sensitive/exchange/posting rights remain unchanged.
+- [ ] Add only those canonical child capabilities to the two future templates; no saved-position/user migration, owner authority, cost/profit or financial approval grants. Preserve the shared catalog/evaluator and no guessed discount caps.
+- [ ] Shared tests/build, changed lint/diff checks, self-review/report/commit. Publish the precise default dependency to UI7; make no claim of mutation-route implementation.
+
+### Task 4.1.4.2.2.3.2: Existing-case action boundary, repair lifecycle and extra photos
+
+**Files:** Focused after-sales action/source/raw-business response contracts, existing repair lifecycle/case query/extra-photo helpers and current preparation/effect engine. Six methods: send, markRepaired, sendBack, ret, cancel, addPhoto.
+
+- [ ] RED actual owned PostgreSQL/Nest HTTP positive/no-grants pairs for all six, current-source/action/tuple isolation and actual child repair dependencies. Raw managed business loading requires exact owned execution/action/source, never legacy role authority or a nullable presentation DTO as business input. Publish reusable current raw-load and safe mutation-acknowledgement contracts for exchange/intake consumers.
+- [ ] Preserve actual canonical repair/receipt/return/cancel states, amounts, customer quote provenance, maker-checker and financial draft rules. Case, repair, ExpenseDraft/OtherIncome/status/Todo and required durable audit effects commit/rollback in the same actual outer attempt. Query-read stage maintenance remains separate; canonical mutation checks still use actual current child state.
+- [ ] For addPhoto, validate/preauthorize before storage, stage once outside global lock, reauthorize inside and clean only newly owned failed/unused keys. LINE/notification effects occur only after actual outer commit and do not repeat on serialization retry. All transports/storage mocked in tests.
+- [ ] Safe full response needs current after-sales.read; action-only acknowledgement exposes only the actual operation's permitted case/result metadata, no hidden child IDs/amounts/notes. Re-resolve facts after pointer/source changes. Prove actual repair/financial rollback, concurrent once-only/CAS, permission/source waits, file ownership and effect timing with real writers.
+- [ ] Focused covering regressions/types/lint/coverage, exact producer/default/action/response contracts and remaining exchange7/intake1/document4/audit/approval/UI/fullguard obligations, self-review/report/commit.
+
+### Task 4.1.4.2.2.3.3: Existing-case exchange mutations
+
+**Files:** Existing after-sales exchange facade, reviewed canonical exchange/defect/repair services, preceding action/raw-load/source/effect contracts and focused real PG/HTTP tests. Seven methods: confirmExchange, deliverExchange, rejectExchange, switchToRepair, approveExchange, rejectPricedExchange, cancelSwap.
+
+- [ ] RED actual owned PostgreSQL/Nest HTTP positive/no-grants pairs for all seven, current case and every real child source/action, original tuple isolation and source changes. Consume reviewed action/raw-business contracts; no parent case grant substitutes for FINANCE, affected current/destination Product or repair capabilities.
+- [ ] Preserve same-model/priced exchange, rejection/switch/cancel/delivery, actual canonical Decimal/state/CAS/period/credit/JE/input-VAT and maker-checker rules. All case/child/financial/link/audit writes join the actual outer attempt; no parallel executor or post-inner-commit compensation. Managed AUTO create-only stays pending unless actual all-source approval authority is present. Applied/finalized cancellation remains current-owner-reserved; true no-money draft behavior stays distinct.
+- [ ] Recheck current sources before canonical mutations overwrite ownership/pointers; refresh read facts after changes, preserve typed action-only versus source-safe readable responses and customer quote provenance. External effects only after actual outer commit, mocked.
+- [ ] Prove real canonical financial rollback on late failure, once-only/concurrency, current authority/source waits and source-safe output/error paths. Final focused regressions/types/lint/coverage and report exact contracts for intake/documents, self-review/commit. Direct FINANCE activation/adapters and final immutable approval workflow remain their allocated later units.
+
+### Task 4.1.4.2.2.3.4: Intake staging, source request linking and mutation closure
+
+**Files:** Existing after-sales case creation, ChatServiceCaseLinkService and narrow request-source contract, reviewed preparation/current-source/repair/exchange/action/effect helpers and actual PG/HTTP tests. One method: create, plus reconciliation of all fourteen mutation entrypoints.
+
+- [ ] RED real owned PostgreSQL/Nest HTTP legitimate create/no-grants, WALK_IN/physical receipt and priced/same-model intake, original tuple/source substitution and current changes. Consume all reviewed canonical children; one actual outer attempt commits or rolls back case, ticket/exchange, request link, financial/status and required durable evidence. Replace managed compensation after an inner commit; preserve existing canonical formulas and workflow gates.
+- [ ] Preauthorize current lookup/request/copy-photo sources and validate files before storage. Prepare operation-owned intake once outside DB/global lock, then reauthorize and consume in the actual retryable attempt; fingerprint/source changes must not consume stale prepared inputs. Clean only newly owned failed/unused keys on failure or idempotent reuse, never preexisting source keys. Effects occur after actual commit once.
+- [ ] Narrow source-request linking requires current chat.update on actual room company and each proven request source plus independent after-sales/child action. Genuine unanchored requests need explicit COMPANY or actual request-Todo ASSIGNED scope; branch-restricted tuples need proven origin. Never infer origin from creator, staff primary branch, prospective case or family alias. Preserve feature flag, canonical party/device/fingerprint/revision/unique-link checks; publish a reusable narrow source contract for4.3 without granting full room/customer history.
+- [ ] Consume reviewed global IMEI boolean classifier under the same actual advisory-locked transaction through insertion. Prove foreign open generic conflict, terminal foreign candidate permitting intake without foreign mutation/audit, actual concurrent same-IMEI once-only creation and source-request idempotent reuse without duplicate files/children/effects.
+- [ ] Reconcile six repair/photo plus seven exchange plus create = fourteen exact runtime registrations and legitimate success/denial evidence; cover shared-source/action/raw-load/transaction/preparation/projection/effect contracts across units. No producer-only helper or missing adapter counts as an exposed operation.
+- [ ] Final covering tests/types/lint/coverage, exact fourteen-route report and document4/FINANCE/audit/approval/UI/fullguard dependencies, self-review/commit. Mark parent only after independent review.
+
 ### Task 4.1.4.2.2.4: After-sales document/photo streams and parent closure
 
 **Files:** Existing document loader/HTML/PDF renderer/controller streams and photo/storage consumers, source/projector helpers and focused actual PG/HTTP tests. Four methods: photo, purchasePhoto, receiptPdf, handoverPdf.

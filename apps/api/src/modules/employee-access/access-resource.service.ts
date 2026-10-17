@@ -9,7 +9,7 @@ import { productScopeWhere } from './access-query-scope';
 import { Prisma } from '@prisma/client';
 
 export interface AccessExecutionOptions {
-  domain?: 'procurement' | 'inventory';
+  domain?: 'procurement' | 'inventory' | 'adjustments';
   isolationLevel?: Prisma.TransactionIsolationLevel;
   /** Whole-attempt retries, including fresh authorization and source resolution. */
   maxAttempts?: 1 | 2 | 3;
@@ -28,13 +28,20 @@ export class AccessResourceService {
   private readonly logger = new Logger(AccessResourceService.name);
   constructor(private readonly prisma: PrismaService, private readonly snapshots: AccessSnapshotService) {}
   async product(tx: AccessClient, id: string, lock = false): Promise<AccessResource> {
+    return this.resolveProduct(tx, id, lock, false);
+  }
+  /** Narrow recovery/evidence resolver; ordinary product access remains live-only. */
+  async adjustmentProduct(tx: AccessClient, id: string, lock = false): Promise<AccessResource> {
+    return this.resolveProduct(tx, id, lock, true);
+  }
+  private async resolveProduct(tx: AccessClient, id: string, lock: boolean, recovery: boolean): Promise<AccessResource> {
     if (!id || typeof id !== 'string') throw new BadRequestException('กรุณาระบุสินค้า');
     if (lock) {
       await tx.$queryRaw`SELECT id FROM products WHERE id = ${id} FOR UPDATE`;
       await tx.$queryRaw`SELECT b.id FROM branches b JOIN products p ON p.branch_id = b.id WHERE p.id = ${id} FOR SHARE OF b`;
       await tx.$queryRaw`SELECT c.id FROM company_info c WHERE c.id IN (SELECT COALESCE(p.owned_by_company_id, b.company_id) FROM products p JOIN branches b ON b.id = p.branch_id WHERE p.id = ${id}) ORDER BY c.id FOR SHARE`;
     }
-    const product = await tx.product.findFirst({ where: { id, deletedAt: null }, include: { ownedBy: true, branch: { include: { company: true } } } });
+    const product = await tx.product.findFirst({ where: { id, ...(recovery ? {} : { deletedAt: null }) }, include: { ownedBy: true, branch: { include: { company: true } } } });
     if (!product) throw new ForbiddenException('ไม่มีสิทธิ์เข้าถึงสินค้า');
     const owner = product.ownedByCompanyId ? product.ownedBy : product.branch.company;
     if (!owner || !owner.isActive || owner.deletedAt || !['SHOP', 'FINANCE'].includes(owner.companyCode ?? '') || !product.branch.isActive || product.branch.deletedAt) throw new ForbiddenException('ไม่ทราบบริษัทเจ้าของสินค้า');

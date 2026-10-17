@@ -1,0 +1,2752 @@
+{
+  "generatedAt": "2026-10-17T11:25:05.852Z",
+  "scope": "Actual ShopAccountingPage with scoped app typography and synthetic GET data; no production writes or role/provider validation",
+  "results": [
+    {
+      "engine": "chromium",
+      "width": 320,
+      "root": 16,
+      "theme": "light",
+      "status": "PASS",
+      "trial": {
+        "netFits": true,
+        "documentOverflow": 0,
+        "fontLoaded": true,
+        "headers": [
+          {
+            "paddingTop": 20,
+            "paddingBottom": 20
+          }
+        ],
+        "fields": [
+          {
+            "height": 44,
+            "font": "16px",
+            "labelGap": 12,
+            "rightPadding": 40
+          }
+        ],
+        "tables": [
+          {
+            "columns": [
+              128,
+              256,
+              192,
+              192,
+              192
+            ],
+            "rowHeights": [
+              45.5,
+              46,
+              46,
+              46,
+              67,
+              88,
+              45.5
+            ],
+            "clippedCells": []
+          },
+          {
+            "columns": [
+              128,
+              256,
+              192,
+              192,
+              192
+            ],
+            "rowHeights": [
+              45.5,
+              46,
+              45.5
+            ],
+            "clippedCells": []
+          }
+        ]
+      },
+      "profit": {
+        "netFits": true,
+        "documentOverflow": 0,
+        "fontLoaded": true,
+        "headers": [
+          {
+            "paddingTop": 20,
+            "paddingBottom": 20
+          }
+        ],
+        "fields": [
+          {
+            "height": 44,
+            "font": "16px",
+            "labelGap": 12,
+            "rightPadding": 40
+          },
+          {
+            "height": 44,
+            "font": "16px",
+            "labelGap": 12,
+            "rightPadding": 40
+          }
+        ],
+        "tables": [
+          {
+            "columns": [
+              128,
+              320,
+              192
+            ],
+            "rowHeights": [
+              45.5,
+              67,
+              45.5
+            ],
+            "clippedCells": []
+          },
+          {
+            "columns": [
+              128,
+              320,
+              192
+            ],
+            "rowHeights": [
+              45.5,
+              46,
+              45.5
+            ],
+            "clippedCells": []
+          }
+        ]
+      },
+      "checks": [
+        "geometry",
+        "essential-warning-visible",
+        "details-keyboard",
+        "table-keyboard-scroll",
+        "all-three-date-filters-ISO",
+        "tab-state-retained",
+        "no-page-errors"
+      ]
+    },
+    {
+      "engine": "chromium",
+      "width": 390,
+      "root": 16,
+      "theme": "light",
+      "status": "PASS",
+      "trial": {
+        "netFits": true,
+        "documentOverflow": 0,
+        "fontLoaded": true,
+        "headers": [
+          {
+            "paddingTop": 20,
+            "paddingBottom": 20
+          }
+        ],
+        "fields": [
+          {
+            "height": 44,
+            "font": "16px",
+            "labelGap": 12,
+            "rightPadding": 40
+          }
+        ],
+        "tables": [
+          {
+            "columns": [
+              128,
+              256,
+              192,
+              192,
+              192
+            ],
+            "rowHeights": [
+              45.5,
+              46,
+              46,
+              46,
+              67,
+              88,
+              45.5
+            ],
+            "clippedCells": []
+          },
+          {
+            "columns": [
+              128,
+              256,
+              192,
+              192,
+              192
+            ],
+            "rowHeights": [
+              45.5,
+              46,
+              45.5
+            ],
+            "clippedCells": []
+          }
+        ]
+      },
+      "profit": {
+        "netFits": true,
+        "documentOverflow": 0,
+        "fontLoaded": true,
+        "headers": [
+          {
+            "paddingTop": 20,
+            "paddingBottom": 20
+          }
+        ],
+        "fields": [
+          {
+            "height": 44,
+            "font": "16px",
+            "labelGap": 12,
+            "rightPadding": 40
+          },
+          {
+            "height": 44,
+            "font": "16px",
+            "labelGap": 12,
+            "rightPadding": 40
+          }
+        ],
+        "tables": [
+          {
+            "columns": [
+              128,
+              320,
+              192
+            ],
+            "rowHeights": [
+              45.5,
+              67,
+              45.5
+            ],
+            "clippedCells": []
+          },
+          {
+            "columns": [
+              128,
+              320,
+              192
+            ],
+            "rowHeights": [
+              45.5,
+              46,
+              45.5
+            ],
+            "clippedCells": []
+          }
+        ]
+      },
+      "checks": [
+        "geometry",
+        "essential-warning-visible",
+        "details-keyboard",
+        "table-keyboard-scroll",
+        "all-three-date-filters-ISO",
+        "tab-state-retained",
+        "no-page-errors"
+      ]
+    },
+    {
+      "engine": "chromium",
+      "width": 640,
+      "root": 16,
+      "theme": "light",
+      "status": "PASS",
+      "trial": {
+        "netFits": true,
+        "documentOverflow": 0,
+        "fontLoaded": true,
+        "headers": [
+          {
+            "paddingTop": 20,
+            "paddingBottom": 20
+          }
+        ],
+        "fields": [
+          {
+            "height": 44,
+            "font": "16px",
+            "labelGap": 12,
+            "rightPadding": 40
+          }
+        ],
+        "tables": [
+          {
+            "columns": [
+              128,
+              256,
+              192,
+              192,
+              192
+            ],
+            "rowHeights": [
+              45.5,
+              46,
+              46,
+              46,
+              67,
+              88,
+              45.5
+            ],
+            "clippedCells": []
+          },
+          {
+            "columns": [
+              128,
+              256,
+              192,
+              192,
+              192
+            ],
+            "rowHeights": [
+              45.5,
+              46,
+              45.5
+            ],
+            "clippedCells": []
+          }
+        ]
+      },
+      "profit": {
+        "netFits": true,
+        "documentOverflow": 0,
+        "fontLoaded": true,
+        "headers": [
+          {
+            "paddingTop": 20,
+            "paddingBottom": 20
+          }
+        ],
+        "fields": [
+          {
+            "height": 44,
+            "font": "16px",
+            "labelGap": 12,
+            "rightPadding": 40
+          },
+          {
+            "height": 44,
+            "font": "16px",
+            "labelGap": 12,
+            "rightPadding": 40
+          }
+        ],
+        "tables": [
+          {
+            "columns": [
+              128,
+              320,
+              192
+            ],
+            "rowHeights": [
+              45.5,
+              67,
+              45.5
+            ],
+            "clippedCells": []
+          },
+          {
+            "columns": [
+              128,
+              320,
+              192
+            ],
+            "rowHeights": [
+              45.5,
+              46,
+              45.5
+            ],
+            "clippedCells": []
+          }
+        ]
+      },
+      "checks": [
+        "geometry",
+        "essential-warning-visible",
+        "details-keyboard",
+        "table-keyboard-scroll",
+        "all-three-date-filters-ISO",
+        "tab-state-retained",
+        "no-page-errors"
+      ]
+    },
+    {
+      "engine": "chromium",
+      "width": 768,
+      "root": 16,
+      "theme": "light",
+      "status": "PASS",
+      "trial": {
+        "netFits": true,
+        "documentOverflow": 0,
+        "fontLoaded": true,
+        "headers": [
+          {
+            "paddingTop": 20,
+            "paddingBottom": 20
+          }
+        ],
+        "fields": [
+          {
+            "height": 44,
+            "font": "16px",
+            "labelGap": 12,
+            "rightPadding": 40
+          }
+        ],
+        "tables": [
+          {
+            "columns": [
+              128,
+              256,
+              192,
+              192,
+              192
+            ],
+            "rowHeights": [
+              45.5,
+              46,
+              46,
+              46,
+              67,
+              88,
+              45.5
+            ],
+            "clippedCells": []
+          },
+          {
+            "columns": [
+              128,
+              256,
+              192,
+              192,
+              192
+            ],
+            "rowHeights": [
+              45.5,
+              46,
+              45.5
+            ],
+            "clippedCells": []
+          }
+        ]
+      },
+      "profit": {
+        "netFits": true,
+        "documentOverflow": 0,
+        "fontLoaded": true,
+        "headers": [
+          {
+            "paddingTop": 20,
+            "paddingBottom": 20
+          }
+        ],
+        "fields": [
+          {
+            "height": 44,
+            "font": "16px",
+            "labelGap": 12,
+            "rightPadding": 40
+          },
+          {
+            "height": 44,
+            "font": "16px",
+            "labelGap": 12,
+            "rightPadding": 40
+          }
+        ],
+        "tables": [
+          {
+            "columns": [
+              128,
+              350,
+              192
+            ],
+            "rowHeights": [
+              45.5,
+              67,
+              45.5
+            ],
+            "clippedCells": []
+          },
+          {
+            "columns": [
+              128,
+              350,
+              192
+            ],
+            "rowHeights": [
+              45.5,
+              46,
+              45.5
+            ],
+            "clippedCells": []
+          }
+        ]
+      },
+      "checks": [
+        "geometry",
+        "essential-warning-visible",
+        "details-keyboard",
+        "table-keyboard-scroll",
+        "all-three-date-filters-ISO",
+        "tab-state-retained",
+        "no-page-errors"
+      ]
+    },
+    {
+      "engine": "chromium",
+      "width": 1024,
+      "root": 16,
+      "theme": "light",
+      "status": "PASS",
+      "trial": {
+        "netFits": true,
+        "documentOverflow": 0,
+        "fontLoaded": true,
+        "headers": [
+          {
+            "paddingTop": 20,
+            "paddingBottom": 20
+          }
+        ],
+        "fields": [
+          {
+            "height": 44,
+            "font": "14px",
+            "labelGap": 12,
+            "rightPadding": 40
+          }
+        ],
+        "tables": [
+          {
+            "columns": [
+              128,
+              256,
+              192,
+              192,
+              192
+            ],
+            "rowHeights": [
+              45.5,
+              46,
+              46,
+              46,
+              67,
+              88,
+              45.5
+            ],
+            "clippedCells": []
+          },
+          {
+            "columns": [
+              128,
+              256,
+              192,
+              192,
+              192
+            ],
+            "rowHeights": [
+              45.5,
+              46,
+              45.5
+            ],
+            "clippedCells": []
+          }
+        ]
+      },
+      "profit": {
+        "netFits": true,
+        "documentOverflow": 0,
+        "fontLoaded": true,
+        "headers": [
+          {
+            "paddingTop": 20,
+            "paddingBottom": 20
+          }
+        ],
+        "fields": [
+          {
+            "height": 44,
+            "font": "14px",
+            "labelGap": 12,
+            "rightPadding": 40
+          },
+          {
+            "height": 44,
+            "font": "14px",
+            "labelGap": 12,
+            "rightPadding": 40
+          }
+        ],
+        "tables": [
+          {
+            "columns": [
+              128,
+              342,
+              192
+            ],
+            "rowHeights": [
+              45.5,
+              67,
+              45.5
+            ],
+            "clippedCells": []
+          },
+          {
+            "columns": [
+              128,
+              342,
+              192
+            ],
+            "rowHeights": [
+              45.5,
+              46,
+              45.5
+            ],
+            "clippedCells": []
+          }
+        ]
+      },
+      "checks": [
+        "geometry",
+        "essential-warning-visible",
+        "details-keyboard",
+        "table-keyboard-scroll",
+        "all-three-date-filters-ISO",
+        "tab-state-retained",
+        "no-page-errors"
+      ]
+    },
+    {
+      "engine": "chromium",
+      "width": 1280,
+      "root": 16,
+      "theme": "light",
+      "status": "PASS",
+      "trial": {
+        "netFits": true,
+        "documentOverflow": 0,
+        "fontLoaded": true,
+        "headers": [
+          {
+            "paddingTop": 20,
+            "paddingBottom": 20
+          }
+        ],
+        "fields": [
+          {
+            "height": 44,
+            "font": "14px",
+            "labelGap": 12,
+            "rightPadding": 40
+          }
+        ],
+        "tables": [
+          {
+            "columns": [
+              128,
+              256,
+              192,
+              192,
+              192
+            ],
+            "rowHeights": [
+              45.5,
+              46,
+              46,
+              46,
+              67,
+              88,
+              45.5
+            ],
+            "clippedCells": []
+          },
+          {
+            "columns": [
+              128,
+              256,
+              192,
+              192,
+              192
+            ],
+            "rowHeights": [
+              45.5,
+              46,
+              45.5
+            ],
+            "clippedCells": []
+          }
+        ]
+      },
+      "profit": {
+        "netFits": true,
+        "documentOverflow": 0,
+        "fontLoaded": true,
+        "headers": [
+          {
+            "paddingTop": 20,
+            "paddingBottom": 20
+          }
+        ],
+        "fields": [
+          {
+            "height": 44,
+            "font": "14px",
+            "labelGap": 12,
+            "rightPadding": 40
+          },
+          {
+            "height": 44,
+            "font": "14px",
+            "labelGap": 12,
+            "rightPadding": 40
+          }
+        ],
+        "tables": [
+          {
+            "columns": [
+              128,
+              598,
+              192
+            ],
+            "rowHeights": [
+              45.5,
+              46,
+              45.5
+            ],
+            "clippedCells": []
+          },
+          {
+            "columns": [
+              128,
+              598,
+              192
+            ],
+            "rowHeights": [
+              45.5,
+              46,
+              45.5
+            ],
+            "clippedCells": []
+          }
+        ]
+      },
+      "checks": [
+        "geometry",
+        "essential-warning-visible",
+        "details-keyboard",
+        "table-keyboard-scroll",
+        "all-three-date-filters-ISO",
+        "tab-state-retained",
+        "no-page-errors"
+      ]
+    },
+    {
+      "engine": "chromium",
+      "width": 1440,
+      "root": 16,
+      "theme": "light",
+      "status": "PASS",
+      "trial": {
+        "netFits": true,
+        "documentOverflow": 0,
+        "fontLoaded": true,
+        "headers": [
+          {
+            "paddingTop": 20,
+            "paddingBottom": 20
+          }
+        ],
+        "fields": [
+          {
+            "height": 44,
+            "font": "14px",
+            "labelGap": 12,
+            "rightPadding": 40
+          }
+        ],
+        "tables": [
+          {
+            "columns": [
+              128,
+              374,
+              192,
+              192,
+              192
+            ],
+            "rowHeights": [
+              45.5,
+              46,
+              46,
+              46,
+              46,
+              67,
+              45.5
+            ],
+            "clippedCells": []
+          },
+          {
+            "columns": [
+              128,
+              374,
+              192,
+              192,
+              192
+            ],
+            "rowHeights": [
+              45.5,
+              46,
+              45.5
+            ],
+            "clippedCells": []
+          }
+        ]
+      },
+      "profit": {
+        "netFits": true,
+        "documentOverflow": 0,
+        "fontLoaded": true,
+        "headers": [
+          {
+            "paddingTop": 20,
+            "paddingBottom": 20
+          }
+        ],
+        "fields": [
+          {
+            "height": 44,
+            "font": "14px",
+            "labelGap": 12,
+            "rightPadding": 40
+          },
+          {
+            "height": 44,
+            "font": "14px",
+            "labelGap": 12,
+            "rightPadding": 40
+          }
+        ],
+        "tables": [
+          {
+            "columns": [
+              128,
+              758,
+              192
+            ],
+            "rowHeights": [
+              45.5,
+              46,
+              45.5
+            ],
+            "clippedCells": []
+          },
+          {
+            "columns": [
+              128,
+              758,
+              192
+            ],
+            "rowHeights": [
+              45.5,
+              46,
+              45.5
+            ],
+            "clippedCells": []
+          }
+        ]
+      },
+      "checks": [
+        "geometry",
+        "essential-warning-visible",
+        "details-keyboard",
+        "table-keyboard-scroll",
+        "all-three-date-filters-ISO",
+        "tab-state-retained",
+        "no-page-errors"
+      ]
+    },
+    {
+      "engine": "chromium",
+      "width": 320,
+      "root": 20,
+      "theme": "dark",
+      "status": "PASS",
+      "trial": {
+        "netFits": true,
+        "documentOverflow": 0,
+        "fontLoaded": true,
+        "headers": [
+          {
+            "paddingTop": 25,
+            "paddingBottom": 25
+          }
+        ],
+        "fields": [
+          {
+            "height": 55,
+            "font": "20px",
+            "labelGap": 15,
+            "rightPadding": 50
+          }
+        ],
+        "tables": [
+          {
+            "columns": [
+              160,
+              320,
+              240,
+              240,
+              240
+            ],
+            "rowHeights": [
+              56.75,
+              57.25,
+              57.25,
+              57.25,
+              83.5,
+              109.75,
+              56.75
+            ],
+            "clippedCells": []
+          },
+          {
+            "columns": [
+              160,
+              320,
+              240,
+              240,
+              240
+            ],
+            "rowHeights": [
+              56.75,
+              57.25,
+              56.75
+            ],
+            "clippedCells": []
+          }
+        ]
+      },
+      "profit": {
+        "netFits": true,
+        "documentOverflow": 0,
+        "fontLoaded": true,
+        "headers": [
+          {
+            "paddingTop": 25,
+            "paddingBottom": 25
+          }
+        ],
+        "fields": [
+          {
+            "height": 55,
+            "font": "20px",
+            "labelGap": 15,
+            "rightPadding": 50
+          },
+          {
+            "height": 55,
+            "font": "20px",
+            "labelGap": 15,
+            "rightPadding": 50
+          }
+        ],
+        "tables": [
+          {
+            "columns": [
+              160,
+              400,
+              240
+            ],
+            "rowHeights": [
+              56.75,
+              83.5,
+              56.75
+            ],
+            "clippedCells": []
+          },
+          {
+            "columns": [
+              160,
+              400,
+              240
+            ],
+            "rowHeights": [
+              56.75,
+              57.25,
+              56.75
+            ],
+            "clippedCells": []
+          }
+        ]
+      },
+      "checks": [
+        "geometry",
+        "essential-warning-visible",
+        "details-keyboard",
+        "table-keyboard-scroll",
+        "all-three-date-filters-ISO",
+        "tab-state-retained",
+        "no-page-errors"
+      ]
+    },
+    {
+      "engine": "chromium",
+      "width": 640,
+      "root": 20,
+      "theme": "dark",
+      "status": "PASS",
+      "trial": {
+        "netFits": true,
+        "documentOverflow": 0,
+        "fontLoaded": true,
+        "headers": [
+          {
+            "paddingTop": 25,
+            "paddingBottom": 25
+          }
+        ],
+        "fields": [
+          {
+            "height": 55,
+            "font": "20px",
+            "labelGap": 15,
+            "rightPadding": 50
+          }
+        ],
+        "tables": [
+          {
+            "columns": [
+              160,
+              320,
+              240,
+              240,
+              240
+            ],
+            "rowHeights": [
+              56.75,
+              57.25,
+              57.25,
+              57.25,
+              83.5,
+              109.75,
+              56.75
+            ],
+            "clippedCells": []
+          },
+          {
+            "columns": [
+              160,
+              320,
+              240,
+              240,
+              240
+            ],
+            "rowHeights": [
+              56.75,
+              57.25,
+              56.75
+            ],
+            "clippedCells": []
+          }
+        ]
+      },
+      "profit": {
+        "netFits": true,
+        "documentOverflow": 0,
+        "fontLoaded": true,
+        "headers": [
+          {
+            "paddingTop": 25,
+            "paddingBottom": 25
+          }
+        ],
+        "fields": [
+          {
+            "height": 55,
+            "font": "20px",
+            "labelGap": 15,
+            "rightPadding": 50
+          },
+          {
+            "height": 55,
+            "font": "20px",
+            "labelGap": 15,
+            "rightPadding": 50
+          }
+        ],
+        "tables": [
+          {
+            "columns": [
+              160,
+              400,
+              240
+            ],
+            "rowHeights": [
+              56.75,
+              83.5,
+              56.75
+            ],
+            "clippedCells": []
+          },
+          {
+            "columns": [
+              160,
+              400,
+              240
+            ],
+            "rowHeights": [
+              56.75,
+              57.25,
+              56.75
+            ],
+            "clippedCells": []
+          }
+        ]
+      },
+      "checks": [
+        "geometry",
+        "essential-warning-visible",
+        "details-keyboard",
+        "table-keyboard-scroll",
+        "all-three-date-filters-ISO",
+        "tab-state-retained",
+        "no-page-errors"
+      ]
+    },
+    {
+      "engine": "chromium",
+      "width": 1024,
+      "root": 20,
+      "theme": "dark",
+      "status": "PASS",
+      "trial": {
+        "netFits": true,
+        "documentOverflow": 0,
+        "fontLoaded": true,
+        "headers": [
+          {
+            "paddingTop": 25,
+            "paddingBottom": 25
+          }
+        ],
+        "fields": [
+          {
+            "height": 55,
+            "font": "17.5px",
+            "labelGap": 15,
+            "rightPadding": 50
+          }
+        ],
+        "tables": [
+          {
+            "columns": [
+              160,
+              320,
+              240,
+              240,
+              240
+            ],
+            "rowHeights": [
+              56.75,
+              57.25,
+              57.25,
+              57.25,
+              83.5,
+              109.75,
+              56.75
+            ],
+            "clippedCells": []
+          },
+          {
+            "columns": [
+              160,
+              320,
+              240,
+              240,
+              240
+            ],
+            "rowHeights": [
+              56.75,
+              57.25,
+              56.75
+            ],
+            "clippedCells": []
+          }
+        ]
+      },
+      "profit": {
+        "netFits": true,
+        "documentOverflow": 0,
+        "fontLoaded": true,
+        "headers": [
+          {
+            "paddingTop": 25,
+            "paddingBottom": 25
+          }
+        ],
+        "fields": [
+          {
+            "height": 55,
+            "font": "17.5px",
+            "labelGap": 15,
+            "rightPadding": 50
+          },
+          {
+            "height": 55,
+            "font": "17.5px",
+            "labelGap": 15,
+            "rightPadding": 50
+          }
+        ],
+        "tables": [
+          {
+            "columns": [
+              160,
+              400,
+              240
+            ],
+            "rowHeights": [
+              56.75,
+              83.5,
+              56.75
+            ],
+            "clippedCells": []
+          },
+          {
+            "columns": [
+              160,
+              400,
+              240
+            ],
+            "rowHeights": [
+              56.75,
+              57.25,
+              56.75
+            ],
+            "clippedCells": []
+          }
+        ]
+      },
+      "checks": [
+        "geometry",
+        "essential-warning-visible",
+        "details-keyboard",
+        "table-keyboard-scroll",
+        "all-three-date-filters-ISO",
+        "tab-state-retained",
+        "no-page-errors"
+      ]
+    },
+    {
+      "engine": "chromium",
+      "width": 1440,
+      "root": 16,
+      "theme": "dark",
+      "status": "PASS",
+      "trial": {
+        "netFits": true,
+        "documentOverflow": 0,
+        "fontLoaded": true,
+        "headers": [
+          {
+            "paddingTop": 20,
+            "paddingBottom": 20
+          }
+        ],
+        "fields": [
+          {
+            "height": 44,
+            "font": "14px",
+            "labelGap": 12,
+            "rightPadding": 40
+          }
+        ],
+        "tables": [
+          {
+            "columns": [
+              128,
+              372,
+              192,
+              192,
+              192
+            ],
+            "rowHeights": [
+              45.5,
+              46,
+              46,
+              46,
+              46,
+              67,
+              45.5
+            ],
+            "clippedCells": []
+          },
+          {
+            "columns": [
+              128,
+              372,
+              192,
+              192,
+              192
+            ],
+            "rowHeights": [
+              45.5,
+              46,
+              45.5
+            ],
+            "clippedCells": []
+          }
+        ]
+      },
+      "profit": {
+        "netFits": true,
+        "documentOverflow": 0,
+        "fontLoaded": true,
+        "headers": [
+          {
+            "paddingTop": 20,
+            "paddingBottom": 20
+          }
+        ],
+        "fields": [
+          {
+            "height": 44,
+            "font": "14px",
+            "labelGap": 12,
+            "rightPadding": 40
+          },
+          {
+            "height": 44,
+            "font": "14px",
+            "labelGap": 12,
+            "rightPadding": 40
+          }
+        ],
+        "tables": [
+          {
+            "columns": [
+              128,
+              756,
+              192
+            ],
+            "rowHeights": [
+              45.5,
+              46,
+              45.5
+            ],
+            "clippedCells": []
+          },
+          {
+            "columns": [
+              128,
+              756,
+              192
+            ],
+            "rowHeights": [
+              45.5,
+              46,
+              45.5
+            ],
+            "clippedCells": []
+          }
+        ]
+      },
+      "checks": [
+        "geometry",
+        "essential-warning-visible",
+        "details-keyboard",
+        "table-keyboard-scroll",
+        "all-three-date-filters-ISO",
+        "tab-state-retained",
+        "no-page-errors"
+      ]
+    },
+    {
+      "engine": "chromium",
+      "status": "PASS",
+      "checks": [
+        "trial-empty",
+        "profit-empty",
+        "error-retry-recovers"
+      ]
+    },
+    {
+      "engine": "webkit",
+      "width": 320,
+      "root": 16,
+      "theme": "light",
+      "status": "PASS",
+      "trial": {
+        "netFits": true,
+        "documentOverflow": 0,
+        "fontLoaded": true,
+        "headers": [
+          {
+            "paddingTop": 20,
+            "paddingBottom": 20
+          }
+        ],
+        "fields": [
+          {
+            "height": 44,
+            "font": "16px",
+            "labelGap": 12,
+            "rightPadding": 40
+          }
+        ],
+        "tables": [
+          {
+            "columns": [
+              128,
+              256,
+              192,
+              192,
+              192
+            ],
+            "rowHeights": [
+              45,
+              46,
+              46,
+              46,
+              67,
+              88,
+              46
+            ],
+            "clippedCells": []
+          },
+          {
+            "columns": [
+              128,
+              256,
+              192,
+              192,
+              192
+            ],
+            "rowHeights": [
+              45,
+              46,
+              46
+            ],
+            "clippedCells": []
+          }
+        ]
+      },
+      "profit": {
+        "netFits": true,
+        "documentOverflow": 0,
+        "fontLoaded": true,
+        "headers": [
+          {
+            "paddingTop": 20,
+            "paddingBottom": 20
+          }
+        ],
+        "fields": [
+          {
+            "height": 44,
+            "font": "16px",
+            "labelGap": 12,
+            "rightPadding": 40
+          },
+          {
+            "height": 44,
+            "font": "16px",
+            "labelGap": 12,
+            "rightPadding": 40
+          }
+        ],
+        "tables": [
+          {
+            "columns": [
+              128,
+              320,
+              192
+            ],
+            "rowHeights": [
+              45,
+              67,
+              46
+            ],
+            "clippedCells": []
+          },
+          {
+            "columns": [
+              128,
+              320,
+              192
+            ],
+            "rowHeights": [
+              45,
+              46,
+              46
+            ],
+            "clippedCells": []
+          }
+        ]
+      },
+      "checks": [
+        "geometry",
+        "essential-warning-visible",
+        "details-keyboard",
+        "table-keyboard-scroll",
+        "all-three-date-filters-ISO",
+        "tab-state-retained",
+        "no-page-errors"
+      ]
+    },
+    {
+      "engine": "webkit",
+      "width": 390,
+      "root": 16,
+      "theme": "light",
+      "status": "PASS",
+      "trial": {
+        "netFits": true,
+        "documentOverflow": 0,
+        "fontLoaded": true,
+        "headers": [
+          {
+            "paddingTop": 20,
+            "paddingBottom": 20
+          }
+        ],
+        "fields": [
+          {
+            "height": 44,
+            "font": "16px",
+            "labelGap": 12,
+            "rightPadding": 40
+          }
+        ],
+        "tables": [
+          {
+            "columns": [
+              128,
+              256,
+              192,
+              192,
+              192
+            ],
+            "rowHeights": [
+              45,
+              46,
+              46,
+              46,
+              67,
+              88,
+              46
+            ],
+            "clippedCells": []
+          },
+          {
+            "columns": [
+              128,
+              256,
+              192,
+              192,
+              192
+            ],
+            "rowHeights": [
+              45,
+              46,
+              46
+            ],
+            "clippedCells": []
+          }
+        ]
+      },
+      "profit": {
+        "netFits": true,
+        "documentOverflow": 0,
+        "fontLoaded": true,
+        "headers": [
+          {
+            "paddingTop": 20,
+            "paddingBottom": 20
+          }
+        ],
+        "fields": [
+          {
+            "height": 44,
+            "font": "16px",
+            "labelGap": 12,
+            "rightPadding": 40
+          },
+          {
+            "height": 44,
+            "font": "16px",
+            "labelGap": 12,
+            "rightPadding": 40
+          }
+        ],
+        "tables": [
+          {
+            "columns": [
+              128,
+              320,
+              192
+            ],
+            "rowHeights": [
+              45,
+              67,
+              46
+            ],
+            "clippedCells": []
+          },
+          {
+            "columns": [
+              128,
+              320,
+              192
+            ],
+            "rowHeights": [
+              45,
+              46,
+              46
+            ],
+            "clippedCells": []
+          }
+        ]
+      },
+      "checks": [
+        "geometry",
+        "essential-warning-visible",
+        "details-keyboard",
+        "table-keyboard-scroll",
+        "all-three-date-filters-ISO",
+        "tab-state-retained",
+        "no-page-errors"
+      ]
+    },
+    {
+      "engine": "webkit",
+      "width": 640,
+      "root": 16,
+      "theme": "light",
+      "status": "PASS",
+      "trial": {
+        "netFits": true,
+        "documentOverflow": 0,
+        "fontLoaded": true,
+        "headers": [
+          {
+            "paddingTop": 20,
+            "paddingBottom": 20
+          }
+        ],
+        "fields": [
+          {
+            "height": 44,
+            "font": "16px",
+            "labelGap": 12,
+            "rightPadding": 40
+          }
+        ],
+        "tables": [
+          {
+            "columns": [
+              128,
+              256,
+              192,
+              192,
+              192
+            ],
+            "rowHeights": [
+              45,
+              46,
+              46,
+              46,
+              67,
+              88,
+              46
+            ],
+            "clippedCells": []
+          },
+          {
+            "columns": [
+              128,
+              256,
+              192,
+              192,
+              192
+            ],
+            "rowHeights": [
+              45,
+              46,
+              46
+            ],
+            "clippedCells": []
+          }
+        ]
+      },
+      "profit": {
+        "netFits": true,
+        "documentOverflow": 0,
+        "fontLoaded": true,
+        "headers": [
+          {
+            "paddingTop": 20,
+            "paddingBottom": 20
+          }
+        ],
+        "fields": [
+          {
+            "height": 44,
+            "font": "16px",
+            "labelGap": 12,
+            "rightPadding": 40
+          },
+          {
+            "height": 44,
+            "font": "16px",
+            "labelGap": 12,
+            "rightPadding": 40
+          }
+        ],
+        "tables": [
+          {
+            "columns": [
+              128,
+              320,
+              192
+            ],
+            "rowHeights": [
+              45,
+              67,
+              46
+            ],
+            "clippedCells": []
+          },
+          {
+            "columns": [
+              128,
+              320,
+              192
+            ],
+            "rowHeights": [
+              45,
+              46,
+              46
+            ],
+            "clippedCells": []
+          }
+        ]
+      },
+      "checks": [
+        "geometry",
+        "essential-warning-visible",
+        "details-keyboard",
+        "table-keyboard-scroll",
+        "all-three-date-filters-ISO",
+        "tab-state-retained",
+        "no-page-errors"
+      ]
+    },
+    {
+      "engine": "webkit",
+      "width": 768,
+      "root": 16,
+      "theme": "light",
+      "status": "PASS",
+      "trial": {
+        "netFits": true,
+        "documentOverflow": 0,
+        "fontLoaded": true,
+        "headers": [
+          {
+            "paddingTop": 20,
+            "paddingBottom": 20
+          }
+        ],
+        "fields": [
+          {
+            "height": 44,
+            "font": "16px",
+            "labelGap": 12,
+            "rightPadding": 40
+          }
+        ],
+        "tables": [
+          {
+            "columns": [
+              128,
+              256,
+              192,
+              192,
+              192
+            ],
+            "rowHeights": [
+              45,
+              46,
+              46,
+              46,
+              67,
+              88,
+              46
+            ],
+            "clippedCells": []
+          },
+          {
+            "columns": [
+              128,
+              256,
+              192,
+              192,
+              192
+            ],
+            "rowHeights": [
+              45,
+              46,
+              46
+            ],
+            "clippedCells": []
+          }
+        ]
+      },
+      "profit": {
+        "netFits": true,
+        "documentOverflow": 0,
+        "fontLoaded": true,
+        "headers": [
+          {
+            "paddingTop": 20,
+            "paddingBottom": 20
+          }
+        ],
+        "fields": [
+          {
+            "height": 44,
+            "font": "16px",
+            "labelGap": 12,
+            "rightPadding": 40
+          },
+          {
+            "height": 44,
+            "font": "16px",
+            "labelGap": 12,
+            "rightPadding": 40
+          }
+        ],
+        "tables": [
+          {
+            "columns": [
+              128,
+              350,
+              192
+            ],
+            "rowHeights": [
+              45,
+              67,
+              46
+            ],
+            "clippedCells": []
+          },
+          {
+            "columns": [
+              128,
+              350,
+              192
+            ],
+            "rowHeights": [
+              45,
+              46,
+              46
+            ],
+            "clippedCells": []
+          }
+        ]
+      },
+      "checks": [
+        "geometry",
+        "essential-warning-visible",
+        "details-keyboard",
+        "table-keyboard-scroll",
+        "all-three-date-filters-ISO",
+        "tab-state-retained",
+        "no-page-errors"
+      ]
+    },
+    {
+      "engine": "webkit",
+      "width": 1024,
+      "root": 16,
+      "theme": "light",
+      "status": "PASS",
+      "trial": {
+        "netFits": true,
+        "documentOverflow": 0,
+        "fontLoaded": true,
+        "headers": [
+          {
+            "paddingTop": 20,
+            "paddingBottom": 20
+          }
+        ],
+        "fields": [
+          {
+            "height": 44,
+            "font": "14px",
+            "labelGap": 12,
+            "rightPadding": 40
+          }
+        ],
+        "tables": [
+          {
+            "columns": [
+              128,
+              256,
+              192,
+              192,
+              192
+            ],
+            "rowHeights": [
+              45,
+              46,
+              46,
+              46,
+              67,
+              88,
+              46
+            ],
+            "clippedCells": []
+          },
+          {
+            "columns": [
+              128,
+              256,
+              192,
+              192,
+              192
+            ],
+            "rowHeights": [
+              45,
+              46,
+              46
+            ],
+            "clippedCells": []
+          }
+        ]
+      },
+      "profit": {
+        "netFits": true,
+        "documentOverflow": 0,
+        "fontLoaded": true,
+        "headers": [
+          {
+            "paddingTop": 20,
+            "paddingBottom": 20
+          }
+        ],
+        "fields": [
+          {
+            "height": 44,
+            "font": "14px",
+            "labelGap": 12,
+            "rightPadding": 40
+          },
+          {
+            "height": 44,
+            "font": "14px",
+            "labelGap": 12,
+            "rightPadding": 40
+          }
+        ],
+        "tables": [
+          {
+            "columns": [
+              128,
+              342,
+              192
+            ],
+            "rowHeights": [
+              45,
+              67,
+              46
+            ],
+            "clippedCells": []
+          },
+          {
+            "columns": [
+              128,
+              342,
+              192
+            ],
+            "rowHeights": [
+              45,
+              46,
+              46
+            ],
+            "clippedCells": []
+          }
+        ]
+      },
+      "checks": [
+        "geometry",
+        "essential-warning-visible",
+        "details-keyboard",
+        "table-keyboard-scroll",
+        "all-three-date-filters-ISO",
+        "tab-state-retained",
+        "no-page-errors"
+      ]
+    },
+    {
+      "engine": "webkit",
+      "width": 1280,
+      "root": 16,
+      "theme": "light",
+      "status": "PASS",
+      "trial": {
+        "netFits": true,
+        "documentOverflow": 0,
+        "fontLoaded": true,
+        "headers": [
+          {
+            "paddingTop": 20,
+            "paddingBottom": 20
+          }
+        ],
+        "fields": [
+          {
+            "height": 44,
+            "font": "14px",
+            "labelGap": 12,
+            "rightPadding": 40
+          }
+        ],
+        "tables": [
+          {
+            "columns": [
+              128,
+              256,
+              192,
+              192,
+              192
+            ],
+            "rowHeights": [
+              45,
+              46,
+              46,
+              46,
+              67,
+              88,
+              46
+            ],
+            "clippedCells": []
+          },
+          {
+            "columns": [
+              128,
+              256,
+              192,
+              192,
+              192
+            ],
+            "rowHeights": [
+              45,
+              46,
+              46
+            ],
+            "clippedCells": []
+          }
+        ]
+      },
+      "profit": {
+        "netFits": true,
+        "documentOverflow": 0,
+        "fontLoaded": true,
+        "headers": [
+          {
+            "paddingTop": 20,
+            "paddingBottom": 20
+          }
+        ],
+        "fields": [
+          {
+            "height": 44,
+            "font": "14px",
+            "labelGap": 12,
+            "rightPadding": 40
+          },
+          {
+            "height": 44,
+            "font": "14px",
+            "labelGap": 12,
+            "rightPadding": 40
+          }
+        ],
+        "tables": [
+          {
+            "columns": [
+              128,
+              598,
+              192
+            ],
+            "rowHeights": [
+              45,
+              46,
+              46
+            ],
+            "clippedCells": []
+          },
+          {
+            "columns": [
+              128,
+              598,
+              192
+            ],
+            "rowHeights": [
+              45,
+              46,
+              46
+            ],
+            "clippedCells": []
+          }
+        ]
+      },
+      "checks": [
+        "geometry",
+        "essential-warning-visible",
+        "details-keyboard",
+        "table-keyboard-scroll",
+        "all-three-date-filters-ISO",
+        "tab-state-retained",
+        "no-page-errors"
+      ]
+    },
+    {
+      "engine": "webkit",
+      "width": 1440,
+      "root": 16,
+      "theme": "light",
+      "status": "PASS",
+      "trial": {
+        "netFits": true,
+        "documentOverflow": 0,
+        "fontLoaded": true,
+        "headers": [
+          {
+            "paddingTop": 20,
+            "paddingBottom": 20
+          }
+        ],
+        "fields": [
+          {
+            "height": 44,
+            "font": "14px",
+            "labelGap": 12,
+            "rightPadding": 40
+          }
+        ],
+        "tables": [
+          {
+            "columns": [
+              128,
+              374,
+              192,
+              192,
+              192
+            ],
+            "rowHeights": [
+              45,
+              46,
+              46,
+              46,
+              46,
+              67,
+              46
+            ],
+            "clippedCells": []
+          },
+          {
+            "columns": [
+              128,
+              374,
+              192,
+              192,
+              192
+            ],
+            "rowHeights": [
+              45,
+              46,
+              46
+            ],
+            "clippedCells": []
+          }
+        ]
+      },
+      "profit": {
+        "netFits": true,
+        "documentOverflow": 0,
+        "fontLoaded": true,
+        "headers": [
+          {
+            "paddingTop": 20,
+            "paddingBottom": 20
+          }
+        ],
+        "fields": [
+          {
+            "height": 44,
+            "font": "14px",
+            "labelGap": 12,
+            "rightPadding": 40
+          },
+          {
+            "height": 44,
+            "font": "14px",
+            "labelGap": 12,
+            "rightPadding": 40
+          }
+        ],
+        "tables": [
+          {
+            "columns": [
+              128,
+              758,
+              192
+            ],
+            "rowHeights": [
+              45,
+              46,
+              46
+            ],
+            "clippedCells": []
+          },
+          {
+            "columns": [
+              128,
+              758,
+              192
+            ],
+            "rowHeights": [
+              45,
+              46,
+              46
+            ],
+            "clippedCells": []
+          }
+        ]
+      },
+      "checks": [
+        "geometry",
+        "essential-warning-visible",
+        "details-keyboard",
+        "table-keyboard-scroll",
+        "all-three-date-filters-ISO",
+        "tab-state-retained",
+        "no-page-errors"
+      ]
+    },
+    {
+      "engine": "webkit",
+      "width": 320,
+      "root": 20,
+      "theme": "dark",
+      "status": "PASS",
+      "trial": {
+        "netFits": true,
+        "documentOverflow": 0,
+        "fontLoaded": true,
+        "headers": [
+          {
+            "paddingTop": 25,
+            "paddingBottom": 25
+          }
+        ],
+        "fields": [
+          {
+            "height": 55,
+            "font": "20px",
+            "labelGap": 15,
+            "rightPadding": 50
+          }
+        ],
+        "tables": [
+          {
+            "columns": [
+              160,
+              320,
+              240,
+              240,
+              240
+            ],
+            "rowHeights": [
+              56,
+              57,
+              57,
+              57,
+              83,
+              109,
+              57
+            ],
+            "clippedCells": []
+          },
+          {
+            "columns": [
+              160,
+              320,
+              240,
+              240,
+              240
+            ],
+            "rowHeights": [
+              56,
+              57,
+              57
+            ],
+            "clippedCells": []
+          }
+        ]
+      },
+      "profit": {
+        "netFits": true,
+        "documentOverflow": 0,
+        "fontLoaded": true,
+        "headers": [
+          {
+            "paddingTop": 25,
+            "paddingBottom": 25
+          }
+        ],
+        "fields": [
+          {
+            "height": 55,
+            "font": "20px",
+            "labelGap": 15,
+            "rightPadding": 50
+          },
+          {
+            "height": 55,
+            "font": "20px",
+            "labelGap": 15,
+            "rightPadding": 50
+          }
+        ],
+        "tables": [
+          {
+            "columns": [
+              160,
+              400,
+              240
+            ],
+            "rowHeights": [
+              56,
+              83,
+              57
+            ],
+            "clippedCells": []
+          },
+          {
+            "columns": [
+              160,
+              400,
+              240
+            ],
+            "rowHeights": [
+              56,
+              57,
+              57
+            ],
+            "clippedCells": []
+          }
+        ]
+      },
+      "checks": [
+        "geometry",
+        "essential-warning-visible",
+        "details-keyboard",
+        "table-keyboard-scroll",
+        "all-three-date-filters-ISO",
+        "tab-state-retained",
+        "no-page-errors"
+      ]
+    },
+    {
+      "engine": "webkit",
+      "width": 640,
+      "root": 20,
+      "theme": "dark",
+      "status": "PASS",
+      "trial": {
+        "netFits": true,
+        "documentOverflow": 0,
+        "fontLoaded": true,
+        "headers": [
+          {
+            "paddingTop": 25,
+            "paddingBottom": 25
+          }
+        ],
+        "fields": [
+          {
+            "height": 55,
+            "font": "20px",
+            "labelGap": 15,
+            "rightPadding": 50
+          }
+        ],
+        "tables": [
+          {
+            "columns": [
+              160,
+              320,
+              240,
+              240,
+              240
+            ],
+            "rowHeights": [
+              56,
+              57,
+              57,
+              57,
+              83,
+              109,
+              57
+            ],
+            "clippedCells": []
+          },
+          {
+            "columns": [
+              160,
+              320,
+              240,
+              240,
+              240
+            ],
+            "rowHeights": [
+              56,
+              57,
+              57
+            ],
+            "clippedCells": []
+          }
+        ]
+      },
+      "profit": {
+        "netFits": true,
+        "documentOverflow": 0,
+        "fontLoaded": true,
+        "headers": [
+          {
+            "paddingTop": 25,
+            "paddingBottom": 25
+          }
+        ],
+        "fields": [
+          {
+            "height": 55,
+            "font": "20px",
+            "labelGap": 15,
+            "rightPadding": 50
+          },
+          {
+            "height": 55,
+            "font": "20px",
+            "labelGap": 15,
+            "rightPadding": 50
+          }
+        ],
+        "tables": [
+          {
+            "columns": [
+              160,
+              400,
+              240
+            ],
+            "rowHeights": [
+              56,
+              83,
+              57
+            ],
+            "clippedCells": []
+          },
+          {
+            "columns": [
+              160,
+              400,
+              240
+            ],
+            "rowHeights": [
+              56,
+              57,
+              57
+            ],
+            "clippedCells": []
+          }
+        ]
+      },
+      "checks": [
+        "geometry",
+        "essential-warning-visible",
+        "details-keyboard",
+        "table-keyboard-scroll",
+        "all-three-date-filters-ISO",
+        "tab-state-retained",
+        "no-page-errors"
+      ]
+    },
+    {
+      "engine": "webkit",
+      "width": 1024,
+      "root": 20,
+      "theme": "dark",
+      "status": "PASS",
+      "trial": {
+        "netFits": true,
+        "documentOverflow": 0,
+        "fontLoaded": true,
+        "headers": [
+          {
+            "paddingTop": 25,
+            "paddingBottom": 25
+          }
+        ],
+        "fields": [
+          {
+            "height": 55,
+            "font": "17.5px",
+            "labelGap": 15,
+            "rightPadding": 50
+          }
+        ],
+        "tables": [
+          {
+            "columns": [
+              160,
+              320,
+              240,
+              240,
+              240
+            ],
+            "rowHeights": [
+              56,
+              57,
+              57,
+              57,
+              83,
+              109,
+              57
+            ],
+            "clippedCells": []
+          },
+          {
+            "columns": [
+              160,
+              320,
+              240,
+              240,
+              240
+            ],
+            "rowHeights": [
+              56,
+              57,
+              57
+            ],
+            "clippedCells": []
+          }
+        ]
+      },
+      "profit": {
+        "netFits": true,
+        "documentOverflow": 0,
+        "fontLoaded": true,
+        "headers": [
+          {
+            "paddingTop": 25,
+            "paddingBottom": 25
+          }
+        ],
+        "fields": [
+          {
+            "height": 55,
+            "font": "17.5px",
+            "labelGap": 15,
+            "rightPadding": 50
+          },
+          {
+            "height": 55,
+            "font": "17.5px",
+            "labelGap": 15,
+            "rightPadding": 50
+          }
+        ],
+        "tables": [
+          {
+            "columns": [
+              160,
+              400,
+              240
+            ],
+            "rowHeights": [
+              56,
+              83,
+              57
+            ],
+            "clippedCells": []
+          },
+          {
+            "columns": [
+              160,
+              400,
+              240
+            ],
+            "rowHeights": [
+              56,
+              57,
+              57
+            ],
+            "clippedCells": []
+          }
+        ]
+      },
+      "checks": [
+        "geometry",
+        "essential-warning-visible",
+        "details-keyboard",
+        "table-keyboard-scroll",
+        "all-three-date-filters-ISO",
+        "tab-state-retained",
+        "no-page-errors"
+      ]
+    },
+    {
+      "engine": "webkit",
+      "width": 1440,
+      "root": 16,
+      "theme": "dark",
+      "status": "PASS",
+      "trial": {
+        "netFits": true,
+        "documentOverflow": 0,
+        "fontLoaded": true,
+        "headers": [
+          {
+            "paddingTop": 20,
+            "paddingBottom": 20
+          }
+        ],
+        "fields": [
+          {
+            "height": 44,
+            "font": "14px",
+            "labelGap": 12,
+            "rightPadding": 40
+          }
+        ],
+        "tables": [
+          {
+            "columns": [
+              128,
+              372,
+              192,
+              192,
+              192
+            ],
+            "rowHeights": [
+              45,
+              46,
+              46,
+              46,
+              46,
+              67,
+              46
+            ],
+            "clippedCells": []
+          },
+          {
+            "columns": [
+              128,
+              372,
+              192,
+              192,
+              192
+            ],
+            "rowHeights": [
+              45,
+              46,
+              46
+            ],
+            "clippedCells": []
+          }
+        ]
+      },
+      "profit": {
+        "netFits": true,
+        "documentOverflow": 0,
+        "fontLoaded": true,
+        "headers": [
+          {
+            "paddingTop": 20,
+            "paddingBottom": 20
+          }
+        ],
+        "fields": [
+          {
+            "height": 44,
+            "font": "14px",
+            "labelGap": 12,
+            "rightPadding": 40
+          },
+          {
+            "height": 44,
+            "font": "14px",
+            "labelGap": 12,
+            "rightPadding": 40
+          }
+        ],
+        "tables": [
+          {
+            "columns": [
+              128,
+              756,
+              192
+            ],
+            "rowHeights": [
+              45,
+              46,
+              46
+            ],
+            "clippedCells": []
+          },
+          {
+            "columns": [
+              128,
+              756,
+              192
+            ],
+            "rowHeights": [
+              45,
+              46,
+              46
+            ],
+            "clippedCells": []
+          }
+        ]
+      },
+      "checks": [
+        "geometry",
+        "essential-warning-visible",
+        "details-keyboard",
+        "table-keyboard-scroll",
+        "all-three-date-filters-ISO",
+        "tab-state-retained",
+        "no-page-errors"
+      ]
+    },
+    {
+      "engine": "webkit",
+      "status": "PASS",
+      "checks": [
+        "trial-empty",
+        "profit-empty",
+        "error-retry-recovers"
+      ]
+    }
+  ]
+}

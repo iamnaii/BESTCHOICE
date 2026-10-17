@@ -14,7 +14,9 @@ export function canonicalJourneySql() {
     throw new Error('Canonical Journey SQL boundary changed');
   return { readCte: sql.slice(start + 5, end), writeSql: sql };
 }
-export interface JourneyReadState extends JourneyStateRow {
+export interface JourneyReadState extends Omit<JourneyStateRow, 'contactedAt' | 'stageEnteredAt'> {
+  contactedAt: Date | null;
+  stageEnteredAt: Date | null;
   bought: boolean;
   firstPurchaseKind: string | null;
 }
@@ -34,9 +36,11 @@ export async function readManagedJourneyState(
   };
   const customerIds = array(new Set([plan.targetId, ...plan.ids.customer]));
   const family = array(plan.family);
+  values.push(plan.acquisitionSource);
+  const acquisition = `$${values.length}::text`;
   const bindings: string[] = [
-    `customers AS (SELECT id,${plan.ids.customer.has(plan.targetId) ? 'created_at' : 'NULL::timestamp AS created_at'},updated_at,deleted_at,merged_into_id,
-    CASE WHEN acquisition_source IN ('WALK_IN','REFERRAL') THEN acquisition_source ELSE NULL END AS acquisition_source,
+    `customers AS (SELECT id,${plan.acquisitionSource ? 'created_at' : 'NULL::timestamp AS created_at'},updated_at,deleted_at,merged_into_id,
+    ${acquisition} AS acquisition_source,
     ${plan.referrerAllowed ? 'referred_by_id' : 'NULL::text AS referred_by_id'}, ${plan.identitySensitive ? 'phone' : 'NULL::text'} AS phone,
     ${plan.identitySensitive ? 'national_id' : 'NULL::text'} AS national_id
     FROM public.customers WHERE id=ANY(${customerIds}))`,

@@ -59,6 +59,15 @@ const TAG_LABELS: Record<string, string> = {
 const isShownKind = (kind: string): kind is ShownKind =>
   Object.prototype.hasOwnProperty.call(VIEWS, kind);
 
+/** Canonical persisted-kind grouping, also used for managed coverage metadata. */
+export function journeyEntryGroup(kind: string): JourneyEventGroup | undefined {
+  return kind === 'CREDIT_CHECK_OPENED_BY'
+    ? 'credit'
+    : isShownKind(kind)
+      ? VIEWS[kind].group
+      : undefined;
+}
+
 /** kind ที่แสดงของชุดกลุ่ม (ลำดับตาม VIEWS) — ให้ DB กรอง ไม่ใช่ตัดหลังดึง */
 const kindsOf = (groups: ReadonlySet<JourneyEventGroup>): ShownKind[] =>
   (Object.keys(VIEWS) as ShownKind[]).filter((kind) => groups.has(VIEWS[kind].group));

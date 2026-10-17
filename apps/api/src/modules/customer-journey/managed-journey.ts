@@ -129,7 +129,11 @@ export class ManagedJourney {
       !Array.isArray(creditValue) &&
       creditValue.status === 'REJECTED';
     const facts = buildJourneySummary(
-      { ...state, contactedAt: state.contactedAt ?? state.stageEnteredAt ?? now },
+      {
+        ...state,
+        contactedAt: state.contactedAt ?? state.stageEnteredAt ?? now,
+        stageEnteredAt: state.stageEnteredAt ?? now,
+      },
       {
         firstAd: ad ? { id: ad.id, name: ad.campaignName } : null,
         interestedByManualEntry: manual > 0,
@@ -151,6 +155,7 @@ export class ManagedJourney {
     const complete =
       Object.values(availability).every((v) => v === 'available') &&
       p.lossProven &&
+      !!state.contactedAt &&
       !p.unproven.size &&
       [...p.party.live].every((company) =>
         (
@@ -181,19 +186,28 @@ export class ManagedJourney {
         ...facts,
         // Null is unknown where a global negative would require absent sources.
         contactedAt: state.contactedAt ? facts.contactedAt : null,
+        stage: state.stageEnteredAt ? facts.stage : null,
+        stageLabel: state.stageEnteredAt ? facts.stageLabel : null,
+        stageEnteredAt: state.stageEnteredAt ? facts.stageEnteredAt : null,
+        daysInStage: state.stageEnteredAt ? facts.daysInStage : null,
         lost: p.lossProven ? facts.lost : null,
-        silentDays: p.lossProven ? facts.silentDays : null,
+        silentDays:
+          p.lossProven && (state.contactedAt || state.lastCustomerAt || state.lastTouchAt)
+            ? facts.silentDays
+            : null,
         creditRejected: creditRejected ? true : complete ? false : null,
         creditFilePending: complete ? facts.creditFilePending : null,
         askHeardFrom: complete ? facts.askHeardFrom : null,
         firstChannel: channelKnown ? facts.firstChannel : null,
         firstSource: sourceKnown ? facts.firstSource : null,
         firstSourceLabel: sourceKnown ? facts.firstSourceLabel : null,
-        steps: complete
-          ? facts.steps
-          : facts.steps.map((s) =>
-              s.at !== null ? s : { ...s, state: 'unknown' as const, evidence: null },
-            ),
+        steps: facts.steps.map((s) => {
+          if (s.stage === 'CONTACTED' && !state.contactedAt)
+            return { ...s, at: null, state: 'unknown' as const, evidence: null };
+          return complete || s.at !== null
+            ? s
+            : { ...s, state: 'unknown' as const, evidence: null };
+        }),
       },
     };
   }

@@ -357,7 +357,7 @@ async function createdEvents(
   customerIds: string[],
 ): Promise<JourneyEvent[]> {
   const customers = await prisma.customer.findMany({
-    where: { ...journeyIds('customer'), id: { in: customerIds } },
+    where: { AND: [journeyIds('customer'), { id: { in: customerIds } }] },
     select: { id: true, createdAt: true, acquisitionSource: true },
   });
   return customers
@@ -391,39 +391,28 @@ async function firstStaffReplyEvents(
   customerIds: string[],
 ): Promise<JourneyEvent[]> {
   const managed = currentJourney(prisma);
-  if (managed) {
-    const state = await readManagedJourneyState(managed);
-    if (
-      !state.firstStaffReplyAt ||
-      !state.contactedAt ||
-      state.firstStaffReplyAt < state.contactedAt
-    )
-      return [];
-    return [
-      {
-        id: `staffreply-${managed.targetId}`,
-        type: 'FIRST_STAFF_REPLY',
-        group: 'chat',
-        stage: null,
-        timestamp: state.firstStaffReplyAt.toISOString(),
-        title: `ร้านตอบครั้งแรก (หลังทัก ${formatReplyGap(state.firstStaffReplyAt.getTime() - state.contactedAt.getTime())})`,
-        actor: { type: 'STAFF' },
-        reliability: 'approximate',
-        origin: 'SOURCE',
-      },
-    ];
-  }
-  const state = await prisma.customerJourneyState.findUnique({
-    where: { customerId: customerIds[0] },
-    select: { customerId: true, firstStaffReplyAt: true, contactedAt: true, firstChannel: true },
-  });
+  const state = managed
+    ? { ...(await readManagedJourneyState(managed)), customerId: managed.targetId }
+    : await prisma.customerJourneyState.findUnique({
+        where: { customerId: customerIds[0] },
+        select: {
+          customerId: true,
+          firstStaffReplyAt: true,
+          contactedAt: true,
+          firstChannel: true,
+        },
+      });
   const repliedAt = state?.firstStaffReplyAt;
   if (!state || !repliedAt) return [];
   const anchor = state.firstChannel.startsWith(CHAT_SOURCE_PREFIX)
     ? state.contactedAt
     : (
         await prisma.chatMessage.aggregate({
-          where: { role: 'CUSTOMER', room: { is: { customerId: { in: customerIds } } } },
+          where: {
+            role: 'CUSTOMER',
+            ...(managed ? { roomId: { in: [...managed.ids.chatRoom] } } : {}),
+            room: { is: { customerId: { in: customerIds } } },
+          },
           _min: { createdAt: true },
         })
       )._min.createdAt;

@@ -91,7 +91,10 @@ export const saleSource: JourneySource = async (prisma, customerIds, window) => 
       where: { ...journeyIds('onlineOrder'), ...family, deletedAt: null },
       select: { id: true, createdAt: true },
     }),
-    prisma.productReservation.findMany({ where: family, select: { id: true, reservedAt: true } }),
+    prisma.productReservation.findMany({
+      where: { ...journeyIds('productReservation'), ...family },
+      select: { id: true, reservedAt: true },
+    }),
     prisma.onlineInstallmentApplication.findMany({
       where: { ...journeyIds('onlineInstallmentApplication'), ...family, deletedAt: null },
       select: { id: true, createdAt: true },

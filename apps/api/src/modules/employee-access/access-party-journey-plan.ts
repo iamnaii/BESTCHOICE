@@ -12,6 +12,7 @@ import { PartyQueryPlan } from './access-party-query-plan';
 import { PartyDocumentSources } from './access-party-document-source';
 import { currentDomainAccess } from './access-execution-context';
 import { WORK_CHANNELS } from '../staff-chat/services/chat-work-access.service';
+import { journeyEntryGroup } from '../customer-journey/sources/entries.source';
 import { JOURNEY_ENTRY_KINDS } from '@installment/shared';
 const denied = () => new ForbiddenException('ไม่มีสิทธิ์ดำเนินการกับข้อมูลนี้');
 const IDENTITY_SELECT = {
@@ -56,6 +57,42 @@ const KEYS = [
   'product',
 ] as const;
 type Key = (typeof KEYS)[number];
+// Coverage describes every possible contributor, not whichever rows happened
+// to exist in this request. Entry identity can have any of these genuine sources.
+const IDENTITY_READ_PERMISSIONS: readonly PermissionKey[] = [
+  'sales.read',
+  'contracts.read',
+  'chat.read',
+  'bookings.read',
+  'repair-tickets.read',
+  'trade-in.read',
+];
+const GROUP_REQUIREMENTS: Record<JourneyEventGroup, readonly PermissionKey[]> = {
+  chat: [
+    'chat.read',
+    'chat-ai.read',
+    'documents.read',
+    'products.read',
+    'sensitive.customer-identity.read',
+    ...IDENTITY_READ_PERMISSIONS,
+  ],
+  credit: ['credit-checks.read', 'contracts.read', 'chat.read', ...IDENTITY_READ_PERMISSIONS],
+  sale: [
+    'sales.read',
+    'contracts.read',
+    'payments.read',
+    'device-returns.read',
+    'bookings.read',
+    'shop-orders.read',
+    'trade-in.read',
+    ...IDENTITY_READ_PERMISSIONS,
+  ],
+  payment: ['contracts.read', 'payments.read'],
+  collections: ['contracts.read', 'collections.read', 'mdm.read'],
+  service: ['repair-tickets.read'],
+  points: ['contracts.read', 'loyalty.read'],
+  system: ['customer-tags.read'],
+};
 export const LOSS_COMPANY_PERMISSIONS: Record<Company, readonly PermissionKey[]> = {
   SHOP: [
     'customers.read',
@@ -102,6 +139,9 @@ export class PartyJourneyPlan {
   lossProven = false;
   identitySensitive = false;
   referrerAllowed = false;
+  acquisitionSource: string | null = null;
+  readonly unprovenEntryGroups = new Set<JourneyEventGroup>();
+  readonly filteredEntryGroups = new Set<JourneyEventGroup>();
   readonly unproven = new Set<Key>();
   private constructor(
     readonly party: PartyQueryPlan,
@@ -376,6 +416,20 @@ export class PartyJourneyPlan {
           this.party.allows('customer-journey.read', source),
       );
     }
+    if (this.ids.customer.has(root.id)) {
+      if (
+        root.acquisitionSource === 'WALK_IN' ||
+        (root.acquisitionSource === 'REFERRAL' && this.referrerAllowed)
+      )
+        this.acquisitionSource = root.acquisitionSource;
+      else if (
+        rooms.some(
+          (room) =>
+            this.ids.chatRoom.has(room.id) && `CHAT_${room.channel}` === root.acquisitionSource,
+        )
+      )
+        this.acquisitionSource = root.acquisitionSource;
+    }
     await this.lock(
       'room_credit_analyses',
       'room_id',
@@ -396,7 +450,8 @@ export class PartyJourneyPlan {
     });
     for (const row of checks) {
       const proof: PartySource[] = [];
-      let valid = true;
+      let valid = true,
+        readable = true;
       if (row.contractId) {
         const source = this.contractSources.get(row.contractId);
         if (
@@ -406,7 +461,7 @@ export class PartyJourneyPlan {
           valid = false;
         else {
           proof.push(source);
-          valid = valid && this.ids.contract.has(row.contractId);
+          readable = readable && this.ids.contract.has(row.contractId);
         }
       }
       if (row.roomAnalysis) {
@@ -418,12 +473,13 @@ export class PartyJourneyPlan {
           valid = false;
         else {
           proof.push(source);
-          valid = valid && this.ids.chatRoom.has(row.roomAnalysis.roomId);
+          readable = readable && this.ids.chatRoom.has(row.roomAnalysis.roomId);
         }
       }
       this.creditSources.set(row.id, proof);
       if (
         valid &&
+        readable &&
         proof.length &&
         proof.every((s) => this.allows(s, ['credit-checks.read'], row.customerId, true))
       )
@@ -475,6 +531,7 @@ export class PartyJourneyPlan {
         reservation: { select: { customerId: true, productId: true } },
       },
     });
+    const provenOrders = new Set<string>();
     for (const row of orders) {
       const sale = sales.find(
         (s) =>
@@ -484,15 +541,18 @@ export class PartyJourneyPlan {
           s.saleSource === 'ONLINE',
       );
       const source = sale && this.saleSources.get(sale.id);
-      if (
-        source &&
-        this.ids.sale.has(sale!.id) &&
+      const proven =
+        !!source &&
         row.reservation.productId === row.productId &&
-        (!row.reservation.customerId || row.reservation.customerId === row.customerId) &&
-        this.allows(source, ['shop-orders.read'], row.customerId)
-      )
-        this.ids.onlineOrder.add(row.id);
-      else this.unproven.add('onlineOrder');
+        (!row.reservation.customerId || row.reservation.customerId === row.customerId);
+      if (proven) {
+        provenOrders.add(row.id);
+        if (
+          this.ids.sale.has(sale!.id) &&
+          this.allows(source!, ['shop-orders.read'], row.customerId)
+        )
+          this.ids.onlineOrder.add(row.id);
+      } else this.unproven.add('onlineOrder');
     }
     const applications = await this.db.onlineInstallmentApplication.findMany({
       where: { customerId },
@@ -504,6 +564,7 @@ export class PartyJourneyPlan {
         reservationId: true,
       },
     });
+    const provenApplications = new Set<string>();
     for (const row of applications) {
       const contract = contracts.find(
         (c) =>
@@ -512,37 +573,40 @@ export class PartyJourneyPlan {
           c.productId === row.productId,
       );
       const source = contract && this.contractSources.get(contract.id);
-      if (
-        source &&
-        this.ids.contract.has(contract!.id) &&
-        this.allows(source, ['shop-orders.read'], row.customerId!, true)
-      )
-        this.ids.onlineInstallmentApplication.add(row.id);
-      else this.unproven.add('onlineInstallmentApplication');
+      if (source) {
+        provenApplications.add(row.id);
+        if (
+          this.ids.contract.has(contract!.id) &&
+          this.allows(source, ['shop-orders.read'], row.customerId!, true)
+        )
+          this.ids.onlineInstallmentApplication.add(row.id);
+      } else this.unproven.add('onlineInstallmentApplication');
     }
     const reservations = await this.db.productReservation.findMany({
       where: { customerId },
       select: { id: true, customerId: true, productId: true },
     });
     for (const row of reservations) {
-      if (
-        orders.some(
-          (o) =>
-            o.reservationId === row.id &&
-            o.customerId === row.customerId &&
-            o.productId === row.productId &&
-            this.ids.onlineOrder.has(o.id),
-        ) ||
-        applications.some(
-          (a) =>
-            a.reservationId === row.id &&
-            a.customerId === row.customerId &&
-            a.productId === row.productId &&
-            this.ids.onlineInstallmentApplication.has(a.id),
-        )
+      const order = orders.find(
+        (o) =>
+          o.reservationId === row.id &&
+          o.customerId === row.customerId &&
+          o.productId === row.productId &&
+          provenOrders.has(o.id),
+      );
+      const application = applications.find(
+        (a) =>
+          a.reservationId === row.id &&
+          a.customerId === row.customerId &&
+          a.productId === row.productId &&
+          provenApplications.has(a.id),
+      );
+      if (!order && !application) this.unproven.add('productReservation');
+      else if (
+        (order && this.ids.onlineOrder.has(order.id)) ||
+        (application && this.ids.onlineInstallmentApplication.has(application.id))
       )
         this.ids.productReservation.add(row.id);
-      else this.unproven.add('productReservation');
     }
     const savings = await this.db.savingPlan.findMany({
       where: { customerId },
@@ -552,8 +616,8 @@ export class PartyJourneyPlan {
       const contract = contracts.find(
         (c) => c.id === row.appliedToContractId && c.customerId === row.customerId,
       );
-      if (contract && this.ids.paymentContract.has(contract.id)) this.ids.savingPlan.add(row.id);
-      else this.unproven.add('savingPlan');
+      if (!contract || !this.contractSources.has(contract.id)) this.unproven.add('savingPlan');
+      else if (this.ids.paymentContract.has(contract.id)) this.ids.savingPlan.add(row.id);
     }
     const pointRefs = await this.db.loyaltyPoint.findMany({
       where: { customerId },
@@ -590,14 +654,13 @@ export class PartyJourneyPlan {
           (c) => c.id === row.contractId && c.customerId === row.customerId,
         );
         const source = contract && this.contractSources.get(contract.id);
-        if (
-          source &&
+        if (!source || ('payment' in row && row.payment.contractId !== row.contractId))
+          this.unproven.add(key);
+        else if (
           this.ids.contract.has(contract!.id) &&
-          this.allows(source, ['loyalty.read'], row.customerId, true) &&
-          (!('payment' in row) || row.payment.contractId === row.contractId)
+          this.allows(source, ['loyalty.read'], row.customerId, true)
         )
           this.ids[key].add(row.id);
-        else this.unproven.add(key);
       }
     for (const row of await this.db.customerLineLink.findMany({
       where: { customerId },
@@ -662,6 +725,20 @@ export class PartyJourneyPlan {
     })) {
       this.entryRows.set(row.id, row);
       if (await this.entryReadable(row)) this.ids.customerJourneyEntry.add(row.id);
+      else if (!row.deletedAt) {
+        const group = journeyEntryGroup(row.kind);
+        const groups = group ? [group] : JOURNEY_EVENT_GROUPS;
+        // Under complete fixed source/action coverage, rejection cannot be due
+        // to a narrower permission tuple. It is unavailable provenance/schema.
+        // Under narrower coverage retain only a filtered marker, never expose
+        // hidden-row existence by changing availability.
+        for (const entryGroup of groups) {
+          if (this.groupComplete(entryGroup)) {
+            this.unprovenEntryGroups.add(entryGroup);
+            this.unproven.add('customerJourneyEntry');
+          } else this.filteredEntryGroups.add(entryGroup);
+        }
+      }
     }
     // Fixed authority before any comparison with the total canonical contributor set.
     if (this.lossAuthority()) {
@@ -878,20 +955,32 @@ export class PartyJourneyPlan {
       proof.every((s) => this.party.allows('customer-journey.moderate', s))
     );
   }
+  private groupComplete(group: JourneyEventGroup) {
+    return [...this.party.live].every((company) =>
+      (
+        ['customers.read', 'customer-journey.read', ...GROUP_REQUIREMENTS[group]] as PermissionKey[]
+      ).every((permission) => this.party.company(permission, company)),
+    );
+  }
   availability(): Record<JourneyEventGroup, JourneyAvailability> {
-    const requirements: Record<JourneyEventGroup, readonly PermissionKey[]> = {
-      chat: ['chat.read', 'chat-ai.read', 'documents.read'],
-      credit: ['credit-checks.read'],
-      sale: ['sales.read', 'contracts.read', 'bookings.read', 'shop-orders.read', 'trade-in.read'],
-      payment: ['contracts.read', 'payments.read'],
-      collections: ['contracts.read', 'collections.read', 'mdm.read'],
-      service: ['repair-tickets.read'],
-      points: ['contracts.read', 'loyalty.read'],
-      system: ['customer-tags.read'],
-    };
     return Object.fromEntries(
       JOURNEY_EVENT_GROUPS.map((group) => {
-        const keys = requirements[group];
+        const keys: readonly PermissionKey[] = {
+          chat: ['chat.read', 'chat-ai.read', 'documents.read'],
+          credit: ['credit-checks.read'],
+          sale: [
+            'sales.read',
+            'contracts.read',
+            'bookings.read',
+            'shop-orders.read',
+            'trade-in.read',
+          ],
+          payment: ['contracts.read', 'payments.read'],
+          collections: ['contracts.read', 'collections.read', 'mdm.read'],
+          service: ['repair-tickets.read'],
+          points: ['contracts.read', 'loyalty.read'],
+          system: ['customer-tags.read'],
+        }[group] as PermissionKey[];
         const available = [...this.party.live].some(
           (c) =>
             keys.some((p) => this.party.has(p, c)) ||
@@ -900,17 +989,15 @@ export class PartyJourneyPlan {
               this.party.has('customer-journey.read', c)),
         );
         // Stable authority-based state; never reveal whether hidden rows exist.
-        const complete = [...this.party.live].every((c) =>
-          ['customers.read', 'customer-journey.read', ...keys].every((p) =>
-            this.party.company(p as PermissionKey, c),
-          ),
-        );
+        const complete = this.groupComplete(group);
         const unprovenKeys: Partial<Record<JourneyEventGroup, readonly Key[]>> = {
           sale: ['savingPlan', 'onlineOrder', 'onlineInstallmentApplication', 'productReservation'],
           credit: ['creditCheck'],
           points: ['loyaltyPoint', 'loyaltyRedemption'],
         };
-        const known = !(unprovenKeys[group] ?? []).some((key) => this.unproven.has(key));
+        const known =
+          !this.unprovenEntryGroups.has(group) &&
+          !(unprovenKeys[group] ?? []).some((key) => this.unproven.has(key));
         return [group, complete && known ? 'available' : available ? 'partial' : 'unavailable'];
       }),
     ) as Record<JourneyEventGroup, JourneyAvailability>;

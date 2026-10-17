@@ -877,7 +877,10 @@ it('linked online order/application/reservation/saving remain useful; unlinked i
 });
 it('actual attributed room requires independent analytics; no raw audit JSON or hidden ad leaks', async () => {
   const c = await customer();
-  await db.customer.update({ where: { id: c.id }, data: { createdAt: new Date('2026-02-01') } });
+  await db.customer.update({
+    where: { id: c.id },
+    data: { createdAt: new Date('2026-01-01'), acquisitionSource: 'CHAT_LINE_SHOP' },
+  });
   const campaign = await db.adsCampaign.create({
     data: {
       platform: 'FACEBOOK_ADS',
@@ -890,7 +893,7 @@ it('actual attributed room requires independent analytics; no raw audit JSON or 
       customerId: c.id,
       campaignId: campaign.id,
       referrerUrl: 'ADS',
-      firstTouch: new Date('2026-01-01'),
+      firstTouch: new Date('2026-02-01'),
     },
   });
   const room = await db.chatRoom.create({
@@ -898,7 +901,7 @@ it('actual attributed room requires independent analytics; no raw audit JSON or 
       customerId: c.id,
       channel: 'LINE_SHOP',
       attributionId: attribution.id,
-      createdAt: new Date('2026-01-01'),
+      createdAt: new Date('2026-02-01'),
     },
   });
   await db.auditLog.create({
@@ -928,6 +931,7 @@ it('actual attributed room requires independent analytics; no raw audit JSON or 
     undefined,
     id,
   ).expect(200);
+  expect(after.body.summary.facts.contactedAt).toBe('2026-02-01T00:00:00.000Z');
   expect(after.body.summary.facts.firstAd).toEqual({
     id: campaign.id,
     name: 'Authorized campaign',
@@ -1161,4 +1165,266 @@ it('complete business authority does not turn unreadable file or identity milest
   expect(response.body.facts.steps.find((s: { stage: string }) => s.stage === 'CREDIT').state).toBe(
     'unknown',
   );
+});
+
+it('Fix1 I1 excludes foreign alias creation from IDs, counts and cursor pages', async () => {
+  const c = await customer(),
+    id = await user();
+  await grant(id, ['customers.read', 'customer-journey.read', 'chat.read'], 'SHOP', [branchA]);
+  await db.customer.update({ where: { id: c.id }, data: { createdAt: new Date('2026-01-01') } });
+  const visible = await entry(c.id);
+  const alias = await db.customer.create({
+    data: {
+      name: 'Hidden alias',
+      accessCompanyCode: 'SHOP',
+      accessBranchId: branchB,
+      mergedIntoId: c.id,
+      deletedAt: new Date(),
+      createdAt: new Date('2026-02-01'),
+    },
+  });
+  const first = await http(
+    'get',
+    `/customers/${c.id}/journey?company=SHOP&groups=chat&limit=1&include=counts`,
+    undefined,
+    id,
+  ).expect(200);
+  expect(first.body.counts.chat).toBe(2);
+  expect(first.body.events[0].entryId).toBe(visible.id);
+  const second = await http(
+    'get',
+    `/customers/${c.id}/journey?company=SHOP&groups=chat&limit=1&cursor=${encodeURIComponent(first.body.nextCursor)}`,
+    undefined,
+    id,
+  ).expect(200);
+  expect(second.body.events.map((e: { id: string }) => e.id)).toEqual([`customer-${c.id}`]);
+  expect(second.body.nextCursor).toBeNull();
+  expect(JSON.stringify([first.body, second.body])).not.toContain(alias.id);
+});
+
+it('Fix1 I2 scopes WEB_HOLD before sale counts/pages with linked, unlinked and foreign controls', async () => {
+  const c = await customer(),
+    id = await user();
+  await grant(
+    id,
+    ['customers.read', 'customer-journey.read', 'sales.read', 'shop-orders.read'],
+    'SHOP',
+    [branchA],
+  );
+  const visibleSale = await sale(c.id, branchA, new Date('2026-01-01'));
+  const foreignSale = await sale(c.id, branchB, new Date('2026-01-01'));
+  async function hold(productId: string, day: string, saleId?: string) {
+    const row = await db.productReservation.create({
+      data: {
+        customerId: c.id,
+        productId,
+        sessionId: randomUUID(),
+        reservedAt: new Date(day),
+        expiresAt: new Date('2027-01-01'),
+      },
+    });
+    if (saleId) {
+      await db.sale.update({ where: { id: saleId }, data: { saleSource: 'ONLINE' } });
+      await db.onlineOrder.create({
+        data: {
+          customerId: c.id,
+          productId,
+          saleId,
+          reservationId: row.id,
+          orderNumber: randomUUID(),
+          productPrice: 1000,
+          totalAmount: 1000,
+          shippingMethod: 'BRANCH_PICKUP',
+          paymentChannel: 'PROMPTPAY_QR',
+          createdAt: new Date('2026-01-02'),
+        },
+      });
+    }
+    return row;
+  }
+  const visible = await hold(visibleSale.productId, '2026-02-01', visibleSale.id);
+  const unlinkedProduct = await sale(c.id, branchB, new Date('2026-01-01'));
+  const unlinked = await hold(unlinkedProduct.productId, '2026-03-01');
+  const foreign = await hold(foreignSale.productId, '2026-04-01', foreignSale.id);
+  const first = await http(
+    'get',
+    `/customers/${c.id}/journey?company=SHOP&groups=sale&limit=1&include=counts`,
+    undefined,
+    id,
+  ).expect(200);
+  expect(first.body.events[0].id).toBe(`webhold-${visible.id}`);
+  expect(first.body.counts.sale).toBe(3);
+  const second = await http(
+    'get',
+    `/customers/${c.id}/journey?company=SHOP&groups=sale&limit=100&cursor=${encodeURIComponent(first.body.nextCursor)}`,
+    undefined,
+    id,
+  ).expect(200);
+  const text = JSON.stringify([first.body, second.body]);
+  expect(text).not.toContain(unlinked.id);
+  expect(text).not.toContain(foreign.id);
+  expect(second.body.events).toHaveLength(2);
+});
+
+it('Fix1 I3 credit availability is stable before and after an unreadable Contract-backed check', async () => {
+  const c = await customer(),
+    id = await user();
+  for (const company of ['SHOP', 'FINANCE'])
+    await grant(id, ['customers.read', 'customer-journey.read', 'credit-checks.read'], company);
+  const path = `/customers/${c.id}/journey?company=SHOP&groups=credit&include=counts`;
+  const before = await http('get', path, undefined, id).expect(200);
+  const k = await contract(c.id);
+  await db.creditCheck.create({ data: { customerId: c.id, contractId: k.id } });
+  const after = await http('get', path, undefined, id).expect(200);
+  expect(after.body.availability.credit).toBe(before.body.availability.credit);
+  expect(before.body.availability.credit).toBe('partial');
+  expect(after.body.events).toEqual(before.body.events);
+  expect(after.body.counts).toEqual(before.body.counts);
+});
+
+it('Fix1 I3 sale availability includes independent SavingPlan payments coverage', async () => {
+  const c = await customer(),
+    id = await user();
+  const permissions = PERMISSION_CATALOG.filter(
+    (p) => !p.ownerOnly && p.key !== 'payments.read',
+  ).map((p) => p.key);
+  for (const company of ['SHOP', 'FINANCE']) await grant(id, permissions, company);
+  const k = await contract(c.id),
+    path = `/customers/${c.id}/journey?company=SHOP&groups=sale&include=counts`;
+  const before = await http('get', path, undefined, id).expect(200);
+  const saving = await db.savingPlan.create({
+    data: {
+      customerId: c.id,
+      appliedToContractId: k.id,
+      planNumber: randomUUID(),
+      targetAmount: 1000,
+      monthlyAmount: 100,
+      durationMonths: 10,
+      startedAt: new Date(),
+    },
+  });
+  const after = await http('get', path, undefined, id).expect(200);
+  expect(after.body.availability.sale).toBe(before.body.availability.sale);
+  expect(before.body.availability.sale).toBe('partial');
+  expect(after.body.events).toEqual(before.body.events);
+  expect(after.body.counts).toEqual(before.body.counts);
+  expect(JSON.stringify(after.body)).not.toContain(saving.id);
+});
+
+it('Fix1 I4 source-less original manual/system facts make complete summary evidence unknown', async () => {
+  const c = await customer(),
+    id = await broadUser(),
+    path = `/customers/${c.id}/journey?company=SHOP&groups=chat,system&include=summary,counts`;
+  await db.customer.update({ where: { id: c.id }, data: { acquisitionSource: 'WALK_IN' } });
+  const before = await http('get', path, undefined, id).expect(200);
+  expect(before.body.summary.availability).toBe('available');
+  const alias = await db.customer.create({
+    data: { name: 'Unproven original', mergedIntoId: c.id, deletedAt: new Date() },
+  });
+  await db.customerJourneyEntry.create({
+    data: {
+      customerId: c.id,
+      originCustomerId: alias.id,
+      origin: 'MANUAL',
+      kind: 'HEARD_FROM',
+      heardFrom: 'FRIEND',
+      actorType: 'STAFF',
+      occurredAt: new Date(),
+    },
+  });
+  await db.customerJourneyEntry.create({
+    data: {
+      customerId: c.id,
+      originCustomerId: alias.id,
+      origin: 'SYSTEM',
+      kind: 'CONTACT_ADDED',
+      actorType: 'STAFF',
+      occurredAt: new Date(),
+      data: { fields: ['phone'] },
+    },
+  });
+  const after = await http('get', path, undefined, id).expect(200);
+  expect(after.body.summary.availability).toBe('partial');
+  expect(after.body.summary.facts.askHeardFrom).toBeNull();
+  expect(
+    after.body.summary.facts.steps.find((s: { stage: string }) => s.stage === 'IDENTIFIED').state,
+  ).toBe('unknown');
+  expect(after.body.availability.chat).toBe('partial');
+  expect(JSON.stringify(after.body)).not.toContain(alias.id);
+});
+
+it('Fix1 I5 unavailable chat acquisition cannot create a walk-in contact timestamp', async () => {
+  const c = await customer(),
+    id = await user();
+  await db.customer.update({
+    where: { id: c.id },
+    data: { acquisitionSource: 'CHAT_LINE_SHOP', createdAt: new Date('2026-01-01') },
+  });
+  await grant(id, ['customers.read', 'customer-journey.read'], 'SHOP');
+  await db.chatRoom.create({
+    data: { customerId: c.id, channel: 'LINE_SHOP', createdAt: new Date('2026-02-01') },
+  });
+  const response = await http(
+    'get',
+    `/customers/${c.id}/journey/summary?company=SHOP`,
+    undefined,
+    id,
+  ).expect(200);
+  expect(response.body.facts.contactedAt).toBeNull();
+  expect(response.body.facts.stageEnteredAt).toBeNull();
+  expect(
+    response.body.facts.steps.find((step: { stage: string }) => step.stage === 'CONTACTED'),
+  ).toMatchObject({ at: null, state: 'unknown', evidence: null });
+  expect(response.body.facts.firstChannel).toBeNull();
+});
+
+it('Fix1 I6 WALK_IN first reply uses only authorized first customer chat messages', async () => {
+  const c = await customer();
+  await db.customer.update({
+    where: { id: c.id },
+    data: { acquisitionSource: 'WALK_IN', createdAt: new Date('2026-01-01') },
+  });
+  const room = await db.chatRoom.create({
+    data: { customerId: c.id, channel: 'LINE_SHOP', createdAt: new Date('2026-02-01T10:00:00Z') },
+  });
+  const foreign = await db.chatRoom.create({
+    data: { customerId: c.id, channel: 'LINE_FINANCE', createdAt: new Date('2026-01-05') },
+  });
+  await db.chatMessage.create({
+    data: {
+      roomId: foreign.id,
+      role: 'CUSTOMER',
+      type: 'TEXT',
+      text: 'hidden',
+      createdAt: new Date('2026-01-05'),
+    },
+  });
+  await db.chatMessage.create({
+    data: {
+      roomId: room.id,
+      role: 'CUSTOMER',
+      type: 'TEXT',
+      text: 'hello',
+      createdAt: new Date('2026-02-01T10:00:00Z'),
+    },
+  });
+  await db.chatMessage.create({
+    data: {
+      roomId: room.id,
+      role: 'STAFF',
+      type: 'TEXT',
+      text: 'reply',
+      staffId: actor,
+      outboundSentAt: new Date('2026-02-01T10:05:00Z'),
+      createdAt: new Date('2026-02-01T10:05:00Z'),
+    },
+  });
+  const response = await http(
+    'get',
+    `/customers/${c.id}/journey?company=SHOP&groups=chat&include=summary`,
+  ).expect(200);
+  expect(response.body.summary.facts.contactedAt).toBe('2026-01-01T00:00:00.000Z');
+  const event = response.body.events.find((e: { type: string }) => e.type === 'FIRST_STAFF_REPLY');
+  expect(event.title).toBe('ร้านตอบครั้งแรก (หลังทัก 5 นาที)');
+  expect(event.timestamp).toBe('2026-02-01T10:05:00.000Z');
 });

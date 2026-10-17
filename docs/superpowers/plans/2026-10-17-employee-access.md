@@ -103,6 +103,63 @@ Task 4 is executed as four serial, separately reviewed phases because the checke
 - [ ] Add source-aware SHOP cost/profit projections including nested purchase documents and file boundaries; sensitive capabilities stay configurable and scoped. Internal floor calculations may use cost without returning it. Do not blindly treat Customer.salary as employee payroll.
 - [ ] Run meaningful isolated HTTP/service/query tests, API types and coverage checks; update the coverage guide with enabled adapters and exact remaining domains; self-review and commit.
 
+### Task 4.1.1: Scope foundation, products and quality control
+
+This is the first serial unit of Task 4.1. The named SHOP phase contains 238 domain entrypoints, so 4.1.1–4.1.6 each get implementation and review; umbrella Task 4.1 is complete only when all pass.
+
+**Files:** Create the Task 4.1 scope-query, persisted-resource and source-aware projection infrastructure plus focused product/QC boundary registrars and tests. Modify `modules/products` and `modules/quality-control` services/controllers and shared access wiring as required. Current manifest surface: ProductsController, InspectionsController and ProductPhotosController (49 domain entries).
+
+**Interfaces:** Produce the reusable typed contracts described in Task 4.1 for later units and FINANCE/operations phases. Use Task 3 discriminated decisions and validated scoped executors; no representative branch, unscoped collection fallback, role impersonation or ready-flag authorization. Record paths also require sensitive projection; writes recheck current scope transactionally.
+
+- [ ] RED tests for permission-specific tuple OR predicates, missing ownership/company, assigned identity, manager A + sales B, accountant A + sales B, scoped list/count/pagination and ID substitution. Prove representative predicates with isolated PostgreSQL, not only query mocks.
+- [ ] Implement products read/search/filter/grouped stock and raw-SQL aggregates with scope before rows/count/aggregation. Resolve existing source-company semantics explicitly. Preserve existing response shapes, DTO/filter validation and service workflows.
+- [ ] Implement product create/update/status/bulk/photo/inspection and transfer actions. Check all affected products and required source/destination scopes for each stage; caller branch is not proof. Preserve independent transfer/quality-control workflow and file behavior.
+- [ ] Implement configurable source-aware product cost/profit projection for nested records and errors/files; purchasing cost capability works regardless of legacy role. Permit internal cost calculations without returning sensitive values.
+- [ ] Register every in-scope entrypoint with working adapters, tests for authorized success and denial, types/coverage; document exact contracts and remaining scope, self-review, commit.
+
+### Task 4.1.2: Procurement and inventory boundaries
+
+**Files:** Extend the same scope/projector/registrar contracts; modify `purchase-orders`, `suppliers`, `inventory`. Current manifest: PurchaseOrdersController, SuppliersController, BranchReceivingController, InventoryForecastController, ReorderPointsController, StockAdjustmentsController, StockCountController (63 domain entries).
+
+- [ ] RED and isolated DB tests for scoped procurement, count/receive/adjustment authorization, branch/company isolation, and default purchasing-versus-stock cost visibility.
+- [ ] Implement all listed record/collection/bulk/export boundaries, preserving actual workflows and DTO/file contracts. Scope supplier visibility through permitted procurement sources or explicit origin as needed; no broad shared-data fallback.
+- [ ] Protect nested purchase costs, inventory valuations and forecasts, including count/aggregate/export; no legacy role veto or personal override bypass. Current transactional assertions on writes.
+- [ ] Types/coverage/focused tests, contract report, self-review, commit; other SHOP units remain pending.
+
+### Task 4.1.3: Sales, bookings and trade-in boundaries
+
+**Files:** Extend same infrastructure; modify `sales`, `bookings`, `trade-in`. Current manifest: SalesController, BookingsController, TradeInController (56 domain entries).
+
+- [ ] RED and isolated service/DB tests for scoped reads/writes, source-product/customer linkage, duplicate requests and nested cost leakage with authorized success controls.
+- [ ] Implement all listed boundaries and pre-aggregation scopes with validated inputs, file behavior and actual service workflows. Check each referenced source and destination. Convert conflicting managed role-only checks while preserving damage acknowledgement and independent business constraints.
+- [ ] Preserve financial math and existing transaction state until Task 6 implements the new approval rules. Document concrete approval seams for Task 6; do not add a parallel sale/refund execution path.
+- [ ] Source-aware sensitive projections, current transaction assertions, types/coverage/focused tests, report, self-review, commit.
+
+### Task 4.1.4: After-sales and repair boundaries
+
+**Files:** Extend same infrastructure; modify `after-sales`, `repair-tickets`. Current manifest: AfterSalesController and RepairTicketsController (39 domain entries).
+
+- [ ] RED and isolated tests for assigned/scoped cases, linked product/customer histories, source/destination ownership, file/download and sensitive estimates/costs.
+- [ ] Implement every listed record/collection/workflow boundary with scope before query aggregation and current assertions on writes. Preserve physical receipt, case workflow and existing financial approval paths; do not confer money authority from service-case access.
+- [ ] Source-aware projection, validated DTOs/file responses, types/coverage/focused tests, report, self-review, commit.
+
+### Task 4.1.5: Shared customers, contacts and journey boundaries
+
+**Files:** Extend same infrastructure; modify `customers`, `contacts`, `customer-journey`; additive source-origin schema/migration where required. Current manifest: CustomersController, ContactsController and CustomerJourneyController (31 domain entries).
+
+- [ ] RED and real isolated DB tests for shared identities visible through an allowed source without exposing other-company/branch histories; new unlinked leads remain accessible only to permitted origin/assignment; no guessed historical backfill.
+- [ ] Implement all record/query/search/analytics/bulk/file boundaries and nested source scopes before pagination/count/aggregation. Authenticated explicit origin and genuine case assignment support new records without broadening old unlinked records.
+- [ ] Preserve Customer.salary as customer income context, distinct from employee payroll. Redact sensitive product/document values using their own source scope; hiding columns after an unscoped count is insufficient.
+- [ ] Types/migrations/coverage/focused tests, report with source schema contracts for FINANCE/chat phases, self-review, commit.
+
+### Task 4.1.6: SHOP scope closure
+
+**Files:** Remaining SHOP controllers/services from checked manifest and common scope/projector infrastructure, guide and regression tests.
+
+- [ ] Reconcile Task 4.1.1–4.1.5 registrations against actual runtime methods and finish adjacent SHOP domains omitted by named-module inventory. No absent adapter counted as complete.
+- [ ] Cross-unit authorized-success and denial checks for tuple combinations, transferred records, shared sources and sensitive nested/file/aggregate output; current changes apply on next operation.
+- [ ] Types/coverage/isolated regressions and complete SHOP integration evidence; document clearly remaining FINANCE/operations phases. Self-review/commit; umbrella Task 4.1 complete after independent review.
+
 ### Task 4.2: FINANCE, accounting and financial reporting scope
 
 **Files:** Extend employee-access scope/resolver/projector infrastructure; add `access-finance-boundaries.ts` and focused tests. Modify manifest-listed contracts, credit-check, payments, receipts, refunds, collections-session, overdue, legal-case, repossessions, finance-receivable, external-finance, expense-documents, journal, accounting, chart-of-accounts, bank-accounts, tax, reporting, analytics and finance-report service paths as required.

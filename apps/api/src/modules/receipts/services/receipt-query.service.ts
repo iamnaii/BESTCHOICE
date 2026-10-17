@@ -5,6 +5,8 @@ import { INSTALLMENT_MONEY_RECEIPT_TYPES } from '../receipt-types.constants';
 import { attachReceiptPaymentHistory } from './receipt-payment-history';
 import { getReceiptDocumentBalance } from './receipt-document-balance';
 import { attachReceiptFeeBreakdowns } from './receipt-fee-breakdown';
+import { resolveExchangeCreditSource } from './exchange-credit-source';
+import { DEFECT_EXCHANGE_CN_SOURCE } from '../../defect-exchange/defect-exchange-credit';
 
 /** Read-only receipt queries (list, by-contract, by-id, by-number). */
 export class ReceiptQueryService {
@@ -152,6 +154,8 @@ export class ReceiptQueryService {
             storeCommission: true,
             interestTotal: true,
             vatAmount: true,
+            parentContractId: true,
+            parentContract: { select: { contractNumber: true } },
             customer: {
               select: {
                 name: true,
@@ -242,6 +246,17 @@ export class ReceiptQueryService {
         })
       : null;
 
+    // 15ข — ใบลดหนี้เปลี่ยนเครื่องอ้างสัญญาใหม่ (ลูกของสัญญานี้) · ใบใช้เครดิตบอกที่มา (ตัดสินตอนพิมพ์ — spec §6)
+    const exchangeTarget =
+      receipt.receiptType === 'CREDIT_NOTE' && receipt.cnSource === DEFECT_EXCHANGE_CN_SOURCE
+        ? await this.prisma.contract.findFirst({
+            where: { parentContractId: receipt.contractId, deletedAt: null },
+            orderBy: { createdAt: 'desc' },
+            select: { contractNumber: true },
+          })
+        : null;
+    const exchangeCreditSource = await resolveExchangeCreditSource(this.prisma, receipt, receipt.contract);
+
     const [receiptWithFees] = await attachReceiptFeeBreakdowns(this.prisma, [receipt]);
     const [[receiptWithHistory], documentBalance, advanceTargetInstallmentNo] = await Promise.all([
       attachReceiptPaymentHistory(this.prisma, [receiptWithFees]),
@@ -265,6 +280,8 @@ export class ReceiptQueryService {
       priorReceiptCount,
       voidedRef,
       advanceTargetInstallmentNo,
+      exchangeTarget,
+      exchangeCreditSource,
     };
   }
 

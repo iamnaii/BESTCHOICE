@@ -26,7 +26,9 @@ import { ReceiptNumberService } from '../receipts/services/receipt-number.servic
 import { glContractBalance } from '../journal/gl-contract-balance';
 import { validatePeriodOpen } from '../../utils/period-lock.util';
 import { emitDeferredWarnings, type DeferredWarning } from '../journal/deferred-warning';
+import { Prisma } from '@prisma/client';
 import { voidReceiptInTx, storedTaxColumnsOf } from '../receipts/services/receipt-void-core';
+import { unmirrorableCashMessage } from '../journal/cpa-templates/defect-exchange-reversal.template';
 import { CONTRACT_ADVANCE_COLUMNS_CLEARED, readContractCloseAdvances } from '../journal/contract-close-advances';
 import { ADVANCE_VAT_META, advanceVatOutstanding } from '../journal/advance-vat';
 import {
@@ -38,6 +40,7 @@ import {
   DEFECT_EXCHANGE_REDIRECT,
   DEFECT_EXCHANGE_SUSPENSE_ACCOUNT,
   DEFECT_EXCHANGE_TAG,
+  estimateCreditToTransfer,
   exchangeMoneyBlockers,
   listReceiptsToCreditNote,
   sumReceiptAmounts,
@@ -109,9 +112,29 @@ export class DefectExchangeService {
     reasons.push(...(await exchangeMoneyBlockers(this.prisma, contract)));
     // 15ข — ใบรับเงินที่จะออกใบลดหนี้ + เงินของลูกค้าที่ค้างในบัญชี → เครดิตที่จะย้ายไปสัญญาใหม่ (กล่องยืนยันหลังการขาย)
     const receiptsToCreditNote = await listReceiptsToCreditNote(this.prisma, contract.id);
-    const ledgerAdvance = Decimal.max(0, await glContractBalance(this.prisma, contract.id, '21-1103', 'cr'));
-    const ledgerCredit = Decimal.max(0, await glContractBalance(this.prisma, contract.id, '21-5101', 'cr'));
-    const creditToTransfer = sumReceiptAmounts(receiptsToCreditNote).plus(ledgerAdvance).plus(ledgerCredit);
+    // ประมาณการต้องเท่ากับที่ขั้น ก/ค/ข จะทำจริง (ผู้ตรวจอิสระ I2): จำลองจากรายการบัญชีของสัญญาด้วยตัวจำแนกเดียวกับ template
+    // — ไม่ใช่ Σ ใบ + ยอดถังตอนนี้ (นับซ้ำ/ตกหล่นเมื่อมีใบที่จ่ายด้วยเครดิต หรือเงินที่รอบกลางคืนหักเข้างวดโดยไม่มีใบ)
+    const contractEntries = await this.prisma.journalEntry.findMany({
+      where: {
+        AND: [{ metadata: { path: ['contractId'], equals: contract.id } } as Prisma.JournalEntryWhereInput],
+        status: 'POSTED',
+        deletedAt: null,
+      },
+      select: { entryNumber: true, metadata: true, lines: { select: { accountCode: true, debit: true, credit: true } } },
+    });
+    const estimate = estimateCreditToTransfer({
+      entries: contractEntries,
+      livePaymentIds: new Set(receiptsToCreditNote.map((r) => r.paymentId).filter((x): x is string => !!x)),
+      ledgerAdvance: await glContractBalance(this.prisma, contract.id, '21-1103', 'cr'),
+      ledgerCredit: await glContractBalance(this.prisma, contract.id, '21-5101', 'cr'),
+    });
+    // รายการเงินสดที่ขั้น ค จะปฏิเสธ — บอกในกล่องยืนยันตั้งแต่ตอน preview (ไม่ใช่ 400 ตอนกดยืนยัน)
+    if (estimate.unmirrorable.length > 0) {
+      reasons.push(unmirrorableCashMessage(estimate.unmirrorable.join(', '), contract.contractNumber));
+    }
+    const creditToTransfer = estimate.estimate;
+    const ledgerAdvance = estimate.advanceAfter;
+    const ledgerCredit = estimate.creditAfter;
 
     let newProduct: { id: string; brand: string; model: string; storage: string | null; category: string; status: string } | null = null;
     let supplierClaimEligible = false;
@@ -375,7 +398,13 @@ export class DefectExchangeService {
         await markInputVatReversedIfSwept(tx, oldContract.id);
 
         // === 15ข ขั้น ข — เงินของลูกค้าที่เหลือ (21-1103 ทุกถัง + 21-5101) → 21-1106 + กลับภาษีที่พักทั้งก้อน ===
-        const close = await readContractCloseAdvances(tx, oldContract, 'defect-exchange');
+        // ผู้ตรวจอิสระ I1: อ่านคอลัมน์สดหลังขั้น ก/ค — การยกเลิกใบคืนค่า advanceBalance/creditBalance ให้สัญญาเดิมแล้ว (receipt-void-core)
+        // ถ้าใช้ snapshot ก่อนขั้น ก จะเตือน "คอลัมน์ไม่ตรงบัญชี" เท็จทุกครั้งที่สัญญาเดิมมีใบที่จ่ายด้วยเครดิต/หักเงินรับล่วงหน้า
+        const oldColumns = await tx.contract.findUniqueOrThrow({
+          where: { id: oldContract.id },
+          select: { id: true, contractNumber: true, advanceBalance: true, rescheduleAdvanceBalance: true, creditBalance: true },
+        });
+        const close = await readContractCloseAdvances(tx, oldColumns, 'defect-exchange');
         warnings.push(...close.warnings);
         const moneyOut = close.advance.plus(close.credit);
         let creditOutEntryNo: string | null = null;

@@ -26,6 +26,8 @@ import { PaymentReceiptOrchestrator } from '../../payments/services/payment-rece
 import { seedStatementReview } from '../../contracts/__tests__/credit-approval.fixture';
 import { DefectExchangeService } from '../defect-exchange.service';
 import { DEFECT_EXCHANGE_CN_SOURCE, EXCHANGE_BLOCK_RESCHEDULED } from '../defect-exchange-credit';
+import * as Sentry from '@sentry/nestjs';
+import { applyExchangeCreditAfterActivation } from '../../contracts/services/exchange-credit-autoapply';
 
 vi.mock('@sentry/nestjs', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@sentry/nestjs')>();
@@ -161,6 +163,13 @@ describe('15ข — เปลี่ยนเครื่องตำหนิเ
   const exchange = (oldContractId: string, newProductId: string) =>
     defect.execute({ oldContractId, newProductId, defectReason: 'จอมีเส้น' } as never, OWNER);
 
+  /** กล่องยืนยัน (checkEligibility.creditToTransfer) ต้องเท่ากับ T ที่ลงจริง — preview === posted (ผู้ตรวจอิสระ I2) */
+  const eligCredit = async (oldContractId: string, newProductId: string) =>
+    (await defect.checkEligibility(oldContractId, newProductId)).creditToTransfer;
+  /** Sentry `close-advance-ledger-mismatch` ถูกส่งหลัง commit หรือไม่ (ผู้ตรวจอิสระ I1 — ต้องไม่เตือนเท็จ) */
+  const mismatchWarned = () =>
+    vi.mocked(Sentry.captureMessage).mock.calls.some((call) => JSON.stringify(call[1] ?? {}).includes('close-advance-ledger-mismatch'));
+
   /** จำลองการเปิดใช้สัญญาใหม่ที่หน้าสัญญา (precedent after-sales-exchange.integration เคส 5) — 1A + ตารางงวด + ACTIVE */
   const activateNew = async (oldId: string, newId: string) => {
     await prisma.contract.update({ where: { id: newId }, data: { status: 'ACTIVE', workflowStatus: 'APPROVED' } });
@@ -210,7 +219,9 @@ describe('15ข — เปลี่ยนเครื่องตำหนิเ
     expect((await accountNet('21-2101', 'cr')).toFixed(2)).toBe('99.17');
     const bankBefore = await accountNet('11-1201', 'dr');
 
+    const est = await eligCredit(c.id, c.replacementId);
     const res = await exchange(c.id, c.replacementId);
+    expect(est).toBe(res.transferredCredit); // กล่องยืนยัน === T ที่ลงจริง (I2)
     expect(res.transferredCredit).toBe('1515.83');
     expect(res.creditNoteNumbers).toHaveLength(1);
     expect(res.creditOutEntryNo).toBeNull();
@@ -273,7 +284,9 @@ describe('15ข — เปลี่ยนเครื่องตำหนิเ
 
   it('2) ไม่มีใบรับเงิน ไม่มีเงินค้าง: ไม่มีใบลดหนี้ ไม่มีรายการ ข/ง · creditBalance 0 (พฤติกรรมเดิม)', async () => {
     const c = await seedContract({ dueDate: futureDue(), paymentRows: [1, 2] });
+    const est = await eligCredit(c.id, c.replacementId);
     const res = await exchange(c.id, c.replacementId);
+    expect(est).toBe(res.transferredCredit); // กล่องยืนยัน === T ที่ลงจริง (I2)
     expect(res.transferredCredit).toBe('0.00');
     expect(res.creditNoteNumbers).toEqual([]);
     expect(await prisma.receipt.count({ where: { contractId: c.id } })).toBe(0);
@@ -293,7 +306,9 @@ describe('15ข — เปลี่ยนเครื่องตำหนิเ
     // ครบกำหนดแล้ว 5 วัน ⇒ ค่าปรับขั้น 2 = 100 (ค่าเริ่มต้น 50/100/3) ⇒ ยอดที่ต้องชำระ 1,615.83 — จ่ายเต็ม
     const c = await seedContract({ dueDate: new Date(Date.now() - 5 * DAY_MS), paymentRows: [1, 2] });
     await record(c.id, 1, 1615.83, 'ref-late');
+    const est = await eligCredit(c.id, c.replacementId);
     const res = await exchange(c.id, c.replacementId);
+    expect(est).toBe(res.transferredCredit); // กล่องยืนยัน === T ที่ลงจริง (I2)
     // ใบลดหนี้/เครดิต = ยอดใบทั้งใบ (ค่าปรับ 100 ที่จ่ายแล้วกลับเป็นเงินของลูกค้า — กระจก Dr 42-1103)
     expect(res.transferredCredit).toBe('1615.83');
     const oldEntries = await entriesOf(c.id);
@@ -309,7 +324,9 @@ describe('15ข — เปลี่ยนเครื่องตำหนิเ
   it('5) ใบรับบางส่วน 1,000 ก่อนครบกำหนด (Review Focus 4): ใบลดหนี้ 1,000 · 2A บางส่วนถูกกลับ · T = 1,000', async () => {
     const c = await seedContract({ dueDate: futureDue(), paymentRows: [1, 2] });
     await record(c.id, 1, 1000, 'ref-part', 'PARTIAL');
+    const est = await eligCredit(c.id, c.replacementId);
     const res = await exchange(c.id, c.replacementId);
+    expect(est).toBe(res.transferredCredit); // กล่องยืนยัน === T ที่ลงจริง (I2)
     expect(res.transferredCredit).toBe('1000.00');
     const cn = await prisma.receipt.findFirstOrThrow({ where: { contractId: c.id, receiptType: 'CREDIT_NOTE' } });
     expect(D(cn.amount.toString()).toFixed(2)).toBe('1000.00');
@@ -336,7 +353,9 @@ describe('15ข — เปลี่ยนเครื่องตำหนิเ
     });
     await prisma.contract.update({ where: { id: c.id }, data: { creditBalance: D(300) } });
     const bankBefore = await accountNet('11-1201', 'dr');
+    const est = await eligCredit(c.id, c.replacementId);
     const res = await exchange(c.id, c.replacementId);
+    expect(est).toBe(res.transferredCredit); // กล่องยืนยัน === T ที่ลงจริง (I2)
     expect(res.transferredCredit).toBe('300.00');
     const out = (await entriesOf(c.id)).find((e) => metaOf(e).flow === 'defect-exchange-credit-out');
     expect(sortedLines(out!)).toEqual(['21-1106:0.00:300.00', '21-2101:19.63:0.00', '21-2102:0.00:19.63', '21-5101:300.00:0.00']);
@@ -352,7 +371,9 @@ describe('15ข — เปลี่ยนเครื่องตำหนิเ
     const a = await seedContract({ dueDate: futureDue(), paymentRows: [1, 2] });
     const vatBefore = await accountNet('21-2101', 'cr'); // เทสก่อนหน้าทิ้งยอดสะสมไว้ (ledger ล้างเฉพาะ beforeAll/afterAll)
     await record(a.id, 1, 1515.83, 'ref-chain');
+    const abEst = await eligCredit(a.id, a.replacementId);
     const ab = await exchange(a.id, a.replacementId);
+    expect(abEst).toBe(ab.transferredCredit);
     await activateNew(a.id, ab.newContract.id);
     await orchestrator.applyCreditBalance(ab.newContract.id, OWNER.id);
     // เตรียม B ให้เปลี่ยนเครื่องได้อีกครั้ง
@@ -366,13 +387,99 @@ describe('15ข — เปลี่ยนเครื่องตำหนิเ
     });
     await prisma.contract.update({ where: { id: ab.newContract.id }, data: { deviceReceivedAt: new Date() } });
     await seedStatementReview(prisma, a.customerId);
+    const bcEst = await eligCredit(ab.newContract.id, cProduct.id);
+    vi.mocked(Sentry.captureMessage).mockClear();
     const bc = await exchange(ab.newContract.id, cProduct.id);
     expect(bc.transferredCredit).toBe('1515.83');
+    expect(bcEst).toBe(bc.transferredCredit);
+    // I1: ขั้น ข ต้องอ่านคอลัมน์สดหลังขั้น ก (void คืน creditBalance ให้ B) — ห้ามเตือน "คอลัมน์ไม่ตรงบัญชี" เท็จ
+    expect(mismatchWarned()).toBe(false);
     expect(bc.creditNoteNumbers).toHaveLength(1); // ใบใช้เครดิตของ B ได้ใบลดหนี้
     expect((await glContractBalance(prisma, bc.newContract.id, '21-5101', 'cr')).toFixed(2)).toBe('1515.83');
     expect((await glContractBalance(prisma, ab.newContract.id, '21-5101', 'cr')).toFixed(2)).toBe('0.00');
     expect((await accountNet('21-1106', 'cr')).toFixed(2)).toBe('0.00');
     // ภาษีสุทธิไม่เปลี่ยน: +99.17 (ใบ A) −99.17 (กลับ 2A ของ A) +99.17 (ใช้เครดิต B) −99.17 (กลับ 2A ของ B)
     expect((await accountNet('21-2101', 'cr')).toFixed(2)).toBe(vatBefore.toFixed(2));
+  });
+
+  it('8) งวดเดียว 2 ใบ (บางส่วน 1,000 + ปิดงวด 515.83 — ใบพี่น้อง): ใบลดหนี้ 2 ใบ · T = 1,515.83 (ผู้ตรวจอิสระ C1 — partial unique cn_source)', async () => {
+    const c = await seedContract({ dueDate: futureDue(), paymentRows: [1, 2] });
+    await record(c.id, 1, 1000, 'ref-s8a', 'PARTIAL');
+    await record(c.id, 1, 515.83, 'ref-s8b');
+    const est = await eligCredit(c.id, c.replacementId);
+    const res = await exchange(c.id, c.replacementId);
+    expect(res.transferredCredit).toBe('1515.83');
+    expect(est).toBe(res.transferredCredit);
+    expect(res.creditNoteNumbers).toHaveLength(2);
+    expect(res.voidedReceiptNumbers).toHaveLength(2);
+    const cns = await prisma.receipt.findMany({ where: { contractId: c.id, receiptType: 'CREDIT_NOTE' } });
+    expect(cns).toHaveLength(2);
+    expect(cns.every((r) => r.cnSource === DEFECT_EXCHANGE_CN_SOURCE)).toBe(true);
+    expect(cns.map((r) => D(r.amount.toString()).toFixed(2)).sort()).toEqual(['1000.00', '515.83']);
+    expect((await glContractBalance(prisma, res.newContract.id, '21-5101', 'cr')).toFixed(2)).toBe('1515.83');
+  });
+
+  it('9) 2 งวด 2 ใบ: ใบลดหนี้ 2 ใบ · T = 3,031.66 (C1 — ใบลดหนี้ cn_source เดียวกันหลายใบต่อสัญญา)', async () => {
+    const c = await seedContract({ dueDate: futureDue(), paymentRows: [1, 2, 3] });
+    await record(c.id, 1, 1515.83, 'ref-s9a');
+    await record(c.id, 2, 1515.83, 'ref-s9b');
+    const est = await eligCredit(c.id, c.replacementId);
+    const res = await exchange(c.id, c.replacementId);
+    expect(res.transferredCredit).toBe('3031.66');
+    expect(est).toBe(res.transferredCredit);
+    expect(res.creditNoteNumbers).toHaveLength(2);
+    expect((await glContractBalance(prisma, res.newContract.id, '21-5101', 'cr')).toFixed(2)).toBe('3031.66');
+    expect((await accountNet('21-1106', 'cr')).toFixed(2)).toBe('0.00');
+  });
+
+  it('10) เงินรับล่วงหน้าที่รอบกลางคืนหักเข้างวดโดยไม่มีใบ (ผู้ตรวจอิสระ I2): กล่องยืนยัน = T = 2,015.83 — ไม่ใช่ Σ ใบ 1,515.83', async () => {
+    const c = await seedContract({ dueDate: futureDue(), paymentRows: [1, 2] });
+    await record(c.id, 1, 1515.83, 'ref-s10');
+    // ส่วนเกินลิงก์ชำระ 500 พักเป็นเงินรับล่วงหน้า (เงินสด ↔ 21-1103 ล้วน — ขั้น ค ข้าม) แล้วรอบกลางคืนหักเข้างวด 2 โดยไม่มีใบเสร็จ
+    await journal.createAndPost({
+      description: '[ทดสอบ] ส่วนเกินลิงก์ชำระพักเป็นเงินรับล่วงหน้า',
+      reference: `test-surplus:${c.id}`,
+      metadata: { tag: 'receipt', flow: 'paysolutions-surplus-advance', idempotencyKey: `test-surplus:${c.id}`, contractId: c.id },
+      lines: [
+        { accountCode: '11-1201', dr: D('500'), cr: D('0'), description: 'เงินเข้า' },
+        { accountCode: '21-1103', dr: D('0'), cr: D('500'), description: 'เงินรับล่วงหน้า' },
+      ],
+    });
+    await journal.createAndPost({
+      description: '[ทดสอบ] หักเงินรับล่วงหน้าเข้างวด 2 (รอบกลางคืน)',
+      reference: `test-consume:${c.id}`,
+      metadata: { tag: '2B', flow: 'advance-consume-on-accrual', idempotencyKey: `test-consume:${c.id}`, contractId: c.id },
+      lines: [
+        { accountCode: '21-1103', dr: D('500'), cr: D('0'), description: 'หักเงินรับล่วงหน้า' },
+        { accountCode: '11-2103', dr: D('0'), cr: D('500'), description: 'ล้างลูกหนี้งวด' },
+      ],
+    });
+    expect((await glContractBalance(prisma, c.id, '21-1103', 'cr')).toFixed(2)).toBe('0.00');
+    const est = await eligCredit(c.id, c.replacementId);
+    const res = await exchange(c.id, c.replacementId);
+    expect(res.transferredCredit).toBe('2015.83');
+    expect(est).toBe(res.transferredCredit);
+    expect((await glContractBalance(prisma, c.id, '21-1103', 'cr')).toFixed(2)).toBe('0.00');
+    expect((await glContractBalance(prisma, res.newContract.id, '21-5101', 'cr')).toFixed(2)).toBe('2015.83');
+  });
+
+  it('11) เปิดใช้ → hook ใช้เครดิตอัตโนมัติ (applyExchangeCreditAfterActivation กับ applier จริง · ไม่มี actor → admin) (ผู้ตรวจอิสระ I3)', async () => {
+    const c = await seedContract({ dueDate: futureDue(), paymentRows: [1, 2] });
+    await record(c.id, 1, 1515.83, 'ref-s11');
+    const res = await exchange(c.id, c.replacementId);
+    await activateNew(c.id, res.newContract.id);
+    const row = await prisma.contract.findUniqueOrThrow({ where: { id: res.newContract.id } });
+    const applier = { applyCreditBalance: (id: string, by: string) => orchestrator.applyCreditBalance(id, by) };
+    const out = await applyExchangeCreditAfterActivation({ prisma, payments: applier }, row, undefined);
+    expect(out).toMatchObject({ applied: true, installments: 1, creditUsed: 1515.83, creditRemaining: 0, actorId: OWNER.id });
+    const receipt = await prisma.receipt.findFirstOrThrow({ where: { contractId: res.newContract.id, paymentMethod: 'CREDIT_BALANCE' } });
+    expect(receipt.issuedById).toBe(OWNER.id);
+    expect((await glContractBalance(prisma, res.newContract.id, '21-5101', 'cr')).toFixed(2)).toBe('0.00');
+    // เรียกซ้ำ = คอลัมน์เครดิต 0 → NO_CREDIT · ไม่มี PaymentsService → NO_PAYMENTS_SERVICE + Sentry
+    const again = await prisma.contract.findUniqueOrThrow({ where: { id: res.newContract.id } });
+    expect(await applyExchangeCreditAfterActivation({ prisma, payments: applier }, again, OWNER.id)).toEqual({ applied: false, reason: 'NO_CREDIT' });
+    vi.mocked(Sentry.captureMessage).mockClear();
+    expect(await applyExchangeCreditAfterActivation({ prisma, payments: null }, row, OWNER.id)).toEqual({ applied: false, reason: 'NO_PAYMENTS_SERVICE' });
+    expect(JSON.stringify(vi.mocked(Sentry.captureMessage).mock.calls)).toContain('defect-exchange-credit-autoapply-failed');
   });
 });

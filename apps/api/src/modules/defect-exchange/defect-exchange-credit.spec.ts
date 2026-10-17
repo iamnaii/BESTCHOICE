@@ -143,3 +143,75 @@ describe('exchangeMoneyBlockers — เหตุผลปฏิเสธด้�
     });
   });
 });
+
+import { estimateCreditToTransfer } from './defect-exchange-credit';
+
+describe('estimateCreditToTransfer — กล่องยืนยันคิดจากแหล่งเดียวกับ T (ผู้ตรวจอิสระ I2)', () => {
+  const Dc = (n: string | number) => new Decimal(n);
+  const line = (accountCode: string, debit: string | number, credit: string | number) => ({ accountCode, debit: Dc(debit), credit: Dc(credit) });
+  const je = (entryNumber: string, metadata: Record<string, unknown>, lines: ReturnType<typeof line>[]) => ({ entryNumber, metadata, lines });
+  const receiptJe = (no: string, paymentId: string, lines: ReturnType<typeof line>[]) =>
+    je(no, { tag: 'receipt', flow: 'payment-receipt', contractId: 'old', paymentId }, lines);
+  const zero = { ledgerAdvance: Dc(0), ledgerCredit: Dc(0) };
+
+  it('ใบรับเงินใบเดียว (เงินสด ↔ 11-2103): ขาเงินสดที่จะถูกย้ายไป 21-1106 = ยอดใบ', () => {
+    const out = estimateCreditToTransfer({ entries: [receiptJe('JE-1', 'p1', [line('11-1201', '1515.83', 0), line('11-2103', 0, '1515.83')])], livePaymentIds: new Set(['p1']), ...zero });
+    expect(out.estimate.toFixed(2)).toBe('1515.83');
+    expect(out.cashFromReceipts.toFixed(2)).toBe('1515.83');
+    expect(out.unmirrorable).toEqual([]);
+  });
+  it('จ่ายเกินแล้วพักถัง (Cr 21-1103 ในใบ): ไม่นับซ้ำ — กระจกใบดึงเงินออกจากถัง แล้วเงินสดทั้งก้อนไป 21-1106', () => {
+    const out = estimateCreditToTransfer({
+      entries: [receiptJe('JE-2', 'p1', [line('11-1201', '2000', 0), line('11-2103', 0, '1515.83'), line('21-1103', 0, '484.17')])],
+      livePaymentIds: new Set(['p1']), ledgerAdvance: Dc('484.17'), ledgerCredit: Dc(0),
+    });
+    expect(out.estimate.toFixed(2)).toBe('2000.00');
+    expect(out.advanceAfter.toFixed(2)).toBe('0.00');
+  });
+  it('ส่วนเกินลิงก์ชำระ (เงินสด ↔ 21-1103 ล้วน ไม่มีใบ): ขั้น ค ข้าม → เงินยังอยู่ในถัง → ย้ายโดยขั้น ข', () => {
+    const out = estimateCreditToTransfer({
+      entries: [je('JE-3', { tag: 'receipt', flow: 'paysolutions-surplus-advance', contractId: 'old' }, [line('11-1201', '500', 0), line('21-1103', 0, '500')])],
+      livePaymentIds: new Set(), ledgerAdvance: Dc('500'), ledgerCredit: Dc(0),
+    });
+    expect(out.estimate.toFixed(2)).toBe('500.00');
+    expect(out.unmirrorable).toEqual([]);
+  });
+  it('รอบกลางคืนหักเงินรับล่วงหน้าเข้างวดโดยไม่มีใบ (Dr 21-1103 / Cr 11-2103): ขั้น ค กระจก → เงินกลับเข้าถัง → นับเป็นเครดิต', () => {
+    const out = estimateCreditToTransfer({
+      entries: [je('JE-4', { tag: '2B', flow: 'advance-consume-on-accrual', contractId: 'old' }, [line('21-1103', '500', 0), line('11-2103', 0, '500')])],
+      livePaymentIds: new Set(), ...zero,
+    });
+    expect(out.estimate.toFixed(2)).toBe('500.00');
+    expect(out.advanceAfter.toFixed(2)).toBe('500.00');
+  });
+  it('ใบที่จ่ายด้วยเครดิต (A→B→C — Dr 21-5101 / Cr 11-2103 ไม่มีเงินสด): กระจกคืนเครดิตเข้า 21-5101 → ย้ายโดยขั้น ข', () => {
+    const out = estimateCreditToTransfer({
+      entries: [receiptJe('JE-5', 'p1', [line('21-5101', '1515.83', 0), line('11-2103', 0, '1515.83')])],
+      livePaymentIds: new Set(['p1']), ...zero,
+    });
+    expect(out.estimate.toFixed(2)).toBe('1515.83');
+    expect(out.cashFromReceipts.toFixed(2)).toBe('0.00');
+    expect(out.creditAfter.toFixed(2)).toBe('1515.83');
+  });
+  it('ใบรับชำระที่ไม่มีใบเสร็จ (เงินสด ↔ 11-2103 แต่ paymentId ไม่อยู่ในใบที่จะยกเลิก): รายงานเป็นรายการที่กลับไม่ได้ ไม่นับเข้าเครดิต', () => {
+    const out = estimateCreditToTransfer({
+      entries: [receiptJe('JE-6', 'p9', [line('11-1201', '1515.83', 0), line('11-2103', 0, '1515.83')])],
+      livePaymentIds: new Set(['p1']), ...zero,
+    });
+    expect(out.unmirrorable).toEqual(['JE-6']);
+    expect(out.estimate.toFixed(2)).toBe('0.00');
+  });
+  it('รายการที่ถูกข้าม (reversed · tag REVERSAL · flow ย้ายเครดิต · ภาษีซื้อ) ไม่มีผล · ยอดบัญชีติดลบถูก clamp 0', () => {
+    const out = estimateCreditToTransfer({
+      entries: [
+        je('JE-7', { tag: 'receipt', flow: 'payment-receipt', contractId: 'old', paymentId: 'p1', reversed: true }, [line('11-1201', '1515.83', 0), line('11-2103', 0, '1515.83')]),
+        je('JE-8', { tag: 'REVERSAL', flow: 'receipt-void', contractId: 'old' }, [line('11-2103', '1515.83', 0), line('21-1106', 0, '1515.83')]),
+        je('JE-9', { tag: 'DEFECT_EXCHANGE', flow: 'defect-exchange-credit-in', contractId: 'old' }, [line('21-1106', '300', 0), line('21-5101', 0, '300')]),
+        je('JE-10', { flow: 'finance-input-vat-installment', contractId: 'old' }, [line('11-4101', '686', 0), line('42-1108', 0, '686')]),
+      ],
+      livePaymentIds: new Set(['p1']), ledgerAdvance: Dc('-100'), ledgerCredit: Dc(0),
+    });
+    expect(out.estimate.toFixed(2)).toBe('0.00');
+    expect(out.unmirrorable).toEqual([]);
+  });
+});

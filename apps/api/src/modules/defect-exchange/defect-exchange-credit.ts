@@ -4,6 +4,7 @@ import type { ReceiptVoidRedirect } from '../journal/cpa-templates/receipt-void-
 import {
   DEFECT_EXCHANGE_CREDIT_IN_FLOW,
   DEFECT_EXCHANGE_CREDIT_OUT_FLOW,
+  classifyDefectExchangeReversal,
 } from '../journal/cpa-templates/defect-exchange-reversal.template';
 import { buildAdvanceVatConsumeLines, type AdvanceVatLine } from '../journal/advance-vat';
 import { findActiveAdvanceExcessIncome } from '../journal/advance-excess-income.util';
@@ -50,6 +51,7 @@ export const EXCHANGE_BLOCK_ORPHAN_CN =
 
 export const EXCHANGE_RECEIPT_SELECT = {
   id: true,
+  paymentId: true,
   receiptNumber: true,
   receiptType: true,
   installmentNo: true,
@@ -168,4 +170,84 @@ export function buildCreditInLines(total: Decimal): AdvanceVatLine[] {
     { accountCode: DEFECT_EXCHANGE_SUSPENSE_ACCOUNT, dr: total, cr: ZERO, description: 'รับโอนเครดิตจากสัญญาเดิม (เปลี่ยนเครื่องตำหนิ)' },
     { accountCode: '21-5101', dr: ZERO, cr: total, description: 'เครดิตจากการเปลี่ยนเครื่องตำหนิ — ใช้ชำระค่างวด' },
   ];
+}
+
+// ---------- กล่องยืนยัน: ประมาณเครดิตที่จะย้าย = สิ่งที่ขั้น ก/ค/ข จะทำจริง (ผู้ตรวจอิสระ I2) ----------
+
+export interface EstimateEntryLine {
+  accountCode: string;
+  debit: Prisma.Decimal | string | number;
+  credit: Prisma.Decimal | string | number;
+}
+export interface EstimateEntry {
+  entryNumber: string;
+  metadata: unknown;
+  lines: readonly EstimateEntryLine[];
+}
+export interface CreditTransferEstimate {
+  /** = T ที่ขั้น ง จะตั้ง (ก่อน clamp ที่ 0 ของถังที่ติดลบ) */
+  estimate: Decimal;
+  /** ขาเงินสด/ธนาคารของใบที่จะยกเลิก — ส่วนที่ถูก redirect ไป 21-1106 */
+  cashFromReceipts: Decimal;
+  /** 21-1103 / 21-5101 หลังกระจกรายการ (ขั้น ก + ค) = ยอดที่ขั้น ข จะย้าย */
+  advanceAfter: Decimal;
+  creditAfter: Decimal;
+  /** รายการเงินสดที่ขั้น ค จะปฏิเสธ (ใบรับชำระที่ไม่มีใบเสร็จ) — กล่องยืนยันต้องบอกก่อน ไม่ใช่ 400 ตอนยืนยัน */
+  unmirrorable: string[];
+}
+
+const isRedirectedCash = (code: string) => DEFECT_EXCHANGE_REDIRECT.accountPrefixes.some((p) => code.startsWith(p));
+const netOf = (lines: readonly EstimateEntryLine[], accountCode: string, side: 'dr' | 'cr'): Decimal =>
+  lines
+    .filter((l) => l.accountCode === accountCode)
+    .reduce((s, l) => {
+      const d = new Decimal(l.debit.toString());
+      const c = new Decimal(l.credit.toString());
+      return s.plus(side === 'dr' ? d.minus(c) : c.minus(d));
+    }, ZERO);
+
+/**
+ * จำลองขั้น ก (ใบที่ยังมีผล → กระจกรายการรับชำระของมัน ขาเงินสดถูกย้ายไป 21-1106) + ขั้น ค (`classifyDefectExchangeReversal`
+ * ตัวเดียวกับ template) + ขั้น ข (ยอดถังที่เหลือหลังกระจก): T = ขาเงินสดที่ย้าย + max(0, 21-1103 หลังกระจก) + max(0, 21-5101 หลังกระจก).
+ * ไม่ใช่ "Σ ใบ + ยอดถังตอนนี้" — ใบที่จ่ายด้วยเครดิต/หักถังไม่มีขาเงินสด (กระจกคืนถังแล้วขั้น ข ย้าย) และเงินที่รอบกลางคืนหักเข้างวด
+ * โดยไม่มีใบจะกลับเข้าถังเมื่อขั้น ค กระจก. รายการเงินสดที่กลับไม่ได้ (ไม่มีใบ) รายงานแยก ไม่นับ.
+ * ใบที่ขั้น ก ยกเลิก = รายการที่ `paymentId` อยู่ในใบที่ยังมีผล และ tag `receipt`/`2B` (กติกาเดียวกับ `voidReceiptInTx`).
+ */
+export function estimateCreditToTransfer(input: {
+  entries: readonly EstimateEntry[];
+  livePaymentIds: ReadonlySet<string>;
+  ledgerAdvance: Decimal;
+  ledgerCredit: Decimal;
+}): CreditTransferEstimate {
+  let cash = ZERO;
+  let advance = input.ledgerAdvance;
+  let credit = input.ledgerCredit;
+  const unmirrorable: string[] = [];
+  for (const je of input.entries) {
+    const meta = (je.metadata ?? {}) as Record<string, unknown>;
+    if (meta['reversed'] === true) continue;
+    const paymentId = typeof meta['paymentId'] === 'string' ? meta['paymentId'] : null;
+    const receiptEntry = meta['tag'] === 'receipt' || meta['tag'] === '2B';
+    let mirrored = false;
+    if (paymentId && receiptEntry && input.livePaymentIds.has(paymentId)) {
+      mirrored = true;
+      for (const l of je.lines) {
+        if (isRedirectedCash(l.accountCode)) cash = cash.plus(new Decimal(l.debit.toString()).minus(l.credit.toString()));
+      }
+    } else {
+      const kind = classifyDefectExchangeReversal(je);
+      if (kind === 'MIRROR') mirrored = true;
+      else if (kind === 'UNMIRRORABLE_CASH') {
+        unmirrorable.push(je.entryNumber);
+        continue;
+      } else continue;
+    }
+    if (mirrored) {
+      advance = advance.minus(netOf(je.lines, '21-1103', 'cr'));
+      credit = credit.minus(netOf(je.lines, '21-5101', 'cr'));
+    }
+  }
+  const advanceAfter = Decimal.max(0, advance);
+  const creditAfter = Decimal.max(0, credit);
+  return { estimate: cash.plus(advanceAfter).plus(creditAfter), cashFromReceipts: cash, advanceAfter, creditAfter, unmirrorable };
 }

@@ -145,6 +145,8 @@ describe('DefectExchangeService', () => {
   beforeEach(async () => {
     const txMock = {
       contract: {
+        // 15ข (I1): ขั้น ข อ่านคอลัมน์สดหลังขั้น ก/ค
+        findUniqueOrThrow: jest.fn().mockResolvedValue({ id: 'ct-1', contractNumber: 'CT-1', advanceBalance: 0, rescheduleAdvanceBalance: 0, creditBalance: 0 }),
         findUnique: jest.fn(),
         update: jest.fn().mockResolvedValue({}),
         create: jest.fn().mockResolvedValue({ id: 'ct-new', contractNumber: 'CT-2026-05-00001', customerId: 'cust-1' }),
@@ -174,6 +176,8 @@ describe('DefectExchangeService', () => {
     };
 
     prisma = {
+      // 15ข (I2): checkEligibility จำลองขั้น ก/ค/ข จากรายการบัญชีของสัญญา
+      journalEntry: { findMany: jest.fn().mockResolvedValue([]) },
       contract: {
         findUnique: jest.fn(),
       },

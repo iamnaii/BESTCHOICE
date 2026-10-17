@@ -31,13 +31,21 @@ const contract = {
 describe('checkEligibility — ใบ/เครดิตที่จะย้าย + ด่านเงิน (15ข)', () => {
   afterEach(() => jest.restoreAllMocks());
 
-  it('รายงาน receiptsToCreditNote และ creditToTransfer = Σ ใบ + 21-1103 + 21-5101 ในบัญชี', async () => {
+  it('รายงาน receiptsToCreditNote และ creditToTransfer = ขาเงินสดของใบที่จะยกเลิก + 21-1103/21-5101 หลังกระจก (จำลองขั้น ก/ค/ข — I2)', async () => {
     jest.spyOn(credit, 'exchangeMoneyBlockers').mockResolvedValue([]);
     jest.spyOn(credit, 'listReceiptsToCreditNote').mockResolvedValue([
-      { id: 'rc-1', receiptNumber: 'RT-31', receiptType: 'INSTALLMENT', installmentNo: 1, paidDate: new Date('2026-10-10T00:00:00Z'), paymentMethod: 'BANK_TRANSFER', amount: new Prisma.Decimal('1515.83'), vatAmount: new Prisma.Decimal('99.17') },
+      { id: 'rc-1', paymentId: 'pay-1', receiptNumber: 'RT-31', receiptType: 'INSTALLMENT', installmentNo: 1, paidDate: new Date('2026-10-10T00:00:00Z'), paymentMethod: 'BANK_TRANSFER', amount: new Prisma.Decimal('1515.83'), vatAmount: new Prisma.Decimal('99.17') },
     ]);
     jest.spyOn(gl, 'glContractBalance').mockImplementation(async (_c, _id, code) => (code === '21-5101' ? D(300) : D(0)));
-    const prisma = { contract: { findUnique: jest.fn().mockResolvedValue(contract) }, product: { findUnique: jest.fn() } };
+    const receiptJe = {
+      entryNumber: 'JE-31',
+      metadata: { tag: 'receipt', flow: 'payment-receipt', contractId: 'ct-old', paymentId: 'pay-1' },
+      lines: [
+        { accountCode: '11-1201', debit: D('1515.83'), credit: D(0) },
+        { accountCode: '11-2103', debit: D(0), credit: D('1515.83') },
+      ],
+    };
+    const prisma = { contract: { findUnique: jest.fn().mockResolvedValue(contract) }, product: { findUnique: jest.fn() }, journalEntry: { findMany: jest.fn().mockResolvedValue([receiptJe]) } };
     const out = await makeService(prisma).checkEligibility('ct-old');
     expect(out.eligible).toBe(true);
     expect(out.receiptsToCreditNote).toEqual([
@@ -49,11 +57,30 @@ describe('checkEligibility — ใบ/เครดิตที่จะย้า
     expect(out.oldContract.paidAmount).toBe(1515.83);
   });
 
+  it('ใบรับชำระที่ไม่มีใบเสร็จ (รายการเงินสดที่ขั้น ค กลับไม่ได้) → บอกเป็นเหตุผลในกล่องยืนยัน ไม่ใช่ 400 ตอนกดยืนยัน · ไม่นับเข้าเครดิต', async () => {
+    jest.spyOn(credit, 'exchangeMoneyBlockers').mockResolvedValue([]);
+    jest.spyOn(credit, 'listReceiptsToCreditNote').mockResolvedValue([]);
+    jest.spyOn(gl, 'glContractBalance').mockResolvedValue(D(0));
+    const orphanJe = {
+      entryNumber: 'JE-77',
+      metadata: { tag: 'receipt', flow: 'payment-receipt', contractId: 'ct-old', paymentId: 'pay-orphan' },
+      lines: [
+        { accountCode: '11-1201', debit: D('1515.83'), credit: D(0) },
+        { accountCode: '11-2103', debit: D(0), credit: D('1515.83') },
+      ],
+    };
+    const prisma = { contract: { findUnique: jest.fn().mockResolvedValue(contract) }, product: { findUnique: jest.fn() }, journalEntry: { findMany: jest.fn().mockResolvedValue([orphanJe]) } };
+    const out = await makeService(prisma).checkEligibility('ct-old');
+    expect(out.eligible).toBe(false);
+    expect(out.reasons.some((r: string) => r.includes('JE-77') && r.includes('ใบรับชำระที่ยังไม่มีใบเสร็จ'))).toBe(true);
+    expect(out.creditToTransfer).toBe('0.00');
+  });
+
   it('เหตุผลด้านเงินถูกต่อท้าย reasons → eligible=false (ไม่ใช่เหตุผลกรอบ 7 วัน)', async () => {
     jest.spyOn(credit, 'exchangeMoneyBlockers').mockResolvedValue([credit.EXCHANGE_BLOCK_RESCHEDULED]);
     jest.spyOn(credit, 'listReceiptsToCreditNote').mockResolvedValue([]);
     jest.spyOn(gl, 'glContractBalance').mockResolvedValue(D(0));
-    const prisma = { contract: { findUnique: jest.fn().mockResolvedValue(contract) }, product: { findUnique: jest.fn() } };
+    const prisma = { contract: { findUnique: jest.fn().mockResolvedValue(contract) }, product: { findUnique: jest.fn() }, journalEntry: { findMany: jest.fn().mockResolvedValue([]) } };
     const out = await makeService(prisma).checkEligibility('ct-old');
     expect(out.eligible).toBe(false);
     expect(out.reasons).toEqual([credit.EXCHANGE_BLOCK_RESCHEDULED]);
@@ -80,7 +107,7 @@ describe('execute — ขั้น ก/ค/ข/ง (15ข)', () => {
     customer: { id: 'cust-1', name: 'ลูกค้าจริง', phone: '0891234567', addressCurrent: 'กรุงเทพ' },
     payments: [],
   };
-  const receiptRow = { id: 'rc-1', receiptNumber: 'RT-31', receiptType: 'INSTALLMENT', installmentNo: 1, paidDate: new Date('2026-10-10T00:00:00Z'), paymentMethod: 'BANK_TRANSFER', isVoided: false, deletedAt: null, amount: new Prisma.Decimal('1515.83'), vatAmount: new Prisma.Decimal('99.17') };
+  const receiptRow = { id: 'rc-1', paymentId: 'pay-1', receiptNumber: 'RT-31', receiptType: 'INSTALLMENT', installmentNo: 1, paidDate: new Date('2026-10-10T00:00:00Z'), paymentMethod: 'BANK_TRANSFER', isVoided: false, deletedAt: null, amount: new Prisma.Decimal('1515.83'), vatAmount: new Prisma.Decimal('99.17') };
 
   function setup(opts: { receipts?: unknown[]; blockers?: string[]; close?: { advance: Decimal; credit: Decimal }; vat?: Decimal; suspense?: Decimal; suspenseBefore?: Decimal } = {}) {
     jest.spyOn(creditApproval, 'bindExchangeCreditCheck').mockResolvedValue(undefined);
@@ -102,7 +129,7 @@ describe('execute — ขั้น ก/ค/ข/ง (15ข)', () => {
       siblingCreditNoteNumbers: [], siblingReceiptNumbers: [], accrualReversal: null, warnings: [],
     });
     const tx = {
-      contract: { findUnique: jest.fn().mockResolvedValue(oldContractRow), update: jest.fn().mockResolvedValue({}), create: jest.fn().mockResolvedValue({ id: 'ct-new', contractNumber: 'CT-NEW-0001', customerId: 'cust-1' }) },
+      contract: { findUnique: jest.fn().mockResolvedValue(oldContractRow), findUniqueOrThrow: jest.fn().mockResolvedValue({ id: 'ct-1', contractNumber: 'CT-1', advanceBalance: 0, rescheduleAdvanceBalance: 0, creditBalance: 0 }), update: jest.fn().mockResolvedValue({}), create: jest.fn().mockResolvedValue({ id: 'ct-new', contractNumber: 'CT-NEW-0001', customerId: 'cust-1' }) },
       product: { findUnique: jest.fn().mockResolvedValue(newProduct), update: jest.fn().mockResolvedValue({}), updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
       payment: { createMany: jest.fn().mockResolvedValue({ count: 0 }) },
       receipt: { findUnique: jest.fn().mockResolvedValue(receiptRow), findMany: jest.fn().mockResolvedValue(opts.receipts?.length ? [receiptRow] : []) },
@@ -111,6 +138,7 @@ describe('execute — ขั้น ก/ค/ข/ง (15ข)', () => {
       systemConfig: { findUnique: jest.fn().mockResolvedValue(null) },
     };
     const prisma = {
+      journalEntry: { findMany: jest.fn().mockResolvedValue([]) },
       contract: { findUnique: jest.fn().mockResolvedValue(contract) },
       product: { findUnique: jest.fn().mockResolvedValue(newProduct) },
       companyInfo: { findFirst: jest.fn().mockResolvedValue(null) },

@@ -1,3 +1,4 @@
+import { domainAccessClient } from '../employee-access/access-execution-context';
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ProductCategory } from '@prisma/client';
@@ -25,7 +26,9 @@ export interface SlowMovingProduct {
 
 @Injectable()
 export class InventoryForecastService {
-  constructor(private prisma: PrismaService) {}
+  private get prisma(): PrismaService { return domainAccessClient(this.basePrisma); }
+
+  constructor(private readonly basePrisma: PrismaService) {}
 
   async getInventoryForecast(branchId?: string) {
     const now = new Date();

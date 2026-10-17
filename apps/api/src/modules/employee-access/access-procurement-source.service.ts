@@ -8,6 +8,11 @@ import { purchaseOrderScopeWhere, supplierScopeWhere } from './access-procuremen
 @Injectable()
 export class AccessProcurementSourceService {
   constructor(private readonly resources: AccessResourceService) {}
+  async receivingWarehouse(tx: AccessClient) {
+    const warehouse = await tx.branch.findFirst({ where: { isMainWarehouse: true, isActive: true, deletedAt: null } }) ?? await tx.branch.findFirst({ where: { isActive: true, deletedAt: null }, orderBy: { createdAt: 'asc' } });
+    if (!warehouse) throw new ForbiddenException('ไม่พบคลังสินค้า');
+    return warehouse;
+  }
   async origin(tx: AccessClient, company: Company, branchId?: string | null, lock = false): Promise<AccessResource> {
     if (lock) await tx.$queryRaw`SELECT id FROM company_info WHERE company_code = ${company} FOR SHARE`;
     const entity = await tx.companyInfo.findFirst({ where: { companyCode: company, isActive: true, deletedAt: null } });

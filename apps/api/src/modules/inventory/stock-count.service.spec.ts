@@ -27,6 +27,7 @@ describe('StockCountService', () => {
 
   beforeEach(async () => {
     tx = {
+      $queryRaw: jest.fn().mockResolvedValue([{ sequence: 0 }]),
       stockCount: {
         count: jest.fn().mockResolvedValue(0),
         create: jest.fn((args) =>
@@ -101,7 +102,7 @@ describe('StockCountService', () => {
 
   describe('create', () => {
     it('generates SC-YYYY-MM-NNN count number', async () => {
-      tx.stockCount.count.mockResolvedValue(2); // 2 existing this month → new is 003
+      tx.$queryRaw.mockResolvedValue([{ sequence: 2 }]); // global reserved number → new is 003
       await service.create({ branchId: 'b-1' } as Parameters<StockCountService['create']>[0], 'u-1');
       const created = tx.stockCount.create.mock.calls[0][0];
       expect(created.data.countNumber).toMatch(/^SC-\d{4}-\d{2}-003$/);

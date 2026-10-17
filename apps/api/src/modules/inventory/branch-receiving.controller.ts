@@ -40,6 +40,12 @@ export class BranchReceivingController {
     return this.service.getPendingDeliveries(branchId);
   }
 
+  @Get('approved-purchase-orders')
+  @Roles('OWNER', 'BRANCH_MANAGER')
+  approvedPurchaseOrders(@Query('branchId') branchId?: string, @Query('page') page?: string, @Query('limit') limit?: string) {
+    return this.service.approvedPurchaseOrders(branchId, page ? Number(page) : 1, limit ? Number(limit) : 50);
+  }
+
   @Get(':id')
   @Roles('OWNER', 'BRANCH_MANAGER')
   findOne(@Param('id') id: string) {

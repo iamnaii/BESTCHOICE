@@ -9,7 +9,7 @@ import { productScopeWhere } from './access-query-scope';
 import { Prisma } from '@prisma/client';
 
 export interface AccessExecutionOptions {
-  domain?: 'procurement';
+  domain?: 'procurement' | 'inventory';
   isolationLevel?: Prisma.TransactionIsolationLevel;
   /** Whole-attempt retries, including fresh authorization and source resolution. */
   maxAttempts?: 1 | 2 | 3;
@@ -94,7 +94,7 @@ export class AccessResourceService {
       const scope = { userId, company, permission, tuples: permissionScopes({ id: userId, access: snapshot }, permission, company) };
       if (!scope.tuples.length) throw new ForbiddenException('ไม่มีสิทธิ์ในส่วนงานนี้');
       if (resolved?.emptySelection && !scopeReads) throw new ForbiddenException('รายการว่างต้องมีตัวกรองคำค้น');
-      const result = await domainAccessExecution.run({ client: tx, snapshot, scope, scopeReads, domain: options.domain, receivingBranchId: resolved?.receivingBranchId, isolationLevel, effects, authorizedProductIds: scopeReads && options.domain !== 'procurement' ? resolved?.productIds : undefined }, handler);
+      const result = await domainAccessExecution.run({ client: tx, snapshot, scope, scopeReads, domain: options.domain, receivingBranchId: resolved?.receivingBranchId, isolationLevel, effects, authorizedProductIds: scopeReads && !options.domain ? resolved?.productIds : undefined }, handler);
       return { result, snapshot, resolved };
         }, { timeout: 30000, isolationLevel });
       } catch (error) {

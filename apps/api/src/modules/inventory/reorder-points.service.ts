@@ -1,3 +1,4 @@
+import { domainAccessClient, currentDomainAccess, onDomainCommit } from '../employee-access/access-execution-context';
 import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { ProductCategory } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -9,10 +10,17 @@ import { CreateReorderPointDto, UpdateReorderPointDto } from './dto/reorder-poin
 export class ReorderPointsService {
   private readonly logger = new Logger(ReorderPointsService.name);
 
+  private get prisma(): PrismaService { return domainAccessClient(this.basePrisma); }
+
   constructor(
-    private prisma: PrismaService,
+    private readonly basePrisma: PrismaService,
     private notificationsService: NotificationsService,
   ) {}
+
+  private async sendAfterCommit(input: Parameters<NotificationsService['send']>[0]) {
+    if (currentDomainAccess()) onDomainCommit(async () => { await this.notificationsService.send(input); });
+    else await this.notificationsService.send(input);
+  }
 
   async findAll(filters: { branchId?: string; isActive?: boolean; category?: string; page?: number; limit?: number }) {
     const where: Record<string, unknown> = { deletedAt: null };
@@ -179,7 +187,7 @@ export class ReorderPointsService {
             select: { email: true, name: true },
           });
           for (const owner of owners) {
-            await this.notificationsService.send({
+            await this.sendAfterCommit({
               channel: 'IN_APP',
               recipient: owner.email,
               subject: `Stock ต่ำ: ${productDesc} (${rp.branch.name})`,
@@ -196,7 +204,7 @@ export class ReorderPointsService {
             select: { email: true, name: true },
           });
           for (const manager of branchManagers) {
-            await this.notificationsService.send({
+            await this.sendAfterCommit({
               channel: 'IN_APP',
               recipient: manager.email,
               subject: `Stock ต่ำ: ${productDesc}`,
@@ -210,7 +218,7 @@ export class ReorderPointsService {
           // Also try LINE notification to owners (staff OA — internal alerts)
           for (const owner of owners) {
             try {
-              await this.notificationsService.send({
+              await this.sendAfterCommit({
                 channel: 'LINE',
                 channelKey: 'line-staff',
                 recipient: owner.email,

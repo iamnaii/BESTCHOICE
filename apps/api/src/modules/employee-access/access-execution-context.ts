@@ -1,3 +1,4 @@
+import { inventoryBranchWhere, inventorySaleScopeWhere, inventoryTransferWhere, stockCountScopeWhere } from './access-inventory-scope';
 import { purchaseOrderScopeWhere, supplierScopeWhere } from './access-procurement-scope';
 import { permissionScopes } from './access-context';
 import { AsyncLocalStorage } from 'node:async_hooks';
@@ -14,7 +15,7 @@ export interface DomainAccessExecution {
   readonly client: Prisma.TransactionClient;
   readonly scopeReads: boolean;
   readonly authorizedProductIds?: readonly string[];
-  readonly domain?: 'procurement';
+  readonly domain?: 'procurement' | 'inventory';
   readonly receivingBranchId?: string;
   readonly isolationLevel?: Prisma.TransactionIsolationLevel;
   readonly effects?: { commit: Array<() => Promise<void>>; rollback: Array<() => Promise<void>> };
@@ -74,9 +75,10 @@ export function domainAccessClient(base: PrismaService): PrismaService {
   const scopedPredicates = {
     product,
     inspectionTemplate: inspectionTemplateScopeWhere(scope),
-    stockTransfer: transferScopeWhere(scope),
+    stockTransfer: execution.domain === 'inventory' ? inventoryTransferWhere(scope) : transferScopeWhere(scope),
     inspection: inspectionScopeWhere(scope, product),
-    branch: { products: { some: product } },
+    branch: execution.domain === 'inventory' ? { isActive: true, deletedAt: null } : { products: { some: product } },
+    ...(execution.domain === 'inventory' ? { stockCount: stockCountScopeWhere(scope), reorderPoint: inventoryBranchWhere(scope), stockAlert: inventoryBranchWhere(scope), branchReceiving: { deletedAt: null, transfer: inventoryTransferWhere(scope) }, sale: inventorySaleScopeWhere(scope) } : {}),
     purchaseOrder: procurement,
     ...(execution.domain === 'procurement' ? { goodsReceiving: { po: procurement }, goodsReceivingItem: { receiving: { po: procurement } }, purchaseOrderPayment: { purchaseOrder: procurement } } : {}),
     supplier: execution.domain === 'procurement' ? supplierScopeWhere(scope) : { products: { some: product } },
@@ -88,6 +90,11 @@ export function domainAccessClient(base: PrismaService): PrismaService {
     branch: Prisma.BranchWhereInput;
     purchaseOrder: Prisma.PurchaseOrderWhereInput;
     supplier: Prisma.SupplierWhereInput;
+    stockCount?: Prisma.StockCountWhereInput;
+    reorderPoint?: Prisma.ReorderPointWhereInput;
+    stockAlert?: Prisma.StockAlertWhereInput;
+    branchReceiving?: Prisma.BranchReceivingWhereInput;
+    sale?: Prisma.SaleWhereInput;
     goodsReceiving?: Prisma.GoodsReceivingWhereInput;
     goodsReceivingItem?: Prisma.GoodsReceivingItemWhereInput;
     purchaseOrderPayment?: Prisma.PurchaseOrderPaymentWhereInput;

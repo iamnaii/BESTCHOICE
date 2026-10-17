@@ -67,7 +67,7 @@ export class AccessProcurementBoundaries implements OnModuleInit {
         if (method === 'directReceive') {
           if (req.body?.items?.some((item: Record<string, unknown>) => item.sellingPrice !== undefined || item.installmentPrice !== undefined)) this.resources.assert(snapshot, 'pricing.update', resolved);
           if ((req.body?.paidAmount ?? 0) > 0) this.resources.assert(snapshot, 'supplier-payments.create', resolved);
-          const warehouse = await this.warehouse(tx);
+          const warehouse = await this.sources.receivingWarehouse(tx);
           resolved.receivingBranchId = warehouse.id;
           const destination = { company, resources: [await this.resources.branch(tx, warehouse.id, lock)], productIds: [] };
           this.resources.assert(snapshot, permission, destination);
@@ -98,7 +98,7 @@ export class AccessProcurementBoundaries implements OnModuleInit {
         if (!['APPROVED', 'ORDERED', 'PARTIALLY_RECEIVED'].includes(po.status)) throw new ForbiddenException('ใบสั่งซื้อยังไม่พร้อมรับสินค้า');
         // Raw input is checked before whitelist pipes can erase an override.
         if (req.body?.items?.some((item: Record<string, unknown>) => ['costPrice', 'unitPrice', 'receivedCost', 'receivedVat'].some(key => key in item))) throw new ForbiddenException('รับสินค้าตามราคาที่อนุมัติเท่านั้น');
-        const warehouse = await this.warehouse(tx);
+        const warehouse = await this.sources.receivingWarehouse(tx);
         // Approved procurement authorizes the source quantities; stock receiving
         // acts at the actual destination, including centrally originated POs.
         // It does not grant PO read/history or caller-directed cost edits.
@@ -112,11 +112,6 @@ export class AccessProcurementBoundaries implements OnModuleInit {
       return resolved;
     };
     return undefined;
-  }
-  private async warehouse(tx: Parameters<PersistedAccessResolver>[0]) {
-    const warehouse = await tx.branch.findFirst({ where: { isMainWarehouse: true, isActive: true, deletedAt: null } }) ?? await tx.branch.findFirst({ where: { isActive: true, deletedAt: null }, orderBy: { createdAt: 'asc' } });
-    if (!warehouse) throw new ForbiddenException('ไม่พบคลังสินค้า');
-    return warehouse;
   }
   private async collection(route: Route, req: any) {
     const query: Record<string, unknown> = req.query ?? {};

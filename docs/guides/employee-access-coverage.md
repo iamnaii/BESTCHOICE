@@ -57,6 +57,10 @@ New `AuditLog.action = AFTER_SALES_DOCUMENT_GENERATED`, `entity = after_sales_ca
 Verification: 43/43 owned-PG/Nest tests, then two additional focused independent copied-source/document and image-size controls (45 total definitions; not a final full45 run); 161/161 affected regressions, API types, changed-file lint and coverage checker. Expected injected-failure logs, 28 inherited lint warnings and Jest forceExit remain. JWT/Roles/Branch guards use persisted test actor injection; root's final actual fullguards/JWT/browser/local:check and verified preview remain required. Tasks4.2/4.3,5/6/7/8 retain their separately named financial, chat, activity, approval, UI and integrated verification work.
 
 
+### Customer identity capability producer
+
+The independently reviewed catalog-only change `7a0717005` adds owner-editable `sensitive.customer-identity.read` (ดูเลขประจำตัวลูกค้าและผู้ปกครองเต็มเลข). Only future BRANCH_MANAGER, FINANCE_MANAGER and ACCOUNTANT templates receive it by default; persisted OWNER authority remains unchanged. Existing saved positions and assignments are not rewritten, and no base customer/contact source grant accompanies the key. Shared45 and saved-template12 tests passed. This adds zero runtime adapters and does not itself enforce disclosure or masking; customer origin/writes/queries, other consumers and UI remain pending.
+
 ## Authentication order and compatibility
 
 `JwtStrategy` loads the persisted staff profile and `AccessSnapshotService.forUser` on every request, with no user/role/access cache. It attaches `user.access` without rewriting `user.role`. Inactive/deleted accounts fail and current snapshot validation also excludes system/nonstaff accounts. Managed company fields are derived from grants; an empty managed grant list remains empty. Login, both refresh-token implementations and `/auth/me` return the snapshot and normalized companies. Managed legacy personal reverse flags are hidden from login and `/me` responses.

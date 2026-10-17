@@ -347,9 +347,9 @@ Execute the following three units with independent review. All ten parent method
 
 **Files:** Shared employee-access catalog/defaults/tests and focused EmployeeAccessService saved-template tests only. Zero runtime routes, schema or source-policy changes.
 
-- [ ] RED/GREEN add GRANT key sensitive.customer-identity.read with Thai label ดูเลขประจำตัวลูกค้าและผู้ปกครองเต็มเลข in sensitive group; future BRANCH_MANAGER, FINANCE_MANAGER and ACCOUNTANT include it, other assignable defaults do not. Persisted OWNER remains universal through existing evaluator.
-- [ ] Owner can configure this key by position; no source/base customer/contact capability accompanies it. Prove initializing future templates does not rewrite existing saved positions/grants or migrate real employees. Do not implement PII projections or change source/read behavior in this catalog-only unit.
-- [ ] Shared tests/build, affected lint and focused saved-template regression; self-review/report/commit. Publish exact key/default contract for later source/read/write/UI consumers, no route count.
+- [x] RED/GREEN add GRANT key sensitive.customer-identity.read with Thai label ดูเลขประจำตัวลูกค้าและผู้ปกครองเต็มเลข in sensitive group; future BRANCH_MANAGER, FINANCE_MANAGER and ACCOUNTANT include it, other assignable defaults do not. Persisted OWNER remains universal through existing evaluator.
+- [x] Owner can configure this key by position; no source/base customer/contact capability accompanies it. Prove initializing future templates does not rewrite existing saved positions/grants or migrate real employees. Do not implement PII projections or change source/read behavior in this catalog-only unit.
+- [x] Shared tests/build, affected lint and focused saved-template regression; self-review/report/commit. Publish exact key/default contract for later source/read/write/UI consumers, no route count.
 
 ### Task 4.1.5.1.2: Explicit party origins and canonical customer/contact writes
 

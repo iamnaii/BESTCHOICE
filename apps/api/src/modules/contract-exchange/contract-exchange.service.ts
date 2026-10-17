@@ -1330,7 +1330,7 @@ export class ContractExchangeService {
     if (!currentDomainAccess() && !hasCrossBranchAccess(user)) {
       where.oldContract = { branchId: user.branchId };
     }
-    const rows = await (this.prisma as any).contractExchangeRequest.findMany({
+    const fetchBatch = (cursor?: string) => (this.prisma as any).contractExchangeRequest.findMany({
       where,
       include: {
         oldContract: {
@@ -1343,18 +1343,27 @@ export class ContractExchangeService {
         },
         newContract: { select: { id: true, contractNumber: true, status: true } },
       },
-      orderBy: { updatedAt: 'desc' },
+      orderBy: ctx ? [{ updatedAt: 'desc' }, { id: 'desc' }] : { updatedAt: 'desc' },
+      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
       take: 100,
     });
+    let rows = await fetchBatch();
     if (!ctx) return rows;
     const visible: typeof rows = [];
-    for (const row of rows) {
-      try {
-        const { sources } = await this.access!.request(row.id, 'contract-exchanges.read', false);
-        visible.push(this.access!.project(row, sources));
-      } catch (error) {
-        if (!(error instanceof ForbiddenException)) throw error;
+    // The limit is on authorized history, not on global candidates. A stable
+    // id tie-breaker keeps tied timestamps from skipping/repeating batch rows.
+    while (rows.length > 0) {
+      for (const row of rows) {
+        try {
+          const { sources } = await this.access!.request(row.id, 'contract-exchanges.read', false);
+          visible.push(this.access!.project(row, sources));
+          if (visible.length === 100) return visible;
+        } catch (error) {
+          if (!(error instanceof ForbiddenException)) throw error;
+        }
       }
+      if (rows.length < 100) break;
+      rows = await fetchBatch(rows[rows.length - 1].id);
     }
     return visible;
   }

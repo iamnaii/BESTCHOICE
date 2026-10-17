@@ -540,25 +540,38 @@ export class DefectExchangeService {
         ...(filters.to ? { lte: new Date(filters.to) } : {}),
       };
     }
-    const rows = await this.prisma.auditLog.findMany({
+    const fetchBatch = (cursor?: string) => this.prisma.auditLog.findMany({
       where,
-      orderBy: { createdAt: 'desc' },
+      orderBy: ctx ? [{ createdAt: 'desc' }, { id: 'desc' }] : { createdAt: 'desc' },
+      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
       take: 200,
       select: {
         id: true, createdAt: true, userId: true, entityId: true, newValue: true,
         user: { select: { id: true, email: true, name: true } },
       },
     });
+    let rows = await fetchBatch();
     if (!ctx) return rows;
     const visible: typeof rows = [];
-    for (const row of rows) {
-      const contract = row.entityId ? await ctx.client.contract.findFirst({ where: { id: row.entityId, deletedAt: null, ...(filters.branchId ? { branchId: filters.branchId } : {}) } }) : null;
-      if (!contract?.parentContractId) continue;
-      try {
-        const sources = await this.access!.sources({ oldContractId: contract.parentContractId, newContractId: contract.id }, false);
-        this.access!.assert('defect-exchanges.read', sources);
-        visible.push(this.access!.project(row, sources));
-      } catch (error) { if (!(error instanceof ForbiddenException)) throw error; }
+    // Source authorization and the explicit branch filter precede the final
+    // history limit; unrelated audit rows must not consume visible slots.
+    while (rows.length > 0) {
+      for (const row of rows) {
+        const contract = row.entityId ? await ctx.client.contract.findFirst({
+          where: { id: row.entityId, deletedAt: null, ...(filters.branchId ? { branchId: filters.branchId } : {}) },
+        }) : null;
+        if (!contract?.parentContractId) continue;
+        try {
+          const sources = await this.access!.sources({ oldContractId: contract.parentContractId, newContractId: contract.id }, false);
+          this.access!.assert('defect-exchanges.read', sources);
+          visible.push(this.access!.project(row, sources));
+          if (visible.length === 200) return visible;
+        } catch (error) {
+          if (!(error instanceof ForbiddenException)) throw error;
+        }
+      }
+      if (rows.length < 200) break;
+      rows = await fetchBatch(rows[rows.length - 1].id);
     }
     return visible;
   }

@@ -885,3 +885,57 @@ it('uses genuine FINANCE customer identity without unrelated SHOP customer or wa
     ForbiddenException,
   );
 });
+
+it('fills recent history from authorized sources beyond newer foreign requests with a deterministic limit', async () => {
+  const who = await authorized();
+  const own = await seedSwapFixture('recent-own');
+  const foreign = await seedSwapFixture('recent-foreign');
+  await db.contract.update({ where: { id: foreign.oldContractId }, data: { branchId: branchB } });
+  const older = new Date(Date.now() - DAY);
+  const ownIds: string[] = Array.from({ length: 101 }, () => randomUUID()).sort().reverse();
+  await db.contractExchangeRequest.createMany({ data: [
+    ...ownIds.map((id) => ({ id, oldContractId: own.oldContractId, oldProductId: own.oldProductId,
+      newProductId: own.newProductId, requestedById: who.id, status: 'APPROVED' as const, updatedAt: older })),
+    ...Array.from({ length: 101 }, () => ({ oldContractId: foreign.oldContractId,
+      oldProductId: foreign.oldProductId, newProductId: foreign.newProductId,
+      requestedById: who.id, status: 'APPROVED' as const, updatedAt: new Date() })),
+  ] });
+  const rows = await run(who.id, () => svc.listRecent(who));
+  // Other fixtures may have newer authorized history; this fixture must still
+  // fill the limit and the tied older rows must retain deterministic id order.
+  expect(rows).toHaveLength(100);
+  const visibleOwn = rows.filter((row) => ownIds.includes(row.id)).map((row) => row.id);
+  expect(visibleOwn.length).toBeGreaterThan(0);
+  expect(visibleOwn).toEqual(ownIds.slice(0, visibleOwn.length));
+  expect(rows.every((row) => row.oldContractId !== foreign.oldContractId)).toBe(true);
+  expect((await run(who.id, () => svc.listRecent(who))).map((row) => row.id)).toEqual(rows.map((row) => row.id));
+});
+
+it('fills defect history beyond newer foreign audits and applies explicit branch filtering before the final limit', async () => {
+  const who = await authorized();
+  const own = await seedSwapFixture('history-own');
+  const replacement = await seedSwapFixture('history-replacement');
+  await db.contract.update({ where: { id: replacement.oldContractId }, data: { parentContractId: own.oldContractId } });
+  const foreign = await seedSwapFixture('history-foreign');
+  const foreignReplacement = await seedSwapFixture('history-foreign-replacement');
+  await db.contract.update({ where: { id: foreign.oldContractId }, data: { branchId: branchB } });
+  await db.contract.update({ where: { id: foreignReplacement.oldContractId }, data: { branchId: branchB, parentContractId: foreign.oldContractId } });
+  const older = new Date(Date.now() - DAY);
+  const ownIds: string[] = Array.from({ length: 201 }, () => randomUUID()).sort().reverse();
+  await db.auditLog.createMany({ data: [
+    ...ownIds.map((id) => ({ id, userId: who.id, action: 'DEFECT_EXCHANGE', entity: 'contract', entityId: replacement.oldContractId, createdAt: older })),
+    ...Array.from({ length: 201 }, () => ({ userId: who.id, action: 'DEFECT_EXCHANGE', entity: 'contract', entityId: foreignReplacement.oldContractId, createdAt: new Date() })),
+  ] });
+  const rows = await run(who.id, () => defect.list({}, who));
+  expect(rows).toHaveLength(200);
+  const visibleOwn = rows.filter((row) => ownIds.includes(row.id)).map((row) => row.id);
+  expect(visibleOwn.length).toBeGreaterThan(0);
+  expect(visibleOwn).toEqual(ownIds.slice(0, visibleOwn.length));
+  expect(rows.every((row) => row.entityId !== foreignReplacement.oldContractId)).toBe(true);
+  // Both branches are now authorized: branch filtering must independently
+  // continue scanning beyond the newer B rows rather than consume the limit.
+  await grant(who.id, common, 'FINANCE', [branchB]);
+  await grant(who.id, common, 'SHOP', [branchB]);
+  const filtered = await run(who.id, () => defect.list({ branchId }, who));
+  expect(filtered.map((row) => row.id)).toEqual(rows.map((row) => row.id));
+});

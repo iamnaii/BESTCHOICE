@@ -1,3 +1,4 @@
+import { tenderAccess, tenderReadClient } from '../employee-access/access-tender-source';
 import { BadRequestException, ForbiddenException, Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { hasCrossBranchAccess } from '../auth/branch-access.util';
@@ -56,15 +57,17 @@ export interface OverviewRow {
 
 @Injectable()
 export class ShopCashOverviewService {
+  private get prisma() { return tenderReadClient(this.basePrisma); }
+
   constructor(
-    private readonly prisma: PrismaService,
+    private readonly basePrisma: PrismaService,
     private readonly closes: ShopCashCloseService,
     private readonly holdings: ShopCashHoldingService,
   ) {}
 
   /** เจ้าของ/ผจก.การเงิน/บัญชี = ทุกสาขา (หรือสาขาที่เลือก) · ผจก.สาขา = สาขาตัวเองเท่านั้น */
   private async scopeBranches(actor: CashCloseActor, branchId?: string) {
-    if (!hasCrossBranchAccess(actor)) {
+    if (!tenderAccess.getStore() && !hasCrossBranchAccess(actor)) {
       if (actor.role !== 'BRANCH_MANAGER' || !actor.branchId || (branchId && branchId !== actor.branchId)) {
         throw new ForbiddenException('ดูสถานะปิดยอดได้เฉพาะสาขาของตัวเอง');
       }

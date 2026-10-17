@@ -9098,7 +9098,8 @@ model EquityAttachment {
 /// Immutable import snapshot — updatedAt/deletedAt intentionally omitted (reverse = DELETE by importBatch)
 model ImportedSale {
   id              String   @id @default(uuid())
-  source          String   @default("TOOLTIFY")
+  /// Server importer must explicitly supply immutable provenance; labels never establish origin.
+  source          String
   barcode         String
   productName     String   @map("product_name")
   category        String

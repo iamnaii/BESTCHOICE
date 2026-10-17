@@ -1,3 +1,5 @@
+import { ShopTendersController } from '../shop-tenders/shop-tenders.controller';
+import { ImportedSalesController } from '../imported-sales/imported-sales.controller';
 import { CustomerJourneyController } from '../customer-journey/customer-journey.controller';
 import { ContactsController } from '../contacts/contacts.controller';
 import { CustomersController } from '../customers/customers.controller';
@@ -17,6 +19,7 @@ export class AuditInterceptor implements NestInterceptor {
     const request = context.switchToHttp().getRequest();
     const { method, url, body, user } = request;
 
+    const managedTender = this.isManagedTenderRead(context);
     const managedJourney =
       request.user?.access?.managed === true &&
       context.getClass() === CustomerJourneyController &&
@@ -36,13 +39,13 @@ export class AuditInterceptor implements NestInterceptor {
         CustomersController.prototype.listDocuments,
         CustomersController.prototype.readDocument,
       ].some((candidate) => candidate === context.getHandler());
-    if (['GET', 'HEAD', 'OPTIONS'].includes(method) && !managedDocument && !managedJourney) {
+    if (['GET', 'HEAD', 'OPTIONS'].includes(method) && !managedDocument && !managedJourney && !managedTender) {
       return next.handle();
     }
 
     const startTime = Date.now();
-    const ipAddress = clientIp(request);
-    const userAgent = request.headers['user-agent'] || '';
+    const ipAddress = managedTender ? undefined : clientIp(request);
+    const userAgent = managedTender ? undefined : request.headers['user-agent'] || '';
 
     return next.handle().pipe(
       tap({
@@ -100,6 +103,17 @@ export class AuditInterceptor implements NestInterceptor {
     );
   }
 
+  private isManagedTenderRead(context: ExecutionContext): boolean {
+    if (context.switchToHttp().getRequest().user?.access?.managed !== true) return false;
+    return context.getClass() === ShopTendersController && [
+      ShopTendersController.prototype.getDailySummary, ShopTendersController.prototype.getCashCloseStatus,
+      ShopTendersController.prototype.getCashCloseHistory, ShopTendersController.prototype.getCashCloseOverview,
+      ShopTendersController.prototype.getCashCloseReminder,
+    ].some(handler => handler === context.getHandler()) || context.getClass() === ImportedSalesController && [
+      ImportedSalesController.prototype.list, ImportedSalesController.prototype.summary,
+    ].some(handler => handler === context.getHandler());
+  }
+
   /** These four exact managed handlers own durable business proof in their transaction.
    * This outer best-effort record describes only the HTTP request outcome,
    * including denials and rollbacks, never contact values or exception text. */
@@ -113,6 +127,11 @@ export class AuditInterceptor implements NestInterceptor {
     if (request.user?.access?.managed !== true) return undefined;
     const handler = context.getHandler();
     const controller = context.getClass();
+    if (this.isManagedTenderRead(context)) {
+      const code = statusCode ?? context.switchToHttp().getResponse().statusCode;
+      return { route: `${controller.name}.${handler.name}`, outcome,
+        statusCode: Number.isInteger(code) && code >= 100 && code <= 599 ? code : 500, duration };
+    }
     if (
       controller === CustomerJourneyController &&
       [

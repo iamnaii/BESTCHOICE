@@ -1,3 +1,5 @@
+import { AccessSnapshotService } from '../employee-access/access-snapshot.service';
+import { tenderAccess, tenderReadClient } from '../employee-access/access-tender-source';
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import * as Sentry from '@sentry/node';
 import { Prisma, ShopCashCloseStatus, ShopCashDestination } from '@prisma/client';
@@ -93,8 +95,10 @@ const money = (value: Prisma.Decimal | null | undefined) => (value == null ? nul
 export class ShopCashCloseService {
   private readonly logger = new Logger(ShopCashCloseService.name);
 
+  private get prisma() { return tenderReadClient(this.basePrisma); }
+
   constructor(
-    private readonly prisma: PrismaService,
+    private readonly basePrisma: PrismaService,
     private readonly audit: AuditService,
     private readonly journal: JournalAutoService,
     private readonly companies: CompanyResolverService,
@@ -175,7 +179,7 @@ export class ShopCashCloseService {
     // "ตอนนี้รอใคร / สาขายังขาดอะไร" (mockup กระดาน 12–13): ลิ้นชักยังไม่ตั้ง = หน้าขายรับเงินสดไม่ได้ จึงไม่มีอะไรให้นับ ·
     // ผู้นับ = พนักงานขาย/ผจก.สาขาของสาขานี้ที่ยังใช้งานอยู่ — ส่งชื่อไปให้คนที่รออยู่รู้ว่าต้องตามใคร
     const setup = await this.prisma.branch.findUnique({ where: { id: query.branchId }, select: { shopCashAccountCode: true } });
-    const counters = await this.prisma.user.findMany({
+    const counters = tenderAccess.getStore() ? await tenderAccess.getStore()!.counters(query.branchId, new AccessSnapshotService(this.basePrisma)) : await this.prisma.user.findMany({
       where: { branchId: query.branchId, role: { in: COUNTER_ROLES as never }, isActive: true, deletedAt: null },
       // enum UserRole ประกาศ SALES ก่อน BRANCH_MANAGER ⇒ desc = ผู้จัดการสาขาขึ้นก่อน
       select: { id: true, name: true, role: true }, orderBy: [{ role: 'desc' }, { name: 'asc' }],
@@ -199,7 +203,7 @@ export class ShopCashCloseService {
   /** ประวัติการปิดยอด + แถบเตือน (เจ้าของ/ผจก.การเงิน/บัญชี = ทุกสาขา · ผจก.สาขา = สาขาตัวเอง) */
   async getHistory(actor: CashCloseActor, query: { branchId?: string; month?: string }) {
     let branchId = query.branchId || undefined;
-    if (!hasCrossBranchAccess(actor)) {
+    if (!tenderAccess.getStore() && !hasCrossBranchAccess(actor)) {
       if (actor.role !== 'BRANCH_MANAGER' || !actor.branchId || (branchId && branchId !== actor.branchId)) {
         throw new ForbiddenException('ดูประวัติการปิดยอดได้เฉพาะสาขาของตัวเอง');
       }

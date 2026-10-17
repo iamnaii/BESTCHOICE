@@ -365,3 +365,19 @@ it('Journey moderation is configurable and defaults only to future branch manage
   expect(canAccess(scoped, 'customer-journey.moderate', shopA)).toBe(true);
   expect(canAccess(scoped, 'customer-journey.moderate', shopB)).toBe(false);
 });
+
+
+it('tender business actions are ordinary scoped grants, separate from legacy update and cost', () => {
+  for (const permission of ['shop-tenders.count', 'shop-tenders.confirm', 'shop-tenders.deposit', 'shop-tenders.deposit-owner-hold'] as const) {
+    expect(isAssignablePermissionKey(permission)).toBe(true);
+    expect(canAccess(snapshot([grant(['shop-tenders.update', 'shop-tenders.create'])]), permission, shopA)).toBe(false);
+    expect(canAccess(snapshot([grant([permission])]), permission, shopA)).toBe(true);
+    expect(canAccess(snapshot([grant([permission])]), permission, shopB)).toBe(false);
+  }
+  const permissions = (code: string) => DEFAULT_ACCESS_POSITIONS.find(p => p.code === code)!.permissions;
+  expect(permissions('SALES')).toEqual(expect.arrayContaining(['shop-tenders.read', 'shop-tenders.count']));
+  expect(permissions('BRANCH_MANAGER')).toEqual(expect.arrayContaining(['shop-tenders.read', 'shop-tenders.count', 'shop-tenders.confirm', 'shop-tenders.deposit']));
+  expect(permissions('FINANCE_MANAGER')).toEqual(expect.arrayContaining(['shop-tenders.read', 'shop-tenders.confirm', 'shop-tenders.deposit', 'shop-tenders.deposit-owner-hold']));
+  for (const code of ['SALES', 'BRANCH_MANAGER', 'FINANCE_MANAGER']) expect(permissions(code)).not.toContain('sensitive.cost.read');
+  expect(permissions('PURCHASING').some(p => p.startsWith('shop-tenders.'))).toBe(false);
+});

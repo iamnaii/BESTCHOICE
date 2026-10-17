@@ -1,3 +1,4 @@
+import { tenderAccess, tenderReadClient } from '../employee-access/access-tender-source';
 import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import * as Sentry from '@sentry/node';
@@ -38,8 +39,10 @@ interface Ledger { branchId: string; source: CashDepositSource; closes: HoldingC
 export class ShopCashHoldingService {
   private readonly logger = new Logger(ShopCashHoldingService.name);
 
+  private get prisma() { return tenderReadClient(this.basePrisma); }
+
   constructor(
-    private readonly prisma: PrismaService,
+    private readonly basePrisma: PrismaService,
     private readonly audit: AuditService,
     private readonly storage: StorageService,
     private readonly journal: JournalAutoService,
@@ -102,6 +105,8 @@ export class ShopCashHoldingService {
 
   /** ตู้เซฟสาขา = เจ้าของ/ผจก.การเงิน/ผจก.สาขาของสาขานั้น · เงินที่เจ้าของเก็บ = เจ้าของ/ผจก.การเงิน (ผจก.สาขาไม่ได้ถือเงินก้อนนั้น) */
   private canDeposit(actor: CashCloseActor, branchId: string, source: CashDepositSource) {
+    const plan = tenderAccess.getStore();
+    if (plan) return plan.moneyVisible(branchId) && plan.allows('shop-tenders.deposit', branchId) && (source !== 'OWNER_HOLD' || plan.allows('shop-tenders.deposit-owner-hold', branchId));
     if (source === 'OWNER_HOLD') return actor.role === 'OWNER' || actor.role === 'FINANCE_MANAGER';
     return canConfirmBranch(actor, branchId);
   }

@@ -126,6 +126,37 @@ This is the first serial unit of Task 4.1. The named SHOP phase contains 238 dom
 - [ ] Protect nested purchase costs, inventory valuations and forecasts, including count/aggregate/export; no legacy role veto or personal override bypass. Current transactional assertions on writes.
 - [ ] Types/coverage/focused tests, contract report, self-review, commit; other SHOP units remain pending.
 
+### Task 4.1.2.1: Procurement, suppliers and receiving transaction contract
+
+Task 4.1.2 is executed as three serial reviewable units (32 + 21 + 10 routes); the phase remains incomplete until all three pass. Preserve all parent scope, projection, success/denial and financial regression obligations.
+
+**Files:** Same access engine/registrar plus `purchase-orders`, `suppliers`, goods-receiving/input-VAT services and narrowly necessary audit/transaction helpers. Current surface: PurchaseOrdersController (25) and SuppliersController (7).
+
+- [ ] RED real DB/HTTP tests for all in-scope boundary families, pre-pagination source/count parity, scoped PO/supplier histories/GL/payment data, purchasing cost visibility, unauthorized cost overrides and caller-selected company/branch substitution.
+- [ ] Add genuine authenticated source/origin handling where PO/supplier rows lack resolvable existing relationships; no guessed historical backfill. Preserve usable new-record creation and describe required UI inputs. Implement safe nested procurement/receiving projections consumed by existing product workflows.
+- [ ] Extend outer execution with an explicit isolation/retry/effect contract before joining services that require Serializable. Do not silently discard inner isolation requirements, retry inside an aborted transaction, or commit dependent work separately. Prove current authority after waiting for access locks under Serializable with real concurrent revocation; restart whole authorization/source resolution on retry.
+- [ ] Preserve original PO receive, late input-VAT, supplier payment/GL and journal state machines. Scope JSON-tag/raw-SQL journal lookups through real company/source provenance before balances/aggregates. A supplier permission alone must not expose all cross-scope journal history or confer payment authority.
+- [ ] Keep durable financial evidence in the existing AuditLog/outbox within the actual mutation transaction; no premature success event from an inner transaction that has only joined an outer one. Handle post-commit notifications/effects and cleanup of newly uploaded files on outer failure explicitly. No new bank transfer integration or changed money formulas.
+- [ ] Verify all 32 routes with authorized success and denial, financial rollback/retry/isolation semantics, types/lint/coverage. Document reusable transaction/projection/origin contracts and remaining UI/source seams, self-review and commit. Root owns integrated local:check/preview.
+
+### Task 4.1.2.2: Branch receiving, stock counts, reorder and forecast
+
+**Files:** Same access engine plus `inventory` BranchReceivingController (4), InventoryForecastController (1), ReorderPointsController (10), StockCountController (6): 21 routes.
+
+- [ ] Consume reviewed procurement/receiving source contracts from 4.1.2.1. RED isolated tests for count/receive scope, record/branch substitution, exact bulk targets, before-count aggregation and forecast related Sale reads.
+- [ ] Implement every listed record/query/bulk boundary with current source assertions and scoped projection. Stock staff may receive approved quantities with server-derived cost kept internal; unauthorized cost override fields must not pass through.
+- [ ] Preserve count/receive/reorder workflows and concurrency; scope reorder batches before mutation and forecast inputs before calculation, including their original company/source semantics.
+- [ ] All in-scope authorized-success/denial evidence, rollback where relevant, types/lint/coverage, downstream contract report, self-review, commit.
+
+### Task 4.1.2.3: Stock adjustment financial boundaries
+
+**Files:** Same access engine plus StockAdjustmentsController and adjustment/journal/document services: 10 routes.
+
+- [ ] RED isolated tests for scoped requests/approval/execution, source and destination substitution, sensitive valuation/file output and duplicate/concurrent adjustment behavior.
+- [ ] Implement actual capability-aware former role gates, current transactional source authorization, accounting/journal/document boundaries, and independent workflow constraints. Do not grant monetary approval merely from generic stock access.
+- [ ] Preserve financial math, serializable/retry and durable evidence contract; prove money/stock/journal/audit rollback together on failure and exact authorized success.
+- [ ] Types/lint/coverage/focused regressions and complete 63-route parent reconciliation, report, self-review, commit. Mark parent 4.1.2 complete only after independent review of all units.
+
 ### Task 4.1.3: Sales, bookings and trade-in boundaries
 
 **Files:** Extend same infrastructure; modify `sales`, `bookings`, `trade-in`. Current manifest: SalesController, BookingsController, TradeInController (56 domain entries).

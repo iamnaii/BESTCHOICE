@@ -4,6 +4,7 @@ import { Prisma } from '@prisma/client';
 import * as Sentry from '@sentry/nestjs';
 import { JournalAutoService } from '../journal-auto.service';
 import { PrismaService } from '../../../prisma/prisma.service';
+import { Vat60dayReversalTemplate } from './vat-60day-reversal.template';
 import { computeCnBreakdown } from '../compute-cn-breakdown';
 import { glContractBalance } from '../gl-contract-balance';
 import { readContractCloseAdvances } from '../contract-close-advances';
@@ -186,10 +187,16 @@ export interface RepossessionJePreview {
 
 @Injectable()
 export class RepossessionJP5Template {
+  // 2026-10-17 — กลับ VAT บังคับ 60 วัน (21-2103) ของงวดที่ถูกตั้งไว้ขณะสัญญายังเดิน ตอนยึดคืน. สร้างภายในแทนการฉีด
+  // (constructor ของ template นี้ถูก `new` ด้วยมือในหลายสิบ spec — รูปแบบเดียวกับที่ 2A ทำ)
+  private readonly vat60Reversal: Vat60dayReversalTemplate;
+
   constructor(
     private readonly journal: JournalAutoService,
     private readonly prisma: PrismaService,
-  ) {}
+  ) {
+    this.vat60Reversal = new Vat60dayReversalTemplate(journal, prisma);
+  }
 
   /**
    * Shared money-math — builds the JP5 lines WITHOUT posting. Used by BOTH
@@ -501,6 +508,9 @@ export class RepossessionJP5Template {
       advanceVatReversal,
       warnings: advances.warnings,
       lines,
+      // งวด (ทุกสถานะ) ที่รอบภาษีขาย 60 วันตั้ง 21-2103 ไว้และยังไม่ถูกกลับ — truthy ไม่ใช่ `!== null` เพราะ spec ที่ mock
+      // แถวงวดไม่มีคอลัมน์นี้ (undefined = ไม่มีธง)
+      vat60dayInstIds: allInsts.filter((i) => !!i.vat60dayJournalEntryId).map((i) => i.id),
     };
   }
 
@@ -510,6 +520,18 @@ export class RepossessionJP5Template {
   ): Promise<RepossessionJP5Result> {
     const client = tx ?? this.prisma;
     const built = await this.buildJe(input, client);
+
+    // 2026-10-17 — งวดที่รอบภาษีขาย 60 วันตั้ง `Dr 11-2104 / Cr 21-2103` ไว้ขณะสัญญายังเดิน: หลังยึดคืนไม่มีลูกหนี้ 11-2104 ให้เรียกเก็บ
+    // อีก และภาษีขายของงวดนั้นถูกจัดการด้วยใบลดหนี้ ม.82/5 / ขา deferred ของ JP5 เองแล้ว ⇒ กลับ `Dr 21-2103 / Cr 11-2104` ทุกงวด
+    // ในธุรกรรมเดียวกันก่อนลง JP5 (Vat60dayReversalTemplate — idempotent · ล้างธง `vat60dayJournalEntryId`) ไม่งั้นคู่บัญชีนี้ค้างถาวร
+    // และ ภ.พ.30 ที่รวม 21-2103 นับภาษีของงวดเดียวกันซ้ำ. บรรทัดของ JP5 เองไม่เปลี่ยน (preview === posted) — เลขที่รายการกลับอยู่ใน
+    // metadata `vat60dayReversals` (stamp เฉพาะเมื่อมี). ไม่มีธุรกรรมของผู้เรียก (spec เท่านั้น — production ส่ง tx เสมอ) = template
+    // เปิดธุรกรรมของตัวเองทีละงวด
+    const vat60dayReversals: string[] = [];
+    for (const instId of built.vat60dayInstIds) {
+      const reversal = await this.vat60Reversal.execute(instId, tx);
+      if (reversal) vat60dayReversals.push(reversal.entryNo);
+    }
 
     const result = await this.journal.createAndPost(
       {
@@ -549,6 +571,8 @@ export class RepossessionJP5Template {
                 [ADVANCE_VAT_META.consume]: built.advanceVatReversal.toFixed(2),
               }
             : {}),
+          // 2026-10-17 — เลขที่รายการกลับ VAT บังคับ 60 วัน (21-2103) ที่ลงพร้อมการยึดคืนนี้: stamp เฉพาะเมื่อมี
+          ...(vat60dayReversals.length > 0 ? { vat60dayReversals } : {}),
           ...(input.shopReceivableType
             ? {
                 shopReceivable: input.depositAccountCode,

@@ -4,6 +4,7 @@ import { Prisma } from '@prisma/client';
 import * as Sentry from '@sentry/nestjs';
 import { JournalAutoService } from '../journal-auto.service';
 import { PrismaService } from '../../../prisma/prisma.service';
+import { Vat60dayReversalTemplate } from './vat-60day-reversal.template';
 import { computeCnBreakdown } from '../compute-cn-breakdown';
 import { glContractBalance } from '../gl-contract-balance';
 import { readContractCloseAdvances } from '../contract-close-advances';
@@ -74,11 +75,15 @@ export interface BadDebtWriteOffResult {
 @Injectable()
 export class BadDebtWriteOffTemplate {
   private readonly logger = new Logger(BadDebtWriteOffTemplate.name);
+  // 2026-10-17 — กลับ VAT บังคับ 60 วัน (21-2103) ของงวดที่ถูกตั้งไว้ขณะสัญญายังเดิน ตอนตัดหนี้สูญ (สร้างภายใน — รูปแบบเดียวกับ JP5)
+  private readonly vat60Reversal: Vat60dayReversalTemplate;
 
   constructor(
     private readonly journal: JournalAutoService,
     private readonly prisma: PrismaService,
-  ) {}
+  ) {
+    this.vat60Reversal = new Vat60dayReversalTemplate(journal, prisma);
+  }
 
   async execute(
     input: BadDebtWriteOffInput,
@@ -333,6 +338,23 @@ export class BadDebtWriteOffTemplate {
     // the key is just the contractId (no runDate component).
     const idempotencyKey = contractId;
 
+    // 2026-10-17 — งวดที่รอบภาษีขาย 60 วันตั้ง `Dr 11-2104 / Cr 21-2103` ไว้ขณะสัญญายังเดิน: ตัดหนี้สูญแล้วไม่มีลูกหนี้ 11-2104 ให้
+    // เรียกเก็บอีก และภาษีขายของงวดนั้นถูกจัดการด้วยใบลดหนี้ ม.82/5 / ขา deferred ของรายการนี้เองแล้ว ⇒ กลับ `Dr 21-2103 / Cr 11-2104`
+    // ทุกงวดในธุรกรรมเดียวกันก่อนลงรายการตัดหนี้สูญ (Vat60dayReversalTemplate — idempotent · ล้างธง) — ตัวกรอง truthy ในโค้ด เพราะ
+    // spec ที่ mock `findMany` คืนแถวที่ไม่มีคอลัมน์นี้โดยไม่สนใจ where. บรรทัดของรายการตัดหนี้สูญเองไม่เปลี่ยน — เลขที่รายการกลับอยู่ใน
+    // metadata `vat60dayReversals` (stamp เฉพาะเมื่อมี). การเรียกซ้ำถูกด่าน idempotency ข้างบนกันไว้ก่อนถึงจุดนี้
+    const vat60Flagged = await client.installmentSchedule.findMany({
+      where: { contractId, deletedAt: null, vat60dayJournalEntryId: { not: null } },
+      select: { id: true, vat60dayJournalEntryId: true },
+      orderBy: { installmentNo: 'asc' },
+    });
+    const vat60dayReversals: string[] = [];
+    for (const inst of vat60Flagged) {
+      if (!inst.vat60dayJournalEntryId) continue;
+      const reversal = await this.vat60Reversal.execute(inst.id, tx);
+      if (reversal) vat60dayReversals.push(reversal.entryNo);
+    }
+
     try {
       const result = await this.journal.createAndPost(
         {
@@ -352,6 +374,8 @@ export class BadDebtWriteOffTemplate {
             creditNoteIssued,
             creditNoteVatAmount: cnVat.toFixed(2),
             writeOffReason: writeOffReason ?? null,
+            // 2026-10-17 — เลขที่รายการกลับ VAT บังคับ 60 วัน (21-2103) ที่ลงพร้อมการตัดหนี้สูญนี้: stamp เฉพาะเมื่อมี
+            ...(vat60dayReversals.length > 0 ? { vat60dayReversals } : {}),
             // PR6 — stamp เฉพาะเมื่อมีจริง เพื่อไม่ให้ metadata ของสัญญาทั่วไปเปลี่ยนรูป
             ...(advances.advance.gt(0) ? { advanceRelief: advances.advance.toFixed(2) } : {}),
             ...(advances.credit.gt(0) ? { creditRelief: advances.credit.toFixed(2) } : {}),

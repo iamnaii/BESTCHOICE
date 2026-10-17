@@ -101,6 +101,8 @@ describe('ContractPaymentService.earlyPayoff — ถังพักงวดส�
       .mockResolvedValue({ id: 'je-ep-park', entryNumber: 'JE-EP-PARK-0001' });
 
     const tx = {
+      // 2026-10-17: earlyPayoff อ่านงวดที่มีธง VAT บังคับ 60 วันใน tx (กลับ 21-2103 ก่อนลง JP4) — ฟิกซ์เจอร์นี้ไม่มีธง
+      installmentSchedule: { findMany: jest.fn().mockResolvedValue([]) },
       contract: {
         findUnique: jest.fn().mockResolvedValue({
           status: 'ACTIVE',

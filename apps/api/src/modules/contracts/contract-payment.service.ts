@@ -21,6 +21,7 @@ import { ShopCollectSettlementTemplate } from '../journal/cpa-templates/shop-col
 import { ShopCollectShopLegs } from '../journal/cpa-templates/shop-collect-shop-legs.template';
 import { shopCollectShopBalance } from '../interco-settlement/interco-typed-balance';
 import { EclStageReverseTemplate } from '../journal/cpa-templates/ecl-stage-reverse.template';
+import { Vat60dayReversalTemplate } from '../journal/cpa-templates/vat-60day-reversal.template';
 import { glContractBalance } from '../journal/gl-contract-balance';
 import {
   EARLY_PAYOFF_ROUNDING_TOLERANCE,
@@ -76,6 +77,10 @@ function earlyPayoffApprovalMoney(summary: unknown): unknown {
 @Injectable()
 export class ContractPaymentService {
   private readonly logger = new Logger(ContractPaymentService.name);
+  // 2026-10-17 — กลับ VAT บังคับ 60 วัน (21-2103) ของงวดที่ถูกตั้งไว้ขณะสัญญายังเดิน ตอนปิดยอดก่อนกำหนด (เดิมมีเฉพาะใน
+  // EarlyPayoffJP4Template ซึ่งไม่มีผู้เรียกใน production). สร้างภายในเพราะ spec 10 ไฟล์ `new` service นี้ด้วยมือ
+  private readonly vat60Reversal: Vat60dayReversalTemplate;
+
   constructor(
     private prisma: PrismaService,
     private productsService: ProductsService,
@@ -89,7 +94,9 @@ export class ContractPaymentService {
     private eclStageReverseTemplate: EclStageReverseTemplate,
     // การเดินทางของลูกค้า (2026-09-24): เขียน EARLY_PAYOFF หลัง commit — optional เพื่อให้ spec ที่ new ด้วยมือ 10 ไฟล์ไม่ต้องส่ง
     @Optional() private journeyEntries?: JourneyEntryWriter,
-  ) {}
+  ) {
+    this.vat60Reversal = new Vat60dayReversalTemplate(journalAutoService, prisma);
+  }
 
   /**
    * F-3-027 part 2/3 follow-up: Resolve FINANCE companyId for HP installment
@@ -587,6 +594,23 @@ export class ContractPaymentService {
             '42-1103': 'ค่าปรับชำระล่าช้า',
           };
 
+          // 2026-10-17 — งวดที่รอบภาษีขาย 60 วันตั้ง `Dr 11-2104 / Cr 21-2103` ไว้ขณะสัญญายังเดิน: ปิดยอดแล้วลูกหนี้ของงวดถูกล้าง
+          // ตามยอดในบัญชีด้วย JP4 และภาษีขายของมันลง 21-2101 ผ่านขาล้าง 21-2102 / 2A ⇒ กลับ `Dr 21-2103 / Cr 11-2104` ทุกงวดใน
+          // ธุรกรรมเดียวกันก่อนลง JP4 (Vat60dayReversalTemplate — idempotent · ล้างธง) ไม่งั้นคู่บัญชีนี้ค้างถาวรหลังปิดยอด และ
+          // ภ.พ.30 ที่รวม 21-2103 นับภาษีของงวดเดียวกันซ้ำ. บรรทัดของ JP4 ไม่เปลี่ยน (preview === posted) — เลขที่รายการกลับอยู่ใน
+          // metadata `vat60dayReversals`. ตัวกรอง truthy ในโค้ด เพราะ spec ที่ mock `findMany` คืนทุกแถวโดยไม่สนใจ where
+          const vat60Flagged = await tx.installmentSchedule.findMany({
+            where: { contractId: id, deletedAt: null, vat60dayJournalEntryId: { not: null } },
+            select: { id: true, vat60dayJournalEntryId: true },
+            orderBy: { installmentNo: 'asc' },
+          });
+          const vat60dayReversals: string[] = [];
+          for (const inst of vat60Flagged) {
+            if (!inst.vat60dayJournalEntryId) continue;
+            const reversal = await this.vat60Reversal.execute(inst.id, tx);
+            if (reversal) vat60dayReversals.push(reversal.entryNo);
+          }
+
           // Build metadata — stamp shop-collect flags when applicable
           const jeMetadata: Prisma.JsonObject = {
             tag: 'JP4',
@@ -604,6 +628,8 @@ export class ContractPaymentService {
             ...(epJe.advanceRelief.gt(0) ? { advanceRelief: epJe.advanceRelief.toFixed(2) } : {}),
             ...(epJe.creditRelief.gt(0) ? { creditRelief: epJe.creditRelief.toFixed(2) } : {}),
             ...(epJe.roundingGain.gt(0) ? { roundingGain: epJe.roundingGain.toFixed(2) } : {}),
+            // 2026-10-17 — เลขที่รายการกลับ VAT บังคับ 60 วัน (21-2103) ที่ลงพร้อมการปิดยอดนี้: stamp เฉพาะเมื่อมี
+            ...(vat60dayReversals.length > 0 ? { vat60dayReversals } : {}),
             // PR4 (ต8): ขากลับภาษีของเงินรับล่วงหน้าที่ยอดปิดหัก + stamp consume (advanceVatOutstanding ของสัญญาลดลงเท่านี้)
             ...(epJe.advanceVatReversal.gt(0)
               ? {

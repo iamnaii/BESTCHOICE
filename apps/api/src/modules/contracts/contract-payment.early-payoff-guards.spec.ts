@@ -130,6 +130,8 @@ describe('ContractPaymentService early-payoff guards (Wave 3 MED gap-fill)', () 
 
     // tx mock — only reached if the period-lock guard PASSES.
     tx = {
+      // 2026-10-17: earlyPayoff อ่านงวดที่มีธง VAT บังคับ 60 วันใน tx (กลับ 21-2103 ก่อนลง JP4) — ฟิกซ์เจอร์นี้ไม่มีธง
+      installmentSchedule: { findMany: jest.fn().mockResolvedValue([]) },
       contract: {
         findUnique: jest.fn().mockResolvedValue({
           status: 'ACTIVE',

@@ -8,6 +8,8 @@ import { InstallmentAccrual2ATemplate } from './installment-accrual-2a.template'
 import { BadDebtProvisionTemplate } from './bad-debt-provision.template';
 import { BadDebtWriteOffTemplate } from './bad-debt-writeoff.template';
 import { PaymentReceiptTemplate } from './payment-receipt.template';
+import { Vat60dayMandatoryTemplate } from './vat-60day-mandatory.template';
+import { glContractBalance } from '../gl-contract-balance';
 import { JournalAutoService } from '../journal-auto.service';
 
 const prisma = new PrismaClient();
@@ -550,5 +552,91 @@ describe('BadDebtWriteOffTemplate', () => {
       expect(await glBalance(c.id, '21-1103')).toBe('0.00');
       expect(await glBalance(c.id, '21-5101')).toBe('0.00');
     });
+  });
+});
+
+describe('BadDebtWriteOffTemplate — กลับรายการ VAT บังคับ 60 วัน (21-2103) ของสัญญาที่ตัดหนี้สูญ (2026-10-17)', () => {
+  const glBal = (contractId: string, code: string, side: 'dr' | 'cr') =>
+    glContractBalance(prisma as any, contractId, code, side);
+
+  it('งวดที่ถูกตั้ง 21-2103 ขณะ ACTIVE แล้วตัดหนี้สูญ → กลับ Dr 21-2103 / Cr 11-2104 ทุกงวดในธุรกรรมเดียวกัน · ธงถูกล้าง · เรียกซ้ำไม่กลับเพิ่ม', async () => {
+    const journal = await setup();
+    const c = await seedStandard17k12m(prisma);
+    await new ContractActivation1ATemplate(journal, prisma as any).execute(c.id);
+    const insts = await prisma.installmentSchedule.findMany({
+      where: { contractId: c.id },
+      orderBy: { installmentNo: 'asc' },
+    });
+    // งวด 1 ตั้งลูกหนี้งวดแล้ว (2A) · งวด 2 ยังไม่ตั้ง — ทั้งสองถูกรอบภาษีขาย 60 วันตั้ง 21-2103 ขณะสัญญายัง ACTIVE
+    await new InstallmentAccrual2ATemplate(journal, prisma as any).execute(insts[0].id);
+    const mandatory = new Vat60dayMandatoryTemplate(journal, prisma as any);
+    const m1 = await mandatory.execute(insts[0].id);
+    const m2 = await mandatory.execute(insts[1].id);
+    expect(m1?.entryNo).toBeTruthy();
+    expect(m2?.entryNo).toBeTruthy();
+    expect((await glBal(c.id, '21-2103', 'cr')).toFixed(2)).toBe('198.34');
+
+    // ตัดหนี้สูญในธุรกรรมของผู้เรียก — เหมือน BadDebtService.writeOffBadDebt
+    const tmpl = new BadDebtWriteOffTemplate(journal, prisma as any);
+    const result = await prisma.$transaction(
+      (tx) => tmpl.execute({ contractId: c.id, writeOffReason: 'ทดสอบกลับ 21-2103' }, tx),
+      { timeout: 30_000 },
+    );
+
+    expect((await glBal(c.id, '21-2103', 'cr')).toFixed(2)).toBe('0.00');
+    expect((await glBal(c.id, '11-2104', 'dr')).toFixed(2)).toBe('0.00');
+    const stillFlagged = await prisma.installmentSchedule.findMany({
+      where: { contractId: c.id, vat60dayJournalEntryId: { not: null } },
+    });
+    expect(stillFlagged).toHaveLength(0);
+
+    const reversals = await prisma.journalEntry.findMany({
+      where: {
+        AND: [
+          { metadata: { path: ['contractId'], equals: c.id } } as any,
+          { metadata: { path: ['tag'], equals: 'VAT60-REVERSAL' } } as any,
+        ],
+      },
+    });
+    expect(reversals).toHaveLength(2);
+    expect(reversals.map((r) => (r.metadata as any).reversesEntry).sort()).toEqual(
+      [m1!.entryNo, m2!.entryNo].sort(),
+    );
+
+    // รายการตัดหนี้สูญ stamp เลขที่รายการกลับ และบรรทัดของมันเองไม่มี 21-2103 / 11-2104
+    const wo = await prisma.journalEntry.findUniqueOrThrow({
+      where: { entryNumber: result.entryNo },
+      include: { lines: true },
+    });
+    expect([...((wo.metadata as any).vat60dayReversals as string[])].sort()).toEqual(
+      reversals.map((r) => r.entryNumber).sort(),
+    );
+    expect(
+      wo.lines.some((l) => l.accountCode === '21-2103' || l.accountCode === '11-2104'),
+    ).toBe(false);
+
+    // idempotent — เรียกซ้ำคืนรายการเดิม ไม่มีรายการกลับเพิ่ม
+    const second = await tmpl.execute({ contractId: c.id });
+    expect(second.entryNo).toBe(result.entryNo);
+    const reversalsAfter = await prisma.journalEntry.count({
+      where: { metadata: { path: ['tag'], equals: 'VAT60-REVERSAL' } } as any,
+    });
+    expect(reversalsAfter).toBe(2);
+  });
+
+  it('ไม่มีงวดที่ถูกตั้ง 21-2103 → metadata ของรายการตัดหนี้สูญไม่มีคีย์ vat60dayReversals (รูปเดิม)', async () => {
+    const journal = await setup();
+    const c = await seedStandard17k12m(prisma);
+    await new ContractActivation1ATemplate(journal, prisma as any).execute(c.id);
+    const result = await new BadDebtWriteOffTemplate(journal, prisma as any).execute({
+      contractId: c.id,
+    });
+    const wo = await prisma.journalEntry.findUniqueOrThrow({ where: { entryNumber: result.entryNo } });
+    expect(wo.metadata as any).not.toHaveProperty('vat60dayReversals');
+    expect(
+      await prisma.journalEntry.count({
+        where: { metadata: { path: ['tag'], equals: 'VAT60-REVERSAL' } } as any,
+      }),
+    ).toBe(0);
   });
 });

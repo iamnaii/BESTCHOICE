@@ -1,3 +1,4 @@
+import { ContactsController } from '../contacts/contacts.controller';
 import { CustomersController } from '../customers/customers.controller';
 import { Injectable, NestInterceptor, ExecutionContext, CallHandler } from '@nestjs/common';
 import { AuditService } from './audit.service';
@@ -80,7 +81,7 @@ export class AuditInterceptor implements NestInterceptor {
     );
   }
 
-  /** The two managed handlers own durable business proof in their transaction.
+  /** These four exact managed handlers own durable business proof in their transaction.
    * This outer best-effort record describes only the HTTP request outcome,
    * including denials and rollbacks, never contact values or exception text. */
   private contactRequestMetadata(
@@ -90,15 +91,22 @@ export class AuditInterceptor implements NestInterceptor {
     duration: number,
   ): Record<string, unknown> | undefined {
     const request = context.switchToHttp().getRequest();
-    if (request.user?.access?.managed !== true || context.getClass() !== CustomersController)
-      return undefined;
+    if (request.user?.access?.managed !== true) return undefined;
     const handler = context.getHandler();
+    const controller = context.getClass();
+    if (controller !== CustomersController && controller !== ContactsController) return undefined;
     const fields =
-      handler === CustomersController.prototype.fillContact
-        ? ['phone', 'nationalId', 'name', 'prefix', 'nickname', 'facebookName']
-        : handler === CustomersController.prototype.updateContact
-          ? ['newPhone', 'newLineId', 'markAsLost']
-          : undefined;
+      controller === ContactsController && handler === ContactsController.prototype.merge
+        ? ['primaryId', 'duplicateId']
+        : controller === CustomersController && handler === CustomersController.prototype.absorbInto
+          ? []
+          : controller === CustomersController &&
+              handler === CustomersController.prototype.fillContact
+            ? ['phone', 'nationalId', 'name', 'prefix', 'nickname', 'facebookName']
+            : controller === CustomersController &&
+                handler === CustomersController.prototype.updateContact
+              ? ['newPhone', 'newLineId', 'markAsLost']
+              : undefined;
     if (!fields) return undefined;
     const body = request.body && typeof request.body === 'object' ? request.body : {};
     const requestStatus = statusCode ?? context.switchToHttp().getResponse().statusCode;

@@ -665,7 +665,7 @@ it('canonical encrypted-only identity is not a fillable chat placeholder', async
   });
   await http('post', path(c.id, 'fill-contact'), fill()).expect(409);
 });
-it('only the two enrichment routes are added; absorb and document boundaries stay pending', () => {
+it('keeps reviewed enrichment and merge registrations while document boundaries stay pending', () => {
   for (const route of ['CustomersController.fillContact', 'CustomersController.updateContact']) {
     expect(PARTY_WRITE_ROUTES).toContain(route);
     expect(ACCESS_BOUNDARIES.has(route)).toBe(true);
@@ -674,11 +674,13 @@ it('only the two enrichment routes are added; absorb and document boundaries sta
       resolution: 'record',
     });
   }
+  for (const route of ['CustomersController.absorbInto', 'ContactsController.merge']) {
+    expect(PARTY_WRITE_ROUTES).toContain(route);
+    expect(ACCESS_BOUNDARIES.has(route)).toBe(true);
+  }
   for (const route of [
-    'CustomersController.absorbInto',
     'CustomersController.uploadDocument',
     'CustomersController.deleteDocument',
-    'ContactsController.merge',
   ])
     expect(ACCESS_BOUNDARIES.has(route)).toBe(false);
 });

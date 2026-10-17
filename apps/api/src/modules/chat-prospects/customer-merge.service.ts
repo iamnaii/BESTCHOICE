@@ -1,3 +1,5 @@
+import { domainAccessClient, onDomainCommit } from '../employee-access/access-execution-context';
+import { partyWriteExecution } from '../employee-access/access-party-source.service';
 import {
   BadRequestException,
   ConflictException,
@@ -56,11 +58,15 @@ export class CustomerMergeService {
   private systemUserId: string | null = null;
 
   constructor(
-    private readonly prisma: PrismaService,
+    private readonly basePrisma: PrismaService,
     private readonly audit: AuditService,
     private readonly journeyEntries: JourneyEntryWriter,
     private readonly journeyState: JourneyStateService,
   ) {}
+
+  private get prisma(): PrismaService {
+    return domainAccessClient(this.basePrisma);
+  }
 
   /**
    * Ruling R12 — AuditLog.userId มี FK จริงไป User.id (audit_logs_user_id_fkey) และ
@@ -132,6 +138,9 @@ export class CustomerMergeService {
     actor: MergeActor,
     opts: { allowPlaceholderTarget?: boolean } = {},
   ): Promise<AbsorbResult> {
+    const ctx = partyWriteExecution();
+    if (ctx && (actor.id !== ctx.snapshot.userId || actor.role === 'SYSTEM'))
+      throw new Error('Merge actor mismatch');
     if (placeholderId === targetId) throw new BadRequestException('รวมกับตัวเองไม่ได้');
     const { result, roomIds, sourceCopied } = await this.prisma.$transaction(async (tx) => {
       // ล็อกทั้งสองฝั่งเรียงตาม id กัน deadlock กับ absorb สวนทาง
@@ -235,7 +244,7 @@ export class CustomerMergeService {
       // (5) PLACEHOLDER_MERGED เขียนใน tx เดียวกับการรวม (ต่างจาก audit ที่ลงหลัง commit) — actorUserId เป็น null ได้
       //     จึงไม่ติด FK และไม่ถูกข้ามแบบ audit R12 · ล้มตรงไหน = rollback พร้อมกันทั้งใบ
       //     data มีแค่จำนวนห้อง — ห้ามใส่ข้อความแชท / เบอร์ / เลขบัตร / ที่อยู่ (PDPA)
-      await this.journeyEntries.recordInTx(tx, {
+      await this.journeyEntries.recordInTx(ctx?.client ?? tx, {
         customerId: targetId,
         kind: 'PLACEHOLDER_MERGED',
         occurredAt: mergedAt,
@@ -245,6 +254,14 @@ export class CustomerMergeService {
         dedupeKey: journeyDedupeKey('PLACEHOLDER_MERGED', placeholderId),
       });
 
+      if (ctx) await this.audit.log({
+        userId: ctx.snapshot.userId,
+        action: 'CUSTOMER_PLACEHOLDER_MERGED',
+        entity: 'customer',
+        entityId: targetId,
+        oldValue: { placeholderId },
+        newValue: { targetId },
+      }, ctx.client);
       return {
         result: { placeholderId, targetId, movedRooms, movedCreditChecks },
         roomIds: rooms.map((r) => r.id),
@@ -256,7 +273,9 @@ export class CustomerMergeService {
     // ถ้าเขียนใน tx ข้างบนแล้ว commit ล้ม จะเหลือ audit ของการรวมที่ไม่เกิดขึ้นจริง
     // Ruling R12 — actor SYSTEM ต้อง resolve เป็น userId จริงก่อนเขียน (ดู resolveSystemActorUserId)
     // resolve ไม่เจอ = ข้าม audit ทั้งใบ ไม่ปล่อยให้ FK พังเงียบใน AuditService.log
-    const auditUserId = actor.role === 'SYSTEM' ? await this.resolveSystemActorUserId() : actor.id;
+    const auditUserId = ctx
+      ? null
+      : actor.role === 'SYSTEM' ? await this.resolveSystemActorUserId() : actor.id;
     if (auditUserId) {
       await this.audit.log({
         userId: auditUserId,
@@ -266,22 +285,26 @@ export class CustomerMergeService {
         oldValue: { placeholderId },
         newValue: { roomIds, movedCreditChecks: result.movedCreditChecks, sourceCopied },
       });
-    } else {
+    } else if (!ctx) {
       this.logger.warn(
         `[merge] skipped audit for placeholder ${placeholderId} → ${targetId} — could not resolve system actor user id`,
       );
     }
     // (6) แคชสรุปคำนวณใหม่หลัง commit — ส่ง placeholderId ด้วย เพื่อเก็บแถวแคชที่ cron อาจเขียนแทรกระหว่างทรานแซกชัน
     //     ล้มแล้วการรวมไม่ล้ม: summary endpoint ตรวจสดแล้วคำนวณใหม่ในคำขอ + cron journey:recompute คืนนั้นซ่อมเอง (Plan 2 Task 9)
-    try {
-      await this.journeyState.recompute([targetId, placeholderId]);
-    } catch (err) {
-      this.logger.warn(`[merge] journey recompute failed for ${targetId}: ${err instanceof Error ? err.message : err}`);
-      Sentry.captureException(err, { tags: { kind: 'customer-journey' } });
-    }
-    this.logger.log(
-      `[merge] placeholder ${placeholderId} → ${targetId} rooms=${result.movedRooms} creditChecks=${result.movedCreditChecks} by ${actor.id}`,
-    );
+    const recompute = async () => {
+      try {
+        await this.journeyState.recompute([targetId, placeholderId]);
+      } catch (err) {
+        this.logger.warn(`[merge] journey recompute failed for ${targetId}: ${err instanceof Error ? err.message : err}`);
+        Sentry.captureException(err, { tags: { kind: 'customer-journey' } });
+      }
+      this.logger.log(ctx
+        ? `[merge] placeholder ${placeholderId} → ${targetId} by ${actor.id}`
+        : `[merge] placeholder ${placeholderId} → ${targetId} rooms=${result.movedRooms} creditChecks=${result.movedCreditChecks} by ${actor.id}`);
+    };
+    if (ctx) onDomainCommit(recompute);
+    else await recompute();
     return result;
   }
 

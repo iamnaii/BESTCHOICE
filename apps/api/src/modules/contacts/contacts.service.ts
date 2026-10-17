@@ -128,6 +128,8 @@ export class ContactsService {
     actor?: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     const { primaryId, duplicateId } = dto;
+    const ctx = partyWriteExecution();
+    if (ctx && actor?.userId !== ctx.snapshot.userId) throw new Error('Merge actor mismatch');
     if (primaryId === duplicateId) {
       throw new BadRequestException('ไม่สามารถรวมผู้ติดต่อกับตัวเองได้');
     }
@@ -211,9 +213,17 @@ export class ContactsService {
         userAgent: actor?.userAgent,
       };
 
+      if (ctx) await this.audit.log({
+        userId: ctx.snapshot.userId,
+        action: 'CONTACTS_MERGED',
+        entity: 'contact',
+        entityId: primaryId,
+        oldValue: { duplicateId },
+        newValue: { primaryId },
+      }, ctx.client);
       return { result: { primaryId, mergedRoles: unionRoles }, auditEntry: entry };
     });
-    await this.audit.log(auditEntry);
+    if (!ctx) await this.audit.log(auditEntry);
     return result;
   }
 

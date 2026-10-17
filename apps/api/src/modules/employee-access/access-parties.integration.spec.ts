@@ -36,6 +36,7 @@ const url = process.env.EMPLOYEE_ACCESS_TEST_DATABASE_URL;
 if (!url?.includes('/bc_access_task2?host=/tmp/bc-access-parties.'))
   throw new Error('Owned isolated database required');
 const db = new PrismaClient({ datasources: { db: { url } } });
+const testRun = randomUUID();
 const snapshots = new AccessSnapshotService(db as PrismaService);
 let app: INestApplication, actor: string, denied: string, branchA: string, branchB: string;
 async function user() {
@@ -72,7 +73,22 @@ async function grant(
   });
 }
 function http(method: 'post' | 'patch' | 'delete', path: string, body?: object, id = actor) {
-  const call = request(app.getHttpServer())[method](path).set('x-test-user', id);
+  const client = request(app.getHttpServer());
+  const call = client[method](path)
+    .set('x-test-user', id)
+    .expect('x-owned-basic-app', testRun)
+    .on('response', (response) => {
+      if (response.headers['x-owned-basic-app'] !== testRun)
+        console.error(
+          'OWNED_HTTP_MARKER_MISMATCH',
+          JSON.stringify({
+            status: response.status,
+            marker: response.headers['x-owned-basic-app'] ?? null,
+            server: response.headers.server ?? null,
+            contentType: response.headers['content-type'] ?? null,
+          }),
+        );
+    });
   call.on('response', (res: request.Response) => {
     if (res.status === 404) console.error('Unexpected fixture 404', method, path, res.body);
   });
@@ -161,8 +177,18 @@ beforeAll(async () => {
     .useValue({ canActivate: () => true })
     .compile();
   app = module.createNestApplication();
+  app.use(
+    (
+      _req: unknown,
+      res: { setHeader: (name: string, value: string) => void },
+      next: () => void,
+    ) => {
+      res.setHeader('x-owned-basic-app', testRun);
+      next();
+    },
+  );
   app.useGlobalPipes(new ValidationPipe({ transform: true, whitelist: true }));
-  await app.init();
+  await app.listen(0, '127.0.0.1');
 }, 60000);
 afterAll(async () => {
   await app?.close();

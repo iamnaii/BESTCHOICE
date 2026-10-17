@@ -49,6 +49,7 @@ const db = new PrismaClient({
 });
 let capturedQueries: string[] | undefined;
 db.$on('query', (event) => capturedQueries?.push(event.query));
+const testRun = randomUUID();
 const snapshots = new AccessSnapshotService(db as PrismaService);
 let app: INestApplication, actor: string, denied: string, branchA: string, branchB: string;
 async function user() {
@@ -90,7 +91,22 @@ function http(
   body?: object,
   id = actor,
 ) {
-  const call = request(app.getHttpServer())[method](path).set('x-test-user', id);
+  const client = request(app.getHttpServer());
+  const call = client[method](path)
+    .set('x-test-user', id)
+    .expect('x-owned-query-app', testRun)
+    .on('response', (response) => {
+      if (response.headers['x-owned-query-app'] !== testRun)
+        console.error(
+          'OWNED_HTTP_MARKER_MISMATCH',
+          JSON.stringify({
+            status: response.status,
+            marker: response.headers['x-owned-query-app'] ?? null,
+            server: response.headers.server ?? null,
+            contentType: response.headers['content-type'] ?? null,
+          }),
+        );
+    });
   return body ? call.send(body) : call;
 }
 let sequence = 10000;
@@ -170,8 +186,18 @@ beforeAll(async () => {
     .useValue({ canActivate: () => true })
     .compile();
   app = module.createNestApplication();
+  app.use(
+    (
+      _req: unknown,
+      res: { setHeader: (name: string, value: string) => void },
+      next: () => void,
+    ) => {
+      res.setHeader('x-owned-query-app', testRun);
+      next();
+    },
+  );
   app.useGlobalPipes(new ValidationPipe({ transform: true, whitelist: true }));
-  await app.init();
+  await app.listen(0, '127.0.0.1');
 }, 60000);
 afterAll(async () => {
   await app?.close();
@@ -798,11 +824,11 @@ it('honors over-one-year absence against authorized purchases, not an old-row ex
   expect((await http('get', path, undefined, id).expect(200)).body.total).toBe(0);
 });
 
-it('reconciles exactly six reviewed writer and six actual query registrations without catalog credit', () => {
+it('reconciles exactly eight reviewed writer and six actual query registrations without catalog credit', () => {
   expect(PARTY_QUERY_ROUTES).toHaveLength(6);
-  expect(PARTY_WRITE_ROUTES).toHaveLength(6);
+  expect(PARTY_WRITE_ROUTES).toHaveLength(8);
   const routes = [...PARTY_WRITE_ROUTES, ...PARTY_QUERY_ROUTES];
-  expect(new Set(routes).size).toBe(12);
+  expect(new Set(routes).size).toBe(14);
   for (const route of routes) {
     expect(ACCESS_BOUNDARIES.has(route)).toBe(true);
     expect(ACCESS_POLICIES[route].classification).toBe('staff');

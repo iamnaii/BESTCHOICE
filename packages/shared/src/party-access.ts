@@ -48,3 +48,13 @@ export interface CustomerUpdateContactAcknowledgement extends CustomerFillContac
   /** null also covers same-primary repair; changedFields still reports that write. */
   phoneStoredAs: 'PRIMARY' | 'SECONDARY' | null;
 }
+
+/** Managed merges acknowledge identities only; refresh separately authorized reads. */
+export interface CustomerAbsorbAcknowledgement {
+  placeholderId: string;
+  targetId: string;
+}
+export interface ContactMergeAcknowledgement {
+  primaryId: string;
+  duplicateId: string;
+}

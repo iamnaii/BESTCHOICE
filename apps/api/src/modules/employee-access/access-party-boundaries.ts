@@ -1,3 +1,4 @@
+import { PartyMergeSources } from './access-party-merge-source';
 import { ModuleRef } from '@nestjs/core';
 import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
@@ -22,6 +23,8 @@ export const PARTY_WRITE_ROUTES = [
   'CustomersController.fillContact',
   'CustomersController.updateContact',
   'ContactsController.ensureRole',
+  'CustomersController.absorbInto',
+  'ContactsController.merge',
 ] as const;
 export const PARTY_QUERY_ROUTES = [
   'CustomersController.findAll',
@@ -172,6 +175,16 @@ export class AccessPartyBoundaries implements OnModuleInit {
                       role: actor.role,
                       access: ctx.snapshot,
                     };
+                    if (route === 'CustomersController.absorbInto')
+                      await new PartyMergeSources(this.sources, this.resources).absorb(
+                        String(req.params?.id ?? ''),
+                        String(req.params?.targetId ?? ''),
+                      );
+                    if (route === 'ContactsController.merge')
+                      await new PartyMergeSources(this.sources, this.resources).mergeContacts(
+                        String(req.body?.primaryId ?? ''),
+                        String(req.body?.duplicateId ?? ''),
+                      );
                     const result = (await handler()) as Record<string, unknown>;
                     if (
                       route === 'CustomersController.fillContact' ||
@@ -184,6 +197,10 @@ export class AccessPartyBoundaries implements OnModuleInit {
                           ? { phoneStoredAs: result.phoneStoredAs }
                           : {}),
                       };
+                    if (route === 'CustomersController.absorbInto')
+                      return { placeholderId: result.placeholderId, targetId: result.targetId };
+                    if (route === 'ContactsController.merge')
+                      return { primaryId: result.primaryId, duplicateId: req.body?.duplicateId };
                     // Mutation acknowledgement never doubles as a broad party/history read.
                     return route === 'ContactsController.ensureRole'
                       ? {

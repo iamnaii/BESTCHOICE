@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useId as useUiFieldId, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { ChevronLeft, ChevronRight, FileSpreadsheet, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -60,6 +60,7 @@ export default function PaymentSummary({
   summary,
   loadingSummary,
 }: PaymentSummaryProps) {
+  const uiFieldId = useUiFieldId();
   // "วันไหนมีสมุดบ้าง" — chips ของเดือนที่เลือก. keyed by month so stepping days
   // within one month reuses the cache; invalidatePaymentQueries refreshes it
   // after a void/record so the chips never go stale.
@@ -146,7 +147,7 @@ export default function PaymentSummary({
       {/* Date Selector + วันที่มีรายการ (owner 2026-08-19: เดิมต้องเดาวันเอง) */}
       <div className="mb-6 space-y-2">
         <div className="flex items-center gap-2 flex-wrap">
-          <label className="text-sm font-medium text-foreground">วันที่:</label>
+          <label htmlFor={`${uiFieldId}-1`} className="text-sm font-medium text-foreground">วันที่:</label>
           <button
             type="button"
             aria-label="วันก่อนหน้า"
@@ -155,7 +156,7 @@ export default function PaymentSummary({
           >
             <ChevronLeft className="size-4" />
           </button>
-          <ThaiDateInput
+          <ThaiDateInput id={`${uiFieldId}-1`}
             value={summaryDate}
             onChange={(e) => onDateChange(e.target.value)}
             className="px-3 py-2 border border-input rounded-lg text-sm bg-background outline-hidden focus:ring-2 focus:ring-ring/30"

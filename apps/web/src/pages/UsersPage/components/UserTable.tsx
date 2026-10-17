@@ -236,7 +236,7 @@ export function UserTable({
             onClick={(e) => e.stopPropagation()}
           >
             <button
-              className="inline-flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+              className="inline-flex size-11 lg:size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
               aria-label="เมนูการทำงาน"
             >
               <MoreVertical className="size-4" />
@@ -277,7 +277,7 @@ export function UserTable({
   const filterToolbar = (
     <div className="flex items-center gap-2 flex-wrap">
       <Select value={roleFilter} onValueChange={setRoleFilter}>
-        <SelectTrigger className="h-9 w-auto min-w-[140px]">
+        <SelectTrigger aria-label="ตำแหน่ง" className="h-9 w-auto min-w-[140px]">
           <SelectValue placeholder="ตำแหน่งทั้งหมด" />
         </SelectTrigger>
         <SelectContent>
@@ -290,7 +290,7 @@ export function UserTable({
         </SelectContent>
       </Select>
       <Select value={branchFilter} onValueChange={setBranchFilter}>
-        <SelectTrigger className="h-9 w-auto min-w-[140px]">
+        <SelectTrigger aria-label="สาขา" className="h-9 w-auto min-w-[140px]">
           <SelectValue placeholder="สาขาทั้งหมด" />
         </SelectTrigger>
         <SelectContent>
@@ -307,7 +307,7 @@ export function UserTable({
         value={activeFilter}
         onValueChange={(v) => setActiveFilter(v as 'ALL' | 'ACTIVE' | 'INACTIVE')}
       >
-        <SelectTrigger className="h-9 w-auto min-w-[120px]">
+        <SelectTrigger aria-label="สถานะผู้ใช้" className="h-9 w-auto min-w-[120px]">
           <SelectValue />
         </SelectTrigger>
         <SelectContent>

@@ -4,7 +4,12 @@ import { toast } from 'sonner';
 import api, { getErrorMessage } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { NativeSelect } from '@/components/ui/native-select';
 import { thaiTime } from '@/components/appointments/types';
+import {
+  appointmentControlClass,
+  appointmentFieldClass,
+} from '@/components/appointments/field-styles';
 interface Window {
   id: string;
   staffUserId: string;
@@ -63,7 +68,7 @@ export default function Schedule({
     onError: (e) => toast.error(getErrorMessage(e)),
   });
   return (
-    <section className="space-y-4 rounded-xl border border-border bg-card p-5">
+    <section className="min-w-0 space-y-4 rounded-xl border border-border bg-card p-4 sm:p-5">
       <h2 className="font-semibold">ตารางพนักงานรับนัด</h2>
       <p className="text-sm text-muted-foreground">
         ระบุช่วงที่รับนัดได้จริง เว้นช่วงพักด้วยการแยกช่วงเวลา คิวสุดท้ายเริ่ม 18:30 น.
@@ -76,15 +81,15 @@ export default function Schedule({
           mutation.mutate({ action: 'save' });
         }}
       >
-        <label className="space-y-1 text-sm">
-          พนักงาน
-          <select
+        <label className={`${appointmentFieldClass} w-full sm:w-64`}>
+          <span>พนักงาน</span>
+          <NativeSelect
             aria-label="พนักงานรับนัด"
             required
             value={employee}
             disabled={!!edit}
             onChange={(e) => setEmployee(e.target.value)}
-            className="block h-10 rounded-md border border-input bg-background px-3"
+            className={appointmentControlClass}
           >
             <option value="">เลือกพนักงาน</option>
             {staff
@@ -94,11 +99,12 @@ export default function Schedule({
                   {s.name}
                 </option>
               ))}
-          </select>
+          </NativeSelect>
         </label>
-        <label className="space-y-1 text-sm">
-          เริ่ม
+        <label className={`${appointmentFieldClass} w-full sm:w-40`}>
+          <span>เริ่ม</span>
           <Input
+            className={appointmentControlClass}
             aria-label="เริ่มรับนัด"
             type="time"
             value={start}
@@ -106,9 +112,10 @@ export default function Schedule({
             required
           />
         </label>
-        <label className="space-y-1 text-sm">
-          สิ้นสุด
+        <label className={`${appointmentFieldClass} w-full sm:w-40`}>
+          <span>สิ้นสุด</span>
           <Input
+            className={appointmentControlClass}
             aria-label="สิ้นสุดรับนัด"
             type="time"
             value={end}
@@ -116,7 +123,7 @@ export default function Schedule({
             required
           />
         </label>
-        <Button disabled={mutation.isPending || !branchId || !employee}>
+        <Button className="min-h-11" disabled={mutation.isPending || !branchId || !employee}>
           {edit ? 'บันทึกการแก้ไข' : 'เพิ่มช่วงเวลา'}
         </Button>
         {edit && (
@@ -126,9 +133,10 @@ export default function Schedule({
         )}
       </form>
       <div className="flex flex-wrap items-end gap-2">
-        <label className="text-sm">
-          คัดลอกตารางวันนี้ไปวันที่
+        <label className={`${appointmentFieldClass} w-full sm:w-64`}>
+          <span>คัดลอกตารางวันนี้ไปวันที่</span>
           <Input
+            className={appointmentControlClass}
             aria-label="วันที่ปลายทาง"
             type="date"
             value={copyDay}
@@ -136,8 +144,9 @@ export default function Schedule({
           />
         </label>
         <Button
+          className="min-h-11"
           variant="outline"
-          disabled={!copyDay || mutation.isPending}
+          disabled={!branchId || !copyDay || mutation.isPending}
           onClick={() => mutation.mutate({ action: 'copy' })}
         >
           คัดลอกทั้งวัน

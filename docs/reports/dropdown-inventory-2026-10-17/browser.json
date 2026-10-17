@@ -1,0 +1,738 @@
+{
+  "scope": "read-only UI sample with actual API and disposable DB; no data submission; not every legacy field clicked",
+  "results": [
+    {
+      "name": "sales",
+      "route": "/sales?zone=shop",
+      "actualURL": "http://127.0.0.1:51763/sales?zone=shop",
+      "heading": "รายการขาย",
+      "width": 1440,
+      "status": "READ_ONLY_RENDERED",
+      "controls": [
+        {
+          "label": "ประเภทการขาย",
+          "name": "",
+          "slot": null,
+          "appearance": "auto",
+          "paddingRight": "12px",
+          "height": 44,
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif",
+          "fontSize": "14px",
+          "selected": "ทุกประเภท",
+          "hasDecorativeArrow": false,
+          "x": 440,
+          "width": 309
+        },
+        {
+          "label": "วิธีชำระ",
+          "name": "",
+          "slot": null,
+          "appearance": "auto",
+          "paddingRight": "12px",
+          "height": 44,
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif",
+          "fontSize": "14px",
+          "selected": "ทุกวิธีชำระ",
+          "hasDecorativeArrow": false,
+          "x": 761,
+          "width": 309
+        },
+        {
+          "label": "สถานะสัญญา",
+          "name": "",
+          "slot": null,
+          "appearance": "auto",
+          "paddingRight": "12px",
+          "height": 44,
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif",
+          "fontSize": "14px",
+          "selected": "ทุกสถานะสัญญา",
+          "hasDecorativeArrow": false,
+          "x": 1082,
+          "width": 309
+        },
+        {
+          "label": "พนักงานขาย",
+          "name": "",
+          "slot": null,
+          "appearance": "auto",
+          "paddingRight": "12px",
+          "height": 44,
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif",
+          "fontSize": "14px",
+          "selected": "ทุกพนักงาน",
+          "hasDecorativeArrow": false,
+          "x": 119,
+          "width": 330
+        },
+        {
+          "label": "สาขา",
+          "name": "",
+          "slot": null,
+          "appearance": "auto",
+          "paddingRight": "12px",
+          "height": 44,
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif",
+          "fontSize": "14px",
+          "selected": "ทุกสาขา",
+          "hasDecorativeArrow": false,
+          "x": 461,
+          "width": 277
+        }
+      ]
+    },
+    {
+      "name": "stock",
+      "route": "/stock/products?zone=shop",
+      "actualURL": "http://127.0.0.1:51763/stock/products?zone=shop",
+      "heading": "รายการสินค้า",
+      "width": 1440,
+      "status": "READ_ONLY_RENDERED",
+      "controls": [
+        {
+          "label": "เครื่องไทย / เครื่องนอก",
+          "name": "",
+          "slot": null,
+          "appearance": "auto",
+          "paddingRight": "12px",
+          "height": 44,
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif",
+          "fontSize": "14px",
+          "selected": "ไทย/นอกทั้งหมด",
+          "hasDecorativeArrow": false,
+          "x": 356.671875,
+          "width": 160
+        },
+        {
+          "label": "สาขา",
+          "name": "",
+          "slot": null,
+          "appearance": "auto",
+          "paddingRight": "12px",
+          "height": 44,
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif",
+          "fontSize": "14px",
+          "selected": "ทุกสาขา",
+          "hasDecorativeArrow": false,
+          "x": 1217,
+          "width": 174
+        }
+      ]
+    },
+    {
+      "name": "contracts",
+      "route": "/contracts?zone=fin",
+      "actualURL": "http://127.0.0.1:51763/contracts?zone=fin",
+      "heading": "สัญญาผ่อนชำระ",
+      "width": 1440,
+      "status": "READ_ONLY_RENDERED",
+      "controls": [
+        {
+          "label": "ขอบเขตการส่งออก",
+          "name": "",
+          "slot": null,
+          "appearance": "auto",
+          "paddingRight": "8px",
+          "height": 44,
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif",
+          "fontSize": "14px",
+          "selected": "ตามตัวกรองทั้งหมด",
+          "hasDecorativeArrow": true,
+          "x": 1005.265625,
+          "width": 151
+        },
+        {
+          "label": "สถานะสัญญา",
+          "name": "",
+          "slot": null,
+          "appearance": "auto",
+          "paddingRight": "12px",
+          "height": 44,
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif",
+          "fontSize": "14px",
+          "selected": "ทุกสถานะ",
+          "hasDecorativeArrow": true,
+          "x": 734.328125,
+          "width": 121
+        },
+        {
+          "label": "สาขา",
+          "name": "",
+          "slot": null,
+          "appearance": "auto",
+          "paddingRight": "12px",
+          "height": 44,
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif",
+          "fontSize": "14px",
+          "selected": "ทุกสาขา",
+          "hasDecorativeArrow": true,
+          "x": 867.328125,
+          "width": 277
+        },
+        {
+          "label": "ขั้นตอนสัญญา",
+          "name": "",
+          "slot": null,
+          "appearance": "auto",
+          "paddingRight": "12px",
+          "height": 44,
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif",
+          "fontSize": "14px",
+          "selected": "ทุก Workflow",
+          "hasDecorativeArrow": true,
+          "x": 1265,
+          "width": 130
+        },
+        {
+          "label": "แสดงต่อหน้า",
+          "name": "",
+          "slot": "native-select",
+          "appearance": "none",
+          "paddingRight": "40px",
+          "height": 44,
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif",
+          "fontSize": "14px",
+          "selected": "50",
+          "hasDecorativeArrow": true,
+          "x": 1300,
+          "width": 96
+        }
+      ]
+    },
+    {
+      "name": "finance-receivable",
+      "route": "/finance-receivable?zone=shop",
+      "actualURL": "http://127.0.0.1:51763/finance-receivable?zone=shop",
+      "heading": "เงินรับจากไฟแนนซ์",
+      "width": 1440,
+      "status": "READ_ONLY_RENDERED",
+      "controls": [
+        {
+          "label": "สถานะ",
+          "name": "",
+          "slot": null,
+          "appearance": "auto",
+          "paddingRight": "12px",
+          "height": 44,
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif",
+          "fontSize": "14px",
+          "selected": "ทั้งหมด",
+          "hasDecorativeArrow": false,
+          "x": 115,
+          "width": 130
+        },
+        {
+          "label": "ไฟแนนซ์",
+          "name": "",
+          "slot": null,
+          "appearance": "auto",
+          "paddingRight": "12px",
+          "height": 44,
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif",
+          "fontSize": "14px",
+          "selected": "ทั้งหมด",
+          "hasDecorativeArrow": false,
+          "x": 261,
+          "width": 130
+        },
+        {
+          "label": "สาขา",
+          "name": "",
+          "slot": null,
+          "appearance": "auto",
+          "paddingRight": "12px",
+          "height": 44,
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif",
+          "fontSize": "14px",
+          "selected": "ทุกสาขา",
+          "hasDecorativeArrow": false,
+          "x": 407,
+          "width": 277
+        }
+      ]
+    },
+    {
+      "name": "chat-analytics",
+      "route": "/chat-analytics?zone=fin",
+      "actualURL": "http://127.0.0.1:51763/chat-analytics?zone=fin",
+      "heading": "ภาพรวมงานแชท",
+      "width": 1440,
+      "status": "READ_ONLY_RENDERED",
+      "controls": []
+    },
+    {
+      "name": "pricing",
+      "route": "/settings/products/pricing?zone=shop",
+      "actualURL": "http://127.0.0.1:51763/settings/products/pricing?zone=shop",
+      "heading": "ราคาตั้งต้น",
+      "width": 1440,
+      "status": "READ_ONLY_RENDERED",
+      "controls": [
+        {
+          "label": "เครื่องไทย / เครื่องนอก",
+          "name": "",
+          "slot": null,
+          "appearance": "auto",
+          "paddingRight": "12px",
+          "height": 44,
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif",
+          "fontSize": "14px",
+          "selected": "ไทย/นอกทั้งหมด",
+          "hasDecorativeArrow": false,
+          "x": 292,
+          "width": 143
+        },
+        {
+          "label": "ประเภทสินค้า",
+          "name": "",
+          "slot": null,
+          "appearance": "auto",
+          "paddingRight": "12px",
+          "height": 44,
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif",
+          "fontSize": "14px",
+          "selected": "ทุกประเภท",
+          "hasDecorativeArrow": false,
+          "x": 447,
+          "width": 108
+        }
+      ]
+    },
+    {
+      "name": "todos",
+      "route": "/todos?zone=shop",
+      "width": 1440,
+      "status": "NOT_VERIFIED",
+      "error": "expect(received).toBe(expected) // Object.is equality\n\nExpected: \"/todos\"\nReceived: \"/\"\n\nCall Log:\n- Timeout 1000ms exceeded while waiting on the predicate"
+    },
+    {
+      "name": "users-invite",
+      "route": "/users?zone=shop",
+      "actualURL": "http://127.0.0.1:51763/users?zone=shop",
+      "heading": "จัดการผู้ใช้",
+      "width": 1440,
+      "status": "READ_ONLY_RENDERED",
+      "controls": [
+        {
+          "label": "ตำแหน่ง *",
+          "name": "",
+          "slot": null,
+          "appearance": "auto",
+          "paddingRight": "12px",
+          "height": 44,
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif",
+          "fontSize": "14px",
+          "selected": "พนักงานขาย",
+          "hasDecorativeArrow": false,
+          "x": 409,
+          "width": 303
+        },
+        {
+          "label": "สาขา",
+          "name": "",
+          "slot": null,
+          "appearance": "auto",
+          "paddingRight": "12px",
+          "height": 44,
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif",
+          "fontSize": "14px",
+          "selected": "ไม่ระบุ (ทุกสาขา)",
+          "hasDecorativeArrow": false,
+          "x": 728,
+          "width": 303
+        }
+      ]
+    },
+    {
+      "name": "customer-create",
+      "route": "/customers?zone=shop",
+      "actualURL": "http://127.0.0.1:51763/customers?zone=shop",
+      "heading": "ลูกค้า",
+      "width": 1440,
+      "status": "READ_ONLY_RENDERED",
+      "controls": [
+        {
+          "label": "คำนำหน้า *",
+          "name": "prefix",
+          "slot": "form-control",
+          "appearance": "auto",
+          "paddingRight": "12px",
+          "height": 44,
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif",
+          "fontSize": "14px",
+          "selected": "-- เลือก --",
+          "hasDecorativeArrow": false,
+          "x": 430,
+          "width": 182.65625
+        }
+      ]
+    },
+    {
+      "name": "sales",
+      "route": "/sales?zone=shop",
+      "actualURL": "http://127.0.0.1:51763/sales?zone=shop",
+      "heading": "รายการขาย",
+      "width": 390,
+      "status": "READ_ONLY_RENDERED",
+      "controls": [
+        {
+          "label": "ประเภทการขาย",
+          "name": "",
+          "slot": null,
+          "appearance": "auto",
+          "paddingRight": "12px",
+          "height": 44,
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif",
+          "fontSize": "16px",
+          "selected": "ทุกประเภท",
+          "hasDecorativeArrow": false,
+          "x": 37,
+          "width": 316
+        },
+        {
+          "label": "วิธีชำระ",
+          "name": "",
+          "slot": null,
+          "appearance": "auto",
+          "paddingRight": "12px",
+          "height": 44,
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif",
+          "fontSize": "16px",
+          "selected": "ทุกวิธีชำระ",
+          "hasDecorativeArrow": false,
+          "x": 37,
+          "width": 316
+        },
+        {
+          "label": "สถานะสัญญา",
+          "name": "",
+          "slot": null,
+          "appearance": "auto",
+          "paddingRight": "12px",
+          "height": 44,
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif",
+          "fontSize": "16px",
+          "selected": "ทุกสถานะสัญญา",
+          "hasDecorativeArrow": false,
+          "x": 37,
+          "width": 316
+        },
+        {
+          "label": "พนักงานขาย",
+          "name": "",
+          "slot": null,
+          "appearance": "auto",
+          "paddingRight": "12px",
+          "height": 44,
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif",
+          "fontSize": "16px",
+          "selected": "ทุกพนักงาน",
+          "hasDecorativeArrow": false,
+          "x": 37,
+          "width": 316
+        },
+        {
+          "label": "สาขา",
+          "name": "",
+          "slot": null,
+          "appearance": "auto",
+          "paddingRight": "12px",
+          "height": 44,
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif",
+          "fontSize": "16px",
+          "selected": "ทุกสาขา",
+          "hasDecorativeArrow": false,
+          "x": 37,
+          "width": 310
+        }
+      ]
+    },
+    {
+      "name": "stock",
+      "route": "/stock/products?zone=shop",
+      "actualURL": "http://127.0.0.1:51763/stock/products?zone=shop",
+      "heading": "รายการสินค้า",
+      "width": 390,
+      "status": "READ_ONLY_RENDERED",
+      "controls": [
+        {
+          "label": "เครื่องไทย / เครื่องนอก",
+          "name": "",
+          "slot": null,
+          "appearance": "auto",
+          "paddingRight": "12px",
+          "height": 44,
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif",
+          "fontSize": "16px",
+          "selected": "ไทย/นอกทั้งหมด",
+          "hasDecorativeArrow": false,
+          "x": 33,
+          "width": 324
+        },
+        {
+          "label": "เรียงตาม",
+          "name": "",
+          "slot": null,
+          "appearance": "auto",
+          "paddingRight": "12px",
+          "height": 44,
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif",
+          "fontSize": "16px",
+          "selected": "ล่าสุด",
+          "hasDecorativeArrow": false,
+          "x": 33,
+          "width": 324
+        }
+      ]
+    },
+    {
+      "name": "contracts",
+      "route": "/contracts?zone=fin",
+      "actualURL": "http://127.0.0.1:51763/contracts?zone=fin",
+      "heading": "สัญญาผ่อนชำระ",
+      "width": 390,
+      "status": "READ_ONLY_RENDERED",
+      "controls": [
+        {
+          "label": "ขอบเขตการส่งออก",
+          "name": "",
+          "slot": null,
+          "appearance": "auto",
+          "paddingRight": "8px",
+          "height": 44,
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif",
+          "fontSize": "16px",
+          "selected": "ตามตัวกรองทั้งหมด",
+          "hasDecorativeArrow": true,
+          "x": 16,
+          "width": 168
+        },
+        {
+          "label": "สถานะสัญญา",
+          "name": "",
+          "slot": null,
+          "appearance": "auto",
+          "paddingRight": "12px",
+          "height": 44,
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif",
+          "fontSize": "16px",
+          "selected": "ทุกสถานะ",
+          "hasDecorativeArrow": true,
+          "x": 33,
+          "width": 324
+        },
+        {
+          "label": "สาขา",
+          "name": "",
+          "slot": null,
+          "appearance": "auto",
+          "paddingRight": "12px",
+          "height": 44,
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif",
+          "fontSize": "16px",
+          "selected": "ทุกสาขา",
+          "hasDecorativeArrow": true,
+          "x": 33,
+          "width": 324
+        },
+        {
+          "label": "ขั้นตอนสัญญา",
+          "name": "",
+          "slot": null,
+          "appearance": "auto",
+          "paddingRight": "12px",
+          "height": 44,
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif",
+          "fontSize": "16px",
+          "selected": "ทุก Workflow",
+          "hasDecorativeArrow": true,
+          "x": 33,
+          "width": 324
+        },
+        {
+          "label": "แสดงต่อหน้า",
+          "name": "",
+          "slot": "native-select",
+          "appearance": "none",
+          "paddingRight": "40px",
+          "height": 44,
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif",
+          "fontSize": "16px",
+          "selected": "50",
+          "hasDecorativeArrow": true,
+          "x": 174.625,
+          "width": 96
+        }
+      ]
+    },
+    {
+      "name": "finance-receivable",
+      "route": "/finance-receivable?zone=shop",
+      "actualURL": "http://127.0.0.1:51763/finance-receivable?zone=shop",
+      "heading": "เงินรับจากไฟแนนซ์",
+      "width": 390,
+      "status": "READ_ONLY_RENDERED",
+      "controls": [
+        {
+          "label": "สถานะ",
+          "name": "",
+          "slot": null,
+          "appearance": "auto",
+          "paddingRight": "12px",
+          "height": 44,
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif",
+          "fontSize": "16px",
+          "selected": "ทั้งหมด",
+          "hasDecorativeArrow": false,
+          "x": 33,
+          "width": 133
+        },
+        {
+          "label": "ไฟแนนซ์",
+          "name": "",
+          "slot": null,
+          "appearance": "auto",
+          "paddingRight": "12px",
+          "height": 44,
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif",
+          "fontSize": "16px",
+          "selected": "ทั้งหมด",
+          "hasDecorativeArrow": false,
+          "x": 182,
+          "width": 130
+        },
+        {
+          "label": "สาขา",
+          "name": "",
+          "slot": null,
+          "appearance": "auto",
+          "paddingRight": "12px",
+          "height": 44,
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif",
+          "fontSize": "16px",
+          "selected": "ทุกสาขา",
+          "hasDecorativeArrow": false,
+          "x": 33,
+          "width": 310
+        }
+      ]
+    },
+    {
+      "name": "chat-analytics",
+      "route": "/chat-analytics?zone=fin",
+      "actualURL": "http://127.0.0.1:51763/chat-analytics?zone=fin",
+      "heading": "ภาพรวมงานแชท",
+      "width": 390,
+      "status": "READ_ONLY_RENDERED",
+      "controls": []
+    },
+    {
+      "name": "pricing",
+      "route": "/settings/products/pricing?zone=shop",
+      "actualURL": "http://127.0.0.1:51763/settings/products/pricing?zone=shop",
+      "heading": "ราคาตั้งต้น",
+      "width": 390,
+      "status": "READ_ONLY_RENDERED",
+      "controls": [
+        {
+          "label": "เครื่องไทย / เครื่องนอก",
+          "name": "",
+          "slot": null,
+          "appearance": "auto",
+          "paddingRight": "12px",
+          "height": 44,
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif",
+          "fontSize": "16px",
+          "selected": "ไทย/นอกทั้งหมด",
+          "hasDecorativeArrow": false,
+          "x": 16,
+          "width": 157
+        },
+        {
+          "label": "ประเภทสินค้า",
+          "name": "",
+          "slot": null,
+          "appearance": "auto",
+          "paddingRight": "12px",
+          "height": 44,
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif",
+          "fontSize": "16px",
+          "selected": "ทุกประเภท",
+          "hasDecorativeArrow": false,
+          "x": 185,
+          "width": 117
+        }
+      ]
+    },
+    {
+      "name": "todos",
+      "route": "/todos?zone=shop",
+      "width": 390,
+      "status": "NOT_VERIFIED",
+      "error": "expect(locator).toBeVisible() failed\n\nLocator: getByRole('heading', { name: 'งาน / สิ่งที่ต้องทำ', exact: true }).first()\nExpected: visible\nTimeout: 6000ms\nError: element(s) not found\n\nCall log:\n  - Expect \"to.be.visible\" with timeout 6000ms\n  - waiting for getByRole('heading', { name: 'งาน / สิ่งที่ต้องทำ', exact: true }).first()\n"
+    },
+    {
+      "name": "users-invite",
+      "route": "/users?zone=shop",
+      "actualURL": "http://127.0.0.1:51763/users?zone=shop",
+      "heading": "จัดการผู้ใช้",
+      "width": 390,
+      "status": "READ_ONLY_RENDERED",
+      "controls": [
+        {
+          "label": "ตำแหน่ง *",
+          "name": "",
+          "slot": null,
+          "appearance": "auto",
+          "paddingRight": "12px",
+          "height": 44,
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif",
+          "fontSize": "16px",
+          "selected": "พนักงานขาย",
+          "hasDecorativeArrow": false,
+          "x": 21,
+          "width": 348
+        },
+        {
+          "label": "สาขา",
+          "name": "",
+          "slot": null,
+          "appearance": "auto",
+          "paddingRight": "12px",
+          "height": 44,
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif",
+          "fontSize": "16px",
+          "selected": "ไม่ระบุ (ทุกสาขา)",
+          "hasDecorativeArrow": false,
+          "x": 21,
+          "width": 348
+        }
+      ]
+    },
+    {
+      "name": "customer-create",
+      "route": "/customers?zone=shop",
+      "actualURL": "http://127.0.0.1:51763/customers?zone=shop",
+      "heading": "ลูกค้า",
+      "width": 390,
+      "status": "READ_ONLY_RENDERED",
+      "controls": [
+        {
+          "label": "คำนำหน้า *",
+          "name": "prefix",
+          "slot": "form-control",
+          "appearance": "auto",
+          "paddingRight": "12px",
+          "height": 44,
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif",
+          "fontSize": "16px",
+          "selected": "-- เลือก --",
+          "hasDecorativeArrow": false,
+          "x": 46,
+          "width": 298
+        }
+      ]
+    }
+  ],
+  "navigationValidation": "Final recorded samples require expected route pathname and heading; initial stale navigation captures excluded."
+}

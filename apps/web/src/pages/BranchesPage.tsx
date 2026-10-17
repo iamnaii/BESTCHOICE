@@ -1,3 +1,4 @@
+import { formControlClass } from '@/components/ui/form-styles';
 import { useState } from 'react';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -10,6 +11,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import AddressForm, { AddressData, emptyAddress, composeAddress, deserializeAddress } from '@/components/ui/AddressForm';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { getStatusBadgeProps, enabledStatusMap } from '@/lib/status-badges';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { CashAccountSelect, SHOP_CASH_ACCOUNT_CODES } from '@/components/CashAccountSelect';
@@ -161,20 +163,20 @@ export default function BranchesPage() {
       label: '',
       render: (b: Branch) =>
         user?.role === 'OWNER' ? (
-          <div className="flex gap-2">
-            <button
+          <div className="flex flex-wrap gap-2 min-w-36">
+            <Button variant="ghost" size="sm"
               onClick={() => openEdit(b)}
-              className="text-primary hover:text-primary/80 text-sm font-medium"
+              className="text-primary"
             >
               แก้ไข
-            </button>
+            </Button>
             {!b.isMainWarehouse && (
-              <button
+              <Button variant="ghost" size="sm"
                 onClick={() => setConfirmDialog({ open: true, message: `ตั้ง "${b.name}" เป็นคลังกลาง?`, action: () => setMainWarehouseMutation.mutate(b.id) })}
-                className="text-primary hover:text-primary/80 text-sm font-medium"
+                className="text-primary"
               >
                 ตั้งเป็นคลังกลาง
-              </button>
+              </Button>
             )}
           </div>
         ) : null,
@@ -235,22 +237,24 @@ export default function BranchesPage() {
                   </div>
                   <div className="space-y-4">
                     <div>
-                      <label className="block text-xs font-medium text-foreground mb-1.5">ชื่อสาขา <span className="text-destructive">*</span></label>
+                      <label htmlFor="branch-name" className="block text-xs font-medium text-foreground mb-1.5">ชื่อสาขา <span className="text-destructive">*</span></label>
                       <input
                         type="text"
+                        id="branch-name"
                         value={form.name}
                         onChange={(e) => setForm({ ...form, name: e.target.value })}
-                        className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20"
+                        className={formControlClass}
                         required
                       />
                     </div>
                     <div>
-                      <label className="block text-xs font-medium text-foreground mb-1.5">โทรศัพท์</label>
+                      <label htmlFor="branch-phone" className="block text-xs font-medium text-foreground mb-1.5">โทรศัพท์</label>
                       <input
                         type="text"
+                        id="branch-phone"
                         value={form.phone}
                         onChange={(e) => setForm({ ...form, phone: e.target.value })}
-                        className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20"
+                        className={formControlClass}
                       />
                     </div>
                     {editingBranch && (
@@ -288,7 +292,7 @@ export default function BranchesPage() {
                           value={form.shopCashFloat}
                           onChange={(e) => setForm({ ...form, shopCashFloat: e.target.value })}
                           placeholder="เช่น 2000"
-                          className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm tabular-nums"
+                          className={formControlClass}
                         />
                         <p className={`mt-1.5 text-xs ${floatInvalid ? 'text-destructive' : 'text-muted-foreground'}`}>
                           {floatInvalid

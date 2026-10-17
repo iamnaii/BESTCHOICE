@@ -102,6 +102,7 @@ export default function EReceiptAutoPage() {
                   </div>
                 </div>
                 <Switch
+                  aria-label="ส่งใบเสร็จอัตโนมัติเมื่อรับชำระ"
                   checked={draft.enabled}
                   onCheckedChange={(v) => setDraft({ ...draft, enabled: v })}
                 />

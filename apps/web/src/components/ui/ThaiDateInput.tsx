@@ -65,6 +65,16 @@ export default function ThaiDateInput({
   const [viewMode, setViewMode] = useState<'days' | 'months' | 'years'>('days');
   const inputRef = useRef<HTMLInputElement>(null);
 
+  function changeOpen(next: boolean) {
+    if (next) {
+      // Finish WebKit's deferred focus scroll before Radix positions the calendar.
+      // This also works when a containing page opts into smooth scrolling.
+      inputRef.current?.scrollIntoView?.({ block: 'nearest', inline: 'nearest', behavior: 'instant' });
+      setViewMode('days');
+    }
+    setOpen(next);
+  }
+
   // Current viewed month/year (CE)
   const today = new Date();
   const parsed = value ? new Date(value + 'T00:00:00') : null;
@@ -168,14 +178,14 @@ export default function ThaiDateInput({
     cell.year === today.getFullYear();
 
   return (
-    <Popover open={open} onOpenChange={(o) => { setOpen(o); if (o) setViewMode('days'); }}>
-      <PopoverTrigger asChild disabled={disabled}>
+    <Popover open={open} onOpenChange={changeOpen}>
         <div
           className={cn(
             'relative flex items-center cursor-pointer',
             disabled && 'opacity-50 pointer-events-none',
           )}
         >
+          <PopoverTrigger asChild disabled={disabled}>
           <input
             ref={inputRef}
             type="text"
@@ -185,23 +195,33 @@ export default function ThaiDateInput({
             required={required}
             disabled={disabled}
             {...dataProps}
+            onKeyDown={event => {
+              if (['Enter', ' ', 'ArrowDown'].includes(event.key)) {
+                event.preventDefault();
+                changeOpen(true);
+              }
+            }}
             className={cn(
               'w-full px-3 py-2 pr-9 border border-input rounded-lg text-sm bg-background cursor-pointer focus:outline-hidden focus:ring-2 focus:ring-ring/30',
               className,
             )}
           />
-          <CalendarIcon className="absolute right-2.5 h-4 w-4 text-muted-foreground pointer-events-none" />
+          </PopoverTrigger>
+          <CalendarIcon aria-hidden="true" className="absolute right-[calc(0.75rem+1px)] h-4 w-4 text-muted-foreground pointer-events-none" />
         </div>
-      </PopoverTrigger>
-      <PopoverContent className="w-auto p-0" align="start">
-        <div className="p-3 select-none" style={{ minWidth: 280 }}>
+      <PopoverContent
+        className="w-[min(22rem,calc(100vw-0.25rem))] max-w-(--radix-popover-content-available-width) max-h-(--radix-popover-content-available-height) overflow-y-auto overscroll-contain p-0"
+        align="start"
+        collisionPadding={2}
+      >
+        <div className="p-0.5 select-none">
           {/* Header */}
           <div className="flex items-center justify-between mb-2">
             <button
               type="button"
               aria-label="ย้อนกลับ"
               onClick={() => { if (viewMode === 'years') setYearRangeStart(yearRangeStart - 12); else prevMonth(); }}
-              className="size-8 flex items-center justify-center rounded-md hover:bg-accent text-muted-foreground hover:text-foreground"
+              className="size-11 shrink-0 flex items-center justify-center rounded-md hover:bg-accent text-muted-foreground hover:text-foreground"
             >
               <ChevronLeft className="h-4 w-4" />
             </button>
@@ -212,7 +232,7 @@ export default function ThaiDateInput({
                 else if (viewMode === 'months') { setYearRangeStart(Math.floor(viewYear / 12) * 12); setViewMode('years'); }
                 else setViewMode('days');
               }}
-              className="text-sm font-medium hover:bg-accent px-2 py-1 rounded-md"
+              className="min-h-11 min-w-0 text-sm font-medium hover:bg-accent px-2 py-2 rounded-md"
             >
               {viewMode === 'years'
                 ? `${yearRangeStart + 543} - ${yearRangeStart + 11 + 543}`
@@ -224,7 +244,7 @@ export default function ThaiDateInput({
               type="button"
               aria-label="ถัดไป"
               onClick={() => { if (viewMode === 'years') setYearRangeStart(yearRangeStart + 12); else nextMonth(); }}
-              className="size-8 flex items-center justify-center rounded-md hover:bg-accent text-muted-foreground hover:text-foreground"
+              className="size-11 shrink-0 flex items-center justify-center rounded-md hover:bg-accent text-muted-foreground hover:text-foreground"
             >
               <ChevronRight className="h-4 w-4" />
             </button>
@@ -239,7 +259,7 @@ export default function ThaiDateInput({
                   type="button"
                   onClick={() => { setViewYear(y); setViewMode('months'); }}
                   className={cn(
-                    'py-2 text-sm rounded-md hover:bg-accent',
+                    'min-h-11 py-2 text-sm rounded-md hover:bg-accent',
                     y === viewYear && 'bg-primary text-primary-foreground hover:bg-primary',
                     y === today.getFullYear() && y !== viewYear && 'text-primary font-semibold',
                   )}
@@ -259,7 +279,7 @@ export default function ThaiDateInput({
                   type="button"
                   onClick={() => { setViewMonth(i); setViewMode('days'); }}
                   className={cn(
-                    'py-2 text-sm rounded-md hover:bg-accent',
+                    'min-h-11 py-2 text-sm rounded-md hover:bg-accent',
                     i === viewMonth && 'bg-primary text-primary-foreground hover:bg-primary',
                     i === today.getMonth() && viewYear === today.getFullYear() && i !== viewMonth && 'text-primary font-semibold',
                   )}
@@ -275,7 +295,7 @@ export default function ThaiDateInput({
             <>
               <div className="grid grid-cols-7 mb-1">
                 {WEEKDAYS.map((wd) => (
-                  <div key={wd} className="size-8 flex items-center justify-center text-xs font-medium text-muted-foreground">
+                  <div key={wd} className="h-8 min-w-0 flex items-center justify-center text-xs font-medium text-muted-foreground">
                     {wd}
                   </div>
                 ))}
@@ -288,9 +308,9 @@ export default function ThaiDateInput({
                     disabled={isOutOfRange(toIso(cell.year, cell.month, cell.day))}
                     onClick={() => selectDay(cell.year, cell.month, cell.day)}
                     className={cn(
-                      'size-8 flex items-center justify-center text-sm rounded-md relative',
+                      'h-11 w-full min-w-0 flex items-center justify-center text-sm rounded-md relative hover:bg-accent',
                       'disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-transparent',
-                      cell.outside ? 'text-muted-foreground/40' : 'hover:bg-accent',
+                      cell.outside && 'text-muted-foreground',
                       isSelected(cell) && 'bg-primary text-primary-foreground hover:bg-primary',
                       isToday(cell) && !isSelected(cell) && 'after:absolute after:bottom-0.5 after:left-1/2 after:-translate-x-1/2 after:size-1 after:rounded-full after:bg-primary',
                     )}
@@ -307,7 +327,7 @@ export default function ThaiDateInput({
             <button
               type="button"
               onClick={handleClear}
-              className="text-xs text-muted-foreground hover:text-foreground"
+              className="min-h-11 min-w-11 px-3 text-sm text-muted-foreground hover:text-foreground"
             >
               ล้าง
             </button>
@@ -315,7 +335,7 @@ export default function ThaiDateInput({
               type="button"
               disabled={isOutOfRange(toIso(today.getFullYear(), today.getMonth(), today.getDate()))}
               onClick={() => selectDay(today.getFullYear(), today.getMonth(), today.getDate())}
-              className="text-xs text-primary hover:text-primary/80 font-medium disabled:opacity-40 disabled:cursor-not-allowed"
+              className="min-h-11 min-w-11 rounded-md px-3 text-sm text-primary hover:bg-accent font-medium disabled:opacity-40 disabled:cursor-not-allowed"
             >
               วันนี้
             </button>

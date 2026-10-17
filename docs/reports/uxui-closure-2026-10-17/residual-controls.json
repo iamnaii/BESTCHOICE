@@ -1,0 +1,53 @@
+{
+  "generatedAt": "2026-10-17T08:14:38.807Z",
+  "results": [
+    {
+      "engine": "chromium",
+      "width": 320,
+      "root": 20,
+      "theme": "dark",
+      "status": "PASS",
+      "scope": "Actual components with synthetic GET data; no financial mutation"
+    },
+    {
+      "engine": "chromium",
+      "width": 390,
+      "root": 16,
+      "theme": "light",
+      "status": "PASS",
+      "scope": "Actual components with synthetic GET data; no financial mutation"
+    },
+    {
+      "engine": "chromium",
+      "width": 1440,
+      "root": 16,
+      "theme": "light",
+      "status": "PASS",
+      "scope": "Actual components with synthetic GET data; no financial mutation"
+    },
+    {
+      "engine": "webkit",
+      "width": 320,
+      "root": 20,
+      "theme": "dark",
+      "status": "PASS",
+      "scope": "Actual components with synthetic GET data; no financial mutation"
+    },
+    {
+      "engine": "webkit",
+      "width": 390,
+      "root": 16,
+      "theme": "light",
+      "status": "PASS",
+      "scope": "Actual components with synthetic GET data; no financial mutation"
+    },
+    {
+      "engine": "webkit",
+      "width": 1440,
+      "root": 16,
+      "theme": "light",
+      "status": "PASS",
+      "scope": "Actual components with synthetic GET data; no financial mutation"
+    }
+  ]
+}

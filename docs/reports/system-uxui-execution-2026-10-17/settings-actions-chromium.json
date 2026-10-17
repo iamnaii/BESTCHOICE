@@ -1,0 +1,270 @@
+{
+  "note": "Merged three passing configs plus844 rerun; earlier844 assertion incorrectly required overflow when the table fits. Product source unchanged.",
+  "results": [
+    {
+      "width": 1440,
+      "root": 16,
+      "theme": "light",
+      "scope": "FINANCE",
+      "engine": "chromium",
+      "status": "PASS",
+      "fields": [
+        {
+          "height": 44,
+          "width": 301,
+          "gap": 12,
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif",
+          "inset": null,
+          "arrowOffset": null
+        },
+        {
+          "height": 44,
+          "width": 301,
+          "gap": 12,
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif",
+          "inset": 13,
+          "arrowOffset": 0
+        },
+        {
+          "height": 44,
+          "width": 622,
+          "gap": 12,
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif",
+          "inset": null,
+          "arrowOffset": null
+        },
+        {
+          "height": 44,
+          "width": 301,
+          "gap": 12,
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif",
+          "inset": 13,
+          "arrowOffset": 0
+        },
+        {
+          "height": 44,
+          "width": 301,
+          "gap": 12,
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif",
+          "inset": null,
+          "arrowOffset": null
+        },
+        {
+          "height": 44,
+          "width": 622,
+          "gap": 12,
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif",
+          "inset": 13,
+          "arrowOffset": 0
+        }
+      ],
+      "actions": [
+        "COA create/edit/cancel/delete",
+        "dialog focus/Escape/return",
+        "user menu/reset unsaved visibility/cancel",
+        "channel secret unsaved visibility",
+        "payment default toggle/revert and delete cancel"
+      ],
+      "run": "settings-verified-chromium"
+    },
+    {
+      "width": 390,
+      "root": 16,
+      "theme": "light",
+      "scope": "SHOP",
+      "engine": "chromium",
+      "status": "PASS",
+      "fields": [
+        {
+          "height": 44,
+          "width": 340,
+          "gap": 12,
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif",
+          "inset": null,
+          "arrowOffset": null
+        },
+        {
+          "height": 44,
+          "width": 340,
+          "gap": 12,
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif",
+          "inset": 13,
+          "arrowOffset": 0
+        },
+        {
+          "height": 44,
+          "width": 340,
+          "gap": 12,
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif",
+          "inset": null,
+          "arrowOffset": null
+        },
+        {
+          "height": 44,
+          "width": 340,
+          "gap": 12,
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif",
+          "inset": 13,
+          "arrowOffset": 0
+        },
+        {
+          "height": 44,
+          "width": 340,
+          "gap": 12,
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif",
+          "inset": null,
+          "arrowOffset": null
+        },
+        {
+          "height": 44,
+          "width": 340,
+          "gap": 12,
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif",
+          "inset": 13,
+          "arrowOffset": 0
+        }
+      ],
+      "actions": [
+        "COA create/edit/cancel/delete",
+        "dialog focus/Escape/return",
+        "user menu/reset unsaved visibility/cancel",
+        "channel secret unsaved visibility",
+        "payment default toggle/revert and delete cancel"
+      ],
+      "run": "settings-verified-chromium"
+    },
+    {
+      "width": 320,
+      "root": 20,
+      "theme": "dark",
+      "scope": "FINANCE",
+      "engine": "chromium",
+      "status": "PASS",
+      "fields": [
+        {
+          "height": 55,
+          "width": 258,
+          "gap": 15,
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif",
+          "inset": null,
+          "arrowOffset": null
+        },
+        {
+          "height": 55,
+          "width": 258,
+          "gap": 15,
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif",
+          "inset": 16,
+          "arrowOffset": 0
+        },
+        {
+          "height": 55,
+          "width": 258,
+          "gap": 15,
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif",
+          "inset": null,
+          "arrowOffset": null
+        },
+        {
+          "height": 55,
+          "width": 258,
+          "gap": 15,
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif",
+          "inset": 16,
+          "arrowOffset": 0
+        },
+        {
+          "height": 55,
+          "width": 258,
+          "gap": 15,
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif",
+          "inset": null,
+          "arrowOffset": null
+        },
+        {
+          "height": 55,
+          "width": 258,
+          "gap": 15,
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif",
+          "inset": 16,
+          "arrowOffset": 0
+        }
+      ],
+      "actions": [
+        "COA create/edit/cancel/delete",
+        "dialog focus/Escape/return",
+        "user menu/reset unsaved visibility/cancel",
+        "channel secret unsaved visibility",
+        "payment default toggle/revert and delete cancel"
+      ],
+      "run": "settings-verified-chromium"
+    },
+    {
+      "width": 844,
+      "height": 390,
+      "root": 16,
+      "theme": "dark",
+      "scope": "FINANCE",
+      "engine": "chromium",
+      "status": "PASS",
+      "fields": [
+        {
+          "height": 44,
+          "width": 301,
+          "gap": 12,
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif",
+          "inset": null,
+          "arrowOffset": null
+        },
+        {
+          "height": 44,
+          "width": 301,
+          "gap": 12,
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif",
+          "inset": 13,
+          "arrowOffset": 0
+        },
+        {
+          "height": 44,
+          "width": 622,
+          "gap": 12,
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif",
+          "inset": null,
+          "arrowOffset": null
+        },
+        {
+          "height": 44,
+          "width": 301,
+          "gap": 12,
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif",
+          "inset": 13,
+          "arrowOffset": 0
+        },
+        {
+          "height": 44,
+          "width": 301,
+          "gap": 12,
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif",
+          "inset": null,
+          "arrowOffset": null
+        },
+        {
+          "height": 44,
+          "width": 622,
+          "gap": 12,
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif",
+          "inset": 13,
+          "arrowOffset": 0
+        }
+      ],
+      "actions": [
+        "COA create/edit/cancel/delete",
+        "dialog focus/Escape/return",
+        "user menu/reset unsaved visibility/cancel",
+        "channel secret unsaved visibility",
+        "payment default toggle/revert and delete cancel"
+      ],
+      "run": "settings-landscape-chromium"
+    }
+  ]
+}

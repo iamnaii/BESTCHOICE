@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { NativeSelect } from '@/components/ui/native-select';
+import { useId as useUiFieldId, useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { ArrowUp, ArrowDown, Trash2 } from 'lucide-react';
@@ -53,6 +54,7 @@ export default function OnlineListingPanel({
   product: OnlineListingProduct;
   canEdit: boolean;
 }) {
+  const uiFieldId = useUiFieldId();
   const queryClient = useQueryClient();
   const readiness = useProductReadiness(product.id);
   const [localGallery, setLocalGallery] = useState<string[]>(product.gallery);
@@ -340,7 +342,7 @@ export default function OnlineListingPanel({
         <div>
           <Label htmlFor="device-origin" className="block text-sm mb-2">เครื่องไทย / เครื่องนอก</Label>
           <div className="flex flex-wrap items-center gap-2">
-            <select
+            <NativeSelect wrapperClassName="max-w-full w-auto"
               id="device-origin"
               value={deviceOrigin}
               onChange={(e) => setDeviceOrigin(e.target.value as DeviceOrigin | '')}
@@ -350,7 +352,7 @@ export default function OnlineListingPanel({
               <option value="">ยังไม่ระบุ</option>
               <option value="THAI">เครื่องไทย</option>
               <option value="IMPORTED">เครื่องนอก</option>
-            </select>
+            </NativeSelect>
             <button
               type="button"
               onClick={() => originMutation.mutate()}
@@ -384,10 +386,10 @@ export default function OnlineListingPanel({
         </div>
 
         <div>
-          <label className="block text-xs font-medium text-foreground mb-1 leading-snug">
+          <label htmlFor={`${uiFieldId}-1`} className="block text-xs font-medium text-foreground mb-1 leading-snug">
             คำอธิบายสำหรับเว็บ shop
           </label>
-          <textarea
+          <textarea id={`${uiFieldId}-1`}
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             disabled={!canEdit}

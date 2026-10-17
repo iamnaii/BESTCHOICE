@@ -43,12 +43,12 @@ export function QuickStartPanel({ branchId, onMode, onPickTemplate, onClose }: P
           <Sparkles className="size-4 text-primary" />
           <span className="text-sm font-medium">เริ่มต้นเร็ว</span>
         </div>
-        <button onClick={onClose} aria-label="ปิด" className="text-muted-foreground hover:text-foreground">
+        <button onClick={onClose} aria-label="ปิด" className="flex min-h-11 min-w-11 items-center justify-center rounded-md text-muted-foreground hover:text-foreground">
           <X className="size-4" />
         </button>
       </div>
       <div className="p-4 space-y-4">
-        <div className={cn('grid gap-3', templatesEnabled ? 'grid-cols-3' : 'grid-cols-2')}>
+        <div className={cn('grid gap-3', templatesEnabled ? 'grid-cols-1 sm:grid-cols-3' : 'grid-cols-1 sm:grid-cols-2')}>
           <ModeCard
             Icon={FileEdit}
             label="เริ่มเปล่า"
@@ -58,7 +58,7 @@ export function QuickStartPanel({ branchId, onMode, onPickTemplate, onClose }: P
           {templatesEnabled && (
             <ModeCard
               Icon={Bookmark}
-              label="จาก Template"
+              label="ใช้แบบบันทึก"
               sub={`${templates?.length ?? 0} รายการพร้อมใช้`}
               onClick={() => onMode('template')}
               accent
@@ -67,14 +67,14 @@ export function QuickStartPanel({ branchId, onMode, onPickTemplate, onClose }: P
           <ModeCard
             Icon={Files}
             label="คัดลอกเก่า"
-            sub="เปิด ListPage เพื่อหา"
+            sub="เลือกจากรายการเดิม"
             onClick={() => onMode('copy')}
           />
         </div>
         {top6.length > 0 && (
           <div>
             <div className="text-xs text-muted-foreground mb-2">ใช้บ่อย</div>
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
               {top6.map((tpl) => (
                 <button
                   type="button"
@@ -130,11 +130,11 @@ function ModeCard({
       type="button"
       onClick={onClick}
       className={cn(
-        'flex items-start gap-3 rounded-lg border p-4 text-left transition-colors',
+        'flex min-w-0 items-start gap-3 rounded-lg border p-4 text-left transition-colors',
         accent ? 'border-primary/40 bg-primary/5 hover:bg-primary/10' : 'border-border bg-card hover:bg-accent',
       )}
     >
-      <Icon className={cn('size-5 mt-0.5', accent ? 'text-primary' : 'text-muted-foreground')} />
+      <Icon className={cn('size-5 shrink-0 mt-0.5', accent ? 'text-primary' : 'text-muted-foreground')} />
       <div>
         <div className="text-sm font-medium">{label}</div>
         <div className="text-xs text-muted-foreground">{sub}</div>

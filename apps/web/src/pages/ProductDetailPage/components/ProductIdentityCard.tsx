@@ -146,7 +146,7 @@ export default function ProductIdentityCard({
     <Card className="rounded-xl border border-border/50 bg-card shadow-sm">
       <CardHeader>
         <CardTitle>ข้อมูลเครื่อง</CardTitle>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Badge variant="info" appearance="light" size="sm">
             {categoryLabels[product.category] || product.category}
           </Badge>
@@ -157,7 +157,7 @@ export default function ProductIdentityCard({
       </CardHeader>
       <CardContent className="space-y-4">
         {!isAccessory && <DeviceDisclosureSummary product={product} />}
-        <div className="flex items-start gap-4">
+        <div className="flex flex-col items-start gap-4 sm:flex-row">
           <div className="flex size-22 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-dashed border-border bg-muted/35 text-muted-foreground">
             {frontPhoto ? (
               <img src={frontPhoto} alt="รูปหน้าเครื่อง" className="size-full object-cover" />
@@ -168,7 +168,7 @@ export default function ProductIdentityCard({
               </div>
             )}
           </div>
-          <div className="min-w-0 flex-1 space-y-2">
+          <div className="w-full min-w-0 flex-1 space-y-2">
             <h3 className="text-lg font-semibold leading-snug">
               {product.brand} {product.model}
             </h3>
@@ -185,16 +185,16 @@ export default function ProductIdentityCard({
                     ['Serial', product.serialNumber],
                   ] as const
                 ).map(([label, value]) => (
-                  <span key={label} className="inline-flex items-center gap-1.5">
+                  <span key={label} className="inline-flex max-w-full flex-wrap items-center gap-1.5">
                     <span className="text-muted-foreground">{label}</span>
                     {value ? (
                       <>
-                        <span className="font-mono font-medium tracking-wide">{value}</span>
+                        <span className="min-w-0 break-all font-mono font-medium tracking-wide">{value}</span>
                         <button
                           type="button"
                           aria-label={`คัดลอก ${label}`}
                           onClick={() => handleCopy(value, label)}
-                          className="text-muted-foreground hover:text-foreground"
+                          className="inline-flex size-6 max-lg:size-11 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring"
                         >
                           <Copy className="size-3.5" aria-hidden />
                         </button>

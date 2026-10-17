@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useId as useUiFieldId, useState } from 'react';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -24,28 +24,31 @@ interface PbxExtension {
 }
 
 export default function UserProfilePage() {
+  const uiFieldId = useUiFieldId();
   useDocumentTitle('โปรไฟล์ของฉัน');
   const { user, refresh } = useAuth();
   const queryClient = useQueryClient();
-  const [yeastarExtension, setYeastarExtension] = useState('');
+  const [extensionDraft, setYeastarExtension] = useState<string | null>(null);
+  const yeastarExtension = extensionDraft ?? user?.yeastarExtension ?? '';
   // T15: default cash account for payment deposit dimension
-  const [defaultCashCode, setDefaultCashCode] = useState<string>(
-    user?.defaultCashAccountCode ?? '11-1101',
-  );
+  const [cashDraft, setDefaultCashCode] = useState<string | null>(null);
+  const defaultCashCode = cashDraft ?? user?.defaultCashAccountCode ?? '11-1101';
 
-  const { data: pbxExtensions = [] } = useQuery<PbxExtension[]>({
+  const pbxQuery = useQuery<PbxExtension[]>({
     queryKey: ['yeastar-extensions'],
-    queryFn: () =>
-      api
-        .get<PbxExtension[]>('/yeastar/extensions')
-        .then((r) => r.data),
+    queryFn: () => api.get<PbxExtension[]>('/yeastar/extensions').then((r) => r.data),
     staleTime: 5 * 60 * 1000,
-    retry: false, // ถ้า Yeastar ไม่ได้ config ให้ silent fail
+    retry: false,
   });
+
+  const pbxExtensions = pbxQuery.data ?? [];
 
   const saveExtensionMutation = useMutation({
     mutationFn: (extension: string) => api.patch('/users/me/extension', { extension }),
-    onSuccess: () => toast.success('บันทึก Extension สำเร็จ'),
+    onSuccess: async () => {
+      toast.success('บันทึก Extension สำเร็จ');
+      await refresh();
+    },
     onError: () => toast.error('บันทึกไม่สำเร็จ'),
   });
 
@@ -94,20 +97,43 @@ export default function UserProfilePage() {
         </Card>
 
         {/* Yeastar PBX Extension */}
-        {pbxExtensions.length > 0 && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base flex items-center gap-2">
-                <Phone className="size-4 text-muted-foreground" strokeWidth={1.75} />
-                ระบบโทรศัพท์ Yeastar PBX
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base flex items-center gap-2">
+              <Phone className="size-4 text-muted-foreground" strokeWidth={1.75} />
+              ระบบโทรศัพท์ Yeastar PBX
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {pbxQuery.isLoading && (
+              <p role="status" className="text-sm text-muted-foreground">
+                กำลังโหลดหมายเลขโทรศัพท์…
+              </p>
+            )}
+            {pbxQuery.isError && (
+              <div role="alert" className="space-y-2 text-sm text-muted-foreground">
+                <p>โหลดหมายเลขโทรศัพท์ไม่สำเร็จ กรุณาตรวจการเชื่อมต่อ Yeastar</p>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={pbxQuery.isFetching}
+                  onClick={() => pbxQuery.refetch()}
+                >
+                  ลองใหม่
+                </Button>
+              </div>
+            )}
+            {pbxQuery.isSuccess && pbxExtensions.length === 0 && (
+              <p className="text-sm text-muted-foreground">ยังไม่มีหมายเลขโทรศัพท์ให้เลือก</p>
+            )}
+            {pbxExtensions.length > 0 && (
               <div className="space-y-2">
-                <label className="text-sm font-medium">Extension Yeastar (โทรศัพท์)</label>
-                <div className="flex gap-2">
+                <label htmlFor={`${uiFieldId}-1`} className="block text-sm font-medium">
+                  Extension Yeastar (โทรศัพท์)
+                </label>
+                <div className="flex flex-col sm:flex-row gap-2">
                   <Select value={yeastarExtension} onValueChange={setYeastarExtension}>
-                    <SelectTrigger className="w-56">
+                    <SelectTrigger id={`${uiFieldId}-1`} className="w-full min-w-0 sm:flex-1">
                       <SelectValue placeholder="เลือก extension" />
                     </SelectTrigger>
                     <SelectContent>
@@ -134,9 +160,9 @@ export default function UserProfilePage() {
                   ใช้สำหรับโทรออกและรับสายผ่านระบบ Yeastar PBX
                 </p>
               </div>
-            </CardContent>
-          </Card>
-        )}
+            )}
+          </CardContent>
+        </Card>
 
         {/* T15: Default Cash Account */}
         <Card>
@@ -148,10 +174,10 @@ export default function UserProfilePage() {
           </CardHeader>
           <CardContent className="space-y-4">
             <p className="text-sm text-muted-foreground leading-snug">
-              บัญชีนี้จะถูกเลือกอัตโนมัติเมื่อบันทึกการชำระ (Dr leg ในสมุดบัญชี)
+              บัญชีนี้จะถูกเลือกอัตโนมัติเมื่อบันทึกการชำระ
             </p>
-            <div className="flex gap-2 items-center">
-              <div className="flex-1 max-w-xs">
+            <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
+              <div className="w-full min-w-0 sm:flex-1 sm:max-w-xs">
                 <CashAccountSelect
                   value={defaultCashCode}
                   onChange={setDefaultCashCode}

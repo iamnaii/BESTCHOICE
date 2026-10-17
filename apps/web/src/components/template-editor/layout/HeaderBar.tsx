@@ -1,3 +1,4 @@
+import { NativeSelect } from '@/components/ui/native-select';
 import { useState, useRef } from 'react';
 import { ArrowLeft, Settings, Plus, Save, Undo2, Download, Loader2, BookOpen, Columns2, PenLine, Eye, FileUp } from 'lucide-react';
 import { useTemplateStore } from '@/store/templateStore';
@@ -100,12 +101,12 @@ export default function HeaderBar({ onBack, onToggleCheatSheet, showCheatSheet, 
         </button>
       )}
 
-      <select
+      <NativeSelect wrapperClassName="w-auto min-w-0 flex-1 basis-48 max-w-full lg:max-w-80"
         aria-label="เทมเพลตสัญญา"
         value={currentTemplate.id}
         onChange={handleTemplateChange}
         disabled={isLoading}
-        className="min-h-11 min-w-0 flex-1 basis-48 px-3 py-2 text-base font-medium border border-input rounded-lg bg-background focus:ring-2 focus:ring-primary focus:border-primary max-w-full lg:max-w-80 disabled:opacity-50"
+        className="min-h-11 px-3 py-2 text-base font-medium border border-input rounded-lg bg-background focus:ring-2 focus:ring-primary focus:border-primary disabled:opacity-50"
       >
         {templates.length === 0 && (
           <option value="">กำลังโหลด...</option>
@@ -115,7 +116,7 @@ export default function HeaderBar({ onBack, onToggleCheatSheet, showCheatSheet, 
             {t.name}
           </option>
         ))}
-      </select>
+      </NativeSelect>
 
       {isDirty && (
         <span className="text-sm font-medium text-warning-strong bg-warning/10 px-2.5 py-1 rounded-full">

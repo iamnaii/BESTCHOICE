@@ -1,0 +1,5747 @@
+{
+  "summary": {
+    "at": "2026-10-17T07:19:22.597Z",
+    "sourceFilesScanned": 1322,
+    "nativeSites": 2,
+    "rawDatalistSites": 0,
+    "rawDatalists": [],
+    "byKind": {
+      "SHARED_NATIVE_IMPLEMENTATION": 2
+    },
+    "legacyFiles": 0,
+    "legacyByApp": {},
+    "legacyUnreachable": [],
+    "multipleOrListbox": [],
+    "modernTags": {
+      "CompactSelect": 2,
+      "FilterSelect": 15,
+      "NameAutocomplete": 5,
+      "NativeSelect": 239,
+      "SearchableSelect": 3,
+      "SelectTrigger": 60
+    }
+  },
+  "rows": [
+    {
+      "file": "apps/web-shop/src/components/ui/native-select.tsx",
+      "line": 20,
+      "tag": "select",
+      "importTarget": "",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/products",
+          "group": "08 เว็บลูกค้า"
+        },
+        {
+          "path": "/products/:id",
+          "group": "08 เว็บลูกค้า"
+        },
+        {
+          "path": "/sell/quote",
+          "group": "08 เว็บลูกค้า"
+        }
+      ],
+      "kind": "SHARED_NATIVE_IMPLEMENTATION",
+      "label": "",
+      "id": "",
+      "name": "",
+      "className": "{cn(\n          inputVariants(),\n          'rounded-lg py-2 font-normal',\n          className,\n          'peer h-11 min-h-11 w-full min-w-0 max-w-full appearance-none overflow-hidden pr-10 text-base leading-normal md:text-base lg:text-sm',\n        )}",
+      "style": "",
+      "multiple": "",
+      "size": "",
+      "snippet": "<select\n        data-slot=\"native-select\"\n        {...props}\n        disabled={disabled}\n        className={cn(\n          inputVariants(),\n          'rounded-lg py-2 font-normal',\n          className,\n          'peer h-11 min-h-11 w-full min-w-0 max-w-full appearance-none overflow-hidden pr-10 text-base leading-normal md:text-base lg:text-sm',\n        )}\n      />",
+      "optionText": ""
+    },
+    {
+      "file": "apps/web/src/components/ui/native-select.tsx",
+      "line": 20,
+      "tag": "select",
+      "importTarget": "",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/",
+          "group": "01 โครงหน้า ภาพรวม และเอกสาร"
+        },
+        {
+          "path": "/accounting/intercompany",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/accounting/tax-disallowed-summary",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/after-sales",
+          "group": "03 ขายและบริการลูกค้า"
+        },
+        {
+          "path": "/after-sales/:id",
+          "group": "03 ขายและบริการลูกค้า"
+        },
+        {
+          "path": "/after-sales/new",
+          "group": "03 ขายและบริการลูกค้า"
+        },
+        {
+          "path": "/appointments",
+          "group": "03 ขายและบริการลูกค้า"
+        },
+        {
+          "path": "/assets/:id",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/assets/:id/edit",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/assets/new",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/audit-logs",
+          "group": "07 ตั้งค่าและสิทธิ์"
+        },
+        {
+          "path": "/bookings",
+          "group": "03 ขายและบริการลูกค้า"
+        },
+        {
+          "path": "/canned-responses",
+          "group": "06 แชท ทีม และ AI"
+        },
+        {
+          "path": "/chat-analytics",
+          "group": "06 แชท ทีม และ AI"
+        },
+        {
+          "path": "/chatbot-finance/knowledge",
+          "group": "06 แชท ทีม และ AI"
+        },
+        {
+          "path": "/collections",
+          "group": "04 สัญญา รับชำระ และติดตามหนี้"
+        },
+        {
+          "path": "/commissions",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/contacts",
+          "group": "03 ขายและบริการลูกค้า"
+        },
+        {
+          "path": "/contract-templates",
+          "group": "04 สัญญา รับชำระ และติดตามหนี้"
+        },
+        {
+          "path": "/contracts",
+          "group": "04 สัญญา รับชำระ และติดตามหนี้"
+        },
+        {
+          "path": "/contracts/:id",
+          "group": "04 สัญญา รับชำระ และติดตามหนี้"
+        },
+        {
+          "path": "/contracts/create",
+          "group": "04 สัญญา รับชำระ และติดตามหนี้"
+        },
+        {
+          "path": "/credit-checks",
+          "group": "03 ขายและบริการลูกค้า"
+        },
+        {
+          "path": "/customers",
+          "group": "03 ขายและบริการลูกค้า"
+        },
+        {
+          "path": "/customers/:id",
+          "group": "03 ขายและบริการลูกค้า"
+        },
+        {
+          "path": "/document-dashboard",
+          "group": "01 โครงหน้า ภาพรวม และเอกสาร"
+        },
+        {
+          "path": "/expenses",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/expenses/:id",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/expenses/daily-summary",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/expenses/favorites",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/expenses/new",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/expenses/verify/:id",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/finance-receivable",
+          "group": "04 สัญญา รับชำระ และติดตามหนี้"
+        },
+        {
+          "path": "/finance/bad-debt-report",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/finance/balance-sheet",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/finance/cash-flow",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/finance/dividend-register",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/finance/e-tax",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/finance/equity",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/finance/equity-statement",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/finance/equity/:id/edit",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/finance/equity/new",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/finance/general-journal",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/finance/general-ledger",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/finance/wht-report",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/finance/year-end-closing",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/imported-sales",
+          "group": "03 ขายและบริการลูกค้า"
+        },
+        {
+          "path": "/inbox/:roomId?",
+          "group": "06 แชท ทีม และ AI"
+        },
+        {
+          "path": "/inspections",
+          "group": "02 คลังและจัดซื้อ"
+        },
+        {
+          "path": "/letters",
+          "group": "04 สัญญา รับชำระ และติดตามหนี้"
+        },
+        {
+          "path": "/monthly-close",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/notifications",
+          "group": "01 โครงหน้า ภาพรวม และเอกสาร"
+        },
+        {
+          "path": "/other-income",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/other-income/:id",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/other-income/:id/edit",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/other-income/new",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/other-income/pending-approval",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/payments",
+          "group": "04 สัญญา รับชำระ และติดตามหนี้"
+        },
+        {
+          "path": "/pdpa",
+          "group": "01 โครงหน้า ภาพรวม และเอกสาร"
+        },
+        {
+          "path": "/pos",
+          "group": "03 ขายและบริการลูกค้า"
+        },
+        {
+          "path": "/products/:id",
+          "group": "02 คลังและจัดซื้อ"
+        },
+        {
+          "path": "/products/create",
+          "group": "02 คลังและจัดซื้อ"
+        },
+        {
+          "path": "/profit-loss",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/promotions",
+          "group": "03 ขายและบริการลูกค้า"
+        },
+        {
+          "path": "/purchase-orders",
+          "group": "02 คลังและจัดซื้อ"
+        },
+        {
+          "path": "/purchase-orders/qc",
+          "group": "02 คลังและจัดซื้อ"
+        },
+        {
+          "path": "/reports",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/repossessions",
+          "group": "04 สัญญา รับชำระ และติดตามหนี้"
+        },
+        {
+          "path": "/sales",
+          "group": "03 ขายและบริการลูกค้า"
+        },
+        {
+          "path": "/settings/:categoryId",
+          "group": "07 ตั้งค่าและสิทธิ์"
+        },
+        {
+          "path": "/settings/accounting/chart",
+          "group": "07 ตั้งค่าและสิทธิ์"
+        },
+        {
+          "path": "/settings/accounting/e-tax",
+          "group": "07 ตั้งค่าและสิทธิ์"
+        },
+        {
+          "path": "/settings/accounting/peak-sync",
+          "group": "07 ตั้งค่าและสิทธิ์"
+        },
+        {
+          "path": "/settings/accounting#periods",
+          "group": "07 ตั้งค่าและสิทธิ์"
+        },
+        {
+          "path": "/settings/comms/dunning",
+          "group": "07 ตั้งค่าและสิทธิ์"
+        },
+        {
+          "path": "/settings/comms/sms",
+          "group": "07 ตั้งค่าและสิทธิ์"
+        },
+        {
+          "path": "/settings/company/entities",
+          "group": "07 ตั้งค่าและสิทธิ์"
+        },
+        {
+          "path": "/settings/products/pricing",
+          "group": "07 ตั้งค่าและสิทธิ์"
+        },
+        {
+          "path": "/settings/rich-menu",
+          "group": "07 ตั้งค่าและสิทธิ์"
+        },
+        {
+          "path": "/shop/daily-cash",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/stock/adjustments",
+          "group": "02 คลังและจัดซื้อ"
+        },
+        {
+          "path": "/stock/alerts",
+          "group": "02 คลังและจัดซื้อ"
+        },
+        {
+          "path": "/stock/count",
+          "group": "02 คลังและจัดซื้อ"
+        },
+        {
+          "path": "/stock/products",
+          "group": "02 คลังและจัดซื้อ"
+        },
+        {
+          "path": "/stock/transfers",
+          "group": "02 คลังและจัดซื้อ"
+        },
+        {
+          "path": "/suppliers",
+          "group": "02 คลังและจัดซื้อ"
+        },
+        {
+          "path": "/todos",
+          "group": "06 แชท ทีม และ AI"
+        },
+        {
+          "path": "/trade-in",
+          "group": "02 คลังและจัดซื้อ"
+        },
+        {
+          "path": "/users",
+          "group": "07 ตั้งค่าและสิทธิ์"
+        },
+        {
+          "path": "/users/:id",
+          "group": "07 ตั้งค่าและสิทธิ์"
+        },
+        {
+          "path": "/users/new",
+          "group": "07 ตั้งค่าและสิทธิ์"
+        },
+        {
+          "path": "/visit",
+          "group": "09 หน้าสาธารณะและ LIFF"
+        }
+      ],
+      "kind": "SHARED_NATIVE_IMPLEMENTATION",
+      "label": "",
+      "id": "",
+      "name": "",
+      "className": "{cn(\n          formControlClass,\n          className,\n          'peer h-11 min-h-11 w-full min-w-0 max-w-full appearance-none overflow-hidden pr-10 text-base leading-normal md:text-base lg:text-sm',\n        )}",
+      "style": "",
+      "multiple": "",
+      "size": "",
+      "snippet": "<select\n        data-slot=\"native-select\"\n        {...props}\n        disabled={disabled}\n        className={cn(\n          formControlClass,\n          className,\n          'peer h-11 min-h-11 w-full min-w-0 max-w-full appearance-none overflow-hidden pr-10 text-base leading-normal md:text-base lg:text-sm',\n        )}\n      />",
+      "optionText": ""
+    }
+  ],
+  "components": [
+    {
+      "file": "apps/web/src/pages/ExpensesPage.tsx",
+      "line": 600,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/expenses",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/ExpensesPage.tsx",
+      "line": 641,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/expenses",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/ExpensesPage.tsx",
+      "line": 648,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/expenses",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/UserProfilePage.tsx",
+      "line": 111,
+      "tag": "SelectTrigger",
+      "importTarget": "apps/web/src/components/ui/select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/profile",
+          "group": "07 ตั้งค่าและสิทธิ์"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/FinanceReceivablePage.tsx",
+      "line": 177,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/finance-receivable",
+          "group": "04 สัญญา รับชำระ และติดตามหนี้"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/FinanceReceivablePage.tsx",
+      "line": 454,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/finance-receivable",
+          "group": "04 สัญญา รับชำระ และติดตามหนี้"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/FinanceReceivablePage.tsx",
+      "line": 461,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/finance-receivable",
+          "group": "04 สัญญา รับชำระ และติดตามหนี้"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/FinanceReceivablePage.tsx",
+      "line": 468,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/finance-receivable",
+          "group": "04 สัญญา รับชำระ และติดตามหนี้"
+        }
+      ]
+    },
+    {
+      "file": "apps/web-shop/src/pages/sell/SellQuotePage.tsx",
+      "line": 239,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web-shop/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/sell/quote",
+          "group": "08 เว็บลูกค้า"
+        }
+      ]
+    },
+    {
+      "file": "apps/web-shop/src/pages/sell/SellQuotePage.tsx",
+      "line": 254,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web-shop/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/sell/quote",
+          "group": "08 เว็บลูกค้า"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/StockAdjustmentsPage/index.tsx",
+      "line": 138,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/stock/adjustments",
+          "group": "02 คลังและจัดซื้อ"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/VatReportPage.tsx",
+      "line": 134,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": []
+    },
+    {
+      "file": "apps/web/src/pages/settings/NumberingConfigTab.tsx",
+      "line": 168,
+      "tag": "SelectTrigger",
+      "importTarget": "apps/web/src/components/ui/select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/settings/document-config",
+          "group": "07 ตั้งค่าและสิทธิ์"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/settings/NumberingConfigTab.tsx",
+      "line": 185,
+      "tag": "SelectTrigger",
+      "importTarget": "apps/web/src/components/ui/select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/settings/document-config",
+          "group": "07 ตั้งค่าและสิทธิ์"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/settings/SettingsLayout.tsx",
+      "line": 113,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/settings/:categoryId",
+          "group": "07 ตั้งค่าและสิทธิ์"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/after-sales/PricedExchangeFields.tsx",
+      "line": 143,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/after-sales/new",
+          "group": "03 ขายและบริการลูกค้า"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/after-sales/ExchangeActionDialogs.tsx",
+      "line": 361,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/after-sales",
+          "group": "03 ขายและบริการลูกค้า"
+        },
+        {
+          "path": "/after-sales/:id",
+          "group": "03 ขายและบริการลูกค้า"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/after-sales/RepairActionDialogs.tsx",
+      "line": 199,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/after-sales/:id",
+          "group": "03 ขายและบริการลูกค้า"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/CreditChecksPage.tsx",
+      "line": 312,
+      "tag": "SelectTrigger",
+      "importTarget": "apps/web/src/components/ui/select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/credit-checks",
+          "group": "03 ขายและบริการลูกค้า"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/AiAdminPage.tsx",
+      "line": 302,
+      "tag": "SelectTrigger",
+      "importTarget": "apps/web/src/components/ui/select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/settings/ai/admin",
+          "group": "07 ตั้งค่าและสิทธิ์"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/AiAdminPage.tsx",
+      "line": 357,
+      "tag": "SelectTrigger",
+      "importTarget": "apps/web/src/components/ui/select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/settings/ai/admin",
+          "group": "07 ตั้งค่าและสิทธิ์"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/AiAdminPage.tsx",
+      "line": 423,
+      "tag": "SelectTrigger",
+      "importTarget": "apps/web/src/components/ui/select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/settings/ai/admin",
+          "group": "07 ตั้งค่าและสิทธิ์"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/WhtReportPage.tsx",
+      "line": 315,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/finance/wht-report",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/SalesHistoryPage.tsx",
+      "line": 661,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/sales",
+          "group": "03 ขายและบริการลูกค้า"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/SalesHistoryPage.tsx",
+      "line": 671,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/sales",
+          "group": "03 ขายและบริการลูกค้า"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/SalesHistoryPage.tsx",
+      "line": 681,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/sales",
+          "group": "03 ขายและบริการลูกค้า"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/SalesHistoryPage.tsx",
+      "line": 731,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/sales",
+          "group": "03 ขายและบริการลูกค้า"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/SalesHistoryPage.tsx",
+      "line": 742,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/sales",
+          "group": "03 ขายและบริการลูกค้า"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/QcCenterPage/index.tsx",
+      "line": 159,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/purchase-orders/qc",
+          "group": "02 คลังและจัดซื้อ"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/QcCenterPage/index.tsx",
+      "line": 168,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/purchase-orders/qc",
+          "group": "02 คลังและจัดซื้อ"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/settings/DocTypeConfigForm.tsx",
+      "line": 206,
+      "tag": "SelectTrigger",
+      "importTarget": "apps/web/src/components/ui/select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/settings/document-config",
+          "group": "07 ตั้งค่าและสิทธิ์"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/settings/DocTypeConfigForm.tsx",
+      "line": 226,
+      "tag": "SelectTrigger",
+      "importTarget": "apps/web/src/components/ui/select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/settings/document-config",
+          "group": "07 ตั้งค่าและสิทธิ์"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/ChatAnalyticsPage.tsx",
+      "line": 241,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/chat-analytics",
+          "group": "06 แชท ทีม และ AI"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/ChatAnalyticsPage.tsx",
+      "line": 256,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/chat-analytics",
+          "group": "06 แชท ทีม และ AI"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/ChatAnalyticsPage.tsx",
+      "line": 274,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/chat-analytics",
+          "group": "06 แชท ทีม และ AI"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/MonthlyClosePage.tsx",
+      "line": 380,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/monthly-close",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/depreciation/DepreciationPage.tsx",
+      "line": 175,
+      "tag": "SelectTrigger",
+      "importTarget": "apps/web/src/components/ui/select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/assets/depreciation",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/PaymentMethodSettingsPage.tsx",
+      "line": 344,
+      "tag": "SelectTrigger",
+      "importTarget": "apps/web/src/components/ui/select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/settings/finance/payment-methods",
+          "group": "07 ตั้งค่าและสิทธิ์"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/PaymentMethodSettingsPage.tsx",
+      "line": 358,
+      "tag": "SelectTrigger",
+      "importTarget": "apps/web/src/components/ui/select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/settings/finance/payment-methods",
+          "group": "07 ตั้งค่าและสิทธิ์"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/PDPAPage.tsx",
+      "line": 325,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/pdpa",
+          "group": "01 โครงหน้า ภาพรวม และเอกสาร"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/PDPAPage.tsx",
+      "line": 415,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/pdpa",
+          "group": "01 โครงหน้า ภาพรวม และเอกสาร"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/InspectionPage.tsx",
+      "line": 127,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/inspections",
+          "group": "02 คลังและจัดซื้อ"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/TodosPage/components/TodoFilters.tsx",
+      "line": 82,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/todos",
+          "group": "06 แชท ทีม และ AI"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/TodosPage/components/TodoForm.tsx",
+      "line": 454,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/inbox/:roomId?",
+          "group": "06 แชท ทีม และ AI"
+        },
+        {
+          "path": "/todos",
+          "group": "06 แชท ทีม และ AI"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/ReportsPage.tsx",
+      "line": 122,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/reports",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/ReportsPage.tsx",
+      "line": 538,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/reports",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/YearEndClosingPage.tsx",
+      "line": 205,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/finance/year-end-closing",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/StoreAppointmentsPage/Schedule.tsx",
+      "line": 86,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/appointments",
+          "group": "03 ขายและบริการลูกค้า"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/StoreAppointmentsPage/index.tsx",
+      "line": 290,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/appointments",
+          "group": "03 ขายและบริการลูกค้า"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/StoreAppointmentsPage/index.tsx",
+      "line": 630,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/appointments",
+          "group": "03 ขายและบริการลูกค้า"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/DocumentDashboardPage.tsx",
+      "line": 107,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/document-dashboard",
+          "group": "01 โครงหน้า ภาพรวม และเอกสาร"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/CustomerDetailPage/components/EditCustomerDialog.tsx",
+      "line": 165,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/customers/:id",
+          "group": "03 ขายและบริการลูกค้า"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/CustomerDetailPage/components/EditCustomerDialog.tsx",
+      "line": 326,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/customers/:id",
+          "group": "03 ขายและบริการลูกค้า"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/CustomerDetailPage/components/EditCustomerDialog.tsx",
+      "line": 345,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/customers/:id",
+          "group": "03 ขายและบริการลูกค้า"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/ContractCreatePage/components/CustomerCreateModal.tsx",
+      "line": 124,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/contracts/create",
+          "group": "04 สัญญา รับชำระ และติดตามหนี้"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/ContractCreatePage/components/CustomerCreateModal.tsx",
+      "line": 264,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/contracts/create",
+          "group": "04 สัญญา รับชำระ และติดตามหนี้"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/ContractCreatePage/components/CustomerCreateModal.tsx",
+      "line": 315,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/contracts/create",
+          "group": "04 สัญญา รับชำระ และติดตามหนี้"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/ContractCreatePage/components/CustomerCreateModal.tsx",
+      "line": 334,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/contracts/create",
+          "group": "04 สัญญา รับชำระ และติดตามหนี้"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/ContractCreatePage/components/PlanDetailsStep.tsx",
+      "line": 196,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/contracts/create",
+          "group": "04 สัญญา รับชำระ และติดตามหนี้"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/ContractCreatePage/components/PlanDetailsStep.tsx",
+      "line": 224,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/contracts/create",
+          "group": "04 สัญญา รับชำระ และติดตามหนี้"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/ProductCreatePage/components/BranchSupplierCard.tsx",
+      "line": 38,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/products/create",
+          "group": "02 คลังและจัดซื้อ"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/ProductCreatePage/components/BranchSupplierCard.tsx",
+      "line": 54,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/products/create",
+          "group": "02 คลังและจัดซื้อ"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/ProductCreatePage/components/ProductInfoCard.tsx",
+      "line": 84,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/products/create",
+          "group": "02 คลังและจัดซื้อ"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/ProductCreatePage/components/ProductInfoCard.tsx",
+      "line": 104,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/products/create",
+          "group": "02 คลังและจัดซื้อ"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/ProductCreatePage/components/ProductInfoCard.tsx",
+      "line": 123,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/products/create",
+          "group": "02 คลังและจัดซื้อ"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/ProductCreatePage/components/ProductInfoCard.tsx",
+      "line": 143,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/products/create",
+          "group": "02 คลังและจัดซื้อ"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/ProductCreatePage/components/ProductInfoCard.tsx",
+      "line": 215,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/products/create",
+          "group": "02 คลังและจัดซื้อ"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/ProductCreatePage/components/ProductInfoCard.tsx",
+      "line": 233,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/products/create",
+          "group": "02 คลังและจัดซื้อ"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/ProductCreatePage/components/ProductInfoCard.tsx",
+      "line": 374,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/products/create",
+          "group": "02 คลังและจัดซื้อ"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/accounting/PeriodClosePage.tsx",
+      "line": 189,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/settings/accounting#periods",
+          "group": "07 ตั้งค่าและสิทธิ์"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/accounting/TaxDisallowedSummaryPage.tsx",
+      "line": 72,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/accounting/tax-disallowed-summary",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        }
+      ]
+    },
+    {
+      "file": "apps/web-shop/src/components/InstallmentCalculatorCard.tsx",
+      "line": 351,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web-shop/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/products/:id",
+          "group": "08 เว็บลูกค้า"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/PeakSyncPage.tsx",
+      "line": 139,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/settings/accounting/peak-sync",
+          "group": "07 ตั้งค่าและสิทธิ์"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/interco/CreateBatchDialog.tsx",
+      "line": 222,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/accounting/intercompany",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/interco/CreateBatchDialog.tsx",
+      "line": 236,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/accounting/intercompany",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/ExpenseFavoritesPage.tsx",
+      "line": 115,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/expenses/favorites",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/AuditLogsPage.tsx",
+      "line": 312,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/audit-logs",
+          "group": "07 ตั้งค่าและสิทธิ์"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/AfterSalesNewPage.tsx",
+      "line": 678,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/after-sales/new",
+          "group": "03 ขายและบริการลูกค้า"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/AfterSalesNewPage.tsx",
+      "line": 779,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/after-sales/new",
+          "group": "03 ขายและบริการลูกค้า"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/ContractsPage.tsx",
+      "line": 319,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/contracts",
+          "group": "04 สัญญา รับชำระ และติดตามหนี้"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/ContractsPage.tsx",
+      "line": 417,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/contracts",
+          "group": "04 สัญญา รับชำระ และติดตามหนี้"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/ContractsPage.tsx",
+      "line": 429,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/contracts",
+          "group": "04 สัญญา รับชำระ และติดตามหนี้"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/ContractsPage.tsx",
+      "line": 448,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/contracts",
+          "group": "04 สัญญา รับชำระ และติดตามหนี้"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/StockPage/components/StockListTab.tsx",
+      "line": 333,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/stock/products",
+          "group": "02 คลังและจัดซื้อ"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/StockPage/components/StockListTab.tsx",
+      "line": 355,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/stock/products",
+          "group": "02 คลังและจัดซื้อ"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/StockPage/components/StockListTab.tsx",
+      "line": 403,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/stock/products",
+          "group": "02 คลังและจัดซื้อ"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/TradeInPage/components/AcceptModal.tsx",
+      "line": 158,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/trade-in",
+          "group": "02 คลังและจัดซื้อ"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/TradeInPage/components/ValuationsTab.tsx",
+      "line": 196,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/trade-in",
+          "group": "02 คลังและจัดซื้อ"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/TradeInPage/components/QuestionnaireTab.tsx",
+      "line": 240,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/trade-in",
+          "group": "02 คลังและจัดซื้อ"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/TradeInPage/components/ReferenceQuestionnaire.tsx",
+      "line": 39,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/trade-in",
+          "group": "02 คลังและจัดซื้อ"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/StockPage/components/BulkTransferModal.tsx",
+      "line": 60,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/stock/products",
+          "group": "02 คลังและจัดซื้อ"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/transfers/AssetTransfersListPage.tsx",
+      "line": 168,
+      "tag": "SelectTrigger",
+      "importTarget": "apps/web/src/components/ui/select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/assets/transfers",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/StockTransfersPage.tsx",
+      "line": 378,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/stock/transfers",
+          "group": "02 คลังและจัดซื้อ"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/StockTransfersPage.tsx",
+      "line": 538,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/stock/transfers",
+          "group": "02 คลังและจัดซื้อ"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/StockTransfersPage.tsx",
+      "line": 655,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/stock/transfers",
+          "group": "02 คลังและจัดซื้อ"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/AssetManagementPage/components/AssetTable.tsx",
+      "line": 184,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": false,
+      "routes": []
+    },
+    {
+      "file": "apps/web/src/pages/AssetManagementPage/components/AssetTable.tsx",
+      "line": 196,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": false,
+      "routes": []
+    },
+    {
+      "file": "apps/web/src/pages/AssetManagementPage/components/AssetForm.tsx",
+      "line": 139,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": false,
+      "routes": []
+    },
+    {
+      "file": "apps/web/src/pages/AssetManagementPage/components/AssetForm.tsx",
+      "line": 153,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": false,
+      "routes": []
+    },
+    {
+      "file": "apps/web/src/pages/AssetManagementPage/components/AssetForm.tsx",
+      "line": 307,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": false,
+      "routes": []
+    },
+    {
+      "file": "apps/web/src/pages/AssetManagementPage/components/AssetForm.tsx",
+      "line": 324,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": false,
+      "routes": []
+    },
+    {
+      "file": "apps/web/src/pages/AssetManagementPage/components/AssetForm.tsx",
+      "line": 341,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": false,
+      "routes": []
+    },
+    {
+      "file": "apps/web/src/pages/StockAlertsPage.tsx",
+      "line": 440,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/stock/alerts",
+          "group": "02 คลังและจัดซื้อ"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/StockAlertsPage.tsx",
+      "line": 451,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/stock/alerts",
+          "group": "02 คลังและจัดซื้อ"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/StockAlertsPage.tsx",
+      "line": 588,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/stock/alerts",
+          "group": "02 คลังและจัดซื้อ"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/StockAlertsPage.tsx",
+      "line": 600,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/stock/alerts",
+          "group": "02 คลังและจัดซื้อ"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/StockAlertsPage.tsx",
+      "line": 616,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/stock/alerts",
+          "group": "02 คลังและจัดซื้อ"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/StockAlertsPage.tsx",
+      "line": 635,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/stock/alerts",
+          "group": "02 คลังและจัดซื้อ"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/StockAlertsPage.tsx",
+      "line": 650,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/stock/alerts",
+          "group": "02 คลังและจัดซื้อ"
+        }
+      ]
+    },
+    {
+      "file": "apps/web-shop/src/components/catalog/SortDropdown.tsx",
+      "line": 4,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web-shop/src/components/ui/native-select.tsx",
+      "reachable": false,
+      "routes": []
+    },
+    {
+      "file": "apps/web-shop/src/components/catalog/FilterSidebar.tsx",
+      "line": 146,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web-shop/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/products",
+          "group": "08 เว็บลูกค้า"
+        }
+      ]
+    },
+    {
+      "file": "apps/web-shop/src/components/catalog/FilterSidebar.tsx",
+      "line": 164,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web-shop/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/products",
+          "group": "08 เว็บลูกค้า"
+        }
+      ]
+    },
+    {
+      "file": "apps/web-shop/src/components/catalog/FilterSidebar.tsx",
+      "line": 184,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web-shop/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/products",
+          "group": "08 เว็บลูกค้า"
+        }
+      ]
+    },
+    {
+      "file": "apps/web-shop/src/components/catalog/FilterSidebar.tsx",
+      "line": 203,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web-shop/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/products",
+          "group": "08 เว็บลูกค้า"
+        }
+      ]
+    },
+    {
+      "file": "apps/web-shop/src/components/catalog/FilterSidebar.tsx",
+      "line": 351,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web-shop/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/products",
+          "group": "08 เว็บลูกค้า"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/components/customer/CustomerCreateDialog.tsx",
+      "line": 627,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/appointments",
+          "group": "03 ขายและบริการลูกค้า"
+        },
+        {
+          "path": "/bookings",
+          "group": "03 ขายและบริการลูกค้า"
+        },
+        {
+          "path": "/customers",
+          "group": "03 ขายและบริการลูกค้า"
+        },
+        {
+          "path": "/customers/:id",
+          "group": "03 ขายและบริการลูกค้า"
+        },
+        {
+          "path": "/inbox/:roomId?",
+          "group": "06 แชท ทีม และ AI"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/components/customer/CustomerCreateDialog.tsx",
+      "line": 768,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/appointments",
+          "group": "03 ขายและบริการลูกค้า"
+        },
+        {
+          "path": "/bookings",
+          "group": "03 ขายและบริการลูกค้า"
+        },
+        {
+          "path": "/customers",
+          "group": "03 ขายและบริการลูกค้า"
+        },
+        {
+          "path": "/customers/:id",
+          "group": "03 ขายและบริการลูกค้า"
+        },
+        {
+          "path": "/inbox/:roomId?",
+          "group": "06 แชท ทีม และ AI"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/components/customer/CustomerCreateDialog.tsx",
+      "line": 941,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/appointments",
+          "group": "03 ขายและบริการลูกค้า"
+        },
+        {
+          "path": "/bookings",
+          "group": "03 ขายและบริการลูกค้า"
+        },
+        {
+          "path": "/customers",
+          "group": "03 ขายและบริการลูกค้า"
+        },
+        {
+          "path": "/customers/:id",
+          "group": "03 ขายและบริการลูกค้า"
+        },
+        {
+          "path": "/inbox/:roomId?",
+          "group": "06 แชท ทีม และ AI"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/components/customer/CustomerCreateDialog.tsx",
+      "line": 1026,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/appointments",
+          "group": "03 ขายและบริการลูกค้า"
+        },
+        {
+          "path": "/bookings",
+          "group": "03 ขายและบริการลูกค้า"
+        },
+        {
+          "path": "/customers",
+          "group": "03 ขายและบริการลูกค้า"
+        },
+        {
+          "path": "/customers/:id",
+          "group": "03 ขายและบริการลูกค้า"
+        },
+        {
+          "path": "/inbox/:roomId?",
+          "group": "06 แชท ทีม และ AI"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/components/customer/CustomerCreateDialog.tsx",
+      "line": 1045,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/appointments",
+          "group": "03 ขายและบริการลูกค้า"
+        },
+        {
+          "path": "/bookings",
+          "group": "03 ขายและบริการลูกค้า"
+        },
+        {
+          "path": "/customers",
+          "group": "03 ขายและบริการลูกค้า"
+        },
+        {
+          "path": "/customers/:id",
+          "group": "03 ขายและบริการลูกค้า"
+        },
+        {
+          "path": "/inbox/:roomId?",
+          "group": "06 แชท ทีม และ AI"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/AfterSalesPage.tsx",
+      "line": 168,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/after-sales",
+          "group": "03 ขายและบริการลูกค้า"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/UsersPage/components/InviteModal.tsx",
+      "line": 122,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/users",
+          "group": "07 ตั้งค่าและสิทธิ์"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/UsersPage/components/InviteModal.tsx",
+      "line": 136,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/users",
+          "group": "07 ตั้งค่าและสิทธิ์"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/UsersPage/components/UserTable.tsx",
+      "line": 280,
+      "tag": "SelectTrigger",
+      "importTarget": "apps/web/src/components/ui/select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/users",
+          "group": "07 ตั้งค่าและสิทธิ์"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/UsersPage/components/UserTable.tsx",
+      "line": 293,
+      "tag": "SelectTrigger",
+      "importTarget": "apps/web/src/components/ui/select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/users",
+          "group": "07 ตั้งค่าและสิทธิ์"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/UsersPage/components/UserTable.tsx",
+      "line": 310,
+      "tag": "SelectTrigger",
+      "importTarget": "apps/web/src/components/ui/select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/users",
+          "group": "07 ตั้งค่าและสิทธิ์"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/UsersPage/UserDetailPage.tsx",
+      "line": 222,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/users/:id",
+          "group": "07 ตั้งค่าและสิทธิ์"
+        },
+        {
+          "path": "/users/new",
+          "group": "07 ตั้งค่าและสิทธิ์"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/UsersPage/UserDetailPage.tsx",
+      "line": 228,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/users/:id",
+          "group": "07 ตั้งค่าและสิทธิ์"
+        },
+        {
+          "path": "/users/new",
+          "group": "07 ตั้งค่าและสิทธิ์"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/UsersPage/UserDetailPage.tsx",
+      "line": 269,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/users/:id",
+          "group": "07 ตั้งค่าและสิทธิ์"
+        },
+        {
+          "path": "/users/new",
+          "group": "07 ตั้งค่าและสิทธิ์"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/other-income/OtherIncomeEntryPage.tsx",
+      "line": 804,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/other-income/:id/edit",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/other-income/new",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/FinanceReceivablePage/FinanceContactLogDialog.tsx",
+      "line": 78,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/finance-receivable",
+          "group": "04 สัญญา รับชำระ และติดตามหนี้"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/ChatbotFinanceKnowledgePage.tsx",
+      "line": 280,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/chatbot-finance/knowledge",
+          "group": "06 แชท ทีม และ AI"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/ChatbotFinanceKnowledgePage.tsx",
+      "line": 299,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/chatbot-finance/knowledge",
+          "group": "06 แชท ทีม และ AI"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/RepossessionsPage.tsx",
+      "line": 756,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/repossessions",
+          "group": "04 สัญญา รับชำระ และติดตามหนี้"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/RepossessionsPage.tsx",
+      "line": 1129,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/repossessions",
+          "group": "04 สัญญา รับชำระ และติดตามหนี้"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/ContractDetailPage.tsx",
+      "line": 733,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/contracts/:id",
+          "group": "04 สัญญา รับชำระ และติดตามหนี้"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/CollectionsPage/tabs/AllTab.tsx",
+      "line": 277,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/collections",
+          "group": "04 สัญญา รับชำระ และติดตามหนี้"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/CollectionsPage/tabs/AllTab.tsx",
+      "line": 286,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/collections",
+          "group": "04 สัญญา รับชำระ และติดตามหนี้"
+        }
+      ]
+    },
+    {
+      "file": "apps/web-shop/src/components/ui/native-select.tsx",
+      "line": 20,
+      "tag": "select",
+      "importTarget": "",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/products",
+          "group": "08 เว็บลูกค้า"
+        },
+        {
+          "path": "/products/:id",
+          "group": "08 เว็บลูกค้า"
+        },
+        {
+          "path": "/sell/quote",
+          "group": "08 เว็บลูกค้า"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/GfinConfigPage/OverpriceRulesTab.tsx",
+      "line": 258,
+      "tag": "SelectTrigger",
+      "importTarget": "apps/web/src/components/ui/select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/settings/finance/gfin",
+          "group": "07 ตั้งค่าและสิทธิ์"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/finance/VatPage.tsx",
+      "line": 285,
+      "tag": "SelectTrigger",
+      "importTarget": "apps/web/src/components/ui/select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/finance/vat",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/finance/VatPage.tsx",
+      "line": 297,
+      "tag": "SelectTrigger",
+      "importTarget": "apps/web/src/components/ui/select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/finance/vat",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/finance/WhtAnnualPage.tsx",
+      "line": 99,
+      "tag": "SelectTrigger",
+      "importTarget": "apps/web/src/components/ui/select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/finance/wht-annual",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/components/CashAccountSelect.tsx",
+      "line": 84,
+      "tag": "SelectTrigger",
+      "importTarget": "apps/web/src/components/ui/select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/accounting/intercompany",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/branches",
+          "group": "07 ตั้งค่าและสิทธิ์"
+        },
+        {
+          "path": "/contracts/:id",
+          "group": "04 สัญญา รับชำระ และติดตามหนี้"
+        },
+        {
+          "path": "/expenses",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/expenses/new",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/finance/sso-report",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/payments",
+          "group": "04 สัญญา รับชำระ และติดตามหนี้"
+        },
+        {
+          "path": "/profile",
+          "group": "07 ตั้งค่าและสิทธิ์"
+        },
+        {
+          "path": "/repossessions",
+          "group": "04 สัญญา รับชำระ และติดตามหนี้"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/equity/EquityEntryPage.tsx",
+      "line": 255,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/finance/equity/:id/edit",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/finance/equity/new",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/equity/EquityEntryPage.tsx",
+      "line": 289,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/finance/equity/:id/edit",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/finance/equity/new",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/equity/EquityEntryPage.tsx",
+      "line": 386,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/finance/equity/:id/edit",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/finance/equity/new",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/equity/EquityListPage.tsx",
+      "line": 78,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/finance/equity",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/equity/EquityListPage.tsx",
+      "line": 198,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/finance/equity",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/equity/DividendRegisterPage.tsx",
+      "line": 69,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/finance/dividend-register",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/equity/DividendRegisterPage.tsx",
+      "line": 81,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/finance/dividend-register",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/UnifiedInboxPage/components/FacebookCommentPageSettings.tsx",
+      "line": 167,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/chat-analytics",
+          "group": "06 แชท ทีม และ AI"
+        },
+        {
+          "path": "/inbox/:roomId?",
+          "group": "06 แชท ทีม และ AI"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/UnifiedInboxPage/components/SalesDispositionControl.tsx",
+      "line": 94,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/inbox/:roomId?",
+          "group": "06 แชท ทีม และ AI"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/UnifiedInboxPage/components/ChatFollowUpDialog.tsx",
+      "line": 190,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/inbox/:roomId?",
+          "group": "06 แชท ทีม และ AI"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/UnifiedInboxPage/components/ChatFollowUpDialog.tsx",
+      "line": 216,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/inbox/:roomId?",
+          "group": "06 แชท ทีม และ AI"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/LettersPage/components/LetterFiltersBar.tsx",
+      "line": 44,
+      "tag": "SelectTrigger",
+      "importTarget": "apps/web/src/components/ui/select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/letters",
+          "group": "04 สัญญา รับชำระ และติดตามหนี้"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/LettersPage/components/LetterFiltersBar.tsx",
+      "line": 60,
+      "tag": "SelectTrigger",
+      "importTarget": "apps/web/src/components/ui/select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/letters",
+          "group": "04 สัญญา รับชำระ และติดตามหนี้"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/other-income/components/ItemsTable.tsx",
+      "line": 138,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/other-income/:id/edit",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/other-income/new",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/other-income/components/ItemsTable.tsx",
+      "line": 159,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/other-income/:id/edit",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/other-income/new",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/CompanySettingsPage.tsx",
+      "line": 477,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/settings/company/entities",
+          "group": "07 ตั้งค่าและสิทธิ์"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/CustomersPage/components/FilterSelect.tsx",
+      "line": 48,
+      "tag": "SelectTrigger",
+      "importTarget": "apps/web/src/components/ui/select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/bookings",
+          "group": "03 ขายและบริการลูกค้า"
+        },
+        {
+          "path": "/customers",
+          "group": "03 ขายและบริการลูกค้า"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/CustomersPage/components/ProspectFilterBar.tsx",
+      "line": 80,
+      "tag": "FilterSelect",
+      "importTarget": "apps/web/src/pages/CustomersPage/components/FilterSelect.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/customers",
+          "group": "03 ขายและบริการลูกค้า"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/CustomersPage/components/ProspectFilterBar.tsx",
+      "line": 92,
+      "tag": "FilterSelect",
+      "importTarget": "apps/web/src/pages/CustomersPage/components/FilterSelect.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/customers",
+          "group": "03 ขายและบริการลูกค้า"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/CustomersPage/components/ProspectFilterBar.tsx",
+      "line": 100,
+      "tag": "FilterSelect",
+      "importTarget": "apps/web/src/pages/CustomersPage/components/FilterSelect.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/customers",
+          "group": "03 ขายและบริการลูกค้า"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/CustomersPage/components/ProspectFilterBar.tsx",
+      "line": 112,
+      "tag": "FilterSelect",
+      "importTarget": "apps/web/src/pages/CustomersPage/components/FilterSelect.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/customers",
+          "group": "03 ขายและบริการลูกค้า"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/CustomersPage/components/ProspectFilterBar.tsx",
+      "line": 130,
+      "tag": "FilterSelect",
+      "importTarget": "apps/web/src/pages/CustomersPage/components/FilterSelect.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/customers",
+          "group": "03 ขายและบริการลูกค้า"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/CustomersPage/components/CustomerFilterBar.tsx",
+      "line": 73,
+      "tag": "FilterSelect",
+      "importTarget": "apps/web/src/pages/CustomersPage/components/FilterSelect.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/customers",
+          "group": "03 ขายและบริการลูกค้า"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/CustomersPage/components/CustomerFilterBar.tsx",
+      "line": 83,
+      "tag": "FilterSelect",
+      "importTarget": "apps/web/src/pages/CustomersPage/components/FilterSelect.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/customers",
+          "group": "03 ขายและบริการลูกค้า"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/CustomersPage/components/CustomerFilterBar.tsx",
+      "line": 106,
+      "tag": "FilterSelect",
+      "importTarget": "apps/web/src/pages/CustomersPage/components/FilterSelect.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/customers",
+          "group": "03 ขายและบริการลูกค้า"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/CustomersPage/components/CustomerFilterBar.tsx",
+      "line": 123,
+      "tag": "FilterSelect",
+      "importTarget": "apps/web/src/pages/CustomersPage/components/FilterSelect.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/customers",
+          "group": "03 ขายและบริการลูกค้า"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/CustomersPage/components/CustomerFilterBar.tsx",
+      "line": 138,
+      "tag": "FilterSelect",
+      "importTarget": "apps/web/src/pages/CustomersPage/components/FilterSelect.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/customers",
+          "group": "03 ขายและบริการลูกค้า"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/CollectionsPage/components/StuckContractsSection.tsx",
+      "line": 215,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/collections",
+          "group": "04 สัญญา รับชำระ และติดตามหนี้"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/CollectionsPage/components/CollectionsFilters.tsx",
+      "line": 49,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/collections",
+          "group": "04 สัญญา รับชำระ และติดตามหนี้"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/CollectionsPage/components/SendLineAdHocDialog.tsx",
+      "line": 124,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/collections",
+          "group": "04 สัญญา รับชำระ และติดตามหนี้"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/CollectionsPage/components/SortDropdown.tsx",
+      "line": 37,
+      "tag": "SelectTrigger",
+      "importTarget": "apps/web/src/components/ui/select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/collections",
+          "group": "04 สัญญา รับชำระ และติดตามหนี้"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/CollectionsPage/components/LegalCaseDialog.tsx",
+      "line": 224,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/collections",
+          "group": "04 สัญญา รับชำระ และติดตามหนี้"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/CollectionsPage/components/CustomerTagDialog.tsx",
+      "line": 154,
+      "tag": "SelectTrigger",
+      "importTarget": "apps/web/src/components/ui/select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/collections",
+          "group": "04 สัญญา รับชำระ และติดตามหนี้"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/AiSettingsPage.tsx",
+      "line": 284,
+      "tag": "SelectTrigger",
+      "importTarget": "apps/web/src/components/ui/select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/settings/ai/assistant",
+          "group": "07 ตั้งค่าและสิทธิ์"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/AiSettingsPage.tsx",
+      "line": 312,
+      "tag": "SelectTrigger",
+      "importTarget": "apps/web/src/components/ui/select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/settings/ai/assistant",
+          "group": "07 ตั้งค่าและสิทธิ์"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/ETaxConfigPage.tsx",
+      "line": 159,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/settings/accounting/e-tax",
+          "group": "07 ตั้งค่าและสิทธิ์"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/RichMenuPage.tsx",
+      "line": 198,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/settings/rich-menu",
+          "group": "07 ตั้งค่าและสิทธิ์"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/UnifiedInboxPage/components/FacebookCommentLink.tsx",
+      "line": 103,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/inbox/:roomId?",
+          "group": "06 แชท ทีม และ AI"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/finance/components/MonthlyPeriodSelect.tsx",
+      "line": 25,
+      "tag": "SelectTrigger",
+      "importTarget": "apps/web/src/components/ui/select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/finance/e-tax",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/finance/sso-report",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/finance/vat-auto-journal",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/finance/wht",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/finance/components/MonthlyPeriodSelect.tsx",
+      "line": 37,
+      "tag": "SelectTrigger",
+      "importTarget": "apps/web/src/components/ui/select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/finance/e-tax",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/finance/sso-report",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/finance/vat-auto-journal",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/finance/wht",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/UnifiedInboxPage/components/FacebookCommentPanel.tsx",
+      "line": 109,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/inbox/:roomId?",
+          "group": "06 แชท ทีม และ AI"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/UnifiedInboxPage/components/ChatLibraryPicker.tsx",
+      "line": 281,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/inbox/:roomId?",
+          "group": "06 แชท ทีม และ AI"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/UnifiedInboxPage/components/ChatServiceRequestCard.tsx",
+      "line": 215,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/inbox/:roomId?",
+          "group": "06 แชท ทีม และ AI"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/UnifiedInboxPage/components/ChatServiceRequestCard.tsx",
+      "line": 255,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/inbox/:roomId?",
+          "group": "06 แชท ทีม และ AI"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/UnifiedInboxPage/components/ChannelFilter.tsx",
+      "line": 112,
+      "tag": "SelectTrigger",
+      "importTarget": "apps/web/src/components/ui/select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/inbox/:roomId?",
+          "group": "06 แชท ทีม และ AI"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/UnifiedInboxPage/components/ChannelFilter.tsx",
+      "line": 158,
+      "tag": "SelectTrigger",
+      "importTarget": "apps/web/src/components/ui/select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/inbox/:roomId?",
+          "group": "06 แชท ทีม และ AI"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/StockCountPage.tsx",
+      "line": 178,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/stock/count",
+          "group": "02 คลังและจัดซื้อ"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/ChartOfAccountsPage.tsx",
+      "line": 481,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/settings/accounting/chart",
+          "group": "07 ตั้งค่าและสิทธิ์"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/ChartOfAccountsPage.tsx",
+      "line": 512,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/settings/accounting/chart",
+          "group": "07 ตั้งค่าและสิทธิ์"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/ChartOfAccountsPage.tsx",
+      "line": 561,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/settings/accounting/chart",
+          "group": "07 ตั้งค่าและสิทธิ์"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/ImportedSalesPage.tsx",
+      "line": 63,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/imported-sales",
+          "group": "03 ขายและบริการลูกค้า"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/components/tender/TenderInput.tsx",
+      "line": 124,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/bookings",
+          "group": "03 ขายและบริการลูกค้า"
+        },
+        {
+          "path": "/contracts/create",
+          "group": "04 สัญญา รับชำระ และติดตามหนี้"
+        },
+        {
+          "path": "/pos",
+          "group": "03 ขายและบริการลูกค้า"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/UnifiedInboxPage/components/ChatServiceRequestDialog.tsx",
+      "line": 114,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/inbox/:roomId?",
+          "group": "06 แชท ทีม และ AI"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/UnifiedInboxPage/components/ChatServiceRequestDialog.tsx",
+      "line": 159,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/inbox/:roomId?",
+          "group": "06 แชท ทีม และ AI"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/GfinConfigPage/MaxPricesTab.tsx",
+      "line": 268,
+      "tag": "SelectTrigger",
+      "importTarget": "apps/web/src/components/ui/select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/settings/finance/gfin",
+          "group": "07 ตั้งค่าและสิทธิ์"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/MdmDashboardPage.tsx",
+      "line": 350,
+      "tag": "SelectTrigger",
+      "importTarget": "apps/web/src/components/ui/select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/mdm",
+          "group": "01 โครงหน้า ภาพรวม และเอกสาร"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/MdmDashboardPage.tsx",
+      "line": 367,
+      "tag": "SelectTrigger",
+      "importTarget": "apps/web/src/components/ui/select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/mdm",
+          "group": "01 โครงหน้า ภาพรวม และเอกสาร"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/SmsTemplatesPage/components/SmsTemplateForm.tsx",
+      "line": 94,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/settings/comms/sms",
+          "group": "07 ตั้งค่าและสิทธิ์"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/ShopDailyCashPage.tsx",
+      "line": 175,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/shop/daily-cash",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/ProfitLossPage.tsx",
+      "line": 167,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/profit-loss",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/PromotionsPage.tsx",
+      "line": 339,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/promotions",
+          "group": "03 ขายและบริการลูกค้า"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/CommissionsPage.tsx",
+      "line": 455,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/commissions",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/CommissionsPage.tsx",
+      "line": 543,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/commissions",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/ProductDetailPage/index.tsx",
+      "line": 605,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/products/:id",
+          "group": "02 คลังและจัดซื้อ"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/components/CompanyFilter.tsx",
+      "line": 40,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/",
+          "group": "01 โครงหน้า ภาพรวม และเอกสาร"
+        },
+        {
+          "path": "/finance/bad-debt-report",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/finance/balance-sheet",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/finance/cash-flow",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/finance/e-tax",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/finance/equity-statement",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/finance/general-journal",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/finance/general-ledger",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/finance/wht-report",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/profit-loss",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/SuppliersPage/components/SupplierForm.tsx",
+      "line": 259,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/suppliers",
+          "group": "02 คลังและจัดซื้อ"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/SuppliersPage/components/SupplierForm.tsx",
+      "line": 529,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/suppliers",
+          "group": "02 คลังและจัดซื้อ"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/canned-response-admin/QuickReplyEditor.tsx",
+      "line": 57,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/canned-responses",
+          "group": "06 แชท ทีม และ AI"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/canned-response-admin/QuickReplyEditor.tsx",
+      "line": 82,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/canned-responses",
+          "group": "06 แชท ทีม และ AI"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/canned-response-admin/TemplateEditorPane.tsx",
+      "line": 137,
+      "tag": "NameAutocomplete",
+      "importTarget": "apps/web/src/components/ui/NameAutocomplete.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/canned-responses",
+          "group": "06 แชท ทีม และ AI"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/components/trade-in/PurchaseSelect.tsx",
+      "line": 38,
+      "tag": "SelectTrigger",
+      "importTarget": "apps/web/src/components/ui/select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/trade-in",
+          "group": "02 คลังและจัดซื้อ"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/components/trade-in/TradeInCreditPicker.tsx",
+      "line": 26,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/contracts/create",
+          "group": "04 สัญญา รับชำระ และติดตามหนี้"
+        },
+        {
+          "path": "/pos",
+          "group": "03 ขายและบริการลูกค้า"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/components/trade-in/SellerPaymentFields.tsx",
+      "line": 41,
+      "tag": "NameAutocomplete",
+      "importTarget": "apps/web/src/components/ui/NameAutocomplete.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/trade-in",
+          "group": "02 คลังและจัดซื้อ"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/PurchaseOrdersPage/components/POListTab.tsx",
+      "line": 76,
+      "tag": "SelectTrigger",
+      "importTarget": "apps/web/src/components/ui/select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/purchase-orders",
+          "group": "02 คลังและจัดซื้อ"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/PurchaseOrdersPage/components/POListTab.tsx",
+      "line": 484,
+      "tag": "FilterSelect",
+      "importTarget": "",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/purchase-orders",
+          "group": "02 คลังและจัดซื้อ"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/PurchaseOrdersPage/components/POListTab.tsx",
+      "line": 498,
+      "tag": "FilterSelect",
+      "importTarget": "",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/purchase-orders",
+          "group": "02 คลังและจัดซื้อ"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/PurchaseOrdersPage/components/POListTab.tsx",
+      "line": 503,
+      "tag": "FilterSelect",
+      "importTarget": "",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/purchase-orders",
+          "group": "02 คลังและจัดซื้อ"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/PurchaseOrdersPage/components/AccessoryGroupScreen.tsx",
+      "line": 93,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/purchase-orders",
+          "group": "02 คลังและจัดซื้อ"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/components/contacts/CreateContactModal.tsx",
+      "line": 260,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/after-sales",
+          "group": "03 ขายและบริการลูกค้า"
+        },
+        {
+          "path": "/after-sales/:id",
+          "group": "03 ขายและบริการลูกค้า"
+        },
+        {
+          "path": "/after-sales/new",
+          "group": "03 ขายและบริการลูกค้า"
+        },
+        {
+          "path": "/assets/:id/edit",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/assets/new",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/contacts",
+          "group": "03 ขายและบริการลูกค้า"
+        },
+        {
+          "path": "/expenses",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/expenses/new",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/other-income/:id/edit",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/other-income/new",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/purchase-orders",
+          "group": "02 คลังและจัดซื้อ"
+        },
+        {
+          "path": "/trade-in",
+          "group": "02 คลังและจัดซื้อ"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/components/product/DeviceDisclosureFields.tsx",
+      "line": 20,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/products/:id",
+          "group": "02 คลังและจัดซื้อ"
+        },
+        {
+          "path": "/products/create",
+          "group": "02 คลังและจัดซื้อ"
+        },
+        {
+          "path": "/purchase-orders",
+          "group": "02 คลังและจัดซื้อ"
+        },
+        {
+          "path": "/trade-in",
+          "group": "02 คลังและจัดซื้อ"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/components/product/DeviceDisclosureFields.tsx",
+      "line": 43,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/products/:id",
+          "group": "02 คลังและจัดซื้อ"
+        },
+        {
+          "path": "/products/create",
+          "group": "02 คลังและจัดซื้อ"
+        },
+        {
+          "path": "/purchase-orders",
+          "group": "02 คลังและจัดซื้อ"
+        },
+        {
+          "path": "/trade-in",
+          "group": "02 คลังและจัดซื้อ"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/components/template-editor/editor/BlockEditModal.tsx",
+      "line": 91,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/contract-templates",
+          "group": "04 สัญญา รับชำระ และติดตามหนี้"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/components/ui/RichTextEditor.tsx",
+      "line": 270,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": false,
+      "routes": []
+    },
+    {
+      "file": "apps/web/src/components/ui/RichTextEditor.tsx",
+      "line": 283,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": false,
+      "routes": []
+    },
+    {
+      "file": "apps/web/src/pages/canned-response-admin/bubble-editors/CardBubbleEditor.tsx",
+      "line": 74,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/canned-responses",
+          "group": "06 แชท ทีม และ AI"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/ETaxInvoicePage.tsx",
+      "line": 269,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": []
+    },
+    {
+      "file": "apps/web/src/components/appointments/SlotPicker.tsx",
+      "line": 37,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/appointments",
+          "group": "03 ขายและบริการลูกค้า"
+        },
+        {
+          "path": "/visit",
+          "group": "09 หน้าสาธารณะและ LIFF"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/components/product/DeviceOriginFilter.tsx",
+      "line": 12,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/contracts/create",
+          "group": "04 สัญญา รับชำระ และติดตามหนี้"
+        },
+        {
+          "path": "/pos",
+          "group": "03 ขายและบริการลูกค้า"
+        },
+        {
+          "path": "/stock/products",
+          "group": "02 คลังและจัดซื้อ"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/components/contract/CreditCheckPanel.tsx",
+      "line": 302,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/contracts/:id",
+          "group": "04 สัญญา รับชำระ และติดตามหนี้"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/components/contract/CustomerEditModal.tsx",
+      "line": 206,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/contracts/:id",
+          "group": "04 สัญญา รับชำระ และติดตามหนี้"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/components/contract/CustomerEditModal.tsx",
+      "line": 253,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/contracts/:id",
+          "group": "04 สัญญา รับชำระ และติดตามหนี้"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/components/contract/CustomerEditModal.tsx",
+      "line": 371,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/contracts/:id",
+          "group": "04 สัญญา รับชำระ และติดตามหนี้"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/components/contract/CustomerEditModal.tsx",
+      "line": 390,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/contracts/:id",
+          "group": "04 สัญญา รับชำระ และติดตามหนี้"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/components/ui/native-select.tsx",
+      "line": 20,
+      "tag": "select",
+      "importTarget": "",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/",
+          "group": "01 โครงหน้า ภาพรวม และเอกสาร"
+        },
+        {
+          "path": "/accounting/intercompany",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/accounting/tax-disallowed-summary",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/after-sales",
+          "group": "03 ขายและบริการลูกค้า"
+        },
+        {
+          "path": "/after-sales/:id",
+          "group": "03 ขายและบริการลูกค้า"
+        },
+        {
+          "path": "/after-sales/new",
+          "group": "03 ขายและบริการลูกค้า"
+        },
+        {
+          "path": "/appointments",
+          "group": "03 ขายและบริการลูกค้า"
+        },
+        {
+          "path": "/assets/:id",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/assets/:id/edit",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/assets/new",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/audit-logs",
+          "group": "07 ตั้งค่าและสิทธิ์"
+        },
+        {
+          "path": "/bookings",
+          "group": "03 ขายและบริการลูกค้า"
+        },
+        {
+          "path": "/canned-responses",
+          "group": "06 แชท ทีม และ AI"
+        },
+        {
+          "path": "/chat-analytics",
+          "group": "06 แชท ทีม และ AI"
+        },
+        {
+          "path": "/chatbot-finance/knowledge",
+          "group": "06 แชท ทีม และ AI"
+        },
+        {
+          "path": "/collections",
+          "group": "04 สัญญา รับชำระ และติดตามหนี้"
+        },
+        {
+          "path": "/commissions",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/contacts",
+          "group": "03 ขายและบริการลูกค้า"
+        },
+        {
+          "path": "/contract-templates",
+          "group": "04 สัญญา รับชำระ และติดตามหนี้"
+        },
+        {
+          "path": "/contracts",
+          "group": "04 สัญญา รับชำระ และติดตามหนี้"
+        },
+        {
+          "path": "/contracts/:id",
+          "group": "04 สัญญา รับชำระ และติดตามหนี้"
+        },
+        {
+          "path": "/contracts/create",
+          "group": "04 สัญญา รับชำระ และติดตามหนี้"
+        },
+        {
+          "path": "/credit-checks",
+          "group": "03 ขายและบริการลูกค้า"
+        },
+        {
+          "path": "/customers",
+          "group": "03 ขายและบริการลูกค้า"
+        },
+        {
+          "path": "/customers/:id",
+          "group": "03 ขายและบริการลูกค้า"
+        },
+        {
+          "path": "/document-dashboard",
+          "group": "01 โครงหน้า ภาพรวม และเอกสาร"
+        },
+        {
+          "path": "/expenses",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/expenses/:id",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/expenses/daily-summary",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/expenses/favorites",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/expenses/new",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/expenses/verify/:id",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/finance-receivable",
+          "group": "04 สัญญา รับชำระ และติดตามหนี้"
+        },
+        {
+          "path": "/finance/bad-debt-report",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/finance/balance-sheet",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/finance/cash-flow",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/finance/dividend-register",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/finance/e-tax",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/finance/equity",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/finance/equity-statement",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/finance/equity/:id/edit",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/finance/equity/new",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/finance/general-journal",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/finance/general-ledger",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/finance/wht-report",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/finance/year-end-closing",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/imported-sales",
+          "group": "03 ขายและบริการลูกค้า"
+        },
+        {
+          "path": "/inbox/:roomId?",
+          "group": "06 แชท ทีม และ AI"
+        },
+        {
+          "path": "/inspections",
+          "group": "02 คลังและจัดซื้อ"
+        },
+        {
+          "path": "/letters",
+          "group": "04 สัญญา รับชำระ และติดตามหนี้"
+        },
+        {
+          "path": "/monthly-close",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/notifications",
+          "group": "01 โครงหน้า ภาพรวม และเอกสาร"
+        },
+        {
+          "path": "/other-income",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/other-income/:id",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/other-income/:id/edit",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/other-income/new",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/other-income/pending-approval",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/payments",
+          "group": "04 สัญญา รับชำระ และติดตามหนี้"
+        },
+        {
+          "path": "/pdpa",
+          "group": "01 โครงหน้า ภาพรวม และเอกสาร"
+        },
+        {
+          "path": "/pos",
+          "group": "03 ขายและบริการลูกค้า"
+        },
+        {
+          "path": "/products/:id",
+          "group": "02 คลังและจัดซื้อ"
+        },
+        {
+          "path": "/products/create",
+          "group": "02 คลังและจัดซื้อ"
+        },
+        {
+          "path": "/profit-loss",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/promotions",
+          "group": "03 ขายและบริการลูกค้า"
+        },
+        {
+          "path": "/purchase-orders",
+          "group": "02 คลังและจัดซื้อ"
+        },
+        {
+          "path": "/purchase-orders/qc",
+          "group": "02 คลังและจัดซื้อ"
+        },
+        {
+          "path": "/reports",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/repossessions",
+          "group": "04 สัญญา รับชำระ และติดตามหนี้"
+        },
+        {
+          "path": "/sales",
+          "group": "03 ขายและบริการลูกค้า"
+        },
+        {
+          "path": "/settings/:categoryId",
+          "group": "07 ตั้งค่าและสิทธิ์"
+        },
+        {
+          "path": "/settings/accounting/chart",
+          "group": "07 ตั้งค่าและสิทธิ์"
+        },
+        {
+          "path": "/settings/accounting/e-tax",
+          "group": "07 ตั้งค่าและสิทธิ์"
+        },
+        {
+          "path": "/settings/accounting/peak-sync",
+          "group": "07 ตั้งค่าและสิทธิ์"
+        },
+        {
+          "path": "/settings/accounting#periods",
+          "group": "07 ตั้งค่าและสิทธิ์"
+        },
+        {
+          "path": "/settings/comms/dunning",
+          "group": "07 ตั้งค่าและสิทธิ์"
+        },
+        {
+          "path": "/settings/comms/sms",
+          "group": "07 ตั้งค่าและสิทธิ์"
+        },
+        {
+          "path": "/settings/company/entities",
+          "group": "07 ตั้งค่าและสิทธิ์"
+        },
+        {
+          "path": "/settings/products/pricing",
+          "group": "07 ตั้งค่าและสิทธิ์"
+        },
+        {
+          "path": "/settings/rich-menu",
+          "group": "07 ตั้งค่าและสิทธิ์"
+        },
+        {
+          "path": "/shop/daily-cash",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/stock/adjustments",
+          "group": "02 คลังและจัดซื้อ"
+        },
+        {
+          "path": "/stock/alerts",
+          "group": "02 คลังและจัดซื้อ"
+        },
+        {
+          "path": "/stock/count",
+          "group": "02 คลังและจัดซื้อ"
+        },
+        {
+          "path": "/stock/products",
+          "group": "02 คลังและจัดซื้อ"
+        },
+        {
+          "path": "/stock/transfers",
+          "group": "02 คลังและจัดซื้อ"
+        },
+        {
+          "path": "/suppliers",
+          "group": "02 คลังและจัดซื้อ"
+        },
+        {
+          "path": "/todos",
+          "group": "06 แชท ทีม และ AI"
+        },
+        {
+          "path": "/trade-in",
+          "group": "02 คลังและจัดซื้อ"
+        },
+        {
+          "path": "/users",
+          "group": "07 ตั้งค่าและสิทธิ์"
+        },
+        {
+          "path": "/users/:id",
+          "group": "07 ตั้งค่าและสิทธิ์"
+        },
+        {
+          "path": "/users/new",
+          "group": "07 ตั้งค่าและสิทธิ์"
+        },
+        {
+          "path": "/visit",
+          "group": "09 หน้าสาธารณะและ LIFF"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/components/ui/AddressForm.tsx",
+      "line": 240,
+      "tag": "SearchableSelect",
+      "importTarget": "apps/web/src/components/ui/SearchableSelect.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/after-sales",
+          "group": "03 ขายและบริการลูกค้า"
+        },
+        {
+          "path": "/after-sales/:id",
+          "group": "03 ขายและบริการลูกค้า"
+        },
+        {
+          "path": "/after-sales/new",
+          "group": "03 ขายและบริการลูกค้า"
+        },
+        {
+          "path": "/appointments",
+          "group": "03 ขายและบริการลูกค้า"
+        },
+        {
+          "path": "/assets/:id/edit",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/assets/new",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/bookings",
+          "group": "03 ขายและบริการลูกค้า"
+        },
+        {
+          "path": "/branches",
+          "group": "07 ตั้งค่าและสิทธิ์"
+        },
+        {
+          "path": "/contacts",
+          "group": "03 ขายและบริการลูกค้า"
+        },
+        {
+          "path": "/contacts/:id",
+          "group": "03 ขายและบริการลูกค้า"
+        },
+        {
+          "path": "/contracts/:id",
+          "group": "04 สัญญา รับชำระ และติดตามหนี้"
+        },
+        {
+          "path": "/contracts/create",
+          "group": "04 สัญญา รับชำระ และติดตามหนี้"
+        },
+        {
+          "path": "/customers",
+          "group": "03 ขายและบริการลูกค้า"
+        },
+        {
+          "path": "/customers/:id",
+          "group": "03 ขายและบริการลูกค้า"
+        },
+        {
+          "path": "/expenses",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/expenses/new",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/inbox/:roomId?",
+          "group": "06 แชท ทีม และ AI"
+        },
+        {
+          "path": "/other-income/:id/edit",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/other-income/new",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/purchase-orders",
+          "group": "02 คลังและจัดซื้อ"
+        },
+        {
+          "path": "/settings/company/entities",
+          "group": "07 ตั้งค่าและสิทธิ์"
+        },
+        {
+          "path": "/suppliers",
+          "group": "02 คลังและจัดซื้อ"
+        },
+        {
+          "path": "/suppliers/:id",
+          "group": "02 คลังและจัดซื้อ"
+        },
+        {
+          "path": "/trade-in",
+          "group": "02 คลังและจัดซื้อ"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/components/ui/AddressForm.tsx",
+      "line": 252,
+      "tag": "SearchableSelect",
+      "importTarget": "apps/web/src/components/ui/SearchableSelect.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/after-sales",
+          "group": "03 ขายและบริการลูกค้า"
+        },
+        {
+          "path": "/after-sales/:id",
+          "group": "03 ขายและบริการลูกค้า"
+        },
+        {
+          "path": "/after-sales/new",
+          "group": "03 ขายและบริการลูกค้า"
+        },
+        {
+          "path": "/appointments",
+          "group": "03 ขายและบริการลูกค้า"
+        },
+        {
+          "path": "/assets/:id/edit",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/assets/new",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/bookings",
+          "group": "03 ขายและบริการลูกค้า"
+        },
+        {
+          "path": "/branches",
+          "group": "07 ตั้งค่าและสิทธิ์"
+        },
+        {
+          "path": "/contacts",
+          "group": "03 ขายและบริการลูกค้า"
+        },
+        {
+          "path": "/contacts/:id",
+          "group": "03 ขายและบริการลูกค้า"
+        },
+        {
+          "path": "/contracts/:id",
+          "group": "04 สัญญา รับชำระ และติดตามหนี้"
+        },
+        {
+          "path": "/contracts/create",
+          "group": "04 สัญญา รับชำระ และติดตามหนี้"
+        },
+        {
+          "path": "/customers",
+          "group": "03 ขายและบริการลูกค้า"
+        },
+        {
+          "path": "/customers/:id",
+          "group": "03 ขายและบริการลูกค้า"
+        },
+        {
+          "path": "/expenses",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/expenses/new",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/inbox/:roomId?",
+          "group": "06 แชท ทีม และ AI"
+        },
+        {
+          "path": "/other-income/:id/edit",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/other-income/new",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/purchase-orders",
+          "group": "02 คลังและจัดซื้อ"
+        },
+        {
+          "path": "/settings/company/entities",
+          "group": "07 ตั้งค่าและสิทธิ์"
+        },
+        {
+          "path": "/suppliers",
+          "group": "02 คลังและจัดซื้อ"
+        },
+        {
+          "path": "/suppliers/:id",
+          "group": "02 คลังและจัดซื้อ"
+        },
+        {
+          "path": "/trade-in",
+          "group": "02 คลังและจัดซื้อ"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/components/ui/AddressForm.tsx",
+      "line": 265,
+      "tag": "SearchableSelect",
+      "importTarget": "apps/web/src/components/ui/SearchableSelect.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/after-sales",
+          "group": "03 ขายและบริการลูกค้า"
+        },
+        {
+          "path": "/after-sales/:id",
+          "group": "03 ขายและบริการลูกค้า"
+        },
+        {
+          "path": "/after-sales/new",
+          "group": "03 ขายและบริการลูกค้า"
+        },
+        {
+          "path": "/appointments",
+          "group": "03 ขายและบริการลูกค้า"
+        },
+        {
+          "path": "/assets/:id/edit",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/assets/new",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/bookings",
+          "group": "03 ขายและบริการลูกค้า"
+        },
+        {
+          "path": "/branches",
+          "group": "07 ตั้งค่าและสิทธิ์"
+        },
+        {
+          "path": "/contacts",
+          "group": "03 ขายและบริการลูกค้า"
+        },
+        {
+          "path": "/contacts/:id",
+          "group": "03 ขายและบริการลูกค้า"
+        },
+        {
+          "path": "/contracts/:id",
+          "group": "04 สัญญา รับชำระ และติดตามหนี้"
+        },
+        {
+          "path": "/contracts/create",
+          "group": "04 สัญญา รับชำระ และติดตามหนี้"
+        },
+        {
+          "path": "/customers",
+          "group": "03 ขายและบริการลูกค้า"
+        },
+        {
+          "path": "/customers/:id",
+          "group": "03 ขายและบริการลูกค้า"
+        },
+        {
+          "path": "/expenses",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/expenses/new",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/inbox/:roomId?",
+          "group": "06 แชท ทีม และ AI"
+        },
+        {
+          "path": "/other-income/:id/edit",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/other-income/new",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/purchase-orders",
+          "group": "02 คลังและจัดซื้อ"
+        },
+        {
+          "path": "/settings/company/entities",
+          "group": "07 ตั้งค่าและสิทธิ์"
+        },
+        {
+          "path": "/suppliers",
+          "group": "02 คลังและจัดซื้อ"
+        },
+        {
+          "path": "/suppliers/:id",
+          "group": "02 คลังและจัดซื้อ"
+        },
+        {
+          "path": "/trade-in",
+          "group": "02 คลังและจัดซื้อ"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/components/ui/PaginationBar.tsx",
+      "line": 90,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/accounting/intercompany",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/audit-logs",
+          "group": "07 ตั้งค่าและสิทธิ์"
+        },
+        {
+          "path": "/contracts",
+          "group": "04 สัญญา รับชำระ และติดตามหนี้"
+        },
+        {
+          "path": "/credit-checks",
+          "group": "03 ขายและบริการลูกค้า"
+        },
+        {
+          "path": "/expenses",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/letters",
+          "group": "04 สัญญา รับชำระ และติดตามหนี้"
+        },
+        {
+          "path": "/other-income",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/other-income/pending-approval",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/components/ui/data-grid-pagination.tsx",
+      "line": 138,
+      "tag": "SelectTrigger",
+      "importTarget": "apps/web/src/components/ui/select.tsx",
+      "reachable": false,
+      "routes": []
+    },
+    {
+      "file": "apps/web/src/pages/NotificationsPage/components/NotificationLogTable.tsx",
+      "line": 114,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/notifications",
+          "group": "01 โครงหน้า ภาพรวม และเอกสาร"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/NotificationsPage/components/NotificationLogTable.tsx",
+      "line": 124,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/notifications",
+          "group": "01 โครงหน้า ภาพรวม และเอกสาร"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/NotificationsPage/components/TemplateForm.tsx",
+      "line": 510,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/notifications",
+          "group": "01 โครงหน้า ภาพรวม และเอกสาร"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/NotificationsPage/components/TemplateForm.tsx",
+      "line": 526,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/notifications",
+          "group": "01 โครงหน้า ภาพรวม และเอกสาร"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/NotificationsPage/components/TemplateForm.tsx",
+      "line": 537,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/notifications",
+          "group": "01 โครงหน้า ภาพรวม และเอกสาร"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/NotificationsPage/components/TemplateManager.tsx",
+      "line": 93,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/notifications",
+          "group": "01 โครงหน้า ภาพรวม และเอกสาร"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/NotificationsPage/index.tsx",
+      "line": 325,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/notifications",
+          "group": "01 โครงหน้า ภาพรวม และเอกสาร"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/BankAccountsPage.tsx",
+      "line": 511,
+      "tag": "SelectTrigger",
+      "importTarget": "apps/web/src/components/ui/select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/finance/bank-accounts",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/components/payment/SlipReviewTab.tsx",
+      "line": 637,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/payments",
+          "group": "04 สัญญา รับชำระ และติดตามหนี้"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/assets/AssetsListPage.tsx",
+      "line": 390,
+      "tag": "SelectTrigger",
+      "importTarget": "apps/web/src/components/ui/select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/assets",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/assets/AssetsListPage.tsx",
+      "line": 405,
+      "tag": "SelectTrigger",
+      "importTarget": "apps/web/src/components/ui/select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/assets",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/assets/AssetAuditPage.tsx",
+      "line": 108,
+      "tag": "SelectTrigger",
+      "importTarget": "apps/web/src/components/ui/select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/assets/:id/audit",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/assets/audit",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/ProductDetailPage/components/OnlineListingPanel.tsx",
+      "line": 345,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/products/:id",
+          "group": "02 คลังและจัดซื้อ"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/POSPage/components/SaleDetailsForm.tsx",
+      "line": 211,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/pos",
+          "group": "03 ขายและบริการลูกค้า"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/DunningSettingsPage.tsx",
+      "line": 666,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/settings/comms/dunning",
+          "group": "07 ตั้งค่าและสิทธิ์"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/DunningSettingsPage.tsx",
+      "line": 687,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/settings/comms/dunning",
+          "group": "07 ตั้งค่าและสิทธิ์"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/PurchaseOrdersPage/components/wizard/items/AccessoryItemRow.tsx",
+      "line": 114,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/purchase-orders",
+          "group": "02 คลังและจัดซื้อ"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/PurchaseOrdersPage/components/wizard/items/AccessoryItemRow.tsx",
+      "line": 127,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/purchase-orders",
+          "group": "02 คลังและจัดซื้อ"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/PurchaseOrdersPage/components/wizard/items/DeviceItemRow.tsx",
+      "line": 38,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/purchase-orders",
+          "group": "02 คลังและจัดซื้อ"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/PurchaseOrdersPage/components/wizard/items/DeviceItemRow.tsx",
+      "line": 50,
+      "tag": "CompactSelect",
+      "importTarget": "apps/web/src/pages/PurchaseOrdersPage/components/wizard/items/RowChrome.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/purchase-orders",
+          "group": "02 คลังและจัดซื้อ"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/PurchaseOrdersPage/components/wizard/items/DeviceItemRow.tsx",
+      "line": 60,
+      "tag": "CompactSelect",
+      "importTarget": "apps/web/src/pages/PurchaseOrdersPage/components/wizard/items/RowChrome.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/purchase-orders",
+          "group": "02 คลังและจัดซื้อ"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/PurchaseOrdersPage/components/wizard/items/RowChrome.tsx",
+      "line": 53,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/purchase-orders",
+          "group": "02 คลังและจัดซื้อ"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/PurchaseOrdersPage/components/wizard/PaymentSection.tsx",
+      "line": 91,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/purchase-orders",
+          "group": "02 คลังและจัดซื้อ"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/PurchaseOrdersPage/components/wizard/PaymentSection.tsx",
+      "line": 112,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/purchase-orders",
+          "group": "02 คลังและจัดซื้อ"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/PurchaseOrdersPage/components/UnitInspectScreen.tsx",
+      "line": 339,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/purchase-orders",
+          "group": "02 คลังและจัดซื้อ"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/ProductDetailPage/components/EditProductModal.tsx",
+      "line": 102,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/products/:id",
+          "group": "02 คลังและจัดซื้อ"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/ProductDetailPage/components/EditProductModal.tsx",
+      "line": 114,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/products/:id",
+          "group": "02 คลังและจัดซื้อ"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/ProductDetailPage/components/EditProductModal.tsx",
+      "line": 258,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/products/:id",
+          "group": "02 คลังและจัดซื้อ"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/ProductDetailPage/components/calc/MonthsSelect.tsx",
+      "line": 35,
+      "tag": "SelectTrigger",
+      "importTarget": "apps/web/src/components/ui/select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/products/:id",
+          "group": "02 คลังและจัดซื้อ"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/ProductDetailPage/components/calc/GfinPanel.tsx",
+      "line": 152,
+      "tag": "SelectTrigger",
+      "importTarget": "apps/web/src/components/ui/select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/products/:id",
+          "group": "02 คลังและจัดซื้อ"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/ProductDetailPage/components/calc/GfinPanel.tsx",
+      "line": 215,
+      "tag": "SelectTrigger",
+      "importTarget": "apps/web/src/components/ui/select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/products/:id",
+          "group": "02 คลังและจัดซื้อ"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/assets/AssetDisposePage.tsx",
+      "line": 234,
+      "tag": "SelectTrigger",
+      "importTarget": "apps/web/src/components/ui/select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/assets/:id/dispose",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/assets/AssetPeriodClosePage.tsx",
+      "line": 113,
+      "tag": "SelectTrigger",
+      "importTarget": "apps/web/src/components/ui/select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/assets/period-close",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/ExpenseDailySummaryPage.tsx",
+      "line": 176,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/expenses/daily-summary",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/assets/AssetJournalPage.tsx",
+      "line": 107,
+      "tag": "SelectTrigger",
+      "importTarget": "apps/web/src/components/ui/select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/assets/journal",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/assets/AssetRegisterPage.tsx",
+      "line": 260,
+      "tag": "SelectTrigger",
+      "importTarget": "apps/web/src/components/ui/select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/assets/register",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/assets/AssetRegisterPage.tsx",
+      "line": 278,
+      "tag": "SelectTrigger",
+      "importTarget": "apps/web/src/components/ui/select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/assets/register",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/components/template-editor/layout/HeaderBar.tsx",
+      "line": 104,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/contract-templates",
+          "group": "04 สัญญา รับชำระ และติดตามหนี้"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/components/accounting/ReverseConfirmDialog.tsx",
+      "line": 164,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/assets/:id",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/expenses",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/expenses/:id",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/expenses/verify/:id",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/other-income/:id",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/other-income/:id/edit",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/other-income/new",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/assets/components/AssetEntrySection1Info.tsx",
+      "line": 85,
+      "tag": "SelectTrigger",
+      "importTarget": "apps/web/src/components/ui/select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/assets/:id/edit",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/assets/new",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/assets/components/AssetEntrySection1Info.tsx",
+      "line": 106,
+      "tag": "SelectTrigger",
+      "importTarget": "apps/web/src/components/ui/select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/assets/:id/edit",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/assets/new",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/assets/components/AssetEntrySection1Info.tsx",
+      "line": 121,
+      "tag": "NameAutocomplete",
+      "importTarget": "apps/web/src/components/ui/NameAutocomplete.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/assets/:id/edit",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/assets/new",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/assets/components/TransferAssetDialog.tsx",
+      "line": 72,
+      "tag": "NameAutocomplete",
+      "importTarget": "apps/web/src/components/ui/NameAutocomplete.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/assets/:id",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/assets/components/AssetEntrySection2Cost.tsx",
+      "line": 111,
+      "tag": "SelectTrigger",
+      "importTarget": "apps/web/src/components/ui/select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/assets/:id/edit",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/assets/new",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/assets/components/AssetEntrySection2Cost.tsx",
+      "line": 123,
+      "tag": "SelectTrigger",
+      "importTarget": "apps/web/src/components/ui/select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/assets/:id/edit",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/assets/new",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/assets/components/AssetEntrySection2Cost.tsx",
+      "line": 185,
+      "tag": "SelectTrigger",
+      "importTarget": "apps/web/src/components/ui/select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/assets/:id/edit",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/assets/new",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/assets/components/AssetEntrySection2Cost.tsx",
+      "line": 218,
+      "tag": "SelectTrigger",
+      "importTarget": "apps/web/src/components/ui/select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/assets/:id/edit",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/assets/new",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/assets/components/AssetEntrySection2Cost.tsx",
+      "line": 237,
+      "tag": "SelectTrigger",
+      "importTarget": "apps/web/src/components/ui/select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/assets/:id/edit",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/assets/new",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/assets/components/AssetEntrySection3Vendor.tsx",
+      "line": 149,
+      "tag": "SelectTrigger",
+      "importTarget": "apps/web/src/components/ui/select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/assets/:id/edit",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/assets/new",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/assets/components/AssetEntrySection3Vendor.tsx",
+      "line": 165,
+      "tag": "SelectTrigger",
+      "importTarget": "apps/web/src/components/ui/select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/assets/:id/edit",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/assets/new",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/PricingTemplatesPage.tsx",
+      "line": 304,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/settings/products/pricing",
+          "group": "07 ตั้งค่าและสิทธิ์"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/PricingTemplatesPage.tsx",
+      "line": 307,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/settings/products/pricing",
+          "group": "07 ตั้งค่าและสิทธิ์"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/PricingTemplatesPage.tsx",
+      "line": 403,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/settings/products/pricing",
+          "group": "07 ตั้งค่าและสิทธิ์"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/PricingTemplatesPage.tsx",
+      "line": 444,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/settings/products/pricing",
+          "group": "07 ตั้งค่าและสิทธิ์"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/components/device-returns/DeviceReturnIntakeDialog.tsx",
+      "line": 440,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/contracts/:id",
+          "group": "04 สัญญา รับชำระ และติดตามหนี้"
+        },
+        {
+          "path": "/repossessions",
+          "group": "04 สัญญา รับชำระ และติดตามหนี้"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/components/device-returns/DeviceReturnIntakeDialog.tsx",
+      "line": 598,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/contracts/:id",
+          "group": "04 สัญญา รับชำระ และติดตามหนี้"
+        },
+        {
+          "path": "/repossessions",
+          "group": "04 สัญญา รับชำระ และติดตามหนี้"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/components/expense-form-v4/PettyCashLinesSection.tsx",
+      "line": 60,
+      "tag": "NameAutocomplete",
+      "importTarget": "apps/web/src/components/ui/NameAutocomplete.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/expenses",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/expenses/new",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/components/expense-form-v4/PettyCashLinesSection.tsx",
+      "line": 132,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/expenses",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/expenses/new",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/components/credit-check/CreditCheckOverrideDialog.tsx",
+      "line": 182,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/customers/:id",
+          "group": "03 ขายและบริการลูกค้า"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/components/credit-check/CreditCheckOverrideDialog.tsx",
+      "line": 220,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/customers/:id",
+          "group": "03 ขายและบริการลูกค้า"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/components/credit-check/CreditCheckOverrideDialog.tsx",
+      "line": 239,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/customers/:id",
+          "group": "03 ขายและบริการลูกค้า"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/components/credit-check/CreditCheckCreateModal.tsx",
+      "line": 354,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/customers/:id",
+          "group": "03 ขายและบริการลูกค้า"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/components/credit-check/CreditAffordabilityForm.tsx",
+      "line": 107,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/contracts/:id",
+          "group": "04 สัญญา รับชำระ และติดตามหนี้"
+        },
+        {
+          "path": "/credit-checks",
+          "group": "03 ขายและบริการลูกค้า"
+        },
+        {
+          "path": "/customers/:id",
+          "group": "03 ขายและบริการลูกค้า"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/components/expense-form-v4/AdjustmentSection.tsx",
+      "line": 171,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/expenses",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/expenses/new",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/components/expense-form-v4/AdjustmentSection.tsx",
+      "line": 193,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/expenses",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/expenses/new",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/components/expense-form-v4/ItemLinesSection.tsx",
+      "line": 69,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/expenses",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/expenses/new",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/components/expense-form-v4/ItemLinesSection.tsx",
+      "line": 206,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/expenses",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/expenses/new",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/components/expense-form-v4/ItemLinesSection.tsx",
+      "line": 241,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/expenses",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/expenses/new",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/BookingsPage/components/BookingFilterBar.tsx",
+      "line": 83,
+      "tag": "FilterSelect",
+      "importTarget": "apps/web/src/pages/CustomersPage/components/FilterSelect.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/bookings",
+          "group": "03 ขายและบริการลูกค้า"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/BookingsPage/components/BookingFilterBar.tsx",
+      "line": 92,
+      "tag": "FilterSelect",
+      "importTarget": "apps/web/src/pages/CustomersPage/components/FilterSelect.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/bookings",
+          "group": "03 ขายและบริการลูกค้า"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/BookingsPage/components/CreateBookingDialog.tsx",
+      "line": 291,
+      "tag": "SelectTrigger",
+      "importTarget": "apps/web/src/components/ui/select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/bookings",
+          "group": "03 ขายและบริการลูกค้า"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/components/expense-form-v4/VendorSection.tsx",
+      "line": 35,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/expenses",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/expenses/new",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/components/expense-form-v4/VendorSection.tsx",
+      "line": 77,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/expenses",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/expenses/new",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/components/expense-form-v4/PayrollLinesSection.tsx",
+      "line": 325,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/expenses",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/expenses/new",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/components/expense-form-v4/PayrollLinesSection.tsx",
+      "line": 348,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/expenses",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/expenses/new",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/components/expense-form-v4/PayrollLinesSection.tsx",
+      "line": 640,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/expenses",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/expenses/new",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/components/expense-form-v4/SettlementLinesSection.tsx",
+      "line": 176,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/expenses",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        },
+        {
+          "path": "/expenses/new",
+          "group": "05 บัญชี การเงิน ภาษี และสินทรัพย์"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/PaymentsPage/components/PaymentModals.tsx",
+      "line": 262,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/payments",
+          "group": "04 สัญญา รับชำระ และติดตามหนี้"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/PaymentsPage/components/PaymentModals.tsx",
+      "line": 367,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/payments",
+          "group": "04 สัญญา รับชำระ และติดตามหนี้"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/PaymentsPage/components/PaymentFilters.tsx",
+      "line": 47,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/payments",
+          "group": "04 สัญญา รับชำระ และติดตามหนี้"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/PaymentsPage/components/PaymentFilters.tsx",
+      "line": 60,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/payments",
+          "group": "04 สัญญา รับชำระ และติดตามหนี้"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/PaymentsPage/components/RecordPaymentWizard.tsx",
+      "line": 1057,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/payments",
+          "group": "04 สัญญา รับชำระ และติดตามหนี้"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/pages/PaymentsPage/components/ReceiptsTab.tsx",
+      "line": 367,
+      "tag": "NativeSelect",
+      "importTarget": "apps/web/src/components/ui/native-select.tsx",
+      "reachable": true,
+      "routes": [
+        {
+          "path": "/payments",
+          "group": "04 สัญญา รับชำระ และติดตามหนี้"
+        }
+      ]
+    }
+  ]
+}

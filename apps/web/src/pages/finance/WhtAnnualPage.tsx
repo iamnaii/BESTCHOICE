@@ -10,6 +10,7 @@ import PageHeader from '@/components/ui/PageHeader';
 import QueryBoundary from '@/components/QueryBoundary';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { formControlClass } from '@/components/ui/form-styles';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import {
   Select,
@@ -54,8 +55,8 @@ interface AnnualPreview {
 }
 
 export default function WhtAnnualPage() {
-  const now = new Date();
-  const [year, setYear] = useState(now.getFullYear());
+  const currentYear = new Date().getFullYear();
+  const [year, setYear] = useState(currentYear);
   const [certFor, setCertFor] = useState<AnnualItem | null>(null);
 
   const query = useQuery({
@@ -95,11 +96,11 @@ export default function WhtAnnualPage() {
       <Card>
         <CardHeader className="flex flex-row gap-3 items-center flex-wrap pb-4">
           <Select value={String(year)} onValueChange={(v) => setYear(parseInt(v, 10))}>
-            <SelectTrigger className="w-[130px]">
+            <SelectTrigger aria-label="ปี" className={`${formControlClass} w-44 max-w-full`}>
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {[year - 3, year - 2, year - 1, year].map((y) => (
+              {Array.from({ length: currentYear - 2020 + 1 }, (_, index) => currentYear - index).map((y) => (
                 <SelectItem key={y} value={String(y)}>
                   ปีภาษี {y + 543}
                 </SelectItem>
@@ -121,7 +122,11 @@ export default function WhtAnnualPage() {
             onRetry={query.refetch}
           >
             {data && (
-              <Table>
+              data.items.length === 0 ? (
+                <p role="status" className="py-8 text-center text-sm leading-relaxed text-muted-foreground">
+                  ยังไม่มีรายการเงินเดือนที่ลงบัญชีในปี {year + 543}
+                </p>
+              ) : <Table className="min-w-[56rem] print:min-w-0 [&_th]:whitespace-nowrap">
                 <TableHeader>
                   <TableRow>
                     <TableHead className="w-10">#</TableHead>
@@ -135,14 +140,6 @@ export default function WhtAnnualPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {data.items.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
-                        ไม่มีใบเงินเดือนที่ POST แล้วในปี {year + 543}
-                      </TableCell>
-                    </TableRow>
-                  ) : (
-                    <>
                       {data.items.map((it, i) => (
                         <TableRow key={i}>
                           <TableCell>{i + 1}</TableCell>
@@ -190,8 +187,6 @@ export default function WhtAnnualPage() {
                           </span>
                         </TableCell>
                       </TableRow>
-                    </>
-                  )}
                 </TableBody>
               </Table>
             )}

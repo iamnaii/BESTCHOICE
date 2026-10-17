@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useId as useUiFieldId, useState } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -37,6 +37,7 @@ export default function LockDeviceDialog({
   customerName,
   daysOverdue,
 }: Props) {
+  const uiFieldId = useUiFieldId();
   const lock = useLockContract();
   const [presetReason, setPresetReason] = useState(PRESET_REASONS[0]);
   const [customReason, setCustomReason] = useState('');
@@ -116,8 +117,8 @@ export default function LockDeviceDialog({
 
           {presetReason === 'อื่นๆ' && (
             <div>
-              <Label className="leading-snug mb-1 block">ระบุเหตุผล</Label>
-              <Textarea
+              <Label htmlFor={`${uiFieldId}-1`} className="leading-snug mb-1 block">ระบุเหตุผล</Label>
+              <Textarea id={`${uiFieldId}-1`}
                 value={customReason}
                 onChange={(e) => setCustomReason(e.target.value)}
                 maxLength={500}

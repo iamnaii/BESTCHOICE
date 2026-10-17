@@ -1,3 +1,4 @@
+import { NativeSelect } from '@/components/ui/native-select';
 import { useEffect, useState } from 'react';
 import { SlidersHorizontal, Sparkles, Smartphone, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -142,7 +143,7 @@ export function FilterSidebar({ filters, onChange, models, plan, bare }: Props) 
         <label className={labelCls} htmlFor={bare ? 'mobile-filter-origin' : 'filter-origin'}>
           เครื่องไทย / เครื่องนอก
         </label>
-        <select
+        <NativeSelect wrapperClassName="max-w-full w-full"
           id={bare ? 'mobile-filter-origin' : 'filter-origin'}
           className={selectCls}
           value={filters.deviceOrigin ?? ''}
@@ -153,14 +154,14 @@ export function FilterSidebar({ filters, onChange, models, plan, bare }: Props) 
           <option value="">ทั้งหมด</option>
           <option value="THAI">เครื่องไทย</option>
           <option value="IMPORTED">เครื่องนอก</option>
-        </select>
+        </NativeSelect>
       </div>
 
       <div>
         <label className={labelCls} htmlFor="filter-model">
           รุ่น
         </label>
-        <select
+        <NativeSelect wrapperClassName="max-w-full w-full"
           id="filter-model"
           className={selectCls}
           value={filters.model ?? ''}
@@ -172,7 +173,7 @@ export function FilterSidebar({ filters, onChange, models, plan, bare }: Props) 
               {m.model} ({m.count})
             </option>
           ))}
-        </select>
+        </NativeSelect>
       </div>
 
       {!isNew && (
@@ -180,7 +181,7 @@ export function FilterSidebar({ filters, onChange, models, plan, bare }: Props) 
           <label className={labelCls} htmlFor="filter-grade">
             สภาพเครื่อง
           </label>
-          <select
+          <NativeSelect wrapperClassName="max-w-full w-full"
             id="filter-grade"
             className={selectCls}
             value={filters.conditionGrade ?? ''}
@@ -191,7 +192,7 @@ export function FilterSidebar({ filters, onChange, models, plan, bare }: Props) 
                 {g.label}
               </option>
             ))}
-          </select>
+          </NativeSelect>
         </div>
       )}
 
@@ -199,7 +200,7 @@ export function FilterSidebar({ filters, onChange, models, plan, bare }: Props) 
         <label className={labelCls} htmlFor="filter-price">
           ช่วงราคา
         </label>
-        <select
+        <NativeSelect wrapperClassName="max-w-full w-full"
           id="filter-price"
           className={selectCls}
           value={bandId(filters)}
@@ -213,7 +214,7 @@ export function FilterSidebar({ filters, onChange, models, plan, bare }: Props) 
               {b.label}
             </option>
           ))}
-        </select>
+        </NativeSelect>
       </div>
 
       {active && (
@@ -347,9 +348,9 @@ function PlanBlock({ plan }: { plan: PlanControls }) {
           >
             จำนวนงวด
           </label>
-          <select
+          <NativeSelect wrapperClassName="max-w-full w-full"
             id="filter-months"
-            className="w-full h-10 rounded-xl border-0 bg-card px-3 text-base md:text-sm text-foreground leading-snug focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
+            className="h-10 rounded-xl border-0 bg-card px-3 text-base md:text-sm text-foreground leading-snug focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
             value={plan.months ?? ''}
             onChange={(e) => plan.onMonths(e.target.value ? Number(e.target.value) : null)}
           >
@@ -359,7 +360,7 @@ function PlanBlock({ plan }: { plan: PlanControls }) {
                 {m} งวด
               </option>
             ))}
-          </select>
+          </NativeSelect>
         </div>
       )}
 

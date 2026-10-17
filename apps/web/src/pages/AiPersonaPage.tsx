@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useId as useUiFieldId, useState, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
 import { toast } from 'sonner';
@@ -105,6 +105,7 @@ function EditablePersonaCard({
   maxChars,
   patchKey,
 }: EditablePersonaCardProps) {
+  const uiFieldId = useUiFieldId();
   const queryClient = useQueryClient();
   const [draft, setDraft] = useState(currentValue);
   const [revertOpen, setRevertOpen] = useState(false);
@@ -156,8 +157,8 @@ function EditablePersonaCard({
         </CardHeader>
         <CardContent className="space-y-3">
           <div className="space-y-1.5">
-            <Label className="leading-snug text-xs">เนื้อหา persona</Label>
-            <Textarea
+            <Label htmlFor={`${uiFieldId}-1`} className="leading-snug text-xs">เนื้อหา persona</Label>
+            <Textarea id={`${uiFieldId}-1`}
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
               rows={20}

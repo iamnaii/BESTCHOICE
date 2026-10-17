@@ -1,3 +1,4 @@
+import { NativeSelect } from '@/components/ui/native-select';
 import { toBangkokDateString } from '@/lib/date';
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
@@ -251,8 +252,8 @@ export default function EquityEntryPage() {
               {NEEDS_PAYMENT.includes(t) && (
                 <label className="text-sm space-y-1 md:col-span-2">
                   <span className="text-muted-foreground">ช่องทางเงินสด/ธนาคาร *</span>
-                  <select
-                    className="w-full border border-border rounded-md px-3 py-2 bg-background"
+                  <NativeSelect wrapperClassName="max-w-full w-full"
+                    className="border border-border rounded-md px-3 py-2 bg-background"
                     value={form.paymentAccountCode ?? ''}
                     onChange={(e) => setForm({ ...form, paymentAccountCode: e.target.value })}
                   >
@@ -262,7 +263,7 @@ export default function EquityEntryPage() {
                         {a.code} · {a.label}
                       </option>
                     ))}
-                  </select>
+                  </NativeSelect>
                 </label>
               )}
             </CardContent>
@@ -284,9 +285,9 @@ export default function EquityEntryPage() {
               </CardHeader>
               <CardContent className="space-y-2">
                 {form.lines.map((ln, i) => (
-                  <div key={i} className="grid grid-cols-12 gap-2 items-center">
-                    <select
-                      className="col-span-4 border border-border rounded-md px-2 py-2 text-sm bg-background"
+                  <div key={i} className="grid grid-cols-1 sm:grid-cols-12 gap-2 items-end">
+                    <label className="space-y-1 text-xs sm:col-span-4"><span>ผู้ถือหุ้น</span><NativeSelect wrapperClassName="max-w-full w-full"
+                      className="border border-border rounded-md px-2 py-2 text-sm bg-background"
                       value={ln.shareholderId}
                       onChange={(e) => setLine(i, { shareholderId: e.target.value })}
                     >
@@ -298,18 +299,18 @@ export default function EquityEntryPage() {
                             {s.name}
                           </option>
                         ))}
-                    </select>
-                    <input
+                    </NativeSelect></label>
+                    <label className="space-y-1 text-xs sm:col-span-2"><span>{isInit ? 'มูลค่าจอง (par)' : 'จำนวนเงิน'}</span><input
                       type="number"
-                      className="col-span-2 border border-border rounded-md px-2 py-2 text-sm bg-background text-right font-mono"
+                      className="w-full border border-border rounded-md px-2 py-2 text-sm bg-background text-right font-mono"
                       placeholder={isInit ? 'มูลค่าจอง (par)' : 'จำนวนเงิน'}
                       value={ln.amount || ''}
                       onChange={(e) => setLine(i, { amount: parseFloat(e.target.value) || 0 })}
-                    />
+                    /></label>
                     {isInit && (
-                      <input
+                      <label className="space-y-1 text-xs sm:col-span-2"><span>ชำระจริง</span><input
                         type="number"
-                        className="col-span-2 border border-border rounded-md px-2 py-2 text-sm bg-background text-right font-mono"
+                        className="w-full border border-border rounded-md px-2 py-2 text-sm bg-background text-right font-mono"
                         placeholder="ชำระจริง"
                         value={ln.paid ?? ''}
                         onChange={(e) =>
@@ -317,12 +318,12 @@ export default function EquityEntryPage() {
                             paid: e.target.value === '' ? undefined : parseFloat(e.target.value),
                           })
                         }
-                      />
+                      /></label>
                     )}
                     {isInc && (
-                      <input
+                      <label className="space-y-1 text-xs sm:col-span-2"><span>ส่วนเกินมูลค่า</span><input
                         type="number"
-                        className="col-span-2 border border-border rounded-md px-2 py-2 text-sm bg-background text-right font-mono"
+                        className="w-full border border-border rounded-md px-2 py-2 text-sm bg-background text-right font-mono"
                         placeholder="ส่วนเกินมูลค่า"
                         value={ln.premium ?? ''}
                         onChange={(e) =>
@@ -330,12 +331,12 @@ export default function EquityEntryPage() {
                             premium: e.target.value === '' ? undefined : parseFloat(e.target.value),
                           })
                         }
-                      />
+                      /></label>
                     )}
                     {isDivPay && (
-                      <input
+                      <label className="space-y-1 text-xs sm:col-span-2"><span>ภาษีหัก ณ ที่จ่าย</span><input
                         type="number"
-                        className="col-span-2 border border-border rounded-md px-2 py-2 text-sm bg-background text-right font-mono"
+                        className="w-full border border-border rounded-md px-2 py-2 text-sm bg-background text-right font-mono"
                         placeholder="WHT (เว้นว่าง = อัตโนมัติ)"
                         value={ln.wht ?? ''}
                         onChange={(e) =>
@@ -343,11 +344,11 @@ export default function EquityEntryPage() {
                             wht: e.target.value === '' ? undefined : parseFloat(e.target.value),
                           })
                         }
-                      />
+                      /></label>
                     )}
                     <button
                       type="button"
-                      className="col-span-1 text-destructive"
+                      className="sm:col-span-1 min-h-11 flex items-center justify-center text-destructive"
                       aria-label="ลบผู้ถือหุ้น"
                       onClick={() =>
                         setForm((f) => ({ ...f, lines: f.lines.filter((_, j) => j !== i) }))
@@ -382,15 +383,15 @@ export default function EquityEntryPage() {
               <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-3">
                 <label className="text-sm space-y-1">
                   <span className="text-muted-foreground">ทิศทาง *</span>
-                  <select
-                    className="w-full border border-border rounded-md px-3 py-2 bg-background"
+                  <NativeSelect wrapperClassName="max-w-full w-full"
+                    className="border border-border rounded-md px-3 py-2 bg-background"
                     value={form.paDirection ?? ''}
                     onChange={(e) => setForm({ ...form, paDirection: e.target.value })}
                   >
                     <option value="">— เลือก —</option>
                     <option value="DR_OTHER_CR_RE">Dr บัญชีคู่ / Cr 32-1101 (กำไรสะสมเพิ่ม)</option>
                     <option value="DR_RE_CR_OTHER">Dr 32-1101 / Cr บัญชีคู่ (กำไรสะสมลด)</option>
-                  </select>
+                  </NativeSelect>
                 </label>
                 <label className="text-sm space-y-1">
                   <span className="text-muted-foreground">รหัสบัญชีคู่ *</span>

@@ -1,3 +1,4 @@
+import { formControlClass } from '@/components/ui/form-styles';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useDebounce } from '@/hooks/useDebounce';
@@ -30,7 +31,7 @@ export default function BookingProductPicker({ branchId, selectedId, onSelect, o
     <Button type="button" size="sm" variant="outline" onClick={() => { setSearch(''); onClear(); }}>เปลี่ยนเครื่อง</Button>
   </div>;
   return <div className="space-y-2">
-    <Input aria-label="ค้นหาเครื่องในสาขา" placeholder={branchId ? 'ค้นหาชื่อเครื่อง หรือ IMEI / Serial อย่างน้อย 2 ตัวอักษร' : 'เลือกสาขาก่อนค้นหาเครื่อง'}
+    <Input className={formControlClass} aria-label="ค้นหาเครื่องในสาขา" placeholder={branchId ? 'ค้นหาชื่อเครื่อง หรือ IMEI / Serial อย่างน้อย 2 ตัวอักษร' : 'เลือกสาขาก่อนค้นหาเครื่อง'}
       disabled={!branchId} value={search} onChange={event => setSearch(event.target.value)} />
     {term.length >= 2 && branchId && <div className="max-h-48 overflow-y-auto rounded-md border border-border" aria-live="polite">
       {isError ? <div className="p-3 text-sm">ค้นหาสินค้าไม่สำเร็จ <Button variant="outline" size="sm" onClick={() => refetch()}>ลองใหม่</Button></div>

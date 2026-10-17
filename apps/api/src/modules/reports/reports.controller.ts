@@ -1,4 +1,4 @@
-import { Controller, Get, Query, UseGuards } from '@nestjs/common';
+import { Controller, ForbiddenException, Get, Query, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { ReportsService } from './reports.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -278,11 +278,16 @@ export class ReportsController {
 
   @Get('export/contracts')
   exportContracts(
+    @CurrentUser() user: { role: string; branchId: string | null },
     @Query('status') status?: string,
     @Query('branchId') branchId?: string,
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
   ) {
-    return this.reportsService.exportContracts({ status, branchId, startDate, endDate });
+    if (user.role === 'BRANCH_MANAGER' && !user.branchId) {
+      throw new ForbiddenException('บัญชีนี้ยังไม่มีสาขาที่รับผิดชอบ');
+    }
+    const effectiveBranch = user.role === 'BRANCH_MANAGER' ? user.branchId! : branchId;
+    return this.reportsService.exportContracts({ status, branchId: effectiveBranch, startDate, endDate });
   }
 }

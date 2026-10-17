@@ -22,6 +22,8 @@ export function useChatMediaPicker() {
   const gifSearchDebounced = useDebounce(gifSearch, 500);
   const [gifs, setGifs] = useState<GifResult[]>([]);
   const [loadingGifs, setLoadingGifs] = useState(false);
+  const [gifError, setGifError] = useState(false);
+  const [gifRetry, setGifRetry] = useState(0);
 
   const GIPHY_KEY = import.meta.env.VITE_GIPHY_KEY || 'dc6zaTOxFJmzC';
   const gifApiUrl = gifSearchDebounced
@@ -31,13 +33,23 @@ export function useChatMediaPicker() {
   // Fetch GIFs whenever the GIF tab is active or the search query changes
   useEffect(() => {
     if (pickerTab !== 'gif') return;
+    const controller = new AbortController();
+    let cancelled = false;
+    const timeout = window.setTimeout(() => controller.abort(), 10_000);
     setLoadingGifs(true);
-    fetch(gifApiUrl, { signal: AbortSignal.timeout(10_000) })
-      .then((r) => r.json())
-      .then((d) => setGifs(d.data ?? []))
-      .catch(() => setGifs([]))
-      .finally(() => setLoadingGifs(false));
-  }, [gifApiUrl, pickerTab]);
+    setGifError(false);
+    fetch(gifApiUrl, { signal: controller.signal })
+      .then((r) => {
+        if (!r.ok) throw new Error('GIF request failed');
+        return r.json();
+      })
+      .then((d) => { if (!cancelled) setGifs(d.data ?? []); })
+      .catch(() => {
+        if (!cancelled) { setGifs([]); setGifError(true); }
+      })
+      .finally(() => { window.clearTimeout(timeout); if (!cancelled) setLoadingGifs(false); });
+    return () => { cancelled = true; window.clearTimeout(timeout); controller.abort(); };
+  }, [gifApiUrl, pickerTab, gifRetry]);
 
   return {
     pickerTab,
@@ -50,5 +62,7 @@ export function useChatMediaPicker() {
     setGifSearch,
     gifs,
     loadingGifs,
+    gifError,
+    retryGifs: () => setGifRetry(value => value + 1),
   };
 }

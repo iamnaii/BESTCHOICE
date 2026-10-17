@@ -1,6 +1,7 @@
+import { NativeSelect } from '@/components/ui/native-select';
 import { bangkokInput, bangkokInstant } from '@/pages/UnifiedInboxPage/components/chat-work-time';
 import { getRequestCompany } from '@/lib/company-scope';
-import { useState, useEffect, useRef } from 'react';
+import { useId as useUiFieldId, useState, useEffect, useRef } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import api, { getErrorMessage } from '@/lib/api';
 import {
@@ -65,6 +66,7 @@ function formatRelative(dateStr: string) {
 }
 
 export function TodoForm({ open, onOpenChange, editing, staffUsers, defaults }: TodoFormProps) {
+  const uiFieldId = useUiFieldId();
   const queryClient = useQueryClient();
   const [form, setForm] = useState<typeof emptyForm>({ ...emptyForm });
   const [thumbUrls, setThumbUrls] = useState<Record<string, string>>({});
@@ -331,11 +333,11 @@ export function TodoForm({ open, onOpenChange, editing, staffUsers, defaults }: 
           <div className="px-6 py-5 space-y-5">
             {/* Title */}
             <div>
-              <label className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">
+              <label htmlFor={`${uiFieldId}-1`} className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">
                 <TypeIcon className="size-3.5" />
                 ชื่องาน <span className="text-destructive">*</span>
               </label>
-              <input
+              <input id={`${uiFieldId}-1`}
                 type="text"
                 value={form.title || ''}
                 onChange={(e) => setForm({ ...form, title: e.target.value })}
@@ -347,11 +349,11 @@ export function TodoForm({ open, onOpenChange, editing, staffUsers, defaults }: 
 
             {/* Description */}
             <div>
-              <label className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">
+              <label htmlFor={`${uiFieldId}-2`} className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">
                 <AlignLeft className="size-3.5" />
                 รายละเอียด
               </label>
-              <textarea
+              <textarea id={`${uiFieldId}-2`}
                 value={form.description || ''}
                 onChange={(e) => setForm({ ...form, description: e.target.value })}
                 ref={(el) => {
@@ -433,11 +435,11 @@ export function TodoForm({ open, onOpenChange, editing, staffUsers, defaults }: 
             {/* Date + Assignee */}
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div>
-                <label className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">
+                <label htmlFor={`${uiFieldId}-3`} className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">
                   <Calendar className="size-3.5" />
                   {roomId ? 'ครบกำหนด (เวลาไทย)' : 'ครบกำหนด'}
                 </label>
-                <input
+                <input id={`${uiFieldId}-3`}
                   type={roomId ? "datetime-local" : "date"}
                   value={form.dueDate || ''}
                   onChange={(e) => setForm({ ...form, dueDate: e.target.value })}
@@ -445,14 +447,14 @@ export function TodoForm({ open, onOpenChange, editing, staffUsers, defaults }: 
                 />
               </div>
               <div>
-                <label className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">
+                <label htmlFor={`${uiFieldId}-4`} className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">
                   <UserIcon className="size-3.5" />
                   ผู้รับมอบหมาย
                 </label>
-                <select
+                <NativeSelect wrapperClassName="max-w-full w-full" id={`${uiFieldId}-4`}
                   value={form.assigneeId || ''}
                   onChange={(e) => setForm({ ...form, assigneeId: e.target.value })}
-                  className="w-full px-4 py-2.5 border border-input rounded-xl text-sm bg-card focus-visible:ring-2 focus-visible:ring-primary/20 focus:border-primary/50 outline-hidden transition-colors"
+                  className="px-4 py-2.5 border border-input rounded-xl text-sm bg-card focus-visible:ring-2 focus-visible:ring-primary/20 focus:border-primary/50 outline-hidden transition-colors"
                 >
                   <option value="">ไม่ระบุ</option>
                   {(roomId ? eligible.data ?? [] : staffUsers).map((u) => (
@@ -460,13 +462,13 @@ export function TodoForm({ open, onOpenChange, editing, staffUsers, defaults }: 
                       {u.nickname || u.name}
                     </option>
                   ))}
-                </select>
+                </NativeSelect>
               </div>
             </div>
 
             {/* Tags */}
             <div>
-              <label className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">
+              <label htmlFor={`${uiFieldId}-5`} className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">
                 <Tag className="size-3.5" />
                 แท็ก
               </label>
@@ -486,7 +488,7 @@ export function TodoForm({ open, onOpenChange, editing, staffUsers, defaults }: 
                     </button>
                   </span>
                 ))}
-                <input
+                <input id={`${uiFieldId}-5`}
                   type="text"
                   value={form.tagsInput || ''}
                   onChange={(e) => setForm({ ...form, tagsInput: e.target.value })}
@@ -674,7 +676,7 @@ export function TodoForm({ open, onOpenChange, editing, staffUsers, defaults }: 
             {/* Comments — only show when editing an existing todo */}
             {editing && (
               <div>
-                <label className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
+                <label htmlFor={`${uiFieldId}-6`} className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
                   <MessageSquare className="size-3.5" />
                   ความคิดเห็น
                   {comments.length > 0 && (
@@ -714,7 +716,7 @@ export function TodoForm({ open, onOpenChange, editing, staffUsers, defaults }: 
 
                 {/* Add comment input */}
                 <div className="flex gap-2">
-                  <input
+                  <input id={`${uiFieldId}-6`}
                     type="text"
                     value={commentText}
                     onChange={(e) => setCommentText(e.target.value)}

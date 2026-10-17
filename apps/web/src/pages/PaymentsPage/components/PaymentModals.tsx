@@ -1,3 +1,4 @@
+import { NativeSelect } from '@/components/ui/native-select';
 import Modal from '@/components/ui/Modal';
 import Decimal from 'decimal.js';
 import { toast } from 'sonner';
@@ -5,6 +6,8 @@ import { formatThaiDate } from '@/lib/date';
 import type { PendingPayment, OcrPaymentSlipResult } from '../types';
 import { slipTypeLabels, isSlipRequired } from '../types';
 import { CashAccountSelect } from '@/components/CashAccountSelect';
+import { useId as useUiFieldId } from 'react';
+
 
 /* ─── Slip Scanner Button ─── */
 function SlipScannerSection({
@@ -106,6 +109,7 @@ export function RecordPaymentModal({
   depositAccountCode,
   onDepositAccountCodeChange,
 }: RecordPaymentModalProps) {
+  const uiFieldId = useUiFieldId();
   if (!show || !payment) return null;
 
   // (Audit finding P0) Outstanding pre-fills the cashier's input field. JS float
@@ -246,25 +250,25 @@ export function RecordPaymentModal({
             <div className="space-y-4">
               <div className="grid grid-cols-3 gap-4">
                 <div>
-                  <label className="block text-xs font-medium text-foreground mb-1.5">จำนวนเงินที่รับ <span className="text-destructive">*</span></label>
-                  <input type="number" value={payForm.amount} onChange={(e) => onPayFormChange({ ...payForm, amount: Number(e.target.value) })} className={inputClass} min={0} />
+                  <label htmlFor={`${uiFieldId}-1`} className="block text-xs font-medium text-foreground mb-1.5">จำนวนเงินที่รับ <span className="text-destructive">*</span></label>
+                  <input id={`${uiFieldId}-1`} type="number" value={payForm.amount} onChange={(e) => onPayFormChange({ ...payForm, amount: Number(e.target.value) })} className={inputClass} min={0} />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-foreground mb-1.5">วันที่ชำระ</label>
-                  <input type="date" value={payForm.paidDate} onChange={(e) => onPayFormChange({ ...payForm, paidDate: e.target.value })} className={inputClass} />
+                  <label htmlFor={`${uiFieldId}-2`} className="block text-xs font-medium text-foreground mb-1.5">วันที่ชำระ</label>
+                  <input id={`${uiFieldId}-2`} type="date" value={payForm.paidDate} onChange={(e) => onPayFormChange({ ...payForm, paidDate: e.target.value })} className={inputClass} />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-foreground mb-1.5">วิธีชำระ</label>
-                  <select value={payForm.paymentMethod} onChange={(e) => onPayFormChange({ ...payForm, paymentMethod: e.target.value })} className={inputClass}>
+                  <label htmlFor={`${uiFieldId}-3`} className="block text-xs font-medium text-foreground mb-1.5">วิธีชำระ</label>
+                  <NativeSelect wrapperClassName="max-w-full w-full" id={`${uiFieldId}-3`} value={payForm.paymentMethod} onChange={(e) => onPayFormChange({ ...payForm, paymentMethod: e.target.value })} className={inputClass}>
                     <option value="CASH">เงินสด</option>
                     <option value="BANK_TRANSFER">โอนเงิน</option>
                     <option value="QR_EWALLET">QR/E-Wallet</option>
-                  </select>
+                  </NativeSelect>
                 </div>
               </div>
               <div>
-                <label className="block text-xs font-medium text-foreground mb-1.5">หมายเหตุ</label>
-                <input type="text" value={payForm.notes} onChange={(e) => onPayFormChange({ ...payForm, notes: e.target.value })} className={inputClass} placeholder="หมายเหตุเพิ่มเติม (ถ้ามี)" />
+                <label htmlFor={`${uiFieldId}-4`} className="block text-xs font-medium text-foreground mb-1.5">หมายเหตุ</label>
+                <input id={`${uiFieldId}-4`} type="text" value={payForm.notes} onChange={(e) => onPayFormChange({ ...payForm, notes: e.target.value })} className={inputClass} placeholder="หมายเหตุเพิ่มเติม (ถ้ามี)" />
               </div>
 
               {onDepositAccountCodeChange && (
@@ -337,6 +341,7 @@ export function BatchPaymentModal({
   batchOcrLoading,
   batchSlipResult,
 }: BatchPaymentModalProps) {
+  const uiFieldId = useUiFieldId();
   if (!show) return null;
 
   return (
@@ -358,12 +363,12 @@ export function BatchPaymentModal({
           <span className="text-primary">{Math.round(batchTotal).toLocaleString()} ฿</span>
         </div>
         <div>
-          <label className="block text-sm font-medium mb-1">วิธีชำระ</label>
-          <select value={batchPayMethod} onChange={(e) => onBatchPayMethodChange(e.target.value)} className="w-full px-3 py-2 border border-input rounded-lg text-sm">
+          <label htmlFor={`${uiFieldId}-1`} className="block text-sm font-medium mb-1">วิธีชำระ</label>
+          <NativeSelect wrapperClassName="max-w-full w-full" id={`${uiFieldId}-1`} value={batchPayMethod} onChange={(e) => onBatchPayMethodChange(e.target.value)} className="px-3 py-2 border border-input rounded-lg text-sm">
             <option value="CASH">เงินสด</option>
             <option value="BANK_TRANSFER">โอนเงิน</option>
             <option value="QR_EWALLET">QR/E-Wallet</option>
-          </select>
+          </NativeSelect>
         </div>
 
         {isSlipRequired(batchPayMethod) && (

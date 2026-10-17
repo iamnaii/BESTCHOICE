@@ -2,6 +2,9 @@ import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { cn } from '@/lib/utils';
+import { useId as useUiFieldId } from 'react';
+import { NativeSelect } from '@/components/ui/native-select';
+
 
 interface Company {
   id: string;
@@ -18,6 +21,7 @@ interface CompanyFilterProps {
 const ALLOWED_ROLES = ['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT'];
 
 export default function CompanyFilter({ value, onChange, className }: CompanyFilterProps) {
+  const uiFieldId = useUiFieldId();
   const { user } = useAuth();
 
   const { data: companies = [] } = useQuery<Company[]>({
@@ -30,10 +34,10 @@ export default function CompanyFilter({ value, onChange, className }: CompanyFil
 
   return (
     <div className={cn(className)}>
-      <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
+      <label htmlFor={`${uiFieldId}-1`} className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
         นิติบุคคล
       </label>
-      <select
+      <NativeSelect id={`${uiFieldId}-1`}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         className="w-full px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden min-w-[150px]"
@@ -44,7 +48,7 @@ export default function CompanyFilter({ value, onChange, className }: CompanyFil
             {c.nameTh} ({c.companyCode})
           </option>
         ))}
-      </select>
+      </NativeSelect>
     </div>
   );
 }

@@ -1,3 +1,4 @@
+import { NameAutocomplete } from '@/components/ui/NameAutocomplete';
 import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -133,16 +134,13 @@ export default function TemplateEditorPane({ template, existingCategories, allTe
         </div>
         <div>
           <Label htmlFor="category" className="text-xs">หมวด</Label>
-          <Input
+          <NameAutocomplete
             id="category"
-            list="existing-categories"
+            options={existingCategories}
             value={form.category}
-            onChange={(e) => setForm({ ...form, category: e.target.value })}
+            onChange={(category) => setForm({ ...form, category })}
             placeholder="เลือกหมวดเดิมหรือพิมพ์ใหม่"
           />
-          <datalist id="existing-categories">
-            {existingCategories.map((c) => <option key={c} value={c} />)}
-          </datalist>
         </div>
         <div className="border-t border-border pt-3 space-y-3">
           <ChannelTabs value={activeChannel} onChange={setActiveChannel} counts={bubbleCounts} />

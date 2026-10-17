@@ -255,7 +255,7 @@ export default function BookingDetailSheet({
         aria-label="รายละเอียดใบจอง"
         className="flex w-full flex-col gap-0 p-0 sm:max-w-[620px]"
       >
-        <SheetHeader className="space-y-1.5 border-b border-border px-5 py-4 pr-20 text-left">
+        <SheetHeader className="space-y-1.5 border-b border-border px-5 py-4 [[data-has-sheet-close]_&]:pe-28 text-left">
           <SheetTitle className="flex flex-wrap items-center gap-2.5 font-mono text-base">
             {booking?.bookingNumber ?? (isError ? 'ใบจอง' : 'กำลังโหลด...')}
             {booking && (
@@ -271,10 +271,10 @@ export default function BookingDetailSheet({
               : 'รายละเอียดใบจอง'}
           </SheetDescription>
           {showMenu && (
-            <div className="absolute right-12 top-3">
+            <div className="absolute right-14 top-2">
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="icon" aria-label="การกระทำเพิ่มเติม">
+                  <Button variant="ghost" size="icon" mode="icon" aria-label="การกระทำเพิ่มเติม">
                     <MoreHorizontal className="size-4" />
                   </Button>
                 </DropdownMenuTrigger>

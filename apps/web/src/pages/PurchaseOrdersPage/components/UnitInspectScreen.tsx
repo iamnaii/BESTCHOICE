@@ -1,3 +1,4 @@
+import { NativeSelect } from '@/components/ui/native-select';
 import { DeviceDisclosureFields } from '@/components/product/DeviceDisclosureFields';
 import { useRef, useState } from 'react';
 import { AlertTriangle, Camera, Check, ListChecks, ScanLine, Smartphone, X } from 'lucide-react';
@@ -335,7 +336,7 @@ export function UnitInspectScreen({
               สาเหตุ
               <Req />
             </label>
-            <select
+            <NativeSelect wrapperClassName="max-w-full w-full"
               id={`defect-${idx}`}
               value={unit.defectReason}
               onChange={(e) => set({ defectReason: e.target.value as DefectReasonValue | '' })}
@@ -347,7 +348,7 @@ export function UnitInspectScreen({
                   {o.label}
                 </option>
               ))}
-            </select>
+            </NativeSelect>
           </div>
           <div>
             <label htmlFor={`reject-detail-${idx}`} className={labelCls}>

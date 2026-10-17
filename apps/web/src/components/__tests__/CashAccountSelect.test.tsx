@@ -31,6 +31,11 @@ beforeEach(() => {
 });
 
 describe('CashAccountSelect — codes prop', () => {
+  it('keeps the selected account identifiable when the API has no display name', async () => {
+    apiGet.mockResolvedValue({ data: [] });
+    render(wrap(<CashAccountSelect onChange={vi.fn()} value="11-1201" codes={KBANK_ONLY_CODES} />));
+    expect(await screen.findByText('11-1201')).toBeInTheDocument();
+  });
   it('defaults to fetching all 6 cash/bank codes', async () => {
     render(wrap(<CashAccountSelect onChange={vi.fn()} />));
     await waitFor(() =>

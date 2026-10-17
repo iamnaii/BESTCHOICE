@@ -1,0 +1,270 @@
+{
+  "note": "Desktop passed settings-keyboard-webkit;390/320root20/844 passed settings-tabtrace-webkit. Uses Enter to open focus-return scenario, Alt+Tab to reach table actions with native WebKit preference; see browser-keyboard-notes.md.",
+  "results": [
+    {
+      "width": 1440,
+      "root": 16,
+      "theme": "light",
+      "scope": "FINANCE",
+      "engine": "webkit",
+      "status": "PASS",
+      "fields": [
+        {
+          "height": 44,
+          "width": 301,
+          "gap": 12,
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif",
+          "inset": null,
+          "arrowOffset": null
+        },
+        {
+          "height": 44,
+          "width": 301,
+          "gap": 12,
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif",
+          "inset": 13,
+          "arrowOffset": 0
+        },
+        {
+          "height": 44,
+          "width": 622,
+          "gap": 12,
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif",
+          "inset": null,
+          "arrowOffset": null
+        },
+        {
+          "height": 44,
+          "width": 301,
+          "gap": 12,
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif",
+          "inset": 13,
+          "arrowOffset": 0
+        },
+        {
+          "height": 44,
+          "width": 301,
+          "gap": 12,
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif",
+          "inset": null,
+          "arrowOffset": null
+        },
+        {
+          "height": 44,
+          "width": 622,
+          "gap": 12,
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif",
+          "inset": 13,
+          "arrowOffset": 0
+        }
+      ],
+      "actions": [
+        "COA create/edit/cancel/delete",
+        "dialog focus/Escape/return",
+        "user menu/reset unsaved visibility/cancel",
+        "channel secret unsaved visibility",
+        "payment default toggle/revert and delete cancel"
+      ],
+      "run": "settings-keyboard-webkit"
+    },
+    {
+      "width": 390,
+      "root": 16,
+      "theme": "light",
+      "scope": "FINANCE",
+      "engine": "webkit",
+      "status": "PASS",
+      "fields": [
+        {
+          "height": 44,
+          "width": 340,
+          "gap": 12,
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif",
+          "inset": null,
+          "arrowOffset": null
+        },
+        {
+          "height": 44,
+          "width": 340,
+          "gap": 12,
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif",
+          "inset": 13,
+          "arrowOffset": 0
+        },
+        {
+          "height": 44,
+          "width": 340,
+          "gap": 12,
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif",
+          "inset": null,
+          "arrowOffset": null
+        },
+        {
+          "height": 44,
+          "width": 340,
+          "gap": 12,
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif",
+          "inset": 13,
+          "arrowOffset": 0
+        },
+        {
+          "height": 44,
+          "width": 340,
+          "gap": 12,
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif",
+          "inset": null,
+          "arrowOffset": null
+        },
+        {
+          "height": 44,
+          "width": 340,
+          "gap": 12,
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif",
+          "inset": 13,
+          "arrowOffset": 0
+        }
+      ],
+      "actions": [
+        "COA create/edit/cancel/delete",
+        "dialog focus/Escape/return",
+        "user menu/reset unsaved visibility/cancel",
+        "channel secret unsaved visibility",
+        "payment default toggle/revert and delete cancel"
+      ],
+      "run": "settings-tabtrace-webkit"
+    },
+    {
+      "width": 320,
+      "root": 20,
+      "theme": "dark",
+      "scope": "SHOP",
+      "engine": "webkit",
+      "status": "PASS",
+      "fields": [
+        {
+          "height": 55,
+          "width": 258,
+          "gap": 15,
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif",
+          "inset": null,
+          "arrowOffset": null
+        },
+        {
+          "height": 55,
+          "width": 258,
+          "gap": 15,
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif",
+          "inset": 16,
+          "arrowOffset": 0
+        },
+        {
+          "height": 55,
+          "width": 258,
+          "gap": 15,
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif",
+          "inset": null,
+          "arrowOffset": null
+        },
+        {
+          "height": 55,
+          "width": 258,
+          "gap": 15,
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif",
+          "inset": 16,
+          "arrowOffset": 0
+        },
+        {
+          "height": 55,
+          "width": 258,
+          "gap": 15,
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif",
+          "inset": null,
+          "arrowOffset": null
+        },
+        {
+          "height": 55,
+          "width": 258,
+          "gap": 15,
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif",
+          "inset": 16,
+          "arrowOffset": 0
+        }
+      ],
+      "actions": [
+        "COA create/edit/cancel/delete",
+        "dialog focus/Escape/return",
+        "user menu/reset unsaved visibility/cancel",
+        "channel secret unsaved visibility",
+        "payment default toggle/revert and delete cancel"
+      ],
+      "run": "settings-tabtrace-webkit"
+    },
+    {
+      "width": 844,
+      "height": 390,
+      "root": 16,
+      "theme": "dark",
+      "scope": "FINANCE",
+      "engine": "webkit",
+      "status": "PASS",
+      "fields": [
+        {
+          "height": 44,
+          "width": 301,
+          "gap": 12,
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif",
+          "inset": null,
+          "arrowOffset": null
+        },
+        {
+          "height": 44,
+          "width": 301,
+          "gap": 12,
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif",
+          "inset": 13,
+          "arrowOffset": 0
+        },
+        {
+          "height": 44,
+          "width": 622,
+          "gap": 12,
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif",
+          "inset": null,
+          "arrowOffset": null
+        },
+        {
+          "height": 44,
+          "width": 301,
+          "gap": 12,
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif",
+          "inset": 13,
+          "arrowOffset": 0
+        },
+        {
+          "height": 44,
+          "width": 301,
+          "gap": 12,
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif",
+          "inset": null,
+          "arrowOffset": null
+        },
+        {
+          "height": 44,
+          "width": 622,
+          "gap": 12,
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif",
+          "inset": 13,
+          "arrowOffset": 0
+        }
+      ],
+      "actions": [
+        "COA create/edit/cancel/delete",
+        "dialog focus/Escape/return",
+        "user menu/reset unsaved visibility/cancel",
+        "channel secret unsaved visibility",
+        "payment default toggle/revert and delete cancel"
+      ],
+      "run": "settings-tabtrace-webkit"
+    }
+  ]
+}

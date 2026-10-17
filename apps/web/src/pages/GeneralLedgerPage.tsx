@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useId as useUiFieldId, useMemo, useState } from 'react';
 import { Link } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -82,6 +82,7 @@ function NormalBalanceBadge({ value }: { value: 'Dr' | 'Cr' | 'Dr/Cr' }) {
 }
 
 export function GeneralLedgerPage() {
+  const uiFieldId = useUiFieldId();
   // Local-date formatting (NOT toISOString — that shifts a BKK local-midnight
   // date back one UTC day). Default = full current month, matching the
   // DateRangeChips "เดือนนี้" preset (owner 2026-07-02).
@@ -287,10 +288,10 @@ export function GeneralLedgerPage() {
           </Popover>
         </div>
         <div>
-          <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
+          <label htmlFor={`${uiFieldId}-1`} className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
             ตั้งแต่
           </label>
-          <ThaiDateInput
+          <ThaiDateInput id={`${uiFieldId}-1`}
             data-date-range-custom-start="true"
             value={startDate}
             onChange={(e) => setStartDate(e.target.value)}
@@ -298,10 +299,10 @@ export function GeneralLedgerPage() {
           />
         </div>
         <div>
-          <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
+          <label htmlFor={`${uiFieldId}-2`} className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
             ถึง
           </label>
-          <ThaiDateInput
+          <ThaiDateInput id={`${uiFieldId}-2`}
             value={endDate}
             onChange={(e) => setEndDate(e.target.value)}
             className={`${inputClass} w-auto`}

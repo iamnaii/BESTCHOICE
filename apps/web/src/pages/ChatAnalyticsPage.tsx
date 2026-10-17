@@ -1,3 +1,4 @@
+import { NativeSelect } from '@/components/ui/native-select';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link, useSearchParams } from 'react-router';
@@ -237,8 +238,8 @@ function AnalyticsDashboard() {
         </label>
         <label className="min-w-0 text-sm">
           สาขา
-          <select
-            className={field}
+          <NativeSelect wrapperClassName="max-w-full mt-1 w-full min-w-0"
+            className={`${field} mt-0`}
             value={draft.branchId}
             onChange={(e) => setDraft({ ...draft, branchId: e.target.value, staffId: '' })}
           >
@@ -248,12 +249,12 @@ function AnalyticsDashboard() {
                 {b.name}
               </option>
             ))}
-          </select>
+          </NativeSelect>
         </label>
         <label className="min-w-0 text-sm">
           ช่องทาง
-          <select
-            className={field}
+          <NativeSelect wrapperClassName="max-w-full mt-1 w-full min-w-0"
+            className={`${field} mt-0`}
             value={draft.channel}
             onChange={(e) => setDraft({ ...draft, channel: e.target.value })}
           >
@@ -266,12 +267,12 @@ function AnalyticsDashboard() {
                 {c.replace('_', ' ')}
               </option>
             ))}
-          </select>
+          </NativeSelect>
         </label>
         <label className="min-w-0 text-sm">
           พนักงาน
-          <select
-            className={field}
+          <NativeSelect wrapperClassName="max-w-full mt-1 w-full min-w-0"
+            className={`${field} mt-0`}
             value={draft.staffId}
             onChange={(e) => setDraft({ ...draft, staffId: e.target.value })}
           >
@@ -281,7 +282,7 @@ function AnalyticsDashboard() {
                 {s.name} · {s.id.slice(-6)}
               </option>
             ))}
-          </select>
+          </NativeSelect>
         </label>
         <Button type="submit" className="min-h-11">
           แสดงรายงาน

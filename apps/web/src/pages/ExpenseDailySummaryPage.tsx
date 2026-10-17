@@ -1,3 +1,4 @@
+import { NativeSelect } from '@/components/ui/native-select';
 import DocumentHeader from '@/components/DocumentHeader';
 import QueryBoundary from '@/components/QueryBoundary';
 import { useCompanyDisplayName } from '@/hooks/useCompanyInfo';
@@ -170,13 +171,13 @@ export default function ExpenseDailySummaryPage() {
           <h1 className="text-base font-semibold">ใบสรุปรายจ่ายประจำวัน</h1>
         </div>
         <div className="flex min-w-0 max-w-full items-center gap-2 flex-wrap">
-          <ThaiDateInput value={date} onChange={(e) => setDate(e.target.value)} />
+          <ThaiDateInput aria-label="วันที่" value={date} onChange={(e) => setDate(e.target.value)} />
           {branches && branches.length > 0 && (
-            <select
+            <NativeSelect wrapperClassName="w-auto min-w-0 max-w-full"
               aria-label="สาขาของใบสรุปรายจ่าย"
               value={branchId}
               onChange={(e) => setBranchId(e.target.value)}
-              className="min-h-11 min-w-0 max-w-full px-3 py-2 border border-input rounded-lg text-sm bg-background"
+              className="min-h-11 px-3 py-2 border border-input rounded-lg text-sm bg-background"
             >
               <option value="" disabled>เลือกสาขา</option>
               {branches.map((b) => (
@@ -184,7 +185,7 @@ export default function ExpenseDailySummaryPage() {
                   {b.name}
                 </option>
               ))}
-            </select>
+            </NativeSelect>
           )}
           <Button variant="outline" size="sm" onClick={handlePrint} disabled={!summary || isError}>
             <Printer className="size-4" /> พิมพ์

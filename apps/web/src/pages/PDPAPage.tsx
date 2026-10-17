@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { NativeSelect } from '@/components/ui/native-select';
+import { useId as useUiFieldId, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api, { getErrorMessage } from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
@@ -54,6 +55,7 @@ const requestTypeLabels: Record<string, string> = {
 };
 
 function PDPAPage() {
+  const uiFieldId = useUiFieldId();
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const [tab, setTab] = useState<'dsar' | 'consent-lookup'>('dsar');
@@ -248,7 +250,7 @@ function PDPAPage() {
       {tab === 'consent-lookup' && (
         <div className="bg-card rounded-xl border border-border/50 shadow-sm p-6">
           <div className="flex gap-3 mb-6">
-            <input
+            <input aria-label="ใส่ Customer ID เพื่อค้นหา consent"
               type="text"
               placeholder="ใส่ Customer ID เพื่อค้นหา consent..."
               value={customerIdSearch}
@@ -319,20 +321,20 @@ function PDPAPage() {
               <div className="text-sm text-muted-foreground mt-1">{selectedDSAR.description}</div>
             </div>
             <div>
-              <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">สถานะ</label>
-              <select
+              <label htmlFor={`${uiFieldId}-1`} className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">สถานะ</label>
+              <NativeSelect wrapperClassName="max-w-full w-full" id={`${uiFieldId}-1`}
                 value={processForm.status}
                 onChange={(e) => setProcessForm({ ...processForm, status: e.target.value })}
-                className="w-full px-3 py-2 border rounded-lg text-sm"
+                className="px-3 py-2 border rounded-lg text-sm"
               >
                 <option value="COMPLETED">เสร็จสิ้น</option>
                 <option value="IN_PROGRESS">กำลังดำเนินการ</option>
                 <option value="REJECTED">ปฏิเสธ</option>
-              </select>
+              </NativeSelect>
             </div>
             <div>
-              <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">หมายเหตุ</label>
-              <textarea
+              <label htmlFor={`${uiFieldId}-2`} className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">หมายเหตุ</label>
+              <textarea id={`${uiFieldId}-2`}
                 value={processForm.responseNotes}
                 onChange={(e) => setProcessForm({ ...processForm, responseNotes: e.target.value })}
                 rows={3}
@@ -361,8 +363,8 @@ function PDPAPage() {
         <Modal title="ถอน Consent" onClose={() => { if (!revokeMutation.isPending) { setShowRevokeModal(false); setPendingRevokeConsentId(null); } }}>
           <div className="flex flex-col gap-5 lg:gap-7.5">
             <div>
-              <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">เหตุผลในการถอน consent</label>
-              <textarea
+              <label htmlFor={`${uiFieldId}-3`} className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">เหตุผลในการถอน consent</label>
+              <textarea id={`${uiFieldId}-3`}
                 value={revokeReason}
                 onChange={(e) => setRevokeReason(e.target.value)}
                 rows={3}
@@ -399,8 +401,8 @@ function PDPAPage() {
         <Modal title="สร้างคำร้อง DSAR" onClose={() => setShowCreateDSAR(false)}>
           <div className="flex flex-col gap-5 lg:gap-7.5">
             <div>
-              <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">Customer ID</label>
-              <input
+              <label htmlFor={`${uiFieldId}-4`} className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">Customer ID</label>
+              <input id={`${uiFieldId}-4`}
                 type="text"
                 value={dsarForm.customerId}
                 onChange={(e) => setDsarForm({ ...dsarForm, customerId: e.target.value })}
@@ -409,20 +411,20 @@ function PDPAPage() {
               />
             </div>
             <div>
-              <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ประเภทคำร้อง</label>
-              <select
+              <label htmlFor={`${uiFieldId}-5`} className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ประเภทคำร้อง</label>
+              <NativeSelect wrapperClassName="max-w-full w-full" id={`${uiFieldId}-5`}
                 value={dsarForm.requestType}
                 onChange={(e) => setDsarForm({ ...dsarForm, requestType: e.target.value })}
-                className="w-full px-3 py-2 border rounded-lg text-sm"
+                className="px-3 py-2 border rounded-lg text-sm"
               >
                 {Object.entries(requestTypeLabels).map(([value, label]) => (
                   <option key={value} value={value}>{label}</option>
                 ))}
-              </select>
+              </NativeSelect>
             </div>
             <div>
-              <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">รายละเอียด</label>
-              <textarea
+              <label htmlFor={`${uiFieldId}-6`} className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">รายละเอียด</label>
+              <textarea id={`${uiFieldId}-6`}
                 value={dsarForm.description}
                 onChange={(e) => setDsarForm({ ...dsarForm, description: e.target.value })}
                 rows={3}

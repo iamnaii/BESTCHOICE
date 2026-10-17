@@ -1,3 +1,4 @@
+import { NativeSelect } from '@/components/ui/native-select';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
@@ -8,6 +9,8 @@ import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
 import api from '@/lib/api';
 import type { CannedResponse, CannedResponseQuickReply, QuickReplyType } from './types';
+import { useId as useUiFieldId } from 'react';
+
 
 interface Props {
   cannedResponseId: string;
@@ -41,6 +44,7 @@ function SortableQuickReplyRow({
   allTemplates: CannedResponse[];
   selfId: string;
 }) {
+  const uiFieldId = useUiFieldId();
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: qr.id });
   const style = { transform: CSS.Transform.toString(transform), transition };
 
@@ -50,7 +54,7 @@ function SortableQuickReplyRow({
         <button {...attributes} {...listeners} className="cursor-grab text-muted-foreground hover:text-foreground p-1" aria-label="ลากเพื่อย้าย">
           <GripVertical className="w-4 h-4" />
         </button>
-        <select
+        <NativeSelect wrapperClassName="max-w-full w-auto"
           value={qr.type}
           onChange={(e) => onChange({ type: e.target.value as QuickReplyType })}
           className="text-xs border border-border rounded px-2 py-1 bg-background"
@@ -58,7 +62,7 @@ function SortableQuickReplyRow({
           <option value="MESSAGE">ส่งข้อความ</option>
           <option value="POSTBACK">Postback</option>
           <option value="URL">เปิด URL</option>
-        </select>
+        </NativeSelect>
         <div className="flex-1" />
         <button onClick={onDelete} className="p-1 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded" title="ลบ" aria-label="ลบ">
           <Trash2 className="w-3.5 h-3.5" />
@@ -74,14 +78,14 @@ function SortableQuickReplyRow({
         {qr.type === 'POSTBACK' && (
           <>
             <div className="flex items-center gap-2">
-              <label className="text-[11px] text-muted-foreground shrink-0">เมื่อกด:</label>
-              <select
+              <label htmlFor={`${uiFieldId}-1`} className="text-[11px] text-muted-foreground shrink-0">เมื่อกด:</label>
+              <NativeSelect wrapperClassName="max-w-full w-auto flex-1" id={`${uiFieldId}-1`}
                 value={parseTemplatePostback(qr.payload) ?? ''}
                 onChange={(e) => {
                   const tplId = e.target.value;
                   onChange({ payload: tplId ? `${POSTBACK_TEMPLATE_PREFIX}${tplId}` : '' });
                 }}
-                className="text-xs border border-border rounded px-2 py-1 bg-background flex-1"
+                className="text-xs border border-border rounded px-2 py-1 bg-background"
               >
                 <option value="">— ตั้งเอง (custom payload) —</option>
                 <optgroup label="ส่ง template ตอบกลับ">
@@ -94,7 +98,7 @@ function SortableQuickReplyRow({
                       </option>
                     ))}
                 </optgroup>
-              </select>
+              </NativeSelect>
             </div>
             <Input
               value={qr.payload ?? ''}

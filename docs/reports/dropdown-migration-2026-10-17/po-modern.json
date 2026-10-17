@@ -1,0 +1,41 @@
+{
+  "scope": "existing modern Radix PO filters; actual app with disposable DB",
+  "results": [
+    {
+      "engine": "chromium",
+      "width": 1440,
+      "status": "PASS",
+      "widgets": "3 existing Radix dropdowns opened, selected and restored"
+    },
+    {
+      "engine": "chromium",
+      "width": 390,
+      "status": "PASS",
+      "widgets": "3 existing Radix dropdowns opened, selected and restored"
+    },
+    {
+      "engine": "chromium",
+      "width": 320,
+      "status": "PASS",
+      "widgets": "3 existing Radix dropdowns opened, selected and restored"
+    },
+    {
+      "engine": "webkit",
+      "width": 1440,
+      "status": "PASS",
+      "widgets": "3 existing Radix dropdowns opened, selected and restored"
+    },
+    {
+      "engine": "webkit",
+      "width": 390,
+      "status": "PASS",
+      "widgets": "3 existing Radix dropdowns opened, selected and restored"
+    },
+    {
+      "engine": "webkit",
+      "width": 320,
+      "status": "PASS",
+      "widgets": "3 existing Radix dropdowns opened, selected and restored"
+    }
+  ]
+}

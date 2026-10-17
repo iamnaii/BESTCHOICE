@@ -140,12 +140,15 @@
 .inbox-message-input { display:block; flex:1; width:100%; min-width:0; resize:none; max-height:128px; padding:10px 12px; border:0; outline:none; background:transparent; font-size:14px; line-height:24px; }
 .inbox-send-button { display:inline-flex; align-items:center; justify-content:center; gap:8px; flex-shrink:0; min-height:44px; min-width:44px; padding:0 12px; border-radius:22px; color:hsl(var(--primary-foreground)); background:hsl(var(--primary)); }
 .inbox-send-button:disabled { opacity:.45; }
-.inbox-composer-tools { align-items:center; gap:4px; padding:4px 8px; }
-.inbox-composer-tools > button,.inbox-media-tool { display:inline-flex; align-items:center; justify-content:center; gap:6px; min-width:44px; min-height:44px; border-radius:10px; font-size:12px; }
-.inbox-composer-tools > button:hover { background:hsl(var(--muted)); }
+.inbox-composer-tools { align-items:center; flex-wrap:wrap; gap:8px; padding:8px; border-top:1px solid hsl(var(--border)/.6); }
+.inbox-composer-tools > button { display:inline-flex; align-items:center; justify-content:center; gap:6px; min-width:44px; min-height:44px; height:auto; padding:8px; border-radius:10px; font-size:12px; line-height:20px; font-weight:500; color:hsl(var(--muted-foreground)); transition:background-color .15s,color .15s; }
+.inbox-composer-tools > button > svg { width:18px; height:18px; flex-shrink:0; opacity:1; }
+.inbox-composer-tools > button:hover { color:hsl(var(--foreground)); background:hsl(var(--muted)); }
+.inbox-composer-tools > button:focus-visible { outline:2px solid hsl(var(--ring)); outline-offset:2px; }
+.inbox-composer-tools > button:is([aria-pressed=true],[data-state=open]) { color:hsl(var(--primary)); background:hsl(var(--primary)/.08); }
 .inbox-composer-tools > button[disabled] { opacity:.5; }
-.inbox-media-tool > span { display:none; }
-.inbox-voice-help { padding:0 12px; }
+.inbox-composer-tools > .inbox-voice-help { margin-left:auto; }
+.inbox-voice-help > span { display:none; }
 .inbox-mobile-sheet { max-height:85dvh; overflow-y:auto; gap:12px; padding:20px 16px calc(16px + env(safe-area-inset-bottom)); border-radius:20px 20px 0 0; }
 .inbox-mobile-sheet [data-slot=sheet-close] { display:grid; place-items:center; width:44px; height:44px; top:4px; right:6px; }
 .inbox-mobile-sheet [data-slot=sheet-title],.inbox-mobile-sheet [data-slot=sheet-description] { padding-right:32px; overflow-wrap:anywhere; }
@@ -175,12 +178,12 @@
   .inbox-composer-card,.inbox-composer [data-chat-composer-card] { border:0; border-radius:0; }
   .inbox-input-row { gap:2px; padding:2px 0 0; }
   .inbox-composer .inbox-message-input { min-height:44px; max-height:128px; font-size:16px; line-height:24px; border-radius:22px; background:hsl(var(--muted)/.7); }
-  .inbox-composer-tools { grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; padding:12px 6px 0; }
-  .inbox-composer-tools > button,.inbox-media-tool { flex-direction:column; gap:6px; min-height:72px; padding:8px 4px; color:hsl(var(--foreground)); background:hsl(var(--muted)/.6); }
+  .inbox-composer-tools { grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; padding:12px 6px 6px; border:0; }
+  .inbox-composer-tools > button { flex-direction:column; gap:6px; min-height:72px; padding:8px 4px; white-space:normal; color:hsl(var(--foreground)); background:hsl(var(--muted)/.6); }
+  .inbox-composer-tools > button > svg { width:20px; height:20px; }
   .inbox-composer-tools > .hidden { display:none; }
-  .inbox-media-tool { position:relative; gap:0; padding:0; }
-  .inbox-media-tool > button { width:100%; height:72px; padding-bottom:20px; }
-  .inbox-media-tool > span { display:block; position:absolute; pointer-events:none; bottom:9px; }
+  .inbox-composer-tools > .inbox-voice-help { grid-column:1 / -1; flex-direction:row; min-height:44px; margin:0; background:transparent; color:hsl(var(--muted-foreground)); }
+  .inbox-voice-help > span { display:inline; }
   .inbox-composer-note { background:hsl(var(--card)); }
   .inbox-composer-note .inbox-composer-card { border-radius:12px; }
   .inbox-composer .inbox-note-composer textarea { font-size:16px; min-height:60px; line-height:1.5; }

@@ -7,6 +7,7 @@ import { useQuery } from '@tanstack/react-query';
 import { ArrowLeft, Download, Printer, Info } from 'lucide-react';
 import { otherIncomeApi } from '@/lib/otherIncome';
 import QueryBoundary from '@/components/QueryBoundary';
+import { formControlClass } from '@/components/ui/form-styles';
 import { DateRangeChips } from './components/DateRangeChips';
 import { useUiFlags } from '@/hooks/useUiFlags';
 import { computeDefaultTimeRange, formatThaiDateLong } from '@/lib/date';
@@ -153,18 +154,18 @@ export default function OtherIncomeDailySheetPage() {
           }}
         />
         <div className="flex flex-wrap items-center gap-2">
-          <input
+          <input aria-label="วันที่เริ่ม"
             type="date"
             data-date-range-custom-start="true"
             value={startDate}
             onChange={(e) => setStartDate(e.target.value)}
-            className="border border-border rounded-md px-3 py-2 text-sm bg-background"
+            className={`${formControlClass} w-full sm:w-auto`}
           />
-          <input
+          <input aria-label="วันที่สิ้นสุด"
             type="date"
             value={endDate}
             onChange={(e) => setEndDate(e.target.value)}
-            className="border border-border rounded-md px-3 py-2 text-sm bg-background"
+            className={`${formControlClass} w-full sm:w-auto`}
           />
         </div>
       </div>

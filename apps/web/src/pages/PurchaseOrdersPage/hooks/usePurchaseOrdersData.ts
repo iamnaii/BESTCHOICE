@@ -51,6 +51,7 @@ export function usePurchaseOrdersData(options?: { onCreateSuccess?: () => void }
   const [overdueOnly, setOverdueOnly] = useState(false);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
+  const [detailReturnFocusKey, setDetailReturnFocusKey] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'list' | 'payable'>('list');
   const [isReceiveModalOpen, setIsReceiveModalOpen] = useState(false);
   const [confirmDialog, setConfirmDialog] = useState<{
@@ -335,6 +336,9 @@ export function usePurchaseOrdersData(options?: { onCreateSuccess?: () => void }
   };
 
   const openDetailModal = async (po: PurchaseOrder) => {
+    // Table cell renderers can remount on this state update; retain the logical opener.
+    const active = document.activeElement;
+    setDetailReturnFocusKey(active instanceof HTMLElement ? active.dataset.poDetailTrigger ?? null : null);
     setSelectedPO(po);
     setPODetail(null);
     setIsDetailModalOpen(true);
@@ -518,6 +522,7 @@ export function usePurchaseOrdersData(options?: { onCreateSuccess?: () => void }
     isCreateModalOpen,
     setIsCreateModalOpen,
     isDetailModalOpen,
+    detailReturnFocusKey,
     setIsDetailModalOpen,
     isReceiveModalOpen,
     setIsReceiveModalOpen,

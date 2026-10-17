@@ -1,3 +1,4 @@
+import { NativeSelect } from '@/components/ui/native-select';
 import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { standardSchemaResolver } from '@hookform/resolvers/standard-schema';
@@ -218,31 +219,31 @@ export function CreateBatchDialog({
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="ic-financeBankCode">บัญชี FINANCE (จ่ายออก)</Label>
-              <select
+              <NativeSelect wrapperClassName="max-w-full w-full"
                 id="ic-financeBankCode"
                 {...register('financeBankCode')}
-                className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring/30"
+                className="h-9 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring/30"
               >
                 {FINANCE_BANK_OPTIONS.map((o) => (
                   <option key={o.code} value={o.code}>
                     {o.label}
                   </option>
                 ))}
-              </select>
+              </NativeSelect>
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="ic-shopBankCode">บัญชี SHOP (รับเข้า)</Label>
-              <select
+              <NativeSelect wrapperClassName="max-w-full w-full"
                 id="ic-shopBankCode"
                 {...register('shopBankCode')}
-                className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring/30"
+                className="h-9 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring/30"
               >
                 {SHOP_BANK_OPTIONS.map((o) => (
                   <option key={o.code} value={o.code}>
                     {o.label}
                   </option>
                 ))}
-              </select>
+              </NativeSelect>
             </div>
           </div>
 

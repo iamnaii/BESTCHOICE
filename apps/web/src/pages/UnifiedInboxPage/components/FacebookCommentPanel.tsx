@@ -1,3 +1,4 @@
+import { NativeSelect } from '@/components/ui/native-select';
 import FacebookCommentLink from './FacebookCommentLink';
 import { useRef, useState } from 'react';
 import { ExternalLink, Globe, Loader2 } from 'lucide-react';
@@ -105,8 +106,8 @@ export default function FacebookCommentPanel({ threadId }: { threadId: string })
       <div className="flex flex-wrap items-end gap-2">
         <label className="min-w-0 flex-1 space-y-1">
           <span>ผู้รับผิดชอบคอมเมนต์</span>
-          <select
-            className="h-11 w-full rounded-md border bg-background px-3"
+          <NativeSelect wrapperClassName="max-w-full w-full"
+            className="h-11 rounded-md border bg-background px-3"
             value={row.assigneeId ?? ''}
             disabled={busy || staff.isError}
             onChange={(e) =>
@@ -128,7 +129,7 @@ export default function FacebookCommentPanel({ threadId }: { threadId: string })
                 {s.name} · {s.role} · {s.id.slice(-6)}
               </option>
             ))}
-          </select>
+          </NativeSelect>
         </label>
         <Button
           variant="outline"

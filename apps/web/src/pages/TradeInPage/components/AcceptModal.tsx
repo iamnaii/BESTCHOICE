@@ -1,3 +1,4 @@
+import { NativeSelect } from '@/components/ui/native-select';
 import { DeviceOriginField } from '@/components/product/DeviceDisclosureFields';
 import { useState, useEffect } from 'react';
 import { TRADE_IN_DECLARATION_VERSION, tradeInEvidenceError } from '@installment/shared';
@@ -154,8 +155,8 @@ export default function AcceptModal({
             <div>
               <Label>สาขาที่รับเครื่อง *</Label>
               {canPickBranch ? (
-                <select
-                  className="mt-1.5 w-full h-10 rounded-lg border border-input bg-background px-3 text-sm"
+                <NativeSelect wrapperClassName="max-w-full mt-1.5 w-full" aria-label="สาขา"
+                  className="h-10 rounded-lg border border-input bg-background px-3 text-sm"
                   disabled={isPending}
                   value={branchId}
                   onChange={(e) => setBranchId(e.target.value)}
@@ -166,7 +167,7 @@ export default function AcceptModal({
                       {b.name}
                     </option>
                   ))}
-                </select>
+                </NativeSelect>
               ) : (
                 <p className="mt-1.5 text-sm text-muted-foreground">
                   รับเข้าสาขาของคุณโดยอัตโนมัติ (รายการออนไลน์ยังไม่ผูกสาขา)

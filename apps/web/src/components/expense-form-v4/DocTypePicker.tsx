@@ -42,12 +42,12 @@ interface TabDef {
 }
 
 const TABS: TabDef[] = [
-  { type: 'EXPENSE_SAMEDAY', label: 'Same-day', sub: 'จ่ายวันเดียวกับใบกำกับ', Icon: Banknote },
+  { type: 'EXPENSE_SAMEDAY', label: 'จ่ายทันที', sub: 'จ่ายวันเดียวกับใบกำกับ', Icon: Banknote },
   { type: 'EXPENSE_ACCRUAL', label: 'ตั้งหนี้', sub: 'รับใบ ยังไม่จ่าย', Icon: FileWarning },
   { type: 'VENDOR_SETTLEMENT', label: 'จ่ายเจ้าหนี้', sub: 'อ้างถึง ACCRUAL', Icon: Wallet },
   { type: 'PAYROLL', label: 'เงินเดือน', sub: 'จ่ายเงินเดือนพนักงาน', Icon: Users },
   { type: 'CREDIT_NOTE', label: 'ใบลดหนี้', sub: 'ผู้ขายคืนเงิน', Icon: Receipt },
-  { type: 'PETTY_CASH_REIMBURSEMENT', label: 'Petty Cash', sub: 'เบิกชดเชยเงินสดย่อย', Icon: Coins },
+  { type: 'PETTY_CASH_REIMBURSEMENT', label: 'เงินสดย่อย', sub: 'เบิกชดเชยเงินสดย่อย', Icon: Coins },
 ];
 
 export function DocTypePicker({
@@ -73,7 +73,7 @@ export function DocTypePicker({
 
   return (
     <div className="space-y-2">
-      <div className="grid grid-cols-2 md:grid-cols-6 gap-2">
+      <div className="grid grid-cols-2 gap-2 md:grid-cols-3 lg:grid-cols-6">
         {visibleTabs.map(({ type, label, sub, Icon }) => {
           const active = value === type;
           const isRecommended = recommended === type && value !== type;
@@ -99,7 +99,7 @@ export function DocTypePicker({
                 )}
               />
               <div className="min-w-0">
-                <div className="flex items-center gap-1.5">
+                <div className="flex flex-wrap items-center gap-1.5">
                   <span className="text-sm font-medium leading-snug">{label}</span>
                   {isRecommended && (
                     <span className="inline-flex items-center gap-0.5 rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary">
@@ -108,7 +108,7 @@ export function DocTypePicker({
                     </span>
                   )}
                 </div>
-                <div className="text-xs text-muted-foreground leading-snug truncate">{sub}</div>
+                <div className="text-xs text-muted-foreground leading-snug break-words">{sub}</div>
               </div>
             </button>
           );
@@ -117,13 +117,13 @@ export function DocTypePicker({
       <p className="text-xs text-muted-foreground pl-1">
         {smartDoctypeSwitchEnabled ? (
           <>
-            Smart Default: invoice_date = today → SAMEDAY · invoice_date &lt; today → ACCRUAL
+            แนะนำประเภทตามวันที่ใบกำกับ เปลี่ยนได้ตามรายการจริง
             {invoiceDateIsToday && value === 'EXPENSE_ACCRUAL' && (
               <span className="text-warning-strong"> · ตั้งหนี้แล้วทั้งที่วันที่เป็นวันนี้</span>
             )}
           </>
         ) : (
-          <>Smart Default ปิดอยู่ — เลือกประเภทเอกสารด้วยตนเอง</>
+          <>เลือกประเภทเอกสารตามรายการที่ต้องการบันทึก</>
         )}
       </p>
     </div>

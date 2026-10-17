@@ -1,3 +1,4 @@
+import { NativeSelect } from '@/components/ui/native-select';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -436,7 +437,7 @@ export function DeviceReturnIntakeDialog({ open, onClose, initialContractId, onC
                   >
                     เหตุผลคืนเครื่อง <span className="text-destructive">*</span>
                   </label>
-                  <select
+                  <NativeSelect wrapperClassName="max-w-full w-full"
                     id="device-return-reason"
                     value={returnReason}
                     onChange={(e) => setReturnReason(e.target.value as ReturnReason | '')}
@@ -449,7 +450,7 @@ export function DeviceReturnIntakeDialog({ open, onClose, initialContractId, onC
                         {o.label}
                       </option>
                     ))}
-                  </select>
+                  </NativeSelect>
                   {reasonLocked && (
                     <p className="mt-1 text-[11px] text-muted-foreground leading-snug">
                       สัญญาบอกเลิกแล้ว — เหตุผลถูกตั้งเป็น "รับเครื่องคืนหลังบอกเลิกสัญญา" โดยระบบ
@@ -594,7 +595,7 @@ export function DeviceReturnIntakeDialog({ open, onClose, initialContractId, onC
                 >
                   สาขาที่รับเครื่อง <span className="text-destructive">*</span>
                 </label>
-                <select
+                <NativeSelect wrapperClassName="max-w-full w-full"
                   id="device-return-branch"
                   value={receivingBranchId}
                   onChange={(e) => setReceivingBranchId(e.target.value)}
@@ -608,7 +609,7 @@ export function DeviceReturnIntakeDialog({ open, onClose, initialContractId, onC
                         {b.name}
                       </option>
                     ))}
-                </select>
+                </NativeSelect>
                 {branches.isError && (
                   <div role="alert" className="mt-2 text-sm text-destructive leading-snug">
                     <p>โหลดสาขาไม่สำเร็จ: {getErrorMessage(branches.error)}</p>

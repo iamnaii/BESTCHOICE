@@ -1,0 +1,500 @@
+{
+  "scope": "real isolated API with synthetic long PO number; geometry, keyboard detail and focus-return",
+  "sourceFingerprint": "dc401f9231b0e210d30136d11a6b7b4f721c3d52a969c0924f8a2439396e48f4",
+  "results": [
+    {
+      "engine": "chromium",
+      "width": 1440,
+      "root": 16,
+      "theme": "light",
+      "geometry": {
+        "box": {
+          "left": 119,
+          "right": 271,
+          "top": 578.90625,
+          "bottom": 620.90625,
+          "width": 152,
+          "height": 42
+        },
+        "text": [
+          {
+            "left": 119,
+            "right": 221.65625,
+            "top": 577.90625,
+            "bottom": 600.90625
+          },
+          {
+            "left": 119,
+            "right": 187,
+            "top": 598.90625,
+            "bottom": 621.90625
+          }
+        ],
+        "cell": {
+          "left": 99,
+          "right": 291
+        },
+        "amount": {
+          "left": 119,
+          "right": 271
+        },
+        "overflow": false,
+        "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+      },
+      "detailsOpenedByKeyboard": true,
+      "focusContained": true,
+      "paymentOpenedAndCancelled": true,
+      "focusReturned": true,
+      "errors": [],
+      "status": "PASS"
+    },
+    {
+      "engine": "chromium",
+      "width": 1024,
+      "root": 16,
+      "theme": "dark",
+      "geometry": {
+        "box": {
+          "left": 120,
+          "right": 272,
+          "top": 793.8125,
+          "bottom": 835.8125,
+          "width": 152,
+          "height": 42
+        },
+        "text": [
+          {
+            "left": 120,
+            "right": 222.65625,
+            "top": 792.8125,
+            "bottom": 815.8125
+          },
+          {
+            "left": 120,
+            "right": 188,
+            "top": 813.8125,
+            "bottom": 836.8125
+          }
+        ],
+        "cell": {
+          "left": 100,
+          "right": 292
+        },
+        "amount": {
+          "left": 120,
+          "right": 272
+        },
+        "overflow": false,
+        "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+      },
+      "detailsOpenedByKeyboard": true,
+      "focusContained": true,
+      "paymentOpenedAndCancelled": true,
+      "focusReturned": true,
+      "errors": [],
+      "status": "PASS"
+    },
+    {
+      "engine": "chromium",
+      "width": 768,
+      "root": 20,
+      "theme": "light",
+      "geometry": {
+        "box": {
+          "left": 41,
+          "right": 252.75,
+          "top": 838.53125,
+          "bottom": 893.53125,
+          "width": 211.75,
+          "height": 55
+        },
+        "text": [
+          {
+            "left": 41,
+            "right": 252.75,
+            "top": 852,
+            "bottom": 880
+          }
+        ],
+        "cell": null,
+        "amount": {
+          "left": 638.4375,
+          "right": 727
+        },
+        "overflow": false,
+        "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+      },
+      "detailsOpenedByKeyboard": true,
+      "focusContained": true,
+      "paymentOpenedAndCancelled": true,
+      "focusReturned": true,
+      "errors": [],
+      "status": "PASS"
+    },
+    {
+      "engine": "chromium",
+      "width": 390,
+      "root": 16,
+      "theme": "light",
+      "geometry": {
+        "box": {
+          "left": 33,
+          "right": 202.40625,
+          "top": 638.71875,
+          "bottom": 682.71875,
+          "width": 169.40625,
+          "height": 44
+        },
+        "text": [
+          {
+            "left": 33,
+            "right": 202.40625,
+            "top": 649.09375,
+            "bottom": 672.09375
+          }
+        ],
+        "cell": null,
+        "amount": {
+          "left": 286.140625,
+          "right": 357
+        },
+        "overflow": false,
+        "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+      },
+      "detailsOpenedByKeyboard": true,
+      "focusContained": true,
+      "paymentOpenedAndCancelled": true,
+      "focusReturned": true,
+      "errors": [],
+      "status": "PASS"
+    },
+    {
+      "engine": "chromium",
+      "width": 320,
+      "root": 20,
+      "theme": "dark",
+      "geometry": {
+        "box": {
+          "left": 41,
+          "right": 180.4375,
+          "top": 469.171875,
+          "bottom": 524.171875,
+          "width": 139.4375,
+          "height": 55
+        },
+        "text": [
+          {
+            "left": 41,
+            "right": 168.671875,
+            "top": 470.609375,
+            "bottom": 498.609375
+          },
+          {
+            "left": 41,
+            "right": 125.09375,
+            "top": 494.671875,
+            "bottom": 522.671875
+          }
+        ],
+        "cell": null,
+        "amount": {
+          "left": 190.4375,
+          "right": 279
+        },
+        "overflow": false,
+        "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+      },
+      "detailsOpenedByKeyboard": true,
+      "focusContained": true,
+      "paymentOpenedAndCancelled": true,
+      "focusReturned": true,
+      "errors": [],
+      "status": "PASS"
+    },
+    {
+      "engine": "chromium",
+      "width": 844,
+      "height": 390,
+      "root": 16,
+      "theme": "dark",
+      "geometry": {
+        "box": {
+          "left": 33,
+          "right": 202.40625,
+          "top": 172.8125,
+          "bottom": 216.8125,
+          "width": 169.40625,
+          "height": 44
+        },
+        "text": [
+          {
+            "left": 33,
+            "right": 202.40625,
+            "top": 183.1875,
+            "bottom": 206.1875
+          }
+        ],
+        "cell": null,
+        "amount": {
+          "left": 740.140625,
+          "right": 811
+        },
+        "overflow": false,
+        "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+      },
+      "detailsOpenedByKeyboard": true,
+      "focusContained": true,
+      "paymentOpenedAndCancelled": true,
+      "focusReturned": true,
+      "errors": [],
+      "status": "PASS"
+    },
+    {
+      "engine": "webkit",
+      "width": 1440,
+      "root": 16,
+      "theme": "light",
+      "geometry": {
+        "box": {
+          "left": 119,
+          "right": 271,
+          "top": 578,
+          "bottom": 620,
+          "width": 152,
+          "height": 42
+        },
+        "text": [
+          {
+            "left": 119,
+            "right": 221.6488494873047,
+            "top": 577,
+            "bottom": 600
+          },
+          {
+            "left": 119,
+            "right": 186.98794555664062,
+            "top": 598,
+            "bottom": 621
+          }
+        ],
+        "cell": {
+          "left": 99,
+          "right": 291
+        },
+        "amount": {
+          "left": 119,
+          "right": 271
+        },
+        "overflow": false,
+        "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+      },
+      "detailsOpenedByKeyboard": true,
+      "focusContained": true,
+      "paymentOpenedAndCancelled": true,
+      "focusReturned": true,
+      "errors": [],
+      "status": "PASS"
+    },
+    {
+      "engine": "webkit",
+      "width": 1024,
+      "root": 16,
+      "theme": "dark",
+      "geometry": {
+        "box": {
+          "left": 120,
+          "right": 272,
+          "top": 792,
+          "bottom": 834,
+          "width": 152,
+          "height": 42
+        },
+        "text": [
+          {
+            "left": 120,
+            "right": 222.6488494873047,
+            "top": 791,
+            "bottom": 814
+          },
+          {
+            "left": 120,
+            "right": 187.98794555664062,
+            "top": 812,
+            "bottom": 835
+          }
+        ],
+        "cell": {
+          "left": 100,
+          "right": 292
+        },
+        "amount": {
+          "left": 120,
+          "right": 272
+        },
+        "overflow": false,
+        "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+      },
+      "detailsOpenedByKeyboard": true,
+      "focusContained": true,
+      "paymentOpenedAndCancelled": true,
+      "focusReturned": true,
+      "errors": [],
+      "status": "PASS"
+    },
+    {
+      "engine": "webkit",
+      "width": 768,
+      "root": 20,
+      "theme": "light",
+      "geometry": {
+        "box": {
+          "left": 41,
+          "right": 252.75,
+          "top": 835,
+          "bottom": 890,
+          "width": 211.75,
+          "height": 55
+        },
+        "text": [
+          {
+            "left": 41,
+            "right": 252.74539184570312,
+            "top": 848.5,
+            "bottom": 876.5
+          }
+        ],
+        "cell": null,
+        "amount": {
+          "left": 638.4375,
+          "right": 727
+        },
+        "overflow": false,
+        "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+      },
+      "detailsOpenedByKeyboard": true,
+      "focusContained": true,
+      "paymentOpenedAndCancelled": true,
+      "focusReturned": true,
+      "errors": [],
+      "status": "PASS"
+    },
+    {
+      "engine": "webkit",
+      "width": 390,
+      "root": 16,
+      "theme": "light",
+      "geometry": {
+        "box": {
+          "left": 33,
+          "right": 202.40625,
+          "top": 639,
+          "bottom": 683,
+          "width": 169.40625,
+          "height": 44
+        },
+        "text": [
+          {
+            "left": 33,
+            "right": 202.39633178710938,
+            "top": 649.5,
+            "bottom": 672.5
+          }
+        ],
+        "cell": null,
+        "amount": {
+          "left": 286.140625,
+          "right": 357
+        },
+        "overflow": false,
+        "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+      },
+      "detailsOpenedByKeyboard": true,
+      "focusContained": true,
+      "paymentOpenedAndCancelled": true,
+      "focusReturned": true,
+      "errors": [],
+      "status": "PASS"
+    },
+    {
+      "engine": "webkit",
+      "width": 320,
+      "root": 20,
+      "theme": "dark",
+      "geometry": {
+        "box": {
+          "left": 41,
+          "right": 180.4375,
+          "top": 470,
+          "bottom": 525,
+          "width": 139.4375,
+          "height": 55
+        },
+        "text": [
+          {
+            "left": 41,
+            "right": 168.65652465820312,
+            "top": 471.5,
+            "bottom": 499.5
+          },
+          {
+            "left": 41,
+            "right": 125.0888671875,
+            "top": 495.5,
+            "bottom": 523.5
+          }
+        ],
+        "cell": null,
+        "amount": {
+          "left": 190.4375,
+          "right": 279
+        },
+        "overflow": false,
+        "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+      },
+      "detailsOpenedByKeyboard": true,
+      "focusContained": true,
+      "paymentOpenedAndCancelled": true,
+      "focusReturned": true,
+      "errors": [],
+      "status": "PASS"
+    },
+    {
+      "engine": "webkit",
+      "width": 844,
+      "height": 390,
+      "root": 16,
+      "theme": "dark",
+      "geometry": {
+        "box": {
+          "left": 33,
+          "right": 202.40625,
+          "top": 173,
+          "bottom": 217,
+          "width": 169.40625,
+          "height": 44
+        },
+        "text": [
+          {
+            "left": 33,
+            "right": 202.39633178710938,
+            "top": 183.5,
+            "bottom": 206.5
+          }
+        ],
+        "cell": null,
+        "amount": {
+          "left": 740.140625,
+          "right": 811
+        },
+        "overflow": false,
+        "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+      },
+      "detailsOpenedByKeyboard": true,
+      "focusContained": true,
+      "paymentOpenedAndCancelled": true,
+      "focusReturned": true,
+      "errors": [],
+      "status": "PASS"
+    }
+  ]
+}

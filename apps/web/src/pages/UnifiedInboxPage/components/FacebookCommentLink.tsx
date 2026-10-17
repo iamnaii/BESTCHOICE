@@ -1,3 +1,4 @@
+import { NativeSelect } from '@/components/ui/native-select';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import api, { getErrorMessage } from '@/lib/api';
@@ -99,10 +100,10 @@ export default function FacebookCommentLink({
           submitted && (
             <label className="block space-y-1">
               <span>เลือกห้องที่ผูกลูกค้าไว้แล้ว</span>
-              <select
+              <NativeSelect wrapperClassName="max-w-full w-full min-w-0"
                 value={selected}
                 onChange={(e) => setSelected(e.target.value)}
-                className="h-11 w-full min-w-0 rounded-md border bg-background px-2"
+                className="h-11 rounded-md border bg-background px-2"
               >
                 <option value="">
                   {query.data?.length ? 'เลือกจากผลค้นหา' : 'ไม่พบห้องที่เข้าถึงได้'}
@@ -112,7 +113,7 @@ export default function FacebookCommentLink({
                     {r.customer.name} · {r.displayName} · {r.channel} · {r.id.slice(-6)}
                   </option>
                 ))}
-              </select>
+              </NativeSelect>
             </label>
           )
         )}

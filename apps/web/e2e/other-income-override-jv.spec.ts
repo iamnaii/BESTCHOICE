@@ -8,7 +8,7 @@ import { unwrapResponse } from './helpers/api-utils';
    สิ่งที่ตรวจจากซอร์สจริง (ต่างจากสมมติฐานของเทสรุ่นก่อนหน้า):
 
    - UI override ทั้งชุดอยู่บน **หน้า entry** (`/other-income/new`) ตั้งแต่แรก
-     ไม่ต้องบันทึกร่างก่อน: checkbox "ใช้เอง (Override)" → OverrideConfirmDialog →
+     ไม่ต้องบันทึกร่างก่อน: checkbox "ปรับรายการเอง" → OverrideConfirmDialog →
      EditableJournalTable (OtherIncomeEntryPage.tsx §6). ส่วน OtherIncomeViewPage
      ไม่ import สองคอมโพเนนต์นี้เลย — มีแค่ป้ายอ่านอย่างเดียว
    - ชื่อฟิลด์มาจาก react-hook-form `register()` เป็น field path:
@@ -63,7 +63,7 @@ async function openEntryPage(page: Page, amount: string) {
  * จะรอสถานะ checked จน timeout
  */
 async function enterOverrideMode(page: Page) {
-  await page.locator('label:has-text("ใช้เอง (Override)") input[type="checkbox"]').click();
+  await page.getByRole('checkbox', { name: 'ปรับรายการเอง', exact: true }).click();
 
   await expect(page.getByText('คุณกำลังจะแก้ไข Auto Journal ด้วยตนเอง').first()).toBeVisible({
     timeout: 10000,

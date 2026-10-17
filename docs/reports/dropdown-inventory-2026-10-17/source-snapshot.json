@@ -1,0 +1,14 @@
+{
+  "at": "2026-10-17T06:38:13.581Z",
+  "repo": "/Users/iamnaii/Desktop/App/BESTCHOICE-layout-audit",
+  "sourceFingerprint": "01811cbcb7590c2d6343cbd5c692d69a9d425503ef871000637a921ed8419ee6",
+  "appSourceChanged": false,
+  "scope": [
+    "apps/web/src",
+    "apps/web-shop/src",
+    "apps/card-reader/src",
+    "packages"
+  ],
+  "inventoryMethod": "TypeScript JSX AST + import/export graph; raw HTML/createElement searches also inspected",
+  "lastLocalCheck": "PASS"
+}

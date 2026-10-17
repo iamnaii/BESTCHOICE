@@ -379,14 +379,14 @@ export default function FinancePortfolioPage() {
               }}
             />
             <div className="flex flex-wrap items-center gap-2">
-              <ThaiDateInput
+              <ThaiDateInput aria-label="วันที่เริ่ม"
                 data-date-range-custom-start="true"
                 value={startDate}
                 onChange={(e) => { setStartDate(e.target.value); setPage(1); }}
                 className="w-40"
               />
               <span className="text-sm text-muted-foreground">ถึง</span>
-              <ThaiDateInput
+              <ThaiDateInput aria-label="วันที่สิ้นสุด"
                 value={endDate}
                 onChange={(e) => { setEndDate(e.target.value); setPage(1); }}
                 className="w-40"

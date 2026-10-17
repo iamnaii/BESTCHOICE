@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useId as useUiFieldId, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import api from '@/lib/api';
@@ -87,7 +87,7 @@ export function RateFactorsTab() {
         )}
       </div>
       <div className="flex gap-2">
-        <Input
+        <Input aria-label="ค้นหาจำนวนงวด หรือ % คอม"
           placeholder="ค้นหาจำนวนงวด หรือ % คอม..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
@@ -119,18 +119,21 @@ export function RateFactorsTab() {
               </TableCell>
               <TableCell>
                 <Switch
+                  aria-label={`เปิดใช้งาน ${`${row.months} งวด คอม ${row.shopCommissionPct}%`}`}
                   checked={row.isActive}
                   onCheckedChange={(v) => toggleActive.mutate({ id: row.id, isActive: v })}
                 />
               </TableCell>
               <TableCell>
                 <div className="flex gap-1">
-                  <Button variant="ghost" size="sm" onClick={() => setEditing(row)}>
+                  <Button variant="ghost" size="sm" mode="icon" aria-label={`แก้ไข ${`${row.months} งวด คอม ${row.shopCommissionPct}%`}`} onClick={() => setEditing(row)}>
                     <Pencil className="h-4 w-4" />
                   </Button>
                   <Button
                     variant="ghost"
                     size="sm"
+                    mode="icon"
+                    aria-label={`ลบ ${`${row.months} งวด คอม ${row.shopCommissionPct}%`}`}
                     onClick={() => {
                       if (confirm(`ลบเรท ${row.months} งวด คอม ${row.shopCommissionPct}%?`)) {
                         deleteRow.mutate(row.id);
@@ -178,6 +181,7 @@ interface DialogProps {
 }
 
 function RateFactorFormDialog({ initial, onClose, onSaved }: DialogProps) {
+  const uiFieldId = useUiFieldId();
   const [form, setForm] = useState({
     months: initial ? String(initial.months) : '',
     shopCommissionPct: initial ? String(initial.shopCommissionPct) : '15',
@@ -214,8 +218,8 @@ function RateFactorFormDialog({ initial, onClose, onSaved }: DialogProps) {
         </DialogHeader>
         <div className="space-y-3">
           <div>
-            <label className="text-sm font-medium">จำนวนงวด (เดือน)</label>
-            <Input
+            <label htmlFor={`${uiFieldId}-1`} className="text-sm font-medium">จำนวนงวด (เดือน)</label>
+            <Input id={`${uiFieldId}-1`}
               type="number"
               min="1"
               value={form.months}
@@ -224,8 +228,8 @@ function RateFactorFormDialog({ initial, onClose, onSaved }: DialogProps) {
             />
           </div>
           <div>
-            <label className="text-sm font-medium">% คอมมิชชั่น</label>
-            <Input
+            <label htmlFor={`${uiFieldId}-2`} className="text-sm font-medium">% คอมมิชชั่น</label>
+            <Input id={`${uiFieldId}-2`}
               type="number"
               min="0"
               max="100"
@@ -238,8 +242,8 @@ function RateFactorFormDialog({ initial, onClose, onSaved }: DialogProps) {
             </p>
           </div>
           <div>
-            <label className="text-sm font-medium">Factor (6 ทศนิยม)</label>
-            <Input
+            <label htmlFor={`${uiFieldId}-3`} className="text-sm font-medium">Factor (6 ทศนิยม)</label>
+            <Input id={`${uiFieldId}-3`}
               value={form.factor}
               onChange={(e) => setForm((f) => ({ ...f, factor: e.target.value }))}
               placeholder="เช่น 0.090000"
@@ -249,8 +253,8 @@ function RateFactorFormDialog({ initial, onClose, onSaved }: DialogProps) {
             </p>
           </div>
           <div>
-            <label className="text-sm font-medium">ค่าธรรมเนียมต่องวด (฿)</label>
-            <Input
+            <label htmlFor={`${uiFieldId}-4`} className="text-sm font-medium">ค่าธรรมเนียมต่องวด (฿)</label>
+            <Input id={`${uiFieldId}-4`}
               type="number"
               step="0.01"
               value={form.feePerInstallment}

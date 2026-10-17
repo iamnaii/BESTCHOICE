@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { NativeSelect } from '@/components/ui/native-select';
+import { useId as useUiFieldId, useEffect, useState } from 'react';
 import type { CreateBody, SmsChannel, SmsTemplate, TemplateVariable } from '../hooks/useSmsTemplates';
 
 const DEFAULT_VARIABLES: TemplateVariable[] = [
@@ -31,6 +32,7 @@ export function SmsTemplateForm({
   submitting,
   submitLabel = 'บันทึก',
 }: Props) {
+  const uiFieldId = useUiFieldId();
   const [name, setName] = useState(initial?.name ?? '');
   const [channel, setChannel] = useState<SmsChannel>(initial?.channel ?? 'LINE');
   const [subject, setSubject] = useState(initial?.subject ?? '');
@@ -74,8 +76,8 @@ export function SmsTemplateForm({
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       <div>
-        <label className="block text-sm font-medium text-foreground mb-1">ชื่อ template</label>
-        <input
+        <label htmlFor={`${uiFieldId}-1`} className="block text-sm font-medium text-foreground mb-1">ชื่อ template</label>
+        <input id={`${uiFieldId}-1`}
           type="text"
           value={name}
           onChange={(e) => setName(e.target.value)}
@@ -88,18 +90,18 @@ export function SmsTemplateForm({
 
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <label className="block text-sm font-medium text-foreground mb-1">Channel</label>
-          <select
+          <label htmlFor={`${uiFieldId}-2`} className="block text-sm font-medium text-foreground mb-1">Channel</label>
+          <NativeSelect wrapperClassName="max-w-full w-full" id={`${uiFieldId}-2`}
             value={channel}
             onChange={(e) => setChannel(e.target.value as SmsChannel)}
-            className="w-full px-3 py-2 rounded-md border border-border bg-input text-foreground text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+            className="px-3 py-2 rounded-md border border-border bg-input text-foreground text-sm focus:outline-none focus:ring-1 focus:ring-primary"
           >
             {CHANNEL_OPTIONS.map((c) => (
               <option key={c.value} value={c.value}>
                 {c.label}
               </option>
             ))}
-          </select>
+          </NativeSelect>
         </div>
 
         <div className="flex items-end">
@@ -116,11 +118,11 @@ export function SmsTemplateForm({
       </div>
 
       <div>
-        <label className="block text-sm font-medium text-foreground mb-1">
+        <label htmlFor={`${uiFieldId}-3`} className="block text-sm font-medium text-foreground mb-1">
           หัวข้อ (subject){' '}
           <span className="text-muted-foreground text-xs">(ไม่บังคับ)</span>
         </label>
-        <input
+        <input id={`${uiFieldId}-3`}
           type="text"
           value={subject ?? ''}
           onChange={(e) => setSubject(e.target.value)}
@@ -131,7 +133,7 @@ export function SmsTemplateForm({
       </div>
 
       <div>
-        <label className="block text-sm font-medium text-foreground mb-1">เนื้อหา</label>
+        <label htmlFor={`${uiFieldId}-4`} className="block text-sm font-medium text-foreground mb-1">เนื้อหา</label>
         <div className="flex flex-wrap gap-1 mb-2">
           {variables.map((v) => (
             <button
@@ -145,7 +147,7 @@ export function SmsTemplateForm({
             </button>
           ))}
         </div>
-        <textarea
+        <textarea id={`${uiFieldId}-4`}
           value={body}
           onChange={(e) => setBody(e.target.value)}
           required

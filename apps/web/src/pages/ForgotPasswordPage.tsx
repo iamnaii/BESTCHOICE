@@ -4,6 +4,7 @@ import { toast } from 'sonner';
 import api from '@/lib/api';
 import AuthLayout from '@/components/layout/AuthLayout';
 import { Input } from '@/components/ui/input';
+import { formControlClass, formLabelClass } from '@/components/ui/form-styles';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 
@@ -67,9 +68,10 @@ export default function ForgotPasswordPage() {
         ) : (
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <Label htmlFor="email">อีเมล</Label>
+              <Label htmlFor="email" className={formLabelClass}>อีเมล</Label>
               <Input
                 id="email"
+                className={formControlClass}
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}

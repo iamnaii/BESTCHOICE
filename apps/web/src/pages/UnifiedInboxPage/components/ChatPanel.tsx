@@ -39,6 +39,7 @@ import {
   X,
   ChevronDown,
   Sparkles,
+  CircleHelp,
 } from 'lucide-react';
 import { isSameDay } from 'date-fns';
 import { formatDateSeparator, formatChatTimestamp, formatWaitDuration } from '@/lib/chat-time';
@@ -66,6 +67,7 @@ import { isAcceptedFile } from './upload-accept';
 import { useIsMobile } from '@/hooks/useIsMobile';
 import { useRoomFileDraft } from '../hooks/useRoomFileDraft';
 import { Sheet, SheetContent, SheetTitle, SheetDescription } from '@/components/ui/sheet';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -1541,7 +1543,6 @@ export default function ChatPanel({
                     setToolsOpen(false);
                   }}
                 />
-                <div className="inbox-media-tool">
                   <ChatMediaPicker
                     model={mediaPicker}
                     open={emojiOpen}
@@ -1555,8 +1556,6 @@ export default function ChatPanel({
                       setEmojiOpen(false);
                     }}
                   />
-                  <span aria-hidden="true">อีโมจิ</span>
-                </div>
                 <button
                   type="button"
                   className="lg:hidden"
@@ -1581,24 +1580,23 @@ export default function ChatPanel({
                   aria-pressed={voice.active}
                 >
                   {voice.active ? <Square className="size-5" /> : <Mic className="size-5" />}
-                  <span>พูดเป็นข้อความ</span>
+                  <span>{voice.active ? 'หยุดรับเสียง' : 'พูดเป็นข้อความ'}</span>
                 </button>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <button type="button" className="inbox-voice-help" aria-label="เกี่ยวกับการพิมพ์ด้วยเสียง" title="เกี่ยวกับการพิมพ์ด้วยเสียง">
+                      <CircleHelp aria-hidden="true" />
+                      <span>เกี่ยวกับการพิมพ์ด้วยเสียง</span>
+                    </button>
+                  </PopoverTrigger>
+                  <PopoverContent side="top" align="end" className="w-[min(20rem,calc(100vw-2rem))] rounded-xl text-sm leading-relaxed">
+                    <p className="font-semibold">พิมพ์ด้วยเสียง</p>
+                    <p className="mt-2 text-muted-foreground">
+                      {!voice.supported ? VOICE_FALLBACK : 'กดไมค์แล้วพูดภาษาไทย จากนั้นกดหยุดและตรวจข้อความก่อนส่ง เบราว์เซอร์อาจส่งเสียงไปบริการแปลงเสียง'}
+                    </p>
+                  </PopoverContent>
+                </Popover>
               </div>
-              <details
-                className={cn(
-                  'inbox-voice-help text-xs text-muted-foreground',
-                  !toolsOpen && 'hidden lg:block',
-                )}
-              >
-                <summary className="min-h-11 flex items-center cursor-pointer">
-                  เกี่ยวกับการพิมพ์ด้วยเสียง
-                </summary>
-                <p className="pb-2">
-                  {!voice.supported
-                    ? VOICE_FALLBACK
-                    : 'กดไมค์แล้วพูดภาษาไทย · เบราว์เซอร์อาจส่งเสียงไปบริการแปลงเสียง'}
-                </p>
-              </details>
             </div>
           </div>
         </div>

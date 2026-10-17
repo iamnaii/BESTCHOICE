@@ -1,0 +1,20 @@
+{
+  "status": "PASS",
+  "at": "2026-10-17T06:27:09.359Z",
+  "origin": "http://localhost:5206",
+  "repo": "/Users/iamnaii/Desktop/App/BESTCHOICE-layout-audit",
+  "checks": [
+    "manager schedule",
+    "staff booking",
+    "private management link",
+    "mobile reschedule/cancel",
+    "self booking",
+    "last-slot conflict recovery",
+    "check-in/service/complete",
+    "prior link revocation",
+    "320/390px no overflow",
+    "automatic confirmation in original synthetic chat",
+    "truthful delivery status"
+  ],
+  "browserErrors": []
+}

@@ -1,3 +1,4 @@
+import { NativeSelect } from '@/components/ui/native-select';
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
@@ -174,17 +175,17 @@ export default function StockCountPage() {
       <PageHeader title="ตรวจนับสต๊อก" subtitle="ตรวจนับสินค้าจริงเทียบกับในระบบ" />
 
       <div className="flex flex-wrap items-center gap-3 mb-5">
-        <select
+        <NativeSelect wrapperClassName="min-w-0 max-w-full w-full sm:w-auto"
           aria-label="สาขาที่ตรวจนับ"
           value={selectedBranch}
           onChange={(e) => setSelectedBranch(e.target.value)}
-          className="min-w-0 max-w-full w-full sm:w-auto min-h-11 px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
+          className="min-h-11 px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
         >
           <option value="">ทุกสาขา</option>
           {(branches || []).map((b: { id: string; name: string }) => (
             <option key={b.id} value={b.id}>{b.name}</option>
           ))}
-        </select>
+        </NativeSelect>
         <button
           onClick={() => setIsCreateModalOpen(true)}
           className="min-h-11 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors"

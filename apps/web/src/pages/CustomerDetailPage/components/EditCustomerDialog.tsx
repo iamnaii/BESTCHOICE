@@ -1,3 +1,4 @@
+import { NativeSelect } from '@/components/ui/native-select';
 import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import AddressForm, { AddressData, deserializeAddress, emptyAddress, serializeAddress } from '@/components/ui/AddressForm';
@@ -161,10 +162,10 @@ export default function EditCustomerDialog({ customer, open, onClose }: EditCust
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
               <div>
                 <label htmlFor="customer-edit-1" className="block text-xs font-medium text-foreground mb-1.5">คำนำหน้า</label>
-                <select id="customer-edit-1" value={editForm.prefix} onChange={(e) => setEditForm({ ...editForm, prefix: e.target.value })} className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20">
+                <NativeSelect wrapperClassName="max-w-full w-full" id="customer-edit-1" value={editForm.prefix} onChange={(e) => setEditForm({ ...editForm, prefix: e.target.value })} className="h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20">
                   <option value="">-- เลือก --</option>
                   {THAI_NAME_PREFIXES.map(p => <option key={p} value={p}>{p}</option>)}
-                </select>
+                </NativeSelect>
               </div>
               <div>
                 <label htmlFor="customer-edit-2" className="block text-xs font-medium text-foreground mb-1.5">ชื่อ-นามสกุล <span className="text-destructive">*</span></label>
@@ -322,10 +323,10 @@ export default function EditCustomerDialog({ customer, open, onClose }: EditCust
                   <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
                     <div>
                       <label htmlFor={`customer-edit-19-${idx}`} className="block text-xs font-medium text-foreground mb-1.5">คำนำหน้า</label>
-                      <select id={`customer-edit-19-${idx}`} value={ref.prefix || ''} onChange={(e) => updateEditRef(idx, 'prefix', e.target.value)} className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20">
+                      <NativeSelect wrapperClassName="max-w-full w-full" id={`customer-edit-19-${idx}`} value={ref.prefix || ''} onChange={(e) => updateEditRef(idx, 'prefix', e.target.value)} className="h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20">
                         <option value="">-- เลือก --</option>
                         {THAI_NAME_PREFIXES.map(p => <option key={p} value={p}>{p}</option>)}
-                      </select>
+                      </NativeSelect>
                     </div>
                     <div>
                       <label htmlFor={`customer-edit-20-${idx}`} className="block text-xs font-medium text-foreground mb-1.5">ชื่อ</label>
@@ -341,10 +342,10 @@ export default function EditCustomerDialog({ customer, open, onClose }: EditCust
                     </div>
                     <div>
                       <label htmlFor={`customer-edit-23-${idx}`} className="block text-xs font-medium text-foreground mb-1.5">ความสัมพันธ์</label>
-                      <select id={`customer-edit-23-${idx}`} value={ref.relationship || ''} onChange={(e) => updateEditRef(idx, 'relationship', e.target.value)} className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20">
+                      <NativeSelect wrapperClassName="max-w-full w-full" id={`customer-edit-23-${idx}`} value={ref.relationship || ''} onChange={(e) => updateEditRef(idx, 'relationship', e.target.value)} className="h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20">
                         <option value="">-- เลือก --</option>
                         {RELATIONSHIP_OPTIONS.map(r => <option key={r} value={r}>{r}</option>)}
-                      </select>
+                      </NativeSelect>
                     </div>
                   </div>
                 </div>

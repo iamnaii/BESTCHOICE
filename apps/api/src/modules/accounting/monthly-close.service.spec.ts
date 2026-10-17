@@ -413,10 +413,33 @@ describe('MonthlyCloseService', () => {
         month: 3,
         status: 'CLOSED',
       });
-      peakService.isConfigured.mockReturnValue(false);
+      peakService.isConfigured.mockResolvedValue(false);
 
       await expect(service.syncToPeak('company-1', 2025, 3)).rejects.toThrow(BadRequestException);
       expect(peakService.exportJournalEntries).not.toHaveBeenCalled();
+      expect(prisma.accountingPeriod.update).not.toHaveBeenCalled();
+    });
+
+    it('keeps the period CLOSED when PEAK returns a partial export failure', async () => {
+      prisma.accountingPeriod.findUnique.mockResolvedValue({ status: 'CLOSED' });
+      peakService.isConfigured.mockResolvedValue(true);
+      peakService.exportJournalEntries.mockResolvedValue({ exported: 1, skipped: 0, errors: ['JE-2 rejected'] });
+
+      await expect(service.syncToPeak('company-1', 2025, 3)).rejects.toThrow(/ซิงก์ไปยัง PEAK ไม่ครบ/);
+      expect(prisma.accountingPeriod.update).not.toHaveBeenCalled();
+    });
+
+    it('marks the period SYNCED only after a complete export', async () => {
+      prisma.accountingPeriod.findUnique.mockResolvedValue({ status: 'CLOSED' });
+      peakService.isConfigured.mockResolvedValue(true);
+      const exported = { exported: 2, skipped: 0, errors: [] };
+      peakService.exportJournalEntries.mockResolvedValue(exported);
+      prisma.accountingPeriod.update.mockResolvedValue({ status: 'SYNCED' });
+
+      await expect(service.syncToPeak('company-1', 2025, 3)).resolves.toMatchObject({ status: 'SYNCED' });
+      expect(prisma.accountingPeriod.update).toHaveBeenCalledWith(expect.objectContaining({
+        data: expect.objectContaining({ status: 'SYNCED', peakSyncResult: exported }),
+      }));
     });
   });
 

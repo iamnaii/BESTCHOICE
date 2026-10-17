@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useId as useUiFieldId, useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Landmark, Wallet, Plus, RefreshCw, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -420,6 +420,7 @@ interface AddDialogProps {
 }
 
 function AddBankAccountDialog({ open, onOpenChange }: AddDialogProps) {
+  const uiFieldId = useUiFieldId();
   const queryClient = useQueryClient();
   const [form, setForm] = useState({
     accountCode: '',
@@ -500,14 +501,14 @@ function AddBankAccountDialog({ open, onOpenChange }: AddDialogProps) {
             />
           </div>
           <div>
-            <Label>ประเภทบัญชี</Label>
+            <Label htmlFor={`${uiFieldId}-1`}>ประเภทบัญชี</Label>
             <Select
               value={form.accountType}
               onValueChange={(v) =>
                 setForm((f) => ({ ...f, accountType: v as BankAccount['accountType'] }))
               }
             >
-              <SelectTrigger>
+              <SelectTrigger id={`${uiFieldId}-1`}>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>

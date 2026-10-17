@@ -33,10 +33,14 @@ import { assetsApi } from './api';
 import { CATEGORY_LABEL, CASH_ACCOUNTS } from './types';
 import { disposalSchema, type DisposalFormValues } from './disposal-schema';
 import { useDisposalCalculation } from './hooks/useDisposalCalculation';
+import { useId as useExtraFieldId, useId as useUiFieldId } from 'react';
+
 
 const today = () => toBangkokDateString();
 
 export default function AssetDisposePage() {
+  const uiExtraFieldId = useExtraFieldId();
+  const uiFieldId = useUiFieldId();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -191,8 +195,8 @@ export default function AssetDisposePage() {
               </CardHeader>
               <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <Label>วันที่จำหน่าย *</Label>
-                  <ThaiDateInput
+                  <Label htmlFor={`${uiFieldId}-1`}>วันที่จำหน่าย *</Label>
+                  <ThaiDateInput id={`${uiFieldId}-1`}
                     value={watched.disposalDate}
                     onChange={(e) =>
                       setValue('disposalDate', e.target.value, {
@@ -209,8 +213,8 @@ export default function AssetDisposePage() {
                 {watched.disposalType === 'SALE' && (
                   <>
                     <div>
-                      <Label>ราคาขาย *</Label>
-                      <Input type="number" step="0.01" {...register('proceeds')} />
+                      <Label htmlFor={`${uiExtraFieldId}-1`}>ราคาขาย *</Label>
+                      <Input id={`${uiExtraFieldId}-1`} type="number" step="0.01" {...register('proceeds')} />
                       {errors.proceeds && (
                         <p className="text-sm text-destructive mt-1">
                           {errors.proceeds.message}
@@ -218,7 +222,7 @@ export default function AssetDisposePage() {
                       )}
                     </div>
                     <div className="md:col-span-2">
-                      <Label>บัญชีรับเงิน *</Label>
+                      <Label htmlFor={`${uiFieldId}-2`}>บัญชีรับเงิน *</Label>
                       <Select
                         value={watched.depositAccountCode}
                         onValueChange={(v) =>
@@ -227,7 +231,7 @@ export default function AssetDisposePage() {
                           })
                         }
                       >
-                        <SelectTrigger>
+                        <SelectTrigger id={`${uiFieldId}-2`}>
                           <SelectValue placeholder="เลือกบัญชี" />
                         </SelectTrigger>
                         <SelectContent>
@@ -247,8 +251,8 @@ export default function AssetDisposePage() {
                   </>
                 )}
                 <div className="md:col-span-2">
-                  <Label>เหตุผล *</Label>
-                  <Textarea {...register('reason')} rows={3} />
+                  <Label htmlFor={`${uiExtraFieldId}-2`}>เหตุผล *</Label>
+                  <Textarea id={`${uiExtraFieldId}-2`} {...register('reason')} rows={3} />
                   {errors.reason && (
                     <p className="text-sm text-destructive mt-1">
                       {errors.reason.message}

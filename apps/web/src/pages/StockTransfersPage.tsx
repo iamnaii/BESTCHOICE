@@ -1,4 +1,5 @@
-import { useState, useMemo } from 'react';
+import { NativeSelect } from '@/components/ui/native-select';
+import { useId as useUiFieldId, useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router';
 import { toast } from 'sonner';
@@ -53,6 +54,7 @@ const tabs: { key: TabKey; label: string }[] = [
 ];
 
 export default function StockTransfersPage() {
+  const uiFieldId = useUiFieldId();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -373,7 +375,7 @@ export default function StockTransfersPage() {
       {activeTab === 'outgoing' && (
         <div>
           <div className="mb-4">
-            <select
+            <NativeSelect wrapperClassName="max-w-full w-auto" aria-label="สถานะ"
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
               className="px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
@@ -383,7 +385,7 @@ export default function StockTransfersPage() {
               <option value="CONFIRMED">รับแล้ว</option>
               <option value="REJECTED">ปฏิเสธ</option>
               <option value="">ทั้งหมด</option>
-            </select>
+            </NativeSelect>
           </div>
 
           <QueryBoundary
@@ -533,7 +535,7 @@ export default function StockTransfersPage() {
       {activeTab === 'incoming' && (
         <div>
           <div className="mb-4">
-            <select
+            <NativeSelect wrapperClassName="max-w-full w-auto" aria-label="สาขา"
               value={selectedBranch}
               onChange={(e) => setSelectedBranch(e.target.value)}
               className="px-3 py-2 border border-input rounded-lg text-sm"
@@ -542,7 +544,7 @@ export default function StockTransfersPage() {
               {(branches || []).map((b: { id: string; name: string }) => (
                 <option key={b.id} value={b.id}>{b.name}</option>
               ))}
-            </select>
+            </NativeSelect>
           </div>
 
           {!selectedBranch ? (
@@ -650,7 +652,7 @@ export default function StockTransfersPage() {
       {activeTab === 'history' && (
         <div>
           <div className="mb-4">
-            <select
+            <NativeSelect wrapperClassName="max-w-full w-auto" aria-label="สาขา"
               value={selectedBranch}
               onChange={(e) => setSelectedBranch(e.target.value)}
               className="px-3 py-2 border border-input rounded-lg text-sm"
@@ -659,7 +661,7 @@ export default function StockTransfersPage() {
               {(branches || []).map((b: { id: string; name: string }) => (
                 <option key={b.id} value={b.id}>{b.name}</option>
               ))}
-            </select>
+            </NativeSelect>
           </div>
 
           {historyList.length === 0 ? (
@@ -905,8 +907,8 @@ export default function StockTransfersPage() {
 
             {/* Batch notes */}
             <div>
-              <label className="block text-sm font-medium text-foreground mb-1">หมายเหตุรวม</label>
-              <textarea
+              <label htmlFor={`${uiFieldId}-1`} className="block text-sm font-medium text-foreground mb-1">หมายเหตุรวม</label>
+              <textarea id={`${uiFieldId}-1`}
                 value={batchReceiveNotes}
                 onChange={(e) => setBatchReceiveNotes(e.target.value)}
                 className="w-full px-3 py-2 border border-input rounded-lg text-sm"
@@ -945,8 +947,8 @@ export default function StockTransfersPage() {
       >
         <div className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-foreground mb-1">หมายเหตุการจัดส่ง (ถ้ามี)</label>
-            <textarea
+            <label htmlFor={`${uiFieldId}-2`} className="block text-sm font-medium text-foreground mb-1">หมายเหตุการจัดส่ง (ถ้ามี)</label>
+            <textarea id={`${uiFieldId}-2`}
               value={shippingNote}
               onChange={(e) => setShippingNote(e.target.value)}
               className="w-full px-3 py-2 border border-input rounded-lg text-sm"

@@ -1,0 +1,46 @@
+{
+  "status": "PASS",
+  "completedAt": "2026-10-17T07:27:38.065Z",
+  "sourceFingerprint": "4a3bbec0b4d74db5903f6fb408f58a6463a823f2f15dfcdd5908167f3ac4d07c",
+  "migratedSites": 209,
+  "migratedConsumerFiles": 125,
+  "sourceFilesScanned": 1322,
+  "remainingLegacyNative": 0,
+  "remainingRawDatalists": 0,
+  "unitTests": {
+    "web": 3389,
+    "shared": 149,
+    "storefront": 52,
+    "total": 3590
+  },
+  "localCheck": {
+    "status": "PASS",
+    "checks": 39,
+    "url": "http://localhost:5206/inbox"
+  },
+  "fullE2e": {
+    "passed": 814,
+    "skipped": 10,
+    "failed": 0,
+    "flaky": 0,
+    "chronology": "Core migration full suite; final autocomplete and Inbox batching changes covered by separate regression checks and final local check. See README."
+  },
+  "preview": {
+    "running": true,
+    "current": true,
+    "repo": "/Users/iamnaii/Desktop/App/BESTCHOICE-layout-audit",
+    "url": "http://localhost:5206/inbox"
+  },
+  "limits": [
+    "Browser engines tested; no physical iPhone/Android",
+    "Synthetic data and providers in isolated environments",
+    "10 E2E scenarios skipped; reasons retained",
+    "No production deployment"
+  ],
+  "lint": {
+    "apiErrors": 0,
+    "webErrors": 0,
+    "apiWarnings": 3013,
+    "webWarnings": 467
+  }
+}

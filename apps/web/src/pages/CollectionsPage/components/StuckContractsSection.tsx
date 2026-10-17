@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react';
+import { NativeSelect } from '@/components/ui/native-select';
+import { useId as useUiFieldId, useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { UserPlus, Clock } from 'lucide-react';
 import { toast } from 'sonner';
@@ -28,6 +29,7 @@ function formatBaht(n: number): string {
 }
 
 export default function StuckContractsSection() {
+  const uiFieldId = useUiFieldId();
   const queryClient = useQueryClient();
   const [days, setDays] = useState<number>(14);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -207,13 +209,13 @@ export default function StuckContractsSection() {
             <DialogTitle>มอบหมาย {selected.size} สัญญา</DialogTitle>
           </DialogHeader>
           <div className="space-y-2">
-            <label className="text-xs text-muted-foreground leading-snug">
+            <label htmlFor={`${uiFieldId}-1`} className="text-xs text-muted-foreground leading-snug">
               เลือกผู้รับผิดชอบใหม่
             </label>
-            <select
+            <NativeSelect wrapperClassName="max-w-full w-full" id={`${uiFieldId}-1`}
               value={targetUserId}
               onChange={(e) => setTargetUserId(e.target.value)}
-              className="w-full h-9 px-3 text-sm rounded-md border border-input bg-background"
+              className="h-9 px-3 text-sm rounded-md border border-input bg-background"
             >
               <option value="">— เลือก —</option>
               {staff.map((u) => (
@@ -221,7 +223,7 @@ export default function StuckContractsSection() {
                   {u.name} ({u.role})
                 </option>
               ))}
-            </select>
+            </NativeSelect>
           </div>
           <DialogFooter>
             <button

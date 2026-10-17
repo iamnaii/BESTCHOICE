@@ -1,7 +1,10 @@
 import { X } from 'lucide-react';
 import { useTemplateStore } from '@/store/templateStore';
+import { useId as useUiFieldId } from 'react';
+
 
 export default function SettingsModal() {
+  const uiFieldId = useUiFieldId();
   const { showSettings, setShowSettings, currentTemplate, updateSettings } = useTemplateStore();
   const settings = currentTemplate.settings;
 
@@ -66,8 +69,8 @@ export default function SettingsModal() {
 
           {/* Footer text */}
           <div>
-            <label className="block text-base font-medium text-foreground mb-1.5">Footer</label>
-            <input
+            <label htmlFor={`${uiFieldId}-1`} className="block text-base font-medium text-foreground mb-1.5">Footer</label>
+            <input id={`${uiFieldId}-1`}
               type="text"
               value={settings.footerText}
               onChange={e => updateSettings({ footerText: e.target.value })}
@@ -77,8 +80,8 @@ export default function SettingsModal() {
 
           {/* Footer content */}
           <div>
-            <label className="block text-base font-medium text-foreground mb-1.5">เนื้อหาท้ายเอกสาร</label>
-            <textarea
+            <label htmlFor={`${uiFieldId}-2`} className="block text-base font-medium text-foreground mb-1.5">เนื้อหาท้ายเอกสาร</label>
+            <textarea id={`${uiFieldId}-2`}
               value={settings.footerContent}
               onChange={e => updateSettings({ footerContent: e.target.value })}
               className="w-full px-3 py-2.5 border border-input rounded-lg text-base resize-y"

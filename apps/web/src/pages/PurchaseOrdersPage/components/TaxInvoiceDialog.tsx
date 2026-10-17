@@ -3,6 +3,7 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 import { AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { toast } from 'sonner';
 import api, { getErrorMessage } from '@/lib/api';
+import { formLabelClass } from '@/components/ui/form-styles';
 import Modal from '@/components/ui/Modal';
 import { Button } from '@/components/ui/button';
 import { useDebounce } from '@/hooks/useDebounce';
@@ -78,7 +79,7 @@ export default function TaxInvoiceDialog({ open, onClose, po, receiving, onRecor
           ใบรับของ {receiving?.grNumber} · {po?.supplier.name} — เมื่อบันทึก ระบบจะเคลมภาษีซื้อย้อนให้สัญญาผ่อนของเครื่องในใบนี้ที่รออยู่ ลงวันเปิดสัญญา
         </p>
         <div>
-          <label htmlFor="ti-number" className="block text-sm font-medium text-foreground mb-1">เลขที่ใบกำกับภาษี</label>
+          <label htmlFor="ti-number" className={formLabelClass}>เลขที่ใบกำกับภาษี</label>
           <input id="ti-number" className={INPUT_CLS} value={number} onChange={(e) => setNumber(e.target.value)} maxLength={64} />
           {errors.number && <p className="mt-1 text-xs text-destructive leading-snug">{errors.number}</p>}
           {duplicates.length > 0 && (
@@ -89,12 +90,12 @@ export default function TaxInvoiceDialog({ open, onClose, po, receiving, onRecor
           )}
         </div>
         <div>
-          <label htmlFor="ti-date" className="block text-sm font-medium text-foreground mb-1">วันที่ในใบกำกับ</label>
+          <label htmlFor="ti-date" className={formLabelClass}>วันที่ในใบกำกับ</label>
           <input id="ti-date" type="date" className={INPUT_CLS} value={date} max={today} min={earliestSupplierDocIso(today)} onChange={(e) => setDate(e.target.value)} />
           {errors.date && <p className="mt-1 text-xs text-destructive leading-snug">{errors.date}</p>}
         </div>
         <div>
-          <label htmlFor="ti-photo" className="block text-sm font-medium text-foreground mb-1">รูปใบกำกับ (ไม่บังคับ · JPEG/PNG/WebP ≤ 5MB)</label>
+          <label htmlFor="ti-photo" className={formLabelClass}>รูปใบกำกับ (ไม่บังคับ · JPEG/PNG/WebP ≤ 5MB)</label>
           <input id="ti-photo" ref={fileInput} type="file" accept="image/jpeg,image/png,image/webp" className="text-sm" onChange={(e) => setPhoto(e.target.files?.[0] ?? null)} />
         </div>
         {result && (

@@ -194,7 +194,7 @@ export default function APAgingPage() {
       <div className="flex flex-wrap items-center gap-3 rounded-xl border border-border/60 bg-card p-3">
         <div className="relative flex-1 min-w-[220px]">
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-          <input
+          <input aria-label="ค้นหาชื่อผู้จัดจำหน่าย"
             type="text"
             value={vendor}
             onChange={(e) => setVendor(e.target.value)}
@@ -247,16 +247,17 @@ export default function APAgingPage() {
         error={query.error}
         onRetry={query.refetch}
       >
-        <div className="rounded-xl border border-border/60 bg-card overflow-hidden">
-          <table className="w-full text-sm">
+        <div role="region" aria-label="เอกสารค้างจ่าย" tabIndex={0} className="rounded-xl border border-border/60 bg-card overflow-x-auto">
+          <table className="w-full min-w-[48rem] text-sm">
             <thead className="bg-muted/40">
               <tr className="text-left text-xs text-muted-foreground">
-                <th className="p-3 w-10">
+                <th className="p-3 w-[4.25rem]">
                   <button
                     type="button"
                     onClick={toggleAll}
                     aria-label="เลือกทั้งหมด"
-                    className="flex items-center"
+                    aria-pressed={selected.size === docs.length && docs.length > 0}
+                    className="inline-flex size-6 max-lg:size-11 items-center justify-center rounded-md hover:bg-muted"
                   >
                     {selected.size === docs.length && docs.length > 0 ? (
                       <CheckSquare size={16} className="text-primary" />
@@ -297,7 +298,8 @@ export default function APAgingPage() {
                           type="button"
                           onClick={() => toggleRow(d.id)}
                           aria-label={`เลือก ${d.number}`}
-                          className="flex items-center"
+                          aria-pressed={isSelected}
+                          className="inline-flex size-6 max-lg:size-11 items-center justify-center rounded-md hover:bg-muted"
                         >
                           {isSelected ? (
                             <CheckSquare size={16} className="text-primary" />
@@ -332,7 +334,7 @@ export default function APAgingPage() {
                         <Link
                           to={`/expenses/${d.id}`}
                           aria-label={`เปิด ${d.number}`}
-                          className="text-muted-foreground hover:text-primary"
+                          className="inline-flex size-6 max-lg:size-11 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-primary"
                         >
                           <ExternalLink size={14} />
                         </Link>

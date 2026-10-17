@@ -98,7 +98,7 @@ export default function FinancialAuditPage() {
       <Card className="rounded-xl border border-border/50 bg-card shadow-sm mb-6">
         <CardContent className="p-5">
           <div className="flex gap-3">
-            <input
+            <input aria-label="ค้นหาด้วย Contract ID"
               type="text"
               value={searchInput}
               onChange={(e) => setSearchInput(e.target.value)}

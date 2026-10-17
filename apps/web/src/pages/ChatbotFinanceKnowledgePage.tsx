@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { NativeSelect } from '@/components/ui/native-select';
+import { useId as useUiFieldId, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api, { getErrorMessage } from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
@@ -67,6 +68,7 @@ interface SuggestionsResponse {
 // ─── Knowledge Base Tab ───────────────────────────────────
 
 function KnowledgeBaseTab() {
+  const uiFieldId = useUiFieldId();
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState<KbEntry | null>(null);
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
@@ -215,8 +217,8 @@ function KnowledgeBaseTab() {
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-xs text-muted-foreground">Intent (ID ภาษาอังกฤษ)</label>
-                  <input
+                  <label htmlFor={`${uiFieldId}-1`} className="text-xs text-muted-foreground">Intent (ID ภาษาอังกฤษ)</label>
+                  <input id={`${uiFieldId}-1`}
                     type="text"
                     value={form.intent}
                     onChange={(e) => setForm({ ...form, intent: e.target.value })}
@@ -226,8 +228,8 @@ function KnowledgeBaseTab() {
                   />
                 </div>
                 <div>
-                  <label className="text-xs text-muted-foreground">Category</label>
-                  <input
+                  <label htmlFor={`${uiFieldId}-2`} className="text-xs text-muted-foreground">Category</label>
+                  <input id={`${uiFieldId}-2`}
                     type="text"
                     value={form.category}
                     onChange={(e) => setForm({ ...form, category: e.target.value })}
@@ -239,8 +241,8 @@ function KnowledgeBaseTab() {
               </div>
 
               <div>
-                <label className="text-xs text-muted-foreground">Trigger Keywords (คั่นด้วย comma)</label>
-                <input
+                <label htmlFor={`${uiFieldId}-3`} className="text-xs text-muted-foreground">Trigger Keywords (คั่นด้วย comma)</label>
+                <input id={`${uiFieldId}-3`}
                   type="text"
                   value={form.triggerKeywords.join(', ')}
                   onChange={(e) => setForm({ ...form, triggerKeywords: e.target.value.split(',').map((s) => s.trim()).filter(Boolean) })}
@@ -250,8 +252,8 @@ function KnowledgeBaseTab() {
               </div>
 
               <div>
-                <label className="text-xs text-muted-foreground">Example Questions (1 บรรทัด/คำถาม)</label>
-                <textarea
+                <label htmlFor={`${uiFieldId}-4`} className="text-xs text-muted-foreground">Example Questions (1 บรรทัด/คำถาม)</label>
+                <textarea id={`${uiFieldId}-4`}
                   value={form.exampleQuestions.join('\n')}
                   onChange={(e) => setForm({ ...form, exampleQuestions: e.target.value.split('\n').map((s) => s.trim()).filter(Boolean) })}
                   className="w-full px-3 py-2 border rounded-lg text-sm mt-1 font-mono"
@@ -261,8 +263,8 @@ function KnowledgeBaseTab() {
               </div>
 
               <div>
-                <label className="text-xs text-muted-foreground">Response Template</label>
-                <textarea
+                <label htmlFor={`${uiFieldId}-5`} className="text-xs text-muted-foreground">Response Template</label>
+                <textarea id={`${uiFieldId}-5`}
                   value={form.responseTemplate}
                   onChange={(e) => setForm({ ...form, responseTemplate: e.target.value })}
                   className="w-full px-3 py-2 border rounded-lg text-sm mt-1 font-mono"
@@ -272,11 +274,11 @@ function KnowledgeBaseTab() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-foreground mb-1 leading-snug">
+                <label htmlFor={`${uiFieldId}-6`} className="block text-sm font-medium text-foreground mb-1 leading-snug">
                   ช่องทางที่ใช้ FAQ นี้
                 </label>
-                <select
-                  className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+                <NativeSelect wrapperClassName="max-w-full w-full" id={`${uiFieldId}-6`}
+                  className="rounded-md border border-border bg-background px-3 py-2 text-sm"
                   value={form.channel ?? ''}
                   onChange={(e) => setForm({ ...form, channel: e.target.value || null })}
                 >
@@ -285,7 +287,7 @@ function KnowledgeBaseTab() {
                   <option value="LINE_SHOP">LINE Shop</option>
                   <option value="FACEBOOK">Facebook</option>
                   <option value="WEB">เว็บไซต์</option>
-                </select>
+                </NativeSelect>
                 <p className="text-xs text-muted-foreground mt-1 leading-snug">
                   เลือก "ทุกช่องทาง" เมื่อเป็นข้อมูลกลาง เช่น เวลาเปิด-ปิดร้าน ที่อยู่สาขา
                 </p>
@@ -293,20 +295,20 @@ function KnowledgeBaseTab() {
 
               <div className="grid grid-cols-3 gap-3">
                 <div>
-                  <label className="text-xs text-muted-foreground">Response Type</label>
-                  <select
+                  <label htmlFor={`${uiFieldId}-7`} className="text-xs text-muted-foreground">Response Type</label>
+                  <NativeSelect wrapperClassName="max-w-full w-full mt-1" id={`${uiFieldId}-7`}
                     value={form.responseType}
                     onChange={(e) => setForm({ ...form, responseType: e.target.value })}
-                    className="w-full px-3 py-2 border rounded-lg text-sm mt-1"
+                    className="px-3 py-2 border rounded-lg text-sm"
                   >
                     <option value="auto">auto (bot ตอบได้)</option>
                     <option value="info">info (อธิบาย)</option>
                     <option value="handoff">handoff (ส่งต่อคน)</option>
-                  </select>
+                  </NativeSelect>
                 </div>
                 <div>
-                  <label className="text-xs text-muted-foreground">Priority</label>
-                  <input
+                  <label htmlFor={`${uiFieldId}-8`} className="text-xs text-muted-foreground">Priority</label>
+                  <input id={`${uiFieldId}-8`}
                     type="number"
                     value={form.priority}
                     onChange={(e) => setForm({ ...form, priority: Number(e.target.value) })}

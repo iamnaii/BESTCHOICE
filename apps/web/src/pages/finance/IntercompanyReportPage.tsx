@@ -1,5 +1,5 @@
 import { getReportDateRange } from '@/lib/date';
-import { useState } from 'react';
+import { useId as useUiFieldId, useState } from 'react';
 import { Link } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
 import { Building2, TrendingDown, TrendingUp } from 'lucide-react';
@@ -121,6 +121,7 @@ function SummaryCard({ line }: SummaryCardProps) {
 // ── Main page ──────────────────────────────────────────────────────
 
 export default function IntercompanyReportPage() {
+  const uiFieldId = useUiFieldId();
   const range = getReportDateRange('this_month');
   const [startDate, setStartDate] = useState(range.startDate);
   const [endDate, setEndDate] = useState(range.endDate);
@@ -209,20 +210,20 @@ export default function IntercompanyReportPage() {
       {/* Date range controls */}
       <div className="flex flex-wrap gap-3 mb-6">
         <div>
-          <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
+          <label htmlFor={`${uiFieldId}-1`} className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
             ตั้งแต่
           </label>
-          <ThaiDateInput
+          <ThaiDateInput id={`${uiFieldId}-1`}
             value={startDate}
             onChange={(e) => setStartDate(e.target.value)}
             className={`${inputClass} w-auto`}
           />
         </div>
         <div>
-          <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
+          <label htmlFor={`${uiFieldId}-2`} className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
             ถึง
           </label>
-          <ThaiDateInput
+          <ThaiDateInput id={`${uiFieldId}-2`}
             value={endDate}
             onChange={(e) => setEndDate(e.target.value)}
             className={`${inputClass} w-auto`}

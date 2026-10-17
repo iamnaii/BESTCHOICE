@@ -1,5 +1,5 @@
 import { toBangkokDateString } from '@/lib/date';
-import { useMemo, useState } from 'react';
+import { useId as useUiFieldId, useMemo, useState } from 'react';
 import { Link } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
 import { BarChart3, ArrowRightLeft, Monitor, Wrench, Sofa, Car, Package } from 'lucide-react';
@@ -171,6 +171,7 @@ function SummaryTable({ data }: { data: SummaryRow[] }) {
 }
 
 export default function AssetSummaryReportPage() {
+  const uiFieldId = useUiFieldId();
   const [asOfDate, setAsOfDate] = useState(today());
   const [tab, setTab] = useState<'category' | 'custodian' | 'location' | 'movement'>('category');
 
@@ -205,9 +206,9 @@ export default function AssetSummaryReportPage() {
 
       <Card>
         <CardContent className="p-4">
-          <label className="text-sm font-medium mb-1 block">ณ วันที่</label>
+          <label htmlFor={`${uiFieldId}-1`} className="text-sm font-medium mb-1 block">ณ วันที่</label>
           <div className="max-w-xs">
-            <ThaiDateInput
+            <ThaiDateInput id={`${uiFieldId}-1`}
               value={asOfDate}
               onChange={(e) => setAsOfDate(e.target.value || today())}
             />

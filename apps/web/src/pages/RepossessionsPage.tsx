@@ -1,5 +1,6 @@
+import { NativeSelect } from '@/components/ui/native-select';
 import DocumentDownloadButton from '@/components/DocumentDownloadButton';
-import { useState } from 'react';
+import { useId as useUiFieldId, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import api, { getErrorMessage } from '@/lib/api';
@@ -80,6 +81,7 @@ interface Repossession {
 }
 
 export default function RepossessionsPage() {
+  const uiFieldId = useUiFieldId();
   const queryClient = useQueryClient();
   const { user } = useAuth();
   // POST /contracts/:id/shop-collect-settlement roles (OWNER/FM/ACC)
@@ -751,7 +753,7 @@ export default function RepossessionsPage() {
 
       {/* Filter */}
       <div className="mb-5">
-        <select
+        <NativeSelect wrapperClassName="max-w-full w-auto" aria-label="สถานะ"
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value)}
           className="px-3 py-2 border border-input rounded-lg text-sm bg-background focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
@@ -761,7 +763,7 @@ export default function RepossessionsPage() {
           <option value="UNDER_REPAIR">กำลังซ่อม</option>
           <option value="READY_FOR_SALE">พร้อมขาย</option>
           <option value="SOLD">ขายแล้ว</option>
-        </select>
+        </NativeSelect>
       </div>
 
       <QueryBoundary
@@ -846,10 +848,10 @@ export default function RepossessionsPage() {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-foreground mb-1">
+              <label htmlFor={`${uiFieldId}-1`} className="block text-sm font-medium text-foreground mb-1">
                 จำนวนเงินที่รับโอน <span className="text-destructive">*</span>
               </label>
-              <input
+              <input id={`${uiFieldId}-1`}
                 type="number"
                 min="0.01"
                 step="0.01"
@@ -917,10 +919,10 @@ export default function RepossessionsPage() {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-foreground mb-1">
+              <label htmlFor={`${uiFieldId}-2`} className="block text-sm font-medium text-foreground mb-1">
                 จำนวนเงินที่จ่ายคืน <span className="text-destructive">*</span>
               </label>
-              <input
+              <input id={`${uiFieldId}-2`}
                 type="number"
                 min="0.01"
                 step="0.01"
@@ -1123,11 +1125,11 @@ export default function RepossessionsPage() {
               </div>
             </div>
             <div>
-              <label className="block text-sm font-medium text-foreground mb-1">สถานะ</label>
-              <select
+              <label htmlFor={`${uiFieldId}-3`} className="block text-sm font-medium text-foreground mb-1">สถานะ</label>
+              <NativeSelect wrapperClassName="max-w-full w-full" id={`${uiFieldId}-3`}
                 value={updateForm.status}
                 onChange={(e) => setUpdateForm({ ...updateForm, status: e.target.value })}
-                className="w-full px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
+                className="px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
               >
                 {/* Show only valid status transitions based on current status —
                     พร้อมขาย ตั้งผ่านปุ่ม "พร้อมขาย" เท่านั้น (สองราคา + คิวรอถ่ายรูป, 2026-09-07) */}
@@ -1153,14 +1155,14 @@ export default function RepossessionsPage() {
                     <option value="SOLD">ขายแล้ว</option>
                   </>
                 )}
-              </select>
+              </NativeSelect>
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-foreground mb-1">
+                <label htmlFor={`${uiFieldId}-4`} className="block text-sm font-medium text-foreground mb-1">
                   ค่าซ่อม (บาท)
                 </label>
-                <input
+                <input id={`${uiFieldId}-4`}
                   type="number"
                   value={updateForm.repairCost}
                   onChange={(e) => setUpdateForm({ ...updateForm, repairCost: e.target.value })}
@@ -1169,10 +1171,10 @@ export default function RepossessionsPage() {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-foreground mb-1">
+                <label htmlFor={`${uiFieldId}-5`} className="block text-sm font-medium text-foreground mb-1">
                   ราคาขายต่อ (บาท)
                 </label>
-                <input
+                <input id={`${uiFieldId}-5`}
                   type="number"
                   value={updateForm.resellPrice}
                   onChange={(e) => setUpdateForm({ ...updateForm, resellPrice: e.target.value })}
@@ -1187,8 +1189,8 @@ export default function RepossessionsPage() {
               )}
             </div>
             <div>
-              <label className="block text-sm font-medium text-foreground mb-1">หมายเหตุ</label>
-              <textarea
+              <label htmlFor={`${uiFieldId}-6`} className="block text-sm font-medium text-foreground mb-1">หมายเหตุ</label>
+              <textarea id={`${uiFieldId}-6`}
                 value={updateForm.notes}
                 onChange={(e) => setUpdateForm({ ...updateForm, notes: e.target.value })}
                 rows={2}

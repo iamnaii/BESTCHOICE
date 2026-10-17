@@ -1,3 +1,4 @@
+import { NativeSelect } from '@/components/ui/native-select';
 import { downloadProtectedDocument } from '@/lib/document-download';
 import { queryErrorMessage } from '@/lib/query-error-message';
 import { contractBalances } from '@/lib/contract-balances';
@@ -26,7 +27,7 @@ import ContractInputVatCard from '@/components/contract/ContractInputVatCard';
 import type { ContractInputVat } from '@/lib/input-vat';
 import { ContractDeviceReturnActions } from '@/components/device-returns/ContractDeviceReturnActions';
 import { toast } from 'sonner';
-import { useState, useRef, useEffect } from 'react';
+import { useId as useUiFieldId, useState, useRef, useEffect } from 'react';
 import { Copy, CheckCircle2, XCircle, AlertTriangle, Check, ChevronRight, History, BookOpen } from 'lucide-react';
 import { useCopyToClipboard } from '@/hooks/useCopyToClipboard';
 import { useAuth } from '@/contexts/AuthContext';
@@ -102,6 +103,7 @@ interface EarlyPayoffQuote {
 
 
 export default function ContractDetailPage() {
+  const uiFieldId = useUiFieldId();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -711,34 +713,34 @@ const deleteMutation = useMutation({
             <div className="space-y-3">
               <fieldset disabled={!!contract.tradeInCreditSnapshot} className="grid grid-cols-2 gap-3 disabled:opacity-60">
                 <div>
-                  <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ราคาขาย</label>
-                  <input type="number" value={editForm.sellingPrice} onChange={(e) => setEditForm({ ...editForm, sellingPrice: parseFloat(e.target.value) || 0 })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
+                  <label htmlFor={`${uiFieldId}-1`} className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ราคาขาย</label>
+                  <input id={`${uiFieldId}-1`} type="number" value={editForm.sellingPrice} onChange={(e) => setEditForm({ ...editForm, sellingPrice: parseFloat(e.target.value) || 0 })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
                 </div>
                 <div>
-                  <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">เงินดาวน์</label>
-                  <input type="number" value={editForm.downPayment} onChange={(e) => setEditForm({ ...editForm, downPayment: parseFloat(e.target.value) || 0 })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
+                  <label htmlFor={`${uiFieldId}-2`} className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">เงินดาวน์</label>
+                  <input id={`${uiFieldId}-2`} type="number" value={editForm.downPayment} onChange={(e) => setEditForm({ ...editForm, downPayment: parseFloat(e.target.value) || 0 })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
                 </div>
                 <div>
-                  <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">จำนวนงวด (เดือน)</label>
-                  <input type="number" value={editForm.totalMonths} onChange={(e) => setEditForm({ ...editForm, totalMonths: parseInt(e.target.value) || 0 })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
+                  <label htmlFor={`${uiFieldId}-3`} className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">จำนวนงวด (เดือน)</label>
+                  <input id={`${uiFieldId}-3`} type="number" value={editForm.totalMonths} onChange={(e) => setEditForm({ ...editForm, totalMonths: parseInt(e.target.value) || 0 })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
                 </div>
                 <div>
-                  <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">อัตราดอกเบี้ย (ทศนิยม เช่น 0.08)</label>
-                  <input type="number" step="0.01" value={editForm.interestRate} onChange={(e) => setEditForm({ ...editForm, interestRate: parseFloat(e.target.value) || 0 })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
+                  <label htmlFor={`${uiFieldId}-4`} className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">อัตราดอกเบี้ย (ทศนิยม เช่น 0.08)</label>
+                  <input id={`${uiFieldId}-4`} type="number" step="0.01" value={editForm.interestRate} onChange={(e) => setEditForm({ ...editForm, interestRate: parseFloat(e.target.value) || 0 })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
                 </div>
                 <div>
-                  <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">วันชำระ</label>
-                  <select value={editForm.paymentDueDay} onChange={(e) => setEditForm({ ...editForm, paymentDueDay: parseInt(e.target.value) || 1 })} className="w-full px-3 py-2 border border-input rounded-lg text-sm">
+                  <label htmlFor={`${uiFieldId}-5`} className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">วันชำระ</label>
+                  <NativeSelect wrapperClassName="max-w-full w-full" id={`${uiFieldId}-5`} value={editForm.paymentDueDay} onChange={(e) => setEditForm({ ...editForm, paymentDueDay: parseInt(e.target.value) || 1 })} className="px-3 py-2 border border-input rounded-lg text-sm">
                     {[...Array.from({ length: 28 }, (_, i) => i + 1), 31].map((d) => (
                       <option key={d} value={d}>{d === 31 ? 'สิ้นเดือน' : `วันที่ ${d}`}</option>
                     ))}
-                  </select>
+                  </NativeSelect>
                 </div>
               </fieldset>
               {contract.tradeInCreditSnapshot && <p className="text-xs text-muted-foreground">รายการใช้เครดิตเทิร์นแก้ได้เฉพาะหมายเหตุ หากเปลี่ยนยอดให้ยกเลิกร่างและสร้างใหม่</p>}
               <div>
-                <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">หมายเหตุ</label>
-                <textarea value={editForm.notes} onChange={(e) => setEditForm({ ...editForm, notes: e.target.value })} rows={2} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
+                <label htmlFor={`${uiFieldId}-6`} className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">หมายเหตุ</label>
+                <textarea id={`${uiFieldId}-6`} value={editForm.notes} onChange={(e) => setEditForm({ ...editForm, notes: e.target.value })} rows={2} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
               </div>
               {/* Preview calculation — Decimal arithmetic to match the backend */}
               {editForm.sellingPrice > 0 && editForm.downPayment >= 0 && editForm.totalMonths > 0 && editForm.downPayment < editForm.sellingPrice && (() => {
@@ -1059,8 +1061,8 @@ const deleteMutation = useMutation({
         <Modal isOpen title="ปฏิเสธสัญญา" onClose={() => setShowRejectModal(false)}>
           <div className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-foreground mb-1">เหตุผลที่ปฏิเสธ *</label>
-              <textarea
+              <label htmlFor={`${uiFieldId}-7`} className="block text-sm font-medium text-foreground mb-1">เหตุผลที่ปฏิเสธ *</label>
+              <textarea id={`${uiFieldId}-7`}
                 value={rejectNotes}
                 onChange={(e) => setRejectNotes(e.target.value)}
                 rows={3}

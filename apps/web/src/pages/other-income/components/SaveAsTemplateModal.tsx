@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useId as useUiFieldId, useState } from 'react';
 import { X } from 'lucide-react';
 
 interface Props {
@@ -9,6 +9,7 @@ interface Props {
 }
 
 export function SaveAsTemplateModal({ defaultName, isLoading, onCancel, onConfirm }: Props) {
+  const uiFieldId = useUiFieldId();
   const [name, setName] = useState(defaultName);
 
   function handleSubmit(e: React.FormEvent) {
@@ -32,8 +33,8 @@ export function SaveAsTemplateModal({ defaultName, isLoading, onCancel, onConfir
           </button>
         </div>
         <form onSubmit={handleSubmit}>
-          <label className="text-xs text-muted-foreground font-medium">ชื่อ Template</label>
-          <input
+          <label htmlFor={`${uiFieldId}-1`} className="text-xs text-muted-foreground font-medium">ชื่อ Template</label>
+          <input id={`${uiFieldId}-1`}
             value={name}
             onChange={(e) => setName(e.target.value)}
             className="mt-1 w-full border rounded px-3 py-2 text-sm bg-background"

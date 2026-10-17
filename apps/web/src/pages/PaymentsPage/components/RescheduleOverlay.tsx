@@ -1,5 +1,5 @@
 import { ActionEffect as Effect } from '@/components/ActionEffect';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useId as useUiFieldId, useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import Decimal from 'decimal.js';
@@ -76,6 +76,7 @@ export function RescheduleOverlay({
   onClose,
   onSuccess,
 }: Props) {
+  const uiFieldId = useUiFieldId();
   const queryClient = useQueryClient();
   const [daysToShift, setDaysToShift] = useState(7);
   const [splitMode, setSplitMode] = useState<'SINGLE' | 'SPLIT'>('SINGLE');
@@ -474,10 +475,10 @@ export function RescheduleOverlay({
                       {method === 'TRANSFER' && (
                         <>
                           <div>
-                            <label className="block text-xs font-medium text-foreground mb-1 leading-snug">
+                            <label htmlFor={`${uiFieldId}-1`} className="block text-xs font-medium text-foreground mb-1 leading-snug">
                               เลขอ้างอิงการโอน <span className="text-destructive">*</span>
                             </label>
-                            <input
+                            <input id={`${uiFieldId}-1`}
                               type="text"
                               value={referenceNumber}
                               onChange={(e) => setReferenceNumber(e.target.value)}

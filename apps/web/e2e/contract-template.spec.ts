@@ -1,5 +1,7 @@
 import { test, expect } from '@playwright/test';
-import { loginAsRole } from './helpers/auth';
+import { loginAsRole, getRoleAuthHeaders } from './helpers/auth';
+
+import { backlogFixtures } from './helpers/backlog-fixtures';
 
 /**
  * Contract Template Verification
@@ -12,35 +14,18 @@ import { loginAsRole } from './helpers/auth';
  */
 test.describe('Contract Template — Full Template Loaded', () => {
   test('contract preview shows full hire-purchase template (not fallback)', async ({ page }) => {
+    const contract = backlogFixtures().template;
     await loginAsRole(page, 'OWNER');
-
-    // Get an active contract to preview
     const apiURL = process.env.API_DIRECT_URL || 'http://localhost:3000';
-    const response = await page.request.get(`${apiURL}/api/contracts?status=ACTIVE&limit=1`, {
-      headers: page.context().extraHTTPHeaders
-        ? undefined
-        : { 'X-Requested-With': 'XMLHttpRequest' },
-    });
-
-    if (!response.ok()) {
-      test.skip(true, `Cannot fetch contracts: ${response.status()}`);
-      return;
-    }
-
-    const data = await response.json();
-    const contract = data?.data?.data?.[0] || data?.data?.[0];
-    if (!contract?.id) {
-      test.skip(true, 'No active contracts in database to test');
-      return;
-    }
 
     // Fetch the contract preview HTML directly via API
     const previewResponse = await page.request.get(
       `${apiURL}/api/contracts/${contract.id}/preview`,
-      { headers: { 'X-Requested-With': 'XMLHttpRequest' } },
+      { headers: getRoleAuthHeaders('OWNER') },
     );
     expect(previewResponse.ok()).toBeTruthy();
 
+    expect(previewResponse.status()).toBe(200);
     const previewData = await previewResponse.json();
     const html: string = previewData?.data?.html || previewData?.html || '';
 
@@ -68,30 +53,16 @@ test.describe('Contract Template — Full Template Loaded', () => {
   test('contract preview HTML is non-trivial size (full template, not fallback)', async ({
     page,
   }) => {
+    const contract = backlogFixtures().template;
     await loginAsRole(page, 'OWNER');
-
     const apiURL = process.env.API_DIRECT_URL || 'http://localhost:3000';
-    const response = await page.request.get(`${apiURL}/api/contracts?status=ACTIVE&limit=1`, {
-      headers: { 'X-Requested-With': 'XMLHttpRequest' },
-    });
-
-    if (!response.ok()) {
-      test.skip(true, `Cannot fetch contracts: ${response.status()}`);
-      return;
-    }
-
-    const data = await response.json();
-    const contract = data?.data?.data?.[0] || data?.data?.[0];
-    if (!contract?.id) {
-      test.skip(true, 'No active contracts in database to test');
-      return;
-    }
 
     const previewResponse = await page.request.get(
       `${apiURL}/api/contracts/${contract.id}/preview`,
-      { headers: { 'X-Requested-With': 'XMLHttpRequest' } },
+      { headers: getRoleAuthHeaders('OWNER') },
     );
 
+    expect(previewResponse.status()).toBe(200);
     const previewData = await previewResponse.json();
     const html: string = previewData?.data?.html || previewData?.html || '';
 

@@ -564,10 +564,18 @@ describe('DOC-04 payroll slips and annual 50 ทวิ — real workflow, real j
       await dialog.waitFor({ state: 'hidden', timeout: 15_000 });
 
       // Another tax year: the table empties and no certificate is offered.
-      // A combobox takes no accessible name from its content (ARIA), so match the Radix trigger by its visible text.
-      await page.getByRole('combobox').filter({ hasText: 'ปีภาษี' }).first().click();
+      await page.getByRole('combobox', { name: 'ปี', exact: true }).click();
+      const previousYearResponse = page.waitForResponse((response) => {
+        const url = new URL(response.url());
+        return url.pathname === '/api/admin/tax/pnd1-annual-preview'
+          && url.searchParams.get('year') === String(YEAR - 1)
+          && response.request().method() === 'GET';
+      });
       await page.getByRole('option', { name: `ปีภาษี ${YEAR - 1 + 543}` }).click();
-      await waitForText(page, `ไม่มีใบเงินเดือนที่ POST แล้วในปี ${YEAR - 1 + 543}`, 'wht-annual-previous-year');
+      const previousYear = await previousYearResponse;
+      expect(previousYear.status()).toBe(200);
+      expect((await previousYear.json()).data).toMatchObject({ year: YEAR - 1, items: [], count: 0 });
+      await waitForText(page, `ยังไม่มีรายการเงินเดือนที่ลงบัญชีในปี ${YEAR - 1 + 543}`, 'wht-annual-previous-year');
       expect(await page.getByRole('button', { name: /50 ทวิ/ }).count()).toBe(0);
       const emptyShot = saveArtifact(DOMAIN, 'wht-annual-previous-year-1440.png', await page.screenshot({ fullPage: true })).relativePath;
 

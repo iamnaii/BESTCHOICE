@@ -81,13 +81,13 @@ export function CashAccountSelect({
 
   return (
     <Select value={value} onValueChange={onChange} disabled={disabled || isLoading}>
-      <SelectTrigger className="w-full">
+      <SelectTrigger aria-label={placeholder} className="w-full">
         <SelectValue placeholder={placeholder} />
       </SelectTrigger>
       <SelectContent>
         {codes.map((code) => (
           <SelectItem key={code} value={code}>
-            {accountDisplayName(nameMap.get(code) ?? '')}
+            {accountDisplayName(nameMap.get(code)) || code}
           </SelectItem>
         ))}
       </SelectContent>

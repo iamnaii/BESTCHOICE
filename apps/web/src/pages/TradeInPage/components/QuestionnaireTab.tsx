@@ -1,3 +1,4 @@
+import { NativeSelect } from '@/components/ui/native-select';
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -236,8 +237,8 @@ export default function QuestionnaireTab() {
                   />
                 </td>
                 <td className="p-2 w-28">
-                  <select
-                    className="w-full h-8 rounded-lg border border-input bg-background px-2 text-sm"
+                  <NativeSelect wrapperClassName="max-w-full w-full"
+                    className="h-8 rounded-lg border border-input bg-background px-2 text-sm"
                     value={newChoice[q.id]?.deductType ?? 'PERCENT'}
                     onChange={(e) =>
                       setNewChoice((prev) => ({
@@ -252,7 +253,7 @@ export default function QuestionnaireTab() {
                   >
                     <option value="PERCENT">หัก %</option>
                     <option value="FIXED">หักบาท</option>
-                  </select>
+                  </NativeSelect>
                 </td>
                 <td className="p-2 w-32">
                   <Input

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useId as useUiFieldId, useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api, { getErrorMessage } from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
@@ -99,6 +99,7 @@ function toVatPercentString(raw: string | null | undefined): string {
 }
 
 export default function InterestConfigPage() {
+  const uiFieldId = useUiFieldId();
   const queryClient = useQueryClient();
   const [showModal, setShowModal] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
@@ -452,8 +453,8 @@ export default function InterestConfigPage() {
           <div className="space-y-4">
             {/* ชื่อ */}
             <div>
-              <label className="block text-sm font-medium text-foreground mb-1">ชื่อ</label>
-              <input
+              <label htmlFor={`${uiFieldId}-1`} className="block text-sm font-medium text-foreground mb-1">ชื่อ</label>
+              <input id={`${uiFieldId}-1`}
                 type="text"
                 value={form.name}
                 onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
@@ -486,10 +487,10 @@ export default function InterestConfigPage() {
             </div>
 
             {/* ดอกเบี้ย + ดาวน์ขั้นต่ำ */}
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <label className="block text-sm font-medium text-foreground mb-1">ดอกเบี้ย (%)</label>
-                <input
+                <label htmlFor={`${uiFieldId}-2`} className="block text-sm font-medium text-foreground mb-1">ดอกเบี้ย (%)</label>
+                <input id={`${uiFieldId}-2`}
                   type="number"
                   value={form.interestRate}
                   onChange={(e) => setForm((f) => ({ ...f, interestRate: Number(e.target.value) }))}
@@ -501,8 +502,8 @@ export default function InterestConfigPage() {
                 {touched && errors.interestRate && <p className="text-xs text-destructive mt-1">{errors.interestRate}</p>}
               </div>
               <div>
-                <label className="block text-sm font-medium text-foreground mb-1">ดาวน์ขั้นต่ำ (%)</label>
-                <input
+                <label htmlFor={`${uiFieldId}-3`} className="block text-sm font-medium text-foreground mb-1">ดาวน์ขั้นต่ำ (%)</label>
+                <input id={`${uiFieldId}-3`}
                   type="number"
                   value={form.minDownPaymentPct}
                   onChange={(e) => setForm((f) => ({ ...f, minDownPaymentPct: Number(e.target.value) }))}
@@ -516,10 +517,10 @@ export default function InterestConfigPage() {
             </div>
 
             {/* ค่าคอม + VAT */}
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <label className="block text-sm font-medium text-foreground mb-1">ค่าคอมหน้าร้าน (%)</label>
-                <input
+                <label htmlFor={`${uiFieldId}-4`} className="block text-sm font-medium text-foreground mb-1">ค่าคอมหน้าร้าน (%)</label>
+                <input id={`${uiFieldId}-4`}
                   type="number"
                   value={form.storeCommissionPct}
                   onChange={(e) => setForm((f) => ({ ...f, storeCommissionPct: Number(e.target.value) }))}
@@ -531,8 +532,8 @@ export default function InterestConfigPage() {
                 {touched && errors.storeCommissionPct && <p className="text-xs text-destructive mt-1">{errors.storeCommissionPct}</p>}
               </div>
               <div>
-                <label className="block text-sm font-medium text-foreground mb-1">VAT (%)</label>
-                <input
+                <label htmlFor={`${uiFieldId}-5`} className="block text-sm font-medium text-foreground mb-1">VAT (%)</label>
+                <input id={`${uiFieldId}-5`}
                   type="number"
                   value={form.vatPct}
                   onChange={(e) => setForm((f) => ({ ...f, vatPct: Number(e.target.value) }))}
@@ -546,10 +547,10 @@ export default function InterestConfigPage() {
             </div>
 
             {/* งวดต่ำสุด + สูงสุด */}
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <label className="block text-sm font-medium text-foreground mb-1">งวดต่ำสุด (เดือน)</label>
-                <input
+                <label htmlFor={`${uiFieldId}-6`} className="block text-sm font-medium text-foreground mb-1">งวดต่ำสุด (เดือน)</label>
+                <input id={`${uiFieldId}-6`}
                   type="number"
                   value={form.minInstallmentMonths}
                   onChange={(e) => setForm((f) => ({ ...f, minInstallmentMonths: Number(e.target.value) }))}
@@ -559,8 +560,8 @@ export default function InterestConfigPage() {
                 {touched && errors.minInstallmentMonths && <p className="text-xs text-destructive mt-1">{errors.minInstallmentMonths}</p>}
               </div>
               <div>
-                <label className="block text-sm font-medium text-foreground mb-1">งวดสูงสุด (เดือน)</label>
-                <input
+                <label htmlFor={`${uiFieldId}-7`} className="block text-sm font-medium text-foreground mb-1">งวดสูงสุด (เดือน)</label>
+                <input id={`${uiFieldId}-7`}
                   type="number"
                   value={form.maxInstallmentMonths}
                   onChange={(e) => setForm((f) => ({ ...f, maxInstallmentMonths: Number(e.target.value) }))}

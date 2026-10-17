@@ -45,7 +45,9 @@ async function freePort(): Promise<number> {
 }
 
 export async function startWeb(harness: DocumentsHarness, options: { headless?: boolean } = {}): Promise<WebRuntime> {
-  const { chromium } = require('@playwright/test') as typeof import('@playwright/test');
+  const { chromium, webkit } = require('@playwright/test') as typeof import('@playwright/test');
+  const engine = process.env.DOCS_QA_BROWSER ?? 'chromium';
+  if (!['chromium', 'webkit'].includes(engine)) throw new Error('Unsupported DOCS_QA_BROWSER');
   const port = await freePort();
   const origin = `http://127.0.0.1:${port}`;
   const webDir = join(repoRoot, 'apps/web');
@@ -54,7 +56,7 @@ export async function startWeb(harness: DocumentsHarness, options: { headless?: 
   const log = createWriteStream(join(logDir, `vite-${port}.log`), { flags: 'a' });
   const child: ChildProcess = spawn(process.execPath, [join(webDir, 'node_modules/vite/bin/vite.js'), '--config', 'vite.docs-qa.config.ts', '--host', '127.0.0.1', '--port', String(port), '--strictPort'], {
     cwd: webDir,
-    env: { ...process.env, VITE_API_URL: '/api/admin', DOCS_QA_API_ORIGIN: harness.baseUrl.replace(/\/api$/, ''), VITE_SENTRY_DSN: '', BROWSER: 'none' },
+    env: { ...process.env, VITE_API_URL: '/api/admin', DOCS_QA_API_ORIGIN: harness.baseUrl.replace(/\/api$/, ''), DOCS_QA_VITE_CACHE_DIR: resolve(logDir, `vite-cache-${port}`), VITE_SENTRY_DSN: '', BROWSER: 'none' },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   child.stdout?.pipe(log);
@@ -69,7 +71,7 @@ export async function startWeb(harness: DocumentsHarness, options: { headless?: 
       await new Promise((r) => setTimeout(r, 250));
     }
   }
-  const browser = await chromium.launch({ headless: options.headless ?? true });
+  const browser = await (engine === 'webkit' ? webkit : chromium).launch({ headless: options.headless ?? true });
   return {
     origin,
     browser,

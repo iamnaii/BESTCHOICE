@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useId as useUiFieldId, useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
 import { toast } from 'sonner';
@@ -171,9 +171,9 @@ function AiSettingsForm({ initial }: { initial: AiSettings }) {
               type="number"
               min={1}
               max={100}
-              value={form.maxRepliesPerSession}
+              aria-label="จำนวนตอบสูงสุดต่อห้องแชท" value={form.maxRepliesPerSession}
               onChange={(e) => setForm((prev) => ({ ...prev, maxRepliesPerSession: Number(e.target.value) }))}
-              className="w-28"
+              className="w-28 shrink-0"
             />
             <span className="text-sm text-muted-foreground">
               ครั้ง ต่อ 24 ชม. — เกินแล้วจะโอนให้พนักงาน (นับเฉพาะ 24 ชม. ล่าสุด (rolling window))
@@ -200,6 +200,7 @@ interface ShopBotConfig {
 }
 
 function ShopBotSetupForm() {
+  const uiFieldId = useUiFieldId();
   const queryClient = useQueryClient();
   const [branchId, setBranchId] = useState('');
   const [testUserId, setTestUserId] = useState('');
@@ -278,9 +279,9 @@ function ShopBotSetupForm() {
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="space-y-2">
-          <Label className="leading-snug">Central Branch (เก็บ AI-captured leads)</Label>
+          <Label htmlFor={`${uiFieldId}-1`} className="leading-snug">Central Branch (เก็บ AI-captured leads)</Label>
           <Select value={branchId} onValueChange={setBranchId}>
-            <SelectTrigger>
+            <SelectTrigger id={`${uiFieldId}-1`}>
               <SelectValue placeholder="เลือกสาขา" />
             </SelectTrigger>
             <SelectContent>
@@ -293,22 +294,22 @@ function ShopBotSetupForm() {
           </Select>
         </div>
         <div className="space-y-2">
-          <Label className="leading-snug">
+          <Label htmlFor={`${uiFieldId}-2`} className="leading-snug">
             Test LINE userId (owner — ใช้ส่งข้อความทดสอบ)
           </Label>
-          <Input
+          <Input id={`${uiFieldId}-2`}
             value={testUserId}
             onChange={(e) => setTestUserId(e.target.value)}
             placeholder="U1234567890abcdef..."
           />
         </div>
         <div className="space-y-2">
-          <Label className="leading-snug">AI Provider</Label>
+          <Label htmlFor={`${uiFieldId}-3`} className="leading-snug">AI Provider</Label>
           <Select
             value={llmProvider}
             onValueChange={(v) => setLlmProvider(v as LlmProviderChoice)}
           >
-            <SelectTrigger>
+            <SelectTrigger id={`${uiFieldId}-3`}>
               <SelectValue placeholder="เลือก AI provider" />
             </SelectTrigger>
             <SelectContent>

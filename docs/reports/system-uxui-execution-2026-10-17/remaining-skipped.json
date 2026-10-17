@@ -1,0 +1,92 @@
+[
+  {
+    "file": "accounting-contract-activation.spec.ts",
+    "suite": "accounting-contract-activation.spec.ts / Accounting — Contract Activation creates JE (Phase A.0)",
+    "test": "activated contracts each have at least one related JournalEntry (F-2-001)",
+    "project": "chromium",
+    "status": "skipped",
+    "run": "business-regression",
+    "line": 58
+  },
+  {
+    "file": "accounting-paysolutions-webhook.spec.ts",
+    "suite": "accounting-paysolutions-webhook.spec.ts / Accounting — PaySolutions webhook creates JE (F-1-003)",
+    "test": "recent PAID payments via gateway have matching JournalEntry (F-1-003)",
+    "project": "chromium",
+    "status": "skipped",
+    "run": "business-regression",
+    "line": 37
+  },
+  {
+    "file": "accounting-period-close.spec.ts",
+    "suite": "accounting-period-close.spec.ts / Accounting — Period Close hardening (F-6-003)",
+    "test": "full close-with-audit-issues flow",
+    "project": "chromium",
+    "status": "skipped",
+    "run": "business-regression",
+    "line": 85
+  },
+  {
+    "file": "contract-template.spec.ts",
+    "suite": "contract-template.spec.ts / Contract Template — Full Template Loaded",
+    "test": "contract preview shows full hire-purchase template (not fallback)",
+    "project": "chromium",
+    "status": "skipped",
+    "run": "business-regression",
+    "line": 14
+  },
+  {
+    "file": "contract-template.spec.ts",
+    "suite": "contract-template.spec.ts / Contract Template — Full Template Loaded",
+    "test": "contract preview HTML is non-trivial size (full template, not fallback)",
+    "project": "chromium",
+    "status": "skipped",
+    "run": "business-regression",
+    "line": 68
+  },
+  {
+    "file": "finance-receivable-contact.spec.ts",
+    "suite": "finance-receivable-contact.spec.ts / Finance Receivable contact log",
+    "test": "record a contact log and see it in timeline + last contacted column",
+    "project": "chromium",
+    "status": "skipped",
+    "run": "business-regression",
+    "line": 11
+  },
+  {
+    "file": "finance-receivable-contact.spec.ts",
+    "suite": "finance-receivable-contact.spec.ts / Finance Receivable contact log",
+    "test": "broken-promise filter limits the list",
+    "project": "chromium",
+    "status": "skipped",
+    "run": "business-regression",
+    "line": 69
+  },
+  {
+    "file": "invite-resend.spec.ts",
+    "suite": "invite-resend.spec.ts / Invite Resend Feature",
+    "test": "should resend API endpoint reject used invites",
+    "project": "chromium",
+    "status": "skipped",
+    "run": "business-regression",
+    "line": 165
+  },
+  {
+    "file": "promise-lifecycle-happy.spec.ts",
+    "suite": "promise-lifecycle-happy.spec.ts / Promise lifecycle — happy path (3 slots)",
+    "test": "promise with 3 slots — record + see cycle banner + slot count",
+    "project": "chromium",
+    "status": "skipped",
+    "run": "business-regression",
+    "line": 12
+  },
+  {
+    "file": "promise-supersede.spec.ts",
+    "suite": "promise-supersede.spec.ts / Promise supersede — reschedule flow",
+    "test": "reschedule before due — confirm dialog + no broken increment",
+    "project": "chromium",
+    "status": "skipped",
+    "run": "business-regression",
+    "line": 14
+  }
+]

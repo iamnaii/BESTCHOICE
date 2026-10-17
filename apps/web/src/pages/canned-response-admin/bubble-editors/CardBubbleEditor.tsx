@@ -1,3 +1,4 @@
+import { NativeSelect } from '@/components/ui/native-select';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
@@ -68,15 +69,15 @@ export default function CardBubbleEditor({ bubble, onChange }: Props) {
         </div>
         <div className="space-y-1.5">
           {buttons.map((b, i) => (
-            <div key={i} className="flex items-center gap-1.5 border border-border rounded p-2">
-              <Input value={b.label} onChange={(e) => updateButton(i, { label: e.target.value })} placeholder="ป้ายปุ่ม" className="flex-1 text-xs" />
-              <select value={b.type} onChange={(e) => updateButton(i, { type: e.target.value as 'URL' | 'MESSAGE' | 'POSTBACK' })} className="text-xs border border-border rounded px-1.5 py-1 bg-background">
+            <div key={i} className="grid grid-cols-[minmax(0,1fr)_2.75rem] items-center gap-2 border border-border rounded p-2 sm:grid-cols-[minmax(0,1fr)_8rem_minmax(0,1fr)_2.75rem]">
+              <Input value={b.label} onChange={(e) => updateButton(i, { label: e.target.value })} placeholder="ป้ายปุ่ม" className="col-start-1 row-start-1 min-w-0 text-xs" />
+              <NativeSelect wrapperClassName="col-start-1 row-start-2 sm:col-start-2 sm:row-start-1" aria-label={`ชนิดปุ่ม ${i + 1}`} value={b.type} onChange={(e) => updateButton(i, { type: e.target.value as 'URL' | 'MESSAGE' | 'POSTBACK' })} className="text-xs border border-border rounded px-1.5 py-1 bg-background">
                 <option value="MESSAGE">Msg</option>
                 <option value="URL">URL</option>
                 <option value="POSTBACK">Postback</option>
-              </select>
-              <Input value={b.value} onChange={(e) => updateButton(i, { value: e.target.value })} placeholder={b.type === 'URL' ? 'https://...' : 'value'} className="flex-1 text-xs font-mono" />
-              <button onClick={() => removeButton(i)} className="p-1 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded">
+              </NativeSelect>
+              <Input value={b.value} onChange={(e) => updateButton(i, { value: e.target.value })} placeholder={b.type === 'URL' ? 'https://...' : 'value'} className="col-start-1 row-start-3 min-w-0 text-xs font-mono sm:col-start-3 sm:row-start-1" />
+              <button onClick={() => removeButton(i)} aria-label={`ลบปุ่ม ${i + 1}`} className="col-start-2 row-start-1 flex size-11 items-center justify-center text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded sm:col-start-4">
                 <Trash2 className="w-3 h-3" />
               </button>
             </div>

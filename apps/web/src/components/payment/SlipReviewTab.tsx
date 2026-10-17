@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react';
+import { NativeSelect } from '@/components/ui/native-select';
+import { useId as useUiFieldId, useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api, { getErrorMessage } from '@/lib/api';
 import Modal from '@/components/ui/Modal';
@@ -44,6 +45,7 @@ const statusLabels: Record<string, string> = {
 };
 
 export default function SlipReviewTab() {
+  const uiFieldId = useUiFieldId();
   const queryClient = useQueryClient();
 
   const [statusFilter, setStatusFilter] = useState('PENDING_REVIEW');
@@ -306,19 +308,19 @@ export default function SlipReviewTab() {
       {/* Search/Filter Bar */}
       <div className="bg-card rounded-xl border border-border/50 shadow-sm p-4 mb-6">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-          <input
+          <input aria-label="ค้นหาชื่อลูกค้า / เลขสัญญา"
             type="text"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             placeholder="ค้นหาชื่อลูกค้า / เลขสัญญา..."
             className="px-3 py-2 border border-input rounded-lg text-sm md:col-span-2"
           />
-          <ThaiDateInput
+          <ThaiDateInput aria-label="วันที่เริ่ม"
             value={dateFrom}
             onChange={(e) => setDateFrom(e.target.value)}
             className="px-3 py-2 border border-input rounded-lg text-sm"
           />
-          <ThaiDateInput
+          <ThaiDateInput aria-label="วันที่สิ้นสุด"
             value={dateTo}
             onChange={(e) => setDateTo(e.target.value)}
             className="px-3 py-2 border border-input rounded-lg text-sm"
@@ -603,10 +605,10 @@ export default function SlipReviewTab() {
                   )}
 
                   <div>
-                    <label className="block text-sm font-medium text-foreground mb-1">
+                    <label htmlFor={`${uiFieldId}-1`} className="block text-sm font-medium text-foreground mb-1">
                       งวดที่
                     </label>
-                    <input
+                    <input id={`${uiFieldId}-1`}
                       type="number"
                       min="1"
                       value={selectedInstallmentNo}
@@ -616,10 +618,10 @@ export default function SlipReviewTab() {
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-foreground mb-1">
+                    <label htmlFor={`${uiFieldId}-2`} className="block text-sm font-medium text-foreground mb-1">
                       จำนวนเงิน (บาท)
                     </label>
-                    <input
+                    <input id={`${uiFieldId}-2`}
                       type="number"
                       value={approveAmount}
                       onChange={(e) => setApproveAmount(e.target.value)}
@@ -629,24 +631,24 @@ export default function SlipReviewTab() {
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-foreground mb-1">
+                    <label htmlFor={`${uiFieldId}-3`} className="block text-sm font-medium text-foreground mb-1">
                       ช่องทาง
                     </label>
-                    <select
+                    <NativeSelect wrapperClassName="max-w-full w-full" id={`${uiFieldId}-3`}
                       value={approveMethod}
                       onChange={(e) => setApproveMethod(e.target.value)}
-                      className="w-full border rounded-lg px-3 py-2"
+                      className="border rounded-lg px-3 py-2"
                     >
                       <option value="BANK_TRANSFER">โอนเงิน</option>
                       <option value="QR_EWALLET">QR/E-Wallet</option>
-                    </select>
+                    </NativeSelect>
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-foreground mb-1">
+                    <label htmlFor={`${uiFieldId}-4`} className="block text-sm font-medium text-foreground mb-1">
                       หมายเหตุ
                     </label>
-                    <textarea
+                    <textarea id={`${uiFieldId}-4`}
                       value={reviewNote}
                       onChange={(e) => setReviewNote(e.target.value)}
                       className="w-full border rounded-lg px-3 py-2"

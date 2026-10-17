@@ -1,3 +1,4 @@
+import { NativeSelect } from '@/components/ui/native-select';
 import { useState, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
@@ -217,7 +218,7 @@ export default function AllTab() {
       </div>
 
       <div className="flex gap-3 flex-wrap bg-card rounded-xl border border-border/50 shadow-sm p-4">
-        <input
+        <input aria-label="ค้นหาเลขสัญญา, ชื่อลูกค้า"
           type="text"
           placeholder="ค้นหาเลขสัญญา, ชื่อลูกค้า..."
           value={searchTerm}
@@ -273,16 +274,16 @@ export default function AllTab() {
             ส่งออก Excel
           </button>
         )}
-        <select
+        <NativeSelect wrapperClassName="max-w-full w-auto"
           value={filter}
           onChange={(e) => setFilter(e.target.value as 'OVERDUE' | 'all')}
           className="px-3 py-2 border border-input rounded-lg text-sm"
         >
           <option value="OVERDUE">เฉพาะเกินกำหนด</option>
           <option value="all">ทั้งหมด</option>
-        </select>
+        </NativeSelect>
         {isOwner && (
-          <select
+          <NativeSelect wrapperClassName="max-w-full w-auto" aria-label="สาขา"
             value={branchFilter}
             onChange={(e) => setBranchFilter(e.target.value)}
             className="px-3 py-2 border border-input rounded-lg text-sm"
@@ -293,7 +294,7 @@ export default function AllTab() {
                 {b.name}
               </option>
             ))}
-          </select>
+          </NativeSelect>
         )}
       </div>
 

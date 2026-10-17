@@ -1,3 +1,4 @@
+import { NativeSelect } from '@/components/ui/native-select';
 import { useState } from 'react';
 import { Check, ChevronDown } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -110,27 +111,27 @@ function DetailControl({
     case 'เคส':
       return (
         <LabeledControl label="สำหรับรุ่น">
-          <select aria-label="สำหรับรุ่น" value={item.model} onChange={(e) => onChange('model', e.target.value)} className={selectCls}>
+          <NativeSelect wrapperClassName="max-w-full w-full" aria-label="สำหรับรุ่น" value={item.model} onChange={(e) => onChange('model', e.target.value)} className={selectCls}>
             <option value="">— เลือกรุ่น —</option>
             {catalogEntries().map((e) => (
               <option key={e.name} value={e.name}>
                 {e.name}
               </option>
             ))}
-          </select>
+          </NativeSelect>
         </LabeledControl>
       );
     case 'ชุดชาร์จ':
       return (
         <LabeledControl label="หัวชาร์จ">
-          <select aria-label="หัวชาร์จ" value={item.model} onChange={(e) => onChange('model', e.target.value)} className={selectCls}>
+          <NativeSelect wrapperClassName="max-w-full w-full" aria-label="หัวชาร์จ" value={item.model} onChange={(e) => onChange('model', e.target.value)} className={selectCls}>
             <option value="">— เลือก —</option>
             {chargerConnectorTypes.map((t) => (
               <option key={t.value} value={t.value}>
                 {t.label}
               </option>
             ))}
-          </select>
+          </NativeSelect>
         </LabeledControl>
       );
     case 'หูฟัง':

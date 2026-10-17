@@ -1,3 +1,4 @@
+import { NameAutocomplete } from '@/components/ui/NameAutocomplete';
 import { useId } from 'react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -37,9 +38,9 @@ export default function SellerPaymentFields({ value, onChange, disabled = false 
           <p className="text-sm font-medium">บัญชีผู้ขายที่รับเงิน</p>
           <div>
             <Label htmlFor={`${id}-bank`}>ธนาคารผู้ขาย *</Label>
-            <Input id={`${id}-bank`} list={`${id}-banks`} value={value.transferBankName}
-              onChange={(e) => onChange({ transferBankName: e.target.value })} />
-            <datalist id={`${id}-banks`}>{BANK_OPTIONS.map((bank) => <option key={bank} value={bank} />)}</datalist>
+            <NameAutocomplete id={`${id}-bank`} value={value.transferBankName}
+              options={BANK_OPTIONS} disabled={disabled}
+              onChange={(transferBankName) => onChange({ transferBankName })} />
           </div>
           <div>
             <Label htmlFor={`${id}-account`}>เลขบัญชีผู้ขาย *</Label>

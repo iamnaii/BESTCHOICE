@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { getErrorMessage } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import CashCloseConfirmDialog from './CashCloseConfirmDialog';
@@ -36,6 +36,33 @@ export default function CashCloseOverview({ date, branchId, showTable, onOpen }:
   const [depositing, setDepositing] = useState<CashHolding | null>(null);
   const query = useCashCloseOverview(date, branchId);
   const data = query.data;
+  const stripRef = useRef<HTMLDivElement>(null);
+  const positionedStrip = useRef('');
+
+  useEffect(() => {
+    const region = stripRef.current;
+    if (!region || !data) return;
+    const key = `${branchId}:${date}:${data.strip.dates.join(',')}`;
+    if (positionedStrip.current === key) return;
+    const selectedDay = data.strip.dates.includes(date) ? date : data.strip.dates.at(-1);
+    const target = region.querySelector<HTMLElement>(`button[data-date="${selectedDay}"]`);
+    if (!target) return;
+    // Dev/lazy CSS can arrive after the first render. Wait for the scroll
+    // layout before positioning; subsequent refetches keep the user's scroll.
+    const position = () => {
+      if (positionedStrip.current === key || getComputedStyle(region).overflowX !== 'auto') return;
+      const buttonBox = target.getBoundingClientRect();
+      const regionBox = region.getBoundingClientRect();
+      region.scrollLeft += buttonBox.left + buttonBox.width / 2 - regionBox.left - region.clientWidth / 2;
+      positionedStrip.current = key;
+      observer?.disconnect();
+    };
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(position);
+    observer?.observe(region);
+    observer?.observe(target);
+    const frame = requestAnimationFrame(position);
+    return () => { cancelAnimationFrame(frame); observer?.disconnect(); };
+  }, [data, date, branchId]);
 
   if (query.isLoading) return <div className="h-40 animate-pulse rounded-xl border border-border bg-card" />;
   if (query.isError || !data) {
@@ -119,22 +146,24 @@ export default function CashCloseOverview({ date, branchId, showTable, onOpen }:
             ))}
           </ul>
         </div>
-        <div className="space-y-2.5 px-4 py-4 sm:px-5">
-          <div className="grid grid-cols-[repeat(14,minmax(0,1fr))] gap-1 text-center text-[11px] text-muted-foreground sm:grid-cols-[110px_repeat(14,minmax(0,1fr))] sm:gap-1.5">
+        <div className="px-4 py-4 sm:px-5">
+          <div ref={stripRef} role="region" aria-label="สถานะปิดยอดย้อนหลัง เลื่อนดูวันที่" tabIndex={0} className="overflow-x-auto rounded-md p-1 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring">
+          <div className="min-w-[41.75rem] space-y-2.5 sm:min-w-[50rem]">
+          <div className="grid grid-cols-[repeat(14,minmax(2.75rem,1fr))] gap-1 text-center text-[11px] text-muted-foreground sm:grid-cols-[110px_repeat(14,minmax(2.75rem,1fr))] sm:gap-1.5">
             <span className="hidden sm:block" />
             {data.strip.dates.map((day) => <span key={day} className={day === data.today ? 'font-bold text-foreground' : ''}>{Number(day.slice(8))}</span>)}
           </div>
           {data.strip.rows.map((row) => (
-            <div key={row.branchId} className="grid grid-cols-[repeat(14,minmax(0,1fr))] items-center gap-1 sm:grid-cols-[110px_repeat(14,minmax(0,1fr))] sm:gap-1.5">
-              <span className="col-span-full truncate text-sm font-semibold leading-snug sm:col-span-1">{row.branchName}</span>
+            <div key={row.branchId} className="grid grid-cols-[repeat(14,minmax(2.75rem,1fr))] items-center gap-1 sm:grid-cols-[110px_repeat(14,minmax(2.75rem,1fr))] sm:gap-1.5">
+              <span title={row.branchName} className="sticky left-0 z-10 col-span-full w-fit max-w-[calc(100vw-5rem)] truncate bg-card pr-2 text-sm font-semibold leading-snug sm:col-span-1 sm:w-full sm:max-w-none">{row.branchName}</span>
               {row.cells.map((state, index) => {
                 const day = data.strip.dates[index];
                 const Icon = DAY_STATE_ICON[state];
                 return (
-                  <button key={day} type="button" onClick={() => onOpen(row.branchId, day)}
+                  <button key={day} type="button" data-date={day} onClick={() => onOpen(row.branchId, day)}
                     title={`${row.branchName} · ${thaiShortDate(day)} · ${DAY_STATE_LABEL[state]}`}
                     aria-label={`${row.branchName} ${thaiShortDate(day)} ${DAY_STATE_LABEL[state]}`}
-                    className={`flex h-7 items-center justify-center rounded-md outline-offset-2 hover:opacity-80 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring ${DAY_STATE_CELL[state]}`}>
+                    className={`flex h-11 min-w-11 items-center justify-center rounded-md outline-offset-2 hover:opacity-80 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring ${DAY_STATE_CELL[state]}`}>
                     {/* ไอคอนคู่กับสี — สถานะต้องอ่านออกแม้แยกสีไม่ได้ */}
                     <Icon aria-hidden className={`h-3.5 w-3.5 ${CELL_ICON_TONE[state]}`} />
                   </button>
@@ -142,7 +171,9 @@ export default function CashCloseOverview({ date, branchId, showTable, onOpen }:
               })}
             </div>
           ))}
-          <p className="text-xs text-muted-foreground leading-snug">
+          </div>
+          </div>
+          <p className="mt-2.5 text-xs text-muted-foreground leading-snug">
             กดช่อง = เปิดวันนั้นของสาขานั้น · สีแดง = สิ้นวันยังมีเงินสดรับที่ไม่มีใครส่งยอด (เงินจะไปรวมกับการส่งยอดครั้งถัดไป แต่ช่องยังแดงเป็นประวัติ)
           </p>
         </div>

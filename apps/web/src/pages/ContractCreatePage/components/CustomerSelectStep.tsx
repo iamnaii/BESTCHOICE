@@ -60,7 +60,7 @@ export function CustomerSelectStep({
         เพิ่มลูกค้าใหม่
       </button>
 
-      <input
+      <input aria-label="ค้นหาลูกค้า (ชื่อ, เบอร์โทร, เลขบัตร)"
         type="text"
         placeholder="ค้นหาลูกค้า (ชื่อ, เบอร์โทร, เลขบัตร)..."
         value={customerSearch}

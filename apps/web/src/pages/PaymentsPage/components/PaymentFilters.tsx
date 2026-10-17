@@ -1,3 +1,6 @@
+import { NativeSelect } from '@/components/ui/native-select';
+import { formControlClass } from '@/components/ui/form-styles';
+import { cn } from '@/lib/utils';
 interface PaymentFiltersProps {
   searchTerm: string;
   onSearchChange: (value: string) => void;
@@ -32,36 +35,39 @@ export default function PaymentFilters({
         <div className="relative flex-1 min-w-55">
           <svg className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
           <input
+            aria-label="ค้นหาการชำระเงิน"
             type="text"
             value={searchTerm}
             onChange={(e) => onSearchChange(e.target.value)}
             placeholder="ค้นหาเลขสัญญา, ชื่อ, เบอร์โทร..."
-            className="w-full pl-9 pr-3 py-2 border border-input rounded-lg text-sm bg-background outline-hidden focus:ring-2 focus:ring-ring/30"
+            className={cn(formControlClass, 'pl-9')}
           />
         </div>
         {showStatusFilter && (
-          <select
+          <NativeSelect wrapperClassName="max-w-full min-w-0 w-full sm:w-auto"
+            aria-label="สถานะการชำระเงิน"
             value={statusFilter}
             onChange={(e) => onStatusFilterChange(e.target.value)}
-            className="px-3 py-2 border border-input rounded-lg text-sm bg-background outline-hidden focus:ring-2 focus:ring-ring/30"
+            className={cn(formControlClass, "")}
           >
             <option value="">ทุกสถานะ</option>
             <option value="PENDING">รอชำระ</option>
             <option value="OVERDUE">เกินกำหนด</option>
             <option value="PARTIALLY_PAID">ชำระบางส่วน</option>
-          </select>
+          </NativeSelect>
         )}
         {isOwner && (
-          <select
+          <NativeSelect wrapperClassName="max-w-full min-w-0 w-full sm:w-auto"
+            aria-label="สาขา"
             value={branchFilter}
             onChange={(e) => onBranchFilterChange(e.target.value)}
-            className="px-3 py-2 border border-input rounded-lg text-sm bg-background outline-hidden focus:ring-2 focus:ring-ring/30"
+            className={cn(formControlClass, "")}
           >
             <option value="">ทุกสาขา</option>
             {branches.map((b) => (
               <option key={b.id} value={b.id}>{b.name}</option>
             ))}
-          </select>
+          </NativeSelect>
         )}
         <button
           onClick={onExport}

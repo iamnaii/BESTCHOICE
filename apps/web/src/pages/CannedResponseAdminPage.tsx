@@ -361,7 +361,7 @@ export default function CannedResponseAdminPage() {
               onKeyDown={(e) => {
                 if (e.key === 'Enter') confirmNewCategory();
               }}
-              placeholder="ชื่อหมวด เช่น 'เรทผ่อน iPhone'"
+              aria-label="ชื่อหมวดข้อความ" placeholder="ชื่อหมวด เช่น 'เรทผ่อน iPhone'"
             />
           </div>
           <DialogFooter>

@@ -153,10 +153,11 @@ export default function Customer360Panel({
       {/* Slide-over */}
       <aside
         role="dialog"
-        aria-modal="true"
+        aria-modal={open || undefined}
+        aria-hidden={!open}
         aria-label="ข้อมูลลูกค้า 360"
         className={`fixed inset-y-0 right-0 z-50 w-full md:w-[480px] bg-card border-l border-border shadow-2xl transform transition-transform duration-200 flex flex-col ${
-          open ? 'translate-x-0' : 'translate-x-full'
+          open ? 'visible translate-x-0' : 'invisible translate-x-full'
         }`}
       >
         {/* Header */}
@@ -174,7 +175,7 @@ export default function Customer360Panel({
             </div>
             <button
               onClick={onClose}
-              className="rounded-lg p-2 hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
+              className="inline-flex size-11 items-center justify-center rounded-lg p-2 hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
               aria-label="ปิด"
             >
               <X className="size-5" />

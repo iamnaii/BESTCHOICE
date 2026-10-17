@@ -220,6 +220,7 @@ function DataTable<T extends { id: string }>({
       cols.push({
         id: '_select',
         header: ({ table }) => (
+          <label className="inline-flex min-h-6 min-w-6 max-lg:min-h-11 max-lg:min-w-11 items-center justify-center cursor-pointer">
           <input
             type="checkbox"
             className="size-4 rounded border-border accent-primary cursor-pointer"
@@ -227,8 +228,13 @@ function DataTable<T extends { id: string }>({
             onChange={table.getToggleAllPageRowsSelectedHandler()}
             aria-label="เลือกทั้งหมด"
           />
+          </label>
         ),
         cell: ({ row }) => (
+          <label
+            className="inline-flex min-h-6 min-w-6 max-lg:min-h-11 max-lg:min-w-11 items-center justify-center cursor-pointer"
+            onClick={(e) => e.stopPropagation()}
+          >
           <input
             type="checkbox"
             className="size-4 rounded border-border accent-primary cursor-pointer"
@@ -237,9 +243,10 @@ function DataTable<T extends { id: string }>({
             onClick={(e) => e.stopPropagation()}
             aria-label={`เลือกแถว ${row.index + 1}`}
           />
+          </label>
         ),
         enableSorting: false,
-        size: 40,
+        size: 68,
       });
     }
 
@@ -351,6 +358,7 @@ function DataTable<T extends { id: string }>({
               <div className="relative w-full max-w-sm sm:w-auto">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
+                  aria-label={searchPlaceholder}
                   placeholder={searchPlaceholder}
                   value={globalFilter}
                   onChange={(e) => setGlobalFilter(e.target.value)}
@@ -462,7 +470,7 @@ function DataTable<T extends { id: string }>({
                 <col
                   key={leaf.id}
                   style={{
-                    width: leaf.id === '_select' ? '40px' : columnByKey.get(leaf.id)?.width,
+                    width: leaf.id === '_select' ? '4.25rem' : columnByKey.get(leaf.id)?.width,
                   }}
                 />
               ))}
@@ -502,7 +510,7 @@ function DataTable<T extends { id: string }>({
                         alignClass[align],
                         canSort &&
                           'cursor-pointer select-none hover:text-foreground transition-colors',
-                        isSelect && 'w-10 px-3',
+                        isSelect && 'w-17 px-3',
                         src?.stickyRight &&
                           'sticky right-0 z-20 bg-muted border-l border-border/60 shadow-[-6px_0_10px_-6px_rgb(0_0_0/0.10)]',
                         src?.headerClassName,
@@ -536,7 +544,7 @@ function DataTable<T extends { id: string }>({
                         </button>
                       ) : (
                         <div className={cn('flex items-center gap-1.5 min-w-0', alignFlex[align])}>
-                          <span className={cn('min-w-0', src?.headerWrap ? 'leading-snug' : 'truncate')}>
+                          <span className={cn('min-w-0', isSelect ? 'shrink-0' : src?.headerWrap ? 'leading-snug' : 'truncate')}>
                             {flexRender(header.column.columnDef.header, header.getContext())}
                           </span>
                         </div>
@@ -583,7 +591,7 @@ function DataTable<T extends { id: string }>({
                           cellText,
                           cellPadding,
                           alignClass[src?.align ?? 'left'],
-                          cell.column.id === '_select' && 'w-10 px-3',
+                          cell.column.id === '_select' && 'w-17 px-3',
                           // Opaque surface: the pinned rail has scrolling cells passing under it.
                           src?.stickyRight &&
                             'sticky right-0 z-10 bg-card border-l border-border/60 shadow-[-6px_0_10px_-6px_rgb(0_0_0/0.10)] group-hover/row:bg-accent',
@@ -625,6 +633,7 @@ function DataTable<T extends { id: string }>({
               variant="ghost"
               size="sm"
               mode="icon"
+              className="hidden sm:inline-flex"
               onClick={() => pagination.onPageChange(1)}
               disabled={pagination.page <= 1}
               aria-label="หน้าแรก"
@@ -634,23 +643,25 @@ function DataTable<T extends { id: string }>({
             <Button
               variant="outline"
               size="sm"
+              className="max-lg:min-w-11"
               aria-label="ก่อนหน้า" onClick={() => pagination.onPageChange(pagination.page - 1)}
               disabled={pagination.page <= 1}
             >
-              <ChevronLeft className="h-3.5 w-3.5 mr-1" />
+              <ChevronLeft className="h-3.5 w-3.5 sm:mr-1" />
               <span className="hidden sm:inline">ก่อนหน้า</span>
             </Button>
-            <span className="px-3 py-1 text-sm text-muted-foreground tabular-nums">
+            <span className="shrink-0 whitespace-nowrap px-3 py-1 text-sm text-muted-foreground tabular-nums">
               {pagination.page} / {pagination.totalPages}
             </span>
             <Button
               variant="outline"
               size="sm"
+              className="max-lg:min-w-11"
               aria-label="ถัดไป" onClick={() => pagination.onPageChange(pagination.page + 1)}
               disabled={pagination.page >= pagination.totalPages}
             >
               <span className="hidden sm:inline">ถัดไป</span>
-              <ChevronRight className="h-3.5 w-3.5 ml-1" />
+              <ChevronRight className="h-3.5 w-3.5 sm:ml-1" />
             </Button>
             <Button
               variant="ghost"
@@ -659,6 +670,7 @@ function DataTable<T extends { id: string }>({
               onClick={() => pagination.onPageChange(pagination.totalPages)}
               disabled={pagination.page >= pagination.totalPages}
               aria-label="หน้าสุดท้าย"
+              className="hidden sm:inline-flex"
             >
               <ChevronsRight className="h-3.5 w-3.5" />
             </Button>

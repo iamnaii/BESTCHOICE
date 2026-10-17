@@ -1,4 +1,5 @@
-import { useState, useRef } from 'react';
+import { NativeSelect } from '@/components/ui/native-select';
+import { useId as useUiFieldId, useState, useRef } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import api, { getErrorMessage } from '@/lib/api';
 import { toast } from 'sonner';
@@ -29,6 +30,7 @@ const statusLabels: Record<string, { label: string; className: string }> = {
 };
 
 export default function CreditCheckPanel({ contractId }: { contractId: string }) {
+  const uiFieldId = useUiFieldId();
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -163,8 +165,8 @@ export default function CreditCheckPanel({ contractId }: { contractId: string })
           <p className="text-xs text-muted-foreground">อัปโหลด Statement ธนาคารย้อนหลัง 3 เดือน เพื่อให้ AI วิเคราะห์ความสามารถในการผ่อนชำระ</p>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs text-muted-foreground mb-1">ธนาคาร</label>
-              <input
+              <label htmlFor={`${uiFieldId}-1`} className="block text-xs text-muted-foreground mb-1">ธนาคาร</label>
+              <input id={`${uiFieldId}-1`}
                 type="text"
                 value={bankName}
                 onChange={(e) => setBankName(e.target.value)}
@@ -173,8 +175,8 @@ export default function CreditCheckPanel({ contractId }: { contractId: string })
               />
             </div>
             <div>
-              <label className="block text-xs text-muted-foreground mb-1">Statement (ภาพ/PDF, 3 เดือน)</label>
-              <input
+              <label htmlFor={`${uiFieldId}-2`} className="block text-xs text-muted-foreground mb-1">Statement (ภาพ/PDF, 3 เดือน)</label>
+              <input id={`${uiFieldId}-2`}
                 ref={fileInputRef}
                 type="file"
                 accept="image/*,.pdf"
@@ -296,8 +298,8 @@ export default function CreditCheckPanel({ contractId }: { contractId: string })
           {canOverride && (
             <div className="border-t pt-3 space-y-2">
               <div className="text-xs text-muted-foreground font-medium">Override ผลตรวจสอบ (สำหรับผู้จัดการ)</div>
-              <div className="flex gap-2">
-                <select
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <NativeSelect wrapperClassName="w-full sm:w-44 sm:shrink-0"
                   aria-label="ผลพิจารณาเครดิต"
                   value={overrideStatus}
                   onChange={(e) => { setAffordability(null); setOverrideStatus(e.target.value); }}
@@ -307,14 +309,14 @@ export default function CreditCheckPanel({ contractId }: { contractId: string })
                   <option value="APPROVED">อนุมัติ</option>
                   <option value="REJECTED">ปฏิเสธ</option>
                   <option value="MANUAL_REVIEW">ตรวจเพิ่มเติม</option>
-                </select>
+                </NativeSelect>
                 <input
                   type="text"
                   value={overrideNotes}
                   onChange={(e) => setOverrideNotes(e.target.value)}
                   placeholder="เหตุผลการพิจารณา อย่างน้อย 20 ตัวอักษร"
                   aria-label="เหตุผลการพิจารณา"
-                  className="flex-1 px-3 py-1.5 border border-input rounded-lg text-sm"
+                  className="min-w-0 flex-1 px-3 py-1.5 border border-input rounded-lg text-sm"
                 />
                 <button
                   onClick={() => overrideMutation.mutate()}

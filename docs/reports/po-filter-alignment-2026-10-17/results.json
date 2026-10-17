@@ -1,0 +1,482 @@
+[
+  {
+    "width": 1440,
+    "theme": "light",
+    "root": 16,
+    "fields": [
+      {
+        "label": "ค้นหาเลข PO, ผู้จัดจำหน่าย",
+        "x": 292,
+        "y": 403.90625,
+        "width": 433.59375,
+        "height": 44,
+        "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif",
+        "size": "14px",
+        "paddingLeft": "12px",
+        "arrowInset": null,
+        "arrowOffsetY": null,
+        "textInset": null,
+        "textOffsetY": null
+      },
+      {
+        "label": "สถานะ",
+        "x": 737.59375,
+        "y": 403.90625,
+        "width": 216.796875,
+        "height": 44,
+        "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif",
+        "size": "14px",
+        "paddingLeft": "12px",
+        "arrowWidth": 16,
+        "arrowInset": 13,
+        "arrowOffsetY": 0,
+        "textInset": 13,
+        "textOffsetY": 0
+      },
+      {
+        "label": "ผู้จัดจำหน่าย",
+        "x": 966.390625,
+        "y": 403.90625,
+        "width": 216.796875,
+        "height": 44,
+        "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif",
+        "size": "14px",
+        "paddingLeft": "12px",
+        "arrowWidth": 16,
+        "arrowInset": 13,
+        "arrowOffsetY": 0,
+        "textInset": 13,
+        "textOffsetY": 0
+      },
+      {
+        "label": "ช่วงเวลา",
+        "x": 1195.1875,
+        "y": 403.90625,
+        "width": 216.8125,
+        "height": 44,
+        "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif",
+        "size": "14px",
+        "paddingLeft": "12px",
+        "arrowWidth": 16,
+        "arrowInset": 13,
+        "arrowOffsetY": 0,
+        "textInset": 13,
+        "textOffsetY": 0
+      }
+    ],
+    "popup": {
+      "x": 966,
+      "right": 1182.796875,
+      "width": 216.796875,
+      "labelWidth": 163,
+      "labelScroll": 163,
+      "labelHeight": 210
+    },
+    "chip": {
+      "x": 292,
+      "right": 1412,
+      "overflow": false
+    },
+    "interactions": "PASS"
+  },
+  {
+    "width": 1280,
+    "theme": "light",
+    "root": 16,
+    "fields": [
+      {
+        "label": "ค้นหาเลข PO, ผู้จัดจำหน่าย",
+        "x": 292,
+        "y": 403.90625,
+        "width": 369.59375,
+        "height": 44,
+        "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif",
+        "size": "14px",
+        "paddingLeft": "12px",
+        "arrowInset": null,
+        "arrowOffsetY": null,
+        "textInset": null,
+        "textOffsetY": null
+      },
+      {
+        "label": "สถานะ",
+        "x": 673.59375,
+        "y": 403.90625,
+        "width": 184.796875,
+        "height": 44,
+        "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif",
+        "size": "14px",
+        "paddingLeft": "12px",
+        "arrowWidth": 16,
+        "arrowInset": 13,
+        "arrowOffsetY": 0,
+        "textInset": 13,
+        "textOffsetY": 0
+      },
+      {
+        "label": "ผู้จัดจำหน่าย",
+        "x": 870.390625,
+        "y": 403.90625,
+        "width": 184.796875,
+        "height": 44,
+        "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif",
+        "size": "14px",
+        "paddingLeft": "12px",
+        "arrowWidth": 16,
+        "arrowInset": 13,
+        "arrowOffsetY": 0,
+        "textInset": 13,
+        "textOffsetY": 0
+      },
+      {
+        "label": "ช่วงเวลา",
+        "x": 1067.1875,
+        "y": 403.90625,
+        "width": 184.8125,
+        "height": 44,
+        "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif",
+        "size": "14px",
+        "paddingLeft": "12px",
+        "arrowWidth": 16,
+        "arrowInset": 13,
+        "arrowOffsetY": 0,
+        "textInset": 13,
+        "textOffsetY": 0
+      }
+    ],
+    "popup": {
+      "x": 870,
+      "right": 1054.796875,
+      "width": 184.796875,
+      "labelWidth": 131,
+      "labelScroll": 131,
+      "labelHeight": 252
+    },
+    "chip": {
+      "x": 292,
+      "right": 1252,
+      "overflow": false
+    },
+    "interactions": "PASS"
+  },
+  {
+    "width": 1024,
+    "theme": "light",
+    "root": 16,
+    "fields": [
+      {
+        "label": "ค้นหาเลข PO, ผู้จัดจำหน่าย",
+        "x": 292,
+        "y": 557.8125,
+        "width": 346,
+        "height": 44,
+        "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif",
+        "size": "14px",
+        "paddingLeft": "12px",
+        "arrowInset": null,
+        "arrowOffsetY": null,
+        "textInset": null,
+        "textOffsetY": null
+      },
+      {
+        "label": "สถานะ",
+        "x": 650,
+        "y": 557.8125,
+        "width": 346,
+        "height": 44,
+        "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif",
+        "size": "14px",
+        "paddingLeft": "12px",
+        "arrowWidth": 16,
+        "arrowInset": 13,
+        "arrowOffsetY": 0,
+        "textInset": 13,
+        "textOffsetY": 0
+      },
+      {
+        "label": "ผู้จัดจำหน่าย",
+        "x": 292,
+        "y": 613.8125,
+        "width": 346,
+        "height": 44,
+        "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif",
+        "size": "14px",
+        "paddingLeft": "12px",
+        "arrowWidth": 16,
+        "arrowInset": 13,
+        "arrowOffsetY": 0,
+        "textInset": 13,
+        "textOffsetY": 0
+      },
+      {
+        "label": "ช่วงเวลา",
+        "x": 650,
+        "y": 613.8125,
+        "width": 346,
+        "height": 44,
+        "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif",
+        "size": "14px",
+        "paddingLeft": "12px",
+        "arrowWidth": 16,
+        "arrowInset": 13,
+        "arrowOffsetY": 0,
+        "textInset": 13,
+        "textOffsetY": 0
+      }
+    ],
+    "popup": {
+      "x": 292,
+      "right": 638,
+      "width": 346,
+      "labelWidth": 292,
+      "labelScroll": 292,
+      "labelHeight": 126
+    },
+    "chip": {
+      "x": 292,
+      "right": 996,
+      "overflow": false
+    },
+    "interactions": "PASS"
+  },
+  {
+    "width": 390,
+    "theme": "light",
+    "root": 16,
+    "fields": [
+      {
+        "label": "ค้นหาเลข PO, ผู้จัดจำหน่าย",
+        "x": 16,
+        "y": 751.71875,
+        "width": 358,
+        "height": 44,
+        "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif",
+        "size": "16px",
+        "paddingLeft": "12px",
+        "arrowInset": null,
+        "arrowOffsetY": null,
+        "textInset": null,
+        "textOffsetY": null
+      },
+      {
+        "label": "สถานะ",
+        "x": 16,
+        "y": 807.71875,
+        "width": 358,
+        "height": 44,
+        "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif",
+        "size": "16px",
+        "paddingLeft": "12px",
+        "arrowWidth": 16,
+        "arrowInset": 13,
+        "arrowOffsetY": 0,
+        "textInset": 13,
+        "textOffsetY": 0
+      },
+      {
+        "label": "ผู้จัดจำหน่าย",
+        "x": 16,
+        "y": 863.71875,
+        "width": 358,
+        "height": 44,
+        "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif",
+        "size": "16px",
+        "paddingLeft": "12px",
+        "arrowWidth": 16,
+        "arrowInset": 13,
+        "arrowOffsetY": 0,
+        "textInset": 13,
+        "textOffsetY": 0
+      },
+      {
+        "label": "ช่วงเวลา",
+        "x": 16,
+        "y": 919.71875,
+        "width": 358,
+        "height": 44,
+        "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif",
+        "size": "16px",
+        "paddingLeft": "12px",
+        "arrowWidth": 16,
+        "arrowInset": 13,
+        "arrowOffsetY": 0,
+        "textInset": 13,
+        "textOffsetY": 0
+      }
+    ],
+    "popup": {
+      "x": 16,
+      "right": 374,
+      "width": 358,
+      "labelWidth": 304,
+      "labelScroll": 304,
+      "labelHeight": 126
+    },
+    "chip": {
+      "x": 16,
+      "right": 374,
+      "overflow": false
+    },
+    "interactions": "PASS"
+  },
+  {
+    "width": 320,
+    "theme": "dark",
+    "root": 16,
+    "fields": [
+      {
+        "label": "ค้นหาเลข PO, ผู้จัดจำหน่าย",
+        "x": 16,
+        "y": 778.71875,
+        "width": 288,
+        "height": 44,
+        "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif",
+        "size": "16px",
+        "paddingLeft": "12px",
+        "arrowInset": null,
+        "arrowOffsetY": null,
+        "textInset": null,
+        "textOffsetY": null
+      },
+      {
+        "label": "สถานะ",
+        "x": 16,
+        "y": 834.71875,
+        "width": 288,
+        "height": 44,
+        "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif",
+        "size": "16px",
+        "paddingLeft": "12px",
+        "arrowWidth": 16,
+        "arrowInset": 13,
+        "arrowOffsetY": 0,
+        "textInset": 13,
+        "textOffsetY": 0
+      },
+      {
+        "label": "ผู้จัดจำหน่าย",
+        "x": 16,
+        "y": 890.71875,
+        "width": 288,
+        "height": 44,
+        "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif",
+        "size": "16px",
+        "paddingLeft": "12px",
+        "arrowWidth": 16,
+        "arrowInset": 13,
+        "arrowOffsetY": 0,
+        "textInset": 13,
+        "textOffsetY": 0
+      },
+      {
+        "label": "ช่วงเวลา",
+        "x": 16,
+        "y": 946.71875,
+        "width": 288,
+        "height": 44,
+        "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif",
+        "size": "16px",
+        "paddingLeft": "12px",
+        "arrowWidth": 16,
+        "arrowInset": 13,
+        "arrowOffsetY": 0,
+        "textInset": 13,
+        "textOffsetY": 0
+      }
+    ],
+    "popup": {
+      "x": 16,
+      "right": 304,
+      "width": 288,
+      "labelWidth": 234,
+      "labelScroll": 234,
+      "labelHeight": 147
+    },
+    "chip": {
+      "x": 16,
+      "right": 304,
+      "overflow": false
+    },
+    "interactions": "PASS"
+  },
+  {
+    "width": 390,
+    "theme": "dark",
+    "root": 20,
+    "fields": [
+      {
+        "label": "ค้นหาเลข PO, ผู้จัดจำหน่าย",
+        "x": 20,
+        "y": 955.421875,
+        "width": 350,
+        "height": 55,
+        "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif",
+        "size": "20px",
+        "paddingLeft": "15px",
+        "arrowInset": null,
+        "arrowOffsetY": null,
+        "textInset": null,
+        "textOffsetY": null
+      },
+      {
+        "label": "สถานะ",
+        "x": 20,
+        "y": 1025.421875,
+        "width": 350,
+        "height": 55,
+        "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif",
+        "size": "20px",
+        "paddingLeft": "15px",
+        "arrowWidth": 20,
+        "arrowInset": 16,
+        "arrowOffsetY": 0,
+        "textInset": 16,
+        "textOffsetY": 0
+      },
+      {
+        "label": "ผู้จัดจำหน่าย",
+        "x": 20,
+        "y": 1095.421875,
+        "width": 350,
+        "height": 55,
+        "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif",
+        "size": "20px",
+        "paddingLeft": "15px",
+        "arrowWidth": 20,
+        "arrowInset": 16,
+        "arrowOffsetY": 0,
+        "textInset": 16,
+        "textOffsetY": 0
+      },
+      {
+        "label": "ช่วงเวลา",
+        "x": 20,
+        "y": 1165.421875,
+        "width": 350,
+        "height": 55,
+        "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif",
+        "size": "20px",
+        "paddingLeft": "15px",
+        "arrowWidth": 20,
+        "arrowInset": 16,
+        "arrowOffsetY": 0,
+        "textInset": 16,
+        "textOffsetY": 0
+      }
+    ],
+    "popup": {
+      "x": 20,
+      "right": 370,
+      "width": 350,
+      "labelWidth": 283,
+      "labelScroll": 283,
+      "labelHeight": 184
+    },
+    "chip": {
+      "x": 20,
+      "right": 370,
+      "overflow": false
+    },
+    "interactions": "PASS"
+  }
+]

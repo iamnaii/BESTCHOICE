@@ -1,3 +1,5 @@
+import { useId } from 'react';
+import { formTextareaClass } from '@/components/ui/form-styles';
 import { useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { Camera, X, CreditCard } from 'lucide-react';
@@ -26,6 +28,7 @@ interface Props {
 }
 
 export default function PersonalFields({ form, setForm, setMany }: Props) {
+  const fieldId = useId();
   const avatarInputRef = useRef<HTMLInputElement>(null);
   const [isReadingCard, setIsReadingCard] = useState(false);
 
@@ -94,25 +97,25 @@ export default function PersonalFields({ form, setForm, setMany }: Props) {
         </button>
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
-        <div><label className={labelClass}>ชื่อ-นามสกุล *</label>
-          <input className={inputClass} value={form.name} onChange={(e) => setForm('name', e.target.value)} required /></div>
-        <div><label className={labelClass}>ชื่อเล่น</label>
-          <input className={inputClass} value={form.nickname} onChange={(e) => setForm('nickname', e.target.value)} placeholder="เช่น นุ๊ก, เอ" /></div>
-        <div><label className={labelClass}>รหัสพนักงาน</label>
-          <input className={inputClass} value={form.employeeId} onChange={(e) => setForm('employeeId', e.target.value)} placeholder="EMP-001" /></div>
-        <div><label className={labelClass}>วันเริ่มงาน</label>
-          <ThaiDateInput className={inputClass} value={form.startDate} onChange={(e) => setForm('startDate', e.target.value)} /></div>
-        <div><label className={labelClass}>เลขบัตรประชาชน</label>
-          <input className={inputClass} value={form.nationalId} onChange={(e) => setForm('nationalId', e.target.value)} maxLength={13} pattern="\d{13}" placeholder="x-xxxx-xxxxx-xx-x" /></div>
-        <div><label className={labelClass}>วันเกิด</label>
-          <ThaiDateInput className={inputClass} value={form.birthDate} onChange={(e) => setForm('birthDate', e.target.value)} /></div>
-        <div><label className={labelClass}>เบอร์โทรศัพท์</label>
-          <input className={inputClass} type="tel" value={form.phone} onChange={(e) => setForm('phone', e.target.value)} pattern="0[0-9]{9}" placeholder="0xx-xxx-xxxx" /></div>
-        <div><label className={labelClass}>LINE ID</label>
-          <input className={inputClass} value={form.lineId} onChange={(e) => setForm('lineId', e.target.value)} /></div>
-        <div className="col-span-2"><label className={labelClass}>ที่อยู่</label>
-          <textarea className={inputClass} rows={2} value={form.address} onChange={(e) => setForm('address', e.target.value)} /></div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div><label htmlFor={`${fieldId}-name`} className={labelClass}>ชื่อ-นามสกุล *</label>
+          <input className={inputClass} id={`${fieldId}-name`} value={form.name} onChange={(e) => setForm('name', e.target.value)} required /></div>
+        <div><label htmlFor={`${fieldId}-nickname`} className={labelClass}>ชื่อเล่น</label>
+          <input className={inputClass} id={`${fieldId}-nickname`} value={form.nickname} onChange={(e) => setForm('nickname', e.target.value)} placeholder="เช่น นุ๊ก, เอ" /></div>
+        <div><label htmlFor={`${fieldId}-employeeId`} className={labelClass}>รหัสพนักงาน</label>
+          <input className={inputClass} id={`${fieldId}-employeeId`} value={form.employeeId} onChange={(e) => setForm('employeeId', e.target.value)} placeholder="EMP-001" /></div>
+        <div><label htmlFor={`${fieldId}-startDate`} className={labelClass}>วันเริ่มงาน</label>
+          <ThaiDateInput className={inputClass} id={`${fieldId}-startDate`} value={form.startDate} onChange={(e) => setForm('startDate', e.target.value)} /></div>
+        <div><label htmlFor={`${fieldId}-nationalId`} className={labelClass}>เลขบัตรประชาชน</label>
+          <input className={inputClass} id={`${fieldId}-nationalId`} value={form.nationalId} onChange={(e) => setForm('nationalId', e.target.value)} maxLength={13} pattern="\d{13}" placeholder="x-xxxx-xxxxx-xx-x" /></div>
+        <div><label htmlFor={`${fieldId}-birthDate`} className={labelClass}>วันเกิด</label>
+          <ThaiDateInput className={inputClass} id={`${fieldId}-birthDate`} value={form.birthDate} onChange={(e) => setForm('birthDate', e.target.value)} /></div>
+        <div><label htmlFor={`${fieldId}-phone`} className={labelClass}>เบอร์โทรศัพท์</label>
+          <input className={inputClass} type="tel" id={`${fieldId}-phone`} value={form.phone} onChange={(e) => setForm('phone', e.target.value)} pattern="0[0-9]{9}" placeholder="0xx-xxx-xxxx" /></div>
+        <div><label htmlFor={`${fieldId}-lineId`} className={labelClass}>LINE ID</label>
+          <input className={inputClass} id={`${fieldId}-lineId`} value={form.lineId} onChange={(e) => setForm('lineId', e.target.value)} /></div>
+        <div className="sm:col-span-2"><label htmlFor={`${fieldId}-address`} className={labelClass}>ที่อยู่</label>
+          <textarea className={formTextareaClass} rows={2} id={`${fieldId}-address`} value={form.address} onChange={(e) => setForm('address', e.target.value)} /></div>
       </div>
     </div>
   );

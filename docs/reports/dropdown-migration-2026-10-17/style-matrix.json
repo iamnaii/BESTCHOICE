@@ -1,0 +1,197 @@
+{
+  "scope": "207 isolated style fixtures rendered with shared NativeSelect; not actual page workflows",
+  "results": [
+    {
+      "engine": "chromium",
+      "width": 320,
+      "root": 16,
+      "dark": false,
+      "controls": 207,
+      "failures": []
+    },
+    {
+      "engine": "chromium",
+      "width": 320,
+      "root": 16,
+      "dark": true,
+      "controls": 207,
+      "failures": []
+    },
+    {
+      "engine": "chromium",
+      "width": 390,
+      "root": 16,
+      "dark": false,
+      "controls": 207,
+      "failures": []
+    },
+    {
+      "engine": "chromium",
+      "width": 390,
+      "root": 16,
+      "dark": true,
+      "controls": 207,
+      "failures": []
+    },
+    {
+      "engine": "chromium",
+      "width": 768,
+      "root": 16,
+      "dark": false,
+      "controls": 207,
+      "failures": []
+    },
+    {
+      "engine": "chromium",
+      "width": 768,
+      "root": 16,
+      "dark": true,
+      "controls": 207,
+      "failures": []
+    },
+    {
+      "engine": "chromium",
+      "width": 1440,
+      "root": 16,
+      "dark": false,
+      "controls": 207,
+      "failures": []
+    },
+    {
+      "engine": "chromium",
+      "width": 1440,
+      "root": 16,
+      "dark": true,
+      "controls": 207,
+      "failures": []
+    },
+    {
+      "engine": "chromium",
+      "width": 320,
+      "root": 20,
+      "dark": false,
+      "controls": 207,
+      "failures": []
+    },
+    {
+      "engine": "chromium",
+      "width": 320,
+      "root": 20,
+      "dark": true,
+      "controls": 207,
+      "failures": []
+    },
+    {
+      "engine": "chromium",
+      "width": 1280,
+      "root": 20,
+      "dark": false,
+      "controls": 207,
+      "failures": []
+    },
+    {
+      "engine": "chromium",
+      "width": 1280,
+      "root": 20,
+      "dark": true,
+      "controls": 207,
+      "failures": []
+    },
+    {
+      "engine": "webkit",
+      "width": 320,
+      "root": 16,
+      "dark": false,
+      "controls": 207,
+      "failures": []
+    },
+    {
+      "engine": "webkit",
+      "width": 320,
+      "root": 16,
+      "dark": true,
+      "controls": 207,
+      "failures": []
+    },
+    {
+      "engine": "webkit",
+      "width": 390,
+      "root": 16,
+      "dark": false,
+      "controls": 207,
+      "failures": []
+    },
+    {
+      "engine": "webkit",
+      "width": 390,
+      "root": 16,
+      "dark": true,
+      "controls": 207,
+      "failures": []
+    },
+    {
+      "engine": "webkit",
+      "width": 768,
+      "root": 16,
+      "dark": false,
+      "controls": 207,
+      "failures": []
+    },
+    {
+      "engine": "webkit",
+      "width": 768,
+      "root": 16,
+      "dark": true,
+      "controls": 207,
+      "failures": []
+    },
+    {
+      "engine": "webkit",
+      "width": 1440,
+      "root": 16,
+      "dark": false,
+      "controls": 207,
+      "failures": []
+    },
+    {
+      "engine": "webkit",
+      "width": 1440,
+      "root": 16,
+      "dark": true,
+      "controls": 207,
+      "failures": []
+    },
+    {
+      "engine": "webkit",
+      "width": 320,
+      "root": 20,
+      "dark": false,
+      "controls": 207,
+      "failures": []
+    },
+    {
+      "engine": "webkit",
+      "width": 320,
+      "root": 20,
+      "dark": true,
+      "controls": 207,
+      "failures": []
+    },
+    {
+      "engine": "webkit",
+      "width": 1280,
+      "root": 20,
+      "dark": false,
+      "controls": 207,
+      "failures": []
+    },
+    {
+      "engine": "webkit",
+      "width": 1280,
+      "root": 20,
+      "dark": true,
+      "controls": 207,
+      "failures": []
+    }
+  ]
+}

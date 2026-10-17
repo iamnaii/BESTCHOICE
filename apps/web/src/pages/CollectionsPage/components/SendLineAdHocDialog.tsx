@@ -1,3 +1,4 @@
+import { NativeSelect } from '@/components/ui/native-select';
 import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import Modal from '@/components/ui/Modal';
@@ -120,10 +121,10 @@ export default function SendLineAdHocDialog({ open, contract, onClose, onSent }:
 
         {mode === 'template' ? (
           <div className="space-y-3">
-            <select
+            <NativeSelect wrapperClassName="max-w-full w-full"
               value={templateId}
               onChange={(e) => setTemplateId(e.target.value)}
-              className="w-full px-3 py-2 border border-input rounded-lg text-sm leading-snug"
+              className="px-3 py-2 border border-input rounded-lg text-sm leading-snug"
             >
               <option value="">— เลือก template —</option>
               {rules.map((r) => (
@@ -131,7 +132,7 @@ export default function SendLineAdHocDialog({ open, contract, onClose, onSent }:
                   {r.name}
                 </option>
               ))}
-            </select>
+            </NativeSelect>
 
             {/* Message preview with substituted vars */}
             {selectedRule && contract && (

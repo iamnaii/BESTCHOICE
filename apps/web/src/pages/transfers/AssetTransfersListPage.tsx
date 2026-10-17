@@ -137,7 +137,7 @@ export default function AssetTransfersListPage() {
         <CardContent className="p-4 grid grid-cols-1 md:grid-cols-5 gap-3">
           <div className="md:col-span-2 relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
+            <Input aria-label="ค้นหาสินทรัพย์ (รหัส/ชื่อ/serial)"
               className="pl-10"
               placeholder="ค้นหาสินทรัพย์ (รหัส/ชื่อ/serial)"
               value={searchInput}
@@ -148,15 +148,15 @@ export default function AssetTransfersListPage() {
             />
           </div>
           <Input
-            placeholder="ผู้ดูแล (contains)"
+            aria-label="ผู้ดูแลสินทรัพย์" placeholder="ผู้ดูแล (contains)"
             value={custodianInput}
             onChange={(e) => setParam('custodian', e.target.value || null)}
           />
-          <ThaiDateInput
+          <ThaiDateInput aria-label="วันที่เริ่ม"
             value={fromDate}
             onChange={(e) => setParam('fromDate', e.target.value || null)}
           />
-          <ThaiDateInput
+          <ThaiDateInput aria-label="วันที่สิ้นสุด"
             value={toDate}
             onChange={(e) => setParam('toDate', e.target.value || null)}
           />
@@ -165,7 +165,7 @@ export default function AssetTransfersListPage() {
               value={branchId || 'ALL'}
               onValueChange={(v) => setParam('branchId', v === 'ALL' ? null : v)}
             >
-              <SelectTrigger>
+              <SelectTrigger aria-label="สาขา">
                 <SelectValue placeholder="สาขา" />
               </SelectTrigger>
               <SelectContent>

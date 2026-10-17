@@ -1,3 +1,4 @@
+import { NativeSelect } from '@/components/ui/native-select';
 import { UseFormReturn } from 'react-hook-form';
 import { useId } from 'react';
 import { useQuery } from '@tanstack/react-query';
@@ -139,9 +140,9 @@ export default function SaleDetailsForm({
               name="discount"
               render={({ field }) => (
                 <FormItem>
-                  <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
+                  <FormLabel className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
                     ส่วนลด
-                  </label>
+                  </FormLabel>
                   <FormControl>
                     <input
                       type="number"
@@ -203,11 +204,11 @@ export default function SaleDetailsForm({
                   name="financeCompany"
                   render={({ field }) => (
                     <FormItem>
-                      <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
+                      <FormLabel className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
                         บริษัทไฟแนนซ์ *
-                      </label>
+                      </FormLabel>
                       <FormControl>
-                        <select {...field} value={field.value ?? ''} className={selectClass}>
+                        <NativeSelect wrapperClassName="max-w-full w-full" {...field} value={field.value ?? ''} className={selectClass}>
                           <option value="">เลือกบริษัทไฟแนนซ์</option>
                           {field.value &&
                             !activeFinanceCompanies.some((c) => c.name === field.value) && (
@@ -218,7 +219,7 @@ export default function SaleDetailsForm({
                               {c.name}
                             </option>
                           ))}
-                        </select>
+                        </NativeSelect>
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -229,9 +230,9 @@ export default function SaleDetailsForm({
                   name="contractNumber"
                   render={({ field }) => (
                     <FormItem>
-                      <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
+                      <FormLabel className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
                         เลขที่สัญญา
-                      </label>
+                      </FormLabel>
                       <FormControl>
                         <input
                           type="text"
@@ -252,9 +253,9 @@ export default function SaleDetailsForm({
                   name="downPayment"
                   render={({ field }) => (
                     <FormItem>
-                      <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
+                      <FormLabel className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
                         เงินดาวน์
-                      </label>
+                      </FormLabel>
                       <FormControl>
                         <input
                           type="number"
@@ -299,9 +300,9 @@ export default function SaleDetailsForm({
               name="notes"
               render={({ field }) => (
                 <FormItem className="mt-3">
-                  <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
+                  <FormLabel className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
                     หมายเหตุ
-                  </label>
+                  </FormLabel>
                   <FormControl>
                     <input
                       type="text"

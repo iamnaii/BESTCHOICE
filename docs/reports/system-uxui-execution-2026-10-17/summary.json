@@ -1,0 +1,38 @@
+{
+  "status": "IN_PROGRESS",
+  "inventoryEntries": 307,
+  "uniqueAppPaths": 299,
+  "adminRouteViewportCases": 2152,
+  "adminThemeObservations": 4304,
+  "storefrontThemeObservations": 608,
+  "baselineFailures": 0,
+  "apiErrorEntries": 12,
+  "visibleControlObservations390Light": 2557,
+  "visibleSmallTargetCandidates390Light": 551,
+  "sourceEventSites": 4331,
+  "sourceFilesWithEvents": 667,
+  "forms": 100,
+  "dialogs": 84,
+  "initialContrastIncompleteNodes": 126,
+  "contrastRecheckNodes": 126,
+  "contrastRecheckAxePass": 18,
+  "contrastRecheckAxeIncomplete": 108,
+  "contrastGeometryReachable": 126,
+  "colorPairMinimumRatio": 4.969,
+  "existingE2E": {
+    "baselinePassed": 811,
+    "baselineFailed": 3,
+    "rerunPassed": 46,
+    "remainingSkipped": 10,
+    "uniqueExistingCasesPassedAfterRerun": 814
+  },
+  "finalLocalCheck": {
+    "status": "PASS",
+    "sourceFingerprint": "a3b9ee9c844a61db2cecbe3f156877e9b10b117ce24364062a3eea5ef9097a37",
+    "finishedAt": "2026-10-17T06:08:59.364Z",
+    "url": "http://localhost:5206/inbox",
+    "checks": 39
+  },
+  "poLongNumberBrowserCases": 12,
+  "poTargetedUnitCases": 35
+}

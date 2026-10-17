@@ -166,7 +166,7 @@ export default function PaymentCsvImportPage() {
           <textarea
             value={csvText}
             onChange={(e) => { setCsvText(e.target.value); setResult(null); }}
-            placeholder="วางข้อมูล CSV ที่นี่..."
+            aria-label="ข้อมูล CSV การชำระเงิน" placeholder="วางข้อมูล CSV ที่นี่..."
             rows={8}
             className="w-full px-3.5 py-2.5 border border-input rounded-lg text-sm font-mono outline-hidden bg-background text-foreground placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring/30 resize-y"
           />

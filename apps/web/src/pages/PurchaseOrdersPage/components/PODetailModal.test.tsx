@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, within, fireEvent, cleanup } from '@testing-library/react';
+import { render, screen, within, fireEvent, cleanup, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router';
 import { PODetailModal } from './PODetailModal';
 import type { PODetail, PurchaseOrder, PoPaymentsResponse } from '../types';
@@ -58,6 +58,40 @@ const renderModal = (po: PurchaseOrder, extra: Partial<React.ComponentProps<type
 };
 
 describe('PODetailModal (redesign A)', () => {
+  it('focuses the close control once and restores the opener when closed', async () => {
+    const trigger = document.createElement('button');
+    trigger.textContent = 'เปิด PO';
+    document.body.appendChild(trigger);
+    trigger.focus();
+    const po = basePO();
+    const props = { isOpen: true, selectedPO: po, poDetail: null, onClose: vi.fn(), openReceiveModal: vi.fn(), openPaymentModal: vi.fn() };
+    const view = render(<MemoryRouter><PODetailModal {...props} /></MemoryRouter>);
+    expect(screen.getByRole('button', { name: 'ปิด' })).toHaveFocus();
+    const receive = screen.getAllByRole('button', { name: 'รับสินค้า' }).at(-1)!;
+    receive.focus();
+    view.rerender(<MemoryRouter><PODetailModal {...props} onClose={vi.fn()} /></MemoryRouter>);
+    expect(receive).toHaveFocus();
+    view.rerender(<MemoryRouter><PODetailModal {...props} isOpen={false} /></MemoryRouter>);
+    await waitFor(() => expect(trigger).toHaveFocus());
+    trigger.remove();
+  });
+
+  it('restores the same PO number after its desktop opener is replaced by a mobile card', async () => {
+    const trigger = document.createElement('button');
+    trigger.dataset.poDetailTrigger = 'po9:detail';
+    document.body.appendChild(trigger);
+    trigger.focus();
+    const props = { isOpen: true, returnFocusKey: 'po9:detail', selectedPO: basePO(), poDetail: null, onClose: vi.fn(), openReceiveModal: vi.fn(), openPaymentModal: vi.fn() };
+    const view = render(<MemoryRouter><PODetailModal {...props} /></MemoryRouter>);
+    trigger.remove();
+    const mobileTrigger = document.createElement('button');
+    mobileTrigger.dataset.poDetailTrigger = 'po9:number';
+    document.body.appendChild(mobileTrigger);
+    view.rerender(<MemoryRouter><PODetailModal {...props} isOpen={false} /></MemoryRouter>);
+    await waitFor(() => expect(mobileTrigger).toHaveFocus());
+    mobileTrigger.remove();
+  });
+
   it('header carries the PO number with both state badges; the two tiles show goods and money progress', () => {
     renderModal(basePO());
     const dialog = screen.getByRole('dialog', { name: 'รายละเอียดใบสั่งซื้อ' });

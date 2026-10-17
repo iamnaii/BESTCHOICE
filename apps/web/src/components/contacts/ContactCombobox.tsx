@@ -41,6 +41,8 @@ export interface ContactPickResult {
 }
 
 interface Props {
+  id?: string;
+  className?: string;
   // TRADE_IN_SELLER: backend adds the role directly to the Contact (no child entity created).
   // For create, ContactCombobox opens CreateContactModal in CUSTOMER mode (creates a person),
   // then calls ensureRole(contactId, 'TRADE_IN_SELLER') afterwards to add the role.
@@ -52,6 +54,8 @@ interface Props {
 }
 
 export function ContactCombobox({
+  id,
+  className,
   roleNeeded,
   value,
   onSelect,
@@ -114,10 +118,12 @@ export function ContactCombobox({
           <Button
             type="button"
             variant="outline"
+            id={id}
+            aria-label={id ? undefined : ROLE_LABELS[roleNeeded]}
             role="combobox"
             aria-expanded={open}
             aria-invalid={invalid}
-            className={cn('w-full justify-between font-normal', !value && 'text-muted-foreground')}
+            className={cn('w-full justify-between font-normal', !value && 'text-muted-foreground', className)}
           >
             <span className="truncate leading-snug" title={value || undefined}>
               {value || placeholder}

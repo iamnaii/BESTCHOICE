@@ -1,0 +1,3120 @@
+{
+  "status": "PASS",
+  "engine": "chromium",
+  "origin": "http://localhost:5206",
+  "repo": "/Users/iamnaii/Desktop/App/BESTCHOICE-layout-audit",
+  "results": [
+    {
+      "width": 320,
+      "rootSize": 16,
+      "theme": "light",
+      "tab": "นัดหมาย",
+      "fields": [
+        {
+          "label": "สาขาที่ดู",
+          "x": 16,
+          "y": 293,
+          "width": 288,
+          "height": 44,
+          "size": "16px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        },
+        {
+          "label": "วันที่ดู",
+          "x": 16,
+          "y": 382,
+          "width": 288,
+          "height": 44,
+          "size": "16px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        },
+        {
+          "label": "ลูกค้า",
+          "x": 33,
+          "y": 498.25,
+          "width": 254,
+          "height": 44,
+          "size": "16px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        },
+        {
+          "label": "สาขา",
+          "x": 33,
+          "y": 587.25,
+          "width": 254,
+          "height": 44,
+          "size": "16px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        },
+        {
+          "label": "วันที่นัด",
+          "x": 33,
+          "y": 676.25,
+          "width": 254,
+          "height": 44,
+          "size": "16px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        }
+      ],
+      "arrows": [
+        {
+          "label": "สาขาที่ดู",
+          "appearance": "none",
+          "padding": 40,
+          "arrowWidth": 16,
+          "inset": 12,
+          "center": 0,
+          "textGap": 12,
+          "labelGap": 8,
+          "focusVisible": true,
+          "outline": "2px solid rgb(10, 113, 78)",
+          "shadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgb(247, 247, 247) 0px 0px 0px 3px, oklab(0.485462 -0.0974341 0.0295291 / 0.3) 0px 0px 0px 6px, oklab(0 0 0 / 0.05) 0px 1px 3px 0px, oklab(0 0 0 / 0.05) 0px 1px 2px -1px",
+          "border": "rgb(10, 113, 78)",
+          "interactiveArrow": "none"
+        },
+        {
+          "label": "สาขา",
+          "appearance": "none",
+          "padding": 40,
+          "arrowWidth": 16,
+          "inset": 12,
+          "center": 0,
+          "textGap": 12,
+          "labelGap": 8,
+          "focusVisible": true,
+          "outline": "2px solid rgb(10, 113, 78)",
+          "shadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgb(247, 247, 247) 0px 0px 0px 3px, oklab(0.485462 -0.0974341 0.0295291 / 0.3) 0px 0px 0px 6px, oklab(0 0 0 / 0.05) 0px 1px 3px 0px, oklab(0 0 0 / 0.05) 0px 1px 2px -1px",
+          "border": "rgb(10, 113, 78)",
+          "interactiveArrow": "none"
+        }
+      ]
+    },
+    {
+      "width": 320,
+      "rootSize": 16,
+      "theme": "light",
+      "tab": "ตารางพนักงาน",
+      "fields": [
+        {
+          "label": "สาขาที่ดู",
+          "x": 16,
+          "y": 293,
+          "width": 288,
+          "height": 44,
+          "size": "16px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        },
+        {
+          "label": "วันที่ดู",
+          "x": 16,
+          "y": 382,
+          "width": 288,
+          "height": 44,
+          "size": "16px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        },
+        {
+          "label": "พนักงานรับนัด",
+          "x": 33,
+          "y": 606.25,
+          "width": 254,
+          "height": 44,
+          "size": "16px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        },
+        {
+          "label": "เริ่มรับนัด",
+          "x": 33,
+          "y": 691.25,
+          "width": 254,
+          "height": 44,
+          "size": "16px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        },
+        {
+          "label": "สิ้นสุดรับนัด",
+          "x": 33,
+          "y": 776.25,
+          "width": 254,
+          "height": 44,
+          "size": "16px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        },
+        {
+          "label": "วันที่ปลายทาง",
+          "x": 33,
+          "y": 921.25,
+          "width": 254,
+          "height": 44,
+          "size": "16px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        }
+      ],
+      "arrows": [
+        {
+          "label": "สาขาที่ดู",
+          "appearance": "none",
+          "padding": 40,
+          "arrowWidth": 16,
+          "inset": 12,
+          "center": 0,
+          "textGap": 12,
+          "labelGap": 8,
+          "focusVisible": true,
+          "outline": "2px solid rgb(10, 113, 78)",
+          "shadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgb(247, 247, 247) 0px 0px 0px 3px, oklab(0.485462 -0.0974341 0.0295291 / 0.3) 0px 0px 0px 6px, oklab(0 0 0 / 0.05) 0px 1px 3px 0px, oklab(0 0 0 / 0.05) 0px 1px 2px -1px",
+          "border": "rgb(10, 113, 78)",
+          "interactiveArrow": "none"
+        },
+        {
+          "label": "พนักงานรับนัด",
+          "appearance": "none",
+          "padding": 40,
+          "arrowWidth": 16,
+          "inset": 12,
+          "center": 0,
+          "textGap": 12,
+          "labelGap": 8,
+          "focusVisible": true,
+          "outline": "2px solid rgb(10, 113, 78)",
+          "shadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgb(247, 247, 247) 0px 0px 0px 3px, oklab(0.485462 -0.0974341 0.0295291 / 0.3) 0px 0px 0px 6px, oklab(0 0 0 / 0.05) 0px 1px 3px 0px, oklab(0 0 0 / 0.05) 0px 1px 2px -1px",
+          "border": "rgb(10, 113, 78)",
+          "interactiveArrow": "none"
+        }
+      ]
+    },
+    {
+      "width": 320,
+      "rootSize": 16,
+      "theme": "light",
+      "tab": "ปฏิทิน",
+      "fields": [
+        {
+          "label": "สาขาที่ดู",
+          "x": 16,
+          "y": 293,
+          "width": 288,
+          "height": 44,
+          "size": "16px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        },
+        {
+          "label": "วันที่ดู",
+          "x": 16,
+          "y": 382,
+          "width": 288,
+          "height": 44,
+          "size": "16px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        }
+      ],
+      "arrows": [
+        {
+          "label": "สาขาที่ดู",
+          "appearance": "none",
+          "padding": 40,
+          "arrowWidth": 16,
+          "inset": 12,
+          "center": 0,
+          "textGap": 12,
+          "labelGap": 8,
+          "focusVisible": true,
+          "outline": "2px solid rgb(10, 113, 78)",
+          "shadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgb(247, 247, 247) 0px 0px 0px 3px, oklab(0.485462 -0.0974341 0.0295291 / 0.3) 0px 0px 0px 6px, oklab(0 0 0 / 0.05) 0px 1px 3px 0px, oklab(0 0 0 / 0.05) 0px 1px 2px -1px",
+          "border": "rgb(10, 113, 78)",
+          "interactiveArrow": "none"
+        }
+      ]
+    },
+    {
+      "width": 320,
+      "rootSize": 16,
+      "theme": "dark",
+      "tab": "นัดหมาย",
+      "fields": [
+        {
+          "label": "สาขาที่ดู",
+          "x": 16,
+          "y": 293,
+          "width": 288,
+          "height": 44,
+          "size": "16px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        },
+        {
+          "label": "วันที่ดู",
+          "x": 16,
+          "y": 382,
+          "width": 288,
+          "height": 44,
+          "size": "16px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        },
+        {
+          "label": "ลูกค้า",
+          "x": 33,
+          "y": 498.25,
+          "width": 254,
+          "height": 44,
+          "size": "16px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        },
+        {
+          "label": "สาขา",
+          "x": 33,
+          "y": 587.25,
+          "width": 254,
+          "height": 44,
+          "size": "16px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        },
+        {
+          "label": "วันที่นัด",
+          "x": 33,
+          "y": 676.25,
+          "width": 254,
+          "height": 44,
+          "size": "16px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        }
+      ],
+      "arrows": [
+        {
+          "label": "สาขาที่ดู",
+          "appearance": "none",
+          "padding": 40,
+          "arrowWidth": 16,
+          "inset": 12,
+          "center": 0,
+          "textGap": 12,
+          "labelGap": 8,
+          "focusVisible": true,
+          "outline": "2px solid rgb(63, 217, 166)",
+          "shadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgb(23, 23, 23) 0px 0px 0px 3px, oklab(0.79364 -0.142822 0.0354974 / 0.3) 0px 0px 0px 6px, oklab(0 0 0 / 0.05) 0px 1px 3px 0px, oklab(0 0 0 / 0.05) 0px 1px 2px -1px",
+          "border": "rgb(63, 217, 166)",
+          "interactiveArrow": "none"
+        },
+        {
+          "label": "สาขา",
+          "appearance": "none",
+          "padding": 40,
+          "arrowWidth": 16,
+          "inset": 12,
+          "center": 0,
+          "textGap": 12,
+          "labelGap": 8,
+          "focusVisible": true,
+          "outline": "2px solid rgb(63, 217, 166)",
+          "shadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgb(23, 23, 23) 0px 0px 0px 3px, oklab(0.79364 -0.142822 0.0354974 / 0.3) 0px 0px 0px 6px, oklab(0 0 0 / 0.05) 0px 1px 3px 0px, oklab(0 0 0 / 0.05) 0px 1px 2px -1px",
+          "border": "rgb(63, 217, 166)",
+          "interactiveArrow": "none"
+        }
+      ]
+    },
+    {
+      "width": 320,
+      "rootSize": 16,
+      "theme": "dark",
+      "tab": "ตารางพนักงาน",
+      "fields": [
+        {
+          "label": "สาขาที่ดู",
+          "x": 16,
+          "y": 293,
+          "width": 288,
+          "height": 44,
+          "size": "16px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        },
+        {
+          "label": "วันที่ดู",
+          "x": 16,
+          "y": 382,
+          "width": 288,
+          "height": 44,
+          "size": "16px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        },
+        {
+          "label": "พนักงานรับนัด",
+          "x": 33,
+          "y": 606.25,
+          "width": 254,
+          "height": 44,
+          "size": "16px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        },
+        {
+          "label": "เริ่มรับนัด",
+          "x": 33,
+          "y": 691.25,
+          "width": 254,
+          "height": 44,
+          "size": "16px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        },
+        {
+          "label": "สิ้นสุดรับนัด",
+          "x": 33,
+          "y": 776.25,
+          "width": 254,
+          "height": 44,
+          "size": "16px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        },
+        {
+          "label": "วันที่ปลายทาง",
+          "x": 33,
+          "y": 921.25,
+          "width": 254,
+          "height": 44,
+          "size": "16px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        }
+      ],
+      "arrows": [
+        {
+          "label": "สาขาที่ดู",
+          "appearance": "none",
+          "padding": 40,
+          "arrowWidth": 16,
+          "inset": 12,
+          "center": 0,
+          "textGap": 12,
+          "labelGap": 8,
+          "focusVisible": true,
+          "outline": "2px solid rgb(63, 217, 166)",
+          "shadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgb(23, 23, 23) 0px 0px 0px 3px, oklab(0.79364 -0.142822 0.0354974 / 0.3) 0px 0px 0px 6px, oklab(0 0 0 / 0.05) 0px 1px 3px 0px, oklab(0 0 0 / 0.05) 0px 1px 2px -1px",
+          "border": "rgb(63, 217, 166)",
+          "interactiveArrow": "none"
+        },
+        {
+          "label": "พนักงานรับนัด",
+          "appearance": "none",
+          "padding": 40,
+          "arrowWidth": 16,
+          "inset": 12,
+          "center": 0,
+          "textGap": 12,
+          "labelGap": 8,
+          "focusVisible": true,
+          "outline": "2px solid rgb(63, 217, 166)",
+          "shadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgb(23, 23, 23) 0px 0px 0px 3px, oklab(0.79364 -0.142822 0.0354974 / 0.3) 0px 0px 0px 6px, oklab(0 0 0 / 0.05) 0px 1px 3px 0px, oklab(0 0 0 / 0.05) 0px 1px 2px -1px",
+          "border": "rgb(63, 217, 166)",
+          "interactiveArrow": "none"
+        }
+      ]
+    },
+    {
+      "width": 320,
+      "rootSize": 16,
+      "theme": "dark",
+      "tab": "ปฏิทิน",
+      "fields": [
+        {
+          "label": "สาขาที่ดู",
+          "x": 16,
+          "y": 293,
+          "width": 288,
+          "height": 44,
+          "size": "16px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        },
+        {
+          "label": "วันที่ดู",
+          "x": 16,
+          "y": 382,
+          "width": 288,
+          "height": 44,
+          "size": "16px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        }
+      ],
+      "arrows": [
+        {
+          "label": "สาขาที่ดู",
+          "appearance": "none",
+          "padding": 40,
+          "arrowWidth": 16,
+          "inset": 12,
+          "center": 0,
+          "textGap": 12,
+          "labelGap": 8,
+          "focusVisible": true,
+          "outline": "2px solid rgb(63, 217, 166)",
+          "shadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgb(23, 23, 23) 0px 0px 0px 3px, oklab(0.79364 -0.142822 0.0354974 / 0.3) 0px 0px 0px 6px, oklab(0 0 0 / 0.05) 0px 1px 3px 0px, oklab(0 0 0 / 0.05) 0px 1px 2px -1px",
+          "border": "rgb(63, 217, 166)",
+          "interactiveArrow": "none"
+        }
+      ]
+    },
+    {
+      "width": 390,
+      "rootSize": 16,
+      "theme": "light",
+      "tab": "นัดหมาย",
+      "fields": [
+        {
+          "label": "สาขาที่ดู",
+          "x": 16,
+          "y": 293,
+          "width": 358,
+          "height": 44,
+          "size": "16px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        },
+        {
+          "label": "วันที่ดู",
+          "x": 16,
+          "y": 382,
+          "width": 358,
+          "height": 44,
+          "size": "16px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        },
+        {
+          "label": "ลูกค้า",
+          "x": 33,
+          "y": 498.25,
+          "width": 324,
+          "height": 44,
+          "size": "16px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        },
+        {
+          "label": "สาขา",
+          "x": 33,
+          "y": 587.25,
+          "width": 324,
+          "height": 44,
+          "size": "16px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        },
+        {
+          "label": "วันที่นัด",
+          "x": 33,
+          "y": 676.25,
+          "width": 324,
+          "height": 44,
+          "size": "16px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        }
+      ],
+      "arrows": [
+        {
+          "label": "สาขาที่ดู",
+          "appearance": "none",
+          "padding": 40,
+          "arrowWidth": 16,
+          "inset": 12,
+          "center": 0,
+          "textGap": 12,
+          "labelGap": 8,
+          "focusVisible": true,
+          "outline": "2px solid rgb(10, 113, 78)",
+          "shadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgb(247, 247, 247) 0px 0px 0px 3px, oklab(0.485462 -0.0974341 0.0295291 / 0.3) 0px 0px 0px 6px, oklab(0 0 0 / 0.05) 0px 1px 3px 0px, oklab(0 0 0 / 0.05) 0px 1px 2px -1px",
+          "border": "rgb(10, 113, 78)",
+          "interactiveArrow": "none"
+        },
+        {
+          "label": "สาขา",
+          "appearance": "none",
+          "padding": 40,
+          "arrowWidth": 16,
+          "inset": 12,
+          "center": 0,
+          "textGap": 12,
+          "labelGap": 8,
+          "focusVisible": true,
+          "outline": "2px solid rgb(10, 113, 78)",
+          "shadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgb(247, 247, 247) 0px 0px 0px 3px, oklab(0.485462 -0.0974341 0.0295291 / 0.3) 0px 0px 0px 6px, oklab(0 0 0 / 0.05) 0px 1px 3px 0px, oklab(0 0 0 / 0.05) 0px 1px 2px -1px",
+          "border": "rgb(10, 113, 78)",
+          "interactiveArrow": "none"
+        }
+      ]
+    },
+    {
+      "width": 390,
+      "rootSize": 16,
+      "theme": "light",
+      "tab": "ตารางพนักงาน",
+      "fields": [
+        {
+          "label": "สาขาที่ดู",
+          "x": 16,
+          "y": 293,
+          "width": 358,
+          "height": 44,
+          "size": "16px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        },
+        {
+          "label": "วันที่ดู",
+          "x": 16,
+          "y": 382,
+          "width": 358,
+          "height": 44,
+          "size": "16px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        },
+        {
+          "label": "พนักงานรับนัด",
+          "x": 33,
+          "y": 585.25,
+          "width": 324,
+          "height": 44,
+          "size": "16px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        },
+        {
+          "label": "เริ่มรับนัด",
+          "x": 33,
+          "y": 670.25,
+          "width": 324,
+          "height": 44,
+          "size": "16px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        },
+        {
+          "label": "สิ้นสุดรับนัด",
+          "x": 33,
+          "y": 755.25,
+          "width": 324,
+          "height": 44,
+          "size": "16px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        },
+        {
+          "label": "วันที่ปลายทาง",
+          "x": 33,
+          "y": 900.25,
+          "width": 324,
+          "height": 44,
+          "size": "16px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        }
+      ],
+      "arrows": [
+        {
+          "label": "สาขาที่ดู",
+          "appearance": "none",
+          "padding": 40,
+          "arrowWidth": 16,
+          "inset": 12,
+          "center": 0,
+          "textGap": 12,
+          "labelGap": 8,
+          "focusVisible": true,
+          "outline": "2px solid rgb(10, 113, 78)",
+          "shadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgb(247, 247, 247) 0px 0px 0px 3px, oklab(0.485462 -0.0974341 0.0295291 / 0.3) 0px 0px 0px 6px, oklab(0 0 0 / 0.05) 0px 1px 3px 0px, oklab(0 0 0 / 0.05) 0px 1px 2px -1px",
+          "border": "rgb(10, 113, 78)",
+          "interactiveArrow": "none"
+        },
+        {
+          "label": "พนักงานรับนัด",
+          "appearance": "none",
+          "padding": 40,
+          "arrowWidth": 16,
+          "inset": 12,
+          "center": 0,
+          "textGap": 12,
+          "labelGap": 8,
+          "focusVisible": true,
+          "outline": "2px solid rgb(10, 113, 78)",
+          "shadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgb(247, 247, 247) 0px 0px 0px 3px, oklab(0.485462 -0.0974341 0.0295291 / 0.3) 0px 0px 0px 6px, oklab(0 0 0 / 0.05) 0px 1px 3px 0px, oklab(0 0 0 / 0.05) 0px 1px 2px -1px",
+          "border": "rgb(10, 113, 78)",
+          "interactiveArrow": "none"
+        }
+      ]
+    },
+    {
+      "width": 390,
+      "rootSize": 16,
+      "theme": "light",
+      "tab": "ปฏิทิน",
+      "fields": [
+        {
+          "label": "สาขาที่ดู",
+          "x": 16,
+          "y": 293,
+          "width": 358,
+          "height": 44,
+          "size": "16px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        },
+        {
+          "label": "วันที่ดู",
+          "x": 16,
+          "y": 382,
+          "width": 358,
+          "height": 44,
+          "size": "16px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        }
+      ],
+      "arrows": [
+        {
+          "label": "สาขาที่ดู",
+          "appearance": "none",
+          "padding": 40,
+          "arrowWidth": 16,
+          "inset": 12,
+          "center": 0,
+          "textGap": 12,
+          "labelGap": 8,
+          "focusVisible": true,
+          "outline": "2px solid rgb(10, 113, 78)",
+          "shadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgb(247, 247, 247) 0px 0px 0px 3px, oklab(0.485462 -0.0974341 0.0295291 / 0.3) 0px 0px 0px 6px, oklab(0 0 0 / 0.05) 0px 1px 3px 0px, oklab(0 0 0 / 0.05) 0px 1px 2px -1px",
+          "border": "rgb(10, 113, 78)",
+          "interactiveArrow": "none"
+        }
+      ]
+    },
+    {
+      "width": 390,
+      "rootSize": 16,
+      "theme": "dark",
+      "tab": "นัดหมาย",
+      "fields": [
+        {
+          "label": "สาขาที่ดู",
+          "x": 16,
+          "y": 293,
+          "width": 358,
+          "height": 44,
+          "size": "16px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        },
+        {
+          "label": "วันที่ดู",
+          "x": 16,
+          "y": 382,
+          "width": 358,
+          "height": 44,
+          "size": "16px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        },
+        {
+          "label": "ลูกค้า",
+          "x": 33,
+          "y": 498.25,
+          "width": 324,
+          "height": 44,
+          "size": "16px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        },
+        {
+          "label": "สาขา",
+          "x": 33,
+          "y": 587.25,
+          "width": 324,
+          "height": 44,
+          "size": "16px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        },
+        {
+          "label": "วันที่นัด",
+          "x": 33,
+          "y": 676.25,
+          "width": 324,
+          "height": 44,
+          "size": "16px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        }
+      ],
+      "arrows": [
+        {
+          "label": "สาขาที่ดู",
+          "appearance": "none",
+          "padding": 40,
+          "arrowWidth": 16,
+          "inset": 12,
+          "center": 0,
+          "textGap": 12,
+          "labelGap": 8,
+          "focusVisible": true,
+          "outline": "2px solid rgb(63, 217, 166)",
+          "shadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgb(23, 23, 23) 0px 0px 0px 3px, oklab(0.79364 -0.142822 0.0354974 / 0.3) 0px 0px 0px 6px, oklab(0 0 0 / 0.05) 0px 1px 3px 0px, oklab(0 0 0 / 0.05) 0px 1px 2px -1px",
+          "border": "rgb(63, 217, 166)",
+          "interactiveArrow": "none"
+        },
+        {
+          "label": "สาขา",
+          "appearance": "none",
+          "padding": 40,
+          "arrowWidth": 16,
+          "inset": 12,
+          "center": 0,
+          "textGap": 12,
+          "labelGap": 8,
+          "focusVisible": true,
+          "outline": "2px solid rgb(63, 217, 166)",
+          "shadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgb(23, 23, 23) 0px 0px 0px 3px, oklab(0.79364 -0.142822 0.0354974 / 0.3) 0px 0px 0px 6px, oklab(0 0 0 / 0.05) 0px 1px 3px 0px, oklab(0 0 0 / 0.05) 0px 1px 2px -1px",
+          "border": "rgb(63, 217, 166)",
+          "interactiveArrow": "none"
+        }
+      ]
+    },
+    {
+      "width": 390,
+      "rootSize": 16,
+      "theme": "dark",
+      "tab": "ตารางพนักงาน",
+      "fields": [
+        {
+          "label": "สาขาที่ดู",
+          "x": 16,
+          "y": 293,
+          "width": 358,
+          "height": 44,
+          "size": "16px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        },
+        {
+          "label": "วันที่ดู",
+          "x": 16,
+          "y": 382,
+          "width": 358,
+          "height": 44,
+          "size": "16px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        },
+        {
+          "label": "พนักงานรับนัด",
+          "x": 33,
+          "y": 585.25,
+          "width": 324,
+          "height": 44,
+          "size": "16px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        },
+        {
+          "label": "เริ่มรับนัด",
+          "x": 33,
+          "y": 670.25,
+          "width": 324,
+          "height": 44,
+          "size": "16px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        },
+        {
+          "label": "สิ้นสุดรับนัด",
+          "x": 33,
+          "y": 755.25,
+          "width": 324,
+          "height": 44,
+          "size": "16px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        },
+        {
+          "label": "วันที่ปลายทาง",
+          "x": 33,
+          "y": 900.25,
+          "width": 324,
+          "height": 44,
+          "size": "16px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        }
+      ],
+      "arrows": [
+        {
+          "label": "สาขาที่ดู",
+          "appearance": "none",
+          "padding": 40,
+          "arrowWidth": 16,
+          "inset": 12,
+          "center": 0,
+          "textGap": 12,
+          "labelGap": 8,
+          "focusVisible": true,
+          "outline": "2px solid rgb(63, 217, 166)",
+          "shadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgb(23, 23, 23) 0px 0px 0px 3px, oklab(0.79364 -0.142822 0.0354974 / 0.3) 0px 0px 0px 6px, oklab(0 0 0 / 0.05) 0px 1px 3px 0px, oklab(0 0 0 / 0.05) 0px 1px 2px -1px",
+          "border": "rgb(63, 217, 166)",
+          "interactiveArrow": "none"
+        },
+        {
+          "label": "พนักงานรับนัด",
+          "appearance": "none",
+          "padding": 40,
+          "arrowWidth": 16,
+          "inset": 12,
+          "center": 0,
+          "textGap": 12,
+          "labelGap": 8,
+          "focusVisible": true,
+          "outline": "2px solid rgb(63, 217, 166)",
+          "shadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgb(23, 23, 23) 0px 0px 0px 3px, oklab(0.79364 -0.142822 0.0354974 / 0.3) 0px 0px 0px 6px, oklab(0 0 0 / 0.05) 0px 1px 3px 0px, oklab(0 0 0 / 0.05) 0px 1px 2px -1px",
+          "border": "rgb(63, 217, 166)",
+          "interactiveArrow": "none"
+        }
+      ]
+    },
+    {
+      "width": 390,
+      "rootSize": 16,
+      "theme": "dark",
+      "tab": "ปฏิทิน",
+      "fields": [
+        {
+          "label": "สาขาที่ดู",
+          "x": 16,
+          "y": 293,
+          "width": 358,
+          "height": 44,
+          "size": "16px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        },
+        {
+          "label": "วันที่ดู",
+          "x": 16,
+          "y": 382,
+          "width": 358,
+          "height": 44,
+          "size": "16px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        }
+      ],
+      "arrows": [
+        {
+          "label": "สาขาที่ดู",
+          "appearance": "none",
+          "padding": 40,
+          "arrowWidth": 16,
+          "inset": 12,
+          "center": 0,
+          "textGap": 12,
+          "labelGap": 8,
+          "focusVisible": true,
+          "outline": "2px solid rgb(63, 217, 166)",
+          "shadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgb(23, 23, 23) 0px 0px 0px 3px, oklab(0.79364 -0.142822 0.0354974 / 0.3) 0px 0px 0px 6px, oklab(0 0 0 / 0.05) 0px 1px 3px 0px, oklab(0 0 0 / 0.05) 0px 1px 2px -1px",
+          "border": "rgb(63, 217, 166)",
+          "interactiveArrow": "none"
+        }
+      ]
+    },
+    {
+      "width": 768,
+      "rootSize": 16,
+      "theme": "light",
+      "tab": "นัดหมาย",
+      "fields": [
+        {
+          "label": "สาขาที่ดู",
+          "x": 16,
+          "y": 272,
+          "width": 280,
+          "height": 44,
+          "size": "16px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        },
+        {
+          "label": "วันที่ดู",
+          "x": 312,
+          "y": 272,
+          "width": 280,
+          "height": 44,
+          "size": "16px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        },
+        {
+          "label": "ลูกค้า",
+          "x": 37,
+          "y": 392.25,
+          "width": 694,
+          "height": 44,
+          "size": "16px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        },
+        {
+          "label": "สาขา",
+          "x": 37,
+          "y": 481.25,
+          "width": 694,
+          "height": 44,
+          "size": "16px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        },
+        {
+          "label": "วันที่นัด",
+          "x": 37,
+          "y": 570.25,
+          "width": 694,
+          "height": 44,
+          "size": "16px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        }
+      ],
+      "arrows": [
+        {
+          "label": "สาขาที่ดู",
+          "appearance": "none",
+          "padding": 40,
+          "arrowWidth": 16,
+          "inset": 12,
+          "center": 0,
+          "textGap": 12,
+          "labelGap": 8,
+          "focusVisible": true,
+          "outline": "2px solid rgb(10, 113, 78)",
+          "shadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgb(247, 247, 247) 0px 0px 0px 3px, oklab(0.485462 -0.0974341 0.0295291 / 0.3) 0px 0px 0px 6px, oklab(0 0 0 / 0.05) 0px 1px 3px 0px, oklab(0 0 0 / 0.05) 0px 1px 2px -1px",
+          "border": "rgb(10, 113, 78)",
+          "interactiveArrow": "none"
+        },
+        {
+          "label": "สาขา",
+          "appearance": "none",
+          "padding": 40,
+          "arrowWidth": 16,
+          "inset": 12,
+          "center": 0,
+          "textGap": 12,
+          "labelGap": 8,
+          "focusVisible": true,
+          "outline": "2px solid rgb(10, 113, 78)",
+          "shadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgb(247, 247, 247) 0px 0px 0px 3px, oklab(0.485462 -0.0974341 0.0295291 / 0.3) 0px 0px 0px 6px, oklab(0 0 0 / 0.05) 0px 1px 3px 0px, oklab(0 0 0 / 0.05) 0px 1px 2px -1px",
+          "border": "rgb(10, 113, 78)",
+          "interactiveArrow": "none"
+        }
+      ]
+    },
+    {
+      "width": 768,
+      "rootSize": 16,
+      "theme": "light",
+      "tab": "ตารางพนักงาน",
+      "fields": [
+        {
+          "label": "สาขาที่ดู",
+          "x": 16,
+          "y": 272,
+          "width": 280,
+          "height": 44,
+          "size": "16px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        },
+        {
+          "label": "วันที่ดู",
+          "x": 312,
+          "y": 272,
+          "width": 280,
+          "height": 44,
+          "size": "16px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        },
+        {
+          "label": "พนักงานรับนัด",
+          "x": 37,
+          "y": 458.25,
+          "width": 256,
+          "height": 44,
+          "size": "16px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        },
+        {
+          "label": "เริ่มรับนัด",
+          "x": 305,
+          "y": 458.25,
+          "width": 160,
+          "height": 44,
+          "size": "16px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        },
+        {
+          "label": "สิ้นสุดรับนัด",
+          "x": 477,
+          "y": 458.25,
+          "width": 160,
+          "height": 44,
+          "size": "16px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        },
+        {
+          "label": "วันที่ปลายทาง",
+          "x": 37,
+          "y": 603.25,
+          "width": 256,
+          "height": 44,
+          "size": "16px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        }
+      ],
+      "arrows": [
+        {
+          "label": "สาขาที่ดู",
+          "appearance": "none",
+          "padding": 40,
+          "arrowWidth": 16,
+          "inset": 12,
+          "center": 0,
+          "textGap": 12,
+          "labelGap": 8,
+          "focusVisible": true,
+          "outline": "2px solid rgb(10, 113, 78)",
+          "shadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgb(247, 247, 247) 0px 0px 0px 3px, oklab(0.485462 -0.0974341 0.0295291 / 0.3) 0px 0px 0px 6px, oklab(0 0 0 / 0.05) 0px 1px 3px 0px, oklab(0 0 0 / 0.05) 0px 1px 2px -1px",
+          "border": "rgb(10, 113, 78)",
+          "interactiveArrow": "none"
+        },
+        {
+          "label": "พนักงานรับนัด",
+          "appearance": "none",
+          "padding": 40,
+          "arrowWidth": 16,
+          "inset": 12,
+          "center": 0,
+          "textGap": 12,
+          "labelGap": 8,
+          "focusVisible": true,
+          "outline": "2px solid rgb(10, 113, 78)",
+          "shadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgb(247, 247, 247) 0px 0px 0px 3px, oklab(0.485462 -0.0974341 0.0295291 / 0.3) 0px 0px 0px 6px, oklab(0 0 0 / 0.05) 0px 1px 3px 0px, oklab(0 0 0 / 0.05) 0px 1px 2px -1px",
+          "border": "rgb(10, 113, 78)",
+          "interactiveArrow": "none"
+        }
+      ]
+    },
+    {
+      "width": 768,
+      "rootSize": 16,
+      "theme": "light",
+      "tab": "ปฏิทิน",
+      "fields": [
+        {
+          "label": "สาขาที่ดู",
+          "x": 16,
+          "y": 272,
+          "width": 280,
+          "height": 44,
+          "size": "16px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        },
+        {
+          "label": "วันที่ดู",
+          "x": 312,
+          "y": 272,
+          "width": 280,
+          "height": 44,
+          "size": "16px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        }
+      ],
+      "arrows": [
+        {
+          "label": "สาขาที่ดู",
+          "appearance": "none",
+          "padding": 40,
+          "arrowWidth": 16,
+          "inset": 12,
+          "center": 0,
+          "textGap": 12,
+          "labelGap": 8,
+          "focusVisible": true,
+          "outline": "2px solid rgb(10, 113, 78)",
+          "shadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgb(247, 247, 247) 0px 0px 0px 3px, oklab(0.485462 -0.0974341 0.0295291 / 0.3) 0px 0px 0px 6px, oklab(0 0 0 / 0.05) 0px 1px 3px 0px, oklab(0 0 0 / 0.05) 0px 1px 2px -1px",
+          "border": "rgb(10, 113, 78)",
+          "interactiveArrow": "none"
+        }
+      ]
+    },
+    {
+      "width": 768,
+      "rootSize": 16,
+      "theme": "dark",
+      "tab": "นัดหมาย",
+      "fields": [
+        {
+          "label": "สาขาที่ดู",
+          "x": 16,
+          "y": 272,
+          "width": 280,
+          "height": 44,
+          "size": "16px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        },
+        {
+          "label": "วันที่ดู",
+          "x": 312,
+          "y": 272,
+          "width": 280,
+          "height": 44,
+          "size": "16px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        },
+        {
+          "label": "ลูกค้า",
+          "x": 37,
+          "y": 392.25,
+          "width": 694,
+          "height": 44,
+          "size": "16px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        },
+        {
+          "label": "สาขา",
+          "x": 37,
+          "y": 481.25,
+          "width": 694,
+          "height": 44,
+          "size": "16px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        },
+        {
+          "label": "วันที่นัด",
+          "x": 37,
+          "y": 570.25,
+          "width": 694,
+          "height": 44,
+          "size": "16px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        }
+      ],
+      "arrows": [
+        {
+          "label": "สาขาที่ดู",
+          "appearance": "none",
+          "padding": 40,
+          "arrowWidth": 16,
+          "inset": 12,
+          "center": 0,
+          "textGap": 12,
+          "labelGap": 8,
+          "focusVisible": true,
+          "outline": "2px solid rgb(63, 217, 166)",
+          "shadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgb(23, 23, 23) 0px 0px 0px 3px, oklab(0.79364 -0.142822 0.0354974 / 0.3) 0px 0px 0px 6px, oklab(0 0 0 / 0.05) 0px 1px 3px 0px, oklab(0 0 0 / 0.05) 0px 1px 2px -1px",
+          "border": "rgb(63, 217, 166)",
+          "interactiveArrow": "none"
+        },
+        {
+          "label": "สาขา",
+          "appearance": "none",
+          "padding": 40,
+          "arrowWidth": 16,
+          "inset": 12,
+          "center": 0,
+          "textGap": 12,
+          "labelGap": 8,
+          "focusVisible": true,
+          "outline": "2px solid rgb(63, 217, 166)",
+          "shadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgb(23, 23, 23) 0px 0px 0px 3px, oklab(0.79364 -0.142822 0.0354974 / 0.3) 0px 0px 0px 6px, oklab(0 0 0 / 0.05) 0px 1px 3px 0px, oklab(0 0 0 / 0.05) 0px 1px 2px -1px",
+          "border": "rgb(63, 217, 166)",
+          "interactiveArrow": "none"
+        }
+      ]
+    },
+    {
+      "width": 768,
+      "rootSize": 16,
+      "theme": "dark",
+      "tab": "ตารางพนักงาน",
+      "fields": [
+        {
+          "label": "สาขาที่ดู",
+          "x": 16,
+          "y": 272,
+          "width": 280,
+          "height": 44,
+          "size": "16px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        },
+        {
+          "label": "วันที่ดู",
+          "x": 312,
+          "y": 272,
+          "width": 280,
+          "height": 44,
+          "size": "16px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        },
+        {
+          "label": "พนักงานรับนัด",
+          "x": 37,
+          "y": 458.25,
+          "width": 256,
+          "height": 44,
+          "size": "16px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        },
+        {
+          "label": "เริ่มรับนัด",
+          "x": 305,
+          "y": 458.25,
+          "width": 160,
+          "height": 44,
+          "size": "16px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        },
+        {
+          "label": "สิ้นสุดรับนัด",
+          "x": 477,
+          "y": 458.25,
+          "width": 160,
+          "height": 44,
+          "size": "16px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        },
+        {
+          "label": "วันที่ปลายทาง",
+          "x": 37,
+          "y": 603.25,
+          "width": 256,
+          "height": 44,
+          "size": "16px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        }
+      ],
+      "arrows": [
+        {
+          "label": "สาขาที่ดู",
+          "appearance": "none",
+          "padding": 40,
+          "arrowWidth": 16,
+          "inset": 12,
+          "center": 0,
+          "textGap": 12,
+          "labelGap": 8,
+          "focusVisible": true,
+          "outline": "2px solid rgb(63, 217, 166)",
+          "shadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgb(23, 23, 23) 0px 0px 0px 3px, oklab(0.79364 -0.142822 0.0354974 / 0.3) 0px 0px 0px 6px, oklab(0 0 0 / 0.05) 0px 1px 3px 0px, oklab(0 0 0 / 0.05) 0px 1px 2px -1px",
+          "border": "rgb(63, 217, 166)",
+          "interactiveArrow": "none"
+        },
+        {
+          "label": "พนักงานรับนัด",
+          "appearance": "none",
+          "padding": 40,
+          "arrowWidth": 16,
+          "inset": 12,
+          "center": 0,
+          "textGap": 12,
+          "labelGap": 8,
+          "focusVisible": true,
+          "outline": "2px solid rgb(63, 217, 166)",
+          "shadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgb(23, 23, 23) 0px 0px 0px 3px, oklab(0.79364 -0.142822 0.0354974 / 0.3) 0px 0px 0px 6px, oklab(0 0 0 / 0.05) 0px 1px 3px 0px, oklab(0 0 0 / 0.05) 0px 1px 2px -1px",
+          "border": "rgb(63, 217, 166)",
+          "interactiveArrow": "none"
+        }
+      ]
+    },
+    {
+      "width": 768,
+      "rootSize": 16,
+      "theme": "dark",
+      "tab": "ปฏิทิน",
+      "fields": [
+        {
+          "label": "สาขาที่ดู",
+          "x": 16,
+          "y": 272,
+          "width": 280,
+          "height": 44,
+          "size": "16px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        },
+        {
+          "label": "วันที่ดู",
+          "x": 312,
+          "y": 272,
+          "width": 280,
+          "height": 44,
+          "size": "16px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        }
+      ],
+      "arrows": [
+        {
+          "label": "สาขาที่ดู",
+          "appearance": "none",
+          "padding": 40,
+          "arrowWidth": 16,
+          "inset": 12,
+          "center": 0,
+          "textGap": 12,
+          "labelGap": 8,
+          "focusVisible": true,
+          "outline": "2px solid rgb(63, 217, 166)",
+          "shadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgb(23, 23, 23) 0px 0px 0px 3px, oklab(0.79364 -0.142822 0.0354974 / 0.3) 0px 0px 0px 6px, oklab(0 0 0 / 0.05) 0px 1px 3px 0px, oklab(0 0 0 / 0.05) 0px 1px 2px -1px",
+          "border": "rgb(63, 217, 166)",
+          "interactiveArrow": "none"
+        }
+      ]
+    },
+    {
+      "width": 1024,
+      "rootSize": 16,
+      "theme": "light",
+      "tab": "นัดหมาย",
+      "fields": [
+        {
+          "label": "สาขาที่ดู",
+          "x": 98,
+          "y": 275,
+          "width": 280,
+          "height": 44,
+          "size": "14px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        },
+        {
+          "label": "วันที่ดู",
+          "x": 394,
+          "y": 275,
+          "width": 280,
+          "height": 44,
+          "size": "14px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        },
+        {
+          "label": "ลูกค้า",
+          "x": 119,
+          "y": 395.25,
+          "width": 856,
+          "height": 44,
+          "size": "14px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        },
+        {
+          "label": "สาขา",
+          "x": 119,
+          "y": 484.25,
+          "width": 856,
+          "height": 44,
+          "size": "14px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        },
+        {
+          "label": "วันที่นัด",
+          "x": 119,
+          "y": 573.25,
+          "width": 856,
+          "height": 44,
+          "size": "14px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        }
+      ],
+      "arrows": [
+        {
+          "label": "สาขาที่ดู",
+          "appearance": "none",
+          "padding": 40,
+          "arrowWidth": 16,
+          "inset": 12,
+          "center": 0,
+          "textGap": 12,
+          "labelGap": 8,
+          "focusVisible": true,
+          "outline": "2px solid rgb(10, 113, 78)",
+          "shadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgb(247, 247, 247) 0px 0px 0px 3px, oklab(0.485462 -0.0974341 0.0295291 / 0.3) 0px 0px 0px 6px, oklab(0 0 0 / 0.05) 0px 1px 3px 0px, oklab(0 0 0 / 0.05) 0px 1px 2px -1px",
+          "border": "rgb(10, 113, 78)",
+          "interactiveArrow": "none"
+        },
+        {
+          "label": "สาขา",
+          "appearance": "none",
+          "padding": 40,
+          "arrowWidth": 16,
+          "inset": 12,
+          "center": 0,
+          "textGap": 12,
+          "labelGap": 8,
+          "focusVisible": true,
+          "outline": "2px solid rgb(10, 113, 78)",
+          "shadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgb(247, 247, 247) 0px 0px 0px 3px, oklab(0.485462 -0.0974341 0.0295291 / 0.3) 0px 0px 0px 6px, oklab(0 0 0 / 0.05) 0px 1px 3px 0px, oklab(0 0 0 / 0.05) 0px 1px 2px -1px",
+          "border": "rgb(10, 113, 78)",
+          "interactiveArrow": "none"
+        }
+      ]
+    },
+    {
+      "width": 1024,
+      "rootSize": 16,
+      "theme": "light",
+      "tab": "ตารางพนักงาน",
+      "fields": [
+        {
+          "label": "สาขาที่ดู",
+          "x": 98,
+          "y": 275,
+          "width": 280,
+          "height": 44,
+          "size": "14px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        },
+        {
+          "label": "วันที่ดู",
+          "x": 394,
+          "y": 275,
+          "width": 280,
+          "height": 44,
+          "size": "14px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        },
+        {
+          "label": "พนักงานรับนัด",
+          "x": 119,
+          "y": 461.25,
+          "width": 256,
+          "height": 44,
+          "size": "14px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        },
+        {
+          "label": "เริ่มรับนัด",
+          "x": 387,
+          "y": 461.25,
+          "width": 160,
+          "height": 44,
+          "size": "14px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        },
+        {
+          "label": "สิ้นสุดรับนัด",
+          "x": 559,
+          "y": 461.25,
+          "width": 160,
+          "height": 44,
+          "size": "14px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        },
+        {
+          "label": "วันที่ปลายทาง",
+          "x": 119,
+          "y": 550.25,
+          "width": 256,
+          "height": 44,
+          "size": "14px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        }
+      ],
+      "arrows": [
+        {
+          "label": "สาขาที่ดู",
+          "appearance": "none",
+          "padding": 40,
+          "arrowWidth": 16,
+          "inset": 12,
+          "center": 0,
+          "textGap": 12,
+          "labelGap": 8,
+          "focusVisible": true,
+          "outline": "2px solid rgb(10, 113, 78)",
+          "shadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgb(247, 247, 247) 0px 0px 0px 3px, oklab(0.485462 -0.0974341 0.0295291 / 0.3) 0px 0px 0px 6px, oklab(0 0 0 / 0.05) 0px 1px 3px 0px, oklab(0 0 0 / 0.05) 0px 1px 2px -1px",
+          "border": "rgb(10, 113, 78)",
+          "interactiveArrow": "none"
+        },
+        {
+          "label": "พนักงานรับนัด",
+          "appearance": "none",
+          "padding": 40,
+          "arrowWidth": 16,
+          "inset": 12,
+          "center": 0,
+          "textGap": 12,
+          "labelGap": 8,
+          "focusVisible": true,
+          "outline": "2px solid rgb(10, 113, 78)",
+          "shadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgb(247, 247, 247) 0px 0px 0px 3px, oklab(0.485462 -0.0974341 0.0295291 / 0.3) 0px 0px 0px 6px, oklab(0 0 0 / 0.05) 0px 1px 3px 0px, oklab(0 0 0 / 0.05) 0px 1px 2px -1px",
+          "border": "rgb(10, 113, 78)",
+          "interactiveArrow": "none"
+        }
+      ]
+    },
+    {
+      "width": 1024,
+      "rootSize": 16,
+      "theme": "light",
+      "tab": "ปฏิทิน",
+      "fields": [
+        {
+          "label": "สาขาที่ดู",
+          "x": 98,
+          "y": 275,
+          "width": 280,
+          "height": 44,
+          "size": "14px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        },
+        {
+          "label": "วันที่ดู",
+          "x": 394,
+          "y": 275,
+          "width": 280,
+          "height": 44,
+          "size": "14px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        }
+      ],
+      "arrows": [
+        {
+          "label": "สาขาที่ดู",
+          "appearance": "none",
+          "padding": 40,
+          "arrowWidth": 16,
+          "inset": 12,
+          "center": 0,
+          "textGap": 12,
+          "labelGap": 8,
+          "focusVisible": true,
+          "outline": "2px solid rgb(10, 113, 78)",
+          "shadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgb(247, 247, 247) 0px 0px 0px 3px, oklab(0.485462 -0.0974341 0.0295291 / 0.3) 0px 0px 0px 6px, oklab(0 0 0 / 0.05) 0px 1px 3px 0px, oklab(0 0 0 / 0.05) 0px 1px 2px -1px",
+          "border": "rgb(10, 113, 78)",
+          "interactiveArrow": "none"
+        }
+      ]
+    },
+    {
+      "width": 1024,
+      "rootSize": 16,
+      "theme": "dark",
+      "tab": "นัดหมาย",
+      "fields": [
+        {
+          "label": "สาขาที่ดู",
+          "x": 98,
+          "y": 275,
+          "width": 280,
+          "height": 44,
+          "size": "14px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        },
+        {
+          "label": "วันที่ดู",
+          "x": 394,
+          "y": 275,
+          "width": 280,
+          "height": 44,
+          "size": "14px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        },
+        {
+          "label": "ลูกค้า",
+          "x": 119,
+          "y": 395.25,
+          "width": 856,
+          "height": 44,
+          "size": "14px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        },
+        {
+          "label": "สาขา",
+          "x": 119,
+          "y": 484.25,
+          "width": 856,
+          "height": 44,
+          "size": "14px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        },
+        {
+          "label": "วันที่นัด",
+          "x": 119,
+          "y": 573.25,
+          "width": 856,
+          "height": 44,
+          "size": "14px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        }
+      ],
+      "arrows": [
+        {
+          "label": "สาขาที่ดู",
+          "appearance": "none",
+          "padding": 40,
+          "arrowWidth": 16,
+          "inset": 12,
+          "center": 0,
+          "textGap": 12,
+          "labelGap": 8,
+          "focusVisible": true,
+          "outline": "2px solid rgb(63, 217, 166)",
+          "shadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgb(23, 23, 23) 0px 0px 0px 3px, oklab(0.79364 -0.142822 0.0354974 / 0.3) 0px 0px 0px 6px, oklab(0 0 0 / 0.05) 0px 1px 3px 0px, oklab(0 0 0 / 0.05) 0px 1px 2px -1px",
+          "border": "rgb(63, 217, 166)",
+          "interactiveArrow": "none"
+        },
+        {
+          "label": "สาขา",
+          "appearance": "none",
+          "padding": 40,
+          "arrowWidth": 16,
+          "inset": 12,
+          "center": 0,
+          "textGap": 12,
+          "labelGap": 8,
+          "focusVisible": true,
+          "outline": "2px solid rgb(63, 217, 166)",
+          "shadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgb(23, 23, 23) 0px 0px 0px 3px, oklab(0.79364 -0.142822 0.0354974 / 0.3) 0px 0px 0px 6px, oklab(0 0 0 / 0.05) 0px 1px 3px 0px, oklab(0 0 0 / 0.05) 0px 1px 2px -1px",
+          "border": "rgb(63, 217, 166)",
+          "interactiveArrow": "none"
+        }
+      ]
+    },
+    {
+      "width": 1024,
+      "rootSize": 16,
+      "theme": "dark",
+      "tab": "ตารางพนักงาน",
+      "fields": [
+        {
+          "label": "สาขาที่ดู",
+          "x": 98,
+          "y": 275,
+          "width": 280,
+          "height": 44,
+          "size": "14px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        },
+        {
+          "label": "วันที่ดู",
+          "x": 394,
+          "y": 275,
+          "width": 280,
+          "height": 44,
+          "size": "14px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        },
+        {
+          "label": "พนักงานรับนัด",
+          "x": 119,
+          "y": 461.25,
+          "width": 256,
+          "height": 44,
+          "size": "14px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        },
+        {
+          "label": "เริ่มรับนัด",
+          "x": 387,
+          "y": 461.25,
+          "width": 160,
+          "height": 44,
+          "size": "14px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        },
+        {
+          "label": "สิ้นสุดรับนัด",
+          "x": 559,
+          "y": 461.25,
+          "width": 160,
+          "height": 44,
+          "size": "14px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        },
+        {
+          "label": "วันที่ปลายทาง",
+          "x": 119,
+          "y": 550.25,
+          "width": 256,
+          "height": 44,
+          "size": "14px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        }
+      ],
+      "arrows": [
+        {
+          "label": "สาขาที่ดู",
+          "appearance": "none",
+          "padding": 40,
+          "arrowWidth": 16,
+          "inset": 12,
+          "center": 0,
+          "textGap": 12,
+          "labelGap": 8,
+          "focusVisible": true,
+          "outline": "2px solid rgb(63, 217, 166)",
+          "shadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgb(23, 23, 23) 0px 0px 0px 3px, oklab(0.79364 -0.142822 0.0354974 / 0.3) 0px 0px 0px 6px, oklab(0 0 0 / 0.05) 0px 1px 3px 0px, oklab(0 0 0 / 0.05) 0px 1px 2px -1px",
+          "border": "rgb(63, 217, 166)",
+          "interactiveArrow": "none"
+        },
+        {
+          "label": "พนักงานรับนัด",
+          "appearance": "none",
+          "padding": 40,
+          "arrowWidth": 16,
+          "inset": 12,
+          "center": 0,
+          "textGap": 12,
+          "labelGap": 8,
+          "focusVisible": true,
+          "outline": "2px solid rgb(63, 217, 166)",
+          "shadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgb(23, 23, 23) 0px 0px 0px 3px, oklab(0.79364 -0.142822 0.0354974 / 0.3) 0px 0px 0px 6px, oklab(0 0 0 / 0.05) 0px 1px 3px 0px, oklab(0 0 0 / 0.05) 0px 1px 2px -1px",
+          "border": "rgb(63, 217, 166)",
+          "interactiveArrow": "none"
+        }
+      ]
+    },
+    {
+      "width": 1024,
+      "rootSize": 16,
+      "theme": "dark",
+      "tab": "ปฏิทิน",
+      "fields": [
+        {
+          "label": "สาขาที่ดู",
+          "x": 98,
+          "y": 275,
+          "width": 280,
+          "height": 44,
+          "size": "14px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        },
+        {
+          "label": "วันที่ดู",
+          "x": 394,
+          "y": 275,
+          "width": 280,
+          "height": 44,
+          "size": "14px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        }
+      ],
+      "arrows": [
+        {
+          "label": "สาขาที่ดู",
+          "appearance": "none",
+          "padding": 40,
+          "arrowWidth": 16,
+          "inset": 12,
+          "center": 0,
+          "textGap": 12,
+          "labelGap": 8,
+          "focusVisible": true,
+          "outline": "2px solid rgb(63, 217, 166)",
+          "shadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgb(23, 23, 23) 0px 0px 0px 3px, oklab(0.79364 -0.142822 0.0354974 / 0.3) 0px 0px 0px 6px, oklab(0 0 0 / 0.05) 0px 1px 3px 0px, oklab(0 0 0 / 0.05) 0px 1px 2px -1px",
+          "border": "rgb(63, 217, 166)",
+          "interactiveArrow": "none"
+        }
+      ]
+    },
+    {
+      "width": 1440,
+      "rootSize": 16,
+      "theme": "light",
+      "tab": "นัดหมาย",
+      "fields": [
+        {
+          "label": "สาขาที่ดู",
+          "x": 98,
+          "y": 275,
+          "width": 280,
+          "height": 44,
+          "size": "14px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        },
+        {
+          "label": "วันที่ดู",
+          "x": 394,
+          "y": 275,
+          "width": 280,
+          "height": 44,
+          "size": "14px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        },
+        {
+          "label": "ลูกค้า",
+          "x": 119,
+          "y": 395.25,
+          "width": 310,
+          "height": 44,
+          "size": "14px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        },
+        {
+          "label": "สาขา",
+          "x": 119,
+          "y": 484.25,
+          "width": 310,
+          "height": 44,
+          "size": "14px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        },
+        {
+          "label": "วันที่นัด",
+          "x": 119,
+          "y": 573.25,
+          "width": 310,
+          "height": 44,
+          "size": "14px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        }
+      ],
+      "arrows": [
+        {
+          "label": "สาขาที่ดู",
+          "appearance": "none",
+          "padding": 40,
+          "arrowWidth": 16,
+          "inset": 12,
+          "center": 0,
+          "textGap": 12,
+          "labelGap": 8,
+          "focusVisible": true,
+          "outline": "2px solid rgb(10, 113, 78)",
+          "shadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgb(247, 247, 247) 0px 0px 0px 3px, oklab(0.485462 -0.0974341 0.0295291 / 0.3) 0px 0px 0px 6px, oklab(0 0 0 / 0.05) 0px 1px 3px 0px, oklab(0 0 0 / 0.05) 0px 1px 2px -1px",
+          "border": "rgb(10, 113, 78)",
+          "interactiveArrow": "none"
+        },
+        {
+          "label": "สาขา",
+          "appearance": "none",
+          "padding": 40,
+          "arrowWidth": 16,
+          "inset": 12,
+          "center": 0,
+          "textGap": 12,
+          "labelGap": 8,
+          "focusVisible": true,
+          "outline": "2px solid rgb(10, 113, 78)",
+          "shadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgb(247, 247, 247) 0px 0px 0px 3px, oklab(0.485462 -0.0974341 0.0295291 / 0.3) 0px 0px 0px 6px, oklab(0 0 0 / 0.05) 0px 1px 3px 0px, oklab(0 0 0 / 0.05) 0px 1px 2px -1px",
+          "border": "rgb(10, 113, 78)",
+          "interactiveArrow": "none"
+        }
+      ]
+    },
+    {
+      "width": 1440,
+      "rootSize": 16,
+      "theme": "light",
+      "tab": "ตารางพนักงาน",
+      "fields": [
+        {
+          "label": "สาขาที่ดู",
+          "x": 98,
+          "y": 275,
+          "width": 280,
+          "height": 44,
+          "size": "14px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        },
+        {
+          "label": "วันที่ดู",
+          "x": 394,
+          "y": 275,
+          "width": 280,
+          "height": 44,
+          "size": "14px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        },
+        {
+          "label": "พนักงานรับนัด",
+          "x": 119,
+          "y": 461.25,
+          "width": 256,
+          "height": 44,
+          "size": "14px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        },
+        {
+          "label": "เริ่มรับนัด",
+          "x": 387,
+          "y": 461.25,
+          "width": 160,
+          "height": 44,
+          "size": "14px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        },
+        {
+          "label": "สิ้นสุดรับนัด",
+          "x": 559,
+          "y": 461.25,
+          "width": 160,
+          "height": 44,
+          "size": "14px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        },
+        {
+          "label": "วันที่ปลายทาง",
+          "x": 119,
+          "y": 550.25,
+          "width": 256,
+          "height": 44,
+          "size": "14px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        }
+      ],
+      "arrows": [
+        {
+          "label": "สาขาที่ดู",
+          "appearance": "none",
+          "padding": 40,
+          "arrowWidth": 16,
+          "inset": 12,
+          "center": 0,
+          "textGap": 12,
+          "labelGap": 8,
+          "focusVisible": true,
+          "outline": "2px solid rgb(10, 113, 78)",
+          "shadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgb(247, 247, 247) 0px 0px 0px 3px, oklab(0.485462 -0.0974341 0.0295291 / 0.3) 0px 0px 0px 6px, oklab(0 0 0 / 0.05) 0px 1px 3px 0px, oklab(0 0 0 / 0.05) 0px 1px 2px -1px",
+          "border": "rgb(10, 113, 78)",
+          "interactiveArrow": "none"
+        },
+        {
+          "label": "พนักงานรับนัด",
+          "appearance": "none",
+          "padding": 40,
+          "arrowWidth": 16,
+          "inset": 12,
+          "center": 0,
+          "textGap": 12,
+          "labelGap": 8,
+          "focusVisible": true,
+          "outline": "2px solid rgb(10, 113, 78)",
+          "shadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgb(247, 247, 247) 0px 0px 0px 3px, oklab(0.485462 -0.0974341 0.0295291 / 0.3) 0px 0px 0px 6px, oklab(0 0 0 / 0.05) 0px 1px 3px 0px, oklab(0 0 0 / 0.05) 0px 1px 2px -1px",
+          "border": "rgb(10, 113, 78)",
+          "interactiveArrow": "none"
+        }
+      ]
+    },
+    {
+      "width": 1440,
+      "rootSize": 16,
+      "theme": "light",
+      "tab": "ปฏิทิน",
+      "fields": [
+        {
+          "label": "สาขาที่ดู",
+          "x": 98,
+          "y": 275,
+          "width": 280,
+          "height": 44,
+          "size": "14px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        },
+        {
+          "label": "วันที่ดู",
+          "x": 394,
+          "y": 275,
+          "width": 280,
+          "height": 44,
+          "size": "14px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        }
+      ],
+      "arrows": [
+        {
+          "label": "สาขาที่ดู",
+          "appearance": "none",
+          "padding": 40,
+          "arrowWidth": 16,
+          "inset": 12,
+          "center": 0,
+          "textGap": 12,
+          "labelGap": 8,
+          "focusVisible": true,
+          "outline": "2px solid rgb(10, 113, 78)",
+          "shadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgb(247, 247, 247) 0px 0px 0px 3px, oklab(0.485462 -0.0974341 0.0295291 / 0.3) 0px 0px 0px 6px, oklab(0 0 0 / 0.05) 0px 1px 3px 0px, oklab(0 0 0 / 0.05) 0px 1px 2px -1px",
+          "border": "rgb(10, 113, 78)",
+          "interactiveArrow": "none"
+        }
+      ]
+    },
+    {
+      "width": 1440,
+      "rootSize": 16,
+      "theme": "dark",
+      "tab": "นัดหมาย",
+      "fields": [
+        {
+          "label": "สาขาที่ดู",
+          "x": 98,
+          "y": 275,
+          "width": 280,
+          "height": 44,
+          "size": "14px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        },
+        {
+          "label": "วันที่ดู",
+          "x": 394,
+          "y": 275,
+          "width": 280,
+          "height": 44,
+          "size": "14px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        },
+        {
+          "label": "ลูกค้า",
+          "x": 119,
+          "y": 395.25,
+          "width": 310,
+          "height": 44,
+          "size": "14px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        },
+        {
+          "label": "สาขา",
+          "x": 119,
+          "y": 484.25,
+          "width": 310,
+          "height": 44,
+          "size": "14px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        },
+        {
+          "label": "วันที่นัด",
+          "x": 119,
+          "y": 573.25,
+          "width": 310,
+          "height": 44,
+          "size": "14px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        }
+      ],
+      "arrows": [
+        {
+          "label": "สาขาที่ดู",
+          "appearance": "none",
+          "padding": 40,
+          "arrowWidth": 16,
+          "inset": 12,
+          "center": 0,
+          "textGap": 12,
+          "labelGap": 8,
+          "focusVisible": true,
+          "outline": "2px solid rgb(63, 217, 166)",
+          "shadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgb(23, 23, 23) 0px 0px 0px 3px, oklab(0.79364 -0.142822 0.0354974 / 0.3) 0px 0px 0px 6px, oklab(0 0 0 / 0.05) 0px 1px 3px 0px, oklab(0 0 0 / 0.05) 0px 1px 2px -1px",
+          "border": "rgb(63, 217, 166)",
+          "interactiveArrow": "none"
+        },
+        {
+          "label": "สาขา",
+          "appearance": "none",
+          "padding": 40,
+          "arrowWidth": 16,
+          "inset": 12,
+          "center": 0,
+          "textGap": 12,
+          "labelGap": 8,
+          "focusVisible": true,
+          "outline": "2px solid rgb(63, 217, 166)",
+          "shadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgb(23, 23, 23) 0px 0px 0px 3px, oklab(0.79364 -0.142822 0.0354974 / 0.3) 0px 0px 0px 6px, oklab(0 0 0 / 0.05) 0px 1px 3px 0px, oklab(0 0 0 / 0.05) 0px 1px 2px -1px",
+          "border": "rgb(63, 217, 166)",
+          "interactiveArrow": "none"
+        }
+      ]
+    },
+    {
+      "width": 1440,
+      "rootSize": 16,
+      "theme": "dark",
+      "tab": "ตารางพนักงาน",
+      "fields": [
+        {
+          "label": "สาขาที่ดู",
+          "x": 98,
+          "y": 275,
+          "width": 280,
+          "height": 44,
+          "size": "14px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        },
+        {
+          "label": "วันที่ดู",
+          "x": 394,
+          "y": 275,
+          "width": 280,
+          "height": 44,
+          "size": "14px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        },
+        {
+          "label": "พนักงานรับนัด",
+          "x": 119,
+          "y": 461.25,
+          "width": 256,
+          "height": 44,
+          "size": "14px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        },
+        {
+          "label": "เริ่มรับนัด",
+          "x": 387,
+          "y": 461.25,
+          "width": 160,
+          "height": 44,
+          "size": "14px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        },
+        {
+          "label": "สิ้นสุดรับนัด",
+          "x": 559,
+          "y": 461.25,
+          "width": 160,
+          "height": 44,
+          "size": "14px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        },
+        {
+          "label": "วันที่ปลายทาง",
+          "x": 119,
+          "y": 550.25,
+          "width": 256,
+          "height": 44,
+          "size": "14px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        }
+      ],
+      "arrows": [
+        {
+          "label": "สาขาที่ดู",
+          "appearance": "none",
+          "padding": 40,
+          "arrowWidth": 16,
+          "inset": 12,
+          "center": 0,
+          "textGap": 12,
+          "labelGap": 8,
+          "focusVisible": true,
+          "outline": "2px solid rgb(63, 217, 166)",
+          "shadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgb(23, 23, 23) 0px 0px 0px 3px, oklab(0.79364 -0.142822 0.0354974 / 0.3) 0px 0px 0px 6px, oklab(0 0 0 / 0.05) 0px 1px 3px 0px, oklab(0 0 0 / 0.05) 0px 1px 2px -1px",
+          "border": "rgb(63, 217, 166)",
+          "interactiveArrow": "none"
+        },
+        {
+          "label": "พนักงานรับนัด",
+          "appearance": "none",
+          "padding": 40,
+          "arrowWidth": 16,
+          "inset": 12,
+          "center": 0,
+          "textGap": 12,
+          "labelGap": 8,
+          "focusVisible": true,
+          "outline": "2px solid rgb(63, 217, 166)",
+          "shadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgb(23, 23, 23) 0px 0px 0px 3px, oklab(0.79364 -0.142822 0.0354974 / 0.3) 0px 0px 0px 6px, oklab(0 0 0 / 0.05) 0px 1px 3px 0px, oklab(0 0 0 / 0.05) 0px 1px 2px -1px",
+          "border": "rgb(63, 217, 166)",
+          "interactiveArrow": "none"
+        }
+      ]
+    },
+    {
+      "width": 1440,
+      "rootSize": 16,
+      "theme": "dark",
+      "tab": "ปฏิทิน",
+      "fields": [
+        {
+          "label": "สาขาที่ดู",
+          "x": 98,
+          "y": 275,
+          "width": 280,
+          "height": 44,
+          "size": "14px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        },
+        {
+          "label": "วันที่ดู",
+          "x": 394,
+          "y": 275,
+          "width": 280,
+          "height": 44,
+          "size": "14px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        }
+      ],
+      "arrows": [
+        {
+          "label": "สาขาที่ดู",
+          "appearance": "none",
+          "padding": 40,
+          "arrowWidth": 16,
+          "inset": 12,
+          "center": 0,
+          "textGap": 12,
+          "labelGap": 8,
+          "focusVisible": true,
+          "outline": "2px solid rgb(63, 217, 166)",
+          "shadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgb(23, 23, 23) 0px 0px 0px 3px, oklab(0.79364 -0.142822 0.0354974 / 0.3) 0px 0px 0px 6px, oklab(0 0 0 / 0.05) 0px 1px 3px 0px, oklab(0 0 0 / 0.05) 0px 1px 2px -1px",
+          "border": "rgb(63, 217, 166)",
+          "interactiveArrow": "none"
+        }
+      ]
+    },
+    {
+      "width": 1280,
+      "rootSize": 20,
+      "theme": "light",
+      "tab": "นัดหมาย",
+      "fields": [
+        {
+          "label": "สาขาที่ดู",
+          "x": 105,
+          "y": 328.5,
+          "width": 350,
+          "height": 55,
+          "size": "17.5px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        },
+        {
+          "label": "วันที่ดู",
+          "x": 475,
+          "y": 328.5,
+          "width": 350,
+          "height": 55,
+          "size": "17.5px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        },
+        {
+          "label": "ลูกค้า",
+          "x": 131,
+          "y": 478.5625,
+          "width": 388,
+          "height": 55,
+          "size": "17.5px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        },
+        {
+          "label": "สาขา",
+          "x": 131,
+          "y": 589.8125,
+          "width": 388,
+          "height": 55,
+          "size": "17.5px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        },
+        {
+          "label": "วันที่นัด",
+          "x": 131,
+          "y": 701.0625,
+          "width": 388,
+          "height": 55,
+          "size": "17.5px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        }
+      ],
+      "arrows": [
+        {
+          "label": "สาขาที่ดู",
+          "appearance": "none",
+          "padding": 50,
+          "arrowWidth": 20,
+          "inset": 15,
+          "center": 0,
+          "textGap": 15,
+          "labelGap": 10,
+          "focusVisible": true,
+          "outline": "2px solid rgb(10, 113, 78)",
+          "shadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgb(247, 247, 247) 0px 0px 0px 3px, oklab(0.485462 -0.0974341 0.0295291 / 0.3) 0px 0px 0px 6px, oklab(0 0 0 / 0.05) 0px 1px 3px 0px, oklab(0 0 0 / 0.05) 0px 1px 2px -1px",
+          "border": "rgb(10, 113, 78)",
+          "interactiveArrow": "none"
+        },
+        {
+          "label": "สาขา",
+          "appearance": "none",
+          "padding": 50,
+          "arrowWidth": 20,
+          "inset": 15,
+          "center": 0,
+          "textGap": 15,
+          "labelGap": 10,
+          "focusVisible": true,
+          "outline": "2px solid rgb(10, 113, 78)",
+          "shadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgb(247, 247, 247) 0px 0px 0px 3px, oklab(0.485462 -0.0974341 0.0295291 / 0.3) 0px 0px 0px 6px, oklab(0 0 0 / 0.05) 0px 1px 3px 0px, oklab(0 0 0 / 0.05) 0px 1px 2px -1px",
+          "border": "rgb(10, 113, 78)",
+          "interactiveArrow": "none"
+        }
+      ]
+    },
+    {
+      "width": 1280,
+      "rootSize": 20,
+      "theme": "light",
+      "tab": "ตารางพนักงาน",
+      "fields": [
+        {
+          "label": "สาขาที่ดู",
+          "x": 105,
+          "y": 328.5,
+          "width": 350,
+          "height": 55,
+          "size": "17.5px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        },
+        {
+          "label": "วันที่ดู",
+          "x": 475,
+          "y": 328.5,
+          "width": 350,
+          "height": 55,
+          "size": "17.5px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        },
+        {
+          "label": "พนักงานรับนัด",
+          "x": 131,
+          "y": 561.0625,
+          "width": 320,
+          "height": 55,
+          "size": "17.5px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        },
+        {
+          "label": "เริ่มรับนัด",
+          "x": 466,
+          "y": 561.0625,
+          "width": 200,
+          "height": 55,
+          "size": "17.5px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        },
+        {
+          "label": "สิ้นสุดรับนัด",
+          "x": 681,
+          "y": 561.0625,
+          "width": 200,
+          "height": 55,
+          "size": "17.5px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        },
+        {
+          "label": "วันที่ปลายทาง",
+          "x": 131,
+          "y": 672.3125,
+          "width": 320,
+          "height": 55,
+          "size": "17.5px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        }
+      ],
+      "arrows": [
+        {
+          "label": "สาขาที่ดู",
+          "appearance": "none",
+          "padding": 50,
+          "arrowWidth": 20,
+          "inset": 15,
+          "center": 0,
+          "textGap": 15,
+          "labelGap": 10,
+          "focusVisible": true,
+          "outline": "2px solid rgb(10, 113, 78)",
+          "shadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgb(247, 247, 247) 0px 0px 0px 3px, oklab(0.485462 -0.0974341 0.0295291 / 0.3) 0px 0px 0px 6px, oklab(0 0 0 / 0.05) 0px 1px 3px 0px, oklab(0 0 0 / 0.05) 0px 1px 2px -1px",
+          "border": "rgb(10, 113, 78)",
+          "interactiveArrow": "none"
+        },
+        {
+          "label": "พนักงานรับนัด",
+          "appearance": "none",
+          "padding": 50,
+          "arrowWidth": 20,
+          "inset": 15,
+          "center": 0,
+          "textGap": 15,
+          "labelGap": 10,
+          "focusVisible": true,
+          "outline": "2px solid rgb(10, 113, 78)",
+          "shadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgb(247, 247, 247) 0px 0px 0px 3px, oklab(0.485462 -0.0974341 0.0295291 / 0.3) 0px 0px 0px 6px, oklab(0 0 0 / 0.05) 0px 1px 3px 0px, oklab(0 0 0 / 0.05) 0px 1px 2px -1px",
+          "border": "rgb(10, 113, 78)",
+          "interactiveArrow": "none"
+        }
+      ]
+    },
+    {
+      "width": 1280,
+      "rootSize": 20,
+      "theme": "light",
+      "tab": "ปฏิทิน",
+      "fields": [
+        {
+          "label": "สาขาที่ดู",
+          "x": 105,
+          "y": 328.5,
+          "width": 350,
+          "height": 55,
+          "size": "17.5px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        },
+        {
+          "label": "วันที่ดู",
+          "x": 475,
+          "y": 328.5,
+          "width": 350,
+          "height": 55,
+          "size": "17.5px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        }
+      ],
+      "arrows": [
+        {
+          "label": "สาขาที่ดู",
+          "appearance": "none",
+          "padding": 50,
+          "arrowWidth": 20,
+          "inset": 15,
+          "center": 0,
+          "textGap": 15,
+          "labelGap": 10,
+          "focusVisible": true,
+          "outline": "2px solid rgb(10, 113, 78)",
+          "shadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgb(247, 247, 247) 0px 0px 0px 3px, oklab(0.485462 -0.0974341 0.0295291 / 0.3) 0px 0px 0px 6px, oklab(0 0 0 / 0.05) 0px 1px 3px 0px, oklab(0 0 0 / 0.05) 0px 1px 2px -1px",
+          "border": "rgb(10, 113, 78)",
+          "interactiveArrow": "none"
+        }
+      ]
+    },
+    {
+      "width": 1280,
+      "rootSize": 20,
+      "theme": "dark",
+      "tab": "นัดหมาย",
+      "fields": [
+        {
+          "label": "สาขาที่ดู",
+          "x": 105,
+          "y": 328.5,
+          "width": 350,
+          "height": 55,
+          "size": "17.5px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        },
+        {
+          "label": "วันที่ดู",
+          "x": 475,
+          "y": 328.5,
+          "width": 350,
+          "height": 55,
+          "size": "17.5px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        },
+        {
+          "label": "ลูกค้า",
+          "x": 131,
+          "y": 478.5625,
+          "width": 388,
+          "height": 55,
+          "size": "17.5px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        },
+        {
+          "label": "สาขา",
+          "x": 131,
+          "y": 589.8125,
+          "width": 388,
+          "height": 55,
+          "size": "17.5px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        },
+        {
+          "label": "วันที่นัด",
+          "x": 131,
+          "y": 701.0625,
+          "width": 388,
+          "height": 55,
+          "size": "17.5px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        }
+      ],
+      "arrows": [
+        {
+          "label": "สาขาที่ดู",
+          "appearance": "none",
+          "padding": 50,
+          "arrowWidth": 20,
+          "inset": 15,
+          "center": 0,
+          "textGap": 15,
+          "labelGap": 10,
+          "focusVisible": true,
+          "outline": "2px solid rgb(63, 217, 166)",
+          "shadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgb(23, 23, 23) 0px 0px 0px 3px, oklab(0.79364 -0.142822 0.0354974 / 0.3) 0px 0px 0px 6px, oklab(0 0 0 / 0.05) 0px 1px 3px 0px, oklab(0 0 0 / 0.05) 0px 1px 2px -1px",
+          "border": "rgb(63, 217, 166)",
+          "interactiveArrow": "none"
+        },
+        {
+          "label": "สาขา",
+          "appearance": "none",
+          "padding": 50,
+          "arrowWidth": 20,
+          "inset": 15,
+          "center": 0,
+          "textGap": 15,
+          "labelGap": 10,
+          "focusVisible": true,
+          "outline": "2px solid rgb(63, 217, 166)",
+          "shadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgb(23, 23, 23) 0px 0px 0px 3px, oklab(0.79364 -0.142822 0.0354974 / 0.3) 0px 0px 0px 6px, oklab(0 0 0 / 0.05) 0px 1px 3px 0px, oklab(0 0 0 / 0.05) 0px 1px 2px -1px",
+          "border": "rgb(63, 217, 166)",
+          "interactiveArrow": "none"
+        }
+      ]
+    },
+    {
+      "width": 1280,
+      "rootSize": 20,
+      "theme": "dark",
+      "tab": "ตารางพนักงาน",
+      "fields": [
+        {
+          "label": "สาขาที่ดู",
+          "x": 105,
+          "y": 328.5,
+          "width": 350,
+          "height": 55,
+          "size": "17.5px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        },
+        {
+          "label": "วันที่ดู",
+          "x": 475,
+          "y": 328.5,
+          "width": 350,
+          "height": 55,
+          "size": "17.5px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        },
+        {
+          "label": "พนักงานรับนัด",
+          "x": 131,
+          "y": 561.0625,
+          "width": 320,
+          "height": 55,
+          "size": "17.5px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        },
+        {
+          "label": "เริ่มรับนัด",
+          "x": 466,
+          "y": 561.0625,
+          "width": 200,
+          "height": 55,
+          "size": "17.5px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        },
+        {
+          "label": "สิ้นสุดรับนัด",
+          "x": 681,
+          "y": 561.0625,
+          "width": 200,
+          "height": 55,
+          "size": "17.5px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        },
+        {
+          "label": "วันที่ปลายทาง",
+          "x": 131,
+          "y": 672.3125,
+          "width": 320,
+          "height": 55,
+          "size": "17.5px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        }
+      ],
+      "arrows": [
+        {
+          "label": "สาขาที่ดู",
+          "appearance": "none",
+          "padding": 50,
+          "arrowWidth": 20,
+          "inset": 15,
+          "center": 0,
+          "textGap": 15,
+          "labelGap": 10,
+          "focusVisible": true,
+          "outline": "2px solid rgb(63, 217, 166)",
+          "shadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgb(23, 23, 23) 0px 0px 0px 3px, oklab(0.79364 -0.142822 0.0354974 / 0.3) 0px 0px 0px 6px, oklab(0 0 0 / 0.05) 0px 1px 3px 0px, oklab(0 0 0 / 0.05) 0px 1px 2px -1px",
+          "border": "rgb(63, 217, 166)",
+          "interactiveArrow": "none"
+        },
+        {
+          "label": "พนักงานรับนัด",
+          "appearance": "none",
+          "padding": 50,
+          "arrowWidth": 20,
+          "inset": 15,
+          "center": 0,
+          "textGap": 15,
+          "labelGap": 10,
+          "focusVisible": true,
+          "outline": "2px solid rgb(63, 217, 166)",
+          "shadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgb(23, 23, 23) 0px 0px 0px 3px, oklab(0.79364 -0.142822 0.0354974 / 0.3) 0px 0px 0px 6px, oklab(0 0 0 / 0.05) 0px 1px 3px 0px, oklab(0 0 0 / 0.05) 0px 1px 2px -1px",
+          "border": "rgb(63, 217, 166)",
+          "interactiveArrow": "none"
+        }
+      ]
+    },
+    {
+      "width": 1280,
+      "rootSize": 20,
+      "theme": "dark",
+      "tab": "ปฏิทิน",
+      "fields": [
+        {
+          "label": "สาขาที่ดู",
+          "x": 105,
+          "y": 328.5,
+          "width": 350,
+          "height": 55,
+          "size": "17.5px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        },
+        {
+          "label": "วันที่ดู",
+          "x": 475,
+          "y": 328.5,
+          "width": 350,
+          "height": 55,
+          "size": "17.5px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        }
+      ],
+      "arrows": [
+        {
+          "label": "สาขาที่ดู",
+          "appearance": "none",
+          "padding": 50,
+          "arrowWidth": 20,
+          "inset": 15,
+          "center": 0,
+          "textGap": 15,
+          "labelGap": 10,
+          "focusVisible": true,
+          "outline": "2px solid rgb(63, 217, 166)",
+          "shadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgb(23, 23, 23) 0px 0px 0px 3px, oklab(0.79364 -0.142822 0.0354974 / 0.3) 0px 0px 0px 6px, oklab(0 0 0 / 0.05) 0px 1px 3px 0px, oklab(0 0 0 / 0.05) 0px 1px 2px -1px",
+          "border": "rgb(63, 217, 166)",
+          "interactiveArrow": "none"
+        }
+      ]
+    },
+    {
+      "width": 320,
+      "rootSize": 20,
+      "theme": "light",
+      "tab": "นัดหมาย",
+      "fields": [
+        {
+          "label": "สาขาที่ดู",
+          "x": 20,
+          "y": 416,
+          "width": 280,
+          "height": 55,
+          "size": "20px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        },
+        {
+          "label": "วันที่ดู",
+          "x": 20,
+          "y": 527.25,
+          "width": 280,
+          "height": 55,
+          "size": "20px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        },
+        {
+          "label": "ลูกค้า",
+          "x": 41,
+          "y": 672.3125,
+          "width": 238,
+          "height": 55,
+          "size": "20px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        },
+        {
+          "label": "สาขา",
+          "x": 41,
+          "y": 783.5625,
+          "width": 238,
+          "height": 55,
+          "size": "20px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        },
+        {
+          "label": "วันที่นัด",
+          "x": 41,
+          "y": 894.8125,
+          "width": 238,
+          "height": 55,
+          "size": "20px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        }
+      ],
+      "arrows": [
+        {
+          "label": "สาขาที่ดู",
+          "appearance": "none",
+          "padding": 50,
+          "arrowWidth": 20,
+          "inset": 15,
+          "center": 0,
+          "textGap": 15,
+          "labelGap": 10,
+          "focusVisible": true,
+          "outline": "2px solid rgb(10, 113, 78)",
+          "shadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgb(247, 247, 247) 0px 0px 0px 3px, oklab(0.485462 -0.0974341 0.0295291 / 0.3) 0px 0px 0px 6px, oklab(0 0 0 / 0.05) 0px 1px 3px 0px, oklab(0 0 0 / 0.05) 0px 1px 2px -1px",
+          "border": "rgb(10, 113, 78)",
+          "interactiveArrow": "none"
+        },
+        {
+          "label": "สาขา",
+          "appearance": "none",
+          "padding": 50,
+          "arrowWidth": 20,
+          "inset": 15,
+          "center": 0,
+          "textGap": 15,
+          "labelGap": 10,
+          "focusVisible": true,
+          "outline": "2px solid rgb(10, 113, 78)",
+          "shadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgb(247, 247, 247) 0px 0px 0px 3px, oklab(0.485462 -0.0974341 0.0295291 / 0.3) 0px 0px 0px 6px, oklab(0 0 0 / 0.05) 0px 1px 3px 0px, oklab(0 0 0 / 0.05) 0px 1px 2px -1px",
+          "border": "rgb(10, 113, 78)",
+          "interactiveArrow": "none"
+        }
+      ]
+    },
+    {
+      "width": 320,
+      "rootSize": 20,
+      "theme": "light",
+      "tab": "ตารางพนักงาน",
+      "fields": [
+        {
+          "label": "สาขาที่ดู",
+          "x": 20,
+          "y": 416,
+          "width": 280,
+          "height": 55,
+          "size": "20px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        },
+        {
+          "label": "วันที่ดู",
+          "x": 20,
+          "y": 527.25,
+          "width": 280,
+          "height": 55,
+          "size": "20px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        },
+        {
+          "label": "พนักงานรับนัด",
+          "x": 41,
+          "y": 833.5625,
+          "width": 238,
+          "height": 55,
+          "size": "20px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        },
+        {
+          "label": "เริ่มรับนัด",
+          "x": 41,
+          "y": 939.8125,
+          "width": 238,
+          "height": 55,
+          "size": "20px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        },
+        {
+          "label": "สิ้นสุดรับนัด",
+          "x": 41,
+          "y": 1046.0625,
+          "width": 238,
+          "height": 55,
+          "size": "20px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        },
+        {
+          "label": "วันที่ปลายทาง",
+          "x": 41,
+          "y": 1227.3125,
+          "width": 238,
+          "height": 55,
+          "size": "20px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        }
+      ],
+      "arrows": [
+        {
+          "label": "สาขาที่ดู",
+          "appearance": "none",
+          "padding": 50,
+          "arrowWidth": 20,
+          "inset": 15,
+          "center": 0,
+          "textGap": 15,
+          "labelGap": 10,
+          "focusVisible": true,
+          "outline": "2px solid rgb(10, 113, 78)",
+          "shadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgb(247, 247, 247) 0px 0px 0px 3px, oklab(0.485462 -0.0974341 0.0295291 / 0.3) 0px 0px 0px 6px, oklab(0 0 0 / 0.05) 0px 1px 3px 0px, oklab(0 0 0 / 0.05) 0px 1px 2px -1px",
+          "border": "rgb(10, 113, 78)",
+          "interactiveArrow": "none"
+        },
+        {
+          "label": "พนักงานรับนัด",
+          "appearance": "none",
+          "padding": 50,
+          "arrowWidth": 20,
+          "inset": 15,
+          "center": 0,
+          "textGap": 15,
+          "labelGap": 10,
+          "focusVisible": true,
+          "outline": "2px solid rgb(10, 113, 78)",
+          "shadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgb(247, 247, 247) 0px 0px 0px 3px, oklab(0.485462 -0.0974341 0.0295291 / 0.3) 0px 0px 0px 6px, oklab(0 0 0 / 0.05) 0px 1px 3px 0px, oklab(0 0 0 / 0.05) 0px 1px 2px -1px",
+          "border": "rgb(10, 113, 78)",
+          "interactiveArrow": "none"
+        }
+      ]
+    },
+    {
+      "width": 320,
+      "rootSize": 20,
+      "theme": "light",
+      "tab": "ปฏิทิน",
+      "fields": [
+        {
+          "label": "สาขาที่ดู",
+          "x": 20,
+          "y": 416,
+          "width": 280,
+          "height": 55,
+          "size": "20px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        },
+        {
+          "label": "วันที่ดู",
+          "x": 20,
+          "y": 527.25,
+          "width": 280,
+          "height": 55,
+          "size": "20px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        }
+      ],
+      "arrows": [
+        {
+          "label": "สาขาที่ดู",
+          "appearance": "none",
+          "padding": 50,
+          "arrowWidth": 20,
+          "inset": 15,
+          "center": 0,
+          "textGap": 15,
+          "labelGap": 10,
+          "focusVisible": true,
+          "outline": "2px solid rgb(10, 113, 78)",
+          "shadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgb(247, 247, 247) 0px 0px 0px 3px, oklab(0.485462 -0.0974341 0.0295291 / 0.3) 0px 0px 0px 6px, oklab(0 0 0 / 0.05) 0px 1px 3px 0px, oklab(0 0 0 / 0.05) 0px 1px 2px -1px",
+          "border": "rgb(10, 113, 78)",
+          "interactiveArrow": "none"
+        }
+      ]
+    },
+    {
+      "width": 320,
+      "rootSize": 20,
+      "theme": "dark",
+      "tab": "นัดหมาย",
+      "fields": [
+        {
+          "label": "สาขาที่ดู",
+          "x": 20,
+          "y": 416,
+          "width": 280,
+          "height": 55,
+          "size": "20px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        },
+        {
+          "label": "วันที่ดู",
+          "x": 20,
+          "y": 527.25,
+          "width": 280,
+          "height": 55,
+          "size": "20px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        },
+        {
+          "label": "ลูกค้า",
+          "x": 41,
+          "y": 672.3125,
+          "width": 238,
+          "height": 55,
+          "size": "20px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        },
+        {
+          "label": "สาขา",
+          "x": 41,
+          "y": 783.5625,
+          "width": 238,
+          "height": 55,
+          "size": "20px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        },
+        {
+          "label": "วันที่นัด",
+          "x": 41,
+          "y": 894.8125,
+          "width": 238,
+          "height": 55,
+          "size": "20px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        }
+      ],
+      "arrows": [
+        {
+          "label": "สาขาที่ดู",
+          "appearance": "none",
+          "padding": 50,
+          "arrowWidth": 20,
+          "inset": 15,
+          "center": 0,
+          "textGap": 15,
+          "labelGap": 10,
+          "focusVisible": true,
+          "outline": "2px solid rgb(63, 217, 166)",
+          "shadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgb(23, 23, 23) 0px 0px 0px 3px, oklab(0.79364 -0.142822 0.0354974 / 0.3) 0px 0px 0px 6px, oklab(0 0 0 / 0.05) 0px 1px 3px 0px, oklab(0 0 0 / 0.05) 0px 1px 2px -1px",
+          "border": "rgb(63, 217, 166)",
+          "interactiveArrow": "none"
+        },
+        {
+          "label": "สาขา",
+          "appearance": "none",
+          "padding": 50,
+          "arrowWidth": 20,
+          "inset": 15,
+          "center": 0,
+          "textGap": 15,
+          "labelGap": 10,
+          "focusVisible": true,
+          "outline": "2px solid rgb(63, 217, 166)",
+          "shadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgb(23, 23, 23) 0px 0px 0px 3px, oklab(0.79364 -0.142822 0.0354974 / 0.3) 0px 0px 0px 6px, oklab(0 0 0 / 0.05) 0px 1px 3px 0px, oklab(0 0 0 / 0.05) 0px 1px 2px -1px",
+          "border": "rgb(63, 217, 166)",
+          "interactiveArrow": "none"
+        }
+      ]
+    },
+    {
+      "width": 320,
+      "rootSize": 20,
+      "theme": "dark",
+      "tab": "ตารางพนักงาน",
+      "fields": [
+        {
+          "label": "สาขาที่ดู",
+          "x": 20,
+          "y": 416,
+          "width": 280,
+          "height": 55,
+          "size": "20px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        },
+        {
+          "label": "วันที่ดู",
+          "x": 20,
+          "y": 527.25,
+          "width": 280,
+          "height": 55,
+          "size": "20px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        },
+        {
+          "label": "พนักงานรับนัด",
+          "x": 41,
+          "y": 833.5625,
+          "width": 238,
+          "height": 55,
+          "size": "20px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        },
+        {
+          "label": "เริ่มรับนัด",
+          "x": 41,
+          "y": 939.8125,
+          "width": 238,
+          "height": 55,
+          "size": "20px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        },
+        {
+          "label": "สิ้นสุดรับนัด",
+          "x": 41,
+          "y": 1046.0625,
+          "width": 238,
+          "height": 55,
+          "size": "20px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        },
+        {
+          "label": "วันที่ปลายทาง",
+          "x": 41,
+          "y": 1227.3125,
+          "width": 238,
+          "height": 55,
+          "size": "20px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        }
+      ],
+      "arrows": [
+        {
+          "label": "สาขาที่ดู",
+          "appearance": "none",
+          "padding": 50,
+          "arrowWidth": 20,
+          "inset": 15,
+          "center": 0,
+          "textGap": 15,
+          "labelGap": 10,
+          "focusVisible": true,
+          "outline": "2px solid rgb(63, 217, 166)",
+          "shadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgb(23, 23, 23) 0px 0px 0px 3px, oklab(0.79364 -0.142822 0.0354974 / 0.3) 0px 0px 0px 6px, oklab(0 0 0 / 0.05) 0px 1px 3px 0px, oklab(0 0 0 / 0.05) 0px 1px 2px -1px",
+          "border": "rgb(63, 217, 166)",
+          "interactiveArrow": "none"
+        },
+        {
+          "label": "พนักงานรับนัด",
+          "appearance": "none",
+          "padding": 50,
+          "arrowWidth": 20,
+          "inset": 15,
+          "center": 0,
+          "textGap": 15,
+          "labelGap": 10,
+          "focusVisible": true,
+          "outline": "2px solid rgb(63, 217, 166)",
+          "shadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgb(23, 23, 23) 0px 0px 0px 3px, oklab(0.79364 -0.142822 0.0354974 / 0.3) 0px 0px 0px 6px, oklab(0 0 0 / 0.05) 0px 1px 3px 0px, oklab(0 0 0 / 0.05) 0px 1px 2px -1px",
+          "border": "rgb(63, 217, 166)",
+          "interactiveArrow": "none"
+        }
+      ]
+    },
+    {
+      "width": 320,
+      "rootSize": 20,
+      "theme": "dark",
+      "tab": "ปฏิทิน",
+      "fields": [
+        {
+          "label": "สาขาที่ดู",
+          "x": 20,
+          "y": 416,
+          "width": 280,
+          "height": 55,
+          "size": "20px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        },
+        {
+          "label": "วันที่ดู",
+          "x": 20,
+          "y": 527.25,
+          "width": 280,
+          "height": 55,
+          "size": "20px",
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif"
+        }
+      ],
+      "arrows": [
+        {
+          "label": "สาขาที่ดู",
+          "appearance": "none",
+          "padding": 50,
+          "arrowWidth": 20,
+          "inset": 15,
+          "center": 0,
+          "textGap": 15,
+          "labelGap": 10,
+          "focusVisible": true,
+          "outline": "2px solid rgb(63, 217, 166)",
+          "shadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgb(23, 23, 23) 0px 0px 0px 3px, oklab(0.79364 -0.142822 0.0354974 / 0.3) 0px 0px 0px 6px, oklab(0 0 0 / 0.05) 0px 1px 3px 0px, oklab(0 0 0 / 0.05) 0px 1px 2px -1px",
+          "border": "rgb(63, 217, 166)",
+          "interactiveArrow": "none"
+        }
+      ]
+    }
+  ],
+  "emptyStateRecovery": true,
+  "dateSelection": true,
+  "linkedCustomerClear": true,
+  "errors": []
+}

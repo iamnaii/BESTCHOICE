@@ -1,3 +1,4 @@
+import { formControlClass } from '@/components/ui/form-styles';
 export interface User {
   id: string;
   email: string;
@@ -52,8 +53,7 @@ export interface InviteToken {
  */
 export const MIN_PASSWORD_LENGTH = 8;
 
-export const inputClass =
-  'w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20';
+export const inputClass = formControlClass;
 export const labelClass = 'block text-xs font-medium text-foreground mb-1.5';
 
 export function getInviteStatus(invite: InviteToken): { label: string; className: string } {

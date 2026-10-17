@@ -9,6 +9,8 @@ import base from './vite.config';
 export default mergeConfig(
   base,
   defineConfig({
+    // Concurrent audit servers must not invalidate each other's optimized deps.
+    cacheDir: process.env.DOCS_QA_VITE_CACHE_DIR ?? `node_modules/.vite-docs-qa-${process.pid}`,
     server: {
       proxy: {
         '/api': {

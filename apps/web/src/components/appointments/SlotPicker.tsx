@@ -1,9 +1,11 @@
 import { useQuery } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { NativeSelect } from '@/components/ui/native-select';
 import { getErrorMessage } from '@/lib/api';
 import type { Branch, Selection, Slot } from './types';
 import { thaiTime, visitDay } from './types';
+import { appointmentControlClass, appointmentFieldClass } from './field-styles';
 export default function SlotPicker({
   branches,
   branchId,
@@ -30,11 +32,12 @@ export default function SlotPicker({
   });
   return (
     <div className="space-y-4">
-      <label className="block space-y-2 text-sm font-medium">
-        สาขา
-        <select
+      <label className={appointmentFieldClass}>
+        <span>สาขา</span>
+        <NativeSelect
           aria-label="สาขา"
-          className="h-11 w-full rounded-md border border-input bg-background px-3"
+          className={appointmentControlClass}
+          disabled={!branches.length}
           value={branchId}
           onChange={(e) => onChange({ branchId: e.target.value, day, startsAt: '' })}
         >
@@ -46,13 +49,14 @@ export default function SlotPicker({
               {b.name}
             </option>
           ))}
-        </select>
+        </NativeSelect>
       </label>
-      <label className="block space-y-2 text-sm font-medium">
-        วันที่นัด
+      <label className={appointmentFieldClass}>
+        <span>วันที่นัด</span>
         <Input
           aria-label="วันที่นัด"
-          className="h-11"
+          className={appointmentControlClass}
+          disabled={!branchId}
           type="date"
           min={visitDay()}
           max={visitDay(13)}
@@ -61,13 +65,17 @@ export default function SlotPicker({
         />
       </label>
       <div className="space-y-3">
-        <p className="text-sm font-medium">
-          เวลาที่สะดวก{' '}
-          <span className="font-normal text-muted-foreground">
-            · ครั้งละ 45 นาที · คิวสุดท้าย 18:30 น.
+        <p className="space-y-1 text-sm font-medium">
+          <span className="block">เวลาที่สะดวก</span>
+          <span className="block text-xs font-normal text-muted-foreground">
+            ครั้งละ 45 นาที · คิวสุดท้าย 18:30 น.
           </span>
         </p>
-        {query.isLoading ? (
+        {!branchId || !day ? (
+          <p role="status" className="rounded-lg bg-muted p-3 text-sm text-muted-foreground">
+            {!branchId ? 'เลือกสาขาเพื่อดูเวลาว่าง' : 'เลือกวันที่เพื่อดูเวลาว่าง'}
+          </p>
+        ) : query.isLoading ? (
           <p role="status">กำลังตรวจสอบเวลาว่าง…</p>
         ) : query.isError ? (
           <div role="alert" className="space-y-2 text-sm text-destructive">

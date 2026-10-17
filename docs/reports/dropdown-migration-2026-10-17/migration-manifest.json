@@ -1,0 +1,1451 @@
+[
+  {
+    "file": "apps/web-shop/src/pages/sell/SellQuotePage.tsx",
+    "line": 238,
+    "resolved": "w-full h-11 rounded-xl border border-border bg-background px-3 text-base md:text-sm leading-snug",
+    "wrapper": "w-full",
+    "compact": false
+  },
+  {
+    "file": "apps/web-shop/src/pages/sell/SellQuotePage.tsx",
+    "line": 253,
+    "resolved": "w-full h-11 rounded-xl border border-border bg-background px-3 text-base md:text-sm leading-snug",
+    "wrapper": "w-full",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/WhtReportPage.tsx",
+    "line": 314,
+    "resolved": "w-full px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden bg-background text-foreground",
+    "wrapper": "w-full",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/SalesHistoryPage.tsx",
+    "line": 660,
+    "resolved": "min-w-0 max-w-full px-3 py-2 border border-input rounded-lg text-sm bg-background",
+    "wrapper": "w-full sm:w-auto min-w-0 max-w-full",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/SalesHistoryPage.tsx",
+    "line": 670,
+    "resolved": "min-w-0 max-w-full px-3 py-2 border border-input rounded-lg text-sm bg-background",
+    "wrapper": "w-full sm:w-auto min-w-0 max-w-full",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/SalesHistoryPage.tsx",
+    "line": 680,
+    "resolved": "min-w-0 max-w-full px-3 py-2 border border-input rounded-lg text-sm bg-background",
+    "wrapper": "w-full sm:w-auto min-w-0 max-w-full",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/SalesHistoryPage.tsx",
+    "line": 730,
+    "resolved": "min-w-0 max-w-full px-3 py-2 border border-input rounded-lg text-sm bg-background",
+    "wrapper": "w-full sm:w-auto min-w-0 max-w-full",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/SalesHistoryPage.tsx",
+    "line": 741,
+    "resolved": "min-w-0 max-w-full px-3 py-2 border border-input rounded-lg text-sm bg-background",
+    "wrapper": "w-full sm:w-auto min-w-0 max-w-full",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/DocumentDashboardPage.tsx",
+    "line": 106,
+    "resolved": "border border-input rounded-lg px-3 py-2 text-sm bg-background focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden",
+    "wrapper": "w-full sm:w-auto ",
+    "compact": false
+  },
+  {
+    "file": "apps/web-shop/src/components/InstallmentCalculatorCard.tsx",
+    "line": 350,
+    "resolved": "min-h-11 rounded-md border border-border bg-background px-3 py-1 text-base md:text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary",
+    "wrapper": "w-full sm:w-auto ",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/CustomerDetailPage/components/EditCustomerDialog.tsx",
+    "line": 164,
+    "resolved": "w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20",
+    "wrapper": "w-full",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/CustomerDetailPage/components/EditCustomerDialog.tsx",
+    "line": 325,
+    "resolved": "w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20",
+    "wrapper": "w-full",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/CustomerDetailPage/components/EditCustomerDialog.tsx",
+    "line": 344,
+    "resolved": "w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20",
+    "wrapper": "w-full",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/ExpensesPage.tsx",
+    "line": 599,
+    "resolved": "w-full min-w-0 h-11 min-h-11 sm:w-auto sm:min-w-[150px]",
+    "wrapper": "w-full min-w-0 sm:w-auto sm:min-w-[150px]",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/ExpensesPage.tsx",
+    "line": 640,
+    "resolved": "w-full min-w-0 h-11 min-h-11 w-auto min-w-[120px]",
+    "wrapper": "w-auto sm:min-w-[120px]",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/ExpensesPage.tsx",
+    "line": 647,
+    "resolved": "w-full min-w-0 h-11 min-h-11 w-auto min-w-[120px]",
+    "wrapper": "w-auto sm:min-w-[120px]",
+    "compact": false
+  },
+  {
+    "file": "apps/web-shop/src/components/catalog/SortDropdown.tsx",
+    "line": 3,
+    "resolved": "border border-border rounded p-2",
+    "wrapper": "w-full sm:w-auto ",
+    "compact": false
+  },
+  {
+    "file": "apps/web-shop/src/components/catalog/FilterSidebar.tsx",
+    "line": 145,
+    "resolved": "w-full h-11 rounded-xl border-0 bg-muted px-3.5 text-base md:text-sm text-foreground leading-snug focus:outline-none focus:ring-2 focus:ring-emerald-500/50",
+    "wrapper": "w-full",
+    "compact": false
+  },
+  {
+    "file": "apps/web-shop/src/components/catalog/FilterSidebar.tsx",
+    "line": 163,
+    "resolved": "w-full h-11 rounded-xl border-0 bg-muted px-3.5 text-base md:text-sm text-foreground leading-snug focus:outline-none focus:ring-2 focus:ring-emerald-500/50",
+    "wrapper": "w-full",
+    "compact": false
+  },
+  {
+    "file": "apps/web-shop/src/components/catalog/FilterSidebar.tsx",
+    "line": 183,
+    "resolved": "w-full h-11 rounded-xl border-0 bg-muted px-3.5 text-base md:text-sm text-foreground leading-snug focus:outline-none focus:ring-2 focus:ring-emerald-500/50",
+    "wrapper": "w-full",
+    "compact": false
+  },
+  {
+    "file": "apps/web-shop/src/components/catalog/FilterSidebar.tsx",
+    "line": 202,
+    "resolved": "w-full h-11 rounded-xl border-0 bg-muted px-3.5 text-base md:text-sm text-foreground leading-snug focus:outline-none focus:ring-2 focus:ring-emerald-500/50",
+    "wrapper": "w-full",
+    "compact": false
+  },
+  {
+    "file": "apps/web-shop/src/components/catalog/FilterSidebar.tsx",
+    "line": 350,
+    "resolved": "w-full h-10 rounded-xl border-0 bg-card px-3 text-base md:text-sm text-foreground leading-snug focus:outline-none focus:ring-2 focus:ring-emerald-500/50",
+    "wrapper": "w-full",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/settings/SettingsLayout.tsx",
+    "line": 112,
+    "resolved": "w-full rounded-lg border border-border bg-background py-2 px-3 text-sm",
+    "wrapper": "w-full",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/ChatAnalyticsPage.tsx",
+    "line": 240,
+    "resolved": "mt-1 min-h-11 w-full min-w-0 rounded-md border border-input bg-background px-3 py-2 text-sm",
+    "wrapper": "mt-1 w-full min-w-0",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/ChatAnalyticsPage.tsx",
+    "line": 255,
+    "resolved": "mt-1 min-h-11 w-full min-w-0 rounded-md border border-input bg-background px-3 py-2 text-sm",
+    "wrapper": "mt-1 w-full min-w-0",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/ChatAnalyticsPage.tsx",
+    "line": 273,
+    "resolved": "mt-1 min-h-11 w-full min-w-0 rounded-md border border-input bg-background px-3 py-2 text-sm",
+    "wrapper": "mt-1 w-full min-w-0",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/MonthlyClosePage.tsx",
+    "line": 379,
+    "resolved": "px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden min-w-[180px]",
+    "wrapper": "w-full sm:w-auto sm:min-w-[180px]",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/QcCenterPage/index.tsx",
+    "line": 158,
+    "resolved": "px-3 py-2 text-sm rounded-lg border border-input bg-background leading-snug focus:outline-none focus:ring-2 focus:ring-ring",
+    "wrapper": "w-full sm:w-auto ",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/QcCenterPage/index.tsx",
+    "line": 167,
+    "resolved": "px-3 py-2 text-sm rounded-lg border border-input bg-background leading-snug focus:outline-none focus:ring-2 focus:ring-ring",
+    "wrapper": "w-full sm:w-auto ",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/accounting/PeriodClosePage.tsx",
+    "line": 188,
+    "resolved": "border border-border rounded-md px-3 py-1.5 text-sm bg-background",
+    "wrapper": "w-full sm:w-auto ",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/accounting/TaxDisallowedSummaryPage.tsx",
+    "line": 71,
+    "resolved": "w-48 rounded-lg border border-input bg-background px-3 py-2 text-sm",
+    "wrapper": "w-48",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/UnifiedInboxPage/components/FacebookCommentPageSettings.tsx",
+    "line": 166,
+    "resolved": "h-11 w-full rounded-md border bg-background px-2",
+    "wrapper": "w-full",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/UnifiedInboxPage/components/SalesDispositionControl.tsx",
+    "line": 93,
+    "resolved": "mt-2 min-h-11 w-full rounded-md border border-input bg-background px-3",
+    "wrapper": "mt-2 w-full",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/UnifiedInboxPage/components/ChatFollowUpDialog.tsx",
+    "line": 189,
+    "resolved": "mt-1 min-h-11 w-full min-w-0 rounded-md border border-input bg-background px-3 py-2 text-sm",
+    "wrapper": "mt-1 w-full min-w-0",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/UnifiedInboxPage/components/ChatFollowUpDialog.tsx",
+    "line": 215,
+    "resolved": "mt-1 min-h-11 w-full min-w-0 rounded-md border border-input bg-background px-3 py-2 text-sm",
+    "wrapper": "mt-1 w-full min-w-0",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/components/contacts/CreateContactModal.tsx",
+    "line": 259,
+    "resolved": "h-9 w-28 shrink-0 rounded-md border border-input bg-background px-2 text-sm outline-hidden focus:ring-2 focus:ring-ring/30",
+    "wrapper": "w-28 shrink-0",
+    "compact": true
+  },
+  {
+    "file": "apps/web/src/pages/interco/CreateBatchDialog.tsx",
+    "line": 221,
+    "resolved": "w-full h-9 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring/30",
+    "wrapper": "w-full",
+    "compact": true
+  },
+  {
+    "file": "apps/web/src/pages/interco/CreateBatchDialog.tsx",
+    "line": 235,
+    "resolved": "w-full h-9 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring/30",
+    "wrapper": "w-full",
+    "compact": true
+  },
+  {
+    "file": "apps/web/src/pages/YearEndClosingPage.tsx",
+    "line": 204,
+    "resolved": "h-9 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring/30",
+    "wrapper": "w-full sm:w-auto ",
+    "compact": true
+  },
+  {
+    "file": "apps/web/src/pages/FinanceReceivablePage.tsx",
+    "line": 176,
+    "resolved": "w-full px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden w-auto min-w-[160px]",
+    "wrapper": "w-auto sm:min-w-[160px]",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/FinanceReceivablePage.tsx",
+    "line": 453,
+    "resolved": "w-full px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden w-auto min-w-[130px]",
+    "wrapper": "w-auto sm:min-w-[130px]",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/FinanceReceivablePage.tsx",
+    "line": 460,
+    "resolved": "w-full px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden w-auto min-w-[130px]",
+    "wrapper": "w-auto sm:min-w-[130px]",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/FinanceReceivablePage.tsx",
+    "line": 467,
+    "resolved": "w-full px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden w-auto min-w-[130px]",
+    "wrapper": "w-auto sm:min-w-[130px]",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/UnifiedInboxPage/components/FacebookCommentLink.tsx",
+    "line": 102,
+    "resolved": "h-11 w-full min-w-0 rounded-md border bg-background px-2",
+    "wrapper": "w-full min-w-0",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/after-sales/ExchangeActionDialogs.tsx",
+    "line": 360,
+    "resolved": "h-11 w-full rounded-lg border border-input bg-background px-3.5 text-sm leading-snug text-foreground placeholder:text-muted-foreground/70",
+    "wrapper": "w-full",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/after-sales/RepairActionDialogs.tsx",
+    "line": 198,
+    "resolved": "h-11 w-full rounded-lg border border-input bg-background px-3.5 text-sm leading-snug text-foreground placeholder:text-muted-foreground/70",
+    "wrapper": "w-full",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/after-sales/PricedExchangeFields.tsx",
+    "line": 142,
+    "resolved": "h-11 w-full rounded-lg border border-input bg-background px-3.5 text-sm leading-snug text-foreground placeholder:text-muted-foreground/70",
+    "wrapper": "w-full",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/StockAdjustmentsPage/index.tsx",
+    "line": 137,
+    "resolved": "px-3 py-2 border border-input rounded-lg text-sm bg-background focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden",
+    "wrapper": "w-full sm:w-auto ",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/UnifiedInboxPage/components/ChatServiceRequestDialog.tsx",
+    "line": 113,
+    "resolved": "mt-1 min-h-11 w-full min-w-0 rounded-md border border-input bg-background px-3 py-2 text-sm",
+    "wrapper": "mt-1 w-full min-w-0",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/UnifiedInboxPage/components/ChatServiceRequestDialog.tsx",
+    "line": 158,
+    "resolved": "mt-1 min-h-11 w-full min-w-0 rounded-md border border-input bg-background px-3 py-2 text-sm",
+    "wrapper": "mt-1 w-full min-w-0",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/components/template-editor/editor/BlockEditModal.tsx",
+    "line": 90,
+    "resolved": "w-full px-3 py-2.5 border border-input rounded-lg text-base focus:ring-2 focus:ring-primary focus:border-primary",
+    "wrapper": "w-full",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/components/device-returns/DeviceReturnIntakeDialog.tsx",
+    "line": 439,
+    "resolved": "w-full px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 outline-hidden",
+    "wrapper": "w-full",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/components/device-returns/DeviceReturnIntakeDialog.tsx",
+    "line": 597,
+    "resolved": "w-full px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 outline-hidden",
+    "wrapper": "w-full",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/components/trade-in/TradeInCreditPicker.tsx",
+    "line": 25,
+    "resolved": "w-full h-10 rounded-lg border bg-background px-3 text-sm",
+    "wrapper": "w-full",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/StockPage/components/StockListTab.tsx",
+    "line": 331,
+    "resolved": "h-11 w-full min-w-0 cursor-pointer rounded-lg border border-input bg-card px-3 text-sm text-foreground shadow-xs transition-colors hover:border-primary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+    "wrapper": "w-full min-w-0",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/StockPage/components/StockListTab.tsx",
+    "line": 353,
+    "resolved": "h-11 w-full min-w-0 cursor-pointer rounded-lg border border-input bg-card px-3 text-sm text-foreground shadow-xs transition-colors hover:border-primary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+    "wrapper": "w-full min-w-0",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/StockPage/components/StockListTab.tsx",
+    "line": 401,
+    "resolved": "h-11 w-full min-w-0 cursor-pointer rounded-lg border border-input bg-card px-3 text-sm text-foreground shadow-xs transition-colors hover:border-primary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+    "wrapper": "w-full min-w-0",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/ExpenseFavoritesPage.tsx",
+    "line": 114,
+    "resolved": "px-3 py-2 border border-input rounded-lg text-sm bg-background",
+    "wrapper": "w-full sm:w-auto ",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/components/customer/CustomerCreateDialog.tsx",
+    "line": 626,
+    "resolved": "w-full min-w-0 h-11 min-h-11",
+    "wrapper": "w-full min-w-0",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/components/customer/CustomerCreateDialog.tsx",
+    "line": 767,
+    "resolved": "w-full min-w-0 h-11 min-h-11",
+    "wrapper": "w-full min-w-0",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/components/customer/CustomerCreateDialog.tsx",
+    "line": 940,
+    "resolved": "w-full min-w-0 h-11 min-h-11",
+    "wrapper": "w-full min-w-0",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/components/customer/CustomerCreateDialog.tsx",
+    "line": 1025,
+    "resolved": "w-full min-w-0 h-11 min-h-11",
+    "wrapper": "w-full min-w-0",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/components/customer/CustomerCreateDialog.tsx",
+    "line": 1044,
+    "resolved": "w-full min-w-0 h-11 min-h-11",
+    "wrapper": "w-full min-w-0",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/StockTransfersPage.tsx",
+    "line": 377,
+    "resolved": "px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden",
+    "wrapper": "w-full sm:w-auto ",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/StockTransfersPage.tsx",
+    "line": 537,
+    "resolved": "px-3 py-2 border border-input rounded-lg text-sm",
+    "wrapper": "w-full sm:w-auto ",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/StockTransfersPage.tsx",
+    "line": 654,
+    "resolved": "px-3 py-2 border border-input rounded-lg text-sm",
+    "wrapper": "w-full sm:w-auto ",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/UnifiedInboxPage/components/FacebookCommentPanel.tsx",
+    "line": 108,
+    "resolved": "h-11 w-full rounded-md border bg-background px-3",
+    "wrapper": "w-full",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/UnifiedInboxPage/components/ChatLibraryPicker.tsx",
+    "line": 280,
+    "resolved": "h-10 w-full rounded-md border border-input bg-background px-2 text-sm",
+    "wrapper": "w-full",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/UnifiedInboxPage/components/ChatServiceRequestCard.tsx",
+    "line": 214,
+    "resolved": "mt-1 min-h-11 w-full min-w-0 rounded-md border border-input bg-background px-3 py-2 text-sm",
+    "wrapper": "mt-1 w-full min-w-0",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/UnifiedInboxPage/components/ChatServiceRequestCard.tsx",
+    "line": 254,
+    "resolved": "mt-1 min-h-11 w-full min-w-0 rounded-md border border-input bg-background px-3 py-2 text-sm",
+    "wrapper": "mt-1 w-full min-w-0",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/StockPage/components/BulkTransferModal.tsx",
+    "line": 59,
+    "resolved": "w-full px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden",
+    "wrapper": "w-full",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/components/payment/SlipReviewTab.tsx",
+    "line": 636,
+    "resolved": "w-full border rounded-lg px-3 py-2",
+    "wrapper": "w-full",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/TodosPage/components/TodoFilters.tsx",
+    "line": 81,
+    "resolved": "pl-9 pr-8 py-2.5 border border-input bg-card rounded-xl text-sm focus-visible:ring-2 focus-visible:ring-primary/20 focus:border-primary/50 outline-hidden transition-colors appearance-none cursor-pointer",
+    "wrapper": "w-full sm:w-auto ",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/TodosPage/components/TodoForm.tsx",
+    "line": 453,
+    "resolved": "w-full px-4 py-2.5 border border-input rounded-xl text-sm bg-card focus-visible:ring-2 focus-visible:ring-primary/20 focus:border-primary/50 outline-hidden transition-colors",
+    "wrapper": "w-full",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/AfterSalesPage.tsx",
+    "line": 167,
+    "resolved": "h-11 min-w-0 rounded-lg border border-input bg-background px-3 text-sm sm:w-48",
+    "wrapper": "w-full sm:w-auto min-w-0 sm:w-48",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/VatReportPage.tsx",
+    "line": 133,
+    "resolved": "w-full px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden bg-background text-foreground",
+    "wrapper": "w-full",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/InspectionPage.tsx",
+    "line": 126,
+    "resolved": "px-4 py-2.5 rounded-lg border border-input bg-background text-sm focus:outline-hidden focus-visible:ring-2 focus-visible:ring-ring/30",
+    "wrapper": "w-full sm:w-auto ",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/PDPAPage.tsx",
+    "line": 324,
+    "resolved": "w-full px-3 py-2 border rounded-lg text-sm",
+    "wrapper": "w-full",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/PDPAPage.tsx",
+    "line": 414,
+    "resolved": "w-full px-3 py-2 border rounded-lg text-sm",
+    "wrapper": "w-full",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/PeakSyncPage.tsx",
+    "line": 138,
+    "resolved": "text-sm border border-input rounded-lg px-3 py-2 bg-background",
+    "wrapper": "w-full sm:w-auto ",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/components/tender/TenderInput.tsx",
+    "line": 123,
+    "resolved": "w-full h-11 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20 disabled:opacity-60",
+    "wrapper": "w-full",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/components/contract/CreditCheckPanel.tsx",
+    "line": 301,
+    "resolved": "px-3 py-1.5 border border-input rounded-lg text-sm",
+    "wrapper": "w-full sm:w-auto ",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/components/contract/CustomerEditModal.tsx",
+    "line": 205,
+    "resolved": "w-full px-3 py-2 border border-input rounded-lg text-sm bg-background",
+    "wrapper": "w-full",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/components/contract/CustomerEditModal.tsx",
+    "line": 252,
+    "resolved": "w-full px-3 py-2 border border-input rounded-lg text-sm",
+    "wrapper": "w-full",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/components/contract/CustomerEditModal.tsx",
+    "line": 370,
+    "resolved": "w-full px-3 py-2 border border-input rounded-lg text-sm bg-background",
+    "wrapper": "w-full",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/components/contract/CustomerEditModal.tsx",
+    "line": 389,
+    "resolved": "w-full px-3 py-2 border border-input rounded-lg text-sm bg-background",
+    "wrapper": "w-full",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/components/accounting/ReverseConfirmDialog.tsx",
+    "line": 163,
+    "resolved": "w-full rounded-md border border-input bg-background px-3 py-2 text-sm leading-snug focus:outline-none focus:ring-2 focus:ring-ring",
+    "wrapper": "w-full",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/components/template-editor/layout/HeaderBar.tsx",
+    "line": 103,
+    "resolved": "min-h-11 min-w-0 flex-1 basis-48 px-3 py-2 text-base font-medium border border-input rounded-lg bg-background focus:ring-2 focus:ring-primary focus:border-primary max-w-full lg:max-w-80 disabled:opacity-50",
+    "wrapper": "w-full sm:w-auto min-w-0 flex-1 basis-48 max-w-full lg:max-w-80",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/FinanceReceivablePage/FinanceContactLogDialog.tsx",
+    "line": 77,
+    "resolved": "w-full px-3 py-2 border border-input rounded-lg bg-background",
+    "wrapper": "w-full",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/ChatbotFinanceKnowledgePage.tsx",
+    "line": 279,
+    "resolved": "w-full rounded-md border border-border bg-background px-3 py-2 text-sm",
+    "wrapper": "w-full",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/ChatbotFinanceKnowledgePage.tsx",
+    "line": 298,
+    "resolved": "w-full px-3 py-2 border rounded-lg text-sm mt-1",
+    "wrapper": "w-full mt-1",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/RepossessionsPage.tsx",
+    "line": 755,
+    "resolved": "px-3 py-2 border border-input rounded-lg text-sm bg-background focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden",
+    "wrapper": "w-full sm:w-auto ",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/RepossessionsPage.tsx",
+    "line": 1128,
+    "resolved": "w-full px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden",
+    "wrapper": "w-full",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/NotificationsPage/components/NotificationLogTable.tsx",
+    "line": 113,
+    "resolved": "px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden",
+    "wrapper": "w-full sm:w-auto ",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/NotificationsPage/components/NotificationLogTable.tsx",
+    "line": 123,
+    "resolved": "px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden",
+    "wrapper": "w-full sm:w-auto ",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/NotificationsPage/components/TemplateForm.tsx",
+    "line": 509,
+    "resolved": "w-full px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden",
+    "wrapper": "w-full",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/NotificationsPage/components/TemplateForm.tsx",
+    "line": 525,
+    "resolved": "w-full px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden",
+    "wrapper": "w-full",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/NotificationsPage/components/TemplateForm.tsx",
+    "line": 536,
+    "resolved": "w-full px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden",
+    "wrapper": "w-full",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/NotificationsPage/components/TemplateManager.tsx",
+    "line": 92,
+    "resolved": "px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden",
+    "wrapper": "w-full sm:w-auto ",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/NotificationsPage/index.tsx",
+    "line": 324,
+    "resolved": "w-full px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden",
+    "wrapper": "w-full",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/components/product/DeviceOriginFilter.tsx",
+    "line": 10,
+    "resolved": "min-w-0 h-11 min-h-11 mb-3 w-auto max-w-full",
+    "wrapper": "min-w-0 mb-3 w-auto max-w-full",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/components/expense-form-v4/PettyCashLinesSection.tsx",
+    "line": 131,
+    "resolved": "w-full rounded-md border border-input bg-background px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-primary",
+    "wrapper": "w-full",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/TradeInPage/components/AcceptModal.tsx",
+    "line": 157,
+    "resolved": "mt-1.5 w-full h-10 rounded-lg border border-input bg-background px-3 text-sm",
+    "wrapper": "mt-1.5 w-full",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/TradeInPage/components/ValuationsTab.tsx",
+    "line": 195,
+    "resolved": "mt-1 w-full h-10 rounded-lg border border-input bg-background px-3 text-sm",
+    "wrapper": "mt-1 w-full",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/TradeInPage/components/QuestionnaireTab.tsx",
+    "line": 239,
+    "resolved": "w-full h-8 rounded-lg border border-input bg-background px-2 text-sm",
+    "wrapper": "w-full",
+    "compact": true
+  },
+  {
+    "file": "apps/web/src/pages/TradeInPage/components/ReferenceQuestionnaire.tsx",
+    "line": 38,
+    "resolved": "min-h-11 max-w-full rounded-lg border border-input bg-background px-3",
+    "wrapper": "w-full sm:w-auto max-w-full",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/components/credit-check/CreditAffordabilityForm.tsx",
+    "line": 106,
+    "resolved": "w-full rounded-md border border-input bg-background px-3 py-2 text-sm",
+    "wrapper": "w-full",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/components/credit-check/CreditCheckCreateModal.tsx",
+    "line": 353,
+    "resolved": "w-full px-3 py-2 border border-input rounded-lg text-sm",
+    "wrapper": "w-full",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/components/credit-check/CreditCheckOverrideDialog.tsx",
+    "line": 181,
+    "resolved": "w-full h-10 px-3 rounded-lg border border-input bg-background text-sm",
+    "wrapper": "w-full",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/components/credit-check/CreditCheckOverrideDialog.tsx",
+    "line": 219,
+    "resolved": "w-full h-10 px-3 rounded-lg border border-input bg-background text-sm",
+    "wrapper": "w-full",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/components/credit-check/CreditCheckOverrideDialog.tsx",
+    "line": 238,
+    "resolved": "w-full h-10 px-3 rounded-lg border border-input bg-background text-sm",
+    "wrapper": "w-full",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/StockCountPage.tsx",
+    "line": 177,
+    "resolved": "min-w-0 max-w-full w-full sm:w-auto min-h-11 px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden",
+    "wrapper": "min-w-0 max-w-full w-full sm:w-auto",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/ImportedSalesPage.tsx",
+    "line": 62,
+    "resolved": "border border-border bg-background text-foreground rounded-md px-3 py-2 text-sm",
+    "wrapper": "w-full sm:w-auto ",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/components/expense-form-v4/SettlementLinesSection.tsx",
+    "line": 175,
+    "resolved": "px-3 py-2 border border-input rounded-lg text-sm bg-background",
+    "wrapper": "w-full sm:w-auto ",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/components/expense-form-v4/PayrollLinesSection.tsx",
+    "line": 324,
+    "resolved": "w-full px-3 py-2 border border-input rounded-lg text-sm bg-background",
+    "wrapper": "w-full",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/components/expense-form-v4/PayrollLinesSection.tsx",
+    "line": 347,
+    "resolved": "w-full px-3 py-2 border border-input rounded-lg text-sm bg-background",
+    "wrapper": "w-full",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/components/expense-form-v4/PayrollLinesSection.tsx",
+    "line": 639,
+    "resolved": "w-full px-1.5 py-1 border border-input rounded text-xs bg-background",
+    "wrapper": "w-full",
+    "compact": true
+  },
+  {
+    "file": "apps/web/src/components/expense-form-v4/ItemLinesSection.tsx",
+    "line": 68,
+    "resolved": "w-full min-w-0 h-11 min-h-11",
+    "wrapper": "w-full min-w-0",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/components/expense-form-v4/ItemLinesSection.tsx",
+    "line": 205,
+    "resolved": "w-full min-w-0 h-11 min-h-11",
+    "wrapper": "w-full min-w-0",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/components/expense-form-v4/ItemLinesSection.tsx",
+    "line": 240,
+    "resolved": "w-full min-w-0 h-11 min-h-11",
+    "wrapper": "w-full min-w-0",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/components/expense-form-v4/AdjustmentSection.tsx",
+    "line": 170,
+    "resolved": "w-full min-w-0 h-11 min-h-11",
+    "wrapper": "w-full min-w-0",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/components/expense-form-v4/AdjustmentSection.tsx",
+    "line": 192,
+    "resolved": "w-full min-w-0 h-11 min-h-11",
+    "wrapper": "w-full min-w-0",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/ContractCreatePage/components/CustomerCreateModal.tsx",
+    "line": 123,
+    "resolved": "w-full px-3 py-2 border border-input rounded-lg text-sm bg-background",
+    "wrapper": "w-full",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/ContractCreatePage/components/CustomerCreateModal.tsx",
+    "line": 263,
+    "resolved": "w-full px-3 py-2 border border-input rounded-lg text-sm",
+    "wrapper": "w-full",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/ContractCreatePage/components/CustomerCreateModal.tsx",
+    "line": 314,
+    "resolved": "w-full px-3 py-2 border border-input rounded-lg text-sm bg-background",
+    "wrapper": "w-full",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/ContractCreatePage/components/CustomerCreateModal.tsx",
+    "line": 333,
+    "resolved": "w-full px-3 py-2 border border-input rounded-lg text-sm bg-background",
+    "wrapper": "w-full",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/ContractCreatePage/components/PlanDetailsStep.tsx",
+    "line": 195,
+    "resolved": "w-full px-3 py-2 border border-input rounded-lg text-sm",
+    "wrapper": "w-full",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/ContractCreatePage/components/PlanDetailsStep.tsx",
+    "line": 223,
+    "resolved": "w-full px-3 py-2 border border-input rounded-lg text-sm",
+    "wrapper": "w-full",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/components/expense-form-v4/VendorSection.tsx",
+    "line": 34,
+    "resolved": "w-full min-w-0 h-11 min-h-11",
+    "wrapper": "w-full min-w-0",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/components/expense-form-v4/VendorSection.tsx",
+    "line": 76,
+    "resolved": "w-full min-w-0 h-11 min-h-11",
+    "wrapper": "w-full min-w-0",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/components/ui/RichTextEditor.tsx",
+    "line": 269,
+    "resolved": "px-1.5 py-1 text-xs border border-border rounded bg-card hover:bg-muted mr-1",
+    "wrapper": "w-full sm:w-auto mr-1",
+    "compact": true
+  },
+  {
+    "file": "apps/web/src/components/ui/RichTextEditor.tsx",
+    "line": 282,
+    "resolved": "px-1.5 py-1 text-xs border border-border rounded bg-card hover:bg-muted mr-1",
+    "wrapper": "w-full sm:w-auto mr-1",
+    "compact": true
+  },
+  {
+    "file": "apps/web/src/pages/AuditLogsPage.tsx",
+    "line": 311,
+    "resolved": "w-full border rounded-lg px-3 py-2 text-sm",
+    "wrapper": "w-full",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/ETaxConfigPage.tsx",
+    "line": 158,
+    "resolved": "w-full px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden bg-background text-foreground leading-snug",
+    "wrapper": "w-full",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/CollectionsPage/tabs/AllTab.tsx",
+    "line": 276,
+    "resolved": "px-3 py-2 border border-input rounded-lg text-sm",
+    "wrapper": "w-full sm:w-auto ",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/CollectionsPage/tabs/AllTab.tsx",
+    "line": 285,
+    "resolved": "px-3 py-2 border border-input rounded-lg text-sm",
+    "wrapper": "w-full sm:w-auto ",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/ContractDetailPage.tsx",
+    "line": 732,
+    "resolved": "w-full px-3 py-2 border border-input rounded-lg text-sm",
+    "wrapper": "w-full",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/AfterSalesNewPage.tsx",
+    "line": 677,
+    "resolved": "h-11 w-full rounded-lg border border-input bg-background px-3.5 text-sm leading-snug text-foreground placeholder:text-muted-foreground/70",
+    "wrapper": "w-full",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/AfterSalesNewPage.tsx",
+    "line": 778,
+    "resolved": "h-11 w-full rounded-lg border border-input bg-background px-3.5 text-sm leading-snug text-foreground placeholder:text-muted-foreground/70",
+    "wrapper": "w-full",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/ContractsPage.tsx",
+    "line": 318,
+    "resolved": "rounded-md border border-input bg-background px-2 text-sm",
+    "wrapper": "w-full sm:w-auto ",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/ContractsPage.tsx",
+    "line": 416,
+    "resolved": "w-full min-w-0 h-11 min-h-11 w-full sm:w-auto",
+    "wrapper": "min-w-0 w-full sm:w-auto",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/ContractsPage.tsx",
+    "line": 428,
+    "resolved": "w-full min-w-0 h-11 min-h-11 w-full sm:w-auto",
+    "wrapper": "min-w-0 w-full sm:w-auto",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/ContractsPage.tsx",
+    "line": 447,
+    "resolved": "w-full min-w-0 h-11 min-h-11 w-full sm:w-auto",
+    "wrapper": "min-w-0 w-full sm:w-auto",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/canned-response-admin/QuickReplyEditor.tsx",
+    "line": 56,
+    "resolved": "text-xs border border-border rounded px-2 py-1 bg-background",
+    "wrapper": "w-full sm:w-auto ",
+    "compact": true
+  },
+  {
+    "file": "apps/web/src/pages/canned-response-admin/QuickReplyEditor.tsx",
+    "line": 81,
+    "resolved": "text-xs border border-border rounded px-2 py-1 bg-background flex-1",
+    "wrapper": "w-full sm:w-auto flex-1",
+    "compact": true
+  },
+  {
+    "file": "apps/web/src/pages/PaymentsPage/components/RecordPaymentWizard.tsx",
+    "line": 1056,
+    "resolved": "w-full rounded-lg border border-border bg-background px-2 py-1.5 text-sm text-foreground leading-snug",
+    "wrapper": "w-full",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/PaymentsPage/components/ReceiptsTab.tsx",
+    "line": 366,
+    "resolved": "px-3 py-2 border border-input rounded-lg text-sm",
+    "wrapper": "w-full sm:w-auto ",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/ShopDailyCashPage.tsx",
+    "line": 174,
+    "resolved": "h-11 w-full min-w-0 rounded-lg border border-input bg-background px-3 text-sm sm:w-48",
+    "wrapper": "w-full min-w-0 sm:w-48",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/equity/EquityEntryPage.tsx",
+    "line": 254,
+    "resolved": "w-full border border-border rounded-md px-3 py-2 bg-background",
+    "wrapper": "w-full",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/equity/EquityEntryPage.tsx",
+    "line": 288,
+    "resolved": "w-full border border-border rounded-md px-2 py-2 text-sm bg-background",
+    "wrapper": "w-full",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/equity/EquityEntryPage.tsx",
+    "line": 385,
+    "resolved": "w-full border border-border rounded-md px-3 py-2 bg-background",
+    "wrapper": "w-full",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/equity/EquityListPage.tsx",
+    "line": 77,
+    "resolved": "border border-border rounded-md px-3 py-2 text-sm bg-background",
+    "wrapper": "w-full sm:w-auto ",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/equity/EquityListPage.tsx",
+    "line": 197,
+    "resolved": "border border-border rounded-md px-3 py-2 text-sm bg-background",
+    "wrapper": "w-full sm:w-auto ",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/equity/DividendRegisterPage.tsx",
+    "line": 68,
+    "resolved": "border border-border rounded-md px-3 py-2 text-sm bg-background",
+    "wrapper": "w-full sm:w-auto ",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/equity/DividendRegisterPage.tsx",
+    "line": 80,
+    "resolved": "border border-border rounded-md px-3 py-2 text-sm bg-background",
+    "wrapper": "w-full sm:w-auto ",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/PricingTemplatesPage.tsx",
+    "line": 303,
+    "resolved": "px-3 py-2 border border-input rounded-lg text-sm",
+    "wrapper": "w-full sm:w-auto ",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/PricingTemplatesPage.tsx",
+    "line": 306,
+    "resolved": "px-3 py-2 border border-input rounded-lg text-sm",
+    "wrapper": "w-full sm:w-auto ",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/PricingTemplatesPage.tsx",
+    "line": 402,
+    "resolved": "w-full rounded-lg border border-input bg-background p-2",
+    "wrapper": "w-full",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/PricingTemplatesPage.tsx",
+    "line": 443,
+    "resolved": "w-full px-3 py-2 border border-input rounded-lg text-sm",
+    "wrapper": "w-full",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/PaymentsPage/components/PaymentModals.tsx",
+    "line": 261,
+    "resolved": "w-full px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden",
+    "wrapper": "w-full",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/PaymentsPage/components/PaymentModals.tsx",
+    "line": 366,
+    "resolved": "w-full px-3 py-2 border border-input rounded-lg text-sm",
+    "wrapper": "w-full",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/PaymentsPage/components/PaymentFilters.tsx",
+    "line": 46,
+    "resolved": "min-w-0 h-11 min-h-11 w-full sm:w-auto",
+    "wrapper": "min-w-0 w-full sm:w-auto",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/PaymentsPage/components/PaymentFilters.tsx",
+    "line": 59,
+    "resolved": "min-w-0 h-11 min-h-11 w-full sm:w-auto",
+    "wrapper": "min-w-0 w-full sm:w-auto",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/other-income/components/ItemsTable.tsx",
+    "line": 137,
+    "resolved": "mt-1 w-full border rounded px-2 py-1.5 text-xs font-mono bg-background",
+    "wrapper": "mt-1 w-full",
+    "compact": true
+  },
+  {
+    "file": "apps/web/src/pages/other-income/components/ItemsTable.tsx",
+    "line": 158,
+    "resolved": "mt-1 w-full border rounded px-2 py-1.5 text-xs font-mono bg-background",
+    "wrapper": "mt-1 w-full",
+    "compact": true
+  },
+  {
+    "file": "apps/web/src/pages/other-income/OtherIncomeEntryPage.tsx",
+    "line": 803,
+    "resolved": "mt-1 w-full border rounded-md px-3 py-2 text-sm bg-background",
+    "wrapper": "mt-1 w-full",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/CompanySettingsPage.tsx",
+    "line": 476,
+    "resolved": "w-full px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden text-sm",
+    "wrapper": "w-full",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/canned-response-admin/bubble-editors/CardBubbleEditor.tsx",
+    "line": 73,
+    "resolved": "text-xs border border-border rounded px-1.5 py-1 bg-background",
+    "wrapper": "w-full sm:w-auto ",
+    "compact": true
+  },
+  {
+    "file": "apps/web/src/pages/CollectionsPage/components/StuckContractsSection.tsx",
+    "line": 214,
+    "resolved": "w-full h-9 px-3 text-sm rounded-md border border-input bg-background",
+    "wrapper": "w-full",
+    "compact": true
+  },
+  {
+    "file": "apps/web/src/pages/AssetManagementPage/components/AssetTable.tsx",
+    "line": 183,
+    "resolved": "w-full px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden max-w-[180px]",
+    "wrapper": "w-full max-w-[180px]",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/AssetManagementPage/components/AssetTable.tsx",
+    "line": 195,
+    "resolved": "w-full px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden max-w-[180px]",
+    "wrapper": "w-full max-w-[180px]",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/AssetManagementPage/components/AssetForm.tsx",
+    "line": 138,
+    "resolved": "w-full px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden",
+    "wrapper": "w-full",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/AssetManagementPage/components/AssetForm.tsx",
+    "line": 152,
+    "resolved": "w-full px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden",
+    "wrapper": "w-full",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/AssetManagementPage/components/AssetForm.tsx",
+    "line": 306,
+    "resolved": "w-full px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden",
+    "wrapper": "w-full",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/AssetManagementPage/components/AssetForm.tsx",
+    "line": 323,
+    "resolved": "w-full px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden",
+    "wrapper": "w-full",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/AssetManagementPage/components/AssetForm.tsx",
+    "line": 340,
+    "resolved": "w-full px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden",
+    "wrapper": "w-full",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/UsersPage/UserDetailPage.tsx",
+    "line": 221,
+    "resolved": "w-full min-w-0 h-11 min-h-11",
+    "wrapper": "w-full min-w-0",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/UsersPage/UserDetailPage.tsx",
+    "line": 227,
+    "resolved": "w-full min-w-0 h-11 min-h-11",
+    "wrapper": "w-full min-w-0",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/UsersPage/UserDetailPage.tsx",
+    "line": 268,
+    "resolved": "w-full min-w-0 h-11 min-h-11",
+    "wrapper": "w-full min-w-0",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/CollectionsPage/components/SendLineAdHocDialog.tsx",
+    "line": 123,
+    "resolved": "w-full px-3 py-2 border border-input rounded-lg text-sm leading-snug",
+    "wrapper": "w-full",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/CollectionsPage/components/LegalCaseDialog.tsx",
+    "line": 223,
+    "resolved": "w-full rounded-md border border-border bg-background px-2 py-2 text-sm",
+    "wrapper": "w-full",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/CollectionsPage/components/CollectionsFilters.tsx",
+    "line": 48,
+    "resolved": "px-3 py-2 border border-input bg-card rounded-lg text-sm min-w-[160px] leading-snug focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/30",
+    "wrapper": "w-full sm:w-auto sm:min-w-[160px]",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/DunningSettingsPage.tsx",
+    "line": 665,
+    "resolved": "w-full px-3 py-2 rounded-md border border-border bg-input text-foreground text-sm focus:outline-none focus:ring-1 focus:ring-primary",
+    "wrapper": "w-full",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/DunningSettingsPage.tsx",
+    "line": 686,
+    "resolved": "w-full px-3 py-2 rounded-md border border-border bg-input text-foreground text-sm focus:outline-none focus:ring-1 focus:ring-primary",
+    "wrapper": "w-full",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/CommissionsPage.tsx",
+    "line": 454,
+    "resolved": "px-3 py-2 border border-input rounded-lg text-sm",
+    "wrapper": "w-full sm:w-auto ",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/CommissionsPage.tsx",
+    "line": 542,
+    "resolved": "px-3 py-2 border border-input rounded-lg text-sm",
+    "wrapper": "w-full sm:w-auto ",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/PromotionsPage.tsx",
+    "line": 338,
+    "resolved": "mt-1 w-full h-10 rounded-md border border-input bg-background px-3 text-sm",
+    "wrapper": "mt-1 w-full",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/ProfitLossPage.tsx",
+    "line": 166,
+    "resolved": "w-full px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden w-auto min-w-[150px]",
+    "wrapper": "w-auto sm:min-w-[150px]",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/POSPage/components/SaleDetailsForm.tsx",
+    "line": 210,
+    "resolved": "w-full min-h-11 bg-background px-3 py-2 border border-input rounded-lg text-sm outline-hidden focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background",
+    "wrapper": "w-full",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/ProductDetailPage/index.tsx",
+    "line": 604,
+    "resolved": "w-full px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden",
+    "wrapper": "w-full",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/UsersPage/components/InviteModal.tsx",
+    "line": 121,
+    "resolved": "w-full min-w-0 h-11 min-h-11",
+    "wrapper": "w-full min-w-0",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/UsersPage/components/InviteModal.tsx",
+    "line": 135,
+    "resolved": "w-full min-w-0 h-11 min-h-11",
+    "wrapper": "w-full min-w-0",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/ExpenseDailySummaryPage.tsx",
+    "line": 175,
+    "resolved": "min-h-11 min-w-0 max-w-full px-3 py-2 border border-input rounded-lg text-sm bg-background",
+    "wrapper": "w-full sm:w-auto min-w-0 max-w-full",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/ETaxInvoicePage.tsx",
+    "line": 268,
+    "resolved": "w-full px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden bg-background text-foreground",
+    "wrapper": "w-full",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/SmsTemplatesPage/components/SmsTemplateForm.tsx",
+    "line": 93,
+    "resolved": "w-full px-3 py-2 rounded-md border border-border bg-input text-foreground text-sm focus:outline-none focus:ring-1 focus:ring-primary",
+    "wrapper": "w-full",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/PurchaseOrdersPage/components/AccessoryGroupScreen.tsx",
+    "line": 92,
+    "resolved": "w-full min-h-11 px-3 border border-input rounded-lg bg-card text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden",
+    "wrapper": "w-full",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/PurchaseOrdersPage/components/UnitInspectScreen.tsx",
+    "line": 338,
+    "resolved": "w-full min-h-11 px-3 border border-input rounded-lg bg-card text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden",
+    "wrapper": "w-full",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/ProductDetailPage/components/EditProductModal.tsx",
+    "line": 101,
+    "resolved": "w-full px-3 py-2 border border-input rounded-lg text-sm",
+    "wrapper": "w-full",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/ProductDetailPage/components/EditProductModal.tsx",
+    "line": 113,
+    "resolved": "w-full px-3 py-2 border border-input rounded-lg text-sm disabled:opacity-60",
+    "wrapper": "w-full",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/ProductDetailPage/components/EditProductModal.tsx",
+    "line": 257,
+    "resolved": "w-full px-3 py-2 border border-input rounded-lg text-sm",
+    "wrapper": "w-full",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/ProductDetailPage/components/OnlineListingPanel.tsx",
+    "line": 344,
+    "resolved": "h-10 rounded-lg border border-input bg-background px-3 text-sm disabled:opacity-50",
+    "wrapper": "w-full sm:w-auto ",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/PurchaseOrdersPage/components/wizard/PaymentSection.tsx",
+    "line": 90,
+    "resolved": "h-10 w-full rounded-lg border border-input bg-background px-3 text-sm outline-hidden placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring/30 disabled:cursor-not-allowed disabled:opacity-50",
+    "wrapper": "w-full",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/PurchaseOrdersPage/components/wizard/PaymentSection.tsx",
+    "line": 111,
+    "resolved": "h-10 w-full rounded-lg border border-input bg-background px-3 text-sm outline-hidden placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring/30 disabled:cursor-not-allowed disabled:opacity-50",
+    "wrapper": "w-full",
+    "compact": false
+  },
+  {
+    "file": "apps/web/src/pages/PurchaseOrdersPage/components/wizard/items/AccessoryItemRow.tsx",
+    "line": 113,
+    "resolved": "h-10 w-full rounded-md border border-input bg-background px-2.5 text-sm text-foreground outline-hidden focus-visible:ring-2 focus-visible:ring-ring/30 disabled:cursor-not-allowed disabled:opacity-50",
+    "wrapper": "w-full",
+    "compact": true
+  },
+  {
+    "file": "apps/web/src/pages/PurchaseOrdersPage/components/wizard/items/AccessoryItemRow.tsx",
+    "line": 126,
+    "resolved": "h-10 w-full rounded-md border border-input bg-background px-2.5 text-sm text-foreground outline-hidden focus-visible:ring-2 focus-visible:ring-ring/30 disabled:cursor-not-allowed disabled:opacity-50",
+    "wrapper": "w-full",
+    "compact": true
+  },
+  {
+    "file": "apps/web/src/pages/PurchaseOrdersPage/components/wizard/items/DeviceItemRow.tsx",
+    "line": 37,
+    "resolved": "h-10 w-full rounded-md border border-input bg-background px-2.5 text-sm text-foreground outline-hidden focus-visible:ring-2 focus-visible:ring-ring/30 disabled:cursor-not-allowed disabled:opacity-50",
+    "wrapper": "w-full",
+    "compact": true
+  },
+  {
+    "file": "apps/web/src/pages/PurchaseOrdersPage/components/wizard/items/RowChrome.tsx",
+    "line": 52,
+    "resolved": "h-10 w-full rounded-md border border-input bg-background px-2.5 text-sm text-foreground outline-hidden focus-visible:ring-2 focus-visible:ring-ring/30 disabled:cursor-not-allowed disabled:opacity-50",
+    "wrapper": "w-full",
+    "compact": true
+  }
+]

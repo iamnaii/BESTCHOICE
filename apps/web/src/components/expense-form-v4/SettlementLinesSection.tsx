@@ -1,3 +1,4 @@
+import { NativeSelect } from '@/components/ui/native-select';
 import { useEffect, useMemo, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
@@ -152,7 +153,7 @@ export function SettlementLinesSection({ branchId, value, onChange }: Props) {
 
   return (
     <div className="space-y-3">
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
           <label className="block text-xs font-medium mb-1">
             ผู้รับเงิน (ถ้ารวมเจ้าหนี้คนเดียว)
@@ -171,8 +172,8 @@ export function SettlementLinesSection({ branchId, value, onChange }: Props) {
         </div>
         <div>
           <label className="block text-xs font-medium mb-1">หัก ณ ที่จ่าย</label>
-          <div className="flex gap-2">
-            <select
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <NativeSelect wrapperClassName="max-w-full w-auto" aria-label="ประเภทภาษีหัก ณ ที่จ่าย"
               value={value.whtFormType}
               onChange={(e) =>
                 onChange({ ...value, whtFormType: e.target.value as 'PND3' | 'PND53' | '' })
@@ -182,13 +183,13 @@ export function SettlementLinesSection({ branchId, value, onChange }: Props) {
               <option value="">ไม่ระบุ</option>
               <option value="PND53">ภงด.53</option>
               <option value="PND3">ภงด.3</option>
-            </select>
+            </NativeSelect>
             <input
               type="number"
               step="0.01"
               value={value.whtAmount}
               onChange={(e) => onChange({ ...value, whtAmount: e.target.value })}
-              placeholder="ยอด WHT"
+              aria-label="ยอดภาษีหัก ณ ที่จ่าย" placeholder="ยอด WHT"
               className="flex-1 px-3 py-2 border border-input rounded-lg text-sm bg-background text-right font-mono"
             />
           </div>

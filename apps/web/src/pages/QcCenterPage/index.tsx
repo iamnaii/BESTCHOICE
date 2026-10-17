@@ -1,3 +1,4 @@
+import { NativeSelect } from '@/components/ui/native-select';
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
@@ -146,7 +147,7 @@ export default function QcCenterPage() {
       <div className="flex flex-col sm:flex-row gap-2 mb-4">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
-          <input
+          <input aria-label="ค้นหาเลข PO / เลขสัญญา / ชื่อสินค้า / IMEI"
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
@@ -155,16 +156,16 @@ export default function QcCenterPage() {
           />
         </div>
         {canPickBranch && (
-          <select value={branchId} onChange={(e) => setBranchId(e.target.value)} className={selectCls} aria-label="สาขา">
+          <NativeSelect wrapperClassName="max-w-full w-auto" value={branchId} onChange={(e) => setBranchId(e.target.value)} className={selectCls} aria-label="สาขา">
             <option value="">ทุกสาขา</option>
             {(branches ?? []).map((b) => (
               <option key={b.id} value={b.id}>
                 {b.name}
               </option>
             ))}
-          </select>
+          </NativeSelect>
         )}
-        <select
+        <NativeSelect wrapperClassName="max-w-full w-auto"
           value={source}
           onChange={(e) => setSource(e.target.value as QcSource | '')}
           className={selectCls}
@@ -175,7 +176,7 @@ export default function QcCenterPage() {
               {o.label}
             </option>
           ))}
-        </select>
+        </NativeSelect>
       </div>
 
       <QueryBoundary

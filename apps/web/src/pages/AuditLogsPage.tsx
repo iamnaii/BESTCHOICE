@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { NativeSelect } from '@/components/ui/native-select';
+import { useId as useUiFieldId, useState } from 'react';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { useQuery } from '@tanstack/react-query';
 import { usePaginationParams } from '@/hooks/usePaginationParams';
@@ -123,6 +124,7 @@ function presetBtnClass(active: boolean) {
 }
 
 export default function AuditLogsPage() {
+  const uiFieldId = useUiFieldId();
   useDocumentTitle('ประวัติการใช้งาน');
   const [entity, setEntity] = useState('');
   const [action, setAction] = useState('');
@@ -296,8 +298,8 @@ export default function AuditLogsPage() {
         </div>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <div>
-            <label className="block text-xs font-medium text-muted-foreground mb-1">Entity</label>
-            <input
+            <label htmlFor={`${uiFieldId}-1`} className="block text-xs font-medium text-muted-foreground mb-1">Entity</label>
+            <input id={`${uiFieldId}-1`}
               type="text"
               value={entity}
               onChange={(e) => { setEntity(e.target.value); setPage(1); }}
@@ -306,11 +308,11 @@ export default function AuditLogsPage() {
             />
           </div>
           <div>
-            <label className="block text-xs font-medium text-muted-foreground mb-1">Action</label>
-            <select
+            <label htmlFor={`${uiFieldId}-2`} className="block text-xs font-medium text-muted-foreground mb-1">Action</label>
+            <NativeSelect wrapperClassName="max-w-full w-full" id={`${uiFieldId}-2`}
               value={action}
               onChange={(e) => { setAction(e.target.value); setPage(1); }}
-              className="w-full border rounded-lg px-3 py-2 text-sm"
+              className="border rounded-lg px-3 py-2 text-sm"
             >
               <option value="">ทั้งหมด</option>
               <option value="POST">POST (สร้าง)</option>
@@ -321,11 +323,11 @@ export default function AuditLogsPage() {
               <option value="REPOSSESSION">REPOSSESSION</option>
               <option value="STATUS_CHANGE">STATUS_CHANGE</option>
               <option value="ERROR">ERROR</option>
-            </select>
+            </NativeSelect>
           </div>
           <div>
-            <label className="block text-xs font-medium text-muted-foreground mb-1">จากวันที่</label>
-            <ThaiDateInput
+            <label htmlFor={`${uiFieldId}-3`} className="block text-xs font-medium text-muted-foreground mb-1">จากวันที่</label>
+            <ThaiDateInput id={`${uiFieldId}-3`}
               data-date-range-custom-start="true"
               value={dateFrom}
               onChange={(e) => { setDateFrom(e.target.value); setPage(1); }}
@@ -333,8 +335,8 @@ export default function AuditLogsPage() {
             />
           </div>
           <div>
-            <label className="block text-xs font-medium text-muted-foreground mb-1">ถึงวันที่</label>
-            <ThaiDateInput
+            <label htmlFor={`${uiFieldId}-4`} className="block text-xs font-medium text-muted-foreground mb-1">ถึงวันที่</label>
+            <ThaiDateInput id={`${uiFieldId}-4`}
               value={dateTo}
               onChange={(e) => { setDateTo(e.target.value); setPage(1); }}
               className="w-full border rounded-lg px-3 py-2 text-sm"

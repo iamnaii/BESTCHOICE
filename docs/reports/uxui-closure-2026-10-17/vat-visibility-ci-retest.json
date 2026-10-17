@@ -1,0 +1,11 @@
+{
+  "status": "PASS",
+  "tests": 7,
+  "suite": "installment-input-vat.integration.spec.ts",
+  "database": "Fresh disposable PostgreSQL; both schemas migrated; provider credentials disabled",
+  "failureRun": "https://github.com/iamnaii/BESTCHOICE/actions/runs/39018403972",
+  "failure": "A whole-response string search for 686 matched downPaymentReceivedAt .686Z rather than a VAT amount. The restricted response VAT fields were null.",
+  "fix": "Test-only exact field assertions for BM and SALES on contract detail/list and both PO receiving paths, nonempty cardinality assertions, owner positive amounts, deterministic .686 fixture timestamp. Production code unchanged.",
+  "review": "Existing read-only shared_field_review: no blocker; all current redaction paths preserved and SALES coverage added.",
+  "sourceFingerprint": "ae787a241a5d52c0d60ad00733418ae81c703810913a601e49a70f3cc505eb0b"
+}

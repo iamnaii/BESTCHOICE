@@ -2,38 +2,30 @@ import { useParams } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
 import { Lock } from 'lucide-react';
 import api from '@/lib/api';
-import { formatDateShort, formatDateTime } from '@/utils/formatters';
+import { formatDateShort } from '@/utils/formatters';
 import { Badge } from '@/components/ui/badge';
 import { getStatusBadgeProps, contractStatusMap } from '@/lib/status-badges';
 
 interface ContractAccess {
-  contract: {
-    contractNumber: string;
-    status: string;
-    totalMonths: number;
-    monthlyPayment: number;
-    financedAmount: number;
-    customer: { name: string };
-    product: { name: string; brand: string; model: string };
-  };
+  contractNumber: string;
+  customerName: string;
+  productName: string;
+  branchName: string;
+  status: string;
+  totalMonths: number;
+  monthlyPayment: number | string;
   payments: Array<{
     installmentNo: number;
     amountDue: number;
     amountPaid: number;
     dueDate: string;
     status: string;
-    lateFee: number;
   }>;
   documents: Array<{
     id: string;
-    type: string;
+    documentType: string;
     fileName: string;
     createdAt: string;
-  }>;
-  signatures: Array<{
-    signerType: string;
-    signerName: string;
-    signedAt: string;
   }>;
   receipts: Array<{
     receiptNumber: string;
@@ -41,7 +33,6 @@ interface ContractAccess {
     paidDate: string;
     receiptType: string;
   }>;
-  expiresAt: string;
 }
 
 const statusLabels: Record<string, string> = {
@@ -102,9 +93,8 @@ function CustomerPortalPage() {
     );
   }
 
-  const c = data.contract;
+  const c = data;
   const totalPaid = data.payments.reduce((sum, p) => sum + (Number(p.amountPaid) || 0), 0);
-  const totalDue = data.payments.reduce((sum, p) => sum + (Number(p.amountDue) || 0) + (Number(p.lateFee) || 0), 0);
   const paidCount = data.payments.filter((p) => p.status === 'PAID').length;
 
   return (
@@ -117,9 +107,6 @@ function CustomerPortalPage() {
               <h1 className="text-lg font-bold text-foreground">BESTCHOICE</h1>
               <p className="text-xs text-muted-foreground">ข้อมูลสัญญาผ่อนชำระ</p>
             </div>
-            <div className="text-xs text-muted-foreground">
-              หมดอายุ: {formatDateTime(data.expiresAt)}
-            </div>
           </div>
         </div>
       </div>
@@ -127,10 +114,10 @@ function CustomerPortalPage() {
       <div className="max-w-3xl mx-auto px-4 py-6 flex flex-col gap-5 lg:gap-7.5">
         {/* Contract Summary */}
         <div className="bg-card rounded-xl border border-border/50 p-4 shadow-sm">
-          <div className="flex justify-between items-start mb-3">
+          <div className="flex flex-wrap gap-2 justify-between items-start mb-3">
             <div>
               <div className="text-xs text-muted-foreground">สัญญาเลขที่</div>
-              <div className="font-bold text-lg">{c.contractNumber}</div>
+              <div className="font-bold text-lg break-all">{c.contractNumber}</div>
             </div>
             {(() => {
               const cfg = getStatusBadgeProps(c.status, contractStatusMap);
@@ -141,10 +128,10 @@ function CustomerPortalPage() {
               );
             })()}
           </div>
-          <div className="grid grid-cols-2 gap-3 text-sm">
-            <div><span className="text-muted-foreground">ลูกค้า:</span> {c.customer.name}</div>
-            <div><span className="text-muted-foreground">สินค้า:</span> {c.product.brand} {c.product.model}</div>
-            <div><span className="text-muted-foreground">ยอดจัดไฟแนนซ์:</span> {Number(c.financedAmount).toLocaleString()} ฿</div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+            <div><span className="text-muted-foreground">ลูกค้า:</span> {c.customerName}</div>
+            <div><span className="text-muted-foreground">สินค้า:</span> {c.productName}</div>
+            <div><span className="text-muted-foreground">สาขา:</span> {c.branchName}</div>
             <div><span className="text-muted-foreground">ค่างวด:</span> {Number(c.monthlyPayment).toLocaleString()} ฿/เดือน</div>
           </div>
         </div>
@@ -158,12 +145,11 @@ function CustomerPortalPage() {
           <div className="w-full bg-muted rounded-full h-3 mb-2">
             <div
               className="bg-success h-3 rounded-full transition-all"
-              style={{ width: `${(paidCount / c.totalMonths) * 100}%` }}
+              style={{ width: `${c.totalMonths > 0 ? Math.min(100, (paidCount / c.totalMonths) * 100) : 0}%` }}
             />
           </div>
           <div className="flex justify-between text-xs text-muted-foreground">
             <span>ชำระแล้ว: {totalPaid.toLocaleString()} ฿</span>
-            <span>คงเหลือ: {Math.max(0, totalDue - totalPaid).toLocaleString()} ฿</span>
           </div>
         </div>
 
@@ -183,9 +169,6 @@ function CustomerPortalPage() {
                 </div>
                 <div className="text-right">
                   <div className="text-sm">{Number(p.amountDue).toLocaleString()} ฿</div>
-                  {Number(p.lateFee) > 0 && (
-                    <div className="text-xs text-destructive">+ค่าปรับ {Number(p.lateFee).toLocaleString()} ฿</div>
-                  )}
                   <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold ${paymentStatusColors[p.status] || 'bg-muted text-muted-foreground'}`}>
                     {statusLabels[p.status] || p.status}
                   </span>
@@ -209,21 +192,6 @@ function CustomerPortalPage() {
                     <div className="text-xs text-muted-foreground">{formatDateShort(r.paidDate)}</div>
                   </div>
                   <div className="text-sm font-medium">{Number(r.amount).toLocaleString()} ฿</div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Signatures */}
-        {(data.signatures?.length ?? 0) > 0 && (
-          <div className="bg-card rounded-xl border border-border/50 p-4 shadow-sm">
-            <h3 className="text-sm font-semibold mb-2">การลงนาม</h3>
-            <div className="grid grid-cols-2 gap-2">
-              {(data.signatures || []).map((s, i) => (
-                <div key={i} className="text-xs p-2 bg-success/5 dark:bg-success/10 rounded">
-                  <div className="font-medium">{s.signerName}</div>
-                  <div className="text-muted-foreground">{s.signerType} - {formatDateShort(s.signedAt)}</div>
                 </div>
               ))}
             </div>

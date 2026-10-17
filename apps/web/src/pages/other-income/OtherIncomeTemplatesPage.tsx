@@ -71,7 +71,7 @@ export default function OtherIncomeTemplatesPage() {
             size={14}
             className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
           />
-          <input
+          <input aria-label="ค้นหาชื่อ template"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="ค้นหาชื่อ template"

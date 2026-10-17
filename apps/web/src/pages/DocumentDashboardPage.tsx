@@ -1,3 +1,4 @@
+import { NativeSelect } from '@/components/ui/native-select';
 import { useState, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { FileText, CheckCircle2, Paperclip, PenLine, Clock, AlertCircle } from 'lucide-react';
@@ -103,7 +104,7 @@ function DocumentDashboardPage() {
       {/* Branch filter */}
       {(user?.role === 'OWNER' || user?.role === 'BRANCH_MANAGER') && branches && branches.length > 1 && (
         <div className="mb-5">
-          <select
+          <NativeSelect wrapperClassName="max-w-full w-auto" aria-label="สาขา"
             value={selectedBranch}
             onChange={(e) => setSelectedBranch(e.target.value)}
             className="border border-input rounded-lg px-3 py-2 text-sm bg-background focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
@@ -112,7 +113,7 @@ function DocumentDashboardPage() {
             {branches.map((b) => (
               <option key={b.id} value={b.id}>{b.name}</option>
             ))}
-          </select>
+          </NativeSelect>
         </div>
       )}
 

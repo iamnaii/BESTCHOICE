@@ -1,3 +1,4 @@
+import { NativeSelect } from '@/components/ui/native-select';
 import { getModelInfo } from '@/data/productCatalog';
 import { cn } from '@/lib/utils';
 import type { ItemForm } from '../../../types';
@@ -34,7 +35,7 @@ export function DeviceItemRow({ item, idx, onChange, onDuplicate, onRemove }: De
         {isTablet ? (
           <span className="inline-block rounded-full bg-muted px-2 py-0.5 text-2xs font-medium text-muted-foreground">แท็บเล็ต</span>
         ) : (
-          <select
+          <NativeSelect wrapperClassName="max-w-full w-full"
             aria-label="สภาพ"
             value={item.category}
             onChange={(e) => onChange('category', e.target.value)}
@@ -42,7 +43,7 @@ export function DeviceItemRow({ item, idx, onChange, onDuplicate, onRemove }: De
           >
             <option value="PHONE_NEW">ใหม่</option>
             <option value="PHONE_USED">มือสอง</option>
-          </select>
+          </NativeSelect>
         )}
       </td>
       <td className={cellCls}>

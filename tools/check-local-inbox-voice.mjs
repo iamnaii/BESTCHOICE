@@ -100,7 +100,7 @@ export async function checkInboxVoice(browser, origin, output) {
       await page.evaluate(() => { window.SpeechRecognition = undefined; window.webkitSpeechRecognition = undefined; });
       await input.fill('พิมพ์ต่อ');
       if (width < 1024 && !await page.locator('.inbox-voice-help').isVisible()) await page.getByRole('button', { name: 'เครื่องมือแชท', exact: true }).click();
-      await page.locator('.inbox-voice-help summary').click();
+      await page.getByRole('button', { name: 'เกี่ยวกับการพิมพ์ด้วยเสียง', exact: true }).click();
       await expect(page.getByText(/เบราว์เซอร์นี้ยังใช้ปุ่มไมค์ไม่ได้/)).toBeVisible();
       await expect(send).toBeEnabled();
       assert.deepEqual(errors, []);

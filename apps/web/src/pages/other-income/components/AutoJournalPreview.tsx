@@ -37,7 +37,7 @@ export function AutoJournalPreview({ lines }: Props) {
 
   return (
     <div className="rounded-lg border p-3 bg-card">
-      <p className="text-sm font-bold mb-2">JOURNAL PREVIEW (Auto)</p>
+      <p className="text-sm font-bold mb-2">รายการบัญชีอัตโนมัติ</p>
       {lines.length === 0 ? (
         <p className="text-xs text-muted-foreground py-4 text-center">— ยังไม่มี —</p>
       ) : (
@@ -48,22 +48,22 @@ export function AutoJournalPreview({ lines }: Props) {
             return (
               <div
                 key={idx}
-                className="flex items-baseline gap-2 px-2 py-1 hover:bg-accent rounded"
+                className="grid grid-cols-[auto_minmax(0,1fr)_auto] sm:flex items-baseline gap-2 px-2 py-1 hover:bg-accent rounded"
               >
                 <span className={`font-bold w-6 shrink-0 ${isDr ? 'text-info' : 'text-primary'}`}>
                   {isDr ? 'Dr' : 'Cr'}
                 </span>
-                <span className={`font-bold w-20 shrink-0 ${isDr ? 'text-info' : 'text-primary'}`}>
+                <span className={`font-bold sm:w-20 shrink-0 ${isDr ? 'text-info' : 'text-primary'}`}>
                   {l.accountCode}
                 </span>
-                <span className="flex-1 truncate text-foreground">
+                <span className="col-start-2 row-start-2 min-w-0 sm:flex-1 break-words text-foreground">
                   {accountName || <span className="text-muted-foreground">—</span>}
                 </span>
-                <span className="font-bold w-28 text-right shrink-0">
+                <span className="col-start-3 row-start-1 font-bold sm:w-28 text-right shrink-0">
                   {(isDr ? l.debit : l.credit).toFixed(2)}
                 </span>
                 {l.description && (
-                  <span className="w-40 text-muted-foreground truncate text-right shrink-0">
+                  <span className="col-span-3 min-w-0 text-muted-foreground break-words sm:w-40 sm:text-right sm:shrink-0">
                     ({l.description})
                   </span>
                 )}
@@ -72,15 +72,15 @@ export function AutoJournalPreview({ lines }: Props) {
           })}
         </div>
       )}
-      <div className="mt-2 pt-2 border-t flex items-center justify-between text-sm">
+      <div className="mt-2 pt-2 border-t flex flex-wrap gap-2 items-center justify-between text-sm">
         <span className="text-muted-foreground text-xs">Dr รวม = Cr รวม</span>
         {balanced ? (
-          <span className="inline-flex items-center gap-1.5 text-success font-bold font-mono">
+          <span className="inline-flex flex-wrap items-center gap-1.5 text-success font-bold font-mono">
             <CheckCircle2 size={14} />
             {totalDr.toFixed(2)} = {totalCr.toFixed(2)} BALANCED
           </span>
         ) : (
-          <span className="inline-flex items-center gap-1.5 text-destructive font-bold font-mono">
+          <span className="inline-flex flex-wrap items-center gap-1.5 text-destructive font-bold font-mono">
             <XCircle size={14} />
             Dr {totalDr.toFixed(2)} ≠ Cr {totalCr.toFixed(2)}
           </span>

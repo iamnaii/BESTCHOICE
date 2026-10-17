@@ -72,15 +72,15 @@ function SheetContent({
   return (
     <SheetPortal>
       {overlay && <SheetOverlay />}
-      <SheetPrimitive.Content className={cn(sheetVariants({ side }), className)} {...props}>
+      <SheetPrimitive.Content data-has-sheet-close={close || undefined} className={cn(sheetVariants({ side }), className)} {...props}>
         {children}
         {close && (
           <SheetPrimitive.Close
             data-slot="sheet-close"
-            className="cursor-pointer absolute right-5 top-4 rounded-sm opacity-60 ring-offset-background transition-opacity hover:opacity-100 focus:outline-hidden focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-secondary"
+            className="cursor-pointer absolute right-2 top-2 flex size-11 items-center justify-center rounded-md opacity-60 ring-offset-background transition-opacity hover:opacity-100 focus:outline-hidden focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-secondary"
           >
             <X className="h-4 w-4" />
-            <span className="sr-only">Close</span>
+            <span className="sr-only">ปิด</span>
           </SheetPrimitive.Close>
         )}
       </SheetPrimitive.Content>
@@ -92,7 +92,7 @@ function SheetHeader({ className, ...props }: React.ComponentProps<'div'>) {
   return (
     <div
       data-slot="sheet-header"
-      className={cn('flex flex-col space-y-1 text-center sm:text-left', className)}
+      className={cn('flex flex-col space-y-1 text-center sm:text-left [[data-has-sheet-close]_&]:pe-8', className)}
       {...props}
     />
   );

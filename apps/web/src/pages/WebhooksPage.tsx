@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useId as useUiFieldId, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Webhook, Plus, Trash2, Send, CheckCircle, XCircle, ChevronDown, ChevronRight } from 'lucide-react';
 import { toast } from 'sonner';
@@ -43,6 +43,7 @@ const SUPPORTED_EVENTS = [
 // ─── Form Component ───────────────────────────────────────────────────────────
 
 function AddWebhookForm({ onClose, onSuccess }: { onClose: () => void; onSuccess: () => void }) {
+  const uiFieldId = useUiFieldId();
   const [form, setForm] = useState<CreateWebhookForm>({
     name: '',
     url: '',
@@ -87,10 +88,10 @@ function AddWebhookForm({ onClose, onSuccess }: { onClose: () => void; onSuccess
     <form onSubmit={handleSubmit} className="space-y-4">
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
-          <label className="block text-sm font-medium text-foreground mb-1">
+          <label htmlFor={`${uiFieldId}-1`} className="block text-sm font-medium text-foreground mb-1">
             ชื่อ <span className="text-destructive">*</span>
           </label>
-          <input
+          <input id={`${uiFieldId}-1`}
             type="text"
             placeholder="เช่น Partner XYZ Integration"
             value={form.name}
@@ -100,10 +101,10 @@ function AddWebhookForm({ onClose, onSuccess }: { onClose: () => void; onSuccess
           />
         </div>
         <div>
-          <label className="block text-sm font-medium text-foreground mb-1">
+          <label htmlFor={`${uiFieldId}-2`} className="block text-sm font-medium text-foreground mb-1">
             URL <span className="text-destructive">*</span>
           </label>
-          <input
+          <input id={`${uiFieldId}-2`}
             type="url"
             placeholder="https://partner.com/webhook"
             value={form.url}
@@ -114,11 +115,11 @@ function AddWebhookForm({ onClose, onSuccess }: { onClose: () => void; onSuccess
         </div>
       </div>
       <div>
-        <label className="block text-sm font-medium text-foreground mb-1">
+        <label htmlFor={`${uiFieldId}-3`} className="block text-sm font-medium text-foreground mb-1">
           Secret Key <span className="text-destructive">*</span>
           <span className="text-xs text-muted-foreground ml-1">(ใช้สำหรับ HMAC-SHA256 signature ใน header X-Webhook-Signature)</span>
         </label>
-        <input
+        <input id={`${uiFieldId}-3`}
           type="text"
           placeholder="your-secret-key"
           value={form.secret}

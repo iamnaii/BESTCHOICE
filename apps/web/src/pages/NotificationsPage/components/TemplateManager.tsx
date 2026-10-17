@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { NativeSelect } from '@/components/ui/native-select';
+import { useId as useUiFieldId, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { CheckCircle2, XCircle, Pencil, Trash2 } from 'lucide-react';
@@ -50,6 +51,7 @@ export default function TemplateManager({
   onEditTemplate,
   onConfirmDelete,
 }: TemplateManagerProps) {
+  const uiFieldId = useUiFieldId();
   const queryClient = useQueryClient();
   const [categoryFilter, setCategoryFilter] = useState<string>('');
 
@@ -87,8 +89,8 @@ export default function TemplateManager({
           + สร้าง Template
         </button>
         <div className="flex items-center gap-2 ml-auto">
-          <label className="text-sm text-muted-foreground">หมวดหมู่:</label>
-          <select
+          <label htmlFor={`${uiFieldId}-1`} className="text-sm text-muted-foreground">หมวดหมู่:</label>
+          <NativeSelect wrapperClassName="max-w-full w-auto" id={`${uiFieldId}-1`}
             value={categoryFilter}
             onChange={(e) => setCategoryFilter(e.target.value)}
             className="px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
@@ -99,7 +101,7 @@ export default function TemplateManager({
             <option value="TRANSACTIONAL">TRANSACTIONAL (ใบเสร็จ)</option>
             <option value="STAFF">STAFF (ทีม)</option>
             <option value="MARKETING">MARKETING (โปรโมชั่น)</option>
-          </select>
+          </NativeSelect>
         </div>
       </div>
 

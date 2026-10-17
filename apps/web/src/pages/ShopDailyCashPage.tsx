@@ -1,3 +1,4 @@
+import { NativeSelect } from '@/components/ui/native-select';
 import { Fragment, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
@@ -171,11 +172,11 @@ export default function ShopDailyCashPage() {
               </div>
             )}
             {data?.scope === 'ALL' && (
-              <select id="daily-cash-branch" aria-label="สาขา" value={branchId} onChange={(e) => setBranchId(e.target.value)}
-                className="h-11 w-full min-w-0 rounded-lg border border-input bg-background px-3 text-sm sm:w-48">
+              <NativeSelect wrapperClassName="max-w-full w-full min-w-0 sm:w-48" id="daily-cash-branch" aria-label="สาขา" value={branchId} onChange={(e) => setBranchId(e.target.value)}
+                className="h-11 rounded-lg border border-input bg-background px-3 text-sm">
                 <option value="">ทุกสาขา</option>
                 {data.branches.map((b) => <option key={b.id} value={b.id}>สาขา {b.name}</option>)}
-              </select>
+              </NativeSelect>
             )}
             {data && !own && (
               <div role="tablist" aria-label="มุมมองของหน้าสรุปเงิน" className="flex w-full rounded-lg border border-border bg-muted p-[3px] sm:h-11 sm:w-auto">

@@ -1,0 +1,114 @@
+{
+  "status": "PASS_SCOPED",
+  "width": 390,
+  "entries": 269,
+  "themeObservations": 538,
+  "reviewRows": [],
+  "documentOverflow": 0,
+  "wrongFontObservations": 0,
+  "apiErrorRows": [
+    {
+      "id": "ADMIN-011",
+      "path": "/verify/PV-200001-99999",
+      "apiErrors": [
+        {
+          "path": "/api/admin/expense-documents/verify-number/PV-200001-99999",
+          "status": 404
+        }
+      ]
+    },
+    {
+      "id": "ADMIN-012",
+      "path": "/cn/uxui-expired-token",
+      "apiErrors": [
+        {
+          "path": "/api/admin/receipts/public/uxui-expired-token/pdf",
+          "status": 404
+        }
+      ]
+    },
+    {
+      "id": "ADMIN-013",
+      "path": "/visit",
+      "apiErrors": [
+        {
+          "path": "/api/admin/store-appointments-public/context",
+          "status": 410
+        }
+      ]
+    },
+    {
+      "id": "ADMIN-062",
+      "path": "/inbox/1940fd78-7c55-40e9-ad6c-435a2148616d?zone=shop",
+      "apiErrors": [
+        {
+          "path": "/api/admin/staff-chat/rooms/1940fd78-7c55-40e9-ad6c-435a2148616d/cross-channel",
+          "status": 403
+        }
+      ]
+    },
+    {
+      "id": "ADMIN-093",
+      "path": "/expenses/verify-number/PV-200001-99999",
+      "apiErrors": [
+        {
+          "path": "/api/admin/expense-documents/verify-number/PV-200001-99999",
+          "status": 404
+        }
+      ]
+    },
+    {
+      "id": "ADMIN-102",
+      "path": "/receipts/verify/RT-200001-99999",
+      "apiErrors": [
+        {
+          "path": "/api/admin/receipts/number/RT-200001-99999",
+          "status": 404
+        }
+      ]
+    },
+    {
+      "id": "ADMIN-116",
+      "path": "/insurance/64db05ef-fd76-491d-bdc3-87b1786a1249",
+      "apiErrors": [
+        {
+          "path": "/api/admin/after-sales/by-ticket/64db05ef-fd76-491d-bdc3-87b1786a1249",
+          "status": 404
+        }
+      ]
+    },
+    {
+      "id": "ADMIN-195",
+      "path": "/settings/rich-menu",
+      "apiErrors": [
+        {
+          "path": "/api/admin/line-oa/rich-menu/list",
+          "status": 400
+        }
+      ]
+    },
+    {
+      "id": "ADMIN-197",
+      "path": "/profile",
+      "apiErrors": [
+        {
+          "path": "/api/admin/yeastar/extensions",
+          "status": 500
+        }
+      ]
+    },
+    {
+      "id": "SET-033",
+      "path": "/settings/rich-menu",
+      "apiErrors": [
+        {
+          "path": "/api/admin/line-oa/rich-menu/list",
+          "status": 400
+        }
+      ]
+    }
+  ],
+  "smallControlObservations": 337,
+  "smallControlNote": "Geometry inventory only, includes inline links, duplicate aliases and inner checkbox nodes; not a confirmed-bug count. Shared control targets are verified separately.",
+  "scope": "Isolated real AppModule/PostgreSQL, synthetic records; route initial and error states, no claim of all actions."
+}

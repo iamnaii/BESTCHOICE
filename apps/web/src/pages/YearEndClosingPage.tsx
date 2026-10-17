@@ -1,3 +1,4 @@
+import { NativeSelect } from '@/components/ui/native-select';
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
@@ -201,7 +202,7 @@ export default function YearEndClosingPage() {
                   ปี (ค.ศ.)
                 </label>
                 <div className="flex gap-2">
-                  <select
+                  <NativeSelect wrapperClassName="max-w-full w-auto"
                     id="year-input"
                     value={year}
                     onChange={(e) => setYear(Number(e.target.value))}
@@ -212,7 +213,7 @@ export default function YearEndClosingPage() {
                         {y}
                       </option>
                     ))}
-                  </select>
+                  </NativeSelect>
                   <Input
                     type="number"
                     min={2020}

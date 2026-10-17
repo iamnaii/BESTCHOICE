@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useId as useUiFieldId, useState } from 'react';
 import { XCircle } from 'lucide-react';
 
 interface Props {
@@ -9,6 +9,7 @@ interface Props {
 }
 
 export function RejectModal({ docNumber, onCancel, onConfirm, isLoading }: Props) {
+  const uiFieldId = useUiFieldId();
   const [note, setNote] = useState('');
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
@@ -20,8 +21,8 @@ export function RejectModal({ docNumber, onCancel, onConfirm, isLoading }: Props
           ปฏิเสธเอกสาร <span className="font-mono font-bold">{docNumber}</span> —
           ระบบจะส่งเอกสารกลับเป็นสถานะ DRAFT พร้อมเหตุผลของผู้ปฏิเสธ
         </p>
-        <label className="text-xs font-semibold uppercase">เหตุผลการปฏิเสธ</label>
-        <textarea
+        <label htmlFor={`${uiFieldId}-1`} className="text-xs font-semibold uppercase">เหตุผลการปฏิเสธ</label>
+        <textarea id={`${uiFieldId}-1`}
           value={note}
           onChange={(e) => setNote(e.target.value)}
           rows={3}

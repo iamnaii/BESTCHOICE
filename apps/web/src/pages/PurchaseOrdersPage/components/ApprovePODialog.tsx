@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { formLabelClass } from '@/components/ui/form-styles';
 import { CalendarDays, CreditCard } from 'lucide-react';
 import {
   Dialog,
@@ -113,11 +114,12 @@ export function ApprovePODialog({ open, po, supplier, pending, onClose, onReject
               title="สั่งซื้อ"
               hint="อนุมัติแล้วถือว่าสั่งซื้อทันที — ยังยกเลิกได้ตราบใดที่ยังไม่รับของ"
             />
-            <label htmlFor="approve-expected-date" className="mb-1 block text-xs leading-snug text-muted-foreground">
+            <label htmlFor="approve-expected-date" className={formLabelClass}>
               วันที่คาดว่าจะได้รับ
             </label>
             <div className="max-w-xs">
               <ThaiDateInput
+                id="approve-expected-date"
                 value={expectedDate}
                 onChange={(e) => setExpectedDate(e.target.value)}
                 min={orderDate || undefined}

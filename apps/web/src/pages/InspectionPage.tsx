@@ -1,3 +1,4 @@
+import { NativeSelect } from '@/components/ui/native-select';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router';
@@ -115,7 +116,7 @@ export default function InspectionPage() {
       <div className="flex flex-col sm:flex-row gap-3">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
-          <input
+          <input aria-label="ค้นหาสินค้า, IMEI, ยี่ห้อ"
             type="text"
             placeholder="ค้นหาสินค้า, IMEI, ยี่ห้อ..."
             value={search}
@@ -123,7 +124,7 @@ export default function InspectionPage() {
             className="w-full pl-10 pr-4 py-2.5 rounded-lg border border-input bg-background text-sm focus:outline-hidden focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background"
           />
         </div>
-        <select
+        <NativeSelect wrapperClassName="max-w-full w-auto" aria-label="สถานะ"
           value={statusFilter}
           onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}
           className="px-4 py-2.5 rounded-lg border border-input bg-background text-sm focus:outline-hidden focus-visible:ring-2 focus-visible:ring-ring/30"
@@ -134,7 +135,7 @@ export default function InspectionPage() {
           <option value="QC_PASSED">ผ่าน QC</option>
           <option value="QC_FAILED">ไม่ผ่าน QC</option>
           <option value="IN_STOCK">เข้าสต็อกแล้ว</option>
-        </select>
+        </NativeSelect>
       </div>
 
       {/* Table */}

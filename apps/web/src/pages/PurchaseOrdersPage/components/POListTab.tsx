@@ -24,6 +24,9 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { formControlClass } from '@/components/ui/form-styles';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 type PeriodFilter = '' | 'this-month' | 'last-month' | 'this-quarter' | 'this-year';
 
@@ -58,6 +61,42 @@ const periodOptions: { value: PeriodFilter; label: string }[] = [
   { value: 'this-quarter', label: 'ไตรมาสนี้' },
   { value: 'this-year', label: 'ปีนี้' },
 ];
+
+const filterControlClass = cn(formControlClass, 'shadow-none');
+const allFilterValue = '__all__';
+
+function FilterSelect({ label, value, onChange, options }: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  options: { value: string; label: string }[];
+}) {
+  return (
+    <Select value={value || allFilterValue} onValueChange={(next) => onChange(next === allFilterValue ? '' : next)}>
+      <SelectTrigger
+        aria-label={label}
+        className={cn(filterControlClass, 'gap-2 [&>span]:min-w-0 [&>span]:text-left [&>svg]:mr-0 [&>svg]:shrink-0')}
+      >
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent
+        align="start"
+        collisionPadding={12}
+        className="max-h-[min(20rem,var(--radix-select-content-available-height))] w-(--radix-select-trigger-width) min-w-0 [&_[data-radix-select-viewport]]:min-w-0"
+      >
+        {options.map((option) => (
+          <SelectItem
+            key={option.value}
+            value={option.value || allFilterValue}
+            className="min-h-11 cursor-pointer leading-normal [&>span:last-child]:min-w-0 [&>span:last-child]:whitespace-normal [&>span:last-child]:break-words"
+          >
+            {option.label}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
+}
 
 function periodRange(period: PeriodFilter): { start: Date; end: Date } | null {
   if (!period) return null;
@@ -180,15 +219,16 @@ export function POListTab({
       // the date lives under the number now — sorting this column keeps ordering by date, not by
       // the PO string (two number formats coexist: PO-2026-09-011 and the older PO-2026-003)
       sortKey: 'orderDate',
-      width: '150px',
+      width: '12rem',
       render: (po) => (
         <div>
           <button
+            data-po-detail-trigger={`${po.id}:number`}
             onClick={(e) => {
               e.stopPropagation();
               openDetailModal(po);
             }}
-            className="font-mono font-semibold text-primary hover:underline whitespace-nowrap"
+            className="max-w-full text-left font-mono font-semibold text-primary hover:underline [overflow-wrap:anywhere]"
           >
             {po.poNumber}
           </button>
@@ -353,6 +393,7 @@ export function POListTab({
       render: (po) => (
         <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
           <button
+            data-po-detail-trigger={`${po.id}:detail`}
             onClick={() => openDetailModal(po)}
             className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
             title="ดูรายละเอียด"
@@ -432,51 +473,38 @@ export function POListTab({
   return (
     <>
       {/* Filters */}
-      <div className="flex flex-wrap gap-3 mb-4">
-        <input
+      <div className="mb-4 grid grid-cols-1 items-center gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(0,2fr)_repeat(3,minmax(0,1fr))]">
+        <Input aria-label="ค้นหาเลข PO, ผู้จัดจำหน่าย"
           type="text"
           placeholder="ค้นหาเลข PO, ผู้จัดจำหน่าย..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="flex-1 min-w-[200px] px-3 py-2 border border-input rounded-lg text-sm bg-background focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
+          className={filterControlClass}
         />
-        <select
+        <FilterSelect label="สถานะ"
           value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)}
-          className="px-3 py-2 border border-input rounded-lg text-sm bg-background focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background transition-colors outline-hidden"
-        >
-          <option value="">ทุกสถานะ</option>
-          <option value="DRAFT">รออนุมัติ</option>
-          <option value="APPROVED">อนุมัติแล้ว</option>
-          <option value="ORDERED">สั่งซื้อแล้ว</option>
-          <option value="PARTIALLY_RECEIVED">รับบางส่วน</option>
-          <option value="FULLY_RECEIVED">รับครบแล้ว</option>
-          <option value="CLOSED_SHORT">ปิดใบ รับไม่ครบ</option>
-          <option value="CANCELLED">ยกเลิก</option>
-        </select>
-        <select
+          onChange={setStatusFilter}
+          options={[
+            { value: '', label: 'ทุกสถานะ' },
+            { value: 'DRAFT', label: 'รออนุมัติ' },
+            { value: 'APPROVED', label: 'อนุมัติแล้ว' },
+            { value: 'ORDERED', label: 'สั่งซื้อแล้ว' },
+            { value: 'PARTIALLY_RECEIVED', label: 'รับบางส่วน' },
+            { value: 'FULLY_RECEIVED', label: 'รับครบแล้ว' },
+            { value: 'CLOSED_SHORT', label: 'ปิดใบ รับไม่ครบ' },
+            { value: 'CANCELLED', label: 'ยกเลิก' },
+          ]}
+        />
+        <FilterSelect label="ผู้จัดจำหน่าย"
           value={supplierFilter}
-          onChange={(e) => setSupplierFilter(e.target.value)}
-          className="px-3 py-2 border border-input rounded-lg text-sm bg-background focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden max-w-[220px]"
-        >
-          <option value="">ทุกผู้จัดจำหน่าย</option>
-          {suppliers.map((s) => (
-            <option key={s.id} value={s.id}>
-              {s.name}
-            </option>
-          ))}
-        </select>
-        <select
+          onChange={setSupplierFilter}
+          options={[{ value: '', label: 'ทุกผู้จัดจำหน่าย' }, ...suppliers.map((supplier) => ({ value: supplier.id, label: supplier.name }))]}
+        />
+        <FilterSelect label="ช่วงเวลา"
           value={periodFilter}
-          onChange={(e) => setPeriodFilter(e.target.value as PeriodFilter)}
-          className="px-3 py-2 border border-input rounded-lg text-sm bg-background focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
-        >
-          {periodOptions.map((p) => (
-            <option key={p.value} value={p.value}>
-              {p.label}
-            </option>
-          ))}
-        </select>
+          onChange={(value) => setPeriodFilter(value as PeriodFilter)}
+          options={periodOptions}
+        />
       </div>
 
       {/* Active filter chips */}
@@ -557,9 +585,9 @@ export function POListTab({
               emptyDescription={emptyDesc}
               columnToggle
               onRowClick={openDetailModal}
-              // below this the supplier column would be squeezed — scroll sideways instead (actions stay
-              // pinned); 1180 keeps a 1366px laptop (≈1086px of content) from scrolling for most names
-              minWidth="1180px"
+              // Keep space for the supplier beside fixed columns; scale with larger root text.
+              // Narrow desktop layouts scroll inside the table while actions stay pinned.
+              minWidth="80rem"
             />
           </CardContent>
         </Card>
@@ -631,11 +659,11 @@ export function POListTab({
 
 function FilterChip({ label, onRemove }: { label: string; onRemove: () => void }) {
   return (
-    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-primary/10 text-primary text-xs font-medium">
-      {label}
+    <span className="inline-flex min-w-0 max-w-full items-center gap-1 px-2.5 py-1 rounded-full bg-primary/10 text-primary text-xs font-medium">
+      <span className="min-w-0 break-words">{label}</span>
       <button
         onClick={onRemove}
-        className="hover:bg-primary/20 rounded-full p-0.5 transition-colors"
+        className="shrink-0 hover:bg-primary/20 rounded-full p-0.5 transition-colors"
         aria-label={`ลบ ${label}`}
       >
         <X className="size-3" />

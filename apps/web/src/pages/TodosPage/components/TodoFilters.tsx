@@ -1,3 +1,4 @@
+import { NativeSelect } from '@/components/ui/native-select';
 import { ListTodo, Clock, CalendarDays, AlertCircle, CheckCircle2, Search, User as UserIcon } from 'lucide-react';
 import { type TodoView, type AssigneeRef } from '../types';
 
@@ -66,7 +67,7 @@ export function TodoFilters({
       <div className="mb-5 flex flex-wrap gap-3 items-center">
         <div className="relative max-w-md flex-1 min-w-[200px]">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
-          <input
+          <input aria-label="ค้นหางาน"
             type="text"
             placeholder="ค้นหางาน..."
             value={search}
@@ -76,9 +77,9 @@ export function TodoFilters({
         </div>
 
         {onAssigneeFilterChange && (
-          <div className="relative">
-            <UserIcon className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground pointer-events-none" />
-            <select
+          <div className="relative min-w-0 w-full sm:w-auto">
+            <UserIcon className="absolute z-10 left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground pointer-events-none" />
+            <NativeSelect wrapperClassName="max-w-full w-auto"
               aria-label="ผู้รับมอบหมาย"
               value={assigneeFilter}
               onChange={(e) => onAssigneeFilterChange(e.target.value)}
@@ -91,7 +92,7 @@ export function TodoFilters({
                   {u.nickname || u.name}
                 </option>
               ))}
-            </select>
+            </NativeSelect>
           </div>
         )}
       </div>

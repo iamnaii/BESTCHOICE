@@ -1,0 +1,16 @@
+[
+  {
+    "label": "สาขาที่ดู",
+    "appearance": "auto",
+    "paddingRight": "12px",
+    "arrow": false,
+    "height": 43.999969482421875
+  },
+  {
+    "label": "สาขา",
+    "appearance": "auto",
+    "paddingRight": "12px",
+    "arrow": false,
+    "height": 43.999969482421875
+  }
+]

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useId as useUiFieldId, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import api from '@/lib/api';
@@ -97,7 +97,7 @@ export function OverpriceRulesTab() {
         )}
       </div>
       <div className="flex gap-2">
-        <Input
+        <Input aria-label="ค้นหา label หรือ pattern"
           placeholder="ค้นหา label หรือ pattern..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
@@ -133,18 +133,21 @@ export function OverpriceRulesTab() {
               </TableCell>
               <TableCell>
                 <Switch
+                  aria-label={`เปิดใช้งาน ${row.label}`}
                   checked={row.isActive}
                   onCheckedChange={(v) => toggleActive.mutate({ id: row.id, isActive: v })}
                 />
               </TableCell>
               <TableCell>
                 <div className="flex gap-1">
-                  <Button variant="ghost" size="sm" onClick={() => setEditing(row)}>
+                  <Button variant="ghost" size="sm" mode="icon" aria-label={`แก้ไข ${row.label}`} onClick={() => setEditing(row)}>
                     <Pencil className="h-4 w-4" />
                   </Button>
                   <Button
                     variant="ghost"
                     size="sm"
+                    mode="icon"
+                    aria-label={`ลบ ${row.label}`}
                     onClick={() => {
                       if (confirm(`ลบ "${row.label}"?`)) {
                         deleteRow.mutate(row.id);
@@ -192,6 +195,7 @@ interface DialogProps {
 }
 
 function OverpriceRuleFormDialog({ initial, onClose, onSaved }: DialogProps) {
+  const uiFieldId = useUiFieldId();
   const [form, setForm] = useState({
     label: initial?.label ?? '',
     seriesPattern: initial?.seriesPattern ?? '',
@@ -228,16 +232,16 @@ function OverpriceRuleFormDialog({ initial, onClose, onSaved }: DialogProps) {
         </DialogHeader>
         <div className="space-y-3">
           <div>
-            <label className="text-sm font-medium">Label</label>
-            <Input
+            <label htmlFor={`${uiFieldId}-1`} className="text-sm font-medium">Label</label>
+            <Input id={`${uiFieldId}-1`}
               value={form.label}
               onChange={(e) => setForm((f) => ({ ...f, label: e.target.value }))}
               placeholder="เช่น iPhone 14 Series มือ 2"
             />
           </div>
           <div>
-            <label className="text-sm font-medium">Series Pattern</label>
-            <Input
+            <label htmlFor={`${uiFieldId}-2`} className="text-sm font-medium">Series Pattern</label>
+            <Input id={`${uiFieldId}-2`}
               value={form.seriesPattern}
               onChange={(e) => setForm((f) => ({ ...f, seriesPattern: e.target.value }))}
               placeholder="เช่น iPhone 14|iPhone 15"
@@ -247,14 +251,14 @@ function OverpriceRuleFormDialog({ initial, onClose, onSaved }: DialogProps) {
             </p>
           </div>
           <div>
-            <label className="text-sm font-medium">สภาพ</label>
+            <label htmlFor={`${uiFieldId}-3`} className="text-sm font-medium">สภาพ</label>
             <Select
               value={form.condition}
               onValueChange={(v) =>
                 setForm((f) => ({ ...f, condition: v as 'HAND_1' | 'HAND_2' }))
               }
             >
-              <SelectTrigger>
+              <SelectTrigger id={`${uiFieldId}-3`}>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -264,8 +268,8 @@ function OverpriceRuleFormDialog({ initial, onClose, onSaved }: DialogProps) {
             </Select>
           </div>
           <div>
-            <label className="text-sm font-medium">Allowance (฿)</label>
-            <Input
+            <label htmlFor={`${uiFieldId}-4`} className="text-sm font-medium">Allowance (฿)</label>
+            <Input id={`${uiFieldId}-4`}
               type="number"
               step="0.01"
               value={form.allowance}
@@ -277,8 +281,8 @@ function OverpriceRuleFormDialog({ initial, onClose, onSaved }: DialogProps) {
             </p>
           </div>
           <div>
-            <label className="text-sm font-medium">ผ่อนได้สูงสุด (งวด)</label>
-            <Input
+            <label htmlFor={`${uiFieldId}-5`} className="text-sm font-medium">ผ่อนได้สูงสุด (งวด)</label>
+            <Input id={`${uiFieldId}-5`}
               type="number"
               min="1"
               max="36"

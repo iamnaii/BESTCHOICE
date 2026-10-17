@@ -1,3 +1,4 @@
+import { currentDomainAccess, domainAccessClient, onDomainCommit } from '../../employee-access/access-execution-context';
 import {
   BadRequestException,
   ForbiddenException,
@@ -42,8 +43,10 @@ export const INSTALLMENT_VIA_CONTRACT_MSG =
 export class SaleCreationService {
   private readonly logger = new Logger(SaleCreationService.name);
 
+  private get prisma(): PrismaService { return domainAccessClient(this.basePrisma); }
+
   constructor(
-    private prisma: PrismaService,
+    private readonly basePrisma: PrismaService,
     private writer: SaleWriterService,
     private interCompanyService: InterCompanyService,
     private warrantyNotifier: SaleWarrantyNotifierService,
@@ -53,7 +56,16 @@ export class SaleCreationService {
     // ขายผ่อนในเครือทำผ่านหน้าสัญญาทางเดียว (2026-09-20) — เปิดใช้สัญญาแล้ว ContractWorkflowService.activate ตัดสต๊อก
     // + ออกใบขาย INSTALLMENT + ตั้งค่าคอมให้เอง. ปฏิเสธก่อนแตะแต้ม/เครดิตเทิร์น/ส่วนลด/ฐานข้อมูลใด ๆ
     if (dto.saleType === 'INSTALLMENT') throw new BadRequestException(INSTALLMENT_VIA_CONTRACT_MSG);
+    const managed = currentDomainAccess();
+    if (managed) {
+      const actor = await this.prisma.user.findUniqueOrThrow({ where: { id: managed.snapshot.userId } });
+      userRole = managed.snapshot.isOwner ? 'OWNER' : actor.role;
+    }
     const baseDiscount = dto.discount || 0;
+    if (managed && baseDiscount > 0) {
+      if (!managed.snapshot.isOwner) throw new ForbiddenException('ส่วนลดนอกโปรต้องได้รับอนุมัติจากเจ้าของ');
+      if (typeof dto.discountReason !== 'string' || dto.discountReason.trim().length < 3 || dto.discountReason.trim().length > 500) throw new BadRequestException('กรุณาระบุเหตุผลส่วนลด 3–500 ตัวอักษร');
+    }
 
     // T6-C1: loyalty redeem at POS — validate customer balance and fold the
     // redeemed value into discount (1 pt = 1 ฿). The redemption itself is
@@ -148,6 +160,14 @@ export class SaleCreationService {
         throw new BadRequestException('ประเภทการขายไม่ถูกต้อง');
     }
 
+    if (managed && baseDiscount > 0) {
+      await managed.client.auditLog.create({ data: {
+        userId: managed.snapshot.userId, action: 'SALE_DISCOUNT_OWNER_APPROVED', entity: 'sale', entityId: sale.id,
+        newValue: { requesterId: managed.snapshot.userId, approverId: managed.snapshot.userId, saleId: sale.id,
+          reason: dto.discountReason!.trim(), sellingPrice: String(dto.sellingPrice), baseDiscount: String(baseDiscount), totalDiscount: String(discount), netAmount: String(netAmount) },
+      } });
+    }
+
     // Apply loyalty redemption after sale is confirmed. Wrap in try/catch so a
     // redemption failure doesn't hide the sale response — the sale already
     // posted, support flow will reconcile if the point deduction fell through.
@@ -163,12 +183,18 @@ export class SaleCreationService {
               contractId: sale.contractId ?? null,
             },
           });
-          await tx.customer.update({
-            where: { id: dto.customerId },
-            data: { loyaltyBalance: { decrement: loyaltyPoints } },
-          });
+          if (managed) {
+            const debited = await tx.customer.updateMany({
+              where: { id: dto.customerId, deletedAt: null, loyaltyBalance: { gte: loyaltyPoints } },
+              data: { loyaltyBalance: { decrement: loyaltyPoints } },
+            });
+            if (debited.count !== 1) throw new BadRequestException('แต้มไม่เพียงพอ');
+          } else {
+            await tx.customer.update({ where: { id: dto.customerId }, data: { loyaltyBalance: { decrement: loyaltyPoints } } });
+          }
         });
       } catch (err) {
+        if (managed) throw err;
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (sale as any)._loyaltyRedemptionFailed = err instanceof Error ? err.message : String(err);
       }
@@ -180,9 +206,8 @@ export class SaleCreationService {
     // แบบ synchronous ก่อนเข้า try ข้างใน. ขาผ่อน (INSTALLMENT) ไม่เข้าเพราะประกัน
     // ผูกกับสัญญาและมีเส้นทางแจ้งของตัวเอง
     if (dto.saleType === 'CASH' || dto.saleType === 'EXTERNAL_FINANCE') {
-      void this.warrantyNotifier
-        .notify(sale.id)
-        .catch((err) => this.logger.error(`[warranty-line] notify ไม่ถูกเรียก: ${String(err)}`));
+      if (managed) onDomainCommit(() => this.warrantyNotifier.notify(sale.id));
+      else void this.warrantyNotifier.notify(sale.id).catch((err) => this.logger.error(`[warranty-line] notify ไม่ถูกเรียก: ${String(err)}`));
     }
 
     return sale;

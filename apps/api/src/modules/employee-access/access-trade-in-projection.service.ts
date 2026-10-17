@@ -1,3 +1,4 @@
+import { saleSource } from './access-sales-scope';
 import { inventorySaleScopeWhere } from './access-inventory-scope';
 import { Injectable } from '@nestjs/common';
 import { AccessSnapshot, PermissionKey, canAccess } from '@installment/shared';
@@ -30,6 +31,7 @@ export class AccessTradeInProjectionService {
       permission,
       tuples: permissionScopes({ id: snapshot.userId, access: snapshot }, permission, 'SHOP'),
     };
+    if (!scope.tuples.some(tuple => tuple.userId === scope.userId && (tuple.scope !== 'BRANCHES' || tuple.branchIds.length > 0))) return false;
     if (
       await tx.tradeIn.findFirst({
         where: { [field]: id, AND: tradeInScopeWhere(scope) },
@@ -110,6 +112,16 @@ export class AccessTradeInProjectionService {
       if ('currentRedemptionId' in out) {
         out.creditRedeemed = !!out.currentRedemptionId;
         out.currentRedemptionId = null;
+        if (typeof row.currentRedemptionId === 'string') {
+          const redemption = await ctx.client.tradeInCreditRedemption.findUnique({ where: { id: row.currentRedemptionId } });
+          if (redemption?.saleId && redemption.tradeInId === id) {
+            const sale = await saleSource(ctx.client, redemption.saleId).catch(() => null);
+            if (sale && canAccess(ctx.snapshot, 'sales.read', sale)) {
+              out.currentRedemptionId = redemption.id;
+              out.currentRedemptionSaleId = redemption.saleId;
+            }
+          }
+        }
       }
       if (row.quickBuyRequestedById !== ctx.snapshot.userId) delete out.quickBuyRequestId;
       // Ciphertexts and retry fingerprints are never response fields.

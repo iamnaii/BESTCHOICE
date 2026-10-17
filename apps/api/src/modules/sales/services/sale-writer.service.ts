@@ -1,6 +1,7 @@
+import { currentDomainAccess, domainAccessClient } from '../../employee-access/access-execution-context';
 import { isRetryablePrismaWriteError } from '../../../utils/transaction-retry.util';
 import { ShopTenderRecorder } from '../../shop-tenders/shop-tender.recorder';
-import { firstTransferReference, normalizeTenders } from '../../shop-tenders/shop-tender.util';
+import { normalizeTenders } from '../../shop-tenders/shop-tender.util';
 import { assertSaleProductEligible, type SaleProductActor } from './sale-product-policy';
 import { assertBundleIsAccessory } from './bundle-policy';
 import { isAccessoryCompatible, type AccessoryDevice } from '@installment/shared';
@@ -34,8 +35,10 @@ import {
  */
 @Injectable()
 export class SaleWriterService {
+  private get prisma(): PrismaService { return domainAccessClient(this.basePrisma); }
+
   constructor(
-    private prisma: PrismaService,
+    private readonly basePrisma: PrismaService,
     private shopCashSaleTemplate: ShopCashSaleTemplate,
     private shopAccountResolver: ShopAccountResolver,
     private shopExternalFinanceSaleTemplate: ShopExternalFinanceSaleTemplate,
@@ -57,6 +60,7 @@ export class SaleWriterService {
     fn: (tx: Prisma.TransactionClient) => Promise<T>,
     options?: { isolationLevel?: Prisma.TransactionIsolationLevel },
   ): Promise<T> {
+    if (currentDomainAccess()) return this.prisma.$transaction(fn, options);
     const MAX_RETRIES = 3;
     for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
       try {

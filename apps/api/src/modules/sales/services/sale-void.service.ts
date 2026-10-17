@@ -1,3 +1,4 @@
+import { currentDomainAccess, domainAccessClient } from '../../employee-access/access-execution-context';
 import { TradeInCreditService } from '../../trade-in/services/trade-in-credit.service';
 import { ShopTenderRecorder } from '../../shop-tenders/shop-tender.recorder';
 import {
@@ -133,8 +134,10 @@ export interface VoidSaleActor {
 export class SaleVoidService {
   private readonly logger = new Logger(SaleVoidService.name);
 
+  private get prisma(): PrismaService { return domainAccessClient(this.basePrisma); }
+
   constructor(
-    private prisma: PrismaService,
+    private readonly basePrisma: PrismaService,
     private reversalTemplate: ExchangeCancelReversalTemplate,
   ) {}
 
@@ -147,6 +150,7 @@ export class SaleVoidService {
         isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
       });
     } catch (err) {
+      if (currentDomainAccess()) throw err;
       // ผู้แพ้ SSI race (40001 → Prisma P2034) โผล่ได้ทั้งกลาง tx และตอน commit
       if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2034') {
         this.logger.warn(
@@ -205,7 +209,7 @@ export class SaleVoidService {
     // จึงบังคับที่นี่ตาม precedent `contract-exchange-cancel.service.ts` —
     // OWNER (+role ข้ามสาขาอื่นที่ได้สิทธิ์ route นี้) ข้ามสาขาได้ตามเดิม.
     // BM ที่ไม่มี branchId ติดตัว (ข้อมูลผิดปกติ) = fail closed
-    if (user.role === 'BRANCH_MANAGER' && sale.branchId !== user.branchId) {
+    if (!currentDomainAccess() && user.role === 'BRANCH_MANAGER' && sale.branchId !== user.branchId) {
       throw new ForbiddenException('ไม่สามารถยกเลิกใบขายของสาขาอื่นได้');
     }
 

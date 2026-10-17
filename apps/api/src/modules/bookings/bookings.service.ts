@@ -1,3 +1,7 @@
+import { currentCustomerReadWhere } from '../employee-access/access-sales-scope';
+import { currentProductReadWhere } from '../employee-access/access-execution-context';
+import { currentBookingWhere } from '../employee-access/access-sales-scope';
+import { currentDomainAccess, domainAccessClient, onDomainCommit } from '../employee-access/access-execution-context';
 import {
   BadRequestException,
   ConflictException,
@@ -108,11 +112,11 @@ export function expiringBefore(now: Date, days: number): Date {
 export function buildBookingSearchWhere(term: string): Prisma.BookingWhereInput[] {
   const or: Prisma.BookingWhereInput[] = [
     { bookingNumber: { contains: term, mode: 'insensitive' } },
-    { customer: { name: { contains: term, mode: 'insensitive' } } },
-    { items: { some: { product: { imeiSerial: { contains: term, mode: 'insensitive' } } } } },
+    { customer: { name: { contains: term, mode: 'insensitive' }, ...(currentDomainAccess() ? { AND: currentCustomerReadWhere() } : {}) } },
+    { items: { some: { product: { imeiSerial: { contains: term, mode: 'insensitive' }, ...(currentDomainAccess() ? { AND: currentProductReadWhere() } : {}) } } } },
   ];
   const digits = normalizeThaiPhone(term) ?? '';
-  if (/^\d{3,}$/.test(digits)) or.push({ customer: { phone: { contains: digits } } });
+  if (/^\d{3,}$/.test(digits)) or.push({ customer: { phone: { contains: digits }, ...(currentDomainAccess() ? { AND: currentCustomerReadWhere() } : {}) } });
   return or;
 }
 
@@ -167,8 +171,10 @@ const BOOKING_EXPIRE_DAYS_KEY = 'booking_expire_days';
 export class BookingsService {
   private readonly logger = new Logger(BookingsService.name);
 
+  private get prisma(): PrismaService { return domainAccessClient(this.basePrisma); }
+
   constructor(
-    private prisma: PrismaService,
+    private readonly basePrisma: PrismaService,
     private readonly shopBookingDepositTemplate: ShopBookingDepositTemplate,
     private readonly shopBookingForfeitTemplate: ShopBookingForfeitTemplate,
     private readonly shopBookingDepositAppliedTemplate: ShopBookingDepositAppliedTemplate,
@@ -187,6 +193,8 @@ export class BookingsService {
     user: RequestUser,
     requestedBranchId?: string,
   ): { where: Prisma.BookingWhereInput; empty: boolean } {
+    const managed = currentBookingWhere();
+    if (managed) return { where: { AND: [where, managed, requestedBranchId ? { branchId: requestedBranchId } : {}] }, empty: false };
     const scope = getBranchScope(user);
     if (scope.all) {
       if (requestedBranchId) where.branchId = requestedBranchId;
@@ -201,7 +209,7 @@ export class BookingsService {
   }
 
   private assertCanWriteBranch(user: RequestUser, branchId: string) {
-    if (hasCrossBranchAccess(user)) return;
+    if (currentDomainAccess() || hasCrossBranchAccess(user)) return;
     if (!user.branchId) {
       throw new ForbiddenException('บัญชีนี้ยังไม่มีสาขาที่รับผิดชอบ');
     }
@@ -1016,7 +1024,10 @@ export class BookingsService {
 
       return { updated, unlock, lockedProductIdBefore };
     });
-    if (unlock === 'SKIPPED') this.warnUnlockSkipped(id, lockedProductIdBefore, 'cancel');
+    if (unlock === 'SKIPPED') {
+      if (currentDomainAccess()) onDomainCommit(async () => { this.warnUnlockSkipped(id, lockedProductIdBefore, 'cancel'); });
+      else this.warnUnlockSkipped(id, lockedProductIdBefore, 'cancel');
+    }
     return updated;
   }
 

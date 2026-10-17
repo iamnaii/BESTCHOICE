@@ -1,3 +1,4 @@
+import { currentDomainAccess } from '../../employee-access/access-execution-context';
 import { BadRequestException } from '@nestjs/common';
 
 /**
@@ -61,7 +62,7 @@ export class DiscountPolicy {
       const floor = costPrice * (1 - maxForRole);
       if (netAfterDiscount < floor) {
         throw new BadRequestException(
-          `ราคาขายสุทธิ ${netAfterDiscount.toLocaleString()} ต่ำกว่าขั้นต่ำ ${floor.toLocaleString()} (ต้นทุน ${costPrice.toLocaleString()})`,
+          currentDomainAccess() ? 'ราคาขายสุทธิต่ำกว่าเกณฑ์ที่อนุญาต' : `ราคาขายสุทธิ ${netAfterDiscount.toLocaleString()} ต่ำกว่าขั้นต่ำ ${floor.toLocaleString()} (ต้นทุน ${costPrice.toLocaleString()})`,
         );
       }
     }

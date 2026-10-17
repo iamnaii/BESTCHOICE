@@ -81,7 +81,7 @@ describe('BookingsService — ไทม์ไลน์เหตุการณ�
   });
 
   it('update — เขียน AuditLog BOOKING_UPDATED ในธุรกรรมเดียว บอกว่าแก้ช่องไหน', async () => {
-    await service.update('bk-1', { notes: 'แก้แล้ว', expireDate: '2026-10-12T17:00:00.000Z' }, OWNER);
+    await service.update('bk-1', { notes: 'แก้แล้ว', expireDate: new Date(Date.now() + 2 * 86_400_000).toISOString() }, OWNER);
     expect(prisma._txAuditLog.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         action: 'BOOKING_UPDATED', entity: 'booking', entityId: 'bk-1', userId: 'u-owner',

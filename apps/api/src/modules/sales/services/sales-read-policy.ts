@@ -1,3 +1,4 @@
+import { currentDomainAccess } from '../../employee-access/access-execution-context';
 import { ForbiddenException } from '@nestjs/common';
 import { getBranchScope } from '../../auth/branch-access.util';
 import { maskNationalId } from '../../../utils/pii.util';
@@ -8,6 +9,7 @@ export function salesBranchWhere(
   actor: SalesReadActor,
   branchId?: string,
 ): { branchId?: string; id?: { in: string[] } } {
+  if (currentDomainAccess()) return branchId ? { branchId } : {};
   const scope = getBranchScope(actor);
   if (scope.all) return branchId ? { branchId } : {};
   if (!scope.branchId) return { id: { in: [] } };
@@ -22,7 +24,9 @@ export function projectSaleForActor<T extends {
   product: { costPrice?: unknown };
   customer: { id: string; nationalId?: string | null };
 }>(sale: T, actor: SalesReadActor) {
-  const { costPrice: _cost, ...productWithoutCost } = sale.product;
+  if (currentDomainAccess()) return { ...sale, costPriceSnapshot: sale.costSnapshot?.mainProductCost ?? null, customer: actor.role === 'SALES' && sale.customer.nationalId ? { ...sale.customer, nationalId: maskNationalId(sale.customer.nationalId) } : sale.customer };
+  const productWithoutCost = { ...sale.product };
+  delete productWithoutCost.costPrice;
   const customer = actor.role === 'SALES' && sale.customer.nationalId
     ? { ...sale.customer, nationalId: maskNationalId(sale.customer.nationalId) }
     : sale.customer;

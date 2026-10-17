@@ -1,3 +1,4 @@
+import { currentDomainAccess, domainAccessClient } from '../employee-access/access-execution-context';
 import { AuditService } from '../audit/audit.service';
 import { Injectable, Optional } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -33,8 +34,10 @@ export class SalesService {
   private readonly writer: SaleWriterService;
   private readonly creation: SaleCreationService;
 
+  private get prisma(): PrismaService { return domainAccessClient(this.basePrisma); }
+
   constructor(
-    private prisma: PrismaService,
+    private readonly basePrisma: PrismaService,
     private interCompanyService: InterCompanyService,
     private shopCashSaleTemplate: ShopCashSaleTemplate,
     private shopAccountResolver: ShopAccountResolver,
@@ -64,7 +67,7 @@ export class SalesService {
   async exportRows(filters: SalesReadFilters, actor: SalesReadActor) {
     const result = await this.query.exportRows(filters, actor);
     await (this.audit ?? new AuditService(this.prisma)).log({ userId: actor.id, action: 'SALES_REPORT_EXPORTED', entity: 'sale',
-      newValue: { rowCount: result.total, asOf: result.asOf, role: actor.role } });
+      newValue: { rowCount: result.total, asOf: result.asOf, role: actor.role } }, currentDomainAccess()?.client);
     return result;
   }
 

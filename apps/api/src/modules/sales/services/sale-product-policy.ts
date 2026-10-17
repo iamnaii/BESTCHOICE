@@ -1,3 +1,4 @@
+import { currentDomainAccess } from '../../employee-access/access-execution-context';
 import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import { hasCrossBranchAccess } from '../../auth/branch-access.util';
 
@@ -15,7 +16,7 @@ export function assertSaleProductEligible(
   if (product.deletedAt || product.status !== 'IN_STOCK') {
     throw new BadRequestException('สินค้าไม่พร้อมขาย หรือถูกขายไปแล้ว — กรุณาตรวจสอบสต็อก');
   }
-  if (!hasCrossBranchAccess(actor) && (!actor.branchId || actor.branchId !== branchId)) {
+  if (!currentDomainAccess() && !hasCrossBranchAccess(actor) && (!actor.branchId || actor.branchId !== branchId)) {
     throw new ForbiddenException('ไม่มีสิทธิ์ขายสินค้าของสาขานี้');
   }
   if (product.branchId !== branchId) {

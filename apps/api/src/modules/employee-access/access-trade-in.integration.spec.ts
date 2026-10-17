@@ -957,3 +957,19 @@ it('fix1 resolves credit journal current company and canonical issue source befo
   await db.tradeIn.update({ where: { id: row.id }, data: { creditIssuedAt: row.creditIssuedAt } });
   await assertNavigation(journalId);
 });
+
+it('consumer fix denies known party selection and expansion when independent party tuples are empty', async () => {
+  const staff = await user();
+  await grant(staff, ['trade-in.read', 'trade-in.create'], [branchA]);
+  const customer = await db.customer.create({ data: { name: 'Party privacy ' + randomUUID(), phone: '0800000000', nationalId: randomUUID() } });
+  const row = await db.tradeIn.create({ data: { customerId: customer.id, branchId: branchA, deviceBrand: 'Apple', deviceModel: 'Known party' } });
+  expect(await app.get(AccessTradeInProjectionService).partyAllows(db, await snapshots.forUser(staff), customer.id, 'customerId', 'customers.read')).toBe(false);
+  const hidden = await http('get', '/trade-ins/' + row.id, undefined, staff).expect(200);
+  expect(hidden.body.customerId).toBeNull(); expect(hidden.body.customer).toBeNull();
+  await http('post', '/trade-ins', { customerId: customer.id, branchId: branchA, deviceBrand: 'Apple', deviceModel: 'Selected' }, staff).expect(403);
+  await grant(staff, ['customers.read'], [branchB]);
+  expect((await http('get', '/trade-ins/' + row.id, undefined, staff).expect(200)).body.customer).toBeNull();
+  await grant(staff, ['customers.read'], [branchA]);
+  expect((await http('get', '/trade-ins/' + row.id, undefined, staff).expect(200)).body.customer.id).toBe(customer.id);
+  await http('post', '/trade-ins', { customerId: customer.id, branchId: branchA, deviceBrand: 'Apple', deviceModel: 'Selected' }, staff).expect(201);
+});

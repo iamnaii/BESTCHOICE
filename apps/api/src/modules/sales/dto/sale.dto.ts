@@ -1,5 +1,5 @@
-import { IsBoolean, MaxLength, IsUUID, IsString, IsOptional, IsNumber, IsEnum, IsIn, IsArray, IsInt, Min, Max, ArrayMaxSize, ValidateNested } from 'class-validator';
-import { Type } from 'class-transformer';
+import { IsBoolean, MaxLength, MinLength, IsUUID, IsString, IsOptional, IsNumber, IsEnum, IsIn, IsArray, IsInt, Min, Max, ArrayMaxSize, ValidateNested } from 'class-validator';
+import { Type, Transform } from 'class-transformer';
 import { TenderInputDto } from '../../shop-tenders/dto/tender-input.dto';
 import { MAX_TENDERS } from '../../shop-tenders/shop-tender.util';
 
@@ -31,6 +31,14 @@ export class CreateSaleDto {
   @IsOptional()
   @Type(() => Number)
   discount?: number;
+
+  /** Managed owner self-approval seam; Task 6 supplies the full approval workflow. */
+  @IsOptional()
+  @IsString()
+  @Transform(({ value }) => typeof value === 'string' ? value.trim() : value)
+  @MinLength(3)
+  @MaxLength(500)
+  discountReason?: string;
 
   // T5-C1 — when a discount exceeds the per-role soft threshold (10% for
   // non-OWNER roles), the caller must attach the userId of a second-person

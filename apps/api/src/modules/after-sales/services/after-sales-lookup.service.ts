@@ -1,5 +1,4 @@
-import { contractWarrantySource } from '../../employee-access/access-repair-scope';
-import { saleSource } from '../../employee-access/access-sales-scope';
+import type { CreateCaseDto } from '../dto/create-case.dto';
 import { liveShopServiceBranch } from '../../employee-access/access-service-origin';
 import { optionalSource } from '../../employee-access/access-after-sales-source.service';
 import { Optional, ForbiddenException } from '@nestjs/common';
@@ -93,20 +92,11 @@ export class AfterSalesLookupService {
   ) {
     const ctx = currentDomainAccess();
     if (!ctx) return computeOutcomes(input);
-    const source = found?.contract
-      ? await contractWarrantySource(ctx.client, found.contract.id, true)
-      : found?.sale
-        ? await saleSource(ctx.client, found.sale.id, true)
-        : found?.product
-          ? await this.resources!.product(ctx.client, found.product.id, true).then((p) =>
-              this.resources!.branch(ctx.client, p.branchId!, true),
-            )
-          : null;
-    const candidates = source
-      ? [source]
-      : (
-          await ctx.client.branch.findMany({ where: liveShopServiceBranch, select: { id: true } })
-        ).map((branch) => ({ company: 'SHOP' as const, branchId: branch.id }));
+    // Public hints have no chosen destination: advertise only if some live SHOP
+    // destination is actually creatable. Internal intake checks the chosen one.
+    const candidates = (
+      await ctx.client.branch.findMany({ where: liveShopServiceBranch, select: { id: true } })
+    ).map((branch) => ({ company: 'SHOP' as const, branchId: branch.id }));
     const repair = candidates.some(
       (s) =>
         canAccess(ctx.snapshot, 'after-sales.create', s) &&
@@ -115,7 +105,9 @@ export class AfterSalesLookupService {
     const exchangeSources = found?.contract
       ? await optionalSource(() => this.exchanges!.sources({ oldContractId: found.contract!.id }))
       : null;
-    const createCase = !!source && canAccess(ctx.snapshot, 'after-sales.create', source);
+    const createCase = candidates.some((source) =>
+      canAccess(ctx.snapshot, 'after-sales.create', source),
+    );
     const sameModel =
       createCase &&
       !!exchangeSources &&
@@ -124,9 +116,7 @@ export class AfterSalesLookupService {
       createCase &&
       !!exchangeSources &&
       this.exchanges!.permits('contract-exchanges.create', exchangeSources);
-    const approve =
-      !!exchangeSources && this.exchanges!.permits('defect-exchanges.approve', exchangeSources);
-    return computeOutcomes({ ...input, viewerRole: approve ? 'BRANCH_MANAGER' : 'SALES' }).map(
+    return computeOutcomes({ ...input, submissionCapabilities: { sameModel, priced } }).map(
       (option) => {
         const permitted =
           option.outcome === 'REPAIR'
@@ -147,16 +137,33 @@ export class AfterSalesLookupService {
     return domainAccessClient(this.basePrisma);
   }
 
+  async lookupForCreation(
+    dto: LookupDto,
+    user: ReqUser,
+    outcome: CreateCaseDto['outcome'],
+    replacementProductId?: string,
+  ): Promise<LookupResult> {
+    return this.lookupInput(dto, user, { outcome, replacementProductId });
+  }
   async lookup(dto: LookupDto, user: ReqUser): Promise<LookupResult> {
+    return this.lookupInput(dto, user);
+  }
+  private async lookupInput(
+    dto: LookupDto,
+    user: ReqUser,
+    creation?: { outcome: CreateCaseDto['outcome']; replacementProductId?: string },
+  ): Promise<LookupResult> {
     const ctx = await afterSalesActor(this.basePrisma, user.id);
-    if (ctx && (!this.projection || !this.exchanges || !this.resources))
+    if (ctx && ((!creation && !this.projection) || !this.exchanges || !this.resources))
       throw new ForbiddenException('ไม่มีตัวตรวจแหล่งเคส');
     // C7 (final-fix brief) — ข้อความเดิม "เลือกเครื่องก่อน (productId)" ชี้ไปหน้าจอค้นด้วยลูกค้า
     // ที่ PR 1 ไม่มี UI รองรับจริง (มีแค่ query param `productId` ใน DTO เผื่ออนาคต) — เปลี่ยนเป็น
     // ข้อความที่ตรงกับสิ่งที่ผู้ใช้ทำได้จริงวันนี้ (ค้นด้วย IMEI เท่านั้น)
     if (!dto.imei)
       throw new NotFoundException('ไม่พบเครื่องจากเลข IMEI นี้ — ตรวจเลข IMEI แล้วลองใหม่');
-    const r = await this.repair.lookupByImei(dto.imei, user);
+    const r = creation
+      ? await this.repair.lookupForCreation(dto.imei, user)
+      : await this.repair.lookupByImei(dto.imei, user);
     const checkedAt = new Date().toISOString();
     if (!r.found) {
       return {
@@ -177,7 +184,7 @@ export class AfterSalesLookupService {
           manufacturerWarrantyEndDate: null,
           checkedAt,
         },
-        outcomes: await this.outcomes({
+        outcomes: await (creation ? computeOutcomes : this.outcomes.bind(this))({
           source: 'WALK_IN',
           warrantyStatus: 'WALK_IN',
           daysRemainingIn7Day: 0,
@@ -191,16 +198,29 @@ export class AfterSalesLookupService {
     const source = r.contract ? 'INSTALLMENT_CONTRACT' : r.sale ? 'CASH_SALE' : 'WALK_IN'; // Review Focus 1: พบเครื่องแต่ไม่มีใบขาย/สัญญา = walk-in
     let defectEligible = false;
     let defectReasons: string[] = [];
-    if (r.contract) {
+    if (r.contract && (!creation || creation.outcome === 'SAME_MODEL_EXCHANGE')) {
       // R10: checkEligibility can throw (e.g. NotFoundException('ไม่พบสัญญา') on a
       // race where the contract was deleted between lookupByImei and here) — a
       // throw here must not fail this whole read-only lookup. Fail closed:
       // treat as ineligible and surface the error message as the disabled reason.
       try {
-        const e = await this.defect.checkEligibility(r.contract.id);
+        const creationSources = ctx
+          ? await optionalSource(() => this.exchanges!.sources({ oldContractId: r.contract!.id }))
+          : null;
+        const maySubmit =
+          !!creationSources && this.exchanges!.permits('defect-exchanges.create', creationSources);
+        const e =
+          creation || maySubmit
+            ? await this.defect.checkCreationEligibility(
+                r.contract.id,
+                creation?.replacementProductId,
+                user,
+              )
+            : await this.defect.checkEligibility(r.contract.id);
         defectEligible = e.eligible;
         defectReasons = e.reasons;
       } catch (err) {
+        if (creation) throw err;
         defectEligible = false;
         // C8 (final-fix brief) — whitelist เฉพาะ HttpException (ข้อความที่ตั้งใจสื่อสารกับผู้ใช้
         // อยู่แล้ว) ส่วน error อื่นทั้งหมด (Prisma/JS ดิบ) ต้องไม่หลุดไปถึง UI — ใช้เหตุผลกลาง
@@ -258,7 +278,7 @@ export class AfterSalesLookupService {
             stage: openCaseReconciled.stage,
           }
         : null;
-    if (ctx) {
+    if (ctx && !creation) {
       let cursor: string | undefined;
       for (;;) {
         const candidates = await ctx.client.afterSalesCase.findMany({
@@ -315,7 +335,15 @@ export class AfterSalesLookupService {
         checkedAt,
       },
       purchasePhotos: photos.photos ?? null,
-      outcomes: await this.outcomes(
+      outcomes: await (
+        creation
+          ? (input: OutcomeInput) =>
+              computeOutcomes({
+                ...input,
+                submissionCapabilities: { sameModel: true, priced: true },
+              })
+          : this.outcomes.bind(this)
+      )(
         {
           source,
           warrantyStatus,

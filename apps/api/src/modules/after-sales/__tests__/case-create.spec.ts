@@ -124,6 +124,7 @@ describe('AfterSalesCaseService.createCase', () => {
       },
     };
     prisma = {
+      user: {findUnique:jest.fn().mockResolvedValue({accessManaged:false})},
       $transaction: jest.fn().mockImplementation((cb: any) => cb(tx)),
       branch: { findFirst: jest.fn().mockResolvedValue({ id: 'b-1' }) },
       product: { findUnique: jest.fn().mockResolvedValue(REPLACEMENT_PRODUCT) },

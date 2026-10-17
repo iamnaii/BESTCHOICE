@@ -435,6 +435,7 @@ describe('after-sales flow — DB จริง (Task 7, PR1)', () => {
       branchId,
     };
     const result = await svc.createCase(dto as never, [fakeJpeg('intake.jpg')], OWNER());
+    if (!('caseNumber' in result)) throw new Error('Expected unmanaged creation result');
     caseId = result.id;
     repairTicketId = result.repairTicketId!;
 
@@ -594,6 +595,7 @@ describe('after-sales flow — DB จริง (Task 7, PR1)', () => {
       [fakeJpeg('drift-intake.jpg')],
       OWNER(),
     );
+    if (!('caseNumber' in created)) throw new Error('Expected unmanaged creation result');
     caseId2 = created.id;
     repairTicketId2 = created.repairTicketId!;
 
@@ -652,6 +654,7 @@ describe('after-sales flow — DB จริง (Task 7, PR1)', () => {
       [fakeJpeg('reopen-intake.jpg')],
       OWNER(),
     );
+    if (!('caseNumber' in result)) throw new Error('Expected unmanaged creation result');
     caseId3 = result.id;
     repairTicketId3 = result.repairTicketId!;
 
@@ -804,6 +807,7 @@ describe('after-sales — LINE 3 จังหวะ (Task 3, PR3, เคส ก-
       [fakeJpeg('line-a-intake.jpg')],
       OWNER(),
     );
+    if (!('caseNumber' in result)) throw new Error('Expected unmanaged creation result');
     caseA = result.id;
     ticketA = result.repairTicketId;
 
@@ -853,6 +857,7 @@ describe('after-sales — LINE 3 จังหวะ (Task 3, PR3, เคส ก-
       [fakeJpeg('line-b-intake.jpg')],
       OWNER(),
     );
+    if (!('caseNumber' in result)) throw new Error('Expected unmanaged creation result');
     caseB = result.id;
     ticketB = result.repairTicketId;
 
@@ -902,6 +907,7 @@ describe('after-sales — LINE 3 จังหวะ (Task 3, PR3, เคส ก-
       [fakeJpeg('line-c-intake.jpg')],
       OWNER(),
     );
+    if (!('caseNumber' in created)) throw new Error('Expected unmanaged creation result');
     caseC = created.id;
     ticketC = created.repairTicketId;
 

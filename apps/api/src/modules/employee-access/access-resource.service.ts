@@ -94,6 +94,9 @@ export class AccessResourceService {
       // PostgreSQL aborts stale row versions rather than accepting revoked rights.
       if (isolationLevel !== 'ReadCommitted') {
         await tx.$queryRaw`SELECT id FROM users WHERE id = ${userId} FOR SHARE`;
+        // Assignment versions are soft-retired; their branch junctions are immutable.
+        // Lock retirement itself, even when no user revision changed.
+        await tx.$queryRaw`SELECT id FROM employee_access_assignments WHERE user_id = ${userId} ORDER BY id FOR SHARE`;
         await tx.$queryRaw`SELECT id FROM access_positions WHERE id IN (SELECT position_id FROM employee_access_assignments WHERE user_id = ${userId}) ORDER BY id FOR SHARE`;
         await tx.$queryRaw`SELECT id FROM branches WHERE id IN (SELECT branch_id FROM employee_access_assignment_branches WHERE assignment_id IN (SELECT id FROM employee_access_assignments WHERE user_id = ${userId})) ORDER BY id FOR SHARE`;
         await tx.$queryRaw`SELECT id FROM company_info WHERE company_code IN ('SHOP', 'FINANCE') ORDER BY id FOR SHARE`;

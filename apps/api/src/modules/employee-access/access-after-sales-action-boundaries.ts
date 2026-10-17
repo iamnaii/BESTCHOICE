@@ -12,6 +12,7 @@ import { afterSalesSource } from './access-after-sales-source.service';
 import { requestedAccessCompany } from './access-shop-boundaries';
 import { procurementPreparation } from './access-preparation-context';
 
+export const AFTER_SALES_INTAKE_ROUTES = ['AfterSalesController.create'];
 export const AFTER_SALES_ACTION_ROUTES = [
   'send',
   'markRepaired',
@@ -33,7 +34,11 @@ export const AFTER_SALES_EXCHANGE_ACTION_ROUTES = [
 export class AccessAfterSalesActionBoundaries implements OnModuleInit {
   constructor(private readonly resources: AccessResourceService) {}
   onModuleInit() {
-    for (const route of [...AFTER_SALES_ACTION_ROUTES, ...AFTER_SALES_EXCHANGE_ACTION_ROUTES])
+    for (const route of [
+      ...AFTER_SALES_ACTION_ROUTES,
+      ...AFTER_SALES_EXCHANGE_ACTION_ROUTES,
+      ...AFTER_SALES_INTAKE_ROUTES,
+    ])
       ACCESS_BOUNDARIES.set(route, async (req, snapshot, permission) => {
         if (requestedAccessCompany(req) !== 'SHOP')
           throw new ForbiddenException('งานหลังการขายอยู่ใน SHOP');
@@ -60,13 +65,14 @@ export class AccessAfterSalesActionBoundaries implements OnModuleInit {
               snapshot.userId,
               permission,
               'SHOP',
-              resolver,
+              route.endsWith('.create') ? undefined : resolver,
               async () => {
                 try {
                   return await handler();
                 } catch (error) {
                   if (
-                    AFTER_SALES_EXCHANGE_ACTION_ROUTES.includes(route) &&
+                    (AFTER_SALES_EXCHANGE_ACTION_ROUTES.includes(route) ||
+                      AFTER_SALES_INTAKE_ROUTES.includes(route)) &&
                     error instanceof HttpException &&
                     [400, 409].includes(error.getStatus())
                   )
@@ -85,7 +91,7 @@ export class AccessAfterSalesActionBoundaries implements OnModuleInit {
           kind: 'selection',
           company: 'SHOP',
           execute: (handler) =>
-            route.endsWith('.addPhoto')
+            route.endsWith('.addPhoto') || route.endsWith('.create')
               ? procurementPreparation.run(
                   {
                     authorize: async () => {

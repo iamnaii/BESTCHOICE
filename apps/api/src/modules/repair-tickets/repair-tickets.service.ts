@@ -61,7 +61,7 @@ export class RepairTicketsService {
       this.access,
     );
     this.query = new RepairTicketQueryService(this.prisma);
-    this.warranty = new RepairWarrantyService(this.prisma, this.audit);
+    this.warranty = new RepairWarrantyService(this.prisma, this.audit, this.access);
   }
 
   /** Service-to-service callers must join an owned current-authority execution.
@@ -218,6 +218,10 @@ export class RepairTicketsService {
   async warrantyLookup(dto: WarrantyLookupDto, user: ReqUser) {
     await this.authorize('warrantyLookup', user, undefined, { ...dto });
     return this.warranty.warrantyLookup(dto, user);
+  }
+
+  async lookupForCreation(imei: string, user: ReqUser) {
+    return this.warranty.lookupForCreation(imei, user);
   }
 
   async lookupByImei(imei: string, user: ReqUser) {

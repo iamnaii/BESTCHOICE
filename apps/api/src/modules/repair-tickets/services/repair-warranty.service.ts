@@ -1,3 +1,8 @@
+import { AccessRepairSourceService } from '../../employee-access/access-repair-source.service';
+import { saleSource } from '../../employee-access/access-sales-scope';
+import { canAccess } from '@installment/shared';
+import { afterSalesActor } from '../../employee-access/access-after-sales-source.service';
+import { ForbiddenException } from '@nestjs/common';
 import {
   currentRepairProductWhere,
   currentRepairLookupProductWhere,
@@ -31,6 +36,7 @@ export class RepairWarrantyService {
   constructor(
     private readonly basePrisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly access?: AccessRepairSourceService,
   ) {}
 
   private async logLookup(entry: AuditEntry) {
@@ -353,9 +359,48 @@ export class RepairWarrantyService {
    * Returns structured data covering product, customer, contract, and computed warranty status.
    * No audit log — read-only, called frequently during wizard UX.
    */
+  async lookupForCreation(imei: string, user: ReqUser) {
+    const ctx = await afterSalesActor(this.basePrisma, user.id, this.prisma);
+    if (!ctx || ctx.scope.permission !== 'after-sales.create' || !this.access)
+      throw new ForbiddenException('ต้องตรวจแหล่งรับฝากในธุรกรรมปัจจุบัน');
+    const product = await ctx.client.product.findFirst({
+      where: { imeiSerial: imei, deletedAt: null },
+      select: { id: true },
+    });
+    if (product) {
+      await this.access.linked(ctx.client, ctx.snapshot, { productId: product.id }, true);
+      const sale = await ctx.client.sale.findFirst({
+        where: { productId: product.id, deletedAt: null },
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        select: { id: true, customerId: true, contractId: true },
+      });
+      if (sale) {
+        if (!canAccess(ctx.snapshot, 'sales.read', await saleSource(ctx.client, sale.id, true)))
+          throw new ForbiddenException('ไม่มีสิทธิ์อ่านแหล่งใบขาย');
+        await this.access.linked(
+          ctx.client,
+          ctx.snapshot,
+          {
+            productId: product.id,
+            customerId: sale.customerId,
+            contractId: sale.contractId ?? undefined,
+          },
+          true,
+        );
+      }
+    }
+    return this.lookupIdentity(imei, user, true);
+  }
   async lookupByImei(imei: string, user: ReqUser) {
+    return this.lookupIdentity(imei, user, false);
+  }
+  private async lookupIdentity(imei: string, user: ReqUser, creation: boolean) {
     const product = await this.prisma.product.findFirst({
-      where: { imeiSerial: imei, deletedAt: null, AND: currentRepairProductWhere() },
+      where: {
+        imeiSerial: imei,
+        deletedAt: null,
+        AND: creation ? undefined : currentRepairProductWhere(),
+      },
       select: {
         id: true,
         brand: true,
@@ -383,12 +428,12 @@ export class RepairWarrantyService {
         productId: product.id,
         deletedAt: null,
         ...branchScope,
-        AND: currentRepairSaleWhere(),
-        ...(currentDomainAccess()
+        AND: creation ? undefined : currentRepairSaleWhere(),
+        ...(!creation && currentDomainAccess()
           ? { OR: [{ contractId: null }, { contract: currentWarrantyContractWhere() }] }
           : {}),
       },
-      orderBy: { createdAt: 'desc' },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       select: {
         id: true,
         saleType: true,
@@ -409,6 +454,7 @@ export class RepairWarrantyService {
     });
 
     if (
+      !creation &&
       currentDomainAccess() &&
       !sale &&
       !(await this.prisma.product.count({

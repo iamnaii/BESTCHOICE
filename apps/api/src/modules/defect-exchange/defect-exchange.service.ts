@@ -72,6 +72,14 @@ export class DefectExchangeService {
     return this.eligibility(oldContractId, newProductId);
   }
 
+  /** Pending submission has create authority, independently of execution approval. */
+  async checkCreationEligibility(oldContractId: string, newProductId: string | undefined, actor: {id:string}) {
+    const ctx = await exchangeActor(this.basePrisma, actor.id, this.prisma);
+    if (!ctx || !this.access) throw new ForbiddenException('ต้องตรวจสิทธิ์การยื่นคำขอ');
+    this.access.assert('defect-exchanges.create', await this.access.sources({oldContractId,newProductId}));
+    return this.eligibility(oldContractId,newProductId);
+  }
+
   /** Internal execution preflight: identical business rules, independent action authority. */
   async checkExecutionEligibility(oldContractId: string, newProductId: string, actor: {id:string}) {
     await this.authorize(oldContractId, newProductId, actor.id, true);

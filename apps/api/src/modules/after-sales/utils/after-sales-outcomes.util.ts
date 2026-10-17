@@ -8,6 +8,7 @@ export interface OutcomeInput {
   defectEligible: boolean; // จาก DefectExchangeService.checkEligibility(...).eligible
   defectReasons: string[]; // ...reasons
   viewerRole: string;
+  submissionCapabilities?: { sameModel: boolean; priced: boolean };
 }
 
 export interface OutcomeOption {
@@ -98,7 +99,7 @@ export function computeOutcomes(i: OutcomeInput): OutcomeOption[] {
       note: 'ผจก.สาขา ต้องยืนยัน',
     };
   } else if (
-    managerUp &&
+    (i.submissionCapabilities?.sameModel ?? managerUp) &&
     i.defectReasons.length === 1 &&
     WINDOW_REASON_RE.test(i.defectReasons[0])
   ) {
@@ -138,7 +139,7 @@ export function computeOutcomes(i: OutcomeInput): OutcomeOption[] {
       implemented: false,
       reason: 'อยู่ในประกันศูนย์ — ส่งเคลมก่อน',
     };
-  } else if (within7 || managerUp) {
+  } else if (within7 || (i.submissionCapabilities?.priced ?? managerUp)) {
     priced = {
       outcome: 'PRICED_EXCHANGE',
       enabled: true,

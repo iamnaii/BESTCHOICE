@@ -235,10 +235,10 @@ Execute as two serial reviewed units: trade-in/source-credit producer (38 routes
 
 **Files:** Existing after-sales query/document/LINE selectors and mappers, document composer, LINE-copy helper, customer LIFF after-sales service and focused existing tests. Reuse reviewed repair-charge-visibility helpers; no new schema or route adapter in this unit.
 
-- [ ] RED/GREEN actual consumer composition tests for receipt/handover HTML, all LINE moments and LIFF where current payer=CUSTOMER but retained estimate provenance is null/SHOP/SUPPLIER_CLAIM. Carry RepairTicket.estimatedCostPayer through actual selectors/mappers; verify CUSTOMER-provenance estimates and fresh CUSTOMER actual charges remain useful.
-- [ ] Customer-facing content never borrows the staff initiator's cost grant, including OWNER. Use unavailable/awaiting-quote text for unproven/internal estimates, never false zero/no-charge. Preserve money/formulas, existing customer auth, document layout and normal customer quotes.
-- [ ] Use shared repairEstimateIsCustomerCharge/repairActualIsCustomerCharge rather than competing field-name policy. Verify selector-to-renderer/notification/LIFF composition with mocked external transport/renderer, no real sends/uploads. These unit checks are not DB/HTTP enforcement evidence and earn no completed route count.
-- [ ] Focused tests/types/lint, publish exact nullable field/output contracts and all remaining source/transaction/public-route work, self-review/report/commit. No default template/saved permission changes in this narrow producer.
+- [x] RED/GREEN actual consumer composition tests for receipt/handover HTML, all LINE moments and LIFF where current payer=CUSTOMER but retained estimate provenance is null/SHOP/SUPPLIER_CLAIM. Carry RepairTicket.estimatedCostPayer through actual selectors/mappers; verify CUSTOMER-provenance estimates and fresh CUSTOMER actual charges remain useful.
+- [x] Customer-facing content never borrows the staff initiator's cost grant, including OWNER. Use unavailable/awaiting-quote text for unproven/internal estimates, never false zero/no-charge. Preserve money/formulas, existing customer auth, document layout and normal customer quotes.
+- [x] Use shared repairEstimateIsCustomerCharge/repairActualIsCustomerCharge rather than competing field-name policy. Verify selector-to-renderer/notification/LIFF composition with mocked external transport/renderer, no real sends/uploads. These unit checks are not DB/HTTP enforcement evidence and earn no completed route count.
+- [x] Focused tests/types/lint, publish exact nullable field/output contracts and all remaining source/transaction/public-route work, self-review/report/commit. No default template/saved permission changes in this narrow producer.
 
 ### Task 4.1.4.2.2.2: After-sales source, query and lookup boundaries
 

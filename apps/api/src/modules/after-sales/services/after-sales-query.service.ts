@@ -465,6 +465,9 @@ export class AfterSalesQueryService {
     };
   }
 
+  /** Internal legacy/business payload, NOT an authorized public/renderer view.
+   * Managed HTTP reads use AccessAfterSalesQueryService.get; mutation/document
+   * consumers must resolve their own current sources and exact action execution. */
   async getCase(id: string, user: ReqUser) {
     const row = await this.prisma.afterSalesCase.findFirst({
       where: { id, deletedAt: null },

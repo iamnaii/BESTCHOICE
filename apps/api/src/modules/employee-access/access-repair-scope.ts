@@ -26,6 +26,7 @@ export function currentWarrantyContractWhere(): Prisma.ContractWhereInput | unde
     ? {
         AND: [
           warrantyContractScopeWhere(currentPermissionScope('repair-tickets.read')!),
+          ...(ctx.scope.permission.startsWith('after-sales.') ? [shopServiceOriginWhere(ctx.scope)] : []),
           warrantyContractScopeWhere(currentPermissionScope('contracts.read')!),
           { customer: currentCustomerReadWhere(), product: currentRepairProductWhere() },
         ],
@@ -113,6 +114,7 @@ export function currentRepairSaleWhere(): Prisma.SaleWhereInput | undefined {
     ? {
         AND: [
           saleScopeWhere(currentPermissionScope('repair-tickets.read')!),
+          ...(ctx.scope.permission.startsWith('after-sales.') ? [shopServiceOriginWhere(ctx.scope)] : []),
           saleScopeWhere(currentPermissionScope('sales.read')!),
           { customer: currentCustomerReadWhere() },
         ],
@@ -125,6 +127,7 @@ export function currentRepairLookupProductWhere(): Prisma.ProductWhereInput | un
     ? {
         AND: [
           currentRepairProductWhere()!,
+          ...(ctx.scope.permission.startsWith('after-sales.') ? [shopServiceOriginWhere(ctx.scope)] : []),
           shopServiceOriginWhere(currentPermissionScope('repair-tickets.read')!),
         ],
       }

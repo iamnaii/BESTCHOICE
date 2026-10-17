@@ -1,3 +1,13 @@
+import { hashLockKey } from '../../../utils/advisory-lock.util';
+import { ForbiddenException } from '@nestjs/common';
+import {
+  currentDomainAccess,
+  isCurrentDomainClient,
+} from '../../employee-access/access-execution-context';
+import {
+  assertAfterSalesDerivedFacts,
+  AfterSalesSourceFacts,
+} from '../../employee-access/access-after-sales-source.service';
 import type {
   AfterSalesOutcome,
   AfterSalesStage,
@@ -22,8 +32,9 @@ import { deriveStage } from '../utils/after-sales-stage.util';
  * `deriveStage()` truth first. This helper is idempotent and race-safe: the write is a CAS
  * `updateMany({ where: { id, stage: <the value we read> } })` — a losing concurrent caller
  * (or a caller that reads a row someone else already reconciled) simply writes 0 rows and
- * still returns the freshly-derived stage. It never throws and never writes an audit log —
- * this is self-healing bookkeeping, not a user-attributable action.
+ * still returns the freshly-derived stage. Managed maintenance requires current linked
+ * source facts and writes atomic derived-event evidence attributed to the real initiator;
+ * audit failure rolls back the CAS. Unmanaged compatibility retains the original behavior.
  *
  * PR 2 — stage รุ่นสอง อ่านทางออกเปลี่ยนเครื่องทั้งสองแบบด้วย: `closedAt` เป็นคอลัมน์จริงที่ผู้เขียน
  * ทางออกเปลี่ยนเครื่อง (SAME_MODEL_EXCHANGE ส่งมอบแล้ว ฯลฯ) อาจตั้งตรง ๆ นอกไฟล์นี้ — ถ้ามีค่าอยู่แล้ว
@@ -81,23 +92,45 @@ const DEFAULT_EXCHANGE_CANCEL_REASON = 'คำขอเปลี่ยนเค�
 export async function reconcileStage<T extends ReconcilableCase>(
   client: ReconcileClient,
   row: T,
+  facts?: AfterSalesSourceFacts,
 ): Promise<T> {
-  const derived = deriveStage({
-    outcome: row.outcome,
-    cancelledAt: row.cancelledAt,
-    closedAt: row.closedAt,
-    repairStatus: row.repairTicket?.status ?? null,
-    repairDeleted: !!row.repairTicket?.deletedAt,
-    replacementContractId: row.replacementContractId,
-    exchange: row.exchangeRequest
-      ? {
-          status: row.exchangeRequest.status,
-          mode: row.exchangeRequest.mode,
-          memoAppliedAt: row.exchangeRequest.memoAppliedAt,
-          newContractStatus: row.exchangeRequest.newContract?.status ?? null,
-        }
-      : null,
-  });
+  const execution = currentDomainAccess();
+  if (execution) {
+    if (!isCurrentDomainClient(client))
+      throw new ForbiddenException('ธุรกรรมไม่ตรงกับสิทธิ์ปัจจุบัน');
+    assertAfterSalesDerivedFacts(facts, row.id);
+    const persisted = await client.afterSalesCase.findUniqueOrThrow({
+      where: { id: row.id },
+      select: {
+        ...RECONCILE_SELECT,
+        branchId: true,
+        customerId: true,
+        saleId: true,
+        replacementSaleId: true,
+        replacementProductId: true,
+        repairTicketId: true,
+        exchangeRequestId: true,
+        productId: true,
+        contractId: true,
+      },
+    });
+    if (
+      persisted.branchId !== facts!.row.branchId ||
+      persisted.customerId !== facts!.row.customerId ||
+      persisted.saleId !== facts!.row.saleId ||
+      persisted.replacementSaleId !== facts!.row.replacementSaleId ||
+      persisted.replacementProductId !== facts!.row.replacementProductId ||
+      persisted.repairTicketId !== facts!.row.repairTicketId ||
+      persisted.exchangeRequestId !== facts!.row.exchangeRequestId ||
+      persisted.productId !== facts!.row.productId ||
+      persisted.contractId !== facts!.row.contractId ||
+      persisted.replacementContractId !== facts!.row.replacementContractId
+    )
+      throw new ForbiddenException('แหล่งเคสเปลี่ยนแปลง กรุณาตรวจใหม่');
+    // Derive from persisted current child state, never from a caller-provided status.
+    row = { ...row, ...persisted };
+  }
+  const derived = classifyAfterSalesStage(row);
 
   if (derived === row.stage) return row;
 
@@ -124,7 +157,29 @@ export async function reconcileStage<T extends ReconcilableCase>(
   // CAS: only the caller that still sees the stage we read is allowed to write it.
   // count === 0 (lost the race, or another reconcile already ran) is NOT an error —
   // the derived value we hand back is correct either way.
-  await client.afterSalesCase.updateMany({ where: { id: row.id, stage: row.stage }, data });
+  const changed = await client.afterSalesCase.updateMany({
+    where: { id: row.id, stage: row.stage },
+    data,
+  });
+  if (execution && changed.count) {
+    await client.auditLog.create({
+      data: {
+        userId: execution.snapshot.userId,
+        action: 'AFTER_SALES_STAGE_RECONCILED',
+        entity: 'after_sales_case',
+        entityId: row.id,
+        oldValue: { stage: row.stage },
+        newValue: {
+          stage: derived,
+          derived: true,
+          initiatorId: execution.snapshot.userId,
+          repairTicketId: facts!.row.repairTicketId,
+          exchangeRequestId: facts!.row.exchangeRequestId,
+          replacementContractId: facts!.row.replacementContractId,
+        },
+      },
+    });
+  }
 
   return {
     ...row,
@@ -133,4 +188,48 @@ export async function reconcileStage<T extends ReconcilableCase>(
     ...(data.cancelledAt ? { cancelledAt: data.cancelledAt } : {}),
     ...(data.cancelReason ? { cancelReason: data.cancelReason } : {}),
   };
+}
+
+/** Pure canonical classification. It grants no detail or mutation authority. */
+export function classifyAfterSalesStage(row: ReconcilableCase) {
+  return deriveStage({
+    outcome: row.outcome,
+    cancelledAt: row.cancelledAt,
+    closedAt: row.closedAt,
+    repairStatus: row.repairTicket?.status ?? null,
+    repairDeleted: !!row.repairTicket?.deletedAt,
+    replacementContractId: row.replacementContractId,
+    exchange: row.exchangeRequest
+      ? {
+          status: row.exchangeRequest.status,
+          mode: row.exchangeRequest.mode,
+          memoAppliedAt: row.exchangeRequest.memoAppliedAt,
+          newContractStatus: row.exchangeRequest.newContract?.status ?? null,
+        }
+      : null,
+  });
+}
+
+/** Global IMEI exclusion is deliberately boolean-only and read-only, including foreign cases.
+ * Consumers must still recheck under this same advisory lock before actual intake writes. */
+export async function hasGlobalOpenAfterSalesCase(
+  client: ReconcileClient,
+  imei: string,
+): Promise<boolean> {
+  if (!isCurrentDomainClient(client)) throw new ForbiddenException('ต้องใช้ธุรกรรมปัจจุบัน');
+  await client.$executeRaw`SELECT pg_advisory_xact_lock(${hashLockKey(`as-imei:${imei}`)})`;
+  let cursor: string | undefined;
+  for (;;) {
+    const batch = await client.afterSalesCase.findMany({
+      where: { deviceImei: imei, deletedAt: null },
+      select: RECONCILE_SELECT,
+      orderBy: { id: 'asc' },
+      take: 100,
+      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+    });
+    if (batch.some((row) => !['CLOSED', 'CANCELLED'].includes(classifyAfterSalesStage(row))))
+      return true;
+    if (batch.length < 100) return false;
+    cursor = batch[batch.length - 1].id;
+  }
 }

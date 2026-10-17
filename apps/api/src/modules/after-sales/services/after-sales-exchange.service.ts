@@ -1,3 +1,7 @@
+import { domainAccessClient } from '../../employee-access/access-execution-context';
+import { afterSalesActor } from '../../employee-access/access-after-sales-source.service';
+import { currentRepairProductWhere } from '../../employee-access/access-repair-scope';
+import { shopServiceOriginWhere } from '../../employee-access/access-service-origin';
 import {
   BadRequestException,
   ConflictException,
@@ -76,7 +80,7 @@ export class AfterSalesExchangeService {
   private readonly logger = new Logger(AfterSalesExchangeService.name);
 
   constructor(
-    private readonly prisma: PrismaService,
+    private readonly basePrisma: PrismaService,
     private readonly query: AfterSalesQueryService,
     private readonly defect: DefectExchangeService,
     private readonly repair: RepairTicketsService,
@@ -86,6 +90,8 @@ export class AfterSalesExchangeService {
     private readonly lookup: AfterSalesLookupService,
     private readonly line: AfterSalesLineService,
   ) {}
+
+  private get prisma() { return domainAccessClient(this.basePrisma); }
 
   private assertMgr(user: ReqUser) {
     if (!['OWNER', 'BRANCH_MANAGER'].includes(user.role)) {
@@ -560,7 +566,8 @@ export class AfterSalesExchangeService {
    * ไม่แปลง). STAFF เท่านั้น (OWNER/BM/SALES) เพราะเห็นเลขการเงินของสัญญา.
    */
   async preview(q: PreviewQuery, user: ReqUser) {
-    this.assertStaff(user);
+    const ctx = await afterSalesActor(this.basePrisma, user.id);
+    if (!ctx) this.assertStaff(user);
     const found = await this.lookup.lookup({ imei: q.imei }, user);
     if (!found.contract) throw new BadRequestException('ไม่พบสัญญาผ่อนของเครื่องนี้');
 
@@ -585,6 +592,7 @@ export class AfterSalesExchangeService {
    * branchId ติดตัว = คืนว่าง แทนที่จะรั่วข้ามสาขา) — role ข้ามสาขาใช้ `q.branchId` เมื่อส่งมา
    */
   async replacementProducts(q: ReplacementProductsDto, user: ReqUser) {
+    const ctx = await afterSalesActor(this.basePrisma, user.id);
     const where: Prisma.ProductWhereInput = {
       deletedAt: null,
       status: 'IN_STOCK',
@@ -600,7 +608,10 @@ export class AfterSalesExchangeService {
       where.category = 'PHONE_USED';
     }
 
-    if (hasCrossBranchAccess(user)) {
+    if (ctx) {
+      where.AND = [currentRepairProductWhere()!, shopServiceOriginWhere(ctx.scope)];
+      if (q.branchId) where.branchId = q.branchId;
+    } else if (hasCrossBranchAccess(user)) {
       if (q.branchId) where.branchId = q.branchId;
     } else if (user.branchId) {
       where.branchId = user.branchId;

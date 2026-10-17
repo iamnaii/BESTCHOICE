@@ -1,3 +1,4 @@
+import { assertNotLastOwner, lockEmployeeAccess } from '../employee-access/access-snapshot.service';
 import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
 import { UserRole, Prisma } from '@prisma/client';
 import { roleCompanyAccess } from '@installment/shared';
@@ -225,91 +226,95 @@ export class UsersService {
   }
 
   async update(id: string, dto: UpdateUserDto) {
-    const user = await this.prisma.user.findUnique({ where: { id } });
-    if (!user) throw new NotFoundException('ไม่พบผู้ใช้งาน');
+    return this.prisma.$transaction(async (tx) => {
+      await lockEmployeeAccess(tx);
+      await assertNotLastOwner(tx, id, dto);
+      const user = await tx.user.findUnique({ where: { id } });
+      if (!user) throw new NotFoundException('ไม่พบผู้ใช้งาน');
 
-    // T7-C7 — if this update deactivates the user (true → false transition
-    // OR fresh deactivation request), revoke all of their refresh tokens so
-    // their sessions don't live on for up to 7 days past the deactivation.
-    const isNowBeingDeactivated =
-      dto.isActive === false && user.isActive === true;
+      // T7-C7 — if this update deactivates the user (true → false transition
+      // OR fresh deactivation request), revoke all of their refresh tokens so
+      // their sessions don't live on for up to 7 days past the deactivation.
+      const isNowBeingDeactivated =
+        dto.isActive === false && user.isActive === true;
 
-    // เกณฑ์เดียวกับ `updateFull` — สอง endpoint นี้รับ `UpdateUserDto` ตัวเดียวกันและ
-    // ตั้งรหัสผ่านได้ทั้งคู่ (บรรทัด `if (dto.password) data.password = ...` ข้างล่าง)
-    // ปล่อยให้ต่างกันเมื่อไร = ความปลอดภัยขึ้นกับว่าผู้เรียกบังเอิญใช้ route ไหน
-    const mustRevokeSessions = isNowBeingDeactivated || !!dto.password;
+      // เกณฑ์เดียวกับ `updateFull` — สอง endpoint นี้รับ `UpdateUserDto` ตัวเดียวกันและ
+      // ตั้งรหัสผ่านได้ทั้งคู่ (บรรทัด `if (dto.password) data.password = ...` ข้างล่าง)
+      // ปล่อยให้ต่างกันเมื่อไร = ความปลอดภัยขึ้นกับว่าผู้เรียกบังเอิญใช้ route ไหน
+      const mustRevokeSessions = isNowBeingDeactivated || !!dto.password;
 
-    const data: Prisma.UserUncheckedUpdateInput = {};
-    if (dto.name !== undefined) data.name = dto.name;
-    if (dto.role !== undefined) {
-      data.role = dto.role as UserRole;
-      // สิทธิ์บริษัท derive ใหม่ **เฉพาะตอน role เปลี่ยนจริง** ไม่ใช่ทุกครั้งที่ payload มี role มาด้วย —
-      // ฟอร์มผู้ใช้ (UserDetailPage.tsx buildBody) ยัด `role` ทุกครั้งแม้แก้แค่เบอร์โทร ⇒ ถ้าเขียนตาม
-      // `!== undefined` การบันทึกโปรไฟล์ธรรมดาจะรีเซ็ตสิทธิ์ที่ตั้งมือไว้กลับเป็นค่า default ของ role
-      // และเมื่อคอลัมน์ไม่ว่างแล้ว resolveCompanyAccess จะไม่แก้กลับให้อีก = ค่าที่ทับกลายเป็นถาวร
-      if (dto.role !== user.role) {
-        const access = roleCompanyAccess(dto.role);
-        data.accessibleCompanies = [...access.accessible];
-        data.primaryCompany = access.primary;
+      const data: Prisma.UserUncheckedUpdateInput = {};
+      if (dto.name !== undefined) data.name = dto.name;
+      if (dto.role !== undefined) {
+        data.role = dto.role as UserRole;
+        // สิทธิ์บริษัท derive ใหม่ **เฉพาะตอน role เปลี่ยนจริง** ไม่ใช่ทุกครั้งที่ payload มี role มาด้วย —
+        // ฟอร์มผู้ใช้ (UserDetailPage.tsx buildBody) ยัด `role` ทุกครั้งแม้แก้แค่เบอร์โทร ⇒ ถ้าเขียนตาม
+        // `!== undefined` การบันทึกโปรไฟล์ธรรมดาจะรีเซ็ตสิทธิ์ที่ตั้งมือไว้กลับเป็นค่า default ของ role
+        // และเมื่อคอลัมน์ไม่ว่างแล้ว resolveCompanyAccess จะไม่แก้กลับให้อีก = ค่าที่ทับกลายเป็นถาวร
+        if (dto.role !== user.role) {
+          const access = roleCompanyAccess(dto.role);
+          data.accessibleCompanies = [...access.accessible];
+          data.primaryCompany = access.primary;
+        }
       }
-    }
-    if (dto.branchId !== undefined) data.branchId = dto.branchId || null;
-    if (dto.isActive !== undefined) data.isActive = dto.isActive;
-    if (dto.password) data.password = await bcrypt.hash(dto.password, 10);
-    if (dto.employeeId !== undefined) data.employeeId = dto.employeeId || null;
-    if (dto.nickname !== undefined) data.nickname = dto.nickname || null;
-    if (dto.phone !== undefined) data.phone = dto.phone || null;
-    if (dto.lineId !== undefined) data.lineId = dto.lineId || null;
-    if (dto.address !== undefined) data.address = dto.address || null;
-    if (dto.avatarUrl !== undefined) data.avatarUrl = dto.avatarUrl || null;
-    if (dto.startDate !== undefined) data.startDate = dto.startDate ? new Date(dto.startDate) : null;
-    if (dto.nationalId !== undefined) data.nationalId = dto.nationalId || null;
-    if (dto.birthDate !== undefined) data.birthDate = dto.birthDate ? new Date(dto.birthDate) : null;
-    if (dto.defaultCashAccountCode !== undefined) data.defaultCashAccountCode = dto.defaultCashAccountCode || null;
+      if (dto.branchId !== undefined) data.branchId = dto.branchId || null;
+      if (dto.isActive !== undefined) data.isActive = dto.isActive;
+      if (dto.password) data.password = await bcrypt.hash(dto.password, 10);
+      if (dto.employeeId !== undefined) data.employeeId = dto.employeeId || null;
+      if (dto.nickname !== undefined) data.nickname = dto.nickname || null;
+      if (dto.phone !== undefined) data.phone = dto.phone || null;
+      if (dto.lineId !== undefined) data.lineId = dto.lineId || null;
+      if (dto.address !== undefined) data.address = dto.address || null;
+      if (dto.avatarUrl !== undefined) data.avatarUrl = dto.avatarUrl || null;
+      if (dto.startDate !== undefined) data.startDate = dto.startDate ? new Date(dto.startDate) : null;
+      if (dto.nationalId !== undefined) data.nationalId = dto.nationalId || null;
+      if (dto.birthDate !== undefined) data.birthDate = dto.birthDate ? new Date(dto.birthDate) : null;
+      if (dto.defaultCashAccountCode !== undefined) data.defaultCashAccountCode = dto.defaultCashAccountCode || null;
 
-    const updated = await this.prisma.user.update({
-      where: { id },
-      data,
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        role: true,
-        branchId: true,
-        isActive: true,
-        employeeId: true,
-        nickname: true,
-        phone: true,
-        lineId: true,
-        address: true,
-        avatarUrl: true,
-        startDate: true,
-        nationalId: true,
-        birthDate: true,
-        defaultCashAccountCode: true,
-        branch: { select: { id: true, name: true } },
-      },
+      const updated = await tx.user.update({
+        where: { id },
+        data,
+        select: {
+          id: true,
+          email: true,
+          name: true,
+          role: true,
+          branchId: true,
+          isActive: true,
+          employeeId: true,
+          nickname: true,
+          phone: true,
+          lineId: true,
+          address: true,
+          avatarUrl: true,
+          startDate: true,
+          nationalId: true,
+          birthDate: true,
+          defaultCashAccountCode: true,
+          branch: { select: { id: true, name: true } },
+        },
+      });
+
+      if (mustRevokeSessions) {
+        // Revoke every live refresh token so the just-deactivated user cannot
+        // continue to mint new access tokens from cookies already issued to
+        // their browser. Best-effort: never block the user update itself.
+        try {
+          // รูปเดียวกับ `updateFull` + `AuthService.revokeAllUserTokens`: ต้องเขียน
+          // `isRevoked` ด้วย เพราะนั่นคือฟิลด์ที่ `refreshToken()` ใช้ตัดสิน — เขียนแต่
+          // `revokedAt` แถวจะยังอ่านว่าเป็น session ที่ยังไม่ถูกเพิกถอน
+          await tx.refreshToken.updateMany({
+            where: { userId: id, isRevoked: false },
+            data: { isRevoked: true, revokedAt: new Date() },
+          });
+        } catch {
+          // Intentionally swallowed — tokens will also be rejected by the
+          // isActive check in the auth guard, so this is defence-in-depth.
+        }
+      }
+
+      return updated;
     });
-
-    if (mustRevokeSessions) {
-      // Revoke every live refresh token so the just-deactivated user cannot
-      // continue to mint new access tokens from cookies already issued to
-      // their browser. Best-effort: never block the user update itself.
-      try {
-        // รูปเดียวกับ `updateFull` + `AuthService.revokeAllUserTokens`: ต้องเขียน
-        // `isRevoked` ด้วย เพราะนั่นคือฟิลด์ที่ `refreshToken()` ใช้ตัดสิน — เขียนแต่
-        // `revokedAt` แถวจะยังอ่านว่าเป็น session ที่ยังไม่ถูกเพิกถอน
-        await this.prisma.refreshToken.updateMany({
-          where: { userId: id, isRevoked: false },
-          data: { isRevoked: true, revokedAt: new Date() },
-        });
-      } catch {
-        // Intentionally swallowed — tokens will also be rejected by the
-        // isActive check in the auth guard, so this is defence-in-depth.
-      }
-    }
-
-    return updated;
   }
 
   async updateFull(id: string, dto: UpdateUserProfileDto, actor?: Actor) {
@@ -355,6 +360,8 @@ export class UsersService {
       data.defaultCashAccountCode = dto.defaultCashAccountCode || null;
 
     await this.prisma.$transaction(async (tx) => {
+      await lockEmployeeAccess(tx);
+      await assertNotLastOwner(tx, id, dto);
       await tx.user.update({ where: { id }, data });
 
       if (dto.employee) {

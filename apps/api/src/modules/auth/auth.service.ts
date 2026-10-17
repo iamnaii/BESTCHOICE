@@ -1,3 +1,4 @@
+import { AccessSnapshotService } from '../employee-access/access-snapshot.service';
 import {
   Injectable,
   UnauthorizedException,
@@ -59,6 +60,7 @@ export class AuthService {
     private loginAudit: LoginAuditService,
     private audit: AuditService,
     private inviteService: InviteService,
+    private accessSnapshots: AccessSnapshotService,
   ) {}
 
   /**
@@ -368,7 +370,7 @@ export class AuthService {
     // /auth/me คือแหล่งที่ AuthContext ใช้เติมสิทธิ์ตอนรีเฟรชหน้า — ต้องคืนค่าที่ resolve แล้ว
     // ให้ตรงกับ login ไม่งั้นผู้ใช้เดิมจะได้ค่าต่างกันแล้วแต่ว่าเพิ่งล็อกอินหรือรีเฟรชหน้า
     const access = resolveCompanyAccess(user.role, user.accessibleCompanies, user.primaryCompany);
-    return { ...user, accessibleCompanies: [...access.accessible], primaryCompany: access.primary };
+    return { ...user, accessibleCompanies: [...access.accessible], primaryCompany: access.primary, access: await this.accessSnapshots.forUser(userId) };
   }
 
   /**

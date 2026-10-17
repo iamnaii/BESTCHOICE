@@ -15,7 +15,8 @@ describe('UsersService.updateFull', () => {
     user: { findUnique: userFindUnique },
     $transaction: jest.fn(async (cb: any) =>
       cb({
-        user: { update: userUpdate },
+        $executeRaw: jest.fn(),
+        user: { update: userUpdate, findUnique: userFindUnique, count: jest.fn().mockResolvedValue(0) },
         refreshToken: { updateMany: refreshUpdateMany },
       }),
     ),

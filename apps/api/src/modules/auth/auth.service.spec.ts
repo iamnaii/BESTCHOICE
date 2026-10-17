@@ -1,3 +1,4 @@
+import { AccessSnapshotService } from '../employee-access/access-snapshot.service';
 import { Test, TestingModule } from '@nestjs/testing';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
@@ -47,6 +48,7 @@ describe('AuthService', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         AuthService,
+        { provide: AccessSnapshotService, useValue: { forUser: jest.fn().mockResolvedValue({ userId: 'user-1', isOwner: false, managed: false, revision: 0, grants: [] }) } },
         {
           provide: PrismaService,
           useValue: {

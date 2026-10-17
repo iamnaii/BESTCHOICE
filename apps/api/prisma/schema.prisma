@@ -772,6 +772,7 @@ enum BuybackSelectType {
 // ============================================================
 
 model Branch {
+  accessAssignmentBranches EmployeeAccessAssignmentBranch[]
   chatLibraryFolders ChatLibraryFolder[]
   chatLibraryFiles ChatLibraryFile[]
   facebookCommentPages FacebookCommentPage[]
@@ -840,6 +841,9 @@ model Branch {
 }
 
 model User {
+  accessManaged Boolean @default(false) @map("access_managed")
+  accessRevision Int @default(0) @map("access_revision")
+  accessAssignments EmployeeAccessAssignment[]
   libraryOperations ChatLibraryOperation[]
   chatLibraryFolders ChatLibraryFolder[]
   chatLibraryFiles ChatLibraryFile[]
@@ -3903,6 +3907,7 @@ model DocumentAuditLog {
 // ============================================================
 
 model CompanyInfo {
+  accessAssignments EmployeeAccessAssignment[]
   id                 String  @id @default(uuid())
   nameTh             String  @map("name_th")
   nameEn             String? @map("name_en")
@@ -9374,4 +9379,55 @@ model ChatLibraryOperation {
   @@index([fileId])
   @@index([actorId])
   @@map("chat_library_operations")
+}
+
+// Position grants preserve each company/scope tuple; owner authority remains User.role.
+enum EmployeeAccessScope {
+  BRANCHES
+  ASSIGNED
+  COMPANY
+}
+
+model AccessPosition {
+  id String @id @default(uuid())
+  code String @unique
+  name String
+  permissions String[] @default([])
+  isActive Boolean @default(true) @map("is_active")
+  revision Int @default(0)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+  assignments EmployeeAccessAssignment[]
+  @@map("access_positions")
+}
+
+model EmployeeAccessAssignment {
+  id String @id @default(uuid())
+  userId String @map("user_id")
+  positionId String @map("position_id")
+  companyCode String @map("company_code")
+  scope EmployeeAccessScope
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+  position AccessPosition @relation(fields: [positionId], references: [id], onDelete: Restrict)
+  company CompanyInfo @relation(fields: [companyCode], references: [companyCode], onDelete: Restrict)
+  branches EmployeeAccessAssignmentBranch[]
+  @@index([userId, deletedAt])
+  @@index([positionId, deletedAt])
+  @@index([companyCode])
+  @@map("employee_access_assignments")
+}
+
+// Junction lifecycle is owned by the immutable, soft-retired assignment version.
+model EmployeeAccessAssignmentBranch {
+  assignmentId String @map("assignment_id")
+  branchId String @map("branch_id")
+  assignment EmployeeAccessAssignment @relation(fields: [assignmentId], references: [id], onDelete: Restrict)
+  branch Branch @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  @@id([assignmentId, branchId])
+  @@index([branchId])
+  @@map("employee_access_assignment_branches")
 }

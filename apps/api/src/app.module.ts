@@ -1,3 +1,4 @@
+import { EmployeeAccessModule } from './modules/employee-access/employee-access.module';
 import { Module, MiddlewareConsumer, NestModule } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { ScheduleModule } from '@nestjs/schedule';
@@ -153,6 +154,7 @@ import { AppCacheModule } from './cache/cache.module';
 
 @Module({
   imports: [
+    EmployeeAccessModule,
     ConfigModule.forRoot({
       isGlobal: true,
       envFilePath: [

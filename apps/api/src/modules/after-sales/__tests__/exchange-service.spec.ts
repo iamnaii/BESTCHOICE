@@ -139,6 +139,48 @@ describe('AfterSalesExchangeService', () => {
 
   describe('confirmSameModel', () => {
     // (a)
+    it('15ข: execute คืนใบลดหนี้ + เครดิต → event note ต่อท้าย · audit และผลลัพธ์ส่งสองฟิลด์กลับ', async () => {
+      query.getCase.mockResolvedValue(buildCase());
+      defect.checkEligibility.mockResolvedValue({
+        eligible: true,
+        reasons: [],
+        newProduct: { id: 'prod-new', brand: 'Apple', model: 'iPhone 13', storage: '128GB' },
+      });
+      defect.execute.mockResolvedValue({
+        creditNoteNumbers: ['RT-202610-00044'],
+        transferredCredit: '1515.83',
+        newContract: { id: 'ct-new', contractNumber: 'CT-NEW-0001' },
+      });
+
+      const result = await svc.confirmSameModel('as-1', { note: 'ok' } as never, MGR);
+
+      expect(prisma.afterSalesCase.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            events: {
+              create: expect.objectContaining({
+                note: 'ยืนยันเปลี่ยนเครื่อง · สัญญาใหม่ CT-NEW-0001 · ใบลดหนี้ 1 ใบ · เครดิต 1,515.83 บาท ย้ายไปสัญญาใหม่',
+              }),
+            },
+          }),
+        }),
+      );
+      expect(audit.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          newValue: {
+            newContractId: 'ct-new',
+            bypass: false,
+            fromRepair: false,
+            creditNoteNumbers: ['RT-202610-00044'],
+            transferredCredit: '1515.83',
+          },
+        }),
+      );
+      expect(result).toEqual(
+        expect.objectContaining({ creditNoteNumbers: ['RT-202610-00044'], transferredCredit: '1515.83' }),
+      );
+    });
+
     it('confirm ในกรอบ (elig.eligible) → execute ถูกเรียกโดยไม่มี bypass, เคสอัปเดตครบ, audit หลัง execute+update', async () => {
       query.getCase.mockResolvedValue(buildCase());
       defect.checkEligibility.mockResolvedValue({
@@ -147,6 +189,8 @@ describe('AfterSalesExchangeService', () => {
         newProduct: { id: 'prod-new', brand: 'Apple', model: 'iPhone 13', storage: '128GB' },
       });
       defect.execute.mockResolvedValue({
+        creditNoteNumbers: [],
+        transferredCredit: '0.00',
         newContract: { id: 'ct-new', contractNumber: 'CT-NEW-0001' },
       });
 
@@ -186,7 +230,7 @@ describe('AfterSalesExchangeService', () => {
           action: 'AFTER_SALES_EXCHANGE_CONFIRMED',
           entity: 'after_sales_case',
           entityId: 'as-1',
-          newValue: { newContractId: 'ct-new', bypass: false, fromRepair: false },
+          newValue: { newContractId: 'ct-new', bypass: false, fromRepair: false, creditNoteNumbers: [], transferredCredit: '0.00' },
         }),
       );
       // ลำดับ: execute → update → audit
@@ -201,6 +245,8 @@ describe('AfterSalesExchangeService', () => {
         stage: 'READY_FOR_PICKUP',
         replacementContractId: 'ct-new',
         contractNumber: 'CT-NEW-0001',
+        creditNoteNumbers: [],
+        transferredCredit: '0.00',
       });
       // Task 3 (d) — confirmSameModel → notifyMoment(caseId,'READY',actorId) หลัง commit + audit
       expect(line.notifyMoment).toHaveBeenCalledWith('as-1', 'READY', MGR.id);
@@ -218,6 +264,8 @@ describe('AfterSalesExchangeService', () => {
         newProduct: { id: 'prod-new', brand: 'Apple', model: 'iPhone 13', storage: '128GB' },
       });
       defect.execute.mockResolvedValue({
+        creditNoteNumbers: [],
+        transferredCredit: '0.00',
         newContract: { id: 'ct-new', contractNumber: 'CT-NEW-0002' },
       });
 
@@ -234,7 +282,7 @@ describe('AfterSalesExchangeService', () => {
       expect(updateData.events.create.note).toContain('ข้ามกรอบ 7 วัน');
       expect(audit.log).toHaveBeenCalledWith(
         expect.objectContaining({
-          newValue: { newContractId: 'ct-new', bypass: true, fromRepair: false },
+          newValue: { newContractId: 'ct-new', bypass: true, fromRepair: false, creditNoteNumbers: [], transferredCredit: '0.00' },
         }),
       );
     });
@@ -295,6 +343,8 @@ describe('AfterSalesExchangeService', () => {
         newProduct: { id: 'prod-repl', brand: 'Apple', model: 'iPhone 13', storage: '128GB' },
       });
       defect.execute.mockResolvedValue({
+        creditNoteNumbers: [],
+        transferredCredit: '0.00',
         newContract: { id: 'ct-new', contractNumber: 'CT-NEW-0003' },
       });
 
@@ -315,7 +365,7 @@ describe('AfterSalesExchangeService', () => {
       expect(note).not.toContain('ข้ามกรอบ 7 วัน');
       expect(audit.log).toHaveBeenCalledWith(
         expect.objectContaining({
-          newValue: { newContractId: 'ct-new', bypass: false, fromRepair: true },
+          newValue: { newContractId: 'ct-new', bypass: false, fromRepair: true, creditNoteNumbers: [], transferredCredit: '0.00' },
         }),
       );
     });
@@ -358,7 +408,7 @@ describe('AfterSalesExchangeService', () => {
         reasons: ['พ้นกำหนด 7 วันแล้ว (รับเครื่องเมื่อ 2026-09-01)'],
         newProduct: { id: 'prod-new', brand: 'Apple', model: 'iPhone 13', storage: '128GB' },
       });
-      defect.execute.mockResolvedValue({ newContract: { id: 'ct-new', contractNumber: 'CT-1' } });
+      defect.execute.mockResolvedValue({ creditNoteNumbers: [], transferredCredit: '0.00', newContract: { id: 'ct-new', contractNumber: 'CT-1' } });
 
       await svc.confirmSameModel('as-1', {} as never, MGR);
 
@@ -454,6 +504,8 @@ describe('AfterSalesExchangeService', () => {
         newProduct: { id: 'prod-new', brand: 'Apple', model: 'iPhone 13', storage: '128GB' },
       });
       defect.execute.mockResolvedValue({
+        creditNoteNumbers: [],
+        transferredCredit: '0.00',
         newContract: { id: 'ct-new', contractNumber: 'CT-NEW-0001' },
       });
       line.notifyMoment.mockRejectedValue(new Error('LINE ล่ม'));
@@ -463,6 +515,8 @@ describe('AfterSalesExchangeService', () => {
         stage: 'READY_FOR_PICKUP',
         replacementContractId: 'ct-new',
         contractNumber: 'CT-NEW-0001',
+        creditNoteNumbers: [],
+        transferredCredit: '0.00',
       });
     });
   });

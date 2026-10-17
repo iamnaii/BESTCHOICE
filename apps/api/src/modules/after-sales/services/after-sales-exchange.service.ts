@@ -24,6 +24,7 @@ import { ExchangeCancelService } from '../../contract-exchange/contract-exchange
 import { AfterSalesQueryService } from './after-sales-query.service';
 import { AfterSalesLookupService } from './after-sales-lookup.service';
 import { AfterSalesLineService } from './after-sales-line.service';
+import { exchangeConfirmNote } from '../utils/exchange-confirm-note';
 import { reconcileStage, ReconcilableCase, RECONCILE_SELECT } from './after-sales-stage-reconcile';
 import {
   payerDefaultFor,
@@ -273,9 +274,13 @@ export class AfterSalesExchangeService {
           create: {
             kind: 'APPROVED',
             actorId: user.id,
-            note: `ยืนยันเปลี่ยนเครื่อง · สัญญาใหม่ ${newContract.contractNumber}${
-              outOfWindow ? ' · ข้ามกรอบ 7 วัน' : ''
-            }${fromRepair ? ' · จากใบซ่อม (ซ่อมไม่ได้)' : ''}`,
+            note: exchangeConfirmNote({
+              newContractNumber: newContract.contractNumber,
+              outOfWindow,
+              fromRepair,
+              creditNoteCount: res.creditNoteNumbers.length,
+              transferredCredit: res.transferredCredit,
+            }),
           },
         },
       },
@@ -286,7 +291,13 @@ export class AfterSalesExchangeService {
       action: 'AFTER_SALES_EXCHANGE_CONFIRMED',
       entity: 'after_sales_case',
       entityId: caseId,
-      newValue: { newContractId: newContract.id, bypass: outOfWindow, fromRepair },
+      newValue: {
+        newContractId: newContract.id,
+        bypass: outOfWindow,
+        fromRepair,
+        creditNoteNumbers: res.creditNoteNumbers,
+        transferredCredit: res.transferredCredit,
+      },
     });
 
     // Task 3 — จังหวะ 2 (READY): หลัง commit + audit เสมอ — fire-and-forget
@@ -297,6 +308,8 @@ export class AfterSalesExchangeService {
       stage: 'READY_FOR_PICKUP' as const,
       replacementContractId: newContract.id,
       contractNumber: newContract.contractNumber,
+      creditNoteNumbers: res.creditNoteNumbers,
+      transferredCredit: res.transferredCredit,
     };
   }
 

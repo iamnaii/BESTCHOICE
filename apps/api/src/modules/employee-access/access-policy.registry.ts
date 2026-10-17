@@ -25,8 +25,12 @@ export interface CollectionScope {
   readonly permission: PermissionKey;
   readonly tuples: readonly { scope: 'BRANCHES' | 'ASSIGNED' | 'COMPANY'; branchIds: readonly string[]; userId: string }[];
 }
+/** reference is safe definition-only data; selection is an exact persisted target set
+ * (including an empty set). Both require a mandatory transaction execution wrapper. */
 export type AccessDecision =
-  | { kind: 'resource'; resource: AccessResource }
+  | { kind: 'selection'; company: Company; execute: (handler: () => Promise<unknown>) => Promise<unknown> }
+  | { kind: 'reference'; company: Company; execute: (handler: () => Promise<unknown>) => Promise<unknown> }
+  | { kind: 'resource'; resource: AccessResource; execute?: (handler: () => Promise<unknown>) => Promise<unknown> }
   | { kind: 'collection'; company: Company; execute: (scope: CollectionScope) => Promise<unknown> };
 export type AccessBoundary = (request: any, snapshot: AccessSnapshot, permission: PermissionKey) => Promise<AccessDecision>;
 export const ACCESS_BOUNDARIES = new Map<string, AccessBoundary>();

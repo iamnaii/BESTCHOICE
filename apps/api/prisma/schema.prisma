@@ -2408,6 +2408,10 @@ model StockAdjustment {
 // ============================================================
 
 model InspectionTemplate {
+  /// Authenticated company origin for new managed templates; historical rows remain null.
+  accessCompanyCode String? @map("access_company_code")
+  accessCompany CompanyInfo? @relation(fields: [accessCompanyCode], references: [companyCode], onDelete: Restrict)
+
   id         String    @id @default(uuid())
   name       String
   deviceType String    @map("device_type") // PHONE, TABLET
@@ -2419,6 +2423,7 @@ model InspectionTemplate {
   items       InspectionTemplateItem[]
   inspections Inspection[]
 
+  @@index([accessCompanyCode])
   @@map("inspection_templates")
 }
 
@@ -3907,6 +3912,7 @@ model DocumentAuditLog {
 // ============================================================
 
 model CompanyInfo {
+  inspectionTemplates InspectionTemplate[]
   accessAssignments EmployeeAccessAssignment[]
   id                 String  @id @default(uuid())
   nameTh             String  @map("name_th")

@@ -8,6 +8,7 @@ export const AccessPolicy = (policy: RouteAccessPolicy) => SetMetadata(ACCESS_PO
 // Not client-settable: guards accept this marker only after this service has checked the route.
 export const ACCESS_AUTHORIZED = Symbol('employeeAccessAuthorized');
 export const ACCESS_COLLECTION_EXECUTE = Symbol('employeeAccessCollectionExecute');
+export const ACCESS_RESOURCE_EXECUTE = Symbol('employeeAccessResourceExecute');
 export const ACCESS_SELF_SERVICE = Symbol('employeeAccessSelfService');
 export interface AccessDenial { userId: string | null; route: string; permission: string | null; reason: string; }
 @Injectable()
@@ -43,7 +44,7 @@ export class AccessPolicyService {
     const definition = PERMISSION_CATALOG.find(p => p.key === policy.permission);
     if (definition?.ownerOnly && !user.access.isOwner) return deny('OWNER_REQUIRED');
     try {
-      if (user.access.isOwner) {
+      if (user.access.isOwner && !ACCESS_BOUNDARIES.has(route)) {
         assertAccess(user, policy.permission, { company: 'SHOP' });
       } else {
         const boundary = ACCESS_BOUNDARIES.get(route);
@@ -51,6 +52,10 @@ export class AccessPolicyService {
         const decision = await boundary(request, user.access, policy.permission);
         if (decision.kind === 'resource' && policy.resolution === 'record') {
           assertAccess(user, policy.permission, decision.resource);
+          if (decision.execute) request[ACCESS_RESOURCE_EXECUTE] = decision.execute;
+        } else if ((decision.kind === 'reference' || decision.kind === 'selection') && policy.resolution === 'record') {
+          if (!permissionScopes(user, policy.permission, decision.company).some(t => t.scope !== 'BRANCHES' || t.branchIds.length)) return deny('SCOPE_REQUIRED');
+          request[ACCESS_RESOURCE_EXECUTE] = decision.execute;
         } else if (decision.kind === 'collection' && policy.resolution === 'collection' && ['SHOP', 'FINANCE'].includes(decision.company) && typeof decision.execute === 'function') {
           const tuples = permissionScopes(user, policy.permission, decision.company)
             .filter(t => t.scope !== 'BRANCHES' || t.branchIds.length > 0);
@@ -59,7 +64,7 @@ export class AccessPolicyService {
           request[ACCESS_COLLECTION_EXECUTE] = () => decision.execute(scope);
         } else return deny('RESOURCE_BOUNDARY_REQUIRED');
       }
-    } catch (error) {
+    } catch {
       return deny('RESOURCE_DENIED');
     }
     request[ACCESS_AUTHORIZED] = route;

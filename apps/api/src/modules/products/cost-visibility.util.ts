@@ -1,3 +1,4 @@
+import { currentDomainAccess } from '../employee-access/access-execution-context';
 /**
  * จุดเดียวที่ตัดสินว่าใครเห็น "ราคาทุน" — owner decision 2026-08-04 §1.4:
  * SALES ต้องไม่เห็นราคาทุน/กำไร และต้องบังคับที่ฝั่ง server (การซ่อนใน DOM
@@ -11,7 +12,8 @@
  * แทนการเทียบสตริงเดียว.
  */
 export function canSeeCost(role: string | undefined | null): boolean {
-  return role !== 'SALES';
+  // Scoped executor applies source-aware projection after the controller returns.
+  return !!currentDomainAccess() || role !== 'SALES';
 }
 
 /** ตัดคีย์ costPrice ออกจาก row (ไม่แตะฟิลด์อื่น) */

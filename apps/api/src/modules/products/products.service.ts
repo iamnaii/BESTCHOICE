@@ -1,3 +1,6 @@
+import { permissionScopes } from '../employee-access/access-context';
+import { productScopeWhere } from '../employee-access/access-query-scope';
+import { domainAccessClient, currentDomainAccess, currentProductScopeSql, transferScopeWhere } from '../employee-access/access-execution-context';
 import {
   Injectable,
   NotFoundException,
@@ -89,9 +92,10 @@ export { productInclude };
 
 @Injectable()
 export class ProductsService {
+  private get prisma(): PrismaService { return domainAccessClient(this.basePrisma); }
   private readonly logger = new Logger(ProductsService.name);
 
-  constructor(private prisma: PrismaService) {}
+  constructor(private readonly basePrisma: PrismaService) {}
 
   async findAll(filters: StockListFilters) {
     if (filters.compatibleWithProductId && (filters.groupAccessories || filters.accessoryGroupId || filters.sortBy)) {
@@ -678,6 +682,14 @@ export class ProductsService {
 
     if (!product || product.deletedAt) throw new NotFoundException('ไม่พบสินค้า');
 
+    const access = currentDomainAccess();
+    if (access && !access.snapshot.isOwner && product.po) {
+      const procurementScope = { ...access.scope, permission: 'purchase-orders.read' as const, tuples: permissionScopes({ id: access.snapshot.userId, access: access.snapshot }, 'purchase-orders.read', access.scope.company) };
+      const predicate = productScopeWhere(procurementScope);
+      const permitted = await access.client.purchaseOrder.findFirst({ where: { id: product.po.id, products: { some: predicate, every: predicate } }, select: { id: true } });
+      if (!permitted) { product.po = null; product.poId = null; product.receivingItem = null; }
+    }
+
     // Get photo completion count without loading base64 data
     let photoAngles = 0;
     if (product.productPhotos) {
@@ -694,7 +706,7 @@ export class ProductsService {
 
     // Find transfer history
     const transfers = await this.prisma.stockTransfer.findMany({
-      where: { productId, deletedAt: null },
+      where: { productId, deletedAt: null, ...(access ? { AND: [transferScopeWhere(access.scope)] } : {}) },
       select: {
         ...stockTransferSelect,
         fromBranch: { select: { id: true, name: true } },
@@ -833,10 +845,10 @@ export class ProductsService {
              (SELECT COALESCE(pi.unit_price, p2.cost_price) FROM products p2
                 LEFT JOIN goods_receiving_items gri ON gri.product_id = p2.id AND gri.deleted_at IS NULL
                 LEFT JOIN po_items pi ON pi.id = gri.po_item_id
-                WHERE p2.name = p.name AND p2.category = 'ACCESSORY' AND p2.deleted_at IS NULL
+                WHERE p2.name = p.name AND p2.category = 'ACCESSORY' AND p2.deleted_at IS NULL AND ${currentProductScopeSql('p2')}
                 ORDER BY p2.created_at DESC LIMIT 1) AS last_cost
       FROM products p
-      WHERE p.category = 'ACCESSORY' AND p.deleted_at IS NULL
+      WHERE p.category = 'ACCESSORY' AND p.deleted_at IS NULL AND ${currentProductScopeSql()}
         AND (p.name ILIKE ${term} OR p.accessory_type ILIKE ${term})
       GROUP BY p.name, p.accessory_type, p.accessory_brand, p.model
       ORDER BY in_stock DESC, p.name ASC

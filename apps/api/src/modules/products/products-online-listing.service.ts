@@ -1,3 +1,4 @@
+import { domainAccessClient, currentDomainAccess } from '../employee-access/access-execution-context';
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -18,7 +19,8 @@ const EXT_BY_MIME: Record<string, string> = { jpeg: 'jpg', png: 'png', webp: 'we
 
 @Injectable()
 export class ProductsOnlineListingService {
-  constructor(private prisma: PrismaService, private storage: StorageService) {}
+  private get prisma(): PrismaService { return domainAccessClient(this.basePrisma); }
+  constructor(private readonly basePrisma: PrismaService, private storage: StorageService) {}
 
   private async findProduct(id: string) {
     const product = await this.prisma.product.findFirst({ where: { id, deletedAt: null } });
@@ -129,7 +131,7 @@ export class ProductsOnlineListingService {
 
     // ผจก.สาขาแตะได้เฉพาะสาขาตัวเอง — ใช้ util เดียวกับ read endpoint อื่น
     const scope = getBranchScope(user);
-    if (!scope.all) {
+    if (!currentDomainAccess() && !scope.all) {
       if (!scope.branchId) {
         throw new BadRequestException('บัญชีนี้ยังไม่ได้ผูกสาขา จึงยังส่งสินค้าขึ้นเว็บไม่ได้');
       }

@@ -1,6 +1,6 @@
 import { CallHandler, ExecutionContext, Injectable, NestInterceptor } from '@nestjs/common';
-import { from } from 'rxjs';
-import { ACCESS_COLLECTION_EXECUTE, AccessPolicyService } from './access-policy';
+import { from, lastValueFrom } from 'rxjs';
+import { ACCESS_COLLECTION_EXECUTE, ACCESS_RESOURCE_EXECUTE, AccessPolicyService } from './access-policy';
 @Injectable()
 export class AccessPolicyInterceptor implements NestInterceptor {
   constructor(private readonly policies: AccessPolicyService) {}
@@ -9,6 +9,8 @@ export class AccessPolicyInterceptor implements NestInterceptor {
     if (context.getType() === 'http') {
       const execute = context.switchToHttp().getRequest()[ACCESS_COLLECTION_EXECUTE];
       if (execute) return from(execute());
+      const resourceExecute = context.switchToHttp().getRequest()[ACCESS_RESOURCE_EXECUTE];
+      if (resourceExecute) return from(resourceExecute(() => lastValueFrom(next.handle())));
     }
     return next.handle();
   }

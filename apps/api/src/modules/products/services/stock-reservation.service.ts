@@ -1,3 +1,4 @@
+import { domainAccessClient } from '../../employee-access/access-execution-context';
 import {
   Injectable,
   NotFoundException,
@@ -18,7 +19,8 @@ const PRODUCT_INCLUDE = {
 
 @Injectable()
 export class StockReservationService {
-  constructor(private prisma: PrismaService) {}
+  private get prisma(): PrismaService { return domainAccessClient(this.basePrisma); }
+  constructor(private readonly basePrisma: PrismaService) {}
 
   // === Stock Reservation ===
 

@@ -1,3 +1,4 @@
+import { currentProductScopeSql } from '../employee-access/access-execution-context';
 import { resolveShopWarrantyDays, SHOP_WARRANTY_DAYS_CONFIG_KEY } from '../warranty/shop-warranty-policy';
 import { readStringFlag } from '../../utils/config.util';
 import { BadRequestException } from '@nestjs/common';
@@ -63,7 +64,7 @@ export async function findAccessoryGroupWhere(
   >(Prisma.sql`
     SELECT p.name, p.model, p.accessory_type AS "accessoryType", p.accessory_brand AS "accessoryBrand",
       p.color, p.branch_id AS "branchId"
-    FROM products p WHERE p.deleted_at IS NULL AND p.category = 'ACCESSORY'
+    FROM products p WHERE p.deleted_at IS NULL AND p.category = 'ACCESSORY' AND ${currentProductScopeSql()}
       AND md5(${accessoryIdentity}) = ${key}
       ${branchId ? Prisma.sql`AND p.branch_id = ${branchId}` : Prisma.empty}
     LIMIT 1
@@ -92,7 +93,7 @@ export async function findStockGroups(
 ) {
   const page = Math.max(1, filters.page || 1);
   const limit = Math.min(100, Math.max(1, filters.limit || 50));
-  const clauses: Prisma.Sql[] = [Prisma.sql`p.deleted_at IS NULL`];
+  const clauses: Prisma.Sql[] = [Prisma.sql`p.deleted_at IS NULL`, currentProductScopeSql()];
   if (filters.deviceOrigin) {
     if (!['THAI', 'IMPORTED', 'UNKNOWN'].includes(filters.deviceOrigin)) throw new BadRequestException('Invalid device origin');
     clauses.push(filters.deviceOrigin === 'UNKNOWN' ? Prisma.sql`p.device_origin IS NULL` : Prisma.sql`p.device_origin::text = ${filters.deviceOrigin}`);

@@ -764,3 +764,64 @@ it('even owners need a live selected company for reference reads and empty outpu
     await db.companyInfo.update({ where: { id: finance.id }, data: { isActive: true } });
   }
 });
+
+it('single comma-containing serial locks its actual Product before a concurrent source move', async () => {
+  const serial = `${randomUUID()},ONE`;
+  const row = await db.product.create({
+    data: {
+      name: 'Comma serial phone',
+      brand: 'Apple',
+      model: 'Move',
+      costPrice: 1,
+      cashPrice: 91.23,
+      category: 'PHONE_NEW',
+      status: 'IN_STOCK',
+      branchId,
+      imeiSerial: serial,
+    },
+  });
+  const path = `/sticker-templates/product/${encodeURIComponent(`  ${serial}  `)}/data?company=SHOP`;
+  const positive = await http('get', path, branchOnly).expect(200);
+  expect(positive.body).toMatchObject({ productId: row.id, imei: serial, cashPrice: '91.23' });
+  await Promise.allSettled([...promises]);
+  const evidenceWhere = { userId: branchOnly, action: 'STICKER_DATA_GENERATED' };
+  const before = await db.auditLog.count({ where: evidenceWhere });
+  let release!: () => void, ready!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const locked = new Promise<void>((resolve) => {
+    ready = resolve;
+  });
+  const holder = db.$transaction(
+    async (tx) => {
+      await tx.$queryRaw`SELECT id FROM products WHERE id=${row.id} FOR UPDATE`;
+      await tx.product.update({ where: { id: row.id }, data: { branchId: otherBranch } });
+      ready();
+      await gate;
+    },
+    { timeout: 10000 },
+  );
+  await locked;
+  const pending = http('get', path, branchOnly).then((response) => response);
+  let blocked = false;
+  try {
+    await waitForBlocked();
+    blocked = true;
+  } catch {
+    // Keep the denied-output and evidence assertions observable on the RED path.
+  } finally {
+    release();
+  }
+  await holder;
+  const response = await pending;
+  const generatedDelta = (await db.auditLog.count({ where: evidenceWhere })) - before;
+  expect({
+    status: response.status,
+    blocked,
+    productId: response.body.productId,
+    generatedDelta,
+  }).toEqual({ status: 404, blocked: true, productId: undefined, generatedDelta: 0 });
+  expect(response.text).not.toContain(serial);
+  expect(response.text).not.toContain('Comma serial phone');
+});

@@ -82,8 +82,11 @@ export class AccessStickerPricingBoundaries implements OnModuleInit {
                       method === 'getStickerData' ? req.params?.productId : req.query?.ids;
                     if (raw !== undefined && typeof raw !== 'string')
                       throw new BadRequestException('รายการสินค้าไม่ถูกต้อง');
-                    const keys = (raw ?? '')
-                      .split(',')
+                    // Match the canonical consumer: a path parameter is one key,
+                    // including commas inside a serial; only the batch query is CSV.
+                    const keys = (
+                      method === 'getStickerData' ? [raw ?? ''] : (raw ?? '').split(',')
+                    )
                       .map((s: string) => s.trim())
                       .filter(Boolean);
                     if (keys.length > 100)

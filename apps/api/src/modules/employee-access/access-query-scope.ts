@@ -32,6 +32,12 @@ export function productCompanyWhere(company: Company): Prisma.ProductWhereInput 
 }
 /** Products have no persisted employee assignment; ASSIGNED deliberately contributes no rows. */
 export function productScopeWhere(scope: CollectionScope): Prisma.ProductWhereInput {
+  // Prisma can erase nested OR:[] inside an OR of company predicates. Use a
+  // concrete false scalar, including for ASSIGNED (Products have no assignee).
+  if (!scope.tuples.some(t => t.userId === scope.userId &&
+    (t.scope === 'COMPANY' || (t.scope === 'BRANCHES' && t.branchIds.length > 0)))) {
+    return { id: { in: [] } };
+  }
   return scopeWhere<Prisma.ProductWhereInput>(scope, {
     company: productCompanyWhere,
     branch: ids => ({ branchId: { in: [...ids] } }),

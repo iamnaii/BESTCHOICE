@@ -1,3 +1,8 @@
+import {
+  assertPartyQueryClient,
+  currentPartyQuery,
+} from '../../employee-access/access-party-query-plan';
+import { domainAccessClient } from '../../employee-access/access-execution-context';
 import { Injectable } from '@nestjs/common';
 import { Prisma, WarrantyStatus } from '@prisma/client';
 import {
@@ -29,7 +34,14 @@ const CHUNK_SIZE = 200;
  * ตัด COMPLETED / EARLY_PAYOFF ทิ้งเท่านั้น — สองตัวนั้นปิดครบจริง ไม่เหลือหนี้
  * (clamp ราย **สัญญา** ข้างล่างกันยอดของสัญญาที่จ่ายเกินไม่ให้ไปหักหนี้ของใบอื่น)
  */
-const OPEN_CONTRACT_STATUSES = ['ACTIVE', 'OVERDUE', 'DEFAULT', 'TERMINATED', 'CANCELED', 'CLOSED_BAD_DEBT'] as const;
+const OPEN_CONTRACT_STATUSES = [
+  'ACTIVE',
+  'OVERDUE',
+  'DEFAULT',
+  'TERMINATED',
+  'CANCELED',
+  'CLOSED_BAD_DEBT',
+] as const;
 
 export type CustomerPurchaseStateBucket = CustomerInstallmentState | 'OTHER';
 
@@ -45,7 +57,7 @@ export interface CustomerLatestPurchase {
   at: string;
   kind: 'INSTALLMENT' | 'CASH' | 'EXTERNAL_FINANCE';
   number: string;
-  productLabel: string;
+  productLabel: string | null;
   imeiSerial: string | null;
   branchId: string | null;
   branchName: string | null;
@@ -56,7 +68,9 @@ export interface CustomerWarrantySummary {
   source: 'SHOP' | 'CENTER' | null;
   shopEndDate: string | null;
   centerEndDate: string | null;
-  status: WarrantyStatus;
+  status: WarrantyStatus | null;
+  /** Managed views distinguish hidden current Product warranty from an absent date. */
+  productAvailable?: boolean;
 }
 
 export interface CustomerInstallmentBalance {
@@ -74,6 +88,7 @@ export interface CustomerPurchaseSummary {
 }
 
 const deviceSelect = {
+  id: true,
   brand: true,
   model: true,
   storage: true,
@@ -121,7 +136,9 @@ function bucketOf(status: string): CustomerPurchaseStateBucket {
 }
 
 /** ชื่อรุ่นที่โชว์ในคอลัมน์ "ซื้อล่าสุด" — สูตรเดียวกับ liff-warranty.service.ts:129 */
-function productLabelOf(product: { brand?: string | null; model?: string | null; storage?: string | null } | null): string {
+function productLabelOf(
+  product: { brand?: string | null; model?: string | null; storage?: string | null } | null,
+): string {
   if (!product) return '';
   return [product.brand, product.model, product.storage].filter(Boolean).join(' ');
 }
@@ -138,12 +155,16 @@ function productLabelOf(product: { brand?: string | null; model?: string | null;
  */
 @Injectable()
 export class CustomerPurchaseSummaryService {
-  constructor(private readonly prisma: PrismaService) {}
+  private get prisma(): PrismaService {
+    return domainAccessClient(this.basePrisma);
+  }
+  constructor(private readonly basePrisma: PrismaService) {}
 
   async forCustomers(
     ids: string[],
     db: Prisma.TransactionClient = this.prisma,
   ): Promise<Map<string, CustomerPurchaseSummary>> {
+    assertPartyQueryClient(db);
     const result = new Map<string, CustomerPurchaseSummary>();
     for (let offset = 0; offset < ids.length; offset += CHUNK_SIZE) {
       await this.collectChunk(ids.slice(offset, offset + CHUNK_SIZE), db, result);
@@ -157,53 +178,87 @@ export class CustomerPurchaseSummaryService {
     result: Map<string, CustomerPurchaseSummary>,
   ): Promise<void> {
     if (!ids.length) return;
+    const plan = currentPartyQuery();
 
-    const [saleCounts, contractCounts, latestSales, latestContracts, openContracts] = await Promise.all([
-      // (1) ชิป เงินสด N / ไฟแนนซ์นอก N
-      db.sale.groupBy({
-        by: ['customerId', 'saleType'],
-        _count: { _all: true },
-        where: { customerId: { in: ids }, deletedAt: null, saleType: { in: [...CUSTOMER_BOUGHT_SALE_TYPES] } },
-      }),
-      // (2) ชิป ผ่อน N + ถังสถานะย่อย
-      db.contract.groupBy({
-        by: ['customerId', 'status'],
-        _count: { _all: true },
-        where: { customerId: { in: ids }, deletedAt: null },
-      }),
-      // (3) ใบขายสด/ไฟแนนซ์นอกใบล่าสุดของแต่ละคน — DISTINCT ON (customer_id)
-      //     distinct key ต้องมาก่อนใน orderBy และต้องมี id ปิดท้ายกันผลแกว่งเมื่อ createdAt ชนกัน
-      db.sale.findMany({
-        where: { customerId: { in: ids }, deletedAt: null, saleType: { in: [...CUSTOMER_BOUGHT_SALE_TYPES] } },
-        orderBy: [{ customerId: 'asc' }, { createdAt: 'desc' }, { id: 'desc' }],
-        distinct: ['customerId'],
-        select: {
-          customerId: true, saleNumber: true, saleType: true, createdAt: true,
-          branchId: true, shopWarrantyEndDate: true,
-          branch: { select: { id: true, name: true } },
-          product: { select: deviceSelect },
-        },
-      }),
-      // (4) สัญญาใบล่าสุดของแต่ละคน
-      db.contract.findMany({
-        where: { customerId: { in: ids }, deletedAt: null, status: { in: [...CUSTOMER_BOUGHT_CONTRACT_STATUSES] } },
-        orderBy: [{ customerId: 'asc' }, { createdAt: 'desc' }, { id: 'desc' }],
-        distinct: ['customerId'],
-        select: {
-          customerId: true, contractNumber: true, createdAt: true,
-          branchId: true, deviceReceivedAt: true, shopWarrantyEndDate: true,
-          branch: { select: { id: true, name: true } },
-          product: { select: deviceSelect },
-        },
-      }),
-      // (5) contractId → customerId ของสัญญาที่ยังเป็นหนี้ได้
-      db.contract.findMany({
-        where: { customerId: { in: ids }, deletedAt: null, status: { in: [...OPEN_CONTRACT_STATUSES] } },
-        select: { id: true, customerId: true },
-      }),
-    ]);
+    const [saleCounts, contractCounts, latestSales, latestContracts, openContracts] =
+      await Promise.all([
+        // (1) ชิป เงินสด N / ไฟแนนซ์นอก N
+        db.sale.groupBy({
+          by: ['customerId', 'saleType'],
+          _count: { _all: true },
+          where: {
+            customerId: { in: ids },
+            deletedAt: null,
+            ...(plan ? { AND: plan.sale } : {}),
+            saleType: { in: [...CUSTOMER_BOUGHT_SALE_TYPES] },
+          },
+        }),
+        // (2) ชิป ผ่อน N + ถังสถานะย่อย
+        db.contract.groupBy({
+          by: ['customerId', 'status'],
+          _count: { _all: true },
+          where: {
+            customerId: { in: ids },
+            deletedAt: null,
+            ...(plan ? { AND: plan.contract } : {}),
+          },
+        }),
+        // (3) ใบขายสด/ไฟแนนซ์นอกใบล่าสุดของแต่ละคน — DISTINCT ON (customer_id)
+        //     distinct key ต้องมาก่อนใน orderBy และต้องมี id ปิดท้ายกันผลแกว่งเมื่อ createdAt ชนกัน
+        db.sale.findMany({
+          where: {
+            customerId: { in: ids },
+            deletedAt: null,
+            ...(plan ? { AND: plan.sale } : {}),
+            saleType: { in: [...CUSTOMER_BOUGHT_SALE_TYPES] },
+          },
+          orderBy: [{ customerId: 'asc' }, { createdAt: 'desc' }, { id: 'desc' }],
+          distinct: ['customerId'],
+          select: {
+            customerId: true,
+            saleNumber: true,
+            saleType: true,
+            createdAt: true,
+            branchId: true,
+            shopWarrantyEndDate: true,
+            branch: { select: { id: true, name: true } },
+            product: { select: deviceSelect },
+          },
+        }),
+        // (4) สัญญาใบล่าสุดของแต่ละคน
+        db.contract.findMany({
+          where: {
+            customerId: { in: ids },
+            deletedAt: null,
+            ...(plan ? { AND: plan.purchaseContract } : {}),
+            status: { in: [...CUSTOMER_BOUGHT_CONTRACT_STATUSES] },
+          },
+          orderBy: [{ customerId: 'asc' }, { createdAt: 'desc' }, { id: 'desc' }],
+          distinct: ['customerId'],
+          select: {
+            customerId: true,
+            contractNumber: true,
+            createdAt: true,
+            branchId: true,
+            deviceReceivedAt: true,
+            shopWarrantyEndDate: true,
+            branch: { select: { id: true, name: true } },
+            product: { select: deviceSelect },
+          },
+        }),
+        // (5) contractId → customerId ของสัญญาที่ยังเป็นหนี้ได้
+        db.contract.findMany({
+          where: {
+            customerId: { in: ids },
+            deletedAt: null,
+            ...(plan ? { AND: plan.contract } : {}),
+            status: { in: [...OPEN_CONTRACT_STATUSES] },
+          },
+          select: { id: true, customerId: true },
+        }),
+      ]);
 
-    const openIds = openContracts.map(contract => contract.id);
+    const openIds = openContracts.map((contract) => contract.id);
     // (6) ผลรวมคงค้างต่อสัญญา — groupBy ครั้งเดียวสำหรับทุกสัญญาในหน้านี้
     // (7) งวดที่ครบกำหนดเร็วที่สุดต่อสัญญา — ต้องเป็น findMany + distinct ไม่ใช่ _min
     //     เพราะ groupBy ให้ MIN(due_date) กับ MIN(amount_due) จากคนละแถวได้ (ดู nextDueOf)
@@ -211,22 +266,36 @@ export class CustomerPurchaseSummaryService {
       ? await Promise.all([
           db.payment.groupBy({
             by: ['contractId'],
-            where: { contractId: { in: openIds }, ...UNPAID_INSTALLMENT_WHERE },
+            where: {
+              contractId: { in: openIds },
+              ...UNPAID_INSTALLMENT_WHERE,
+              ...(plan ? { AND: plan.payment } : {}),
+            },
             _sum: { amountDue: true, amountPaid: true },
           }),
           db.payment.findMany({
-            where: { contractId: { in: openIds }, ...UNPAID_INSTALLMENT_WHERE },
+            where: {
+              contractId: { in: openIds },
+              ...UNPAID_INSTALLMENT_WHERE,
+              ...(plan ? { AND: plan.payment } : {}),
+            },
             orderBy: [{ contractId: 'asc' }, { dueDate: 'asc' }, { installmentNo: 'asc' }],
             distinct: ['contractId'],
-            select: { contractId: true, dueDate: true, amountDue: true, amountPaid: true, installmentNo: true },
+            select: {
+              contractId: true,
+              dueDate: true,
+              amountDue: true,
+              amountPaid: true,
+              installmentNo: true,
+            },
           }),
         ])
       : [[], []];
 
-    const sumByContract = new Map(unpaidSums.map(row => [row.contractId, row._sum]));
-    const nextByContract = new Map(nextRows.map(row => [row.contractId, row]));
+    const sumByContract = new Map(unpaidSums.map((row) => [row.contractId, row._sum]));
+    const nextByContract = new Map(nextRows.map((row) => [row.contractId, row]));
 
-    const chipsById = new Map<string, CustomerPurchaseChips>(ids.map(id => [id, emptyChips()]));
+    const chipsById = new Map<string, CustomerPurchaseChips>(ids.map((id) => [id, emptyChips()]));
     for (const row of saleCounts) {
       const chips = chipsById.get(row.customerId);
       if (!chips) continue;
@@ -243,8 +312,26 @@ export class CustomerPurchaseSummaryService {
       if (bucket !== 'OTHER') chips.installmentTotal += row._count._all;
     }
 
-    const saleById = new Map<string, LatestSale>(latestSales.map(row => [row.customerId, row as LatestSale]));
-    const contractById = new Map<string, LatestContract>(latestContracts.map(row => [row.customerId, row as LatestContract]));
+    const saleById = new Map<string, LatestSale>(
+      (
+        await Promise.all(
+          latestSales.map(async (row) => ({
+            ...row,
+            product: plan ? await plan.productView(row.product) : row.product,
+          })),
+        )
+      ).map((row) => [row.customerId, row as LatestSale]),
+    );
+    const contractById = new Map<string, LatestContract>(
+      (
+        await Promise.all(
+          latestContracts.map(async (row) => ({
+            ...row,
+            product: plan ? await plan.productView(row.product) : row.product,
+          })),
+        )
+      ).map((row) => [row.customerId, row as LatestContract]),
+    );
     const openByCustomer = new Map<string, string[]>();
     for (const contract of openContracts) {
       const group = openByCustomer.get(contract.customerId) ?? [];
@@ -266,26 +353,43 @@ export class CustomerPurchaseSummaryService {
           at: latest.createdAt.toISOString(),
           kind: contractWins ? 'INSTALLMENT' : (sale!.saleType as 'CASH' | 'EXTERNAL_FINANCE'),
           number: contractWins ? contract!.contractNumber : sale!.saleNumber,
-          productLabel: productLabelOf(latest.product),
+          productLabel: plan && !latest.product ? null : productLabelOf(latest.product),
           imeiSerial: latest.product?.imeiSerial ?? null,
           branchId: latest.branchId ?? latest.branch?.id ?? null,
           branchName: latest.branch?.name ?? null,
         };
-        warranty = warrantyOf(contractWins ? contract : null, contractWins ? null : sale, latest.product);
+        warranty = warrantyOf(
+          contractWins ? contract : null,
+          contractWins ? null : sale,
+          latest.product,
+        );
+        if (plan) {
+          warranty.productAvailable = !!latest.product;
+          // SHOP receipt/date evidence can prove active warranty independently.
+          // An inaccessible Product cannot prove its manufacturer warranty expired.
+          if (!latest.product && warranty.status === 'OUT_OF_WARRANTY') warranty.status = null;
+        }
       }
 
       const openContractIds = openByCustomer.get(id) ?? [];
       let installmentBalance: CustomerInstallmentBalance | null = null;
-      if (openContractIds.length) {
+      const paymentComplete =
+        !plan ||
+        (await db.contract.count({
+          where: { id: { in: openContractIds }, AND: plan.finance('payments.read') },
+        })) === openContractIds.length;
+      if (openContractIds.length && paymentComplete) {
         // clamp ราย **สัญญา** แล้วจึงบวก — ตรงกับการ์ด Customer 360 ที่เปิดทีละสัญญา
         // (ถ้า clamp ที่ผลรวม สัญญาที่จ่ายเกินจะไปหักหนี้ของสัญญาอีกใบ)
-        const perContract = openContractIds.map(contractId => {
+        const perContract = openContractIds.map((contractId) => {
           const sums = sumByContract.get(contractId);
-          return outstandingOf(sums ? [{ amountDue: sums.amountDue, amountPaid: sums.amountPaid }] : []);
+          return outstandingOf(
+            sums ? [{ amountDue: sums.amountDue, amountPaid: sums.amountPaid }] : [],
+          );
         });
         const next = nextDueOf(
           openContractIds
-            .map(contractId => nextByContract.get(contractId))
+            .map((contractId) => nextByContract.get(contractId))
             .filter((row): row is NonNullable<typeof row> => !!row),
         );
         installmentBalance = {
@@ -318,7 +422,13 @@ function warrantyOf(
   // สัญญาชนะใบขาย — ลำดับเดียวกับ shopWarrantyEndOf() ใน detect-warranty-status.ts
   const shopEnd = contract?.shopWarrantyEndDate ?? sale?.shopWarrantyEndDate ?? null;
   const centerEnd = product?.warrantyExpireDate ?? null;
-  const endDate = !shopEnd ? centerEnd : !centerEnd ? shopEnd : shopEnd >= centerEnd ? shopEnd : centerEnd;
+  const endDate = !shopEnd
+    ? centerEnd
+    : !centerEnd
+      ? shopEnd
+      : shopEnd >= centerEnd
+        ? shopEnd
+        : centerEnd;
   const source = endDate === null ? null : endDate === shopEnd ? 'SHOP' : 'CENTER';
   return {
     endDate: endDate ? endDate.toISOString() : null,

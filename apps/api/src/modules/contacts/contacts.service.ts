@@ -1,3 +1,4 @@
+import { currentPartyQuery } from '../employee-access/access-party-query-plan';
 import type { ContactRoleDestination } from '@installment/shared';
 import { domainAccessClient } from '../employee-access/access-execution-context';
 import { partyWriteExecution } from '../employee-access/access-party-source.service';
@@ -17,13 +18,19 @@ export class ContactsService {
     private readonly contactResolver: ContactResolverService,
   ) {}
 
-  private get prisma(): PrismaService { return domainAccessClient(this.basePrisma); }
+  private get prisma(): PrismaService {
+    return domainAccessClient(this.basePrisma);
+  }
 
   async list(dto: ListContactsDto) {
+    const plan = currentPartyQuery();
     const page = dto.page ?? 1;
     const limit = dto.limit ?? 50;
 
-    const where: Prisma.ContactWhereInput = { deletedAt: null };
+    const where: Prisma.ContactWhereInput = {
+      deletedAt: null,
+      ...(plan ? { AND: plan.contactWhere() } : {}),
+    };
     if (dto.role) where.roles = { has: dto.role };
     if (dto.isActive !== undefined) where.isActive = dto.isActive === 'true';
     if (dto.search) {
@@ -45,36 +52,74 @@ export class ContactsService {
       this.prisma.contact.count({ where }),
     ]);
 
-    return { data, total, page, limit };
+    return {
+      data: plan ? data.map(contactIdentityView) : data,
+      total,
+      page,
+      limit,
+    };
   }
 
   async findOne(id: string) {
+    const plan = currentPartyQuery();
     const contact = await this.prisma.contact.findFirst({
-      where: { id, deletedAt: null },
+      where: { id, deletedAt: null, ...(plan ? { AND: plan.contactWhere() } : {}) },
       include: {
         customers: {
-          where: { deletedAt: null },
+          where: { deletedAt: null, ...(plan ? { AND: plan.customer } : {}) },
           // identity + non-sensitive only — NO encrypted address PII (deep-link to /customers/:id for full detail)
           select: { id: true, name: true, prefix: true, phone: true },
         },
         suppliers: {
-          where: { deletedAt: null },
+          where: { deletedAt: null, ...(plan ? { AND: plan.supplierWhere() } : {}) },
           select: {
-            id: true, name: true, type: true, taxId: true, branchCode: true,
-            contactName: true, contactPhone: true, phone: true, hasVat: true, address: true,
+            id: true,
+            name: true,
+            type: true,
+            taxId: true,
+            branchCode: true,
+            contactName: true,
+            contactPhone: true,
+            phone: true,
+            hasVat: true,
+            address: true,
           },
         },
         tradeInsAsSeller: {
-          where: { deletedAt: null },
+          where: { deletedAt: null, ...(plan ? { AND: plan.tradeInWhere() } : {}) },
           select: { id: true, sellerName: true, sellerPhone: true, createdAt: true },
         },
         externalFinanceCompany: {
-          where: { deletedAt: null },
-          select: { id: true, name: true, taxId: true, contactPhone: true, email: true, creditTermDays: true },
+          where: {
+            deletedAt: null,
+            ...(plan
+              ? { isActive: true, ...(plan.lenderReference() ? {} : { id: { in: [] } }) }
+              : {}),
+          },
+          select: {
+            id: true,
+            name: true,
+            isActive: true,
+            taxId: true,
+            contactPhone: true,
+            email: true,
+            creditTermDays: true,
+          },
         },
       },
     });
     if (!contact) throw new NotFoundException('ไม่พบผู้ติดต่อ');
+    if (plan) {
+      const row = contactIdentityView(contact);
+      return {
+        ...row,
+        externalFinanceCompany: row.externalFinanceCompany.map(({ id, name, isActive }) => ({
+          id,
+          name,
+          isActive,
+        })),
+      };
+    }
     return contact;
   }
 
@@ -118,9 +163,7 @@ export class ContactsService {
         data: { contactId: primaryId },
       });
 
-      const unionRoles = Array.from(
-        new Set<ContactRole>([...primary.roles, ...duplicate.roles]),
-      );
+      const unionRoles = Array.from(new Set<ContactRole>([...primary.roles, ...duplicate.roles]));
       // Primary-wins coalesce — never overwrite an identity field already set on
       // the primary; only fill the gaps from the duplicate.
       const carry = {
@@ -182,7 +225,9 @@ export class ContactsService {
   ) {
     const ctx = partyWriteExecution();
     if (ctx && ctx.snapshot.userId !== actor.userId) throw new Error('Contact actor mismatch');
-    const before = ctx ? await ctx.client.contact.findUnique({ where: { id }, select: { assignedToId: true } }) : undefined;
+    const before = ctx
+      ? await ctx.client.contact.findUnique({ where: { id }, select: { assignedToId: true } })
+      : undefined;
     const result = await this.prisma.$transaction((tx) =>
       // role is the narrow caller union (⊆ ContactRole); cast bridges Prisma's
       // enum type. Resolver guards non-SUPPLIER roles at runtime.
@@ -190,23 +235,59 @@ export class ContactsService {
     );
 
     if (result.provisioned) {
-      await this.audit.log({
-        userId: actor.userId,
-        action: 'CONTACT_ROLE_ADDED',
-        oldValue: ctx ? { assignedToId: before?.assignedToId ?? null } : undefined,
-        entity: 'contact',
-        entityId: id,
-        newValue: {
-          role: result.role,
-          ...(ctx ? { assignedToId: destination?.assignedToId !== undefined ? destination.assignedToId : before?.assignedToId ?? null, customerAssignedToId: destination?.customerAssignedToId ?? null } : {}),
-          supplierId: result.supplierId,
-          ...(result.customerId !== undefined && { customerId: result.customerId }),
+      await this.audit.log(
+        {
+          userId: actor.userId,
+          action: 'CONTACT_ROLE_ADDED',
+          oldValue: ctx ? { assignedToId: before?.assignedToId ?? null } : undefined,
+          entity: 'contact',
+          entityId: id,
+          newValue: {
+            role: result.role,
+            ...(ctx
+              ? {
+                  assignedToId:
+                    destination?.assignedToId !== undefined
+                      ? destination.assignedToId
+                      : (before?.assignedToId ?? null),
+                  customerAssignedToId: destination?.customerAssignedToId ?? null,
+                }
+              : {}),
+            supplierId: result.supplierId,
+            ...(result.customerId !== undefined && { customerId: result.customerId }),
+          },
+          ipAddress: actor.ipAddress,
+          userAgent: actor.userAgent,
         },
-        ipAddress: actor.ipAddress,
-        userAgent: actor.userAgent,
-      }, ctx?.client);
+        ctx?.client,
+      );
     }
 
     return result;
   }
+}
+
+/** Contact master identity only; linked role records have independent scoped selectors. */
+function contactIdentityView<T extends Record<string, unknown>>(contact: T): T {
+  const fields = new Set([
+    'id',
+    'contactCode',
+    'peakContactCode',
+    'name',
+    'taxId',
+    'phone',
+    'email',
+    'address',
+    'lineId',
+    'roles',
+    'isActive',
+    'createdAt',
+    'updatedAt',
+    'assignedToId',
+    'customers',
+    'suppliers',
+    'tradeInsAsSeller',
+    'externalFinanceCompany',
+  ]);
+  return Object.fromEntries(Object.entries(contact).filter(([key]) => fields.has(key))) as T;
 }

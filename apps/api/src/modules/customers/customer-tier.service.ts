@@ -1,11 +1,12 @@
+import {
+  assertPartyQueryClient,
+  currentPartyQuery,
+} from '../employee-access/access-party-query-plan';
+import { domainAccessClient } from '../employee-access/access-execution-context';
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
-import type {
-  CustomerTier,
-  CustomerTierResponse,
-  TierReason,
-} from './dto/tier.dto';
+import type { CustomerTier, CustomerTierResponse, TierReason } from './dto/tier.dto';
 
 const tierContractSelect = {
   id: true,
@@ -35,7 +36,10 @@ interface TierInputHistory {
 
 @Injectable()
 export class CustomerTierService {
-  constructor(private readonly prisma: PrismaService) {}
+  private get prisma(): PrismaService {
+    return domainAccessClient(this.basePrisma);
+  }
+  constructor(private readonly basePrisma: PrismaService) {}
 
   /**
    * Pure tier computation — no DB calls. Given a normalized history snapshot,
@@ -119,32 +123,65 @@ export class CustomerTierService {
   }
 
   /** Batched history reads for list filtering, using exactly the detail tier policy. */
-  async getCustomerTiers(customerIds: string[], db: Prisma.TransactionClient = this.prisma, asOf = new Date()): Promise<Map<string, CustomerTierResponse>> {
+  async getCustomerTiers(
+    customerIds: string[],
+    db: Prisma.TransactionClient = this.prisma,
+    asOf = new Date(),
+  ): Promise<Map<string, CustomerTierResponse>> {
+    assertPartyQueryClient(db);
+    const plan = currentPartyQuery();
     const result = new Map<string, CustomerTierResponse>();
     for (let offset = 0; offset < customerIds.length; offset += 200) {
       const ids = customerIds.slice(offset, offset + 200);
       const [contracts, repossessions] = await Promise.all([
-        db.contract.findMany({ where: { customerId: { in: ids }, deletedAt: null },
-          select: { ...tierContractSelect, customerId: true } }),
-        db.repossession.findMany({ where: { deletedAt: null, contract: { customerId: { in: ids } } },
-          select: { contract: { select: { customerId: true } } } }),
+        db.contract.findMany({
+          where: {
+            customerId: { in: ids },
+            deletedAt: null,
+            ...(plan ? { AND: plan.contract } : {}),
+          },
+          select: {
+            ...tierContractSelect,
+            ...(plan ? { payments: { ...tierContractSelect.payments, where: plan.payment } } : {}),
+            customerId: true,
+          },
+        }),
+        db.repossession.findMany({
+          where: {
+            deletedAt: null,
+            contract: { customerId: { in: ids } },
+            ...(plan ? { AND: plan.repossession } : {}),
+          },
+          select: { contract: { select: { customerId: true } } },
+        }),
       ]);
       const byCustomer = new Map<string, TierContract[]>();
       const repoCounts = new Map<string, number>();
       for (const contract of contracts) {
         const group = byCustomer.get(contract.customerId) ?? [];
-        group.push(contract); byCustomer.set(contract.customerId, group);
+        group.push(contract);
+        byCustomer.set(contract.customerId, group);
       }
       for (const row of repossessions) {
         const id = row.contract.customerId;
         repoCounts.set(id, (repoCounts.get(id) ?? 0) + 1);
       }
-      for (const id of ids) result.set(id, this.summarize(id, byCustomer.get(id) ?? [], repoCounts.get(id) ?? 0, asOf));
+      for (const id of ids)
+        if (!plan || (await plan.tierComplete(id)))
+          result.set(
+            id,
+            this.summarize(id, byCustomer.get(id) ?? [], repoCounts.get(id) ?? 0, asOf),
+          );
     }
     return result;
   }
 
-  private summarize(customerId: string, contracts: TierContract[], repossessionCount: number, asOf = new Date()): CustomerTierResponse {
+  private summarize(
+    customerId: string,
+    contracts: TierContract[],
+    repossessionCount: number,
+    asOf = new Date(),
+  ): CustomerTierResponse {
     const totalContracts = contracts.length;
     const closedContracts = contracts.filter(
       (c) => c.status === 'COMPLETED' || c.status === 'EARLY_PAYOFF',

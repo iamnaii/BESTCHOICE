@@ -30,7 +30,7 @@ export function saleScopeWhere(scope: CollectionScope): Prisma.SaleWhereInput {
       ];
     },
   );
-  return { AND: [live, { OR: alternatives }] };
+  return alternatives.length ? { AND: [live, { OR: alternatives }] } : { id: { in: [] } };
 }
 export function bookingScopeWhere(scope: CollectionScope): Prisma.BookingWhereInput {
   if (scope.company !== 'SHOP') return { id: { in: [] } };

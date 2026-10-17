@@ -1,3 +1,8 @@
+import {
+  assertPartyQueryClient,
+  currentPartyQuery,
+} from '../../employee-access/access-party-query-plan';
+import { domainAccessClient } from '../../employee-access/access-execution-context';
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { chatLogoOf, type ChatLogo } from '@installment/shared';
@@ -31,27 +36,40 @@ export interface CustomerChatSummary {
  */
 @Injectable()
 export class CustomerChatRoomsService {
-  constructor(private readonly prisma: PrismaService) {}
+  private get prisma(): PrismaService {
+    return domainAccessClient(this.basePrisma);
+  }
+  constructor(private readonly basePrisma: PrismaService) {}
 
   async forCustomers(
     ids: string[],
     db: Prisma.TransactionClient = this.prisma,
   ): Promise<Map<string, CustomerChatSummary>> {
+    assertPartyQueryClient(db);
+    const plan = currentPartyQuery();
     const result = new Map<string, CustomerChatSummary>();
     for (const id of ids) {
-      result.set(id, { chatRooms: [], lastContactAt: null, lastContactSource: null, assignedTo: null });
+      result.set(id, {
+        chatRooms: [],
+        lastContactAt: null,
+        lastContactSource: null,
+        assignedTo: null,
+      });
     }
     for (let offset = 0; offset < ids.length; offset += CHUNK_SIZE) {
       const chunk = ids.slice(offset, offset + CHUNK_SIZE);
       if (!chunk.length) continue;
       const rooms = await db.chatRoom.findMany({
         // deletedAt: null บังคับ — ห้องที่ถูกลบยังเป็นแถวอยู่ ถ้าไม่กรองลิงก์แชทจะพาไปห้องที่ตายแล้ว
-        where: { customerId: { in: chunk }, deletedAt: null },
+        where: { customerId: { in: chunk }, deletedAt: null, ...(plan ? { AND: plan.room } : {}) },
         // ใหม่สุดมาก่อน · id ปิดท้ายกันลิงก์แกว่งเมื่อ lastMessageAt ชนกัน
         orderBy: [{ lastMessageAt: 'desc' }, { id: 'asc' }],
         select: {
-          id: true, customerId: true, channel: true,
-          lastMessageAt: true, lastCustomerAt: true,
+          id: true,
+          customerId: true,
+          channel: true,
+          lastMessageAt: true,
+          lastCustomerAt: true,
           assignedTo: { select: { id: true, name: true } },
         },
       });
@@ -65,7 +83,7 @@ export class CustomerChatRoomsService {
         // (คำสั่งเจ้าของ: ต่างกันแค่ tooltip) ห้องที่มาก่อนในลำดับ = ห้องที่ "คุยล่าสุด"
         // จึงเป็นห้องที่ลิงก์พาไป
         const logo = chatLogoOf(room.channel);
-        if (!summary.chatRooms.some(existing => existing.logo === logo)) {
+        if (!summary.chatRooms.some((existing) => existing.logo === logo)) {
           summary.chatRooms.push({ roomId: room.id, channel: room.channel, logo });
         }
 

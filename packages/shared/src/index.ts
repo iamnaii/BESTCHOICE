@@ -46,3 +46,4 @@ export * from './chat-library';
 
 export * from './employee-access';
 export * from './party-access';
+export * from './party-query';

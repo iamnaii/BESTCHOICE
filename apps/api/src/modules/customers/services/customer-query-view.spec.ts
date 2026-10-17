@@ -319,7 +319,7 @@ describe('KPI / viewCounts กับตัวกรองที่คลี่�
     expect(result.data.map(row => row.id)).toEqual(GOLD);
     for (const value of Object.values(result.summary)) expect(value).toBeLessThanOrEqual(result.total);
     expect(result.summary).toEqual({ total: 2, installment: 2, cash: 2, externalFinance: 2, overdue: 2, fromChat: 2 });
-    expect(Object.values(result.viewCounts).every(value => value <= result.total)).toBe(true);
+    expect(Object.values(result.viewCounts).every(value => value !== null && value <= result.total)).toBe(true);
     expect(result.viewCounts).toEqual({ customers: 2, prospects: 2 });
   });
 

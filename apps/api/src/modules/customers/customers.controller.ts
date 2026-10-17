@@ -1,5 +1,7 @@
+import { currentPartyQuery } from '../employee-access/access-party-query-plan';
 import { Throttle } from '@nestjs/throttler';
 import {
+  ForbiddenException,
   Controller,
   Get,
   Post,
@@ -48,6 +50,34 @@ export class CustomersController {
     private readonly merge: CustomerMergeService,
   ) {}
 
+  private async auditManagedRead(
+    rows: Array<{ id?: unknown; nationalId?: unknown; guardianNationalId?: unknown }>,
+    req?: AuthRequest,
+  ) {
+    const plan = currentPartyQuery();
+    if (!plan || !req?.user?.id) throw new ForbiddenException('ไม่พบบัญชีพนักงาน');
+    for (const row of rows) {
+      if (typeof row.id !== 'string') continue;
+      await this.piiAudit.logDecryption({
+        userId: req.user.id,
+        customerId: row.id,
+        fields: [
+          'nationalId',
+          'guardianNationalId',
+          'phone',
+          'addressIdCard',
+          'addressCurrent',
+          'addressWork',
+          'references',
+          'guardianAddress',
+        ].filter((field) => field in row),
+        role: req.user.role,
+        masked: !(await plan.paired(row.id, 'sensitive.customer-identity.read')),
+        ipAddress: req.ip,
+        userAgent: req.headers['user-agent'] as string | undefined,
+      });
+    }
+  }
   // ---------------------------------------------------------------------------
   // Role-based PII masking helpers
   // ---------------------------------------------------------------------------
@@ -80,10 +110,7 @@ export class CustomersController {
   @Get('export')
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
-  async exportRows(
-    @Query() filters: CustomersListQueryDto,
-    @Req() req?: AuthRequest,
-  ) {
+  async exportRows(@Query() filters: CustomersListQueryDto, @Req() req?: AuthRequest) {
     return this.findAll(filters, req, true);
   }
 
@@ -96,8 +123,14 @@ export class CustomersController {
     @Req() req?: AuthRequest,
     snapshot = false,
   ) {
-    const read = snapshot ? this.customersService.exportRows.bind(this.customersService) : this.customersService.findAll.bind(this.customersService);
+    const read = snapshot
+      ? this.customersService.exportRows.bind(this.customersService)
+      : this.customersService.findAll.bind(this.customersService);
     const result = await read(filters);
+    if (currentPartyQuery()) {
+      await this.auditManagedRead(result.data, req);
+      return result;
+    }
 
     const role = req?.user?.role || 'UNKNOWN';
 
@@ -129,10 +162,7 @@ export class CustomersController {
   @Get('watch-list')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
   @ApiOperation({ summary: 'Watch list: ลูกค้าเสี่ยงค้างชำระ (early warning)' })
-  getWatchList(
-    @Query('branchId') branchId?: string,
-    @Query('limit') limit?: string,
-  ) {
+  getWatchList(@Query('branchId') branchId?: string, @Query('limit') limit?: string) {
     return this.customersService.getWatchList(
       branchId,
       limit ? Math.min(parseInt(limit) || 30, 100) : 30,
@@ -142,10 +172,7 @@ export class CustomersController {
   @Get('upsell-candidates')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
   @ApiOperation({ summary: 'ลูกค้าพร้อมอัพเกรด (ผ่อน >70% หรือปิดสัญญาแล้ว)' })
-  getUpsellCandidates(
-    @Query('branchId') branchId?: string,
-    @Query('limit') limit?: string,
-  ) {
+  getUpsellCandidates(@Query('branchId') branchId?: string, @Query('limit') limit?: string) {
     return this.customersService.getUpsellCandidates(
       branchId,
       limit ? Math.min(parseInt(limit) || 20, 100) : 20,
@@ -156,6 +183,10 @@ export class CustomersController {
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
   async search(@Query('q') q: string, @Req() req: AuthRequest) {
     const results = await this.customersService.search(q || '');
+    if (currentPartyQuery()) {
+      await this.auditManagedRead(results, req);
+      return results;
+    }
     const role = req.user?.role || 'UNKNOWN';
 
     if (Array.isArray(results) && results.length > 0) {
@@ -168,10 +199,7 @@ export class CustomersController {
         ipAddress: req.ip,
         userAgent: req.headers['user-agent'] as string | undefined,
       });
-      return this.applyRoleMaskList(
-        results as Array<{ nationalId?: string | null }>,
-        role,
-      );
+      return this.applyRoleMaskList(results as Array<{ nationalId?: string | null }>, role);
     }
     return results;
   }
@@ -180,6 +208,10 @@ export class CustomersController {
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
   async findOne(@Param('id') id: string, @Req() req: AuthRequest) {
     const customer = await this.customersService.findOne(id);
+    if (currentPartyQuery()) {
+      if (customer) await this.auditManagedRead([customer], req);
+      return customer;
+    }
     if (!customer) return customer;
 
     const role = req.user?.role || 'UNKNOWN';
@@ -208,6 +240,10 @@ export class CustomersController {
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
   async findDetail(@Param('id') id: string, @Req() req: AuthRequest) {
     const customer = await this.customersService.findDetail(id);
+    if (currentPartyQuery()) {
+      await this.auditManagedRead([customer], req);
+      return customer;
+    }
     const role = req.user?.role || 'UNKNOWN';
 
     // Fire-and-forget: never let audit log block the response
@@ -233,8 +269,7 @@ export class CustomersController {
   @Get(':id/insights')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
   @ApiOperation({
-    summary:
-      'Smart Customer Data — preferred contact time/channel, response rates, last LINE seen',
+    summary: 'Smart Customer Data — preferred contact time/channel, response rates, last LINE seen',
   })
   getInsights(
     @Param('id') id: string,
@@ -357,10 +392,7 @@ export class CustomersController {
 
   @Post(':id/documents')
   @Roles('OWNER', 'BRANCH_MANAGER', 'SALES')
-  uploadDocument(
-    @Param('id') id: string,
-    @Body() dto: UploadDocumentDto,
-  ) {
+  uploadDocument(@Param('id') id: string, @Body() dto: UploadDocumentDto) {
     return this.customersService.uploadDocument(id, dto);
   }
 

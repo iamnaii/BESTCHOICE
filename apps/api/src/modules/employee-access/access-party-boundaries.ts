@@ -1,3 +1,13 @@
+import { ModuleRef } from '@nestjs/core';
+import { plainToInstance } from 'class-transformer';
+import { validate } from 'class-validator';
+import { BadRequestException } from '@nestjs/common';
+import { CustomersController } from '../customers/customers.controller';
+import { ContactsController } from '../contacts/contacts.controller';
+import { CustomersListQueryDto } from '../customers/dto/customers-list-query.dto';
+import { ListContactsDto } from '../contacts/dto/list-contacts.dto';
+import { PartyQueryPlan, withPartyQuery } from './access-party-query-plan';
+import { AccessPartySourceService } from './access-party-source.service';
 import { ConflictException, Injectable, OnModuleInit } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { ACCESS_BOUNDARIES } from './access-policy.registry';
@@ -11,10 +21,74 @@ export const PARTY_WRITE_ROUTES = [
   'CustomersController.remove',
   'ContactsController.ensureRole',
 ] as const;
+export const PARTY_QUERY_ROUTES = [
+  'CustomersController.findAll',
+  'CustomersController.findOne',
+  'CustomersController.findDetail',
+  'CustomersController.search',
+  'ContactsController.list',
+  'ContactsController.findOne',
+] as const;
 @Injectable()
 export class AccessPartyBoundaries implements OnModuleInit {
-  constructor(private readonly resources: AccessResourceService) {}
+  constructor(
+    private readonly resources: AccessResourceService,
+    private readonly sources: AccessPartySourceService,
+    private readonly modules: ModuleRef,
+  ) {}
   onModuleInit() {
+    for (const route of PARTY_QUERY_ROUTES)
+      ACCESS_BOUNDARIES.set(route, async (req, snapshot, permission) => {
+        const company = requestedAccessCompany(req);
+        const run = async (handler: () => Promise<unknown>) =>
+          (
+            await this.resources.execute(
+              snapshot.userId,
+              permission,
+              company,
+              undefined,
+              async () => {
+                const ctx = currentDomainAccess()!;
+                const actor = await ctx.client.user.findUniqueOrThrow({
+                  where: { id: ctx.snapshot.userId },
+                  select: { id: true, role: true },
+                });
+                req.user = { ...req.user, id: actor.id, role: actor.role, access: ctx.snapshot };
+                const plan = await PartyQueryPlan.create(ctx.client, this.sources);
+                return withPartyQuery(plan, handler);
+              },
+              false,
+              { domain: 'parties', isolationLevel: 'Serializable', maxAttempts: 3 },
+            )
+          ).result;
+        if (
+          route === 'CustomersController.findAll' ||
+          route === 'CustomersController.search' ||
+          route === 'ContactsController.list'
+        )
+          return {
+            kind: 'collection',
+            company,
+            execute: () =>
+              run(async () => {
+                if (route === 'CustomersController.search')
+                  return this.modules
+                    .get(CustomersController, { strict: false })
+                    .search(String(req.query?.q ?? ''), req);
+                if (route === 'CustomersController.findAll') {
+                  const dto = plainToInstance(CustomersListQueryDto, req.query ?? {});
+                  if ((await validate(dto, { whitelist: true })).length)
+                    throw new BadRequestException('ตัวกรองไม่ถูกต้อง');
+                  return this.modules.get(CustomersController, { strict: false }).findAll(dto, req);
+                }
+                const dto = plainToInstance(ListContactsDto, req.query ?? {});
+                if ((await validate(dto, { whitelist: true })).length)
+                  throw new BadRequestException('ตัวกรองไม่ถูกต้อง');
+                return this.modules.get(ContactsController, { strict: false }).list(dto);
+              }),
+          };
+        return { kind: 'selection', company, execute: run };
+      });
     for (const route of PARTY_WRITE_ROUTES)
       ACCESS_BOUNDARIES.set(route, async (req, snapshot, permission) => {
         const company = requestedAccessCompany(req);

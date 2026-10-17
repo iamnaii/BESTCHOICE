@@ -8055,6 +8055,8 @@ model RepairTicket {
   cancelledAt          DateTime? @map("cancelled_at")
   replacedAt           DateTime? @map("replaced_at")
 
+  /// Payer when this estimate was written; null historical provenance is not inferred.
+  estimatedCostPayer RepairPayer? @map("estimated_cost_payer")
   estimatedCost Decimal?    @map("estimated_cost") @db.Decimal(12, 2)
   actualCost    Decimal?    @map("actual_cost") @db.Decimal(12, 2)
   payer         RepairPayer @default(SHOP)

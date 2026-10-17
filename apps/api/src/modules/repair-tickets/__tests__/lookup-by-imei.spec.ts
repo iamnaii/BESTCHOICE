@@ -25,6 +25,7 @@ describe('RepairTicketsService.lookupByImei', () => {
 
   beforeEach(async () => {
     prisma = {
+      user: { findUnique: jest.fn().mockResolvedValue({ accessManaged: false }) },
       product: { findFirst: jest.fn() },
       sale: { findFirst: jest.fn() },
     };

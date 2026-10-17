@@ -1,3 +1,4 @@
+import { serviceCustomerEvidenceWhere } from './access-service-origin';
 import { tradeInScopeWhere } from './access-trade-in-scope';
 import { ForbiddenException } from '@nestjs/common';
 import { AccessResource } from '@installment/shared';
@@ -130,6 +131,7 @@ export function currentCustomerReadWhere(): Prisma.CustomerWhereInput | undefine
     OR: [
       { tradeIns: { some: tradeInScopeWhere(scope) } },
       { sales: { some: inventorySaleScopeWhere(scope) } },
+      serviceCustomerEvidenceWhere(scope),
     ],
   };
 }

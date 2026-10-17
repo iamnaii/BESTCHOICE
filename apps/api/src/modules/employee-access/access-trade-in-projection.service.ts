@@ -1,3 +1,4 @@
+import { serviceCustomerEvidenceWhere } from './access-service-origin';
 import { saleSource } from './access-sales-scope';
 import { inventorySaleScopeWhere } from './access-inventory-scope';
 import { Injectable } from '@nestjs/common';
@@ -39,12 +40,15 @@ export class AccessTradeInProjectionService {
       })
     )
       return true;
-    return !!(await tx.sale.findFirst({
+    if (await tx.sale.findFirst({
       where: {
         ...(field === 'customerId' ? { customerId: id } : { customer: { contactId: id } }),
         AND: inventorySaleScopeWhere(scope),
       },
       select: { id: true },
+    })) return true;
+    return field === 'customerId' && !!(await tx.customer.findFirst({
+      where: { id, AND: serviceCustomerEvidenceWhere(scope) }, select: { id: true },
     }));
   }
   async project<T>(value: T, sourceId?: string, reference = false): Promise<T> {

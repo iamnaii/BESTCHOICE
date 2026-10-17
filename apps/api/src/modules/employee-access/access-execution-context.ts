@@ -64,6 +64,11 @@ export function transferScopeWhere(scope: CollectionScope): Prisma.StockTransfer
  * nested state machine may commit separately. Collection reads use the same predicates
  * for find/count/groupBy/aggregate. Raw SQL must opt in through currentProductScopeSql.
  */
+const joinedClients = new WeakMap<object, Prisma.TransactionClient>();
+export function isCurrentDomainClient(client: object): boolean {
+  const ctx = currentDomainAccess();
+  return !!ctx && (client === ctx.client || joinedClients.get(client) === ctx.client);
+}
 export function domainAccessClient(base: PrismaService): PrismaService {
   const execution = currentDomainAccess();
   if (!execution) return base;
@@ -100,7 +105,7 @@ export function domainAccessClient(base: PrismaService): PrismaService {
     purchaseOrderPayment?: Prisma.PurchaseOrderPaymentWhereInput;
   };
   const predicates: Record<string, unknown> = execution.scopeReads ? scopedPredicates : {};
-  return new Proxy(tx as unknown as PrismaService, {
+  const proxy = new Proxy(tx as unknown as PrismaService, {
     get(target, key) {
       if (key === '$transaction') return async (work: unknown, options?: { isolationLevel?: Prisma.TransactionIsolationLevel }) => {
         const levels: Record<Prisma.TransactionIsolationLevel, number> = { ReadUncommitted: 0, ReadCommitted: 1, RepeatableRead: 2, Serializable: 3 };
@@ -125,4 +130,6 @@ export function domainAccessClient(base: PrismaService): PrismaService {
       return typeof value === 'function' ? value.bind(target) : value;
     },
   });
+  joinedClients.set(proxy, tx);
+  return proxy;
 }

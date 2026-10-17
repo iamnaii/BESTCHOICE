@@ -1,6 +1,16 @@
+import {
+  currentRepairProductWhere,
+  currentRepairLookupProductWhere,
+  currentRepairSaleWhere,
+  currentWarrantyContractWhere,
+} from '../../employee-access/access-repair-scope';
+import {
+  currentDomainAccess,
+  domainAccessClient,
+} from '../../employee-access/access-execution-context';
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
-import { AuditService } from '../../audit/audit.service';
+import { AuditEntry, AuditService } from '../../audit/audit.service';
 import { detectWarrantyStatus, defaultPayer } from '../utils/detect-warranty-status';
 import { WarrantyPreviewDto } from '../dto/warranty-preview.dto';
 import { WarrantyLookupDto } from '../dto/warranty-lookup.dto';
@@ -14,10 +24,20 @@ type ReqUser = { id: string; role: string; branchId?: string | null };
  */
 @Injectable()
 export class RepairWarrantyService {
+  private get prisma(): PrismaService {
+    return domainAccessClient(this.basePrisma);
+  }
+
   constructor(
-    private readonly prisma: PrismaService,
+    private readonly basePrisma: PrismaService,
     private readonly audit: AuditService,
   ) {}
+
+  private async logLookup(entry: AuditEntry) {
+    const tx = currentDomainAccess()?.client;
+    if (tx) await this.audit.log(entry, tx);
+    else void this.audit.log(entry).catch(() => {});
+  }
 
   /**
    * Private helper — shared by warrantyPreview and warrantyLookup.
@@ -129,18 +149,16 @@ export class RepairWarrantyService {
 
     // Audit log (fire-and-forget — non-blocking, throttled per-user upstream)
     // C1: do NOT include dto in the log — it contains UUIDs (customerId/contractId/productId) = PII
-    this.audit
-      .log({
-        userId: user.id,
-        action: 'WARRANTY_LOOKED_UP',
-        entity: 'repair_ticket',
-        newValue: {
-          searchMode: 'preview',
-          inputType: dto.contractId ? 'contract' : dto.productId ? 'product' : 'customer',
-          resultCount: 1,
-        },
-      })
-      .catch(() => {});
+    await this.logLookup({
+      userId: user.id,
+      action: 'WARRANTY_LOOKED_UP',
+      entity: 'repair_ticket',
+      newValue: {
+        searchMode: 'preview',
+        inputType: dto.contractId ? 'contract' : dto.productId ? 'product' : 'customer',
+        resultCount: 1,
+      },
+    });
 
     return {
       warrantyStatus,
@@ -164,9 +182,10 @@ export class RepairWarrantyService {
       throw new BadRequestException('ต้องระบุ search input อย่างน้อย 1 อย่าง');
     }
 
-    const branchScope = hasCrossBranchAccess(user)
-      ? {}
-      : { branchId: user.branchId ?? undefined };
+    const branchScope =
+      currentDomainAccess() || hasCrossBranchAccess(user)
+        ? {}
+        : { branchId: user.branchId ?? undefined };
 
     let contracts: any[] = [];
     let customer: any = null;
@@ -178,7 +197,12 @@ export class RepairWarrantyService {
       });
       if (!customer) throw new NotFoundException('ไม่พบลูกค้า');
       contracts = await this.prisma.contract.findMany({
-        where: { customerId: dto.customerId, deletedAt: null, ...branchScope },
+        where: {
+          customerId: dto.customerId,
+          deletedAt: null,
+          ...branchScope,
+          AND: currentWarrantyContractWhere(),
+        },
         include: { product: true, customer: true },
       });
 
@@ -191,6 +215,8 @@ export class RepairWarrantyService {
           customerId: dto.customerId,
           contractId: null,
           deletedAt: null,
+          AND: currentRepairSaleWhere(),
+          product: currentRepairProductWhere(),
           ...branchScope,
         },
         include: { product: true, customer: true },
@@ -211,10 +237,10 @@ export class RepairWarrantyService {
       const search = dto.imei ?? dto.serial!;
       // C3: exact-match lookup — throw NotFoundException when the device doesn't exist at all
       const product = await this.prisma.product.findFirst({
-        where: { imeiSerial: search, deletedAt: null },
+        where: { imeiSerial: search, deletedAt: null, AND: currentRepairProductWhere() },
         include: {
           contracts: {
-            where: { deletedAt: null, ...branchScope },
+            where: { deletedAt: null, ...branchScope, AND: currentWarrantyContractWhere() },
             include: { customer: true },
           },
         },
@@ -226,6 +252,13 @@ export class RepairWarrantyService {
         customer = product.contracts[0].customer;
         contracts = product.contracts.map((c: any) => ({ ...c, product }));
       } else {
+        if (
+          currentDomainAccess() &&
+          !(await this.prisma.product.count({
+            where: { id: product.id, AND: currentRepairLookupProductWhere() },
+          }))
+        )
+          throw new NotFoundException('ไม่พบข้อมูลในขอบเขต');
         // Product exists but no contract in scope — walk-in style row (no contract)
         contracts = [
           {
@@ -240,7 +273,12 @@ export class RepairWarrantyService {
     } else if (dto.contractNumber) {
       // C3: exact-match lookup — throw NotFoundException when contract doesn't exist at all
       const c = await this.prisma.contract.findFirst({
-        where: { contractNumber: dto.contractNumber, deletedAt: null, ...branchScope },
+        where: {
+          contractNumber: dto.contractNumber,
+          deletedAt: null,
+          ...branchScope,
+          AND: currentWarrantyContractWhere(),
+        },
         include: { product: true, customer: true },
       });
       if (!c) throw new NotFoundException(`ไม่พบสัญญาเลขที่ ${dto.contractNumber}`);
@@ -276,9 +314,7 @@ export class RepairWarrantyService {
                 imeiSerial: c.product.imeiSerial ?? null,
               }
             : null,
-          contract: c.id
-            ? { id: c.id, contractNumber: c.contractNumber, status: c.status }
-            : null,
+          contract: c.id ? { id: c.id, contractNumber: c.contractNumber, status: c.status } : null,
           warrantyWindows,
           eligibility: { forExchange, forRepair: true },
         };
@@ -286,25 +322,29 @@ export class RepairWarrantyService {
       .filter((d: any) => d.product !== null);
 
     // Audit log (fire-and-forget — non-blocking)
-    this.audit
-      .log({
-        userId: user.id,
-        action: 'WARRANTY_LOOKED_UP',
-        entity: 'repair_ticket',
-        newValue: {
-          searchMode: dto.customerId
-            ? 'customer'
-            : dto.imei
-              ? 'imei'
-              : dto.serial
-                ? 'serial'
-                : 'contract',
-          resultCount: devices.length,
-        },
-      })
-      .catch(() => {});
+    await this.logLookup({
+      userId: user.id,
+      action: 'WARRANTY_LOOKED_UP',
+      entity: 'repair_ticket',
+      newValue: {
+        searchMode: dto.customerId
+          ? 'customer'
+          : dto.imei
+            ? 'imei'
+            : dto.serial
+              ? 'serial'
+              : 'contract',
+        resultCount: devices.length,
+      },
+    });
 
-    return { customer, devices };
+    return {
+      customer:
+        currentDomainAccess() && customer
+          ? { id: customer.id, name: customer.name, phone: customer.phone }
+          : customer,
+      devices,
+    };
   }
 
   /**
@@ -315,7 +355,7 @@ export class RepairWarrantyService {
    */
   async lookupByImei(imei: string, user: ReqUser) {
     const product = await this.prisma.product.findFirst({
-      where: { imeiSerial: imei, deletedAt: null },
+      where: { imeiSerial: imei, deletedAt: null, AND: currentRepairProductWhere() },
       select: {
         id: true,
         brand: true,
@@ -333,12 +373,21 @@ export class RepairWarrantyService {
     // Sales from their own branch. OWNER / FINANCE_MANAGER / ACCOUNTANT see all.
     // Without this, scanning a foreign branch's IMEI leaks customer name/phone
     // — PDPA violation. Mirrors warrantyLookup's branchScope at line ~795.
-    const branchScope = hasCrossBranchAccess(user)
-      ? {}
-      : { branchId: user.branchId ?? undefined };
+    const branchScope =
+      currentDomainAccess() || hasCrossBranchAccess(user)
+        ? {}
+        : { branchId: user.branchId ?? undefined };
 
     const sale = await this.prisma.sale.findFirst({
-      where: { productId: product.id, deletedAt: null, ...branchScope },
+      where: {
+        productId: product.id,
+        deletedAt: null,
+        ...branchScope,
+        AND: currentRepairSaleWhere(),
+        ...(currentDomainAccess()
+          ? { OR: [{ contractId: null }, { contract: currentWarrantyContractWhere() }] }
+          : {}),
+      },
       orderBy: { createdAt: 'desc' },
       select: {
         id: true,
@@ -359,6 +408,14 @@ export class RepairWarrantyService {
       },
     });
 
+    if (
+      currentDomainAccess() &&
+      !sale &&
+      !(await this.prisma.product.count({
+        where: { id: product.id, AND: currentRepairLookupProductWhere() },
+      }))
+    )
+      return { found: false } as const;
     // Use canonical detectWarrantyStatus utility (handles IN_MANUFACTURER + BKK
     // calendar-day arithmetic correctly). Never duplicate this logic — see W8
     // discipline in detect-warranty-status.ts.
@@ -396,7 +453,9 @@ export class RepairWarrantyService {
     } as const;
   }
 
-  private computeDaysRemainingIn7Day(contract: { deviceReceivedAt?: Date | null } | null | undefined): number | null {
+  private computeDaysRemainingIn7Day(
+    contract: { deviceReceivedAt?: Date | null } | null | undefined,
+  ): number | null {
     if (!contract?.deviceReceivedAt) return null;
     // BKK calendar-day arithmetic (matches detect-warranty-status.ts convention).
     // A device received at 23:00 BKK on day 0 → still has 7 days remaining at midnight UTC.
@@ -406,7 +465,8 @@ export class RepairWarrantyService {
       return new Date(bkk.getUTCFullYear(), bkk.getUTCMonth(), bkk.getUTCDate());
     };
     const daysSince =
-      (toBkkMidnight(new Date()).getTime() - toBkkMidnight(new Date(contract.deviceReceivedAt)).getTime()) /
+      (toBkkMidnight(new Date()).getTime() -
+        toBkkMidnight(new Date(contract.deviceReceivedAt)).getTime()) /
       86_400_000;
     const remaining = 7 - daysSince;
     return remaining < 0 ? 0 : Math.ceil(remaining);

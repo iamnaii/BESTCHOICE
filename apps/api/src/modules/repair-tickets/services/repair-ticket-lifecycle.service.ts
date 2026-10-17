@@ -1,3 +1,9 @@
+import { AccessRepairSourceService } from '../../employee-access/access-repair-source.service';
+import {
+  currentDomainAccess,
+  domainAccessClient,
+  isCurrentDomainClient,
+} from '../../employee-access/access-execution-context';
 import {
   Injectable,
   NotFoundException,
@@ -7,7 +13,7 @@ import {
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
-import { AuditService } from '../../audit/audit.service';
+import { AuditEntry, AuditService } from '../../audit/audit.service';
 import { ExpenseDocumentsService } from '../../expense-documents/expense-documents.service';
 import { OtherIncomeService } from '../../other-income/other-income.service';
 import { RepairTicketDocNumberService } from './doc-number.service';
@@ -38,21 +44,65 @@ type ReqUser = { id: string; role: string; branchId?: string | null };
  */
 @Injectable()
 export class RepairTicketLifecycleService {
+  private get prisma(): PrismaService {
+    return domainAccessClient(this.basePrisma);
+  }
+
   constructor(
-    private readonly prisma: PrismaService,
+    private readonly basePrisma: PrismaService,
     private readonly audit: AuditService,
     private readonly expenseDocs: ExpenseDocumentsService,
     private readonly otherIncome: OtherIncomeService,
     private readonly docNumber: RepairTicketDocNumberService,
+    private readonly access?: AccessRepairSourceService,
   ) {}
+
+  private log(entry: AuditEntry) {
+    const tx = currentDomainAccess()?.client;
+    return tx ? this.audit.log(entry, tx) : this.audit.log(entry);
+  }
+
+  private async assertCaller(
+    tx: Prisma.TransactionClient | PrismaService,
+    user: ReqUser,
+    method: 'create' | 'replace',
+    id: string | undefined,
+    body: Record<string, unknown>,
+  ) {
+    const ctx = currentDomainAccess();
+    if (ctx) {
+      if (
+        !this.access ||
+        ctx.scope.company !== 'SHOP' ||
+        ctx.snapshot.userId !== user.id ||
+        !isCurrentDomainClient(tx)
+      )
+        throw new ForbiddenException('ต้องใช้ธุรกรรมสิทธิ์เดียวกัน');
+      await this.access.resolve(
+        ctx.client,
+        ctx.snapshot,
+        method === 'create' ? 'repair-tickets.create' : 'defect-exchanges.create',
+        method,
+        id,
+        body,
+        true,
+      );
+    } else if (
+      (await tx.user.findUnique({ where: { id: user.id }, select: { accessManaged: true } }))
+        ?.accessManaged
+    ) {
+      throw new ForbiddenException('ต้องตรวจสิทธิ์ปัจจุบันในธุรกรรมก่อนดำเนินการ');
+    }
+  }
 
   /**
    * เขียนใบซ่อมภายใน tx ที่ผู้เรียกเปิดไว้ — ไม่เรียก audit
-   * (กติกา database.md: ห้าม audit.log ใน $transaction).
+   * The owning caller writes durable audit in its exact transaction.
    * เรียกได้ทั้งจาก `create()` เอง (เปิด tx ให้) และจาก `AfterSalesCaseService`
    * ที่เปิดเคสหลังการขายในธุรกรรมเดียวกับใบซ่อม.
    */
   async createInTx(dto: CreateRepairTicketDto, user: ReqUser, tx: Prisma.TransactionClient) {
+    await this.assertCaller(tx, user, 'create', undefined, { ...dto });
     // Validate contract exists when contractId is provided
     const contract = dto.contractId
       ? await tx.contract.findUnique({
@@ -96,6 +146,7 @@ export class RepairTicketLifecycleService {
         defectDescription: dto.defectDescription,
         repairSupplierId: dto.repairSupplierId ?? null,
         estimatedCost: dto.estimatedCost != null ? new Prisma.Decimal(dto.estimatedCost) : null,
+        estimatedCostPayer: dto.estimatedCost != null ? payer : null,
         notes: dto.notes ?? null,
       },
     });
@@ -119,8 +170,9 @@ export class RepairTicketLifecycleService {
       this.createInTx(dto, user, tx),
     );
 
-    // Audit trail — after the transaction resolves (database.md: ห้าม audit.log ใน $transaction)
-    await this.audit.log({
+    // Managed callbacks joined the outer transaction: log() supplies that exact client.
+    // Legacy standalone creation retains its post-transaction audit behavior.
+    await this.log({
       userId: user.id,
       action: 'REPAIR_TICKET_CREATED',
       entity: 'repair_ticket',
@@ -144,11 +196,22 @@ export class RepairTicketLifecycleService {
       if (supplier.isRepairCenter === false)
         throw new BadRequestException('Supplier ไม่ใช่ศูนย์ซ่อม');
 
+      const estimateSource =
+        dto.estimatedCost != null
+          ? await tx.repairTicket.findUnique({ where: { id }, select: { payer: true } })
+          : null;
       const sentAt = dto.sentToRepairAt ? new Date(dto.sentToRepairAt) : new Date();
 
       const updated = await tx.repairTicket.updateMany({
-        where: { id, status: 'OPEN', deletedAt: null },
+        where: {
+          id,
+          status: 'OPEN',
+          deletedAt: null,
+          ...(estimateSource ? { payer: estimateSource.payer } : {}),
+        },
         data: {
+          estimatedCostPayer:
+            dto.estimatedCost != null ? (estimateSource?.payer ?? null) : undefined,
           status: 'IN_PROGRESS',
           sentToRepairAt: sentAt,
           repairSupplierId: dto.repairSupplierId,
@@ -169,7 +232,7 @@ export class RepairTicketLifecycleService {
         },
       });
 
-      await this.audit.log({
+      await this.log({
         userId: user.id,
         action: 'REPAIR_TICKET_SENT',
         entity: 'repair_ticket',
@@ -238,7 +301,7 @@ export class RepairTicketLifecycleService {
         },
       });
 
-      await this.audit.log({
+      await this.log({
         userId: user.id,
         action: 'REPAIR_TICKET_MARKED_REPAIRED',
         entity: 'repair_ticket',
@@ -270,7 +333,7 @@ export class RepairTicketLifecycleService {
         },
       });
 
-      await this.audit.log({
+      await this.log({
         userId: user.id,
         action: 'REPAIR_TICKET_SENT_BACK',
         entity: 'repair_ticket',
@@ -317,7 +380,7 @@ export class RepairTicketLifecycleService {
         },
       });
 
-      await this.audit.log({
+      await this.log({
         userId: user.id,
         action: 'REPAIR_TICKET_CANCELLED',
         entity: 'repair_ticket',
@@ -498,7 +561,7 @@ export class RepairTicketLifecycleService {
       });
 
       // 6. Audit log
-      await this.audit.log({
+      await this.log({
         userId: user.id,
         action: 'REPAIR_TICKET_RETURNED',
         entity: 'repair_ticket',
@@ -535,11 +598,12 @@ export class RepairTicketLifecycleService {
           repairSupplierId: dto.repairSupplierId,
           estimatedCost:
             dto.estimatedCost != null ? new Prisma.Decimal(dto.estimatedCost) : undefined,
+          estimatedCostPayer: dto.estimatedCost != null ? ticket.payer : undefined,
           notes: dto.notes,
         },
       });
 
-      await this.audit.log({
+      await this.log({
         userId: user.id,
         action: 'REPAIR_TICKET_EDITED',
         entity: 'repair_ticket',
@@ -584,7 +648,7 @@ export class RepairTicketLifecycleService {
         data: { warrantyStatus },
       });
 
-      await this.audit.log({
+      await this.log({
         userId: user.id,
         action: 'REPAIR_TICKET_WARRANTY_RECALC',
         entity: 'repair_ticket',
@@ -610,7 +674,7 @@ export class RepairTicketLifecycleService {
         where: { id },
         data: { deletedAt: new Date() },
       });
-      await this.audit.log({
+      await this.log({
         userId: user.id,
         action: 'REPAIR_TICKET_SOFT_DELETED',
         entity: 'repair_ticket',
@@ -629,6 +693,7 @@ export class RepairTicketLifecycleService {
     user: ReqUser,
     tx: Prisma.TransactionClient | PrismaService = this.prisma,
   ) {
+    await this.assertCaller(tx, user, 'replace', id, { replacementContractId });
     const replacedAt = new Date();
 
     // W1: read actual status before CAS so RepairStatusLog reflects the real
@@ -660,7 +725,7 @@ export class RepairTicketLifecycleService {
       },
     });
 
-    await this.audit.log({
+    await this.log({
       userId: user.id,
       action: 'REPAIR_TICKET_REPLACED',
       entity: 'repair_ticket',

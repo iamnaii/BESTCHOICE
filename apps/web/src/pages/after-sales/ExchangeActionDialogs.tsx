@@ -34,6 +34,18 @@ const inputClass =
 const areaClass =
   'w-full resize-none rounded-lg border border-input bg-background px-3.5 py-2.5 text-sm leading-snug text-foreground placeholder:text-muted-foreground/70';
 
+// 15ข — ตารางใบเสร็จที่จะออกใบลดหนี้ในกล่องยืนยัน (mockup กระดาน 3)
+const METHOD_SHORT: Record<string, string> = {
+  CASH: 'เงินสด',
+  BANK_TRANSFER: 'โอน',
+  QR_EWALLET: 'QR',
+  CARD: 'บัตร',
+  ONLINE_GATEWAY: 'ลิงก์ชำระ',
+  CREDIT_BALANCE: 'เครดิต',
+};
+const thDate = (iso: string) =>
+  new Date(iso).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit' });
+
 const REJECT_MIN_REASON = 10;
 const CANCEL_SWAP_MIN_REASON = 10;
 
@@ -93,6 +105,28 @@ export function ConfirmExchangeDialog({
       ).data,
     enabled: open && isCash && !!previewId,
   });
+
+  // 15ข — กิ่งสัญญาผ่อน: ใบรับเงินของสัญญาเดิมที่จะออกใบลดหนี้ + เครดิตที่จะย้าย (checkEligibility — แหล่งเดียวกับ engine)
+  const credit = useQuery<{
+    receiptsToCreditNote: {
+      id: string;
+      receiptNumber: string;
+      receiptType: string;
+      installmentNo: number | null;
+      paidDate: string;
+      paymentMethod: string | null;
+      amount: string;
+      vatAmount: string | null;
+    }[];
+    creditToTransfer: string;
+  }>({
+    queryKey: ['defect-exchange', 'eligibility', data.contractId],
+    queryFn: async () => (await api.get(`/defect-exchange/eligibility/${data.contractId}`)).data,
+    enabled: open && !isCash && !!data.contractId,
+  });
+  const receipts = credit.data?.receiptsToCreditNote ?? [];
+  const creditToTransfer = credit.data?.creditToTransfer ?? '0.00';
+  const hasCredit = receipts.length > 0 || Number(creditToTransfer) > 0;
 
   const mutate = useMutation({
     mutationFn: async () => {
@@ -191,14 +225,60 @@ export function ConfirmExchangeDialog({
           ) : (
             <ul className="list-disc space-y-0.5 pl-4">
               <li>สัญญาเดิมปิดเป็น &quot;เปลี่ยนเครื่องชำรุด&quot; และกลับรายการบัญชีอัตโนมัติ</li>
+              {hasCredit && (
+                <>
+                  <li>ออกใบลดหนี้ให้ใบเสร็จ/ใบกำกับภาษีของสัญญาเดิมทุกใบ — ไม่ส่ง LINE</li>
+                  <li>เงินที่ลูกค้าจ่ายแล้วย้ายเป็นเครดิตของสัญญาใหม่ — ไม่คืนเงินสด ธนาคารไม่ขยับ</li>
+                </>
+              )}
               <li>
                 เปิดสัญญาใหม่เงื่อนไขเดิมด้วยเครื่องที่เลือก — ต้องเปิดใช้ที่หน้าสัญญาก่อนส่งมอบ
+                {hasCredit ? ' · เมื่อเปิดใช้ ระบบใช้เครดิตชำระงวดที่ 1 ทันทีและออกใบเสร็จ/ใบกำกับภาษีใหม่' : ''}
               </li>
               <li>เครื่องเดิม → รอส่งเคลมผู้จัดจำหน่าย · บันทึกผู้ยืนยันในไทม์ไลน์</li>
             </ul>
           )}
         </div>
 
+        {!isCash && hasCredit && (
+          <div className="space-y-2 rounded-lg border border-border bg-muted p-3 text-xs leading-snug">
+            <p className="font-semibold text-foreground">ใบเสร็จของสัญญาเดิมที่จะออกใบลดหนี้</p>
+            {receipts.length > 0 && (
+              <table className="w-full">
+                <thead className="text-muted-foreground">
+                  <tr>
+                    <th className="py-0.5 pr-2 text-left font-normal">เลขที่</th>
+                    <th className="py-0.5 pr-2 text-left font-normal">รายการ</th>
+                    <th className="py-0.5 pr-2 text-left font-normal">วันที่ชำระ</th>
+                    <th className="py-0.5 text-right font-normal">ยอด</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {receipts.map((r) => (
+                    <tr key={r.id}>
+                      <td className="py-0.5 pr-2 font-mono">{r.receiptNumber}</td>
+                      <td className="py-0.5 pr-2">
+                        {r.installmentNo ? `ค่างวดงวดที่ ${r.installmentNo}` : 'การรับชำระเงิน'}
+                      </td>
+                      <td className="py-0.5 pr-2">
+                        {thDate(r.paidDate)}
+                        {r.paymentMethod ? ` · ${METHOD_SHORT[r.paymentMethod] ?? r.paymentMethod}` : ''}
+                      </td>
+                      <td className="py-0.5 text-right">{baht(r.amount)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+            <div className="flex items-center justify-between rounded-md bg-primary/10 px-2 py-1.5 font-semibold text-primary">
+              <span>เครดิตที่จะย้ายไปสัญญาใหม่ (ไม่คืนเงินสด)</span>
+              <span>{baht(creditToTransfer)} บาท</span>
+            </div>
+          </div>
+        )}
+        {!isCash && credit.isError && (
+          <p className="text-xs leading-snug text-destructive">{getErrorMessage(credit.error)}</p>
+        )}
         {isCash && preview.data && (
           <div className="space-y-1 rounded-lg border border-border bg-muted p-3 text-xs leading-snug">
             <p className="font-semibold text-foreground">

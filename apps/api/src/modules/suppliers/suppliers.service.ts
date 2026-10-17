@@ -1,6 +1,5 @@
-import { productScopeWhere } from '../employee-access/access-query-scope';
 import { purchaseOrderScopeWhere } from '../employee-access/access-procurement-scope';
-import { domainAccessClient, currentDomainAccess, currentPermissionScope } from '../employee-access/access-execution-context';
+import { domainAccessClient, currentDomainAccess, currentPermissionScope, currentProductReadWhere } from '../employee-access/access-execution-context';
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { paginatedResponse } from '../../common/helpers/pagination.helper';
@@ -18,9 +17,9 @@ export class SuppliersService {
   ) {}
 
   private sourceCounts() {
-    const products = currentPermissionScope('products.read');
+    const products = currentProductReadWhere();
     const pos = currentPermissionScope('purchase-orders.read');
-    return { products: products ? { where: { deletedAt: null, ...productScopeWhere(products) } } : true, purchaseOrders: pos ? { where: purchaseOrderScopeWhere(pos) } : true };
+    return { products: products ? { where: products } : true, purchaseOrders: pos ? { where: purchaseOrderScopeWhere(pos) } : true };
   }
 
   async findAll(search?: string, isActive?: string, page = 1, limit = 50) {
@@ -232,9 +231,9 @@ export class SuppliersService {
     const safeLimit = Math.min(limit, 100);
     await this.findOne(id);
 
-    const productScope = currentPermissionScope('products.read');
+    const productScope = currentProductReadWhere();
     const poScope = currentPermissionScope('purchase-orders.read');
-    const productWhere = { supplierId: id, deletedAt: null, ...(productScope ? productScopeWhere(productScope) : {}) };
+    const productWhere = { supplierId: id, deletedAt: null, ...(productScope ?? {}) };
     const poWhere = { supplierId: id, ...(poScope ? purchaseOrderScopeWhere(poScope) : {}) };
 
     const [products, productTotal, purchaseOrders, poTotal] = await Promise.all([
@@ -274,7 +273,7 @@ export class SuppliersService {
           createdAt: true,
           createdBy: { select: { id: true, name: true } },
           items: true,
-          _count: { select: { products: true } },
+          _count: { select: { products: productScope ? { where: productScope } : true } },
         },
         orderBy: { orderDate: 'desc' },
         skip: (page - 1) * safeLimit,

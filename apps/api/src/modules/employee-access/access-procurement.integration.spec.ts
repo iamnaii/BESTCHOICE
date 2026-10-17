@@ -296,6 +296,47 @@ test('stock at the actual pinned warehouse receives an approved central PO witho
   await post(`/purchase-orders/${other.id}/goods-receiving`, { supplierDocType: 'NONE', notes: 'Fixture', items: [{ poItemId: other.items[0].id, status: 'PASS' }] }, otherStock).expect(403);
 });
 
+test('procurement expansions and product counts require independent current product scope', async () => {
+  const po = await createPo(); await post(`/purchase-orders/${po.id}/approve`, {}).expect(201); await receive(po);
+  const product = await db.product.findFirstOrThrow({ where: { poId: po.id } });
+  const gr = await db.goodsReceiving.findFirstOrThrow({ where: { poId: po.id } });
+  const reader = await user(); await grant(reader, ['purchase-orders.read', 'stock-receiving.read']);
+  const check = async (visible: boolean) => {
+    const detail = (await get(`/purchase-orders/${po.id}`, reader).expect(200)).body;
+    expect(detail.products.map((row: { id: string }) => row.id)).toEqual(visible ? [product.id] : []);
+    expect(detail.items[0].receivingItems[0].product?.id ?? null).toBe(visible ? product.id : null);
+    const list = (await get('/purchase-orders?limit=200', reader).expect(200)).body;
+    expect(list.data.find((row: { id: string }) => row.id === po.id)._count.products).toBe(visible ? 1 : 0);
+    for (const path of [`/purchase-orders/${po.id}/goods-receivings/${gr.id}`, `/purchase-orders/${po.id}/goods-receivings`]) {
+      const body = (await get(path, reader).expect(200)).body;
+      expect((body.data?.[0] ?? body).items[0].product?.id ?? null).toBe(visible ? product.id : null);
+    }
+  };
+  await check(false);
+  await grant(reader, ['products.read']); await check(true);
+  await db.product.update({ where: { id: product.id }, data: { branchId: branchB } });
+  await check(false);
+  await grant(reader, ['products.read'], [branchB]); await check(true);
+});
+
+test('supplier relationship reads cannot discard a foreign-company origin for mutations', async () => {
+  const po = await createPo(); await post(`/purchase-orders/${po.id}/approve`, {}).expect(201); await receive(po);
+  const product = await db.product.findFirstOrThrow({ where: { poId: po.id } });
+  const supplier = await db.supplier.create({ data: { name: 'Finance-origin party', phone: '020000099', accessCompanyCode: 'FINANCE', accessBranchId: branchA } });
+  await db.product.update({ where: { id: product.id }, data: { supplierId: supplier.id } });
+  const editor = await user(); await grant(editor, ['suppliers.read', 'suppliers.update', 'suppliers.delete']);
+  await get(`/suppliers/${supplier.id}`, editor).expect(200);
+  await http('patch', `/suppliers/${supplier.id}`, { name: 'Unauthorized' }, editor).expect(403);
+  await http('patch', `/suppliers/${supplier.id}/repair-center`, {}, editor).expect(403);
+  await http('delete', `/suppliers/${supplier.id}`, undefined, editor).expect(403);
+  expect(await db.supplier.findUniqueOrThrow({ where: { id: supplier.id } })).toMatchObject({ name: 'Finance-origin party', deletedAt: null, isRepairCenter: false });
+  const position = await db.accessPosition.create({ data: { code: randomUUID(), name: 'Finance party edits', permissions: ['suppliers.update', 'suppliers.delete'] } });
+  await db.employeeAccessAssignment.create({ data: { userId: editor, positionId: position.id, companyCode: 'FINANCE', scope: 'BRANCHES', branches: { create: { branchId: branchA } } } });
+  await http('patch', `/suppliers/${supplier.id}`, { name: 'Authorized both sources' }, editor).expect(200);
+  await http('patch', `/suppliers/${supplier.id}/repair-center`, {}, editor).expect(200);
+  await http('delete', `/suppliers/${supplier.id}`, undefined, editor).expect(200);
+});
+
 test('every enabled route has actual positive evidence then rejects a persisted no-grants employee', async () => {
   expect([...successes.keys()].sort()).toEqual([...PROCUREMENT_BOUNDARY_ROUTES].sort());
   for (const fixture of successes.values()) await http(fixture.method, fixture.path, fixture.body, denied).expect(403);

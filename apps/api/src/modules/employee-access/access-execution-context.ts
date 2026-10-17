@@ -25,6 +25,14 @@ export function currentPermissionScope(permission: PermissionKey): CollectionSco
   const ctx = currentDomainAccess();
   return ctx ? { ...ctx.scope, permission, tuples: permissionScopes({ id: ctx.snapshot.userId, access: ctx.snapshot }, permission, ctx.scope.company) } : undefined;
 }
+/** Independent product expansion/count predicate; never inherit the parent action. */
+export function currentProductReadWhere(): Prisma.ProductWhereInput | undefined {
+  const scope = currentPermissionScope('products.read');
+  if (!scope) return undefined;
+  const usable = scope.tuples.some(tuple => tuple.userId === scope.userId && (tuple.scope === 'COMPANY' || tuple.scope === 'BRANCHES' && tuple.branchIds.length > 0));
+  return usable ? { deletedAt: null, AND: [productScopeWhere(scope)] } : { id: { in: [] } };
+}
+
 /** Effects are owned by the OUTER transaction attempt. Never run a success effect
  * after a nested callback has merely joined it. Callbacks run outside its context. */
 export function onDomainCommit(effect: () => Promise<void>): void {

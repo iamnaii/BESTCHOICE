@@ -39,7 +39,11 @@ export class AccessProcurementSourceService {
     const supplier = await tx.supplier.findFirst({ where: { id, ...supplierScopeWhere(scope) }, include: { products: { where: { deletedAt: null }, select: { id: true }, orderBy: { id: 'asc' } }, purchaseOrders: { where: { deletedAt: null }, select: { id: true }, orderBy: { id: 'asc' } } } });
     if (!supplier) throw new ForbiddenException('ไม่มีสิทธิ์เข้าถึงผู้จัดจำหน่าย');
     const resources: AccessResource[] = [];
-    if (supplier.accessCompanyCode === company) resources.push(await this.origin(tx, company, supplier.accessBranchId, lock));
+    if (supplier.accessCompanyCode && (mutation || supplier.accessCompanyCode === company)) {
+      const originCompany = supplier.accessCompanyCode;
+      if (originCompany !== 'SHOP' && originCompany !== 'FINANCE') throw new ForbiddenException('ไม่ทราบส่วนงานเจ้าของผู้จัดจำหน่าย');
+      resources.push(await this.origin(tx, originCompany, supplier.accessBranchId, lock));
+    }
     for (const product of supplier.products) {
       const resource = await this.resources.product(tx, product.id, lock);
       if (mutation || (resource.company === company && canAccess(snapshot, permission, resource))) resources.push(resource);

@@ -1,5 +1,5 @@
 import { purchaseOrderScopeWhere } from '../../employee-access/access-procurement-scope';
-import { domainAccessClient, currentDomainAccess, currentPermissionScope } from '../../employee-access/access-execution-context';
+import { domainAccessClient, currentDomainAccess, currentPermissionScope, currentProductReadWhere } from '../../employee-access/access-execution-context';
 import { NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
@@ -54,7 +54,7 @@ export class PoQueryService {
           createdBy: { select: { id: true, name: true } },
           approvedBy: { select: { id: true, name: true } },
           items: true,
-          _count: { select: { products: true } },
+          _count: { select: { products: currentProductReadWhere() ? { where: currentProductReadWhere() } : true } },
         },
         orderBy: { createdAt: 'desc' },
         skip: (page - 1) * limit,
@@ -83,6 +83,7 @@ export class PoQueryService {
           },
         },
         products: {
+          where: currentProductReadWhere(),
           select: { id: true, name: true, brand: true, model: true, imeiSerial: true, serialNumber: true, photos: true, status: true, costPrice: true, branchId: true, accessoryType: true, accessoryBrand: true },
         },
         goodsReceivings: {

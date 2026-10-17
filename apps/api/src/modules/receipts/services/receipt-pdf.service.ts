@@ -200,6 +200,9 @@ export class ReceiptPdfService {
 
     const receiptType = receipt.receiptType ?? 'PAYMENT';
     const isCreditNote = receiptType === 'CREDIT_NOTE';
+    // 15ข — ใบลดหนี้เปลี่ยนเครื่องตำหนิ (mockup 7dMBBNTYVZLGDvgG1pk2Yo กระดาน 1) · ใบใช้เครดิตบอกที่มา (กระดาน 2)
+    const isExchangeCn = isCreditNote && receipt.cnSource === 'DEFECT_EXCHANGE';
+    const exchangeSrc = receipt.exchangeCreditSource ?? null;
     // ตัวเลขทุกแถวของเอกสาร — receipt-document-money.ts: ใบที่เก็บค่า ณ ตอนออกใบ (PR3) พิมพ์ค่าที่เก็บ ·
     // ใบเก่าใช้ตรรกะเดิม
     const {
@@ -257,7 +260,7 @@ export class ReceiptPdfService {
       DOWN_PAYMENT: 'เงินดาวน์',
       EARLY_PAYOFF: 'ปิดยอดสัญญาก่อนกำหนด',
       RESCHEDULE_FEE: 'ค่าธรรมเนียมเลื่อนนัดชำระ (ปรับดิว)',
-      CREDIT_NOTE: 'ลดหนี้ — ยกเลิกใบเสร็จ',
+      CREDIT_NOTE: isExchangeCn ? 'ลดหนี้ — เปลี่ยนเครื่องตำหนิภายใน 7 วัน' : 'ลดหนี้ — ยกเลิกใบเสร็จ',
     };
     const installmentLabel = receipt.installmentNo
       ? `ค่างวดเช่าซื้อ งวดที่ ${receipt.installmentNo}${receipt.contract?.totalMonths ? `/${receipt.contract.totalMonths}` : ''}`
@@ -323,6 +326,8 @@ export class ReceiptPdfService {
     /* ── Credit-note reference notice ── */
     .cn-notice { margin:10px 0 0; background:var(--amber-50); border:1px solid var(--amber-200); border-radius:8px; padding:8px 14px; font-size:10pt; color:var(--amber-800); }
     .cn-notice strong { font-weight:700; }
+    /* 15ข — กล่องเครดิตเปลี่ยนเครื่องอยู่ข้างยอดรวม (mockup กระดาน 2: ตัวอักษร 13px เทียบเนื้อ 14px) · ต้อง ≤ 3 บรรทัด ไม่งั้นใบล้นหน้า 2 */
+    .cn-notice.credit-src { font-size:9pt; margin-top:6px; padding:5px 10px; line-height:1.4; }
 
     /* ── Items table ── */
     table.items { width:100%; border-collapse:collapse; margin-top:14px; font-size:10.5pt; }
@@ -454,10 +459,17 @@ ${PAPER_SPACING_CSS}
       ${safe.productDisclosure ? `<div style="white-space:pre-wrap;overflow-wrap:anywhere">${safe.productDisclosure}</div>` : ''}
       ${safe.imeiSerial ? `<div class="party-line"><strong>IMEI</strong> ${safe.imeiSerial}</div>` : (safe.serialNumber ? `<div class="party-line"><strong>S/N</strong> ${safe.serialNumber}</div>` : '')}
       ${displayedInstallmentNo && receipt.contract?.totalMonths ? `<div class="party-line"><strong>${advanceOnly ? 'งวดที่รับล่วงหน้า' : 'งวดที่ชำระ'}</strong> ${displayedInstallmentNo} จาก ${receipt.contract.totalMonths} งวด</div>` : ''}
+      ${exchangeSrc ? `<div class="party-line"><strong>เปลี่ยนเครื่องจากสัญญา</strong> ${this.escapeHtml(exchangeSrc.parentContractNumber)}</div>` : ''}
     </div>
   </div>
 
-  ${isCreditNote && receipt.voidedRef ? `
+  ${isExchangeCn && receipt.voidedRef ? `
+    <div class="cn-notice">
+      เอกสารนี้ออกเพื่อยกเลิกใบเสร็จรับเงิน / ใบกำกับภาษีเลขที่ <strong>${this.escapeHtml(receipt.voidedRef.receiptNumber)}</strong>
+      ลงวันที่ ${formatDateShort(receipt.voidedRef.paidDate)} เนื่องจากเปลี่ยนเครื่องตำหนิภายใน 7 วัน — ยอดตามใบเสร็จเดิมถูกกลับรายการทั้งจำนวน
+      และโอนเป็นเครดิตของสัญญาใหม่ <strong>${this.escapeHtml(receipt.exchangeTarget?.contractNumber ?? '-')}</strong>
+      (ใช้ชำระค่างวดของสัญญาใหม่ · ภาษีมูลค่าเพิ่มจะออกใบกำกับภาษีใหม่เมื่อใช้เครดิต)
+    </div>` : isCreditNote && receipt.voidedRef ? `
     <div class="cn-notice">
       เอกสารนี้ออกเพื่อยกเลิกใบเสร็จรับเงินเลขที่ <strong>${this.escapeHtml(receipt.voidedRef.receiptNumber)}</strong>
       ลงวันที่ ${formatDateShort(receipt.voidedRef.paidDate)} — ยอดตามใบเสร็จเดิมถูกกลับรายการทั้งจำนวน
@@ -481,7 +493,9 @@ ${PAPER_SPACING_CSS}
       <tr>
         <td>
           <div class="item-name">${itemLabel}</div>
+          ${isExchangeCn && receipt.voidedRef ? `<div class="item-meta">ตามใบเสร็จ ${this.escapeHtml(receipt.voidedRef.receiptNumber)} · เหตุผล: เปลี่ยนเครื่องตำหนิภายใน 7 วัน (ม.82/10 (3))</div>` : ''}
           ${safe.productName && !isCreditNote ? `<div class="item-meta">${safe.productName}${safe.imeiSerial ? ` · IMEI ${safe.imeiSerial}` : ''}</div>` : ''}
+          ${exchangeSrc ? `<div class="item-meta">เครดิตจากการเปลี่ยนเครื่องตำหนิ</div>` : ''}
         </td>
         <td class="right">${fmt(installmentExclVat)}</td>
         <td class="right">${vatBearing && installmentVat.gt(0) ? fmt(installmentVat) : '<span class="vat-exempt">ยกเว้น</span>'}</td>
@@ -531,6 +545,11 @@ ${PAPER_SPACING_CSS}
       </div>
       ${isPartial && totalDue !== null && totalPaidOnInstallment !== null ? `
         <div class="partial-tag">ชำระบางส่วน — สะสมงวดนี้ ${fmt(totalPaidOnInstallment)} จากยอดงวด ${fmt(totalDue)} บาท</div>` : ''}
+      ${exchangeSrc ? `
+      <div class="cn-notice credit-src">
+        ชำระด้วยเครดิต ${fmt(total)} บาท ที่โอนมาจากสัญญาเดิม <strong>${this.escapeHtml(exchangeSrc.parentContractNumber)}</strong>
+        (ใบลดหนี้ ${exchangeSrc.creditNotes.map((n) => this.escapeHtml(n.number)).join(', ')}) — ไม่มีเงินสดรับเพิ่ม
+      </div>` : ''}
     </div>
     <div class="totals">
       ${vatBearing && vatPart.gt(0) ? `
@@ -554,14 +573,19 @@ ${PAPER_SPACING_CSS}
       <div class="kv">
         <span class="k">วันที่ชำระ</span><span class="v">${paidDateStr}</span>
         <span class="k">ช่องทาง</span><span class="v">${safe.paymentMethodLabel || '–'}</span>
+        ${exchangeSrc ? `<span class="k">ที่มาของเครดิต</span><span class="v">สัญญาเดิม ${this.escapeHtml(exchangeSrc.parentContractNumber)}</span>` : ''}
         ${safe.transactionRef ? `<span class="k">เลขอ้างอิง</span><span class="v">${safe.transactionRef}</span>` : ''}
         ${showBankAccount && safe.bankName ? `<span class="k">บัญชีรับเงิน</span><span class="v">${safe.bankName}${safe.bankAccountNumber ? ` ${safe.bankAccountNumber}` : ''}</span>` : ''}
       </div>
     </div>
     <div class="pay-col">
-      <div class="heading">สถานะสัญญาหลังชำระ</div>
+      <div class="heading">${isExchangeCn ? 'ผลของการลดหนี้' : 'สถานะสัญญาหลังชำระ'}</div>
       <div class="kv">
-        ${isCreditNote
+        ${isExchangeCn
+          ? `<span class="k">เงินของลูกค้า</span><span class="v">${fmt(total)} บาท — ไม่คืนเงินสด</span>
+        <span class="k">โอนเป็นเครดิต</span><span class="v">สัญญาใหม่ ${this.escapeHtml(receipt.exchangeTarget?.contractNumber ?? '-')}</span>
+        <span class="k">ใช้เครดิต</span><span class="v">ชำระค่างวดของสัญญาใหม่ (ใบกำกับภาษีใหม่)</span>`
+          : isCreditNote
           ? `<span class="k">สถานะ</span><span class="v">กลับรายการ — งวดนี้กลับเป็นยอดค้างชำระ</span>`
           : `
         ${!balanceKnown ? `<span class="k">ยอดคงเหลือ</span><span class="v">ไม่สามารถยืนยันยอด ณ วันออกใบเสร็จจากประวัติได้</span>` : ''}
@@ -586,7 +610,7 @@ ${PAPER_SPACING_CSS}
       <div class="sig-role">ผู้รับเงิน / ผู้ออกเอกสาร</div>
       <div class="sig-date">${paidDateStr}</div>
     </div>
-    <div class="doc-note">เอกสารนี้จัดทำโดยระบบคอมพิวเตอร์ของ ${safe.companyName} · เลขที่ ${safe.receiptNumber} · ตรวจสอบได้ที่ QR ด้านซ้าย</div>
+    <div class="doc-note">เอกสารนี้จัดทำโดยระบบคอมพิวเตอร์ของ ${safe.companyName} · เลขที่ ${safe.receiptNumber} · ตรวจสอบได้ที่ QR ด้านซ้าย${isExchangeCn ? ' · ใบลดหนี้ตามมาตรา 86/10' : ''}</div>
   </div>
   </div>
 ${paperSpacingScript()}

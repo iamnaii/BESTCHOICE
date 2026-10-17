@@ -42,7 +42,8 @@ describe('ContractsController.activate — บันทึก CONTRACT_ACTIVATED
 
     expect(res).toBe(ACTIVATED);
     expect(contractsService.findOne).toHaveBeenCalledWith('contract-1', USER);
-    expect(workflowService.activate).toHaveBeenCalledWith('contract-1');
+    // 15ข — controller ส่งผู้กดเปิดใช้ให้ activate ใช้เป็น actor ของการใช้เครดิตอัตโนมัติ
+    expect(workflowService.activate).toHaveBeenCalledWith('contract-1', 'fm-1');
     expect(journeyEntries.recordAfterCommit).toHaveBeenCalledTimes(1);
     const entry = journeyEntries.recordAfterCommit.mock.calls[0][0];
     expect(entry).toEqual({

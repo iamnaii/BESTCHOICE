@@ -292,6 +292,8 @@ jobs:
           INVENTORY_FILES=$(ls src/modules/inventory/__tests__/*.integration.spec.ts)
           # ล็อกเครื่องใบจอง (PR 2, 2026-10-05) — โฟลเดอร์ใหม่ ⇒ glob ใหม่ (glob ไม่ recurse เอง)
           BOOKINGS_FILES=$(ls src/modules/bookings/__tests__/*.integration.spec.ts)
+          # เปลี่ยนเครื่องตำหนิ 15ข (2026-10-17) — โฟลเดอร์ใหม่ ⇒ glob ใหม่ (glob ไม่ recurse เอง)
+          DEFECT_FILES=$(ls src/modules/defect-exchange/__tests__/*.integration.spec.ts)
           npx vitest run --no-file-parallelism $FILES \
             src/modules/installments/reschedule.service.spec.ts \
             $ACCT_FILES \
@@ -311,7 +313,8 @@ jobs:
             $AFTERSALES_FILES \
             $PO_FILES \
             $INVENTORY_FILES \
-            $BOOKINGS_FILES
+            $BOOKINGS_FILES \
+            $DEFECT_FILES
         env:
           DATABASE_URL: postgresql://test:test@localhost:5432/test_db?schema=public
           DATABASE_URL_FINANCE: postgresql://test:test@localhost:5433/test_finance_db?schema=public

@@ -220,7 +220,7 @@ export class ContractsController {
   ) {
     // Enforce branch-level access before activation
     await this.contractsService.findOne(id, user);
-    const activated = await this.workflowService.activate(id);
+    const activated = await this.workflowService.activate(id, user.id);
     // การเดินทางของลูกค้า: contracts ไม่มี activatedAt และ activate(id) ไม่รับผู้ใช้ ⇒ บันทึกที่นี่หลัง tx ของ activate commit แล้ว
     // recordAfterCommit ไม่โยน error — สัญญาเปิดสำเร็จแล้วต้องคืนผลเสมอ · ไม่คัดลอกข้อมูลลูกค้า (PDPA)
     await this.journeyEntries.recordAfterCommit({

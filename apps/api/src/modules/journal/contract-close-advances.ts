@@ -28,7 +28,13 @@ export interface ContractAdvanceColumns {
  * `excess-income` = รอบกวาดเงินพักส่วนเกิน → รายได้ 42-1106 (PR4 ต6 — อ่าน `.advance` ล้างทั้งยอด · `.credit` ใช้ตัดสิน
  * `emptiesBucket` ของขาภาษีเท่านั้น ไม่ล้าง 21-5101)
  */
-export type ContractCloseFlow = 'repossession' | 'write-off' | 'early-payoff' | 'excess-income';
+export type ContractCloseFlow =
+  | 'repossession'
+  | 'write-off'
+  | 'early-payoff'
+  | 'excess-income'
+  /** ขั้น ข ของเปลี่ยนเครื่องตำหนิ (15ข) — ล้างทั้ง `.advance` และ `.credit` เข้า 21-1106 */
+  | 'defect-exchange';
 
 export interface ContractCloseAdvances {
   /** ยอด Cr คงเหลือของ 21-1103 ของสัญญา (ทุกถังรวมกัน) — ไม่ติดลบ */

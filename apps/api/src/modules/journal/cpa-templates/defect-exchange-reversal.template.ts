@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { INPUT_VAT_INSTALLMENT_FLOW } from './contract-cancellation.template';
 import { Decimal } from '@prisma/client/runtime/library';
 import { Prisma } from '@prisma/client';
@@ -6,6 +6,18 @@ import { JournalAutoService } from '../journal-auto.service';
 import { PrismaService } from '../../../prisma/prisma.service';
 
 const PAYMENT_FLOWS = ['payment', 'split-payment', 'early-payoff', 'reschedule'];
+
+/** flow ของรายการย้ายเครดิตตอนเปลี่ยนเครื่องตำหนิ (15ข) — ผู้กวาดรายการตามสัญญาต้องข้าม */
+export const DEFECT_EXCHANGE_CREDIT_OUT_FLOW = 'defect-exchange-credit-out';
+export const DEFECT_EXCHANGE_CREDIT_IN_FLOW = 'defect-exchange-credit-in';
+const CREDIT_TRANSFER_FLOWS: readonly string[] = [DEFECT_EXCHANGE_CREDIT_OUT_FLOW, DEFECT_EXCHANGE_CREDIT_IN_FLOW];
+
+/** บัญชีเงินสด/ธนาคารของ FINANCE — รายการที่แตะบัญชีกลุ่มนี้ห้ามถูก mirror (เงินจริงไม่ได้ออก) */
+export const CASH_ACCOUNT_PREFIXES = ['11-11', '11-12'] as const;
+/** บัญชีเงินของลูกค้า + ภาษีที่พักคู่กัน — รายการเงินสดที่คู่อยู่ในกลุ่มนี้ล้วน = เงินลูกค้าที่ขั้น ข ของเปลี่ยนเครื่องจะย้ายออกเอง */
+export const CUSTOMER_MONEY_ACCOUNTS = ['21-1103', '21-5101', '21-2101', '21-2102'] as const;
+
+const isCashAccount = (code: string) => CASH_ACCOUNT_PREFIXES.some((p) => code.startsWith(p));
 
 /**
  * Template — Defect Exchange Reversal.
@@ -21,6 +33,51 @@ const PAYMENT_FLOWS = ['payment', 'split-payment', 'early-payoff', 'reschedule']
  * refund-reversal, defect-exchange, exchange-cancel, …). For each remaining
  * eligible JE, post a mirror JE with Dr/Cr swapped.
  */
+
+export type ReversalCandidateKind =
+  | 'ALREADY_REVERSED'
+  | 'INPUT_VAT'
+  | 'PAYMENT_FLOW'
+  | 'CREDIT_TRANSFER'
+  | 'REVERSAL'
+  | 'CUSTOMER_MONEY_CASH'
+  | 'UNMIRRORABLE_CASH'
+  | 'MIRROR';
+
+/**
+ * จำแนกรายการของสัญญาเดิมสำหรับขั้น ค ของการเปลี่ยนเครื่อง (15ข) — ใช้ร่วมกันระหว่าง `reverseContract` และตัวประมาณ
+ * เครดิตของกล่องยืนยัน (`estimateCreditToTransfer`) เพื่อให้ preview === posted (ผู้ตรวจอิสระ I2).
+ * - ALREADY_REVERSED / INPUT_VAT (ข้อ 6 ฝ่ายบัญชี 13/10/2569: การเคลมติดกับใบกำกับ) / PAYMENT_FLOW / CREDIT_TRANSFER (ขั้น ข/ง ของ
+ *   การเปลี่ยนเครื่อง — mirror = เครดิตหาย/ซ้ำ) / REVERSAL (รายการกลับทุก flow ผูก contractId ตั้งแต่ 2026-09-28) = ข้าม
+ * - รายการที่แตะเงินสด/ธนาคาร: คู่เป็นเงินของลูกค้าล้วน (จ่ายเกิน → 21-5101 · ส่วนเกินลิงก์ชำระ → 21-1103 + ภาษีพัก) = CUSTOMER_MONEY_CASH
+ *   (ข้าม — ขั้น ข ย้ายให้) · คู่อื่น (ใบรับชำระที่ไม่มีใบเสร็จจึงไม่ถูกยกเลิกในขั้น ก) = UNMIRRORABLE_CASH (ปฏิเสธ ไม่เดา)
+ *   ตรวจหลัง REVERSAL — กระจกใบรับชำระก็มีขาเงินสดแต่ถูกข้ามไปก่อน
+ * - ที่เหลือ = MIRROR
+ */
+export function classifyDefectExchangeReversal(je: {
+  metadata: unknown;
+  lines: readonly { accountCode: string }[];
+}): ReversalCandidateKind {
+  const meta = (je.metadata ?? {}) as Record<string, unknown>;
+  if (meta['reversed'] === true) return 'ALREADY_REVERSED';
+  const flow = (meta['flow'] as string | undefined) ?? '';
+  if (flow === INPUT_VAT_INSTALLMENT_FLOW) return 'INPUT_VAT';
+  if (PAYMENT_FLOWS.includes(flow)) return 'PAYMENT_FLOW';
+  if (CREDIT_TRANSFER_FLOWS.includes(flow)) return 'CREDIT_TRANSFER';
+  if (meta['tag'] === 'REVERSAL') return 'REVERSAL';
+  const cashLines = je.lines.filter((l) => isCashAccount(l.accountCode));
+  if (cashLines.length === 0) return 'MIRROR';
+  const others = je.lines.filter((l) => !isCashAccount(l.accountCode));
+  return others.every((l) => (CUSTOMER_MONEY_ACCOUNTS as readonly string[]).includes(l.accountCode))
+    ? 'CUSTOMER_MONEY_CASH'
+    : 'UNMIRRORABLE_CASH';
+}
+
+/** ข้อความปฏิเสธรายการเงินสดที่กลับไม่ได้ — ใช้ทั้งใน tx (ขั้น ค) และเป็นเหตุผลในกล่องยืนยัน (checkEligibility) */
+export const unmirrorableCashMessage = (entryNumbers: string, contractNumber: string): string =>
+  `รายการบัญชี ${entryNumbers} ของสัญญา ${contractNumber} มีขาเงินสด/ธนาคารที่ระบบกลับรายการให้ไม่ได้ ` +
+  '(เช่น ใบรับชำระที่ยังไม่มีใบเสร็จ) — ให้ฝ่ายบัญชีตรวจรายการนี้ก่อนเปลี่ยนเครื่อง';
+
 @Injectable()
 export class DefectExchangeReversalTemplate {
   private readonly logger = new Logger(DefectExchangeReversalTemplate.name);
@@ -66,43 +123,43 @@ export class DefectExchangeReversalTemplate {
 
     const entryNos: string[] = [];
 
+    // 15ข — จำแนกก่อน post ใบใดเลย: รายการที่ต้องปฏิเสธ (ขาเงินสดที่คู่ไม่ใช่เงินลูกค้า) ทำให้ทั้งรายการล้มตั้งแต่ต้น
+    // ไม่ทิ้งกระจกบางใบไว้ก่อน throw (tx rollback ครอบอยู่แล้ว แต่ fail-fast ชัดกว่า — แบบ tripwire ของ C-1)
+    const candidates: typeof originalJes = [];
     for (const je of originalJes) {
+      const flow = String(((je.metadata ?? {}) as Record<string, unknown>)['flow'] ?? '');
+      switch (classifyDefectExchangeReversal(je)) {
+        case 'ALREADY_REVERSED':
+          this.logger.log(`[A.5a] DefectExchangeReversal — JE ${je.entryNumber} already reversed, skipping`);
+          continue;
+        case 'INPUT_VAT':
+          this.logger.log(`[A.5a] DefectExchangeReversal — JE ${je.entryNumber} is the input-VAT claim (kept, not reversed)`);
+          continue;
+        case 'PAYMENT_FLOW':
+          this.logger.warn(
+            `[A.5a] DefectExchangeReversal — JE ${je.entryNumber} has payment flow '${flow}', skipping (unexpected in 7-day window)`,
+          );
+          continue;
+        case 'CREDIT_TRANSFER':
+          this.logger.log(`[A.5a] DefectExchangeReversal — JE ${je.entryNumber} is a credit transfer (${flow}), skipping`);
+          continue;
+        case 'REVERSAL':
+          this.logger.log(`[A.5a] DefectExchangeReversal — JE ${je.entryNumber} is itself a reversal JE (flow '${flow}'), skipping`);
+          continue;
+        case 'CUSTOMER_MONEY_CASH':
+          this.logger.log(
+            `[A.5a] DefectExchangeReversal — JE ${je.entryNumber} is customer money (cash ↔ 21-1103/21-5101), left for the credit transfer`,
+          );
+          continue;
+        case 'UNMIRRORABLE_CASH':
+          throw new BadRequestException(unmirrorableCashMessage(je.entryNumber, contract.contractNumber));
+        case 'MIRROR':
+          candidates.push(je);
+      }
+    }
+
+    for (const je of candidates) {
       const meta = (je.metadata ?? {}) as Record<string, unknown>;
-
-      // Skip already reversed
-      if (meta['reversed'] === true) {
-        this.logger.log(
-          `[A.5a] DefectExchangeReversal — JE ${je.entryNumber} already reversed, skipping`,
-        );
-        continue;
-      }
-
-      // Skip payment-side JEs (still a defensive guard — business rules say no
-      // payments exist within the 7-day window). Reversal JEs are handled by the
-      // dedicated tag check below, which is load-bearing, not defensive — see
-      // that check's own comment.
-      const flow = (meta['flow'] as string | undefined) ?? '';
-      // ข้อ 6 (ฝ่ายบัญชี 13/10/2569): ภาษีซื้อของเครื่องเดิมไม่กลับรายการตอนเปลี่ยนเครื่องตำหนิ —
-      // การเคลมติดกับใบกำกับ เครื่องเดิมที่กลับมาขายผ่อนอีกจะไม่เคลมซ้ำ (ALREADY_CLAIMED)
-      if (flow === INPUT_VAT_INSTALLMENT_FLOW) {
-        this.logger.log(`[A.5a] DefectExchangeReversal — JE ${je.entryNumber} is the input-VAT claim (kept, not reversed)`);
-        continue;
-      }
-      if (PAYMENT_FLOWS.includes(flow)) {
-        this.logger.warn(
-          `[A.5a] DefectExchangeReversal — JE ${je.entryNumber} has payment flow '${flow}', skipping (unexpected in 7-day window)`,
-        );
-        continue;
-      }
-      // ข้ามรายการกลับรายการทุก flow (receipt-void / refund-reversal / defect-exchange /
-      // exchange-cancel …) — ตั้งแต่ 2026-09-28 รายการเหล่านี้ผูก contractId จึงถูกกวาดเจอ;
-      // mirror ซ้ำ = ลงรายการเดิมกลับเข้ามาใหม่โดยไม่มีเงินจริง
-      if (meta['tag'] === 'REVERSAL') {
-        this.logger.log(
-          `[A.5a] DefectExchangeReversal — JE ${je.entryNumber} is itself a reversal JE (flow '${flow}'), skipping`,
-        );
-        continue;
-      }
 
       // Idempotency: check if reversal JE already exists for this original
       const existingReversal = await client.journalEntry.findFirst({

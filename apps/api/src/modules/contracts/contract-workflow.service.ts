@@ -1,6 +1,6 @@
 import { contractSignatureRequirements } from '../../utils/validation.util';
 import { cashDownPayment } from '../trade-in/services/trade-in-credit.service';
-import { Injectable, Logger, Optional, NotFoundException, BadRequestException, ConflictException, ForbiddenException, InternalServerErrorException } from '@nestjs/common';
+import { Injectable, Logger, Optional, NotFoundException, BadRequestException, ConflictException, ForbiddenException, InternalServerErrorException, forwardRef } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { formatDateShort } from '../../utils/thai-date.util';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -28,6 +28,9 @@ import { InstallmentInputVatTemplate } from '../journal/cpa-templates/installmen
 import { claimInputVatOnActivation } from '../journal/input-vat/installment-input-vat.claim';
 import { ProductsService } from '../products/products.service';
 import { closeRepossessionOnSale } from '../repossessions/repossession-resale.util';
+import { ModuleRef } from '@nestjs/core';
+import { PaymentsService } from '../payments/payments.service';
+import { applyExchangeCreditAfterActivation, type CreditApplier } from './services/exchange-credit-autoapply';
 import { ContractExchangeService } from '../contract-exchange/contract-exchange.service';
 import { TestModeService } from '../test-mode/test-mode.service';
 import { Decimal } from '@prisma/client/runtime/library';
@@ -56,6 +59,11 @@ export class ContractWorkflowService {
     // การเดินทางของลูกค้า (CONTRACT_REVIEWED) — @Optional: เทสเดิมประกอบ service ด้วย 9-10 อาร์กิวเมนต์
     // ContractsModule import CustomerJourneyModule อยู่แล้ว (ContractsController ฉีดแบบบังคับ ถ้าลืม import แอปจะบูตไม่ขึ้น)
     @Optional() private journeyEntries?: JourneyEntryWriter,
+    // 15ข — ใช้เครดิตที่ย้ายมาจากการเปลี่ยนเครื่องชำระงวดทันทีหลังเปิดใช้: PaymentsService อยู่ใน PaymentsModule ซึ่ง import
+    // ContractsModule (forwardRef) อยู่แล้ว — ให้ ContractsModule import กลับทำให้ LineOa → Contracts → Payments → LineOa/Mdm
+    // ปิดวงที่ระดับไฟล์ (บูตไม่ขึ้น: "module at index … is undefined") ⇒ ดึงผ่าน ModuleRef ตอนใช้ (strict:false) แทนการ import
+    // โมดูล · @Optional: spec เดิม `new` service ด้วย 9–11 อาร์กิวเมนต์ — ไม่มี = เครดิตค้าง + Sentry (NO_PAYMENTS_SERVICE)
+    @Optional() private moduleRef?: ModuleRef,
   ) {}
 
   /**
@@ -387,7 +395,7 @@ export class ContractWorkflowService {
     });
   }
 
-  async activate(id: string) {
+  async activate(id: string, actorId?: string) {
     const contract = await this.findOne(id);
 
     // Must be APPROVED workflow and DRAFT status
@@ -758,7 +766,29 @@ export class ContractWorkflowService {
       this.logger.warn(`Failed to send contract activation notification: ${err?.message || err}`),
     );
 
-    return this.findOne(id);
+    // 15ข (spec §6): เครดิตจากการเปลี่ยนเครื่องตำหนิ → ชำระงวดของสัญญานี้ทันที (หลัง tx commit — ล้มไม่ย้อนการเปิดใช้)
+    const creditApplied = await applyExchangeCreditAfterActivation(
+      { prisma: this.prisma, payments: this.resolveCreditApplier() },
+      {
+        id: contract.id,
+        contractNumber: contract.contractNumber,
+        parentContractId: contract.parentContractId,
+        creditBalance: contract.creditBalance,
+      },
+      actorId,
+    );
+    return { ...(await this.findOne(id)), creditApplied };
+  }
+
+  /** 15ข — PaymentsService จาก container (ไม่ import PaymentsModule — ดูคอมเมนต์ที่ ctor) · ไม่มี = null */
+  private resolveCreditApplier(): CreditApplier | null {
+    if (!this.moduleRef) return null;
+    try {
+      return this.moduleRef.get(PaymentsService, { strict: false });
+    } catch (err) {
+      this.logger.warn(`[defect-exchange] PaymentsService unavailable for credit auto-apply: ${err instanceof Error ? err.message : String(err)}`);
+      return null;
+    }
   }
 
   /**

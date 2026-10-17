@@ -193,8 +193,8 @@ Execute as two serial reviewed units: trade-in/source-credit producer (38 routes
 
 **Files:** Extend the same access infrastructure; modify `repair-tickets` and `after-sales`, including their actual financial, source and file dependencies. Baseline manifest: RepairTicketsController (15) and AfterSalesController (24), 39 domain entries.
 
-- [ ] Complete Task 4.1.4.1 and Task 4.1.4.2 serially, each with independent review.
-- [ ] Reconcile every baseline route against current registered methods and legitimate success plus denial evidence; preserve all parent workflow, sensitive-data and financial requirements.
+- [x] Complete Task 4.1.4.1 and Task 4.1.4.2 serially, each with independent review.
+- [x] Reconcile every baseline route against current registered methods and legitimate success plus denial evidence; preserve all parent workflow, sensitive-data and financial requirements.
 
 ### Task 4.1.4.1: Repair tickets and warranty source contract
 
@@ -211,8 +211,8 @@ Execute as two serial reviewed units: trade-in/source-credit producer (38 routes
 
 **Files:** Same access engine and after-sales consumer plus its actual canonical ContractExchangeService, ExchangeCancelService and DefectExchangeService producers.
 
-- [ ] Complete canonical exchange prerequisite 4.1.4.2.1, then all 24 after-sales routes/documents in 4.1.4.2.2, each independently reviewed. Producer work alone earns no completed route count.
-- [ ] Preserve every original 24-route after-sales requirement in the consumer and reconcile all 39 parent repair/after-sales routes only after both units pass. Direct exchange endpoint adapters remain in their allocated later units and must consume the same canonical producer, never another executor.
+- [x] Complete canonical exchange prerequisite 4.1.4.2.1, then all 24 after-sales routes/documents in 4.1.4.2.2, each independently reviewed. Producer work alone earns no completed route count.
+- [x] Preserve every original 24-route after-sales requirement in the consumer and reconcile all 39 parent repair/after-sales routes only after both units pass. Direct exchange endpoint adapters remain in their allocated later units and must consume the same canonical producer, never another executor.
 
 ### Task 4.1.4.2.1: Canonical exchange source and transaction producer
 
@@ -228,8 +228,8 @@ Execute as two serial reviewed units: trade-in/source-credit producer (38 routes
 
 **Files:** Same access engine plus after-sales facade and case/query/lookup/exchange/repair/document/LINE helpers, customer LIFF consumer and actual captured dependencies. Current surface: AfterSalesController (24).
 
-- [ ] Complete the four serial units below with independent review: customer-charge provenance producer (zero route completion), source/query/lookup (6), canonical mutations/staging (14), document/photo streams (4). Preserve all original24 requirements; no missing adapter counts as complete.
-- [ ] Reconcile all39 repair/after-sales routes and producer-consumer contracts after the final unit: current original tuples, actual canonical rollback/duplicate protection, source-safe JSON/search/count/errors/rendering, owned-file lifetime and postcommit effects. Direct exchange adapters/activation, whole-program audit, final approvals and UI remain explicitly allocated later.
+- [x] Complete the four serial units below with independent review: customer-charge provenance producer (zero route completion), source/query/lookup (6), canonical mutations/staging (14), document/photo streams (4). Preserve all original24 requirements; no missing adapter counts as complete.
+- [x] Reconcile all39 repair/after-sales routes and producer-consumer contracts after the final unit: current original tuples, actual canonical rollback/duplicate protection, source-safe JSON/search/count/errors/rendering, owned-file lifetime and postcommit effects. Direct exchange adapters/activation, whole-program audit, final approvals and UI remain explicitly allocated later.
 
 ### Task 4.1.4.2.2.1: Customer-facing repair-charge provenance
 
@@ -313,20 +313,61 @@ The fourteen mutations require three distinct canonical integration rewrites. Ex
 
 **Files:** Existing document loader/HTML/PDF renderer/controller streams and photo/storage consumers, source/projector helpers and focused actual PG/HTTP tests. Four methods: photo, purchasePhoto, receiptPdf, handoverPdf.
 
-- [ ] RED actual owned PostgreSQL/Nest HTTP legitimate success and persisted no-grants denial for all4 methods. Authorize each actual case/source and independent document read/export/sensitive permission before storage read/sign/render, including copied original purchase photos and freshly loaded Contract/Sale/Product/replacement/payment inputs. A prior safe getCase JSON is not authority for later renderer loads.
-- [ ] Preserve receipt/handover output/layout and customer-charge provenance; internal/unknown estimates remain unavailable even for OWNER initiator, legitimate verified customer charges remain. Protect both HTML/renderer inputs and final byte streams, not only JSON. No unauthorized IDs/free text/cost/floor/party/source navigation in output/errors.
-- [ ] Stage rendered bytes/effects appropriately and send only after successful actual commit; prove renderer/storage not called before authorization and late failure does not emit protected bytes. Record print requested/generated honestly, not paper printed. Preserve auth and external storage lifetime constraints, no real upload/render transport in tests where mocked.
-- [ ] Reconcile all24 consumer and39 repair/after-sales route registrations and positive/denial evidence, cross-unit source/tx/projection/current-change contracts, actual canonical once-only and owned-file/postcommit behavior. No absent adapter or internal producer counted as exposed-path completion.
-- [ ] Types/lint/coverage/focused regressions, final source/API/default dependency and Task5/6/7/8 report/guide, self-review/commit. Mark parent only after independent review; root owns fullguard/browser/local:check/preview.
+- [x] RED actual owned PostgreSQL/Nest HTTP legitimate success and persisted no-grants denial for all4 methods. Authorize each actual case/source and independent document/sensitive permission before storage read/sign/render: photos require after-sales.read + documents.read at the case; PDFs require after-sales.export + documents.read at the case, with genuinely needed child reads independently required and no additional general case-read/generic document-export gate merely for helper reuse, including copied original purchase photos and freshly loaded Contract/Sale/Product/replacement/payment inputs. A prior safe getCase JSON is not authority for later renderer loads.
+- [x] Preserve receipt/handover output/layout and customer-charge provenance; internal/unknown estimates remain unavailable even for OWNER initiator, legitimate verified customer charges remain. Protect both HTML/renderer inputs and final byte streams, not only JSON. No unauthorized IDs/free text/cost/floor/party/source navigation in output/errors.
+- [x] Stage rendered bytes/effects appropriately and send only after successful actual commit; prove renderer/storage not called before authorization and late failure does not emit protected bytes. Record print requested/generated honestly, not paper printed. Preserve auth and external storage lifetime constraints, no real upload/render transport in tests where mocked.
+- [x] Reconcile all24 consumer and39 repair/after-sales route registrations and positive/denial evidence, cross-unit source/tx/projection/current-change contracts, actual canonical once-only and owned-file/postcommit behavior. No absent adapter or internal producer counted as exposed-path completion.
+- [x] Types/lint/coverage/focused regressions, final source/API/default dependency and Task5/6/7/8 report/guide, self-review/commit. Mark parent only after independent review; root owns fullguard/browser/local:check/preview.
+
+**Review evidence note:** Complete at `10f99f0b1`, independent spec/quality review approved, no Critical/Important findings. Actual four-stream evidence is 43 full PostgreSQL/HTTP tests plus two added focused controls and two refreshed export-only assertions; 161 covering regressions. Exact registered24/39 matches reviewed prior execution reports. External storage/renderer mocks and fixture guards do not replace final actual JWT/browser/preview8; inherited validation noise is recorded for final review.
 
 ### Task 4.1.5: Shared customers, contacts and journey boundaries
 
-**Files:** Extend same infrastructure; modify `customers`, `contacts`, `customer-journey`; additive source-origin schema/migration where required. Current manifest: CustomersController, ContactsController and CustomerJourneyController (31 domain entries).
+**Files:** Shared source/query/projector engine and customers, contacts, customer-journey; additive explicit origin/assignment migration where required. Baseline CustomersController23 + ContactsController4 + CustomerJourneyController4 =31 domain methods.
 
-- [ ] RED and real isolated DB tests for shared identities visible through an allowed source without exposing other-company/branch histories; new unlinked leads remain accessible only to permitted origin/assignment; no guessed historical backfill.
-- [ ] Implement all record/query/search/analytics/bulk/file boundaries and nested source scopes before pagination/count/aggregation. Authenticated explicit origin and genuine case assignment support new records without broadening old unlinked records.
-- [ ] Preserve Customer.salary as customer income context, distinct from employee payroll. Redact sensitive product/document values using their own source scope; hiding columns after an unscoped count is insufficient.
-- [ ] Types/migrations/coverage/focused tests, report with source schema contracts for FINANCE/chat phases, self-review, commit.
+- [ ] Complete four serial independently reviewed units: identity/origin/basic10, derived history/export11, merge/contact/document6 and journey4. Preserve original all31 scope, sensitive and source-safe behaviors; no omitted adapter counts as completion.
+- [ ] Reconcile31 runtime registrations, legitimate positive/denial evidence and source/alias/current-authority/transaction contracts with prior consumers and downstream FINANCE/chat. No guessed historical origin or real employee migration; final full guards/browser/local:check belongs to8.
+
+### Task 4.1.5.1: Shared identity origins and basic customer/contact boundaries
+
+**Files:** Reusable party/current-source/query/projection contracts; customers query/write/facade/controller, Contacts service/resolver/controller, PII helpers and additive source schema/DTO/migration as needed. Ten methods: CustomersController.create, update, remove, findAll, findDetail, findOne, search; ContactsController.list, findOne, ensureRole.
+
+- [ ] RED owned PostgreSQL/Nest HTTP legitimate scoped success/no-grants for all10, original tuples, current authority/source waits and actual same-party relationships. New unlinked leads must be usable through authenticated explicit company/origin or genuine persisted assignment; never infer from actor primary branch/creator or guess historical backfill. Missing sources deny even OWNER; valid COMPANY and real ASSIGNED positives must work.
+- [ ] Extend/reuse partyAllows/currentCustomerReadWhere and actual historical source predicates. Publish reusable typed identity/current origin/assignment/alias/field contracts and integrate earlier trade-in, sale/booking and repair/after-sales consumers so freshly created parties are selectable only in authorized scope. Existing live historical Sale, service/warranty, TradeIn and genuine FINANCE source evidence stays distinct from current Product and must not grant unrelated history. Explicit no-tuples predicates stay false.
+- [ ] Scope findAll/search/detail/Contact relations before filters, counts, pagination and nested aggregation. Existing list filters include purchase, credit, overdue, assignment, chat-contact time/channel and tier; derive from authorized contributing sources only, preserving legitimate capabilities and nullable unavailable versus true zero. Nested actual Contract/Payment/Sale/Product/chat/referral/supplier/trade-in data needs its own source/action/sensitive authority. A safe customer identity does not grant all aliases or history. Publish precise FINANCE/chat source seams rather than declaring those downstream adapters done.
+- [ ] Preserve canonical normalization, encryption/hash, national-ID/phone/email uniqueness, phone-before-contact-code lock order, global P-N numbering, ghost revival and stub-upgrade semantics. Reusing an opaque natural-key identity is not authority to overwrite/revive a hidden Customer, add a new origin that reveals unrelated history, or return duplicate-party details/counts. Actual ensureRole child creation independently requires child capability/source and gives the new Customer/Supplier proven usable origin. All real writes/PII and required audit use the actual outer retryable transaction; no internal root commit or swallowed required evidence.
+- [ ] Preserve Customer.salary as customer income, not employee payroll. Add owner-editable sensitive.customer-identity.read (ดูเลขประจำตัวลูกค้าและผู้ปกครองเต็มเลข) for full customer/guardian national IDs, independently paired with base read at the same proven source. Without it retain safe masking; never primary role or raw ciphertext/hash. Future BRANCH_MANAGER, FINANCE_MANAGER and ACCOUNTANT templates include the key; OWNER retains persisted universal authority, other templates do not receive it by default, and saved positions remain unchanged. Apply actual scope to masked/full fields, search and duplicate responses as well as normal reads; document/file references require independent current documents/source authority. Preserve unmanaged and public/customer authentication behavior. Mutation acknowledgements must not imply broad read grants.
+- [ ] Types/migration/shared tests/lint/coverage and meaningful affected consumer regressions, exact producer contract and owner-editable sensitive defaults, self-review/report/commit. No existing position migration. Publish UI explicit origin/input/masking and Tasks5/6/4.2/4.3 contracts; root owns independent review and final8.
+
+### Task 4.1.5.2: Customer derived histories, analytics and export
+
+**Files:** Reviewed identity/source engine plus customer query/analytics/purchase/chat/credit-insight/tier helpers. Eleven methods: CustomersController.exportRows, getChatSummary, getContracts, getInsights, getReferrals, getReferralStats, getRiskFlag, getSummary, getTier, getUpsellCandidates, getWatchList.
+
+- [ ] RED real owned PostgreSQL/Nest HTTP positive/no-grants across11, independent current child sources, original tuples/alias isolation and sensitive output/search/export. Reuse reviewed identity/source contracts; customer existence permission never grants complete FINANCE/chat/history.
+- [ ] Scope actual Contract/Sale/Payment/call/credit/referral/chat/points contributors before counts, statistics, status/risk/tier, ranking, limits and exports. Preserve canonical financial/state formulas, dates/cursors and contributor identity. Authorized filtered outcomes and unverified/incomplete outcomes must be distinguished; no hidden-source existence/count leaked via labels, negatives, default zero or rankings.
+- [ ] Export uses exact domain export plus independently required source/document/sensitive grants and the existing consistent-snapshot/row-limit behavior. CSV/JSON/HTML inputs, free text, national IDs and links use the same source-safe field contract; no masked display over unscoped search/aggregate. Current Product cost/profit stays separate from historical sales and real contract balances.
+- [ ] Actual captured child queries and required evidence join the existing owned execution; no parallel engine. Publish named actual FINANCE/chat source predicates/adapters still pending, without permanently suppressing legitimate data. Cover earlier basic detail/list/search consumers if shared contributors change.
+- [ ] Focused covering tests/types/lint/coverage, source and Task5/6/7/8 handoff, self-review/report/commit. Eleven-route registration/evidence count only after independent review.
+
+### Task 4.1.5.3: Identity merge, contact enrichment and customer documents
+
+**Files:** Reviewed party/source and canonical CustomerMerge/CustomerWrite/SkipTracing/ContactResolver/Contacts helpers; document/storage consumers and actual transaction audit. Six methods: CustomersController.absorbInto, fillContact, updateContact, uploadDocument, deleteDocument; ContactsController.merge.
+
+- [ ] RED real owned PostgreSQL/Nest HTTP all6 legitimate/no-grants with both parties, original tuple/current source controls, true alias relationships and hidden-source/forged-key denials. Shared identity selection does not authorize merging all histories.
+- [ ] Independently authorize both parties and all genuinely affected source relationships before canonical merge/absorb/enrichment. Preserve unique/conflict rules, duplicate phone/ID checks, alias cycle/depth guards, actual old/new immutable historical origins and canonical rollback. Re-resolve pointers after changes; no privilege elevation by aliases, actor identity or a supplied destination branch. Basic create stub/ghost and ensureRole producer contracts stay consistent.
+- [ ] Join all real linked updates/journey/PII/required audit in the actual retryable outer transaction; late failure leaves no partial merge/identity mutation. Audit summaries never expose raw PII/hash/ciphertext. Real concurrent/idempotent merge/enrichment must keep canonical invariants and safe errors.
+- [ ] Document metadata/keys/links need actual current party and document action/source authority; validate persisted provenance, not path prefix or caller-supplied URL. Preauthorize before storage/signing; reuse owned preparation/cleanup/effect hooks where I/O occurs. Never delete preexisting shared/source files due to another operation's failure; truthful generated/requested effects, no real providers in tests.
+- [ ] Focused regressions for basic and derived consumers, types/lint/coverage; exact source/alias/document/atomicity and UI/audit downstream contracts, self-review/report/commit. Parent remains pending journey4.
+
+### Task 4.1.5.4: Customer journey and parent closure
+
+**Files:** Reviewed party/source engine plus customer-journey source adapters/state/summary/manual entry helpers. Four methods: CustomerJourneyController.createEntry, list, removeEntry, summary.
+
+- [ ] RED owned PostgreSQL/Nest HTTP all4, authorized multi-source success and absent/foreign-source denial, genuine alias-family scope, current authority and search/cursor/aggregate boundaries.
+- [ ] Resolve each actual Sale, Contract, Payment, collection, credit, service, points, chat and manual-entry source before pagination/count/stage/summary/activity probes. Visible customer/merged identity does not grant every history. Preserve existing order/timezone/cursors and public/customer/cron separation. Project dynamic free text, files, IDs and derived snippets from current authorized contributors.
+- [ ] Manual create/remove requires actual current source and action; preserve canonical creator/business checks and durable immutable evidence. Captured child queries/writes use the existing owned transaction, no best-effort success for required mutation evidence. Distinguish legitimate filtered summaries from genuinely unproven sources.
+- [ ] Reconcile all31 runtime adapters/positive-denial evidence and cross-unit current/source/alias/sensitive/atomicity contracts, including prior shop consumers. Publish remaining named FINANCE/chat/automation/audit/approval/UI/fullguard obligations precisely; no missing source or internal helper counted as complete.
+- [ ] Covering regressions/types/lint/coverage, final parent report/guide, self-review/commit. Root marks parent only after independent review and owns final8 checks.
 
 ### Task 4.1.6: SHOP scope closure
 

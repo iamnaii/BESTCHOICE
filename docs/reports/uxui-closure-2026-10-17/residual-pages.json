@@ -1,0 +1,53 @@
+{
+  "generatedAt": "2026-10-17T08:11:26.632Z",
+  "results": [
+    {
+      "engine": "chromium",
+      "width": 320,
+      "root": 20,
+      "theme": "dark",
+      "status": "PASS",
+      "scope": "Real isolated API reads; copy, customer edit cancelled, expense menu/detail, income draft fill without save"
+    },
+    {
+      "engine": "chromium",
+      "width": 390,
+      "root": 16,
+      "theme": "light",
+      "status": "PASS",
+      "scope": "Real isolated API reads; copy, customer edit cancelled, expense menu/detail, income draft fill without save"
+    },
+    {
+      "engine": "chromium",
+      "width": 1440,
+      "root": 16,
+      "theme": "light",
+      "status": "PASS",
+      "scope": "Real isolated API reads; copy, customer edit cancelled, expense menu/detail, income draft fill without save"
+    },
+    {
+      "engine": "webkit",
+      "width": 320,
+      "root": 20,
+      "theme": "dark",
+      "status": "PASS",
+      "scope": "Real isolated API reads; copy, customer edit cancelled, expense menu/detail, income draft fill without save"
+    },
+    {
+      "engine": "webkit",
+      "width": 390,
+      "root": 16,
+      "theme": "light",
+      "status": "PASS",
+      "scope": "Real isolated API reads; copy, customer edit cancelled, expense menu/detail, income draft fill without save"
+    },
+    {
+      "engine": "webkit",
+      "width": 1440,
+      "root": 16,
+      "theme": "light",
+      "status": "PASS",
+      "scope": "Real isolated API reads; copy, customer edit cancelled, expense menu/detail, income draft fill without save"
+    }
+  ]
+}

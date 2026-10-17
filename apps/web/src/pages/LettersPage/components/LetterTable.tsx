@@ -49,8 +49,10 @@ export default function LetterTable({
         <thead className="bg-muted text-muted-foreground">
           <tr>
             {hasCheckbox && (
-              <th className="w-10 p-3">
+              <th className="w-[4.25rem] p-3">
+                <label className="inline-flex size-6 max-lg:size-11 cursor-pointer items-center justify-center">
                 <Checkbox aria-label="เลือกทั้งหมดในหน้านี้" checked={allChecked} onCheckedChange={(c) => onToggleAll(!!c)} />
+                </label>
               </th>
             )}
             <th className="p-3 text-left">เลขจดหมาย</th>
@@ -74,11 +76,13 @@ export default function LetterTable({
               <tr key={r.id} className="border-t border-border hover:bg-accent/30">
                 {hasCheckbox && (
                   <td className="p-3">
+                    <label className="inline-flex size-6 max-lg:size-11 cursor-pointer items-center justify-center">
                     <Checkbox
                       aria-label={`เลือก ${r.letterNumber}`}
                       checked={selectedIds.has(r.id)}
                       onCheckedChange={() => onToggle(r.id)}
                     />
+                    </label>
                   </td>
                 )}
                 <td className="p-3 font-mono">{r.letterNumber}</td>
@@ -91,7 +95,7 @@ export default function LetterTable({
                 )}
                 <td className="p-3 text-right">
                   <div className="inline-flex gap-1">
-                    <Button size="sm" variant="ghost" aria-label={`ดู PDF ${r.letterNumber}`} onClick={() => onPreview(r)}>
+                    <Button size="sm" mode="icon" variant="ghost" aria-label={`ดู PDF ${r.letterNumber}`} onClick={() => onPreview(r)}>
                       <Eye className="size-4" />
                     </Button>
                     {status === 'PDF_GENERATED' && (
@@ -104,7 +108,7 @@ export default function LetterTable({
                         <Button size="sm" variant="outline" onClick={() => onMarkDelivered(r)}>
                           <Check className="size-4 mr-1" /> รับแล้ว
                         </Button>
-                        <Button size="sm" variant="ghost" onClick={() => onMarkUndeliverable(r)}>
+                        <Button size="sm" mode="icon" variant="ghost" aria-label={`ส่งไม่สำเร็จ ${r.letterNumber}`} onClick={() => onMarkUndeliverable(r)}>
                           <AlertTriangle className="size-4" />
                         </Button>
                       </>
@@ -115,7 +119,7 @@ export default function LetterTable({
                       </Button>
                     )}
                     {canCancel && (status === 'PENDING_DISPATCH' || status === 'PDF_GENERATED') && (
-                      <Button size="sm" variant="ghost" onClick={() => onCancel(r)}>
+                      <Button size="sm" mode="icon" variant="ghost" aria-label={`ยกเลิก ${r.letterNumber}`} onClick={() => onCancel(r)}>
                         <X className="size-4" />
                       </Button>
                     )}

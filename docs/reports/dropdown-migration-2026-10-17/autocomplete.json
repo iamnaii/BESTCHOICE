@@ -1,0 +1,285 @@
+{
+  "scope": "Actual AcceptModal and TemplateEditorPane with synthetic in-memory data; visible last option, selection, free text, keyboard, Escape, template patch; no API writes",
+  "results": [
+    {
+      "engine": "chromium",
+      "width": 320,
+      "root": 16,
+      "mode": "accept",
+      "status": "PASS",
+      "lastText": "ทหารไทยธนชาต",
+      "geometry": {
+        "height": 44,
+        "font": "16px",
+        "arrowInset": 13,
+        "arrowCenter": 0
+      }
+    },
+    {
+      "engine": "chromium",
+      "width": 320,
+      "root": 16,
+      "mode": "template",
+      "status": "PASS",
+      "lastText": "หมวดข้อความทดสอบ 30",
+      "geometry": {
+        "height": 44,
+        "font": "16px",
+        "arrowInset": 13,
+        "arrowCenter": 0
+      }
+    },
+    {
+      "engine": "chromium",
+      "width": 390,
+      "root": 16,
+      "mode": "accept",
+      "status": "PASS",
+      "lastText": "ทหารไทยธนชาต",
+      "geometry": {
+        "height": 44,
+        "font": "16px",
+        "arrowInset": 13,
+        "arrowCenter": 0
+      }
+    },
+    {
+      "engine": "chromium",
+      "width": 390,
+      "root": 16,
+      "mode": "template",
+      "status": "PASS",
+      "lastText": "หมวดข้อความทดสอบ 30",
+      "geometry": {
+        "height": 44,
+        "font": "16px",
+        "arrowInset": 13,
+        "arrowCenter": 0
+      }
+    },
+    {
+      "engine": "chromium",
+      "width": 768,
+      "root": 16,
+      "mode": "accept",
+      "status": "PASS",
+      "lastText": "ทหารไทยธนชาต",
+      "geometry": {
+        "height": 44,
+        "font": "16px",
+        "arrowInset": 13,
+        "arrowCenter": 0
+      }
+    },
+    {
+      "engine": "chromium",
+      "width": 768,
+      "root": 16,
+      "mode": "template",
+      "status": "PASS",
+      "lastText": "หมวดข้อความทดสอบ 30",
+      "geometry": {
+        "height": 44,
+        "font": "16px",
+        "arrowInset": 13,
+        "arrowCenter": 0
+      }
+    },
+    {
+      "engine": "chromium",
+      "width": 1440,
+      "root": 16,
+      "mode": "accept",
+      "status": "PASS",
+      "lastText": "ทหารไทยธนชาต",
+      "geometry": {
+        "height": 44,
+        "font": "14px",
+        "arrowInset": 13,
+        "arrowCenter": 0
+      }
+    },
+    {
+      "engine": "chromium",
+      "width": 1440,
+      "root": 16,
+      "mode": "template",
+      "status": "PASS",
+      "lastText": "หมวดข้อความทดสอบ 30",
+      "geometry": {
+        "height": 44,
+        "font": "14px",
+        "arrowInset": 13,
+        "arrowCenter": 0
+      }
+    },
+    {
+      "engine": "chromium",
+      "width": 320,
+      "root": 20,
+      "mode": "accept",
+      "status": "PASS",
+      "lastText": "ทหารไทยธนชาต",
+      "geometry": {
+        "height": 55,
+        "font": "20px",
+        "arrowInset": 16,
+        "arrowCenter": 0
+      }
+    },
+    {
+      "engine": "chromium",
+      "width": 320,
+      "root": 20,
+      "mode": "template",
+      "status": "PASS",
+      "lastText": "หมวดข้อความทดสอบ 30",
+      "geometry": {
+        "height": 55,
+        "font": "20px",
+        "arrowInset": 16,
+        "arrowCenter": 0
+      }
+    },
+    {
+      "engine": "webkit",
+      "width": 320,
+      "root": 16,
+      "mode": "accept",
+      "status": "PASS",
+      "lastText": "ทหารไทยธนชาต",
+      "geometry": {
+        "height": 44,
+        "font": "16px",
+        "arrowInset": 13,
+        "arrowCenter": 0
+      }
+    },
+    {
+      "engine": "webkit",
+      "width": 320,
+      "root": 16,
+      "mode": "template",
+      "status": "PASS",
+      "lastText": "หมวดข้อความทดสอบ 30",
+      "geometry": {
+        "height": 44,
+        "font": "16px",
+        "arrowInset": 13,
+        "arrowCenter": 0
+      }
+    },
+    {
+      "engine": "webkit",
+      "width": 390,
+      "root": 16,
+      "mode": "accept",
+      "status": "PASS",
+      "lastText": "ทหารไทยธนชาต",
+      "geometry": {
+        "height": 44,
+        "font": "16px",
+        "arrowInset": 13,
+        "arrowCenter": 0
+      }
+    },
+    {
+      "engine": "webkit",
+      "width": 390,
+      "root": 16,
+      "mode": "template",
+      "status": "PASS",
+      "lastText": "หมวดข้อความทดสอบ 30",
+      "geometry": {
+        "height": 44,
+        "font": "16px",
+        "arrowInset": 13,
+        "arrowCenter": 0
+      }
+    },
+    {
+      "engine": "webkit",
+      "width": 768,
+      "root": 16,
+      "mode": "accept",
+      "status": "PASS",
+      "lastText": "ทหารไทยธนชาต",
+      "geometry": {
+        "height": 44,
+        "font": "16px",
+        "arrowInset": 13,
+        "arrowCenter": 0
+      }
+    },
+    {
+      "engine": "webkit",
+      "width": 768,
+      "root": 16,
+      "mode": "template",
+      "status": "PASS",
+      "lastText": "หมวดข้อความทดสอบ 30",
+      "geometry": {
+        "height": 44,
+        "font": "16px",
+        "arrowInset": 13,
+        "arrowCenter": 0
+      }
+    },
+    {
+      "engine": "webkit",
+      "width": 1440,
+      "root": 16,
+      "mode": "accept",
+      "status": "PASS",
+      "lastText": "ทหารไทยธนชาต",
+      "geometry": {
+        "height": 44,
+        "font": "14px",
+        "arrowInset": 13,
+        "arrowCenter": 0
+      }
+    },
+    {
+      "engine": "webkit",
+      "width": 1440,
+      "root": 16,
+      "mode": "template",
+      "status": "PASS",
+      "lastText": "หมวดข้อความทดสอบ 30",
+      "geometry": {
+        "height": 44,
+        "font": "14px",
+        "arrowInset": 13,
+        "arrowCenter": 0
+      }
+    },
+    {
+      "engine": "webkit",
+      "width": 320,
+      "root": 20,
+      "mode": "accept",
+      "status": "PASS",
+      "lastText": "ทหารไทยธนชาต",
+      "geometry": {
+        "height": 55,
+        "font": "20px",
+        "arrowInset": 16,
+        "arrowCenter": 0
+      }
+    },
+    {
+      "engine": "webkit",
+      "width": 320,
+      "root": 20,
+      "mode": "template",
+      "status": "PASS",
+      "lastText": "หมวดข้อความทดสอบ 30",
+      "geometry": {
+        "height": 55,
+        "font": "20px",
+        "arrowInset": 16,
+        "arrowCenter": 0
+      }
+    }
+  ]
+}

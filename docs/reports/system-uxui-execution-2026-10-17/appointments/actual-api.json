@@ -1,0 +1,181 @@
+{
+  "status": "PASS",
+  "origin": "http://127.0.0.1:51763",
+  "scope": "real API with disposable DB; selection only, no booking changes",
+  "results": [
+    {
+      "engine": "chromium",
+      "width": 1440,
+      "rootSize": 16,
+      "theme": "light",
+      "geometry": [
+        {
+          "label": "สาขาที่ดู",
+          "height": 44,
+          "appearance": "none",
+          "inset": 12,
+          "center": 0,
+          "textGap": 12
+        },
+        {
+          "label": "สาขา",
+          "height": 44,
+          "appearance": "none",
+          "inset": 12,
+          "center": 0,
+          "textGap": 12
+        }
+      ],
+      "branchSwitchBothWays": true,
+      "keyboardFocusAndTab": true,
+      "staffSelection": true,
+      "calendarBranchRetained": true,
+      "errors": []
+    },
+    {
+      "engine": "chromium",
+      "width": 390,
+      "rootSize": 16,
+      "theme": "light",
+      "geometry": [
+        {
+          "label": "สาขาที่ดู",
+          "height": 44,
+          "appearance": "none",
+          "inset": 12,
+          "center": 0,
+          "textGap": 12
+        },
+        {
+          "label": "สาขา",
+          "height": 44,
+          "appearance": "none",
+          "inset": 12,
+          "center": 0,
+          "textGap": 12
+        }
+      ],
+      "branchSwitchBothWays": true,
+      "keyboardFocusAndTab": true,
+      "staffSelection": true,
+      "calendarBranchRetained": true,
+      "errors": []
+    },
+    {
+      "engine": "chromium",
+      "width": 320,
+      "rootSize": 20,
+      "theme": "dark",
+      "geometry": [
+        {
+          "label": "สาขาที่ดู",
+          "height": 55,
+          "appearance": "none",
+          "inset": 15,
+          "center": 0,
+          "textGap": 15
+        },
+        {
+          "label": "สาขา",
+          "height": 55,
+          "appearance": "none",
+          "inset": 15,
+          "center": 0,
+          "textGap": 15
+        }
+      ],
+      "branchSwitchBothWays": true,
+      "keyboardFocusAndTab": true,
+      "staffSelection": true,
+      "calendarBranchRetained": true,
+      "errors": []
+    },
+    {
+      "engine": "webkit",
+      "width": 1440,
+      "rootSize": 16,
+      "theme": "light",
+      "geometry": [
+        {
+          "label": "สาขาที่ดู",
+          "height": 44,
+          "appearance": "none",
+          "inset": 12,
+          "center": 0,
+          "textGap": 12
+        },
+        {
+          "label": "สาขา",
+          "height": 44,
+          "appearance": "none",
+          "inset": 12,
+          "center": 0,
+          "textGap": 12
+        }
+      ],
+      "branchSwitchBothWays": true,
+      "keyboardFocusAndTab": true,
+      "staffSelection": true,
+      "calendarBranchRetained": true,
+      "errors": []
+    },
+    {
+      "engine": "webkit",
+      "width": 390,
+      "rootSize": 16,
+      "theme": "light",
+      "geometry": [
+        {
+          "label": "สาขาที่ดู",
+          "height": 44,
+          "appearance": "none",
+          "inset": 12,
+          "center": 0,
+          "textGap": 12
+        },
+        {
+          "label": "สาขา",
+          "height": 44,
+          "appearance": "none",
+          "inset": 12,
+          "center": 0,
+          "textGap": 12
+        }
+      ],
+      "branchSwitchBothWays": true,
+      "keyboardFocusAndTab": true,
+      "staffSelection": true,
+      "calendarBranchRetained": true,
+      "errors": []
+    },
+    {
+      "engine": "webkit",
+      "width": 320,
+      "rootSize": 20,
+      "theme": "dark",
+      "geometry": [
+        {
+          "label": "สาขาที่ดู",
+          "height": 55,
+          "appearance": "none",
+          "inset": 15,
+          "center": 0,
+          "textGap": 15
+        },
+        {
+          "label": "สาขา",
+          "height": 55,
+          "appearance": "none",
+          "inset": 15,
+          "center": 0,
+          "textGap": 15
+        }
+      ],
+      "branchSwitchBothWays": true,
+      "keyboardFocusAndTab": true,
+      "staffSelection": true,
+      "calendarBranchRetained": true,
+      "errors": []
+    }
+  ]
+}

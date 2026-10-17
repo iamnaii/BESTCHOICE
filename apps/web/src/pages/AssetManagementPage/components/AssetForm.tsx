@@ -1,3 +1,4 @@
+import { NativeSelect } from '@/components/ui/native-select';
 import { useState } from 'react';
 import {
   Package,
@@ -135,7 +136,7 @@ export default function AssetForm({
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-xs font-medium text-foreground mb-1.5">หมวดหมู่</label>
-                <select
+                <NativeSelect wrapperClassName="max-w-full w-full"
                   className={inputClass}
                   value={form.category}
                   onChange={(e) => setField('category', e.target.value)}
@@ -145,11 +146,11 @@ export default function AssetForm({
                       {opt.label}
                     </option>
                   ))}
-                </select>
+                </NativeSelect>
               </div>
               <div>
                 <label className="block text-xs font-medium text-foreground mb-1.5">สาขา</label>
-                <select
+                <NativeSelect wrapperClassName="max-w-full w-full"
                   className={inputClass}
                   value={form.branchId}
                   onChange={(e) => setField('branchId', e.target.value)}
@@ -160,7 +161,7 @@ export default function AssetForm({
                       {b.name}
                     </option>
                   ))}
-                </select>
+                </NativeSelect>
               </div>
             </div>
           </div>
@@ -303,7 +304,7 @@ export default function AssetForm({
                   <label className="block text-xs font-medium text-foreground mb-1.5">
                     รหัสบัญชีสินทรัพย์
                   </label>
-                  <select
+                  <NativeSelect wrapperClassName="max-w-full w-full"
                     className={inputClass}
                     value={form.assetAccountCode}
                     onChange={(e) => setField('assetAccountCode', e.target.value)}
@@ -314,13 +315,13 @@ export default function AssetForm({
                         {accountDisplayName(a.name)}
                       </option>
                     ))}
-                  </select>
+                  </NativeSelect>
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-foreground mb-1.5">
                     รหัสบัญชีค่าเสื่อม
                   </label>
-                  <select
+                  <NativeSelect wrapperClassName="max-w-full w-full"
                     className={inputClass}
                     value={form.depreciationAccountCode}
                     onChange={(e) => setField('depreciationAccountCode', e.target.value)}
@@ -331,13 +332,13 @@ export default function AssetForm({
                         {accountDisplayName(a.name)}
                       </option>
                     ))}
-                  </select>
+                  </NativeSelect>
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-foreground mb-1.5">
                     รหัสบัญชีค่าเสื่อมสะสม
                   </label>
-                  <select
+                  <NativeSelect wrapperClassName="max-w-full w-full"
                     className={inputClass}
                     value={form.accumulatedDepreAccountCode}
                     onChange={(e) => setField('accumulatedDepreAccountCode', e.target.value)}
@@ -348,7 +349,7 @@ export default function AssetForm({
                         {accountDisplayName(a.name)}
                       </option>
                     ))}
-                  </select>
+                  </NativeSelect>
                 </div>
               </div>
             )}

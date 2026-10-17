@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useId, useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
@@ -60,6 +60,7 @@ const FIELDS: Array<{
 ];
 
 export default function CollectionsConfigCard() {
+  const fieldId = useId();
   const qc = useQueryClient();
   const { data, isLoading } = useQuery<CollectionsConfig>({
     queryKey: ['settings', 'collections'],
@@ -104,8 +105,8 @@ export default function CollectionsConfigCard() {
       <CardContent className="space-y-4">
         {FIELDS.map((f) => (
           <div key={f.key} className="space-y-1.5">
-            <Label className="leading-snug">{f.label}</Label>
-            <Input
+            <Label htmlFor={`${fieldId}-${f.key}`} className="leading-snug">{f.label}</Label>
+            <Input id={`${fieldId}-${f.key}`}
               type="number"
               min={f.min}
               max={f.max}

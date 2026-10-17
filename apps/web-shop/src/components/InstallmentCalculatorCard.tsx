@@ -1,3 +1,4 @@
+import { NativeSelect } from '@/components/ui/native-select';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useQueries, type UseQueryResult } from '@tanstack/react-query';
 import { api } from '@/lib/api';
@@ -347,7 +348,7 @@ function InstallmentCalculator({
             <label htmlFor="months-select" className="text-sm font-medium">
               จำนวนงวด:
             </label>
-            <select
+            <NativeSelect wrapperClassName="max-w-full w-auto"
               id="months-select"
               value={months}
               onChange={(event) => setMonths(Number(event.target.value))}
@@ -358,7 +359,7 @@ function InstallmentCalculator({
                   {value} งวด
                 </option>
               ))}
-            </select>
+            </NativeSelect>
           </div>
           <DownPaymentInput
             installmentPrice={installmentPrice}

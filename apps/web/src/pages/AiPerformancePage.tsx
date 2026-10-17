@@ -1,5 +1,5 @@
 import { toBangkokDateString } from '@/lib/date';
-import { useState } from 'react';
+import { useId as useUiFieldId, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
@@ -43,6 +43,7 @@ function toDateInput(d: Date): string {
 }
 
 export default function AiPerformancePage() {
+  const uiFieldId = useUiFieldId();
   const today = new Date();
   const thirtyDaysAgo = new Date(Date.now() - 30 * 86400000);
 
@@ -67,8 +68,8 @@ export default function AiPerformancePage() {
       {/* Date filter */}
       <div className="flex items-center gap-3 mb-6 flex-wrap">
         <div className="flex items-center gap-2">
-          <label className="text-sm text-muted-foreground">จาก</label>
-          <Input
+          <label htmlFor={`${uiFieldId}-1`} className="text-sm text-muted-foreground">จาก</label>
+          <Input id={`${uiFieldId}-1`}
             type="date"
             value={from}
             onChange={(e) => setFrom(e.target.value)}
@@ -76,8 +77,8 @@ export default function AiPerformancePage() {
           />
         </div>
         <div className="flex items-center gap-2">
-          <label className="text-sm text-muted-foreground">ถึง</label>
-          <Input
+          <label htmlFor={`${uiFieldId}-2`} className="text-sm text-muted-foreground">ถึง</label>
+          <Input id={`${uiFieldId}-2`}
             type="date"
             value={to}
             onChange={(e) => setTo(e.target.value)}

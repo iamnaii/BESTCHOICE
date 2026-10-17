@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useId as useUiFieldId, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import api from '@/lib/api';
@@ -97,7 +97,7 @@ export function MaxPricesTab() {
         )}
       </div>
       <div className="flex gap-2">
-        <Input
+        <Input aria-label="ค้นหา series หรือ pattern"
           placeholder="ค้นหา series หรือ pattern..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
@@ -133,18 +133,21 @@ export function MaxPricesTab() {
               <TableCell className="font-mono text-xs">{row.modelMatchPattern}</TableCell>
               <TableCell>
                 <Switch
+                  aria-label={`เปิดใช้งาน ${`${row.gfinSeries} ${row.storage}`}`}
                   checked={row.isActive}
                   onCheckedChange={(v) => toggleActive.mutate({ id: row.id, isActive: v })}
                 />
               </TableCell>
               <TableCell>
                 <div className="flex gap-1">
-                  <Button variant="ghost" size="sm" onClick={() => setEditing(row)}>
+                  <Button variant="ghost" size="sm" mode="icon" aria-label={`แก้ไข ${`${row.gfinSeries} ${row.storage}`}`} onClick={() => setEditing(row)}>
                     <Pencil className="h-4 w-4" />
                   </Button>
                   <Button
                     variant="ghost"
                     size="sm"
+                    mode="icon"
+                    aria-label={`ลบ ${`${row.gfinSeries} ${row.storage}`}`}
                     onClick={() => {
                       if (
                         confirm(
@@ -196,6 +199,7 @@ interface DialogProps {
 }
 
 function MaxPriceFormDialog({ initial, onClose, onSaved }: DialogProps) {
+  const uiFieldId = useUiFieldId();
   const [form, setForm] = useState({
     gfinSeries: initial?.gfinSeries ?? '',
     gfinVariant: initial?.gfinVariant ?? '',
@@ -233,38 +237,38 @@ function MaxPriceFormDialog({ initial, onClose, onSaved }: DialogProps) {
         </DialogHeader>
         <div className="space-y-3">
           <div>
-            <label className="text-sm font-medium">Series</label>
-            <Input
+            <label htmlFor={`${uiFieldId}-1`} className="text-sm font-medium">Series</label>
+            <Input id={`${uiFieldId}-1`}
               value={form.gfinSeries}
               onChange={(e) => setForm((f) => ({ ...f, gfinSeries: e.target.value }))}
               placeholder="เช่น iPhone 14"
             />
           </div>
           <div>
-            <label className="text-sm font-medium">Variant (ปล่อยว่างถ้าไม่มี)</label>
-            <Input
+            <label htmlFor={`${uiFieldId}-2`} className="text-sm font-medium">Variant (ปล่อยว่างถ้าไม่มี)</label>
+            <Input id={`${uiFieldId}-2`}
               value={form.gfinVariant}
               onChange={(e) => setForm((f) => ({ ...f, gfinVariant: e.target.value }))}
               placeholder="เช่น Pro, Pro Max, Plus"
             />
           </div>
           <div>
-            <label className="text-sm font-medium">Storage</label>
-            <Input
+            <label htmlFor={`${uiFieldId}-3`} className="text-sm font-medium">Storage</label>
+            <Input id={`${uiFieldId}-3`}
               value={form.storage}
               onChange={(e) => setForm((f) => ({ ...f, storage: e.target.value }))}
               placeholder="เช่น 128GB"
             />
           </div>
           <div>
-            <label className="text-sm font-medium">สภาพ</label>
+            <label htmlFor={`${uiFieldId}-4`} className="text-sm font-medium">สภาพ</label>
             <Select
               value={form.condition}
               onValueChange={(v) =>
                 setForm((f) => ({ ...f, condition: v as 'HAND_1' | 'HAND_2' }))
               }
             >
-              <SelectTrigger>
+              <SelectTrigger id={`${uiFieldId}-4`}>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -274,8 +278,8 @@ function MaxPriceFormDialog({ initial, onClose, onSaved }: DialogProps) {
             </Select>
           </div>
           <div>
-            <label className="text-sm font-medium">ราคาสูงสุด (฿)</label>
-            <Input
+            <label htmlFor={`${uiFieldId}-5`} className="text-sm font-medium">ราคาสูงสุด (฿)</label>
+            <Input id={`${uiFieldId}-5`}
               type="number"
               step="0.01"
               value={form.maxPrice}
@@ -283,8 +287,8 @@ function MaxPriceFormDialog({ initial, onClose, onSaved }: DialogProps) {
             />
           </div>
           <div>
-            <label className="text-sm font-medium">Model Match Pattern</label>
-            <Input
+            <label htmlFor={`${uiFieldId}-6`} className="text-sm font-medium">Model Match Pattern</label>
+            <Input id={`${uiFieldId}-6`}
               value={form.modelMatchPattern}
               onChange={(e) =>
                 setForm((f) => ({ ...f, modelMatchPattern: e.target.value }))

@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react';
+import { NativeSelect } from '@/components/ui/native-select';
+import { useId as useUiFieldId, useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
@@ -326,6 +327,7 @@ function DetailPanel({ period, month, year, companyId, onActionSuccess }: Detail
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function MonthlyClosePage() {
+  const uiFieldId = useUiFieldId();
   const currentYear = new Date().getFullYear();
   const [year, setYear] = useState(currentYear);
   const [selectedMonth, setSelectedMonth] = useState<number | null>(new Date().getMonth() + 1);
@@ -372,20 +374,20 @@ export default function MonthlyClosePage() {
         {/* Company selector */}
         {companies.length > 0 && (
           <div>
-            <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
+            <label htmlFor={`${uiFieldId}-1`} className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
               นิติบุคคล
             </label>
-            <select
+            <NativeSelect wrapperClassName="max-w-full w-auto sm:min-w-[180px]" id={`${uiFieldId}-1`}
               value={companyId}
               onChange={(e) => setCompanyId(e.target.value)}
-              className="px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden min-w-[180px]"
+              className="px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
             >
               {companies.map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.nameTh} ({c.companyCode})
                 </option>
               ))}
-            </select>
+            </NativeSelect>
           </div>
         )}
 

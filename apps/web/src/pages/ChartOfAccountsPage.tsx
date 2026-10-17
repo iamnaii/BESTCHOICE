@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useId as useUiFieldId, useState, useMemo } from 'react';
 import { useSearchParams } from 'react-router';
 import { useAuth } from '@/contexts/AuthContext';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
@@ -10,6 +10,9 @@ import PageHeader from '@/components/ui/PageHeader';
 import QueryBoundary from '@/components/QueryBoundary';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { Badge } from '@/components/ui/badge';
+import Modal from '@/components/ui/Modal';
+import { NativeSelect } from '@/components/ui/native-select';
+import { formControlClass, formLabelClass, formTextareaClass } from '@/components/ui/form-styles';
 import { cn } from '@/lib/utils';
 import {
   CoaScope,
@@ -83,6 +86,7 @@ const emptyForm: FormState = {
 };
 
 export default function ChartOfAccountsPage() {
+  const uiFieldId = useUiFieldId();
   const queryClient = useQueryClient();
   const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -255,8 +259,7 @@ export default function ChartOfAccountsPage() {
     else createMutation.mutate();
   }
 
-  const inputClass =
-    'w-full px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 outline-hidden bg-background text-foreground';
+  const inputClass = formControlClass;
 
   return (
     <div>
@@ -272,7 +275,7 @@ export default function ChartOfAccountsPage() {
         action={view === 'chart' ? (
           <button
             onClick={openCreate}
-            className="px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 shadow-sm"
+            className="min-h-11 px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 shadow-sm"
           >
             + เพิ่มบัญชี ({scope})
           </button>
@@ -309,7 +312,7 @@ export default function ChartOfAccountsPage() {
             }}
             aria-pressed={scope === t.key}
             className={cn(
-              'px-4 py-2 text-sm transition-colors leading-snug',
+              'min-h-11 px-4 py-2 text-sm transition-colors leading-snug',
               scope === t.key
                 ? 'bg-primary text-primary-foreground'
                 : 'bg-background text-muted-foreground hover:bg-accent',
@@ -362,7 +365,8 @@ export default function ChartOfAccountsPage() {
                   <span className="font-semibold text-sm leading-snug">{coaSectionLabel(prefix)}</span>
                   <span className="text-muted-foreground font-normal text-xs">({list.length})</span>
                 </div>
-                <table className="w-full text-sm">
+                <div role="region" aria-label={`บัญชี ${prefix}`} tabIndex={0} className="overflow-x-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring">
+                <table className="w-full min-w-[52rem] text-sm">
                   <thead className="bg-muted/50 text-xs text-muted-foreground">
                     <tr>
                       <th className="text-left px-4 py-2 font-medium w-28">รหัส</th>
@@ -408,10 +412,10 @@ export default function ChartOfAccountsPage() {
                               <Badge variant="secondary" size="sm">{a.status}</Badge>
                             )}
                           </td>
-                          <td className="px-4 py-2 text-right space-x-2">
+                          <td className="px-4 py-2 text-right whitespace-nowrap space-x-2">
                             <button
                               onClick={() => openEdit(a)}
-                              className="text-xs px-2 py-1 text-primary hover:underline"
+                              className="min-h-11 min-w-11 rounded-md text-sm px-2 py-1 text-primary hover:bg-accent"
                             >
                               แก้ไข
                             </button>
@@ -419,7 +423,7 @@ export default function ChartOfAccountsPage() {
                               onClick={() =>
                                 setDeleteConfirm({ open: true, id: a.id, label: `${a.code} ${a.name}` })
                               }
-                              className="text-xs px-2 py-1 text-destructive hover:underline"
+                              className="min-h-11 min-w-11 rounded-md text-sm px-2 py-1 text-destructive hover:bg-destructive/10"
                             >
                               ลบ
                             </button>
@@ -429,6 +433,7 @@ export default function ChartOfAccountsPage() {
                     })}
                   </tbody>
                 </table>
+                </div>
               </div>
             ))}
           </div>
@@ -445,25 +450,15 @@ export default function ChartOfAccountsPage() {
 
       {/* Add / Edit form overlay */}
       {showForm && (
-        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-start justify-center pt-8 pb-8">
-          <div className="w-full max-w-xl bg-background rounded-xl shadow-2xl overflow-y-auto max-h-[calc(100vh-4rem)]">
-            <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-xs border-b border-border px-6 py-4 flex items-center justify-between">
-              <button onClick={closeForm} className="text-sm text-muted-foreground hover:text-foreground">
-                ← กลับ
-              </button>
-              <h2 className="text-lg font-semibold leading-snug">
-                {editing ? 'แก้ไขบัญชี' : 'เพิ่มบัญชีใหม่'}
-              </h2>
-              <div className="w-12" />
-            </div>
-            <div className="p-6 space-y-4">
+        <Modal isOpen onClose={closeForm} title={editing ? 'แก้ไขบัญชี' : 'เพิ่มบัญชีใหม่'} size="lg">
+            <div className="space-y-5">
               {/* Code + Type */}
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
                 <div>
-                  <label className="block text-xs font-medium mb-1.5 leading-snug">
+                  <label htmlFor={`${uiFieldId}-1`} className={formLabelClass}>
                     รหัสบัญชี <span className="text-destructive">*</span>
                   </label>
-                  <input
+                  <input id={`${uiFieldId}-1`}
                     type="text"
                     value={form.code}
                     onChange={(e) => setForm({ ...form, code: e.target.value })}
@@ -480,10 +475,10 @@ export default function ChartOfAccountsPage() {
                   )}
                 </div>
                 <div>
-                  <label className="block text-xs font-medium mb-1.5 leading-snug">
+                  <label htmlFor={`${uiFieldId}-type`} className={formLabelClass}>
                     ประเภทบัญชี <span className="text-destructive">*</span>
                   </label>
-                  <select
+                  <NativeSelect id={`${uiFieldId}-type`}
                     value={form.type}
                     onChange={(e) => setForm({ ...form, type: e.target.value })}
                     className={inputClass}
@@ -492,16 +487,16 @@ export default function ChartOfAccountsPage() {
                     {TYPE_OPTIONS.map((t) => (
                       <option key={t} value={t}>{t}</option>
                     ))}
-                  </select>
+                  </NativeSelect>
                 </div>
               </div>
 
               {/* Name */}
               <div>
-                <label className="block text-xs font-medium mb-1.5 leading-snug">
+                <label htmlFor={`${uiFieldId}-2`} className={formLabelClass}>
                   ชื่อบัญชี (ภาษาไทย) <span className="text-destructive">*</span>
                 </label>
-                <input
+                <input id={`${uiFieldId}-2`}
                   type="text"
                   value={form.name}
                   onChange={(e) => setForm({ ...form, name: e.target.value })}
@@ -511,10 +506,10 @@ export default function ChartOfAccountsPage() {
               </div>
 
               {/* Normal Balance + Category */}
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
                 <div>
-                  <label className="block text-xs font-medium mb-1.5 leading-snug">ยอดปกติ</label>
-                  <select
+                  <label htmlFor={`${uiFieldId}-balance`} className={formLabelClass}>ยอดปกติ</label>
+                  <NativeSelect id={`${uiFieldId}-balance`}
                     value={form.normalBalance}
                     onChange={(e) => setForm({ ...form, normalBalance: e.target.value })}
                     className={inputClass}
@@ -523,11 +518,11 @@ export default function ChartOfAccountsPage() {
                     <option value="Dr">Dr (เดบิต)</option>
                     <option value="Cr">Cr (เครดิต)</option>
                     <option value="Dr/Cr">Dr/Cr (ทั้งสองด้าน)</option>
-                  </select>
+                  </NativeSelect>
                 </div>
                 <div>
-                  <label className="block text-xs font-medium mb-1.5 leading-snug">หมวดหมู่ (ถ้ามี)</label>
-                  <input
+                  <label htmlFor={`${uiFieldId}-3`} className={formLabelClass}>หมวดหมู่ (ถ้ามี)</label>
+                  <input id={`${uiFieldId}-3`}
                     type="text"
                     value={form.category}
                     onChange={(e) => setForm({ ...form, category: e.target.value })}
@@ -538,23 +533,23 @@ export default function ChartOfAccountsPage() {
               </div>
 
               {/* VAT applicable */}
-              <label className="flex items-center gap-2 text-sm leading-snug cursor-pointer">
+              <label className="flex min-h-11 items-center gap-2 text-sm leading-snug cursor-pointer">
                 <input
                   type="checkbox"
                   checked={form.vatApplicable}
                   onChange={(e) => setForm({ ...form, vatApplicable: e.target.checked })}
                   className="rounded"
                 />
-                มี VAT (vatApplicable)
+                มี VAT
               </label>
 
               {/* Notes */}
               <div>
-                <label className="block text-xs font-medium mb-1.5 leading-snug">หมายเหตุ</label>
-                <textarea
+                <label htmlFor={`${uiFieldId}-4`} className={formLabelClass}>หมายเหตุ</label>
+                <textarea id={`${uiFieldId}-4`}
                   value={form.notes}
                   onChange={(e) => setForm({ ...form, notes: e.target.value })}
-                  className={`${inputClass} resize-none`}
+                  className={`${formTextareaClass} resize-y`}
                   rows={3}
                   placeholder="หมายเหตุเพิ่มเติม (ถ้ามี)"
                 />
@@ -562,8 +557,8 @@ export default function ChartOfAccountsPage() {
 
               {/* Status */}
               <div>
-                <label className="block text-xs font-medium mb-1.5 leading-snug">สถานะ</label>
-                <select
+                <label htmlFor={`${uiFieldId}-status`} className={formLabelClass}>สถานะ</label>
+                <NativeSelect id={`${uiFieldId}-status`}
                   value={form.status}
                   onChange={(e) => setForm({ ...form, status: e.target.value })}
                   className={inputClass}
@@ -571,21 +566,21 @@ export default function ChartOfAccountsPage() {
                 >
                   <option value="ใช้งาน">ใช้งาน</option>
                   <option value="ไม่ใช้งาน">ไม่ใช้งาน</option>
-                </select>
+                </NativeSelect>
               </div>
             </div>
 
-            <div className="sticky bottom-0 bg-background/95 backdrop-blur-xs border-t border-border px-6 py-4 flex justify-end gap-3">
+            <div className="sticky bottom-0 mt-5 bg-background border-t border-border py-4 flex flex-wrap justify-end gap-3">
               <button
                 onClick={closeForm}
-                className="px-6 py-2.5 text-sm border border-input rounded-lg hover:bg-muted"
+                className="min-h-11 px-4 py-2.5 text-sm border border-input rounded-lg hover:bg-muted"
               >
                 ยกเลิก
               </button>
               <button
                 onClick={handleSubmit}
                 disabled={createMutation.isPending || updateMutation.isPending}
-                className="px-6 py-2.5 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50 font-semibold"
+                className="min-h-11 px-4 py-2.5 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50 font-semibold"
               >
                 {createMutation.isPending || updateMutation.isPending
                   ? 'กำลังบันทึก...'
@@ -594,8 +589,7 @@ export default function ChartOfAccountsPage() {
                   : 'เพิ่มบัญชี'}
               </button>
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
 
       <ConfirmDialog
@@ -622,7 +616,8 @@ function FilterChip({
     <button
       type="button"
       onClick={onClick}
-      className={`px-3 py-1.5 text-sm rounded-lg border transition-colors leading-snug ${
+      aria-pressed={active}
+      className={`min-h-11 px-3 py-1.5 text-sm rounded-lg border transition-colors leading-snug ${
         active
           ? 'bg-primary text-primary-foreground border-primary'
           : 'bg-background border-input hover:bg-muted text-foreground'

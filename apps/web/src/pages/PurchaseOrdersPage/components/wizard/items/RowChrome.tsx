@@ -1,3 +1,4 @@
+import { NativeSelect } from '@/components/ui/native-select';
 import { Copy, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { formatNumberDecimal } from '@/utils/formatters';
@@ -49,7 +50,7 @@ export function CompactSelect({
   className?: string;
 }) {
   return (
-    <select
+    <NativeSelect wrapperClassName="max-w-full w-full"
       aria-label={label}
       value={value}
       onChange={(e) => onChange(e.target.value)}
@@ -62,7 +63,7 @@ export function CompactSelect({
           {o}
         </option>
       ))}
-    </select>
+    </NativeSelect>
   );
 }
 

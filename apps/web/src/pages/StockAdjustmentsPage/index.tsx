@@ -1,3 +1,4 @@
+import { NativeSelect } from '@/components/ui/native-select';
 import { getReportDateRange } from '@/lib/date';
 import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router';
@@ -125,23 +126,23 @@ export default function StockAdjustmentsPage() {
         ))}
       </div>
 
-      <div className="flex flex-wrap gap-3 mb-4">
-        <input
+      <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr)_auto]">
+        <input aria-label="ค้นหาเลขคำขอ, ยี่ห้อ, รุ่น, IMEI"
           type="text"
           placeholder="ค้นหาเลขคำขอ, ยี่ห้อ, รุ่น, IMEI..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className={`${INPUT_CLS} flex-1 min-w-[220px]`}
+          className={`${INPUT_CLS} w-full min-w-0`}
         />
         {tab !== 'damaged' && (
-          <select value={reason} onChange={(e) => setReason(e.target.value as AdjustmentReason | '')} className={INPUT_CLS}>
+          <NativeSelect wrapperClassName="max-w-full w-auto" aria-label="เหตุผลปรับสต๊อก" value={reason} onChange={(e) => setReason(e.target.value as AdjustmentReason | '')} className={INPUT_CLS}>
             <option value="">ทุกเหตุผล</option>
             {REASON_OPTIONS.map((o) => (
               <option key={o.value} value={o.value}>
                 {o.label}
               </option>
             ))}
-          </select>
+          </NativeSelect>
         )}
       </div>
 

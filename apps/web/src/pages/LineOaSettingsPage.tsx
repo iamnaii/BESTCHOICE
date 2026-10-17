@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useId as useUiFieldId, useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import api, { getErrorMessage } from '@/lib/api';
@@ -50,6 +50,7 @@ const TEST_MESSAGE_TYPES = [
 ];
 
 export default function LineOaSettingsPage() {
+  const uiFieldId = useUiFieldId();
   const queryClient = useQueryClient();
   const { copy } = useCopyToClipboard();
   const [form, setForm] = useState<Record<string, string>>({});
@@ -288,11 +289,11 @@ export default function LineOaSettingsPage() {
 
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-foreground mb-1">
+                <label htmlFor={`${uiFieldId}-1`} className="block text-sm font-medium text-foreground mb-1">
                   Channel Access Token <span className="text-destructive">*</span>
                 </label>
                 <div className="relative">
-                  <input
+                  <input id={`${uiFieldId}-1`}
                     type={showSecrets['token'] ? 'text' : 'password'}
                     value={form.line_channel_access_token || ''}
                     onChange={(e) => handleChange('line_channel_access_token', e.target.value)}
@@ -310,11 +311,11 @@ export default function LineOaSettingsPage() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-foreground mb-1">
+                <label htmlFor={`${uiFieldId}-2`} className="block text-sm font-medium text-foreground mb-1">
                   Channel Secret <span className="text-destructive">*</span>
                 </label>
                 <div className="relative">
-                  <input
+                  <input id={`${uiFieldId}-2`}
                     type={showSecrets['secret'] ? 'text' : 'password'}
                     value={form.line_channel_secret || ''}
                     onChange={(e) => handleChange('line_channel_secret', e.target.value)}
@@ -414,10 +415,10 @@ export default function LineOaSettingsPage() {
 
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-foreground mb-1">
+                <label htmlFor={`${uiFieldId}-3`} className="block text-sm font-medium text-foreground mb-1">
                   LIFF ID
                 </label>
-                <input
+                <input id={`${uiFieldId}-3`}
                   type="text"
                   value={form.liff_id || ''}
                   onChange={(e) => handleChange('liff_id', e.target.value)}
@@ -427,10 +428,10 @@ export default function LineOaSettingsPage() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-foreground mb-1">
+                <label htmlFor={`${uiFieldId}-4`} className="block text-sm font-medium text-foreground mb-1">
                   Payment Link URL
                 </label>
-                <input
+                <input id={`${uiFieldId}-4`}
                   type="text"
                   value={form.payment_link_base_url || ''}
                   onChange={(e) => handleChange('payment_link_base_url', e.target.value)}
@@ -507,11 +508,11 @@ export default function LineOaSettingsPage() {
 
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-foreground mb-1">
+                <label htmlFor={`${uiFieldId}-5`} className="block text-sm font-medium text-foreground mb-1">
                   LINE User ID ของเจ้าของ
                 </label>
                 <div className="flex gap-2">
-                  <input
+                  <input id={`${uiFieldId}-5`}
                     type="text"
                     value={form.owner_line_id || ''}
                     onChange={(e) => handleChange('owner_line_id', e.target.value)}

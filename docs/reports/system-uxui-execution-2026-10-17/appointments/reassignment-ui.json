@@ -1,0 +1,58 @@
+{
+  "status": "PASS",
+  "scope": "UI fixture with synthetic staff and booked row; no reassignment submitted",
+  "results": [
+    {
+      "engine": "chromium",
+      "width": 1440,
+      "rootSize": 16,
+      "geometry": {
+        "height": 44,
+        "appearance": "none",
+        "inset": 12,
+        "center": 0
+      },
+      "chooseAndCancel": true,
+      "mutations": 0
+    },
+    {
+      "engine": "chromium",
+      "width": 320,
+      "rootSize": 20,
+      "geometry": {
+        "height": 55,
+        "appearance": "none",
+        "inset": 15,
+        "center": 0
+      },
+      "chooseAndCancel": true,
+      "mutations": 0
+    },
+    {
+      "engine": "webkit",
+      "width": 1440,
+      "rootSize": 16,
+      "geometry": {
+        "height": 44,
+        "appearance": "none",
+        "inset": 12,
+        "center": 0
+      },
+      "chooseAndCancel": true,
+      "mutations": 0
+    },
+    {
+      "engine": "webkit",
+      "width": 320,
+      "rootSize": 20,
+      "geometry": {
+        "height": 55,
+        "appearance": "none",
+        "inset": 15,
+        "center": 0
+      },
+      "chooseAndCancel": true,
+      "mutations": 0
+    }
+  ]
+}

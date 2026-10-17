@@ -1,3 +1,4 @@
+import { NativeSelect } from '@/components/ui/native-select';
 import { useRef, useCallback, useEffect, useState } from 'react';
 import DOMPurify from 'dompurify';
 
@@ -266,9 +267,9 @@ export default function RichTextEditor({ value, onChange, placeholder, minHeight
       {/* Toolbar */}
       <div className="flex flex-wrap items-center gap-0.5 px-2 py-1.5 bg-muted border-b border-border">
         {/* Heading select */}
-        <select
+        <NativeSelect wrapperClassName="max-w-full w-auto mr-1"
           onChange={(e) => handleHeading(e.target.value)}
-          className="px-1.5 py-1 text-xs border border-border rounded bg-card hover:bg-muted mr-1"
+          className="px-1.5 py-1 text-xs border border-border rounded bg-card hover:bg-muted"
           defaultValue="p"
         >
           <option value="p">ย่อหน้า</option>
@@ -276,13 +277,13 @@ export default function RichTextEditor({ value, onChange, placeholder, minHeight
           <option value="h2">หัวข้อ 2</option>
           <option value="h3">หัวข้อ 3</option>
           <option value="h4">หัวข้อ 4</option>
-        </select>
+        </NativeSelect>
 
         {/* Font size */}
-        <select
+        <NativeSelect wrapperClassName="max-w-full w-auto mr-1"
           value={fontSize}
           onChange={(e) => handleFontSize(e.target.value)}
-          className="px-1.5 py-1 text-xs border border-border rounded bg-card hover:bg-muted mr-1"
+          className="px-1.5 py-1 text-xs border border-border rounded bg-card hover:bg-muted"
         >
           <option value="1">เล็กมาก</option>
           <option value="2">เล็ก</option>
@@ -290,7 +291,7 @@ export default function RichTextEditor({ value, onChange, placeholder, minHeight
           <option value="4">ใหญ่</option>
           <option value="5">ใหญ่มาก</option>
           <option value="6">หัวข้อใหญ่</option>
-        </select>
+        </NativeSelect>
 
         {/* Divider */}
         <div className="w-px h-5 bg-border mx-1" />

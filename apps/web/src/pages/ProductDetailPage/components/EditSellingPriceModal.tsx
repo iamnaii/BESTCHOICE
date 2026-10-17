@@ -1,4 +1,6 @@
 import Modal from '@/components/ui/Modal';
+import { useId as useUiFieldId } from 'react';
+
 
 interface Props {
   isOpen: boolean;
@@ -19,14 +21,15 @@ export default function EditSellingPriceModal({
   onSubmit,
   isPending,
 }: Props) {
+  const uiFieldId = useUiFieldId();
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="แก้ราคาขาย">
       <form onSubmit={onSubmit} className="space-y-4">
         <div>
-          <label className="block text-sm font-medium text-foreground mb-1 leading-snug">
+          <label htmlFor={`${uiFieldId}-1`} className="block text-sm font-medium text-foreground mb-1 leading-snug">
             ราคาเงินสด (บาท)
           </label>
-          <input
+          <input id={`${uiFieldId}-1`}
             type="number"
             step="0.01"
             min="1"
@@ -36,10 +39,10 @@ export default function EditSellingPriceModal({
           />
         </div>
         <div>
-          <label className="block text-sm font-medium text-foreground mb-1 leading-snug">
+          <label htmlFor={`${uiFieldId}-2`} className="block text-sm font-medium text-foreground mb-1 leading-snug">
             ราคาผ่อน — ราคาตั้งต้นสำหรับคำนวณค่างวด (บาท)
           </label>
-          <input
+          <input id={`${uiFieldId}-2`}
             type="number"
             step="0.01"
             min="1"

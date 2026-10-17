@@ -1,3 +1,4 @@
+import { NativeSelect } from '@/components/ui/native-select';
 import { saleMargin } from '@/lib/sale-margin';
 import { BookingSaleReceipt, type BookingSaleReceiptData } from '@/components/sales/BookingSaleReceipt';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
@@ -657,7 +658,7 @@ export default function SalesHistoryPage() {
             placeholder="ค้นหาเลขที่ขาย, ลูกค้า, สินค้า, ไฟแนนซ์..."
             className={`${inputClass} md:col-span-1`}
           />
-          <select
+          <NativeSelect wrapperClassName="w-auto min-w-0 max-w-full"
             aria-label="ประเภทการขาย" value={saleTypeFilter}
             onChange={(e) => setSaleTypeFilter(e.target.value)}
             className={inputClass}
@@ -666,8 +667,8 @@ export default function SalesHistoryPage() {
             <option value="CASH">เงินสด</option>
             <option value="INSTALLMENT">ผ่อนร้าน</option>
             <option value="EXTERNAL_FINANCE">ไฟแนนซ์</option>
-          </select>
-          <select
+          </NativeSelect>
+          <NativeSelect wrapperClassName="w-auto min-w-0 max-w-full"
             aria-label="วิธีชำระ" value={paymentMethodFilter}
             onChange={(e) => setPaymentMethodFilter(e.target.value)}
             className={inputClass}
@@ -676,8 +677,8 @@ export default function SalesHistoryPage() {
             <option value="CASH">เงินสด</option>
             <option value="BANK_TRANSFER">โอนเงิน</option>
             <option value="QR_EWALLET">QR/E-Wallet</option>
-          </select>
-          <select
+          </NativeSelect>
+          <NativeSelect wrapperClassName="w-auto min-w-0 max-w-full"
             aria-label="สถานะสัญญา" value={contractStatusFilter}
             onChange={(e) => setContractStatusFilter(e.target.value)}
             className={inputClass}
@@ -688,7 +689,7 @@ export default function SalesHistoryPage() {
             <option value="DEFAULT">ผิดนัด</option>
             <option value="COMPLETED">ปิดแล้ว</option>
             <option value="DRAFT">ร่าง</option>
-          </select>
+          </NativeSelect>
         </div>
 
         {/* Row 2: Date filters + shortcuts + Excel */}
@@ -727,7 +728,7 @@ export default function SalesHistoryPage() {
         {/* Row 3: Salesperson + Branch (role-based) + show-voided switch */}
         {isOwnerOrManager && (
           <div className="flex flex-wrap items-center gap-3">
-            <select
+            <NativeSelect wrapperClassName="w-auto min-w-0 max-w-full"
               aria-label="พนักงานขาย" value={salespersonFilter}
               onChange={(e) => setSalespersonFilter(e.target.value)}
               className={inputClass}
@@ -736,9 +737,9 @@ export default function SalesHistoryPage() {
               {salespersons.map((sp) => (
                 <option key={sp.id} value={sp.id}>{sp.name}</option>
               ))}
-            </select>
+            </NativeSelect>
             {isOwner && (
-              <select
+              <NativeSelect wrapperClassName="w-auto min-w-0 max-w-full"
                 aria-label="สาขา" value={branchFilter}
                 onChange={(e) => setBranchFilter(e.target.value)}
                 className={inputClass}
@@ -747,7 +748,7 @@ export default function SalesHistoryPage() {
                 {branches.map((b) => (
                   <option key={b.id} value={b.id}>{b.name}</option>
                 ))}
-              </select>
+              </NativeSelect>
             )}
           </div>
         )}

@@ -1,3 +1,4 @@
+import { NativeSelect } from '@/components/ui/native-select';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
 
@@ -37,7 +38,7 @@ export default function CollectionsFilters({
 
   return (
     <div data-collections-search className="flex gap-3 flex-wrap mb-4">
-      <input
+      <input aria-label="ค้นหาเลขสัญญา, ชื่อลูกค้า, เบอร์โทร"
         type="text"
         placeholder="ค้นหาเลขสัญญา, ชื่อลูกค้า, เบอร์โทร..."
         value={search}
@@ -45,10 +46,10 @@ export default function CollectionsFilters({
         className="px-3 py-2 border border-input bg-card rounded-lg text-sm min-w-[260px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[2px] focus-visible:ring-offset-background focus-visible:border-transparent leading-snug"
       />
       {showBranchFilter && (
-        <select
+        <NativeSelect wrapperClassName="max-w-full w-auto sm:min-w-[160px]" aria-label="สาขา"
           value={branchId}
           onChange={(e) => onBranchChange(e.target.value)}
-          className="px-3 py-2 border border-input bg-card rounded-lg text-sm min-w-[160px] leading-snug focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/30"
+          className="px-3 py-2 border border-input bg-card rounded-lg text-sm leading-snug focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/30"
         >
           <option value="">ทุกสาขา</option>
           {branches.map((b) => (
@@ -56,7 +57,7 @@ export default function CollectionsFilters({
               {b.name}
             </option>
           ))}
-        </select>
+        </NativeSelect>
       )}
       <label className="inline-flex items-center gap-2 text-sm leading-snug cursor-pointer select-none">
         <input

@@ -231,6 +231,8 @@ export class AuthService {
         // Without this, a freshly-logged-in user keeps canReverseOverride
         // undefined until the next /auth/me, hiding the reverse button.
         canReverseOverride: user.canReverseOverride ?? null,
+        defaultCashAccountCode: user.defaultCashAccountCode ?? null,
+        yeastarExtension: user.yeastarExtension ?? null,
       },
     };
   }
@@ -353,6 +355,7 @@ export class AuthService {
         accessibleCompanies: true,
         primaryCompany: true,
         defaultCashAccountCode: true,
+        yeastarExtension: true,
         // InternalControlActionBar — per-user reverse-permission override.
         // Null = use role-based default. Consumed by the shared bar to gate
         // the "↺ ยกเลิก/กลับรายการ" button.

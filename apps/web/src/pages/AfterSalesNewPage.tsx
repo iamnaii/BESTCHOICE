@@ -1,3 +1,4 @@
+import { NativeSelect } from '@/components/ui/native-select';
 import { useLayout } from '@/components/layout/LayoutContext';
 import { WORK_COMPANY } from '@/lib/company-scope';
 import { useEffect, useState } from 'react';
@@ -238,7 +239,7 @@ function AfterSalesNewForm({ prefill }: { prefill?: ChatServicePrefill }) {
             maxLength={IMEI_MAX}
             onChange={(e) => setImeiInput(e.target.value)}
             placeholder="กรอกเลข IMEI 15 หลัก"
-            className={`${inputClass} h-14 flex-1 text-lg`}
+            className={`${inputClass} h-14 min-h-14 min-w-0 sm:flex-1 text-lg`}
           />
           <Button
             type="submit"
@@ -674,7 +675,7 @@ function AfterSalesNewForm({ prefill }: { prefill?: ChatServicePrefill }) {
                     >
                       ผู้จ่ายค่าซ่อม
                     </label>
-                    <select
+                    <NativeSelect wrapperClassName="max-w-full w-full"
                       id="as-payer"
                       value={payer}
                       onChange={(e) => setPayer(e.target.value as Payer)}
@@ -686,7 +687,7 @@ function AfterSalesNewForm({ prefill }: { prefill?: ChatServicePrefill }) {
                           {PAYER_LABEL[p]}
                         </option>
                       ))}
-                    </select>
+                    </NativeSelect>
                   </div>
                   <div className="space-y-1">
                     <label
@@ -775,7 +776,7 @@ function AfterSalesNewForm({ prefill }: { prefill?: ChatServicePrefill }) {
                   >
                     สาขา <span className="text-destructive">*</span>
                   </label>
-                  <select
+                  <NativeSelect wrapperClassName="max-w-full w-full"
                     id="as-branch"
                     value={branchId}
                     onChange={(e) => setBranchId(e.target.value)}
@@ -787,7 +788,7 @@ function AfterSalesNewForm({ prefill }: { prefill?: ChatServicePrefill }) {
                         {b.name}
                       </option>
                     ))}
-                  </select>
+                  </NativeSelect>
                 </div>
               )}
             </Card>

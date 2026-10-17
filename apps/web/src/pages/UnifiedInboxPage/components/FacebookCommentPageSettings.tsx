@@ -1,3 +1,4 @@
+import { NativeSelect } from '@/components/ui/native-select';
 import { useState } from 'react';
 import { Link } from 'react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -163,8 +164,8 @@ export default function FacebookCommentPageSettings() {
             )}
             <label className="block space-y-1">
               <span>สาขาที่ดูแลงานคอมเมนต์</span>
-              <select
-                className="h-11 w-full rounded-md border bg-background px-2"
+              <NativeSelect wrapperClassName="max-w-full w-full"
+                className="h-11 rounded-md border bg-background px-2"
                 disabled={busy}
                 value={branchId || row.binding?.branchId || ''}
                 onChange={(e) => setBranchId(e.target.value)}
@@ -175,7 +176,7 @@ export default function FacebookCommentPageSettings() {
                     {b.name}
                   </option>
                 ))}
-              </select>
+              </NativeSelect>
             </label>
             <p className="text-muted-foreground">
               การบันทึกสาขาไม่เปลี่ยนการสมัครรับเหตุการณ์จาก Facebook

@@ -1,4 +1,5 @@
-import { useState, useMemo, useRef, useEffect } from 'react';
+import { NativeSelect } from '@/components/ui/native-select';
+import { useId as useUiFieldId, useState, useMemo, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { useQuery, useMutation } from '@tanstack/react-query';
@@ -196,6 +197,7 @@ export function RecordPaymentWizard({
   isSubmitting,
   defaultDepositAccountCode = '11-1101',
 }: RecordPaymentWizardProps) {
+  const uiFieldId = useUiFieldId();
   const [depositAccountCode, setDepositAccountCode] = useState(defaultDepositAccountCode);
   const [showPartialConfirm, setShowPartialConfirm] = useState(false);
   const [showPayoffOverlay, setShowPayoffOverlay] = useState(false);
@@ -879,7 +881,7 @@ export function RecordPaymentWizard({
 
                 {/* Amount received */}
                 <div>
-                  <Label className="block text-sm font-medium text-foreground mb-1.5 leading-snug">
+                  <Label htmlFor={`${uiFieldId}-1`} className="block text-sm font-medium text-foreground mb-1.5 leading-snug">
                     ยอดรับจริง (฿) <span className="text-destructive">*</span>
                   </Label>
                   {/* Quick-amount tiles */}
@@ -935,7 +937,7 @@ export function RecordPaymentWizard({
                       );
                     })}
                   </div>
-                  <Input
+                  <Input id={`${uiFieldId}-1`}
                     ref={amountInputRef}
                     type="number"
                     value={amountReceived}
@@ -1052,10 +1054,10 @@ export function RecordPaymentWizard({
                         <Label className="block text-xs font-medium text-foreground mb-1 leading-snug">
                           เหตุผลการอนุโลม <span className="text-destructive">*</span>
                         </Label>
-                        <select
+                        <NativeSelect wrapperClassName="max-w-full w-full"
                           value={waiverReasonCode}
                           onChange={(e) => setWaiverReasonCode(e.target.value)}
-                          className="w-full rounded-lg border border-border bg-background px-2 py-1.5 text-sm text-foreground leading-snug"
+                          className="rounded-lg border border-border bg-background px-2 py-1.5 text-sm text-foreground leading-snug"
                           aria-label="เหตุผลการอนุโลม"
                         >
                           <option value="">— เลือกเหตุผล —</option>
@@ -1064,7 +1066,7 @@ export function RecordPaymentWizard({
                               {r.label}
                             </option>
                           ))}
-                        </select>
+                        </NativeSelect>
                       </div>
                     )}
                     <div className="flex items-center justify-between text-xs font-medium pt-1 border-t border-border/50">
@@ -1080,13 +1082,13 @@ export function RecordPaymentWizard({
 
                 {/* วันที่รับเงิน (D4 backdating — period-lock guards closed periods) */}
                 <div>
-                  <Label className="block text-sm font-medium text-foreground mb-1.5 leading-snug">
+                  <Label htmlFor={`${uiFieldId}-2`} className="block text-sm font-medium text-foreground mb-1.5 leading-snug">
                     วันที่รับเงิน
                     <span className="ml-1 text-xs text-muted-foreground font-normal">
                       (ย้อนหลังได้ถ้างวดบัญชียังเปิด)
                     </span>
                   </Label>
-                  <Input
+                  <Input id={`${uiFieldId}-2`}
                     type="date"
                     value={paidDate}
                     max={bkkToday()}
@@ -1209,10 +1211,10 @@ export function RecordPaymentWizard({
                 {/* Reference number — TRANSFER only */}
                 {requiresRef && (
                   <div>
-                    <Label className="block text-sm font-medium text-foreground mb-1.5 leading-snug">
+                    <Label htmlFor={`${uiFieldId}-3`} className="block text-sm font-medium text-foreground mb-1.5 leading-snug">
                       เลขอ้างอิงธุรกรรม <span className="text-destructive">*</span>
                     </Label>
-                    <Input
+                    <Input id={`${uiFieldId}-3`}
                       value={referenceNumber}
                       onChange={(e) => setReferenceNumber(e.target.value)}
                       placeholder="ระบุเลขอ้างอิง / เลขธุรกรรม"

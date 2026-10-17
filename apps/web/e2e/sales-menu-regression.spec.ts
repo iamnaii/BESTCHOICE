@@ -248,7 +248,7 @@ for (const width of [1440, 390]) {
       await openFilters(page, width);
       state.holdPath = '/credit-checks'; let release!: () => void;
       state.hold = new Promise<void>(resolve => { release = resolve; });
-      await page.getByRole('combobox', { name: '', exact: true }).click();
+      await page.getByRole('combobox', { name: 'สถานะตรวจเครดิต', exact: true }).click();
       await page.getByRole('option', { name: 'ทั้งหมด', exact: true }).click();
       await expect.poll(() => state.requests.filter(row => row.path === '/credit-checks' && !row.query.status).length).toBeGreaterThan(0);
       if (width === 390) await expect(page.getByRole('dialog')).toBeVisible();

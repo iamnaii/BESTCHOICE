@@ -73,7 +73,7 @@ export function LiffTopBar({
       <button
         type="button"
         aria-label="ย้อนกลับ"
-        className="grid h-9 w-9 place-items-center rounded-full text-foreground hover:bg-accent -ml-1.5"
+        className="grid size-11 shrink-0 place-items-center rounded-full text-foreground hover:bg-accent -ml-1.5"
         onClick={() => window.history.back()}
       >
         <ChevronLeft className="size-5" strokeWidth={1.75} />

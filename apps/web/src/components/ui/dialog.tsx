@@ -56,6 +56,7 @@ function DialogContent({
   showCloseButton = true,
   overlay = true,
   variant,
+  onEscapeKeyDown,
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Content> &
   VariantProps<typeof dialogContentVariants> & {
@@ -69,6 +70,14 @@ function DialogContent({
         data-slot="dialog-content"
         data-has-close={showCloseButton || undefined}
         className={cn(dialogContentVariants({ variant }), className)}
+        onEscapeKeyDown={(event) => {
+          onEscapeKeyDown?.(event);
+          // Radix listens in capture phase, before the inline combobox can close
+          // its options. Let the first Escape close that list, keeping form data.
+          if (event.target instanceof HTMLElement && event.target.matches('[data-inline-combobox="true"][aria-expanded="true"]')) {
+            event.preventDefault();
+          }
+        }}
         {...props}
       >
         {children}

@@ -102,7 +102,7 @@ export default function ChatbotFinanceSessionsPage() {
       />
 
       <div className="flex gap-3 mb-4">
-        <input
+        <input aria-label="ค้นหาชื่อ/เบอร์/lineUserId"
           type="text"
           placeholder="ค้นหาชื่อ/เบอร์/lineUserId"
           value={search}

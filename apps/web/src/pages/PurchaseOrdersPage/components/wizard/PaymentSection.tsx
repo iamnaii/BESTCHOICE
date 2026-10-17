@@ -1,3 +1,4 @@
+import { NativeSelect } from '@/components/ui/native-select';
 import { CreditCard, ImagePlus, Paperclip } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { formatNumberDecimal } from '@/utils/formatters';
@@ -87,7 +88,7 @@ export function PaymentSection({
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <div>
             <label htmlFor={`${idPrefix}-payment-status`} className={labelCls}>สถานะการจ่าย</label>
-            <select
+            <NativeSelect wrapperClassName="max-w-full w-full"
               id={`${idPrefix}-payment-status`}
               aria-label="สถานะการจ่าย"
               value={payment.paymentStatus}
@@ -104,11 +105,11 @@ export function PaymentSection({
               <option value="DEPOSIT_PAID">จ่ายมัดจำ</option>
               <option value="PARTIALLY_PAID">จ่ายบางส่วน</option>
               <option value="FULLY_PAID">จ่ายครบแล้ว</option>
-            </select>
+            </NativeSelect>
           </div>
           <div>
             <label htmlFor={`${idPrefix}-payment-method`} className={labelCls}>วิธีจ่ายเงิน</label>
-            <select
+            <NativeSelect wrapperClassName="max-w-full w-full"
               id={`${idPrefix}-payment-method`}
               aria-label="วิธีจ่ายเงิน"
               value={payment.paymentMethod}
@@ -136,7 +137,7 @@ export function PaymentSection({
                     </option>
                   ))
               )}
-            </select>
+            </NativeSelect>
             <p className="mt-1 text-xs leading-snug text-muted-foreground">โอนธนาคารเท่านั้น — ลงบัญชีจากธนาคารหน้าร้าน S11-1202 (ไม่มีจ่ายเงินสด)</p>
           </div>
           <div>

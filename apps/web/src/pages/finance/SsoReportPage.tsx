@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useId as useUiFieldId, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import api, { getErrorMessage } from '@/lib/api';
 import { toast } from 'sonner';
@@ -65,6 +65,7 @@ interface SsoPreview {
 const todayIso = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' });
 
 export default function SsoReportPage() {
+  const uiFieldId = useUiFieldId();
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const now = new Date();
@@ -257,8 +258,8 @@ export default function SsoReportPage() {
               />
             </div>
             <div>
-              <label className="block text-xs font-medium mb-1">วันที่จ่าย</label>
-              <ThaiDateInput
+              <label htmlFor={`${uiFieldId}-1`} className="block text-xs font-medium mb-1">วันที่จ่าย</label>
+              <ThaiDateInput id={`${uiFieldId}-1`}
                 value={payDate}
                 onChange={(e) => setPayDate(e.target.value)}
                 className="w-full px-3 py-2 border border-input rounded-lg text-sm bg-background"

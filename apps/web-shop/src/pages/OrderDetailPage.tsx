@@ -10,6 +10,8 @@ import {
   Card,
   CardBody,
   Stepper,
+  ErrorState,
+  Button,
   type StepperStep,
 } from '@/components';
 import { copy } from '@/lib/copy';
@@ -42,12 +44,26 @@ function statusIndex(status: string): number {
 
 export default function OrderDetailPage() {
   const { orderNumber } = useParams<{ orderNumber: string }>();
-  const { data } = useQuery({
+  const { data, isError, refetch } = useQuery({
     queryKey: ['order', orderNumber],
     queryFn: () => api.get(`/api/shop/orders/${orderNumber}`).then((r) => r.data),
     enabled: !!orderNumber,
     refetchInterval: 10000,
   });
+
+  if (isError && !data) {
+    return (
+      <ShopLayout>
+        <Container>
+          <ErrorState
+            title="โหลดคำสั่งซื้อไม่สำเร็จ"
+            description="ตรวจสอบลิงก์คำสั่งซื้อและการเข้าสู่ระบบ แล้วลองโหลดใหม่"
+            onRetry={() => void refetch()}
+          />
+        </Container>
+      </ShopLayout>
+    );
+  }
 
   if (!data) {
     return (
@@ -74,6 +90,12 @@ export default function OrderDetailPage() {
       <Container>
         <div className="py-6 leading-snug">
           <Stack gap={6}>
+            {isError && (
+              <div role="status" className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+                <span>อัปเดตสถานะไม่สำเร็จ กำลังแสดงข้อมูลล่าสุดที่โหลดได้</span>
+                <Button variant="outline" size="sm" onClick={() => void refetch()}>โหลดใหม่</Button>
+              </div>
+            )}
             {/* Header row: status + timestamp */}
             <div className="flex justify-between items-start">
               <div>

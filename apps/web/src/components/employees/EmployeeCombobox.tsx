@@ -53,6 +53,7 @@ export default function EmployeeCombobox({
           type="button"
           variant="outline"
           role="combobox"
+          aria-label="พนักงาน"
           aria-expanded={open}
           aria-invalid={invalid}
           className={cn('w-full justify-between font-normal', !value && 'text-muted-foreground')}

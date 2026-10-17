@@ -251,35 +251,42 @@ export function ChatMediaPicker({
     setGifSearch,
     gifs,
     loadingGifs,
+    gifError,
+    retryGifs,
   } = model;
   return (
     <Popover open={open} onOpenChange={onOpenChange}>
       <PopoverTrigger asChild>
         <button
+          type="button"
           aria-label="อิโมจิ / สติกเกอร์"
           className={cn(
-            'size-11 inline-flex items-center justify-center rounded-lg transition-colors',
+            'min-h-11 inline-flex items-center justify-center gap-2 rounded-lg transition-colors',
             open
               ? 'text-primary bg-primary/10'
               : 'text-muted-foreground hover:text-foreground hover:bg-muted',
           )}
           title="Emoji / สติกเกอร์"
         >
-          <Smile className="w-4 h-4" />
+          <Smile className="size-5" aria-hidden="true" />
+          <span>อีโมจิ</span>
         </button>
       </PopoverTrigger>
       <PopoverContent
         side="top"
         align="start"
-        className="w-[min(20rem,calc(100vw-1rem))] p-0 shadow-lg border border-border rounded-xl overflow-hidden"
+        aria-label="อีโมจิ สติกเกอร์ และ GIF"
+        className="w-[min(22rem,calc(100vw-2rem))] max-h-[min(28rem,var(--radix-popover-content-available-height))] overflow-y-auto p-0 shadow-lg border border-border rounded-xl"
         sideOffset={6}
       >
         {/* ── Top-level tabs ── */}
         <div className="flex border-b border-border bg-card">
           <button
+            type="button"
+            aria-pressed={pickerTab === 'emoji'}
             onClick={() => setPickerTab('emoji')}
             className={cn(
-              'flex items-center gap-1.5 px-4 py-2 text-xs font-medium transition-colors',
+              'flex min-h-11 flex-1 items-center justify-center gap-1.5 px-4 py-2 text-sm font-medium transition-colors',
               pickerTab === 'emoji'
                 ? 'text-primary border-b-2 border-primary -mb-px'
                 : 'text-muted-foreground hover:text-foreground',
@@ -290,9 +297,11 @@ export function ChatMediaPicker({
 
           {isLineChannel && (
             <button
+              type="button"
+              aria-pressed={pickerTab === 'sticker'}
               onClick={() => setPickerTab('sticker')}
               className={cn(
-                'flex items-center gap-1.5 px-4 py-2 text-xs font-medium transition-colors',
+                'flex min-h-11 flex-1 items-center justify-center gap-1.5 px-4 py-2 text-sm font-medium transition-colors',
                 pickerTab === 'sticker'
                   ? 'text-primary border-b-2 border-primary -mb-px'
                   : 'text-muted-foreground hover:text-foreground',
@@ -304,9 +313,11 @@ export function ChatMediaPicker({
 
           {!isLineChannel && (
             <button
+              type="button"
+              aria-pressed={pickerTab === 'gif'}
               onClick={() => setPickerTab('gif')}
               className={cn(
-                'flex items-center gap-1.5 px-4 py-2 text-xs font-medium transition-colors',
+                'flex min-h-11 flex-1 items-center justify-center gap-1.5 px-4 py-2 text-sm font-medium transition-colors',
                 pickerTab === 'gif'
                   ? 'text-primary border-b-2 border-primary -mb-px'
                   : 'text-muted-foreground hover:text-foreground',
@@ -325,10 +336,13 @@ export function ChatMediaPicker({
               {EMOJI_CATEGORIES.map((cat, i) => (
                 <button
                   key={cat.name}
+                  type="button"
+                  aria-label={cat.name}
+                  aria-pressed={emojiCategory === i}
                   onClick={() => setEmojiCategory(i)}
                   title={cat.name}
                   className={cn(
-                    'p-1 rounded text-base transition-colors',
+                    'size-11 shrink-0 rounded-lg text-xl transition-colors',
                     emojiCategory === i ? 'bg-primary/10 ring-1 ring-primary/30' : 'hover:bg-muted',
                   )}
                 >
@@ -337,12 +351,13 @@ export function ChatMediaPicker({
               ))}
             </div>
             {/* Emoji grid */}
-            <div className="grid grid-cols-8 gap-0.5 p-2 max-h-[200px] overflow-y-auto">
+            <div className="grid grid-cols-[repeat(auto-fit,minmax(44px,1fr))] gap-1 p-2 max-h-60 overflow-y-auto">
               {EMOJI_CATEGORIES[emojiCategory]?.emojis.map((emoji) => (
                 <button
                   key={emoji}
+                  type="button"
                   onClick={() => onEmoji(emoji)}
-                  className="w-8 h-8 flex items-center justify-center text-lg hover:bg-muted rounded transition-colors"
+                  className="min-h-11 min-w-11 flex items-center justify-center text-2xl hover:bg-muted rounded-lg transition-colors"
                 >
                   {emoji}
                 </button>
@@ -359,11 +374,13 @@ export function ChatMediaPicker({
               {LINE_STICKER_PACKAGES.map((pkg, i) => (
                 <button
                   key={pkg.packageId}
+                  type="button"
+                  aria-pressed={stickerPackage === i}
                   onClick={() => setStickerPackage(i)}
                   className={cn(
-                    'flex-shrink-0 px-2 py-1 rounded text-[11px] font-medium transition-colors whitespace-nowrap',
+                    'min-h-11 flex-shrink-0 px-3 py-2 rounded-lg text-xs font-medium transition-colors whitespace-nowrap',
                     stickerPackage === i
-                      ? 'bg-[#06C755]/10 text-[#06C755]'
+                      ? 'bg-primary/10 text-primary'
                       : 'text-muted-foreground hover:bg-muted',
                   )}
                 >
@@ -376,6 +393,7 @@ export function ChatMediaPicker({
               {LINE_STICKER_PACKAGES[stickerPackage]?.stickers.map((sticker) => (
                 <button
                   key={sticker.id}
+                  type="button"
                   onClick={() =>
                     onSticker(LINE_STICKER_PACKAGES[stickerPackage].packageId, sticker.id)
                   }
@@ -402,7 +420,7 @@ export function ChatMediaPicker({
           <div className="flex flex-col">
             {/* Search input */}
             <div className="px-2 py-1.5 border-b border-border">
-              <input
+              <input aria-label="ค้นหา GIF"
                 type="text"
                 placeholder="ค้นหา GIF..."
                 value={gifSearch}
@@ -415,6 +433,11 @@ export function ChatMediaPicker({
               {loadingGifs ? (
                 <div className="col-span-2 text-center py-4 text-xs text-muted-foreground">
                   กำลังโหลด...
+                </div>
+              ) : gifError ? (
+                <div role="alert" className="col-span-2 px-3 py-4 text-center text-sm">
+                  <p>โหลด GIF ไม่สำเร็จ</p>
+                  <button type="button" onClick={retryGifs} className="mt-2 min-h-11 rounded-lg px-4 text-primary hover:bg-muted">ลองใหม่</button>
                 </div>
               ) : gifs.length === 0 ? (
                 <div className="col-span-2 text-center py-4 text-xs text-muted-foreground">
@@ -445,7 +468,7 @@ export function ChatMediaPicker({
               )}
             </div>
             {/* Giphy attribution */}
-            <div className="text-[9px] text-muted-foreground text-center pb-1 pt-0.5 border-t border-border">
+            <div className="text-xs text-muted-foreground text-center py-2 border-t border-border">
               Powered by GIPHY
             </div>
           </div>

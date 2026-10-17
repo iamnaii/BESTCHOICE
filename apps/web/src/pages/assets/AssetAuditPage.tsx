@@ -105,7 +105,7 @@ export default function AssetAuditPage() {
       <Card>
         <CardContent className="p-4 grid grid-cols-1 md:grid-cols-3 gap-3">
           <Select value={actionFilter || 'ALL'} onValueChange={(v) => setActionFilter(v === 'ALL' ? '' : v)}>
-            <SelectTrigger><SelectValue placeholder="Action" /></SelectTrigger>
+            <SelectTrigger aria-label="การดำเนินการ"><SelectValue placeholder="Action" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="ALL">ทุก Action</SelectItem>
               {Object.entries(ACTION_LABEL).map(([key, label]) => (
@@ -113,8 +113,8 @@ export default function AssetAuditPage() {
               ))}
             </SelectContent>
           </Select>
-          <ThaiDateInput value={fromDate} onChange={(e) => setFromDate(e.target.value)} />
-          <ThaiDateInput value={toDate} onChange={(e) => setToDate(e.target.value)} />
+          <ThaiDateInput aria-label="วันที่เริ่ม" value={fromDate} onChange={(e) => setFromDate(e.target.value)} />
+          <ThaiDateInput aria-label="วันที่สิ้นสุด" value={toDate} onChange={(e) => setToDate(e.target.value)} />
         </CardContent>
       </Card>
 

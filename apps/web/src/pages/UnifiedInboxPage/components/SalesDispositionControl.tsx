@@ -1,3 +1,4 @@
+import { NativeSelect } from '@/components/ui/native-select';
 import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { JOURNEY_LOST_REASON_LABELS, type JourneySummary } from '@installment/shared';
@@ -90,10 +91,10 @@ export default function SalesDispositionControl({
           {action === 'MARK_LOST' && (
             <label className="text-sm font-medium">
               เหตุผลที่ไม่ซื้อ
-              <select
+              <NativeSelect wrapperClassName="max-w-full mt-2 w-full"
                 value={reason}
                 onChange={(e) => setReason(e.target.value)}
-                className="mt-2 min-h-11 w-full rounded-md border border-input bg-background px-3"
+                className="min-h-11 rounded-md border border-input bg-background px-3"
               >
                 <option value="">เลือกเหตุผล</option>
                 {Object.entries(JOURNEY_LOST_REASON_LABELS).map(([key, label]) => (
@@ -101,7 +102,7 @@ export default function SalesDispositionControl({
                     {label}
                   </option>
                 ))}
-              </select>
+              </NativeSelect>
             </label>
           )}
           <DialogFooter>

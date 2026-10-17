@@ -301,7 +301,7 @@ export default function StickerPrintPage() {
                   aria-hidden="true"
                   className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
                 />
-                <input
+                <input aria-label="ค้นหาแบรนด์ / รุ่น / IMEI ในสต็อก"
                   type="text"
                   value={search}
                   onChange={(e) => {

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useId as useUiFieldId, useState, useEffect } from 'react';
 
 // ── Shared interfaces ──
 
@@ -115,13 +115,14 @@ export function EditField({
   value: string;
   onChange: (val: string) => void;
 }) {
+  const uiFieldId = useUiFieldId();
   const isAddress = item.key.includes('ADDRESS');
   return (
     <div>
       <div className={`flex ${isAddress ? 'flex-col gap-1' : 'items-center gap-4'}`}>
-        <label className={`${isAddress ? '' : 'flex-1'} text-sm text-foreground`}>{item.label}</label>
+        <label htmlFor={`${uiFieldId}-1`} className={`${isAddress ? '' : 'flex-1'} text-sm text-foreground`}>{item.label}</label>
         <div className={isAddress ? 'w-full' : 'w-48'}>
-          <input
+          <input id={`${uiFieldId}-1`}
             type={item.type}
             step={item.step}
             value={value}

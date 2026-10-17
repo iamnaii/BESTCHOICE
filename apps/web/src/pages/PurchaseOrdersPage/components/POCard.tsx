@@ -69,8 +69,9 @@ function POCardImpl({
       {/* Header: PO number + net amount */}
       <div className="flex items-start justify-between gap-2">
         <button
+          data-po-detail-trigger={`${po.id}:number`}
           onClick={stop(() => openDetailModal(po))}
-          className="font-medium text-primary hover:underline text-left"
+          className="min-w-0 min-h-11 text-left font-medium text-primary hover:underline [overflow-wrap:anywhere]"
         >
           {po.poNumber}
         </button>
@@ -87,7 +88,7 @@ function POCardImpl({
 
       {/* Supplier */}
       <div className="mt-1.5">
-        <div className="font-medium text-foreground">{po.supplier.name}</div>
+        <div className="font-medium text-foreground [overflow-wrap:anywhere]">{po.supplier.name}</div>
         {po.supplier.contactName && !sameName && (
           <div className="text-xs text-muted-foreground">{po.supplier.contactName}</div>
         )}

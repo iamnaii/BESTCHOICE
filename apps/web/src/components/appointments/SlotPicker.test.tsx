@@ -51,3 +51,24 @@ it('offers a retry when availability fails', async () => {
   expect(await screen.findByRole('button', { name: 'ลองใหม่' })).toBeInTheDocument();
   expect(screen.queryByText('วันนี้ยังไม่มีเวลาว่าง กรุณาเลือกวันอื่น')).not.toBeInTheDocument();
 });
+
+it('explains why slots cannot load before a branch is selected', () => {
+  const load = vi.fn();
+  render(
+    <QueryClientProvider client={new QueryClient()}>
+      <SlotPicker
+        branches={[]}
+        branchId=""
+        day="2026-10-16"
+        selected=""
+        onChange={vi.fn()}
+        load={load}
+        queryScope="test"
+      />
+    </QueryClientProvider>,
+  );
+  expect(screen.getByRole('status')).toHaveTextContent('เลือกสาขาเพื่อดูเวลาว่าง');
+  expect(screen.getByLabelText('สาขา', { exact: true })).toBeDisabled();
+  expect(screen.getByLabelText('วันที่นัด', { exact: true })).toBeDisabled();
+  expect(load).not.toHaveBeenCalled();
+});

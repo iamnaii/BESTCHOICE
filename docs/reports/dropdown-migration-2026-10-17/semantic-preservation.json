@@ -1,0 +1,620 @@
+{
+  "note": "Styling/wrapper and added accessibility label excluded; native value, handlers, refs, validation, options/optgroups identical",
+  "rows": [
+    {
+      "file": "apps/web-shop/src/pages/sell/SellQuotePage.tsx",
+      "sites": 2,
+      "status": "PASS"
+    },
+    {
+      "file": "apps/web/src/pages/WhtReportPage.tsx",
+      "sites": 1,
+      "status": "PASS"
+    },
+    {
+      "file": "apps/web/src/pages/SalesHistoryPage.tsx",
+      "sites": 5,
+      "status": "PASS"
+    },
+    {
+      "file": "apps/web/src/pages/DocumentDashboardPage.tsx",
+      "sites": 1,
+      "status": "PASS"
+    },
+    {
+      "file": "apps/web-shop/src/components/InstallmentCalculatorCard.tsx",
+      "sites": 1,
+      "status": "PASS"
+    },
+    {
+      "file": "apps/web/src/pages/CustomerDetailPage/components/EditCustomerDialog.tsx",
+      "sites": 3,
+      "status": "PASS"
+    },
+    {
+      "file": "apps/web/src/pages/ExpensesPage.tsx",
+      "sites": 3,
+      "status": "PASS"
+    },
+    {
+      "file": "apps/web-shop/src/components/catalog/SortDropdown.tsx",
+      "sites": 1,
+      "status": "PASS"
+    },
+    {
+      "file": "apps/web-shop/src/components/catalog/FilterSidebar.tsx",
+      "sites": 5,
+      "status": "PASS"
+    },
+    {
+      "file": "apps/web/src/pages/settings/SettingsLayout.tsx",
+      "sites": 1,
+      "status": "PASS"
+    },
+    {
+      "file": "apps/web/src/pages/ChatAnalyticsPage.tsx",
+      "sites": 3,
+      "status": "PASS"
+    },
+    {
+      "file": "apps/web/src/pages/MonthlyClosePage.tsx",
+      "sites": 1,
+      "status": "PASS"
+    },
+    {
+      "file": "apps/web/src/pages/QcCenterPage/index.tsx",
+      "sites": 2,
+      "status": "PASS"
+    },
+    {
+      "file": "apps/web/src/pages/accounting/PeriodClosePage.tsx",
+      "sites": 1,
+      "status": "PASS"
+    },
+    {
+      "file": "apps/web/src/pages/accounting/TaxDisallowedSummaryPage.tsx",
+      "sites": 1,
+      "status": "PASS"
+    },
+    {
+      "file": "apps/web/src/pages/UnifiedInboxPage/components/FacebookCommentPageSettings.tsx",
+      "sites": 1,
+      "status": "PASS"
+    },
+    {
+      "file": "apps/web/src/pages/UnifiedInboxPage/components/SalesDispositionControl.tsx",
+      "sites": 1,
+      "status": "PASS"
+    },
+    {
+      "file": "apps/web/src/pages/UnifiedInboxPage/components/ChatFollowUpDialog.tsx",
+      "sites": 2,
+      "status": "PASS"
+    },
+    {
+      "file": "apps/web/src/components/contacts/CreateContactModal.tsx",
+      "sites": 1,
+      "status": "PASS"
+    },
+    {
+      "file": "apps/web/src/pages/interco/CreateBatchDialog.tsx",
+      "sites": 2,
+      "status": "PASS"
+    },
+    {
+      "file": "apps/web/src/pages/YearEndClosingPage.tsx",
+      "sites": 1,
+      "status": "PASS"
+    },
+    {
+      "file": "apps/web/src/pages/FinanceReceivablePage.tsx",
+      "sites": 4,
+      "status": "PASS"
+    },
+    {
+      "file": "apps/web/src/pages/UnifiedInboxPage/components/FacebookCommentLink.tsx",
+      "sites": 1,
+      "status": "PASS"
+    },
+    {
+      "file": "apps/web/src/pages/after-sales/ExchangeActionDialogs.tsx",
+      "sites": 1,
+      "status": "PASS"
+    },
+    {
+      "file": "apps/web/src/pages/after-sales/RepairActionDialogs.tsx",
+      "sites": 1,
+      "status": "PASS"
+    },
+    {
+      "file": "apps/web/src/pages/after-sales/PricedExchangeFields.tsx",
+      "sites": 1,
+      "status": "PASS"
+    },
+    {
+      "file": "apps/web/src/pages/StockAdjustmentsPage/index.tsx",
+      "sites": 1,
+      "status": "PASS"
+    },
+    {
+      "file": "apps/web/src/pages/UnifiedInboxPage/components/ChatServiceRequestDialog.tsx",
+      "sites": 2,
+      "status": "PASS"
+    },
+    {
+      "file": "apps/web/src/components/template-editor/editor/BlockEditModal.tsx",
+      "sites": 1,
+      "status": "PASS"
+    },
+    {
+      "file": "apps/web/src/components/device-returns/DeviceReturnIntakeDialog.tsx",
+      "sites": 2,
+      "status": "PASS"
+    },
+    {
+      "file": "apps/web/src/components/trade-in/TradeInCreditPicker.tsx",
+      "sites": 1,
+      "status": "PASS"
+    },
+    {
+      "file": "apps/web/src/pages/StockPage/components/StockListTab.tsx",
+      "sites": 3,
+      "status": "PASS"
+    },
+    {
+      "file": "apps/web/src/pages/ExpenseFavoritesPage.tsx",
+      "sites": 1,
+      "status": "PASS"
+    },
+    {
+      "file": "apps/web/src/components/customer/CustomerCreateDialog.tsx",
+      "sites": 5,
+      "status": "PASS"
+    },
+    {
+      "file": "apps/web/src/pages/StockTransfersPage.tsx",
+      "sites": 3,
+      "status": "PASS"
+    },
+    {
+      "file": "apps/web/src/pages/UnifiedInboxPage/components/FacebookCommentPanel.tsx",
+      "sites": 1,
+      "status": "PASS"
+    },
+    {
+      "file": "apps/web/src/pages/UnifiedInboxPage/components/ChatLibraryPicker.tsx",
+      "sites": 1,
+      "status": "PASS"
+    },
+    {
+      "file": "apps/web/src/pages/UnifiedInboxPage/components/ChatServiceRequestCard.tsx",
+      "sites": 2,
+      "status": "PASS"
+    },
+    {
+      "file": "apps/web/src/pages/StockPage/components/BulkTransferModal.tsx",
+      "sites": 1,
+      "status": "PASS"
+    },
+    {
+      "file": "apps/web/src/components/payment/SlipReviewTab.tsx",
+      "sites": 1,
+      "status": "PASS"
+    },
+    {
+      "file": "apps/web/src/pages/TodosPage/components/TodoFilters.tsx",
+      "sites": 1,
+      "status": "PASS"
+    },
+    {
+      "file": "apps/web/src/pages/TodosPage/components/TodoForm.tsx",
+      "sites": 1,
+      "status": "PASS"
+    },
+    {
+      "file": "apps/web/src/pages/AfterSalesPage.tsx",
+      "sites": 1,
+      "status": "PASS"
+    },
+    {
+      "file": "apps/web/src/pages/VatReportPage.tsx",
+      "sites": 1,
+      "status": "PASS"
+    },
+    {
+      "file": "apps/web/src/pages/InspectionPage.tsx",
+      "sites": 1,
+      "status": "PASS"
+    },
+    {
+      "file": "apps/web/src/pages/PDPAPage.tsx",
+      "sites": 2,
+      "status": "PASS"
+    },
+    {
+      "file": "apps/web/src/pages/PeakSyncPage.tsx",
+      "sites": 1,
+      "status": "PASS"
+    },
+    {
+      "file": "apps/web/src/components/tender/TenderInput.tsx",
+      "sites": 1,
+      "status": "PASS"
+    },
+    {
+      "file": "apps/web/src/components/contract/CreditCheckPanel.tsx",
+      "sites": 1,
+      "status": "PASS"
+    },
+    {
+      "file": "apps/web/src/components/contract/CustomerEditModal.tsx",
+      "sites": 4,
+      "status": "PASS"
+    },
+    {
+      "file": "apps/web/src/components/accounting/ReverseConfirmDialog.tsx",
+      "sites": 1,
+      "status": "PASS"
+    },
+    {
+      "file": "apps/web/src/components/template-editor/layout/HeaderBar.tsx",
+      "sites": 1,
+      "status": "PASS"
+    },
+    {
+      "file": "apps/web/src/pages/FinanceReceivablePage/FinanceContactLogDialog.tsx",
+      "sites": 1,
+      "status": "PASS"
+    },
+    {
+      "file": "apps/web/src/pages/ChatbotFinanceKnowledgePage.tsx",
+      "sites": 2,
+      "status": "PASS"
+    },
+    {
+      "file": "apps/web/src/pages/RepossessionsPage.tsx",
+      "sites": 2,
+      "status": "PASS"
+    },
+    {
+      "file": "apps/web/src/pages/NotificationsPage/components/NotificationLogTable.tsx",
+      "sites": 2,
+      "status": "PASS"
+    },
+    {
+      "file": "apps/web/src/pages/NotificationsPage/components/TemplateForm.tsx",
+      "sites": 3,
+      "status": "PASS"
+    },
+    {
+      "file": "apps/web/src/pages/NotificationsPage/components/TemplateManager.tsx",
+      "sites": 1,
+      "status": "PASS"
+    },
+    {
+      "file": "apps/web/src/pages/NotificationsPage/index.tsx",
+      "sites": 1,
+      "status": "PASS"
+    },
+    {
+      "file": "apps/web/src/components/product/DeviceOriginFilter.tsx",
+      "sites": 1,
+      "status": "PASS"
+    },
+    {
+      "file": "apps/web/src/components/expense-form-v4/PettyCashLinesSection.tsx",
+      "sites": 1,
+      "status": "PASS"
+    },
+    {
+      "file": "apps/web/src/pages/TradeInPage/components/AcceptModal.tsx",
+      "sites": 1,
+      "status": "PASS"
+    },
+    {
+      "file": "apps/web/src/pages/TradeInPage/components/ValuationsTab.tsx",
+      "sites": 1,
+      "status": "PASS"
+    },
+    {
+      "file": "apps/web/src/pages/TradeInPage/components/QuestionnaireTab.tsx",
+      "sites": 1,
+      "status": "PASS"
+    },
+    {
+      "file": "apps/web/src/pages/TradeInPage/components/ReferenceQuestionnaire.tsx",
+      "sites": 1,
+      "status": "PASS"
+    },
+    {
+      "file": "apps/web/src/components/credit-check/CreditAffordabilityForm.tsx",
+      "sites": 1,
+      "status": "PASS"
+    },
+    {
+      "file": "apps/web/src/components/credit-check/CreditCheckCreateModal.tsx",
+      "sites": 1,
+      "status": "PASS"
+    },
+    {
+      "file": "apps/web/src/components/credit-check/CreditCheckOverrideDialog.tsx",
+      "sites": 3,
+      "status": "PASS"
+    },
+    {
+      "file": "apps/web/src/pages/StockCountPage.tsx",
+      "sites": 1,
+      "status": "PASS"
+    },
+    {
+      "file": "apps/web/src/pages/ImportedSalesPage.tsx",
+      "sites": 1,
+      "status": "PASS"
+    },
+    {
+      "file": "apps/web/src/components/expense-form-v4/SettlementLinesSection.tsx",
+      "sites": 1,
+      "status": "PASS"
+    },
+    {
+      "file": "apps/web/src/components/expense-form-v4/PayrollLinesSection.tsx",
+      "sites": 3,
+      "status": "PASS"
+    },
+    {
+      "file": "apps/web/src/components/expense-form-v4/ItemLinesSection.tsx",
+      "sites": 3,
+      "status": "PASS"
+    },
+    {
+      "file": "apps/web/src/components/expense-form-v4/AdjustmentSection.tsx",
+      "sites": 2,
+      "status": "PASS"
+    },
+    {
+      "file": "apps/web/src/pages/ContractCreatePage/components/CustomerCreateModal.tsx",
+      "sites": 4,
+      "status": "PASS"
+    },
+    {
+      "file": "apps/web/src/pages/ContractCreatePage/components/PlanDetailsStep.tsx",
+      "sites": 2,
+      "status": "PASS"
+    },
+    {
+      "file": "apps/web/src/components/expense-form-v4/VendorSection.tsx",
+      "sites": 2,
+      "status": "PASS"
+    },
+    {
+      "file": "apps/web/src/components/ui/RichTextEditor.tsx",
+      "sites": 2,
+      "status": "PASS"
+    },
+    {
+      "file": "apps/web/src/pages/AuditLogsPage.tsx",
+      "sites": 1,
+      "status": "PASS"
+    },
+    {
+      "file": "apps/web/src/pages/ETaxConfigPage.tsx",
+      "sites": 1,
+      "status": "PASS"
+    },
+    {
+      "file": "apps/web/src/pages/CollectionsPage/tabs/AllTab.tsx",
+      "sites": 2,
+      "status": "PASS"
+    },
+    {
+      "file": "apps/web/src/pages/ContractDetailPage.tsx",
+      "sites": 1,
+      "status": "PASS"
+    },
+    {
+      "file": "apps/web/src/pages/AfterSalesNewPage.tsx",
+      "sites": 2,
+      "status": "PASS"
+    },
+    {
+      "file": "apps/web/src/pages/ContractsPage.tsx",
+      "sites": 4,
+      "status": "PASS"
+    },
+    {
+      "file": "apps/web/src/pages/canned-response-admin/QuickReplyEditor.tsx",
+      "sites": 2,
+      "status": "PASS"
+    },
+    {
+      "file": "apps/web/src/pages/PaymentsPage/components/RecordPaymentWizard.tsx",
+      "sites": 1,
+      "status": "PASS"
+    },
+    {
+      "file": "apps/web/src/pages/PaymentsPage/components/ReceiptsTab.tsx",
+      "sites": 1,
+      "status": "PASS"
+    },
+    {
+      "file": "apps/web/src/pages/ShopDailyCashPage.tsx",
+      "sites": 1,
+      "status": "PASS"
+    },
+    {
+      "file": "apps/web/src/pages/equity/EquityEntryPage.tsx",
+      "sites": 3,
+      "status": "PASS"
+    },
+    {
+      "file": "apps/web/src/pages/equity/EquityListPage.tsx",
+      "sites": 2,
+      "status": "PASS"
+    },
+    {
+      "file": "apps/web/src/pages/equity/DividendRegisterPage.tsx",
+      "sites": 2,
+      "status": "PASS"
+    },
+    {
+      "file": "apps/web/src/pages/PricingTemplatesPage.tsx",
+      "sites": 4,
+      "status": "PASS"
+    },
+    {
+      "file": "apps/web/src/pages/PaymentsPage/components/PaymentModals.tsx",
+      "sites": 2,
+      "status": "PASS"
+    },
+    {
+      "file": "apps/web/src/pages/PaymentsPage/components/PaymentFilters.tsx",
+      "sites": 2,
+      "status": "PASS"
+    },
+    {
+      "file": "apps/web/src/pages/other-income/components/ItemsTable.tsx",
+      "sites": 2,
+      "status": "PASS"
+    },
+    {
+      "file": "apps/web/src/pages/other-income/OtherIncomeEntryPage.tsx",
+      "sites": 1,
+      "status": "PASS"
+    },
+    {
+      "file": "apps/web/src/pages/CompanySettingsPage.tsx",
+      "sites": 1,
+      "status": "PASS"
+    },
+    {
+      "file": "apps/web/src/pages/canned-response-admin/bubble-editors/CardBubbleEditor.tsx",
+      "sites": 1,
+      "status": "PASS"
+    },
+    {
+      "file": "apps/web/src/pages/CollectionsPage/components/StuckContractsSection.tsx",
+      "sites": 1,
+      "status": "PASS"
+    },
+    {
+      "file": "apps/web/src/pages/AssetManagementPage/components/AssetTable.tsx",
+      "sites": 2,
+      "status": "PASS"
+    },
+    {
+      "file": "apps/web/src/pages/AssetManagementPage/components/AssetForm.tsx",
+      "sites": 5,
+      "status": "PASS"
+    },
+    {
+      "file": "apps/web/src/pages/UsersPage/UserDetailPage.tsx",
+      "sites": 3,
+      "status": "PASS"
+    },
+    {
+      "file": "apps/web/src/pages/CollectionsPage/components/SendLineAdHocDialog.tsx",
+      "sites": 1,
+      "status": "PASS"
+    },
+    {
+      "file": "apps/web/src/pages/CollectionsPage/components/LegalCaseDialog.tsx",
+      "sites": 1,
+      "status": "PASS"
+    },
+    {
+      "file": "apps/web/src/pages/CollectionsPage/components/CollectionsFilters.tsx",
+      "sites": 1,
+      "status": "PASS"
+    },
+    {
+      "file": "apps/web/src/pages/DunningSettingsPage.tsx",
+      "sites": 2,
+      "status": "PASS"
+    },
+    {
+      "file": "apps/web/src/pages/CommissionsPage.tsx",
+      "sites": 2,
+      "status": "PASS"
+    },
+    {
+      "file": "apps/web/src/pages/PromotionsPage.tsx",
+      "sites": 1,
+      "status": "PASS"
+    },
+    {
+      "file": "apps/web/src/pages/ProfitLossPage.tsx",
+      "sites": 1,
+      "status": "PASS"
+    },
+    {
+      "file": "apps/web/src/pages/POSPage/components/SaleDetailsForm.tsx",
+      "sites": 1,
+      "status": "PASS"
+    },
+    {
+      "file": "apps/web/src/pages/ProductDetailPage/index.tsx",
+      "sites": 1,
+      "status": "PASS"
+    },
+    {
+      "file": "apps/web/src/pages/UsersPage/components/InviteModal.tsx",
+      "sites": 2,
+      "status": "PASS"
+    },
+    {
+      "file": "apps/web/src/pages/ExpenseDailySummaryPage.tsx",
+      "sites": 1,
+      "status": "PASS"
+    },
+    {
+      "file": "apps/web/src/pages/ETaxInvoicePage.tsx",
+      "sites": 1,
+      "status": "PASS"
+    },
+    {
+      "file": "apps/web/src/pages/SmsTemplatesPage/components/SmsTemplateForm.tsx",
+      "sites": 1,
+      "status": "PASS"
+    },
+    {
+      "file": "apps/web/src/pages/PurchaseOrdersPage/components/AccessoryGroupScreen.tsx",
+      "sites": 1,
+      "status": "PASS"
+    },
+    {
+      "file": "apps/web/src/pages/PurchaseOrdersPage/components/UnitInspectScreen.tsx",
+      "sites": 1,
+      "status": "PASS"
+    },
+    {
+      "file": "apps/web/src/pages/ProductDetailPage/components/EditProductModal.tsx",
+      "sites": 3,
+      "status": "PASS"
+    },
+    {
+      "file": "apps/web/src/pages/ProductDetailPage/components/OnlineListingPanel.tsx",
+      "sites": 1,
+      "status": "PASS"
+    },
+    {
+      "file": "apps/web/src/pages/PurchaseOrdersPage/components/wizard/PaymentSection.tsx",
+      "sites": 2,
+      "status": "PASS"
+    },
+    {
+      "file": "apps/web/src/pages/PurchaseOrdersPage/components/wizard/items/AccessoryItemRow.tsx",
+      "sites": 2,
+      "status": "PASS"
+    },
+    {
+      "file": "apps/web/src/pages/PurchaseOrdersPage/components/wizard/items/DeviceItemRow.tsx",
+      "sites": 1,
+      "status": "PASS"
+    },
+    {
+      "file": "apps/web/src/pages/PurchaseOrdersPage/components/wizard/items/RowChrome.tsx",
+      "sites": 1,
+      "status": "PASS"
+    }
+  ]
+}

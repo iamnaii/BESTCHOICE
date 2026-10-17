@@ -181,7 +181,11 @@ export default function PaymentVoucherPage() {
         error={docQuery.error}
         onRetry={docQuery.refetch}
       >
-        {docQuery.data && <VoucherSheet doc={docQuery.data} />}
+        {docQuery.data && (
+          <div className="max-w-full overflow-x-auto print:overflow-visible" role="region" aria-label="ตัวอย่างเอกสาร" tabIndex={0}>
+            <VoucherSheet doc={docQuery.data} />
+          </div>
+        )}
       </QueryBoundary>
 
       {/* Print CSS lives co-located with the page */}

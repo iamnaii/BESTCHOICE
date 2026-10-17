@@ -282,7 +282,7 @@ export default function VatPage() {
         <CardHeader className="flex flex-row gap-3 items-end flex-wrap pb-4">
           <div className="flex gap-3 items-center">
             <Select value={String(year)} onValueChange={(v) => setYear(parseInt(v, 10))}>
-              <SelectTrigger className="w-[110px]">
+              <SelectTrigger aria-label="ปี" className="w-[110px]">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -294,7 +294,7 @@ export default function VatPage() {
               </SelectContent>
             </Select>
             <Select value={String(month)} onValueChange={(v) => setMonth(parseInt(v, 10))}>
-              <SelectTrigger className="w-[130px]">
+              <SelectTrigger aria-label="เดือน" className="w-[130px]">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>

@@ -1,0 +1,77 @@
+{
+  "scope": "Actual QuickBuyModal in isolated local preview, complete device/seller steps, bank list and free text, no purchase submission",
+  "results": [
+    {
+      "engine": "chromium",
+      "width": 390,
+      "root": 16,
+      "status": "PASS",
+      "lastText": "ทหารไทยธนชาต",
+      "geometry": {
+        "height": 44,
+        "arrowInset": 13,
+        "arrowCenter": 0
+      }
+    },
+    {
+      "engine": "chromium",
+      "width": 1440,
+      "root": 16,
+      "status": "PASS",
+      "lastText": "ทหารไทยธนชาต",
+      "geometry": {
+        "height": 44,
+        "arrowInset": 13,
+        "arrowCenter": 0
+      }
+    },
+    {
+      "engine": "chromium",
+      "width": 320,
+      "root": 20,
+      "status": "PASS",
+      "lastText": "ทหารไทยธนชาต",
+      "geometry": {
+        "height": 55,
+        "arrowInset": 16,
+        "arrowCenter": 0
+      }
+    },
+    {
+      "engine": "webkit",
+      "width": 390,
+      "root": 16,
+      "status": "PASS",
+      "lastText": "ทหารไทยธนชาต",
+      "geometry": {
+        "height": 44,
+        "arrowInset": 13,
+        "arrowCenter": 0
+      }
+    },
+    {
+      "engine": "webkit",
+      "width": 1440,
+      "root": 16,
+      "status": "PASS",
+      "lastText": "ทหารไทยธนชาต",
+      "geometry": {
+        "height": 44,
+        "arrowInset": 13,
+        "arrowCenter": 0
+      }
+    },
+    {
+      "engine": "webkit",
+      "width": 320,
+      "root": 20,
+      "status": "PASS",
+      "lastText": "ทหารไทยธนชาต",
+      "geometry": {
+        "height": 55,
+        "arrowInset": 16,
+        "arrowCenter": 0
+      }
+    }
+  ]
+}

@@ -1,4 +1,5 @@
-import { useState, useRef } from 'react';
+import { NativeSelect } from '@/components/ui/native-select';
+import { useId as useUiFieldId, useState, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
@@ -191,6 +192,7 @@ function LetterAssetField({
 }
 
 export default function DunningSettingsPage() {
+  const uiFieldId = useUiFieldId();
   const queryClient = useQueryClient();
   const [showModal, setShowModal] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
@@ -628,10 +630,10 @@ export default function DunningSettingsPage() {
         <form onSubmit={handleSubmit} className="space-y-4">
           {/* Name */}
           <div>
-            <label className="block text-sm font-medium text-foreground mb-1">
+            <label htmlFor={`${uiFieldId}-1`} className="block text-sm font-medium text-foreground mb-1">
               ชื่อ Rule <span className="text-destructive">*</span>
             </label>
-            <input
+            <input id={`${uiFieldId}-1`}
               type="text"
               value={form.name}
               onChange={(e) => handleFormChange('name', e.target.value)}
@@ -643,11 +645,11 @@ export default function DunningSettingsPage() {
           {/* TriggerDay + Channel */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-sm font-medium text-foreground mb-1">
+              <label htmlFor={`${uiFieldId}-2`} className="block text-sm font-medium text-foreground mb-1">
                 วันที่ทริกเกอร์{' '}
                 <span className="text-muted-foreground text-xs">(ลบ = ก่อนครบ)</span>
               </label>
-              <input
+              <input id={`${uiFieldId}-2`}
                 type="number"
                 value={form.triggerDay}
                 onChange={(e) =>
@@ -660,32 +662,32 @@ export default function DunningSettingsPage() {
               </p>
             </div>
             <div>
-              <label className="block text-sm font-medium text-foreground mb-1">ช่องทาง</label>
-              <select
+              <label htmlFor={`${uiFieldId}-3`} className="block text-sm font-medium text-foreground mb-1">ช่องทาง</label>
+              <NativeSelect wrapperClassName="max-w-full w-full" id={`${uiFieldId}-3`}
                 value={form.channel}
                 onChange={(e) => handleFormChange('channel', e.target.value as DunningChannel)}
-                className="w-full px-3 py-2 rounded-md border border-border bg-input text-foreground text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                className="px-3 py-2 rounded-md border border-border bg-input text-foreground text-sm focus:outline-none focus:ring-1 focus:ring-primary"
               >
                 {CHANNEL_OPTIONS.map((opt) => (
                   <option key={opt.value} value={opt.value}>
                     {opt.label}
                   </option>
                 ))}
-              </select>
+              </NativeSelect>
             </div>
           </div>
 
           {/* P3 E2: Optional SmsTemplate reference */}
           {(form.channel === 'LINE' || form.channel === 'SMS') && (
             <div>
-              <label className="block text-sm font-medium text-foreground mb-1">
+              <label htmlFor={`${uiFieldId}-4`} className="block text-sm font-medium text-foreground mb-1">
                 ใช้ Template จาก SMS Template Library{' '}
                 <span className="text-muted-foreground text-xs">(ไม่บังคับ)</span>
               </label>
-              <select
+              <NativeSelect wrapperClassName="max-w-full w-full" id={`${uiFieldId}-4`}
                 value={form.templateName}
                 onChange={(e) => handleFormChange('templateName', e.target.value)}
-                className="w-full px-3 py-2 rounded-md border border-border bg-input text-foreground text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                className="px-3 py-2 rounded-md border border-border bg-input text-foreground text-sm focus:outline-none focus:ring-1 focus:ring-primary"
               >
                 <option value="">— ใช้ข้อความ inline ด้านล่าง —</option>
                 {smsTemplates
@@ -695,7 +697,7 @@ export default function DunningSettingsPage() {
                       {t.name}
                     </option>
                   ))}
-              </select>
+              </NativeSelect>
               <p className="text-xs text-muted-foreground mt-1 leading-snug">
                 ใช้ข้อความจากเทมเพลตที่เลือก หากเทมเพลตถูกลบจะใช้ข้อความสำรองด้านล่าง
               </p>
@@ -704,7 +706,7 @@ export default function DunningSettingsPage() {
 
           {/* Message Template */}
           <div>
-            <label className="block text-sm font-medium text-foreground mb-1">
+            <label htmlFor={`${uiFieldId}-5`} className="block text-sm font-medium text-foreground mb-1">
               เทมเพลตข้อความ {form.templateName && (
                 <span className="text-xs text-muted-foreground">(สำรองเมื่อ template หาย)</span>
               )}
@@ -722,7 +724,7 @@ export default function DunningSettingsPage() {
                 </button>
               ))}
             </div>
-            <textarea
+            <textarea id={`${uiFieldId}-5`}
               value={form.messageTemplate}
               onChange={(e) => handleFormChange('messageTemplate', e.target.value)}
               rows={4}
@@ -733,11 +735,11 @@ export default function DunningSettingsPage() {
 
           {/* Escalate To */}
           <div>
-            <label className="block text-sm font-medium text-foreground mb-1">
+            <label htmlFor={`${uiFieldId}-6`} className="block text-sm font-medium text-foreground mb-1">
               Escalate ไปยัง Rule ID{' '}
               <span className="text-muted-foreground text-xs">(ไม่บังคับ)</span>
             </label>
-            <input
+            <input id={`${uiFieldId}-6`}
               type="text"
               value={form.escalateTo}
               onChange={(e) => handleFormChange('escalateTo', e.target.value)}
@@ -748,10 +750,10 @@ export default function DunningSettingsPage() {
 
           {/* Sort Order */}
           <div>
-            <label className="block text-sm font-medium text-foreground mb-1">
+            <label htmlFor={`${uiFieldId}-7`} className="block text-sm font-medium text-foreground mb-1">
               ลำดับ (sortOrder)
             </label>
-            <input
+            <input id={`${uiFieldId}-7`}
               type="number"
               value={form.sortOrder}
               onChange={(e) =>

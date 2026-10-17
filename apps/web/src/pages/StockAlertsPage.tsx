@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { NativeSelect } from '@/components/ui/native-select';
+import { useId as useUiFieldId, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import api, { getErrorMessage } from '@/lib/api';
@@ -76,6 +77,7 @@ interface Branch {
 /* ------------------------------------------------------------------ */
 
 export default function StockAlertsPage() {
+  const uiFieldId = useUiFieldId();
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const isManager = user?.role === 'OWNER' || user?.role === 'BRANCH_MANAGER';
@@ -286,7 +288,7 @@ export default function StockAlertsPage() {
                     reorderQuantity: r.reorderQuantity.toString(),
                   });
                 }}
-                className="text-muted-foreground hover:text-primary"
+                className="inline-flex size-11 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted/50 hover:text-primary"
                 title="แก้ไข"
                 aria-label="แก้ไข"
               >
@@ -296,7 +298,7 @@ export default function StockAlertsPage() {
               </button>
               <button
                 onClick={() => updateMutation.mutate({ id: r.id, data: { isActive: !r.isActive } })}
-                className={`text-xs ${r.isActive ? 'text-muted-foreground hover:text-destructive' : 'text-muted-foreground hover:text-success'}`}
+                className={`min-h-11 min-w-11 rounded-lg px-2 text-xs ${r.isActive ? 'text-muted-foreground hover:text-destructive' : 'text-muted-foreground hover:text-success'}`}
                 title={r.isActive ? 'ปิดใช้งาน' : 'เปิดใช้งาน'}
               >
                 {r.isActive ? 'ปิด' : 'เปิด'}
@@ -304,7 +306,7 @@ export default function StockAlertsPage() {
               {user?.role === 'OWNER' && (
                 <button
                   onClick={() => setConfirmDialog({ open: true, message: 'ลบ Reorder Point นี้?', action: () => deleteMutation.mutate(r.id) })}
-                  className="text-muted-foreground hover:text-destructive"
+                  className="inline-flex size-11 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted/50 hover:text-destructive"
                   title="ลบ"
                 >
                   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -372,7 +374,7 @@ export default function StockAlertsPage() {
             a.status === 'ACTIVE' ? (
               <button
                 onClick={() => resolveMutation.mutate(a.id)}
-                className="text-xs text-primary hover:text-primary/90 font-medium"
+                className="min-h-11 min-w-11 px-2 text-xs text-primary hover:text-primary/90 font-medium"
               >
                 แก้ไขแล้ว
               </button>
@@ -391,19 +393,19 @@ export default function StockAlertsPage() {
         subtitle={`${dashboard?.totalLowStock || 0} รายการต่ำกว่าเกณฑ์ | ${activeAlerts} แจ้งเตือนรอดำเนินการ`}
         action={
           isManager ? (
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
               {user?.role === 'OWNER' && (
                 <button
                   onClick={() => checkStockMutation.mutate()}
                   disabled={checkStockMutation.isPending}
-                  className="px-4 py-2 border border-input rounded-lg text-sm font-medium hover:bg-muted/50 disabled:opacity-50"
+                  className="min-h-11 px-4 py-2 border border-input rounded-lg text-sm font-medium hover:bg-muted/50 disabled:opacity-50"
                 >
                   {checkStockMutation.isPending ? 'กำลังตรวจ...' : 'ตรวจสอบสต็อก'}
                 </button>
               )}
               <button
                 onClick={() => { resetForm(); setShowCreateModal(true); }}
-                className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90"
+                className="min-h-11 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90"
               >
                 + Reorder Point
               </button>
@@ -413,14 +415,14 @@ export default function StockAlertsPage() {
       />
 
       {/* Sub-tabs */}
-      <div className="flex gap-1 mb-6 bg-muted rounded-xl p-1 w-fit">
+      <div className="flex flex-wrap gap-1 mb-6 bg-muted rounded-xl p-1 w-fit max-w-full">
         {(['dashboard', 'reorder-points', 'alerts'] as const).map((tab) => {
           const labels = { dashboard: 'ภาพรวม', 'reorder-points': 'Reorder Points', alerts: 'แจ้งเตือน' };
           return (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
-              className={`px-4 py-2 text-sm rounded-lg font-medium transition-colors ${
+              className={`min-h-11 px-4 py-2 text-sm rounded-lg font-medium transition-colors ${
                 activeTab === tab ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
               }`}
             >
@@ -435,7 +437,7 @@ export default function StockAlertsPage() {
 
       {/* Branch filter */}
       <div className="flex flex-wrap gap-3 mb-4">
-        <select
+        <NativeSelect wrapperClassName="w-full sm:w-64" aria-label="สาขา"
           value={filterBranch}
           onChange={(e) => setFilterBranch(e.target.value)}
           className="px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
@@ -444,9 +446,9 @@ export default function StockAlertsPage() {
           {branches?.map((b) => (
             <option key={b.id} value={b.id}>{b.name}</option>
           ))}
-        </select>
+        </NativeSelect>
         {activeTab === 'alerts' && (
-          <select
+          <NativeSelect wrapperClassName="w-full sm:w-64" aria-label="สถานะ"
             value={filterStatus}
             onChange={(e) => setFilterStatus(e.target.value)}
             className="px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
@@ -455,7 +457,7 @@ export default function StockAlertsPage() {
             <option value="ACTIVE">ต้องดำเนินการ</option>
             <option value="PO_CREATED">สร้าง PO แล้ว</option>
             <option value="RESOLVED">แก้ไขแล้ว</option>
-          </select>
+          </NativeSelect>
         )}
       </div>
 
@@ -580,10 +582,10 @@ export default function StockAlertsPage() {
         >
           {!editingPoint && (
             <>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-foreground mb-1">ประเภท</label>
-                  <select
+                  <label htmlFor={`${uiFieldId}-1`} className="block text-sm font-medium text-foreground mb-3">ประเภท</label>
+                  <NativeSelect id={`${uiFieldId}-1`}
                     value={form.category}
                     onChange={(e) => setForm({ ...form, category: e.target.value, brand: '', model: '', storage: '' })}
                     className="w-full px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
@@ -591,11 +593,11 @@ export default function StockAlertsPage() {
                     {Object.entries(categoryLabels).filter(([key]) => key !== 'ACCESSORY').map(([key, val]) => (
                       <option key={key} value={key}>{val}</option>
                     ))}
-                  </select>
+                  </NativeSelect>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-foreground mb-1">แบรนด์</label>
-                  <select
+                  <label htmlFor={`${uiFieldId}-2`} className="block text-sm font-medium text-foreground mb-3">แบรนด์</label>
+                  <NativeSelect id={`${uiFieldId}-2`}
                     value={form.brand}
                     onChange={(e) => setForm({ ...form, brand: e.target.value, model: '', storage: '' })}
                     className="w-full px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
@@ -605,13 +607,13 @@ export default function StockAlertsPage() {
                     {brands.map((b) => (
                       <option key={b} value={b}>{b}</option>
                     ))}
-                  </select>
+                  </NativeSelect>
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-foreground mb-1">รุ่น</label>
-                  <select
+                  <label htmlFor={`${uiFieldId}-3`} className="block text-sm font-medium text-foreground mb-3">รุ่น</label>
+                  <NativeSelect id={`${uiFieldId}-3`}
                     value={form.model}
                     onChange={(e) => {
                       const modelName = e.target.value;
@@ -626,11 +628,11 @@ export default function StockAlertsPage() {
                     {form.brand && getModels(form.brand, form.category).map((m) => (
                       <option key={m.name} value={m.name}>{m.name}</option>
                     ))}
-                  </select>
+                  </NativeSelect>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-foreground mb-1">ความจุ (ไม่บังคับ)</label>
-                  <select
+                  <label htmlFor={`${uiFieldId}-4`} className="block text-sm font-medium text-foreground mb-3">ความจุ (ไม่บังคับ)</label>
+                  <NativeSelect id={`${uiFieldId}-4`}
                     value={form.storage}
                     onChange={(e) => setForm({ ...form, storage: e.target.value })}
                     className="w-full px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
@@ -640,12 +642,12 @@ export default function StockAlertsPage() {
                     {form.brand && form.model && (getModelInfo(form.brand, form.model)?.storage || []).map((s) => (
                       <option key={s} value={s}>{s}</option>
                     ))}
-                  </select>
+                  </NativeSelect>
                 </div>
               </div>
               <div>
-                <label className="block text-sm font-medium text-foreground mb-1">สาขา</label>
-                <select
+                <label htmlFor={`${uiFieldId}-5`} className="block text-sm font-medium text-foreground mb-3">สาขา</label>
+                <NativeSelect id={`${uiFieldId}-5`}
                   value={form.branchId}
                   onChange={(e) => setForm({ ...form, branchId: e.target.value })}
                   className="w-full px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
@@ -655,14 +657,14 @@ export default function StockAlertsPage() {
                   {branches?.map((b) => (
                     <option key={b.id} value={b.id}>{b.name}</option>
                   ))}
-                </select>
+                </NativeSelect>
               </div>
             </>
           )}
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-foreground mb-1">จำนวนขั้นต่ำ (แจ้งเตือนเมื่อเหลือเท่านี้)</label>
-              <input
+              <label htmlFor={`${uiFieldId}-6`} className="block text-sm font-medium text-foreground mb-3">จำนวนขั้นต่ำ (แจ้งเตือนเมื่อเหลือเท่านี้)</label>
+              <input id={`${uiFieldId}-6`}
                 type="number"
                 min="1"
                 value={form.minQuantity}
@@ -672,8 +674,8 @@ export default function StockAlertsPage() {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-foreground mb-1">จำนวนที่ควรสั่งซื้อ</label>
-              <input
+              <label htmlFor={`${uiFieldId}-7`} className="block text-sm font-medium text-foreground mb-3">จำนวนที่ควรสั่งซื้อ</label>
+              <input id={`${uiFieldId}-7`}
                 type="number"
                 min="1"
                 value={form.reorderQuantity}
@@ -687,14 +689,14 @@ export default function StockAlertsPage() {
             <button
               type="button"
               onClick={() => { setShowCreateModal(false); setEditingPoint(null); resetForm(); }}
-              className="px-4 py-2 text-sm text-muted-foreground"
+              className="min-h-11 px-4 py-2 text-sm text-muted-foreground"
             >
               ยกเลิก
             </button>
             <button
               type="submit"
               disabled={createMutation.isPending || updateMutation.isPending}
-              className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 disabled:opacity-50"
+              className="min-h-11 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 disabled:opacity-50"
             >
               {(createMutation.isPending || updateMutation.isPending) ? 'กำลังบันทึก...' : 'บันทึก'}
             </button>

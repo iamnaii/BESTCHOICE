@@ -1,3 +1,4 @@
+import { formControlClass } from '@/components/ui/form-styles';
 // Expense form V4 — vendor picker.
 // Thin wrapper over the shared ContactCombobox (searches the party master across
 // ALL roles; picking a contact provisions the SUPPLIER role via ensure-role).
@@ -10,6 +11,7 @@ import { contactsApi } from '@/lib/api/contacts';
 import { ContactCombobox, type ContactPickResult } from '@/components/contacts/ContactCombobox';
 
 interface Props {
+  id?: string;
   value: string;
   onSelectSupplier: (s: {
     name: string;
@@ -20,7 +22,7 @@ interface Props {
   invalid?: boolean;
 }
 
-export function VendorCombobox({ value, onSelectSupplier, invalid }: Props) {
+export function VendorCombobox({ value, onSelectSupplier, invalid, id }: Props) {
   // On pick: ensure-role already ran inside ContactCombobox (a Supplier row now
   // exists). Read the supplier link's type to map JURISTIC→PND53 / INDIVIDUAL→PND3
   // so "ประเภทผู้ขาย" auto-fills; fall back to the list values if detail fails.
@@ -44,6 +46,8 @@ export function VendorCombobox({ value, onSelectSupplier, invalid }: Props) {
 
   return (
     <ContactCombobox
+      id={id}
+      className={formControlClass}
       roleNeeded="SUPPLIER"
       value={value}
       invalid={invalid}

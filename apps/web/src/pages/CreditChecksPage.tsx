@@ -1,3 +1,4 @@
+import { formControlClass } from '@/components/ui/form-styles';
 import ResponsiveFilterPanel from '@/components/ui/ResponsiveFilterPanel';
 import { usePaginationParams } from '@/hooks/usePaginationParams';
 import { PaginationBar } from '@/components/ui/PaginationBar';
@@ -304,11 +305,11 @@ export default function CreditChecksPage() {
                 placeholder="ค้นหาชื่อลูกค้า..."
                 aria-label="ค้นหารายการตรวจเครดิต" value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="px-3 py-2 border border-input rounded-lg text-sm bg-background outline-hidden focus:ring-2 focus:ring-ring/30 w-full min-w-0"
+                className={formControlClass}
               />
             }>
               <Select value={status} onValueChange={setStatus}>
-                <SelectTrigger className="h-10 w-auto min-w-44">
+                <SelectTrigger aria-label="สถานะตรวจเครดิต" className={`${formControlClass} w-auto min-w-44`}>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>

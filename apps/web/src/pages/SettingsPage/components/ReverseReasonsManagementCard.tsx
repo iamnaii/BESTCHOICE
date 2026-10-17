@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { GripVertical, Plus, Pencil, Trash2, Lightbulb } from 'lucide-react';
+import { ChevronUp, Plus, Pencil, Trash2, Lightbulb } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -103,8 +103,8 @@ export function ReverseReasonsManagementCard() {
             ใช้ร่วม 3 modules (รายได้อื่น · รายจ่าย · สินทรัพย์)
           </p>
 
-          <div className="rounded-md border border-border overflow-hidden">
-            <table className="w-full text-sm">
+          <div className="rounded-md border border-border overflow-x-auto">
+            <table className="w-full min-w-[32rem] text-sm">
               <thead className="bg-muted/50 text-muted-foreground">
                 <tr>
                   <th className="px-3 py-2 text-left font-medium w-12 leading-snug">ลำดับ</th>
@@ -118,15 +118,18 @@ export function ReverseReasonsManagementCard() {
                   <tr key={row.id} className={!row.isActive ? 'opacity-60' : ''}>
                     <td className="px-3 py-2 align-middle">
                       <div className="flex items-center gap-1">
-                        <button
+                        <Button
                           type="button"
+                          variant="ghost"
+                          size="sm"
+                          mode="icon"
                           onClick={() => move(idx, -1)}
                           disabled={!isOwner || idx === 0 || reorderMutation.isPending}
                           className="text-muted-foreground hover:text-foreground disabled:opacity-30"
-                          aria-label="เลื่อนขึ้น"
+                          aria-label={`เลื่อน ${row.label} ขึ้น`}
                         >
-                          <GripVertical size={14} />
-                        </button>
+                          <ChevronUp size={14} />
+                        </Button>
                         <span className="text-xs tabular-nums">{idx + 1}</span>
                       </div>
                     </td>
@@ -145,18 +148,20 @@ export function ReverseReasonsManagementCard() {
                       <Button
                         variant="ghost"
                         size="sm"
+                        mode="icon"
                         onClick={() => setEditing(row)}
                         disabled={!isOwner}
-                        aria-label="แก้ไข"
+                        aria-label={`แก้ไข ${row.label}`}
                       >
                         <Pencil size={14} />
                       </Button>
                       <Button
                         variant="ghost"
                         size="sm"
+                        mode="icon"
                         onClick={() => setConfirmDelete(row)}
                         disabled={!isOwner || deleteMutation.isPending}
-                        aria-label="ลบ"
+                        aria-label={`ลบ ${row.label}`}
                       >
                         <Trash2 size={14} className="text-destructive" />
                       </Button>
@@ -174,12 +179,12 @@ export function ReverseReasonsManagementCard() {
             </table>
           </div>
 
-          <div className="flex items-center justify-between gap-3">
+          <div className="flex flex-col items-stretch sm:flex-row sm:items-center sm:justify-between gap-3">
             <div className="flex items-start gap-2 text-xs text-muted-foreground leading-snug">
               <Lightbulb size={14} className="mt-0.5 shrink-0" aria-hidden />
               ปิดใช้งานแทนการลบ — เก็บ audit trail ที่อ้างเหตุผลเก่าไว้
             </div>
-            <Button onClick={() => setCreating(true)} disabled={!isOwner}>
+            <Button className="shrink-0" onClick={() => setCreating(true)} disabled={!isOwner}>
               <Plus size={14} className="mr-1.5" aria-hidden />
               เพิ่มเหตุผลใหม่
             </Button>

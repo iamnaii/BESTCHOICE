@@ -1,7 +1,7 @@
 import { FlexContentEditor } from '@/components/line-message/FlexContentEditor';
 import type { FlexContent as BaseFlexContent } from '@/lib/line-flex';
 import { FlexPreviewCard } from '@/components/line-message/FlexPreviewCard';
-import { useState, useCallback, useEffect } from 'react';
+import { useId as useUiFieldId, useState, useCallback, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { MessageSquareMore, Save, RotateCcw, MessageSquare, Image as ImageIcon, LayoutTemplate, Plus, Trash2, GripVertical } from 'lucide-react';
@@ -144,7 +144,7 @@ function TextEditor({ message, onChange }: EditorProps) {
     <div>
       <Textarea
         className="min-h-[120px] resize-none"
-        placeholder="พิมพ์ข้อความต้อนรับ..."
+        aria-label="ข้อความต้อนรับ" placeholder="พิมพ์ข้อความต้อนรับ..."
         value={c.text}
         onChange={(e) => onChange({ ...message, content: { ...c, text: e.target.value } })}
         maxLength={5000}
@@ -157,12 +157,13 @@ function TextEditor({ message, onChange }: EditorProps) {
 }
 
 function ImageEditor({ message, onChange }: EditorProps) {
+  const uiFieldId = useUiFieldId();
   const c = message.content as ImageContent;
   return (
     <div className="space-y-3">
       <div>
-        <label className="mb-1.5 block text-sm font-medium text-foreground/80">URL รูปภาพ</label>
-        <Input
+        <label htmlFor={`${uiFieldId}-1`} className="mb-1.5 block text-sm font-medium text-foreground/80">URL รูปภาพ</label>
+        <Input id={`${uiFieldId}-1`}
           placeholder="https://example.com/image.jpg"
           value={c.imageUrl}
           onChange={(e) => onChange({ ...message, content: { ...c, imageUrl: e.target.value } })}
@@ -170,10 +171,10 @@ function ImageEditor({ message, onChange }: EditorProps) {
         <p className="mt-1 text-xs text-muted-foreground">ต้องเป็น HTTPS และขนาดไม่เกิน 10MB</p>
       </div>
       <div>
-        <label className="mb-1.5 block text-sm font-medium text-foreground/80">
+        <label htmlFor={`${uiFieldId}-2`} className="mb-1.5 block text-sm font-medium text-foreground/80">
           Caption <span className="text-muted-foreground font-normal">(ไม่บังคับ)</span>
         </label>
-        <Input
+        <Input id={`${uiFieldId}-2`}
           placeholder="คำบรรยายใต้รูป..."
           value={c.caption}
           onChange={(e) => onChange({ ...message, content: { ...c, caption: e.target.value } })}
@@ -185,13 +186,14 @@ function ImageEditor({ message, onChange }: EditorProps) {
 }
 
 function FlexEditor({ message, onChange }: EditorProps) {
+  const uiFieldId = useUiFieldId();
   const c = message.content as FlexContent;
   return (
     <FlexContentEditor content={c} onChange={(content) => onChange({ ...message, content })} templateHoverClass="hover:border-primary/50">
       {/* Alt text */}
       <div>
-        <label className="mb-1.5 block text-sm font-medium text-foreground/80">Alt Text</label>
-        <Input
+        <label htmlFor={`${uiFieldId}-1`} className="mb-1.5 block text-sm font-medium text-foreground/80">Alt Text</label>
+        <Input id={`${uiFieldId}-1`}
           placeholder="ข้อความสำรองสำหรับการแจ้งเตือน"
           value={c.altText}
           onChange={(e) => onChange({ ...message, content: { ...c, altText: e.target.value } })}

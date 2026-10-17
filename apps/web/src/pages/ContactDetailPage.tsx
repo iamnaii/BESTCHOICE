@@ -378,7 +378,7 @@ function MergeContactsDialog({
           <div className="flex flex-col gap-3">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
-              <Input
+              <Input aria-label="ค้นหาด้วยชื่อ / รหัส / เบอร์"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="ค้นหาด้วยชื่อ / รหัส / เบอร์"

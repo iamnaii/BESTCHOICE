@@ -1,3 +1,6 @@
+import { NativeSelect } from '@/components/ui/native-select';
+import { formControlClass } from '@/components/ui/form-styles';
+import { useId as useFieldId } from 'react';
 import { getReportDateRange } from '@/lib/date';
 import { useAccountingPermissions } from '@/hooks/useAccountingPermissions';
 import { useState, useMemo } from 'react';
@@ -110,8 +113,7 @@ const statusLabels: Record<string, string> = {
   VOIDED: 'ยกเลิก',
 };
 
-const inputClass =
-  'w-full px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden';
+const inputClass = formControlClass;
 
 function fmt(n: string | number | null | undefined): string {
   if (n == null) return '-';
@@ -120,6 +122,7 @@ function fmt(n: string | number | null | undefined): string {
 
 // ─── Main Page ───
 export default function ExpensesPage() {
+  const fieldId = useFieldId();
   const queryClient = useQueryClient();
   // D1.2.4 follow-up — feature flag for the Expense Templates ("รายการโปรด")
   // surface. When OWNER disables, the favorites tab + entry button are
@@ -359,8 +362,9 @@ export default function ExpensesPage() {
         <div className="flex items-center gap-1">
           <button
             onClick={(ev) => { ev.stopPropagation(); navigate(`/expenses/${e.id}`); }}
-            className="p-1.5 hover:bg-muted rounded transition-colors"
+            className="inline-flex size-7 max-lg:size-11 shrink-0 items-center justify-center hover:bg-muted rounded transition-colors"
             title="ดูรายละเอียด"
+            aria-label={`ดูรายละเอียด ${e.number}`}
           >
             <Eye className="size-4 text-muted-foreground" />
           </button>
@@ -368,12 +372,14 @@ export default function ExpensesPage() {
             <div className="relative">
               <button
                 onClick={(ev) => { ev.stopPropagation(); setOpenMenuId(openMenuId === e.id ? null : e.id); }}
-                className="p-1.5 hover:bg-muted rounded transition-colors"
+                className="inline-flex size-7 max-lg:size-11 shrink-0 items-center justify-center hover:bg-muted rounded transition-colors"
+                aria-label={`เมนู ${e.number}`}
+                aria-expanded={openMenuId === e.id}
               >
                 <MoreVertical className="size-4 text-muted-foreground" />
               </button>
               {openMenuId === e.id && (
-                <div className="absolute right-0 top-full mt-1 z-10 bg-card border border-border rounded-lg shadow-lg py-1 min-w-[160px]">
+                <div className="absolute right-0 top-full mt-1 z-10 bg-card border border-border rounded-lg shadow-lg py-1 min-w-[160px] max-lg:[&_button]:min-h-11">
                   {e.status === 'DRAFT' && (
                     <>
                       <button onClick={() => openEdit(e)} className="w-full px-3 py-1.5 text-sm text-left hover:bg-muted flex items-center gap-2">
@@ -578,8 +584,9 @@ export default function ExpensesPage() {
             type="text"
             value={search}
             onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+            aria-label="ค้นหาค่าใช้จ่าย"
             placeholder="ค้นหาเลขเอกสาร / ผู้ขาย / เลขใบกำกับ..."
-            className="w-full pl-10 pr-3 py-2.5 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 outline-hidden bg-background"
+            className={cn(formControlClass, 'pl-10')}
           />
         </div>
         <button
@@ -593,10 +600,11 @@ export default function ExpensesPage() {
         >
           <SlidersHorizontal className="size-4" />
         </button>
-        <select
+        <NativeSelect wrapperClassName="max-w-full w-full min-w-0 sm:w-auto sm:min-w-[150px]"
+          aria-label="ประเภทค่าใช้จ่าย"
           value={categoryFilter}
           onChange={(e) => setFilter('category', e.target.value)}
-          className="px-3 py-2.5 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 outline-hidden bg-background min-w-[150px]"
+          className={cn(formControlClass, "")}
         >
           <option value="">ทุกประเภท</option>
           {coaGroups.map((g) => (
@@ -608,7 +616,7 @@ export default function ExpensesPage() {
               ))}
             </optgroup>
           ))}
-        </select>
+        </NativeSelect>
         <div className="relative" onClick={(ev) => ev.stopPropagation()}>
           <Button variant="primary" size="md" onClick={() => setShowCreateMenu((v) => !v)}>
             <Plus className="size-4" /> สร้างเอกสารใหม่ <ChevronDown className="size-3" />
@@ -632,26 +640,26 @@ export default function ExpensesPage() {
       {showAdvancedFilters && (
         <div className="flex flex-wrap gap-4 mb-5 bg-card rounded-xl border border-border/50 shadow-sm p-5">
           <div>
-            <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">สถานะ (ละเอียด)</label>
-            <select value={statusFilter} onChange={(e) => setFilter('status', e.target.value)} className={`${inputClass} w-auto min-w-[120px]`}>
+            <label htmlFor={`${fieldId}-1`} className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">สถานะ (ละเอียด)</label>
+            <NativeSelect wrapperClassName="max-w-full w-auto sm:min-w-[120px]" id={`${fieldId}-1`} value={statusFilter} onChange={(e) => setFilter('status', e.target.value)} className={inputClass}>
               <option value="">ตามแถบที่เลือก</option>
               {Object.entries(statusLabels).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-            </select>
+            </NativeSelect>
           </div>
           <div>
-            <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">สาขา</label>
-            <select value={branchFilter} onChange={(e) => setFilter('branch', e.target.value)} className={`${inputClass} w-auto min-w-[120px]`}>
+            <label htmlFor={`${fieldId}-2`} className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">สาขา</label>
+            <NativeSelect wrapperClassName="max-w-full w-auto sm:min-w-[120px]" id={`${fieldId}-2`} value={branchFilter} onChange={(e) => setFilter('branch', e.target.value)} className={inputClass}>
               <option value="">ทุกสาขา</option>
               {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
-            </select>
+            </NativeSelect>
           </div>
           <div>
-            <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ตั้งแต่</label>
-            <ThaiDateInput value={startDate} onChange={(e) => setFilter('startDate', e.target.value)} className={`${inputClass} w-auto`} />
+            <label htmlFor={`${fieldId}-3`} className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ตั้งแต่</label>
+            <ThaiDateInput id={`${fieldId}-3`} value={startDate} onChange={(e) => setFilter('startDate', e.target.value)} className={`${inputClass} w-auto`} />
           </div>
           <div>
-            <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ถึง</label>
-            <ThaiDateInput value={endDate} onChange={(e) => setFilter('endDate', e.target.value)} className={`${inputClass} w-auto`} />
+            <label htmlFor={`${fieldId}-4`} className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ถึง</label>
+            <ThaiDateInput id={`${fieldId}-4`} value={endDate} onChange={(e) => setFilter('endDate', e.target.value)} className={`${inputClass} w-auto`} />
           </div>
           <div className="flex items-end gap-1">
             {quickPresets.map((p) => <button key={p.label} onClick={p.fn} className="px-3 py-2 text-xs border border-input rounded-lg hover:bg-muted">{p.label}</button>)}

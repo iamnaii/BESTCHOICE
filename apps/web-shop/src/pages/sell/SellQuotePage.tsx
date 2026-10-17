@@ -1,3 +1,4 @@
+import { NativeSelect } from '@/components/ui/native-select';
 import { useMemo, useRef, useState } from 'react';
 import { buybackSourceName } from '@installment/shared';
 import { useMutation, useQuery } from '@tanstack/react-query';
@@ -235,9 +236,9 @@ function SellQuoteForm({ model, storage, onModelChange, onStorageChange, models,
             <div className="grid sm:grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label htmlFor="bb-model">รุ่น</Label>
-                <select
+                <NativeSelect wrapperClassName="max-w-full w-full"
                   id="bb-model"
-                  className="w-full h-11 rounded-xl border border-border bg-background px-3 text-base md:text-sm leading-snug"
+                  className="h-11 rounded-xl border border-border bg-background px-3 text-base md:text-sm leading-snug"
                   value={model}
                   onChange={(e) => onModelChange(e.target.value)}
                   disabled={submitMutation.isPending}
@@ -246,13 +247,13 @@ function SellQuoteForm({ model, storage, onModelChange, onStorageChange, models,
                   {models.map((m) => (
                     <option key={m.model} value={m.model}>{m.model}</option>
                   ))}
-                </select>
+                </NativeSelect>
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="bb-storage">ความจุ</Label>
-                <select
+                <NativeSelect wrapperClassName="max-w-full w-full"
                   id="bb-storage"
-                  className="w-full h-11 rounded-xl border border-border bg-background px-3 text-base md:text-sm leading-snug"
+                  className="h-11 rounded-xl border border-border bg-background px-3 text-base md:text-sm leading-snug"
                   value={storage}
                   onChange={(e) => onStorageChange(e.target.value)}
                   disabled={!model || submitMutation.isPending}
@@ -261,7 +262,7 @@ function SellQuoteForm({ model, storage, onModelChange, onStorageChange, models,
                   {storages.map((s) => (
                     <option key={s.storage} value={s.storage}>{s.storage}</option>
                   ))}
-                </select>
+                </NativeSelect>
               </div>
             </div>
             {models.length === 0 && (

@@ -1,3 +1,4 @@
+import { NativeSelect } from '@/components/ui/native-select';
 import { useEffect, useId, useState } from 'react';
 import { Plus } from 'lucide-react';
 import {
@@ -120,10 +121,10 @@ export function TenderInput({ due, value, onChange, dueLabel = 'ยอดที�
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label htmlFor={methodId} className={labelClass}>วิธีรับเงิน{single ? '' : ` วิธีที่ ${index + 1}`}</label>
-                <select id={methodId} value={row.method} disabled={disabled} className={fieldClass}
+                <NativeSelect wrapperClassName="max-w-full w-full" id={methodId} value={row.method} disabled={disabled} className={fieldClass}
                   onChange={(e) => update(index, { method: e.target.value as TenderMethod, reference: e.target.value === 'CASH' ? '' : row.reference })}>
                   {TENDER_METHOD_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-                </select>
+                </NativeSelect>
               </div>
               <div>
                 <label htmlFor={amountId} className={labelClass}>จำนวนเงิน{single ? '' : ` วิธีที่ ${index + 1}`}</label>

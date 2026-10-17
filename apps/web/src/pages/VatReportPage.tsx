@@ -1,5 +1,6 @@
+import { NativeSelect } from '@/components/ui/native-select';
 import { formatTaxAmount as fmtNumber } from '@/utils/financial-display';
-import { useMemo, useState } from 'react';
+import { useId as useUiFieldId, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import api from '@/lib/api';
@@ -49,6 +50,7 @@ function daysToDeadline(year: number, month: number): number {
 }
 
 export function VatReportPage() {
+  const uiFieldId = useUiFieldId();
   const now = new Date();
   const [companyId, setCompanyId] = useState('');
   const [year, setYear] = useState(now.getFullYear());
@@ -117,8 +119,8 @@ export function VatReportPage() {
               <CompanyFilter value={companyId} onChange={setCompanyId} />
             </div>
             <div>
-              <label className="text-xs text-muted-foreground leading-snug mb-1 block">ปี (ค.ศ.)</label>
-              <input
+              <label htmlFor={`${uiFieldId}-1`} className="text-xs text-muted-foreground leading-snug mb-1 block">ปี (ค.ศ.)</label>
+              <input id={`${uiFieldId}-1`}
                 type="number"
                 value={year}
                 onChange={(e) => setYear(parseInt(e.target.value) || now.getFullYear())}
@@ -128,8 +130,8 @@ export function VatReportPage() {
               />
             </div>
             <div>
-              <label className="text-xs text-muted-foreground leading-snug mb-1 block">เดือน</label>
-              <select
+              <label htmlFor={`${uiFieldId}-2`} className="text-xs text-muted-foreground leading-snug mb-1 block">เดือน</label>
+              <NativeSelect wrapperClassName="max-w-full w-full" id={`${uiFieldId}-2`}
                 value={month}
                 onChange={(e) => setMonth(parseInt(e.target.value))}
                 className={inputClass}
@@ -139,7 +141,7 @@ export function VatReportPage() {
                     {m}
                   </option>
                 ))}
-              </select>
+              </NativeSelect>
             </div>
           </div>
         </CardContent>

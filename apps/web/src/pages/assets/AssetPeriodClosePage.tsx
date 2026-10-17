@@ -110,7 +110,7 @@ export default function AssetPeriodClosePage() {
         icon={<Lock className="size-5" />}
         action={
           <Select value={String(year)} onValueChange={(v) => setYear(Number(v))}>
-            <SelectTrigger className="w-28">
+            <SelectTrigger aria-label="ปี" className="w-28">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>

@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useId as useUiFieldId, useState, useEffect, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { AlertTriangle, Download, Eye, FileText, Loader2, Upload } from 'lucide-react';
 import { toast } from 'sonner';
@@ -275,6 +275,7 @@ interface DispatchSectionProps {
 }
 
 function DispatchSection({ letter, onClose }: DispatchSectionProps) {
+  const uiFieldId = useUiFieldId();
   const [tracking, setTracking] = useState('');
   const [busy, setBusy] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
@@ -348,10 +349,10 @@ function DispatchSection({ letter, onClose }: DispatchSectionProps) {
 
       {/* Tracking number input */}
       <div>
-        <label className="text-xs font-medium text-muted-foreground mb-1.5 block leading-snug">
+        <label htmlFor={`${uiFieldId}-1`} className="text-xs font-medium text-muted-foreground mb-1.5 block leading-snug">
           เลข EMS tracking *
         </label>
-        <input
+        <input id={`${uiFieldId}-1`}
           type="text"
           value={tracking}
           onChange={(e) => setTracking(e.target.value)}

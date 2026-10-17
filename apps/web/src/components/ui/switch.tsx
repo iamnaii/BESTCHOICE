@@ -17,9 +17,10 @@ const useSwitchContext = () => {
 
 const switchVariants = cva(
   `
-    relative peer inline-flex shrink-0 cursor-pointer items-center rounded-full transition-colors
+    relative peer group/switch inline-flex shrink-0 cursor-pointer items-center justify-center rounded-full
+    h-(--switch-height) w-(--switch-width) max-lg:min-h-11 max-lg:min-w-11
     focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background
-    disabled:cursor-not-allowed disabled:opacity-50 data-[state=unchecked]:bg-input
+    disabled:cursor-not-allowed disabled:opacity-50
   `,
   {
     variants: {
@@ -28,14 +29,14 @@ const switchVariants = cva(
         square: 'rounded-md',
       },
       size: {
-        sm: 'h-5 w-8',
-        md: 'h-6 w-10',
-        lg: 'h-8 w-14',
-        xl: 'h-9 w-16',
+        sm: '[--switch-height:1.25rem] [--switch-width:2rem]',
+        md: '[--switch-height:1.5rem] [--switch-width:2.5rem]',
+        lg: '[--switch-height:2rem] [--switch-width:3.5rem]',
+        xl: '[--switch-height:2.25rem] [--switch-width:4rem]',
       },
       permanent: {
-        true: 'bg-input',
-        false: 'data-[state=checked]:bg-primary',
+        true: '',
+        false: '',
       },
     },
     defaultVariants: {
@@ -100,7 +101,16 @@ function Switch({
       className={cn(switchVariants({ shape, size, permanent }), className)}
       {...props}
     >
-      <SwitchPrimitive.Thumb className={cn(switchThumbVariants({ shape, size }), thumbClassName)} />
+      <span
+        data-slot="switch-track"
+        className={cn(
+          'pointer-events-none relative flex shrink-0 items-center h-(--switch-height) w-(--switch-width) bg-input transition-colors',
+          shape === 'square' ? 'rounded-md' : 'rounded-full',
+          !permanent && 'group-data-[state=checked]/switch:bg-primary',
+        )}
+      >
+        <SwitchPrimitive.Thumb className={cn(switchThumbVariants({ shape, size }), thumbClassName)} />
+      </span>
     </SwitchPrimitive.Root>
   );
 }

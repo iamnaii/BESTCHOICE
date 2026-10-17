@@ -90,8 +90,14 @@ export function StepItems({
         searchAccessorySkus={searchAccessorySkus}
       />
 
-      <div className="mt-5 overflow-x-auto rounded-lg border border-border">
-        <table ref={tableRef} className="w-full table-fixed border-collapse text-sm">
+      <div
+        role="region"
+        aria-label="รายการสินค้า เลื่อนแนวนอนเพื่อดูทุกช่อง"
+        tabIndex={0}
+        className="mt-5 overflow-x-auto rounded-lg border border-border focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+      >
+        {/* Reserve model space beside the fixed columns, including inside a phone drawer. */}
+        <table ref={tableRef} className="w-full min-w-[70rem] table-fixed border-collapse text-sm">
           <colgroup>
             {/* # 32 | รุ่น (rest ≈ 282px) | สภาพ 112 | ความจุ 120 | สี 176 | จำนวน 132 (stepper 110) | ราคา 136 | รวม 120 | ⧉ × 80 */}
             <col className="w-8" />

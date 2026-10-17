@@ -85,7 +85,7 @@ export function DateRangeChips({ startDate, endDate, onChange, showAllChip = tru
   const isCustom = !isAll && !isThisMonth && !isLastMonth;
 
   const chipClass = (active: boolean) =>
-    `px-3 py-1.5 text-xs font-medium rounded-md border transition-colors ${
+    `max-lg:min-h-11 px-3 py-1.5 text-xs font-medium rounded-md border transition-colors ${
       active
         ? 'bg-primary text-primary-foreground border-primary'
         : 'bg-background text-foreground border-border hover:bg-accent'

@@ -1,3 +1,5 @@
+import { NativeSelect } from '@/components/ui/native-select';
+import { useId as useFieldId } from 'react';
 import { DeviceDisclosureFields } from '@/components/product/DeviceDisclosureFields';
 import ThaiDateInput from '@/components/ui/ThaiDateInput';
 import { Card, CardHeader, CardContent, CardTitle } from '@/components/ui/card';
@@ -62,6 +64,7 @@ export default function ProductInfoCard({
   onAccessoryTypeChange,
   onToggleModel,
 }: ProductInfoCardProps) {
+  const fieldId = useFieldId();
   const availableModels = getModels(form.brand, form.category);
   const modelInfo = form.brand && form.model ? getModelInfo(form.brand, form.model) : undefined;
   const availableColors = modelInfo?.colors ?? [];
@@ -73,12 +76,12 @@ export default function ProductInfoCard({
         <CardTitle>ข้อมูลสินค้า</CardTitle>
       </CardHeader>
       <CardContent>
-        <div className="grid grid-cols-2 gap-5 lg:gap-7.5">
+        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:gap-7.5">
           {form.category !== 'ACCESSORY' && <DeviceDisclosureFields value={form} onChange={(key, value) => setForm({ ...form, [key]: value })} />}
           {/* ประเภท - FIRST */}
           <div>
-            <label className="block text-sm font-medium text-foreground mb-1">ประเภท *</label>
-            <select
+            <label htmlFor={`${fieldId}-1`} className="block text-sm font-medium text-foreground mb-3">ประเภท *</label>
+            <NativeSelect id={`${fieldId}-1`}
               value={form.category}
               onChange={(e) => onCategoryChange(e.target.value)}
               className={inputCls}
@@ -88,17 +91,17 @@ export default function ProductInfoCard({
                   {opt.label}
                 </option>
               ))}
-            </select>
+            </NativeSelect>
           </div>
 
           {form.category === 'ACCESSORY' ? (
             <>
               {/* ประเภทอุปกรณ์ */}
               <div>
-                <label className="block text-sm font-medium text-foreground mb-1">
+                <label htmlFor={`${fieldId}-2`} className="block text-sm font-medium text-foreground mb-3">
                   ประเภทอุปกรณ์ *
                 </label>
-                <select
+                <NativeSelect id={`${fieldId}-2`}
                   value={form.accessoryType}
                   onChange={(e) => onAccessoryTypeChange(e.target.value)}
                   className={inputCls}
@@ -110,14 +113,14 @@ export default function ProductInfoCard({
                       {t.label}
                     </option>
                   ))}
-                </select>
+                </NativeSelect>
               </div>
 
               {form.accessoryType === 'ชุดชาร์จ' ? (
                 /* Charger: connector type */
                 <div>
-                  <label className="block text-sm font-medium text-foreground mb-1">ชนิด *</label>
-                  <select
+                  <label htmlFor={`${fieldId}-3`} className="block text-sm font-medium text-foreground mb-3">ชนิด *</label>
+                  <NativeSelect id={`${fieldId}-3`}
                     value={form.model}
                     onChange={(e) => setForm({ ...form, model: e.target.value })}
                     className={inputCls}
@@ -129,15 +132,15 @@ export default function ProductInfoCard({
                         {t.label}
                       </option>
                     ))}
-                  </select>
+                  </NativeSelect>
                 </div>
               ) : form.accessoryType ? (
                 /* Non-charger: compatible phone brand */
                 <div>
-                  <label className="block text-sm font-medium text-foreground mb-1">
+                  <label htmlFor={`${fieldId}-4`} className="block text-sm font-medium text-foreground mb-3">
                     สำหรับยี่ห้อ
                   </label>
-                  <select
+                  <NativeSelect id={`${fieldId}-4`}
                     value={form.brand}
                     onChange={(e) => onBrandChange(e.target.value)}
                     className={inputCls}
@@ -148,7 +151,7 @@ export default function ProductInfoCard({
                         {b}
                       </option>
                     ))}
-                  </select>
+                  </NativeSelect>
                 </div>
               ) : null}
 
@@ -157,8 +160,8 @@ export default function ProductInfoCard({
                 form.accessoryType !== 'ชุดชาร์จ' &&
                 form.brand &&
                 availableModels.length > 0 && (
-                  <div className="col-span-2">
-                    <label className="block text-sm font-medium text-foreground mb-1">
+                  <div className="sm:col-span-2">
+                    <label className="block text-sm font-medium text-foreground mb-3">
                       สำหรับรุ่น (เลือกได้หลายรุ่น)
                     </label>
                     <div className="flex flex-wrap gap-1.5 p-2 border border-input rounded-lg bg-muted max-h-40 overflow-y-auto">
@@ -171,8 +174,9 @@ export default function ProductInfoCard({
                           <button
                             key={m.name}
                             type="button"
+                            aria-pressed={isSelected}
                             onClick={() => onToggleModel(m.name)}
-                            className={`px-2.5 py-1 rounded-full text-xs font-medium border transition-colors ${
+                            className={`min-h-11 px-2.5 py-1 rounded-full text-xs font-medium border transition-colors ${
                               isSelected
                                 ? 'bg-primary text-primary-foreground border-primary'
                                 : 'bg-card text-muted-foreground border-input hover:border-primary/60 hover:text-primary'
@@ -193,8 +197,8 @@ export default function ProductInfoCard({
 
               {/* ยี่ห้ออุปกรณ์ */}
               <div>
-                <label className="block text-sm font-medium text-foreground mb-1">ยี่ห้ออุปกรณ์</label>
-                <input
+                <label htmlFor={`${fieldId}-5`} className="block text-sm font-medium text-foreground mb-3">ยี่ห้ออุปกรณ์</label>
+                <input id={`${fieldId}-5`}
                   type="text"
                   value={form.accessoryBrand}
                   onChange={(e) => setForm({ ...form, accessoryBrand: e.target.value })}
@@ -207,8 +211,8 @@ export default function ProductInfoCard({
             <>
               {/* ยี่ห้อ */}
               <div>
-                <label className="block text-sm font-medium text-foreground mb-1">ยี่ห้อ *</label>
-                <select
+                <label htmlFor={`${fieldId}-6`} className="block text-sm font-medium text-foreground mb-3">ยี่ห้อ *</label>
+                <NativeSelect id={`${fieldId}-6`}
                   value={form.brand}
                   onChange={(e) => onBrandChange(e.target.value)}
                   className={inputCls}
@@ -220,13 +224,13 @@ export default function ProductInfoCard({
                       {b}
                     </option>
                   ))}
-                </select>
+                </NativeSelect>
               </div>
 
               {/* รุ่น */}
               <div>
-                <label className="block text-sm font-medium text-foreground mb-1">รุ่น *</label>
-                <select
+                <label htmlFor={`${fieldId}-7`} className="block text-sm font-medium text-foreground mb-3">รุ่น *</label>
+                <NativeSelect id={`${fieldId}-7`}
                   value={form.model}
                   onChange={(e) => onModelChange(e.target.value)}
                   className={inputCls}
@@ -239,7 +243,7 @@ export default function ProductInfoCard({
                       {m.name}
                     </option>
                   ))}
-                </select>
+                </NativeSelect>
                 {form.brand && availableModels.length === 0 && (
                   <p className="text-xs text-muted-foreground mt-1">ไม่พบรุ่นสำหรับประเภทนี้</p>
                 )}
@@ -247,16 +251,17 @@ export default function ProductInfoCard({
 
               {/* สี — chip selector */}
               <div>
-                <label className="block text-sm font-medium text-foreground mb-1.5">สี</label>
+                <label className="block text-sm font-medium text-foreground mb-3.5">สี</label>
                 {availableColors.length > 0 ? (
                   <div className="flex flex-wrap gap-2">
                     {availableColors.map((c) => (
                       <button
                         key={c}
                         type="button"
+                        aria-pressed={form.color === c}
                         onClick={() => setForm({ ...form, color: c })}
                         disabled={!form.model}
-                        className={`px-3 py-1.5 rounded-lg border text-xs font-medium transition-all ${
+                        className={`min-h-11 px-3 py-1.5 rounded-lg border text-xs font-medium transition-all ${
                           form.color === c
                             ? 'border-primary bg-primary/5 text-primary ring-2 ring-primary/20'
                             : 'border-border hover:border-input text-foreground disabled:opacity-50'
@@ -269,6 +274,7 @@ export default function ProductInfoCard({
                 ) : (
                   <input
                     type="text"
+                    aria-label="สี"
                     value={form.color}
                     onChange={(e) => setForm({ ...form, color: e.target.value })}
                     className={inputCls}
@@ -280,16 +286,17 @@ export default function ProductInfoCard({
 
               {/* ความจุ — chip selector */}
               <div>
-                <label className="block text-sm font-medium text-foreground mb-1.5">ความจุ</label>
+                <label className="block text-sm font-medium text-foreground mb-3.5">ความจุ</label>
                 {availableStorage.length > 0 ? (
                   <div className="flex flex-wrap gap-2">
                     {availableStorage.map((s) => (
                       <button
                         key={s}
                         type="button"
+                        aria-pressed={form.storage === s}
                         onClick={() => setForm({ ...form, storage: s })}
                         disabled={!form.model}
-                        className={`px-3 py-1.5 rounded-lg border text-xs font-medium transition-all ${
+                        className={`min-h-11 px-3 py-1.5 rounded-lg border text-xs font-medium transition-all ${
                           form.storage === s
                             ? 'border-primary bg-primary/5 text-primary ring-2 ring-primary/20'
                             : 'border-border hover:border-input text-foreground disabled:opacity-50'
@@ -302,6 +309,7 @@ export default function ProductInfoCard({
                 ) : (
                   <input
                     type="text"
+                    aria-label="ความจุ"
                     value={form.storage}
                     onChange={(e) => setForm({ ...form, storage: e.target.value })}
                     className={inputCls}
@@ -315,8 +323,8 @@ export default function ProductInfoCard({
 
           {/* ชื่อสินค้า */}
           <div>
-            <label className="block text-sm font-medium text-foreground mb-1">ชื่อสินค้า</label>
-            <input
+            <label htmlFor={`${fieldId}-8`} className="block text-sm font-medium text-foreground mb-3">ชื่อสินค้า</label>
+            <input id={`${fieldId}-8`}
               type="text"
               value={form.name}
               onChange={(e) => setForm({ ...form, name: e.target.value })}
@@ -333,8 +341,8 @@ export default function ProductInfoCard({
             <>
               {/* IMEI */}
               <div>
-                <label className="block text-sm font-medium text-foreground mb-1">IMEI</label>
-                <input
+                <label htmlFor={`${fieldId}-9`} className="block text-sm font-medium text-foreground mb-3">IMEI</label>
+                <input id={`${fieldId}-9`}
                   type="text"
                   value={form.imeiSerial}
                   onChange={(e) => setForm({ ...form, imeiSerial: e.target.value })}
@@ -346,10 +354,10 @@ export default function ProductInfoCard({
 
               {/* Serial Number */}
               <div>
-                <label className="block text-sm font-medium text-foreground mb-1">
+                <label htmlFor={`${fieldId}-10`} className="block text-sm font-medium text-foreground mb-3">
                   Serial Number
                 </label>
-                <input
+                <input id={`${fieldId}-10`}
                   type="text"
                   value={form.serialNumber}
                   onChange={(e) => setForm({ ...form, serialNumber: e.target.value })}
@@ -362,8 +370,8 @@ export default function ProductInfoCard({
 
           {/* สถานะ */}
           <div>
-            <label className="block text-sm font-medium text-foreground mb-1">สถานะ *</label>
-            <select
+            <label htmlFor={`${fieldId}-11`} className="block text-sm font-medium text-foreground mb-3">สถานะ *</label>
+            <NativeSelect id={`${fieldId}-11`}
               value={form.status}
               onChange={(e) => setForm({ ...form, status: e.target.value })}
               className={inputCls}
@@ -373,7 +381,7 @@ export default function ProductInfoCard({
                   {opt.label}
                 </option>
               ))}
-            </select>
+            </NativeSelect>
           </div>
         </div>
 
@@ -399,10 +407,10 @@ export default function ProductInfoCard({
         {form.category === 'PHONE_USED' && (
           <div className="col-span-2 mt-2 border border-warning/20 bg-warning/5 dark:bg-warning/10 rounded-lg p-4 space-y-4">
             <h3 className="text-sm font-semibold text-warning-strong">ข้อมูลมือสอง</h3>
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
               <div>
-                <label className="block text-sm font-medium text-foreground mb-1">% แบตเตอรี่</label>
-                <input
+                <label htmlFor={`${fieldId}-12`} className="block text-sm font-medium text-foreground mb-3">% แบตเตอรี่</label>
+                <input id={`${fieldId}-12`}
                   type="number"
                   value={form.batteryHealth}
                   onChange={(e) => setForm({ ...form, batteryHealth: e.target.value })}
@@ -413,7 +421,7 @@ export default function ProductInfoCard({
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-foreground mb-1">ประกันศูนย์</label>
+                <label className="block text-sm font-medium text-foreground mb-3">ประกันศูนย์</label>
                 <div className="flex items-center gap-3 mt-1">
                   <label className="flex items-center gap-1.5 cursor-pointer">
                     <input
@@ -433,6 +441,7 @@ export default function ProductInfoCard({
                 </div>
                 {!form.warrantyExpired && (
                   <ThaiDateInput
+                    aria-label="วันหมดประกันศูนย์"
                     value={form.warrantyExpireDate}
                     onChange={(e) => setForm({ ...form, warrantyExpireDate: e.target.value })}
                     className={`${inputCls} mt-2`}
@@ -440,19 +449,19 @@ export default function ProductInfoCard({
                 )}
               </div>
               <div>
-                <label className="block text-sm font-medium text-foreground mb-1">กล่อง</label>
+                <label className="block text-sm font-medium text-foreground mb-3">กล่อง</label>
                 <div className="flex gap-2 mt-1">
                   <button
                     type="button"
                     onClick={() => setForm({ ...form, hasBox: true })}
-                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${form.hasBox ? 'bg-success text-success-foreground' : 'bg-secondary text-muted-foreground hover:bg-success/10'}`}
+                    className={`min-h-11 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${form.hasBox ? 'bg-success text-success-foreground' : 'bg-secondary text-muted-foreground hover:bg-success/10'}`}
                   >
                     มีกล่อง
                   </button>
                   <button
                     type="button"
                     onClick={() => setForm({ ...form, hasBox: false })}
-                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${!form.hasBox ? 'bg-destructive text-destructive-foreground' : 'bg-secondary text-muted-foreground hover:bg-destructive/10'}`}
+                    className={`min-h-11 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${!form.hasBox ? 'bg-destructive text-destructive-foreground' : 'bg-secondary text-muted-foreground hover:bg-destructive/10'}`}
                   >
                     ไม่มีกล่อง
                   </button>

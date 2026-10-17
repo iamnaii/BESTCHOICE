@@ -1,3 +1,5 @@
+import { NativeSelect } from '@/components/ui/native-select';
+import { useId } from 'react';
 import { Plus, Trash2 } from 'lucide-react';
 import { PettyCashFormFields, newPettyCashLine } from './types';
 import { formatNumberDecimal } from '@/utils/formatters';
@@ -20,6 +22,7 @@ interface Props {
  * + system_config.
  */
 export function PettyCashLinesSection({ value, onChange }: Props) {
+  const custodianId = useId();
   const custodianNames = useUserNames();
   const updateField = (patch: Partial<PettyCashFormFields>) => onChange({ ...value, ...patch });
 
@@ -51,10 +54,11 @@ export function PettyCashLinesSection({ value, onChange }: Props) {
     <div className="space-y-4">
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
-          <label className="block text-xs font-medium mb-1 text-muted-foreground">
+          <label htmlFor={custodianId} className="block text-xs font-medium mb-3 text-muted-foreground">
             ผู้ดูแลเงินสดย่อย (custodian) — ทางเลือก
           </label>
           <NameAutocomplete
+            id={custodianId}
             value={value.custodianName}
             onChange={(v) => updateField({ custodianName: v })}
             options={custodianNames}
@@ -125,14 +129,14 @@ export function PettyCashLinesSection({ value, onChange }: Props) {
                   />
                 </td>
                 <td className="px-2 py-1.5">
-                  <select
+                  <NativeSelect wrapperClassName="max-w-full w-full"
                     value={l.vatPercent}
                     onChange={(e) => updateLine(l.uid, { vatPercent: e.target.value })}
-                    className="w-full rounded-md border border-input bg-background px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                    className="rounded-md border border-input bg-background px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
                   >
                     <option value="0">0</option>
                     <option value="7">7</option>
-                  </select>
+                  </NativeSelect>
                 </td>
                 <td className="px-2 py-1.5">
                   <input

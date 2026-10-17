@@ -1,3 +1,4 @@
+import { NativeSelect } from '@/components/ui/native-select';
 import { useState, useMemo } from 'react';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -446,12 +447,12 @@ export default function CommissionsPage() {
           {/* Filters */}
           <div className="flex gap-3 mb-4 flex-wrap">
             <input
-              type="month"
+              type="month" aria-label="เดือนคอมมิชชั่น"
               value={periodMonth}
               onChange={(e) => setPeriodMonth(e.target.value)}
               className="px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background focus:border-transparent"
             />
-            <select
+            <NativeSelect wrapperClassName="max-w-full w-auto" aria-label="สถานะ"
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
               className="px-3 py-2 border border-input rounded-lg text-sm"
@@ -460,7 +461,7 @@ export default function CommissionsPage() {
               <option value="PENDING">รออนุมัติ</option>
               <option value="APPROVED">อนุมัติแล้ว</option>
               <option value="PAID">จ่ายแล้ว</option>
-            </select>
+            </NativeSelect>
           </div>
 
           {/* Table */}
@@ -539,7 +540,7 @@ export default function CommissionsPage() {
               onChange={(e) => setPayoutPeriod(e.target.value)}
               className="px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background focus:border-transparent"
             />
-            <select
+            <NativeSelect wrapperClassName="max-w-full w-auto"
               value={payoutStatusFilter}
               onChange={(e) => setPayoutStatusFilter(e.target.value)}
               className="px-3 py-2 border border-input rounded-lg text-sm"
@@ -549,7 +550,7 @@ export default function CommissionsPage() {
               <option value="APPROVED">อนุมัติแล้ว</option>
               <option value="PAID">จ่ายแล้ว</option>
               <option value="CANCELLED">ยกเลิก</option>
-            </select>
+            </NativeSelect>
             {isOwner && (
               <button
                 onClick={() => generatePayoutMutation.mutate()}

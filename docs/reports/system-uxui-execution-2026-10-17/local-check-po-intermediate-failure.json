@@ -1,0 +1,53 @@
+{
+  "status": "FAIL",
+  "scope": "Basic checks + synthetic Inbox, customers, dashboard, FINANCE portfolio, work-company navigation and trade-in-to-stock flow; not a full backend/financial regression",
+  "repo": "/Users/iamnaii/Desktop/App/BESTCHOICE-layout-audit",
+  "revision": "c5d26edcf",
+  "sourceFingerprint": "cd0adfcf2438674ad79088fae9e65171e76b151247abcdf4e21f4823be817e77",
+  "startedAt": "2026-10-17T05:53:13.623Z",
+  "checks": [
+    {
+      "label": "Local tooling",
+      "status": "PASS"
+    },
+    {
+      "label": "Prisma SHOP",
+      "status": "PASS"
+    },
+    {
+      "label": "Prisma FINANCE",
+      "status": "PASS"
+    },
+    {
+      "label": "API + Web types",
+      "status": "PASS"
+    },
+    {
+      "label": "API lint (no autofix)",
+      "status": "PASS"
+    },
+    {
+      "label": "Web lint",
+      "status": "PASS"
+    },
+    {
+      "label": "Web tests",
+      "status": "PASS"
+    },
+    {
+      "label": "Shared tests",
+      "status": "PASS"
+    },
+    {
+      "label": "Storefront tests",
+      "status": "PASS"
+    },
+    {
+      "label": "Storefront build + types",
+      "status": "PASS"
+    }
+  ],
+  "currentCheck": "Web build",
+  "error": "npm run build --workspace=apps/web failed (1)",
+  "finishedAt": "2026-10-17T05:55:18.655Z"
+}

@@ -1,0 +1,43 @@
+{
+  "origin": "http://127.0.0.1:51763",
+  "scope": "real isolated API, synthetic data/providers",
+  "errors": [],
+  "results": [
+    {
+      "name": "reports",
+      "route": "/reports?zone=fin",
+      "width": 1440,
+      "overflow": false,
+      "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif",
+      "artifact": "handoff-reports-1440.png",
+      "status": "PASS"
+    },
+    {
+      "name": "po",
+      "route": "/purchase-orders?zone=shop",
+      "width": 1440,
+      "overflow": false,
+      "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif",
+      "artifact": "handoff-po-1440.png",
+      "status": "PASS"
+    },
+    {
+      "name": "reports",
+      "route": "/reports?zone=fin",
+      "width": 390,
+      "overflow": false,
+      "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif",
+      "artifact": "handoff-reports-390.png",
+      "status": "PASS"
+    },
+    {
+      "name": "po",
+      "route": "/purchase-orders?zone=shop",
+      "width": 390,
+      "overflow": false,
+      "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif",
+      "artifact": "handoff-po-390.png",
+      "status": "PASS"
+    }
+  ]
+}

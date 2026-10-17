@@ -1,0 +1,150 @@
+[
+  {
+    "file": "accounting-contract-activation.spec.ts",
+    "title": "activated contracts each have at least one related JournalEntry (F-2-001)",
+    "annotations": [
+      {
+        "type": "skip",
+        "description": "requires fixture: ACTIVE contracts found but none referenced in last 200 JEs (likely older than JE window)",
+        "location": {
+          "file": "/Users/iamnaii/Desktop/App/BESTCHOICE-layout-audit/apps/web/e2e/accounting-contract-activation.spec.ts",
+          "line": 105,
+          "column": 12
+        }
+      }
+    ]
+  },
+  {
+    "file": "accounting-paysolutions-webhook.spec.ts",
+    "title": "recent PAID payments via gateway have matching JournalEntry (F-1-003)",
+    "annotations": [
+      {
+        "type": "skip",
+        "description": "requires fixture: payments endpoint returned 404",
+        "location": {
+          "file": "/Users/iamnaii/Desktop/App/BESTCHOICE-layout-audit/apps/web/e2e/accounting-paysolutions-webhook.spec.ts",
+          "line": 50,
+          "column": 12
+        }
+      }
+    ]
+  },
+  {
+    "file": "accounting-period-close.spec.ts",
+    "title": "full close-with-audit-issues flow",
+    "annotations": [
+      {
+        "type": "skip",
+        "location": {
+          "file": "/Users/iamnaii/Desktop/App/BESTCHOICE-layout-audit/apps/web/e2e/accounting-period-close.spec.ts",
+          "line": 85,
+          "column": 8
+        }
+      }
+    ]
+  },
+  {
+    "file": "contract-template.spec.ts",
+    "title": "contract preview shows full hire-purchase template (not fallback)",
+    "annotations": [
+      {
+        "type": "skip",
+        "description": "Cannot fetch contracts: 401",
+        "location": {
+          "file": "/Users/iamnaii/Desktop/App/BESTCHOICE-layout-audit/apps/web/e2e/contract-template.spec.ts",
+          "line": 26,
+          "column": 12
+        }
+      }
+    ]
+  },
+  {
+    "file": "contract-template.spec.ts",
+    "title": "contract preview HTML is non-trivial size (full template, not fallback)",
+    "annotations": [
+      {
+        "type": "skip",
+        "description": "Cannot fetch contracts: 401",
+        "location": {
+          "file": "/Users/iamnaii/Desktop/App/BESTCHOICE-layout-audit/apps/web/e2e/contract-template.spec.ts",
+          "line": 79,
+          "column": 12
+        }
+      }
+    ]
+  },
+  {
+    "file": "finance-receivable-contact.spec.ts",
+    "title": "record a contact log and see it in timeline + last contacted column",
+    "annotations": [
+      {
+        "type": "skip",
+        "description": "No external-finance receivables seeded in dev DB",
+        "location": {
+          "file": "/Users/iamnaii/Desktop/App/BESTCHOICE-layout-audit/apps/web/e2e/finance-receivable-contact.spec.ts",
+          "line": 25,
+          "column": 12
+        }
+      }
+    ]
+  },
+  {
+    "file": "finance-receivable-contact.spec.ts",
+    "title": "broken-promise filter limits the list",
+    "annotations": [
+      {
+        "type": "skip",
+        "description": "No external-finance receivables seeded in dev DB",
+        "location": {
+          "file": "/Users/iamnaii/Desktop/App/BESTCHOICE-layout-audit/apps/web/e2e/finance-receivable-contact.spec.ts",
+          "line": 86,
+          "column": 12
+        }
+      }
+    ]
+  },
+  {
+    "file": "invite-resend.spec.ts",
+    "title": "should resend API endpoint reject used invites",
+    "annotations": [
+      {
+        "type": "skip",
+        "location": {
+          "file": "/Users/iamnaii/Desktop/App/BESTCHOICE-layout-audit/apps/web/e2e/invite-resend.spec.ts",
+          "line": 184,
+          "column": 12
+        }
+      }
+    ]
+  },
+  {
+    "file": "promise-lifecycle-happy.spec.ts",
+    "title": "promise with 3 slots — record + see cycle banner + slot count",
+    "annotations": [
+      {
+        "type": "skip",
+        "description": "No contracts in PromiseTab — seed overdue contracts first",
+        "location": {
+          "file": "/Users/iamnaii/Desktop/App/BESTCHOICE-layout-audit/apps/web/e2e/promise-lifecycle-happy.spec.ts",
+          "line": 40,
+          "column": 12
+        }
+      }
+    ]
+  },
+  {
+    "file": "promise-supersede.spec.ts",
+    "title": "reschedule before due — confirm dialog + no broken increment",
+    "annotations": [
+      {
+        "type": "skip",
+        "description": "No contracts visible in any tab — seed overdue contracts first",
+        "location": {
+          "file": "/Users/iamnaii/Desktop/App/BESTCHOICE-layout-audit/apps/web/e2e/promise-supersede.spec.ts",
+          "line": 49,
+          "column": 14
+        }
+      }
+    ]
+  }
+]

@@ -39,7 +39,7 @@ function CopyPhoneButton({ phone }: { phone: string }) {
         copy(phone);
         toast.success('คัดลอกเบอร์โทรแล้ว');
       }}
-      className="shrink-0 text-muted-foreground/60 transition-colors hover:text-foreground"
+      className="inline-flex size-6 max-lg:size-11 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring"
     >
       <Copy className="size-3.5" />
     </button>

@@ -175,7 +175,7 @@ export default function MdmTestPage() {
             value={imeiInput}
             onChange={(e) => setImeiInput(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-            placeholder="ระบุ IMEI เช่น 356938035643809"
+            aria-label="IMEI ที่ต้องการทดสอบ" placeholder="ระบุ IMEI เช่น 356938035643809"
             className="flex-1"
           />
           <Button

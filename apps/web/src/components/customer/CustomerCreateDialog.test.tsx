@@ -42,8 +42,11 @@ const fillProspectRequired = () => {
 };
 /** ป้ายของช่อง (FormLabel) ตามลำดับใน DOM — ใช้ตรวจลำดับช่องตาม mockup */
 const formLabels = () => Array.from(document.querySelectorAll('[data-slot="form-label"]')).map((l) => (l.textContent ?? '').trim());
-/** ข้อความ error ใต้ช่อง (FormMessage ตั้ง id เป็น `<name>-error`) */
-const fieldError = (name: string) => document.getElementById(`${name}-error`);
+/** Error IDs are unique per mounted form; read the actual input association. */
+const fieldError = (name: string) => {
+  const ids = document.querySelector(`[name="${name}"]`)?.getAttribute('aria-describedby')?.split(' ') ?? [];
+  return ids.map(id => document.getElementById(id)).find(el => el?.dataset.slot === 'form-message') ?? null;
+};
 const FILL_NOTE = 'ชื่อเติมให้จากห้องแชทแล้ว แก้ได้ · บันทึกแล้วผู้สนใจคนนี้จะเช็คเครดิตและทำสัญญาได้ทันที';
 const DUP_PHONE_FIELD_ERROR = 'เบอร์นี้มีลูกค้าใช้อยู่แล้ว';
 const DUP_PHONE_FIELD_ERROR_PROSPECT = 'เบอร์นี้มีผู้สนใจใช้อยู่แล้ว';

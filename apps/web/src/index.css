@@ -411,10 +411,9 @@ layer(base);
     font-display: swap;
   }
 
-  /* ── Smooth Scroll ──────────────────────────────── */
-  html {
-    scroll-behavior: smooth;
-  }
+  /* Keep focus-driven form scrolling immediate. Smooth page-wide scrolling
+     can leave WebKit popovers anchored outside the viewport. Intentional
+     animated navigation requests behavior: 'smooth' at its call site. */
 
   /* ── Custom Scrollbar ───────────────────────────── */
   ::-webkit-scrollbar {

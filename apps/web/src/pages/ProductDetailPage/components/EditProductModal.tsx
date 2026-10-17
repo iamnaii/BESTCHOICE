@@ -1,9 +1,12 @@
+import { NativeSelect } from '@/components/ui/native-select';
 import Modal from '@/components/ui/Modal';
 import UsedDeviceDetailsFields from '@/components/product/UsedDeviceDetailsFields';
 import { DeviceOriginField, PartsHistoryField } from '@/components/product/DeviceDisclosureFields';
 import { ColorSelector, StorageSelector } from '@/components/product/VariantSelector';
 import { categoryOptions } from '@/lib/constants';
 import { productStatusMap } from '@/lib/status-badges';
+import { useId as useUiFieldId } from 'react';
+
 
 interface EditForm {
   name: string;
@@ -76,14 +79,15 @@ export default function EditProductModal({
   isPending,
   currentStatus,
 }: EditProductModalProps) {
+  const uiFieldId = useUiFieldId();
   const statusLocked = SYSTEM_MANAGED_STATUSES.has(currentStatus);
   const deniedRule = DENIED_TARGETS_BY_STATUS[currentStatus];
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="แก้ไขข้อมูลสินค้า">
       <form onSubmit={onSubmit} className="space-y-4 max-h-[70vh] overflow-y-auto">
         <div>
-          <label className="block text-xs font-medium text-foreground mb-1">ชื่อสินค้า</label>
-          <input
+          <label htmlFor={`${uiFieldId}-1`} className="block text-xs font-medium text-foreground mb-1">ชื่อสินค้า</label>
+          <input id={`${uiFieldId}-1`}
             type="text"
             value={editForm.name}
             onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
@@ -94,23 +98,23 @@ export default function EditProductModal({
 
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="block text-xs font-medium text-foreground mb-1">ประเภท</label>
-            <select
+            <label htmlFor={`${uiFieldId}-2`} className="block text-xs font-medium text-foreground mb-1">ประเภท</label>
+            <NativeSelect wrapperClassName="max-w-full w-full" id={`${uiFieldId}-2`}
               value={editForm.category}
               onChange={(e) => setEditForm({ ...editForm, category: e.target.value })}
-              className="w-full px-3 py-2 border border-input rounded-lg text-sm"
+              className="px-3 py-2 border border-input rounded-lg text-sm"
             >
               {categoryOptions.map((c) => (
                 <option key={c.value} value={c.value}>{c.label}</option>
               ))}
-            </select>
+            </NativeSelect>
           </div>
           <div>
-            <label className="block text-xs font-medium text-foreground mb-1">สถานะ</label>
-            <select
+            <label htmlFor={`${uiFieldId}-3`} className="block text-xs font-medium text-foreground mb-1">สถานะ</label>
+            <NativeSelect wrapperClassName="max-w-full w-full" id={`${uiFieldId}-3`}
               value={editForm.status}
               onChange={(e) => setEditForm({ ...editForm, status: e.target.value })}
-              className="w-full px-3 py-2 border border-input rounded-lg text-sm disabled:opacity-60"
+              className="px-3 py-2 border border-input rounded-lg text-sm disabled:opacity-60"
               disabled={statusLocked}
             >
               {Object.entries(productStatusMap)
@@ -122,7 +126,7 @@ export default function EditProductModal({
                 .map(([val, s]) => (
                   <option key={val} value={val}>{s.label}</option>
                 ))}
-            </select>
+            </NativeSelect>
             {statusLocked && (
               <p className="mt-1 text-xs text-muted-foreground leading-snug">
                 สถานะนี้ระบบจัดการผ่านรายการขาย/จอง/ยึดเครื่อง — แก้ผ่าน flow นั้นแทน
@@ -137,8 +141,8 @@ export default function EditProductModal({
         {editForm.category !== 'ACCESSORY' && (
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-medium text-foreground mb-1">ยี่ห้อ</label>
-              <input
+              <label htmlFor={`${uiFieldId}-4`} className="block text-xs font-medium text-foreground mb-1">ยี่ห้อ</label>
+              <input id={`${uiFieldId}-4`}
                 type="text"
                 value={editForm.brand}
                 onChange={(e) => setEditForm({ ...editForm, brand: e.target.value })}
@@ -147,8 +151,8 @@ export default function EditProductModal({
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-foreground mb-1">รุ่น</label>
-              <input
+              <label htmlFor={`${uiFieldId}-5`} className="block text-xs font-medium text-foreground mb-1">รุ่น</label>
+              <input id={`${uiFieldId}-5`}
                 type="text"
                 value={editForm.model}
                 onChange={(e) => setEditForm({ ...editForm, model: e.target.value })}
@@ -170,8 +174,8 @@ export default function EditProductModal({
         {editForm.category === 'ACCESSORY' && (
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-medium text-foreground mb-1">ประเภทอุปกรณ์</label>
-              <input
+              <label htmlFor={`${uiFieldId}-6`} className="block text-xs font-medium text-foreground mb-1">ประเภทอุปกรณ์</label>
+              <input id={`${uiFieldId}-6`}
                 type="text"
                 value={editForm.accessoryType}
                 onChange={(e) => setEditForm({ ...editForm, accessoryType: e.target.value })}
@@ -179,8 +183,8 @@ export default function EditProductModal({
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-foreground mb-1">ยี่ห้ออุปกรณ์</label>
-              <input
+              <label htmlFor={`${uiFieldId}-7`} className="block text-xs font-medium text-foreground mb-1">ยี่ห้ออุปกรณ์</label>
+              <input id={`${uiFieldId}-7`}
                 type="text"
                 value={editForm.accessoryBrand}
                 onChange={(e) => setEditForm({ ...editForm, accessoryBrand: e.target.value })}
@@ -192,8 +196,8 @@ export default function EditProductModal({
 
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="block text-xs font-medium text-foreground mb-1">IMEI / Serial</label>
-            <input
+            <label htmlFor={`${uiFieldId}-8`} className="block text-xs font-medium text-foreground mb-1">IMEI / Serial</label>
+            <input id={`${uiFieldId}-8`}
               type="text"
               value={editForm.imeiSerial}
               onChange={(e) => setEditForm({ ...editForm, imeiSerial: e.target.value })}
@@ -201,8 +205,8 @@ export default function EditProductModal({
             />
           </div>
           <div>
-            <label className="block text-xs font-medium text-foreground mb-1">Serial Number</label>
-            <input
+            <label htmlFor={`${uiFieldId}-9`} className="block text-xs font-medium text-foreground mb-1">Serial Number</label>
+            <input id={`${uiFieldId}-9`}
               type="text"
               value={editForm.serialNumber}
               onChange={(e) => setEditForm({ ...editForm, serialNumber: e.target.value })}
@@ -212,8 +216,8 @@ export default function EditProductModal({
         </div>
 
         <div>
-          <label className="block text-xs font-medium text-foreground mb-1">ราคาทุน (บาท)</label>
-          <input
+          <label htmlFor={`${uiFieldId}-10`} className="block text-xs font-medium text-foreground mb-1">ราคาทุน (บาท)</label>
+          <input id={`${uiFieldId}-10`}
             type="number"
             step="0.01"
             value={editForm.costPrice}
@@ -250,22 +254,22 @@ export default function EditProductModal({
           )}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-medium text-foreground mb-1">เกรดเครื่อง</label>
-              <select
+              <label htmlFor={`${uiFieldId}-11`} className="block text-xs font-medium text-foreground mb-1">เกรดเครื่อง</label>
+              <NativeSelect wrapperClassName="max-w-full w-full" id={`${uiFieldId}-11`}
                 value={editForm.conditionGrade}
                 onChange={(e) => setEditForm({ ...editForm, conditionGrade: e.target.value })}
-                className="w-full px-3 py-2 border border-input rounded-lg text-sm"
+                className="px-3 py-2 border border-input rounded-lg text-sm"
               >
                 <option value="">ไม่ระบุ</option>
                 <option value="A">เกรด A</option>
                 <option value="B">เกรด B</option>
                 <option value="C">เกรด C</option>
                 <option value="D">เกรด D</option>
-              </select>
+              </NativeSelect>
             </div>
             <div>
-              <label className="block text-xs font-medium text-foreground mb-1">ประกันร้าน (วัน)</label>
-              <input
+              <label htmlFor={`${uiFieldId}-12`} className="block text-xs font-medium text-foreground mb-1">ประกันร้าน (วัน)</label>
+              <input id={`${uiFieldId}-12`}
                 type="number"
                 min="0"
                 step="1"
@@ -276,10 +280,10 @@ export default function EditProductModal({
             </div>
           </div>
           <div>
-            <label className="block text-xs font-medium text-foreground mb-1">
+            <label htmlFor={`${uiFieldId}-13`} className="block text-xs font-medium text-foreground mb-1">
               อุปกรณ์ที่แถม (คั่นด้วยลูกน้ำ)
             </label>
-            <input
+            <input id={`${uiFieldId}-13`}
               type="text"
               value={editForm.accessoriesIncluded}
               onChange={(e) => setEditForm({ ...editForm, accessoriesIncluded: e.target.value })}
@@ -288,8 +292,8 @@ export default function EditProductModal({
             />
           </div>
           <div>
-            <label className="block text-xs font-medium text-foreground mb-1">ตำหนิ (ไม่เกิน 500 ตัวอักษร)</label>
-            <textarea
+            <label htmlFor={`${uiFieldId}-14`} className="block text-xs font-medium text-foreground mb-1">ตำหนิ (ไม่เกิน 500 ตัวอักษร)</label>
+            <textarea id={`${uiFieldId}-14`}
               value={editForm.cosmeticNotes}
               onChange={(e) => setEditForm({ ...editForm, cosmeticNotes: e.target.value })}
               maxLength={500}

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useId as useUiFieldId, useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
@@ -150,6 +150,7 @@ function CopyButton({ text }: { text: string }) {
 /* ─── Main Page ─── */
 
 export default function MdmDashboardPage() {
+  const uiFieldId = useUiFieldId();
   useDocumentTitle('จัดการอุปกรณ์ MDM');
   const { user } = useAuth();
   const role = user?.role ?? '';
@@ -330,7 +331,7 @@ export default function MdmDashboardPage() {
 
       {/* Toolbar */}
       <div className="flex flex-wrap items-center gap-3 mb-5">
-        <Input
+        <Input aria-label="ค้นหาชื่อ/เบอร์"
           placeholder="ค้นหาชื่อ/เบอร์..."
           value={search}
           onChange={(e) => {
@@ -346,7 +347,7 @@ export default function MdmDashboardPage() {
             setPage(1);
           }}
         >
-          <SelectTrigger className="w-44">
+          <SelectTrigger aria-label="สถานะอุปกรณ์" className="w-44">
             <SelectValue placeholder="สถานะ" />
           </SelectTrigger>
           <SelectContent>
@@ -363,7 +364,7 @@ export default function MdmDashboardPage() {
             setPage(1);
           }}
         >
-          <SelectTrigger className="w-36">
+          <SelectTrigger aria-label="ประเภทอุปกรณ์" className="w-36">
             <SelectValue placeholder="ประเภท" />
           </SelectTrigger>
           <SelectContent>
@@ -642,8 +643,8 @@ export default function MdmDashboardPage() {
               จะเข้าสู่ Lost Mode ทันที กรุณาระบุเหตุผล
             </p>
             <div>
-              <Label className="text-[13px] leading-snug">เหตุผล</Label>
-              <Textarea
+              <Label htmlFor={`${uiFieldId}-1`} className="text-[13px] leading-snug">เหตุผล</Label>
+              <Textarea id={`${uiFieldId}-1`}
                 className="mt-1.5"
                 placeholder="ระบุเหตุผลการล็อค..."
                 value={lockReason}
@@ -785,6 +786,7 @@ export default function MdmDashboardPage() {
                 <div key={key} className="flex items-center justify-between">
                   <Label className="text-[13px] leading-snug">{label}</Label>
                   <Switch
+                    aria-label={label}
                     checked={restrictions[key]}
                     onCheckedChange={(val) =>
                       setRestrictions((prev) => ({ ...prev, [key]: val }))
@@ -829,8 +831,8 @@ export default function MdmDashboardPage() {
               <span className="font-medium text-foreground">{lockTextDevice?.productName}</span>
             </p>
             <div>
-              <Label className="text-[13px] leading-snug">ข้อความ</Label>
-              <Textarea
+              <Label htmlFor={`${uiFieldId}-2`} className="text-[13px] leading-snug">ข้อความ</Label>
+              <Textarea id={`${uiFieldId}-2`}
                 className="mt-1.5"
                 placeholder="ระบุข้อความที่ต้องการแสดง..."
                 value={lockText}

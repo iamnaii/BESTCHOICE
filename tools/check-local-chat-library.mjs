@@ -14,6 +14,7 @@ export async function checkChatLibrary(page,origin,output,width){
  await page.goto(`${origin}/inbox/${room}?zone=shop`);
  await openComposerTool(page, 'เลือกไฟล์จากคลัง');
  const dialog=page.getByRole('dialog');await expect(dialog.getByRole('heading',{name:'คลังไฟล์ในระบบ',exact:true})).toBeVisible();
+ if(width<768)await dialog.getByRole('button',{name:/^โฟลเดอร์ ·/}).click();
  const folder=`โฟลเดอร์ ${width} ${Date.now()}`;
  await dialog.getByLabel('สร้างโฟลเดอร์',{exact:true}).fill(folder);
  const [folderCreated]=await Promise.all([
@@ -22,7 +23,7 @@ export async function checkChatLibrary(page,origin,output,width){
  ]);assert.ok(folderCreated.ok(),'Folder creation failed');
  // Retained synthetic folders can span pages. Follow the real folder paginator;
  // do not assume a newly created name sorts onto the first page.
- const folders=dialog.locator('aside').filter({has:page.getByRole('heading',{name:'โฟลเดอร์',exact:true})});
+ const folders=dialog.locator('aside');
  let found=false;
  for(let folderPage=1;folderPage<=100;folderPage++){
   const response=await page.request.get(api('staff-chat/library/folders'),{params:{company:'SHOP',page:folderPage,limit:20}});

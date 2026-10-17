@@ -23,9 +23,14 @@
 bash tools/test-store-appointments.sh
 LOCAL_PREVIEW_PORT=5198 npm run local:check
 APPOINTMENT_PREVIEW_URL=http://localhost:5198 node tools/check-store-appointments-preview.mjs
+APPOINTMENT_PREVIEW_URL=http://localhost:5198 node tools/check-appointment-fields-preview.mjs
 ```
 
 ทั้งชุดใช้ PostgreSQL แยกจากข้อมูลจริง พรีวิวเพิ่มสาขา/พนักงาน/ลูกค้าผ่านเครดิตจำลอง และใช้ controller/service นัดจริง ส่วนล็อกอินและ AI เป็น fixture ของพรีวิว ไม่มีการส่งแชทจริง หลักฐาน browser อยู่ที่ `.tmp/local-preview/appointments/` ชุด browser ตรวจเพิ่มตาราง → นัดโดยพนักงาน → ลิงก์ดูนัด → เลื่อน/ยกเลิก → ลูกค้าจองเอง → เวลาถูกจองแทรก → เช็กอิน/บริการ/เสร็จสิ้น → เพิกถอนลิงก์เก่า
+
+ชุดตรวจฟิลด์ครอบคลุมสามแท็บที่ความกว้าง 320–1440px, ธีมสว่าง/มืด และตัวอักษรขยาย พร้อมตรวจความสูง/แนวฟิลด์ การเปลี่ยนวันแล้วล้างเวลาที่เลือก และการโหลดใหม่หลังไม่มีสาขา หลักฐานอยู่ที่ `.tmp/local-preview/appointment-fields/` กรณีไม่มีสาขาจำลองเฉพาะ response ใน browser ไม่แก้ข้อมูล production
+
+หากขึ้น “ยังไม่มีสาขาที่ใช้รับนัดได้” ให้ตรวจว่าสาขาเปิดใช้งานและไม่ถูกลบ ผูก `companyId` กับบริษัทที่มี `companyCode = SHOP` และผู้ใช้มีสิทธิ์สาขานั้น สาขาที่ `companyId` ว่างจะไม่ผ่านเงื่อนไขรับนัด แม้จะปรากฏในหน้าจัดการสาขา หน้าจอนี้จะแสดงคำแนะนำและปุ่มโหลดใหม่ แทนการแสดงฟอร์มที่ใช้ไม่ได้หรือยอดนัดเป็นศูนย์ การผูกบริษัทเป็นการตั้งค่าข้อมูลแยกจากการปรับ UI
 
 การใช้งานจริงต้อง deploy migration และ API/Web พร้อมกัน งานนี้เตรียมและตรวจเฉพาะ local ยังไม่ได้ deploy
 

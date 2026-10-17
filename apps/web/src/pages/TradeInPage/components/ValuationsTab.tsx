@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { NativeSelect } from '@/components/ui/native-select';
+import { useId as useUiFieldId, useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import api, { getErrorMessage } from '@/lib/api';
@@ -32,6 +33,7 @@ const EMPTY_FORM = { brand: 'Apple', model: '', storage: '', condition: 'A', bas
  * = "ราคารับซื้อสูงสุด" ที่ลูกค้าเห็นบนเว็บ shop ทันที
  */
 export default function ValuationsTab() {
+  const uiFieldId = useUiFieldId();
   const queryClient = useQueryClient();
   const [brandInput, setBrandInput] = useState('Apple');
   const brand = useDebounce(brandInput, 400);
@@ -116,8 +118,8 @@ export default function ValuationsTab() {
 
       <div className="flex items-end gap-3 flex-wrap">
         <div>
-          <Label>ยี่ห้อ</Label>
-          <Input className="mt-1 w-40" value={brandInput} onChange={(e) => setBrandInput(e.target.value)} placeholder="เช่น Apple" />
+          <Label htmlFor={`${uiFieldId}-1`}>ยี่ห้อ</Label>
+          <Input id={`${uiFieldId}-1`} className="mt-1 w-40" value={brandInput} onChange={(e) => setBrandInput(e.target.value)} placeholder="เช่น Apple" />
         </div>
       </div>
 
@@ -186,13 +188,13 @@ export default function ValuationsTab() {
       <div className="rounded-lg border border-border p-3 space-y-3">
         <div className="font-medium leading-snug">เพิ่มรุ่น / ราคาใหม่</div>
         <div className="grid gap-3 sm:grid-cols-5">
-          <div><Label>ยี่ห้อ</Label><Input className="mt-1" value={form.brand} onChange={(e) => setForm((f) => ({ ...f, brand: e.target.value }))} /></div>
-          <div><Label>รุ่น</Label><Input className="mt-1" placeholder="iPhone 15" value={form.model} onChange={(e) => setForm((f) => ({ ...f, model: e.target.value }))} /></div>
-          <div><Label>ความจุ</Label><Input className="mt-1" placeholder="128GB" value={form.storage} onChange={(e) => setForm((f) => ({ ...f, storage: e.target.value }))} /></div>
+          <div><Label htmlFor={`${uiFieldId}-2`}>ยี่ห้อ</Label><Input id={`${uiFieldId}-2`} className="mt-1" value={form.brand} onChange={(e) => setForm((f) => ({ ...f, brand: e.target.value }))} /></div>
+          <div><Label htmlFor={`${uiFieldId}-3`}>รุ่น</Label><Input id={`${uiFieldId}-3`} className="mt-1" placeholder="iPhone 15" value={form.model} onChange={(e) => setForm((f) => ({ ...f, model: e.target.value }))} /></div>
+          <div><Label htmlFor={`${uiFieldId}-4`}>ความจุ</Label><Input id={`${uiFieldId}-4`} className="mt-1" placeholder="128GB" value={form.storage} onChange={(e) => setForm((f) => ({ ...f, storage: e.target.value }))} /></div>
           <div>
-            <Label>เกรด</Label>
-            <select
-              className="mt-1 w-full h-10 rounded-lg border border-input bg-background px-3 text-sm"
+            <Label htmlFor={`${uiFieldId}-5`}>เกรด</Label>
+            <NativeSelect wrapperClassName="max-w-full mt-1 w-full" id={`${uiFieldId}-5`}
+              className="h-10 rounded-lg border border-input bg-background px-3 text-sm"
               value={form.condition}
               onChange={(e) => setForm((f) => ({ ...f, condition: e.target.value }))}
             >
@@ -200,9 +202,9 @@ export default function ValuationsTab() {
               <option value="B">B</option>
               <option value="C">C</option>
               <option value="D">D</option>
-            </select>
+            </NativeSelect>
           </div>
-          <div><Label>ราคา (บาท)</Label><Input className="mt-1" type="number" value={form.basePrice} onChange={(e) => setForm((f) => ({ ...f, basePrice: e.target.value }))} /></div>
+          <div><Label htmlFor={`${uiFieldId}-6`}>ราคา (บาท)</Label><Input id={`${uiFieldId}-6`} className="mt-1" type="number" value={form.basePrice} onChange={(e) => setForm((f) => ({ ...f, basePrice: e.target.value }))} /></div>
         </div>
         <Button
           onClick={() => {

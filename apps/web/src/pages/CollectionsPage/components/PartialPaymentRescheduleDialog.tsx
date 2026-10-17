@@ -1,5 +1,5 @@
 import { toBangkokDateString, computeDefaultTimeRange } from '@/lib/date';
-import { useState, useEffect } from 'react';
+import { useId as useUiFieldId, useState, useEffect } from 'react';
 import Modal from '@/components/ui/Modal';
 import { formatNumber } from '@/utils/formatters';
 import { usePartialPaymentReschedule } from '../hooks/usePartialPaymentReschedule';
@@ -47,6 +47,7 @@ export default function PartialPaymentRescheduleDialog({
   onClose,
   onSaved,
 }: Props) {
+  const uiFieldId = useUiFieldId();
   const [amountPaid, setAmountPaid] = useState('');
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('CASH');
   const [transactionRef, setTransactionRef] = useState('');
@@ -143,7 +144,7 @@ export default function PartialPaymentRescheduleDialog({
           </div>
 
           <div>
-            <label className="text-sm font-medium text-foreground mb-1.5 block leading-snug">
+            <label htmlFor={`${uiFieldId}-1`} className="text-sm font-medium text-foreground mb-1.5 block leading-snug">
               จำนวนเงินที่จ่าย <span className="text-destructive">*</span>
             </label>
             <div className="flex flex-wrap gap-1.5 mb-2">
@@ -156,7 +157,7 @@ export default function PartialPaymentRescheduleDialog({
               </button>
             </div>
             <div className="relative">
-              <input
+              <input id={`${uiFieldId}-1`}
                 type="number"
                 inputMode="decimal"
                 min={0.01}
@@ -204,10 +205,10 @@ export default function PartialPaymentRescheduleDialog({
 
           {refRequired && (
             <div>
-              <label className="text-sm font-medium text-foreground mb-1.5 block leading-snug">
+              <label htmlFor={`${uiFieldId}-2`} className="text-sm font-medium text-foreground mb-1.5 block leading-snug">
                 เลขอ้างอิงธุรกรรม <span className="text-destructive">*</span>
               </label>
-              <input
+              <input id={`${uiFieldId}-2`}
                 type="text"
                 value={transactionRef}
                 onChange={(e) => setTransactionRef(e.target.value)}
@@ -238,7 +239,7 @@ export default function PartialPaymentRescheduleDialog({
             </div>
 
             <div>
-              <label className="text-sm font-medium text-foreground mb-2 block leading-snug">
+              <label htmlFor={`${uiFieldId}-3`} className="text-sm font-medium text-foreground mb-2 block leading-snug">
                 วันที่นัด <span className="text-destructive">*</span>
               </label>
               <div className="flex flex-wrap gap-1.5 mb-2.5">
@@ -265,7 +266,7 @@ export default function PartialPaymentRescheduleDialog({
                   );
                 })}
               </div>
-              <input
+              <input id={`${uiFieldId}-3`}
                 type="date"
                 min={getTomorrow()}
                 value={newSettlementDate}
@@ -278,10 +279,10 @@ export default function PartialPaymentRescheduleDialog({
 
         {/* บันทึกเพิ่มเติม */}
         <div>
-          <label className="text-sm font-semibold text-foreground mb-1.5 block leading-snug">
+          <label htmlFor={`${uiFieldId}-4`} className="text-sm font-semibold text-foreground mb-1.5 block leading-snug">
             หมายเหตุ
           </label>
-          <textarea
+          <textarea id={`${uiFieldId}-4`}
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
             placeholder="รายละเอียดการสนทนา..."

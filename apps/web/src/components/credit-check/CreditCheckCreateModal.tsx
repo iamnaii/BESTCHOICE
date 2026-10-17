@@ -1,4 +1,5 @@
-import { useRef } from 'react';
+import { NativeSelect } from '@/components/ui/native-select';
+import { useId as useUiFieldId, useRef } from 'react';
 import { ArrowLeft, User, FileText, Clock, BarChart3 } from 'lucide-react';
 import ProspectPhoneLine from '@/components/customer/ProspectPhoneLine';
 import {
@@ -105,6 +106,7 @@ export default function CreditCheckCreateModal({
   isSaving,
   onSave,
 }: CreditCheckCreateModalProps) {
+  const uiFieldId = useUiFieldId();
   // Keep a local ref for the hidden book-bank input (passed via prop)
   const _bookBankRef = bookBankFileRef;
 
@@ -138,7 +140,7 @@ export default function CreditCheckCreateModal({
 
             {!selectedCustomer ? (
               <div>
-                <input
+                <input aria-label="ค้นหาชื่อ, เบอร์โทร, เลขบัตร"
                   type="text"
                   placeholder="ค้นหาชื่อ, เบอร์โทร, เลขบัตร..."
                   value={customerSearch}
@@ -278,10 +280,10 @@ export default function CreditCheckCreateModal({
                 {salarySlipResult && (
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-3">
                     <div>
-                      <label className="block text-2xs text-muted-foreground mb-1">
+                      <label htmlFor={`${uiFieldId}-1`} className="block text-2xs text-muted-foreground mb-1">
                         เงินเดือนสุทธิ
                       </label>
-                      <input
+                      <input id={`${uiFieldId}-1`}
                         type="text"
                         value={salarySlipEditable.netSalary}
                         onChange={(e) =>
@@ -294,8 +296,8 @@ export default function CreditCheckCreateModal({
                       />
                     </div>
                     <div>
-                      <label className="block text-2xs text-muted-foreground mb-1">ชื่อบริษัท</label>
-                      <input
+                      <label htmlFor={`${uiFieldId}-2`} className="block text-2xs text-muted-foreground mb-1">ชื่อบริษัท</label>
+                      <input id={`${uiFieldId}-2`}
                         type="text"
                         value={salarySlipEditable.employerName}
                         onChange={(e) =>
@@ -308,10 +310,10 @@ export default function CreditCheckCreateModal({
                       />
                     </div>
                     <div>
-                      <label className="block text-2xs text-muted-foreground mb-1">
+                      <label htmlFor={`${uiFieldId}-3`} className="block text-2xs text-muted-foreground mb-1">
                         วันเงินเดือนออก
                       </label>
-                      <input
+                      <input id={`${uiFieldId}-3`}
                         type="text"
                         value={salarySlipEditable.payDay}
                         onChange={(e) =>
@@ -325,8 +327,8 @@ export default function CreditCheckCreateModal({
                       />
                     </div>
                     <div>
-                      <label className="block text-2xs text-muted-foreground mb-1">ธนาคาร</label>
-                      <input
+                      <label htmlFor={`${uiFieldId}-4`} className="block text-2xs text-muted-foreground mb-1">ธนาคาร</label>
+                      <input id={`${uiFieldId}-4`}
                         type="text"
                         value={salarySlipEditable.bankName}
                         onChange={(e) =>
@@ -348,11 +350,11 @@ export default function CreditCheckCreateModal({
                   B. Statement ธนาคาร
                 </h4>
                 <div className="mb-3">
-                  <label className="block text-2xs text-muted-foreground mb-1">เลือกธนาคาร</label>
-                  <select
+                  <label htmlFor={`${uiFieldId}-5`} className="block text-2xs text-muted-foreground mb-1">เลือกธนาคาร</label>
+                  <NativeSelect wrapperClassName="max-w-full w-full" id={`${uiFieldId}-5`}
                     value={statementBankName}
                     onChange={(e) => onStatementBankNameChange(e.target.value)}
-                    className="w-full px-3 py-2 border border-input rounded-lg text-sm"
+                    className="px-3 py-2 border border-input rounded-lg text-sm"
                   >
                     <option value="">-- เลือกธนาคาร --</option>
                     {BANK_OPTIONS.map((b) => (
@@ -360,7 +362,7 @@ export default function CreditCheckCreateModal({
                         {b}
                       </option>
                     ))}
-                  </select>
+                  </NativeSelect>
                 </div>
                 <div className="flex items-center gap-3 mb-3">
                   <input
@@ -586,8 +588,8 @@ export default function CreditCheckCreateModal({
               )}
 
               <div className="mt-4">
-                <label className="block text-xs font-medium text-foreground mb-1.5">หมายเหตุ</label>
-                <textarea
+                <label htmlFor={`${uiFieldId}-6`} className="block text-xs font-medium text-foreground mb-1.5">หมายเหตุ</label>
+                <textarea id={`${uiFieldId}-6`}
                   value={reviewNotesDraft}
                   onChange={(e) => onReviewNotesDraftChange(e.target.value)}
                   rows={2}

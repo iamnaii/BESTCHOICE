@@ -1,5 +1,6 @@
+import { NativeSelect } from '@/components/ui/native-select';
 import { formatTaxAmount as fmtNumber } from '@/utils/financial-display';
-import { useState } from 'react';
+import { useId as useUiFieldId, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router';
 import { toast } from 'sonner';
@@ -80,6 +81,7 @@ const inputClass =
   'w-full px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden bg-background text-foreground';
 
 export function ETaxInvoicePage() {
+  const uiFieldId = useUiFieldId();
   const now = new Date();
   const queryClient = useQueryClient();
   const [companyId, setCompanyId] = useState('');
@@ -249,8 +251,8 @@ export function ETaxInvoicePage() {
               <CompanyFilter value={companyId} onChange={setCompanyId} />
             </div>
             <div>
-              <label className="text-xs text-muted-foreground leading-snug mb-1 block">ปี (ค.ศ.)</label>
-              <input
+              <label htmlFor={`${uiFieldId}-1`} className="text-xs text-muted-foreground leading-snug mb-1 block">ปี (ค.ศ.)</label>
+              <input id={`${uiFieldId}-1`}
                 type="number"
                 value={year}
                 onChange={(e) => {
@@ -263,8 +265,8 @@ export function ETaxInvoicePage() {
               />
             </div>
             <div>
-              <label className="text-xs text-muted-foreground leading-snug mb-1 block">เดือน</label>
-              <select
+              <label htmlFor={`${uiFieldId}-2`} className="text-xs text-muted-foreground leading-snug mb-1 block">เดือน</label>
+              <NativeSelect wrapperClassName="max-w-full w-full" id={`${uiFieldId}-2`}
                 value={month}
                 onChange={(e) => {
                   setMonth(parseInt(e.target.value));
@@ -277,7 +279,7 @@ export function ETaxInvoicePage() {
                     {m}
                   </option>
                 ))}
-              </select>
+              </NativeSelect>
             </div>
           </div>
         </CardContent>

@@ -1,3 +1,6 @@
+import { NativeSelect } from '@/components/ui/native-select';
+import { formControlClass } from '@/components/ui/form-styles';
+import { useId as useFieldId } from 'react';
 // Section 5 — Multi-line Adjustment (Fix Report v1.0 P0-4).
 //
 // Renders when the user wants to reconcile a `amountPaid ≠ totalAmount − wht`
@@ -49,6 +52,7 @@ export function AdjustmentSection({
   suggestedAccounts,
   netExpected,
 }: Props) {
+  const fieldId = useFieldId();
   // D1.1.6 — read configurable adjustment codes from getUiFlags so OWNER
   // can rebind without a frontend deploy. Caller-supplied list still wins
   // (overrides the flag) — preserves backwards-compatible API.
@@ -110,16 +114,16 @@ export function AdjustmentSection({
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
         <div>
-          <label className="block text-xs font-medium text-muted-foreground mb-1">
+          <label htmlFor={`${fieldId}-1`} className="block text-xs font-medium text-muted-foreground mb-1">
             ยอดที่จ่ายจริง (amount paid)
           </label>
-          <input
+          <input id={`${fieldId}-1`}
             type="number"
             step="0.01"
             value={amountPaid}
             onChange={(e) => onAmountPaidChange(e.target.value)}
             placeholder={netExpected}
-            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm tabular-nums focus:outline-none focus:ring-2 focus:ring-primary"
+            className={formControlClass}
           />
           <p className="mt-1 text-xs text-muted-foreground">ปล่อยว่าง = ใช้ค่า default {netExpected}</p>
         </div>
@@ -161,10 +165,10 @@ export function AdjustmentSection({
                 className="grid grid-cols-12 gap-2 items-start rounded-lg border border-border bg-muted/30 p-3"
               >
                 <div className="col-span-12 md:col-span-5">
-                  <label className="block text-xs text-muted-foreground mb-1">
+                  <label htmlFor={`${fieldId}-${row.uid}-2`} className="block text-xs text-muted-foreground mb-1">
                     บัญชี #{idx + 1}
                   </label>
-                  <select
+                  <NativeSelect wrapperClassName="max-w-full w-full min-w-0" id={`${fieldId}-${row.uid}-2`}
                     value={row.accountCode}
                     onChange={(e) => {
                       const code = e.target.value;
@@ -174,7 +178,7 @@ export function AdjustmentSection({
                         side: match?.defaultSide ?? row.side,
                       });
                     }}
-                    className="w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                    className={formControlClass}
                   >
                     <option value="">— เลือกบัญชี —</option>
                     {effectiveSuggested.map((s) => (
@@ -182,48 +186,48 @@ export function AdjustmentSection({
                         {accountDisplayName(s.name)}
                       </option>
                     ))}
-                  </select>
+                  </NativeSelect>
                 </div>
-                <div className="col-span-4 md:col-span-2">
-                  <label className="block text-xs text-muted-foreground mb-1">Dr/Cr</label>
-                  <select
+                <div className="col-span-12 sm:col-span-6 md:col-span-2">
+                  <label htmlFor={`${fieldId}-${row.uid}-3`} className="block text-xs text-muted-foreground mb-1">Dr/Cr</label>
+                  <NativeSelect wrapperClassName="max-w-full w-full min-w-0" id={`${fieldId}-${row.uid}-3`}
                     value={row.side}
                     onChange={(e) =>
                       updateRow(row.uid, { side: e.target.value as 'DR' | 'CR' })
                     }
-                    className="w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                    className={formControlClass}
                   >
                     <option value="DR">Dr</option>
                     <option value="CR">Cr</option>
-                  </select>
+                  </NativeSelect>
                 </div>
-                <div className="col-span-4 md:col-span-2">
-                  <label className="block text-xs text-muted-foreground mb-1">จำนวน</label>
-                  <input
+                <div className="col-span-12 sm:col-span-6 md:col-span-2">
+                  <label htmlFor={`${fieldId}-${row.uid}-4`} className="block text-xs text-muted-foreground mb-1">จำนวน</label>
+                  <input id={`${fieldId}-${row.uid}-4`}
                     type="number"
                     step="0.01"
                     min="0"
                     value={row.amount}
                     onChange={(e) => updateRow(row.uid, { amount: e.target.value })}
-                    className="w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm text-right tabular-nums focus:outline-none focus:ring-2 focus:ring-primary"
+                    className={formControlClass}
                   />
                 </div>
-                <div className="col-span-3 md:col-span-2">
-                  <label className="block text-xs text-muted-foreground mb-1">หมายเหตุ</label>
-                  <input
+                <div className="col-span-12 md:col-span-2">
+                  <label htmlFor={`${fieldId}-${row.uid}-5`} className="block text-xs text-muted-foreground mb-1">หมายเหตุ</label>
+                  <input id={`${fieldId}-${row.uid}-5`}
                     type="text"
                     value={row.note}
                     onChange={(e) => updateRow(row.uid, { note: e.target.value })}
                     placeholder="ปัดเศษ / ส่วนลด..."
-                    className="w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                    className={formControlClass}
                   />
                 </div>
-                <div className="col-span-1 flex items-end justify-end pt-5">
+                <div className="col-span-12 flex items-end justify-end md:col-span-1 md:pt-5">
                   <button
                     type="button"
                     onClick={() => removeRow(row.uid)}
                     aria-label={`ลบบัญชีปรับ #${idx + 1}`}
-                    className="rounded-md p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors"
+                    className="flex min-h-11 min-w-11 items-center justify-center rounded-md p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors"
                   >
                     <Trash2 size={14} />
                   </button>

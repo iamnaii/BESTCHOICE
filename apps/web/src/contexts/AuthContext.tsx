@@ -23,6 +23,7 @@ interface User {
   preferences?: Record<string, unknown> | null;
   /** T15: default cash/bank account code (e.g. '11-1101') for payment deposit dimension. */
   defaultCashAccountCode?: string | null;
+  yeastarExtension?: string | null;
   /** SP7.3 — dual entity: list of company codes this user can access */
   accessibleCompanies?: string[];
   /** SP7.3 — dual entity: the user's primary company scope */
@@ -117,6 +118,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         accessibleCompanies: data.accessibleCompanies ?? [],
         primaryCompany: data.primaryCompany ?? null,
         canReverseOverride: data.canReverseOverride ?? null,
+        defaultCashAccountCode: data.defaultCashAccountCode ?? null,
+        yeastarExtension: data.yeastarExtension ?? null,
       };
       setUser(nextUser);
       setSentryUser(nextUser);
@@ -196,6 +199,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           accessibleCompanies: data.user.accessibleCompanies ?? [],
           primaryCompany: data.user.primaryCompany ?? null,
           canReverseOverride: data.user.canReverseOverride ?? null,
+          defaultCashAccountCode: data.user.defaultCashAccountCode ?? null,
+          yeastarExtension: data.user.yeastarExtension ?? null,
         };
         setUser(nextUser);
         setSentryUser(nextUser);

@@ -58,7 +58,7 @@ export default function ResetPasswordDialog({
           <div className="relative">
             <input
               id="reset-password"
-              className={`${inputClass} pr-10`}
+              className={`${inputClass} pr-14`}
               type={reveal ? 'text' : 'password'}
               autoComplete="new-password"
               value={password}
@@ -67,8 +67,9 @@ export default function ResetPasswordDialog({
             <button
               type="button"
               onClick={() => setReveal((v) => !v)}
-              className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 text-muted-foreground hover:text-foreground transition-colors"
+              className="absolute right-px top-1/2 -translate-y-1/2 inline-flex size-11 items-center justify-center rounded-lg text-muted-foreground hover:text-foreground transition-colors"
               aria-label={reveal ? 'ซ่อนรหัสผ่าน' : 'แสดงรหัสผ่าน'}
+              aria-pressed={reveal}
             >
               {reveal ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
             </button>

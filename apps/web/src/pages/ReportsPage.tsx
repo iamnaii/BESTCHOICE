@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useId as useUiFieldId, useState } from 'react';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import api from '@/lib/api';
@@ -11,6 +11,11 @@ import { Download } from 'lucide-react';
 import ThaiDateInput from '@/components/ui/ThaiDateInput';
 import { DateRangeChips } from '@/components/ui/DateRangeChips';
 import { toLocalDateString } from '@/lib/date';
+import { statusLabels } from '@/lib/constants';
+import { useAuth } from '@/contexts/AuthContext';
+import { contractsCsv } from './reports-csv';
+import { NativeSelect } from '@/components/ui/native-select';
+import { formLabelClass } from '@/components/ui/form-styles';
 import {
   BarChart,
   Bar,
@@ -40,15 +45,56 @@ const reportTabs: { key: ReportType; label: string }[] = [
   { key: 'entity-profit', label: 'กำไร Shop/Finance' },
 ];
 
+type ReportPeriod = { startDate: string; endDate: string };
+type PageResult<T> = { data: T[]; total: number; page: number; limit: number };
+type RiskRow = { contractNumber: string; customer: { name: string; phone: string }; overdueInstallments: number; totalOutstanding: number };
+type SalesRow = { salespersonId: string; name: string; totalContracts: number; totalSales: number; overdueCount: number; overdueRate: string };
+type BranchRow = { branchId: string; branchName: string; newContracts: number; activeContracts: number; overdueContracts: number; paymentsReceived: number; inStockProducts: number };
+type DailySummary = { totalPayments: number; totalAmount: number; byMethod: Record<string, { count: number; total: number }>; byBranch: Record<string, { count: number; total: number }>; total: number; page: number; limit: number };
+
+function validPeriod({ startDate, endDate }: ReportPeriod) {
+  return Boolean(startDate && endDate && startDate <= endDate);
+}
+
+function ReportPagination({ page, total, limit, onChange }: { page: number; total: number; limit: number; onChange: (page: number) => void }) {
+  // A refetch may remove the last page; retain a way back to page one.
+  if (total <= limit && page === 1) return null;
+  const pages = Math.max(page, Math.ceil(total / limit));
+  return <div className="mt-4 flex flex-wrap items-center justify-end gap-3 text-sm">
+    <span>หน้า {page} / {pages} · {total} รายการ</span>
+    <Button variant="outline" onClick={() => onChange(page - 1)} disabled={page <= 1}>ก่อนหน้า</Button>
+    <Button variant="outline" onClick={() => onChange(page + 1)} disabled={page >= pages}>ถัดไป</Button>
+  </div>;
+}
+
+function ReportDateFilter({ period, onChange }: { period: ReportPeriod; onChange: (period: ReportPeriod) => void }) {
+  const id = useUiFieldId();
+  return <div className="mb-5 space-y-4 rounded-xl border border-border bg-card p-4">
+    <DateRangeChips {...period} showAllChip={false} onChange={onChange} />
+    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:max-w-xl">
+      <div><label htmlFor={`${id}-from`} className={formLabelClass}>จากวันที่</label><ThaiDateInput id={`${id}-from`} data-date-range-custom-start="true" value={period.startDate} onChange={e => onChange({ ...period, startDate: e.target.value })} /></div>
+      <div><label htmlFor={`${id}-to`} className={formLabelClass}>ถึงวันที่</label><ThaiDateInput id={`${id}-to`} value={period.endDate} onChange={e => onChange({ ...period, endDate: e.target.value })} /></div>
+    </div>
+    {!validPeriod(period) && <p role="status" className="text-sm text-muted-foreground">เลือกวันที่ให้ครบ โดยวันสิ้นสุดต้องไม่ก่อนวันเริ่มต้น</p>}
+  </div>;
+}
+
 export default function ReportsPage() {
   useDocumentTitle('รายงาน');
+  const { user } = useAuth();
   const [activeTab, setActiveTab] = useState<ReportType>('aging');
+  const availableTabs = reportTabs.filter(tab => user?.role !== 'BRANCH_MANAGER' || !['branch', 'entity-profit'].includes(tab.key));
   const [dateFilter, setDateFilter] = useState(toLocalDateString());
+  const [period, setPeriod] = useState<ReportPeriod>(() => {
+    const now = new Date();
+    return { startDate: toLocalDateString(new Date(now.getFullYear(), now.getMonth(), 1)), endDate: toLocalDateString(new Date(now.getFullYear(), now.getMonth() + 1, 0)) };
+  });
 
   const exportMutation = useMutation({
     mutationFn: async () => {
-      const { data } = await api.get('/reports/export/contracts', { responseType: 'blob' });
-      const url = window.URL.createObjectURL(new Blob([data]));
+      const { data } = await api.get<Record<string, unknown>[]>('/reports/export/contracts');
+      if (data.length >= 5000) toast.info('ไฟล์นี้รวมสัญญาล่าสุด 5,000 รายการ');
+      const url = window.URL.createObjectURL(new Blob([contractsCsv(data)], { type: 'text/csv;charset=utf-8;' }));
       const a = document.createElement('a');
       a.href = url;
       a.download = `contracts-export-${toLocalDateString()}.csv`;
@@ -65,20 +111,25 @@ export default function ReportsPage() {
         title="รายงาน"
         subtitle="รายงานสรุปข้อมูลต่างๆ"
         action={
-          <Button variant="outline" size="md" onClick={() => exportMutation.mutate()} disabled={exportMutation.isPending}>
+          <Button variant="outline" size="md" title="สัญญาทุกช่วงเวลา สูงสุด 5,000 รายการล่าสุด ตามสิทธิ์ที่เข้าถึงได้" onClick={() => exportMutation.mutate()} disabled={exportMutation.isPending}>
             <Download className="size-4" />
-            {exportMutation.isPending ? 'กำลังดาวน์โหลด...' : 'ส่งออก CSV'}
+            {exportMutation.isPending ? 'กำลังดาวน์โหลด...' : 'ส่งออกสัญญา CSV'}
           </Button>
         }
       />
 
-      {/* Tabs */}
-      <div className="flex flex-wrap gap-1 mb-6 bg-muted rounded-xl p-1">
-        {reportTabs.map((tab) => (
+      <div className="mb-5 sm:hidden">
+        <NativeSelect aria-label="เลือกรายงาน" value={activeTab} onChange={event => setActiveTab(event.target.value as ReportType)}>
+          {availableTabs.map(tab => <option key={tab.key} value={tab.key}>{tab.label}</option>)}
+        </NativeSelect>
+      </div>
+      <div className="hidden flex-wrap gap-1 mb-6 bg-muted rounded-xl p-1 sm:flex">
+        {availableTabs.map((tab) => (
           <button
             key={tab.key}
             onClick={() => setActiveTab(tab.key)}
-            className={`px-3 py-2 text-xs font-medium rounded-lg transition-colors ${
+            aria-pressed={activeTab === tab.key}
+            className={`min-h-11 px-3 py-2 text-xs font-medium rounded-lg transition-colors ${
               activeTab === tab.key
                 ? 'bg-card text-primary shadow-sm'
                 : 'text-muted-foreground hover:text-foreground'
@@ -89,11 +140,12 @@ export default function ReportsPage() {
         ))}
       </div>
 
+      {['revenue', 'sales', 'branch'].includes(activeTab) && <ReportDateFilter period={period} onChange={setPeriod} />}
       {activeTab === 'aging' && <AgingReport />}
-      {activeTab === 'revenue' && <RevenueReport />}
+      {activeTab === 'revenue' && <RevenueReport period={period} />}
       {activeTab === 'high-risk' && <HighRiskReport />}
-      {activeTab === 'sales' && <SalesReport />}
-      {activeTab === 'branch' && <BranchReport />}
+      {activeTab === 'sales' && <SalesReport key={`${period.startDate}-${period.endDate}`} period={period} />}
+      {activeTab === 'branch' && <BranchReport period={period} />}
       {activeTab === 'daily-payment' && <DailyPaymentReport date={dateFilter} onDateChange={setDateFilter} />}
       {activeTab === 'stock' && <StockReport />}
       {activeTab === 'entity-profit' && <EntityProfitReport />}
@@ -107,8 +159,8 @@ function AgingReport() {
     queryFn: async () => (await api.get('/reports/aging')).data,
   });
 
-  const buckets = data?.buckets || [];
-  const total = data?.total || { count: 0, amount: 0 };
+  const buckets = ['1-30', '31-60', '61-90', '90+'].map(range => ({ range, count: data?.[range]?.count ?? 0, amount: data?.[range]?.totalOutstanding ?? 0 }));
+  const total = { count: data?.total?.count ?? 0, amount: data?.total?.totalOutstanding ?? 0 };
 
   const agingColors = ['hsl(var(--chart-1))', 'hsl(var(--chart-2))', 'hsl(var(--chart-3))', 'hsl(var(--chart-4))', 'hsl(var(--chart-5))'];
 
@@ -142,11 +194,11 @@ function AgingReport() {
       <div className="bg-card rounded-xl border border-border p-5">
         <h3 className="text-sm font-semibold text-foreground mb-4">รายงานอายุหนี้ (Aging Report)</h3>
         <div className="overflow-x-auto">
-          <table className="w-full text-sm">
+          <table className="w-full min-w-[34rem] text-sm [&_th]:whitespace-nowrap">
             <thead>
               <tr className="bg-muted/40 border-b border-border/60 text-left text-muted-foreground">
                 <th className="pb-2 font-medium">ช่วงวัน</th>
-                <th className="pb-2 font-medium text-right">จำนวนสัญญา</th>
+                <th className="pb-2 font-medium text-right">จำนวนงวด</th>
                 <th className="pb-2 font-medium text-right">ยอดค้างชำระ (บาท)</th>
                 <th className="pb-2 font-medium text-right">สัดส่วน</th>
               </tr>
@@ -177,21 +229,24 @@ function AgingReport() {
   );
 }
 
-function RevenueReport() {
+function RevenueReport({ period }: { period: ReportPeriod }) {
   const { data, isLoading, isError, error, refetch } = useQuery({
-    queryKey: ['report-revenue'],
-    queryFn: async () => (await api.get('/reports/revenue-pl')).data,
+    queryKey: ['report-revenue', period.startDate, period.endDate],
+    enabled: validPeriod(period),
+    queryFn: async () => (await api.get(`/reports/revenue-pl?${new URLSearchParams(period)}`)).data,
   });
+
+  if (!validPeriod(period)) return null;
 
   return (
     <QueryBoundary isLoading={isLoading} isError={isError} error={error} onRetry={() => refetch()} errorTitle="ไม่สามารถโหลดรายงานรายได้ได้">
       <div className="bg-card rounded-xl border border-border p-5">
         <h3 className="text-sm font-semibold text-foreground mb-4">รายงานรายได้ / กำไร-ขาดทุน</h3>
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <SummaryCard label="รายได้ดอกเบี้ย" value={data?.interestIncome || 0} color="text-success" />
-          <SummaryCard label="ค่าปรับ" value={data?.lateFeeIncome || 0} color="text-warning-strong" />
-          <SummaryCard label="ยอดชำระรับ" value={data?.paymentsReceived || 0} color="text-primary" />
-          <SummaryCard label="ยอดค้างชำระ" value={data?.outstandingTotal || 0} color="text-destructive" />
+        <div className="grid grid-cols-1 min-[390px]:grid-cols-2 lg:grid-cols-4 gap-4">
+          <SummaryCard label="รายได้ดอกเบี้ย" value={data?.revenue?.interestIncome || 0} color="text-success" />
+          <SummaryCard label="ค่าปรับ" value={data?.revenue?.lateFeeIncome || 0} color="text-warning-strong" />
+          <SummaryCard label="ยอดชำระรับ" value={data?.revenue?.totalPaymentsReceived || 0} color="text-primary" />
+          <SummaryCard label="รายการรับชำระ" value={data?.revenue?.paymentCount || 0} isCurrency={false} />
         </div>
       </div>
     </QueryBoundary>
@@ -199,9 +254,10 @@ function RevenueReport() {
 }
 
 function HighRiskReport() {
-  const { data = [], isLoading, isError, error, refetch } = useQuery({
-    queryKey: ['report-high-risk'],
-    queryFn: async () => (await api.get('/reports/high-risk')).data,
+  const [page, setPage] = useState(1);
+  const { data, isLoading, isError, error, refetch } = useQuery({
+    queryKey: ['report-high-risk', page],
+    queryFn: async () => (await api.get<PageResult<RiskRow>>(`/reports/high-risk?page=${page}&limit=50`)).data,
   });
 
   return (
@@ -209,27 +265,27 @@ function HighRiskReport() {
     <div className="bg-card rounded-lg border border-border p-5">
       <h3 className="text-sm font-semibold text-foreground mb-4">ลูกค้าเสี่ยงสูง</h3>
       <div className="overflow-x-auto">
-        <table className="w-full text-sm">
+        <table className="w-full min-w-[34rem] text-sm [&_th]:whitespace-nowrap">
           <thead>
             <tr className="bg-muted/40 border-b border-border/60 text-left text-muted-foreground">
               <th className="pb-2 font-medium">ลูกค้า</th>
               <th className="pb-2 font-medium">เบอร์โทร</th>
-              <th className="pb-2 font-medium text-right">สัญญาค้าง</th>
+              <th className="pb-2 font-medium text-right">งวดที่ยังไม่ชำระ</th>
               <th className="pb-2 font-medium text-right">ยอดค้าง (บาท)</th>
             </tr>
           </thead>
           <tbody>
-            {(data as { name: string; phone: string; overdueContracts: number; totalOutstanding: number }[]).map((c) => (
-              <tr key={c.phone || c.name} className="border-b last:border-0">
-                <td className="py-2 font-medium">{c.name}</td>
-                <td className="py-2 text-muted-foreground">{c.phone}</td>
-                <td className="py-2 text-right">{c.overdueContracts}</td>
+            {(data?.data ?? []).map((c) => (
+              <tr key={c.contractNumber} className="border-b last:border-0">
+                <td className="py-2 font-medium">{c.customer.name}<div className="text-xs text-muted-foreground">{c.contractNumber}</div></td>
+                <td className="py-2 text-muted-foreground">{c.customer.phone}</td>
+                <td className="py-2 text-right">{c.overdueInstallments}</td>
                 <td className="py-2 text-right text-destructive font-medium">
                   {fmt(c.totalOutstanding)}
                 </td>
               </tr>
             ))}
-            {data.length === 0 && (
+            {data?.data.length === 0 && (
               <tr>
                 <td colSpan={4} className="py-8 text-center text-muted-foreground">ไม่พบข้อมูล</td>
               </tr>
@@ -237,23 +293,28 @@ function HighRiskReport() {
           </tbody>
         </table>
       </div>
+      <ReportPagination page={page} total={data?.total ?? 0} limit={data?.limit ?? 50} onChange={setPage} />
     </div>
     </QueryBoundary>
   );
 }
 
-function SalesReport() {
-  const { data = [], isLoading, isError, error, refetch } = useQuery({
-    queryKey: ['report-sales'],
-    queryFn: async () => (await api.get('/reports/sales-comparison')).data,
+function SalesReport({ period }: { period: ReportPeriod }) {
+  const [page, setPage] = useState(1);
+  const { data, isLoading, isError, error, refetch } = useQuery({
+    queryKey: ['report-sales', period.startDate, period.endDate, page],
+    enabled: validPeriod(period),
+    queryFn: async () => (await api.get<PageResult<SalesRow>>(`/reports/sales-comparison?${new URLSearchParams({ ...period, page: String(page), limit: '50' })}`)).data,
   });
+
+  if (!validPeriod(period)) return null;
 
   return (
     <QueryBoundary isLoading={isLoading} isError={isError} error={error} onRetry={() => refetch()} errorTitle="ไม่สามารถโหลดรายงานพนักงานขายได้">
     <div className="bg-card rounded-lg border border-border p-5">
       <h3 className="text-sm font-semibold text-foreground mb-4">เปรียบเทียบพนักงานขาย</h3>
       <div className="overflow-x-auto">
-        <table className="w-full text-sm">
+        <table className="w-full min-w-[34rem] text-sm [&_th]:whitespace-nowrap">
           <thead>
             <tr className="bg-muted/40 border-b border-border/60 text-left text-muted-foreground">
               <th className="pb-2 font-medium">พนักงาน</th>
@@ -264,27 +325,27 @@ function SalesReport() {
             </tr>
           </thead>
           <tbody>
-            {(data as { name: string; totalContracts: number; totalSales: number; overdueContracts: number; overdueRate: number }[]).map((s) => (
-              <tr key={s.name} className="border-b last:border-0">
+            {(data?.data ?? []).map((s) => (
+              <tr key={s.salespersonId} className="border-b last:border-0">
                 <td className="py-2 font-medium">{s.name}</td>
                 <td className="py-2 text-right">{s.totalContracts}</td>
                 <td className="py-2 text-right">{fmt(s.totalSales)}</td>
                 <td className="py-2 text-right">
-                  <span className={s.overdueContracts > 0 ? 'text-destructive font-medium' : ''}>
-                    {s.overdueContracts}
+                  <span className={s.overdueCount > 0 ? 'text-destructive font-medium' : ''}>
+                    {s.overdueCount}
                   </span>
                 </td>
                 <td className="py-2 text-right">
                   <span
                     className={`px-2 py-0.5 rounded-full text-xs font-medium ${
-                      s.overdueRate > 20
+                      Number(s.overdueRate) > 20
                         ? 'bg-destructive/10 text-destructive dark:bg-destructive/15'
-                        : s.overdueRate > 10
+                        : Number(s.overdueRate) > 10
                           ? 'bg-warning/10 text-warning-strong dark:bg-warning/15'
                           : 'bg-success/10 text-success dark:bg-success/15'
                     }`}
                   >
-                    {s.overdueRate.toFixed(1)}%
+                    {Number(s.overdueRate).toFixed(1)}%
                   </span>
                 </td>
               </tr>
@@ -292,42 +353,46 @@ function SalesReport() {
           </tbody>
         </table>
       </div>
+      <ReportPagination page={page} total={data?.total ?? 0} limit={data?.limit ?? 50} onChange={setPage} />
     </div>
     </QueryBoundary>
   );
 }
 
-function BranchReport() {
+function BranchReport({ period }: { period: ReportPeriod }) {
   const { data = [], isLoading, isError, error, refetch } = useQuery({
-    queryKey: ['report-branch'],
-    queryFn: async () => (await api.get('/reports/branch-comparison')).data,
+    queryKey: ['report-branch', period.startDate, period.endDate],
+    enabled: validPeriod(period),
+    queryFn: async () => (await api.get<BranchRow[]>(`/reports/branch-comparison?${new URLSearchParams(period)}`)).data,
   });
+
+  if (!validPeriod(period)) return null;
 
   return (
     <QueryBoundary isLoading={isLoading} isError={isError} error={error} onRetry={() => refetch()} errorTitle="ไม่สามารถโหลดรายงานเปรียบเทียบสาขาได้">
     <div className="bg-card rounded-lg border border-border p-5">
       <h3 className="text-sm font-semibold text-foreground mb-4">เปรียบเทียบสาขา</h3>
       <div className="overflow-x-auto">
-        <table className="w-full text-sm">
+        <table className="w-full min-w-[34rem] text-sm [&_th]:whitespace-nowrap">
           <thead>
             <tr className="bg-muted/40 border-b border-border/60 text-left text-muted-foreground">
               <th className="pb-2 font-medium">สาขา</th>
-              <th className="pb-2 font-medium text-right">สัญญา</th>
-              <th className="pb-2 font-medium text-right">ยอดขาย (บาท)</th>
-              <th className="pb-2 font-medium text-right">ค้างชำระ</th>
+              <th className="pb-2 font-medium text-right">สัญญาใหม่</th>
+              <th className="pb-2 font-medium text-right">สัญญาที่ใช้งานปัจจุบัน</th>
+              <th className="pb-2 font-medium text-right">ค้างชำระปัจจุบัน</th>
               <th className="pb-2 font-medium text-right">ยอดชำระ (บาท)</th>
-              <th className="pb-2 font-medium text-right">สต็อก</th>
+              <th className="pb-2 font-medium text-right">สต็อกปัจจุบัน</th>
             </tr>
           </thead>
           <tbody>
-            {(data as { branchName: string; contracts: number; totalSales: number; overdueContracts: number; paymentsReceived: number; stockCount: number }[]).map((b) => (
-              <tr key={b.branchName} className="border-b last:border-0">
+            {data.map((b) => (
+              <tr key={b.branchId} className="border-b last:border-0">
                 <td className="py-2 font-medium">{b.branchName}</td>
-                <td className="py-2 text-right">{b.contracts}</td>
-                <td className="py-2 text-right">{fmt(b.totalSales)}</td>
+                <td className="py-2 text-right">{b.newContracts}</td>
+                <td className="py-2 text-right">{b.activeContracts}</td>
                 <td className="py-2 text-right text-destructive">{b.overdueContracts}</td>
                 <td className="py-2 text-right text-success">{fmt(b.paymentsReceived)}</td>
-                <td className="py-2 text-right">{b.stockCount}</td>
+                <td className="py-2 text-right">{b.inStockProducts}</td>
               </tr>
             ))}
           </tbody>
@@ -339,31 +404,36 @@ function BranchReport() {
 }
 
 function DailyPaymentReport({ date, onDateChange }: { date: string; onDateChange: (d: string) => void }) {
+  const [page, setPage] = useState(1);
   const { data, isLoading, isError, error, refetch } = useQuery({
-    queryKey: ['report-daily-payment', date],
-    queryFn: async () => (await api.get(`/reports/daily-payments?date=${date}`)).data,
+    queryKey: ['report-daily-payment', date, page],
+    enabled: Boolean(date),
+    queryFn: async () => (await api.get<DailySummary>(`/reports/daily-payments?date=${date}&page=${page}&limit=50`)).data,
   });
 
   return (
     <QueryBoundary isLoading={isLoading} isError={isError} error={error} onRetry={() => refetch()} errorTitle="ไม่สามารถโหลดรายงานชำระรายวันได้">
     <div className="bg-card rounded-lg border border-border p-5">
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex flex-wrap items-center justify-between gap-4 mb-4">
         <h3 className="text-sm font-semibold text-foreground">สรุปชำระรายวัน</h3>
-        <ThaiDateInput
+        <ThaiDateInput aria-label="วันที่"
           value={date}
-          onChange={(e) => onDateChange(e.target.value)}
+          onChange={(e) => { setPage(1); onDateChange(e.target.value); }}
           className="px-3 py-1.5 border rounded-lg text-sm"
         />
       </div>
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
-        <SummaryCard label="รายการชำระ" value={data?.totalCount || 0} isCurrency={false} />
+      {!date && <p role="status" className="text-sm text-muted-foreground">เลือกวันที่เพื่อดูรายการรับชำระ</p>}
+      {date && <>
+      <div className="grid grid-cols-1 min-[390px]:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+        <SummaryCard label="รายการชำระ" value={data?.totalPayments || 0} isCurrency={false} />
         <SummaryCard label="ยอดรวม" value={data?.totalAmount || 0} color="text-success" />
-        <SummaryCard label="เงินสด" value={data?.byMethod?.CASH || 0} color="text-primary" />
-        <SummaryCard label="โอน" value={data?.byMethod?.TRANSFER || 0} color="text-primary" />
+        <SummaryCard label={data && data.total > data.limit ? "เงินสด (หน้านี้)" : "เงินสด"} value={data?.byMethod?.CASH?.total || 0} color="text-primary" />
+        <SummaryCard label={data && data.total > data.limit ? "โอน (หน้านี้)" : "โอน"} value={data?.byMethod?.BANK_TRANSFER?.total || 0} color="text-primary" />
       </div>
-      {data?.byBranch && data.byBranch.length > 0 && (
+      {data && data.total > data.limit && <p className="mb-3 text-sm text-muted-foreground">ยอดรวมครอบคลุมทั้งวัน · เงินสด โอน และยอดตามสาขาแสดงเฉพาะรายการในหน้านี้</p>}
+      {data?.byBranch && Object.keys(data.byBranch).length > 0 && (
         <div className="overflow-x-auto">
-          <table className="w-full text-sm">
+          <table className="w-full min-w-[34rem] text-sm [&_th]:whitespace-nowrap">
             <thead>
               <tr className="bg-muted/40 border-b border-border/60 text-left text-muted-foreground">
                 <th className="pb-2 font-medium">สาขา</th>
@@ -372,17 +442,19 @@ function DailyPaymentReport({ date, onDateChange }: { date: string; onDateChange
               </tr>
             </thead>
             <tbody>
-              {data.byBranch.map((b: { branchName: string; count: number; amount: number }) => (
-                <tr key={b.branchName} className="border-b last:border-0">
-                  <td className="py-2 font-medium">{b.branchName}</td>
-                  <td className="py-2 text-right">{b.count}</td>
-                  <td className="py-2 text-right text-success">{fmt(b.amount)}</td>
+              {Object.entries(data.byBranch).map(([branchName, summary]) => (
+                <tr key={branchName} className="border-b last:border-0">
+                  <td className="py-2 font-medium">{branchName}</td>
+                  <td className="py-2 text-right">{summary.count}</td>
+                  <td className="py-2 text-right text-success">{fmt(summary.total)}</td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
       )}
+      <ReportPagination page={page} total={data?.total ?? 0} limit={data?.limit ?? 50} onChange={setPage} />
+      </>}
     </div>
     </QueryBoundary>
   );
@@ -391,74 +463,24 @@ function DailyPaymentReport({ date, onDateChange }: { date: string; onDateChange
 function StockReport() {
   const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['report-stock'],
-    queryFn: async () => (await api.get('/reports/stock')).data,
+    queryFn: async () => (await api.get<{ totalInStock: number; totalStockValue: number; byStatusAndBranch: Array<{ status: string; branch: string; count: number }> }>('/reports/stock')).data,
   });
-
-  const byStatus = data?.byStatus || [];
-  const byBranch = data?.byBranch || [];
-
-  return (
-    <QueryBoundary isLoading={isLoading} isError={isError} error={error} onRetry={() => refetch()} errorTitle="ไม่สามารถโหลดรายงานสต็อกสินค้าได้">
-    <div className="flex flex-col gap-5 lg:gap-7.5">
-      <div className="bg-card rounded-lg border border-border p-5">
-        <h3 className="text-sm font-semibold text-foreground mb-4">สต็อกตามสถานะ</h3>
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
-          <SummaryCard label="ทั้งหมด" value={data?.totalCount || 0} isCurrency={false} />
-          <SummaryCard label="มูลค่ารวม" value={data?.totalValue || 0} color="text-primary" />
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="bg-muted/40 border-b border-border/60 text-left text-muted-foreground">
-                <th className="pb-2 font-medium">สถานะ</th>
-                <th className="pb-2 font-medium text-right">จำนวน</th>
-                <th className="pb-2 font-medium text-right">มูลค่า (บาท)</th>
-              </tr>
-            </thead>
-            <tbody>
-              {byStatus.map((s: { status: string; count: number; value: number }) => (
-                <tr key={s.status} className="border-b last:border-0">
-                  <td className="py-2 font-medium">{s.status}</td>
-                  <td className="py-2 text-right">{s.count}</td>
-                  <td className="py-2 text-right">{fmt(s.value)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+  return <QueryBoundary isLoading={isLoading} isError={isError} error={error} onRetry={() => refetch()} errorTitle="ไม่สามารถโหลดรายงานสต็อกสินค้าได้">
+    <div className="space-y-5 rounded-xl border border-border bg-card p-5">
+      <h3 className="text-sm font-semibold">สต็อกตามสถานะและสาขา</h3>
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <SummaryCard label="พร้อมขาย" value={data?.totalInStock ?? 0} isCurrency={false} />
+        <SummaryCard label="มูลค่าต้นทุนสินค้าพร้อมขาย" value={data?.totalStockValue ?? 0} color="text-primary" />
       </div>
-
-      {byBranch.length > 0 && (
-        <div className="bg-card rounded-lg border border-border p-5">
-          <h3 className="text-sm font-semibold text-foreground mb-4">สต็อกตามสาขา</h3>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="bg-muted/40 border-b border-border/60 text-left text-muted-foreground">
-                  <th className="pb-2 font-medium">สาขา</th>
-                  <th className="pb-2 font-medium text-right">จำนวน</th>
-                  <th className="pb-2 font-medium text-right">มูลค่า (บาท)</th>
-                </tr>
-              </thead>
-              <tbody>
-                {byBranch.map((b: { branchName: string; count: number; value: number }) => (
-                  <tr key={b.branchName} className="border-b last:border-0">
-                    <td className="py-2 font-medium">{b.branchName}</td>
-                    <td className="py-2 text-right">{b.count}</td>
-                    <td className="py-2 text-right">{fmt(b.value)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
+      <div className="overflow-x-auto"><table className="w-full min-w-[26rem] text-sm"><thead><tr className="border-b text-left text-muted-foreground"><th className="py-2">สาขา</th><th className="py-2">สถานะ</th><th className="py-2 text-right">จำนวน</th></tr></thead>
+        <tbody>{data?.byStatusAndBranch.map(row => <tr key={`${row.branch}-${row.status}`} className="border-b last:border-0"><td className="py-3">{row.branch}</td><td>{statusLabels[row.status]?.label ?? row.status}</td><td className="text-right">{row.count}</td></tr>)}</tbody>
+      </table></div>
     </div>
-    </QueryBoundary>
-  );
+  </QueryBoundary>;
 }
 
 function EntityProfitReport() {
+  const uiFieldId = useUiFieldId();
   // Default = full current month, matching the DateRangeChips "เดือนนี้"
   // preset (owner 2026-07-02). Uses the shared local-date helper (@/lib/date).
   const today = new Date();
@@ -470,6 +492,7 @@ function EntityProfitReport() {
 
   const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['report-entity-profit', startDate, endDate, entity],
+    enabled: validPeriod({ startDate, endDate }),
     queryFn: async () => {
       const params = new URLSearchParams({ startDate, endDate });
       if (entity !== 'ALL') params.set('entity', entity);
@@ -490,28 +513,29 @@ function EntityProfitReport() {
           <DateRangeChips
             startDate={startDate}
             endDate={endDate}
+            showAllChip={false}
             onChange={({ startDate: sd, endDate: ed }) => {
               setStartDate(sd);
               setEndDate(ed);
             }}
           />
         </div>
-        <div className="flex flex-wrap gap-3 items-end">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
           <div>
-            <label className="text-2xs font-medium text-muted-foreground block mb-1">จากวันที่</label>
-            <ThaiDateInput
+            <label htmlFor={`${uiFieldId}-1`} className={formLabelClass}>จากวันที่</label>
+            <ThaiDateInput id={`${uiFieldId}-1`}
               data-date-range-custom-start="true"
               value={startDate}
               onChange={(e) => setStartDate(e.target.value)}
             />
           </div>
           <div>
-            <label className="text-2xs font-medium text-muted-foreground block mb-1">ถึงวันที่</label>
-            <ThaiDateInput value={endDate} onChange={(e) => setEndDate(e.target.value)} />
+            <label htmlFor={`${uiFieldId}-2`} className={formLabelClass}>ถึงวันที่</label>
+            <ThaiDateInput id={`${uiFieldId}-2`} value={endDate} onChange={(e) => setEndDate(e.target.value)} />
           </div>
           <div>
-            <label className="text-2xs font-medium text-muted-foreground block mb-1">แสดง</label>
-            <select
+            <label htmlFor={`${uiFieldId}-3`} className={formLabelClass}>แสดง</label>
+            <NativeSelect id={`${uiFieldId}-3`}
               value={entity}
               onChange={(e) => setEntity(e.target.value)}
               className="h-9 px-3 text-sm border border-border rounded-lg bg-background"
@@ -519,18 +543,19 @@ function EntityProfitReport() {
               <option value="ALL">ทั้งหมด</option>
               <option value="SHOP">BESTCHOICE SHOP</option>
               <option value="FINANCE">BESTCHOICE FINANCE</option>
-            </select>
+            </NativeSelect>
           </div>
         </div>
       </div>
 
-      <QueryBoundary isLoading={isLoading} isError={isError} error={error} onRetry={() => refetch()} errorTitle="ไม่สามารถโหลดรายงานกำไร Shop/Finance ได้">
+      {!validPeriod({ startDate, endDate }) && <p role="status" className="text-sm text-muted-foreground">เลือกช่วงวันที่ให้ครบและเรียงจากวันเริ่มต้นถึงวันสิ้นสุด</p>}
+      {validPeriod({ startDate, endDate }) && <QueryBoundary isLoading={isLoading} isError={isError} error={error} onRetry={() => refetch()} errorTitle="ไม่สามารถโหลดรายงานกำไร Shop/Finance ได้">
 
       {/* Summary Cards */}
       {(entity === 'ALL' || entity === 'SHOP') && (
         <div className="bg-card rounded-xl border border-border p-5">
           <h3 className="text-sm font-semibold text-foreground mb-4">BESTCHOICE SHOP</h3>
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 min-[390px]:grid-cols-2 lg:grid-cols-4 gap-4">
             <SummaryCard label="รายได้รวม" value={shop.revenue} color="text-primary" />
             <SummaryCard label="ต้นทุนสินค้า" value={shop.costOfGoods} color="text-muted-foreground" />
             <SummaryCard label="ค่าคอมมิชชัน" value={shop.commission} color="text-success" />
@@ -545,7 +570,7 @@ function EntityProfitReport() {
       {(entity === 'ALL' || entity === 'FINANCE') && (
         <div className="bg-card rounded-xl border border-border p-5">
           <h3 className="text-sm font-semibold text-foreground mb-4">BESTCHOICE FINANCE</h3>
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 min-[390px]:grid-cols-2 lg:grid-cols-4 gap-4">
             <SummaryCard label="รายได้ดอกเบี้ย" value={finance.interestIncome} color="text-primary" />
             <SummaryCard label="จ่ายคอมมิชชัน" value={finance.commissionExpense} color="text-destructive" />
             <SummaryCard label="ค่าปรับล่าช้า" value={finance.lateFeeIncome} color="text-warning-strong" />
@@ -560,7 +585,7 @@ function EntityProfitReport() {
       {entity === 'ALL' && (
         <div className="bg-card rounded-xl border border-border p-5">
           <h3 className="text-sm font-semibold text-foreground mb-4">รวมทั้งระบบ</h3>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <SummaryCard label="กำไรรวม (SHOP + FINANCE)" value={combined.totalProfit} color="text-success" />
             <SummaryCard label="VAT รวม" value={combined.totalVat} color="text-muted-foreground" />
           </div>
@@ -572,7 +597,7 @@ function EntityProfitReport() {
         <div className="bg-card rounded-xl border border-border p-5">
           <h3 className="text-sm font-semibold text-foreground mb-4">รายละเอียด</h3>
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="w-full min-w-[34rem] text-sm [&_th]:whitespace-nowrap">
               <thead>
                 <tr className="bg-muted/40 border-b border-border/60 text-left text-muted-foreground">
                   <th className="pb-2 font-medium">เลขที่ขาย</th>
@@ -618,7 +643,7 @@ function EntityProfitReport() {
         </div>
       )}
 
-      </QueryBoundary>
+      </QueryBoundary>}
     </div>
   );
 }
@@ -635,9 +660,9 @@ function SummaryCard({
   isCurrency?: boolean;
 }) {
   return (
-    <div className="bg-muted rounded-xl p-4">
+    <div className="min-w-0 bg-muted rounded-xl p-4">
       <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">{label}</div>
-      <AnimatedCounter value={value} className={`text-lg font-bold ${color}`} />
+      <AnimatedCounter value={value} decimals={isCurrency ? 2 : 0} className={`break-words text-lg font-bold ${color}`} />
       {isCurrency && <div className="text-xs text-muted-foreground mt-0.5">บาท</div>}
     </div>
   );

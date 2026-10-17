@@ -1,3 +1,4 @@
+import { NativeSelect } from '@/components/ui/native-select';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
 import QueryBoundary from '@/components/QueryBoundary';
@@ -110,7 +111,7 @@ export default function NotificationLogTable({
   return (
     <>
       <div className="flex gap-3 mb-4">
-        <select
+        <NativeSelect wrapperClassName="max-w-full w-auto" aria-label="ช่องทางแจ้งเตือน"
           value={channelFilter}
           onChange={(e) => setChannelFilter(e.target.value)}
           className="px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
@@ -119,8 +120,8 @@ export default function NotificationLogTable({
           <option value="LINE">LINE</option>
           <option value="SMS">SMS</option>
           <option value="IN_APP">ในระบบ</option>
-        </select>
-        <select
+        </NativeSelect>
+        <NativeSelect wrapperClassName="max-w-full w-auto" aria-label="สถานะ"
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value)}
           className="px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
@@ -129,7 +130,7 @@ export default function NotificationLogTable({
           <option value="SENT">ส่งแล้ว</option>
           <option value="FAILED">ล้มเหลว</option>
           <option value="PENDING">รอส่ง</option>
-        </select>
+        </NativeSelect>
       </div>
       <QueryBoundary
         isLoading={logsLoading && logs.length === 0}

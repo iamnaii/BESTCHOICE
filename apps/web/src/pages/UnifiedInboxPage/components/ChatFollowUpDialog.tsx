@@ -1,3 +1,4 @@
+import { NativeSelect } from '@/components/ui/native-select';
 import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -186,8 +187,8 @@ export default function ChatFollowUpDialog({
           )}
           <label className="block text-sm font-medium">
             ผู้รับผิดชอบงาน
-            <select
-              className={field}
+            <NativeSelect wrapperClassName="max-w-full mt-1 w-full min-w-0"
+              className={`${field} mt-0`}
               required
               value={assignee}
               onChange={(e) => setAssignee(e.target.value)}
@@ -199,7 +200,7 @@ export default function ChatFollowUpDialog({
                   {'detail' in person ? ` · ${String(person.detail)}` : ''}
                 </option>
               ))}
-            </select>
+            </NativeSelect>
           </label>
           {staff.isError && (
             <div role="alert" className="text-sm text-destructive">
@@ -212,8 +213,8 @@ export default function ChatFollowUpDialog({
           {editing && (
             <label className="block text-sm font-medium">
               สถานะนัด
-              <select
-                className={field}
+              <NativeSelect wrapperClassName="max-w-full mt-1 w-full min-w-0"
+                className={`${field} mt-0`}
                 value={status}
                 onChange={(e) => setStatus(e.target.value as TodoStatus)}
               >
@@ -222,7 +223,7 @@ export default function ChatFollowUpDialog({
                     {label}
                   </option>
                 ))}
-              </select>
+              </NativeSelect>
             </label>
           )}
           {conflict && (

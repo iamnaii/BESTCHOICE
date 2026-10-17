@@ -1,3 +1,4 @@
+import { formControlClass } from '@/components/ui/form-styles';
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -54,7 +55,7 @@ const originalExpiryDateOnly = (b: Booking) =>
   toBangkokDateString(new Date(new Date(b.expireDate).getTime() - 1));
 const chipClass = (active: boolean) =>
   cn(
-    'inline-flex h-8 items-center gap-1 rounded-full border px-3 text-[13px] leading-snug transition-colors',
+    'inline-flex h-8 min-h-11 lg:min-h-8 items-center gap-1 rounded-full border px-3 text-[13px] leading-snug transition-colors',
     active
       ? 'border-foreground bg-foreground text-background'
       : 'border-border bg-card hover:bg-muted',
@@ -267,6 +268,7 @@ export default function CreateBookingDialog({
               <div className="space-y-1.5">
                 <Label>ลูกค้า</Label>
                 <CustomerCombobox
+                  className={formControlClass}
                   value={customer}
                   onChange={setCustomer}
                   disabled={paidEdit}
@@ -286,7 +288,7 @@ export default function CreateBookingDialog({
                   }}
                   disabled={paidEdit || user?.role !== 'OWNER'}
                 >
-                  <SelectTrigger id="booking-branch">
+                  <SelectTrigger id="booking-branch" className={formControlClass}>
                     <SelectValue placeholder="เลือกสาขา" />
                   </SelectTrigger>
                   <SelectContent>
@@ -383,7 +385,7 @@ export default function CreateBookingDialog({
                   readOnly={paidEdit}
                   onChange={(e) => setDeposit(Number(e.target.value) || 0)}
                   aria-invalid={!paidEdit && ((total > 0 && !depositValid) || depositDecimals)}
-                  className="h-10 text-right text-base font-medium tabular-nums"
+                  className={cn(formControlClass, 'text-right tabular-nums')}
                 />
                 {!paidEdit && (
                   <div className="flex flex-wrap gap-1.5">
@@ -450,6 +452,7 @@ export default function CreateBookingDialog({
                 </div>
                 {customDate && (
                   <Input
+                    className={formControlClass}
                     type="date"
                     aria-label="วันหมดอายุ"
                     min={today}

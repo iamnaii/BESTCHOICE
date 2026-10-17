@@ -104,7 +104,7 @@ export default function AssetJournalPage() {
       <Card>
         <CardContent className="p-4 grid grid-cols-1 md:grid-cols-4 gap-3">
           <Select value={flowType || 'ALL'} onValueChange={(v) => setParam('flowType', v === 'ALL' ? null : v)}>
-            <SelectTrigger><SelectValue placeholder="ประเภท" /></SelectTrigger>
+            <SelectTrigger aria-label="ประเภทรายการ"><SelectValue placeholder="ประเภท" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="ALL">ทุกประเภท</SelectItem>
               <SelectItem value="asset-purchase">{FLOW_LABEL['asset-purchase']}</SelectItem>
@@ -113,11 +113,11 @@ export default function AssetJournalPage() {
               <SelectItem value="all-reversals">รายการกลับทั้งหมด</SelectItem>
             </SelectContent>
           </Select>
-          <ThaiDateInput value={fromDate} onChange={(e) => setParam('fromDate', e.target.value || null)} />
-          <ThaiDateInput value={toDate} onChange={(e) => setParam('toDate', e.target.value || null)} />
+          <ThaiDateInput aria-label="วันที่เริ่ม" value={fromDate} onChange={(e) => setParam('fromDate', e.target.value || null)} />
+          <ThaiDateInput aria-label="วันที่สิ้นสุด" value={toDate} onChange={(e) => setParam('toDate', e.target.value || null)} />
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input className="pl-10" placeholder="ค้นหาสินทรัพย์"
+            <Input aria-label="ค้นหาสินทรัพย์" className="pl-10" placeholder="ค้นหาสินทรัพย์"
               value={searchInput}
               onChange={(e) => setSearchInput(e.target.value)}
             />

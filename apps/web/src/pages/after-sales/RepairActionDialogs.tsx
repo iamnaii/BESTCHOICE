@@ -1,3 +1,4 @@
+import { NativeSelect } from '@/components/ui/native-select';
 import { useEffect, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -195,7 +196,7 @@ export function MarkRepairedDialog({
           <label htmlFor="mr-payer" className="block text-xs leading-snug text-muted-foreground">
             ผู้จ่ายค่าซ่อม <span className="text-destructive">*</span>
           </label>
-          <select
+          <NativeSelect wrapperClassName="max-w-full w-full"
             id="mr-payer"
             value={payer}
             onChange={(e) => setPayer(e.target.value as Payer)}
@@ -206,7 +207,7 @@ export function MarkRepairedDialog({
                 {PAYER_LABEL[p]}
               </option>
             ))}
-          </select>
+          </NativeSelect>
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={mutate.isPending}>

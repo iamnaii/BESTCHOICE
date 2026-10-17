@@ -71,7 +71,8 @@ export default function AssetSchedulePage() {
 
             <Card>
               <CardHeader><CardTitle>ตารางมูลค่าตามบัญชีสุทธิ (NBV) รายเดือน ({query.data.rows.length} เดือน)</CardTitle></CardHeader>
-              <CardContent>
+              <CardContent className="min-w-0">
+                <div className="max-w-full overflow-x-auto" tabIndex={0} role="region" aria-label="ตารางค่าเสื่อมราคา">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b">
@@ -103,6 +104,7 @@ export default function AssetSchedulePage() {
                     })}
                   </tbody>
                 </table>
+                </div>
               </CardContent>
             </Card>
           </>

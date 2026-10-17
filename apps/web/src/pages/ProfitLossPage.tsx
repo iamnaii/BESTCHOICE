@@ -1,5 +1,6 @@
+import { NativeSelect } from '@/components/ui/native-select';
 import { getReportDateRange } from '@/lib/date';
-import { useState, lazy, Suspense } from 'react';
+import { useId as useUiFieldId, useState, lazy, Suspense } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
 import QueryBoundary from '@/components/QueryBoundary';
@@ -100,6 +101,7 @@ function SectionHeader({ title, code }: { title: string; code: string }) {
 }
 
 export default function ProfitLossPage() {
+  const uiFieldId = useUiFieldId();
   const range = getReportDateRange('this_month');
   const [startDate, setStartDate] = useState(range.startDate);
   const [endDate, setEndDate] = useState(range.endDate);
@@ -153,19 +155,19 @@ export default function ProfitLossPage() {
       {/* Filters */}
       <div className="flex flex-wrap gap-3 mb-6">
         <div>
-          <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ตั้งแต่</label>
-          <ThaiDateInput value={startDate} onChange={(e) => setStartDate(e.target.value)} className={`${inputClass} w-auto`} />
+          <label htmlFor={`${uiFieldId}-1`} className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ตั้งแต่</label>
+          <ThaiDateInput id={`${uiFieldId}-1`} value={startDate} onChange={(e) => setStartDate(e.target.value)} className={`${inputClass} w-auto`} />
         </div>
         <div>
-          <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ถึง</label>
-          <ThaiDateInput value={endDate} onChange={(e) => setEndDate(e.target.value)} className={`${inputClass} w-auto`} />
+          <label htmlFor={`${uiFieldId}-2`} className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ถึง</label>
+          <ThaiDateInput id={`${uiFieldId}-2`} value={endDate} onChange={(e) => setEndDate(e.target.value)} className={`${inputClass} w-auto`} />
         </div>
         <div>
-          <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">สาขา</label>
-          <select value={branchId} onChange={(e) => setBranchId(e.target.value)} className={`${inputClass} w-auto min-w-[150px]`}>
+          <label htmlFor={`${uiFieldId}-3`} className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">สาขา</label>
+          <NativeSelect wrapperClassName="max-w-full w-auto sm:min-w-[150px]" id={`${uiFieldId}-3`} value={branchId} onChange={(e) => setBranchId(e.target.value)} className={inputClass}>
             <option value="">ทุกสาขา</option>
             {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
-          </select>
+          </NativeSelect>
         </div>
         <CompanyFilter value={companyId} onChange={setCompanyId} />
         {/* Quick presets */}

@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { NativeSelect } from '@/components/ui/native-select';
+import { useId as useUiFieldId, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import api, { getErrorMessage } from '@/lib/api';
@@ -101,6 +102,7 @@ function EditCompanyDialog({
   open: boolean;
   onOpenChange: (v: boolean) => void;
 }) {
+  const uiFieldId = useUiFieldId();
   const queryClient = useQueryClient();
   const [form, setForm] = useState<EditableFields>({
     nameTh: company.nameTh,
@@ -150,10 +152,10 @@ function EditCompanyDialog({
         <DialogBody>
           <form id="edit-company-form" onSubmit={handleSubmit} className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
+              <label htmlFor={`${uiFieldId}-1`} className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
                 ชื่อบริษัท (ไทย)
               </label>
-              <input
+              <input id={`${uiFieldId}-1`}
                 className={inputClass}
                 value={form.nameTh}
                 onChange={(e) => set('nameTh', e.target.value)}
@@ -161,20 +163,20 @@ function EditCompanyDialog({
               />
             </div>
             <div>
-              <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
+              <label htmlFor={`${uiFieldId}-2`} className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
                 ชื่อบริษัท (อังกฤษ)
               </label>
-              <input
+              <input id={`${uiFieldId}-2`}
                 className={inputClass}
                 value={form.nameEn || ''}
                 onChange={(e) => set('nameEn', e.target.value || null)}
               />
             </div>
             <div>
-              <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
+              <label htmlFor={`${uiFieldId}-3`} className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
                 เลขทะเบียนภาษี
               </label>
-              <input
+              <input id={`${uiFieldId}-3`}
                 className={inputClass}
                 value={form.taxId || ''}
                 onChange={(e) => {
@@ -185,10 +187,10 @@ function EditCompanyDialog({
               />
             </div>
             <div>
-              <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
+              <label htmlFor={`${uiFieldId}-4`} className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
                 รหัสบริษัท
               </label>
-              <input
+              <input id={`${uiFieldId}-4`}
                 className={inputClass}
                 value={form.companyCode}
                 onChange={(e) => set('companyCode', e.target.value)}
@@ -196,10 +198,10 @@ function EditCompanyDialog({
               />
             </div>
             <div className="sm:col-span-2">
-              <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
+              <label htmlFor={`${uiFieldId}-5`} className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
                 ที่อยู่
               </label>
-              <textarea
+              <textarea id={`${uiFieldId}-5`}
                 className={`${inputClass} min-h-[60px]`}
                 value={form.address || ''}
                 onChange={(e) => set('address', e.target.value || null)}
@@ -207,10 +209,10 @@ function EditCompanyDialog({
               />
             </div>
             <div>
-              <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
+              <label htmlFor={`${uiFieldId}-6`} className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
                 โทรศัพท์
               </label>
-              <input
+              <input id={`${uiFieldId}-6`}
                 className={inputClass}
                 value={form.phone || ''}
                 onChange={(e) => {
@@ -236,10 +238,10 @@ function EditCompanyDialog({
                 </label>
               </div>
               <div className="flex-1">
-                <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
+                <label htmlFor={`${uiFieldId}-7`} className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
                   อัตรา VAT (%)
                 </label>
-                <input
+                <input id={`${uiFieldId}-7`}
                   className={inputClass}
                   type="number"
                   step="0.01"
@@ -258,30 +260,30 @@ function EditCompanyDialog({
               </div>
             </div>
             <div>
-              <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
+              <label htmlFor={`${uiFieldId}-8`} className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
                 ธนาคาร
               </label>
-              <input
+              <input id={`${uiFieldId}-8`}
                 className={inputClass}
                 value={form.bankName || ''}
                 onChange={(e) => set('bankName', e.target.value || null)}
               />
             </div>
             <div>
-              <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
+              <label htmlFor={`${uiFieldId}-9`} className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
                 ชื่อบัญชี
               </label>
-              <input
+              <input id={`${uiFieldId}-9`}
                 className={inputClass}
                 value={form.bankAccountName || ''}
                 onChange={(e) => set('bankAccountName', e.target.value || null)}
               />
             </div>
             <div>
-              <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
+              <label htmlFor={`${uiFieldId}-10`} className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
                 เลขบัญชี
               </label>
-              <input
+              <input id={`${uiFieldId}-10`}
                 className={inputClass}
                 value={form.bankAccountNumber || ''}
                 onChange={(e) => {
@@ -292,20 +294,20 @@ function EditCompanyDialog({
               />
             </div>
             <div>
-              <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
+              <label htmlFor={`${uiFieldId}-11`} className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
                 ผู้มีอำนาจลงนาม
               </label>
-              <input
+              <input id={`${uiFieldId}-11`}
                 className={inputClass}
                 value={form.directorName || ''}
                 onChange={(e) => set('directorName', e.target.value || null)}
               />
             </div>
             <div>
-              <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
+              <label htmlFor={`${uiFieldId}-12`} className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
                 ตำแหน่ง
               </label>
-              <input
+              <input id={`${uiFieldId}-12`}
                 className={inputClass}
                 value={form.directorPosition || ''}
                 onChange={(e) => set('directorPosition', e.target.value || null)}
@@ -369,6 +371,7 @@ function AddCompanyDialog({
   open: boolean;
   onOpenChange: (v: boolean) => void;
 }) {
+  const uiFieldId = useUiFieldId();
   const queryClient = useQueryClient();
   const [form, setForm] = useState<CreateForm>(emptyCreateForm);
   const [address, setAddress] = useState<AddressData>(emptyAddress);
@@ -430,10 +433,10 @@ function AddCompanyDialog({
             className="grid grid-cols-1 sm:grid-cols-2 gap-4"
           >
             <div>
-              <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
+              <label htmlFor={`${uiFieldId}-1`} className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
                 ชื่อบริษัท (ไทย)
               </label>
-              <input
+              <input id={`${uiFieldId}-1`}
                 className={inputClass}
                 value={form.nameTh}
                 onChange={(e) => set('nameTh', e.target.value)}
@@ -441,25 +444,25 @@ function AddCompanyDialog({
               />
             </div>
             <div>
-              <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
+              <label htmlFor={`${uiFieldId}-2`} className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
                 ชื่อบริษัท (อังกฤษ)
               </label>
-              <input
+              <input id={`${uiFieldId}-2`}
                 className={inputClass}
                 value={form.nameEn}
                 onChange={(e) => set('nameEn', e.target.value)}
               />
             </div>
             <div>
-              <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
+              <label htmlFor={`${uiFieldId}-3`} className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
                 เลขทะเบียนภาษี
                 {!form.vatRegistered && (
-                  <span className="ml-1 text-muted-foreground/70 normal-case tracking-normal">
+                  <span className="ml-1 text-muted-foreground normal-case tracking-normal">
                     (ไม่จำเป็น หากไม่จด VAT)
                   </span>
                 )}
               </label>
-              <input
+              <input id={`${uiFieldId}-3`}
                 className={inputClass}
                 value={form.taxId}
                 onChange={(e) => set('taxId', formatTaxId(e.target.value))}
@@ -468,10 +471,10 @@ function AddCompanyDialog({
               />
             </div>
             <div>
-              <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
+              <label htmlFor={`${uiFieldId}-4`} className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
                 รหัสบริษัท (ระบบ)
               </label>
-              <select
+              <NativeSelect wrapperClassName="max-w-full w-full" id={`${uiFieldId}-4`}
                 className={inputClass}
                 value={form.companyCode}
                 onChange={(e) => set('companyCode', e.target.value as CreateForm['companyCode'])}
@@ -479,7 +482,7 @@ function AddCompanyDialog({
                 <option value="">— ไม่กำหนด —</option>
                 <option value="SHOP">SHOP (ไม่จด VAT)</option>
                 <option value="FINANCE">FINANCE (จด VAT)</option>
-              </select>
+              </NativeSelect>
             </div>
             <div className="sm:col-span-2">
               <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
@@ -488,10 +491,10 @@ function AddCompanyDialog({
               <AddressForm value={address} onChange={setAddress} />
             </div>
             <div>
-              <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
+              <label htmlFor={`${uiFieldId}-5`} className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
                 โทรศัพท์
               </label>
-              <input
+              <input id={`${uiFieldId}-5`}
                 className={inputClass}
                 value={form.phone}
                 onChange={(e) => set('phone', formatPhone(e.target.value))}
@@ -521,10 +524,10 @@ function AddCompanyDialog({
                 </label>
               </div>
               <div className="flex-1">
-                <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
+                <label htmlFor={`${uiFieldId}-6`} className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
                   อัตรา VAT (%)
                 </label>
-                <input
+                <input id={`${uiFieldId}-6`}
                   className={inputClass}
                   type="number"
                   step="0.01"
@@ -538,30 +541,30 @@ function AddCompanyDialog({
               </div>
             </div>
             <div>
-              <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
+              <label htmlFor={`${uiFieldId}-7`} className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
                 ธนาคาร
               </label>
-              <input
+              <input id={`${uiFieldId}-7`}
                 className={inputClass}
                 value={form.bankName}
                 onChange={(e) => set('bankName', e.target.value)}
               />
             </div>
             <div>
-              <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
+              <label htmlFor={`${uiFieldId}-8`} className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
                 ชื่อบัญชี
               </label>
-              <input
+              <input id={`${uiFieldId}-8`}
                 className={inputClass}
                 value={form.bankAccountName}
                 onChange={(e) => set('bankAccountName', e.target.value)}
               />
             </div>
             <div>
-              <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
+              <label htmlFor={`${uiFieldId}-9`} className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
                 เลขบัญชี
               </label>
-              <input
+              <input id={`${uiFieldId}-9`}
                 className={inputClass}
                 value={form.bankAccountNumber}
                 onChange={(e) => set('bankAccountNumber', formatBankAccount(e.target.value))}
@@ -569,10 +572,10 @@ function AddCompanyDialog({
               />
             </div>
             <div>
-              <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
+              <label htmlFor={`${uiFieldId}-10`} className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
                 ผู้มีอำนาจลงนาม
               </label>
-              <input
+              <input id={`${uiFieldId}-10`}
                 className={inputClass}
                 value={form.directorName}
                 onChange={(e) => set('directorName', e.target.value)}
@@ -580,10 +583,10 @@ function AddCompanyDialog({
               />
             </div>
             <div>
-              <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
+              <label htmlFor={`${uiFieldId}-11`} className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
                 ตำแหน่ง
               </label>
-              <input
+              <input id={`${uiFieldId}-11`}
                 className={inputClass}
                 value={form.directorPosition}
                 onChange={(e) => set('directorPosition', e.target.value)}

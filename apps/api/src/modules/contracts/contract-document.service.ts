@@ -13,7 +13,7 @@ export class ContractDocumentService {
   // Public endpoint — hash is REQUIRED to prevent contract ID enumeration
   async verifyContract(id: string, hash?: string) {
     // Require hash to prevent unauthenticated ID enumeration
-    if (!hash) {
+    if (typeof hash !== 'string' || !hash) {
       return { verified: false, reason: 'ต้องระบุ hash สำหรับการยืนยันสัญญา' };
     }
 
@@ -38,8 +38,10 @@ export class ContractDocumentService {
     }
 
     // Use timing-safe comparison to prevent timing attacks
-    const isHashValid = contract.contractHash.length === hash.length &&
-      crypto.timingSafeEqual(Buffer.from(contract.contractHash), Buffer.from(hash));
+    const expectedHash = Buffer.from(contract.contractHash);
+    const suppliedHash = Buffer.from(hash);
+    const isHashValid = expectedHash.length === suppliedHash.length &&
+      crypto.timingSafeEqual(expectedHash, suppliedHash);
 
     if (!isHashValid) {
       return { verified: false, reason: 'ไม่พบสัญญาหรือ hash ไม่ถูกต้อง' };

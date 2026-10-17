@@ -1,0 +1,2396 @@
+[
+  {
+    "name": "supplier-create",
+    "width": 1440,
+    "theme": "light",
+    "target": ".px-6.py-2\\.5.hover\\:bg-muted",
+    "text": "ยกเลิก",
+    "color": "rgb(33, 33, 33)",
+    "backgroundRGB": [
+      247,
+      247,
+      247
+    ],
+    "ratio": 15.03,
+    "geometryReachable": true,
+    "geometryStillIncomplete": true,
+    "axePassed": false,
+    "needsImageReview": false,
+    "conclusion": "COLOR_PAIR_AND_GEOMETRY_PASS"
+  },
+  {
+    "name": "supplier-create",
+    "width": 1440,
+    "theme": "dark",
+    "target": ".px-6.py-2\\.5.hover\\:bg-muted",
+    "text": "ยกเลิก",
+    "color": "rgb(240, 240, 240)",
+    "backgroundRGB": [
+      23,
+      23,
+      23
+    ],
+    "ratio": 15.732,
+    "geometryReachable": true,
+    "geometryStillIncomplete": false,
+    "axePassed": true,
+    "needsImageReview": false,
+    "conclusion": "COLOR_PAIR_AND_GEOMETRY_PASS"
+  },
+  {
+    "name": "supplier-edit",
+    "width": 1440,
+    "theme": "light",
+    "target": ".px-6.hover\\:bg-muted.py-2\\.5",
+    "text": "ยกเลิก",
+    "color": "rgb(33, 33, 33)",
+    "backgroundRGB": [
+      247,
+      247,
+      247
+    ],
+    "ratio": 15.03,
+    "geometryReachable": true,
+    "geometryStillIncomplete": true,
+    "axePassed": false,
+    "needsImageReview": false,
+    "conclusion": "COLOR_PAIR_AND_GEOMETRY_PASS"
+  },
+  {
+    "name": "supplier-edit",
+    "width": 1440,
+    "theme": "dark",
+    "target": ".px-6.hover\\:bg-muted.py-2\\.5",
+    "text": "ยกเลิก",
+    "color": "rgb(240, 240, 240)",
+    "backgroundRGB": [
+      23,
+      23,
+      23
+    ],
+    "ratio": 15.732,
+    "geometryReachable": true,
+    "geometryStillIncomplete": false,
+    "axePassed": true,
+    "needsImageReview": false,
+    "conclusion": "COLOR_PAIR_AND_GEOMETRY_PASS"
+  },
+  {
+    "name": "stock-adjustment",
+    "width": 1440,
+    "theme": "light",
+    "target": ".p-2\\.5.hover\\:bg-accent:nth-child(1) > .min-w-0 > .block.text-xs.leading-snug",
+    "text": "หาไม่พบ — เมื่ออนุมัติ เครื่องออกจากสต๊อกและลงบัญชีขาดทุน (ถ้าเครื่องเคยลงบัญชีรับเข้า)",
+    "color": "rgb(102, 102, 102)",
+    "backgroundRGB": [
+      247,
+      247,
+      247
+    ],
+    "ratio": 5.36,
+    "geometryReachable": true,
+    "geometryStillIncomplete": true,
+    "axePassed": false,
+    "needsImageReview": false,
+    "conclusion": "COLOR_PAIR_AND_GEOMETRY_PASS"
+  },
+  {
+    "name": "stock-adjustment",
+    "width": 1440,
+    "theme": "light",
+    "target": ".p-2\\.5.hover\\:bg-accent:nth-child(2) > .min-w-0 > .block.text-xs.leading-snug",
+    "text": "เครื่องยังอยู่แต่ขายไม่ได้ — คงในสต๊อกสถานะ \"เสียหาย\" ไม่ลงบัญชี จนกว่าจะขายหรือตัดจำหน่าย (ต้องแนบร",
+    "color": "rgb(102, 102, 102)",
+    "backgroundRGB": [
+      247,
+      247,
+      247
+    ],
+    "ratio": 5.36,
+    "geometryReachable": true,
+    "geometryStillIncomplete": true,
+    "axePassed": false,
+    "needsImageReview": false,
+    "conclusion": "COLOR_PAIR_AND_GEOMETRY_PASS"
+  },
+  {
+    "name": "stock-adjustment",
+    "width": 1440,
+    "theme": "light",
+    "target": ".p-2\\.5.hover\\:bg-accent:nth-child(3) > .min-w-0 > .block.text-xs.leading-snug",
+    "text": "ทิ้ง / ส่งคืน / ขายซาก — เมื่ออนุมัติ เครื่องออกจากสต๊อกและลงบัญชีขาดทุน",
+    "color": "rgb(102, 102, 102)",
+    "backgroundRGB": [
+      247,
+      247,
+      247
+    ],
+    "ratio": 5.36,
+    "geometryReachable": true,
+    "geometryStillIncomplete": true,
+    "axePassed": false,
+    "needsImageReview": false,
+    "conclusion": "COLOR_PAIR_AND_GEOMETRY_PASS"
+  },
+  {
+    "name": "stock-adjustment",
+    "width": 1440,
+    "theme": "light",
+    "target": ".p-2\\.5.hover\\:bg-accent:nth-child(4) > .min-w-0 > .block.text-xs.leading-snug",
+    "text": "เครื่องที่เคยหาย/เสียหาย/ตัดจำหน่ายกลับมา — กลับรายการบัญชีเดิมและคืนเข้าสต๊อก",
+    "color": "rgb(102, 102, 102)",
+    "backgroundRGB": [
+      247,
+      247,
+      247
+    ],
+    "ratio": 5.36,
+    "geometryReachable": true,
+    "geometryStillIncomplete": true,
+    "axePassed": false,
+    "needsImageReview": false,
+    "conclusion": "COLOR_PAIR_AND_GEOMETRY_PASS"
+  },
+  {
+    "name": "stock-adjustment",
+    "width": 1440,
+    "theme": "dark",
+    "target": ".p-2\\.5.hover\\:bg-accent:nth-child(1) > .min-w-0 > .block.text-xs.leading-snug",
+    "text": "หาไม่พบ — เมื่ออนุมัติ เครื่องออกจากสต๊อกและลงบัญชีขาดทุน (ถ้าเครื่องเคยลงบัญชีรับเข้า)",
+    "color": "rgb(184, 184, 184)",
+    "backgroundRGB": [
+      23,
+      23,
+      23
+    ],
+    "ratio": 9.038,
+    "geometryReachable": true,
+    "geometryStillIncomplete": true,
+    "axePassed": false,
+    "needsImageReview": false,
+    "conclusion": "COLOR_PAIR_AND_GEOMETRY_PASS"
+  },
+  {
+    "name": "stock-adjustment",
+    "width": 1440,
+    "theme": "dark",
+    "target": ".p-2\\.5.hover\\:bg-accent:nth-child(2) > .min-w-0 > .block.text-xs.leading-snug",
+    "text": "เครื่องยังอยู่แต่ขายไม่ได้ — คงในสต๊อกสถานะ \"เสียหาย\" ไม่ลงบัญชี จนกว่าจะขายหรือตัดจำหน่าย (ต้องแนบร",
+    "color": "rgb(184, 184, 184)",
+    "backgroundRGB": [
+      23,
+      23,
+      23
+    ],
+    "ratio": 9.038,
+    "geometryReachable": true,
+    "geometryStillIncomplete": true,
+    "axePassed": false,
+    "needsImageReview": false,
+    "conclusion": "COLOR_PAIR_AND_GEOMETRY_PASS"
+  },
+  {
+    "name": "stock-adjustment",
+    "width": 1440,
+    "theme": "dark",
+    "target": ".p-2\\.5.hover\\:bg-accent:nth-child(3) > .min-w-0 > .block.text-xs.leading-snug",
+    "text": "ทิ้ง / ส่งคืน / ขายซาก — เมื่ออนุมัติ เครื่องออกจากสต๊อกและลงบัญชีขาดทุน",
+    "color": "rgb(184, 184, 184)",
+    "backgroundRGB": [
+      23,
+      23,
+      23
+    ],
+    "ratio": 9.038,
+    "geometryReachable": true,
+    "geometryStillIncomplete": true,
+    "axePassed": false,
+    "needsImageReview": false,
+    "conclusion": "COLOR_PAIR_AND_GEOMETRY_PASS"
+  },
+  {
+    "name": "stock-adjustment",
+    "width": 1440,
+    "theme": "dark",
+    "target": ".p-2\\.5.hover\\:bg-accent:nth-child(4) > .min-w-0 > .block.text-xs.leading-snug",
+    "text": "เครื่องที่เคยหาย/เสียหาย/ตัดจำหน่ายกลับมา — กลับรายการบัญชีเดิมและคืนเข้าสต๊อก",
+    "color": "rgb(184, 184, 184)",
+    "backgroundRGB": [
+      23,
+      23,
+      23
+    ],
+    "ratio": 9.038,
+    "geometryReachable": true,
+    "geometryStillIncomplete": true,
+    "axePassed": false,
+    "needsImageReview": false,
+    "conclusion": "COLOR_PAIR_AND_GEOMETRY_PASS"
+  },
+  {
+    "name": "company-edit",
+    "width": 1440,
+    "theme": "light",
+    "target": "#radix-_r_n_",
+    "text": "แก้ไขข้อมูลนิติบุคคล — ทดสอบระบบ บริษัทหน้าร้าน",
+    "color": "rgb(33, 33, 33)",
+    "backgroundRGB": [
+      247,
+      247,
+      247
+    ],
+    "ratio": 15.03,
+    "geometryReachable": true,
+    "geometryStillIncomplete": true,
+    "axePassed": false,
+    "needsImageReview": false,
+    "conclusion": "COLOR_PAIR_AND_GEOMETRY_PASS"
+  },
+  {
+    "name": "company-edit",
+    "width": 1440,
+    "theme": "dark",
+    "target": "#radix-_r_n_",
+    "text": "แก้ไขข้อมูลนิติบุคคล — ทดสอบระบบ บริษัทหน้าร้าน",
+    "color": "rgb(240, 240, 240)",
+    "backgroundRGB": [
+      23,
+      23,
+      23
+    ],
+    "ratio": 15.732,
+    "geometryReachable": true,
+    "geometryStillIncomplete": true,
+    "axePassed": false,
+    "needsImageReview": false,
+    "conclusion": "COLOR_PAIR_AND_GEOMETRY_PASS"
+  },
+  {
+    "name": "pricing-create",
+    "width": 1440,
+    "theme": "light",
+    "target": "label[for=\"_r_o_-11\"]",
+    "text": "จำนวนเดือนเรทที่ 2",
+    "color": "rgb(33, 33, 33)",
+    "backgroundRGB": [
+      247,
+      247,
+      247
+    ],
+    "ratio": 15.03,
+    "geometryReachable": true,
+    "geometryStillIncomplete": false,
+    "axePassed": true,
+    "needsImageReview": false,
+    "conclusion": "COLOR_PAIR_AND_GEOMETRY_PASS"
+  },
+  {
+    "name": "pricing-create",
+    "width": 1440,
+    "theme": "light",
+    "target": "#_r_o_-11",
+    "text": "",
+    "color": "rgb(33, 33, 33)",
+    "backgroundRGB": [
+      247,
+      247,
+      247
+    ],
+    "ratio": 15.03,
+    "geometryReachable": true,
+    "geometryStillIncomplete": false,
+    "axePassed": true,
+    "needsImageReview": false,
+    "conclusion": "COLOR_PAIR_AND_GEOMETRY_PASS"
+  },
+  {
+    "name": "contract-customer-create",
+    "width": 390,
+    "theme": "light",
+    "target": ".hover\\:bg-muted",
+    "text": "ยกเลิก",
+    "color": "rgb(33, 33, 33)",
+    "backgroundRGB": [
+      247,
+      247,
+      247
+    ],
+    "ratio": 15.03,
+    "geometryReachable": true,
+    "geometryStillIncomplete": false,
+    "axePassed": true,
+    "needsImageReview": false,
+    "conclusion": "COLOR_PAIR_AND_GEOMETRY_PASS"
+  },
+  {
+    "name": "purchase-wizard",
+    "width": 390,
+    "theme": "light",
+    "target": "#radix-_r_4t_",
+    "text": "ซื้อสินค้า",
+    "color": "rgb(33, 33, 33)",
+    "backgroundRGB": [
+      247,
+      247,
+      247
+    ],
+    "ratio": 15.03,
+    "geometryReachable": true,
+    "geometryStillIncomplete": true,
+    "axePassed": false,
+    "needsImageReview": false,
+    "conclusion": "COLOR_PAIR_AND_GEOMETRY_PASS"
+  },
+  {
+    "name": "purchase-wizard",
+    "width": 390,
+    "theme": "light",
+    "target": ".p-5.border-border\\/50.bg-card:nth-child(1) > .mb-4.gap-2\\.5.items-center > div:nth-child(2) > h3",
+    "text": "ผู้ขาย และวิธีซื้อ",
+    "color": "rgb(33, 33, 33)",
+    "backgroundRGB": [
+      255,
+      255,
+      255
+    ],
+    "ratio": 16.102,
+    "geometryReachable": true,
+    "geometryStillIncomplete": true,
+    "axePassed": false,
+    "needsImageReview": false,
+    "conclusion": "COLOR_PAIR_AND_GEOMETRY_PASS"
+  },
+  {
+    "name": "purchase-wizard",
+    "width": 390,
+    "theme": "light",
+    "target": ".p-5.border-border\\/50.bg-card:nth-child(1) > .mb-4.gap-2\\.5.items-center > div:nth-child(2) > p",
+    "text": "ค้นหาจากรายชื่อผู้ติดต่อ หรือสร้างใหม่ได้จากช่องเดียวกัน — แล้วบอกว่าของถึงแล้วหรือยัง",
+    "color": "rgb(102, 102, 102)",
+    "backgroundRGB": [
+      255,
+      255,
+      255
+    ],
+    "ratio": 5.742,
+    "geometryReachable": true,
+    "geometryStillIncomplete": true,
+    "axePassed": false,
+    "needsImageReview": false,
+    "conclusion": "COLOR_PAIR_AND_GEOMETRY_PASS"
+  },
+  {
+    "name": "purchase-wizard",
+    "width": 390,
+    "theme": "light",
+    "target": ".text-primary.font-semibold.gap-2",
+    "text": "สั่งซื้อล่วงหน้า (ออก PO)",
+    "color": "rgb(10, 113, 78)",
+    "backgroundRGB": [
+      230.01960784313727,
+      241.0313725490196,
+      236.95294117647057
+    ],
+    "ratio": 5.215,
+    "geometryReachable": true,
+    "geometryStillIncomplete": true,
+    "axePassed": false,
+    "needsImageReview": false,
+    "conclusion": "COLOR_PAIR_AND_GEOMETRY_PASS"
+  },
+  {
+    "name": "purchase-wizard",
+    "width": 390,
+    "theme": "light",
+    "target": ".ring-1 > .pl-6.leading-snug.text-xs",
+    "text": "ของยังไม่มา — ออกใบสั่งซื้อ รับของทีหลัง · ผจก.สาขาต้องรอเจ้าของอนุมัติ",
+    "color": "rgb(102, 102, 102)",
+    "backgroundRGB": [
+      230.01960784313727,
+      241.0313725490196,
+      236.95294117647057
+    ],
+    "ratio": 4.969,
+    "geometryReachable": true,
+    "geometryStillIncomplete": true,
+    "axePassed": false,
+    "needsImageReview": false,
+    "conclusion": "COLOR_PAIR_AND_GEOMETRY_PASS"
+  },
+  {
+    "name": "purchase-wizard",
+    "width": 390,
+    "theme": "light",
+    "target": ".hover\\:bg-muted\\/40 > .font-semibold.gap-2.text-sm",
+    "text": "ของถึงแล้ว (รับเข้าเลย)",
+    "color": "rgb(33, 33, 33)",
+    "backgroundRGB": [
+      247,
+      247,
+      247
+    ],
+    "ratio": 15.03,
+    "geometryReachable": true,
+    "geometryStillIncomplete": true,
+    "axePassed": false,
+    "needsImageReview": false,
+    "conclusion": "COLOR_PAIR_AND_GEOMETRY_PASS"
+  },
+  {
+    "name": "purchase-wizard",
+    "width": 390,
+    "theme": "light",
+    "target": ".hover\\:bg-muted\\/40 > .pl-6.leading-snug.text-xs",
+    "text": "ของอยู่ในมือ — ตรวจรับ IMEI/รูป แล้วเข้าคลังทันที ระบบออกเลข PO ให้",
+    "color": "rgb(102, 102, 102)",
+    "backgroundRGB": [
+      247,
+      247,
+      247
+    ],
+    "ratio": 5.36,
+    "geometryReachable": true,
+    "geometryStillIncomplete": true,
+    "axePassed": false,
+    "needsImageReview": false,
+    "conclusion": "COLOR_PAIR_AND_GEOMETRY_PASS"
+  },
+  {
+    "name": "purchase-wizard",
+    "width": 390,
+    "theme": "light",
+    "target": "label[for=\"_r_4v_-1\"]",
+    "text": "ผู้ขาย (supplier) *",
+    "color": "rgb(33, 33, 33)",
+    "backgroundRGB": [
+      255,
+      255,
+      255
+    ],
+    "ratio": 16.102,
+    "geometryReachable": true,
+    "geometryStillIncomplete": true,
+    "axePassed": false,
+    "needsImageReview": false,
+    "conclusion": "COLOR_PAIR_AND_GEOMETRY_PASS"
+  },
+  {
+    "name": "purchase-wizard",
+    "width": 390,
+    "theme": "light",
+    "target": ".truncate.leading-snug",
+    "text": "เลือก/ค้นหาผู้จัดจำหน่าย",
+    "color": "rgb(102, 102, 102)",
+    "backgroundRGB": [
+      247,
+      247,
+      247
+    ],
+    "ratio": 5.36,
+    "geometryReachable": true,
+    "geometryStillIncomplete": true,
+    "axePassed": false,
+    "needsImageReview": false,
+    "conclusion": "COLOR_PAIR_AND_GEOMETRY_PASS"
+  },
+  {
+    "name": "purchase-wizard",
+    "width": 390,
+    "theme": "light",
+    "target": "label[for=\"_r_4v_-2\"]",
+    "text": "วันที่สั่ง *",
+    "color": "rgb(33, 33, 33)",
+    "backgroundRGB": [
+      255,
+      255,
+      255
+    ],
+    "ratio": 16.102,
+    "geometryReachable": true,
+    "geometryStillIncomplete": true,
+    "axePassed": false,
+    "needsImageReview": false,
+    "conclusion": "COLOR_PAIR_AND_GEOMETRY_PASS"
+  },
+  {
+    "name": "purchase-wizard",
+    "width": 390,
+    "theme": "light",
+    "target": "#_r_4v_-2",
+    "text": "",
+    "color": "rgb(33, 33, 33)",
+    "backgroundRGB": [
+      247,
+      247,
+      247
+    ],
+    "ratio": 15.03,
+    "geometryReachable": true,
+    "geometryStillIncomplete": true,
+    "axePassed": false,
+    "needsImageReview": false,
+    "conclusion": "COLOR_PAIR_AND_GEOMETRY_PASS"
+  },
+  {
+    "name": "purchase-wizard",
+    "width": 390,
+    "theme": "light",
+    "target": "label[for=\"_r_4v_-3\"]",
+    "text": "วันที่คาดรับสินค้า",
+    "color": "rgb(33, 33, 33)",
+    "backgroundRGB": [
+      255,
+      255,
+      255
+    ],
+    "ratio": 16.102,
+    "geometryReachable": true,
+    "geometryStillIncomplete": true,
+    "axePassed": false,
+    "needsImageReview": false,
+    "conclusion": "COLOR_PAIR_AND_GEOMETRY_PASS"
+  },
+  {
+    "name": "purchase-wizard",
+    "width": 390,
+    "theme": "light",
+    "target": "#_r_4v_-3",
+    "text": "",
+    "color": "rgb(33, 33, 33)",
+    "backgroundRGB": [
+      247,
+      247,
+      247
+    ],
+    "ratio": 15.03,
+    "geometryReachable": true,
+    "geometryStillIncomplete": true,
+    "axePassed": false,
+    "needsImageReview": false,
+    "conclusion": "COLOR_PAIR_AND_GEOMETRY_PASS"
+  },
+  {
+    "name": "purchase-wizard",
+    "width": 390,
+    "theme": "light",
+    "target": ".flex-1 > h3",
+    "text": "รายการที่สั่งซื้อ",
+    "color": "rgb(33, 33, 33)",
+    "backgroundRGB": [
+      255,
+      255,
+      255
+    ],
+    "ratio": 16.102,
+    "geometryReachable": true,
+    "geometryStillIncomplete": true,
+    "axePassed": false,
+    "needsImageReview": false,
+    "conclusion": "COLOR_PAIR_AND_GEOMETRY_PASS"
+  },
+  {
+    "name": "purchase-wizard",
+    "width": 390,
+    "theme": "light",
+    "target": ".flex-1 > p",
+    "text": "ค้นหารุ่นแล้วกดเพิ่ม — สภาพ / ความจุ / สี / จำนวน / ราคา เลือกในตาราง · อุปกรณ์เสริมค้นจากสินค้าเดิม",
+    "color": "rgb(102, 102, 102)",
+    "backgroundRGB": [
+      255,
+      255,
+      255
+    ],
+    "ratio": 5.742,
+    "geometryReachable": true,
+    "geometryStillIncomplete": true,
+    "axePassed": false,
+    "needsImageReview": false,
+    "conclusion": "COLOR_PAIR_AND_GEOMETRY_PASS"
+  },
+  {
+    "name": "purchase-wizard",
+    "width": 390,
+    "theme": "light",
+    "target": ".focus-visible\\:ring-offset-1.border-primary.leading-none",
+    "text": "โทรศัพท์",
+    "color": "rgb(255, 255, 255)",
+    "backgroundRGB": [
+      10,
+      113,
+      78
+    ],
+    "ratio": 6.026,
+    "geometryReachable": true,
+    "geometryStillIncomplete": true,
+    "axePassed": false,
+    "needsImageReview": false,
+    "conclusion": "COLOR_PAIR_AND_GEOMETRY_PASS"
+  },
+  {
+    "name": "purchase-wizard",
+    "width": 390,
+    "theme": "light",
+    "target": ".focus-visible\\:ring-offset-1.leading-none.focus-visible\\:ring-offset-background:nth-child(2)",
+    "text": "แท็บเล็ต",
+    "color": "rgb(33, 33, 33)",
+    "backgroundRGB": [
+      247,
+      247,
+      247
+    ],
+    "ratio": 15.03,
+    "geometryReachable": true,
+    "geometryStillIncomplete": true,
+    "axePassed": false,
+    "needsImageReview": false,
+    "conclusion": "COLOR_PAIR_AND_GEOMETRY_PASS"
+  },
+  {
+    "name": "purchase-wizard",
+    "width": 390,
+    "theme": "light",
+    "target": ".focus-visible\\:ring-offset-1.leading-none.focus-visible\\:ring-offset-background:nth-child(3)",
+    "text": "อุปกรณ์เสริม",
+    "color": "rgb(33, 33, 33)",
+    "backgroundRGB": [
+      247,
+      247,
+      247
+    ],
+    "ratio": 15.03,
+    "geometryReachable": true,
+    "geometryStillIncomplete": true,
+    "axePassed": false,
+    "needsImageReview": false,
+    "conclusion": "COLOR_PAIR_AND_GEOMETRY_PASS"
+  },
+  {
+    "name": "purchase-wizard",
+    "width": 390,
+    "theme": "light",
+    "target": ".px-6.hover\\:bg-muted.py-2\\.5",
+    "text": "ยกเลิก",
+    "color": "rgb(33, 33, 33)",
+    "backgroundRGB": [
+      247,
+      247,
+      247
+    ],
+    "ratio": 15.03,
+    "geometryReachable": true,
+    "geometryStillIncomplete": true,
+    "axePassed": false,
+    "needsImageReview": false,
+    "conclusion": "COLOR_PAIR_AND_GEOMETRY_PASS"
+  },
+  {
+    "name": "purchase-wizard",
+    "width": 390,
+    "theme": "dark",
+    "target": "#radix-_r_4t_",
+    "text": "ซื้อสินค้า",
+    "color": "rgb(240, 240, 240)",
+    "backgroundRGB": [
+      23,
+      23,
+      23
+    ],
+    "ratio": 15.732,
+    "geometryReachable": true,
+    "geometryStillIncomplete": true,
+    "axePassed": false,
+    "needsImageReview": false,
+    "conclusion": "COLOR_PAIR_AND_GEOMETRY_PASS"
+  },
+  {
+    "name": "purchase-wizard",
+    "width": 390,
+    "theme": "dark",
+    "target": "label[for=\"_r_4v_-2\"]",
+    "text": "วันที่สั่ง *",
+    "color": "rgb(240, 240, 240)",
+    "backgroundRGB": [
+      33,
+      33,
+      33
+    ],
+    "ratio": 14.13,
+    "geometryReachable": true,
+    "geometryStillIncomplete": true,
+    "axePassed": false,
+    "needsImageReview": false,
+    "conclusion": "COLOR_PAIR_AND_GEOMETRY_PASS"
+  },
+  {
+    "name": "purchase-wizard",
+    "width": 390,
+    "theme": "dark",
+    "target": "#_r_4v_-2",
+    "text": "",
+    "color": "rgb(240, 240, 240)",
+    "backgroundRGB": [
+      23,
+      23,
+      23
+    ],
+    "ratio": 15.732,
+    "geometryReachable": true,
+    "geometryStillIncomplete": true,
+    "axePassed": false,
+    "needsImageReview": false,
+    "conclusion": "COLOR_PAIR_AND_GEOMETRY_PASS"
+  },
+  {
+    "name": "purchase-wizard",
+    "width": 390,
+    "theme": "dark",
+    "target": "label[for=\"_r_4v_-3\"]",
+    "text": "วันที่คาดรับสินค้า",
+    "color": "rgb(240, 240, 240)",
+    "backgroundRGB": [
+      33,
+      33,
+      33
+    ],
+    "ratio": 14.13,
+    "geometryReachable": true,
+    "geometryStillIncomplete": true,
+    "axePassed": false,
+    "needsImageReview": false,
+    "conclusion": "COLOR_PAIR_AND_GEOMETRY_PASS"
+  },
+  {
+    "name": "purchase-wizard",
+    "width": 390,
+    "theme": "dark",
+    "target": "#_r_4v_-3",
+    "text": "",
+    "color": "rgb(240, 240, 240)",
+    "backgroundRGB": [
+      23,
+      23,
+      23
+    ],
+    "ratio": 15.732,
+    "geometryReachable": true,
+    "geometryStillIncomplete": true,
+    "axePassed": false,
+    "needsImageReview": false,
+    "conclusion": "COLOR_PAIR_AND_GEOMETRY_PASS"
+  },
+  {
+    "name": "purchase-wizard",
+    "width": 390,
+    "theme": "dark",
+    "target": ".flex-1 > h3",
+    "text": "รายการที่สั่งซื้อ",
+    "color": "rgb(240, 240, 240)",
+    "backgroundRGB": [
+      33,
+      33,
+      33
+    ],
+    "ratio": 14.13,
+    "geometryReachable": true,
+    "geometryStillIncomplete": true,
+    "axePassed": false,
+    "needsImageReview": false,
+    "conclusion": "COLOR_PAIR_AND_GEOMETRY_PASS"
+  },
+  {
+    "name": "purchase-wizard",
+    "width": 390,
+    "theme": "dark",
+    "target": ".flex-1 > p",
+    "text": "ค้นหารุ่นแล้วกดเพิ่ม — สภาพ / ความจุ / สี / จำนวน / ราคา เลือกในตาราง · อุปกรณ์เสริมค้นจากสินค้าเดิม",
+    "color": "rgb(184, 184, 184)",
+    "backgroundRGB": [
+      33,
+      33,
+      33
+    ],
+    "ratio": 8.117,
+    "geometryReachable": true,
+    "geometryStillIncomplete": true,
+    "axePassed": false,
+    "needsImageReview": false,
+    "conclusion": "COLOR_PAIR_AND_GEOMETRY_PASS"
+  },
+  {
+    "name": "purchase-wizard",
+    "width": 390,
+    "theme": "dark",
+    "target": ".focus-visible\\:ring-offset-1.border-primary.leading-none",
+    "text": "โทรศัพท์",
+    "color": "rgb(13, 33, 26)",
+    "backgroundRGB": [
+      63,
+      217,
+      166
+    ],
+    "ratio": 9.353,
+    "geometryReachable": true,
+    "geometryStillIncomplete": true,
+    "axePassed": false,
+    "needsImageReview": false,
+    "conclusion": "COLOR_PAIR_AND_GEOMETRY_PASS"
+  },
+  {
+    "name": "purchase-wizard",
+    "width": 390,
+    "theme": "dark",
+    "target": ".focus-visible\\:ring-offset-1.leading-none.focus-visible\\:ring-offset-background:nth-child(2)",
+    "text": "แท็บเล็ต",
+    "color": "rgb(240, 240, 240)",
+    "backgroundRGB": [
+      23,
+      23,
+      23
+    ],
+    "ratio": 15.732,
+    "geometryReachable": true,
+    "geometryStillIncomplete": true,
+    "axePassed": false,
+    "needsImageReview": false,
+    "conclusion": "COLOR_PAIR_AND_GEOMETRY_PASS"
+  },
+  {
+    "name": "purchase-wizard",
+    "width": 390,
+    "theme": "dark",
+    "target": ".focus-visible\\:ring-offset-1.leading-none.focus-visible\\:ring-offset-background:nth-child(3)",
+    "text": "อุปกรณ์เสริม",
+    "color": "rgb(240, 240, 240)",
+    "backgroundRGB": [
+      23,
+      23,
+      23
+    ],
+    "ratio": 15.732,
+    "geometryReachable": true,
+    "geometryStillIncomplete": true,
+    "axePassed": false,
+    "needsImageReview": false,
+    "conclusion": "COLOR_PAIR_AND_GEOMETRY_PASS"
+  },
+  {
+    "name": "purchase-wizard",
+    "width": 390,
+    "theme": "dark",
+    "target": "#radix-_r_58_",
+    "text": "",
+    "color": "rgb(240, 240, 240)",
+    "backgroundRGB": [
+      23,
+      23,
+      23
+    ],
+    "ratio": 15.732,
+    "geometryReachable": true,
+    "geometryStillIncomplete": true,
+    "axePassed": false,
+    "needsImageReview": false,
+    "conclusion": "COLOR_PAIR_AND_GEOMETRY_PASS"
+  },
+  {
+    "name": "purchase-wizard",
+    "width": 390,
+    "theme": "dark",
+    "target": ".mr-0\\.5",
+    "text": "รุ่นล่าสุด",
+    "color": "rgb(184, 184, 184)",
+    "backgroundRGB": [
+      33,
+      33,
+      33
+    ],
+    "ratio": 8.117,
+    "geometryReachable": true,
+    "geometryStillIncomplete": true,
+    "axePassed": false,
+    "needsImageReview": false,
+    "conclusion": "COLOR_PAIR_AND_GEOMETRY_PASS"
+  },
+  {
+    "name": "purchase-wizard",
+    "width": 390,
+    "theme": "dark",
+    "target": ".pr-2\\.5.gap-1.hover\\:border-primary\\/50:nth-child(1)",
+    "text": "iPhone 17 Pro Max",
+    "color": "rgb(240, 240, 240)",
+    "backgroundRGB": [
+      23,
+      23,
+      23
+    ],
+    "ratio": 15.732,
+    "geometryReachable": true,
+    "geometryStillIncomplete": true,
+    "axePassed": false,
+    "needsImageReview": false,
+    "conclusion": "COLOR_PAIR_AND_GEOMETRY_PASS"
+  },
+  {
+    "name": "purchase-wizard",
+    "width": 390,
+    "theme": "dark",
+    "target": ".pr-2\\.5.gap-1.hover\\:border-primary\\/50:nth-child(2)",
+    "text": "iPhone 17 Pro",
+    "color": "rgb(240, 240, 240)",
+    "backgroundRGB": [
+      23,
+      23,
+      23
+    ],
+    "ratio": 15.732,
+    "geometryReachable": true,
+    "geometryStillIncomplete": true,
+    "axePassed": false,
+    "needsImageReview": false,
+    "conclusion": "COLOR_PAIR_AND_GEOMETRY_PASS"
+  },
+  {
+    "name": "purchase-wizard",
+    "width": 390,
+    "theme": "dark",
+    "target": ".pr-2\\.5.gap-1.hover\\:border-primary\\/50:nth-child(3)",
+    "text": "iPhone Air",
+    "color": "rgb(240, 240, 240)",
+    "backgroundRGB": [
+      23,
+      23,
+      23
+    ],
+    "ratio": 15.732,
+    "geometryReachable": true,
+    "geometryStillIncomplete": true,
+    "axePassed": false,
+    "needsImageReview": false,
+    "conclusion": "COLOR_PAIR_AND_GEOMETRY_PASS"
+  },
+  {
+    "name": "purchase-wizard",
+    "width": 390,
+    "theme": "dark",
+    "target": ".pr-2\\.5.gap-1.hover\\:border-primary\\/50:nth-child(4)",
+    "text": "iPhone 17",
+    "color": "rgb(240, 240, 240)",
+    "backgroundRGB": [
+      23,
+      23,
+      23
+    ],
+    "ratio": 15.732,
+    "geometryReachable": true,
+    "geometryStillIncomplete": true,
+    "axePassed": false,
+    "needsImageReview": false,
+    "conclusion": "COLOR_PAIR_AND_GEOMETRY_PASS"
+  },
+  {
+    "name": "purchase-wizard",
+    "width": 390,
+    "theme": "dark",
+    "target": ".pr-2\\.5.gap-1.hover\\:border-primary\\/50:nth-child(5)",
+    "text": "iPhone 16e",
+    "color": "rgb(240, 240, 240)",
+    "backgroundRGB": [
+      23,
+      23,
+      23
+    ],
+    "ratio": 15.732,
+    "geometryReachable": true,
+    "geometryStillIncomplete": true,
+    "axePassed": false,
+    "needsImageReview": false,
+    "conclusion": "COLOR_PAIR_AND_GEOMETRY_PASS"
+  },
+  {
+    "name": "purchase-wizard",
+    "width": 390,
+    "theme": "dark",
+    "target": ".pr-2\\.5.gap-1.hover\\:border-primary\\/50:nth-child(6)",
+    "text": "iPhone 16 Pro Max",
+    "color": "rgb(240, 240, 240)",
+    "backgroundRGB": [
+      23,
+      23,
+      23
+    ],
+    "ratio": 15.732,
+    "geometryReachable": true,
+    "geometryStillIncomplete": true,
+    "axePassed": false,
+    "needsImageReview": false,
+    "conclusion": "COLOR_PAIR_AND_GEOMETRY_PASS"
+  },
+  {
+    "name": "purchase-wizard",
+    "width": 390,
+    "theme": "dark",
+    "target": "th:nth-child(2)",
+    "text": "รุ่น",
+    "color": "rgb(184, 184, 184)",
+    "backgroundRGB": [
+      40.529411764705884,
+      40.529411764705884,
+      40.529411764705884
+    ],
+    "ratio": 7.38,
+    "geometryReachable": true,
+    "geometryStillIncomplete": true,
+    "axePassed": false,
+    "needsImageReview": false,
+    "conclusion": "COLOR_PAIR_AND_GEOMETRY_PASS"
+  },
+  {
+    "name": "purchase-wizard",
+    "width": 390,
+    "theme": "dark",
+    "target": "th:nth-child(3)",
+    "text": "สภาพ",
+    "color": "rgb(184, 184, 184)",
+    "backgroundRGB": [
+      40.529411764705884,
+      40.529411764705884,
+      40.529411764705884
+    ],
+    "ratio": 7.38,
+    "geometryReachable": true,
+    "geometryStillIncomplete": true,
+    "axePassed": false,
+    "needsImageReview": false,
+    "conclusion": "COLOR_PAIR_AND_GEOMETRY_PASS"
+  },
+  {
+    "name": "purchase-wizard",
+    "width": 390,
+    "theme": "dark",
+    "target": ".px-6.hover\\:bg-muted.py-2\\.5",
+    "text": "ยกเลิก",
+    "color": "rgb(240, 240, 240)",
+    "backgroundRGB": [
+      23,
+      23,
+      23
+    ],
+    "ratio": 15.732,
+    "geometryReachable": true,
+    "geometryStillIncomplete": true,
+    "axePassed": false,
+    "needsImageReview": false,
+    "conclusion": "COLOR_PAIR_AND_GEOMETRY_PASS"
+  },
+  {
+    "name": "stock-count",
+    "width": 390,
+    "theme": "light",
+    "target": ".space-y-4 > p",
+    "text": "เลือกสาขาที่ต้องการตรวจนับ ระบบจะดึงรายการสินค้าที่อยู่ในสาขานั้นมาให้อัตโนมัติ",
+    "color": "rgb(102, 102, 102)",
+    "backgroundRGB": [
+      247,
+      247,
+      247
+    ],
+    "ratio": 5.36,
+    "geometryReachable": true,
+    "geometryStillIncomplete": true,
+    "axePassed": false,
+    "needsImageReview": false,
+    "conclusion": "COLOR_PAIR_AND_GEOMETRY_PASS"
+  },
+  {
+    "name": "stock-count",
+    "width": 390,
+    "theme": "dark",
+    "target": ".space-y-4 > p",
+    "text": "เลือกสาขาที่ต้องการตรวจนับ ระบบจะดึงรายการสินค้าที่อยู่ในสาขานั้นมาให้อัตโนมัติ",
+    "color": "rgb(184, 184, 184)",
+    "backgroundRGB": [
+      23,
+      23,
+      23
+    ],
+    "ratio": 9.038,
+    "geometryReachable": true,
+    "geometryStillIncomplete": true,
+    "axePassed": false,
+    "needsImageReview": false,
+    "conclusion": "COLOR_PAIR_AND_GEOMETRY_PASS"
+  },
+  {
+    "name": "bank-account-create",
+    "width": 390,
+    "theme": "light",
+    "target": "div:nth-child(1) > .mt-1",
+    "text": "ต้องเริ่มด้วย 11-11 (เงินสด) หรือ 11-12 (ธนาคาร) และมีอยู่ในผังบัญชี",
+    "color": "rgb(102, 102, 102)",
+    "backgroundRGB": [
+      247,
+      247,
+      247
+    ],
+    "ratio": 5.36,
+    "geometryReachable": true,
+    "geometryStillIncomplete": true,
+    "axePassed": false,
+    "needsImageReview": false,
+    "conclusion": "COLOR_PAIR_AND_GEOMETRY_PASS"
+  },
+  {
+    "name": "bank-account-create",
+    "width": 390,
+    "theme": "dark",
+    "target": "div:nth-child(1) > .mt-1",
+    "text": "ต้องเริ่มด้วย 11-11 (เงินสด) หรือ 11-12 (ธนาคาร) และมีอยู่ในผังบัญชี",
+    "color": "rgb(184, 184, 184)",
+    "backgroundRGB": [
+      23,
+      23,
+      23
+    ],
+    "ratio": 9.038,
+    "geometryReachable": true,
+    "geometryStillIncomplete": true,
+    "axePassed": false,
+    "needsImageReview": false,
+    "conclusion": "COLOR_PAIR_AND_GEOMETRY_PASS"
+  },
+  {
+    "name": "pricing-create",
+    "width": 390,
+    "theme": "light",
+    "target": "label[for=\"_r_l_-9\"]",
+    "text": "จำนวนเดือนเรทที่ 1",
+    "color": "rgb(33, 33, 33)",
+    "backgroundRGB": [
+      247,
+      247,
+      247
+    ],
+    "ratio": 15.03,
+    "geometryReachable": true,
+    "geometryStillIncomplete": false,
+    "axePassed": true,
+    "needsImageReview": false,
+    "conclusion": "COLOR_PAIR_AND_GEOMETRY_PASS"
+  },
+  {
+    "name": "pricing-create",
+    "width": 390,
+    "theme": "light",
+    "target": "#_r_l_-9",
+    "text": "",
+    "color": "rgb(33, 33, 33)",
+    "backgroundRGB": [
+      247,
+      247,
+      247
+    ],
+    "ratio": 15.03,
+    "geometryReachable": true,
+    "geometryStillIncomplete": false,
+    "axePassed": true,
+    "needsImageReview": false,
+    "conclusion": "COLOR_PAIR_AND_GEOMETRY_PASS"
+  },
+  {
+    "name": "pricing-create",
+    "width": 390,
+    "theme": "dark",
+    "target": "#_r_l_-2",
+    "text": "",
+    "color": "rgb(240, 240, 240)",
+    "backgroundRGB": [
+      23,
+      23,
+      23
+    ],
+    "ratio": 15.732,
+    "geometryReachable": true,
+    "geometryStillIncomplete": false,
+    "axePassed": true,
+    "needsImageReview": false,
+    "conclusion": "COLOR_PAIR_AND_GEOMETRY_PASS"
+  },
+  {
+    "name": "asset-create",
+    "width": 390,
+    "theme": "light",
+    "target": ".text-destructive.inline-flex.gap-1\\.5",
+    "text": "พบ 1 ข้อผิดพลาด",
+    "color": "rgb(184, 25, 25)",
+    "backgroundRGB": [
+      247,
+      247,
+      247
+    ],
+    "ratio": 6.143,
+    "geometryReachable": true,
+    "geometryStillIncomplete": true,
+    "axePassed": false,
+    "needsImageReview": false,
+    "conclusion": "COLOR_PAIR_AND_GEOMETRY_PASS"
+  },
+  {
+    "name": "asset-create",
+    "width": 390,
+    "theme": "dark",
+    "target": ".text-destructive.inline-flex.gap-1\\.5",
+    "text": "พบ 1 ข้อผิดพลาด",
+    "color": "rgb(247, 126, 126)",
+    "backgroundRGB": [
+      23,
+      23,
+      23
+    ],
+    "ratio": 7.035,
+    "geometryReachable": true,
+    "geometryStillIncomplete": true,
+    "axePassed": false,
+    "needsImageReview": false,
+    "conclusion": "COLOR_PAIR_AND_GEOMETRY_PASS"
+  },
+  {
+    "name": "asset-create",
+    "width": 390,
+    "theme": "dark",
+    "target": ".text-success",
+    "text": "Σ Dr = Σ Cr (0.00)",
+    "color": "rgb(90, 226, 140)",
+    "backgroundRGB": [
+      23,
+      23,
+      23
+    ],
+    "ratio": 10.835,
+    "geometryReachable": true,
+    "geometryStillIncomplete": false,
+    "axePassed": true,
+    "needsImageReview": false,
+    "conclusion": "COLOR_PAIR_AND_GEOMETRY_PASS"
+  },
+  {
+    "name": "contact-supplier",
+    "width": 320,
+    "theme": "light",
+    "target": "label[for=\"_r_q_-province\"]",
+    "text": "จังหวัด *",
+    "color": "rgb(33, 33, 33)",
+    "backgroundRGB": [
+      247,
+      247,
+      247
+    ],
+    "ratio": 15.03,
+    "geometryReachable": true,
+    "geometryStillIncomplete": false,
+    "axePassed": true,
+    "needsImageReview": false,
+    "conclusion": "COLOR_PAIR_AND_GEOMETRY_PASS"
+  },
+  {
+    "name": "contact-supplier",
+    "width": 320,
+    "theme": "dark",
+    "target": "label[for=\"_r_q_-houseNo\"]",
+    "text": "บ้านเลขที่",
+    "color": "rgb(240, 240, 240)",
+    "backgroundRGB": [
+      23,
+      23,
+      23
+    ],
+    "ratio": 15.732,
+    "geometryReachable": true,
+    "geometryStillIncomplete": false,
+    "axePassed": true,
+    "needsImageReview": false,
+    "conclusion": "COLOR_PAIR_AND_GEOMETRY_PASS"
+  },
+  {
+    "name": "purchase-wizard",
+    "width": 320,
+    "theme": "light",
+    "target": "#radix-_r_4t_",
+    "text": "ซื้อสินค้า",
+    "color": "rgb(33, 33, 33)",
+    "backgroundRGB": [
+      247,
+      247,
+      247
+    ],
+    "ratio": 15.03,
+    "geometryReachable": true,
+    "geometryStillIncomplete": true,
+    "axePassed": false,
+    "needsImageReview": false,
+    "conclusion": "COLOR_PAIR_AND_GEOMETRY_PASS"
+  },
+  {
+    "name": "purchase-wizard",
+    "width": 320,
+    "theme": "light",
+    "target": ".p-5.border-border\\/50.bg-card:nth-child(1) > .mb-4.gap-2\\.5.items-center > div:nth-child(2) > h3",
+    "text": "ผู้ขาย และวิธีซื้อ",
+    "color": "rgb(33, 33, 33)",
+    "backgroundRGB": [
+      255,
+      255,
+      255
+    ],
+    "ratio": 16.102,
+    "geometryReachable": true,
+    "geometryStillIncomplete": true,
+    "axePassed": false,
+    "needsImageReview": false,
+    "conclusion": "COLOR_PAIR_AND_GEOMETRY_PASS"
+  },
+  {
+    "name": "purchase-wizard",
+    "width": 320,
+    "theme": "light",
+    "target": ".p-5.border-border\\/50.bg-card:nth-child(1) > .mb-4.gap-2\\.5.items-center > div:nth-child(2) > p",
+    "text": "ค้นหาจากรายชื่อผู้ติดต่อ หรือสร้างใหม่ได้จากช่องเดียวกัน — แล้วบอกว่าของถึงแล้วหรือยัง",
+    "color": "rgb(102, 102, 102)",
+    "backgroundRGB": [
+      255,
+      255,
+      255
+    ],
+    "ratio": 5.742,
+    "geometryReachable": true,
+    "geometryStillIncomplete": true,
+    "axePassed": false,
+    "needsImageReview": false,
+    "conclusion": "COLOR_PAIR_AND_GEOMETRY_PASS"
+  },
+  {
+    "name": "purchase-wizard",
+    "width": 320,
+    "theme": "light",
+    "target": ".text-primary.font-semibold.gap-2",
+    "text": "สั่งซื้อล่วงหน้า (ออก PO)",
+    "color": "rgb(10, 113, 78)",
+    "backgroundRGB": [
+      230.01960784313727,
+      241.0313725490196,
+      236.95294117647057
+    ],
+    "ratio": 5.215,
+    "geometryReachable": true,
+    "geometryStillIncomplete": true,
+    "axePassed": false,
+    "needsImageReview": false,
+    "conclusion": "COLOR_PAIR_AND_GEOMETRY_PASS"
+  },
+  {
+    "name": "purchase-wizard",
+    "width": 320,
+    "theme": "light",
+    "target": ".ring-1 > .pl-6.leading-snug.text-xs",
+    "text": "ของยังไม่มา — ออกใบสั่งซื้อ รับของทีหลัง · ผจก.สาขาต้องรอเจ้าของอนุมัติ",
+    "color": "rgb(102, 102, 102)",
+    "backgroundRGB": [
+      230.01960784313727,
+      241.0313725490196,
+      236.95294117647057
+    ],
+    "ratio": 4.969,
+    "geometryReachable": true,
+    "geometryStillIncomplete": true,
+    "axePassed": false,
+    "needsImageReview": false,
+    "conclusion": "COLOR_PAIR_AND_GEOMETRY_PASS"
+  },
+  {
+    "name": "purchase-wizard",
+    "width": 320,
+    "theme": "light",
+    "target": ".hover\\:bg-muted\\/40 > .font-semibold.gap-2.text-sm",
+    "text": "ของถึงแล้ว (รับเข้าเลย)",
+    "color": "rgb(33, 33, 33)",
+    "backgroundRGB": [
+      247,
+      247,
+      247
+    ],
+    "ratio": 15.03,
+    "geometryReachable": true,
+    "geometryStillIncomplete": true,
+    "axePassed": false,
+    "needsImageReview": false,
+    "conclusion": "COLOR_PAIR_AND_GEOMETRY_PASS"
+  },
+  {
+    "name": "purchase-wizard",
+    "width": 320,
+    "theme": "light",
+    "target": ".hover\\:bg-muted\\/40 > .pl-6.leading-snug.text-xs",
+    "text": "ของอยู่ในมือ — ตรวจรับ IMEI/รูป แล้วเข้าคลังทันที ระบบออกเลข PO ให้",
+    "color": "rgb(102, 102, 102)",
+    "backgroundRGB": [
+      247,
+      247,
+      247
+    ],
+    "ratio": 5.36,
+    "geometryReachable": true,
+    "geometryStillIncomplete": true,
+    "axePassed": false,
+    "needsImageReview": false,
+    "conclusion": "COLOR_PAIR_AND_GEOMETRY_PASS"
+  },
+  {
+    "name": "purchase-wizard",
+    "width": 320,
+    "theme": "light",
+    "target": "label[for=\"_r_4v_-1\"]",
+    "text": "ผู้ขาย (supplier) *",
+    "color": "rgb(33, 33, 33)",
+    "backgroundRGB": [
+      255,
+      255,
+      255
+    ],
+    "ratio": 16.102,
+    "geometryReachable": true,
+    "geometryStillIncomplete": true,
+    "axePassed": false,
+    "needsImageReview": false,
+    "conclusion": "COLOR_PAIR_AND_GEOMETRY_PASS"
+  },
+  {
+    "name": "purchase-wizard",
+    "width": 320,
+    "theme": "light",
+    "target": ".truncate.leading-snug",
+    "text": "เลือก/ค้นหาผู้จัดจำหน่าย",
+    "color": "rgb(102, 102, 102)",
+    "backgroundRGB": [
+      247,
+      247,
+      247
+    ],
+    "ratio": 5.36,
+    "geometryReachable": true,
+    "geometryStillIncomplete": true,
+    "axePassed": false,
+    "needsImageReview": false,
+    "conclusion": "COLOR_PAIR_AND_GEOMETRY_PASS"
+  },
+  {
+    "name": "purchase-wizard",
+    "width": 320,
+    "theme": "light",
+    "target": "label[for=\"_r_4v_-2\"]",
+    "text": "วันที่สั่ง *",
+    "color": "rgb(33, 33, 33)",
+    "backgroundRGB": [
+      255,
+      255,
+      255
+    ],
+    "ratio": 16.102,
+    "geometryReachable": true,
+    "geometryStillIncomplete": true,
+    "axePassed": false,
+    "needsImageReview": false,
+    "conclusion": "COLOR_PAIR_AND_GEOMETRY_PASS"
+  },
+  {
+    "name": "purchase-wizard",
+    "width": 320,
+    "theme": "light",
+    "target": "#_r_4v_-2",
+    "text": "",
+    "color": "rgb(33, 33, 33)",
+    "backgroundRGB": [
+      247,
+      247,
+      247
+    ],
+    "ratio": 15.03,
+    "geometryReachable": true,
+    "geometryStillIncomplete": true,
+    "axePassed": false,
+    "needsImageReview": false,
+    "conclusion": "COLOR_PAIR_AND_GEOMETRY_PASS"
+  },
+  {
+    "name": "purchase-wizard",
+    "width": 320,
+    "theme": "light",
+    "target": "label[for=\"_r_4v_-3\"]",
+    "text": "วันที่คาดรับสินค้า",
+    "color": "rgb(33, 33, 33)",
+    "backgroundRGB": [
+      255,
+      255,
+      255
+    ],
+    "ratio": 16.102,
+    "geometryReachable": true,
+    "geometryStillIncomplete": true,
+    "axePassed": false,
+    "needsImageReview": false,
+    "conclusion": "COLOR_PAIR_AND_GEOMETRY_PASS"
+  },
+  {
+    "name": "purchase-wizard",
+    "width": 320,
+    "theme": "light",
+    "target": "#_r_4v_-3",
+    "text": "",
+    "color": "rgb(33, 33, 33)",
+    "backgroundRGB": [
+      247,
+      247,
+      247
+    ],
+    "ratio": 15.03,
+    "geometryReachable": true,
+    "geometryStillIncomplete": true,
+    "axePassed": false,
+    "needsImageReview": false,
+    "conclusion": "COLOR_PAIR_AND_GEOMETRY_PASS"
+  },
+  {
+    "name": "purchase-wizard",
+    "width": 320,
+    "theme": "light",
+    "target": ".flex-1 > h3",
+    "text": "รายการที่สั่งซื้อ",
+    "color": "rgb(33, 33, 33)",
+    "backgroundRGB": [
+      255,
+      255,
+      255
+    ],
+    "ratio": 16.102,
+    "geometryReachable": true,
+    "geometryStillIncomplete": true,
+    "axePassed": false,
+    "needsImageReview": false,
+    "conclusion": "COLOR_PAIR_AND_GEOMETRY_PASS"
+  },
+  {
+    "name": "purchase-wizard",
+    "width": 320,
+    "theme": "light",
+    "target": ".flex-1 > p",
+    "text": "ค้นหารุ่นแล้วกดเพิ่ม — สภาพ / ความจุ / สี / จำนวน / ราคา เลือกในตาราง · อุปกรณ์เสริมค้นจากสินค้าเดิม",
+    "color": "rgb(102, 102, 102)",
+    "backgroundRGB": [
+      255,
+      255,
+      255
+    ],
+    "ratio": 5.742,
+    "geometryReachable": true,
+    "geometryStillIncomplete": true,
+    "axePassed": false,
+    "needsImageReview": false,
+    "conclusion": "COLOR_PAIR_AND_GEOMETRY_PASS"
+  },
+  {
+    "name": "purchase-wizard",
+    "width": 320,
+    "theme": "light",
+    "target": ".focus-visible\\:ring-offset-1.border-primary.leading-none",
+    "text": "โทรศัพท์",
+    "color": "rgb(255, 255, 255)",
+    "backgroundRGB": [
+      10,
+      113,
+      78
+    ],
+    "ratio": 6.026,
+    "geometryReachable": true,
+    "geometryStillIncomplete": true,
+    "axePassed": false,
+    "needsImageReview": false,
+    "conclusion": "COLOR_PAIR_AND_GEOMETRY_PASS"
+  },
+  {
+    "name": "purchase-wizard",
+    "width": 320,
+    "theme": "light",
+    "target": ".focus-visible\\:ring-offset-1.leading-none.focus-visible\\:ring-offset-background:nth-child(2)",
+    "text": "แท็บเล็ต",
+    "color": "rgb(33, 33, 33)",
+    "backgroundRGB": [
+      247,
+      247,
+      247
+    ],
+    "ratio": 15.03,
+    "geometryReachable": true,
+    "geometryStillIncomplete": true,
+    "axePassed": false,
+    "needsImageReview": false,
+    "conclusion": "COLOR_PAIR_AND_GEOMETRY_PASS"
+  },
+  {
+    "name": "purchase-wizard",
+    "width": 320,
+    "theme": "light",
+    "target": ".focus-visible\\:ring-offset-1.leading-none.focus-visible\\:ring-offset-background:nth-child(3)",
+    "text": "อุปกรณ์เสริม",
+    "color": "rgb(33, 33, 33)",
+    "backgroundRGB": [
+      247,
+      247,
+      247
+    ],
+    "ratio": 15.03,
+    "geometryReachable": true,
+    "geometryStillIncomplete": true,
+    "axePassed": false,
+    "needsImageReview": false,
+    "conclusion": "COLOR_PAIR_AND_GEOMETRY_PASS"
+  },
+  {
+    "name": "purchase-wizard",
+    "width": 320,
+    "theme": "light",
+    "target": ".px-6.hover\\:bg-muted.py-2\\.5",
+    "text": "ยกเลิก",
+    "color": "rgb(33, 33, 33)",
+    "backgroundRGB": [
+      247,
+      247,
+      247
+    ],
+    "ratio": 15.03,
+    "geometryReachable": true,
+    "geometryStillIncomplete": true,
+    "axePassed": false,
+    "needsImageReview": false,
+    "conclusion": "COLOR_PAIR_AND_GEOMETRY_PASS"
+  },
+  {
+    "name": "purchase-wizard",
+    "width": 320,
+    "theme": "dark",
+    "target": "#radix-_r_4t_",
+    "text": "ซื้อสินค้า",
+    "color": "rgb(240, 240, 240)",
+    "backgroundRGB": [
+      23,
+      23,
+      23
+    ],
+    "ratio": 15.732,
+    "geometryReachable": true,
+    "geometryStillIncomplete": true,
+    "axePassed": false,
+    "needsImageReview": false,
+    "conclusion": "COLOR_PAIR_AND_GEOMETRY_PASS"
+  },
+  {
+    "name": "purchase-wizard",
+    "width": 320,
+    "theme": "dark",
+    "target": "label[for=\"_r_4v_-2\"]",
+    "text": "วันที่สั่ง *",
+    "color": "rgb(240, 240, 240)",
+    "backgroundRGB": [
+      33,
+      33,
+      33
+    ],
+    "ratio": 14.13,
+    "geometryReachable": true,
+    "geometryStillIncomplete": true,
+    "axePassed": false,
+    "needsImageReview": false,
+    "conclusion": "COLOR_PAIR_AND_GEOMETRY_PASS"
+  },
+  {
+    "name": "purchase-wizard",
+    "width": 320,
+    "theme": "dark",
+    "target": "#_r_4v_-2",
+    "text": "",
+    "color": "rgb(240, 240, 240)",
+    "backgroundRGB": [
+      23,
+      23,
+      23
+    ],
+    "ratio": 15.732,
+    "geometryReachable": true,
+    "geometryStillIncomplete": true,
+    "axePassed": false,
+    "needsImageReview": false,
+    "conclusion": "COLOR_PAIR_AND_GEOMETRY_PASS"
+  },
+  {
+    "name": "purchase-wizard",
+    "width": 320,
+    "theme": "dark",
+    "target": "label[for=\"_r_4v_-3\"]",
+    "text": "วันที่คาดรับสินค้า",
+    "color": "rgb(240, 240, 240)",
+    "backgroundRGB": [
+      33,
+      33,
+      33
+    ],
+    "ratio": 14.13,
+    "geometryReachable": true,
+    "geometryStillIncomplete": true,
+    "axePassed": false,
+    "needsImageReview": false,
+    "conclusion": "COLOR_PAIR_AND_GEOMETRY_PASS"
+  },
+  {
+    "name": "purchase-wizard",
+    "width": 320,
+    "theme": "dark",
+    "target": "#_r_4v_-3",
+    "text": "",
+    "color": "rgb(240, 240, 240)",
+    "backgroundRGB": [
+      23,
+      23,
+      23
+    ],
+    "ratio": 15.732,
+    "geometryReachable": true,
+    "geometryStillIncomplete": true,
+    "axePassed": false,
+    "needsImageReview": false,
+    "conclusion": "COLOR_PAIR_AND_GEOMETRY_PASS"
+  },
+  {
+    "name": "purchase-wizard",
+    "width": 320,
+    "theme": "dark",
+    "target": ".flex-1 > h3",
+    "text": "รายการที่สั่งซื้อ",
+    "color": "rgb(240, 240, 240)",
+    "backgroundRGB": [
+      33,
+      33,
+      33
+    ],
+    "ratio": 14.13,
+    "geometryReachable": true,
+    "geometryStillIncomplete": true,
+    "axePassed": false,
+    "needsImageReview": false,
+    "conclusion": "COLOR_PAIR_AND_GEOMETRY_PASS"
+  },
+  {
+    "name": "purchase-wizard",
+    "width": 320,
+    "theme": "dark",
+    "target": ".flex-1 > p",
+    "text": "ค้นหารุ่นแล้วกดเพิ่ม — สภาพ / ความจุ / สี / จำนวน / ราคา เลือกในตาราง · อุปกรณ์เสริมค้นจากสินค้าเดิม",
+    "color": "rgb(184, 184, 184)",
+    "backgroundRGB": [
+      33,
+      33,
+      33
+    ],
+    "ratio": 8.117,
+    "geometryReachable": true,
+    "geometryStillIncomplete": true,
+    "axePassed": false,
+    "needsImageReview": false,
+    "conclusion": "COLOR_PAIR_AND_GEOMETRY_PASS"
+  },
+  {
+    "name": "purchase-wizard",
+    "width": 320,
+    "theme": "dark",
+    "target": ".focus-visible\\:ring-offset-1.border-primary.leading-none",
+    "text": "โทรศัพท์",
+    "color": "rgb(13, 33, 26)",
+    "backgroundRGB": [
+      63,
+      217,
+      166
+    ],
+    "ratio": 9.353,
+    "geometryReachable": true,
+    "geometryStillIncomplete": true,
+    "axePassed": false,
+    "needsImageReview": false,
+    "conclusion": "COLOR_PAIR_AND_GEOMETRY_PASS"
+  },
+  {
+    "name": "purchase-wizard",
+    "width": 320,
+    "theme": "dark",
+    "target": ".focus-visible\\:ring-offset-1.leading-none.focus-visible\\:ring-offset-background:nth-child(2)",
+    "text": "แท็บเล็ต",
+    "color": "rgb(240, 240, 240)",
+    "backgroundRGB": [
+      23,
+      23,
+      23
+    ],
+    "ratio": 15.732,
+    "geometryReachable": true,
+    "geometryStillIncomplete": true,
+    "axePassed": false,
+    "needsImageReview": false,
+    "conclusion": "COLOR_PAIR_AND_GEOMETRY_PASS"
+  },
+  {
+    "name": "purchase-wizard",
+    "width": 320,
+    "theme": "dark",
+    "target": ".focus-visible\\:ring-offset-1.leading-none.focus-visible\\:ring-offset-background:nth-child(3)",
+    "text": "อุปกรณ์เสริม",
+    "color": "rgb(240, 240, 240)",
+    "backgroundRGB": [
+      23,
+      23,
+      23
+    ],
+    "ratio": 15.732,
+    "geometryReachable": true,
+    "geometryStillIncomplete": true,
+    "axePassed": false,
+    "needsImageReview": false,
+    "conclusion": "COLOR_PAIR_AND_GEOMETRY_PASS"
+  },
+  {
+    "name": "purchase-wizard",
+    "width": 320,
+    "theme": "dark",
+    "target": "#radix-_r_58_",
+    "text": "",
+    "color": "rgb(240, 240, 240)",
+    "backgroundRGB": [
+      23,
+      23,
+      23
+    ],
+    "ratio": 15.732,
+    "geometryReachable": true,
+    "geometryStillIncomplete": true,
+    "axePassed": false,
+    "needsImageReview": false,
+    "conclusion": "COLOR_PAIR_AND_GEOMETRY_PASS"
+  },
+  {
+    "name": "purchase-wizard",
+    "width": 320,
+    "theme": "dark",
+    "target": ".mr-0\\.5",
+    "text": "รุ่นล่าสุด",
+    "color": "rgb(184, 184, 184)",
+    "backgroundRGB": [
+      33,
+      33,
+      33
+    ],
+    "ratio": 8.117,
+    "geometryReachable": true,
+    "geometryStillIncomplete": true,
+    "axePassed": false,
+    "needsImageReview": false,
+    "conclusion": "COLOR_PAIR_AND_GEOMETRY_PASS"
+  },
+  {
+    "name": "purchase-wizard",
+    "width": 320,
+    "theme": "dark",
+    "target": ".pr-2\\.5.gap-1.hover\\:border-primary\\/50:nth-child(1)",
+    "text": "iPhone 17 Pro Max",
+    "color": "rgb(240, 240, 240)",
+    "backgroundRGB": [
+      23,
+      23,
+      23
+    ],
+    "ratio": 15.732,
+    "geometryReachable": true,
+    "geometryStillIncomplete": true,
+    "axePassed": false,
+    "needsImageReview": false,
+    "conclusion": "COLOR_PAIR_AND_GEOMETRY_PASS"
+  },
+  {
+    "name": "purchase-wizard",
+    "width": 320,
+    "theme": "dark",
+    "target": ".pr-2\\.5.gap-1.hover\\:border-primary\\/50:nth-child(2)",
+    "text": "iPhone 17 Pro",
+    "color": "rgb(240, 240, 240)",
+    "backgroundRGB": [
+      23,
+      23,
+      23
+    ],
+    "ratio": 15.732,
+    "geometryReachable": true,
+    "geometryStillIncomplete": true,
+    "axePassed": false,
+    "needsImageReview": false,
+    "conclusion": "COLOR_PAIR_AND_GEOMETRY_PASS"
+  },
+  {
+    "name": "purchase-wizard",
+    "width": 320,
+    "theme": "dark",
+    "target": ".pr-2\\.5.gap-1.hover\\:border-primary\\/50:nth-child(3)",
+    "text": "iPhone Air",
+    "color": "rgb(240, 240, 240)",
+    "backgroundRGB": [
+      23,
+      23,
+      23
+    ],
+    "ratio": 15.732,
+    "geometryReachable": true,
+    "geometryStillIncomplete": true,
+    "axePassed": false,
+    "needsImageReview": false,
+    "conclusion": "COLOR_PAIR_AND_GEOMETRY_PASS"
+  },
+  {
+    "name": "purchase-wizard",
+    "width": 320,
+    "theme": "dark",
+    "target": ".pr-2\\.5.gap-1.hover\\:border-primary\\/50:nth-child(4)",
+    "text": "iPhone 17",
+    "color": "rgb(240, 240, 240)",
+    "backgroundRGB": [
+      23,
+      23,
+      23
+    ],
+    "ratio": 15.732,
+    "geometryReachable": true,
+    "geometryStillIncomplete": true,
+    "axePassed": false,
+    "needsImageReview": false,
+    "conclusion": "COLOR_PAIR_AND_GEOMETRY_PASS"
+  },
+  {
+    "name": "purchase-wizard",
+    "width": 320,
+    "theme": "dark",
+    "target": ".pr-2\\.5.gap-1.hover\\:border-primary\\/50:nth-child(5)",
+    "text": "iPhone 16e",
+    "color": "rgb(240, 240, 240)",
+    "backgroundRGB": [
+      23,
+      23,
+      23
+    ],
+    "ratio": 15.732,
+    "geometryReachable": true,
+    "geometryStillIncomplete": true,
+    "axePassed": false,
+    "needsImageReview": false,
+    "conclusion": "COLOR_PAIR_AND_GEOMETRY_PASS"
+  },
+  {
+    "name": "purchase-wizard",
+    "width": 320,
+    "theme": "dark",
+    "target": ".pr-2\\.5.gap-1.hover\\:border-primary\\/50:nth-child(6)",
+    "text": "iPhone 16 Pro Max",
+    "color": "rgb(240, 240, 240)",
+    "backgroundRGB": [
+      23,
+      23,
+      23
+    ],
+    "ratio": 15.732,
+    "geometryReachable": true,
+    "geometryStillIncomplete": true,
+    "axePassed": false,
+    "needsImageReview": false,
+    "conclusion": "COLOR_PAIR_AND_GEOMETRY_PASS"
+  },
+  {
+    "name": "purchase-wizard",
+    "width": 320,
+    "theme": "dark",
+    "target": "th:nth-child(2)",
+    "text": "รุ่น",
+    "color": "rgb(184, 184, 184)",
+    "backgroundRGB": [
+      40.529411764705884,
+      40.529411764705884,
+      40.529411764705884
+    ],
+    "ratio": 7.38,
+    "geometryReachable": true,
+    "geometryStillIncomplete": true,
+    "axePassed": false,
+    "needsImageReview": false,
+    "conclusion": "COLOR_PAIR_AND_GEOMETRY_PASS"
+  },
+  {
+    "name": "purchase-wizard",
+    "width": 320,
+    "theme": "dark",
+    "target": "th:nth-child(3)",
+    "text": "สภาพ",
+    "color": "rgb(184, 184, 184)",
+    "backgroundRGB": [
+      40.529411764705884,
+      40.529411764705884,
+      40.529411764705884
+    ],
+    "ratio": 7.38,
+    "geometryReachable": true,
+    "geometryStillIncomplete": true,
+    "axePassed": false,
+    "needsImageReview": false,
+    "conclusion": "COLOR_PAIR_AND_GEOMETRY_PASS"
+  },
+  {
+    "name": "purchase-wizard",
+    "width": 320,
+    "theme": "dark",
+    "target": ".px-6.hover\\:bg-muted.py-2\\.5",
+    "text": "ยกเลิก",
+    "color": "rgb(240, 240, 240)",
+    "backgroundRGB": [
+      23,
+      23,
+      23
+    ],
+    "ratio": 15.732,
+    "geometryReachable": true,
+    "geometryStillIncomplete": true,
+    "axePassed": false,
+    "needsImageReview": false,
+    "conclusion": "COLOR_PAIR_AND_GEOMETRY_PASS"
+  },
+  {
+    "name": "stock-adjustment",
+    "width": 320,
+    "theme": "light",
+    "target": "#sa-photos",
+    "text": "",
+    "color": "rgb(102, 102, 102)",
+    "backgroundRGB": [
+      247,
+      247,
+      247
+    ],
+    "ratio": 5.36,
+    "geometryReachable": true,
+    "geometryStillIncomplete": false,
+    "axePassed": true,
+    "needsImageReview": false,
+    "conclusion": "COLOR_PAIR_AND_GEOMETRY_PASS"
+  },
+  {
+    "name": "stock-adjustment",
+    "width": 320,
+    "theme": "light",
+    "target": ".mt-1.text-xs.leading-snug",
+    "text": "JPEG / PNG / WebP ไม่เกิน 5MB ต่อรูป สูงสุด 6 รูป",
+    "color": "rgb(102, 102, 102)",
+    "backgroundRGB": [
+      247,
+      247,
+      247
+    ],
+    "ratio": 5.36,
+    "geometryReachable": true,
+    "geometryStillIncomplete": false,
+    "axePassed": true,
+    "needsImageReview": false,
+    "conclusion": "COLOR_PAIR_AND_GEOMETRY_PASS"
+  },
+  {
+    "name": "stock-adjustment",
+    "width": 320,
+    "theme": "dark",
+    "target": "legend",
+    "text": "เหตุผล",
+    "color": "rgb(240, 240, 240)",
+    "backgroundRGB": [
+      23,
+      23,
+      23
+    ],
+    "ratio": 15.732,
+    "geometryReachable": true,
+    "geometryStillIncomplete": false,
+    "axePassed": true,
+    "needsImageReview": false,
+    "conclusion": "COLOR_PAIR_AND_GEOMETRY_PASS"
+  },
+  {
+    "name": "stock-count",
+    "width": 320,
+    "theme": "light",
+    "target": ".space-y-4 > p",
+    "text": "เลือกสาขาที่ต้องการตรวจนับ ระบบจะดึงรายการสินค้าที่อยู่ในสาขานั้นมาให้อัตโนมัติ",
+    "color": "rgb(102, 102, 102)",
+    "backgroundRGB": [
+      247,
+      247,
+      247
+    ],
+    "ratio": 5.36,
+    "geometryReachable": true,
+    "geometryStillIncomplete": true,
+    "axePassed": false,
+    "needsImageReview": false,
+    "conclusion": "COLOR_PAIR_AND_GEOMETRY_PASS"
+  },
+  {
+    "name": "stock-count",
+    "width": 320,
+    "theme": "dark",
+    "target": ".space-y-4 > p",
+    "text": "เลือกสาขาที่ต้องการตรวจนับ ระบบจะดึงรายการสินค้าที่อยู่ในสาขานั้นมาให้อัตโนมัติ",
+    "color": "rgb(184, 184, 184)",
+    "backgroundRGB": [
+      23,
+      23,
+      23
+    ],
+    "ratio": 9.038,
+    "geometryReachable": true,
+    "geometryStillIncomplete": true,
+    "axePassed": false,
+    "needsImageReview": false,
+    "conclusion": "COLOR_PAIR_AND_GEOMETRY_PASS"
+  },
+  {
+    "name": "bank-account-create",
+    "width": 320,
+    "theme": "light",
+    "target": "div:nth-child(1) > .mt-1",
+    "text": "ต้องเริ่มด้วย 11-11 (เงินสด) หรือ 11-12 (ธนาคาร) และมีอยู่ในผังบัญชี",
+    "color": "rgb(102, 102, 102)",
+    "backgroundRGB": [
+      247,
+      247,
+      247
+    ],
+    "ratio": 5.36,
+    "geometryReachable": true,
+    "geometryStillIncomplete": true,
+    "axePassed": false,
+    "needsImageReview": false,
+    "conclusion": "COLOR_PAIR_AND_GEOMETRY_PASS"
+  },
+  {
+    "name": "bank-account-create",
+    "width": 320,
+    "theme": "dark",
+    "target": "div:nth-child(1) > .mt-1",
+    "text": "ต้องเริ่มด้วย 11-11 (เงินสด) หรือ 11-12 (ธนาคาร) และมีอยู่ในผังบัญชี",
+    "color": "rgb(184, 184, 184)",
+    "backgroundRGB": [
+      23,
+      23,
+      23
+    ],
+    "ratio": 9.038,
+    "geometryReachable": true,
+    "geometryStillIncomplete": true,
+    "axePassed": false,
+    "needsImageReview": false,
+    "conclusion": "COLOR_PAIR_AND_GEOMETRY_PASS"
+  },
+  {
+    "name": "pricing-create",
+    "width": 320,
+    "theme": "light",
+    "target": "label[for=\"_r_l_-9\"]",
+    "text": "จำนวนเดือนเรทที่ 1",
+    "color": "rgb(33, 33, 33)",
+    "backgroundRGB": [
+      247,
+      247,
+      247
+    ],
+    "ratio": 15.03,
+    "geometryReachable": true,
+    "geometryStillIncomplete": false,
+    "axePassed": true,
+    "needsImageReview": false,
+    "conclusion": "COLOR_PAIR_AND_GEOMETRY_PASS"
+  },
+  {
+    "name": "pricing-create",
+    "width": 320,
+    "theme": "light",
+    "target": "#_r_l_-9",
+    "text": "",
+    "color": "rgb(33, 33, 33)",
+    "backgroundRGB": [
+      247,
+      247,
+      247
+    ],
+    "ratio": 15.03,
+    "geometryReachable": true,
+    "geometryStillIncomplete": false,
+    "axePassed": true,
+    "needsImageReview": false,
+    "conclusion": "COLOR_PAIR_AND_GEOMETRY_PASS"
+  },
+  {
+    "name": "pricing-create",
+    "width": 320,
+    "theme": "dark",
+    "target": "#_r_l_-2",
+    "text": "",
+    "color": "rgb(240, 240, 240)",
+    "backgroundRGB": [
+      23,
+      23,
+      23
+    ],
+    "ratio": 15.732,
+    "geometryReachable": true,
+    "geometryStillIncomplete": false,
+    "axePassed": true,
+    "needsImageReview": false,
+    "conclusion": "COLOR_PAIR_AND_GEOMETRY_PASS"
+  },
+  {
+    "name": "pricing-create",
+    "width": 320,
+    "theme": "dark",
+    "target": "label[for=\"_r_l_-3\"]",
+    "text": "ความจุ",
+    "color": "rgb(240, 240, 240)",
+    "backgroundRGB": [
+      23,
+      23,
+      23
+    ],
+    "ratio": 15.732,
+    "geometryReachable": true,
+    "geometryStillIncomplete": false,
+    "axePassed": true,
+    "needsImageReview": false,
+    "conclusion": "COLOR_PAIR_AND_GEOMETRY_PASS"
+  },
+  {
+    "name": "asset-dispose",
+    "width": 320,
+    "theme": "light",
+    "target": ".flex-row > h3",
+    "text": "3. สรุปบัญชี (Auto JE Preview)",
+    "color": "rgb(33, 33, 33)",
+    "backgroundRGB": [
+      255,
+      255,
+      255
+    ],
+    "ratio": 16.102,
+    "geometryReachable": true,
+    "geometryStillIncomplete": true,
+    "axePassed": false,
+    "needsImageReview": false,
+    "conclusion": "COLOR_PAIR_AND_GEOMETRY_PASS"
+  },
+  {
+    "name": "asset-dispose",
+    "width": 320,
+    "theme": "light",
+    "target": "th:nth-child(4)",
+    "text": "Credit",
+    "color": "rgb(33, 33, 33)",
+    "backgroundRGB": [
+      255,
+      255,
+      255
+    ],
+    "ratio": 16.102,
+    "geometryReachable": true,
+    "geometryStillIncomplete": true,
+    "axePassed": false,
+    "needsImageReview": false,
+    "conclusion": "COLOR_PAIR_AND_GEOMETRY_PASS"
+  },
+  {
+    "name": "asset-dispose",
+    "width": 320,
+    "theme": "light",
+    "target": "tr:nth-child(2) > .text-right:nth-child(4)",
+    "text": "12,000.00",
+    "color": "rgb(33, 33, 33)",
+    "backgroundRGB": [
+      255,
+      255,
+      255
+    ],
+    "ratio": 16.102,
+    "geometryReachable": true,
+    "geometryStillIncomplete": true,
+    "axePassed": false,
+    "needsImageReview": false,
+    "conclusion": "COLOR_PAIR_AND_GEOMETRY_PASS"
+  },
+  {
+    "name": "asset-dispose",
+    "width": 320,
+    "theme": "dark",
+    "target": ".flex-row > h3",
+    "text": "3. สรุปบัญชี (Auto JE Preview)",
+    "color": "rgb(240, 240, 240)",
+    "backgroundRGB": [
+      33,
+      33,
+      33
+    ],
+    "ratio": 14.13,
+    "geometryReachable": true,
+    "geometryStillIncomplete": true,
+    "axePassed": false,
+    "needsImageReview": false,
+    "conclusion": "COLOR_PAIR_AND_GEOMETRY_PASS"
+  },
+  {
+    "name": "asset-dispose",
+    "width": 320,
+    "theme": "dark",
+    "target": "th:nth-child(4)",
+    "text": "Credit",
+    "color": "rgb(240, 240, 240)",
+    "backgroundRGB": [
+      33,
+      33,
+      33
+    ],
+    "ratio": 14.13,
+    "geometryReachable": true,
+    "geometryStillIncomplete": true,
+    "axePassed": false,
+    "needsImageReview": false,
+    "conclusion": "COLOR_PAIR_AND_GEOMETRY_PASS"
+  },
+  {
+    "name": "asset-dispose",
+    "width": 320,
+    "theme": "dark",
+    "target": "tr:nth-child(2) > .text-right:nth-child(4)",
+    "text": "12,000.00",
+    "color": "rgb(240, 240, 240)",
+    "backgroundRGB": [
+      33,
+      33,
+      33
+    ],
+    "ratio": 14.13,
+    "geometryReachable": true,
+    "geometryStillIncomplete": true,
+    "axePassed": false,
+    "needsImageReview": false,
+    "conclusion": "COLOR_PAIR_AND_GEOMETRY_PASS"
+  }
+]

@@ -1,0 +1,29 @@
+[
+  {
+    "file": "apps/web/src/components/trade-in/SellerPaymentFields.tsx",
+    "field": "ธนาคารผู้ขาย",
+    "before": "native input+datalist",
+    "after": "shared NameAutocomplete",
+    "retains": [
+      "controlled value",
+      "free text",
+      "BANK_OPTIONS",
+      "label ID",
+      "disabled state",
+      "patch onChange"
+    ]
+  },
+  {
+    "file": "apps/web/src/pages/canned-response-admin/TemplateEditorPane.tsx",
+    "field": "หมวด",
+    "before": "native input+datalist",
+    "after": "shared NameAutocomplete",
+    "retains": [
+      "controlled value",
+      "free text",
+      "existingCategories",
+      "label ID",
+      "save patch"
+    ]
+  }
+]

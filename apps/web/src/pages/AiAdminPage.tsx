@@ -299,7 +299,7 @@ export default function AiAdminPage() {
         <div className="flex items-center justify-between mb-3">
           <h3 className="font-semibold text-foreground">แนวโน้มค่าใช้จ่าย</h3>
           <Select value={String(trendDays)} onValueChange={(v) => setTrendDays(parseInt(v))}>
-            <SelectTrigger className="w-28">
+            <SelectTrigger aria-label="ช่วงเวลา" className="w-28">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -354,7 +354,7 @@ export default function AiAdminPage() {
         <div className="flex items-center justify-between mb-3">
           <h3 className="font-semibold text-foreground">แยกตาม</h3>
           <Select value={groupBy} onValueChange={(v) => setGroupBy(v as typeof groupBy)}>
-            <SelectTrigger className="w-36">
+            <SelectTrigger aria-label="จัดกลุ่มตาม" className="w-36">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -420,7 +420,7 @@ export default function AiAdminPage() {
               setLogsPage(1);
             }}
           >
-            <SelectTrigger className="w-36">
+            <SelectTrigger aria-label="สถานะการทำงาน" className="w-36">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>

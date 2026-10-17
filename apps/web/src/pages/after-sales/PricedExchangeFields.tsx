@@ -1,3 +1,4 @@
+import { NativeSelect } from '@/components/ui/native-select';
 import { useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { AlertTriangle } from 'lucide-react';
@@ -139,7 +140,7 @@ export default function PricedExchangeFields({
               >
                 สภาพเครื่อง
               </label>
-              <select
+              <NativeSelect wrapperClassName="max-w-full w-full"
                 id="pf-condition"
                 value={value.deviceCondition}
                 onChange={(e) =>
@@ -155,7 +156,7 @@ export default function PricedExchangeFields({
                     เกรด {c}
                   </option>
                 ))}
-              </select>
+              </NativeSelect>
             </div>
             <div className="space-y-1">
               <label

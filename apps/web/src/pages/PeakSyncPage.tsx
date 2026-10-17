@@ -1,3 +1,4 @@
+import { NativeSelect } from '@/components/ui/native-select';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { CheckCircle2, XCircle, RefreshCw, Link2, Calendar, Database } from 'lucide-react';
@@ -135,7 +136,7 @@ export default function PeakSyncPage() {
         subtitle="ตรวจสอบสถานะการเชื่อมต่อและส่งข้อมูลไปยัง PEAK"
         action={
           <div className="flex items-center gap-3">
-            <select
+            <NativeSelect wrapperClassName="max-w-full w-auto" aria-label="ปี"
               value={selectedYear}
               onChange={(e) => setSelectedYear(Number(e.target.value))}
               className="text-sm border border-input rounded-lg px-3 py-2 bg-background"
@@ -145,7 +146,7 @@ export default function PeakSyncPage() {
                   ปี {y + 543} ({y})
                 </option>
               ))}
-            </select>
+            </NativeSelect>
             <button
               onClick={handleRefresh}
               disabled={isRefreshing}

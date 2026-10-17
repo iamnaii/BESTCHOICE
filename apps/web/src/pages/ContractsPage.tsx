@@ -1,3 +1,6 @@
+import { NativeSelect } from '@/components/ui/native-select';
+import { formControlClass } from '@/components/ui/form-styles';
+import { useId as useFieldId } from 'react';
 import type { SignatureRequirements } from '@installment/shared';
 import { PaginationBar } from '@/components/ui/PaginationBar';
 import { createExportGuard, ExportError, fetchExportSnapshot, type ExportSnapshot } from '@/lib/fetch-export-pages';
@@ -64,6 +67,7 @@ type ViewTab = 'all' | 'my' | 'pending_review';
 type ViewMode = 'table' | 'kanban';
 
 export default function ContractsPage() {
+  const fieldId = useFieldId();
   const navigate = useNavigate();
   const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -312,9 +316,9 @@ export default function ContractsPage() {
           <div className="flex flex-wrap gap-2">
             {contracts.length > 0 && (
               <>
-              <select aria-label="ขอบเขตการส่งออก" value={exportScope} onChange={e => setExportScope(e.target.value)} className="rounded-md border border-input bg-background px-2 text-sm">
+              <NativeSelect wrapperClassName="max-w-full w-auto" aria-label="ขอบเขตการส่งออก" value={exportScope} onChange={e => setExportScope(e.target.value)} className="rounded-md border border-input bg-background px-2 text-sm">
                 <option value="all">ตามตัวกรองทั้งหมด</option><option value="page">หน้าปัจจุบัน</option>
-              </select>
+              </NativeSelect>
               <Button variant="outline" size="md" onClick={handleExport} disabled={isExporting || isError || isLoading}>
                 <Download className="size-4" />
                 ส่งออก Excel
@@ -407,10 +411,10 @@ export default function ContractsPage() {
               placeholder="ค้นหาเลขสัญญา, ชื่อลูกค้า..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="w-full pl-9 pr-3 py-2 border border-input rounded-lg text-sm bg-background outline-hidden focus:ring-2 focus:ring-ring/30"
+              className={`${formControlClass} pl-9`}
             />
           </div>
-          <select aria-label="สถานะสัญญา" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="px-3 py-2 border border-input rounded-lg text-sm bg-background outline-hidden focus:ring-2 focus:ring-ring/30">
+          <NativeSelect wrapperClassName="max-w-full min-w-0 w-full sm:w-auto" aria-label="สถานะสัญญา" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className={formControlClass}>
             <option value="">ทุกสถานะ</option>
             <option value="DRAFT">ร่าง</option>
             <option value="ACTIVE">ผ่อนอยู่</option>
@@ -420,14 +424,14 @@ export default function ContractsPage() {
             <option value="COMPLETED">ผ่อนครบ</option>
             <option value="EXCHANGED">เปลี่ยนเครื่อง</option>
             <option value="CLOSED_BAD_DEBT">หนี้สูญ</option>
-          </select>
+          </NativeSelect>
           {isOwner && (
-            <select aria-label="สาขา" value={branchFilter} onChange={(e) => setBranchFilter(e.target.value)} className="px-3 py-2 border border-input rounded-lg text-sm bg-background outline-hidden focus:ring-2 focus:ring-ring/30">
+            <NativeSelect wrapperClassName="max-w-full min-w-0 w-full sm:w-auto" aria-label="สาขา" value={branchFilter} onChange={(e) => setBranchFilter(e.target.value)} className={formControlClass}>
               <option value="">ทุกสาขา</option>
               {branches.map((b) => (
                 <option key={b.id} value={b.id}>{b.name}</option>
               ))}
-            </select>
+            </NativeSelect>
           )}
           <button
             onClick={() => setShowDatePicker(!showDatePicker)}
@@ -441,13 +445,13 @@ export default function ContractsPage() {
             {startDateFilter || endDateFilter ? 'กำหนดเวลาไว้' : 'ช่วงเวลา'}
           </button>
           {viewTab === 'all' && (
-            <select aria-label="ขั้นตอนสัญญา" value={workflowFilter} onChange={(e) => setWorkflowFilter(e.target.value)} className="px-3 py-2 border border-input rounded-lg text-sm bg-background outline-hidden focus:ring-2 focus:ring-ring/30">
+            <NativeSelect wrapperClassName="max-w-full min-w-0 w-full sm:w-auto" aria-label="ขั้นตอนสัญญา" value={workflowFilter} onChange={(e) => setWorkflowFilter(e.target.value)} className={formControlClass}>
               <option value="">ทุก Workflow</option>
               <option value="CREATING">กำลังสร้าง</option>
               <option value="PENDING_REVIEW">รอตรวจสอบ</option>
               <option value="APPROVED">อนุมัติแล้ว</option>
               <option value="REJECTED">ปฏิเสธ</option>
-            </select>
+            </NativeSelect>
           )}
         </div>
       </div>
@@ -462,8 +466,8 @@ export default function ContractsPage() {
           />
           <div className="flex gap-3">
             <div className="flex-1">
-              <label className="text-xs text-muted-foreground block mb-1">วันเริ่มต้น</label>
-              <ThaiDateInput
+              <label htmlFor={`${fieldId}-1`} className="text-xs text-muted-foreground block mb-1">วันเริ่มต้น</label>
+              <ThaiDateInput id={`${fieldId}-1`}
                 data-date-range-custom-start="true"
                 value={startDateFilter}
                 onChange={(e) => setStartDate(e.target.value)}
@@ -471,8 +475,8 @@ export default function ContractsPage() {
               />
             </div>
             <div className="flex-1">
-              <label className="text-xs text-muted-foreground block mb-1">วันสิ้นสุด</label>
-              <ThaiDateInput
+              <label htmlFor={`${fieldId}-2`} className="text-xs text-muted-foreground block mb-1">วันสิ้นสุด</label>
+              <ThaiDateInput id={`${fieldId}-2`}
                 value={endDateFilter}
                 onChange={(e) => setEndDate(e.target.value)}
                 className="w-full px-3 py-2 border border-input rounded-lg text-sm"

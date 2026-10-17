@@ -1,3 +1,4 @@
+import { NativeSelect } from '@/components/ui/native-select';
 import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
@@ -164,12 +165,12 @@ export default function AfterSalesPage() {
         subtitle="ทุกเรื่องหลังการขายอยู่ที่นี่ — เช็คประกัน · ซ่อม · เปลี่ยนเครื่อง"
         action={
           crossBranch && branches.data ? (
-            <select
+            <NativeSelect wrapperClassName="max-w-full w-full min-w-0 sm:w-48"
               id="after-sales-branch"
               aria-label="สาขา"
               value={filters.branchId}
               onChange={(e) => setFilters((f) => ({ ...f, branchId: e.target.value, page: 1 }))}
-              className="h-11 min-w-0 rounded-lg border border-input bg-background px-3 text-sm sm:w-48"
+              className="h-11 rounded-lg border border-input bg-background px-3 text-sm"
             >
               <option value="">ทุกสาขา</option>
               {branches.data.map((b) => (
@@ -177,7 +178,7 @@ export default function AfterSalesPage() {
                   สาขา {b.name}
                 </option>
               ))}
-            </select>
+            </NativeSelect>
           ) : undefined
         }
       />

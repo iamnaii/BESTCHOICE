@@ -1,0 +1,475 @@
+{
+  "status": "PASS",
+  "stats": {
+    "startTime": "2026-10-17T08:32:38.154Z",
+    "duration": 128326.864,
+    "expected": 92,
+    "skipped": 0,
+    "unexpected": 0,
+    "flaky": 0
+  },
+  "tests": [
+    {
+      "title": "page-health-check.spec.ts / OWNER — Page Health Check / Dashboard (/) — no errors",
+      "file": "page-health-check.spec.ts",
+      "status": "expected"
+    },
+    {
+      "title": "page-health-check.spec.ts / OWNER — Page Health Check / POS (/pos) — no errors",
+      "file": "page-health-check.spec.ts",
+      "status": "expected"
+    },
+    {
+      "title": "page-health-check.spec.ts / OWNER — Page Health Check / ประวัติการขาย (/sales) — no errors",
+      "file": "page-health-check.spec.ts",
+      "status": "expected"
+    },
+    {
+      "title": "page-health-check.spec.ts / OWNER — Page Health Check / รายชื่อลูกค้า (/customers) — no errors",
+      "file": "page-health-check.spec.ts",
+      "status": "expected"
+    },
+    {
+      "title": "page-health-check.spec.ts / OWNER — Page Health Check / รายการสัญญา (/contracts) — no errors",
+      "file": "page-health-check.spec.ts",
+      "status": "expected"
+    },
+    {
+      "title": "page-health-check.spec.ts / OWNER — Page Health Check / เทมเพลตสัญญา (/contract-templates) — no errors",
+      "file": "page-health-check.spec.ts",
+      "status": "expected"
+    },
+    {
+      "title": "page-health-check.spec.ts / OWNER — Page Health Check / การชำระเงิน (/payments) — no errors",
+      "file": "page-health-check.spec.ts",
+      "status": "expected"
+    },
+    {
+      "title": "page-health-check.spec.ts / OWNER — Page Health Check / นำเข้า CSV (/payments/import-csv) — no errors",
+      "file": "page-health-check.spec.ts",
+      "status": "expected"
+    },
+    {
+      "title": "page-health-check.spec.ts / OWNER — Page Health Check / ค้างชำระ (/overdue) — no errors",
+      "file": "page-health-check.spec.ts",
+      "status": "expected"
+    },
+    {
+      "title": "page-health-check.spec.ts / OWNER — Page Health Check / ตรวจสอบสลิป (/slip-review) — no errors",
+      "file": "page-health-check.spec.ts",
+      "status": "expected"
+    },
+    {
+      "title": "page-health-check.spec.ts / OWNER — Page Health Check / คลังสินค้า (/stock) — no errors",
+      "file": "page-health-check.spec.ts",
+      "status": "expected"
+    },
+    {
+      "title": "page-health-check.spec.ts / OWNER — Page Health Check / โอนสินค้า (/stock/transfers) — no errors",
+      "file": "page-health-check.spec.ts",
+      "status": "expected"
+    },
+    {
+      "title": "page-health-check.spec.ts / OWNER — Page Health Check / แจ้งเตือนสต็อก (/stock/alerts) — no errors",
+      "file": "page-health-check.spec.ts",
+      "status": "expected"
+    },
+    {
+      "title": "page-health-check.spec.ts / OWNER — Page Health Check / ตัดสินค้า (/stock/adjustments) — no errors",
+      "file": "page-health-check.spec.ts",
+      "status": "expected"
+    },
+    {
+      "title": "page-health-check.spec.ts / OWNER — Page Health Check / นับสต็อก (/stock/count) — no errors",
+      "file": "page-health-check.spec.ts",
+      "status": "expected"
+    },
+    {
+      "title": "page-health-check.spec.ts / OWNER — Page Health Check / Inventory Workflow (/stock/workflow) — no errors",
+      "file": "page-health-check.spec.ts",
+      "status": "expected"
+    },
+    {
+      "title": "page-health-check.spec.ts / OWNER — Page Health Check / พิมพ์สติกเกอร์ (/stickers) — no errors",
+      "file": "page-health-check.spec.ts",
+      "status": "expected"
+    },
+    {
+      "title": "page-health-check.spec.ts / OWNER — Page Health Check / ผู้จัดจำหน่าย (/suppliers) — no errors",
+      "file": "page-health-check.spec.ts",
+      "status": "expected"
+    },
+    {
+      "title": "page-health-check.spec.ts / OWNER — Page Health Check / ใบสั่งซื้อ (/purchase-orders) — no errors",
+      "file": "page-health-check.spec.ts",
+      "status": "expected"
+    },
+    {
+      "title": "page-health-check.spec.ts / OWNER — Page Health Check / รายจ่าย (/expenses) — no errors",
+      "file": "page-health-check.spec.ts",
+      "status": "expected"
+    },
+    {
+      "title": "page-health-check.spec.ts / OWNER — Page Health Check / ใบเสร็จ (/receipts) — no errors",
+      "file": "page-health-check.spec.ts",
+      "status": "expected"
+    },
+    {
+      "title": "page-health-check.spec.ts / OWNER — Page Health Check / รายงาน (/reports) — no errors",
+      "file": "page-health-check.spec.ts",
+      "status": "expected"
+    },
+    {
+      "title": "page-health-check.spec.ts / OWNER — Page Health Check / กำไรขาดทุน (/profit-loss) — no errors",
+      "file": "page-health-check.spec.ts",
+      "status": "expected"
+    },
+    {
+      "title": "page-health-check.spec.ts / OWNER — Page Health Check / ตรวจสอบการเงิน (/financial-audit) — no errors",
+      "file": "page-health-check.spec.ts",
+      "status": "expected"
+    },
+    {
+      "title": "page-health-check.spec.ts / OWNER — Page Health Check / เงินรับไฟแนนซ์ (/finance-receivable) — no errors",
+      "file": "page-health-check.spec.ts",
+      "status": "expected"
+    },
+    {
+      "title": "page-health-check.spec.ts / OWNER — Page Health Check / คอมมิชชัน (/commissions) — no errors",
+      "file": "page-health-check.spec.ts",
+      "status": "expected"
+    },
+    {
+      "title": "page-health-check.spec.ts / OWNER — Page Health Check / ภาษี (/tax-reports) — no errors",
+      "file": "page-health-check.spec.ts",
+      "status": "expected"
+    },
+    {
+      "title": "page-health-check.spec.ts / OWNER — Page Health Check / รับซื้อมือสอง (/trade-in) — no errors",
+      "file": "page-health-check.spec.ts",
+      "status": "expected"
+    },
+    {
+      "title": "page-health-check.spec.ts / OWNER — Page Health Check / โปรโมชัน (/promotions) — no errors",
+      "file": "page-health-check.spec.ts",
+      "status": "expected"
+    },
+    {
+      "title": "page-health-check.spec.ts / OWNER — Page Health Check / ยึดคืน (/repossessions) — no errors",
+      "file": "page-health-check.spec.ts",
+      "status": "expected"
+    },
+    {
+      "title": "page-health-check.spec.ts / OWNER — Page Health Check / ตรวจสภาพ (/inspections) — no errors",
+      "file": "page-health-check.spec.ts",
+      "status": "expected"
+    },
+    {
+      "title": "page-health-check.spec.ts / OWNER — Page Health Check / สาขา (/branches) — no errors",
+      "file": "page-health-check.spec.ts",
+      "status": "expected"
+    },
+    {
+      "title": "page-health-check.spec.ts / OWNER — Page Health Check / ผู้ใช้ (/users) — no errors",
+      "file": "page-health-check.spec.ts",
+      "status": "expected"
+    },
+    {
+      "title": "page-health-check.spec.ts / OWNER — Page Health Check / ตั้งค่า (/settings) — no errors",
+      "file": "page-health-check.spec.ts",
+      "status": "expected"
+    },
+    {
+      "title": "page-health-check.spec.ts / OWNER — Page Health Check / ดอกเบี้ย (/settings/interest-config) — no errors",
+      "file": "page-health-check.spec.ts",
+      "status": "expected"
+    },
+    {
+      "title": "page-health-check.spec.ts / OWNER — Page Health Check / เทมเพลตราคา (/settings/pricing-templates) — no errors",
+      "file": "page-health-check.spec.ts",
+      "status": "expected"
+    },
+    {
+      "title": "page-health-check.spec.ts / OWNER — Page Health Check / LINE OA (/settings/line-oa) — no errors",
+      "file": "page-health-check.spec.ts",
+      "status": "expected"
+    },
+    {
+      "title": "page-health-check.spec.ts / OWNER — Page Health Check / SMS (/settings/sms) — no errors",
+      "file": "page-health-check.spec.ts",
+      "status": "expected"
+    },
+    {
+      "title": "page-health-check.spec.ts / OWNER — Page Health Check / Audit Logs (/audit-logs) — no errors",
+      "file": "page-health-check.spec.ts",
+      "status": "expected"
+    },
+    {
+      "title": "page-health-check.spec.ts / OWNER — Page Health Check / สถานะระบบ (/system-status) — no errors",
+      "file": "page-health-check.spec.ts",
+      "status": "expected"
+    },
+    {
+      "title": "page-health-check.spec.ts / OWNER — Page Health Check / นำเข้าข้อมูล (/migration) — no errors",
+      "file": "page-health-check.spec.ts",
+      "status": "expected"
+    },
+    {
+      "title": "page-health-check.spec.ts / OWNER — Page Health Check / การแจ้งเตือน (/notifications) — no errors",
+      "file": "page-health-check.spec.ts",
+      "status": "expected"
+    },
+    {
+      "title": "page-health-check.spec.ts / OWNER — Page Health Check / สถานะเอกสาร (/document-dashboard) — no errors",
+      "file": "page-health-check.spec.ts",
+      "status": "expected"
+    },
+    {
+      "title": "page-health-check.spec.ts / OWNER — Page Health Check / PDPA (/pdpa) — no errors",
+      "file": "page-health-check.spec.ts",
+      "status": "expected"
+    },
+    {
+      "title": "page-health-check.spec.ts / FINANCE_MANAGER — Page Health Check / Dashboard (/) — no errors",
+      "file": "page-health-check.spec.ts",
+      "status": "expected"
+    },
+    {
+      "title": "page-health-check.spec.ts / FINANCE_MANAGER — Page Health Check / ลูกค้า (/customers) — no errors",
+      "file": "page-health-check.spec.ts",
+      "status": "expected"
+    },
+    {
+      "title": "page-health-check.spec.ts / FINANCE_MANAGER — Page Health Check / สัญญา (/contracts) — no errors",
+      "file": "page-health-check.spec.ts",
+      "status": "expected"
+    },
+    {
+      "title": "page-health-check.spec.ts / FINANCE_MANAGER — Page Health Check / ชำระเงิน (/payments) — no errors",
+      "file": "page-health-check.spec.ts",
+      "status": "expected"
+    },
+    {
+      "title": "page-health-check.spec.ts / FINANCE_MANAGER — Page Health Check / ค้างชำระ (/overdue) — no errors",
+      "file": "page-health-check.spec.ts",
+      "status": "expected"
+    },
+    {
+      "title": "page-health-check.spec.ts / FINANCE_MANAGER — Page Health Check / รายจ่าย (/expenses) — no errors",
+      "file": "page-health-check.spec.ts",
+      "status": "expected"
+    },
+    {
+      "title": "page-health-check.spec.ts / FINANCE_MANAGER — Page Health Check / ใบเสร็จ (/receipts) — no errors",
+      "file": "page-health-check.spec.ts",
+      "status": "expected"
+    },
+    {
+      "title": "page-health-check.spec.ts / FINANCE_MANAGER — Page Health Check / รายงาน (/reports) — no errors",
+      "file": "page-health-check.spec.ts",
+      "status": "expected"
+    },
+    {
+      "title": "page-health-check.spec.ts / FINANCE_MANAGER — Page Health Check / กำไรขาดทุน (/profit-loss) — no errors",
+      "file": "page-health-check.spec.ts",
+      "status": "expected"
+    },
+    {
+      "title": "page-health-check.spec.ts / FINANCE_MANAGER — Page Health Check / เงินรับไฟแนนซ์ (/finance-receivable) — no errors",
+      "file": "page-health-check.spec.ts",
+      "status": "expected"
+    },
+    {
+      "title": "page-health-check.spec.ts / FINANCE_MANAGER — Page Health Check / ตรวจสอบการเงิน (/financial-audit) — no errors",
+      "file": "page-health-check.spec.ts",
+      "status": "expected"
+    },
+    {
+      "title": "page-health-check.spec.ts / FINANCE_MANAGER — Page Health Check / คอมมิชชัน (/commissions) — no errors",
+      "file": "page-health-check.spec.ts",
+      "status": "expected"
+    },
+    {
+      "title": "page-health-check.spec.ts / FINANCE_MANAGER — Page Health Check / ตรวจสอบสลิป (/slip-review) — no errors",
+      "file": "page-health-check.spec.ts",
+      "status": "expected"
+    },
+    {
+      "title": "page-health-check.spec.ts / BRANCH_MANAGER — Page Health Check / Dashboard (/) — no errors",
+      "file": "page-health-check.spec.ts",
+      "status": "expected"
+    },
+    {
+      "title": "page-health-check.spec.ts / BRANCH_MANAGER — Page Health Check / POS (/pos) — no errors",
+      "file": "page-health-check.spec.ts",
+      "status": "expected"
+    },
+    {
+      "title": "page-health-check.spec.ts / BRANCH_MANAGER — Page Health Check / ประวัติการขาย (/sales) — no errors",
+      "file": "page-health-check.spec.ts",
+      "status": "expected"
+    },
+    {
+      "title": "page-health-check.spec.ts / BRANCH_MANAGER — Page Health Check / ลูกค้า (/customers) — no errors",
+      "file": "page-health-check.spec.ts",
+      "status": "expected"
+    },
+    {
+      "title": "page-health-check.spec.ts / BRANCH_MANAGER — Page Health Check / สัญญา (/contracts) — no errors",
+      "file": "page-health-check.spec.ts",
+      "status": "expected"
+    },
+    {
+      "title": "page-health-check.spec.ts / BRANCH_MANAGER — Page Health Check / ชำระเงิน (/payments) — no errors",
+      "file": "page-health-check.spec.ts",
+      "status": "expected"
+    },
+    {
+      "title": "page-health-check.spec.ts / BRANCH_MANAGER — Page Health Check / ค้างชำระ (/overdue) — no errors",
+      "file": "page-health-check.spec.ts",
+      "status": "expected"
+    },
+    {
+      "title": "page-health-check.spec.ts / BRANCH_MANAGER — Page Health Check / คลังสินค้า (/stock) — no errors",
+      "file": "page-health-check.spec.ts",
+      "status": "expected"
+    },
+    {
+      "title": "page-health-check.spec.ts / BRANCH_MANAGER — Page Health Check / โอนสินค้า (/stock/transfers) — no errors",
+      "file": "page-health-check.spec.ts",
+      "status": "expected"
+    },
+    {
+      "title": "page-health-check.spec.ts / BRANCH_MANAGER — Page Health Check / ผู้จัดจำหน่าย (/suppliers) — no errors",
+      "file": "page-health-check.spec.ts",
+      "status": "expected"
+    },
+    {
+      "title": "page-health-check.spec.ts / BRANCH_MANAGER — Page Health Check / ใบสั่งซื้อ (/purchase-orders) — no errors",
+      "file": "page-health-check.spec.ts",
+      "status": "expected"
+    },
+    {
+      "title": "page-health-check.spec.ts / BRANCH_MANAGER — Page Health Check / รายจ่าย (/expenses) — no errors",
+      "file": "page-health-check.spec.ts",
+      "status": "expected"
+    },
+    {
+      "title": "page-health-check.spec.ts / BRANCH_MANAGER — Page Health Check / ใบเสร็จ (/receipts) — no errors",
+      "file": "page-health-check.spec.ts",
+      "status": "expected"
+    },
+    {
+      "title": "page-health-check.spec.ts / BRANCH_MANAGER — Page Health Check / รายงาน (/reports) — no errors",
+      "file": "page-health-check.spec.ts",
+      "status": "expected"
+    },
+    {
+      "title": "page-health-check.spec.ts / BRANCH_MANAGER — Page Health Check / เงินรับไฟแนนซ์ (/finance-receivable) — no errors",
+      "file": "page-health-check.spec.ts",
+      "status": "expected"
+    },
+    {
+      "title": "page-health-check.spec.ts / BRANCH_MANAGER — Page Health Check / ยึดคืน (/repossessions) — no errors",
+      "file": "page-health-check.spec.ts",
+      "status": "expected"
+    },
+    {
+      "title": "page-health-check.spec.ts / ACCOUNTANT — Page Health Check / Dashboard (/) — no errors",
+      "file": "page-health-check.spec.ts",
+      "status": "expected"
+    },
+    {
+      "title": "page-health-check.spec.ts / ACCOUNTANT — Page Health Check / ลูกค้า (/customers) — no errors",
+      "file": "page-health-check.spec.ts",
+      "status": "expected"
+    },
+    {
+      "title": "page-health-check.spec.ts / ACCOUNTANT — Page Health Check / สัญญา (/contracts) — no errors",
+      "file": "page-health-check.spec.ts",
+      "status": "expected"
+    },
+    {
+      "title": "page-health-check.spec.ts / ACCOUNTANT — Page Health Check / ชำระเงิน (/payments) — no errors",
+      "file": "page-health-check.spec.ts",
+      "status": "expected"
+    },
+    {
+      "title": "page-health-check.spec.ts / ACCOUNTANT — Page Health Check / รายจ่าย (/expenses) — no errors",
+      "file": "page-health-check.spec.ts",
+      "status": "expected"
+    },
+    {
+      "title": "page-health-check.spec.ts / ACCOUNTANT — Page Health Check / ใบเสร็จ (/receipts) — no errors",
+      "file": "page-health-check.spec.ts",
+      "status": "expected"
+    },
+    {
+      "title": "page-health-check.spec.ts / ACCOUNTANT — Page Health Check / รายงาน (/reports) — no errors",
+      "file": "page-health-check.spec.ts",
+      "status": "expected"
+    },
+    {
+      "title": "page-health-check.spec.ts / ACCOUNTANT — Page Health Check / กำไรขาดทุน (/profit-loss) — no errors",
+      "file": "page-health-check.spec.ts",
+      "status": "expected"
+    },
+    {
+      "title": "page-health-check.spec.ts / ACCOUNTANT — Page Health Check / เงินรับไฟแนนซ์ (/finance-receivable) — no errors",
+      "file": "page-health-check.spec.ts",
+      "status": "expected"
+    },
+    {
+      "title": "page-health-check.spec.ts / ACCOUNTANT — Page Health Check / ตรวจสอบการเงิน (/financial-audit) — no errors",
+      "file": "page-health-check.spec.ts",
+      "status": "expected"
+    },
+    {
+      "title": "page-health-check.spec.ts / ACCOUNTANT — Page Health Check / ตรวจสอบสลิป (/slip-review) — no errors",
+      "file": "page-health-check.spec.ts",
+      "status": "expected"
+    },
+    {
+      "title": "page-health-check.spec.ts / ACCOUNTANT — Page Health Check / คลังสินค้า (/stock) — no errors",
+      "file": "page-health-check.spec.ts",
+      "status": "expected"
+    },
+    {
+      "title": "page-health-check.spec.ts / SALES — Page Health Check / Dashboard (/) — no errors",
+      "file": "page-health-check.spec.ts",
+      "status": "expected"
+    },
+    {
+      "title": "page-health-check.spec.ts / SALES — Page Health Check / POS (/pos) — no errors",
+      "file": "page-health-check.spec.ts",
+      "status": "expected"
+    },
+    {
+      "title": "page-health-check.spec.ts / SALES — Page Health Check / ประวัติการขาย (/sales) — no errors",
+      "file": "page-health-check.spec.ts",
+      "status": "expected"
+    },
+    {
+      "title": "page-health-check.spec.ts / SALES — Page Health Check / ลูกค้า (/customers) — no errors",
+      "file": "page-health-check.spec.ts",
+      "status": "expected"
+    },
+    {
+      "title": "page-health-check.spec.ts / SALES — Page Health Check / สัญญา (/contracts) — no errors",
+      "file": "page-health-check.spec.ts",
+      "status": "expected"
+    },
+    {
+      "title": "page-health-check.spec.ts / SALES — Page Health Check / ชำระเงิน (/payments) — no errors",
+      "file": "page-health-check.spec.ts",
+      "status": "expected"
+    },
+    {
+      "title": "page-health-check.spec.ts / SALES — Page Health Check / คลังสินค้า (/stock) — no errors",
+      "file": "page-health-check.spec.ts",
+      "status": "expected"
+    }
+  ],
+  "sourceFingerprint": "9f41b6ceddb15fdd9ed8e27f1a3cbd2be5d32e6cc2a8852b7186e34fc1fde3a3",
+  "scope": "Entire Page Health Check spec, fresh disposable API/DB and isolated per-run Vite cache; no assertion changes"
+}

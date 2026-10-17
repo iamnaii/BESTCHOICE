@@ -1,10 +1,13 @@
 import ThaiDateInput from '@/components/ui/ThaiDateInput';
 import { ContactCombobox, type ContactPickResult } from '@/components/contacts/ContactCombobox';
 import { formatDateShort } from '@/utils/formatters';
+import { formLabelClass } from '@/components/ui/form-styles';
 import { cn } from '@/lib/utils';
 import { withOrderDate } from '../../po-dates.util';
 import { paymentMethodLabels } from '../../constants';
 import type { PoFormState, PurchaseMode, SupplierOption } from '../../types';
+import { useId as useUiFieldId } from 'react';
+
 
 interface StepSupplierProps {
   form: PoFormState;
@@ -28,7 +31,7 @@ const MODES: { value: PurchaseMode; label: string; sub: string }[] = [
   { value: 'receive', label: 'ของถึงแล้ว (รับเข้าเลย)', sub: 'ของอยู่ในมือ — ตรวจรับ IMEI/รูป แล้วเข้าคลังทันที ระบบออกเลข PO ให้' },
 ];
 
-const labelCls = 'block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2';
+const labelCls = formLabelClass;
 
 /**
  * First step of ซื้อสินค้า: who, and which way in. The mode toggle decides whether the wizard
@@ -49,6 +52,7 @@ export function StepSupplier({
   expectedDateError,
   inputClass,
 }: StepSupplierProps) {
+  const uiFieldId = useUiFieldId();
   return (
     <div className="rounded-xl border border-border/50 bg-card p-5 shadow-sm">
       <div className="flex items-center gap-2.5 mb-4">
@@ -108,17 +112,17 @@ export function StepSupplier({
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1.4fr_1fr_1fr] lg:items-start">
         <div>
-          <label className={labelCls}>
+          <label htmlFor={`${uiFieldId}-1`} className={labelCls}>
             ผู้ขาย (supplier) <span className="text-destructive">*</span>
           </label>
           <ContactCombobox
+            id={`${uiFieldId}-1`}
             roleNeeded="SUPPLIER"
             value={selectedSupplier?.name ?? (suppliersLoading ? 'กำลังโหลด...' : '')}
             onSelect={onSupplierSelect}
             invalid={!form.supplierId && suppliersError}
             placeholder="เลือก/ค้นหาผู้จัดจำหน่าย"
           />
-          <input type="hidden" value={form.supplierId} />
           {selectedSupplier && (
             <div className="mt-1.5 flex gap-2 flex-wrap">
               <span
@@ -138,10 +142,10 @@ export function StepSupplier({
         {mode === 'po' ? (
           <>
             <div>
-              <label className={labelCls}>
+              <label htmlFor={`${uiFieldId}-2`} className={labelCls}>
                 วันที่สั่ง <span className="text-destructive">*</span>
               </label>
-              <ThaiDateInput
+              <ThaiDateInput id={`${uiFieldId}-2`}
                 value={form.orderDate}
                 onChange={(e) => setForm(withOrderDate(form, e.target.value))}
                 className={inputClass}
@@ -149,8 +153,8 @@ export function StepSupplier({
               />
             </div>
             <div>
-              <label className={labelCls}>วันที่คาดรับสินค้า</label>
-              <ThaiDateInput
+              <label htmlFor={`${uiFieldId}-3`} className={labelCls}>วันที่คาดรับสินค้า</label>
+              <ThaiDateInput id={`${uiFieldId}-3`}
                 value={form.expectedDate}
                 onChange={(e) => setForm({ ...form, expectedDate: e.target.value })}
                 min={form.orderDate || undefined}

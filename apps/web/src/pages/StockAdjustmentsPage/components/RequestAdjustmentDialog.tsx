@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, Search, X } from 'lucide-react';
 import { useDebounce } from '@/hooks/useDebounce';
 import Modal from '@/components/ui/Modal';
+import { formLabelClass } from '@/components/ui/form-styles';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { getStatusBadgeProps, productStatusMap } from '@/lib/status-badges';
@@ -94,7 +95,7 @@ export default function RequestAdjustmentDialog({ open, onClose, onCreated, init
 
         {/* 1. เครื่อง */}
         <div>
-          <label htmlFor="sa-search" className="block text-sm font-medium text-foreground mb-1">
+          <label htmlFor="sa-search" className={formLabelClass}>
             เครื่อง
           </label>
           {product ? (
@@ -179,7 +180,7 @@ export default function RequestAdjustmentDialog({ open, onClose, onCreated, init
 
         {/* 2. เหตุผล */}
         <fieldset>
-          <legend className="block text-sm font-medium text-foreground mb-1">เหตุผล</legend>
+          <legend className={formLabelClass}>เหตุผล</legend>
           <div className="grid gap-2 sm:grid-cols-2">
             {REASON_OPTIONS.map((o) => (
               <label
@@ -208,7 +209,7 @@ export default function RequestAdjustmentDialog({ open, onClose, onCreated, init
 
         {/* 3. รูปหลักฐาน */}
         <div>
-          <label htmlFor="sa-photos" className="block text-sm font-medium text-foreground mb-1">
+          <label htmlFor="sa-photos" className={formLabelClass}>
             รูปหลักฐาน {option?.requiresPhoto ? <span className="text-destructive">*</span> : <span className="text-muted-foreground font-normal">(ไม่บังคับ)</span>}
           </label>
           <input
@@ -242,7 +243,7 @@ export default function RequestAdjustmentDialog({ open, onClose, onCreated, init
 
         {/* 4. หมายเหตุ */}
         <div>
-          <label htmlFor="sa-notes" className="block text-sm font-medium text-foreground mb-1">
+          <label htmlFor="sa-notes" className={formLabelClass}>
             หมายเหตุ
           </label>
           <textarea

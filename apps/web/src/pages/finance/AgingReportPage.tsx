@@ -1,6 +1,6 @@
 import { OVERDUE_BUCKETS } from '@/lib/aging-presentation';
 import { toBangkokDateString } from '@/lib/date';
-import { useState } from 'react';
+import { useId as useUiFieldId, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router';
 import api from '@/lib/api';
@@ -48,6 +48,7 @@ const inputClass =
   'w-full px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden';
 
 export default function AgingReportPage() {
+  const uiFieldId = useUiFieldId();
   const now = new Date();
   const [asOfDate, setAsOfDate] = useState(toBangkokDateString(now));
   const { cacheTtlReports } = useUiFlags();
@@ -78,10 +79,10 @@ export default function AgingReportPage() {
 
       <div className="flex flex-wrap gap-3 mb-6">
         <div>
-          <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
+          <label htmlFor={`${uiFieldId}-1`} className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
             ณ วันที่
           </label>
-          <ThaiDateInput
+          <ThaiDateInput id={`${uiFieldId}-1`}
             value={asOfDate}
             onChange={(e) => setAsOfDate(e.target.value)}
             className={`${inputClass} w-auto`}

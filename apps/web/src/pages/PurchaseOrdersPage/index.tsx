@@ -310,6 +310,7 @@ export default function PurchaseOrdersPage() {
 
       <PODetailModal
         isOpen={data.isDetailModalOpen}
+        returnFocusKey={data.detailReturnFocusKey}
         onClose={() => {
           data.setIsDetailModalOpen(false);
           data.setPODetail(null);

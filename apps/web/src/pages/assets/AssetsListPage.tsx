@@ -376,7 +376,7 @@ export default function AssetsListPage() {
         <CardContent className="p-4 flex flex-col md:flex-row gap-3">
           <div className="relative flex-1 min-w-[200px]">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
-            <Input
+            <Input aria-label="ค้นหาเลขที่เอกสาร / รหัสสินทรัพย์ / ชื่อ / ผู้ขาย"
               className="pl-10"
               placeholder="ค้นหาเลขที่เอกสาร / รหัสสินทรัพย์ / ชื่อ / ผู้ขาย..."
               value={searchInput}
@@ -387,7 +387,7 @@ export default function AssetsListPage() {
             value={category || 'ALL'}
             onValueChange={(v) => setParam('category', v === 'ALL' ? null : v)}
           >
-            <SelectTrigger className="w-full md:w-48">
+            <SelectTrigger aria-label="หมวดสินทรัพย์" className="w-full md:w-48">
               <SelectValue placeholder="ประเภททั้งหมด" />
             </SelectTrigger>
             <SelectContent>
@@ -402,7 +402,7 @@ export default function AssetsListPage() {
             value={status || 'ALL'}
             onValueChange={(v) => setParam('status', v === 'ALL' ? null : v)}
           >
-            <SelectTrigger className="w-full md:w-48">
+            <SelectTrigger aria-label="สถานะสินทรัพย์" className="w-full md:w-48">
               <SelectValue placeholder="สถานะทั้งหมด" />
             </SelectTrigger>
             <SelectContent>

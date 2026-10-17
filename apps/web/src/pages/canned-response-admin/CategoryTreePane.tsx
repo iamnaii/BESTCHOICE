@@ -124,7 +124,7 @@ export default function CategoryTreePane(props: Props) {
   return (
     <div className="flex flex-col h-full border-r border-border bg-card">
       <div className="px-3 py-3 border-b border-border bg-muted/30">
-        <Input
+        <Input aria-label="ค้นหา"
           value={searchQuery}
           onChange={(e) => onSearchChange(e.target.value)}
           placeholder="ค้นหา..."

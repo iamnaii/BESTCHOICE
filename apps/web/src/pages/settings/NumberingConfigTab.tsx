@@ -209,7 +209,7 @@ export default function NumberingConfigTab() {
           {isLoading ? (
             <div className="text-sm text-muted-foreground py-4">กำลังโหลดข้อมูล...</div>
           ) : (
-            <Table>
+            <Table className="min-w-[40rem]">
               <TableHeader>
                 <TableRow>
                   <TableHead>ประเภทเอกสาร</TableHead>

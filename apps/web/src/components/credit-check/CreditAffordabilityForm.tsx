@@ -1,3 +1,4 @@
+import { NativeSelect } from '@/components/ui/native-select';
 import { useEffect, useId, useRef, useState } from 'react';
 import api, { getErrorMessage } from '@/lib/api';
 import { Button } from '@/components/ui/button';
@@ -103,10 +104,10 @@ function CreditAffordabilityFields({ creditCheckId, onChange }: {
           value={values[field]} onChange={event => change(field, event.target.value)} />
       </div>)}
       <div><label htmlFor={`${id}-payday`} className="mb-1 block text-xs">วันเงินเดือนออก / วันครบกำหนดชำระ</label>
-        <select id={`${id}-payday`} className={inputClass} value={values.salaryPayDay} onChange={event => change('salaryPayDay', event.target.value)}>
+        <NativeSelect wrapperClassName="max-w-full w-full" id={`${id}-payday`} className={inputClass} value={values.salaryPayDay} onChange={event => change('salaryPayDay', event.target.value)}>
           <option value="">เลือกวันที่ยืนยันแล้ว</option>
           {Array.from({ length: 31 }, (_, index) => index + 1).map(day => <option key={day} value={day}>{day === 31 ? 'สิ้นเดือน' : `วันที่ ${day}`}</option>)}
-        </select>
+        </NativeSelect>
       </div>
     </div>
     <div><label htmlFor={`${id}-evidence`} className="mb-1 block text-xs">หลักฐานและที่มาของตัวเลข (อย่างน้อย 20 ตัวอักษร)</label>

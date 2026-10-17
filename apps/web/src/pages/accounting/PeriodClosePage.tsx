@@ -1,3 +1,4 @@
+import { NativeSelect } from '@/components/ui/native-select';
 import { useState, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Lock, Unlock } from 'lucide-react';
@@ -185,7 +186,7 @@ export default function PeriodClosePage() {
         </QueryBoundary>
 
         {/* Year selector */}
-        <select
+        <NativeSelect wrapperClassName="max-w-full w-auto"
           value={year}
           disabled={isActing}
           onChange={(e) => setYear(Number(e.target.value))}
@@ -197,7 +198,7 @@ export default function PeriodClosePage() {
               {y + 543}
             </option>
           ))}
-        </select>
+        </NativeSelect>
       </div>
 
       {/* Periods table */}

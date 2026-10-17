@@ -1,3 +1,6 @@
+import { NativeSelect } from '@/components/ui/native-select';
+import { formControlClass } from '@/components/ui/form-styles';
+import { useId as useFieldId } from 'react';
 import ThaiDateInput from '@/components/ui/ThaiDateInput';
 import { ExpenseFormState } from './types';
 import TaxDisallowedHint from './TaxDisallowedHint';
@@ -9,12 +12,13 @@ interface Props {
 }
 
 export function VendorSection({ state, onChange }: Props) {
+  const fieldId = useFieldId();
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <div>
-          <label className="block text-xs font-medium mb-1">ผู้ขาย <span className="text-destructive">*</span></label>
-          <VendorCombobox
+          <label htmlFor={`${fieldId}-1`} className="block text-xs font-medium mb-1">ผู้ขาย <span className="text-destructive">*</span></label>
+          <VendorCombobox id={`${fieldId}-1`}
             value={state.vendorName}
             onSelectSupplier={(s) =>
               onChange({
@@ -27,57 +31,57 @@ export function VendorSection({ state, onChange }: Props) {
           />
         </div>
         <div>
-          <label className="block text-xs font-medium mb-1">ประเภทผู้ขาย</label>
-          <select
+          <label htmlFor={`${fieldId}-2`} className="block text-xs font-medium mb-1">ประเภทผู้ขาย</label>
+          <NativeSelect wrapperClassName="max-w-full w-full min-w-0" id={`${fieldId}-2`}
             value={state.whtFormType}
             onChange={(e) => onChange({ whtFormType: e.target.value as 'PND3' | 'PND53' | '' })}
-            className="w-full px-3 py-2 border border-input rounded-lg text-sm bg-background"
+            className={formControlClass}
           >
             <option value="">— เลือก —</option>
             <option value="PND53">นิติบุคคล (ภงด.53)</option>
             <option value="PND3">บุคคลธรรมดา (ภงด.3)</option>
-          </select>
+          </NativeSelect>
         </div>
         <div>
-          <label className="block text-xs font-medium mb-1">เลขประจำตัวผู้เสียภาษี</label>
-          <input
+          <label htmlFor={`${fieldId}-3`} className="block text-xs font-medium mb-1">เลขประจำตัวผู้เสียภาษี</label>
+          <input id={`${fieldId}-3`}
             type="text"
             value={state.vendorTaxId}
             onChange={(e) => onChange({ vendorTaxId: e.target.value })}
             placeholder="13 หลัก"
             maxLength={13}
-            className="w-full px-3 py-2 border border-input rounded-lg text-sm bg-background"
+            className={formControlClass}
           />
         </div>
         <div>
-          <label className="block text-xs font-medium mb-1">เลขใบกำกับ</label>
-          <input
+          <label htmlFor={`${fieldId}-4`} className="block text-xs font-medium mb-1">เลขใบกำกับ</label>
+          <input id={`${fieldId}-4`}
             type="text"
             value={state.taxInvoiceNo}
             onChange={(e) => onChange({ taxInvoiceNo: e.target.value })}
             placeholder="INV-..."
-            className="w-full px-3 py-2 border border-input rounded-lg text-sm bg-background"
+            className={formControlClass}
           />
         </div>
         <div>
-          <label className="block text-xs font-medium mb-1">วันที่ใบกำกับ <span className="text-destructive">*</span></label>
-          <ThaiDateInput
+          <label htmlFor={`${fieldId}-5`} className="block text-xs font-medium mb-1">วันที่ใบกำกับ <span className="text-destructive">*</span></label>
+          <ThaiDateInput id={`${fieldId}-5`}
             value={state.documentDate}
             onChange={(e) => onChange({ documentDate: e.target.value })}
             required
-            className="w-full px-3 py-2 border border-input rounded-lg text-sm bg-background"
+            className={formControlClass}
           />
         </div>
         <div>
-          <label className="block text-xs font-medium mb-1">ประเภทราคา</label>
-          <select
+          <label htmlFor={`${fieldId}-6`} className="block text-xs font-medium mb-1">ประเภทราคา</label>
+          <NativeSelect wrapperClassName="max-w-full w-full min-w-0" id={`${fieldId}-6`}
             value={state.priceType}
             onChange={(e) => onChange({ priceType: e.target.value as 'EXCLUSIVE' | 'INCLUSIVE' })}
-            className="w-full px-3 py-2 border border-input rounded-lg text-sm bg-background"
+            className={formControlClass}
           >
             <option value="EXCLUSIVE">ไม่รวม VAT</option>
             <option value="INCLUSIVE">รวม VAT</option>
-          </select>
+          </NativeSelect>
         </div>
       </div>
 

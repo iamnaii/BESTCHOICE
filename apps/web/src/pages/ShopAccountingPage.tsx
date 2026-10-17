@@ -1,5 +1,5 @@
 import { toBangkokDateString, getReportDateRange } from '@/lib/date';
-import { useState } from 'react';
+import { useId as useUiFieldId, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
 import QueryBoundary from '@/components/QueryBoundary';
@@ -163,6 +163,7 @@ function TrialBalanceTab({
   asOfDate: string;
   setAsOfDate: (v: string) => void;
 }) {
+  const uiFieldId = useUiFieldId();
   const query = useQuery({
     queryKey: ['shop-trial-balance', asOfDate],
     queryFn: async (): Promise<TrialBalanceData> => {
@@ -178,10 +179,10 @@ function TrialBalanceTab({
       <CardHeader>
         <div className="flex flex-wrap items-end gap-3">
           <div>
-            <label className="mb-1 block text-xs font-medium leading-snug text-muted-foreground">
+            <label htmlFor={`${uiFieldId}-1`} className="mb-1 block text-xs font-medium leading-snug text-muted-foreground">
               ณ วันที่
             </label>
-            <ThaiDateInput value={asOfDate} onChange={(e) => setAsOfDate(e.target.value || todayStr())} />
+            <ThaiDateInput id={`${uiFieldId}-1`} value={asOfDate} onChange={(e) => setAsOfDate(e.target.value || todayStr())} />
           </div>
           {query.data && (
             <div className="ml-auto text-sm leading-snug">
@@ -298,6 +299,7 @@ function ProfitLossTab({
   setPeriodStart: (v: string) => void;
   setPeriodEnd: (v: string) => void;
 }) {
+  const uiFieldId = useUiFieldId();
   const query = useQuery({
     queryKey: ['shop-profit-loss', periodStart, periodEnd],
     queryFn: async (): Promise<ProfitLossData> => {
@@ -313,19 +315,19 @@ function ProfitLossTab({
       <CardHeader>
         <div className="flex flex-wrap items-end gap-3">
           <div>
-            <label className="mb-1 block text-xs font-medium leading-snug text-muted-foreground">
+            <label htmlFor={`${uiFieldId}-1`} className="mb-1 block text-xs font-medium leading-snug text-muted-foreground">
               ตั้งแต่
             </label>
-            <ThaiDateInput
+            <ThaiDateInput id={`${uiFieldId}-1`}
               value={periodStart}
               onChange={(e) => setPeriodStart(e.target.value || monthStart())}
             />
           </div>
           <div>
-            <label className="mb-1 block text-xs font-medium leading-snug text-muted-foreground">
+            <label htmlFor={`${uiFieldId}-2`} className="mb-1 block text-xs font-medium leading-snug text-muted-foreground">
               ถึง
             </label>
-            <ThaiDateInput
+            <ThaiDateInput id={`${uiFieldId}-2`}
               value={periodEnd}
               onChange={(e) => setPeriodEnd(e.target.value || todayStr())}
             />

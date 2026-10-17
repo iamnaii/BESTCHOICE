@@ -1,3 +1,4 @@
+import { formControlClass } from '@/components/ui/form-styles';
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router';
 import { useQuery, useMutation } from '@tanstack/react-query';
@@ -12,8 +13,7 @@ import PhotoUpload from './components/PhotoUpload';
 import BranchSupplierCard from './components/BranchSupplierCard';
 import PriceCard, { PriceRow } from './components/PriceCard';
 
-const inputCls =
-  'w-full px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden';
+const inputCls = formControlClass;
 
 const statusOptions = createProductStatusOptions;
 

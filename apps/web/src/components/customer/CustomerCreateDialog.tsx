@@ -1,3 +1,6 @@
+import { NativeSelect } from '@/components/ui/native-select';
+import { useId as useFieldId } from 'react';
+import { formControlClass } from '@/components/ui/form-styles';
 import { parseOcrAddress } from '@/lib/ocr-address';
 import { useRef, useState, type ReactNode } from 'react';
 import { useForm } from 'react-hook-form';
@@ -157,6 +160,7 @@ export default function CustomerCreateDialog({ open, onOpenChange, ...formProps 
 type FormProps = Omit<CustomerCreateDialogProps, 'open' | 'onOpenChange'> & { onClose: () => void };
 
 function CustomerCreateForm({ mode = 'create', fillCustomerId, initialValues, initialAddressIdCard, context, submitLabel = 'บันทึก', onCreated, onFilled, onUseExisting, linkedToChat = false, onClose }: FormProps) {
+  const fieldId = useFieldId();
   const isFill = mode === 'fill';
   /* ถามช่องทางที่รู้จักเฉพาะลูกค้าหน้าร้านที่สร้างใหม่ — โหมด fill / ผูกห้องแชท = ทักแชทมาก่อน ระบบรู้ช่องทางแล้ว */
   const askHeardFrom = !isFill && !linkedToChat;
@@ -417,7 +421,7 @@ function CustomerCreateForm({ mode = 'create', fillCustomerId, initialValues, in
     setReferences(prev => prev.map((r, i) => i === index ? { ...r, [field]: value } : r));
   };
 
-  const inputClass = 'w-full px-3 py-2 border border-input rounded-lg text-sm outline-hidden focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background';
+  const inputClass = formControlClass;
   const selectClass = `${inputClass}`;
 
   const existingSince = customerSinceLabel(existing?.createdAt);
@@ -440,7 +444,7 @@ function CustomerCreateForm({ mode = 'create', fillCustomerId, initialValues, in
      โหมดสร้าง: เลขบัตร(3) · เบอร์(2) · ชื่อเล่น(1) — คลาส/ข้อความเดิมทุกตัว
      โหมด fill (mockup บอร์ด 3): เบอร์(4) · ชื่อเล่น(2) → เลขบัตร(4) · ชื่อ Facebook(2) ── */
   const nationalIdField = (
-    <div className={isFill ? 'col-span-4' : 'col-span-3'}>
+    <div className="min-w-0 sm:col-span-3">
       <FormField
         control={form.control}
         name="nationalId"
@@ -467,7 +471,7 @@ function CustomerCreateForm({ mode = 'create', fillCustomerId, initialValues, in
     </div>
   );
   const phoneField = (
-    <div className={isFill ? 'col-span-4' : 'col-span-2'}>
+    <div className="min-w-0 sm:col-span-3">
       <FormField
         control={form.control}
         name="phone"
@@ -484,7 +488,7 @@ function CustomerCreateForm({ mode = 'create', fillCustomerId, initialValues, in
     </div>
   );
   const nicknameField = (
-    <div className={isFill ? 'col-span-2' : 'col-span-1'}>
+    <div className="min-w-0 sm:col-span-3">
       <FormField
         control={form.control}
         name="nickname"
@@ -611,8 +615,8 @@ function CustomerCreateForm({ mode = 'create', fillCustomerId, initialValues, in
                 <p className="text-xs text-muted-foreground">ชื่อ, เลขบัตร, เบอร์ติดต่อ</p>
               </div>
             </div>
-            <div className="grid grid-cols-6 gap-3">
-              <div className="col-span-2">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-6">
+              <div className="min-w-0 sm:col-span-2">
                 <FormField
                   control={form.control}
                   name="prefix"
@@ -620,17 +624,17 @@ function CustomerCreateForm({ mode = 'create', fillCustomerId, initialValues, in
                     <FormItem>
                       <FormLabel className="text-xs font-medium">คำนำหน้า <span className="text-destructive">*</span></FormLabel>
                       <FormControl>
-                        <select {...field} className={selectClass}>
+                        <NativeSelect wrapperClassName="max-w-full w-full min-w-0" {...field} className={selectClass}>
                           <option value="">-- เลือก --</option>
                           {THAI_NAME_PREFIXES.map(p => <option key={p} value={p}>{p}</option>)}
-                        </select>
+                        </NativeSelect>
                       </FormControl>
                       <FormMessage className="text-xs" />
                     </FormItem>
                   )}
                 />
               </div>
-              <div className="col-span-2">
+              <div className="min-w-0 sm:col-span-2">
                 <FormField
                   control={form.control}
                   name="firstName"
@@ -645,7 +649,7 @@ function CustomerCreateForm({ mode = 'create', fillCustomerId, initialValues, in
                   )}
                 />
               </div>
-              <div className="col-span-2">
+              <div className="min-w-0 sm:col-span-2">
                 <FormField
                   control={form.control}
                   name="lastName"
@@ -667,7 +671,7 @@ function CustomerCreateForm({ mode = 'create', fillCustomerId, initialValues, in
                   {phoneField}
                   {nicknameField}
                   {nationalIdField}
-                  <div className="col-span-2">
+                  <div className="min-w-0 sm:col-span-2">
                     <FormField
                       control={form.control}
                       name="facebookName"
@@ -691,7 +695,7 @@ function CustomerCreateForm({ mode = 'create', fillCustomerId, initialValues, in
                 </>
               )}
               {!isFill && (
-                <div className="col-span-2">
+                <div className="min-w-0 sm:col-span-2">
                   <FormField
                     control={form.control}
                     name="birthDate"
@@ -708,7 +712,7 @@ function CustomerCreateForm({ mode = 'create', fillCustomerId, initialValues, in
                 </div>
               )}
               {!isFill && (
-                <div className="col-span-1 flex items-end pb-1">
+                <div className="sm:col-span-1 flex items-end pb-1">
                   {form.watch('birthDate') && (() => {
                     const bd = new Date(form.watch('birthDate') as string);
                     const today = new Date();
@@ -760,13 +764,13 @@ function CustomerCreateForm({ mode = 'create', fillCustomerId, initialValues, in
                     </label>
                   </div>
                   <div className="mb-3">
-                    <label className="block text-xs font-medium text-foreground mb-1.5">ประเภทที่อยู่</label>
-                    <select value={formExtra.addressCurrentType} onChange={(e) => setFormExtra(prev => ({ ...prev, addressCurrentType: e.target.value }))} className={inputClass}>
+                    <label htmlFor={`${fieldId}-1`} className="block text-xs font-medium text-foreground mb-1.5">ประเภทที่อยู่</label>
+                    <NativeSelect wrapperClassName="max-w-full w-full min-w-0" id={`${fieldId}-1`} value={formExtra.addressCurrentType} onChange={(e) => setFormExtra(prev => ({ ...prev, addressCurrentType: e.target.value }))} className={inputClass}>
                       <option value="">-- เลือก --</option>
                       <option value="OWN">บ้านตัวเอง</option>
                       <option value="RELATIVE">บ้านญาติ</option>
                       <option value="RENT">เช่าอาศัย</option>
-                    </select>
+                    </NativeSelect>
                   </div>
                   {sameAddress ? (
                     <p className="text-xs text-muted-foreground italic">ใช้ที่อยู่เดียวกับที่อยู่ตามบัตรประชาชน</p>
@@ -775,8 +779,8 @@ function CustomerCreateForm({ mode = 'create', fillCustomerId, initialValues, in
                   )}
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-foreground mb-1.5">ลิงก์ Google Map</label>
-                  <input type="url" value={formExtra.googleMapLink} onChange={(e) => setFormExtra(prev => ({ ...prev, googleMapLink: e.target.value }))} className={inputClass} placeholder="https://maps.google.com/..." />
+                  <label htmlFor={`${fieldId}-2`} className="block text-xs font-medium text-foreground mb-1.5">ลิงก์ Google Map</label>
+                  <input id={`${fieldId}-2`} type="url" value={formExtra.googleMapLink} onChange={(e) => setFormExtra(prev => ({ ...prev, googleMapLink: e.target.value }))} className={inputClass} placeholder="https://maps.google.com/..." />
                 </div>
               </div>
             </details>
@@ -796,7 +800,7 @@ function CustomerCreateForm({ mode = 'create', fillCustomerId, initialValues, in
                 <ChevronDown className="size-4 text-muted-foreground transition-transform group-open:rotate-180" />
               </summary>
               <div className="px-5 pb-5 border-t border-border pt-4">
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <div>
                     <FormField
                       control={form.control}
@@ -888,8 +892,8 @@ function CustomerCreateForm({ mode = 'create', fillCustomerId, initialValues, in
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-foreground mb-1.5">จำนวนเพื่อน Facebook</label>
-                    <input type="text" value={formExtra.facebookFriends} onChange={(e) => setFormExtra(prev => ({ ...prev, facebookFriends: e.target.value }))} className={inputClass} placeholder="จำนวนเพื่อน" />
+                    <label htmlFor={`${fieldId}-3`} className="block text-xs font-medium text-foreground mb-1.5">จำนวนเพื่อน Facebook</label>
+                    <input id={`${fieldId}-3`} type="text" value={formExtra.facebookFriends} onChange={(e) => setFormExtra(prev => ({ ...prev, facebookFriends: e.target.value }))} className={inputClass} placeholder="จำนวนเพื่อน" />
                   </div>
                 </div>
               </div>
@@ -910,7 +914,7 @@ function CustomerCreateForm({ mode = 'create', fillCustomerId, initialValues, in
                 <ChevronDown className="size-4 text-muted-foreground transition-transform group-open:rotate-180" />
               </summary>
               <div className="px-5 pb-5 border-t border-border pt-4">
-                <div className="grid grid-cols-2 gap-3 mb-3">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 mb-3">
                   <div>
                     <FormField
                       control={form.control}
@@ -934,7 +938,7 @@ function CustomerCreateForm({ mode = 'create', fillCustomerId, initialValues, in
                         <FormItem>
                           <FormLabel className="text-xs font-medium">อาชีพ</FormLabel>
                           <FormControl>
-                            <select {...field} className={inputClass}>
+                            <NativeSelect wrapperClassName="max-w-full w-full min-w-0" {...field} className={inputClass}>
                               <option value="">-- เลือก --</option>
                               <option value="พนักงานบริษัท">พนักงานบริษัท</option>
                               <option value="รับจ้างทั่วไป">รับจ้างทั่วไป</option>
@@ -950,7 +954,7 @@ function CustomerCreateForm({ mode = 'create', fillCustomerId, initialValues, in
                               <option value="นักศึกษา">นักศึกษา</option>
                               <option value="แม่บ้าน/ไม่ได้ทำงาน">แม่บ้าน/ไม่ได้ทำงาน</option>
                               <option value="อื่นๆ">อื่นๆ</option>
-                            </select>
+                            </NativeSelect>
                           </FormControl>
                           <FormMessage className="text-xs" />
                         </FormItem>
@@ -1016,32 +1020,32 @@ function CustomerCreateForm({ mode = 'create', fillCustomerId, initialValues, in
                       <span className="size-5 rounded-full bg-muted text-muted-foreground flex items-center justify-center text-xs font-semibold">{idx + 1}</span>
                       <span className="text-xs font-medium text-foreground">บุคคลอ้างอิง {idx + 1}</span>
                     </div>
-                    <div className="grid grid-cols-6 gap-3">
-                      <div className="col-span-2">
-                        <label className="block text-xs font-medium text-foreground mb-1.5">คำนำหน้า</label>
-                        <select value={ref.prefix} onChange={(e) => updateRef(idx, 'prefix', e.target.value)} className={selectClass}>
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-6">
+                      <div className="min-w-0 sm:col-span-2">
+                        <label htmlFor={`${fieldId}-reference-${idx}-4`} className="block text-xs font-medium text-foreground mb-1.5">คำนำหน้า</label>
+                        <NativeSelect wrapperClassName="max-w-full w-full min-w-0" id={`${fieldId}-reference-${idx}-4`} value={ref.prefix} onChange={(e) => updateRef(idx, 'prefix', e.target.value)} className={selectClass}>
                           <option value="">-- เลือก --</option>
                           {THAI_NAME_PREFIXES.map(p => <option key={p} value={p}>{p}</option>)}
-                        </select>
+                        </NativeSelect>
                       </div>
-                      <div className="col-span-2">
-                        <label className="block text-xs font-medium text-foreground mb-1.5">ชื่อ</label>
-                        <input type="text" value={ref.firstName} onChange={(e) => updateRef(idx, 'firstName', e.target.value)} className={inputClass} placeholder="กรอกชื่อ" />
+                      <div className="min-w-0 sm:col-span-2">
+                        <label htmlFor={`${fieldId}-reference-${idx}-5`} className="block text-xs font-medium text-foreground mb-1.5">ชื่อ</label>
+                        <input id={`${fieldId}-reference-${idx}-5`} type="text" value={ref.firstName} onChange={(e) => updateRef(idx, 'firstName', e.target.value)} className={inputClass} placeholder="กรอกชื่อ" />
                       </div>
-                      <div className="col-span-2">
-                        <label className="block text-xs font-medium text-foreground mb-1.5">นามสกุล</label>
-                        <input type="text" value={ref.lastName} onChange={(e) => updateRef(idx, 'lastName', e.target.value)} className={inputClass} placeholder="กรอกนามสกุล" />
+                      <div className="min-w-0 sm:col-span-2">
+                        <label htmlFor={`${fieldId}-reference-${idx}-6`} className="block text-xs font-medium text-foreground mb-1.5">นามสกุล</label>
+                        <input id={`${fieldId}-reference-${idx}-6`} type="text" value={ref.lastName} onChange={(e) => updateRef(idx, 'lastName', e.target.value)} className={inputClass} placeholder="กรอกนามสกุล" />
                       </div>
-                      <div className="col-span-3">
-                        <label className="block text-xs font-medium text-foreground mb-1.5">เบอร์หลัก</label>
-                        <input type="tel" value={ref.phone} onChange={(e) => updateRef(idx, 'phone', e.target.value)} className={inputClass} placeholder="0XX-XXX-XXXX" />
+                      <div className="min-w-0 sm:col-span-3">
+                        <label htmlFor={`${fieldId}-reference-${idx}-7`} className="block text-xs font-medium text-foreground mb-1.5">เบอร์หลัก</label>
+                        <input id={`${fieldId}-reference-${idx}-7`} type="tel" value={ref.phone} onChange={(e) => updateRef(idx, 'phone', e.target.value)} className={inputClass} placeholder="0XX-XXX-XXXX" />
                       </div>
-                      <div className="col-span-3">
-                        <label className="block text-xs font-medium text-foreground mb-1.5">ความสัมพันธ์</label>
-                        <select value={ref.relationship} onChange={(e) => updateRef(idx, 'relationship', e.target.value)} className={selectClass}>
+                      <div className="min-w-0 sm:col-span-3">
+                        <label htmlFor={`${fieldId}-reference-${idx}-8`} className="block text-xs font-medium text-foreground mb-1.5">ความสัมพันธ์</label>
+                        <NativeSelect wrapperClassName="max-w-full w-full min-w-0" id={`${fieldId}-reference-${idx}-8`} value={ref.relationship} onChange={(e) => updateRef(idx, 'relationship', e.target.value)} className={selectClass}>
                           <option value="">-- เลือก --</option>
                           {RELATIONSHIP_OPTIONS.map(r => <option key={r} value={r}>{r}</option>)}
-                        </select>
+                        </NativeSelect>
                       </div>
                     </div>
                   </div>

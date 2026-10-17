@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { NativeSelect } from '@/components/ui/native-select';
+import { useId as useUiFieldId, useState } from 'react';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -71,6 +72,7 @@ const emptyForm = {
 /* ─── Component ─── */
 
 export default function PromotionsPage() {
+  const uiFieldId = useUiFieldId();
   useDocumentTitle('โปรโมชัน');
   const queryClient = useQueryClient();
 
@@ -322,8 +324,8 @@ export default function PromotionsPage() {
       <Modal isOpen={showModal} onClose={closeModal} title={editingId ? 'แก้ไขโปรโมชัน' : 'สร้างโปรโมชัน'} size="lg">
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <Label>ชื่อโปรโมชัน *</Label>
-            <Input
+            <Label htmlFor={`${uiFieldId}-1`}>ชื่อโปรโมชัน *</Label>
+            <Input id={`${uiFieldId}-1`}
               className="mt-1"
               placeholder="เช่น ลดราคา iPhone 15 ต้อนรับปีใหม่"
               value={form.name}
@@ -331,26 +333,26 @@ export default function PromotionsPage() {
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <Label>ประเภท</Label>
-              <select
-                className="mt-1 w-full h-10 rounded-md border border-input bg-background px-3 text-sm"
+              <Label htmlFor={`${uiFieldId}-2`}>ประเภท</Label>
+              <NativeSelect wrapperClassName="max-w-full mt-1 w-full" id={`${uiFieldId}-2`}
+                className="h-10 rounded-md border border-input bg-background px-3 text-sm"
                 value={form.type}
                 onChange={(e) => setForm((f) => ({ ...f, type: e.target.value }))}
               >
                 {Object.entries(typeLabels).map(([val, label]) => (
                   <option key={val} value={val}>{label}</option>
                 ))}
-              </select>
+              </NativeSelect>
             </div>
             <div>
-              <Label>
+              <Label htmlFor={`${uiFieldId}-3`}>
                 {form.type === 'PERCENTAGE_DISCOUNT' || form.type === 'SPECIAL_RATE'
                   ? 'อัตรา (%)'
                   : 'จำนวนเงิน (บาท)'}
               </Label>
-              <Input
+              <Input id={`${uiFieldId}-3`}
                 className="mt-1"
                 type="number"
                 step="0.01"
@@ -361,10 +363,10 @@ export default function PromotionsPage() {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <Label>วันที่เริ่ม</Label>
-              <Input
+              <Label htmlFor={`${uiFieldId}-4`}>วันที่เริ่ม</Label>
+              <Input id={`${uiFieldId}-4`}
                 className="mt-1"
                 type="date"
                 value={form.startDate}
@@ -372,8 +374,8 @@ export default function PromotionsPage() {
               />
             </div>
             <div>
-              <Label>วันที่สิ้นสุด</Label>
-              <Input
+              <Label htmlFor={`${uiFieldId}-5`}>วันที่สิ้นสุด</Label>
+              <Input id={`${uiFieldId}-5`}
                 className="mt-1"
                 type="date"
                 value={form.endDate}
@@ -382,10 +384,10 @@ export default function PromotionsPage() {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <Label>จำนวนใช้สูงสุด</Label>
-              <Input
+              <Label htmlFor={`${uiFieldId}-6`}>จำนวนใช้สูงสุด</Label>
+              <Input id={`${uiFieldId}-6`}
                 className="mt-1"
                 type="number"
                 placeholder="ไม่จำกัด"
@@ -407,8 +409,8 @@ export default function PromotionsPage() {
           </div>
 
           <div>
-            <Label>เงื่อนไข / หมายเหตุ</Label>
-            <textarea
+            <Label htmlFor={`${uiFieldId}-7`}>เงื่อนไข / หมายเหตุ</Label>
+            <textarea id={`${uiFieldId}-7`}
               className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm min-h-[80px] resize-y"
               placeholder="เงื่อนไขการใช้โปรโมชัน..."
               value={form.conditions}

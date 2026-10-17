@@ -1,3 +1,4 @@
+import { formControlClass } from '@/components/ui/form-styles';
 import { DeviceDisclosureSummary } from '@/components/product/DeviceDisclosureSummary';
 import { DeviceOriginFilter } from '@/components/product/DeviceOriginFilter';
 import type { Product } from '../types';
@@ -30,10 +31,11 @@ export function ProductSelectStep({
       <DeviceOriginFilter value={deviceOrigin} onChange={setDeviceOrigin} />
       <input
         type="text"
+        aria-label="ค้นหาสินค้า"
         placeholder="ค้นหาสินค้า (ชื่อ, ยี่ห้อ, รุ่น, IMEI)..."
         value={productSearch}
         onChange={(e) => setProductSearch(e.target.value)}
-        className="w-full px-3 py-2 border border-input rounded-lg text-sm mb-4 focus:ring-2 focus:ring-ring/30 focus:border-ring transition-colors outline-hidden"
+        className={`${formControlClass} mb-4`}
       />
       <div className="grid gap-3">
         {visibleProducts.map((p) => (

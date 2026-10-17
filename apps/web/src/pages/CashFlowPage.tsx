@@ -1,5 +1,5 @@
 import { getReportDateRange } from '@/lib/date';
-import { useState } from 'react';
+import { useId as useUiFieldId, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
 import QueryBoundary from '@/components/QueryBoundary';
@@ -141,6 +141,7 @@ function SummaryCard({
 }
 
 export function CashFlowPage() {
+  const uiFieldId = useUiFieldId();
   const range = getReportDateRange('this_month');
   const [startDate, setStartDate] = useState(range.startDate);
   const [endDate, setEndDate] = useState(range.endDate);
@@ -178,20 +179,20 @@ export function CashFlowPage() {
       {/* Filters */}
       <div className="flex flex-wrap gap-3 mb-6">
         <div>
-          <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
+          <label htmlFor={`${uiFieldId}-1`} className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
             ตั้งแต่
           </label>
-          <ThaiDateInput
+          <ThaiDateInput id={`${uiFieldId}-1`}
             value={startDate}
             onChange={(e) => setStartDate(e.target.value)}
             className={`${inputClass} w-auto`}
           />
         </div>
         <div>
-          <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
+          <label htmlFor={`${uiFieldId}-2`} className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
             ถึง
           </label>
-          <ThaiDateInput
+          <ThaiDateInput id={`${uiFieldId}-2`}
             value={endDate}
             onChange={(e) => setEndDate(e.target.value)}
             className={`${inputClass} w-auto`}

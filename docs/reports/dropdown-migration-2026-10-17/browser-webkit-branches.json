@@ -1,0 +1,113 @@
+{
+  "scope": "actual app/API with disposable DB; open/select/restore filters and modal fields; no form submission; sampled pages, not every conditional state",
+  "results": [
+    {
+      "name": "appointments",
+      "route": "/appointments?zone=shop",
+      "actualURL": "http://127.0.0.1:51763/appointments?zone=shop&branchId=78a05662-5dd3-4c04-84b9-29cceab5e38c&day=2026-10-17",
+      "heading": "นัดเข้าร้าน",
+      "width": 1440,
+      "status": "PASS",
+      "interactions": [
+        {
+          "index": 0,
+          "result": "selected and restored"
+        },
+        {
+          "index": 1,
+          "result": "selected and restored"
+        }
+      ],
+      "controls": [
+        {
+          "label": "สาขาที่ดู",
+          "name": "",
+          "slot": "native-select",
+          "appearance": "none",
+          "paddingRight": "40px",
+          "height": 44,
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif",
+          "fontSize": "14px",
+          "selected": "ทดสอบระบบ DOCS-AC6F5EBA สาขา A",
+          "hasDecorativeArrow": true,
+          "arrowInset": 12,
+          "arrowCenter": 0,
+          "overflow": 0,
+          "x": 98,
+          "width": 280
+        },
+        {
+          "label": "สาขา",
+          "name": "",
+          "slot": "native-select",
+          "appearance": "none",
+          "paddingRight": "40px",
+          "height": 44,
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif",
+          "fontSize": "14px",
+          "selected": "ทดสอบระบบ DOCS-AC6F5EBA สาขา A",
+          "hasDecorativeArrow": true,
+          "arrowInset": 12,
+          "arrowCenter": 0,
+          "overflow": 0,
+          "x": 119,
+          "width": 310
+        }
+      ]
+    },
+    {
+      "name": "appointments",
+      "route": "/appointments?zone=shop",
+      "actualURL": "http://127.0.0.1:51763/appointments?zone=shop&branchId=78a05662-5dd3-4c04-84b9-29cceab5e38c&day=2026-10-17",
+      "heading": "นัดเข้าร้าน",
+      "width": 390,
+      "status": "PASS",
+      "interactions": [
+        {
+          "index": 0,
+          "result": "selected and restored"
+        },
+        {
+          "index": 1,
+          "result": "selected and restored"
+        }
+      ],
+      "controls": [
+        {
+          "label": "สาขาที่ดู",
+          "name": "",
+          "slot": "native-select",
+          "appearance": "none",
+          "paddingRight": "40px",
+          "height": 44,
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif",
+          "fontSize": "16px",
+          "selected": "ทดสอบระบบ DOCS-AC6F5EBA สาขา A",
+          "hasDecorativeArrow": true,
+          "arrowInset": 12,
+          "arrowCenter": 0,
+          "overflow": 0,
+          "x": 16,
+          "width": 358
+        },
+        {
+          "label": "สาขา",
+          "name": "",
+          "slot": "native-select",
+          "appearance": "none",
+          "paddingRight": "40px",
+          "height": 44,
+          "font": "\"Noto Sans Thai Looped\", system-ui, -apple-system, sans-serif",
+          "fontSize": "16px",
+          "selected": "ทดสอบระบบ DOCS-AC6F5EBA สาขา A",
+          "hasDecorativeArrow": true,
+          "arrowInset": 12,
+          "arrowCenter": 0,
+          "overflow": 0,
+          "x": 33,
+          "width": 324
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,825 @@
+﻿file,suite,test,project,status,run,line
+account-roles-admin.spec.ts,account-roles-admin.spec.ts / AccountRolesPage — admin,OWNER can access /settings/account-roles and sees role table,chromium,passed,business-regression,28
+account-roles-admin.spec.ts,account-roles-admin.spec.ts / AccountRolesPage — admin,ACCOUNTANT can view role-map table (read access per #935),chromium,passed,business-regression,53
+account-roles-admin.spec.ts,account-roles-admin.spec.ts / AccountRolesPage — admin,OWNER opens Edit modal for non-required role and sees combobox,chromium,passed,business-regression,73
+account-roles-admin.spec.ts,account-roles-admin.spec.ts / AccountRolesPage — admin,REQUIRED_ROLES rows show lock icon + cannot be deactivated,chromium,passed,business-regression,98
+accounting-coa-multi-entity.spec.ts,accounting-coa-multi-entity.spec.ts / Accounting — CoA multi-entity (Phase A.1a),GET /chart-of-accounts returns all accounts when no companyId param,chromium,passed,business-regression,32
+accounting-coa-multi-entity.spec.ts,accounting-coa-multi-entity.spec.ts / Accounting — CoA multi-entity (Phase A.1a),GET /chart-of-accounts returns both the FINANCE and the SHOP chart,chromium,passed,business-regression,44
+accounting-coa-multi-entity.spec.ts,accounting-coa-multi-entity.spec.ts / Accounting — CoA multi-entity (Phase A.1a),SHOP-owned accounts are identified by the leading `S` code prefix,chromium,passed,business-regression,56
+accounting-contract-activation.spec.ts,accounting-contract-activation.spec.ts / Accounting — Contract Activation creates JE (Phase A.0),all recent JournalEntries are balanced (F-1-002 — no silent unbalanced post),chromium,passed,business-regression,27
+accounting-contract-activation.spec.ts,accounting-contract-activation.spec.ts / Accounting — Contract Activation creates JE (Phase A.0),activated contracts each have at least one related JournalEntry (F-2-001),chromium,skipped,business-regression,58
+accounting-inter-company-flow.spec.ts,accounting-inter-company-flow.spec.ts / Accounting — Inter-company JE invariant,GET /accounting/intercompany/balance reports both books and their drift,chromium,passed,business-rerun,38
+accounting-inter-company-flow.spec.ts,accounting-inter-company-flow.spec.ts / Accounting — Inter-company JE invariant,every recent JournalEntry is balanced (no silent unbalanced post),chromium,passed,business-regression,68
+accounting-paysolutions-webhook.spec.ts,accounting-paysolutions-webhook.spec.ts / Accounting — PaySolutions webhook creates JE (F-1-003),webhook endpoint exists and rejects unsigned/invalid payloads,chromium,passed,business-regression,23
+accounting-paysolutions-webhook.spec.ts,accounting-paysolutions-webhook.spec.ts / Accounting — PaySolutions webhook creates JE (F-1-003),recent PAID payments via gateway have matching JournalEntry (F-1-003),chromium,skipped,business-regression,37
+accounting-period-close.spec.ts,accounting-period-close.spec.ts / Accounting — Period Close hardening (F-6-003),rejects close with forceCloseReason shorter than 50 chars (DTO validation),chromium,passed,business-regression,29
+accounting-period-close.spec.ts,accounting-period-close.spec.ts / Accounting — Period Close hardening (F-6-003),accepts payload shape with valid forceCloseReason ≥50 chars (no DTO error),chromium,passed,business-regression,49
+accounting-period-close.spec.ts,accounting-period-close.spec.ts / Accounting — Period Close hardening (F-6-003),closing endpoint exists and requires auth,chromium,passed,business-regression,74
+accounting-period-close.spec.ts,accounting-period-close.spec.ts / Accounting — Period Close hardening (F-6-003),full close-with-audit-issues flow,chromium,skipped,business-regression,85
+accounting-period-close.spec.ts,accounting-period-close.spec.ts / Accounting — Period reopen (F-6-004),reopen endpoint exists and rejects unauth,chromium,passed,business-regression,101
+admin-settings.spec.ts,admin-settings.spec.ts / จัดการสาขา,should load branches page,chromium,passed,business-regression,14
+admin-settings.spec.ts,admin-settings.spec.ts / จัดการสาขา,should display branch count in subtitle,chromium,passed,business-regression,19
+admin-settings.spec.ts,admin-settings.spec.ts / จัดการสาขา,should show branch list,chromium,passed,business-regression,24
+admin-settings.spec.ts,admin-settings.spec.ts / จัดการสาขา,should have create branch button,chromium,passed,business-regression,38
+admin-settings.spec.ts,admin-settings.spec.ts / จัดการสาขา,should no error on page,chromium,passed,business-regression,58
+admin-settings.spec.ts,admin-settings.spec.ts / จัดการผู้ใช้,should load users page,chromium,passed,business-regression,73
+admin-settings.spec.ts,admin-settings.spec.ts / จัดการผู้ใช้,should display user count in subtitle,chromium,passed,business-regression,78
+admin-settings.spec.ts,admin-settings.spec.ts / จัดการผู้ใช้,should show user list,chromium,passed,business-regression,83
+admin-settings.spec.ts,admin-settings.spec.ts / จัดการผู้ใช้,should have invite user button,chromium,passed,business-regression,95
+admin-settings.spec.ts,admin-settings.spec.ts / จัดการผู้ใช้,should display role badges,chromium,passed,business-regression,115
+admin-settings.spec.ts,admin-settings.spec.ts / จัดการผู้ใช้,should have search for users,chromium,passed,business-regression,126
+admin-settings.spec.ts,admin-settings.spec.ts / ตั้งค่าระบบ,should load settings page,chromium,passed,business-regression,146
+admin-settings.spec.ts,admin-settings.spec.ts / ตั้งค่าระบบ,should display subtitle,chromium,passed,business-regression,151
+admin-settings.spec.ts,admin-settings.spec.ts / ตั้งค่าระบบ,should show settings form,chromium,passed,business-regression,156
+admin-settings.spec.ts,admin-settings.spec.ts / ตั้งค่าระบบ,should have save button,chromium,passed,business-regression,164
+admin-settings.spec.ts,admin-settings.spec.ts / ตั้งค่าระบบ,should no error on page,chromium,passed,business-regression,175
+admin-settings.spec.ts,admin-settings.spec.ts / ราคาตั้งต้น,should load pricing templates page,chromium,passed,business-regression,190
+admin-settings.spec.ts,admin-settings.spec.ts / ราคาตั้งต้น,should display subtitle about pricing,chromium,passed,business-regression,195
+admin-settings.spec.ts,admin-settings.spec.ts / ราคาตั้งต้น,should show pricing template list or empty state,chromium,passed,business-regression,200
+admin-settings.spec.ts,admin-settings.spec.ts / ราคาตั้งต้น,should have create template action,chromium,passed,business-regression,212
+admin-settings.spec.ts,admin-settings.spec.ts / ราคาตั้งต้น,should no error on page,chromium,passed,business-regression,223
+admin-settings.spec.ts,admin-settings.spec.ts / เทมเพลตสัญญา,should load contract templates page,chromium,passed,business-regression,238
+admin-settings.spec.ts,admin-settings.spec.ts / เทมเพลตสัญญา,should show template list or editor,chromium,passed,business-regression,248
+admin-settings.spec.ts,admin-settings.spec.ts / เทมเพลตสัญญา,should have create/edit template action,chromium,passed,business-regression,260
+admin-settings.spec.ts,admin-settings.spec.ts / เทมเพลตสัญญา,should no error on page,chromium,passed,business-regression,271
+admin-settings.spec.ts,admin-settings.spec.ts / PDPA,should load PDPA page,chromium,passed,business-regression,286
+admin-settings.spec.ts,admin-settings.spec.ts / PDPA,should display subtitle about data protection,chromium,passed,business-regression,291
+admin-settings.spec.ts,admin-settings.spec.ts / PDPA,should show consent management section,chromium,passed,business-regression,298
+admin-settings.spec.ts,admin-settings.spec.ts / PDPA,should no error on page,chromium,passed,business-regression,306
+admin-settings.spec.ts,admin-settings.spec.ts / Audit Logs,should load audit logs page,chromium,passed,business-regression,321
+admin-settings.spec.ts,admin-settings.spec.ts / Audit Logs,should display subtitle,chromium,passed,business-regression,326
+admin-settings.spec.ts,admin-settings.spec.ts / Audit Logs,should show audit log list or empty state,chromium,passed,business-regression,331
+admin-settings.spec.ts,admin-settings.spec.ts / Audit Logs,should have search/filter,chromium,passed,business-regression,345
+admin-settings.spec.ts,admin-settings.spec.ts / Audit Logs,should show detail on log click,chromium,passed,business-regression,355
+admin-settings.spec.ts,admin-settings.spec.ts / Audit Logs,should have filter by action type,chromium,passed,business-regression,365
+admin-settings.spec.ts,admin-settings.spec.ts / Financial Audit,should load financial audit page,chromium,passed,business-regression,383
+admin-settings.spec.ts,admin-settings.spec.ts / Financial Audit,should display subtitle,chromium,passed,business-regression,388
+admin-settings.spec.ts,admin-settings.spec.ts / Financial Audit,should show audit trail list or empty state,chromium,passed,business-regression,393
+admin-settings.spec.ts,admin-settings.spec.ts / Financial Audit,should have search/filter,chromium,passed,business-regression,405
+admin-settings.spec.ts,admin-settings.spec.ts / Financial Audit,should no error on page,chromium,passed,business-regression,415
+admin-settings.spec.ts,admin-settings.spec.ts / สถานะระบบ,should load system status page,chromium,passed,business-regression,430
+admin-settings.spec.ts,admin-settings.spec.ts / สถานะระบบ,should display subtitle about health check,chromium,passed,business-regression,435
+admin-settings.spec.ts,admin-settings.spec.ts / สถานะระบบ,should show system components status,chromium,passed,business-regression,442
+admin-settings.spec.ts,admin-settings.spec.ts / สถานะระบบ,should display connection status indicators,chromium,passed,business-regression,450
+admin-settings.spec.ts,admin-settings.spec.ts / สถานะระบบ,should no error on page,chromium,passed,business-regression,461
+admin-settings.spec.ts,admin-settings.spec.ts / นำเข้าข้อมูล,should load migration page,chromium,passed,business-regression,476
+admin-settings.spec.ts,admin-settings.spec.ts / นำเข้าข้อมูล,should display subtitle about data import,chromium,passed,business-regression,481
+admin-settings.spec.ts,admin-settings.spec.ts / นำเข้าข้อมูล,should show import options or file upload,chromium,passed,business-regression,486
+admin-settings.spec.ts,admin-settings.spec.ts / นำเข้าข้อมูล,should no error on page,chromium,passed,business-regression,497
+advanced-operations.spec.ts,advanced-operations.spec.ts / Advanced Operations,BRANCH_MANAGER can access inspections page,chromium,passed,business-regression,20
+advanced-operations.spec.ts,advanced-operations.spec.ts / Advanced Operations,OWNER can access repossessions page,chromium,passed,business-regression,28
+advanced-operations.spec.ts,advanced-operations.spec.ts / Advanced Operations,OWNER can access reports page,chromium,passed,business-rerun,37
+advanced-operations.spec.ts,advanced-operations.spec.ts / Advanced Operations,ACCOUNTANT can access financial audit,chromium,passed,business-regression,45
+advanced-operations.spec.ts,advanced-operations.spec.ts / Advanced Operations,OWNER can access trade-in page,chromium,passed,business-regression,53
+advanced-operations.spec.ts,advanced-operations.spec.ts / Advanced Operations,OWNER can access promotions page,chromium,passed,business-regression,60
+advanced-operations.spec.ts,advanced-operations.spec.ts / Advanced Operations,OWNER can access VAT report page,chromium,passed,business-regression,69
+advanced-operations.spec.ts,advanced-operations.spec.ts / Advanced Operations,OWNER can access commissions page,chromium,passed,business-regression,76
+advanced-operations.spec.ts,advanced-operations.spec.ts / Advanced Operations,SALES can access their commissions,chromium,passed,business-regression,83
+after-sales-hub.spec.ts,after-sales-hub.spec.ts / After-sales hub — แจ้งปัญหาเครื่อง → ซ่อมที่ร้าน → ปิดเคส,SALES เปิดเคสซ่อม ค่าซ่อมจริง 500 ผู้จ่ายลูกค้า จนปิดเคสพร้อมเอกสาร OI-,chromium,passed,business-regression,64
+approval-workflow.spec.ts,approval-workflow.spec.ts / Approval Workflow (D1.2.1),PAYROLL doc requires approval (doctype gate),chromium,passed,business-regression,157
+approval-workflow.spec.ts,approval-workflow.spec.ts / Approval Workflow (D1.2.1),Expense >=50k requires approval (threshold gate),chromium,passed,business-regression,180
+approval-workflow.spec.ts,approval-workflow.spec.ts / Approval Workflow (D1.2.1),Low-value EXPENSE skips approval (under threshold + not PAYROLL),chromium,passed,business-regression,202
+approval-workflow.spec.ts,approval-workflow.spec.ts / Approval Workflow (D1.2.1),Owner approves PENDING_APPROVAL → auto-posts,chromium,passed,business-regression,225
+approval-workflow.spec.ts,approval-workflow.spec.ts / Approval Workflow (D1.2.1),Non-approver gets 403 on approve,chromium,passed,business-regression,251
+approval-workflow.spec.ts,approval-workflow.spec.ts / Approval Workflow (D1.2.1),Approver-list user can approve,chromium,passed,business-regression,270
+asset-audit-trail.spec.ts,asset-audit-trail.spec.ts,per-asset audit endpoint returns log entries,chromium,passed,business-regression,11
+assets-create-post.spec.ts,assets-create-post.spec.ts / Asset — create + POST,list page renders,chromium,passed,business-regression,23
+assets-create-post.spec.ts,assets-create-post.spec.ts / Asset — create + POST,create draft via API → POST → verify POSTED in UI,chromium,passed,business-regression,33
+assets-create-post.spec.ts,assets-create-post.spec.ts / Asset — create + POST,entry page (/assets/new) renders form sections,chromium,passed,business-regression,87
+assets-dispose.spec.ts,assets-dispose.spec.ts / Asset — dispose,dispose POSTED asset via SALE (produces JE),chromium,passed,business-regression,20
+assets-dispose.spec.ts,assets-dispose.spec.ts / Asset — dispose,WRITE_OFF asset (no proceeds),chromium,passed,business-regression,91
+assets-journal.spec.ts,assets-journal.spec.ts,asset journal endpoint returns paginated rows,chromium,passed,business-regression,11
+assets-register.spec.ts,assets-register.spec.ts,register endpoint returns historical NBV,chromium,passed,business-regression,11
+assets-reverse.spec.ts,assets-reverse.spec.ts / Asset — reverse,OWNER can reverse a POSTED asset with reason,chromium,passed,business-regression,19
+assets-reverse.spec.ts,assets-reverse.spec.ts / Asset — reverse,reverse rejects reason < 5 characters,chromium,passed,business-regression,78
+assets-summary-report.spec.ts,assets-summary-report.spec.ts,summary report returns array for each groupBy,chromium,passed,business-regression,11
+assets-write-off.spec.ts,assets-write-off.spec.ts / Asset — write-off variations,write-off asset with partial depreciation accrued,chromium,passed,business-regression,16
+assets-write-off.spec.ts,assets-write-off.spec.ts / Asset — write-off variations,dispose via UI page form (smoke test),chromium,passed,business-regression,74
+bookings.spec.ts,bookings.spec.ts / /bookings — booking lifecycle smoke,"SALES: page loads, can open create dialog (PENDING_DEPOSIT entry point)",chromium,passed,business-regression,11
+bookings.spec.ts,bookings.spec.ts / /bookings — booking lifecycle smoke,OWNER: list view loads without error boundary (covers expired bookings present),chromium,passed,business-regression,59
+chat-inbox.spec.ts,chat-inbox.spec.ts / Customer inbox and legacy /chat links,old chat link redirects without trapping browser back,chromium,passed,business-regression,9
+chat-inbox.spec.ts,chat-inbox.spec.ts / Customer inbox and legacy /chat links,canonical inbox keeps conversation filters and empty panel,chromium,passed,business-regression,21
+chat-inbox.spec.ts,chat-inbox.spec.ts / Customer inbox and legacy /chat links,old chat link opens the mobile inbox without horizontal overflow,chromium,passed,business-regression,30
+collections-session.spec.ts,collections-session.spec.ts / Collections Guided Session,SALES sees Session/Library toggle on /collections,chromium,passed,business-regression,14
+collections-session.spec.ts,collections-session.spec.ts / Collections Guided Session,SALES toggling to Library reveals existing tabs,chromium,passed,business-regression,29
+collections-session.spec.ts,collections-session.spec.ts / Collections Guided Session,OWNER lands on /collections in LIBRARY view,chromium,passed,business-regression,43
+collections-smoke.spec.ts,collections-smoke.spec.ts / /collections workflow hub,OWNER: loads page with 5 tabs visible (including ภาพรวมทีม/วิเคราะห์),chromium,passed,business-regression,13
+collections-smoke.spec.ts,collections-smoke.spec.ts / /collections workflow hub,OWNER: switching to นัดชำระ loads the promise queue,chromium,passed,business-regression,38
+collections-smoke.spec.ts,collections-smoke.spec.ts / /collections workflow hub,OWNER: ทั้งหมด tab renders existing overdue content,chromium,passed,business-regression,55
+collections-smoke.spec.ts,collections-smoke.spec.ts / /overdue backward compat,existing /overdue still loads when flag is off (default),chromium,passed,business-regression,72
+collections-smoke.spec.ts,collections-smoke.spec.ts / /collections power features,no crash on tab switching through all 5 tabs,chromium,passed,business-regression,90
+collections-smoke.spec.ts,collections-smoke.spec.ts / /collections power features,Customer 360 panel opens + closes without error,chromium,passed,business-regression,101
+collections-smoke.spec.ts,collections-smoke.spec.ts / /collections power features,ad-hoc LINE dialog opens from contract card,chromium,passed,business-regression,144
+contract-creation.spec.ts,contract-creation.spec.ts / สร้างสัญญาผ่อนชำระ,should load contract creation page,chromium,passed,business-regression,10
+contract-creation.spec.ts,contract-creation.spec.ts / สร้างสัญญาผ่อนชำระ,should show step indicator with multiple steps,chromium,passed,business-regression,18
+contract-creation.spec.ts,contract-creation.spec.ts / สร้างสัญญาผ่อนชำระ,should allow customer search in step 1,chromium,passed,business-regression,25
+contract-creation.spec.ts,contract-creation.spec.ts / สร้างสัญญาผ่อนชำระ,should show add customer button/modal,chromium,passed,business-regression,39
+contract-creation.spec.ts,contract-creation.spec.ts / สร้างสัญญาผ่อนชำระ,should calculate installment when product and terms are set,chromium,passed,business-regression,51
+contract-template.spec.ts,contract-template.spec.ts / Contract Template — Full Template Loaded,contract preview shows full hire-purchase template (not fallback),chromium,skipped,business-regression,14
+contract-template.spec.ts,contract-template.spec.ts / Contract Template — Full Template Loaded,"contract preview HTML is non-trivial size (full template, not fallback)",chromium,skipped,business-regression,68
+contract-workflow.spec.ts,contract-workflow.spec.ts / สร้างสัญญา Wizard,should load contract create wizard,chromium,passed,business-regression,14
+contract-workflow.spec.ts,contract-workflow.spec.ts / สร้างสัญญา Wizard,should show product selection step first,chromium,passed,business-regression,24
+contract-workflow.spec.ts,contract-workflow.spec.ts / สร้างสัญญา Wizard,should display product list or empty state in step 1,chromium,passed,business-regression,32
+contract-workflow.spec.ts,contract-workflow.spec.ts / สร้างสัญญา Wizard,should navigate wizard steps with next/back,chromium,passed,business-regression,44
+contract-workflow.spec.ts,contract-workflow.spec.ts / สร้างสัญญา Wizard,should validate required fields before proceeding,chromium,passed,business-regression,77
+contract-workflow.spec.ts,contract-workflow.spec.ts / สร้างสัญญา Wizard,should show installment plan configuration step,chromium,passed,business-regression,101
+contract-workflow.spec.ts,contract-workflow.spec.ts / สร้างสัญญา Wizard,should show document upload step,chromium,passed,business-regression,135
+contract-workflow.spec.ts,contract-workflow.spec.ts / รายละเอียดสัญญา,should navigate to contract detail from list,chromium,passed,business-regression,152
+contract-workflow.spec.ts,contract-workflow.spec.ts / รายละเอียดสัญญา,should display contract information sections,chromium,passed,business-regression,171
+contract-workflow.spec.ts,contract-workflow.spec.ts / รายละเอียดสัญญา,should show payment history in contract detail,chromium,passed,business-regression,189
+contract-workflow.spec.ts,contract-workflow.spec.ts / รายละเอียดสัญญา,should display status badge,chromium,passed,business-regression,203
+contract-workflow.spec.ts,contract-workflow.spec.ts / เซ็นสัญญา,should load sign page from contract detail,chromium,passed,business-regression,226
+contract-workflow.spec.ts,contract-workflow.spec.ts / เซ็นสัญญา,should display e-signature canvas when available,chromium,passed,business-regression,248
+contract-workflow.spec.ts,contract-workflow.spec.ts / เซ็นสัญญา,should show signature step indicators (customer/staff),chromium,passed,business-regression,273
+contract-workflow.spec.ts,contract-workflow.spec.ts / เซ็นสัญญา,should have clear and re-sign buttons,chromium,passed,business-regression,298
+contract-workflow.spec.ts,contract-workflow.spec.ts / สถานะเอกสารสัญญา,should load document dashboard,chromium,passed,business-regression,336
+contract-workflow.spec.ts,contract-workflow.spec.ts / สถานะเอกสารสัญญา,should display subtitle,chromium,passed,business-regression,341
+contract-workflow.spec.ts,contract-workflow.spec.ts / สถานะเอกสารสัญญา,should show document tracking list or empty state,chromium,passed,business-regression,346
+contract-workflow.spec.ts,contract-workflow.spec.ts / สถานะเอกสารสัญญา,should have filter or search capability,chromium,passed,business-regression,360
+contract-workflow.spec.ts,contract-workflow.spec.ts / P0: Contract Role-Based Workflow,SALES can access contract creation page,chromium,passed,business-regression,376
+contract-workflow.spec.ts,contract-workflow.spec.ts / P0: Contract Role-Based Workflow,SALES can see contract creation form elements,chromium,passed,business-regression,390
+contract-workflow.spec.ts,contract-workflow.spec.ts / P0: Contract Role-Based Workflow,FINANCE_MANAGER can view contracts list,chromium,passed,business-regression,411
+contract-workflow.spec.ts,contract-workflow.spec.ts / P0: Contract Role-Based Workflow,FINANCE_MANAGER can access contract detail,chromium,passed,business-regression,440
+contract-workflow.spec.ts,contract-workflow.spec.ts / P0: Contract Role-Based Workflow,FINANCE_MANAGER can see contract status and approval actions,chromium,passed,business-regression,465
+contract-workflow.spec.ts,contract-workflow.spec.ts / P0: Contract Role-Based Workflow,OWNER can access all contracts,chromium,passed,business-regression,505
+contracts.spec.ts,contracts.spec.ts / Contracts Page,should display contracts list page,chromium,passed,business-regression,20
+contracts.spec.ts,contracts.spec.ts / Contracts Page,should navigate to contract creation wizard,chromium,passed,business-regression,33
+contracts.spec.ts,contracts.spec.ts / Contracts Page,should search for products in step 1,chromium,passed,business-regression,57
+contracts.spec.ts,contracts.spec.ts / Contracts Page,should navigate through wizard steps with product selection,chromium,passed,business-regression,72
+contracts.spec.ts,contracts.spec.ts / Contracts Page,should upload document in contract creation,chromium,passed,business-regression,102
+contracts.spec.ts,contracts.spec.ts / Contracts Page,should display contracts in table with status badges,chromium,passed,business-regression,118
+crud-flows.spec.ts,crud-flows.spec.ts / Customer CRUD Flow,1. Create customer via UI,chromium,passed,business-regression,64
+crud-flows.spec.ts,crud-flows.spec.ts / Customer CRUD Flow,2. Read — find created customer via search,chromium,passed,business-regression,123
+crud-flows.spec.ts,crud-flows.spec.ts / Customer CRUD Flow,3. Update — edit customer name,chromium,passed,business-regression,138
+crud-flows.spec.ts,crud-flows.spec.ts / Customer CRUD Flow,4. Delete — remove test customer,chromium,passed,business-regression,185
+crud-flows.spec.ts,crud-flows.spec.ts / Expense CRUD Flow,1. Create expense via UI,chromium,passed,business-regression,265
+crud-flows.spec.ts,crud-flows.spec.ts / Expense CRUD Flow,2. Read — find expense in list,chromium,passed,business-regression,324
+crud-flows.spec.ts,crud-flows.spec.ts / Expense CRUD Flow,3. Expense status workflow (draft → submit),chromium,passed,business-regression,349
+crud-flows.spec.ts,crud-flows.spec.ts / Supplier CRUD Flow,1. Create supplier via UI,chromium,passed,business-regression,378
+crud-flows.spec.ts,crud-flows.spec.ts / Supplier CRUD Flow,2. Read — find supplier via search,chromium,passed,business-regression,438
+crud-flows.spec.ts,crud-flows.spec.ts / Supplier CRUD Flow,3. Navigate to supplier detail,chromium,passed,business-regression,456
+crud-flows.spec.ts,crud-flows.spec.ts / POS Sale Flow,complete cash sale flow,chromium,passed,business-regression,480
+crud-flows.spec.ts,crud-flows.spec.ts / Contract Create Wizard Flow,step-by-step wizard navigation,chromium,passed,business-regression,532
+crud-flows.spec.ts,crud-flows.spec.ts / Stock Search & Filter Flow,filter by status and search,chromium,passed,business-regression,633
+crud-flows.spec.ts,crud-flows.spec.ts / Stock Search & Filter Flow,pagination works,chromium,passed,business-regression,673
+crud-flows.spec.ts,crud-flows.spec.ts / Payment Recording Flow,view payment tabs and filters,chromium,passed,business-regression,704
+crud-flows.spec.ts,crud-flows.spec.ts / Payment Recording Flow,search payments,chromium,passed,business-regression,720
+customer-tier.spec.ts,customer-tier.spec.ts / Customer Tier badge,customers list shows tier column,chromium,passed,business-regression,10
+customer-tier.spec.ts,customer-tier.spec.ts / Customer Tier badge,customer detail page shows tier badge in header,chromium,passed,business-regression,17
+customers.spec.ts,customers.spec.ts / Customers Page,should navigate to /customers and display customer list,chromium,passed,business-regression,41
+customers.spec.ts,customers.spec.ts / Customers Page,should open create customer modal,chromium,passed,business-regression,54
+customers.spec.ts,customers.spec.ts / Customers Page,should create a new customer successfully,chromium,passed,business-regression,76
+customers.spec.ts,customers.spec.ts / Customers Page,should search and filter customers,chromium,passed,business-regression,135
+customers.spec.ts,customers.spec.ts / Customers Page,should navigate to customer detail page,chromium,passed,business-regression,155
+dashboard.spec.ts,dashboard.spec.ts / Dashboard Page,should display Dashboard heading and subtitle,chromium,passed,business-regression,9
+dashboard.spec.ts,dashboard.spec.ts / Dashboard Page,should load KPI banner with key metrics,chromium,passed,business-regression,19
+dashboard.spec.ts,dashboard.spec.ts / Dashboard Page,should display KPI numeric values (non-negative),chromium,passed,business-regression,31
+dashboard.spec.ts,dashboard.spec.ts / Dashboard Page,should display quick action shortcut cards,chromium,passed,business-regression,43
+dashboard.spec.ts,dashboard.spec.ts / Dashboard Page,should navigate to /contracts when clicking สัญญาทั้งหมด KPI,chromium,passed,business-regression,54
+dashboard.spec.ts,dashboard.spec.ts / Dashboard Page,should navigate to /collections when clicking ค้าง/ผิดนัด KPI,chromium,passed,business-regression,64
+dashboard.spec.ts,dashboard.spec.ts / Dashboard Page,should display monthly revenue section for non-SALES role,chromium,passed,business-regression,74
+dashboard.spec.ts,dashboard.spec.ts / Dashboard Page,should display aging summary section,chromium,passed,business-regression,84
+debt-collection.spec.ts,debt-collection.spec.ts / ยึดคืน & ขายต่อ,should load repossessions page,chromium,passed,business-regression,14
+debt-collection.spec.ts,debt-collection.spec.ts / ยึดคืน & ขายต่อ,shows a short subtitle and expandable return instructions,chromium,passed,business-regression,19
+debt-collection.spec.ts,debt-collection.spec.ts / ยึดคืน & ขายต่อ,should show repossession list or empty state,chromium,passed,business-regression,28
+debt-collection.spec.ts,debt-collection.spec.ts / ยึดคืน & ขายต่อ,should have search functionality,chromium,passed,business-regression,42
+debt-collection.spec.ts,debt-collection.spec.ts / ยึดคืน & ขายต่อ,should show the รอยึดเครื่อง card and no longer link to the payments page,chromium,passed,business-regression,52
+debt-collection.spec.ts,debt-collection.spec.ts / ยึดคืน & ขายต่อ,should display status indicators for repossessions,chromium,passed,business-regression,63
+debt-collection.spec.ts,debt-collection.spec.ts / ยึดคืน & ขายต่อ — non-OWNER access,FINANCE_MANAGER เห็นหน้ายึดคืนได้ และไม่มีลิงก์ไปหน้ารับชำระ,chromium,passed,business-regression,83
+depreciation-manual.spec.ts,depreciation-manual.spec.ts / Depreciation — manual run,preview + manual run depreciation via API,chromium,passed,business-regression,14
+document-config.spec.ts,document-config.spec.ts / ตั้งค่าเอกสาร (เลขที่/รูปแบบ),OWNER can navigate and see the doc-config form,chromium,passed,business-regression,18
+early-payoff.spec.ts,early-payoff.spec.ts / ปิดยอดก่อนกำหนด (Early Payoff),should load contracts page,chromium,passed,business-regression,10
+early-payoff.spec.ts,early-payoff.spec.ts / ปิดยอดก่อนกำหนด (Early Payoff),should show contract list with status badges,chromium,passed,business-regression,18
+early-payoff.spec.ts,early-payoff.spec.ts / ปิดยอดก่อนกำหนด (Early Payoff),should navigate to contract detail,chromium,passed,business-regression,31
+early-payoff.spec.ts,early-payoff.spec.ts / ปิดยอดก่อนกำหนด (Early Payoff),should show early payoff option on active contract,chromium,passed,business-regression,45
+etax-config-page.spec.ts,etax-config-page.spec.ts / ETaxConfigPage (P2-SP5),OWNER sees disabled-mode state when no cert configured,chromium,passed,business-regression,14
+expense-templates.spec.ts,expense-templates.spec.ts / Expense Templates — feature flag (templates_enabled),OWNER sees Favorites entry when templates_enabled=true (default),chromium,passed,business-regression,47
+expense-templates.spec.ts,expense-templates.spec.ts / Expense Templates — feature flag (templates_enabled),Backend rejects template writes when templates_enabled=false,chromium,passed,business-regression,66
+expense-templates.spec.ts,expense-templates.spec.ts / Expense Templates — feature flag (templates_enabled),useUiFlags exposes templatesEnabled on /settings/ui-flags,chromium,passed,business-regression,101
+expense-workflow.spec.ts,expense-workflow.spec.ts / Expense Workflow,ACCOUNTANT can access expense page,chromium,passed,business-regression,10
+expense-workflow.spec.ts,expense-workflow.spec.ts / Expense Workflow,ACCOUNTANT can see expense list or empty state,chromium,passed,business-regression,27
+expense-workflow.spec.ts,expense-workflow.spec.ts / Expense Workflow,ACCOUNTANT can open create expense form,chromium,passed,business-regression,51
+expense-workflow.spec.ts,expense-workflow.spec.ts / Expense Workflow,FINANCE_MANAGER can access expense page,chromium,passed,business-regression,97
+expense-workflow.spec.ts,expense-workflow.spec.ts / Expense Workflow,FINANCE_MANAGER can see expense status filters,chromium,passed,business-regression,114
+expense-workflow.spec.ts,expense-workflow.spec.ts / Expense Workflow,OWNER can access expense page,chromium,passed,business-regression,137
+expense-workflow.spec.ts,expense-workflow.spec.ts / Expense Workflow,OWNER can see approval actions on expenses,chromium,passed,business-regression,155
+expense-workflow.spec.ts,expense-workflow.spec.ts / Expense Workflow,OWNER can see expense summary cards,chromium,passed,business-regression,194
+expense-workflow.spec.ts,expense-workflow.spec.ts / Expense Workflow,SALES should not access expense page,chromium,passed,business-regression,213
+finance-receivable-contact.spec.ts,finance-receivable-contact.spec.ts / Finance Receivable contact log,record a contact log and see it in timeline + last contacted column,chromium,skipped,business-regression,11
+finance-receivable-contact.spec.ts,finance-receivable-contact.spec.ts / Finance Receivable contact log,broken-promise filter limits the list,chromium,skipped,business-regression,69
+finance.spec.ts,finance.spec.ts / ใบเสร็จ (แท็บใน /payments),should load receipts page,chromium,passed,business-regression,22
+finance.spec.ts,finance.spec.ts / ใบเสร็จ (แท็บใน /payments),should show receipt list or empty state,chromium,passed,business-regression,30
+finance.spec.ts,finance.spec.ts / ใบเสร็จ (แท็บใน /payments),should have search by receipt number,chromium,passed,business-regression,42
+finance.spec.ts,finance.spec.ts / ใบเสร็จ (แท็บใน /payments),should have print action for receipt,chromium,passed,business-regression,52
+finance.spec.ts,finance.spec.ts / ใบเสร็จ (แท็บใน /payments),should have verify status indicator,chromium,passed,business-regression,66
+finance.spec.ts,finance.spec.ts / ใบเสร็จอิเล็กทรอนิกส์อัตโนมัติ,should display e-Receipt automation page,chromium,passed,business-regression,83
+finance.spec.ts,finance.spec.ts / ตรวจสอบสลิป,should load slip review page,chromium,passed,business-regression,100
+finance.spec.ts,finance.spec.ts / ตรวจสอบสลิป,should display slip review summary cards,chromium,passed,business-regression,105
+finance.spec.ts,finance.spec.ts / ตรวจสอบสลิป,should show pending slips or empty state,chromium,passed,business-regression,111
+finance.spec.ts,finance.spec.ts / ตรวจสอบสลิป,should have approve/reject actions when slips exist,chromium,passed,business-regression,123
+finance.spec.ts,finance.spec.ts / ตรวจสอบสลิป,should no error on page,chromium,passed,business-regression,130
+finance.spec.ts,finance.spec.ts / นำเข้าชำระเงิน CSV,should load CSV import page,chromium,passed,business-regression,145
+finance.spec.ts,finance.spec.ts / นำเข้าชำระเงิน CSV,should display subtitle about CSV import,chromium,passed,business-regression,150
+finance.spec.ts,finance.spec.ts / นำเข้าชำระเงิน CSV,should have file upload area,chromium,passed,business-regression,157
+finance.spec.ts,finance.spec.ts / นำเข้าชำระเงิน CSV,should show import instructions or template link,chromium,passed,business-regression,167
+finance.spec.ts,finance.spec.ts / นำเข้าชำระเงิน CSV,should validate before import,chromium,passed,business-regression,176
+finance.spec.ts,finance.spec.ts / เงินรับจากไฟแนนซ์,should load finance receivable page,chromium,passed,business-regression,201
+finance.spec.ts,finance.spec.ts / เงินรับจากไฟแนนซ์,should show receivable list or empty state,chromium,passed,business-regression,206
+finance.spec.ts,finance.spec.ts / เงินรับจากไฟแนนซ์,should have create/record action,chromium,passed,business-regression,218
+finance.spec.ts,finance.spec.ts / เงินรับจากไฟแนนซ์,should have search/filter,chromium,passed,business-regression,230
+finance.spec.ts,finance.spec.ts / เงินรับจากไฟแนนซ์,should no error on page,chromium,passed,business-regression,240
+finance.spec.ts,finance.spec.ts / บันทึกรายจ่าย,should load expenses page,chromium,passed,business-regression,255
+finance.spec.ts,finance.spec.ts / บันทึกรายจ่าย,should show expense list or empty state,chromium,passed,business-regression,262
+finance.spec.ts,finance.spec.ts / บันทึกรายจ่าย,should have create expense button,chromium,passed,business-regression,274
+finance.spec.ts,finance.spec.ts / บันทึกรายจ่าย,should display account type categories,chromium,passed,business-regression,286
+finance.spec.ts,finance.spec.ts / บันทึกรายจ่าย,should have status filter,chromium,passed,business-regression,291
+finance.spec.ts,finance.spec.ts / บันทึกรายจ่าย,should display expense summary cards,chromium,passed,business-regression,302
+finance.spec.ts,finance.spec.ts / บันทึกรายจ่าย,should validate expense form fields,chromium,passed,business-regression,310
+finance.spec.ts,finance.spec.ts / งบกำไรขาดทุน,should load profit/loss page,chromium,passed,business-regression,344
+finance.spec.ts,finance.spec.ts / งบกำไรขาดทุน,should display P&L subtitle,chromium,passed,business-regression,349
+finance.spec.ts,finance.spec.ts / งบกำไรขาดทุน,should have date range filter,chromium,passed,business-regression,356
+finance.spec.ts,finance.spec.ts / งบกำไรขาดทุน,should display revenue and expense sections,chromium,passed,business-regression,367
+finance.spec.ts,finance.spec.ts / งบกำไรขาดทุน,should show totals and net profit,chromium,passed,business-regression,376
+finance.spec.ts,finance.spec.ts / งบกำไรขาดทุน,should no error on page,chromium,passed,business-regression,384
+finance.spec.ts,finance.spec.ts / ออกใบเสร็จจากสัญญา,should navigate to receipt from contract detail,chromium,passed,business-regression,394
+finance.spec.ts,finance.spec.ts / ออกใบเสร็จจากสัญญา,should display receipt detail with company info,chromium,passed,business-regression,414
+finance.spec.ts,finance.spec.ts / ออกใบเสร็จจากสัญญา,should have PDF download action on receipt,chromium,passed,business-regression,431
+finance.spec.ts,finance.spec.ts / ออกใบเสร็จจากสัญญา,should show receipt number format,chromium,passed,business-regression,448
+flows/booking-deposit-convert.spec.ts,flows/booking-deposit-convert.spec.ts / Bookings — page-load + status filter,"SALES: /bookings loads, create dialog opens with customer, device, deposit + expiry fields",chromium,passed,business-regression,23
+flows/booking-deposit-convert.spec.ts,flows/booking-deposit-convert.spec.ts / Bookings — page-load + status filter,OWNER: status select exposes lifecycle views,chromium,passed,business-regression,55
+flows/booking-deposit-convert.spec.ts,flows/booking-deposit-convert.spec.ts / Bookings — page-load + status filter,SALES: KPI card filters write status to URL and do not crash list view,chromium,passed,business-regression,88
+flows/installment-surfaces.spec.ts,flows/installment-surfaces.spec.ts / Installment surfaces — page-load smoke,SALES: contract create wizard loads with stepper and product selection,chromium,passed,business-regression,45
+flows/installment-surfaces.spec.ts,flows/installment-surfaces.spec.ts / Installment surfaces — page-load smoke,SALES: can pre-seed a customer via API and verify they appear in customer list,chromium,passed,business-regression,70
+flows/installment-surfaces.spec.ts,flows/installment-surfaces.spec.ts / Installment surfaces — page-load smoke,ACCOUNTANT: /payments page loads — payment recording surface accessible,chromium,passed,business-regression,101
+flows/pos-surfaces.spec.ts,flows/pos-surfaces.spec.ts / POS — page-load + input/validation surfaces,"SALES: page loads, product+customer search work, cash sale type selectable",chromium,passed,business-regression,26
+flows/pos-surfaces.spec.ts,flows/pos-surfaces.spec.ts / POS — page-load + input/validation surfaces,SALES: empty cart submit is prevented (button disabled or validation error),chromium,passed,business-regression,58
+flows/pos-surfaces.spec.ts,flows/pos-surfaces.spec.ts / POS — page-load + input/validation surfaces,OWNER: /pos page accessible and exposes both sale type options,chromium,passed,business-regression,100
+flows/year-end-closing-guards.spec.ts,flows/year-end-closing-guards.spec.ts / Year-end closing — page-load + guards,"ACCOUNTANT: /finance/year-end-closing loads, preview button visible, year selector defaults to last year",chromium,passed,business-regression,30
+flows/year-end-closing-guards.spec.ts,flows/year-end-closing-guards.spec.ts / Year-end closing — page-load + guards,OWNER: clicking preview renders Net Income summary OR open-months banner OR already-closed banner,chromium,passed,business-regression,64
+flows/year-end-closing-guards.spec.ts,flows/year-end-closing-guards.spec.ts / Year-end closing — page-load + guards,FINANCE_MANAGER: page loads but readonly banner shown OR close button hidden (canPost=false),chromium,passed,business-regression,106
+full-flow-installment.spec.ts,full-flow-installment.spec.ts / Full Flow: ขายผ่อนครบวงจร,data-audit API is accessible,chromium,passed,business-regression,82
+full-flow-installment.spec.ts,full-flow-installment.spec.ts / Full Flow: ขายผ่อนครบวงจร,contract create wizard loads correctly,chromium,passed,business-regression,91
+full-flow-installment.spec.ts,full-flow-installment.spec.ts / Full Flow: ขายผ่อนครบวงจร,contracts list loads and shows data,chromium,passed,business-regression,116
+full-flow-installment.spec.ts,full-flow-installment.spec.ts / Full Flow: ขายผ่อนครบวงจร,payments page loads and shows data,chromium,passed,business-regression,130
+full-flow-installment.spec.ts,full-flow-installment.spec.ts / Full Flow: ขายผ่อนครบวงจร,trace existing ACTIVE contract (if any),chromium,passed,business-regression,143
+full-flow-installment.spec.ts,full-flow-installment.spec.ts / Full Flow: ขายผ่อนครบวงจร,full 12-check audit on dev database,chromium,passed,business-regression,179
+gfin-precheck.spec.ts,gfin-precheck.spec.ts / GFIN pre-check tab,inbox room shows a GFIN tab; starting a draft creates BC- number; public link of a fake token is 410,chromium,passed,business-regression,54
+installment-calculation.spec.ts,installment-calculation.spec.ts / Installment Calculation,should display calculation summary panel in PlanDetailsStep,chromium,passed,business-regression,28
+installment-calculation.spec.ts,installment-calculation.spec.ts / Installment Calculation,should show ค่างวด/เดือน as positive number in PlanDetailsStep,chromium,passed,business-regression,71
+installment-calculation.spec.ts,installment-calculation.spec.ts / Installment Calculation,should verify principal = sellingPrice - downPayment in calculation panel,chromium,passed,business-regression,113
+installment-calculation.spec.ts,installment-calculation.spec.ts / Installment Calculation,should update ค่างวด/เดือน when changing down payment,chromium,passed,business-regression,165
+installment-calculation.spec.ts,installment-calculation.spec.ts / Installment Calculation,should update ค่างวด/เดือน when changing installment months,chromium,passed,business-regression,219
+installment-calculation.spec.ts,installment-calculation.spec.ts / Installment Calculation,should not show error state on /contracts/create,chromium,passed,business-regression,274
+inventory-finance.spec.ts,inventory-finance.spec.ts / Stock & Finance Operations,BRANCH_MANAGER can access stock count page,chromium,passed,business-regression,12
+inventory-finance.spec.ts,inventory-finance.spec.ts / Stock & Finance Operations,ACCOUNTANT can access CSV import page,chromium,passed,business-regression,19
+inventory-finance.spec.ts,inventory-finance.spec.ts / Stock & Finance Operations,ACCOUNTANT can access slip review,chromium,passed,business-regression,26
+inventory-finance.spec.ts,inventory-finance.spec.ts / Stock & Finance Operations,stock count page shows count interface,chromium,passed,business-regression,34
+invite-resend.spec.ts,invite-resend.spec.ts / Invite Resend Feature,should display invites tab on /users page,chromium,passed,business-regression,12
+invite-resend.spec.ts,invite-resend.spec.ts / Invite Resend Feature,should create invite and show it in invites tab,chromium,passed,business-regression,23
+invite-resend.spec.ts,invite-resend.spec.ts / Invite Resend Feature,should resend invite via API and verify new invite created,chromium,passed,business-regression,54
+invite-resend.spec.ts,invite-resend.spec.ts / Invite Resend Feature,should not show resend button for used invites,chromium,passed,business-regression,135
+invite-resend.spec.ts,invite-resend.spec.ts / Invite Resend Feature,should resend API endpoint reject used invites,chromium,skipped,business-regression,165
+letters-page.spec.ts,letters-page.spec.ts / /letters page,owner sees 5 tabs,chromium,passed,business-regression,9
+letters-page.spec.ts,letters-page.spec.ts / /letters page,search filter triggers q= request,chromium,passed,business-regression,21
+letters-page.spec.ts,letters-page.spec.ts / /letters page,Export Excel button triggers a download,chromium,passed,business-regression,35
+letters-page.spec.ts,letters-page.spec.ts / /letters page,SALES role can access /letters page (no redirect),chromium,passed,business-regression,47
+liff-contract.spec.ts,liff-contract.spec.ts / LIFF Contract View,displays customer name and contract summary,chromium,passed,business-regression,93
+liff-contract.spec.ts,liff-contract.spec.ts / LIFF Contract View,shows payment schedule with per-status styling,chromium,passed,business-regression,100
+liff-contract.spec.ts,liff-contract.spec.ts / LIFF Contract View,shows contract stats (paid vs outstanding),chromium,passed,business-regression,113
+liff-contract.spec.ts,liff-contract.spec.ts / LIFF Contract View,shows PDPA consent modal when not consented,chromium,passed,business-regression,123
+liff-early-payoff-ux.spec.ts,liff-early-payoff-ux.spec.ts,login failure is never presented as all contracts paid,chromium,passed,business-regression,5
+liff-early-payoff-ux.spec.ts,liff-early-payoff-ux.spec.ts,failed contract list is not a successful empty portfolio,chromium,passed,business-regression,10
+liff-early-payoff-ux.spec.ts,liff-early-payoff-ux.spec.ts,legacy LINE path /liff preserves the login result,chromium,passed,business-regression,18
+liff-early-payoff-ux.spec.ts,liff-early-payoff-ux.spec.ts,legacy LINE path /contract preserves the login result,chromium,passed,business-regression,18
+liff-early-payoff-ux.spec.ts,liff-early-payoff-ux.spec.ts,legacy LINE path /history preserves the login result,chromium,passed,business-regression,18
+liff-early-payoff-ux.spec.ts,liff-early-payoff-ux.spec.ts,legacy LINE path /early-payoff preserves the login result,chromium,passed,business-regression,18
+liff-early-payoff-ux.spec.ts,liff-early-payoff-ux.spec.ts,legacy LINE path /liff/old-bookmark preserves the login result,chromium,passed,business-regression,18
+liff-pages.spec.ts,liff-pages.spec.ts / LIFF Contract,should load LIFF contract page,chromium,passed,business-regression,15
+liff-pages.spec.ts,liff-pages.spec.ts / LIFF Contract,should be accessible without admin login,chromium,passed,business-regression,26
+liff-pages.spec.ts,liff-pages.spec.ts / LIFF Payment,should load LIFF payment page with token,chromium,passed,business-regression,40
+liff-pages.spec.ts,liff-pages.spec.ts / LIFF Payment,should show error or form for payment,chromium,passed,business-regression,49
+liff-pages.spec.ts,liff-pages.spec.ts / LIFF History,should load LIFF history page,chromium,passed,business-regression,78
+liff-pages.spec.ts,liff-pages.spec.ts / LIFF History,should be accessible without admin login,chromium,passed,business-regression,87
+liff-pages.spec.ts,liff-pages.spec.ts / LIFF Profile,should load LIFF profile page,chromium,passed,business-regression,100
+liff-pages.spec.ts,liff-pages.spec.ts / LIFF Profile,should be accessible without admin login,chromium,passed,business-regression,109
+liff-pages.spec.ts,liff-pages.spec.ts / LIFF Register,should load LIFF register page,chromium,passed,business-regression,122
+liff-pages.spec.ts,liff-pages.spec.ts / LIFF Register,should be accessible without admin login,chromium,passed,business-regression,136
+liff-pages.spec.ts,liff-pages.spec.ts / LIFF Early Payoff,should load LIFF early payoff page,chromium,passed,business-regression,149
+liff-pages.spec.ts,liff-pages.spec.ts / LIFF Early Payoff,should be accessible without admin login,chromium,passed,business-regression,158
+liff-payment.spec.ts,liff-payment.spec.ts / LIFF Payment Flow,shows payment details for valid token,chromium,passed,business-regression,36
+liff-payment.spec.ts,liff-payment.spec.ts / LIFF Payment Flow,shows error for expired token,chromium,passed,business-regression,52
+liff-payment.spec.ts,liff-payment.spec.ts / LIFF Payment Flow,shows error for used token,chromium,passed,business-regression,66
+liff-payment.spec.ts,liff-payment.spec.ts / LIFF Payment Flow,shows scan-to-pay CTA with Pay Solutions trust badge,chromium,passed,business-regression,76
+liff-payment.spec.ts,liff-payment.spec.ts / LIFF Payment Flow,hands off to the payment gateway after creating an intent,chromium,passed,business-regression,95
+liff-register.spec.ts,liff-register.spec.ts / LIFF Register Flow,shows phone input form when not linked,chromium,passed,business-regression,14
+liff-register.spec.ts,liff-register.spec.ts / LIFF Register Flow,shows already linked state when contracts exist,chromium,passed,business-regression,26
+liff-register.spec.ts,liff-register.spec.ts / LIFF Register Flow,lookup by phone → confirm → success,chromium,passed,business-regression,40
+liff-register.spec.ts,liff-register.spec.ts / LIFF Register Flow,blocks lookup while the phone number is incomplete,chromium,passed,business-regression,70
+liff-register.spec.ts,liff-register.spec.ts / LIFF Register Flow,shows error for invalid phone format,chromium,passed,business-regression,85
+login.spec.ts,login.spec.ts / Login Page,should login successfully with valid credentials,chromium,passed,business-regression,9
+login.spec.ts,login.spec.ts / Login Page,should show error toast for wrong password,chromium,passed,business-regression,21
+login.spec.ts,login.spec.ts / Login Page,should redirect to dashboard after login,chromium,passed,business-regression,37
+login.spec.ts,login.spec.ts / Login Page,should display sidebar menu items after login,chromium,passed,business-regression,42
+login.spec.ts,login.spec.ts / Login Page,should redirect to dashboard when visiting /login while authenticated,chromium,passed,business-regression,64
+login.spec.ts,login.spec.ts / Login Page,should show validation for empty form submission,chromium,passed,business-regression,77
+other-income-override-jv.spec.ts,other-income-override-jv.spec.ts / Other Income — Override JV,override mode on /other-income/new — V1 blocks POST until Dr = Cr,chromium,passed,business-rerun,88
+other-income-override-jv.spec.ts,other-income-override-jv.spec.ts / Other Income — Override JV,V2 validation: blocks POST when only 1 line,chromium,passed,business-rerun,109
+other-income-override-jv.spec.ts,other-income-override-jv.spec.ts / Other Income — Override JV,V5 validation: blocks POST when a line has neither Dr nor Cr,chromium,passed,business-rerun,123
+other-income-override-jv.spec.ts,other-income-override-jv.spec.ts / Other Income — Override JV,POST with override JV shows the ✏ marker in the list,chromium,passed,business-rerun,138
+other-income-smoke.spec.ts,other-income-smoke.spec.ts / Other Income Module — smoke,create + post + view,chromium,passed,business-regression,13
+other-income-smoke.spec.ts,other-income-smoke.spec.ts / Other Income Module — smoke,list page renders,chromium,passed,business-regression,52
+other-income-smoke.spec.ts,other-income-smoke.spec.ts / Other Income Module — smoke,daily sheet renders,chromium,passed,business-regression,59
+overdue.spec.ts,overdue.spec.ts / Overdue Page (redirects to /collections),should redirect /overdue to /collections and display page,chromium,passed,business-regression,63
+overdue.spec.ts,overdue.spec.ts / Overdue Page (redirects to /collections),should display overdue list or empty state,chromium,passed,business-regression,75
+overdue.spec.ts,overdue.spec.ts / Overdue Page (redirects to /collections),should filter overdue by search,chromium,passed,business-regression,93
+page-health-check.spec.ts,page-health-check.spec.ts / OWNER — Page Health Check,Dashboard (/) — no errors,chromium,passed,business-regression,186
+page-health-check.spec.ts,page-health-check.spec.ts / OWNER — Page Health Check,POS (/pos) — no errors,chromium,passed,business-regression,186
+page-health-check.spec.ts,page-health-check.spec.ts / OWNER — Page Health Check,ประวัติการขาย (/sales) — no errors,chromium,passed,business-regression,186
+page-health-check.spec.ts,page-health-check.spec.ts / OWNER — Page Health Check,รายชื่อลูกค้า (/customers) — no errors,chromium,passed,business-regression,186
+page-health-check.spec.ts,page-health-check.spec.ts / OWNER — Page Health Check,รายการสัญญา (/contracts) — no errors,chromium,passed,business-regression,186
+page-health-check.spec.ts,page-health-check.spec.ts / OWNER — Page Health Check,เทมเพลตสัญญา (/contract-templates) — no errors,chromium,passed,business-regression,186
+page-health-check.spec.ts,page-health-check.spec.ts / OWNER — Page Health Check,การชำระเงิน (/payments) — no errors,chromium,passed,business-regression,186
+page-health-check.spec.ts,page-health-check.spec.ts / OWNER — Page Health Check,นำเข้า CSV (/payments/import-csv) — no errors,chromium,passed,business-regression,186
+page-health-check.spec.ts,page-health-check.spec.ts / OWNER — Page Health Check,ค้างชำระ (/overdue) — no errors,chromium,passed,business-regression,186
+page-health-check.spec.ts,page-health-check.spec.ts / OWNER — Page Health Check,ตรวจสอบสลิป (/slip-review) — no errors,chromium,passed,business-regression,186
+page-health-check.spec.ts,page-health-check.spec.ts / OWNER — Page Health Check,คลังสินค้า (/stock) — no errors,chromium,passed,business-regression,186
+page-health-check.spec.ts,page-health-check.spec.ts / OWNER — Page Health Check,โอนสินค้า (/stock/transfers) — no errors,chromium,passed,business-regression,186
+page-health-check.spec.ts,page-health-check.spec.ts / OWNER — Page Health Check,แจ้งเตือนสต็อก (/stock/alerts) — no errors,chromium,passed,business-regression,186
+page-health-check.spec.ts,page-health-check.spec.ts / OWNER — Page Health Check,ตัดสินค้า (/stock/adjustments) — no errors,chromium,passed,business-regression,186
+page-health-check.spec.ts,page-health-check.spec.ts / OWNER — Page Health Check,นับสต็อก (/stock/count) — no errors,chromium,passed,business-regression,186
+page-health-check.spec.ts,page-health-check.spec.ts / OWNER — Page Health Check,Inventory Workflow (/stock/workflow) — no errors,chromium,passed,business-regression,186
+page-health-check.spec.ts,page-health-check.spec.ts / OWNER — Page Health Check,พิมพ์สติกเกอร์ (/stickers) — no errors,chromium,passed,business-regression,186
+page-health-check.spec.ts,page-health-check.spec.ts / OWNER — Page Health Check,ผู้จัดจำหน่าย (/suppliers) — no errors,chromium,passed,business-regression,186
+page-health-check.spec.ts,page-health-check.spec.ts / OWNER — Page Health Check,ใบสั่งซื้อ (/purchase-orders) — no errors,chromium,passed,business-regression,186
+page-health-check.spec.ts,page-health-check.spec.ts / OWNER — Page Health Check,รายจ่าย (/expenses) — no errors,chromium,passed,business-regression,186
+page-health-check.spec.ts,page-health-check.spec.ts / OWNER — Page Health Check,ใบเสร็จ (/receipts) — no errors,chromium,passed,business-regression,186
+page-health-check.spec.ts,page-health-check.spec.ts / OWNER — Page Health Check,รายงาน (/reports) — no errors,chromium,passed,business-rerun,186
+page-health-check.spec.ts,page-health-check.spec.ts / OWNER — Page Health Check,กำไรขาดทุน (/profit-loss) — no errors,chromium,passed,business-regression,186
+page-health-check.spec.ts,page-health-check.spec.ts / OWNER — Page Health Check,ตรวจสอบการเงิน (/financial-audit) — no errors,chromium,passed,business-regression,186
+page-health-check.spec.ts,page-health-check.spec.ts / OWNER — Page Health Check,เงินรับไฟแนนซ์ (/finance-receivable) — no errors,chromium,passed,business-regression,186
+page-health-check.spec.ts,page-health-check.spec.ts / OWNER — Page Health Check,คอมมิชชัน (/commissions) — no errors,chromium,passed,business-regression,186
+page-health-check.spec.ts,page-health-check.spec.ts / OWNER — Page Health Check,ภาษี (/tax-reports) — no errors,chromium,passed,business-rerun,186
+page-health-check.spec.ts,page-health-check.spec.ts / OWNER — Page Health Check,รับซื้อมือสอง (/trade-in) — no errors,chromium,passed,business-regression,186
+page-health-check.spec.ts,page-health-check.spec.ts / OWNER — Page Health Check,โปรโมชัน (/promotions) — no errors,chromium,passed,business-regression,186
+page-health-check.spec.ts,page-health-check.spec.ts / OWNER — Page Health Check,ยึดคืน (/repossessions) — no errors,chromium,passed,business-regression,186
+page-health-check.spec.ts,page-health-check.spec.ts / OWNER — Page Health Check,ตรวจสภาพ (/inspections) — no errors,chromium,passed,business-regression,186
+page-health-check.spec.ts,page-health-check.spec.ts / OWNER — Page Health Check,สาขา (/branches) — no errors,chromium,passed,business-regression,186
+page-health-check.spec.ts,page-health-check.spec.ts / OWNER — Page Health Check,ผู้ใช้ (/users) — no errors,chromium,passed,business-regression,186
+page-health-check.spec.ts,page-health-check.spec.ts / OWNER — Page Health Check,ตั้งค่า (/settings) — no errors,chromium,passed,business-regression,186
+page-health-check.spec.ts,page-health-check.spec.ts / OWNER — Page Health Check,ดอกเบี้ย (/settings/interest-config) — no errors,chromium,passed,business-regression,186
+page-health-check.spec.ts,page-health-check.spec.ts / OWNER — Page Health Check,เทมเพลตราคา (/settings/pricing-templates) — no errors,chromium,passed,business-regression,186
+page-health-check.spec.ts,page-health-check.spec.ts / OWNER — Page Health Check,LINE OA (/settings/line-oa) — no errors,chromium,passed,business-regression,186
+page-health-check.spec.ts,page-health-check.spec.ts / OWNER — Page Health Check,SMS (/settings/sms) — no errors,chromium,passed,business-regression,186
+page-health-check.spec.ts,page-health-check.spec.ts / OWNER — Page Health Check,Audit Logs (/audit-logs) — no errors,chromium,passed,business-regression,186
+page-health-check.spec.ts,page-health-check.spec.ts / OWNER — Page Health Check,สถานะระบบ (/system-status) — no errors,chromium,passed,business-regression,186
+page-health-check.spec.ts,page-health-check.spec.ts / OWNER — Page Health Check,นำเข้าข้อมูล (/migration) — no errors,chromium,passed,business-regression,186
+page-health-check.spec.ts,page-health-check.spec.ts / OWNER — Page Health Check,การแจ้งเตือน (/notifications) — no errors,chromium,passed,business-regression,186
+page-health-check.spec.ts,page-health-check.spec.ts / OWNER — Page Health Check,สถานะเอกสาร (/document-dashboard) — no errors,chromium,passed,business-regression,186
+page-health-check.spec.ts,page-health-check.spec.ts / OWNER — Page Health Check,PDPA (/pdpa) — no errors,chromium,passed,business-regression,186
+page-health-check.spec.ts,page-health-check.spec.ts / FINANCE_MANAGER — Page Health Check,Dashboard (/) — no errors,chromium,passed,business-regression,186
+page-health-check.spec.ts,page-health-check.spec.ts / FINANCE_MANAGER — Page Health Check,ลูกค้า (/customers) — no errors,chromium,passed,business-regression,186
+page-health-check.spec.ts,page-health-check.spec.ts / FINANCE_MANAGER — Page Health Check,สัญญา (/contracts) — no errors,chromium,passed,business-regression,186
+page-health-check.spec.ts,page-health-check.spec.ts / FINANCE_MANAGER — Page Health Check,ชำระเงิน (/payments) — no errors,chromium,passed,business-regression,186
+page-health-check.spec.ts,page-health-check.spec.ts / FINANCE_MANAGER — Page Health Check,ค้างชำระ (/overdue) — no errors,chromium,passed,business-regression,186
+page-health-check.spec.ts,page-health-check.spec.ts / FINANCE_MANAGER — Page Health Check,รายจ่าย (/expenses) — no errors,chromium,passed,business-regression,186
+page-health-check.spec.ts,page-health-check.spec.ts / FINANCE_MANAGER — Page Health Check,ใบเสร็จ (/receipts) — no errors,chromium,passed,business-regression,186
+page-health-check.spec.ts,page-health-check.spec.ts / FINANCE_MANAGER — Page Health Check,รายงาน (/reports) — no errors,chromium,passed,business-rerun,186
+page-health-check.spec.ts,page-health-check.spec.ts / FINANCE_MANAGER — Page Health Check,กำไรขาดทุน (/profit-loss) — no errors,chromium,passed,business-regression,186
+page-health-check.spec.ts,page-health-check.spec.ts / FINANCE_MANAGER — Page Health Check,เงินรับไฟแนนซ์ (/finance-receivable) — no errors,chromium,passed,business-regression,186
+page-health-check.spec.ts,page-health-check.spec.ts / FINANCE_MANAGER — Page Health Check,ตรวจสอบการเงิน (/financial-audit) — no errors,chromium,passed,business-regression,186
+page-health-check.spec.ts,page-health-check.spec.ts / FINANCE_MANAGER — Page Health Check,คอมมิชชัน (/commissions) — no errors,chromium,passed,business-regression,186
+page-health-check.spec.ts,page-health-check.spec.ts / FINANCE_MANAGER — Page Health Check,ตรวจสอบสลิป (/slip-review) — no errors,chromium,passed,business-regression,186
+page-health-check.spec.ts,page-health-check.spec.ts / BRANCH_MANAGER — Page Health Check,Dashboard (/) — no errors,chromium,passed,business-regression,186
+page-health-check.spec.ts,page-health-check.spec.ts / BRANCH_MANAGER — Page Health Check,POS (/pos) — no errors,chromium,passed,business-regression,186
+page-health-check.spec.ts,page-health-check.spec.ts / BRANCH_MANAGER — Page Health Check,ประวัติการขาย (/sales) — no errors,chromium,passed,business-regression,186
+page-health-check.spec.ts,page-health-check.spec.ts / BRANCH_MANAGER — Page Health Check,ลูกค้า (/customers) — no errors,chromium,passed,business-regression,186
+page-health-check.spec.ts,page-health-check.spec.ts / BRANCH_MANAGER — Page Health Check,สัญญา (/contracts) — no errors,chromium,passed,business-regression,186
+page-health-check.spec.ts,page-health-check.spec.ts / BRANCH_MANAGER — Page Health Check,ชำระเงิน (/payments) — no errors,chromium,passed,business-regression,186
+page-health-check.spec.ts,page-health-check.spec.ts / BRANCH_MANAGER — Page Health Check,ค้างชำระ (/overdue) — no errors,chromium,passed,business-regression,186
+page-health-check.spec.ts,page-health-check.spec.ts / BRANCH_MANAGER — Page Health Check,คลังสินค้า (/stock) — no errors,chromium,passed,business-regression,186
+page-health-check.spec.ts,page-health-check.spec.ts / BRANCH_MANAGER — Page Health Check,โอนสินค้า (/stock/transfers) — no errors,chromium,passed,business-regression,186
+page-health-check.spec.ts,page-health-check.spec.ts / BRANCH_MANAGER — Page Health Check,ผู้จัดจำหน่าย (/suppliers) — no errors,chromium,passed,business-regression,186
+page-health-check.spec.ts,page-health-check.spec.ts / BRANCH_MANAGER — Page Health Check,ใบสั่งซื้อ (/purchase-orders) — no errors,chromium,passed,business-regression,186
+page-health-check.spec.ts,page-health-check.spec.ts / BRANCH_MANAGER — Page Health Check,รายจ่าย (/expenses) — no errors,chromium,passed,business-regression,186
+page-health-check.spec.ts,page-health-check.spec.ts / BRANCH_MANAGER — Page Health Check,ใบเสร็จ (/receipts) — no errors,chromium,passed,business-regression,186
+page-health-check.spec.ts,page-health-check.spec.ts / BRANCH_MANAGER — Page Health Check,รายงาน (/reports) — no errors,chromium,passed,business-rerun,186
+page-health-check.spec.ts,page-health-check.spec.ts / BRANCH_MANAGER — Page Health Check,เงินรับไฟแนนซ์ (/finance-receivable) — no errors,chromium,passed,business-regression,186
+page-health-check.spec.ts,page-health-check.spec.ts / BRANCH_MANAGER — Page Health Check,ยึดคืน (/repossessions) — no errors,chromium,passed,business-regression,186
+page-health-check.spec.ts,page-health-check.spec.ts / ACCOUNTANT — Page Health Check,Dashboard (/) — no errors,chromium,passed,business-regression,186
+page-health-check.spec.ts,page-health-check.spec.ts / ACCOUNTANT — Page Health Check,ลูกค้า (/customers) — no errors,chromium,passed,business-regression,186
+page-health-check.spec.ts,page-health-check.spec.ts / ACCOUNTANT — Page Health Check,สัญญา (/contracts) — no errors,chromium,passed,business-regression,186
+page-health-check.spec.ts,page-health-check.spec.ts / ACCOUNTANT — Page Health Check,ชำระเงิน (/payments) — no errors,chromium,passed,business-regression,186
+page-health-check.spec.ts,page-health-check.spec.ts / ACCOUNTANT — Page Health Check,รายจ่าย (/expenses) — no errors,chromium,passed,business-regression,186
+page-health-check.spec.ts,page-health-check.spec.ts / ACCOUNTANT — Page Health Check,ใบเสร็จ (/receipts) — no errors,chromium,passed,business-regression,186
+page-health-check.spec.ts,page-health-check.spec.ts / ACCOUNTANT — Page Health Check,รายงาน (/reports) — no errors,chromium,passed,business-rerun,186
+page-health-check.spec.ts,page-health-check.spec.ts / ACCOUNTANT — Page Health Check,กำไรขาดทุน (/profit-loss) — no errors,chromium,passed,business-regression,186
+page-health-check.spec.ts,page-health-check.spec.ts / ACCOUNTANT — Page Health Check,เงินรับไฟแนนซ์ (/finance-receivable) — no errors,chromium,passed,business-regression,186
+page-health-check.spec.ts,page-health-check.spec.ts / ACCOUNTANT — Page Health Check,ตรวจสอบการเงิน (/financial-audit) — no errors,chromium,passed,business-regression,186
+page-health-check.spec.ts,page-health-check.spec.ts / ACCOUNTANT — Page Health Check,ตรวจสอบสลิป (/slip-review) — no errors,chromium,passed,business-regression,186
+page-health-check.spec.ts,page-health-check.spec.ts / ACCOUNTANT — Page Health Check,คลังสินค้า (/stock) — no errors,chromium,passed,business-regression,186
+page-health-check.spec.ts,page-health-check.spec.ts / SALES — Page Health Check,Dashboard (/) — no errors,chromium,passed,business-regression,186
+page-health-check.spec.ts,page-health-check.spec.ts / SALES — Page Health Check,POS (/pos) — no errors,chromium,passed,business-regression,186
+page-health-check.spec.ts,page-health-check.spec.ts / SALES — Page Health Check,ประวัติการขาย (/sales) — no errors,chromium,passed,business-regression,186
+page-health-check.spec.ts,page-health-check.spec.ts / SALES — Page Health Check,ลูกค้า (/customers) — no errors,chromium,passed,business-regression,186
+page-health-check.spec.ts,page-health-check.spec.ts / SALES — Page Health Check,สัญญา (/contracts) — no errors,chromium,passed,business-regression,186
+page-health-check.spec.ts,page-health-check.spec.ts / SALES — Page Health Check,ชำระเงิน (/payments) — no errors,chromium,passed,business-regression,186
+page-health-check.spec.ts,page-health-check.spec.ts / SALES — Page Health Check,คลังสินค้า (/stock) — no errors,chromium,passed,business-regression,186
+page-smoke.spec.ts,page-smoke.spec.ts / OWNER smoke — all pages render,Dashboard (/),chromium,passed,business-regression,176
+page-smoke.spec.ts,page-smoke.spec.ts / OWNER smoke — all pages render,POS ขายสินค้า (/pos),chromium,passed,business-regression,176
+page-smoke.spec.ts,page-smoke.spec.ts / OWNER smoke — all pages render,ประวัติการขาย (/sales),chromium,passed,business-regression,176
+page-smoke.spec.ts,page-smoke.spec.ts / OWNER smoke — all pages render,รายชื่อลูกค้า (/customers),chromium,passed,business-regression,176
+page-smoke.spec.ts,page-smoke.spec.ts / OWNER smoke — all pages render,รายการสัญญา (/contracts),chromium,passed,business-regression,176
+page-smoke.spec.ts,page-smoke.spec.ts / OWNER smoke — all pages render,เทมเพลตสัญญา (/contract-templates),chromium,passed,business-regression,176
+page-smoke.spec.ts,page-smoke.spec.ts / OWNER smoke — all pages render,การชำระเงิน (/payments),chromium,passed,business-regression,176
+page-smoke.spec.ts,page-smoke.spec.ts / OWNER smoke — all pages render,นำเข้า CSV ชำระเงิน (/payments/import-csv),chromium,passed,business-regression,176
+page-smoke.spec.ts,page-smoke.spec.ts / OWNER smoke — all pages render,ค้างชำระ (/overdue),chromium,passed,business-regression,176
+page-smoke.spec.ts,page-smoke.spec.ts / OWNER smoke — all pages render,ตรวจสอบสลิป (/slip-review),chromium,passed,business-regression,176
+page-smoke.spec.ts,page-smoke.spec.ts / OWNER smoke — all pages render,คลังสินค้า (/stock),chromium,passed,business-regression,176
+page-smoke.spec.ts,page-smoke.spec.ts / OWNER smoke — all pages render,โอนสินค้า (/stock/transfers),chromium,passed,business-regression,176
+page-smoke.spec.ts,page-smoke.spec.ts / OWNER smoke — all pages render,แจ้งเตือนสต็อก (/stock/alerts),chromium,passed,business-regression,176
+page-smoke.spec.ts,page-smoke.spec.ts / OWNER smoke — all pages render,ตัดสินค้า (/stock/adjustments),chromium,passed,business-regression,176
+page-smoke.spec.ts,page-smoke.spec.ts / OWNER smoke — all pages render,นับสต็อก (/stock/count),chromium,passed,business-regression,176
+page-smoke.spec.ts,page-smoke.spec.ts / OWNER smoke — all pages render,Inventory Workflow (/stock/workflow),chromium,passed,business-regression,176
+page-smoke.spec.ts,page-smoke.spec.ts / OWNER smoke — all pages render,พิมพ์สติกเกอร์ (/stickers),chromium,passed,business-regression,176
+page-smoke.spec.ts,page-smoke.spec.ts / OWNER smoke — all pages render,รายชื่อผู้จัดจำหน่าย (/suppliers),chromium,passed,business-regression,176
+page-smoke.spec.ts,page-smoke.spec.ts / OWNER smoke — all pages render,ใบสั่งซื้อ (/purchase-orders),chromium,passed,business-regression,176
+page-smoke.spec.ts,page-smoke.spec.ts / OWNER smoke — all pages render,รายจ่าย (/expenses),chromium,passed,business-regression,176
+page-smoke.spec.ts,page-smoke.spec.ts / OWNER smoke — all pages render,ใบเสร็จ (/receipts),chromium,passed,business-regression,176
+page-smoke.spec.ts,page-smoke.spec.ts / OWNER smoke — all pages render,รายงาน (/reports),chromium,passed,business-rerun,176
+page-smoke.spec.ts,page-smoke.spec.ts / OWNER smoke — all pages render,กำไรขาดทุน (/profit-loss),chromium,passed,business-regression,176
+page-smoke.spec.ts,page-smoke.spec.ts / OWNER smoke — all pages render,ตรวจสอบการเงิน (/financial-audit),chromium,passed,business-regression,176
+page-smoke.spec.ts,page-smoke.spec.ts / OWNER smoke — all pages render,เงินรับจากไฟแนนซ์ (/finance-receivable),chromium,passed,business-regression,176
+page-smoke.spec.ts,page-smoke.spec.ts / OWNER smoke — all pages render,ยึดคืน (/repossessions),chromium,passed,business-regression,176
+page-smoke.spec.ts,page-smoke.spec.ts / OWNER smoke — all pages render,ตรวจสภาพ (/inspections),chromium,passed,business-regression,176
+page-smoke.spec.ts,page-smoke.spec.ts / OWNER smoke — all pages render,จัดการสาขา (/branches),chromium,passed,business-regression,176
+page-smoke.spec.ts,page-smoke.spec.ts / OWNER smoke — all pages render,จัดการผู้ใช้ (/users),chromium,passed,business-regression,176
+page-smoke.spec.ts,page-smoke.spec.ts / OWNER smoke — all pages render,ตั้งค่าระบบ (/settings),chromium,passed,business-regression,176
+page-smoke.spec.ts,page-smoke.spec.ts / OWNER smoke — all pages render,ตั้งค่าดอกเบี้ย (/settings/interest-config),chromium,passed,business-regression,176
+page-smoke.spec.ts,page-smoke.spec.ts / OWNER smoke — all pages render,เทมเพลตราคา (/settings/pricing-templates),chromium,passed,business-regression,176
+page-smoke.spec.ts,page-smoke.spec.ts / OWNER smoke — all pages render,LINE OA (/settings/line-oa),chromium,passed,business-regression,176
+page-smoke.spec.ts,page-smoke.spec.ts / OWNER smoke — all pages render,SMS (/settings/sms),chromium,passed,business-regression,176
+page-smoke.spec.ts,page-smoke.spec.ts / OWNER smoke — all pages render,Audit Logs (/audit-logs),chromium,passed,business-regression,176
+page-smoke.spec.ts,page-smoke.spec.ts / OWNER smoke — all pages render,สถานะระบบ (/system-status),chromium,passed,business-regression,176
+page-smoke.spec.ts,page-smoke.spec.ts / OWNER smoke — all pages render,นำเข้าข้อมูล (/migration),chromium,passed,business-regression,176
+page-smoke.spec.ts,page-smoke.spec.ts / OWNER smoke — all pages render,การแจ้งเตือน (/notifications),chromium,passed,business-regression,176
+page-smoke.spec.ts,page-smoke.spec.ts / OWNER smoke — all pages render,สถานะเอกสาร (/document-dashboard),chromium,passed,business-regression,176
+page-smoke.spec.ts,page-smoke.spec.ts / OWNER smoke — all pages render,PDPA (/pdpa),chromium,passed,business-regression,176
+page-smoke.spec.ts,page-smoke.spec.ts / BRANCH_MANAGER smoke — pages render,Dashboard (/),chromium,passed,business-regression,191
+page-smoke.spec.ts,page-smoke.spec.ts / BRANCH_MANAGER smoke — pages render,POS ขายสินค้า (/pos),chromium,passed,business-regression,191
+page-smoke.spec.ts,page-smoke.spec.ts / BRANCH_MANAGER smoke — pages render,ประวัติการขาย (/sales),chromium,passed,business-regression,191
+page-smoke.spec.ts,page-smoke.spec.ts / BRANCH_MANAGER smoke — pages render,รายชื่อลูกค้า (/customers),chromium,passed,business-regression,191
+page-smoke.spec.ts,page-smoke.spec.ts / BRANCH_MANAGER smoke — pages render,รายการสัญญา (/contracts),chromium,passed,business-regression,191
+page-smoke.spec.ts,page-smoke.spec.ts / BRANCH_MANAGER smoke — pages render,สร้างสัญญา (/contracts/create),chromium,passed,business-regression,191
+page-smoke.spec.ts,page-smoke.spec.ts / BRANCH_MANAGER smoke — pages render,การชำระเงิน (/payments),chromium,passed,business-regression,191
+page-smoke.spec.ts,page-smoke.spec.ts / BRANCH_MANAGER smoke — pages render,ค้างชำระ (/overdue),chromium,passed,business-regression,191
+page-smoke.spec.ts,page-smoke.spec.ts / BRANCH_MANAGER smoke — pages render,คลังสินค้า (/stock),chromium,passed,business-regression,191
+page-smoke.spec.ts,page-smoke.spec.ts / BRANCH_MANAGER smoke — pages render,โอนสินค้า (/stock/transfers),chromium,passed,business-regression,191
+page-smoke.spec.ts,page-smoke.spec.ts / BRANCH_MANAGER smoke — pages render,Inventory Workflow (/stock/workflow),chromium,passed,business-regression,191
+page-smoke.spec.ts,page-smoke.spec.ts / BRANCH_MANAGER smoke — pages render,รายชื่อผู้จัดจำหน่าย (/suppliers),chromium,passed,business-regression,191
+page-smoke.spec.ts,page-smoke.spec.ts / BRANCH_MANAGER smoke — pages render,ใบสั่งซื้อ (/purchase-orders),chromium,passed,business-regression,191
+page-smoke.spec.ts,page-smoke.spec.ts / BRANCH_MANAGER smoke — pages render,รายจ่าย (/expenses),chromium,passed,business-regression,191
+page-smoke.spec.ts,page-smoke.spec.ts / BRANCH_MANAGER smoke — pages render,ใบเสร็จ (/receipts),chromium,passed,business-regression,191
+page-smoke.spec.ts,page-smoke.spec.ts / BRANCH_MANAGER smoke — pages render,รายงาน (/reports),chromium,passed,business-rerun,191
+page-smoke.spec.ts,page-smoke.spec.ts / BRANCH_MANAGER smoke — pages render,เงินรับจากไฟแนนซ์ (/finance-receivable),chromium,passed,business-regression,191
+page-smoke.spec.ts,page-smoke.spec.ts / BRANCH_MANAGER smoke — pages render,ยึดคืน (/repossessions),chromium,passed,business-regression,191
+page-smoke.spec.ts,page-smoke.spec.ts / BRANCH_MANAGER smoke — pages render,สถานะเอกสาร (/document-dashboard),chromium,passed,business-regression,191
+page-smoke.spec.ts,page-smoke.spec.ts / BRANCH_MANAGER smoke — pages render,PDPA (/pdpa),chromium,passed,business-regression,191
+page-smoke.spec.ts,page-smoke.spec.ts / SALES smoke — pages render,Dashboard (/),chromium,passed,business-regression,206
+page-smoke.spec.ts,page-smoke.spec.ts / SALES smoke — pages render,POS ขายสินค้า (/pos),chromium,passed,business-regression,206
+page-smoke.spec.ts,page-smoke.spec.ts / SALES smoke — pages render,ประวัติการขาย (/sales),chromium,passed,business-regression,206
+page-smoke.spec.ts,page-smoke.spec.ts / SALES smoke — pages render,รายชื่อลูกค้า (/customers),chromium,passed,business-regression,206
+page-smoke.spec.ts,page-smoke.spec.ts / SALES smoke — pages render,รายการสัญญา (/contracts),chromium,passed,business-regression,206
+page-smoke.spec.ts,page-smoke.spec.ts / SALES smoke — pages render,สร้างสัญญา (/contracts/create),chromium,passed,business-regression,206
+page-smoke.spec.ts,page-smoke.spec.ts / SALES smoke — pages render,การชำระเงิน (/payments),chromium,passed,business-regression,206
+page-smoke.spec.ts,page-smoke.spec.ts / SALES smoke — pages render,คลังสินค้า (/stock),chromium,passed,business-regression,206
+page-smoke.spec.ts,page-smoke.spec.ts / ACCOUNTANT smoke — pages render,Dashboard (/),chromium,passed,business-regression,221
+page-smoke.spec.ts,page-smoke.spec.ts / ACCOUNTANT smoke — pages render,รายชื่อลูกค้า (/customers),chromium,passed,business-regression,221
+page-smoke.spec.ts,page-smoke.spec.ts / ACCOUNTANT smoke — pages render,รายการสัญญา (/contracts),chromium,passed,business-regression,221
+page-smoke.spec.ts,page-smoke.spec.ts / ACCOUNTANT smoke — pages render,การชำระเงิน (/payments),chromium,passed,business-regression,221
+page-smoke.spec.ts,page-smoke.spec.ts / ACCOUNTANT smoke — pages render,รายจ่าย (/expenses),chromium,passed,business-regression,221
+page-smoke.spec.ts,page-smoke.spec.ts / ACCOUNTANT smoke — pages render,ใบเสร็จ (/receipts),chromium,passed,business-regression,221
+page-smoke.spec.ts,page-smoke.spec.ts / ACCOUNTANT smoke — pages render,รายงาน (/reports),chromium,passed,business-rerun,221
+page-smoke.spec.ts,page-smoke.spec.ts / ACCOUNTANT smoke — pages render,กำไรขาดทุน (/profit-loss),chromium,passed,business-regression,221
+page-smoke.spec.ts,page-smoke.spec.ts / ACCOUNTANT smoke — pages render,เงินรับจากไฟแนนซ์ (/finance-receivable),chromium,passed,business-regression,221
+page-smoke.spec.ts,page-smoke.spec.ts / ACCOUNTANT smoke — pages render,ตรวจสอบการเงิน (/financial-audit),chromium,passed,business-regression,221
+page-smoke.spec.ts,page-smoke.spec.ts / ACCOUNTANT smoke — pages render,ตรวจสอบสลิป (/slip-review),chromium,passed,business-regression,221
+page-smoke.spec.ts,page-smoke.spec.ts / ACCOUNTANT smoke — pages render,คลังสินค้า (/stock),chromium,passed,business-regression,221
+page-smoke.spec.ts,page-smoke.spec.ts / Public smoke — pages render without auth,เข้าสู่ระบบ (/login),chromium,passed,business-regression,232
+page-smoke.spec.ts,page-smoke.spec.ts / Public smoke — pages render without auth,Landing Page (/landing),chromium,passed,business-regression,232
+page-smoke.spec.ts,page-smoke.spec.ts / Public smoke — pages render without auth,ลืมรหัสผ่าน (/forgot-password),chromium,passed,business-regression,232
+page-smoke.spec.ts,page-smoke.spec.ts / Public smoke — pages render without auth,ตั้งรหัสผ่านใหม่ (/reset-password),chromium,passed,business-regression,232
+payment-recording.spec.ts,payment-recording.spec.ts / บันทึกการชำระเงิน,should load payments page,chromium,passed,business-regression,10
+payment-recording.spec.ts,payment-recording.spec.ts / บันทึกการชำระเงิน,should show payment tabs (pending/daily/slip),chromium,passed,business-regression,21
+payment-recording.spec.ts,payment-recording.spec.ts / บันทึกการชำระเงิน,should display payment list with contract info,chromium,passed,business-regression,28
+payment-recording.spec.ts,payment-recording.spec.ts / บันทึกการชำระเงิน,should open record payment modal as full-screen overlay,chromium,passed,business-regression,39
+payment-recording.spec.ts,payment-recording.spec.ts / บันทึกการชำระเงิน,should show search/filter functionality,chromium,passed,business-regression,60
+payment-recording.spec.ts,payment-recording.spec.ts / สิทธิ์การเข้าถึง — ชำระเงิน,SALES should access payments page,chromium,passed,business-regression,71
+payment-recording.spec.ts,payment-recording.spec.ts / สิทธิ์การเข้าถึง — ชำระเงิน,ACCOUNTANT should access payments page,chromium,passed,business-regression,77
+payments.spec.ts,payments.spec.ts / Payments Page,should navigate to /payments and display payment list,chromium,passed,business-regression,9
+payments.spec.ts,payments.spec.ts / Payments Page,should display pending payments tab by default,chromium,passed,business-regression,22
+payments.spec.ts,payments.spec.ts / Payments Page,should open payment recording modal for a pending item,chromium,passed,business-regression,42
+payments.spec.ts,payments.spec.ts / Payments Page,should switch to daily summary tab,chromium,passed,business-regression,63
+payments.spec.ts,payments.spec.ts / Payments Page,should filter payments by search query,chromium,passed,business-regression,75
+payments.spec.ts,payments.spec.ts / Payments Page,should filter payments by status,chromium,passed,business-regression,89
+pos-checkout.spec.ts,pos-checkout.spec.ts / POS Checkout Flow,should load POS page with sale type options,chromium,passed,business-regression,14
+pos-checkout.spec.ts,pos-checkout.spec.ts / POS Checkout Flow,should search for a product,chromium,passed,business-regression,27
+pos-checkout.spec.ts,pos-checkout.spec.ts / POS Checkout Flow,should select a product from search results,chromium,passed,business-regression,63
+pos-checkout.spec.ts,pos-checkout.spec.ts / POS Checkout Flow,should search for a customer,chromium,passed,business-regression,104
+pos-checkout.spec.ts,pos-checkout.spec.ts / POS Checkout Flow,should select CASH sale type,chromium,passed,business-regression,128
+pos-checkout.spec.ts,pos-checkout.spec.ts / POS Checkout Flow,should switch between CASH and EXTERNAL_FINANCE sale types,chromium,passed,business-regression,145
+pos-checkout.spec.ts,pos-checkout.spec.ts / POS Checkout Flow,should validate checkout requires product selection,chromium,passed,business-regression,168
+pos-checkout.spec.ts,pos-checkout.spec.ts / POS Checkout Flow,should show payment method options for cash sale,chromium,passed,business-regression,177
+pos-checkout.spec.ts,pos-checkout.spec.ts / POS Checkout Flow,should display selling price and discount fields,chromium,passed,business-regression,192
+pos-sales.spec.ts,pos-sales.spec.ts / POS ขายสินค้า,should load POS page with heading,chromium,passed,business-regression,13
+pos-sales.spec.ts,pos-sales.spec.ts / POS ขายสินค้า,should display sale type options (CASH / EXTERNAL_FINANCE),chromium,passed,business-regression,19
+pos-sales.spec.ts,pos-sales.spec.ts / POS ขายสินค้า,should have product search input,chromium,passed,business-regression,25
+pos-sales.spec.ts,pos-sales.spec.ts / POS ขายสินค้า,should have customer search input,chromium,passed,business-regression,36
+pos-sales.spec.ts,pos-sales.spec.ts / POS ขายสินค้า,should validate checkout requires product selection,chromium,passed,business-regression,47
+pos-sales.spec.ts,pos-sales.spec.ts / POS ขายสินค้า,should switch between sale types,chromium,passed,business-regression,74
+pos-sales.spec.ts,pos-sales.spec.ts / ประวัติการขาย,should load sales history page,chromium,passed,business-regression,100
+pos-sales.spec.ts,pos-sales.spec.ts / ประวัติการขาย,should display sales list or empty state,chromium,passed,business-regression,107
+pos-sales.spec.ts,pos-sales.spec.ts / ประวัติการขาย,should have date filter,chromium,passed,business-regression,120
+pos-sales.spec.ts,pos-sales.spec.ts / ประวัติการขาย,should have search functionality,chromium,passed,business-regression,134
+pos-sales.spec.ts,pos-sales.spec.ts / ประวัติการขาย,should navigate to sale detail on click,chromium,passed,business-regression,145
+procurement.spec.ts,procurement.spec.ts / ใบสั่งซื้อ (PO),should load purchase orders page,chromium,passed,business-regression,14
+procurement.spec.ts,procurement.spec.ts / ใบสั่งซื้อ (PO),should display subtitle,chromium,passed,business-regression,19
+procurement.spec.ts,procurement.spec.ts / ใบสั่งซื้อ (PO),should show PO list or empty state,chromium,passed,business-regression,24
+procurement.spec.ts,procurement.spec.ts / ใบสั่งซื้อ (PO),should have create PO button,chromium,passed,business-regression,38
+procurement.spec.ts,procurement.spec.ts / ใบสั่งซื้อ (PO),should have search/filter for POs,chromium,passed,business-regression,58
+procurement.spec.ts,procurement.spec.ts / ใบสั่งซื้อ (PO),should display PO status badges,chromium,passed,business-regression,68
+procurement.spec.ts,procurement.spec.ts / ใบสั่งซื้อ (PO),should open PO detail on click,chromium,passed,business-regression,80
+procurement.spec.ts,procurement.spec.ts / ใบสั่งซื้อ (PO),should validate PO form when creating,chromium,passed,business-regression,97
+procurement.spec.ts,procurement.spec.ts / จัดการผู้จัดจำหน่าย,should load suppliers page,chromium,passed,business-regression,129
+procurement.spec.ts,procurement.spec.ts / จัดการผู้จัดจำหน่าย,should display supplier count in subtitle,chromium,passed,business-regression,134
+procurement.spec.ts,procurement.spec.ts / จัดการผู้จัดจำหน่าย,should show supplier list or empty state,chromium,passed,business-regression,139
+procurement.spec.ts,procurement.spec.ts / จัดการผู้จัดจำหน่าย,should have create supplier button,chromium,passed,business-regression,153
+procurement.spec.ts,procurement.spec.ts / จัดการผู้จัดจำหน่าย,should have search for suppliers,chromium,passed,business-regression,173
+procurement.spec.ts,procurement.spec.ts / จัดการผู้จัดจำหน่าย,should navigate to supplier detail on click,chromium,passed,business-regression,183
+procurement.spec.ts,procurement.spec.ts / จัดการผู้จัดจำหน่าย,should validate supplier form,chromium,passed,business-regression,193
+promise-lifecycle-happy.spec.ts,promise-lifecycle-happy.spec.ts / Promise lifecycle — happy path (3 slots),promise with 3 slots — record + see cycle banner + slot count,chromium,skipped,business-regression,12
+promise-supersede.spec.ts,promise-supersede.spec.ts / Promise supersede — reschedule flow,reschedule before due — confirm dialog + no broken increment,chromium,skipped,business-regression,14
+public-pages.spec.ts,public-pages.spec.ts / Landing Page,should load landing page,chromium,passed,business-regression,17
+public-pages.spec.ts,public-pages.spec.ts / Landing Page,should display hero section,chromium,passed,business-regression,25
+public-pages.spec.ts,public-pages.spec.ts / Landing Page,should have login/register CTA,chromium,passed,business-regression,32
+public-pages.spec.ts,public-pages.spec.ts / Landing Page,should be accessible without login,chromium,passed,business-regression,43
+public-pages.spec.ts,public-pages.spec.ts / Landing Page,should no error on page,chromium,passed,business-regression,50
+public-pages.spec.ts,public-pages.spec.ts / Forgot Password,should load forgot password page,chromium,passed,business-regression,64
+public-pages.spec.ts,public-pages.spec.ts / Forgot Password,should have email input,chromium,passed,business-regression,69
+public-pages.spec.ts,public-pages.spec.ts / Forgot Password,should have submit button,chromium,passed,business-regression,78
+public-pages.spec.ts,public-pages.spec.ts / Forgot Password,should validate email format,chromium,passed,business-regression,87
+public-pages.spec.ts,public-pages.spec.ts / Forgot Password,should have back to login link,chromium,passed,business-regression,116
+public-pages.spec.ts,public-pages.spec.ts / Forgot Password,should be accessible without login,chromium,passed,business-regression,127
+public-pages.spec.ts,public-pages.spec.ts / Reset Password,should load reset password page,chromium,passed,business-regression,142
+public-pages.spec.ts,public-pages.spec.ts / Reset Password,should show password fields when valid token,chromium,passed,business-regression,150
+public-pages.spec.ts,public-pages.spec.ts / Reset Password,should be accessible without login,chromium,passed,business-regression,164
+public-pages.spec.ts,public-pages.spec.ts / Contract Verify (Public),should load verify page with dummy ID,chromium,passed,business-regression,175
+public-pages.spec.ts,public-pages.spec.ts / Contract Verify (Public),should be accessible without login,chromium,passed,business-regression,188
+public-pages.spec.ts,public-pages.spec.ts / Contract Verify (Public),should show not found for invalid contract,chromium,passed,business-regression,195
+public-pages.spec.ts,public-pages.spec.ts / Receipt Verify (Public),should load receipt verify page,chromium,passed,business-regression,213
+public-pages.spec.ts,public-pages.spec.ts / Customer Portal,should load customer portal with token,chromium,passed,business-regression,231
+public-pages.spec.ts,public-pages.spec.ts / Customer Portal,should be accessible without login,chromium,passed,business-regression,244
+public-pages.spec.ts,public-pages.spec.ts / Customer Portal,should show error for invalid token,chromium,passed,business-regression,251
+receipts-redirect.spec.ts,receipts-redirect.spec.ts / Receipts redirect,/receipts redirects to /payments?tab=receipts,chromium,passed,business-regression,9
+reports-notifications.spec.ts,reports-notifications.spec.ts / รายงาน,should load reports page,chromium,passed,business-rerun,14
+reports-notifications.spec.ts,reports-notifications.spec.ts / รายงาน,should display subtitle,chromium,passed,business-rerun,19
+reports-notifications.spec.ts,reports-notifications.spec.ts / รายงาน,should have report tabs,chromium,passed,business-rerun,24
+reports-notifications.spec.ts,reports-notifications.spec.ts / รายงาน,should switch between report tabs,chromium,passed,business-rerun,43
+reports-notifications.spec.ts,reports-notifications.spec.ts / รายงาน,should display aging report data or empty state,chromium,passed,business-rerun,67
+reports-notifications.spec.ts,reports-notifications.spec.ts / รายงาน,should have export functionality (PDF/Excel),chromium,passed,business-rerun,85
+reports-notifications.spec.ts,reports-notifications.spec.ts / รายงาน,should have date range filter,chromium,passed,business-rerun,96
+reports-notifications.spec.ts,reports-notifications.spec.ts / รายงาน,should no error on any tab,chromium,passed,business-rerun,107
+reports-notifications.spec.ts,reports-notifications.spec.ts / แจ้งเตือน,should load notifications page,chromium,passed,business-rerun,122
+reports-notifications.spec.ts,reports-notifications.spec.ts / แจ้งเตือน,should display subtitle about LINE/SMS,chromium,passed,business-rerun,127
+reports-notifications.spec.ts,reports-notifications.spec.ts / แจ้งเตือน,should show notification list or empty state,chromium,passed,business-rerun,132
+reports-notifications.spec.ts,reports-notifications.spec.ts / แจ้งเตือน,should have mark read action when notifications exist,chromium,passed,business-rerun,144
+reports-notifications.spec.ts,reports-notifications.spec.ts / แจ้งเตือน,should have filter/search capability,chromium,passed,business-rerun,156
+reports-notifications.spec.ts,reports-notifications.spec.ts / แจ้งเตือน,should no error on page,chromium,passed,business-rerun,166
+role-access.spec.ts,role-access.spec.ts / OWNER role — full access,OWNER can access จัดการสาขา (/branches),chromium,passed,business-regression,86
+role-access.spec.ts,role-access.spec.ts / OWNER role — full access,OWNER can access จัดการผู้ใช้ (/users),chromium,passed,business-regression,86
+role-access.spec.ts,role-access.spec.ts / OWNER role — full access,OWNER can access ตั้งค่าระบบ (/settings),chromium,passed,business-regression,86
+role-access.spec.ts,role-access.spec.ts / OWNER role — full access,OWNER can access Audit Logs (/audit-logs),chromium,passed,business-regression,86
+role-access.spec.ts,role-access.spec.ts / OWNER role — full access,OWNER can access สถานะระบบ (/system-status),chromium,passed,business-regression,86
+role-access.spec.ts,role-access.spec.ts / OWNER role — full access,OWNER can access นำเข้าข้อมูล (/migration),chromium,passed,business-regression,86
+role-access.spec.ts,role-access.spec.ts / OWNER role — full access,OWNER can access Dashboard (/),chromium,passed,business-regression,86
+role-access.spec.ts,role-access.spec.ts / OWNER role — full access,OWNER can access POS (/pos),chromium,passed,business-regression,86
+role-access.spec.ts,role-access.spec.ts / OWNER role — full access,OWNER can access ประวัติการขาย (/sales),chromium,passed,business-regression,86
+role-access.spec.ts,role-access.spec.ts / OWNER role — full access,OWNER can access ลูกค้า (/customers),chromium,passed,business-regression,86
+role-access.spec.ts,role-access.spec.ts / OWNER role — full access,OWNER can access สัญญา (/contracts),chromium,passed,business-regression,86
+role-access.spec.ts,role-access.spec.ts / OWNER role — full access,OWNER can access การชำระเงิน (/payments),chromium,passed,business-regression,86
+role-access.spec.ts,role-access.spec.ts / OWNER role — full access,OWNER can access คลังสินค้า (/stock),chromium,passed,business-regression,86
+role-access.spec.ts,role-access.spec.ts / OWNER role — full access,OWNER can access รายงาน (/reports),chromium,passed,business-rerun,86
+role-access.spec.ts,role-access.spec.ts / OWNER role — full access,OWNER can access รายจ่าย (/expenses),chromium,passed,business-regression,86
+role-access.spec.ts,role-access.spec.ts / OWNER role — full access,OWNER can access ใบเสร็จ (/payments?tab=receipts),chromium,passed,business-regression,86
+role-access.spec.ts,role-access.spec.ts / OWNER role — full access,OWNER can access ใบสั่งซื้อ (/purchase-orders),chromium,passed,business-regression,86
+role-access.spec.ts,role-access.spec.ts / OWNER role — full access,OWNER can access ผู้จัดจำหน่าย (/suppliers),chromium,passed,business-regression,86
+role-access.spec.ts,role-access.spec.ts / OWNER role — full access,OWNER can access Financial Audit (/financial-audit),chromium,passed,business-regression,86
+role-access.spec.ts,role-access.spec.ts / OWNER role — full access,OWNER can access PDPA (/pdpa),chromium,passed,business-regression,86
+role-access.spec.ts,role-access.spec.ts / SALES role — restricted access,SALES can access Dashboard (/),chromium,passed,business-regression,115
+role-access.spec.ts,role-access.spec.ts / SALES role — restricted access,SALES can access POS (/pos),chromium,passed,business-regression,115
+role-access.spec.ts,role-access.spec.ts / SALES role — restricted access,SALES can access ประวัติการขาย (/sales),chromium,passed,business-regression,115
+role-access.spec.ts,role-access.spec.ts / SALES role — restricted access,SALES can access ลูกค้า (/customers),chromium,passed,business-regression,115
+role-access.spec.ts,role-access.spec.ts / SALES role — restricted access,SALES can access สัญญา (/contracts),chromium,passed,business-regression,115
+role-access.spec.ts,role-access.spec.ts / SALES role — restricted access,SALES can access สร้างสัญญา (/contracts/create),chromium,passed,business-regression,115
+role-access.spec.ts,role-access.spec.ts / SALES role — restricted access,SALES can access การชำระเงิน (/payments),chromium,passed,business-regression,115
+role-access.spec.ts,role-access.spec.ts / SALES role — restricted access,SALES can access คลังสินค้า (ดูอย่างเดียว) (/stock),chromium,passed,business-regression,115
+role-access.spec.ts,role-access.spec.ts / SALES role — restricted access,SALES denied access to ตั้งค่าระบบ (/settings),chromium,passed,business-regression,133
+role-access.spec.ts,role-access.spec.ts / SALES role — restricted access,SALES denied access to จัดการผู้ใช้ (/users),chromium,passed,business-regression,133
+role-access.spec.ts,role-access.spec.ts / SALES role — restricted access,SALES denied access to จัดการสาขา (/branches),chromium,passed,business-regression,133
+role-access.spec.ts,role-access.spec.ts / SALES role — restricted access,SALES denied access to Audit Logs (/audit-logs),chromium,passed,business-regression,133
+role-access.spec.ts,role-access.spec.ts / SALES role — restricted access,SALES denied access to รายจ่าย (/expenses),chromium,passed,business-regression,133
+role-access.spec.ts,role-access.spec.ts / SALES role — restricted access,SALES denied access to เงินรับจากไฟแนนซ์ (/finance-receivable),chromium,passed,business-regression,133
+role-access.spec.ts,role-access.spec.ts / ACCOUNTANT role — finance access,ACCOUNTANT can access Dashboard (/),chromium,passed,business-regression,165
+role-access.spec.ts,role-access.spec.ts / ACCOUNTANT role — finance access,ACCOUNTANT can access ลูกค้า (/customers),chromium,passed,business-regression,165
+role-access.spec.ts,role-access.spec.ts / ACCOUNTANT role — finance access,ACCOUNTANT can access สัญญา (/contracts),chromium,passed,business-regression,165
+role-access.spec.ts,role-access.spec.ts / ACCOUNTANT role — finance access,ACCOUNTANT can access การชำระเงิน (/payments),chromium,passed,business-regression,165
+role-access.spec.ts,role-access.spec.ts / ACCOUNTANT role — finance access,ACCOUNTANT can access รายจ่าย (/expenses),chromium,passed,business-regression,165
+role-access.spec.ts,role-access.spec.ts / ACCOUNTANT role — finance access,ACCOUNTANT can access ใบเสร็จ (/payments?tab=receipts),chromium,passed,business-regression,165
+role-access.spec.ts,role-access.spec.ts / ACCOUNTANT role — finance access,ACCOUNTANT can access รายงาน (/reports),chromium,passed,business-rerun,165
+role-access.spec.ts,role-access.spec.ts / ACCOUNTANT role — finance access,ACCOUNTANT can access เงินรับจากไฟแนนซ์ (/finance-receivable),chromium,passed,business-regression,165
+role-access.spec.ts,role-access.spec.ts / ACCOUNTANT role — finance access,ACCOUNTANT can access Financial Audit (/financial-audit),chromium,passed,business-regression,165
+role-access.spec.ts,role-access.spec.ts / ACCOUNTANT role — finance access,ACCOUNTANT can access คลังสินค้า (ดูอย่างเดียว) (/stock),chromium,passed,business-regression,165
+role-access.spec.ts,role-access.spec.ts / ACCOUNTANT role — finance access,ACCOUNTANT can access ยึดคืน (/repossessions),chromium,passed,business-regression,165
+role-access.spec.ts,role-access.spec.ts / ACCOUNTANT role — finance access,ACCOUNTANT เปิด /settings ได้ แต่เห็นเฉพาะหมวดของตัวเอง,chromium,passed,business-regression,176
+role-access.spec.ts,role-access.spec.ts / ACCOUNTANT role — finance access,ACCOUNTANT denied access to จัดการผู้ใช้ (/users),chromium,passed,business-regression,194
+role-access.spec.ts,role-access.spec.ts / ACCOUNTANT role — finance access,ACCOUNTANT denied access to จัดการสาขา (/branches),chromium,passed,business-regression,194
+role-access.spec.ts,role-access.spec.ts / ACCOUNTANT role — finance access,ACCOUNTANT denied access to Audit Logs (/audit-logs),chromium,passed,business-regression,194
+role-access.spec.ts,role-access.spec.ts / FINANCE_MANAGER role — finance access,FINANCE_MANAGER can access Dashboard (/),chromium,passed,business-regression,229
+role-access.spec.ts,role-access.spec.ts / FINANCE_MANAGER role — finance access,FINANCE_MANAGER can access ลูกค้า (/customers),chromium,passed,business-regression,229
+role-access.spec.ts,role-access.spec.ts / FINANCE_MANAGER role — finance access,FINANCE_MANAGER can access สัญญา (/contracts),chromium,passed,business-regression,229
+role-access.spec.ts,role-access.spec.ts / FINANCE_MANAGER role — finance access,FINANCE_MANAGER can access การชำระเงิน (/payments),chromium,passed,business-regression,229
+role-access.spec.ts,role-access.spec.ts / FINANCE_MANAGER role — finance access,FINANCE_MANAGER can access รายจ่าย (/expenses),chromium,passed,business-regression,229
+role-access.spec.ts,role-access.spec.ts / FINANCE_MANAGER role — finance access,FINANCE_MANAGER can access ใบเสร็จ (/payments?tab=receipts),chromium,passed,business-regression,229
+role-access.spec.ts,role-access.spec.ts / FINANCE_MANAGER role — finance access,FINANCE_MANAGER can access รายงาน (/reports),chromium,passed,business-rerun,229
+role-access.spec.ts,role-access.spec.ts / FINANCE_MANAGER role — finance access,FINANCE_MANAGER can access งบกำไรขาดทุน (/profit-loss),chromium,passed,business-regression,229
+role-access.spec.ts,role-access.spec.ts / FINANCE_MANAGER role — finance access,FINANCE_MANAGER can access เงินรับจากไฟแนนซ์ (/finance-receivable),chromium,passed,business-regression,229
+role-access.spec.ts,role-access.spec.ts / FINANCE_MANAGER role — finance access,FINANCE_MANAGER can access Financial Audit (/financial-audit),chromium,passed,business-regression,229
+role-access.spec.ts,role-access.spec.ts / FINANCE_MANAGER role — finance access,FINANCE_MANAGER can access ติดตามหนี้ (/collections),chromium,passed,business-regression,229
+role-access.spec.ts,role-access.spec.ts / FINANCE_MANAGER role — finance access,FINANCE_MANAGER can access ยึดคืน (/repossessions),chromium,passed,business-regression,229
+role-access.spec.ts,role-access.spec.ts / FINANCE_MANAGER role — finance access,FINANCE_MANAGER can access สถานะเอกสาร (/document-dashboard),chromium,passed,business-regression,229
+role-access.spec.ts,role-access.spec.ts / FINANCE_MANAGER role — finance access,FINANCE_MANAGER can access นำเข้าชำระเงิน (CSV) (/payments/import-csv),chromium,passed,business-regression,229
+role-access.spec.ts,role-access.spec.ts / FINANCE_MANAGER role — finance access,FINANCE_MANAGER ได้ทั้งสองบริษัท จึงเปิด SHOP stock ได้และเห็น pill สองอัน,chromium,passed,business-regression,244
+role-access.spec.ts,role-access.spec.ts / FINANCE_MANAGER role — finance access,FINANCE_MANAGER เปิด /settings ได้ แต่เห็นเฉพาะหมวดของตัวเอง,chromium,passed,business-regression,254
+role-access.spec.ts,role-access.spec.ts / FINANCE_MANAGER role — finance access,FINANCE_MANAGER denied access to จัดการผู้ใช้ (/users),chromium,passed,business-regression,274
+role-access.spec.ts,role-access.spec.ts / FINANCE_MANAGER role — finance access,FINANCE_MANAGER denied access to จัดการสาขา (/branches),chromium,passed,business-regression,274
+role-access.spec.ts,role-access.spec.ts / FINANCE_MANAGER role — finance access,FINANCE_MANAGER denied access to Audit Logs (/audit-logs),chromium,passed,business-regression,274
+role-access.spec.ts,role-access.spec.ts / FINANCE_MANAGER role — finance access,FINANCE_MANAGER denied access to POS ขายสินค้า (/pos),chromium,passed,business-regression,274
+role-access.spec.ts,role-access.spec.ts / BRANCH_MANAGER role — broad access,BRANCH_MANAGER can access Dashboard (/),chromium,passed,business-regression,312
+role-access.spec.ts,role-access.spec.ts / BRANCH_MANAGER role — broad access,BRANCH_MANAGER can access POS (/pos),chromium,passed,business-regression,312
+role-access.spec.ts,role-access.spec.ts / BRANCH_MANAGER role — broad access,BRANCH_MANAGER can access ประวัติการขาย (/sales),chromium,passed,business-regression,312
+role-access.spec.ts,role-access.spec.ts / BRANCH_MANAGER role — broad access,BRANCH_MANAGER can access ลูกค้า (/customers),chromium,passed,business-regression,312
+role-access.spec.ts,role-access.spec.ts / BRANCH_MANAGER role — broad access,BRANCH_MANAGER can access สัญญา (/contracts),chromium,passed,business-regression,312
+role-access.spec.ts,role-access.spec.ts / BRANCH_MANAGER role — broad access,BRANCH_MANAGER can access สร้างสัญญา (/contracts/create),chromium,passed,business-regression,312
+role-access.spec.ts,role-access.spec.ts / BRANCH_MANAGER role — broad access,BRANCH_MANAGER can access การชำระเงิน (/payments),chromium,passed,business-regression,312
+role-access.spec.ts,role-access.spec.ts / BRANCH_MANAGER role — broad access,BRANCH_MANAGER can access คลังสินค้า (/stock),chromium,passed,business-regression,312
+role-access.spec.ts,role-access.spec.ts / BRANCH_MANAGER role — broad access,BRANCH_MANAGER can access รายจ่าย (/expenses),chromium,passed,business-regression,312
+role-access.spec.ts,role-access.spec.ts / BRANCH_MANAGER role — broad access,BRANCH_MANAGER can access ใบเสร็จ (/payments?tab=receipts),chromium,passed,business-regression,312
+role-access.spec.ts,role-access.spec.ts / BRANCH_MANAGER role — broad access,BRANCH_MANAGER can access รายงาน (/reports),chromium,passed,business-rerun,312
+role-access.spec.ts,role-access.spec.ts / BRANCH_MANAGER role — broad access,BRANCH_MANAGER can access ใบสั่งซื้อ (/purchase-orders),chromium,passed,business-regression,312
+role-access.spec.ts,role-access.spec.ts / BRANCH_MANAGER role — broad access,BRANCH_MANAGER can access ผู้จัดจำหน่าย (/suppliers),chromium,passed,business-regression,312
+role-access.spec.ts,role-access.spec.ts / BRANCH_MANAGER role — broad access,BRANCH_MANAGER can access เงินรับจากไฟแนนซ์ (/finance-receivable),chromium,passed,business-regression,312
+role-access.spec.ts,role-access.spec.ts / BRANCH_MANAGER role — broad access,BRANCH_MANAGER can access ยึดคืน (/repossessions),chromium,passed,business-regression,312
+role-access.spec.ts,role-access.spec.ts / BRANCH_MANAGER role — broad access,BRANCH_MANAGER can access สถานะเอกสาร (/document-dashboard),chromium,passed,business-regression,312
+role-access.spec.ts,role-access.spec.ts / BRANCH_MANAGER role — broad access,BRANCH_MANAGER can access PDPA (/pdpa),chromium,passed,business-regression,312
+role-access.spec.ts,role-access.spec.ts / BRANCH_MANAGER role — broad access,BRANCH_MANAGER denied access to ตั้งค่าระบบ (/settings),chromium,passed,business-regression,328
+role-access.spec.ts,role-access.spec.ts / BRANCH_MANAGER role — broad access,BRANCH_MANAGER denied access to จัดการผู้ใช้ (/users),chromium,passed,business-regression,328
+role-access.spec.ts,role-access.spec.ts / BRANCH_MANAGER role — broad access,BRANCH_MANAGER denied access to จัดการสาขา (/branches),chromium,passed,business-regression,328
+role-access.spec.ts,role-access.spec.ts / BRANCH_MANAGER role — broad access,BRANCH_MANAGER denied access to Audit Logs (/audit-logs),chromium,passed,business-regression,328
+role-access.spec.ts,role-access.spec.ts / Sidebar menu per role,OWNER sidebar shows ตั้งค่า and จัดการผู้ใช้,chromium,passed,business-regression,340
+role-access.spec.ts,role-access.spec.ts / Sidebar menu per role,SALES sidebar hides ตั้งค่า and การเงิน,chromium,passed,business-regression,363
+role-access.spec.ts,role-access.spec.ts / Sidebar menu per role,ACCOUNTANT sidebar shows การเงิน and รายงาน,chromium,passed,business-rerun,379
+role-access.spec.ts,role-access.spec.ts / Sidebar menu per role,BRANCH_MANAGER sidebar shows most items except ตั้งค่า,chromium,passed,business-regression,411
+role-access.spec.ts,role-access.spec.ts / Unauthenticated access — redirect to login,unauthenticated user redirected from /,chromium,passed,business-regression,457
+role-access.spec.ts,role-access.spec.ts / Unauthenticated access — redirect to login,unauthenticated user redirected from /pos,chromium,passed,business-regression,457
+role-access.spec.ts,role-access.spec.ts / Unauthenticated access — redirect to login,unauthenticated user redirected from /customers,chromium,passed,business-regression,457
+role-access.spec.ts,role-access.spec.ts / Unauthenticated access — redirect to login,unauthenticated user redirected from /contracts,chromium,passed,business-regression,457
+role-access.spec.ts,role-access.spec.ts / Unauthenticated access — redirect to login,unauthenticated user redirected from /payments,chromium,passed,business-regression,457
+role-access.spec.ts,role-access.spec.ts / Unauthenticated access — redirect to login,unauthenticated user redirected from /stock,chromium,passed,business-regression,457
+role-access.spec.ts,role-access.spec.ts / Unauthenticated access — redirect to login,unauthenticated user redirected from /reports,chromium,passed,business-rerun,457
+role-access.spec.ts,role-access.spec.ts / Unauthenticated access — redirect to login,unauthenticated user redirected from /expenses,chromium,passed,business-regression,457
+role-access.spec.ts,role-access.spec.ts / Unauthenticated access — redirect to login,unauthenticated user redirected from /settings,chromium,passed,business-regression,457
+role-access.spec.ts,role-access.spec.ts / Unauthenticated access — redirect to login,unauthenticated user redirected from /users,chromium,passed,business-regression,457
+role-access.spec.ts,role-access.spec.ts / Unauthenticated access — redirect to login,unauthenticated user redirected from /branches,chromium,passed,business-regression,457
+role-access.spec.ts,role-access.spec.ts / Unauthenticated access — redirect to login,unauthenticated user redirected from /audit-logs,chromium,passed,business-regression,457
+role-access.spec.ts,role-access.spec.ts / Public routes — accessible without auth,Landing (/landing) accessible without login,chromium,passed,business-regression,482
+role-access.spec.ts,role-access.spec.ts / Public routes — accessible without auth,Forgot Password (/forgot-password) accessible without login,chromium,passed,business-regression,482
+role-access.spec.ts,role-access.spec.ts / Public routes — accessible without auth,Reset Password (/reset-password) accessible without login,chromium,passed,business-regression,482
+role-access.spec.ts,role-access.spec.ts / Public routes — accessible without auth,Contract Verify (/verify/test-123) accessible without login,chromium,passed,business-regression,482
+role-access.spec.ts,role-access.spec.ts / Public routes — accessible without auth,Customer Portal (/customer-access/test-token) accessible without login,chromium,passed,business-regression,482
+sales-menu-regression.spec.ts,sales-menu-regression.spec.ts / six Sales menus / 1440px / synthetic UI,customers: second page + tier/sort exports201 rows and returns mobile filter focus,chromium,passed,business-regression,193
+sales-menu-regression.spec.ts,sales-menu-regression.spec.ts / six Sales menus / 1440px / synthetic UI,"customer detail: SALES can start credit/upload, cannot edit master; every tab fits",chromium,passed,business-regression,219
+sales-menu-regression.spec.ts,sales-menu-regression.spec.ts / six Sales menus / 1440px / synthetic UI,"credit queue: page51, no score, pending/error preserve filter focus and retry",chromium,passed,business-regression,242
+sales-menu-regression.spec.ts,sales-menu-regression.spec.ts / six Sales menus / 1440px / synthetic UI,"POS: cash/external price, selected IDs and disclosure survive handoff",chromium,passed,business-regression,270
+sales-menu-regression.spec.ts,sales-menu-regression.spec.ts / six Sales menus / 1440px / synthetic UI,bookings: ?page=2 · เปิดแถว · ปุ่มเงินปิดจนครบเงื่อนไข · เมนู ⋯ · ไม่มีแถบเลื่อนแนวนอน,chromium,passed,business-regression,290
+sales-menu-regression.spec.ts,sales-menu-regression.spec.ts / six Sales menus / 1440px / synthetic UI,"contracts: guardian count, kanban pagination, all201/current page exports",chromium,passed,business-regression,325
+sales-menu-regression.spec.ts,sales-menu-regression.spec.ts / six Sales menus / 1440px / synthetic UI,"sales: page2 export201, detail deep link and focus, last row void returns valid page",chromium,passed,business-regression,350
+sales-menu-regression.spec.ts,sales-menu-regression.spec.ts / six Sales menus / 1440px / synthetic UI,booking sale receipt: mixed,chromium,passed,business-regression,394
+sales-menu-regression.spec.ts,sales-menu-regression.spec.ts / six Sales menus / 1440px / synthetic UI,booking sale receipt: prepaid,chromium,passed,business-regression,394
+sales-menu-regression.spec.ts,sales-menu-regression.spec.ts / six Sales menus / 1440px / synthetic UI,booking sale receipt: legacy,chromium,passed,business-regression,394
+sales-menu-regression.spec.ts,sales-menu-regression.spec.ts / six Sales menus / 1440px / synthetic UI,export: switching work company while the snapshot waits prevents any download,chromium,passed,business-regression,416
+sales-menu-regression.spec.ts,sales-menu-regression.spec.ts / six Sales menus / 1440px / synthetic UI,"documents: generated list error retry, pagination and authenticated download",chromium,passed,business-regression,435
+sales-menu-regression.spec.ts,sales-menu-regression.spec.ts / six Sales menus / 1440px / synthetic UI,documents: duplicate files never complete the required-type workflow step,chromium,passed,business-regression,459
+sales-menu-regression.spec.ts,sales-menu-regression.spec.ts / six Sales menus / 1440px / synthetic UI,"documents: partial upload remains visible, guardian input and protected preview",chromium,passed,business-regression,470
+sales-menu-regression.spec.ts,sales-menu-regression.spec.ts / six Sales menus / 1440px / synthetic UI,role states: finance manager cannot create contracts or sign; active downloads PDF fixture,chromium,passed,business-regression,493
+sales-menu-regression.spec.ts,sales-menu-regression.spec.ts / six Sales menus / 390px / synthetic UI,customers: second page + tier/sort exports201 rows and returns mobile filter focus,chromium,passed,business-regression,193
+sales-menu-regression.spec.ts,sales-menu-regression.spec.ts / six Sales menus / 390px / synthetic UI,"customer detail: SALES can start credit/upload, cannot edit master; every tab fits",chromium,passed,business-regression,219
+sales-menu-regression.spec.ts,sales-menu-regression.spec.ts / six Sales menus / 390px / synthetic UI,"credit queue: page51, no score, pending/error preserve filter focus and retry",chromium,passed,business-regression,242
+sales-menu-regression.spec.ts,sales-menu-regression.spec.ts / six Sales menus / 390px / synthetic UI,"POS: cash/external price, selected IDs and disclosure survive handoff",chromium,passed,business-regression,270
+sales-menu-regression.spec.ts,sales-menu-regression.spec.ts / six Sales menus / 390px / synthetic UI,bookings: ?page=2 · เปิดแถว · ปุ่มเงินปิดจนครบเงื่อนไข · เมนู ⋯ · ไม่มีแถบเลื่อนแนวนอน,chromium,passed,business-regression,290
+sales-menu-regression.spec.ts,sales-menu-regression.spec.ts / six Sales menus / 390px / synthetic UI,"contracts: guardian count, kanban pagination, all201/current page exports",chromium,passed,business-regression,325
+sales-menu-regression.spec.ts,sales-menu-regression.spec.ts / six Sales menus / 390px / synthetic UI,"sales: page2 export201, detail deep link and focus, last row void returns valid page",chromium,passed,business-regression,350
+sales-menu-regression.spec.ts,sales-menu-regression.spec.ts / six Sales menus / 390px / synthetic UI,booking sale receipt: mixed,chromium,passed,business-regression,394
+sales-menu-regression.spec.ts,sales-menu-regression.spec.ts / six Sales menus / 390px / synthetic UI,booking sale receipt: prepaid,chromium,passed,business-regression,394
+sales-menu-regression.spec.ts,sales-menu-regression.spec.ts / six Sales menus / 390px / synthetic UI,booking sale receipt: legacy,chromium,passed,business-regression,394
+sales-menu-regression.spec.ts,sales-menu-regression.spec.ts / six Sales menus / 390px / synthetic UI,export: switching work company while the snapshot waits prevents any download,chromium,passed,business-regression,416
+sales-menu-regression.spec.ts,sales-menu-regression.spec.ts / six Sales menus / 390px / synthetic UI,"documents: generated list error retry, pagination and authenticated download",chromium,passed,business-regression,435
+sales-menu-regression.spec.ts,sales-menu-regression.spec.ts / six Sales menus / 390px / synthetic UI,documents: duplicate files never complete the required-type workflow step,chromium,passed,business-regression,459
+sales-menu-regression.spec.ts,sales-menu-regression.spec.ts / six Sales menus / 390px / synthetic UI,"documents: partial upload remains visible, guardian input and protected preview",chromium,passed,business-regression,470
+sales-menu-regression.spec.ts,sales-menu-regression.spec.ts / six Sales menus / 390px / synthetic UI,role states: finance manager cannot create contracts or sign; active downloads PDF fixture,chromium,passed,business-regression,493
+settings-tabs.spec.ts,settings-tabs.spec.ts / Settings page — tab navigation,OWNER lands on /settings — first visible category (บริษัท & สาขา),chromium,passed,business-regression,32
+settings-tabs.spec.ts,settings-tabs.spec.ts / Settings page — tab navigation,Hash sync: /settings#vat opens the VAT tab,chromium,passed,business-regression,49
+settings-tabs.spec.ts,settings-tabs.spec.ts / Settings page — tab navigation,Back/forward restores prior tab via hashchange listener,chromium,passed,business-regression,68
+settings-tabs.spec.ts,settings-tabs.spec.ts / Settings page — tab navigation,Non-OWNER (SALES) is redirected away from /settings,chromium,passed,business-regression,101
+sidebar-zones.spec.ts,sidebar-zones.spec.ts / SP1 — Sidebar zones,"OWNER sees both pills + gear, can switch zones",chromium,passed,business-regression,44
+sidebar-zones.spec.ts,sidebar-zones.spec.ts / SP1 — Sidebar zones,SALES sees no pill switcher and no gear,chromium,passed,business-regression,62
+sidebar-zones.spec.ts,sidebar-zones.spec.ts / SP1 — Sidebar zones,ACCOUNTANT sees both work pills (SHOP + FINANCE),chromium,passed,business-regression,76
+sidebar-zones.spec.ts,sidebar-zones.spec.ts / SP1 — Sidebar zones,FINANCE_MANAGER sees both work pills (โซนหน้าร้านต้องไม่ถูกตัดทิ้ง),chromium,passed,business-regression,89
+sidebar-zones.spec.ts,sidebar-zones.spec.ts / SP1 — Sidebar zones,OWNER zone selection persists across reload,chromium,passed,business-regression,98
+sidebar-zones.spec.ts,sidebar-zones.spec.ts / SP1 — Sidebar zones,OWNER navigating to FIN path auto-switches pill,chromium,passed,business-regression,113
+sidebar-zones.spec.ts,sidebar-zones.spec.ts / SP1 — Sidebar zones,SALES navigating to FIN-only path is redirected with toast,chromium,passed,business-regression,130
+sidebar-zones.spec.ts,sidebar-zones.spec.ts / SP1 — Sidebar zones,Placeholder /settings/brands renders ComingSoonPage with SP5 + ETA,chromium,passed,business-regression,152
+sp2-accounting-reports.spec.ts,sp2-accounting-reports.spec.ts / SP2 — Accounting Reports,ACCOUNTANT can view Cash Flow,chromium,passed,business-rerun,5
+sp2-accounting-reports.spec.ts,sp2-accounting-reports.spec.ts / SP2 — Accounting Reports,ACCOUNTANT can view Equity Statement,chromium,passed,business-rerun,12
+sp2-accounting-reports.spec.ts,sp2-accounting-reports.spec.ts / SP2 — Accounting Reports,ACCOUNTANT can view General Ledger with empty state before account is picked,chromium,passed,business-rerun,20
+sp2-accounting-reports.spec.ts,sp2-accounting-reports.spec.ts / SP2 — Accounting Reports,Intercompany aging tab shows per-contract ageing,chromium,passed,business-rerun,36
+sp2-accounting-reports.spec.ts,sp2-accounting-reports.spec.ts / SP2 — Accounting Reports,SALES is blocked from accounting reports,chromium,passed,business-rerun,43
+sp3-tax-reports.spec.ts,sp3-tax-reports.spec.ts / SP3 — Tax Module pages (ACCOUNTANT can view),ACCOUNTANT can access /finance/vat (ภ.พ.30),chromium,passed,business-rerun,28
+sp3-tax-reports.spec.ts,sp3-tax-reports.spec.ts / SP3 — Tax Module pages (ACCOUNTANT can view),ACCOUNTANT can access /finance/wht (ภ.ง.ด. 1/3/53),chromium,passed,business-rerun,35
+sp3-tax-reports.spec.ts,sp3-tax-reports.spec.ts / SP3 — Tax Module pages (ACCOUNTANT can view),ACCOUNTANT can access /finance/e-tax (e-Tax Invoice),chromium,passed,business-rerun,44
+sp3-tax-reports.spec.ts,sp3-tax-reports.spec.ts / SP3 — Tax Module pages (ACCOUNTANT can view),legacy /tax-reports redirects to /finance/vat,chromium,passed,business-rerun,51
+sp3-tax-reports.spec.ts,sp3-tax-reports.spec.ts / SP3 — Tax Module pages (SALES denied),SALES denied access to /finance/vat,chromium,passed,business-rerun,64
+sp3-tax-reports.spec.ts,sp3-tax-reports.spec.ts / SP3 — Tax Module pages (SALES denied),SALES denied access to /finance/wht,chromium,passed,business-rerun,64
+sp3-tax-reports.spec.ts,sp3-tax-reports.spec.ts / SP3 — Tax Module pages (SALES denied),SALES denied access to /finance/e-tax,chromium,passed,business-rerun,64
+sp6-bank-accounts.spec.ts,sp6-bank-accounts.spec.ts / SP6 — BankAccountsPage,OWNER sees grid + เพิ่มบัญชี button,chromium,passed,business-regression,28
+sp6-bank-accounts.spec.ts,sp6-bank-accounts.spec.ts / SP6 — BankAccountsPage,ACCOUNTANT can view but does not see เพิ่มบัญชี,chromium,passed,business-regression,47
+stock-lock-chip.spec.ts,stock-lock-chip.spec.ts / stock list lock chip / 1440px / synthetic UI,"ชิป ""จองไว้ · BK-…"" พอดีคอลัมน์สถานะ ไม่ล้น ไม่ดันหน้าเลื่อนแนวนอน",chromium,passed,business-regression,32
+stock-lock-chip.spec.ts,stock-lock-chip.spec.ts / stock list lock chip / 390px / synthetic UI,"ชิป ""จองไว้ · BK-…"" พอดีคอลัมน์สถานะ ไม่ล้น ไม่ดันหน้าเลื่อนแนวนอน",chromium,passed,business-regression,32
+stock-management.spec.ts,stock-management.spec.ts / คลังสินค้า,should load stock page with heading,chromium,passed,business-regression,14
+stock-management.spec.ts,stock-management.spec.ts / คลังสินค้า,should display stock summary (quantity and value),chromium,passed,business-regression,22
+stock-management.spec.ts,stock-management.spec.ts / คลังสินค้า,should have tabs (dashboard / list),chromium,passed,business-regression,27
+stock-management.spec.ts,stock-management.spec.ts / คลังสินค้า,should have search functionality,chromium,passed,business-regression,44
+stock-management.spec.ts,stock-management.spec.ts / คลังสินค้า,should have status filter,chromium,passed,business-regression,54
+stock-management.spec.ts,stock-management.spec.ts / คลังสินค้า,should show branch filter for managers,chromium,passed,business-regression,65
+stock-management.spec.ts,stock-management.spec.ts / คลังสินค้า,should display product list,chromium,passed,business-regression,77
+stock-management.spec.ts,stock-management.spec.ts / โอนสินค้าระหว่างสาขา,should load transfers page,chromium,passed,business-regression,108
+stock-management.spec.ts,stock-management.spec.ts / โอนสินค้าระหว่างสาขา,"should have tabs: outgoing, incoming, history",chromium,passed,business-regression,115
+stock-management.spec.ts,stock-management.spec.ts / โอนสินค้าระหว่างสาขา,should switch between tabs,chromium,passed,business-regression,132
+stock-management.spec.ts,stock-management.spec.ts / โอนสินค้าระหว่างสาขา,should have create transfer action,chromium,passed,business-regression,149
+stock-management.spec.ts,stock-management.spec.ts / โอนสินค้าระหว่างสาขา,should show transfer list or empty state,chromium,passed,business-regression,169
+stock-management.spec.ts,stock-management.spec.ts / ตัดสินค้า,should load adjustments page,chromium,passed,business-regression,191
+stock-management.spec.ts,stock-management.spec.ts / ตัดสินค้า,should show adjustment list or empty state,chromium,passed,business-regression,196
+stock-management.spec.ts,stock-management.spec.ts / ตัดสินค้า,should have create adjustment action,chromium,passed,business-regression,210
+stock-management.spec.ts,stock-management.spec.ts / ตัดสินค้า,should display summary with count and value,chromium,passed,business-regression,230
+stock-management.spec.ts,stock-management.spec.ts / ตัดสินค้า,should no error on page,chromium,passed,business-regression,235
+stock-management.spec.ts,stock-management.spec.ts / ตรวจนับสต๊อก,should load stock count page,chromium,passed,business-regression,250
+stock-management.spec.ts,stock-management.spec.ts / ตรวจนับสต๊อก,should display subtitle,chromium,passed,business-regression,255
+stock-management.spec.ts,stock-management.spec.ts / ตรวจนับสต๊อก,should have start count action,chromium,passed,business-regression,260
+stock-management.spec.ts,stock-management.spec.ts / ตรวจนับสต๊อก,should show count history or empty state,chromium,passed,business-regression,271
+stock-management.spec.ts,stock-management.spec.ts / ตรวจนับสต๊อก,should no error on page,chromium,passed,business-regression,283
+stock-management.spec.ts,stock-management.spec.ts / แจ้งเตือนสต็อก,should load stock alerts page,chromium,passed,business-regression,298
+stock-management.spec.ts,stock-management.spec.ts / แจ้งเตือนสต็อก,should display low stock count in subtitle,chromium,passed,business-regression,303
+stock-management.spec.ts,stock-management.spec.ts / แจ้งเตือนสต็อก,should show alerts list or empty state,chromium,passed,business-regression,310
+stock-management.spec.ts,stock-management.spec.ts / แจ้งเตือนสต็อก,should no error on page,chromium,passed,business-regression,322
+stock-management.spec.ts,stock-management.spec.ts / ขั้นตอนสต็อก,should load workflow page,chromium,passed,business-regression,337
+stock-management.spec.ts,stock-management.spec.ts / ขั้นตอนสต็อก,should display subtitle about tracking,chromium,passed,business-regression,342
+stock-management.spec.ts,stock-management.spec.ts / ขั้นตอนสต็อก,should show workflow pipeline steps,chromium,passed,business-regression,347
+stock-management.spec.ts,stock-management.spec.ts / ขั้นตอนสต็อก,should no error on page,chromium,passed,business-regression,356
+stock-management.spec.ts,stock-management.spec.ts / ตรวจสอบสินค้า,should load inspections page,chromium,passed,business-regression,371
+stock-management.spec.ts,stock-management.spec.ts / ตรวจสอบสินค้า,should display subtitle,chromium,passed,business-regression,376
+stock-management.spec.ts,stock-management.spec.ts / ตรวจสอบสินค้า,should show inspection list or empty state,chromium,passed,business-regression,381
+stock-management.spec.ts,stock-management.spec.ts / ตรวจสอบสินค้า,should have create inspection action,chromium,passed,business-regression,395
+stock-management.spec.ts,stock-management.spec.ts / ตรวจสอบสินค้า,should have search functionality,chromium,passed,business-regression,415
+stock-management.spec.ts,stock-management.spec.ts / ตรวจสอบสินค้า,should no error on page,chromium,passed,business-regression,425
+supply-chain.spec.ts,supply-chain.spec.ts / Supply Chain Operations,BRANCH_MANAGER can view branch transfers,chromium,passed,business-regression,12
+supply-chain.spec.ts,supply-chain.spec.ts / Supply Chain Operations,OWNER can access suppliers page,chromium,passed,business-regression,19
+supply-chain.spec.ts,supply-chain.spec.ts / Supply Chain Operations,OWNER can access purchase orders,chromium,passed,business-regression,27
+supply-chain.spec.ts,supply-chain.spec.ts / Supply Chain Operations,SALES cannot access purchase orders,chromium,passed,business-regression,34
+tax-rates-admin.spec.ts,tax-rates-admin.spec.ts / TaxRatesPage — OWNER-only admin,OWNER can access /settings/tax-rates and sees WHT table,chromium,passed,business-regression,25
+tax-rates-admin.spec.ts,tax-rates-admin.spec.ts / TaxRatesPage — OWNER-only admin,ACCOUNTANT is redirected/denied at /settings/tax-rates,chromium,passed,business-regression,42
+tax-rates-admin.spec.ts,tax-rates-admin.spec.ts / TaxRatesPage — OWNER-only admin,"OWNER opens Add modal, fills rate + label, saves — table refreshes",chromium,passed,business-regression,56
+tax-rates-admin.spec.ts,tax-rates-admin.spec.ts / TaxRatesPage — OWNER-only admin,OWNER can trigger delete via ConfirmDialog,chromium,passed,business-regression,99
+template-editor.spec.ts,template-editor.spec.ts / เทมเพลตสัญญา,should load contract templates page,chromium,passed,business-regression,14
+template-editor.spec.ts,template-editor.spec.ts / เทมเพลตสัญญา,should display template list or empty state,chromium,passed,business-regression,20
+template-editor.spec.ts,template-editor.spec.ts / เทมเพลตสัญญา,should have create template button,chromium,passed,business-regression,33
+template-editor.spec.ts,template-editor.spec.ts / เทมเพลตสัญญา,should open template editor when clicking a template,chromium,passed,business-regression,42
+template-editor.spec.ts,template-editor.spec.ts / เทมเพลตสัญญา,should have save functionality in editor,chromium,passed,business-regression,53
+template-editor.spec.ts,template-editor.spec.ts / เทมเพลตสัญญา,should have PDF preview functionality,chromium,passed,business-regression,69
+template-editor.spec.ts,template-editor.spec.ts / ราคาตั้งต้น,should load pricing templates page,chromium,passed,business-regression,95
+template-editor.spec.ts,template-editor.spec.ts / ราคาตั้งต้น,should display pricing list or empty state,chromium,passed,business-regression,102
+template-editor.spec.ts,template-editor.spec.ts / ราคาตั้งต้น,should have add pricing template button,chromium,passed,business-regression,114
+template-editor.spec.ts,template-editor.spec.ts / ราคาตั้งต้น,should filter by brand,chromium,passed,business-regression,123
+template-editor.spec.ts,template-editor.spec.ts / ราคาตั้งต้น,should have import/export functionality,chromium,passed,business-regression,134
+trade-in-flow.spec.ts,trade-in-flow.spec.ts / รับซื้อเครื่อง (Trade-In),should load trade-in page,chromium,passed,business-regression,10
+trade-in-flow.spec.ts,trade-in-flow.spec.ts / รับซื้อเครื่อง (Trade-In),should show create trade-in button,chromium,passed,business-regression,18
+trade-in-flow.spec.ts,trade-in-flow.spec.ts / รับซื้อเครื่อง (Trade-In),should display trade-in list or empty state,chromium,passed,business-regression,26
+trade-in-flow.spec.ts,trade-in-flow.spec.ts / รับซื้อเครื่อง (Trade-In),should show status filter,chromium,passed,business-regression,34
+transfers-list.spec.ts,transfers-list.spec.ts,list cross-asset transfers via API,chromium,passed,business-regression,7

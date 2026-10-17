@@ -46,7 +46,7 @@
   ได้จอมืด). `text-white` ที่เหลือในหน้า LIFF อยู่บน gradient/`bg-emerald-500`/`bg-amber-900` ที่เขียนสีตายตัว
   ทั้งคู่ — คงไว้โดยตั้งใจ
 - **สถานะห้ามบอกด้วยสีอย่างเดียว** — ต้องมีไอคอนหรือข้อความกำกับ (ตัวอย่าง: `DAY_STATE_ICON` ใน `pages/shop-daily-cash/cash-hero.ts`)
-- **Font**: Inter (English) + IBM Plex Sans Thai (ไทย)
+- **Font**: Noto Sans Thai Looped ใน UI ทั้งระบบ ตามคำสั่งเจ้าของล่าสุด; เอกสาร/พิมพ์/PDF คงฟอนต์เอกสารเดิม ไม่ใช้กฎฟอนต์หน้าจอไปเปลี่ยนเอกสาร
 - **Thai text**: ใช้ `leading-snug` เสมอ (ห้าม `leading-none` — ตัด สระบน ไทย)
 
 ## Notifications

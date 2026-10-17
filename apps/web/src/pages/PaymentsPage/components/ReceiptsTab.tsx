@@ -1,3 +1,4 @@
+import { NativeSelect } from '@/components/ui/native-select';
 import DocumentDownloadButton from '@/components/DocumentDownloadButton';
 import { useState, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -356,14 +357,14 @@ export default function ReceiptsTab({ onVoided }: ReceiptsTabProps) {
       {/* Filter Bar */}
       <div className="bg-card rounded-xl border border-border/50 shadow-sm p-5 mb-6">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-          <input
+          <input aria-label="ค้นหาเลขสัญญา / ชื่อลูกค้า / เบอร์โทร / เลขใบเสร็จ"
             type="text"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             placeholder="ค้นหาเลขสัญญา / ชื่อลูกค้า / เบอร์โทร / เลขใบเสร็จ..."
             className="px-3 py-2 border border-input rounded-lg text-sm md:col-span-1"
           />
-          <select
+          <NativeSelect wrapperClassName="max-w-full w-auto" aria-label="ประเภทใบเสร็จ"
             value={receiptType}
             onChange={(e) => setReceiptType(e.target.value)}
             className="px-3 py-2 border border-input rounded-lg text-sm"
@@ -373,14 +374,14 @@ export default function ReceiptsTab({ onVoided }: ReceiptsTabProps) {
             <option value="DOWN_PAYMENT">เงินดาวน์</option>
             <option value="EARLY_PAYOFF">ปิดก่อนกำหนด</option>
             <option value="CREDIT_NOTE">ใบลดหนี้</option>
-          </select>
-          <ThaiDateInput
+          </NativeSelect>
+          <ThaiDateInput aria-label="วันที่เริ่ม"
             value={dateFrom}
             onChange={(e) => setDateFrom(e.target.value)}
             className="px-3 py-2 border border-input rounded-lg text-sm"
             placeholder="จากวันที่"
           />
-          <ThaiDateInput
+          <ThaiDateInput aria-label="วันที่สิ้นสุด"
             value={dateTo}
             onChange={(e) => setDateTo(e.target.value)}
             className="px-3 py-2 border border-input rounded-lg text-sm"

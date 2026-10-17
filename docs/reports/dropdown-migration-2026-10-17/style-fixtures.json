@@ -1,0 +1,1658 @@
+[
+  {
+    "id": 0,
+    "file": "apps/web-shop/src/pages/sell/SellQuotePage.tsx",
+    "index": 0,
+    "className": "h-11 rounded-xl border border-border bg-background px-3 text-base md:text-sm leading-snug",
+    "wrapperClassName": "max-w-full w-full",
+    "density": "default"
+  },
+  {
+    "id": 1,
+    "file": "apps/web-shop/src/pages/sell/SellQuotePage.tsx",
+    "index": 1,
+    "className": "h-11 rounded-xl border border-border bg-background px-3 text-base md:text-sm leading-snug",
+    "wrapperClassName": "max-w-full w-full",
+    "density": "default"
+  },
+  {
+    "id": 2,
+    "file": "apps/web/src/pages/WhtReportPage.tsx",
+    "index": 0,
+    "className": "w-full px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden bg-background text-foreground",
+    "wrapperClassName": "max-w-full w-full",
+    "density": "default"
+  },
+  {
+    "id": 3,
+    "file": "apps/web/src/pages/SalesHistoryPage.tsx",
+    "index": 0,
+    "className": "min-w-0 max-w-full px-3 py-2 border border-input rounded-lg text-sm bg-background",
+    "wrapperClassName": "w-auto min-w-0 max-w-full",
+    "density": "default"
+  },
+  {
+    "id": 4,
+    "file": "apps/web/src/pages/SalesHistoryPage.tsx",
+    "index": 1,
+    "className": "min-w-0 max-w-full px-3 py-2 border border-input rounded-lg text-sm bg-background",
+    "wrapperClassName": "w-auto min-w-0 max-w-full",
+    "density": "default"
+  },
+  {
+    "id": 5,
+    "file": "apps/web/src/pages/SalesHistoryPage.tsx",
+    "index": 2,
+    "className": "min-w-0 max-w-full px-3 py-2 border border-input rounded-lg text-sm bg-background",
+    "wrapperClassName": "w-auto min-w-0 max-w-full",
+    "density": "default"
+  },
+  {
+    "id": 6,
+    "file": "apps/web/src/pages/SalesHistoryPage.tsx",
+    "index": 3,
+    "className": "min-w-0 max-w-full px-3 py-2 border border-input rounded-lg text-sm bg-background",
+    "wrapperClassName": "w-auto min-w-0 max-w-full",
+    "density": "default"
+  },
+  {
+    "id": 7,
+    "file": "apps/web/src/pages/SalesHistoryPage.tsx",
+    "index": 4,
+    "className": "min-w-0 max-w-full px-3 py-2 border border-input rounded-lg text-sm bg-background",
+    "wrapperClassName": "w-auto min-w-0 max-w-full",
+    "density": "default"
+  },
+  {
+    "id": 8,
+    "file": "apps/web/src/pages/DocumentDashboardPage.tsx",
+    "index": 0,
+    "className": "border border-input rounded-lg px-3 py-2 text-sm bg-background focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden",
+    "wrapperClassName": "max-w-full w-auto",
+    "density": "default"
+  },
+  {
+    "id": 9,
+    "file": "apps/web-shop/src/components/InstallmentCalculatorCard.tsx",
+    "index": 0,
+    "className": "min-h-11 rounded-md border border-border bg-background px-3 py-1 text-base md:text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary",
+    "wrapperClassName": "max-w-full w-auto",
+    "density": "default"
+  },
+  {
+    "id": 10,
+    "file": "apps/web/src/pages/CustomerDetailPage/components/EditCustomerDialog.tsx",
+    "index": 0,
+    "className": "h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20",
+    "wrapperClassName": "max-w-full w-full",
+    "density": "default"
+  },
+  {
+    "id": 11,
+    "file": "apps/web/src/pages/CustomerDetailPage/components/EditCustomerDialog.tsx",
+    "index": 1,
+    "className": "h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20",
+    "wrapperClassName": "max-w-full w-full",
+    "density": "default"
+  },
+  {
+    "id": 12,
+    "file": "apps/web/src/pages/CustomerDetailPage/components/EditCustomerDialog.tsx",
+    "index": 2,
+    "className": "h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20",
+    "wrapperClassName": "max-w-full w-full",
+    "density": "default"
+  },
+  {
+    "id": 13,
+    "file": "apps/web/src/pages/ExpensesPage.tsx",
+    "index": 0,
+    "className": "w-full min-w-0 h-11 min-h-11",
+    "wrapperClassName": "max-w-full w-full min-w-0 sm:w-auto sm:min-w-[150px]",
+    "density": "default"
+  },
+  {
+    "id": 14,
+    "file": "apps/web/src/pages/ExpensesPage.tsx",
+    "index": 1,
+    "className": "w-full min-w-0 h-11 min-h-11",
+    "wrapperClassName": "max-w-full w-auto sm:min-w-[120px]",
+    "density": "default"
+  },
+  {
+    "id": 15,
+    "file": "apps/web/src/pages/ExpensesPage.tsx",
+    "index": 2,
+    "className": "w-full min-w-0 h-11 min-h-11",
+    "wrapperClassName": "max-w-full w-auto sm:min-w-[120px]",
+    "density": "default"
+  },
+  {
+    "id": 16,
+    "file": "apps/web-shop/src/components/catalog/SortDropdown.tsx",
+    "index": 0,
+    "className": "border border-border rounded p-2",
+    "wrapperClassName": "max-w-full w-auto",
+    "density": "default"
+  },
+  {
+    "id": 17,
+    "file": "apps/web-shop/src/components/catalog/FilterSidebar.tsx",
+    "index": 0,
+    "className": "w-full h-11 rounded-xl border-0 bg-muted px-3.5 text-base md:text-sm text-foreground leading-snug focus:outline-none focus:ring-2 focus:ring-emerald-500/50",
+    "wrapperClassName": "max-w-full w-full",
+    "density": "default"
+  },
+  {
+    "id": 18,
+    "file": "apps/web-shop/src/components/catalog/FilterSidebar.tsx",
+    "index": 1,
+    "className": "w-full h-11 rounded-xl border-0 bg-muted px-3.5 text-base md:text-sm text-foreground leading-snug focus:outline-none focus:ring-2 focus:ring-emerald-500/50",
+    "wrapperClassName": "max-w-full w-full",
+    "density": "default"
+  },
+  {
+    "id": 19,
+    "file": "apps/web-shop/src/components/catalog/FilterSidebar.tsx",
+    "index": 2,
+    "className": "w-full h-11 rounded-xl border-0 bg-muted px-3.5 text-base md:text-sm text-foreground leading-snug focus:outline-none focus:ring-2 focus:ring-emerald-500/50",
+    "wrapperClassName": "max-w-full w-full",
+    "density": "default"
+  },
+  {
+    "id": 20,
+    "file": "apps/web-shop/src/components/catalog/FilterSidebar.tsx",
+    "index": 3,
+    "className": "w-full h-11 rounded-xl border-0 bg-muted px-3.5 text-base md:text-sm text-foreground leading-snug focus:outline-none focus:ring-2 focus:ring-emerald-500/50",
+    "wrapperClassName": "max-w-full w-full",
+    "density": "default"
+  },
+  {
+    "id": 21,
+    "file": "apps/web-shop/src/components/catalog/FilterSidebar.tsx",
+    "index": 4,
+    "className": "h-10 rounded-xl border-0 bg-card px-3 text-base md:text-sm text-foreground leading-snug focus:outline-none focus:ring-2 focus:ring-emerald-500/50",
+    "wrapperClassName": "max-w-full w-full",
+    "density": "default"
+  },
+  {
+    "id": 22,
+    "file": "apps/web/src/pages/settings/SettingsLayout.tsx",
+    "index": 0,
+    "className": "rounded-lg border border-border bg-background py-2 px-3 text-sm",
+    "wrapperClassName": "max-w-full w-full",
+    "density": "default"
+  },
+  {
+    "id": 23,
+    "file": "apps/web/src/pages/ChatAnalyticsPage.tsx",
+    "index": 0,
+    "className": "mt-1 min-h-11 w-full min-w-0 rounded-md border border-input bg-background px-3 py-2 text-sm mt-0",
+    "wrapperClassName": "max-w-full mt-1 w-full min-w-0",
+    "density": "default"
+  },
+  {
+    "id": 24,
+    "file": "apps/web/src/pages/ChatAnalyticsPage.tsx",
+    "index": 1,
+    "className": "mt-1 min-h-11 w-full min-w-0 rounded-md border border-input bg-background px-3 py-2 text-sm mt-0",
+    "wrapperClassName": "max-w-full mt-1 w-full min-w-0",
+    "density": "default"
+  },
+  {
+    "id": 25,
+    "file": "apps/web/src/pages/ChatAnalyticsPage.tsx",
+    "index": 2,
+    "className": "mt-1 min-h-11 w-full min-w-0 rounded-md border border-input bg-background px-3 py-2 text-sm mt-0",
+    "wrapperClassName": "max-w-full mt-1 w-full min-w-0",
+    "density": "default"
+  },
+  {
+    "id": 26,
+    "file": "apps/web/src/pages/MonthlyClosePage.tsx",
+    "index": 0,
+    "className": "px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden",
+    "wrapperClassName": "max-w-full w-auto sm:min-w-[180px]",
+    "density": "default"
+  },
+  {
+    "id": 27,
+    "file": "apps/web/src/pages/QcCenterPage/index.tsx",
+    "index": 0,
+    "className": "px-3 py-2 text-sm rounded-lg border border-input bg-background leading-snug focus:outline-none focus:ring-2 focus:ring-ring",
+    "wrapperClassName": "max-w-full w-auto",
+    "density": "default"
+  },
+  {
+    "id": 28,
+    "file": "apps/web/src/pages/QcCenterPage/index.tsx",
+    "index": 1,
+    "className": "px-3 py-2 text-sm rounded-lg border border-input bg-background leading-snug focus:outline-none focus:ring-2 focus:ring-ring",
+    "wrapperClassName": "max-w-full w-auto",
+    "density": "default"
+  },
+  {
+    "id": 29,
+    "file": "apps/web/src/pages/accounting/PeriodClosePage.tsx",
+    "index": 0,
+    "className": "border border-border rounded-md px-3 py-1.5 text-sm bg-background",
+    "wrapperClassName": "max-w-full w-auto",
+    "density": "default"
+  },
+  {
+    "id": 30,
+    "file": "apps/web/src/pages/accounting/TaxDisallowedSummaryPage.tsx",
+    "index": 0,
+    "className": "rounded-lg border border-input bg-background px-3 py-2 text-sm",
+    "wrapperClassName": "max-w-full w-48",
+    "density": "default"
+  },
+  {
+    "id": 31,
+    "file": "apps/web/src/pages/UnifiedInboxPage/components/FacebookCommentPageSettings.tsx",
+    "index": 0,
+    "className": "h-11 rounded-md border bg-background px-2",
+    "wrapperClassName": "max-w-full w-full",
+    "density": "default"
+  },
+  {
+    "id": 32,
+    "file": "apps/web/src/pages/UnifiedInboxPage/components/SalesDispositionControl.tsx",
+    "index": 0,
+    "className": "min-h-11 rounded-md border border-input bg-background px-3",
+    "wrapperClassName": "max-w-full mt-2 w-full",
+    "density": "default"
+  },
+  {
+    "id": 33,
+    "file": "apps/web/src/pages/UnifiedInboxPage/components/ChatFollowUpDialog.tsx",
+    "index": 0,
+    "className": "mt-1 min-h-11 w-full min-w-0 rounded-md border border-input bg-background px-3 py-2 text-sm mt-0",
+    "wrapperClassName": "max-w-full mt-1 w-full min-w-0",
+    "density": "default"
+  },
+  {
+    "id": 34,
+    "file": "apps/web/src/pages/UnifiedInboxPage/components/ChatFollowUpDialog.tsx",
+    "index": 1,
+    "className": "mt-1 min-h-11 w-full min-w-0 rounded-md border border-input bg-background px-3 py-2 text-sm mt-0",
+    "wrapperClassName": "max-w-full mt-1 w-full min-w-0",
+    "density": "default"
+  },
+  {
+    "id": 35,
+    "file": "apps/web/src/components/contacts/CreateContactModal.tsx",
+    "index": 0,
+    "className": "h-9 rounded-md border border-input bg-background px-2 text-sm outline-hidden focus:ring-2 focus:ring-ring/30",
+    "wrapperClassName": "w-full sm:w-36 sm:shrink-0",
+    "density": "default"
+  },
+  {
+    "id": 36,
+    "file": "apps/web/src/pages/interco/CreateBatchDialog.tsx",
+    "index": 0,
+    "className": "h-9 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring/30",
+    "wrapperClassName": "max-w-full w-full",
+    "density": "default"
+  },
+  {
+    "id": 37,
+    "file": "apps/web/src/pages/interco/CreateBatchDialog.tsx",
+    "index": 1,
+    "className": "h-9 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring/30",
+    "wrapperClassName": "max-w-full w-full",
+    "density": "default"
+  },
+  {
+    "id": 38,
+    "file": "apps/web/src/pages/YearEndClosingPage.tsx",
+    "index": 0,
+    "className": "h-9 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring/30",
+    "wrapperClassName": "max-w-full w-auto",
+    "density": "default"
+  },
+  {
+    "id": 39,
+    "file": "apps/web/src/pages/FinanceReceivablePage.tsx",
+    "index": 0,
+    "className": "w-full px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden",
+    "wrapperClassName": "max-w-full w-auto sm:min-w-[160px]",
+    "density": "default"
+  },
+  {
+    "id": 40,
+    "file": "apps/web/src/pages/FinanceReceivablePage.tsx",
+    "index": 1,
+    "className": "w-full px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden",
+    "wrapperClassName": "max-w-full w-auto sm:min-w-[130px]",
+    "density": "default"
+  },
+  {
+    "id": 41,
+    "file": "apps/web/src/pages/FinanceReceivablePage.tsx",
+    "index": 2,
+    "className": "w-full px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden",
+    "wrapperClassName": "max-w-full w-auto sm:min-w-[130px]",
+    "density": "default"
+  },
+  {
+    "id": 42,
+    "file": "apps/web/src/pages/FinanceReceivablePage.tsx",
+    "index": 3,
+    "className": "w-full px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden",
+    "wrapperClassName": "max-w-full w-auto sm:min-w-[130px]",
+    "density": "default"
+  },
+  {
+    "id": 43,
+    "file": "apps/web/src/pages/UnifiedInboxPage/components/FacebookCommentLink.tsx",
+    "index": 0,
+    "className": "h-11 rounded-md border bg-background px-2",
+    "wrapperClassName": "max-w-full w-full min-w-0",
+    "density": "default"
+  },
+  {
+    "id": 44,
+    "file": "apps/web/src/pages/after-sales/ExchangeActionDialogs.tsx",
+    "index": 0,
+    "className": "h-11 w-full rounded-lg border border-input bg-background px-3.5 text-sm leading-snug text-foreground placeholder:text-muted-foreground/70",
+    "wrapperClassName": "max-w-full w-full",
+    "density": "default"
+  },
+  {
+    "id": 45,
+    "file": "apps/web/src/pages/after-sales/RepairActionDialogs.tsx",
+    "index": 0,
+    "className": "h-11 w-full rounded-lg border border-input bg-background px-3.5 text-sm leading-snug text-foreground placeholder:text-muted-foreground/70",
+    "wrapperClassName": "max-w-full w-full",
+    "density": "default"
+  },
+  {
+    "id": 46,
+    "file": "apps/web/src/pages/after-sales/PricedExchangeFields.tsx",
+    "index": 0,
+    "className": "h-11 w-full rounded-lg border border-input bg-background px-3.5 text-sm leading-snug text-foreground placeholder:text-muted-foreground/70",
+    "wrapperClassName": "max-w-full w-full",
+    "density": "default"
+  },
+  {
+    "id": 47,
+    "file": "apps/web/src/pages/StockAdjustmentsPage/index.tsx",
+    "index": 0,
+    "className": "px-3 py-2 border border-input rounded-lg text-sm bg-background focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden",
+    "wrapperClassName": "max-w-full w-auto",
+    "density": "default"
+  },
+  {
+    "id": 48,
+    "file": "apps/web/src/pages/UnifiedInboxPage/components/ChatServiceRequestDialog.tsx",
+    "index": 0,
+    "className": "mt-1 min-h-11 w-full min-w-0 rounded-md border border-input bg-background px-3 py-2 text-sm mt-0",
+    "wrapperClassName": "max-w-full mt-1 w-full min-w-0",
+    "density": "default"
+  },
+  {
+    "id": 49,
+    "file": "apps/web/src/pages/UnifiedInboxPage/components/ChatServiceRequestDialog.tsx",
+    "index": 1,
+    "className": "mt-1 min-h-11 w-full min-w-0 rounded-md border border-input bg-background px-3 py-2 text-sm mt-0",
+    "wrapperClassName": "max-w-full mt-1 w-full min-w-0",
+    "density": "default"
+  },
+  {
+    "id": 50,
+    "file": "apps/web/src/components/template-editor/editor/BlockEditModal.tsx",
+    "index": 0,
+    "className": "px-3 py-2.5 border border-input rounded-lg text-base focus:ring-2 focus:ring-primary focus:border-primary",
+    "wrapperClassName": "max-w-full w-full",
+    "density": "default"
+  },
+  {
+    "id": 51,
+    "file": "apps/web/src/components/device-returns/DeviceReturnIntakeDialog.tsx",
+    "index": 0,
+    "className": "w-full px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 outline-hidden",
+    "wrapperClassName": "max-w-full w-full",
+    "density": "default"
+  },
+  {
+    "id": 52,
+    "file": "apps/web/src/components/device-returns/DeviceReturnIntakeDialog.tsx",
+    "index": 1,
+    "className": "w-full px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 outline-hidden",
+    "wrapperClassName": "max-w-full w-full",
+    "density": "default"
+  },
+  {
+    "id": 53,
+    "file": "apps/web/src/components/trade-in/TradeInCreditPicker.tsx",
+    "index": 0,
+    "className": "h-10 rounded-lg border bg-background px-3 text-sm",
+    "wrapperClassName": "max-w-full w-full",
+    "density": "default"
+  },
+  {
+    "id": 54,
+    "file": "apps/web/src/pages/StockPage/components/StockListTab.tsx",
+    "index": 0,
+    "className": "h-11 w-full min-w-0 cursor-pointer rounded-lg border border-input bg-card px-3 text-sm text-foreground shadow-xs transition-colors hover:border-primary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+    "wrapperClassName": "max-w-full w-full min-w-0",
+    "density": "default"
+  },
+  {
+    "id": 55,
+    "file": "apps/web/src/pages/StockPage/components/StockListTab.tsx",
+    "index": 1,
+    "className": "h-11 w-full min-w-0 cursor-pointer rounded-lg border border-input bg-card px-3 text-sm text-foreground shadow-xs transition-colors hover:border-primary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+    "wrapperClassName": "max-w-full w-full min-w-0",
+    "density": "default"
+  },
+  {
+    "id": 56,
+    "file": "apps/web/src/pages/StockPage/components/StockListTab.tsx",
+    "index": 2,
+    "className": "h-11 w-full min-w-0 cursor-pointer rounded-lg border border-input bg-card px-3 text-sm text-foreground shadow-xs transition-colors hover:border-primary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+    "wrapperClassName": "max-w-full w-full min-w-0",
+    "density": "default"
+  },
+  {
+    "id": 57,
+    "file": "apps/web/src/pages/ExpenseFavoritesPage.tsx",
+    "index": 0,
+    "className": "px-3 py-2 border border-input rounded-lg text-sm bg-background",
+    "wrapperClassName": "max-w-full w-auto",
+    "density": "default"
+  },
+  {
+    "id": 58,
+    "file": "apps/web/src/components/customer/CustomerCreateDialog.tsx",
+    "index": 0,
+    "className": "w-full min-w-0 h-11 min-h-11",
+    "wrapperClassName": "max-w-full w-full min-w-0",
+    "density": "default"
+  },
+  {
+    "id": 59,
+    "file": "apps/web/src/components/customer/CustomerCreateDialog.tsx",
+    "index": 1,
+    "className": "w-full min-w-0 h-11 min-h-11",
+    "wrapperClassName": "max-w-full w-full min-w-0",
+    "density": "default"
+  },
+  {
+    "id": 60,
+    "file": "apps/web/src/components/customer/CustomerCreateDialog.tsx",
+    "index": 2,
+    "className": "w-full min-w-0 h-11 min-h-11",
+    "wrapperClassName": "max-w-full w-full min-w-0",
+    "density": "default"
+  },
+  {
+    "id": 61,
+    "file": "apps/web/src/components/customer/CustomerCreateDialog.tsx",
+    "index": 3,
+    "className": "w-full min-w-0 h-11 min-h-11",
+    "wrapperClassName": "max-w-full w-full min-w-0",
+    "density": "default"
+  },
+  {
+    "id": 62,
+    "file": "apps/web/src/components/customer/CustomerCreateDialog.tsx",
+    "index": 4,
+    "className": "w-full min-w-0 h-11 min-h-11",
+    "wrapperClassName": "max-w-full w-full min-w-0",
+    "density": "default"
+  },
+  {
+    "id": 63,
+    "file": "apps/web/src/pages/StockTransfersPage.tsx",
+    "index": 0,
+    "className": "px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden",
+    "wrapperClassName": "max-w-full w-auto",
+    "density": "default"
+  },
+  {
+    "id": 64,
+    "file": "apps/web/src/pages/StockTransfersPage.tsx",
+    "index": 1,
+    "className": "px-3 py-2 border border-input rounded-lg text-sm",
+    "wrapperClassName": "max-w-full w-auto",
+    "density": "default"
+  },
+  {
+    "id": 65,
+    "file": "apps/web/src/pages/StockTransfersPage.tsx",
+    "index": 2,
+    "className": "px-3 py-2 border border-input rounded-lg text-sm",
+    "wrapperClassName": "max-w-full w-auto",
+    "density": "default"
+  },
+  {
+    "id": 66,
+    "file": "apps/web/src/pages/UnifiedInboxPage/components/FacebookCommentPanel.tsx",
+    "index": 0,
+    "className": "h-11 rounded-md border bg-background px-3",
+    "wrapperClassName": "max-w-full w-full",
+    "density": "default"
+  },
+  {
+    "id": 67,
+    "file": "apps/web/src/pages/UnifiedInboxPage/components/ChatLibraryPicker.tsx",
+    "index": 0,
+    "className": "h-10 rounded-md border border-input bg-background px-2 text-sm",
+    "wrapperClassName": "max-w-full w-full",
+    "density": "default"
+  },
+  {
+    "id": 68,
+    "file": "apps/web/src/pages/UnifiedInboxPage/components/ChatServiceRequestCard.tsx",
+    "index": 0,
+    "className": "mt-1 min-h-11 w-full min-w-0 rounded-md border border-input bg-background px-3 py-2 text-sm mt-0",
+    "wrapperClassName": "max-w-full mt-1 w-full min-w-0",
+    "density": "default"
+  },
+  {
+    "id": 69,
+    "file": "apps/web/src/pages/UnifiedInboxPage/components/ChatServiceRequestCard.tsx",
+    "index": 1,
+    "className": "mt-1 min-h-11 w-full min-w-0 rounded-md border border-input bg-background px-3 py-2 text-sm mt-0",
+    "wrapperClassName": "max-w-full mt-1 w-full min-w-0",
+    "density": "default"
+  },
+  {
+    "id": 70,
+    "file": "apps/web/src/pages/StockPage/components/BulkTransferModal.tsx",
+    "index": 0,
+    "className": "px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden",
+    "wrapperClassName": "max-w-full w-full",
+    "density": "default"
+  },
+  {
+    "id": 71,
+    "file": "apps/web/src/components/payment/SlipReviewTab.tsx",
+    "index": 0,
+    "className": "border rounded-lg px-3 py-2",
+    "wrapperClassName": "max-w-full w-full",
+    "density": "default"
+  },
+  {
+    "id": 72,
+    "file": "apps/web/src/pages/TodosPage/components/TodoFilters.tsx",
+    "index": 0,
+    "className": "pl-9 pr-8 py-2.5 border border-input bg-card rounded-xl text-sm focus-visible:ring-2 focus-visible:ring-primary/20 focus:border-primary/50 outline-hidden transition-colors appearance-none cursor-pointer",
+    "wrapperClassName": "max-w-full w-auto",
+    "density": "default"
+  },
+  {
+    "id": 73,
+    "file": "apps/web/src/pages/TodosPage/components/TodoForm.tsx",
+    "index": 0,
+    "className": "px-4 py-2.5 border border-input rounded-xl text-sm bg-card focus-visible:ring-2 focus-visible:ring-primary/20 focus:border-primary/50 outline-hidden transition-colors",
+    "wrapperClassName": "max-w-full w-full",
+    "density": "default"
+  },
+  {
+    "id": 74,
+    "file": "apps/web/src/pages/AfterSalesPage.tsx",
+    "index": 0,
+    "className": "h-11 rounded-lg border border-input bg-background px-3 text-sm",
+    "wrapperClassName": "max-w-full w-full min-w-0 sm:w-48",
+    "density": "default"
+  },
+  {
+    "id": 75,
+    "file": "apps/web/src/pages/VatReportPage.tsx",
+    "index": 0,
+    "className": "w-full px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden bg-background text-foreground",
+    "wrapperClassName": "max-w-full w-full",
+    "density": "default"
+  },
+  {
+    "id": 76,
+    "file": "apps/web/src/pages/InspectionPage.tsx",
+    "index": 0,
+    "className": "px-4 py-2.5 rounded-lg border border-input bg-background text-sm focus:outline-hidden focus-visible:ring-2 focus-visible:ring-ring/30",
+    "wrapperClassName": "max-w-full w-auto",
+    "density": "default"
+  },
+  {
+    "id": 77,
+    "file": "apps/web/src/pages/PDPAPage.tsx",
+    "index": 0,
+    "className": "px-3 py-2 border rounded-lg text-sm",
+    "wrapperClassName": "max-w-full w-full",
+    "density": "default"
+  },
+  {
+    "id": 78,
+    "file": "apps/web/src/pages/PDPAPage.tsx",
+    "index": 1,
+    "className": "px-3 py-2 border rounded-lg text-sm",
+    "wrapperClassName": "max-w-full w-full",
+    "density": "default"
+  },
+  {
+    "id": 79,
+    "file": "apps/web/src/pages/PeakSyncPage.tsx",
+    "index": 0,
+    "className": "text-sm border border-input rounded-lg px-3 py-2 bg-background",
+    "wrapperClassName": "max-w-full w-auto",
+    "density": "default"
+  },
+  {
+    "id": 80,
+    "file": "apps/web/src/components/tender/TenderInput.tsx",
+    "index": 0,
+    "className": "w-full h-11 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20 disabled:opacity-60",
+    "wrapperClassName": "max-w-full w-full",
+    "density": "default"
+  },
+  {
+    "id": 81,
+    "file": "apps/web/src/components/contract/CreditCheckPanel.tsx",
+    "index": 0,
+    "className": "px-3 py-1.5 border border-input rounded-lg text-sm",
+    "wrapperClassName": "w-full sm:w-44 sm:shrink-0",
+    "density": "default"
+  },
+  {
+    "id": 82,
+    "file": "apps/web/src/components/contract/CustomerEditModal.tsx",
+    "index": 0,
+    "className": "px-3 py-2 border border-input rounded-lg text-sm bg-background",
+    "wrapperClassName": "max-w-full w-full",
+    "density": "default"
+  },
+  {
+    "id": 83,
+    "file": "apps/web/src/components/contract/CustomerEditModal.tsx",
+    "index": 1,
+    "className": "px-3 py-2 border border-input rounded-lg text-sm",
+    "wrapperClassName": "max-w-full w-full",
+    "density": "default"
+  },
+  {
+    "id": 84,
+    "file": "apps/web/src/components/contract/CustomerEditModal.tsx",
+    "index": 2,
+    "className": "px-3 py-2 border border-input rounded-lg text-sm bg-background",
+    "wrapperClassName": "max-w-full w-full",
+    "density": "default"
+  },
+  {
+    "id": 85,
+    "file": "apps/web/src/components/contract/CustomerEditModal.tsx",
+    "index": 3,
+    "className": "px-3 py-2 border border-input rounded-lg text-sm bg-background",
+    "wrapperClassName": "max-w-full w-full",
+    "density": "default"
+  },
+  {
+    "id": 86,
+    "file": "apps/web/src/components/accounting/ReverseConfirmDialog.tsx",
+    "index": 0,
+    "className": "rounded-md border border-input bg-background px-3 py-2 text-sm leading-snug focus:outline-none focus:ring-2 focus:ring-ring",
+    "wrapperClassName": "max-w-full w-full",
+    "density": "default"
+  },
+  {
+    "id": 87,
+    "file": "apps/web/src/components/template-editor/layout/HeaderBar.tsx",
+    "index": 0,
+    "className": "min-h-11 px-3 py-2 text-base font-medium border border-input rounded-lg bg-background focus:ring-2 focus:ring-primary focus:border-primary disabled:opacity-50",
+    "wrapperClassName": "w-auto min-w-0 flex-1 basis-48 max-w-full lg:max-w-80",
+    "density": "default"
+  },
+  {
+    "id": 88,
+    "file": "apps/web/src/pages/FinanceReceivablePage/FinanceContactLogDialog.tsx",
+    "index": 0,
+    "className": "px-3 py-2 border border-input rounded-lg bg-background",
+    "wrapperClassName": "max-w-full w-full",
+    "density": "default"
+  },
+  {
+    "id": 89,
+    "file": "apps/web/src/pages/ChatbotFinanceKnowledgePage.tsx",
+    "index": 0,
+    "className": "rounded-md border border-border bg-background px-3 py-2 text-sm",
+    "wrapperClassName": "max-w-full w-full",
+    "density": "default"
+  },
+  {
+    "id": 90,
+    "file": "apps/web/src/pages/ChatbotFinanceKnowledgePage.tsx",
+    "index": 1,
+    "className": "px-3 py-2 border rounded-lg text-sm",
+    "wrapperClassName": "max-w-full w-full mt-1",
+    "density": "default"
+  },
+  {
+    "id": 91,
+    "file": "apps/web/src/pages/RepossessionsPage.tsx",
+    "index": 0,
+    "className": "px-3 py-2 border border-input rounded-lg text-sm bg-background focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden",
+    "wrapperClassName": "max-w-full w-auto",
+    "density": "default"
+  },
+  {
+    "id": 92,
+    "file": "apps/web/src/pages/RepossessionsPage.tsx",
+    "index": 1,
+    "className": "px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden",
+    "wrapperClassName": "max-w-full w-full",
+    "density": "default"
+  },
+  {
+    "id": 93,
+    "file": "apps/web/src/pages/NotificationsPage/components/NotificationLogTable.tsx",
+    "index": 0,
+    "className": "px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden",
+    "wrapperClassName": "max-w-full w-auto",
+    "density": "default"
+  },
+  {
+    "id": 94,
+    "file": "apps/web/src/pages/NotificationsPage/components/NotificationLogTable.tsx",
+    "index": 1,
+    "className": "px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden",
+    "wrapperClassName": "max-w-full w-auto",
+    "density": "default"
+  },
+  {
+    "id": 95,
+    "file": "apps/web/src/pages/NotificationsPage/components/TemplateForm.tsx",
+    "index": 0,
+    "className": "px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden",
+    "wrapperClassName": "max-w-full w-full",
+    "density": "default"
+  },
+  {
+    "id": 96,
+    "file": "apps/web/src/pages/NotificationsPage/components/TemplateForm.tsx",
+    "index": 1,
+    "className": "px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden",
+    "wrapperClassName": "max-w-full w-full",
+    "density": "default"
+  },
+  {
+    "id": 97,
+    "file": "apps/web/src/pages/NotificationsPage/components/TemplateForm.tsx",
+    "index": 2,
+    "className": "px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden",
+    "wrapperClassName": "max-w-full w-full",
+    "density": "default"
+  },
+  {
+    "id": 98,
+    "file": "apps/web/src/pages/NotificationsPage/components/TemplateManager.tsx",
+    "index": 0,
+    "className": "px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden",
+    "wrapperClassName": "max-w-full w-auto",
+    "density": "default"
+  },
+  {
+    "id": 99,
+    "file": "apps/web/src/pages/NotificationsPage/index.tsx",
+    "index": 0,
+    "className": "px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden",
+    "wrapperClassName": "max-w-full w-full",
+    "density": "default"
+  },
+  {
+    "id": 100,
+    "file": "apps/web/src/components/product/DeviceOriginFilter.tsx",
+    "index": 0,
+    "className": "w-full min-w-0 h-11 min-h-11",
+    "wrapperClassName": "mb-3 w-full sm:w-auto",
+    "density": "default"
+  },
+  {
+    "id": 101,
+    "file": "apps/web/src/components/expense-form-v4/PettyCashLinesSection.tsx",
+    "index": 0,
+    "className": "rounded-md border border-input bg-background px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-primary",
+    "wrapperClassName": "max-w-full w-full",
+    "density": "default"
+  },
+  {
+    "id": 102,
+    "file": "apps/web/src/pages/TradeInPage/components/AcceptModal.tsx",
+    "index": 0,
+    "className": "h-10 rounded-lg border border-input bg-background px-3 text-sm",
+    "wrapperClassName": "max-w-full mt-1.5 w-full",
+    "density": "default"
+  },
+  {
+    "id": 103,
+    "file": "apps/web/src/pages/TradeInPage/components/ValuationsTab.tsx",
+    "index": 0,
+    "className": "h-10 rounded-lg border border-input bg-background px-3 text-sm",
+    "wrapperClassName": "max-w-full mt-1 w-full",
+    "density": "default"
+  },
+  {
+    "id": 104,
+    "file": "apps/web/src/pages/TradeInPage/components/QuestionnaireTab.tsx",
+    "index": 0,
+    "className": "h-8 rounded-lg border border-input bg-background px-2 text-sm",
+    "wrapperClassName": "max-w-full w-full",
+    "density": "default"
+  },
+  {
+    "id": 105,
+    "file": "apps/web/src/pages/TradeInPage/components/ReferenceQuestionnaire.tsx",
+    "index": 0,
+    "className": "min-h-11 rounded-lg border border-input bg-background px-3",
+    "wrapperClassName": "w-auto max-w-full",
+    "density": "default"
+  },
+  {
+    "id": 106,
+    "file": "apps/web/src/components/credit-check/CreditAffordabilityForm.tsx",
+    "index": 0,
+    "className": "w-full rounded-md border border-input bg-background px-3 py-2 text-sm",
+    "wrapperClassName": "max-w-full w-full",
+    "density": "default"
+  },
+  {
+    "id": 107,
+    "file": "apps/web/src/components/credit-check/CreditCheckCreateModal.tsx",
+    "index": 0,
+    "className": "px-3 py-2 border border-input rounded-lg text-sm",
+    "wrapperClassName": "max-w-full w-full",
+    "density": "default"
+  },
+  {
+    "id": 108,
+    "file": "apps/web/src/components/credit-check/CreditCheckOverrideDialog.tsx",
+    "index": 0,
+    "className": "h-10 px-3 rounded-lg border border-input bg-background text-sm",
+    "wrapperClassName": "max-w-full w-full",
+    "density": "default"
+  },
+  {
+    "id": 109,
+    "file": "apps/web/src/components/credit-check/CreditCheckOverrideDialog.tsx",
+    "index": 1,
+    "className": "h-10 px-3 rounded-lg border border-input bg-background text-sm",
+    "wrapperClassName": "max-w-full w-full",
+    "density": "default"
+  },
+  {
+    "id": 110,
+    "file": "apps/web/src/components/credit-check/CreditCheckOverrideDialog.tsx",
+    "index": 2,
+    "className": "h-10 px-3 rounded-lg border border-input bg-background text-sm",
+    "wrapperClassName": "max-w-full w-full",
+    "density": "default"
+  },
+  {
+    "id": 111,
+    "file": "apps/web/src/pages/StockCountPage.tsx",
+    "index": 0,
+    "className": "min-h-11 px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden",
+    "wrapperClassName": "min-w-0 max-w-full w-full sm:w-auto",
+    "density": "default"
+  },
+  {
+    "id": 112,
+    "file": "apps/web/src/pages/ImportedSalesPage.tsx",
+    "index": 0,
+    "className": "border border-border bg-background text-foreground rounded-md px-3 py-2 text-sm",
+    "wrapperClassName": "max-w-full w-auto",
+    "density": "default"
+  },
+  {
+    "id": 113,
+    "file": "apps/web/src/components/expense-form-v4/SettlementLinesSection.tsx",
+    "index": 0,
+    "className": "px-3 py-2 border border-input rounded-lg text-sm bg-background",
+    "wrapperClassName": "max-w-full w-auto",
+    "density": "default"
+  },
+  {
+    "id": 114,
+    "file": "apps/web/src/components/expense-form-v4/PayrollLinesSection.tsx",
+    "index": 0,
+    "className": "px-3 py-2 border border-input rounded-lg text-sm bg-background",
+    "wrapperClassName": "max-w-full w-full",
+    "density": "default"
+  },
+  {
+    "id": 115,
+    "file": "apps/web/src/components/expense-form-v4/PayrollLinesSection.tsx",
+    "index": 1,
+    "className": "px-3 py-2 border border-input rounded-lg text-sm bg-background",
+    "wrapperClassName": "max-w-full w-full",
+    "density": "default"
+  },
+  {
+    "id": 116,
+    "file": "apps/web/src/components/expense-form-v4/PayrollLinesSection.tsx",
+    "index": 2,
+    "className": "px-1.5 py-1 border border-input rounded text-xs bg-background",
+    "wrapperClassName": "max-w-full w-full",
+    "density": "default"
+  },
+  {
+    "id": 117,
+    "file": "apps/web/src/components/expense-form-v4/ItemLinesSection.tsx",
+    "index": 0,
+    "className": "w-full min-w-0 h-11 min-h-11",
+    "wrapperClassName": "max-w-full w-full min-w-0",
+    "density": "default"
+  },
+  {
+    "id": 118,
+    "file": "apps/web/src/components/expense-form-v4/ItemLinesSection.tsx",
+    "index": 1,
+    "className": "w-full min-w-0 h-11 min-h-11",
+    "wrapperClassName": "max-w-full w-full min-w-0",
+    "density": "default"
+  },
+  {
+    "id": 119,
+    "file": "apps/web/src/components/expense-form-v4/ItemLinesSection.tsx",
+    "index": 2,
+    "className": "w-full min-w-0 h-11 min-h-11",
+    "wrapperClassName": "max-w-full w-full min-w-0",
+    "density": "default"
+  },
+  {
+    "id": 120,
+    "file": "apps/web/src/components/expense-form-v4/AdjustmentSection.tsx",
+    "index": 0,
+    "className": "w-full min-w-0 h-11 min-h-11",
+    "wrapperClassName": "max-w-full w-full min-w-0",
+    "density": "default"
+  },
+  {
+    "id": 121,
+    "file": "apps/web/src/components/expense-form-v4/AdjustmentSection.tsx",
+    "index": 1,
+    "className": "w-full min-w-0 h-11 min-h-11",
+    "wrapperClassName": "max-w-full w-full min-w-0",
+    "density": "default"
+  },
+  {
+    "id": 122,
+    "file": "apps/web/src/pages/ContractCreatePage/components/CustomerCreateModal.tsx",
+    "index": 0,
+    "className": "px-3 py-2 border border-input rounded-lg text-sm bg-background",
+    "wrapperClassName": "max-w-full w-full",
+    "density": "default"
+  },
+  {
+    "id": 123,
+    "file": "apps/web/src/pages/ContractCreatePage/components/CustomerCreateModal.tsx",
+    "index": 1,
+    "className": "px-3 py-2 border border-input rounded-lg text-sm",
+    "wrapperClassName": "max-w-full w-full",
+    "density": "default"
+  },
+  {
+    "id": 124,
+    "file": "apps/web/src/pages/ContractCreatePage/components/CustomerCreateModal.tsx",
+    "index": 2,
+    "className": "px-3 py-2 border border-input rounded-lg text-sm bg-background",
+    "wrapperClassName": "max-w-full w-full",
+    "density": "default"
+  },
+  {
+    "id": 125,
+    "file": "apps/web/src/pages/ContractCreatePage/components/CustomerCreateModal.tsx",
+    "index": 3,
+    "className": "px-3 py-2 border border-input rounded-lg text-sm bg-background",
+    "wrapperClassName": "max-w-full w-full",
+    "density": "default"
+  },
+  {
+    "id": 126,
+    "file": "apps/web/src/pages/ContractCreatePage/components/PlanDetailsStep.tsx",
+    "index": 0,
+    "className": "px-3 py-2 border border-input rounded-lg text-sm",
+    "wrapperClassName": "max-w-full w-full",
+    "density": "default"
+  },
+  {
+    "id": 127,
+    "file": "apps/web/src/pages/ContractCreatePage/components/PlanDetailsStep.tsx",
+    "index": 1,
+    "className": "px-3 py-2 border border-input rounded-lg text-sm",
+    "wrapperClassName": "max-w-full w-full",
+    "density": "default"
+  },
+  {
+    "id": 128,
+    "file": "apps/web/src/components/expense-form-v4/VendorSection.tsx",
+    "index": 0,
+    "className": "w-full min-w-0 h-11 min-h-11",
+    "wrapperClassName": "max-w-full w-full min-w-0",
+    "density": "default"
+  },
+  {
+    "id": 129,
+    "file": "apps/web/src/components/expense-form-v4/VendorSection.tsx",
+    "index": 1,
+    "className": "w-full min-w-0 h-11 min-h-11",
+    "wrapperClassName": "max-w-full w-full min-w-0",
+    "density": "default"
+  },
+  {
+    "id": 130,
+    "file": "apps/web/src/components/ui/RichTextEditor.tsx",
+    "index": 0,
+    "className": "px-1.5 py-1 text-xs border border-border rounded bg-card hover:bg-muted",
+    "wrapperClassName": "max-w-full w-auto mr-1",
+    "density": "default"
+  },
+  {
+    "id": 131,
+    "file": "apps/web/src/components/ui/RichTextEditor.tsx",
+    "index": 1,
+    "className": "px-1.5 py-1 text-xs border border-border rounded bg-card hover:bg-muted",
+    "wrapperClassName": "max-w-full w-auto mr-1",
+    "density": "default"
+  },
+  {
+    "id": 132,
+    "file": "apps/web/src/pages/AuditLogsPage.tsx",
+    "index": 0,
+    "className": "border rounded-lg px-3 py-2 text-sm",
+    "wrapperClassName": "max-w-full w-full",
+    "density": "default"
+  },
+  {
+    "id": 133,
+    "file": "apps/web/src/pages/ETaxConfigPage.tsx",
+    "index": 0,
+    "className": "w-full px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden bg-background text-foreground leading-snug",
+    "wrapperClassName": "max-w-full w-full",
+    "density": "default"
+  },
+  {
+    "id": 134,
+    "file": "apps/web/src/pages/CollectionsPage/tabs/AllTab.tsx",
+    "index": 0,
+    "className": "px-3 py-2 border border-input rounded-lg text-sm",
+    "wrapperClassName": "max-w-full w-auto",
+    "density": "default"
+  },
+  {
+    "id": 135,
+    "file": "apps/web/src/pages/CollectionsPage/tabs/AllTab.tsx",
+    "index": 1,
+    "className": "px-3 py-2 border border-input rounded-lg text-sm",
+    "wrapperClassName": "max-w-full w-auto",
+    "density": "default"
+  },
+  {
+    "id": 136,
+    "file": "apps/web/src/pages/ContractDetailPage.tsx",
+    "index": 0,
+    "className": "px-3 py-2 border border-input rounded-lg text-sm",
+    "wrapperClassName": "max-w-full w-full",
+    "density": "default"
+  },
+  {
+    "id": 137,
+    "file": "apps/web/src/pages/AfterSalesNewPage.tsx",
+    "index": 0,
+    "className": "h-11 w-full rounded-lg border border-input bg-background px-3.5 text-sm leading-snug text-foreground placeholder:text-muted-foreground/70",
+    "wrapperClassName": "max-w-full w-full",
+    "density": "default"
+  },
+  {
+    "id": 138,
+    "file": "apps/web/src/pages/AfterSalesNewPage.tsx",
+    "index": 1,
+    "className": "h-11 w-full rounded-lg border border-input bg-background px-3.5 text-sm leading-snug text-foreground placeholder:text-muted-foreground/70",
+    "wrapperClassName": "max-w-full w-full",
+    "density": "default"
+  },
+  {
+    "id": 139,
+    "file": "apps/web/src/pages/ContractsPage.tsx",
+    "index": 0,
+    "className": "rounded-md border border-input bg-background px-2 text-sm",
+    "wrapperClassName": "max-w-full w-auto",
+    "density": "default"
+  },
+  {
+    "id": 140,
+    "file": "apps/web/src/pages/ContractsPage.tsx",
+    "index": 1,
+    "className": "w-full min-w-0 h-11 min-h-11",
+    "wrapperClassName": "max-w-full min-w-0 w-full sm:w-auto",
+    "density": "default"
+  },
+  {
+    "id": 141,
+    "file": "apps/web/src/pages/ContractsPage.tsx",
+    "index": 2,
+    "className": "w-full min-w-0 h-11 min-h-11",
+    "wrapperClassName": "max-w-full min-w-0 w-full sm:w-auto",
+    "density": "default"
+  },
+  {
+    "id": 142,
+    "file": "apps/web/src/pages/ContractsPage.tsx",
+    "index": 3,
+    "className": "w-full min-w-0 h-11 min-h-11",
+    "wrapperClassName": "max-w-full min-w-0 w-full sm:w-auto",
+    "density": "default"
+  },
+  {
+    "id": 143,
+    "file": "apps/web/src/pages/canned-response-admin/QuickReplyEditor.tsx",
+    "index": 0,
+    "className": "text-xs border border-border rounded px-2 py-1 bg-background",
+    "wrapperClassName": "max-w-full w-auto",
+    "density": "default"
+  },
+  {
+    "id": 144,
+    "file": "apps/web/src/pages/canned-response-admin/QuickReplyEditor.tsx",
+    "index": 1,
+    "className": "text-xs border border-border rounded px-2 py-1 bg-background",
+    "wrapperClassName": "max-w-full w-auto flex-1",
+    "density": "default"
+  },
+  {
+    "id": 145,
+    "file": "apps/web/src/pages/PaymentsPage/components/RecordPaymentWizard.tsx",
+    "index": 0,
+    "className": "rounded-lg border border-border bg-background px-2 py-1.5 text-sm text-foreground leading-snug",
+    "wrapperClassName": "max-w-full w-full",
+    "density": "default"
+  },
+  {
+    "id": 146,
+    "file": "apps/web/src/pages/PaymentsPage/components/ReceiptsTab.tsx",
+    "index": 0,
+    "className": "px-3 py-2 border border-input rounded-lg text-sm",
+    "wrapperClassName": "max-w-full w-auto",
+    "density": "default"
+  },
+  {
+    "id": 147,
+    "file": "apps/web/src/pages/ShopDailyCashPage.tsx",
+    "index": 0,
+    "className": "h-11 rounded-lg border border-input bg-background px-3 text-sm",
+    "wrapperClassName": "max-w-full w-full min-w-0 sm:w-48",
+    "density": "default"
+  },
+  {
+    "id": 148,
+    "file": "apps/web/src/pages/equity/EquityEntryPage.tsx",
+    "index": 0,
+    "className": "border border-border rounded-md px-3 py-2 bg-background",
+    "wrapperClassName": "max-w-full w-full",
+    "density": "default"
+  },
+  {
+    "id": 149,
+    "file": "apps/web/src/pages/equity/EquityEntryPage.tsx",
+    "index": 1,
+    "className": "border border-border rounded-md px-2 py-2 text-sm bg-background",
+    "wrapperClassName": "max-w-full w-full",
+    "density": "default"
+  },
+  {
+    "id": 150,
+    "file": "apps/web/src/pages/equity/EquityEntryPage.tsx",
+    "index": 2,
+    "className": "border border-border rounded-md px-3 py-2 bg-background",
+    "wrapperClassName": "max-w-full w-full",
+    "density": "default"
+  },
+  {
+    "id": 151,
+    "file": "apps/web/src/pages/equity/EquityListPage.tsx",
+    "index": 0,
+    "className": "border border-border rounded-md px-3 py-2 text-sm bg-background",
+    "wrapperClassName": "max-w-full w-auto",
+    "density": "default"
+  },
+  {
+    "id": 152,
+    "file": "apps/web/src/pages/equity/EquityListPage.tsx",
+    "index": 1,
+    "className": "border border-border rounded-md px-3 py-2 text-sm bg-background",
+    "wrapperClassName": "max-w-full w-auto",
+    "density": "default"
+  },
+  {
+    "id": 153,
+    "file": "apps/web/src/pages/equity/DividendRegisterPage.tsx",
+    "index": 0,
+    "className": "border border-border rounded-md px-3 py-2 text-sm bg-background",
+    "wrapperClassName": "max-w-full w-auto",
+    "density": "default"
+  },
+  {
+    "id": 154,
+    "file": "apps/web/src/pages/equity/DividendRegisterPage.tsx",
+    "index": 1,
+    "className": "border border-border rounded-md px-3 py-2 text-sm bg-background",
+    "wrapperClassName": "max-w-full w-auto",
+    "density": "default"
+  },
+  {
+    "id": 155,
+    "file": "apps/web/src/pages/PricingTemplatesPage.tsx",
+    "index": 0,
+    "className": "px-3 py-2 border border-input rounded-lg text-sm",
+    "wrapperClassName": "max-w-full w-auto",
+    "density": "default"
+  },
+  {
+    "id": 156,
+    "file": "apps/web/src/pages/PricingTemplatesPage.tsx",
+    "index": 1,
+    "className": "px-3 py-2 border border-input rounded-lg text-sm",
+    "wrapperClassName": "max-w-full w-auto",
+    "density": "default"
+  },
+  {
+    "id": 157,
+    "file": "apps/web/src/pages/PricingTemplatesPage.tsx",
+    "index": 2,
+    "className": "rounded-lg border border-input bg-background p-2",
+    "wrapperClassName": "max-w-full w-full",
+    "density": "default"
+  },
+  {
+    "id": 158,
+    "file": "apps/web/src/pages/PricingTemplatesPage.tsx",
+    "index": 3,
+    "className": "px-3 py-2 border border-input rounded-lg text-sm",
+    "wrapperClassName": "max-w-full w-full",
+    "density": "default"
+  },
+  {
+    "id": 159,
+    "file": "apps/web/src/pages/PaymentsPage/components/PaymentModals.tsx",
+    "index": 0,
+    "className": "w-full px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden",
+    "wrapperClassName": "max-w-full w-full",
+    "density": "default"
+  },
+  {
+    "id": 160,
+    "file": "apps/web/src/pages/PaymentsPage/components/PaymentModals.tsx",
+    "index": 1,
+    "className": "px-3 py-2 border border-input rounded-lg text-sm",
+    "wrapperClassName": "max-w-full w-full",
+    "density": "default"
+  },
+  {
+    "id": 161,
+    "file": "apps/web/src/pages/PaymentsPage/components/PaymentFilters.tsx",
+    "index": 0,
+    "className": "w-full min-w-0 h-11 min-h-11",
+    "wrapperClassName": "max-w-full min-w-0 w-full sm:w-auto",
+    "density": "default"
+  },
+  {
+    "id": 162,
+    "file": "apps/web/src/pages/PaymentsPage/components/PaymentFilters.tsx",
+    "index": 1,
+    "className": "w-full min-w-0 h-11 min-h-11",
+    "wrapperClassName": "max-w-full min-w-0 w-full sm:w-auto",
+    "density": "default"
+  },
+  {
+    "id": 163,
+    "file": "apps/web/src/pages/other-income/components/ItemsTable.tsx",
+    "index": 0,
+    "className": "border rounded px-2 py-1.5 text-xs font-mono bg-background",
+    "wrapperClassName": "max-w-full mt-1 w-full",
+    "density": "default"
+  },
+  {
+    "id": 164,
+    "file": "apps/web/src/pages/other-income/components/ItemsTable.tsx",
+    "index": 1,
+    "className": "border rounded px-2 py-1.5 text-xs font-mono bg-background",
+    "wrapperClassName": "max-w-full mt-1 w-full",
+    "density": "default"
+  },
+  {
+    "id": 165,
+    "file": "apps/web/src/pages/other-income/OtherIncomeEntryPage.tsx",
+    "index": 0,
+    "className": "border rounded-md px-3 py-2 text-sm bg-background",
+    "wrapperClassName": "max-w-full mt-1 w-full",
+    "density": "default"
+  },
+  {
+    "id": 166,
+    "file": "apps/web/src/pages/CompanySettingsPage.tsx",
+    "index": 0,
+    "className": "w-full px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden text-sm",
+    "wrapperClassName": "max-w-full w-full",
+    "density": "default"
+  },
+  {
+    "id": 167,
+    "file": "apps/web/src/pages/canned-response-admin/bubble-editors/CardBubbleEditor.tsx",
+    "index": 0,
+    "className": "text-xs border border-border rounded px-1.5 py-1 bg-background",
+    "wrapperClassName": "col-start-1 row-start-2 sm:col-start-2 sm:row-start-1",
+    "density": "default"
+  },
+  {
+    "id": 168,
+    "file": "apps/web/src/pages/CollectionsPage/components/StuckContractsSection.tsx",
+    "index": 0,
+    "className": "h-9 px-3 text-sm rounded-md border border-input bg-background",
+    "wrapperClassName": "max-w-full w-full",
+    "density": "default"
+  },
+  {
+    "id": 169,
+    "file": "apps/web/src/pages/AssetManagementPage/components/AssetTable.tsx",
+    "index": 0,
+    "className": "w-full px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden",
+    "wrapperClassName": "w-full max-w-[180px]",
+    "density": "default"
+  },
+  {
+    "id": 170,
+    "file": "apps/web/src/pages/AssetManagementPage/components/AssetTable.tsx",
+    "index": 1,
+    "className": "w-full px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden",
+    "wrapperClassName": "w-full max-w-[180px]",
+    "density": "default"
+  },
+  {
+    "id": 171,
+    "file": "apps/web/src/pages/AssetManagementPage/components/AssetForm.tsx",
+    "index": 0,
+    "className": "w-full px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden",
+    "wrapperClassName": "max-w-full w-full",
+    "density": "default"
+  },
+  {
+    "id": 172,
+    "file": "apps/web/src/pages/AssetManagementPage/components/AssetForm.tsx",
+    "index": 1,
+    "className": "w-full px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden",
+    "wrapperClassName": "max-w-full w-full",
+    "density": "default"
+  },
+  {
+    "id": 173,
+    "file": "apps/web/src/pages/AssetManagementPage/components/AssetForm.tsx",
+    "index": 2,
+    "className": "w-full px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden",
+    "wrapperClassName": "max-w-full w-full",
+    "density": "default"
+  },
+  {
+    "id": 174,
+    "file": "apps/web/src/pages/AssetManagementPage/components/AssetForm.tsx",
+    "index": 3,
+    "className": "w-full px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden",
+    "wrapperClassName": "max-w-full w-full",
+    "density": "default"
+  },
+  {
+    "id": 175,
+    "file": "apps/web/src/pages/AssetManagementPage/components/AssetForm.tsx",
+    "index": 4,
+    "className": "w-full px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden",
+    "wrapperClassName": "max-w-full w-full",
+    "density": "default"
+  },
+  {
+    "id": 176,
+    "file": "apps/web/src/pages/UsersPage/UserDetailPage.tsx",
+    "index": 0,
+    "className": "w-full min-w-0 h-11 min-h-11",
+    "wrapperClassName": "max-w-full w-full min-w-0",
+    "density": "default"
+  },
+  {
+    "id": 177,
+    "file": "apps/web/src/pages/UsersPage/UserDetailPage.tsx",
+    "index": 1,
+    "className": "w-full min-w-0 h-11 min-h-11",
+    "wrapperClassName": "max-w-full w-full min-w-0",
+    "density": "default"
+  },
+  {
+    "id": 178,
+    "file": "apps/web/src/pages/UsersPage/UserDetailPage.tsx",
+    "index": 2,
+    "className": "w-full min-w-0 h-11 min-h-11",
+    "wrapperClassName": "max-w-full w-full min-w-0",
+    "density": "default"
+  },
+  {
+    "id": 179,
+    "file": "apps/web/src/pages/CollectionsPage/components/SendLineAdHocDialog.tsx",
+    "index": 0,
+    "className": "px-3 py-2 border border-input rounded-lg text-sm leading-snug",
+    "wrapperClassName": "max-w-full w-full",
+    "density": "default"
+  },
+  {
+    "id": 180,
+    "file": "apps/web/src/pages/CollectionsPage/components/LegalCaseDialog.tsx",
+    "index": 0,
+    "className": "rounded-md border border-border bg-background px-2 py-2 text-sm",
+    "wrapperClassName": "max-w-full w-full",
+    "density": "default"
+  },
+  {
+    "id": 181,
+    "file": "apps/web/src/pages/CollectionsPage/components/CollectionsFilters.tsx",
+    "index": 0,
+    "className": "px-3 py-2 border border-input bg-card rounded-lg text-sm leading-snug focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/30",
+    "wrapperClassName": "max-w-full w-auto sm:min-w-[160px]",
+    "density": "default"
+  },
+  {
+    "id": 182,
+    "file": "apps/web/src/pages/DunningSettingsPage.tsx",
+    "index": 0,
+    "className": "px-3 py-2 rounded-md border border-border bg-input text-foreground text-sm focus:outline-none focus:ring-1 focus:ring-primary",
+    "wrapperClassName": "max-w-full w-full",
+    "density": "default"
+  },
+  {
+    "id": 183,
+    "file": "apps/web/src/pages/DunningSettingsPage.tsx",
+    "index": 1,
+    "className": "px-3 py-2 rounded-md border border-border bg-input text-foreground text-sm focus:outline-none focus:ring-1 focus:ring-primary",
+    "wrapperClassName": "max-w-full w-full",
+    "density": "default"
+  },
+  {
+    "id": 184,
+    "file": "apps/web/src/pages/CommissionsPage.tsx",
+    "index": 0,
+    "className": "px-3 py-2 border border-input rounded-lg text-sm",
+    "wrapperClassName": "max-w-full w-auto",
+    "density": "default"
+  },
+  {
+    "id": 185,
+    "file": "apps/web/src/pages/CommissionsPage.tsx",
+    "index": 1,
+    "className": "px-3 py-2 border border-input rounded-lg text-sm",
+    "wrapperClassName": "max-w-full w-auto",
+    "density": "default"
+  },
+  {
+    "id": 186,
+    "file": "apps/web/src/pages/PromotionsPage.tsx",
+    "index": 0,
+    "className": "h-10 rounded-md border border-input bg-background px-3 text-sm",
+    "wrapperClassName": "max-w-full mt-1 w-full",
+    "density": "default"
+  },
+  {
+    "id": 187,
+    "file": "apps/web/src/pages/ProfitLossPage.tsx",
+    "index": 0,
+    "className": "w-full px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden",
+    "wrapperClassName": "max-w-full w-auto sm:min-w-[150px]",
+    "density": "default"
+  },
+  {
+    "id": 188,
+    "file": "apps/web/src/pages/POSPage/components/SaleDetailsForm.tsx",
+    "index": 0,
+    "className": "w-full min-h-11 bg-background px-3 py-2 border border-input rounded-lg text-sm outline-hidden focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background",
+    "wrapperClassName": "max-w-full w-full",
+    "density": "default"
+  },
+  {
+    "id": 189,
+    "file": "apps/web/src/pages/ProductDetailPage/index.tsx",
+    "index": 0,
+    "className": "px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden",
+    "wrapperClassName": "max-w-full w-full",
+    "density": "default"
+  },
+  {
+    "id": 190,
+    "file": "apps/web/src/pages/UsersPage/components/InviteModal.tsx",
+    "index": 0,
+    "className": "w-full min-w-0 h-11 min-h-11",
+    "wrapperClassName": "max-w-full w-full min-w-0",
+    "density": "default"
+  },
+  {
+    "id": 191,
+    "file": "apps/web/src/pages/UsersPage/components/InviteModal.tsx",
+    "index": 1,
+    "className": "w-full min-w-0 h-11 min-h-11",
+    "wrapperClassName": "max-w-full w-full min-w-0",
+    "density": "default"
+  },
+  {
+    "id": 192,
+    "file": "apps/web/src/pages/ExpenseDailySummaryPage.tsx",
+    "index": 0,
+    "className": "min-h-11 px-3 py-2 border border-input rounded-lg text-sm bg-background",
+    "wrapperClassName": "w-auto min-w-0 max-w-full",
+    "density": "default"
+  },
+  {
+    "id": 193,
+    "file": "apps/web/src/pages/ETaxInvoicePage.tsx",
+    "index": 0,
+    "className": "w-full px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden bg-background text-foreground",
+    "wrapperClassName": "max-w-full w-full",
+    "density": "default"
+  },
+  {
+    "id": 194,
+    "file": "apps/web/src/pages/SmsTemplatesPage/components/SmsTemplateForm.tsx",
+    "index": 0,
+    "className": "px-3 py-2 rounded-md border border-border bg-input text-foreground text-sm focus:outline-none focus:ring-1 focus:ring-primary",
+    "wrapperClassName": "max-w-full w-full",
+    "density": "default"
+  },
+  {
+    "id": 195,
+    "file": "apps/web/src/pages/PurchaseOrdersPage/components/AccessoryGroupScreen.tsx",
+    "index": 0,
+    "className": "w-full min-h-11 px-3 border border-input rounded-lg bg-card text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden",
+    "wrapperClassName": "max-w-full w-full",
+    "density": "default"
+  },
+  {
+    "id": 196,
+    "file": "apps/web/src/pages/PurchaseOrdersPage/components/UnitInspectScreen.tsx",
+    "index": 0,
+    "className": "w-full min-h-11 px-3 border border-input rounded-lg bg-card text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden",
+    "wrapperClassName": "max-w-full w-full",
+    "density": "default"
+  },
+  {
+    "id": 197,
+    "file": "apps/web/src/pages/ProductDetailPage/components/EditProductModal.tsx",
+    "index": 0,
+    "className": "px-3 py-2 border border-input rounded-lg text-sm",
+    "wrapperClassName": "max-w-full w-full",
+    "density": "default"
+  },
+  {
+    "id": 198,
+    "file": "apps/web/src/pages/ProductDetailPage/components/EditProductModal.tsx",
+    "index": 1,
+    "className": "px-3 py-2 border border-input rounded-lg text-sm disabled:opacity-60",
+    "wrapperClassName": "max-w-full w-full",
+    "density": "default"
+  },
+  {
+    "id": 199,
+    "file": "apps/web/src/pages/ProductDetailPage/components/EditProductModal.tsx",
+    "index": 2,
+    "className": "px-3 py-2 border border-input rounded-lg text-sm",
+    "wrapperClassName": "max-w-full w-full",
+    "density": "default"
+  },
+  {
+    "id": 200,
+    "file": "apps/web/src/pages/ProductDetailPage/components/OnlineListingPanel.tsx",
+    "index": 0,
+    "className": "h-10 rounded-lg border border-input bg-background px-3 text-sm disabled:opacity-50",
+    "wrapperClassName": "max-w-full w-auto",
+    "density": "default"
+  },
+  {
+    "id": 201,
+    "file": "apps/web/src/pages/PurchaseOrdersPage/components/wizard/PaymentSection.tsx",
+    "index": 0,
+    "className": "h-10 w-full rounded-lg border border-input bg-background px-3 text-sm outline-hidden placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring/30 disabled:cursor-not-allowed disabled:opacity-50",
+    "wrapperClassName": "max-w-full w-full",
+    "density": "default"
+  },
+  {
+    "id": 202,
+    "file": "apps/web/src/pages/PurchaseOrdersPage/components/wizard/PaymentSection.tsx",
+    "index": 1,
+    "className": "h-10 w-full rounded-lg border border-input bg-background px-3 text-sm outline-hidden placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring/30 disabled:cursor-not-allowed disabled:opacity-50",
+    "wrapperClassName": "max-w-full w-full",
+    "density": "default"
+  },
+  {
+    "id": 203,
+    "file": "apps/web/src/pages/PurchaseOrdersPage/components/wizard/items/AccessoryItemRow.tsx",
+    "index": 0,
+    "className": "h-10 w-full rounded-md border border-input bg-background px-2.5 text-sm text-foreground outline-hidden focus-visible:ring-2 focus-visible:ring-ring/30 disabled:cursor-not-allowed disabled:opacity-50",
+    "wrapperClassName": "max-w-full w-full",
+    "density": "default"
+  },
+  {
+    "id": 204,
+    "file": "apps/web/src/pages/PurchaseOrdersPage/components/wizard/items/AccessoryItemRow.tsx",
+    "index": 1,
+    "className": "h-10 w-full rounded-md border border-input bg-background px-2.5 text-sm text-foreground outline-hidden focus-visible:ring-2 focus-visible:ring-ring/30 disabled:cursor-not-allowed disabled:opacity-50",
+    "wrapperClassName": "max-w-full w-full",
+    "density": "default"
+  },
+  {
+    "id": 205,
+    "file": "apps/web/src/pages/PurchaseOrdersPage/components/wizard/items/DeviceItemRow.tsx",
+    "index": 0,
+    "className": "h-10 w-full rounded-md border border-input bg-background px-2.5 text-sm text-foreground outline-hidden focus-visible:ring-2 focus-visible:ring-ring/30 disabled:cursor-not-allowed disabled:opacity-50",
+    "wrapperClassName": "max-w-full w-full",
+    "density": "default"
+  },
+  {
+    "id": 206,
+    "file": "apps/web/src/pages/PurchaseOrdersPage/components/wizard/items/RowChrome.tsx",
+    "index": 0,
+    "className": "h-10 w-full rounded-md border border-input bg-background px-2.5 text-sm text-foreground outline-hidden focus-visible:ring-2 focus-visible:ring-ring/30 disabled:cursor-not-allowed disabled:opacity-50",
+    "wrapperClassName": "max-w-full w-full",
+    "density": "default"
+  }
+]

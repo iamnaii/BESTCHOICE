@@ -1,7 +1,7 @@
 import { ActionEffect as Effect } from '@/components/ActionEffect';
 import { JournalPreviewTable } from '@/components/JournalPreviewTable';
 import PaymentApprovalRequestDialog from '@/components/payment/PaymentApprovalRequestDialog';
-import { useRef, useState } from 'react';
+import { useId as useUiFieldId, useRef, useState } from 'react';
 import { FocusScope } from '@radix-ui/react-focus-scope';
 import { WizardStackedOverlay } from '@/components/WizardStackedOverlay';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -151,6 +151,7 @@ export function EarlyPayoffOverlay({
   onClose,
   onSuccess,
 }: Props) {
+  const uiFieldId = useUiFieldId();
   const queryClient = useQueryClient();
   const { user } = useAuth();
   const [discountPct, setDiscountPct] = useState(50);
@@ -388,7 +389,7 @@ export function EarlyPayoffOverlay({
 
           {/* Discount selector */}
           <div className="mb-4">
-            <label className="block text-xs font-medium text-foreground mb-1.5">
+            <label htmlFor={`${uiFieldId}-1`} className="block text-xs font-medium text-foreground mb-1.5">
               ส่วนลดบนกำไรขั้นต้น
             </label>
             <div className="flex flex-wrap gap-2">
@@ -406,7 +407,7 @@ export function EarlyPayoffOverlay({
                   {p}%
                 </button>
               ))}
-              <input
+              <input id={`${uiFieldId}-1`}
                 type="number"
                 min={0}
                 max={MAX_DISCOUNT}
@@ -555,13 +556,13 @@ export function EarlyPayoffOverlay({
                 ทางนี้ต้องส่งขออนุมัติปิดสัญญาเสมอ
               </p>
               <div>
-                <label className="block text-xs font-medium text-foreground mb-1.5">
+                <label htmlFor={`${uiFieldId}-2`} className="block text-xs font-medium text-foreground mb-1.5">
                   วันที่รับเงิน{' '}
                   <span className="text-muted-foreground font-normal">
                     (ย้อนหลังได้ถ้างวดบัญชียังเปิด)
                   </span>
                 </label>
-                <input
+                <input id={`${uiFieldId}-2`}
                   type="date"
                   value={paymentDate}
                   max={bkkToday()}
@@ -1182,10 +1183,10 @@ export function EarlyPayoffOverlay({
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-foreground mb-1.5">
+                  <label htmlFor={`${uiFieldId}-3`} className="block text-xs font-medium text-foreground mb-1.5">
                     จำนวนเงินที่รับโอน <span className="text-destructive">*</span>
                   </label>
-                  <input
+                  <input id={`${uiFieldId}-3`}
                     type="number"
                     min={0.01}
                     step={0.01}

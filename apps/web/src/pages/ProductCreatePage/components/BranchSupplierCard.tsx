@@ -1,3 +1,5 @@
+import { NativeSelect } from '@/components/ui/native-select';
+import { useId as useFieldId } from 'react';
 import { Card, CardHeader, CardContent, CardTitle } from '@/components/ui/card';
 
 interface BranchSupplierCardProps {
@@ -23,16 +25,17 @@ export default function BranchSupplierCard({
   inputCls,
   onChange,
 }: BranchSupplierCardProps) {
+  const fieldId = useFieldId();
   return (
     <Card>
       <CardHeader>
         <CardTitle>สาขา &amp; ผู้จัดจำหน่าย</CardTitle>
       </CardHeader>
       <CardContent>
-        <div className="grid grid-cols-2 gap-5 lg:gap-7.5">
+        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:gap-7.5">
           <div>
-            <label className="block text-sm font-medium text-foreground mb-1">สาขา *</label>
-            <select
+            <label htmlFor={`${fieldId}-1`} className="block text-sm font-medium text-foreground mb-3">สาขา *</label>
+            <NativeSelect id={`${fieldId}-1`}
               value={branchId}
               onChange={(e) => onChange('branchId', e.target.value)}
               className={inputCls}
@@ -44,11 +47,11 @@ export default function BranchSupplierCard({
                   {b.name}
                 </option>
               ))}
-            </select>
+            </NativeSelect>
           </div>
           <div>
-            <label className="block text-sm font-medium text-foreground mb-1">ผู้จัดจำหน่าย</label>
-            <select
+            <label htmlFor={`${fieldId}-2`} className="block text-sm font-medium text-foreground mb-3">ผู้จัดจำหน่าย</label>
+            <NativeSelect id={`${fieldId}-2`}
               value={supplierId}
               onChange={(e) => onChange('supplierId', e.target.value)}
               className={inputCls}
@@ -61,11 +64,11 @@ export default function BranchSupplierCard({
                   {s.name}
                 </option>
               ))}
-            </select>
+            </NativeSelect>
           </div>
           <div>
-            <label className="block text-sm font-medium text-foreground mb-1">ราคาทุน (บาท) *</label>
-            <input
+            <label htmlFor={`${fieldId}-3`} className="block text-sm font-medium text-foreground mb-3">ราคาทุน (บาท) *</label>
+            <input id={`${fieldId}-3`}
               type="number"
               step="0.01"
               value={costPrice}

@@ -1,19 +1,30 @@
 import { ExecutionContext, ForbiddenException } from '@nestjs/common';
 import { BranchGuard } from './branch.guard';
+import { Reflector } from '@nestjs/core';
+import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
 
 describe('BranchGuard', () => {
   let guard: BranchGuard;
 
   beforeEach(() => {
-    guard = new BranchGuard();
+    guard = new BranchGuard(new Reflector());
   });
 
   const makeCtx = (request: Record<string, unknown>): ExecutionContext =>
     ({
       switchToHttp: () => ({ getRequest: () => request }),
+      getHandler: () => function endpoint() {},
+      getClass: () => class Controller {},
     }) as unknown as ExecutionContext;
 
   describe('unauthenticated requests', () => {
+    it('allows only explicitly public endpoints to validate their capability without a user', () => {
+      const handler = function publicEndpoint() {};
+      Reflect.defineMetadata(IS_PUBLIC_KEY, true, handler);
+      const context = makeCtx({});
+      context.getHandler = () => handler;
+      expect(guard.canActivate(context)).toBe(true);
+    });
     it('throws ForbiddenException when request.user is missing', () => {
       expect(() => guard.canActivate(makeCtx({}))).toThrow(ForbiddenException);
     });

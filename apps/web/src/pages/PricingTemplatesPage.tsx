@@ -1,4 +1,5 @@
-import { useState, useRef } from 'react';
+import { NativeSelect } from '@/components/ui/native-select';
+import { useId as useUiFieldId, useState, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { downloadExcelBuffer, importFromExcel } from '@/utils/excel.util';
 import api, { getErrorMessage } from '@/lib/api';
@@ -49,6 +50,7 @@ const defaultForm = {
 };
 
 export default function PricingTemplatesPage() {
+  const uiFieldId = useUiFieldId();
   const queryClient = useQueryClient();
   const [showModal, setShowModal] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
@@ -299,10 +301,10 @@ export default function PricingTemplatesPage() {
 
       {/* Filters */}
       <div className="flex flex-wrap gap-3 mb-5">
-        <select aria-label="เครื่องไทย / เครื่องนอก" value={filterDeviceOrigin} onChange={e => setFilterDeviceOrigin(e.target.value)} className="px-3 py-2 border border-input rounded-lg text-sm">
+        <NativeSelect wrapperClassName="max-w-full w-auto" aria-label="เครื่องไทย / เครื่องนอก" value={filterDeviceOrigin} onChange={e => setFilterDeviceOrigin(e.target.value)} className="px-3 py-2 border border-input rounded-lg text-sm">
           <option value="">ไทย/นอกทั้งหมด</option><option value="THAI">เครื่องไทย</option><option value="IMPORTED">เครื่องนอก</option><option value="UNSPECIFIED">ยังไม่ระบุ</option>
-        </select>
-        <select
+        </NativeSelect>
+        <NativeSelect wrapperClassName="max-w-full w-auto" aria-label="ประเภทสินค้า"
           value={filterCategory}
           onChange={(e) => setFilterCategory(e.target.value)}
           className="px-3 py-2 border border-input rounded-lg text-sm"
@@ -311,8 +313,8 @@ export default function PricingTemplatesPage() {
           {CATEGORIES.map((c) => (
             <option key={c.value} value={c.value}>{c.label}</option>
           ))}
-        </select>
-        <input
+        </NativeSelect>
+        <input aria-label="ค้นหายี่ห้อ"
           type="text"
           placeholder="ค้นหายี่ห้อ..."
           value={filterBrand}
@@ -398,16 +400,16 @@ export default function PricingTemplatesPage() {
         <Modal isOpen title={editId ? 'แก้ไขราคาตั้งต้น' : 'เพิ่มราคาตั้งต้น'} onClose={closeModal}>
           <div className="space-y-4">
             <label className="block text-sm">ประเภทเครื่องของราคากลาง
-              <select aria-label="ประเภทเครื่องของราคากลาง" value={form.deviceOrigin} disabled={!!editId} onChange={(e) => setForm((f) => ({ ...f, deviceOrigin: e.target.value }))} className="w-full rounded-lg border border-input bg-background p-2">
+              <NativeSelect wrapperClassName="max-w-full w-full" aria-label="ประเภทเครื่องของราคากลาง" value={form.deviceOrigin} disabled={!!editId} onChange={(e) => setForm((f) => ({ ...f, deviceOrigin: e.target.value }))} className="rounded-lg border border-input bg-background p-2">
                 <option value="UNSPECIFIED">ยังไม่แยกไทย/นอก</option><option value="THAI">เครื่องไทย</option><option value="IMPORTED">เครื่องนอก</option>
-              </select>
+              </NativeSelect>
             </label>
             {!editId && (
               <>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-sm font-medium text-foreground mb-1">ยี่ห้อ *</label>
-                    <input
+                    <label htmlFor={`${uiFieldId}-1`} className="block text-sm font-medium text-foreground mb-1">ยี่ห้อ *</label>
+                    <input id={`${uiFieldId}-1`}
                       type="text"
                       value={form.brand}
                       onChange={(e) => setForm((f) => ({ ...f, brand: e.target.value }))}
@@ -416,8 +418,8 @@ export default function PricingTemplatesPage() {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-foreground mb-1">รุ่น *</label>
-                    <input
+                    <label htmlFor={`${uiFieldId}-2`} className="block text-sm font-medium text-foreground mb-1">รุ่น *</label>
+                    <input id={`${uiFieldId}-2`}
                       type="text"
                       value={form.model}
                       onChange={(e) => setForm((f) => ({ ...f, model: e.target.value }))}
@@ -426,10 +428,10 @@ export default function PricingTemplatesPage() {
                     />
                   </div>
                 </div>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-sm font-medium text-foreground mb-1">ความจุ</label>
-                    <input
+                    <label htmlFor={`${uiFieldId}-3`} className="block text-sm font-medium text-foreground mb-1">ความจุ</label>
+                    <input id={`${uiFieldId}-3`}
                       type="text"
                       value={form.storage}
                       onChange={(e) => setForm((f) => ({ ...f, storage: e.target.value }))}
@@ -438,16 +440,16 @@ export default function PricingTemplatesPage() {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-foreground mb-1">ประเภท *</label>
-                    <select
+                    <label htmlFor={`${uiFieldId}-4`} className="block text-sm font-medium text-foreground mb-1">ประเภท *</label>
+                    <NativeSelect wrapperClassName="max-w-full w-full" id={`${uiFieldId}-4`}
                       value={form.category}
                       onChange={(e) => setForm((f) => ({ ...f, category: e.target.value, hasWarranty: e.target.value === 'PHONE_USED' ? f.hasWarranty : null }))}
-                      className="w-full px-3 py-2 border border-input rounded-lg text-sm"
+                      className="px-3 py-2 border border-input rounded-lg text-sm"
                     >
                       {CATEGORIES.map((c) => (
                         <option key={c.value} value={c.value}>{c.label}</option>
                       ))}
-                    </select>
+                    </NativeSelect>
                   </div>
                 </div>
                 {form.category === 'PHONE_USED' && (
@@ -491,8 +493,8 @@ export default function PricingTemplatesPage() {
 
             <div className="space-y-3">
               <div>
-                <label className="block text-sm font-medium text-foreground mb-1">ราคาเงินสด (บาท) *</label>
-                <input
+                <label htmlFor={`${uiFieldId}-5`} className="block text-sm font-medium text-foreground mb-1">ราคาเงินสด (บาท) *</label>
+                <input id={`${uiFieldId}-5`}
                   type="number"
                   value={form.cashPrice}
                   onChange={(e) => setForm((f) => ({ ...f, cashPrice: e.target.value }))}
@@ -501,8 +503,8 @@ export default function PricingTemplatesPage() {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-foreground mb-1">ราคาผ่อน BESTCHOICE (บาท) *</label>
-                <input
+                <label htmlFor={`${uiFieldId}-6`} className="block text-sm font-medium text-foreground mb-1">ราคาผ่อน BESTCHOICE (บาท) *</label>
+                <input id={`${uiFieldId}-6`}
                   type="number"
                   value={form.installmentBestchoicePrice}
                   onChange={(e) => setForm((f) => ({ ...f, installmentBestchoicePrice: e.target.value }))}
@@ -511,8 +513,8 @@ export default function PricingTemplatesPage() {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-foreground mb-1">ราคาผ่อนไฟแนนซ์ (บาท) *</label>
-                <input
+                <label htmlFor={`${uiFieldId}-7`} className="block text-sm font-medium text-foreground mb-1">ราคาผ่อนไฟแนนซ์ (บาท) *</label>
+                <input id={`${uiFieldId}-7`}
                   type="number"
                   value={form.installmentFinancePrice}
                   onChange={(e) => setForm((f) => ({ ...f, installmentFinancePrice: e.target.value }))}
@@ -526,10 +528,10 @@ export default function PricingTemplatesPage() {
               <h3 className="text-sm font-medium text-muted-foreground mb-3">
                 ดาวน์ + จำนวนเดือน (เว้นว่าง = ใช้ default จาก Settings)
               </h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-foreground mb-1">ดาวน์เรทที่ 1 (บาท)</label>
-                  <input
+                  <label htmlFor={`${uiFieldId}-8`} className="block text-sm font-medium text-foreground mb-1">ดาวน์เรทที่ 1 (บาท)</label>
+                  <input id={`${uiFieldId}-8`}
                     type="number"
                     min={0}
                     value={form.rate1DownPayment ?? ''}
@@ -538,8 +540,8 @@ export default function PricingTemplatesPage() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-foreground mb-1">จำนวนเดือนเรทที่ 1</label>
-                  <input
+                  <label htmlFor={`${uiFieldId}-9`} className="block text-sm font-medium text-foreground mb-1">จำนวนเดือนเรทที่ 1</label>
+                  <input id={`${uiFieldId}-9`}
                     type="number"
                     min={1}
                     value={form.rate1TermMonths ?? ''}
@@ -548,8 +550,8 @@ export default function PricingTemplatesPage() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-foreground mb-1">ดาวน์เรทที่ 2 (บาท)</label>
-                  <input
+                  <label htmlFor={`${uiFieldId}-10`} className="block text-sm font-medium text-foreground mb-1">ดาวน์เรทที่ 2 (บาท)</label>
+                  <input id={`${uiFieldId}-10`}
                     type="number"
                     min={0}
                     value={form.rate2DownPayment ?? ''}
@@ -558,8 +560,8 @@ export default function PricingTemplatesPage() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-foreground mb-1">จำนวนเดือนเรทที่ 2</label>
-                  <input
+                  <label htmlFor={`${uiFieldId}-11`} className="block text-sm font-medium text-foreground mb-1">จำนวนเดือนเรทที่ 2</label>
+                  <input id={`${uiFieldId}-11`}
                     type="number"
                     min={1}
                     value={form.rate2TermMonths ?? ''}

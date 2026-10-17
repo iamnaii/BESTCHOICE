@@ -1,3 +1,5 @@
+import { formControlClass } from '@/components/ui/form-styles';
+import { cn } from '@/lib/utils';
 import { Card, CardHeader, CardContent, CardTitle } from '@/components/ui/card';
 
 export interface PriceRow {
@@ -36,7 +38,7 @@ export default function PriceCard({ prices, onAdd, onRemove, onUpdate }: PriceCa
                 aria-label={`ชื่อราคา ${index + 1}`}
                 value={price.label}
                 onChange={(e) => onUpdate(index, 'label', e.target.value)}
-                className="min-w-0 w-full sm:flex-1 sm:basis-40 px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden text-sm"
+                className={cn(formControlClass, 'sm:flex-1 sm:basis-40')}
               />
               <input
                 type="number"
@@ -45,7 +47,7 @@ export default function PriceCard({ prices, onAdd, onRemove, onUpdate }: PriceCa
                 aria-label={`จำนวนเงินราคา ${index + 1}`}
                 value={price.amount}
                 onChange={(e) => onUpdate(index, 'amount', e.target.value)}
-                className="min-w-0 w-full sm:w-40 px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden text-sm"
+                className={cn(formControlClass, 'sm:w-40')}
               />
               <label className="flex items-center gap-1.5 text-sm text-muted-foreground whitespace-nowrap cursor-pointer">
                 <input

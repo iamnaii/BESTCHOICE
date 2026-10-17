@@ -1,3 +1,4 @@
+import { NativeSelect } from '@/components/ui/native-select';
 import { AlertTriangle, Minus, Package, Plus } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { DefectReasonValue, ReceivingUnitForm } from '../types';
@@ -89,7 +90,7 @@ export function AccessoryGroupScreen({ units, indices, ordinalRange, total, cost
               สาเหตุ
               <Req />
             </label>
-            <select
+            <NativeSelect wrapperClassName="max-w-full w-full"
               id="group-defect"
               value={units[indices[indices.length - 1]].defectReason}
               onChange={(e) => onGroupChange({ defectReason: e.target.value as DefectReasonValue | '' })}
@@ -101,7 +102,7 @@ export function AccessoryGroupScreen({ units, indices, ordinalRange, total, cost
                   {o.label}
                 </option>
               ))}
-            </select>
+            </NativeSelect>
           </div>
           <div>
             <label htmlFor="group-reject-detail" className={labelCls}>

@@ -26,6 +26,7 @@ export function WizardStepper({
           <li key={label} aria-current={isCurrent ? 'step' : undefined} className="flex items-center flex-1 last:flex-none">
             <button
               type="button"
+              aria-label={label}
               disabled={!clickable}
               onClick={() => clickable && onStepClick(i)}
               className={cn('flex items-center gap-2 group', clickable ? 'cursor-pointer' : 'cursor-default')}

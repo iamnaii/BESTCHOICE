@@ -5,12 +5,17 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { NativeSelect } from '@/components/ui/native-select';
 import PageHeader from '@/components/ui/PageHeader';
 import api, { getErrorMessage } from '@/lib/api';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import CustomerCombobox from '@/pages/BookingsPage/components/CustomerCombobox';
 import type { CustomerOption } from '@/pages/BookingsPage/types';
 import SlotPicker from '@/components/appointments/SlotPicker';
+import {
+  appointmentControlClass,
+  appointmentFieldClass,
+} from '@/components/appointments/field-styles';
 import {
   Branch,
   Selection,
@@ -47,7 +52,8 @@ function AppointmentWorkspace() {
       next.set('view', view);
       return next;
     });
-  const [customer, setCustomer] = useState<CustomerOption | null>(null);
+  // undefined uses the linked customer; null records an explicit clear.
+  const [customer, setCustomer] = useState<CustomerOption | null | undefined>(undefined);
   const [localSelection, setSelection] = useState<Selection>({
     branchId: '',
     day: visitDay(),
@@ -80,7 +86,9 @@ function AppointmentWorkspace() {
       api.get<CustomerOption>(`/customers/${params.get('customerId')}`).then((r) => r.data),
     enabled: !!params.get('customerId'),
   });
-  const currentCustomer = customer ?? deepCustomer.data;
+  const currentCustomer = customer === undefined ? deepCustomer.data : customer;
+  const roomForCustomer = (id: string | undefined) =>
+    id && id === params.get('customerId') ? params.get('roomId') || undefined : undefined;
   const branchId = selection.branchId || options.data?.branches[0]?.id || '';
   const selectedId = params.get('appointmentId');
   const detail = useQuery({
@@ -95,7 +103,7 @@ function AppointmentWorkspace() {
       api
         .get<
           StaffVisit[]
-        >('/store-appointments', { params: { ...(!currentCustomer ? { branchId } : {}), ...(currentCustomer ? { customerId: currentCustomer.id, roomId: params.get('roomId') || undefined } : { day: selection.day }) } })
+        >('/store-appointments', { params: { ...(!currentCustomer ? { branchId } : {}), ...(currentCustomer ? { customerId: currentCustomer.id, roomId: roomForCustomer(currentCustomer.id) } : { day: selection.day }) } })
         .then((r) => r.data),
     enabled: !!branchId,
     refetchInterval: 30_000,
@@ -142,7 +150,7 @@ function AppointmentWorkspace() {
           customerId: input.visit?.customer.id || currentCustomer?.id,
           branchIds: [input.visit?.branch.id || branchId],
           appointmentId: input.visit?.id,
-          sourceRoomId: params.get('roomId') || undefined,
+          sourceRoomId: roomForCustomer(input.visit?.customer.id || currentCustomer?.id),
         });
         setLink({ id: r.data.id, url: `${window.location.origin}/visit#${r.data.token}` });
         return r;
@@ -169,7 +177,10 @@ function AppointmentWorkspace() {
           requestId,
           ...(editing
             ? { version: editing.version }
-            : { customerId: currentCustomer?.id, sourceRoomId: params.get('roomId') || undefined }),
+            : {
+                customerId: currentCustomer?.id,
+                sourceRoomId: roomForCustomer(currentCustomer?.id),
+              }),
         },
       );
     },
@@ -224,16 +235,39 @@ function AppointmentWorkspace() {
         </p>
       ) : options.isLoading ? (
         <p role="status">กำลังโหลด…</p>
+      ) : !options.data?.branches.length ? (
+        <section
+          aria-label="สถานะสาขารับนัด"
+          className="space-y-3 rounded-xl border border-border bg-card p-5"
+        >
+          <h2 className="font-semibold">ยังไม่มีสาขาที่ใช้รับนัดได้</h2>
+          <p className="max-w-xl text-sm text-muted-foreground">
+            ให้เจ้าของระบบตรวจสอบว่าสาขาเปิดใช้งาน ผูกกับงานหน้าร้าน (SHOP)
+            และบัญชีนี้มีสิทธิ์เข้าถึงสาขา แล้วโหลดข้อมูลอีกครั้ง
+          </p>
+          <Button
+            variant="outline"
+            className="min-h-11"
+            disabled={options.isFetching}
+            onClick={() => void options.refetch()}
+          >
+            {options.isFetching ? 'กำลังโหลดสาขา…' : 'โหลดสาขาอีกครั้ง'}
+          </Button>
+        </section>
       ) : (
         <>
           <div className="flex flex-wrap gap-2">
             <Button
+              className="h-11"
+              aria-pressed={tab === 'appointments'}
               variant={tab === 'appointments' ? 'primary' : 'outline'}
               onClick={() => setTab('appointments')}
             >
               นัดหมาย
             </Button>
             <Button
+              className="h-11"
+              aria-pressed={tab === 'calendar'}
               variant={tab === 'calendar' ? 'primary' : 'outline'}
               onClick={() => setTab('calendar')}
             >
@@ -241,6 +275,8 @@ function AppointmentWorkspace() {
             </Button>
             {options.data?.canManage && (
               <Button
+                className="h-11"
+                aria-pressed={tab === 'schedule'}
                 variant={tab === 'schedule' ? 'primary' : 'outline'}
                 onClick={() => setTab('schedule')}
               >
@@ -248,27 +284,26 @@ function AppointmentWorkspace() {
               </Button>
             )}
           </div>
-          <div className="flex flex-wrap items-end gap-3">
-            <label className="w-full min-w-0 space-y-1 text-sm sm:w-auto sm:min-w-48">
-              สาขาที่ดู
-              <select
+          <div className="grid max-w-xl grid-cols-1 gap-4 sm:grid-cols-2">
+            <label className={appointmentFieldClass}>
+              <span>สาขาที่ดู</span>
+              <NativeSelect
                 aria-label="สาขาที่ดู"
                 value={branchId}
                 onChange={(e) => change({ ...selection, branchId: e.target.value, startsAt: '' })}
-                className="block min-h-11 w-full min-w-0 rounded-md border border-input bg-background px-3"
-                disabled={!options.data?.branches.length}
+                className={appointmentControlClass}
               >
-                {!options.data?.branches.length && <option value="">ไม่มีสาขาที่เข้าถึงได้</option>}
                 {options.data?.branches.map((b) => (
                   <option key={b.id} value={b.id}>
                     {b.name}
                   </option>
                 ))}
-              </select>
+              </NativeSelect>
             </label>
-            <label className="w-full min-w-0 space-y-1 text-sm sm:w-auto sm:min-w-48">
-              วันที่ดู
+            <label className={appointmentFieldClass}>
+              <span>วันที่ดู</span>
               <Input
+                className={appointmentControlClass}
                 aria-label="วันที่ดู"
                 type="date"
                 value={selection.day}
@@ -290,8 +325,11 @@ function AppointmentWorkspace() {
               staff={options.data?.staff || []}
             />
           ) : (
-            <div className="grid gap-5 lg:grid-cols-[340px_1fr]">
-              <section className="space-y-4 rounded-xl border border-border bg-card p-5">
+            <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,22rem)_minmax(0,1fr)]">
+              <section
+                aria-label="ฟอร์มนัดหมาย"
+                className="min-w-0 space-y-4 rounded-xl border border-border bg-card p-4 sm:p-5"
+              >
                 <h2 className="font-semibold">{editing ? 'เลื่อนนัดหมาย' : 'นัดให้ลูกค้า'}</h2>
                 {editing ? (
                   <p>
@@ -302,6 +340,7 @@ function AppointmentWorkspace() {
                   </p>
                 ) : (
                   <CustomerCombobox
+                    className={appointmentControlClass}
                     value={currentCustomer || null}
                     onChange={(c) => {
                       setCustomer(c);
@@ -334,7 +373,7 @@ function AppointmentWorkspace() {
                   }
                 />
                 <Button
-                  className="w-full"
+                  className="min-h-11 w-full whitespace-normal"
                   disabled={
                     mutation.isPending ||
                     !selection.startsAt ||
@@ -347,7 +386,7 @@ function AppointmentWorkspace() {
                 {!editing && (
                   <Button
                     variant="outline"
-                    className="w-full"
+                    className="min-h-11 w-full whitespace-normal"
                     disabled={
                       mutation.isPending ||
                       !currentCustomer ||
@@ -401,9 +440,14 @@ function AppointmentWorkspace() {
                 )}
                 {link && (
                   <div className="space-y-2 rounded-lg bg-muted p-3">
-                    <label className="block text-sm">
-                      ลิงก์เฉพาะลูกค้า
-                      <Input readOnly value={link.url} aria-label="ลิงก์นัดหมาย" />
+                    <label className={appointmentFieldClass}>
+                      <span>ลิงก์เฉพาะลูกค้า</span>
+                      <Input
+                        className={appointmentControlClass}
+                        readOnly
+                        value={link.url}
+                        aria-label="ลิงก์นัดหมาย"
+                      />
                     </label>
                     <div className="flex flex-wrap gap-2">
                       <Button
@@ -430,7 +474,7 @@ function AppointmentWorkspace() {
                   </div>
                 )}
               </section>
-              <section className="space-y-3">
+              <section className="min-w-0 space-y-3">
                 <h2 className="font-semibold">
                   {currentCustomer ? 'นัดของลูกค้า' : 'นัดประจำวัน'}
                 </h2>
@@ -581,13 +625,13 @@ function AppointmentWorkspace() {
                       {action?.visit.id === a.id && (
                         <div className="space-y-3 rounded-lg bg-muted p-3">
                           {action.kind === 'reassign' && (
-                            <label className="block text-sm">
-                              พนักงานรับแทน
-                              <select
+                            <label className={appointmentFieldClass}>
+                              <span>พนักงานรับแทน</span>
+                              <NativeSelect
                                 aria-label="พนักงานรับแทน"
                                 value={staffId}
                                 onChange={(e) => setStaffId(e.target.value)}
-                                className="mt-2 block h-10 w-full rounded-md border border-input bg-background px-3"
+                                className={appointmentControlClass}
                               >
                                 <option value="">เลือกพนักงาน</option>
                                 {options.data?.staff
@@ -597,12 +641,13 @@ function AppointmentWorkspace() {
                                       {s.name}
                                     </option>
                                   ))}
-                              </select>
+                              </NativeSelect>
                             </label>
                           )}
-                          <label className="block text-sm">
-                            เหตุผล
+                          <label className={appointmentFieldClass}>
+                            <span>เหตุผล</span>
                             <Input
+                              className={appointmentControlClass}
                               value={reason}
                               onChange={(e) => setReason(e.target.value)}
                               maxLength={500}

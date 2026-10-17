@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useId as useUiFieldId, useState, useRef, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { LayoutGrid, Trash2, Star, Upload, Plus, ImageIcon, Pencil, Copy, Sparkles, Phone, Check } from 'lucide-react';
@@ -8,6 +8,7 @@ import QueryBoundary from '@/components/QueryBoundary';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { NativeSelect } from '@/components/ui/native-select';
 import { Badge } from '@/components/ui/badge';
 import {
   DropdownMenu,
@@ -184,6 +185,7 @@ function ButtonEditor({
   onLayoutChange: (l: LayoutType) => void;
   hasCustomImage?: boolean;
 }) {
+  const uiFieldId = useUiFieldId();
   const layoutCfg = LAYOUT_OPTIONS.find((l) => l.value === layout) ?? LAYOUT_OPTIONS[0];
   const visibleCount = layoutCfg.cols * layoutCfg.rows;
   const btn = buttons[selectedButton];
@@ -192,8 +194,8 @@ function ButtonEditor({
     <div className="flex flex-col gap-5">
       {/* Layout selector */}
       <div>
-        <label className="block text-sm font-medium text-foreground mb-1.5">Layout เมนู</label>
-        <select
+        <label htmlFor={`${uiFieldId}-1`} className="block text-sm font-medium text-foreground mb-3">Layout เมนู</label>
+        <NativeSelect id={`${uiFieldId}-1`}
           value={layout}
           onChange={(e) => onLayoutChange(e.target.value as LayoutType)}
           className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
@@ -203,7 +205,7 @@ function ButtonEditor({
               {opt.label}
             </option>
           ))}
-        </select>
+        </NativeSelect>
       </div>
 
       {/* Button tabs */}
@@ -214,7 +216,8 @@ function ButtonEditor({
             <button
               key={i}
               onClick={() => onSelectButton(i)}
-              className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium border transition-all ${
+              aria-pressed={i === selectedButton}
+              className={`min-h-11 flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium border transition-all ${
                 i === selectedButton
                   ? 'border-transparent text-white shadow-sm'
                   : 'border-border bg-background text-muted-foreground hover:border-primary/50'
@@ -259,19 +262,19 @@ function ButtonEditor({
             <>
               {/* Emoji */}
               <div>
-                <label className="block text-xs font-medium text-muted-foreground mb-1">ไอคอน (Emoji)</label>
-                <Input
+                <label htmlFor={`${uiFieldId}-2`} className="block text-xs font-medium text-muted-foreground mb-3">ไอคอน (Emoji)</label>
+                <Input id={`${uiFieldId}-2`}
                   value={btn.emoji}
                   onChange={(e) => onUpdateButton(selectedButton, { emoji: e.target.value })}
-                  className="w-16 text-center text-lg"
+                  className="h-11 min-h-11 w-16 text-center text-lg"
                   maxLength={2}
                 />
               </div>
 
               {/* Label */}
               <div>
-                <label className="block text-xs font-medium text-muted-foreground mb-1">ชื่อปุ่ม</label>
-                <Input
+                <label htmlFor={`${uiFieldId}-3`} className="block text-xs font-medium text-muted-foreground mb-3">ชื่อปุ่ม</label>
+                <Input id={`${uiFieldId}-3`}
                   value={btn.label}
                   onChange={(e) => onUpdateButton(selectedButton, { label: e.target.value })}
                   placeholder="เช่น ดูสินค้า"
@@ -290,7 +293,8 @@ function ButtonEditor({
                       onClick={() => onUpdateButton(selectedButton, { color: preset.value })}
                       title={preset.name}
                       aria-label={preset.name}
-                      className={`w-7 h-7 rounded-full border-2 transition-transform hover:scale-110 ${
+                      aria-pressed={btn.color === preset.value}
+                      className={`size-11 shrink-0 rounded-full border-2 transition-transform hover:scale-110 ${
                         btn.color === preset.value ? 'border-foreground scale-110' : 'border-transparent'
                       }`}
                       style={{ backgroundColor: preset.value }}
@@ -304,8 +308,8 @@ function ButtonEditor({
           {/* Action type */}
           <div>
             <label className="block text-xs font-medium text-muted-foreground mb-1.5">Action</label>
-            <div className="flex gap-3">
-              <label className="flex items-center gap-1.5 text-sm cursor-pointer">
+            <div className="flex flex-wrap gap-x-3 gap-y-1">
+              <label className="min-h-11 flex items-center gap-1.5 text-sm cursor-pointer">
                 <input
                   type="radio"
                   name={`action-type-${selectedButton}`}
@@ -316,7 +320,7 @@ function ButtonEditor({
                 />
                 เปิดลิงก์ (URL)
               </label>
-              <label className="flex items-center gap-1.5 text-sm cursor-pointer">
+              <label className="min-h-11 flex items-center gap-1.5 text-sm cursor-pointer">
                 <input
                   type="radio"
                   name={`action-type-${selectedButton}`}
@@ -332,10 +336,10 @@ function ButtonEditor({
 
           {/* Action value */}
           <div>
-            <label className="block text-xs font-medium text-muted-foreground mb-1">
+            <label htmlFor={`${uiFieldId}-4`} className="block text-xs font-medium text-muted-foreground mb-3">
               {btn.actionType === 'uri' ? 'URL' : 'ข้อความที่จะส่ง'}
             </label>
-            <Input
+            <Input id={`${uiFieldId}-4`}
               value={btn.actionValue}
               onChange={(e) => onUpdateButton(selectedButton, { actionValue: e.target.value })}
               placeholder={btn.actionType === 'uri' ? 'https://liff.line.me/...' : 'เช่น โปรโมชัน'}
@@ -352,6 +356,7 @@ function ButtonEditor({
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function RichMenuPage() {
+  const uiFieldId = useUiFieldId();
   const queryClient = useQueryClient();
 
   // Channel
@@ -692,11 +697,11 @@ export default function RichMenuPage() {
                 {/* Call center phone input */}
                 <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-2 items-end">
                   <div>
-                    <label className="text-sm font-medium text-foreground mb-1 flex items-center gap-1.5">
+                    <label htmlFor={`${uiFieldId}-1`} className="text-sm font-medium text-foreground mb-1 flex items-center gap-1.5">
                       <Phone size={14} />
                       เบอร์โทรศูนย์บริการ (Call Center)
                     </label>
-                    <Input
+                    <Input id={`${uiFieldId}-1`}
                       type="tel"
                       value={callCenterPhone}
                       onChange={(e) => setCallCenterPhone(e.target.value)}
@@ -821,19 +826,19 @@ export default function RichMenuPage() {
             </div>
             <div className="p-5 grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-foreground mb-1">ชื่อเมนู</label>
-                <Input
+                <label htmlFor={`${uiFieldId}-2`} className="block text-sm font-medium text-foreground mb-1">ชื่อเมนู</label>
+                <Input id={`${uiFieldId}-2`}
                   value={menuName}
                   onChange={(e) => setMenuName(e.target.value)}
                   placeholder="BESTCHOICE Menu"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-foreground mb-1">
+                <label htmlFor={`${uiFieldId}-3`} className="block text-sm font-medium text-foreground mb-1">
                   ข้อความแถบเมนู
                   <span className="text-xs text-muted-foreground ml-1">(chatBarText)</span>
                 </label>
-                <Input
+                <Input id={`${uiFieldId}-3`}
                   value={chatBarText}
                   onChange={(e) => setChatBarText(e.target.value)}
                   placeholder="เมนู"
@@ -841,8 +846,8 @@ export default function RichMenuPage() {
                 />
               </div>
               <div className="sm:col-span-2">
-                <label className="block text-sm font-medium text-foreground mb-1">LIFF URL</label>
-                <Input
+                <label htmlFor={`${uiFieldId}-4`} className="block text-sm font-medium text-foreground mb-1">LIFF URL</label>
+                <Input id={`${uiFieldId}-4`}
                   type="url"
                   value={liffUrl}
                   onChange={(e) => setLiffUrl(e.target.value)}

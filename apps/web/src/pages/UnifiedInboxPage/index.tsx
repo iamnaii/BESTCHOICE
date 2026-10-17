@@ -13,6 +13,7 @@ import { NOTIFICATION_SOUND_URL } from './components/notification-sound';
 import { showChatNotification, requestNotificationPermissionIfNeeded } from './components/chat-notification';
 import AppointmentAlertBar from './components/AppointmentAlertBar';
 import { apptState, nextAppointment } from './components/appointment';
+import { fetchRoomAppointmentSummaries } from './components/room-appointment-summaries';
 import { toast } from 'sonner';
 import { ArrowLeft, Lock } from 'lucide-react';
 import QueryBoundary from '@/components/QueryBoundary';
@@ -227,7 +228,7 @@ export default function UnifiedInboxPage() {
   });
 
   const appointmentRoomIds = [...new Set<string>([...(sessionsQuery.data?.pages.flatMap((p: {data?: {id:string}[]})=>(p.data||[]).map(r=>r.id))||[]),...(activeRoomId?[activeRoomId]:[])])].slice(0,500);
-  const appointmentSummaries=useQuery({queryKey:['appointments','room-summaries',appointmentRoomIds],queryFn:()=>api.get('/store-appointments/room-summaries',{params:{roomIds:appointmentRoomIds.join(',')}}).then(r=>r.data),enabled:getRequestCompany()!=='FINANCE'&&!!appointmentRoomIds.length&&!!user&&['OWNER','BRANCH_MANAGER','SALES'].includes(user.role)&&hasCompanyAccess(user.role,user.accessibleCompanies,'SHOP'),refetchInterval:30_000});
+  const appointmentSummaries=useQuery({queryKey:['appointments','room-summaries',appointmentRoomIds],queryFn:({signal})=>fetchRoomAppointmentSummaries(appointmentRoomIds,signal),enabled:getRequestCompany()!=='FINANCE'&&!!appointmentRoomIds.length&&!!user&&['OWNER','BRANCH_MANAGER','SALES'].includes(user.role)&&hasCompanyAccess(user.role,user.accessibleCompanies,'SHOP'),refetchInterval:30_000});
   const sessions = useMemo(() => {
     const flat = sessionsQuery.data?.pages.flatMap((p: any) => p.data ?? []) ?? [];
     // Offset pagination over a mutable lastMessageAt order can repeat a room at a

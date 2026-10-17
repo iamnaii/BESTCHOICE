@@ -1,0 +1,182 @@
+[
+  {
+    "file": "accounting-contract-activation.spec.ts",
+    "title": "accounting-contract-activation.spec.ts / Accounting — Contract Activation creates JE (Phase A.0) / activated contracts each have at least one related JournalEntry (F-2-001)",
+    "status": "skipped",
+    "expectedStatus": "skipped",
+    "annotations": [
+      {
+        "type": "skip",
+        "description": "requires fixture: ACTIVE contracts found but none referenced in last 200 JEs (likely older than JE window)"
+      }
+    ],
+    "results": [
+      {
+        "status": "skipped",
+        "durationMs": 1235
+      }
+    ]
+  },
+  {
+    "file": "accounting-paysolutions-webhook.spec.ts",
+    "title": "accounting-paysolutions-webhook.spec.ts / Accounting — PaySolutions webhook creates JE (F-1-003) / recent PAID payments via gateway have matching JournalEntry (F-1-003)",
+    "status": "skipped",
+    "expectedStatus": "skipped",
+    "annotations": [
+      {
+        "type": "skip",
+        "description": "requires fixture: payments endpoint returned 404"
+      }
+    ],
+    "results": [
+      {
+        "status": "skipped",
+        "durationMs": 474
+      }
+    ]
+  },
+  {
+    "file": "accounting-period-close.spec.ts",
+    "title": "accounting-period-close.spec.ts / Accounting — Period Close hardening (F-6-003) / full close-with-audit-issues flow",
+    "status": "skipped",
+    "expectedStatus": "skipped",
+    "annotations": [
+      {
+        "type": "skip",
+        "description": null
+      }
+    ],
+    "results": [
+      {
+        "status": "skipped",
+        "durationMs": 0
+      }
+    ]
+  },
+  {
+    "file": "contract-template.spec.ts",
+    "title": "contract-template.spec.ts / Contract Template — Full Template Loaded / contract preview shows full hire-purchase template (not fallback)",
+    "status": "skipped",
+    "expectedStatus": "skipped",
+    "annotations": [
+      {
+        "type": "skip",
+        "description": "Cannot fetch contracts: 401"
+      }
+    ],
+    "results": [
+      {
+        "status": "skipped",
+        "durationMs": 1175
+      }
+    ]
+  },
+  {
+    "file": "contract-template.spec.ts",
+    "title": "contract-template.spec.ts / Contract Template — Full Template Loaded / contract preview HTML is non-trivial size (full template, not fallback)",
+    "status": "skipped",
+    "expectedStatus": "skipped",
+    "annotations": [
+      {
+        "type": "skip",
+        "description": "Cannot fetch contracts: 401"
+      }
+    ],
+    "results": [
+      {
+        "status": "skipped",
+        "durationMs": 1187
+      }
+    ]
+  },
+  {
+    "file": "finance-receivable-contact.spec.ts",
+    "title": "finance-receivable-contact.spec.ts / Finance Receivable contact log / record a contact log and see it in timeline + last contacted column",
+    "status": "skipped",
+    "expectedStatus": "skipped",
+    "annotations": [
+      {
+        "type": "skip",
+        "description": "No external-finance receivables seeded in dev DB"
+      }
+    ],
+    "results": [
+      {
+        "status": "skipped",
+        "durationMs": 3622
+      }
+    ]
+  },
+  {
+    "file": "finance-receivable-contact.spec.ts",
+    "title": "finance-receivable-contact.spec.ts / Finance Receivable contact log / broken-promise filter limits the list",
+    "status": "skipped",
+    "expectedStatus": "skipped",
+    "annotations": [
+      {
+        "type": "skip",
+        "description": "No external-finance receivables seeded in dev DB"
+      }
+    ],
+    "results": [
+      {
+        "status": "skipped",
+        "durationMs": 5199
+      }
+    ]
+  },
+  {
+    "file": "invite-resend.spec.ts",
+    "title": "invite-resend.spec.ts / Invite Resend Feature / should resend API endpoint reject used invites",
+    "status": "skipped",
+    "expectedStatus": "skipped",
+    "annotations": [
+      {
+        "type": "skip",
+        "description": null
+      }
+    ],
+    "results": [
+      {
+        "status": "skipped",
+        "durationMs": 1223
+      }
+    ]
+  },
+  {
+    "file": "promise-lifecycle-happy.spec.ts",
+    "title": "promise-lifecycle-happy.spec.ts / Promise lifecycle — happy path (3 slots) / promise with 3 slots — record + see cycle banner + slot count",
+    "status": "skipped",
+    "expectedStatus": "skipped",
+    "annotations": [
+      {
+        "type": "skip",
+        "description": "No contracts in PromiseTab — seed overdue contracts first"
+      }
+    ],
+    "results": [
+      {
+        "status": "skipped",
+        "durationMs": 3498
+      }
+    ]
+  },
+  {
+    "file": "promise-supersede.spec.ts",
+    "title": "promise-supersede.spec.ts / Promise supersede — reschedule flow / reschedule before due — confirm dialog + no broken increment",
+    "status": "skipped",
+    "expectedStatus": "skipped",
+    "annotations": [
+      {
+        "type": "skip",
+        "description": "No contracts visible in any tab — seed overdue contracts first"
+      }
+    ],
+    "results": [
+      {
+        "status": "skipped",
+        "durationMs": 5618
+      }
+    ]
+  }
+]

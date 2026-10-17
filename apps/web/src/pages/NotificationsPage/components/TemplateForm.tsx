@@ -1,5 +1,6 @@
+import { NativeSelect } from '@/components/ui/native-select';
 import { extractTemplateVariables as extractVariables } from '@installment/shared';
-import { useCallback, useMemo, useState } from 'react';
+import { useId as useUiFieldId, useCallback, useMemo, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import api, { getErrorMessage } from '@/lib/api';
@@ -323,6 +324,7 @@ export default function TemplateForm({
   jsonError,
   setJsonError,
 }: TemplateFormProps) {
+  const uiFieldId = useUiFieldId();
   const queryClient = useQueryClient();
   const [previewModalOpen, setPreviewModalOpen] = useState(false);
   const [previewResult, setPreviewResult] = useState<{
@@ -475,8 +477,8 @@ export default function TemplateForm({
       <form onSubmit={handleTemplateSave} className="flex flex-col gap-5 lg:gap-7.5">
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium text-foreground mb-1">Event Type *</label>
-            <input
+            <label htmlFor={`${uiFieldId}-1`} className="block text-sm font-medium text-foreground mb-1">Event Type *</label>
+            <input id={`${uiFieldId}-1`}
               type="text"
               value={templateForm.eventType}
               onChange={(e) =>
@@ -492,8 +494,8 @@ export default function TemplateForm({
             </div>
           </div>
           <div>
-            <label className="block text-sm font-medium text-foreground mb-1">ชื่อ Template *</label>
-            <input
+            <label htmlFor={`${uiFieldId}-2`} className="block text-sm font-medium text-foreground mb-1">ชื่อ Template *</label>
+            <input id={`${uiFieldId}-2`}
               type="text"
               value={templateForm.name}
               onChange={(e) => setTemplateForm((prev) => ({ ...prev, name: e.target.value }))}
@@ -504,35 +506,35 @@ export default function TemplateForm({
         </div>
         <div className="grid grid-cols-3 gap-4">
           <div>
-            <label className="block text-sm font-medium text-foreground mb-1">หมวดหมู่ *</label>
-            <select
+            <label htmlFor={`${uiFieldId}-3`} className="block text-sm font-medium text-foreground mb-1">หมวดหมู่ *</label>
+            <NativeSelect wrapperClassName="max-w-full w-full" id={`${uiFieldId}-3`}
               value={templateForm.category}
               onChange={(e) =>
                 setTemplateForm((prev) => ({ ...prev, category: e.target.value }))
               }
-              className="w-full px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
+              className="px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
             >
               <option value="DUNNING">DUNNING (ทวงหนี้)</option>
               <option value="REMINDER">REMINDER (เตือนก่อนงวด)</option>
               <option value="TRANSACTIONAL">TRANSACTIONAL (ใบเสร็จ)</option>
               <option value="STAFF">STAFF (ทีม)</option>
               <option value="MARKETING">MARKETING (โปรโมชั่น)</option>
-            </select>
+            </NativeSelect>
           </div>
           <div>
-            <label className="block text-sm font-medium text-foreground mb-1">ช่องทาง *</label>
-            <select
+            <label htmlFor={`${uiFieldId}-4`} className="block text-sm font-medium text-foreground mb-1">ช่องทาง *</label>
+            <NativeSelect wrapperClassName="max-w-full w-full" id={`${uiFieldId}-4`}
               value={templateForm.channel}
               onChange={(e) => setTemplateForm((prev) => ({ ...prev, channel: e.target.value }))}
-              className="w-full px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
+              className="px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
             >
               <option value="LINE">LINE</option>
               <option value="SMS">SMS</option>
-            </select>
+            </NativeSelect>
           </div>
           <div>
-            <label className="block text-sm font-medium text-foreground mb-1">รูปแบบ *</label>
-            <select
+            <label htmlFor={`${uiFieldId}-5`} className="block text-sm font-medium text-foreground mb-1">รูปแบบ *</label>
+            <NativeSelect wrapperClassName="max-w-full w-full" id={`${uiFieldId}-5`}
               value={templateForm.format}
               onChange={(e) =>
                 setTemplateForm((prev) => ({
@@ -540,22 +542,22 @@ export default function TemplateForm({
                   format: e.target.value as 'text' | 'flex',
                 }))
               }
-              className="w-full px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
+              className="px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
               disabled={templateForm.channel !== 'LINE'}
             >
               <option value="text">ข้อความ (Text)</option>
               <option value="flex">Flex Message (JSON)</option>
-            </select>
+            </NativeSelect>
           </div>
         </div>
 
         {/* Text Message Template + Live Preview (split on desktop) */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium text-foreground mb-1">
+            <label htmlFor={`${uiFieldId}-6`} className="block text-sm font-medium text-foreground mb-1">
               {templateForm.format === 'flex' ? 'ข้อความสำรอง (altText / SMS fallback) *' : 'ข้อความ *'}
             </label>
-            <textarea
+            <textarea id={`${uiFieldId}-6`}
               value={templateForm.messageTemplate}
               onChange={(e) =>
                 setTemplateForm((prev) => ({ ...prev, messageTemplate: e.target.value }))
@@ -611,10 +613,10 @@ export default function TemplateForm({
 
         {/* Sample data editor */}
         <div>
-          <label className="block text-sm font-medium text-foreground mb-1">
+          <label htmlFor={`${uiFieldId}-7`} className="block text-sm font-medium text-foreground mb-1">
             ข้อมูลตัวอย่าง (JSON สำหรับ preview)
           </label>
-          <textarea
+          <textarea id={`${uiFieldId}-7`}
             value={templateForm.sampleData}
             onChange={(e) =>
               setTemplateForm((prev) => ({ ...prev, sampleData: e.target.value }))
@@ -730,8 +732,8 @@ export default function TemplateForm({
         )}
 
         <div>
-          <label className="block text-sm font-medium text-foreground mb-1">คำอธิบาย</label>
-          <input
+          <label htmlFor={`${uiFieldId}-8`} className="block text-sm font-medium text-foreground mb-1">คำอธิบาย</label>
+          <input id={`${uiFieldId}-8`}
             type="text"
             value={templateForm.description}
             onChange={(e) =>

@@ -22,6 +22,8 @@ import { ContractExchangeService } from '../../contract-exchange/contract-exchan
 import { ExchangeCancelService } from '../../contract-exchange/contract-exchange-cancel.service';
 import { DefectExchangeService } from '../../defect-exchange/defect-exchange.service';
 import { DefectExchangeReversalTemplate } from '../../journal/cpa-templates/defect-exchange-reversal.template';
+import { ReceiptVoidReversalTemplate } from '../../journal/cpa-templates/receipt-void-reversal.template';
+import { ReceiptNumberService } from '../../receipts/services/receipt-number.service';
 import { RepairTicketsService } from '../../repair-tickets/repair-tickets.service';
 import { RepairTicketDocNumberService } from '../../repair-tickets/services/doc-number.service';
 import { ExpenseDocumentsService } from '../../expense-documents/expense-documents.service';
@@ -116,7 +118,14 @@ const repairTickets = new RepairTicketsService(
   null as never,
   repairTicketDocNumber,
 );
-const defect = new DefectExchangeService(prisma as never, journal, defectReversal, repairTickets);
+const defect = new DefectExchangeService(
+  prisma as never,
+  journal,
+  defectReversal,
+  repairTickets,
+  new ReceiptVoidReversalTemplate(journal, prisma as never),
+  new ReceiptNumberService(prisma as never),
+);
 
 const productPhotosFake = {
   getPhotos: async () => ({

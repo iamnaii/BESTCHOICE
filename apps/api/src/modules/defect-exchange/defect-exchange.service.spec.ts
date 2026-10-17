@@ -13,6 +13,8 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { JournalAutoService } from '../journal/journal-auto.service';
 import { DefectExchangeReversalTemplate } from '../journal/cpa-templates/defect-exchange-reversal.template';
 import { RepairTicketsService } from '../repair-tickets/repair-tickets.service';
+import { ReceiptVoidReversalTemplate } from '../journal/cpa-templates/receipt-void-reversal.template';
+import { ReceiptNumberService } from '../receipts/services/receipt-number.service';
 import { TEST_CUSTOMER_ADDRESS } from '../../utils/test-data-markers';
 import * as inputVatClaim from '../journal/input-vat/installment-input-vat.claim';
 
@@ -20,6 +22,30 @@ import * as inputVatClaim from '../journal/input-vat/installment-input-vat.claim
 // so unit tests don't need a Postgres advisory-lock implementation.
 jest.mock('../../utils/sequence.util', () => ({
   generateContractNumber: jest.fn().mockResolvedValue('CT-2026-05-00001'),
+}));
+
+// 15ข — ตัวช่วยเครดิต/บัญชีอ่านฐานจริงผ่าน prisma mock ที่ไฟล์นี้ไม่ได้ mock ตาราง → ตัดออกทั้งชุด (พฤติกรรมของมันปักที่
+// defect-exchange-credit.spec.ts และ defect-exchange.credit-guards.spec.ts)
+jest.mock('./defect-exchange-credit', () => ({
+  ...jest.requireActual('./defect-exchange-credit'),
+  exchangeMoneyBlockers: jest.fn().mockResolvedValue([]),
+  listReceiptsToCreditNote: jest.fn().mockResolvedValue([]),
+  creditInAmountOf: jest.fn().mockResolvedValue(new (require('@prisma/client/runtime/library').Decimal)(0)),
+}));
+jest.mock('../journal/contract-close-advances', () => ({
+  ...jest.requireActual('../journal/contract-close-advances'),
+  readContractCloseAdvances: jest.fn().mockResolvedValue({
+    advance: new (require('@prisma/client/runtime/library').Decimal)(0),
+    credit: new (require('@prisma/client/runtime/library').Decimal)(0),
+    warnings: [],
+  }),
+}));
+jest.mock('../journal/advance-vat', () => ({
+  ...jest.requireActual('../journal/advance-vat'),
+  advanceVatOutstanding: jest.fn().mockResolvedValue(new (require('@prisma/client/runtime/library').Decimal)(0)),
+}));
+jest.mock('../journal/gl-contract-balance', () => ({
+  glContractBalance: jest.fn().mockResolvedValue(new (require('@prisma/client/runtime/library').Decimal)(0)),
 }));
 
 // test-data fence (spec 2026-09-05 §5.4 — แก้หลัง final review): เคลมเปลี่ยนเครื่องสืบทอด "ลูกค้า"
@@ -171,6 +197,8 @@ describe('DefectExchangeService', () => {
         { provide: JournalAutoService, useValue: {} },
         { provide: DefectExchangeReversalTemplate, useValue: reversal },
         { provide: RepairTicketsService, useValue: repairTickets },
+        { provide: ReceiptVoidReversalTemplate, useValue: { voidReceipt: jest.fn(), voidAccrualPostedAtReceipt: jest.fn() } },
+        { provide: ReceiptNumberService, useValue: { generateReceiptNumber: jest.fn().mockResolvedValue('RT-TEST') } },
       ],
     }).compile();
 

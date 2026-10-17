@@ -21,6 +21,10 @@ import { Decimal } from '@prisma/client/runtime/library';
 import { readStringFlag } from '../../utils/config.util';
 import { captureProductDisclosure } from '../../utils/product-disclosure.util';
 import { SHOP_WARRANTY_DAYS_CONFIG_KEY } from '../warranty/shop-warranty-policy';
+import { ReceiptVoidReversalTemplate } from '../journal/cpa-templates/receipt-void-reversal.template';
+import { ReceiptNumberService } from '../receipts/services/receipt-number.service';
+import { glContractBalance } from '../journal/gl-contract-balance';
+import { exchangeMoneyBlockers, listReceiptsToCreditNote, sumReceiptAmounts } from './defect-exchange-credit';
 
 type ReqUser = { id: string; role: string; branchId?: string | null };
 
@@ -36,6 +40,10 @@ export class DefectExchangeService {
     private journalAutoService: JournalAutoService,
     private defectExchangeReversalTemplate: DefectExchangeReversalTemplate,
     private repairTickets: RepairTicketsService,
+    /** 15ข — กระจกรับชำระ (redirect ขาเงินสด → 21-1106) + กลับ 2A ที่ลง ณ วันรับเงิน · export จาก JournalModule */
+    private receiptVoidReversal: ReceiptVoidReversalTemplate,
+    /** 15ข — เลขที่ใบลดหนี้ (advisory lock เดียวกับใบเสร็จ) · provide ตรงใน DefectExchangeModule (ReceiptsModule ไม่ export) */
+    private receiptNumbers: ReceiptNumberService,
   ) {}
 
   /**
@@ -78,6 +86,15 @@ export class DefectExchangeService {
     if (now > windowEnd) {
       reasons.push(`พ้นกำหนด 7 วันแล้ว (รับเครื่องเมื่อ ${baseDate.toISOString().slice(0, 10)})`);
     }
+
+    // 15ข — ด่านเงิน (spec §5): ปรับดิว / กวาด 42-1106 / คำขอ void ค้าง / ปิดยอด / ใบลดหนี้กำพร้า — เหตุผลเหล่านี้
+    // ไม่ใช่เหตุผลกรอบ 7 วัน ⇒ หลังการขายบล็อกเสมอแม้ ผจก. ข้ามกรอบ (WINDOW_REASON_RE ไม่จับ)
+    reasons.push(...(await exchangeMoneyBlockers(this.prisma, contract)));
+    // 15ข — ใบรับเงินที่จะออกใบลดหนี้ + เงินของลูกค้าที่ค้างในบัญชี → เครดิตที่จะย้ายไปสัญญาใหม่ (กล่องยืนยันหลังการขาย)
+    const receiptsToCreditNote = await listReceiptsToCreditNote(this.prisma, contract.id);
+    const ledgerAdvance = Decimal.max(0, await glContractBalance(this.prisma, contract.id, '21-1103', 'cr'));
+    const ledgerCredit = Decimal.max(0, await glContractBalance(this.prisma, contract.id, '21-5101', 'cr'));
+    const creditToTransfer = sumReceiptAmounts(receiptsToCreditNote).plus(ledgerAdvance).plus(ledgerCredit);
 
     let newProduct: { id: string; brand: string; model: string; storage: string | null; category: string; status: string } | null = null;
     let supplierClaimEligible = false;
@@ -131,6 +148,19 @@ export class DefectExchangeService {
       },
       newProduct,
       supplierClaimEligible,
+      receiptsToCreditNote: receiptsToCreditNote.map((r) => ({
+        id: r.id,
+        receiptNumber: r.receiptNumber,
+        receiptType: r.receiptType,
+        installmentNo: r.installmentNo,
+        paidDate: r.paidDate.toISOString(),
+        paymentMethod: r.paymentMethod,
+        amount: new Decimal(r.amount.toString()).toFixed(2),
+        vatAmount: r.vatAmount == null ? null : new Decimal(r.vatAmount.toString()).toFixed(2),
+      })),
+      creditToTransfer: creditToTransfer.toFixed(2),
+      ledgerAdvance: ledgerAdvance.toFixed(2),
+      ledgerCredit: ledgerCredit.toFixed(2),
     };
   }
 

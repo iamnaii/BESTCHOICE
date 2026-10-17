@@ -34,17 +34,17 @@ jest.mock('./defect-exchange-credit', () => ({
 jest.mock('../journal/contract-close-advances', () => ({
   ...jest.requireActual('../journal/contract-close-advances'),
   readContractCloseAdvances: jest.fn().mockResolvedValue({
-    advance: new (require('@prisma/client/runtime/library').Decimal)(0),
-    credit: new (require('@prisma/client/runtime/library').Decimal)(0),
+    advance: new (jest.requireActual('@prisma/client/runtime/library').Decimal)(0),
+    credit: new (jest.requireActual('@prisma/client/runtime/library').Decimal)(0),
     warnings: [],
   }),
 }));
 jest.mock('../journal/advance-vat', () => ({
   ...jest.requireActual('../journal/advance-vat'),
-  advanceVatOutstanding: jest.fn().mockResolvedValue(new (require('@prisma/client/runtime/library').Decimal)(0)),
+  advanceVatOutstanding: jest.fn().mockResolvedValue(new (jest.requireActual('@prisma/client/runtime/library').Decimal)(0)),
 }));
 jest.mock('../journal/gl-contract-balance', () => ({
-  glContractBalance: jest.fn().mockResolvedValue(new (require('@prisma/client/runtime/library').Decimal)(0)),
+  glContractBalance: jest.fn().mockResolvedValue(new (jest.requireActual('@prisma/client/runtime/library').Decimal)(0)),
 }));
 
 // test-data fence (spec 2026-09-05 §5.4 — แก้หลัง final review): เคลมเปลี่ยนเครื่องสืบทอด "ลูกค้า"

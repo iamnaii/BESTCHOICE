@@ -6,6 +6,27 @@ Run `node tools/check-access-coverage.mjs` from the repository root. The TypeScr
 
 At Task 3: **1,394 entrypoints in 178 files**: 1,294 staff, 48 public, 31 customer, 11 integration and 10 self-service. All staff entries have catalog capabilities. **1,092 entries require domain integration**. The complete reviewable registry is `apps/api/src/modules/employee-access/access-policy.manifest.json`; every row includes capability, resource requirement, record/collection resolution, company source, original file and transport. Source metadata can declare `@AccessPolicy`, but the checker still requires an inventory entry. When changing a surface, review its policy and recompute its `surface` fingerprint using the same expression in the checker; there is deliberately no auto-accept switch.
 
+## Current implementation checkpoint
+
+The sections below record contracts as their units were introduced; this checkpoint supersedes historical remaining-work counts. Through the independently reviewed after-sales read unit and its fix (`0533afd3e`), **190 SHOP domain adapters** have actual authorized-success and denial evidence:
+
+| Reviewed unit | Adapters | Final implementation commit |
+| --- | ---: | --- |
+| Products / QC | 49 | `3cb9ca826` |
+| Procurement / suppliers | 32 | `90fb3b5f3` |
+| Inventory / approved receiving lookup | 22 | `4f7e6767c` |
+| Stock adjustments | 10 | `b7920d6ad` |
+| Trade-in | 38 | `7bbd1e957` |
+| Sales / bookings | 18 | `595c5c26f` |
+| Repair / warranty | 15 | `7fb1c9df6` |
+| After-sales reads | 6 | `0533afd3e` |
+
+Reviewed exchange source/transaction and customer-quote provenance producers add **zero exposed routes** by themselves. After-sales still needs 14 mutations and four document/photo streams. Shared customer/contact/journey 31, residual SHOP 39, FINANCE 544, operations 267 and audit 4 domain allocations remain, plus the separately inventoried 202 staff routes without domain resource classification. These 202 include privileged settings/provisioning and ordinary reads; classification does not establish their appropriate current capability/source boundary. Seven employee-access owner-management routes were reviewed in Task 2, separately from the 190 SHOP count.
+
+The receiving lookup increased the inventory to **1,395 classified HTTP/socket entrypoints**, including 1,093 domain rows. The scanner does not enumerate Cron/queue/bootstrap methods; those require their own source, system/initiator, current employee authority, recipient and durable-evidence reconciliation. Existing actor-fixture HTTP tests do not establish actual JWT/guard/browser integration. Full audit, immutable approvals, UI, whole-program coverage/performance and final local:check/verified preview remain pending. No real account migration is authorized by this checkpoint.
+
+After-sales managed views use exact-transaction source facts and nullable independently authorized children. `stageVerified:false` means stored case metadata; current-stage age/staleness values are unavailable and summaries expose `currentStageUnavailable`. Raw internal getCase is not a public/renderer authorization contract. Authorized exchange tier/approverRole metadata remains compatible; action execution must independently check current capabilities. The final focused read suite records 24/24 real PostgreSQL/HTTP tests plus 267 covering regressions from the implementation run; independent review closed the metadata compatibility finding.
+
 ## Authentication order and compatibility
 
 `JwtStrategy` loads the persisted staff profile and `AccessSnapshotService.forUser` on every request, with no user/role/access cache. It attaches `user.access` without rewriting `user.role`. Inactive/deleted accounts fail and current snapshot validation also excludes system/nonstaff accounts. Managed company fields are derived from grants; an empty managed grant list remains empty. Login, both refresh-token implementations and `/auth/me` return the snapshot and normalized companies. Managed legacy personal reverse flags are hidden from login and `/me` responses.
@@ -18,7 +39,7 @@ Public, tokenized customer, LIFF, storefront and provider routes retain their ex
 
 ## Task 4 integration API
 
-The global EmployeeAccessModule exports AccessPolicyService, AccessSnapshotService and AccessSocketBoundary. Add an injectable domain registrar (for example an `OnModuleInit` provider in EmployeeAccessModule with Prisma/domain dependencies) that installs functions in `ACCESS_BOUNDARIES`. Both the JWT guard and interceptor consume this shared registry. Task 3 installed no production resource resolvers. Task 4.1.1 now installs the 49 explicit product/QC adapters listed below; other missing entries remain deliberately closed for managed non-owners.
+The global EmployeeAccessModule exports AccessPolicyService, AccessSnapshotService and AccessSocketBoundary. Add an injectable domain registrar (for example an `OnModuleInit` provider in EmployeeAccessModule with Prisma/domain dependencies) that installs functions in `ACCESS_BOUNDARIES`. Both the JWT guard and interceptor consume this shared registry. Task 3 installed no production resource resolvers. The current implementation checkpoint above lists reviewed adapters; other missing entries remain deliberately closed for managed non-owners.
 
 ```ts
 ACCESS_BOUNDARIES.set('ProductsController.findOne', async request => {
@@ -79,7 +100,7 @@ New `products.cost.update` is separate from `sensitive.cost.read` and from the p
 
 Inspection definitions are safe shared reference data: historical null-origin templates remain readable before first use, without case results or unscoped inspection counts. New managed templates persist nullable `accessCompanyCode` from authenticated execution, not request body. No historical backfill. Applying a company-owned template requires the product's persisted company to match. Editing historical global definitions requires current permission-specific COMPANY authority in both SHOP and FINANCE; a single related case never authorizes the shared edit.
 
-Remaining named SHOP units: 4.1.2 procurement/inventory (63 rows); 4.1.3 sales/bookings/trade-in (56); 4.1.4 after-sales/repair-tickets (39); 4.1.5 customers/contacts/customer-journey (31); 4.1.6 residual SHOP manifest sweep. These 189 named rows plus residual SHOP, FINANCE/accounting, operational/realtime domains, audit and approval work remain pending. Umbrella Task 4.1 and Task 4 are not complete. Full local/browser verification is reserved by the root agent for the integrated Task 8 handoff.
+At the original Task 4.1.1 checkpoint, the later SHOP/domain units were pending. See Current implementation checkpoint for the reviewed counts and remaining work. Umbrella Task 4.1 and Task 4 remain incomplete; full local/browser verification belongs to the integrated Task 8 handoff.
 
 Review fix 1: stock list/dashboard require independent `inventory.read`, while product details retain `products.read`. Inspection history and template counts use stable `Inspection.productId` through `sourceProduct` plus all additional linked products, including owner company filtering. The additive NOT VALID FK retains unresolved legacy source IDs without rewriting data; those rows fail closed. Typed collection controller arguments and generated model predicate types tighten the adapter contract. See the phase report for isolated migration/history evidence and the remaining fixture uncertainty.
 

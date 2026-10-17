@@ -101,6 +101,7 @@ describe('ExchangeCancelService (spec §9)', () => {
   beforeEach(async () => {
     requests = {};
     txMock = {
+      user: { findUnique: jest.fn().mockResolvedValue({ accessManaged: false }) },
       contractExchangeRequest: {
         findUnique: jest.fn().mockImplementation(async ({ where }: any) => requests[where.id] ?? null),
         updateMany: jest.fn().mockResolvedValue({ count: 1 }),

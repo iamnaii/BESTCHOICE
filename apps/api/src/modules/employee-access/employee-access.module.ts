@@ -1,3 +1,4 @@
+import { AccessExchangeSourceService } from './access-exchange-source.service';
 import { AccessRepairBoundaries } from './access-repair-boundaries';
 import { AccessRepairSourceService } from './access-repair-source.service';
 import { AccessRepairProjectionService } from './access-repair-projection.service';
@@ -24,7 +25,7 @@ import { AccessSnapshotService } from './access-snapshot.service';
 @Global()
 @Module({
   controllers: [EmployeeAccessController],
-  providers: [AccessRepairBoundaries, AccessRepairSourceService, AccessRepairProjectionService, AccessSalesBoundaries, AccessSalesProjectionService, AccessTradeInBoundaries, AccessTradeInProjectionService, AccessAdjustmentsBoundaries, AccessInventoryBoundaries, AccessProcurementBoundaries, AccessProcurementSourceService, AccessProcurementProjectionService, AccessResourceService, AccessSensitiveService, AccessShopBoundaries, EmployeeAccessService, AccessSnapshotService, AccessPolicyService, AccessSocketBoundary],
-  exports: [AccessRepairSourceService, AccessRepairProjectionService, AccessProcurementSourceService, AccessProcurementProjectionService, AccessResourceService, AccessSensitiveService, EmployeeAccessService, AccessSnapshotService, AccessPolicyService, AccessSocketBoundary],
+  providers: [AccessExchangeSourceService, AccessRepairBoundaries, AccessRepairSourceService, AccessRepairProjectionService, AccessSalesBoundaries, AccessSalesProjectionService, AccessTradeInBoundaries, AccessTradeInProjectionService, AccessAdjustmentsBoundaries, AccessInventoryBoundaries, AccessProcurementBoundaries, AccessProcurementSourceService, AccessProcurementProjectionService, AccessResourceService, AccessSensitiveService, AccessShopBoundaries, EmployeeAccessService, AccessSnapshotService, AccessPolicyService, AccessSocketBoundary],
+  exports: [AccessExchangeSourceService, AccessRepairSourceService, AccessRepairProjectionService, AccessProcurementSourceService, AccessProcurementProjectionService, AccessResourceService, AccessSensitiveService, EmployeeAccessService, AccessSnapshotService, AccessPolicyService, AccessSocketBoundary],
 })
 export class EmployeeAccessModule {}

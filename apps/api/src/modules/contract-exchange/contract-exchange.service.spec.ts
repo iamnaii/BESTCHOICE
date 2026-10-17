@@ -60,6 +60,7 @@ describe('ContractExchangeService.submit', () => {
 
   beforeEach(async () => {
     prisma = {
+      user: { findUnique: jest.fn().mockResolvedValue({ accessManaged: false }) },
       contract: { findUnique: jest.fn() },
       product: { findUnique: jest.fn() },
       contractExchangeRequest: { create: jest.fn() },
@@ -474,6 +475,7 @@ describe('submit() mode routing (Device Swap 2026-07)', () => {
 
   beforeEach(async () => {
     prisma = {
+      user: { findUnique: jest.fn().mockResolvedValue({ accessManaged: false }) },
       contract: {
         findUnique: jest.fn().mockResolvedValue(oldContract),
         findFirst: jest.fn().mockResolvedValue(null), // nextExchangeContractNumber
@@ -725,6 +727,7 @@ describe('ContractExchangeService.approve (sign-then-activate)', () => {
 
   beforeEach(async () => {
     prisma = {
+      user: { findUnique: jest.fn().mockResolvedValue({ accessManaged: false }) },
       $transaction: jest.fn(async (fn: any) => fn(prisma)),
       $executeRawUnsafe: jest.fn().mockResolvedValue(undefined),
       contractExchangeRequest: {
@@ -1218,6 +1221,7 @@ describe('approve() tier authorization + MEMO apply (Device Swap 2026-07)', () =
     };
 
     prisma = {
+      user: { findUnique: jest.fn().mockResolvedValue({ accessManaged: false }) },
       $transaction: jest.fn(async (fn: any) => fn(prisma)),
       $executeRawUnsafe: jest.fn().mockResolvedValue(undefined),
       contractExchangeRequest: {
@@ -2300,6 +2304,7 @@ describe('ContractExchangeService.reject', () => {
   beforeEach(async () => {
     audit = { log: jest.fn() };
     prisma = {
+      user: { findUnique: jest.fn().mockResolvedValue({ accessManaged: false }) },
       $transaction: jest.fn(async (fn: any) => fn(prisma)),
       contractExchangeRequest: {
         updateMany: jest.fn(),
@@ -2373,6 +2378,7 @@ describe('ContractExchangeService.listRecent', () => {
 
   beforeEach(async () => {
     prisma = {
+      user: { findUnique: jest.fn().mockResolvedValue({ accessManaged: false }) },
       contractExchangeRequest: { findMany: jest.fn().mockResolvedValue([]) },
     };
     const mod = await Test.createTestingModule({

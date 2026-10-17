@@ -1,3 +1,6 @@
+import { Optional } from '@nestjs/common';
+import { AccessExchangeSourceService, ExchangeDestinations, exchangeActor, exchangeContractSource } from '../employee-access/access-exchange-source.service';
+import { currentDomainAccess, domainAccessClient } from '../employee-access/access-execution-context';
 import { bkkYyyymmdd } from '../../utils/document-number-format.util';
 import { Injectable, BadRequestException, ConflictException, ForbiddenException, InternalServerErrorException, NotFoundException } from '@nestjs/common';
 import { Prisma, ProductCategory } from '@prisma/client';
@@ -70,11 +73,9 @@ export interface ExchangeContractForFinalize {
   /**
    * F2 (SHOP-leg wiring, CPA ตอบข้อ 3 2026-08-01) — needed to post
    * ShopInventoryTransferTemplate at the same moment ContractWorkflowService
-   * posts it for a normal activation. Sourced from the SAME pre-tx
-   * `findOne(id)` snapshot the normal path already trusts for
-   * `contract.product.category`/`costPrice` (contract-workflow.service.ts) —
-   * not re-fetched inside the tx, so behavior/race characteristics match
-   * the existing normal-activation precedent exactly.
+   * posts it for a normal activation. Managed callers reload these values from
+   * the exact transaction; the actorless unmanaged compatibility path retains
+   * the caller-provided snapshot contract.
    */
   contractNumber: string;
   downPayment: Prisma.Decimal | string | number;
@@ -85,7 +86,7 @@ export interface ExchangeContractForFinalize {
 @Injectable()
 export class ContractExchangeService {
   constructor(
-    private readonly prisma: PrismaService,
+    private readonly basePrisma: PrismaService,
     private readonly audit: AuditService,
     private readonly t1a: ExchangeNewContract1ATemplate,
     private readonly t2: ExchangeCloseOld21_1106Template,
@@ -96,9 +97,45 @@ export class ContractExchangeService {
     private readonly shopInventoryTransferTemplate: ShopInventoryTransferTemplate,
     private readonly shopAccountResolver: ShopAccountResolver,
     private readonly installmentInputVatTemplate: InstallmentInputVatTemplate,
+    @Optional() private readonly access?: AccessExchangeSourceService,
   ) {}
 
+  private get prisma() {
+    return domainAccessClient(this.basePrisma);
+  }
+
+  private async authorize(
+    userId: string,
+    permission:
+      | 'contract-exchanges.create'
+      | 'contract-exchanges.read'
+      | 'contract-exchanges.approve'
+      | 'contract-exchanges.update',
+    input: string | { oldContractId: string; newProductId?: string; oldProductId?: string },
+    destinations: ExchangeDestinations = false,
+  ) {
+    const ctx = await exchangeActor(this.basePrisma, userId);
+    if (!ctx) return undefined;
+    if (!this.access) throw new ForbiddenException('ไม่มีตัวตรวจแหล่งสิทธิ์เปลี่ยนเครื่อง');
+    if (typeof input === 'string')
+      return (await this.access.request(input, permission, destinations)).sources;
+    const sources = await this.access.sources(input, destinations);
+    this.access.assert(permission, sources);
+    return sources;
+  }
+
+  private async log(entry: AuditEntry) {
+    const ctx = currentDomainAccess();
+    if (ctx) await this.audit.log(entry, ctx.client);
+    else await this.audit.log(entry);
+  }
+
+  private async logFinalization(entry: AuditEntry, tx: Prisma.TransactionClient) {
+    if (entry.userId) await this.audit.log(entry, tx);
+    else await this.audit.log(entry); // Existing actorless internal calls remain inert.
+  }
   async submit(dto: SubmitExchangeRequestDto, user: RequestUser) {
+    const sources = await this.authorize(user.id, 'contract-exchanges.create', dto, false);
     const oldContract = await this.prisma.contract.findUnique({
       where: { id: dto.oldContractId },
       // test-data fence (spec 2026-09-05 §5.4): ลูกค้าสืบทอดจากสัญญาเดิม แต่เครื่องเลือกใหม่
@@ -108,7 +145,7 @@ export class ContractExchangeService {
     if (!oldContract || oldContract.deletedAt) {
       throw new NotFoundException('ไม่พบสัญญาเดิม');
     }
-    if (!hasCrossBranchAccess(user) && oldContract.branchId !== user.branchId) {
+    if (!currentDomainAccess() && !hasCrossBranchAccess(user) && oldContract.branchId !== user.branchId) {
       throw new ForbiddenException('ไม่สามารถสร้างคำขอเปลี่ยนเครื่องของสาขาอื่นได้');
     }
     if (oldContract.tradeInCreditSnapshot) throw new BadRequestException('สัญญาที่ใช้เครดิตเทิร์นยังไม่รองรับการเปลี่ยนเครื่อง ต้องตรวจการคืนเครดิตก่อน');
@@ -240,17 +277,18 @@ export class ContractExchangeService {
       },
     });
 
-    // AUTO tier — อนุมัติทันที (audit ระบุ auto)
-    if (tier === 'AUTO') {
+    // Managed AUTO only executes with independently authorized approval sources.
+    // Otherwise leave PENDING for a separate approver; canonical failures still abort.
+    if (tier === 'AUTO' && (!sources || this.access!.permits('contract-exchanges.approve', sources))) {
       const approved = await this.approve(request.id, user, {});
       return {
-        ...request,
+        ...(sources ? this.access!.project(request, sources) : request),
         status: 'APPROVED',
         autoApproved: true,
         newContractId: approved.newContractId,
       };
     }
-    return request;
+    return sources ? this.access!.project(request, sources) : request;
   }
 
   async buildPreview(
@@ -264,13 +302,14 @@ export class ContractExchangeService {
     },
     user: RequestUser,
   ) {
+    const sources = await this.authorize(user.id, 'contract-exchanges.read', params);
     const oldContract = await this.prisma.contract.findUnique({
       where: { id: params.oldContractId },
     });
     if (!oldContract || oldContract.deletedAt) throw new NotFoundException('ไม่พบสัญญาเดิม');
     // Task 8 (carry-over from Task 7 review): same in-service branch scoping as
     // submit() — without it any SALES user could read any contract's NCV/GL by UUID.
-    if (!hasCrossBranchAccess(user) && oldContract.branchId !== user.branchId) {
+    if (!currentDomainAccess() && !hasCrossBranchAccess(user) && oldContract.branchId !== user.branchId) {
       throw new ForbiddenException('ไม่สามารถดูข้อมูลสัญญาของสาขาอื่นได้');
     }
     if (oldContract.tradeInCreditSnapshot) throw new BadRequestException('สัญญาที่ใช้เครดิตเทิร์นยังไม่รองรับการเปลี่ยนเครื่อง ต้องตรวจการคืนเครดิตก่อน');
@@ -370,7 +409,7 @@ export class ContractExchangeService {
         .minus(outstanding.vatReceivable);
     }
 
-    return {
+    const result = {
       mode,
       ncv: ncv.toFixed(2),
       grossRemainingInclVat: grossRemainingInclVat.toFixed(2),
@@ -392,6 +431,7 @@ export class ContractExchangeService {
       blockers: { overdueBlocked, advanceBlocked },
       hasUnpaidLateFee,
     };
+    return sources ? this.access!.project(result, sources) : result;
   }
 
   /**
@@ -413,25 +453,37 @@ export class ContractExchangeService {
    * so we don't need a new lifecycle state.
    */
   async approve(id: string, user: RequestUser, dto: ApproveExchangeRequestDto) {
+    const approvalSources = await this.authorize(user.id, 'contract-exchanges.approve', id, false);
+    const ctx = currentDomainAccess();
+    if (ctx) {
+      const persisted = await ctx.client.user.findUniqueOrThrow({
+        where: { id: ctx.snapshot.userId },
+        select: { role: true },
+      });
+      user = { ...user, role: persisted.role };
+    }
     // Tier-role enforcement ที่ service (spec §6) — controller เปิด OWNER+BM แล้ว
     const pre = await (this.prisma as any).contractExchangeRequest.findUnique({
       where: { id },
-      include: { oldContract: { select: { branchId: true, tradeInCreditSnapshot: true } } },
+      include: { oldContract: { select: { branchId: true, productId: true, tradeInCreditSnapshot: true } } },
     });
     if (!pre || pre.deletedAt) throw new NotFoundException('ไม่พบคำขอเปลี่ยนเครื่อง');
+    if (ctx && pre.status === 'PENDING' && pre.oldProductId !== pre.oldContract?.productId)
+      throw new ForbiddenException('เครื่องเดิมไม่ตรงกับสัญญาปัจจุบัน');
     // I7 (final review 2026-07-29): BM must not approve another branch's request
     // by UUID — same in-service branch scoping as submit()/buildPreview().
-    if (!hasCrossBranchAccess(user) && pre.oldContract?.branchId !== user.branchId) {
+    if (!currentDomainAccess() && !hasCrossBranchAccess(user) && pre.oldContract?.branchId !== user.branchId) {
       throw new ForbiddenException('ไม่สามารถอนุมัติคำขอของสาขาอื่นได้');
     }
     if (pre.oldContract?.tradeInCreditSnapshot) throw new BadRequestException('สัญญาที่ใช้เครดิตเทิร์นยังไม่รองรับการเปลี่ยนเครื่อง ต้องตรวจการคืนเครดิตก่อน');
     if (pre.mode === 'PRICED' && pre.approvalTier === 'ESCALATE' && user.role !== 'OWNER') {
       throw new ForbiddenException(
-        'ราคารับซื้อต่ำกว่า 70% ของมูลค่าคงเหลือ — ต้องให้ผู้จัดการใหญ่ (OWNER) อนุมัติเท่านั้น',
+        currentDomainAccess() ? 'คำขอนี้ต้องให้เจ้าของอนุมัติ' : 'ราคารับซื้อต่ำกว่า 70% ของมูลค่าคงเหลือ — ต้องให้ผู้จัดการใหญ่ (OWNER) อนุมัติเท่านั้น',
       );
     }
 
     if (pre.mode === 'MEMO') {
+      if (approvalSources) await this.authorize(user.id, 'contract-exchanges.approve', id, 'memo');
       return this.approveMemo(id, user.id, dto);
     }
     return this.approvePriced(id, user.id, user.role);
@@ -444,13 +496,7 @@ export class ContractExchangeService {
         'ต้องยืนยัน checklist ก่อนอนุมัติ: บันทึกแนบท้ายสัญญา (ADDENDUM) + สลับ MDM เครื่องเก่า/ใหม่',
       );
     }
-    // audit หลัง commit (doctrine R-1 / pattern เดียวกับ FINALIZED path ของ
-    // `ExchangeCancelService`): `AuditService.log` เปิด `$transaction` ของ root
-    // client เอง (hash chain ต้อง atomic) — await มันขณะที่ tx นี้ยังถือ
-    // connection = nested root-tx ⇒ P2028 และ `log()` กลืน error ทิ้ง ⇒ ไม่มี
-    // แถว audit เลย (พิสูจน์ด้วย DB จริงใน Task 4: MEMO approve 4 ครั้ง → 0 แถว).
-    // แถม audit ต้องบรรยาย "งานที่ commit แล้ว" อยู่แล้ว — เขียนใน tx ที่อาจ
-    // roll back = phantom audit row.
+    // Managed executions join audit to the exact outer transaction.
     let pendingAudit: AuditEntry | null = null;
     const result = await this.prisma.$transaction(async (tx) => {
       const lock = await (tx as any).contractExchangeRequest.updateMany({
@@ -538,13 +584,13 @@ export class ContractExchangeService {
       };
       return { id, newContractId: null as string | null, mode: 'MEMO' };
     });
-    if (pendingAudit) await this.audit.log(pendingAudit);
+    if (pendingAudit) await this.log(pendingAudit);
     return result;
   }
 
   /** PRICED: เดิมคือ approve() ทั้งก้อน — เปลี่ยนเฉพาะที่มาของแผนผ่อน (Device Swap 2026-07) */
   private async approvePriced(id: string, userId: string, userRole?: string | null) {
-    // audit หลัง commit — เหตุผลเดียวกับ `approveMemo` (nested root-tx = P2028)
+    // Managed audit joins the exact outer transaction; legacy audit remains standalone.
     let pendingAudit: AuditEntry | null = null;
     const result = await this.prisma.$transaction(async (tx) => {
       // 1. Lock-acquire (race-safe via updateMany count===1)
@@ -800,7 +846,7 @@ export class ContractExchangeService {
         },
       });
 
-      // 7. Audit (ยิงหลัง commit — ดูเหตุผลบนหัว method)
+      // 7. Stage the audit for the actual transaction owner.
       pendingAudit = {
         action: 'EXCHANGE_REQUEST_APPROVED',
         entity: 'contract_exchange_request',
@@ -826,7 +872,7 @@ export class ContractExchangeService {
         mode: 'PRICED',
       };
     });
-    if (pendingAudit) await this.audit.log(pendingAudit);
+    if (pendingAudit) await this.log(pendingAudit);
     return result;
   }
 
@@ -853,6 +899,7 @@ export class ContractExchangeService {
   async finalizeAfterActivation(
     newContract: ExchangeContractForFinalize,
     tx: Prisma.TransactionClient,
+    actor?: RequestUser,
   ): Promise<{
     je1aId: string;
     je2Id: string;
@@ -860,13 +907,65 @@ export class ContractExchangeService {
     je4Id: string;
     je5Id: string | null;
   }> {
+    const ctx = await exchangeActor(this.basePrisma, actor?.id, tx);
+    if (ctx) {
+      if (!this.access) throw new ForbiddenException('ไม่มีตัวตรวจแหล่งสิทธิ์เปลี่ยนเครื่อง');
+      const identity = await tx.contractExchangeRequest.findFirst({
+        where: {
+          newContractId: newContract.id,
+          oldContractId: newContract.exchangedFromContractId,
+          deletedAt: null,
+        },
+        select: { id: true },
+      });
+      if (!identity) throw new ForbiddenException('ไม่มีคำขอเปลี่ยนเครื่องที่อนุมัติตรงกับสินค้า');
+      const { request: req } = await this.access.request(
+        identity.id,
+        'contract-exchanges.update',
+        'finalize',
+      );
+      if (
+        req.status !== 'APPROVED' || req.mode !== 'PRICED' ||
+        req.oldContractId !== newContract.exchangedFromContractId ||
+        req.newContractId !== newContract.id || req.newProductId !== newContract.productId
+      )
+        throw new ForbiddenException('ไม่มีคำขอเปลี่ยนเครื่องที่อนุมัติตรงกับสินค้า');
+      // Reload monetary and device identity only after the request/source locks.
+      const persisted = await tx.contract.findUniqueOrThrow({
+        where: { id: newContract.id },
+        include: { product: true },
+      });
+      if (
+        persisted.exchangedFromContractId !== req.oldContractId ||
+        persisted.productId !== req.newProductId
+      )
+        throw new ForbiddenException('สัญญาเปลี่ยนเครื่องไม่ตรงกับข้อมูลปัจจุบัน');
+      const old = await tx.contract.findUniqueOrThrow({
+        where: { id: req.oldContractId },
+        select: { customerId: true, productId: true },
+      });
+      if (old.productId !== req.oldProductId)
+        throw new ForbiddenException('เครื่องเดิมไม่ตรงกับสัญญาปัจจุบัน');
+      if (old.customerId !== persisted.customerId)
+        throw new ForbiddenException('ลูกค้าไม่ตรงกับสัญญาเปลี่ยนเครื่อง');
+      this.access.assert('contracts.update', [
+        await exchangeContractSource(tx, req.oldContractId),
+        await exchangeContractSource(tx, persisted.id),
+      ]);
+      newContract = {
+        ...persisted,
+        exchangedFromContractId: persisted.exchangedFromContractId!,
+        productCategory: persisted.product.category,
+        productCostPrice: persisted.product.costPrice,
+      };
+    }
     // 1. Resolve SHOP companyId
     const shopCompanyId = await this.companyResolver.getShopCompanyId(tx);
 
     // 2. Look up the request that birthed this contract, and the linked old
-    // contract + old product. We trust the caller's contract object for the
-    // new-side identity but re-fetch the request so this method is idempotent
-    // on its own (a callsite can pass just the contract).
+    // contract + old product. Managed identity was reloaded above. Repeat
+    // posting is rejected by the canonical flow/idempotencyKey unique index
+    // (P2002); this method does not return a prior success on a repeated call.
     const oldContractId = newContract.exchangedFromContractId;
     const request = await (tx as any).contractExchangeRequest.findFirst({
       where: {
@@ -1101,15 +1200,10 @@ export class ContractExchangeService {
     // 10. Audit — one event for the finalize (umbrella), one for the SHOP
     // ownership flip so it's greppable independently.
     //
-    // ⚠ ทั้งสองใบนี้อยู่ **ใน `tx`** และปลอดภัยได้เพราะ **ไม่มี `userId`** เท่านั้น:
-    // `AuditService.log` คืนค่าตั้งแต่บรรทัดแรก (`if (!entry.userId) return`) จึงไม่
-    // เคยเปิด root `$transaction` ซ้อน. **อย่า "เติม userId" ให้มันเฉย ๆ** — นั่นคือ
-    // P2028 ตัวเดียวกับที่ Phase 5 Task 5 ข้อ 0 เพิ่งไล่แก้ไป 5 จุด (nested root-tx
-    // ⇒ pool starvation + audit หายเงียบ/แถวผีตอน rollback). ถ้าจะให้สองใบนี้มี
-    // ผู้ใช้จริง ต้องย้ายไปเรียก **หลัง tx commit** (pattern เดียวกับ FINALIZED
-    // audit ของ `ExchangeCancelService`) ไม่ใช่ส่ง userId เข้ามาที่นี่.
-    await this.audit.log({
+    // Managed audit joins the exact caller transaction and rolls back with it.
+    await this.logFinalization({
       action: 'EXCHANGE_FINALIZED',
+      userId: ctx?.snapshot.userId ?? actor?.id,
       entity: 'contract_exchange_request',
       entityId: request.id,
       newValue: {
@@ -1124,9 +1218,10 @@ export class ContractExchangeService {
           je5Id: je5?.id ?? null,
         },
       },
-    });
-    await this.audit.log({
+    }, tx);
+    await this.logFinalization({
       action: 'EXCHANGE_DEVICE_RETURNED_TO_SHOP',
+      userId: ctx?.snapshot.userId ?? actor?.id,
       entity: 'product',
       entityId: request.oldProductId,
       newValue: {
@@ -1137,7 +1232,7 @@ export class ContractExchangeService {
         buyback: buyback.toString(),
         previousCostPrice: previousCostPrice.toString(),
       },
-    });
+    }, tx);
 
     return {
       je1aId: je1a.id,
@@ -1149,10 +1244,11 @@ export class ContractExchangeService {
   }
 
   async reject(id: string, reason: string, userId: string) {
+    const sources = await this.authorize(userId, 'contract-exchanges.update', id, false);
     if (reason.trim().length < 10) {
       throw new BadRequestException('เหตุผลปฏิเสธอย่างน้อย 10 ตัวอักษร');
     }
-    // audit หลัง commit — เหตุผลเดียวกับ `approveMemo` (nested root-tx = P2028)
+    // Managed audit joins the exact outer transaction; legacy audit remains standalone.
     let pendingAudit: AuditEntry | null = null;
     const result = await this.prisma.$transaction(async (tx) => {
       const lock = await (tx as any).contractExchangeRequest.updateMany({
@@ -1176,18 +1272,20 @@ export class ContractExchangeService {
       };
       return (tx as any).contractExchangeRequest.findUniqueOrThrow({ where: { id } });
     });
-    if (pendingAudit) await this.audit.log(pendingAudit);
-    return result;
+    if (pendingAudit) await this.log(pendingAudit);
+    return sources ? this.access!.project(result, sources) : result;
   }
 
   async listPending(user: RequestUser): Promise<any[]> {
+    const ctx = await exchangeActor(this.basePrisma, user.id);
+    if (ctx && !this.access) throw new ForbiddenException('ไม่มีตัวตรวจแหล่งสิทธิ์เปลี่ยนเครื่อง');
     // I7 (final review 2026-07-29): BM sees only their own branch's queue —
     // cross-branch roles (OWNER/FM/ACC) see everything.
     const where: Record<string, unknown> = { status: 'PENDING', deletedAt: null };
-    if (!hasCrossBranchAccess(user)) {
+    if (!currentDomainAccess() && !hasCrossBranchAccess(user)) {
       where.oldContract = { branchId: user.branchId };
     }
-    return (this.prisma as any).contractExchangeRequest.findMany({
+    const rows = await (this.prisma as any).contractExchangeRequest.findMany({
       where,
       include: {
         oldContract: {
@@ -1199,6 +1297,17 @@ export class ContractExchangeService {
       },
       orderBy: { createdAt: 'desc' },
     });
+    if (!ctx) return rows;
+    const visible: typeof rows = [];
+    for (const row of rows) {
+      try {
+        const { sources } = await this.access!.request(row.id, 'contract-exchanges.read', false);
+        visible.push(this.access!.project(row, sources));
+      } catch (error) {
+        if (!(error instanceof ForbiddenException)) throw error;
+      }
+    }
+    return visible;
   }
 
   /**
@@ -1209,6 +1318,8 @@ export class ContractExchangeService {
    * covers the 30-day cancel-eligibility window this list exists to serve.
    */
   async listRecent(user: RequestUser): Promise<any[]> {
+    const ctx = await exchangeActor(this.basePrisma, user.id);
+    if (ctx && !this.access) throw new ForbiddenException('ไม่มีตัวตรวจแหล่งสิทธิ์เปลี่ยนเครื่อง');
     const since = new Date(Date.now() - 90 * 86_400_000);
     // I7: same branch scoping as listPending — BM sees only their own branch.
     const where: Record<string, unknown> = {
@@ -1216,10 +1327,10 @@ export class ContractExchangeService {
       deletedAt: null,
       updatedAt: { gte: since },
     };
-    if (!hasCrossBranchAccess(user)) {
+    if (!currentDomainAccess() && !hasCrossBranchAccess(user)) {
       where.oldContract = { branchId: user.branchId };
     }
-    return (this.prisma as any).contractExchangeRequest.findMany({
+    const rows = await (this.prisma as any).contractExchangeRequest.findMany({
       where,
       include: {
         oldContract: {
@@ -1235,6 +1346,17 @@ export class ContractExchangeService {
       orderBy: { updatedAt: 'desc' },
       take: 100,
     });
+    if (!ctx) return rows;
+    const visible: typeof rows = [];
+    for (const row of rows) {
+      try {
+        const { sources } = await this.access!.request(row.id, 'contract-exchanges.read', false);
+        visible.push(this.access!.project(row, sources));
+      } catch (error) {
+        if (!(error instanceof ForbiddenException)) throw error;
+      }
+    }
+    return visible;
   }
 
   /** SystemConfig ตัวเลข — fallback เมื่อ row หาย/parse ไม่ได้ */

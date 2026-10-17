@@ -149,6 +149,7 @@ describe('DefectExchangeService', () => {
     };
 
     prisma = {
+      user: { findUnique: jest.fn().mockResolvedValue({ accessManaged: false }) },
       contract: {
         findUnique: jest.fn(),
       },

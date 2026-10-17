@@ -66,3 +66,37 @@ export async function tradeInAllows(id: string, permission: PermissionKey): Prom
     return false;
   }
 }
+
+/** Credit issue navigation is a separate journal source. Its canonical AUTO
+ * reference is written by TradeInCreditService.issue/JournalAutoService, not
+ * caller metadata. No posting branch is persisted, so require COMPANY authority. */
+export async function tradeInCreditJournalSource(
+  tx: AccessClient,
+  tradeInId: string,
+  journalId: string,
+): Promise<AccessResource | null> {
+  const issued = await tx.tradeIn.findFirst({
+    where: {
+      id: tradeInId,
+      deletedAt: null,
+      flow: 'EXCHANGE',
+      status: { in: ['ACCEPTED', 'COMPLETED'] },
+      creditIssuedAt: { not: null },
+      creditIssueJournalId: journalId,
+    },
+    select: { id: true },
+  });
+  if (!issued) return null;
+  const journal = await tx.journalEntry.findFirst({
+    where: {
+      id: journalId,
+      deletedAt: null,
+      status: 'POSTED',
+      referenceType: 'AUTO',
+      referenceId: `tradein:${issued.id}`,
+      company: { companyCode: 'SHOP', isActive: true, deletedAt: null },
+    },
+    select: { id: true },
+  });
+  return journal ? { company: 'SHOP' } : null;
+}

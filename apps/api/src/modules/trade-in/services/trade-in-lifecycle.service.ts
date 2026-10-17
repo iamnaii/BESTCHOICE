@@ -560,7 +560,7 @@ export class TradeInLifecycleService {
         });
         if (existing) {
           throw new BadRequestException(
-            `IMEI ${imei} มีอยู่ในระบบแล้ว: ${existing.name}`,
+            currentDomainAccess() ? 'IMEI นี้มีอยู่ในระบบแล้ว' : `IMEI ${imei} มีอยู่ในระบบแล้ว: ${existing.name}`,
           );
         }
       }

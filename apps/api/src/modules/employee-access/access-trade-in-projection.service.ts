@@ -5,7 +5,11 @@ import { Prisma } from '@prisma/client';
 import { AccessClient } from './access-snapshot.service';
 import { permissionScopes } from './access-context';
 import { currentDomainAccess } from './access-execution-context';
-import { tradeInSource, tradeInScopeWhere } from './access-trade-in-scope';
+import {
+  tradeInSource,
+  tradeInScopeWhere,
+  tradeInCreditJournalSource,
+} from './access-trade-in-scope';
 import { AccessResourceService } from './access-resource.service';
 import { maskBankAccount } from '../../utils/pii.util';
 
@@ -126,8 +130,14 @@ export class AccessTradeInProjectionService {
           'voucherPdfUrl',
         ])
           if (key in out) out[key] = Array.isArray(out[key]) ? [] : null;
-      if (!permits('journal.read'))
-        for (const key of ['creditIssueJournalId']) if (key in out) out[key] = null;
+      if ('creditIssueJournalId' in out) {
+        const journalSource =
+          id && typeof out.creditIssueJournalId === 'string'
+            ? await tradeInCreditJournalSource(ctx.client, id, out.creditIssueJournalId)
+            : null;
+        if (!journalSource || !canAccess(ctx.snapshot, 'journal.read', journalSource))
+          out.creditIssueJournalId = null;
+      }
       if (
         typeof out.customerId === 'string' &&
         !(await this.partyAllows(

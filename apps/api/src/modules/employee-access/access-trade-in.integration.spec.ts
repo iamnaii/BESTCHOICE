@@ -181,7 +181,7 @@ beforeAll(async () => {
   branchA = (await db.branch.create({ data: { name: 'A', companyId: shop.id } })).id;
   branchB = (await db.branch.create({ data: { name: 'B', companyId: shop.id } })).id;
   actor = await user();
-  await db.user.update({where:{id:actor},data:{role:'ACCOUNTANT'}});
+  await db.user.update({ where: { id: actor }, data: { role: 'ACCOUNTANT' } });
   denied = await user();
   await grant(
     actor,
@@ -790,4 +790,170 @@ it('cleans a partial staged upload before any database mutation', async () => {
   }).expect(500);
   expect(storage.delete).toHaveBeenCalledTimes(1);
   expect(await db.tradeIn.count({ where: { deviceModel: 'Partial file' } })).toBe(0);
+});
+
+it('fix1 preserves global IMEI uniqueness without disclosing foreign product names on accept or quick-buy', async () => {
+  const staff = await user();
+  await grant(staff, ['trade-in.create', 'trade-in.update'], [branchA]);
+  const finance = await db.companyInfo.upsert({
+    where: { companyCode: 'FINANCE' },
+    update: {},
+    create: {
+      companyCode: 'FINANCE',
+      nameTh: 'Fixture',
+      taxId: 'TEST',
+      address: 'TEST',
+      directorName: 'TEST',
+    },
+  });
+  for (const [index, companyId] of [null, finance.id].entries()) {
+    const imei = `98765432100000${index}`;
+    const product = await db.product.create({
+      data: {
+        name: `CONFIDENTIAL-FOREIGN-DEVICE-${index}`,
+        brand: 'Apple',
+        model: 'Hidden',
+        category: 'PHONE_USED',
+        costPrice: 9999,
+        branchId: branchB,
+        ownedByCompanyId: companyId,
+        imeiSerial: imei,
+      },
+    });
+    const row = await db.tradeIn.create({
+      data: {
+        branchId: branchA,
+        deviceBrand: 'Apple',
+        deviceModel: 'Duplicate',
+        status: 'APPRAISED',
+        offeredPrice: 1000,
+        flow: 'BUYBACK',
+      },
+    });
+    const accept = await http(
+      'post',
+      `/trade-ins/${row.id}/accept`,
+      { ...evidence, imei },
+      staff,
+    ).expect(400);
+    expect(accept.body.message).toBe('IMEI นี้มีอยู่ในระบบแล้ว');
+    expect(JSON.stringify(accept.body)).not.toContain(product.name);
+    expect((await db.tradeIn.findUniqueOrThrow({ where: { id: row.id } })).status).toBe(
+      'APPRAISED',
+    );
+    const requestId = randomUUID();
+    const quick = await http(
+      'post',
+      '/trade-ins/quick-buy',
+      {
+        ...evidence,
+        branchId: branchA,
+        deviceBrand: 'Apple',
+        deviceModel: 'Duplicate quick',
+        agreedPrice: 1000,
+        deviceCondition: 'A',
+        requestId,
+        imei,
+      },
+      staff,
+    ).expect(400);
+    expect(quick.body.message).toBe('IMEI นี้มีอยู่ในระบบแล้ว');
+    expect(JSON.stringify(quick.body)).not.toContain(product.name);
+    expect(await db.tradeIn.count({ where: { quickBuyRequestId: requestId } })).toBe(0);
+    expect(await db.product.count({ where: { imeiSerial: imei, deletedAt: null } })).toBe(1);
+    expect(await db.shopTender.count({ where: { tradeInId: row.id } })).toBe(0);
+  }
+});
+
+it('fix1 resolves credit journal current company and canonical issue source before detail/list navigation', async () => {
+  const createCredit = async () => {
+    const created = (
+      await http('post', '/trade-ins', {
+        branchId: branchA,
+        deviceBrand: 'Apple',
+        deviceModel: 'Journal proof',
+        sellerName: 'Test',
+      }).expect(201)
+    ).body;
+    await http('patch', `/trade-ins/${created.id}/appraise`, {
+      offeredPrice: 1000,
+      deviceCondition: 'A',
+    }).expect(200);
+    await http('post', `/trade-ins/${created.id}/accept`, evidence).expect(201);
+    return db.tradeIn.findUniqueOrThrow({ where: { id: created.id } });
+  };
+  const row = await createCredit(),
+    other = await createCredit();
+  const journalId = row.creditIssueJournalId!;
+  const journal = await db.journalEntry.findUniqueOrThrow({ where: { id: journalId } });
+  const staff = await user();
+  await grant(staff, ['trade-in.read', 'journal.read'], [branchA]);
+  const assertNavigation = async (expected: string | null) => {
+    const detail = (await http('get', `/trade-ins/${row.id}`, undefined, staff).expect(200)).body;
+    expect(detail.creditIssueJournalId).toBe(expected);
+    expect(detail.agreedPrice).toBeNull();
+    const list = (
+      await http('get', '/trade-ins?search=Journal%20proof', undefined, staff).expect(200)
+    ).body;
+    expect(list.data.find((item: { id: string }) => item.id === row.id).creditIssueJournalId).toBe(
+      expected,
+    );
+  };
+  // Journal has no branch stamp: a case branch grant cannot prove central journal access.
+  await assertNavigation(null);
+  await grant(staff, ['journal.read']);
+  await assertNavigation(journalId);
+  const finance = await db.companyInfo.upsert({
+    where: { companyCode: 'FINANCE' },
+    update: {},
+    create: {
+      companyCode: 'FINANCE',
+      nameTh: 'Fixture',
+      taxId: 'TEST',
+      address: 'TEST',
+      directorName: 'TEST',
+    },
+  });
+  await db.journalEntry.update({ where: { id: journalId }, data: { companyId: finance.id } });
+  await assertNavigation(null);
+  await db.journalEntry.update({
+    where: { id: journalId },
+    data: { companyId: journal.companyId, deletedAt: new Date() },
+  });
+  await assertNavigation(null);
+  await db.journalEntry.update({
+    where: { id: journalId },
+    data: { deletedAt: null, status: 'DRAFT' },
+  });
+  await assertNavigation(null);
+  await db.journalEntry.update({
+    where: { id: journalId },
+    data: { status: 'POSTED', referenceId: 'different-source' },
+  });
+  await assertNavigation(null);
+  await db.journalEntry.update({
+    where: { id: journalId },
+    data: { referenceId: journal.referenceId },
+  });
+  // Writable metadata cannot substitute for the canonical AUTO reference.
+  await db.journalEntry.update({
+    where: { id: other.creditIssueJournalId! },
+    data: {
+      metadata: { flow: 'shop-trade-in-credit-issued', tradeInId: row.id, branchId: branchA },
+    },
+  });
+  await db.tradeIn.update({
+    where: { id: row.id },
+    data: { creditIssueJournalId: other.creditIssueJournalId },
+  });
+  await assertNavigation(null);
+  await db.tradeIn.update({ where: { id: row.id }, data: { creditIssueJournalId: randomUUID() } });
+  await assertNavigation(null);
+  await db.tradeIn.update({
+    where: { id: row.id },
+    data: { creditIssueJournalId: journalId, creditIssuedAt: null },
+  });
+  await assertNavigation(null);
+  await db.tradeIn.update({ where: { id: row.id }, data: { creditIssuedAt: row.creditIssuedAt } });
+  await assertNavigation(journalId);
 });

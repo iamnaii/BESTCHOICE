@@ -291,8 +291,8 @@ describe('ContractPaymentService — ปิดยอดหักเงินร�
 
     await approvedEarlyPayoff(h.service, ID, 'user-1', baseDto);
     const je = h.createAndPost.mock.calls[0][0] as CapturedJe;
+    // เงินสด 0 → ไม่มีบรรทัดบัญชีรับเงิน (ไม่ลงบรรทัดยอดศูนย์)
     expect(sig(je)).toEqual([
-      '11-1201:0.00:0.00',
       '11-2106:6000.00:0.00',
       '21-2102:1190.00:0.00',
       '52-1106:0.04:0.00',

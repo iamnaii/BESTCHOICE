@@ -1,3 +1,10 @@
+import { PartyJourneyPlan } from './access-party-journey-plan';
+import { journeyAccess } from './access-party-journey-context';
+import { ManagedJourney } from '../customer-journey/managed-journey';
+import { JourneyStateService } from '../customer-journey/journey-state.service';
+import { AuditService } from '../audit/audit.service';
+import { CreateJourneyEntryDto } from '../customer-journey/dto/create-journey-entry.dto';
+import { JourneyListQueryDto } from '../customer-journey/dto/journey-list-query.dto';
 import { procurementPreparation } from './access-preparation-context';
 import { CustomerDocumentsService } from '../customers/services/customer-documents.service';
 import { UploadDocumentDto } from '../customers/dto/document.dto';
@@ -64,6 +71,67 @@ export class AccessPartyBoundaries implements OnModuleInit {
     private readonly modules: ModuleRef,
   ) {}
   onModuleInit() {
+    for (const method of ['list', 'summary', 'createEntry', 'removeEntry'] as const)
+      ACCESS_BOUNDARIES.set(
+        `CustomerJourneyController.${method}`,
+        async (req, snapshot, permission) => {
+          const company = requestedAccessCompany(req);
+          const execute = async () =>
+            (
+              await this.resources.execute(
+                snapshot.userId,
+                permission,
+                company,
+                undefined,
+                async () => {
+                  const ctx = currentDomainAccess()!;
+                  const actor = await ctx.client.user.findUniqueOrThrow({
+                    where: { id: ctx.snapshot.userId },
+                    select: { id: true, role: true },
+                  });
+                  req.user = { ...req.user, ...actor, access: ctx.snapshot };
+                  const party = await PartyQueryPlan.create(ctx.client, this.sources);
+                  const plan = await PartyJourneyPlan.create(
+                    party,
+                    this.sources,
+                    String(req.params?.id ?? ''),
+                  );
+                  return journeyAccess.run(plan, async () => {
+                    const adapter = new ManagedJourney(
+                      plan,
+                      this.modules.get(AuditService, { strict: false }),
+                      this.modules.get(JourneyStateService, { strict: false }),
+                    );
+                    if (method === 'summary') return adapter.summaryRoute();
+                    if (method === 'removeEntry')
+                      return adapter.remove(String(req.params?.entryId ?? ''));
+                    if (method === 'createEntry') {
+                      const dto = plainToInstance(CreateJourneyEntryDto, req.body ?? {});
+                      if ((await validate(dto, { whitelist: true })).length)
+                        throw new BadRequestException('ข้อมูลบันทึกไม่ถูกต้อง');
+                      return adapter.create(dto);
+                    }
+                    const dto = plainToInstance(JourneyListQueryDto, req.query ?? {});
+                    if ((await validate(dto, { whitelist: true })).length)
+                      throw new BadRequestException('ตัวกรองไม่ถูกต้อง');
+                    return adapter.list(dto);
+                  });
+                },
+                false,
+                {
+                  domain: 'parties',
+                  isolationLevel: 'Serializable',
+                  maxAttempts: 3,
+                  retryUniqueConflict: true,
+                },
+              )
+            ).result;
+          return method === 'list' || method === 'summary'
+            ? { kind: 'collection', company, execute }
+            : { kind: 'selection', company, execute };
+        },
+      );
+
     for (const route of PARTY_DOCUMENT_ROUTES)
       ACCESS_BOUNDARIES.set(route, async (req, snapshot, permission) => {
         const company = requestedAccessCompany(req);

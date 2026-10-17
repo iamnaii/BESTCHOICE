@@ -357,3 +357,11 @@ describe('customer identity disclosure capability', () => {
     expect(canAccess(snapshot([grant([], { positionId: 'ACCOUNTANT' })]), permission, shopA)).toBe(false);
   });
 });
+
+it('Journey moderation is configurable and defaults only to future branch managers', () => {
+  expect(isAssignablePermissionKey('customer-journey.moderate')).toBe(true);
+  expect(DEFAULT_ACCESS_POSITIONS.filter(position => position.permissions.includes('customer-journey.moderate')).map(position => position.code)).toEqual(['BRANCH_MANAGER']);
+  const scoped = snapshot([grant(['customer-journey.moderate'])]);
+  expect(canAccess(scoped, 'customer-journey.moderate', shopA)).toBe(true);
+  expect(canAccess(scoped, 'customer-journey.moderate', shopB)).toBe(false);
+});

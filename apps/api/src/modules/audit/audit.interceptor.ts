@@ -1,3 +1,4 @@
+import { CustomerJourneyController } from '../customer-journey/customer-journey.controller';
 import { ContactsController } from '../contacts/contacts.controller';
 import { CustomersController } from '../customers/customers.controller';
 import { Injectable, NestInterceptor, ExecutionContext, CallHandler } from '@nestjs/common';
@@ -16,6 +17,15 @@ export class AuditInterceptor implements NestInterceptor {
     const request = context.switchToHttp().getRequest();
     const { method, url, body, user } = request;
 
+    const managedJourney =
+      request.user?.access?.managed === true &&
+      context.getClass() === CustomerJourneyController &&
+      [
+        CustomerJourneyController.prototype.list,
+        CustomerJourneyController.prototype.summary,
+        CustomerJourneyController.prototype.createEntry,
+        CustomerJourneyController.prototype.removeEntry,
+      ].some((h) => h === context.getHandler());
     // Only audit mutating operations
     const managedDocument =
       request.user?.access?.managed === true &&
@@ -26,7 +36,7 @@ export class AuditInterceptor implements NestInterceptor {
         CustomersController.prototype.listDocuments,
         CustomersController.prototype.readDocument,
       ].some((candidate) => candidate === context.getHandler());
-    if (['GET', 'HEAD', 'OPTIONS'].includes(method) && !managedDocument) {
+    if (['GET', 'HEAD', 'OPTIONS'].includes(method) && !managedDocument && !managedJourney) {
       return next.handle();
     }
 
@@ -103,6 +113,34 @@ export class AuditInterceptor implements NestInterceptor {
     if (request.user?.access?.managed !== true) return undefined;
     const handler = context.getHandler();
     const controller = context.getClass();
+    if (
+      controller === CustomerJourneyController &&
+      [
+        CustomerJourneyController.prototype.list,
+        CustomerJourneyController.prototype.summary,
+        CustomerJourneyController.prototype.createEntry,
+        CustomerJourneyController.prototype.removeEntry,
+      ].some((h) => h === handler)
+    ) {
+      const body = request.body && typeof request.body === 'object' ? request.body : {};
+      const responseStatus = statusCode ?? context.switchToHttp().getResponse().statusCode;
+      return {
+        presentFields: [
+          'kind',
+          'channel',
+          'outcome',
+          'lostReason',
+          'heardFrom',
+          'clientRequestId',
+        ].filter((key) => Object.prototype.hasOwnProperty.call(body, key)),
+        outcome,
+        statusCode:
+          Number.isInteger(responseStatus) && responseStatus >= 100 && responseStatus <= 599
+            ? responseStatus
+            : 500,
+        duration,
+      };
+    }
     if (controller !== CustomersController && controller !== ContactsController) return undefined;
     const documentHandler =
       controller === CustomersController &&

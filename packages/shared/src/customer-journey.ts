@@ -14,7 +14,13 @@ import { chatSourceChannel } from './customer-sort';
  * ขั้น 3 CREDIT มาก่อนขั้น 4 INTERESTED "นัด / จอง" — เจ้าของสั่ง 2026-09-15 "ต้องเช็คเครดิตก่อนนัด" (ชื่อ enum เดิม ไม่มี migration)
  * ลำดับนี้คือแหล่งเดียว: CASE ของ stage ใน journey-state.sql และ UNBUY_FALLBACK_STAGES (journey-summary.builder.ts) ต้องตรงกัน — builder spec ปักไว้
  */
-export const JOURNEY_STAGES = ['CONTACTED', 'IDENTIFIED', 'CREDIT', 'INTERESTED', 'PURCHASED'] as const;
+export const JOURNEY_STAGES = [
+  'CONTACTED',
+  'IDENTIFIED',
+  'CREDIT',
+  'INTERESTED',
+  'PURCHASED',
+] as const;
 export type JourneyStage = (typeof JOURNEY_STAGES)[number];
 
 /** ป้ายไทยของแต่ละขั้น — แถบขั้นใต้หัวหน้ารายละเอียดลูกค้าใช้ชุดนี้ · ลำดับคีย์ = JOURNEY_STAGES */
@@ -93,7 +99,13 @@ export const JOURNEY_HIDDEN_GROUPS: Readonly<Record<string, readonly JourneyEven
 };
 
 /** รหัสเหตุผล "หลุด" เรียงตามชิป "ติดป้ายหลุด — เพราะอะไร" — DTO ใช้ @IsIn ชุดนี้ · ต้องเท่ากับคีย์ของ JOURNEY_LOST_REASON_LABELS ตามลำดับ */
-export const JOURNEY_LOST_REASONS = ['NOT_INTERESTED', 'BOUGHT_ELSEWHERE', 'CREDIT_FAILED', 'UNREACHABLE', 'OTHER'] as const;
+export const JOURNEY_LOST_REASONS = [
+  'NOT_INTERESTED',
+  'BOUGHT_ELSEWHERE',
+  'CREDIT_FAILED',
+  'UNREACHABLE',
+  'OTHER',
+] as const;
 export type JourneyLostReason = (typeof JOURNEY_LOST_REASONS)[number];
 
 /** ป้ายเหตุผล "หลุด" — รหัสตาม lost_reason VARCHAR(20) ของ entries/states · รหัสที่ไม่มีในนี้ ผู้แสดงใช้คำกลางเอง (ห้ามแสดงค่าดิบ) */
@@ -106,7 +118,17 @@ export const JOURNEY_LOST_REASON_LABELS: Readonly<Record<string, string>> = {
 };
 
 /** รหัส "รู้จักร้านจากไหน" เรียงตามชิป 9 ตัว — DTO ใช้ @IsIn ชุดนี้ · ต้องเท่ากับคีย์ของ JOURNEY_HEARD_FROM_LABELS ตามลำดับ */
-export const JOURNEY_HEARD_FROM_CODES = ['FB_AD', 'FB_PAGE', 'TIKTOK', 'LINE', 'GOOGLE', 'FRIEND', 'WALK_BY', 'OLD_CUSTOMER', 'OTHER'] as const;
+export const JOURNEY_HEARD_FROM_CODES = [
+  'FB_AD',
+  'FB_PAGE',
+  'TIKTOK',
+  'LINE',
+  'GOOGLE',
+  'FRIEND',
+  'WALK_BY',
+  'OLD_CUSTOMER',
+  'OTHER',
+] as const;
 export type JourneyHeardFrom = (typeof JOURNEY_HEARD_FROM_CODES)[number];
 
 /** ป้าย "ลูกค้าบอกว่ารู้จักร้านจาก" — รหัสตาม heard_from VARCHAR(16) (บันทึกมือเฟส 3 + first_source `HEARD:<รหัส>`) */
@@ -137,11 +159,24 @@ export const JOURNEY_TOUCH_CHANNEL_LABELS: Record<JourneyTouchChannel, string> =
 };
 
 /** ช่องทางที่พนักงานกดบันทึกได้ (ชิปแถว "ช่องทาง" + @IsIn ของ POST …/journey/entries) — scope v2 ไม่มีชิป "อื่น ๆ" */
-export const JOURNEY_RECORDABLE_TOUCH_CHANNELS = ['PHONE', 'FB_APP', 'LINE_APP', 'WALK_IN'] as const satisfies readonly JourneyTouchChannel[];
+export const JOURNEY_RECORDABLE_TOUCH_CHANNELS = [
+  'PHONE',
+  'FB_APP',
+  'LINE_APP',
+  'WALK_IN',
+] as const satisfies readonly JourneyTouchChannel[];
 export type JourneyRecordableTouchChannel = (typeof JOURNEY_RECORDABLE_TOUCH_CHANNELS)[number];
 
 /** ผลของการติดต่อ — ตรงกับ customer_journey_entries.outcome VARCHAR(20) · ลำดับ = ลำดับชิปแถว "ผล" */
-export const JOURNEY_TOUCH_OUTCOMES = ['APPOINTED', 'VISITED', 'THINKING', 'BUDGET', 'NO_ANSWER', 'BOUGHT_ELSEWHERE', 'NOT_INTERESTED'] as const;
+export const JOURNEY_TOUCH_OUTCOMES = [
+  'APPOINTED',
+  'VISITED',
+  'THINKING',
+  'BUDGET',
+  'NO_ANSWER',
+  'BOUGHT_ELSEWHERE',
+  'NOT_INTERESTED',
+] as const;
 export type JourneyTouchOutcome = (typeof JOURNEY_TOUCH_OUTCOMES)[number];
 export const JOURNEY_TOUCH_OUTCOME_LABELS: Record<JourneyTouchOutcome, string> = {
   APPOINTED: 'นัดแล้ว',
@@ -157,7 +192,9 @@ export const JOURNEY_TOUCH_OUTCOME_LABELS: Record<JourneyTouchOutcome, string> =
  * ผลการติดต่อที่ถามต่อว่า "ติดป้ายหลุดไหม" → เหตุผลที่บันทึกเมื่อกด "ใช่ ติดป้ายหลุด" (จับคู่ 1:1)
  * ไม่รับสายไม่ถาม (Q3) · ลูกค้าที่ซื้อแล้วไม่ถาม (เว็บตัดสินจาก summary.stage ของคำตอบ)
  */
-export const JOURNEY_LOST_PROMPT_OUTCOMES: Readonly<Partial<Record<JourneyTouchOutcome, JourneyLostReason>>> = {
+export const JOURNEY_LOST_PROMPT_OUTCOMES: Readonly<
+  Partial<Record<JourneyTouchOutcome, JourneyLostReason>>
+> = {
   BOUGHT_ELSEWHERE: 'BOUGHT_ELSEWHERE',
   NOT_INTERESTED: 'NOT_INTERESTED',
 };
@@ -296,7 +333,12 @@ export interface JourneyRedirect {
  * clientRequestId = UUID ใหม่ต่อการกดหนึ่งครั้ง (กันบันทึกซ้ำเมื่อคำขอถูกส่งซ้ำ)
  */
 export type JourneyManualEntryInput =
-  | { kind: 'TOUCHPOINT'; channel: JourneyRecordableTouchChannel; outcome: JourneyTouchOutcome; clientRequestId?: string }
+  | {
+      kind: 'TOUCHPOINT';
+      channel: JourneyRecordableTouchChannel;
+      outcome: JourneyTouchOutcome;
+      clientRequestId?: string;
+    }
   | { kind: 'HEARD_FROM'; heardFrom: JourneyHeardFrom; clientRequestId?: string }
   | { kind: 'MARKED_LOST'; lostReason: JourneyLostReason; clientRequestId?: string }
   | { kind: 'REOPENED'; clientRequestId?: string };
@@ -311,4 +353,34 @@ export interface JourneyEntryCreatedResponse {
 /** 200 ของ DELETE …/journey/entries/:entryId — ผลสรุปสดหลังเลิกทำ */
 export interface JourneyEntryDeletedResponse {
   summary: JourneySummary;
+}
+
+/** Managed staff projections are explicitly scoped, never the global frozen cache. */
+export type JourneyAvailability = 'available' | 'partial' | 'unavailable';
+export type ManagedJourneyFacts = {
+  [K in Exclude<keyof JourneySummary, 'steps'>]: JourneySummary[K] | null;
+} & {
+  steps: Array<
+    Omit<JourneyStep, 'state' | 'evidence'> & {
+      state: JourneyStepState | 'unknown';
+      evidence: JourneyStepEvidence | null;
+    }
+  > | null;
+};
+export interface ManagedJourneySummary {
+  scope: 'authorized-sources';
+  availability: JourneyAvailability;
+  facts: ManagedJourneyFacts | null;
+}
+export interface ManagedJourneyList extends Omit<JourneyListResponse, 'summary' | 'counts'> {
+  scope: 'authorized-sources';
+  availability: Record<JourneyEventGroup, JourneyAvailability>;
+  summary?: ManagedJourneySummary;
+  counts?: Partial<Record<JourneyEventGroup, number | null>>;
+}
+export interface ManagedJourneyAcknowledgement {
+  entryId: string | null;
+  event?: JourneyEvent | null;
+  summary: ManagedJourneySummary | null;
+  availability: JourneyAvailability;
 }

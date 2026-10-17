@@ -1,3 +1,4 @@
+import { currentJourney, journeyIds } from '../../employee-access/access-party-journey-context';
 import {
   JOURNEY_EVENT_GROUPS,
   type JourneyEntryKind,
@@ -7,7 +8,17 @@ import {
 } from '@installment/shared';
 import { roomAssignmentScope } from '../../credit-check/services/room-credit-access';
 import { JOURNEY_DATA_SCHEMAS } from '../journey-data-schemas';
-import { asActorType, asRecord, dbTimeRange, finalizeSource, roleSeesGroup, scanTake, staffActor, whenAny, type JourneySource } from './journey-window';
+import {
+  asActorType,
+  asRecord,
+  dbTimeRange,
+  finalizeSource,
+  roleSeesGroup,
+  scanTake,
+  staffActor,
+  whenAny,
+  type JourneySource,
+} from './journey-window';
 import { isManualEntryKind, manualEntryToEvent } from './manual-entry-event';
 
 type ShownKind = Exclude<JourneyEntryKind, 'CREDIT_CHECK_OPENED_BY'>; // credit.source.ts ใช้เติมผู้เปิดแทน
@@ -90,18 +101,43 @@ export function entriesSourceFor(groups: ReadonlySet<JourneyEventGroup>): Journe
   const kinds = kindsOf(groups);
   const withTags = groups.has('system');
   return async (prisma, customerIds, window, actor) => {
+    currentJourney(prisma);
     const [rows, tags] = await Promise.all([
       whenAny(kinds, () =>
         prisma.customerJourneyEntry.findMany({
-          where: { NOT: { origin: 'MANUAL', roomId: { not: null } }, customerId: { in: customerIds }, deletedAt: null, kind: { in: kinds }, occurredAt: dbTimeRange(window) },
+          where: {
+            ...journeyIds('customerJourneyEntry'),
+            NOT: { origin: 'MANUAL', roomId: { not: null } },
+            customerId: { in: customerIds },
+            deletedAt: null,
+            kind: { in: kinds },
+            occurredAt: dbTimeRange(window),
+          },
           // createdAt = หน้าต่างเลิกทำ 24 ชม. (ไม่ใช่ PII) · ยังไม่ select note (ข้อความอิสระ) ทุกกรณี
-          select: { id: true, kind: true, origin: true, occurredAt: true, createdAt: true, actorType: true, roomId: true, refType: true, refId: true, data: true, channel: true, outcome: true, lostReason: true, heardFrom: true, actorUser: { select: { id: true, name: true } } },
-          orderBy: [{ occurredAt: 'desc' }, { id: 'desc' }], take: scanTake(window),
+          select: {
+            id: true,
+            kind: true,
+            origin: true,
+            occurredAt: true,
+            createdAt: true,
+            actorType: true,
+            roomId: true,
+            refType: true,
+            refId: true,
+            data: true,
+            channel: true,
+            outcome: true,
+            lostReason: true,
+            heardFrom: true,
+            actorUser: { select: { id: true, name: true } },
+          },
+          orderBy: [{ occurredAt: 'desc' }, { id: 'desc' }],
+          take: scanTake(window),
         }),
       ),
       whenAny(withTags ? customerIds : [], () =>
         prisma.customerTag.findMany({
-          where: { customerId: { in: customerIds } },
+          where: { ...journeyIds('customerTag'), customerId: { in: customerIds } },
           select: {
             id: true,
             tag: true,
@@ -116,7 +152,7 @@ export function entriesSourceFor(groups: ReadonlySet<JourneyEventGroup>): Journe
     const roomIds = [
       ...new Set(rows.map((r) => r.roomId).filter((id): id is string => id !== null)),
     ];
-    const roomScope = roomAssignmentScope(actor); // กติกาห้องที่ดูแล (ด่านเดียวกับ room-manager) — ว่าง = บทบาทนี้ไม่จำกัดห้อง
+    const roomScope = currentJourney() ? {} : roomAssignmentScope(actor); // กติกาห้องที่ดูแล (ด่านเดียวกับ room-manager) — ว่าง = บทบาทนี้ไม่จำกัดห้อง
     const visibleRooms = Object.keys(roomScope).length
       ? new Set(
           (
@@ -137,19 +173,37 @@ export function entriesSourceFor(groups: ReadonlySet<JourneyEventGroup>): Journe
       if (row.origin === 'MANUAL' && row.roomId) continue; // Room-scoped facts stay in the authorized chat workspace.
       const kind = row.kind;
       // DB กรอง kind แล้ว — ตรวจกลุ่มซ้ำฝั่งโค้ด · kind ที่ยังไม่มีใน VIEWS ถูกทิ้ง
-      if (!isShownKind(kind) || !groups.has(VIEWS[kind].group) || (row.roomId && visibleRooms && !visibleRooms.has(row.roomId))) continue;
+      if (
+        !isShownKind(kind) ||
+        !groups.has(VIEWS[kind].group) ||
+        (row.roomId && visibleRooms && !visibleRooms.has(row.roomId))
+      )
+        continue;
       // บันทึกมือ — ตัวแปลงเดียวกับคำตอบ POST /customers/:id/journey/entries (ห้ามสร้างชื่อแถวซ้ำที่นี่)
       if (isManualEntryKind(kind)) {
         events.push(manualEntryToEvent(row, actor, now));
         continue;
       }
-      const data = whitelisted(kind, row.data);
-      const title = kind === 'PLACEHOLDER_MERGED' && typeof data?.roomCount === 'number' ? `รวมประวัติแชท ${data.roomCount} ห้องเข้ากับลูกค้าคนนี้` : VIEWS[kind].title;
-      const href = row.refType === 'contract' && row.refId ? `/contracts/${row.refId}` : row.roomId && seesChat ? `/inbox/${row.roomId}` : undefined;
+      const data =
+        currentJourney() && kind === 'PLACEHOLDER_MERGED' ? undefined : whitelisted(kind, row.data);
+      const title =
+        kind === 'PLACEHOLDER_MERGED' && typeof data?.roomCount === 'number'
+          ? `รวมประวัติแชท ${data.roomCount} ห้องเข้ากับลูกค้าคนนี้`
+          : VIEWS[kind].title;
+      const href =
+        row.refType === 'contract' && row.refId
+          ? `/contracts/${row.refId}`
+          : row.roomId && seesChat
+            ? `/inbox/${row.roomId}`
+            : undefined;
       const type = asActorType(row.actorType);
       events.push({
-        id: `entry-${row.id}`, type: kind, group: VIEWS[kind].group, stage: VIEWS[kind].stage,
-        timestamp: row.occurredAt.toISOString(), title,
+        id: `entry-${row.id}`,
+        type: kind,
+        group: VIEWS[kind].group,
+        stage: VIEWS[kind].stage,
+        timestamp: row.occurredAt.toISOString(),
+        title,
         actor: row.actorUser ? { type, id: row.actorUser.id, name: row.actorUser.name } : { type },
         reliability: 'exact',
         origin: row.origin === 'MANUAL' ? 'MANUAL' : 'SYSTEM_ENTRY',
@@ -159,7 +213,7 @@ export function entriesSourceFor(groups: ReadonlySet<JourneyEventGroup>): Journe
     }
     for (const tag of tags) {
       if (isMergeDuplicate(tag, tags)) continue;
-      const label = TAG_LABELS[tag.tag] ?? tag.tag;
+      const label = TAG_LABELS[tag.tag] ?? (currentJourney() ? 'แท็ก' : tag.tag);
       const common = {
         group: 'system',
         stage: null,

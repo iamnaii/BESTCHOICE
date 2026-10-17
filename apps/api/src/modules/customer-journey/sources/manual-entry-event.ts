@@ -1,3 +1,4 @@
+import { currentJourney } from '../../employee-access/access-party-journey-context';
 import {
   JOURNEY_ENTRY_KINDS,
   JOURNEY_HEARD_FROM_LABELS,
@@ -38,7 +39,11 @@ export function isOwnEntryWithinUndoWindow(
   actor: JourneyActor,
   now: Date,
 ): boolean {
-  return row.actorUserId !== null && row.actorUserId === actor.id && now.getTime() - row.createdAt.getTime() <= JOURNEY_UNDO_WINDOW_MS;
+  return (
+    row.actorUserId !== null &&
+    row.actorUserId === actor.id &&
+    now.getTime() - row.createdAt.getTime() <= JOURNEY_UNDO_WINDOW_MS
+  );
 }
 
 /**
@@ -60,11 +65,17 @@ export function manualEntryUndoFields(
   now: Date,
 ): Pick<JourneyEvent, 'entryId' | 'undoableUntil' | 'canDelete'> {
   if (row.origin !== 'MANUAL' || row.roomId) return {};
-  const ownWithin = isOwnEntryWithinUndoWindow(row, actor, now);
+  const managed = currentJourney();
+  const allowed = managed
+    ? managed.undo.get(row.id) === true
+    : canDeleteManualEntry(row, actor, now);
+  const ownWithin = allowed && isOwnEntryWithinUndoWindow(row, actor, now);
   return {
     entryId: row.id,
-    undoableUntil: ownWithin ? new Date(row.createdAt.getTime() + JOURNEY_UNDO_WINDOW_MS).toISOString() : null,
-    canDelete: canDeleteManualEntry(row, actor, now),
+    undoableUntil: ownWithin
+      ? new Date(row.createdAt.getTime() + JOURNEY_UNDO_WINDOW_MS).toISOString()
+      : null,
+    canDelete: allowed,
   };
 }
 
@@ -102,20 +113,31 @@ export interface ManualEntryEventRow {
 }
 
 const MANUAL_KINDS: ReadonlySet<string> = new Set<string>(JOURNEY_ENTRY_KINDS.MANUAL);
-export const isManualEntryKind = (kind: string): kind is JourneyManualEntryKind => MANUAL_KINDS.has(kind);
+export const isManualEntryKind = (kind: string): kind is JourneyManualEntryKind =>
+  MANUAL_KINDS.has(kind);
 
 /** รหัสจากคอลัมน์ VARCHAR ที่ไม่มีในชุดป้าย (รวมคีย์ของ prototype เช่น toString) → คำกลาง · ห้ามแสดงรหัสดิบ */
-function labelOf(labels: Readonly<Record<string, string>>, code: string | null, fallback: string): string {
-  return code !== null && Object.prototype.hasOwnProperty.call(labels, code) ? labels[code] : fallback;
+function labelOf(
+  labels: Readonly<Record<string, string>>,
+  code: string | null,
+  fallback: string,
+): string {
+  return code !== null && Object.prototype.hasOwnProperty.call(labels, code)
+    ? labels[code]
+    : fallback;
 }
 
 /** ชื่อแถว — ต่อคำตรง ๆ ตามที่ส่งแล้ว (ไม่มีช่องว่างหลัง "ทาง" / "จาก") ตรงกับกระดาน TimelineRows */
-export function manualEntryTitle(row: Pick<ManualEntryEventRow, 'kind' | 'channel' | 'outcome' | 'lostReason' | 'heardFrom'>): string {
+export function manualEntryTitle(
+  row: Pick<ManualEntryEventRow, 'kind' | 'channel' | 'outcome' | 'lostReason' | 'heardFrom'>,
+): string {
   if (row.kind === 'TOUCHPOINT') {
     return `ติดต่อทาง${labelOf(JOURNEY_TOUCH_CHANNEL_LABELS, row.channel, 'อื่น ๆ')}: ${labelOf(JOURNEY_TOUCH_OUTCOME_LABELS, row.outcome, 'บันทึกแล้ว')}`;
   }
-  if (row.kind === 'HEARD_FROM') return `ลูกค้าบอกว่ารู้จักร้านจาก${labelOf(JOURNEY_HEARD_FROM_LABELS, row.heardFrom, 'อื่น ๆ')}`;
-  if (row.kind === 'MARKED_LOST') return `ติดป้ายหลุด: ${labelOf(JOURNEY_LOST_REASON_LABELS, row.lostReason, 'อื่น ๆ')}`;
+  if (row.kind === 'HEARD_FROM')
+    return `ลูกค้าบอกว่ารู้จักร้านจาก${labelOf(JOURNEY_HEARD_FROM_LABELS, row.heardFrom, 'อื่น ๆ')}`;
+  if (row.kind === 'MARKED_LOST')
+    return `ติดป้ายหลุด: ${labelOf(JOURNEY_LOST_REASON_LABELS, row.lostReason, 'อื่น ๆ')}`;
   return 'เปิดใหม่'; // REOPENED — kind มือที่เหลือ (ผู้เรียกกรองด้วย isManualEntryKind แล้ว)
 }
 
@@ -123,20 +145,37 @@ export function manualEntryTitle(row: Pick<ManualEntryEventRow, 'kind' | 'channe
  * actor = ผู้ขอ (บทบาทตัดสินลิงก์ห้องแชท — ACCOUNTANT ไม่ได้ลิงก์ · และตัดสินคีย์เลิกทำ) · now = เวลาของคำขอ (ฐานเทียบหน้าต่างเลิกทำ 24 ชม.)
  * กลุ่ม chat ทุก kind · ขั้น INTERESTED เฉพาะ TOUCHPOINT นัดแล้ว/มาร้านแล้ว · ไม่มี metadata (JOURNEY_DATA_SCHEMAS ของ kind มือเป็น noData)
  */
-export function manualEntryToEvent(row: ManualEntryEventRow, actor: JourneyActor, now: Date): JourneyEvent {
+export function manualEntryToEvent(
+  row: ManualEntryEventRow,
+  actor: JourneyActor,
+  now: Date,
+): JourneyEvent {
   const type = asActorType(row.actorType);
   const href = row.roomId && roleSeesGroup(actor.role, 'chat') ? `/inbox/${row.roomId}` : undefined;
   return {
     id: `entry-${row.id}`,
     type: row.kind,
     group: 'chat',
-    stage: row.kind === 'TOUCHPOINT' && (row.outcome === 'APPOINTED' || row.outcome === 'VISITED') ? 'INTERESTED' : null,
+    stage:
+      row.kind === 'TOUCHPOINT' && (row.outcome === 'APPOINTED' || row.outcome === 'VISITED')
+        ? 'INTERESTED'
+        : null,
     timestamp: row.occurredAt.toISOString(),
     title: manualEntryTitle(row),
     actor: row.actorUser ? { type, id: row.actorUser.id, name: row.actorUser.name } : { type },
     reliability: 'exact',
     origin: row.origin === 'MANUAL' ? 'MANUAL' : 'SYSTEM_ENTRY',
     ...(href ? { href } : {}),
-    ...manualEntryUndoFields({ id: row.id, origin: row.origin, roomId: row.roomId, createdAt: row.createdAt, actorUserId: row.actorUser?.id ?? null }, actor, now),
+    ...manualEntryUndoFields(
+      {
+        id: row.id,
+        origin: row.origin,
+        roomId: row.roomId,
+        createdAt: row.createdAt,
+        actorUserId: row.actorUser?.id ?? null,
+      },
+      actor,
+      now,
+    ),
   };
 }

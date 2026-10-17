@@ -30,6 +30,7 @@ const PERMISSION_DEFINITIONS = {
   'customer-tags.create': ['สร้างแท็กลูกค้า', 'sales', 'GRANT'],
   'customer-tags.update': ['แก้ไขแท็กลูกค้า', 'sales', 'GRANT'],
   'customer-tags.delete': ['ลบหรือปิดใช้งานแท็กลูกค้า', 'sales', 'GRANT'],
+  'customer-journey.moderate': ['จัดการบันทึกเส้นทางของพนักงาน', 'sales', 'GRANT'],
   'customer-journey.read': ['ดูเส้นทางลูกค้า', 'sales', 'GRANT'],
   'contacts.read': ['ดูผู้ติดต่อ', 'sales', 'GRANT'],
   'contacts.create': ['สร้างผู้ติดต่อ', 'sales', 'GRANT'],
@@ -369,7 +370,11 @@ const PERMISSION_DEFINITIONS = {
   'penalty-waivers.request': ['ขอยกเว้นค่าปรับ', 'finance', 'GRANT'],
   'penalty-waivers.approve': ['อนุมัติยกเว้นค่าปรับ', 'finance', 'OWNER'],
   'sensitive.seller-bank.read': ['ดูเลขบัญชีรับเงินของผู้ขาย', 'sensitive', 'GRANT'],
-  'sensitive.customer-identity.read': ['ดูเลขประจำตัวลูกค้าและผู้ปกครองเต็มเลข', 'sensitive', 'GRANT'],
+  'sensitive.customer-identity.read': [
+    'ดูเลขประจำตัวลูกค้าและผู้ปกครองเต็มเลข',
+    'sensitive',
+    'GRANT',
+  ],
   'sensitive.cost.read': ['ดูราคาซื้อและต้นทุน', 'sensitive', 'GRANT'],
   'sensitive.profit.read': ['ดูรายงานกำไร', 'sensitive', 'GRANT'],
   'sensitive.salary.read': ['ดูข้อมูลเงินเดือน', 'sensitive', 'GRANT'],
@@ -562,6 +567,7 @@ const DEFAULT_POSITION_DEFINITIONS = [
     name: 'ผู้จัดการสาขา',
     assignable: true,
     permissions: [
+      'customer-journey.moderate',
       'sensitive.customer-identity.read',
       'dashboard.read',
       'customers.read',

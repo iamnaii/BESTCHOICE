@@ -1,3 +1,4 @@
+import type { PartyJourneyPlan } from '../employee-access/access-party-journey-plan';
 import { Prisma, PrismaClient } from '@prisma/client';
 
 /**
@@ -100,25 +101,39 @@ export async function contractEventSources(
   prisma: ContractEventPrisma,
   contractIds: string[],
   window: ContractEventWindow = {},
+  journey?: PartyJourneyPlan,
 ): Promise<ContractEventRow[]> {
   if (contractIds.length === 0) return [];
   const take = window.limit ?? CONTRACT_EVENT_SOURCE_TAKE;
   const range = timeRange(window);
+  const allowed = (key: 'paymentContract' | 'collectionContract' | 'contract' | 'mdmContract') =>
+    journey ? contractIds.filter((id) => journey.ids[key].has(id)) : contractIds;
 
   const [calls, payments, dunningActions, audits, letters] = await Promise.all([
     prisma.callLog.findMany({
-      where: { contractId: { in: contractIds }, ...(range ? { calledAt: range } : {}) },
+      where: {
+        contractId: { in: allowed('collectionContract') },
+        ...(range ? { calledAt: range } : {}),
+      },
       include: { caller: { select: { id: true, name: true } } },
       orderBy: { calledAt: 'desc' },
       take,
     }),
     prisma.payment.findMany({
-      where: { contractId: { in: contractIds }, status: 'PAID', ...(range ? { updatedAt: range } : {}) },
+      where: {
+        contractId: { in: allowed('paymentContract') },
+        status: 'PAID',
+        ...(range ? { updatedAt: range } : {}),
+      },
       orderBy: { updatedAt: 'desc' },
       take,
     }),
     prisma.dunningAction.findMany({
-      where: { contractId: { in: contractIds }, deletedAt: null, ...(range ? { createdAt: range } : {}) },
+      where: {
+        contractId: { in: allowed('collectionContract') },
+        deletedAt: null,
+        ...(range ? { createdAt: range } : {}),
+      },
       include: { dunningRule: { select: { name: true, channel: true } } },
       orderBy: { createdAt: 'desc' },
       take,
@@ -127,13 +142,29 @@ export async function contractEventSources(
       where: {
         entity: { in: ['contract', 'mdm_lock_request'] },
         entityId: { in: contractIds },
+        ...(journey
+          ? {
+              OR: [
+                {
+                  entity: 'contract',
+                  entityId: { in: allowed('contract') },
+                  action: { in: ['STATUS_CHANGE'] },
+                },
+                {
+                  entity: 'contract',
+                  entityId: { in: allowed('collectionContract') },
+                  action: { in: ['DUNNING_ESCALATION_APPROVED'] },
+                },
+                {
+                  entity: 'contract',
+                  entityId: { in: allowed('mdmContract') },
+                  action: { in: ['MDM_LOCK_APPROVED', 'MDM_UNLOCK'] },
+                },
+              ],
+            }
+          : {}),
         action: {
-          in: [
-            'STATUS_CHANGE',
-            'DUNNING_ESCALATION_APPROVED',
-            'MDM_LOCK_APPROVED',
-            'MDM_UNLOCK',
-          ],
+          in: ['STATUS_CHANGE', 'DUNNING_ESCALATION_APPROVED', 'MDM_LOCK_APPROVED', 'MDM_UNLOCK'],
         },
         ...(range ? { createdAt: range } : {}),
       },
@@ -142,10 +173,12 @@ export async function contractEventSources(
     }),
     prisma.contractLetter.findMany({
       where: {
-        contractId: { in: contractIds },
+        contractId: { in: allowed('collectionContract') },
         deletedAt: null,
         status: { in: ['DISPATCHED', 'DELIVERED'] },
-        ...(range ? { OR: [{ dispatchedAt: range }, { dispatchedAt: null, createdAt: range }] } : {}),
+        ...(range
+          ? { OR: [{ dispatchedAt: range }, { dispatchedAt: null, createdAt: range }] }
+          : {}),
       },
       orderBy: { dispatchedAt: 'desc' },
       take,
@@ -162,10 +195,13 @@ export async function contractEventSources(
         id: `call-${c.id}`,
         type: 'CALL',
         timestamp: c.calledAt.toISOString(),
-        title: CALL_RESULT_LABELS[c.result] ?? c.result,
+        title: CALL_RESULT_LABELS[c.result] ?? (journey ? 'ติดตาม' : c.result),
         subtitle: c.caller?.name ?? undefined,
         metadata: {
-          result: c.result,
+          result:
+            journey && !Object.prototype.hasOwnProperty.call(CALL_RESULT_LABELS, c.result)
+              ? 'OTHER'
+              : c.result,
           notes: c.notes ?? undefined,
           settlementDate: c.settlementDate ?? undefined,
           // P2 (Customer 360) — voice memo surfaced inline on the Collections timeline.
@@ -199,11 +235,10 @@ export async function contractEventSources(
         id: `dunning-${d.id}`,
         type: 'DUNNING_ACTION',
         timestamp: d.createdAt.toISOString(),
-        title: `ส่ง ${d.channel}: ${d.dunningRule.name}`,
-        subtitle:
-          d.messageContent
-            ? d.messageContent.substring(0, 80) + (d.messageContent.length > 80 ? '…' : '')
-            : undefined,
+        title: journey ? 'ส่งการแจ้งเตือน' : `ส่ง ${d.channel}: ${d.dunningRule.name}`,
+        subtitle: d.messageContent
+          ? d.messageContent.substring(0, 80) + (d.messageContent.length > 80 ? '…' : '')
+          : undefined,
         metadata: { status: d.status, channel: d.channel },
       },
     });
@@ -218,7 +253,10 @@ export async function contractEventSources(
         id: `audit-${a.id}`,
         type: isMdm ? 'MDM' : 'STATUS_CHANGE',
         timestamp: a.createdAt.toISOString(),
-        title: formatAuditTitle(a.action, a.newValue as Record<string, unknown> | null),
+        title: formatAuditTitle(
+          a.action,
+          journey ? null : (a.newValue as Record<string, unknown> | null),
+        ),
         metadata: { action: a.action, newValue: a.newValue ?? undefined },
       },
     });
@@ -232,7 +270,9 @@ export async function contractEventSources(
         id: `letter-${l.id}`,
         type: 'LETTER',
         timestamp: (l.dispatchedAt ?? l.createdAt).toISOString(),
-        title: `ส่งหนังสือ: ${l.letterType} (EMS: ${l.trackingNumber ?? '—'})`,
+        title: journey
+          ? 'ส่งหนังสือติดตาม'
+          : `ส่งหนังสือ: ${l.letterType} (EMS: ${l.trackingNumber ?? '—'})`,
         metadata: { status: l.status, letterNumber: l.letterNumber },
       },
     });

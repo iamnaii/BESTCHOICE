@@ -1,3 +1,5 @@
+import type { Readable } from 'node:stream';
+import { currentDomainAccess, onDomainCommit } from '../employee-access/access-execution-context';
 import {
   Body,
   Controller,
@@ -8,6 +10,7 @@ import {
   Post,
   Query,
   Res,
+  ServiceUnavailableException,
   UploadedFile,
   UploadedFiles,
   UseGuards,
@@ -44,7 +47,7 @@ const STAFF = ['OWNER', 'BRANCH_MANAGER', 'SALES'] as const;
 const MGR = ['OWNER', 'BRANCH_MANAGER'] as const;
 const OWNER_ONLY = ['OWNER'] as const;
 
-const sendImage = (res: Response, key: string, stream: NodeJS.ReadableStream) => {
+const sendImage = (res: Response, key: string, stream: NodeJS.ReadableStream | Buffer) => {
   const ext = key.split('.').pop();
   res.setHeader(
     'Content-Type',
@@ -52,7 +55,23 @@ const sendImage = (res: Response, key: string, stream: NodeJS.ReadableStream) =>
   );
   res.setHeader('Content-Disposition', 'inline');
   res.setHeader('Cache-Control', 'private, max-age=300');
-  stream.pipe(res);
+  if (Buffer.isBuffer(stream)) res.send(stream);
+  else stream.pipe(res);
+};
+
+/** Consume managed storage within the authorization lifetime. Only the bounded
+ * in-memory result survives commit; no live external stream escapes a rollback. */
+const imageBytes = async (stream: Readable) => {
+  const chunks: Buffer[] = [];
+  let size = 0;
+  for await (const chunk of stream) {
+    const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    size += bytes.length;
+    if (size > EVIDENCE_IMAGE_MAX_BYTES)
+      throw new ServiceUnavailableException('ไม่สามารถเปิดรูปได้');
+    chunks.push(bytes);
+  }
+  return Buffer.concat(chunks);
 };
 
 const sendPdf = (res: Response, pdf: Buffer, filename: string) => {
@@ -202,7 +221,12 @@ export class AfterSalesController {
     @Res() res: Response,
   ) {
     const { key, stream } = await this.svc.getPhoto(id, index, user);
-    sendImage(res, key, stream);
+    if (currentDomainAccess()) {
+      const bytes = await imageBytes(stream);
+      onDomainCommit(async () => {
+        sendImage(res, key, bytes);
+      });
+    } else sendImage(res, key, stream);
   }
 
   @Get(':id/purchase-photos/:angle')
@@ -214,7 +238,12 @@ export class AfterSalesController {
     @Res() res: Response,
   ) {
     const { key, stream } = await this.svc.getPurchasePhoto(id, angle, user);
-    sendImage(res, key, stream);
+    if (currentDomainAccess()) {
+      const bytes = await imageBytes(stream);
+      onDomainCommit(async () => {
+        sendImage(res, key, bytes);
+      });
+    } else sendImage(res, key, stream);
   }
 
   // PR 4 — ใบรับฝากเครื่อง / ใบส่งมอบ (สเปก 6: ทั้ง 5 role) · ขอบเขตสาขาอยู่ใน service
@@ -226,7 +255,11 @@ export class AfterSalesController {
     @Res() res: Response,
   ) {
     const { pdf, caseNumber } = await this.docs.render(id, 'RECEIPT', user);
-    sendPdf(res, pdf, `after-sales-receipt-${caseNumber}.pdf`);
+    const send = async () => {
+      sendPdf(res, pdf, `after-sales-receipt-${caseNumber}.pdf`);
+    };
+    if (currentDomainAccess()) onDomainCommit(send);
+    else await send();
   }
 
   @Get(':id/handover.pdf')
@@ -237,7 +270,11 @@ export class AfterSalesController {
     @Res() res: Response,
   ) {
     const { pdf, caseNumber } = await this.docs.render(id, 'HANDOVER', user);
-    sendPdf(res, pdf, `after-sales-handover-${caseNumber}.pdf`);
+    const send = async () => {
+      sendPdf(res, pdf, `after-sales-handover-${caseNumber}.pdf`);
+    };
+    if (currentDomainAccess()) onDomainCommit(send);
+    else await send();
   }
 
   @Post(':id/photos')

@@ -96,14 +96,17 @@ function setup(detail = caseDetail(), photoKeys: string[] = []) {
   const storage = { getStream: jest.fn() };
   const query = { getCase: jest.fn().mockResolvedValue(detail) };
   const renderer = { htmlToPdf: jest.fn().mockResolvedValue(Buffer.from('%PDF-1.4')) };
+  const audit = { log: jest.fn().mockResolvedValue(undefined) };
   const svc = new AfterSalesDocumentService(
     prisma as any,
     storage as any,
     query as any,
     renderer as any,
+    undefined,
+    audit as never,
   );
   const html = () => renderer.htmlToPdf.mock.calls[0][0] as string;
-  return { prisma, storage, query, renderer, svc, html };
+  return { prisma, storage, query, renderer, svc, html, audit };
 }
 
 describe('AfterSalesDocumentService.render', () => {
@@ -129,7 +132,7 @@ describe('AfterSalesDocumentService.render', () => {
     },
   );
 
-  it('(a) ใบรับฝาก: ขอบเขตผ่าน getCase → HTML มีข้อมูลเคส → PDF + event PRINTED', async () => {
+  it('(a) ใบรับฝาก: ขอบเขตผ่าน getCase → HTML มีข้อมูลเคส → PDF + generation audit', async () => {
     const t = setup();
     const out = await t.svc.render(CASE_ID, 'RECEIPT', user);
     expect(t.query.getCase).toHaveBeenCalledWith(CASE_ID, user);
@@ -143,9 +146,20 @@ describe('AfterSalesDocumentService.render', () => {
       'โดย นิภา',
     ])
       expect(t.html()).toContain(text);
-    expect(t.prisma.afterSalesEvent.create).toHaveBeenCalledWith({
-      data: { caseId: CASE_ID, kind: 'PRINTED', note: 'ใบรับฝากเครื่อง', actorId: 'u-1' },
-    });
+    expect(t.audit.log).toHaveBeenCalledWith(
+      expect.objectContaining({
+        entityId: CASE_ID,
+        userId: 'u-1',
+        action: 'AFTER_SALES_DOCUMENT_GENERATED',
+        newValue: {
+          kind: 'RECEIPT',
+          result: 'GENERATED',
+          delivery: 'NOT_OBSERVED',
+          paperPrinted: false,
+        },
+      }),
+    );
+    expect(t.prisma.afterSalesEvent.create).not.toHaveBeenCalled();
   });
 
   it('(b) สาขาอื่น: getCase ปฏิเสธ → ไม่แตะ storage/renderer/event', async () => {
@@ -181,20 +195,12 @@ describe('AfterSalesDocumentService.render', () => {
     expect(t.html().match(/<span>ไม่ได้ถ่าย<\/span>/g)).toHaveLength(3);
   });
 
-  it('(e) กันซ้ำ: เคยพิมพ์เอกสารเดิมโดยคนเดิมใน 5 นาที → ไม่เขียน event ใหม่', async () => {
+  it('(e) every successful generation is observed separately; old PRINTED remains untouched', async () => {
     const t = setup();
-    t.prisma.afterSalesEvent.findFirst.mockResolvedValue({ id: 'e-1' });
-    const before = Date.now();
     await t.svc.render(CASE_ID, 'RECEIPT', user);
-    const where = t.prisma.afterSalesEvent.findFirst.mock.calls[0][0].where;
-    expect(where).toMatchObject({
-      caseId: CASE_ID,
-      kind: 'PRINTED',
-      note: 'ใบรับฝากเครื่อง',
-      actorId: 'u-1',
-    });
-    expect(before - where.createdAt.gte.getTime()).toBeGreaterThanOrEqual(5 * 60 * 1000 - 1000);
-    expect(before - where.createdAt.gte.getTime()).toBeLessThanOrEqual(5 * 60 * 1000);
+    await t.svc.render(CASE_ID, 'RECEIPT', user);
+    expect(t.audit.log).toHaveBeenCalledTimes(2);
+    expect(t.prisma.afterSalesEvent.findFirst).not.toHaveBeenCalled();
     expect(t.prisma.afterSalesEvent.create).not.toHaveBeenCalled();
   });
 
@@ -215,9 +221,16 @@ describe('AfterSalesDocumentService.render', () => {
     expect(t.storage.getStream).not.toHaveBeenCalled();
     expect(t.html()).toContain('1,200.00 บาท');
     expect(t.html()).toContain('ซ่อมที่ร้าน');
-    expect(t.prisma.afterSalesEvent.create).toHaveBeenCalledWith({
-      data: { caseId: CASE_ID, kind: 'PRINTED', note: 'ใบส่งมอบ', actorId: 'u-1' },
-    });
+    expect(t.audit.log).toHaveBeenCalledWith(
+      expect.objectContaining({
+        newValue: {
+          kind: 'HANDOVER',
+          result: 'GENERATED',
+          delivery: 'NOT_OBSERVED',
+          paperPrinted: false,
+        },
+      }),
+    );
   });
 
   it('(g) สาขาไม่ผูกบริษัท → ใช้บริษัท SHOP', async () => {
@@ -238,7 +251,7 @@ describe('AfterSalesDocumentService.render', () => {
 
   it('(h) เขียน event ล้ม → การพิมพ์ยังสำเร็จ', async () => {
     const t = setup();
-    t.prisma.afterSalesEvent.create.mockRejectedValue(new Error('db down'));
+    t.audit.log.mockRejectedValue(new Error('db down'));
     await expect(t.svc.render(CASE_ID, 'RECEIPT', user)).resolves.toMatchObject({
       caseNumber: 'AS-20260907-0004',
     });
@@ -252,7 +265,7 @@ describe('AfterSalesDocumentService.render', () => {
     await expect(t.svc.render(CASE_ID, 'RECEIPT', user)).rejects.toBeInstanceOf(
       ServiceUnavailableException,
     );
-    expect(t.prisma.afterSalesEvent.findFirst).not.toHaveBeenCalled();
+    expect(t.audit.log).not.toHaveBeenCalled();
     expect(t.prisma.afterSalesEvent.create).not.toHaveBeenCalled();
   });
 

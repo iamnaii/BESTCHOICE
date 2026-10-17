@@ -1,3 +1,5 @@
+import { AccessAfterSalesStreams } from './access-after-sales-streams';
+import { AccessAfterSalesStreamBoundaries } from './access-after-sales-stream-boundaries';
 import { AccessAfterSalesExchangeActionService } from './access-after-sales-exchange-action';
 import { AccessAfterSalesActionBoundaries } from './access-after-sales-action-boundaries';
 import { AccessAfterSalesBoundaries } from './access-after-sales-boundaries';
@@ -31,7 +33,7 @@ import { AccessSnapshotService } from './access-snapshot.service';
 @Global()
 @Module({
   controllers: [EmployeeAccessController],
-  providers: [AccessAfterSalesExchangeActionService, AccessAfterSalesActionBoundaries, AccessAfterSalesBoundaries, AccessAfterSalesSourceService, AccessAfterSalesProjectionService, AccessAfterSalesQueryService, AccessExchangeSourceService, AccessRepairBoundaries, AccessRepairSourceService, AccessRepairProjectionService, AccessSalesBoundaries, AccessSalesProjectionService, AccessTradeInBoundaries, AccessTradeInProjectionService, AccessAdjustmentsBoundaries, AccessInventoryBoundaries, AccessProcurementBoundaries, AccessProcurementSourceService, AccessProcurementProjectionService, AccessResourceService, AccessSensitiveService, AccessShopBoundaries, EmployeeAccessService, AccessSnapshotService, AccessPolicyService, AccessSocketBoundary],
-  exports: [AccessAfterSalesExchangeActionService, AccessAfterSalesSourceService, AccessAfterSalesProjectionService, AccessAfterSalesQueryService, AccessExchangeSourceService, AccessRepairSourceService, AccessRepairProjectionService, AccessProcurementSourceService, AccessProcurementProjectionService, AccessResourceService, AccessSensitiveService, EmployeeAccessService, AccessSnapshotService, AccessPolicyService, AccessSocketBoundary],
+  providers: [AccessAfterSalesStreams, AccessAfterSalesStreamBoundaries, AccessAfterSalesExchangeActionService, AccessAfterSalesActionBoundaries, AccessAfterSalesBoundaries, AccessAfterSalesSourceService, AccessAfterSalesProjectionService, AccessAfterSalesQueryService, AccessExchangeSourceService, AccessRepairBoundaries, AccessRepairSourceService, AccessRepairProjectionService, AccessSalesBoundaries, AccessSalesProjectionService, AccessTradeInBoundaries, AccessTradeInProjectionService, AccessAdjustmentsBoundaries, AccessInventoryBoundaries, AccessProcurementBoundaries, AccessProcurementSourceService, AccessProcurementProjectionService, AccessResourceService, AccessSensitiveService, AccessShopBoundaries, EmployeeAccessService, AccessSnapshotService, AccessPolicyService, AccessSocketBoundary],
+  exports: [AccessAfterSalesStreams, AccessAfterSalesExchangeActionService, AccessAfterSalesSourceService, AccessAfterSalesProjectionService, AccessAfterSalesQueryService, AccessExchangeSourceService, AccessRepairSourceService, AccessRepairProjectionService, AccessProcurementSourceService, AccessProcurementProjectionService, AccessResourceService, AccessSensitiveService, EmployeeAccessService, AccessSnapshotService, AccessPolicyService, AccessSocketBoundary],
 })
 export class EmployeeAccessModule {}

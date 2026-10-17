@@ -1,3 +1,4 @@
+import { AccessAfterSalesStreams } from '../../employee-access/access-after-sales-streams';
 import {
   currentDomainAccess,
   domainAccessClient,
@@ -16,6 +17,7 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
+  Optional,
   NotFoundException,
 } from '@nestjs/common';
 import { randomUUID } from 'crypto';
@@ -58,6 +60,7 @@ export class AfterSalesRepairService {
     private readonly query: AfterSalesQueryService,
     private readonly audit: AuditService,
     private readonly line: AfterSalesLineService,
+    @Optional() private readonly streams?: AccessAfterSalesStreams,
   ) {}
 
   private get prisma() {
@@ -321,6 +324,12 @@ export class AfterSalesRepairService {
   }
 
   async getPhoto(caseId: string, index: number, user: ReqUser) {
+    const managed = await afterSalesActor(this.basePrisma, user.id, this.prisma);
+    if (managed) {
+      if (!this.streams) throw new ForbiddenException('ระบบเอกสารยังไม่พร้อม');
+      const key = await this.streams.photo(caseId, user.id, { index });
+      return { key, stream: await this.storage.getStream(key) };
+    }
     await this.query.getCase(caseId, user);
     const row = await this.prisma.afterSalesCase.findUniqueOrThrow({
       where: { id: caseId },
@@ -332,6 +341,12 @@ export class AfterSalesRepairService {
   }
 
   async getPurchasePhoto(caseId: string, angle: string, user: ReqUser) {
+    const managed = await afterSalesActor(this.basePrisma, user.id, this.prisma);
+    if (managed) {
+      if (!this.streams) throw new ForbiddenException('ระบบเอกสารยังไม่พร้อม');
+      const key = await this.streams.photo(caseId, user.id, { angle });
+      return { key, stream: await this.storage.getStream(key) };
+    }
     await this.query.getCase(caseId, user);
     const row = await this.prisma.afterSalesCase.findUniqueOrThrow({
       where: { id: caseId },

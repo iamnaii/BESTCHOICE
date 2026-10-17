@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ForbiddenException,
   Injectable,
+  Logger,
   ServiceUnavailableException,
   StreamableFile,
 } from '@nestjs/common';
@@ -17,13 +18,14 @@ import {
   partyWriteExecution,
 } from '../../employee-access/access-party-source.service';
 import { procurementPreparation } from '../../employee-access/access-preparation-context';
-import { StorageService } from '../../storage/storage.service';
+import { OwnedCleanupResult, StorageService } from '../../storage/storage.service';
 import { AuditService } from '../../audit/audit.service';
 import { UploadDocumentDto } from '../dto/document.dto';
 import { CUSTOMER_DOCUMENT_MAX_BYTES, validateCustomerDocument } from './customer-document-file';
 const unavailable = () => new ForbiddenException('ไม่มีสิทธิ์เข้าถึงเอกสารนี้');
 @Injectable()
 export class CustomerDocumentsService {
+  private readonly logger = new Logger(CustomerDocumentsService.name);
   constructor(
     private readonly sources: AccessPartySourceService,
     private readonly storage: StorageService,
@@ -79,9 +81,25 @@ export class CustomerDocumentsService {
         return { id, attachmentId };
       });
     } catch (error) {
-      // Key is generated solely by this operation. Retries reuse staged bytes;
-      // only terminal failure reaches cleanup, never a preexisting/shared key.
-      await this.storage.deleteOwned(storageKey, operationToken);
+      // Preserve the original failed request even when cleanup or its logging fails.
+      // Local/unversioned storage may retain staging bytes; never claim erasure.
+      let reason:
+        | Extract<OwnedCleanupResult, { status: 'retained' }>['reason']
+        | 'cleanup-failed'
+        | undefined;
+      try {
+        const cleanup = await this.storage.deleteOwned(storageKey, operationToken);
+        if (cleanup.status === 'retained') reason = cleanup.reason;
+      } catch {
+        reason = 'cleanup-failed';
+      }
+      if (reason) {
+        try {
+          this.logger.warn({ event: 'CUSTOMER_DOCUMENT_CLEANUP_RETAINED', reason });
+        } catch {
+          /* Operational logging cannot replace the primary failure. */
+        }
+      }
       throw error;
     }
   }

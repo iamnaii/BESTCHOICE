@@ -17,7 +17,13 @@ import { randomUUID } from 'node:crypto';
 import { PrismaClient } from '@prisma/client';
 import { Test } from '@nestjs/testing';
 import { APP_INTERCEPTOR } from '@nestjs/core';
-import { ExecutionContext, INestApplication, ValidationPipe } from '@nestjs/common';
+import {
+  BadRequestException,
+  ExecutionContext,
+  INestApplication,
+  Logger,
+  ValidationPipe,
+} from '@nestjs/common';
 import request from 'supertest';
 import { PermissionKey } from '@installment/shared';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -650,7 +656,7 @@ it('preserves alias provenance and legacy metadata without copying target permis
   ).toBe(c.id);
   await http('get', `/customers/${c.id}/documents?company=SHOP`).expect(403);
 });
-it('revokes authorization after staging and removes exactly the owned bytes', async () => {
+it('revokes authorization after staging and reports retained private bytes without metadata commit', async () => {
   const c = await customer(),
     b = await source(c.id, 'BOOKING');
   const id = await reader(['customers.read', 'documents.create', 'bookings.read'], 'SHOP', [
@@ -671,10 +677,14 @@ it('revokes authorization after staging and removes exactly the owned bytes', as
   expect(await db.customerAttachment.count({ where: { originCustomerId: c.id } })).toBe(0);
   const after = await fs.readdir(process.env.STORAGE_LOCAL_DIR!, { recursive: true });
   const newEntries = after.filter((value) => !paths.includes(value));
+  const retained: string[] = [];
   for (const entry of newEntries)
-    expect((await fs.stat(process.env.STORAGE_LOCAL_DIR! + '/' + entry)).isDirectory()).toBe(true);
+    if ((await fs.stat(process.env.STORAGE_LOCAL_DIR! + '/' + entry)).isFile())
+      retained.push(entry);
+  expect(retained).toHaveLength(2);
+  expect(retained.some((entry) => entry.endsWith('.owner'))).toBe(true);
 });
-it('rolls back late required evidence failure and cleans only new owned objects', async () => {
+it('rolls back late required evidence failure and preserves existing objects', async () => {
   const c = await customer(),
     keep = 'preexisting/shared';
   const storage = app.get(StorageService);
@@ -706,8 +716,11 @@ it('rejects storage collisions and mismatched ownership cleanup without deleting
   ).rejects.toThrow();
   await storage.deleteOwned(key, randomUUID());
   expect(await fs.readFile(process.env.STORAGE_LOCAL_DIR! + '/' + key)).toEqual(png);
-  await storage.deleteOwned(key, token);
-  await expect(fs.readFile(process.env.STORAGE_LOCAL_DIR! + '/' + key)).rejects.toThrow();
+  expect(await storage.deleteOwned(key, token)).toEqual({
+    status: 'retained',
+    reason: 'local-path-identity-not-atomic',
+  });
+  expect(await fs.readFile(process.env.STORAGE_LOCAL_DIR! + '/' + key)).toEqual(png);
 });
 it('validates actual PDF structure and bounds malformed PDF bytes', async () => {
   const c = await customer(),
@@ -1135,7 +1148,7 @@ it('reloads current authority after an actual revocation fence wait before stora
     reads.mockRestore();
   }
 });
-it('cleans owned bytes after an ambiguous upload failure without touching existing objects', async () => {
+it('preserves replacement bytes and sidecar after an ambiguous upload failure with safe retention evidence', async () => {
   const c = await customer(),
     storage = app.get(StorageService),
     real = storage.uploadOwned.bind(storage);
@@ -1143,15 +1156,30 @@ it('cleans owned bytes after an ambiguous upload failure without touching existi
   const spy = jest.spyOn(storage, 'uploadOwned').mockImplementationOnce(async (...args) => {
     stagedKey = args[0];
     await real(...args);
+    const target = process.env.STORAGE_LOCAL_DIR! + '/' + stagedKey;
+    await fs.rename(target, target + '.detached');
+    await fs.writeFile(target, 'replacement bytes');
+    await fs.writeFile(target + '.owner', 'replacement owner');
     throw new Error('owned transport failure after write');
   });
+  const warning = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
   try {
     await upload(c.id).expect(500);
+    expect(warning).toHaveBeenCalledWith({
+      event: 'CUSTOMER_DOCUMENT_CLEANUP_RETAINED',
+      reason: 'local-path-identity-not-atomic',
+    });
   } finally {
     spy.mockRestore();
+    warning.mockRestore();
   }
   expect(stagedKey).toBeTruthy();
-  await expect(fs.stat(process.env.STORAGE_LOCAL_DIR! + '/' + stagedKey)).rejects.toThrow();
+  expect(await fs.readFile(process.env.STORAGE_LOCAL_DIR! + '/' + stagedKey, 'utf8')).toBe(
+    'replacement bytes',
+  );
+  expect(
+    await fs.readFile(process.env.STORAGE_LOCAL_DIR! + '/' + stagedKey + '.owner', 'utf8'),
+  ).toBe('replacement owner');
   expect(await db.customerAttachment.count({ where: { originCustomerId: c.id } })).toBe(0);
 });
 it('accepts JPEG/WebP bytes and rejects empty, GIF and actual oversize multipart payloads', async () => {
@@ -1182,4 +1210,35 @@ it('accepts JPEG/WebP bytes and rejects empty, GIF and actual oversize multipart
     'SHOP',
     Buffer.alloc(10 * 1024 * 1024 + 1),
   ).expect(413);
+});
+
+it('preserves the primary upload rejection when cleanup fails and logs only a finite reason', async () => {
+  const c = await customer(),
+    storage = app.get(StorageService),
+    real = storage.uploadOwned.bind(storage);
+  let stagedKey = '';
+  const uploadSpy = jest.spyOn(storage, 'uploadOwned').mockImplementationOnce(async (...args) => {
+    stagedKey = args[0];
+    await real(...args);
+    throw new BadRequestException('primary upload rejected');
+  });
+  const cleanup = jest
+    .spyOn(storage, 'deleteOwned')
+    .mockRejectedValueOnce(new Error('private key/token/name/url cleanup error'));
+  const warning = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+  try {
+    const response = await upload(c.id).expect(400);
+    expect(response.body.message).toBe('primary upload rejected');
+    expect(warning).toHaveBeenCalledWith({
+      event: 'CUSTOMER_DOCUMENT_CLEANUP_RETAINED',
+      reason: 'cleanup-failed',
+    });
+    expect(JSON.stringify(warning.mock.calls)).not.toContain('private key');
+    expect(await fs.readFile(process.env.STORAGE_LOCAL_DIR! + '/' + stagedKey)).toEqual(png);
+    expect(await db.customerAttachment.count({ where: { originCustomerId: c.id } })).toBe(0);
+  } finally {
+    uploadSpy.mockRestore();
+    cleanup.mockRestore();
+    warning.mockRestore();
+  }
 });

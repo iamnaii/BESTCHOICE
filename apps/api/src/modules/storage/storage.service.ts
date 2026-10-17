@@ -15,6 +15,10 @@ import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { Storage as GcsStorage } from '@google-cloud/storage';
 import { Readable } from 'stream';
 
+export type OwnedCleanupResult =
+  | { status: 'deleted' | 'absent' }
+  | { status: 'retained'; reason: 'local-path-identity-not-atomic' | 'version-unavailable' | 'ownership-mismatch' | 'storage-unavailable' };
+
 /**
  * StorageService — file storage abstraction.
  *
@@ -152,10 +156,11 @@ export class StorageService {
         await handle.writeFile(body);
         const stat = await handle.stat();
         await fsp.writeFile(target + '.owner', JSON.stringify({ operationToken, ino: stat.ino }), { flag: 'wx', mode: 0o600 });
-      } catch (error) {
-        await fsp.rm(target, { force: true }); // only our exclusive-open object
-        throw error;
-      } finally { await handle.close(); }
+      } finally {
+        // An exclusive open owns this handle, not whatever later occupies its path.
+        // Retain partial bytes/sidecar on failure; never unlink a replacement.
+        await handle.close();
+      }
       return;
     }
     if (this.backend === 'gcs' && this.gcs) {
@@ -169,36 +174,36 @@ export class StorageService {
     throw new BadRequestException('Storage not configured');
   }
 
-  /** Terminal rollback only. An ambiguous failed upload never authorizes deleting
-   * another object; matching token and current provider version are both required. */
-  async deleteOwned(key: string, operationToken: string): Promise<void> {
+  /** Terminal rollback only. Delete only with an atomic object-version identity.
+   * Retained means cleanup was not proven safe, not that rollback erased bytes. */
+  async deleteOwned(key: string, operationToken: string): Promise<OwnedCleanupResult> {
     if (this.backend === 'local') {
-      const target = this.localPath(key);
-      let owner: { operationToken: string; ino: number };
-      try { owner = JSON.parse(await fsp.readFile(target + '.owner', 'utf8')); }
-      catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return; throw error; }
-      if (owner.operationToken !== operationToken) return;
-      const stat = await fsp.stat(target).catch(error => { if (error.code === 'ENOENT') return null; throw error; });
-      if (stat && stat.ino !== owner.ino) return;
-      await fsp.rm(target, { force: true });
-      await fsp.rm(target + '.owner', { force: true });
-      return;
+      this.localPath(key);
+      // Node has no inode-conditional unlink. Even a matching sidecar/stat cannot
+      // prevent pathname replacement before rm; retain both without inspecting them.
+      return { status: 'retained', reason: 'local-path-identity-not-atomic' };
     }
     if (this.backend === 'gcs' && this.gcs) {
       const file = this.gcs.bucket(this.bucket).file(key);
       let metadata;
-      try { [metadata] = await file.getMetadata(); } catch (error) { if ((error as { code?: number }).code === 404) return; throw error; }
-      if (metadata.metadata?.customerAttachmentOperation !== operationToken || !metadata.generation) return;
+      try { [metadata] = await file.getMetadata(); } catch (error) { if ((error as { code?: number }).code === 404) return { status: 'absent' }; throw error; }
+      if (metadata.metadata?.customerAttachmentOperation !== operationToken) return { status: 'retained', reason: 'ownership-mismatch' };
+      if (!metadata.generation) return { status: 'retained', reason: 'version-unavailable' };
       await file.delete({ ifGenerationMatch: metadata.generation });
-      return;
+      return { status: 'deleted' };
     }
     if (this.backend === 's3' && this.s3) {
       let head;
       try { head = await this.s3.send(new HeadObjectCommand({ Bucket: this.bucket, Key: key })); }
-      catch (error) { if ((error as { $metadata?: { httpStatusCode?: number } }).$metadata?.httpStatusCode === 404) return; throw error; }
-      if (head.Metadata?.['customer-attachment-operation'] !== operationToken || !head.ETag) return;
-      await this.s3.send(new DeleteObjectCommand({ Bucket: this.bucket, Key: key, IfMatch: head.ETag }));
+      catch (error) { if ((error as { $metadata?: { httpStatusCode?: number } }).$metadata?.httpStatusCode === 404) return { status: 'absent' }; throw error; }
+      if (head.Metadata?.['customer-attachment-operation'] !== operationToken) return { status: 'retained', reason: 'ownership-mismatch' };
+      // ETag identifies content, not operation ownership. The null version can
+      // also be replaced, so only an actual immutable version is deletable.
+      if (!head.VersionId || head.VersionId === 'null') return { status: 'retained', reason: 'version-unavailable' };
+      await this.s3.send(new DeleteObjectCommand({ Bucket: this.bucket, Key: key, VersionId: head.VersionId }));
+      return { status: 'deleted' };
     }
+    return { status: 'retained', reason: 'storage-unavailable' };
   }
 
   async getStream(key: string): Promise<Readable> {

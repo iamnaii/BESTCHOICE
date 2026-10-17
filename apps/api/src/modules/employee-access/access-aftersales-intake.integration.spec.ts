@@ -905,7 +905,7 @@ import {
   AFTER_SALES_INTAKE_ROUTES,
 } from './access-after-sales-action-boundaries';
 import { ACCESS_BOUNDARIES } from './access-policy.registry';
-it('requires each actual request origin across room SHOP and current FINANCE Product, denies stale and substituted references', async () => {
+it('uses SHOP room authority with FINANCE Product reads and denies stale and substituted references', async () => {
   const f = await historical('REPAIR');
   await centralChat(f.who.id, 'COMPANY');
   const req = await requestFor(f.customerId);
@@ -915,9 +915,6 @@ it('requires each actual request origin across room SHOP and current FINANCE Pro
   });
   const body = { ...f.body, serviceRequestId: req.id };
   storage.upload.mockClear();
-  expect((await create(f.who.id, body)).status).toBe(403);
-  expect(storage.upload).not.toHaveBeenCalled();
-  await grant(f.who.id, ['chat.update'], 'FINANCE');
   await db.sale.update({ where: { id: f.sale.id }, data: { deletedAt: new Date() } });
   expect((await create(f.who.id, body)).status).toBe(403);
   await db.sale.update({ where: { id: f.sale.id }, data: { deletedAt: null } });
@@ -932,6 +929,48 @@ it('requires each actual request origin across room SHOP and current FINANCE Pro
   });
   expect((await create(f.who.id, body)).status).toBe(201);
 });
+it.each(['SHOP', 'FINANCE'] as const)(
+  'cross-company %s room requires each room-origin tuple and independent actual Product reads',
+  async (roomCompany) => {
+    const f = await historical('REPAIR');
+    const sourceCompany = roomCompany === 'SHOP' ? 'FINANCE' : 'SHOP';
+    await db.product.update({
+      where: { id: f.oldProductId },
+      data: {
+        ownedByCompanyId: sourceCompany === 'SHOP' ? shopCompanyId : financeCompanyId,
+        branchId: branchB,
+      },
+    });
+    const req = await requestFor(f.customerId);
+    await db.chatRoom.update({
+      where: { id: req.roomId },
+      data: { channel: roomCompany === 'SHOP' ? 'LINE_SHOP' : 'LINE_FINANCE' },
+    });
+    await db.chatServiceRequest.update({
+      where: { id: req.id },
+      data: { requestedProductId: f.oldProductId, contractId: f.oldContractId, saleId: f.sale.id },
+    });
+    const body = { ...f.body, serviceRequestId: req.id };
+    await grant(f.who.id, ['chat.update'], roomCompany);
+    await grant(f.who.id, ['chat.read'], roomCompany, [branchB]);
+    const roomB = await grant(f.who.id, ['chat.update'], roomCompany, [branchB]);
+    storage.upload.mockClear();
+    // Room authority cannot substitute for the actual current Product read at B.
+    expect((await create(f.who.id, body)).status).toBe(403);
+    expect(storage.upload).not.toHaveBeenCalled();
+    await grant(f.who.id, ['products.read'], sourceCompany, [branchB]);
+    await db.employeeAccessAssignment.update({
+      where: { id: roomB.id },
+      data: { deletedAt: new Date() },
+    });
+    // chat.update at A and chat.read at B cannot be combined into update at B.
+    expect((await create(f.who.id, body)).status).toBe(403);
+    expect(storage.upload).not.toHaveBeenCalled();
+    await grant(f.who.id, ['chat.update'], roomCompany, [branchB]);
+    // No chat permission in the referenced company's context is needed.
+    expect((await create(f.who.id, body)).status).toBe(201);
+  },
+);
 it('preserves original grant tuples and independently requires repair child creation before storage', async () => {
   const { body } = await walk();
   const who = await actor();

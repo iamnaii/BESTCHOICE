@@ -49,15 +49,12 @@ export async function authorizeChatServiceRequest(
       throw new ForbiddenException('ไม่พบแหล่งใบขายปัจจุบัน');
     sources.push(source);
   }
-  // Room company and every real source are independent; no prospective-case origin.
+  // The chat action belongs to the actual room company at every proven origin.
+  // Callers independently authorize referenced sources with their own capabilities.
   const roomSources: AccessResource[] = sources.length
     ? sources.map((source) => ({ company, branchId: source.branchId, assignedUserIds }))
     : [{ company, assignedUserIds }];
-  if (
-    [...roomSources, ...sources.map((source) => ({ ...source, assignedUserIds }))].some(
-      (source) => !canAccess(ctx.snapshot, 'chat.update', source),
-    )
-  )
+  if (roomSources.some((source) => !canAccess(ctx.snapshot, 'chat.update', source)))
     throw new ForbiddenException('ไม่มีสิทธิ์เชื่อมใบรับเรื่อง');
   return {
     company,

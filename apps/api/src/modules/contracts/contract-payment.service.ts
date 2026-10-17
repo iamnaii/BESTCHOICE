@@ -598,7 +598,9 @@ export class ContractPaymentService {
           // ตามยอดในบัญชีด้วย JP4 และภาษีขายของมันลง 21-2101 ผ่านขาล้าง 21-2102 / 2A ⇒ กลับ `Dr 21-2103 / Cr 11-2104` ทุกงวดใน
           // ธุรกรรมเดียวกันก่อนลง JP4 (Vat60dayReversalTemplate — idempotent · ล้างธง) ไม่งั้นคู่บัญชีนี้ค้างถาวรหลังปิดยอด และ
           // ภ.พ.30 ที่รวม 21-2103 นับภาษีของงวดเดียวกันซ้ำ. บรรทัดของ JP4 ไม่เปลี่ยน (preview === posted) — เลขที่รายการกลับอยู่ใน
-          // metadata `vat60dayReversals`. ตัวกรอง truthy ในโค้ด เพราะ spec ที่ mock `findMany` คืนทุกแถวโดยไม่สนใจ where
+          // metadata `vat60dayReversals`. ตัวกรอง truthy ในโค้ด เพราะ spec ที่ mock `findMany` คืนทุกแถวโดยไม่สนใจ where ·
+          // วันที่ = `paidDate` ตัวเดียวกับ JP4 (ปิดยอดย้อนวันข้ามเดือน → รายการกลับอยู่เดือนเดียวกับ JP4 · template กันไม่ให้
+          // ก่อนวันที่ของรายการตั้ง — ภ.พ.30 รายเดือนไม่นับซ้ำทั้งสองเดือน)
           const vat60Flagged = await tx.installmentSchedule.findMany({
             where: { contractId: id, deletedAt: null, vat60dayJournalEntryId: { not: null } },
             select: { id: true, vat60dayJournalEntryId: true },
@@ -607,7 +609,7 @@ export class ContractPaymentService {
           const vat60dayReversals: string[] = [];
           for (const inst of vat60Flagged) {
             if (!inst.vat60dayJournalEntryId) continue;
-            const reversal = await this.vat60Reversal.execute(inst.id, tx);
+            const reversal = await this.vat60Reversal.execute(inst.id, tx, paidDate);
             if (reversal) vat60dayReversals.push(reversal.entryNo);
           }
 

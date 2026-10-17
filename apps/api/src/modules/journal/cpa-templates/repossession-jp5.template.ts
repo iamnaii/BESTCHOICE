@@ -526,10 +526,10 @@ export class RepossessionJP5Template {
     // ในธุรกรรมเดียวกันก่อนลง JP5 (Vat60dayReversalTemplate — idempotent · ล้างธง `vat60dayJournalEntryId`) ไม่งั้นคู่บัญชีนี้ค้างถาวร
     // และ ภ.พ.30 ที่รวม 21-2103 นับภาษีของงวดเดียวกันซ้ำ. บรรทัดของ JP5 เองไม่เปลี่ยน (preview === posted) — เลขที่รายการกลับอยู่ใน
     // metadata `vat60dayReversals` (stamp เฉพาะเมื่อมี). ไม่มีธุรกรรมของผู้เรียก (spec เท่านั้น — production ส่ง tx เสมอ) = template
-    // เปิดธุรกรรมของตัวเองทีละงวด
+    // เปิดธุรกรรมของตัวเองทีละงวด · วันที่ = `input.postedAt` ของ JP5 (เดือนเดียวกับรายการปิด — template กันไม่ให้ก่อนรายการตั้ง)
     const vat60dayReversals: string[] = [];
     for (const instId of built.vat60dayInstIds) {
-      const reversal = await this.vat60Reversal.execute(instId, tx);
+      const reversal = await this.vat60Reversal.execute(instId, tx, input.postedAt);
       if (reversal) vat60dayReversals.push(reversal.entryNo);
     }
 

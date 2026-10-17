@@ -169,3 +169,56 @@ describe('Vat60dayReversalTemplate', () => {
     expect(result).toBeNull();
   });
 });
+
+describe('Vat60dayReversalTemplate — วันที่ลงรายการกลับ (postedAt จากรายการปิด · 2026-10-17)', () => {
+  const DAY = 86_400_000;
+
+  const mandatoryEntryOf = async (instId: string) => {
+    const inst = await prisma.installmentSchedule.findUniqueOrThrow({ where: { id: instId } });
+    return prisma.journalEntry.findUniqueOrThrow({
+      where: { entryNumber: inst.vat60dayJournalEntryId! },
+    });
+  };
+  const reversalEntry = () =>
+    prisma.journalEntry.findFirstOrThrow({
+      where: { metadata: { path: ['tag'], equals: 'VAT60-REVERSAL' } } as any,
+    });
+
+  it('ผู้เรียกส่ง postedAt หลังวันที่ของรายการตั้ง → รายการกลับลงวันที่นั้น (เดือนเดียวกับรายการปิดที่ย้อนวัน)', async () => {
+    const { inst, journal } = await setup();
+    // รอบภาษีขาย 60 วันตั้งไว้ 40 วันก่อน · รายการปิดลงวันที่ 10 วันก่อน
+    const mandatory = await mandatoryEntryOf(inst.id);
+    const mandatoryAt = new Date(Date.now() - 40 * DAY);
+    await prisma.journalEntry.update({
+      where: { id: mandatory.id },
+      data: { entryDate: mandatoryAt, postedAt: mandatoryAt },
+    });
+    const closeAt = new Date(Date.now() - 10 * DAY);
+
+    await new Vat60dayReversalTemplate(journal, prisma as any).execute(inst.id, undefined, closeAt);
+
+    const entry = await reversalEntry();
+    expect(entry.entryDate.getTime()).toBe(closeAt.getTime());
+    expect(entry.postedAt!.getTime()).toBe(closeAt.getTime());
+  });
+
+  it('postedAt ก่อนวันที่ของรายการตั้ง (cron ตั้งหลังวันที่รับเงินที่ย้อน) → ลงวันที่ของรายการตั้ง ไม่กลับก่อนตั้ง', async () => {
+    const { inst, journal } = await setup();
+    const mandatory = await mandatoryEntryOf(inst.id); // ตั้งตอนนี้ (setup)
+    const closeAt = new Date(Date.now() - 10 * DAY);
+
+    await new Vat60dayReversalTemplate(journal, prisma as any).execute(inst.id, undefined, closeAt);
+
+    const entry = await reversalEntry();
+    expect(entry.entryDate.getTime()).toBe(mandatory.entryDate.getTime());
+  });
+
+  it('ไม่ส่ง postedAt → ลงตอนนี้ (พฤติกรรมเดิมของเส้นทางรับชำระ)', async () => {
+    const { inst, journal } = await setup();
+    const before = Date.now();
+    await new Vat60dayReversalTemplate(journal, prisma as any).execute(inst.id);
+    const entry = await reversalEntry();
+    expect(entry.entryDate.getTime()).toBeGreaterThanOrEqual(before - 1000);
+    expect(entry.entryDate.getTime()).toBeLessThanOrEqual(Date.now() + 1000);
+  });
+});

@@ -482,9 +482,16 @@ UI: tolerance approval modal in `PaymentForm` — opens when delta <=1 THB on un
   สัญญา 21-2103 / 11-2104 ของสัญญาเป็นศูนย์เสมอ · เดิม: `earlyPayoff` จริงไม่เรียก reversal (มีเฉพาะใน `EarlyPayoffJP4Template` ที่ไม่มี
   ผู้เรียก) และ JP5 / ตัดหนี้สูญไม่รู้จักธง ⇒ คู่บัญชีค้างถาวร และ ภ.พ.30 ที่รวม 21-2103 (#1702) นับภาษีของงวดเดียวกันซ้ำกับใบลดหนี้ /
   ขา deferred · ปักที่ `jp5-vat-split.spec.ts` · `bad-debt-writeoff.template.spec.ts` · `accrue-at-receipt.integration.spec.ts`
-  (ชื่อเคสมี "VAT บังคับ 60 วัน (21-2103)") · forward-only — สัญญาที่ปิดไปก่อน deploy โดยธงค้างไม่ถูกแก้ (prod ไม่มีสัญญาเปิด 11/10/2569) ·
-  ธงที่รอบภาษีขาย 60 วันตั้ง**หลัง**สัญญาปิด (cron ไม่กรองสถานะ — ตัวอย่าง `JE-202609-00055`) ไม่อยู่ในขอบเขตนี้ (#1702 เติมตัวกรอง
-  `ACCRUAL_EXCLUDED_CONTRACT_STATUSES` ให้ cron)
+  (ชื่อเคสมี "VAT บังคับ 60 วัน (21-2103)") · **วันที่ของรายการกลับ:** `Vat60dayReversalTemplate.execute(id, tx, postedAt?)` รับวันที่ของ
+  รายการปิด (JP4 ส่ง `paidDate` · JP5 ส่ง `input.postedAt` · ตัดหนี้สูญลงตอนนี้ทั้งคู่) และลง `max(postedAt, entryDate ของรายการตั้ง)` —
+  ปิดยอดย้อนวันข้ามเดือนจึงได้รายการกลับเดือนเดียวกับ JP4 (ภ.พ.30 รายเดือนไม่นับซ้ำทั้งสองเดือน) และไม่มีทางกลับก่อนรายการตั้ง (cron อาจตั้ง
+  หลังวันที่รับเงินที่ย้อน) · ไม่ส่ง = ตอนนี้ (ปักที่ `vat-60day-reversal.template.spec.ts` + เคส "ย้อนวันข้ามเดือน" ใน
+  `accrue-at-receipt.integration.spec.ts`) · forward-only — สัญญาที่ปิดไปก่อน deploy โดยธงค้างไม่ถูกแก้ (prod ไม่มีสัญญาเปิด 11/10/2569) ·
+  **ไม่อยู่ในขอบเขต:** ธงที่รอบภาษีขาย 60 วันตั้ง**หลัง**สัญญาปิด (cron ไม่กรองสถานะ — ตัวอย่าง `JE-202609-00055`; #1702 เติมตัวกรอง
+  `ACCRUAL_EXCLUDED_CONTRACT_STATUSES` ให้ cron) · ใบรับชำระที่ย้อนวัน (`payment-receipt-orchestrator` เรียก reversal โดยไม่ส่ง `postedAt`
+  — ใบรับชำระลงวันที่รับเงิน รายการกลับลงตอนนี้ · ช่องว่างเดือนเดียวกันที่มีอยู่ก่อน รองานต่อเนื่อง) · เปลี่ยนเครื่องแบบมีราคา
+  (`ContractExchangeService.finalizeAfterActivation` — สัญญาเดิมเป็น `EXCHANGED` โดยไม่กลับธง · เมนูปิดใช้ 2026-10-06 เหลือเฉพาะคำขอเก่าที่
+  อนุมัติไว้ · เกิดได้เฉพาะสัญญา ACTIVE ที่มีงวดเกิน 60 วัน)
 
 ---
 

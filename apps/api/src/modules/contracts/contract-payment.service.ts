@@ -25,6 +25,7 @@ import { glContractBalance } from '../journal/gl-contract-balance';
 import {
   EARLY_PAYOFF_ROUNDING_TOLERANCE,
   buildEarlyPayoffJournal,
+  earlyPayoffExcessDescription,
 } from '../journal/compute-early-payoff-je';
 import { emitDeferredWarnings, type DeferredWarning } from '../journal/deferred-warning';
 import { ADVANCE_VAT_CONSUME_DESCRIPTION, ADVANCE_VAT_META } from '../journal/advance-vat';
@@ -329,9 +330,11 @@ export class ContractPaymentService {
       credit: l.cr.toFixed(2),
       description: l.advanceVatReversal
         ? ADVANCE_VAT_CONSUME_DESCRIPTION
-        : l.generalAdvance
-          ? ''
-          : (epDescriptions[l.accountCode] ?? ''),
+        : l.excessIncome
+          ? earlyPayoffExcessDescription(l.accountCode)
+          : l.generalAdvance
+            ? ''
+            : (epDescriptions[l.accountCode] ?? ''),
     }));
 
     let jeTotalDr = new Decimal(0);
@@ -559,16 +562,33 @@ export class ContractPaymentService {
             quoteDiscountAmount: quote.discountAmount,
             discountPercent: quote.discountPct,
           });
-          // เงินที่รับ + เงินของลูกค้าที่หัก เกินลูกหนี้ตามบัญชีเกิน 1.00 → ไม่มีบัญชีรับยอดนั้น (ไม่ใช่เศษสตางค์ และไม่ใช่
-          // ส่วนลด) — ปฏิเสธทั้งธุรกรรม (ฝ่ายบัญชียังไม่ระบุวิธีลง · accounting.md "ปิดยอดก่อนกำหนด (JP4)")
-          if (epJe.excessReceived.gt(0)) {
-            throw new Error(
-              `early payoff ${id}: money received + customer money exceed the contract ledger receivable by ` +
-                `${epJe.excessReceived.toFixed(2)} (> 1.00) — not posted`,
-            );
-          }
           // คอลัมน์ไม่ตรงบัญชี / 52-1106 ต่างจากส่วนลดบนหน้าจอเกิน 1.00 — ส่งหลัง commit
           epWarnings = epJe.warnings;
+          // เงินที่รับ + เงินของลูกค้าที่หัก เกินลูกหนี้ตามบัญชีเกิน 1.00 → รายได้ 42-1106 + ภาษีขาย 7/107 (ฝ่ายบัญชี 18.2 ·
+          // 16/10/2569 — เดิมปฏิเสธทั้งธุรกรรม · เจ้าของ 16/10 ไม่คืนลูกค้า) · ไม่ใช่เส้นทางปกติ (เครดิตมากกว่าหนี้ / บัญชีของ
+          // สัญญาผิดปกติ) → สัญญาณเตือนหลัง commit ให้ฝ่ายบัญชีตรวจ
+          if (epJe.excessIncome.gt(0)) {
+            epWarnings = [
+              ...epWarnings,
+              {
+                message:
+                  `[early-payoff] money received + customer money exceeds the contract ledger receivable by ` +
+                  `${epJe.excessIncome.toFixed(2)} — recognised as income 42-1106 (18.2)`,
+                tags: { module: 'contracts', action: 'early-payoff-excess-income', flow: 'early-payoff' },
+                extra: {
+                  contractId: id,
+                  contractNumber: freshContract.contractNumber,
+                  excessIncome: epJe.excessIncome.toFixed(2),
+                  excessVat: epJe.excessVat.toFixed(2),
+                  cashReceived: epJe.cashReceived.toFixed(2),
+                  receivableCleared: epJe.receivableCleared.toFixed(2),
+                  parkRelief: epJe.parkRelief.toFixed(2),
+                  advanceRelief: epJe.advanceRelief.toFixed(2),
+                  creditRelief: epJe.creditRelief.toFixed(2),
+                },
+              },
+            ];
+          }
 
           // Ledger-side line descriptions (the preview words them differently —
           // only the money, shared via buildEarlyPayoffJournal, must match).
@@ -604,6 +624,10 @@ export class ContractPaymentService {
             ...(epJe.advanceRelief.gt(0) ? { advanceRelief: epJe.advanceRelief.toFixed(2) } : {}),
             ...(epJe.creditRelief.gt(0) ? { creditRelief: epJe.creditRelief.toFixed(2) } : {}),
             ...(epJe.roundingGain.gt(0) ? { roundingGain: epJe.roundingGain.toFixed(2) } : {}),
+            // 18.2: เงินที่รับเกินยอดปิดที่รับรู้เป็นรายได้ 42-1106 (รวมภาษี) + ภาษีขาย 7/107 ของมัน
+            ...(epJe.excessIncome.gt(0)
+              ? { excessIncome: epJe.excessIncome.toFixed(2), excessVat: epJe.excessVat.toFixed(2) }
+              : {}),
             // PR4 (ต8): ขากลับภาษีของเงินรับล่วงหน้าที่ยอดปิดหัก + stamp consume (advanceVatOutstanding ของสัญญาลดลงเท่านี้)
             ...(epJe.advanceVatReversal.gt(0)
               ? {
@@ -640,9 +664,11 @@ export class ContractPaymentService {
                 cr: l.cr,
                 description: l.advanceVatReversal
                   ? ADVANCE_VAT_CONSUME_DESCRIPTION
-                  : l.generalAdvance
-                    ? ''
-                    : (epDescriptions[l.accountCode] ?? ''),
+                  : l.excessIncome
+                    ? earlyPayoffExcessDescription(l.accountCode)
+                    : l.generalAdvance
+                      ? ''
+                      : (epDescriptions[l.accountCode] ?? ''),
               })),
             },
             tx,

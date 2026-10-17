@@ -3,7 +3,7 @@ import { Decimal } from '@prisma/client/runtime/library';
 import { ContractAdvanceColumns, readContractCloseAdvances } from './contract-close-advances';
 import type { DeferredWarning } from './deferred-warning';
 import { glContractBalance } from './gl-contract-balance';
-import { advanceVatOutstanding, consumeVatFor } from './advance-vat';
+import { advanceVatOf, advanceVatOutstanding, consumeVatFor } from './advance-vat';
 
 /**
  * Early-Payoff (JP4) journal entry — ล้างตามยอดในบัญชีของสัญญา (PR5 · คำตอบฝ่ายบัญชี เล่ม 1 ข้อ 5.1–5.4, 29/09/2569).
@@ -40,6 +40,11 @@ export interface EarlyPayoffJeLine {
    * ผู้เรียกใส่คำอธิบาย `ADVANCE_VAT_CONSUME_DESCRIPTION` (ไม่ใช่คำอธิบายขาล้างของบัญชีเดียวกัน)
    */
   advanceVatReversal?: true;
+  /**
+   * บรรทัดรายได้ของเงินที่รับเกินยอดปิด (ฝ่ายบัญชี 18.2 · 16/10/2569) — `Cr 42-1106` (ยอดหลังหักภาษี) และ `Cr 21-2101`
+   * (ภาษีขาย 7/107 ของส่วนเกิน) · ผู้เรียกใส่คำอธิบายของตัวเองให้สองบรรทัดนี้ (คนละความหมายกับขาล้าง 21-2101)
+   */
+  excessIncome?: true;
 }
 
 // ─── PR5 — ปิดยอดก่อนกำหนดล้างตามยอดในบัญชี (คำตอบฝ่ายบัญชี เล่ม 1 ข้อ 5.1–5.4 · 29/09/2569) ───────────────
@@ -84,10 +89,26 @@ export async function readEarlyPayoffLedger(
   };
 }
 
-/** เงินที่รับ + เงินของลูกค้าที่หัก เกินลูกหนี้ตามบัญชีไม่เกินยอดนี้ = เศษสตางค์ (Cr 53-1503) · เกินกว่านี้ = ปฏิเสธ */
+/** เงินที่รับ + เงินของลูกค้าที่หัก เกินลูกหนี้ตามบัญชีไม่เกินยอดนี้ = เศษสตางค์ (Cr 53-1503) · เกินกว่านี้ = รายได้ 42-1106 */
 export const EARLY_PAYOFF_ROUNDING_TOLERANCE = new Decimal('1.00');
 /** บัญชีกำไร (ขาดทุน) จากการปัดเศษ — บัญชีเดียวกับเศษที่ใบรับชำระเก็บเกิน (adj_overpay ค่าเริ่มต้น) */
 export const EARLY_PAYOFF_ROUNDING_ACCOUNT = '53-1503';
+/**
+ * บัญชีรายได้ของเงินที่รับเกินยอดปิดเกินเศษสตางค์ (ฝ่ายบัญชี 18.2 · 16/10/2569 — "ใช้ 42-1106 แทนปฏิเสธ" · เจ้าของ 16/10
+ * "ไม่คืนลูกค้า") — บัญชีเดียวกับรอบกวาดเงินพักส่วนเกินหลังสัญญาปิด (PR4 ต6/ต7)
+ */
+export const EARLY_PAYOFF_EXCESS_INCOME_ACCOUNT = '42-1106';
+/** คำอธิบายบรรทัด `Cr 42-1106` ของเงินที่รับเกินยอดปิด — ใช้ร่วมกันทั้ง preview และรายการที่ลง */
+export const EARLY_PAYOFF_EXCESS_INCOME_DESCRIPTION =
+  'เงินที่รับเกินยอดปิด — รับรู้เป็นรายได้ (ฝ่ายบัญชี 18.2)';
+/** คำอธิบายบรรทัด `Cr 21-2101` ภาษีขายของเงินที่รับเกินยอดปิด (คนละบรรทัดกับขาล้าง 21-2102) */
+export const EARLY_PAYOFF_EXCESS_VAT_DESCRIPTION = 'ภาษีขายของเงินที่รับเกินยอดปิด';
+/** คำอธิบายของบรรทัดที่ติดธง `excessIncome` — บัญชีรายได้ / บัญชีภาษีขาย */
+export function earlyPayoffExcessDescription(accountCode: string): string {
+  return accountCode === EARLY_PAYOFF_EXCESS_INCOME_ACCOUNT
+    ? EARLY_PAYOFF_EXCESS_INCOME_DESCRIPTION
+    : EARLY_PAYOFF_EXCESS_VAT_DESCRIPTION;
+}
 /** 52-1106 ต่างจากส่วนลดบนหน้าจอเกิน `EARLY_PAYOFF_ROUNDING_TOLERANCE` → สัญญาณเตือนหลัง commit (ไม่หยุดงาน) */
 export const EARLY_PAYOFF_DISCOUNT_VS_QUOTE_MESSAGE =
   '[early-payoff] 52-1106 differs from the payoff-screen discount by more than 1.00';
@@ -119,7 +140,7 @@ export interface BuildEarlyPayoffJeInput {
 
 /** รายการ JP4 ตามยอดในบัญชี + ยอดที่ใช้ประกอบ */
 export interface EarlyPayoffJe {
-  /** บรรทัดของรายการ (ไม่มีบรรทัดยอดศูนย์) — ไม่สมดุลเฉพาะเมื่อ `excessReceived` > 0 */
+  /** บรรทัดของรายการ (ไม่มีบรรทัดยอดศูนย์) — สมดุลเสมอ */
   lines: EarlyPayoffJeLine[];
   /** Dr บัญชีรับเงิน = เงินที่รับจริง */
   cashReceived: Decimal;
@@ -147,8 +168,13 @@ export interface EarlyPayoffJe {
   discount: Decimal;
   /** Cr 53-1503 — เงินที่รับเกินลูกหนี้ตามบัญชีไม่เกิน 1.00 (เศษสตางค์ของค่างวด) */
   roundingGain: Decimal;
-  /** เงินที่รับ + เงินของลูกค้าที่หัก เกินลูกหนี้ตามบัญชีเกิน 1.00 — ไม่มีบรรทัดรับยอดนี้ (ผู้เรียกต้องปฏิเสธ) */
-  excessReceived: Decimal;
+  /**
+   * เงินที่รับ + เงินของลูกค้าที่หัก เกินลูกหนี้ตามบัญชีเกิน 1.00 (ฝ่ายบัญชี 18.2) — รับรู้เป็นรายได้ทั้งก้อน:
+   * Cr 42-1106 = `excessIncome − excessVat` · Cr 21-2101 = `excessVat` (0 = ไม่มีบรรทัด)
+   */
+  excessIncome: Decimal;
+  /** ภาษีขาย 7/107 ของ `excessIncome` (`advanceVatOf` — สูตรเดียวกับเงินรับล่วงหน้า · กติกา 14 ภาษีของเงินที่รับ ณ วันรับ) */
+  excessVat: Decimal;
   /** ฐานส่วนลดตามหลักการข้อ 5.2 = % ส่วนลด × ดอกเบี้ยรอตัดบัญชีคงเหลือ (ปัดครึ่งขึ้น 2 ตำแหน่ง) */
   deferredInterestDiscountBase: Decimal;
   /**
@@ -172,7 +198,7 @@ function moneyInput(name: string, v: DecimalInput | null | undefined): Decimal {
 /**
  * รายการปิดยอดก่อนกำหนด (JP4) ตามยอดในบัญชี — ฟังก์ชันบริสุทธิ์ (ไม่แตะฐาน) ที่ preview และรายการที่ลงจริงใช้ร่วมกัน.
  *
- *   Dr <บัญชีรับเงิน>  เงินที่รับจริง
+ *   Dr <บัญชีรับเงิน>  เงินที่รับจริง (0 = ไม่มีบรรทัด — เครดิต/เงินพักของลูกค้าครอบยอดปิดทั้งก้อน)
  *   Dr 11-2106        ดอกเบี้ยรอตัดบัญชีคงเหลือ          ┐ ส่วนที่ยังไม่ถึงกำหนด: รับรู้ดอกเบี้ยและภาษีขายวันปิดยอด
  *   Dr 21-2101 / Cr 21-2102  ขากลับภาษีของเงินรับล่วงหน้าที่ยอดปิดหัก (PR4 ต8 — r · วางก่อนขาล้าง · 0 = ไม่มีบรรทัด)
  *   Dr 21-2102        ภาษีขายรอเรียกเก็บคงเหลือ + ภาษีที่ยังค้างของเงินรับล่วงหน้า (p)  ┘
@@ -187,9 +213,12 @@ function moneyInput(name: string, v: DecimalInput | null | undefined): Decimal {
  *     Cr 21-2101      = 21-2102 (Policy A — ภาษีขายเต็มจำนวน ไม่ลดตามส่วนลด)
  *     Cr 42-1103      ค่าปรับ
  *     Cr 53-1503      เงินที่รับเกินลูกหนี้ตามบัญชี ≤ 1.00
+ *     Cr 42-1106      เงินที่รับเกินลูกหนี้ตามบัญชี > 1.00 หักภาษี (ฝ่ายบัญชี 18.2 — บรรทัด `excessIncome`)
+ *     Cr 21-2101      ภาษีขาย 7/107 ของเงินที่รับเกิน (บรรทัด `excessIncome` — คนละบรรทัดกับขาล้าง 21-2102)
  *
  * ส่วนที่เหลือให้สมดุล = ลูกหนี้ตามบัญชี + ค่าปรับ − เงินที่รับ − เงินพัก − ถังรวม − เงินเกินของลูกค้า:
- * ≥ 0 → 52-1106 · −1.00 ถึง < 0 → Cr 53-1503 · ต่ำกว่า −1.00 → `excessReceived` (ไม่มีบรรทัดรับ — ผู้เรียกปฏิเสธ).
+ * ≥ 0 → 52-1106 · −1.00 ถึง < 0 → Cr 53-1503 · ต่ำกว่า −1.00 → รายได้ 42-1106 + ภาษีขาย 21-2101 (`excessIncome` /
+ * `excessVat` — ฝ่ายบัญชี 16/10/2569 ข้อ 18.2 แทนการปฏิเสธ · เจ้าของ 16/10 ไม่คืนลูกค้า).
  */
 export function buildEarlyPayoffJE(input: BuildEarlyPayoffJeInput): EarlyPayoffJe {
   const zero = new Decimal(0);
@@ -223,17 +252,23 @@ export function buildEarlyPayoffJE(input: BuildEarlyPayoffJeInput): EarlyPayoffJ
     .minus(creditRelief);
   let discount = zero;
   let roundingGain = zero;
-  let excessReceived = zero;
+  let excessIncome = zero;
+  let excessVat = zero;
   if (plug.gte(0)) discount = plug;
   else if (plug.abs().lte(EARLY_PAYOFF_ROUNDING_TOLERANCE)) roundingGain = plug.abs();
-  else excessReceived = plug.abs();
+  else {
+    // ฝ่ายบัญชี 16/10/2569 ข้อ 18.2 — เงินของลูกค้าที่เกินลูกหนี้ตามบัญชีเกินเศษสตางค์ = รายได้อื่น 42-1106 (ไม่คืนลูกค้า —
+    // เจ้าของ 16/10) · ภาษีขาย 7/107 ของเงินที่รับรู้เป็นรายได้ตามกติกา 14 (ภาษีของเงินที่รับ ณ วันรับ) — สูตรเดียวกับเงินรับล่วงหน้า
+    excessIncome = plug.abs();
+    excessVat = advanceVatOf(excessIncome);
+  }
 
-  const lines: EarlyPayoffJeLine[] = [
-    { accountCode: input.depositAccountCode, dr: cashReceived, cr: zero },
-  ];
+  const lines: EarlyPayoffJeLine[] = [];
   const debit = (accountCode: string, amount: Decimal) => {
     if (amount.gt(0)) lines.push({ accountCode, dr: amount, cr: zero });
   };
+  // เงินสด 0 (เงินของลูกค้าที่หักครอบยอดปิดทั้งก้อน — เกิดได้จริงตั้งแต่ 18.2) ไม่ลงบรรทัดยอดศูนย์
+  debit(input.depositAccountCode, cashReceived);
   const credit = (accountCode: string, amount: Decimal) => {
     if (amount.gt(0)) lines.push({ accountCode, dr: zero, cr: amount });
   };
@@ -273,6 +308,17 @@ export function buildEarlyPayoffJE(input: BuildEarlyPayoffJeInput): EarlyPayoffJ
   credit('21-2101', deferredVat);
   credit('42-1103', lateFees);
   credit(EARLY_PAYOFF_ROUNDING_ACCOUNT, roundingGain);
+  if (excessIncome.gt(0)) {
+    lines.push({
+      accountCode: EARLY_PAYOFF_EXCESS_INCOME_ACCOUNT,
+      dr: zero,
+      cr: excessIncome.minus(excessVat),
+      excessIncome: true,
+    });
+    if (excessVat.gt(0)) {
+      lines.push({ accountCode: '21-2101', dr: zero, cr: excessVat, excessIncome: true });
+    }
+  }
 
   return {
     lines,
@@ -289,7 +335,8 @@ export function buildEarlyPayoffJE(input: BuildEarlyPayoffJeInput): EarlyPayoffJ
     advanceVatReversal,
     discount,
     roundingGain,
-    excessReceived,
+    excessIncome,
+    excessVat,
     deferredInterestDiscountBase,
     discountBeyondDeferredBase: Decimal.max(zero, discount.minus(deferredInterestDiscountBase)),
   };

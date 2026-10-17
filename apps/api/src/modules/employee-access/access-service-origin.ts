@@ -19,7 +19,13 @@ export function shopServiceOriginWhere(scope: CollectionScope) {
           : [],
   );
   return alternatives.length
-    ? { deletedAt: null, branch: liveShopServiceBranch, OR: alternatives }
+    ? {
+        deletedAt: null,
+        branch: liveShopServiceBranch,
+        ...(alternatives.some((entry) => Object.keys(entry).length === 0)
+          ? {}
+          : { OR: alternatives }),
+      }
     : { id: { in: [] as string[] } };
 }
 /** Same-customer evidence only: this does not authorize a Contract/ticket detail.

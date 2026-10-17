@@ -600,7 +600,8 @@ describe('after-sales exchange — DB จริง (Task 8, PR2)', () => {
 
     const delivered = await exchangeSvc.deliver(mainCaseId, OWNER());
     expect(delivered.stage).toBe('CLOSED');
-    expect(delivered.closedAt).not.toBeNull();
+    expect('closedAt' in delivered).toBe(true);
+    if ('closedAt' in delivered) expect(delivered.closedAt).not.toBeNull();
 
     const after = await svc.list({ summary: true } as never, OWNER());
     const afterExchanges = (after.summary as { exchanges: number }).exchanges;

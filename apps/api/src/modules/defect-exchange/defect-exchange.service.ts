@@ -72,6 +72,12 @@ export class DefectExchangeService {
     return this.eligibility(oldContractId, newProductId);
   }
 
+  /** Internal execution preflight: identical business rules, independent action authority. */
+  async checkExecutionEligibility(oldContractId: string, newProductId: string, actor: {id:string}) {
+    await this.authorize(oldContractId, newProductId, actor.id, true);
+    return this.eligibility(oldContractId, newProductId);
+  }
+
   private async eligibility(oldContractId: string, newProductId?: string) {
     const contract = await this.prisma.contract.findUnique({
       where: { id: oldContractId },
@@ -228,7 +234,7 @@ export class DefectExchangeService {
               'bypassWindowCheck ต้องระบุ originRepairTicketId หรือ originAfterSalesCaseId',
             );
           }
-          if (!['OWNER', 'BRANCH_MANAGER'].includes(reqUser.role)) {
+          if (!ctx && !['OWNER', 'BRANCH_MANAGER'].includes(reqUser.role)) {
             throw new ForbiddenException(
               'สิทธิ์ไม่พอ — bypass ทำได้เฉพาะ OWNER/BRANCH_MANAGER',
             );

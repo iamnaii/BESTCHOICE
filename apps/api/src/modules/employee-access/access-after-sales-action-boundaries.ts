@@ -1,5 +1,11 @@
 import { MAX_INTAKE_PHOTOS } from '../after-sales/services/after-sales-case.service';
-import { BadRequestException, ForbiddenException, Injectable, OnModuleInit } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  HttpException,
+  Injectable,
+  OnModuleInit,
+} from '@nestjs/common';
 import { ACCESS_BOUNDARIES } from './access-policy.registry';
 import { AccessResourceService, PersistedAccessResolver } from './access-resource.service';
 import { afterSalesSource } from './access-after-sales-source.service';
@@ -14,11 +20,20 @@ export const AFTER_SALES_ACTION_ROUTES = [
   'cancel',
   'addPhoto',
 ].map((method) => `AfterSalesController.${method}`);
+export const AFTER_SALES_EXCHANGE_ACTION_ROUTES = [
+  'confirmExchange',
+  'deliverExchange',
+  'rejectExchange',
+  'switchToRepair',
+  'approveExchange',
+  'rejectPricedExchange',
+  'cancelSwap',
+].map((method) => `AfterSalesController.${method}`);
 @Injectable()
 export class AccessAfterSalesActionBoundaries implements OnModuleInit {
   constructor(private readonly resources: AccessResourceService) {}
   onModuleInit() {
-    for (const route of AFTER_SALES_ACTION_ROUTES)
+    for (const route of [...AFTER_SALES_ACTION_ROUTES, ...AFTER_SALES_EXCHANGE_ACTION_ROUTES])
       ACCESS_BOUNDARIES.set(route, async (req, snapshot, permission) => {
         if (requestedAccessCompany(req) !== 'SHOP')
           throw new ForbiddenException('งานหลังการขายอยู่ใน SHOP');
@@ -46,7 +61,22 @@ export class AccessAfterSalesActionBoundaries implements OnModuleInit {
               permission,
               'SHOP',
               resolver,
-              handler,
+              async () => {
+                try {
+                  return await handler();
+                } catch (error) {
+                  if (
+                    AFTER_SALES_EXCHANGE_ACTION_ROUTES.includes(route) &&
+                    error instanceof HttpException &&
+                    [400, 409].includes(error.getStatus())
+                  )
+                    throw new HttpException(
+                      'ไม่สามารถดำเนินการตามสถานะหรือเงื่อนไขปัจจุบัน',
+                      error.getStatus(),
+                    );
+                  throw error;
+                }
+              },
               false,
               { isolationLevel: 'Serializable', maxAttempts: 3 },
             )

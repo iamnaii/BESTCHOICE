@@ -306,3 +306,22 @@ it('keeps seller bank disclosure configurable and separate from cost and bank di
   expect(canAccess(snapshot([grant(['sensitive.seller-bank.read'])]), 'sensitive.seller-bank.read', shopA)).toBe(true);
   expect(canAccess(snapshot([grant(['sensitive.seller-bank.read'])]), 'sensitive.seller-bank.read', shopB)).toBe(false);
 });
+
+
+describe('after-sales canonical repair defaults', () => {
+  it.each(['SALES', 'BRANCH_MANAGER'])(
+    'gives future %s positions repair lifecycle capabilities only',
+    (code) => {
+      const permissions = DEFAULT_ACCESS_POSITIONS.find((position) => position.code === code)!.permissions;
+      expect(permissions).toEqual(expect.arrayContaining([
+        'repair-tickets.read', 'repair-tickets.create', 'repair-tickets.update',
+      ]));
+      for (const key of [
+        'repair-tickets.approve', 'sensitive.cost.read', 'sensitive.profit.read',
+        'contract-exchanges.approve', 'defect-exchanges.approve',
+      ]) {
+        expect(permissions).not.toContain(key);
+      }
+    },
+  );
+});

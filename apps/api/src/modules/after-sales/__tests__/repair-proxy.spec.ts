@@ -6,7 +6,7 @@ const USER = { id: 'u-1', role: 'SALES', branchId: 'b-1' };
 
 function mockFile(overrides: Partial<Express.Multer.File> = {}): Express.Multer.File {
   return {
-    buffer: Buffer.from([0xff, 0xd8, 0xff, 0xe0]),
+    buffer: Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0, 0, 0, 0, 0, 0, 0, 0]),
     mimetype: 'image/jpeg',
     size: 4,
     originalname: 'a.jpg',
@@ -27,6 +27,7 @@ describe('AfterSalesRepairService', () => {
     jest.clearAllMocks();
 
     prisma = {
+      user: { findUnique: jest.fn().mockResolvedValue({ accessManaged: false }) },
       repairTicket: { findFirst: jest.fn() },
       afterSalesCase: {
         update: jest.fn(),

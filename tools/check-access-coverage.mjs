@@ -23,6 +23,7 @@ for (const entry of entries) {
   if (!['domain', 'none'].includes(policy.resource) || !policy.company) errors.push(`Missing resource contract: ${key}`);
   // Guard against accidental broad customer/public classifications of staff controllers.
   const decorators = [...entry.classDecorators, ...entry.decorators].join(' ');
+  if (/Public\(\)/.test(decorators) && ['staff', 'self-service'].includes(policy.classification)) errors.push(`Public route requires a nonstaff classification: ${key}`);
   if (policy.classification === 'customer' && /Roles\(/.test(decorators)) errors.push(`Customer route has staff role gate: ${key}`);
   if (policy.classification === 'public' && /JwtAuthGuard/.test(decorators) && !/Public\(\)/.test(decorators)) errors.push(`Public route has JWT gate: ${key}`);
 }

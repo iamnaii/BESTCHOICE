@@ -270,7 +270,7 @@ export class StaffChatGateway implements OnGatewayConnection, OnGatewayDisconnec
       userName,
       role: 'STAFF',
       isTyping: true,
-    });
+    }, client.id);
   }
 
   @SubscribeMessage(CHAT_CLIENT_EVENTS.TYPING_STOP)
@@ -287,7 +287,7 @@ export class StaffChatGateway implements OnGatewayConnection, OnGatewayDisconnec
       userName,
       role: 'STAFF',
       isTyping: false,
-    });
+    }, client.id);
   }
 
   @SubscribeMessage(CHAT_CLIENT_EVENTS.READ)

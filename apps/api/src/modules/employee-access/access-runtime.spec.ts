@@ -1,3 +1,5 @@
+import { InviteController } from '../invite/invite.controller';
+import { InviteService } from '../invite/invite.service';
 import { Controller, Get, Post, UseGuards, Injectable, CanActivate, ExecutionContext, INestApplication, Req, UnauthorizedException } from '@nestjs/common';
 import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { Test } from '@nestjs/testing';
@@ -49,17 +51,19 @@ describe('authenticated runtime HTTP boundary', () => {
   let active: boolean;
   let snapshot: any;
   let token: string;
+  let invites: { verify: jest.Mock; register: jest.Mock };
   const jwt = new JwtService({ secret: 'runtime-test-secret' });
   const dbRows = [{ id: 'a', company: 'SHOP', branchId: 'a' }, { id: 'b', company: 'SHOP', branchId: 'b' }];
   beforeEach(async () => {
     active = true;
+    invites = { verify: jest.fn().mockResolvedValue({ valid: true }), register: jest.fn().mockResolvedValue({ registered: true }) };
     globalObservedUsers.length = 0;
     snapshot = { userId: 'u', managed: true, isOwner: false, revision: 1, grants: [{ positionId: 'p', company: 'SHOP', scope: 'BRANCHES', branchIds: ['a'], permissions: ['products.read'] }] };
     ACCESS_BOUNDARIES.set('ProductsController.findOne', async req => ({ kind: 'resource', resource: dbRows.find(r => r.id === req.params.id)! as any }));
     ACCESS_BOUNDARIES.set('ProductsController.findAll', async () => ({ kind: 'collection', company: 'SHOP', execute: async scope => dbRows.filter(row => scope.tuples.some(t => t.scope === 'BRANCHES' && t.branchIds.includes(row.branchId))) }));
     const module = await Test.createTestingModule({
-      imports: [PassportModule], controllers: [ProductsController, FacebookWebhookController, EmployeeAccessController],
-      providers: [JwtStrategy, JwtAuthGuard, RolesGuard, BranchGuard, AccessPolicyService,
+      imports: [PassportModule], controllers: [ProductsController, FacebookWebhookController, EmployeeAccessController, InviteController],
+      providers: [{ provide: InviteService, useValue: invites }, JwtStrategy, JwtAuthGuard, RolesGuard, BranchGuard, AccessPolicyService,
         { provide: ConfigService, useValue: { get: () => 'runtime-test-secret' } },
         { provide: PrismaService, useValue: { user: { findUnique: async () => ({ id: 'u', name: 'Staff', role: 'SALES', isActive: active, branchId: 'legacy-wrong', accessibleCompanies: ['FINANCE'] }) }, customer: { findFirst: async () => ({ id: 'customer', name: 'Customer' }) } } },
         { provide: AccessSnapshotService, useValue: { forUser: async () => structuredClone(snapshot) } },
@@ -72,6 +76,19 @@ describe('authenticated runtime HTTP boundary', () => {
   });
   afterEach(async () => { ACCESS_BOUNDARIES.clear(); await app.close(); });
   const bearer = (token: string) => `Bearer ${token}`;
+  it('preserves anonymous invite verification and registration through the actual controller', async () => {
+    await request(app.getHttpServer()).get('/invite/verify?token=invitation-proof').expect(200, { valid: true });
+    expect(invites.verify).toHaveBeenCalledWith('invitation-proof');
+    const body = { token: 'invitation-proof', name: 'New Staff', password: 'example-password' };
+    await request(app.getHttpServer()).post('/invite/register').send(body).expect(201, { registered: true });
+    expect(invites.register).toHaveBeenCalledWith(body);
+  });
+  it('keeps staff invite management authenticated and the missing-token result intact', async () => {
+    await request(app.getHttpServer()).get('/invite/verify').expect(200, { valid: false });
+    expect(invites.verify).not.toHaveBeenCalled();
+    await request(app.getHttpServer()).get('/invite').expect(401);
+    await request(app.getHttpServer()).post('/invite').send({}).expect(401);
+  });
   it('authorizes position after authentication before legacy roles/branch, without role spoofing', async () => {
     await request(app.getHttpServer()).get('/products/a?branchId=a').set('Authorization', bearer(token)).expect(200, { allowed: true });
     expect(globalObservedUsers).toEqual([undefined]);

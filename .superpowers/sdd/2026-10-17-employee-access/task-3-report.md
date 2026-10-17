@@ -53,3 +53,25 @@ Precise remaining integrations: every `resource:'domain'` row; capability-approp
 Added access-context, policy service/interceptor/registry/manifest, socket boundary and three focused spec files; added AST inventory helper, coverage command and guide. Modified auth strategy/guards/login-refresh-me, entity scope, global module wiring, both staff gateways and auth fixtures. No schema, frontend, financial calculation or existing archive retention changes.
 
 Self-review specifically checked guard order, unknown/customer paths, managed empty grants, role impersonation, source-ID vs branch input, tuple cross-products, collection representative-resource bypass, login hydration, legacy owner compatibility, public/LIFF/tokenized surfaces, gateway current-recipient checks and misleading immutable owner restrictions. No subagents/reviewers were spawned per controller instruction. Final integrated preview/API/browser check and whole-program completion remain Tasks 4–8/controller work.
+
+## Review fix round 1 — public invite boundary and typing audience
+
+Base: `813553f1a`. Reviewer found that InviteController.verify/register had explicit `@Public()` in real controller code, but the manifest incorrectly reclassified them as staff/users.manage. The global interceptor consequently returned 403 before invite-token verification/registration could run. Changed only those two manifest rows to public/no staff capability; staff create/list/resend/revoke remain users.manage. The coverage checker now rejects the inverse mismatch (`@Public` classified staff or self-service), in addition to its existing public-with-JWT guard check.
+
+The HTTP regression uses the **actual InviteController** in the existing real Nest HTTP fixture with JWT guards and global policy/entity interceptors. InviteService is stubbed, so this proves boundary behavior rather than invitation persistence: anonymous verify/register reach their respective service methods, missing-token verification returns `{valid:false}`, and unauthenticated staff invitation list/create remain 401. The independent service's invitation-token validation is unchanged.
+
+Also restored the original staff typing audience: both start/stop now pass `client.id` to the existing boundary `exceptId` argument, excluding the sending socket while retaining current recipient authorization. Added one parameterized gateway test for each command. The existing SMTP failure-injection test now captures and asserts its expected error log, including hashed-email format and absence of raw email, and restores the spy in `finally`; production logging is unchanged.
+
+Observed RED:
+
+- `npm test --workspace=@installment/api -- --runTestsByPath src/modules/employee-access/access-runtime.spec.ts src/modules/staff-chat/staff-chat.gateway.spec.ts`: **4 failed / 10 passed**. Invite HTTP cases got 403 instead of 200; both typing tests observed the missing sender-exclusion argument.
+- `node --test tools/check-access-coverage.test.mjs`: **1 failed**. A temporary synthetic @Public controller classified staff was incorrectly accepted (exit 0 instead of 1). The fixture owns/removes its temp tree and does not alter the worktree.
+
+Observed GREEN after fixes:
+
+- `npm test --workspace=@installment/api -- --runTestsByPath src/modules/employee-access/access-runtime.spec.ts src/modules/staff-chat/staff-chat.gateway.spec.ts src/modules/auth/auth.service.spec.ts`: **3 suites / 44 tests passed**, with the expected SMTP error captured rather than printed.
+- `node --test tools/check-access-coverage.test.mjs`: **1 test passed**, exercising staff/self-service rejection and correct-public acceptance.
+- `node tools/check-access-coverage.mjs`: passed, **1,394 entries / 178 files; 1,294 staff, 48 public, 10 self-service, 11 integration, 31 customer**. The 1,092 pending domain integration rows are unchanged. Updated the guide counts/checker contract.
+- `npx tsc --noEmit -p apps/api/tsconfig.json`: passed. `git diff --check`: passed.
+
+Only affected tests/checks were run. No isolated DB rerun was needed because these fixes do not change persistence; no full local preview claim is added. The controller's unrelated plan edits were left unstaged and untouched. No subagents were spawned.

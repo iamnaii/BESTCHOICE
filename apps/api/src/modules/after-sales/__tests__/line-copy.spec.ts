@@ -126,7 +126,12 @@ describe('buildLineData — RECEIVED', () => {
         shopWarrantyEndDate: null,
         manufacturerWarrantyEndDate: null,
       },
-      repairTicket: { payer: 'CUSTOMER', estimatedCost: '1500', actualCost: null },
+      repairTicket: {
+        payer: 'CUSTOMER',
+        estimatedCostPayer: 'CUSTOMER',
+        estimatedCost: '1500',
+        actualCost: null,
+      },
     };
     const data = buildLineData(row, 'RECEIVED', '');
     expect(data.entitlementLine).toBe(
@@ -503,4 +508,23 @@ describe('buildLineData — ทุก key เป็น string เสมอ ไ�
     );
     expect(data.liffLine).toBe('ดูสถานะเคส: https://liff.line.me/x/liff/warranty');
   });
+});
+
+describe('customer estimate provenance', () => {
+  it.each([null, 'SHOP', 'SUPPLIER_CLAIM'] as const)(
+    'does not send retained %s estimates as customer quotes',
+    (provenance) => {
+      const ticket = {
+        payer: 'CUSTOMER' as const,
+        estimatedCost: '9347.25',
+        actualCost: null,
+        estimatedCostPayer: provenance,
+      };
+      for (const moment of ['RECEIVED', 'READY', 'CLOSED', 'PICKUP_REMINDER'] as const) {
+        const data = buildLineData({ ...baseRow, repairTicket: ticket }, moment, '');
+        expect(JSON.stringify(data)).not.toContain('9,347.25');
+        expect(data.costLine).toBe('สอบถามค่าซ่อมที่สาขา');
+      }
+    },
+  );
 });

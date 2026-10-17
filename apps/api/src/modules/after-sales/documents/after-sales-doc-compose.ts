@@ -1,3 +1,7 @@
+import {
+  repairEstimateIsCustomerCharge,
+  repairActualIsCustomerCharge,
+} from '../../repair-tickets/utils/repair-charge-visibility';
 import type { AfterSalesOutcome, AfterSalesStage } from '@prisma/client';
 import { formatThaiDateText } from '../../../utils/thai-date.util';
 import { PRICED_EXCHANGE_COST_LINE } from '../utils/after-sales-line-copy.util';
@@ -46,6 +50,7 @@ export interface DocSource {
   closedAt: Date | null;
   repair: {
     payer: DocPayer;
+    estimatedCostPayer?: DocPayer | null;
     estimatedCost: string | null;
     actualCost: string | null;
     supplierName: string | null;
@@ -168,7 +173,7 @@ function receiptCustomerCost(s: DocSource): string {
   if (isSameModel(s.outcome)) return 'ไม่มี';
   const payer = s.repair?.payer ?? 'CUSTOMER';
   if (payer !== 'CUSTOMER') return 'ไม่มี';
-  return s.repair?.estimatedCost
+  return s.repair && repairEstimateIsCustomerCharge(s.repair) && s.repair.estimatedCost
     ? `ประมาณ ${baht(s.repair.estimatedCost)} บาท — แจ้งให้ยืนยันก่อนซ่อม`
     : 'ร้านจะแจ้งราคาให้ยืนยันก่อนซ่อม';
 }
@@ -178,10 +183,12 @@ function handoverCustomerCost(s: DocSource): string {
   if (s.outcome === 'PRICED_EXCHANGE')
     return s.exchange?.mode === 'MEMO' ? 'ไม่มี' : PRICED_EXCHANGE_COST_LINE;
   if (s.outcome !== 'REPAIR' || !s.repair || s.repair.payer !== 'CUSTOMER') return 'ไม่มี';
-  const amount = s.repair.actualCost ?? s.repair.estimatedCost;
+  const amount =
+    (repairActualIsCustomerCharge(s.repair) ? s.repair.actualCost : null) ??
+    (repairEstimateIsCustomerCharge(s.repair) ? s.repair.estimatedCost : null);
   return amount
     ? `${baht(amount)} บาท · ใบเสร็จรับเงินออกแยกจากใบนี้`
-    : 'ตามที่แจ้งไว้ · ใบเสร็จรับเงินออกแยกจากใบนี้';
+    : 'สอบถามค่าซ่อมที่สาขา · ใบเสร็จรับเงินออกแยกจากใบนี้';
 }
 
 function rightsRows(s: DocSource): DocKv[] {

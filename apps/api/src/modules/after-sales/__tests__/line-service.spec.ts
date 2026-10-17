@@ -94,6 +94,30 @@ describe('AfterSalesLineService', () => {
   // ---------------------------------------------------------------------
   // (a) มี lineIdShop → ส่งจริง + event LINE_SENT + {status:'SENT'}
   // ---------------------------------------------------------------------
+  it.each([null, 'SHOP', 'CUSTOMER'])(
+    'uses current %s estimate provenance before notification transport',
+    async (estimatedCostPayer) => {
+      prisma.afterSalesCase.findFirst.mockResolvedValue(
+        makeCase({
+          repairTicket: {
+            payer: 'CUSTOMER',
+            estimatedCostPayer,
+            estimatedCost: new Prisma.Decimal('9347.25'),
+            actualCost: null,
+          },
+        }),
+      );
+      await service.notifyMoment('case-1', 'RECEIVED', 'actor-1');
+      const data = notifications.sendFromTemplate.mock.calls[0][1];
+      if (estimatedCostPayer === 'CUSTOMER') expect(data.entitlementLine).toContain('9,347.25');
+      else expect(JSON.stringify(data)).not.toContain('9,347.25');
+      expect(
+        prisma.afterSalesCase.findFirst.mock.calls[0][0].select.repairTicket.select
+          .estimatedCostPayer,
+      ).toBe(true);
+    },
+  );
+
   it('(a) sends via sendFromTemplate, records LINE_SENT with the exact SENT note, and returns SENT', async () => {
     const c = makeCase();
     prisma.afterSalesCase.findFirst.mockResolvedValue(c);

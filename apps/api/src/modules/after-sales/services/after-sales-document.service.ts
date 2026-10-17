@@ -187,6 +187,7 @@ export class AfterSalesDocumentService {
       repair: t
         ? {
             payer: t.payer as DocPayer,
+            estimatedCostPayer: t.estimatedCostPayer,
             estimatedCost: t.estimatedCost ? t.estimatedCost.toString() : null,
             actualCost: t.actualCost ? t.actualCost.toString() : null,
             supplierName: t.repairSupplier?.name ?? null,

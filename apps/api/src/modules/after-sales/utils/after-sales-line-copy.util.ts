@@ -1,3 +1,7 @@
+import {
+  repairEstimateIsCustomerCharge,
+  repairActualIsCustomerCharge,
+} from '../../repair-tickets/utils/repair-charge-visibility';
 // PR 3 Task 1 — ตัวประกอบข้อมูลข้อความ LINE หลังการขาย (pure util) + ค่าคงที่ event type
 // + helper สร้าง note ของ AfterSalesEvent ที่ทุก service ในเคสนี้ต้องใช้ร่วมกัน
 //
@@ -61,6 +65,7 @@ export interface LineCaseRow {
   } | null;
   repairTicket: {
     payer: 'SHOP' | 'CUSTOMER' | 'SUPPLIER_CLAIM';
+    estimatedCostPayer?: 'SHOP' | 'CUSTOMER' | 'SUPPLIER_CLAIM' | null;
     estimatedCost: string | null;
     actualCost: string | null;
   } | null;
@@ -147,8 +152,16 @@ export function buildLineData(
     row.outcome === 'PRICED_EXCHANGE' ||
     row.outcome === 'CASH_SAME_MODEL_EXCHANGE';
   const payer = row.repairTicket?.payer ?? 'SHOP';
-  const est = baht(row.repairTicket?.estimatedCost ?? null);
-  const actual = baht(row.repairTicket?.actualCost ?? null);
+  const est = baht(
+    row.repairTicket && repairEstimateIsCustomerCharge(row.repairTicket)
+      ? row.repairTicket.estimatedCost
+      : null,
+  );
+  const actual = baht(
+    row.repairTicket && repairActualIsCustomerCharge(row.repairTicket)
+      ? row.repairTicket.actualCost
+      : null,
+  );
   const w = row.warrantySnapshot?.status;
 
   // RECEIVED — สิทธิ์ที่ลูกค้าจะได้ + สิ่งที่ต้องรอ

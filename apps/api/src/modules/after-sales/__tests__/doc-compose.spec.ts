@@ -131,7 +131,11 @@ describe('composeReceiptDoc — ใบรับฝากเครื่อง', 
   });
 
   it('(b) ลูกค้าจ่าย มี/ไม่มีราคาประมาณ · ไม่ผูก LINE', () => {
-    const repair = { ...source().repair!, payer: 'CUSTOMER' as const };
+    const repair = {
+      ...source().repair!,
+      payer: 'CUSTOMER' as const,
+      estimatedCostPayer: 'CUSTOMER' as const,
+    };
     expect(
       valueOf(
         composeReceiptDoc(source({ repair: { ...repair, estimatedCost: '1500.5' } })),
@@ -460,5 +464,35 @@ describe('handoverBlockReason', () => {
         }),
       ).toBe(HANDOVER_CASH_UNSUPPORTED_MSG);
     expect(HANDOVER_CASH_UNSUPPORTED_MSG).toBe('ใบส่งมอบของการเปลี่ยนเครื่องขายสดยังไม่รองรับ');
+  });
+});
+
+describe('customer estimate provenance', () => {
+  it.each([null, 'SHOP', 'SUPPLIER_CLAIM'])(
+    'does not print retained %s estimates as customer quotes',
+    (provenance) => {
+      const s = source();
+      Object.assign(s.repair!, {
+        payer: 'CUSTOMER',
+        estimatedCost: '9347.25',
+        estimatedCostPayer: provenance,
+      });
+      for (const compose of [composeReceiptDoc, composeHandoverDoc]) {
+        const html = buildAfterSalesDocHtml(compose(s));
+        expect(html).not.toContain('9,347.25');
+        expect(valueOf(compose(s), 'ลูกค้าจ่าย')).not.toBe('ไม่มี');
+      }
+    },
+  );
+  it('prints verified customer quotes and fresh actual charges', () => {
+    const s = source();
+    Object.assign(s.repair!, {
+      payer: 'CUSTOMER',
+      estimatedCost: '9347.25',
+      estimatedCostPayer: 'CUSTOMER',
+    });
+    expect(buildAfterSalesDocHtml(composeReceiptDoc(s))).toContain('9,347.25');
+    Object.assign(s.repair!, { estimatedCostPayer: null, actualCost: '1250.50' });
+    expect(buildAfterSalesDocHtml(composeHandoverDoc(s))).toContain('1,250.50');
   });
 });

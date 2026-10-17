@@ -107,6 +107,28 @@ function setup(detail = caseDetail(), photoKeys: string[] = []) {
 }
 
 describe('AfterSalesDocumentService.render', () => {
+  it.each([null, 'SHOP', 'CUSTOMER'])(
+    'uses persisted %s estimate provenance in actual renderer input',
+    async (estimatedCostPayer) => {
+      for (const kind of ['RECEIPT', 'HANDOVER'] as const) {
+        const t = setup(
+          caseDetail({
+            stage: 'READY_FOR_PICKUP',
+            repairTicket: {
+              ...caseDetail().repairTicket,
+              payer: 'CUSTOMER',
+              estimatedCostPayer,
+              estimatedCost: '9347.25',
+            },
+          }),
+        );
+        await t.svc.render(CASE_ID, kind, { ...user, role: 'OWNER' });
+        if (estimatedCostPayer === 'CUSTOMER') expect(t.html()).toContain('9,347.25');
+        else expect(t.html()).not.toContain('9,347.25');
+      }
+    },
+  );
+
   it('(a) ใบรับฝาก: ขอบเขตผ่าน getCase → HTML มีข้อมูลเคส → PDF + event PRINTED', async () => {
     const t = setup();
     const out = await t.svc.render(CASE_ID, 'RECEIPT', user);

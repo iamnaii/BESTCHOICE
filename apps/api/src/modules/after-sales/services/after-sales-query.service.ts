@@ -73,6 +73,7 @@ const ROW_SELECT = {
       status: true,
       payer: true,
       estimatedCost: true,
+      estimatedCostPayer: true,
       actualCost: true,
       sentToRepairAt: true,
       repairedAt: true,

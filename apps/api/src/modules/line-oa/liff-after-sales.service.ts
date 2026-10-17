@@ -1,3 +1,7 @@
+import {
+  repairEstimateIsCustomerCharge,
+  repairActualIsCustomerCharge,
+} from '../repair-tickets/utils/repair-charge-visibility';
 // PR 3 Task 6 — LIFF endpoint "เคสของฉัน" (หลังการขาย) สำหรับหน้า /liff/warranty
 //
 // อ่านอย่างเดียว: ลูกค้าถูกระบุตัวตนจาก `customer.lineIdShop` (LiffTokenGuard ยืนยัน LINE ID
@@ -41,6 +45,7 @@ const SELECT = {
       ...RECONCILE_SELECT.repairTicket.select,
       payer: true,
       estimatedCost: true,
+      estimatedCostPayer: true,
       actualCost: true,
       sentToRepairAt: true,
       repairedAt: true,
@@ -226,9 +231,11 @@ function computeCostLine(
   if (repairTicket.payer === 'SHOP') return 'ไม่มี (ในประกันร้าน)';
   if (repairTicket.payer === 'SUPPLIER_CLAIM') return 'ไม่มี (เคลมศูนย์)';
 
-  const actual = baht(repairTicket.actualCost);
+  const actual = baht(repairActualIsCustomerCharge(repairTicket) ? repairTicket.actualCost : null);
   if (actual) return `ค่าซ่อม ${actual} บาท ชำระที่สาขา`;
-  const estimated = baht(repairTicket.estimatedCost);
+  const estimated = baht(
+    repairEstimateIsCustomerCharge(repairTicket) ? repairTicket.estimatedCost : null,
+  );
   if (estimated) return `ค่าซ่อมประมาณ ${estimated} บาท`;
   return 'แจ้งราคาก่อนซ่อม';
 }

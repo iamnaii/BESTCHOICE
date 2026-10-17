@@ -1,6 +1,6 @@
 # UX/UI follow-up — 17 October 2026
 
-Status: confirmed fixes verified and ready for release. This closes confirmed defects and expands deterministic acceptance coverage; it is **not certification that every action/state across the application has been exercised**. Work is based on `c5d26edcf` in `fix/appointment-field-consistency-20261016` and preserves the earlier form/dropdown changes.
+Status: confirmed application fixes verified; final release gates are tracked in [PR #1707](https://github.com/iamnaii/BESTCHOICE/pull/1707). This closes confirmed defects and expands deterministic acceptance coverage; it is **not certification that every action/state across the application has been exercised**. Work is based on `c5d26edcf` in `fix/appointment-field-consistency-20261016` and preserves the earlier form/dropdown changes.
 
 ## Confirmed fixes
 
@@ -31,18 +31,22 @@ The earlier dropdown migration remains covered by a source inventory test: raw s
 | [Page-health cache retest](page-health-cache-retest.json) | 92 passed, 0 failed/skipped/flaky, including PO; fresh disposable API/DB, no assertion changes |
 | [Mobile route inventory](mobile-summary.json) | 269 entries / 538 observations at 390 px in light/dark: no document overflow, wrong UI font or runtime root error. Ten rows have missing-token/provider API responses, retained in the summary; route visits are not action acceptance |
 | [Affected-route retest](mobile-inventory-residual.json) | 8 routes ×320/390/1440 ×light/dark = 48 observations after touch-layout changes, all rendered. Cash initial-scroll timing was subsequently covered by the final two-engine gallery |
-| [Final local check](local-check-final.json) | 39/39 checks passed on final fingerprint; 3,590 unit tests, API/Web types, zero lint errors, builds and desktop/mobile synthetic preview flows |
+| [Pre-CI local check](local-check-final.json) | 39/39 checks passed on the cache-isolation fingerprint; 3,590 unit tests, API/Web types, zero lint errors, builds and desktop/mobile synthetic preview flows |
 | [UI-source local check](local-check-ui-source.json) | 39/39 checks passed; 3,389 Web +149 Shared +52 Storefront unit tests, types, lint, builds and synthetic browser flows. Final post-cache check also passed, below |
 
 Real PostgreSQL and AppModule are used for finance/public/auth scenarios. New fixture users, contracts, payment links, invites, periods and receivables are dedicated to this runner. Provider transports are synthetic; a signed webhook request tests application processing, **not provider certification**. Fixture manifests and credentials remain in ignored `.tmp`, not this report.
 
-UI-source verified fingerprint (apps/packages/tools): `794b7d27bb26411dfc6dccc8310bed86ce7ab92011fee9b1ebde44c079672c66`. Final test-cache isolation fingerprint: `9f41b6ceddb15fdd9ed8e27f1a3cbd2be5d32e6cc2a8852b7186e34fc1fde3a3`.
+UI-source verified fingerprint (apps/packages/tools): `794b7d27bb26411dfc6dccc8310bed86ce7ab92011fee9b1ebde44c079672c66`. Test-cache isolation fingerprint: `9f41b6ceddb15fdd9ed8e27f1a3cbd2be5d32e6cc2a8852b7186e34fc1fde3a3`.
 
 Two broader E2E attempts were intentionally interrupted: one after confirming the public-route guard defect, another before fixing confirmed small touch targets. The completed full run began before the final cash-strip positioning-only adjustment; that exact change is separately covered by the final Chromium/WebKit gallery and final frozen local check. Partial results from the two interrupted attempts are not counted as acceptance. Earlier focused failures include stale promise data, the off-screen Customer 360 panel, stale drawer KPIs, and test locators; final evidence must distinguish source fixes from test-only corrections.
 
 ### Test infrastructure correction
 
 Concurrent audit/gallery servers previously shared `apps/web/node_modules/.vite`. The completed full run captured a stale optimized dependency request on the PO page. Each real-API harness server now receives an absolute cache path inside its own output directory, including its port; a standalone QA server falls back to a PID-specific path. This changes only `vite.docs-qa.config.ts` and the test launcher. Console/5xx assertions and production Vite configuration remain unchanged. Full and focused results are separate evidence, not one claimed clean full run.
+
+### CI assertion correction after the initial PR
+
+The broader CI money-invariant run found a pre-existing flaky VAT-visibility assertion: searching the whole JSON response for `686` matched `downPaymentReceivedAt` ending in `.686Z`; the actual restricted VAT fields were null. The test now checks the exact fields on contract detail/list and both PO receiving paths, includes BM and SALES, verifies nonempty arrays and owner amounts, and fixes the fixture timestamp to `.686Z` so the former collision is exercised every run. Production logic is unchanged. [Isolated retest](vat-visibility-ci-retest.json): 7/7 passed. A new local check and fresh PR CI run follow this test-only change; final release status is in PR #1707. Its source fingerprint is `ae787a241a5d52c0d60ad00733418ae81c703810913a601e49a70f3cc505eb0b`.
 
 ## Remaining limits
 
@@ -55,4 +59,4 @@ Concurrent audit/gallery servers previously shared `apps/web/node_modules/.vite`
 
 ## Local review and release
 
-Final managed preview is running at [localhost:5206](http://localhost:5206), verified against the final fingerprint above. Its API/data/AI are synthetic and it has the limited scope documented in AGENTS.md. Other module tests use disposable PostgreSQL. Release status is tracked in the pull request and deployment workflow; local verification does not itself prove a production deployment.
+Managed preview is running at [localhost:5206](http://localhost:5206), verified against the recorded application changes. The latest local check is kept in `.tmp/local-preview/check.json` and its result is recorded in PR #1707 before merge. Its API/data/AI are synthetic and it has the limited scope documented in AGENTS.md. Other module tests use disposable PostgreSQL. Release status is tracked in the pull request and deployment workflow; local verification does not itself prove a production deployment.

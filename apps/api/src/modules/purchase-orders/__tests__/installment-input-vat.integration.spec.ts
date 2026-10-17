@@ -164,11 +164,15 @@ async function seedCustomer(tag: string) {
 async function seedSignedDraftContract(tag: string, customerId: string, product: { id: string; branchId: string }) {
   const consent = await prisma.pDPAConsent.create({ data: { customerId, consentVersion: '1.0', privacyNoticeText: 'test', status: 'GRANTED', grantedAt: new Date() } });
   createdPdpaIds.push(consent.id);
+  // The VAT amount can legitimately occur in timestamps/IDs. Reproduce the CI
+  // timestamp collision so visibility checks must inspect fields, not substrings.
+  const downPaymentReceivedAt = new Date();
+  downPaymentReceivedAt.setMilliseconds(686);
   const contract = await prisma.contract.create({
     data: {
       contractNumber: `${PREFIX}${RUN}-${tag}`, customerId, productId: product.id, branchId: product.branchId, salespersonId: adminId,
       pdpaConsentId: consent.id, planType: 'STORE_WITH_INTEREST',
-      sellingPrice: dec('12000.00'), downPayment: dec('2000.00'), downPaymentMethod: 'CASH', downPaymentReceivedAt: new Date(),
+      sellingPrice: dec('12000.00'), downPayment: dec('2000.00'), downPaymentMethod: 'CASH', downPaymentReceivedAt,
       financedAmount: dec('10000.00'), interestRate: dec('0.0500'), totalMonths: 12, interestTotal: dec('6000.00'),
       storeCommission: dec('1000.00'), vatAmount: dec('1190.00'), vatPct: dec('0.0700'), monthlyPayment: dec('1515.83'), paymentDueDay: 1,
       status: 'DRAFT', workflowStatus: 'APPROVED',
@@ -316,21 +320,32 @@ describe('ก้อน 5 — ภาษีซื้อเครื่องขา
     // B ยังไม่ขาย — ไม่มี JE ของ B
     expect(await prisma.journalEntry.count({ where: { metadata: { path: ['productId'], equals: b.id } as never, deletedAt: null } })).toBe(0);
 
-    // Q5 (final review C1 / Review Focus 5): response ทั้งก้อนของ BM/SALES ต้องไม่มียอด VAT เลย — OWNER เห็น
-    const bmUser = { id: adminId, role: 'BRANCH_MANAGER', branchId: a.branchId } as never;
-    const bmContract = JSON.stringify(await contractQuery.findOne(contract.id, bmUser));
-    expect(bmContract).not.toContain('686');
-    expect(bmContract).toContain('"inputVatStatus":"CLAIMED"');
-    const bmList = JSON.stringify(await contractQuery.findAll({ search: contract.contractNumber }, bmUser));
-    expect(bmList).not.toContain('686');
-    const bmPo = JSON.stringify(await poService.findOne(po.id, 'BRANCH_MANAGER'));
-    expect(bmPo).not.toContain('686.00');
-    expect(bmPo).not.toContain('343.00');
-    expect(bmPo).toContain('"taxInvoice":{');
-    const ownerPo = JSON.stringify(await poService.findOne(po.id, 'OWNER'));
-    expect(ownerPo).toContain('686');
-    const ownerContract = JSON.stringify(await contractQuery.findOne(contract.id, { id: adminId, role: 'OWNER' } as never));
-    expect(ownerContract).toContain('"amount":"686.00"');
+    // Q5: inspect every VAT-bearing response path; unrelated timestamps/IDs can contain 686.
+    for (const role of ['BRANCH_MANAGER', 'SALES']) {
+      const user = { id: adminId, role, branchId: a.branchId } as never;
+      const hiddenContractFields = { inputVatStatus: 'CLAIMED', inputVatAmount: null, inputVatJournalEntryId: null };
+      expect(await contractQuery.findOne(contract.id, user)).toMatchObject({
+        ...hiddenContractFields, inputVat: { amount: null },
+      });
+      const list = await contractQuery.findAll({ search: contract.contractNumber }, user);
+      expect(list.data).toEqual([expect.objectContaining({ id: contract.id, ...hiddenContractFields })]);
+      const hiddenPo = await poService.findOne(po.id, role);
+      expect(hiddenPo.goodsReceivings).toHaveLength(1);
+      for (const receiving of hiddenPo.goodsReceivings) {
+        expect(receiving.taxInvoice).toMatchObject({ number: `IV-${RUN}-1` });
+        expect(receiving.items).toHaveLength(2);
+        for (const item of receiving.items) expect(item.receivedVat).toBeNull();
+      }
+      expect(hiddenPo.items).toHaveLength(2);
+      for (const item of hiddenPo.items ?? []) {
+        expect(item.receivingItems).toHaveLength(1);
+        for (const received of item.receivingItems ?? []) expect(received.receivedVat).toBeNull();
+      }
+    }
+    const ownerPo = await poService.findOne(po.id, 'OWNER');
+    expect(ownerPo.goodsReceivings.flatMap((receiving) => receiving.items.map((item) => dec(item.receivedVat!).toFixed(2))).sort()).toEqual(['343.00', '686.00']);
+    const ownerContract = await contractQuery.findOne(contract.id, { id: adminId, role: 'OWNER' } as never);
+    expect(ownerContract).toMatchObject({ inputVatStatus: 'CLAIMED', inputVatJournalEntryId: je.id, inputVat: { amount: '686.00' } });
   }, 180_000);
 
   it('2. ยกเลิกสัญญา (C-1) → ไม่กลับรายการ JE ภาษีซื้อ (ข้อ 6 บัญชี 13/10 ปรับแก้ 2.5) · สัญญายัง CLAIMED · เปิดสัญญาใหม่บนเครื่องเดิม → ไม่เคลมซ้ำ (ALREADY_CLAIMED)', async () => {
@@ -399,7 +414,7 @@ describe('ก้อน 5 — ภาษีซื้อเครื่องขา
     expect(after[0].metadata).toMatchObject({ taxInvoiceNumber: `IV-${RUN}-3X` });
     // Q5 — ผู้บันทึกครั้งแรกเป็น BRANCH_MANAGER: บันทึกได้แต่ไม่เห็นยอด ⇒ claimed[].amount = null (ยอดจริงอยู่ใน JE/คอลัมน์สัญญา)
     expect(out.claimed[0].amount).toBeNull();
-    expect(JSON.stringify(out)).not.toContain('686');
+    expect(out.claimed.map((claim) => claim.amount)).toEqual([null]);
   }, 180_000);
 
   it('4. ผู้จัดจำหน่ายไม่จด VAT → receivedVat 0 · เปิดสัญญา = NOT_ELIGIBLE เหตุผล · ไม่มี JE · ไม่มี Todo · บันทึกใบกำกับถูกปฏิเสธ', async () => {

@@ -9,4 +9,6 @@ Reviewers: existing `chat_rail_review` and `shared_field_review` agents; parent 
 
 - Final cache-isolation patch: 0 Critical / 0 Warning; absolute per-run/port path, PID fallback and unchanged production config/assertions confirmed.
 
+- CI VAT visibility flake correction: no blocker; assertions now cover all current redacted fields and both PO paths with nonempty cardinalities, BM plus SALES, positive owner values and deterministic timestamp collision. Production logic unchanged.
+
 Scope: targeted review of changed behaviors and high-impact shared components. This is not a claim that every line in the accumulated system-wide migration or every role/action state has been independently reviewed.

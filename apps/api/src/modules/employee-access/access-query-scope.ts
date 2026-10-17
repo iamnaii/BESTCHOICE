@@ -59,3 +59,10 @@ export function inspectionTemplateScopeWhere(scope: CollectionScope): Prisma.Ins
     { accessCompanyCode: null },
   ] };
 }
+
+/** Stable original source plus every additional currently linked product. A later
+ * inspection may replace Product.inspectionId without deleting historical access. */
+export function inspectionScopeWhere(scope: CollectionScope, product = productScopeWhere(scope)): Prisma.InspectionWhereInput {
+  const liveProduct: Prisma.ProductWhereInput = { AND: [{ deletedAt: null }, product] };
+  return { deletedAt: null, sourceProduct: { is: liveProduct }, products: { every: liveProduct } };
+}

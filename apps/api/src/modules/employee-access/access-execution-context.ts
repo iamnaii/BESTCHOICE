@@ -4,7 +4,7 @@ import { Prisma } from '@prisma/client';
 import { AccessSnapshot } from '@installment/shared';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CollectionScope } from './access-policy.registry';
-import { productScopeSql, productScopeWhere, scopeWhere, inspectionTemplateScopeWhere } from './access-query-scope';
+import { productScopeSql, productScopeWhere, scopeWhere, inspectionTemplateScopeWhere, inspectionScopeWhere } from './access-query-scope';
 
 export interface DomainAccessExecution {
   readonly snapshot: AccessSnapshot;
@@ -41,15 +41,24 @@ export function domainAccessClient(base: PrismaService): PrismaService {
   const product = { AND: [productScopeWhere(scope), execution.authorizedProductIds ? { id: { in: [...execution.authorizedProductIds] } } : {}] };
   const procurement = productScopeWhere({ ...scope, permission: 'purchase-orders.read', tuples: permissionScopes({ id: scope.userId, access: execution.snapshot }, 'purchase-orders.read', scope.company) });
   const readOperations = new Set(['findMany', 'findFirst', 'findUnique', 'findUniqueOrThrow', 'findFirstOrThrow', 'count', 'aggregate', 'groupBy']);
-  const predicates: Record<string, unknown> = !execution.scopeReads ? {} : {
+  const scopedPredicates = {
     product,
     inspectionTemplate: inspectionTemplateScopeWhere(scope),
     stockTransfer: transferScopeWhere(scope),
-    inspection: { products: { some: product, every: product } },
+    inspection: inspectionScopeWhere(scope, product),
     branch: { products: { some: product } },
     purchaseOrder: { products: { some: procurement, every: procurement }, goodsReceivings: { every: { items: { every: { product: { is: procurement } } } } } },
     supplier: { products: { some: product } },
+  } satisfies {
+    product: Prisma.ProductWhereInput;
+    inspectionTemplate: Prisma.InspectionTemplateWhereInput;
+    stockTransfer: Prisma.StockTransferWhereInput;
+    inspection: Prisma.InspectionWhereInput;
+    branch: Prisma.BranchWhereInput;
+    purchaseOrder: Prisma.PurchaseOrderWhereInput;
+    supplier: Prisma.SupplierWhereInput;
   };
+  const predicates: Record<string, unknown> = execution.scopeReads ? scopedPredicates : {};
   return new Proxy(tx as unknown as PrismaService, {
     get(target, key) {
       if (key === '$transaction') return async (work: unknown) => {
@@ -64,7 +73,7 @@ export function domainAccessClient(base: PrismaService): PrismaService {
           const method = Reflect.get(delegate, operation);
           if (typeof method !== 'function') return method;
           if (!readOperations.has(String(operation))) return method.bind(delegate);
-          return (args: Record<string, any> = {}) => method.call(delegate, {
+          return (args: { where?: Record<string, unknown>; [key: string]: unknown } = {}) => method.call(delegate, {
             ...args,
             where: { ...args.where, AND: [...(Array.isArray(args.where?.AND) ? args.where.AND : [args.where?.AND ?? {}]), predicates[key]] },
           });

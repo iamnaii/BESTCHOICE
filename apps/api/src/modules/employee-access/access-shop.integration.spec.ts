@@ -1,5 +1,7 @@
 import { PrismaClient } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { Server } from 'node:http';
 import { Test } from '@nestjs/testing';
 import { APP_INTERCEPTOR } from '@nestjs/core';
 import { ExecutionContext, INestApplication, ValidationPipe } from '@nestjs/common';
@@ -45,9 +47,14 @@ async function grant(permissions: PermissionKey[], branches: string[], company: 
 async function createProduct(branchId: string, extra: Record<string, any> = {}) {
   return db.product.create({ data: { name: 'Fixture', brand: 'Apple', model: 'Phone', category: 'PHONE_USED', costPrice: 9876, branchId, ...extra } });
 }
-const get = (path: string) => request(app.getHttpServer()).get(path).set('x-test-user', actor);
-const post = (path: string) => request(app.getHttpServer()).post(path).set('x-test-user', actor);
-const patch = (path: string) => request(app.getHttpServer()).patch(path).set('x-test-user', actor);
+function fixtureRequest(test: request.Test, path: string): request.Test {
+  return test.set('x-test-user', actor).expect('x-access-test-instance', suffix).on('response', (response: request.Response) => {
+    if (response.status === 404 || response.status >= 500) console.error('Unexpected fixture HTTP response', { path, status: response.status, headers: response.headers, body: response.body });
+  });
+}
+const get = (path: string) => fixtureRequest(request(app.getHttpServer()).get(path), path);
+const post = (path: string) => fixtureRequest(request(app.getHttpServer()).post(path), path);
+const patch = (path: string) => fixtureRequest(request(app.getHttpServer()).patch(path), path);
 
 beforeAll(async () => {
   for (const companyCode of ['SHOP', 'FINANCE']) await db.companyInfo.upsert({ where: { companyCode }, create: { companyCode, nameTh: 'Fixture', taxId: 'TEST', address: 'TEST', directorName: 'TEST' }, update: {} });
@@ -82,12 +89,52 @@ beforeAll(async () => {
     return true;
   } }).overrideGuard(RolesGuard).useValue({ canActivate: () => true }).overrideGuard(BranchGuard).useValue({ canActivate: () => true }).compile();
   app = module.createNestApplication();
+  app.use((_req: unknown, res: { setHeader(name: string, value: string): void }, next: () => void) => { res.setHeader('x-access-test-instance', suffix); next(); });
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
-  await app.init();
+  await app.listen(0, '127.0.0.1');
 }, 30000);
 afterAll(async () => { ACCESS_BOUNDARIES.clear(); await app?.close(); await db.$disconnect(); });
 
 test('registers all 49 concrete product/QC boundaries', () => expect(ACCESS_BOUNDARIES.size).toBe(49));
+test('HTTP fixture keeps one owned loopback listener across requests', async () => {
+  const server: unknown = app.getHttpServer();
+  if (!(server instanceof Server)) throw new Error("Expected owned HTTP server");
+  const address = server.address();
+  expect(address).toMatchObject({ address: '127.0.0.1', family: 'IPv4' });
+  for (let i = 0; i < 25; i++) {
+    await get('/products?limit=1').expect(200);
+    expect(server.address()).toEqual(address);
+  }
+});
+test('stable source migration preserves preexisting orphan rows and rejects new orphan writes', async () => {
+  const template = await db.inspectionTemplate.create({ data: { name: 'Legacy orphan', deviceType: 'PHONE' } });
+  await db.$executeRawUnsafe('ALTER TABLE inspections DROP CONSTRAINT inspections_product_id_fkey');
+  const orphan = await db.inspection.create({ data: { productId: randomUUID(), templateId: template.id, inspectorId: owner } });
+  await db.$executeRawUnsafe(readFileSync('prisma/migrations/20261025000000_inspection_stable_source/migration.sql', 'utf8'));
+  try {
+    expect(await db.inspection.findUnique({ where: { id: orphan.id } })).not.toBeNull();
+    await expect(db.inspection.create({ data: { productId: randomUUID(), templateId: template.id, inspectorId: owner } })).rejects.toThrow();
+    await get(`/inspections/${orphan.id}`).expect(403);
+    expect((await get(`/inspections?productId=${orphan.productId}`).expect(200)).body).toEqual([]);
+  } finally {
+    await db.inspection.delete({ where: { id: orphan.id } });
+  }
+});
+test('inventory reads and product reads are independent capabilities', async () => {
+  await get(`/products/${productA}`).expect(200);
+  await get('/products/stock').expect(403);
+  await get('/products/stock/dashboard').expect(403);
+  await grant(['inventory.read'], [branchA]);
+  await db.accessPosition.update({ where: { id: managerPosition }, data: { isActive: false } });
+  try {
+    await get(`/products/${productA}`).expect(403);
+    const stock = await get('/products/stock').expect(200);
+    expect(stock.body.summary.every((row: { branch: { id: string } }) => row.branch.id === branchA)).toBe(true);
+    await get('/products/stock/dashboard').expect(200);
+  } finally {
+    await db.accessPosition.update({ where: { id: managerPosition }, data: { isActive: true } });
+  }
+});
 test('real SQL and Prisma predicates select identical original tuples and isolate FINANCE ownership', async () => {
   const snapshot = await snapshots.forUser(actor);
   const scope = { userId: actor, company: 'SHOP' as const, permission: 'products.read' as const, tuples: permissionScopes({ id: actor, access: snapshot }, 'products.read', 'SHOP') };
@@ -227,7 +274,8 @@ test('scoped pricing authority edits price rows without product creation or dele
 });
 
 test('all collection adapters preserve usable response shapes with scoped underlying queries', async () => {
-  for (const path of ['/products/stock', '/products/stock/dashboard', '/products/brands', '/products/accessory-skus', '/products/warranty/expiring', '/products/supplier-performance', '/products/transfers/pending', '/products/transfers/in-transit', '/products/transfers/history', '/inspections', '/inspection-templates']) await get(path).expect(200);
+  await grant(['inventory.read'], [branchB]);
+  for (const path of ['/products/stock', '/products/stock/dashboard', '/products/brands', '/products/accessory-skus', '/products/warranty/expiring', '/products/supplier-performance', '/products/transfers/pending', '/products/transfers/in-transit', '/products/transfers/history', '/inspections', '/inspection-templates']) await get(path).expect(response => { expect({ path, status: response.status, body: response.status === 200 ? undefined : response.body }).toEqual({ path, status: 200, body: undefined }); });
   const dashboard = await get('/products/stock/dashboard').expect(200);
   expect(dashboard.body.marginOverview).toBeNull();
   expect(dashboard.body.stockAging.every((row: any) => row.value === null)).toBe(true);
@@ -371,6 +419,43 @@ test('owner collection executors also honor requested persisted company', async 
   expect(grouped.body.total).toBe(1);
   expect(grouped.body.data[0].id).toBe(financeProduct);
 });
+test('reinspection preserves historical list and template counts for scoped actors and owners', async () => {
+  const template = await db.inspectionTemplate.create({ data: { name: 'History reference', deviceType: 'PHONE' } });
+  const first = await post('/inspections').send({ productId: productA, templateId: template.id }).expect(201);
+  const second = await post('/inspections').send({ productId: productA, templateId: template.id }).expect(201);
+  await request(app.getHttpServer()).post('/inspections').set('x-test-user', owner).send({ productId: productC, templateId: template.id }).expect(201);
+  await request(app.getHttpServer()).post('/inspections?company=FINANCE').set('x-test-user', owner).send({ productId: financeProduct, templateId: template.id }).expect(201);
+  const rows = await get(`/inspections?productId=${productA}`).expect(response => { expect({ status: response.status, body: response.body }).toEqual({ status: 200, body: expect.any(Array) }); });
+  expect(rows.body.map((row: { id: string }) => row.id)).toEqual(expect.arrayContaining([first.body.id, second.body.id]));
+  await get(`/inspections/${first.body.id}`).expect(200);
+  const counts = async (user: string) => {
+    const response = await request(app.getHttpServer()).get('/inspection-templates').set('x-test-user', user).expect(200);
+    return response.body.find((row: { id: string }) => row.id === template.id)._count.inspections;
+  };
+  expect(await counts(actor)).toBe(2);
+  expect(await counts(owner)).toBe(3);
+  const ownerRows = await request(app.getHttpServer()).get(`/inspections?productId=${productA}`).set('x-test-user', owner).expect(200);
+  expect(ownerRows.body.map((row: { id: string }) => row.id)).toEqual(expect.arrayContaining([first.body.id, second.body.id]));
+  const previous = await db.product.findUniqueOrThrow({ where: { id: productB }, select: { inspectionId: true } });
+  await db.product.update({ where: { id: productB }, data: { inspectionId: first.body.id } });
+  try {
+    const restricted = await get(`/inspections?productId=${productA}`).expect(200);
+    expect(restricted.body.some((row: { id: string }) => row.id === first.body.id)).toBe(false);
+    await get(`/inspections/${first.body.id}`).expect(403);
+    expect(await counts(actor)).toBe(1);
+  } finally {
+    await db.product.update({ where: { id: productB }, data: previous });
+  }
+  await db.product.update({ where: { id: productA }, data: { deletedAt: new Date() } });
+  try {
+    expect((await get(`/inspections?productId=${productA}`).expect(200)).body).toEqual([]);
+    await get(`/inspections/${first.body.id}`).expect(403);
+    expect(await counts(actor)).toBe(0);
+  } finally {
+    await db.product.update({ where: { id: productA }, data: { deletedAt: null } });
+  }
+});
+
 test('all 49 adapters have successful real HTTP execution and deny a no-grants principal', async () => {
   expect([...ACCESS_BOUNDARIES.keys()].filter(route => !succeeded.has(route))).toEqual([]);
   const noGrants = await db.user.create({ data: { name: 'No grants', email: `${suffix}-none@test.invalid`, password: 'unused', role: 'SALES', accessManaged: true } });

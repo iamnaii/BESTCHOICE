@@ -1,4 +1,4 @@
-import { productScopeWhere } from '../employee-access/access-query-scope';
+import { inspectionScopeWhere } from '../employee-access/access-query-scope';
 import { domainAccessClient, currentDomainAccess } from '../employee-access/access-execution-context';
 import { Injectable, NotFoundException, BadRequestException, Optional } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
@@ -22,9 +22,10 @@ export class InspectionsService {
   // === Template Management ===
 
   async findAllTemplates() {
+    const execution = currentDomainAccess();
     return this.prisma.inspectionTemplate.findMany({
       orderBy: { createdAt: 'desc' },
-      include: { _count: { select: { items: { where: { deletedAt: null } }, inspections: currentDomainAccess() && !currentDomainAccess()!.snapshot.isOwner ? { where: { products: { some: productScopeWhere(currentDomainAccess()!.scope), every: productScopeWhere(currentDomainAccess()!.scope) } } } : true } } },
+      include: { _count: { select: { items: { where: { deletedAt: null } }, inspections: execution ? { where: inspectionScopeWhere(execution.scope) } : true } } },
     });
   }
 

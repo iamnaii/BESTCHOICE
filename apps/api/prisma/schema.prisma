@@ -2109,6 +2109,7 @@ model Product {
   branch     Branch         @relation(fields: [branchId], references: [id])
   ownedBy    CompanyInfo?   @relation("ProductOwnership", fields: [ownedByCompanyId], references: [id])
   inspection Inspection?    @relation(fields: [inspectionId], references: [id])
+  inspectionHistory Inspection[] @relation("InspectionSourceProduct")
 
   prices               ProductPrice[]
   contracts            Contract[]
@@ -2466,6 +2467,7 @@ model Inspection {
   template  InspectionTemplate @relation(fields: [templateId], references: [id])
   inspector User               @relation(fields: [inspectorId], references: [id])
   products  Product[]
+  sourceProduct Product @relation("InspectionSourceProduct", fields: [productId], references: [id], onDelete: Restrict)
 
   results InspectionResult[]
 

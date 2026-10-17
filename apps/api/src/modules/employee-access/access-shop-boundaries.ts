@@ -66,12 +66,13 @@ export const SHOP_PRODUCT_BOUNDARY_ROUTES = [
 
 const validation = new ValidationPipe({ transform: true, whitelist: true });
 /** Explicit company selection is a filter, never proof of ownership. */
-export function requestedAccessCompany(req: any): Company {
+export function requestedAccessCompany(req: { query?: Record<string, unknown>; headers?: Record<string, unknown> }): Company {
   const value = req.query?.company ?? req.headers?.['x-company-scope'] ?? 'SHOP';
-  if (typeof value !== 'string' || !['SHOP', 'FINANCE'].includes(value.toUpperCase())) throw new BadRequestException('ส่วนงานไม่ถูกต้อง');
-  return value.toUpperCase() as Company;
+  const company = typeof value === 'string' ? value.toUpperCase() : undefined;
+  if (company !== 'SHOP' && company !== 'FINANCE') throw new BadRequestException('ส่วนงานไม่ถูกต้อง');
+  return company;
 }
-function textFilter(query: any, key: string): string | undefined {
+function textFilter(query: Record<string, unknown>, key: string): string | undefined {
   const value = query[key];
   if (value === undefined) return undefined;
   if (typeof value !== 'string') throw new BadRequestException(`ตัวกรอง ${key} ไม่ถูกต้อง`);
@@ -211,38 +212,53 @@ export class AccessShopBoundaries implements OnModuleInit {
       return { company, resources, productIds: ids } satisfies ResolvedAccessResources;
     };
   }
-  private async collection(route: string, req: any): Promise<unknown> {
+  private async collection(route: typeof SHOP_PRODUCT_BOUNDARY_ROUTES[number], req: {
+    query?: Record<string, unknown>;
+    params: Record<string, string>;
+    user: Parameters<ProductsController['findAll']>[1];
+  }): Promise<unknown> {
     const query = req.query ?? {};
     if (Object.keys(query).some(key => key.includes('[') || key.includes(']'))) throw new BadRequestException('รูปแบบตัวกรองไม่ถูกต้อง');
     for (const key of ['search', 'branchId', 'category', 'brand', 'supplierId', 'model', 'storage', 'deviceOrigin', 'compatibleWithProductId', 'startDate', 'endDate', 'isCompleted', 'productId', 'days']) textFilter(query, key);
-    if (query.status !== undefined && typeof query.status !== 'string' && !(Array.isArray(query.status) && query.status.every((s: unknown) => typeof s === 'string'))) throw new BadRequestException('สถานะไม่ถูกต้อง');
-    if (query.status !== undefined && query.status !== '') {
-      const statuses = (Array.isArray(query.status) ? query.status : [query.status]).flatMap((value: string) => value.split(',')).map((value: string) => value.trim()).filter(Boolean);
+    const rawStatus = query.status;
+    let status: string | string[] | undefined;
+    if (typeof rawStatus === 'string') status = rawStatus;
+    else if (Array.isArray(rawStatus) && rawStatus.every((value): value is string => typeof value === 'string')) status = rawStatus;
+    else if (rawStatus !== undefined) throw new BadRequestException('สถานะไม่ถูกต้อง');
+    if (status !== undefined && status !== '') {
+      const statuses = (Array.isArray(status) ? status : [status]).flatMap(value => value.split(',')).map((value: string) => value.trim()).filter(Boolean);
       const allowed: string[] = Object.values(route === 'ProductsController.getTransferHistory' ? TransferStatus : ProductStatus);
       if (statuses.some((status: string) => !allowed.includes(status)) || (route !== 'ProductsController.findAll' && statuses.length !== 1)) throw new BadRequestException('สถานะไม่ถูกต้อง');
     }
-    if (query.category && !(Object.values(ProductCategory) as string[]).includes(query.category)) throw new BadRequestException('หมวดหมู่สินค้าไม่ถูกต้อง');
-    for (const key of ['startDate', 'endDate']) if (query[key] && !Number.isFinite(Date.parse(query[key]))) throw new BadRequestException('วันที่ไม่ถูกต้อง');
-    if (query.isCompleted !== undefined && !['true', 'false'].includes(query.isCompleted)) throw new BadRequestException('สถานะการตรวจไม่ถูกต้อง');
-    const pagination = await validation.transform(query, { type: 'query', metatype: StockListPaginationDto });
-    const products = () => this.modules.get(ProductsController, { strict: false });
+    const category = textFilter(query, 'category');
+    if (category && !(Object.values(ProductCategory) as string[]).includes(category)) throw new BadRequestException('หมวดหมู่สินค้าไม่ถูกต้อง');
+    for (const key of ['startDate', 'endDate']) {
+      const date = textFilter(query, key);
+      if (date && !Number.isFinite(Date.parse(date))) throw new BadRequestException('วันที่ไม่ถูกต้อง');
+    }
+    const isCompleted = textFilter(query, 'isCompleted');
+    if (isCompleted !== undefined && !['true', 'false'].includes(isCompleted)) throw new BadRequestException('สถานะการตรวจไม่ถูกต้อง');
+    const pagination: unknown = await validation.transform(query, { type: 'query', metatype: StockListPaginationDto });
+    if (!(pagination instanceof StockListPaginationDto)) throw new BadRequestException('รูปแบบการแบ่งหน้าไม่ถูกต้อง');
+    const days = textFilter(query, 'days');
+    const products = () => this.modules.get<ProductsController>(ProductsController, { strict: false });
     switch (route) {
-      case 'ProductsController.findAll': return products().findAll(pagination, req.user, query.search, query.branchId, query.status, query.category, query.brand, query.supplierId, query.model, query.storage, query.deviceOrigin, query.compatibleWithProductId);
-      case 'ProductsController.getStock': return products().getStock(pagination, req.user, query.search, query.branchId, query.status, query.category, query.brand);
-      case 'ProductsController.getStockDashboard': return products().getStockDashboard(query.branchId);
+      case 'ProductsController.findAll': return products().findAll(pagination, req.user, textFilter(query, 'search'), textFilter(query, 'branchId'), status, textFilter(query, 'category'), textFilter(query, 'brand'), textFilter(query, 'supplierId'), textFilter(query, 'model'), textFilter(query, 'storage'), textFilter(query, 'deviceOrigin'), textFilter(query, 'compatibleWithProductId'));
+      case 'ProductsController.getStock': return products().getStock(pagination, req.user, textFilter(query, 'search'), textFilter(query, 'branchId'), textFilter(query, 'status'), textFilter(query, 'category'), textFilter(query, 'brand'));
+      case 'ProductsController.getStockDashboard': return products().getStockDashboard(textFilter(query, 'branchId'));
       case 'ProductsController.getBrands': return products().getBrands();
-      case 'ProductsController.findAccessorySkus': return products().findAccessorySkus(req.user, query.search, query.limit);
+      case 'ProductsController.findAccessorySkus': return products().findAccessorySkus(req.user, textFilter(query, 'search'), textFilter(query, 'limit'));
       case 'ProductsController.getWarrantyExpiring': {
-        if (query.days !== undefined && (!/^\d+$/.test(query.days) || Number(query.days) > 3650)) throw new BadRequestException('จำนวนวันไม่ถูกต้อง');
-        return products().getWarrantyExpiring(query.days, query.branchId);
+        if (days !== undefined && (!/^\d+$/.test(days) || Number(days) > 3650)) throw new BadRequestException('จำนวนวันไม่ถูกต้อง');
+        return products().getWarrantyExpiring(days, textFilter(query, 'branchId'));
       }
       case 'ProductsController.getSupplierPerformance': return products().getSupplierPerformance();
-      case 'ProductsController.getPendingTransfers': return products().getPendingTransfers(query.branchId);
-      case 'ProductsController.getInTransitTransfers': return products().getInTransitTransfers(query.branchId);
-      case 'ProductsController.getTransferHistory': return products().getTransferHistory(pagination, query.branchId, query.status, query.startDate, query.endDate);
-      case 'InspectionsController.findAllInspections': return this.modules.get(InspectionsController, { strict: false }).findAllInspections(query.isCompleted, query.productId);
-      case 'InspectionsController.findAllTemplates': return this.modules.get(InspectionsController, { strict: false }).findAllTemplates();
-      case 'ProductPhotosController.getPhotos': return this.modules.get(ProductPhotosController, { strict: false }).getPhotos(req.params.productId);
+      case 'ProductsController.getPendingTransfers': return products().getPendingTransfers(textFilter(query, 'branchId'));
+      case 'ProductsController.getInTransitTransfers': return products().getInTransitTransfers(textFilter(query, 'branchId'));
+      case 'ProductsController.getTransferHistory': return products().getTransferHistory(pagination, textFilter(query, 'branchId'), textFilter(query, 'status'), textFilter(query, 'startDate'), textFilter(query, 'endDate'));
+      case 'InspectionsController.findAllInspections': return this.modules.get<InspectionsController>(InspectionsController, { strict: false }).findAllInspections(isCompleted, textFilter(query, 'productId'));
+      case 'InspectionsController.findAllTemplates': return this.modules.get<InspectionsController>(InspectionsController, { strict: false }).findAllTemplates();
+      case 'ProductPhotosController.getPhotos': return this.modules.get<ProductPhotosController>(ProductPhotosController, { strict: false }).getPhotos(req.params.productId);
       default: throw new ForbiddenException('ไม่มีตัวดำเนินการที่กำหนดขอบเขต');
     }
   }

@@ -8,7 +8,7 @@ At Task 3: **1,394 entrypoints in 178 files**: 1,294 staff, 48 public, 31 custom
 
 ## Current implementation checkpoint
 
-The sections below record contracts as their units were introduced; this checkpoint supersedes historical remaining-work counts. Through the independently reviewed customer-derived/history/export unit (`e2a7e1d59`), **229 SHOP domain adapters** have actual authorized-success and denial evidence:
+The sections below record contracts as their units were introduced; this checkpoint supersedes historical remaining-work counts. Through the independently reviewed customer contact-enrichment unit (`ba54a9692`), **231 SHOP domain adapters** have actual authorized-success and denial evidence:
 
 | Reviewed unit | Adapters | Final implementation commit |
 | --- | ---: | --- |
@@ -27,8 +27,9 @@ The sections below record contracts as their units were introduced; this checkpo
 | Customer/contact canonical writes | 4 | `52b92e244` |
 | Customer/contact basic queries | 6 | `bf7b21b57` |
 | Customer derived histories / analytics / export | 11 | `e2a7e1d59` |
+| Customer contact enrichment | 2 | `ba54a9692` |
 
-Reviewed exchange source/transaction and customer-quote provenance producers add **zero exposed routes** by themselves. All 24 after-sales and 15 repair routes are independently reviewed, with the exact 39 registrations reconciled against their actual execution reports. The remaining shared customer/contact/journey 10, residual SHOP 39, FINANCE 544, operations 267 and audit 4 domain allocations remain, plus the separately inventoried 202 staff routes without domain resource classification. These 202 include privileged settings/provisioning and ordinary reads; classification does not establish their appropriate current capability/source boundary. Seven employee-access owner-management routes were reviewed in Task 2, separately from the 229 SHOP count.
+Reviewed exchange source/transaction and customer-quote provenance producers add **zero exposed routes** by themselves. All 24 after-sales and 15 repair routes are independently reviewed, with the exact 39 registrations reconciled against their actual execution reports. The remaining shared customer/contact/journey 8, residual SHOP 39, FINANCE 544, operations 267 and audit 4 domain allocations remain, plus the separately inventoried 202 staff routes without domain resource classification. These 202 include privileged settings/provisioning and ordinary reads; classification does not establish their appropriate current capability/source boundary. Seven employee-access owner-management routes were reviewed in Task 2, separately from the 231 SHOP count.
 
 The receiving lookup increased the inventory to **1,395 classified HTTP/socket entrypoints**, including 1,093 domain rows. The scanner does not enumerate Cron/queue/bootstrap methods; those require their own source, system/initiator, current employee authority, recipient and durable-evidence reconciliation. Existing actor-fixture HTTP tests do not establish actual JWT/guard/browser integration. Full audit, immutable approvals, UI, whole-program coverage/performance and final local:check/verified preview remain pending. No real account migration is authorized by this checkpoint.
 
@@ -105,6 +106,14 @@ Export requires `customers.export` and independent source/sensitive rights, uses
 Evidence: owned-listener42/42 including11 positives/11 denials and300 fresh denial requests; final test-only style correction has a separate1/42 focused pass exercising those300 requests. Query6selected10/57 and canonical57/5suites passed; types/lint/static checks passed. Every final HTTP response carried the intended app marker. Earlier unmarked200/501 responses remain causally unexplained; a later reproduced404 without the marker proved only that response missed the intended app. No broader causal claim is made.
 
 Independent review found0Critical/0Important and2Minor items: redundant/quadratic receipt preparation is assigned to4.4, and expected-error/forceExit runner noise to final hygiene. Actual JWT/guards, UI/exports, whole-program source/audit closure and realistic load remain their owning4.2–4.4/5/7/8 gates. This checkpoint does not authorize real account migration or claim program completion.
+
+### Reviewed customer contact enrichment
+
+Task4.1.5.3.1 is independently reviewed through `ba54a9692`, adding exactly fillContact/updateContact. Both require current customers.read/update on every genuine shared-identity source; case/room read assignment does not grant identity mutation. Canonical phone locks, normalization, encryption, same-primary repair and secondary fallback remain. Managed acknowledgements contain ID/changed-field names and, for skip-tracing, PRIMARY/SECONDARY/null storage outcome; no contact values or hidden duplicate owner are returned.
+
+Required mutation audit and genuine absent-to-present CONTACT_ADDED evidence use the same owned transaction. Late evidence failure rolls all of them back. The exact two managed handlers also use safe generic success/error request metadata in the outer AuditInterceptor; request logs are distinct from atomic mutation proof. Arbitrary reason/name/error text is excluded. `reasonProvided` is interim metadata only: Task5/UI7 must implement meaningful safe reason recording, retrieval and denial before whole-program rollout. No claim is made that omitted text can be recovered.
+
+Evidence: final interceptor amendment is covered by42 enrichment HTTP/database tests and85 legacy/audit tests. Earlier41 basic-write,57 query and42 derived executions remain separate covering evidence (267 across12 suites overall). API/shared lint, shared build/types and static classification checks pass. Independent review approved spec/quality with0Critical/0Important and1 disclosed logger/forceExit hygiene Minor assigned to final8. Actual full guards/JWT, UI and running preview remain later gates; this unit does not enable merge/document routes or authorize real account migration.
 
 ## Authentication order and compatibility
 

@@ -483,6 +483,30 @@ Checkpoint R60–65 is recorded in the progress ledger and `task-4.1.5.4-checkpo
 - [ ] ImportedSales remains historical POS statistics without journals on read. Verify server-owned TOOLTIFY provenance before explicit central SHOP COMPANY authority; never guess a branch from shopLabel, salespersonName or actor. Unknown source denies. Apply independent cost/profit policy to rows, buckets and totals. No production import/backfill.
 - [ ] Focused current-authority/financial/file regressions, types/lint/coverage and precise producer/UI/Tasks5/6/8 handoff; self-review/report/commit. Root independently reviews before counting14 complete.
 
+#### Serial execution of Task4.1.6.1
+
+Checkpoint R67–73 is recorded in the progress ledger and task-4.1.6.1-checkpoint-rulings.md. Parent14 splits into read/source7 and money/file7. Stable cost-complete financial decisions coexist with useful blind count; actual owner receipt is distinct from configurable OWNER_HOLD deposit. Original tuples/current source history remain binding, and cost-only purchasing remains distinct from profit-report rights. New action templates never mutate saved positions.
+
+### Task 4.1.6.1.1: Tender source/read projections and imported history
+
+**Files:** Reviewed shared executor/source/projector, canonical ShopTender read services, ImportedSales provenance/service, ordinary catalog/shared contracts. Exactly7 domain routes: ShopTendersController.getDailySummary/getCashCloseStatus/getCashCloseHistory/getCashCloseOverview/getCashCloseReminder and ImportedSalesController.list/summary.
+
+- [ ] Owned persistent marked PostgreSQL/Nest HTTP RED/GREEN all7 with useful positive/no-grant/foreign/current/original-tuple controls; preserve actual archived money provenance, finite kind/document/reversal correlation and scope before limits/counts/groups/duplicate probes.
+- [ ] Publish reusable exact-client source-complete versus visible-source contracts for later writes. Preserve canonical full drawer math; missing cost yields stable nullable expected/variance/net/holdings/settlement projections, never filtered subtotal presented as complete. Counter selectors use current configured action scope, never historical operator/legacy role as ASSIGNED.
+- [ ] Add R67 ordinary count/confirm/deposit/deposit-owner-hold capabilities and future-only template changes, no automatic saved-grant migration. Their writes/streams remain childB scope and receive zero completion credit here.
+- [ ] Imported genuine TOOLTIFY uses explicit central SHOP COMPANY, immutable source/no insert default/no backfill, unknown excluded before rows/buckets/totals. Cost requires cost; profit requires both cost and profit; preserve UTC months/Decimal/statistics-only semantics. No formula/real importer/journal change.
+- [ ] Exact safe request projection, shared nullable/API contract and UI7/source-B/audit5/closure4.4/final8 handoff. Relevant canonical regressions/types/lint/coverage, self-review/report/commit and independent gate; root owns full JWT/browser/localcheck/preview8.
+
+### Task 4.1.6.1.2: Cash lifecycle, private slips and parent14 closure
+
+**Files:** ChildA source/projection contract, canonical ShopCashClose/Holding state machine, immutable narrow slip evidence/storage hooks and actual SHOP journal/audit/effect paths. Exactly7 domain routes: countCashClose, confirmCashClose, sendBackCashClose, attachDepositSlip, createCashDeposit, getCloseDepositSlip and getCashDepositSlip.
+
+- [ ] Owned marked PostgreSQL/Nest HTTP RED/GREEN all7 with useful blind count and configured reviewer/executor positives, absent/foreign/current original tuple negatives, source-row waits, counter!=checker including owner and actual OWNER_HOLD receipt versus extra configurable deposit custody capability.
+- [ ] Fixed trimmed5–500 managed counting note validated before hidden expected queries and retained independently of variance; narrow fixed acknowledgement. Complete branch/current cost authority for decision/deposit and actual valid full drawer inputs. Preserve canonical Decimal math, movements, states, locks, CAS, period-checked SHOP journals and partial historical posting.
+- [ ] Stage slips once outside the fence, independently require documents.create, final current reauthorization, immutable source/content identity metadata and actual-tx audit. Retain prior committed evidence; R59 owned cleanup only on terminal failure. Both read routes require source plus tender/documents.read and bounded private verified bytes released after commit. No caller paths, real provider, physical-print/delivery/bank claim.
+- [ ] Required actual transaction rollback on late journal/audit failures, current source after lock waits, duplicate/concurrent once-only effects. Fixed generic per-event owner review tasks after commit, no variance-dependent public signal or sensitive payload; explicit Todo4.3.12 and Audit5 contracts.
+- [ ] Final relevant canonical/read7 regressions/types/lint/coverage, precise nullable/blind/file/UI and4.4/5/6/7/8 handoffs, exact14 actual registration/positive-denial reconciliation and report/self-review/commit. Root marks parent only after independent gate; no whole-program/real-user rollout claim.
+
 ### Task 4.1.6.2: Sticker output, pricing and promotion references
 
 **Files:** Stickers7, PricingTemplates7 and Promotions4 domain routes plus three adjacent owner staff CRUD routes. Actual Product/Sale/Customer/PromotionUsage sources, explicit reference policy, narrow output and canonical promotion writer.

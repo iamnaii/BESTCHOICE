@@ -348,7 +348,11 @@ export class CustomerWriteService {
       this.parties!.assert(ctx.snapshot, 'customers.create', [source]);
     }
 
-    if (ctx && dto.referredById) this.parties!.assert(ctx.snapshot, 'customers.read', await this.parties!.customer(ctx.client, dto.referredById), false);
+    if (ctx && dto.referredById) {
+      // Selection may use any genuine readable source; retain owned locks and exclude ghosts.
+      const sources = await this.parties!.customer(ctx.client, dto.referredById, true, false, true);
+      this.parties!.assert(ctx.snapshot, 'customers.read', sources, false);
+    }
     // nationalId is optional (walk-in quick-create path omits it).
     // When provided, normalize + deduplicate; when absent, skip all nationalId checks.
     const normalizedNid = dto.nationalId ? this.normalizeNationalId(dto.nationalId) : undefined;
@@ -394,8 +398,11 @@ export class CustomerWriteService {
       addressWork: dto.addressWork,
       references: dto.references,
     });
+    // Nested Contact/origin links require Prisma's checked relation input.
+    const { referredById, ...createFields } = dataPlaintext;
     const data: Prisma.CustomerCreateInput = {
-      ...dataPlaintext,
+      ...createFields,
+      ...(referredById ? { referredBy: { connect: { id: referredById } } } : {}),
       ...(piiEncrypted as Partial<Prisma.CustomerCreateInput>),
       references: dto.references !== undefined
         ? (dto.references as Prisma.InputJsonValue)
@@ -452,6 +459,7 @@ export class CustomerWriteService {
       const oldAssigned = ctx && (reviveGhostId || existingStub?.id)
         ? (await tx.customer.findUniqueOrThrow({ where: { id: reviveGhostId ?? existingStub!.id }, select: { assignedToId: true } })).assignedToId : null;
       const assignment = ctx && assignedToId !== undefined ? { assignedTo: assignedToId ? { connect: { id: assignedToId } } : { disconnect: true } } : {};
+      const referralClear = referredById === null ? { referredBy: { disconnect: true } } : {};
       // T3-C9: reject duplicate phone / email at application level — บนคอนเนกชันที่ถือล็อก
       await this.assertContactNotDuplicate(tx, normalizedPhone, normalizedEmail, existingStub?.id);
       if (reviveGhostId) {
@@ -461,7 +469,7 @@ export class CustomerWriteService {
         // enough fields with UpdateInput to be compatible here.
         const row = await tx.customer.update({
           where: { id: reviveGhostId },
-          data: { ...(data as Prisma.CustomerUpdateInput), ...assignment, contact: contactConnect, deletedAt: null },
+          data: { ...(data as Prisma.CustomerUpdateInput), ...assignment, ...referralClear, contact: contactConnect, deletedAt: null },
         });
         await this.managedAudit('CUSTOMER_REVIVED', row.id, oldAssigned, row.assignedToId, row.contactId);
         return row;
@@ -472,7 +480,7 @@ export class CustomerWriteService {
         // an existing row.
         const row = await tx.customer.update({
           where: { id: existingStub.id },
-          data: { ...(data as Prisma.CustomerUpdateInput), ...assignment, contact: contactConnect },
+          data: { ...(data as Prisma.CustomerUpdateInput), ...assignment, ...referralClear, contact: contactConnect },
         });
         await this.managedAudit('CUSTOMER_ENRICHED', row.id, oldAssigned, row.assignedToId, row.contactId);
         return row;
@@ -496,7 +504,11 @@ export class CustomerWriteService {
       const sources = await this.parties!.mutation(ctx.client, 'customer', id, 'customers.update');
       await this.parties!.assignment(ctx.client, 'customer', id, assignedToId, sources);
     }
-    if (ctx && dto.referredById) this.parties!.assert(ctx.snapshot, 'customers.read', await this.parties!.customer(ctx.client, dto.referredById), false);
+    if (ctx && dto.referredById) {
+      // Selection may use any genuine readable source; retain owned locks and exclude ghosts.
+      const sources = await this.parties!.customer(ctx.client, dto.referredById, true, false, true);
+      this.parties!.assert(ctx.snapshot, 'customers.read', sources, false);
+    }
     const rawBefore = ctx ? await ctx.client.customer.findUniqueOrThrow({ where: { id } }) : undefined;
     if (ctx && !this.piiService) throw new Error('Required customer PII writer unavailable');
     const before = ctx ? this.piiService!.decryptCustomerFields(rawBefore!, { strict: await this.piiService!.isStrictMode(ctx.client) })! : await this.query.findOne(id);
@@ -535,8 +547,10 @@ export class CustomerWriteService {
       references: dto.references,
     });
 
+    const { referredById, ...updateFields } = dto;
     const data: Prisma.CustomerUpdateInput = {
-      ...dto,
+      ...updateFields,
+      ...(referredById !== undefined ? { referredBy: referredById ? { connect: { id: referredById } } : { disconnect: true } } : {}),
       ...(ctx && assignedToId !== undefined ? { assignedTo: assignedToId ? { connect: { id: assignedToId } } : { disconnect: true } } : {}),
       ...(normalizedPhone !== undefined ? { phone: normalizedPhone ?? dto.phone } : {}),
       ...(normalizedPhoneSecondary !== undefined

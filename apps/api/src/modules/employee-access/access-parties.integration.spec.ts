@@ -997,3 +997,94 @@ it('rechecks linked lender activity after an actual source-row wait', async () =
     'TRADE_IN_SELLER',
   );
 });
+it.each(['create', 'update'] as const)(
+  'read-only referrer selection allows %s through a live source despite an invalid sibling',
+  async (operation) => {
+    const referrer = await db.customer.create({
+      data: { name: 'Readable referrer', accessCompanyCode: 'SHOP', accessBranchId: branchA },
+    });
+    await db.tradeIn.create({
+      data: {
+        customerId: referrer.id,
+        branchId: null,
+        submissionSource: 'OFFLINE',
+        deviceBrand: 'Apple',
+        deviceModel: 'Unknown origin',
+      },
+    });
+    const caller = await scoped([branchA]);
+    const targetId = operation === 'update' ? await createCustomer() : undefined;
+    const result =
+      operation === 'create'
+        ? await http(
+            'post',
+            '/customers',
+            body({ referredById: referrer.id, assignedToId: caller }),
+            caller,
+          ).expect(201)
+        : await http(
+            'patch',
+            '/customers/' + targetId,
+            { referredById: referrer.id, assignedToId: caller },
+            caller,
+          ).expect(200);
+    expect(await db.customer.findUniqueOrThrow({ where: { id: result.body.id } })).toMatchObject({
+      referredById: referrer.id,
+      assignedToId: caller,
+    });
+    expect(await db.customer.findUniqueOrThrow({ where: { id: referrer.id } })).toEqual(referrer);
+    if (operation === 'update') {
+      await http('patch', '/customers/' + result.body.id, { referredById: null }, caller).expect(
+        200,
+      );
+      expect(
+        (await db.customer.findUniqueOrThrow({ where: { id: result.body.id } })).referredById,
+      ).toBeNull();
+    }
+  },
+);
+it.each([
+  ['create', 'unknown'],
+  ['update', 'unknown'],
+  ['create', 'hidden'],
+  ['update', 'hidden'],
+] as const)(
+  'read-only referrer selection denies %s when its only source is %s',
+  async (operation, source) => {
+    const referrer = await db.customer.create({
+      data: {
+        name: 'Unavailable referrer',
+        ...(source === 'hidden' ? { accessCompanyCode: 'SHOP', accessBranchId: branchB } : {}),
+      },
+    });
+    await db.tradeIn.create({
+      data: {
+        customerId: referrer.id,
+        branchId: null,
+        submissionSource: 'OFFLINE',
+        deviceBrand: 'Apple',
+        deviceModel: 'Unknown origin',
+      },
+    });
+    const caller = await scoped([branchA]);
+    const targetId = operation === 'update' ? await createCustomer() : undefined;
+    const customerCount = await db.customer.count();
+    const contactCount = await db.contact.count();
+    const response =
+      operation === 'create'
+        ? await http('post', '/customers', body({ referredById: referrer.id }), caller).expect(403)
+        : await http(
+            'patch',
+            '/customers/' + targetId,
+            { referredById: referrer.id },
+            caller,
+          ).expect(403);
+    expect(Object.keys(response.body).sort()).toEqual(['error', 'message', 'statusCode']);
+    expect(await db.customer.count()).toBe(customerCount);
+    expect(await db.contact.count()).toBe(contactCount);
+    if (targetId)
+      expect(
+        (await db.customer.findUniqueOrThrow({ where: { id: targetId } })).referredById,
+      ).toBeNull();
+  },
+);

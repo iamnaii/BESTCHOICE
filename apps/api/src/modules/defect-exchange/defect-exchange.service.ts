@@ -32,7 +32,6 @@ import { ADVANCE_VAT_META, advanceVatOutstanding } from '../journal/advance-vat'
 import {
   buildCreditInLines,
   buildCreditOutLines,
-  creditInAmountOf,
   DEFECT_EXCHANGE_CN_SOURCE,
   DEFECT_EXCHANGE_CREDIT_IN_FLOW,
   DEFECT_EXCHANGE_CREDIT_OUT_FLOW,
@@ -309,6 +308,10 @@ export class DefectExchangeService {
         // (`bypassWindowCheck` ข้าม checkEligibility แต่เดินผ่านบรรทัดนี้เหมือนกัน)
         assertSameTestSide(oldContract.customer, newProductRec);
 
+        // 15ข — ยอดบัญชีพักของสัญญาเดิมก่อนเริ่ม: T ของสัญญาใหม่ = ส่วนที่ขั้น ก/ข เพิ่มเข้ามา (delta) — สัญญาเดิมที่เป็นลูกของ
+        // การเปลี่ยนเครื่องครั้งก่อนถือ Dr credit-in ของตัวเองอยู่ (Review Focus 2) จึงต้องวัดจากจุดนี้ ไม่ใช่ยอดสุทธิ
+        const suspenseBefore = await glContractBalance(tx, oldContract.id, DEFECT_EXCHANGE_SUSPENSE_ACCOUNT, 'cr');
+
         // 15ข — เลขที่สัญญาใหม่ต้องรู้ก่อนออกใบลดหนี้ (เหตุผลการยกเลิกอ้างถึง)
         const contractNumber = await generateContractNumber(tx);
 
@@ -338,7 +341,8 @@ export class DefectExchangeService {
           creditNoteNumbers.push(out.creditNote.receiptNumber, ...out.siblingCreditNoteNumbers);
           voidedReceiptNumbers.push(fresh.receiptNumber, ...out.siblingReceiptNumbers);
         }
-        // ยอดที่ย้ายจากใบ = Σ ใบในรายการที่ถูกยกเลิกจริง (ใบพี่น้องรวมอยู่ในรายการอยู่แล้ว)
+        // Σ ยอดใบที่ถูกยกเลิกจริง (ใบพี่น้องรวมอยู่ในรายการอยู่แล้ว) — ใช้เป็นเพดานตรวจทาน ไม่ใช่ตัวตั้ง T:
+        // ใบที่จ่ายด้วยเครดิต/เงินรับล่วงหน้าไม่มีขาเงินสด กระจกของมันคืน 21-5101/21-1103 ซึ่งขั้น ข ย้ายให้แล้ว
         const voidedRows =
           liveReceipts.length > 0
             ? await tx.receipt.findMany({
@@ -346,7 +350,7 @@ export class DefectExchangeService {
                 select: { amount: true },
               })
             : [];
-        const receiptsCredit = sumReceiptAmounts(voidedRows);
+        const receiptsVoided = sumReceiptAmounts(voidedRows);
 
         // Close old contract
         await tx.contract.update({
@@ -458,17 +462,17 @@ export class DefectExchangeService {
           await tx.payment.createMany({ data: newPayments });
         }
 
-        // === 15ข ขั้น ง — ตั้งเครดิตสัญญาใหม่ = Σ ใบที่ยกเลิก + เงินของลูกค้าที่ย้าย ===
-        // ตรวจทานกับบัญชีพัก: ยอด Cr สุทธิของ 21-1106 ของสัญญาเดิม + credit-in ที่สัญญาเดิมเคยรับ (ถ้าเป็นลูกของ
-        // การเปลี่ยนเครื่องครั้งก่อน — Dr ของมันทำให้ยอดสุทธิต่ำกว่า) ต้องเท่ากับยอดที่ย้าย ±0.01 — ไม่เท่า = บัญชีพักมี
-        // รายการที่ไม่รู้จัก ห้ามเดา ⇒ ทั้ง tx rollback (500 + Sentry ให้ฝ่ายบัญชีตรวจ)
-        const transferred = receiptsCredit.plus(moneyOut);
-        const suspenseCr = await glContractBalance(tx, oldContract.id, DEFECT_EXCHANGE_SUSPENSE_ACCOUNT, 'cr');
-        const ownCreditIn = await creditInAmountOf(tx, oldContract.id);
-        if (suspenseCr.plus(ownCreditIn).minus(transferred).abs().gt(0.01)) {
+        // === 15ข ขั้น ง — ตั้งเครดิตสัญญาใหม่ T = ส่วนที่ขั้น ก (ขาเงินสดที่ย้าย) + ข (เงินค้าง) เพิ่มเข้า 21-1106 ของสัญญาเดิม ===
+        // อ่านจากสมุด (delta ก่อน/หลัง) — ไม่ใช่ Σ ใบ + ข: ใบที่จ่ายด้วยเครดิตไม่มีขาเงินสด กระจกคืน 21-5101 แล้ว ข ย้ายให้
+        // (นับซ้ำถ้าบวกยอดใบ). ตรวจทานขอบเขต: ข ≤ T ≤ ข + Σ ใบ — นอกช่วง = บัญชีพักมีรายการที่ไม่รู้จัก ห้ามเดา ⇒
+        // ทั้ง tx rollback (500 + Sentry ให้ฝ่ายบัญชีตรวจ)
+        const suspenseAfter = await glContractBalance(tx, oldContract.id, DEFECT_EXCHANGE_SUSPENSE_ACCOUNT, 'cr');
+        const transferred = suspenseAfter.minus(suspenseBefore);
+        const cashFromReceipts = transferred.minus(moneyOut);
+        if (transferred.lt(0) || cashFromReceipts.lt(-0.01) || cashFromReceipts.gt(receiptsVoided.plus(0.01))) {
           throw new Error(
-            `[defect-exchange] 21-1106 ของสัญญา ${oldContract.contractNumber} = ${suspenseCr.toFixed(2)} (+ credit-in เดิม ${ownCreditIn.toFixed(2)}) ` +
-              `ไม่เท่ากับเครดิตที่ย้าย ${transferred.toFixed(2)} — บัญชีพักมีรายการที่ไม่รู้จัก ต้องตรวจก่อน`,
+            `[defect-exchange] 21-1106 ของสัญญา ${oldContract.contractNumber} เพิ่มขึ้น ${transferred.toFixed(2)} ` +
+              `(เงินค้างที่ย้าย ${moneyOut.toFixed(2)} · ใบที่ยกเลิก ${receiptsVoided.toFixed(2)}) — บัญชีพักมีรายการที่ไม่รู้จัก ต้องตรวจก่อน`,
           );
         }
         let creditInEntryNo: string | null = null;
@@ -485,7 +489,8 @@ export class DefectExchangeService {
                 exchangeOf: oldContract.id,
                 exchangeOfContractNumber: oldContract.contractNumber,
                 amount: transferred.toFixed(2),
-                receiptsCredit: receiptsCredit.toFixed(2),
+                receiptsVoided: receiptsVoided.toFixed(2),
+                cashFromReceipts: cashFromReceipts.toFixed(2),
                 ledgerMoved: moneyOut.toFixed(2),
               },
               lines: buildCreditInLines(transferred),
@@ -577,7 +582,8 @@ export class DefectExchangeService {
               transferredCredit: transferred.toFixed(2),
               creditNoteNumbers,
               voidedReceiptNumbers,
-              receiptsCredit: receiptsCredit.toFixed(2),
+              receiptsVoided: receiptsVoided.toFixed(2),
+              cashFromReceipts: cashFromReceipts.toFixed(2),
               ledgerAdvanceMoved: close.advance.toFixed(2),
               ledgerCreditMoved: close.credit.toFixed(2),
               creditOutEntryNo,

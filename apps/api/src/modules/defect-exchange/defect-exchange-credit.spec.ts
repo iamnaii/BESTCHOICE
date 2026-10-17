@@ -4,7 +4,6 @@ import * as excess from '../journal/advance-excess-income.util';
 import {
   buildCreditInLines,
   buildCreditOutLines,
-  creditInAmountOf,
   DEFECT_EXCHANGE_REDIRECT,
   EXCHANGE_BLOCK_EARLY_PAYOFF,
   EXCHANGE_BLOCK_EXCESS_INCOME,
@@ -141,21 +140,6 @@ describe('exchangeMoneyBlockers — เหตุผลปฏิเสธด้�
     expect((c as never as { paymentApprovalRequest: { findFirst: jest.Mock } }).paymentApprovalRequest.findFirst).toHaveBeenCalledWith({
       where: { contractId: 'ct-old', action: 'VOID_RECEIPT', status: 'PENDING', deletedAt: null },
       select: { id: true },
-    });
-  });
-});
-
-describe('creditInAmountOf — ยอด credit-in ของสัญญาที่เป็นลูกของการเปลี่ยนเครื่องครั้งก่อน', () => {
-  it('Σ metadata.amount ของ JE flow defect-exchange-credit-in ที่ยังมีผล (ข้าม reversed) · ไม่มี = 0', async () => {
-    const findMany = jest.fn().mockResolvedValue([
-      { metadata: { flow: 'defect-exchange-credit-in', amount: '1515.83' } },
-      { metadata: { flow: 'defect-exchange-credit-in', amount: '100.00', reversed: true } },
-      { metadata: { flow: 'defect-exchange-credit-out', amount: '999' } },
-    ]);
-    expect((await creditInAmountOf({ journalEntry: { findMany } } as never, 'ct-b')).toFixed(2)).toBe('1515.83');
-    expect(findMany).toHaveBeenCalledWith({
-      where: { status: 'POSTED', deletedAt: null, metadata: { path: ['contractId'], equals: 'ct-b' } },
-      select: { metadata: true },
     });
   });
 });

@@ -82,16 +82,21 @@ describe('execute — ขั้น ก/ค/ข/ง (15ข)', () => {
   };
   const receiptRow = { id: 'rc-1', receiptNumber: 'RT-31', receiptType: 'INSTALLMENT', installmentNo: 1, paidDate: new Date('2026-10-10T00:00:00Z'), paymentMethod: 'BANK_TRANSFER', isVoided: false, deletedAt: null, amount: new Prisma.Decimal('1515.83'), vatAmount: new Prisma.Decimal('99.17') };
 
-  function setup(opts: { receipts?: unknown[]; blockers?: string[]; close?: { advance: Decimal; credit: Decimal }; vat?: Decimal; suspense?: Decimal; creditIn?: Decimal } = {}) {
+  function setup(opts: { receipts?: unknown[]; blockers?: string[]; close?: { advance: Decimal; credit: Decimal }; vat?: Decimal; suspense?: Decimal; suspenseBefore?: Decimal } = {}) {
     jest.spyOn(creditApproval, 'bindExchangeCreditCheck').mockResolvedValue(undefined);
     jest.spyOn(creditLocks, 'lockCreditCustomer').mockResolvedValue(undefined);
     jest.spyOn(inputVatClaim, 'markInputVatReversedIfSwept').mockResolvedValue('UNCHANGED');
     jest.spyOn(credit, 'exchangeMoneyBlockers').mockResolvedValue(opts.blockers ?? []);
     jest.spyOn(credit, 'listReceiptsToCreditNote').mockResolvedValue((opts.receipts ?? []) as never);
-    jest.spyOn(credit, 'creditInAmountOf').mockResolvedValue(opts.creditIn ?? D(0));
     jest.spyOn(closeAdv, 'readContractCloseAdvances').mockResolvedValue({ advance: opts.close?.advance ?? D(0), credit: opts.close?.credit ?? D(0), warnings: [] });
     jest.spyOn(advVat, 'advanceVatOutstanding').mockResolvedValue(opts.vat ?? D(0));
-    jest.spyOn(gl, 'glContractBalance').mockImplementation(async (_c, _id, code) => (code === '21-1106' ? (opts.suspense ?? D(0)) : D(0)));
+    // 21-1106 ถูกอ่าน 2 ครั้งใน execute: ก่อนขั้น ก (suspenseBefore) และหลังขั้น ข (suspense) — T = delta
+    let suspenseReads = 0;
+    jest.spyOn(gl, 'glContractBalance').mockImplementation(async (_c, _id, code) => {
+      if (code !== '21-1106') return D(0);
+      suspenseReads += 1;
+      return suspenseReads === 1 ? (opts.suspenseBefore ?? D(0)) : (opts.suspense ?? D(0));
+    });
     const voidSpy = jest.spyOn(voidCore, 'voidReceiptInTx').mockResolvedValue({
       voidedReceipt: receiptRow as never, creditNote: { receiptNumber: 'RT-44' } as never, paymentReverted: null,
       siblingCreditNoteNumbers: [], siblingReceiptNumbers: [], accrualReversal: null, warnings: [],
@@ -178,14 +183,14 @@ describe('execute — ขั้น ก/ค/ข/ง (15ข)', () => {
     expect(tx.contract.update).not.toHaveBeenCalled();
   });
 
-  it('ตรวจทาน 21-1106: ยอดในบัญชี + credit-in ของสัญญาเดิม ≠ Σ ที่ย้าย → throw (GL ผิดปกติ) ไม่ลง ง', async () => {
-    const { service, createAndPost } = setup({ receipts: [receiptRow], suspense: D(1000) });
+  it('ตรวจทาน 21-1106: บัญชีพักเพิ่มเกิน ข + Σ ใบ (รายการที่ไม่รู้จัก) → throw (GL ผิดปกติ) ไม่ลง ง', async () => {
+    const { service, createAndPost } = setup({ receipts: [receiptRow], suspense: D(5000) });
     await expect(service.execute(dto, MGR)).rejects.toThrow(/21-1106/);
     expect(createAndPost).not.toHaveBeenCalled();
   });
 
-  it('สัญญาเดิมเป็นลูกของการเปลี่ยนเครื่องครั้งก่อน (Review Focus 2): 21-1106 = 0 แต่ credit-in เดิม 1515.83 ⇒ ผ่านการตรวจทาน', async () => {
-    const { service, createAndPost } = setup({ receipts: [receiptRow], suspense: D(0), creditIn: D('1515.83') });
+  it('สัญญาเดิมเป็นลูกของการเปลี่ยนเครื่องครั้งก่อน (Review Focus 2): 21-1106 ก่อน = −1515.83 (Dr credit-in เดิม) หลัง = 0 ⇒ T = delta 1515.83', async () => {
+    const { service, createAndPost } = setup({ receipts: [receiptRow], suspenseBefore: D('-1515.83'), suspense: D(0) });
     await service.execute(dto, MGR);
     expect(createAndPost.mock.calls[0][0].metadata.amount).toBe('1515.83');
   });

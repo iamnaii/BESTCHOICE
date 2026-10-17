@@ -30,7 +30,6 @@ jest.mock('./defect-exchange-credit', () => ({
   ...jest.requireActual('./defect-exchange-credit'),
   exchangeMoneyBlockers: jest.fn().mockResolvedValue([]),
   listReceiptsToCreditNote: jest.fn().mockResolvedValue([]),
-  creditInAmountOf: jest.fn().mockResolvedValue(new (require('@prisma/client/runtime/library').Decimal)(0)),
 }));
 jest.mock('../journal/contract-close-advances', () => ({
   ...jest.requireActual('../journal/contract-close-advances'),

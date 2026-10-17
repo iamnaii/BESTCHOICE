@@ -169,14 +169,3 @@ export function buildCreditInLines(total: Decimal): AdvanceVatLine[] {
     { accountCode: '21-5101', dr: ZERO, cr: total, description: 'เครดิตจากการเปลี่ยนเครื่องตำหนิ — ใช้ชำระค่างวด' },
   ];
 }
-
-/**
- * ยอด credit-in ที่สัญญานี้รับไว้ (เมื่อสัญญานี้เป็นลูกของการเปลี่ยนเครื่องครั้งก่อน — Review Focus 2):
- * ใช้ตรวจทาน 21-1106 ตอนสัญญานี้ถูกเปลี่ยนเครื่องอีกครั้ง — Dr ของมันทำให้ยอด Cr สุทธิของ 21-1106 ต่ำกว่าเงินที่ย้ายจริง.
- */
-export async function creditInAmountOf(client: Client, contractId: string): Promise<Decimal> {
-  const entries = await activeEntriesOf(client, contractId);
-  return entries
-    .filter((m) => m.flow === DEFECT_EXCHANGE_CREDIT_IN_FLOW)
-    .reduce((s, m) => s.plus(typeof m.amount === 'string' || typeof m.amount === 'number' ? new Decimal(m.amount) : ZERO), ZERO);
-}

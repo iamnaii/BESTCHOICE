@@ -6,7 +6,11 @@ import * as puppeteer from 'puppeteer';
 import * as QRCode from 'qrcode';
 import { embeddedDocumentFonts } from '../../../assets/fonts/document-fonts';
 import { DOCUMENT_A4_CSS, documentTypographyCss, TRANSACTION_PAGE_CSS } from '@installment/shared';
-import { INSTALLMENT_MONEY_RECEIPT_TYPES } from '../receipt-types.constants';
+import {
+  ADVANCE_SURPLUS_RECEIPT_TYPE,
+  DOCUMENT_BALANCE_RECEIPT_TYPES,
+  INSTALLMENT_MONEY_RECEIPT_TYPES,
+} from '../receipt-types.constants';
 import { DocumentAdvanceRow, receiptDocumentMoney } from './receipt-document-money';
 import { ReceiptQueryService } from './receipt-query.service';
 
@@ -161,9 +165,15 @@ export class ReceiptPdfService {
       bankName: this.escapeHtml(receipt.company?.bankName),
       bankAccountName: this.escapeHtml(receipt.company?.bankAccountName),
       bankAccountNumber: this.escapeHtml(receipt.company?.bankAccountNumber),
-      issuerName: this.escapeHtml(receipt.issuer?.name) || 'ระบบอัตโนมัติ',
+      // PR4ข: ใบส่วนเกินลิงก์ชำระออกโดยระบบ (webhook) — ไม่ใช่พนักงานที่เป็นเจ้าของบัญชีระบบ
+      issuerName:
+        receipt.receiptType === ADVANCE_SURPLUS_RECEIPT_TYPE
+          ? 'ระบบ (ลิงก์ชำระ)'
+          : this.escapeHtml(receipt.issuer?.name) || 'ระบบอัตโนมัติ',
       issuerSignName:
-        this.escapeHtml((receipt.issuer?.name || '').split(/\s+/)[0]) || 'ระบบ',
+        receipt.receiptType === ADVANCE_SURPLUS_RECEIPT_TYPE
+          ? 'ระบบ'
+          : this.escapeHtml((receipt.issuer?.name || '').split(/\s+/)[0]) || 'ระบบ',
     };
 
     // I2 fix: route money math through Prisma.Decimal — Number(amountDue) +
@@ -184,8 +194,14 @@ export class ReceiptPdfService {
       ? toDec(receipt.documentInstallmentAmountDue) : null;
     const totalPaidOnInstallment = receipt.documentInstallmentAmountPaid != null
       ? toDec(receipt.documentInstallmentAmountPaid) : null;
-    const documentBalanceApplies = isInstallmentReceipt || receipt.receiptType === 'RESCHEDULE_FEE';
+    const documentBalanceApplies = (DOCUMENT_BALANCE_RECEIPT_TYPES as readonly string[]).includes(
+      receipt.receiptType ?? 'PAYMENT',
+    );
     const balanceKnown = !documentBalanceApplies || receipt.documentRemainingBalance != null;
+    // PR4ข: ใบส่วนเกินลิงก์ชำระ — มีงวดถัดไปให้หักหรือไม่ (ส่วนเกินปกติเกิดเมื่อเงินครอบทุกงวดแล้ว ⇒ null)
+    const surplusHasNext =
+      receipt.receiptType === ADVANCE_SURPLUS_RECEIPT_TYPE &&
+      receipt.surplusContext?.nextInstallmentNo != null;
     const remainingBalance = toDec(documentBalanceApplies
       ? receipt.documentRemainingBalance : receipt.remainingBalance);
     const remainingMonths = documentBalanceApplies
@@ -218,6 +234,8 @@ export class ReceiptPdfService {
       advanceOnly,
       displayedInstallmentNo,
     } = receiptDocumentMoney(receipt);
+    // PR4ข: ใบ 6a ที่เก็บค่า (= ใบกำกับภาษี) — ใบ 6a เก่าไม่มีค่าที่เก็บต้องพิมพ์เหมือนเดิมทุกตัวอักษร (final review I1)
+    const isStored6a = receiptType === 'RESCHEDULE_FEE' && vatBearing && advancePortion.gt(0);
     /** ยอดติดลบพิมพ์ด้วยเครื่องหมายลบแบบเดียวกับแถวอนุโลมค่าปรับ */
     const signed = (v: Prisma.Decimal) => (v.isNegative() ? `−${fmt(v.abs())}` : fmt(v));
     const advanceRowHtml = (row: DocumentAdvanceRow) =>
@@ -225,7 +243,7 @@ export class ReceiptPdfService {
         ? `
       <tr class="alt">
         <td><div class="item-name">เงินรับล่วงหน้างวดที่ ${row.installmentNo}/${receipt.contract?.totalMonths} — ปรับดิว</div>
-          <div class="item-meta">พักไว้หักค่างวดสุดท้าย</div></td>
+          <div class="item-meta">${isStored6a ? 'ค่าธรรมเนียมเลื่อนนัดชำระ · พักไว้หักค่างวดสุดท้าย' : 'พักไว้หักค่างวดสุดท้าย'}</div></td>
         <td class="right">${fmt(row.beforeVat)}</td>
         <td class="right">${row.vat.gt(0) ? fmt(row.vat) : '<span class="vat-exempt">–</span>'}</td>
         <td class="right"><strong>${fmt(row.amount)}</strong></td>
@@ -233,7 +251,7 @@ export class ReceiptPdfService {
         : row.kind === 'GENERIC'
           ? `
       <tr class="alt">
-        <td><div class="item-name">เงินรับล่วงหน้าในสัญญา</div></td>
+        <td><div class="item-name">เงินรับล่วงหน้าในสัญญา</div>${receiptType === ADVANCE_SURPLUS_RECEIPT_TYPE ? `<div class="item-meta">ชำระเกินผ่านลิงก์ชำระ (Pay Solutions)${surplusHasNext ? ' · หักเข้างวดถัดไปอัตโนมัติ' : ''}</div>` : ''}</td>
         <td class="right">${fmt(row.beforeVat)}</td>
         <td class="right">${row.vat.gt(0) ? fmt(row.vat) : '<span class="vat-exempt">–</span>'}</td>
         <td class="right"><strong>${fmt(row.amount)}</strong></td>
@@ -258,7 +276,64 @@ export class ReceiptPdfService {
       EARLY_PAYOFF: 'ปิดยอดสัญญาก่อนกำหนด',
       RESCHEDULE_FEE: 'ค่าธรรมเนียมเลื่อนนัดชำระ (ปรับดิว)',
       CREDIT_NOTE: 'ลดหนี้ — ยกเลิกใบเสร็จ',
+      [ADVANCE_SURPLUS_RECEIPT_TYPE]: 'เงินรับล่วงหน้าในสัญญา — ส่วนเกินจากลิงก์ชำระ',
     };
+
+    // ── PR4ข: บริบท/กล่องเตือนของใบปรับดิว 6a (ที่เก็บค่า = ใบกำกับภาษี) และใบส่วนเกินลิงก์ชำระ ──
+    const isSurplus = receiptType === ADVANCE_SURPLUS_RECEIPT_TYPE;
+    const rescheduleTarget = advanceRows.find((r) => r.kind === 'RESCHEDULE')?.installmentNo;
+    const rc = receipt.rescheduleContext ?? null;
+    const sc = receipt.surplusContext ?? null;
+    // ใบ 6a เก่า (ไม่มีค่าที่เก็บ) ก็ผูกรายการและได้ context — แต่ต้องพิมพ์เหมือนเดิมทุกตัวอักษร (final review I1)
+    const rescheduleLine =
+      isStored6a && rc
+        ? `<div class="party-line"><strong>เลื่อนนัดชำระ</strong> งวดที่ ${rc.installmentNo} เลื่อน ${rc.daysToShift} วัน${rc.newDueDate ? ` เป็น ${formatDateShort(rc.newDueDate)}` : ''}</div>`
+        : '';
+    const surplusLine = (() => {
+      if (!isSurplus || !sc) return '';
+      const parts: string[] = [];
+      // ส่วนเกินเกิดเมื่อลิงก์ครอบทุกงวดที่เหลือ (ใบรับชำระต่องวด อาจเป็นสิบกว่าใบ) — เกิน 2 ใบพิมพ์เป็นช่วง ไม่งั้นบรรทัดนี้
+      // ยาวหลายบรรทัดจนใบล้นเป็น 2 หน้า (ก้อนปิดท้าย break-inside:avoid กระโดดทั้งก้อน)
+      const range = (nos: number[]) => {
+        const sorted = [...nos].sort((a, b) => a - b);
+        return `งวดที่ ${sorted[0]} ถึง ${sorted[sorted.length - 1]} (${sorted.length} งวด)`;
+      };
+      if (sc.siblingReceipts.length > 2) {
+        parts.push(
+          range(sc.siblingReceipts.map((r) => r.installmentNo).filter((n): n is number => n != null)),
+        );
+      } else if (sc.siblingReceipts.length) {
+        parts.push(
+          sc.siblingReceipts
+            .map((r) => `งวดที่ ${r.installmentNo ?? '-'} (ใบ ${this.escapeHtml(r.receiptNumber)})`)
+            .join(', '),
+        );
+      } else if (sc.installmentNos.length > 2) {
+        parts.push(range(sc.installmentNos));
+      } else if (sc.installmentNos.length) {
+        parts.push(`งวดที่ ${sc.installmentNos.join(', ')}`);
+      }
+      if (sc.paidAmount) parts.push(`ยอดโอน ${fmt(toDec(sc.paidAmount))}`);
+      if (sc.appliedAmount) parts.push(`เข้างวด ${fmt(toDec(sc.appliedAmount))}`);
+      parts.push(`ส่วนเกิน ${fmt(total)}`);
+      return `<div class="party-line"><strong>ชำระผ่านลิงก์</strong> ${parts.join(' · ')}</div>`;
+    })();
+    const advanceNotice = isStored6a
+      ? `<div class="adv-notice">เงินรับล่วงหน้า ${fmt(advancePortion)} บาท พักไว้หักค่างวดสุดท้าย${rescheduleTarget ? ` (งวดที่ ${rescheduleTarget})` : ''} — ภาษีมูลค่าเพิ่มรับรู้ ณ วันรับเงินนี้แล้ว ใบงวดสุดท้ายไม่คิดภาษีซ้ำ</div>`
+      : isSurplus
+        ? surplusHasNext
+          ? `<div class="adv-notice">เงินส่วนเกิน ${fmt(total)} บาท จากการชำระผ่านลิงก์ เก็บไว้เป็นเงินรับล่วงหน้าของสัญญา หักเข้างวดถัดไป (งวดที่ ${sc!.nextInstallmentNo}) อัตโนมัติ — ภาษีมูลค่าเพิ่มรับรู้แล้ว ไม่คิดซ้ำ · ไม่ต้องติดต่อร้านเพื่อขอคืน</div>`
+          : // ส่วนเกินปกติเกิดเมื่อเงินครอบทุกงวดแล้ว (ไม่มีงวดถัดไปให้หัก) — ห้ามสัญญาว่าจะหักเข้างวด
+            `<div class="adv-notice">เงินส่วนเกิน ${fmt(total)} บาท จากการชำระผ่านลิงก์ เก็บไว้เป็นเงินรับล่วงหน้าของสัญญา — ภาษีมูลค่าเพิ่มรับรู้แล้ว · ไม่ต้องติดต่อร้านเพื่อขอคืน</div>`
+        : '';
+    const unappliedFunds =
+      (isStored6a || isSurplus) && receipt.documentUnappliedFunds != null
+        ? toDec(receipt.documentUnappliedFunds)
+        : null;
+    const unappliedLine =
+      unappliedFunds && unappliedFunds.gt(0)
+        ? `<span class="k">เงินรับล่วงหน้าค้าง</span><span class="v">${fmt(unappliedFunds)} บาท${isSurplus ? (surplusHasNext ? ' (หักงวดถัดไป)' : '') : rescheduleTarget ? ` (พักหักงวดที่ ${rescheduleTarget})` : ''}</span>`
+        : '';
     const installmentLabel = receipt.installmentNo
       ? `ค่างวดเช่าซื้อ งวดที่ ${receipt.installmentNo}${receipt.contract?.totalMonths ? `/${receipt.contract.totalMonths}` : ''}`
       : 'การรับชำระเงิน';
@@ -323,6 +398,7 @@ export class ReceiptPdfService {
     /* ── Credit-note reference notice ── */
     .cn-notice { margin:10px 0 0; background:var(--amber-50); border:1px solid var(--amber-200); border-radius:8px; padding:8px 14px; font-size:10pt; color:var(--amber-800); }
     .cn-notice strong { font-weight:700; }
+    .adv-notice { margin:8px 0 0; background:var(--amber-50); border:1px solid var(--amber-200); border-radius:8px; padding:5px 12px; font-size:9.5pt; line-height:1.4; color:var(--amber-800); }
 
     /* ── Items table ── */
     table.items { width:100%; border-collapse:collapse; margin-top:14px; font-size:10.5pt; }
@@ -411,6 +487,7 @@ ${PAPER_SPACING_CSS}
     body.bc-paper-compact .footer { margin-top: 4px; }
     body.bc-paper-compact .qr-pane img { width: 72px; height: 72px; }
     body.bc-paper-compact .doc-note { margin-top: 2px; padding-top: 2px; }
+    body.bc-paper-compact .adv-notice { margin-top: 4px; padding: 3px 10px; }
 </style>
 </head>
 <body data-bc-paper>
@@ -454,8 +531,10 @@ ${PAPER_SPACING_CSS}
       ${safe.productDisclosure ? `<div style="white-space:pre-wrap;overflow-wrap:anywhere">${safe.productDisclosure}</div>` : ''}
       ${safe.imeiSerial ? `<div class="party-line"><strong>IMEI</strong> ${safe.imeiSerial}</div>` : (safe.serialNumber ? `<div class="party-line"><strong>S/N</strong> ${safe.serialNumber}</div>` : '')}
       ${displayedInstallmentNo && receipt.contract?.totalMonths ? `<div class="party-line"><strong>${advanceOnly ? 'งวดที่รับล่วงหน้า' : 'งวดที่ชำระ'}</strong> ${displayedInstallmentNo} จาก ${receipt.contract.totalMonths} งวด</div>` : ''}
+      ${rescheduleLine}${surplusLine}
     </div>
   </div>
+  ${advanceNotice}
 
   ${isCreditNote && receipt.voidedRef ? `
     <div class="cn-notice">
@@ -567,6 +646,7 @@ ${PAPER_SPACING_CSS}
         ${!balanceKnown ? `<span class="k">ยอดคงเหลือ</span><span class="v">ไม่สามารถยืนยันยอด ณ วันออกใบเสร็จจากประวัติได้</span>` : ''}
         ${balanceKnown ? `<span class="k">ค่างวดคงเหลือ</span><span class="v">${fmt(remainingBalance)} บาท</span>` : ''}
         ${remainingMonths ? `<span class="k">งวดคงเหลือ</span><span class="v">${remainingMonths} งวด</span>` : ''}
+        ${unappliedLine}
         ${balanceKnown && !remainingBalance.gt(0) && !remainingMonths ? `<span class="k">สถานะ</span><span class="v">ชำระครบตามเอกสารนี้</span>` : ''}`}
       </div>
     </div>

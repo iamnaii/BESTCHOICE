@@ -305,6 +305,34 @@ describe('ReceiptsService', () => {
     });
   });
 
+  describe('voidReceipt — ADVANCE_SURPLUS (PR4ข)', () => {
+    it('ปฏิเสธการยกเลิกใบรับเงินส่วนเกินลิงก์ชำระ (paymentId null · ไม่มีเส้นทางกลับรายการ) โดยไม่แตะรายการบัญชี', async () => {
+      const tx = prisma.__tx;
+      tx.receipt.findUnique.mockResolvedValue({
+        id: receiptId,
+        receiptNumber: 'RT-202610-00041',
+        contractId: 'ct-1',
+        paymentId: null,
+        receiptType: 'ADVANCE_SURPLUS',
+        amount: 500,
+        installmentNo: null,
+        paymentMethod: 'ONLINE_GATEWAY',
+        isVoided: false,
+        deletedAt: null,
+        createdAt: new Date(),
+        paidDate: new Date(),
+      });
+
+      await expect(
+        service.voidReceipt(receiptId, 'บันทึกผิด', userId, approverId, 'OWNER', { requestId: 'void-request', actorId: approverId }),
+      ).rejects.toThrow('ใบเสร็จเงินรับล่วงหน้าจากลิงก์ชำระยังไม่รองรับการยกเลิก');
+      const template = (service as any).receiptVoidReversalTemplate;
+      expect(template.voidReceipt).not.toHaveBeenCalled();
+      expect(tx.receipt.update).not.toHaveBeenCalled();
+      expect(tx.receipt.create).not.toHaveBeenCalled();
+    });
+  });
+
   describe('voidReceipt — actual approval authority', () => {
     it.each(['OWNER', 'ACCOUNTANT', undefined])('denies legacy nominated approver without a request (%s)', async (role) => {
       await expect(service.voidReceipt(receiptId, 'wrong amount', userId, approverId, role)).rejects.toThrow(ForbiddenException);

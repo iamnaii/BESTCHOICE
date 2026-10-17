@@ -1,3 +1,4 @@
+import { domainAccessClient, currentDomainAccess } from '../../../employee-access/access-execution-context';
 import { Logger, NotFoundException, BadRequestException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../../prisma/prisma.service';
@@ -12,7 +13,9 @@ import { PrismaService } from '../../../../prisma/prisma.service';
 export class VoucherNumberService {
   private readonly logger = new Logger(VoucherNumberService.name);
 
-  constructor(private prisma: PrismaService) {}
+  private get prisma(): PrismaService { return domainAccessClient(this.basePrisma); }
+
+  constructor(private readonly basePrisma: PrismaService) {}
 
   // ─── เลขที่ใบสำคัญ ────────────────────────────────────────
   private async generateVoucherNumber(tx: Prisma.TransactionClient): Promise<string> {
@@ -67,6 +70,7 @@ export class VoucherNumberService {
         });
         return { voucherNumber: result.voucherNumber!, voucherDate: result.voucherDate! };
       } catch (err) {
+        if (currentDomainAccess()) throw err;
         const code = (err as { code?: string })?.code;
         if (code !== 'P2002' && code !== 'P2025') throw err;
         // A concurrent request may have finished allocating this same voucher.

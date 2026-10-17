@@ -1,3 +1,4 @@
+import { domainAccessClient } from '../../employee-access/access-execution-context';
 import { NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { paginatedResponse } from '../../../common/helpers/pagination.helper';
@@ -8,7 +9,9 @@ import { Prisma, PrismaClient } from '@prisma/client';
 type PrismaAny = PrismaClient & Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
 
 export class TradeInValuationService {
-  constructor(private prisma: PrismaService) {}
+  private get prisma(): PrismaService { return domainAccessClient(this.basePrisma); }
+
+  constructor(private readonly basePrisma: PrismaService) {}
 
   // ─── Valuation table lookup ───────────────────────────────
 

@@ -1,4 +1,6 @@
-import { Injectable } from '@nestjs/common';
+import { prepareTradeInFile } from './helpers/trade-in-file-preparation';
+import { domainAccessClient } from '../employee-access/access-execution-context';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { TradeInCreditService } from './services/trade-in-credit.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
@@ -41,8 +43,10 @@ export class TradeInService {
   private readonly query: TradeInQueryService;
   private readonly lifecycle: TradeInLifecycleService;
 
+  private get prisma(): PrismaService { return domainAccessClient(this.basePrisma); }
+
   constructor(
-    private prisma: PrismaService,
+    private readonly basePrisma: PrismaService,
     private storage: StorageService,
     private voucher: TradeInVoucherService,
     private contactResolver: ContactResolverService,
@@ -51,10 +55,10 @@ export class TradeInService {
     private shopAccountResolver: ShopAccountResolver,
   ) {
     // Build Valuation + Query first, then wire them into Lifecycle (cross-refs).
-    this.valuation = new TradeInValuationService(prisma);
-    this.query = new TradeInQueryService(prisma, storage, voucher);
+    this.valuation = new TradeInValuationService(basePrisma);
+    this.query = new TradeInQueryService(basePrisma, storage, voucher);
     this.lifecycle = new TradeInLifecycleService(
-      prisma,
+      basePrisma,
       storage,
       voucher,
       contactResolver,
@@ -110,7 +114,8 @@ export class TradeInService {
   }
 
   uploadIdCardPhoto(id: string, photoBase64: string, source: 'card_reader' | 'upload') {
-    return this.query.uploadIdCardPhoto(id, photoBase64, source);
+    if(typeof photoBase64 !== 'string' || !['card_reader','upload'].includes(source)) throw new BadRequestException('ข้อมูลรูปบัตรประชาชนไม่ถูกต้อง');
+    return prepareTradeInFile(this.storage, photoBase64, () => this.query.uploadIdCardPhoto(id, photoBase64, source));
   }
 
   verifyByVoucherNumber(voucherNumber: string) {
@@ -127,7 +132,7 @@ export class TradeInService {
 
   // ─── Lifecycle delegations (write-heavy) ─────────────────────────────────
   create(dto: CreateTradeInDto) {
-    return this.lifecycle.create(dto);
+    return prepareTradeInFile(this.storage, dto.idCardPhotoBase64, () => this.lifecycle.create(dto));
   }
 
   update(id: string, dto: UpdateTradeInDto) {
@@ -143,7 +148,7 @@ export class TradeInService {
   }
 
   quickBuy(dto: QuickBuyTradeInDto, userId: string, userBranchId?: string | null, appraisal?: Pick<OnlineAppraisalService, 'prepareQuickBuy'>) {
-    return this.lifecycle.quickBuy(dto, userId, userBranchId, appraisal);
+    return prepareTradeInFile(this.storage, dto.idCardPhotoBase64, () => this.lifecycle.quickBuy(dto, userId, userBranchId, appraisal));
   }
 
   reject(id: string) {

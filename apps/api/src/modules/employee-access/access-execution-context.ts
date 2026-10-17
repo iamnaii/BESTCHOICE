@@ -15,7 +15,7 @@ export interface DomainAccessExecution {
   readonly client: Prisma.TransactionClient;
   readonly scopeReads: boolean;
   readonly authorizedProductIds?: readonly string[];
-  readonly domain?: 'procurement' | 'inventory' | 'adjustments';
+  readonly domain?: 'procurement' | 'inventory' | 'adjustments' | 'trade-in';
   readonly receivingBranchId?: string;
   readonly isolationLevel?: Prisma.TransactionIsolationLevel;
   readonly effects?: { commit: Array<() => Promise<void>>; rollback: Array<() => Promise<void>> };

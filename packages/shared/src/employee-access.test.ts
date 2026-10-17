@@ -296,3 +296,13 @@ describe('position defaults are editable templates, not runtime role allowlists'
     }
   });
 });
+
+it('keeps seller bank disclosure configurable and separate from cost and bank directory', () => {
+  const defaults = DEFAULT_ACCESS_POSITIONS.filter(position =>
+    (position.permissions as readonly PermissionKey[]).includes('sensitive.seller-bank.read'),
+  ).map(position => position.code);
+  expect(defaults.sort()).toEqual(['ACCOUNTANT', 'PURCHASING']);
+  expect(canAccess(snapshot([grant(['sensitive.cost.read', 'bank-accounts.read'])]), 'sensitive.seller-bank.read', shopA)).toBe(false);
+  expect(canAccess(snapshot([grant(['sensitive.seller-bank.read'])]), 'sensitive.seller-bank.read', shopA)).toBe(true);
+  expect(canAccess(snapshot([grant(['sensitive.seller-bank.read'])]), 'sensitive.seller-bank.read', shopB)).toBe(false);
+});

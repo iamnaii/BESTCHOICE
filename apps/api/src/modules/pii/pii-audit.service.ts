@@ -1,3 +1,4 @@
+import { currentDomainAccess } from '../employee-access/access-execution-context';
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 
@@ -19,7 +20,7 @@ export class PiiAuditService {
 
   async logDecryption(input: LogDecryptionInput): Promise<void> {
     try {
-      await this.prisma.auditLog.create({
+      await (currentDomainAccess()?.client ?? this.prisma).auditLog.create({
         data: {
           userId: input.userId,
           action: input.masked ? 'PII_DECRYPT_MASKED' : 'PII_DECRYPT_FULL',
@@ -31,6 +32,7 @@ export class PiiAuditService {
         },
       });
     } catch (err) {
+      if(currentDomainAccess()) throw err;
       // Never let audit failure block PII access — audit is best-effort
       this.logger.error(`PII audit log failed: ${(err as Error).message}`);
     }

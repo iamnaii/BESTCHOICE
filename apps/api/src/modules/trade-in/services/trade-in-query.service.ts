@@ -1,3 +1,6 @@
+import { tradeInPreparedFile } from '../helpers/trade-in-file-preparation';
+import { currentTradeInWhere } from '../../employee-access/access-trade-in-scope';
+import { domainAccessClient } from '../../employee-access/access-execution-context';
 import { NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { StorageService } from '../../storage/storage.service';
@@ -10,8 +13,10 @@ import {
 } from '../helpers/trade-in.helpers';
 
 export class TradeInQueryService {
+  private get prisma(): PrismaService { return domainAccessClient(this.basePrisma); }
+
   constructor(
-    private prisma: PrismaService,
+    private readonly basePrisma: PrismaService,
     private storage: StorageService,
     private voucher: TradeInVoucherService,
   ) {}
@@ -29,7 +34,7 @@ export class TradeInQueryService {
       throw new BadRequestException('IMEI ต้องเป็นตัวเลข 15 หลัก');
     }
     const matches = await this.prisma.tradeIn.findMany({
-      where: { imei, deletedAt: null },
+      where: { imei, deletedAt: null, AND: currentTradeInWhere() },
       select: { id: true, status: true, createdAt: true },
       orderBy: { createdAt: 'desc' },
       take: 5,
@@ -61,11 +66,8 @@ export class TradeInQueryService {
       page = 1,
       limit = 50,
     } = filters;
-    const where: Record<string, unknown> = { deletedAt: null };
+    const where: Record<string, unknown> = { deletedAt: null, AND: currentTradeInWhere() };
     if (customerId) where.customerId = customerId;
-    // NOTE (launch-wave §2): findAll ไม่ scope ตามสาขาโดยเจตนา — record ออนไลน์
-    // เกิดมา branchId=null; ถ้าอนาคตเพิ่ม branch scoping ต้อง OR branchId=null เสมอ
-    // ไม่งั้นรายการออนไลน์หายจากตา BRANCH_MANAGER ก่อนได้ accept
     if (branchId) where.branchId = branchId;
     if (status) where.status = status;
     if (submissionSource) where.submissionSource = submissionSource;
@@ -81,7 +83,7 @@ export class TradeInQueryService {
         { sellerName: { contains: q, mode: 'insensitive' } },
         { sellerPhone: { contains: q } },
         { voucherNumber: { contains: q, mode: 'insensitive' } },
-        { customer: { name: { contains: q, mode: 'insensitive' } } },
+        { AND: [currentTradeInWhere('customers.read') ?? {}, { customer: { name: { contains: q, mode: 'insensitive' } } }] },
       ];
     }
 
@@ -129,7 +131,7 @@ export class TradeInQueryService {
       throw new BadRequestException('เลขบัตรประชาชนต้อง 13 หลัก');
     }
     const records = await this.prisma.tradeIn.findMany({
-      where: { sellerIdCardNumber: idCardNumber, deletedAt: null },
+      where: { sellerIdCardNumber: idCardNumber, deletedAt: null, AND: currentTradeInWhere() },
       orderBy: { createdAt: 'desc' },
       select: {
         id: true,
@@ -184,8 +186,10 @@ export class TradeInQueryService {
     }
     const { buffer, contentType } = decodeBase64Image(photoBase64);
     const ext = contentType.split('/')[1] || 'jpg';
-    const key = `trade-ins/${tradeIn.id}/id-card-${Date.now()}.${ext}`;
-    await this.storage.upload(key, buffer, contentType);
+    const staged=tradeInPreparedFile.getStore();
+    const key = staged?.key ?? `trade-ins/${tradeIn.id}/id-card-${Date.now()}.${ext}`;
+    if(staged) staged.used=true;
+    else await this.storage.upload(key, buffer, contentType);
     return this.prisma.tradeIn.update({
       where: { id, idCardVerifiedAt: null },
       data: { idCardPhotoUrl: key, idCardSource: source },

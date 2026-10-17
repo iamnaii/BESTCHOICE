@@ -1,3 +1,4 @@
+import { domainAccessClient } from '../employee-access/access-execution-context';
 import {
   BadRequestException,
   ConflictException,
@@ -34,13 +35,15 @@ export interface EnsureRoleResult {
 export class ContactResolverService {
   private readonly pii: CustomerPiiService;
 
+  private get prisma(): PrismaService { return domainAccessClient(this.basePrisma); }
+
   constructor(
-    private readonly prisma: PrismaService,
+    private readonly basePrisma: PrismaService,
     // CustomerPiiModule (leaf) — ไม่ฉีดมา (spec/CLI เก่าที่ new ด้วย prisma ตัวเดียว) = สร้างเอง
     // encryptCustomerFields ไม่แตะ DB เลย จึงใช้ตัวที่สร้างเองได้ผลเท่ากัน
     @Optional() pii?: CustomerPiiService,
   ) {
-    this.pii = pii ?? new CustomerPiiService(prisma);
+    this.pii = pii ?? new CustomerPiiService(basePrisma);
   }
 
   /** Sequential internal code P-NNNNN, serialized via a global advisory lock. */

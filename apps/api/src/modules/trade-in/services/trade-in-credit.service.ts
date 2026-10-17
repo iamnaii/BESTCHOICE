@@ -1,3 +1,6 @@
+import { canAccess } from '@installment/shared';
+import { currentTradeInWhere } from '../../employee-access/access-trade-in-scope';
+import { domainAccessClient, currentDomainAccess } from '../../employee-access/access-execution-context';
 import { BadRequestException, ConflictException, ForbiddenException } from '@nestjs/common';
 import { hasCrossBranchAccess } from '../../auth/branch-access.util';
 import { Prisma } from '@prisma/client';
@@ -37,9 +40,11 @@ export function cashDownPayment(contract: { downPayment: Prisma.Decimal | number
 export class TradeInCreditService {
   private readonly journal: JournalAutoService;
   private readonly companies: CompanyResolverService;
-  constructor(private readonly prisma: PrismaService) {
-    this.journal = new JournalAutoService(prisma);
-    this.companies = new CompanyResolverService(prisma);
+  private get prisma(): PrismaService { return domainAccessClient(this.basePrisma); }
+
+  constructor(private readonly basePrisma: PrismaService) {
+    this.journal = new JournalAutoService(basePrisma);
+    this.companies = new CompanyResolverService(basePrisma);
   }
 
   private async shop(tx: Prisma.TransactionClient, branchId: string) {
@@ -57,6 +62,11 @@ export class TradeInCreditService {
   // สิทธิ์บริษัทให้แล้ว — ต้องเรียก hasCompanyAccess เองเพื่อให้กฎ "array ว่าง = ยังไม่ตั้งค่า"
   // ใช้ชุดเดียวกับที่อื่น ไม่ใช่ปฏิเสธแถวที่ยังไม่ backfill
   private async assertActor(tx: Prisma.TransactionClient, actorId: string, branchId: string) {
+    const ctx = currentDomainAccess();
+    if (ctx) {
+      if (actorId !== ctx.snapshot.userId || !canAccess(ctx.snapshot, ctx.scope.permission, { company: 'SHOP', branchId })) throw new ForbiddenException('ไม่มีสิทธิ์ทำรายการเครดิตเทิร์น');
+      return;
+    }
     const actor = await tx.user.findUnique({ where: { id: actorId } });
     if (!actor || actor.deletedAt || !actor.isActive
       || !hasCompanyAccess(actor.role, actor.accessibleCompanies, 'SHOP')
@@ -95,7 +105,7 @@ export class TradeInCreditService {
     await this.shop(this.prisma, branchId);
     const customer = await this.prisma.customer.findUnique({ where: { id: customerId, deletedAt: null } });
     if (!customer) throw new BadRequestException('ไม่พบลูกค้า');
-    const rows = await this.prisma.tradeIn.findMany({ where: { flow: 'EXCHANGE', deletedAt: null,
+    const rows = await this.prisma.tradeIn.findMany({ where: { flow: 'EXCHANGE', deletedAt: null, AND: currentTradeInWhere(),
       branchId, status: { in: ['ACCEPTED', 'COMPLETED'] }, creditIssuedAt: { not: null }, currentRedemptionId: null,
       OR: [{ customerId }, ...(customer.contactId ? [{ customerId: null, sellerContactId: customer.contactId }] : [])],
     }, orderBy: { createdAt: 'desc' } });

@@ -1,3 +1,5 @@
+import { tradeInPreparedFile } from '../helpers/trade-in-file-preparation';
+import { domainAccessClient, currentDomainAccess } from '../../employee-access/access-execution-context';
 import { resolveTradeInDeviceOrigin } from '../../../utils/trade-in-device-origin.util';
 import { ShopTenderRecorder } from '../../shop-tenders/shop-tender.recorder';
 import {
@@ -49,8 +51,10 @@ export class TradeInLifecycleService {
   // from TradeInService, so NestJS DI never populates a Logger for us.
   private readonly logger = new Logger('TradeInLifecycle');
 
+  private get prisma(): PrismaService { return domainAccessClient(this.basePrisma); }
+
   constructor(
-    private prisma: PrismaService,
+    private readonly basePrisma: PrismaService,
     private storage: StorageService,
     private voucher: TradeInVoucherService,
     private contactResolver: ContactResolverService,
@@ -59,7 +63,7 @@ export class TradeInLifecycleService {
     private valuation: TradeInValuationService,
     private shopTradeInTemplate: ShopTradeInTemplate,
     private shopAccountResolver: ShopAccountResolver,
-    private credits = new TradeInCreditService(prisma),
+    private credits = new TradeInCreditService(basePrisma),
   ) {}
 
   // ─── Create ───────────────────────────────────────────────
@@ -109,8 +113,10 @@ export class TradeInLifecycleService {
     }
 
     // อัปโหลดรูปบัตร ปชช. ถ้ามี
-    let idCardPhotoKey: string | undefined;
-    if (dto.idCardPhotoBase64) {
+    const staged=tradeInPreparedFile.getStore();
+    let idCardPhotoKey: string | undefined=staged?.key;
+    if(staged) staged.used=true;
+    if (dto.idCardPhotoBase64 && !staged) {
       const { buffer, contentType } = decodeBase64Image(dto.idCardPhotoBase64);
       const ext = contentType.split('/')[1] || 'jpg';
       const key = `trade-ins/_pending/${Date.now()}-id-card.${ext}`;
@@ -278,11 +284,11 @@ export class TradeInLifecycleService {
       // Different price requested — OWNER override gate
       if (!dto.force) {
         throw new ForbiddenException(
-          `รายการนี้ถูกตีราคาไปแล้ว (${previousPrice?.toLocaleString()} บาท) — ` +
+          (currentDomainAccess() ? 'รายการนี้ถูกตีราคาไปแล้ว — ' : `รายการนี้ถูกตีราคาไปแล้ว (${previousPrice?.toLocaleString()} บาท) — `) +
             `ไม่สามารถแก้ราคาซ้ำโดยไม่ผ่านการอนุมัติจากเจ้าของร้าน`,
         );
       }
-      if (userRole !== 'OWNER') {
+      if (!(currentDomainAccess() ? currentDomainAccess()!.snapshot.isOwner : userRole === 'OWNER')) {
         throw new ForbiddenException(
           'เฉพาะเจ้าของร้าน (OWNER) เท่านั้นที่สามารถบังคับแก้ราคาที่ตีไปแล้ว',
         );
@@ -344,6 +350,7 @@ export class TradeInLifecycleService {
       const floor = basePriceAtAppraisal * TradeInLifecycleService.PRICE_FLOOR_RATIO;
       if (dto.offeredPrice > ceiling || dto.offeredPrice < floor) {
         throw new BadRequestException(
+          currentDomainAccess() ? 'ราคาที่เสนออยู่นอกช่วง ±15% ของราคากลาง' :
           `ราคาที่เสนอ ${dto.offeredPrice.toLocaleString()} บาท อยู่นอกช่วง ±15% ` +
             `ของราคากลาง (${basePriceAtAppraisal.toLocaleString()} บาท, ` +
             `ช่วง ${floor.toLocaleString()}–${ceiling.toLocaleString()} บาท) — ` +
@@ -812,6 +819,7 @@ export class TradeInLifecycleService {
       ...(assessment ? { quoteBreakdown: assessment.data.quoteBreakdown, conditionAnswers: assessment.data.conditionAnswers,
         basePriceAtAppraisal: assessment.data.basePriceAtAppraisal } : {}) })
       .catch(async (error: unknown) => {
+        if (currentDomainAccess()) throw error;
         if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
           const existing = await this.prisma.tradeIn.findUnique({ where: { quickBuyRequestId: dto.requestId } });
           if (existing) {
@@ -872,6 +880,7 @@ export class TradeInLifecycleService {
         imeiWarning: final?.imeiBlacklistResult === 'duplicate',
       };
     } catch (error) {
+      if(currentDomainAccess()) throw error;
       const response = error instanceof HttpException ? error.getResponse() : null;
       const detail = typeof response === 'string' ? response
         : response && typeof response === 'object' && 'message' in response ? response.message : null;

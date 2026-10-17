@@ -1,3 +1,4 @@
+import { domainAccessClient } from '../../employee-access/access-execution-context';
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
@@ -15,7 +16,9 @@ import {
 export class BuybackQuestionAdminService {
   private static readonly BONUS_KEY = 'sell_exchange_bonus_pct';
 
-  constructor(private prisma: PrismaService) {}
+  private get prisma(): PrismaService { return domainAccessClient(this.basePrisma); }
+
+  constructor(private readonly basePrisma: PrismaService) {}
 
   async list() {
     const questions = await this.prisma.buybackQuestion.findMany({
@@ -48,13 +51,11 @@ export class BuybackQuestionAdminService {
   async deleteQuestion(id: string) {
     await this.mustFindQuestion(id);
     const now = new Date();
-    return this.prisma.$transaction([
-      this.prisma.buybackChoice.updateMany({
-        where: { questionId: id, deletedAt: null },
-        data: { deletedAt: now },
-      }),
-      this.prisma.buybackQuestion.update({ where: { id }, data: { deletedAt: now } }),
-    ]);
+    return this.prisma.$transaction(async tx => {
+      const choices = await tx.buybackChoice.updateMany({where:{questionId:id,deletedAt:null},data:{deletedAt:now}});
+      const question = await tx.buybackQuestion.update({where:{id},data:{deletedAt:now}});
+      return [choices,question];
+    });
   }
 
   async createChoice(questionId: string, dto: CreateBuybackChoiceDto) {

@@ -9,7 +9,7 @@ import { productScopeWhere } from './access-query-scope';
 import { Prisma } from '@prisma/client';
 
 export interface AccessExecutionOptions {
-  domain?: 'procurement' | 'inventory' | 'adjustments';
+  domain?: 'procurement' | 'inventory' | 'adjustments' | 'trade-in';
   isolationLevel?: Prisma.TransactionIsolationLevel;
   /** Whole-attempt retries, including fresh authorization and source resolution. */
   maxAttempts?: 1 | 2 | 3;
@@ -21,7 +21,7 @@ function retryable(error: unknown, unique: boolean): boolean {
     (error.code === 'P2010' && (error.meta?.code === '40001' || error.meta?.code === '40P01'));
 }
 
-export interface ResolvedAccessResources { reference?: 'INSPECTION_TEMPLATE'; emptySelection?: true; company: Company; resources: readonly AccessResource[]; productIds: readonly string[]; receivingBranchId?: string; }
+export interface ResolvedAccessResources { reference?: 'INSPECTION_TEMPLATE' | 'TRADE_IN_REFERENCE'; emptySelection?: true; company: Company; resources: readonly AccessResource[]; productIds: readonly string[]; receivingBranchId?: string; }
 export type PersistedAccessResolver = (tx: AccessClient, snapshot: AccessSnapshot, lock: boolean) => Promise<ResolvedAccessResources>;
 @Injectable()
 export class AccessResourceService {
@@ -60,6 +60,10 @@ export class AccessResourceService {
   assert(snapshot: AccessSnapshot, permission: PermissionKey, resolved: ResolvedAccessResources): void {
     if (resolved.emptySelection) {
       if (resolved.productIds.length || resolved.resources.length || !permissionScopes({ id: snapshot.userId, access: snapshot }, permission, resolved.company).some(t => t.scope !== 'BRANCHES' || t.branchIds.length)) throw new ForbiddenException('ไม่มีขอบเขตรายการ');
+      return;
+    }
+    if (resolved.reference === 'TRADE_IN_REFERENCE') {
+      if (permission !== 'trade-in.read' || !permissionScopes({ id: snapshot.userId, access: snapshot }, permission, 'SHOP').some(t => t.scope === 'COMPANY' || t.scope === 'BRANCHES' && t.branchIds.length)) throw new ForbiddenException('ไม่มีสิทธิ์อ่านข้อมูลอ้างอิง');
       return;
     }
     if (resolved.reference === 'INSPECTION_TEMPLATE') {

@@ -798,11 +798,11 @@ it('honors over-one-year absence against authorized purchases, not an old-row ex
   expect((await http('get', path, undefined, id).expect(200)).body.total).toBe(0);
 });
 
-it('reconciles exactly four reviewed writer and six actual query registrations without catalog credit', () => {
+it('reconciles exactly six reviewed writer and six actual query registrations without catalog credit', () => {
   expect(PARTY_QUERY_ROUTES).toHaveLength(6);
-  expect(PARTY_WRITE_ROUTES).toHaveLength(4);
+  expect(PARTY_WRITE_ROUTES).toHaveLength(6);
   const routes = [...PARTY_WRITE_ROUTES, ...PARTY_QUERY_ROUTES];
-  expect(new Set(routes).size).toBe(10);
+  expect(new Set(routes).size).toBe(12);
   for (const route of routes) {
     expect(ACCESS_BOUNDARIES.has(route)).toBe(true);
     expect(ACCESS_POLICIES[route].classification).toBe('staff');

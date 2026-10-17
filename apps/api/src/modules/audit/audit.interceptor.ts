@@ -1,9 +1,5 @@
-import {
-  Injectable,
-  NestInterceptor,
-  ExecutionContext,
-  CallHandler,
-} from '@nestjs/common';
+import { CustomersController } from '../customers/customers.controller';
+import { Injectable, NestInterceptor, ExecutionContext, CallHandler } from '@nestjs/common';
 import { AuditService } from './audit.service';
 import { sanitizeAuditValue } from './audit-sanitize.util';
 import { clientIp } from '../../utils/client-ip.util';
@@ -46,7 +42,9 @@ export class AuditInterceptor implements NestInterceptor {
             action: method,
             entity: this.extractEntity(url),
             entityId,
-            newValue: this.sanitizeBody(body),
+            newValue:
+              this.contactRequestMetadata(context, 'SUCCESS', undefined, duration) ??
+              this.sanitizeBody(body),
             ipAddress,
             userAgent,
             duration,
@@ -62,7 +60,12 @@ export class AuditInterceptor implements NestInterceptor {
             action: `${method}_ERROR`,
             entity: this.extractEntity(url),
             entityId: this.extractEntityId(url),
-            newValue: {
+            newValue: this.contactRequestMetadata(
+              context,
+              'ERROR',
+              err.status || err.statusCode || 500,
+              duration,
+            ) ?? {
               error: err.message,
               statusCode: err.status || err.statusCode || 500,
               body: this.sanitizeBody(body),
@@ -75,6 +78,42 @@ export class AuditInterceptor implements NestInterceptor {
         },
       }),
     );
+  }
+
+  /** The two managed handlers own durable business proof in their transaction.
+   * This outer best-effort record describes only the HTTP request outcome,
+   * including denials and rollbacks, never contact values or exception text. */
+  private contactRequestMetadata(
+    context: ExecutionContext,
+    outcome: 'SUCCESS' | 'ERROR',
+    statusCode: number | undefined,
+    duration: number,
+  ): Record<string, unknown> | undefined {
+    const request = context.switchToHttp().getRequest();
+    if (request.user?.access?.managed !== true || context.getClass() !== CustomersController)
+      return undefined;
+    const handler = context.getHandler();
+    const fields =
+      handler === CustomersController.prototype.fillContact
+        ? ['phone', 'nationalId', 'name', 'prefix', 'nickname', 'facebookName']
+        : handler === CustomersController.prototype.updateContact
+          ? ['newPhone', 'newLineId', 'markAsLost']
+          : undefined;
+    if (!fields) return undefined;
+    const body = request.body && typeof request.body === 'object' ? request.body : {};
+    const requestStatus = statusCode ?? context.switchToHttp().getResponse().statusCode;
+    return {
+      presentFields: fields.filter((field) => Object.prototype.hasOwnProperty.call(body, field)),
+      outcome,
+      statusCode:
+        Number.isInteger(requestStatus) && requestStatus >= 100 && requestStatus <= 599
+          ? requestStatus
+          : 500,
+      duration,
+      ...(handler === CustomersController.prototype.updateContact
+        ? { reasonProvided: typeof body.reason === 'string' && body.reason.trim().length > 0 }
+        : {}),
+    };
   }
 
   private extractEntity(url: string): string {

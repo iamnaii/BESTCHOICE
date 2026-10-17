@@ -1,8 +1,15 @@
+import type {
+  CustomerContactChangedField,
+  CustomerUpdateContactAcknowledgement,
+} from '@installment/shared';
+import { domainAccessClient } from '../employee-access/access-execution-context';
 import {
-  Injectable,
-  NotFoundException,
-  BadRequestException,
-} from '@nestjs/common';
+  AccessPartySourceService,
+  partyWriteExecution,
+} from '../employee-access/access-party-source.service';
+import { JourneyEntryWriter } from '../customer-journey/journey-entry-writer.service';
+import { contactAddedEntry, isBlankContact } from '../customer-journey/chat-identity-entries';
+import { Injectable, Optional, NotFoundException, BadRequestException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
@@ -41,28 +48,32 @@ const CUSTOMER_CONTACT_SELECT = {
  *    แล้วบอกผู้ใช้ว่าเป็นเบอร์ของใคร
  *  - ตรงกับเบอร์หลักเดิม → ไม่เปลี่ยนเบอร์ (แต่ซ่อม hash/ciphertext/รูปแบบที่เสียจากบั๊กเดิมในแถวนี้)
  *
- * Each call writes a `SKIP_TRACING_UPDATE` audit log entry capturing the old
+ * Managed execution joins the owned party transaction for source proof and safe
+ * required audit/journey evidence; acknowledgements contain field names only.
+ * Legacy calls write a `SKIP_TRACING_UPDATE` audit log entry capturing the old
  * + new contact values + the collector-supplied reason — **หลัง commit**
  * (`AuditService.log` เปิด root-tx ของตัวเอง ห้ามเรียกในทรานแซกชัน).
  */
 @Injectable()
 export class SkipTracingService {
   constructor(
-    private prisma: PrismaService,
+    private readonly basePrisma: PrismaService,
     private audit: AuditService,
     private pii: CustomerPiiService,
+    @Optional() private readonly parties?: AccessPartySourceService,
+    @Optional() private readonly journey?: JourneyEntryWriter,
   ) {}
+
+  private get prisma(): PrismaService {
+    return domainAccessClient(this.basePrisma);
+  }
 
   async updateContact(
     customerId: string,
     dto: UpdateCustomerContactDto,
     actor: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
-    if (
-      dto.newPhone === undefined &&
-      dto.newLineId === undefined &&
-      !dto.markAsLost
-    ) {
+    if (dto.newPhone === undefined && dto.newLineId === undefined && !dto.markAsLost) {
       throw new BadRequestException(
         'ต้องระบุเบอร์ใหม่ LINE ID ใหม่ หรือทำเครื่องหมาย "สูญหาย" อย่างน้อยหนึ่งอย่าง',
       );
@@ -76,19 +87,36 @@ export class SkipTracingService {
       }
     }
 
-    const { existing, updated, phoneStoredAs, phoneOwner } = await this.prisma.$transaction(
-      async (tx) => {
+    const ctx = partyWriteExecution();
+    if (ctx) {
+      if (actor.userId !== ctx.snapshot.userId) throw new Error('Customer actor mismatch');
+      if (!this.parties || !this.journey || !this.pii || !this.audit)
+        throw new Error('Required customer enrichment providers unavailable');
+    }
+    const { existing, updated, phoneStoredAs, phoneOwner, acknowledgement } =
+      await this.prisma.$transaction(async (tx) => {
         // ล็อกเบอร์ก่อนอ่านอะไรทั้งสิ้น — การตรวจเจ้าของหลังได้ล็อกจะเห็นแถวที่ผู้ถือล็อกก่อนหน้า commit แล้ว
         if (newPhone) await lockCustomerPhone(tx, this.pii, newPhone);
+        if (ctx) await this.parties!.mutation(tx, 'customer', customerId, 'customers.update');
 
         const current = await tx.customer.findFirst({
           where: { id: customerId, deletedAt: null },
-          select: { ...CUSTOMER_CONTACT_SELECT, phoneHash: true, phoneEncrypted: true },
+          select: {
+            ...CUSTOMER_CONTACT_SELECT,
+            phoneHash: true,
+            phoneEncrypted: true,
+            ...(ctx ? { phoneSecondaryEncrypted: true } : {}),
+          },
         });
         if (!current) {
           throw new NotFoundException('ไม่พบลูกค้า');
         }
 
+        const canonical = ctx
+          ? this.pii.decryptCustomerFields(current, {
+              strict: await this.pii.isStrictMode(ctx.client),
+            })!
+          : current;
         const data: Prisma.CustomerUpdateInput = {};
         let storedAs: SkipTracingPhoneStoredAs = null;
         let owner: { id: string; name: string } | null = null;
@@ -106,7 +134,9 @@ export class SkipTracingService {
             // ยังรายงาน phoneStoredAs = null เพราะเบอร์ไม่ได้เปลี่ยน
             if (
               currentPhone &&
-              (current.phoneHash !== newHash || !current.phoneEncrypted || current.phone !== newPhone)
+              (current.phoneHash !== newHash ||
+                !current.phoneEncrypted ||
+                current.phone !== newPhone)
             ) {
               const enc = this.pii.encryptCustomerFields({ phone: newPhone });
               data.phone = newPhone;
@@ -138,9 +168,68 @@ export class SkipTracingService {
           select: CUSTOMER_CONTACT_SELECT,
         });
 
-        return { existing: current, updated: row, phoneStoredAs: storedAs, phoneOwner: owner };
-      },
-    );
+        if (ctx) {
+          const changedFields: CustomerContactChangedField[] = [];
+          // A same-primary repair is an actual field write even when its value is unchanged.
+          if (data.phone !== undefined) changedFields.push('phone');
+          if (data.phoneSecondary !== undefined) changedFields.push('phoneSecondary');
+          if (dto.newLineId !== undefined && dto.newLineId !== current.lineIdFinance)
+            changedFields.push('lineIdFinance');
+          if (dto.markAsLost && current.status !== 'LOST') changedFields.push('status');
+          await this.audit.log(
+            {
+              userId: ctx.snapshot.userId,
+              action: 'SKIP_TRACING_UPDATE',
+              entity: 'customer',
+              entityId: customerId,
+              oldValue: { status: current.status },
+              newValue: {
+                changedFields,
+                status: row.status,
+                phoneStoredAs: storedAs,
+                reasonProvided: true,
+              },
+              ipAddress: actor.ipAddress,
+              userAgent: actor.userAgent,
+            },
+            ctx.client,
+          );
+          // Shared CONTACT_ADDED means the first genuine primary phone only.
+          if (storedAs === 'PRIMARY' && isBlankContact(canonical.phone) && !current.phoneHash) {
+            await this.journey!.recordInTx(
+              ctx.client,
+              contactAddedEntry({
+                customerId,
+                fields: ['phone'],
+                via: 'UPDATE',
+                actorUserId: ctx.snapshot.userId,
+                occurredAt: new Date(),
+              }),
+            );
+          }
+          const acknowledgement: CustomerUpdateContactAcknowledgement = {
+            id: customerId,
+            changedFields,
+            phoneStoredAs: storedAs,
+          };
+          return {
+            existing: current,
+            updated: row,
+            phoneStoredAs: storedAs,
+            phoneOwner: null,
+            acknowledgement,
+          };
+        }
+        return {
+          existing: current,
+          updated: row,
+          phoneStoredAs: storedAs,
+          phoneOwner: owner,
+          acknowledgement: undefined,
+        };
+      });
+
+    if (ctx) return acknowledgement!;
 
     // Audit trail — old + new values for tamper-evident review (หลัง commit เสมอ)
     await this.audit.log({

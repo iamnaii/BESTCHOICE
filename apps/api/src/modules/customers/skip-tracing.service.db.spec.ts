@@ -23,6 +23,14 @@ describe('SkipTracingService.updateContact (real DB)', () => {
   const audit = { log: jest.fn().mockResolvedValue(undefined) };
   const pii = new CustomerPiiService(prisma as never);
   const service = new SkipTracingService(prisma as never, audit as never, pii);
+
+  // These regressions exercise unchanged unmanaged callers; managed HTTP has its own narrow acknowledgement.
+  async function legacyUpdateContact(...args: Parameters<SkipTracingService['updateContact']>) {
+    const result = await service.updateContact(...args);
+    if ('changedFields' in result) throw new Error('Expected legacy contact response');
+    return result;
+  }
+
   const savedEnv = { key: process.env.PII_ENCRYPTION_KEY, salt: process.env.PII_HASH_SALT };
   const ids = new Set<string>();
 
@@ -78,7 +86,7 @@ describe('SkipTracingService.updateContact (real DB)', () => {
     const debtor = await customerWithPhone('primary', oldPhone);
     const newPhone = await freshPhone();
 
-    const result = await service.updateContact(
+    const result = await legacyUpdateContact(
       debtor.id,
       { newPhone, reason: 'ญาติให้เบอร์ใหม่' },
       { userId: undefined },
@@ -104,7 +112,7 @@ describe('SkipTracingService.updateContact (real DB)', () => {
     const ownerPhone = await freshPhone();
     const owner = await customerWithPhone('owner', ownerPhone);
 
-    const result = await service.updateContact(
+    const result = await legacyUpdateContact(
       debtor.id,
       { newPhone: ownerPhone, reason: 'เบอร์ภรรยา' },
       { userId: undefined },
@@ -155,7 +163,7 @@ describe('SkipTracingService.updateContact (real DB)', () => {
     );
     await lockTaken;
 
-    const run = service.updateContact(
+    const run = legacyUpdateContact(
       debtor.id,
       { newPhone: contested, reason: 'เบอร์ที่ชนกัน' },
       { userId: undefined },
@@ -209,7 +217,7 @@ describe('SkipTracingService.updateContact (real DB)', () => {
     });
     ids.add(debtor.id);
 
-    const result = await service.updateContact(
+    const result = await legacyUpdateContact(
       debtor.id,
       { newPhone: phone, reason: 'ยืนยันเบอร์เดิม' },
       { userId: undefined },
@@ -227,7 +235,7 @@ describe('SkipTracingService.updateContact (real DB)', () => {
     const phone = await freshPhone();
     const debtor = await customerWithPhone('same-primary-clean', phone);
 
-    const result = await service.updateContact(
+    const result = await legacyUpdateContact(
       debtor.id,
       { newPhone: phone, reason: 'ยืนยันเบอร์เดิม' },
       { userId: undefined },

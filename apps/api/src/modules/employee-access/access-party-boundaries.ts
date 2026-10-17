@@ -19,6 +19,8 @@ export const PARTY_WRITE_ROUTES = [
   'CustomersController.create',
   'CustomersController.update',
   'CustomersController.remove',
+  'CustomersController.fillContact',
+  'CustomersController.updateContact',
   'ContactsController.ensureRole',
 ] as const;
 export const PARTY_QUERY_ROUTES = [
@@ -171,6 +173,17 @@ export class AccessPartyBoundaries implements OnModuleInit {
                       access: ctx.snapshot,
                     };
                     const result = (await handler()) as Record<string, unknown>;
+                    if (
+                      route === 'CustomersController.fillContact' ||
+                      route === 'CustomersController.updateContact'
+                    )
+                      return {
+                        id: result.id,
+                        changedFields: result.changedFields,
+                        ...(route === 'CustomersController.updateContact'
+                          ? { phoneStoredAs: result.phoneStoredAs }
+                          : {}),
+                      };
                     // Mutation acknowledgement never doubles as a broad party/history read.
                     return route === 'ContactsController.ensureRole'
                       ? {

@@ -1,3 +1,4 @@
+import { partyWriteExecution } from '../employee-access/access-party-source.service';
 import { currentPartyQuery } from '../employee-access/access-party-query-plan';
 import { Throttle } from '@nestjs/throttler';
 import {
@@ -380,7 +381,7 @@ export class CustomersController {
     @Req() req: { user: { id: string; role: string } },
   ) {
     const actor = { id: req.user.id, role: req.user.role };
-    await this.merge.assertActorMayAbsorb(id, actor);
+    if (!partyWriteExecution()) await this.merge.assertActorMayAbsorb(id, actor);
     return this.customersService.fillPlaceholderContact(id, dto, actor);
   }
 

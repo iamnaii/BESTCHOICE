@@ -29,3 +29,22 @@ export interface ContactRoleDestination extends PartyDestination {
   /** Only a genuinely new Customer child; matching existing value is a verified retry. */
   customerAssignedToId?: string | null;
 }
+
+/** Field names only: contact acknowledgements never return PII or duplicate identities. */
+export type CustomerContactChangedField =
+  | 'phone'
+  | 'nationalId'
+  | 'name'
+  | 'prefix'
+  | 'nickname'
+  | 'facebookName'
+  | 'phoneSecondary'
+  | 'lineIdFinance'
+  | 'status';
+export interface CustomerFillContactAcknowledgement extends CustomerActionAcknowledgement {
+  changedFields: CustomerContactChangedField[];
+}
+export interface CustomerUpdateContactAcknowledgement extends CustomerFillContactAcknowledgement {
+  /** null also covers same-primary repair; changedFields still reports that write. */
+  phoneStoredAs: 'PRIMARY' | 'SECONDARY' | null;
+}

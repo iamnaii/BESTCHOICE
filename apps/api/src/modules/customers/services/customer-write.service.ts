@@ -1,5 +1,6 @@
 import { domainAccessClient } from '../../employee-access/access-execution-context';
 import { AccessPartySourceService, partyWriteExecution } from '../../employee-access/access-party-source.service';
+import type { CustomerFillContactAcknowledgement, CustomerContactChangedField } from '@installment/shared';
 import { isValidThaiNationalId } from '@installment/shared';
 import { Injectable, ConflictException, BadRequestException, NotFoundException, ForbiddenException, Optional } from '@nestjs/common';
 import { ContractStatus, Prisma } from '@prisma/client';
@@ -647,11 +648,39 @@ export class CustomerWriteService {
     id: string,
     dto: FillProspectContactDto,
     actor: { id: string; role: string },
-  ): Promise<{ id: string; name: string; phone: string }> {
-    const current = await this.prisma.customer.findUnique({
+  ): Promise<{ id: string; name: string; phone: string } | CustomerFillContactAcknowledgement> {
+    const ctx = partyWriteExecution();
+    const phone = this.normalizePhone(dto.phone) ?? dto.phone;
+    if (ctx) {
+      if (actor.id !== ctx.snapshot.userId) throw new Error('Customer actor mismatch');
+      if (!this.parties || !this.piiService || !this.audit || !this.journey)
+        throw new Error('Required customer enrichment providers unavailable');
+      // Phone must precede Customer/source row locks, including placeholder validation.
+      await lockCustomerPhone(ctx.client, this.piiService, phone);
+      await this.parties.mutation(ctx.client, 'customer', id, 'customers.update');
+    }
+    const rawCurrent = await this.prisma.customer.findUnique({
       where: { id },
-      select: { id: true, name: true, ...PLACEHOLDER_FIELDS_SELECT }, // SELECT มี deletedAt อยู่แล้ว
+      select: {
+        id: true,
+        name: true,
+        ...PLACEHOLDER_FIELDS_SELECT,
+        ...(ctx
+          ? {
+              phoneEncrypted: true,
+              nationalIdEncrypted: true,
+              prefix: true,
+              nickname: true,
+              facebookName: true,
+            }
+          : {}),
+      },
     });
+    const current = ctx
+      ? this.piiService!.decryptCustomerFields(rawCurrent, {
+          strict: await this.piiService!.isStrictMode(ctx.client),
+        })
+      : rawCurrent;
     if (!current || current.deletedAt) throw new NotFoundException('ไม่พบลูกค้า');
     if (!isChatPlaceholder(current)) {
       // Fix round 1 (Ruling R35) — ข้อความเดิมสมมติว่า "มีเบอร์แล้ว" เสมอ (จริง ๆ อาจมีแค่เลขบัตร)
@@ -661,13 +690,15 @@ export class CustomerWriteService {
         'เติมเบอร์ได้เฉพาะผู้สนใจอัตโนมัติจากแชทที่ยังไม่มีเบอร์และเลขบัตร — คนนี้มีข้อมูลติดต่อแล้ว ให้เจ้าของหรือผู้จัดการสาขาแก้ที่หน้ารายละเอียดลูกค้า',
       );
     }
-    const phone = this.normalizePhone(dto.phone) ?? dto.phone;
     // Fix round 1 (Ruling R34, Finding 1) — normalizeNationalId (ไม่ใช่ trim เฉย ๆ) เพื่อให้
     // เลขที่มีขีด/เว้นวรรคถูกเก็บแบบ normalize เหมือน create() ไม่งั้นค่าที่ไม่ normalize จะมองไม่เห็น
     // จาก nationalIdHash lookup ของทุกจุดอื่นในระบบ
     const nationalId = dto.nationalId ? this.normalizeNationalId(dto.nationalId) : undefined;
 
-    const piiEncrypted = this.buildPiiEncryptedFields({ phone, ...(nationalId ? { nationalId } : {}) });
+    const piiEncrypted = this.buildPiiEncryptedFields({
+      phone,
+      ...(nationalId ? { nationalId } : {}),
+    });
     const name = dto.name?.trim() || current.name;
     let updated: { id: string; name: string; phone: string | null };
     try {
@@ -700,12 +731,43 @@ export class CustomerWriteService {
       // ชน @unique ตรง ๆ ตอน update (pattern เดียวกับ stock-adjustments.service.ts) — แปลเป็นข้อความไทย
       // ไม่ปล่อย P2002 ดิบเป็น 500 · จับนอก $transaction เพราะ Postgres ยกเลิกทรานแซกชันทันทีที่คำสั่งพัง
       // · แยกช่องตาม meta.target — เดิมทุก P2002 ถูกเรียกว่า "เลขบัตรซ้ำ" แม้ชนที่ช่องอื่น
-      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+      if (!ctx && err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
         throw uniqueClashToConflict(err);
       }
       throw err;
     }
 
+    if (ctx) {
+      const changedFields: CustomerContactChangedField[] = [
+        'phone',
+        ...(nationalId ? ['nationalId' as const] : []),
+      ];
+      if (name !== current.name) changedFields.push('name');
+      for (const field of ['prefix', 'nickname', 'facebookName'] as const)
+        if (dto[field] !== undefined && (dto[field] || null) !== current[field])
+          changedFields.push(field);
+      await this.audit!.log(
+        {
+          userId: ctx.snapshot.userId,
+          action: 'CUSTOMER_PLACEHOLDER_CONTACT_FILLED',
+          entity: 'customer',
+          entityId: id,
+          newValue: { changedFields },
+        },
+        ctx.client,
+      );
+      await this.journey!.recordInTx(
+        ctx.client,
+        contactAddedEntry({
+          customerId: id,
+          fields: nationalId ? ['phone', 'nationalId'] : ['phone'],
+          via: 'FILL_CONTACT',
+          actorUserId: ctx.snapshot.userId,
+          occurredAt: new Date(),
+        }),
+      );
+      return { id: updated.id, changedFields };
+    }
     await this.audit?.log({
       userId: actor.id,
       action: 'CUSTOMER_PLACEHOLDER_CONTACT_FILLED',
@@ -717,7 +779,13 @@ export class CustomerWriteService {
     // CONTACT_ADDED — ด่าน isChatPlaceholder ข้างบนรับประกันว่าเดิมไม่มีทั้งเบอร์และเลขบัตร จึงนับทุกครั้งที่เติมสำเร็จ
     const filled: ContactField[] = nationalId ? ['phone', 'nationalId'] : ['phone'];
     await this.journey?.recordAfterCommit(
-      contactAddedEntry({ customerId: id, fields: filled, via: 'FILL_CONTACT', actorUserId: actor.id, occurredAt: new Date() }),
+      contactAddedEntry({
+        customerId: id,
+        fields: filled,
+        via: 'FILL_CONTACT',
+        actorUserId: actor.id,
+        occurredAt: new Date(),
+      }),
     );
     return { id: updated.id, name: updated.name, phone: updated.phone as string };
   }

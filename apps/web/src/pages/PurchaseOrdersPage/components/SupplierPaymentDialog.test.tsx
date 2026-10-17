@@ -35,7 +35,10 @@ describe('SupplierPaymentDialog — บันทึกการจ่ายเ�
     expect(screen.getByRole('heading', { name: 'บันทึกการจ่ายเงิน PO-2569-10-042' })).toBeInTheDocument();
     expect(screen.getByText('ชำระค่าสินค้า · รับของแล้ว')).toBeInTheDocument();
     expect(screen.getAllByText(/S11-1202/).length).toBeGreaterThan(0);
-    expect(screen.getAllByText(/โอนธนาคารเท่านั้น/).length).toBeGreaterThan(0);
+    const account = screen.getByRole('combobox', { name: 'จ่ายจากบัญชี' }) as HTMLSelectElement;
+    expect(account.value).toBe('S11-1202');
+    expect(screen.getByText('โอนธนาคาร · ต้องแนบสลิป')).toBeInTheDocument();
+    expect(screen.getByText('โอนเข้าบัญชีผู้จัดจำหน่าย')).toBeInTheDocument();
     expect(screen.getByText(/กสิกรไทย/)).toBeInTheDocument();
 
     const amount = screen.getByRole('spinbutton', { name: 'จำนวนเงิน (บาท)' });
@@ -50,7 +53,23 @@ describe('SupplierPaymentDialog — บันทึกการจ่ายเ�
 
     fireEvent.change(screen.getByRole('textbox', { name: 'เลขอ้างอิงการโอน' }), { target: { value: 'TXN-1' } });
     fireEvent.click(submit);
-    expect(p.onSubmit).toHaveBeenCalledWith({ paidAt: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/), amount: 10729, slipUrl: 'https://files.example/slip.jpg', reference: 'TXN-1', note: undefined, requestId: expect.any(String) });
+    expect(p.onSubmit).toHaveBeenCalledWith({ paidAt: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/), amount: 10729, slipUrl: 'https://files.example/slip.jpg', reference: 'TXN-1', note: undefined, requestId: expect.any(String), paymentAccountCode: 'S11-1202' });
+  });
+
+  it('เลือกเงินสดย่อย S11-1106 → ไม่บังคับสลิป · พรีวิว Cr S11-1106 · ส่ง paymentAccountCode', () => {
+    const p = renderDialog();
+    const submit = screen.getByRole('button', { name: 'บันทึกและลงบัญชี' });
+    expect(submit).toBeDisabled();
+    fireEvent.change(screen.getByRole('combobox', { name: 'จ่ายจากบัญชี' }), { target: { value: 'S11-1106' } });
+    expect(screen.getByText(/ไม่ต้องแนบสลิป/)).toBeInTheDocument();
+    expect(screen.queryByText('โอนเข้าบัญชีผู้จัดจำหน่าย')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('วันที่จ่าย')).toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: 'เลขอ้างอิง' })).toBeInTheDocument();
+    expect(screen.getByText('หลักฐานการจ่าย')).toBeInTheDocument();
+    expect(submit).toBeEnabled();
+    expect(screen.getByRole('cell', { name: 'เงินสด - เงินสดย่อย' })).toBeInTheDocument();
+    fireEvent.click(submit);
+    expect(p.onSubmit).toHaveBeenCalledWith({ paidAt: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/), amount: 10729, slipUrl: undefined, reference: undefined, note: undefined, requestId: expect.any(String), paymentAccountCode: 'S11-1106' });
   });
 
   it('จ่ายเกินเพดาน → ข้อความเตือน ปุ่มปิด', () => {

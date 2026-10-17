@@ -727,7 +727,7 @@ export class PoReceivingService {
     if (paying) {
       if (!((dto.paidAmount ?? 0) > 0)) throw new BadRequestException('กรุณาระบุจำนวนเงินที่จ่าย');
       if (dto.paymentMethod && ['CASH', 'CHECK', 'CHEQUE'].includes(dto.paymentMethod.toUpperCase())) {
-        throw new BadRequestException('จ่ายเงินผู้จัดจำหน่ายได้เฉพาะโอนธนาคาร (ไม่มีจ่ายเงินสด/เช็ค)');
+        throw new BadRequestException('รับเข้าตรงจ่ายทันทีรับเฉพาะโอนธนาคาร — จ่ายเงินสดย่อยให้บันทึกทีหลังที่ปุ่ม "บันทึกการจ่าย" ในใบสั่งซื้อ (ไม่มีเช็ค)');
       }
       if (!dto.attachments?.length || !dto.attachments[0]?.trim()) throw new BadRequestException('กรุณาแนบสลิปโอนเงิน');
     }

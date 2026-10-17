@@ -18,6 +18,21 @@ export const PAYMENT_KIND_LABEL: Record<SupplierPaymentKind, string> = {
 
 export const SHOP_PAYING_BANK = { code: 'S11-1202', label: 'ธนาคารหน้าร้าน (จ่ายออก)' };
 export const SHOP_RECEIVING_BANK = { code: 'S11-1201', label: 'ธนาคารหน้าร้าน (รับเข้า)' };
+export const SHOP_PETTY_CASH = { code: 'S11-1106', label: 'เงินสด - เงินสดย่อย' };
+
+export type SupplierPaymentAccountKind = 'BANK' | 'CASH';
+/**
+ * บัญชีที่จ่ายผู้จัดจำหน่ายได้ (ชุดเดียวกับ `supplier-payment-accounts.ts` ฝั่ง api — 2026-10-13): ธนาคารต้องแนบสลิป ·
+ * เงินสดย่อยแนบหลักฐานได้ไม่บังคับ แต่จ่ายได้ไม่เกินยอดในบัญชี (API ตรวจ) · ค่าเริ่มต้น S11-1202 · S11-1106 เป็นข้อเสนอ รอฝ่ายบัญชีรับรองรหัส ·
+ * ไม่มีเงินสดเจ้าของ/ตู้เซฟ/ลิ้นชักสาขา (ยอดเดินตามสมุดปิดยอดลิ้นชัก)
+ */
+export const SUPPLIER_PAYMENT_ACCOUNTS: { code: string; label: string; kind: SupplierPaymentAccountKind }[] = [
+  { ...SHOP_PAYING_BANK, kind: 'BANK' },
+  { ...SHOP_RECEIVING_BANK, kind: 'BANK' },
+  { ...SHOP_PETTY_CASH, kind: 'CASH' },
+];
+export const supplierPaymentAccount = (code: string) => SUPPLIER_PAYMENT_ACCOUNTS.find((a) => a.code === code);
+export const isBankPaymentAccount = (code: string) => supplierPaymentAccount(code)?.kind === 'BANK';
 export const SUPPLIER_DEPOSIT_ACCOUNT = { code: 'S11-4201', label: 'เงินมัดจำจ่ายล่วงหน้า - ผู้จัดจำหน่าย' };
 export const SUPPLIER_DEPOSIT_FORFEIT_ACCOUNT = { code: 'S53-1105', label: 'ค่าใช้จ่าย - มัดจำที่ไม่ได้คืน' };
 export const PAYABLE_ACCOUNT_LABEL: Record<string, string> = {
@@ -32,6 +47,8 @@ export interface SupplierPaymentForm {
   slipUrl: string;
   reference: string;
   note: string;
+  /** รหัสบัญชีที่จ่าย — หนึ่งใน `SUPPLIER_PAYMENT_ACCOUNTS` */
+  paymentAccountCode: string;
 }
 
 export interface PreviewLine {
@@ -94,12 +111,14 @@ export function paymentFormErrors(
     if (!Number.isFinite(amount) || amount <= 0) errors.amount = 'จำนวนเงินต้องมากกว่า 0';
     else if (amount > ceiling + 0.004) errors.amount = `จ่ายได้อีกไม่เกิน ${formatNumberDecimal(ceiling, 2)} บาท (ยอดสุทธิ − จ่ายแล้ว)`;
   }
-  if (!form.slipUrl.trim()) errors.slipUrl = 'กรุณาแนบสลิปโอนเงิน';
+  const account = supplierPaymentAccount(form.paymentAccountCode);
+  if (!account) errors.paymentAccountCode = 'กรุณาเลือกบัญชีที่จ่าย';
+  else if (account.kind === 'BANK' && !form.slipUrl.trim()) errors.slipUrl = 'กรุณาแนบสลิปโอนเงิน';
   return errors;
 }
 
-/** รายการบัญชีที่ API จะลง (สมุดหน้าร้าน) — ชำระ: Dr เจ้าหนี้ / Cr ธนาคาร · มัดจำ: Dr S11-4201 / Cr ธนาคาร */
-export function previewLines(summary: SupplierPaymentSummary, amount: number): PreviewLine[] {
+/** รายการบัญชีที่ API จะลง (สมุดหน้าร้าน) — ชำระ: Dr เจ้าหนี้ / Cr บัญชีที่จ่าย · มัดจำ: Dr S11-4201 / Cr บัญชีที่จ่าย (ค่าเริ่มต้น S11-1202) */
+export function previewLines(summary: SupplierPaymentSummary, amount: number, paymentAccountCode: string = SHOP_PAYING_BANK.code): PreviewLine[] {
   if (!(amount > 0)) return [];
   const plan = planPayment(summary, amount);
   const lines: PreviewLine[] = plan.settlement.map((line) => ({
@@ -111,7 +130,8 @@ export function previewLines(summary: SupplierPaymentSummary, amount: number): P
   if (plan.deposit > 0) {
     lines.push({ accountCode: SUPPLIER_DEPOSIT_ACCOUNT.code, label: SUPPLIER_DEPOSIT_ACCOUNT.label, debit: plan.deposit, credit: 0 });
   }
-  lines.push({ accountCode: SHOP_PAYING_BANK.code, label: SHOP_PAYING_BANK.label, debit: 0, credit: round2(amount) });
+  const account = supplierPaymentAccount(paymentAccountCode) ?? SHOP_PAYING_BANK;
+  lines.push({ accountCode: account.code, label: account.label, debit: 0, credit: round2(amount) });
   return lines;
 }
 

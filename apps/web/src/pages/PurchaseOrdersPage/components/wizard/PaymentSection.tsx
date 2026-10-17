@@ -137,7 +137,7 @@ export function PaymentSection({
                   ))
               )}
             </select>
-            <p className="mt-1 text-xs leading-snug text-muted-foreground">โอนธนาคารเท่านั้น — ลงบัญชีจากธนาคารหน้าร้าน S11-1202 (ไม่มีจ่ายเงินสด)</p>
+            <p className="mt-1 text-xs leading-snug text-muted-foreground">จ่ายทันทีตอนรับเข้า = โอนธนาคารเท่านั้น — ลงบัญชีจากธนาคารหน้าร้าน S11-1202 · จ่ายเงินสดย่อยบันทึกทีหลังที่ปุ่ม "บันทึกการจ่าย"</p>
           </div>
           <div>
             <label htmlFor={`${idPrefix}-paid-amount`} className={labelCls}>จำนวนที่จ่าย (บาท)</label>

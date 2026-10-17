@@ -325,8 +325,8 @@ The fourteen mutations require three distinct canonical integration rewrites. Ex
 
 **Files:** Shared source/query/projector engine and customers, contacts, customer-journey; additive explicit origin/assignment migration where required. Baseline CustomersController23 + ContactsController4 + CustomerJourneyController4 =31 domain methods.
 
-- [ ] Complete four serial independently reviewed units: identity/origin/basic10, derived history/export11, merge/contact/document6 and journey4. Preserve original all31 scope, sensitive and source-safe behaviors; no omitted adapter counts as completion.
-- [ ] Reconcile31 runtime registrations, legitimate positive/denial evidence and source/alias/current-authority/transaction contracts with prior consumers and downstream FINANCE/chat. No guessed historical origin or real employee migration; final full guards/browser/local:check belongs to8.
+- [x] Complete four serial independently reviewed units: identity/origin/basic10, derived history/export11, merge/contact/document6 and journey4. Preserve original all31 scope, sensitive and source-safe behaviors; no omitted adapter counts as completion.
+- [x] Reconcile33 current runtime registrations (31 baseline plus two document additions), legitimate positive/denial evidence and source/alias/current-authority/transaction contracts with prior consumers and downstream FINANCE/chat. No guessed historical origin or real employee migration; final full guards/browser/local:check belongs to8.
 
 ### Task 4.1.5.1: Shared identity origins and basic customer/contact boundaries
 
@@ -457,11 +457,13 @@ Checkpoint R60–65 is recorded in the progress ledger and `task-4.1.5.4-checkpo
 
 **Files:** Reviewed party/source engine plus customer-journey source adapters/state/summary/manual entry helpers. Four methods: CustomerJourneyController.createEntry, list, removeEntry, summary.
 
-- [ ] RED owned PostgreSQL/Nest HTTP all4, authorized multi-source success and absent/foreign-source denial, genuine alias-family scope, current authority and search/cursor/aggregate boundaries.
-- [ ] Resolve each actual Sale, Contract, Payment, collection, credit, service, points, chat and manual-entry source before pagination/count/stage/summary/activity probes. Visible customer/merged identity does not grant every history. Preserve existing order/timezone/cursors and public/customer/cron separation. Project dynamic free text, files, IDs and derived snippets from current authorized contributors.
-- [ ] Manual create/remove requires actual current source and action; preserve canonical creator/business checks and durable immutable evidence. Captured child queries/writes use the existing owned transaction, no best-effort success for required mutation evidence. Distinguish legitimate filtered summaries from genuinely unproven sources.
-- [ ] Reconcile all31 runtime adapters/positive-denial evidence and cross-unit current/source/alias/sensitive/atomicity contracts, including prior shop consumers. Publish remaining named FINANCE/chat/automation/audit/approval/UI/fullguard obligations precisely; no missing source or internal helper counted as complete.
-- [ ] Covering regressions/types/lint/coverage, final parent report/guide, self-review/commit. Root marks parent only after independent review and owns final8 checks.
+- [x] RED owned PostgreSQL/Nest HTTP all4, authorized multi-source success and absent/foreign-source denial, genuine alias-family scope, current authority and search/cursor/aggregate boundaries.
+- [x] Resolve each actual Sale, Contract, Payment, collection, credit, service, points, chat and manual-entry source before pagination/count/stage/summary/activity probes. Visible customer/merged identity does not grant every history. Preserve existing order/timezone/cursors and public/customer/cron separation. Project dynamic free text, files, IDs and derived snippets from current authorized contributors.
+- [x] Manual create/remove requires actual current source and action; preserve canonical creator/business checks and durable immutable evidence. Captured child queries/writes use the existing owned transaction, no best-effort success for required mutation evidence. Distinguish legitimate filtered summaries from genuinely unproven sources.
+- [x] Reconcile all33 current runtime adapters (31 baseline plus two document additions)/positive-denial evidence and cross-unit current/source/alias/sensitive/atomicity contracts, including prior shop consumers. Publish remaining named FINANCE/chat/automation/audit/approval/UI/fullguard obligations precisely; no missing source or internal helper counted as complete.
+- [x] Covering regressions/types/lint/coverage, final parent report/guide, self-review/commit. Root marks parent only after independent review and owns final8 checks.
+
+**Review evidence note:** Journey4 and the broader Customer parent are complete through `9b98ba828`. Independent full review found six Important source/completeness/chronology defects; one fix wave and scoped rereview closed all six with no new Critical/Important/Minor findings. Final Fix1 evidence is38 owned HTTP tests and359 canonical tests across35 suites, plus types/lint; earlier covering297 integration/100 unit and producer/shared runs remain separate historical evidence. Exact actual manifest33 = registered33 = disjoint reviewed units33 (Customer25 + Contact4 + Journey4). Managed summary is an authorized-sources nullable facts contract, not the global cached summary. Finite source/canonical/manual/moderation rules R60–66 and immutable original identity remain binding. Inherited runner noise, full JWT/guards/browser/preview8, named FINANCE/chat/automation/audit/approval/UI and performance obligations remain open in their own tasks.
 
 ### Task 4.1.6: SHOP scope closure
 

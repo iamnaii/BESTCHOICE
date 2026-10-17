@@ -164,10 +164,10 @@ Task 4.1.2 is executed as three serial reviewable units (32 + 21 + 10 routes); t
 
 Execute as two serial reviewed units: trade-in/source-credit producer (38 routes), then sales/bookings consumer (18 routes). The parent remains incomplete until both pass; all obligations below apply to both units.
 
-- [ ] RED and isolated service/DB tests for scoped reads/writes, source-product/customer linkage, duplicate requests and nested cost leakage with authorized success controls.
-- [ ] Implement all listed boundaries and pre-aggregation scopes with validated inputs, file behavior and actual service workflows. Check each referenced source and destination. Convert conflicting managed role-only checks while preserving damage acknowledgement and independent business constraints.
-- [ ] Preserve financial math and existing transaction state until Task 6 implements the new approval rules. Document concrete approval seams for Task 6; do not add a parallel sale/refund execution path.
-- [ ] Source-aware sensitive projections, current transaction assertions, types/coverage/focused tests, report, self-review, commit.
+- [x] RED and isolated service/DB tests for scoped reads/writes, source-product/customer linkage, duplicate requests and nested cost leakage with authorized success controls.
+- [x] Implement all listed boundaries and pre-aggregation scopes with validated inputs, file behavior and actual service workflows. Check each referenced source and destination. Convert conflicting managed role-only checks while preserving damage acknowledgement and independent business constraints.
+- [x] Preserve financial math and existing transaction state until Task 6 implements the new approval rules. Document concrete approval seams for Task 6; do not add a parallel sale/refund execution path.
+- [x] Source-aware sensitive projections, current transaction assertions, types/coverage/focused tests, report, self-review, commit.
 
 ### Task 4.1.3.1: Trade-in intake, credit, vouchers and valuation references
 
@@ -183,19 +183,40 @@ Execute as two serial reviewed units: trade-in/source-credit producer (38 routes
 
 **Files:** Same access engine plus `sales` and `bookings` facades/helper services, concrete product/customer/trade-credit/receipt/journal seams and focused tests. Current surface: SalesController (9) and BookingsController (9).
 
-- [ ] Consume reviewed historical SHOP Sale provenance, current product and trade-in/credit contracts. RED real isolated DB/HTTP tests for all 18 routes, tuple/company/source isolation before counts/exports, nested sensitive output and source substitution with legitimate success controls.
-- [ ] Preserve actual sale creation/void and booking creation/deposit/update/cancel/convert/remove flows, exact product locking and existing partial unique indexes. Sales.create continues to reject INSTALLMENT; /contracts remains the internal installment creation path. Validate every referenced/bundled product and independent linked source; no representative branch or caller-selected scope proof.
-- [ ] Join the actual child service transactions and existing durable audit/journal flows; preserve money formulas and duplicate/concurrent/state/period constraints. Post-commit notifications/loyalty or other effects require explicit retry/failure semantics. Record all cancellation/refund/discount approval seams for Task6, including Booking.convert's direct Sale creation, without adding a competing executor.
-- [ ] Implement source-aware nested/read/export projections and capability-aware managed gates, keeping independent business constraints. Do not treat booking creator as assignment or room origin as permission to all room/customer history. Publish concrete contracts for later customer/FINANCE/chat/UI integration.
-- [ ] All 18 success/denial controls, current-authority and financial rollback/duplicate evidence, types/lint/coverage/regressions, report, self-review and commit. Reconcile all 56 parent routes after both independent reviews.
+- [x] Consume reviewed historical SHOP Sale provenance, current product and trade-in/credit contracts. RED real isolated DB/HTTP tests for all 18 routes, tuple/company/source isolation before counts/exports, nested sensitive output and source substitution with legitimate success controls.
+- [x] Preserve actual sale creation/void and booking creation/deposit/update/cancel/convert/remove flows, exact product locking and existing partial unique indexes. Sales.create continues to reject INSTALLMENT; /contracts remains the internal installment creation path. Validate every referenced/bundled product and independent linked source; no representative branch or caller-selected scope proof.
+- [x] Join the actual child service transactions and existing durable audit/journal flows; preserve money formulas and duplicate/concurrent/state/period constraints. Post-commit notifications/loyalty or other effects require explicit retry/failure semantics. Record all cancellation/refund/discount approval seams for Task6, including Booking.convert's direct Sale creation, without adding a competing executor.
+- [x] Implement source-aware nested/read/export projections and capability-aware managed gates, keeping independent business constraints. Do not treat booking creator as assignment or room origin as permission to all room/customer history. Publish concrete contracts for later customer/FINANCE/chat/UI integration.
+- [x] All 18 success/denial controls, current-authority and financial rollback/duplicate evidence, types/lint/coverage/regressions, report, self-review and commit. Reconcile all 56 parent routes after both independent reviews.
 
 ### Task 4.1.4: After-sales and repair boundaries
 
-**Files:** Extend same infrastructure; modify `after-sales`, `repair-tickets`. Current manifest: AfterSalesController and RepairTicketsController (39 domain entries).
+**Files:** Extend the same access infrastructure; modify `repair-tickets` and `after-sales`, including their actual financial, source and file dependencies. Baseline manifest: RepairTicketsController (15) and AfterSalesController (24), 39 domain entries.
 
-- [ ] RED and isolated tests for assigned/scoped cases, linked product/customer histories, source/destination ownership, file/download and sensitive estimates/costs.
-- [ ] Implement every listed record/collection/workflow boundary with scope before query aggregation and current assertions on writes. Preserve physical receipt, case workflow and existing financial approval paths; do not confer money authority from service-case access.
-- [ ] Source-aware projection, validated DTOs/file responses, types/coverage/focused tests, report, self-review, commit.
+- [ ] Complete Task 4.1.4.1 and Task 4.1.4.2 serially, each with independent review.
+- [ ] Reconcile every baseline route against current registered methods and legitimate success plus denial evidence; preserve all parent workflow, sensitive-data and financial requirements.
+
+### Task 4.1.4.1: Repair tickets and warranty source contract
+
+**Files:** Same access engine plus `repair-tickets` facade, lifecycle/query/warranty/numbering helpers; concrete linked customer, product, sale, contract, supplier and financial-draft seams; isolated tests. Current surface: RepairTicketsController (15).
+
+- [ ] RED real isolated DB/HTTP tests for all 15 routes with legitimate managed success and persisted no-grants denial. Test original tuple boundaries, actual company/source, scoped search/count/pagination, nested estimates/costs/documents, source substitution and current-authority changes. A creator or event actor is not a genuine case assignment.
+- [ ] Preserve explicit branch intake and WALK_IN tickets without invented product/contract dependencies. Every supplied linked record must be resolved from persisted source and independently authorized where required. Keep historical Sale source distinct from current Product ownership; establish a narrow reusable actual Contract source contract where needed for warranty or replacement, with real company/origin semantics and no inferred user branch. Publish it for later FINANCE integration.
+- [ ] Implement record, collection, lookup and lifecycle boundaries using the reviewed execution engine and dynamic transaction clients in captured child helpers. Preserve status/CAS, warranty date arithmetic, global internal numbering and immutable original-source relationships. Source-scoped warranty lookup must not expose unrelated contracts, sales, customer histories, products or open service cases.
+- [ ] Preserve READY_FOR_PICKUP closure and exactly-once canonical ExpenseDocument or OtherIncome draft creation according to payer, positive Decimal amount, supplier presence and existing rules. Join actual outer transaction, existing durable audit and source assertions; prove rollback of status/document/link/audit on late failure and duplicate/concurrent protection. This authorized internal draft operation does not grant unrelated financial posting rights.
+- [ ] Apply independent source/sensitive projections and capability-aware managed gates while retaining business constraints. Expose a safe reusable repair/warranty contract for after-sales callers, including createInTx and markReplaced. Do not grant authority merely because another service calls the raw child helper.
+- [ ] Types/lint/coverage and focused regressions, report with exact source/transaction/projection contracts and remaining Task5/6/7 integration seams, self-review and commit. Root owns integrated fullguard/browser/local:check.
+
+### Task 4.1.4.2: After-sales cases, exchange integration and documents
+
+**Files:** Same access engine plus `after-sales` facade and case/query/lookup/exchange/repair/document helpers; actual ContractExchange, DefectExchange, repair, chat-case, photo and storage dependencies; isolated tests. Current surface: AfterSalesController (24).
+
+- [ ] Consume reviewed repair/warranty and sales/product source contracts. RED isolated DB/HTTP tests for all 24 routes with legitimate managed success and persisted no-grants denial, source substitution, tuple/company/branch isolation before counts, and current-source mutation checks. Resolve persisted raw linked IDs rather than trusting client input or assuming a foreign-key relation exists.
+- [ ] Preserve physical receipt, WALK_IN, repair forwarding, same-model and priced exchange, rejection/cancellation/delivery and existing maker/checker/state rules. Authorize each actual affected source and required workflow capability, including replacement product and contract; service-case access alone does not confer money execution authority. Extend canonical child services to join actual transactions rather than add competing executors; publish direct endpoint seams for later FINANCE/SHOP closure.
+- [ ] Preserve source-room idempotency and global IMEI case exclusion without disclosing other-source case identifiers or granting all room/customer history. Any read-side stage reconciliation must affect only an authorized source, join appropriate durable evidence, and preserve retry semantics. Existing source lookup must remain useful with safe fields and accurate current capability-derived outcomes.
+- [ ] Use the reviewed preauthorization/staging/retry contract for intake and extra photos: validate DTOs/files, authorize before storage, stage each operation once outside the global DB lock, reauthorize actual sources in the transaction, clean only newly owned unused/failed keys. Queue LINE and other external effects only after actual outer commit; test with mocked transport.
+- [ ] Protect document HTML/PDF and image streams before reading, signing or rendering each actual source. Independent documents/read/export and sensitive checks apply to source and copied purchase photos, contract/sale/product/replacement/payment content. JSON projection alone is insufficient; send bytes only after successful actual commit. Record print requests/generation honestly, not proof of paper printing.
+- [ ] Prove actual canonical exchange/repair/financial rollback and concurrent/idempotent protection, source-safe error responses and permitted document output. Types/lint/coverage/focused regressions, exact contracts and Task5/6/7 seams in report, self-review and commit; reconcile all 39 parent routes after both independent reviews.
 
 ### Task 4.1.5: Shared customers, contacts and journey boundaries
 

@@ -404,7 +404,7 @@ export class ShopCashCloseService {
       await this.storage.delete(key).catch(() => undefined);
       throw error;
     }
-    if (row.depositSlipKey) await this.storage.delete(row.depositSlipKey).catch(() => undefined);
+    // Retain committed slip bytes across managed/legacy replacements; only failed staging is cleaned up.
     return { id, hasDepositSlip: true };
   }
 
@@ -426,7 +426,6 @@ export class ShopCashCloseService {
     const note = input.note?.trim() || null;
     const depositReference = input.depositReference?.trim() || null;
     let journal: ConfirmJournalResult = { entryId: null, entryNumber: null, skipped: null };
-    const cleanup: { slipKey: string | null } = { slipKey: null };
     const updated = await cashTransaction(this.basePrisma, async (tx) => {
       const row = await this.loadForDecision(tx, actor, id);
       // "เจ้าของเก็บไว้" = เงินถึงมือเจ้าของ ⇒ คนที่กดยืนยันต้องเป็นเจ้าของเอง (เดิมผู้จัดการเลือกแทนได้โดยไม่มีอะไรยืนยัน)
@@ -443,13 +442,12 @@ export class ShopCashCloseService {
         if (!depositReference || depositReference.length < MIN_REFERENCE_LENGTH || depositReference.length > MAX_REFERENCE_LENGTH) {
           throw new BadRequestException(`กรอกเลขอ้างอิงในสลิปฝากเงิน (${MIN_REFERENCE_LENGTH}–${MAX_REFERENCE_LENGTH} ตัว)`);
         }
-      } else if (row.depositSlipKey) {
-        cleanup.slipKey = row.depositSlipKey; // แนบไว้แล้วเปลี่ยนปลายทาง — ไม่เก็บรูปที่ไม่เกี่ยวกับการปิดยอดครั้งนี้
       }
       const confirmedAt = new Date();
       const confirmed = await tx.shopCashClose.update({
         where: { id },
         data: { status: 'CONFIRMED', receivedAmount: received, receiveVariance, receiveNote: note, destination: input.destination,
+          // Clear the current attachment for non-slip destinations, retaining all committed bytes.
           depositReference: needsSlip ? depositReference : null, ...(needsSlip ? {} : { depositSlipKey: null }),
           confirmedById: actor.id, confirmedAt },
         include: CLOSE_INCLUDE,
@@ -459,7 +457,6 @@ export class ShopCashCloseService {
       if (!journal.entryId) return confirmed;
       return tx.shopCashClose.update({ where: { id }, data: { journalEntryId: journal.entryId }, include: CLOSE_INCLUDE });
     });
-    if (cleanup.slipKey && !currentDomainAccess()) await this.storage.delete(cleanup.slipKey).catch(() => undefined);
     if (journal.skipped && !currentDomainAccess()) {
       Sentry.captureMessage('[shop-cash-close] confirmed without a journal entry', {
         level: 'warning', tags: { subsystem: 'shop-cash-close' }, extra: { closeId: id, reason: journal.skipped } });

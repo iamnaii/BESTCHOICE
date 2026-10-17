@@ -6,7 +6,7 @@ import { seedShopCoa } from '../../../prisma/seed-coa-shop';
 import { AccessTenderMoneyBoundaries } from './access-tender-money-boundaries';
 import { AuditInterceptor } from '../audit/audit.interceptor';
 import { AccessTenderBoundaries } from './access-tender-boundaries';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { PrismaClient } from '@prisma/client';
 import { Test } from '@nestjs/testing';
 import { APP_INTERCEPTOR } from '@nestjs/core';
@@ -48,6 +48,12 @@ const png = Buffer.from(
 const objects = new Map<string, Buffer>();
 const storage = {
   configured: true,
+  upload: jest.fn(async (key: string, body: Buffer) => {
+    objects.set(key, Buffer.from(body));
+  }),
+  delete: jest.fn(async (key: string) => {
+    objects.delete(key);
+  }),
   uploadOwned: jest.fn(async (key: string, body: Buffer) => {
     if (objects.has(key)) throw new Error('collision');
     objects.set(key, Buffer.from(body));
@@ -62,6 +68,7 @@ const storage = {
     return Readable.from([bytes]);
   }),
 };
+const legacyReviewerIds = new Set<string>();
 const auditPromises = new Set<Promise<unknown>>();
 let snapshotOverride: Awaited<ReturnType<AccessSnapshotService['forUser']>> | undefined;
 const snapshots = new AccessSnapshotService(db as PrismaService);
@@ -200,6 +207,13 @@ beforeAll(async () => {
     return promise;
   };
 }, 60000);
+afterEach(async () => {
+  // Legacy OWNER fixtures must not become recipients in unrelated owner-effect tests.
+  if (legacyReviewerIds.size) {
+    await db.user.updateMany({ where: { id: { in: [...legacyReviewerIds] } }, data: { isActive: false } });
+    legacyReviewerIds.clear();
+  }
+});
 afterAll(async () => {
   await app?.close();
   await Promise.allSettled([...auditPromises]);
@@ -321,6 +335,15 @@ async function setup() {
     [f.branch],
   );
   return { ...f, reviewer };
+}
+async function legacyReviewer(
+  branchId: string,
+  role: 'BRANCH_MANAGER' | 'OWNER' = 'BRANCH_MANAGER',
+) {
+  const id = await user();
+  await db.user.update({ where: { id }, data: { accessManaged: false, role, branchId } });
+  legacyReviewerIds.add(id);
+  return id;
 }
 function post(path: string, actor: string) {
   return request(app.getHttpServer())
@@ -475,6 +498,107 @@ describe('B7 useful canonical lifecycle and private evidence', () => {
     await confirm(ack.id, f.reviewer).expect(201);
     expect(await db.shopCashSlipEvidence.count({ where: { sourceId: ack.id } })).toBe(2);
     expect(objects.has(before[0].storageKey)).toBe(true);
+  });
+  it('retains committed managed evidence when a valid legacy reviewer replaces the slip', async () => {
+    const f = await setup(),
+      ack = (await count(f).expect(201)).body;
+    await attach(ack.id, f.reviewer).expect(201);
+    const evidence = await db.shopCashSlipEvidence.findFirstOrThrow({
+      where: { sourceId: ack.id },
+    });
+    const before = await db.shopCashClose.findUniqueOrThrow({ where: { id: ack.id } });
+    const legacy = await legacyReviewer(f.branch);
+    await attach(ack.id, legacy).expect(201);
+    const after = await db.shopCashClose.findUniqueOrThrow({ where: { id: ack.id } });
+    expect(after.depositSlipKey).not.toBe(before.depositSlipKey);
+    expect(after).toMatchObject({
+      status: 'PENDING_CONFIRM',
+      countedAmount: before.countedAmount,
+      sendAmount: before.sendAmount,
+      receivedAmount: null,
+      journalEntryId: null,
+    });
+    expect(objects.get(after.depositSlipKey!)).toEqual(png);
+    expect(await db.shopCashSlipEvidence.findMany({ where: { sourceId: ack.id } })).toEqual([
+      evidence,
+    ]);
+    expect(evidence.sha256).toBe(createHash('sha256').update(png).digest('hex'));
+    expect(storage.delete).not.toHaveBeenCalledWith(evidence.storageKey);
+    expect(objects.get(evidence.storageKey)).toEqual(png);
+  });
+  it.each(['BRANCH_SAFE', 'OWNER_HOLD'] as const)(
+    'retains committed managed evidence when a valid legacy reviewer confirms %s',
+    async (destination) => {
+      const f = await setup(),
+        ack = (await count(f).expect(201)).body;
+      await attach(ack.id, f.reviewer).expect(201);
+      const evidence = await db.shopCashSlipEvidence.findFirstOrThrow({
+        where: { sourceId: ack.id },
+      });
+      const legacy = await legacyReviewer(
+        f.branch,
+        destination === 'OWNER_HOLD' ? 'OWNER' : 'BRANCH_MANAGER',
+      );
+      const response = await confirm(ack.id, legacy, destination).expect(201);
+      expect(response.body).toMatchObject({
+        status: 'CONFIRMED',
+        receivedAmount: 70,
+        sendAmount: 70,
+        receiveVariance: 0,
+        destination,
+        hasDepositSlip: false,
+        journalPosted: true,
+      });
+      const after = await db.shopCashClose.findUniqueOrThrow({ where: { id: ack.id } });
+      expect(after).toMatchObject({
+        status: 'CONFIRMED',
+        depositSlipKey: null,
+        depositReference: null,
+        destination,
+        confirmedById: legacy,
+        journalEntryId: expect.any(String),
+      });
+      expect(after.countedAmount.toNumber()).toBe(80);
+      expect(after.sendAmount.toNumber()).toBe(70);
+      expect(after.receivedAmount!.toNumber()).toBe(70);
+      expect(await db.shopCashSlipEvidence.findMany({ where: { sourceId: ack.id } })).toEqual([
+        evidence,
+      ]);
+      expect(evidence.sha256).toBe(createHash('sha256').update(png).digest('hex'));
+      expect(storage.delete).not.toHaveBeenCalledWith(evidence.storageKey);
+      expect(objects.get(evidence.storageKey)).toEqual(png);
+    },
+  );
+  it('retains legacy-only committed slips on replacement and unused-destination confirmation without backfill', async () => {
+    const f = await setup(),
+      ack = (await count(f).expect(201)).body,
+      legacy = await legacyReviewer(f.branch);
+    await attach(ack.id, legacy).expect(201);
+    const first = await db.shopCashClose.findUniqueOrThrow({ where: { id: ack.id } });
+    await attach(ack.id, legacy).expect(201);
+    const second = await db.shopCashClose.findUniqueOrThrow({ where: { id: ack.id } });
+    expect(second.depositSlipKey).not.toBe(first.depositSlipKey);
+    expect(second.status).toBe('PENDING_CONFIRM');
+    expect(objects.get(second.depositSlipKey!)).toEqual(png);
+    const response = await confirm(ack.id, legacy).expect(201);
+    expect(response.body).toMatchObject({
+      status: 'CONFIRMED',
+      receivedAmount: 70,
+      sendAmount: 70,
+      destination: 'BRANCH_SAFE',
+      hasDepositSlip: false,
+      journalPosted: true,
+    });
+    expect(await db.shopCashClose.findUniqueOrThrow({ where: { id: ack.id } })).toMatchObject({
+      depositSlipKey: null,
+      confirmedById: legacy,
+      journalEntryId: expect.any(String),
+    });
+    expect(await db.shopCashSlipEvidence.count({ where: { sourceId: ack.id } })).toBe(0);
+    for (const key of [first.depositSlipKey!, second.depositSlipKey!]) {
+      expect(storage.delete).not.toHaveBeenCalledWith(key);
+      expect(objects.get(key)).toEqual(png);
+    }
   });
   it('creates deposit once with ledger allocation and content endpoint; independently gates presence versus content', async () => {
     const f = await setup(),

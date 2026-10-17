@@ -160,8 +160,8 @@ describe('นับเงินปิดยอด (shop cash close)', () => {
     await expect(service.attachDepositSlip(users.sales, firstCloseId, slip())).rejects.toThrow('ต้องไม่ใช่ผู้ส่งยอด');
     await expect(service.attachDepositSlip(users.owner, firstCloseId, { mimetype: 'image/jpeg', buffer: Buffer.from('not-an-image-at-all') } as never)).rejects.toThrow('ต้องเป็นไฟล์ JPEG, PNG หรือ WEBP');
     await service.attachDepositSlip(users.owner, firstCloseId, slip());
-    await service.attachDepositSlip(users.owner, firstCloseId, slip()); // แนบใหม่ = แทนรูปเดิม ไม่ทิ้งไฟล์ค้าง
-    expect([...stored.keys()].filter((key) => key.startsWith(`shop-cash-close/${firstCloseId}/`))).toHaveLength(1);
+    await service.attachDepositSlip(users.owner, firstCloseId, slip()); // Replace the current key while retaining previously committed slip bytes (R76).
+    expect([...stored.keys()].filter((key) => key.startsWith(`shop-cash-close/${firstCloseId}/`))).toHaveLength(2);
     await expect(service.confirm(users.owner, firstCloseId, { receivedAmount: 10510, destination: 'BANK_DEPOSIT', depositReference: '123' })).rejects.toThrow('กรอกเลขอ้างอิงในสลิปฝากเงิน');
     const confirmed = await service.confirm(users.owner, firstCloseId, { receivedAmount: 10500, destination: 'BANK_DEPOSIT', note: 'นับรับจริงขาดไป 10 บาท', depositReference: ' 2026092120521187 ' });
     expect(confirmed).toMatchObject({ status: 'CONFIRMED', receivedAmount: 10500, receiveVariance: -10, destination: 'BANK_DEPOSIT',

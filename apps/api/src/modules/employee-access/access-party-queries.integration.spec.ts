@@ -43,7 +43,12 @@ import { BranchGuard } from '../auth/guards/branch.guard';
 const url = process.env.EMPLOYEE_ACCESS_TEST_DATABASE_URL;
 if (!url?.includes('/bc_access_task2?host=/tmp/bc-access-parties.'))
   throw new Error('Owned isolated database required');
-const db = new PrismaClient({ datasources: { db: { url } } });
+const db = new PrismaClient({
+  datasources: { db: { url } },
+  log: [{ emit: 'event', level: 'query' }],
+});
+let capturedQueries: string[] | undefined;
+db.$on('query', (event) => capturedQueries?.push(event.query));
 const snapshots = new AccessSnapshotService(db as PrismaService);
 let app: INestApplication, actor: string, denied: string, branchA: string, branchB: string;
 async function user() {
@@ -596,6 +601,16 @@ it('exposes linked credit only with same-source case and credit capabilities and
   expect(res.body.total).toBe(2);
   expect(res.body.data[0].id).toBe(second.id);
   expect(res.body.data[0].latestCreditScore).toBe(70);
+  const filtered = (
+    await http(
+      'get',
+      '/customers?search=Score&creditStatus=APPROVED&sortBy=creditScore&sortOrder=desc',
+      undefined,
+      id,
+    ).expect(200)
+  ).body;
+  expect(filtered.data.map((row: { id: string }) => row.id)).toEqual([second.id, first.id]);
+  expect(filtered.data[1].latestCreditScore).toBe(20);
 });
 it.each(['empty', 'assigned', 'foreign', 'branches', 'company'] as const)(
   'Product source %s composes safely in a nested OR with real PostgreSQL',
@@ -1110,4 +1125,167 @@ it('makes credit KPIs unavailable for unknown history outside the returned page'
   expect(result.data[0].name).toBe('Credit page A known');
   expect(result.data[0].availability.credit).toBe('complete');
   expect(result.summary).toMatchObject({ checkingCredit: null, prechecked: null });
+});
+
+it('fix1 excludes archived current Product fields and IMEI while retaining historical purchase and SHOP warranty', async () => {
+  const id = await reader(['customers.read', 'contracts.read', 'products.read'], 'SHOP', [branchA]);
+  await grant(id, ['contracts.read'], 'FINANCE', [branchA]);
+  const c = await customer({ name: 'Archive product control' });
+  const con = await contract(c.id, branchA, {
+    deviceReceivedAt: new Date('2020-01-01'),
+    shopWarrantyEndDate: new Date('2099-01-01'),
+  });
+  await db.product.update({
+    where: { id: con.productId },
+    data: { imeiSerial: 'ARCHIVED-PRODUCT-IMEI', warrantyExpireDate: new Date('2100-01-01') },
+  });
+  expect(
+    (await http('get', '/customers?search=ARCHIVED-PRODUCT-IMEI', undefined, id).expect(200)).body
+      .total,
+  ).toBe(1);
+  await db.product.update({ where: { id: con.productId }, data: { deletedAt: new Date() } });
+  expect(
+    (await http('get', '/customers?search=ARCHIVED-PRODUCT-IMEI', undefined, id).expect(200)).body
+      .total,
+  ).toBe(0);
+  const detail = (await http('get', '/customers/' + c.id + '/detail', undefined, id).expect(200))
+    .body;
+  expect(detail.contracts[0].product).toBeNull();
+  expect(detail.latestPurchase).toMatchObject({
+    number: con.contractNumber,
+    kind: 'INSTALLMENT',
+    productLabel: null,
+    imeiSerial: null,
+  });
+  expect(detail.warranty).toMatchObject({
+    status: 'IN_SHOP_WARRANTY',
+    shopEndDate: '2099-01-01T00:00:00.000Z',
+    centerEndDate: null,
+    productAvailable: false,
+  });
+  expect(detail.openContracts[0]).toMatchObject({
+    productLabel: null,
+    imeiSerial: null,
+    centerWarrantyEndDate: null,
+    availability: { product: false },
+  });
+  expect(detail.warrantyContracts[0].id).toBe(con.id);
+  await grant(id, ['sales.read'], 'SHOP', [branchA]);
+  const sale = await db.sale.create({
+    data: {
+      saleNumber: 'ARCHIVE-SALE-' + randomUUID(),
+      saleType: 'CASH',
+      customerId: c.id,
+      productId: con.productId,
+      branchId: branchA,
+      salespersonId: actor,
+      sellingPrice: 1000,
+      netAmount: 1000,
+      paymentMethod: 'CASH',
+      amountReceived: 1000,
+      shopWarrantyEndDate: new Date('2099-01-01'),
+    },
+  });
+  const saleDetail = (
+    await http('get', '/customers/' + c.id + '/detail', undefined, id).expect(200)
+  ).body;
+  expect(saleDetail.sales[0].product).toBeNull();
+  expect(saleDetail.latestPurchase).toMatchObject({
+    kind: 'CASH',
+    number: sale.saleNumber,
+    productLabel: null,
+    imeiSerial: null,
+  });
+  expect(saleDetail.warranty).toMatchObject({
+    status: 'IN_SHOP_WARRANTY',
+    productAvailable: false,
+    centerEndDate: null,
+  });
+
+  expect(
+    (
+      await http(
+        'get',
+        '/customers?view=customers&search=Archive%20product%20control',
+        undefined,
+        id,
+      ).expect(200)
+    ).body.total,
+  ).toBe(1);
+});
+async function creditQueryCount(path: string, id: string) {
+  capturedQueries = [];
+  try {
+    const result = (await http('get', path, undefined, id).expect(200)).body;
+    // Query events may include a just-finished fixture INSERT ... RETURNING.
+    // Count actual reads only, not writes whose SQL names the status column.
+    const reads = capturedQueries.filter((sql) => /^\s*SELECT\b/i.test(sql));
+    const creditReads = reads.filter((sql) => sql.includes('credit_checks')).length;
+    const statusReads = reads.filter(
+      (sql) => sql.includes('credit_check_status') && !sql.includes('credit_checks'),
+    ).length;
+    return { result, creditReads, statusReads };
+  } finally {
+    capturedQueries = undefined;
+  }
+}
+it('fix1 no-credit prospect search does not scan unrelated visible customer credit histories', async () => {
+  const id = await reader(['customers.read']);
+  const target = await customer({ name: 'No credit scan target' });
+  const path = '/customers?view=prospects&search=No%20credit%20scan%20target&limit=1';
+  const before = await creditQueryCount(path, id);
+  for (let i = 0; i < 24; i++) await customer({ name: 'Unrelated no credit ' + i });
+  const after = await creditQueryCount(path, id);
+  expect(after.result.summary).toMatchObject({ checkingCredit: null, prechecked: null });
+  expect(after.result.total).toBe(1);
+  expect(after.creditReads).toBeLessThanOrEqual(1);
+  expect(after.creditReads).toBe(before.creditReads);
+  expect(after.statusReads).toBe(before.statusReads);
+  await grant(id, ['contracts.read', 'credit-checks.read'], 'FINANCE', [branchA]);
+  const con = await contract(target.id, branchA, { status: 'DRAFT' });
+  await db.creditCheck.create({
+    data: { customerId: target.id, contractId: con.id, status: 'APPROVED' },
+  });
+  const unavailableGlobal = await creditQueryCount(
+    path + '&creditCheckStatus=FULL_CHECK_PASSED',
+    id,
+  );
+  expect(unavailableGlobal.result.total).toBe(0);
+  expect(unavailableGlobal.creditReads).toBe(0);
+});
+it('fix1 batches complete credit status for filtered candidates without per-customer or unrelated reads', async () => {
+  const id = await reader(['customers.read', 'credit-checks.read', 'chat.read']);
+  await grant(id, ['contracts.read', 'credit-checks.read', 'chat.read'], 'FINANCE');
+  await db.customer.createMany({
+    data: Array.from({ length: 212 }, (_, i) => ({
+      name: 'Batched credit target ' + i,
+      creditCheckStatus: 'NONE' as const,
+      accessCompanyCode: 'SHOP',
+      accessBranchId: branchA,
+    })),
+  });
+  const path =
+    '/customers?view=prospects&search=Batched%20credit%20target&limit=1&sortBy=name&sortOrder=asc';
+  const before = await creditQueryCount(path, id);
+  for (let i = 0; i < 24; i++) await customer({ name: 'Unrelated full credit ' + i });
+  const after = await creditQueryCount(path, id);
+  expect(after.result.total).toBe(212);
+  expect(after.result.summary).toMatchObject({ checkingCredit: 0, prechecked: 0 });
+  expect(after.creditReads).toBeLessThanOrEqual(6);
+  expect(after.statusReads).toBeLessThanOrEqual(6);
+  expect(after.creditReads).toBe(before.creditReads);
+  expect(after.statusReads).toBe(before.statusReads);
+  const unknown = await db.customer.findFirstOrThrow({
+    where: { name: { startsWith: 'Batched credit target ' } },
+    orderBy: { id: 'desc' },
+  });
+  await db.customer.update({
+    where: { id: unknown.id },
+    data: { name: 'Batched credit target ZZ unknown', creditCheckStatus: 'UNDER_REVIEW' },
+  });
+  await db.creditCheck.create({ data: { customerId: unknown.id, status: 'PENDING' } });
+  const partial = await creditQueryCount(path, id);
+  expect(partial.result.data[0].availability.credit).toBe('complete');
+  expect(partial.result.summary).toMatchObject({ checkingCredit: null, prechecked: null });
+  expect(partial.creditReads).toBeLessThanOrEqual(6);
 });

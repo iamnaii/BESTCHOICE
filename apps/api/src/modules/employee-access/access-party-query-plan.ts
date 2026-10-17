@@ -96,6 +96,12 @@ const CUSTOMER_READ_FIELDS = new Set([
   'assignedTo',
   'openContracts',
 ]);
+interface PartyCreditInfo {
+  creditCheckStatus: string | null;
+  latestCreditStatus: string | null;
+  latestCreditScore: number | null;
+  availability: 'complete' | 'partial' | 'unavailable';
+}
 const FALSE = { id: { in: [] as string[] } };
 /** Internal, exact-owned-client read plan. It is never constructed from request predicates.
  * Permissions remain evaluated by the shared original-tuple policy and source resolvers. */
@@ -142,6 +148,7 @@ export class PartyQueryPlan {
     plan.sale = plan.live.has('SHOP') ? saleScopeWhere(plan.scope('sales.read', 'SHOP')) : FALSE;
     plan.room = { OR: [...plan.live].map((c) => partyRoomReadWhere(plan.scope('chat.read', c))) };
     plan.product = {
+      deletedAt: null,
       OR: [...plan.live].map((c) => productScopeWhere(plan.scope('products.read', c))),
     };
     plan.payment = {
@@ -184,110 +191,154 @@ export class PartyQueryPlan {
         ...rooms,
       ],
     };
-    // Credit provenance must match the actual customer, not merely a room-analysis JSON payload.
-    // Correlation is established by concrete IDs below before any list/filter/count consumes them.
-    const creditIds: string[] = [];
-    if ([...plan.live].some((c) => plan.has('credit-checks.read', c))) {
-      const contracts = new Map(
-        (
-          await db.contract.findMany({
-            where: {
-              AND: [plan.contract, plan.finance('credit-checks.read')],
-              customer: plan.customer,
-            },
-            select: { id: true, customerId: true },
-          })
-        ).map((r) => [r.id, r.customerId]),
+    return plan;
+  }
+  private readonly creditCache = new Map<string, Promise<PartyCreditInfo>>();
+  private readonly readableCreditIds = new Set<string>();
+
+  /** Prepare only the canonical filtered candidate set, before credit filters,
+   * ranking or pagination. No global population scan is needed at plan creation. */
+  async prepareCredit(where: Prisma.CustomerWhereInput) {
+    if (![...this.live].some((company) => this.has('credit-checks.read', company))) return;
+    let cursor: string | undefined;
+    for (;;) {
+      const rows = await this.db.customer.findMany({
+        where: { AND: [this.customer, where] },
+        select: { id: true },
+        orderBy: { id: 'asc' },
+        take: 200,
+        ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+      });
+      await this.loadCreditBatch(rows.map((row) => row.id));
+      if (rows.length < 200) return;
+      cursor = rows[rows.length - 1].id;
+    }
+  }
+  private async loadCreditBatch(ids: string[]) {
+    const missing = ids.filter((id) => !this.creditCache.has(id));
+    if (!missing.length) return;
+    const batch = this.readCreditBatch(missing);
+    for (const id of missing)
+      this.creditCache.set(
+        id,
+        batch.then((rows) => rows.get(id)!),
       );
-      const rooms = new Map(
-        (
-          await db.chatRoom.findMany({
-            where: {
-              customer: plan.customer,
-              OR: [...plan.live].map((c) => ({
-                AND: [
-                  partyRoomReadWhere(plan.scope('chat.read', c)),
-                  partyRoomReadWhere(plan.scope('credit-checks.read', c)),
-                ],
-              })),
-            },
-            select: { id: true, customerId: true },
+    await Promise.all(missing.map((id) => this.creditCache.get(id)!));
+  }
+  private async readCreditBatch(ids: string[]): Promise<Map<string, PartyCreditInfo>> {
+    const empty: PartyCreditInfo = {
+      creditCheckStatus: null,
+      latestCreditStatus: null,
+      latestCreditScore: null,
+      availability: 'unavailable',
+    };
+    if (![...this.live].some((company) => this.has('credit-checks.read', company)))
+      return new Map(ids.map((id) => [id, empty]));
+    const global = this.creditAuthorityComplete();
+    const [contracts, rooms, customers, allCounts] = await Promise.all([
+      this.db.contract.findMany({
+        where: {
+          customerId: { in: ids },
+          AND: [this.contract, this.finance('credit-checks.read')],
+          customer: this.customer,
+        },
+        select: { id: true, customerId: true },
+      }),
+      this.db.chatRoom.findMany({
+        where: {
+          customerId: { in: ids },
+          customer: this.customer,
+          OR: [...this.live].map((company) => ({
+            AND: [
+              partyRoomReadWhere(this.scope('chat.read', company)),
+              partyRoomReadWhere(this.scope('credit-checks.read', company)),
+            ],
+          })),
+        },
+        select: { id: true, customerId: true },
+      }),
+      global
+        ? this.db.customer.findMany({
+            where: { id: { in: ids }, AND: this.customer },
+            select: { id: true, creditCheckStatus: true },
           })
-        ).map((r) => [r.id, r.customerId]),
-      );
+        : Promise.resolve<Array<{ id: string; creditCheckStatus: string }>>([]),
+      global
+        ? this.db.creditCheck.groupBy({
+            by: ['customerId'],
+            where: { customerId: { in: ids }, deletedAt: null },
+            _count: { _all: true },
+          })
+        : Promise.resolve<Array<{ customerId: string; _count: { _all: number } }>>([]),
+    ]);
+    const contractCustomers = new Map(contracts.map((row) => [row.id, row.customerId]));
+    const roomCustomers = new Map(rooms.map((row) => [row.id, row.customerId]));
+    const allowed = new Map<string, { status: string; aiScore: number | null }[]>();
+    if (contracts.length || rooms.length) {
       let cursor: string | undefined;
       for (;;) {
-        const rows = await db.creditCheck.findMany({
+        const rows = await this.db.creditCheck.findMany({
           where: {
             deletedAt: null,
-            customer: plan.customer,
+            customerId: { in: ids },
             OR: [
-              { contractId: { in: [...contracts.keys()] } },
-              { roomAnalysis: { deletedAt: null, roomId: { in: [...rooms.keys()] } } },
+              { contractId: { in: contracts.map((row) => row.id) } },
+              { roomAnalysis: { deletedAt: null, roomId: { in: rooms.map((row) => row.id) } } },
             ],
           },
           select: {
             id: true,
             customerId: true,
             contractId: true,
+            status: true,
+            aiScore: true,
             roomAnalysis: { select: { roomId: true } },
           },
+          orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
           take: 200,
-          orderBy: { id: 'asc' },
           ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
         });
-        for (const row of rows)
+        for (const row of rows) {
+          // Concrete backlink correlation; another customer's linked record is not proof.
           if (
-            (row.contractId && contracts.get(row.contractId) === row.customerId) ||
-            (row.roomAnalysis && rooms.get(row.roomAnalysis.roomId) === row.customerId)
-          )
-            creditIds.push(row.id);
+            (row.contractId && contractCustomers.get(row.contractId) === row.customerId) ||
+            (row.roomAnalysis && roomCustomers.get(row.roomAnalysis.roomId) === row.customerId)
+          ) {
+            this.readableCreditIds.add(row.id);
+            const group = allowed.get(row.customerId) ?? [];
+            group.push(row);
+            allowed.set(row.customerId, group);
+          }
+        }
         if (rows.length < 200) break;
         cursor = rows[rows.length - 1].id;
       }
     }
-    plan.credit = { deletedAt: null, id: { in: creditIds } };
-    return plan;
+    this.credit = { deletedAt: null, id: { in: [...this.readableCreditIds] } };
+    const statuses = new Map(customers.map((row) => [row.id, row.creditCheckStatus] as const));
+    const counts = new Map(allCounts.map((row) => [row.customerId, row._count._all] as const));
+    return new Map(
+      ids.map((id) => {
+        const rows = allowed.get(id) ?? [];
+        const complete = global && statuses.has(id) && (counts.get(id) ?? 0) === rows.length;
+        return [
+          id,
+          {
+            creditCheckStatus: complete ? statuses.get(id)! : null,
+            latestCreditStatus: rows[0]?.status ?? null,
+            latestCreditScore: rows[0]?.aiScore ?? null,
+            availability: complete ? 'complete' : rows.length ? 'partial' : 'unavailable',
+          },
+        ];
+      }),
+    );
   }
-  private readonly creditCache = new Map<
-    string,
-    Promise<{
-      creditCheckStatus: string | null;
-      latestCreditStatus: string | null;
-      latestCreditScore: number | null;
-      availability: 'complete' | 'partial' | 'unavailable';
-    }>
-  >();
-  creditInfo(id: string) {
-    const cached = this.creditCache.get(id);
-    if (cached) return cached;
-    const result = (async () => {
-      const [all, allowed, customer] = await Promise.all([
-        this.db.creditCheck.count({ where: { customerId: id, deletedAt: null } }),
-        this.db.creditCheck.findMany({
-          where: { customerId: id, AND: this.credit },
-          orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-          select: { status: true, aiScore: true },
-        }),
-        this.db.customer.findUniqueOrThrow({ where: { id }, select: { creditCheckStatus: true } }),
-      ]);
-      const complete = this.creditAuthorityComplete() && all === allowed.length;
-      return {
-        creditCheckStatus: complete ? customer.creditCheckStatus : null,
-        latestCreditStatus: allowed[0]?.status ?? null,
-        latestCreditScore: allowed[0]?.aiScore ?? null,
-        availability: complete
-          ? ('complete' as const)
-          : allowed.length
-            ? ('partial' as const)
-            : ('unavailable' as const),
-      };
-    })();
-    this.creditCache.set(id, result);
-    return result;
+  async creditInfo(id: string) {
+    await this.loadCreditBatch([id]);
+    return this.creditCache.get(id)!;
   }
   /** Global workflow status needs fixed authority before actual completeness is inspected. */
-  private creditAuthorityComplete() {
+  creditAuthorityComplete() {
     return (
       this.company('contracts.read', 'FINANCE') &&
       this.company('credit-checks.read', 'FINANCE') &&
@@ -308,6 +359,7 @@ export class PartyQueryPlan {
         take: 200,
         ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
       });
+      await this.loadCreditBatch(rows.map((row) => row.id));
       for (const row of rows)
         if ((await this.creditInfo(row.id)).availability !== 'complete') return false;
       if (rows.length < 200) return true;
@@ -418,6 +470,20 @@ export class PartyQueryPlan {
       throw new ForbiddenException('ไม่รองรับตัวกรองสถานะเครดิต');
     }
     const ids: string[] = [];
+    if (key === 'creditCheckStatus') {
+      if (!this.creditAuthorityComplete()) return FALSE;
+      for (const [id, info] of this.creditCache) {
+        const status = (await info).creditCheckStatus;
+        if (
+          status &&
+          (typeof value === 'string'
+            ? value === status
+            : (value as { in: string[] }).in.includes(status))
+        )
+          ids.push(id);
+      }
+      return { id: { in: ids } };
+    }
     let cursor: string | undefined;
     for (;;) {
       const rows = await this.db.customer.findMany({
@@ -428,20 +494,9 @@ export class PartyQueryPlan {
         ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
       });
       for (const row of rows) {
-        if (key === 'tags') {
-          const query = value as { some?: { deletedAt?: null; tag?: { in?: string[] } } };
-          if ((await this.tags(row.id)).tags.some((t) => query.some!.tag!.in!.includes(t.tag)))
-            ids.push(row.id);
-        } else {
-          const status = (await this.creditInfo(row.id)).creditCheckStatus;
-          if (
-            status &&
-            (typeof value === 'string'
-              ? value === status
-              : (value as { in?: string[] })?.in?.includes(status))
-          )
-            ids.push(row.id);
-        }
+        const query = value as { some: { tag: { in: string[] } } };
+        if ((await this.tags(row.id)).tags.some((tag) => query.some.tag.in.includes(tag.tag)))
+          ids.push(row.id);
       }
       if (rows.length < 200) break;
       cursor = rows[rows.length - 1].id;

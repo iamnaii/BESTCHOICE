@@ -679,6 +679,20 @@ export class CustomerQueryService {
       : filterBaseWhere;
 
     if (plan) {
+      // These two canonical credit filters are top-level conjuncts. Resolve the
+      // other real filters first so credit preparation never scans unrelated people.
+      // Only a credit filter requires both views for the cross-view counts.
+      // Otherwise prepare the selected view's complete (not paginated) candidates.
+      const creditCandidates = {
+        ...(creditStatus || creditCheckStatus ? filterBaseWhere : scopedWhere),
+      };
+      delete creditCandidates.creditChecks;
+      delete creditCandidates.creditCheckStatus;
+      // An unavailable global status filter is deterministically empty, even
+      // when some scoped credit history could otherwise be read.
+      if (!creditCheckStatus || plan.creditAuthorityComplete()) {
+        await plan.prepareCredit(await scopePartyCustomerWhere(plan, creditCandidates));
+      }
       filterBaseWhere = {
         AND: [plan.customer, await scopePartyCustomerWhere(plan, filterBaseWhere)],
       };
@@ -803,21 +817,23 @@ export class CustomerQueryService {
       // KPI ทุกใบผูกกับ where ของหน้านี้ (filter-scoped) — เดิมนับทั้งฐานโดยไม่สนตัวกรองเลย
       Promise.all(
         kpiPredicates.map(async (predicate, index) =>
-          db.customer.count({
-            where: {
-              AND: [
-                scopedWhere,
-                plan
-                  ? await scopePartyCustomerWhere(
-                      plan,
-                      predicate,
-                      !isProspects && (index === 0 || index === 3) ? 'finance' : 'purchase',
-                    )
-                  : predicate,
-                ...tierScope,
-              ],
-            },
-          }),
+          plan && isProspects && (index === 1 || index === 2) && !plan.creditAuthorityComplete()
+            ? 0
+            : db.customer.count({
+                where: {
+                  AND: [
+                    scopedWhere,
+                    plan
+                      ? await scopePartyCustomerWhere(
+                          plan,
+                          predicate,
+                          !isProspects && (index === 0 || index === 3) ? 'finance' : 'purchase',
+                        )
+                      : predicate,
+                    ...tierScope,
+                  ],
+                },
+              }),
         ),
       ),
       // viewCounts นับจาก filterBaseWhere ซึ่ง **ไม่มี** เงื่อนไขมุมมอง ⇒ ตัวเลขบนสวิตช์แท็บ

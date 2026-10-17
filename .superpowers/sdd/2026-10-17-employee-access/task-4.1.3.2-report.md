@@ -24,7 +24,7 @@ Canonical financial paths remain: cash/external SaleWriter, SaleVoid reversal/cr
 
 ## Sensitive output and producer correction
 
-AccessSalesProjectionService resolves each Sale/Booking/Product independently. Historical costSnapshot/costPriceSnapshot uses actual Sale source sensitive.cost.read; current product cost separately uses current Product source. Profit requires both cost and profit authority and conservatively all authorized contributing Sale sources before aggregate disclosure. Party/product IDs and nested expansions require independent reads. Booking receipt navigation requires bookings.read; converted Sale navigation requires actual saleSource plus sales.read. Contract, financeReceivable, commissions, online-order and source-room navigation are suppressed pending their own source integrations. Booking audit events preserve actor/action/time but dynamic data is suppressed rather than granting historical party/product references from raw JSON.
+AccessSalesProjectionService resolves each Sale/Booking/Product independently. Historical costSnapshot/costPriceSnapshot uses actual Sale source sensitive.cost.read; current product cost separately uses current Product source. Profit requires both cost and profit authority on all Sale sources contributing to the exact effective aggregate predicate before disclosure (corrected in review round 1 below). Party/product IDs and nested expansions require independent reads. Booking receipt navigation requires bookings.read; converted Sale navigation requires actual saleSource plus sales.read. Contract, financeReceivable, commissions, online-order and source-room navigation are suppressed pending their own source integrations. Booking audit events preserve actor/action/time but dynamic data is suppressed rather than granting historical party/product references from raw JSON.
 
 Trade credit is consumed from raw persisted values, never projected null amounts. Snapshot projection independently checks actual TradeIn source/read and cost; base/bonus/cashDown/totalDown amounts are hidden without its cost capability. Existing seller-bank and journal-source producer rules remain independent. `currentRedemptionId` is restored only when its actual TradeInCreditRedemption belongs to this TradeIn, points to an actual historical SHOP Sale, and sales.read authorizes that Sale. `currentRedemptionSaleId` then provides legitimate Sale navigation. FINANCE Contract redemptions remain suppressed.
 
@@ -41,7 +41,7 @@ All direct seams for Task6:
 3. SaleVoid.voidSale/run: owner-reserved sales.cancel.approve, original restrictions, current products, canonical JE reversal, TradeInCredit.release and ShopTenderRecorder.recordRefund. No approval-request/execution record invented.
 4. Bookings.create/update: caller item unitPrice/quantity/total/deposit and later edits. These prices feed convert directly; Task6 must not assume all discounts enter SaleCreation.
 5. Bookings.payDeposit: actual receipt/lock, exact canonical tender evidence.
-6. Bookings.cancel: direct pending cancellation or paid full-deposit refund. Until approved-execution records exist, current owner is required, including pending cancellation. Paid refund mirrors actual tender split once; staff refunds need Task6's owner-approved exact execution chain.
+6. Bookings.cancel: direct pending cancellation or paid full-deposit refund. Scoped bookings.update permits pending/no-money cancellation; current owner is required only when the locked persisted booking is PAID with a positive deposit, matching the canonical refund condition (corrected in review round 1 below). Paid refund mirrors actual tender split once; staff refunds need Task6's owner-approved exact execution chain.
 7. Bookings.convertToSale: separate direct CASH Sale creation/deposit application/balance collection, requires bookings.update plus sales.create. Task6 must bind approved prices/quantities/conditions here, without rerouting into another money path.
 8. Bookings.remove: only pending-deposit soft-delete; no paid-money cancellation bypass. Existing expiry/forfeit scheduled path remains unchanged and is not an owner-approved discretionary refund.
 
@@ -73,7 +73,7 @@ Each row has real successful HTTP plus the identical route/method/body replayed 
 
 | Controller.method | Transport | Primary | Resolution |
 |---|---|---|---|
-| BookingsController.cancel | Post(':id/cancel') | bookings.update + current owner | record |
+| BookingsController.cancel | Post(':id/cancel') | bookings.update; current owner for actual paid refund | record |
 | BookingsController.convert | Post(':id/convert') | bookings.update + sales.create | record |
 | BookingsController.create | Post() | bookings.create | record |
 | BookingsController.findAll | Get() | bookings.read | collection |
@@ -132,3 +132,28 @@ Changed files:
 - `apps/api/src/modules/employee-access/access-sales-scope.ts`
 - `tools/test-employee-access-sales-bookings.sh`
 - This task report (forced-add only; other ignored parent artifacts untouched).
+
+
+## Review round 1 fix (base 227e56c8a)
+
+Addressed both Important findings in `task-4.1.3.2-review1.md`. The original blanket owner gate was an incorrect restriction, not an authorized Task 6 deferral. `AccessSalesBoundaries` now derives refund execution from the locked persisted Booking (`status === PAID && depositAmount > 0`), after the existing source lock and before execution. Authorized non-owner pending cancellation follows the canonical no-money path, including stock unlock. Actual paid-deposit refunds retain the current-owner restriction. Request-body status/amount cannot override this condition. Current snapshot, scoped primary authority, canonical state constraints and the same actual transaction remain intact.
+
+The previous summary projection checked all readable sales, incorrectly allowing unrelated records to suppress valid sensitive reads. `SalesQueryService.findAll` now associates the summary object with its exact effective, unpaged aggregate predicate through a server-only WeakMap in `access-sales-aggregate-context.ts`. That predicate includes original source tuples, requested branch/date/search/type/payment/salesperson/archive filters and normal completed-sale eligibility. The projector retrieves it by object identity and checks independent cost AND profit authority on every contributing Sale source using the same actual transaction client. It cannot be supplied through HTTP or serialized into the response; absent context fails closed. Retry response objects are attempt-local and weakly held. No SQL formulas, money paths or unmanaged behavior changed.
+
+### Covering evidence on final source
+
+From the worktree root:
+
+- RED: `bash tools/test-employee-access-sales-bookings.sh --testNamePattern=review1` — **2 failed, 13 skipped** before either fix. Pending cancellation expected 201 but received 403; A-only summary expected 4000 but received null. Captured `/tmp/bc-sales-bookings-review1-red.log`.
+- Focused GREEN: the same command — **2 passed, 13 skipped**, exit 0. Captured `/tmp/bc-sales-bookings-review1-green.log`.
+- Final real isolated PG/HTTP regression: `bash tools/test-employee-access-sales-bookings.sh` — **1 suite, 15/15 tests passed**, exit 0, 9.782 s. Captured `/tmp/bc-sales-bookings-review1-verified-http.log`. Harness owns its isolated PostgreSQL and replaces both DATABASE_URL and DATABASE_URL_FINANCE; no real sends/uploads. Includes final spoofed paid-cancel request fields.
+
+From `apps/api`:
+
+- `node --experimental-vm-modules ../../node_modules/jest/bin/jest.js --runInBand --forceExit --runTestsByPath src/modules/sales/services/sales-query.service.spec.ts src/modules/bookings/__tests__/bookings.service.spec.ts` — **2 suites, 72/72 tests passed**, exit 0, 5.536 s. Captured `/tmp/bc-sales-bookings-review1-units.log`.
+- `npx tsc --noEmit` — exit 0, no diagnostics (`/tmp/bc-sales-bookings-review1-types.log`).
+- `npx eslint src/modules/employee-access/access-sales-bookings.integration.spec.ts src/modules/employee-access/access-sales-projection.service.ts src/modules/employee-access/access-sales-boundaries.ts src/modules/employee-access/access-sales-aggregate-context.ts src/modules/sales/services/sales-query.service.ts` — exit 0, no diagnostics (`/tmp/bc-sales-bookings-review1-lint.log`).
+
+The new HTTP controls prove non-owner pending cancellation succeeds with unchanged journal/tender counts and restored IN_STOCK product; paid cancellation remains denied even with caller-supplied pending/zero fields, leaves PAID state and creates no OUT tender. Aggregate controls prove A-only sensitive success, mixed A+B denial even when B is outside the returned page, and success when B is excluded by date, sale-number search, sale type or default archive filtering; includeVoided restores mixed-source denial while an explicit A branch filter still succeeds.
+
+Self-review: checked lock-before-state-load ordering and exact canonical refund condition; traced the effective aggregate predicate from all query consumers to projection, including off-page sources and completed-sale eligibility; checked missing-context denial and non-serialized identity transport. `git diff --check` passed. No producer, schema, route count or later-task seam changes; the existing 18-route/parent-56 reconciliation still applies. No unrelated domain reruns. Review's Minor expected failure logs/forceExit and pre-existing stale comments remain recorded observations; clean process teardown is not claimed. Existing JWT/browser/Task 6/FINANCE/party/throughput limits above remain. Root owns scoped independent re-review.

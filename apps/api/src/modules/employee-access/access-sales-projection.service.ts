@@ -1,10 +1,11 @@
+import { saleAggregateWhere } from './access-sales-aggregate-context';
 import { Injectable } from '@nestjs/common';
 import { AccessResource, canAccess } from '@installment/shared';
 import { Prisma } from '@prisma/client';
 import { currentDomainAccess } from './access-execution-context';
 import { AccessResourceService } from './access-resource.service';
 import { AccessTradeInProjectionService } from './access-trade-in-projection.service';
-import { saleSource, bookingSource, saleScopeWhere } from './access-sales-scope';
+import { saleSource, bookingSource } from './access-sales-scope';
 import { tradeInSource } from './access-trade-in-scope';
 
 @Injectable()
@@ -139,11 +140,10 @@ export class AccessSalesProjectionService {
         if (out[key]) out[key] = await walk(out[key], origin);
       if (out.summary && typeof out.summary === 'object') {
         const summary = { ...(out.summary as Record<string, unknown>) };
-        const rows = await ctx.client.sale.findMany({
-          where: saleScopeWhere(ctx.scope),
-          select: { id: true },
-        });
-        let allowed = true;
+        const where = saleAggregateWhere(out.summary);
+        const rows = where ? await ctx.client.sale.findMany({ where, select: { id: true } }) : [];
+        // Missing query-owned context cannot authorize a monetary aggregate.
+        let allowed = !!where;
         for (const row of rows) {
           const own = await source(row.id, 'sale');
           if (

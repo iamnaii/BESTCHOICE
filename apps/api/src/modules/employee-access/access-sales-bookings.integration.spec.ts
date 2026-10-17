@@ -992,3 +992,96 @@ it('keeps independent search/filter and physical booking-lock constraints before
   >`SELECT indexdef FROM pg_indexes WHERE indexname = 'bookings_locked_product_active_unique'`;
   expect(indexes[0].indexdef).toContain('WHERE');
 });
+
+it('review1 permits scoped pending cancellation without money but reserves actual paid refunds', async () => {
+  const staff = await user();
+  await grant(
+    staff,
+    ['bookings.create', 'bookings.update', 'products.read', 'customers.read'],
+    [branchA],
+  );
+  const { booking, product: pendingProduct } = await newBooking({}, staff);
+  const before = { journals: await db.journalEntry.count(), tenders: await db.shopTender.count() };
+  await http(
+    'post',
+    `/bookings/${booking.id}/cancel`,
+    { cancelReason: 'No deposit received' },
+    staff,
+  ).expect(201);
+  expect((await db.booking.findUniqueOrThrow({ where: { id: booking.id } })).status).toBe(
+    'CANCELED',
+  );
+  expect((await db.product.findUniqueOrThrow({ where: { id: pendingProduct.id } })).status).toBe(
+    'IN_STOCK',
+  );
+  expect(await db.journalEntry.count()).toBe(before.journals);
+  expect(await db.shopTender.count()).toBe(before.tenders);
+  const paid = await newBooking({}, staff);
+  await http(
+    'post',
+    `/bookings/${paid.booking.id}/pay-deposit`,
+    { depositMethod: 'CASH' },
+    staff,
+  ).expect(201);
+  await http(
+    'post',
+    `/bookings/${paid.booking.id}/cancel`,
+    { cancelReason: 'Requires owner refund approval', status: 'PENDING_DEPOSIT', depositAmount: 0 },
+    staff,
+  ).expect(403);
+  expect((await db.booking.findUniqueOrThrow({ where: { id: paid.booking.id } })).status).toBe(
+    'PAID',
+  );
+  expect(
+    await db.shopTender.count({ where: { bookingId: paid.booking.id, direction: 'OUT' } }),
+  ).toBe(0);
+});
+
+it('review1 authorizes profit against exact filtered contributors, including rows beyond the page', async () => {
+  const a = (await db.branch.create({ data: { name: 'Profit A', companyId: shopId } })).id;
+  const b = (await db.branch.create({ data: { name: 'Profit B', companyId: shopId } })).id;
+  const staff = await user();
+  await grant(staff, ['sales.read'], [a, b]);
+  await grant(staff, ['sensitive.cost.read', 'sensitive.profit.read'], [a]);
+  const pa = await product(a),
+    pb = await product(b);
+  const saleA = await db.sale.create({
+    data: {
+      saleNumber: 'AA-' + randomUUID(),
+      saleType: 'CASH',
+      customerId,
+      productId: pa.id,
+      branchId: a,
+      salespersonId: actor,
+      sellingPrice: 10000,
+      netAmount: 10000,
+      createdAt: new Date('2025-02-15T05:00:00Z'),
+      costSnapshot: { create: { mainProductCost: 6000 } },
+    },
+  });
+  const saleB = await db.sale.create({
+    data: {
+      saleNumber: 'AA-' + randomUUID(),
+      saleType: 'EXTERNAL_FINANCE',
+      customerId,
+      productId: pb.id,
+      branchId: b,
+      salespersonId: actor,
+      sellingPrice: 10000,
+      netAmount: 10000,
+      createdAt: new Date('2024-02-15T05:00:00Z'),
+      costSnapshot: { create: { mainProductCost: 6000 } },
+    },
+  });
+  const get = async (query: string) =>
+    (await http('get', '/sales' + query, undefined, staff).expect(200)).body;
+  expect((await get('?branchId=' + a)).summary.totalProfit).toBe(4000);
+  expect((await get('?limit=1')).summary.totalProfit).toBeNull();
+  expect((await get('?startDate=2025-02-01&endDate=2025-02-28')).summary.totalProfit).toBe(4000);
+  expect((await get('?search=' + saleA.saleNumber)).summary.totalProfit).toBe(4000);
+  expect((await get('?saleType=CASH')).summary.totalProfit).toBe(4000);
+  await db.sale.update({ where: { id: saleB.id }, data: { deletedAt: new Date() } });
+  expect((await get('')).summary.totalProfit).toBe(4000);
+  expect((await get('?includeVoided=true')).summary.totalProfit).toBeNull();
+  expect((await get('?branchId=' + a + '&includeVoided=true')).summary.totalProfit).toBe(4000);
+});

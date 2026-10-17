@@ -139,6 +139,7 @@ export class AccessSalesBoundaries implements OnModuleInit {
         id = req.params?.id;
       const sources: AccessResource[] = [];
       const productIds = new Set<string>();
+      let bookingRefund = false;
       let customerId = body.customerId;
       let creditId = body.tradeInCreditId;
       if (id) {
@@ -154,6 +155,7 @@ export class AccessSalesBoundaries implements OnModuleInit {
             where: { id },
             include: { items: true },
           });
+          bookingRefund = method === 'cancel' && row.status === 'PAID' && row.depositAmount.gt(0);
           customerId = customerId ?? row.customerId;
           for (const item of row.items) if (item.productId) productIds.add(item.productId);
           if (row.lockedProductId) productIds.add(row.lockedProductId);
@@ -167,7 +169,7 @@ export class AccessSalesBoundaries implements OnModuleInit {
       }
       const result = { company: 'SHOP' as const, resources: sources, productIds: [] };
       this.resources.assert(snapshot, permission, result);
-      if (!sale && method === 'cancel' && !snapshot.isOwner)
+      if (bookingRefund && !snapshot.isOwner)
         throw new ForbiddenException('เจ้าของเท่านั้นที่อนุมัติยกเลิกและคืนเงิน');
       if (!sale && method === 'convert')
         this.resources.assert(snapshot, 'sales.create', {

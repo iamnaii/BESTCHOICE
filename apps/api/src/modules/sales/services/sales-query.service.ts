@@ -1,3 +1,4 @@
+import { setSaleAggregateWhere } from '../../employee-access/access-sales-aggregate-context';
 import { AccessSnapshotService } from '../../employee-access/access-snapshot.service';
 import { canAccess } from '@installment/shared';
 import { currentCustomerReadWhere } from '../../employee-access/access-sales-scope';
@@ -131,6 +132,8 @@ export class SalesQueryService {
       financeCount: getGroup('EXTERNAL_FINANCE')?._count || 0,
       financeAmount: new Prisma.Decimal(getGroup('EXTERNAL_FINANCE')?._sum.netAmount ?? 0).toNumber(),
     };
+
+    if (currentDomainAccess()) setSaleAggregateWhere(summary, where);
 
     const responseData = data.map(sale => projectSaleForActor({ ...sale, receiptBreakdown: bookingReceipt(sale) }, actor));
 

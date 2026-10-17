@@ -772,6 +772,7 @@ enum BuybackSelectType {
 // ============================================================
 
 model Branch {
+  promotionBenefits SalePromotionBenefit[]
   accessContacts Contact[] @relation("ContactAccessBranch")
   accessCustomers Customer[] @relation("CustomerAccessBranch")
   accessSuppliers Supplier[] @relation("SupplierAccessBranch")
@@ -1165,6 +1166,7 @@ model Contact {
 }
 
 model Customer {
+  promotionBenefits SalePromotionBenefit[]
   /// Immutable authenticated origin. Historical nulls are never backfilled.
   accessCompanyCode String? @map("access_company_code")
   accessBranchId String? @map("access_branch_id")
@@ -2088,6 +2090,7 @@ enum PricingDeviceOrigin {
 }
 
 model Product {
+  promotionBenefits SalePromotionBenefit[]
   chatServiceRequests ChatServiceRequest[]
   id                 String          @id @default(uuid())
   name               String
@@ -3094,6 +3097,7 @@ model SsoConfig {
 // ============================================================
 
 model Sale {
+  promotionBenefit SalePromotionBenefit?
   chatServiceRequests ChatServiceRequest[]
   tradeInCreditSnapshot Json? @map("trade_in_credit_snapshot")
   tradeInCreditRedemptions TradeInCreditRedemption[]
@@ -5637,6 +5641,7 @@ enum PromotionType {
 }
 
 model Promotion {
+  benefits SalePromotionBenefit[]
   id                  String        @id @default(uuid())
   name                String
   description         String?
@@ -5661,6 +5666,8 @@ model Promotion {
 }
 
 model PromotionUsage {
+  benefitId String? @unique @map("benefit_id")
+  benefit SalePromotionBenefit? @relation(fields: [benefitId], references: [id], onDelete: Restrict)
   id              String    @id @default(uuid())
   promotionId     String    @map("promotion_id")
   saleId          String?   @map("sale_id")
@@ -9528,4 +9535,29 @@ model ShopCashSlipEvidence {
   createdAt DateTime @default(now()) @map("created_at")
   @@index([sourceKind, sourceId])
   @@map("shop_cash_slip_evidence")
+}
+
+/// Immutable canonical named benefit; no historical inference or mutable timestamps.
+model SalePromotionBenefit {
+  id String @id @default(uuid())
+  saleId String @unique @map("sale_id")
+  promotionId String @map("promotion_id")
+  customerId String @map("customer_id")
+  productId String @map("product_id")
+  branchId String @map("branch_id")
+  type PromotionType
+  baselineSource String @map("baseline_source")
+  baselineAmount Decimal @map("baseline_amount") @db.Decimal(12,2)
+  discountAmount Decimal @map("discount_amount") @db.Decimal(12,2)
+  accessoryProductIds String[] @default([]) @map("accessory_product_ids")
+  definition Json
+  fingerprint String
+  recordedAt DateTime @default(now()) @map("recorded_at")
+  sale Sale @relation(fields: [saleId], references: [id], onDelete: Restrict)
+  promotion Promotion @relation(fields: [promotionId], references: [id], onDelete: Restrict)
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  product Product @relation(fields: [productId], references: [id], onDelete: Restrict)
+  branch Branch @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  usage PromotionUsage?
+  @@map("sale_promotion_benefits")
 }

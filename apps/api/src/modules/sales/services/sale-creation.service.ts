@@ -1,3 +1,4 @@
+import { preparePromotionBenefit, recordPromotionBenefit } from '../../promotions/promotion-benefit';
 import { currentDomainAccess, domainAccessClient, onDomainCommit } from '../../employee-access/access-execution-context';
 import {
   BadRequestException,
@@ -67,6 +68,9 @@ export class SaleCreationService {
       if (typeof dto.discountReason !== 'string' || dto.discountReason.trim().length < 3 || dto.discountReason.trim().length > 500) throw new BadRequestException('กรุณาระบุเหตุผลส่วนลด 3–500 ตัวอักษร');
     }
 
+    const promotion = await preparePromotionBenefit(dto, salespersonId);
+    const promotionDiscount = promotion?.discount ?? new Prisma.Decimal(0);
+
     // T6-C1: loyalty redeem at POS — validate customer balance and fold the
     // redeemed value into discount (1 pt = 1 ฿). The redemption itself is
     // applied after the sale is created so we have saleId/contractId to
@@ -85,7 +89,7 @@ export class SaleCreationService {
           `แต้มไม่เพียงพอ — มี ${customer.loyaltyBalance} แต้ม ต้องการ ${loyaltyPoints} แต้ม`,
         );
       }
-      if (loyaltyPoints > dto.sellingPrice - baseDiscount) {
+      if (loyaltyPoints > new Prisma.Decimal(dto.sellingPrice).minus(baseDiscount).minus(promotionDiscount).toNumber()) {
         throw new BadRequestException(
           'จำนวนแต้มที่แลกเกินยอดสุทธิ — ลดจำนวนแต้มให้ไม่เกินยอดคงเหลือ',
         );
@@ -94,10 +98,12 @@ export class SaleCreationService {
 
     if (dto.tradeInCreditId && dto.saleType === 'EXTERNAL_FINANCE') throw new BadRequestException('เครดิตเทิร์นยังไม่รองรับไฟแนนซ์ภายนอก');
     const tradeCredit = dto.tradeInCreditId ? await new TradeInCreditService(this.prisma).quote(this.prisma, {
-      ...dto, tradeInId: dto.tradeInCreditId, priceAfterDiscount: new Prisma.Decimal(dto.sellingPrice).minus(baseDiscount).minus(loyaltyPoints).toNumber(),
+      ...dto, tradeInId: dto.tradeInCreditId, priceAfterDiscount: new Prisma.Decimal(dto.sellingPrice).minus(baseDiscount).minus(promotionDiscount).minus(loyaltyPoints).toNumber(),
     }) : null;
-    const discount = new Prisma.Decimal(baseDiscount).plus(loyaltyPoints).plus(tradeCredit?.bonus ?? 0).toNumber();
+    const discount = new Prisma.Decimal(baseDiscount).plus(promotionDiscount).plus(loyaltyPoints).plus(tradeCredit?.bonus ?? 0).toNumber();
     const netAmount = new Prisma.Decimal(dto.sellingPrice).minus(discount).toNumber();
+
+    if (promotion && new Prisma.Decimal(netAmount).lt(0)) throw new BadRequestException('ยอดสุทธิต้องไม่ติดลบ');
 
     // test-data fence (spec 2026-09-05 §5.1): เครื่องทุกชิ้นในใบกับลูกค้าต้องอยู่ฝั่งเดียวกัน
     // — ตรวจก่อนแตะ tx ใด ๆ; ของแถมผิดฝั่งก็ต้องดัง
@@ -142,7 +148,7 @@ export class SaleCreationService {
 
     DiscountPolicy.assertDiscountAllowed(
       dto.sellingPrice,
-      discount,
+      promotion ? new Prisma.Decimal(discount).minus(promotionDiscount).toNumber() : discount,
       userRole,
       costPrice,
       dto.secondApproverId,
@@ -151,7 +157,7 @@ export class SaleCreationService {
     let sale: { id: string; contractId?: string | null };
     switch (dto.saleType) {
       case 'CASH':
-        sale = await this.writer.createCashSale(dto, salespersonId, netAmount, discount, { role: userRole, branchId: userBranchId });
+        sale = await this.writer.createCashSale(dto, salespersonId, netAmount, discount, { role: userRole, branchId: userBranchId }, ...(promotion ? [promotionDiscount] as const : [] as const));
         break;
       case 'EXTERNAL_FINANCE':
         sale = await this.writer.createExternalFinanceSale(dto, salespersonId, netAmount, discount, { role: userRole, branchId: userBranchId });
@@ -159,6 +165,8 @@ export class SaleCreationService {
       default:
         throw new BadRequestException('ประเภทการขายไม่ถูกต้อง');
     }
+
+    if (promotion) await recordPromotionBenefit(dto, sale.id, promotion);
 
     if (managed && baseDiscount > 0) {
       await managed.client.auditLog.create({ data: {

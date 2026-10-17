@@ -184,12 +184,12 @@ export class SaleWriterService {
    * เป็น READY_FOR_SALE (SaleVoidService).
    */
 
-  async createCashSale(dto: CreateSaleDto, salespersonId: string, netAmount: number, discount: number, actor: SaleProductActor = { role: 'SALES' }) {
+  async createCashSale(dto: CreateSaleDto, salespersonId: string, netAmount: number, discount: number, actor: SaleProductActor = { role: 'SALES' }, promotionDiscount = new Decimal(0)) {
     if (!dto.paymentMethod) throw new BadRequestException('กรุณาเลือกวิธีชำระเงิน');
 
     return this.runSaleTransaction(async (tx) => {
       const credits = new TradeInCreditService(this.prisma);
-      const creditInput = { ...dto, tradeInId: dto.tradeInCreditId!, priceAfterDiscount: new Decimal(dto.sellingPrice).minus(dto.discount ?? 0).minus(dto.loyaltyPointsRedeemed ?? 0).toNumber() };
+      const creditInput = { ...dto, tradeInId: dto.tradeInCreditId!, priceAfterDiscount: new Decimal(dto.sellingPrice).minus(dto.discount ?? 0).minus(promotionDiscount).minus(dto.loyaltyPointsRedeemed ?? 0).toNumber() };
       const credit = dto.tradeInCreditId ? await credits.quote(tx, creditInput) : null;
       if (credit && !credit.net.eq(netAmount)) throw new BadRequestException('ราคาหลังโบนัสเทิร์นเปลี่ยนแล้ว กรุณาตรวจยอดอีกครั้ง');
       const cashDue = new Decimal(netAmount).minus(credit?.base ?? 0);

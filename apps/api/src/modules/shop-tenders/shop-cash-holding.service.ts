@@ -1,3 +1,7 @@
+import { stageCashSlip, recordCashSlip, readCashSlip, StagedCashSlip } from './shop-cash-slip';
+import { procurementPreparation } from '../employee-access/access-preparation-context';
+import { currentDomainAccess } from '../employee-access/access-execution-context';
+import { cashTransaction, assertCashExecution } from './shop-cash-access';
 import { tenderAccess, tenderReadClient } from '../employee-access/access-tender-source';
 import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { randomUUID } from 'crypto';
@@ -129,7 +133,12 @@ export class ShopCashHoldingService {
 
   async createDeposit(actor: CashCloseActor,
     input: { branchId: string; source: CashDepositSource; amount: number; reference: string; note?: string | null },
-    file: Express.Multer.File | undefined) {
+    file: Express.Multer.File | undefined, staged?: StagedCashSlip): Promise<ReturnType<ShopCashHoldingService['present']>> {
+    await assertCashExecution(this.basePrisma, actor.id, true);
+    if (procurementPreparation.getStore() && !currentDomainAccess())
+      return stageCashSlip(this.storage, `shop-cash-deposits/${input.branchId}`, file,
+        prepared => this.createDeposit(actor, input, file, prepared));
+    if (currentDomainAccess() && !staged) throw new ForbiddenException('ต้องเตรียมหลักฐานก่อนทำรายการ');
     if (!this.canDeposit(actor, input.branchId, input.source)) {
       throw new ForbiddenException(input.source === 'OWNER_HOLD'
         ? 'บันทึกนำฝากเงินที่เจ้าของเก็บไว้ได้เฉพาะเจ้าของหรือผู้จัดการการเงิน'
@@ -140,15 +149,16 @@ export class ShopCashHoldingService {
     const reference = input.reference.trim();
     const note = input.note?.trim() || null;
 
-    const slipKey = `shop-cash-deposits/${input.branchId}/${Date.now()}-${randomUUID()}.${evidenceImageExtension(file.mimetype)}`;
-    await this.storage.upload(slipKey, file.buffer, file.mimetype);
+    const slipKey = staged?.key ?? `shop-cash-deposits/${input.branchId}/${Date.now()}-${randomUUID()}.${evidenceImageExtension(file.mimetype)}`;
+    if (!staged) await this.storage.upload(slipKey, file.buffer, file.mimetype);
 
     let journal: { entryNumber: string | null; skipped: string | null; postedAmount: Prisma.Decimal } = { entryNumber: null, skipped: null, postedAmount: ZERO };
     let created: DepositRow;
     try {
-      created = await this.prisma.$transaction(async (tx) => {
+      created = await cashTransaction(this.basePrisma, async (tx) => {
         // ล็อกเดียวกับการนับ/ยืนยันรับเงินของสาขา ⇒ ยอดค้างที่อ่านไม่ขยับระหว่างทาง และกดซ้ำสองครั้งไม่ฝากเกิน
         await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${'shop-cash-close:' + input.branchId}))`;
+        tenderAccess.getStore()?.assertComplete(input.branchId, 'shop-tenders.deposit', true);
         const branch = await tx.branch.findFirst({ where: { id: input.branchId, deletedAt: null }, select: { id: true, name: true } });
         if (!branch) throw new NotFoundException('ไม่พบสาขา');
         const ledger = (await this.loadLedgers(tx, [input.branchId])).get(ShopCashHoldingService.key(input.branchId, input.source));
@@ -172,10 +182,16 @@ export class ShopCashHoldingService {
         return tx.shopCashDeposit.update({ where: { id: row.id }, data: { journalEntryId: posted.entryId }, include: DEPOSIT_INCLUDE });
       });
     } catch (error) {
-      await this.storage.delete(slipKey).catch(() => undefined);
+      if (!staged) await this.storage.delete(slipKey).catch(() => undefined);
       throw error;
     }
 
+    if (currentDomainAccess()) {
+      if (!staged) throw new ForbiddenException('ต้องเตรียมหลักฐานก่อนทำรายการ');
+      await recordCashSlip(staged, 'DEPOSIT', created.id);
+      await this.audit.log({ userId: actor.id, action: 'SHOP_CASH_DEPOSIT_RECORDED', entity: 'shop_cash_deposit', entityId: created.id, newValue: { branchId: created.branchId, source: created.source } }, currentDomainAccess()!.client);
+      return this.present(created);
+    }
     if (journal.skipped || amount.minus(journal.postedAmount).gte(CENT)) {
       Sentry.captureMessage('[shop-cash-deposit] recorded without a full journal entry', {
         level: 'warning', tags: { subsystem: 'shop-cash-close' },
@@ -218,9 +234,11 @@ export class ShopCashHoldingService {
 
   /** รูปสลิปของการนำฝาก — สิทธิ์ดูตามขอบเขตสาขา (route จำกัด role แล้ว) */
   async getDepositSlip(actor: CashCloseActor, id: string) {
+    await assertCashExecution(this.basePrisma, actor.id);
     const row = await this.prisma.shopCashDeposit.findUnique({ where: { id }, select: { branchId: true, slipKey: true } });
     if (!row) throw new NotFoundException('ไม่พบรายการนำฝาก');
     if (!canViewBranch(actor, row.branchId)) throw new ForbiddenException('ดูสลิปได้เฉพาะสาขาของตัวเอง');
+    if (currentDomainAccess()) return readCashSlip(this.storage, this.audit, 'DEPOSIT', id, row.branchId, row.slipKey);
     return { key: row.slipKey, stream: await this.storage.getStream(row.slipKey) };
   }
 }

@@ -1,5 +1,5 @@
 import {
-  BadRequestException, Body, Controller, FileTypeValidator, Get, MaxFileSizeValidator, Param, ParseFilePipe, ParseUUIDPipe, Post, Query,
+  StreamableFile, BadRequestException, Body, Controller, FileTypeValidator, Get, MaxFileSizeValidator, Param, ParseFilePipe, ParseUUIDPipe, Post, Query,
   Res, UploadedFile, UseGuards, UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
@@ -21,7 +21,7 @@ import { EVIDENCE_IMAGE_MAX_BYTES, EVIDENCE_IMAGE_MIME } from '../../utils/uploa
 /** รูปหลักฐาน ≤ 5MB · JPEG/PNG/WEBP — service ตรวจ byte แรกซ้ำอีกชั้น (`assertEvidenceImage`) */
 const EVIDENCE_IMAGE_PIPE = new ParseFilePipe({
   validators: [
-    new MaxFileSizeValidator({ maxSize: EVIDENCE_IMAGE_MAX_BYTES, message: 'รูปมีขนาดเกิน 5MB' }),
+    new MaxFileSizeValidator({ maxSize: EVIDENCE_IMAGE_MAX_BYTES + 1, message: 'รูปมีขนาดเกิน 5MB' }),
     new FileTypeValidator({ fileType: EVIDENCE_IMAGE_MIME }),
   ],
   fileIsRequired: true,
@@ -35,7 +35,7 @@ function sendEvidenceImage(res: Response, file: { key: string; stream: Readable 
   res.setHeader('Content-Type', IMAGE_TYPE[extension] ?? 'application/octet-stream');
   res.setHeader('Content-Disposition', 'inline');
   res.setHeader('Cache-Control', 'private, max-age=300');
-  file.stream.pipe(res);
+  return new StreamableFile(file.stream);
 }
 
 /**
@@ -122,7 +122,7 @@ export class ShopTendersController {
 
   @Post('cash-close/:id/deposit-slip')
   @Roles('OWNER', 'FINANCE_MANAGER', 'BRANCH_MANAGER')
-  @UseInterceptors(FileInterceptor('file'))
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: EVIDENCE_IMAGE_MAX_BYTES + 1 } }))
   @ApiOperation({ summary: 'แนบรูปสลิปฝากเงินก่อนยืนยันรับเงิน (บังคับเมื่อปลายทาง = นำฝากธนาคาร)' })
   attachDepositSlip(@CurrentUser() user: CashCloseActor, @Param('id', ParseUUIDPipe) id: string,
     @UploadedFile(EVIDENCE_IMAGE_PIPE) file: Express.Multer.File) {
@@ -132,13 +132,15 @@ export class ShopTendersController {
   @Get('cash-close/:id/deposit-slip')
   @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'BRANCH_MANAGER')
   @ApiOperation({ summary: 'รูปสลิปฝากเงินของการปิดยอด' })
-  async getCloseDepositSlip(@CurrentUser() user: CashCloseActor, @Param('id', ParseUUIDPipe) id: string, @Res() res: Response) {
-    sendEvidenceImage(res, await this.cashClose.getDepositSlip(user, id));
+  async getCloseDepositSlip(@CurrentUser() user: CashCloseActor, @Param('id', ParseUUIDPipe) id: string, @Res({ passthrough: true }) res: Response) {
+    const file = await this.cashClose.getDepositSlip(user, id);
+    if (file instanceof StreamableFile) { res.setHeader('Cache-Control', 'private, no-store'); res.setHeader('X-Content-Type-Options', 'nosniff'); return file; }
+    return sendEvidenceImage(res, file);
   }
 
   @Post('cash-deposits')
   @Roles('OWNER', 'FINANCE_MANAGER', 'BRANCH_MANAGER')
-  @UseInterceptors(FileInterceptor('file'))
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: EVIDENCE_IMAGE_MAX_BYTES + 1 } }))
   @ApiOperation({ summary: 'บันทึกนำฝาก — ย้ายเงินในตู้เซฟสาขา/เงินที่เจ้าของเก็บ เข้าธนาคารของร้าน (แนบสลิป + ลงบัญชีให้เอง)' })
   createCashDeposit(@CurrentUser() user: CashCloseActor, @Body() dto: CreateCashDepositDto,
     @UploadedFile(EVIDENCE_IMAGE_PIPE) file: Express.Multer.File) {
@@ -148,7 +150,9 @@ export class ShopTendersController {
   @Get('cash-deposits/:id/slip')
   @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'BRANCH_MANAGER')
   @ApiOperation({ summary: 'รูปสลิปของการนำฝาก' })
-  async getCashDepositSlip(@CurrentUser() user: CashCloseActor, @Param('id', ParseUUIDPipe) id: string, @Res() res: Response) {
-    sendEvidenceImage(res, await this.holdings.getDepositSlip(user, id));
+  async getCashDepositSlip(@CurrentUser() user: CashCloseActor, @Param('id', ParseUUIDPipe) id: string, @Res({ passthrough: true }) res: Response) {
+    const file = await this.holdings.getDepositSlip(user, id);
+    if (file instanceof StreamableFile) { res.setHeader('Cache-Control', 'private, no-store'); res.setHeader('X-Content-Type-Options', 'nosniff'); return file; }
+    return sendEvidenceImage(res, file);
   }
 }

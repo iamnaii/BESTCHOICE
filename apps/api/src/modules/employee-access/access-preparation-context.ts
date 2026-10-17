@@ -4,6 +4,8 @@ import { AsyncLocalStorage } from 'node:async_hooks';
  * staging. All consumers must call execute before any persistent mutation.
  * Uploads happen without an open transaction or the global authority lock. */
 export const procurementPreparation = new AsyncLocalStorage<{
+  /** Identifies the narrow cash-slip preparer; never derived from request input. */
+  source?: 'shop-cash-slip';
   authorize?: () => Promise<void>;
   execute: <T>(handler: () => Promise<T>) => Promise<T>;
 }>();

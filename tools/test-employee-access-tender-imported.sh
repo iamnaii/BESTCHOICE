@@ -28,6 +28,9 @@ JS
 elif [[ "${1:-}" == "--unit" ]]; then
   shift
   npm test --workspace=@installment/api -- --runTestsByPath src/modules/shop-tenders/shop-tenders-report.service.spec.ts src/modules/shop-tenders/shop-tender.recorder.spec.ts src/modules/shop-tenders/shop-cash-holding.util.spec.ts src/modules/shop-tenders/shop-tender.util.spec.ts src/modules/shop-tenders/dto/cash-close.dto.spec.ts src/modules/imported-sales/__tests__/imported-sales.service.spec.ts src/modules/imported-sales/__tests__/tooltify-sales-parser.spec.ts --testPathIgnorePatterns '/node_modules/' "$@"
+elif [[ "${1:-}" == "--money" ]]; then
+  shift
+  npm test --workspace=@installment/api -- --runTestsByPath src/modules/employee-access/access-tender-money.integration.spec.ts --testPathIgnorePatterns '/node_modules/' "$@"
 else
   npm test --workspace=@installment/api -- --runTestsByPath src/modules/employee-access/access-tender-imported.integration.spec.ts --testPathIgnorePatterns '/node_modules/' "$@"
 fi

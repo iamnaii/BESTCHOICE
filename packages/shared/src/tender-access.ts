@@ -58,6 +58,7 @@ export interface ManagedCashClose {
   journalPosted: boolean | null;
   depositReference: string | null;
   hasDepositSlip: boolean | null;
+  canReadSlip: boolean;
   moneyState: TenderMoneyState | null;
   moneyAvailable: boolean;
 }
@@ -75,6 +76,7 @@ export interface ManagedCashHolding {
   moneyAvailable: boolean;
 }
 export interface ManagedCashDeposit {
+  canReadSlip: boolean;
   id: string;
   branchId: string;
   branchName: string;
@@ -284,3 +286,19 @@ export interface ManagedImportedSalesList {
   page: number;
   limit: number;
 }
+
+/** Count response deliberately does not disclose expected money or variance. */
+export interface ManagedCashCountAcknowledgement {
+  id: string;
+  status: 'PENDING_CONFIRM';
+}
+/** Upload acknowledgement is existence metadata, not content authorization. */
+export interface ManagedCashSlipAcknowledgement {
+  id: string;
+  hasDepositSlip: true;
+}
+export const MANAGED_CASH_SLIP_CONTRACT = {
+  maxBytes: 5242880,
+  mimeTypes: ['image/jpeg', 'image/png', 'image/webp'],
+  cacheControl: 'private, no-store',
+} as const;

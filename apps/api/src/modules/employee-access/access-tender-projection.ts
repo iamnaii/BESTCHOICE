@@ -74,6 +74,7 @@ export function projectTenderRead(plan: TenderSourcePlan, method: string, value:
       out[key] = walk(item, ownBranch);
     }
     if (typeof row.branchId === 'string') out.moneyAvailable = money;
+    if (ownBranch && ('hasDepositSlip' in row || 'depositedAt' in row)) out.canReadSlip = money && plan.allows('documents.read', ownBranch) && plan.allows('shop-tenders.read', ownBranch);
     return out;
   };
   if (!value || typeof value !== 'object') return value;

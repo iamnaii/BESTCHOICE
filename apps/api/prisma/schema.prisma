@@ -845,6 +845,7 @@ model Branch {
 }
 
 model User {
+  createdCashSlipEvidence ShopCashSlipEvidence[]
   createdCustomerAttachments CustomerAttachment[]
   assignedContacts Contact[] @relation("ContactAssignedTo")
   assignedCustomers Customer[] @relation("CustomerAssignedTo")
@@ -9510,4 +9511,21 @@ model CustomerAttachment {
   deletedAt DateTime? @map("deleted_at")
   @@index([originCustomerId, deletedAt])
   @@map("customer_attachments")
+}
+
+/// Immutable slip identity; no update/delete lifecycle and no historical backfill.
+model ShopCashSlipEvidence {
+  id String @id @default(uuid())
+  sourceKind String @map("source_kind")
+  sourceId String @map("source_id")
+  storageKey String @unique @map("storage_key")
+  mimeType String @map("mime_type")
+  fileSize Int @map("file_size")
+  sha256 String
+  operationId String @unique @map("operation_id")
+  createdById String @map("created_by_id")
+  createdBy User @relation(fields: [createdById], references: [id], onDelete: Restrict)
+  createdAt DateTime @default(now()) @map("created_at")
+  @@index([sourceKind, sourceId])
+  @@map("shop_cash_slip_evidence")
 }

@@ -127,6 +127,7 @@ describe('นับเงินปิดยอด (shop cash close)', () => {
     const close = await service.count(users.sales, { branchId, countedAmount: 12510, varianceReason: 'ทอนเงินลูกค้าผิด 200' });
     expect(close).toMatchObject({ status: 'PENDING_CONFIRM', attemptNo: 1, expectedAmount: 12710, countedAmount: 12510, varianceAmount: -200,
       sendAmount: 10510, varianceReason: 'ทอนเงินลูกค้าผิด 200', periodStart: null });
+    if (!('countedBy' in close)) throw new Error('Expected legacy full count response');
     expect(close.countedBy.id).toBe(users.sales.id);
     firstCloseId = close.id; firstCountedAt = close.countedAt;
     // เตือนเจ้าของทุกครั้งที่ปิดยอดมีส่วนต่าง = งานในหน้า "งานของทีม" หนึ่งใบ (เงินขาด = HIGH)
@@ -188,6 +189,7 @@ describe('นับเงินปิดยอด (shop cash close)', () => {
   it('ผจก.สาขานับเอง ยืนยันเองไม่ได้ · ตีกลับ → นับใหม่เป็นครั้งที่ 2 บนขอบรอบเดิม', async () => {
     const second = await service.count(users.manager, { branchId, countedAmount: 2890 });
     expect(second).toMatchObject({ attemptNo: 1, expectedAmount: 2890, varianceAmount: 0, sendAmount: 890, varianceReason: null });
+    if (!('periodStart' in second)) throw new Error('Expected legacy full count response');
     expect(second.periodStart).toEqual(firstCountedAt);
     await expect(service.confirm(users.manager, second.id, { receivedAmount: 890, destination: 'BRANCH_SAFE' })).rejects.toThrow('ต้องไม่ใช่คนเดียวกับผู้ส่งยอด');
     await expect(service.sendBack(users.owner, second.id, { reason: 'x' })).rejects.toThrow('กรอกเหตุผลที่ตีกลับ');
@@ -199,6 +201,7 @@ describe('นับเงินปิดยอด (shop cash close)', () => {
     const recount = await service.count(users.sales, { branchId, countedAmount: 3000 });
     // รอบถอยกลับไปขอบของการปิดยอดที่ยังมีผลครั้งก่อน (ครั้งแรก) ⇒ รวม 890 ของรอบที่ถูกตีกลับ + 110 ที่เพิ่งเข้า
     expect(recount).toMatchObject({ attemptNo: 2, cashIn: 1000, expectedAmount: 3000, varianceAmount: 0, sendAmount: 1000 });
+    if (!('periodStart' in recount)) throw new Error('Expected legacy full count response');
     expect(recount.periodStart).toEqual(firstCountedAt);
     // นับตรง = ไม่มีงานเตือนเพิ่ม
     expect(await prisma.todo.count({ where: { branchId, tags: { has: 'cash-close-variance' } } })).toBe(2);

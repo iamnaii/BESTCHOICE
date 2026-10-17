@@ -109,6 +109,10 @@ export class AuditInterceptor implements NestInterceptor {
       ShopTendersController.prototype.getDailySummary, ShopTendersController.prototype.getCashCloseStatus,
       ShopTendersController.prototype.getCashCloseHistory, ShopTendersController.prototype.getCashCloseOverview,
       ShopTendersController.prototype.getCashCloseReminder,
+      ShopTendersController.prototype.countCashClose, ShopTendersController.prototype.confirmCashClose,
+      ShopTendersController.prototype.sendBackCashClose, ShopTendersController.prototype.attachDepositSlip,
+      ShopTendersController.prototype.createCashDeposit, ShopTendersController.prototype.getCloseDepositSlip,
+      ShopTendersController.prototype.getCashDepositSlip,
     ].some(handler => handler === context.getHandler()) || context.getClass() === ImportedSalesController && [
       ImportedSalesController.prototype.list, ImportedSalesController.prototype.summary,
     ].some(handler => handler === context.getHandler());

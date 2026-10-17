@@ -1,3 +1,5 @@
+import { StickersController } from '../stickers/stickers.controller';
+import { PricingTemplatesController } from '../pricing-templates/pricing-templates.controller';
 import { ShopTendersController } from '../shop-tenders/shop-tenders.controller';
 import { ImportedSalesController } from '../imported-sales/imported-sales.controller';
 import { CustomerJourneyController } from '../customer-journey/customer-journey.controller';
@@ -55,7 +57,7 @@ export class AuditInterceptor implements NestInterceptor {
 
           const duration = Date.now() - startTime;
           // Try to extract entityId from response for POST (create) operations
-          let entityId = this.extractEntityId(url);
+          let entityId = this.isSharedReference(context) ? undefined : this.extractEntityId(url);
           if (!entityId && method === 'POST' && responseBody && typeof responseBody === 'object') {
             entityId = responseBody.id;
           }
@@ -82,7 +84,7 @@ export class AuditInterceptor implements NestInterceptor {
             userId: user.id,
             action: `${method}_ERROR`,
             entity: this.extractEntity(url),
-            entityId: this.extractEntityId(url),
+            entityId: this.isSharedReference(context) ? undefined : this.extractEntityId(url),
             newValue: this.contactRequestMetadata(
               context,
               'ERROR',
@@ -103,7 +105,12 @@ export class AuditInterceptor implements NestInterceptor {
     );
   }
 
+  private isSharedReference(context: ExecutionContext): boolean {
+    return context.getClass() === StickersController || context.getClass() === PricingTemplatesController;
+  }
+
   private isManagedTenderRead(context: ExecutionContext): boolean {
+    if (this.isSharedReference(context)) return true;
     if (context.switchToHttp().getRequest().user?.access?.managed !== true) return false;
     return context.getClass() === ShopTendersController && [
       ShopTendersController.prototype.getDailySummary, ShopTendersController.prototype.getCashCloseStatus,
@@ -128,7 +135,7 @@ export class AuditInterceptor implements NestInterceptor {
     duration: number,
   ): Record<string, unknown> | undefined {
     const request = context.switchToHttp().getRequest();
-    if (request.user?.access?.managed !== true) return undefined;
+    if (request.user?.access?.managed !== true && !this.isSharedReference(context)) return undefined;
     const handler = context.getHandler();
     const controller = context.getClass();
     if (this.isManagedTenderRead(context)) {

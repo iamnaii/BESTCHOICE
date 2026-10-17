@@ -17,7 +17,7 @@ export interface AccessExecutionOptions {
   /** Internal bounded override for the owned Customer export snapshot only. */
   timeoutMs?: 30000 | 60000;
 }
-function retryable(error: unknown, unique: boolean): boolean {
+export function retryable(error: unknown, unique: boolean): boolean {
   if (!(error instanceof Prisma.PrismaClientKnownRequestError)) return false;
   return error.code === 'P2034' || (unique && error.code === 'P2002') ||
     (error.code === 'P2010' && (error.meta?.code === '40001' || error.meta?.code === '40P01'));

@@ -453,6 +453,8 @@ Completed through `23bb232ae` after independent full review and scoped Fix1 revi
 
 ### Task 4.1.5.4: Customer journey and parent closure
 
+Checkpoint R60–65 is recorded in the progress ledger and `task-4.1.5.4-checkpoint-rulings.md`: finite linked business sources; all-source shared manual facts with independently proven original identity; minimal COMPANY loss-complete gate for create and undo; configurable moderation; canonical filtered CTE with nullable source coverage; exact owned evidence and postcommit recompute. No current-Product or PaymentLink origin fallback.
+
 **Files:** Reviewed party/source engine plus customer-journey source adapters/state/summary/manual entry helpers. Four methods: CustomerJourneyController.createEntry, list, removeEntry, summary.
 
 - [ ] RED owned PostgreSQL/Nest HTTP all4, authorized multi-source success and absent/foreign-source denial, genuine alias-family scope, current authority and search/cursor/aggregate boundaries.

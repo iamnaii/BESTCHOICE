@@ -8,6 +8,7 @@ import AuthLayout from '@/components/layout/AuthLayout';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
+import { formControlClass, formLabelClass } from '@/components/ui/form-styles';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
@@ -82,8 +83,9 @@ export default function LoginPage() {
         </div>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <Label htmlFor="email">อีเมล</Label>
+            <Label htmlFor="email" className={formLabelClass}>อีเมล</Label>
             <Input
+              className={formControlClass}
               id="email"
               type="email"
               data-testid="login-email"
@@ -96,8 +98,9 @@ export default function LoginPage() {
           </div>
 
           <div>
-            <Label htmlFor="password">รหัสผ่าน</Label>
+            <Label htmlFor="password" className={formLabelClass}>รหัสผ่าน</Label>
             <Input
+              className={formControlClass}
               id="password"
               type="password"
               data-testid="login-password"
@@ -114,7 +117,7 @@ export default function LoginPage() {
             type="submit"
             data-testid="login-submit"
             disabled={isSubmitting}
-            className="w-full"
+            className="w-full h-11 min-h-11"
             variant="primary"
             size="lg"
           >

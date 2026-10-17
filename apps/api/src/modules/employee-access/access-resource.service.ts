@@ -14,6 +14,8 @@ export interface AccessExecutionOptions {
   /** Whole-attempt retries, including fresh authorization and source resolution. */
   maxAttempts?: 1 | 2 | 3;
   retryUniqueConflict?: boolean;
+  /** Internal bounded override for the owned Customer export snapshot only. */
+  timeoutMs?: 30000 | 60000;
 }
 function retryable(error: unknown, unique: boolean): boolean {
   if (!(error instanceof Prisma.PrismaClientKnownRequestError)) return false;
@@ -110,7 +112,7 @@ export class AccessResourceService {
       if (resolved?.emptySelection && !scopeReads) throw new ForbiddenException('รายการว่างต้องมีตัวกรองคำค้น');
       const result = await domainAccessExecution.run({ client: tx, snapshot, scope, scopeReads, domain: options.domain, receivingBranchId: resolved?.receivingBranchId, isolationLevel, effects, authorizedProductIds: scopeReads && !options.domain ? resolved?.productIds : undefined }, handler);
       return { result, snapshot, resolved };
-        }, { timeout: 30000, isolationLevel });
+        }, { timeout: options.timeoutMs ?? 30000, isolationLevel });
       } catch (error) {
         // Cleanup failure must not trigger a retry which could duplicate a file.
         await Promise.all(effects.rollback.map(cleanup => cleanup()));

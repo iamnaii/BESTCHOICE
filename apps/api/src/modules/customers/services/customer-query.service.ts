@@ -1,3 +1,5 @@
+import type { ManagedCustomerQueryKpis, ManagedCustomerProjection } from '@installment/shared';
+import { outstandingOf, UNPAID_INSTALLMENT_WHERE } from '../../contracts/contract-outstanding';
 import {
   assertPartyQueryClient,
   currentPartyQuery,
@@ -8,6 +10,7 @@ import {
   assertExportRowCount,
   EXPORT_ROW_LIMIT,
   readExportSnapshot,
+  readJoinedExportSnapshot,
 } from '../../../common/helpers/export-snapshot';
 import { BadRequestException, Injectable, NotFoundException, Optional } from '@nestjs/common';
 import {
@@ -887,7 +890,7 @@ export class CustomerQueryService {
       this.chatRooms.forCustomers(pageIds, db),
     ]);
 
-    const summary = isProspects
+    const summary: ManagedCustomerQueryKpis = isProspects
       ? {
           total,
           contacted7d: kpiCounts[0] ?? 0,
@@ -908,22 +911,30 @@ export class CustomerQueryService {
       prospects: viewCountPair[1] as number | null,
     };
     if (plan) {
-      if (!plan.has('contracts.read', 'FINANCE'))
-        for (const key of ['installment', 'overdue'])
-          if (key in summary) (summary as Record<string, unknown>)[key] = null;
-      if (!plan.has('sales.read', 'SHOP'))
-        for (const key of ['cash', 'externalFinance'])
-          if (key in summary) (summary as Record<string, unknown>)[key] = null;
-      if (![...plan.live].some((c) => plan.has('chat.read', c)))
-        for (const key of ['fromChat', 'contacted7d', 'silent30d'])
-          if (key in summary) (summary as Record<string, unknown>)[key] = null;
+      if (!plan.has('contracts.read', 'FINANCE') && 'installment' in summary) {
+        summary.installment = null;
+        summary.overdue = null;
+      }
+      if (!plan.has('sales.read', 'SHOP') && 'cash' in summary) {
+        summary.cash = null;
+        summary.externalFinance = null;
+      }
+      if (![...plan.live].some((c) => plan.has('chat.read', c))) {
+        if ('fromChat' in summary) summary.fromChat = null;
+        else {
+          summary.contacted7d = null;
+          summary.silent30d = null;
+        }
+      }
       if (
         isProspects &&
         wantsSummary &&
         !(await plan.creditStatusComplete({ AND: [scopedWhere, ...tierScope] }))
       )
-        for (const key of ['checkingCredit', 'prechecked'])
-          if (key in summary) (summary as Record<string, unknown>)[key] = null;
+        if ('checkingCredit' in summary) {
+          summary.checkingCredit = null;
+          summary.prechecked = null;
+        }
       if (!plan.company('contracts.read', 'FINANCE') || !plan.company('sales.read', 'SHOP')) {
         viewCounts.prospects = null;
         viewCounts.customers = null;
@@ -1022,7 +1033,9 @@ export class CustomerQueryService {
     });
 
     return {
-      ...paginatedResponse(
+      ...paginatedResponse<
+        (typeof shaped)[number] | ManagedCustomerProjection<(typeof shaped)[number]>
+      >(
         plan ? await Promise.all(shaped.map((row) => plan.identity(row))) : shaped,
         total,
         page,
@@ -1046,8 +1059,9 @@ export class CustomerQueryService {
   }
 
   exportRows(filters: CustomersReadFilters) {
-    return readExportSnapshot(this.prisma, (tx, asOf) =>
-      this.findAll({ ...filters, page: 1, limit: EXPORT_ROW_LIMIT + 1 }, tx, asOf),
+    return (currentPartyQuery() ? readJoinedExportSnapshot : readExportSnapshot)(
+      this.prisma,
+      (tx, asOf) => this.findAll({ ...filters, page: 1, limit: EXPORT_ROW_LIMIT + 1 }, tx, asOf),
     );
   }
 
@@ -1328,33 +1342,71 @@ export class CustomerQueryService {
     return result;
   }
 
+  /** Narrow batched identity fields for derived reports. No child-history query
+   * or per-customer basic-detail pipeline; source and decrypt policy are shared. */
+  async managedContactViews(ids: string[]) {
+    const plan = currentPartyQuery();
+    if (!plan) throw new Error('Managed identity projection requires the owned party plan');
+    const rows = await this.prisma.customer.findMany({
+      where: { id: { in: ids }, AND: plan.customer },
+      select: { id: true, name: true, phone: true, phoneEncrypted: true },
+    });
+    const strict = this.piiService ? await this.piiService.isStrictMode(this.prisma) : false;
+    const projected = this.decryptCustomerList(rows, { strict });
+    if (projected.length) {
+      await plan.db.auditLog.createMany({
+        data: projected.map((row) => ({
+          userId: plan.actorId,
+          action: 'PII_DECRYPT_FULL',
+          entity: 'customer',
+          entityId: row.id,
+          newValue: { fields: ['phone'] },
+        })),
+      });
+    }
+    return new Map(
+      projected.map((row) => [row.id, { id: row.id, name: row.name, phone: row.phone }]),
+    );
+  }
+
   async getReferrals(id: string) {
-    await this.findOne(id);
+    const plan = currentPartyQuery();
+    if (plan) await plan.assertCustomer(id);
+    else await this.findOne(id);
     const referrals = await this.prisma.customer.findMany({
-      where: { referredById: id, deletedAt: null },
+      where: { referredById: id, deletedAt: null, ...(plan ? { AND: plan.customer } : {}) },
       select: {
         id: true,
         name: true,
         phone: true,
         createdAt: true,
-        _count: { select: { contracts: true } },
+        _count: { select: { contracts: plan ? { where: plan.contract } : true } },
         contracts: {
-          where: { deletedAt: null },
+          where: { deletedAt: null, ...(plan ? { AND: plan.contract } : {}) },
           select: { status: true },
         },
       },
       orderBy: { createdAt: 'desc' },
     });
 
+    const contacts = plan
+      ? await this.managedContactViews(referrals.map((row) => row.id))
+      : undefined;
     return {
       total: referrals.length,
+      ...(plan
+        ? { availability: { referrals: 'scoped', contracts: plan.coverage('contracts.read') } }
+        : {}),
       referrals: referrals.map((r) => ({
         id: r.id,
         name: r.name,
-        phone: r.phone,
+        phone: contacts ? (contacts.get(r.id)?.phone ?? null) : r.phone,
         createdAt: r.createdAt,
-        contractCount: r._count.contracts,
-        hasActiveContract: r.contracts.some((c) => c.status === 'ACTIVE'),
+        contractCount: plan && !plan.has('contracts.read', 'FINANCE') ? null : r._count.contracts,
+        hasActiveContract:
+          plan && !plan.has('contracts.read', 'FINANCE')
+            ? null
+            : r.contracts.some((c) => c.status === 'ACTIVE'),
       })),
     };
   }
@@ -1419,8 +1471,9 @@ export class CustomerQueryService {
    * `getChatSummary`, which pulls full payment/call/chat history.
    */
   async getSummary(customerId: string) {
+    const plan = currentPartyQuery();
     const customer = await this.prisma.customer.findFirst({
-      where: { id: customerId, deletedAt: null },
+      where: { id: customerId, deletedAt: null, ...(plan ? { AND: plan.customer } : {}) },
       select: { id: true, name: true, phone: true },
     });
     if (!customer) {
@@ -1432,6 +1485,7 @@ export class CustomerQueryService {
         customerId,
         deletedAt: null,
         status: { in: ['ACTIVE', 'OVERDUE', 'DEFAULT'] },
+        ...(plan ? { AND: plan.contract } : {}),
       },
     });
 
@@ -1440,25 +1494,38 @@ export class CustomerQueryService {
         contract: { customerId, deletedAt: null },
         deletedAt: null,
         status: 'OVERDUE',
+        ...(plan ? { AND: plan.payment } : {}),
       },
     });
 
-    const outstanding = await this.prisma.payment.aggregate({
+    const outstanding = await this.prisma.payment.findMany({
       where: {
+        ...UNPAID_INSTALLMENT_WHERE,
         contract: { customerId, deletedAt: null },
-        deletedAt: null,
-        status: { in: ['PENDING', 'OVERDUE', 'PARTIALLY_PAID'] },
+        ...(plan ? { AND: plan.payment } : {}),
       },
-      _sum: { amountDue: true },
+      select: { amountDue: true, amountPaid: true },
     });
 
+    const contacts = plan ? await this.managedContactViews([customerId]) : undefined;
     return {
       id: customer.id,
       name: customer.name,
-      phone: customer.phone ?? null,
-      activeContracts,
-      overdueCount,
-      totalOutstandingThb: Number(outstanding._sum.amountDue ?? 0),
+      phone: contacts ? (contacts.get(customerId)?.phone ?? null) : (customer.phone ?? null),
+      activeContracts: plan && !plan.has('contracts.read', 'FINANCE') ? null : activeContracts,
+      overdueCount: plan && plan.coverage('payments.read') === 'unavailable' ? null : overdueCount,
+      totalOutstandingThb:
+        plan && plan.coverage('payments.read') === 'unavailable'
+          ? null
+          : outstandingOf(outstanding),
+      ...(plan
+        ? {
+            availability: {
+              contracts: plan.coverage('contracts.read'),
+              payments: plan.coverage('payments.read'),
+            },
+          }
+        : {}),
     };
   }
 

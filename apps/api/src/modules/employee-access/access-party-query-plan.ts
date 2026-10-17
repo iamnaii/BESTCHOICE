@@ -11,6 +11,7 @@ import {
   Company,
   PermissionKey,
   CustomerQueryAvailability,
+  ManagedCustomerProjection,
   canAccess,
   chatSourceChannel,
 } from '@installment/shared';
@@ -124,6 +125,7 @@ export class PartyQueryPlan {
   private constructor(
     readonly db: Prisma.TransactionClient,
     private readonly sources: AccessPartySourceService,
+    readonly customerOperation: 'customers.read' | 'customers.export',
   ) {
     if (
       !this.ctx ||
@@ -133,8 +135,12 @@ export class PartyQueryPlan {
     )
       throw new ForbiddenException('ไม่มีสิทธิ์อ่านข้อมูลนี้');
   }
-  static async create(db: Prisma.TransactionClient, sources: AccessPartySourceService) {
-    const plan = new PartyQueryPlan(db, sources);
+  static async create(
+    db: Prisma.TransactionClient,
+    sources: AccessPartySourceService,
+    operation: 'customers.read' | 'customers.export' = 'customers.read',
+  ) {
+    const plan = new PartyQueryPlan(db, sources, operation);
     for (const c of await db.companyInfo.findMany({
       where: { companyCode: { in: ['SHOP', 'FINANCE'] }, isActive: true, deletedAt: null },
       select: { companyCode: true },
@@ -166,7 +172,7 @@ export class PartyQueryPlan {
     plan.mdm = { AND: [plan.contract, plan.finance('mdm.read')] };
     const cases =
       plan.ctx.scope.company === 'FINANCE'
-        ? { contracts: { some: { AND: [plan.contract, plan.finance('customers.read')] } } }
+        ? { contracts: { some: { AND: [plan.contract, plan.finance(operation)] } } }
         : FALSE;
     const rooms = [...plan.live]
       .filter((c) => c === plan.ctx.scope.company)
@@ -175,7 +181,7 @@ export class PartyQueryPlan {
           some: {
             AND: [
               partyRoomReadWhere(plan.scope('chat.read', c)),
-              partyRoomReadWhere(plan.scope('customers.read', c)),
+              partyRoomReadWhere(plan.scope(operation, c)),
             ],
           },
         },
@@ -186,12 +192,52 @@ export class PartyQueryPlan {
       OR: [
         ...[...plan.live]
           .filter((c) => c === plan.ctx.scope.company)
-          .map((c) => customerPartyWhere(plan.scope('customers.read', c))),
+          .map((c) => customerPartyWhere(plan.scope(operation, c))),
         cases,
         ...rooms,
       ],
     };
     return plan;
+  }
+  get actorId() {
+    return this.ctx.snapshot.userId;
+  }
+  async assertCustomer(id: string) {
+    if (!(await this.db.customer.count({ where: { id, AND: this.customer } })))
+      throw new ForbiddenException('ไม่มีสิทธิ์อ่านข้อมูลนี้');
+  }
+  async contractAllows(id: string, permission: PermissionKey) {
+    return !!(await this.db.contract.count({
+      where: { id, AND: [this.contract, this.finance(permission)] },
+    }));
+  }
+  coverage(permission: PermissionKey, company: Company = 'FINANCE'): 'scoped' | 'unavailable' {
+    const requiresContract =
+      company === 'FINANCE' &&
+      ['payments.read', 'collections.read', 'receipts.read', 'mdm.read'].includes(permission);
+    return this.has(permission, company) &&
+      (!requiresContract || this.has('contracts.read', 'FINANCE')) &&
+      (permission !== 'receipts.read' || this.has('payments.read', 'FINANCE'))
+      ? 'scoped'
+      : 'unavailable';
+  }
+  /** Receipt.paymentId is a scalar legacy link, not a FK. Validate both backlinks
+   * before receipt order/limit/grouping, independently of receipt authority. */
+  async receipts(customerId: string): Promise<Prisma.ReceiptWhereInput> {
+    const payments = await this.db.payment.findMany({
+      where: {
+        AND: this.payment,
+        contract: { customerId, AND: [this.contract, this.finance('receipts.read')] },
+      },
+      select: { id: true, contractId: true },
+    });
+    const groups = new Map<string, string[]>();
+    for (const p of payments) groups.set(p.contractId, [...(groups.get(p.contractId) ?? []), p.id]);
+    return {
+      deletedAt: null,
+      isVoided: false,
+      OR: [...groups].map(([contractId, ids]) => ({ contractId, paymentId: { in: ids } })),
+    };
   }
   private readonly creditCache = new Map<string, Promise<PartyCreditInfo>>();
   private readonly readableCreditIds = new Set<string>();
@@ -567,13 +613,13 @@ export class PartyQueryPlan {
     }
     return result;
   }
-  async identity<T extends Record<string, unknown>>(row: T): Promise<T> {
+  async identity<T extends Record<string, unknown>>(row: T): Promise<ManagedCustomerProjection<T>> {
     const id = row.id as string;
     const sources = await this.customerSources(id);
     if (!sources.length) throw new ForbiddenException('ไม่มีสิทธิ์อ่านข้อมูลนี้');
     const result: Record<string, unknown> = {
       ...Object.fromEntries(Object.entries(row).filter(([key]) => CUSTOMER_READ_FIELDS.has(key))),
-      ...partyIdentityView(row, this.ctx.snapshot, sources),
+      ...partyIdentityView(row, this.ctx.snapshot, sources, this.customerOperation),
     };
     for (const key of Object.keys(result))
       if (key.endsWith('Encrypted') || key.endsWith('Hash') || result[key] === undefined)
@@ -640,7 +686,7 @@ export class PartyQueryPlan {
       }
       result.purchase = purchase;
     }
-    return result as T;
+    return result as ManagedCustomerProjection<T>;
   }
   async tierComplete(id: string) {
     if (
@@ -710,7 +756,7 @@ export class PartyQueryPlan {
       for (const row of rooms) identity.push(await this.sources.room(this.db, row.id));
       return identity.filter(
         (source) =>
-          source.company === this.ctx.scope.company && this.allows('customers.read', source),
+          source.company === this.ctx.scope.company && this.allows(this.customerOperation, source),
       );
     })();
     this.sourceCache.set(id, result);

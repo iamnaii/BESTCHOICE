@@ -19,7 +19,6 @@ import { CustomersService } from './customers.service';
 import { CustomerTierService } from './customer-tier.service';
 import { SkipTracingService } from './skip-tracing.service';
 import { CustomerInsightsService } from '../overdue/customer-insights.service';
-import type { CustomerTierResponse } from './dto/tier.dto';
 import { CreateCustomerDto, UpdateCustomerDto } from './dto/customer.dto';
 import { UpdateCustomerContactDto } from './dto/skip-tracing.dto';
 import { FillProspectContactDto } from './dto/fill-prospect-contact.dto';
@@ -280,8 +279,26 @@ export class CustomersController {
 
   @Get(':id/chat-summary')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES')
-  getChatSummary(@Param('id') id: string) {
-    return this.customersService.getChatSummary(id);
+  async getChatSummary(@Param('id') id: string, @Req() req?: AuthRequest) {
+    const result = await this.customersService.getChatSummary(id);
+    if (
+      currentPartyQuery() &&
+      result.callLogs.some(
+        (row) => 'notesAvailability' in row && row.notesAvailability === 'available',
+      )
+    ) {
+      if (!req?.user) throw new ForbiddenException('ไม่พบบัญชีพนักงาน');
+      await this.piiAudit.logDecryption({
+        userId: req.user.id,
+        customerId: id,
+        role: req.user.role,
+        fields: ['collectionNotes', 'collectionResult'],
+        masked: false,
+        ipAddress: req.ip,
+        userAgent: req.headers['user-agent'] as string | undefined,
+      });
+    }
+    return result;
   }
 
   @Get(':id/summary')
@@ -308,7 +325,7 @@ export class CustomersController {
 
   @Get(':id/tier')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
-  async getTier(@Param('id') id: string): Promise<CustomerTierResponse> {
+  async getTier(@Param('id') id: string) {
     return this.tierService.getCustomerTier(id);
   }
 

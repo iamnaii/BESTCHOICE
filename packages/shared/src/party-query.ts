@@ -61,3 +61,34 @@ export interface ManagedCustomerContractProgressAvailability {
   collections: boolean;
   product: boolean;
 }
+
+/** Runtime projection can make source-derived fields unavailable. Preserve the
+ * unmanaged legacy response separately; consumers of managed reads must narrow. */
+type NullableCustomerField =
+  | 'documents'
+  | 'contactId'
+  | 'acquisitionSource'
+  | 'acquisitionSourceRaw'
+  | 'source'
+  | 'chatPlaceholder'
+  | 'activeContracts'
+  | 'overdueContracts'
+  | 'activeContractCount'
+  | 'creditCheckStatus'
+  | 'latestCreditStatus'
+  | 'latestCreditScore'
+  | 'tags';
+export type ManagedCustomerProjection<T> = {
+  [K in keyof T as K extends `${string}Encrypted` | `${string}Hash`
+    ? never
+    : K]: K extends NullableCustomerField
+    ? T[K] | null
+    : K extends '_count'
+      ? Omit<T[K], 'contracts'> & { contracts: number | null }
+      : K extends 'purchase'
+        ?
+            | (Omit<NonNullable<T[K]>, keyof ManagedCustomerPurchaseCounts> &
+                ManagedCustomerPurchaseCounts)
+            | null
+        : T[K];
+} & { availability: CustomerQueryAvailability };

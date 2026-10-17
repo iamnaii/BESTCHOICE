@@ -103,7 +103,22 @@ export class CustomerTierService {
     return { tier: 'NEW', reasons };
   }
 
-  async getCustomerTier(customerId: string): Promise<CustomerTierResponse> {
+  async getCustomerTier(customerId: string) {
+    const plan = currentPartyQuery();
+    if (plan) {
+      await plan.assertCustomer(customerId);
+      const tiers = await this.getCustomerTiers([customerId], plan.db);
+      const tier = tiers.get(customerId);
+      return tier
+        ? { ...tier, availability: 'complete' as const }
+        : {
+            customerId,
+            tier: null,
+            reasons: null,
+            history: null,
+            availability: 'unavailable' as const,
+          };
+    }
     const customer = await this.prisma.customer.findFirst({
       where: { id: customerId, deletedAt: null },
       select: { id: true },

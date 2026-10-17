@@ -29,6 +29,19 @@ export const PARTY_QUERY_ROUTES = [
   'ContactsController.list',
   'ContactsController.findOne',
 ] as const;
+export const PARTY_DERIVED_ROUTES = [
+  'CustomersController.exportRows',
+  'CustomersController.getChatSummary',
+  'CustomersController.getContracts',
+  'CustomersController.getInsights',
+  'CustomersController.getReferrals',
+  'CustomersController.getReferralStats',
+  'CustomersController.getRiskFlag',
+  'CustomersController.getSummary',
+  'CustomersController.getTier',
+  'CustomersController.getUpsellCandidates',
+  'CustomersController.getWatchList',
+] as const;
 @Injectable()
 export class AccessPartyBoundaries implements OnModuleInit {
   constructor(
@@ -37,7 +50,7 @@ export class AccessPartyBoundaries implements OnModuleInit {
     private readonly modules: ModuleRef,
   ) {}
   onModuleInit() {
-    for (const route of PARTY_QUERY_ROUTES)
+    for (const route of [...PARTY_QUERY_ROUTES, ...PARTY_DERIVED_ROUTES])
       ACCESS_BOUNDARIES.set(route, async (req, snapshot, permission) => {
         const company = requestedAccessCompany(req);
         const run = async (handler: () => Promise<unknown>) =>
@@ -54,32 +67,75 @@ export class AccessPartyBoundaries implements OnModuleInit {
                   select: { id: true, role: true },
                 });
                 req.user = { ...req.user, id: actor.id, role: actor.role, access: ctx.snapshot };
-                const plan = await PartyQueryPlan.create(ctx.client, this.sources);
+                const plan = await PartyQueryPlan.create(
+                  ctx.client,
+                  this.sources,
+                  route === 'CustomersController.exportRows'
+                    ? 'customers.export'
+                    : 'customers.read',
+                );
                 return withPartyQuery(plan, handler);
               },
               false,
-              { domain: 'parties', isolationLevel: 'Serializable', maxAttempts: 3 },
+              {
+                domain: 'parties',
+                isolationLevel: 'Serializable',
+                maxAttempts: 3,
+                ...(route === 'CustomersController.exportRows'
+                  ? { timeoutMs: 60000 as const }
+                  : {}),
+              },
             )
           ).result;
         if (
           route === 'CustomersController.findAll' ||
           route === 'CustomersController.search' ||
-          route === 'ContactsController.list'
+          route === 'ContactsController.list' ||
+          [
+            'exportRows',
+            'getChatSummary',
+            'getContracts',
+            'getReferralStats',
+            'getSummary',
+            'getUpsellCandidates',
+            'getWatchList',
+          ].some((method) => route === `CustomersController.${method}`)
         )
           return {
             kind: 'collection',
             company,
             execute: () =>
               run(async () => {
+                const controller = this.modules.get(CustomersController, { strict: false });
+                const id = String(req.params?.id ?? '');
+                const limit = req.query?.limit === undefined ? undefined : String(req.query.limit);
+                const branchId =
+                  req.query?.branchId === undefined ? undefined : String(req.query.branchId);
+                if (route === 'CustomersController.getChatSummary')
+                  return controller.getChatSummary(id, req);
+                if (route === 'CustomersController.getContracts')
+                  return controller.getContracts(id);
+                if (route === 'CustomersController.getSummary') return controller.getSummary(id);
+                if (route === 'CustomersController.getReferralStats')
+                  return controller.getReferralStats(limit);
+                if (route === 'CustomersController.getUpsellCandidates')
+                  return controller.getUpsellCandidates(branchId, limit);
+                if (route === 'CustomersController.getWatchList')
+                  return controller.getWatchList(branchId, limit);
                 if (route === 'CustomersController.search')
                   return this.modules
                     .get(CustomersController, { strict: false })
                     .search(String(req.query?.q ?? ''), req);
-                if (route === 'CustomersController.findAll') {
+                if (
+                  route === 'CustomersController.findAll' ||
+                  route === 'CustomersController.exportRows'
+                ) {
                   const dto = plainToInstance(CustomersListQueryDto, req.query ?? {});
                   if ((await validate(dto, { whitelist: true })).length)
                     throw new BadRequestException('ตัวกรองไม่ถูกต้อง');
-                  return this.modules.get(CustomersController, { strict: false }).findAll(dto, req);
+                  return route === 'CustomersController.exportRows'
+                    ? controller.exportRows(dto, req)
+                    : controller.findAll(dto, req);
                 }
                 const dto = plainToInstance(ListContactsDto, req.query ?? {});
                 if ((await validate(dto, { whitelist: true })).length)

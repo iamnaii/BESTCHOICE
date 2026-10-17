@@ -389,7 +389,7 @@ export function partyIdentityView(
   input: { nationalId?: string | null; guardianNationalId?: string | null },
   snapshot: AccessSnapshot,
   sources: readonly PartySource[],
-  base: 'customers.read' | 'contacts.read' = 'customers.read',
+  base: 'customers.read' | 'customers.export' | 'contacts.read' = 'customers.read',
 ) {
   const allows = (permission: PermissionKey, source: PartySource) =>
     canAccess(snapshot, permission, source) &&

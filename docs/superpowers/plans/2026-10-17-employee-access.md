@@ -143,11 +143,11 @@ Task 4.1.2 is executed as three serial reviewable units (32 + 21 + 10 routes); t
 
 **Files:** Same access engine plus `inventory` BranchReceivingController (4), InventoryForecastController (1), ReorderPointsController (10), StockCountController (6): 21 routes.
 
-- [ ] Consume reviewed procurement/receiving source contracts from 4.1.2.1. RED isolated tests for count/receive scope, record/branch substitution, exact bulk targets, before-count aggregation and forecast related Sale reads.
-- [ ] Add the missing safe approved-PO lookup for STOCK-only receiving users under stock-receiving.read, using the real selected destination and reviewed PO company/state/projection contracts. Return required PO/item identifiers and approved outstanding quantities without costs or unrelated receiving history; validate current scope, update the checked inventory, and cover success/denial. This new route is additional to the 21 existing entries and must be ready for Task7 UI consumption.
-- [ ] Implement every listed record/query/bulk boundary with current source assertions and scoped projection. Stock staff may receive approved quantities with server-derived cost kept internal; unauthorized cost override fields must not pass through.
-- [ ] Preserve count/receive/reorder workflows and concurrency; scope reorder batches before mutation and forecast inputs before calculation, including their original company/source semantics.
-- [ ] All in-scope authorized-success/denial evidence, rollback where relevant, types/lint/coverage, downstream contract report, self-review, commit.
+- [x] Consume reviewed procurement/receiving source contracts from 4.1.2.1. RED isolated tests for count/receive scope, record/branch substitution, exact bulk targets, before-count aggregation and forecast related Sale reads.
+- [x] Add the missing safe approved-PO lookup for STOCK-only receiving users under stock-receiving.read, using the real selected destination and reviewed PO company/state/projection contracts. Return required PO/item identifiers and approved outstanding quantities without costs or unrelated receiving history; validate current scope, update the checked inventory, and cover success/denial. This new route is additional to the 21 existing entries and must be ready for Task7 UI consumption.
+- [x] Implement every listed record/query/bulk boundary with current source assertions and scoped projection. Stock staff may receive approved quantities with server-derived cost kept internal; unauthorized cost override fields must not pass through.
+- [x] Preserve count/receive/reorder workflows and concurrency; scope reorder batches before mutation and forecast inputs before calculation, including their original company/source semantics.
+- [x] All in-scope authorized-success/denial evidence, rollback where relevant, types/lint/coverage, downstream contract report, self-review, commit.
 
 ### Task 4.1.2.3: Stock adjustment financial boundaries
 
@@ -162,10 +162,32 @@ Task 4.1.2 is executed as three serial reviewable units (32 + 21 + 10 routes); t
 
 **Files:** Extend same infrastructure; modify `sales`, `bookings`, `trade-in`. Current manifest: SalesController, BookingsController, TradeInController (56 domain entries).
 
+Execute as two serial reviewed units: trade-in/source-credit producer (38 routes), then sales/bookings consumer (18 routes). The parent remains incomplete until both pass; all obligations below apply to both units.
+
 - [ ] RED and isolated service/DB tests for scoped reads/writes, source-product/customer linkage, duplicate requests and nested cost leakage with authorized success controls.
 - [ ] Implement all listed boundaries and pre-aggregation scopes with validated inputs, file behavior and actual service workflows. Check each referenced source and destination. Convert conflicting managed role-only checks while preserving damage acknowledgement and independent business constraints.
 - [ ] Preserve financial math and existing transaction state until Task 6 implements the new approval rules. Document concrete approval seams for Task 6; do not add a parallel sale/refund execution path.
 - [ ] Source-aware sensitive projections, current transaction assertions, types/coverage/focused tests, report, self-review, commit.
+
+### Task 4.1.3.1: Trade-in intake, credit, vouchers and valuation references
+
+**Files:** Same scope/resolver/projector/execution engine plus `trade-in` facade, lifecycle/query/credit/voucher/valuation services, their concrete contact/storage/journal seams and focused tests. Current surface: TradeInController (38 routes).
+
+- [ ] RED and real isolated DB/HTTP tests for record/collection/source substitution, actual company/branch scope before pagination/counts, authorized success, current authority and nested cost/document protection across all 38 routes.
+- [ ] Resolve nullable branch/customer/product sources and new-record origin explicitly; preserve existing public/customer online submissions without treating unassigned historical cases as globally shared. Creator/appraiser/retry identity is not automatically an ASSIGNED case relationship. Define global valuation/question/configuration reference operations separately from case access with concrete capability and scope semantics.
+- [ ] Preserve actual intake/appraisal/accept/reject/complete/quick-buy state machines, immutable appraisal/owner override rules, credit issue/redemption identities, journal math and voucher numbering. All child services use the actual outer transaction, current source checks, durable existing audit and operation-owned file/effect lifetime; no parallel credit/payment path.
+- [ ] Protect monetary/nested output and voucher/download bodies using their actual source and configurable sensitive grants; retain usable authorized operations. Record required UI origin inputs and approval seams for Task6. Publish reusable trade-in/credit source/projector contracts for sales/bookings and FINANCE consumers.
+- [ ] All in-scope success/denial evidence, exact duplicate/concurrent/rollback controls, relevant existing regressions, types/lint/coverage, contract report, self-review and commit. Root owns integrated preview/local:check.
+
+### Task 4.1.3.2: Sales and bookings
+
+**Files:** Same access engine plus `sales` and `bookings` facades/helper services, concrete product/customer/trade-credit/receipt/journal seams and focused tests. Current surface: SalesController (9) and BookingsController (9).
+
+- [ ] Consume reviewed historical SHOP Sale provenance, current product and trade-in/credit contracts. RED real isolated DB/HTTP tests for all 18 routes, tuple/company/source isolation before counts/exports, nested sensitive output and source substitution with legitimate success controls.
+- [ ] Preserve actual sale creation/void and booking creation/deposit/update/cancel/convert/remove flows, exact product locking and existing partial unique indexes. Sales.create continues to reject INSTALLMENT; /contracts remains the internal installment creation path. Validate every referenced/bundled product and independent linked source; no representative branch or caller-selected scope proof.
+- [ ] Join the actual child service transactions and existing durable audit/journal flows; preserve money formulas and duplicate/concurrent/state/period constraints. Post-commit notifications/loyalty or other effects require explicit retry/failure semantics. Record all cancellation/refund/discount approval seams for Task6, including Booking.convert's direct Sale creation, without adding a competing executor.
+- [ ] Implement source-aware nested/read/export projections and capability-aware managed gates, keeping independent business constraints. Do not treat booking creator as assignment or room origin as permission to all room/customer history. Publish concrete contracts for later customer/FINANCE/chat/UI integration.
+- [ ] All 18 success/denial controls, current-authority and financial rollback/duplicate evidence, types/lint/coverage/regressions, report, self-review and commit. Reconcile all 56 parent routes after both independent reviews.
 
 ### Task 4.1.4: After-sales and repair boundaries
 

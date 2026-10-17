@@ -269,9 +269,9 @@ The fourteen mutations require three distinct canonical integration rewrites. Ex
 
 **Files:** `packages/shared/src/employee-access.ts` and its focused shared tests. Zero runtime routes.
 
-- [ ] RED/GREEN proving future SALES and BRANCH_MANAGER templates include repair-tickets.read, repair-tickets.create and repair-tickets.update, while other positions and configurable sensitive/exchange/posting rights remain unchanged.
-- [ ] Add only those canonical child capabilities to the two future templates; no saved-position/user migration, owner authority, cost/profit or financial approval grants. Preserve the shared catalog/evaluator and no guessed discount caps.
-- [ ] Shared tests/build, changed lint/diff checks, self-review/report/commit. Publish the precise default dependency to UI7; make no claim of mutation-route implementation.
+- [x] RED/GREEN proving future SALES and BRANCH_MANAGER templates include repair-tickets.read, repair-tickets.create and repair-tickets.update, while other positions and configurable sensitive/exchange/posting rights remain unchanged.
+- [x] Add only those canonical child capabilities to the two future templates; no saved-position/user migration, owner authority, cost/profit or financial approval grants. Preserve the shared catalog/evaluator and no guessed discount caps.
+- [x] Shared tests/build, changed lint/diff checks, self-review/report/commit. Publish the precise default dependency to UI7; make no claim of mutation-route implementation.
 
 ### Task 4.1.4.2.2.3.2: Existing-case action boundary, repair lifecycle and extra photos
 

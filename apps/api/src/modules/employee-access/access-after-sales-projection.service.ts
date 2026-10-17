@@ -147,11 +147,22 @@ export class AccessAfterSalesProjectionService {
               .map((key) => [key, snapshot[key]]),
           )
         : null;
+    // Workflow label only: executing approval still requires independent current authority.
+    // A priced request's hidden tier must not be replaced with an invented default.
+    const approverRole: 'OWNER' | 'BRANCH_MANAGER' | null =
+      row.outcome !== 'PRICED_EXCHANGE'
+        ? 'BRANCH_MANAGER'
+        : exchangeRequest
+          ? exchangeRequest.approvalTier === 'ESCALATE'
+            ? 'OWNER'
+            : 'BRANCH_MANAGER'
+          : null;
     const exchange = row.outcome?.includes('EXCHANGE')
       ? {
           kind: row.outcome === 'PRICED_EXCHANGE' ? 'PRICED' : 'SAME_MODEL',
           mode: exchangeRequest?.mode ?? null,
           approvalTier: exchangeRequest?.approvalTier ?? null,
+          approverRole,
           requestStatus: exchangeRequest?.status ?? null,
           buybackPrice: exchangeRequest?.buybackPrice?.toFixed(2) ?? null,
           ncvSnapshot: exchangeRequest?.ncvSnapshot?.toFixed(2) ?? null,

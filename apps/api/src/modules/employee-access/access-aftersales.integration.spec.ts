@@ -907,3 +907,69 @@ it('does not reintroduce rejected raw source IDs through the nested repair proje
   expect(response.body.repairTicket.productId).toBeNull();
   expect(response.body.stageVerified).toBe(false);
 });
+it.each(['AUTO', 'REVIEW', 'ESCALATE'] as const)(
+  'preserves authorized %s exchange workflow metadata without requiring approval permission',
+  async (approvalTier) => {
+    const f = await fixture();
+    const next = await db.product.create({
+      data: {
+        name: 'Workflow replacement',
+        brand: 'Test',
+        model: 'Model',
+        category: 'PHONE_USED',
+        costPrice: 5000,
+        branchId: branchA,
+        ownedByCompanyId: shop,
+        status: 'IN_STOCK',
+      },
+    });
+    const swap = await db.contractExchangeRequest.create({
+      data: {
+        oldContractId: f.contract.id,
+        oldProductId: f.product.id,
+        newProductId: next.id,
+        requestedById: actor,
+        mode: 'PRICED',
+        status: 'PENDING',
+        approvalTier,
+      },
+    });
+    await db.afterSalesCase.update({
+      where: { id: f.row.id },
+      data: {
+        repairTicketId: null,
+        outcome: 'PRICED_EXCHANGE',
+        stage: 'AWAITING_APPROVAL',
+        exchangeRequestId: swap.id,
+        replacementProductId: next.id,
+      },
+    });
+    const staff = await reader();
+    const hidden = await http('/after-sales/' + f.row.id, staff).expect(200);
+    await grant(staff, ['contract-exchanges.read', 'customers.read'], 'FINANCE');
+    await grant(staff, ['contract-exchanges.read'], 'SHOP');
+    const expected = {
+      approvalTier,
+      approverRole: approvalTier === 'ESCALATE' ? 'OWNER' : 'BRANCH_MANAGER',
+    };
+    const visible = await http('/after-sales/' + f.row.id, staff).expect(200);
+    expect(visible.body.exchange).toMatchObject(expected);
+    expect(hidden.body.exchange).toMatchObject({ approvalTier: null, approverRole: null });
+    const list = await http(
+      '/after-sales?tab=AWAITING_APPROVAL&q=' + f.row.caseNumber,
+      staff,
+    ).expect(200);
+    expect(list.body.data).toHaveLength(1);
+    expect(list.body.data[0].exchange).toMatchObject(expected);
+  },
+);
+it('preserves the case-owned same-model approval workflow label', async () => {
+  const f = await fixture();
+  const staff = await reader(['after-sales.read']);
+  await db.afterSalesCase.update({
+    where: { id: f.row.id },
+    data: { outcome: 'SAME_MODEL_EXCHANGE', repairTicketId: null },
+  });
+  const view = await http('/after-sales/' + f.row.id, staff).expect(200);
+  expect(view.body.exchange).toMatchObject({ kind: 'SAME_MODEL', approverRole: 'BRANCH_MANAGER' });
+});

@@ -105,7 +105,7 @@ Task 4 is executed as four serial, separately reviewed phases because the checke
 
 ### Task 4.1.1: Scope foundation, products and quality control
 
-This is the first serial unit of Task 4.1. The named SHOP phase contains 238 domain entrypoints, so 4.1.1–4.1.6 each get implementation and review; umbrella Task 4.1 is complete only when all pass.
+This is the first serial unit of Task 4.1. The SHOP allocation contains 277 baseline domain entrypoints (278 after the approved-PO lookup addition), so 4.1.1–4.1.6 each get implementation and review; umbrella Task 4.1 is complete only when all pass.
 
 **Files:** Create the Task 4.1 scope-query, persisted-resource and source-aware projection infrastructure plus focused product/QC boundary registrars and tests. Modify `modules/products` and `modules/quality-control` services/controllers and shared access wiring as required. Current manifest surface: ProductsController, InspectionsController and ProductPhotosController (49 domain entries).
 
@@ -121,10 +121,10 @@ This is the first serial unit of Task 4.1. The named SHOP phase contains 238 dom
 
 **Files:** Extend the same scope/projector/registrar contracts; modify `purchase-orders`, `suppliers`, `inventory`. Current manifest: PurchaseOrdersController, SuppliersController, BranchReceivingController, InventoryForecastController, ReorderPointsController, StockAdjustmentsController, StockCountController (63 domain entries).
 
-- [ ] RED and isolated DB tests for scoped procurement, count/receive/adjustment authorization, branch/company isolation, and default purchasing-versus-stock cost visibility.
-- [ ] Implement all listed record/collection/bulk/export boundaries, preserving actual workflows and DTO/file contracts. Scope supplier visibility through permitted procurement sources or explicit origin as needed; no broad shared-data fallback.
-- [ ] Protect nested purchase costs, inventory valuations and forecasts, including count/aggregate/export; no legacy role veto or personal override bypass. Current transactional assertions on writes.
-- [ ] Types/coverage/focused tests, contract report, self-review, commit; other SHOP units remain pending.
+- [x] RED and isolated DB tests for scoped procurement, count/receive/adjustment authorization, branch/company isolation, and default purchasing-versus-stock cost visibility.
+- [x] Implement all listed record/collection/bulk/export boundaries, preserving actual workflows and DTO/file contracts. Scope supplier visibility through permitted procurement sources or explicit origin as needed; no broad shared-data fallback.
+- [x] Protect nested purchase costs, inventory valuations and forecasts, including count/aggregate/export; no legacy role veto or personal override bypass. Current transactional assertions on writes.
+- [x] Types/coverage/focused tests, contract report, self-review, commit; other SHOP units remain pending.
 
 ### Task 4.1.2.1: Procurement, suppliers and receiving transaction contract
 
@@ -153,10 +153,10 @@ Task 4.1.2 is executed as three serial reviewable units (32 + 21 + 10 routes); t
 
 **Files:** Same access engine plus StockAdjustmentsController and adjustment/journal/document services: 10 routes.
 
-- [ ] RED isolated tests for scoped requests/approval/execution, source and destination substitution, sensitive valuation/file output and duplicate/concurrent adjustment behavior.
-- [ ] Implement actual capability-aware former role gates, current transactional source authorization, accounting/journal/document boundaries, and independent workflow constraints. Do not grant monetary approval merely from generic stock access.
-- [ ] Preserve financial math, serializable/retry and durable evidence contract; prove money/stock/journal/audit rollback together on failure and exact authorized success.
-- [ ] Types/lint/coverage/focused regressions and complete reconciliation of the original 63 parent routes plus the added safe receiving lookup and any newly introduced routes, report, self-review, commit. Mark parent 4.1.2 complete only after independent review of all units.
+- [x] RED isolated tests for scoped requests/approval/execution, source and destination substitution, sensitive valuation/file output and duplicate/concurrent adjustment behavior.
+- [x] Implement actual capability-aware former role gates, current transactional source authorization, accounting/journal/document boundaries, and independent workflow constraints. Do not grant monetary approval merely from generic stock access.
+- [x] Preserve financial math, serializable/retry and durable evidence contract; prove money/stock/journal/audit rollback together on failure and exact authorized success.
+- [x] Types/lint/coverage/focused regressions and complete reconciliation of the original 63 parent routes plus the added safe receiving lookup and any newly introduced routes, report, self-review, commit. Mark parent 4.1.2 complete only after independent review of all units.
 
 ### Task 4.1.3: Sales, bookings and trade-in boundaries
 

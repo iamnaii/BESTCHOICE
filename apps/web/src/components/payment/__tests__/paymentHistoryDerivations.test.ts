@@ -226,6 +226,11 @@ describe('caseForReceipt', () => {
     expect(caseForReceipt(r, casePay({ amountDue: '4472' })).label).toBe('ไม่ระบุ');
   });
 
+  it('ADVANCE_SURPLUS (ใบรับเงินส่วนเกินลิงก์ชำระ — PR4ข) → ป้าย "เงินรับล่วงหน้า" โทน info ไม่ว่ายอดจะเทียบงวดอย่างไร', () => {
+    const r = caseRcpt({ receiptType: 'ADVANCE_SURPLUS', amount: '500', paymentCase: 'NORMAL' });
+    expect(caseForReceipt(r, casePay({ amountDue: '1515.83' }))).toEqual({ label: 'เงินรับล่วงหน้า', tone: 'info' });
+  });
+
   it('uses the receipt reschedule action for the 5,516 bundled collection', () => {
     const r = caseRcpt({ amount: '5516', paymentCase: 'RESCHEDULE' });
     expect(caseForReceipt(r, casePay({ amountDue: '4472' })).label).toBe('ปรับดิว');

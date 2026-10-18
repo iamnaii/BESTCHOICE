@@ -243,7 +243,10 @@ export interface PoPaymentsResponse {
 export interface RecordSupplierPaymentPayload {
   paidAt: string;
   amount: number;
-  slipUrl: string;
+  /** บัญชีที่จ่าย — ธนาคาร (S11-1202 / S11-1201) ต้องมีสลิป · เงินสดย่อย S11-1106 ไม่บังคับสลิป แต่จ่ายได้ไม่เกินยอดในบัญชี */
+  paymentAccountCode: string;
+  /** สลิป — บังคับเมื่อจ่ายจากบัญชีธนาคาร */
+  slipUrl?: string;
   reference?: string;
   note?: string;
   /** uuid ต่อการเปิดหน้าต่าง — กดซ้ำ/เน็ตส่งซ้ำ API ตอบรายการเดิม */

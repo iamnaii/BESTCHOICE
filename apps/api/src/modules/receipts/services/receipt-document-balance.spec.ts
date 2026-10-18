@@ -104,6 +104,7 @@ describe('receipt document balance at issuance', () => {
       documentRemainingMonths: 6,
       documentInstallmentAmountDue: '4472.00',
       documentInstallmentAmountPaid: '4472.00',
+      documentUnappliedFunds: '1044.00', // PR4ข: เงินพักค่าปรับดิวของใบนี้ยังไม่ได้ใช้ ณ วันออกใบ
     });
     expect(f.client.payment.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -369,6 +370,8 @@ describe('receipt document balance at issuance', () => {
       documentRemainingMonths: null,
       documentInstallmentAmountDue: null,
       documentInstallmentAmountPaid: null,
+    
+      documentUnappliedFunds: null,
     };
     await persistReceiptDocumentBalance(
       f.client as never,
@@ -444,3 +447,125 @@ describe('receipt document balance at issuance', () => {
     expect(f.client.auditLog.findMany).not.toHaveBeenCalled();
   });
 });
+
+// ── PR4ข (ฝ่ายบัญชี 16/10/2569 ข้อ 23.2): รายการส่วนเกินลิงก์ชำระเป็นเงินของลูกค้าที่ยังไม่ได้ใช้ · ใบ ADVANCE_SURPLUS มียอด ณ วันออกใบ ·
+// snapshot เพิ่มช่อง documentUnappliedFunds (snapshot เก่าไม่มีช่อง = null) ──
+describe('PR4ข — ส่วนเกินลิงก์ชำระ + เงินรับล่วงหน้าค้าง ณ วันออกใบ', () => {
+  function withSurplus() {
+    const f = fixture();
+    const surplus = {
+      id: 'j-surplus',
+      referenceType: 'AUTO',
+      createdAt: at(3.5),
+      postedAt: at(3.5),
+      metadata: {
+        tag: 'paysolutions-surplus-advance',
+        contractId: 'c1',
+        refno: 'REF-1',
+        surplus: '500',
+        advanceVatPark: '32.71',
+      },
+      lines: [line('11-1202', 500, 0), line('21-1103', 0, 500), line('21-2102', 32.71, 0), line('21-2101', 0, 32.71)],
+    };
+    f.entries.push(surplus);
+    const surplusReceipt = {
+      id: 'r-surplus',
+      contractId: 'c1',
+      paymentId: null,
+      receiptType: 'ADVANCE_SURPLUS',
+      installmentNo: null,
+      amount: d(500),
+      paidDate: at(3.5),
+      createdAt: at(3.6),
+      sourceJournalEntryId: 'j-surplus',
+      remainingMonths: 7,
+      paymentStatus: 'PAID',
+    };
+    f.rows.push(surplusReceipt);
+    return { ...f, surplusReceipt };
+  }
+
+  it('รายการส่วนเกินลิงก์ชำระ (Cr 21-1103 500) ก่อนใบค่างวด → ยอดคงเหลือหัก 500 ด้วย: 6 × 4472 − 1044 − 500 = 25288 · เงินรับล่วงหน้าค้าง 1,544.00 (เดิม tag ไม่รู้จัก = ไม่ทราบยอด)', async () => {
+    const f = withSurplus();
+    expect(await getReceiptDocumentBalance(f.client as never, f.receipt, terms)).toEqual({
+      documentRemainingBalance: '25288.00',
+      documentRemainingMonths: 6,
+      documentInstallmentAmountDue: '4472.00',
+      documentInstallmentAmountPaid: '4472.00',
+      documentUnappliedFunds: '1544.00',
+    });
+  });
+
+  it('ใบ ADVANCE_SURPLUS (paymentId null · ผูกรายการส่วนเกิน) → 7 × 4472 − 500 = 30804 · 7 งวด · ไม่มีงวดของใบ · เงินรับล่วงหน้าค้าง 500.00', async () => {
+    const f = withSurplus();
+    expect(await getReceiptDocumentBalance(f.client as never, f.surplusReceipt, terms)).toEqual({
+      documentRemainingBalance: '30804.00',
+      documentRemainingMonths: 7,
+      documentInstallmentAmountDue: null,
+      documentInstallmentAmountPaid: null,
+      documentUnappliedFunds: '500.00',
+    });
+  });
+
+  it('ใบ ADVANCE_SURPLUS ถูก persist เป็น snapshot (เป็นใบที่ใช้ยอด ณ วันออกใบ)', async () => {
+    const f = withSurplus();
+    const balance = await getReceiptDocumentBalance(f.client as never, f.surplusReceipt, terms);
+    await persistReceiptDocumentBalance(f.client as never, f.surplusReceipt, balance, 'system', 10);
+    expect(f.client.auditLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          action: RECEIPT_DOCUMENT_BALANCE_ACTION,
+          newValue: expect.objectContaining({ receiptType: 'ADVANCE_SURPLUS', documentUnappliedFunds: '500.00' }),
+        }),
+      }),
+    );
+  });
+
+  it.each([
+    ['snapshot เก่าไม่มีช่อง → null', undefined, null],
+    ['snapshot ใหม่มีช่อง → อ่านค่า', '1544.00', '1544.00'],
+  ])('%s', async (_label, stored, expected) => {
+    const f = fixture();
+    const value: Record<string, unknown> = {
+      version: 1,
+      receiptId: f.receipt.id,
+      contractId: f.receipt.contractId,
+      receiptType: f.receipt.receiptType,
+      contractTotalMonths: 10,
+      documentRemainingBalance: '25788.00',
+      documentRemainingMonths: 6,
+      documentInstallmentAmountDue: '4472.00',
+      documentInstallmentAmountPaid: '4472.00',
+    };
+    if (stored !== undefined) value.documentUnappliedFunds = stored;
+    f.client.auditLog.findMany.mockResolvedValue([{ newValue: value }]);
+    const balance = await getReceiptDocumentBalance(f.client as never, f.receipt, terms);
+    expect(balance.documentRemainingBalance).toBe('25788.00');
+    expect(balance.documentUnappliedFunds).toBe(expected);
+    expect(f.client.payment.findMany).not.toHaveBeenCalled();
+  });
+
+  it('snapshot ที่ช่องเงินรับล่วงหน้าค้างรูปผิด → ไม่ทราบยอดทั้งใบ (fail closed)', async () => {
+    const f = fixture();
+    f.client.auditLog.findMany.mockResolvedValue([
+      {
+        newValue: {
+          version: 1,
+          receiptId: f.receipt.id,
+          contractId: f.receipt.contractId,
+          receiptType: f.receipt.receiptType,
+          contractTotalMonths: 10,
+          documentRemainingBalance: '25788.00',
+          documentRemainingMonths: 6,
+          documentInstallmentAmountDue: '4472.00',
+          documentInstallmentAmountPaid: '4472.00',
+          documentUnappliedFunds: 'abc',
+        },
+      },
+    ]);
+    expect(
+      (await getReceiptDocumentBalance(f.client as never, f.receipt, terms)).documentRemainingBalance,
+    ).toBeNull();
+  });
+});
+

@@ -8128,6 +8128,8 @@ model AfterSalesCase {
   deviceSerial  String?           @map("device_serial")
   symptom       String            @db.Text
   accessories   Json              @default("{}") // {box,charger,case,other}
+  /// M3 (2026-10-13) — อุปกรณ์ที่ส่งมอบพร้อมเครื่องทดแทนของเคสขายสด {box,charger,case,other} · null = ยังไม่ส่งมอบ / ส่งมอบโดยไม่ส่งรายการ / เคสก่อน M3 / เคสที่ไม่ใช่ขายสด (ใบส่งมอบถอดจาก note ของ event DELIVERED ถ้ามี)
+  deliveredAccessories Json?        @map("delivered_accessories")
   unlockConfirmed Boolean         @default(false) @map("unlock_confirmed")
   photoKeys     String[]          @default([]) @map("photo_keys")            // รูปตอนรับฝาก ≥1 ≤6 (StorageService key)
   purchasePhotoKeys String[]      @default([]) @map("purchase_photo_keys")   // สำเนา ProductPhoto 6 มุม ณ วันแจ้ง

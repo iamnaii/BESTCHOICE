@@ -10,7 +10,10 @@ import type { DeferredWarning } from '../../journal/deferred-warning';
 import { assertNoAdvanceExcessIncome } from '../../journal/advance-excess-income.util';
 import { reconstructPriorCleared } from '../../journal/reconstruct-prior';
 import { ReceiptNumberService } from './receipt-number.service';
-import { INSTALLMENT_MONEY_RECEIPT_TYPES } from '../receipt-types.constants';
+import {
+  ADVANCE_SURPLUS_RECEIPT_TYPE,
+  INSTALLMENT_MONEY_RECEIPT_TYPES,
+} from '../receipt-types.constants';
 import { documentMoneyColumns } from './receipt-document-money';
 
 /** ตัวเลขที่ใบลดหนี้เก็บ — ทุกบรรทัดของเอกสารใบที่ถูกยกเลิก (PR3 · Q5) */
@@ -153,6 +156,14 @@ export async function voidReceiptInTx(
   if (receipt.receiptType === 'EARLY_PAYOFF') {
     throw new BadRequestException(
       'ใบเสร็จปิดยอดก่อนกำหนดยังไม่รองรับการยกเลิก — การกลับรายการปิดยอดต้องทำผ่านผู้ดูแลระบบ',
+    );
+  }
+  // PR4ข: ใบรับเงินส่วนเกินลิงก์ชำระ (ADVANCE_SURPLUS) ไม่ผูกแถว Payment (paymentId null) และรายการส่วนเกิน
+  // (tag paysolutions-surplus-advance) ไม่ใช่ใบรับชำระของงวด — ไม่มีเส้นทางกลับรายการ/คืนเงินอัตโนมัติ
+  // (เงินพักใน 21-1103 แล้วรอบกวาด ต6 ลงรายได้เมื่อสัญญาปิด) ⇒ ปฏิเสธก่อนแตะอะไร
+  if (receipt.receiptType === ADVANCE_SURPLUS_RECEIPT_TYPE) {
+    throw new BadRequestException(
+      'ใบเสร็จเงินรับล่วงหน้าจากลิงก์ชำระยังไม่รองรับการยกเลิก — เงินนี้พักเป็นเงินรับล่วงหน้าของสัญญาและระบบลงบัญชีให้อัตโนมัติ กรุณาติดต่อผู้ดูแลระบบ',
     );
   }
 

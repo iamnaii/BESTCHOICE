@@ -311,6 +311,9 @@ export class RescheduleCollectService {
                 paymentId: payment.id,
                 variant: q.variant,
                 daysToShift: input.daysToShift,
+                // PR4ข: ใบกำกับภาษีของ 6a พิมพ์ "งวดที่ N เลื่อน D วัน (ครบกำหนดใหม่ …)" จาก metadata ของรายการนี้ —
+                // วันครบกำหนดใหม่ = เที่ยงคืนไทยของ dueDate + daysToShift (ตัวเดียวกับที่ตารางงวดถูกเลื่อน)
+                newDueDate: addBkkDays(payment.dueDate, input.daysToShift).toISOString(),
                 rescheduleFee: q.rescheduleFee.toString(),
                 lateFeeCollected: q.lateFee.toString(),
                 ...(advanceVatPark.gt(0)

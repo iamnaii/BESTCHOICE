@@ -32,7 +32,8 @@ export interface AdvanceExcessSweepSummary {
  * ทั้ง 4 ทาง · ลิงก์ชำระ QR flip COMPLETED/EARLY_PAYOFF เองในธุรกรรม · สัญญาที่ครบงวดทางรอบกลางคืน (งวดสุดท้ายถูกเงินพัก
  * หักครบ) ไม่ถูก flip เลย ⇒ อ่านยอดในบัญชี**วันถัดไป**ที่จุดเดียวครอบทุกทาง (ล่าช้าไม่เกิน 1 วัน — ถ7 เจ้าของรับได้).
  *
- * การเลือกสัญญา (SQL นอกธุรกรรม): 21-1103 ของสัญญามียอด Cr หรือคอลัมน์ถัง > 0 → สถานะไม่อยู่ในรายการยกเว้น → `COMPLETED` /
+ * การเลือกสัญญา (SQL นอกธุรกรรม): 21-1103 **หรือ 21-5101** (22.2 — ฝ่ายบัญชี 16/10/2569) ของสัญญามียอด Cr หรือคอลัมน์
+ * ถัง/เครดิต > 0 → สถานะไม่อยู่ในรายการยกเว้น → `COMPLETED` /
  * `EARLY_PAYOFF` หรือ "มีแถว Payment ≥ 1 และไม่มีแถวที่ไม่ใช่ PAID" → ไม่มีคำขอยกเลิกใบเสร็จ (`VOID_RECEIPT`) ค้างคิวอนุมัติ
  * (ข้ามไปวันถัดไป — void ก่อนลงรายได้ทำให้ Payment กลับเป็นค้างและสัญญาหลุดเงื่อนไขเอง; หลังลงรายได้ ด่าน ต6ข บล็อก void).
  * ต่อสัญญา: template ลงใน Serializable tx ของตัวเอง (ยอดในบัญชี + ภาษีที่ยังค้าง อ่านใน tx) · P2002 = มีแล้ว · P2034 =
@@ -40,7 +41,7 @@ export interface AdvanceExcessSweepSummary {
  *
  * งาน (Todo MEDIUM · tag `reschedule-park` เดิมของ alarm I-5 ที่ถูกถอด · dedup tag + เลขสัญญา + ยังไม่ DONE):
  *   POSTED       → แจ้งฝ่ายบัญชีเพื่อทราบ (เลขรายการ ยอด ภาษี) + เตือนว่ายกเลิกใบเสร็จของสัญญานี้ไม่ได้จนกว่าจะกลับรายการ
- *   COLUMNS_ONLY → คอลัมน์ถัง > 0 แต่บัญชี 21-1103 = 0 — ไม่ลงรายการ ให้ตรวจ (แทน alarm เดิมที่อ่านจากคอลัมน์)
+ *   COLUMNS_ONLY → คอลัมน์ถัง/เครดิต > 0 แต่บัญชี 21-1103 / 21-5101 = 0 — ไม่ลงรายการ ให้ตรวจ (แทน alarm เดิมที่อ่านจากคอลัมน์)
  */
 @Injectable()
 export class AdvanceExcessIncomeCron {
@@ -125,25 +126,29 @@ export class AdvanceExcessIncomeCron {
     eligible: Array<{ id: string; contractNumber: string }>;
     pendingVoid: Set<string>;
   }> {
-    // (ก) 21-1103 ของสัญญายังมียอด Cr ในบัญชี — Prisma GROUP BY บน JSON path ไม่ได้ จึงเป็น raw SQL (รูปเดียวกับ
-    // เลนส์คิวรอจ่ายใน interco-pending.service.ts)
+    // (ก) 21-1103 หรือ 21-5101 (22.2) ของสัญญายังมียอด Cr ในบัญชี — ต่อบัญชี (ไม่รวมกัน: บัญชีหนึ่งติดลบต้องไม่กลบอีก
+    // บัญชี) · Prisma GROUP BY บน JSON path ไม่ได้ จึงเป็น raw SQL (รูปเดียวกับเลนส์คิวรอจ่ายใน interco-pending.service.ts)
     const glRows = await this.prisma.$queryRaw<Array<{ contract_id: string | null }>>`
       SELECT je.metadata->>'contractId' AS contract_id
       FROM journal_lines jl
       JOIN journal_entries je ON je.id = jl.journal_entry_id
-      WHERE jl.account_code = '21-1103'
+      WHERE jl.account_code IN ('21-1103', '21-5101')
         AND jl.deleted_at IS NULL
         AND je.status = 'POSTED'
         AND je.deleted_at IS NULL
         AND je.metadata->>'contractId' IS NOT NULL
-      GROUP BY 1
+      GROUP BY je.metadata->>'contractId', jl.account_code
       HAVING SUM(jl.credit - jl.debit) > 0
     `;
-    // (ข) คอลัมน์ถังยังค้าง (บัญชีอาจเป็น 0 แล้ว = คอลัมน์ไม่ตรงบัญชี → งานแจ้ง)
+    // (ข) คอลัมน์ถัง/เครดิตยังค้าง (บัญชีอาจเป็น 0 แล้ว = คอลัมน์ไม่ตรงบัญชี → งานแจ้ง)
     const columnRows = await this.prisma.contract.findMany({
       where: {
         deletedAt: null,
-        OR: [{ advanceBalance: { gt: 0 } }, { rescheduleAdvanceBalance: { gt: 0 } }],
+        OR: [
+          { advanceBalance: { gt: 0 } },
+          { rescheduleAdvanceBalance: { gt: 0 } },
+          { creditBalance: { gt: 0 } },
+        ],
       },
       select: { id: true },
     });
@@ -298,14 +303,18 @@ export class AdvanceExcessIncomeCron {
     r: Extract<AdvanceExcessIncomeResult, { outcome: 'POSTED' }>,
   ): Promise<boolean> {
     const amount = r.amount.toFixed(2);
+    const debits =
+      (r.advance.gt(0) ? `Dr 21-1103 ${r.advance.toFixed(2)}` : '') +
+      (r.advance.gt(0) && r.credit.gt(0) ? ' / ' : '') +
+      (r.credit.gt(0) ? `Dr 21-5101 ${r.credit.toFixed(2)}` : '');
     return this.createTodoOnce(
       actor,
       r.contractNumber,
       `สัญญา ${r.contractNumber} — ลงรายได้เงินพักส่วนเกิน ${amount} บาท เข้า 42-1106 แล้ว (เพื่อทราบ)`,
-      `รอบกวาดเงินพักส่วนเกิน (PR4 ต6) ลงรายการ ${r.entryNo}: Dr 21-1103 ${amount} / Cr 42-1106 ${r.income.toFixed(2)} ` +
+      `รอบกวาดเงินพักส่วนเกิน (PR4 ต6 / 22.2) ลงรายการ ${r.entryNo}: ${debits} / Cr 42-1106 ${r.income.toFixed(2)} ` +
         `/ Cr 21-2102 ${r.vat.toFixed(2)} (ภาษีขายของยอดนี้รับรู้ไปแล้ว ณ วันรับเงิน) — สัญญาผ่อนครบ/ปิดแล้วและยังมี ` +
-        `เงินรับล่วงหน้าค้างในบัญชี 21-1103 ตามคำตอบฝ่ายบัญชี เล่ม 1 ข้อ 3 (29/09/2569) · คอลัมน์ advanceBalance / ` +
-        `rescheduleAdvanceBalance ของสัญญาตั้งเป็น 0 แล้ว` +
+        `เงินรับล่วงหน้า / เครดิตของลูกค้าค้างในบัญชี 21-1103 / 21-5101 ตามคำตอบฝ่ายบัญชี เล่ม 1 ข้อ 3 (29/09/2569) และ ` +
+        `ข้อ 22.2 (16/10/2569) · คอลัมน์ advanceBalance / rescheduleAdvanceBalance / creditBalance ของสัญญาตั้งเป็น 0 แล้ว` +
         (r.columnsMismatch
           ? ` · คอลัมน์ก่อนลงไม่ตรงยอดในบัญชี (Sentry close-advance-ledger-mismatch) — ลงตามบัญชี กรุณาตรวจประวัติ`
           : '') +
@@ -318,15 +327,15 @@ export class AdvanceExcessIncomeCron {
     actor: { id: string } | null,
     r: Extract<AdvanceExcessIncomeResult, { outcome: 'COLUMNS_ONLY' }>,
   ): Promise<boolean> {
-    const total = r.advanceBalance.plus(r.rescheduleAdvanceBalance).toFixed(2);
+    const total = r.advanceBalance.plus(r.rescheduleAdvanceBalance).plus(r.creditBalance).toFixed(2);
     return this.createTodoOnce(
       actor,
       r.contractNumber,
-      `สัญญา ${r.contractNumber} — คอลัมน์เงินรับล่วงหน้า/เงินพัก ${total} บาท แต่บัญชี 21-1103 = 0 (ตรวจสอบ)`,
+      `สัญญา ${r.contractNumber} — คอลัมน์เงินรับล่วงหน้า/เงินพัก/เครดิต ${total} บาท แต่บัญชี 21-1103 / 21-5101 = 0 (ตรวจสอบ)`,
       `สัญญาผ่อนครบ/ปิดแล้ว คอลัมน์ advanceBalance ${r.advanceBalance.toFixed(2)} + rescheduleAdvanceBalance ` +
-        `${r.rescheduleAdvanceBalance.toFixed(2)} ยังค้าง แต่สมุดบัญชี 21-1103 ของสัญญาไม่มียอด — รอบกวาดเงินพักส่วนเกิน ` +
-        `(PR4 ต6) ไม่ลงรายการ (ไม่มีเงินในบัญชีให้รับรู้) กรุณาตรวจว่าเงินถูกหักไปทางใดแล้วปรับคอลัมน์ให้ตรง · ` +
-        `contractId: ${r.contractId}`,
+        `${r.rescheduleAdvanceBalance.toFixed(2)} + creditBalance ${r.creditBalance.toFixed(2)} ยังค้าง แต่สมุดบัญชี ` +
+        `21-1103 / 21-5101 ของสัญญาไม่มียอด — รอบกวาดเงินพักส่วนเกิน (PR4 ต6 / 22.2) ไม่ลงรายการ (ไม่มีเงินในบัญชีให้รับรู้) ` +
+        `กรุณาตรวจว่าเงินถูกหักไปทางใดแล้วปรับคอลัมน์ให้ตรง · contractId: ${r.contractId}`,
     );
   }
 }

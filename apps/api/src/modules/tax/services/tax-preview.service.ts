@@ -33,10 +33,10 @@ export class TaxPreviewService {
    * (`entryDate`) ปฏิทินไทย. รายการกลับรายการและใบลดหนี้ ม.82/5 จึงลดภาษีขายของเดือนที่ลงรายการ (ก่อน 2026-09-30
    * นับเฉพาะเครดิตตาม `postedAt` ⇒ ใบลดหนี้ไม่ลดยอด และรายการกลับรายการไม่ถูกหัก).
    *
-   * ภาษีขาย 60 วัน (21-2103): **ไม่รวมใน `totalVatOutput` / `netVat` แล้ว** (คำตัดสินผู้คุมงาน 2026-09-30 — กลับคำตัดสิน
-   * "Critical #2" เดิมที่รวม 21-2103 ระหว่างรอฝ่ายบัญชีวินิจฉัย เพราะงวดที่ตั้งลูกหนี้งวดแล้วมีภาษีทั้งใน 21-2101 และ 21-2103)
-   * — รายงานแยกใน `totalVatMandatory60Day` / `outputVatBreakdown.mandatory60Day*` / `lineItems.mandatoryVat60Day`
-   * (`PP30_INCLUDES_MANDATORY_60DAY`).
+   * ภาษีขาย 60 วัน (21-2103): **รวมสุทธิใน `totalVatOutput` / `netVat` ตั้งแต่ 16/10/2569** (ฝ่ายบัญชีข้อ 11.1 —
+   * รอบ 60 วันเลิกตั้งซ้ำกับงวดที่ตั้ง 21-2101 แล้ว และ 2A กลับ 21-2103 เมื่อตั้งลูกหนี้งวดทีหลัง; ระหว่าง 30/09–16/10
+   * ไม่รวมตามคำตัดสินผู้คุมงานระหว่างรอฝ่ายบัญชี) — ยังรายงานแยกใน `totalVatMandatory60Day` /
+   * `outputVatBreakdown.mandatory60Day*` / `lineItems.mandatoryVat60Day` (`PP30_INCLUDES_MANDATORY_60DAY`).
    *
    * ภาษีซื้อ / ยอดขาย / บรรทัดขาย-ซื้อ — กติกาเดิมทุกประการ (`postedAt` ในเดือนตามเวลาของโปรเซส).
    * ผู้ใช้ผลลัพธ์: `GET /tax/pp30-preview` · `GET /tax/export-xlsx?form=PP30` · `POST /tax/generate` (TaxReport) ·
@@ -110,7 +110,7 @@ export class TaxPreviewService {
     const totalPurchases = expenses.reduce((s, e) => s.add(e.totalAmount), zero);
     const totalVatInput = expenses.reduce((s, e) => s.add(e.vatAmount), zero);
 
-    // ภาษีขายของ ภ.พ.30 = 21-2101 สุทธิ (ภาษีขาย 60 วันไม่รวม — PP30_INCLUDES_MANDATORY_60DAY)
+    // ภาษีขายของ ภ.พ.30 = 21-2101 สุทธิ + 21-2103 สุทธิ (PP30_INCLUDES_MANDATORY_60DAY — true ตั้งแต่ 16/10/2569)
     const totalVatOutput = output.totalOutputVat;
     const netVat = totalVatOutput.sub(totalVatInput);
 
@@ -164,7 +164,7 @@ export class TaxPreviewService {
       // ── Output VAT (single computation — pp30-output-vat.ts) ────────────
       totalVatOutput,
       totalVatSettled: output.settledNet, // 21-2101 สุทธิ (เครดิต − เดบิต)
-      totalVatMandatory60Day: output.mandatory60Day.net, // 21-2103 สุทธิ — ข้อมูลประกอบ ไม่รวมใน totalVatOutput
+      totalVatMandatory60Day: output.mandatory60Day.net, // 21-2103 สุทธิ — แสดงแยก และรวมอยู่ใน totalVatOutput (16/10/2569)
       outputVatBreakdown: toPp30OutputVatJson(output),
       vatOutputBySource: Object.fromEntries(outputBySource),
       // ── Input VAT (unchanged) ──────────────────────────────────────────

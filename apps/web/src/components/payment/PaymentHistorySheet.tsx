@@ -107,7 +107,7 @@ const VOID_REQUEST_ROLES = ['OWNER', 'ACCOUNTANT', 'BRANCH_MANAGER', 'FINANCE_MA
 // 2026-07-08): CN is itself the reversal document; reschedule fees and
 // early payoff have no automatic un-do path. Hide the void button so the
 // UI doesn't offer an action that can only error.
-const UNVOIDABLE_RECEIPT_TYPES = ['CREDIT_NOTE', 'RESCHEDULE_FEE', 'EARLY_PAYOFF'];
+const UNVOIDABLE_RECEIPT_TYPES = ['CREDIT_NOTE', 'RESCHEDULE_FEE', 'EARLY_PAYOFF', 'ADVANCE_SURPLUS'];
 // Use the shared money formatter (honours user separator preference + ROUND_HALF_UP).
 const money = (n: number | string) => formatNumberDecimal(n, 2);
 

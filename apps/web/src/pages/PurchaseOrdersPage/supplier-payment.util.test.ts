@@ -51,7 +51,7 @@ describe('paymentChip', () => {
 });
 
 describe('paymentFormErrors', () => {
-  const ok = { paidAt: '2026-10-05', amount: '10729', slipUrl: 'data:image/png;base64,x', reference: '', note: '' };
+  const ok = { paidAt: '2026-10-05', amount: '10729', slipUrl: 'data:image/png;base64,x', reference: '', note: '', paymentAccountCode: 'S11-1202' };
   it('ฟอร์มครบ → ไม่มี error', () => {
     expect(paymentFormErrors(ok, summary(), '2026-10-05')).toEqual({});
   });
@@ -62,6 +62,12 @@ describe('paymentFormErrors', () => {
     expect(paymentFormErrors({ ...ok, paidAt: '' }, summary(), '2026-10-05').paidAt).toMatch(/วันที่/);
     expect(paymentFormErrors({ ...ok, paidAt: '2026-10-06' }, summary(), '2026-10-05').paidAt).toMatch(/ไม่เกินวันนี้/);
     expect(paymentFormErrors({ ...ok, slipUrl: '  ' }, summary(), '2026-10-05').slipUrl).toMatch(/สลิป/);
+  });
+  it('จ่ายจากเงินสดย่อย S11-1106 → ไม่บังคับสลิป · ธนาคารรับเข้ายังบังคับ · เงินสดเจ้าของ S11-1104 / รหัสนอกรายการ → error', () => {
+    expect(paymentFormErrors({ ...ok, slipUrl: '', paymentAccountCode: 'S11-1106' }, summary(), '2026-10-05')).toEqual({});
+    expect(paymentFormErrors({ ...ok, paymentAccountCode: 'S11-1104' }, summary(), '2026-10-05').paymentAccountCode).toMatch(/บัญชี/);
+    expect(paymentFormErrors({ ...ok, slipUrl: '', paymentAccountCode: 'S11-1201' }, summary(), '2026-10-05').slipUrl).toMatch(/สลิป/);
+    expect(paymentFormErrors({ ...ok, paymentAccountCode: 'S11-1101' }, summary(), '2026-10-05').paymentAccountCode).toMatch(/บัญชี/);
   });
 });
 
@@ -82,6 +88,10 @@ describe('previewLines — รายการบัญชีที่จะล�
     ]);
     expect(previewLines(summary({ payableOutstanding: '0.00', payableByAccount: {} }), 5000).map((l) => l.accountCode)).toEqual(['S11-4201', 'S11-1202']);
     expect(previewLines(summary(), 0)).toEqual([]);
+  });
+  it('เลือกบัญชีจ่าย: บรรทัดเครดิตเป็นบัญชีที่เลือก (เงินสดย่อย S11-1106)', () => {
+    expect(previewLines(summary(), 10729, 'S11-1106').at(-1)).toEqual({ accountCode: 'S11-1106', label: 'เงินสด - เงินสดย่อย', debit: 0, credit: 10729 });
+    expect(previewLines(summary(), 10729).at(-1)?.accountCode).toBe('S11-1202');
   });
 });
 

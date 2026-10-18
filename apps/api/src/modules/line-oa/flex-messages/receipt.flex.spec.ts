@@ -27,3 +27,24 @@ describe('buildReceiptMessage — ป้ายวิธีชำระ', () => {
     expect(json).not.toContain(`"${paymentMethod}"`);
   });
 });
+
+/** PR4ข: ใบปรับดิว 6a และใบรับเงินส่วนเกินลิงก์ชำระได้หัวข้อความของตัวเอง (ไม่ใช่ "ใบเสร็จ" ลอย ๆ) */
+describe('buildReceiptMessage — หัวข้อความตามประเภทใบ (PR4ข)', () => {
+  const base = {
+    receiptNumber: 'RT-202610-00050',
+    payerName: 'ลูกค้าทดสอบ',
+    amount: 500,
+    paidDate: '2026-10-16T03:00:00.000Z',
+    verifyUrl: 'https://example.invalid/verify/RT-202610-00050',
+    paymentMethod: 'ONLINE_GATEWAY',
+  };
+
+  it.each([
+    ['RESCHEDULE_FEE', 'ใบเสร็จค่าธรรมเนียมปรับดิว'],
+    ['ADVANCE_SURPLUS', 'ใบเสร็จเงินรับล่วงหน้า'],
+  ])('ประเภท %s → หัวข้อความ "%s"', (receiptType, headline) => {
+    const json = JSON.stringify(buildReceiptMessage({ ...base, receiptType }));
+
+    expect(json).toContain(`"${headline}"`);
+  });
+});

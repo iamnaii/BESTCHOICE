@@ -3,10 +3,16 @@ import { PrismaService } from '../../../prisma/prisma.service';
 import { Prisma } from '@prisma/client';
 import * as crypto from 'crypto';
 import { LineOaService } from '../../line-oa/line-oa.service';
-import { INSTALLMENT_MONEY_RECEIPT_TYPES } from '../receipt-types.constants';
 import {
+  ADVANCE_SURPLUS_RECEIPT_TYPE,
+  DOCUMENT_BALANCE_RECEIPT_TYPES,
+  INSTALLMENT_MONEY_RECEIPT_TYPES,
+} from '../receipt-types.constants';
+import {
+  advanceSurplusReceiptTax,
   parseReceiptTax,
   receiptTaxColumns,
+  rescheduleFeeReceiptTax,
   type ReceiptTaxBreakdown,
 } from '../../journal/receipt-tax-breakdown';
 import { ReceiptNumberService } from './receipt-number.service';
@@ -127,7 +133,8 @@ export class ReceiptIssuanceService {
       // latest entry: a concurrent receipt may have posted for this payment.
       let sourceJournalEntryId: string | undefined;
       // ใบกำกับภาษีตามบัญชี (PR3): ค่าที่ใบนี้ต้องพิมพ์ มาจากรายการบัญชีที่ผูกเท่านั้น — ไม่ผูก / รายการเก่า / ใบที่ไม่ใช่
-      // ใบค่างวด (ใบปิดยอดก่อนกำหนด — PR5 · ใบปรับดิว — PR4) = null → PDF ใช้ตรรกะเดิม
+      // ใบค่างวด (ใบปิดยอดก่อนกำหนด — PR5) = null → PDF ใช้ตรรกะเดิม · PR4ข: ใบปรับดิว 6a และใบส่วนเกินลิงก์ชำระเก็บค่าจาก
+      // metadata ของรายการต้นทาง (rescheduleFeeReceiptTax / advanceSurplusReceiptTax)
       let tax: ReceiptTaxBreakdown | null = null;
       // รายการรับชำระ (tag receipt) ที่ไม่มี receiptTax ที่ใช้ได้ — ทุกรายการที่ PaymentReceiptTemplate ลงตั้งแต่ PR3 มีค่าประทับ ⇒
       // ไม่มี = รายการก่อน PR3 หรือค่าประทับหายระหว่างทาง (final review M1). ไม่ปฏิเสธ (ใบพิมพ์แบบเดิม) แต่ต้องมีร่องรอย
@@ -140,9 +147,12 @@ export class ReceiptIssuanceService {
         const meta = (source?.metadata ?? {}) as Record<string, unknown>;
         const acceptedTag = receiptType === 'RESCHEDULE_FEE'
           ? meta.tag === 'reschedule-collect'
-          : ['receipt', '2B'].includes(String(meta.tag));
+          : receiptType === ADVANCE_SURPLUS_RECEIPT_TYPE
+            ? meta.tag === 'paysolutions-surplus-advance'
+            : ['receipt', '2B'].includes(String(meta.tag));
+        // รายการส่วนเกินลิงก์ชำระไม่มี paymentId (เงินพักไว้ที่สัญญา) — เทียบแบบ null = ไม่มี
         if (!source || source.status !== 'POSTED' || source.deletedAt ||
-            meta.paymentId !== paymentId || meta.contractId !== contractId ||
+            (meta.paymentId ?? null) !== (paymentId ?? null) || meta.contractId !== contractId ||
             !acceptedTag) {
           throw new BadRequestException('ไม่พบรายการบัญชีรับชำระที่ตรงกับใบเสร็จ');
         }
@@ -163,6 +173,18 @@ export class ReceiptIssuanceService {
             );
           } else if (meta.tag === 'receipt') {
             receiptTaxMissing = true;
+          }
+        } else if (receiptType === 'RESCHEDULE_FEE' || receiptType === ADVANCE_SURPLUS_RECEIPT_TYPE) {
+          const amountDec = new Prisma.Decimal(amount);
+          tax =
+            receiptType === 'RESCHEDULE_FEE'
+              ? rescheduleFeeReceiptTax(meta, amountDec)
+              : advanceSurplusReceiptTax(meta, amountDec);
+          if (!tax) {
+            // 6b / รายการก่อน PR4 (ไม่มี stamp ภาษี) / ยอดไม่ตรง — ใบยังออกและผูกรายการ แต่พิมพ์ตรรกะเดิม (ไม่ใช่ใบกำกับภาษี)
+            this.logger.warn(
+              `[Receipt] ${receiptType} amount ${amountDec.toFixed(2)} — journal ${sourceJournalEntryNumber} has no usable advance VAT stamp (variant=${String(meta.variant ?? '-')}) — tax columns left empty`,
+            );
           }
         }
       }
@@ -210,7 +232,9 @@ export class ReceiptIssuanceService {
           receiverName,
           amount,
           installmentNo,
-          remainingBalance: [...INSTALLMENT_MONEY_RECEIPT_TYPES, 'RESCHEDULE_FEE'].includes(receiptType) ? null : remainingBalance,
+          remainingBalance: (DOCUMENT_BALANCE_RECEIPT_TYPES as readonly string[]).includes(receiptType)
+            ? null
+            : remainingBalance,
           remainingMonths: Math.max(0, remainingMonths),
           paymentStatus,
           installmentPartialSeq,

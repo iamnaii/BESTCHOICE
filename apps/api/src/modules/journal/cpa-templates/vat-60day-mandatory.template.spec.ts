@@ -233,4 +233,64 @@ describe('Vat60dayMandatoryTemplate', () => {
     });
     expect(count).toBe(1);
   });
+
+  // ฝ่ายบัญชี 16/10/2569 ข้อ 11.1 — ภาษีขาย 60 วันเป็นภาษีที่ไฟแนนซ์จ่ายแทนลูกค้า ถ้างวดนั้นตั้งภาษีขายเข้า 21-2101
+  // ไปแล้ว (รายการตั้งลูกหนี้งวด 2A) ห้ามตั้ง 21-2103 ซ้ำ
+  it('ข้อ 11.1 — งวดที่ตั้งลูกหนี้งวดแล้ว (accrualJournalEntryId มีค่า) ไม่ตั้งภาษีขาย 60 วันซ้ำ', async () => {
+    const { inst, journal } = await setup();
+    await prisma.installmentSchedule.update({
+      where: { id: inst.id },
+      data: {
+        dueDate: new Date(Date.now() - 70 * 24 * 60 * 60 * 1000),
+        accrualJournalEntryId: 'JE-TEST-2A-FULL',
+      },
+    });
+
+    const result = await new Vat60dayMandatoryTemplate(journal, prisma as any).execute(inst.id);
+    expect(result).toBeNull();
+
+    const count = await prisma.journalEntry.count({
+      where: { metadata: { path: ['tag'], equals: 'VAT60-MANDATORY' } } as any,
+    });
+    expect(count).toBe(0);
+    const row = await prisma.installmentSchedule.findUniqueOrThrow({ where: { id: inst.id } });
+    expect(row.vat60dayJournalEntryId).toBeNull();
+  });
+
+  it('ข้อ 11.1 — งวดที่ตั้งลูกหนี้งวดบางส่วนแล้ว (accruedVat > 0 แต่ยังไม่มีลิงก์) ก็ไม่ตั้งซ้ำ', async () => {
+    const { inst, journal } = await setup();
+    await prisma.installmentSchedule.update({
+      where: { id: inst.id },
+      data: {
+        dueDate: new Date(Date.now() - 70 * 24 * 60 * 60 * 1000),
+        accruedAmount: new Decimal('1000.00'),
+        accruedVat: new Decimal('65.42'),
+        accruedInterest: new Decimal('329.85'),
+      },
+    });
+
+    const result = await new Vat60dayMandatoryTemplate(journal, prisma as any).execute(inst.id);
+    expect(result).toBeNull();
+    const count = await prisma.journalEntry.count({
+      where: { metadata: { path: ['tag'], equals: 'VAT60-MANDATORY' } } as any,
+    });
+    expect(count).toBe(0);
+  });
+
+  // ฝ่ายบัญชี 16/10/2569 ข้อ 11.2 — สัญญาที่ยึดคืน/ปิดไปแล้ว ไม่ต้องจ่ายภาษีขาย 60 วัน
+  it('ข้อ 11.2 — สัญญาในสถานะที่ปิด/ยึดแล้ว (ACCRUAL_EXCLUDED_CONTRACT_STATUSES) ไม่ตั้งภาษีขาย 60 วัน', async () => {
+    const { contract, inst, journal } = await setup();
+    await prisma.installmentSchedule.update({
+      where: { id: inst.id },
+      data: { dueDate: new Date(Date.now() - 70 * 24 * 60 * 60 * 1000) },
+    });
+    await prisma.contract.update({ where: { id: contract.id }, data: { status: 'TERMINATED' } });
+
+    const result = await new Vat60dayMandatoryTemplate(journal, prisma as any).execute(inst.id);
+    expect(result).toBeNull();
+    const count = await prisma.journalEntry.count({
+      where: { metadata: { path: ['tag'], equals: 'VAT60-MANDATORY' } } as any,
+    });
+    expect(count).toBe(0);
+  });
 });

@@ -87,7 +87,7 @@ export function directReceivePaymentErrors(form: PaymentFields, attachments: str
   const amountError = paidAmountError(form, netAmount);
   if (amountError) return amountError;
   if (form.paymentMethod && ['CASH', 'CHECK', 'CHEQUE'].includes(form.paymentMethod.toUpperCase())) {
-    return 'จ่ายเงินผู้จัดจำหน่ายได้เฉพาะโอนธนาคาร (ไม่มีจ่ายเงินสด/เช็ค)';
+    return 'รับเข้าตรงจ่ายทันทีรับเฉพาะโอนธนาคาร — จ่ายเงินสดย่อยให้บันทึกทีหลังที่ปุ่ม "บันทึกการจ่าย" ในใบสั่งซื้อ (ไม่มีเช็ค)';
   }
   if (!attachments.some((a) => a.trim())) return 'กรุณาแนบสลิปโอนเงิน';
   return null;

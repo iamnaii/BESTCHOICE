@@ -189,3 +189,71 @@ export function receiptTaxColumns(b: ReceiptTaxBreakdown) {
     advanceVatAmount: new Decimal(b.advanceVatAmount),
   };
 }
+
+/** อ่านค่าเงินจาก metadata (สตริง/ตัวเลข) — ไม่ใช่เงิน = null */
+function moneyOf(value: unknown): Decimal | null {
+  if (typeof value !== 'string' && typeof value !== 'number') return null;
+  try {
+    const d = new Decimal(value);
+    return d.isFinite() ? d : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * ใบปรับดิว 6a (PR4ข — ฝ่ายบัญชี 16/10/2569 ข้อ 14 / 23.1): ค่าธรรมเนียมที่พักเป็นเงินรับล่วงหน้างวดสุดท้าย (Cr 21-1103)
+ * ออกใบกำกับภาษีตอนรับ — ภาษี = stamp `advanceVatPark` ของรายการ `reschedule-collect` (ตัวเดียวกับ Cr 21-2101 ที่ลงจริง)
+ * ค่าปรับ (42-1103) อยู่นอกฐานภาษี. คืน null (ใบพิมพ์ตรรกะเดิม ไม่ใช่ใบกำกับภาษี) เมื่อไม่ใช่ 6a · ไม่มี stamp ภาษี (รายการก่อน
+ * PR4) · ยอดใบไม่เท่าค่าธรรมเนียม + ค่าปรับ.
+ *   เงินรับล่วงหน้า = rescheduleFee · ภาษี = advanceVatPark · ก่อนภาษี = rescheduleFee − ภาษี · ค่าปรับ = lateFeeCollected
+ */
+export function rescheduleFeeReceiptTax(
+  meta: Record<string, unknown>,
+  amount: Decimal,
+): ReceiptTaxBreakdown | null {
+  if (meta.variant !== '6a') return null;
+  const fee = moneyOf(meta.rescheduleFee);
+  const vat = moneyOf(meta.advanceVatPark);
+  const lateFee = moneyOf(meta.lateFeeCollected ?? 0);
+  if (!fee || !vat || !lateFee || !fee.gt(0) || vat.lt(0) || lateFee.lt(0)) return null;
+  if (!fee.plus(lateFee).eq(amount)) return null;
+  return {
+    version: RECEIPT_TAX_VERSION,
+    amount: money(amount),
+    amountBeforeVat: money(fee.minus(vat)),
+    vatAmount: money(vat),
+    roundingAmount: money(ZERO),
+    lateFeeAmount: money(lateFee),
+    lateFeeWaivedAmount: money(ZERO),
+    advanceAmount: money(fee),
+    advanceVatAmount: money(vat),
+  };
+}
+
+/**
+ * ใบรับเงินส่วนเกินจากลิงก์ชำระ (PR4ข — ฝ่ายบัญชี 23.2 แยกใบ): เงินที่เกินงวดถูกพักเป็นเงินรับล่วงหน้า (Cr 21-1103) พร้อม
+ * ภาษี stamp `advanceVatPark` ของรายการ `paysolutions-surplus-advance`. ไม่มี stamp = ภาษีตามสูตรต้องเป็นศูนย์ (ส่วนเกินเล็กจน
+ * HALF_UP ปัดเป็น 0) ไม่งั้น null. ยอดใบต้องเท่า surplus.
+ */
+export function advanceSurplusReceiptTax(
+  meta: Record<string, unknown>,
+  amount: Decimal,
+): ReceiptTaxBreakdown | null {
+  const surplus = moneyOf(meta.surplus);
+  if (!surplus || !surplus.gt(0) || !surplus.eq(amount)) return null;
+  const vat = meta.advanceVatPark === undefined ? advanceVatOf(surplus) : moneyOf(meta.advanceVatPark);
+  if (!vat || vat.lt(0) || (meta.advanceVatPark === undefined && !vat.isZero())) return null;
+  return {
+    version: RECEIPT_TAX_VERSION,
+    amount: money(amount),
+    amountBeforeVat: money(surplus.minus(vat)),
+    vatAmount: money(vat),
+    roundingAmount: money(ZERO),
+    lateFeeAmount: money(ZERO),
+    lateFeeWaivedAmount: money(ZERO),
+    advanceAmount: money(surplus),
+    advanceVatAmount: money(vat),
+  };
+}
+

@@ -370,10 +370,12 @@ describe('parseReceiptTax / receiptTaxColumns', () => {
     const cols = receiptTaxColumns(parsed!);
     expect(cols.roundingAmount.toFixed(2)).toBe('0.33');
     expect(cols.vatAmount.toFixed(2)).toBe('397.67');
+    expect(cols.discountAmount.toFixed(2)).toBe('0.00'); // 2026-10-18: ช่องส่วนลดดอกเบี้ยปิดยอด — stamp เดิม = 0
     expect(Object.keys(cols).sort()).toEqual([
       'advanceAmount',
       'advanceVatAmount',
       'amountBeforeVat',
+      'discountAmount',
       'lateFeeAmount',
       'lateFeeWaivedAmount',
       'roundingAmount',

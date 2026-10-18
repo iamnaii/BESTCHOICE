@@ -50,7 +50,9 @@ describe('ContractPaymentService — ปิดยอดหักเงินร�
     sellingPrice: dec('12000'),
     downPayment: dec('2000'),
     storeCommission: dec('1000'),
-    financedAmount: dec('17000'),
+    // ยอดจัด 10,000 (+ คอม 1,000 + ดอกเบี้ย 6,000 = 17,000 = 11-2101 ในบัญชี) — เดิมใส่ 17,000 ผิด: ตั้งแต่ 2026-10-18
+    // ใบปิดยอดนับภาษีคงเหลือจากตารางงวดแล้วเทียบกับลูกหนี้ตามบัญชี (สัญญาณ early-payoff-receipt-schedule-vs-ledger)
+    financedAmount: dec('10000'),
     interestTotal: dec('6000'),
     vatAmount: dec('1190.00'),
     payments: Array.from({ length: 12 }, (_, i) => ({

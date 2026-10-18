@@ -362,6 +362,34 @@ describe('ContractPaymentService.earlyPayoff (EXECUTION / money-posting golden)'
   });
 
   // (b4) QA #1347 follow-up: the EARLY_PAYOFF receipt carries the same backdate ─
+  // ใบปิดยอดเป็นใบกำกับภาษีตามบัญชี (ฝ่ายบัญชี 16/10/2569 ข้อ 16.1 · 2026-10-18): JP4 ประทับค่าที่ใบต้องพิมพ์ —
+  // ฐาน = ลูกหนี้ตามบัญชี 11,556 − ภาษีคงเหลือของงวด 7–12 (6 × 126) = 10,800 · ส่วนลด = 52-1106 450 · เงินที่รับ 11,106
+  it('(b5) stamps receiptTax (by-ledger rows + 52-1106 discount) and the 18.1 context on the JP4, and hands the entry number to generateReceipt', async () => {
+    await approvedEarlyPayoff(service, quoteContract.id, 'user-1', baseDto);
+
+    const je = getCapturedJe();
+    expect(je.metadata.receiptTax).toEqual({
+      version: 1,
+      amount: '11106.00',
+      amountBeforeVat: '10800.00',
+      vatAmount: '756.00',
+      roundingAmount: '0.00',
+      lateFeeAmount: '0.00',
+      lateFeeWaivedAmount: '0.00',
+      advanceAmount: '0.00',
+      advanceVatAmount: '0.00',
+      discountAmount: '450.00',
+    });
+    expect(je.metadata).toMatchObject({
+      notDueMonths: 6,
+      dueMonths: 0,
+      firstUnpaidInstallmentNo: 7,
+      lastUnpaidInstallmentNo: 12,
+    });
+    expect(generateReceipt).toHaveBeenCalledTimes(1);
+    expect(generateReceipt.mock.calls[0][9]).toBe('JE-EP-0001');
+  });
+
   it('(b4) passes dto.paymentDate to generateReceipt so the receipt is dated on the money date', async () => {
     await approvedEarlyPayoff(service, quoteContract.id, 'user-1', {
       ...baseDto,

@@ -32,6 +32,8 @@ import { emitDeferredWarnings, type DeferredWarning } from '../journal/deferred-
 import { ADVANCE_VAT_CONSUME_DESCRIPTION, ADVANCE_VAT_META } from '../journal/advance-vat';
 import { computeInstallmentBreakdown } from '../journal/compute-installment-breakdown';
 import { reconstructPriorCleared } from '../journal/reconstruct-prior';
+import { earlyPayoffReceiptTax, ReceiptTaxBreakdown } from '../journal/receipt-tax-breakdown';
+import { remainingInstallmentVat } from '../journal/early-payoff-receipt-vat';
 import { computePayoffQuote, countNotDueInstallments } from './compute-payoff-quote';
 import { JourneyEntryWriter } from '../customer-journey/journey-entry-writer.service';
 import { journeyDedupeKey } from '../customer-journey/journey-data-schemas';
@@ -430,6 +432,8 @@ export class ContractPaymentService {
 
     // สัญญาณเตือน (คอลัมน์เงินของลูกค้าไม่ตรงยอดในบัญชี) — ส่งหลังธุรกรรม commit เท่านั้น
     let epWarnings: readonly DeferredWarning[] = [];
+    // เลขที่รายการ JP4 — ใบเสร็จปิดยอดผูกรายการนี้และคัดลอก receiptTax (ฝ่ายบัญชี 16.1 · 2026-10-18)
+    let jp4EntryNumber: string | undefined;
     await this.prisma.$transaction(
       async (tx) => {
         if (approvalContext) {
@@ -605,6 +609,68 @@ export class ContractPaymentService {
             ];
           }
 
+          // ใบปิดยอดเป็นใบกำกับภาษีตามบัญชี (ฝ่ายบัญชี 16/10/2569 ข้อ 16.1/16.2 · mockup เจ้าของเคาะ 18/10/2569): ค่าที่ใบต้องพิมพ์
+          // ประทับบน JP4 (generateReceipt คัดลอกลงแถว Receipt) — ภาษีของแถวค่างวด = Σ ภาษีคงเหลือของงวดตามกติกา PR3 (ใบที่ทำให้ครบ
+          // รับส่วนที่เหลือ) · ฐาน = ลูกหนี้ตามบัญชี − ภาษี · ส่วนลด 52-1106 เป็นแถวแยกไม่ลดฐานภาษี · เงินของลูกค้าที่หักเป็นแถวติดลบ
+          // ภาษี = ขากลับที่ลงจริง (ข้อ 13–14). ประทับไม่ได้ (เงินรับเกิน 18.2 / ข้อมูลงวดผิดปกติ) = ใบพิมพ์แบบเดิม + สัญญาณเตือน
+          // หลัง commit — ห้ามทำให้การปิดยอดล้ม
+          const unpaidNos = unpaidPayments.map((p) => p.installmentNo);
+          let receiptTax: ReceiptTaxBreakdown | null = null;
+          try {
+            const remaining = await remainingInstallmentVat(tx, epContract, unpaidNos);
+            if (!remaining.total.eq(epJe.receivableCleared)) {
+              epWarnings = [
+                ...epWarnings,
+                {
+                  message:
+                    `[early-payoff] installment schedule remainder ${remaining.total.toFixed(2)} differs from the ledger ` +
+                    `receivable ${epJe.receivableCleared.toFixed(2)} — receipt base follows the ledger, VAT per installment`,
+                  tags: { module: 'contracts', action: 'early-payoff-receipt-schedule-vs-ledger', flow: 'early-payoff' },
+                  extra: {
+                    contractId: id,
+                    contractNumber: freshContract.contractNumber,
+                    scheduleRemainder: remaining.total.toFixed(2),
+                    receivableCleared: epJe.receivableCleared.toFixed(2),
+                    installmentVat: remaining.vat.toFixed(2),
+                  },
+                },
+              ];
+            }
+            receiptTax = earlyPayoffReceiptTax({
+              amount: epJe.cashReceived,
+              receivableCleared: epJe.receivableCleared,
+              installmentVat: remaining.vat,
+              lateFees: epJe.lateFees,
+              discount: epJe.discount,
+              parkRelief: epJe.parkRelief,
+              advanceRelief: epJe.advanceRelief,
+              creditRelief: epJe.creditRelief,
+              advanceVatReversal: epJe.advanceVatReversal,
+              roundingGain: epJe.roundingGain,
+              excessIncome: epJe.excessIncome,
+            });
+          } catch (err) {
+            this.logger.warn(
+              `[early-payoff] receipt tax assembly failed for contract ${id}: ${err instanceof Error ? err.message : err}`,
+            );
+          }
+          if (!receiptTax) {
+            epWarnings = [
+              ...epWarnings,
+              {
+                message:
+                  '[early-payoff] receipt tax could not be stamped on the JP4 — the EARLY_PAYOFF receipt prints the legacy way',
+                tags: { module: 'contracts', action: 'early-payoff-receipt-tax-unavailable', flow: 'early-payoff' },
+                extra: {
+                  contractId: id,
+                  contractNumber: freshContract.contractNumber,
+                  cashReceived: epJe.cashReceived.toFixed(2),
+                  excessIncome: epJe.excessIncome.toFixed(2),
+                },
+              },
+            ];
+          }
+
           // Ledger-side line descriptions (the preview words them differently —
           // only the money, shared via buildEarlyPayoffJournal, must match).
           const epDescriptions: Record<string, string> = {
@@ -649,6 +715,13 @@ export class ContractPaymentService {
             unpaidInstallments: epUnpaid,
             discount: epJe.discount.toFixed(2),
             interestDiscountPercent: quote.discountPct,
+            // 18.1 (2026-10-18) + ใบปิดยอด 16.1: บริบทของใบ (งวดที่ปิด · งวดที่ถึงกำหนดแล้วไม่ได้ส่วนลด) + ค่าที่ใบต้องพิมพ์
+            notDueMonths: quote.notDueMonths,
+            dueMonths: quote.dueMonths,
+            ...(unpaidNos.length > 0
+              ? { firstUnpaidInstallmentNo: unpaidNos[0], lastUnpaidInstallmentNo: unpaidNos[unpaidNos.length - 1] }
+              : {}),
+            ...(receiptTax ? { receiptTax: receiptTax as unknown as Prisma.JsonObject } : {}),
             lateFees: epJe.lateFees.toFixed(2),
             // PR5: ฐานของรายการ — เงินที่รับ · ลูกหนี้ตามบัญชีที่ล้าง · ส่วนลดตามสูตรยอดปิด (ต่างจาก 52-1106 ได้เศษสตางค์)
             cashReceived: epJe.cashReceived.toFixed(2),
@@ -684,7 +757,7 @@ export class ContractPaymentService {
               : {}),
           };
 
-          await this.journalAutoService.createAndPost(
+          const jp4 = await this.journalAutoService.createAndPost(
             {
               description: `ปิดยอดก่อนกำหนด — สัญญา ${freshContract.contractNumber} (${epUnpaid} งวดคงเหลือ)`,
               reference: `${id}:early-payoff`,
@@ -709,6 +782,7 @@ export class ContractPaymentService {
             },
             tx,
           );
+          jp4EntryNumber = jp4.entryNumber;
 
           // ปลดถังพักงวดสุดท้ายให้ตรงกับขา Dr 21-1103 ที่เพิ่งลง — ต้องอยู่ใน tx
           // เดียวกับ JE. ส่วนที่ยอดปิดดูดซับไม่หมด (ส่วนลดกินไปบางส่วน / ชน
@@ -817,6 +891,7 @@ export class ContractPaymentService {
         dto.referenceNo ?? null,
         userId,
         paidDate, // D4 backdating — ใบเสร็จลงวันที่รับเงินจริง (ตรงกับ Payment/JE)
+        jp4EntryNumber, // ผูกรายการ JP4 + คัดลอก receiptTax (ใบกำกับภาษีตามบัญชี 16.1 · 2026-10-18)
       );
       receiptNumber = receipt?.receiptNumber ?? null;
     } catch (err) {

@@ -108,3 +108,44 @@ describe('EarlyPayoffOverlay — หักเงินที่ชำระเ�
     expect(screen.queryByText('หักเงินที่ชำระเกินจากงวดก่อน')).not.toBeInTheDocument();
   });
 });
+
+/** ฝ่ายบัญชี 16/10/2569 ข้อ 18.1 แบบ (ค): ส่วนลดเฉพาะงวดที่ยังไม่ถึงกำหนด — สัญญา 3,671 × 12 ถึงกำหนดแล้ว 4 งวด */
+const dueCase: EarlyPayoffQuote = {
+  monthlyPayment: 3671,
+  remainingMonths: 12,
+  totalRemaining: 44052,
+  advancePayment: 0,
+  rescheduleAdvanceApplied: 0,
+  advanceBalanceApplied: 0,
+  remainingBalance: 44052,
+  remainingExVat: 41170.09,
+  remainingCost: 19690,
+  grossProfit: 21480.09,
+  notDueMonths: 8,
+  dueMonths: 4,
+  discountableMonths: 8,
+  discountBase: 14320.06,
+  discountPct: 50,
+  discountAmount: 7160.03,
+  unpaidLateFees: 100,
+  totalPayoff: 36991.97,
+};
+
+describe('EarlyPayoffOverlay — ส่วนลดเฉพาะงวดที่ยังไม่ถึงกำหนด (ฝ่ายบัญชี 18.1 แบบ ค)', () => {
+  it('มีงวดถึงกำหนดแล้ว → แถวฐานส่วนลด "กำไรของงวดที่ยังไม่ถึงกำหนด (8 จาก 12 งวด)" + ข้อความงวดที่ไม่ได้ส่วนลด · ยอดปิด 36,991.97', async () => {
+    renderWith(dueCase);
+    await screen.findByText('36,991.97 บาท', { selector: 'span' });
+    expect(screen.getByText('กำไรของงวดที่ยังไม่ถึงกำหนด (8 จาก 12 งวด)')).toBeInTheDocument();
+    expect(screen.getByText('14,320.06 บาท')).toBeInTheDocument();
+    expect(screen.getByText('ส่วนลดลูกค้า 50% ของงวดที่ยังไม่ถึงกำหนด')).toBeInTheDocument();
+    expect(screen.getByText(/งวดที่ถึงกำหนดแล้ว 4 งวด ไม่ได้ส่วนลด/)).toBeInTheDocument();
+  });
+
+  it('ไม่มีงวดถึงกำหนด (API ใหม่ dueMonths 0) หรือ API เก่าไม่ส่ง → หน้าจอเหมือนเดิม ไม่มีแถว/ข้อความเพิ่ม', async () => {
+    renderWith({ ...QUOTE, notDueMonths: 12, dueMonths: 0, discountableMonths: 12, discountBase: 5554.66 });
+    await screen.findByText('14,612.63 บาท', { selector: 'span' });
+    expect(screen.queryByText(/กำไรของงวดที่ยังไม่ถึงกำหนด/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/ไม่ได้ส่วนลด/)).not.toBeInTheDocument();
+    expect(screen.getByText('ส่วนลดลูกค้า 50%')).toBeInTheDocument();
+  });
+});

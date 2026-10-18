@@ -1,3 +1,4 @@
+import ScreenTable from '@/components/ui/ScreenTable';
 import { NativeSelect } from '@/components/ui/native-select';
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router';
@@ -91,7 +92,7 @@ function ShareholdersTab() {
             </Button>
           </div>
           <div className="overflow-x-auto">
-          <table className="w-full min-w-[640px] text-sm">
+          <ScreenTable className="w-full min-w-[640px] text-sm">
             <thead>
               <tr className="border-b border-border text-left text-xs text-muted-foreground uppercase">
                 <th className="py-2">ชื่อ</th>
@@ -119,7 +120,7 @@ function ShareholdersTab() {
                 </tr>
               )}
             </tbody>
-          </table>
+          </ScreenTable>
           </div>
         </CardContent>
       </Card>
@@ -168,7 +169,7 @@ export default function EquityListPage() {
             ['shareholders', 'ทะเบียนผู้ถือหุ้น'],
           ] as const
         ).map(([key, label]) => (
-          <button
+          <button data-ui-control="button"
             key={key}
             onClick={() => setTab(key)}
             className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px leading-snug ${
@@ -209,7 +210,7 @@ export default function EquityListPage() {
                 </NativeSelect>
               </div>
               <div className="overflow-x-auto">
-          <table className="w-full min-w-[640px] text-sm">
+          <ScreenTable className="w-full min-w-[640px] text-sm">
                 <thead>
                   <tr className="border-b border-border text-left text-xs text-muted-foreground uppercase">
                     <th className="py-2">เลขที่</th>
@@ -252,7 +253,7 @@ export default function EquityListPage() {
                     </tr>
                   )}
                 </tbody>
-              </table>
+              </ScreenTable>
           </div>
             </CardContent>
           </Card>

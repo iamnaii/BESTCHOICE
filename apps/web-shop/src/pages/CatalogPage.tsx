@@ -71,7 +71,7 @@ function Pill({ active, onClick, children }: PillProps) {
       aria-pressed={active}
       onClick={onClick}
       className={cn(
-        'min-h-11 sm:min-h-0 px-4 py-1.5 font-head text-sm font-medium rounded-full transition-colors leading-snug whitespace-nowrap',
+        'min-h-11 px-4 py-1.5 font-head text-sm font-medium rounded-full transition-colors leading-snug whitespace-nowrap',
         active
           ? 'bg-ink text-ink-foreground font-semibold'
           : 'bg-card text-accent-foreground ring-1 ring-inset ring-border hover:bg-muted',
@@ -308,7 +308,7 @@ export default function CatalogPage() {
                 type="button"
                 onClick={() => updateFilters({ ...filters, deviceOrigin: undefined })}
                 aria-label={`ล้างตัวกรอง${deviceOriginLabel(filters.deviceOrigin)}`}
-                className="mb-3 min-h-11 sm:min-h-0 inline-flex items-center gap-2 rounded-full bg-emerald-50 px-3 py-1.5 font-head text-sm text-emerald-800"
+                className="mb-3 min-h-11 inline-flex items-center gap-2 rounded-full bg-emerald-50 px-3 py-1.5 font-head text-sm text-emerald-800"
               >
                 {deviceOriginLabel(filters.deviceOrigin)}
                 <X className="size-3.5" aria-hidden />
@@ -334,7 +334,7 @@ export default function CatalogPage() {
                       aria-pressed={active}
                       onClick={() => setPriceMode(m.v)}
                       className={cn(
-                        'min-h-11 sm:min-h-0 flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 px-3.5 py-1 font-head text-sm rounded-full leading-snug whitespace-nowrap transition-all',
+                        'min-h-11 flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 px-3.5 py-1 font-head text-sm rounded-full leading-snug whitespace-nowrap transition-all',
                         active
                           ? 'bg-white text-primary font-semibold shadow-sm'
                           : 'font-medium text-zinc-600 hover:text-primary',
@@ -370,7 +370,7 @@ export default function CatalogPage() {
                 <DialogTrigger asChild>
                   <button
                     type="button"
-                    className="min-h-11 sm:min-h-0 lg:hidden inline-flex items-center gap-1.5 px-4 py-1.5 font-head text-sm rounded-full bg-card text-foreground ring-1 ring-inset ring-border leading-snug"
+                    className="min-h-11 lg:hidden inline-flex items-center gap-1.5 px-4 py-1.5 font-head text-sm rounded-full bg-card text-foreground ring-1 ring-inset ring-border leading-snug"
                   >
                     <SlidersHorizontal className="size-3.5" aria-hidden />
                     ตัวกรอง
@@ -394,7 +394,7 @@ export default function CatalogPage() {
                 <button
                   type="button"
                   onClick={clearSearch}
-                  className="min-h-11 sm:min-h-0 inline-flex items-center gap-1.5 px-3 py-1.5 font-head text-sm rounded-full bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition-colors leading-snug"
+                  className="min-h-11 inline-flex items-center gap-1.5 px-3 py-1.5 font-head text-sm rounded-full bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition-colors leading-snug"
                 >
                   ค้นหา: “{filters.search}”
                   <X className="size-3.5" aria-label="ล้างคำค้นหา" />
@@ -412,7 +412,7 @@ export default function CatalogPage() {
                   aria-haspopup="listbox"
                   aria-expanded={sortOpen}
                   onClick={() => setSortOpen((o) => !o)}
-                  className="min-h-11 sm:min-h-0 flex items-center gap-1.5 px-4 py-1.5 font-head text-sm rounded-full bg-card text-foreground ring-1 ring-inset ring-border hover:ring-foreground/25 transition-shadow leading-snug"
+                  className="min-h-11 flex items-center gap-1.5 px-4 py-1.5 font-head text-sm rounded-full bg-card text-foreground ring-1 ring-inset ring-border hover:ring-foreground/25 transition-shadow leading-snug"
                 >
                   <span className="text-muted-foreground">เรียง:</span>
                   <span>{activeSortLabel}</span>

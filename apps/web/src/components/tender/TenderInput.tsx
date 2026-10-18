@@ -169,7 +169,7 @@ export function TenderInput({ due, value, onChange, dueLabel = 'ยอดที�
       )}
 
       {value.length < MAX_TENDERS && (
-        <button type="button" onClick={addRow} disabled={disabled}
+        <button data-ui-control="button" type="button" onClick={addRow} disabled={disabled}
           className="w-full min-h-11 rounded-lg border border-dashed border-input text-sm font-semibold text-primary hover:bg-accent disabled:opacity-60 inline-flex items-center justify-center gap-1.5">
           <Plus className="size-4" aria-hidden />
           {single ? 'เพิ่มวิธีรับเงิน (ลูกค้าจ่ายผสม)' : 'เพิ่มวิธีรับเงิน'}

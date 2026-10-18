@@ -284,7 +284,7 @@ export default function SlipReviewTab() {
       <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
         <div className="flex gap-1 bg-muted rounded-xl p-1">
           {['PENDING_REVIEW', 'APPROVED', 'REJECTED'].map((status) => (
-            <button
+            <button data-ui-control="button"
               key={status}
               onClick={() => setStatusFilter(status)}
               className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
@@ -297,7 +297,7 @@ export default function SlipReviewTab() {
             </button>
           ))}
         </div>
-        <button
+        <button data-ui-control="button"
           onClick={exportExcel}
           className="px-4 py-2 border border-input rounded-lg text-sm font-medium hover:bg-muted"
         >
@@ -405,14 +405,14 @@ export default function SlipReviewTab() {
         <div className="fixed bottom-0 left-0 right-0 bg-card border-t p-4 flex items-center justify-between z-50 shadow-lg">
           <span className="text-sm font-medium">{selectedIds.size} รายการที่เลือก</span>
           <div className="flex gap-3">
-            <button
+            <button data-ui-control="button"
               onClick={() => batchApproveMutation.mutate()}
               disabled={batchApproveMutation.isPending}
               className="px-4 py-2 bg-success text-success-foreground rounded-lg text-sm font-medium hover:bg-success/90 disabled:bg-muted"
             >
               {batchApproveMutation.isPending ? 'กำลังอนุมัติ...' : 'อนุมัติทั้งหมด'}
             </button>
-            <button
+            <button data-ui-control="button"
               onClick={() => setShowBatchRejectModal(true)}
               disabled={batchRejectMutation.isPending}
               className="px-4 py-2 bg-destructive text-destructive-foreground rounded-lg text-sm font-medium hover:bg-destructive/90 disabled:bg-muted"
@@ -446,14 +446,14 @@ export default function SlipReviewTab() {
               placeholder="เหตุผลในการปฏิเสธ (ถ้ามี)"
             />
             <div className="flex gap-3">
-              <button
+              <button data-ui-control="button"
                 onClick={() => batchRejectMutation.mutate()}
                 disabled={batchRejectMutation.isPending}
                 className="flex-1 bg-destructive text-destructive-foreground py-2 px-4 rounded-lg font-medium hover:bg-destructive/90 disabled:bg-muted"
               >
                 {batchRejectMutation.isPending ? 'กำลังปฏิเสธ...' : 'ยืนยันปฏิเสธ'}
               </button>
-              <button
+              <button data-ui-control="button"
                 onClick={() => {
                   setShowBatchRejectModal(false);
                   setBatchRejectNote('');
@@ -499,25 +499,25 @@ export default function SlipReviewTab() {
             {/* Slip Image with Zoom/Rotate */}
             <div className="space-y-2">
               <div className="flex justify-center gap-2 p-2 border rounded-lg bg-muted/50">
-                <button
+                <button data-ui-control="button"
                   onClick={() => setZoomLevel((z) => Math.max(0.5, z - 0.25))}
                   className="px-2 py-1 text-sm border rounded hover:bg-muted"
                 >
                   -
                 </button>
-                <button
+                <button data-ui-control="button"
                   onClick={() => { setZoomLevel(1); setRotation(0); }}
                   className="px-2 py-1 text-sm border rounded hover:bg-muted"
                 >
                   รีเซ็ต
                 </button>
-                <button
+                <button data-ui-control="button"
                   onClick={() => setZoomLevel((z) => Math.min(3, z + 0.25))}
                   className="px-2 py-1 text-sm border rounded hover:bg-muted"
                 >
                   +
                 </button>
-                <button
+                <button data-ui-control="button"
                   onClick={() => setRotation((r) => r + 90)}
                   className="px-2 py-1 text-sm border rounded hover:bg-muted"
                 >
@@ -676,7 +676,7 @@ export default function SlipReviewTab() {
           </div>
               </div>
               <div className="sticky bottom-0 bg-background/95 backdrop-blur-xs border-t px-6 py-4 flex justify-end gap-3 shrink-0">
-                <button
+                <button data-ui-control="button"
                   type="button"
                   onClick={() => {
                     setSelectedEvidence(null);
@@ -690,7 +690,7 @@ export default function SlipReviewTab() {
                 </button>
                 {selectedEvidence.status === 'PENDING_REVIEW' && (
                   <>
-                    <button
+                    <button data-ui-control="button"
                       type="button"
                       onClick={() => rejectMutation.mutate(selectedEvidence.id)}
                       disabled={rejectMutation.isPending}
@@ -698,7 +698,7 @@ export default function SlipReviewTab() {
                     >
                       {rejectMutation.isPending ? 'กำลังบันทึก...' : 'ปฏิเสธ'}
                     </button>
-                    <button
+                    <button data-ui-control="button"
                       type="button"
                       onClick={() => approveMutation.mutate(selectedEvidence.id)}
                       // (Audit finding P0) `Number("")` is 0; without the

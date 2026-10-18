@@ -1,3 +1,4 @@
+import ScreenTable from '@/components/ui/ScreenTable';
 import { useState } from 'react';
 import { AlertTriangle, ClipboardList, PackageX, Undo2 } from 'lucide-react';
 import QueryBoundary from '@/components/QueryBoundary';
@@ -161,7 +162,7 @@ export function PendingTab({
             </CardHeader>
             <CardContent className="p-0">
               <div className="overflow-x-auto">
-                <table className="w-full text-sm leading-snug">
+                <ScreenTable className="w-full text-sm leading-snug">
                   <thead className="bg-muted/50">
                     <tr>
                       <th className="w-10 p-3">
@@ -255,7 +256,7 @@ export function PendingTab({
                       ))
                     )}
                   </tbody>
-                </table>
+                </ScreenTable>
               </div>
             </CardContent>
           </Card>
@@ -274,7 +275,7 @@ export function PendingTab({
               </CardHeader>
               <CardContent className="p-0">
                 <div className="overflow-x-auto">
-                  <table className="w-full text-sm leading-snug">
+                  <ScreenTable className="w-full text-sm leading-snug">
                     <thead className="bg-muted/50">
                       <tr>
                         <th className="w-10 p-3" aria-label="เลือกรายการเรียกคืน" />
@@ -364,7 +365,7 @@ export function PendingTab({
                         );
                       })}
                     </tbody>
-                  </table>
+                  </ScreenTable>
                 </div>
               </CardContent>
             </Card>
@@ -385,7 +386,7 @@ export function PendingTab({
               </CardHeader>
               <CardContent className="p-0">
                 <div className="overflow-x-auto">
-                  <table className="w-full text-sm leading-snug">
+                  <ScreenTable className="w-full text-sm leading-snug">
                     <thead className="bg-muted/50">
                       <tr>
                         <th className="w-10 p-3" aria-label="เลือกรายการค่าเครื่องคืน" />
@@ -475,7 +476,7 @@ export function PendingTab({
                         );
                       })}
                     </tbody>
-                  </table>
+                  </ScreenTable>
                 </div>
               </CardContent>
             </Card>

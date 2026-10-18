@@ -67,7 +67,7 @@ export default function PaymentApprovalSummary({
       {rows.map(({ label, value }) => (
         <div key={label} className="flex justify-between gap-4">
           <dt className="text-muted-foreground">{label}</dt>
-          <dd className="font-mono text-right break-words min-w-0">{value}</dd>
+          <dd className="tabular-nums text-right break-words min-w-0">{value}</dd>
         </div>
       ))}
       {evidenceUrl && (

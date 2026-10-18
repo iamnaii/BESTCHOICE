@@ -38,8 +38,8 @@ export function EditProductModal({
           </div>
         </div>
         <div className="flex justify-end gap-3 pt-2">
-          <button type="button" onClick={onClose} className="px-4 py-2 text-sm text-muted-foreground border border-input rounded-lg">ยกเลิก</button>
-          <button type="button" onClick={() => editProductMutation.mutate()} disabled={editProductMutation.isPending} className="px-6 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium disabled:opacity-50">
+          <button data-ui-control="button" type="button" onClick={onClose} className="px-4 py-2 text-sm text-muted-foreground border border-input rounded-lg">ยกเลิก</button>
+          <button data-ui-control="button" type="button" onClick={() => editProductMutation.mutate()} disabled={editProductMutation.isPending} className="px-6 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium disabled:opacity-50">
             {editProductMutation.isPending ? 'กำลังบันทึก...' : 'บันทึก'}
           </button>
         </div>

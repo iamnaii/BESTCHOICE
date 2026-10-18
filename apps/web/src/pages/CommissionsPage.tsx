@@ -252,7 +252,7 @@ export default function CommissionsPage() {
               render: (c: Commission) => (
                 <div className="flex gap-2">
                   {c.status === 'PENDING' && (
-                    <button
+                    <button data-ui-control="button"
                       onClick={() => approveMutation.mutate(c.id)}
                       disabled={approveMutation.isPending}
                       className="px-3 py-1.5 text-xs font-medium bg-primary/10 text-primary rounded-lg hover:bg-primary/20 transition-colors disabled:opacity-50"
@@ -261,7 +261,7 @@ export default function CommissionsPage() {
                     </button>
                   )}
                   {c.status === 'APPROVED' && (
-                    <button
+                    <button data-ui-control="button"
                       onClick={() => payMutation.mutate(c.id)}
                       disabled={payMutation.isPending}
                       className="px-3 py-1.5 text-xs font-medium bg-success/10 text-success rounded-lg hover:bg-success/20 transition-colors disabled:opacity-50"
@@ -331,7 +331,7 @@ export default function CommissionsPage() {
               render: (p: CommissionPayout) => (
                 <div className="flex gap-2">
                   {p.status === 'DRAFT' && (
-                    <button
+                    <button data-ui-control="button"
                       onClick={() => approvePayoutMutation.mutate(p.id)}
                       disabled={approvePayoutMutation.isPending}
                       className="px-3 py-1.5 text-xs font-medium bg-primary/10 text-primary rounded-lg hover:bg-primary/20 transition-colors disabled:opacity-50"
@@ -340,7 +340,7 @@ export default function CommissionsPage() {
                     </button>
                   )}
                   {p.status === 'APPROVED' && (
-                    <button
+                    <button data-ui-control="button"
                       onClick={() => markPayoutPaidMutation.mutate(p.id)}
                       disabled={markPayoutPaidMutation.isPending}
                       className="px-3 py-1.5 text-xs font-medium bg-success/10 text-success rounded-lg hover:bg-success/20 transition-colors disabled:opacity-50"
@@ -367,7 +367,7 @@ export default function CommissionsPage() {
 
       {/* Tabs */}
       <div className="flex gap-1 mb-6 border-b border-border">
-        <button
+        <button data-ui-control="button"
           onClick={() => setActiveTab('commissions')}
           className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
             activeTab === 'commissions'
@@ -379,7 +379,7 @@ export default function CommissionsPage() {
           รายการคอมมิชชัน
         </button>
         {!isSales && (
-          <button
+          <button data-ui-control="button"
             onClick={() => setActiveTab('payouts')}
             className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
               activeTab === 'payouts'
@@ -552,7 +552,7 @@ export default function CommissionsPage() {
               <option value="CANCELLED">ยกเลิก</option>
             </NativeSelect>
             {isOwner && (
-              <button
+              <button data-ui-control="button"
                 onClick={() => generatePayoutMutation.mutate()}
                 disabled={generatePayoutMutation.isPending || !payoutPeriod}
                 className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground text-sm font-medium rounded-lg hover:bg-primary/90 disabled:opacity-50 transition-colors"

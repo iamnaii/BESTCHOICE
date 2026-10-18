@@ -1,10 +1,11 @@
 import * as React from 'react';
 import { cn } from '@/lib/utils';
+import ScreenTable from './ScreenTable';
 
 function Table({ className, ...props }: React.HTMLAttributes<HTMLTableElement>) {
   return (
     <div data-slot="table-wrapper" className="relative w-full overflow-auto">
-      <table data-slot="table" className={cn('w-full caption-bottom text-foreground text-sm', className)} {...props} />
+      <ScreenTable data-slot="table" className={cn('w-full caption-bottom text-foreground text-sm', className)} {...props} />
     </div>
   );
 }

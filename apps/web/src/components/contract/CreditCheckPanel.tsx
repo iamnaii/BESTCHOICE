@@ -214,7 +214,7 @@ export default function CreditCheckPanel({ contractId }: { contractId: string })
 
           {/* Analyze button */}
           {creditCheck.status === 'PENDING' && (
-            <button
+            <button data-ui-control="button"
               onClick={() => analyzeMutation.mutate()}
               disabled={analyzeMutation.isPending}
               className="px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50"
@@ -318,7 +318,7 @@ export default function CreditCheckPanel({ contractId }: { contractId: string })
                   aria-label="เหตุผลการพิจารณา"
                   className="min-w-0 flex-1 px-3 py-1.5 border border-input rounded-lg text-sm"
                 />
-                <button
+                <button data-ui-control="button"
                   onClick={() => overrideMutation.mutate()}
                   disabled={!overrideStatus || overrideNotes.trim().length < 20 || overrideMutation.isPending || (overrideStatus === 'APPROVED' && !affordability)}
                   className="px-4 py-1.5 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50"

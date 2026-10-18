@@ -1,3 +1,4 @@
+import ScreenTable from '@/components/ui/ScreenTable';
 import { Link } from 'react-router';
 import { ShieldAlert, UserCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -153,7 +154,7 @@ export default function ApprovalTable({ rows, role, onAction }: ApprovalTablePro
   return (
     <>
       <div className="hidden overflow-x-auto rounded-xl border border-border bg-card md:block">
-        <table className="w-full text-sm">
+        <ScreenTable className="w-full text-sm">
           <thead>
             <tr className="border-b border-border text-xs text-muted-foreground">
               <th className="px-3 py-2 text-left font-normal">ขอเมื่อ</th>
@@ -210,7 +211,7 @@ export default function ApprovalTable({ rows, role, onAction }: ApprovalTablePro
               );
             })}
           </tbody>
-        </table>
+        </ScreenTable>
       </div>
 
       <div className="space-y-2 md:hidden">

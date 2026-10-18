@@ -41,7 +41,7 @@ export default function TemplateItem({ template, isSelected, onSelect, onDuplica
       </button>
       <span className="flex-1 truncate text-foreground">{template.title}</span>
       <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100">
-        <button
+        <button data-ui-control="button" data-ui-icon="true"
           onClick={(e) => { e.stopPropagation(); onDuplicate(); }}
           className="p-1 text-muted-foreground hover:text-foreground hover:bg-muted rounded"
           title="ทำซ้ำ"
@@ -49,7 +49,7 @@ export default function TemplateItem({ template, isSelected, onSelect, onDuplica
         >
           <Copy className="w-3.5 h-3.5" />
         </button>
-        <button
+        <button data-ui-control="button" data-ui-icon="true"
           onClick={(e) => { e.stopPropagation(); onDelete(); }}
           className="p-1 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded"
           title="ลบ"

@@ -28,7 +28,7 @@ export function RenameTemplateModal({ defaultName, isLoading, onCancel, onConfir
       >
         <div className="flex items-center justify-between mb-3">
           <h3 className="font-bold">แก้ชื่อ Template</h3>
-          <button onClick={onCancel} aria-label="ปิด">
+          <button data-ui-control="button" data-ui-icon="true" onClick={onCancel} aria-label="ปิด">
             <X size={16} />
           </button>
         </div>
@@ -42,14 +42,14 @@ export function RenameTemplateModal({ defaultName, isLoading, onCancel, onConfir
             autoFocus
           />
           <div className="mt-4 flex justify-end gap-2">
-            <button
+            <button data-ui-control="button"
               type="button"
               onClick={onCancel}
               className="px-3 py-1.5 rounded-md border text-sm"
             >
               ยกเลิก
             </button>
-            <button
+            <button data-ui-control="button"
               type="submit"
               disabled={!name.trim() || isLoading}
               className="px-3 py-1.5 rounded-md bg-primary text-primary-foreground text-sm disabled:opacity-50"

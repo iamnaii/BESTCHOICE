@@ -148,7 +148,7 @@ export default function InspectionPage() {
             onRetry={refetch}
             errorTitle="ไม่สามารถโหลดรายการตรวจสอบได้"
           >
-            <DataTable
+            <DataTable embedded
               columns={columns}
               data={items}
               isLoading={isLoading}

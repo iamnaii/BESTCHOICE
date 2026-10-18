@@ -161,8 +161,8 @@ export default function FinancePortfolioPage() {
       label: 'ยอดจัด',
       render: (row: PortfolioContract) => (
         <div className="text-right">
-          <div className="font-medium">{fmt(row.financedAmount)} ฿</div>
-          <div className="text-xs text-muted-foreground">{fmt(row.monthlyPayment)} ฿/เดือน</div>
+          <div className="whitespace-nowrap font-medium tabular-nums">{fmt(row.financedAmount)} ฿</div>
+          <div className="whitespace-nowrap text-xs text-muted-foreground tabular-nums">{fmt(row.monthlyPayment)} ฿/เดือน</div>
         </div>
       ),
     },
@@ -182,7 +182,7 @@ export default function FinancePortfolioPage() {
       render: (row: PortfolioContract) => (
         <div className="text-right">
           <div
-            className={`font-semibold ${
+            className={`whitespace-nowrap font-semibold tabular-nums ${
               row.outstanding > 0 ? 'text-destructive' : 'text-success'
             }`}
           >
@@ -397,7 +397,7 @@ export default function FinancePortfolioPage() {
           {/* Status filter */}
           <div className="flex flex-wrap gap-2 p-4 border-b">
             {STATUS_OPTIONS.map((s) => (
-              <button
+              <button data-ui-control="button"
                 key={s}
                 onClick={() => {
                   setStatusFilter(s);
@@ -422,7 +422,7 @@ export default function FinancePortfolioPage() {
           >
             {data && (
               <>
-                <DataTable
+                <DataTable embedded
                   className="finance-portfolio-table"
                   columns={columns}
                   data={data.data}
@@ -437,14 +437,14 @@ export default function FinancePortfolioPage() {
                       {data.total.toLocaleString('th-TH')} รายการ
                     </span>
                     <div className="flex gap-2">
-                      <button
+                      <button data-ui-control="button"
                         disabled={page === 1}
                         onClick={() => setPage((p) => p - 1)}
                         className="px-3 py-1 rounded border disabled:opacity-40 hover:bg-muted transition-colors"
                       >
                         ก่อนหน้า
                       </button>
-                      <button
+                      <button data-ui-control="button"
                         disabled={page * limit >= data.total}
                         onClick={() => setPage((p) => p + 1)}
                         className="px-3 py-1 rounded border disabled:opacity-40 hover:bg-muted transition-colors"

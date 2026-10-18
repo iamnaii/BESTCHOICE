@@ -379,7 +379,7 @@ export function UnitInspectScreen({
                 · ผ่าน <span className="font-semibold text-foreground">{checklistPassed}/{unit.checklist.length}</span> รายการ
               </span>
             </span>
-            <button
+            <button data-ui-control="button"
               type="button"
               aria-expanded={checklistOpen}
               onClick={() => setChecklistOpen((o) => !o)}
@@ -397,7 +397,7 @@ export function UnitInspectScreen({
                     {unit.checklist.map((c, checkIdx) =>
                       c.category !== cat ? null : (
                         <div key={checkIdx} className="flex items-center gap-2">
-                          <button
+                          <button data-ui-control="button" data-ui-icon="true"
                             type="button"
                             aria-pressed={c.passed}
                             aria-label={c.item}

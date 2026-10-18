@@ -218,14 +218,14 @@ export function LateFeeSettingsCard() {
               </section>
 
               <div className="flex gap-2 pt-1">
-                <button
+                <button data-ui-control="button"
                   onClick={handleSave}
                   disabled={saveMutation.isPending}
                   className="px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50"
                 >
                   {saveMutation.isPending ? 'กำลังบันทึก...' : 'บันทึก'}
                 </button>
-                <button
+                <button data-ui-control="button"
                   onClick={() => setEditing(false)}
                   className="px-3 py-2 text-sm text-muted-foreground hover:text-foreground"
                 >

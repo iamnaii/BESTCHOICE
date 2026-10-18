@@ -1,3 +1,4 @@
+import ScreenTable from '@/components/ui/ScreenTable';
 export interface AuditJournalLine {
   accountCode: string;
   debit: string | number;
@@ -6,7 +7,8 @@ export interface AuditJournalLine {
 
 export function AuditJournalTable({ lines }: { lines?: AuditJournalLine[] }) {
   return (
-    <table className="w-full font-mono text-[11px]">
+    <ScreenTable className="min-w-[24rem] w-full font-mono text-[11px]">
+<thead className="sr-only"><tr><th scope="col">รหัสบัญชี</th><th scope="col">เดบิต</th><th scope="col">เครดิต</th></tr></thead>
       <tbody>
         {lines?.map((l, i) => (
           <tr key={i} className="border-b border-border/30">
@@ -26,6 +28,6 @@ export function AuditJournalTable({ lines }: { lines?: AuditJournalLine[] }) {
           </tr>
         ))}
       </tbody>
-    </table>
+    </ScreenTable>
   );
 }

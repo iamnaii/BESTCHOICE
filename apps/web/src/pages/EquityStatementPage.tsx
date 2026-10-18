@@ -1,3 +1,4 @@
+import ScreenTable from '@/components/ui/ScreenTable';
 import { getReportDateRange } from '@/lib/date';
 import { useId as useUiFieldId, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
@@ -138,7 +139,7 @@ export function EquityStatementPage() {
               },
             },
           ].map((p) => (
-            <button
+            <button data-ui-control="button"
               key={p.label}
               onClick={p.fn}
               className="px-3 py-2 text-xs border border-input rounded-lg hover:bg-accent transition-colors leading-snug"
@@ -223,7 +224,7 @@ export function EquityStatementPage() {
             <Card className="rounded-xl border border-border/50 bg-card shadow-sm overflow-hidden">
               <CardContent className="p-0">
                 <div className="overflow-x-auto">
-                  <table className="w-full text-sm leading-snug">
+                  <ScreenTable className="w-full text-sm leading-snug">
                     <thead className="bg-muted/50">
                       <tr>
                         <th className="text-left p-3 font-medium text-muted-foreground">บัญชี</th>
@@ -287,7 +288,7 @@ export function EquityStatementPage() {
                         </td>
                       </tr>
                     </tbody>
-                  </table>
+                  </ScreenTable>
                 </div>
                 <div className="p-3 text-xs text-muted-foreground leading-snug border-t border-border bg-muted/30">
                   คลิกแถวเพื่อดูรายละเอียดการเคลื่อนไหว

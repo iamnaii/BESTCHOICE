@@ -1,3 +1,4 @@
+import ScreenTable from '@/components/ui/ScreenTable';
 import { useMemo } from 'react';
 import { Trash2, Plus, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -77,7 +78,7 @@ export function EditableJournalTable({ lines, onChange }: Props) {
   return (
     <div className="space-y-2">
       <div className="overflow-x-auto rounded border border-border">
-        <table className="w-full text-sm">
+        <ScreenTable className="w-full text-sm">
           <thead className="bg-muted">
             <tr>
               <th className="px-2 py-2 text-left">รหัสบัญชี</th>
@@ -143,7 +144,7 @@ export function EditableJournalTable({ lines, onChange }: Props) {
               <td colSpan={2}></td>
             </tr>
           </tbody>
-        </table>
+        </ScreenTable>
       </div>
 
       <Button variant="outline" size="sm" onClick={addLine}>

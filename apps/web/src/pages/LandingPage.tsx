@@ -148,6 +148,7 @@ export default function LandingPage() {
                 return (
                   <ProductCard
                     key={product.id}
+                    productId={product.id}
                     brand={product.brand}
                     model={product.model}
                     price={defaultPrice?.amount || product.costPrice}
@@ -353,10 +354,10 @@ export default function LandingPage() {
             <div>
               <h4 className="text-background font-semibold mb-4">ลิงก์</h4>
               <ul className="space-y-2 text-sm">
-                <li><button onClick={() => scrollTo('hero')} className="hover:text-background transition-colors">หน้าแรก</button></li>
-                <li><button onClick={() => scrollTo('products')} className="hover:text-background transition-colors">สินค้า</button></li>
-                <li><button onClick={() => scrollTo('services')} className="hover:text-background transition-colors">บริการ</button></li>
-                <li><button onClick={() => scrollTo('contact')} className="hover:text-background transition-colors">ติดต่อเรา</button></li>
+                <li><button onClick={() => scrollTo('hero')} className="min-h-11 inline-flex items-center hover:text-background transition-colors">หน้าแรก</button></li>
+                <li><button onClick={() => scrollTo('products')} className="min-h-11 inline-flex items-center hover:text-background transition-colors">สินค้า</button></li>
+                <li><button onClick={() => scrollTo('services')} className="min-h-11 inline-flex items-center hover:text-background transition-colors">บริการ</button></li>
+                <li><button onClick={() => scrollTo('contact')} className="min-h-11 inline-flex items-center hover:text-background transition-colors">ติดต่อเรา</button></li>
               </ul>
             </div>
             <div>

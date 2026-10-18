@@ -1,3 +1,4 @@
+import ScreenTable from '@/components/ui/ScreenTable';
 import { NativeSelect } from '@/components/ui/native-select';
 import { useId as useUiFieldId, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -82,7 +83,7 @@ export default function TemplateManager({
   return (
     <>
       <div className="mb-4 flex items-center gap-3 flex-wrap">
-        <button
+        <button data-ui-control="button"
           onClick={onCreateTemplate}
           className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90"
         >
@@ -107,7 +108,7 @@ export default function TemplateManager({
 
       <div className="rounded-lg border border-border bg-card overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full text-sm">
+          <ScreenTable className="w-full text-sm">
             <thead>
               <tr className="border-b border-border bg-muted/30">
                 <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">
@@ -201,7 +202,7 @@ export default function TemplateManager({
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap text-right">
                       <div className="inline-flex gap-1">
-                        <button
+                        <button data-ui-control="button" data-ui-icon="true"
                           type="button"
                           onClick={() => onEditTemplate(template)}
                           className="p-2 rounded-lg hover:bg-accent text-foreground"
@@ -210,7 +211,7 @@ export default function TemplateManager({
                         >
                           <Pencil className="size-4" />
                         </button>
-                        <button
+                        <button data-ui-control="button" data-ui-icon="true"
                           type="button"
                           onClick={() => handleDelete(template.eventType)}
                           disabled={deleteTemplateMutation.isPending}
@@ -226,7 +227,7 @@ export default function TemplateManager({
                 ))
               )}
             </tbody>
-          </table>
+          </ScreenTable>
         </div>
       </div>
     </>

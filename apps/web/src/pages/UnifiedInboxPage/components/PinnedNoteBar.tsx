@@ -28,7 +28,7 @@ export default function PinnedNoteBar({ note, onUnpin }: { note: RoomNote; onUnp
       <span className="shrink-0 text-[11.5px] text-muted-foreground">
         {note.staff?.name ?? 'พนักงาน'} · {formatChatTimestamp(note.pinnedAt ?? note.createdAt)}
       </span>
-      <button type="button" onClick={() => setConfirm(true)} aria-label="ปลดโน้ตของห้อง" title="ปลดโน้ตของห้อง" className="grid size-6 shrink-0 place-items-center rounded-md text-muted-foreground hover:bg-warning/20 hover:text-foreground">
+      <button data-ui-control="button" data-ui-icon="true" type="button" onClick={() => setConfirm(true)} aria-label="ปลดโน้ตของห้อง" title="ปลดโน้ตของห้อง" className="grid size-6 shrink-0 place-items-center rounded-md text-muted-foreground hover:bg-warning/20 hover:text-foreground">
         <X className="size-3.5" />
       </button>
       <AlertDialog open={confirm} onOpenChange={setConfirm}>

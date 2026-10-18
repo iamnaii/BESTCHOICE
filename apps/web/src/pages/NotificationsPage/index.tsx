@@ -240,14 +240,14 @@ export default function NotificationsPage() {
 
       {/* Quick Actions */}
       <div className="flex gap-3 mb-6">
-        <button
+        <button data-ui-control="button"
           onClick={() => sendRemindersMutation.mutate()}
           disabled={sendRemindersMutation.isPending}
           className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 disabled:opacity-50"
         >
           {sendRemindersMutation.isPending ? 'กำลังส่ง...' : 'ส่งเตือนก่อนครบกำหนด'}
         </button>
-        <button
+        <button data-ui-control="button"
           onClick={() => sendOverdueMutation.mutate()}
           disabled={sendOverdueMutation.isPending}
           className="px-4 py-2 bg-warning text-warning-foreground rounded-lg text-sm font-medium hover:bg-warning/90 disabled:opacity-50"
@@ -258,19 +258,19 @@ export default function NotificationsPage() {
 
       {/* Tabs */}
       <div className="flex gap-1 mb-4 border-b">
-        <button
+        <button data-ui-control="button"
           onClick={() => setActiveTab('logs')}
           className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px ${activeTab === 'logs' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
         >
           ประวัติการส่ง
         </button>
-        <button
+        <button data-ui-control="button"
           onClick={() => setActiveTab('templates')}
           className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px ${activeTab === 'templates' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
         >
           Template ข้อความ
         </button>
-        <button
+        <button data-ui-control="button"
           onClick={() => setActiveTab('send')}
           className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px ${activeTab === 'send' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
         >
@@ -354,7 +354,7 @@ export default function NotificationsPage() {
               />
             </div>
             <div>
-              <button
+              <button data-ui-control="button"
                 type="submit"
                 disabled={sendNotificationMutation.isPending}
                 className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 disabled:opacity-50"

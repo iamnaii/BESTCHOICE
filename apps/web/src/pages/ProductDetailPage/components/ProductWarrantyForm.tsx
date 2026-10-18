@@ -72,7 +72,7 @@ export default function ProductWarrantyForm({ product, canEdit }: Props) {
         />
         <p className="text-xs text-muted-foreground">แสดงบนหน้าสินค้าตามเครื่องที่ลูกค้าเลือก · {terms.length}/2000</p>
       </div>
-      <button
+      <button data-ui-control="button"
         type="submit"
         disabled={!canEdit || !dirty || !validDays || save.isPending}
         className="px-3 py-2 bg-primary text-primary-foreground rounded text-xs font-medium disabled:opacity-50"

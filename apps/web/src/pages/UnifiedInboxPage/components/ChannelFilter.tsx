@@ -81,7 +81,7 @@ export default function ChannelFilter({
           const isActive = activeTab === tab.key;
           const n = tab.key === 'waiting' ? counts?.waiting : tab.key === 'mine' ? counts?.mine : undefined;
           return (
-            <button
+            <button data-ui-control="button"
               key={tab.key}
               onClick={() => onTabChange(tab.key)}
               aria-pressed={isActive}

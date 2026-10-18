@@ -212,7 +212,7 @@ export function ItemsTable({ control, register, watch, setValue }: Props) {
           </div>
         );
       })}
-      <button
+      <button data-ui-control="button"
         type="button"
         onClick={() =>
           append({

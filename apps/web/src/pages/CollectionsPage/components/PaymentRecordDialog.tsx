@@ -254,7 +254,7 @@ export default function PaymentRecordDialog({ open, contract, onClose }: Props) 
 
         {/* Actions */}
         <div className="flex gap-2 justify-end pt-2">
-          <button
+          <button data-ui-control="button"
             type="button"
             onClick={onClose}
             disabled={mutation.isPending}
@@ -262,7 +262,7 @@ export default function PaymentRecordDialog({ open, contract, onClose }: Props) 
           >
             ยกเลิก
           </button>
-          <button
+          <button data-ui-control="button"
             type="button"
             onClick={handleSubmit}
             disabled={!canSubmit}

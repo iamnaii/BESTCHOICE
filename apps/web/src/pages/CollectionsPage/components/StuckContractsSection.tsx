@@ -1,3 +1,4 @@
+import ScreenTable from '@/components/ui/ScreenTable';
 import { NativeSelect } from '@/components/ui/native-select';
 import { useId as useUiFieldId, useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -102,7 +103,7 @@ export default function StuckContractsSection() {
           <div className="flex items-center gap-2 text-xs">
             <span className="text-muted-foreground">เกณฑ์:</span>
             {THRESHOLD_OPTIONS.map((d) => (
-              <button
+              <button data-ui-control="button"
                 key={d}
                 onClick={() => {
                   setDays(d);
@@ -117,7 +118,7 @@ export default function StuckContractsSection() {
                 {d} วัน
               </button>
             ))}
-            <button
+            <button data-ui-control="button"
               onClick={() => setReassignOpen(true)}
               disabled={selected.size === 0}
               className="ml-2 inline-flex items-center gap-1.5 px-3 py-1.5 font-medium rounded-lg border border-input hover:bg-accent disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
@@ -141,7 +142,7 @@ export default function StuckContractsSection() {
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+              <ScreenTable className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-border text-xs text-muted-foreground">
                     <th className="py-2 px-2 w-8">
@@ -197,7 +198,7 @@ export default function StuckContractsSection() {
                     </tr>
                   ))}
                 </tbody>
-              </table>
+              </ScreenTable>
             </div>
           )}
         </QueryBoundary>
@@ -226,13 +227,13 @@ export default function StuckContractsSection() {
             </NativeSelect>
           </div>
           <DialogFooter>
-            <button
+            <button data-ui-control="button"
               onClick={() => setReassignOpen(false)}
               className="px-3 py-1.5 text-xs rounded-md border border-input hover:bg-accent"
             >
               ยกเลิก
             </button>
-            <button
+            <button data-ui-control="button"
               onClick={handleReassign}
               disabled={!targetUserId || reassign.isPending}
               className="px-3 py-1.5 text-xs rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50"

@@ -1,3 +1,4 @@
+import ScreenTable from '@/components/ui/ScreenTable';
 import { Fragment, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
@@ -61,7 +62,7 @@ export default function CashCloseHistory({ branchId, branches }: { branchId: str
             )}
 
             <div className="overflow-x-auto rounded-xl border border-border bg-card">
-              <table className="w-full min-w-[860px] text-sm leading-snug">
+              <ScreenTable className="w-full min-w-[860px] text-sm leading-snug">
                 <thead>
                   <tr className="border-b border-border text-left text-xs text-muted-foreground">
                     <th className="px-4 py-3 font-medium">วันที่ปิด</th>
@@ -109,7 +110,7 @@ export default function CashCloseHistory({ branchId, branches }: { branchId: str
                     </Fragment>
                   ))}
                 </tbody>
-              </table>
+              </ScreenTable>
             </div>
             <p className="text-xs text-muted-foreground leading-snug">กดแถว = เปิดรายละเอียดการปิดยอดครั้งนั้น · ระบบลงบัญชีให้ตอนยืนยันรับเงิน: ย้ายเงินออกจากลิ้นชักไปปลายทางที่เลือก และเงินขาด/เกินเข้าบัญชี “เงินขาด-เกินบัญชี”</p>
 
@@ -117,7 +118,7 @@ export default function CashCloseHistory({ branchId, branches }: { branchId: str
               <section className="rounded-xl border border-border bg-card" aria-label="รายการนำฝากของเดือน">
                 <h2 className="border-b border-border px-4 py-3 text-[15px] font-semibold leading-snug">รายการนำฝากของเดือน (เงินจากตู้เซฟสาขา / เงินที่เจ้าของเก็บไว้)</h2>
                 <div className="overflow-x-auto">
-                  <table className="w-full min-w-[640px] text-sm leading-snug">
+                  <ScreenTable className="w-full min-w-[640px] text-sm leading-snug">
                     <thead>
                       <tr className="border-b border-border text-left text-xs text-muted-foreground">
                         <th className="px-4 py-3 font-medium">วันที่ฝาก</th>
@@ -145,7 +146,7 @@ export default function CashCloseHistory({ branchId, branches }: { branchId: str
                         </tr>
                       ))}
                     </tbody>
-                  </table>
+                  </ScreenTable>
                 </div>
               </section>
             )}

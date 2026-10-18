@@ -112,7 +112,7 @@ export function ContactsTab() {
         </div>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <button className="inline-flex items-center gap-1.5 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors">
+            <button data-ui-control="button" className="inline-flex items-center gap-1.5 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors">
               <Plus className="size-4" />
               เพิ่มผู้ติดต่อ
               <ChevronDown className="size-4" />
@@ -130,7 +130,7 @@ export function ContactsTab() {
         {/* Group filter tabs */}
         <div className="flex items-center gap-2 flex-wrap mb-3">
           {GROUP_FILTERS.map((g) => (
-            <button
+            <button data-ui-control="button"
               key={g.value}
               onClick={() => setRole(g.value)}
               className={`px-3 py-1.5 text-sm font-medium rounded-lg border transition-colors leading-snug ${

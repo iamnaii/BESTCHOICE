@@ -18,5 +18,5 @@ it('renders independent original/modified amounts with two decimals, including z
 
 it('handles an audit event without journal lines', () => {
   render(<AuditJournalTable />);
-  expect(screen.queryAllByRole('row')).toHaveLength(0);
+  expect(screen.queryAllByRole('cell')).toHaveLength(0);
 });

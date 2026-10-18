@@ -54,7 +54,7 @@ export default function MigrationBanner() {
           หน้าเดิมจะ redirect อัตโนมัติ — ฟีเจอร์ทั้งหมดอยู่ที่นี่ครบ
         </p>
       </div>
-      <button
+      <button data-ui-control="button" data-ui-icon="true"
         onClick={dismiss}
         className="shrink-0 rounded-md p-1 text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
         aria-label="ปิดประกาศ"

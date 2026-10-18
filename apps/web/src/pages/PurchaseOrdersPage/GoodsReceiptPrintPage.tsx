@@ -106,7 +106,7 @@ export default function GoodsReceiptPrintPage() {
             <ArrowLeft size={14} />
             กลับ
           </button>
-          <button
+          <button data-ui-control="button"
             type="button"
             onClick={printDocument}
             disabled={!grQuery.data || grQuery.isFetching || grQuery.isError}

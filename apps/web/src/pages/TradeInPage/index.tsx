@@ -69,7 +69,7 @@ function Segmented<T extends string>({
         {options.map(([key, text]) => {
           const active = value === key;
           return (
-            <button
+            <button data-ui-control="button"
               key={key}
               type="button"
               role="radio"

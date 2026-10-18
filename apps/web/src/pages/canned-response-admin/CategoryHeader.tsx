@@ -82,10 +82,10 @@ export default function CategoryHeader({ name, count, isExpanded, onToggle, onRe
             className="flex-1 bg-background border border-border rounded px-1.5 py-0.5 text-sm"
             aria-label="แก้ชื่อหมวด"
           />
-          <button onClick={commitRename} className="p-1 text-primary hover:bg-primary/5 rounded" title="บันทึก" aria-label="บันทึก">
+          <button data-ui-control="button" data-ui-icon="true" onClick={commitRename} className="p-1 text-primary hover:bg-primary/5 rounded" title="บันทึก" aria-label="บันทึก">
             <Check className="w-3.5 h-3.5" />
           </button>
-          <button onClick={() => setIsRenaming(false)} className="p-1 text-muted-foreground hover:bg-muted rounded" title="ยกเลิก" aria-label="ยกเลิก">
+          <button data-ui-control="button" data-ui-icon="true" onClick={() => setIsRenaming(false)} className="p-1 text-muted-foreground hover:bg-muted rounded" title="ยกเลิก" aria-label="ยกเลิก">
             <X className="w-3.5 h-3.5" />
           </button>
         </div>
@@ -94,13 +94,13 @@ export default function CategoryHeader({ name, count, isExpanded, onToggle, onRe
           <span className="flex-1 text-foreground cursor-pointer" onClick={onToggle}>{name}</span>
           <span className="text-[10px] text-muted-foreground">{count}</span>
           <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100">
-            <button onClick={onDuplicate} className="p-1 text-muted-foreground hover:text-foreground hover:bg-muted rounded" title="ทำซ้ำหมวด" aria-label="ทำซ้ำหมวด">
+            <button data-ui-control="button" data-ui-icon="true" onClick={onDuplicate} className="p-1 text-muted-foreground hover:text-foreground hover:bg-muted rounded" title="ทำซ้ำหมวด" aria-label="ทำซ้ำหมวด">
               <Copy className="w-3.5 h-3.5" />
             </button>
-            <button onClick={startRename} className="p-1 text-muted-foreground hover:text-foreground hover:bg-muted rounded" title="แก้ชื่อ" aria-label="แก้ชื่อ">
+            <button data-ui-control="button" data-ui-icon="true" onClick={startRename} className="p-1 text-muted-foreground hover:text-foreground hover:bg-muted rounded" title="แก้ชื่อ" aria-label="แก้ชื่อ">
               <Pencil className="w-3.5 h-3.5" />
             </button>
-            <button onClick={onDelete} className="p-1 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded" title="ลบหมวด" aria-label="ลบหมวด">
+            <button data-ui-control="button" data-ui-icon="true" onClick={onDelete} className="p-1 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded" title="ลบหมวด" aria-label="ลบหมวด">
               <Trash2 className="w-3.5 h-3.5" />
             </button>
           </div>

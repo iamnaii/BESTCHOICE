@@ -194,7 +194,7 @@ export default function InspectionDetailPage() {
           <div className="p-5 space-y-3">
             {availableTransitions.length > 0 ? (
               availableTransitions.map((t) => (
-                <button
+                <button data-ui-control="button"
                   key={t.status}
                   onClick={() => updateStatus.mutate(t.status)}
                   disabled={updateStatus.isPending}

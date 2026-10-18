@@ -164,7 +164,7 @@ export default function PaymentVoucherPage() {
             <ArrowLeft size={14} />
             กลับ
           </button>
-          <button
+          <button data-ui-control="button"
             type="button"
             onClick={printDocument}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold rounded-md bg-primary text-primary-foreground hover:bg-primary/90"

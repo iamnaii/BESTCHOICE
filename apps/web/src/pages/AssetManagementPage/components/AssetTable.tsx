@@ -129,7 +129,7 @@ export default function AssetTable({
         label: '',
         render: (item: Asset) => (
           <div className="flex items-center gap-1">
-            <button
+            <button data-ui-control="button" data-ui-icon="true"
               onClick={(e) => {
                 e.stopPropagation();
                 onView(item);
@@ -140,7 +140,7 @@ export default function AssetTable({
               <Eye className="size-4" />
             </button>
             {isOwnerOrManager && item.status !== 'DISPOSED' && (
-              <button
+              <button data-ui-control="button" data-ui-icon="true"
                 onClick={(e) => {
                   e.stopPropagation();
                   onEdit(item);
@@ -152,7 +152,7 @@ export default function AssetTable({
               </button>
             )}
             {isOwner && item.status === 'ACTIVE' && (
-              <button
+              <button data-ui-control="button" data-ui-icon="true"
                 onClick={(e) => {
                   e.stopPropagation();
                   onDispose(item);

@@ -53,7 +53,7 @@ export function ItemLinesSection({ lines, onChange, priceTypeLabel }: Props) {
               <span className="font-mono text-xs text-muted-foreground">#{idx + 1}</span>
               <span>{line.category || 'เลือกบัญชี'}</span>
             </div>
-            <button
+            <button data-ui-control="button"
               type="button"
               onClick={() => removeLine(line.uid)}
               disabled={lines.length === 1}
@@ -150,7 +150,7 @@ export function ItemLinesSection({ lines, onChange, priceTypeLabel }: Props) {
           </div>
         </div>
       ))}
-      <button
+      <button data-ui-control="button"
         type="button"
         onClick={addLine}
         className="flex w-full items-center justify-center gap-1.5 rounded-xl border-2 border-dashed border-border py-3 text-sm text-muted-foreground hover:border-primary hover:text-foreground"

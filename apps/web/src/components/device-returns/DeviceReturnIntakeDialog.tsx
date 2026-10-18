@@ -473,7 +473,7 @@ export function DeviceReturnIntakeDialog({ open, onClose, initialContractId, onC
                   </span>
                   <div className="flex gap-2">
                     {GRADES.map((g) => (
-                      <button
+                      <button data-ui-control="button"
                         key={g}
                         type="button"
                         aria-pressed={conditionGrade === g}
@@ -655,7 +655,7 @@ export function DeviceReturnIntakeDialog({ open, onClose, initialContractId, onC
             </div>
           )}
           <div className="flex justify-end gap-3">
-            <button
+            <button data-ui-control="button"
               type="button"
               onClick={onClose}
               disabled={mutation.isPending}
@@ -663,7 +663,7 @@ export function DeviceReturnIntakeDialog({ open, onClose, initialContractId, onC
             >
               ยกเลิก
             </button>
-            <button
+            <button data-ui-control="button"
               type="button"
               onClick={() => {
                 if (!canSubmit || submitting.current) return;

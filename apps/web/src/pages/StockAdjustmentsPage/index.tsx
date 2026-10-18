@@ -109,7 +109,7 @@ export default function StockAdjustmentsPage() {
 
       <div className="flex gap-1 mb-4 bg-muted rounded-xl p-1 w-fit flex-wrap">
         {tabs.map((t) => (
-          <button
+          <button data-ui-control="button"
             key={t.key}
             onClick={() => setTab(t.key)}
             className={`px-4 py-2 text-sm rounded-lg font-medium transition-colors inline-flex items-center gap-2 ${

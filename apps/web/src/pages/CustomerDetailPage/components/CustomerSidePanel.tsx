@@ -34,7 +34,7 @@ function EmptyBox({ canEdit, onEdit }: { canEdit: boolean; onEdit: () => void })
     <div className="rounded-lg border border-dashed border-border px-3 py-2.5 text-[13px] leading-snug text-muted-foreground">
       ยังไม่กรอก
       {canEdit && (
-        <button type="button" onClick={onEdit} className="ml-2 inline-flex min-h-6 min-w-6 max-lg:min-h-11 max-lg:min-w-11 items-center justify-center rounded-md font-medium text-primary hover:underline">
+        <button data-ui-control="button" type="button" onClick={onEdit} className="ml-2 inline-flex min-h-6 min-w-6 max-lg:min-h-11 max-lg:min-w-11 items-center justify-center rounded-md font-medium text-primary hover:underline">
           เพิ่ม
         </button>
       )}
@@ -124,7 +124,7 @@ export default function CustomerSidePanel({ customer, role, canEdit, canUploadDo
         <CategoryHeader
           action={
             canEdit && (
-              <button type="button" onClick={onEdit} className="inline-flex min-h-6 min-w-6 max-lg:min-h-11 max-lg:min-w-11 items-center justify-center rounded-md text-xs font-medium text-primary hover:underline">
+              <button data-ui-control="button" type="button" onClick={onEdit} className="inline-flex min-h-6 min-w-6 max-lg:min-h-11 max-lg:min-w-11 items-center justify-center rounded-md text-xs font-medium text-primary hover:underline">
                 แก้ไข
               </button>
             )

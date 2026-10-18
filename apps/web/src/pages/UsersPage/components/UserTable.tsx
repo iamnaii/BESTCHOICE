@@ -235,7 +235,7 @@ export function UserTable({
             asChild
             onClick={(e) => e.stopPropagation()}
           >
-            <button
+            <button data-ui-control="button" data-ui-icon="true"
               className="inline-flex size-11 lg:size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
               aria-label="เมนูการทำงาน"
             >
@@ -454,7 +454,7 @@ export function InviteTable({
         if (status.label === 'ใช้แล้ว') return null;
         return (
           <div className="flex items-center gap-3 whitespace-nowrap">
-            <button
+            <button data-ui-control="button"
               onClick={() => onResend(i.id, i.email)}
               disabled={isResendPending}
               className="text-primary hover:text-primary/80 text-sm font-medium disabled:opacity-50"
@@ -462,7 +462,7 @@ export function InviteTable({
               ส่งซ้ำ
             </button>
             {status.label === 'รอลงทะเบียน' && (
-              <button
+              <button data-ui-control="button"
                 onClick={() => onRevoke(i.id, i.email)}
                 className="text-destructive hover:text-destructive/80 text-sm font-medium"
               >
@@ -485,7 +485,7 @@ export function InviteTable({
           { value: 'ALL' as const, label: 'ทั้งหมด' },
         ]
       ).map((opt) => (
-        <button
+        <button data-ui-control="button"
           key={opt.value}
           onClick={() => setStatusFilter(opt.value)}
           className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors whitespace-nowrap ${

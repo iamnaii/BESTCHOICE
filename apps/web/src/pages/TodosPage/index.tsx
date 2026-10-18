@@ -186,7 +186,7 @@ export default function TodosPage() {
         subtitle="จัดการรายการงานของทีม มอบหมาย ติดตามสถานะ"
         icon={<CheckSquare className="size-5" />}
         action={
-          <button
+          <button data-ui-control="button"
             onClick={openCreate}
             className="inline-flex items-center gap-1.5 px-4 py-2 bg-primary text-primary-foreground hover:bg-primary/90 shadow-card rounded-lg text-sm font-medium"
           >

@@ -190,7 +190,7 @@ export default function ProductIdentityCard({
                     {value ? (
                       <>
                         <span className="min-w-0 break-all font-mono font-medium tracking-wide">{value}</span>
-                        <button
+                        <button data-ui-control="button" data-ui-icon="true"
                           type="button"
                           aria-label={`คัดลอก ${label}`}
                           onClick={() => handleCopy(value, label)}

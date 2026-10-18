@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import PaymentTable from '../PaymentTable';
@@ -12,7 +12,7 @@ vi.mock('@/lib/api', () => ({
 
 /**
  * ชำระครบ tab renders the same table in mode="paid": read-only rows — no batch
- * checkbox, no รับชำระ button, a วันที่ชำระ column, and no overdue-red on the
+ * checkbox, no รับชำระ button, a วันที่ชำระ label, and no overdue-red on the
  * due date (a settled installment is never "overdue").
  */
 
@@ -48,23 +48,32 @@ const noop = () => {};
 
 function renderTable(mode: 'pending' | 'paid', payments: PendingPayment[]) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return render(
+  const onOpenPayModal = vi.fn();
+  const onViewHistory = vi.fn();
+  const onToggleSelect = vi.fn();
+  const rendered = render(
     <QueryClientProvider client={queryClient}>
       <PaymentTable
         mode={mode}
         pendingPayments={payments}
         loadingPending={false}
         selectedIds={new Set()}
-        onToggleSelect={noop}
+        onToggleSelect={onToggleSelect}
         onToggleAll={noop}
-        onOpenPayModal={vi.fn()}
-        onViewHistory={vi.fn()}
+        onOpenPayModal={onOpenPayModal}
+        onViewHistory={onViewHistory}
         batchTotal={0}
         onShowBatchModal={noop}
         onClearSelection={noop}
       />
     </QueryClientProvider>,
   );
+  return { ...rendered, onOpenPayModal, onViewHistory, onToggleSelect };
+}
+
+function paidCell(row: HTMLElement) {
+  const header = screen.getByRole('columnheader', { name: 'ชำระแล้ว' }) as HTMLTableCellElement;
+  return within(row).getAllByRole('cell')[header.cellIndex];
 }
 
 describe('PaymentTable — mode="paid" (ชำระครบ tab)', () => {
@@ -76,10 +85,12 @@ describe('PaymentTable — mode="paid" (ชำระครบ tab)', () => {
     expect(screen.getByRole('button', { name: 'ประวัติ' })).toBeInTheDocument();
   });
 
-  it('shows the วันที่ชำระ column and the paid-tab title', () => {
+  it('shows the วันที่ชำระ label and the paid-tab title', () => {
     renderTable('paid', [makePayment()]);
 
     expect(screen.getByText('วันที่ชำระ')).toBeInTheDocument();
+    expect(screen.getByText('04/06/2569')).toBeInTheDocument();
+    expect(screen.getByText('กำหนด 05/06/2569')).toBeInTheDocument();
     expect(screen.getByText('รายการชำระครบ')).toBeInTheDocument();
   });
 
@@ -128,22 +139,37 @@ describe('PaymentTable — receipt cash on settled installments', () => {
       makePayment({ id: 'last', installmentNo: 10, amountDue: '4472', amountPaid: '4472', receiptCashAmount: '3428.00' }),
     ]);
     const rows = screen.getAllByRole('row').slice(1);
-    expect(rows[0].querySelectorAll('td')[4]).toHaveTextContent('4,472 ฿');
-    expect(rows[0].querySelectorAll('td')[5]).toHaveTextContent('5,516 ฿');
-    expect(rows[1].querySelectorAll('td')[4]).toHaveTextContent('4,472 ฿');
-    expect(rows[1].querySelectorAll('td')[5]).toHaveTextContent('3,428 ฿');
+    expect(within(rows[0]).getByText('4,472 ฿')).toHaveTextContent('4,472 ฿');
+    expect(paidCell(rows[0])).toHaveTextContent('5,516 ฿');
+    expect(within(rows[1]).getByText('4,472 ฿')).toHaveTextContent('4,472 ฿');
+    expect(paidCell(rows[1])).toHaveTextContent('3,428 ฿');
   });
 
   it('distinguishes unavailable receipt evidence from a proven zero amount', () => {
     renderTable('paid', [makePayment({ id: 'unknown', receiptCashAmount: null }), makePayment({ id: 'zero', receiptCashAmount: '0.00' })]);
     const rows = screen.getAllByRole('row').slice(1);
-    expect(rows[0].querySelectorAll('td')[5]).toHaveTextContent('–');
-    expect(rows[0].querySelectorAll('td')[5].querySelector('span')).toHaveAttribute('title', 'ไม่พบข้อมูลยอดรับจากใบเสร็จ');
-    expect(rows[1].querySelectorAll('td')[5]).toHaveTextContent('0 ฿');
+    expect(paidCell(rows[0])).toHaveTextContent('–');
+    expect(within(rows[0]).getByTitle('ไม่พบข้อมูลยอดรับจากใบเสร็จ')).toHaveAttribute('title', 'ไม่พบข้อมูลยอดรับจากใบเสร็จ');
+    expect(paidCell(rows[1])).toHaveTextContent('0 ฿');
   });
 
   it('pending mode continues to show installment settlement for outstanding arithmetic', () => {
     renderTable('pending', [makePayment({ status: 'PARTIALLY_PAID', amountPaid: '3179', receiptCashAmount: '9999' })]);
-    expect(screen.getAllByRole('row')[1].querySelectorAll('td')[5]).toHaveTextContent('3,179 ฿');
+    expect(paidCell(screen.getAllByRole('row')[1])).toHaveTextContent('3,179 ฿');
+  });
+
+  it('keeps row actions and the earlier-installment guard after separating financial columns', () => {
+    const first = makePayment({ id: 'first', status: 'PENDING', amountPaid: '0' });
+    const blocked = makePayment({ id: 'blocked', status: 'PENDING', hasEarlierUnpaid: true });
+    const { onOpenPayModal, onViewHistory, onToggleSelect } = renderTable('pending', [first, blocked]);
+    const rows = screen.getAllByRole('row').slice(1);
+    fireEvent.click(within(rows[0]).getByRole('button', { name: 'รับชำระ' }));
+    expect(onOpenPayModal).toHaveBeenCalledWith(first);
+    fireEvent.click(within(rows[0]).getByRole('button', { name: 'ประวัติ' }));
+    expect(onViewHistory).toHaveBeenCalledWith(first.contract.id);
+    fireEvent.click(within(rows[0]).getByRole('checkbox'));
+    expect(onToggleSelect).toHaveBeenCalledWith(first.id);
+    expect(within(rows[1]).getByRole('button', { name: 'รับชำระ' })).toBeDisabled();
+    expect(within(rows[1]).getByRole('checkbox')).toBeDisabled();
   });
 });

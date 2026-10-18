@@ -202,7 +202,7 @@ export function TodoKanbanView({
                       </div>
                     )}
                     {canDelete && !domainTask && (
-                      <button
+                      <button data-ui-control="button" data-ui-icon="true"
                         onClick={(e) => {
                           e.stopPropagation();
                           onDeleteRequest(t.id);

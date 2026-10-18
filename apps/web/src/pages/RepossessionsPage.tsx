@@ -1,3 +1,4 @@
+import ScreenTable from '@/components/ui/ScreenTable';
 import { NativeSelect } from '@/components/ui/native-select';
 import DocumentDownloadButton from '@/components/DocumentDownloadButton';
 import { useId as useUiFieldId, useState } from 'react';
@@ -530,7 +531,7 @@ export default function RepossessionsPage() {
         help="สาขากดรับเครื่องคืนเพื่อบันทึกใบรับ จากนั้นฝ่ายการเงินตรวจสอบและยืนยันในตารางรอยืนยัน ระบบจึงลงบัญชี JP5 พร้อมรายการคู่ฝั่ง SHOP"
         action={
           canCreateReturn ? (
-            <button
+            <button data-ui-control="button"
               type="button"
               onClick={() => {
                 setIntakeContractId(undefined);
@@ -578,7 +579,7 @@ export default function RepossessionsPage() {
               </div>
             ) : (
               <div className="overflow-x-auto">
-                <table className="min-w-full text-sm">
+                <ScreenTable className="min-w-full text-sm">
                   <thead className="bg-secondary text-muted-foreground text-xs">
                     <tr>
                       <th className="px-4 py-2 text-left">สัญญา</th>
@@ -611,7 +612,7 @@ export default function RepossessionsPage() {
                               บัญชี
                             </button>
                             {canCreateReturn && (
-                              <button
+                              <button data-ui-control="button"
                                 type="button"
                                 onClick={() => {
                                   setIntakeContractId(c.id);
@@ -627,7 +628,7 @@ export default function RepossessionsPage() {
                       </tr>
                     ))}
                   </tbody>
-                </table>
+                </ScreenTable>
               </div>
             )}
           </QueryBoundary>
@@ -687,7 +688,7 @@ export default function RepossessionsPage() {
             <h3 className="text-sm font-medium text-foreground">รายละเอียดกำไร/ขาดทุน</h3>
           </CardHeader>
           <div className="overflow-x-auto">
-            <table className="min-w-full text-sm">
+            <ScreenTable className="min-w-full text-sm">
               <thead className="bg-secondary text-muted-foreground text-xs">
                 <tr>
                   <th className="px-4 py-2 text-left">สัญญา</th>
@@ -746,7 +747,7 @@ export default function RepossessionsPage() {
                   ),
                 )}
               </tbody>
-            </table>
+            </ScreenTable>
           </div>
         </Card>
       )}
@@ -862,14 +863,14 @@ export default function RepossessionsPage() {
               />
             </div>
             <div className="flex justify-end gap-3 pt-2">
-              <button
+              <button data-ui-control="button"
                 type="button"
                 onClick={() => setSettlementRepo(null)}
                 className="px-5 py-2.5 text-sm border border-border rounded-lg hover:bg-accent transition-colors"
               >
                 ยกเลิก
               </button>
-              <button
+              <button data-ui-control="button"
                 type="submit"
                 disabled={settlementMutation.isPending || !(Number(settlementAmount) > 0)}
                 className="px-6 py-2.5 text-sm bg-primary text-primary-foreground hover:bg-primary/90 rounded-lg disabled:opacity-50 font-semibold transition-colors"
@@ -933,14 +934,14 @@ export default function RepossessionsPage() {
               />
             </div>
             <div className="flex justify-end gap-3 pt-2">
-              <button
+              <button data-ui-control="button"
                 type="button"
                 onClick={() => setRefundRepo(null)}
                 className="px-5 py-2.5 text-sm border border-border rounded-lg hover:bg-accent transition-colors"
               >
                 ยกเลิก
               </button>
-              <button
+              <button data-ui-control="button"
                 type="submit"
                 disabled={refundMutation.isPending || !(Number(refundAmount) > 0)}
                 className="px-6 py-2.5 text-sm bg-primary text-primary-foreground hover:bg-primary/90 rounded-lg disabled:opacity-50 font-semibold transition-colors"
@@ -986,14 +987,14 @@ export default function RepossessionsPage() {
               41-1102) — ทำแล้วย้อนกลับไม่ได้จากหน้าจอนี้
             </div>
             <div className="flex justify-end gap-3 pt-2">
-              <button
+              <button data-ui-control="button"
                 type="button"
                 onClick={() => setWaiveRepo(null)}
                 className="px-5 py-2.5 text-sm border border-border rounded-lg hover:bg-accent transition-colors"
               >
                 ยกเลิก
               </button>
-              <button
+              <button data-ui-control="button"
                 type="submit"
                 disabled={waiveMutation.isPending}
                 className="px-6 py-2.5 text-sm bg-destructive text-destructive-foreground hover:bg-destructive/90 rounded-lg disabled:opacity-50 font-semibold transition-colors"
@@ -1082,14 +1083,14 @@ export default function RepossessionsPage() {
               จะหยิบราคาเก่าไปขาย
             </p>
             <div className="flex justify-end gap-3 pt-2">
-              <button
+              <button data-ui-control="button"
                 type="button"
                 onClick={() => setReadyForSaleRepo(null)}
                 className="px-5 py-2.5 text-sm border border-border rounded-lg hover:bg-accent transition-colors"
               >
                 ยกเลิก
               </button>
-              <button
+              <button data-ui-control="button"
                 type="submit"
                 disabled={
                   readyForSaleMutation.isPending ||
@@ -1198,14 +1199,14 @@ export default function RepossessionsPage() {
               />
             </div>
             <div className="flex justify-end gap-3 pt-2">
-              <button
+              <button data-ui-control="button"
                 type="button"
                 onClick={() => setIsUpdateModalOpen(false)}
                 className="px-4 py-2 text-sm text-muted-foreground"
               >
                 ยกเลิก
               </button>
-              <button
+              <button data-ui-control="button"
                 type="submit"
                 disabled={updateMutation.isPending}
                 className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 disabled:opacity-50"

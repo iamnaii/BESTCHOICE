@@ -171,7 +171,7 @@ function SignatureEditor({
             />
           </div>
           <div className="flex gap-2">
-            <button
+            <button data-ui-control="button"
               onClick={handleConfirmDraw}
               disabled={!hasDrawn}
               type="button"
@@ -179,14 +179,14 @@ function SignatureEditor({
             >
               ยืนยันลายเซ็น
             </button>
-            <button
+            <button data-ui-control="button"
               onClick={clearCanvas}
               type="button"
               className="text-xs text-muted-foreground hover:text-foreground"
             >
               ล้าง
             </button>
-            <button
+            <button data-ui-control="button"
               onClick={() => {
                 setShowCanvas(false);
                 setHasDrawn(false);

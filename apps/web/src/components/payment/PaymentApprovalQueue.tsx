@@ -1,4 +1,4 @@
-import { useId, useState } from 'react';
+import { useCallback, useId, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
@@ -7,6 +7,8 @@ import { useAuth } from '@/contexts/AuthContext';
 import { getRequestCompany } from '@/lib/company-scope';
 import QueryBoundary from '@/components/QueryBoundary';
 import { Button } from '@/components/ui/button';
+import DataTable, { type Column } from '@/components/ui/DataTable';
+import { revealTableControl } from '@/components/ui/table-focus';
 import {
   Dialog,
   DialogContent,
@@ -21,10 +23,12 @@ import {
   PAYMENT_APPROVAL_ACTION_LABELS,
   usePaymentApprovalCache,
   type PaymentApprovalRequest,
+  type PaymentApprovalAction,
 } from '@/hooks/usePaymentApprovalRequests';
-import PaymentApprovalSummary from './PaymentApprovalSummary';
+import PaymentApprovalSummary, { paymentApprovalSummary } from './PaymentApprovalSummary';
 
 type Decision = 'approve' | 'reject' | 'cancel';
+type QueueView = Decision | 'review';
 const decisionLabels: Record<Decision, string> = {
   approve: 'อนุมัติ',
   reject: 'ปฏิเสธ',
@@ -40,15 +44,23 @@ const statusLabels: Record<string, string> = {
 };
 const isPending = (request: PaymentApprovalRequest) =>
   ['PENDING', 'PENDING_APPROVAL'].includes(request.status);
+const amountLabels: Record<PaymentApprovalAction, string> = {
+  RECORD_PAYMENT: 'ยอดรับชำระ',
+  WAIVE_LATE_FEE: 'อนุโลมค่าปรับ',
+  VOID_RECEIPT: 'ยอดใบเสร็จที่ยกเลิก',
+  EARLY_PAYOFF: 'ยอดปิดสัญญา',
+};
 
 /** Authorization comes from the current user's server-calculated canApprove result. */
 export default function PaymentApprovalQueue({ contractId }: { contractId?: string }) {
   const { user } = useAuth();
   const scope = getRequestCompany();
   const invalidate = usePaymentApprovalCache();
+  const openerRef = useRef<HTMLElement | null>(null);
+  const queueRef = useRef<HTMLElement | null>(null);
   const [selected, setSelected] = useState<{
     request: PaymentApprovalRequest;
-    decision: Decision;
+    decision: QueueView;
   } | null>(null);
   const [reason, setReason] = useState('');
   const reasonId = useId();
@@ -78,8 +90,11 @@ export default function PaymentApprovalQueue({ contractId }: { contractId?: stri
     },
     onSuccess: () => {
       toast.success(
-        selected ? `${decisionLabels[selected.decision]}คำขอสำเร็จ` : 'ดำเนินการสำเร็จ',
+        selected && selected.decision !== 'review'
+          ? `${decisionLabels[selected.decision]}คำขอสำเร็จ`
+          : 'ดำเนินการสำเร็จ',
       );
+      openerRef.current = null;
       setSelected(null);
       invalidate();
     },
@@ -92,11 +107,59 @@ export default function PaymentApprovalQueue({ contractId }: { contractId?: stri
   const rows = (query.data ?? []).filter(
     (request) => (!contractId || request.contractId === contractId) && isPending(request),
   );
-  const openDecision = (request: PaymentApprovalRequest, decision: Decision) => {
+  const openDecision = useCallback((request: PaymentApprovalRequest, decision: QueueView, opener?: HTMLElement) => {
+    if (opener) openerRef.current = opener;
     decide.reset();
     setReason(decision === 'approve' && request.requestedById === user?.id ? request.reason : '');
     setSelected({ request, decision });
-  };
+  }, [decide.reset, user?.id]);
+  const columns = useMemo<Column<PaymentApprovalRequest>[]>(() => [
+    {
+      key: 'contract', label: 'สัญญา / รายการ',
+      render: (request) => (
+        <div className="max-w-60 space-y-1 leading-snug [overflow-wrap:anywhere]">
+          <div className="font-medium text-primary">{request.contractNumber ?? 'ไม่ระบุเลขสัญญา'}</div>
+          <div className="text-xs text-muted-foreground">
+            {PAYMENT_APPROVAL_ACTION_LABELS[request.action] ?? request.action}
+          </div>
+        </div>
+      ),
+    },
+    {
+      key: 'amount', label: 'ยอดเงิน', align: 'right',
+      render: (request) => {
+        const amount = paymentApprovalSummary(
+          { ...request.payload, ...request.reviewSummary }, request.action,
+        ).find((field) => field.label === amountLabels[request.action]);
+        return <div className="space-y-1 leading-snug">
+          <div className="whitespace-nowrap font-semibold tabular-nums">{amount?.value ?? '—'}</div>
+          <div className="text-xs text-muted-foreground">{amountLabels[request.action]}</div>
+        </div>;
+      },
+    },
+    {
+      key: 'requester', label: 'ผู้ขอ / วันที่',
+      render: (request) => (
+        <div className="max-w-44 space-y-1 leading-snug [overflow-wrap:anywhere]">
+          <div>{request.requestedByName ?? 'ไม่ระบุชื่อ'}</div>
+          <div className="text-xs text-muted-foreground">{formatThaiDateShort(request.createdAt)}</div>
+        </div>
+      ),
+    },
+    {
+      key: 'reason', label: 'เหตุผล',
+      render: (request) => <p className="line-clamp-2 max-w-80 whitespace-pre-wrap leading-snug [overflow-wrap:anywhere]">{request.reason}</p>,
+    },
+    {
+      key: 'actions', label: 'ตรวจสอบ', align: 'right', stickyRight: true,
+      render: (request) => (
+        <div className="space-y-1">
+          <Button type="button" variant="outline" onClick={(event) => openDecision(request, 'review', event.currentTarget)}>ตรวจคำขอ</Button>
+          {!request.canApprove && <p className="text-xs text-muted-foreground leading-snug">รอผู้มีสิทธิ์อนุมัติ</p>}
+        </div>
+      ),
+    },
+  ], [openDecision]);
   const ownerSelfApproval =
     selected?.decision === 'approve' &&
     user?.role === 'OWNER' &&
@@ -114,7 +177,7 @@ export default function PaymentApprovalQueue({ contractId }: { contractId?: stri
       : currentRequest.canApprove);
 
   return (
-    <section className="space-y-4" aria-label="คิวอนุมัติการรับชำระ">
+    <section ref={queueRef} tabIndex={-1} className="space-y-4" aria-label="คิวอนุมัติการรับชำระ">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-lg font-semibold leading-snug">คำขออนุมัติการรับชำระ</h2>
@@ -146,88 +209,16 @@ export default function PaymentApprovalQueue({ contractId }: { contractId?: stri
             ไม่มีคำขอที่รออนุมัติ
           </p>
         ) : (
-          <div className="grid gap-3">
-            {rows.map((request) => (
-              <article
-                key={request.id}
-                className="rounded-xl border border-border bg-card p-4"
-                aria-label={`คำขอ ${request.contractNumber ?? request.id}`}
-              >
-                <div className="flex flex-wrap justify-between gap-2">
-                  <div>
-                    <h3 className="font-medium leading-snug">
-                      {PAYMENT_APPROVAL_ACTION_LABELS[request.action] ?? request.action}
-                    </h3>
-                    <p className="font-mono text-sm text-muted-foreground">
-                      {request.contractNumber ?? 'ไม่ระบุเลขสัญญา'}
-                    </p>
-                  </div>
-                  <span className="text-xs text-muted-foreground leading-snug">
-                    {statusLabels[request.status] ?? request.status}
-                  </span>
-                </div>
-                <div className="mt-3 grid gap-4 md:grid-cols-2">
-                  <PaymentApprovalSummary
-                    action={request.action}
-                    payload={{ ...request.payload, ...request.reviewSummary }}
-                  />
-                  <div className="space-y-1 text-sm leading-snug">
-                    <p>
-                      <span className="text-muted-foreground">ผู้ขอ: </span>
-                      {request.requestedByName ?? 'ไม่ระบุชื่อ'} ·{' '}
-                      {formatThaiDateShort(request.createdAt)}
-                    </p>
-                    <p className="whitespace-pre-wrap break-words">
-                      <span className="text-muted-foreground">เหตุผล: </span>
-                      {request.reason}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      สิทธิ์ที่ต้องใช้:{' '}
-                      {request.requiredPermissions
-                        .map(
-                          (permission) =>
-                            PAYMENT_APPROVAL_PERMISSION_LABELS[
-                              permission as keyof typeof PAYMENT_APPROVAL_PERMISSION_LABELS
-                            ] ?? permission,
-                        )
-                        .join(' · ') || 'ตามรายการ'}
-                    </p>
-                  </div>
-                </div>
-                {isPending(request) && (
-                  <div className="mt-4 flex flex-wrap items-center justify-end gap-2">
-                    {!request.canApprove && (
-                      <p className="mr-auto text-xs text-muted-foreground leading-snug">
-                        รอผู้มีสิทธิ์อนุมัติรายการนี้
-                      </p>
-                    )}
-                    {request.requestedById === user?.id && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => openDecision(request, 'cancel')}
-                      >
-                        ยกเลิกคำขอ
-                      </Button>
-                    )}
-                    {request.canApprove && (
-                      <>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => openDecision(request, 'reject')}
-                        >
-                          ปฏิเสธ
-                        </Button>
-                        <Button size="sm" onClick={() => openDecision(request, 'approve')}>
-                          อนุมัติ
-                        </Button>
-                      </>
-                    )}
-                  </div>
-                )}
-              </article>
-            ))}
+          <div onFocusCapture={revealTableControl}>
+            <DataTable
+              columns={columns}
+              data={rows}
+              responsive={false}
+              minWidth="48rem"
+              density="compact"
+              scrollLabel="ตารางคำขออนุมัติการรับชำระ"
+              className="[&_th]:text-[13px] [&_th]:tracking-normal [&_th]:whitespace-nowrap [&_td]:text-sm [&_button]:scroll-mt-20 [&_button]:scroll-mb-[calc(5rem+env(safe-area-inset-bottom))]"
+            />
           </div>
         )}
       </QueryBoundary>
@@ -237,25 +228,39 @@ export default function PaymentApprovalQueue({ contractId }: { contractId?: stri
           if (!open && !decide.isPending) setSelected(null);
         }}
       >
-        <DialogContent showCloseButton={!decide.isPending}>
-          <DialogHeader>
-            <DialogTitle>{selected ? decisionLabels[selected.decision] : ''}คำขอ</DialogTitle>
+        <DialogContent
+          showCloseButton={!decide.isPending}
+          className="max-h-[calc(100dvh-2rem)] overflow-hidden [@media(max-height:600px)]:overflow-y-auto"
+          onCloseAutoFocus={(event) => {
+            event.preventDefault();
+            (openerRef.current?.isConnected ? openerRef.current : queueRef.current)?.focus();
+          }}
+        >
+          <DialogHeader className="shrink-0 text-left">
+            <DialogTitle>{selected?.decision === 'review' ? 'ตรวจคำขอ' : `${selected ? decisionLabels[selected.decision] : ''}คำขอ`}</DialogTitle>
             <DialogDescription className="leading-snug">
               {selected?.request.contractNumber} ·{' '}
               {selected && PAYMENT_APPROVAL_ACTION_LABELS[selected.request.action]}
             </DialogDescription>
           </DialogHeader>
           {selected && (
-            <div className="space-y-4">
+            <div className="min-h-0 space-y-4 overflow-y-auto overscroll-contain [overflow-wrap:anywhere] [@media(max-height:600px)]:shrink-0 [@media(max-height:600px)]:overflow-visible">
               <PaymentApprovalSummary
                 action={selected.request.action}
                 payload={{ ...selected.request.payload, ...selected.request.reviewSummary }}
               />
-              <p className="whitespace-pre-wrap text-sm leading-snug">
+              <p className="whitespace-pre-wrap break-words text-sm leading-snug">
                 <span className="text-muted-foreground">เหตุผลที่ขอ: </span>
                 {selected.request.reason}
               </p>
-              {selected.decision !== 'cancel' && (
+              <div className="space-y-1 text-xs text-muted-foreground leading-snug [overflow-wrap:anywhere]">
+                <p>ผู้ขอ: {selected.request.requestedByName ?? 'ไม่ระบุชื่อ'} · {formatThaiDateShort(selected.request.createdAt)}</p>
+                <p>สถานะ: {statusLabels[currentRequest?.status ?? selected.request.status] ?? selected.request.status}</p>
+                <p>สิทธิ์ที่ต้องใช้: {selected.request.requiredPermissions.map((permission) =>
+                  PAYMENT_APPROVAL_PERMISSION_LABELS[permission as keyof typeof PAYMENT_APPROVAL_PERMISSION_LABELS] ?? permission,
+                ).join(' · ') || 'ตามรายการ'}</p>
+              </div>
+              {selected.decision !== 'review' && selected.decision !== 'cancel' && (
                 <div className="space-y-2">
                   {ownerSelfApproval && (
                     <p className="text-sm text-muted-foreground leading-snug">
@@ -281,27 +286,52 @@ export default function PaymentApprovalQueue({ contractId }: { contractId?: stri
                   {getErrorMessage(decide.error)}
                 </p>
               )}
-              {!decisionAllowed && (
+              {selected.decision !== 'review' && !decisionAllowed && (
                 <p role="alert" className="text-sm text-destructive leading-snug">
                   สถานะคำขอหรือสิทธิ์เปลี่ยนแล้ว กรุณาปิดหน้าต่างและตรวจรายการอีกครั้ง
                 </p>
               )}
             </div>
           )}
-          <DialogFooter>
-            <Button variant="outline" disabled={decide.isPending} onClick={() => setSelected(null)}>
-              กลับ
-            </Button>
-            <Button
-              disabled={
-                decide.isPending || !decisionAllowed || (!!reasonRequired && !reason.trim())
-              }
-              onClick={() => {
-                if (selected) decide.mutate({ ...selected, reason });
-              }}
-            >
-              {decide.isPending ? 'กำลังดำเนินการ...' : 'ยืนยัน'}
-            </Button>
+          <DialogFooter className="grid shrink-0 grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:space-x-0 [&>*:only-child]:col-span-2">
+            {selected?.decision === 'review' ? (
+              <>
+                <Button
+                  variant="outline"
+                  className={currentRequest?.canApprove && currentRequest.requestedById !== user?.id ? 'col-span-2 sm:col-span-1' : undefined}
+                  onClick={() => setSelected(null)}
+                >กลับรายการ</Button>
+                {currentRequest && isPending(currentRequest) && (
+                  <>
+                    {currentRequest.requestedById === user?.id && (
+                      <Button variant="outline" onClick={() => openDecision(currentRequest, 'cancel')}>ยกเลิกคำขอ</Button>
+                    )}
+                    {currentRequest.canApprove && (
+                      <>
+                        <Button variant="outline" onClick={() => openDecision(currentRequest, 'reject')}>ปฏิเสธ</Button>
+                        <Button onClick={() => openDecision(currentRequest, 'approve')}>อนุมัติ</Button>
+                      </>
+                    )}
+                  </>
+                )}
+              </>
+            ) : (
+              <>
+                <Button variant="outline" disabled={decide.isPending} onClick={() => selected && openDecision(selected.request, 'review')}>
+                  กลับ
+                </Button>
+                <Button
+                  disabled={decide.isPending || !decisionAllowed || (!!reasonRequired && !reason.trim())}
+                  onClick={() => {
+                    if (selected && selected.decision !== 'review') {
+                      decide.mutate({ request: selected.request, decision: selected.decision, reason });
+                    }
+                  }}
+                >
+                  {decide.isPending ? 'กำลังดำเนินการ...' : 'ยืนยัน'}
+                </Button>
+              </>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>

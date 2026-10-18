@@ -119,7 +119,7 @@ export default function RoomCreditCard({
                   {(file.size / 1024).toFixed(0)} KB
                 </span>
               </button>
-              <button
+              <button data-ui-control="button"
                 type="button"
                 aria-label={`เอา Statement ${index + 1} ออก`}
                 disabled={credit?.busy}

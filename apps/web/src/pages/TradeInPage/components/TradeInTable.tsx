@@ -313,7 +313,7 @@ export default function TradeInTable({
 
             <DropdownMenu>
               <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-                <button
+                <button data-ui-control="button" data-ui-icon="true"
                   type="button"
                   className="inline-flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
                   aria-label="เมนูการทำงาน"

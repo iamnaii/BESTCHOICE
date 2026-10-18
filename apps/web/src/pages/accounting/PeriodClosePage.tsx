@@ -1,3 +1,4 @@
+import ScreenTable from '@/components/ui/ScreenTable';
 import { NativeSelect } from '@/components/ui/native-select';
 import { useState, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -214,7 +215,7 @@ export default function PeriodClosePage() {
           <p className="text-muted-foreground text-sm py-8 text-center">กรุณาเลือกนิติบุคคล</p>
         ) : (
           <div className="rounded-xl border bg-card overflow-hidden">
-            <table className="w-full text-sm">
+            <ScreenTable className="w-full text-sm">
               <thead className="bg-muted">
                 <tr>
                   <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground">
@@ -254,7 +255,7 @@ export default function PeriodClosePage() {
                     {(canClose || canReopen) && (
                       <td className="px-4 py-2.5 text-right">
                         {canClose && (p.status === 'OPEN' || p.status === 'REVIEW') && (
-                          <button
+                          <button data-ui-control="button"
                             type="button"
                             disabled={isActing}
                             onClick={() => setConfirmingClose({ companyId: p.companyId, year: p.year, month: p.month })}
@@ -264,7 +265,7 @@ export default function PeriodClosePage() {
                           </button>
                         )}
                         {canReopen && p.status === 'CLOSED' && (
-                          <button
+                          <button data-ui-control="button"
                             type="button"
                             disabled={isActing}
                             onClick={() => setReopenTarget({ companyId: p.companyId, year: p.year, month: p.month })}
@@ -278,7 +279,7 @@ export default function PeriodClosePage() {
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </ScreenTable>
           </div>
         )}
       </QueryBoundary>

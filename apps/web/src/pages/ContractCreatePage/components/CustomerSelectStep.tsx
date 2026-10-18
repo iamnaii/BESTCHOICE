@@ -50,7 +50,7 @@ export function CustomerSelectStep({
   return (
     <div>
       {/* Add new customer button - at top */}
-      <button
+      <button data-ui-control="button"
         onClick={onOpenCustomerModal}
         className="w-full mb-4 py-3 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors flex items-center justify-center gap-2"
       >
@@ -190,7 +190,7 @@ export function CustomerSelectStep({
                 )}
               </div>
               {!customerCreditApproved && (
-                <button
+                <button data-ui-control="button"
                   onClick={onOpenCredit}
                   className="px-3 py-1.5 text-xs bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 whitespace-nowrap"
                 >

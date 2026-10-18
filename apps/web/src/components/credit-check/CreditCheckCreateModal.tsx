@@ -260,7 +260,7 @@ export default function CreditCheckCreateModal({
                     }}
                     className="flex-1 text-sm text-muted-foreground file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-success/10 file:text-success"
                   />
-                  <button
+                  <button data-ui-control="button"
                     onClick={onSalarySlipOcr}
                     disabled={salarySlipLoading || salarySlipFiles.length === 0}
                     className="inline-flex items-center gap-2 px-4 py-2 bg-success text-success-foreground rounded-lg text-xs font-medium hover:bg-success/90 disabled:opacity-50"
@@ -375,7 +375,7 @@ export default function CreditCheckCreateModal({
                     }}
                     className="flex-1 text-sm text-muted-foreground file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-success/10 file:text-success"
                   />
-                  <button
+                  <button data-ui-control="button"
                     onClick={onStatementOcr}
                     disabled={statementLoading || statementFiles.length === 0}
                     className="inline-flex items-center gap-2 px-4 py-2 bg-success text-success-foreground rounded-lg text-xs font-medium hover:bg-success/90 disabled:opacity-50"
@@ -513,7 +513,7 @@ export default function CreditCheckCreateModal({
 
               {!riskScore ? (
                 <div className="text-center py-4">
-                  <button
+                  <button data-ui-control="button"
                     onClick={() => onCalculateRisk(selectedCustomer.id)}
                     disabled={riskLoading}
                     className="inline-flex items-center gap-2 px-5 py-2.5 bg-warning text-warning-foreground rounded-lg text-sm font-medium hover:bg-warning/90 disabled:opacity-50"
@@ -604,13 +604,13 @@ export default function CreditCheckCreateModal({
         {/* Footer */}
         {selectedCustomer && (
           <div className="sticky bottom-0 z-10 bg-background/95 backdrop-blur-xs border-t px-6 py-4 flex items-center justify-between">
-            <button
+            <button data-ui-control="button"
               onClick={onClose}
               className="px-4 py-2 text-sm border border-input rounded-lg hover:bg-muted"
             >
               ยกเลิก
             </button>
-            <button
+            <button data-ui-control="button"
               onClick={onSave}
               disabled={isSaving}
               className="px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"

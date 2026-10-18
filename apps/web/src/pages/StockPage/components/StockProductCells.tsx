@@ -43,7 +43,7 @@ export function StockProductIdentity({
           >
             {product.imeiSerial}
           </span>
-          <button
+          <button data-ui-control="button" data-ui-icon="true"
             type="button"
             onClick={() => copy(product.imeiSerial!)}
             aria-label="คัดลอก IMEI/Serial"

@@ -1,3 +1,4 @@
+import ScreenTable from '@/components/ui/ScreenTable';
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -104,7 +105,7 @@ export function ReverseReasonsManagementCard() {
           </p>
 
           <div className="rounded-md border border-border overflow-x-auto">
-            <table className="w-full min-w-[32rem] text-sm">
+            <ScreenTable className="w-full min-w-[32rem] text-sm">
               <thead className="bg-muted/50 text-muted-foreground">
                 <tr>
                   <th className="px-3 py-2 text-left font-medium w-12 leading-snug">ลำดับ</th>
@@ -176,7 +177,7 @@ export function ReverseReasonsManagementCard() {
                   </tr>
                 )}
               </tbody>
-            </table>
+            </ScreenTable>
           </div>
 
           <div className="flex flex-col items-stretch sm:flex-row sm:items-center sm:justify-between gap-3">

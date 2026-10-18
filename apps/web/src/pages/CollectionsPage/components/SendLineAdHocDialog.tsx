@@ -111,10 +111,10 @@ export default function SendLineAdHocDialog({ open, contract, onClose, onSent }:
       <div className="space-y-4">
         {/* Mode toggle */}
         <div className="flex gap-2">
-          <button onClick={() => setMode('template')} className={modeBtn(mode === 'template')}>
+          <button data-ui-control="button" onClick={() => setMode('template')} className={modeBtn(mode === 'template')}>
             ใช้ template
           </button>
-          <button onClick={() => setMode('custom')} className={modeBtn(mode === 'custom')}>
+          <button data-ui-control="button" onClick={() => setMode('custom')} className={modeBtn(mode === 'custom')}>
             พิมพ์เอง
           </button>
         </div>
@@ -170,14 +170,14 @@ export default function SendLineAdHocDialog({ open, contract, onClose, onSent }:
 
         {/* Submit */}
         <div className="flex justify-end gap-2 pt-1">
-          <button
+          <button data-ui-control="button"
             onClick={onClose}
             disabled={mutation.isPending}
             className="px-4 py-2 text-sm rounded-lg border border-input hover:bg-muted transition-colors disabled:opacity-50"
           >
             ยกเลิก
           </button>
-          <button
+          <button data-ui-control="button"
             onClick={handleSubmit}
             disabled={!canSubmit || mutation.isPending}
             className="px-4 py-2 text-sm font-medium rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"

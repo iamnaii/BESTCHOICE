@@ -1,5 +1,6 @@
+import ScreenTable from '@/components/ui/ScreenTable';
 import DocumentDownloadButton from '@/components/DocumentDownloadButton';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { BookOpen, FileText, Lock, X } from 'lucide-react';
 import api from '@/lib/api';
@@ -135,6 +136,7 @@ interface Props {
 }
 
 export default function PaymentHistorySheet({ contractId, onClose, onVoided }: Props) {
+  const returnFocus = useRef<HTMLElement | null>(null);
   const { user } = useAuth();
   const canRequestVoid = VOID_REQUEST_ROLES.includes(user?.role ?? '');
   const [voidTarget, setVoidTarget] = useState<{
@@ -246,7 +248,12 @@ export default function PaymentHistorySheet({ contractId, onClose, onVoided }: P
       <Dialog open={!!contractId} onOpenChange={(open) => !open && onClose()}>
         {/* Fullscreen (inset-5) so all 12 table columns fit without a horizontal
             scrollbar — owner request 2026-07-08. */}
-        <DialogContent variant="fullscreen" className="p-0 gap-0">
+        <DialogContent
+          variant="fullscreen"
+          className="p-0 gap-0"
+          onOpenAutoFocus={() => { returnFocus.current = document.activeElement instanceof HTMLElement ? document.activeElement : null; }}
+          onCloseAutoFocus={(event) => { event.preventDefault(); if (returnFocus.current?.isConnected) returnFocus.current.focus(); }}
+        >
           <DialogHeader className="px-5 py-4 border-b border-border mb-0 text-start">
             <DialogTitle className="leading-snug">
               ประวัติการชำระ{' '}
@@ -352,7 +359,7 @@ export default function PaymentHistorySheet({ contractId, onClose, onVoided }: P
                       </div>
                     </div>
                     {closure.entryNumber && (
-                      <button
+                      <button data-ui-control="button"
                         type="button"
                         onClick={() => setClosureJeOpen(true)}
                         className="inline-flex items-center gap-1.5 rounded-lg border border-input px-3 py-1.5 text-xs font-medium text-foreground hover:bg-accent"
@@ -372,7 +379,7 @@ export default function PaymentHistorySheet({ contractId, onClose, onVoided }: P
                   </div>
                 ) : (
                   <div className="overflow-x-auto rounded-lg border border-border">
-                    <table className="w-full text-sm">
+                    <ScreenTable className="w-full text-sm">
                       <thead className="bg-muted/40 text-xs text-muted-foreground">
                         <tr className="text-left">
                           <Th>เลขที่ใบเสร็จ</Th>
@@ -493,7 +500,7 @@ export default function PaymentHistorySheet({ contractId, onClose, onVoided }: P
                               </Td>
                               <Td>
                                 <div className="flex items-center gap-1">
-                                  <button
+                                  <button data-ui-control="button" data-ui-icon="true"
                                     onClick={() => setJeTarget(r)}
                                     title="ดูบันทึกบัญชี (JE)"
                                     aria-label={
@@ -517,7 +524,7 @@ export default function PaymentHistorySheet({ contractId, onClose, onVoided }: P
                                       </DocumentDownloadButton>
                                       {canRequestVoid &&
                                         !UNVOIDABLE_RECEIPT_TYPES.includes(r.receiptType) && (
-                                          <button
+                                          <button data-ui-control="button" data-ui-icon="true"
                                             onClick={() =>
                                               setVoidTarget({
                                                 id: r.id,
@@ -543,7 +550,7 @@ export default function PaymentHistorySheet({ contractId, onClose, onVoided }: P
                           );
                         })}
                       </tbody>
-                    </table>
+                    </ScreenTable>
                   </div>
                 )}
               </>

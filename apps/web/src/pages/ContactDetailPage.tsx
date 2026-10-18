@@ -480,7 +480,7 @@ export default function ContactDetailPage() {
         <span className="text-sm text-muted-foreground leading-snug">
           ผู้ติดต่อ{data ? ` / ${data.name}` : ''}
         </span>
-        <button
+        <button data-ui-control="button" data-ui-icon="true"
           onClick={() => navigate('/contacts')}
           className="flex items-center justify-center size-9 self-start rounded-md text-muted-foreground transition-colors hover:bg-accent"
           aria-label="กลับ"

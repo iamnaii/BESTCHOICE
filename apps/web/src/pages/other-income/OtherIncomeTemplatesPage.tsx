@@ -56,7 +56,7 @@ export default function OtherIncomeTemplatesPage() {
       <PageHeader
         title="Templates รายได้อื่น"
         action={
-          <button
+          <button data-ui-control="button"
             onClick={() => navigate('/other-income/new')}
             className="px-3 py-1.5 rounded-md border text-sm hover:bg-accent"
           >
@@ -78,7 +78,7 @@ export default function OtherIncomeTemplatesPage() {
             className="w-full pl-9 pr-3 py-2 border rounded-md text-sm bg-background"
           />
         </div>
-        <button
+        <button data-ui-control="button"
           onClick={() => setFavoritesOnly((v) => !v)}
           className={`px-3 py-2 rounded-md border text-sm inline-flex items-center gap-1 ${
             favoritesOnly ? 'bg-warning/10 border-warning text-warning-strong' : ''
@@ -126,13 +126,13 @@ export default function OtherIncomeTemplatesPage() {
                   </div>
                 </div>
                 <div className="flex gap-1">
-                  <button
+                  <button data-ui-control="button"
                     onClick={() => applyTemplateMutation.mutate(t.id)}
                     className="px-3 py-1.5 rounded-md bg-primary text-primary-foreground text-xs inline-flex items-center gap-1 hover:bg-primary/90"
                   >
                     <PlayCircle size={12} /> ใช้
                   </button>
-                  <button
+                  <button data-ui-control="button" data-ui-icon="true"
                     onClick={() => setRenameTarget({ id: t.id, name: t.name })}
                     className="p-1.5 rounded-md border hover:bg-accent"
                     title="แก้ชื่อ"
@@ -140,7 +140,7 @@ export default function OtherIncomeTemplatesPage() {
                   >
                     <Edit3 size={12} />
                   </button>
-                  <button
+                  <button data-ui-control="button" data-ui-icon="true"
                     onClick={() => setDeleteTarget({ id: t.id, name: t.name })}
                     className="p-1.5 rounded-md border hover:bg-destructive/10 text-destructive"
                     title="ลบ"

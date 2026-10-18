@@ -193,7 +193,7 @@ export default function UsersPage() {
         action={
           <div className="flex flex-wrap gap-2">
             {isOwner && (
-              <button
+              <button data-ui-control="button"
                 onClick={() => {
                   setInviteForm({ email: '', role: 'SALES', branchId: '' });
                   setLastInviteUrl(null);
@@ -205,7 +205,7 @@ export default function UsersPage() {
                 เชิญผู้ใช้ใหม่
               </button>
             )}
-            <button
+            <button data-ui-control="button"
               onClick={openCreate}
               className="min-h-11 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors"
             >
@@ -218,7 +218,7 @@ export default function UsersPage() {
       {/* Tabs (only for OWNER) */}
       {isOwner && (
         <div className="flex gap-1 mb-4 border-b border-border/60">
-          <button
+          <button data-ui-control="button"
             onClick={() => setActiveTab('users')}
             aria-pressed={activeTab === 'users'}
             className={`min-h-11 px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
@@ -229,7 +229,7 @@ export default function UsersPage() {
           >
             ผู้ใช้ ({users.length})
           </button>
-          <button
+          <button data-ui-control="button"
             onClick={() => setActiveTab('invites')}
             aria-pressed={activeTab === 'invites'}
             className={`min-h-11 px-4 py-2 text-sm font-medium border-b-2 transition-colors flex items-center gap-1.5 ${

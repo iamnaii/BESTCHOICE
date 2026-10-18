@@ -203,7 +203,7 @@ export default function FilterChipsBar({
       </Button>
 
       {chips.map((chip) => (
-        <button
+        <button data-ui-control="button"
           key={chip.key}
           type="button"
           onClick={() => setFilter(chip.clear)}

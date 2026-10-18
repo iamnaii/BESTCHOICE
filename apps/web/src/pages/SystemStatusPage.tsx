@@ -84,7 +84,7 @@ export default function SystemStatusPage() {
         title="สถานะระบบ"
         subtitle="ตรวจสอบการเชื่อมต่อ API, ฐานข้อมูล และ AI"
         action={
-          <button
+          <button data-ui-control="button"
             onClick={handleRefresh}
             disabled={isRefreshing}
             className="px-4 py-2 text-sm border border-input rounded-lg hover:bg-muted/50 disabled:opacity-50 flex items-center gap-2 print:hidden"

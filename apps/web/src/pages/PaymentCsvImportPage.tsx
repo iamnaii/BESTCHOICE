@@ -1,3 +1,4 @@
+import ScreenTable from '@/components/ui/ScreenTable';
 import { useState, useRef, useCallback } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import api, { getErrorMessage } from '@/lib/api';
@@ -119,7 +120,7 @@ export default function PaymentCsvImportPage() {
         title="นำเข้าชำระเงิน (CSV)"
         subtitle="นำเข้าข้อมูลการชำระเงินจากไฟล์ CSV"
         action={
-          <button onClick={downloadSample} className="px-4 py-2 bg-muted text-muted-foreground text-sm font-medium rounded-lg hover:bg-muted/80 border border-input transition-colors">
+          <button data-ui-control="button" onClick={downloadSample} className="px-4 py-2 bg-muted text-muted-foreground text-sm font-medium rounded-lg hover:bg-muted/80 border border-input transition-colors">
             ดาวน์โหลดเทมเพลต CSV
           </button>
         }
@@ -185,7 +186,7 @@ export default function PaymentCsvImportPage() {
           <CardContent className="p-4">
             <div className="text-xs font-medium text-muted-foreground mb-2">ตัวอย่างข้อมูล (5 แถวแรก)</div>
             <div className="overflow-x-auto">
-              <table className="w-full text-xs">
+              <ScreenTable className="w-full text-xs">
                 <thead>
                   <tr className="border-b">
                     {previewLines[0]?.split(',').map((h, i) => (
@@ -202,7 +203,7 @@ export default function PaymentCsvImportPage() {
                     </tr>
                   ))}
                 </tbody>
-              </table>
+              </ScreenTable>
             </div>
           </CardContent>
         </Card>
@@ -210,7 +211,7 @@ export default function PaymentCsvImportPage() {
 
       {/* Import button */}
       <div className="flex gap-3 mb-6">
-        <button
+        <button data-ui-control="button"
           onClick={handleImport}
           disabled={!csvText.trim() || importMutation.isPending}
           className="px-6 py-2.5 bg-primary text-primary-foreground text-sm font-medium rounded-lg hover:bg-primary/90 disabled:opacity-50"
@@ -218,7 +219,7 @@ export default function PaymentCsvImportPage() {
           {importMutation.isPending ? 'กำลังนำเข้า...' : 'นำเข้าข้อมูล'}
         </button>
         {csvText && (
-          <button
+          <button data-ui-control="button"
             onClick={() => { setCsvText(''); setResult(null); }}
             className="px-4 py-2.5 bg-muted text-muted-foreground text-sm font-medium rounded-lg hover:bg-muted/80 border border-input transition-colors"
           >

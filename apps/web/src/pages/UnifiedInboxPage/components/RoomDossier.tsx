@@ -713,7 +713,7 @@ export default function RoomDossier({ onClose, room, customerId, activeRoomId, o
         {tabs.map((t) => {
           const on = tab === t.key;
           return (
-            <button
+            <button data-ui-control="button"
               key={t.key}
               role="tab"
               aria-selected={on}

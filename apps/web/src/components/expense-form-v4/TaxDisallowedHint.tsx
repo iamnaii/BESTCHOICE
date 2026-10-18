@@ -19,7 +19,7 @@ export default function TaxDisallowedHint({ compact = false }: Props) {
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <button
+        <button data-ui-control="button"
           type="button"
           aria-label="ดูประเภทค่าใช้จ่ายต้องห้าม (ม.65 ตรี)"
           className={`inline-flex min-h-6 min-w-6 max-lg:min-h-11 max-lg:min-w-11 items-center justify-center gap-1 rounded-md text-muted-foreground transition-colors hover:text-foreground focus:outline-hidden focus:ring-2 focus:ring-primary/30 ${

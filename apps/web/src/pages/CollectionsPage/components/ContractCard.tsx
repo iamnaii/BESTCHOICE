@@ -272,7 +272,7 @@ export default function ContractCard({
           {/* Skip tracing */}
           {contract.needsSkipTracing &&
             (onSkipTrace ? (
-              <button
+              <button data-ui-control="button"
                 onClick={() => onSkipTrace(contract)}
                 className="inline-flex items-center gap-1 rounded-full bg-muted text-muted-foreground hover:bg-primary/10 hover:text-primary border border-border text-xs font-medium px-2.5 py-1 leading-snug transition-colors"
                 title="เปิดวิซาร์ดหาเบอร์ใหม่"
@@ -331,7 +331,7 @@ export default function ContractCard({
               size="icon"
               variant="outline"
             />
-            <button
+            <button data-ui-control="button" data-ui-icon="true"
               onClick={() => onLogContact(contract)}
               className="rounded-lg border border-input p-2 hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
               title="บันทึกผลการโทร"
@@ -339,7 +339,7 @@ export default function ContractCard({
             >
               <NotebookPen className="size-4" />
             </button>
-            <button
+            <button data-ui-control="button" data-ui-icon="true"
               onClick={() => onSendLine?.(contract)}
               disabled={!contract.customer.lineIdFinance}
               className="rounded-lg border border-input p-2 hover:bg-accent text-muted-foreground hover:text-foreground disabled:opacity-40 transition-colors"
@@ -349,7 +349,7 @@ export default function ContractCard({
               <MessageSquare className="size-4" />
             </button>
             {onOpen360 && (
-              <button
+              <button data-ui-control="button" data-ui-icon="true"
                 onClick={() => onOpen360(contract)}
                 className="rounded-lg border border-input p-2 hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
                 title="เปิด Customer 360"
@@ -361,7 +361,7 @@ export default function ContractCard({
             {(onSnooze || onUnsnooze || onPartialPaymentReschedule) && (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <button
+                  <button data-ui-control="button" data-ui-icon="true"
                     className="rounded-lg border border-input p-2 hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
                     title="เพิ่มเติม"
                     aria-label="เพิ่มเติม"

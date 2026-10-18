@@ -82,13 +82,13 @@ function StockViewSwitch({
     <div
       role="group"
       aria-label="แสดงสินค้า"
-      className={cn('flex h-11 gap-1 rounded-lg border border-border/80 bg-muted/50 p-1', className)}
+      className={cn('flex min-h-11 gap-1 rounded-lg border border-border/80 bg-muted/50 p-1', className)}
     >
       {VIEW_OPTIONS.map((option) => {
         const on = view === option.key;
         const count = counts ? (option.key === 'ready' ? counts.ready : counts.all) : null;
         return (
-          <button
+          <button data-ui-control="button"
             key={option.key}
             type="button"
             aria-pressed={on}

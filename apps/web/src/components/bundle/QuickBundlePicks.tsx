@@ -73,7 +73,7 @@ export default function QuickBundlePicks<T extends BundleProduct>({
             choices[index].length === 0 &&
             (query.data?.total ?? 0) <= 10;
           return (
-            <button
+            <button data-ui-control="button"
               key={label}
               type="button"
               disabled={disabled || !branchId || !device || query.isFetching || empty}

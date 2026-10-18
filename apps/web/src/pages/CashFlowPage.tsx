@@ -223,7 +223,7 @@ export function CashFlowPage() {
               },
             },
           ].map((p) => (
-            <button
+            <button data-ui-control="button"
               key={p.label}
               onClick={p.fn}
               className="px-3 py-2 text-xs border border-input rounded-lg hover:bg-accent transition-colors leading-snug"

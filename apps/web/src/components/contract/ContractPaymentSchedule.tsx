@@ -1,3 +1,4 @@
+import ScreenTable from '@/components/ui/ScreenTable';
 import DocumentDownloadButton from '@/components/DocumentDownloadButton';
 import { Fragment, useState, type ComponentType } from 'react';
 import { useNavigate } from 'react-router';
@@ -116,7 +117,7 @@ export default function ContractPaymentSchedule({ contractId, payments }: Contra
     <>
       <PaymentProgressOverview payments={payments} />
       <div className="overflow-x-auto">
-        <table className="w-full text-sm">
+        <ScreenTable className="w-full text-sm">
           <thead>
             <tr className="border-b border-border bg-muted/50">
               <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">งวดที่</th>
@@ -190,7 +191,7 @@ export default function ContractPaymentSchedule({ contractId, payments }: Contra
                     </td>
                     <td className="px-4 py-3">
                       {hasActivity && (
-                        <button
+                        <button data-ui-control="button"
                           type="button"
                           onClick={(e) => { e.stopPropagation(); toggle(p.installmentNo); }}
                           className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:bg-primary/10 px-2 py-1 rounded transition-colors"
@@ -262,7 +263,7 @@ export default function ContractPaymentSchedule({ contractId, payments }: Contra
                               <span className="text-xs text-warning-strong font-medium">
                                 ยังขาดอีก {formatNumber(remaining)} บาท
                               </span>
-                              <button
+                              <button data-ui-control="button"
                                 type="button"
                                 onClick={() => navigate(`/payments?contractId=${contractId}`)}
                                 className="text-xs font-medium text-primary border border-primary/40 hover:bg-primary/10 px-3 py-1 rounded transition-colors"
@@ -279,7 +280,7 @@ export default function ContractPaymentSchedule({ contractId, payments }: Contra
               );
             })}
           </tbody>
-        </table>
+        </ScreenTable>
       </div>
     </>
   );

@@ -82,7 +82,7 @@ export function ContractDeviceReturnActions({ contractId, contractStatus, role }
           รับเครื่องคืนแล้ว รอ FINANCE ยืนยัน {pending.docNumber}
         </Badge>
         {canPreview && (
-          <button
+          <button data-ui-control="button"
             type="button"
             onClick={() => setPreviewOpen(true)}
             title="ดูตัวเลขยอดปิด/กำไรขาดทุน — ยืนยันได้เฉพาะเจ้าของ / ผจก.การเงิน"
@@ -114,7 +114,7 @@ export function ContractDeviceReturnActions({ contractId, contractStatus, role }
 
   return (
     <>
-      <button
+      <button data-ui-control="button"
         type="button"
         onClick={() => setIntakeOpen(true)}
         className="inline-flex items-center gap-1.5 px-4 py-2 text-sm leading-snug bg-destructive/10 text-destructive rounded-lg hover:bg-destructive/20 shadow-sm"

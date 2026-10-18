@@ -70,7 +70,7 @@ export default function QueryBoundary({
         </h2>
         <p className="text-sm text-muted-foreground max-w-md mb-4">{detail}</p>
         {onRetry && !forbidden && (
-          <button
+          <button data-ui-control="button"
             type="button"
             onClick={() => onRetry()}
             className="inline-flex min-h-11 items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"

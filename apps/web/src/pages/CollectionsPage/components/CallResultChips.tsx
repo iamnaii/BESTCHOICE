@@ -78,7 +78,7 @@ export default function CallResultChips({
           {CALL_RESULTS.map((opt) => {
             const active = callResult === opt.value;
             return (
-              <button
+              <button data-ui-control="button"
                 key={opt.value}
                 type="button"
                 onClick={() =>
@@ -111,7 +111,7 @@ export default function CallResultChips({
           {NEGOTIATION_RESULTS.map((opt) => {
             const active = negotiationResult === opt.value;
             return (
-              <button
+              <button data-ui-control="button"
                 key={opt.value}
                 type="button"
                 disabled={negotiationDisabled}

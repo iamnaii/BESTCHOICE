@@ -215,7 +215,7 @@ export default function DepreciationPage() {
             onRetry={() => listQuery.refetch()}
             errorTitle="โหลดประวัติไม่สำเร็จ"
           >
-            <DataTable
+            <DataTable embedded
               columns={columns}
               data={tableData}
               emptyMessage="ยังไม่มีประวัติการรันค่าเสื่อม"

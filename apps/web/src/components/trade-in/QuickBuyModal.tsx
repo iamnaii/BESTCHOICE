@@ -643,7 +643,7 @@ export default function QuickBuyModal({
               </DialogDescription>
             </div>
           </div>
-          <button
+          <button data-ui-control="button" data-ui-icon="true"
             type="button"
             onClick={() => {
               if (!sending.current) close();

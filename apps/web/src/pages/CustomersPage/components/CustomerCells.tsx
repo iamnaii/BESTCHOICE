@@ -493,7 +493,7 @@ export function RowMenu({ label, items }: { label: string; items: RowMenuItem[] 
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-        <button
+        <button data-ui-control="button" data-ui-icon="true"
           type="button"
           aria-label={label}
           className="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"

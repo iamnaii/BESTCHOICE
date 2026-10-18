@@ -1,3 +1,4 @@
+import ScreenTable from '@/components/ui/ScreenTable';
 import { useEffect, useMemo, useState } from 'react';
 import { Paperclip, Receipt } from 'lucide-react';
 import ThaiDateInput from '@/components/ui/ThaiDateInput';
@@ -153,7 +154,7 @@ export function DepositOutcomeFields({ state, idPrefix }: { state: DepositOutcom
             <Receipt className="size-4" aria-hidden />
             รายการบัญชีที่จะลงอัตโนมัติ · สมุดหน้าร้าน
           </div>
-          <table className="w-full text-sm">
+          <ScreenTable className="w-full text-sm">
             <thead>
               <tr className="text-xs text-muted-foreground">
                 <th className="py-1 text-left font-medium">รหัส</th>
@@ -172,7 +173,7 @@ export function DepositOutcomeFields({ state, idPrefix }: { state: DepositOutcom
                 </tr>
               ))}
             </tbody>
-          </table>
+          </ScreenTable>
         </section>
       )}
     </>

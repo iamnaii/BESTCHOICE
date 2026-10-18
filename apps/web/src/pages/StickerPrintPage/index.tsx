@@ -380,7 +380,7 @@ export default function StickerPrintPage() {
             {brandChips.length > 1 && (
               <div className="my-3.5 flex flex-wrap gap-1.5 border-b border-dashed border-border pb-3.5">
                 {brandChips.map((chip) => (
-                  <button
+                  <button data-ui-control="button"
                     key={chip}
                     type="button"
                     onClick={() => {
@@ -506,7 +506,7 @@ export default function StickerPrintPage() {
                           <span className="font-mono font-semibold tabular-nums">{item.qty}</span>
                           <span className="ml-0.5 text-[10px] text-muted-foreground">ดวง</span>
                         </span>
-                        <button
+                        <button data-ui-control="button" data-ui-icon="true"
                           type="button"
                           onClick={() => removeKey(item.key)}
                           aria-label={`ลบ ${product?.model || item.key} ออกจากคิว`}

@@ -1,3 +1,4 @@
+import ScreenTable from '@/components/ui/ScreenTable';
 import { useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardToolbar } from '@/components/ui/card';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
@@ -108,7 +109,7 @@ export default function DashboardStaff({
               <TabsContent value="sales">
                 {staffPerf.salesMetrics.length > 0 ? (
                   <div className="overflow-x-auto -mx-1">
-                    <table className="w-full text-sm">
+                    <ScreenTable className="w-full text-sm">
                       <thead>
                         <tr className="bg-muted/40 border-b border-border/60 text-left text-muted-foreground">
                           <th className="px-3 pb-3 pt-2 font-medium text-xs">พนักงาน</th>
@@ -148,7 +149,7 @@ export default function DashboardStaff({
                           </tr>
                         ))}
                       </tbody>
-                    </table>
+                    </ScreenTable>
                   </div>
                 ) : (
                   <div className="text-center text-muted-foreground py-8 text-sm">ยังไม่มีข้อมูลเดือนนี้</div>

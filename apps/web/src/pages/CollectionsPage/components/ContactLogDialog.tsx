@@ -423,7 +423,7 @@ export default function ContactLogDialog({ open, contract, onClose, onSaved }: P
                             : '';
                         const active = slot.settlementDate === computed;
                         return (
-                          <button
+                          <button data-ui-control="button"
                             key={opt.label}
                             type="button"
                             onClick={() => updateSlot(slot.id, { settlementDate: computed })}
@@ -494,7 +494,7 @@ export default function ContactLogDialog({ open, contract, onClose, onSaved }: P
               })()}
 
               {/* Add slot button */}
-              <button
+              <button data-ui-control="button"
                 type="button"
                 onClick={addSlot}
                 className="w-full px-3 py-2 rounded-lg border-2 border-dashed border-border hover:bg-muted text-sm font-medium leading-snug transition-colors"
@@ -578,14 +578,14 @@ export default function ContactLogDialog({ open, contract, onClose, onSaved }: P
             </div>
           )}
           <div className="flex gap-2 justify-end pt-2 border-t border-border/40">
-            <button
+            <button data-ui-control="button"
               onClick={handleClose}
               disabled={mutation.isPending}
               className="px-5 py-2.5 text-base border border-input rounded-lg hover:bg-muted transition-colors disabled:opacity-50"
             >
               ยกเลิก
             </button>
-            <button
+            <button data-ui-control="button"
               onClick={handleSubmit}
               disabled={!canSave}
               className="px-5 py-2.5 text-base bg-primary text-primary-foreground rounded-lg font-semibold hover:bg-primary/90 transition-colors disabled:opacity-50"

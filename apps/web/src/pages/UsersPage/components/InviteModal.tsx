@@ -90,7 +90,7 @@ export default function InviteModal({
                   value={lastInviteUrl}
                   className={`${inputClass} text-xs flex-1`}
                 />
-                <button
+                <button data-ui-control="button"
                   onClick={() => onCopyUrl(lastInviteUrl)}
                   className="shrink-0 px-3 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 flex items-center gap-1"
                 >
@@ -152,7 +152,7 @@ export default function InviteModal({
         </div>
         <div className="sticky bottom-0 bg-background/95 backdrop-blur-xs border-t px-3 sm:px-6 py-4 flex justify-end gap-3 shrink-0">
           {lastInviteUrl ? (
-            <button
+            <button data-ui-control="button"
               type="button"
               onClick={onClose}
               className="px-6 py-2.5 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 font-semibold transition-colors shadow-sm"
@@ -161,14 +161,14 @@ export default function InviteModal({
             </button>
           ) : (
             <>
-              <button
+              <button data-ui-control="button"
                 type="button"
                 onClick={onClose}
                 className="px-6 py-2.5 text-sm border border-input rounded-lg hover:bg-muted transition-colors"
               >
                 ยกเลิก
               </button>
-              <button
+              <button data-ui-control="button"
                 type="button"
                 disabled={isPending}
                 onClick={onSubmit}

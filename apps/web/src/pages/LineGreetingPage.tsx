@@ -246,7 +246,7 @@ function MessageCard({ message, index, total, onChange, onDelete }: MessageCardP
             </CardTitle>
           </div>
           {total > 1 && (
-            <button
+            <button data-ui-control="button"
               type="button"
               onClick={onDelete}
               className="flex items-center gap-1 rounded-full px-3 py-1 text-xs text-destructive hover:bg-destructive/10 transition-all duration-200"
@@ -261,7 +261,7 @@ function MessageCard({ message, index, total, onChange, onDelete }: MessageCardP
         {/* Type selector */}
         <div className="flex flex-wrap gap-1.5">
           {MSG_TYPE_BUTTONS.map((btn) => (
-            <button
+            <button data-ui-control="button"
               key={btn.type}
               type="button"
               onClick={() => changeType(btn.type)}
@@ -395,7 +395,7 @@ export default function LineGreetingPage() {
 
             {/* Add message */}
             {messages.length < 5 && (
-              <button
+              <button data-ui-control="button"
                 type="button"
                 onClick={addMessage}
                 className="w-full flex items-center justify-center gap-2 rounded-xl border-2 border-dashed border-border py-3.5 text-sm text-muted-foreground hover:border-primary/50 hover:text-primary hover:bg-primary/5 transition-all duration-200"

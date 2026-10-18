@@ -1,3 +1,4 @@
+import ScreenTable from '@/components/ui/ScreenTable';
 import { NativeSelect } from '@/components/ui/native-select';
 import { useEffect, useMemo, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
@@ -232,7 +233,7 @@ export function SettlementLinesSection({ branchId, value, onChange }: Props) {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <ScreenTable className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border text-xs text-muted-foreground">
                   <th className="w-10 p-2"></th>
@@ -297,7 +298,7 @@ export function SettlementLinesSection({ branchId, value, onChange }: Props) {
                   );
                 })}
               </tbody>
-            </table>
+            </ScreenTable>
           </div>
         )}
         {value.selections.size > 0 && (

@@ -18,6 +18,7 @@ import App from './App';
 import DocumentStyles from '@/components/DocumentStyles';
 import './index.css';
 import './styles/admin-typography.css';
+import './styles/admin-controls.css';
 import './styles/admin-colors.css';
 
 // Initialize Sentry (only if DSN is configured)

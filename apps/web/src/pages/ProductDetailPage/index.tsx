@@ -466,7 +466,7 @@ export default function ProductDetailPage() {
           ...(product.category === 'PHONE_USED' ? [{ key: 'photos' as Tab, label: 'รูปถ่าย' }] : []),
           { key: 'online' as Tab, label: 'ขึ้นเว็บ' },
         ]).map((tab) => (
-          <button
+          <button data-ui-control="button"
             key={tab.key}
             onClick={() => setActiveTab(tab.key)}
             className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
@@ -626,14 +626,14 @@ export default function ProductDetailPage() {
             />
           </div>
           <div className="flex justify-end gap-3 pt-2">
-            <button
+            <button data-ui-control="button"
               type="button"
               onClick={() => setIsTransferModalOpen(false)}
               className="px-4 py-2 text-sm text-muted-foreground"
             >
               ยกเลิก
             </button>
-            <button
+            <button data-ui-control="button"
               type="submit"
               disabled={transferMutation.isPending}
               className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 disabled:opacity-50"

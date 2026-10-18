@@ -392,7 +392,7 @@ export default function CreateBookingDialog({
                     {DEPOSIT_PRESETS.map((pct) => {
                       const amount = Math.round((total * pct) / 100);
                       return (
-                        <button
+                        <button data-ui-control="button"
                           key={pct}
                           type="button"
                           disabled={!total}
@@ -404,7 +404,7 @@ export default function CreateBookingDialog({
                         </button>
                       );
                     })}
-                    <button
+                    <button data-ui-control="button"
                       type="button"
                       disabled={!total}
                       aria-pressed={!!total && deposit === total}
@@ -428,7 +428,7 @@ export default function CreateBookingDialog({
                 <Label>ใช้ได้ถึง</Label>
                 <div className="flex flex-wrap gap-1.5">
                   {EXPIRY_PRESETS.map((days) => (
-                    <button
+                    <button data-ui-control="button"
                       key={days}
                       type="button"
                       aria-pressed={!customDate && expireDate === plusDays(days)}
@@ -441,7 +441,7 @@ export default function CreateBookingDialog({
                       {days} วัน
                     </button>
                   ))}
-                  <button
+                  <button data-ui-control="button"
                     type="button"
                     aria-pressed={customDate}
                     className={chipClass(customDate)}

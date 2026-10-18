@@ -1,3 +1,4 @@
+import ScreenTable from '@/components/ui/ScreenTable';
 import { getReportDateRange } from '@/lib/date';
 import { useId as useUiFieldId, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
@@ -133,7 +134,7 @@ export default function GeneralJournalPage() {
               },
             },
           ].map((p) => (
-            <button
+            <button data-ui-control="button"
               key={p.label}
               onClick={p.fn}
               className="px-3 py-2 text-xs border border-input rounded-lg hover:bg-accent transition-colors leading-snug"
@@ -197,7 +198,7 @@ export default function GeneralJournalPage() {
 
                     {expanded.has(je.id) && (
                       <div className="border-t border-border/40 bg-muted/20">
-                        <table className="w-full text-xs leading-snug">
+                        <ScreenTable className="w-full text-xs leading-snug">
                           <thead className="bg-muted/40">
                             <tr>
                               <th className="text-left p-2 font-medium text-muted-foreground">รหัสบัญชี</th>
@@ -220,7 +221,7 @@ export default function GeneralJournalPage() {
                               </tr>
                             ))}
                           </tbody>
-                        </table>
+                        </ScreenTable>
                       </div>
                     )}
                   </Card>

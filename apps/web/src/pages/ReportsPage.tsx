@@ -1,3 +1,4 @@
+import ScreenTable from '@/components/ui/ScreenTable';
 import { useId as useUiFieldId, useState } from 'react';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { useQuery, useMutation } from '@tanstack/react-query';
@@ -125,7 +126,7 @@ export default function ReportsPage() {
       </div>
       <div className="hidden flex-wrap gap-1 mb-6 bg-muted rounded-xl p-1 sm:flex">
         {availableTabs.map((tab) => (
-          <button
+          <button data-ui-control="button"
             key={tab.key}
             onClick={() => setActiveTab(tab.key)}
             aria-pressed={activeTab === tab.key}
@@ -194,7 +195,7 @@ function AgingReport() {
       <div className="bg-card rounded-xl border border-border p-5">
         <h3 className="text-sm font-semibold text-foreground mb-4">รายงานอายุหนี้ (Aging Report)</h3>
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[34rem] text-sm [&_th]:whitespace-nowrap">
+          <ScreenTable className="w-full min-w-[34rem] text-sm [&_th]:whitespace-nowrap">
             <thead>
               <tr className="bg-muted/40 border-b border-border/60 text-left text-muted-foreground">
                 <th className="pb-2 font-medium">ช่วงวัน</th>
@@ -221,7 +222,7 @@ function AgingReport() {
                 <td className="py-2 text-right">100%</td>
               </tr>
             </tbody>
-          </table>
+          </ScreenTable>
         </div>
       </div>
     </div>
@@ -265,7 +266,7 @@ function HighRiskReport() {
     <div className="bg-card rounded-lg border border-border p-5">
       <h3 className="text-sm font-semibold text-foreground mb-4">ลูกค้าเสี่ยงสูง</h3>
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[34rem] text-sm [&_th]:whitespace-nowrap">
+        <ScreenTable className="w-full min-w-[34rem] text-sm [&_th]:whitespace-nowrap">
           <thead>
             <tr className="bg-muted/40 border-b border-border/60 text-left text-muted-foreground">
               <th className="pb-2 font-medium">ลูกค้า</th>
@@ -291,7 +292,7 @@ function HighRiskReport() {
               </tr>
             )}
           </tbody>
-        </table>
+        </ScreenTable>
       </div>
       <ReportPagination page={page} total={data?.total ?? 0} limit={data?.limit ?? 50} onChange={setPage} />
     </div>
@@ -314,7 +315,7 @@ function SalesReport({ period }: { period: ReportPeriod }) {
     <div className="bg-card rounded-lg border border-border p-5">
       <h3 className="text-sm font-semibold text-foreground mb-4">เปรียบเทียบพนักงานขาย</h3>
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[34rem] text-sm [&_th]:whitespace-nowrap">
+        <ScreenTable className="w-full min-w-[34rem] text-sm [&_th]:whitespace-nowrap">
           <thead>
             <tr className="bg-muted/40 border-b border-border/60 text-left text-muted-foreground">
               <th className="pb-2 font-medium">พนักงาน</th>
@@ -351,7 +352,7 @@ function SalesReport({ period }: { period: ReportPeriod }) {
               </tr>
             ))}
           </tbody>
-        </table>
+        </ScreenTable>
       </div>
       <ReportPagination page={page} total={data?.total ?? 0} limit={data?.limit ?? 50} onChange={setPage} />
     </div>
@@ -373,7 +374,7 @@ function BranchReport({ period }: { period: ReportPeriod }) {
     <div className="bg-card rounded-lg border border-border p-5">
       <h3 className="text-sm font-semibold text-foreground mb-4">เปรียบเทียบสาขา</h3>
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[34rem] text-sm [&_th]:whitespace-nowrap">
+        <ScreenTable className="w-full min-w-[34rem] text-sm [&_th]:whitespace-nowrap">
           <thead>
             <tr className="bg-muted/40 border-b border-border/60 text-left text-muted-foreground">
               <th className="pb-2 font-medium">สาขา</th>
@@ -396,7 +397,7 @@ function BranchReport({ period }: { period: ReportPeriod }) {
               </tr>
             ))}
           </tbody>
-        </table>
+        </ScreenTable>
       </div>
     </div>
     </QueryBoundary>
@@ -433,7 +434,7 @@ function DailyPaymentReport({ date, onDateChange }: { date: string; onDateChange
       {data && data.total > data.limit && <p className="mb-3 text-sm text-muted-foreground">ยอดรวมครอบคลุมทั้งวัน · เงินสด โอน และยอดตามสาขาแสดงเฉพาะรายการในหน้านี้</p>}
       {data?.byBranch && Object.keys(data.byBranch).length > 0 && (
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[34rem] text-sm [&_th]:whitespace-nowrap">
+          <ScreenTable className="w-full min-w-[34rem] text-sm [&_th]:whitespace-nowrap">
             <thead>
               <tr className="bg-muted/40 border-b border-border/60 text-left text-muted-foreground">
                 <th className="pb-2 font-medium">สาขา</th>
@@ -450,7 +451,7 @@ function DailyPaymentReport({ date, onDateChange }: { date: string; onDateChange
                 </tr>
               ))}
             </tbody>
-          </table>
+          </ScreenTable>
         </div>
       )}
       <ReportPagination page={page} total={data?.total ?? 0} limit={data?.limit ?? 50} onChange={setPage} />
@@ -472,9 +473,9 @@ function StockReport() {
         <SummaryCard label="พร้อมขาย" value={data?.totalInStock ?? 0} isCurrency={false} />
         <SummaryCard label="มูลค่าต้นทุนสินค้าพร้อมขาย" value={data?.totalStockValue ?? 0} color="text-primary" />
       </div>
-      <div className="overflow-x-auto"><table className="w-full min-w-[26rem] text-sm"><thead><tr className="border-b text-left text-muted-foreground"><th className="py-2">สาขา</th><th className="py-2">สถานะ</th><th className="py-2 text-right">จำนวน</th></tr></thead>
+      <div className="overflow-x-auto"><ScreenTable className="w-full min-w-[26rem] text-sm"><thead><tr className="border-b text-left text-muted-foreground"><th className="py-2">สาขา</th><th className="py-2">สถานะ</th><th className="py-2 text-right">จำนวน</th></tr></thead>
         <tbody>{data?.byStatusAndBranch.map(row => <tr key={`${row.branch}-${row.status}`} className="border-b last:border-0"><td className="py-3">{row.branch}</td><td>{statusLabels[row.status]?.label ?? row.status}</td><td className="text-right">{row.count}</td></tr>)}</tbody>
-      </table></div>
+      </ScreenTable></div>
     </div>
   </QueryBoundary>;
 }
@@ -597,7 +598,7 @@ function EntityProfitReport() {
         <div className="bg-card rounded-xl border border-border p-5">
           <h3 className="text-sm font-semibold text-foreground mb-4">รายละเอียด</h3>
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[34rem] text-sm [&_th]:whitespace-nowrap">
+            <ScreenTable className="w-full min-w-[34rem] text-sm [&_th]:whitespace-nowrap">
               <thead>
                 <tr className="bg-muted/40 border-b border-border/60 text-left text-muted-foreground">
                   <th className="pb-2 font-medium">เลขที่ขาย</th>
@@ -632,7 +633,7 @@ function EntityProfitReport() {
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </ScreenTable>
           </div>
         </div>
       )}

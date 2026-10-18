@@ -87,7 +87,7 @@ export default function AssetForm({
                       placeholder="เช่น FA-001"
                       required
                     />
-                    <button
+                    <button data-ui-control="button"
                       type="button"
                       onClick={() => setField('assetCode', `FA-${String(Date.now()).slice(-6)}`)}
                       className="px-3 py-2 text-xs font-medium bg-primary/10 text-primary rounded-lg hover:bg-primary/20 transition-colors whitespace-nowrap"

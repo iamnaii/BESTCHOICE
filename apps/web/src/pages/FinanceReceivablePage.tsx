@@ -383,7 +383,7 @@ export default function FinanceReceivablePage() {
         if (r.status === 'RECEIVED') return null;
         return (
           <div className="flex items-center gap-1.5">
-            <button onClick={() => openReceiveModal(r)} className="px-2.5 py-1 bg-primary text-primary-foreground rounded text-xs font-medium hover:bg-primary/90">บันทึกรับเงิน</button>
+            <button data-ui-control="button" onClick={() => openReceiveModal(r)} className="px-2.5 py-1 bg-primary text-primary-foreground rounded text-xs font-medium hover:bg-primary/90">บันทึกรับเงิน</button>
             <div className="relative">
               <button onClick={() => setOpenMenuId(openMenuId === r.id ? null : r.id)} className="p-1 hover:bg-muted rounded"><MoreVertical className="size-4 text-muted-foreground" /></button>
               {openMenuId === r.id && (
@@ -479,7 +479,7 @@ export default function FinanceReceivablePage() {
           <ThaiDateInput id={`${uiFieldId}-5`} value={endDate} onChange={(e) => setFilter('endDate', e.target.value)} className={`${inputClass} w-auto`} />
         </div>
         <div className="flex items-end gap-1">
-          {quickPresets.map((p) => <button key={p.label} onClick={p.fn} className="px-3 py-2 text-xs border border-input rounded-lg hover:bg-muted">{p.label}</button>)}
+          {quickPresets.map((p) => <button data-ui-control="button" key={p.label} onClick={p.fn} className="px-3 py-2 text-xs border border-input rounded-lg hover:bg-muted">{p.label}</button>)}
         </div>
         <div className="flex-1 min-w-[180px]">
           <label htmlFor={`${uiFieldId}-6`} className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ค้นหา</label>
@@ -570,8 +570,8 @@ export default function FinanceReceivablePage() {
             <div><label htmlFor={`${uiFieldId}-9`} className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">เลขอ้างอิงธนาคาร</label><input id={`${uiFieldId}-9`} type="text" value={receiveForm.bankRef} onChange={(e) => setReceiveForm({ ...receiveForm, bankRef: e.target.value })} placeholder="เลขอ้างอิงการโอน" className={inputClass} /></div>
             <div><label htmlFor={`${uiFieldId}-10`} className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">หมายเหตุ</label><textarea id={`${uiFieldId}-10`} value={receiveForm.note} onChange={(e) => setReceiveForm({ ...receiveForm, note: e.target.value })} rows={2} className={inputClass} /></div>
             <div className="flex justify-end gap-3 pt-2">
-              <button type="button" onClick={() => setIsReceiveModalOpen(false)} className="px-4 py-2 text-sm text-muted-foreground">ยกเลิก</button>
-              <button type="submit" disabled={recordReceiveMutation.isPending} className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 disabled:opacity-50">{recordReceiveMutation.isPending ? 'กำลังบันทึก...' : 'บันทึกรับเงิน'}</button>
+              <button data-ui-control="button" type="button" onClick={() => setIsReceiveModalOpen(false)} className="px-4 py-2 text-sm text-muted-foreground">ยกเลิก</button>
+              <button data-ui-control="button" type="submit" disabled={recordReceiveMutation.isPending} className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 disabled:opacity-50">{recordReceiveMutation.isPending ? 'กำลังบันทึก...' : 'บันทึกรับเงิน'}</button>
             </div>
           </form>
         )}
@@ -586,8 +586,8 @@ export default function FinanceReceivablePage() {
             <div><label htmlFor={`${uiFieldId}-13`} className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">กำหนดรับเงิน</label><ThaiDateInput id={`${uiFieldId}-13`} value={editForm.expectedDate} onChange={(e) => setEditForm({ ...editForm, expectedDate: e.target.value })} className={inputClass} /></div>
             <div><label htmlFor={`${uiFieldId}-14`} className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">หมายเหตุ</label><textarea id={`${uiFieldId}-14`} value={editForm.note} onChange={(e) => setEditForm({ ...editForm, note: e.target.value })} rows={2} className={inputClass} /></div>
             <div className="flex justify-end gap-3 pt-2">
-              <button type="button" onClick={() => setIsEditModalOpen(false)} className="px-4 py-2 text-sm text-muted-foreground">ยกเลิก</button>
-              <button type="submit" disabled={updateMutation.isPending} className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 disabled:opacity-50">{updateMutation.isPending ? 'กำลังบันทึก...' : 'บันทึก'}</button>
+              <button data-ui-control="button" type="button" onClick={() => setIsEditModalOpen(false)} className="px-4 py-2 text-sm text-muted-foreground">ยกเลิก</button>
+              <button data-ui-control="button" type="submit" disabled={updateMutation.isPending} className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 disabled:opacity-50">{updateMutation.isPending ? 'กำลังบันทึก...' : 'บันทึก'}</button>
             </div>
           </form>
         )}
@@ -600,8 +600,8 @@ export default function FinanceReceivablePage() {
             <div className="p-3 bg-muted rounded-lg text-sm">ไฟแนนซ์: <span className="font-medium">{selectedRecord.financeCompany}</span> &middot; ยอด: <span className="font-medium">{fmt(selectedRecord.netExpectedAmount)}</span></div>
             <div><label htmlFor={`${uiFieldId}-15`} className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">เหตุผล *</label><textarea id={`${uiFieldId}-15`} value={disputeReason} onChange={(e) => setDisputeReason(e.target.value)} rows={3} placeholder="เช่น ไฟแนนซ์ปฏิเสธ, ยอดไม่ตรง..." className={inputClass} /></div>
             <div className="flex justify-end gap-3">
-              <button onClick={() => setIsDisputeModalOpen(false)} className="px-4 py-2 text-sm text-muted-foreground">ยกเลิก</button>
-              <button onClick={() => { if (!disputeReason.trim()) { toast.error('กรุณาระบุเหตุผล'); return; } disputeMutation.mutate({ id: selectedRecord.id, note: disputeReason }); }}
+              <button data-ui-control="button" onClick={() => setIsDisputeModalOpen(false)} className="px-4 py-2 text-sm text-muted-foreground">ยกเลิก</button>
+              <button data-ui-control="button" onClick={() => { if (!disputeReason.trim()) { toast.error('กรุณาระบุเหตุผล'); return; } disputeMutation.mutate({ id: selectedRecord.id, note: disputeReason }); }}
                 disabled={disputeMutation.isPending} className="px-4 py-2 bg-destructive text-destructive-foreground rounded-lg text-sm font-medium hover:bg-destructive/90 disabled:opacity-50">{disputeMutation.isPending ? 'กำลังบันทึก...' : 'ยืนยัน'}</button>
             </div>
           </div>

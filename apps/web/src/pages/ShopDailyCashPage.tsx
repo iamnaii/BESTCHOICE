@@ -1,3 +1,4 @@
+import ScreenTable from '@/components/ui/ScreenTable';
 import { NativeSelect } from '@/components/ui/native-select';
 import { Fragment, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router';
@@ -151,7 +152,7 @@ export default function ShopDailyCashPage() {
   const openDay = (day: string) => setDate(day);
 
   return (
-    <div className="space-y-4">
+    <div className="flex min-w-0 flex-col gap-4">
       {/* แถวบนแถวเดียว: ชื่อหน้า + เลื่อนวัน + สาขา + สลับมุมมอง (mockup CnXmYLkT กระดาน 15) */}
       <PageHeader title="สรุปเงินหน้าร้านรายวัน" className="mb-0 pb-4"
         subtitle={own ? 'ยอดที่ฉันรับและจ่ายในวันนี้' : 'เงินที่รับและจ่ายจริงที่หน้าร้าน · เงินสดถึงบริษัทหรือยัง'}
@@ -163,9 +164,9 @@ export default function ShopDailyCashPage() {
                 <button type="button" aria-label="วันก่อนหน้า" onClick={() => setDate(shiftDate(date, -1))}
                   className="grid h-11 w-11 place-items-center rounded-l-lg text-muted-foreground hover:bg-accent hover:text-foreground"><ChevronLeft aria-hidden className="h-[18px] w-[18px]" /></button>
                 <div className="flex items-center gap-1.5">
-                  {isToday && <span className="whitespace-nowrap pl-1 text-sm font-semibold leading-snug">วันนี้ ·</span>}
+                  {isToday && <span className="sr-only text-sm font-semibold leading-snug sm:not-sr-only sm:whitespace-nowrap sm:pl-1">วันนี้ ·</span>}
                   <ThaiDateInput value={date} max={todayBangkok()} aria-label="วันที่" onChange={(e) => e.target.value && setDate(e.target.value)}
-                    className="h-[42px] w-[128px] border-0 bg-transparent pl-1 font-semibold" />
+                    className="h-[42px] w-36 border-0 bg-transparent pl-1 font-semibold" />
                 </div>
                 <button type="button" aria-label="วันถัดไป" disabled={isToday} onClick={() => setDate(shiftDate(date, 1))}
                   className="grid h-11 w-11 place-items-center rounded-r-lg text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-40 disabled:hover:bg-transparent"><ChevronRight aria-hidden className="h-[18px] w-[18px]" /></button>
@@ -179,9 +180,9 @@ export default function ShopDailyCashPage() {
               </NativeSelect>
             )}
             {data && !own && (
-              <div role="tablist" aria-label="มุมมองของหน้าสรุปเงิน" className="flex w-full rounded-lg border border-border bg-muted p-[3px] sm:h-11 sm:w-auto">
+              <div role="tablist" aria-label="มุมมองของหน้าสรุปเงิน" className="flex w-full rounded-lg border border-border bg-muted p-[3px] sm:min-h-11 sm:w-auto">
                 {([['DAILY', 'รายวัน'], ['HISTORY', 'ประวัติการส่งยอด']] as const).map(([key, label]) => (
-                  <button key={key} type="button" role="tab" aria-selected={tab === key} onClick={() => setTab(key)}
+                  <button data-ui-control="button" key={key} type="button" role="tab" aria-selected={tab === key} onClick={() => setTab(key)}
                     className={`min-h-11 flex-1 rounded-md px-4 text-sm leading-snug sm:min-h-0 sm:flex-none ${tab === key ? 'bg-card font-semibold text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}>
                     {label}
                   </button>
@@ -200,7 +201,7 @@ export default function ShopDailyCashPage() {
             <div className="text-sm font-semibold">กำลังดูวันที่ {thaiLongDate(date)} (ย้อนหลัง)</div>
             <div className="text-[13px] text-muted-foreground">การส่งยอดรายวันของรอบใหม่ทำได้เฉพาะวันนี้ · ยอดที่รอยืนยันรับเงินค้างอยู่ยังกดยืนยันได้จากหน้านี้</div>
           </div>
-          <button type="button" onClick={() => setDate(todayBangkok())}
+          <button data-ui-control="button" type="button" onClick={() => setDate(todayBangkok())}
             className="min-h-11 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground hover:bg-primary/90">กลับมาวันนี้</button>
         </div>
       )}
@@ -250,7 +251,7 @@ export default function ShopDailyCashPage() {
             {!own && data.byStaff.length > 0 && (
               <Section title="แยกตามพนักงาน (ผู้รับ / ผู้จ่ายเงิน)" actions={<span className="text-xs text-muted-foreground leading-snug">เงินสดสุทธิ = รับเงินสด − จ่ายเงินสดออก ของคนนั้น</span>}>
                 <div className="hidden overflow-x-auto md:block">
-                  <table className="w-full text-sm">
+                  <ScreenTable className="w-full text-sm">
                     <thead><tr className="border-b border-border text-xs text-muted-foreground">
                       <th className="py-2 text-left font-normal">พนักงาน</th><th className="py-2 text-right font-normal">รับเงินสด</th>
                       <th className="py-2 text-right font-normal">รับโอน</th><th className="py-2 text-right font-normal">รับ QR</th>
@@ -268,7 +269,7 @@ export default function ShopDailyCashPage() {
                         <td className="py-2.5 text-right tabular-nums text-muted-foreground">{s.count}</td>
                       </tr>
                     ))}</tbody>
-                  </table>
+                  </ScreenTable>
                 </div>
                 <div className="space-y-3 md:hidden">{data.byStaff.map((s) => (
                   <div key={s.actorId} className="rounded-lg border border-border p-3 text-sm">
@@ -288,7 +289,7 @@ export default function ShopDailyCashPage() {
               actions={(
                 <div className="flex flex-wrap gap-2">
                   {([['ALL', 'ทั้งหมด'], ['CASH', 'เงินสด'], ['NON_CASH', 'โอน + QR'], ['OUT', 'จ่ายออก']] as const).map(([key, label]) => (
-                    <button key={key} type="button" onClick={() => setFilter(key)} aria-pressed={filter === key}
+                    <button data-ui-control="button" key={key} type="button" onClick={() => setFilter(key)} aria-pressed={filter === key}
                       className={`min-h-11 rounded-full border px-3.5 text-sm leading-snug ${filter === key ? 'border-primary bg-primary/10 font-semibold text-primary' : 'border-border bg-card text-foreground hover:bg-accent'}`}>
                       {label} {counts[key]}
                     </button>
@@ -314,7 +315,7 @@ export default function ShopDailyCashPage() {
               ) : (
                 <>
                   <div className="hidden overflow-x-auto md:block">
-                    <table className="w-full text-sm">
+                    <ScreenTable className="w-full text-sm">
                       <thead><tr className="border-b border-border text-xs text-muted-foreground">
                         <th className="py-2 text-left font-normal">เวลา</th><th className="py-2 text-left font-normal">ประเภท</th>
                         <th className="py-2 text-left font-normal">เอกสาร</th><th className="py-2 text-left font-normal">ลูกค้า</th>
@@ -345,7 +346,7 @@ export default function ShopDailyCashPage() {
                         </tr>
                         </Fragment>
                       ))}</tbody>
-                    </table>
+                    </ScreenTable>
                   </div>
                   <div className="space-y-2 md:hidden">{rows.map((r) => (
                     <div key={r.id} className={`rounded-lg border p-3 text-sm ${r.direction === 'OUT' ? 'border-destructive/30 bg-destructive/5' : 'border-border'}`}>
@@ -374,7 +375,7 @@ export default function ShopDailyCashPage() {
                   </button>
                   {kindOpen && (
                     <div id="daily-cash-by-kind" className="overflow-x-auto">
-                      <table className="w-full min-w-[520px] text-sm">
+                      <ScreenTable className="w-full min-w-[520px] text-sm">
                         <thead><tr className="border-b border-border text-xs text-muted-foreground">
                           <th className="py-2 text-left font-normal">ประเภท</th><th className="py-2 text-right font-normal">เงินสด</th>
                           <th className="py-2 text-right font-normal">โอน</th><th className="py-2 text-right font-normal">QR</th>
@@ -390,7 +391,7 @@ export default function ShopDailyCashPage() {
                             <td className="py-2.5 text-right tabular-nums text-muted-foreground">{k.count}</td>
                           </tr>
                         ))}</tbody>
-                      </table>
+                      </ScreenTable>
                     </div>
                   )}
                 </div>

@@ -94,7 +94,7 @@ export default function SmsTemplatesPage() {
         title="ตั้งค่า Template ข้อความ LINE / SMS"
         subtitle="จัดการเทมเพลตข้อความสำหรับระบบทวงหนี้ — preview ตัวอย่าง · A/B test variant"
         action={
-          <button
+          <button data-ui-control="button"
             onClick={handleNew}
             className="flex items-center gap-2 px-4 py-2 rounded-md bg-primary text-primary-foreground text-sm hover:bg-primary/90 transition-colors"
           >
@@ -109,7 +109,7 @@ export default function SmsTemplatesPage() {
         <div className="col-span-12 md:col-span-5 space-y-3">
           <div className="flex items-center gap-2">
             {CHANNEL_FILTERS.map((f) => (
-              <button
+              <button data-ui-control="button"
                 key={f.value}
                 onClick={() => setChannelFilter(f.value)}
                 className={`px-3 py-1 text-xs rounded-md border transition-colors ${
@@ -169,7 +169,7 @@ export default function SmsTemplatesPage() {
                       </div>
                       <div className="flex items-center gap-1 flex-shrink-0">
                         {!t.parent && (
-                          <button
+                          <button data-ui-control="button" data-ui-icon="true"
                             type="button"
                             onClick={(e) => {
                               e.stopPropagation();
@@ -181,7 +181,7 @@ export default function SmsTemplatesPage() {
                             <GitBranch className="w-3.5 h-3.5" />
                           </button>
                         )}
-                        <button
+                        <button data-ui-control="button" data-ui-icon="true"
                           type="button"
                           onClick={(e) => {
                             e.stopPropagation();

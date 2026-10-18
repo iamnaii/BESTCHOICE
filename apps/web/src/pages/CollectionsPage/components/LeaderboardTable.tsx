@@ -1,3 +1,4 @@
+import ScreenTable from '@/components/ui/ScreenTable';
 import { useMemo, useState } from 'react';
 import { Trophy, ArrowUp, ArrowDown, Download } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
@@ -104,7 +105,7 @@ export default function LeaderboardTable() {
               เรียงตามยอดเก็บได้เดือนนี้
             </div>
           </div>
-          <button
+          <button data-ui-control="button"
             onClick={() => downloadCsv(sorted)}
             disabled={sorted.length === 0}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-input hover:bg-accent disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
@@ -127,7 +128,7 @@ export default function LeaderboardTable() {
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+              <ScreenTable className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-border text-xs text-muted-foreground">
                     <th className="text-left py-2 px-2 w-10 font-medium">#</th>
@@ -178,7 +179,7 @@ export default function LeaderboardTable() {
                     </tr>
                   ))}
                 </tbody>
-              </table>
+              </ScreenTable>
             </div>
           )}
         </QueryBoundary>

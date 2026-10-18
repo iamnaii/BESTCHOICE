@@ -108,7 +108,7 @@ export function ContractInfoPanel({
           </span>
         </div>
       </div>
-      <button
+      <button data-ui-control="button"
         type="button"
         onClick={onOpenPayoff}
         className="mt-2 w-full inline-flex items-center justify-center gap-2 px-3 py-2 text-sm font-semibold rounded-lg bg-warning/10 text-warning-strong border border-warning/30 hover:bg-warning/20 transition-colors"

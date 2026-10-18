@@ -217,7 +217,7 @@ export default function OnlineListingPanel({
           <h2 className="text-sm font-semibold text-foreground leading-snug">
             รูปที่ขึ้นเว็บ ({localGallery.length}/{MAX_GALLERY})
           </h2>
-          <button
+          <button data-ui-control="button"
             onClick={() => saveGalleryMutation.mutate()}
             disabled={!canEdit || !isDirtyGallery || saveGalleryMutation.isPending}
             className="px-3 py-1.5 bg-primary text-primary-foreground rounded text-xs font-medium leading-snug hover:bg-primary/90 disabled:opacity-50"
@@ -238,7 +238,7 @@ export default function OnlineListingPanel({
                   <img src={url} alt={`รูปที่ขึ้นเว็บลำดับ ${idx + 1}`} className="w-full h-full object-cover" />
                 </div>
                 <div className="flex items-center justify-between gap-1 p-1 bg-card border-t border-border">
-                  <button
+                  <button data-ui-control="button" data-ui-icon="true"
                     onClick={() => moveUp(idx)}
                     disabled={!canEdit || idx === 0}
                     title="เลื่อนขึ้น"
@@ -247,7 +247,7 @@ export default function OnlineListingPanel({
                   >
                     <ArrowUp className="size-3.5 text-muted-foreground" />
                   </button>
-                  <button
+                  <button data-ui-control="button" data-ui-icon="true"
                     onClick={() => moveDown(idx)}
                     disabled={!canEdit || idx === localGallery.length - 1}
                     title="เลื่อนลง"
@@ -256,7 +256,7 @@ export default function OnlineListingPanel({
                   >
                     <ArrowDown className="size-3.5 text-muted-foreground" />
                   </button>
-                  <button
+                  <button data-ui-control="button" data-ui-icon="true"
                     onClick={() => removeAt(idx)}
                     disabled={!canEdit}
                     title="ลบออกจากแกลเลอรี"
@@ -295,7 +295,7 @@ export default function OnlineListingPanel({
                   >
                     ตรวจรับ
                   </Badge>
-                  <button
+                  <button data-ui-control="button"
                     onClick={() => promoteMutation.mutate({ source: 'LEGACY', index: idx })}
                     disabled={!canEdit || galleryFull || promoteMutation.isPending}
                     className="w-full mt-1 px-1 py-0.5 bg-primary/5 rounded text-[10px] text-primary leading-snug hover:bg-primary/10 font-medium disabled:opacity-50"
@@ -323,7 +323,7 @@ export default function OnlineListingPanel({
                   >
                     {ANGLE_LABELS[angle]}
                   </Badge>
-                  <button
+                  <button data-ui-control="button"
                     onClick={() => promoteMutation.mutate({ source: 'ANGLE', angle })}
                     disabled={!canEdit || galleryFull || promoteMutation.isPending}
                     className="w-full mt-1 px-1 py-0.5 bg-primary/5 rounded text-[10px] text-primary leading-snug hover:bg-primary/10 font-medium disabled:opacity-50"
@@ -353,7 +353,7 @@ export default function OnlineListingPanel({
               <option value="THAI">เครื่องไทย</option>
               <option value="IMPORTED">เครื่องนอก</option>
             </NativeSelect>
-            <button
+            <button data-ui-control="button"
               type="button"
               onClick={() => originMutation.mutate()}
               disabled={!canEdit || deviceOrigin === (product.deviceOrigin ?? '') || originMutation.isPending}
@@ -400,7 +400,7 @@ export default function OnlineListingPanel({
           />
           <div className="flex items-center justify-between mt-1 gap-2 flex-wrap">
             <span className="text-[11px] text-muted-foreground leading-snug">{description.length}/2000</span>
-            <button
+            <button data-ui-control="button"
               onClick={() => descriptionMutation.mutate()}
               disabled={!canEdit || !isDirtyDescription || descriptionMutation.isPending}
               className="px-3 py-1.5 bg-primary text-primary-foreground rounded text-xs font-medium leading-snug hover:bg-primary/90 disabled:opacity-50"

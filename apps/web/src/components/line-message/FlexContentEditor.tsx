@@ -30,7 +30,7 @@ export function FlexContentEditor<T extends FlexContent>({
       {/* Mode toggle */}
       <div className="flex gap-1 rounded-full bg-muted p-1 w-fit">
         {(['template', 'json'] as FlexMode[]).map((mode) => (
-          <button
+          <button data-ui-control="button"
             key={mode}
             type="button"
             onClick={() => onChange({ ...c, flexMode: mode })}
@@ -56,7 +56,7 @@ export function FlexContentEditor<T extends FlexContent>({
                 { name: string; fields: string[] },
               ][]
             ).map(([key, t]) => (
-              <button
+              <button data-ui-control="button"
                 key={key}
                 type="button"
                 onClick={() => onChange({ ...c, templateKey: key, fields: {} })}

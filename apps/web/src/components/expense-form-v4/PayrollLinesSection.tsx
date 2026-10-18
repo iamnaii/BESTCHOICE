@@ -1,3 +1,4 @@
+import ScreenTable from '@/components/ui/ScreenTable';
 import { NativeSelect } from '@/components/ui/native-select';
 import { useId as useUiFieldId, useState } from 'react';
 import { AlertTriangle, ChevronDown, ChevronRight, CopyPlus, Plus, Trash2 } from 'lucide-react';
@@ -285,7 +286,7 @@ export function PayrollLinesSection({
               { key: 'FINANCE', label: 'ส่วนกลาง (FINANCE)' },
             ] as const
           ).map((opt) => (
-            <button
+            <button data-ui-control="button"
               key={opt.key}
               type="button"
               onClick={() => setScope(opt.key)}
@@ -307,7 +308,7 @@ export function PayrollLinesSection({
             : 'ลงบัญชีเป็นค่าใช้จ่ายส่วนกลาง (ผัง FINANCE: 53-1101) — จ่ายจากบัญชี FINANCE'}
         </p>
         {branchId && (
-          <button
+          <button data-ui-control="button"
             type="button"
             onClick={copyFromLatest}
             disabled={copyLoading}
@@ -377,7 +378,7 @@ export function PayrollLinesSection({
       </div>
 
       <div className="max-w-full overflow-x-auto rounded-xl border border-border" role="region" aria-label="รายการเงินเดือน" tabIndex={0}>
-        <table className="w-full min-w-[52rem] text-sm">
+        <ScreenTable className="w-full min-w-[52rem] text-sm">
           <thead className="bg-muted/50">
             <tr>
               <th className="w-8 px-2 py-2"></th>
@@ -438,10 +439,10 @@ export function PayrollLinesSection({
               </tr>
             )}
           </tfoot>
-        </table>
+        </ScreenTable>
       </div>
 
-      <button
+      <button data-ui-control="button"
         type="button"
         onClick={addLine}
         className="w-full flex items-center justify-center gap-1.5 py-2 border-2 border-dashed border-border rounded-lg text-sm text-muted-foreground hover:text-foreground hover:border-primary"
@@ -616,7 +617,7 @@ function CustomIncomeSubTable({
       <div className="bg-emerald-50 dark:bg-emerald-950/30 px-3 py-1.5 text-xs font-medium text-emerald-900 dark:text-emerald-100">
         + รายได้พิเศษ (โบนัส / OT / เบี้ยเลี้ยง)
       </div>
-      <table className="w-full text-xs">
+      <ScreenTable className="w-full text-xs">
         <thead className="bg-muted/30 text-muted-foreground">
           <tr>
             <th className="text-left px-2 py-1 w-40">บัญชี</th>
@@ -697,8 +698,8 @@ function CustomIncomeSubTable({
             </tr>
           ))}
         </tbody>
-      </table>
-      <button
+      </ScreenTable>
+      <button data-ui-control="button"
         type="button"
         onClick={add}
         className="w-full flex items-center justify-center gap-1 py-1.5 text-xs text-muted-foreground hover:text-foreground border-t border-border"
@@ -740,7 +741,7 @@ function CustomDeductionSubTable({
       <div className="bg-amber-50 dark:bg-amber-950/30 px-3 py-1.5 text-xs font-medium text-amber-900 dark:text-amber-100">
         − รายการหัก (คืนเงินยืม / ทดรองจ่าย / ค่ายูนิฟอร์ม)
       </div>
-      <table className="w-full text-xs">
+      <ScreenTable className="w-full text-xs">
         <thead className="bg-muted/30 text-muted-foreground">
           <tr>
             <th className="text-left px-2 py-1 w-32">บัญชี</th>
@@ -799,8 +800,8 @@ function CustomDeductionSubTable({
             </tr>
           ))}
         </tbody>
-      </table>
-      <button
+      </ScreenTable>
+      <button data-ui-control="button"
         type="button"
         onClick={add}
         className="w-full flex items-center justify-center gap-1 py-1.5 text-xs text-muted-foreground hover:text-foreground border-t border-border"

@@ -165,7 +165,7 @@ export default function MigrationPage() {
               { key: 'contracts' as ImportMode, label: 'สัญญา' },
               { key: 'bulk' as ImportMode, label: 'ทั้งหมด (Bulk)' },
             ].map((mode) => (
-              <button
+              <button data-ui-control="button"
                 key={mode.key}
                 onClick={() => {
                   setImportMode(mode.key);
@@ -193,14 +193,14 @@ export default function MigrationPage() {
           />
 
           <div className="flex gap-2 mt-3">
-            <button
+            <button data-ui-control="button"
               onClick={handleImport}
               disabled={!jsonInput.trim() || importMutation.isPending}
               className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 disabled:opacity-50"
             >
               {importMutation.isPending ? 'กำลังนำเข้า...' : 'นำเข้าข้อมูล'}
             </button>
-            <button
+            <button data-ui-control="button"
               onClick={loadSampleData}
               className="px-4 py-2 bg-muted text-muted-foreground rounded-lg text-sm font-medium hover:bg-muted"
             >

@@ -137,7 +137,7 @@ export default function SettingsModal() {
 
         {/* Footer */}
         <div className="flex justify-end px-6 py-4 border-t border-border">
-          <button
+          <button data-ui-control="button"
             onClick={() => setShowSettings(false)}
             className="px-5 py-2.5 text-base bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors"
           >

@@ -1,3 +1,4 @@
+import ScreenTable from '@/components/ui/ScreenTable';
 import { OVERDUE_BUCKETS } from '@/lib/aging-presentation';
 import { toBangkokDateString } from '@/lib/date';
 import { useId as useUiFieldId, useState } from 'react';
@@ -148,7 +149,7 @@ export default function AgingReportPage() {
                   </div>
                 ) : (
                   <div className="overflow-x-auto">
-                    <table className="w-full text-sm leading-snug">
+                    <ScreenTable className="w-full text-sm leading-snug">
                       <thead className="bg-muted/50">
                         <tr>
                           <th className="text-left p-3 font-medium text-muted-foreground">ลูกค้า</th>
@@ -193,7 +194,7 @@ export default function AgingReportPage() {
                           </tr>
                         ))}
                       </tbody>
-                    </table>
+                    </ScreenTable>
                   </div>
                 )}
               </CardContent>

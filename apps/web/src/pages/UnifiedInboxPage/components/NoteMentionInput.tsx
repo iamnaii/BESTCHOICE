@@ -188,7 +188,7 @@ export function NoteMentionComposer({
                     {p.name}
                     {p.detail && ` · ${p.detail}`}
                   </span>
-                  <button
+                  <button data-ui-control="button" data-ui-icon="true"
                     type="button"
                     aria-label={`ลบผู้รับ ${p.name} ${p.detail ?? ''}`}
                     className="inline-flex size-11 shrink-0 items-center justify-center rounded hover:bg-muted"

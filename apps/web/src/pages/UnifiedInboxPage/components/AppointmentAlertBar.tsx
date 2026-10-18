@@ -119,22 +119,22 @@ export default function AppointmentAlertBar({ onGoToRoom }: { onGoToRoom: (roomI
       aria-live="assertive"
       data-testid="appointment-alert"
       className={cn(
-        'flex items-center gap-3 border-b px-4 py-1.5 text-[13px]',
+        'flex flex-wrap items-center gap-3 border-b px-4 py-3 text-[13px]',
         danger ? 'border-destructive bg-destructive text-destructive-foreground' : 'border-warning bg-warning text-amber-950',
       )}
     >
       <AlarmClock className="size-4 shrink-0" />
-      <span className="min-w-0 flex-1 truncate">
+      <span className="min-w-0 flex-1 basis-[calc(100%-1.75rem)] truncate sm:basis-0">
         <span className="font-semibold">{head.st.label}</span> · {head.t.title} · {who}
         {items.length > 1 && <span className="opacity-80"> · +อีก {items.length - 1} นัด</span>}
       </span>
-      <button type="button" className={btn} onClick={() => setSnoozed((s) => ({ ...s, [head.t.id]: Date.now() + SNOOZE_MIN * 60_000 }))} title="พักแถบเตือนนี้ 10 นาที (เวลานัดไม่ขยับ)">
+      <button data-ui-control="button" type="button" className={btn} onClick={() => setSnoozed((s) => ({ ...s, [head.t.id]: Date.now() + SNOOZE_MIN * 60_000 }))} title="พักแถบเตือนนี้ 10 นาที (เวลานัดไม่ขยับ)">
         <Clock className="size-3.5" /> เตือนอีก {SNOOZE_MIN} นาที
       </button>
-      <button type="button" className={btn} onClick={() => head.t.kind==='STORE_APPOINTMENT'?navigate(`/appointments?appointmentId=${head.t.id}`):head.t.roomId&&onGoToRoom(head.t.roomId)}>
+      <button data-ui-control="button" type="button" className={btn} onClick={() => head.t.kind==='STORE_APPOINTMENT'?navigate(`/appointments?appointmentId=${head.t.id}`):head.t.roomId&&onGoToRoom(head.t.roomId)}>
         {head.t.kind==='STORE_APPOINTMENT'?'เปิดนัด':'ไปที่ห้อง'} <ArrowRight className="size-3.5" />
       </button>
-      <button type="button" className={btn} disabled={doneMutation.isPending} onClick={() => doneMutation.mutate(head.t)} title="ทำเครื่องหมายว่านัดนี้เสร็จแล้ว">
+      <button data-ui-control="button" type="button" className={btn} disabled={doneMutation.isPending} onClick={() => doneMutation.mutate(head.t)} title="ทำเครื่องหมายว่านัดนี้เสร็จแล้ว">
         <Check className="size-3.5" /> {head.t.kind==='STORE_APPOINTMENT'?'ลูกค้ามาถึงแล้ว':'เสร็จสิ้น'}
       </button>
     </div>

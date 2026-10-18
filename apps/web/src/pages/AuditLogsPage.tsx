@@ -1,5 +1,6 @@
+import ScreenTable from '@/components/ui/ScreenTable';
 import { NativeSelect } from '@/components/ui/native-select';
-import { useId as useUiFieldId, useState } from 'react';
+import { Fragment, useId as useUiFieldId, useState } from 'react';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { useQuery } from '@tanstack/react-query';
 import { usePaginationParams } from '@/hooks/usePaginationParams';
@@ -194,7 +195,7 @@ export default function AuditLogsPage() {
         subtitle="ประวัติการทำงานทั้งหมดในระบบ"
         action={
           logs.length > 0 && (
-            <button
+            <button data-ui-control="button"
               onClick={async () => {
                 try {
                   await exportToExcel({
@@ -265,7 +266,7 @@ export default function AuditLogsPage() {
       <div className="flex items-center gap-2 mb-3 flex-wrap">
         <span className="text-[10px] font-medium text-muted-foreground">Collections:</span>
         {Object.keys(COLLECTION_PRESET_ACTIONS).map((key) => (
-          <button
+          <button data-ui-control="button"
             key={key}
             onClick={() => applyPreset(key)}
             className={presetBtnClass(collectionPreset === key)}
@@ -358,7 +359,7 @@ export default function AuditLogsPage() {
           <div className="text-center py-12 text-muted-foreground">ไม่พบข้อมูล</div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <ScreenTable className="w-full text-sm">
               <thead className="bg-muted/40 border-b">
                 <tr>
                   <th className="text-left px-4 py-3 font-medium text-muted-foreground">เวลา</th>
@@ -372,52 +373,44 @@ export default function AuditLogsPage() {
               </thead>
               <tbody className="divide-y">
                 {logs.map((log) => (
-                  <tr key={log.id} className="group">
-                    <td colSpan={7} className="p-0">
-                      <button
-                        onClick={() => setExpandedId(expandedId === log.id ? null : log.id)}
-                        className="w-full text-left hover:bg-muted/50 transition-colors"
-                      >
-                        <div className="flex items-center">
-                          <div className="px-4 py-3 w-44 shrink-0 text-muted-foreground text-xs">
-                            {formatDateTimeSeconds(log.createdAt)}
-                          </div>
-                          <div className="px-4 py-3 w-36 shrink-0 truncate">
-                            {log.user?.name || '-'}
-                          </div>
-                          <div className="px-4 py-3 w-32 shrink-0">
-                            {(() => {
-                              const cfg = getStatusBadgeProps(log.action, auditActionMap);
-                              return (
-                                <Badge variant={cfg.variant} appearance={cfg.appearance} size="sm">
-                                  {actionLabels[log.action] || log.action}
-                                </Badge>
-                              );
-                            })()}
-                          </div>
-                          <div className="px-4 py-3 w-28 shrink-0 text-foreground">
-                            {entityLabels[log.entity] || log.entity}
-                          </div>
-                          <div className="px-4 py-3 w-32 shrink-0 font-mono text-xs text-muted-foreground truncate">
-                            {log.entityId ? log.entityId.substring(0, 8) + '...' : '-'}
-                          </div>
-                          <div className="px-4 py-3 w-28 shrink-0 text-xs text-muted-foreground">
-                            {log.ipAddress || '-'}
-                          </div>
-                          <div className="px-4 py-3 w-16 shrink-0 text-center text-xs text-muted-foreground">
-                            {log.duration ?? '-'}
-                          </div>
-                        </div>
-                      </button>
-
+                  <Fragment key={log.id}>
+                    <tr className="group">
+                      <td className="px-4 py-3 text-xs text-muted-foreground">
+                        <button
+                          type="button"
+                          aria-expanded={expandedId === log.id}
+                          aria-label={`ดูรายละเอียดบันทึก ${formatDateTimeSeconds(log.createdAt)}`}
+                          onClick={() => setExpandedId(expandedId === log.id ? null : log.id)}
+                          className="min-h-11 text-left text-primary hover:underline"
+                        >
+                          {formatDateTimeSeconds(log.createdAt)}
+                        </button>
+                      </td>
+                      <td className="px-4 py-3 break-words">{log.user?.name || '-'}</td>
+                      <td className="px-4 py-3">
+                        {(() => {
+                          const cfg = getStatusBadgeProps(log.action, auditActionMap);
+                          return <Badge variant={cfg.variant} appearance={cfg.appearance} size="sm">
+                            {actionLabels[log.action] || log.action}
+                          </Badge>;
+                        })()}
+                      </td>
+                      <td className="px-4 py-3 text-foreground">{entityLabels[log.entity] || log.entity}</td>
+                      <td className="px-4 py-3 font-mono text-xs text-muted-foreground">
+                        {log.entityId ? log.entityId.substring(0, 8) + '...' : '-'}
+                      </td>
+                      <td className="px-4 py-3 text-xs text-muted-foreground">{log.ipAddress || '-'}</td>
+                      <td className="px-4 py-3 text-center text-xs text-muted-foreground">{log.duration ?? '-'}</td>
+                    </tr>
                       {/* Expanded Detail */}
                       {expandedId === log.id && (
+                        <tr><td colSpan={7}>
                         <div className="px-4 py-3 bg-muted border-t">
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
                             {log.newValue && (
                               <div>
                                 <p className="font-medium text-muted-foreground mb-1">New Value:</p>
-                                <pre className="bg-card border rounded p-2 overflow-x-auto max-h-48 text-foreground">
+                                <pre className="bg-card border rounded p-2 whitespace-pre-wrap break-all max-h-48 overflow-y-auto text-foreground">
                                   {JSON.stringify(log.newValue, null, 2)}
                                 </pre>
                               </div>
@@ -425,7 +418,7 @@ export default function AuditLogsPage() {
                             {log.oldValue && (
                               <div>
                                 <p className="font-medium text-muted-foreground mb-1">Old Value:</p>
-                                <pre className="bg-card border rounded p-2 overflow-x-auto max-h-48 text-foreground">
+                                <pre className="bg-card border rounded p-2 whitespace-pre-wrap break-all max-h-48 overflow-y-auto text-foreground">
                                   {JSON.stringify(log.oldValue, null, 2)}
                                 </pre>
                               </div>
@@ -437,16 +430,16 @@ export default function AuditLogsPage() {
                               <p className="text-xs text-muted-foreground break-all">{log.userAgent}</p>
                             </div>
                           )}
-                          <div className="mt-2 text-xs text-muted-foreground">
+                          <div className="mt-2 text-xs text-muted-foreground break-all">
                             Full Entity ID: {log.entityId || '-'}
                           </div>
                         </div>
+                        </td></tr>
                       )}
-                    </td>
-                  </tr>
+                  </Fragment>
                 ))}
               </tbody>
-            </table>
+            </ScreenTable>
           </div>
         )}
 

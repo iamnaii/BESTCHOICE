@@ -1,3 +1,4 @@
+import ScreenTable from '@/components/ui/ScreenTable';
 import { useId as useUiFieldId, useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -166,7 +167,7 @@ export default function PaymentMethodSettingsPage() {
       >
         <div className="rounded-xl border border-border bg-card overflow-hidden">
           <div role="region" aria-label="ช่องทางรับชำระ" tabIndex={0} className="overflow-x-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring">
-          <table className="w-full min-w-[42rem] text-sm">
+          <ScreenTable className="w-full min-w-[42rem] text-sm">
             <thead>
               <tr className="bg-muted/40 text-xs uppercase tracking-wide text-muted-foreground">
                 <th className="text-left px-4 py-3 font-semibold">ช่องทาง</th>
@@ -201,7 +202,7 @@ export default function PaymentMethodSettingsPage() {
                         </div>
                       </td>
                       <td className="px-4 py-3 text-center">
-                        <button
+                        <button data-ui-control="button"
                           type="button"
                           onClick={() =>
                             updateMutation.mutate({ id: c.id, data: { isDefault: !c.isDefault } })
@@ -251,7 +252,7 @@ export default function PaymentMethodSettingsPage() {
                 </tr>
               )}
             </tbody>
-          </table>
+          </ScreenTable>
           </div>
         </div>
       </QueryBoundary>

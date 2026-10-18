@@ -171,7 +171,7 @@ export default function ProductInfoCard({
                           : [];
                         const isSelected = selectedModels.includes(m.name);
                         return (
-                          <button
+                          <button data-ui-control="button"
                             key={m.name}
                             type="button"
                             aria-pressed={isSelected}
@@ -255,7 +255,7 @@ export default function ProductInfoCard({
                 {availableColors.length > 0 ? (
                   <div className="flex flex-wrap gap-2">
                     {availableColors.map((c) => (
-                      <button
+                      <button data-ui-control="button"
                         key={c}
                         type="button"
                         aria-pressed={form.color === c}
@@ -290,7 +290,7 @@ export default function ProductInfoCard({
                 {availableStorage.length > 0 ? (
                   <div className="flex flex-wrap gap-2">
                     {availableStorage.map((s) => (
-                      <button
+                      <button data-ui-control="button"
                         key={s}
                         type="button"
                         aria-pressed={form.storage === s}
@@ -451,14 +451,14 @@ export default function ProductInfoCard({
               <div>
                 <label className="block text-sm font-medium text-foreground mb-3">กล่อง</label>
                 <div className="flex gap-2 mt-1">
-                  <button
+                  <button data-ui-control="button"
                     type="button"
                     onClick={() => setForm({ ...form, hasBox: true })}
                     className={`min-h-11 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${form.hasBox ? 'bg-success text-success-foreground' : 'bg-secondary text-muted-foreground hover:bg-success/10'}`}
                   >
                     มีกล่อง
                   </button>
-                  <button
+                  <button data-ui-control="button"
                     type="button"
                     onClick={() => setForm({ ...form, hasBox: false })}
                     className={`min-h-11 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${!form.hasBox ? 'bg-destructive text-destructive-foreground' : 'bg-secondary text-muted-foreground hover:bg-destructive/10'}`}

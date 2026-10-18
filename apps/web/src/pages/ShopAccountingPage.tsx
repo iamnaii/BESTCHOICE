@@ -1,3 +1,4 @@
+import ScreenTable from '@/components/ui/ScreenTable';
 import { toBangkokDateString, getReportDateRange } from '@/lib/date';
 import { useId as useUiFieldId, useState, type KeyboardEvent } from 'react';
 import { useQuery } from '@tanstack/react-query';
@@ -140,7 +141,7 @@ export default function ShopAccountingPage() {
           const Icon = tab.icon;
           const active = activeTab === tab.key;
           return (
-            <button
+            <button data-ui-control="button"
               key={tab.key}
               type="button"
               onClick={() => setActiveTab(tab.key)}
@@ -248,7 +249,7 @@ function TrialBalanceTab({
                       {section.sectionName}
                     </h3>
                     <div role="region" aria-label={`ตาราง${section.sectionName} เลื่อนดูคอลัมน์`} tabIndex={0} onKeyDown={handleTableKeyDown} className="max-w-full overflow-x-auto rounded-lg border border-border focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
-                      <table aria-label={section.sectionName} className="w-full min-w-[60rem] table-fixed text-sm leading-6">
+                      <ScreenTable aria-label={section.sectionName} className="w-full min-w-[60rem] table-fixed text-sm leading-6">
                         <colgroup>
                           <col className="w-32" />
                           <col />
@@ -306,7 +307,7 @@ function TrialBalanceTab({
                             <td className="px-4 py-3" />
                           </tr>
                         </tbody>
-                      </table>
+                      </ScreenTable>
                     </div>
                   </div>
                 ))}
@@ -412,7 +413,7 @@ function PlSectionTable({ title, section }: { title: string; section: PlSection 
     <div>
       <h3 className="mb-3 text-sm font-semibold leading-relaxed">{title}</h3>
       <div role="region" aria-label={`ตาราง${title} เลื่อนดูคอลัมน์`} tabIndex={0} onKeyDown={handleTableKeyDown} className="max-w-full overflow-x-auto rounded-lg border border-border focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
-        <table aria-label={title} className="w-full min-w-[40rem] table-fixed text-sm leading-6">
+        <ScreenTable aria-label={title} className="w-full min-w-[40rem] table-fixed text-sm leading-6">
           <colgroup>
             <col className="w-32" />
             <col />
@@ -440,7 +441,7 @@ function PlSectionTable({ title, section }: { title: string; section: PlSection 
               <td className="whitespace-nowrap px-4 py-3 align-top text-right font-mono tabular-nums">{fmtMoney(section.total)}</td>
             </tr>
           </tbody>
-        </table>
+        </ScreenTable>
       </div>
     </div>
   );

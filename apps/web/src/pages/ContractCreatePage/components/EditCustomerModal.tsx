@@ -32,8 +32,8 @@ export function EditCustomerModal({
           <input id={`${uiFieldId}-2`} type="tel" value={editCustForm.phone || ''} onChange={(e) => setEditCustForm({ ...editCustForm, phone: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
         </div>
         <div className="flex justify-end gap-3 pt-2">
-          <button type="button" onClick={onClose} className="px-4 py-2 text-sm text-muted-foreground border border-input rounded-lg">ยกเลิก</button>
-          <button type="button" onClick={() => editCustomerMutation.mutate()} disabled={editCustomerMutation.isPending} className="px-6 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium disabled:opacity-50">
+          <button data-ui-control="button" type="button" onClick={onClose} className="px-4 py-2 text-sm text-muted-foreground border border-input rounded-lg">ยกเลิก</button>
+          <button data-ui-control="button" type="button" onClick={() => editCustomerMutation.mutate()} disabled={editCustomerMutation.isPending} className="px-6 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium disabled:opacity-50">
             {editCustomerMutation.isPending ? 'กำลังบันทึก...' : 'บันทึก'}
           </button>
         </div>

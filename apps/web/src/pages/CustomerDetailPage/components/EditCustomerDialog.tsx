@@ -364,8 +364,8 @@ export default function EditCustomerDialog({ customer, open, onClose }: EditCust
 
           </div>
           <div className="sticky bottom-0 bg-background/95 backdrop-blur-xs border-t px-6 py-4 flex justify-end gap-3 shrink-0">
-            <button type="button" onClick={onClose} className="px-6 py-2.5 text-sm border border-input rounded-lg hover:bg-muted transition-colors">ยกเลิก</button>
-            <button type="submit" disabled={updateCustomerMutation.isPending} className="px-6 py-2.5 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50 font-semibold transition-colors shadow-sm">
+            <button data-ui-control="button" type="button" onClick={onClose} className="px-6 py-2.5 text-sm border border-input rounded-lg hover:bg-muted transition-colors">ยกเลิก</button>
+            <button data-ui-control="button" type="submit" disabled={updateCustomerMutation.isPending} className="px-6 py-2.5 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50 font-semibold transition-colors shadow-sm">
               {updateCustomerMutation.isPending ? 'กำลังบันทึก...' : 'บันทึก'}
             </button>
           </div>

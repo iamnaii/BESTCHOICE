@@ -334,7 +334,7 @@ export function RescheduleOverlay({
           </label>
           <div className="flex flex-wrap gap-2 mb-3">
             {QUICK_DAYS.map((d) => (
-              <button
+              <button data-ui-control="button"
                 key={d}
                 type="button"
                 onClick={() => setDaysToShift(d)}
@@ -607,13 +607,13 @@ export function RescheduleOverlay({
 
       {/* Footer */}
       <div className="sticky bottom-0 bg-background/95 backdrop-blur-xs border-t px-6 py-4 flex items-center justify-end gap-3">
-        <button
+        <button data-ui-control="button"
           onClick={onClose}
           className="px-6 py-2.5 text-sm leading-snug border border-input rounded-lg hover:bg-muted transition-colors"
         >
           ยกเลิก
         </button>
-        <button
+        <button data-ui-control="button"
           onClick={submit}
           disabled={!canSubmit}
           className="px-6 py-2.5 text-sm leading-snug bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50 font-semibold transition-colors shadow-sm"
@@ -716,7 +716,7 @@ function MethodButton({
   label: string;
 }) {
   return (
-    <button
+    <button data-ui-control="button"
       type="button"
       aria-pressed={active}
       onClick={onClick}

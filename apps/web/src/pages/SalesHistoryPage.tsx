@@ -554,7 +554,7 @@ export default function SalesHistoryPage() {
           );
         }
         return (
-          <button
+          <button data-ui-control="button"
             type="button"
             onClick={(e) => { e.stopPropagation(); openVoidDialog(s); }}
             className="inline-flex items-center gap-1 px-2 py-1 text-xs rounded-md border border-destructive/40 text-destructive hover:bg-destructive/10 transition-colors whitespace-nowrap"
@@ -706,19 +706,19 @@ export default function SalesHistoryPage() {
             className={`${inputClass} w-40`}
           />
           <div className="flex flex-wrap gap-1.5">
-            <button onClick={() => setDateRange('today')} className="px-3 py-2 text-xs rounded-lg border border-input hover:bg-accent transition-colors">วันนี้</button>
-            <button onClick={() => setDateRange('week')} className="px-3 py-2 text-xs rounded-lg border border-input hover:bg-accent transition-colors">สัปดาห์นี้</button>
-            <button onClick={() => setDateRange('last_month')} className="px-3 py-2 text-xs rounded-lg border border-input hover:bg-accent">เดือนก่อน</button>
-            <button onClick={() => setDateRange('month')} className="px-3 py-2 text-xs rounded-lg border border-input hover:bg-accent transition-colors">เดือนนี้</button>
+            <button data-ui-control="button" onClick={() => setDateRange('today')} className="px-3 py-2 text-xs rounded-lg border border-input hover:bg-accent transition-colors">วันนี้</button>
+            <button data-ui-control="button" onClick={() => setDateRange('week')} className="px-3 py-2 text-xs rounded-lg border border-input hover:bg-accent transition-colors">สัปดาห์นี้</button>
+            <button data-ui-control="button" onClick={() => setDateRange('last_month')} className="px-3 py-2 text-xs rounded-lg border border-input hover:bg-accent">เดือนก่อน</button>
+            <button data-ui-control="button" onClick={() => setDateRange('month')} className="px-3 py-2 text-xs rounded-lg border border-input hover:bg-accent transition-colors">เดือนนี้</button>
           </div>
           <div className="ml-auto flex gap-2">
             {hasActiveFilters && (
-              <button onClick={clearFilters} className="flex items-center gap-1.5 px-3 py-2 text-xs rounded-lg border border-input hover:bg-accent transition-colors text-muted-foreground">
+              <button data-ui-control="button" onClick={clearFilters} className="flex items-center gap-1.5 px-3 py-2 text-xs rounded-lg border border-input hover:bg-accent transition-colors text-muted-foreground">
                 <RotateCcw className="w-3.5 h-3.5" />
                 ล้างตัวกรอง
               </button>
             )}
-            <button onClick={exportExcel} disabled={isExporting || isError || isLoading} className="flex items-center gap-1.5 px-4 py-2 text-xs rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors font-medium">
+            <button data-ui-control="button" onClick={exportExcel} disabled={isExporting || isError || isLoading} className="flex items-center gap-1.5 px-4 py-2 text-xs rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors font-medium">
               <Download className="w-3.5 h-3.5" />
               ส่งออก Excel
             </button>

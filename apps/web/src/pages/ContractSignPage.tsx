@@ -83,7 +83,7 @@ export default function ContractSignPage() {
           title="ลงนามสัญญา"
           subtitle={contract.contractNumber}
           action={
-            <button onClick={() => navigate(`/contracts/${id}`)} className="px-4 py-2 text-sm text-muted-foreground border border-input rounded-lg hover:bg-muted transition-colors">
+            <button data-ui-control="button" onClick={() => navigate(`/contracts/${id}`)} className="px-4 py-2 text-sm text-muted-foreground border border-input rounded-lg hover:bg-muted transition-colors">
               กลับ
             </button>
           }
@@ -109,7 +109,7 @@ export default function ContractSignPage() {
         title="ลงนามสัญญา"
         subtitle={`${contract.contractNumber} — ขั้นตอนเซ็นสัญญาดิจิทัล`}
         action={
-          <button onClick={() => navigate(`/contracts/${id}`)} className="px-4 py-2 text-sm text-muted-foreground border border-input rounded-lg hover:bg-muted transition-colors">
+          <button data-ui-control="button" onClick={() => navigate(`/contracts/${id}`)} className="px-4 py-2 text-sm text-muted-foreground border border-input rounded-lg hover:bg-muted transition-colors">
             กลับ
           </button>
         }

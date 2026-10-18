@@ -219,10 +219,10 @@ export function PriceManagementModal({
                         ค่าเริ่มต้น
                       </label>
                       <div className="flex gap-2">
-                        <button type="button" onClick={cancelEditPrice} className="px-2 py-1 text-xs text-muted-foreground hover:text-foreground">
+                        <button data-ui-control="button" type="button" onClick={cancelEditPrice} className="px-2 py-1 text-xs text-muted-foreground hover:text-foreground">
                           ยกเลิก
                         </button>
-                        <button
+                        <button data-ui-control="button"
                           type="submit"
                           disabled={priceMutation.isPending || columnPriceMutation.isPending}
                           className="px-3 py-1 bg-primary text-primary-foreground rounded text-xs font-medium hover:bg-primary/90 disabled:opacity-50"
@@ -335,10 +335,10 @@ export function PriceManagementModal({
                   </label>
                 )}
                 <div className="flex gap-2">
-                  <button type="button" onClick={cancelEditPrice} className="px-2 py-1 text-xs text-muted-foreground hover:text-foreground">
+                  <button data-ui-control="button" type="button" onClick={cancelEditPrice} className="px-2 py-1 text-xs text-muted-foreground hover:text-foreground">
                     ยกเลิก
                   </button>
-                  <button
+                  <button data-ui-control="button"
                     type="submit"
                     disabled={priceMutation.isPending || columnPriceMutation.isPending}
                     className="px-3 py-1 bg-success text-success-foreground rounded text-xs font-medium hover:bg-success/90 disabled:opacity-50"
@@ -349,7 +349,7 @@ export function PriceManagementModal({
               </div>
             </form>
           ) : (
-            <button
+            <button data-ui-control="button"
               type="button"
               onClick={startAddPrice}
               className="w-full py-2 border-2 border-dashed border-input rounded-lg text-sm text-muted-foreground hover:border-primary/60 hover:text-primary transition-colors"
@@ -360,7 +360,7 @@ export function PriceManagementModal({
 
           {/* Close button */}
           <div className="flex justify-end pt-2">
-            <button
+            <button data-ui-control="button"
               type="button"
               onClick={() => setEditingProduct(null)}
               className="px-4 py-2 text-sm text-muted-foreground hover:text-foreground"

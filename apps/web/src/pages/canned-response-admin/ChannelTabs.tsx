@@ -31,7 +31,7 @@ export default function ChannelTabs({ value, onChange, counts = {} }: Props) {
           count > 0 &&
           (t === 'ALL' ? true : count !== allCount);
         return (
-          <button
+          <button data-ui-control="button"
             key={t}
             type="button"
             onClick={() => onChange(t)}

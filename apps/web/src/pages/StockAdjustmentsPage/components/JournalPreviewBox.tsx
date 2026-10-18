@@ -1,3 +1,4 @@
+import ScreenTable from '@/components/ui/ScreenTable';
 import type { AdjustmentPreview } from '../types';
 import { BOOKED_SOURCE_LABEL, formatBaht, productStatusLabel } from '../stock-adjustment.util';
 
@@ -24,7 +25,7 @@ export default function JournalPreviewBox({ preview, isLoading }: { preview: Adj
         </div>
       )}
       {preview.journalLines.length > 0 ? (
-        <table className="w-full text-xs">
+        <ScreenTable className="w-full text-xs">
           <thead>
             <tr className="text-muted-foreground">
               <th className="text-left font-medium py-1">บัญชี</th>
@@ -43,7 +44,7 @@ export default function JournalPreviewBox({ preview, isLoading }: { preview: Adj
               </tr>
             ))}
           </tbody>
-        </table>
+        </ScreenTable>
       ) : null}
       <div className="text-xs text-muted-foreground leading-snug">{preview.journalNote}</div>
     </div>

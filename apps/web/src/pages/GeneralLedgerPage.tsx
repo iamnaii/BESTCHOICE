@@ -1,3 +1,4 @@
+import ScreenTable from '@/components/ui/ScreenTable';
 import { useId as useUiFieldId, useMemo, useState } from 'react';
 import { Link } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
@@ -372,7 +373,7 @@ export function GeneralLedgerPage() {
               <Card className="rounded-xl border border-border/50 bg-card shadow-sm overflow-hidden">
                 <CardContent className="p-0">
                   <div className="overflow-x-auto max-h-[60vh] overflow-y-auto">
-                    <table className="w-full text-sm leading-snug">
+                    <ScreenTable className="w-full text-sm leading-snug">
                       <thead className="sticky top-0 z-10 bg-muted/80 backdrop-blur">
                         <tr>
                           <th className="text-left p-3 font-medium text-muted-foreground whitespace-nowrap">
@@ -473,7 +474,7 @@ export function GeneralLedgerPage() {
                           </td>
                         </tr>
                       </tfoot>
-                    </table>
+                    </ScreenTable>
                   </div>
                 </CardContent>
               </Card>

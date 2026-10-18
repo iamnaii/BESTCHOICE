@@ -1,0 +1,43 @@
+/* Ordinary screen actions share the 44px field scale. The marker survives
+ * Radix asChild slot names and is also used by legacy native action buttons.
+ * Calendar cells, sorting labels, menu items and multiline option cards keep
+ * their own layout. Paper and document editors keep their original metrics. */
+@media screen {
+  body {
+    --ui-control-height: 2.75rem;
+
+    /* Public/LIFF forms share the action scale, including portalled dialogs.
+     * Wrapper-owned inputs retain the wrapper's inner available height. */
+    & :is([data-slot='input']:not([type='checkbox'], [type='radio'], [type='file'], [type='range'], [type='color'], [type='hidden']), [data-slot='input-wrapper'], [data-slot='input-addon'], [data-slot='select-trigger']):not(:where(.voucher-sheet, .document-sheet, .bc-document, .document-landscape, .document-print-dialog, .template-paper, .font-sarabun, .mobile-receipt, .sticker, .print-stickers, .tiptap, iframe, .voucher-sheet *, .document-sheet *, .bc-document *, .document-landscape *, .document-print-dialog *, .template-paper *, .font-sarabun *, .mobile-receipt *, .sticker *, .print-stickers *, .tiptap *, iframe *)) {
+      min-height: var(--ui-control-height);
+    }
+    & [data-slot='input-wrapper'] [data-slot='input'] { min-height: 0; }
+
+    & :is([data-ui-control='button'], [data-slot='tabs-trigger']):not(:where(.voucher-sheet, .document-sheet, .bc-document, .document-landscape, .document-print-dialog, .template-paper, .font-sarabun, .mobile-receipt, .sticker, .print-stickers, .tiptap, iframe, .voucher-sheet *, .document-sheet *, .bc-document *, .document-landscape *, .document-print-dialog *, .template-paper *, .font-sarabun *, .mobile-receipt *, .sticker *, .print-stickers *, .tiptap *, iframe *)) {
+      box-sizing: border-box;
+      /* Page utilities retain responsive visibility and input alignment. */
+      @layer components {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.5rem;
+        height: auto;
+      }
+      min-height: var(--ui-control-height);
+      min-width: var(--ui-control-height);
+      padding-block: 0.5rem;
+      /* Large call-to-action and emoji text keep their deliberate scale. */
+      &:not(.text-base, .text-lg, .text-xl, .text-2xl, .text-3xl) {
+        font-size: 0.875rem;
+      }
+      line-height: 1.5;
+    }
+
+    & [data-ui-control='button'][data-ui-icon='true']:not(:where(.voucher-sheet, .document-sheet, .bc-document, .document-landscape, .document-print-dialog, .template-paper, .font-sarabun, .mobile-receipt, .sticker, .print-stickers, .tiptap, iframe, .voucher-sheet *, .document-sheet *, .bc-document *, .document-landscape *, .document-print-dialog *, .template-paper *, .font-sarabun *, .mobile-receipt *, .sticker *, .print-stickers *, .tiptap *, iframe *)) {
+      width: var(--ui-control-height);
+      height: var(--ui-control-height);
+      padding: 0;
+      flex-shrink: 0;
+    }
+  }
+}

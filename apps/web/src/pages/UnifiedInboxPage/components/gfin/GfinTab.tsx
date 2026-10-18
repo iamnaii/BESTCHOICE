@@ -52,7 +52,7 @@ export default function GfinTab({ room, customerId, gfin, onPickSlotForMessage }
         <p className="m-0 text-xs text-muted-foreground">ขั้น {active}/4</p>
         <ol className="m-0 mt-2 grid list-none grid-cols-4 gap-1 p-0" aria-label="ขั้นตอน">
           {STEP_LABEL.map((label, i) => { const n = (i + 1) as 1 | 2 | 3 | 4; const done = n < gfin.step; const on = n === active;
-            return <li key={label}><button type="button" onClick={() => setStep(n)} aria-current={on ? 'step' : undefined}
+            return <li key={label}><button data-ui-control="button" type="button" onClick={() => setStep(n)} aria-current={on ? 'step' : undefined}
               className={['w-full rounded-md border px-1 py-1 text-[11px] font-semibold leading-snug', on ? 'border-primary bg-primary text-primary-foreground' : done ? 'border-primary/40 text-primary' : 'border-border text-muted-foreground'].join(' ')}>{n} {label}</button></li>; })}
         </ol>
       </Group>

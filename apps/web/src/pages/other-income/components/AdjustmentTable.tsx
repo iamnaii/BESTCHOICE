@@ -80,7 +80,7 @@ export function AdjustmentTable({
                 placeholder="0.00"
               />
             </div>
-            <button
+            <button data-ui-control="button" data-ui-icon="true"
               type="button"
               onClick={() => remove(idx)}
               aria-label={`ลบผลต่างรายการ ${idx + 1}`}
@@ -92,7 +92,7 @@ export function AdjustmentTable({
         ))}
       </div>
       <div className="mt-2 flex flex-wrap items-center gap-2">
-        <button
+        <button data-ui-control="button"
           type="button"
           onClick={() => append({ accountCode: '', amount: 0, note: '' })}
           className="inline-flex max-lg:min-h-11 items-center gap-1 px-2 py-1 border rounded-md text-xs hover:bg-accent"
@@ -101,6 +101,7 @@ export function AdjustmentTable({
         </button>
         {!balanced && remaining > 0 && (
           <button
+            data-ui-control="button"
             type="button"
             onClick={() => append({ accountCode: '', amount: remaining, note: '' })}
             className="inline-flex max-w-full max-lg:min-h-11 items-center gap-1 px-2 py-1 border rounded-md text-left text-xs bg-primary/10 hover:bg-primary/20"

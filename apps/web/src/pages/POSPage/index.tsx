@@ -303,7 +303,7 @@ export default function POSPage() {
 
       <div className="mb-4 flex flex-wrap items-center gap-2" aria-label="ประเภทการขาย">
         {posSaleTypes.map(([type, config]) => (
-          <button
+          <button data-ui-control="button"
             key={type}
             type="button"
             aria-pressed={saleType === type}
@@ -436,7 +436,7 @@ export default function POSPage() {
             ระบบตัดสต๊อกและออกใบขายให้เองเมื่อเปิดใช้สัญญา ไม่ต้องบันทึกที่หน้านี้ซ้ำ
           </p>
         </div>
-        <button
+        <button data-ui-control="button"
           type="button"
           onClick={() => setHandoffOpen(true)}
           className="min-h-11 inline-flex items-center gap-2 rounded-lg border border-input bg-background px-3 text-sm font-medium leading-snug hover:bg-accent"
@@ -453,7 +453,7 @@ export default function POSPage() {
             <p className="text-xs text-muted-foreground leading-snug">ยอดสุทธิ</p>
             <p className="font-bold text-primary tabular-nums">{netAmount.toLocaleString()} ฿</p>
           </div>
-          <button
+          <button data-ui-control="button"
             type="button"
             onClick={() =>
               goTo(

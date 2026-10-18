@@ -1,3 +1,4 @@
+import ScreenTable from '@/components/ui/ScreenTable';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Building2, Landmark, Paperclip, Receipt } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -219,8 +220,8 @@ export function SupplierPaymentDialog({ open, po, summary, summaryLoading, pendi
                 <Receipt className="size-4" aria-hidden />
                 รายการบัญชีที่จะลงอัตโนมัติ · สมุดหน้าร้าน · ผู้จัดจำหน่าย: {po.supplier.name}
               </div>
-              <div className="overflow-x-auto" role="region" aria-label="รายการบัญชีที่จะลง เลื่อนแนวนอนเพื่อดูทุกคอลัมน์" tabIndex={0}>
-              <table className="w-full min-w-96 text-sm">
+              <div className="overflow-x-auto" role="region" aria-label="รายการบัญชีที่จะลง">
+              <ScreenTable className="w-full min-w-96 text-sm">
                 <thead>
                   <tr className="text-xs text-muted-foreground">
                     <th className="py-1 text-left font-medium">รหัส</th>
@@ -239,7 +240,7 @@ export function SupplierPaymentDialog({ open, po, summary, summaryLoading, pendi
                     </tr>
                   ))}
                 </tbody>
-              </table>
+              </ScreenTable>
               </div>
             </section>
           )}

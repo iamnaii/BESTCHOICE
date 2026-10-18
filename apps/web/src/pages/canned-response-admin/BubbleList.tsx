@@ -57,7 +57,7 @@ function SortableBubbleRow({ bubble, onChange, onDelete }: { bubble: CannedRespo
         <Icon className="w-4 h-4 text-muted-foreground" />
         <span className="text-xs font-medium text-muted-foreground">{TYPE_LABEL[bubble.type]}</span>
         <div className="flex-1" />
-        <button onClick={onDelete} className="p-1 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded" title="ลบ" aria-label="ลบ">
+        <button data-ui-control="button" data-ui-icon="true" onClick={onDelete} className="p-1 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded" title="ลบ" aria-label="ลบ">
           <Trash2 className="w-3.5 h-3.5" />
         </button>
       </div>

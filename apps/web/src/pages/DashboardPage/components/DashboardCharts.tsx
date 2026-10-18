@@ -1,3 +1,4 @@
+import ScreenTable from '@/components/ui/ScreenTable';
 import { formatNumberDecimal } from '@/utils/formatters';
 import EmptyState from '@/components/ui/EmptyState';
 import { useMemo } from 'react';
@@ -161,7 +162,7 @@ export default function DashboardCharts({
                   ดูข้อมูลกราฟเป็นตาราง
                 </summary>
                 <div className="overflow-x-auto">
-                  <table className="w-full min-w-90 text-sm [&_th]:px-2 [&_td]:px-2 [&_th]:py-2 [&_td]:py-1">
+                  <ScreenTable className="w-full min-w-90 text-sm [&_th]:px-2 [&_td]:px-2 [&_th]:py-2 [&_td]:py-1">
                     <caption className="sr-only">แนวโน้มรายเดือน แยกจำนวนสัญญาและยอดชำระ</caption>
                     <thead>
                       <tr>
@@ -191,7 +192,7 @@ export default function DashboardCharts({
                         </tr>
                       ))}
                     </tbody>
-                  </table>
+                  </ScreenTable>
                 </div>
               </details>
             )}

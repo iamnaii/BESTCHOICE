@@ -1,3 +1,4 @@
+import ScreenTable from '@/components/ui/ScreenTable';
 import { useNavigate } from 'react-router';
 import { Card, CardContent, CardHeader, CardTitle, CardToolbar, CardTable } from '@/components/ui/card';
 import { Layers } from 'lucide-react';
@@ -69,7 +70,7 @@ export default function DashboardTables({
           </CardHeader>
           <CardTable>
             <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+              <ScreenTable className="w-full text-sm">
                 <thead>
                   <tr className="bg-muted/40 border-b border-border/60 text-left text-muted-foreground">
                     <th className="px-5 pb-3 pt-4 font-medium text-xs whitespace-nowrap">เลขสัญญา</th>
@@ -105,7 +106,7 @@ export default function DashboardTables({
                     </tr>
                   ))}
                 </tbody>
-              </table>
+              </ScreenTable>
             </div>
           </CardTable>
         </Card>
@@ -217,7 +218,7 @@ export default function DashboardTables({
           </CardHeader>
           <CardTable>
             <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+              <ScreenTable className="w-full text-sm">
                 <thead>
                   <tr className="bg-muted/40 border-b border-border/60 text-left text-muted-foreground">
                     <th className="px-5 pb-3 pt-4 font-medium text-xs whitespace-nowrap">สาขา</th>
@@ -246,7 +247,7 @@ export default function DashboardTables({
                     </tr>
                   ))}
                 </tbody>
-              </table>
+              </ScreenTable>
             </div>
           </CardTable>
         </Card>

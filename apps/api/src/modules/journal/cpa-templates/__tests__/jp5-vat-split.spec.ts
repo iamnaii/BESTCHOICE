@@ -1242,15 +1242,16 @@ describe('JP5 กลับรายการ VAT บังคับ 60 วัน
       where: { contractId: c.id },
       orderBy: { installmentNo: 'asc' },
     });
-    // งวด 1 ตั้งลูกหนี้งวดแล้ว (2A) · งวด 2 ยังไม่ตั้ง — ทั้งสองถูกรอบภาษีขาย 60 วันตั้ง 21-2103 ขณะสัญญายัง ACTIVE
+    // งวด 1 ตั้งลูกหนี้งวดแล้ว (2A) ⇒ ข้อ 11.1 (ฝ่ายบัญชี 16/10/2569 — #1702) รอบภาษีขาย 60 วันไม่ตั้งซ้ำ คืน null ·
+    // งวด 2 ยังไม่ตั้ง ⇒ ถูกตั้ง 21-2103 ขณะสัญญายัง ACTIVE — JP5 ต้องกลับเฉพาะงวดที่มีธงจริง
     await new InstallmentAccrual2ATemplate(journal, prisma as any).execute(insts[0].id);
     const mandatory = new Vat60dayMandatoryTemplate(journal, prisma as any);
     const m1 = await mandatory.execute(insts[0].id);
     const m2 = await mandatory.execute(insts[1].id);
-    expect(m1?.entryNo).toBeTruthy();
+    expect(m1).toBeNull();
     expect(m2?.entryNo).toBeTruthy();
-    expect((await glBal(c.id, '21-2103', 'cr')).toFixed(2)).toBe('198.34');
-    expect((await glBal(c.id, '11-2104', 'dr')).toFixed(2)).toBe('198.34');
+    expect((await glBal(c.id, '21-2103', 'cr')).toFixed(2)).toBe('99.17');
+    expect((await glBal(c.id, '11-2104', 'dr')).toFixed(2)).toBe('99.17');
 
     // ยึดคืนในธุรกรรมของผู้เรียก — เหมือน RepossessionsService.createInTx
     const jp5 = new RepossessionJP5Template(journal, prisma as any);
@@ -1266,11 +1267,11 @@ describe('JP5 กลับรายการ VAT บังคับ 60 วัน
         ),
       { timeout: 30_000 },
     );
-    return { c, m1: m1!, m2: m2!, result };
+    return { c, m2: m2!, result };
   }
 
-  it('งวดที่ถูกตั้ง 21-2103 ขณะ ACTIVE แล้วถูกยึดคืน → กลับ Dr 21-2103 / Cr 11-2104 ทุกงวดในธุรกรรมเดียวกัน · ธงถูกล้าง · 21-2103 และ 11-2104 ของสัญญาเป็นศูนย์', async () => {
-    const { c, m1, m2 } = await flaggedThenRepossess();
+  it('งวดที่ถูกตั้ง 21-2103 ขณะ ACTIVE แล้วถูกยึดคืน → กลับ Dr 21-2103 / Cr 11-2104 ทุกงวดที่มีธงในธุรกรรมเดียวกัน · ธงถูกล้าง · 21-2103 และ 11-2104 ของสัญญาเป็นศูนย์ (งวดที่ตั้งลูกหนี้แล้วไม่ถูกตั้ง 60 วัน — ข้อ 11.1)', async () => {
+    const { c, m2 } = await flaggedThenRepossess();
 
     expect((await glBal(c.id, '21-2103', 'cr')).toFixed(2)).toBe('0.00');
     expect((await glBal(c.id, '11-2104', 'dr')).toFixed(2)).toBe('0.00');
@@ -1287,10 +1288,8 @@ describe('JP5 กลับรายการ VAT บังคับ 60 วัน
         ],
       },
     });
-    expect(reversals).toHaveLength(2);
-    expect(reversals.map((r) => (r.metadata as any).reversesEntry).sort()).toEqual(
-      [m1.entryNo, m2.entryNo].sort(),
-    );
+    expect(reversals).toHaveLength(1);
+    expect(reversals.map((r) => (r.metadata as any).reversesEntry)).toEqual([m2.entryNo]);
 
     // JP5 เองไม่มีบรรทัด 21-2103 / 11-2104 (กลับผ่านรายการของ Vat60dayReversalTemplate แยกใบ) และ stamp เลขที่รายการกลับ
     const lines = await getJp5Lines(c.id);

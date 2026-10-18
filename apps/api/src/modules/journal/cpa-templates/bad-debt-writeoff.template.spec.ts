@@ -559,7 +559,7 @@ describe('BadDebtWriteOffTemplate — กลับรายการ VAT บั�
   const glBal = (contractId: string, code: string, side: 'dr' | 'cr') =>
     glContractBalance(prisma as any, contractId, code, side);
 
-  it('งวดที่ถูกตั้ง 21-2103 ขณะ ACTIVE แล้วตัดหนี้สูญ → กลับ Dr 21-2103 / Cr 11-2104 ทุกงวดในธุรกรรมเดียวกัน · ธงถูกล้าง · เรียกซ้ำไม่กลับเพิ่ม', async () => {
+  it('งวดที่ถูกตั้ง 21-2103 ขณะ ACTIVE แล้วตัดหนี้สูญ → กลับ Dr 21-2103 / Cr 11-2104 ทุกงวดที่มีธงในธุรกรรมเดียวกัน · ธงถูกล้าง · เรียกซ้ำไม่กลับเพิ่ม (งวดที่ตั้งลูกหนี้แล้วไม่ถูกตั้ง 60 วัน — ข้อ 11.1)', async () => {
     const journal = await setup();
     const c = await seedStandard17k12m(prisma);
     await new ContractActivation1ATemplate(journal, prisma as any).execute(c.id);
@@ -567,14 +567,15 @@ describe('BadDebtWriteOffTemplate — กลับรายการ VAT บั�
       where: { contractId: c.id },
       orderBy: { installmentNo: 'asc' },
     });
-    // งวด 1 ตั้งลูกหนี้งวดแล้ว (2A) · งวด 2 ยังไม่ตั้ง — ทั้งสองถูกรอบภาษีขาย 60 วันตั้ง 21-2103 ขณะสัญญายัง ACTIVE
+    // งวด 1 ตั้งลูกหนี้งวดแล้ว (2A) ⇒ ข้อ 11.1 (ฝ่ายบัญชี 16/10/2569 — #1702) รอบภาษีขาย 60 วันไม่ตั้งซ้ำ คืน null ·
+    // งวด 2 ยังไม่ตั้ง ⇒ ถูกตั้ง 21-2103 ขณะสัญญายัง ACTIVE — ตัดหนี้สูญต้องกลับเฉพาะงวดที่มีธงจริง
     await new InstallmentAccrual2ATemplate(journal, prisma as any).execute(insts[0].id);
     const mandatory = new Vat60dayMandatoryTemplate(journal, prisma as any);
     const m1 = await mandatory.execute(insts[0].id);
     const m2 = await mandatory.execute(insts[1].id);
-    expect(m1?.entryNo).toBeTruthy();
+    expect(m1).toBeNull();
     expect(m2?.entryNo).toBeTruthy();
-    expect((await glBal(c.id, '21-2103', 'cr')).toFixed(2)).toBe('198.34');
+    expect((await glBal(c.id, '21-2103', 'cr')).toFixed(2)).toBe('99.17');
 
     // ตัดหนี้สูญในธุรกรรมของผู้เรียก — เหมือน BadDebtService.writeOffBadDebt
     const tmpl = new BadDebtWriteOffTemplate(journal, prisma as any);
@@ -598,10 +599,8 @@ describe('BadDebtWriteOffTemplate — กลับรายการ VAT บั�
         ],
       },
     });
-    expect(reversals).toHaveLength(2);
-    expect(reversals.map((r) => (r.metadata as any).reversesEntry).sort()).toEqual(
-      [m1!.entryNo, m2!.entryNo].sort(),
-    );
+    expect(reversals).toHaveLength(1);
+    expect(reversals.map((r) => (r.metadata as any).reversesEntry)).toEqual([m2!.entryNo]);
 
     // รายการตัดหนี้สูญ stamp เลขที่รายการกลับ และบรรทัดของมันเองไม่มี 21-2103 / 11-2104
     const wo = await prisma.journalEntry.findUniqueOrThrow({
@@ -621,7 +620,7 @@ describe('BadDebtWriteOffTemplate — กลับรายการ VAT บั�
     const reversalsAfter = await prisma.journalEntry.count({
       where: { metadata: { path: ['tag'], equals: 'VAT60-REVERSAL' } } as any,
     });
-    expect(reversalsAfter).toBe(2);
+    expect(reversalsAfter).toBe(1);
   });
 
   it('ไม่มีงวดที่ถูกตั้ง 21-2103 → metadata ของรายการตัดหนี้สูญไม่มีคีย์ vat60dayReversals (รูปเดิม)', async () => {

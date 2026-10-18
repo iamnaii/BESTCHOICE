@@ -52,7 +52,7 @@ export default function ShopPettyCashPage() {
         if (result.duplicate) toast.success(`คำขอนี้บันทึกไปแล้ว — ${verb}เงินสดย่อย ${money(result.movement.amount)} บาท (${result.movement.journalEntryNo ?? '-'})`);
         else toast.success(`${verb}เงินสดย่อย ${money(result.movement.amount)} บาท ลงบัญชีแล้ว · ${result.movement.journalEntryNo ?? '-'}`);
         if (result.periodClosed) {
-          toast.error(`งวดบัญชีของวันที่ที่เลือกปิดแล้ว — ลงบัญชีด้วยวันที่บันทึกแทน${result.accountingNotified ? ' และแจ้งฝ่ายบัญชีแล้ว' : ''}`);
+          toast.warning(`งวดบัญชีของวันที่ที่เลือกปิดแล้ว — ลงบัญชีด้วยวันที่บันทึกแทน${result.accountingNotified ? ' และแจ้งฝ่ายบัญชีแล้ว' : ''}`);
         }
       },
       onError: (error) => toast.error(getErrorMessage(error)),

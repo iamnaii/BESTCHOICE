@@ -52,6 +52,8 @@ export function MovementDialog({ kind, open, summary, pending, onClose, onSubmit
   const copy = COPY[kind];
   const ids = { amount: useId(), bank: useId(), date: useId(), note: useId(), file: useId() };
   const today = toBangkokDateString();
+  // ย้อนหลังได้ไม่เกิน 365 วัน (กติกาเดียวกับจ่ายผู้จัดจำหน่าย — server ตรวจซ้ำ)
+  const earliest = toBangkokDateString(new Date(Date.now() - 365 * 86_400_000));
   const [amount, setAmount] = useState('');
   const [bank, setBank] = useState(summary.defaultBank[kind]);
   const [movedAt, setMovedAt] = useState(today);
@@ -93,7 +95,7 @@ export function MovementDialog({ kind, open, summary, pending, onClose, onSubmit
     return null;
   }, [amount, parsed, kind, headroom, balance]);
 
-  const dateError = movedAt > today ? 'วันที่ต้องไม่เกินวันนี้' : null;
+  const dateError = movedAt > today ? 'วันที่ต้องไม่เกินวันนี้' : movedAt < earliest ? 'ย้อนหลังได้ไม่เกิน 365 วัน' : null;
   const valid = parsed != null && parsed > 0 && !amountError && !dateError && !!bank;
   const after = parsed != null && valid ? (kind === 'TOP_UP' ? balance + parsed : balance - parsed) : null;
   const bankLabel = summary.banks.find((b) => b.code === bank)?.label ?? bank;
@@ -164,7 +166,7 @@ export function MovementDialog({ kind, open, summary, pending, onClose, onSubmit
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 [&>div]:min-w-0">
             <div>
               <label className={formLabelClass} htmlFor={ids.date}>{copy.dateLabel}</label>
-              <ThaiDateInput id={ids.date} value={movedAt} max={today} onChange={(e) => setMovedAt(e.target.value)} className={formControlClass} />
+              <ThaiDateInput id={ids.date} value={movedAt} min={earliest} max={today} onChange={(e) => setMovedAt(e.target.value)} className={formControlClass} />
               <p className="mt-1 text-xs leading-snug text-muted-foreground">{dateError ?? 'ย้อนหลังได้ · งวดบัญชีที่ปิดแล้วจะลงวันที่บันทึกแทน'}</p>
             </div>
             <div>

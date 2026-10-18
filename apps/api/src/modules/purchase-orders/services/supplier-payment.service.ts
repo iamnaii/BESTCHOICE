@@ -9,6 +9,7 @@ import {
 } from '../../journal/cpa-templates/shop-supplier-payment.template';
 import { ShopAccountResolver } from '../../journal/shop-account-resolver.service';
 import {
+  SHOP_PETTY_CASH_LOCK_KEY,
   SUPPLIER_PAYMENT_ACCOUNTS,
   SUPPLIER_PAYMENT_ACCOUNT_CODES,
   isBankSupplierPaymentAccount,
@@ -233,6 +234,9 @@ export class SupplierPaymentService {
     const shopCompanyId = await this.deps.companies.getShopCompanyId(tx);
     if (isCashSupplierPaymentAccount(paymentAccountCode)) {
       // เงินสดจ่ายได้ไม่เกินยอดในบัญชี (ผู้ตรวจอิสระ 13/10 ข้อ 2) — ไม่งั้นสินทรัพย์เงินสดย่อยติดลบเงียบ ๆ ตั้งแต่รายการแรก
+      // ล็อกเดียวกับเมนูเติม/คืนเงินสดย่อย (ผู้ตรวจอิสระ 18/10 ข้อ 2): คืน + จ่ายสดพร้อมกันต้องต่อคิว ไม่งั้นอ่านยอดผ่านทั้งคู่แล้วติดลบ
+      // ลำดับ แถว PO (FOR UPDATE ใน lockPo) → advisory — ฝั่งเงินสดย่อยไม่แตะ PO จึงไม่ deadlock · $executeRaw เพราะคืน void
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${SHOP_PETTY_CASH_LOCK_KEY}))`;
       // ทางที่ทำได้จริง (2026-10-18 ข้อ 20.2): เมนู บัญชีหน้าร้าน (SHOP) › เงินสดย่อย เติมได้ หรือเลือกจ่ายจากธนาคาร
       const agg = await tx.journalLine.aggregate({
         where: { accountCode: paymentAccountCode, deletedAt: null, journalEntry: { status: 'POSTED', deletedAt: null, companyId: shopCompanyId } },
@@ -243,7 +247,7 @@ export class SupplierPaymentService {
         const label = SUPPLIER_PAYMENT_ACCOUNTS[paymentAccountCode].label;
         throw new BadRequestException(
           `${label} (${paymentAccountCode}) มียอดในบัญชี ${cashBalance.toFixed(2)} บาท ไม่พอจ่าย ${amount.toFixed(2)} บาท — ` +
-            'เติมเงินสดย่อยที่เมนู บัญชีหน้าร้าน (SHOP) › เงินสดย่อย ก่อน หรือเลือกจ่ายจากบัญชีธนาคารแนบสลิป',
+            'แจ้งเจ้าของ/ผจก.การเงินเติมเงินสดย่อยที่เมนู บัญชีหน้าร้าน (SHOP) › เงินสดย่อย ก่อน หรือเลือกจ่ายจากบัญชีธนาคารแนบสลิป',
         );
       }
     }

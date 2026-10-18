@@ -23,6 +23,7 @@ export interface ShopPettyCashMonthView {
   topUps: ShopPettyCashAmountCount;
   returns: ShopPettyCashAmountCount;
   supplierPayments: ShopPettyCashAmountCount;
+  /** รายการอื่น (JE มือ ฯลฯ) — ยอดเป็น**สุทธิ** มีเครื่องหมาย (เข้า − ออก) เพราะมีได้ทั้งสองทิศ */
   other: ShopPettyCashAmountCount;
   /** closing − opening */
   net: string;

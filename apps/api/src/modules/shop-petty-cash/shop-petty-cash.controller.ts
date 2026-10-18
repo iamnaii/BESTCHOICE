@@ -9,6 +9,10 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { ShopPettyCashService, type ShopPettyCashActor } from './shop-petty-cash.service';
 import { RecordShopPettyCashDto, SetShopPettyCashLimitDto } from './dto/shop-petty-cash.dto';
+import { EVIDENCE_IMAGE_MAX_BYTES } from '../../utils/upload-image.util';
+
+/** multer ตัดตั้งแต่ชั้นรับไฟล์ — ไม่บัฟเฟอร์ไฟล์ใหญ่ก่อน service ตรวจ 5MB ซ้ำ (precedent after-sales.controller) */
+const EVIDENCE_UPLOAD = { limits: { fileSize: EVIDENCE_IMAGE_MAX_BYTES, files: 1 } };
 
 const IMAGE_TYPE: Record<string, string> = { jpg: 'image/jpeg', png: 'image/png', webp: 'image/webp' };
 
@@ -41,7 +45,7 @@ export class ShopPettyCashController {
 
   @Post('top-ups')
   @Roles('OWNER', 'FINANCE_MANAGER')
-  @UseInterceptors(FileInterceptor('evidence'))
+  @UseInterceptors(FileInterceptor('evidence', EVIDENCE_UPLOAD))
   @ApiOperation({ summary: 'เติมเงินสดย่อยจากธนาคารหน้าร้าน (Dr S11-1106 / Cr ธนาคาร) — ไม่เกินวงเงิน − คงเหลือ · หลักฐานไม่บังคับ' })
   topUp(@CurrentUser() user: ShopPettyCashActor, @Body() dto: RecordShopPettyCashDto, @UploadedFile() evidence?: Express.Multer.File) {
     return this.service.record('TOP_UP', dto, user, evidence);
@@ -49,7 +53,7 @@ export class ShopPettyCashController {
 
   @Post('returns')
   @Roles('OWNER', 'FINANCE_MANAGER')
-  @UseInterceptors(FileInterceptor('evidence'))
+  @UseInterceptors(FileInterceptor('evidence', EVIDENCE_UPLOAD))
   @ApiOperation({ summary: 'คืนเงินสดย่อยเข้าธนาคารหน้าร้าน (Dr ธนาคาร / Cr S11-1106) — ไม่เกินยอดคงเหลือ' })
   returnToBank(@CurrentUser() user: ShopPettyCashActor, @Body() dto: RecordShopPettyCashDto, @UploadedFile() evidence?: Express.Multer.File) {
     return this.service.record('RETURN', dto, user, evidence);
@@ -71,6 +75,11 @@ export class ShopPettyCashController {
     res.setHeader('Content-Type', IMAGE_TYPE[extension] ?? 'application/octet-stream');
     res.setHeader('Content-Disposition', 'inline');
     res.setHeader('Cache-Control', 'private, max-age=300');
+    // error กลางสตรีม (storage) — อย่าทิ้ง response ค้าง: ยังไม่ส่ง header ตอบ 500 · ส่งแล้วตัดคอนเนกชัน
+    file.stream.on('error', () => {
+      if (res.headersSent) res.destroy();
+      else res.status(500).json({ message: 'อ่านรูปหลักฐานไม่สำเร็จ' });
+    });
     file.stream.pipe(res);
   }
 }

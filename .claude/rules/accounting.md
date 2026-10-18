@@ -2105,7 +2105,8 @@ template `journal/cpa-templates/shop-petty-cash.template.ts` · ตาราง 
 - **หลักฐานไม่บังคับ (20.3)** — รูป JPEG/PNG/WEBP ≤ 5MB เก็บเป็น key `shop-petty-cash/<yyyymmdd>/<uuid>.<ext>` ใน `StorageService` (ไม่ใช่ data URI —
   บทเรียนก้อน 2) อัปโหลดก่อนเปิด tx · tx ล้ม/คำขอซ้ำ → ลบ key · เสิร์ฟผ่าน `GET /shop/petty-cash/movements/:id/evidence` (สิทธิ์อ่าน)
 - **สิทธิ์:** อ่าน OWNER/FINANCE_MANAGER/ACCOUNTANT/VIEWER · เติม/คืน OWNER/FINANCE_MANAGER · ตั้งวงเงิน OWNER · ไม่มี BranchGuard (ไม่ผูกสาขา) ·
-  audit หลัง commit `SHOP_PETTY_CASH_TOP_UP` / `SHOP_PETTY_CASH_RETURN` (entity `ShopPettyCashMovement`)
+  audit หลัง commit `SHOP_PETTY_CASH_TOP_UP` / `SHOP_PETTY_CASH_RETURN` (entity `shop_petty_cash_movement`) · ด่าน "เงินสดย่อยติดลบไม่ได้" ของเมนูจ่ายผู้จัดจำหน่ายจับ
+  advisory lock ตัวเดียวกัน (`SHOP_PETTY_CASH_LOCK_KEY` ใน `journal/supplier-payment-accounts.ts`) — คืน/เติม กับจ่ายเงินสดพร้อมกันจึงต่อคิว ไม่ติดลบข้าม flow
 - ข้อความ "เงินสดไม่พอ" ของเมนูจ่ายผู้จัดจำหน่ายชี้มาที่เมนูนี้แล้ว (เดิมบอกให้ฝ่ายบัญชีลงรายการโอนเข้าด้วยมือ) · **คนละเรื่องกับ** petty cash ฝั่ง FINANCE
   (`expense-documents` `PETTY_CASH_REIMBURSEMENT` · 11-1103 · `petty_cash_replenish_threshold`) — ห้ามปน
 - ปัก: `shop-petty-cash.util.spec.ts` (jest) · `journal/__tests__/shop-petty-cash.template.spec.ts` (jest) · `shop-petty-cash.integration.spec.ts` (vitest DB —

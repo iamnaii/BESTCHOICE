@@ -316,7 +316,7 @@ jobs:
             $PO_FILES \
             $INVENTORY_FILES \
             $BOOKINGS_FILES \
-            $DEFECT_FILES
+            $DEFECT_FILES \
             $PETTY_FILES
         env:
           DATABASE_URL: postgresql://test:test@localhost:5432/test_db?schema=public

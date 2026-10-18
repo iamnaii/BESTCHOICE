@@ -13,6 +13,13 @@ export type SupplierPaymentAccountKind = 'BANK' | 'CASH';
 
 export const SHOP_PETTY_CASH_ACCOUNT = 'S11-1106';
 
+/**
+ * คีย์ advisory lock ของเงินสดย่อย (`pg_advisory_xact_lock(hashtext(KEY))` ผ่าน `$executeRaw`) — ทุก flow ที่เครดิต/เดบิต S11-1106 แล้วตรวจ
+ * "ติดลบไม่ได้" ต้องจับล็อกนี้ก่อนอ่านยอด: เมนูเติม/คืน (`ShopPettyCashService`) และจ่ายผู้จัดจำหน่ายด้วยเงินสด (`SupplierPaymentService`)
+ * ไม่งั้นคืน + จ่ายพร้อมกันผ่านทั้งคู่แล้วยอดติดลบ (ผู้ตรวจอิสระ 18/10 ข้อ 2). ลำดับ: แถว PO (FOR UPDATE) → advisory — ฝั่งเงินสดย่อยไม่แตะ PO จึงไม่ deadlock
+ */
+export const SHOP_PETTY_CASH_LOCK_KEY = 'shop-petty-cash';
+
 export const SUPPLIER_PAYMENT_ACCOUNTS: Record<string, { label: string; kind: SupplierPaymentAccountKind }> = {
   [ShopAccountResolver.SHOP_PAYING_BANK]: { label: 'ธนาคารหน้าร้าน (จ่ายออก)', kind: 'BANK' },
   [ShopAccountResolver.SHOP_RECEIVING_BANK]: { label: 'ธนาคารหน้าร้าน (รับเข้า)', kind: 'BANK' },

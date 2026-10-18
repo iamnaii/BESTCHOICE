@@ -9,7 +9,7 @@ const mocks = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), put: vi.fn(), aut
 vi.mock('@/lib/api', () => ({ default: { get: mocks.get, post: mocks.post, put: mocks.put }, getErrorMessage: (error: Error) => error.message }));
 vi.mock('@/contexts/AuthContext', () => ({ useAuth: () => ({ user: { id: 'u-1', role: mocks.auth.role, branchId: null } }) }));
 vi.mock('@/hooks/useIsMobile', () => ({ useIsMobile: () => false }));
-vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
+vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn() } }));
 
 const summary = (over: Partial<PettyCashSummary> = {}): PettyCashSummary => ({
   accountCode: 'S11-1106',

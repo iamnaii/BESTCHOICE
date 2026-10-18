@@ -10,7 +10,7 @@ export function MonthSummaryCard({ month }: { month: PettyCashMonth }) {
     { key: 'returns', dot: 'bg-info', label: 'คืนเข้าธนาคาร', unit: 'ครั้ง', value: signedMoney(month.returns.amount, '-'), count: month.returns.count, muted: month.returns.count === 0 },
     { key: 'suppliers', dot: 'bg-warning', label: 'จ่ายผู้จัดจำหน่าย', unit: 'ใบ', value: signedMoney(month.supplierPayments.amount, '-'), count: month.supplierPayments.count, muted: month.supplierPayments.count === 0 },
     ...(month.other.count > 0
-      ? [{ key: 'other', dot: 'bg-muted-foreground', label: 'รายการอื่น', unit: 'รายการ', value: money(month.other.amount), count: month.other.count, muted: false }]
+      ? [{ key: 'other', dot: 'bg-muted-foreground', label: 'รายการอื่น (สุทธิ)', unit: 'รายการ', value: signedMoney(Math.abs(Number(month.other.amount)), Number(month.other.amount) < 0 ? '-' : '+'), count: month.other.count, muted: false }]
       : []),
   ];
   return (

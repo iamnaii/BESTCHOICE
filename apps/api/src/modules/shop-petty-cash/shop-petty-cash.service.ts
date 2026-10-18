@@ -8,7 +8,7 @@ import { AuditService } from '../audit/audit.service';
 import { StorageService } from '../storage/storage.service';
 import { CompanyResolverService } from '../journal/company-resolver.service';
 import { ShopPettyCashTemplate } from '../journal/cpa-templates/shop-petty-cash.template';
-import { isBankSupplierPaymentAccount } from '../journal/supplier-payment-accounts';
+import { SHOP_PETTY_CASH_LOCK_KEY, isBankSupplierPaymentAccount } from '../journal/supplier-payment-accounts';
 import { isPeriodClosedForBackdating } from '../purchase-orders/services/supplier-doc.util';
 import { parsePaidAt } from '../purchase-orders/services/supplier-payment.util';
 import { validatePeriodOpen } from '../../utils/period-lock.util';
@@ -119,7 +119,8 @@ export class ShopPettyCashService {
         : cls.kind === 'RETURN' ? totals.returns
         : cls.kind === 'SUPPLIER_PAYMENT' || cls.kind === 'SUPPLIER_PAYMENT_REVERSAL' ? totals.supplierPayments
         : totals.other;
-      target.amount = target.amount.add(delta.abs());
+      // เติม/คืน/จ่ายผู้จัดจำหน่าย มีทิศเดียว → ผลรวมค่าสัมบูรณ์ · "อื่น ๆ" (JE มือ) มีได้ทั้งสองทิศ → เก็บสุทธิ (มีเครื่องหมาย)
+      target.amount = target.amount.add(target === totals.other ? delta : delta.abs());
       target.count += 1;
     }
     const { headroom, overLimit } = computeHeadroom(limit.value, balance);
@@ -249,7 +250,7 @@ export class ShopPettyCashService {
         async (tx) => {
           // ต่อคิวทุกการเติม/คืน — ยอดคงเหลือ/วงเงินอ่านหลังได้ล็อกเท่านั้น (กดพร้อมกันสองคนไม่เกินวงเงินทั้งคู่)
           // $executeRaw ไม่ใช่ $queryRaw — pg_advisory_xact_lock คืน void ที่ Prisma deserialize ไม่ได้ (แบบ customer-phone-lock)
-          await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('shop-petty-cash'))`;
+          await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${SHOP_PETTY_CASH_LOCK_KEY}))`;
           const shopCompanyId = await this.companies.getShopCompanyId(tx);
 
           if (requestId) {
@@ -307,7 +308,7 @@ export class ShopPettyCashService {
       await this.audit.log({
         userId: actor.id,
         action: SHOP_PETTY_CASH_AUDIT[kind],
-        entity: 'ShopPettyCashMovement',
+        entity: 'shop_petty_cash_movement',
         entityId: outcome.row.id,
         newValue: {
           kind,
@@ -349,7 +350,7 @@ export class ShopPettyCashService {
     await this.audit.log({
       userId: actor.id,
       action: SHOP_PETTY_CASH_AUDIT.LIMIT,
-      entity: 'SystemConfig',
+      entity: 'system_config',
       entityId: saved.id,
       oldValue: { limit: before.value.toFixed(2), source: before.source },
       newValue: { limit: value.toFixed(2), source: 'SET' },

@@ -15,6 +15,7 @@ export interface PettyCashMonth {
   topUps: PettyCashAmountCount;
   returns: PettyCashAmountCount;
   supplierPayments: PettyCashAmountCount;
+  /** สุทธิ มีเครื่องหมาย (เข้า − ออก) */
   other: PettyCashAmountCount;
   net: string;
 }
@@ -90,10 +91,3 @@ export interface PettyCashMovementPayload {
   evidence: File | null;
 }
 
-export const PETTY_CASH_KIND_LABEL: Record<PettyCashRowKind, string> = {
-  TOP_UP: 'เติม',
-  RETURN: 'คืน',
-  SUPPLIER_PAYMENT: 'จ่ายผู้จัดจำหน่าย',
-  SUPPLIER_PAYMENT_REVERSAL: 'ยกเลิกจ่ายผู้จัดจำหน่าย',
-  OTHER: 'อื่น ๆ',
-};

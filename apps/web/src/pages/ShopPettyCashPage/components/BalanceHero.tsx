@@ -56,7 +56,7 @@ export function BalanceHero({ summary, canOperate, canSetLimit, onTopUp, onRetur
       </div>
 
       <div className="space-y-1.5">
-        <div role="img" aria-label={`คงเหลือ ${pct.toFixed(1)}% ของวงเงิน`} className="h-2.5 overflow-hidden rounded-full bg-muted">
+        <div role="progressbar" aria-label="คงเหลือเทียบวงเงิน" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(pct)} aria-valuetext={`คงเหลือ ${pct.toFixed(1)}% ของวงเงิน`} className="h-2.5 overflow-hidden rounded-full bg-muted">
           <div className={cn('h-full rounded-full', overLimit > 0 ? 'bg-destructive' : 'bg-primary')} style={{ width: `${pct}%` }} />
         </div>
         <div className="flex flex-wrap justify-between gap-2 text-xs text-muted-foreground">

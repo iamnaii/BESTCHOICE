@@ -82,7 +82,7 @@ export function MovementsTable({ month, onMonthChange, page, loading }: Movement
           <div role="group" aria-label="ประเภทรายการ" className="flex flex-wrap gap-1 rounded-xl bg-muted p-1">
             {FILTERS.map((f) => (
               <button key={f.key} type="button" aria-pressed={filter === f.key} onClick={() => setFilter(f.key)}
-                className={cn('min-h-9 rounded-lg px-3 text-sm transition-colors', filter === f.key ? 'bg-card font-semibold text-foreground shadow-sm' : 'font-medium text-muted-foreground hover:text-foreground')}>
+                className={cn('min-h-11 rounded-lg px-3 text-sm transition-colors', filter === f.key ? 'bg-card font-semibold text-foreground shadow-sm' : 'font-medium text-muted-foreground hover:text-foreground')}>
                 {f.label}
               </button>
             ))}

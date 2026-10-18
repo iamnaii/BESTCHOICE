@@ -267,6 +267,10 @@ describe('เงินสดย่อยหน้าร้าน S11-1106 (integ
     expect(summary.headroom).toBe('0.00');
     expect(summary.overLimit).toBe(summary.balance);
     await expect(service.record('TOP_UP', { amount: 1, movedAt: today() }, actor())).rejects.toThrow('เติมได้อีกไม่เกิน 0.00 บาท');
+    // เกินวงเงินแล้วยัง "คืน" ได้ (Review Focus 2) — คืนไม่อ่านวงเงิน
+    const back = await service.record('RETURN', { amount: 1, movedAt: today(), requestId: `req-${RUN}-9` }, actor());
+    movementIds.push(back.movement.id);
+    expect(back.movement.kind).toBe('RETURN');
   });
 
   it('10. ตารางเดือนอื่น: เดือนผิดรูป → 400 · เดือนที่ไม่มีรายการ → ว่าง ยอดเปิด = ยอดปิด', async () => {

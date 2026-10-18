@@ -23,8 +23,8 @@
  *   ภาษีขายถึงกำหนด (21-2102 คงเหลือ 1,190 − 4 × 99.17)    Cr 21-2101 793.32
  *
  * ตุลาคม: เครดิต 21-2101 = 99.17 + 99.17 + 793.32 = 991.66 · หักกลับรายการ 99.17 · หักใบลดหนี้ 99.17
- *   ⇒ ภาษีขาย ภ.พ.30 = 21-2101 สุทธิ 793.32 · ภาษีขาย 60 วัน (21-2103) สุทธิ 198.34 − 99.17 = 99.17 เป็นข้อมูลประกอบ
- *   ไม่รวมในยอด (PP30_INCLUDES_MANDATORY_60DAY = false — รอฝ่ายบัญชี)
+ *   ⇒ 21-2101 สุทธิ 793.32 · ภาษีขาย 60 วัน (21-2103) สุทธิ 198.34 − 99.17 = 99.17 · ภาษีขาย ภ.พ.30 = 892.49
+ *   (PP30_INCLUDES_MANDATORY_60DAY = true ตั้งแต่ 16/10/2569 — ฝ่ายบัญชีข้อ 11.1; ระหว่าง 30/09–16/10 ไม่รวม = 793.32)
  *   (ของเดิม: preview ที่นับแต่เครดิต 21-2101 + 21-2103 = 991.66 + 198.34 = 1,190.00)
  */
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
@@ -347,7 +347,7 @@ describe('ภ.พ.30 — ภาษีขายคำนวณที่เดี�
     await prisma.$disconnect();
   });
 
-  it('ตุลาคม: ทุกผู้ใช้ตัวเลขได้ 793.32 — หักกลับรายการ 99.17 และใบลดหนี้ 99.17 · ภาษีขาย 60 วันสุทธิ 99.17 เป็นข้อมูลประกอบ ไม่รวม', async () => {
+  it('ตุลาคม: ทุกผู้ใช้ตัวเลขได้ 892.49 — 21-2101 สุทธิ 793.32 (หักกลับรายการ 99.17 และใบลดหนี้ 99.17) + ภาษีขาย 60 วันสุทธิ 99.17', async () => {
     const r = await readAll(2026, 10);
 
     // ตัวเลขข้างล่างนี้ (991.66 / 198.34 / 793.32 / 60 วัน 198.34·99.17·99.17) เหมือนเดิมทุกประการแม้ beforeAll
@@ -365,16 +365,17 @@ describe('ภ.พ.30 — ภาษีขายคำนวณที่เดี�
       mandatory60DayCredit: '198.34',
       mandatory60DayDebit: '99.17',
       mandatory60DayNet: '99.17',
-      mandatory60DayIncluded: false,
-      totalOutputVat: '793.32',
+      mandatory60DayIncluded: true,
+      totalOutputVat: '892.49',
     });
-    expectAllAgree(r, '793.32');
-    // ภาษีขาย 60 วันยังมองเห็นเป็นข้อมูลประกอบ (ไม่หาย แต่ไม่รวมในยอด)
+    expectAllAgree(r, '892.49');
+    // ภาษีขาย 60 วันยังแยกให้เห็น และรวมสุทธิในยอดแล้ว
     expect(money(r.pp30.totalVatMandatory60Day)).toBe('99.17');
+    expect(money(r.pp30.totalVatSettled)).toBe('793.32');
     // FINANCE ไม่มีสาขาและไม่มีภาษีซื้อในสถานการณ์นี้ ⇒ ภาษีที่ต้องชำระ = ภาษีขาย
-    expect(money(r.pp30.netVat)).toBe('793.32');
-    expect(r.vatPage.netVat).toBe('793.32');
-    expect(money(r.taxReport.netVat)).toBe('793.32');
+    expect(money(r.pp30.netVat)).toBe('892.49');
+    expect(r.vatPage.netVat).toBe('892.49');
+    expect(money(r.taxReport.netVat)).toBe('892.49');
     // ที่มาของยอดที่ลด ระบุรายการได้
     expect(r.helper.reductionLines.map((l) => [l.kind, l.amount.toFixed(2)]).sort()).toEqual([
       ['CREDIT_NOTE', '99.17'],
@@ -416,7 +417,7 @@ describe('ภ.พ.30 — ภาษีขายคำนวณที่เดี�
       mandatory60DayCredit: '0.00',
       mandatory60DayDebit: '0.00',
       mandatory60DayNet: '0.00',
-      mandatory60DayIncluded: false,
+      mandatory60DayIncluded: true,
       totalOutputVat: '6.30',
     });
     expectAllAgree(dec, '6.30');

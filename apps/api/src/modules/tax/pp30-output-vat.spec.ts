@@ -18,7 +18,8 @@ import {
  * ภาษีขายของแบบ ภ.พ.30 — ตัวคำนวณเดียว (jest, ไม่ต่อฐานข้อมูล)
  * ตัวเลขทองมาจากสัญญามาตรฐาน 17,000 / 12 งวด (VAT ต่องวด 99.17 — accounting.md "Rounding Modes")
  * และ Scenario A ของ `jp5-vat-split.spec.ts` (JP5: ใบลดหนี้ 99.17 + ภาษีถึงกำหนด 793.32)
- * ภาษีขาย 60 วัน (21-2103) เป็นข้อมูลประกอบ ไม่รวมในยอด (`PP30_INCLUDES_MANDATORY_60DAY = false` — รอฝ่ายบัญชี)
+ * ภาษีขาย 60 วัน (21-2103) สุทธิรวมในยอด ภ.พ.30 ตั้งแต่ 16/10/2569 (`PP30_INCLUDES_MANDATORY_60DAY = true` — ฝ่ายบัญชีข้อ 11.1;
+ * รอบ 60 วันเลิกตั้งซ้ำกับงวดที่ตั้ง 21-2101 แล้ว จึงรวมสุทธิได้ตรง ๆ)
  */
 
 const D = (value: string) => new Prisma.Decimal(value);
@@ -276,7 +277,7 @@ describe('summarizePp30OutputVat', () => {
       mandatory60DayCredit: '0.00',
       mandatory60DayDebit: '0.00',
       mandatory60DayNet: '0.00',
-      mandatory60DayIncluded: false,
+      mandatory60DayIncluded: true,
       totalOutputVat: '99.13',
     });
     expect(s.reductions.advanceApplied.toFixed(2)).toBe('92.83');
@@ -323,7 +324,7 @@ describe('summarizePp30OutputVat', () => {
       mandatory60DayCredit: '0.00',
       mandatory60DayDebit: '0.00',
       mandatory60DayNet: '0.00',
-      mandatory60DayIncluded: false,
+      mandatory60DayIncluded: true,
       totalOutputVat: '99.17',
     });
     expect(s.reductionLines).toEqual([
@@ -392,7 +393,7 @@ describe('summarizePp30OutputVat', () => {
     expectReconciles(s);
   });
 
-  it('ภาษีขาย 60 วัน (21-2103) นับสุทธิเป็นข้อมูลประกอบ: ตั้ง 99.17 × 2 · กลับรายการ 99.17 ⇒ 99.17 — ไม่รวมในยอด ภ.พ.30 (รอฝ่ายบัญชี)', () => {
+  it('ภาษีขาย 60 วัน (21-2103) นับสุทธิ: ตั้ง 99.17 × 2 · กลับรายการ 99.17 ⇒ 99.17 — รวมในยอด ภ.พ.30 ตั้งแต่ 16/10/2569 (2A 99.17 + 60 วัน 99.17 = 198.34)', () => {
     const s = summarizePp30OutputVat([
       line('21-2101', '0', '99.17', { metadata: META_2A }),
       line('21-2103', '0', '99.17', { metadata: META_VAT60 }),
@@ -403,8 +404,8 @@ describe('summarizePp30OutputVat', () => {
     expect(s.mandatory60Day.credit.toFixed(2)).toBe('198.34');
     expect(s.mandatory60Day.debit.toFixed(2)).toBe('99.17');
     expect(s.mandatory60Day.net.toFixed(2)).toBe('99.17');
-    expect(s.mandatory60DayIncluded).toBe(false);
-    expect(s.totalOutputVat.toFixed(2)).toBe('99.17'); // 2A 99.17 เท่านั้น (เดิม 198.34)
+    expect(s.mandatory60DayIncluded).toBe(true);
+    expect(s.totalOutputVat.toFixed(2)).toBe('198.34'); // 2A 99.17 + 60 วันสุทธิ 99.17 (ระหว่าง 30/09–16/10 เคยเป็น 99.17)
     expect(s.reductionLines).toEqual([]); // เดบิต 21-2103 ไม่ใช่ "รายการที่ลดภาษีขาย 21-2101"
     expectReconciles(s);
   });
@@ -433,7 +434,7 @@ describe('summarizePp30OutputVat', () => {
       mandatory60DayCredit: '0.00',
       mandatory60DayDebit: '0.00',
       mandatory60DayNet: '0.00',
-      mandatory60DayIncluded: false,
+      mandatory60DayIncluded: true,
       totalOutputVat: '0.00',
     });
     expect(s.reductionLines).toEqual([]);
@@ -450,7 +451,7 @@ describe('summarizePp30OutputVat', () => {
     expect(s.reductions.total.toFixed(2)).toBe('0.00');
   });
 
-  it('เดือนตุลาคมของ spec ต่อฐานจริง: 2A 99.17 × 2 · กลับ 99.17 · JP5 (99.17 / 793.32) ⇒ 793.32 · 60 วัน 99.17 × 2 − 99.17 = 99.17 เป็นข้อมูลประกอบ', () => {
+  it('เดือนตุลาคมของ spec ต่อฐานจริง: 2A 99.17 × 2 · กลับ 99.17 · JP5 (99.17 / 793.32) ⇒ 21-2101 สุทธิ 793.32 · 60 วัน 99.17 × 2 − 99.17 = 99.17 ⇒ ภ.พ.30 892.49', () => {
     const s = summarizePp30OutputVat([
       line('21-2101', '0', '99.17', { metadata: META_2A }),
       line('21-2101', '0', '99.17', { metadata: META_2A }),
@@ -473,8 +474,8 @@ describe('summarizePp30OutputVat', () => {
       mandatory60DayCredit: '198.34',
       mandatory60DayDebit: '99.17',
       mandatory60DayNet: '99.17',
-      mandatory60DayIncluded: false,
-      totalOutputVat: '793.32',
+      mandatory60DayIncluded: true,
+      totalOutputVat: '892.49',
     });
     expectReconciles(s);
   });
@@ -558,16 +559,16 @@ describe('summarizePp30OutputVat', () => {
       mandatory60DayCredit: '99.17',
       mandatory60DayDebit: '99.17', // เฉพาะ VAT60_REV — ไม่รวมเดบิต 99.17 ของรายการปิดภาษี (เดิมได้ 198.34)
       mandatory60DayNet: '0.00',
-      mandatory60DayIncluded: false,
-      totalOutputVat: '99.17',
+      mandatory60DayIncluded: true,
+      totalOutputVat: '99.17', // 60 วันสุทธิ 0.00 จึงไม่เพิ่มยอด
     });
     expectReconciles(withSettlement);
   });
 });
 
 describe('PP30_INCLUDES_MANDATORY_60DAY', () => {
-  it('false จนกว่าฝ่ายบัญชีจะตอบ — เปลี่ยนค่าต้องแก้ข้อความ "ยังไม่รวม" บนหน้า /finance/vat และในไฟล์ Excel ภ.พ.30 พร้อมกัน', () => {
-    expect(PP30_INCLUDES_MANDATORY_60DAY).toBe(false);
+  it('true ตั้งแต่ฝ่ายบัญชีตอบ 16/10/2569 ข้อ 11.1 — ภาษีขาย 60 วัน (21-2103) สุทธิรวมในยอดภาษีขายของ ภ.พ.30 (รอบ 60 วันเลิกตั้งซ้ำกับงวดที่ตั้ง 21-2101 แล้ว)', () => {
+    expect(PP30_INCLUDES_MANDATORY_60DAY).toBe(true);
   });
 });
 
@@ -739,7 +740,7 @@ describe('computePp30OutputVat — query ของเดือน', () => {
 
     const r = await computePp30OutputVat(client, { companyId: 'fin-co', year: 2026, month: 10 });
 
-    expect(r.totalOutputVat.toFixed(2)).toBe('99.17'); // 21-2103 ไม่รวม
+    expect(r.totalOutputVat.toFixed(2)).toBe('198.34'); // 21-2101 99.17 + 21-2103 สุทธิ 99.17 (รวมตั้งแต่ 16/10/2569)
     expect(r.mandatory60Day.net.toFixed(2)).toBe('99.17');
     expect(r.lines).toEqual([credit2a, vat60]);
     expect(r).toMatchObject({ companyId: 'fin-co', year: 2026, month: 10 });

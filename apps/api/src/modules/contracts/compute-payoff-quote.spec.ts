@@ -36,6 +36,33 @@ const prodCaseInput = () => ({
   payments: makeProdCasePayments(),
 });
 
+/**
+ * Golden 2 = ตารางที่เจ้าของส่งมา 2026-09-23 (สัญญาจริงสาขาลพบุรี — จอโปรแกรมได้
+ * 17,717.97 แต่ที่ถูกต้องคือ 18,135.85):
+ *
+ *   ยอดค้าง 3,671 × 7 งวด               25,697.00
+ *   หัก ค่าปรับดิว (ถังพัก)                1,714.00   ← "ต้องนำไปหักก่อน"
+ *   ยอดค้างชำระ                          23,983.00
+ *   ยอดค้าง ไม่ VAT (1)                   22,414.02   = 23,983 ÷ 1.07
+ *   ต้นทุน (2) "45%"                     10,719.72   = ต้นทุนต่องวด × (23,983 ÷ 3,671 งวด)
+ *   (1) − (2)                            11,694.30
+ *   ลด 50%                                5,847.15
+ *   ยอดปิดชำระ                           18,135.85
+ *
+ * ต้นทุนของเจ้าของไม่ใช่ 45% ตายตัว — 11,485.83 ÷ 25,697 = 10,719.72 ÷ 23,983 =
+ * 44.697% คือ "ต้นทุนต่อบาทของยอดค้าง" เท่าเดิม ⇒ ค่าปรับดิวที่พักไว้ถูกมองเป็น
+ * เงินที่จ่ายงวดล่วงหน้าไปแล้ว (เศษงวด 1,714 ÷ 3,671 = 0.467 งวด) จึงลดทั้งยอดค้าง
+ * และต้นทุนตามสัดส่วน เหมือนงวดที่จ่ายแล้วทุกประการ.
+ */
+const ownerCase20260923 = () => ({
+  ...prodCaseInput(),
+  remainingMonths: 7,
+  payments: makeProdCasePayments().map((p, i) =>
+    i < 5 ? { ...p, status: 'PAID', amountPaid: decimal(3671), lateFee: decimal(0) } : { ...p, lateFee: decimal(0) },
+  ),
+  rescheduleAdvanceBalance: decimal(1714),
+});
+
 describe('computePayoffQuote', () => {
   describe('golden: prod case 2026-07-20 (ยึดคืนต้องเท่าปิดยอดก่อนกำหนด)', () => {
     it('reproduces the early-payoff screen figures exactly', () => {
@@ -114,32 +141,6 @@ describe('computePayoffQuote', () => {
     });
   });
 
-  /**
-   * Golden 2 = ตารางที่เจ้าของส่งมา 2026-09-23 (สัญญาจริงสาขาลพบุรี — จอโปรแกรมได้
-   * 17,717.97 แต่ที่ถูกต้องคือ 18,135.85):
-   *
-   *   ยอดค้าง 3,671 × 7 งวด               25,697.00
-   *   หัก ค่าปรับดิว (ถังพัก)                1,714.00   ← "ต้องนำไปหักก่อน"
-   *   ยอดค้างชำระ                          23,983.00
-   *   ยอดค้าง ไม่ VAT (1)                   22,414.02   = 23,983 ÷ 1.07
-   *   ต้นทุน (2) "45%"                     10,719.72   = ต้นทุนต่องวด × (23,983 ÷ 3,671 งวด)
-   *   (1) − (2)                            11,694.30
-   *   ลด 50%                                5,847.15
-   *   ยอดปิดชำระ                           18,135.85
-   *
-   * ต้นทุนของเจ้าของไม่ใช่ 45% ตายตัว — 11,485.83 ÷ 25,697 = 10,719.72 ÷ 23,983 =
-   * 44.697% คือ "ต้นทุนต่อบาทของยอดค้าง" เท่าเดิม ⇒ ค่าปรับดิวที่พักไว้ถูกมองเป็น
-   * เงินที่จ่ายงวดล่วงหน้าไปแล้ว (เศษงวด 1,714 ÷ 3,671 = 0.467 งวด) จึงลดทั้งยอดค้าง
-   * และต้นทุนตามสัดส่วน เหมือนงวดที่จ่ายแล้วทุกประการ.
-   */
-  const ownerCase20260923 = () => ({
-    ...prodCaseInput(),
-    remainingMonths: 7,
-    payments: makeProdCasePayments().map((p, i) =>
-      i < 5 ? { ...p, status: 'PAID', amountPaid: decimal(3671), lateFee: decimal(0) } : { ...p, lateFee: decimal(0) },
-    ),
-    rescheduleAdvanceBalance: decimal(1714),
-  });
 
   describe('golden: ตารางเจ้าของ 2026-09-23 (ค่าปรับดิวต้องหักก่อนคิดฐานส่วนลด)', () => {
     it('reproduces the owner spreadsheet exactly', () => {
@@ -406,5 +407,53 @@ describe('computePayoffQuote', () => {
       expect(omitted.advanceBalanceApplied).toBe(0);
       expect(omitted.totalPayoff).toBe(33411.96); // golden เดิม 2026-07-20
     });
+  });
+});
+
+describe('ส่วนลดเฉพาะดอกเบี้ยของงวดที่ยังไม่ถึงกำหนด (ฝ่ายบัญชี 16/10/2569 ข้อ 18.1 แบบ (ค) · เจ้าของเคาะ 16/10 — ใช้ทั้ง JP4/JP5)', () => {
+  it('ไม่ส่ง notDueMonths หรือส่งเท่างวดคงเหลือ → ทุกตัวเลขเท่า golden เดิม (ย้อนกลับได้)', () => {
+    const omitted = computePayoffQuote(prodCaseInput());
+    const allNotDue = computePayoffQuote({ ...prodCaseInput(), notDueMonths: 12 });
+    expect(allNotDue.totalPayoff).toBe(33411.96);
+    expect(allNotDue.discountAmount).toBe(10740.04);
+    expect(allNotDue).toMatchObject({ notDueMonths: 12, dueMonths: 0, discountableMonths: 12, discountBase: 21480.09 });
+    expect(omitted).toMatchObject({ notDueMonths: 12, dueMonths: 0, discountableMonths: 12, totalPayoff: 33411.96 });
+  });
+
+  it('ถึงกำหนดแล้ว 4 งวดจาก 12 → ฐานส่วนลด = กำไรขั้นต้น × 8/12 · ลูกค้าจ่ายมากขึ้น', () => {
+    const q = computePayoffQuote({ ...prodCaseInput(), notDueMonths: 8 });
+    expect(q.grossProfit).toBe(21480.09); // กำไรของยอดค้างทั้งหมดยังแสดงเท่าเดิม
+    expect(q).toMatchObject({ notDueMonths: 8, dueMonths: 4, discountableMonths: 8 });
+    expect(q.discountBase).toBe(14320.06); // 21,480.09 × 8 ÷ 12
+    expect(q.discountAmount).toBe(7160.03); // 50% ปัดลง
+    expect(q.totalPayoff).toBe(36991.97); // 44,052 − 7,160.03 + ค่าปรับ 100 (เดิม 33,411.96)
+  });
+
+  it('ถึงกำหนดทุกงวด (notDueMonths 0) → ไม่มีส่วนลด', () => {
+    const q = computePayoffQuote({ ...prodCaseInput(), notDueMonths: 0 });
+    expect(q).toMatchObject({ dueMonths: 12, discountableMonths: 0, discountBase: 0, discountAmount: 0 });
+    expect(q.totalPayoff).toBe(44152);
+  });
+
+  it('notDueMonths เกินงวดคงเหลือ / ติดลบ → clamp อยู่ในช่วง 0–งวดคงเหลือ', () => {
+    expect(computePayoffQuote({ ...prodCaseInput(), notDueMonths: 99 }).totalPayoff).toBe(33411.96);
+    expect(computePayoffQuote({ ...prodCaseInput(), notDueMonths: -3 })).toMatchObject({ notDueMonths: 0, discountAmount: 0 });
+  });
+
+  it('เงินพักค่าปรับดิวหักงวดที่ถึงกำหนดก่อน — ฐานส่วนลดของงวดที่ยังไม่ถึงกำหนดไม่ลด (ตารางเจ้าของ 23/09: 7 งวด พัก 1,714 · ถึงกำหนด 2)', () => {
+    const q = computePayoffQuote({ ...ownerCase20260923(), notDueMonths: 5 });
+    expect(q.grossProfit).toBe(11694.3);
+    // งวดคงเหลือสุทธิ 7 − 1,714/3,671 = 6.5331 · ลดได้ 5 งวดเต็ม (เงินพักกินงวดที่ถึงกำหนด 0.47 งวดก่อน)
+    expect(q.discountableMonths).toBe(5);
+    expect(q.discountBase).toBe(8950.04);
+    expect(q.discountAmount).toBe(4475.02);
+    expect(q.totalPayoff).toBe(19507.98); // 23,983 − 4,475.02 (เดิม 18,135.85)
+  });
+
+  it('ไม่มีงวดถึงกำหนด แต่มีเงินพัก → ลดเต็มงวดคงเหลือสุทธิ = ตัวเลข golden 23/09 เท่าเดิม', () => {
+    const q = computePayoffQuote({ ...ownerCase20260923(), notDueMonths: 7 });
+    expect(q.discountableMonths).toBe(6.53);
+    expect(q.discountAmount).toBe(5847.15);
+    expect(q.totalPayoff).toBe(18135.85);
   });
 });

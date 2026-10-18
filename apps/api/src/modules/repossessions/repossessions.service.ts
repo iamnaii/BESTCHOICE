@@ -15,7 +15,7 @@ import {
 } from './dto/create-repossession.dto';
 import { ConditionGrade, RepossessionStatus, ProductStatus, Repossession } from '@prisma/client';
 import { d, dAdd, dSub } from '../../utils/decimal.util';
-import { computePayoffQuote } from '../contracts/compute-payoff-quote';
+import { computePayoffQuote, countNotDueInstallments } from '../contracts/compute-payoff-quote';
 import { JournalAutoService } from '../journal/journal-auto.service';
 import {
   RepossessionJP5Template,
@@ -422,6 +422,8 @@ export class RepossessionsService {
       storeCommission: contract.storeCommission,
       discountPctInput: options.discountPct,
       payments: contract.payments,
+      // ฝ่ายบัญชี 16/10/2569 ข้อ 18.1 แบบ (ค) — ส่วนลดเฉพาะงวดที่ยังไม่ถึงกำหนด (ตัวนับเดียวกับปิดยอด · เจ้าของ 16/10 ใช้กับ JP5 ด้วย)
+      notDueMonths: countNotDueInstallments(contract.payments.filter((p) => p.status !== 'PAID')),
     });
     const closingAmount = new Prisma.Decimal(quote.totalPayoff);
     // ราคาเดียว (2026-09-05): ราคาที่ใช้คำนวณกำไร/ขาดทุน = ราคาประเมินเท่านั้น — ตรงกับ create()
@@ -511,6 +513,11 @@ export class RepossessionsService {
         financeCost: quote.financeCost,
         remainingCost: quote.remainingCost,
         grossProfit: quote.grossProfit,
+        // ฝ่ายบัญชี 16/10/2569 ข้อ 18.1 แบบ (ค): งวดที่ถึงกำหนดแล้วไม่ได้ส่วนลด (ยึดคืนส่วนใหญ่ค้างหลายงวด ⇒ ส่วนลดเล็กลง · 51-1102 สูงขึ้น)
+        notDueMonths: quote.notDueMonths,
+        dueMonths: quote.dueMonths,
+        discountableMonths: quote.discountableMonths,
+        discountBase: quote.discountBase,
         discountPct: quote.discountPercent,
         discountAmount: quote.discountAmount,
         unpaidLateFees: quote.unpaidLateFees,
@@ -711,6 +718,8 @@ export class RepossessionsService {
       storeCommission: contract.storeCommission,
       discountPctInput: input.discountPct,
       payments: contract.payments,
+      // ฝ่ายบัญชี 16/10/2569 ข้อ 18.1 แบบ (ค) — สูตรเดียวกับ preview/ปิดยอด (parity JP4/JP5)
+      notDueMonths: countNotDueInstallments(contract.payments.filter((p) => p.status !== 'PAID')),
     });
     const financeCost = new Prisma.Decimal(quote.financeCost);
     const remainingCost = new Prisma.Decimal(quote.remainingCost);

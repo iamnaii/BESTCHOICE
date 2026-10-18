@@ -49,6 +49,12 @@ export interface EarlyPayoffQuote {
   remainingExVat: number;
   remainingCost: number;
   grossProfit: number;
+  /** ฝ่ายบัญชี 16/10/2569 ข้อ 18.1 แบบ (ค): ส่วนลดเฉพาะงวดที่ยังไม่ถึงกำหนด — API ก่อน 26.10.39 ไม่ส่ง */
+  notDueMonths?: number;
+  dueMonths?: number;
+  discountableMonths?: number;
+  /** กำไรของงวดที่ยังไม่ถึงกำหนด = ฐานของ discountAmount */
+  discountBase?: number;
   discountPct: number;
   discountAmount: number;
   unpaidLateFees: number;
@@ -469,11 +475,23 @@ export function EarlyPayoffOverlay({
                 value={`${formatNumber(quote.remainingCost)} บาท`}
               />
               <Row label="(1) − (2)" value={`${formatNumber(quote.grossProfit)} บาท`} />
+              {/* ฝ่ายบัญชี 16/10/2569 ข้อ 18.1 แบบ (ค) — งวดที่ถึงกำหนดแล้วไม่ได้ส่วนลด: แสดงฐานส่วนลดเฉพาะเมื่อมีงวดถึงกำหนด */}
+              {(quote.dueMonths ?? 0) > 0 && (
+                <Row
+                  label={`กำไรของงวดที่ยังไม่ถึงกำหนด (${quote.notDueMonths ?? 0} จาก ${quote.remainingMonths} งวด)`}
+                  value={`${formatNumber(quote.discountBase ?? 0)} บาท`}
+                />
+              )}
               <Row
-                label={`ส่วนลดลูกค้า ${discountPct}%`}
+                label={`ส่วนลดลูกค้า ${discountPct}%${(quote.dueMonths ?? 0) > 0 ? ' ของงวดที่ยังไม่ถึงกำหนด' : ''}`}
                 value={`-${formatNumber(quote.discountAmount)} บาท`}
                 success
               />
+              {(quote.dueMonths ?? 0) > 0 && (
+                <p className="text-xs text-muted-foreground leading-snug">
+                  งวดที่ถึงกำหนดแล้ว {quote.dueMonths} งวด ไม่ได้ส่วนลด (ฝ่ายบัญชี ข้อ 18.1 — ลดเฉพาะดอกเบี้ยของงวดที่ยังไม่ถึงกำหนด)
+                </p>
+              )}
               {quote.unpaidLateFees > 0 && (
                 <Row
                   label="ค่าปรับค้างชำระ"

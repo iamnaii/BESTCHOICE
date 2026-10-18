@@ -68,6 +68,8 @@ export interface LiffProfileResponse {
 /** Response for GET /line-oa/liff/early-payoff-quote */
 export interface LiffEarlyPayoffQuote {
   remainingMonths: number;
+  /** งวดที่ถึงกำหนดแล้ว (ค้างชำระ) — ไม่ได้ส่วนลด (ฝ่ายบัญชี 18.1 · 2026-10-18) · API เก่าไม่ส่ง */
+  dueMonths?: number;
   remainingPrincipal: number;
   remainingInterest: number;
   discount: number;

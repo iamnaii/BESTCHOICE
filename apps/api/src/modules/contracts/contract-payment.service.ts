@@ -32,7 +32,7 @@ import { emitDeferredWarnings, type DeferredWarning } from '../journal/deferred-
 import { ADVANCE_VAT_CONSUME_DESCRIPTION, ADVANCE_VAT_META } from '../journal/advance-vat';
 import { computeInstallmentBreakdown } from '../journal/compute-installment-breakdown';
 import { reconstructPriorCleared } from '../journal/reconstruct-prior';
-import { computePayoffQuote } from './compute-payoff-quote';
+import { computePayoffQuote, countNotDueInstallments } from './compute-payoff-quote';
 import { JourneyEntryWriter } from '../customer-journey/journey-entry-writer.service';
 import { journeyDedupeKey } from '../customer-journey/journey-data-schemas';
 import { Decimal } from '@prisma/client/runtime/library';
@@ -244,7 +244,7 @@ export class ContractPaymentService {
     // multiple Payment rows per installment from PARTIAL flows).
     const allInstNos = await client.installmentSchedule.findMany({
       where: { contractId: contract.id, deletedAt: null },
-      select: { installmentNo: true },
+      select: { installmentNo: true, dueDate: true },
     });
     const paidInstNos = new Set(
       contract.payments.filter((p) => p.status === 'PAID').map((p) => p.installmentNo),
@@ -254,6 +254,8 @@ export class ContractPaymentService {
     if (remainingMonths <= 0) {
       throw new BadRequestException('ไม่มีงวดค้างชำระ ไม่จำเป็นต้องปิดก่อนกำหนด');
     }
+    // ฝ่ายบัญชี 16/10/2569 ข้อ 18.1 แบบ (ค): ส่วนลดเฉพาะดอกเบี้ยของงวดที่ยังไม่ถึงกำหนด — ตัวนับเดียวกับยึดคืน (parity JP4/JP5)
+    const notDueMonths = countNotDueInstallments(unpaidInsts);
 
     // สูตรทั้งหมดอยู่ใน computePayoffQuote — single source of truth ที่
     // RepossessionsService (JP5) ใช้ด้วย เพื่อให้ยอดปิดยึดคืน = ยอดปิดก่อนกำหนดเสมอ
@@ -271,6 +273,7 @@ export class ContractPaymentService {
       storeCommission: contract.storeCommission,
       discountPctInput,
       payments: contract.payments,
+      notDueMonths,
     });
     const discountPercent = quote.discountPercent;
 
@@ -362,6 +365,11 @@ export class ContractPaymentService {
       remainingCost: quote.remainingCost,
       grossProfit: quote.grossProfit,
       discountPct: discountPercent, // percentage 0-100
+      // ฝ่ายบัญชี 16/10/2569 ข้อ 18.1 แบบ (ค): งวดที่ถึงกำหนดแล้วไม่ได้ส่วนลด — ฐานส่วนลดคือกำไรของงวดที่ยังไม่ถึงกำหนด
+      notDueMonths: quote.notDueMonths,
+      dueMonths: quote.dueMonths,
+      discountableMonths: quote.discountableMonths,
+      discountBase: quote.discountBase,
       discountAmount: quote.discountAmount,
       unpaidLateFees: quote.unpaidLateFees,
       totalPayoff: quote.totalPayoff,

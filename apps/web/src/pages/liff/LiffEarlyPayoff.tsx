@@ -416,6 +416,11 @@ export default function LiffEarlyPayoff() {
             tone="emerald"
             emphasize
           />
+          {(quote.dueMonths ?? 0) > 0 && (
+            <p className="text-xs text-muted-foreground leading-snug">
+              ส่วนลดคิดเฉพาะงวดที่ยังไม่ถึงกำหนด — งวดที่ถึงกำหนดแล้ว {quote.dueMonths} งวด ชำระเต็มจำนวน
+            </p>
+          )}
           {quote.partiallyPaidCredit > 0 && (
             <Row
               label="หักยอดชำระบางส่วน"

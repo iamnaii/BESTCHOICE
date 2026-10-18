@@ -603,7 +603,7 @@ export default function LiffContract() {
               <span className="relative z-[1] grid h-[22px] w-[22px] place-items-center rounded-md bg-amber-900 text-white">
                 <Percent className="size-3" strokeWidth={3} />
               </span>
-              <span className="relative z-[1]">ปิดยอด · ลดดอกเบี้ย 50%</span>
+              <span className="relative z-[1]">ปิดยอดก่อนกำหนด · ลดดอกเบี้ย</span>
             </a>
           ) : (
             <a

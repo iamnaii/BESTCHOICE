@@ -1,5 +1,6 @@
 import { Prisma } from '@prisma/client';
 import { d, dAdd, dSub, dMul, dDiv, dRound, dRoundDown, dSum } from '../../utils/decimal.util';
+import { bangkokDateString } from '../../utils/date.util';
 
 type DecimalInput = Prisma.Decimal | string | number | null | undefined;
 
@@ -38,6 +39,28 @@ export interface PayoffQuoteInput {
   /** 0-50 (clamp), ไม่ส่ง = 50 */
   discountPctInput?: number | null;
   payments: PayoffQuotePaymentRow[];
+  /**
+   * จำนวนงวดคงเหลือที่**ยังไม่ถึงกำหนด** (dueDate หลังวันนี้ตามปฏิทินไทย) — ฐานส่วนลดตามฝ่ายบัญชี 16/10/2569 ข้อ 18.1 แบบ (ค)
+   * (เจ้าของเคาะ 16/10: ใช้สูตรเดียวทั้งปิดยอด JP4 และยึดคืน JP5). งวดที่ถึงกำหนดแล้ว (ค้างชำระ · ตั้งลูกหนี้แล้ว) ไม่ได้ส่วนลด.
+   * Optional — ไม่ส่ง = ทุกงวดคงเหลือยังไม่ถึงกำหนด (ตัวเลขเท่าสูตรเดิม · เทสเก่า/ผู้เรียกที่ยังไม่ส่ง). clamp 0–remainingMonths.
+   */
+  notDueMonths?: number | null;
+}
+
+/**
+ * งวด "ยังไม่ถึงกำหนด" = วันครบกำหนด (ปฏิทินไทย) อยู่หลังวันนี้ — งวดที่ครบกำหนดวันนี้ถือว่าถึงกำหนดแล้ว (รอบ 2A ตั้งลูกหนี้คืนนี้ ·
+ * ภาษีขายรับรู้ที่วันครบกำหนด). ไม่มีวันครบกำหนด (ข้อมูลเก่า/เทส) = ยังไม่ถึงกำหนด (สูตรเดิม).
+ */
+export function isInstallmentNotDue(dueDate: Date | string | null | undefined, now: Date = new Date()): boolean {
+  if (dueDate == null) return true;
+  const due = dueDate instanceof Date ? dueDate : new Date(dueDate);
+  if (Number.isNaN(due.getTime())) return true;
+  return bangkokDateString(due) > bangkokDateString(now);
+}
+
+/** นับงวดที่ยังไม่ถึงกำหนดจากรายการงวดที่ยังไม่จ่าย (ตารางงวดของปิดยอด · แถว Payment ของยึดคืน — ตัวนับเดียวกันเพื่อ parity JP4/JP5) */
+export function countNotDueInstallments(rows: ReadonlyArray<{ dueDate?: Date | string | null }>, now: Date = new Date()): number {
+  return rows.filter((row) => isInstallmentNotDue(row.dueDate, now)).length;
 }
 
 export interface PayoffQuoteResult {
@@ -48,6 +71,16 @@ export interface PayoffQuoteResult {
   financeCost: number;
   remainingCost: number;
   grossProfit: number;
+  /** งวดคงเหลือที่ยังไม่ถึงกำหนด (หลัง clamp) · งวดที่ถึงกำหนดแล้ว = remainingMonths − notDueMonths */
+  notDueMonths: number;
+  dueMonths: number;
+  /**
+   * งวดที่เข้าฐานส่วนลด (2 ตำแหน่ง) = min(notDueMonths, งวดคงเหลือสุทธิหลังหักเงินพัก/ถังรวม) — เงินพัก/ถังรวมถือว่าหักงวดที่ถึง
+   * กำหนดก่อน จึงลดฐานส่วนลดเฉพาะเมื่อเกินจำนวนงวดที่ถึงกำหนด
+   */
+  discountableMonths: number;
+  /** กำไรขั้นต้นเฉพาะส่วนของงวดที่ยังไม่ถึงกำหนด = grossProfit × discountableMonths ÷ งวดคงเหลือสุทธิ — ฐานของ discountAmount */
+  discountBase: number;
   /** ส่วนลดเป็นเปอร์เซ็นต์หลัง clamp (0-100 scale) */
   discountPercent: number;
   discountAmount: number;
@@ -102,7 +135,10 @@ export interface PayoffQuoteResult {
  *                          ตามสัดส่วนงวดเหมือนงวดที่จ่ายแล้ว — ตารางเจ้าของ "ต้นทุน 45%"
  *                          = ต้นทุนต่อบาทของยอดค้างเท่าเดิมทั้งก่อน/หลังหัก · ถังรวมแบบเดียวกัน)
  *   (6) กำไรขั้นต้น      = (4) - (5)
- *   (7) ส่วนลด           = (6) × discountPct, ปัดลง (ROUND_DOWN — เข้าข้าง FINANCE, owner 2026-07-02)
+ *   (6b) ฐานส่วนลด       = (6) × งวดที่ยังไม่ถึงกำหนดที่ลดได้ ÷ งวดคงเหลือสุทธิ — ฝ่ายบัญชี 16/10/2569 ข้อ 18.1 แบบ (ค):
+ *                          ส่วนลดเกี่ยวกับดอกเบี้ยของงวดที่**ยังไม่ถึงกำหนด**เท่านั้น (งวดค้าง/ถึงกำหนดแล้ว ลูกค้าจ่ายเต็ม) ·
+ *                          เจ้าของเคาะ 16/10 ใช้ทั้ง JP4/JP5 · ไม่ส่ง notDueMonths = ทุกงวดยังไม่ถึงกำหนด (= สูตรเดิม)
+ *   (7) ส่วนลด           = (6b) × discountPct, ปัดลง (ROUND_DOWN — เข้าข้าง FINANCE, owner 2026-07-02)
  *   (8) ยอดชำระปิดยอด    = max(0, (3) - (7)) + ค่าปรับค้างชำระ
  *                          (ค่าปรับไม่มี VAT และไม่ร่วมส่วนลด — บวกทั้งก้อนตอนท้าย)
  *
@@ -180,9 +216,24 @@ export function computePayoffQuote(input: PayoffQuoteInput): PayoffQuoteResult {
   // (6) กำไรขั้นต้น (อาจติดลบเคสขาดทุน — แสดงค่าจริง)
   const grossProfit = round2(dSub(remainingExVat, remainingCost));
 
-  // (7) ถ้ากำไรติดลบ → ส่วนลด = 0 (ไม่ลดเพิ่ม ไม่บวกเพิ่ม)
+  // (6b) ฐานส่วนลด = เฉพาะส่วนของงวดที่ยังไม่ถึงกำหนด (ฝ่ายบัญชี 16/10/2569 ข้อ 18.1 แบบ (ค) · เจ้าของเคาะ 16/10 ใช้ทั้ง JP4/JP5)
+  // งวดคงเหลือสุทธิ (netRemainingMonths) หักเงินพัก/ถังรวมเป็นเศษงวดแล้ว — ถือว่าเงินนั้นชำระงวดที่ถึงกำหนดก่อน จึงลดฐานส่วนลด
+  // เฉพาะเมื่อเกินจำนวนงวดที่ถึงกำหนด · ไม่ส่ง = ทุกงวดยังไม่ถึงกำหนด (สัดส่วน 1 = ตัวเลขสูตรเดิมทุกกรณี)
+  const notDueMonths = Math.max(
+    0,
+    Math.min(input.remainingMonths, Math.floor(input.notDueMonths ?? input.remainingMonths)),
+  );
+  const dueMonths = input.remainingMonths - notDueMonths;
+  const discountableMonthsDec = Prisma.Decimal.min(d(notDueMonths), netRemainingMonths);
+  const discountableMonths = dRound(discountableMonthsDec).toNumber();
+  const discountBase =
+    grossProfit > 0 && netRemainingMonths.gt(0) && discountableMonthsDec.gt(0)
+      ? round2(dDiv(dMul(d(grossProfit), discountableMonthsDec), netRemainingMonths))
+      : 0;
+
+  // (7) ถ้ากำไรติดลบ/ไม่มีงวดที่ลดได้ → ส่วนลด = 0 (ไม่ลดเพิ่ม ไม่บวกเพิ่ม)
   const discountAmount =
-    grossProfit > 0 ? dRoundDown(dMul(grossProfit, discountPercent / 100)).toNumber() : 0;
+    discountBase > 0 ? dRoundDown(dMul(discountBase, discountPercent / 100)).toNumber() : 0;
 
   // (8) ยอดชำระปิดยอดก่อนบวกค่าปรับ
   const payoffBeforeLateFees = Math.max(0, round2(dSub(remainingBalance, discountAmount)));
@@ -201,6 +252,10 @@ export function computePayoffQuote(input: PayoffQuoteInput): PayoffQuoteResult {
     financeCost: round2(financeCost),
     remainingCost,
     grossProfit,
+    notDueMonths,
+    dueMonths,
+    discountableMonths,
+    discountBase,
     discountPercent,
     discountAmount,
     unpaidLateFees,

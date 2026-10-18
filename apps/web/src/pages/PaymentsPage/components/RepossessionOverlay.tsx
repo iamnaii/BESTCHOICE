@@ -70,6 +70,10 @@ interface RepoPreview {
     financeCost: number;
     remainingCost: number;
     grossProfit: number;
+    /** ฝ่ายบัญชี 16/10/2569 ข้อ 18.1 แบบ (ค): ส่วนลดเฉพาะงวดที่ยังไม่ถึงกำหนด (API ก่อน 26.10.39 ไม่ส่ง) */
+    notDueMonths?: number;
+    dueMonths?: number;
+    discountBase?: number;
     discountPct: number;
     discountAmount: number;
     unpaidLateFees: number;
@@ -562,7 +566,18 @@ export function RepossessionOverlay({
                   label="ต้นทุนยอดค้างชำระ (ยอดจัด + คอม)"
                   value={`${preview.calculation.remainingCost.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ฿`}
                 />
+                {(preview.calculation.dueMonths ?? 0) > 0 && (
+                  <Row
+                    label={`กำไรของงวดที่ยังไม่ถึงกำหนด (${preview.calculation.notDueMonths ?? 0} จาก ${preview.calculation.remainingMonths} งวด)`}
+                    value={`${(preview.calculation.discountBase ?? 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ฿`}
+                  />
+                )}
                 <div className="border-t border-border pt-2">
+                  {(preview.calculation.dueMonths ?? 0) > 0 && (
+                    <p className="mb-1 text-xs text-muted-foreground leading-snug">
+                      งวดที่ถึงกำหนดแล้ว {preview.calculation.dueMonths} งวด ไม่ได้ส่วนลด (ฝ่ายบัญชี ข้อ 18.1)
+                    </p>
+                  )}
                   <Row
                     label={`ส่วนลดลูกค้า (${preview.calculation.discountPct}%)`}
                     value={`- ${preview.calculation.discountAmount.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ฿`}

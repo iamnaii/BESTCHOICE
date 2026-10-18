@@ -85,18 +85,20 @@ describe('Payoff parity: repossession closingAmount === early-payoff totalPayoff
     };
   }
 
-  function makeServices(contract: ReturnType<typeof makeContract>) {
+  function makeServices(
+    contract: ReturnType<typeof makeContract>,
+    // ตารางงวดฝั่งปิดยอด — ค่าเริ่มต้นไม่มีวันครบกำหนด (= ยังไม่ถึงกำหนดทุกงวด · ตัวเลขเดิม)
+    schedule: Array<{ installmentNo: number; dueDate?: Date }> = Array.from({ length: 12 }, (_, i) => ({
+      installmentNo: i + 1,
+    })),
+  ) {
     const prisma = {
       // eligibility (2026-09-05) อ่าน strict flag ใน previewCalculation — ปิดไว้ = ไม่กระทบ parity
       systemConfig: { findUnique: jest.fn().mockResolvedValue(null) },
       // eligibility (review 2026-09-05) ด่าน 'เครื่องเคยมีแถวยึด' — ไม่เคย = ไม่กระทบ parity
       repossession: { findFirst: jest.fn().mockResolvedValue(null) },
       contract: { findUnique: jest.fn().mockResolvedValue(contract) },
-      installmentSchedule: {
-        findMany: jest
-          .fn()
-          .mockResolvedValue(Array.from({ length: 12 }, (_, i) => ({ installmentNo: i + 1 }))),
-      },
+      installmentSchedule: { findMany: jest.fn().mockResolvedValue(schedule) },
       chartOfAccount: { findMany: jest.fn().mockResolvedValue([]) },
       // PR5: preview ของ JP4 อ่านยอดในบัญชี — สเปคนี้เทียบยอดปิดของสองเส้นทางเท่านั้น (ไม่ดูบรรทัดรายการ)
       // PR4: advanceVatOutstanding อ่าน stamp จาก journalEntry — ไม่มีรายการที่ประทับในฟิกซ์เจอร์นี้
@@ -180,5 +182,35 @@ describe('Payoff parity: repossession closingAmount === early-payoff totalPayoff
 
     expect(epQuote.totalPayoff).toBe(33411.96);
     expect(repoPreview.calculation.closingAmount).toBe(33411.96);
+  });
+
+  it('ถึงกำหนดแล้ว 4 งวด (ฝ่ายบัญชี 18.1 แบบ ค): ทั้งสอง flow นับงวดจากวันครบกำหนดด้วยตัวนับเดียวกัน → ยอดปิด/ส่วนลดเท่ากัน', async () => {
+    const DAY = 24 * 60 * 60 * 1000;
+    // งวด 1–4 ครบกำหนดไปแล้ว · งวด 5–12 ยังไม่ถึง (ห่างจากวันนี้อย่างน้อย 15 วัน — ไม่ชนเส้นแบ่งวัน)
+    const dueDateFor = (no: number) => new Date(Date.now() + (no - 4.5) * 30 * DAY);
+    const contract = makeContract({ creditBalance: dec('0') });
+    contract.payments[1] = {
+      installmentNo: 2,
+      status: 'PENDING',
+      amountDue: dec('3671'),
+      amountPaid: dec('0'),
+      lateFee: dec('0'),
+      lateFeeWaived: false,
+    };
+    // ยึดคืนอ่านวันครบกำหนดจากแถว Payment · ปิดยอดอ่านจากตารางงวด — ต้องเป็นวันเดียวกัน
+    contract.payments = contract.payments.map((p) => ({ ...p, dueDate: dueDateFor(p.installmentNo) }));
+    const schedule = contract.payments.map((p) => ({ installmentNo: p.installmentNo, dueDate: dueDateFor(p.installmentNo) }));
+    const { ep, repo } = makeServices(contract, schedule);
+
+    const epQuote = await ep.getEarlyPayoffQuote(contract.id, 50);
+    const repoPreview = await repo.previewCalculation(contract.id, { discountPct: 50 });
+
+    expect(epQuote.dueMonths).toBe(4);
+    expect(repoPreview.calculation.dueMonths).toBe(4);
+    expect(repoPreview.calculation.closingAmount).toBe(epQuote.totalPayoff);
+    expect(repoPreview.calculation.discountAmount).toBe(epQuote.discountAmount);
+    // ตรง golden ของ compute-payoff-quote.spec (4 ใน 12 งวดถึงกำหนด): ส่วนลด 7,160.03 · ปิด 36,991.97 (เดิม 33,411.96)
+    expect(epQuote.discountAmount).toBe(7160.03);
+    expect(epQuote.totalPayoff).toBe(36991.97);
   });
 });

@@ -13,8 +13,15 @@ import { RepossessionJP5Template } from '../journal/cpa-templates/repossession-j
  */
 describe('หน้าจอยึดคืน — ตัวอย่างข้อ 5 ของฝ่ายบัญชี: ส่วนลดบนจอ = บรรทัด 52-1106 ของ JP5 (แบบ ก)', () => {
   const dec = (v: string) => new Prisma.Decimal(v);
+  const DAY = 86_400_000;
 
-  function build() {
+  /**
+   * วันครบกำหนดเทียบวันนี้ (ฝ่ายบัญชี 16/10/2569 ข้อ 18.1 แบบ (ค) — งวดที่ถึงกำหนดแล้วไม่ได้ส่วนลด): งวดที่จ่ายแล้ว 1–4 และงวดค้าง
+   * `dueInstallments` งวดแรกอยู่ในอดีต · ที่เหลืออยู่ในอนาคต — ค่าเริ่มต้น 0 = ตัวอย่างข้อ 5 ของฝ่ายบัญชี (ทุกงวดที่เหลือยังไม่ถึงกำหนด)
+   */
+  function build(opts: { dueInstallments?: number } = {}) {
+    const dueCount = opts.dueInstallments ?? 0;
+    const dueDateFor = (i: number) => new Date(Date.now() + (i < 4 + dueCount ? -(12 - i) : i - 3) * 30 * DAY);
     const payments = Array.from({ length: 12 }, (_, i) => ({
       id: `pay-${i + 1}`,
       installmentNo: i + 1,
@@ -23,7 +30,7 @@ describe('หน้าจอยึดคืน — ตัวอย่างข�
       amountPaid: dec(i < 4 ? '1515.83' : '0'),
       lateFee: dec('0'),
       lateFeeWaived: false,
-      dueDate: new Date(Date.UTC(2026, i, 1)),
+      dueDate: dueDateFor(i),
     }));
     const contract = {
       id: 'contract-17k',
@@ -59,7 +66,7 @@ describe('หน้าจอยึดคืน — ตัวอย่างข�
     const installments = Array.from({ length: 12 }, (_, i) => ({
       id: `inst-${i + 1}`,
       installmentNo: i + 1,
-      dueDate: new Date(Date.UTC(2026, i, 1)),
+      dueDate: dueDateFor(i),
       accrualJournalEntryId: i < 4 ? `je-2a-${i + 1}` : null,
     }));
     const gl: Record<string, { debit: string; credit: string }> = {
@@ -135,6 +142,36 @@ describe('หน้าจอยึดคืน — ตัวอย่างข�
     // ขาดทุนในบัญชี 3,126.69 ต่างจากบนจอ 3,126.65 เท่าเศษของงวดสุดท้าย 0.04 (12,126.68 − 12,126.64) — ตามตาราง (ก)
     const ledgerLoss = dec(jp5.lines.find((l) => l.accountCode === '51-1102')!.debit);
     expect(ledgerLoss.minus(dec('3126.65')).toFixed(2)).toBe('0.04');
+  });
+
+  it('งวด 5–8 ถึงกำหนดแล้ว (ค้าง 4 จาก 8) → ส่วนลดเฉพาะงวด 9–12: บนจอ 999.99 = บรรทัด 52-1106 · 51-1102 สูงขึ้น 1,000.00 (ฝ่ายบัญชี 18.1 แบบ ค)', async () => {
+    const { service } = build({ dueInstallments: 4 });
+
+    const preview = await service.previewCalculation('contract-17k', { appraisalPrice: 7000 });
+
+    expect(preview.calculation).toMatchObject({
+      remainingMonths: 8,
+      notDueMonths: 4,
+      dueMonths: 4,
+      discountBase: 1999.99, // กำไรขั้นต้น 3,999.98 × 4/8
+      discountAmount: 999.99,
+      closingAmount: 11126.65, // 12,126.64 − 999.99
+      profitLoss: -4126.65,
+    });
+    const jp5 = preview.journalPreview!;
+    expect(jp5.lines.map((l) => `${l.accountCode} ${l.debit} ${l.credit}`)).toEqual([
+      '11-2107 7000.00 0.00',
+      '11-2106 4000.00 0.00',
+      '21-2102 793.32 0.00',
+      '11-2101 0.00 11333.36',
+      '11-2105 0.00 793.32',
+      '21-2101 0.00 793.32',
+      '41-1101 0.00 4000.00',
+      '52-1106 999.99 0.00',
+      '51-1102 4126.69 0.00',
+    ]);
+    expect(jp5.totalDebit).toBe('16920.00');
+    expect(jp5.isBalanced).toBe(true);
   });
 
   it('ส่วนลด 0% → ไม่มีบรรทัด 52-1106 และขาดทุนในบัญชี 5,126.68 (ยอดปิด = ยอดค้างบนจอ)', async () => {

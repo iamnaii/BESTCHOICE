@@ -486,7 +486,8 @@ describe('ตั้งลูกหนี้งวด ณ วันรับเ�
       { transferOwnership: noop } as never,
       { reverseStageOnPayment: noop } as never,
       receiptTemplate,
-      { execute: noop } as never,
+      // รายการกลับภาษีขาย 60 วันของจริง — เคสใบรับชำระย้อนวันตรวจวันที่ของรายการกลับ
+      new Vat60dayReversalTemplate(journal, prisma as never),
       {
         awardLoyaltyPoints: noop,
         sendPaymentSuccessLine: noop,
@@ -880,6 +881,57 @@ describe('ตั้งลูกหนี้งวด ณ วันรับเ�
       expect(await balance(c.id, '11-2103', 'dr')).toBe('0.00');
     });
   });
+
+    it('ใบรับชำระย้อนวันข้ามเดือนของงวดที่ถูกตั้ง VAT บังคับ 60 วัน → รายการกลับ 21-2103 ลงวันเดียวกับใบรับชำระ (ไม่ก่อนรายการตั้ง — ภ.พ.30 รายเดือนไม่นับซ้ำ)', async () => {
+      const c = await seedContract({ dueDate: futureDue(), paymentRows: [1] });
+      const [inst] = await prisma.installmentSchedule.findMany({
+        where: { contractId: c.id },
+        orderBy: { installmentNo: 'asc' },
+      });
+      const m1 = await new Vat60dayMandatoryTemplate(journal, prisma as never).execute(inst.id);
+      // รอบภาษีขาย 60 วันตั้งไว้ 40 วันก่อน (ก่อนวันที่รับเงินที่ย้อน)
+      const fortyDaysAgo = new Date(Date.now() - 40 * DAY_MS);
+      await prisma.journalEntry.update({
+        where: { entryNumber: m1!.entryNo },
+        data: { entryDate: fortyDaysAgo, postedAt: fortyDaysAgo },
+      });
+
+      // วันที่รับเงิน = วันสุดท้ายของเดือนก่อน (เที่ยงวัน) — งวดบัญชีของเดือนนั้นต้องเปิดอยู่ตอนเทส
+      const now = new Date();
+      const paidDate = new Date(now.getFullYear(), now.getMonth(), 0, 12, 0, 0);
+      const finance = await prisma.companyInfo.findFirstOrThrow({ where: { companyCode: 'FINANCE' } });
+      const periodKey = { companyId: finance.id, year: paidDate.getFullYear(), month: paidDate.getMonth() + 1 };
+      const period = await prisma.accountingPeriod.findUnique({ where: { companyId_year_month: periodKey } });
+      const periodWasClosed = period != null && period.status !== 'OPEN';
+      if (periodWasClosed) {
+        await prisma.accountingPeriod.update({ where: { id: period!.id }, data: { status: 'OPEN' } });
+      }
+      try {
+        await record(c.id, 1, 1515.83, 'AAR-V60-BACK', { paidDate });
+      } finally {
+        if (periodWasClosed) {
+          await prisma.accountingPeriod.update({ where: { id: period!.id }, data: { status: period!.status } });
+        }
+      }
+
+      const [receipt] = await flowEntries(c.id, 'payment-receipt');
+      expect(receipt.entryDate.getTime()).toBe(paidDate.getTime());
+      const reversals = await prisma.journalEntry.findMany({
+        where: {
+          AND: [
+            { metadata: { path: ['contractId'], equals: c.id } } as never,
+            { metadata: { path: ['tag'], equals: 'VAT60-REVERSAL' } } as never,
+          ],
+        },
+      });
+      expect(reversals).toHaveLength(1);
+      expect((reversals[0].metadata as Record<string, unknown>).reversesEntry).toBe(m1!.entryNo);
+      // รายการกลับลงวันเดียวกับใบรับชำระที่ย้อน (เดือนก่อน) ไม่ใช่วันนี้
+      expect(reversals[0].entryDate.getTime()).toBe(paidDate.getTime());
+      expect(await balance(c.id, '21-2103', 'cr')).toBe('0.00');
+      expect(await balance(c.id, '11-2104', 'dr')).toBe('0.00');
+      expect((await scheduleOf(c.id, 1)).vat60dayJournalEntryId).toBeNull();
+    });
 
   describe('ใบรับชำระบางส่วน (คำตอบฝ่ายบัญชี ก1 29/09/2569)', () => {
     it('QR 1,000 ของงวดที่ยังไม่ถึงกำหนด → 2A เท่ายอดที่รับ แล้วใบรับชำระ Dr 11-1201 1,000 / Cr 11-2103 1,000', async () => {

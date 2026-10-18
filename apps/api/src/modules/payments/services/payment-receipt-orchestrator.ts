@@ -697,8 +697,11 @@ export class PaymentReceiptOrchestrator {
             // 2B template triggered Vat60dayReversalTemplate internally when the
             // installment carried a 60-day mandatory VAT JE; the primitive does
             // not, so trigger it here inside the same tx.
+            // 2026-10-17: ลงวันเดียวกับใบรับชำระ (`effectivePaidDate` — D4 ย้อนวันได้) ไม่ใช่วันนี้ — ใบรับชำระที่ย้อนวัน
+            // ข้ามเดือนได้รายการกลับ 21-2103 อยู่เดือนเดียวกับใบรับชำระ (ภ.พ.30 รายเดือนที่รวม 21-2103 ไม่นับซ้ำสองเดือน) ·
+            // template ไม่กลับก่อนวันที่ของรายการตั้ง (max) · กระจายเงิน/ใช้เครดิต/webhook ไม่มีวันที่ที่ผู้ใช้เลือก = ตอนนี้
             if (instSched.vat60dayJournalEntryId) {
-              await this.vat60Reversal.execute(instSched.id, tx);
+              await this.vat60Reversal.execute(instSched.id, tx, effectivePaidDate);
             }
 
             // CPA Policy A §3.6 — ECL stage reverse on payment.

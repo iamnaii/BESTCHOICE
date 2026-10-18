@@ -69,7 +69,7 @@ describe('buildEarlyPayoffJE — รายการปิดยอดก่อ�
     expect(je.deferredInterestDiscountBase.toFixed(2)).toBe('3000.00');
     expect(je.discountBeyondDeferredBase.toFixed(2)).toBe('0.02');
     expect(je.roundingGain.toFixed(2)).toBe('0.00');
-    expect(je.excessReceived.toFixed(2)).toBe('0.00');
+    expect(je.excessIncome.toFixed(2)).toBe('0.00');
   });
 
   it('มีเงินพักค่าปรับดิว 1,044.00 ลูกค้าจ่าย 14,318.16 → Dr 21-1103 1,044.00 แทนเงินสด · 52-1106 2,827.84', () => {
@@ -287,7 +287,7 @@ describe('buildEarlyPayoffJE — รายการปิดยอดก่อ�
     expect(totals(je)).toEqual({ dr: '25380.08', cr: '25380.08' });
   });
 
-  it('เงินที่รับ + เงินของลูกค้าเกินลูกหนี้ตามบัญชี: พอดี 1.00 → Cr 53-1503 1.00 · เกิน 1.01 → excessReceived 1.01 ไม่มีบรรทัดรับ (ผู้เรียกปฏิเสธ)', () => {
+  it('เงินที่รับ + เงินของลูกค้าเกินลูกหนี้ตามบัญชี: พอดี 1.00 → Cr 53-1503 1.00 · เกิน 1.01 → รายได้ 42-1106 0.94 + ภาษีขาย 21-2101 0.07 (ฝ่ายบัญชี 18.2) สมดุล', () => {
     const atLimit = buildEarlyPayoffJE({
       depositAccountCode: '11-1201',
       cashReceived: '18191.00',
@@ -295,7 +295,7 @@ describe('buildEarlyPayoffJE — รายการปิดยอดก่อ�
       discountPercent: '0',
     });
     expect(atLimit.roundingGain.toFixed(2)).toBe('1.00');
-    expect(atLimit.excessReceived.toFixed(2)).toBe('0.00');
+    expect(atLimit.excessIncome.toFixed(2)).toBe('0.00');
     expect(totals(atLimit)).toEqual({ dr: '25381.00', cr: '25381.00' });
 
     const over = buildEarlyPayoffJE({
@@ -305,12 +305,18 @@ describe('buildEarlyPayoffJE — รายการปิดยอดก่อ�
       creditRelief: '300.00',
       discountPercent: '0',
     });
-    expect(over.excessReceived.toFixed(2)).toBe('1.01');
+    expect(over.excessIncome.toFixed(2)).toBe('1.01');
+    expect(over.excessVat.toFixed(2)).toBe('0.07');
     expect(over.roundingGain.toFixed(2)).toBe('0.00');
     expect(over.discount.toFixed(2)).toBe('0.00');
     expect(over.lines.map((l) => l.accountCode)).not.toContain('53-1503');
     expect(over.lines.map((l) => l.accountCode)).not.toContain('52-1106');
-    expect(totals(over)).toEqual({ dr: '25381.01', cr: '25380.00' });
+    const excessLines = over.lines.filter((l) => l.excessIncome);
+    expect(excessLines.map((l) => `${l.accountCode}:${l.cr.toFixed(2)}`)).toEqual([
+      '42-1106:0.94',
+      '21-2101:0.07',
+    ]);
+    expect(totals(over)).toEqual({ dr: '25381.01', cr: '25381.01' });
   });
 
   it('ยอดเงินที่ส่งเข้าติดลบหรือเกิน 2 ตำแหน่ง → throw (ห้ามลงยอดที่ฐานข้อมูลจะปัดเพี้ยน)', () => {
@@ -518,7 +524,7 @@ describe('readEarlyPayoffLedger / buildEarlyPayoffJournal — อ่านยอ
     expect(notDeducted.creditRelief.toFixed(2)).toBe('0.00');
     expect(notDeducted.lines.map((l) => l.accountCode)).not.toContain('21-5101');
     expect(notDeducted.discount.toFixed(2)).toBe('3000.02');
-    expect(notDeducted.excessReceived.toFixed(2)).toBe('0.00');
+    expect(notDeducted.excessIncome.toFixed(2)).toBe('0.00');
     expect(notDeducted.warnings.map((w) => w.tags.action)).toEqual([
       'close-advance-ledger-mismatch',
     ]);
@@ -742,7 +748,7 @@ describe('readEarlyPayoffLedger / buildEarlyPayoffJournal — อ่านยอ
     );
     expect(je.advanceRelief.toFixed(2)).toBe('18189.96');
     expect(je.discount.toFixed(2)).toBe('0.04');
-    expect(je.excessReceived.toFixed(2)).toBe('0.00');
+    expect(je.excessIncome.toFixed(2)).toBe('0.00');
     expect(je.warnings).toEqual([]);
   });
 });

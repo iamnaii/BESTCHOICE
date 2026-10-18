@@ -25,8 +25,8 @@ export interface ContractAdvanceColumns {
 
 /**
  * เส้นทางปิดสัญญาที่อ่านยอดนี้ (ปิดยอดก่อนกำหนด JP4 — หักเงินพัก + ถังรวมเท่าที่ยอดปิดหัก (PR5ข) + เงินเกินของลูกค้า) ·
- * `excess-income` = รอบกวาดเงินพักส่วนเกิน → รายได้ 42-1106 (PR4 ต6 — อ่าน `.advance` ล้างทั้งยอด · `.credit` ใช้ตัดสิน
- * `emptiesBucket` ของขาภาษีเท่านั้น ไม่ล้าง 21-5101)
+ * `excess-income` = รอบกวาดเงินพักส่วนเกิน → รายได้ 42-1106 (PR4 ต6 — ล้าง `.advance` และ `.credit` ทั้งยอดตั้งแต่ 22.2
+ * (16/10/2569) · ก่อนหน้านั้น `.credit` ใช้ตัดสิน `emptiesBucket` ของขาภาษีเท่านั้น)
  */
 export type ContractCloseFlow =
   | 'repossession'

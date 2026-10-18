@@ -151,11 +151,38 @@ describe('EarlyPayoffJP4Template.execute (case-4 golden · mock-based)', () => {
     expect(lineFor(je, '21-2101')!.cr.toFixed(2)).toBe('594.98');
   });
 
-  it('เงินที่รับเกินลูกหนี้ตามบัญชีเกิน 1.00 → throw ไม่ลงรายการ', async () => {
-    await expect(run('0', '9096.03')).rejects.toThrow(
-      'exceed the contract ledger receivable by 1.01 (> 1.00) — not posted',
+  it('18.2: เงินที่รับเกินลูกหนี้ตามบัญชี 1.01 (> 1.00) → ลงได้ · Cr 42-1106 0.94 + Cr 21-2101 0.07 (ภาษี 7/107) · metadata excessIncome/excessVat · สมดุล', async () => {
+    const je = await run('0', '9096.03');
+    expect(createAndPost).toHaveBeenCalledTimes(1);
+    expect(lineFor(je, '52-1106')).toBeUndefined();
+    expect(lineFor(je, '53-1503')).toBeUndefined();
+    expect(lineFor(je, '42-1106')!.cr.toFixed(2)).toBe('0.94');
+    expect(lineFor(je, '42-1106')!.description).toBe(
+      'เงินที่รับเกินยอดปิด — รับรู้เป็นรายได้ (ฝ่ายบัญชี 18.2)',
     );
-    expect(createAndPost).not.toHaveBeenCalled();
+    const vatLines = je.lines.filter((l) => l.accountCode === '21-2101');
+    expect(vatLines.map((l) => `${l.cr.toFixed(2)}|${l.description}`)).toEqual([
+      '594.98|ภาษีขาย ภ.พ.30 ถึงกำหนด (Policy A: VAT ไม่ลดตามส่วนลด)',
+      '0.07|ภาษีขายของเงินที่รับเกินยอดปิด',
+    ]);
+    const dr = je.lines.reduce((a, l) => a.plus(l.dr), new Decimal(0));
+    const cr = je.lines.reduce((a, l) => a.plus(l.cr), new Decimal(0));
+    expect(dr.toFixed(2)).toBe('12691.01');
+    expect(cr.toFixed(2)).toBe('12691.01');
+    const meta = je.metadata as Record<string, string>;
+    expect(meta.excessIncome).toBe('1.01');
+    expect(meta.excessVat).toBe('0.07');
+    expect(meta.roundingGain).toBeUndefined();
+    expect(meta.discount).toBe('0.00');
+  });
+
+  it('เงินที่รับเกินลูกหนี้ตามบัญชีพอดี 1.00 → Cr 53-1503 1.00 (เศษสตางค์ — ไม่ใช่รายได้)', async () => {
+    const je = await run('0', '9096.02');
+    expect(lineFor(je, '53-1503')!.cr.toFixed(2)).toBe('1.00');
+    expect(lineFor(je, '42-1106')).toBeUndefined();
+    const meta = je.metadata as Record<string, string>;
+    expect(meta.roundingGain).toBe('1.00');
+    expect(meta.excessIncome).toBeUndefined();
   });
 
   it('เงินพัก 354 (คอลัมน์ 354) แต่ยอด 21-1103 ในบัญชี 200 → Dr 21-1103 200.00 (clamp ด้วยยอดในบัญชีแบบเส้นทางจริง) · 52-1106 รับส่วนที่ขาด', async () => {

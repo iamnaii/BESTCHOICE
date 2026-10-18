@@ -23,6 +23,7 @@ import {
   BarChart3,
   CircleDollarSign,
   Banknote,
+  Wallet,
   FileText,
   Lock,
   Receipt,
@@ -341,6 +342,8 @@ const FINANCE_MANAGER_CONFIG: RoleMenuConfig = {
         { label: 'บัญชีหน้าร้าน (SHOP)', path: '/shop/accounting', icon: Store },
         // สรุปเงินหน้าร้านรายวัน — ผจก.การเงินเห็นทุกสาขา (สเปค 2026-09-20-shop-tenders-daily-cash)
         { label: 'สรุปเงินรายวัน', path: '/shop/daily-cash', icon: Banknote },
+        // เงินสดย่อยหน้าร้าน (ข้อ 20.2 · 2026-10-18) — ผจก.การเงินเติม/คืนได้
+        { label: 'เงินสดย่อย', path: '/shop/petty-cash', icon: Wallet },
         // route อนุญาต role นี้อยู่แล้ว แต่เมนูไม่มี ⇒ MainLayout เด้ง (route-reachability.test.ts)
         { label: 'การจอง / มัดจำ', path: '/bookings', icon: CalendarDays },
         { label: 'หลังการขาย', path: '/after-sales', icon: ShieldCheck },
@@ -478,6 +481,7 @@ const ACCOUNTANT_CONFIG: RoleMenuConfig = {
       items: [
         { label: 'งบทดลอง + P&L', path: '/shop/accounting', icon: PieChart },
         { label: 'สรุปเงินรายวัน', path: '/shop/daily-cash', icon: Banknote },
+        { label: 'เงินสดย่อย', path: '/shop/petty-cash', icon: Wallet },
       ],
     },
     {
@@ -787,6 +791,7 @@ const OWNER_CONFIG: RoleMenuConfig = {
         { label: 'งบทดลอง + P&L', path: '/shop/accounting', icon: PieChart },
         // คำสั่งเจ้าของ 2026-09-28: ย้ายมาจากกลุ่ม "ขาย" — ตำแหน่งเดียวกับเมนูฝ่ายบัญชี (acc-shop-accounting)
         { label: 'สรุปเงินรายวัน', path: '/shop/daily-cash', icon: Banknote },
+        { label: 'เงินสดย่อย', path: '/shop/petty-cash', icon: Wallet },
       ],
     },
     {
@@ -859,6 +864,7 @@ const VIEWER_CONFIG: RoleMenuConfig = {
       zone: 'shop',
       items: [
         { label: 'งบทดลอง + P&L', path: '/shop/accounting', icon: PieChart },
+        { label: 'เงินสดย่อย', path: '/shop/petty-cash', icon: Wallet },
       ],
     },
     {

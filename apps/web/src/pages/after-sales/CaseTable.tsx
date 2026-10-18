@@ -1,3 +1,4 @@
+import ScreenTable from '@/components/ui/ScreenTable';
 import { Link } from 'react-router';
 import { Clock } from 'lucide-react';
 import {
@@ -82,7 +83,7 @@ export default function CaseTable({ rows }: CaseTableProps) {
   return (
     <>
       <div className="hidden overflow-x-auto rounded-xl border border-border bg-card md:block">
-        <table className="w-full text-sm">
+        <ScreenTable className="w-full text-sm">
           <thead>
             <tr className="border-b border-border text-xs text-muted-foreground">
               <th className="px-3 py-2 text-left font-normal">เลขเคส</th>
@@ -134,7 +135,7 @@ export default function CaseTable({ rows }: CaseTableProps) {
               </tr>
             ))}
           </tbody>
-        </table>
+        </ScreenTable>
       </div>
 
       <div className="space-y-2 md:hidden">

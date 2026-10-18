@@ -1,3 +1,4 @@
+import ScreenTable from '@/components/ui/ScreenTable';
 import { getReportDateRange } from '@/lib/date';
 import { useId as useUiFieldId, useState } from 'react';
 import { Link } from 'react-router';
@@ -303,7 +304,7 @@ export default function IntercompanyReportPage() {
               </div>
             ) : (
               <div className="overflow-x-auto">
-                <table className="w-full text-sm leading-snug">
+                <ScreenTable className="w-full text-sm leading-snug">
                   <thead className="bg-muted/50">
                     <tr>
                       <th className="text-left p-3 font-medium text-muted-foreground whitespace-nowrap">
@@ -387,7 +388,7 @@ export default function IntercompanyReportPage() {
                       </td>
                     </tr>
                   </tfoot>
-                </table>
+                </ScreenTable>
               </div>
             )}
           </CardContent>

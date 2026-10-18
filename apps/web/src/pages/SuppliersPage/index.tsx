@@ -305,7 +305,7 @@ export default function SuppliersPage() {
               aria-label="กรองตามสถานะการใช้งาน"
             >
               {statusFilters.map((f) => (
-                <button
+                <button data-ui-control="button"
                   key={f.value}
                   type="button"
                   onClick={() => setFilterActive(f.value)}

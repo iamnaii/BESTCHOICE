@@ -14,7 +14,7 @@ export default function Pager({ page, totalPages, total, onPrev, onNext }: Pager
         หน้า {page} / {totalPages} · ทั้งหมด {total} เคส
       </span>
       <div className="flex gap-2">
-        <button
+        <button data-ui-control="button"
           type="button"
           aria-label="หน้าก่อนหน้า"
           disabled={page <= 1}
@@ -23,7 +23,7 @@ export default function Pager({ page, totalPages, total, onPrev, onNext }: Pager
         >
           ก่อนหน้า
         </button>
-        <button
+        <button data-ui-control="button"
           type="button"
           aria-label="หน้าถัดไป"
           disabled={page >= totalPages}

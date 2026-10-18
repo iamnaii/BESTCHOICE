@@ -1,3 +1,4 @@
+import ScreenTable from '@/components/ui/ScreenTable';
 import { BookOpenText, ChevronRight, ExternalLink, Landmark } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { formatDateShort, formatNumberDecimal } from '@/utils/formatters';
@@ -88,7 +89,7 @@ export function AccountsPayableTab({ ledger, isLoading, month, setMonth, selecte
 
       {ledger && ledger.suppliers.length > 0 && (
         <div className="overflow-x-auto rounded-xl border border-border/50 bg-card shadow-sm">
-          <table className="w-full min-w-[960px] border-collapse text-sm">
+          <ScreenTable className="w-full min-w-[960px] border-collapse text-sm">
             <thead className="bg-muted/50">
               <tr>
                 <th className={thCls}>ผู้จัดจำหน่าย</th>
@@ -134,7 +135,7 @@ export function AccountsPayableTab({ ledger, isLoading, month, setMonth, selecte
                       )}
                     </td>
                     <td className={cn(tdCls, 'text-right')}>
-                      <button type="button" onClick={() => onSelectSupplier(active ? null : row.supplier.id)} aria-label={`ดูรายการ ${row.supplier.name}`} className="rounded-lg border border-border bg-card p-1.5 text-muted-foreground hover:bg-accent">
+                      <button data-ui-control="button" data-ui-icon="true" type="button" onClick={() => onSelectSupplier(active ? null : row.supplier.id)} aria-label={`ดูรายการ ${row.supplier.name}`} className="rounded-lg border border-border bg-card p-1.5 text-muted-foreground hover:bg-accent">
                         <ChevronRight className={cn('size-4 transition-transform', active && 'rotate-90')} aria-hidden />
                       </button>
                     </td>
@@ -142,7 +143,7 @@ export function AccountsPayableTab({ ledger, isLoading, month, setMonth, selecte
                 );
               })}
             </tbody>
-          </table>
+          </ScreenTable>
         </div>
       )}
 
@@ -159,7 +160,7 @@ export function AccountsPayableTab({ ledger, isLoading, month, setMonth, selecte
             {movementsLoading && !movements && <p className="text-xs text-muted-foreground">กำลังอ่าน…</p>}
             {movements && movements.rows.length === 0 && <p className="text-xs text-muted-foreground">ไม่มีรายการในเดือนนี้</p>}
             {movements && movements.rows.length > 0 && (
-              <table className="w-full text-sm">
+              <ScreenTable className="w-full text-sm">
                 <thead>
                   <tr className="text-xs text-muted-foreground">
                     <th className="py-1.5 text-left font-medium">วันที่</th>
@@ -185,7 +186,7 @@ export function AccountsPayableTab({ ledger, isLoading, month, setMonth, selecte
                     </tr>
                   ))}
                 </tbody>
-              </table>
+              </ScreenTable>
             )}
             <div className="mt-3 text-right text-sm font-semibold">คงเหลือ {money(movements?.closing ?? selected.closing)}</div>
           </section>
@@ -210,7 +211,7 @@ export function AccountsPayableTab({ ledger, isLoading, month, setMonth, selecte
                     </div>
                     <div className="flex items-center gap-2">
                       <Badge variant={cfg.variant} appearance={cfg.appearance}>{cfg.label}</Badge>
-                      <button type="button" onClick={() => onOpenPo(po.id)} className="inline-flex items-center gap-1 rounded-lg border border-border bg-card px-2.5 py-1 text-xs font-medium hover:bg-accent" aria-label={`เปิดใบ ${po.poNumber}`}>
+                      <button data-ui-control="button" type="button" onClick={() => onOpenPo(po.id)} className="inline-flex items-center gap-1 rounded-lg border border-border bg-card px-2.5 py-1 text-xs font-medium hover:bg-accent" aria-label={`เปิดใบ ${po.poNumber}`}>
                         <ExternalLink className="size-3.5" aria-hidden />
                         เปิดใบ
                       </button>

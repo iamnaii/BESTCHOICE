@@ -1,3 +1,4 @@
+import ScreenTable from '@/components/ui/ScreenTable';
 import { useNavigate, useParams } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
 import { TrendingDown } from 'lucide-react';
@@ -73,7 +74,7 @@ export default function AssetSchedulePage() {
               <CardHeader><CardTitle>ตารางมูลค่าตามบัญชีสุทธิ (NBV) รายเดือน ({query.data.rows.length} เดือน)</CardTitle></CardHeader>
               <CardContent className="min-w-0">
                 <div className="max-w-full overflow-x-auto" tabIndex={0} role="region" aria-label="ตารางค่าเสื่อมราคา">
-                <table className="w-full text-sm">
+                <ScreenTable className="w-full text-sm">
                   <thead>
                     <tr className="border-b">
                       <th className="text-left py-2 px-2">งวด</th>
@@ -103,7 +104,7 @@ export default function AssetSchedulePage() {
                       );
                     })}
                   </tbody>
-                </table>
+                </ScreenTable>
                 </div>
               </CardContent>
             </Card>

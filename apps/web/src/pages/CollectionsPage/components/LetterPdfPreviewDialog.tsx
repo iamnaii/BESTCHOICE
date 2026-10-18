@@ -77,7 +77,7 @@ export default function LetterPdfPreviewDialog({
         {/* Toolbar */}
         <div className="flex flex-wrap items-center justify-between gap-2 px-5 py-2 border-b border-border bg-muted/40">
           <div className="flex items-center gap-1">
-            <button
+            <button data-ui-control="button" data-ui-icon="true"
               type="button"
               onClick={handleZoomOut}
               disabled={!pdfUrl || zoom <= MIN_ZOOM}
@@ -95,7 +95,7 @@ export default function LetterPdfPreviewDialog({
             >
               {Math.round(zoom * 100)}%
             </button>
-            <button
+            <button data-ui-control="button" data-ui-icon="true"
               type="button"
               onClick={handleZoomIn}
               disabled={!pdfUrl || zoom >= MAX_ZOOM}
@@ -104,7 +104,7 @@ export default function LetterPdfPreviewDialog({
             >
               <ZoomIn className="size-4" />
             </button>
-            <button
+            <button data-ui-control="button" data-ui-icon="true"
               type="button"
               onClick={handleZoomReset}
               disabled={!pdfUrl || zoom === 1}

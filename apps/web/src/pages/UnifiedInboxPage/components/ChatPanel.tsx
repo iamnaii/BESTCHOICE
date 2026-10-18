@@ -687,7 +687,7 @@ export default function ChatPanel({
       )}
       {/* Header — ชื่อ · รอตอบนานแค่ไหน · ใครดูแล · ปุ่มที่รู้ว่าทำอะไร (แบบที่เจ้าของโอเค 2026-09-06) */}
       <div className="inbox-chat-header hidden lg:flex shrink-0 flex-wrap items-center gap-3 border-b border-border bg-card px-4 pt-5">
-        <button
+        <button data-ui-control="button" data-ui-icon="true"
           onClick={onBack}
           aria-label="กลับ"
           className="lg:hidden p-1 min-h-11 min-w-11 inline-flex items-center justify-center text-muted-foreground hover:text-foreground rounded-md hover:bg-muted transition-colors"
@@ -796,7 +796,7 @@ export default function ChatPanel({
         </div>
         <div className="inbox-room-toolbar ml-auto flex shrink-0 items-center gap-2">
           {onShowCustomerInfo && (
-            <button
+            <button data-ui-control="button" data-ui-icon="true"
               onClick={onShowCustomerInfo}
               className="xl:hidden size-8 inline-flex items-center justify-center text-muted-foreground hover:text-foreground/70 hover:bg-accent rounded-lg"
               title="ข้อมูลลูกค้า"
@@ -811,7 +811,7 @@ export default function ChatPanel({
             role="group"
             aria-label="สถานะห้อง"
           >
-            <button
+            <button data-ui-control="button"
               type="button"
               onClick={() => pinMutation.mutate(!!session.pinnedAt)}
               disabled={pinMutation.isPending}
@@ -829,7 +829,7 @@ export default function ChatPanel({
               <span className="hidden @[34rem]:inline">ปักหมุด</span>
             </button>
             {onToggleAi && (
-              <button
+              <button data-ui-control="button"
                 type="button"
                 onClick={onToggleAi}
                 disabled={aiTogglePending}
@@ -852,7 +852,7 @@ export default function ChatPanel({
               </button>
             )}
             {onToggleRoomMute && (
-              <button
+              <button data-ui-control="button"
                 type="button"
                 onClick={onToggleRoomMute}
                 title={
@@ -877,7 +877,7 @@ export default function ChatPanel({
           {/* ปิดงาน = ปุ่มหลักมีคำ (เดิมซ่อนใน ⋮) · ห้องที่ปิดแล้วปุ่มเดิมกลายเป็น "เปิดงานกลับ" */}
           {isResolved ? (
             onReopen && (
-              <button
+              <button data-ui-control="button"
                 type="button"
                 onClick={onReopen}
                 disabled={reopenPending}
@@ -894,7 +894,7 @@ export default function ChatPanel({
               </button>
             )
           ) : (
-            <button
+            <button data-ui-control="button"
               type="button"
               onClick={onResolve}
               title="ปิดงาน — จบเรื่องนี้ ลูกค้าทักใหม่ห้องกลับมาเอง"
@@ -905,7 +905,7 @@ export default function ChatPanel({
               <span className="hidden @lg:inline">ปิดงาน</span>
             </button>
           )}
-          <button
+          <button data-ui-control="button" data-ui-icon="true"
             onClick={() => setShowActions(!showActions)}
             aria-label="ตัวเลือกเพิ่มเติม"
             aria-expanded={showActions}
@@ -1010,7 +1010,7 @@ export default function ChatPanel({
             )}
           </div>
           {isResolved ? (
-            <button
+            <button data-ui-control="button"
               type="button"
               disabled={reopenPending}
               className="min-h-11 rounded-lg border"
@@ -1276,7 +1276,7 @@ export default function ChatPanel({
               role="radiogroup"
               aria-label="โหมดช่องพิมพ์"
             >
-              <button
+              <button data-ui-control="button"
                 type="button"
                 role="radio"
                 aria-checked={!isNoteMode}
@@ -1289,7 +1289,7 @@ export default function ChatPanel({
                 ตอบลูกค้า
               </button>
               {onAddNote && (
-                <button
+                <button data-ui-control="button"
                   type="button"
                   role="radio"
                   aria-checked={isNoteMode}

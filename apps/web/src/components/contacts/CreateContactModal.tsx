@@ -227,7 +227,7 @@ export default function CreateContactModal({
                 <Label className="shrink-0 leading-snug">ประเภท</Label>
                 <div className="flex flex-1 gap-2">
                   {(['JURISTIC', 'INDIVIDUAL'] as const).map((t) => (
-                    <button
+                    <button data-ui-control="button"
                       key={t}
                       type="button"
                       onClick={() => {

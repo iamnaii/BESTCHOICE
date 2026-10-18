@@ -1,3 +1,4 @@
+import ScreenTable from '@/components/ui/ScreenTable';
 import { NativeSelect } from '@/components/ui/native-select';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
@@ -147,7 +148,7 @@ export default function PeakSyncPage() {
                 </option>
               ))}
             </NativeSelect>
-            <button
+            <button data-ui-control="button"
               onClick={handleRefresh}
               disabled={isRefreshing}
               className="px-4 py-2 text-sm border border-input rounded-lg hover:bg-muted/50 disabled:opacity-50 flex items-center gap-2"
@@ -244,7 +245,7 @@ export default function PeakSyncPage() {
               </span>
             </div>
             <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+              <ScreenTable className="w-full text-sm">
                 <thead className="bg-muted/40">
                   <tr>
                     <th className="text-left px-5 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wide">
@@ -303,7 +304,7 @@ export default function PeakSyncPage() {
                     );
                   })}
                 </tbody>
-              </table>
+              </ScreenTable>
               {periods.length === 0 && !periodsQuery.isLoading && (
                 <div className="py-12 text-center text-sm text-muted-foreground">
                   ไม่พบข้อมูลงวดบัญชี

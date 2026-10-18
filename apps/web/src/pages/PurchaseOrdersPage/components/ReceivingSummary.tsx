@@ -1,3 +1,4 @@
+import ScreenTable from '@/components/ui/ScreenTable';
 import { useState } from 'react';
 import { ArrowLeft, Truck } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -146,7 +147,7 @@ export function ReceivingSummary({
         </div>
 
         <div className="overflow-x-auto rounded-lg border border-border">
-          <table className="w-full min-w-[1060px] table-fixed border-collapse">
+          <ScreenTable className="w-full min-w-[1060px] table-fixed border-collapse">
             <thead className="bg-muted/50">
               <tr>
                 <th className={cn(thCls, 'w-[46px]')}>#</th>
@@ -232,7 +233,7 @@ export function ReceivingSummary({
                 );
               })}
             </tbody>
-          </table>
+          </ScreenTable>
         </div>
 
         {supplierDoc && setSupplierDoc && (

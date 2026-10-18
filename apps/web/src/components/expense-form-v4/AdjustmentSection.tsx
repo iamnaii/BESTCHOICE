@@ -223,7 +223,7 @@ export function AdjustmentSection({
                   />
                 </div>
                 <div className="col-span-12 flex items-end justify-end md:col-span-1 md:pt-5">
-                  <button
+                  <button data-ui-control="button" data-ui-icon="true"
                     type="button"
                     onClick={() => removeRow(row.uid)}
                     aria-label={`ลบบัญชีปรับ #${idx + 1}`}
@@ -237,7 +237,7 @@ export function AdjustmentSection({
           </div>
 
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <button
+            <button data-ui-control="button"
               type="button"
               onClick={addRow}
               className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-3 py-1.5 text-sm font-medium hover:bg-accent"
@@ -275,7 +275,7 @@ export function AdjustmentSection({
       {!adjustmentsActive && (
         <div className="flex items-center justify-between rounded-md border border-dashed border-border bg-muted/20 px-4 py-3 text-sm">
           <span className="text-muted-foreground">ไม่มีผลต่าง — ไม่ต้องเพิ่มบัญชีปรับ</span>
-          <button
+          <button data-ui-control="button"
             type="button"
             onClick={addRow}
             className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-3 py-1 text-xs hover:bg-accent"

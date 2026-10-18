@@ -1,3 +1,4 @@
+import ScreenTable from '@/components/ui/ScreenTable';
 import { NativeSelect } from '@/components/ui/native-select';
 import { useId } from 'react';
 import { Plus, Trash2 } from 'lucide-react';
@@ -74,7 +75,7 @@ export function PettyCashLinesSection({ value, onChange }: Props) {
 
       {/* Lines */}
       <div className="overflow-x-auto rounded-lg border border-border">
-        <table className="w-full text-sm">
+        <ScreenTable className="w-full text-sm">
           <thead className="bg-muted/40">
             <tr className="text-left text-xs text-muted-foreground">
               <th className="px-2 py-2 w-8">#</th>
@@ -151,7 +152,7 @@ export function PettyCashLinesSection({ value, onChange }: Props) {
                   {formatNumberDecimal(l.totalN.toString(), 2)}
                 </td>
                 <td className="px-2 py-1.5">
-                  <button
+                  <button data-ui-control="button" data-ui-icon="true"
                     type="button"
                     onClick={() => removeLine(l.uid)}
                     disabled={value.lines.length === 1}
@@ -182,11 +183,11 @@ export function PettyCashLinesSection({ value, onChange }: Props) {
               <td></td>
             </tr>
           </tfoot>
-        </table>
+        </ScreenTable>
       </div>
 
       <div>
-        <button
+        <button data-ui-control="button"
           type="button"
           onClick={addLine}
           className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-3 py-1.5 text-sm font-medium hover:bg-accent"

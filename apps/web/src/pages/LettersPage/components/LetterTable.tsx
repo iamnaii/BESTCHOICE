@@ -1,3 +1,4 @@
+import ScreenTable from '@/components/ui/ScreenTable';
 import { Eye, Truck, X, Check, AlertTriangle, Undo2 } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Button } from '@/components/ui/button';
@@ -45,7 +46,7 @@ export default function LetterTable({
 
   return (
     <div className="rounded-md border border-border overflow-x-auto">
-      <table className="w-full text-sm">
+      <ScreenTable className="w-full text-sm">
         <thead className="bg-muted text-muted-foreground">
           <tr>
             {hasCheckbox && (
@@ -129,7 +130,7 @@ export default function LetterTable({
             ))
           )}
         </tbody>
-      </table>
+      </ScreenTable>
     </div>
   );
 }

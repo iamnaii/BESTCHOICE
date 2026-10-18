@@ -78,7 +78,7 @@ export default function SaleDetailsForm({
               </label>
               <div className="flex flex-wrap gap-2">
                 {selectedProduct.prices.map((p) => (
-                  <button
+                  <button data-ui-control="button"
                     key={p.id}
                     type="button"
                     aria-pressed={selectedPriceId === p.id}

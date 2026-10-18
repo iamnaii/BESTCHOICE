@@ -1,3 +1,4 @@
+import ScreenTable from '@/components/ui/ScreenTable';
 // Fix Report v1.0 P1-1 — AP Aging Page
 //
 // Shows unpaid ACCRUAL expenses bucketed by days overdue (0-30 / 31-60 / 61-90
@@ -203,7 +204,7 @@ export default function APAgingPage() {
           />
         </div>
         {bucket && (
-          <button
+          <button data-ui-control="button"
             type="button"
             onClick={() => setBucket('')}
             className="px-3 py-2 text-sm border border-border rounded-md hover:bg-accent"
@@ -222,7 +223,7 @@ export default function APAgingPage() {
             <span className="text-xs text-muted-foreground">
               เลือก {selected.size} · รวม {formatNumberDecimal(selectionTotal.toFixed(2))} ฿
             </span>
-            <button
+            <button data-ui-control="button"
               type="button"
               onClick={handleBatchSettle}
               disabled={selected.size === 0 || !sameVendor}
@@ -248,11 +249,11 @@ export default function APAgingPage() {
         onRetry={query.refetch}
       >
         <div role="region" aria-label="เอกสารค้างจ่าย" tabIndex={0} className="rounded-xl border border-border/60 bg-card overflow-x-auto">
-          <table className="w-full min-w-[48rem] text-sm">
+          <ScreenTable className="w-full min-w-[48rem] text-sm">
             <thead className="bg-muted/40">
               <tr className="text-left text-xs text-muted-foreground">
                 <th className="p-3 w-[4.25rem]">
-                  <button
+                  <button data-ui-control="button" data-ui-icon="true"
                     type="button"
                     onClick={toggleAll}
                     aria-label="เลือกทั้งหมด"
@@ -294,7 +295,7 @@ export default function APAgingPage() {
                       )}
                     >
                       <td className="p-3">
-                        <button
+                        <button data-ui-control="button" data-ui-icon="true"
                           type="button"
                           onClick={() => toggleRow(d.id)}
                           aria-label={`เลือก ${d.number}`}
@@ -344,7 +345,7 @@ export default function APAgingPage() {
                 })
               )}
             </tbody>
-          </table>
+          </ScreenTable>
         </div>
       </QueryBoundary>
     </div>

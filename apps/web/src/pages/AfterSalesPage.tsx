@@ -195,7 +195,7 @@ export default function AfterSalesPage() {
       <div className="flex flex-wrap items-center gap-2">
         <div role="tablist" aria-label="สถานะเคส" className="flex flex-wrap gap-2">
           {visibleTabs.map((t) => (
-            <button
+            <button data-ui-control="button"
               key={t}
               type="button"
               role="tab"
@@ -211,7 +211,7 @@ export default function AfterSalesPage() {
             </button>
           ))}
         </div>
-        <button
+        <button data-ui-control="button"
           type="button"
           aria-pressed={filters.staleOnly}
           onClick={() => setFilters((f) => ({ ...f, staleOnly: !f.staleOnly, page: 1 }))}

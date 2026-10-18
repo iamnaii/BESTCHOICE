@@ -370,7 +370,7 @@ export default function AnalyticsPage() {
         {TABS.map((tab) => {
           const Icon = tab.icon;
           return (
-            <button
+            <button data-ui-control="button"
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
               className={`flex shrink-0 min-h-11 items-center gap-2 px-4 py-2.5 text-sm font-medium rounded-t-lg transition-colors ${

@@ -22,7 +22,7 @@ export default function LetterTabs({ active, counts, onChange }: Props) {
         const count = counts[status] ?? 0;
         const isActive = active === status;
         return (
-          <button
+          <button data-ui-control="button"
             key={status}
             onClick={() => onChange(status)}
             className={`inline-flex items-center gap-1.5 px-4 py-2.5 text-sm border-b-2 transition-colors whitespace-nowrap ${

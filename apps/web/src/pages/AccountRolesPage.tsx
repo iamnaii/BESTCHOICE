@@ -1,3 +1,4 @@
+import ScreenTable from '@/components/ui/ScreenTable';
 import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -135,7 +136,7 @@ function RoleMapTable({
 }) {
   return (
     <div className="overflow-x-auto rounded-md border border-border bg-card">
-      <table className="w-full text-sm">
+      <ScreenTable className="w-full text-sm">
         <thead className="bg-muted/50 text-muted-foreground">
           <tr>
             <th className="px-4 py-3 text-left font-medium leading-snug">Role</th>
@@ -196,7 +197,7 @@ function RoleMapTable({
             )),
           )}
         </tbody>
-      </table>
+      </ScreenTable>
     </div>
   );
 }

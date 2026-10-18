@@ -190,7 +190,7 @@ export default function BranchesPage() {
         subtitle={`ทั้งหมด ${branches.length} สาขา`}
         action={
           user?.role === 'OWNER' ? (
-            <button
+            <button data-ui-control="button"
               onClick={openCreate}
               className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors"
             >
@@ -208,7 +208,7 @@ export default function BranchesPage() {
           onRetry={refetch}
           errorTitle="ไม่สามารถโหลดรายชื่อสาขาได้"
         >
-          <DataTable columns={columns} data={branches} isLoading={isLoading} />
+          <DataTable embedded columns={columns} data={branches} isLoading={isLoading} />
         </QueryBoundary>
       </Card>
 
@@ -334,14 +334,14 @@ export default function BranchesPage() {
                 </div>
               </div>
               <div className="sticky bottom-0 bg-background/95 backdrop-blur-xs border-t px-6 py-4 flex justify-end gap-3 shrink-0">
-                <button
+                <button data-ui-control="button"
                   type="button"
                   onClick={closeModal}
                   className="px-6 py-2.5 text-sm border border-input rounded-lg hover:bg-muted transition-colors"
                 >
                   ยกเลิก
                 </button>
-                <button
+                <button data-ui-control="button"
                   type="submit"
                   disabled={saveMutation.isPending || floatInvalid}
                   className="px-6 py-2.5 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50 font-semibold transition-colors shadow-sm"

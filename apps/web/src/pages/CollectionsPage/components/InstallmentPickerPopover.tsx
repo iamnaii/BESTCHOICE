@@ -54,7 +54,7 @@ export default function InstallmentPickerPopover({
     <div className="absolute z-50 mt-1 w-full rounded-xl border border-border bg-card shadow-lg p-3">
       <div className="flex items-center justify-between mb-2">
         <div className="text-sm font-semibold leading-snug">เลือกงวดที่นัดจ่าย</div>
-        <button onClick={onClose} className="p-1 rounded hover:bg-muted" aria-label="ปิด">
+        <button data-ui-control="button" data-ui-icon="true" onClick={onClose} className="p-1 rounded hover:bg-muted" aria-label="ปิด">
           <X className="size-4" />
         </button>
       </div>
@@ -99,13 +99,13 @@ export default function InstallmentPickerPopover({
       </div>
 
       <div className="flex gap-2 justify-end pt-3 mt-2 border-t border-border/40">
-        <button
+        <button data-ui-control="button"
           onClick={onClose}
           className="px-3 py-1.5 text-sm border border-input rounded-lg hover:bg-muted"
         >
           ยกเลิก
         </button>
-        <button
+        <button data-ui-control="button"
           onClick={apply}
           className="px-3 py-1.5 text-sm bg-primary text-primary-foreground rounded-lg font-semibold hover:bg-primary/90"
         >

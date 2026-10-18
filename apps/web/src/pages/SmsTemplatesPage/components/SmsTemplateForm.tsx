@@ -162,7 +162,7 @@ export function SmsTemplateForm({
       </div>
 
       <div className="flex justify-end pt-2">
-        <button
+        <button data-ui-control="button"
           type="submit"
           disabled={submitting}
           className="px-4 py-2 rounded-md bg-primary text-primary-foreground text-sm hover:bg-primary/90 transition-colors disabled:opacity-50"

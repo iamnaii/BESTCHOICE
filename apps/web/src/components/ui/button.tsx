@@ -361,6 +361,8 @@ function Button({
   return (
     <Comp
       data-slot="button"
+      data-ui-control={mode === 'link' ? undefined : 'button'}
+      data-ui-icon={mode === 'icon' || size === 'icon' ? 'true' : undefined}
       className={cn(
         buttonVariants({
           variant,

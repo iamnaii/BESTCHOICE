@@ -123,7 +123,7 @@ export default function CustomerTagDialog({ open, onClose, customerId }: Props) 
                           </div>
                         )}
                       </div>
-                      <button
+                      <button data-ui-control="button" data-ui-icon="true"
                         type="button"
                         onClick={() => handleRemove(t.id)}
                         disabled={remove.isPending || autoOnly}

@@ -66,6 +66,7 @@ export function AccountSearchDropdown({
   return (
     <div className="relative" ref={ref}>
       <button
+        data-slot="select-trigger"
         type="button"
         onClick={() => !disabled && setOpen(!open)}
         disabled={disabled}

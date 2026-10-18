@@ -1,3 +1,4 @@
+import ScreenTable from '@/components/ui/ScreenTable';
 import { NativeSelect } from '@/components/ui/native-select';
 import { useId as useUiFieldId, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -148,7 +149,7 @@ function KnowledgeBaseTab() {
   return (
     <>
       <div className="flex justify-end mb-4">
-        <button
+        <button data-ui-control="button"
           onClick={startCreate}
           className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm hover:bg-primary/90"
         >
@@ -336,7 +337,7 @@ function KnowledgeBaseTab() {
               </div>
 
               <div className="flex gap-2 pt-3 border-t">
-                <button
+                <button data-ui-control="button"
                   type="submit"
                   disabled={saveMutation.isPending}
                   className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm hover:bg-primary/90 disabled:opacity-50"
@@ -344,7 +345,7 @@ function KnowledgeBaseTab() {
                   {saveMutation.isPending ? 'กำลังบันทึก...' : 'บันทึก'}
                 </button>
                 {editing && !pendingDelete && (
-                  <button
+                  <button data-ui-control="button"
                     type="button"
                     onClick={() => setPendingDelete(true)}
                     className="px-4 py-2 border border-destructive/30 text-destructive rounded-lg text-sm hover:bg-destructive/10"
@@ -354,7 +355,7 @@ function KnowledgeBaseTab() {
                 )}
                 {editing && pendingDelete && (
                   <>
-                    <button
+                    <button data-ui-control="button"
                       type="button"
                       onClick={() => { deleteMutation.mutate(editing.id); setPendingDelete(false); }}
                       disabled={deleteMutation.isPending}
@@ -362,7 +363,7 @@ function KnowledgeBaseTab() {
                     >
                       ยืนยันลบ
                     </button>
-                    <button
+                    <button data-ui-control="button"
                       type="button"
                       onClick={() => setPendingDelete(false)}
                       className="px-4 py-2 border border-border text-foreground/70 rounded-lg text-sm hover:bg-muted"
@@ -371,7 +372,7 @@ function KnowledgeBaseTab() {
                     </button>
                   </>
                 )}
-                <button
+                <button data-ui-control="button"
                   type="button"
                   onClick={reset}
                   className="px-4 py-2 border border-border text-foreground/70 rounded-lg text-sm hover:bg-muted"
@@ -449,7 +450,7 @@ function SuggestionsTab() {
       {/* Status filter */}
       <div className="flex gap-2 mb-4">
         {['', 'PENDING', 'APPROVED', 'REJECTED'].map((s) => (
-          <button
+          <button data-ui-control="button"
             key={s}
             onClick={() => setStatusFilter(s)}
             className={`px-3 py-1.5 rounded-lg text-sm border transition-colors ${
@@ -481,7 +482,7 @@ function SuggestionsTab() {
             </p>
 
             <div className="border rounded-xl overflow-hidden">
-              <table className="w-full text-sm">
+              <ScreenTable className="w-full text-sm">
                 <thead>
                   <tr className="bg-muted text-left text-xs text-muted-foreground uppercase">
                     <th className="px-4 py-3">คำถามลูกค้า</th>
@@ -526,7 +527,7 @@ function SuggestionsTab() {
                       <td className="px-4 py-3 text-right">
                         {s.status === 'PENDING' && (
                           <div className="flex gap-1 justify-end">
-                            <button
+                            <button data-ui-control="button"
                               onClick={(e) => {
                                 e.stopPropagation();
                                 approveMutation.mutate(s.id);
@@ -536,7 +537,7 @@ function SuggestionsTab() {
                             >
                               อนุมัติ
                             </button>
-                            <button
+                            <button data-ui-control="button"
                               onClick={(e) => {
                                 e.stopPropagation();
                                 rejectMutation.mutate(s.id);
@@ -552,7 +553,7 @@ function SuggestionsTab() {
                     </tr>
                   ))}
                 </tbody>
-              </table>
+              </ScreenTable>
             </div>
 
             {/* Expanded detail */}

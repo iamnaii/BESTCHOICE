@@ -1,3 +1,4 @@
+import ScreenTable from '@/components/ui/ScreenTable';
 import { useId as useUiFieldId, useState, useMemo } from 'react';
 import { useSearchParams } from 'react-router';
 import { useAuth } from '@/contexts/AuthContext';
@@ -273,7 +274,7 @@ export default function ChartOfAccountsPage() {
             : 'จัดการรหัสบัญชี (Chart of Accounts) — BESTCHOICE SHOP (หน้าร้าน — ไม่จด VAT, รหัสขึ้นต้น S)'
         }
         action={view === 'chart' ? (
-          <button
+          <button data-ui-control="button"
             onClick={openCreate}
             className="min-h-11 px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 shadow-sm"
           >
@@ -366,7 +367,7 @@ export default function ChartOfAccountsPage() {
                   <span className="text-muted-foreground font-normal text-xs">({list.length})</span>
                 </div>
                 <div role="region" aria-label={`บัญชี ${prefix}`} tabIndex={0} className="overflow-x-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring">
-                <table className="w-full min-w-[52rem] text-sm">
+                <ScreenTable className="w-full min-w-[52rem] text-sm">
                   <thead className="bg-muted/50 text-xs text-muted-foreground">
                     <tr>
                       <th className="text-left px-4 py-2 font-medium w-28">รหัส</th>
@@ -413,13 +414,13 @@ export default function ChartOfAccountsPage() {
                             )}
                           </td>
                           <td className="px-4 py-2 text-right whitespace-nowrap space-x-2">
-                            <button
+                            <button data-ui-control="button"
                               onClick={() => openEdit(a)}
                               className="min-h-11 min-w-11 rounded-md text-sm px-2 py-1 text-primary hover:bg-accent"
                             >
                               แก้ไข
                             </button>
-                            <button
+                            <button data-ui-control="button"
                               onClick={() =>
                                 setDeleteConfirm({ open: true, id: a.id, label: `${a.code} ${a.name}` })
                               }
@@ -432,7 +433,7 @@ export default function ChartOfAccountsPage() {
                       );
                     })}
                   </tbody>
-                </table>
+                </ScreenTable>
                 </div>
               </div>
             ))}
@@ -571,13 +572,13 @@ export default function ChartOfAccountsPage() {
             </div>
 
             <div className="sticky bottom-0 mt-5 bg-background border-t border-border py-4 flex flex-wrap justify-end gap-3">
-              <button
+              <button data-ui-control="button"
                 onClick={closeForm}
                 className="min-h-11 px-4 py-2.5 text-sm border border-input rounded-lg hover:bg-muted"
               >
                 ยกเลิก
               </button>
-              <button
+              <button data-ui-control="button"
                 onClick={handleSubmit}
                 disabled={createMutation.isPending || updateMutation.isPending}
                 className="min-h-11 px-4 py-2.5 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50 font-semibold"
@@ -613,7 +614,7 @@ function FilterChip({
   children: React.ReactNode;
 }) {
   return (
-    <button
+    <button data-ui-control="button"
       type="button"
       onClick={onClick}
       aria-pressed={active}

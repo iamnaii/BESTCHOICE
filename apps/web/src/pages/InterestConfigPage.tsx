@@ -279,7 +279,7 @@ export default function InterestConfigPage() {
         title="ตั้งค่าดอกเบี้ย"
         subtitle="กำหนดอัตราดอกเบี้ยและเงื่อนไขตามประเภทสินค้า"
         action={
-          <button onClick={openCreate} className="px-4 py-2 bg-primary text-primary-foreground text-sm font-medium rounded-lg hover:bg-primary/90">
+          <button data-ui-control="button" onClick={openCreate} className="px-4 py-2 bg-primary text-primary-foreground text-sm font-medium rounded-lg hover:bg-primary/90">
             + สร้าง Config
           </button>
         }
@@ -287,9 +287,9 @@ export default function InterestConfigPage() {
 
       {/* Default fallback config — card style */}
       <div className="rounded-xl border border-warning/30 bg-card shadow-sm p-5 mb-5 lg:mb-7.5">
-        <div className="flex items-start justify-between">
-          <div className="flex-1">
-            <div className="flex items-center gap-2 mb-2">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0 flex-1 basis-full sm:basis-0">
+            <div className="flex flex-wrap items-center gap-2 mb-2">
               <h3 className="text-lg font-semibold text-foreground">ค่า Default</h3>
               <span className="rounded-full px-2.5 py-0.5 text-xs font-semibold bg-warning/20 text-warning-strong">ใช้เมื่อไม่มี config ตามประเภท</span>
             </div>
@@ -319,9 +319,9 @@ export default function InterestConfigPage() {
             ) : (
               <div className="flex flex-col gap-3 mt-2">
                 {defaultKeys.map((item) => (
-                  <div key={item.key} className="flex items-center gap-4">
-                    <label className="flex-1 text-sm text-foreground">{item.label}</label>
-                    <div className="w-48">
+                  <div key={item.key} className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-4">
+                    <label className="min-w-0 flex-1 text-sm text-foreground">{item.label}</label>
+                    <div className="w-full sm:w-48 sm:shrink-0">
                       <input
                         type="number"
                         step={item.step}
@@ -333,14 +333,14 @@ export default function InterestConfigPage() {
                   </div>
                 ))}
                 <div className="flex gap-2 pt-1">
-                  <button
+                  <button data-ui-control="button"
                     onClick={() => { handleSaveDefaults(); setEditingDefaults(false); }}
                     disabled={saveDefaultsMutation.isPending}
                     className="px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50"
                   >
                     {saveDefaultsMutation.isPending ? 'กำลังบันทึก...' : 'บันทึก'}
                   </button>
-                  <button
+                  <button data-ui-control="button"
                     onClick={() => { setEditingDefaults(false); setDefaultsChanged(false); defaultsChangedRef.current = false; }}
                     className="px-3 py-2 text-sm text-muted-foreground hover:text-foreground"
                   >
@@ -469,7 +469,7 @@ export default function InterestConfigPage() {
               <label className="block text-sm font-medium text-foreground mb-1">ประเภทสินค้า</label>
               <div className="flex flex-wrap gap-2">
                 {CATEGORIES.map((cat) => (
-                  <button
+                  <button data-ui-control="button"
                     key={cat.value}
                     type="button"
                     onClick={() => toggleCategory(cat.value)}
@@ -604,8 +604,8 @@ export default function InterestConfigPage() {
 
             {/* Buttons */}
             <div className="flex gap-3 pt-2">
-              <button onClick={closeModal} className="flex-1 px-4 py-2 text-sm border border-input rounded-lg hover:bg-muted/50">ยกเลิก</button>
-              <button
+              <button data-ui-control="button" onClick={closeModal} className="flex-1 px-4 py-2 text-sm border border-input rounded-lg hover:bg-muted/50">ยกเลิก</button>
+              <button data-ui-control="button"
                 onClick={handleSave}
                 disabled={saveMutation.isPending}
                 className="flex-1 px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50"

@@ -61,7 +61,7 @@ export default function CancelBookingDialog({
         <Label htmlFor="cancel-reason">เหตุผล (บังคับ)</Label>
         <div className="flex flex-wrap gap-1.5">
           {REASONS.map((r) => (
-            <button
+            <button data-ui-control="button"
               key={r}
               type="button"
               aria-pressed={reason === r}

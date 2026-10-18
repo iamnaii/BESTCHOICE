@@ -70,7 +70,7 @@ export default function ContractDocuments({ signatureRequirements, signatures, e
                 <span className="text-muted-foreground ml-2">{formatDateMedium(doc.createdAt)}</span>
               </div>
               <div className="flex gap-2">
-                <button
+                <button data-ui-control="button"
                   onClick={() => download.mutate(doc)}
                   disabled={download.isPending}
                   className="min-h-11 px-3 py-2 text-xs bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50 focus-visible:ring-2 focus-visible:ring-ring"
@@ -83,9 +83,9 @@ export default function ContractDocuments({ signatureRequirements, signatures, e
         </div>
       ) : <p className="text-sm text-muted-foreground">ยังไม่มีเอกสารที่ระบบสร้าง</p>}
       {total > 20 && <div className="mt-3 flex items-center justify-between gap-2 text-sm">
-        <button className="min-h-11 px-3 border rounded-lg disabled:opacity-50" disabled={page <= 1} onClick={() => onPageChange(page - 1)}>ก่อนหน้า</button>
+        <button data-ui-control="button" className="min-h-11 px-3 border rounded-lg disabled:opacity-50" disabled={page <= 1} onClick={() => onPageChange(page - 1)}>ก่อนหน้า</button>
         <span>หน้า {page} / {Math.ceil(total / 20)}</span>
-        <button className="min-h-11 px-3 border rounded-lg disabled:opacity-50" disabled={page * 20 >= total} onClick={() => onPageChange(page + 1)}>ถัดไป</button>
+        <button data-ui-control="button" className="min-h-11 px-3 border rounded-lg disabled:opacity-50" disabled={page * 20 >= total} onClick={() => onPageChange(page + 1)}>ถัดไป</button>
       </div>}
       </QueryBoundary>
     </div>

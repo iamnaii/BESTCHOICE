@@ -45,7 +45,7 @@ export default function LibraryAttachmentTray({
               </p>
               {item.error && <p className="break-words text-xs text-destructive">{item.error}</p>}
             </div>
-            <button
+            <button data-ui-control="button"
               type="button"
               className="grid min-h-11 min-w-11 place-items-center rounded hover:bg-muted disabled:opacity-40"
               disabled={item.status === 'SENDING' || item.status === 'UNKNOWN' || item.status === 'VERIFY'}

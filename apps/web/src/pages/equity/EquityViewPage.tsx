@@ -1,3 +1,4 @@
+import ScreenTable from '@/components/ui/ScreenTable';
 import { useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -179,7 +180,7 @@ export default function EquityViewPage() {
             <Card>
               <CardHeader className="font-semibold">ผู้ถือหุ้น</CardHeader>
               <CardContent>
-                <table className="w-full text-sm">
+                <ScreenTable className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-border text-left text-xs text-muted-foreground uppercase">
                       <th className="py-2">ชื่อ</th>
@@ -208,7 +209,7 @@ export default function EquityViewPage() {
                       </tr>
                     ))}
                   </tbody>
-                </table>
+                </ScreenTable>
               </CardContent>
             </Card>
           )}

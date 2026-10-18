@@ -1,3 +1,4 @@
+import ScreenTable from '@/components/ui/ScreenTable';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Check, AlertTriangle } from 'lucide-react';
@@ -42,7 +43,7 @@ export function AssetEntrySection4Journal({ calc }: { calc: CalculationResult })
             กรอกข้อมูลให้ครบเพื่อดูตัวอย่างรายการบัญชี
           </div>
         ) : (
-          <table className="w-full text-sm">
+          <ScreenTable className="w-full text-sm">
             <thead>
               <tr className="border-b text-muted-foreground">
                 <th className="text-left py-2 px-2 font-medium">บัญชี</th>
@@ -72,7 +73,7 @@ export function AssetEntrySection4Journal({ calc }: { calc: CalculationResult })
                 <td className="py-2 px-2 text-right tabular-nums">{fmt(totalCr)}</td>
               </tr>
             </tbody>
-          </table>
+          </ScreenTable>
         )}
       </CardContent>
     </Card>

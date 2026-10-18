@@ -167,7 +167,7 @@ function LetterAssetField({
               if (f) handleChange(f);
             }}
           />
-          <button
+          <button data-ui-control="button"
             type="button"
             onClick={() => inputRef.current?.click()}
             disabled={uploading}
@@ -373,7 +373,7 @@ export default function DunningSettingsPage() {
             >
               จัดการ SMS Template
             </a>
-            <button
+            <button data-ui-control="button"
               onClick={openCreate}
               className="flex items-center gap-2 px-4 py-2 rounded-md bg-primary text-primary-foreground text-sm hover:bg-primary/90 transition-colors"
             >
@@ -565,7 +565,7 @@ export default function DunningSettingsPage() {
 
                           {/* Actions */}
                           <div className="flex items-center gap-1">
-                            <button
+                            <button data-ui-control="button" data-ui-icon="true"
                               onClick={() => handleToggle(rule)}
                               title={rule.isActive ? 'ปิดใช้งาน' : 'เปิดใช้งาน'}
                               className="p-1.5 rounded hover:bg-muted transition-colors"
@@ -576,14 +576,14 @@ export default function DunningSettingsPage() {
                                 <ToggleLeft className="w-5 h-5 text-muted-foreground" />
                               )}
                             </button>
-                            <button
+                            <button data-ui-control="button" data-ui-icon="true"
                               onClick={() => openEdit(rule)}
                               title="แก้ไข"
                               className="p-1.5 rounded hover:bg-muted transition-colors"
                             >
                               <Pencil className="w-4 h-4 text-muted-foreground hover:text-foreground" />
                             </button>
-                            <button
+                            <button data-ui-control="button" data-ui-icon="true"
                               onClick={() => handleDelete(rule)}
                               title="ลบ"
                               className="p-1.5 rounded hover:bg-destructive/20 transition-colors"
@@ -787,14 +787,14 @@ export default function DunningSettingsPage() {
 
           {/* Footer */}
           <div className="flex justify-end gap-2 pt-2 border-t border-border">
-            <button
+            <button data-ui-control="button"
               type="button"
               onClick={closeModal}
               className="px-4 py-2 rounded-md border border-border text-sm hover:bg-muted transition-colors"
             >
               ยกเลิก
             </button>
-            <button
+            <button data-ui-control="button"
               type="submit"
               disabled={saveMutation.isPending}
               className="px-4 py-2 rounded-md bg-primary text-primary-foreground text-sm hover:bg-primary/90 disabled:opacity-50 transition-colors"

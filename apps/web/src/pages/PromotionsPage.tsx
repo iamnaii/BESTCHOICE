@@ -301,7 +301,7 @@ export default function PromotionsPage() {
             onRetry={refetch}
             errorTitle="ไม่สามารถโหลดโปรโมชันได้"
           >
-            <DataTable
+            <DataTable embedded
               columns={columns}
               data={data?.data || []}
               isLoading={isLoading}

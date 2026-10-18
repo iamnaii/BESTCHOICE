@@ -297,7 +297,7 @@ export default function StockProductsPage() {
                 </div>
               )}
             </div>
-            <button
+            <button data-ui-control="button" data-ui-icon="true"
               type="button"
               onClick={() => setBulkResult(null)}
               aria-label="ปิดสรุป"

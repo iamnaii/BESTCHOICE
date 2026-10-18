@@ -189,7 +189,7 @@ export default function LineOaSettingsPage() {
   const hasLiff = !!(form.liff_id);
 
   return (
-    <div className="p-6 max-w-4xl mx-auto">
+    <div className="min-w-0 p-0 sm:p-6 max-w-4xl mx-auto">
       <PageHeader
         title="เชื่อมต่อ LINE OA"
         subtitle="ตั้งค่าเชื่อมต่อ LINE Official Account เพื่อส่งแจ้งเตือนและรับชำระเงินผ่านไลน์"
@@ -210,7 +210,7 @@ export default function LineOaSettingsPage() {
             ? 'bg-info/10 border-info/30'
             : 'bg-warning/5 dark:bg-warning/10 border-warning/30'
       }`}>
-        <div className="flex items-start gap-4">
+        <div className="flex flex-wrap items-start gap-4">
           <div className={`w-12 h-12 rounded-xl flex items-center justify-center text-2xl shrink-0 ${
             data?.isConfigured && testResult?.success
               ? 'bg-success/20'
@@ -238,7 +238,7 @@ export default function LineOaSettingsPage() {
             )}
           </div>
           {data?.isConfigured && (
-            <button
+            <button data-ui-control="button"
               onClick={() => testMutation.mutate()}
               disabled={testMutation.isPending}
               className="px-5 py-2.5 bg-primary text-primary-foreground rounded-xl font-medium hover:bg-primary/90 disabled:bg-muted shrink-0"
@@ -366,7 +366,7 @@ export default function LineOaSettingsPage() {
                 <code className="flex-1 text-sm bg-muted px-4 py-3 rounded-lg border text-foreground font-mono break-all">
                   {webhookData.webhookUrl}
                 </code>
-                <button
+                <button data-ui-control="button"
                   type="button"
                   onClick={() => copyToClipboard(webhookData.webhookUrl)}
                   className="px-4 py-3 bg-primary text-primary-foreground text-sm rounded-lg hover:bg-primary/90 shrink-0 font-medium"
@@ -453,8 +453,8 @@ export default function LineOaSettingsPage() {
         </div>
 
         {/* Save Button */}
-        <div className="ml-4 flex gap-3 pt-2">
-          <button
+        <div className="sm:ml-4 flex flex-col sm:flex-row sm:flex-wrap gap-3 pt-2">
+          <button data-ui-control="button"
             type="submit"
             disabled={saveMutation.isPending || (!hasToken && !hasSecret)}
             className="px-8 py-3 bg-primary text-primary-foreground rounded-xl font-semibold hover:bg-primary/90 disabled:bg-muted disabled:cursor-not-allowed text-base shadow-card"
@@ -462,7 +462,7 @@ export default function LineOaSettingsPage() {
             {saveMutation.isPending ? 'กำลังบันทึก...' : 'บันทึกการตั้งค่า'}
           </button>
           {data?.isConfigured && (
-            <button
+            <button data-ui-control="button"
               type="button"
               onClick={() => testMutation.mutate()}
               disabled={testMutation.isPending}
@@ -500,8 +500,8 @@ export default function LineOaSettingsPage() {
       {/* Test Send Messages */}
       {data?.isConfigured && (
         <div className="mt-10 mb-6">
-          <h3 className="font-semibold text-foreground mb-4 ml-4">ทดสอบส่งข้อความ</h3>
-          <div className="rounded-xl border border-border/50 bg-card shadow-sm p-5 ml-4 border-l-4 border-l-warning">
+          <h3 className="font-semibold text-foreground mb-4 sm:ml-4">ทดสอบส่งข้อความ</h3>
+          <div className="rounded-xl border border-border/50 bg-card shadow-sm p-5 sm:ml-4 border-l-4 border-l-warning">
             <p className="text-sm text-muted-foreground mb-4">
               ส่งตัวอย่าง Flex Message ให้ตัวเองดูก่อน เพื่อตรวจสอบว่าข้อความแสดงผลถูกต้อง
             </p>
@@ -519,7 +519,7 @@ export default function LineOaSettingsPage() {
                     placeholder="พิมพ์ #owner ในแชท Bot หรือวาง User ID ที่นี่"
                     className="flex-1 border rounded-lg px-3 py-2.5 text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background font-mono"
                   />
-                  <button
+                  <button data-ui-control="button"
                     type="button"
                     onClick={() => {
                       queryClient.invalidateQueries({ queryKey: ['line-oa-settings'] });
@@ -544,13 +544,14 @@ export default function LineOaSettingsPage() {
                 <label className="block text-sm font-medium text-foreground mb-1">
                   ประเภทข้อความ
                 </label>
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   {TEST_MESSAGE_TYPES.map((t) => (
                     <button
+                      data-ui-control="button"
                       key={t.value}
                       type="button"
                       onClick={() => setTestMsgType(t.value)}
-                      className={`px-3 py-2 text-sm rounded-lg border text-left transition-colors ${
+                      className={`justify-start px-3 py-2 text-sm rounded-lg border text-left transition-colors ${
                         testMsgType === t.value
                           ? 'border-primary bg-primary/10 text-primary font-medium'
                           : 'border-border hover:border-primary/50 text-foreground'
@@ -563,7 +564,7 @@ export default function LineOaSettingsPage() {
               </div>
 
               <div className="flex items-center gap-3 flex-wrap">
-                <button
+                <button data-ui-control="button"
                   type="button"
                   onClick={() => testSendMutation.mutate()}
                   disabled={testSendMutation.isPending || testSendAllMutation.isPending || !form.owner_line_id}
@@ -571,7 +572,7 @@ export default function LineOaSettingsPage() {
                 >
                   {testSendMutation.isPending ? 'กำลังส่ง...' : 'ส่งทดสอบ'}
                 </button>
-                <button
+                <button data-ui-control="button"
                   type="button"
                   onClick={() => testSendAllMutation.mutate()}
                   disabled={testSendMutation.isPending || testSendAllMutation.isPending || !form.owner_line_id}

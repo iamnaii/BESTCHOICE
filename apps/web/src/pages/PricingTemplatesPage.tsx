@@ -1,3 +1,4 @@
+import ScreenTable from '@/components/ui/ScreenTable';
 import { NativeSelect } from '@/components/ui/native-select';
 import { useId as useUiFieldId, useState, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -278,13 +279,13 @@ export default function PricingTemplatesPage() {
         subtitle="กำหนดราคาเงินสด / ผ่อน BESTCHOICE / ผ่อนไฟแนนซ์ ตามรุ่นสินค้า"
         action={
           <div className="flex gap-2">
-            <button
+            <button data-ui-control="button"
               onClick={downloadTemplate}
               className="px-3 py-2 text-sm text-muted-foreground border border-input rounded-lg hover:bg-muted/50"
             >
               ดาวน์โหลดแบบฟอร์ม
             </button>
-            <button
+            <button data-ui-control="button"
               onClick={() => fileInputRef.current?.click()}
               disabled={importMutation.isPending}
               className="px-3 py-2 text-sm text-primary border border-primary/30 rounded-lg hover:bg-primary/5 dark:hover:bg-primary/10 disabled:opacity-50"
@@ -292,7 +293,7 @@ export default function PricingTemplatesPage() {
               {importMutation.isPending ? 'กำลังนำเข้า...' : 'นำเข้า Excel'}
             </button>
             <input ref={fileInputRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={handleFileImport} />
-            <button onClick={openCreate} className="px-4 py-2 bg-primary text-primary-foreground text-sm font-medium rounded-lg hover:bg-primary/90">
+            <button data-ui-control="button" onClick={openCreate} className="px-4 py-2 bg-primary text-primary-foreground text-sm font-medium rounded-lg hover:bg-primary/90">
               + เพิ่มราคาตั้งต้น
             </button>
           </div>
@@ -339,7 +340,7 @@ export default function PricingTemplatesPage() {
         <Card className="overflow-hidden">
           <CardContent className="p-0">
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <ScreenTable className="w-full text-sm">
               <thead>
                 <tr className="bg-muted/40 border-b border-border/50">
                   <th className="text-left px-4 py-3 font-medium text-muted-foreground">ยี่ห้อ / รุ่น</th>
@@ -388,7 +389,7 @@ export default function PricingTemplatesPage() {
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </ScreenTable>
           </div>
           </CardContent>
         </Card>
@@ -460,7 +461,7 @@ export default function PricingTemplatesPage() {
                         { value: true, label: 'มีประกัน' },
                         { value: false, label: 'ไม่มีประกัน' },
                       ].map((opt) => (
-                        <button
+                        <button data-ui-control="button"
                           key={String(opt.value)}
                           onClick={() => setForm((f) => ({ ...f, hasWarranty: opt.value }))}
                           className={`px-4 py-2 rounded-lg text-sm border transition-colors ${
@@ -573,8 +574,8 @@ export default function PricingTemplatesPage() {
             </div>
 
             <div className="flex gap-3 pt-2">
-              <button onClick={closeModal} className="flex-1 px-4 py-2 text-sm border border-input rounded-lg">ยกเลิก</button>
-              <button
+              <button data-ui-control="button" onClick={closeModal} className="flex-1 px-4 py-2 text-sm border border-input rounded-lg">ยกเลิก</button>
+              <button data-ui-control="button"
                 onClick={() => saveMutation.mutate()}
                 disabled={!canSave || saveMutation.isPending}
                 className="flex-1 px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50"

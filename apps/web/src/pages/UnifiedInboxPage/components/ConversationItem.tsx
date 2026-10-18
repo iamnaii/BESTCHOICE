@@ -319,7 +319,7 @@ function ConversationItem({ session, isActive, onSelect, onPin, aiSettings }: Co
           </div>
           {/* Reserve a separate column so the pin never covers unread/status badges. */}
           {onPin && (
-            <button
+            <button data-ui-control="button" data-ui-icon="true"
               type="button"
               aria-pressed={isPinned}
               onClick={(e) => {

@@ -1,3 +1,4 @@
+import ScreenTable from '@/components/ui/ScreenTable';
 import { useEffect, useRef, useState } from 'react';
 import { getErrorMessage } from '@/lib/api';
 import { Button } from '@/components/ui/button';
@@ -89,7 +90,7 @@ export default function CashCloseOverview({ date, branchId, showTable, onOpen }:
             </span>
           </div>
           <div className="hidden overflow-x-auto md:block">
-            <table className="w-full text-sm leading-snug">
+            <ScreenTable className="w-full text-sm leading-snug">
               <thead>
                 <tr className="border-b border-border text-left text-xs text-muted-foreground">
                   <th className="px-5 py-3 font-normal">สาขา</th>
@@ -116,7 +117,7 @@ export default function CashCloseOverview({ date, branchId, showTable, onOpen }:
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </ScreenTable>
           </div>
           <div className="space-y-3 p-4 md:hidden">
             {data.rows.map((row) => (

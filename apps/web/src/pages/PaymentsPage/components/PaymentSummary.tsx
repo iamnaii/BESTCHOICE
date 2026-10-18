@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { ChevronLeft, ChevronRight, FileSpreadsheet, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Card, CardContent } from '@/components/ui/card';
+import DataTable, { type Column } from '@/components/ui/DataTable';
 import ThaiDateInput from '@/components/ui/ThaiDateInput';
 import api, { getErrorMessage } from '@/lib/api';
 import { exportToExcel } from '@/utils/excel.util';
@@ -46,6 +47,44 @@ const RECEIPT_TYPE_LABELS: Record<string, string> = {
   EARLY_PAYOFF: 'ปิดยอด',
   RESCHEDULE_FEE: 'ค่าปรับดิว',
 };
+
+// Related fields share a column so the full row fits beside the expanded sidebar.
+const summaryColumns: Column<DailySummaryPayment>[] = [
+  {
+    key: 'receiptNumber', label: 'ใบเสร็จ / สัญญา', width: '13rem', cardFullWidth: true,
+    className: '[overflow-wrap:anywhere]',
+    render: p => <div className="space-y-1">
+      <div className="font-mono text-xs text-muted-foreground">{p.receiptNumber}</div>
+      <div className="font-mono text-xs text-primary font-semibold">{p.contract?.contractNumber}</div>
+    </div>,
+  },
+  {
+    key: 'customer', label: 'ลูกค้า', cardFullWidth: true, className: '[overflow-wrap:anywhere]',
+    render: p => <span className="text-sm font-medium">{p.contract?.customer?.name}</span>,
+  },
+  {
+    key: 'amount', label: 'ยอดรับจริง', width: '11rem', align: 'right', className: 'tabular-nums',
+    render: p => <div className="space-y-1">
+      {isCreditApplied(p.paymentMethod) ? (
+        <div className="text-muted-foreground">
+          <div className="whitespace-nowrap">{Number(p.amount).toLocaleString()} ฿</div>
+          <div className="text-xs">ไม่นับในยอดรับ</div>
+        </div>
+      ) : <div className="whitespace-nowrap text-sm font-semibold text-success">{Number(p.amount).toLocaleString()} ฿</div>}
+      <div className="text-xs text-muted-foreground">{p.installmentNo != null ? `งวดที่ ${p.installmentNo}` : RECEIPT_TYPE_LABELS[p.receiptType] || '—'}</div>
+      <div className="text-xs text-muted-foreground [overflow-wrap:anywhere]">{methodLabels[p.paymentMethod ?? ''] || p.paymentMethod || '—'}</div>
+    </div>,
+  },
+  {
+    key: 'paidDate', label: 'เวลา', width: '6rem', className: 'whitespace-nowrap tabular-nums',
+    render: p => <span className="text-xs text-muted-foreground">{p.paidDate ? new Date(p.paidDate).toLocaleTimeString('th-TH') : '—'}</span>,
+  },
+  {
+    key: 'issuedByName', label: 'ผู้บันทึก', width: '11rem', cardFullWidth: true,
+    className: '[overflow-wrap:anywhere]',
+    render: p => <span className="text-xs text-muted-foreground">{p.issuedByName || '—'}</span>,
+  },
+];
 
 interface PaymentSummaryProps {
   summaryDate: string;
@@ -148,7 +187,7 @@ export default function PaymentSummary({
       <div className="mb-6 space-y-2">
         <div className="flex items-center gap-2 flex-wrap">
           <label htmlFor={`${uiFieldId}-1`} className="text-sm font-medium text-foreground">วันที่:</label>
-          <button
+          <button data-ui-control="button" data-ui-icon="true"
             type="button"
             aria-label="วันก่อนหน้า"
             onClick={() => onDateChange(shiftDay(summaryDate, -1))}
@@ -161,7 +200,7 @@ export default function PaymentSummary({
             onChange={(e) => onDateChange(e.target.value)}
             className="px-3 py-2 border border-input rounded-lg text-sm bg-background outline-hidden focus:ring-2 focus:ring-ring/30"
           />
-          <button
+          <button data-ui-control="button" data-ui-icon="true"
             type="button"
             aria-label="วันถัดไป"
             onClick={() => onDateChange(shiftDay(summaryDate, 1))}
@@ -171,7 +210,7 @@ export default function PaymentSummary({
           </button>
 
           {/* ส่งออก Excel — ยึดวันที่ที่กรองอยู่ (ตัวกรองเดียว ไม่มี picker ซ้ำ) */}
-          <button
+          <button data-ui-control="button"
             type="button"
             onClick={handleExportRange}
             disabled={exporting}
@@ -263,51 +302,13 @@ export default function PaymentSummary({
 
           {/* Payment Table */}
           {summary.data.length > 0 && (
-            <Card className="overflow-hidden shadow-sm">
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="bg-muted/40 border-b border-border/60">
-                      <th className="text-left px-5 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">เลขที่ใบเสร็จ</th>
-                      <th className="text-left px-5 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">สัญญา</th>
-                      <th className="text-left px-5 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">ลูกค้า</th>
-                      <th className="text-left px-5 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">งวดที่</th>
-                      <th className="text-right px-5 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">ยอดรับจริง</th>
-                      <th className="text-left px-5 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">วิธี</th>
-                      <th className="text-left px-5 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">เวลา</th>
-                      <th className="text-left px-5 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">ผู้บันทึก</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-border/50">
-                    {summary.data.map((p: DailySummaryPayment) => (
-                      <tr key={p.id} className="hover:bg-muted/30 transition-colors">
-                        <td className="px-5 py-3.5 font-mono text-xs text-muted-foreground">{p.receiptNumber}</td>
-                        <td className="px-5 py-3.5 font-mono text-xs text-primary font-semibold">{p.contract?.contractNumber}</td>
-                        <td className="px-5 py-3.5 text-sm font-medium text-foreground">{p.contract?.customer?.name}</td>
-                        <td className="px-5 py-3.5 text-sm text-muted-foreground">
-                          {p.installmentNo != null ? `งวดที่ ${p.installmentNo}` : RECEIPT_TYPE_LABELS[p.receiptType] || '—'}
-                        </td>
-                        {isCreditApplied(p.paymentMethod) ? (
-                          <td className="px-5 py-3.5 text-right text-sm tabular-nums text-muted-foreground">
-                            <div>{Number(p.amount).toLocaleString()} ฿</div>
-                            <div className="text-xs">ไม่นับในยอดรับ</div>
-                          </td>
-                        ) : (
-                          <td className="px-5 py-3.5 text-right text-sm font-semibold text-success tabular-nums">{Number(p.amount).toLocaleString()} ฿</td>
-                        )}
-                        <td className="px-5 py-3.5">
-                          <span className="text-xs px-2 py-0.5 rounded-full bg-muted text-muted-foreground font-medium">
-                            {methodLabels[p.paymentMethod ?? ''] || p.paymentMethod || '—'}
-                          </span>
-                        </td>
-                        <td className="px-5 py-3.5 text-xs text-muted-foreground">{p.paidDate ? new Date(p.paidDate).toLocaleTimeString('th-TH') : '—'}</td>
-                        <td className="px-5 py-3.5 text-xs text-muted-foreground">{p.issuedByName || '—'}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </Card>
+            <DataTable
+              columns={summaryColumns}
+              data={summary.data}
+              density="compact"
+              responsive
+              scrollLabel="ตารางสรุปรายวัน"
+            />
           )}
         </div>
       ) : null}

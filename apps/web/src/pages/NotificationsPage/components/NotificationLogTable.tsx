@@ -141,7 +141,7 @@ export default function NotificationLogTable({
       >
         <Card>
           <CardContent className="p-0">
-            <DataTable
+            <DataTable embedded
               columns={logColumns}
               data={logs}
               isLoading={logsLoading}

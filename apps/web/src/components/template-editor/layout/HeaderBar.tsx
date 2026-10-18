@@ -92,7 +92,7 @@ export default function HeaderBar({ onBack, onToggleCheatSheet, showCheatSheet, 
     <div className="min-h-14 min-w-0 shrink-0 bg-card border-b border-border flex flex-wrap items-center p-3 gap-2 [&_button]:min-h-11 [&_button]:min-w-11 [&_svg]:shrink-0">
       {/* === Left: Navigation & Template === */}
       {onBack && (
-        <button
+        <button data-ui-control="button" data-ui-icon="true"
           onClick={onBack}
           aria-label="กลับ"
           className="flex items-center gap-1 p-2 text-muted-foreground hover:text-foreground rounded-lg hover:bg-muted transition-colors"
@@ -136,7 +136,7 @@ export default function HeaderBar({ onBack, onToggleCheatSheet, showCheatSheet, 
       <div className="flex items-center gap-1.5">
         {/* Preview mode toggle */}
         {(viewMode === 'split' || viewMode === 'preview') && (
-          <button
+          <button data-ui-control="button"
             onClick={() => setPreviewMode(!previewMode)}
             className={`flex items-center gap-1.5 px-3 py-2 text-base rounded-lg transition-colors ${
               previewMode
@@ -151,7 +151,7 @@ export default function HeaderBar({ onBack, onToggleCheatSheet, showCheatSheet, 
 
         {/* Cheat sheet toggle */}
         {onToggleCheatSheet && (
-          <button
+          <button data-ui-control="button"
             onClick={onToggleCheatSheet}
             className={`flex items-center gap-1.5 px-3 py-2 text-base rounded-lg transition-colors ${
               showCheatSheet
@@ -164,7 +164,7 @@ export default function HeaderBar({ onBack, onToggleCheatSheet, showCheatSheet, 
           </button>
         )}
 
-        <button
+        <button data-ui-control="button"
           onClick={() => setShowSettings(true)}
           aria-label="ตั้งค่าเทมเพลต"
           className="flex items-center gap-1.5 px-3 py-2 text-base text-muted-foreground border border-input rounded-lg hover:bg-muted transition-colors"
@@ -182,7 +182,7 @@ export default function HeaderBar({ onBack, onToggleCheatSheet, showCheatSheet, 
         {/* Add block dropdown */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <button className="flex items-center gap-1.5 px-3 py-2 text-base text-foreground border border-input rounded-lg hover:bg-muted transition-colors">
+            <button data-ui-control="button" className="flex items-center gap-1.5 px-3 py-2 text-base text-foreground border border-input rounded-lg hover:bg-muted transition-colors">
               <Plus size={17} />
               เพิ่ม
             </button>
@@ -197,7 +197,7 @@ export default function HeaderBar({ onBack, onToggleCheatSheet, showCheatSheet, 
         </DropdownMenu>
 
         <input ref={fileInputRef} type="file" accept=".pdf,.doc,.docx,.html,.txt" onChange={handleGenerateFromFile} className="hidden" />
-        <button
+        <button data-ui-control="button"
           onClick={() => fileInputRef.current?.click()}
           aria-label="สร้างเทมเพลตจากไฟล์"
           disabled={isGenerating}
@@ -208,7 +208,7 @@ export default function HeaderBar({ onBack, onToggleCheatSheet, showCheatSheet, 
           <span className="hidden lg:inline">จากไฟล์</span>
         </button>
 
-        <button
+        <button data-ui-control="button"
           onClick={() => saveTemplateToApi()}
           aria-label="บันทึกเทมเพลต"
           disabled={isSaving}
@@ -218,7 +218,7 @@ export default function HeaderBar({ onBack, onToggleCheatSheet, showCheatSheet, 
           <span className="hidden lg:inline">บันทึก</span>
         </button>
 
-        <button
+        <button data-ui-control="button" data-ui-icon="true"
           onClick={() => undo()}
           className="p-2 text-muted-foreground border border-input rounded-lg hover:bg-muted transition-colors"
           title="Undo (Ctrl+Z)"
@@ -251,7 +251,7 @@ export default function HeaderBar({ onBack, onToggleCheatSheet, showCheatSheet, 
           ))}
         </div>
 
-        <button
+        <button data-ui-control="button"
           onClick={() => setShowExportModal(true)}
           className="flex items-center gap-1.5 px-4 py-2 text-base font-medium bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors"
         >

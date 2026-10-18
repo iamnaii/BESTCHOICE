@@ -170,7 +170,7 @@ function CompatibleModelsPicker({ selected, onToggle }: { selected: string[]; on
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <button type="button" aria-label="สำหรับรุ่น" className={cn(selectCls, 'flex cursor-pointer items-center gap-2 text-left')}>
+        <button data-ui-control="button" type="button" aria-label="สำหรับรุ่น" className={cn(selectCls, 'flex cursor-pointer items-center gap-2 text-left')}>
           <span className={cn('min-w-0 flex-1 truncate', selected.length === 0 && 'text-muted-foreground')}>
             {selected.length > 0 ? selected.join(', ') : 'เลือกรุ่นที่รองรับ'}
           </span>

@@ -148,7 +148,7 @@ export default function PartialPaymentRescheduleDialog({
               จำนวนเงินที่จ่าย <span className="text-destructive">*</span>
             </label>
             <div className="flex flex-wrap gap-1.5 mb-2">
-              <button
+              <button data-ui-control="button"
                 type="button"
                 onClick={() => setAmountPaid(String(outstanding))}
                 className="px-3 py-1.5 rounded-full text-sm font-medium border border-input bg-card hover:bg-muted transition-colors"
@@ -187,7 +187,7 @@ export default function PartialPaymentRescheduleDialog({
             </label>
             <div className="grid grid-cols-3 gap-2">
               {PAYMENT_METHODS.map((m) => (
-                <button
+                <button data-ui-control="button"
                   key={m.value}
                   type="button"
                   onClick={() => setPaymentMethod(m.value)}
@@ -251,7 +251,7 @@ export default function PartialPaymentRescheduleDialog({
                       : '';
                   const active = newSettlementDate === computed;
                   return (
-                    <button
+                    <button data-ui-control="button"
                       key={opt.label}
                       type="button"
                       onClick={() => pickQuickDate(opt)}
@@ -299,14 +299,14 @@ export default function PartialPaymentRescheduleDialog({
 
         {/* Actions */}
         <div className="flex gap-2 justify-end pt-2 border-t border-border/40">
-          <button
+          <button data-ui-control="button"
             onClick={handleClose}
             disabled={mutation.isPending}
             className="px-5 py-2.5 text-base border border-input rounded-lg hover:bg-muted transition-colors disabled:opacity-50"
           >
             ยกเลิก
           </button>
-          <button
+          <button data-ui-control="button"
             onClick={handleSubmit}
             disabled={!canSave}
             className="px-5 py-2.5 text-base bg-primary text-primary-foreground rounded-lg font-semibold hover:bg-primary/90 transition-colors disabled:opacity-50"

@@ -300,7 +300,7 @@ export default function RichTextEditor({ value, onChange, placeholder, minHeight
         {TOOLBAR.map((group, gi) => (
           <div key={gi} className="flex items-center">
             {group.buttons.map((btn) => (
-              <button
+              <button data-ui-control="button" data-ui-icon="true"
                 key={btn.icon}
                 type="button"
                 title={btn.title}
@@ -320,7 +320,7 @@ export default function RichTextEditor({ value, onChange, placeholder, minHeight
 
         {/* Source toggle */}
         <div className="w-px h-5 bg-border mx-1" />
-        <button
+        <button data-ui-control="button"
           type="button"
           title={showSource ? 'โหมดแก้ไข' : 'ดู HTML'}
           onMouseDown={(e) => { e.preventDefault(); toggleSource(); }}

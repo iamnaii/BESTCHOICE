@@ -91,7 +91,7 @@ export default function PersonalFields({ form, setForm, setMany }: Props) {
             )}
           </div>
         </div>
-        <button type="button" onClick={handleReadCard} disabled={isReadingCard} className="flex items-center gap-2 px-3 py-2 text-sm font-medium border border-input rounded-lg hover:bg-muted transition-colors disabled:opacity-50">
+        <button data-ui-control="button" type="button" onClick={handleReadCard} disabled={isReadingCard} className="flex items-center gap-2 px-3 py-2 text-sm font-medium border border-input rounded-lg hover:bg-muted transition-colors disabled:opacity-50">
           <CreditCard className="size-4" />
           {isReadingCard ? 'กำลังอ่าน...' : 'อ่านบัตรประชาชน'}
         </button>

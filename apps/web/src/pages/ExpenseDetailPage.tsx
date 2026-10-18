@@ -1,3 +1,4 @@
+import ScreenTable from '@/components/ui/ScreenTable';
 import { useState } from 'react';
 import PdfPreview from '@/components/PdfPreview';
 import { useAccountingPermissions } from '@/hooks/useAccountingPermissions';
@@ -268,7 +269,7 @@ export default function ExpenseDetailPage() {
                   {/* R3-3 (2026-08-06) — ไฟล์โอนเงินเดือนเข้าธนาคาร (จากเลขบัญชี
                       ในทะเบียนพนักงาน). แถวที่ไม่มีข้อมูลธนาคารถูกข้าม + แจ้งจำนวน. */}
                   {doc.documentType === 'PAYROLL' && (
-                    <button
+                    <button data-ui-control="button"
                       type="button"
                       onClick={async () => {
                         try {
@@ -324,7 +325,7 @@ export default function ExpenseDetailPage() {
             {/* Line items */}
             {doc.expenseDetail?.lines?.length ? (
               <section className="rounded-lg border border-border bg-card overflow-hidden">
-                <table className="w-full text-sm">
+                <ScreenTable className="w-full text-sm">
                   <thead className="bg-muted/50 text-muted-foreground">
                     <tr>
                       <th className="px-4 py-2 text-left font-medium leading-snug">บัญชี / รายการ</th>
@@ -348,7 +349,7 @@ export default function ExpenseDetailPage() {
                       </tr>
                     ))}
                   </tbody>
-                </table>
+                </ScreenTable>
               </section>
             ) : null}
 

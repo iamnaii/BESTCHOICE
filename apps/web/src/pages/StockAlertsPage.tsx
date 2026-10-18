@@ -275,7 +275,7 @@ export default function StockAlertsPage() {
           label: '',
           render: (r: ReorderPoint) => (
             <div className="flex items-center gap-2">
-              <button
+              <button data-ui-control="button" data-ui-icon="true"
                 onClick={() => {
                   setEditingPoint(r);
                   setForm({
@@ -296,7 +296,7 @@ export default function StockAlertsPage() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
                 </svg>
               </button>
-              <button
+              <button data-ui-control="button"
                 onClick={() => updateMutation.mutate({ id: r.id, data: { isActive: !r.isActive } })}
                 className={`min-h-11 min-w-11 rounded-lg px-2 text-xs ${r.isActive ? 'text-muted-foreground hover:text-destructive' : 'text-muted-foreground hover:text-success'}`}
                 title={r.isActive ? 'ปิดใช้งาน' : 'เปิดใช้งาน'}
@@ -304,7 +304,7 @@ export default function StockAlertsPage() {
                 {r.isActive ? 'ปิด' : 'เปิด'}
               </button>
               {user?.role === 'OWNER' && (
-                <button
+                <button data-ui-control="button" data-ui-icon="true"
                   onClick={() => setConfirmDialog({ open: true, message: 'ลบ Reorder Point นี้?', action: () => deleteMutation.mutate(r.id) })}
                   className="inline-flex size-11 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted/50 hover:text-destructive"
                   title="ลบ"
@@ -395,7 +395,7 @@ export default function StockAlertsPage() {
           isManager ? (
             <div className="flex flex-wrap gap-2">
               {user?.role === 'OWNER' && (
-                <button
+                <button data-ui-control="button"
                   onClick={() => checkStockMutation.mutate()}
                   disabled={checkStockMutation.isPending}
                   className="min-h-11 px-4 py-2 border border-input rounded-lg text-sm font-medium hover:bg-muted/50 disabled:opacity-50"
@@ -403,7 +403,7 @@ export default function StockAlertsPage() {
                   {checkStockMutation.isPending ? 'กำลังตรวจ...' : 'ตรวจสอบสต็อก'}
                 </button>
               )}
-              <button
+              <button data-ui-control="button"
                 onClick={() => { resetForm(); setShowCreateModal(true); }}
                 className="min-h-11 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90"
               >
@@ -419,7 +419,7 @@ export default function StockAlertsPage() {
         {(['dashboard', 'reorder-points', 'alerts'] as const).map((tab) => {
           const labels = { dashboard: 'ภาพรวม', 'reorder-points': 'Reorder Points', alerts: 'แจ้งเตือน' };
           return (
-            <button
+            <button data-ui-control="button"
               key={tab}
               onClick={() => setActiveTab(tab)}
               className={`min-h-11 px-4 py-2 text-sm rounded-lg font-medium transition-colors ${
@@ -541,7 +541,7 @@ export default function StockAlertsPage() {
         <QueryBoundary isLoading={loadingRP && !reorderPoints} isError={rpError} error={rpErrorObj} onRetry={rpRefetch} errorTitle="ไม่สามารถโหลด Reorder Points ได้">
           <Card>
             <CardContent className="p-0">
-              <DataTable columns={rpColumns} data={reorderPoints || []} isLoading={loadingRP} emptyMessage="ยังไม่มี Reorder Point" />
+              <DataTable embedded columns={rpColumns} data={reorderPoints || []} isLoading={loadingRP} emptyMessage="ยังไม่มี Reorder Point" />
             </CardContent>
           </Card>
         </QueryBoundary>
@@ -551,7 +551,7 @@ export default function StockAlertsPage() {
       {activeTab === 'alerts' && (
         <Card>
           <CardContent className="p-0">
-            <DataTable columns={alertColumns} data={alerts} isLoading={loadingAlerts} emptyMessage="ไม่มีแจ้งเตือน" />
+            <DataTable embedded columns={alertColumns} data={alerts} isLoading={loadingAlerts} emptyMessage="ไม่มีแจ้งเตือน" />
           </CardContent>
         </Card>
       )}
@@ -693,7 +693,7 @@ export default function StockAlertsPage() {
             >
               ยกเลิก
             </button>
-            <button
+            <button data-ui-control="button"
               type="submit"
               disabled={createMutation.isPending || updateMutation.isPending}
               className="min-h-11 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 disabled:opacity-50"

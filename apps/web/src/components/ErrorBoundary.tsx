@@ -78,13 +78,13 @@ export default class ErrorBoundary extends Component<Props, State> {
               {this.state.error?.message || 'ระบบเกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง'}
             </p>
             <div className="flex gap-2 justify-center">
-              <button
+              <button data-ui-control="button"
                 onClick={this.handleReset}
                 className="px-4 py-2 border border-border text-foreground rounded-lg text-sm font-medium hover:bg-muted"
               >
                 ลองใหม่
               </button>
-              <button
+              <button data-ui-control="button"
                 onClick={() => window.location.reload()}
                 className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90"
               >

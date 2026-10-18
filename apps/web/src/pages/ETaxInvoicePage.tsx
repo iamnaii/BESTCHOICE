@@ -1,3 +1,4 @@
+import ScreenTable from '@/components/ui/ScreenTable';
 import { NativeSelect } from '@/components/ui/native-select';
 import { formatTaxAmount as fmtNumber } from '@/utils/financial-display';
 import { useId as useUiFieldId, useState } from 'react';
@@ -304,7 +305,7 @@ export function ETaxInvoicePage() {
               </CardHeader>
               <CardContent>
                 <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
+                  <ScreenTable className="w-full text-sm">
                     <thead>
                       <tr className="text-left text-xs text-muted-foreground border-b border-border">
                         <th className="py-2 pr-2">วันที่</th>
@@ -434,7 +435,7 @@ export function ETaxInvoicePage() {
                         );
                       })}
                     </tbody>
-                  </table>
+                  </ScreenTable>
                 </div>
 
                 {data.total > LIMIT && (

@@ -35,7 +35,7 @@ export function SlipAttachmentField({
           </button>
         </div>
       ) : (
-        <button
+        <button data-ui-control="button"
           type="button"
           onClick={() => fileInputRef.current?.click()}
           disabled={uploadMutation.isPending}

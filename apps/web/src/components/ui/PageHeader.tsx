@@ -38,7 +38,7 @@ export default function PageHeader({
       <div className="flex min-w-0 items-start justify-between flex-wrap gap-3">
         <div className="flex min-w-0 max-w-full items-start gap-3">
           {onBack && (
-            <button
+            <button data-ui-control="button" data-ui-icon="true"
               onClick={onBack}
               className="flex items-center justify-center size-11 shrink-0 rounded-md hover:bg-accent text-muted-foreground transition-colors"
               aria-label="กลับ"

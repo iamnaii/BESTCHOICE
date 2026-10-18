@@ -109,11 +109,11 @@ export default function ContractBundlesCard({
             searchLabel="ค้นหาของแถมเพิ่ม (เฉพาะอุปกรณ์เสริมของสาขานี้)"
           />
           <div className="flex justify-end gap-3 border-t border-border/60 pt-4">
-            <button type="button" onClick={() => setOpen(false)} disabled={saveMutation.isPending}
+            <button data-ui-control="button" type="button" onClick={() => setOpen(false)} disabled={saveMutation.isPending}
               className="min-h-11 px-4 rounded-lg border border-input text-sm font-medium text-foreground hover:bg-accent">
               ยกเลิก
             </button>
-            <button type="button" onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending}
+            <button data-ui-control="button" type="button" onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending}
               className="min-h-11 px-4 rounded-lg bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 disabled:opacity-60">
               {saveMutation.isPending ? 'กำลังบันทึก...' : 'บันทึกของแถม'}
             </button>

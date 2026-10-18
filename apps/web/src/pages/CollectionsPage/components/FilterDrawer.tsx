@@ -198,7 +198,7 @@ export default function FilterDrawer({
                     {BUCKETS.map((b) => {
                       const active = draft.overdueBuckets?.includes(b) ?? false;
                       return (
-                        <button
+                        <button data-ui-control="button"
                           key={b}
                           type="button"
                           onClick={() => toggleArrayValue('overdueBuckets', b)}
@@ -459,7 +459,7 @@ export default function FilterDrawer({
                       (t) => {
                         const active = draft.customerTags?.includes(t) ?? false;
                         return (
-                          <button
+                          <button data-ui-control="button"
                             key={t}
                             type="button"
                             onClick={() => toggleArrayValue('customerTags', t)}

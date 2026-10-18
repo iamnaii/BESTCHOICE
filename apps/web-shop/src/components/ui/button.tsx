@@ -51,7 +51,7 @@ const buttonVariants = cva(
       size: {
         lg: 'h-12 rounded-xl px-6 text-base gap-2 [&_svg:not([class*=size-])]:size-4.5',
         md: 'h-11 rounded-xl px-4 gap-1.5 text-sm [&_svg:not([class*=size-])]:size-4',
-        sm: 'h-9 rounded-md px-3 gap-[5px] text-sm [&_svg:not([class*=size-])]:size-3.5',
+        sm: 'h-11 rounded-md px-3 gap-[5px] text-sm [&_svg:not([class*=size-])]:size-3.5',
         icon: 'size-11 rounded-md [&_svg:not([class*=size-])]:size-4 shrink-0',
       },
       autoHeight: {
@@ -127,7 +127,7 @@ const buttonVariants = cva(
       {
         size: 'sm',
         autoHeight: true,
-        className: 'h-auto min-h-9',
+        className: 'h-auto min-h-11',
       },
       {
         size: 'lg',
@@ -318,7 +318,7 @@ const buttonVariants = cva(
       {
         size: 'sm',
         mode: 'icon',
-        className: 'w-9 h-9 p-0 [&_svg:not([class*=size-])]:size-3.5',
+        className: 'w-11 h-11 p-0 [&_svg:not([class*=size-])]:size-3.5',
       },
       {
         size: 'md',
@@ -399,6 +399,7 @@ function Button({
   return (
     <Comp
       data-slot="button"
+      data-ui-control={mode === 'link' ? undefined : 'button'}
       className={cn(
         buttonVariants({
           variant,

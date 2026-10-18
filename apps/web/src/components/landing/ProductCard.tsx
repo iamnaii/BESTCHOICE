@@ -1,4 +1,7 @@
+import { SHOP_BASE_URL } from '@/lib/env';
+
 interface ProductCardProps {
+  productId?: string;
   brand: string;
   model: string;
   price: string;
@@ -13,6 +16,7 @@ const categoryLabels: Record<string, string> = {
 };
 
 export default function ProductCard({
+  productId,
   brand,
   model,
   price,
@@ -42,7 +46,7 @@ export default function ProductCard({
         <h3 className="font-semibold text-foreground text-sm">{brand} {model}</h3>
         <p className="text-xs text-muted-foreground mt-0.5">{categoryLabel}</p>
 
-        <div className="mt-3 flex items-end justify-between">
+        <div className="mt-3 flex flex-wrap items-end justify-between gap-3">
           <div>
             <p className="text-xs text-muted-foreground">เริ่มต้นที่</p>
             <p className="text-lg font-bold text-primary-600">
@@ -50,9 +54,15 @@ export default function ProductCard({
               <span className="text-sm font-normal text-muted-foreground ml-1">฿</span>
             </p>
           </div>
-          <button className="px-3 py-1.5 text-xs font-medium text-primary-600 bg-primary-50 hover:bg-primary-100 rounded-lg transition-colors">
+          <a
+            data-ui-control="button"
+            href={productId
+              ? `${SHOP_BASE_URL}/products/${encodeURIComponent(productId)}`
+              : `${SHOP_BASE_URL}/products?search=${encodeURIComponent(`${brand} ${model}`)}`}
+            className="px-3 py-2 text-sm font-medium text-primary bg-primary/10 hover:bg-primary/15 rounded-lg transition-colors"
+          >
             ดูรายละเอียด
-          </button>
+          </a>
         </div>
       </div>
     </div>

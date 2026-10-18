@@ -1,3 +1,4 @@
+import ScreenTable from '@/components/ui/ScreenTable';
 import { NativeSelect } from '@/components/ui/native-select';
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -585,7 +586,7 @@ function AccountTable({
           <p className="text-sm text-muted-foreground leading-snug">ไม่มีรายการ</p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <ScreenTable className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border text-left text-xs uppercase tracking-wider text-muted-foreground">
                   <th className="py-2 font-medium">รหัส</th>
@@ -607,7 +608,7 @@ function AccountTable({
                   <td className="py-2 text-right tabular-nums">{fmtTHB(total)}</td>
                 </tr>
               </tbody>
-            </table>
+            </ScreenTable>
           </div>
         )}
       </CardContent>

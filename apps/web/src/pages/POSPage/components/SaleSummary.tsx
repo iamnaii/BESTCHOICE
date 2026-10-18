@@ -240,7 +240,7 @@ export default function SaleSummary({
 
         {/* Submit Buttons */}
         <div className="mt-6 space-y-2">
-          <button
+          <button data-ui-control="button"
             onClick={onSubmit}
             disabled={!canSubmit || isSubmitting}
             className="w-full py-3 bg-primary text-primary-foreground rounded-xl text-sm font-semibold disabled:opacity-50 hover:bg-primary/90 transition-all hover:shadow-lg shadow-sm active:scale-[0.98]"
@@ -254,7 +254,7 @@ export default function SaleSummary({
               'บันทึกการขาย'
             )}
           </button>
-          <button
+          <button data-ui-control="button"
             onClick={onReset}
             className="w-full py-2.5 text-sm text-muted-foreground hover:text-foreground rounded-xl hover:bg-muted/80 transition-colors"
           >

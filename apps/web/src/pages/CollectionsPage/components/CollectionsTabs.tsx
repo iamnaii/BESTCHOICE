@@ -40,7 +40,7 @@ export default function CollectionsTabs({
         const count = counts?.[key];
         const isActive = active === key;
         return (
-          <button
+          <button data-ui-control="button"
             key={key}
             onClick={() => onChange(key)}
             className={`inline-flex items-center gap-1.5 px-4 py-2.5 text-sm border-b-2 transition-colors whitespace-nowrap ${

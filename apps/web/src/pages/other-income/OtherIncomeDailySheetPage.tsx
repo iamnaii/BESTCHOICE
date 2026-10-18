@@ -1,3 +1,4 @@
+import ScreenTable from '@/components/ui/ScreenTable';
 import { formatIncomeAmount as fmt } from '@/utils/financial-display';
 import { DailySheetSummaryTable } from './components/DailySheetSummaryTable';
 import { printDocument } from '@/lib/print-document';
@@ -115,7 +116,7 @@ export default function OtherIncomeDailySheetPage() {
             <h2 className="text-2xl font-bold leading-snug mt-1">สรุปรายได้อื่น</h2>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
-            <button
+            <button data-ui-control="button"
               type="button"
               onClick={exportCsv}
               disabled={!sheet.data}
@@ -123,7 +124,7 @@ export default function OtherIncomeDailySheetPage() {
             >
               <Download size={14} /> CSV
             </button>
-            <button
+            <button data-ui-control="button"
               type="button"
               onClick={printDocument}
               className="inline-flex items-center gap-1 px-4 py-1.5 text-sm bg-primary text-primary-foreground rounded-md hover:bg-primary/90"
@@ -214,7 +215,7 @@ export default function OtherIncomeDailySheetPage() {
                 </p>
               ) : (
                 <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
+                  <ScreenTable className="w-full text-sm">
                     <thead className="bg-muted">
                       <tr>
                         <th className="px-2 py-2 text-left text-xs font-medium text-muted-foreground">
@@ -281,7 +282,7 @@ export default function OtherIncomeDailySheetPage() {
                         </tr>
                       ))}
                     </tbody>
-                  </table>
+                  </ScreenTable>
                 </div>
               )}
             </div>

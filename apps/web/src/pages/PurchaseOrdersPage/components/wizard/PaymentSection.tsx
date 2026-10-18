@@ -233,7 +233,7 @@ export function PaymentSection({
               className={fieldCls}
               placeholder="หรือวาง URL"
             />
-            <button
+            <button data-ui-control="button"
               type="button"
               onClick={() => {
                 if (attachmentUrl.trim()) {

@@ -1,3 +1,4 @@
+import ScreenTable from '@/components/ui/ScreenTable';
 import { NativeSelect } from '@/components/ui/native-select';
 import { formatTaxAmount as fmtNumber } from '@/utils/financial-display';
 import { useId as useUiFieldId, useState } from 'react';
@@ -82,7 +83,7 @@ function endpointFor(form: WhtForm): string {
 function PersonalTable({ items }: { items: WhtItemPersonal[] }) {
   return (
     <div className="overflow-x-auto">
-      <table className="w-full text-sm">
+      <ScreenTable className="w-full text-sm">
         <thead>
           <tr className="text-left text-xs text-muted-foreground border-b border-border">
             <th className="py-2 pr-2">พนักงาน</th>
@@ -114,7 +115,7 @@ function PersonalTable({ items }: { items: WhtItemPersonal[] }) {
             </tr>
           ))}
         </tbody>
-      </table>
+      </ScreenTable>
     </div>
   );
 }
@@ -122,7 +123,7 @@ function PersonalTable({ items }: { items: WhtItemPersonal[] }) {
 function VendorTable({ items }: { items: WhtItemVendor[] }) {
   return (
     <div className="overflow-x-auto">
-      <table className="w-full text-sm">
+      <ScreenTable className="w-full text-sm">
         <thead>
           <tr className="text-left text-xs text-muted-foreground border-b border-border">
             <th className="py-2 pr-2">ผู้รับเงิน</th>
@@ -158,7 +159,7 @@ function VendorTable({ items }: { items: WhtItemVendor[] }) {
             </tr>
           ))}
         </tbody>
-      </table>
+      </ScreenTable>
     </div>
   );
 }

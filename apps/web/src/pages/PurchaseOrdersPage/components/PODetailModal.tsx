@@ -1,3 +1,4 @@
+import ScreenTable from '@/components/ui/ScreenTable';
 import { useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router';
 import { Coins, History, Package, PackageX, Paperclip, PencilLine, Phone, Printer, Truck, X } from 'lucide-react';
@@ -249,7 +250,7 @@ export function PODetailModal({
           ) : (
             <div className="flex-1" />
           )}
-          <button
+          <button data-ui-control="button" data-ui-icon="true"
             ref={closeRef}
             type="button"
             onClick={onClose}
@@ -340,7 +341,7 @@ export function PODetailModal({
                       <span className="text-sm font-semibold text-foreground">รับสินค้า</span>
                     </div>
                     {receivable && (
-                      <button type="button" onClick={() => openReceiveModal(po)} className="rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90">
+                      <button data-ui-control="button" type="button" onClick={() => openReceiveModal(po)} className="rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90">
                         รับสินค้า
                       </button>
                     )}
@@ -375,7 +376,7 @@ export function PODetailModal({
                       <span className="text-sm font-semibold text-foreground">การจ่ายเงิน</span>
                     </div>
                     {!cancelled && canRecordPayments && (
-                      <button type="button" onClick={() => openPaymentModal(po)} className="rounded-lg border border-border bg-card px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-accent">
+                      <button data-ui-control="button" type="button" onClick={() => openPaymentModal(po)} className="rounded-lg border border-border bg-card px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-accent">
                         บันทึกการจ่าย
                       </button>
                     )}
@@ -425,7 +426,7 @@ export function PODetailModal({
                   </p>
                   {paymentsData && paymentsData.payments.length > 0 && (
                     <div className="overflow-x-auto rounded-lg border border-border">
-                      <table className="w-full min-w-160 border-collapse text-sm" aria-label="รายการจ่ายเงิน">
+                      <ScreenTable className="w-full min-w-160 border-collapse text-sm" aria-label="รายการจ่ายเงิน">
                         <thead className="bg-muted/50">
                           <tr>
                             <th className={thCls}>วันที่</th>
@@ -457,7 +458,7 @@ export function PODetailModal({
                                 <td className={cn(tdCls, 'font-mono text-xs')}>{payment.journalEntryNo ?? '—'}</td>
                                 <td className={cn(tdCls, 'text-right')}>
                                   {voidable && canVoidPayments && onVoidPayment ? (
-                                    <button type="button" onClick={() => onVoidPayment(po, payment)} className="rounded-lg border border-border bg-card px-2.5 py-1 text-xs font-medium text-destructive transition-colors hover:bg-destructive/5">
+                                    <button data-ui-control="button" type="button" onClick={() => onVoidPayment(po, payment)} className="rounded-lg border border-border bg-card px-2.5 py-1 text-xs font-medium text-destructive transition-colors hover:bg-destructive/5">
                                       ยกเลิกรายการ
                                     </button>
                                   ) : voidable ? null : (
@@ -468,7 +469,7 @@ export function PODetailModal({
                             );
                           })}
                         </tbody>
-                      </table>
+                      </ScreenTable>
                     </div>
                   )}
                   {paymentsData && paymentsData.payments.length === 0 && Number(paymentsData.legacyPaidAmount) > 0 && (
@@ -492,7 +493,7 @@ export function PODetailModal({
               <section className={cardCls} aria-label="รายการสินค้า">
                 <CardHeader icon={<Package className="size-4.5" aria-hidden />} tone="bg-warning/10 text-warning-strong" title="รายการสินค้า" sub={`${po.items.length} รายการ · ${goods.total} ชิ้น`} />
                 <div className="overflow-x-auto rounded-lg border border-border">
-                  <table className="w-full min-w-180 table-fixed border-collapse text-sm">
+                  <ScreenTable className="w-full min-w-180 table-fixed border-collapse text-sm">
                     <colgroup>
                       <col className="w-8" />
                       <col />
@@ -549,7 +550,7 @@ export function PODetailModal({
                         </tr>
                       ))}
                     </tbody>
-                  </table>
+                  </ScreenTable>
                 </div>
                 <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                   <span className="pt-0.5 text-sm text-muted-foreground">รวม {po.items.length} รายการ · {goods.total} ชิ้น</span>
@@ -627,7 +628,7 @@ export function PODetailModal({
                                 </div>
                               ))}
                               {ev.receiving.notes && <div className="text-xs text-muted-foreground">หมายเหตุ: {ev.receiving.notes}</div>}
-                              <button
+                              <button data-ui-control="button"
                                 type="button"
                                 onClick={() => navigate(`/purchase-orders/${po.id}/goods-receivings/${ev.receiving!.id}/print`)}
                                 className="mt-1 inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-accent"
@@ -639,7 +640,7 @@ export function PODetailModal({
                               {(() => {
                                 const action = taxInvoiceAction(ev.receiving!, po.supplier.hasVat, role);
                                 return action && onRecordTaxInvoice ? (
-                                  <button
+                                  <button data-ui-control="button"
                                     type="button"
                                     onClick={() => onRecordTaxInvoice(po, ev.receiving!)}
                                     className="mt-1 ml-2 inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-accent"
@@ -695,12 +696,12 @@ export function PODetailModal({
               <div className="sticky bottom-0 flex shrink-0 flex-wrap items-center justify-between gap-3 border-t bg-background/95 px-4 sm:px-6 py-4 backdrop-blur-xs">
                 <div className="flex flex-wrap items-center gap-1">
                   {cancellable && (
-                    <button type="button" onClick={() => onCancel!(po)} className="min-h-11 rounded-lg px-3 py-2 text-sm font-medium text-destructive transition-colors hover:bg-destructive/10">
+                    <button data-ui-control="button" type="button" onClick={() => onCancel!(po)} className="min-h-11 rounded-lg px-3 py-2 text-sm font-medium text-destructive transition-colors hover:bg-destructive/10">
                       ยกเลิก PO
                     </button>
                   )}
                   {closableShort && (
-                    <button type="button" onClick={() => onCloseShort!(po)} className="inline-flex min-h-11 items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium text-warning-strong transition-colors hover:bg-warning/10">
+                    <button data-ui-control="button" type="button" onClick={() => onCloseShort!(po)} className="inline-flex min-h-11 items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium text-warning-strong transition-colors hover:bg-warning/10">
                       <PackageX className="size-4" aria-hidden />
                       ปิดใบ รับไม่ครบ
                     </button>
@@ -708,12 +709,12 @@ export function PODetailModal({
                 </div>
                 <div className="flex flex-wrap items-center gap-3">
                   {!cancelled && canRecordPayments && (
-                    <button type="button" onClick={() => openPaymentModal(po)} className="min-h-11 rounded-lg border border-border bg-card px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-accent">
+                    <button data-ui-control="button" type="button" onClick={() => openPaymentModal(po)} className="min-h-11 rounded-lg border border-border bg-card px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-accent">
                       บันทึกการจ่าย
                     </button>
                   )}
                   {receivable && (
-                    <button type="button" onClick={() => openReceiveModal(po)} className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90">
+                    <button data-ui-control="button" type="button" onClick={() => openReceiveModal(po)} className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90">
                       <Truck className="size-4" aria-hidden />
                       {receiveLabel}
                     </button>

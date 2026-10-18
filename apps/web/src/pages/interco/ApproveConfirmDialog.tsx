@@ -1,3 +1,4 @@
+import ScreenTable from '@/components/ui/ScreenTable';
 import { useEffect, useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -256,7 +257,8 @@ function JournalPreviewBlock({ title, lines }: { title: string; lines: PreviewLi
       <div className="bg-muted px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground leading-snug">
         {title}
       </div>
-      <table className="w-full text-sm">
+      <ScreenTable className="min-w-[24rem] w-full text-sm">
+<thead className="sr-only"><tr><th scope="col">รายการ</th><th scope="col">จำนวนเงิน</th></tr></thead>
         <tbody>
           {lines.map((l) => (
             <tr key={l.label} className="border-t border-border/60">
@@ -265,7 +267,7 @@ function JournalPreviewBlock({ title, lines }: { title: string; lines: PreviewLi
             </tr>
           ))}
         </tbody>
-      </table>
+      </ScreenTable>
     </div>
   );
 }

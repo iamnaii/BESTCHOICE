@@ -257,7 +257,7 @@ export function ChatMediaPicker({
   return (
     <Popover open={open} onOpenChange={onOpenChange}>
       <PopoverTrigger asChild>
-        <button
+        <button data-ui-control="button"
           type="button"
           aria-label="อิโมจิ / สติกเกอร์"
           className={cn(
@@ -281,7 +281,7 @@ export function ChatMediaPicker({
       >
         {/* ── Top-level tabs ── */}
         <div className="flex border-b border-border bg-card">
-          <button
+          <button data-ui-control="button"
             type="button"
             aria-pressed={pickerTab === 'emoji'}
             onClick={() => setPickerTab('emoji')}
@@ -296,7 +296,7 @@ export function ChatMediaPicker({
           </button>
 
           {isLineChannel && (
-            <button
+            <button data-ui-control="button"
               type="button"
               aria-pressed={pickerTab === 'sticker'}
               onClick={() => setPickerTab('sticker')}
@@ -312,7 +312,7 @@ export function ChatMediaPicker({
           )}
 
           {!isLineChannel && (
-            <button
+            <button data-ui-control="button"
               type="button"
               aria-pressed={pickerTab === 'gif'}
               onClick={() => setPickerTab('gif')}
@@ -334,7 +334,7 @@ export function ChatMediaPicker({
             {/* Category sub-tabs */}
             <div className="flex gap-1 px-2 py-1.5 border-b border-border bg-muted/50">
               {EMOJI_CATEGORIES.map((cat, i) => (
-                <button
+                <button data-ui-control="button" data-ui-icon="true"
                   key={cat.name}
                   type="button"
                   aria-label={cat.name}
@@ -372,7 +372,7 @@ export function ChatMediaPicker({
             {/* Package sub-tabs */}
             <div className="flex gap-1 px-2 py-1.5 border-b border-border bg-muted/50 overflow-x-auto">
               {LINE_STICKER_PACKAGES.map((pkg, i) => (
-                <button
+                <button data-ui-control="button"
                   key={pkg.packageId}
                   type="button"
                   aria-pressed={stickerPackage === i}
@@ -437,7 +437,7 @@ export function ChatMediaPicker({
               ) : gifError ? (
                 <div role="alert" className="col-span-2 px-3 py-4 text-center text-sm">
                   <p>โหลด GIF ไม่สำเร็จ</p>
-                  <button type="button" onClick={retryGifs} className="mt-2 min-h-11 rounded-lg px-4 text-primary hover:bg-muted">ลองใหม่</button>
+                  <button data-ui-control="button" type="button" onClick={retryGifs} className="mt-2 min-h-11 rounded-lg px-4 text-primary hover:bg-muted">ลองใหม่</button>
                 </div>
               ) : gifs.length === 0 ? (
                 <div className="col-span-2 text-center py-4 text-xs text-muted-foreground">

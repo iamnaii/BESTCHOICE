@@ -117,7 +117,7 @@ export default function AdjustmentTable({ rows, isLoading, user, onOpen, emptyMe
   return (
     <Card>
       <CardContent className="p-0">
-        <DataTable columns={columns} data={rows} isLoading={isLoading} emptyMessage={emptyMessage} onRowClick={onOpen} />
+        <DataTable embedded columns={columns} data={rows} isLoading={isLoading} emptyMessage={emptyMessage} onRowClick={onOpen} />
       </CardContent>
     </Card>
   );

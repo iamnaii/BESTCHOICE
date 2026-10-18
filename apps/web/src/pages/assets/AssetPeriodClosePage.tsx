@@ -1,3 +1,4 @@
+import ScreenTable from '@/components/ui/ScreenTable';
 // ปิดงวดสินทรัพย์ — read-only checklist per month combining:
 //   1. depreciation run status (GET /depreciation — POSTED/REVERSED per period)
 //   2. FINANCE accounting-period status (GET /expenses/periods/overview)
@@ -137,7 +138,7 @@ export default function AssetPeriodClosePage() {
         {periodsQuery.data && (
           <Card>
             <CardContent className="pt-4 overflow-x-auto">
-              <table className="w-full text-sm">
+              <ScreenTable className="w-full text-sm">
                 <thead>
                   <tr className="text-left text-xs text-muted-foreground border-b border-border">
                     <th className="py-2 pr-3 font-medium">งวด</th>
@@ -212,7 +213,7 @@ export default function AssetPeriodClosePage() {
                     );
                   })}
                 </tbody>
-              </table>
+              </ScreenTable>
 
               <div className="flex justify-end mt-4">
                 <Link

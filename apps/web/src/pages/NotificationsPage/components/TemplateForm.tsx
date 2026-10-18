@@ -629,7 +629,7 @@ export default function TemplateForm({
 
         {/* Preview + Test send buttons */}
         <div className="flex gap-2">
-          <button
+          <button data-ui-control="button"
             type="button"
             onClick={() => previewMutation.mutate()}
             disabled={previewMutation.isPending || !templateForm.eventType || !editingTemplate}
@@ -638,7 +638,7 @@ export default function TemplateForm({
           >
             {previewMutation.isPending ? 'กำลัง...' : 'Preview'}
           </button>
-          <button
+          <button data-ui-control="button"
             type="button"
             onClick={() => testSendMutation.mutate()}
             disabled={testSendMutation.isPending || !templateForm.eventType || !editingTemplate}
@@ -655,14 +655,14 @@ export default function TemplateForm({
             <div className="flex items-center justify-between mb-1">
               <label className="block text-sm font-medium text-foreground">Flex Message JSON *</label>
               <div className="flex gap-2">
-                <button
+                <button data-ui-control="button"
                   type="button"
                   onClick={loadDefaultFlexTemplate}
                   className="px-3 py-1 text-xs bg-info/10 text-info dark:bg-info/15 rounded-md hover:bg-info/20 font-medium"
                 >
                   โหลด Template เริ่มต้น
                 </button>
-                <button
+                <button data-ui-control="button"
                   type="button"
                   onClick={formatJson}
                   className="px-3 py-1 text-xs bg-primary/10 text-primary rounded-md hover:bg-primary/20 font-medium"
@@ -743,14 +743,14 @@ export default function TemplateForm({
           />
         </div>
         <div className="flex justify-end gap-3 pt-2">
-          <button
+          <button data-ui-control="button"
             type="button"
             onClick={onClose}
             className="px-4 py-2 text-sm text-muted-foreground"
           >
             ยกเลิก
           </button>
-          <button
+          <button data-ui-control="button"
             type="submit"
             disabled={
               saveTemplateMutation.isPending ||
@@ -781,7 +781,7 @@ export default function TemplateForm({
                 {JSON.stringify(previewResult.flexJson, null, 2)}
               </pre>
             )}
-            <button
+            <button data-ui-control="button"
               type="button"
               onClick={() => setPreviewModalOpen(false)}
               className="mt-4 px-4 py-2 border border-input rounded-lg text-sm hover:bg-accent"

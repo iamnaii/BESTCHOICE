@@ -1,3 +1,4 @@
+import ScreenTable from '@/components/ui/ScreenTable';
 import { useId as useUiFieldId, useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -388,7 +389,7 @@ export default function MdmDashboardPage() {
         errorTitle="ไม่สามารถโหลดรายการอุปกรณ์ MDM ได้"
       >
       <div className="rounded-lg border border-border bg-card overflow-x-auto">
-        <table className="w-full text-[13px]">
+        <ScreenTable className="w-full text-[13px]">
           <thead>
             <tr className="border-b border-border bg-muted/40">
               <th className="text-left px-4 py-3 font-medium text-muted-foreground leading-snug">
@@ -531,7 +532,7 @@ export default function MdmDashboardPage() {
               </tr>
             ))}
           </tbody>
-        </table>
+        </ScreenTable>
       </div>
 
       </QueryBoundary>

@@ -173,7 +173,7 @@ export default function VoiceMemoRecorder({
     <div className="rounded-lg border border-border bg-card p-3 space-y-2">
       <div className="flex items-center gap-2">
         {!isRecording && !audioBlob && (
-          <button
+          <button data-ui-control="button"
             type="button"
             onClick={handleStart}
             disabled={disabled}
@@ -185,7 +185,7 @@ export default function VoiceMemoRecorder({
         )}
 
         {isRecording && (
-          <button
+          <button data-ui-control="button"
             type="button"
             onClick={stopRecording}
             className="flex items-center gap-2 px-3 py-2 text-sm bg-destructive/10 text-destructive rounded-lg hover:bg-destructive/15 transition-colors leading-snug"
@@ -204,7 +204,7 @@ export default function VoiceMemoRecorder({
 
         {!isRecording && audioBlob && (
           <>
-            <button
+            <button data-ui-control="button"
               type="button"
               onClick={handleTogglePreview}
               className="flex items-center gap-2 px-3 py-2 text-sm border border-input rounded-lg hover:bg-muted transition-colors leading-snug"
@@ -225,7 +225,7 @@ export default function VoiceMemoRecorder({
               >
                 <Trash2 className="size-4" />
               </button>
-              <button
+              <button data-ui-control="button"
                 type="button"
                 onClick={handleUpload}
                 disabled={disabled || isUploading}

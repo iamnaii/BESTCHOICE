@@ -108,10 +108,10 @@ export default function AllTab() {
         label: 'สัญญา',
         render: (p: OverduePayment) => (
           <button onClick={() => navigateToContract(p.contract.id)} className="text-left">
-            <div className="font-mono text-sm text-primary hover:underline whitespace-nowrap">
+            <div className="font-mono text-sm text-primary hover:underline break-all">
               {p.contract.contractNumber}
             </div>
-            <div className="text-xs text-muted-foreground whitespace-nowrap">
+            <div className="text-xs text-muted-foreground break-words">
               {p.contract.customer.name}
             </div>
           </button>
@@ -149,18 +149,20 @@ export default function AllTab() {
       {
         key: 'outstanding',
         label: 'ยอดค้าง',
+        align: 'right' as const,
         render: (p: OverduePayment) => {
           const outstanding = parseFloat(p.amountDue) - parseFloat(p.amountPaid);
-          return <span className="text-sm font-medium">{outstanding.toLocaleString()} ฿</span>;
+          return <span className="text-sm font-medium whitespace-nowrap tabular-nums">{outstanding.toLocaleString()} ฿</span>;
         },
       },
       {
         key: 'lateFee',
         label: 'ค่าปรับ',
+        align: 'right' as const,
         render: (p: OverduePayment) => {
           const fee = parseFloat(p.lateFee);
           return fee > 0 ? (
-            <span className="text-sm font-medium text-destructive">{fee.toLocaleString()} ฿</span>
+            <span className="text-sm font-medium text-destructive whitespace-nowrap tabular-nums">{fee.toLocaleString()} ฿</span>
           ) : (
             <span className="text-xs text-muted-foreground">-</span>
           );
@@ -169,12 +171,13 @@ export default function AllTab() {
       {
         key: 'total',
         label: 'ยอดรวม',
+        align: 'right' as const,
         render: (p: OverduePayment) => {
           const total =
             (parseFloat(p.amountDue) || 0) +
             (parseFloat(p.lateFee) || 0) -
             (parseFloat(p.amountPaid) || 0);
-          return <span className="text-sm font-bold text-destructive">{total.toLocaleString()} ฿</span>;
+          return <span className="text-sm font-bold text-destructive whitespace-nowrap tabular-nums">{total.toLocaleString()} ฿</span>;
         },
       },
       {
@@ -226,7 +229,7 @@ export default function AllTab() {
           className="px-3 py-2 border border-input rounded-lg text-sm min-w-[250px] focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background focus:border-transparent"
         />
         {overduePayments.length > 0 && (
-          <button
+          <button data-ui-control="button"
             onClick={async () => {
               try {
                 await exportToExcel({

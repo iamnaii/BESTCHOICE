@@ -26,7 +26,7 @@ export default function CheatSheet() {
             <div className="text-sm font-bold text-muted-foreground uppercase tracking-wider mb-2.5">{group.group}</div>
             <div className="flex flex-wrap gap-2">
               {group.items.map(item => (
-                <button
+                <button data-ui-control="button"
                   key={item.syntax}
                   onClick={() => handleCopy(item.syntax)}
                   className={`group/item relative inline-flex items-center gap-1.5 px-2.5 py-2 rounded-lg text-sm font-mono transition-all hover:shadow-sm ${item.bgColor} ${item.color} hover:opacity-90`}

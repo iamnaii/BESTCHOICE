@@ -32,13 +32,13 @@ export default function CustomerViewSwitch({
       <div
         role="group"
         aria-label="แสดงรายชื่อ"
-        className="flex h-11 gap-1 rounded-lg border border-border/80 bg-muted/50 p-1"
+        className="flex min-h-11 gap-1 rounded-lg border border-border/80 bg-muted/50 p-1"
       >
         {VIEW_OPTIONS.map((option) => {
           const on = view === option.key;
           const count = counts ? counts[option.key] : null;
           return (
-            <button
+            <button data-ui-control="button"
               key={option.key}
               type="button"
               aria-pressed={on}

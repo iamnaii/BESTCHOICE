@@ -177,7 +177,7 @@ export default function ProfitLossPage() {
             { label: '3 เดือน', fn: () => { setStartDate(getReportDateRange('last_three_months').startDate); setEndDate(range.endDate); } },
             { label: 'ปีนี้', fn: () => { setStartDate(getReportDateRange('this_year').startDate); setEndDate(range.endDate); } },
           ].map((p) => (
-            <button key={p.label} onClick={p.fn} className="px-3 py-2 text-xs border border-input rounded-lg hover:bg-muted transition-colors">
+            <button data-ui-control="button" key={p.label} onClick={p.fn} className="px-3 py-2 text-xs border border-input rounded-lg hover:bg-muted transition-colors">
               {p.label}
             </button>
           ))}

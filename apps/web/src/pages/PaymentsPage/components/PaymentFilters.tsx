@@ -69,7 +69,7 @@ export default function PaymentFilters({
             ))}
           </NativeSelect>
         )}
-        <button
+        <button data-ui-control="button"
           onClick={onExport}
           disabled={!hasPendingPayments}
           className="inline-flex items-center gap-2 px-4 py-2 border border-input rounded-lg text-sm font-medium hover:bg-muted transition-colors text-muted-foreground hover:text-foreground disabled:opacity-50 disabled:cursor-not-allowed"

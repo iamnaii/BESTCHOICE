@@ -1,3 +1,4 @@
+import ScreenTable from '@/components/ui/ScreenTable';
 import { toBangkokDateString } from '@/lib/date';
 // Asset module — Disposal page (Phase 2)
 // 3-section form (วิธีจำหน่าย / รายละเอียด / Auto JE Preview).
@@ -294,7 +295,7 @@ export default function AssetDisposePage() {
                   </div>
                 </dl>
                 {calc.journalLines.length > 0 && (
-                  <table className="w-full text-sm mt-4">
+                  <ScreenTable className="w-full text-sm mt-4">
                     <thead>
                       <tr className="border-b">
                         <th className="text-left py-2 px-2">รหัส</th>
@@ -317,7 +318,7 @@ export default function AssetDisposePage() {
                         </tr>
                       ))}
                     </tbody>
-                  </table>
+                  </ScreenTable>
                 )}
               </CardContent>
             </Card>

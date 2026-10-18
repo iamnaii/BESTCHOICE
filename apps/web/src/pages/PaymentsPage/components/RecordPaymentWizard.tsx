@@ -198,6 +198,7 @@ export function RecordPaymentWizard({
   defaultDepositAccountCode = '11-1101',
 }: RecordPaymentWizardProps) {
   const uiFieldId = useUiFieldId();
+  const returnFocus = useRef<HTMLElement | null>(null);
   const [depositAccountCode, setDepositAccountCode] = useState(defaultDepositAccountCode);
   const [showPartialConfirm, setShowPartialConfirm] = useState(false);
   const [showPayoffOverlay, setShowPayoffOverlay] = useState(false);
@@ -745,6 +746,8 @@ export function RecordPaymentWizard({
       <Dialog open={open} onOpenChange={handleOpenChange}>
         <DialogContent
           className="w-full max-w-5xl max-h-[92vh] flex flex-col p-0 gap-0"
+          onOpenAutoFocus={() => { returnFocus.current = document.activeElement instanceof HTMLElement ? document.activeElement : null; }}
+          onCloseAutoFocus={(event) => { event.preventDefault(); if (returnFocus.current?.isConnected) returnFocus.current.focus(); }}
           // The payoff/reschedule overlays portal to document.body (outside this Dialog),
           // so clicking them (incl. their ยกเลิก) reads as an "interact outside" and would
           // close the wizard underneath. While an overlay is open, keep the wizard mounted
@@ -788,7 +791,7 @@ export function RecordPaymentWizard({
                         (ยังไม่ลงบัญชี) · แก้ไขแล้วกด "บันทึก" เพื่ออัปเดตร่าง
                       </span>
                     </div>
-                    <button
+                    <button data-ui-control="button"
                       type="button"
                       onClick={() => onCancelDraft?.(payment.id)}
                       disabled={isSubmitting}
@@ -861,7 +864,7 @@ export function RecordPaymentWizard({
                         active: false,
                       },
                     ].map((t) => (
-                      <button
+                      <button data-ui-control="button"
                         key={t.key}
                         type="button"
                         aria-pressed={t.toggle ? t.active : undefined}
@@ -905,7 +908,7 @@ export function RecordPaymentWizard({
                         tile.apply != null &&
                         new Decimal(amountReceived || 0).eq(new Decimal(tile.apply()));
                       return (
-                        <button
+                        <button data-ui-control="button"
                           key={tile.key}
                           type="button"
                           onClick={() => {
@@ -1016,7 +1019,7 @@ export function RecordPaymentWizard({
                       ].map((b) => {
                         const active = b.apply != null && waiverDec.eq(new Decimal(b.apply()));
                         return (
-                          <button
+                          <button data-ui-control="button"
                             key={b.key}
                             type="button"
                             aria-pressed={b.apply != null ? active : undefined}

@@ -138,7 +138,7 @@ export default function ReturnToStockAction({
 
   return (
     <>
-      <button
+      <button data-ui-control="button"
         type="button"
         onClick={() => {
           setCash(priceText(currentCashPrice));

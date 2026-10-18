@@ -314,14 +314,14 @@ export default function PromiseTab({
                 หน้า {page}/{Math.ceil(total / LIMIT)} · ทั้งหมด {total} รายการ
               </span>
               <div className="flex gap-2">
-                <button
+                <button data-ui-control="button"
                   onClick={() => setPage((p) => Math.max(1, p - 1))}
                   disabled={page === 1}
                   className="px-3 py-1 rounded border border-input hover:bg-muted disabled:opacity-50 transition-colors"
                 >
                   ก่อนหน้า
                 </button>
-                <button
+                <button data-ui-control="button"
                   onClick={() => setPage((p) => p + 1)}
                   disabled={page * LIMIT >= total}
                   className="px-3 py-1 rounded border border-input hover:bg-muted disabled:opacity-50 transition-colors"

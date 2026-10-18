@@ -158,7 +158,7 @@ export function GoodsReceivingModal(props: GoodsReceivingModalProps) {
               {selectedPO.supplier.name} · {total} ชิ้น
             </div>
           </div>
-          <button
+          <button data-ui-control="button" data-ui-icon="true"
             type="button"
             onClick={requestClose}
             aria-label="ปิด"

@@ -31,14 +31,14 @@ export function RejectModal({ docNumber, onCancel, onConfirm, isLoading }: Props
           className="w-full border rounded-md px-3 py-2 text-sm"
         />
         <div className="flex justify-end gap-2 mt-4">
-          <button
+          <button data-ui-control="button"
             onClick={onCancel}
             type="button"
             className="px-4 py-2 text-sm font-semibold rounded-md border"
           >
             ยกเลิก
           </button>
-          <button
+          <button data-ui-control="button"
             onClick={() => onConfirm(note.trim())}
             disabled={note.trim().length === 0 || isLoading}
             className="px-5 py-2 text-sm font-bold rounded-md bg-destructive text-destructive-foreground disabled:opacity-50"

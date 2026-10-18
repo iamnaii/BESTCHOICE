@@ -559,7 +559,7 @@ function CustomerCreateForm({ mode = 'create', fillCustomerId, initialValues, in
               {(onUseExisting || isFill) && (
                 <div className="mt-3 flex items-center gap-3">
                   {onUseExisting && (
-                    <button
+                    <button data-ui-control="button"
                       type="button"
                       onClick={() => { onUseExisting(existing); onClose(); }}
                       className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow-sm hover:bg-primary/90"
@@ -1062,8 +1062,8 @@ function CustomerCreateForm({ mode = 'create', fillCustomerId, initialValues, in
           </div>
           {/* Sticky Footer */}
           <div className="sticky bottom-0 flex shrink-0 justify-end gap-3 border-t bg-background/95 px-6 py-4 backdrop-blur-xs">
-            <button type="button" onClick={onClose} className="rounded-lg border border-input px-6 py-2.5 text-sm text-muted-foreground transition-colors hover:bg-accent">ยกเลิก</button>
-            <button type="submit" disabled={createMutation.isPending} className="rounded-lg bg-primary px-6 py-2.5 text-sm font-semibold text-primary-foreground shadow-sm transition-colors hover:bg-primary/90 disabled:opacity-50">
+            <button data-ui-control="button" type="button" onClick={onClose} className="rounded-lg border border-input px-6 py-2.5 text-sm text-muted-foreground transition-colors hover:bg-accent">ยกเลิก</button>
+            <button data-ui-control="button" type="submit" disabled={createMutation.isPending} className="rounded-lg bg-primary px-6 py-2.5 text-sm font-semibold text-primary-foreground shadow-sm transition-colors hover:bg-primary/90 disabled:opacity-50">
               {createMutation.isPending ? (
                 <span className="inline-flex items-center gap-2"><div className="h-4 w-4 animate-spin rounded-full border-b-2 border-primary-foreground" /> กำลังบันทึก...</span>
               ) : submitLabel}

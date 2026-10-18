@@ -1,3 +1,4 @@
+import ScreenTable from '@/components/ui/ScreenTable';
 import { Check, AlertTriangle, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { JePreviewResponse } from './types';
@@ -33,7 +34,7 @@ export function JePreview({ preview, loading, error }: Props) {
   }
   return (
     <div className="overflow-hidden rounded-xl border border-border bg-card">
-      <table className="w-full text-sm">
+      <ScreenTable className="w-full text-sm">
         <thead className="bg-muted/50">
           <tr>
             <th className="px-3 py-2 text-left font-medium">บัญชี</th>
@@ -84,7 +85,7 @@ export function JePreview({ preview, loading, error }: Props) {
             </td>
           </tr>
         </tbody>
-      </table>
+      </ScreenTable>
       <div className="grid grid-cols-4 gap-2 bg-muted/30 p-3 text-xs">
         <SummaryCard label="ค่าใช้จ่าย" value={preview.totals.subtotal} />
         <SummaryCard label="VAT ซื้อ" value={preview.totals.vatAmount} />

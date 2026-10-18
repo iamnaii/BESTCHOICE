@@ -1,3 +1,4 @@
+import ScreenTable from '@/components/ui/ScreenTable';
 import { useAccountingPermissions } from '@/hooks/useAccountingPermissions';
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router';
@@ -236,7 +237,7 @@ export default function OtherIncomeListPage() {
               <ChartBar size={16} />
               สรุปรายวัน
             </Link>
-            <button
+            <button data-ui-control="button"
               onClick={() => navigate('/other-income/new')}
               className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-semibold hover:bg-primary/90 transition-colors"
             >
@@ -340,7 +341,7 @@ export default function OtherIncomeListPage() {
             <div className="flex flex-col items-center justify-center py-16 text-center">
               <FileText size={40} className="text-muted-foreground mb-3 opacity-40" />
               <p className="text-muted-foreground text-sm">ไม่พบเอกสาร</p>
-              <button
+              <button data-ui-control="button"
                 onClick={() => navigate('/other-income/new')}
                 className="mt-4 inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-semibold hover:bg-primary/90"
               >
@@ -348,8 +349,8 @@ export default function OtherIncomeListPage() {
               </button>
             </div>
           ) : (
-            <div role="region" aria-label="รายการเอกสารรายได้อื่น เลื่อนแนวนอนเพื่อดูทุกคอลัมน์" tabIndex={0} className="overflow-x-auto">
-              <table className="w-full min-w-[64rem] text-sm [&_th]:whitespace-nowrap">
+            <div role="region" aria-label="รายการเอกสารรายได้อื่น" className="overflow-x-auto">
+              <ScreenTable className="w-full min-w-[64rem] text-sm [&_th]:whitespace-nowrap">
                 <thead>
                   <tr className="border-b bg-muted/30">
                     <th className="text-left px-4 py-3 font-medium text-muted-foreground text-xs">เลขเอกสาร</th>
@@ -420,7 +421,7 @@ export default function OtherIncomeListPage() {
                       </td>
                       <td className="px-4 py-3 text-right">
                         {doc.status === 'DRAFT' && permissions.can('INCOME_CANCEL') && (
-                          <button
+                          <button data-ui-control="button"
                             type="button"
                             onClick={(e) => {
                               e.stopPropagation();
@@ -436,7 +437,7 @@ export default function OtherIncomeListPage() {
                     </tr>
                   ))}
                 </tbody>
-              </table>
+              </ScreenTable>
             </div>
           )}
         </div>

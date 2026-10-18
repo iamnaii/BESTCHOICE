@@ -479,7 +479,7 @@ export default function SupplierForm({
                     <p className="text-xs text-muted-foreground">วิธีรับชำระเงินจากผู้จัดจำหน่าย</p>
                   </div>
                 </div>
-                <button
+                <button data-ui-control="button"
                   type="button"
                   onClick={addPaymentMethod}
                   className="min-h-11 shrink-0 px-3 py-2 text-xs bg-primary/5 dark:bg-primary/10 text-primary rounded-lg hover:bg-primary/15 transition-colors font-medium"
@@ -512,7 +512,7 @@ export default function SupplierForm({
                         <span className="text-xs text-muted-foreground">ค่าเริ่มต้น</span>
                       </label>
                     </div>
-                    <button
+                    <button data-ui-control="button"
                       type="button"
                       onClick={() => removePaymentMethod(index)}
                       aria-label={`ลบวิธีชำระเงินที่ ${index + 1}`}
@@ -669,14 +669,14 @@ export default function SupplierForm({
           </div>
 
           <div className="sticky bottom-0 bg-background/95 backdrop-blur-xs border-t px-3 sm:px-6 py-4 flex justify-end gap-3 shrink-0">
-            <button
+            <button data-ui-control="button"
               type="button"
               onClick={onClose}
               className="px-6 py-2.5 text-sm border border-input rounded-lg hover:bg-muted transition-colors"
             >
               ยกเลิก
             </button>
-            <button
+            <button data-ui-control="button"
               type="submit"
               disabled={isPending}
               className="px-6 py-2.5 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50 font-semibold transition-colors shadow-sm"

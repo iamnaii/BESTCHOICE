@@ -52,6 +52,12 @@ function mount(element: React.ReactNode) {
   return { qc, invalidate };
 }
 
+async function openReview(index = 0) {
+  const buttons = await screen.findAllByRole('button', { name: 'ตรวจคำขอ' });
+  fireEvent.click(buttons[index]);
+  expect(screen.getByRole('dialog', { name: 'ตรวจคำขอ' })).toBeInTheDocument();
+}
+
 beforeEach(() => {
   state.user = { id: 'reviewer', name: 'ผู้ตรวจ', role: 'SALES' };
   state.get.mockReset();
@@ -61,9 +67,23 @@ beforeEach(() => {
 });
 
 describe('payment approval queue', () => {
+  it('lists comparable rows and opens full review without making a decision', async () => {
+    mount(<PaymentApprovalQueue />);
+    const table = await screen.findByRole('table');
+    expect(within(table).getByRole('columnheader', { name: 'ยอดเงิน' })).toBeInTheDocument();
+    expect(within(table).getByText('3,050.00 ฿')).toBeInTheDocument();
+    expect(within(table).queryByRole('button', { name: 'อนุมัติ' })).not.toBeInTheDocument();
+    await openReview();
+    const dialog = screen.getByRole('dialog');
+    expect(within(dialog).getByText(/รับค่าปรับเพิ่มตามข้อตกลง/)).toBeInTheDocument();
+    expect(within(dialog).getByText('50.00 ฿')).toBeInTheDocument();
+    expect(state.post).not.toHaveBeenCalled();
+  });
+
   it('shows the frozen receipt fee and allows a delegated SALES reviewer according to canApprove', async () => {
     mount(<PaymentApprovalQueue />);
-    const article = await screen.findByRole('article');
+    await openReview();
+    const article = screen.getByRole('dialog');
     expect(within(article).getByText('3,050.00 ฿')).toBeInTheDocument();
     expect(within(article).getByText('50.00 ฿')).toBeInTheDocument();
     expect(within(article).queryByText('150.00 ฿')).not.toBeInTheDocument();
@@ -76,7 +96,7 @@ describe('payment approval queue', () => {
     state.user = { id: 'cashier', name: 'เจ้าของ', role: 'OWNER' };
     state.get.mockResolvedValue({ data: { data: [row({ canApprove: false })] } });
     mount(<PaymentApprovalQueue />);
-    await screen.findByRole('article');
+    await openReview();
     expect(screen.queryByRole('button', { name: 'อนุมัติ' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'ปฏิเสธ' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'ยกเลิกคำขอ' })).toBeEnabled();
@@ -85,7 +105,8 @@ describe('payment approval queue', () => {
   it('requires an OWNER self-approval reason and submits only the decision under the current session', async () => {
     state.user = { id: 'cashier', name: 'เจ้าของ', role: 'OWNER' };
     const { invalidate } = mount(<PaymentApprovalQueue />);
-    fireEvent.click(await screen.findByRole('button', { name: 'อนุมัติ' }));
+    await openReview();
+    fireEvent.click(screen.getByRole('button', { name: 'อนุมัติ' }));
     const dialog = screen.getByRole('dialog');
     const reason = within(dialog).getByRole('textbox');
     expect(reason).toHaveValue('รับค่าปรับเพิ่มตามข้อตกลง');
@@ -107,7 +128,8 @@ describe('payment approval queue', () => {
   it('requires a rejection reason and retains API errors for correction', async () => {
     state.post.mockRejectedValue(new Error('สิทธิ์อนุมัติเปลี่ยนแล้ว'));
     mount(<PaymentApprovalQueue />);
-    fireEvent.click(await screen.findByRole('button', { name: 'ปฏิเสธ' }));
+    await openReview();
+    fireEvent.click(screen.getByRole('button', { name: 'ปฏิเสธ' }));
     const dialog = screen.getByRole('dialog');
     expect(within(dialog).getByRole('button', { name: 'ยืนยัน' })).toBeDisabled();
     fireEvent.change(within(dialog).getByRole('textbox'), { target: { value: 'หลักฐานไม่ตรง' } });
@@ -124,7 +146,8 @@ describe('payment approval queue', () => {
   it('lets only the requester cancel their pending request, without an approver field', async () => {
     state.user.id = 'cashier';
     mount(<PaymentApprovalQueue />);
-    fireEvent.click(await screen.findByRole('button', { name: 'ยกเลิกคำขอ' }));
+    await openReview();
+    fireEvent.click(screen.getByRole('button', { name: 'ยกเลิกคำขอ' }));
     fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'ยืนยัน' }));
     await waitFor(() =>
       expect(state.post).toHaveBeenCalledWith('/payments/approval-requests/request-1/cancel', {}),
@@ -133,7 +156,8 @@ describe('payment approval queue', () => {
 
   it('disables an open approval after a refreshed permission check denies it', async () => {
     const { qc } = mount(<PaymentApprovalQueue />);
-    fireEvent.click(await screen.findByRole('button', { name: 'อนุมัติ' }));
+    await openReview();
+    fireEvent.click(screen.getByRole('button', { name: 'อนุมัติ' }));
     state.get.mockResolvedValue({ data: { data: [row({ canApprove: false })] } });
     await qc.invalidateQueries({ queryKey: ['payment-approval-requests'] });
     await waitFor(() =>
@@ -149,7 +173,7 @@ describe('payment approval queue', () => {
     mount(<PaymentApprovalQueue />);
     expect(await screen.findByRole('alert')).toHaveTextContent('เชื่อมต่อไม่สำเร็จ');
     fireEvent.click(screen.getByRole('button', { name: 'ลองใหม่' }));
-    expect(await screen.findByRole('article')).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: 'ตรวจคำขอ' })).toBeInTheDocument();
   });
 });
 
@@ -167,7 +191,8 @@ describe('frozen server review summaries', () => {
       },
     });
     mount(<PaymentApprovalQueue />);
-    const article = await screen.findByRole('article');
+    await openReview();
+    const article = screen.getByRole('dialog');
     expect(within(article).getByText('ยอดใบเสร็จที่ยกเลิก')).toBeInTheDocument();
     expect(within(article).getByText('6,179.00 ฿')).toBeInTheDocument();
     expect(within(article).getByText('RC-2-1, RC-2-2')).toBeInTheDocument();
@@ -198,11 +223,13 @@ describe('frozen server review summaries', () => {
       },
     });
     mount(<PaymentApprovalQueue />);
-    await screen.findAllByRole('article');
-    expect(screen.getByText('22,000.00 ฿')).toBeInTheDocument();
+    await openReview(0);
+    expect(within(screen.getByRole('dialog')).getByText('22,000.00 ฿')).toBeInTheDocument();
     expect(screen.getByText('1,200.00 ฿')).toBeInTheDocument();
     expect(screen.getByText('100.00 ฿')).toBeInTheDocument();
-    expect(screen.getByText('50.00 ฿')).toBeInTheDocument();
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'กลับรายการ' }));
+    await openReview(1);
+    expect(within(screen.getByRole('dialog')).getByText('50.00 ฿')).toBeInTheDocument();
   });
 });
 

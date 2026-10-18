@@ -106,7 +106,7 @@ export default function FinancialAuditPage() {
               placeholder="ค้นหาด้วย Contract ID..."
               className="flex-1 h-10 px-3.5 border border-input rounded-lg text-sm outline-hidden bg-background text-foreground placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring/30"
             />
-            <button
+            <button data-ui-control="button"
               onClick={handleSearch}
               className="px-4 py-2 bg-primary text-primary-foreground text-sm font-medium rounded-lg hover:bg-primary/90"
             >

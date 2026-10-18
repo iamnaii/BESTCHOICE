@@ -370,7 +370,7 @@ export default function MonthlyClosePage() {
       />
 
       {/* Controls */}
-      <div className="flex flex-wrap items-center gap-4 [&>div]:min-w-0 [&>div]:max-w-full">
+      <div className="flex flex-wrap items-end gap-4 [&>div]:min-w-0 [&>div]:max-w-full">
         {/* Company selector */}
         {companies.length > 0 && (
           <div>
@@ -396,23 +396,21 @@ export default function MonthlyClosePage() {
           <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
             ปี (ค.ศ.)
           </label>
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-2">
             <Button
               variant="outline"
               size="icon"
-              className="h-9 w-9"
               onClick={() => setYear((y) => y - 1)}
               aria-label="ปีก่อนหน้า"
             >
               <ChevronLeft className="h-4 w-4" />
             </Button>
-            <span className="w-20 text-center font-semibold text-sm tabular-nums">
+            <span className="min-w-[7.5rem] whitespace-nowrap px-2 text-center font-semibold text-sm tabular-nums">
               {year} / {year + 543}
             </span>
             <Button
               variant="outline"
               size="icon"
-              className="h-9 w-9"
               onClick={() => setYear((y) => y + 1)}
               aria-label="ปีถัดไป"
               disabled={year >= currentYear + 1}

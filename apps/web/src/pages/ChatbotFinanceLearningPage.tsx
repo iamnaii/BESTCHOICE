@@ -144,7 +144,7 @@ export default function ChatbotFinanceLearningPage() {
       {/* Filter tabs */}
       <div className="flex flex-wrap gap-2 mb-4">
         {['PENDING', 'APPROVED', 'REJECTED'].map((s) => (
-          <button
+          <button data-ui-control="button"
             key={s}
             onClick={() => { setStatusFilter(s); setSelectedSuggestion(null); }}
             className={`px-4 py-1.5 rounded-full text-sm ${
@@ -252,14 +252,14 @@ export default function ChatbotFinanceLearningPage() {
 
               {selectedSuggestion.status === 'PENDING' && (
                 <div className="flex gap-2 pt-3 border-t">
-                  <button
+                  <button data-ui-control="button"
                     onClick={() => approveMutation.mutate(selectedSuggestion.id)}
                     disabled={approveMutation.isPending}
                     className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm hover:bg-primary/90 disabled:opacity-50"
                   >
                     {approveMutation.isPending ? 'กำลัง...' : 'Approve → สร้าง KB'}
                   </button>
-                  <button
+                  <button data-ui-control="button"
                     onClick={() => rejectMutation.mutate(selectedSuggestion.id)}
                     disabled={rejectMutation.isPending}
                     className="px-4 py-2 border border-destructive/30 text-destructive rounded-lg text-sm hover:bg-destructive/10 disabled:opacity-50"

@@ -213,7 +213,7 @@ function ButtonEditor({
         <label className="block text-sm font-medium text-foreground mb-1.5">เลือกช่อง</label>
         <div className="flex flex-wrap gap-1.5">
           {buttons.slice(0, visibleCount).map((b, i) => (
-            <button
+            <button data-ui-control="button"
               key={i}
               onClick={() => onSelectButton(i)}
               aria-pressed={i === selectedButton}
@@ -288,7 +288,7 @@ function ButtonEditor({
                 <label className="block text-xs font-medium text-muted-foreground mb-1.5">สีพื้นหลัง</label>
                 <div className="flex flex-wrap gap-1.5">
                   {COLOR_PRESETS.map((preset) => (
-                    <button
+                    <button data-ui-control="button" data-ui-icon="true"
                       key={preset.value}
                       onClick={() => onUpdateButton(selectedButton, { color: preset.value })}
                       title={preset.name}
@@ -644,7 +644,7 @@ export default function RichMenuPage() {
           { key: 'shop', label: 'SHOP' },
           { key: 'finance', label: 'FINANCE' },
         ].map((ch) => (
-          <button
+          <button data-ui-control="button"
             key={ch.key}
             onClick={() => setChannel(ch.key as 'shop' | 'finance')}
             className={`px-5 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px ${
@@ -664,7 +664,7 @@ export default function RichMenuPage() {
           { key: 'create', label: 'สร้างเมนู' },
           { key: 'list', label: 'รายการเมนู' },
         ].map((tab) => (
-          <button
+          <button data-ui-control="button"
             key={tab.key}
             onClick={() => setActiveTab(tab.key as 'create' | 'list')}
             className={`px-5 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px ${

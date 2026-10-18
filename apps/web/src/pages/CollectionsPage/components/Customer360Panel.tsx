@@ -173,7 +173,7 @@ export default function Customer360Panel({
                 {contract?.contractNumber}
               </div>
             </div>
-            <button
+            <button data-ui-control="button" data-ui-icon="true"
               onClick={onClose}
               className="inline-flex size-11 items-center justify-center rounded-lg p-2 hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
               aria-label="ปิด"
@@ -404,7 +404,7 @@ export default function Customer360Panel({
                     something owed. The dialog itself filters to payments
                     with a non-zero late fee, so the button can stay enabled
                     even when no individual installment is overdue yet. */}
-                <button
+                <button data-ui-control="button"
                   type="button"
                   onClick={() => setWaiverOpen(true)}
                   className="mt-3 w-full inline-flex items-center justify-center gap-2 rounded-lg border border-input px-3 py-2 text-sm font-medium hover:bg-accent transition-colors"
@@ -418,7 +418,7 @@ export default function Customer360Panel({
                     (OWNER + FINANCE_MANAGER + BRANCH_MANAGER + SALES) on
                     the backend; LINE notify is the safety net. */}
                 {isLocked ? (
-                  <button
+                  <button data-ui-control="button"
                     type="button"
                     onClick={() => setUnlockConfirmOpen(true)}
                     disabled={unlock.isPending}
@@ -428,7 +428,7 @@ export default function Customer360Panel({
                     {unlock.isPending ? 'กำลังปลดล็อค...' : 'ปลดล็อคเครื่อง'}
                   </button>
                 ) : (
-                  <button
+                  <button data-ui-control="button"
                     type="button"
                     onClick={() => setLockDialogOpen(true)}
                     className="mt-2 w-full inline-flex items-center justify-center gap-2 rounded-lg bg-destructive text-destructive-foreground px-3 py-2 text-sm font-medium hover:bg-destructive/90 transition-colors"
@@ -508,7 +508,7 @@ interface TabButtonProps {
 
 function TabButton({ active, onClick, children }: TabButtonProps) {
   return (
-    <button
+    <button data-ui-control="button"
       type="button"
       onClick={onClick}
       className={`flex-1 px-4 py-2 text-sm leading-snug border-b-2 transition-colors ${

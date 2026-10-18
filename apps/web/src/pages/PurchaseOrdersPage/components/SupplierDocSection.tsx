@@ -87,7 +87,7 @@ export function SupplierDocSection({ doc, setDoc, supplierHasVat, check, errors,
         {SUPPLIER_DOC_TYPES.map((type) => {
           const active = doc.type === type;
           return (
-            <button
+            <button data-ui-control="button"
               key={type}
               type="button"
               role="radio"

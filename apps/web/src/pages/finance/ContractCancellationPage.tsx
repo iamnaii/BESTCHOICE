@@ -1,3 +1,4 @@
+import ScreenTable from '@/components/ui/ScreenTable';
 import { useState } from 'react';
 import { Link } from 'react-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -168,7 +169,7 @@ export default function ContractCancellationPage() {
               </div>
             ) : (
               <div className="overflow-x-auto">
-                <table className="w-full text-sm leading-snug">
+                <ScreenTable className="w-full text-sm leading-snug">
                   <thead className="bg-muted/50">
                     <tr>
                       <th className="text-left p-3 font-medium text-muted-foreground">วันที่ขอ</th>
@@ -263,7 +264,7 @@ export default function ContractCancellationPage() {
                       </tr>
                     ))}
                   </tbody>
-                </table>
+                </ScreenTable>
               </div>
             )}
           </CardContent>

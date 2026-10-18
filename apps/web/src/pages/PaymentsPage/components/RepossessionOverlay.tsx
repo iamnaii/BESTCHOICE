@@ -770,7 +770,7 @@ export function RepossessionOverlay({
         )}
         <div className="flex items-center justify-between gap-3">
           {canConfirm && deviceReturn && !notPending ? (
-            <button
+            <button data-ui-control="button"
               type="button"
               disabled={mutation.isPending || mutation.isSuccess || drFetching || drFailed}
               onClick={() => !submitting.current && setRejectOpen(true)}
@@ -783,14 +783,14 @@ export function RepossessionOverlay({
             <div />
           )}
           <div className="flex gap-3">
-            <button
+            <button data-ui-control="button"
               disabled={mutation.isPending || rejectOpen}
               onClick={() => !submitting.current && !rejectOpen && onClose()}
               className="px-6 py-2.5 text-sm leading-snug border border-input rounded-lg hover:bg-muted transition-colors"
             >
               ยกเลิก
             </button>
-            <button
+            <button data-ui-control="button"
               onClick={() => {
                 if (!canSubmit || submitting.current) return;
                 submitting.current = true;

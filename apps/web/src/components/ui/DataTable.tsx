@@ -30,6 +30,9 @@ import {
 } from 'lucide-react';
 import EmptyState from '@/components/ui/EmptyState';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { NativeSelect } from '@/components/ui/native-select';
+import { useTableLayout } from './use-table-layout';
+import './data-table.css';
 
 export interface Column<T> {
   key: string;
@@ -77,6 +80,8 @@ export interface Column<T> {
    * Use for the action column so it never scrolls out of reach.
    */
   stickyRight?: boolean;
+  /** Span the full card row when a responsive table stacks its cells. */
+  cardFullWidth?: boolean;
 }
 
 interface PaginationInfo {
@@ -139,6 +144,12 @@ interface DataTableProps<T> {
   className?: string;
   /** Constrain tall lists so the header and horizontal scrollbar stay reachable. */
   maxHeight?: string;
+  /** Name and expose the scroll region to keyboard users, including horizontal-only tables. */
+  scrollLabel?: string;
+  /** Fit columns before using a narrow-screen layout; true marks grouped columns. */
+  responsive?: boolean | 'auto';
+  /** Use the surrounding card's border and shadow. */
+  embedded?: boolean;
 }
 
 const densityPadding = {
@@ -193,6 +204,9 @@ function DataTable<T extends { id: string }>({
   minWidth = '640px',
   className,
   maxHeight,
+  scrollLabel,
+  responsive = 'auto',
+  embedded = false,
   sort,
   onSortChange,
 }: DataTableProps<T>) {
@@ -341,14 +355,25 @@ function DataTable<T extends { id: string }>({
     hiddenColumnCount > 0 ? `คอลัมน์ · ซ่อนอยู่ ${hiddenColumnCount}` : 'คอลัมน์';
   const hasMainToolbar = searchable || toolbar || (selectable && selectedRows.length > 0);
   const hasToolbar = hasMainToolbar || columnToggle;
+  const { frameRef, tableRef, sizeRef, layout, stacked, overflowing } = useTableLayout(
+    !!responsive,
+    [data, columns, columnVisibility, isLoading, minWidth],
+  );
+  const sortableColumns = table.getAllLeafColumns().filter((column) => column.getCanSort());
 
   return (
     <div
+      ref={frameRef}
+      data-table-layout={layout}
       className={cn(
         'bg-card rounded-xl border border-border/60 overflow-hidden shadow-card',
+        responsive && 'data-table-responsive',
+        responsive === 'auto' && 'data-table-auto',
+        embedded && 'rounded-none border-0 shadow-none',
         className,
       )}
     >
+      {responsive && <span ref={sizeRef} className="table-size-probe" aria-hidden="true" />}
       {/* Toolbar */}
       {hasToolbar && (
         <div className="flex items-center justify-between gap-3 flex-wrap px-5 py-3 border-b border-border/60">
@@ -420,7 +445,7 @@ function DataTable<T extends { id: string }>({
                   .getAllLeafColumns()
                   .filter((col) => col.id !== '_select' && col.getCanHide())
                   .map((col) => (
-                    <button
+                    <button data-ui-control="button"
                       key={col.id}
                       onClick={() => col.toggleVisibility()}
                       className={cn(
@@ -451,19 +476,73 @@ function DataTable<T extends { id: string }>({
         </div>
       )}
 
+      {stacked && (sortableColumns.length > 0 || selectable) && (
+        <div className="flex min-w-0 flex-wrap items-center gap-3 border-b border-border/60 p-4">
+          {selectable && <label className="inline-flex min-h-11 shrink-0 items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              className="size-4 rounded border-border accent-primary"
+              checked={table.getIsAllPageRowsSelected()}
+              onChange={table.getToggleAllPageRowsSelectedHandler()}
+              aria-label="เลือกทั้งหมด"
+            />
+            เลือกทั้งหมดในหน้านี้
+          </label>}
+          {sortableColumns.length > 0 && <>
+            <NativeSelect
+              aria-label="เรียงตารางตาม"
+              wrapperClassName="w-full min-w-0 sm:w-auto sm:min-w-48"
+              value={sorting[0]?.id ?? ''}
+              onChange={(event) => table.setSorting(event.target.value ? [{ id: event.target.value, desc: false }] : [])}
+            >
+              <option value="">ลำดับเดิม</option>
+              {sortableColumns.map((column) => <option key={column.id} value={column.id}>
+                {columnByKey.get(column.id)?.label ?? column.id}
+              </option>)}
+            </NativeSelect>
+            {sorting[0] && <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() => table.setSorting(sorting.map((sort, index) => index === 0 ? { ...sort, desc: !sort.desc } : sort))}
+            >
+              {sorting[0].desc ? <ArrowDown className="size-4" /> : <ArrowUp className="size-4" />}
+              {sorting[0].desc ? 'มาก → น้อย' : 'น้อย → มาก'}
+            </Button>}
+          </>}
+        </div>
+      )}
+
       <div
         className={cn(
           'overflow-auto',
-          maxHeight &&
+          (maxHeight || scrollLabel || overflowing) &&
             'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring',
         )}
         style={{ maxHeight }}
-        tabIndex={maxHeight ? 0 : undefined}
-        role={maxHeight ? 'region' : undefined}
-        aria-label={maxHeight ? 'เลื่อนตารางรายการสินค้า' : undefined}
+        tabIndex={maxHeight || scrollLabel || overflowing ? 0 : undefined}
+        role={maxHeight || scrollLabel || overflowing ? 'region' : undefined}
+        aria-label={scrollLabel ?? (maxHeight ? 'เลื่อนตารางรายการสินค้า' : overflowing ? 'ตารางข้อมูล' : undefined)}
+        onKeyDown={scrollLabel || overflowing ? (event) => {
+          const viewport = event.currentTarget;
+          if (event.target !== viewport || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+          if (viewport.scrollWidth <= viewport.clientWidth) return;
+          // WebKit does not consistently scroll a focused region with arrow keys.
+          if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+            event.preventDefault();
+            viewport.scrollBy({ left: event.key === 'ArrowRight' ? 160 : -160 });
+          }
+        } : undefined}
         data-testid="data-table"
       >
-        <table className={cn('w-full', isFixedLayout && 'table-fixed')} style={{ minWidth }}>
+        <table
+          ref={tableRef}
+          data-responsive-table={responsive ? '' : undefined}
+          className={cn('w-full', isFixedLayout && 'table-fixed')}
+          style={{ minWidth: responsive === true ? 0 : minWidth }}
+          role={responsive ? 'table' : undefined}
+          aria-label={responsive ? scrollLabel : undefined}
+        >
           {isFixedLayout && (
             <colgroup>
               {table.getVisibleLeafColumns().map((leaf) => (
@@ -476,10 +555,11 @@ function DataTable<T extends { id: string }>({
               ))}
             </colgroup>
           )}
-          <thead className={maxHeight ? 'sticky top-0 z-20 bg-muted' : undefined}>
+          <thead role={responsive ? 'rowgroup' : undefined} className={maxHeight ? 'sticky top-0 z-20 bg-muted' : undefined}>
             {table.getHeaderGroups().map((headerGroup) => (
               <tr
                 key={headerGroup.id}
+                role={responsive ? 'row' : undefined}
                 className={cn(
                   'border-b border-border/60',
                   hasStickyColumn ? 'bg-muted' : 'bg-muted/40',
@@ -494,6 +574,8 @@ function DataTable<T extends { id: string }>({
                   return (
                     <th
                       key={header.id}
+                      role={responsive ? 'columnheader' : undefined}
+                      scope="col"
                       aria-sort={
                         canSort
                           ? sorted === 'asc'
@@ -503,7 +585,7 @@ function DataTable<T extends { id: string }>({
                               : 'none'
                           : undefined
                       }
-                      onClick={canSort ? header.column.getToggleSortingHandler() : undefined}
+                      onClick={canSort && !stacked ? header.column.getToggleSortingHandler() : undefined}
                       className={cn(
                         cellPadding,
                         'text-xs font-semibold text-muted-foreground uppercase tracking-wider',
@@ -516,6 +598,10 @@ function DataTable<T extends { id: string }>({
                         src?.headerClassName,
                       )}
                     >
+                      {stacked && <span className="sr-only">{isSelect ? 'เลือก' : src?.label}</span>}
+                      {/* Keep desktop geometry stable while measuring. In cards,
+                          only the toolbar controls are reachable/announced. */}
+                      <div className="contents" inert={stacked || undefined} aria-hidden={stacked || undefined}>
                       {header.isPlaceholder ? null : canSort ? (
                         <button
                           type="button"
@@ -549,20 +635,21 @@ function DataTable<T extends { id: string }>({
                           </span>
                         </div>
                       )}
+                      </div>
                     </th>
                   );
                 })}
               </tr>
             ))}
           </thead>
-          <tbody className="divide-y divide-border/60" aria-busy={isLoading || undefined}>
+          <tbody role={responsive ? 'rowgroup' : undefined} className="divide-y divide-border/60" aria-busy={isLoading || undefined}>
             {isLoading ? (
               // Skeleton lives inside the real table so the toolbar, headers and
               // column widths stay put instead of the whole card blinking away.
               [0, 1, 2, 3, 4].map((i) => (
-                <tr key={`skeleton-${i}`}>
+                <tr key={`skeleton-${i}`} role={responsive ? 'row' : undefined}>
                   {Array.from({ length: visibleColumnCount }).map((_, c) => (
-                    <td key={c} className={cn(cellText, cellPadding)}>
+                    <td key={c} role={responsive ? 'cell' : undefined} className={cn(cellText, cellPadding)}>
                       <Skeleton className="h-4 rounded" />
                     </td>
                   ))}
@@ -572,6 +659,7 @@ function DataTable<T extends { id: string }>({
               rows.map((row) => (
                 <tr
                   key={row.id}
+                  role={responsive ? 'row' : undefined}
                   className={cn(
                     'group/row transition-colors even:bg-muted/20',
                     hasStickyColumn ? 'hover:bg-accent' : 'hover:bg-muted/50',
@@ -586,6 +674,8 @@ function DataTable<T extends { id: string }>({
                     return (
                       <td
                         key={cell.id}
+                        role={responsive ? 'cell' : undefined}
+                        data-card-full={responsive && (src?.cardFullWidth || src?.stickyRight || cell.column.id === '_select' || /^(actions?|manage)$/.test(cell.column.id)) ? '' : undefined}
                         className={cn(
                           'text-foreground',
                           cellText,
@@ -598,6 +688,9 @@ function DataTable<T extends { id: string }>({
                           src?.className,
                         )}
                       >
+                        {stacked && src?.label && (
+                          <span className="data-table-card-label" aria-hidden="true">{src.label}</span>
+                        )}
                         {flexRender(cell.column.columnDef.cell, cell.getContext())}
                       </td>
                     );

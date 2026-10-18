@@ -1,3 +1,4 @@
+import ScreenTable from '@/components/ui/ScreenTable';
 import { formatIncomeAmount as fmt } from '@/utils/financial-display';
 import { AuditJournalTable, type AuditJournalLine } from './components/AuditJournalTable';
 import PdfPreview from '@/components/PdfPreview';
@@ -329,7 +330,7 @@ export default function OtherIncomeViewPage() {
         action={
           doc ? (
             <div className="flex items-center gap-2">
-              <button
+              <button data-ui-control="button"
                 type="button"
                 disabled={isActionLoading}
                 onClick={() => copyMutation.mutate()}
@@ -339,7 +340,7 @@ export default function OtherIncomeViewPage() {
                 คัดลอก
               </button>
               {(doc.status === 'POSTED' || doc.status === 'REVERSED') && (
-                <button
+                <button data-ui-control="button"
                   type="button"
                   onClick={() => setShowTemplateModal(true)}
                   className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium border rounded-lg hover:bg-accent"
@@ -348,7 +349,7 @@ export default function OtherIncomeViewPage() {
                 </button>
               )}
               {doc.status === 'POSTED' && doc.customerId && (
-                <button
+                <button data-ui-control="button"
                   type="button"
                   onClick={() =>
                     setPreviewId(doc.id)
@@ -362,7 +363,7 @@ export default function OtherIncomeViewPage() {
               )}
               {doc.status === 'DRAFT' && (
                 <>
-                  <button
+                  <button data-ui-control="button"
                     type="button"
                     onClick={() => navigate(`/other-income/${doc.id}/edit`)}
                     className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium border rounded-lg hover:bg-accent"
@@ -371,7 +372,7 @@ export default function OtherIncomeViewPage() {
                     แก้ไข
                   </button>
                   {makerCheckerEnabled ? (
-                    <button
+                    <button data-ui-control="button"
                       type="button"
                       onClick={() => requestApprovalMutation.mutate()}
                       disabled={requestApprovalMutation.isPending}
@@ -381,7 +382,7 @@ export default function OtherIncomeViewPage() {
                       ส่งขออนุมัติ
                     </button>
                   ) : (
-                    <button
+                    <button data-ui-control="button"
                       type="button"
                       onClick={() => navigate(`/other-income/${doc.id}/edit`)}
                       className="inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold bg-primary text-primary-foreground rounded-lg hover:bg-primary/90"
@@ -423,7 +424,7 @@ export default function OtherIncomeViewPage() {
                   <p className="text-xs text-success/80">เอกสาร {doc.docNumber} ลงบัญชีเรียบร้อย</p>
                 </div>
                 {doc.customerId && (
-                  <button
+                  <button data-ui-control="button"
                     onClick={() =>
                       setPreviewId(doc.id)
                     }
@@ -492,7 +493,7 @@ export default function OtherIncomeViewPage() {
                     รายการรายได้
                   </h2>
                   <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
+                    <ScreenTable className="w-full text-sm">
                       <thead>
                         <tr className="border-b">
                           <th className="text-left py-2 pr-3 text-xs text-muted-foreground font-medium">
@@ -549,7 +550,7 @@ export default function OtherIncomeViewPage() {
                           </tr>
                         ))}
                       </tbody>
-                    </table>
+                    </ScreenTable>
                   </div>
 
                   {/* Adjustments */}
@@ -711,7 +712,7 @@ export default function OtherIncomeViewPage() {
                       เอกสารนี้ยังเป็นร่าง — ยังไม่มี Journal Entry
                     </p>
                     {makerCheckerEnabled ? (
-                      <button
+                      <button data-ui-control="button"
                         type="button"
                         onClick={() => requestApprovalMutation.mutate()}
                         disabled={requestApprovalMutation.isPending}
@@ -721,7 +722,7 @@ export default function OtherIncomeViewPage() {
                         ส่งขออนุมัติ
                       </button>
                     ) : (
-                      <button
+                      <button data-ui-control="button"
                         type="button"
                         onClick={() => navigate(`/other-income/${doc.id}/edit`)}
                         className="w-full inline-flex items-center justify-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-semibold hover:bg-primary/90"

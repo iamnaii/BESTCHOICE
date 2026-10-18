@@ -55,10 +55,10 @@ export default function EditSellingPriceModal({
           ราคานี้คือแหล่งเดียวที่เว็บลูกค้า/บอท/เครื่องคิดค่างวดใช้ — เว้นว่าง = ไม่แก้ไขค่านี้
         </p>
         <div className="flex justify-end gap-3 pt-2">
-          <button type="button" onClick={onClose} className="px-4 py-2 text-sm text-muted-foreground">
+          <button data-ui-control="button" type="button" onClick={onClose} className="px-4 py-2 text-sm text-muted-foreground">
             ยกเลิก
           </button>
-          <button
+          <button data-ui-control="button"
             type="submit"
             disabled={isPending}
             className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 disabled:opacity-50"

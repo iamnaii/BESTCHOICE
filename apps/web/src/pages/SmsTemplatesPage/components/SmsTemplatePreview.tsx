@@ -76,7 +76,7 @@ export function SmsTemplatePreview({ template, liveBody }: Props) {
           <Eye className="w-4 h-4 text-primary" />
           <h3 className="text-sm font-semibold">ตัวอย่างข้อความ</h3>
         </div>
-        <button
+        <button data-ui-control="button"
           type="button"
           onClick={handleServerRender}
           disabled={previewMutation.isPending}

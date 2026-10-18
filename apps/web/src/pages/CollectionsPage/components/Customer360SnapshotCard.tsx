@@ -113,7 +113,7 @@ export default function Customer360SnapshotCard({
           <div className="text-2xs font-medium uppercase tracking-wide text-muted-foreground leading-snug">
             Customer 360 — สรุปด่วน
           </div>
-          <button
+          <button data-ui-control="button" data-ui-icon="true"
             onClick={onClose}
             className="rounded-md p-1 text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
             aria-label="ปิด"

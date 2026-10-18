@@ -394,7 +394,7 @@ export function EarlyPayoffOverlay({
             </label>
             <div className="flex flex-wrap gap-2">
               {DISCOUNT_PRESETS.map((p) => (
-                <button
+                <button data-ui-control="button"
                   key={p}
                   type="button"
                   onClick={() => changeDiscount(p)}
@@ -529,7 +529,7 @@ export function EarlyPayoffOverlay({
                 ['SHOP', 'เก็บที่หน้าร้าน'],
               ] as const
             ).map(([mode, label]) => (
-              <button
+              <button data-ui-control="button"
                 key={mode}
                 type="button"
                 role="radio"
@@ -646,7 +646,7 @@ export function EarlyPayoffOverlay({
                     </p>
                   </div>
                   {slip.phase !== 'idle' && slip.phase !== 'checking' && (
-                    <button
+                    <button data-ui-control="button"
                       type="button"
                       onClick={() => setSlip({ phase: 'idle' })}
                       className="min-h-11 px-3 text-xs border border-input rounded-lg hover:bg-muted"
@@ -694,7 +694,7 @@ export function EarlyPayoffOverlay({
                       ลากรูปสลิปมาวางที่นี่
                     </p>
                     <div className="flex flex-wrap justify-center gap-2">
-                      <button
+                      <button data-ui-control="button"
                         type="button"
                         onClick={() => fileInputRef.current?.click()}
                         className="inline-flex items-center gap-2 min-h-11 px-4 rounded-lg bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90"
@@ -702,7 +702,7 @@ export function EarlyPayoffOverlay({
                         <Upload className="size-4" aria-hidden="true" />
                         เลือกไฟล์
                       </button>
-                      <button
+                      <button data-ui-control="button"
                         type="button"
                         onClick={() => cameraInputRef.current?.click()}
                         className="inline-flex items-center gap-2 min-h-11 px-4 rounded-lg border border-input text-sm font-medium hover:bg-muted"
@@ -960,7 +960,7 @@ export function EarlyPayoffOverlay({
       <div className="sticky bottom-0 bg-background/95 backdrop-blur-xs border-t px-6 py-4 flex items-center justify-between gap-3">
         {/* Settlement button — visible to OWNER / FINANCE_MANAGER / ACCOUNTANT */}
         {canSettlement ? (
-          <button
+          <button data-ui-control="button"
             type="button"
             onClick={() => {
               setSettlementRequestId(crypto.randomUUID());
@@ -975,14 +975,14 @@ export function EarlyPayoffOverlay({
           <div />
         )}
         <div className="flex flex-wrap justify-end gap-3">
-          <button
+          <button data-ui-control="button"
             onClick={onClose}
             className="min-h-11 px-6 text-sm border border-input rounded-lg hover:bg-muted transition-colors"
           >
             ยกเลิก
           </button>
           {collectedByShop || !slipMatched ? (
-            <button
+            <button data-ui-control="button"
               onClick={() => setApprovalOpen(true)}
               disabled={!canSubmit}
               className={`min-h-11 px-6 text-sm rounded-lg font-semibold transition-colors shadow-sm disabled:opacity-50 ${
@@ -999,7 +999,7 @@ export function EarlyPayoffOverlay({
             </button>
           ) : null}
           {!collectedByShop && (
-            <button
+            <button data-ui-control="button"
               onClick={() => {
                 setConfirmChecked(false);
                 setConfirmOpen(true);
@@ -1080,7 +1080,7 @@ export function EarlyPayoffOverlay({
                 <span>ตรวจแล้วว่าสลิปเป็นของสัญญานี้และลูกค้ารายนี้จริง</span>
               </label>
               <div className="flex justify-end gap-3">
-                <button
+                <button data-ui-control="button"
                   type="button"
                   onClick={() => setConfirmOpen(false)}
                   disabled={confirmMutation.isPending}
@@ -1088,7 +1088,7 @@ export function EarlyPayoffOverlay({
                 >
                   กลับไปแก้
                 </button>
-                <button
+                <button data-ui-control="button"
                   type="button"
                   onClick={() => slipResult.ticket && confirmMutation.mutate(slipResult.ticket)}
                   disabled={!confirmChecked || confirmMutation.isPending || !slipResult.ticket}
@@ -1142,7 +1142,7 @@ export function EarlyPayoffOverlay({
               <p className="text-xs text-muted-foreground leading-snug">
                 ใบเสร็จอยู่ในประวัติการชำระ — ส่ง/พิมพ์ได้จากที่นั่น
               </p>
-              <button
+              <button data-ui-control="button"
                 type="button"
                 onClick={onClose}
                 className="min-h-11 w-full px-5 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 font-semibold"
@@ -1198,7 +1198,7 @@ export function EarlyPayoffOverlay({
                 </div>
               </div>
               <div className="flex justify-end gap-3 pt-2">
-                <button
+                <button data-ui-control="button"
                   type="button"
                   onClick={() => setSettlementOpen(false)}
                   disabled={settlementMutation.isPending}
@@ -1206,7 +1206,7 @@ export function EarlyPayoffOverlay({
                 >
                   ยกเลิก
                 </button>
-                <button
+                <button data-ui-control="button"
                   type="button"
                   onClick={() => settlementMutation.mutate()}
                   disabled={

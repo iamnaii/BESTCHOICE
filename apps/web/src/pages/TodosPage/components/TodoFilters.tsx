@@ -40,7 +40,7 @@ export function TodoFilters({
           const Icon = t.icon;
           const active = view === t.value;
           return (
-            <button
+            <button data-ui-control="button"
               key={t.value}
               onClick={() => onViewChange(t.value)}
               className={`inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg transition-all whitespace-nowrap ${

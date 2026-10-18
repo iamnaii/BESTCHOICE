@@ -167,7 +167,7 @@ export default function PurchaseOrdersPage() {
               </Link>
             )}
             {data.pos.length > 0 && (
-              <button
+              <button data-ui-control="button"
                 onClick={async () => {
                   try {
                     await exportToExcel({
@@ -203,7 +203,7 @@ export default function PurchaseOrdersPage() {
             )}
             {/* One entry for both ways in (owner 2026-09-06): the wizard asks "ของถึงแล้วหรือยัง" on step 1 */}
             {canManagePO && (
-              <button
+              <button data-ui-control="button"
                 onClick={() => data.setIsCreateModalOpen(true)}
                 className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors"
               >
@@ -218,13 +218,13 @@ export default function PurchaseOrdersPage() {
 
       {/* Tabs */}
       <div className="flex gap-1 mb-5 border-b border-border/60">
-        <button
+        <button data-ui-control="button"
           onClick={() => data.setActiveTab('list')}
           className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${data.activeTab === 'list' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
         >
           รายการ PO
         </button>
-        <button
+        <button data-ui-control="button"
           onClick={() => data.setActiveTab('payable')}
           className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${data.activeTab === 'payable' ? 'border-destructive text-destructive' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
         >

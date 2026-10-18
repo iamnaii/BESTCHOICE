@@ -289,7 +289,7 @@ export function PurchaseModal(props: PurchaseModalProps) {
 
   const footer = (
     <div className="sticky bottom-0 shrink-0 border-t bg-background/95 px-4 py-4 backdrop-blur-xs sm:px-6 flex items-center justify-between gap-3">
-      <button type="button" onClick={() => (step === 0 ? onClose() : back())} className={outlineBtn}>
+      <button data-ui-control="button" type="button" onClick={() => (step === 0 ? onClose() : back())} className={outlineBtn}>
         {step === 0 ? 'ยกเลิก' : 'ย้อนกลับ'}
       </button>
       <div className="flex items-center gap-4">
@@ -300,22 +300,22 @@ export function PurchaseModal(props: PurchaseModalProps) {
           </span>
         )}
         {step === 0 && (
-          <button key="first" type="button" onClick={goFromFirst} disabled={!canNext} className={primaryBtn}>
+          <button data-ui-control="button" key="first" type="button" onClick={goFromFirst} disabled={!canNext} className={primaryBtn}>
             {firstLabel}
           </button>
         )}
         {isInspect && (
-          <button key="inspect" type="button" onClick={goSummary} className={primaryBtn}>
+          <button data-ui-control="button" key="inspect" type="button" onClick={goSummary} className={primaryBtn}>
             ถัดไป: สรุป + จ่ายเงิน
           </button>
         )}
         {isLast && !receive && (
-          <button key="create" type="button" onClick={handleCreate} disabled={pending} className={primaryBtn}>
+          <button data-ui-control="button" key="create" type="button" onClick={handleCreate} disabled={pending} className={primaryBtn}>
             {createMutation.isPending ? 'กำลังสร้าง...' : 'สร้าง PO'}
           </button>
         )}
         {isLast && receive && (
-          <button key="receive" type="button" onClick={submitReceive} disabled={pending} className={primaryBtn}>
+          <button data-ui-control="button" key="receive" type="button" onClick={submitReceive} disabled={pending} className={primaryBtn}>
             {directReceiveMutation.isPending ? 'กำลังรับเข้า…' : `ยืนยันรับเข้าตรง ${units.length} ชิ้น`}
           </button>
         )}

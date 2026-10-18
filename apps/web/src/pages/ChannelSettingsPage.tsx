@@ -130,7 +130,7 @@ export default function ChannelSettingsPage() {
                       </div>
                     </div>
                   </div>
-                  <button
+                  <button data-ui-control="button"
                     onClick={() => saveMutation.mutate(channelKey)}
                     disabled={saveMutation.isPending}
                     className="flex min-h-11 items-center gap-2 px-4 py-2 bg-primary text-primary-foreground text-sm rounded-lg hover:bg-primary/90 disabled:opacity-50 transition-colors"
@@ -191,7 +191,7 @@ export default function ChannelSettingsPage() {
                         <code className="min-w-0 flex-1 text-xs text-muted-foreground bg-card px-2 py-1.5 rounded border border-border truncate">
                           {webhook.url}
                         </code>
-                        <button
+                        <button data-ui-control="button" data-ui-icon="true"
                           onClick={() => {
                             navigator.clipboard.writeText(webhook.url);
                             toast.success('คัดลอก Webhook URL แล้ว');

@@ -1,3 +1,4 @@
+import ScreenTable from '@/components/ui/ScreenTable';
 import { NativeSelect } from '@/components/ui/native-select';
 import { useId as useUiFieldId, useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -127,7 +128,7 @@ export default function ValuationsTab() {
         <p className="text-sm text-muted-foreground leading-snug">กำลังโหลด...</p>
       ) : (
         <div className="overflow-x-auto rounded-lg border border-border">
-          <table className="w-full text-sm">
+          <ScreenTable className="w-full text-sm">
             <thead className="bg-muted text-left">
               <tr>
                 <th className="p-2">ยี่ห้อ</th>
@@ -174,7 +175,7 @@ export default function ValuationsTab() {
                 <tr><td colSpan={6} className="p-4 text-center text-muted-foreground">ไม่มีข้อมูล</td></tr>
               )}
             </tbody>
-          </table>
+          </ScreenTable>
         </div>
       )}
 

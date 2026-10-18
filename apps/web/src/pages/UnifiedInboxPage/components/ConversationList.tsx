@@ -211,7 +211,7 @@ export default function ConversationList({
             {/* Right-side controls: mark-all-read + global mute bell toggle */}
             <div className="flex items-center gap-1">
               {unreadInView.length > 0 && (
-                <button
+                <button data-ui-control="button"
                   onClick={() => markAllReadMutation.mutate(unreadInView)}
                   disabled={markAllReadMutation.isPending}
                   className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium leading-snug text-muted-foreground hover:text-foreground hover:bg-muted transition-colors disabled:opacity-50"
@@ -226,7 +226,7 @@ export default function ConversationList({
                 </button>
               )}
               {onToggleMuteAll && (
-                <button
+                <button data-ui-control="button" data-ui-icon="true"
                   type="button"
                   onClick={onToggleMuteAll}
                   title={muteAll ? 'เปิดการแจ้งเตือน' : 'ปิดการแจ้งเตือนทั้งหมด'}

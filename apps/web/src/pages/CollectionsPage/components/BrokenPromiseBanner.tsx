@@ -109,7 +109,7 @@ export default function BrokenPromiseBanner() {
             {noLine > 0 && ` · ไม่มี LINE ID ${noLine} ราย (ต้องโทรหรือ SMS แทน)`}
           </div>
         </div>
-        <button
+        <button data-ui-control="button"
           type="button"
           onClick={onBulkSend}
           disabled={lineEligibleIds.length === 0 || submitting}

@@ -1,3 +1,4 @@
+import ScreenTable from '@/components/ui/ScreenTable';
 import { NativeSelect } from '@/components/ui/native-select';
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -245,7 +246,7 @@ export function ConfirmExchangeDialog({
           <div className="space-y-2 rounded-lg border border-border bg-muted p-3 text-xs leading-snug">
             <p className="font-semibold text-foreground">ใบเสร็จของสัญญาเดิมที่จะออกใบลดหนี้</p>
             {receipts.length > 0 && (
-              <table className="w-full">
+              <ScreenTable className="w-full">
                 <thead className="text-muted-foreground">
                   <tr>
                     <th className="py-0.5 pr-2 text-left font-normal">เลขที่</th>
@@ -269,7 +270,7 @@ export function ConfirmExchangeDialog({
                     </tr>
                   ))}
                 </tbody>
-              </table>
+              </ScreenTable>
             )}
             <div className="flex items-center justify-between rounded-md bg-primary/10 px-2 py-1.5 font-semibold text-primary">
               <span>เครดิตที่จะย้ายไปสัญญาใหม่ (ไม่คืนเงินสด)</span>
@@ -286,7 +287,8 @@ export function ConfirmExchangeDialog({
               รายการบัญชีที่จะลง (ต้นทุนเดิม {baht(preview.data.oldCost)} → เครื่องทดแทน{' '}
               {baht(preview.data.newCost)})
             </p>
-            <table className="w-full">
+            <ScreenTable className="min-w-[24rem] w-full">
+<thead className="sr-only"><tr><th scope="col">รหัสบัญชี</th><th scope="col">เดบิต</th><th scope="col">เครดิต</th></tr></thead>
               <tbody>
                 {preview.data.lines.map((l, i) => (
                   <tr key={i}>
@@ -296,7 +298,7 @@ export function ConfirmExchangeDialog({
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </ScreenTable>
             <p className="text-muted-foreground">รายได้ {preview.data.saleNumber} และเงินสดไม่เปลี่ยน</p>
           </div>
         )}

@@ -223,7 +223,7 @@ export default function ProductPhotosPanel({
           </span>
         </div>
         {canEdit && canConfirmPhotos && (
-          <button
+          <button data-ui-control="button"
             onClick={() => completeMutation.mutate()}
             disabled={completeMutation.isPending}
             className="px-3 py-1 bg-success text-success-foreground rounded text-xs font-medium hover:bg-success/90 disabled:opacity-50"

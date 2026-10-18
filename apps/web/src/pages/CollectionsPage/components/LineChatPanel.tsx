@@ -110,7 +110,7 @@ export default function LineChatPanel({ customerId }: Props) {
       >
         {hasNextPage && (
           <div className="flex justify-center pb-2">
-            <button
+            <button data-ui-control="button"
               type="button"
               onClick={() => fetchNextPage()}
               disabled={isFetchingNextPage}

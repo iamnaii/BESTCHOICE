@@ -224,7 +224,7 @@ function GenerateSection({ letter, onGenerated, onClose }: GenerateSectionProps)
           </div>
           {!proceedWithoutSignature && (
             <div className="flex justify-end">
-              <button
+              <button data-ui-control="button"
                 type="button"
                 onClick={() => setProceedWithoutSignature(true)}
                 className="inline-flex items-center gap-1.5 rounded-lg border border-warning/50 bg-background px-3 py-1.5 text-xs font-medium text-warning-strong hover:bg-warning/10 transition-colors"
@@ -237,14 +237,14 @@ function GenerateSection({ letter, onGenerated, onClose }: GenerateSectionProps)
       )}
 
       <div className="flex gap-2 justify-end pt-2">
-        <button
+        <button data-ui-control="button"
           type="button"
           onClick={onClose}
           className="px-4 py-2 text-sm rounded-lg border border-input hover:bg-muted transition-colors"
         >
           ยกเลิก
         </button>
-        <button
+        <button data-ui-control="button"
           type="button"
           onClick={handleGenerate}
           disabled={busy || isLoadingDeps || signatureCheckBlocked}
@@ -307,7 +307,7 @@ function DispatchSection({ letter, onClose }: DispatchSectionProps) {
       {/* PDF preview + download */}
       {(
         <div className="flex items-center gap-2 flex-wrap">
-          <button
+          <button data-ui-control="button"
             type="button"
             onClick={() => setPreviewOpen(true)}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-input hover:bg-muted text-foreground transition-colors"
@@ -369,14 +369,14 @@ function DispatchSection({ letter, onClose }: DispatchSectionProps) {
 
       {/* Actions */}
       <div className="flex gap-2 justify-end pt-2">
-        <button
+        <button data-ui-control="button"
           type="button"
           onClick={onClose}
           className="px-4 py-2 text-sm rounded-lg border border-input hover:bg-muted transition-colors"
         >
           ยกเลิก
         </button>
-        <button
+        <button data-ui-control="button"
           type="button"
           onClick={handleSubmit}
           disabled={busy || !trackingValid}

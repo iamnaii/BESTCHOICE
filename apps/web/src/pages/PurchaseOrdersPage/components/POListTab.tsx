@@ -245,9 +245,9 @@ export function POListTab({
         const { tag, name } = splitLeadingTag(po.supplier.name);
         const sameName = supplierContactIsRedundant(po.supplier);
         return (
-          <div className="min-w-0">
+          <div className="min-w-0 max-w-52">
             <div className="flex min-w-0 items-center gap-1.5">
-              <span className="truncate font-medium" title={po.supplier.name}>
+              <span className="min-w-0 break-words font-medium" title={po.supplier.name}>
                 {name}
               </span>
               {tag && (
@@ -257,7 +257,7 @@ export function POListTab({
               )}
             </div>
             {po.supplier.contactName && !sameName && (
-              <div className="mt-0.5 truncate text-xs text-muted-foreground">{po.supplier.contactName}</div>
+              <div className="mt-0.5 break-words text-xs text-muted-foreground">{po.supplier.contactName}</div>
             )}
           </div>
         );
@@ -387,12 +387,12 @@ export function POListTab({
       key: 'actions',
       label: '',
       hideable: false,
-      width: '148px',
+      width: '10rem',
       align: 'right',
       stickyRight: true,
       render: (po) => (
-        <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
-          <button
+        <div className="flex flex-wrap items-center justify-end gap-2" onClick={(e) => e.stopPropagation()}>
+          <button data-ui-control="button" data-ui-icon="true"
             data-po-detail-trigger={`${po.id}:detail`}
             onClick={() => openDetailModal(po)}
             className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
@@ -402,7 +402,7 @@ export function POListTab({
             <FileText className="size-4" />
           </button>
           {!readOnly && po.status === 'APPROVED' && (
-            <button
+            <button data-ui-control="button" data-ui-icon="true"
               onClick={() => onOrder(po)}
               disabled={orderMutation.isPending}
               className="p-1.5 rounded-md text-info hover:bg-info/10 transition-colors disabled:opacity-50"
@@ -413,7 +413,7 @@ export function POListTab({
             </button>
           )}
           {!readOnly && ['APPROVED', 'ORDERED', 'PARTIALLY_RECEIVED'].includes(po.status) && (
-            <button
+            <button data-ui-control="button" data-ui-icon="true"
               onClick={() => openReceiveModal(po)}
               className="p-1.5 rounded-md text-primary hover:bg-primary/10 transition-colors"
               title="รับสินค้า"
@@ -424,7 +424,7 @@ export function POListTab({
           )}
           {!readOnly && canApprove && po.status === 'DRAFT' && (
             <>
-              <button
+              <button data-ui-control="button" data-ui-icon="true"
                 onClick={() => onApprove(po)}
                 disabled={approveMutation.isPending}
                 className="p-1.5 rounded-md text-success hover:bg-success/10 transition-colors disabled:opacity-50"
@@ -433,7 +433,7 @@ export function POListTab({
               >
                 <Check className="size-4" />
               </button>
-              <button
+              <button data-ui-control="button" data-ui-icon="true"
                 onClick={() => onReject(po)}
                 disabled={rejectPOMutation.isPending}
                 className="p-1.5 rounded-md text-warning-strong hover:bg-warning/10 transition-colors disabled:opacity-50"
@@ -446,7 +446,7 @@ export function POListTab({
           )}
           {/* also for an ORDERED PO with nothing received yet (approve lands on ORDERED now) */}
           {!readOnly && canCancel(po) && (
-            <button
+            <button data-ui-control="button" data-ui-icon="true"
               onClick={() => onCancel(po)}
               disabled={cancelMutation.isPending}
               className="p-1.5 rounded-md text-destructive hover:bg-destructive/10 transition-colors disabled:opacity-50"
@@ -576,7 +576,7 @@ export function POListTab({
       ) : (
         <Card>
           <CardContent className="p-0">
-            <DataTable
+            <DataTable embedded
               columns={columns}
               data={filteredPos}
               isLoading={isLoading}

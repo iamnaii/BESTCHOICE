@@ -108,7 +108,7 @@ export default function LoyaltyTab({ customerId, canEdit, loyaltyPoints, loyalty
                 onChange={(e) => setRedeemForm((p) => ({ ...p, description: e.target.value }))}
                 className="h-10 flex-1 min-w-40 px-3 rounded-lg border border-input bg-background text-sm focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20"
               />
-              <button
+              <button data-ui-control="button"
                 onClick={() => redeemMutation.mutate()}
                 disabled={
                   isRedeeming ||

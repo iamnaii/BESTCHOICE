@@ -90,7 +90,7 @@ export function CustomerCreateModal({
                   <h3 className="text-sm font-semibold text-foreground">อ่านบัตรประชาชน (Smart Card)</h3>
                   <p className="text-xs text-muted-foreground">เสียบบัตรเข้าเครื่องอ่าน — กรอกข้อมูลให้อัตโนมัติ</p>
                 </div>
-                <button
+                <button data-ui-control="button"
                   type="button"
                   onClick={handleSmartCardForModal}
                   disabled={cardReaderLoading}
@@ -346,10 +346,10 @@ export function CustomerCreateModal({
 
           {/* Sticky Footer */}
           <div className="sticky bottom-0 bg-background/95 backdrop-blur-xs border-t px-3 sm:px-6 py-4 flex justify-end gap-3 shrink-0">
-            <button type="button" onClick={onClose} className="px-6 py-2.5 text-sm border border-input rounded-lg hover:bg-muted transition-colors">
+            <button data-ui-control="button" type="button" onClick={onClose} className="px-6 py-2.5 text-sm border border-input rounded-lg hover:bg-muted transition-colors">
               ยกเลิก
             </button>
-            <button type="submit" disabled={createCustomerMutation.isPending} className="px-6 py-2.5 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50 font-semibold transition-colors shadow-sm">
+            <button data-ui-control="button" type="submit" disabled={createCustomerMutation.isPending} className="px-6 py-2.5 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50 font-semibold transition-colors shadow-sm">
               {createCustomerMutation.isPending ? 'กำลังบันทึก...' : 'บันทึกลูกค้า'}
             </button>
           </div>

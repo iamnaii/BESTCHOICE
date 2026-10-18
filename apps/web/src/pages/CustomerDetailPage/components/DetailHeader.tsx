@@ -30,7 +30,7 @@ import ActionsMenu from './ActionsMenu';
 function CopyPhoneButton({ phone }: { phone: string }) {
   const { copy } = useCopyToClipboard();
   return (
-    <button
+    <button data-ui-control="button" data-ui-icon="true"
       type="button"
       aria-label="คัดลอกเบอร์โทร"
       title="คัดลอกเบอร์โทร"

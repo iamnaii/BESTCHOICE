@@ -64,7 +64,7 @@ function SortableQuickReplyRow({
           <option value="URL">เปิด URL</option>
         </NativeSelect>
         <div className="flex-1" />
-        <button onClick={onDelete} className="p-1 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded" title="ลบ" aria-label="ลบ">
+        <button data-ui-control="button" data-ui-icon="true" onClick={onDelete} className="p-1 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded" title="ลบ" aria-label="ลบ">
           <Trash2 className="w-3.5 h-3.5" />
         </button>
       </div>

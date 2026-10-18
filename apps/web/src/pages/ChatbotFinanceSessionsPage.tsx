@@ -173,7 +173,7 @@ export default function ChatbotFinanceSessionsPage() {
 
           {list.data && list.data.total > list.data.limit && (
             <div className="p-3 flex justify-between text-sm border-t">
-              <button
+              <button data-ui-control="button"
                 onClick={() => setPage(Math.max(1, page - 1))}
                 disabled={page === 1}
                 className="text-primary disabled:text-muted-foreground/50"
@@ -183,7 +183,7 @@ export default function ChatbotFinanceSessionsPage() {
               <span className="text-muted-foreground">
                 {page} / {Math.ceil(list.data.total / list.data.limit)}
               </span>
-              <button
+              <button data-ui-control="button"
                 onClick={() => setPage(page + 1)}
                 disabled={page * list.data.limit >= list.data.total}
                 className="text-primary disabled:text-muted-foreground/50"
@@ -212,7 +212,7 @@ export default function ChatbotFinanceSessionsPage() {
                   <p className="text-xs text-muted-foreground">{detail.data.customer?.phone || detail.data.lineUserId}</p>
                 </div>
                 {detail.data.handoffMode && (
-                  <button
+                  <button data-ui-control="button"
                     onClick={() => returnToBot.mutate(detail.data!.id)}
                     disabled={returnToBot.isPending}
                     className="px-3 py-1.5 text-xs bg-warning text-warning-foreground rounded-lg hover:bg-warning/90 disabled:opacity-50"

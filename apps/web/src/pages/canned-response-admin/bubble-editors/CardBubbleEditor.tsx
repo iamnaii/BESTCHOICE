@@ -77,7 +77,7 @@ export default function CardBubbleEditor({ bubble, onChange }: Props) {
                 <option value="POSTBACK">Postback</option>
               </NativeSelect>
               <Input value={b.value} onChange={(e) => updateButton(i, { value: e.target.value })} placeholder={b.type === 'URL' ? 'https://...' : 'value'} className="col-start-1 row-start-3 min-w-0 text-xs font-mono sm:col-start-3 sm:row-start-1" />
-              <button onClick={() => removeButton(i)} aria-label={`ลบปุ่ม ${i + 1}`} className="col-start-2 row-start-1 flex size-11 items-center justify-center text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded sm:col-start-4">
+              <button data-ui-control="button" data-ui-icon="true" onClick={() => removeButton(i)} aria-label={`ลบปุ่ม ${i + 1}`} className="col-start-2 row-start-1 flex size-11 items-center justify-center text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded sm:col-start-4">
                 <Trash2 className="w-3 h-3" />
               </button>
             </div>

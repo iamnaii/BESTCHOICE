@@ -1,3 +1,4 @@
+import ScreenTable from '@/components/ui/ScreenTable';
 import { NativeSelect } from '@/components/ui/native-select';
 import { toBangkokDateString } from '@/lib/date';
 import { useEffect, useState } from 'react';
@@ -437,7 +438,7 @@ export default function EquityEntryPage() {
             </span>
           </CardHeader>
           <CardContent>
-            <table className="w-full text-sm">
+            <ScreenTable className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border text-left text-xs text-muted-foreground uppercase">
                   <th className="py-2">รหัส</th>
@@ -462,7 +463,7 @@ export default function EquityEntryPage() {
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </ScreenTable>
             {isDivPay && (
               <p className="text-xs text-muted-foreground mt-2 leading-snug">
                 WHT ที่คำนวณจริงต่อราย:{' '}

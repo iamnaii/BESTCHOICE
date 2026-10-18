@@ -95,7 +95,7 @@ export default function FinanceContactLogDialog({
           <label className="block text-sm font-medium mb-2">ผลการติดต่อ</label>
           <div className="flex flex-wrap gap-2">
             {RESULT_OPTIONS.map((opt) => (
-              <button
+              <button data-ui-control="button"
                 key={opt.value}
                 type="button"
                 onClick={() => setResult(opt.value)}

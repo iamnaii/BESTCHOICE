@@ -360,7 +360,7 @@ export default function ExpensesPage() {
       label: 'ACTION',
       render: (e: Expense) => (
         <div className="flex items-center gap-1">
-          <button
+          <button data-ui-control="button" data-ui-icon="true"
             onClick={(ev) => { ev.stopPropagation(); navigate(`/expenses/${e.id}`); }}
             className="inline-flex size-7 max-lg:size-11 shrink-0 items-center justify-center hover:bg-muted rounded transition-colors"
             title="ดูรายละเอียด"
@@ -370,7 +370,7 @@ export default function ExpensesPage() {
           </button>
           {e.status !== 'VOIDED' && (
             <div className="relative">
-              <button
+              <button data-ui-control="button" data-ui-icon="true"
                 onClick={(ev) => { ev.stopPropagation(); setOpenMenuId(openMenuId === e.id ? null : e.id); }}
                 className="inline-flex size-7 max-lg:size-11 shrink-0 items-center justify-center hover:bg-muted rounded transition-colors"
                 aria-label={`เมนู ${e.number}`}
@@ -500,7 +500,7 @@ export default function ExpensesPage() {
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           {templatesEnabled && (
-            <button
+            <button data-ui-control="button"
               type="button"
               onClick={() => navigate('/expenses/favorites')}
               className="px-3 py-1.5 rounded-lg border border-border text-xs flex items-center gap-1.5 hover:bg-muted transition-colors"
@@ -510,12 +510,12 @@ export default function ExpensesPage() {
               <span className="text-primary font-semibold ml-0.5 font-mono">0</span>
             </button>
           )}
-          <button type="button" onClick={() => navigate('/expenses/ap-aging')} className="px-3 py-1.5 rounded-lg border border-border text-xs flex items-center gap-1.5 hover:bg-muted transition-colors">
+          <button data-ui-control="button" type="button" onClick={() => navigate('/expenses/ap-aging')} className="px-3 py-1.5 rounded-lg border border-border text-xs flex items-center gap-1.5 hover:bg-muted transition-colors">
             <Wallet className="size-3.5 text-muted-foreground" />
             <span className="text-foreground">เจ้าหนี้คงค้าง</span>
             <span className="text-primary font-semibold ml-0.5 font-mono">{fmt(unpaidTotal)}</span>
           </button>
-          <button type="button" onClick={() => navigate('/expenses/daily-summary')} className="px-3 py-1.5 rounded-lg border border-border text-xs flex items-center gap-1.5 hover:bg-muted transition-colors">
+          <button data-ui-control="button" type="button" onClick={() => navigate('/expenses/daily-summary')} className="px-3 py-1.5 rounded-lg border border-border text-xs flex items-center gap-1.5 hover:bg-muted transition-colors">
             <BarChart3 className="size-3.5 text-muted-foreground" />
             <span className="text-foreground">สรุปรายวัน</span>
           </button>
@@ -589,7 +589,7 @@ export default function ExpensesPage() {
             className={cn(formControlClass, 'pl-10')}
           />
         </div>
-        <button
+        <button data-ui-control="button" data-ui-icon="true"
           type="button"
           onClick={() => setShowAdvancedFilters((v) => !v)}
           className={cn(
@@ -662,7 +662,7 @@ export default function ExpensesPage() {
             <ThaiDateInput id={`${fieldId}-4`} value={endDate} onChange={(e) => setFilter('endDate', e.target.value)} className={`${inputClass} w-auto`} />
           </div>
           <div className="flex items-end gap-1">
-            {quickPresets.map((p) => <button key={p.label} onClick={p.fn} className="px-3 py-2 text-xs border border-input rounded-lg hover:bg-muted">{p.label}</button>)}
+            {quickPresets.map((p) => <button data-ui-control="button" key={p.label} onClick={p.fn} className="px-3 py-2 text-xs border border-input rounded-lg hover:bg-muted">{p.label}</button>)}
           </div>
         </div>
       )}

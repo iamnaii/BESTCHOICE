@@ -231,7 +231,7 @@ export default function StepSignature({
           const isCurrent = type === currentSigner;
           const isCompanyAuto = type === 'COMPANY' && companyAutoSigned;
           return (
-            <button
+            <button data-ui-control="button"
               key={type}
               type="button"
               onClick={() => {

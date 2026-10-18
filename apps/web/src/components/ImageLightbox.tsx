@@ -65,7 +65,7 @@ export function ImageLightbox({ src, alt, onClose }: ImageLightboxProps) {
         </button>
 
         <div className="absolute bottom-4 left-1/2 flex -translate-x-1/2 items-center gap-1 rounded-full bg-background/90 border border-border px-2 py-1 shadow-lg">
-          <button
+          <button data-ui-control="button" data-ui-icon="true"
             type="button"
             aria-label="ซูมออก"
             disabled={scale <= ZOOM_MIN}
@@ -77,7 +77,7 @@ export function ImageLightbox({ src, alt, onClose }: ImageLightboxProps) {
           <span className="w-14 text-center text-sm tabular-nums text-foreground">
             {Math.round(scale * 100)}%
           </span>
-          <button
+          <button data-ui-control="button" data-ui-icon="true"
             type="button"
             aria-label="ซูมเข้า"
             disabled={scale >= ZOOM_MAX}

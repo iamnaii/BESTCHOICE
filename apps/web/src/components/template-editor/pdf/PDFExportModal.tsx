@@ -72,7 +72,7 @@ export default function PDFExportModal() {
               </p>
 
               <div className="flex items-center justify-center gap-4">
-                <button
+                <button data-ui-control="button"
                   onClick={() => handleGenerate('preview')}
                   disabled={isGenerating}
                   className="flex items-center gap-2 px-6 py-3 text-base border border-primary-300 text-primary-700 rounded-lg hover:bg-primary-50 disabled:opacity-50 transition-colors"
@@ -80,7 +80,7 @@ export default function PDFExportModal() {
                   {isGenerating ? <Loader2 size={18} className="animate-spin" /> : <Eye size={18} />}
                   Preview
                 </button>
-                <button
+                <button data-ui-control="button"
                   onClick={() => handleGenerate('download')}
                   disabled={isGenerating}
                   className="flex items-center gap-2 px-6 py-3 text-base bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50 transition-colors"
@@ -96,13 +96,13 @@ export default function PDFExportModal() {
         {/* Footer */}
         {previewUrl && (
           <div className="flex items-center justify-between px-6 py-4 border-t border-border">
-            <button
+            <button data-ui-control="button"
               onClick={() => { URL.revokeObjectURL(previewUrl); setPreviewUrl(null); }}
               className="px-5 py-2.5 text-base text-foreground border border-input rounded-lg hover:bg-muted transition-colors"
             >
               กลับ
             </button>
-            <button
+            <button data-ui-control="button"
               onClick={() => handleGenerate('download')}
               disabled={isGenerating}
               className="flex items-center gap-2 px-5 py-2.5 text-base bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50 transition-colors"

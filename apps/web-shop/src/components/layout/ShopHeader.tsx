@@ -135,7 +135,7 @@ export default function ShopHeader() {
 
         <Link
           to="/how-it-works"
-          className="hidden md:inline-flex h-10 items-center rounded-full bg-ink px-5 font-head text-sm font-semibold text-ink-foreground hover:bg-emerald-800 transition-colors whitespace-nowrap leading-snug"
+          className="hidden md:inline-flex h-11 items-center rounded-full bg-ink px-5 font-head text-sm font-semibold text-ink-foreground hover:bg-emerald-800 transition-colors whitespace-nowrap leading-snug"
         >
           เช็คยอดผ่อนทันที
         </Link>

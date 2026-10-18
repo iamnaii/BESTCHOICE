@@ -380,7 +380,7 @@ export function TodoForm({ open, onOpenChange, editing, staffUsers, defaults }: 
                     const cfg = priorityConfig[p];
                     const active = form.priority === p;
                     return (
-                      <button
+                      <button data-ui-control="button"
                         key={p}
                         type="button"
                         onClick={() => setForm({ ...form, priority: p })}
@@ -413,7 +413,7 @@ export function TodoForm({ open, onOpenChange, editing, staffUsers, defaults }: 
                   ] as const).map((s) => {
                     const active = form.status === s.v;
                     return (
-                      <button
+                      <button data-ui-control="button"
                         key={s.v}
                         type="button"
                         onClick={() => setForm({ ...form, status: s.v })}
@@ -516,7 +516,7 @@ export function TodoForm({ open, onOpenChange, editing, staffUsers, defaults }: 
                     </span>
                   )}
                 </label>
-                <button
+                <button data-ui-control="button"
                   type="button"
                   onClick={addChecklist}
                   className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:bg-primary/10 px-2 py-1 rounded-md transition-colors"
@@ -729,7 +729,7 @@ export function TodoForm({ open, onOpenChange, editing, staffUsers, defaults }: 
                     placeholder="เพิ่มความคิดเห็น..."
                     className="flex-1 px-3 py-2 border border-input rounded-lg text-sm bg-card focus-visible:ring-2 focus-visible:ring-primary/20 outline-hidden transition-colors"
                   />
-                  <button
+                  <button data-ui-control="button"
                     type="button"
                     onClick={() => addCommentMutation.mutate()}
                     disabled={!commentText.trim() || addCommentMutation.isPending}
@@ -745,14 +745,14 @@ export function TodoForm({ open, onOpenChange, editing, staffUsers, defaults }: 
 
           {conflict && <div role="alert" className="mx-6 mb-4 space-y-2 rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm"><p>มีคนแก้ไขงานนี้แล้ว ฉบับร่างยังอยู่ กรุณาเทียบข้อมูลล่าสุดก่อนบันทึก</p><button type="button" className="min-h-10 text-primary" onClick={async () => { try { setLatest((await api.get<Todo>(`/todos/${editing!.id}`)).data); } catch (e) { toast.error(getErrorMessage(e)); } }}>โหลดข้อมูลล่าสุดเพื่อเทียบ</button>{latest && <><p>{latest.title} · {latest.dueDate ? new Date(latest.dueDate).toLocaleString('th-TH', { timeZone: 'Asia/Bangkok' }) : 'ไม่มีกำหนดเวลา'} · {latest.status}</p><button type="button" className="min-h-10 text-primary" onClick={() => { setRevision(latest.revision ?? 0); setConflict(false); }}>ใช้ฉบับร่างนี้กับข้อมูลล่าสุด</button></>}</div>}
           <DialogFooter className="px-6 py-4 border-t border-border bg-muted/20">
-            <button
+            <button data-ui-control="button"
               type="button"
               onClick={() => onOpenChange(false)}
               className="px-5 py-2.5 text-sm font-medium border border-input rounded-xl hover:bg-muted transition-colors"
             >
               ยกเลิก
             </button>
-            <button
+            <button data-ui-control="button"
               type="button"
               onClick={() => saveMutation.mutate()}
               disabled={saveMutation.isPending || conflict || (!!roomId && (eligible.isLoading || eligible.isError))}

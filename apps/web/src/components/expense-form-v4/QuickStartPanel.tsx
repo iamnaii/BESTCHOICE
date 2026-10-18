@@ -43,7 +43,7 @@ export function QuickStartPanel({ branchId, onMode, onPickTemplate, onClose }: P
           <Sparkles className="size-4 text-primary" />
           <span className="text-sm font-medium">เริ่มต้นเร็ว</span>
         </div>
-        <button onClick={onClose} aria-label="ปิด" className="flex min-h-11 min-w-11 items-center justify-center rounded-md text-muted-foreground hover:text-foreground">
+        <button data-ui-control="button" onClick={onClose} aria-label="ปิด" className="flex min-h-11 min-w-11 items-center justify-center rounded-md text-muted-foreground hover:text-foreground">
           <X className="size-4" />
         </button>
       </div>

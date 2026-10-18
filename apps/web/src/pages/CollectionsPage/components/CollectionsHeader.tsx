@@ -130,7 +130,7 @@ export default function CollectionsHeader({ onSwitchToToday }: Props) {
     return (
       <div className="mb-4 rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 flex items-center justify-between">
         <span className="text-sm text-destructive leading-snug">ไม่สามารถโหลดข้อมูล KPI ได้</span>
-        <button
+        <button data-ui-control="button"
           onClick={() => sysKpi.refetch()}
           className="px-3 py-1.5 text-sm border border-destructive/30 rounded-lg text-destructive hover:bg-destructive/10 transition-colors"
         >

@@ -127,7 +127,7 @@ export function CatalogPicker({ onPick, onPickAccessory, onPickExisting, searchA
       />
 
       {/* cmdk names the input via aria-labelledby → the Command `label`, so aria-label alone is ignored */}
-      <Command label={searchLabel} shouldFilter={false} loop className="overflow-visible bg-transparent">
+      <Command label={searchLabel} shouldFilter={false} loop className="h-auto overflow-visible bg-transparent">
         <div className="relative">
           <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
           <CommandPrimitive.Input
@@ -221,13 +221,13 @@ export function CatalogPicker({ onPick, onPickAccessory, onPickExisting, searchA
         <div role="group" aria-label={isAccessory ? 'ประเภทอุปกรณ์' : 'รุ่นล่าสุด'} className="flex flex-wrap gap-2">
           {isAccessory
             ? accessoryTypes.map((t) => (
-                <button key={t.value} type="button" onClick={() => onPickAccessory(t.value)} className={quickChip}>
+                <button data-ui-control="button" key={t.value} type="button" onClick={() => onPickAccessory(t.value)} className={quickChip}>
                   <Plus className="size-3.5" />
                   {t.label}
                 </button>
               ))
             : latest.map((e) => (
-                <button key={e.name} type="button" onClick={() => pick(e, 'chip')} className={quickChip}>
+                <button data-ui-control="button" key={e.name} type="button" onClick={() => pick(e, 'chip')} className={quickChip}>
                   <Plus className="size-3.5" />
                   {e.name}
                 </button>

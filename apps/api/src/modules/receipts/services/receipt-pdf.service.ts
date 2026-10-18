@@ -377,11 +377,12 @@ export class ReceiptPdfService {
       pc.lastNo - pc.firstNo + 1 === pc.unpaidInstallments
         ? pc
         : null;
+    // "ปิดยอดสัญญาก่อนกำหนด" ขึ้นต้นป้าย (ไม่ถูกตัดบรรทัดกลางคำ) — CI docs-spec ค้นคำนี้บนใบ (receipts.docs-spec.ts ฉาก early-payoff)
     const payoffItemLabel = isStoredPayoff
       ? payoffRange
-        ? `ค่างวดคงเหลือ ${payoffRange.unpaidInstallments} งวด (งวดที่ ${payoffRange.firstNo}–${payoffRange.lastNo}) — ปิดยอดสัญญา`
+        ? `ปิดยอดสัญญาก่อนกำหนด — ค่างวดคงเหลือ ${payoffRange.unpaidInstallments} งวด (งวดที่ ${payoffRange.firstNo}–${payoffRange.lastNo})`
         : pc?.unpaidInstallments
-          ? `ค่างวดคงเหลือ ${pc.unpaidInstallments} งวด — ปิดยอดสัญญา`
+          ? `ปิดยอดสัญญาก่อนกำหนด — ค่างวดคงเหลือ ${pc.unpaidInstallments} งวด`
           : itemLabel
       : itemLabel;
     // บรรทัดรองของแถวหลักเฉพาะเมื่อมีงวดถึงกำหนดแล้ว (ยอดลูกหนี้ตามบัญชี = ยอดของแถวอยู่แล้ว — ไม่พิมพ์ซ้ำ ประหยัดพื้นที่)

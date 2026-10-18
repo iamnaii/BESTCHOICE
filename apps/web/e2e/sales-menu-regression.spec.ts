@@ -200,10 +200,16 @@ for (const width of [1440, 390]) {
       await page.getByRole('combobox', { name: 'ระดับลูกค้า' }).click();
       await page.getByRole('option', { name: 'VIP (Gold)', exact: true }).click();
       await closeFilters(page, width);
-      // ดรอปดาวน์ "เรียงลูกค้าโดย" ถูกถอดแล้ว — การเรียงอยู่ที่หัวคอลัมน์ (คอลัมน์ชื่อของ
-      // แท็บลูกค้าใช้ป้าย "ลูกค้า") กดครั้งเดียว = name/asc เหมือนที่ export assert ไว้
-      await page.getByRole('columnheader', { name: /ลูกค้า/ }).getByRole('button').click();
-      await expect(page.getByRole('columnheader', { name: /ลูกค้า/ })).toHaveAttribute('aria-sort', 'ascending');
+      // ใช้ตัวควบคุมที่แสดงจริงในแต่ละขนาดจอ และยืนยัน name/asc ในคำขอส่งออกด้านล่าง
+      if (width === 390) {
+        const sortControl = page.getByRole('combobox', { name: 'เรียงตารางตาม', exact: true });
+        await sortControl.selectOption({ label: 'ลูกค้า' });
+        await expect(sortControl).toHaveValue('name');
+        await expect(page.getByRole('button', { name: 'น้อย → มาก', exact: true })).toBeVisible();
+      } else {
+        await page.getByRole('columnheader', { name: /ลูกค้า/ }).getByRole('button').click();
+        await expect(page.getByRole('columnheader', { name: /ลูกค้า/ })).toHaveAttribute('aria-sort', 'ascending');
+      }
       await page.getByRole('button', { name: 'ถัดไป', exact: true }).click();
       await expect(page.getByText('ลูกค้าตัวอย่าง 050', { exact: true }).first()).toBeVisible();
       const download = page.waitForEvent('download');

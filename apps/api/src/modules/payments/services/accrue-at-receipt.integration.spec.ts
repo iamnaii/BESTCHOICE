@@ -1097,13 +1097,14 @@ describe('ตั้งลูกหนี้งวด ณ วันรับเ�
       }
     });
 
-    it('ปิดยอดก่อนกำหนด (JP4) ของสัญญาที่งวดถูกตั้ง VAT บังคับ 60 วัน (21-2103) ขณะยังเดิน → กลับ Dr 21-2103 / Cr 11-2104 ทุกงวดในธุรกรรมเดียวกัน · ธงถูกล้าง · บรรทัด JP4 ไม่เปลี่ยน', async () => {
+    it('ปิดยอดก่อนกำหนด (JP4) ของสัญญาที่งวดถูกตั้ง VAT บังคับ 60 วัน (21-2103) ขณะยังเดิน → กลับ Dr 21-2103 / Cr 11-2104 ทุกงวดที่มีธงในธุรกรรมเดียวกัน · ธงถูกล้าง · บรรทัด JP4 ไม่เปลี่ยน (งวดที่ตั้งลูกหนี้บางส่วนแล้วไม่ถูกตั้ง 60 วัน — ข้อ 11.1)', async () => {
       const c = await seedContract({
         dueDate: futureDue(),
         paymentRows: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
       });
       await recordPartialQr(c.id, 1, 1000, 'AAR-JP4-V60');
-      // รอบภาษีขาย 60 วันตั้ง 21-2103 ให้งวด 1 (ตั้งลูกหนี้งวดบางส่วนแล้ว) และงวด 2 (ยังไม่ตั้ง) ขณะสัญญายัง ACTIVE
+      // รอบภาษีขาย 60 วันขณะสัญญายัง ACTIVE: งวด 1 ตั้งลูกหนี้งวดบางส่วนแล้ว (accruedAmount > 0) ⇒ ข้อ 11.1 (ฝ่ายบัญชี 16/10/2569 —
+      // #1702) ไม่ตั้งซ้ำ คืน null · งวด 2 ยังไม่ตั้ง ⇒ ตั้ง 21-2103 — JP4 ต้องกลับเฉพาะงวดที่มีธงจริง
       const insts = await prisma.installmentSchedule.findMany({
         where: { contractId: c.id },
         orderBy: { installmentNo: 'asc' },
@@ -1111,10 +1112,10 @@ describe('ตั้งลูกหนี้งวด ณ วันรับเ�
       const mandatory = new Vat60dayMandatoryTemplate(journal, prisma as never);
       const m1 = await mandatory.execute(insts[0].id);
       const m2 = await mandatory.execute(insts[1].id);
-      expect(m1?.entryNo).toBeTruthy();
+      expect(m1).toBeNull();
       expect(m2?.entryNo).toBeTruthy();
-      expect(await balance(c.id, '21-2103', 'cr')).toBe('198.34');
-      expect(await balance(c.id, '11-2104', 'dr')).toBe('198.34');
+      expect(await balance(c.id, '21-2103', 'cr')).toBe('99.17');
+      expect(await balance(c.id, '11-2104', 'dr')).toBe('99.17');
 
       const contractPayments = earlyPayoffService();
       await earlyPayoffWithApproval(prisma, contractPayments, c.id, await ownerIdOf(), {
@@ -1150,9 +1151,9 @@ describe('ตั้งลูกหนี้งวด ณ วันรับเ�
           ],
         },
       });
-      expect(reversals.map((r) => (r.metadata as Record<string, unknown>).reversesEntry).sort()).toEqual(
-        [m1!.entryNo, m2!.entryNo].sort(),
-      );
+      expect(reversals.map((r) => (r.metadata as Record<string, unknown>).reversesEntry)).toEqual([
+        m2!.entryNo,
+      ]);
       expect(
         [...((jp4.metadata as Record<string, unknown>).vat60dayReversals as string[])].sort(),
       ).toEqual(reversals.map((r) => r.entryNumber).sort());

@@ -276,7 +276,7 @@ export class ReceiptQueryService {
     ]);
     // PR4ข: บริบทบน PDF ของใบปรับดิว 6a (เลื่อนนัดชำระ) และใบส่วนเกินลิงก์ชำระ (ยอดโอน / เข้างวด / ใบงวดพี่น้อง) — จาก
     // metadata ของรายการบัญชีต้นทาง เฉพาะสองชนิดนี้ (ใบอื่นไม่โหลดอะไรเพิ่ม)
-    const { rescheduleContext, surplusContext } = await this.loadDocumentContext(receipt);
+    const { rescheduleContext, surplusContext, payoffContext } = await this.loadDocumentContext(receipt);
     return {
       ...receiptWithHistory,
       ...documentBalance,
@@ -290,6 +290,7 @@ export class ReceiptQueryService {
       exchangeCreditSource,
       rescheduleContext,
       surplusContext,
+      payoffContext,
     };
   }
 
@@ -315,11 +316,30 @@ export class ReceiptQueryService {
       nextInstallmentNo: number | null;
       siblingReceipts: Array<{ receiptNumber: string; installmentNo: number | null }>;
     } | null;
+    /**
+     * ใบปิดยอดก่อนกำหนด (ฝ่ายบัญชี 16.1/16.2 · 2026-10-18) — จาก metadata ของ JP4: งวดที่ปิด · ลูกหนี้ตามบัญชี · งวดที่ถึงกำหนดแล้ว
+     * (18.1) · % ส่วนลด · เงินของลูกค้าที่หัก + ภาษีที่ออกใบกำกับไปแล้ว · เลขที่ใบ 6a ล่าสุดของสัญญา (เมื่อหักเงินพัก)
+     */
+    payoffContext: {
+      unpaidInstallments: number | null;
+      firstNo: number | null;
+      lastNo: number | null;
+      receivableCleared: string | null;
+      dueMonths: number;
+      notDueMonths: number;
+      discountPct: number | null;
+      parkRelief: string | null;
+      advanceRelief: string | null;
+      creditRelief: string | null;
+      advanceVatReversal: string | null;
+      parkReceiptNumber: string | null;
+    } | null;
   }> {
-    const none = { rescheduleContext: null, surplusContext: null };
+    const none = { rescheduleContext: null, surplusContext: null, payoffContext: null };
     const isReschedule = receipt.receiptType === 'RESCHEDULE_FEE';
     const isSurplus = receipt.receiptType === ADVANCE_SURPLUS_RECEIPT_TYPE;
-    if ((!isReschedule && !isSurplus) || !receipt.sourceJournalEntryId) return none;
+    const isPayoff = receipt.receiptType === 'EARLY_PAYOFF';
+    if ((!isReschedule && !isSurplus && !isPayoff) || !receipt.sourceJournalEntryId) return none;
     const source = await this.prisma.journalEntry.findUnique({
       where: { id: receipt.sourceJournalEntryId },
       select: { metadata: true },
@@ -337,6 +357,46 @@ export class ReceiptQueryService {
         return null;
       }
     };
+    if (isPayoff) {
+      if (meta.tag !== 'JP4') return none;
+      const nonNegativeInt = (v: unknown): number =>
+        typeof v === 'number' && Number.isInteger(v) && v >= 0 ? v : 0;
+      const parkRelief = money(meta.parkRelief);
+      const parkReceipt =
+        parkRelief && new Prisma.Decimal(parkRelief).gt(0)
+          ? await this.prisma.receipt.findFirst({
+              where: {
+                contractId: receipt.contractId,
+                receiptType: 'RESCHEDULE_FEE',
+                isVoided: false,
+                deletedAt: null,
+              },
+              orderBy: { paidDate: 'desc' },
+              select: { receiptNumber: true },
+            })
+          : null;
+      return {
+        rescheduleContext: null,
+        surplusContext: null,
+        payoffContext: {
+          unpaidInstallments: positiveInt(meta.unpaidInstallments),
+          firstNo: positiveInt(meta.firstUnpaidInstallmentNo),
+          lastNo: positiveInt(meta.lastUnpaidInstallmentNo),
+          receivableCleared: money(meta.receivableCleared),
+          dueMonths: nonNegativeInt(meta.dueMonths),
+          notDueMonths: nonNegativeInt(meta.notDueMonths),
+          discountPct:
+            typeof meta.interestDiscountPercent === 'number' && Number.isFinite(meta.interestDiscountPercent)
+              ? meta.interestDiscountPercent
+              : null,
+          parkRelief,
+          advanceRelief: money(meta.advanceRelief),
+          creditRelief: money(meta.creditRelief),
+          advanceVatReversal: money(meta.advanceVatReversal),
+          parkReceiptNumber: parkReceipt?.receiptNumber ?? null,
+        },
+      };
+    }
     if (isReschedule) {
       const daysToShift = positiveInt(meta.daysToShift);
       const installmentNo = positiveInt(meta.installmentNo) ?? receipt.installmentNo;
@@ -348,6 +408,7 @@ export class ReceiptQueryService {
         rescheduleContext:
           daysToShift && installmentNo ? { installmentNo, daysToShift, newDueDate } : null,
         surplusContext: null,
+        payoffContext: null,
       };
     }
     const siblingReceipts = receipt.transactionRef
@@ -365,6 +426,7 @@ export class ReceiptQueryService {
       : [];
     return {
       rescheduleContext: null,
+      payoffContext: null,
       surplusContext: {
         refno: typeof meta.refno === 'string' ? meta.refno : null,
         paidAmount: money(meta.paidAmount),

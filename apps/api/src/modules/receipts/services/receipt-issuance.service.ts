@@ -132,9 +132,9 @@ export class ReceiptIssuanceService {
       // Link the exact JE returned by the payment transaction. Never guess by
       // latest entry: a concurrent receipt may have posted for this payment.
       let sourceJournalEntryId: string | undefined;
-      // ใบกำกับภาษีตามบัญชี (PR3): ค่าที่ใบนี้ต้องพิมพ์ มาจากรายการบัญชีที่ผูกเท่านั้น — ไม่ผูก / รายการเก่า / ใบที่ไม่ใช่
-      // ใบค่างวด (ใบปิดยอดก่อนกำหนด — PR5) = null → PDF ใช้ตรรกะเดิม · PR4ข: ใบปรับดิว 6a และใบส่วนเกินลิงก์ชำระเก็บค่าจาก
-      // metadata ของรายการต้นทาง (rescheduleFeeReceiptTax / advanceSurplusReceiptTax)
+      // ใบกำกับภาษีตามบัญชี (PR3): ค่าที่ใบนี้ต้องพิมพ์ มาจากรายการบัญชีที่ผูกเท่านั้น — ไม่ผูก / รายการเก่า = null → PDF ใช้
+      // ตรรกะเดิม · PR4ข: ใบปรับดิว 6a และใบส่วนเกินลิงก์ชำระเก็บค่าจาก metadata ของรายการต้นทาง (rescheduleFeeReceiptTax /
+      // advanceSurplusReceiptTax) · 2026-10-18: ใบปิดยอดก่อนกำหนดผูก JP4 และอ่าน stamp `receiptTax` (earlyPayoffReceiptTax)
       let tax: ReceiptTaxBreakdown | null = null;
       // รายการรับชำระ (tag receipt) ที่ไม่มี receiptTax ที่ใช้ได้ — ทุกรายการที่ PaymentReceiptTemplate ลงตั้งแต่ PR3 มีค่าประทับ ⇒
       // ไม่มี = รายการก่อน PR3 หรือค่าประทับหายระหว่างทาง (final review M1). ไม่ปฏิเสธ (ใบพิมพ์แบบเดิม) แต่ต้องมีร่องรอย
@@ -145,11 +145,14 @@ export class ReceiptIssuanceService {
           select: { id: true, status: true, deletedAt: true, metadata: true },
         });
         const meta = (source?.metadata ?? {}) as Record<string, unknown>;
+        // ใบปิดยอดก่อนกำหนด (ฝ่ายบัญชี 16.1/16.2 · 2026-10-18): ผูกรายการ JP4 ของการปิดยอดนั้น (paymentId ไม่มีทั้งสองฝั่ง)
         const acceptedTag = receiptType === 'RESCHEDULE_FEE'
           ? meta.tag === 'reschedule-collect'
           : receiptType === ADVANCE_SURPLUS_RECEIPT_TYPE
             ? meta.tag === 'paysolutions-surplus-advance'
-            : ['receipt', '2B'].includes(String(meta.tag));
+            : receiptType === 'EARLY_PAYOFF'
+              ? meta.tag === 'JP4' && meta.flow === 'early-payoff'
+              : ['receipt', '2B'].includes(String(meta.tag));
         // รายการส่วนเกินลิงก์ชำระไม่มี paymentId (เงินพักไว้ที่สัญญา) — เทียบแบบ null = ไม่มี
         if (!source || source.status !== 'POSTED' || source.deletedAt ||
             (meta.paymentId ?? null) !== (paymentId ?? null) || meta.contractId !== contractId ||
@@ -163,7 +166,9 @@ export class ReceiptIssuanceService {
           throw new BadRequestException('รายการบัญชีรับชำระนี้ถูกกลับรายการแล้ว — ออกใบเสร็จไม่ได้');
         }
         sourceJournalEntryId = source.id;
-        if (INSTALLMENT_TYPES.includes(receiptType)) {
+        // ใบค่างวด (stamp ของ PaymentReceiptTemplate) และใบปิดยอด (stamp `receiptTax` ที่ earlyPayoff ประทับบน JP4 —
+        // รวมช่องส่วนลดดอกเบี้ยปิดยอด) อ่านค่าที่ประทับ · ยอดใบต้องเท่า stamp
+        if (INSTALLMENT_TYPES.includes(receiptType) || receiptType === 'EARLY_PAYOFF') {
           const stamped = parseReceiptTax(meta.receiptTax);
           if (stamped && stamped.amount === new Prisma.Decimal(amount).toFixed(2)) {
             tax = stamped;
@@ -171,7 +176,8 @@ export class ReceiptIssuanceService {
             this.logger.warn(
               `[Receipt] amount ${new Prisma.Decimal(amount).toFixed(2)} differs from journal ${sourceJournalEntryNumber} receiptTax.amount ${stamped.amount} — tax columns left empty`,
             );
-          } else if (meta.tag === 'receipt') {
+          } else if (meta.tag === 'receipt' || receiptType === 'EARLY_PAYOFF') {
+            // JP4 ที่ไม่มี stamp = ปิดยอดที่ประทับค่าไม่ได้ (เงินรับเกิน 18.2 / ตารางงวดผิดปกติ) — ใบยังผูกรายการ พิมพ์แบบเดิม
             receiptTaxMissing = true;
           }
         } else if (receiptType === 'RESCHEDULE_FEE' || receiptType === ADVANCE_SURPLUS_RECEIPT_TYPE) {

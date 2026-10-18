@@ -353,6 +353,7 @@ describe('documentMoneyColumns — ค่าที่ใบลดหนี้ค
       lateFeeWaivedAmount: '0.00',
       advanceAmount: '0.00',
       advanceVatAmount: '0.00',
+      discountAmount: '0.00', // 2026-10-18: ใบลดหนี้คัดลอกช่องส่วนลดด้วย (ใบที่ไม่ใช่ใบปิดยอด = 0)
     });
   });
 
@@ -378,5 +379,85 @@ describe('documentMoneyColumns — ค่าที่ใบลดหนี้ค
     expect(rows(m)).toEqual(rows(original));
     expect(rows(m)).toEqual([['RESCHEDULE', 10, '1044.00', '68.30']]);
     expect([f(m.exclVat), f(m.vatPart)]).toEqual(['5155.14', '360.86']);
+  });
+});
+
+describe('ใบปิดยอดก่อนกำหนดที่เก็บค่า (ฝ่ายบัญชี 16.1/16.2 · 2026-10-18) — แถวส่วนลดดอกเบี้ยไม่ลดฐานภาษี', () => {
+  const payoffStored = (o: Partial<ReceiptMoneyView> = {}): ReceiptMoneyView =>
+    view({
+      receiptType: 'EARLY_PAYOFF',
+      amount: D('15189.98'),
+      amountBeforeVat: D('17000.00'),
+      vatAmount: D('1190.00'),
+      roundingAmount: D('0'),
+      lateFeeAmount: D('0'),
+      lateFeeWaivedAmount: D('0'),
+      advanceAmount: D('0'),
+      advanceVatAmount: D('0'),
+      discountAmount: D('3000.02'),
+      installmentNo: null,
+      installmentAllocations: null,
+      contract: CONTRACT_17K,
+      ...o,
+    });
+
+  it('16.1 ยังไม่จ่ายเลย: แถวค่างวดคงเหลือ 18,190.00 = 17,000.00 + 1,190.00 · ส่วนลด 3,000.02 · สรุป 17,000.00 / 1,190.00 · ใบกำกับภาษี', () => {
+    const v = payoffStored();
+    expect(hasStoredReceiptTax(v)).toBe(true);
+    const m = receiptDocumentMoney(v);
+    expect([f(m.installmentPortion), f(m.installmentExclVat), f(m.installmentVat)]).toEqual([
+      '18190.00',
+      '17000.00',
+      '1190.00',
+    ]);
+    expect(f(m.discount)).toBe('3000.02');
+    expect([f(m.exclVat), f(m.vatPart)]).toEqual(['17000.00', '1190.00']);
+    expect(m.advanceRows).toEqual([]);
+    expect(m.vatBearing).toBe(true);
+    expect(f(documentMoneyColumns(m).discountAmount)).toBe('3000.02');
+  });
+
+  it('16.2 มีเงินพักค่าปรับดิว: แถวหัก −1,044.00 / −68.30 / −975.70 · แถวค่างวดยัง 18,190.00 / 1,190.00 · สรุป 16,024.30 / 1,121.70', () => {
+    const m = receiptDocumentMoney(
+      payoffStored({
+        amount: D('14318.16'),
+        amountBeforeVat: D('16024.30'),
+        vatAmount: D('1121.70'),
+        advanceAmount: D('-1044.00'),
+        advanceVatAmount: D('-68.30'),
+        discountAmount: D('2827.84'),
+      }),
+    );
+    expect([f(m.installmentPortion), f(m.installmentVat)]).toEqual(['18190.00', '1190.00']);
+    expect(m.advanceRows.map((r) => [r.kind, f(r.amount), f(r.vat), f(r.beforeVat)])).toEqual([
+      ['DEDUCTION', '-1044.00', '-68.30', '-975.70'],
+    ]);
+    expect([f(m.exclVat), f(m.vatPart), f(m.discount)]).toEqual(['16024.30', '1121.70', '2827.84']);
+  });
+
+  it('ใบที่เก็บค่าแต่ไม่มี discountAmount (ใบค่างวด / คอลัมน์ null) → ส่วนลด 0 · ตัวเลขเดิม', () => {
+    const m = receiptDocumentMoney(payoffStored({ discountAmount: null, amount: D('18190.00') }));
+    expect(f(m.discount)).toBe('0.00');
+    expect(f(m.installmentPortion)).toBe('18190.00');
+  });
+
+  it('ใบปิดยอดเก่า (ไม่เก็บค่า) → ตรรกะเดิม 16,205.57 / 1,134.39 · ส่วนลด 0', () => {
+    const m = receiptDocumentMoney(
+      payoffStored({
+        amount: D('17339.96'),
+        amountBeforeVat: null,
+        vatAmount: null,
+        roundingAmount: null,
+        lateFeeAmount: null,
+        lateFeeWaivedAmount: null,
+        advanceAmount: null,
+        advanceVatAmount: null,
+        discountAmount: null,
+        lateFeeCollected: null,
+        lateFeeWaivedThisReceipt: null,
+        hasReceiptFeeHistory: false,
+      }),
+    );
+    expect([f(m.exclVat), f(m.vatPart), f(m.discount)]).toEqual(['16205.57', '1134.39', '0.00']);
   });
 });

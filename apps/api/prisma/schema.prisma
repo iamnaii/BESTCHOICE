@@ -3869,6 +3869,9 @@ model Receipt {
   advanceAmount         Decimal?  @map("advance_amount") @db.Decimal(12, 2)
   /// ภาษีของแถวเงินรับล่วงหน้า (เครื่องหมายเดียวกับ advanceAmount) — รวมอยู่ใน vatAmount แล้ว
   advanceVatAmount      Decimal?  @map("advance_vat_amount") @db.Decimal(12, 2)
+  /// ส่วนลดดอกเบี้ยปิดยอด (Dr 52-1106) ของใบปิดยอดก่อนกำหนด — แถวแยกไม่ลดฐานภาษี (ฝ่ายบัญชี 16/10/2569 ข้อ 16.1 · 2026-10-18).
+  /// invariant: amountBeforeVat + vatAmount + roundingAmount + lateFeeAmount − discountAmount = amount · ใบอื่น = 0 · ใบเก่า = null
+  discountAmount        Decimal?  @map("discount_amount") @db.Decimal(12, 2)
   installmentNo         Int?      @map("installment_no") // งวดที่
   remainingBalance      Decimal?  @map("remaining_balance") @db.Decimal(12, 2) // contract balance after this payment
   remainingMonths       Int?      @map("remaining_months")

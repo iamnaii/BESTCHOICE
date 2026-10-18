@@ -373,7 +373,14 @@ describe('ContractPaymentService — ปิดยอดก่อนกำหน�
     });
     expect(je.metadata.roundingGain).toBeUndefined();
     expect(h.contractUpdates.some((d) => d.status === 'EARLY_PAYOFF')).toBe(true);
-    expect(Sentry.captureMessage).toHaveBeenCalledTimes(1);
+    // 2026-10-18 ใบปิดยอดตามบัญชี (16.1): มีเงินรับเกิน = ประทับ receiptTax ไม่ได้ → สัญญาณที่สอง · ใบพิมพ์แบบเดิม
+    expect(Sentry.captureMessage).toHaveBeenCalledTimes(2);
+    expect(je.metadata.receiptTax).toBeUndefined();
+    expect((Sentry.captureMessage as jest.Mock).mock.calls[1][1]).toMatchObject({
+      level: 'warning',
+      tags: { module: 'contracts', action: 'early-payoff-receipt-tax-unavailable', flow: 'early-payoff' },
+      extra: { contractId: 'contract-ep-ledger-1', excessIncome: '444.00', cashReceived: '0.00' },
+    });
     const [message, context] = (Sentry.captureMessage as jest.Mock).mock.calls[0];
     expect(message).toContain('exceeds the contract ledger receivable');
     expect(context).toMatchObject({
@@ -387,7 +394,7 @@ describe('ContractPaymentService — ปิดยอดก่อนกำหน�
         creditRelief: '12000.00',
       },
     });
-    expect(h.events).toEqual(['createAndPost', 'commit', 'warning']);
+    expect(h.events).toEqual(['createAndPost', 'commit', 'warning', 'warning']);
   });
 
   it('ลูกหนี้ในบัญชีมากกว่ายอดค้างตามงวด 1,926.00 (เช่นแถวงวดถูกตั้ง PAID โดยไม่มีรายการรับชำระ) → ลงได้ · 52-1106 2,376.00 · สัญญาณเตือน early-payoff-discount-vs-quote หลัง commit ครั้งเดียว', async () => {
@@ -405,7 +412,9 @@ describe('ContractPaymentService — ปิดยอดก่อนกำหน�
     const je = h.createAndPost.mock.calls[0][0] as CapturedJe;
     expect(je.lines.find((l) => l.accountCode === '52-1106')!.dr.toFixed(2)).toBe('2376.00');
     expect(je.metadata).toMatchObject({ discount: '2376.00', quoteDiscountAmount: '450.00' });
-    expect(Sentry.captureMessage).toHaveBeenCalledTimes(1);
+    // 2026-10-18 ใบปิดยอดตามบัญชี (16.1): ตารางงวดเหลือ 11,556 แต่บัญชี 13,482 (ต่างเกิน 1.00) → สัญญาณที่สอง · ไม่ประทับ receiptTax
+    // (ใบพิมพ์แบบเดิม — ผู้ตรวจอิสระ I1: ฐาน = บัญชี − ภาษีตามงวด จะเป็นใบกำกับภาษีที่ตัวเลขไม่ตรงความจริง)
+    expect(Sentry.captureMessage).toHaveBeenCalledTimes(2);
     expect((Sentry.captureMessage as jest.Mock).mock.calls[0][1]).toMatchObject({
       level: 'warning',
       tags: { module: 'journal', action: 'early-payoff-discount-vs-quote', flow: 'early-payoff' },
@@ -416,7 +425,13 @@ describe('ContractPaymentService — ปิดยอดก่อนกำหน�
         difference: '1926.00',
       },
     });
-    expect(h.events).toEqual(['createAndPost', 'commit', 'warning']);
+    expect((Sentry.captureMessage as jest.Mock).mock.calls[1][1]).toMatchObject({
+      level: 'warning',
+      tags: { module: 'contracts', action: 'early-payoff-receipt-schedule-vs-ledger', flow: 'early-payoff' },
+      extra: { scheduleRemainder: '11556.00', receivableCleared: '13482.00', installmentVat: '756.00' },
+    });
+    expect(je.metadata.receiptTax).toBeUndefined();
+    expect(h.events).toEqual(['createAndPost', 'commit', 'warning', 'warning']);
   });
 
   it('คำขออนุมัติคร่อมรอบตั้งลูกหนี้งวดกลางคืน (งวด 7 ครบกำหนด) — ตัวเงินของ quote เท่าเดิม → ไม่ต้องส่งใหม่ · รายการที่ลง = ยอดในบัญชีตอนทำรายการ (Cr 11-2103 1,926.00 · ดอกเบี้ย 750.00)', async () => {

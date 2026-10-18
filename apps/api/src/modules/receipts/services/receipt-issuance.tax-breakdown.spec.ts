@@ -164,29 +164,69 @@ describe('ReceiptIssuanceService — ใบกำกับภาษีตาม�
     for (const k of TAX_COLUMNS) expect(created[0][k]).toBeUndefined();
   });
 
-  it('ใบปิดยอดผูกรายการ JP4 ยังไม่ได้ (PR5) → ปฏิเสธเหมือนเดิม ก่อนสร้างใบ', async () => {
-    const { svc, created } = buildService({
-      source: {
-        id: 'je-jp4',
-        status: 'POSTED',
-        deletedAt: null,
-        metadata: { tag: 'JP4', flow: 'early-payoff', contractId: 'c1' },
-      },
-    });
+  // ใบปิดยอดก่อนกำหนดเป็นใบกำกับภาษีตามบัญชี (ฝ่ายบัญชี 16.1/16.2 · 2026-10-18): ผูกรายการ JP4 (tag JP4 · flow early-payoff ·
+  // paymentId ไม่มี) และคัดลอก receiptTax ที่ earlyPayoff ประทับไว้ — รวมช่องส่วนลดดอกเบี้ยปิดยอด
+  const PAYOFF_TAX = {
+    version: 1,
+    amount: '15189.98',
+    amountBeforeVat: '17000.00',
+    vatAmount: '1190.00',
+    roundingAmount: '0.00',
+    lateFeeAmount: '0.00',
+    lateFeeWaivedAmount: '0.00',
+    advanceAmount: '0.00',
+    advanceVatAmount: '0.00',
+    discountAmount: '3000.02',
+  };
+  const jp4Source = (meta: Record<string, unknown> = {}) => ({
+    id: 'je-jp4',
+    status: 'POSTED',
+    deletedAt: null,
+    metadata: { tag: 'JP4', flow: 'early-payoff', contractId: 'c1', receiptTax: PAYOFF_TAX, ...meta },
+  });
+
+  it('ใบปิดยอดผูกรายการ JP4 → เก็บค่าที่ประทับรวม discountAmount (16.1: 17,000 / 1,190 / ส่วนลด 3,000.02)', async () => {
+    const { svc, tx, created } = buildService({ source: jp4Source() });
+
+    await svc.generateReceipt('c1', null, 'EARLY_PAYOFF', 15189.98, null, 'BANK_TRANSFER', null, 'u1', undefined, 'JE-JP4');
+
+    expect(tx.journalEntry.findUnique).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { entryNumber: 'JE-JP4' } }),
+    );
+    expect(created).toHaveLength(1);
+    expect(created[0].sourceJournalEntryId).toBe('je-jp4');
+    expect(created[0].amountBeforeVat?.toString()).toBe('17000');
+    expect(created[0].vatAmount?.toString()).toBe('1190');
+    expect(created[0].discountAmount?.toString()).toBe('3000.02');
+    expect(created[0].advanceAmount?.toString()).toBe('0');
+  });
+
+  it('รายการ JP4 ไม่มี receiptTax (ปิดยอดที่ประทับไม่ได้ — เช่น มีเงินรับเกิน 18.2) → ผูกรายการแต่ช่องว่าง (พิมพ์แบบเดิม)', async () => {
+    const { svc, created } = buildService({ source: jp4Source({ receiptTax: undefined }) });
+
+    await svc.generateReceipt('c1', null, 'EARLY_PAYOFF', 15189.98, null, 'BANK_TRANSFER', null, 'u1', undefined, 'JE-JP4');
+
+    expect(created).toHaveLength(1);
+    expect(created[0].sourceJournalEntryId).toBe('je-jp4');
+    for (const k of [...TAX_COLUMNS, 'discountAmount']) expect(created[0][k]).toBeUndefined();
+  });
+
+  it('ยอดใบไม่ตรง receiptTax.amount ของ JP4 → ไม่เก็บค่า (ผูกรายการตามเดิม)', async () => {
+    const { svc, created } = buildService({ source: jp4Source() });
+
+    await svc.generateReceipt('c1', null, 'EARLY_PAYOFF', 15189.0, null, 'BANK_TRANSFER', null, 'u1', undefined, 'JE-JP4');
+
+    expect(created).toHaveLength(1);
+    expect(created[0].sourceJournalEntryId).toBe('je-jp4');
+    expect(created[0].discountAmount).toBeUndefined();
+    expect(created[0].vatAmount).toBeUndefined();
+  });
+
+  it('เลขที่รายการที่ส่งมาไม่ใช่ JP4 ของสัญญานี้ (สัญญาอื่น) → ปฏิเสธก่อนสร้างใบ', async () => {
+    const { svc, created } = buildService({ source: jp4Source({ contractId: 'c2' }) });
 
     await expect(
-      svc.generateReceipt(
-        'c1',
-        null,
-        'EARLY_PAYOFF',
-        17339.96,
-        null,
-        'BANK_TRANSFER',
-        null,
-        'u1',
-        undefined,
-        'JE-JP4',
-      ),
+      svc.generateReceipt('c1', null, 'EARLY_PAYOFF', 15189.98, null, 'BANK_TRANSFER', null, 'u1', undefined, 'JE-JP4'),
     ).rejects.toThrow('ไม่พบรายการบัญชีรับชำระที่ตรงกับใบเสร็จ');
     expect(created).toHaveLength(0);
   });

@@ -50,7 +50,9 @@ describe('ContractPaymentService — ปิดยอดหักเงินร�
     sellingPrice: dec('12000'),
     downPayment: dec('2000'),
     storeCommission: dec('1000'),
-    financedAmount: dec('17000'),
+    // ยอดจัด 10,000 (+ คอม 1,000 + ดอกเบี้ย 6,000 = 17,000 = 11-2101 ในบัญชี) — เดิมใส่ 17,000 ผิด: ตั้งแต่ 2026-10-18
+    // ใบปิดยอดนับภาษีคงเหลือจากตารางงวดแล้วเทียบกับลูกหนี้ตามบัญชี (สัญญาณ early-payoff-receipt-schedule-vs-ledger)
+    financedAmount: dec('10000'),
     interestTotal: dec('6000'),
     vatAmount: dec('1190.00'),
     payments: Array.from({ length: 12 }, (_, i) => ({
@@ -303,7 +305,12 @@ describe('ContractPaymentService — ปิดยอดหักเงินร�
       '21-2101:0.00:1190.00',
     ]);
     expect(decrementOf(h.contractUpdates, 'advanceBalance')).toEqual(['18189.96']);
-    expect(Sentry.captureMessage).not.toHaveBeenCalled();
+    // 2026-10-18 ใบปิดยอดตามบัญชี: ถังรวมในฟิกซ์เจอร์นี้ไม่มี stamp ภาษีพัก (ขากลับ 0) ⇒ ฐานก่อนภาษีของใบติดลบ → ไม่ประทับ receiptTax
+    // (ใบพิมพ์แบบเดิม) + สัญญาณ early-payoff-receipt-tax-unavailable หนึ่งตัว (ผู้ตรวจอิสระ I1) · สัญญาณคอลัมน์/ยอดปิดยังไม่มีเหมือนเดิม
+    expect((Sentry.captureMessage as jest.Mock).mock.calls.map(([, c]) => c.tags.action)).toEqual([
+      'early-payoff-receipt-tax-unavailable',
+    ]);
+    expect(je.metadata.receiptTax).toBeUndefined();
   });
 
   it('คอลัมน์ถังรวม 500 แต่ 21-1103 ในบัญชีไม่มียอด → ยอดปิดหัก 500 (14,772.45) · ไม่มีบรรทัด 21-1103 · 52-1106 3,417.55 · คอลัมน์ไม่ลด · สัญญาณเตือนสองตัวหลัง commit', async () => {

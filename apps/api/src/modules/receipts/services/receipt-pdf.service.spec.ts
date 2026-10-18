@@ -433,8 +433,10 @@ describe('ReceiptPdfService — Credit Note rendering (Phase 3 Task 4)', () => {
       query.getReceipt.mockResolvedValue(payoffStored());
       await service.generatePDF('rcpt-ep');
       expect(capturedHtml).toContain('ใบเสร็จรับเงิน / ใบกำกับภาษี');
-      expect(capturedHtml).toContain('ค่างวดคงเหลือ 12 งวด (งวดที่ 1–12) — ปิดยอดสัญญา');
-      expect(capturedHtml).toContain('ตามรายการบัญชี · ลูกหนี้คงเหลือ 18,190.00');
+      expect(capturedHtml).toContain('ปิดยอดสัญญาก่อนกำหนด — ค่างวดคงเหลือ 12 งวด (งวดที่ 1–12)');
+      expect(capturedHtml).toContain('<strong>18,190.00</strong>'); // ยอดแถว = ลูกหนี้ตามบัญชี (ไม่มีบรรทัดรองเมื่อไม่มีงวดถึงกำหนด)
+      expect(capturedHtml).not.toContain('ลูกหนี้คงเหลือ');
+      expect(capturedHtml).toContain('ชำระครบตามเอกสารนี้ — สัญญาเช่าซื้อสิ้นสุด');
       expect(capturedHtml).toContain('ส่วนลดดอกเบี้ยปิดยอด (ไม่ลดฐานภาษี)');
       expect(capturedHtml).toContain('ส่วนลด 50% ของดอกเบี้ยงวดที่ยังไม่ถึงกำหนด · ฐานภาษีคงเดิม');
       expect(capturedHtml).toContain('<strong>−3,000.02</strong>');
@@ -475,8 +477,8 @@ describe('ReceiptPdfService — Credit Note rendering (Phase 3 Task 4)', () => {
         payoffContext: payoffContext({ unpaidInstallments: 8, firstNo: 5, lastNo: 12, receivableCleared: '12126.68', dueMonths: 4, notDueMonths: 4 }),
       }));
       await service.generatePDF('rcpt-ep-due');
-      expect(capturedHtml).toContain('ค่างวดคงเหลือ 8 งวด (งวดที่ 5–12) — ปิดยอดสัญญา');
-      expect(capturedHtml).toContain('งวดที่ถึงกำหนดแล้ว 5–8 · ยังไม่ถึงกำหนด 9–12');
+      expect(capturedHtml).toContain('ปิดยอดสัญญาก่อนกำหนด — ค่างวดคงเหลือ 8 งวด (งวดที่ 5–12)');
+      expect(capturedHtml).toContain('ตามรายการบัญชี · งวดที่ถึงกำหนดแล้ว 5–8 · ยังไม่ถึงกำหนด 9–12');
       expect(capturedHtml).toContain('ส่วนลด 50% ของดอกเบี้ยเฉพาะงวดที่ยังไม่ถึงกำหนด 4 งวด (งวด 9–12) · งวดที่ถึงกำหนดแล้ว 4 งวดชำระเต็มจำนวน');
       expect(capturedHtml).toContain('<strong>−1,000.03</strong>');
       expect(capturedHtml).toContain('11,126.65');
@@ -489,7 +491,7 @@ describe('ReceiptPdfService — Credit Note rendering (Phase 3 Task 4)', () => {
         payoffContext: payoffContext({ unpaidInstallments: 7, firstNo: 2, lastNo: 12, receivableCleared: '10610.92', dueMonths: 2, notDueMonths: 5 }),
       }));
       await service.generatePDF('rcpt-ep-gap');
-      expect(capturedHtml).toContain('ค่างวดคงเหลือ 7 งวด — ปิดยอดสัญญา');
+      expect(capturedHtml).toContain('ปิดยอดสัญญาก่อนกำหนด — ค่างวดคงเหลือ 7 งวด');
       expect(capturedHtml).not.toContain('(งวดที่ 2–12)');
       expect(capturedHtml).not.toContain('ถึงกำหนดแล้ว 2–3');
       expect(capturedHtml).toContain('ส่วนลด 50% ของดอกเบี้ยเฉพาะงวดที่ยังไม่ถึงกำหนด 5 งวด · งวดที่ถึงกำหนดแล้ว 2 งวดชำระเต็มจำนวน');
@@ -506,7 +508,7 @@ describe('ReceiptPdfService — Credit Note rendering (Phase 3 Task 4)', () => {
       expect(capturedHtml).toContain('16,205.57');
       expect(capturedHtml).toContain('1,134.39');
       expect(capturedHtml).not.toContain('ส่วนลดดอกเบี้ยปิดยอด');
-      expect(capturedHtml).not.toContain('— ปิดยอดสัญญา');
+      expect(capturedHtml).not.toContain('— ค่างวดคงเหลือ');
       expect(capturedHtml).not.toContain('ยกเลิกใบนี้ไม่ได้');
     });
   });

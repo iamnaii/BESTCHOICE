@@ -3,6 +3,7 @@ import { Building2, Landmark, Paperclip, Receipt } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import ThaiDateInput from '@/components/ui/ThaiDateInput';
+import { NativeSelect } from '@/components/ui/native-select';
 import { cn } from '@/lib/utils';
 import { formatNumberDecimal } from '@/utils/formatters';
 import type { PurchaseOrder, RecordSupplierPaymentPayload, SupplierPayment, SupplierPaymentSummary } from '../types';
@@ -154,7 +155,7 @@ export function SupplierPaymentDialog({ open, po, summary, summaryLoading, pendi
               </div>
               <div>
                 <label className={labelCls} htmlFor="sp-account">จ่ายจากบัญชี</label>
-                <select
+                <NativeSelect
                   id="sp-account"
                   className={fieldCls}
                   value={form.paymentAccountCode}
@@ -164,7 +165,7 @@ export function SupplierPaymentDialog({ open, po, summary, summaryLoading, pendi
                   {SUPPLIER_PAYMENT_ACCOUNTS.map((a) => (
                     <option key={a.code} value={a.code}>{a.label} · {a.code}</option>
                   ))}
-                </select>
+                </NativeSelect>
                 <p id="sp-account-hint" className="mt-1 text-xs text-muted-foreground">
                   {bankSelected ? 'โอนธนาคาร · ต้องแนบสลิป' : 'จ่ายเงินสดย่อย · ไม่ต้องแนบสลิป (แนบหลักฐานได้) · จ่ายได้ไม่เกินยอดเงินสดย่อยในบัญชี'}
                 </p>

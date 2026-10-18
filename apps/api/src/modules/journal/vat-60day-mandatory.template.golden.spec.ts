@@ -23,6 +23,10 @@ describe('Vat60dayMandatoryTemplate.execute (golden · mock-based)', () => {
     id: 'inst-v60m-1',
     installmentNo: 3,
     contractId: contract.id,
+    // #1702 ข้อ 11.1 — template อ่านสามคอลัมน์นี้ก่อนตั้ง (งวดที่ยังไม่ตั้งลูกหนี้)
+    accrualJournalEntryId: null,
+    accruedAmount: dec(0),
+    accruedVat: dec(0),
     vat60dayJournalEntryId: null as string | null,
   };
 

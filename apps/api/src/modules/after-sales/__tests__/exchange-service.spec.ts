@@ -1119,9 +1119,14 @@ describe('AfterSalesExchangeService', () => {
         ),
       ).toBe(60);
       // M1 (final review PR5) — CAS เหมือนกิ่งผ่อน · events ผ่าน createMany ใน tx เดียวกับประกัน
+      // M3 — อุปกรณ์ที่ส่งมอบเก็บแบบโครงสร้างบนเคส (ใบส่งมอบอ่านจากตรงนี้ ไม่ถอดจาก note)
       expect(prisma.afterSalesCase.updateMany).toHaveBeenCalledWith({
         where: { id: 'as-1', stage: 'READY_FOR_PICKUP', closedAt: null },
-        data: { stage: 'CLOSED', closedAt: expect.any(Date) },
+        data: {
+          stage: 'CLOSED',
+          closedAt: expect.any(Date),
+          deliveredAccessories: { box: true, charger: true, case: false, other: null },
+        },
       });
       expect(prisma.afterSalesEvent.createMany).toHaveBeenCalledWith({
         data: [
@@ -1150,6 +1155,11 @@ describe('AfterSalesExchangeService', () => {
         warrantyTerms: null,
       });
       await svc.deliver('as-1', STAFF, {} as never);
+      // M3 — ไม่ส่งรายการอุปกรณ์ → ไม่เขียนคอลัมน์ (data ไม่มีคีย์ deliveredAccessories)
+      expect(prisma.afterSalesCase.updateMany).toHaveBeenCalledWith({
+        where: { id: 'as-1', stage: 'READY_FOR_PICKUP', closedAt: null },
+        data: { stage: 'CLOSED', closedAt: expect.any(Date) },
+      });
       const saleData = prisma.sale.update.mock.calls[0][0].data;
       expect(saleData.shopWarrantyStartDate).toBeInstanceOf(Date);
       expect(saleData.shopWarrantyEndDate).toBeNull();

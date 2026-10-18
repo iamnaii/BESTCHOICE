@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
+import type { DeliveredAccessories } from '../utils/delivered-accessories';
 import type { Readable } from 'stream';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { StorageService } from '../../storage/storage.service';
@@ -141,7 +142,7 @@ export class AfterSalesDocumentService {
       await Promise.all([
         this.prisma.afterSalesCase.findUniqueOrThrow({
           where: { id: c.id },
-          select: { photoKeys: true },
+          select: { photoKeys: true, deliveredAccessories: true },
         }),
         this.prisma.user.findUnique({ where: { id: user.id }, select: { name: true } }),
         this.loadCompany(c.branchId),
@@ -317,6 +318,7 @@ export class AfterSalesDocumentService {
                     ? new Date(sale.shopWarrantyStartDate.getTime() + 6 * 86_400_000)
                     : null,
             deliveredNote: c.timeline.find((e) => e.kind === 'DELIVERED')?.note ?? null,
+            deliveredAccessories: (row.deliveredAccessories as DeliveredAccessories | null | undefined) ?? null,
             approvedByName: approver?.name ?? null,
             approvedAt: c.approvedAt ?? null,
             repairTicketNumber: t?.ticketNumber ?? null,

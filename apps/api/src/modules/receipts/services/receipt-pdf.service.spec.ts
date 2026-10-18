@@ -401,6 +401,102 @@ describe('ReceiptPdfService — Credit Note rendering (Phase 3 Task 4)', () => {
 
 
   // ── PR4ข (ฝ่ายบัญชี 16/10/2569 ข้อ 14 / 23.1 / 23.2 · mockup FWZ6vrgaixKmP1buUdrUry กระดาน 2–3) ──
+  // ใบปิดยอดก่อนกำหนดเป็นใบกำกับภาษีตามบัญชี (ฝ่ายบัญชี 16/10/2569 ข้อ 16.1/16.2 · mockup เจ้าของเคาะ 18/10/2569
+  // `7WWhgoL9ovNxPHji7m6tGf` กระดาน 1–3): ค่าที่เก็บ + บริบทจาก metadata ของ JP4 (payoffContext)
+  describe('ใบปิดยอดก่อนกำหนดที่เก็บค่า (16.1/16.2 + บรรทัดอธิบาย 18.1)', () => {
+    const payoffContext = (o: Record<string, unknown> = {}) => ({
+      unpaidInstallments: 12,
+      firstNo: 1,
+      lastNo: 12,
+      receivableCleared: '18190.00',
+      dueMonths: 0,
+      notDueMonths: 12,
+      discountPct: 50,
+      parkRelief: null,
+      advanceRelief: null,
+      creditRelief: null,
+      advanceVatReversal: null,
+      parkReceiptNumber: null,
+      ...o,
+    });
+    const payoffStored = (overrides: Record<string, unknown> = {}) => baseReceipt({
+      id: 'rcpt-ep', receiptNumber: 'RT-202610-00044', receiptType: 'EARLY_PAYOFF', installmentNo: null, paymentId: null,
+      amount: new Decimal('15189.98'), amountBeforeVat: new Decimal('17000.00'), vatAmount: new Decimal('1190.00'),
+      roundingAmount: new Decimal('0'), lateFeeAmount: new Decimal('0'), lateFeeWaivedAmount: new Decimal('0'),
+      advanceAmount: new Decimal('0'), advanceVatAmount: new Decimal('0'), discountAmount: new Decimal('3000.02'),
+      paymentMethod: 'BANK_TRANSFER', lateFeeCollected: null, lateFeeWaivedThisReceipt: null, hasReceiptFeeHistory: false,
+      installmentAllocations: null, sourceJournalEntryId: 'je-jp4', payoffContext: payoffContext(),
+      ...overrides,
+    });
+
+    it('16.1 ยังไม่จ่ายเลย: แถวค่างวดคงเหลือ 12 งวด 17,000/1,190 ตามบัญชี · แถวส่วนลดดอกเบี้ยปิดยอด −3,000.02 ไม่ลดฐานภาษี · รวม 15,189.98 · ยกเลิกไม่ได้', async () => {
+      query.getReceipt.mockResolvedValue(payoffStored());
+      await service.generatePDF('rcpt-ep');
+      expect(capturedHtml).toContain('ใบเสร็จรับเงิน / ใบกำกับภาษี');
+      expect(capturedHtml).toContain('ค่างวดคงเหลือ 12 งวด (งวดที่ 1–12) — ปิดยอดสัญญา');
+      expect(capturedHtml).toContain('ตามรายการบัญชี · ลูกหนี้คงเหลือ 18,190.00');
+      expect(capturedHtml).toContain('ส่วนลดดอกเบี้ยปิดยอด (ไม่ลดฐานภาษี)');
+      expect(capturedHtml).toContain('ส่วนลด 50% ของดอกเบี้ยงวดที่ยังไม่ถึงกำหนด · ฐานภาษีคงเดิม');
+      expect(capturedHtml).toContain('<strong>−3,000.02</strong>');
+      expect(capturedHtml).toContain('<span class="k">ส่วนลดดอกเบี้ยปิดยอด</span><span class="v">−3,000.02</span>');
+      expect(capturedHtml).toContain('17,000.00');
+      expect(capturedHtml).toContain('1,190.00');
+      expect(capturedHtml).toContain('15,189.98');
+      expect(capturedHtml).toContain('กรรมสิทธิ์เครื่องโอนให้ลูกค้า');
+      expect(capturedHtml).toContain('ยกเลิกใบนี้ไม่ได้');
+      expect(capturedHtml).not.toContain('เฉพาะงวดที่ยังไม่ถึงกำหนด');
+      expect(capturedHtml).not.toContain('หักเงินรับล่วงหน้า');
+      // ไม่ถอด 7/107 จากเงินที่รับแบบใบเดิม (15,189.98 → 14,196.24 / 993.74)
+      expect(capturedHtml).not.toContain('993.74');
+    });
+
+    it('16.2 มีเงินพักค่าปรับดิว: แถวหัก −1,044.00 / −68.30 อ้างใบ 6a · ภาษีใบ 1,121.70 · ฐาน 16,024.30 · รวม 14,318.16', async () => {
+      query.getReceipt.mockResolvedValue(payoffStored({
+        amount: new Decimal('14318.16'), amountBeforeVat: new Decimal('16024.30'), vatAmount: new Decimal('1121.70'),
+        advanceAmount: new Decimal('-1044.00'), advanceVatAmount: new Decimal('-68.30'), discountAmount: new Decimal('2827.84'),
+        payoffContext: payoffContext({ parkRelief: '1044.00', advanceVatReversal: '68.30', parkReceiptNumber: 'RC-20260915-0012' }),
+      }));
+      await service.generatePDF('rcpt-ep-park');
+      expect(capturedHtml).toContain('หักเงินพักค่าปรับดิวที่จ่ายไว้ล่วงหน้า');
+      expect(capturedHtml).toContain('RC-20260915-0012');
+      expect(capturedHtml).toContain('ภาษี 68.30 หักออกจากใบนี้');
+      expect(capturedHtml).toContain('<strong>−1,044.00</strong>');
+      expect(capturedHtml).toContain('−68.30');
+      expect(capturedHtml).toContain('16,024.30');
+      expect(capturedHtml).toContain('1,121.70');
+      expect(capturedHtml).toContain('<strong>−2,827.84</strong>');
+      expect(capturedHtml).toContain('14,318.16');
+    });
+
+    it('18.1 ค้าง 4 จาก 8 งวด: ป้ายงวดที่ถึงกำหนดแล้ว/ยังไม่ถึง · บรรทัดอธิบายส่วนลดเฉพาะงวด 9–12 · รวม 11,126.65', async () => {
+      query.getReceipt.mockResolvedValue(payoffStored({
+        amount: new Decimal('11126.65'), amountBeforeVat: new Decimal('11333.36'), vatAmount: new Decimal('793.32'),
+        discountAmount: new Decimal('1000.03'),
+        payoffContext: payoffContext({ unpaidInstallments: 8, firstNo: 5, lastNo: 12, receivableCleared: '12126.68', dueMonths: 4, notDueMonths: 4 }),
+      }));
+      await service.generatePDF('rcpt-ep-due');
+      expect(capturedHtml).toContain('ค่างวดคงเหลือ 8 งวด (งวดที่ 5–12) — ปิดยอดสัญญา');
+      expect(capturedHtml).toContain('งวดที่ถึงกำหนดแล้ว 5–8 · ยังไม่ถึงกำหนด 9–12');
+      expect(capturedHtml).toContain('ส่วนลด 50% ของดอกเบี้ยเฉพาะงวดที่ยังไม่ถึงกำหนด 4 งวด (งวด 9–12) · งวดที่ถึงกำหนดแล้ว 4 งวดชำระเต็มจำนวน');
+      expect(capturedHtml).toContain('<strong>−1,000.03</strong>');
+      expect(capturedHtml).toContain('11,126.65');
+    });
+
+    it('ใบปิดยอดเก่า (ไม่เก็บค่า · ไม่มี payoffContext) → พิมพ์แบบเดิม ไม่มีแถวส่วนลด', async () => {
+      query.getReceipt.mockResolvedValue(payoffStored({
+        amount: new Decimal('17339.96'), amountBeforeVat: null, vatAmount: null, roundingAmount: null, lateFeeAmount: null,
+        lateFeeWaivedAmount: null, advanceAmount: null, advanceVatAmount: null, discountAmount: null,
+        sourceJournalEntryId: null, payoffContext: null,
+      }));
+      await service.generatePDF('rcpt-ep-legacy');
+      expect(capturedHtml).toContain('16,205.57');
+      expect(capturedHtml).toContain('1,134.39');
+      expect(capturedHtml).not.toContain('ส่วนลดดอกเบี้ยปิดยอด');
+      expect(capturedHtml).not.toContain('— ปิดยอดสัญญา');
+      expect(capturedHtml).not.toContain('ยกเลิกใบนี้ไม่ได้');
+    });
+  });
+
   describe('PR4ข — ใบปรับดิว 6a เป็นใบกำกับภาษี · ใบรับเงินส่วนเกินลิงก์ชำระ', () => {
     const stored6a = (overrides: Record<string, unknown> = {}) =>
       baseReceipt({

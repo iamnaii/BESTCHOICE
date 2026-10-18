@@ -374,6 +374,7 @@ export default function ReceiptsTab({ onVoided }: ReceiptsTabProps) {
             <option value="DOWN_PAYMENT">เงินดาวน์</option>
             <option value="EARLY_PAYOFF">ปิดก่อนกำหนด</option>
             <option value="CREDIT_NOTE">ใบลดหนี้</option>
+            <option value="ADVANCE_SURPLUS">เงินรับล่วงหน้า (ลิงก์ชำระ)</option>
           </NativeSelect>
           <ThaiDateInput aria-label="วันที่เริ่ม"
             value={dateFrom}

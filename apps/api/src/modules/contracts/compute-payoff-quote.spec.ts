@@ -1,5 +1,10 @@
 import { Prisma } from '@prisma/client';
-import { computePayoffQuote, PayoffQuotePaymentRow } from './compute-payoff-quote';
+import {
+  computePayoffQuote,
+  countNotDueInstallments,
+  isInstallmentNotDue,
+  PayoffQuotePaymentRow,
+} from './compute-payoff-quote';
 
 const decimal = (v: number | string) => new Prisma.Decimal(v);
 
@@ -455,5 +460,40 @@ describe('ส่วนลดเฉพาะดอกเบี้ยของง�
     expect(q.discountableMonths).toBe(6.53);
     expect(q.discountAmount).toBe(5847.15);
     expect(q.totalPayoff).toBe(18135.85);
+  });
+});
+
+describe('isInstallmentNotDue / countNotDueInstallments — เส้นแบ่งวันตามปฏิทินไทย (ข้อ 18.1)', () => {
+  // งวดครบกำหนด 18/10/2569 → เที่ยงคืนไทย = 17/10 17:00Z
+  const dueBangkok18 = new Date('2026-10-17T17:00:00.000Z');
+
+  it('ครบกำหนดวันนี้ = ถึงกำหนดแล้ว (ไม่ได้ส่วนลด) ตลอดทั้งวันไทย', () => {
+    expect(isInstallmentNotDue(dueBangkok18, new Date('2026-10-17T17:00:00.000Z'))).toBe(false); // 18/10 00:00 ไทย
+    expect(isInstallmentNotDue(dueBangkok18, new Date('2026-10-18T16:59:59.000Z'))).toBe(false); // 18/10 23:59:59 ไทย
+  });
+
+  it('วินาทีสุดท้ายของวันก่อนครบกำหนด (ตามเวลาไทย) = ยังไม่ถึงกำหนด', () => {
+    expect(isInstallmentNotDue(dueBangkok18, new Date('2026-10-17T16:59:59.000Z'))).toBe(true); // 17/10 23:59:59 ไทย
+  });
+
+  it('รับ string ได้ · ว่าง/ผิดรูป = ยังไม่ถึงกำหนด (ไม่ตัดส่วนลดโดยไม่มีวันครบกำหนด)', () => {
+    const now = new Date('2026-10-18T05:00:00.000Z'); // 18/10 12:00 ไทย
+    expect(isInstallmentNotDue('2026-10-19T17:00:00.000Z', now)).toBe(true); // 20/10 ไทย
+    expect(isInstallmentNotDue('2026-10-16T17:00:00.000Z', now)).toBe(false); // 17/10 ไทย
+    expect(isInstallmentNotDue(null, now)).toBe(true);
+    expect(isInstallmentNotDue(undefined, now)).toBe(true);
+    expect(isInstallmentNotDue('not-a-date', now)).toBe(true);
+  });
+
+  it('countNotDueInstallments นับเฉพาะแถวที่ยังไม่ถึงกำหนด', () => {
+    const now = new Date('2026-10-18T05:00:00.000Z');
+    const rows = [
+      { dueDate: new Date('2026-09-17T17:00:00.000Z') }, // 18/09 — ถึงแล้ว
+      { dueDate: dueBangkok18 }, // วันนี้ — ถึงแล้ว
+      { dueDate: new Date('2026-11-17T17:00:00.000Z') }, // 18/11 — ยัง
+      { dueDate: null }, // ไม่มีวัน — ยัง
+    ];
+    expect(countNotDueInstallments(rows, now)).toBe(2);
+    expect(countNotDueInstallments([], now)).toBe(0);
   });
 });

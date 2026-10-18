@@ -1,7 +1,11 @@
 import { render, screen } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { EarlyPayoffOverlay, type EarlyPayoffQuote } from '../ContractEarlyPayoff';
+import {
+  ContractEarlyPayoffQuote,
+  EarlyPayoffOverlay,
+  type EarlyPayoffQuote,
+} from '../ContractEarlyPayoff';
 
 /**
  * PR5ข (เจ้าของเคาะ 01/10/2569): ยอดปิดหักเงินที่ลูกค้าชำระเกินจากงวดก่อน (ถังรวม) แบบเดียวกับค่าปรับดิวที่พักไว้ —
@@ -147,5 +151,22 @@ describe('EarlyPayoffOverlay — ส่วนลดเฉพาะงวดท�
     expect(screen.queryByText(/กำไรของงวดที่ยังไม่ถึงกำหนด/)).not.toBeInTheDocument();
     expect(screen.queryByText(/ไม่ได้ส่วนลด/)).not.toBeInTheDocument();
     expect(screen.getByText('ส่วนลดลูกค้า 50%')).toBeInTheDocument();
+  });
+});
+
+describe('ContractEarlyPayoffQuote — การ์ดสรุปไม่เขียน "ส่วนลด 50%" ตายตัว (ผู้ตรวจอิสระ M2)', () => {
+  it('มีงวดถึงกำหนดแล้ว → "(ส่วนลด 50% ของงวดที่ยังไม่ถึงกำหนด)"', () => {
+    render(<ContractEarlyPayoffQuote payoffQuote={dueCase} contractStatus="ACTIVE" />);
+    expect(screen.getByText('ยอดปิดสัญญา (ส่วนลด 50% ของงวดที่ยังไม่ถึงกำหนด)')).toBeInTheDocument();
+  });
+
+  it('ไม่มีงวดถึงกำหนด → "(ส่วนลด 50%)" · quote เก่าไม่มี % → ไม่มีวงเล็บ', () => {
+    const { unmount } = render(
+      <ContractEarlyPayoffQuote payoffQuote={{ ...dueCase, dueMonths: 0, discountPct: 30 }} contractStatus="ACTIVE" />,
+    );
+    expect(screen.getByText('ยอดปิดสัญญา (ส่วนลด 30%)')).toBeInTheDocument();
+    unmount();
+    render(<ContractEarlyPayoffQuote payoffQuote={{ totalPayoff: 1, remainingMonths: 1 }} contractStatus="ACTIVE" />);
+    expect(screen.getByText('ยอดปิดสัญญา')).toBeInTheDocument();
   });
 });

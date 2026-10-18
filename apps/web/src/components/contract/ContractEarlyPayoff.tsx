@@ -121,10 +121,15 @@ export function ContractEarlyPayoffQuote({
   payoffQuote,
   contractStatus,
 }: {
-  payoffQuote: { totalPayoff: number; remainingMonths: number };
+  payoffQuote: { totalPayoff: number; remainingMonths: number; discountPct?: number; dueMonths?: number };
   contractStatus: string;
 }) {
   if (!['ACTIVE', 'OVERDUE', 'DEFAULT'].includes(contractStatus)) return null;
+  // % จาก quote จริง · ลดเฉพาะงวดที่ยังไม่ถึงกำหนด (ฝ่ายบัญชี 18.1) — ไม่เขียน 50% ตายตัว · ไม่มี % = ไม่มีวงเล็บ
+  const discountLabel =
+    payoffQuote.discountPct == null
+      ? ''
+      : ` (ส่วนลด ${payoffQuote.discountPct}%${(payoffQuote.dueMonths ?? 0) > 0 ? ' ของงวดที่ยังไม่ถึงกำหนด' : ''})`;
   return (
     <div className="bg-primary/5 rounded-xl border border-primary/20 p-6 mb-6 shadow-sm">
       <h2 className="text-lg font-semibold text-primary mb-3">ประเมินปิดก่อนกำหนด</h2>
@@ -134,7 +139,7 @@ export function ContractEarlyPayoffQuote({
           <div className="font-medium">{payoffQuote.remainingMonths} งวด</div>
         </div>
         <div>
-          <div className="text-xs text-primary font-semibold">ยอดปิดสัญญา (ส่วนลด 50%)</div>
+          <div className="text-xs text-primary font-semibold">{`ยอดปิดสัญญา${discountLabel}`}</div>
           <div className="text-xl font-bold text-primary">
             {formatNumber(payoffQuote.totalPayoff)} บาท
           </div>

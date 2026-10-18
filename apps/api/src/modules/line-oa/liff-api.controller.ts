@@ -230,6 +230,7 @@ export class LiffApiController {
     return {
       remainingMonths: quote.remainingMonths,
       dueMonths: quote.dueMonths,
+      discountPct: quote.discountPct,
       remainingPrincipal: quote.remainingCost,
       remainingInterest: Math.max(0, quote.grossProfit),
       discount: quote.discountAmount,

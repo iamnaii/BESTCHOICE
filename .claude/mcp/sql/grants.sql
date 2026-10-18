@@ -618,6 +618,9 @@ GRANT SELECT ("id", "branch_id", "status", "attempt_no", "period_start", "float_
 REVOKE ALL ON public."shop_cash_deposits" FROM mcp_ro;
 GRANT SELECT ("id", "branch_id", "source", "amount", "deposited_by_id", "deposited_at", "journal_entry_id", "created_at", "updated_at") ON public."shop_cash_deposits" TO mcp_ro;
 
+REVOKE ALL ON public."shop_petty_cash_movements" FROM mcp_ro;
+GRANT SELECT ("id", "kind", "amount", "bank_account_code", "moved_at", "posted_at", "journal_entry_id", "request_id", "created_by_id", "created_at", "updated_at", "deleted_at") ON public."shop_petty_cash_movements" TO mcp_ro;
+
 REVOKE ALL ON public."shop_tenders" FROM mcp_ro;
 GRANT SELECT ("id", "direction", "kind", "branch_id", "method", "amount", "actor_id", "occurred_at", "seq", "seq_total", "sale_id", "contract_id", "booking_id", "trade_in_id", "reverses_tender_id", "created_at") ON public."shop_tenders" TO mcp_ro;
 

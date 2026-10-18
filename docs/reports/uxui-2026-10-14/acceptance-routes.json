@@ -1612,5 +1612,11 @@
     "path": "/expenses/verify/:id",
     "type": "page",
     "component": "ExpenseDetailPage"
+  },
+  {
+    "no": "270",
+    "path": "/shop/petty-cash",
+    "type": "page",
+    "component": "ShopPettyCashPage"
   }
 ]

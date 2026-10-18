@@ -61,7 +61,7 @@ describe('getSidebarForRole — populated ZONE_CONFIG', () => {
 
   it('ACCOUNTANT finds SHOP accounting in SHOP', () => {
     // + สรุปเงินหน้าร้านรายวัน (2026-09-20) — บัญชีเห็นทุกสาขา
-    expect(getSidebarForRole('ACCOUNTANT', 'shop').flatMap(s => s.items.map(i => i.path))).toEqual(['/shop/accounting', '/shop/daily-cash']);
+    expect(getSidebarForRole('ACCOUNTANT', 'shop').flatMap(s => s.items.map(i => i.path))).toEqual(['/shop/accounting', '/shop/daily-cash', '/shop/petty-cash']);
   });
 
   it('ACCOUNTANT + fin returns accounting sections', () => {
@@ -94,7 +94,7 @@ describe('getSidebarForRole — populated ZONE_CONFIG', () => {
     const sections = getSidebarForRole('OWNER', 'shop');
     const accounting = sections.find((s) => s.key === 'owner-shop-accounting');
     const sales = sections.find((s) => s.key === 'owner-sales');
-    expect(accounting?.items.map((i) => i.path)).toEqual(['/shop/accounting', '/shop/daily-cash']);
+    expect(accounting?.items.map((i) => i.path)).toEqual(['/shop/accounting', '/shop/daily-cash', '/shop/petty-cash']);
     expect(sales?.items.map((i) => i.path)).not.toContain('/shop/daily-cash');
   });
 
@@ -182,7 +182,7 @@ describe('VIEWER role (Owner Q4 2026-05-17)', () => {
   });
 
   it('VIEWER finds SHOP accounting in SHOP', () => {
-    expect(getSidebarForRole('VIEWER', 'shop').flatMap(s => s.items.map(i => i.path))).toEqual(['/shop/accounting']);
+    expect(getSidebarForRole('VIEWER', 'shop').flatMap(s => s.items.map(i => i.path))).toEqual(['/shop/accounting', '/shop/petty-cash']);
   });
 
   it('VIEWER + settings returns empty (no gear)', () => {
@@ -202,6 +202,8 @@ describe('VIEWER role (Owner Q4 2026-05-17)', () => {
       p.startsWith('/finance/') ||
       p === '/profit-loss' ||
       p === '/shop/accounting' ||
+      // เงินสดย่อยหน้าร้าน (2026-10-18) — VIEWER อ่าน GET summary/movements ได้ (@Roles('VIEWER') ใน shop-petty-cash.controller)
+      p === '/shop/petty-cash' ||
       p === '/financial-audit';
     expect(paths.every(allowed)).toBe(true);
   });

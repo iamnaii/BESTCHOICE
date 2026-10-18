@@ -28,6 +28,7 @@ import { CompanyResolverService } from '../../journal/company-resolver.service';
 import { ShopAccountResolver } from '../../journal/shop-account-resolver.service';
 import { ShopGoodsReceivingTemplate } from '../../journal/cpa-templates/shop-goods-receiving.template';
 import { ShopSupplierPaymentTemplate } from '../../journal/cpa-templates/shop-supplier-payment.template';
+import { SHOP_PETTY_CASH_LOCK_KEY } from '../../journal/supplier-payment-accounts';
 import { bangkokDateString } from '../../../utils/date.util';
 import { ProductsService } from '../../products/products.service';
 import { ProductPhotosService } from '../../quality-control/product-photos.service';
@@ -389,6 +390,40 @@ describe('จ่ายเงินผู้จัดจำหน่าย — fl
   });
 
   // ───────────── Task 4: หักมัดจำเข้าเจ้าหนี้อัตโนมัติตอนรับของ (ข้อสมมติ ค) ─────────────
+
+  it('[race] คืน/เติมเงินสดย่อย (เมนู 20.2) กับจ่ายเงินสดพร้อมกัน → จ่ายต้องรอ advisory lock ตัวเดียวกัน (S11-1106 ไม่ติดลบข้าม flow)', async () => {
+    const supplier = await seedSupplier('PETTYRACE', true);
+    const po = await createDocExamplePo(supplier.id);
+    await receive(po.id, [poItemOf(po, `${PREFIX}A`).id]);
+    await journal.createAndPost({
+      companyId: shopCompanyId,
+      description: `${PREFIX} เติมเงินสดย่อย (เทส race)`,
+      reference: `${PREFIX}petty-fund-race:${po.id}`,
+      metadata: { flow: 'test-petty-fund', poId: po.id },
+      lines: [
+        { accountCode: 'S11-1106', dr: dec('300'), cr: dec('0') },
+        { accountCode: 'S11-1202', dr: dec('0'), cr: dec('300') },
+      ],
+    });
+    // คอนเนกชันที่สองถือล็อกเงินสดย่อยค้างไว้ (เหมือน ShopPettyCashService กำลังคืนเงิน) — การจ่ายสดต้องรอจนปล่อย
+    let releasedAt = 0;
+    const holder = prisma2.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${SHOP_PETTY_CASH_LOCK_KEY}))`;
+      await sleep(400);
+      releasedAt = Date.now();
+    });
+    await sleep(60);
+    const res = await service.recordSupplierPayment(
+      po.id,
+      { paidAt: today(), amount: 300, paymentAccountCode: 'S11-1106', requestId: `${PREFIX}petty-race-${po.id.slice(0, 8)}` },
+      adminId,
+    );
+    const doneAt = Date.now();
+    await holder;
+    expect(releasedAt).toBeGreaterThan(0);
+    expect(doneAt).toBeGreaterThanOrEqual(releasedAt);
+    expect(res.payments.map((p) => [p.kind, p.amount, p.bankAccountCode])).toEqual([['SETTLEMENT', '300.00', 'S11-1106']]);
+  });
 
   it('มัดจำ 5,000 → รับของทั้งใบ → หักมัดจำเข้าเจ้าหนี้วันเดียวกับรายการรับของ · JE รับของติด supplierId · ชำระส่วนที่เหลือแล้วเจ้าหนี้ศูนย์', async () => {
     const supplier = await seedSupplier('APPLY', true);

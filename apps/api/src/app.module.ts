@@ -72,6 +72,7 @@ import { EquityModule } from './modules/equity/equity.module';
 import { StoreAppointmentsModule } from './modules/store-appointments/store-appointments.module';
 import { BookingsModule } from './modules/bookings/bookings.module';
 import { ShopTendersModule } from './modules/shop-tenders/shop-tenders.module';
+import { ShopPettyCashModule } from './modules/shop-petty-cash/shop-petty-cash.module';
 import { ExpenseDocumentsModule } from './modules/expense-documents/expense-documents.module';
 import { PaymentMethodConfigModule } from './modules/payment-method-config/payment-method-config.module';
 import { CompanyModule } from './modules/company/company.module';
@@ -264,6 +265,7 @@ import { AppCacheModule } from './cache/cache.module';
     BookingsModule,
     StoreAppointmentsModule,
     ShopTendersModule,
+    ShopPettyCashModule,
     // Expense Documents (เอกสารค่าใช้จ่าย — accrual workflow)
     ExpenseDocumentsModule,
     // Payment method ↔ Cash account mapping (cashier wizard filter)

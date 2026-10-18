@@ -258,7 +258,7 @@ scripts/                     # Deploy & backup scripts
 `/overdue`, `/letters` (queue + bulk print + dispatch tracking), `/repossessions` (ใบรับเครื่องคืน + รอยึดเครื่อง + ยึดคืน & ขายต่อ — เมนู "รับเครื่องคืน / ยึดคืน"), `/credit-checks`, `/slip-review`, `/after-sales(/:id|/new)` (หลังการขาย — ใบรับฝาก/ใบส่งมอบ PDF; `/insurance*` เหลือ redirect)
 
 ### Revenue & Tax
-`/commissions`, `/tax-reports`, `/trade-in`, `/promotions`
+`/commissions`, `/tax-reports`, `/trade-in`, `/promotions`, `/shop/accounting` (งบทดลอง + P&L SHOP), `/shop/daily-cash` (สรุปเงินหน้าร้านรายวัน), `/shop/petty-cash` (เงินสดย่อย S11-1106 — เติม/คืน/วงเงิน · กติกาใน `.claude/rules/accounting.md`)
 
 ### Admin & Settings
 `/settings` (registry-driven panel: `/settings/:categoryId`; old paths redirect), `/users`, `/branches`, `/audit-logs`, `/financial-audit`, `/system-status`, `/notifications`, `/migration`, `/pdpa`, `/document-dashboard`

@@ -6,11 +6,19 @@ import { ShopAccountResolver } from './shop-account-resolver.service';
  * S11-1106 เงินสด - เงินสดย่อย เป็น**ข้อเสนอ** (migration 20261026 + shop-coa.csv) — ถ้าฝ่ายบัญชีให้รหัสอื่น ต้องย้ายรายการที่ลงไปแล้วด้วย.
  * ไม่มี S11-1104 เงินสดเจ้าของ / S11-1105 ตู้เซฟ / S11-110x ลิ้นชักสาขา — ยอดของบัญชีเหล่านั้นเดินตามสมุดปิดยอดลิ้นชัก/นำฝาก
  * (`shop-cash-holding.service.ts` อ่าน FIFO จากตาราง ไม่ใช่ GL) การเครดิตจากเมนูนี้จะทำให้สองสมุดไม่ตรงกันถาวร (ผู้ตรวจอิสระ 13/10 ข้อ 1).
- * เงินสด (CASH) จ่ายได้ไม่เกินยอดในบัญชี (service ตรวจ) — บัญชีเงินสดย่อยยังไม่มีเมนูเติมเงิน ต้องลงรายการโอนเข้า (`Dr S11-1106 / Cr ธนาคาร`) ก่อน.
+ * เงินสด (CASH) จ่ายได้ไม่เกินยอดในบัญชี (service ตรวจ) — เติม/คืนเงินสดย่อยที่เมนู บัญชีหน้าร้าน (SHOP) › เงินสดย่อย
+ * (`shop-petty-cash` · ข้อ 20.2 · 2026-10-18: `Dr S11-1106 / Cr ธนาคาร` ภายใต้วงเงิน `shop_petty_cash_limit`).
  */
 export type SupplierPaymentAccountKind = 'BANK' | 'CASH';
 
 export const SHOP_PETTY_CASH_ACCOUNT = 'S11-1106';
+
+/**
+ * คีย์ advisory lock ของเงินสดย่อย (`pg_advisory_xact_lock(hashtext(KEY))` ผ่าน `$executeRaw`) — ทุก flow ที่เครดิต/เดบิต S11-1106 แล้วตรวจ
+ * "ติดลบไม่ได้" ต้องจับล็อกนี้ก่อนอ่านยอด: เมนูเติม/คืน (`ShopPettyCashService`) และจ่ายผู้จัดจำหน่ายด้วยเงินสด (`SupplierPaymentService`)
+ * ไม่งั้นคืน + จ่ายพร้อมกันผ่านทั้งคู่แล้วยอดติดลบ (ผู้ตรวจอิสระ 18/10 ข้อ 2). ลำดับ: แถว PO (FOR UPDATE) → advisory — ฝั่งเงินสดย่อยไม่แตะ PO จึงไม่ deadlock
+ */
+export const SHOP_PETTY_CASH_LOCK_KEY = 'shop-petty-cash';
 
 export const SUPPLIER_PAYMENT_ACCOUNTS: Record<string, { label: string; kind: SupplierPaymentAccountKind }> = {
   [ShopAccountResolver.SHOP_PAYING_BANK]: { label: 'ธนาคารหน้าร้าน (จ่ายออก)', kind: 'BANK' },

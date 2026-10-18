@@ -334,6 +334,12 @@ enum POPaymentKind {
   DEPOSIT_FORFEIT
 }
 
+/// เงินสดย่อยหน้าร้าน S11-1106 (ข้อ 20.2 · 2026-10-18): TOP_UP = เติมจากธนาคาร · RETURN = คืนเข้าธนาคาร
+enum ShopPettyCashMovementKind {
+  TOP_UP
+  RETURN
+}
+
 enum ReceivingItemStatus {
   PASS
   REJECT
@@ -2007,6 +2013,34 @@ model PurchaseOrderPayment {
   @@index([supplierId, paidAt])
   @@index([poId, requestId])
   @@map("purchase_order_payments")
+}
+
+/// เงินสดย่อยหน้าร้าน S11-1106 — คำขอเติม/คืน (ข้อ 20.2 · 2026-10-18). ยอดคงเหลืออ่านจากสมุดบัญชี SHOP (journal_lines S11-1106)
+/// ไม่ใช่จากตารางนี้ — ตารางเก็บหลักฐาน · requestId · ผู้ทำ · วันที่ที่เลือก ของรายการที่มาจากเมนูนี้เท่านั้น
+model ShopPettyCashMovement {
+  id              String                    @id @default(uuid())
+  kind            ShopPettyCashMovementKind
+  amount          Decimal                   @db.Decimal(12, 2)
+  /// ธนาคารต้นทาง (TOP_UP) / ปลายทาง (RETURN): S11-1202 จ่ายออก · S11-1201 รับเข้า
+  bankAccountCode String                    @map("bank_account_code")
+  /// วันที่ถอน/ฝากที่ผู้ใช้เลือก (เที่ยงคืนเวลาไทย)
+  movedAt         DateTime                  @map("moved_at")
+  /// วันที่ลงบัญชีจริง — เท่ากับ movedAt เว้นแต่งวดของวันนั้นปิดแล้ว (ลงวันที่บันทึกแทน + แจ้งฝ่ายบัญชี)
+  postedAt        DateTime                  @map("posted_at")
+  note            String?
+  /// key ใน StorageService (`shop-petty-cash/<yyyymmdd>/<uuid>.<ext>`) — ไม่บังคับ (คำตอบฝ่ายบัญชี 20.3)
+  evidenceKey     String?                   @map("evidence_key")
+  journalEntryId  String?                   @unique @map("journal_entry_id")
+  /// รหัสคำขอจากหน้าจอ — กดซ้ำได้รายการเดิม ไม่เกิดรายการผี
+  requestId       String?                   @map("request_id")
+  createdById     String?                   @map("created_by_id")
+  createdAt       DateTime                  @default(now()) @map("created_at")
+  updatedAt       DateTime                  @updatedAt @map("updated_at")
+  deletedAt       DateTime?                 @map("deleted_at")
+
+  @@index([movedAt])
+  @@index([requestId])
+  @@map("shop_petty_cash_movements")
 }
 
 model POItem {

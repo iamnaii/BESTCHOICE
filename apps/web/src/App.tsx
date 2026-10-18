@@ -94,6 +94,7 @@ const PaymentCsvImportPage = lazy(() => import('@/pages/PaymentCsvImportPage'));
 const POSPage = lazy(() => import('@/pages/POSPage'));
 const SalesHistoryPage = lazy(() => import('@/pages/SalesHistoryPage'));
 const ShopDailyCashPage = lazy(() => import('@/pages/ShopDailyCashPage'));
+const ShopPettyCashPage = lazy(() => import('@/pages/ShopPettyCashPage'));
 const AfterSalesPage = lazy(() => import('@/pages/AfterSalesPage'));
 const AfterSalesNewPage = lazy(() => import('@/pages/AfterSalesNewPage'));
 const AfterSalesCasePage = lazy(() => import('@/pages/AfterSalesCasePage'));
@@ -503,6 +504,8 @@ function App() {
           <Route path="/pos" element={<ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'SALES']}><POSPage /></ProtectedRoute>} />
           <Route path="/sales" element={<SalesHistoryPage />} />
           <Route path="/shop/daily-cash" element={<ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'BRANCH_MANAGER', 'SALES']}><ShopDailyCashPage /></ProtectedRoute>} />
+          {/* เงินสดย่อยหน้าร้าน S11-1106 (ข้อ 20.2 · 2026-10-18) — เติม/คืน OWNER+FM · ดู ACCOUNTANT/VIEWER */}
+          <Route path="/shop/petty-cash" element={<ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'VIEWER']}><ShopPettyCashPage /></ProtectedRoute>} />
           <Route path="/after-sales" element={<ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES']}><AfterSalesPage /></ProtectedRoute>} />
           <Route path="/after-sales/new" element={<ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'SALES']}><AfterSalesNewPage /></ProtectedRoute>} />
           <Route path="/after-sales/:id" element={<ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES']}><AfterSalesCasePage /></ProtectedRoute>} />

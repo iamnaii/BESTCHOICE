@@ -2085,6 +2085,33 @@ Integration: `contracts/__tests__/shop-cash-close.integration.spec.ts`
 
 ---
 
+## เงินสดย่อยหน้าร้าน S11-1106 — เมนูเติม/คืน + วงเงิน (ข้อ 20.2 · คำตอบฝ่ายบัญชี 16/10/2569 · เจ้าของเคาะ 18/10/2569)
+
+หน้า `/shop/petty-cash` (เมนู บัญชีหน้าร้าน (SHOP) › เงินสดย่อย · mockup `Q9YhHKUhw7kkawVfcu6yZz`) · โมดูล `apps/api/src/modules/shop-petty-cash/` ·
+template `journal/cpa-templates/shop-petty-cash.template.ts` · ตาราง `shop_petty_cash_movements` (migration `20261028000000`).
+
+- **ยอดคงเหลือ = ยอดสุทธิ S11-1106 ในสมุด SHOP** (`journal_lines` POSTED · query เดียวกับด่าน "เงินสดไม่พอ" ของ `SupplierPaymentService`) — ตาราง
+  movements เก็บเฉพาะหลักฐาน/requestId/ผู้ทำ/วันที่ที่เลือก ของรายการที่มาจากเมนูนี้ ไม่ใช่แหล่งยอด · ตารางเคลื่อนไหวบนหน้าอ่านทุกบรรทัด
+  ของบัญชี (เติม · คืน · จ่ายผู้จัดจำหน่าย + ยกเลิก · "อื่น ๆ" = JE มือ/flow ที่ไม่รู้จัก — ไม่ทิ้งบรรทัดใด) พร้อมยอดสะสมจากยอดยกมาต้นเดือน
+- **เติม** `Dr S11-1106 / Cr ธนาคารหน้าร้าน` (ค่าเริ่มต้น S11-1202 จ่ายออก · เลือก S11-1201 รับเข้าได้) **≤ วงเงิน − คงเหลือ** ·
+  **คืน** `Dr ธนาคารหน้าร้าน (ค่าเริ่มต้น S11-1201) / Cr S11-1106` **≤ คงเหลือ** (เงินสดย่อยติดลบไม่ได้ — ด่านเดียวกับตอนจ่ายผู้จัดจำหน่าย) ·
+  metadata `tag SHOP_PETTY_CASH · flow shop-petty-cash · kind TOP_UP|RETURN · movementId · bankAccountCode` · idempotent `petty-cash:<movementId>`
+- **วงเงิน** = `SystemConfig` key `shop_petty_cash_limit` (ไม่มี/เพี้ยน = **20,000** ค่าเริ่มต้นที่เจ้าของเคาะ · `source DEFAULT|SET`) ·
+  OWNER ตั้งจากปุ่มบนหน้า (0 – 1,000,000 · 2 ตำแหน่ง · audit `SHOP_PETTY_CASH_LIMIT_SET`) · ตั้งต่ำกว่าคงเหลือได้ → หน้าบอก "เกินวงเงิน" และ
+  เติมไม่ได้จนกว่าจะคืน · ไม่มีผลกับบัญชี แค่คุมปุ่มเติม · ไม่มี cron เตือน (แค่บอก "เติมได้อีก") · **ไม่ระบุผู้ถือ กองเดียวทั้งร้าน ไม่แยกสาขา** (20.2)
+- **ด่านใน tx:** advisory lock `hashtext('shop-petty-cash')` (`$executeRaw` — กดพร้อมกันสองคนต่อคิว ไม่เกินวงเงินทั้งคู่) → requestId เดิม + ชนิด/ยอด/บัญชีเดิม
+  = คืนรายการเดิม (`duplicate: true`) · ค่าต่าง = 409 → อ่านยอด/วงเงินหลังล็อก → วันที่ (`parsePaidAt`: ≤ วันนี้ · ย้อน ≤ 365 วัน) · งวดของวันที่ที่เลือกปิดแล้ว
+  (`isPeriodClosedForBackdating`) → ลงวันที่บันทึก + Todo tag `shop-petty-cash-period` แจ้งฝ่ายบัญชี (แบบจ่ายผู้จัดจำหน่าย) · **ไม่มี void** — ผิดให้เติม/คืนกลับ
+- **หลักฐานไม่บังคับ (20.3)** — รูป JPEG/PNG/WEBP ≤ 5MB เก็บเป็น key `shop-petty-cash/<yyyymmdd>/<uuid>.<ext>` ใน `StorageService` (ไม่ใช่ data URI —
+  บทเรียนก้อน 2) อัปโหลดก่อนเปิด tx · tx ล้ม/คำขอซ้ำ → ลบ key · เสิร์ฟผ่าน `GET /shop/petty-cash/movements/:id/evidence` (สิทธิ์อ่าน)
+- **สิทธิ์:** อ่าน OWNER/FINANCE_MANAGER/ACCOUNTANT/VIEWER · เติม/คืน OWNER/FINANCE_MANAGER · ตั้งวงเงิน OWNER · ไม่มี BranchGuard (ไม่ผูกสาขา) ·
+  audit หลัง commit `SHOP_PETTY_CASH_TOP_UP` / `SHOP_PETTY_CASH_RETURN` (entity `shop_petty_cash_movement`) · ด่าน "เงินสดย่อยติดลบไม่ได้" ของเมนูจ่ายผู้จัดจำหน่ายจับ
+  advisory lock ตัวเดียวกัน (`SHOP_PETTY_CASH_LOCK_KEY` ใน `journal/supplier-payment-accounts.ts`) — คืน/เติม กับจ่ายเงินสดพร้อมกันจึงต่อคิว ไม่ติดลบข้าม flow
+- ข้อความ "เงินสดไม่พอ" ของเมนูจ่ายผู้จัดจำหน่ายชี้มาที่เมนูนี้แล้ว (เดิมบอกให้ฝ่ายบัญชีลงรายการโอนเข้าด้วยมือ) · **คนละเรื่องกับ** petty cash ฝั่ง FINANCE
+  (`expense-documents` `PETTY_CASH_REIMBURSEMENT` · 11-1103 · `petty_cash_replenish_threshold`) — ห้ามปน
+- ปัก: `shop-petty-cash.util.spec.ts` (jest) · `journal/__tests__/shop-petty-cash.template.spec.ts` (jest) · `shop-petty-cash.integration.spec.ts` (vitest DB —
+  CI glob `PETTY_FILES`: วงเงิน · คงเหลือ · requestId/409 · หลักฐาน+ลบเมื่อล้ม · งวดปิด+Todo · กดพร้อมกัน · ตั้งวงเงิน)
+
 ## ค่าคอมพนักงานขายของสัญญาผ่อน BESTCHOICE (คำตัดสินเจ้าของ 2026-09-20)
 
 โค้ด: `apps/api/src/modules/contracts/services/contract-commission.util.ts` (ที่เดียว)

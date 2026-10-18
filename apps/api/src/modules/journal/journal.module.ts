@@ -58,6 +58,7 @@ import { ShopTradeInTemplate } from './cpa-templates/shop-trade-in.template';
 import { ShopGoodsReceivingTemplate } from './cpa-templates/shop-goods-receiving.template';
 // ก้อน 2 (2026-10-05) — จ่ายเงินผู้จัดจำหน่าย / มัดจำ
 import { ShopSupplierPaymentTemplate } from './cpa-templates/shop-supplier-payment.template';
+import { ShopPettyCashTemplate } from './cpa-templates/shop-petty-cash.template';
 import { ShopStockWriteOffTemplate } from './cpa-templates/shop-stock-writeoff.template';
 import { InstallmentInputVatTemplate } from './cpa-templates/installment-input-vat.template';
 import { ShopExpenseTemplate } from './cpa-templates/shop-expense.template';
@@ -139,6 +140,7 @@ import { RefundWaiveTemplate } from './cpa-templates/refund-waive.template';
     ShopTradeInTemplate,
     ShopGoodsReceivingTemplate,
     ShopSupplierPaymentTemplate,
+    ShopPettyCashTemplate,
     ShopStockWriteOffTemplate,
     InstallmentInputVatTemplate,
     ShopExpenseTemplate,
@@ -210,6 +212,7 @@ import { RefundWaiveTemplate } from './cpa-templates/refund-waive.template';
     ShopTradeInTemplate,
     ShopGoodsReceivingTemplate,
     ShopSupplierPaymentTemplate,
+    ShopPettyCashTemplate,
     ShopStockWriteOffTemplate,
     InstallmentInputVatTemplate,
     ShopExpenseTemplate,

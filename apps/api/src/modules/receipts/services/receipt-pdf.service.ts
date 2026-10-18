@@ -384,14 +384,13 @@ export class ReceiptPdfService {
           ? `ค่างวดคงเหลือ ${pc.unpaidInstallments} งวด — ปิดยอดสัญญา`
           : itemLabel
       : itemLabel;
+    // บรรทัดรองของแถวหลักเฉพาะเมื่อมีงวดถึงกำหนดแล้ว (ยอดลูกหนี้ตามบัญชี = ยอดของแถวอยู่แล้ว — ไม่พิมพ์ซ้ำ ประหยัดพื้นที่)
     const payoffItemMeta =
-      isStoredPayoff && pc
-        ? `<div class="item-meta">ตามรายการบัญชี${pc.receivableCleared ? ` · ลูกหนี้คงเหลือ ${fmt(toDec(pc.receivableCleared))}` : ''}${
-            payoffRange && pc.dueMonths > 0 && pc.dueMonths < pc.lastNo! - pc.firstNo! + 1
+      isStoredPayoff && pc && payoffRange && pc.dueMonths > 0
+        ? `<div class="item-meta">ตามรายการบัญชี${
+            pc.dueMonths < pc.lastNo! - pc.firstNo! + 1
               ? ` · งวดที่ถึงกำหนดแล้ว ${pc.firstNo}–${pc.firstNo! + pc.dueMonths - 1} · ยังไม่ถึงกำหนด ${pc.firstNo! + pc.dueMonths}–${pc.lastNo}`
-              : payoffRange && pc.dueMonths > 0
-                ? ' · ถึงกำหนดแล้วทุกงวด'
-                : ''
+              : ' · ถึงกำหนดแล้วทุกงวด'
           }</div>`
         : '';
     // แถวส่วนลดดอกเบี้ยปิดยอด (ไม่ลดฐานภาษี) + บรรทัดอธิบาย 18.1 (เจ้าของเคาะ 18/10/2569 ให้มี)
@@ -420,24 +419,20 @@ export class ReceiptPdfService {
     // 2–4 แถวจากใบค่างวด กล่อง 3 บรรทัดทำให้ล้นเป็น 2 หน้า (ผู้ตรวจอิสระ C1 — วัดจริง 16.1 = 270 มม. · 16.2 + ค่าปรับ = 349 มม.
     // ขณะที่พื้นที่พิมพ์ ~239 มม.) · ข้อความเดียวกับ mockup ย่อลง
     const payoffNotice = isStoredPayoff
-      ? ` · ใบกำกับภาษีของค่างวด${pc?.unpaidInstallments ? ` ${pc.unpaidInstallments} งวด` : ''}ที่ปิดยอด — ภาษีมูลค่าเพิ่ม ${fmt(vatPart)} บาท ตรงกับภาษีขายที่นำส่ง (ส่วนลดดอกเบี้ยไม่ลดฐานภาษี${
-          payoffDeductionVat.gt(0) ? ` · หักภาษีที่ออกใบกำกับไปแล้ว ${fmt(payoffDeductionVat)}` : ''
-        }) · กรรมสิทธิ์เครื่องโอนให้ลูกค้าเมื่อชำระครบตามใบนี้ · ยกเลิกใบนี้ไม่ได้ (ปิดยอดแล้ว)`
+      ? ` · ใบกำกับภาษีของค่างวด${pc?.unpaidInstallments ? ` ${pc.unpaidInstallments} งวด` : ''}ที่ปิดยอด — ภาษี ${fmt(vatPart)} บาท ตรงกับภาษีขายที่นำส่ง (ส่วนลดดอกเบี้ยไม่ลดฐานภาษี) · กรรมสิทธิ์เครื่องโอนให้ลูกค้าเมื่อชำระครบตามใบนี้ · ยกเลิกใบนี้ไม่ได้ (ปิดยอดแล้ว)`
       : '';
     // ใบปิดยอดที่เก็บค่า: ลดขอบกระดาษ/ช่องว่าง/ระยะบรรทัดเฉพาะใบนี้ให้พอหน้าเดียวทุกแบบ (ใบอื่นไม่แตะ — CSS ไม่ถูกใส่)
     // (DOCUMENT_A4_CSS ตั้ง body padding 0 อยู่แล้ว — พื้นที่พิมพ์ = 297 − ขอบ @page) · ใบที่สูงสุด (เงินพัก + ค่าปรับ + ปัดเศษ) วัดได้ 325 มม.
     // ที่ขอบ 18 มม./line-height 1.55 → ขอบ 8 มม. + ตัวอักษร 10pt/1.35 + ช่องว่างแคบลง = พอหน้าเดียว
     const payoffCompactCss = isStoredPayoff
       ? `
-    @page { margin: 12mm 15mm; }
-    /* documentTypographyCss บังคับ 16pt/1.08 ด้วย !important บนทุก element — ใบปิดยอดทับด้วย specificity สูงกว่า: 15pt/1.1
-       = ขนาดใหญ่สุดที่ใบแบบสูงสุด (เงินพัก + ค่าปรับ + ปัดเศษ) ยังพอหน้าเดียวโดยมีที่เหลือ (วัดจริงด้วย Chromium) */
-    body.payoff-doc, body.payoff-doc :is(div,p,span,li,td,th,a,label,strong,b,em,u,small,dt,dd,section,article,header,footer) { font-size: 15pt !important; line-height: 1.1 !important; }
-    body.payoff-doc :is(.item-meta,.item-meta *,.vat-exempt,.party-line,.party-line *,.qr-caption,.sig-role,.sig-date,.baht-text,.baht-text *) { font-size: 11pt !important; }
+    @page { margin: 6mm 15mm; }
+    /* ขนาดตัวอักษรหลักคง 16pt ตามบ้าน (documentTypographyCss · CI docs-spec ตรวจ textSizes[0] = bodyPt) — ใบปิดยอดลดเฉพาะ
+       บรรทัดรอง/ท้ายใบ + ช่องว่าง และย่อบล็อกการชำระเงินเป็นบรรทัดเดียว (วัดจริงด้วย Chromium: ใบแบบสูงสุดพอหน้าเดียว) */
+    body.payoff-doc :is(.item-meta,.item-meta *,.vat-exempt,.qr-caption,.sig-role,.sig-date) { font-size: 10.5pt !important; line-height: 1.2 !important; }
     body.payoff-doc :is(.doc-note,.doc-note *) { font-size: 9pt !important; line-height: 1.25 !important; }
-    body.payoff-doc :is(.doc-title,.doc-title *) { font-size: 17pt !important; }
-    body.payoff-doc .grand .v { font-size: 16pt !important; }
-    body.payoff-doc .sig-handwriting { font-size: 17pt !important; }
+    body.payoff-doc .kv-inline { margin-top: 2px; }
+    body.payoff-doc .kv-inline strong { font-weight: 600; }
     .header { padding-bottom: 6px; }
     .parties { padding: 6px 0; margin-bottom: 4px; }
     .party-line { margin-top: 0; }
@@ -471,6 +466,48 @@ export class ReceiptPdfService {
     // renders as a tofu box. Fonts are loaded once at module init from
     // `apps/api/src/assets/fonts/` (bundled into dist via nest-cli.json).
     // Keep `domcontentloaded/10s` wait — no network assets remain.
+    // บล็อกการชำระเงิน: ใบปิดยอดที่เก็บค่าใช้แบบบรรทัดเดียว (ประหยัด ~15 มม. — C1 หน้าเดียวที่ 16pt) · ใบอื่นใช้บล็อกเดิมทุกตัวอักษร
+    const payGridHtml = isStoredPayoff
+      ? `  <div class="pay-grid">
+    <div class="pay-col">
+      <div class="heading">การชำระเงิน</div>
+      <div class="kv-inline">วันที่ชำระ <strong>${paidDateStr}</strong> · ช่องทาง <strong>${safe.paymentMethodLabel || '–'}</strong>${safe.transactionRef ? ` · เลขอ้างอิง <strong>${safe.transactionRef}</strong>` : ''}${showBankAccount && safe.bankName ? ` · บัญชีรับเงิน <strong>${safe.bankName}${safe.bankAccountNumber ? ` ${safe.bankAccountNumber}` : ''}</strong>` : ''}</div>
+    </div>
+    <div class="pay-col">
+      <div class="heading">สถานะสัญญาหลังชำระ</div>
+      <div class="kv-inline">ชำระครบตามเอกสารนี้ — สัญญาเช่าซื้อสิ้นสุด · ค่างวดคงเหลือ <strong>0.00 บาท</strong></div>
+    </div>
+  </div>`
+      : `  <div class="pay-grid">
+    <div class="pay-col">
+      <div class="heading">การชำระเงิน</div>
+      <div class="kv">
+        <span class="k">วันที่ชำระ</span><span class="v">${paidDateStr}</span>
+        <span class="k">ช่องทาง</span><span class="v">${safe.paymentMethodLabel || '–'}</span>
+        ${exchangeSrc ? `<span class="k">ที่มาของเครดิต</span><span class="v">สัญญาเดิม ${this.escapeHtml(exchangeSrc.parentContractNumber)}</span>` : ''}
+        ${safe.transactionRef ? `<span class="k">เลขอ้างอิง</span><span class="v">${safe.transactionRef}</span>` : ''}
+        ${showBankAccount && safe.bankName ? `<span class="k">บัญชีรับเงิน</span><span class="v">${safe.bankName}${safe.bankAccountNumber ? ` ${safe.bankAccountNumber}` : ''}</span>` : ''}
+      </div>
+    </div>
+    <div class="pay-col">
+      <div class="heading">${isExchangeCn ? 'ผลของการลดหนี้' : 'สถานะสัญญาหลังชำระ'}</div>
+      <div class="kv">
+        ${isExchangeCn
+          ? `<span class="k">เงินของลูกค้า</span><span class="v">${fmt(total)} บาท — ไม่คืนเงินสด</span>
+        <span class="k">โอนเป็นเครดิต</span><span class="v">สัญญาใหม่ ${this.escapeHtml(receipt.exchangeTarget?.contractNumber ?? '-')}</span>
+        <span class="k">ใช้เครดิต</span><span class="v">ชำระค่างวดของสัญญาใหม่ (ใบกำกับภาษีใหม่)</span>`
+          : isCreditNote
+          ? `<span class="k">สถานะ</span><span class="v">กลับรายการ — งวดนี้กลับเป็นยอดค้างชำระ</span>`
+          : `
+        ${!balanceKnown ? `<span class="k">ยอดคงเหลือ</span><span class="v">ไม่สามารถยืนยันยอด ณ วันออกใบเสร็จจากประวัติได้</span>` : ''}
+        ${balanceKnown ? `<span class="k">ค่างวดคงเหลือ</span><span class="v">${fmt(remainingBalance)} บาท</span>` : ''}
+        ${remainingMonths ? `<span class="k">งวดคงเหลือ</span><span class="v">${remainingMonths} งวด</span>` : ''}
+        ${unappliedLine}
+        ${balanceKnown && !remainingBalance.gt(0) && !remainingMonths ? `<span class="k">สถานะ</span><span class="v">ชำระครบตามเอกสารนี้</span>` : ''}`}
+      </div>
+    </div>
+  </div>`;
+
     const html = `
 <!DOCTYPE html>
 <html lang="th">
@@ -764,36 +801,7 @@ ${PAPER_SPACING_CSS}
   </div>
 
   <!-- Payment details + balance -->
-  <div class="pay-grid">
-    <div class="pay-col">
-      <div class="heading">การชำระเงิน</div>
-      <div class="kv">
-        <span class="k">วันที่ชำระ</span><span class="v">${paidDateStr}</span>
-        <span class="k">ช่องทาง</span><span class="v">${safe.paymentMethodLabel || '–'}</span>
-        ${exchangeSrc ? `<span class="k">ที่มาของเครดิต</span><span class="v">สัญญาเดิม ${this.escapeHtml(exchangeSrc.parentContractNumber)}</span>` : ''}
-        ${safe.transactionRef ? `<span class="k">เลขอ้างอิง</span><span class="v">${safe.transactionRef}</span>` : ''}
-        ${showBankAccount && safe.bankName ? `<span class="k">บัญชีรับเงิน</span><span class="v">${safe.bankName}${safe.bankAccountNumber ? ` ${safe.bankAccountNumber}` : ''}</span>` : ''}
-      </div>
-    </div>
-    <div class="pay-col">
-      <div class="heading">${isExchangeCn ? 'ผลของการลดหนี้' : 'สถานะสัญญาหลังชำระ'}</div>
-      <div class="kv">
-        ${isExchangeCn
-          ? `<span class="k">เงินของลูกค้า</span><span class="v">${fmt(total)} บาท — ไม่คืนเงินสด</span>
-        <span class="k">โอนเป็นเครดิต</span><span class="v">สัญญาใหม่ ${this.escapeHtml(receipt.exchangeTarget?.contractNumber ?? '-')}</span>
-        <span class="k">ใช้เครดิต</span><span class="v">ชำระค่างวดของสัญญาใหม่ (ใบกำกับภาษีใหม่)</span>`
-          : isCreditNote
-          ? `<span class="k">สถานะ</span><span class="v">กลับรายการ — งวดนี้กลับเป็นยอดค้างชำระ</span>`
-          : `
-        ${!balanceKnown ? `<span class="k">ยอดคงเหลือ</span><span class="v">ไม่สามารถยืนยันยอด ณ วันออกใบเสร็จจากประวัติได้</span>` : ''}
-        ${balanceKnown ? `<span class="k">ค่างวดคงเหลือ</span><span class="v">${fmt(remainingBalance)} บาท</span>` : ''}
-        ${remainingMonths ? `<span class="k">งวดคงเหลือ</span><span class="v">${remainingMonths} งวด</span>` : ''}
-        ${unappliedLine}
-        ${balanceKnown && !remainingBalance.gt(0) && !remainingMonths ? `<span class="k">สถานะ</span><span class="v">ชำระครบตามเอกสารนี้</span>` : ''}`}
-      </div>
-    </div>
-  </div>
-
+${payGridHtml}
   <!-- Footer: verification + signature -->
   <div class="footer">
     <div class="qr-pane">

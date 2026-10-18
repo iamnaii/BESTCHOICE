@@ -434,7 +434,9 @@ describe('ReceiptPdfService — Credit Note rendering (Phase 3 Task 4)', () => {
       await service.generatePDF('rcpt-ep');
       expect(capturedHtml).toContain('ใบเสร็จรับเงิน / ใบกำกับภาษี');
       expect(capturedHtml).toContain('ค่างวดคงเหลือ 12 งวด (งวดที่ 1–12) — ปิดยอดสัญญา');
-      expect(capturedHtml).toContain('ตามรายการบัญชี · ลูกหนี้คงเหลือ 18,190.00');
+      expect(capturedHtml).toContain('<strong>18,190.00</strong>'); // ยอดแถว = ลูกหนี้ตามบัญชี (ไม่มีบรรทัดรองเมื่อไม่มีงวดถึงกำหนด)
+      expect(capturedHtml).not.toContain('ลูกหนี้คงเหลือ');
+      expect(capturedHtml).toContain('ชำระครบตามเอกสารนี้ — สัญญาเช่าซื้อสิ้นสุด');
       expect(capturedHtml).toContain('ส่วนลดดอกเบี้ยปิดยอด (ไม่ลดฐานภาษี)');
       expect(capturedHtml).toContain('ส่วนลด 50% ของดอกเบี้ยงวดที่ยังไม่ถึงกำหนด · ฐานภาษีคงเดิม');
       expect(capturedHtml).toContain('<strong>−3,000.02</strong>');
@@ -476,7 +478,7 @@ describe('ReceiptPdfService — Credit Note rendering (Phase 3 Task 4)', () => {
       }));
       await service.generatePDF('rcpt-ep-due');
       expect(capturedHtml).toContain('ค่างวดคงเหลือ 8 งวด (งวดที่ 5–12) — ปิดยอดสัญญา');
-      expect(capturedHtml).toContain('งวดที่ถึงกำหนดแล้ว 5–8 · ยังไม่ถึงกำหนด 9–12');
+      expect(capturedHtml).toContain('ตามรายการบัญชี · งวดที่ถึงกำหนดแล้ว 5–8 · ยังไม่ถึงกำหนด 9–12');
       expect(capturedHtml).toContain('ส่วนลด 50% ของดอกเบี้ยเฉพาะงวดที่ยังไม่ถึงกำหนด 4 งวด (งวด 9–12) · งวดที่ถึงกำหนดแล้ว 4 งวดชำระเต็มจำนวน');
       expect(capturedHtml).toContain('<strong>−1,000.03</strong>');
       expect(capturedHtml).toContain('11,126.65');

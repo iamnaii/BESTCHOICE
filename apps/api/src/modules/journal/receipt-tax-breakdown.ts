@@ -291,7 +291,10 @@ export interface EarlyPayoffReceiptTaxInput {
   parkRelief: Decimal;
   advanceRelief: Decimal;
   creditRelief: Decimal;
-  /** Dr 21-2101 / Cr 21-2102 — ภาษีที่ออกใบกำกับไปแล้วของเงินที่หัก (ข้อ 13–14) · เครดิต 21-5101 ไม่มีภาษี (ยังไม่มีคำตัดสิน) */
+  /**
+   * Dr 21-2101 / Cr 21-2102 — ภาษีที่ออกใบกำกับไปแล้วของเงินที่หัก (ข้อ 13–14) · JP4 คิดจากเงินที่หักทั้งหมด (เงินพัก + ถังรวม + เครดิต)
+   * cap ด้วยภาษีพักที่ค้าง ⇒ เครดิตที่เคยพักภาษี (จ่ายเกิน/ส่วนเกินลิงก์) มีภาษีในแถวหัก · เครดิตที่ไม่เคยพัก (เปลี่ยนเครื่องตำหนิ / ก่อน PR4) ไม่มี
+   */
   advanceVatReversal: Decimal;
   /** Cr 53-1503 — ปัดเศษเก็บเกิน (นอกฐานภาษี) */
   roundingGain: Decimal;
@@ -340,6 +343,9 @@ export function earlyPayoffReceiptTax(input: EarlyPayoffReceiptTaxInput): Receip
     .minus(installmentVat)
     .plus(advanceAmount.minus(advanceVatAmount));
   const vatAmount = installmentVat.plus(advanceVatAmount);
+  // ผู้ตรวจอิสระ I1: ฐาน/ภาษีติดลบ (เช่น เงินพักหักงวดสุดท้ายพอดี ภาษีขากลับ 99.17 > ภาษีงวด 99.13 · ลูกหนี้ตามบัญชีเล็กกว่าเงินที่หัก)
+  // = ใบกำกับภาษีที่อ่านไม่ได้ → ไม่เก็บค่า (พิมพ์แบบเดิม + สัญญาณเตือน)
+  if (amountBeforeVat.isNegative() || vatAmount.isNegative()) return null;
   const identity = amountBeforeVat.plus(vatAmount).plus(roundingGain).plus(lateFees).minus(discount);
   if (!identity.eq(amount)) return null;
   return {

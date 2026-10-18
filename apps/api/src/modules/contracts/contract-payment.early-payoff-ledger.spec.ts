@@ -412,8 +412,8 @@ describe('ContractPaymentService — ปิดยอดก่อนกำหน�
     const je = h.createAndPost.mock.calls[0][0] as CapturedJe;
     expect(je.lines.find((l) => l.accountCode === '52-1106')!.dr.toFixed(2)).toBe('2376.00');
     expect(je.metadata).toMatchObject({ discount: '2376.00', quoteDiscountAmount: '450.00' });
-    // 2026-10-18 ใบปิดยอดตามบัญชี (16.1): ตารางงวดเหลือ 11,556 แต่บัญชี 13,482 → สัญญาณที่สอง · ใบยังเก็บค่า
-    // (ฐาน = บัญชี − ภาษีตามงวด · ส่วนลดบนใบ = 52-1106 2,376.00)
+    // 2026-10-18 ใบปิดยอดตามบัญชี (16.1): ตารางงวดเหลือ 11,556 แต่บัญชี 13,482 (ต่างเกิน 1.00) → สัญญาณที่สอง · ไม่ประทับ receiptTax
+    // (ใบพิมพ์แบบเดิม — ผู้ตรวจอิสระ I1: ฐาน = บัญชี − ภาษีตามงวด จะเป็นใบกำกับภาษีที่ตัวเลขไม่ตรงความจริง)
     expect(Sentry.captureMessage).toHaveBeenCalledTimes(2);
     expect((Sentry.captureMessage as jest.Mock).mock.calls[0][1]).toMatchObject({
       level: 'warning',
@@ -430,7 +430,7 @@ describe('ContractPaymentService — ปิดยอดก่อนกำหน�
       tags: { module: 'contracts', action: 'early-payoff-receipt-schedule-vs-ledger', flow: 'early-payoff' },
       extra: { scheduleRemainder: '11556.00', receivableCleared: '13482.00', installmentVat: '756.00' },
     });
-    expect(je.metadata.receiptTax).toMatchObject({ amount: '11106.00', discountAmount: '2376.00', vatAmount: '756.00', amountBeforeVat: '12726.00' });
+    expect(je.metadata.receiptTax).toBeUndefined();
     expect(h.events).toEqual(['createAndPost', 'commit', 'warning', 'warning']);
   });
 

@@ -616,15 +616,19 @@ export class ContractPaymentService {
           // หลัง commit — ห้ามทำให้การปิดยอดล้ม
           const unpaidNos = unpaidPayments.map((p) => p.installmentNo);
           let receiptTax: ReceiptTaxBreakdown | null = null;
+          // ตารางงวดไม่ตรงบัญชีเกิน 1.00 (เช่นแถวงวดถูกตั้ง PAID โดยไม่มีรายการรับชำระ) = ภาษีตามงวดกับฐานตามบัญชีไม่ใช่ใบเดียวกัน
+          // → ไม่ประทับ (ใบพิมพ์แบบเดิม) + สัญญาณเดียว (ผู้ตรวจอิสระ I1) · ต่างไม่เกิน 1.00 = เศษสตางค์ ประทับได้
+          let scheduleMismatch = false;
           try {
             const remaining = await remainingInstallmentVat(tx, epContract, unpaidNos);
             if (!remaining.total.eq(epJe.receivableCleared)) {
+              scheduleMismatch = remaining.total.minus(epJe.receivableCleared).abs().gt(EARLY_PAYOFF_ROUNDING_TOLERANCE);
               epWarnings = [
                 ...epWarnings,
                 {
                   message:
                     `[early-payoff] installment schedule remainder ${remaining.total.toFixed(2)} differs from the ledger ` +
-                    `receivable ${epJe.receivableCleared.toFixed(2)} — receipt base follows the ledger, VAT per installment`,
+                    `receivable ${epJe.receivableCleared.toFixed(2)} — ${scheduleMismatch ? 'receipt tax NOT stamped (prints the legacy way)' : 'within 1.00, receipt base follows the ledger, VAT per installment'}`,
                   tags: { module: 'contracts', action: 'early-payoff-receipt-schedule-vs-ledger', flow: 'early-payoff' },
                   extra: {
                     contractId: id,
@@ -632,11 +636,12 @@ export class ContractPaymentService {
                     scheduleRemainder: remaining.total.toFixed(2),
                     receivableCleared: epJe.receivableCleared.toFixed(2),
                     installmentVat: remaining.vat.toFixed(2),
+                    stamped: !scheduleMismatch,
                   },
                 },
               ];
             }
-            receiptTax = earlyPayoffReceiptTax({
+            if (!scheduleMismatch) receiptTax = earlyPayoffReceiptTax({
               amount: epJe.cashReceived,
               receivableCleared: epJe.receivableCleared,
               installmentVat: remaining.vat,
@@ -654,7 +659,7 @@ export class ContractPaymentService {
               `[early-payoff] receipt tax assembly failed for contract ${id}: ${err instanceof Error ? err.message : err}`,
             );
           }
-          if (!receiptTax) {
+          if (!receiptTax && !scheduleMismatch) {
             epWarnings = [
               ...epWarnings,
               {

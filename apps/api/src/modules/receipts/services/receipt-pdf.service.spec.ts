@@ -482,6 +482,20 @@ describe('ReceiptPdfService — Credit Note rendering (Phase 3 Task 4)', () => {
       expect(capturedHtml).toContain('11,126.65');
     });
 
+    it('งวดค้างไม่ต่อเนื่อง (ยกเลิกใบงวด 2 แล้วปิดยอด: ค้าง 2, 7–12 = 7 งวด) → พิมพ์จำนวนงวดอย่างเดียว ไม่พิมพ์ช่วง/การแบ่งงวด (ผู้ตรวจอิสระ I2)', async () => {
+      query.getReceipt.mockResolvedValue(payoffStored({
+        amount: new Decimal('9000.00'), amountBeforeVat: new Decimal('9916.73'), vatAmount: new Decimal('694.19'),
+        discountAmount: new Decimal('1610.92'),
+        payoffContext: payoffContext({ unpaidInstallments: 7, firstNo: 2, lastNo: 12, receivableCleared: '10610.92', dueMonths: 2, notDueMonths: 5 }),
+      }));
+      await service.generatePDF('rcpt-ep-gap');
+      expect(capturedHtml).toContain('ค่างวดคงเหลือ 7 งวด — ปิดยอดสัญญา');
+      expect(capturedHtml).not.toContain('(งวดที่ 2–12)');
+      expect(capturedHtml).not.toContain('ถึงกำหนดแล้ว 2–3');
+      expect(capturedHtml).toContain('ส่วนลด 50% ของดอกเบี้ยเฉพาะงวดที่ยังไม่ถึงกำหนด 5 งวด · งวดที่ถึงกำหนดแล้ว 2 งวดชำระเต็มจำนวน');
+      expect(capturedHtml).not.toContain('(งวด 8–12)');
+    });
+
     it('ใบปิดยอดเก่า (ไม่เก็บค่า · ไม่มี payoffContext) → พิมพ์แบบเดิม ไม่มีแถวส่วนลด', async () => {
       query.getReceipt.mockResolvedValue(payoffStored({
         amount: new Decimal('17339.96'), amountBeforeVat: null, vatAmount: null, roundingAmount: null, lateFeeAmount: null,

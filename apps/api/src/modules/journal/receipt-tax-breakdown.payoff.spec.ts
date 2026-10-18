@@ -138,3 +138,37 @@ describe('parseReceiptTax / receiptTaxColumns — ช่อง discountAmount (o
     expect(parseReceiptTax({ ...stamp, discountAmount: '3000' })).toBeNull();
   });
 });
+
+describe('earlyPayoffReceiptTax — ผลลัพธ์ติดลบ = ไม่ใช่ใบกำกับภาษีตามบัญชี (ผู้ตรวจอิสระ I1)', () => {
+  it('ภาษีของแถวหักเกินภาษีของงวด (เงินพักหักงวดสุดท้ายพอดี: 99.13 − 99.17 = −0.04) → null', () => {
+    // งวด 12 ภาษี 99.13 · เงินพัก 1,515.87 ภาษีขากลับ HALF_UP(1,515.87 × 7/107) = 99.17 → vatAmount −0.04
+    expect(
+      earlyPayoffReceiptTax({
+        ...base,
+        amount: ZERO,
+        receivableCleared: D('1515.87'),
+        installmentVat: D('99.13'),
+        discount: ZERO,
+        parkRelief: D('1515.87'),
+        advanceVatReversal: D('99.17'),
+      }),
+    ).toBeNull();
+  });
+
+  it('ฐานก่อนภาษีติดลบ (ลูกหนี้ตามบัญชีเล็กกว่าเงินของลูกค้าที่หัก) → null', () => {
+    // ลูกหนี้ 1,000 · ภาษี 65.42 · หักถังรวม 1,500 (ภาษีขากลับ 98.13) · เงินรับ 0 · ส่วนลด 0 → เกินหนี้ 500 → ตามรายการจะเป็น excess
+    // แต่ถ้า excess ถูกส่งมาเป็น 0 (ข้อมูลผิดปกติ) ต้องไม่ได้ใบที่ฐานติดลบ
+    expect(
+      earlyPayoffReceiptTax({
+        ...base,
+        amount: ZERO,
+        receivableCleared: D('1000.00'),
+        installmentVat: D('65.42'),
+        discount: ZERO,
+        advanceRelief: D('1500.00'),
+        advanceVatReversal: D('98.13'),
+        roundingGain: D('500.00'),
+      }),
+    ).toBeNull();
+  });
+});

@@ -2,11 +2,13 @@ import { Decimal } from '@prisma/client/runtime/library';
 import { Accrual2ABasis } from './build-accrual-2a-lines';
 import {
   ReceiptTaxBreakdown,
+  advanceSurplusReceiptTax,
   advanceVatOf,
   computeInstallmentReceiptTax,
   documentedSoFar,
   parseReceiptTax,
   receiptTaxColumns,
+  rescheduleFeeReceiptTax,
 } from './receipt-tax-breakdown';
 import { splitReceipt } from './split-receipt';
 
@@ -389,3 +391,83 @@ describe('parseReceiptTax / receiptTaxColumns', () => {
     expect(parseReceiptTax(value)).toBeNull();
   });
 });
+
+/**
+ * PR4ข (ฝ่ายบัญชี 16/10/2569 ข้อ 14 / 23.1 / 23.2 · เจ้าของเคาะ mockup FWZ6vrgaixKmP1buUdrUry): ใบปรับดิว 6a และใบรับเงิน
+ * ส่วนเกินลิงก์ชำระเก็บค่าที่พิมพ์ ณ ตอนออกใบจาก metadata ของรายการบัญชีต้นทาง — ภาษี = stamp `advanceVatPark` ตัวเดียวกับบัญชี
+ */
+describe('PR4ข — ใบปรับดิว 6a / ใบส่วนเกินลิงก์ชำระ', () => {
+  const META_6A = {
+    tag: 'reschedule-collect',
+    variant: '6a',
+    rescheduleFee: '1516',
+    lateFeeCollected: '50',
+    advanceVatPark: '99.18',
+  };
+
+  it('6a 1,516.00 + ค่าปรับ 50 → ก่อนภาษี 1,416.82 · ภาษี 99.18 · ค่าปรับ 50.00 · เงินรับล่วงหน้า 1,516.00 (ภาษี 99.18)', () => {
+    expect(rescheduleFeeReceiptTax(META_6A, D('1566'))).toEqual({
+      version: 1,
+      amount: '1566.00',
+      amountBeforeVat: '1416.82',
+      vatAmount: '99.18',
+      roundingAmount: '0.00',
+      lateFeeAmount: '50.00',
+      lateFeeWaivedAmount: '0.00',
+      advanceAmount: '1516.00',
+      advanceVatAmount: '99.18',
+    });
+  });
+
+  it('6a ไม่มีค่าปรับ 1,044.00 (ภาษี 68.30) → ก่อนภาษี 975.70 · ผ่าน parseReceiptTax (ผลรวมเท่ายอดรับ)', () => {
+    const tax = rescheduleFeeReceiptTax(
+      { ...META_6A, rescheduleFee: '1044', lateFeeCollected: '0', advanceVatPark: '68.30' },
+      D('1044'),
+    );
+    expect(tax).toMatchObject({ amount: '1044.00', amountBeforeVat: '975.70', vatAmount: '68.30', lateFeeAmount: '0.00' });
+    expect(parseReceiptTax(tax)).toEqual(tax);
+  });
+
+  it.each([
+    ['variant 6b (ค่าธรรมเนียมไม่ได้พักเป็นเงินรับล่วงหน้า)', { ...META_6A, variant: '6b' }, '1566'],
+    ['ไม่มี stamp advanceVatPark (รายการก่อน PR4)', { ...META_6A, advanceVatPark: undefined }, '1566'],
+    ['ยอดใบไม่เท่าค่าธรรมเนียม + ค่าปรับ', META_6A, '1500'],
+    ['rescheduleFee ไม่ใช่เงิน', { ...META_6A, rescheduleFee: 'abc' }, '1566'],
+  ])('ไม่เก็บค่า → null (%s)', (_label, meta, amount) => {
+    expect(rescheduleFeeReceiptTax(meta as Record<string, unknown>, D(amount))).toBeNull();
+  });
+
+  it('ส่วนเกินลิงก์ชำระ 500 (ภาษี 32.71) → ก่อนภาษี 467.29 · เงินรับล่วงหน้า 500.00 · ไม่มีค่าปรับ/ปัดเศษ', () => {
+    expect(
+      advanceSurplusReceiptTax(
+        { tag: 'paysolutions-surplus-advance', surplus: '500', advanceVatPark: '32.71' },
+        D('500'),
+      ),
+    ).toEqual({
+      version: 1,
+      amount: '500.00',
+      amountBeforeVat: '467.29',
+      vatAmount: '32.71',
+      roundingAmount: '0.00',
+      lateFeeAmount: '0.00',
+      lateFeeWaivedAmount: '0.00',
+      advanceAmount: '500.00',
+      advanceVatAmount: '32.71',
+    });
+  });
+
+  it('ส่วนเกิน 0.05 ที่ภาษีปัดเป็นศูนย์ (รายการไม่ stamp) → เก็บค่าได้ ภาษี 0.00', () => {
+    expect(
+      advanceSurplusReceiptTax({ tag: 'paysolutions-surplus-advance', surplus: '0.05' }, D('0.05')),
+    ).toMatchObject({ amount: '0.05', amountBeforeVat: '0.05', vatAmount: '0.00', advanceAmount: '0.05' });
+  });
+
+  it.each([
+    ['ยอดใบไม่เท่า surplus', { surplus: '500', advanceVatPark: '32.71' }, '450'],
+    ['surplus ไม่ใช่เงิน', { surplus: null, advanceVatPark: '32.71' }, '500'],
+    ['ไม่มี stamp ทั้งที่ภาษีไม่เป็นศูนย์', { surplus: '500' }, '500'],
+  ])('ส่วนเกิน: ไม่เก็บค่า → null (%s)', (_label, meta, amount) => {
+    expect(advanceSurplusReceiptTax(meta as Record<string, unknown>, D(amount))).toBeNull();
+  });
+});
+

@@ -11,6 +11,8 @@ export const RECEIPT_TYPE_LABELS: Record<string, string> = {
   EARLY_PAYOFF: 'ปิดก่อนกำหนด',
   CREDIT_NOTE: 'ใบลดหนี้',
   RESCHEDULE_FEE: 'ปรับดิว',
+  // PR4ข: ใบรับเงินส่วนเกินลิงก์ชำระ (ใบกำกับภาษี · ไม่ผูกงวด)
+  ADVANCE_SURPLUS: 'เงินรับล่วงหน้า (ลิงก์ชำระ)',
 };
 
 export const RECEIPT_METHOD_LABELS: Record<string, string> = {
@@ -36,4 +38,5 @@ export const LIFF_RECEIPT_TYPE_LABELS: Record<
   EARLY_PAYOFF: { label: 'ปิดยอด', variant: 'info' },
   CREDIT_NOTE: { label: 'ใบลดหนี้', variant: 'secondary' },
   RESCHEDULE_FEE: { label: 'ปรับดิว', variant: 'info' },
+  ADVANCE_SURPLUS: { label: 'เงินรับล่วงหน้า', variant: 'info' },
 };

@@ -45,6 +45,8 @@ const RECEIPT_TYPE_LABELS: Record<string, string> = {
   DOWN_PAYMENT: 'เงินดาวน์',
   EARLY_PAYOFF: 'ปิดยอด',
   RESCHEDULE_FEE: 'ค่าปรับดิว',
+  // PR4ข: ใบรับเงินส่วนเกินลิงก์ชำระ — นับเป็นเงินรับของวัน (ONLINE_GATEWAY) แต่ไม่ผูกงวด
+  ADVANCE_SURPLUS: 'เงินรับล่วงหน้า (ลิงก์ชำระ)',
 };
 
 interface PaymentSummaryProps {

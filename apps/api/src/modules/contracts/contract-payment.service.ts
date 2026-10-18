@@ -21,10 +21,12 @@ import { ShopCollectSettlementTemplate } from '../journal/cpa-templates/shop-col
 import { ShopCollectShopLegs } from '../journal/cpa-templates/shop-collect-shop-legs.template';
 import { shopCollectShopBalance } from '../interco-settlement/interco-typed-balance';
 import { EclStageReverseTemplate } from '../journal/cpa-templates/ecl-stage-reverse.template';
+import { Vat60dayReversalTemplate } from '../journal/cpa-templates/vat-60day-reversal.template';
 import { glContractBalance } from '../journal/gl-contract-balance';
 import {
   EARLY_PAYOFF_ROUNDING_TOLERANCE,
   buildEarlyPayoffJournal,
+  earlyPayoffExcessDescription,
 } from '../journal/compute-early-payoff-je';
 import { emitDeferredWarnings, type DeferredWarning } from '../journal/deferred-warning';
 import { ADVANCE_VAT_CONSUME_DESCRIPTION, ADVANCE_VAT_META } from '../journal/advance-vat';
@@ -76,6 +78,10 @@ function earlyPayoffApprovalMoney(summary: unknown): unknown {
 @Injectable()
 export class ContractPaymentService {
   private readonly logger = new Logger(ContractPaymentService.name);
+  // 2026-10-17 — กลับ VAT บังคับ 60 วัน (21-2103) ของงวดที่ถูกตั้งไว้ขณะสัญญายังเดิน ตอนปิดยอดก่อนกำหนด (เดิมมีเฉพาะใน
+  // EarlyPayoffJP4Template ซึ่งไม่มีผู้เรียกใน production). สร้างภายในเพราะ spec 10 ไฟล์ `new` service นี้ด้วยมือ
+  private readonly vat60Reversal: Vat60dayReversalTemplate;
+
   constructor(
     private prisma: PrismaService,
     private productsService: ProductsService,
@@ -89,7 +95,9 @@ export class ContractPaymentService {
     private eclStageReverseTemplate: EclStageReverseTemplate,
     // การเดินทางของลูกค้า (2026-09-24): เขียน EARLY_PAYOFF หลัง commit — optional เพื่อให้ spec ที่ new ด้วยมือ 10 ไฟล์ไม่ต้องส่ง
     @Optional() private journeyEntries?: JourneyEntryWriter,
-  ) {}
+  ) {
+    this.vat60Reversal = new Vat60dayReversalTemplate(journalAutoService, prisma);
+  }
 
   /**
    * F-3-027 part 2/3 follow-up: Resolve FINANCE companyId for HP installment
@@ -329,9 +337,11 @@ export class ContractPaymentService {
       credit: l.cr.toFixed(2),
       description: l.advanceVatReversal
         ? ADVANCE_VAT_CONSUME_DESCRIPTION
-        : l.generalAdvance
-          ? ''
-          : (epDescriptions[l.accountCode] ?? ''),
+        : l.excessIncome
+          ? earlyPayoffExcessDescription(l.accountCode)
+          : l.generalAdvance
+            ? ''
+            : (epDescriptions[l.accountCode] ?? ''),
     }));
 
     let jeTotalDr = new Decimal(0);
@@ -559,16 +569,33 @@ export class ContractPaymentService {
             quoteDiscountAmount: quote.discountAmount,
             discountPercent: quote.discountPct,
           });
-          // เงินที่รับ + เงินของลูกค้าที่หัก เกินลูกหนี้ตามบัญชีเกิน 1.00 → ไม่มีบัญชีรับยอดนั้น (ไม่ใช่เศษสตางค์ และไม่ใช่
-          // ส่วนลด) — ปฏิเสธทั้งธุรกรรม (ฝ่ายบัญชียังไม่ระบุวิธีลง · accounting.md "ปิดยอดก่อนกำหนด (JP4)")
-          if (epJe.excessReceived.gt(0)) {
-            throw new Error(
-              `early payoff ${id}: money received + customer money exceed the contract ledger receivable by ` +
-                `${epJe.excessReceived.toFixed(2)} (> 1.00) — not posted`,
-            );
-          }
           // คอลัมน์ไม่ตรงบัญชี / 52-1106 ต่างจากส่วนลดบนหน้าจอเกิน 1.00 — ส่งหลัง commit
           epWarnings = epJe.warnings;
+          // เงินที่รับ + เงินของลูกค้าที่หัก เกินลูกหนี้ตามบัญชีเกิน 1.00 → รายได้ 42-1106 + ภาษีขาย 7/107 (ฝ่ายบัญชี 18.2 ·
+          // 16/10/2569 — เดิมปฏิเสธทั้งธุรกรรม · เจ้าของ 16/10 ไม่คืนลูกค้า) · ไม่ใช่เส้นทางปกติ (เครดิตมากกว่าหนี้ / บัญชีของ
+          // สัญญาผิดปกติ) → สัญญาณเตือนหลัง commit ให้ฝ่ายบัญชีตรวจ
+          if (epJe.excessIncome.gt(0)) {
+            epWarnings = [
+              ...epWarnings,
+              {
+                message:
+                  `[early-payoff] money received + customer money exceeds the contract ledger receivable by ` +
+                  `${epJe.excessIncome.toFixed(2)} — recognised as income 42-1106 (18.2)`,
+                tags: { module: 'contracts', action: 'early-payoff-excess-income', flow: 'early-payoff' },
+                extra: {
+                  contractId: id,
+                  contractNumber: freshContract.contractNumber,
+                  excessIncome: epJe.excessIncome.toFixed(2),
+                  excessVat: epJe.excessVat.toFixed(2),
+                  cashReceived: epJe.cashReceived.toFixed(2),
+                  receivableCleared: epJe.receivableCleared.toFixed(2),
+                  parkRelief: epJe.parkRelief.toFixed(2),
+                  advanceRelief: epJe.advanceRelief.toFixed(2),
+                  creditRelief: epJe.creditRelief.toFixed(2),
+                },
+              },
+            ];
+          }
 
           // Ledger-side line descriptions (the preview words them differently —
           // only the money, shared via buildEarlyPayoffJournal, must match).
@@ -587,6 +614,25 @@ export class ContractPaymentService {
             '42-1103': 'ค่าปรับชำระล่าช้า',
           };
 
+          // 2026-10-17 — งวดที่รอบภาษีขาย 60 วันตั้ง `Dr 11-2104 / Cr 21-2103` ไว้ขณะสัญญายังเดิน: ปิดยอดแล้วลูกหนี้ของงวดถูกล้าง
+          // ตามยอดในบัญชีด้วย JP4 และภาษีขายของมันลง 21-2101 ผ่านขาล้าง 21-2102 / 2A ⇒ กลับ `Dr 21-2103 / Cr 11-2104` ทุกงวดใน
+          // ธุรกรรมเดียวกันก่อนลง JP4 (Vat60dayReversalTemplate — idempotent · ล้างธง) ไม่งั้นคู่บัญชีนี้ค้างถาวรหลังปิดยอด และ
+          // ภ.พ.30 ที่รวม 21-2103 นับภาษีของงวดเดียวกันซ้ำ. บรรทัดของ JP4 ไม่เปลี่ยน (preview === posted) — เลขที่รายการกลับอยู่ใน
+          // metadata `vat60dayReversals`. ตัวกรอง truthy ในโค้ด เพราะ spec ที่ mock `findMany` คืนทุกแถวโดยไม่สนใจ where ·
+          // วันที่ = `paidDate` ตัวเดียวกับ JP4 (ปิดยอดย้อนวันข้ามเดือน → รายการกลับอยู่เดือนเดียวกับ JP4 · template กันไม่ให้
+          // ก่อนวันที่ของรายการตั้ง — ภ.พ.30 รายเดือนไม่นับซ้ำทั้งสองเดือน)
+          const vat60Flagged = await tx.installmentSchedule.findMany({
+            where: { contractId: id, deletedAt: null, vat60dayJournalEntryId: { not: null } },
+            select: { id: true, vat60dayJournalEntryId: true },
+            orderBy: { installmentNo: 'asc' },
+          });
+          const vat60dayReversals: string[] = [];
+          for (const inst of vat60Flagged) {
+            if (!inst.vat60dayJournalEntryId) continue;
+            const reversal = await this.vat60Reversal.execute(inst.id, tx, paidDate);
+            if (reversal) vat60dayReversals.push(reversal.entryNo);
+          }
+
           // Build metadata — stamp shop-collect flags when applicable
           const jeMetadata: Prisma.JsonObject = {
             tag: 'JP4',
@@ -604,6 +650,12 @@ export class ContractPaymentService {
             ...(epJe.advanceRelief.gt(0) ? { advanceRelief: epJe.advanceRelief.toFixed(2) } : {}),
             ...(epJe.creditRelief.gt(0) ? { creditRelief: epJe.creditRelief.toFixed(2) } : {}),
             ...(epJe.roundingGain.gt(0) ? { roundingGain: epJe.roundingGain.toFixed(2) } : {}),
+            // 2026-10-17 — เลขที่รายการกลับ VAT บังคับ 60 วัน (21-2103) ที่ลงพร้อมการปิดยอดนี้: stamp เฉพาะเมื่อมี
+            ...(vat60dayReversals.length > 0 ? { vat60dayReversals } : {}),
+            // 18.2: เงินที่รับเกินยอดปิดที่รับรู้เป็นรายได้ 42-1106 (รวมภาษี) + ภาษีขาย 7/107 ของมัน
+            ...(epJe.excessIncome.gt(0)
+              ? { excessIncome: epJe.excessIncome.toFixed(2), excessVat: epJe.excessVat.toFixed(2) }
+              : {}),
             // PR4 (ต8): ขากลับภาษีของเงินรับล่วงหน้าที่ยอดปิดหัก + stamp consume (advanceVatOutstanding ของสัญญาลดลงเท่านี้)
             ...(epJe.advanceVatReversal.gt(0)
               ? {
@@ -640,9 +692,11 @@ export class ContractPaymentService {
                 cr: l.cr,
                 description: l.advanceVatReversal
                   ? ADVANCE_VAT_CONSUME_DESCRIPTION
-                  : l.generalAdvance
-                    ? ''
-                    : (epDescriptions[l.accountCode] ?? ''),
+                  : l.excessIncome
+                    ? earlyPayoffExcessDescription(l.accountCode)
+                    : l.generalAdvance
+                      ? ''
+                      : (epDescriptions[l.accountCode] ?? ''),
               })),
             },
             tx,

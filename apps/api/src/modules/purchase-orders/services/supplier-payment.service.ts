@@ -1,4 +1,4 @@
-import { BadRequestException, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Logger, NotFoundException } from '@nestjs/common';
 import * as Sentry from '@sentry/node';
 import { POPaymentKind, Prisma } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
@@ -8,6 +8,13 @@ import {
   SupplierPaymentJeKind,
 } from '../../journal/cpa-templates/shop-supplier-payment.template';
 import { ShopAccountResolver } from '../../journal/shop-account-resolver.service';
+import {
+  SUPPLIER_PAYMENT_ACCOUNTS,
+  SUPPLIER_PAYMENT_ACCOUNT_CODES,
+  isBankSupplierPaymentAccount,
+  isCashSupplierPaymentAccount,
+  isSupplierPaymentAccount,
+} from '../../journal/supplier-payment-accounts';
 import { CompanyResolverService } from '../../journal/company-resolver.service';
 import { isPeriodClosedForBackdating } from './supplier-doc.util';
 import { validatePeriodOpen } from '../../../utils/period-lock.util';
@@ -29,7 +36,8 @@ import { formatDateShort, formatMonthName } from '../../../utils/thai-date.util'
  * จ่ายเงินผู้จัดจำหน่าย … ก่อนใช้งานจริง").
  *
  * กติกา:
- *   - โอนธนาคารเท่านั้น จากบัญชีธนาคารหน้าร้าน (จ่ายออก) S11-1202 — ไม่มีเงินสด · สลิปบังคับ (ข้อสมมติ ก)
+ *   - บัญชีที่จ่ายเลือกได้ (2026-10-13 — `journal/supplier-payment-accounts.ts`): ค่าเริ่มต้น S11-1202 ธนาคารหน้าร้าน (จ่ายออก) ·
+ *     ธนาคาร = สลิปบังคับ (ข้อสมมติ ก เดิม) · เงินสดย่อย S11-1106 = ไม่บังคับสลิป · รับเข้าตรงจ่ายทันทียังธนาคารอย่างเดียว
  *   - ชนิดรายการโปรแกรมตัดสินเอง: มีเจ้าหนี้คงเหลือ (รับของแล้ว) → ชำระค่าสินค้าไม่เกินเจ้าหนี้ ส่วนที่เกิน = มัดจำ (ข้อสมมติ ข);
  *     ยังไม่มีเจ้าหนี้ → มัดจำ. มัดจำถูกหักเข้าเจ้าหนี้อัตโนมัติตอนรับของ (`applyDepositInTx` — ข้อสมมติ ค)
  *   - เพดาน: มัดจำ + ชำระ − มัดจำที่ได้คืน ≤ ยอดสุทธิของใบสั่งซื้อ
@@ -50,8 +58,10 @@ export interface RecordSupplierPaymentInput {
   /** YYYY-MM-DD (ปฏิทินไทย) */
   paidAt: string;
   amount: number;
-  /** สลิปโอน (URL หรือ data URL) — บังคับ */
-  slipUrl: string;
+  /** สลิปโอน (URL หรือ data URL) — บังคับเมื่อจ่ายจากบัญชีธนาคาร · เงินสดแนบได้ไม่บังคับ */
+  slipUrl?: string;
+  /** บัญชีที่จ่าย (`SUPPLIER_PAYMENT_ACCOUNTS`) — ไม่ส่ง = S11-1202 ธนาคารหน้าร้าน (จ่ายออก) */
+  paymentAccountCode?: string;
   reference?: string;
   note?: string;
   /** รหัสคำขอจากหน้าจอ — ส่งซ้ำ (กดซ้ำ/เน็ตส่งซ้ำ) ได้รายการเดิมกลับ ไม่เกิดรายการผี */
@@ -169,7 +179,12 @@ export class SupplierPaymentService {
     now: Date = new Date(),
   ): Promise<RecordSupplierPaymentResult> {
     const amount = toMoney(input.amount);
-    if (!input.slipUrl?.trim()) throw new BadRequestException('กรุณาแนบสลิปโอนเงิน');
+    const paymentAccountCode = input.paymentAccountCode?.trim() || ShopAccountResolver.SHOP_PAYING_BANK;
+    if (!isSupplierPaymentAccount(paymentAccountCode)) {
+      throw new BadRequestException(`บัญชีจ่ายเงินไม่ถูกต้อง — เลือกได้เฉพาะ ${SUPPLIER_PAYMENT_ACCOUNT_CODES.join(' / ')}`);
+    }
+    const slipUrl = input.slipUrl?.trim() || null;
+    if (isBankSupplierPaymentAccount(paymentAccountCode) && !slipUrl) throw new BadRequestException('กรุณาแนบสลิปโอนเงิน');
     const paidAt = parsePaidAt(input.paidAt, now);
 
     const po = await this.lockPo(tx, poId);
@@ -181,6 +196,11 @@ export class SupplierPaymentService {
         orderBy: { createdAt: 'asc' },
       });
       if (existing.length > 0) {
+        // ยอด/บัญชีต้องตรงกับที่บันทึกไปแล้ว — ผู้ใช้เปลี่ยนค่าแล้วกดซ้ำด้วยคำขอเดิมต้องไม่ได้ "สำเร็จ" กลับไปเงียบ ๆ (ผู้ตรวจอิสระ 13/10 ข้อ 5)
+        const existingTotal = existing.reduce((sum, r) => sum.add(r.amount), ZERO);
+        if (!existingTotal.equals(amount) || existing.some((r) => r.bankAccountCode !== paymentAccountCode)) {
+          throw new ConflictException('คำขอนี้ถูกบันทึกไปแล้วด้วยยอดหรือบัญชีที่ต่างจากที่ส่งมา — รีเฟรชหน้าแล้วตรวจรายการจ่ายก่อนบันทึกใหม่');
+        }
         const entries = await tx.journalEntry.findMany({
           where: { id: { in: existing.map((r) => r.journalEntryId).filter((id): id is string => !!id) } },
           select: { id: true, entryNumber: true },
@@ -211,6 +231,22 @@ export class SupplierPaymentService {
       );
     }
     const shopCompanyId = await this.deps.companies.getShopCompanyId(tx);
+    if (isCashSupplierPaymentAccount(paymentAccountCode)) {
+      // เงินสดจ่ายได้ไม่เกินยอดในบัญชี (ผู้ตรวจอิสระ 13/10 ข้อ 2) — ไม่งั้นสินทรัพย์เงินสดย่อยติดลบเงียบ ๆ ตั้งแต่รายการแรก
+      // ยังไม่มีเมนูเติมเงินสดย่อย: ข้อความชี้ทางที่ทำได้จริงวันนี้ (รายการโอนเข้าด้วยมือ หรือเลือกธนาคาร)
+      const agg = await tx.journalLine.aggregate({
+        where: { accountCode: paymentAccountCode, deletedAt: null, journalEntry: { status: 'POSTED', deletedAt: null, companyId: shopCompanyId } },
+        _sum: { debit: true, credit: true },
+      });
+      const cashBalance = new Decimal((agg._sum.debit ?? 0).toString()).sub((agg._sum.credit ?? 0).toString());
+      if (cashBalance.lt(amount)) {
+        const label = SUPPLIER_PAYMENT_ACCOUNTS[paymentAccountCode].label;
+        throw new BadRequestException(
+          `${label} (${paymentAccountCode}) มียอดในบัญชี ${cashBalance.toFixed(2)} บาท ไม่พอจ่าย ${amount.toFixed(2)} บาท — ` +
+            `ยังไม่มีเมนูเติมเงินสดย่อย ให้ฝ่ายบัญชีลงรายการโอนเข้า (Dr ${paymentAccountCode} / Cr ธนาคาร) ก่อน หรือเลือกจ่ายจากบัญชีธนาคารแนบสลิป`,
+        );
+      }
+    }
     const { postedAt, periodClosed } = await this.resolvePostingDate(tx, paidAt, now, shopCompanyId);
 
     const plan: { kind: SupplierPaymentJeKind; amount: Decimal; payableLines?: PayableLine[] }[] = [];
@@ -232,9 +268,9 @@ export class SupplierPaymentService {
           amount: step.amount,
           paidAt,
           postedAt,
-          bankAccountCode: ShopAccountResolver.SHOP_PAYING_BANK,
+          bankAccountCode: paymentAccountCode,
           reference: input.reference?.trim() || null,
-          slipUrl: input.slipUrl.trim(),
+          slipUrl,
           note: input.note?.trim() || null,
           createdById: userId,
           requestId,
@@ -251,7 +287,7 @@ export class SupplierPaymentService {
           paymentId: row.id,
           amount: step.amount,
           payableLines: step.payableLines,
-          bankAccountCode: ShopAccountResolver.SHOP_PAYING_BANK,
+          bankAccountCode: paymentAccountCode,
           postedAt,
         },
         tx,
@@ -643,10 +679,10 @@ export class SupplierPaymentService {
       const total = result.payments.reduce((sum, p) => sum.add(p.amount), ZERO);
       await this.prisma.todo.create({
         data: {
-          title: `จ่ายเงินผู้จัดจำหน่าย ${result.poNumber} ลงบัญชีวันที่บันทึกแทนวันที่โอน (งวด${month}ปิดแล้ว)`,
+          title: `จ่ายเงินผู้จัดจำหน่าย ${result.poNumber} ลงบัญชีวันที่บันทึกแทนวันที่จ่าย (งวด${month}ปิดแล้ว)`,
           description:
-            `โอนวันที่ ${formatDateShort(paidAt)} ${total.toFixed(2)} บาท อยู่ในงวดบัญชีที่ปิดแล้ว — ระบบลงบัญชีด้วยวันที่บันทึก ` +
-            `${formatDateShort(result.postedAt)} แทน และเก็บวันที่โอนไว้ตามจริง\n` +
+            `จ่ายวันที่ ${formatDateShort(paidAt)} ${total.toFixed(2)} บาท อยู่ในงวดบัญชีที่ปิดแล้ว — ระบบลงบัญชีด้วยวันที่บันทึก ` +
+            `${formatDateShort(result.postedAt)} แทน และเก็บวันที่จ่ายไว้ตามจริง\n` +
             result.payments.map((p) => `${p.kind} ${p.amount} บาท · รายการบัญชี ${p.journalEntryNo ?? '-'}`).join('\n') +
             '\nตรวจว่าต้องปรับปรุงรายการหรือไม่ — ระบบไม่ลงรายการปรับปรุงให้อัตโนมัติ',
           priority: 'MEDIUM',

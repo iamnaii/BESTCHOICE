@@ -375,4 +375,103 @@ describe('ReceiptIssuanceService — ใบกำกับภาษีตาม�
       warn.mockRestore();
     }
   });
+
+
+  // ── PR4ข (ฝ่ายบัญชี 16/10/2569 ข้อ 14 / 23.1 / 23.2): ใบปรับดิว 6a และใบส่วนเกินลิงก์ชำระเก็บค่าที่พิมพ์ ณ ตอนออกใบ ──
+  describe('PR4ข — ใบปรับดิว 6a / ใบส่วนเกินลิงก์ชำระ', () => {
+    const META_6A = {
+      tag: 'reschedule-collect',
+      contractId: 'c1',
+      paymentId: 'p1',
+      variant: '6a',
+      rescheduleFee: '1516',
+      lateFeeCollected: '50',
+      advanceVatPark: '99.18',
+    };
+    const source6a = (extra: Record<string, unknown> = {}) => ({
+      id: 'je-6a',
+      status: 'POSTED',
+      deletedAt: null,
+      metadata: { ...META_6A, ...extra },
+    });
+    const sourceSurplus = (extra: Record<string, unknown> = {}) => ({
+      id: 'je-surplus',
+      status: 'POSTED',
+      deletedAt: null,
+      // รายการส่วนเกินไม่มี paymentId (เงินพักไว้ที่สัญญา ไม่ผูกงวด)
+      metadata: {
+        tag: 'paysolutions-surplus-advance',
+        contractId: 'c1',
+        refno: 'REF-1',
+        surplus: '500',
+        advanceVatPark: '32.71',
+        ...extra,
+      },
+    });
+
+    it('ใบปรับดิว 6a: เก็บ 7 คอลัมน์จาก metadata ของรายการ reschedule-collect (ภาษี = stamp advanceVatPark) + remainingBalance null (ใช้ยอด ณ วันออกใบ)', async () => {
+      const { svc, created } = buildService({ source: source6a() });
+
+      await svc.generateReceipt('c1', 'p1', 'RESCHEDULE_FEE', 1566, 4, 'BANK_TRANSFER', 'SLIP-1', 'u1', undefined, 'JE-6A');
+
+      expect(created).toHaveLength(1);
+      expect(created[0].sourceJournalEntryId).toBe('je-6a');
+      expect(created[0].remainingBalance).toBeNull();
+      expect(TAX_COLUMNS.map((k) => [k, money(created[0][k])])).toEqual([
+        ['amountBeforeVat', '1416.82'],
+        ['vatAmount', '99.18'],
+        ['roundingAmount', '0.00'],
+        ['lateFeeAmount', '50.00'],
+        ['lateFeeWaivedAmount', '0.00'],
+        ['advanceAmount', '1516.00'],
+        ['advanceVatAmount', '99.18'],
+      ]);
+    });
+
+    it('ใบปรับดิว 6b (ค่าธรรมเนียมไม่ได้พัก — ไม่มี stamp ภาษี) → ผูกรายการแต่ไม่เก็บค่า (พิมพ์แบบเดิม)', async () => {
+      const { svc, created } = buildService({
+        source: source6a({ variant: '6b', advanceVatPark: undefined }),
+      });
+
+      await svc.generateReceipt('c1', 'p1', 'RESCHEDULE_FEE', 1566, 4, 'CASH', null, 'u1', undefined, 'JE-6B');
+
+      expect(created[0].sourceJournalEntryId).toBe('je-6a');
+      for (const k of TAX_COLUMNS) expect(created[0][k]).toBeUndefined();
+    });
+
+    it('ใบส่วนเกินลิงก์ชำระ (ADVANCE_SURPLUS · paymentId null): รับรายการ tag paysolutions-surplus-advance ที่ไม่มี paymentId · เก็บ 467.29 / 32.71 / เงินรับล่วงหน้า 500.00', async () => {
+      const { svc, created, tx } = buildService({ source: sourceSurplus() });
+      const paidAt = new Date('2026-10-13T05:00:00.000Z');
+
+      await svc.generateReceipt('c1', null, 'ADVANCE_SURPLUS', 500, null, 'ONLINE_GATEWAY', 'REF-1', 'u1', paidAt, 'JE-S');
+
+      expect(created).toHaveLength(1);
+      expect(created[0].sourceJournalEntryId).toBe('je-surplus');
+      expect(created[0].paymentId).toBeNull();
+      expect(created[0].installmentNo).toBeNull();
+      expect(created[0].paidDate).toEqual(paidAt);
+      expect(created[0].remainingBalance).toBeNull();
+      expect(TAX_COLUMNS.map((k) => [k, money(created[0][k])])).toEqual([
+        ['amountBeforeVat', '467.29'],
+        ['vatAmount', '32.71'],
+        ['roundingAmount', '0.00'],
+        ['lateFeeAmount', '0.00'],
+        ['lateFeeWaivedAmount', '0.00'],
+        ['advanceAmount', '500.00'],
+        ['advanceVatAmount', '32.71'],
+      ]);
+      // ไม่ใช่ใบค่างวด — ไม่อ่านแถว Payment มาทำ partial seq
+      expect(tx.payment.findUnique).not.toHaveBeenCalled();
+    });
+
+    it('ใบส่วนเกินที่ส่งเลขที่รายการรับชำระค่างวดมา (tag receipt) → ปฏิเสธก่อนสร้างใบ', async () => {
+      const { svc, created } = buildService({ source: receiptSource() });
+
+      await expect(
+        svc.generateReceipt('c1', null, 'ADVANCE_SURPLUS', 500, null, 'ONLINE_GATEWAY', 'REF-1', 'u1', undefined, 'JE-1'),
+      ).rejects.toThrow('ไม่พบรายการบัญชีรับชำระที่ตรงกับใบเสร็จ');
+      expect(created).toHaveLength(0);
+    });
+  });
 });
+

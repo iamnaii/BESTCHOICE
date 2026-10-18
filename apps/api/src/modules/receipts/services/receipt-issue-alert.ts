@@ -1,14 +1,20 @@
 import * as Sentry from '@sentry/nestjs';
 
 /** ทางที่ออกใบเสร็จหลังธุรกรรมเงิน commit (PR3) */
-export type PostCommitReceiptPath = 'auto-allocate' | 'apply-credit' | 'paysolutions-webhook';
+export type PostCommitReceiptPath =
+  | 'auto-allocate'
+  | 'apply-credit'
+  | 'paysolutions-webhook'
+  /** PR4ข — ใบรับเงินส่วนเกินลิงก์ชำระ (ADVANCE_SURPLUS): ไม่ผูกแถว Payment / งวด */
+  | 'paysolutions-webhook-surplus';
 
 export interface ReceiptIssueFailure {
   path: PostCommitReceiptPath;
   contractId: string;
-  paymentId: string;
-  installmentNo: number;
-  /** เลขที่รายการรับชำระของงวด — ใช้ออกใบซ้ำ (generateReceipt คืนใบเดิมถ้ารายการนี้มีใบแล้ว) */
+  /** null = ใบที่ไม่ผูกงวด (ใบส่วนเกินลิงก์ชำระ — PR4ข) */
+  paymentId: string | null;
+  installmentNo: number | null;
+  /** เลขที่รายการรับชำระของงวด (หรือรายการส่วนเกิน) — ใช้ออกใบซ้ำ (generateReceipt คืนใบเดิมถ้ารายการนี้มีใบแล้ว) */
   journalEntryNumber: string | null;
   // ค่าที่เหลือของการออกใบซ้ำ (final review I3(c)) — อาร์กิวเมนต์เดียวกับที่ทางนั้นส่งให้ generateReceipt
   /** ช่องทางของใบ — ช่องทางของการกระจายเงินอยู่ที่นี่และที่ payments.payment_method เท่านั้น */

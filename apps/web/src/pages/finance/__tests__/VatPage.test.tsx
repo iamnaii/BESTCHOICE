@@ -7,7 +7,8 @@ import VatPage from '../VatPage';
 /**
  * หน้า /finance/vat (เมนู "VAT (ภ.พ.30)") — ภาษีขายจากตัวคำนวณเดียวของ ภ.พ.30 (2026-09-30)
  * ตัวเลขเดือนตุลาคมเดียวกับ spec ต่อฐานจริง `apps/api/src/modules/accounting/pp30-output-vat.integration.spec.ts`
- * ภาษีขาย 60 วัน (21-2103) เป็นข้อมูลประกอบ ไม่รวมในยอด — รอฝ่ายบัญชีวินิจฉัย
+ * ภาษีขาย 60 วัน (21-2103) สุทธิรวมในยอดตั้งแต่ 16/10/2569 (ฝ่ายบัญชีข้อ 11.1 — `mandatory60DayIncluded: true`)
+ * snapshot/TaxReport ที่เก็บก่อนหน้านั้นยัง `false` ⇒ หน้าแสดงแถวและหัวข้อแบบเดิม
  */
 vi.mock('@/lib/api', async (original) => ({
   ...(await original<typeof import('@/lib/api')>()),
@@ -17,10 +18,10 @@ vi.mock('sonner', () => ({ toast: { info: vi.fn(), error: vi.fn(), success: vi.f
 
 const OCTOBER = {
   period: { year: 2026, month: 10 },
-  vatOutput: '793.32',
+  vatOutput: '892.49',
   vatDeferred: '0.00',
   vatInput: '100.00',
-  netVat: '693.32',
+  netVat: '792.49',
   outputVat: {
     settledGross: '991.66',
     reductionReversal: '99.17',
@@ -32,8 +33,8 @@ const OCTOBER = {
     mandatory60DayCredit: '198.34',
     mandatory60DayDebit: '99.17',
     mandatory60DayNet: '99.17',
-    mandatory60DayIncluded: false,
-    totalOutputVat: '793.32',
+    mandatory60DayIncluded: true,
+    totalOutputVat: '892.49',
   },
   lineCount: 0,
   lines: [],
@@ -62,8 +63,43 @@ beforeEach(() => {
 });
 
 describe('VatPage — ภาษีขายเดือนนี้ (ภ.พ.30)', () => {
-  it('แยกที่มาของภาษีขาย: ตั้ง · หักกลับรายการ · หักใบลดหนี้ · หักเงินรับล่วงหน้าที่หักเข้างวด · หักอื่น ๆ · รวม — แล้วภาษีขาย 60 วันเป็นข้อมูลประกอบแยก (ไม่รวม)', async () => {
+  it('แยกที่มาของภาษีขาย: ตั้ง · หักกลับรายการ · หักใบลดหนี้ · หักเงินรับล่วงหน้าที่หักเข้างวด · หักอื่น ๆ · 21-2101 สุทธิ · บวกภาษีขาย 60 วันสุทธิ · รวม (mandatory60DayIncluded = true)', async () => {
     vi.mocked(api.get).mockResolvedValue({ data: OCTOBER });
+    renderPage();
+
+    expect(await breakdownRows()).toEqual([
+      ['ภาษีขายที่ตั้งในเดือน (เครดิต 21-2101)', '991.66 ฿'],
+      ['หัก กลับรายการ', '99.17 ฿'],
+      ['หัก ใบลดหนี้ (ม.82/5)', '99.17 ฿'],
+      ['หัก เงินรับล่วงหน้าที่หักเข้างวด (รับรู้ภาษีแล้วตอนรับ)', '0.00 ฿'],
+      ['หัก รายการอื่นที่ลดภาษีขาย', '0.00 ฿'],
+      ['ภาษีขาย 21-2101 สุทธิ', '793.32 ฿'],
+      ['บวก ภาษีขาย 60 วัน (21-2103) สุทธิ', '99.17 ฿'],
+      ['ภาษีขายเดือนนี้ (ภ.พ.30)', '892.49 ฿'],
+      ['ตั้งในเดือน (เครดิต 21-2103)', '198.34 ฿'],
+      ['กลับรายการ (เดบิต 21-2103)', '99.17 ฿'],
+      ['สุทธิ', '99.17 ฿'],
+    ]);
+    expect(
+      screen.getByText('ภาษีขาย 60 วัน (21-2103) — รวมในยอดภาษีขายข้างบนแล้ว (ฝ่ายบัญชี 16/10/2569)'),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/ยังไม่รวมในยอดข้างบน/)).toBeNull();
+    expect(
+      screen.getByText(
+        'รายการกลับรายการและใบลดหนี้ลดภาษีขายของเดือนที่ลงรายการ — ไม่แก้ตัวเลขของเดือนเดิม · ดูรายการทีละบรรทัดได้ในตารางด้านล่าง',
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('snapshot ก่อน 16/10/2569 (mandatory60DayIncluded = false): คงแถวเดิม 6 แถว + หัวข้อ "ยังไม่รวม" — ไม่คิดตัวเลขใหม่', async () => {
+    vi.mocked(api.get).mockResolvedValue({
+      data: {
+        ...OCTOBER,
+        vatOutput: '793.32',
+        netVat: '693.32',
+        outputVat: { ...OCTOBER.outputVat, mandatory60DayIncluded: false, totalOutputVat: '793.32' },
+      },
+    });
     renderPage();
 
     expect(await breakdownRows()).toEqual([
@@ -80,11 +116,6 @@ describe('VatPage — ภาษีขายเดือนนี้ (ภ.พ.30)
     expect(
       screen.getByText(
         'ภาษีขาย 60 วัน (21-2103) — ข้อมูลประกอบ ยังไม่รวมในยอดข้างบน (รอฝ่ายบัญชีวินิจฉัย)',
-      ),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText(
-        'รายการกลับรายการและใบลดหนี้ลดภาษีขายของเดือนที่ลงรายการ — ไม่แก้ตัวเลขของเดือนเดิม · ดูรายการทีละบรรทัดได้ในตารางด้านล่าง',
       ),
     ).toBeInTheDocument();
   });
@@ -117,7 +148,9 @@ describe('VatPage — ภาษีขายเดือนนี้ (ภ.พ.30)
 
     const rows = await breakdownRows();
     expect(rows[3]).toEqual(['หัก เงินรับล่วงหน้าที่หักเข้างวด (รับรู้ภาษีแล้วตอนรับ)', '92.83 ฿']);
-    expect(rows[5]).toEqual(['ภาษีขายเดือนนี้ (ภ.พ.30)', '6.30 ฿']);
+    expect(rows[5]).toEqual(['ภาษีขาย 21-2101 สุทธิ', '6.30 ฿']);
+    expect(rows[6]).toEqual(['บวก ภาษีขาย 60 วัน (21-2103) สุทธิ', '0.00 ฿']);
+    expect(rows[7]).toEqual(['ภาษีขายเดือนนี้ (ภ.พ.30)', '6.30 ฿']);
   });
 
   it('API รุ่นก่อน PR4 (outputVat ไม่มี reductionAdvanceApplied) → แถวใหม่แสดง 0.00 ไม่ล่ม', async () => {
@@ -137,8 +170,9 @@ describe('VatPage — ภาษีขายเดือนนี้ (ภ.พ.30)
 
     expect(screen.getAllByText('ภาษีขายเดือนนี้ (ภ.พ.30)')).toHaveLength(2); // การ์ด + แถวรวมในกล่อง
     expect(screen.queryByText('ภาษีขาย 21-2101')).toBeNull();
-    expect(screen.getAllByText('793.32 ฿')).toHaveLength(2); // การ์ด + แถวรวมในกล่อง
-    expect(screen.getByText('693.32 ฿')).toBeInTheDocument(); // VAT สุทธิ (ออก − ซื้อ)
+    expect(screen.getAllByText('892.49 ฿')).toHaveLength(2); // การ์ด + แถวรวมในกล่อง (รวม 60 วันแล้ว)
+    expect(screen.getAllByText('793.32 ฿')).toHaveLength(1); // แถว "ภาษีขาย 21-2101 สุทธิ" เท่านั้น
+    expect(screen.getByText('792.49 ฿')).toBeInTheDocument(); // VAT สุทธิ (ออก − ซื้อ)
     expect(screen.getByText('100.00 ฿')).toBeInTheDocument(); // ภาษีซื้อ 11-4101
   });
 
@@ -166,7 +200,8 @@ describe('VatPage — ภาษีขายเดือนนี้ (ภ.พ.30)
     renderPage();
 
     const rows = await breakdownRows();
-    expect(rows[5]).toEqual(['ภาษีขายเดือนนี้ (ภ.พ.30)', '-99.17 ฿']);
+    expect(rows[5]).toEqual(['ภาษีขาย 21-2101 สุทธิ', '-99.17 ฿']);
+    expect(rows[7]).toEqual(['ภาษีขายเดือนนี้ (ภ.พ.30)', '-99.17 ฿']);
   });
 
   it('เรียก API เดิมโดยไม่ส่ง companyId (ภาษีขายเป็นของบริษัท FINANCE ฝั่ง API)', async () => {

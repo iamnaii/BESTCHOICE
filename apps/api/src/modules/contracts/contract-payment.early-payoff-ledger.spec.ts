@@ -19,7 +19,8 @@ import { ledgerLines } from '../journal/__tests__/ledger-lines-mock';
  *   - เงินสดในรายการ = เงินที่ลูกค้าจ่าย · 52-1106 = ลูกหนี้ตามบัญชี − เงินที่รับ − เงินของลูกค้าที่หัก
  *   - เงินเกินของลูกค้า 21-5101 = min(คอลัมน์ที่ยอดปิดหักให้, ยอดในบัญชี) (X2) · คอลัมน์ไม่ตรงบัญชี → สัญญาณเตือนหลัง commit
  *   - 52-1106 ต่างจากส่วนลดบนหน้าจอเกิน 1.00 → สัญญาณเตือนหลัง commit
- *   - เงินที่รับ + เงินของลูกค้าที่ยอดปิดหักให้ เกินลูกหนี้ตามบัญชีเกิน 1.00 → ปฏิเสธ (ไม่ลงรายการ)
+ *   - เงินที่รับ + เงินของลูกค้าที่ยอดปิดหักให้ เกินลูกหนี้ตามบัญชีเกิน 1.00 → รายได้ 42-1106 + ภาษีขาย 7/107 (ฝ่ายบัญชี 18.2 ·
+ *     16/10/2569 — เดิมปฏิเสธ) + สัญญาณเตือนหลัง commit
  *   - คำขออนุมัติเทียบเฉพาะตัวเงินของ quote — รอบตั้งลูกหนี้งวดที่ลงระหว่างส่งคำขอกับอนุมัติไม่ทำให้ต้องส่งใหม่
  *
  * Fixture: สัญญา 12 งวด งวดละ 1,926 (ยอดจัด 18,000 · ค่าคอม 1,800 · ดอกเบี้ย 1,800 · VAT 1,512) จ่ายแล้ว 6 งวด
@@ -81,7 +82,12 @@ describe('ContractPaymentService — ปิดยอดก่อนกำหน�
     ],
   });
 
-  type CapturedLine = { accountCode: string; dr: Prisma.Decimal; cr: Prisma.Decimal };
+  type CapturedLine = {
+    accountCode: string;
+    dr: Prisma.Decimal;
+    cr: Prisma.Decimal;
+    description?: string;
+  };
   type CapturedJe = { metadata: Record<string, unknown>; lines: CapturedLine[] };
 
   const build = (
@@ -325,22 +331,63 @@ describe('ContractPaymentService — ปิดยอดก่อนกำหน�
     });
   });
 
-  it('เครดิต 12,000 (คอลัมน์ = บัญชี) มากกว่าลูกหนี้ตามบัญชี 11,556 → ยอดปิด 0.00 · เงินของลูกค้าที่ยอดปิดหักให้เกินหนี้ 444.00 → preview ไม่สมดุล · ปฏิเสธ ไม่ลงรายการ ไม่ปิดสัญญา ไม่ส่งสัญญาณเตือน', async () => {
+  it('18.2: เครดิต 12,000 (คอลัมน์ = บัญชี) มากกว่าลูกหนี้ตามบัญชี 11,556 → ยอดปิด 0.00 · เงินที่เกินหนี้ 444.00 = รายได้ 42-1106 414.95 + ภาษีขาย 21-2101 29.05 · preview สมดุล · ลงรายการ ปิดสัญญา · สัญญาณเตือน early-payoff-excess-income หลัง commit', async () => {
     const h = build({
       creditBalance: '12000',
       ledger: { ...LEDGER_AFTER_SIX_PAID, '21-5101': '12000.00' },
     });
+    (Sentry.captureMessage as jest.Mock).mockImplementation(() => h.events.push('warning'));
     const quote = await h.service.getEarlyPayoffQuote('contract-ep-ledger-1');
     expect(quote.totalPayoff).toBe(0);
-    expect(quote.journalPreview.isBalanced).toBe(false);
+    expect(quote.journalPreview.isBalanced).toBe(true);
     expect(quote.journalPreview.lines.find((l) => l.accountCode === '52-1106')).toBeUndefined();
+    const previewExcess = quote.journalPreview.lines.filter((l) => l.accountCode === '42-1106');
+    expect(previewExcess.map((l) => `${l.credit}|${l.description}`)).toEqual([
+      '414.95|เงินที่รับเกินยอดปิด — รับรู้เป็นรายได้ (ฝ่ายบัญชี 18.2)',
+    ]);
 
-    await expect(
-      approvedEarlyPayoff(h.service, 'contract-ep-ledger-1', 'user-1', baseDto),
-    ).rejects.toThrow('exceed the contract ledger receivable by 444.00 (> 1.00) — not posted');
-    expect(h.createAndPost).not.toHaveBeenCalled();
-    expect(h.contractUpdates.some((d) => d.status === 'EARLY_PAYOFF')).toBe(false);
-    expect(Sentry.captureMessage).not.toHaveBeenCalled();
+    await approvedEarlyPayoff(h.service, 'contract-ep-ledger-1', 'user-1', baseDto);
+    const je = h.createAndPost.mock.calls[0][0] as CapturedJe;
+    // เงินสด 0 → ไม่มีบรรทัดบัญชีรับเงิน (ไม่มีบรรทัดยอดศูนย์)
+    expect(sig(je)).toEqual([
+      '11-2106:900.00:0.00',
+      '21-2102:756.00:0.00',
+      '21-5101:12000.00:0.00',
+      '11-2101:0.00:10800.00',
+      '11-2105:0.00:756.00',
+      '41-1101:0.00:900.00',
+      '21-2101:0.00:756.00',
+      '42-1106:0.00:414.95',
+      '21-2101:0.00:29.05',
+    ]);
+    expect(previewSig(quote)).toEqual(sig(je));
+    expect(je.lines.filter((l) => l.accountCode === '21-2101').map((l) => l.description)).toEqual([
+      'ภาษีขาย ภ.พ.30 ถึงกำหนด',
+      'ภาษีขายของเงินที่รับเกินยอดปิด',
+    ]);
+    expect(je.metadata).toMatchObject({
+      creditRelief: '12000.00',
+      excessIncome: '444.00',
+      excessVat: '29.05',
+      discount: '0.00',
+    });
+    expect(je.metadata.roundingGain).toBeUndefined();
+    expect(h.contractUpdates.some((d) => d.status === 'EARLY_PAYOFF')).toBe(true);
+    expect(Sentry.captureMessage).toHaveBeenCalledTimes(1);
+    const [message, context] = (Sentry.captureMessage as jest.Mock).mock.calls[0];
+    expect(message).toContain('exceeds the contract ledger receivable');
+    expect(context).toMatchObject({
+      level: 'warning',
+      tags: { module: 'contracts', action: 'early-payoff-excess-income', flow: 'early-payoff' },
+      extra: {
+        contractId: 'contract-ep-ledger-1',
+        excessIncome: '444.00',
+        excessVat: '29.05',
+        cashReceived: '0.00',
+        creditRelief: '12000.00',
+      },
+    });
+    expect(h.events).toEqual(['createAndPost', 'commit', 'warning']);
   });
 
   it('ลูกหนี้ในบัญชีมากกว่ายอดค้างตามงวด 1,926.00 (เช่นแถวงวดถูกตั้ง PAID โดยไม่มีรายการรับชำระ) → ลงได้ · 52-1106 2,376.00 · สัญญาณเตือน early-payoff-discount-vs-quote หลัง commit ครั้งเดียว', async () => {

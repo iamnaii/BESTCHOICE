@@ -185,7 +185,7 @@ describe('DOC-01 receipts & credit notes — real payment services, real rendere
     recordScenario(DOMAIN, scenario({ id: `${DOMAIN}/partial-then-complete`, title: 'PARTIAL 800 (BANK_TRANSFER + reference) then 715.83 completion — two receipts, cumulative equals installment', routes: ['POST /api/payments/record', 'GET /api/receipts/:id/pdf'], artifacts }));
   });
 
-  it('reschedule 6a (fee first) → RESCHEDULE_FEE receipt equal to the independent quote, due date shifted, no VAT line', async () => {
+  it('reschedule 6a (fee first) → RESCHEDULE_FEE receipt equal to the independent quote, due date shifted, tax invoice with the VAT split (PR4ข) on one page', async () => {
     const quoteResponse = await h.client({ session: salesA }).get('/payments/reschedule-quote').query({ contractId: contractA.id, installmentNo: 3, daysToShift: 10, splitMode: 'SPLIT' }).expect(200);
     const quote = quoteResponse.body.data as { collectAmount: string; rescheduleFee: string; lateFee: string };
     expect(money(quote.lateFee)).toBe(0);
@@ -204,10 +204,11 @@ describe('DOC-01 receipts & credit notes — real payment services, real rendere
     expectBaseline(pdf, 'reschedule-fee');
     // 6a books the fee as an advance parked against the last installment (21-1103), so the line
     // reads "เงินรับล่วงหน้างวดที่ 12/12 — ปรับดิว … พักไว้หักค่างวดสุดท้าย" rather than a fee item.
-    for (const needle of ['ปรับดิว', 'เงินรับล่วงหน้า', 'พักไว้หักค่างวดสุดท้าย', money(quote.collectAmount).toLocaleString('en-US', { minimumFractionDigits: 2 }), 'ใบเสร็จรับเงิน']) expect({ needle, found: has(pdf, needle) }).toEqual({ needle, found: true });
-    expect(has(pdf, 'ใบกำกับภาษี')).toBe(false);
+    // PR4ข (owner 2026-10-16): the fee's VAT is recognised at receipt (PR4), so the stored 6a receipt
+    // is a tax invoice — header, VAT split and the reschedule line print, and it must still fit one A4 page.
+    for (const needle of ['ปรับดิว', 'เงินรับล่วงหน้า', 'พักไว้หักค่างวดสุดท้าย', money(quote.collectAmount).toLocaleString('en-US', { minimumFractionDigits: 2 }), 'ใบเสร็จรับเงิน / ใบกำกับภาษี', 'ภาษีมูลค่าเพิ่ม 7%', 'ค่าธรรมเนียมเลื่อนนัดชำระ', 'เลื่อนนัดชำระ งวดที่ 3 เลื่อน 10 วัน']) expect({ needle, found: has(pdf, needle) }).toEqual({ needle, found: true });
     receipts.rescheduleFee = row;
-    recordScenario(DOMAIN, scenario({ id: `${DOMAIN}/reschedule-fee`, title: 'RESCHEDULE_FEE receipt (6a split) equals GET /payments/reschedule-quote; installment 3 shifted 10 days; printed as parked advance, no VAT', routes: ['GET /api/payments/reschedule-quote', 'POST /api/payments/record', 'GET /api/receipts/:id/pdf'], artifacts, notes: 'itemLabel RESCHEDULE_FEE ("ค่าธรรมเนียมเลื่อนนัดชำระ") is not what prints — the advance-only branch labels the line "เงินรับล่วงหน้างวดที่ 12/12 — ปรับดิว"; matches the 21-1103 accounting of 6a' }));
+    recordScenario(DOMAIN, scenario({ id: `${DOMAIN}/reschedule-fee`, title: 'RESCHEDULE_FEE receipt (6a split) equals GET /payments/reschedule-quote; installment 3 shifted 10 days; printed as parked advance with the VAT split (tax invoice, PR4ข)', routes: ['GET /api/payments/reschedule-quote', 'POST /api/payments/record', 'GET /api/receipts/:id/pdf'], artifacts, notes: 'itemLabel RESCHEDULE_FEE ("ค่าธรรมเนียมเลื่อนนัดชำระ") prints as the secondary line — the advance-only branch labels the line "เงินรับล่วงหน้างวดที่ 12/12 — ปรับดิว"; VAT 7/107 of the fee is recognised at receipt (PR4) so the receipt is a tax invoice (PR4ข)' }));
   });
 
   it('pays the remaining installments: a receipt without its balance snapshot stays "unknown", the last receipt prints a known zero balance', async () => {

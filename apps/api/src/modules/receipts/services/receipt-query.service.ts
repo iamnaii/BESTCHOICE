@@ -1,7 +1,10 @@
 import { NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { Prisma } from '@prisma/client';
-import { INSTALLMENT_MONEY_RECEIPT_TYPES } from '../receipt-types.constants';
+import {
+  ADVANCE_SURPLUS_RECEIPT_TYPE,
+  INSTALLMENT_MONEY_RECEIPT_TYPES,
+} from '../receipt-types.constants';
 import { attachReceiptPaymentHistory } from './receipt-payment-history';
 import { getReceiptDocumentBalance } from './receipt-document-balance';
 import { attachReceiptFeeBreakdowns } from './receipt-fee-breakdown';
@@ -271,6 +274,9 @@ export class ReceiptQueryService {
         ? this.voidedAdvanceTarget(receipt.voidedReceiptId)
         : Promise.resolve(null),
     ]);
+    // PR4ข: บริบทบน PDF ของใบปรับดิว 6a (เลื่อนนัดชำระ) และใบส่วนเกินลิงก์ชำระ (ยอดโอน / เข้างวด / ใบงวดพี่น้อง) — จาก
+    // metadata ของรายการบัญชีต้นทาง เฉพาะสองชนิดนี้ (ใบอื่นไม่โหลดอะไรเพิ่ม)
+    const { rescheduleContext, surplusContext } = await this.loadDocumentContext(receipt);
     return {
       ...receiptWithHistory,
       ...documentBalance,
@@ -282,6 +288,96 @@ export class ReceiptQueryService {
       advanceTargetInstallmentNo,
       exchangeTarget,
       exchangeCreditSource,
+      rescheduleContext,
+      surplusContext,
+    };
+  }
+
+  /**
+   * PR4ข — บริบทจาก metadata ของรายการบัญชีต้นทาง (`sourceJournalEntryId`):
+   *   ใบปรับดิว (`reschedule-collect`): งวดที่เลื่อน · จำนวนวัน · วันครบกำหนดใหม่ (รายการก่อน PR4ข ไม่มี = null ไม่เดา)
+   *   ใบส่วนเกินลิงก์ชำระ (`paysolutions-surplus-advance`): refno · ยอดโอน · ยอดที่เข้างวด · งวดที่เงินไปถึง · งวดถัดไปที่จะหัก ·
+   *   ใบค่างวดพี่น้องของลิงก์เดียวกัน (transactionRef เดียวกัน · ไม่ถูกยกเลิก)
+   */
+  private async loadDocumentContext(receipt: {
+    receiptType: string;
+    sourceJournalEntryId: string | null;
+    contractId: string;
+    transactionRef: string | null;
+    installmentNo: number | null;
+  }): Promise<{
+    rescheduleContext: { installmentNo: number; daysToShift: number; newDueDate: string | null } | null;
+    surplusContext: {
+      refno: string | null;
+      paidAmount: string | null;
+      appliedAmount: string | null;
+      installmentNos: number[];
+      nextInstallmentNo: number | null;
+      siblingReceipts: Array<{ receiptNumber: string; installmentNo: number | null }>;
+    } | null;
+  }> {
+    const none = { rescheduleContext: null, surplusContext: null };
+    const isReschedule = receipt.receiptType === 'RESCHEDULE_FEE';
+    const isSurplus = receipt.receiptType === ADVANCE_SURPLUS_RECEIPT_TYPE;
+    if ((!isReschedule && !isSurplus) || !receipt.sourceJournalEntryId) return none;
+    const source = await this.prisma.journalEntry.findUnique({
+      where: { id: receipt.sourceJournalEntryId },
+      select: { metadata: true },
+    });
+    const raw = source?.metadata;
+    const meta: Record<string, unknown> =
+      raw && typeof raw === 'object' && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {};
+    const positiveInt = (v: unknown): number | null =>
+      typeof v === 'number' && Number.isInteger(v) && v > 0 ? v : null;
+    const money = (v: unknown): string | null => {
+      if (typeof v !== 'string' && typeof v !== 'number') return null;
+      try {
+        return new Prisma.Decimal(v).toFixed(2);
+      } catch {
+        return null;
+      }
+    };
+    if (isReschedule) {
+      const daysToShift = positiveInt(meta.daysToShift);
+      const installmentNo = positiveInt(meta.installmentNo) ?? receipt.installmentNo;
+      const newDueDate =
+        typeof meta.newDueDate === 'string' && !Number.isNaN(Date.parse(meta.newDueDate))
+          ? meta.newDueDate
+          : null;
+      return {
+        rescheduleContext:
+          daysToShift && installmentNo ? { installmentNo, daysToShift, newDueDate } : null,
+        surplusContext: null,
+      };
+    }
+    const siblingReceipts = receipt.transactionRef
+      ? await this.prisma.receipt.findMany({
+          where: {
+            contractId: receipt.contractId,
+            transactionRef: receipt.transactionRef,
+            receiptType: { in: [...INSTALLMENT_MONEY_RECEIPT_TYPES] },
+            isVoided: false,
+            deletedAt: null,
+          },
+          select: { receiptNumber: true, installmentNo: true },
+          orderBy: { installmentNo: 'asc' },
+        })
+      : [];
+    return {
+      rescheduleContext: null,
+      surplusContext: {
+        refno: typeof meta.refno === 'string' ? meta.refno : null,
+        paidAmount: money(meta.paidAmount),
+        appliedAmount: money(meta.appliedAmount),
+        installmentNos: Array.isArray(meta.installmentNos)
+          ? meta.installmentNos.flatMap((n) => (positiveInt(n) ? [n as number] : []))
+          : [],
+        nextInstallmentNo: positiveInt(meta.nextInstallmentNo),
+        siblingReceipts: siblingReceipts.map((r) => ({
+          receiptNumber: r.receiptNumber,
+          installmentNo: r.installmentNo,
+        })),
+      },
     };
   }
 

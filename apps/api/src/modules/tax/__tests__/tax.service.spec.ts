@@ -187,7 +187,7 @@ describe('TaxService.previewPP30 — B3 / K-04 input VAT from 11-4101', () => {
 });
 
 // ────────────────────────────────────────────────────────────
-// Critical #2 — VAT output is journal-based (Cr 21-2101 + 21-2103)
+// Critical #2 — VAT output is journal-based (21-2101 net + 21-2103 net — the latter included again since 2026-10-16)
 // ────────────────────────────────────────────────────────────
 
 describe('TaxService.previewPP30 — Critical #2: output VAT journal-based', () => {
@@ -224,7 +224,7 @@ describe('TaxService.previewPP30 — Critical #2: output VAT journal-based', () 
     prisma.expenseDocument.findMany.mockResolvedValue([]);
   });
 
-  it('sums 21-2101 as totalVatOutput · 21-2103 (60-day) reported separately and NOT included (2026-09-30 — reverses the Critical #2 inclusion until the accountant answers)', async () => {
+  it('totalVatOutput = 21-2101 net + 21-2103 (60-day) net — included again since the accountant answered 2026-10-16 (item 11.1; excluded 2026-09-30 → 2026-10-16)', async () => {
     mockJournalByCode({
       '21-2101': [
         // PAYMENT — Cr 21-2101 from PaymentReceipt2BTemplate
@@ -289,12 +289,12 @@ describe('TaxService.previewPP30 — Critical #2: output VAT journal-based', () 
 
     const result = await service.previewPP30('co-1', 2026, 5);
 
-    // 70 + 14 + 35 = 119 settled = total · 21 mandatory is info only (PP30_INCLUDES_MANDATORY_60DAY = false)
+    // 70 + 14 + 35 = 119 settled · + 21 mandatory 60-day net = 140 total (PP30_INCLUDES_MANDATORY_60DAY = true)
     expect(result.totalVatSettled.toString()).toBe('119');
     expect(result.totalVatMandatory60Day.toString()).toBe('21');
-    expect(result.totalVatOutput.toString()).toBe('119');
+    expect(result.totalVatOutput.toString()).toBe('140');
     expect(result.outputVatBreakdown.mandatory60DayNet).toBe('21.00');
-    expect(result.outputVatBreakdown.mandatory60DayIncluded).toBe(false);
+    expect(result.outputVatBreakdown.mandatory60DayIncluded).toBe(true);
 
     // Source breakdown by referenceType
     expect(result.vatOutputBySource.PAYMENT.toString()).toBe('70');
@@ -389,8 +389,8 @@ describe('TaxService.previewPP30 — Critical #2: output VAT journal-based', () 
 
     const result = await service.previewPP30('co-1', 2026, 5);
 
-    expect(result.totalVatOutput.toString()).toBe('500'); // 21-2103 100 ไม่รวม (เดิม 600 = 500 + 100)
-    expect(result.totalVatMandatory60Day.toString()).toBe('100'); // ยังจับได้ — เป็นข้อมูลประกอบ
+    expect(result.totalVatOutput.toString()).toBe('600'); // 500 + 21-2103 สุทธิ 100 (รวมตั้งแต่ 16/10/2569 — ระหว่าง 30/09–16/10 เป็น 500)
+    expect(result.totalVatMandatory60Day.toString()).toBe('100');
     expect(result.totalSales.toString()).toBe('0'); // no payments
   });
 
@@ -484,7 +484,7 @@ describe('TaxService.previewPP30 — Critical #2: output VAT journal-based', () 
     });
   });
 
-  it('60-day (21-2103) is reported separately — line items are credit − debit (a reversal is negative) — and is NOT added to totalVatOutput / netVat', async () => {
+  it('60-day (21-2103) line items are credit − debit (a reversal is negative) — net 99.17 IS added to totalVatOutput / netVat since 2026-10-16', async () => {
     const entry = (id: string, metadata: Record<string, unknown>) => ({
       id,
       entryNumber: `JE-202605-${id}`,
@@ -532,14 +532,14 @@ describe('TaxService.previewPP30 — Critical #2: output VAT journal-based', () 
       '-99.17',
     ]);
     expect(result.totalVatMandatory60Day.toFixed(2)).toBe('99.17');
-    expect(result.totalVatOutput.toFixed(2)).toBe('50.00');
-    expect(result.netVat.toFixed(2)).toBe('50.00');
+    expect(result.totalVatOutput.toFixed(2)).toBe('149.17'); // 50.00 + 99.17
+    expect(result.netVat.toFixed(2)).toBe('149.17');
     expect(result.outputVatBreakdown).toMatchObject({
       mandatory60DayCredit: '198.34',
       mandatory60DayDebit: '99.17',
       mandatory60DayNet: '99.17',
-      mandatory60DayIncluded: false,
-      totalOutputVat: '50.00',
+      mandatory60DayIncluded: true,
+      totalOutputVat: '149.17',
     });
   });
 
@@ -591,12 +591,12 @@ describe('TaxService.previewPP30 — Critical #2: output VAT journal-based', () 
     );
 
     const created = prisma.taxReport.upsert.mock.calls[0][0].create;
-    expect(created.totalVatOutput.toFixed(2)).toBe('99.17');
-    expect(created.netVat.toFixed(2)).toBe('99.17');
+    expect(created.totalVatOutput.toFixed(2)).toBe('120.17'); // 21-2101 สุทธิ 99.17 + 21-2103 สุทธิ 21.00
+    expect(created.netVat.toFixed(2)).toBe('120.17');
     expect(created.generatedData.outputVatBreakdown.reductionReversal).toBe('99.17');
     expect(created.generatedData.outputVatBreakdown).toMatchObject({
       mandatory60DayNet: '21.00',
-      mandatory60DayIncluded: false,
+      mandatory60DayIncluded: true,
     });
   });
 
@@ -1269,16 +1269,12 @@ describe('TaxService.exportTaxFormXlsx', () => {
     });
 
     expect(rows).toEqual([
-      [null, 'ภาษีขาย (Output VAT)', 50],
+      [null, 'ภาษีขาย (Output VAT)', 149.17], // 21-2101 สุทธิ 50 + 21-2103 สุทธิ 99.17 (รวมตั้งแต่ 16/10/2569)
       [null, 'ภาษีซื้อ (Input VAT)', 0],
-      [null, 'ภาษีที่ต้องชำระ (Net VAT)', 50],
+      [null, 'ภาษีที่ต้องชำระ (Net VAT)', 149.17],
       ['ข้อมูลประกอบ', 'ภาษีขาย 60 วัน (21-2103) — ตั้งในเดือน', 198.34],
       ['ข้อมูลประกอบ', 'ภาษีขาย 60 วัน (21-2103) — กลับรายการ', 99.17],
-      [
-        'ข้อมูลประกอบ',
-        'ภาษีขาย 60 วัน (21-2103) — สุทธิ (ยังไม่รวมในยอดข้างบน รอฝ่ายบัญชีวินิจฉัย)',
-        99.17,
-      ],
+      ['ข้อมูลประกอบ', 'ภาษีขาย 60 วัน (21-2103) — สุทธิ (รวมในยอดภาษีขายข้างบนแล้ว)', 99.17],
     ]);
   });
 

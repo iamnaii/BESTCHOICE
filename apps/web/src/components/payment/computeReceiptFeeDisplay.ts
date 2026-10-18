@@ -24,7 +24,14 @@ export interface FeeInfo {
 
 // RESCHEDULE_FEE: ปรับดิว collect receipt — carries its own fee/late-fee breakdown
 // in the collect JE; must not absorb the installment-level lateFee display.
-const EXCLUDED_TYPES = new Set(['CREDIT_NOTE', 'EARLY_PAYOFF', 'DOWN_PAYMENT', 'RESCHEDULE_FEE']);
+const EXCLUDED_TYPES = new Set([
+  'CREDIT_NOTE',
+  'EARLY_PAYOFF',
+  'DOWN_PAYMENT',
+  'RESCHEDULE_FEE',
+  // PR4ข: ใบรับเงินส่วนเกินลิงก์ชำระ — ไม่มีค่าปรับ ไม่ผูกงวด
+  'ADVANCE_SURPLUS',
+]);
 
 export function computeReceiptFeeDisplay(
   receipts: ReceiptFeeRow[],

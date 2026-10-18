@@ -24,6 +24,7 @@ jest.mock('@sentry/nestjs', () => ({
 }));
 
 import { BadRequestException } from '@nestjs/common';
+import { addBkkDays } from '../../../utils/date.util';
 import { Prisma } from '@prisma/client';
 import * as Sentry from '@sentry/nestjs';
 import { RescheduleCollectService } from './reschedule-collect.service';
@@ -208,6 +209,9 @@ describe('RescheduleCollectService (ปรับดิว collect-first)', () =>
       je.lines.reduce((s: Prisma.Decimal, l: AnyObj) => s.plus(l[k]), new Prisma.Decimal(0));
     expect(sum('dr').toFixed(2)).toBe(sum('cr').toFixed(2));
     expect(je.metadata.tag).toBe('reschedule-collect'); // NOT 'receipt' — reconstructPrior must ignore
+    // PR4ข: ใบกำกับภาษีของ 6a พิมพ์ "งวดที่ N เลื่อน D วัน (ครบกำหนดใหม่ …)" จาก metadata — stamp วันครบกำหนดใหม่ (เที่ยงคืนไทย)
+    expect(je.metadata.daysToShift).toBe(7);
+    expect(je.metadata.newDueDate).toBe(addBkkDays(DUE_5D_AGO, 7).toISOString());
     // JE posts on the shared tx (2nd arg).
     expect(journalAuto.createAndPost.mock.calls[0][1]).toBe(prisma);
 

@@ -7,6 +7,8 @@ import { ContractActivation1ATemplate } from '../contract-activation-1a.template
 import { InstallmentAccrual2ATemplate } from '../installment-accrual-2a.template';
 import { RepossessionJP5Template } from '../repossession-jp5.template';
 import { BadDebtProvisionTemplate } from '../bad-debt-provision.template';
+import { Vat60dayMandatoryTemplate } from '../vat-60day-mandatory.template';
+import { glContractBalance } from '../../gl-contract-balance';
 import { JournalAutoService } from '../../journal-auto.service';
 
 /**
@@ -1221,5 +1223,113 @@ describe('JP5 customerRefund — Cr 21-1107 (คำสั่งเจ้าข�
     const totalCr = lines.reduce((s, l) => s.plus(l.credit), new Decimal(0));
     expect(totalDr.toFixed(2)).toBe(totalCr.toFixed(2));
     expect(totalDr.toFixed(2)).toBe('18935.83');
+  });
+});
+
+describe('JP5 กลับรายการ VAT บังคับ 60 วัน (21-2103) ของสัญญาที่ยึดคืน (2026-10-17)', () => {
+  beforeAll(async () => {
+    await setup();
+  });
+
+  const glBal = (contractId: string, code: string, side: 'dr' | 'cr') =>
+    glContractBalance(prisma as any, contractId, code, side);
+
+  async function flaggedThenRepossess() {
+    const journal = await setup();
+    const c = await seedStandard17k12m(prisma);
+    await new ContractActivation1ATemplate(journal, prisma as any).execute(c.id);
+    const insts = await prisma.installmentSchedule.findMany({
+      where: { contractId: c.id },
+      orderBy: { installmentNo: 'asc' },
+    });
+    // งวด 1 ตั้งลูกหนี้งวดแล้ว (2A) ⇒ ข้อ 11.1 (ฝ่ายบัญชี 16/10/2569 — #1702) รอบภาษีขาย 60 วันไม่ตั้งซ้ำ คืน null ·
+    // งวด 2 ยังไม่ตั้ง ⇒ ถูกตั้ง 21-2103 ขณะสัญญายัง ACTIVE — JP5 ต้องกลับเฉพาะงวดที่มีธงจริง
+    await new InstallmentAccrual2ATemplate(journal, prisma as any).execute(insts[0].id);
+    const mandatory = new Vat60dayMandatoryTemplate(journal, prisma as any);
+    const m1 = await mandatory.execute(insts[0].id);
+    const m2 = await mandatory.execute(insts[1].id);
+    expect(m1).toBeNull();
+    expect(m2?.entryNo).toBeTruthy();
+    expect((await glBal(c.id, '21-2103', 'cr')).toFixed(2)).toBe('99.17');
+    expect((await glBal(c.id, '11-2104', 'dr')).toFixed(2)).toBe('99.17');
+
+    // ยึดคืนในธุรกรรมของผู้เรียก — เหมือน RepossessionsService.createInTx
+    const jp5 = new RepossessionJP5Template(journal, prisma as any);
+    const result = await prisma.$transaction(
+      (tx) =>
+        jp5.execute(
+          {
+            contractId: c.id,
+            depositAccountCode: '11-1101',
+            repossessionValue: new Decimal('5000.00'),
+          },
+          tx,
+        ),
+      { timeout: 30_000 },
+    );
+    return { c, m2: m2!, result };
+  }
+
+  it('งวดที่ถูกตั้ง 21-2103 ขณะ ACTIVE แล้วถูกยึดคืน → กลับ Dr 21-2103 / Cr 11-2104 ทุกงวดที่มีธงในธุรกรรมเดียวกัน · ธงถูกล้าง · 21-2103 และ 11-2104 ของสัญญาเป็นศูนย์ (งวดที่ตั้งลูกหนี้แล้วไม่ถูกตั้ง 60 วัน — ข้อ 11.1)', async () => {
+    const { c, m2 } = await flaggedThenRepossess();
+
+    expect((await glBal(c.id, '21-2103', 'cr')).toFixed(2)).toBe('0.00');
+    expect((await glBal(c.id, '11-2104', 'dr')).toFixed(2)).toBe('0.00');
+    const stillFlagged = await prisma.installmentSchedule.findMany({
+      where: { contractId: c.id, vat60dayJournalEntryId: { not: null } },
+    });
+    expect(stillFlagged).toHaveLength(0);
+
+    const reversals = await prisma.journalEntry.findMany({
+      where: {
+        AND: [
+          { metadata: { path: ['contractId'], equals: c.id } } as any,
+          { metadata: { path: ['tag'], equals: 'VAT60-REVERSAL' } } as any,
+        ],
+      },
+    });
+    expect(reversals).toHaveLength(1);
+    expect(reversals.map((r) => (r.metadata as any).reversesEntry)).toEqual([m2.entryNo]);
+
+    // JP5 เองไม่มีบรรทัด 21-2103 / 11-2104 (กลับผ่านรายการของ Vat60dayReversalTemplate แยกใบ) และ stamp เลขที่รายการกลับ
+    const lines = await getJp5Lines(c.id);
+    expect(lines.some((l) => l.accountCode === '21-2103' || l.accountCode === '11-2104')).toBe(
+      false,
+    );
+    const [jp5Je] = await prisma.journalEntry.findMany({
+      where: {
+        AND: [
+          { metadata: { path: ['contractId'], equals: c.id } } as any,
+          { metadata: { path: ['flow'], equals: 'repossession' } } as any,
+        ],
+      },
+    });
+    expect([...((jp5Je.metadata as any).vat60dayReversals as string[])].sort()).toEqual(
+      reversals.map((r) => r.entryNumber).sort(),
+    );
+  });
+
+  it('ไม่มีงวดที่ถูกตั้ง 21-2103 → ไม่มีรายการกลับ และ metadata ของ JP5 ไม่มีคีย์ vat60dayReversals (รูปเดิม)', async () => {
+    const journal = await setup();
+    const c = await seedStandard17k12m(prisma);
+    await new ContractActivation1ATemplate(journal, prisma as any).execute(c.id);
+    await new RepossessionJP5Template(journal, prisma as any).execute({
+      contractId: c.id,
+      depositAccountCode: '11-1101',
+      repossessionValue: new Decimal('5000.00'),
+    });
+    const reversals = await prisma.journalEntry.count({
+      where: { metadata: { path: ['tag'], equals: 'VAT60-REVERSAL' } } as any,
+    });
+    expect(reversals).toBe(0);
+    const [jp5Je] = await prisma.journalEntry.findMany({
+      where: {
+        AND: [
+          { metadata: { path: ['contractId'], equals: c.id } } as any,
+          { metadata: { path: ['flow'], equals: 'repossession' } } as any,
+        ],
+      },
+    });
+    expect(jp5Je.metadata as any).not.toHaveProperty('vat60dayReversals');
   });
 });

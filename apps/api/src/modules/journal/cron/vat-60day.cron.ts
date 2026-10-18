@@ -4,6 +4,7 @@ import * as Sentry from '@sentry/nestjs';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { Vat60dayMandatoryTemplate } from '../cpa-templates/vat-60day-mandatory.template';
 import { validatePeriodOpen } from '../../../utils/period-lock.util';
+import { ACCRUAL_EXCLUDED_CONTRACT_STATUSES } from '../accrual-contract-status';
 
 /**
  * Runs daily at 02:00 Asia/Bangkok.
@@ -12,6 +13,11 @@ import { validatePeriodOpen } from '../../../utils/period-lock.util';
  *   - dueDate < (today - 60 days) — strictly more than 60 days overdue per ม.82/3
  *   - vat60dayJournalEntryId is null (not yet processed)
  *   - No PAID Payment record (status='PAID' = fully settled per Payment lifecycle)
+ *   - ฝ่ายบัญชี 16/10/2569 ข้อ 11.1: ยังไม่ได้ตั้งลูกหนี้งวด (accrualJournalEntryId ว่าง และ accruedAmount = accruedVat = 0) —
+ *     งวดที่ตั้งภาษีขายเข้า 21-2101 แล้วห้ามตั้ง 21-2103 ซ้ำ · ถ้างวดถูกตั้ง 21-2103 ไปก่อนแล้ว 2A ค่อยตั้งทีหลัง
+ *     (งวดบัญชีปิดแล้วเปิดใหม่ ฯลฯ) รอบ 2A กลับ 21-2103 เองในธุรกรรมเดียวกัน (`InstallmentAccrual2ATemplate.run`)
+ *   - ฝ่ายบัญชี 16/10/2569 ข้อ 11.2: สัญญาไม่อยู่ใน ACCRUAL_EXCLUDED_CONTRACT_STATUSES (ยึดคืน/ปิด/ยกเลิกแล้ว
+ *     ไม่ต้องจ่ายภาษีขาย 60 วัน) — รายการเดียวกับรอบตั้งลูกหนี้งวด
  *
  * For each candidate, fires Vat60dayMandatoryTemplate.execute().
  *
@@ -61,6 +67,15 @@ export class Vat60dayCron {
         dueDate: { lt: cutoff },
         vat60dayJournalEntryId: null,
         deletedAt: null,
+        // ข้อ 11.1 — งวดที่ตั้งลูกหนี้งวดแล้ว (ทั้งงวด = ลิงก์ · บางส่วน = คอลัมน์ยอดสะสมตัวใดตัวหนึ่ง > 0) มีภาษีขายใน 21-2101 แล้ว
+        accrualJournalEntryId: null,
+        accruedAmount: { lte: 0 },
+        accruedVat: { lte: 0 },
+        // ข้อ 11.2 — สัญญาที่ยึดคืน/ปิด/ยกเลิกแล้ว
+        contract: {
+          deletedAt: null,
+          status: { notIn: [...ACCRUAL_EXCLUDED_CONTRACT_STATUSES] },
+        },
       },
       select: { id: true, contractId: true, installmentNo: true },
     });

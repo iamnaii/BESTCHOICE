@@ -101,6 +101,8 @@ describe('ContractPaymentService.earlyPayoff — ถังพักงวดส�
       .mockResolvedValue({ id: 'je-ep-park', entryNumber: 'JE-EP-PARK-0001' });
 
     const tx = {
+      // 2026-10-17: earlyPayoff อ่านงวดที่มีธง VAT บังคับ 60 วันใน tx (กลับ 21-2103 ก่อนลง JP4) — ฟิกซ์เจอร์นี้ไม่มีธง
+      installmentSchedule: { findMany: jest.fn().mockResolvedValue([]) },
       contract: {
         findUnique: jest.fn().mockResolvedValue({
           status: 'ACTIVE',
@@ -332,7 +334,8 @@ describe('ContractPaymentService.earlyPayoff — ถังพักงวดส�
     // PR5: เงินพักที่หัก = ยอดที่ยอดปิดหักให้ลูกค้า 11,556.00 (clamp ด้วยคอลัมน์และยอดในบัญชี) — ก่อน PR5 ฝั่งบัญชี
     // clamp ด้วยฐานเงินสดตามงวด (11,106) ทิ้งส่วนต่าง 450 ไว้ในถัง · ไม่มีส่วนลด (ลูกหนี้ตามบัญชี = เงินพักที่หัก)
     // ส่วนเกินของถัง 38,444 ยังค้าง (ยอดปิดไม่ได้หักให้ลูกค้า — alarm I-5 · เคสสุดขั้ว ถังพักปกติหลักร้อย)
-    expect(lineFor(je, '11-1201')!.dr.toFixed(2)).toBe('0.00');
+    // เงินสด 0 → ไม่มีบรรทัดบัญชีรับเงิน (ไม่ลงบรรทัดยอดศูนย์ — 18.2 ทำให้เคสเงินสด 0 ลงได้จริง)
+    expect(lineFor(je, '11-1201')).toBeUndefined();
     expect(lineFor(je, '21-1103')!.dr.toFixed(2)).toBe('11556.00');
     expect(lineFor(je, '52-1106')).toBeUndefined();
     expect(totals(je).dr).toBe(totals(je).cr);

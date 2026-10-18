@@ -323,6 +323,18 @@ describe('reschedule-collect 6a → 2A accrual → advance consume lifecycle (in
     });
     expect(receipt, 'expected RESCHEDULE_FEE e-Receipt').not.toBeNull();
     expect(new Decimal(receipt!.amount.toString()).toFixed(2)).toBe('454.00');
+    // PR4ข: ใบ 6a เป็นใบกำกับภาษี — เก็บค่าที่พิมพ์จากรายการ 6a (advanceVatPark 23.16 · ค่าปรับนอกฐานภาษี)
+    // และผูกรายการ reschedule-collect ⇒ ใบ = บัญชี · amountBeforeVat + vat + rounding + lateFee = amount
+    expect(receipt!.sourceJournalEntryId).toBe(je!.id);
+    const money = (v: { toString(): string } | null) =>
+      v == null ? null : new Decimal(v.toString()).toFixed(2);
+    expect(money(receipt!.amountBeforeVat)).toBe('330.84');
+    expect(money(receipt!.vatAmount)).toBe('23.16');
+    expect(money(receipt!.roundingAmount)).toBe('0.00');
+    expect(money(receipt!.lateFeeAmount)).toBe('100.00');
+    expect(money(receipt!.lateFeeWaivedAmount)).toBe('0.00');
+    expect(money(receipt!.advanceAmount)).toBe('354.00');
+    expect(money(receipt!.advanceVatAmount)).toBe('23.16');
   });
 
   it('2A accrual on the shifted installment #1 (NOT the last installment) does NOT touch the park bucket at all', async () => {

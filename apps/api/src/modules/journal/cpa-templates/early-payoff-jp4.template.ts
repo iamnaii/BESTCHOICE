@@ -5,6 +5,7 @@ import { JournalAutoService, JeLineInput } from '../journal-auto.service';
 import {
   EARLY_PAYOFF_ROUNDING_TOLERANCE,
   buildEarlyPayoffJE,
+  earlyPayoffExcessDescription,
   readEarlyPayoffLedger,
 } from '../compute-early-payoff-je';
 import { glContractBalance } from '../gl-contract-balance';
@@ -154,12 +155,8 @@ export class EarlyPayoffJP4Template {
         advanceVatReversal: vatReversal,
         discountPercent: input.interestDiscountPercent,
       });
-      if (je.excessReceived.gt(0)) {
-        throw new Error(
-          `JP4 template: cashReceived + park relief exceed the contract ledger receivable by ` +
-            `${je.excessReceived.toFixed(2)} (> 1.00) — not posted`,
-        );
-      }
+      // 18.2 (ฝ่ายบัญชี 16/10/2569): เงินที่รับ + เงินพักเกินลูกหนี้ตามบัญชีเกิน 1.00 → รายได้ 42-1106 + ภาษีขาย 7/107
+      // (บรรทัด `excessIncome` ของ builder — เดิม template ปฏิเสธ)
       const { discount, cashReceived } = je;
 
       // Ledger-side line descriptions; the money (accountCode/dr/cr — no zero lines)
@@ -181,7 +178,9 @@ export class EarlyPayoffJP4Template {
         cr: l.cr,
         description: l.advanceVatReversal
           ? ADVANCE_VAT_CONSUME_DESCRIPTION
-          : (descriptions[l.accountCode] ?? ''),
+          : l.excessIncome
+            ? earlyPayoffExcessDescription(l.accountCode)
+            : (descriptions[l.accountCode] ?? ''),
       }));
 
       const result = await this.journal.createAndPost(
@@ -208,6 +207,10 @@ export class EarlyPayoffJP4Template {
             cashReceived: cashReceived.toFixed(2),
             ...(parkRelief.gt(0) ? { parkRelief: parkRelief.toFixed(2) } : {}),
             ...(je.roundingGain.gt(0) ? { roundingGain: je.roundingGain.toFixed(2) } : {}),
+            // 18.2: เงินที่รับเกินยอดปิดที่รับรู้เป็นรายได้ 42-1106 (รวมภาษี) + ภาษีขาย 7/107 ของมัน
+            ...(je.excessIncome.gt(0)
+              ? { excessIncome: je.excessIncome.toFixed(2), excessVat: je.excessVat.toFixed(2) }
+              : {}),
             ...(je.discountBeyondDeferredBase.gt(EARLY_PAYOFF_ROUNDING_TOLERANCE)
               ? { discountBeyondDeferredBase: je.discountBeyondDeferredBase.toFixed(2) }
               : {}),

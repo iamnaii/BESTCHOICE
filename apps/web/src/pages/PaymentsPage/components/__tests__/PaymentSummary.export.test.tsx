@@ -128,6 +128,44 @@ describe('PaymentSummary — ส่งออก Excel ตามวันที�
     });
   });
 
+  it('PR4ข (final review I2): ใบรับเงินส่วนเกินลิงก์ชำระ (ADVANCE_SURPLUS · ไม่ผูกงวด) → คอลัมน์งวดเป็นป้ายชนิดเอกสาร ไม่ใช่ "—"', async () => {
+    apiGet.mockImplementation((url: string) => {
+      if (url.startsWith('/payments/daily-summary/export')) {
+        return Promise.resolve({
+          data: {
+            from: '2026-08-16',
+            to: '2026-08-16',
+            total: 1,
+            truncated: false,
+            rows: [
+              {
+                id: 'r3',
+                receiptNumber: 'RT-202608-00012',
+                receiptType: 'ADVANCE_SURPLUS',
+                amount: '500',
+                installmentNo: null,
+                paymentMethod: 'ONLINE_GATEWAY',
+                paidDate: '2026-08-16T07:00:00.000Z',
+                issuedByName: 'ระบบ',
+                contract: { contractNumber: 'TEST-20260809-004', customer: { name: 'ทดสอบ' }, branch: { name: 'ลพบุรี' } },
+              },
+            ],
+          },
+        });
+      }
+      return Promise.resolve({ data: { month: '2026-08', days: [] } });
+    });
+    renderSummary('2026-08-16');
+
+    fireEvent.click(screen.getByRole('button', { name: /ส่งออก Excel/ }));
+
+    await waitFor(() => expect(exportToExcel).toHaveBeenCalledTimes(1));
+    const call = exportToExcel.mock.calls[0][0];
+    expect(call.data).toHaveLength(1);
+    expect(call.data[0].installment).toBe('เงินรับล่วงหน้า (ลิงก์ชำระ)');
+    expect(call.data[0].method).toBe('ชำระออนไลน์');
+  });
+
   it('switching the left date exports THAT day', async () => {
     renderSummary('2026-08-18');
 

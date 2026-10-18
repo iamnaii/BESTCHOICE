@@ -4,20 +4,21 @@ import { Prisma } from '@prisma/client';
 import { JournalAutoService, JeLineInput } from '../journal-auto.service';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { CompanyResolverService } from '../company-resolver.service';
-import { ShopAccountResolver } from '../shop-account-resolver.service';
+import { SUPPLIER_PAYMENT_ACCOUNTS, SUPPLIER_PAYMENT_ACCOUNT_CODES, isBankSupplierPaymentAccount } from '../supplier-payment-accounts';
 
 /**
  * SHOP — จ่ายเงินผู้จัดจำหน่าย / มัดจำ (ก้อน 2 · คำตัดสินเจ้าของ 2026-10-05 · คำตอบฝ่ายบัญชี 2026-09-30 ข้อ 9).
  * ทุกรายการติด `supplierId` ใน metadata — บัญชีย่อยเจ้าหนี้ตามผู้จัดจำหน่าย (คำตอบฝ่ายบัญชี 2026-10-05 ข้อ 1)
  * อ่านจาก metadata นี้ ไม่ต้องเพิ่มรหัสบัญชีในผัง
  *
- *   DEPOSIT          Dr S11-4201 เงินมัดจำจ่ายล่วงหน้า        / Cr S11-1202 ธนาคารหน้าร้าน (จ่ายออก)
- *   SETTLEMENT       Dr S21-1101 / S21-1102 เจ้าหนี้ (ตามที่ปัน) / Cr S11-1202
+ *   DEPOSIT          Dr S11-4201 เงินมัดจำจ่ายล่วงหน้า        / Cr บัญชีที่จ่าย (ค่าเริ่มต้น S11-1202 ธนาคารหน้าร้าน (จ่ายออก))
+ *   SETTLEMENT       Dr S21-1101 / S21-1102 เจ้าหนี้ (ตามที่ปัน) / Cr บัญชีที่จ่าย
  *   DEPOSIT_APPLIED  Dr S21-1101 / S21-1102                    / Cr S11-4201   (หักมัดจำเข้าเจ้าหนี้ตอนรับของ — อัตโนมัติ)
  *   DEPOSIT_REFUND   Dr S11-1201 ธนาคารรับเข้า (ส่วนที่ได้คืน) + Dr S53-1105 (ส่วนที่ได้คืนไม่ครบ) / Cr S11-4201
  *   DEPOSIT_FORFEIT  Dr S53-1105 ค่าใช้จ่าย - มัดจำที่ไม่ได้คืน  / Cr S11-4201
  *
- * เงินสดไม่มีในเมนูนี้ (เจ้าของ: โอนธนาคารเท่านั้น) — บัญชีธนาคารที่รับได้จึงมีแค่ S11-1201 / S11-1202.
+ * บัญชีที่จ่ายได้ = `SUPPLIER_PAYMENT_ACCOUNTS` (ธนาคาร S11-1201 / S11-1202 ต้องมีสลิป · เงินสดย่อย S11-1106 ไม่บังคับสลิป —
+ * ขยาย 2026-10-13 ตามคำถามฝ่ายบัญชี; เดิมโอนธนาคารเท่านั้น). ด่านสลิป/ยอดเงินสดอยู่ที่ service · รับมัดจำคืน (DEPOSIT_REFUND) เข้าธนาคารเท่านั้น.
  * `reverse()` = ยกเลิกรายการที่บันทึกผิด: กลับทุกบรรทัดของ JE เดิม ลงวันที่ที่กดยกเลิก (ข้อสมมติ ง)
  */
 export type SupplierPaymentJeKind = 'DEPOSIT' | 'SETTLEMENT' | 'DEPOSIT_APPLIED' | 'DEPOSIT_REFUND' | 'DEPOSIT_FORFEIT';
@@ -35,7 +36,7 @@ export interface ShopSupplierPaymentInput {
   amount: Decimal;
   /** SETTLEMENT / DEPOSIT_APPLIED — บรรทัดเจ้าหนี้ที่ปันแล้ว (S21-1101 / S21-1102) รวมต้องเท่า amount */
   payableLines?: { accountCode: string; amount: Decimal }[];
-  /** DEPOSIT / SETTLEMENT = S11-1202 · DEPOSIT_REFUND = S11-1201 · อื่นไม่ใช้ */
+  /** DEPOSIT / SETTLEMENT = บัญชีที่จ่าย (`SUPPLIER_PAYMENT_ACCOUNTS` · ค่าเริ่มต้น S11-1202) · DEPOSIT_REFUND = S11-1201 · อื่นไม่ใช้ */
   bankAccountCode?: string;
   /** DEPOSIT_REFUND — ส่วนที่ได้คืนไม่ครบ (ลง S53-1105) · 0/ไม่ส่ง = ได้คืนครบ */
   shortfall?: Decimal;
@@ -64,10 +65,6 @@ export const SUPPLIER_DEPOSIT_FORFEIT_ACCOUNT = 'S53-1105';
 const PAYABLE_ACCOUNTS: Record<string, string> = {
   'S21-1101': 'เจ้าหนี้ - ซัพพลายเออร์มือถือ',
   'S21-1102': 'เจ้าหนี้ - อุปกรณ์เสริม',
-};
-const BANK_ACCOUNTS: Record<string, string> = {
-  [ShopAccountResolver.SHOP_RECEIVING_BANK]: 'ธนาคารหน้าร้าน (รับเข้า)',
-  [ShopAccountResolver.SHOP_PAYING_BANK]: 'ธนาคารหน้าร้าน (จ่ายออก)',
 };
 const KIND_LABEL: Record<SupplierPaymentJeKind, string> = {
   DEPOSIT: 'มัดจำผู้จัดจำหน่าย',
@@ -210,9 +207,9 @@ export class ShopSupplierPaymentTemplate {
       throw new BadRequestException(`ShopSupplierPayment: amount must be > 0; got ${amount.toFixed(2)}`);
     }
     const bank = (code: string | undefined) => {
-      if (!code || !(code in BANK_ACCOUNTS)) {
+      if (!code || !Object.prototype.hasOwnProperty.call(SUPPLIER_PAYMENT_ACCOUNTS, code)) {
         throw new BadRequestException(
-          `ShopSupplierPayment: bankAccountCode must be ${ShopAccountResolver.SHOP_RECEIVING_BANK} or ${ShopAccountResolver.SHOP_PAYING_BANK}; got ${code ?? 'none'}`,
+          `ShopSupplierPayment: bankAccountCode must be one of ${SUPPLIER_PAYMENT_ACCOUNT_CODES.join(', ')}; got ${code ?? 'none'}`,
         );
       }
       return code;
@@ -243,17 +240,20 @@ export class ShopSupplierPaymentTemplate {
         const code = bank(input.bankAccountCode);
         return [
           { accountCode: SUPPLIER_DEPOSIT_ACCOUNT, dr: amount, cr: zero, description: 'มัดจำจ่ายล่วงหน้าผู้จัดจำหน่าย' },
-          { accountCode: code, dr: zero, cr: amount, description: BANK_ACCOUNTS[code] },
+          { accountCode: code, dr: zero, cr: amount, description: SUPPLIER_PAYMENT_ACCOUNTS[code].label },
         ];
       }
       case 'SETTLEMENT': {
         const code = bank(input.bankAccountCode);
-        return [...payable(), { accountCode: code, dr: zero, cr: amount, description: BANK_ACCOUNTS[code] }];
+        return [...payable(), { accountCode: code, dr: zero, cr: amount, description: SUPPLIER_PAYMENT_ACCOUNTS[code].label }];
       }
       case 'DEPOSIT_APPLIED':
         return [...payable(), { accountCode: SUPPLIER_DEPOSIT_ACCOUNT, dr: zero, cr: amount, description: 'หักมัดจำเข้าเจ้าหนี้' }];
       case 'DEPOSIT_REFUND': {
         const code = bank(input.bankAccountCode);
+        if (!isBankSupplierPaymentAccount(code)) {
+          throw new BadRequestException(`ShopSupplierPayment: DEPOSIT_REFUND must land on a bank account; got ${code}`);
+        }
         const shortfall = new Decimal((input.shortfall ?? zero).toString());
         if (shortfall.lt(zero) || shortfall.gt(amount)) {
           throw new BadRequestException(`ShopSupplierPayment: shortfall must be between 0 and ${amount.toFixed(2)}`);

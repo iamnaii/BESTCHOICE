@@ -15,6 +15,7 @@ const typeLabels: Record<string, string> = {
   EARLY_PAYOFF: 'ใบเสร็จปิดยอด',
   CREDIT_NOTE: 'ใบลดหนี้',
   RESCHEDULE_FEE: 'ใบเสร็จปรับดิว',
+  ADVANCE_SURPLUS: 'ใบเสร็จเงินรับล่วงหน้า',
 };
 
 const methodLabels = RECEIPT_METHOD_LABELS;

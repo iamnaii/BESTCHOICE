@@ -315,6 +315,7 @@ describe('composeHandoverDoc — ใบส่งมอบ', () => {
         financeCompany: null,
         sevenDayEnd: null,
         deliveredNote: null,
+        deliveredAccessories: null,
         approvedByName: null,
         approvedAt: null,
         repairTicketNumber: null,
@@ -490,12 +491,28 @@ describe('handoverBlockReason', () => {
           financeCompany: null,
           sevenDayEnd: new Date('2026-10-20T00:00:00.000Z'),
           deliveredNote: 'ส่งมอบเครื่องทดแทน · ใบขาย SL-0001 · อุปกรณ์: กล่อง, สายชาร์จ',
+          deliveredAccessories: null,
           approvedByName: 'นิภา',
           approvedAt: new Date('2026-10-12T06:00:00.000Z'),
           repairTicketNumber: null,
         },
       });
     const text = (d: AfterSalesDoc) => JSON.stringify(d);
+
+    it('M3 — กล่อง "อุปกรณ์ที่ส่งมอบ" อ่านจากข้อมูลโครงสร้างก่อน (ไม่ถอดจาก note) · ไม่มีอุปกรณ์ = "ไม่มี" · เคสเก่า (null) ถอดจาก note', () => {
+      const boxOf = (d: AfterSalesDoc) =>
+        (d.blocks.find((b) => b.type === 'box' && (b as { title?: string }).title === 'อุปกรณ์ที่ส่งมอบ') as { text: string }).text;
+      const structured = cash();
+      structured.exchange!.deliveredAccessories = { box: true, charger: false, case: true, other: 'ฟิล์มกันรอย' };
+      structured.exchange!.deliveredNote = 'ส่งมอบเครื่องทดแทน · ใบขาย SL-0001 · อุปกรณ์: กล่อง, สายชาร์จ · ลูกค้าบอกว่า อุปกรณ์: ครบ';
+      expect(boxOf(composeReplacementHandoverDoc(structured))).toBe('กล่อง, เคส, อื่น ๆ — ฟิล์มกันรอย');
+      const none = cash();
+      none.exchange!.deliveredAccessories = { box: false, charger: false, case: false, other: null };
+      expect(boxOf(composeReplacementHandoverDoc(none))).toBe('ไม่มี');
+      const legacy = cash();
+      legacy.exchange!.deliveredAccessories = null;
+      expect(boxOf(composeReplacementHandoverDoc(legacy))).toBe('กล่อง, สายชาร์จ');
+    });
 
     it('handoverBlockReason ของขายสด: READY/CLOSED พิมพ์ได้ · AWAITING ไม่ได้', () => {
       expect(

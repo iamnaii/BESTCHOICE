@@ -139,6 +139,36 @@ describe('ShopSupplierPaymentTemplate.execute', () => {
     ]);
   });
 
+  it('จ่ายจากเงินสดย่อย S11-1106 (ข้อเสนอ 2026-10-13): Cr บัญชีที่เลือก คำอธิบายเป็นชื่อบัญชีนั้น · เงินสดเจ้าของ S11-1104 ไม่อยู่ในรายการ · รับมัดจำคืนเข้าธนาคารเท่านั้น', async () => {
+    const { template, tx, lastCall, asPairs } = setup();
+    await template.execute(
+      base({ kind: 'SETTLEMENT', amount: new Decimal('10729'), payableLines: [{ accountCode: 'S21-1101', amount: new Decimal('10729') }], bankAccountCode: 'S11-1106' }),
+      tx as never,
+    );
+    expect(asPairs(lastCall().lines)).toEqual([
+      ['S21-1101', '10729.00', '0.00'],
+      ['S11-1106', '0.00', '10729.00'],
+    ]);
+    expect(lastCall().lines[1]).toMatchObject({ description: 'เงินสด - เงินสดย่อย' });
+    expect(lastCall().metadata).toMatchObject({ bankAccountCode: 'S11-1106' });
+
+    const second = setup();
+    await second.template.execute(base({ kind: 'DEPOSIT', amount: new Decimal('500'), bankAccountCode: 'S11-1106' }), second.tx as never);
+    expect(second.asPairs(second.lastCall().lines)).toEqual([
+      ['S11-4201', '500.00', '0.00'],
+      ['S11-1106', '0.00', '500.00'],
+    ]);
+
+    // S11-1104 เป็นของสมุดปิดยอดลิ้นชัก/นำฝาก (FIFO จากตาราง ไม่ใช่ GL) — จ่ายผู้จัดจำหน่ายจากบัญชีนี้ไม่ได้ (ผู้ตรวจอิสระ 13/10 ข้อ 1)
+    const third = setup();
+    await expect(third.template.execute(base({ kind: 'DEPOSIT', amount: new Decimal('500'), bankAccountCode: 'S11-1104' }), third.tx as never)).rejects.toBeInstanceOf(BadRequestException);
+    // รับมัดจำคืน = เงินเข้าธนาคารเท่านั้น (ต้องมีสลิป) — เงินสดย่อยใช้ไม่ได้ (ผู้ตรวจอิสระ ข้อ 4)
+    await expect(
+      third.template.execute(base({ kind: 'DEPOSIT_REFUND', amount: new Decimal('300'), bankAccountCode: 'S11-1106' }), third.tx as never),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(third.journal.createAndPost).not.toHaveBeenCalled();
+  });
+
   it('ปฏิเสธยอดศูนย์/ติดลบ · บรรทัดเจ้าหนี้รวมไม่เท่ายอด · รหัสบัญชีนอกกติกา', async () => {
     const { template, tx, journal } = setup();
     await expect(template.execute(base({ amount: new Decimal('0') }), tx as never)).rejects.toBeInstanceOf(BadRequestException);

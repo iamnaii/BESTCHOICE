@@ -209,7 +209,7 @@ export function StepSummary({
         <section className={card} aria-label="การจ่ายเงิน">
           <CardHeader icon={<Calculator className="size-4.5" />} tone="bg-warning/10 text-warning-strong" title="การจ่ายเงิน" hint="จ่ายแยกหลังอนุมัติ" />
           <p className="text-sm leading-snug text-muted-foreground">
-            ซื้อเครดิต — บันทึกการจ่ายหลังอนุมัติ ผ่านปุ่ม "บันทึกการจ่าย" ในใบสั่งซื้อ (ลงบัญชีทุกครั้ง · โอนธนาคารเท่านั้น)
+            ซื้อเครดิต — บันทึกการจ่ายหลังอนุมัติ ผ่านปุ่ม "บันทึกการจ่าย" ในใบสั่งซื้อ (ลงบัญชีทุกครั้ง · โอนธนาคารแนบสลิป หรือเงินสดย่อย)
             {dueDatePreview ? ` · ครบกำหนดชำระ ${formatDateShort(dueDatePreview)}` : ''}
           </p>
         </section>

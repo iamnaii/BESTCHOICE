@@ -121,23 +121,43 @@ describe('UX/UI mobile controls on the real isolated API', () => {
         await web.navigate(page, '/finance/equity');
         await page.getByText('EQ-20261120-0001', { exact: true }).waitFor();
         await verifyLayout('equity');
-        const scrollTable = async () => {
+        const verifyTableFits = async (cellCount: number, values: string[]) => {
           const table = page.locator('table').first();
-          expect(await table.evaluate(element => {
-            const scroller = element.parentElement!;
-            scroller.scrollLeft = scroller.scrollWidth;
-            return scroller.scrollWidth > scroller.clientWidth && scroller.scrollLeft > 0;
-          })).toBe(true);
+          const body = table.locator('tbody');
+          expect(await body.locator('tr').count()).toBe(1);
+          expect(await body.locator('td').count()).toBe(cellCount);
+          for (const value of values) expect(await body.innerText()).toContain(value);
+          // Mobile rows now fit the viewport. Requiring horizontal overflow would
+          // reject that improvement; verify every populated cell remains readable.
+          for (const dark of [false, true]) {
+            await page.evaluate(value => document.documentElement.classList.toggle('dark', value), dark);
+            expect(await table.evaluate(element => {
+              const frame = element.parentElement!;
+              const box = element.getBoundingClientRect();
+              return box.width > 0 && box.left >= -1 && box.right <= innerWidth + 1
+                && frame.scrollWidth <= frame.clientWidth + 1;
+            })).toBe(true);
+            expect(await body.locator('td').evaluateAll(cells => cells.flatMap((cell, index) => {
+              const box = cell.getBoundingClientRect();
+              const visible = getComputedStyle(cell).visibility !== 'hidden';
+              return visible && box.width > 0 && box.height > 0 && box.left >= -1 && box.right <= innerWidth + 1
+                && cell.scrollWidth <= cell.clientWidth + 1 && cell.scrollHeight <= cell.clientHeight + 1
+                ? [] : [{ index, visible, width: box.width, height: box.height, left: box.left, right: box.right,
+                  scrollWidth: cell.scrollWidth, clientWidth: cell.clientWidth,
+                  scrollHeight: cell.scrollHeight, clientHeight: cell.clientHeight }];
+            }))).toEqual([]);
+          }
         };
-        await scrollTable();
+        await verifyTableFits(6, ['EQ-20261120-0001', longName, '1,234,567.00']);
         await page.getByRole('button', { name: 'ทะเบียนผู้ถือหุ้น', exact: true }).click();
         await page.getByText(longName, { exact: true }).waitFor();
         await verifyLayout('shareholders');
-        await scrollTable();
+        await verifyTableFits(5, [longName, '0105500000028', '123,456', 'ใช้งาน']);
         await web.navigate(page, '/finance/dividend-register');
         await page.getByRole('button', { name: 'หนังสือรับรอง', exact: true }).waitFor();
         await verifyLayout('dividends');
-        await scrollTable();
+        await verifyTableFits(8, [longName, '0105500000028', '1,234,567.00', '123,456.70', '1,111,110.30', 'EQ-20261220-0001']);
+        await page.getByRole('button', { name: 'หนังสือรับรอง', exact: true }).click({ trial: true });
         expect(errors.filter(error => error.startsWith('pageerror:'))).toEqual([]);
       } finally { await context.close(); }
     }, 120000);

@@ -47,7 +47,10 @@
     max-width: 100%;
     padding: 0;
     text-align: start;
+    line-height: 1.5;
     white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
     overflow-wrap: anywhere;
     border-inline: 0;
     box-shadow: none;

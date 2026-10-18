@@ -37,6 +37,8 @@ export interface ReceiptMoneyView {
   lateFeeWaivedAmount?: DecimalLike;
   advanceAmount?: DecimalLike;
   advanceVatAmount?: DecimalLike;
+  /** ส่วนลดดอกเบี้ยปิดยอด (ใบปิดยอดก่อนกำหนด 16.1 · 2026-10-18) — null/ไม่มี = 0 · ไม่ใช่เงื่อนไขของ hasStoredReceiptTax */
+  discountAmount?: DecimalLike;
   /**
    * ใบลดหนี้ตอนยกเลิกใบเสร็จ (PR3): งวดเป้าหมายของเงินพักค่าปรับดิวของใบที่ถูกยกเลิก — ประวัติการจัดสรรของใบลดหนี้เอง
    * ไม่มี (ReceiptQueryService.getReceipt หาให้ผ่าน voidedReceiptId) ใช้เฉพาะป้ายของแถวเงินรับล่วงหน้าในทางที่เก็บค่า
@@ -78,6 +80,8 @@ export interface ReceiptDocumentMoney {
   feePortion: Money;
   /** ปัดเศษนอกฐานภาษี (0 = ไม่มีแถว) */
   rounding: Money;
+  /** ส่วนลดดอกเบี้ยปิดยอด — แถวแยกไม่ลดฐานภาษี (0 = ไม่มีแถว · ใบที่ไม่ใช่ใบปิดยอด / ตรรกะเดิม = 0) */
+  discount: Money;
   /** สรุป: มูลค่าก่อนภาษี / ภาษีมูลค่าเพิ่ม */
   exclVat: Money;
   vatPart: Money;
@@ -270,6 +274,7 @@ export function legacyReceiptDocumentMoney(view: ReceiptMoneyView): ReceiptDocum
     feeWaived,
     feePortion,
     rounding: ZERO,
+    discount: ZERO,
     exclVat,
     vatPart,
     advanceOnly,
@@ -307,8 +312,10 @@ export function storedReceiptDocumentMoney(view: ReceiptMoneyView): ReceiptDocum
   const advance = toDec(view.advanceAmount);
   const advanceVat = toDec(view.advanceVatAmount);
   const vat = toDec(view.vatAmount);
+  // ใบปิดยอด (16.1): ส่วนลดดอกเบี้ยถูกหักจากเงินที่รับแต่ไม่ลดแถวค่างวด/ฐานภาษี ⇒ บวกกลับเข้าแถวค่างวด
+  const discount = toDec(view.discountAmount);
   const receiptType = view.receiptType ?? 'PAYMENT';
-  const installmentPortion = total.minus(fee).minus(rounding).minus(advance);
+  const installmentPortion = total.minus(fee).minus(rounding).minus(advance).plus(discount);
   const installmentVat = vat.minus(advanceVat);
   const rescheduleTarget =
     view.installmentAllocations?.find((a) => a.kind === 'RESCHEDULE_ADVANCE')?.installmentNo ??
@@ -345,6 +352,7 @@ export function storedReceiptDocumentMoney(view: ReceiptMoneyView): ReceiptDocum
     feeWaived: waived,
     feePortion: fee,
     rounding,
+    discount,
     exclVat: toDec(view.amountBeforeVat),
     vatPart: vat,
     advanceOnly,
@@ -372,5 +380,6 @@ export function documentMoneyColumns(m: ReceiptDocumentMoney) {
     lateFeeWaivedAmount: m.feeWaived,
     advanceAmount: m.advancePortion,
     advanceVatAmount: m.advanceRows.reduce((sum, row) => sum.plus(row.vat), ZERO),
+    discountAmount: m.discount,
   };
 }

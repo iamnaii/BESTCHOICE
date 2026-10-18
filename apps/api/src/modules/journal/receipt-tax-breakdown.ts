@@ -46,6 +46,12 @@ export interface ReceiptTaxBreakdown {
   advanceAmount: string;
   /** ภาษีของแถวเงินรับล่วงหน้า (เครื่องหมายเดียวกับ advanceAmount) */
   advanceVatAmount: string;
+  /**
+   * ส่วนลดดอกเบี้ยปิดยอด (Dr 52-1106) — แถวแยกไม่ลดฐานภาษี (ฝ่ายบัญชี 16/10/2569 ข้อ 16.1 · ใบปิดยอดก่อนกำหนด
+   * ตั้งแต่ 2026-10-18) · ไม่มี = 0 (ใบค่างวด / stamp เดิมทุกใบ) ⇒ invariant: amountBeforeVat + vatAmount + roundingAmount
+   * + lateFeeAmount − discountAmount = amount
+   */
+  discountAmount?: string;
 }
 
 const ZERO = new Decimal(0);
@@ -139,6 +145,9 @@ export function computeInstallmentReceiptTax(
   };
 }
 
+/** เงิน 2 ตำแหน่งเป็นสตริง (ติดลบได้ — แถวหักเงินรับล่วงหน้า) */
+const MONEY_RE = /^-?\d{1,10}\.\d{2}$/;
+
 const MONEY_FIELDS = [
   'amount',
   'amountBeforeVat',
@@ -160,20 +169,26 @@ export function parseReceiptTax(value: unknown): ReceiptTaxBreakdown | null {
   if (v.version !== RECEIPT_TAX_VERSION) return null;
   for (const field of MONEY_FIELDS) {
     const raw = v[field];
-    if (typeof raw !== 'string' || !/^-?\d{1,10}\.\d{2}$/.test(raw)) return null;
+    if (typeof raw !== 'string' || !MONEY_RE.test(raw)) return null;
   }
+  // ส่วนลดดอกเบี้ยปิดยอด (optional — ใบปิดยอดตั้งแต่ 2026-10-18) · มีแต่รูปผิด = stamp ใช้ไม่ได้
+  const hasDiscount = v.discountAmount !== undefined;
+  if (hasDiscount && (typeof v.discountAmount !== 'string' || !MONEY_RE.test(v.discountAmount))) return null;
   const d = (field: (typeof MONEY_FIELDS)[number]) => new Decimal(v[field] as string);
+  const discount = hasDiscount ? new Decimal(v.discountAmount as string) : ZERO;
   if (
     !d('amountBeforeVat')
       .plus(d('vatAmount'))
       .plus(d('roundingAmount'))
       .plus(d('lateFeeAmount'))
+      .minus(discount)
       .eq(d('amount'))
   ) {
     return null;
   }
   const out = { version: RECEIPT_TAX_VERSION } as ReceiptTaxBreakdown;
   for (const field of MONEY_FIELDS) out[field] = v[field] as string;
+  if (hasDiscount) out.discountAmount = v.discountAmount as string;
   return out;
 }
 
@@ -187,6 +202,8 @@ export function receiptTaxColumns(b: ReceiptTaxBreakdown) {
     lateFeeWaivedAmount: new Decimal(b.lateFeeWaivedAmount),
     advanceAmount: new Decimal(b.advanceAmount),
     advanceVatAmount: new Decimal(b.advanceVatAmount),
+    // ใบปิดยอด (16.1): ส่วนลดดอกเบี้ย 52-1106 · ใบอื่น/stamp เดิม = 0 (คอลัมน์ไม่ null เมื่อใบเก็บค่า)
+    discountAmount: new Decimal(b.discountAmount ?? '0'),
   };
 }
 
@@ -257,3 +274,84 @@ export function advanceSurplusReceiptTax(
   };
 }
 
+
+/** ตัวเลขของรายการ JP4 ที่ใบปิดยอดก่อนกำหนดต้องพิมพ์ — ทุกค่าจาก `buildEarlyPayoffJE` ยกเว้น `installmentVat` */
+export interface EarlyPayoffReceiptTaxInput {
+  /** เงินที่รับ (= quote.totalPayoff = Receipt.amount) */
+  amount: Decimal;
+  /** ลูกหนี้ตามบัญชีที่ล้าง (11-2101 + 11-2103 + 11-2105 รวมภาษี) */
+  receivableCleared: Decimal;
+  /** Σ ภาษีคงเหลือของทุกงวดที่ใบนี้ปิด — กติกา PR3 ต่องวด (`remainingInstallmentVat`) */
+  installmentVat: Decimal;
+  /** Cr 42-1103 (netted) — นอกฐานภาษี */
+  lateFees: Decimal;
+  /** Dr 52-1106 — แถว "ส่วนลดดอกเบี้ยปิดยอด" ไม่ลดฐานภาษี */
+  discount: Decimal;
+  /** เงินของลูกค้าที่ยอดปิดหัก: เงินพักค่าปรับดิว · เงินรับล่วงหน้าถังรวม · เครดิต 21-5101 (แถวติดลบแถวเดียว) */
+  parkRelief: Decimal;
+  advanceRelief: Decimal;
+  creditRelief: Decimal;
+  /** Dr 21-2101 / Cr 21-2102 — ภาษีที่ออกใบกำกับไปแล้วของเงินที่หัก (ข้อ 13–14) · เครดิต 21-5101 ไม่มีภาษี (ยังไม่มีคำตัดสิน) */
+  advanceVatReversal: Decimal;
+  /** Cr 53-1503 — ปัดเศษเก็บเกิน (นอกฐานภาษี) */
+  roundingGain: Decimal;
+  /** 18.2 — เงินรับเกินยอดปิดที่ลงรายได้ · > 0 = ใบนี้ยังไม่รองรับ (คืน null → พิมพ์แบบเดิม) */
+  excessIncome: Decimal;
+}
+
+/**
+ * ใบปิดยอดก่อนกำหนดเป็นใบกำกับภาษีตามบัญชี (ฝ่ายบัญชี 16/10/2569 ข้อ 16.1/16.2 · mockup เจ้าของเคาะ 18/10/2569):
+ *   แถวค่างวดคงเหลือ   = ลูกหนี้ตามบัญชีที่ล้าง · ภาษี = Σ ภาษีคงเหลือของแต่ละงวด (ใบที่ทำให้ครบรับส่วนที่เหลือ — PR3)
+ *   แถวหักเงินของลูกค้า = −(เงินพัก + ถังรวม + เครดิต) · ภาษี = −ขากลับที่ JP4 ลงจริง (ภาษีที่ออกใบกำกับไปแล้วตอนรับ)
+ *   แถวส่วนลดดอกเบี้ย   = 52-1106 (ไม่ลดฐานภาษี) · ค่าปรับ / ปัดเศษ นอกฐานภาษีเหมือนใบค่างวด
+ * null = ใบพิมพ์แบบเดิม (ไม่ใช่ใบกำกับภาษีตามบัญชี): มีเงินรับเกิน (18.2) · ค่าติดลบ · ตัวเลขไม่ลงตัวกับเงินที่รับ
+ */
+export function earlyPayoffReceiptTax(input: EarlyPayoffReceiptTaxInput): ReceiptTaxBreakdown | null {
+  const {
+    amount,
+    receivableCleared,
+    installmentVat,
+    lateFees,
+    discount,
+    parkRelief,
+    advanceRelief,
+    creditRelief,
+    advanceVatReversal,
+    roundingGain,
+    excessIncome,
+  } = input;
+  if (excessIncome.gt(0)) return null;
+  const nonNegative = [
+    amount,
+    receivableCleared,
+    installmentVat,
+    lateFees,
+    discount,
+    parkRelief,
+    advanceRelief,
+    creditRelief,
+    advanceVatReversal,
+    roundingGain,
+  ];
+  if (nonNegative.some((v) => !v.isFinite() || v.isNegative())) return null;
+  const advanceAmount = parkRelief.plus(advanceRelief).plus(creditRelief).negated();
+  const advanceVatAmount = advanceVatReversal.negated();
+  const amountBeforeVat = receivableCleared
+    .minus(installmentVat)
+    .plus(advanceAmount.minus(advanceVatAmount));
+  const vatAmount = installmentVat.plus(advanceVatAmount);
+  const identity = amountBeforeVat.plus(vatAmount).plus(roundingGain).plus(lateFees).minus(discount);
+  if (!identity.eq(amount)) return null;
+  return {
+    version: RECEIPT_TAX_VERSION,
+    amount: money(amount),
+    amountBeforeVat: money(amountBeforeVat),
+    vatAmount: money(vatAmount),
+    roundingAmount: money(roundingGain),
+    lateFeeAmount: money(lateFees),
+    lateFeeWaivedAmount: money(ZERO),
+    advanceAmount: money(advanceAmount),
+    advanceVatAmount: money(advanceVatAmount),
+    discountAmount: money(discount),
+  };
+}

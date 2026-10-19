@@ -641,15 +641,18 @@ The544 current financial-family domain rows are partitioned into the fifteen rev
 
 #### Serial execution of Task4.2.1
 
-R98 partitions the exact38domain+7adjacent surface below; R99 governs the first read-core producer. Later finite policy choices are settled in recorded checkpoints before runtime, without replacing the binding design. Root owns final parent reconciliation and actualJWT/browser/localcheck/preview8.
+R98 partitions the exact38domain+7adjacent surface below; R99 governs the first read-core producer. R100–108 settle financial status, global reference, preparation, review, delegation, exchange, payoff, cancellation and derived-source contracts. R109 bounds read-core contributor work and requires set-based canonical source locks with measured scale/contention evidence. Root rulings control the checkpoint proposals; implementation must preserve the binding design. Root owns final parent reconciliation and actualJWT/browser/localcheck/preview8.
 
 ### Task 4.2.1.1: Ordinary FINANCE Contract read core
 
 **Files/scope:** ContractsController.findAll and findOne; exactly2domain. Amend existing Sale contractStatus filtering and Sale/TradeIn Contract navigation with zero additional route credit.
 
-- [ ] Meaningful owned PostgreSQL/marked HTTP RED with exact authorized success/no-grants/foreign/current and asymmetric tuple controls; explicitly isolated both DB URLs, mocked external effects. Fixture/compiler failures are not behavioral RED.
-- [ ] R99 actual FINANCE/liveSHOPorigin/current assignedToId read source; paired original tuples; independent finite child/source/sensitive projection and authorization-aware search/filter/sort/count/pagination; explicit null/coverage semantics. Reuse existing canonical party helpers, keep mutation business reads separate.
-- [ ] Cover actual changed authorization/money/file behavior, relevant canonical regressions, types/touched lint and scoped coverage. Record exact commands/exits, self-review/commit and independent gate; preserve remaining audit5/approval6/UI7/system4.4/final8 obligations.
+- [x] Meaningful owned PostgreSQL/marked HTTP RED with exact authorized success/no-grants/foreign/current and asymmetric tuple controls; explicitly isolated both DB URLs, mocked external effects. Fixture/compiler failures are not behavioral RED.
+- [x] R99 actual FINANCE/liveSHOPorigin/current assignedToId read source; paired original tuples; independent finite child/source/sensitive projection and authorization-aware search/filter/sort/count/pagination; explicit null/coverage semantics. Reuse existing canonical party helpers, keep mutation business reads separate.
+- [x] R109: ordered set-based canonical source locking for up to 10,000 distinct SQL-proven Contract contributors; probe 10,001 only to reject overflow with a generic narrow-filter 400 before partial output. Preserve current source, off-page contributors, maximum page 200 and Serializable max-three attempts. Record supported-bound success, overflow/narrowing, query count, synthetic portfolio latency and unrelated managed-request contention; no production SLA claim.
+- [x] Cover actual changed authorization/money/file behavior, relevant canonical regressions, types/touched lint and scoped coverage. Record exact commands/exits, self-review/commit and independent gate; preserve remaining audit5/approval6/UI7/system4.4/final8 obligations.
+
+**Read-core completion:** `71c26e196` plus independently approved I1 fix `89ddcf680`; exact two FINANCE routes, source-authorized Sale/TradeIn links and Sale status filtering add no routes. Final owned Contract33/Party57/Sales15, shared/API types and focused lint pass. R109 measured support covers 10,000 distinct contributors with generic overflow rejection and source/actor/off-page waits. One earlier pre-ANALYZE narrowed Sale expiration remains unexplained and assigned to4.4/8; no production SLA, clean teardown, actualJWT/browser/preview or whole-program claim. Parent remains incomplete.
 
 ### Task 4.2.1.2: Interest reference and owner configuration
 
@@ -712,7 +715,7 @@ R98 partitions the exact38domain+7adjacent surface below; R99 governs the first 
 **Files/scope:** ContractsController.earlyPayoff, earlyPayoffSlipVerify, earlyPayoffSlipConfirm, shopCollectSettlement; exactly4domain.
 
 - [ ] Meaningful owned PostgreSQL/marked HTTP RED with exact authorized success/no-grants/foreign/current and asymmetric tuple controls; explicitly isolated both DB URLs, mocked external effects. Fixture/compiler failures are not behavioral RED.
-- [ ] Actual immutable money/source/approval snapshot, real canonical tx/JE/period/CAS/idempotency and late-audit rollback; OCR evidence is not interest/penalty approval. Preserve15-minute slip ticket and formulas; stage verified files once with final current checks and controlled aftercommit effects.
+- [ ] R106: direct earlyPayoff is an honest request-only bridge into existing EARLY_PAYOFF approval creation, PENDING_APPROVAL with no money claim; actual queue approval/execution4.2.4/6 remains a required dependency. Positive computed reduction including default policy requires owner approval; OCR is payment evidence only. Preserve actual immutable money/source snapshot, canonical tx/JE/period/CAS/idempotency/late-audit rollback,15-minute ticket/formulas and staged verified files with final current checks and controlled aftercommit effects. SHOP settlement checks both actual FINANCE and SHOP payments.create.
 - [ ] Cover actual changed authorization/money/file behavior, relevant canonical regressions, types/touched lint and scoped coverage. Record exact commands/exits, self-review/commit and independent gate; preserve remaining audit5/approval6/UI7/system4.4/final8 obligations.
 
 ### Task 4.2.1.10: Cancellation and draft disposal

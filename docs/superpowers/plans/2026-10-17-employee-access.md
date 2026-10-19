@@ -574,6 +574,38 @@ R75 splits this parent into reference/output14 and promotion4 plus adjacent owne
 - [ ] Reconcile the278 baseline SHOP domain registrations plus explicitly introduced surfaces (currently two authenticated Customer document routes,280total) against actual reviewed success/denial evidence, including the31 baseline customer routes plus those additions. Separately reconcile seven employee-management and three promotion owner staff routes without double counting. Cover affected cross-unit source/tuple/sensitive/file/aggregate/current-revocation behavior; missing-adapter denial is not completion.
 - [ ] Types/coverage/isolated checks, report/self-review/commit and independent gate before completing the SHOP parent. Publish remaining FINANCE544/operations267/audit4/other-staff/automation and Tasks4.4–8 accurately. Root retains final JWT/guards/browser/local:check/verified-preview work.
 
+#### Serial execution of Task4.1.6.3
+
+R92–96 separate the genuine global account/debit producer from four loyalty HTTP consumers and three direct defect consumers. No original requirement or route is removed. Exact global account versus scoped history, canonical once-only Sale debit, immutable new provenance, Bangkok5000cap and verification-only direct redeem are binding in the ledger/checkpoint rulings. No ordinary saved/future grants are silently expanded.
+
+### Task 4.1.6.3.1: Typed loyalty account and canonical Sale debit producer
+
+**Files:** Existing managed canonical SaleCreation debit/actual outer transaction, LoyaltyRedemption additive provenance, minimal loyalty account/source helper and Journey redemption consumer, shared capability catalog; zero additional HTTP routes.
+
+- [x] Original ownedPG monetary and authority RED before runtime; exact R93 COMPANY SHOP global account rights plus independent current Customer/Sale/Product sources and no hidden balance/error probes.
+- [x] Preserve canonical money/stock/JE/tender/discount executor, add required read+redeem authority, positive integral1:1points, exact net ceiling and Bangkok cumulative5000cap under current Customer/account lock in owned Serializable max3. Required evidence, typed unique immutable Sale redemption and conditional balance debit commit/rollback together; race/duplicate/revocation/lateaudit behavior.
+- [x] No guessed historical backfill/reason parsing/repricing/new expiry or recredit. Preserve canonical global balance despite incomplete history. Minimal genuine typed Journey consumer and publish exact direct verification/history/approval6/FINANCEearning4.2.4/system4.4/UI7 contracts.
+- [x] Cover actual Sale monetary/discount/promotion/tradecredit/Journey regressions, shared/API/Web types and touched lint/coverage honestly; report/self-review/commit, independent gate before consumers. No route/wholeSHOP/UI/JWT claim.
+
+**Reviewed producer completion:** 23ebb1780..dbe784a92; independent spec/quality PASS,0Critical/0Important/1Minor (expected-failure test logging). Original monetary/authority RED was contemporaneously observed before runtime. Final26 owned canonical Sale tests and scoped helper coverage91.75/87.14/100/94.31 pass; priorSales15/Journey38/canonical128/shared47, promotion69of70 plus affected amended1, largerheapalltypes/finalAPI/lint are qualified retained evidence. Explicit global account rights have no default expansion. Typed immutable actual-Sale proof, Bangkok5000cap, current-source/authority, atomic debit/evidence and minimal Journey consumer are reviewed. Direct Loyalty4/Defect3 remain open; zero routecredit, SHOP273/280, no full JWT/UI/preview claim.
+
+### Task 4.1.6.3.2: Loyalty account projection, scoped history and exact verification
+
+**Files:** LoyaltyController4, actual source/query/projector/verification helpers, DTO/current capability manifest boundaries and meaningful owned HTTP/PG tests; exactly4 SHOP routes.
+
+- [ ] Consume reviewed typed producer. Four useful authorized/denied actual marked HTTP paths, original tuples/current revocation; independently current Customer, earningPayment/FINANCEContract, typedSale/redemption and referralCustomer/Contract sources.
+- [ ] R93 explicit global balance or null/unavailable; scoped visible history/totals before counts/limits/ranking, no false global/lifetime/expiry claims, nullable referral hasContract when coverage incomplete.
+- [ ] Direct POST redeem verifies only genuine exact typed selected Sale redemption under R94 action/source rights. Arbitrary target/amount/customer/Contract/approver text cannot debit, reprice or createproof; duplicates zeroeffects. Explicit VERIFIED/alreadyRedeemed contract; current balance onlywithaccountread.
+- [ ] Preserve public/system/auth and canonical money paths, safe evidence and significant read contract; publish brokenCustomerDetail form migration, nullable metrics/UI7 and approval/audit/final8 obligations. Exact4registrations/evidence, types/lint/regressions/report/commit and independent gate.
+
+### Task 4.1.6.3.3: Direct defect exchange and SHOP parent reconciliation
+
+**Files:** DefectExchangeController3 and existing reviewed AccessExchangeSourceService/canonical helpers, focused boundary/projection tests; exactly3 SHOP routes.
+
+- [ ] Actual eligibility/execute/list markedHTTP positive/no-grants/foreign/currenttuples, passing currentactor. Preserve FINANCE Contract at trueSHOPorigin, independent original/replacementProduct/destination/Customer and sensitive authority, scopebeforelistlimits.
+- [ ] Reuse existing canonical current owned transaction/executor, read vscreate+approve and genuine approval/state/window/override constraints. No alternatefinancialwriter/rolegrant; rollback/concurrent/lateaudit and aftercommit effects withmockproviders.
+- [ ] Relevant Sale/exchange/after-sales regressions/types/lint/coverage/report/commit/independent gate. Root reconciles disjoint280SHOP actualregistered+reviewedpositive/denial, separate7employee+3promotionadjacent, and everyoriginalparentrequirement. FINANCE544/operations267/audit4/otherstaff/system/tasks4.4–8 remain pending; no actualJWT/browser/preview claim.
+
 ### Task 4.2: FINANCE, accounting and financial reporting scope
 
 **Files:** Extend employee-access scope/resolver/projector infrastructure; add `access-finance-boundaries.ts` and focused tests. Modify manifest-listed contracts, credit-check, payments, receipts, refunds, collections-session, overdue, legal-case, repossessions, finance-receivable, external-finance, expense-documents, journal, accounting, chart-of-accounts, bank-accounts, tax, reporting, analytics and finance-report service paths as required.

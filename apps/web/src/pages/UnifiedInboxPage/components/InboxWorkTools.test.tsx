@@ -212,9 +212,9 @@ describe('Inbox rail on desktop', () => {
     expect(screen.queryByRole('complementary', { name: 'ศูนย์การสื่อสาร' })).toBeNull();
     expect(screen.queryByRole('link', { name: 'กลับหน้าหลัก' })).toBeNull();
     expect(document.querySelector('.inbox-workspace-header')).not.toBeNull();
-    expect(screen.getByRole('heading', { name: 'แชท' })).not.toHaveClass('sr-only');
-    expect(screen.getByRole('button', { name: 'แชทลูกค้า' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'คิวงาน' })).toHaveTextContent('งานทีม');
+    expect(screen.getByRole('navigation', { name: 'การสื่อสารและงานทีม' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'แชท' })).toHaveAttribute('aria-current', 'page');
+    expect(screen.getByRole('button', { name: 'คิวงาน' })).toHaveTextContent('คิวงาน');
     expect(screen.queryByRole('button', { name: 'สลับธีม' })).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'เมนูงานแชท' }));
     expect(screen.getByRole('button', { name: 'สลับธีม' })).toBeInTheDocument();

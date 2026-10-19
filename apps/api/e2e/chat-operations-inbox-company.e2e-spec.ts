@@ -98,8 +98,9 @@ describe('real inbox HTTP reads follow the selected work company', () => {
       for (const key of ['channel', 'channels']) {
         const response = await request(app.getHttpServer()).get('/staff-chat/rooms')
           .query({ company, [key]: channel, search: prefix }).expect(200);
-        expect(response.body.total).toBe(0);
-        expect(response.body.data).toEqual([]);
+        expect({ company, key, channel, body: response.body, text: response.text }).toMatchObject({
+          company, key, channel, body: { total: 0, data: [] },
+        });
       }
     }
     const response = await request(app.getHttpServer()).get('/staff-chat/rooms')

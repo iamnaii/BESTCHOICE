@@ -16,7 +16,6 @@ import { apptState, nextAppointment } from './components/appointment';
 import { fetchRoomAppointmentSummaries } from './components/room-appointment-summaries';
 import { toast } from 'sonner';
 import { ArrowLeft, Lock } from 'lucide-react';
-import QueryBoundary from '@/components/QueryBoundary';
 import ConversationList, { type InboxFilters } from './components/ConversationList';
 import { describeSendError } from './components/send-error';
 import { buildRoomListParams } from './components/room-query';
@@ -49,6 +48,17 @@ export default function UnifiedInboxPage() {
   const { roomId: roomIdParam } = useParams<{ roomId: string }>();
   const workspaceRef = useRef<HTMLDivElement>(null);
   const [activeRoomId, setActiveRoomId] = useState<string | null>(null);
+  const [searchTarget, setSearchTarget] = useState<{ roomId: string; messageId: string } | null>(null);
+  useEffect(() => {
+    setSearchTarget((target) => target?.roomId === roomIdParam ? target : null);
+  }, [roomIdParam]);
+  const focusedMessageId = searchTarget?.roomId === activeRoomId ? searchTarget.messageId : undefined;
+  const searchContext = useQuery({
+    queryKey: ['chat-message-context', activeRoomId, focusedMessageId, getRequestCompany()],
+    queryFn: () => api.get(`/staff-chat/rooms/${activeRoomId}/messages`, { params: { around: focusedMessageId } }).then((r) => r.data),
+    enabled: !!focusedMessageId,
+    retry: false,
+  });
   const [customerPanelOpen, setCustomerPanelOpen] = useState(false);
   const [creditFocus, setCreditFocus] = useState<{ roomId: string; tick: number } | null>(null);
   const activeCreditRoomRef = useRef(activeRoomId);
@@ -314,7 +324,8 @@ export default function UnifiedInboxPage() {
   // ถามครั้งเดียวต่อรอบ — ถ้าผู้ใช้กดไม่อนุญาต เบราว์เซอร์จะไม่ถามซ้ำเองอยู่แล้ว
   const askedNotifyRef = useRef(false);
   const handleSelectRoom = useCallback(
-    (roomId: string) => {
+    (roomId: string, messageId?: string) => {
+      setSearchTarget(messageId ? { roomId, messageId } : null);
       if (!askedNotifyRef.current) {
         askedNotifyRef.current = true;
         requestNotificationPermissionIfNeeded();
@@ -391,17 +402,14 @@ export default function UnifiedInboxPage() {
       <div className="flex flex-1 min-h-0">
       {/* Left panel: Conversation list */}
       <div className={`inbox-conversations w-80 flex-shrink-0 min-h-0 ${activeRoomId ? 'hidden lg:flex lg:flex-col' : 'flex flex-col w-full lg:w-80'}`}>
-        <QueryBoundary
-          isLoading={sessionsQuery.isLoading}
-          isError={sessionsQuery.isError}
-          error={sessionsQuery.error}
-          onRetry={() => sessionsQuery.refetch()}
-        >
           <ConversationList
             sessions={sessions}
             activeRoomId={activeRoomId}
             onSelectRoom={handleSelectRoom}
             isLoading={sessionsQuery.isLoading}
+            isError={sessionsQuery.isError}
+            error={sessionsQuery.error}
+            onRetry={() => void sessionsQuery.refetch()}
             filters={filters}
             onFiltersChange={setFilters}
             currentUserId={user?.id}
@@ -415,7 +423,6 @@ export default function UnifiedInboxPage() {
             isLoadingMore={sessionsQuery.isFetchingNextPage}
             onLoadMore={() => sessionsQuery.fetchNextPage()}
           />
-        </QueryBoundary>
       </div>
 
       {/* Center panel: Chat */}
@@ -435,8 +442,13 @@ export default function UnifiedInboxPage() {
         ) : (
         <ChatPanel
           session={sessionQuery.data ? {...sessionQuery.data,storeAppointment:appointmentSummaries.data?.[activeRoomId!]} : undefined}
-          messages={messagesQuery.data ?? []}
-          notes={Array.isArray(notesQuery.data) ? notesQuery.data : []}
+          messages={(focusedMessageId ? searchContext.data : messagesQuery.data) ?? []}
+          focusedMessageId={focusedMessageId}
+          searchContextError={searchContext.isError}
+          onRetrySearchContext={() => void searchContext.refetch()}
+          onReturnToLatest={() => setSearchTarget(null)}
+          onSelectSearchResult={messageId => activeRoomId && setSearchTarget({ roomId: activeRoomId, messageId })}
+          notes={!focusedMessageId && Array.isArray(notesQuery.data) ? notesQuery.data : []}
           pinnedNote={sessionQuery.data?.notes?.[0] ?? null}
           currentUserRole={user?.role}
           onAddNote={async (draft) => {
@@ -447,7 +459,7 @@ export default function UnifiedInboxPage() {
           onPinNote={(noteId) => activeRoomId && pinNoteMutation.mutate({ roomId: activeRoomId, noteId })}
           onUnpinNote={(noteId) => activeRoomId && unpinNoteMutation.mutate({ roomId: activeRoomId, noteId })}
           onDeleteNote={(noteId) => activeRoomId && deleteNoteMutation.mutate({ roomId: activeRoomId, noteId })}
-          isLoadingMessages={messagesQuery.isLoading}
+          isLoadingMessages={focusedMessageId ? searchContext.isFetching : messagesQuery.isLoading}
           isCustomerTyping={isCustomerTyping}
           onStartTyping={() => activeRoomId && startTyping(activeRoomId)}
           onStopTyping={() => activeRoomId && stopTyping(activeRoomId)}
@@ -505,7 +517,7 @@ export default function UnifiedInboxPage() {
 
       {/* Right panel as Drawer on < xl */}
       <Sheet open={customerPanelOpen} onOpenChange={setCustomerPanelOpen}>
-        <SheetContent side="right" close={false} className="w-80 p-0 xl:hidden">
+        <SheetContent side="right" close={false} className="inbox-customer-sheet w-full max-w-full gap-0 p-0 sm:max-w-md xl:hidden">
           <SheetTitle className="sr-only">ข้อมูลลูกค้า</SheetTitle>
           <RoomDossier
             onClose={() => setCustomerPanelOpen(false)}

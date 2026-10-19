@@ -197,10 +197,15 @@ try {
         );
       }
       if (path === '/inbox') {
-        await page.getByRole('combobox', { name: 'กรองตามช่องทาง' }).click();
+        await page.getByRole('button', { name: 'ตัวกรองแชท', exact: true }).click();
+        await expect(page.getByRole('group', { name: 'ช่องทาง', exact: true })).toBeVisible();
+        await checkUiFonts(page, `Inbox filters ${width}px`);
+        await page.getByRole('combobox', { name: 'ผู้ดูแล', exact: true }).click();
         await expect(page.getByRole('option').first()).toBeVisible();
         await checkUiFonts(page, `Inbox menu ${width}px`);
         await page.keyboard.press('Escape');
+        await page.keyboard.press('Escape');
+        await expect(page.getByRole('dialog')).toHaveCount(0);
       }
       for (const input of await page
         .locator('input:visible:not([type=checkbox]):not([type=radio])')

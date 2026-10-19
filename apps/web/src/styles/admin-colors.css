@@ -124,8 +124,8 @@
     }
 
     /* Visible keyboard focus on light/dark surfaces and solid buttons. */
-    /* The chat textarea uses its surrounding card's focus-within indicator. */
-    & :is(button, a, input, textarea, select, [tabindex]):not([data-chat-composer-input]):focus-visible:not(:where(.voucher-sheet, .document-sheet, .bc-document, .document-landscape, .document-print-dialog, .template-paper, .font-sarabun, .mobile-receipt, .sticker, .print-stickers, .tiptap, iframe, .voucher-sheet *, .document-sheet *, .bc-document *, .document-landscape *, .document-print-dialog *, .template-paper *, .font-sarabun *, .mobile-receipt *, .sticker *, .print-stickers *, .tiptap *, iframe *)) {
+    /* These chat controls use their surrounding container's focus-within indicator. */
+    & :is(button, a, input, textarea, select, [tabindex]):not([data-chat-composer-input], [data-inbox-search-input]):focus-visible:not(:where(.voucher-sheet, .document-sheet, .bc-document, .document-landscape, .document-print-dialog, .template-paper, .font-sarabun, .mobile-receipt, .sticker, .print-stickers, .tiptap, iframe, .voucher-sheet *, .document-sheet *, .bc-document *, .document-landscape *, .document-print-dialog *, .template-paper *, .font-sarabun *, .mobile-receipt *, .sticker *, .print-stickers *, .tiptap *, iframe *)) {
       outline: 2px solid hsl(var(--ring));
       outline-offset: 3px;
     }

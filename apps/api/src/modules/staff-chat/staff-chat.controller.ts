@@ -19,6 +19,7 @@ import {
   NotFoundException,
   ForbiddenException,
   Logger,
+  ParseUUIDPipe,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ConfigService } from '@nestjs/config';
@@ -56,6 +57,7 @@ import { UpdateQuickReplyDto } from './dto/update-quick-reply.dto';
 import { UpdateCannedResponseDto } from './dto/update-canned-response.dto';
 import { ReadAllDto } from './dto/read-all.dto';
 import { SessionQueryDto } from '../chat-engine/dto/session-query.dto';
+import { RoomMessageSearchDto } from './dto/room-message-search.dto';
 import { ChatRoomStatus, ChatChannel, ChatPriority } from '@prisma/client';
 import { MessageRouterService } from '../chat-engine/services/message-router.service';
 import { StaffChatGateway } from './staff-chat.gateway';
@@ -101,7 +103,7 @@ export class StaffChatController {
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES')
   async listRooms(
     @Query() query: SessionQueryDto,
-    @Req() req: { entityScope?: WorkScope['company'] },
+    @Req() req: { user?: { id: string }; entityScope?: WorkScope['company'] },
   ) {
     return this.roomManager.listRooms({
       company: req.entityScope,
@@ -122,7 +124,7 @@ export class StaffChatController {
       search: query.search,
       page: query.page,
       limit: query.limit,
-    });
+    }, req.user);
   }
 
   /** นัดที่ถึงเวลา/ใกล้ถึง/เลยไม่เกิน 24 ชม. ของทุกห้อง — แถบเตือนเหนือทุกแผงของ inbox */
@@ -182,12 +184,28 @@ export class StaffChatController {
     return { ...room, customer, possibleSamePerson };
   }
 
+  @Get('rooms/:id/messages/search')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES')
+  async searchRoomMessages(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query() query: RoomMessageSearchDto,
+    @Req() req: { user: { id: string }; entityScope?: WorkScope['company'] },
+  ) {
+    return this.roomManager.searchRoomMessages(id, query, req.user, req.entityScope);
+  }
+
   @Get('rooms/:id/messages')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES')
   async getMessages(
     @Param('id') id: string,
     @Query('limit') limit?: string,
+    @Query('around', new ParseUUIDPipe({ optional: true })) around?: string,
+    @Req() req?: { user: { id: string }; entityScope?: WorkScope['company'] },
   ) {
+    if (around) {
+      if (!req?.user) throw new ForbiddenException('กรุณาเข้าสู่ระบบ');
+      return this.roomManager.getMessageContext(id, around, req.user, req.entityScope);
+    }
     // Clamp the page size: an unbounded `?limit=` lets a client pull the whole
     // message history, and `?limit=abc` → NaN → `take: NaN` → a Prisma 500.
     const parsed = limit ? parseInt(limit, 10) : 50;

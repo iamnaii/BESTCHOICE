@@ -203,7 +203,7 @@ function MainContent() {
       </div>
 
       {/* Mobile bottom tab bar */}
-      {isMobile && !/^\/inbox\/[^/]+/.test(pathname) && <MobileBottomNav />}
+      {isMobile && !/^\/inbox(?:\/|$)/.test(pathname) && <MobileBottomNav />}
 
       {/* Inbound call popup (Yeastar PBX) */}
       <InboundCallPopup />

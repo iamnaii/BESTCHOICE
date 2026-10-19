@@ -1,3 +1,4 @@
+import { LoyaltyController } from '../loyalty/loyalty.controller';
 import { StickersController } from '../stickers/stickers.controller';
 import { PricingTemplatesController } from '../pricing-templates/pricing-templates.controller';
 import { ShopTendersController } from '../shop-tenders/shop-tenders.controller';
@@ -21,7 +22,7 @@ export class AuditInterceptor implements NestInterceptor {
     const request = context.switchToHttp().getRequest();
     const { method, url, body, user } = request;
 
-    const managedTender = this.isManagedTenderRead(context);
+    const managedSafeRead = this.isManagedSafeRead(context);
     const managedJourney =
       request.user?.access?.managed === true &&
       context.getClass() === CustomerJourneyController &&
@@ -41,13 +42,13 @@ export class AuditInterceptor implements NestInterceptor {
         CustomersController.prototype.listDocuments,
         CustomersController.prototype.readDocument,
       ].some((candidate) => candidate === context.getHandler());
-    if (['GET', 'HEAD', 'OPTIONS'].includes(method) && !managedDocument && !managedJourney && !managedTender) {
+    if (['GET', 'HEAD', 'OPTIONS'].includes(method) && !managedDocument && !managedJourney && !managedSafeRead) {
       return next.handle();
     }
 
     const startTime = Date.now();
-    const ipAddress = managedTender ? undefined : clientIp(request);
-    const userAgent = managedTender ? undefined : request.headers['user-agent'] || '';
+    const ipAddress = managedSafeRead ? undefined : clientIp(request);
+    const userAgent = managedSafeRead ? undefined : request.headers['user-agent'] || '';
 
     return next.handle().pipe(
       tap({
@@ -109,9 +110,13 @@ export class AuditInterceptor implements NestInterceptor {
     return context.getClass() === StickersController || context.getClass() === PricingTemplatesController;
   }
 
-  private isManagedTenderRead(context: ExecutionContext): boolean {
+  private isManagedSafeRead(context: ExecutionContext): boolean {
     if (this.isSharedReference(context)) return true;
     if (context.switchToHttp().getRequest().user?.access?.managed !== true) return false;
+    if (context.getClass() === LoyaltyController && [
+      LoyaltyController.prototype.getPoints, LoyaltyController.prototype.getHistory,
+      LoyaltyController.prototype.getReferralStats, LoyaltyController.prototype.redeemPoints,
+    ].some(handler => handler === context.getHandler())) return true;
     return context.getClass() === ShopTendersController && [
       ShopTendersController.prototype.getDailySummary, ShopTendersController.prototype.getCashCloseStatus,
       ShopTendersController.prototype.getCashCloseHistory, ShopTendersController.prototype.getCashCloseOverview,
@@ -138,7 +143,7 @@ export class AuditInterceptor implements NestInterceptor {
     if (request.user?.access?.managed !== true && !this.isSharedReference(context)) return undefined;
     const handler = context.getHandler();
     const controller = context.getClass();
-    if (this.isManagedTenderRead(context)) {
+    if (this.isManagedSafeRead(context)) {
       const code = statusCode ?? context.switchToHttp().getResponse().statusCode;
       return { route: `${controller.name}.${handler.name}`, outcome,
         statusCode: Number.isInteger(code) && code >= 100 && code <= 599 ? code : 500, duration };

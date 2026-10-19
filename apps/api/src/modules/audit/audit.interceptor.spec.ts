@@ -3,6 +3,10 @@ import { AuditService } from './audit.service';
 import { ExecutionContext, CallHandler } from '@nestjs/common';
 import { of, lastValueFrom, throwError } from 'rxjs';
 
+class FixtureController {
+  handle() {}
+}
+
 /**
  * T2-C15: extend SENSITIVE_FIELDS redaction to cover integration secrets
  * (bank API keys, PEAK secret, MDM key, webhook secret, SMS API secret)
@@ -15,6 +19,8 @@ describe('AuditInterceptor — T2-C15 SENSITIVE_FIELDS redaction', () => {
 
   const buildContext = (body: Record<string, unknown>) => {
     const ctx = {
+      getClass: () => FixtureController,
+      getHandler: () => FixtureController.prototype.handle,
       switchToHttp: () => ({
         getRequest: () => ({
           method: 'POST',
@@ -100,6 +106,8 @@ describe('AuditInterceptor — มาสก์ไฟล์ base64 ทุกช�
 
   const buildContext = (body: Record<string, unknown>) => {
     const ctx = {
+      getClass: () => FixtureController,
+      getHandler: () => FixtureController.prototype.handle,
       switchToHttp: () => ({
         getRequest: () => ({
           method: 'POST',

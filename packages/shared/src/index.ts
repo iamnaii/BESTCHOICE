@@ -49,3 +49,4 @@ export * from './party-access';
 export * from './party-query';
 export * from './customer-attachments';
 export * from './tender-access';
+export * from './contract-read';

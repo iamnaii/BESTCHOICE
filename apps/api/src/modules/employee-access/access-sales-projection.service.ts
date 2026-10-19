@@ -1,3 +1,4 @@
+import { contractNavigation } from './access-contract-read-scope';
 import { saleAggregateWhere } from './access-sales-aggregate-context';
 import { Injectable } from '@nestjs/common';
 import { AccessResource, canAccess } from '@installment/shared';
@@ -43,10 +44,17 @@ export class AccessSalesProjectionService {
       if (!permits('sensitive.profit.read') || !permits('sensitive.cost.read'))
         for (const key of ['totalProfit', 'profit', 'margin', 'missingCostCount'])
           if (key in out) out[key] = null;
-      // These links belong to their own not-yet-integrated FINANCE/chat/order sources.
+      // A link needs independent current FINANCE authority, preserving SHOP source.
+      if ('contractId' in out || 'contract' in out) {
+        const persisted = typeof row.id === 'string' && row.saleNumber
+          ? await ctx.client.sale.findUnique({ where: { id: row.id }, select: { contractId: true } })
+          : null;
+        const linked = persisted?.contractId ? await contractNavigation(persisted.contractId) : null;
+        out.contractId = linked?.id ?? null;
+        out.contract = linked;
+      }
+      // Other links still belong to independently owned consumer boundaries.
       for (const key of [
-        'contractId',
-        'contract',
         'financeReceivable',
         'commissions',
         'sourceRoomId',

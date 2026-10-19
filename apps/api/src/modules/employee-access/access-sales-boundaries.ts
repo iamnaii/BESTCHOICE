@@ -290,7 +290,6 @@ export class AccessSalesBoundaries implements OnModuleInit {
       const filters = { ...q };
       delete filters.company;
       delete filters.date;
-      if (q.contractStatus) throw new ForbiddenException('ตัวกรองสัญญาต้องใช้ขอบเขตงานการเงิน');
       if ((await validate(plainToInstance(SalesListQueryDto, filters))).length)
         throw new BadRequestException('ตัวกรองการขายไม่ถูกต้อง');
     } else if (

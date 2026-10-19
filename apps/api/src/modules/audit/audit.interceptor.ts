@@ -1,3 +1,4 @@
+import { ContractsController } from '../contracts/contracts.controller';
 import { DefectExchangeController } from '../defect-exchange/defect-exchange.controller';
 import { LoyaltyController } from '../loyalty/loyalty.controller';
 import { StickersController } from '../stickers/stickers.controller';
@@ -114,6 +115,7 @@ export class AuditInterceptor implements NestInterceptor {
   private isManagedSafeRead(context: ExecutionContext): boolean {
     if (this.isSharedReference(context)) return true;
     if (context.switchToHttp().getRequest().user?.access?.managed !== true) return false;
+    if (context.getClass() === ContractsController && [ContractsController.prototype.findAll, ContractsController.prototype.findOne].some(handler => handler === context.getHandler())) return true;
     if (context.getClass() === DefectExchangeController && [
       DefectExchangeController.prototype.getEligibility, DefectExchangeController.prototype.execute,
       DefectExchangeController.prototype.list,

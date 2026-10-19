@@ -1,3 +1,4 @@
+import { contractNavigation } from './access-contract-read-scope';
 import { customerPartyWhere, contactPartyWhere } from './access-party-scope';
 import { saleSource } from './access-sales-scope';
 import { Injectable } from '@nestjs/common';
@@ -102,8 +103,16 @@ export class AccessTradeInProjectionService {
       if ('currentRedemptionId' in out) {
         out.creditRedeemed = !!out.currentRedemptionId;
         out.currentRedemptionId = null;
+        out.currentRedemptionContractId = null;
         if (typeof row.currentRedemptionId === 'string') {
           const redemption = await ctx.client.tradeInCreditRedemption.findUnique({ where: { id: row.currentRedemptionId } });
+          if (redemption?.contractId && redemption.tradeInId === id && !redemption.releasedAt) {
+            const linked = await contractNavigation(redemption.contractId);
+            if (linked) {
+              out.currentRedemptionId = redemption.id;
+              out.currentRedemptionContractId = linked.id;
+            }
+          }
           if (redemption?.saleId && redemption.tradeInId === id) {
             const sale = await saleSource(ctx.client, redemption.saleId).catch(() => null);
             if (sale && canAccess(ctx.snapshot, 'sales.read', sale)) {

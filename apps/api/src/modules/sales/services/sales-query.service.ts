@@ -1,3 +1,5 @@
+import { lockFinanceContractReadSource } from '../../employee-access/access-party-source.service';
+import { currentFinanceReadWhere } from '../../employee-access/access-contract-read-scope';
 import { setSaleAggregateWhere } from '../../employee-access/access-sales-aggregate-context';
 import { AccessSnapshotService } from '../../employee-access/access-snapshot.service';
 import { canAccess } from '@installment/shared';
@@ -51,7 +53,10 @@ export class SalesQueryService {
     if (saleType) where.saleType = saleType;
     if (paymentMethod) where.paymentMethod = paymentMethod;
     if (salespersonId) where.salespersonId = salespersonId;
-    if (contractStatus) where.contract = { status: contractStatus };
+    if (contractStatus) where.contract = { AND: [
+      { status: contractStatus },
+      ...(currentDomainAccess() ? [await currentFinanceReadWhere(), await currentFinanceReadWhere('payments.read')] : []),
+    ] };
     else where.AND = [completedSaleWhere];
 
     if (startDate !== undefined || endDate !== undefined) {
@@ -69,6 +74,14 @@ export class SalesQueryService {
     }
 
     if (currentSaleWhere()) where.AND = [...(Array.isArray(where.AND) ? where.AND : []), currentSaleWhere()];
+
+    if (contractStatus && currentDomainAccess()) {
+      // Status contributors beyond the visible page also need current source proof
+      // after lock waits, before any count/aggregate/page result is returned.
+      const contributors = await db.sale.findMany({ where, select: { contractId: true } });
+      const ids = [...new Set(contributors.flatMap(row => row.contractId ? [row.contractId] : []))].sort();
+      for (const id of ids) await lockFinanceContractReadSource(db, id);
+    }
 
     if (limit > 200) assertExportRowCount(await db.sale.count({ where }));
 

@@ -943,7 +943,7 @@ it('preserves external finance, same-source bundle money and rollback of booking
 
 it('keeps independent search/filter and physical booking-lock constraints before disclosure', async () => {
   await http('get', '/sales?startDate=2026-02-31').expect(400);
-  await http('get', '/sales?contractStatus=ACTIVE').expect(403);
+  expect((await http('get', '/sales?contractStatus=ACTIVE').expect(200)).body.total).toBe(0);
   const staff = await user();
   await grant(staff, ['bookings.read'], [branchA]);
   await http('get', '/bookings?customerId=' + customerId, undefined, staff).expect(403);

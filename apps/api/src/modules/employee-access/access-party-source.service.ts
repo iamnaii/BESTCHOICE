@@ -34,6 +34,14 @@ export function partyWriteExecution(client?: object) {
   if (ctx.scopeReads || (client && !isCurrentDomainClient(client))) throw unavailable();
   return ctx;
 }
+/** Canonical ordinary FINANCE read-source lock order, shared by linked SHOP reads.
+ * Policy is still evaluated by financeContract/financeContractReadWhere afterwards. */
+export async function lockFinanceContractReadSource(tx: AccessClient, id: string): Promise<void> {
+  await tx.$queryRaw`SELECT id FROM contracts WHERE id=${id} FOR SHARE`;
+  await tx.$queryRaw`SELECT id FROM company_info WHERE company_code='FINANCE' FOR SHARE`;
+  await tx.$queryRaw`SELECT b.id FROM branches b JOIN contracts c ON c.branch_id=b.id WHERE c.id=${id} FOR SHARE OF b`;
+  await tx.$queryRaw`SELECT ci.id FROM company_info ci JOIN branches b ON b.company_id=ci.id JOIN contracts c ON c.branch_id=b.id WHERE c.id=${id} FOR SHARE OF ci`;
+}
 @Injectable()
 export class AccessPartySourceService {
   constructor(
@@ -72,14 +80,14 @@ export class AccessPartySourceService {
   }
   /** Ordinary case read source; never reuse for exchange approval/mutation. */
   async financeContract(tx: AccessClient, id: string, lock = false): Promise<PartySource> {
-    if (lock) await tx.$queryRaw`SELECT id FROM contracts WHERE id=${id} FOR SHARE`;
+    if (lock) await lockFinanceContractReadSource(tx, id);
     const row = await tx.contract.findFirst({
       where: { id, deletedAt: null },
       select: { branchId: true, assignedToId: true },
     });
     if (!row) throw unavailable();
     return {
-      ...(await this.origin(tx, 'FINANCE', row.branchId, lock)),
+      ...(await this.origin(tx, 'FINANCE', row.branchId, false)),
       assignedUserIds: row.assignedToId ? [row.assignedToId] : [],
     };
   }

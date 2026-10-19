@@ -3099,6 +3099,7 @@ model SsoConfig {
 // ============================================================
 
 model Sale {
+  loyaltyRedemption LoyaltyRedemption?
   promotionBenefit SalePromotionBenefit?
   chatServiceRequests ChatServiceRequest[]
   tradeInCreditSnapshot Json? @map("trade_in_credit_snapshot")
@@ -5393,6 +5394,11 @@ model CommissionPayout {
 // ============================================================
 
 model LoyaltyRedemption {
+  /// New canonical Sale proof only. Legacy records remain unproven; no text backfill.
+  saleId         String? @unique @map("sale_id")
+  sale           Sale? @relation(fields: [saleId], references: [id], onDelete: Restrict)
+  evidence       Json?
+  fingerprint    String?
   id             String    @id @default(uuid())
   customerId     String    @map("customer_id")
   points         Int // จำนวนแต้มที่ใช้ (ค่าบวก)

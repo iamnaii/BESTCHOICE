@@ -836,7 +836,7 @@ describe('Canonical finite money and campaign contracts', () => {
         new Prisma.Decimal(100),
       ),
     );
-    await grant(seller, ['trade-in.read']);
+    await grant(seller, ['trade-in.read', 'loyalty.account.read', 'loyalty.account.redeem']);
     const { sale } = await canonicalSale({
       customerId: c.id,
       tradeInCreditId: credit.id,

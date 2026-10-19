@@ -1,3 +1,4 @@
+import { verifiedLoyaltySale } from '../loyalty/loyalty-sale-proof';
 import { ForbiddenException } from '@nestjs/common';
 import { CustomerJourneyEntry, Prisma } from '@prisma/client';
 import {
@@ -90,7 +91,7 @@ const GROUP_REQUIREMENTS: Record<JourneyEventGroup, readonly PermissionKey[]> = 
   payment: ['contracts.read', 'payments.read'],
   collections: ['contracts.read', 'collections.read', 'mdm.read'],
   service: ['repair-tickets.read'],
-  points: ['contracts.read', 'loyalty.read'],
+  points: ['contracts.read', 'sales.read', 'loyalty.read'],
   system: ['customer-tags.read'],
 };
 export const LOSS_COMPANY_PERMISSIONS: Record<Company, readonly PermissionKey[]> = {
@@ -645,11 +646,20 @@ export class PartyJourneyPlan {
         'loyaltyRedemption',
         await this.db.loyaltyRedemption.findMany({
           where: { customerId },
-          select: { id: true, customerId: true, contractId: true },
         }),
       ],
     ] as const)
       for (const row of rows) {
+        if ('saleId' in row && row.saleId) {
+          const sale = await verifiedLoyaltySale(this.db, row);
+          const source = sale && this.saleSources.get(sale.id);
+          if (!sale || !source) this.unproven.add(key);
+          else if (
+            this.ids.sale.has(sale.id) &&
+            this.allows(source, ['loyalty.read'], row.customerId, true)
+          ) this.ids[key].add(row.id);
+          continue;
+        }
         const contract = contracts.find(
           (c) => c.id === row.contractId && c.customerId === row.customerId,
         );
@@ -978,7 +988,7 @@ export class PartyJourneyPlan {
           payment: ['contracts.read', 'payments.read'],
           collections: ['contracts.read', 'collections.read', 'mdm.read'],
           service: ['repair-tickets.read'],
-          points: ['contracts.read', 'loyalty.read'],
+          points: ['contracts.read', 'sales.read', 'loyalty.read'],
           system: ['customer-tags.read'],
         }[group] as PermissionKey[];
         const available = [...this.party.live].some(

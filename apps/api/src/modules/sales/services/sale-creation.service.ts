@@ -1,3 +1,4 @@
+import { prepareLoyaltySale, recordLoyaltySale } from '../../loyalty/loyalty-sale-proof';
 import { preparePromotionBenefit, recordPromotionBenefit } from '../../promotions/promotion-benefit';
 import { currentDomainAccess, domainAccessClient, onDomainCommit } from '../../employee-access/access-execution-context';
 import {
@@ -33,13 +34,9 @@ export const INSTALLMENT_VIA_CONTRACT_MSG =
 /**
  * Sale-creation orchestrator extracted from SalesService.create.
  *
- * Owns the pre-tx validation (loyalty pre-validation, wasPreviouslyDamaged
- * pre-check, costPrice lookup, discount policy assertion), the saleType switch
- * dispatch to the per-type writers, and the post-commit best-effort loyalty
- * redemption $transaction (with the stamped `_loyaltyRedemptionFailed` flag).
- *
- * Body is verbatim from the original SalesService.create — only `this.<dep>`
- * resolution changed (discount → DiscountPolicy, create*Sale → writer).
+ * Owns sale validation and dispatch to the canonical per-type writers.
+ * Managed loyalty proof, debit and required audit join the owned Sale transaction;
+ * the unmigrated path retains its original best-effort redemption behavior.
  */
 export class SaleCreationService {
   private readonly logger = new Logger(SaleCreationService.name);
@@ -58,6 +55,14 @@ export class SaleCreationService {
     // + ออกใบขาย INSTALLMENT + ตั้งค่าคอมให้เอง. ปฏิเสธก่อนแตะแต้ม/เครดิตเทิร์น/ส่วนลด/ฐานข้อมูลใด ๆ
     if (dto.saleType === 'INSTALLMENT') throw new BadRequestException(INSTALLMENT_VIA_CONTRACT_MSG);
     const managed = currentDomainAccess();
+    if (!managed && (dto.loyaltyPointsRedeemed ?? 0) !== 0) {
+      const actor = await this.basePrisma.user.findUnique({
+        where: { id: salespersonId },
+        select: { accessManaged: true, isActive: true, deletedAt: true },
+      });
+      if (!actor || actor.accessManaged || !actor.isActive || actor.deletedAt)
+        throw new ForbiddenException('ต้องตรวจสิทธิ์บัญชีแต้มในธุรกรรมการขายปัจจุบัน');
+    }
     if (managed) {
       const actor = await this.prisma.user.findUniqueOrThrow({ where: { id: managed.snapshot.userId } });
       userRole = managed.snapshot.isOwner ? 'OWNER' : actor.role;
@@ -71,13 +76,11 @@ export class SaleCreationService {
     const promotion = await preparePromotionBenefit(dto, salespersonId);
     const promotionDiscount = promotion?.discount ?? new Prisma.Decimal(0);
 
-    // T6-C1: loyalty redeem at POS — validate customer balance and fold the
-    // redeemed value into discount (1 pt = 1 ฿). The redemption itself is
-    // applied after the sale is created so we have saleId/contractId to
-    // reference. If the downstream redemption ever fails after the sale is
-    // persisted, follow-up reconciliation is manual — but pre-validation
-    // makes that corner case very unlikely.
+    // One point remains one baht. Managed account authority, sources, balance
+    // and daily cap are checked under the outer transaction's current locks;
+    // the canonical writer's money and subsequent typed debit commit together.
     const loyaltyPoints = dto.loyaltyPointsRedeemed ?? 0;
+    if (managed) await prepareLoyaltySale(dto, salespersonId);
     if (loyaltyPoints > 0) {
       const customer = await this.prisma.customer.findUnique({
         where: { id: dto.customerId },
@@ -176,10 +179,14 @@ export class SaleCreationService {
       } });
     }
 
-    // Apply loyalty redemption after sale is confirmed. Wrap in try/catch so a
-    // redemption failure doesn't hide the sale response — the sale already
-    // posted, support flow will reconcile if the point deduction fell through.
-    if (loyaltyPoints > 0) {
+    // Managed proof/debit/audit join the outer Sale transaction. Only the
+    // original unmigrated compatibility path retains best-effort behavior.
+    let loyaltyProof: Awaited<ReturnType<typeof recordLoyaltySale>> | undefined;
+    if (managed && loyaltyPoints > 0) {
+      loyaltyProof = await recordLoyaltySale(dto, sale.id, {
+        baseDiscount, promotionDiscount, tradeBonus: tradeCredit?.bonus ?? 0,
+      });
+    } else if (loyaltyPoints > 0) {
       try {
         await this.prisma.$transaction(async (tx) => {
           await tx.loyaltyRedemption.create({
@@ -191,18 +198,9 @@ export class SaleCreationService {
               contractId: sale.contractId ?? null,
             },
           });
-          if (managed) {
-            const debited = await tx.customer.updateMany({
-              where: { id: dto.customerId, deletedAt: null, loyaltyBalance: { gte: loyaltyPoints } },
-              data: { loyaltyBalance: { decrement: loyaltyPoints } },
-            });
-            if (debited.count !== 1) throw new BadRequestException('แต้มไม่เพียงพอ');
-          } else {
-            await tx.customer.update({ where: { id: dto.customerId }, data: { loyaltyBalance: { decrement: loyaltyPoints } } });
-          }
+          await tx.customer.update({ where: { id: dto.customerId }, data: { loyaltyBalance: { decrement: loyaltyPoints } } });
         });
       } catch (err) {
-        if (managed) throw err;
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (sale as any)._loyaltyRedemptionFailed = err instanceof Error ? err.message : String(err);
       }
@@ -218,7 +216,7 @@ export class SaleCreationService {
       else void this.warrantyNotifier.notify(sale.id).catch((err) => this.logger.error(`[warranty-line] notify ไม่ถูกเรียก: ${String(err)}`));
     }
 
-    return sale;
+    return loyaltyProof ? { ...sale, loyaltyRedemption: loyaltyProof } : sale;
   }
 
   /**

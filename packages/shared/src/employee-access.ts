@@ -77,6 +77,8 @@ const PERMISSION_DEFINITIONS = {
   'repair-tickets.approve': ['อนุมัติงานซ่อม', 'sales', 'GRANT'],
   'promotions.apply': ['ใช้โปรโมชันมาตรฐาน', 'sales', 'GRANT'],
   'promotions.read': ['ดูโปรโมชัน', 'sales', 'GRANT'],
+  'loyalty.account.read': ['ดูยอดแต้มที่ใช้ได้ทั้งบัญชี', 'sales', 'GRANT'],
+  'loyalty.account.redeem': ['ใช้แต้มจากบัญชีสะสม', 'sales', 'GRANT'],
   'loyalty.read': ['ดูสมาชิกและแต้ม', 'sales', 'GRANT'],
   'loyalty.create': ['สร้างสมาชิกและแต้ม', 'sales', 'GRANT'],
   'loyalty.update': ['แก้ไขสมาชิกและแต้ม', 'sales', 'GRANT'],

@@ -121,7 +121,7 @@ export default function RoomCreditCard({
               </button>
               <button data-ui-control="button"
                 type="button"
-                aria-label={`เอา Statement ${index + 1} ออก`}
+                aria-label={`เอา รายการเดินบัญชี ${index + 1} ออก`}
                 disabled={credit?.busy}
                 className="flex min-h-11 min-w-11 items-center justify-center rounded-md text-muted-foreground hover:bg-accent disabled:opacity-40"
                 onClick={() => credit?.remove(file.id)}

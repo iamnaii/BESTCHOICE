@@ -1,3 +1,4 @@
+import { NumberInput } from '@/components/ui/NumberInput';
 import Modal from '@/components/ui/Modal';
 import { useId as useUiFieldId } from 'react';
 
@@ -29,8 +30,7 @@ export default function EditSellingPriceModal({
           <label htmlFor={`${uiFieldId}-1`} className="block text-sm font-medium text-foreground mb-1 leading-snug">
             ราคาเงินสด (บาท)
           </label>
-          <input id={`${uiFieldId}-1`}
-            type="number"
+          <NumberInput unstyled id={`${uiFieldId}-1`}
             step="0.01"
             min="1"
             value={cashPrice}
@@ -42,8 +42,7 @@ export default function EditSellingPriceModal({
           <label htmlFor={`${uiFieldId}-2`} className="block text-sm font-medium text-foreground mb-1 leading-snug">
             ราคาผ่อน — ราคาตั้งต้นสำหรับคำนวณค่างวด (บาท)
           </label>
-          <input id={`${uiFieldId}-2`}
-            type="number"
+          <NumberInput unstyled id={`${uiFieldId}-2`}
             step="0.01"
             min="1"
             value={installmentPrice}

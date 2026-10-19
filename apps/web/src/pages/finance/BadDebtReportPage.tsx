@@ -165,7 +165,7 @@ export default function BadDebtReportPage() {
                             วันที่
                           </th>
                           <th className="text-left p-3 font-medium text-muted-foreground whitespace-nowrap">
-                            เลขที่ JE
+                            เลขที่ รายการบัญชี
                           </th>
                           <th className="text-left p-3 font-medium text-muted-foreground">
                             คำอธิบาย

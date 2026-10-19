@@ -38,7 +38,7 @@ export default function DashboardStaff({
       {/* Aging Buckets -- hide for SALES */}
       {userRole !== 'SALES' && <Card>
         <CardHeader>
-          <CardTitle>อายุหนี้ค้างชำระ (Aging)</CardTitle>
+          <CardTitle>อายุหนี้ค้างชำระ</CardTitle>
           <CardToolbar>
             {aging && (
               <span className="text-2xs text-destructive bg-destructive/10 px-2.5 py-1 rounded-md font-medium">

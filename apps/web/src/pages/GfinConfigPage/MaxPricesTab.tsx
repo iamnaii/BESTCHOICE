@@ -1,3 +1,4 @@
+import { NumberInput } from '@/components/ui/NumberInput';
 import { useId as useUiFieldId, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -97,8 +98,8 @@ export function MaxPricesTab() {
         )}
       </div>
       <div className="flex gap-2">
-        <Input aria-label="ค้นหา series หรือ pattern"
-          placeholder="ค้นหา series หรือ pattern..."
+        <Input aria-label="ค้นหา ตระกูลรุ่น หรือ pattern"
+          placeholder="ค้นหา ตระกูลรุ่น หรือ pattern..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="max-w-md"
@@ -110,12 +111,12 @@ export function MaxPricesTab() {
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead>Series</TableHead>
-            <TableHead>Variant</TableHead>
-            <TableHead>Storage</TableHead>
+            <TableHead>รุ่นสินค้า</TableHead>
+            <TableHead>รูปแบบย่อย</TableHead>
+            <TableHead>พื้นที่จัดเก็บ</TableHead>
             <TableHead>สภาพ</TableHead>
             <TableHead className="text-right">ราคาสูงสุด</TableHead>
-            <TableHead>Match Pattern</TableHead>
+            <TableHead>รูปแบบที่ตรงกัน</TableHead>
             <TableHead>ใช้งาน</TableHead>
             <TableHead>การกระทำ</TableHead>
           </TableRow>
@@ -237,7 +238,7 @@ function MaxPriceFormDialog({ initial, onClose, onSaved }: DialogProps) {
         </DialogHeader>
         <div className="space-y-3">
           <div>
-            <label htmlFor={`${uiFieldId}-1`} className="text-sm font-medium">Series</label>
+            <label htmlFor={`${uiFieldId}-1`} className="text-sm font-medium">รุ่นสินค้า</label>
             <Input id={`${uiFieldId}-1`}
               value={form.gfinSeries}
               onChange={(e) => setForm((f) => ({ ...f, gfinSeries: e.target.value }))}
@@ -245,7 +246,7 @@ function MaxPriceFormDialog({ initial, onClose, onSaved }: DialogProps) {
             />
           </div>
           <div>
-            <label htmlFor={`${uiFieldId}-2`} className="text-sm font-medium">Variant (ปล่อยว่างถ้าไม่มี)</label>
+            <label htmlFor={`${uiFieldId}-2`} className="text-sm font-medium">รุ่นย่อย (เว้นว่างหากไม่มี)</label>
             <Input id={`${uiFieldId}-2`}
               value={form.gfinVariant}
               onChange={(e) => setForm((f) => ({ ...f, gfinVariant: e.target.value }))}
@@ -253,7 +254,7 @@ function MaxPriceFormDialog({ initial, onClose, onSaved }: DialogProps) {
             />
           </div>
           <div>
-            <label htmlFor={`${uiFieldId}-3`} className="text-sm font-medium">Storage</label>
+            <label htmlFor={`${uiFieldId}-3`} className="text-sm font-medium">พื้นที่จัดเก็บ</label>
             <Input id={`${uiFieldId}-3`}
               value={form.storage}
               onChange={(e) => setForm((f) => ({ ...f, storage: e.target.value }))}
@@ -279,15 +280,14 @@ function MaxPriceFormDialog({ initial, onClose, onSaved }: DialogProps) {
           </div>
           <div>
             <label htmlFor={`${uiFieldId}-5`} className="text-sm font-medium">ราคาสูงสุด (฿)</label>
-            <Input id={`${uiFieldId}-5`}
-              type="number"
+            <NumberInput id={`${uiFieldId}-5`}
               step="0.01"
               value={form.maxPrice}
               onChange={(e) => setForm((f) => ({ ...f, maxPrice: e.target.value }))}
             />
           </div>
           <div>
-            <label htmlFor={`${uiFieldId}-6`} className="text-sm font-medium">Model Match Pattern</label>
+            <label htmlFor={`${uiFieldId}-6`} className="text-sm font-medium">รูปแบบชื่อรุ่นที่ตรงกัน</label>
             <Input id={`${uiFieldId}-6`}
               value={form.modelMatchPattern}
               onChange={(e) =>
@@ -296,7 +296,7 @@ function MaxPriceFormDialog({ initial, onClose, onSaved }: DialogProps) {
               placeholder="เช่น iPhone 14 Pro"
             />
             <p className="text-xs text-muted-foreground mt-1 leading-snug">
-              ใช้สำหรับ match กับ Product.model — ระบบหา substring ของ pattern นี้ใน model
+              ระบบจับคู่เมื่อชื่อรุ่นสินค้ามีข้อความที่กำหนดนี้อยู่
             </p>
           </div>
         </div>

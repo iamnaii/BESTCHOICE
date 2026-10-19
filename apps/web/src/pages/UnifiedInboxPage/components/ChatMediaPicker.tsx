@@ -266,7 +266,7 @@ export function ChatMediaPicker({
               ? 'text-primary bg-primary/10'
               : 'text-muted-foreground hover:text-foreground hover:bg-muted',
           )}
-          title="Emoji / สติกเกอร์"
+          title="อีโมจิ / สติกเกอร์"
         >
           <Smile className="size-5" aria-hidden="true" />
           <span>อีโมจิ</span>
@@ -292,7 +292,7 @@ export function ChatMediaPicker({
                 : 'text-muted-foreground hover:text-foreground',
             )}
           >
-            😊 Emoji
+            😊 อีโมจิ
           </button>
 
           {isLineChannel && (
@@ -398,7 +398,7 @@ export function ChatMediaPicker({
                     onSticker(LINE_STICKER_PACKAGES[stickerPackage].packageId, sticker.id)
                   }
                   className="w-14 h-14 flex items-center justify-center hover:bg-muted rounded-lg transition-colors overflow-hidden"
-                  title={`Sticker ${sticker.id}`}
+                  title={`สติกเกอร์ ${sticker.id}`}
                 >
                   <img
                     src={stickerAnimUrl(sticker.id)}

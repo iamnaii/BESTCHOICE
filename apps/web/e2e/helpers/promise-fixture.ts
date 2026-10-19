@@ -5,7 +5,7 @@ const API_URL = process.env.API_DIRECT_URL || 'http://localhost:3000';
 export async function openPromiseFixture(page: Page, id: string, tab: 'คิววันนี้' | 'นัดชำระ') {
   await loginAsRole(page, 'BRANCH_MANAGER');
   await page.goto('/collections');
-  await page.getByRole('button', { name: 'Library', exact: true }).click();
+  await page.getByRole('button', { name: 'คลังข้อมูล', exact: true }).click();
   await page.getByRole('button', { name: tab, exact: true }).click();
   const card = page.locator(`[data-collections-card-id="${id}"]`);
   await expect(card).toBeVisible();
@@ -33,7 +33,7 @@ export async function savePromise(
   for (let i = 0; i < slots.length; i++) {
     if (i > 0) await dialog.getByRole('button', { name: /\+ เพิ่ม/ }).click();
     await dialog.getByRole('button', { name: slots[i].date, exact: true }).nth(i).click();
-    await dialog.locator('input[type=number]').nth(i).fill(slots[i].amount);
+    await dialog.locator('input[data-numeric-input]').nth(i).fill(slots[i].amount);
   }
   const expectedDates = await dialog
     .locator('input[type=date]')

@@ -133,7 +133,7 @@ export default function SystemStatusPage() {
           {/* Frontend */}
           <ServiceCard
             icon={<MonitorIcon />}
-            title="Frontend (เว็บแอป)"
+            title="เว็บแอป"
             status="ok"
             statusText="กำลังใช้งาน"
             details={[{ label: 'สถานะ', value: 'เชื่อมต่อแล้ว' }]}
@@ -145,12 +145,12 @@ export default function SystemStatusPage() {
           {/* API Server */}
           <ServiceCard
             icon={<ServerIcon />}
-            title="API Server (Backend)"
+            title="เซิร์ฟเวอร์ API"
             status={data.api.status === 'ok' ? 'ok' : 'error'}
             statusText={data.api.status === 'ok' ? 'ทำงานปกติ' : 'มีปัญหา'}
             details={[
               { label: 'เวอร์ชัน', value: data.api.version },
-              { label: 'Uptime', value: formatUptime(data.api.uptime) },
+              { label: "ระยะเวลาทำงาน", value: formatUptime(data.api.uptime) },
               { label: 'Node.js', value: data.api.nodeVersion },
               { label: 'RAM ใช้งาน', value: `${data.memory.heapUsedMB} / ${data.memory.heapTotalMB} MB` },
             ]}
@@ -170,12 +170,12 @@ export default function SystemStatusPage() {
             <div className="flex-1">
               <ServiceCard
                 icon={<DatabaseIcon />}
-                title="Database (PostgreSQL)"
+                title="ฐานข้อมูล PostgreSQL"
                 status={data.database.connected ? 'ok' : 'error'}
                 statusText={data.database.connected ? 'เชื่อมต่อแล้ว' : 'ไม่สามารถเชื่อมต่อ'}
                 details={[
-                  { label: 'Latency', value: data.database.connected ? `${data.database.latencyMs} ms` : '-' },
-                  ...(data.database.error ? [{ label: 'Error', value: data.database.error }] : []),
+                  { label: "เวลาตอบสนอง", value: data.database.connected ? `${data.database.latencyMs} ms` : '-' },
+                  ...(data.database.error ? [{ label: "ข้อผิดพลาด", value: data.database.error }] : []),
                 ]}
                 color="emerald"
                 full
@@ -192,9 +192,9 @@ export default function SystemStatusPage() {
                   'ยังไม่ได้ตั้งค่า'
                 }
                 details={[
-                  { label: 'Model', value: data.ai.model },
+                  { label: "โมเดล", value: data.ai.model },
                   { label: 'API Key', value: data.ai.configured ? 'ตั้งค่าแล้ว' : 'ยังไม่ได้ตั้งค่า' },
-                  ...(data.ai.error ? [{ label: 'Error', value: data.ai.error }] : []),
+                  ...(data.ai.error ? [{ label: "ข้อผิดพลาด", value: data.ai.error }] : []),
                 ]}
                 color="blue"
                 full
@@ -222,21 +222,21 @@ export default function SystemStatusPage() {
           </thead>
           <tbody>
             <tr>
-              <td className="p-3 border border-border font-medium">Frontend</td>
+              <td className="p-3 border border-border font-medium">หน้าเว็บ</td>
               <td className="p-3 border border-border">
                 <span className="inline-flex items-center gap-1.5"><StatusDot ok={true} /> เชื่อมต่อแล้ว</span>
               </td>
               <td className="p-3 border border-border text-muted-foreground">เว็บแอปทำงานปกติ</td>
             </tr>
             <tr>
-              <td className="p-3 border border-border font-medium">API Server</td>
+              <td className="p-3 border border-border font-medium">เซิร์ฟเวอร์ API</td>
               <td className="p-3 border border-border">
                 <span className="inline-flex items-center gap-1.5"><StatusDot ok={data.api.status === 'ok'} /> {data.api.status === 'ok' ? 'ทำงานปกติ' : 'มีปัญหา'}</span>
               </td>
               <td className="p-3 border border-border text-muted-foreground">v{data.api.version} | Uptime: {formatUptime(data.api.uptime)} | {data.api.nodeVersion}</td>
             </tr>
             <tr>
-              <td className="p-3 border border-border font-medium">Database</td>
+              <td className="p-3 border border-border font-medium">ฐานข้อมูล</td>
               <td className="p-3 border border-border">
                 <span className="inline-flex items-center gap-1.5"><StatusDot ok={data.database.connected} /> {data.database.connected ? 'เชื่อมต่อแล้ว' : 'ไม่สามารถเชื่อมต่อ'}</span>
               </td>
@@ -253,7 +253,7 @@ export default function SystemStatusPage() {
                 </span>
               </td>
               <td className="p-3 border border-border text-muted-foreground">
-                Model: {data.ai.model}{data.ai.error ? ` | Error: ${data.ai.error}` : ''}
+                โมเดล: {data.ai.model}{data.ai.error ? ` | Error: ${data.ai.error}` : ''}
               </td>
             </tr>
           </tbody>
@@ -292,7 +292,7 @@ export default function SystemStatusPage() {
 
       {/* ═══════════════════ Page 3: Integration Services ═══════════════════ */}
       <A4Page pageNum={3} totalPages={totalPages}>
-        <h2 className="text-lg font-bold mb-6 border-b pb-3">สถานะบริการเชื่อมต่อ (Integrations)</h2>
+        <h2 className="text-lg font-bold mb-6 border-b pb-3">สถานะบริการเชื่อมต่อ</h2>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 print:grid-cols-2 gap-4">
           {/* Redis */}
@@ -329,7 +329,7 @@ export default function SystemStatusPage() {
             name="SMS แจ้งเตือน"
             configured={svcs?.sms.configured ?? false}
             details={[
-              { label: 'Provider', value: svcs?.sms.provider || '-' },
+              { label: "ผู้ให้บริการ", value: svcs?.sms.provider || '-' },
             ]}
           />
 
@@ -338,8 +338,8 @@ export default function SystemStatusPage() {
             name="Payment Gateway"
             configured={svcs?.payment.configured ?? false}
             details={[
-              { label: 'Provider', value: svcs?.payment.provider || '-' },
-              { label: 'Merchant', value: svcs?.payment.merchantId || '-' },
+              { label: "ผู้ให้บริการ", value: svcs?.payment.provider || '-' },
+              { label: "ร้านค้า", value: svcs?.payment.merchantId || '-' },
             ]}
           />
 
@@ -375,19 +375,19 @@ export default function SystemStatusPage() {
 
         {/* Config Checklist */}
         <div className="mt-8 border-t pt-4">
-          <h3 className="text-sm font-semibold mb-3">Checklist ก่อน Go-Live</h3>
+          <h3 className="text-sm font-semibold mb-3">รายการตรวจสอบก่อนเปิดใช้งานจริง</h3>
           <div className="grid grid-cols-1 sm:grid-cols-2 print:grid-cols-2 gap-2 text-xs">
             {[
-              { label: 'Database', ok: data.database.connected },
+              { label: "ฐานข้อมูล", ok: data.database.connected },
               { label: 'AI (Anthropic)', ok: data.ai.connected },
-              { label: 'Redis Cache', ok: data.redis?.connected ?? false },
-              { label: 'S3 Storage', ok: svcs?.s3.configured ?? false },
+              { label: "แคช Redis", ok: data.redis?.connected ?? false },
+              { label: "พื้นที่จัดเก็บ S3", ok: svcs?.s3.configured ?? false },
               { label: 'LINE OA', ok: svcs?.line.configured ?? false },
               { label: 'SMS', ok: svcs?.sms.configured ?? false },
-              { label: 'Payment Gateway', ok: svcs?.payment.configured ?? false },
+              { label: "ระบบรับชำระเงิน", ok: svcs?.payment.configured ?? false },
               { label: 'Email (SMTP)', ok: svcs?.email.configured ?? false },
               { label: 'Sentry', ok: svcs?.sentry.configured ?? false },
-              { label: 'Notification Queue', ok: svcs?.queue.available ?? false },
+              { label: "คิวแจ้งเตือน", ok: svcs?.queue.available ?? false },
             ].map(item => (
               <div key={item.label} className="flex items-center gap-2">
                 <Badge variant={item.ok ? 'success' : 'destructive'} appearance="light" className="w-4 h-4 inline-flex items-center justify-center p-0 text-[10px] font-bold rounded">

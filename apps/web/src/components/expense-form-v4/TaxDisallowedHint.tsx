@@ -61,7 +61,7 @@ export default function TaxDisallowedHint({ compact = false }: Props) {
           ))}
         </ul>
         <div className="border-t border-border bg-muted/30 px-4 py-2.5 text-[11px] leading-snug text-muted-foreground">
-          ระบบบันทึกบัญชีปกติ — flag นี้มีผลเฉพาะตอนสรุปยอด ภ.ง.ด.50/51 ปลายปี
+          ระบบบันทึกบัญชีปกติ — เครื่องหมาย นี้มีผลเฉพาะตอนสรุปยอด ภ.ง.ด.50/51 ปลายปี
         </div>
       </PopoverContent>
     </Popover>

@@ -83,7 +83,7 @@ function CategoryGroupCards({ data }: { data: SummaryRow[] }) {
                   </p>
                 </div>
                 <div>
-                  <p className="text-xs text-muted-foreground">มูลค่าตามบัญชีสุทธิ (NBV)</p>
+                  <p className="text-xs text-muted-foreground">มูลค่าตามบัญชีสุทธิ (มูลค่าตามบัญชีสุทธิ)</p>
                   <p className="font-semibold tabular-nums text-emerald-600 dark:text-emerald-400">
                     {formatNumberDecimal(parseFloat(row.totalNbv))}
                   </p>
@@ -115,7 +115,7 @@ function CategoryGroupCards({ data }: { data: SummaryRow[] }) {
                 </p>
               </div>
               <div>
-                <p className="text-xs text-muted-foreground">มูลค่าตามบัญชีสุทธิ (NBV) รวม</p>
+                <p className="text-xs text-muted-foreground">มูลค่าตามบัญชีสุทธิ (มูลค่าตามบัญชีสุทธิ) รวม</p>
                 <p className="font-semibold tabular-nums text-emerald-600 dark:text-emerald-400">
                   {formatNumberDecimal(grandTotal.totalNbv)}
                 </p>
@@ -154,7 +154,7 @@ function SummaryTable({ data }: { data: SummaryRow[] }) {
     },
     {
       key: 'totalNbv',
-      label: 'มูลค่าตามบัญชีสุทธิ (NBV)',
+      label: "มูลค่าตามบัญชีสุทธิ (มูลค่าตามบัญชีสุทธิ)",
       render: (r: SummaryRow) => (
         <span className="tabular-nums font-semibold">
           {formatNumberDecimal(parseFloat(r.totalNbv))}

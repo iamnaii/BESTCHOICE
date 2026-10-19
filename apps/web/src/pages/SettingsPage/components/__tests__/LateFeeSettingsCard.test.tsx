@@ -125,7 +125,7 @@ describe('LateFeeSettingsCard', () => {
     apiGet.mockResolvedValue(settingsResponse());
     wrap(<LateFeeSettingsCard />);
     await waitFor(() => expect(screen.getByText('ค่าปรับ tier1')).toBeInTheDocument());
-    expect(screen.getByText('เฉพาะ OWNER เท่านั้นที่แก้ไขได้')).toBeInTheDocument();
+    expect(screen.getByText('เฉพาะ เจ้าของ เท่านั้นที่แก้ไขได้')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'แก้ไข' })).toBeNull();
   });
 });

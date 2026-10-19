@@ -91,19 +91,19 @@ export default function FinancialAuditPage() {
   return (
     <div>
       <PageHeader
-        title="Financial Audit Trail"
+        title="ประวัติการตรวจสอบการเงิน"
         subtitle="ประวัติธุรกรรมการเงินของสัญญา"
       />
 
       <Card className="rounded-xl border border-border/50 bg-card shadow-sm mb-6">
         <CardContent className="p-5">
           <div className="flex gap-3">
-            <input aria-label="ค้นหาด้วย Contract ID"
+            <input aria-label="ค้นหาด้วย รหัสสัญญา"
               type="text"
               value={searchInput}
               onChange={(e) => setSearchInput(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-              placeholder="ค้นหาด้วย Contract ID..."
+              placeholder="ค้นหาด้วย รหัสสัญญา..."
               className="flex-1 h-10 px-3.5 border border-input rounded-lg text-sm outline-hidden bg-background text-foreground placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring/30"
             />
             <button data-ui-control="button"
@@ -143,7 +143,7 @@ export default function FinancialAuditPage() {
         ) : contractId ? (
           <div className="text-center py-12 text-muted-foreground text-sm">ไม่พบรายการธุรกรรมสำหรับสัญญานี้</div>
         ) : (
-          <div className="text-center py-12 text-muted-foreground text-sm">กรอก Contract ID เพื่อดูประวัติธุรกรรมการเงิน</div>
+          <div className="text-center py-12 text-muted-foreground text-sm">กรอก รหัสสัญญา เพื่อดูประวัติธุรกรรมการเงิน</div>
         )}
       </QueryBoundary>
     </div>

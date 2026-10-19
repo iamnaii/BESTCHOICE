@@ -112,7 +112,7 @@ export default function ShopAccountingPage() {
     <div className="min-w-0">
       <PageHeader
         title="บัญชีหน้าร้าน (SHOP)"
-        subtitle="งบทดลอง + กำไรขาดทุนของฝั่ง SHOP — แยกจาก FINANCE ตามผัง S-prefix"
+        subtitle="งบทดลอง + กำไรขาดทุนของฝั่ง SHOP — แยกจาก FINANCE ใช้รหัสบัญชีขึ้นต้น S"
       />
 
       <details className="group mb-5 rounded-lg border border-border bg-muted text-sm leading-relaxed text-muted-foreground">

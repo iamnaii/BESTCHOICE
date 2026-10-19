@@ -91,15 +91,15 @@ export default function SmsTemplatesPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="ตั้งค่า Template ข้อความ LINE / SMS"
-        subtitle="จัดการเทมเพลตข้อความสำหรับระบบทวงหนี้ — preview ตัวอย่าง · A/B test variant"
+        title="ตั้งค่า แม่แบบข้อความ LINE / SMS"
+        subtitle="จัดการแม่แบบข้อความทวงหนี้ ดูตัวอย่าง และเปรียบเทียบรูปแบบข้อความ"
         action={
           <button data-ui-control="button"
             onClick={handleNew}
             className="flex items-center gap-2 px-4 py-2 rounded-md bg-primary text-primary-foreground text-sm hover:bg-primary/90 transition-colors"
           >
             <Plus className="w-4 h-4" />
-            เพิ่ม Template
+            เพิ่มแม่แบบ
           </button>
         }
       />
@@ -159,7 +159,7 @@ export default function SmsTemplatesPage() {
                               className="text-xs bg-info/10 text-info border-info/30"
                             >
                               <GitBranch className="w-3 h-3 mr-1" />
-                              variant of {t.parent.name}
+                              รูปแบบย่อยของ {t.parent.name}
                             </Badge>
                           )}
                         </div>
@@ -175,7 +175,7 @@ export default function SmsTemplatesPage() {
                               e.stopPropagation();
                               setConfirmVariantId(t.id);
                             }}
-                            title="สร้าง A/B variant"
+                            title="สร้าง รูปแบบทดสอบ A/B"
                             className="p-1.5 rounded hover:bg-accent text-muted-foreground hover:text-info"
                           >
                             <GitBranch className="w-3.5 h-3.5" />
@@ -187,7 +187,7 @@ export default function SmsTemplatesPage() {
                             e.stopPropagation();
                             setConfirmDeleteId(t.id);
                           }}
-                          title="ลบ template"
+                          title="ลบแม่แบบ"
                           className="p-1.5 rounded hover:bg-accent text-muted-foreground hover:text-destructive"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
@@ -198,7 +198,7 @@ export default function SmsTemplatesPage() {
                 </div>
               ) : (
                 <div className="p-6 text-center text-sm text-muted-foreground">
-                  ยังไม่มี template — กดปุ่ม "เพิ่ม Template" เพื่อเริ่มต้น
+                  ยังไม่มี แม่แบบ — กดปุ่ม "เพิ่มแม่แบบ" เพื่อเริ่มต้น
                 </div>
               )}
             </CardContent>
@@ -212,7 +212,7 @@ export default function SmsTemplatesPage() {
               <Card className="rounded-xl border border-border/50 bg-card shadow-sm">
                 <CardContent className="p-5">
                   <h2 className="text-sm font-semibold mb-4">
-                    {mode === 'create' ? 'สร้าง Template ใหม่' : `แก้ไข: ${selected?.name}`}
+                    {mode === 'create' ? "สร้างแม่แบบใหม่" : `แก้ไข: ${selected?.name}`}
                   </h2>
                   <SmsTemplateForm
                     initial={selected}
@@ -231,7 +231,7 @@ export default function SmsTemplatesPage() {
               <CardContent className="p-12 text-center">
                 <MessageSquare className="w-10 h-10 mx-auto mb-3 text-muted-foreground" />
                 <p className="text-sm text-muted-foreground">
-                  เลือก template จากรายการเพื่อแก้ไข หรือกดปุ่ม "เพิ่ม Template" เพื่อสร้างใหม่
+                  เลือกแม่แบบจากรายการเพื่อแก้ไข หรือกดปุ่ม "เพิ่มแม่แบบ" เพื่อสร้างใหม่
                 </p>
               </CardContent>
             </Card>
@@ -242,8 +242,8 @@ export default function SmsTemplatesPage() {
       <ConfirmDialog
         open={confirmDeleteId !== null}
         onOpenChange={(o) => !o && setConfirmDeleteId(null)}
-        title="ลบ Template"
-        description="ต้องการลบ template นี้ใช่หรือไม่? Dunning Rule ที่อ้างถึงจะ fall back ไปใช้ข้อความ inline เดิม"
+        title="ลบแม่แบบ"
+        description="ต้องการลบแม่แบบนี้หรือไม่? กฎทวงหนี้ที่ใช้อยู่จะกลับไปใช้ข้อความเดิมที่กำหนดไว้ในกฎ"
         variant="destructive"
         confirmLabel="ลบ"
         loading={deleteMut.isPending}
@@ -253,8 +253,8 @@ export default function SmsTemplatesPage() {
       <ConfirmDialog
         open={confirmVariantId !== null}
         onOpenChange={(o) => !o && setConfirmVariantId(null)}
-        title="สร้าง A/B Variant"
-        description="สร้าง variant ของ template นี้สำหรับทดสอบ A/B? ระบบจะคัดลอก channel, subject, variables มาให้ — แก้ body ได้หลังสร้าง"
+        title="สร้าง รูปแบบทดสอบ A/B"
+        description="สร้างแม่แบบอีกรูปแบบเพื่อเปรียบเทียบผลหรือไม่? ระบบจะคัดลอกช่องทาง หัวข้อ และตัวแปรให้ คุณแก้ไขเนื้อหาได้หลังสร้าง"
         confirmLabel="สร้าง variant"
         loading={variantMut.isPending}
         onConfirm={handleCreateVariant}

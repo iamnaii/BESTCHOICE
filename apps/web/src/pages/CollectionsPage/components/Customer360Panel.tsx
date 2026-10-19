@@ -167,7 +167,7 @@ export default function Customer360Panel({
           <div className="flex items-center justify-between px-5 py-3">
             <div>
               <div className="text-2xs uppercase tracking-wider text-muted-foreground">
-                Customer 360
+                ข้อมูลลูกค้ารอบด้าน
               </div>
               <div className="text-sm font-mono tabular-nums text-primary font-medium">
                 {contract?.contractNumber}
@@ -226,7 +226,7 @@ export default function Customer360Panel({
                       title="Finance OA — น้องเบส"
                     >
                       <MessageCircle className="size-3" />
-                      LINE (Finance)
+                      LINE (งานการเงิน)
                     </span>
                   )}
                   {data?.detail.customer.address && (
@@ -253,12 +253,12 @@ export default function Customer360Panel({
                     onClick={() => customerId && recompute.mutate(customerId)}
                     disabled={!customerId || recompute.isPending}
                     className="inline-flex items-center gap-1 text-2xs text-muted-foreground hover:text-foreground transition-colors leading-snug"
-                    title="คำนวณ auto tag ใหม่"
+                    title="คำนวณ ป้ายกำกับอัตโนมัติ ใหม่"
                   >
                     <RefreshCw
                       className={`size-3 ${recompute.isPending ? 'animate-spin' : ''}`}
                     />
-                    Recompute tags
+                    คำนวณป้ายกำกับใหม่
                   </button>
                   {canManageTags && (
                     <button
@@ -267,7 +267,7 @@ export default function Customer360Panel({
                       className="inline-flex items-center gap-1 text-2xs text-primary hover:underline leading-snug"
                     >
                       <Tag className="size-3" />
-                      จัดการ Tags
+                      จัดการ ป้ายกำกับ
                     </button>
                   )}
                 </div>
@@ -287,7 +287,7 @@ export default function Customer360Panel({
                 </TabButton>
                 {hasLineId && (
                   <TabButton active={tab === 'line'} onClick={() => setTab('line')}>
-                    LINE chat
+                    แชท LINE
                   </TabButton>
                 )}
               </div>
@@ -410,7 +410,7 @@ export default function Customer360Panel({
                   className="mt-3 w-full inline-flex items-center justify-center gap-2 rounded-lg border border-input px-3 py-2 text-sm font-medium hover:bg-accent transition-colors"
                 >
                   <Receipt className="size-4" />
-                  ขอ waive ค่าปรับ
+                  ขอ ยกเว้น ค่าปรับ
                 </button>
 
                 {/* Manual MDM lock/unlock — action-first flow (replaces the

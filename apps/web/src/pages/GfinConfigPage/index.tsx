@@ -19,7 +19,7 @@ export default function GfinConfigPage() {
         <h1 className="text-2xl font-semibold">ตั้งค่า GFIN</h1>
         <p className="text-sm text-muted-foreground leading-snug">
           {isOwner
-            ? 'ตารางราคาสูงสุด, Over Price rules (+ ผ่อนสูงสุด), เรทต่อ (งวด, % คอมมิชชั่น), ค่าตั้งต้น และกลุ่มไลน์/แม่แบบชุดเช็ค'
+            ? "ตารางราคาสูงสุด, กฎส่วนเพิ่มราคา (+ ผ่อนสูงสุด), เรทต่อ (งวด, % คอมมิชชั่น), ค่าตั้งต้น และกลุ่มไลน์/แม่แบบชุดเช็ค"
             : 'กลุ่มไลน์ที่รับชุดเช็ค GFIN และแม่แบบข้อความ 12 ข้อ'}
         </p>
       </div>
@@ -28,10 +28,10 @@ export default function GfinConfigPage() {
           {isOwner && (
             <>
               <TabsTrigger value="max-prices">ราคาสูงสุด</TabsTrigger>
-              <TabsTrigger value="overprice">Over Price</TabsTrigger>
+              <TabsTrigger value="overprice">ส่วนเพิ่มราคา</TabsTrigger>
               <TabsTrigger value="rate-factors">ตารางค่างวด</TabsTrigger>
               <TabsTrigger value="settings">ค่าตั้งต้น</TabsTrigger>
-              <TabsTrigger value="match-preview">ทดสอบ Match</TabsTrigger>
+              <TabsTrigger value="match-preview">ทดสอบ จับคู่</TabsTrigger>
             </>
           )}
           <TabsTrigger value="line-group">กลุ่มไลน์ &amp; ข้อความ</TabsTrigger>

@@ -60,9 +60,7 @@ function fmt(n: number | null | undefined): string {
 }
 
 function fmtSigned(n: number): string {
-  const abs = Math.abs(n);
-  const str = abs.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  return n < 0 ? `(${str})` : str;
+  return fmt(n);
 }
 
 const inputClass =
@@ -203,7 +201,7 @@ export default function IntercompanyReportPage() {
   return (
     <div>
       <PageHeader
-        title="รายงานลูกหนี้ Inter-co"
+        title="รายงานลูกหนี้ระหว่างบริษัท"
         subtitle="FINANCE ↔ SHOP — ยอดเจ้าหนี้หน้าร้าน (21-1101, 21-1102)"
         icon={<Building2 className="size-5" />}
       />

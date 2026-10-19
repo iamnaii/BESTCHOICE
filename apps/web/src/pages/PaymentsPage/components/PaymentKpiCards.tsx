@@ -61,7 +61,7 @@ export default function PaymentKpiCards({ summary, loading, collectedLabel }: Pa
     {
       label: 'ค้าง ≥ 60 วัน',
       value: s.overdue60Count.toLocaleString('th-TH'),
-      foot: <>trigger <code className="font-mono text-[11px]">21-2103</code> VAT เฉพาะงวดที่ยังไม่ตั้งลูกหนี้</>,
+      foot: <>ตั้งภาษี <code className="font-mono text-[11px]">21-2103</code> VAT เฉพาะงวดที่ยังไม่ตั้งลูกหนี้</>,
       help: true,
       accent: 'bg-warning',
       valueClass: 'text-warning-strong',

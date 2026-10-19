@@ -1,3 +1,4 @@
+import { NumberInput } from '@/components/ui/NumberInput';
 import { NativeSelect } from '@/components/ui/native-select';
 import { AlertTriangle, Minus, Package, Plus } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -127,9 +128,8 @@ export function AccessoryGroupScreen({ units, indices, ordinalRange, total, cost
               ราคาเงินสด (บาท)
               <Req />
             </label>
-            <input
+            <NumberInput unstyled
               id="group-cash"
-              type="number"
               inputMode="decimal"
               min={0}
               value={first.sellingPrice}

@@ -236,7 +236,7 @@ describe('IntercompanySettlementPage', () => {
 
     await waitFor(() => expect(screen.getByText('CT-0002')).toBeInTheDocument());
     expect(screen.getByText('CT-0001')).toBeInTheDocument();
-    expect(screen.getByText(/LEGACY/)).toBeInTheDocument();
+    expect(screen.getByText(/สัญญาเดิม/)).toBeInTheDocument();
   });
 
   it('hides the approve button from ACCOUNTANT viewing a PENDING_APPROVAL batch', async () => {
@@ -423,7 +423,7 @@ describe('IntercompanySettlementPage', () => {
     const dialog = await screen.findByRole('dialog');
 
     // ยอด default = net recallGl ของแถว
-    expect(within(dialog).getByLabelText(/ยอดรับเงินคืน/)).toHaveValue(500);
+    expect(within(dialog).getByLabelText(/ยอดรับเงินคืน/)).toHaveValue('500.00');
 
     apiPost.mockResolvedValueOnce({
       data: { financeEntryNo: 'JE-202608-00001', shopEntryNo: 'SJE-202608-00001', deduped: false },
@@ -531,7 +531,7 @@ describe('IntercompanySettlementPage — ค่าเครื่องคืน
     await user.click(screen.getByRole('button', { name: 'รับเงินสดค่าเครื่อง' }));
     const dialog = await screen.findByRole('dialog');
     expect(within(dialog).getByText('รับเงินสดค่าเครื่องคืนจากหน้าร้าน')).toBeInTheDocument();
-    expect(within(dialog).getByLabelText(/ยอดรับเงินค่าเครื่องคืน/)).toHaveValue(7000);
+    expect(within(dialog).getByLabelText(/ยอดรับเงินค่าเครื่องคืน/)).toHaveValue('7,000.00');
 
     apiPost.mockResolvedValueOnce({
       data: { financeEntryNo: 'JE-202609-00010', shopEntryNo: 'SJE-202609-00010', deduped: false },

@@ -122,7 +122,7 @@ describe('PaymentHistorySheet — งวด PAID ที่ไม่มีใบ�
     expect(legacy.getByText('ชำระแล้ว (ยกมา)')).toBeInTheDocument();
     expect(legacy.getByText('1/6')).toBeInTheDocument();
     expect(legacy.getAllByText('4,199.00')).toHaveLength(2); // ยอดต้องชำระ + ยอดรับจริง
-    expect(legacy.getByText('● PAID')).toBeInTheDocument();
+    expect(legacy.getByText('● ชำระแล้ว')).toBeInTheDocument();
     expect(within(bodyRows[1]).getByText('RT-202609-00002')).toBeInTheDocument();
   });
 

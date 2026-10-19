@@ -45,7 +45,7 @@ export function useCreatePreset() {
     },
     onSuccess: (_, vars) => {
       qc.invalidateQueries({ queryKey: ['filter-presets', vars.page] });
-      toast.success('บันทึก preset แล้ว');
+      toast.success("บันทึก ชุดตัวกรอง แล้ว");
     },
     onError: (err: any) => {
       const msg = err?.response?.data?.message ?? 'บันทึก preset ล้มเหลว';
@@ -62,7 +62,7 @@ export function useDeletePreset(page: string) {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['filter-presets', page] });
-      toast.success('ลบ preset แล้ว');
+      toast.success("ลบ ชุดตัวกรอง แล้ว");
     },
     onError: (err: any) => {
       const msg = err?.response?.data?.message ?? 'ลบ preset ล้มเหลว';

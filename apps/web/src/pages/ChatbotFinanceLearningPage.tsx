@@ -90,7 +90,7 @@ export default function ChatbotFinanceLearningPage() {
       await api.post(`/chatbot/finance/admin/learning/suggestions/${id}/approve`);
     },
     onSuccess: () => {
-      toast.success('Approve แล้ว — สร้าง KB entry ใหม่');
+      toast.success("อนุมัติ แล้ว — สร้าง รายการความรู้ ใหม่");
       queryClient.invalidateQueries({ queryKey: ['chatbot-learning'] });
       queryClient.invalidateQueries({ queryKey: ['chatbot-finance-kb'] });
       setSelectedSuggestion(null);
@@ -103,7 +103,7 @@ export default function ChatbotFinanceLearningPage() {
       await api.post(`/chatbot/finance/admin/learning/suggestions/${id}/reject`);
     },
     onSuccess: () => {
-      toast.success('Reject แล้ว');
+      toast.success("ปฏิเสธ แล้ว");
       queryClient.invalidateQueries({ queryKey: ['chatbot-learning'] });
       setSelectedSuggestion(null);
     },
@@ -113,8 +113,8 @@ export default function ChatbotFinanceLearningPage() {
   return (
     <div>
       <PageHeader
-        title="Finance Bot — Learning Hub"
-        subtitle="ตรวจสอบและอนุมัติข้อเสนอแนะสำหรับ Knowledge Base"
+        title="ศูนย์เรียนรู้บอตการเงิน"
+        subtitle="ตรวจสอบและอนุมัติข้อเสนอแนะสำหรับ คลังความรู้"
       />
 
       {/* Stats */}
@@ -129,9 +129,9 @@ export default function ChatbotFinanceLearningPage() {
           <StatCard label="รอตรวจสอบ" value={stats.data?.suggestions.pending ?? 0} accent="orange" />
           <StatCard label="อนุมัติแล้ว" value={stats.data?.suggestions.approved ?? 0} accent="green" />
           <StatCard label="ปฏิเสธแล้ว" value={stats.data?.suggestions.rejected ?? 0} />
-          <StatCard label="Feedback ทั้งหมด" value={stats.data?.feedback.total ?? 0} />
+          <StatCard label="ผลตอบรับ ทั้งหมด" value={stats.data?.feedback.total ?? 0} />
           <StatCard
-            label="Feedback บวก"
+            label="ผลตอบรับ บวก"
             value={`${stats.data?.feedback.positiveRate ?? 0}%`}
             accent={
               (stats.data?.feedback.positiveRate ?? 0) >= 80 ? 'green' :
@@ -202,7 +202,7 @@ export default function ChatbotFinanceLearningPage() {
           ) : (
             <div className="space-y-4">
               <div className="flex justify-between items-start">
-                <h2 className="font-bold">รายละเอียด Suggestion</h2>
+                <h2 className="font-bold">รายละเอียด คำแนะนำ</h2>
                 <div className="flex gap-1">
                   <SourceBadge source={selectedSuggestion.source} />
                   <StatusBadge status={selectedSuggestion.status} />
@@ -223,18 +223,18 @@ export default function ChatbotFinanceLearningPage() {
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-xs text-muted-foreground">Intent</label>
+                  <label className="text-xs text-muted-foreground">ความต้องการลูกค้า</label>
                   <p className="text-sm font-mono mt-1">{selectedSuggestion.suggestedIntent}</p>
                 </div>
                 <div>
-                  <label className="text-xs text-muted-foreground">Source</label>
+                  <label className="text-xs text-muted-foreground">ที่มา</label>
                   <p className="text-sm mt-1">{selectedSuggestion.source}</p>
                 </div>
               </div>
 
               {selectedSuggestion.suggestedKeywords.length > 0 && (
                 <div>
-                  <label className="text-xs text-muted-foreground">Keywords</label>
+                  <label className="text-xs text-muted-foreground">คำค้น</label>
                   <div className="flex flex-wrap gap-1 mt-1">
                     {selectedSuggestion.suggestedKeywords.map((kw, i) => (
                       <span key={i} className="text-xs bg-muted px-2 py-0.5 rounded">{kw}</span>
@@ -245,7 +245,7 @@ export default function ChatbotFinanceLearningPage() {
 
               {selectedSuggestion.suggestedTemplate && (
                 <div>
-                  <label className="text-xs text-muted-foreground">Suggested Template</label>
+                  <label className="text-xs text-muted-foreground">แม่แบบที่แนะนำ</label>
                   <p className="text-sm bg-info/10 p-3 rounded-lg mt-1 whitespace-pre-wrap">{selectedSuggestion.suggestedTemplate}</p>
                 </div>
               )}
@@ -257,21 +257,21 @@ export default function ChatbotFinanceLearningPage() {
                     disabled={approveMutation.isPending}
                     className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm hover:bg-primary/90 disabled:opacity-50"
                   >
-                    {approveMutation.isPending ? 'กำลัง...' : 'Approve → สร้าง KB'}
+                    {approveMutation.isPending ? 'กำลัง...' : "อนุมัติ → สร้าง KB"}
                   </button>
                   <button data-ui-control="button"
                     onClick={() => rejectMutation.mutate(selectedSuggestion.id)}
                     disabled={rejectMutation.isPending}
                     className="px-4 py-2 border border-destructive/30 text-destructive rounded-lg text-sm hover:bg-destructive/10 disabled:opacity-50"
                   >
-                    Reject
+                    ปฏิเสธ
                   </button>
                 </div>
               )}
 
               {selectedSuggestion.reviewedAt && (
                 <p className="text-xs text-muted-foreground">
-                  Reviewed: {formatDateTime(new Date(selectedSuggestion.reviewedAt))}
+                  ตรวจสอบแล้ว: {formatDateTime(new Date(selectedSuggestion.reviewedAt))}
                 </p>
               )}
             </div>

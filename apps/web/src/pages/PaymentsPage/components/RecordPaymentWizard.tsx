@@ -1,3 +1,5 @@
+import { NumberInput } from '@/components/ui/NumberInput';
+import { formatNumericText } from '@/utils/numericText';
 import { NativeSelect } from '@/components/ui/native-select';
 import { useId as useUiFieldId, useState, useMemo, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
@@ -934,15 +936,14 @@ export function RecordPaymentWizard({
                               active ? 'text-primary-foreground/80' : 'text-muted-foreground',
                             )}
                           >
-                            {tile.value}
+                            {formatNumericText(tile.value)}
                           </div>
                         </button>
                       );
                     })}
                   </div>
-                  <Input id={`${uiFieldId}-1`}
+                  <NumberInput id={`${uiFieldId}-1`}
                     ref={amountInputRef}
-                    type="number"
                     value={amountReceived}
                     onChange={(e) => {
                       setAmountReceived(e.target.value);
@@ -971,8 +972,7 @@ export function RecordPaymentWizard({
                       (ระบุ 0 ถ้าไม่มี)
                     </span>
                   </Label>
-                  <Input
-                    type="number"
+                  <NumberInput
                     value={lateFeeStr}
                     onChange={(e) => setLateFeeStr(e.target.value)}
                     min={0}
@@ -982,7 +982,7 @@ export function RecordPaymentWizard({
                   />
                   {initialFee.paid.gt(0) && (
                     <p className="mt-1 text-xs text-muted-foreground leading-snug">
-                      รับค่าปรับงวดนี้แล้ว {initialFee.paid.toFixed(2)} ฿
+                      รับค่าปรับงวดนี้แล้ว {formatNumericText(initialFee.paid.toFixed(2))} ฿
                     </p>
                   )}
                   {receiptFee.reduced && (
@@ -1000,7 +1000,7 @@ export function RecordPaymentWizard({
                         อนุโลมค่าปรับ
                       </h3>
                       <span className="text-xs text-muted-foreground leading-snug">
-                        ค่าปรับครั้งนี้ {currentReceiptLateFee.toFixed(2)} ฿
+                        ค่าปรับครั้งนี้ {formatNumericText(currentReceiptLateFee.toFixed(2))} ฿
                       </span>
                     </div>
                     <div className="grid grid-cols-3 gap-2">
@@ -1039,8 +1039,7 @@ export function RecordPaymentWizard({
                         );
                       })}
                     </div>
-                    <Input
-                      type="number"
+                    <NumberInput
                       value={waiverStr}
                       min={0}
                       max={currentReceiptLateFee.toNumber()}
@@ -1074,10 +1073,10 @@ export function RecordPaymentWizard({
                     )}
                     <div className="flex items-center justify-between text-xs font-medium pt-1 border-t border-border/50">
                       <span className="text-muted-foreground leading-snug">
-                        ค่าปรับ {currentReceiptLateFee.toFixed(2)} − อนุโลม {waiverDec.toFixed(2)} =
+                        ค่าปรับ {formatNumericText(currentReceiptLateFee.toFixed(2))} − อนุโลม {formatNumericText(waiverDec.toFixed(2))} =
                       </span>
                       <span className="text-foreground font-mono leading-snug">
-                        {netLateFee.toFixed(2)} ฿
+                        {formatNumericText(netLateFee.toFixed(2))} ฿
                       </span>
                     </div>
                   </div>
@@ -1290,7 +1289,7 @@ export function RecordPaymentWizard({
                     </div>
                   )}
                   <div className="text-[10px] text-muted-foreground leading-snug">
-                    ผู้อนุมัติต้องกดด้วยบัญชีของตนเอง · OWNER กำหนดสิทธิในตั้งค่า
+                    ผู้อนุมัติต้องกดด้วยบัญชีของตนเอง · เจ้าของ กำหนดสิทธิในตั้งค่า
                   </div>
                 </div>
               </div>
@@ -1411,7 +1410,7 @@ export function RecordPaymentWizard({
                     }
                     title="เก็บเป็นฉบับร่าง — ยังไม่ลงบัญชี"
                   >
-                    บันทึก (Draft)
+                    บันทึกฉบับร่าง
                   </Button>
                 )}
                 <Button
@@ -1447,7 +1446,7 @@ export function RecordPaymentWizard({
           open={showPartialConfirm}
           onOpenChange={setShowPartialConfirm}
           title="ยืนยันบันทึกบางส่วน"
-          description={`ยอดค้างงวดนี้ ${expectedTotal.toFixed(2)} ฿ • ลูกค้าจ่าย ${receivedNum.toFixed(2)} ฿ • คงค้าง ${Math.abs(amountDiff).toFixed(2)} ฿. ลูกค้าจะค้างยอดนี้จนกว่าจะจ่ายเพิ่ม.`}
+          description={`ยอดค้างงวดนี้ ${formatNumericText(expectedTotal.toFixed(2))} ฿ • ลูกค้าจ่าย ${formatNumericText(receivedNum.toFixed(2))} ฿ • คงค้าง ${formatNumericText(Math.abs(amountDiff).toFixed(2))} ฿. ลูกค้าจะค้างยอดนี้จนกว่าจะจ่ายเพิ่ม.`}
           confirmLabel="ยืนยันบันทึก"
           cancelLabel="ยกเลิก"
           onConfirm={actuallySubmit}

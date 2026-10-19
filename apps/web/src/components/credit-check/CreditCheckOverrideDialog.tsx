@@ -84,7 +84,7 @@ const REASON_OPTIONS: ReasonOption[] = [
   },
   {
     value: 'MGR_RISK',
-    label: 'Manager/Owner รับความเสี่ยง',
+    label: "ผู้จัดการหรือเจ้าของ รับความเสี่ยง",
     requiresDetail: true,
     detailLabel: 'ผู้อนุมัติ',
     detailPlaceholder: 'เช่น approve โดยคุณ... (ระบุความสัมพันธ์)',
@@ -209,7 +209,7 @@ export default function CreditCheckOverrideDialog({
               <div className="rounded-lg border border-warning/30 bg-warning/5 p-3 flex items-start gap-2">
                 <AlertTriangle className="size-4 text-warning-strong shrink-0 mt-0.5" />
                 <div className="text-xs text-foreground leading-snug">
-                  คุณกำลัง override ผล AI — ต้องระบุเหตุผลเพื่อ audit
+                  คุณกำลัง แก้ไขแทนค่าเดิม ผล AI — ต้องระบุเหตุผลเพื่อ การตรวจสอบ
                 </div>
               </div>
 

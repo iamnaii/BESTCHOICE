@@ -50,7 +50,7 @@ export default function BlockList() {
       {blocks.length === 0 && (
         <div className="text-center py-16 text-muted-foreground">
           <FileText size={48} className="mx-auto mb-4 text-muted-foreground" />
-          <p className="text-lg font-medium text-muted-foreground mb-2">ยังไม่มี block</p>
+          <p className="text-lg font-medium text-muted-foreground mb-2">ยังไม่มีส่วนเนื้อหา</p>
           <p className="text-base">กดปุ่ม "เพิ่ม" ด้านบนเพื่อเริ่มสร้างเอกสาร</p>
         </div>
       )}

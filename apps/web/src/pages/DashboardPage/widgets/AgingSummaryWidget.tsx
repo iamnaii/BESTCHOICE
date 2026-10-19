@@ -43,7 +43,7 @@ export default function AgingSummaryWidget() {
         <div className="size-8 rounded-lg bg-destructive/10 flex items-center justify-center shrink-0">
           <AlertTriangle className="size-4 text-destructive" />
         </div>
-        <span className="font-semibold text-sm leading-snug">ลูกหนี้ค้างชำระ (Aging)</span>
+        <span className="font-semibold text-sm leading-snug">ลูกหนี้ค้างชำระ</span>
       </CardHeader>
       <CardContent className="flex-1 flex flex-col justify-between gap-3">
         <QueryBoundary

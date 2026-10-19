@@ -56,7 +56,7 @@ export default function VatAutoJournalPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="VAT Auto Journal — รายการอัตโนมัติประจำเดือน"
+        title="VAT รายการบัญชีอัตโนมัติ — รายการอัตโนมัติประจำเดือน"
         icon={<Calculator className="size-5" />}
         subtitle="รายการสมุดรายวันที่มีบัญชี VAT (21-2101, 21-2102, 11-4101, 11-2104, 11-2105)"
       />
@@ -82,7 +82,7 @@ export default function VatAutoJournalPage() {
                   <TableRow>
                     <TableHead>วันที่</TableHead>
                     <TableHead>เลขเอกสาร</TableHead>
-                    <TableHead>ที่มา (Source)</TableHead>
+                    <TableHead>ที่มา</TableHead>
                     <TableHead>คำอธิบาย</TableHead>
                     <TableHead>บัญชี VAT</TableHead>
                   </TableRow>
@@ -94,7 +94,7 @@ export default function VatAutoJournalPage() {
                         colSpan={5}
                         className="text-center text-muted-foreground py-10"
                       >
-                        ไม่มีรายการ VAT Journal ในงวดที่เลือก
+                        ไม่มีรายการ รายการบัญชี VAT ในงวดที่เลือก
                       </TableCell>
                     </TableRow>
                   ) : (

@@ -1,3 +1,4 @@
+import { NumberInput } from '@/components/ui/NumberInput';
 import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -95,7 +96,7 @@ export default function CashCloseConfirmDialog({ close, viewerRole, onClose }: {
               <label htmlFor="cash-close-received" className="block text-xs text-muted-foreground leading-snug">
                 เงินที่รับมาจริง <span className="text-destructive">*</span> (พนักงานแจ้งส่ง {baht(close.sendAmount)})
               </label>
-              <input id="cash-close-received" inputMode="decimal" value={receivedText} onChange={(e) => setReceivedText(e.target.value)} className={inputClass} />
+              <NumberInput step="any" unstyled id="cash-close-received" inputMode="decimal" value={receivedText} onChange={(e) => setReceivedText(e.target.value)} className={inputClass} />
               {receivedText.trim() !== '' && received == null && <p className="text-xs text-destructive leading-snug">กรอกเป็นตัวเลข ทศนิยมไม่เกิน 2 ตำแหน่ง</p>}
             </div>
             {differs && (

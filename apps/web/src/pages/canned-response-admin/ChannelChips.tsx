@@ -25,7 +25,7 @@ export default function ChannelChips({ selectedChannels, onChange }: Props) {
 
   return (
     <div className="flex flex-wrap items-center gap-1">
-      <span className="text-[11px] text-muted-foreground">Channel:</span>
+      <span className="text-[11px] text-muted-foreground">ช่องทาง:</span>
       <button
         onClick={() => onChange([])}
         className={cn(

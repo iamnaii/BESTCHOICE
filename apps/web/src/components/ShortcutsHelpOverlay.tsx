@@ -17,7 +17,7 @@ const shortcuts: ShortcutEntry[] = [
   { keys: ['Alt', 'P'], description: 'ไปหน้าชำระเงิน' },
   { keys: ['Alt', 'S'], description: 'ไปหน้าคลังสินค้า' },
   { keys: ['Alt', 'D'], description: 'ไปหน้าหลัก' },
-  { keys: ['Esc'], description: 'ปิด modal / ยกเลิกโฟกัส' },
+  { keys: ['Esc'], description: "ปิด หน้าต่าง / ยกเลิกโฟกัส" },
   { keys: ['Shift', '?'], description: 'เปิด/ปิดหน้าต่างนี้' },
 ];
 

@@ -620,7 +620,7 @@ export function PODetailModal({
                               })()}
                               {ev.receiving.items.map((ri) => (
                                 <div key={ri.id} className="flex flex-wrap items-center gap-2 text-xs">
-                                  <Badge variant={ri.status === 'PASS' ? 'success' : 'destructive'} appearance="light">{ri.status === 'PASS' ? 'PASS' : 'REJECT'}</Badge>
+                                  <Badge variant={ri.status === 'PASS' ? 'success' : 'destructive'} appearance="light">{ri.status === 'PASS' ? "ผ่าน" : "ไม่ผ่าน"}</Badge>
                                   {ri.imeiSerial && <span className="font-mono text-muted-foreground">IMEI: {ri.imeiSerial}</span>}
                                   {ri.serialNumber && <span className="font-mono text-muted-foreground">SN: {ri.serialNumber}</span>}
                                   {canSeeInputVat(role) && ri.receivedVat != null && (

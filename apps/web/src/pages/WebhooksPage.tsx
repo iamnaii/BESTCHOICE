@@ -31,13 +31,13 @@ interface CreateWebhookForm {
 }
 
 const SUPPORTED_EVENTS = [
-  { value: 'payment.received', label: 'Payment Received — รับชำระค่างวด' },
-  { value: 'payment.overdue', label: 'Payment Overdue — ค้างชำระ' },
-  { value: 'contract.activated', label: 'Contract Activated — เปิดสัญญา' },
-  { value: 'contract.completed', label: 'Contract Completed — ปิดสัญญา' },
-  { value: 'contract.defaulted', label: 'Contract Defaulted — สัญญาผิดนัด' },
-  { value: 'trade_in.completed', label: 'Trade-in Completed — รับซื้อมือสอง' },
-  { value: 'customer.created', label: 'Customer Created — ลูกค้าใหม่' },
+  { value: 'payment.received', label: "รับชำระเงิน — รับชำระค่างวด" },
+  { value: 'payment.overdue', label: "ค้างชำระ" },
+  { value: 'contract.activated', label: "เปิดสัญญา" },
+  { value: 'contract.completed', label: "ผ่อนครบ — ปิดสัญญา" },
+  { value: 'contract.defaulted', label: "ผิดนัดชำระ — สัญญาผิดนัด" },
+  { value: 'trade_in.completed', label: "รับซื้อเสร็จสิ้น — รับซื้อมือสอง" },
+  { value: 'customer.created', label: "สร้างลูกค้า — ลูกค้าใหม่" },
 ];
 
 // ─── Form Component ───────────────────────────────────────────────────────────
@@ -130,7 +130,7 @@ function AddWebhookForm({ onClose, onSuccess }: { onClose: () => void; onSuccess
       </div>
       <div>
         <label className="block text-sm font-medium text-foreground mb-2">
-          Events <span className="text-destructive">*</span>
+          เหตุการณ์ <span className="text-destructive">*</span>
         </label>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
           {SUPPORTED_EVENTS.map((ev) => (
@@ -216,7 +216,7 @@ function WebhookRow({
               const cfg = getStatusBadgeProps(sub.isActive ? 'active' : 'inactive', activeStatusMap);
               return (
                 <Badge variant={cfg.variant} appearance={cfg.appearance} className="text-xs">
-                  {sub.isActive ? 'Active' : 'Inactive'}
+                  {sub.isActive ? "เปิดใช้งาน" : "ปิดใช้งาน"}
                 </Badge>
               );
             })()}
@@ -231,7 +231,7 @@ function WebhookRow({
                 ) : (
                   <XCircle className="w-3 h-3" aria-hidden="true" />
                 )}
-                {sub.lastDelivery.success ? 'OK' : 'Failed'}
+                {sub.lastDelivery.success ? "ตกลง" : "ไม่สำเร็จ"}
               </Badge>
             )}
           </div>
@@ -246,7 +246,7 @@ function WebhookRow({
             aria-label="ส่ง test event"
           >
             <Send className="w-3.5 h-3.5" aria-hidden="true" />
-            Test
+            ทดสอบ
           </button>
           <button data-ui-control="button"
             onClick={() => onDelete(sub.id, sub.name)}

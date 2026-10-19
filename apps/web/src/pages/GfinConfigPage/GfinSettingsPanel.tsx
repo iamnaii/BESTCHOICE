@@ -1,10 +1,10 @@
+import { NumberInput } from '@/components/ui/NumberInput';
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import api from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 
 /** shape ของ GET /gfin-config/settings */
 export interface GfinSettingsApi {
@@ -122,9 +122,8 @@ export function GfinSettingsPanel() {
             <label htmlFor={`gfin-setting-${f.key}`} className="text-sm font-medium leading-snug">
               {f.label}
             </label>
-            <Input
+            <NumberInput
               id={`gfin-setting-${f.key}`}
-              type="number"
               min="0"
               step={f.step ?? '1'}
               value={form[f.key]}

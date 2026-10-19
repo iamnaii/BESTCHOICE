@@ -1,3 +1,4 @@
+import { NumberInput } from '@/components/ui/NumberInput';
 import { UseMutationResult, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import Modal from '@/components/ui/Modal';
@@ -193,8 +194,7 @@ export function PriceManagementModal({
                         className={`px-2 py-1.5 border border-input rounded text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden ${isCanonicalLabel(price.label) ? 'bg-muted text-muted-foreground cursor-not-allowed' : ''}`}
                         required
                       />
-                      <input
-                        type="number"
+                      <NumberInput unstyled
                         step="0.01"
                         value={priceForm.amount}
                         onChange={(e) => setPriceForm({ ...priceForm, amount: e.target.value })}
@@ -303,8 +303,7 @@ export function PriceManagementModal({
                   className="px-2 py-1.5 border border-input rounded text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
                   required
                 />
-                <input
-                  type="number"
+                <NumberInput unstyled
                   step="0.01"
                   value={priceForm.amount}
                   onChange={(e) => setPriceForm({ ...priceForm, amount: e.target.value })}

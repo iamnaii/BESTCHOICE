@@ -26,6 +26,7 @@ import { cn } from '@/lib/utils';
 import { formatNumberDecimal } from '@/utils/formatters';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { assetStatusMap } from '@/lib/status-badges';
 import { assetsApi } from './api';
 import { assetEntrySchema, type AssetEntryFormValues } from './schema';
 import { useAssetCalculation } from './hooks/useAssetCalculation';
@@ -114,7 +115,7 @@ export default function AssetEntryPage() {
     if (assetQuery.data) {
       const a = assetQuery.data;
       if (a.status !== 'DRAFT') {
-        toast.error('แก้ไขได้เฉพาะสถานะ DRAFT');
+        toast.error("แก้ไขได้เฉพาะสถานะ ฉบับร่าง");
         navigate(`/assets/${a.id}`, { replace: true });
         return;
       }
@@ -271,7 +272,7 @@ export default function AssetEntryPage() {
                 {assetCode ?? '— กำลังสร้าง —'}
               </div>
               <Badge variant="outline" className="mt-1">
-                {status}
+                {assetStatusMap[status]?.label ?? 'ไม่ทราบสถานะ'}
               </Badge>
             </div>
           </div>

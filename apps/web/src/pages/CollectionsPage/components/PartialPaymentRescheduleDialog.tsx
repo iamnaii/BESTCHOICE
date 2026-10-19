@@ -1,3 +1,4 @@
+import { NumberInput } from '@/components/ui/NumberInput';
 import { toBangkokDateString, computeDefaultTimeRange } from '@/lib/date';
 import { useId as useUiFieldId, useState, useEffect } from 'react';
 import Modal from '@/components/ui/Modal';
@@ -157,8 +158,7 @@ export default function PartialPaymentRescheduleDialog({
               </button>
             </div>
             <div className="relative">
-              <input id={`${uiFieldId}-1`}
-                type="number"
+              <NumberInput unstyled id={`${uiFieldId}-1`}
                 inputMode="decimal"
                 min={0.01}
                 max={outstanding}

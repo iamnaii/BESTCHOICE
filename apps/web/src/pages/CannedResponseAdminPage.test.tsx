@@ -45,7 +45,7 @@ describe('CannedResponseAdminPage', () => {
   it('shows empty state when no template selected', async () => {
     render(wrap(<CannedResponseAdminPage />));
     await screen.findByText('เรทผ่อน iPhone');
-    expect(screen.getByText('เลือก template เพื่อแก้ไข')).toBeInTheDocument();
+    expect(screen.getByText('เลือกแม่แบบเพื่อแก้ไข')).toBeInTheDocument();
   });
 
   it('expands category on click then selects template into editor', async () => {

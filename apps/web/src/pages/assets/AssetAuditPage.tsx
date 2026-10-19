@@ -87,7 +87,7 @@ export default function AssetAuditPage() {
     <div className="space-y-4">
       {isGlobal && <AssetHubTabs />}
       <PageHeader
-        title={isGlobal ? 'Audit Log สินทรัพย์ทั้งหมด' : 'ประวัติการเปลี่ยนแปลง (Audit Trail)'}
+        title={isGlobal ? "ประวัติการดำเนินการ สินทรัพย์ทั้งหมด" : "ประวัติการเปลี่ยนแปลง (ประวัติการดำเนินการ)"}
         subtitle={isGlobal ? `แสดงล่าสุด ${globalQuery.data?.limit ?? 50} รายการ` : 'แสดง 100 รายการล่าสุด'}
         icon={<History className="h-5 w-5" />}
         onBack={isGlobal ? () => navigate('/assets') : () => navigate(`/assets/${id}`)}
@@ -97,7 +97,7 @@ export default function AssetAuditPage() {
         <p className="text-sm text-muted-foreground mb-2">
           แสดงเฉพาะ 100 รายการล่าสุด · สำหรับประวัติเก่ากว่านี้ ใช้หน้า{' '}
           <Link to="/audit-logs" className="text-primary underline">
-            Audit Logs (ทั้งระบบ)
+            ประวัติการดำเนินการ (ทั้งระบบ)
           </Link>
         </p>
       )}
@@ -105,7 +105,7 @@ export default function AssetAuditPage() {
       <Card>
         <CardContent className="p-4 grid grid-cols-1 md:grid-cols-3 gap-3">
           <Select value={actionFilter || 'ALL'} onValueChange={(v) => setActionFilter(v === 'ALL' ? '' : v)}>
-            <SelectTrigger aria-label="การดำเนินการ"><SelectValue placeholder="Action" /></SelectTrigger>
+            <SelectTrigger aria-label="การดำเนินการ"><SelectValue placeholder="จัดการ" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="ALL">ทุก Action</SelectItem>
               {Object.entries(ACTION_LABEL).map(([key, label]) => (
@@ -169,7 +169,7 @@ export default function AssetAuditPage() {
                   ไม่พบรายการ
                   {!isGlobal && (actionFilter || fromDate || toDate) && (
                     <span className="block text-xs mt-1">
-                      (ไม่พบใน 100 รายการล่าสุด — ลองดู Audit Logs ของทั้งระบบ)
+                      (ไม่พบใน 100 รายการล่าสุด — ลองดู ประวัติการดำเนินการ ของทั้งระบบ)
                     </span>
                   )}
                 </li>

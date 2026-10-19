@@ -191,7 +191,7 @@ export default function AuditLogsPage() {
   return (
     <div>
       <PageHeader
-        title="Audit Logs"
+        title="ประวัติการดำเนินการ"
         subtitle="ประวัติการทำงานทั้งหมดในระบบ"
         action={
           logs.length > 0 && (
@@ -202,8 +202,8 @@ export default function AuditLogsPage() {
                     columns: [
                       { header: 'วันที่', key: 'createdAt', width: 20 },
                       { header: 'ผู้ใช้', key: 'user', width: 20 },
-                      { header: 'Action', key: 'action', width: 15 },
-                      { header: 'Entity', key: 'entity', width: 15 },
+                      { header: "จัดการ", key: 'action', width: 15 },
+                      { header: "รายการ", key: 'entity', width: 15 },
                       { header: 'รายละเอียด', key: 'detail', width: 30 },
                     ],
                     data: logs.map((log) => ({
@@ -264,7 +264,7 @@ export default function AuditLogsPage() {
 
       {/* Collections quick-filter presets */}
       <div className="flex items-center gap-2 mb-3 flex-wrap">
-        <span className="text-[10px] font-medium text-muted-foreground">Collections:</span>
+        <span className="text-[10px] font-medium text-muted-foreground">รายการติดตามหนี้:</span>
         {Object.keys(COLLECTION_PRESET_ACTIONS).map((key) => (
           <button data-ui-control="button"
             key={key}
@@ -299,7 +299,7 @@ export default function AuditLogsPage() {
         </div>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <div>
-            <label htmlFor={`${uiFieldId}-1`} className="block text-xs font-medium text-muted-foreground mb-1">Entity</label>
+            <label htmlFor={`${uiFieldId}-1`} className="block text-xs font-medium text-muted-foreground mb-1">รายการ</label>
             <input id={`${uiFieldId}-1`}
               type="text"
               value={entity}
@@ -309,7 +309,7 @@ export default function AuditLogsPage() {
             />
           </div>
           <div>
-            <label htmlFor={`${uiFieldId}-2`} className="block text-xs font-medium text-muted-foreground mb-1">Action</label>
+            <label htmlFor={`${uiFieldId}-2`} className="block text-xs font-medium text-muted-foreground mb-1">จัดการ</label>
             <NativeSelect wrapperClassName="max-w-full w-full" id={`${uiFieldId}-2`}
               value={action}
               onChange={(e) => { setAction(e.target.value); setPage(1); }}
@@ -320,10 +320,10 @@ export default function AuditLogsPage() {
               <option value="PUT">PUT (แก้ไข)</option>
               <option value="PATCH">PATCH (อัพเดท)</option>
               <option value="DELETE">DELETE (ลบ)</option>
-              <option value="EXCHANGE">EXCHANGE</option>
-              <option value="REPOSSESSION">REPOSSESSION</option>
-              <option value="STATUS_CHANGE">STATUS_CHANGE</option>
-              <option value="ERROR">ERROR</option>
+              <option value="EXCHANGE">เปลี่ยนสินค้า</option>
+              <option value="REPOSSESSION">รับคืนหรือยึดเครื่อง</option>
+              <option value="STATUS_CHANGE">เปลี่ยนสถานะ</option>
+              <option value="ERROR">ข้อผิดพลาด</option>
             </NativeSelect>
           </div>
           <div>
@@ -364,9 +364,9 @@ export default function AuditLogsPage() {
                 <tr>
                   <th className="text-left px-4 py-3 font-medium text-muted-foreground">เวลา</th>
                   <th className="text-left px-4 py-3 font-medium text-muted-foreground">ผู้ใช้</th>
-                  <th className="text-left px-4 py-3 font-medium text-muted-foreground">Action</th>
-                  <th className="text-left px-4 py-3 font-medium text-muted-foreground">Entity</th>
-                  <th className="text-left px-4 py-3 font-medium text-muted-foreground">Entity ID</th>
+                  <th className="text-left px-4 py-3 font-medium text-muted-foreground">จัดการ</th>
+                  <th className="text-left px-4 py-3 font-medium text-muted-foreground">รายการ</th>
+                  <th className="text-left px-4 py-3 font-medium text-muted-foreground">รหัสรายการ</th>
                   <th className="text-left px-4 py-3 font-medium text-muted-foreground">IP</th>
                   <th className="text-center px-4 py-3 font-medium text-muted-foreground">ms</th>
                 </tr>
@@ -409,7 +409,7 @@ export default function AuditLogsPage() {
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
                             {log.newValue && (
                               <div>
-                                <p className="font-medium text-muted-foreground mb-1">New Value:</p>
+                                <p className="font-medium text-muted-foreground mb-1">ค่าใหม่:</p>
                                 <pre className="bg-card border rounded p-2 whitespace-pre-wrap break-all max-h-48 overflow-y-auto text-foreground">
                                   {JSON.stringify(log.newValue, null, 2)}
                                 </pre>
@@ -417,7 +417,7 @@ export default function AuditLogsPage() {
                             )}
                             {log.oldValue && (
                               <div>
-                                <p className="font-medium text-muted-foreground mb-1">Old Value:</p>
+                                <p className="font-medium text-muted-foreground mb-1">ค่าเดิม:</p>
                                 <pre className="bg-card border rounded p-2 whitespace-pre-wrap break-all max-h-48 overflow-y-auto text-foreground">
                                   {JSON.stringify(log.oldValue, null, 2)}
                                 </pre>
@@ -431,7 +431,7 @@ export default function AuditLogsPage() {
                             </div>
                           )}
                           <div className="mt-2 text-xs text-muted-foreground break-all">
-                            Full Entity ID: {log.entityId || '-'}
+                            รหัสรายการเต็ม: {log.entityId || '-'}
                           </div>
                         </div>
                         </td></tr>

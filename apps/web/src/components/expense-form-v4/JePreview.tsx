@@ -14,21 +14,21 @@ export function JePreview({ preview, loading, error }: Props) {
   if (loading && !preview) {
     return (
       <div className="flex items-center gap-2 rounded-xl border border-border bg-card p-6 text-muted-foreground">
-        <Loader2 className="size-4 animate-spin" /> กำลังคำนวณ JE...
+        <Loader2 className="size-4 animate-spin" /> กำลังคำนวณ รายการบัญชี...
       </div>
     );
   }
   if (error) {
     return (
       <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">
-        ไม่สามารถคำนวณ JE: {error}
+        ไม่สามารถคำนวณ รายการบัญชี: {error}
       </div>
     );
   }
   if (!preview) {
     return (
       <div className="rounded-xl border border-dashed border-border bg-card/50 p-6 text-center text-sm text-muted-foreground">
-        กรอกรายการบัญชีอย่างน้อย 1 บรรทัดเพื่อดู JE Preview
+        กรอกรายการบัญชีอย่างน้อย 1 บรรทัดเพื่อดู ตัวอย่างรายการบัญชี
       </div>
     );
   }
@@ -74,7 +74,7 @@ export function JePreview({ preview, loading, error }: Props) {
                 ) : (
                   <AlertTriangle className="size-4 text-destructive" />
                 )}
-                {preview.totals.balanced ? 'BALANCED' : 'UNBALANCED'}
+                {preview.totals.balanced ? "ยอดสมดุล" : "ยอดไม่สมดุล"}
               </div>
             </td>
             <td className="px-3 py-2 text-right font-mono font-semibold">

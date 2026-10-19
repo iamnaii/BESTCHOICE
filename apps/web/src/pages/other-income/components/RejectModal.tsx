@@ -19,7 +19,7 @@ export function RejectModal({ docNumber, onCancel, onConfirm, isLoading }: Props
         </h3>
         <p className="text-sm mb-4">
           ปฏิเสธเอกสาร <span className="font-mono font-bold">{docNumber}</span> —
-          ระบบจะส่งเอกสารกลับเป็นสถานะ DRAFT พร้อมเหตุผลของผู้ปฏิเสธ
+          ระบบจะส่งเอกสารกลับเป็นสถานะ ฉบับร่าง พร้อมเหตุผลของผู้ปฏิเสธ
         </p>
         <label htmlFor={`${uiFieldId}-1`} className="text-xs font-semibold uppercase">เหตุผลการปฏิเสธ</label>
         <textarea id={`${uiFieldId}-1`}

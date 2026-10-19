@@ -1,3 +1,4 @@
+import { NumberInput } from '@/components/ui/NumberInput';
 import { NativeSelect } from '@/components/ui/native-select';
 import { useRef as useReturnFocusRef } from 'react';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
@@ -543,8 +544,7 @@ export default function SupplierForm({
                       <label htmlFor={`${uiExtraFieldId}-2-${index}`} className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
                         เครดิต (วัน)
                       </label>
-                      <input id={`${uiExtraFieldId}-2-${index}`}
-                        type="number"
+                      <NumberInput unstyled id={`${uiExtraFieldId}-2-${index}`}
                         value={pm.creditTermDays}
                         onChange={(e) =>
                           updatePaymentMethod(index, 'creditTermDays', e.target.value)

@@ -1,3 +1,4 @@
+import { NumberInput } from '@/components/ui/NumberInput';
 import { NativeSelect } from '@/components/ui/native-select';
 import { useId as useUiFieldId, useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -608,8 +609,7 @@ export default function SlipReviewTab() {
                     <label htmlFor={`${uiFieldId}-1`} className="block text-sm font-medium text-foreground mb-1">
                       งวดที่
                     </label>
-                    <input id={`${uiFieldId}-1`}
-                      type="number"
+                    <NumberInput unstyled id={`${uiFieldId}-1`}
                       min="1"
                       value={selectedInstallmentNo}
                       onChange={(e) => setSelectedInstallmentNo(Number(e.target.value))}
@@ -621,8 +621,7 @@ export default function SlipReviewTab() {
                     <label htmlFor={`${uiFieldId}-2`} className="block text-sm font-medium text-foreground mb-1">
                       จำนวนเงิน (บาท)
                     </label>
-                    <input id={`${uiFieldId}-2`}
-                      type="number"
+                    <NumberInput unstyled id={`${uiFieldId}-2`}
                       value={approveAmount}
                       onChange={(e) => setApproveAmount(e.target.value)}
                       className="w-full border rounded-lg px-3 py-2"

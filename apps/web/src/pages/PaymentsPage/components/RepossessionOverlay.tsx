@@ -1,3 +1,4 @@
+import { NumberInput } from '@/components/ui/NumberInput';
 import { JournalPreviewTable } from '@/components/JournalPreviewTable';
 import { useMemo, useRef, useState } from 'react';
 import { WizardStackedOverlay } from '@/components/WizardStackedOverlay';
@@ -223,7 +224,7 @@ export function RepossessionOverlay({
     },
     onSuccess: () => {
       toast.success(
-        'ยืนยันรับเครื่องคืนแล้ว — ลงบัญชี JP5 + ขาคู่ SHOP เรียบร้อย ค่าเครื่องรอหักในรอบจ่าย INTER-CO',
+        "ยืนยันรับเครื่องคืนแล้ว — ลงบัญชี JP5 + ขาคู่ SHOP เรียบร้อย ค่าเครื่องรอหักในรอบจ่าย ระหว่างบริษัท",
       );
       queryClient.invalidateQueries({ queryKey: ['device-returns'] });
       queryClient.invalidateQueries({ queryKey: ['contract', contractId] });
@@ -491,9 +492,8 @@ export function RepossessionOverlay({
                 >
                   ส่วนลดยอดปิด (%)
                 </label>
-                <input
+                <NumberInput unstyled
                   id="repo-discount-pct"
-                  type="number"
                   min={0}
                   max={100}
                   value={discountPct}
@@ -700,7 +700,7 @@ export function RepossessionOverlay({
             className={`${inputClass} font-mono`}
           />
           <p className="text-xs text-muted-foreground leading-snug mt-1">
-            ย้อนหลังได้ภายในเดือนนี้เท่านั้น — ใบที่ข้ามเดือนจะได้ JE/ใบลดหนี้ของเดือนที่ยืนยัน
+            ย้อนหลังได้ภายในเดือนนี้เท่านั้น — ใบที่ข้ามเดือนจะได้ รายการบัญชี/ใบลดหนี้ของเดือนที่ยืนยัน
           </p>
         </Section>
 
@@ -757,7 +757,7 @@ export function RepossessionOverlay({
                   : 'ปิดรายการคงค้างของสัญญาตามรายการบัญชี JP5 ด้านบน'
               }
             />
-            <Effect text="ตั้งลูกหนี้-หน้าร้าน 11-2107 (ค่าเครื่องคืน) — หักจากยอดโอนในรอบจ่าย INTER-CO ถัดไป หรือรับเงินสดที่หน้าจ่ายให้หน้าร้าน" />
+            <Effect text="ตั้งลูกหนี้-หน้าร้าน 11-2107 (ค่าเครื่องคืน) — หักจากยอดโอนในรอบจ่าย ระหว่างบริษัท ถัดไป หรือรับเงินสดที่หน้าจ่ายให้หน้าร้าน" />
             <Effect text="ขาคู่ SHOP: รับเครื่องเข้าสต็อกมือสอง S11-2002 คู่เจ้าหนี้ FINANCE S21-1104 ที่ราคาประเมิน" />
             <Effect text="บันทึกกำไร/ขาดทุนจากการยึด (41-1102 / 51-1102)" />
             <Effect text="เปลี่ยนสถานะสัญญาเป็น ปิด-หนี้สูญ + สินค้าเป็น ยึดคืน (ย้ายไปสาขาที่รับ)" />
@@ -766,7 +766,7 @@ export function RepossessionOverlay({
               text="จัดการซ่อม/ตั้งราคาขายต่อ ทำต่อที่หน้า รับเครื่องคืน / ยึดคืน & ขายต่อ"
               warning
             />
-            <Effect text="ปลดล็อค MDM (PJ-Soft) — ต้องทำ manual" warning />
+            <Effect text="ปลดล็อค MDM (PJ-Soft) — ต้องทำ ด้วยตนเอง" warning />
           </ul>
         </Section>
       </div>

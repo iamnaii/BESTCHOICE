@@ -92,7 +92,7 @@ export function QuickStartPanel({ branchId, onMode, onPickTemplate, onClose }: P
                             : 'bg-muted text-muted-foreground',
                         )}
                       >
-                        {tpl.isRecurring ? 'recur' : 'manual'}
+                        {tpl.isRecurring ? "รายการประจำ" : "กำหนดเอง"}
                       </span>
                       {tpl.isRecurring && <Star className="size-3 text-warning-strong" />}
                     </div>

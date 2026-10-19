@@ -84,7 +84,7 @@ export default function PeakExportPage() {
         <CardHeader>
           <CardTitle className="leading-snug">เลือกช่วงเวลา</CardTitle>
           <CardDescription className="leading-snug">
-            CSV จะรวมเฉพาะรายการที่ POSTED แล้ว และข้ามบรรทัดที่บัญชีต้นทางยังไม่ได้จับคู่รหัส PEAK
+            CSV จะรวมเฉพาะรายการที่ลงบัญชีแล้ว และข้ามบรรทัดที่บัญชีต้นทางยังไม่ได้จับคู่รหัส PEAK
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">

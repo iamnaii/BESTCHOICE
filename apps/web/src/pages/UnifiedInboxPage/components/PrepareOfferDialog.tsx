@@ -1,3 +1,4 @@
+import { NumberInput } from '@/components/ui/NumberInput';
 import { useState } from 'react';
 import { Link } from 'react-router';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
@@ -88,11 +89,11 @@ export default function PrepareOfferDialog({ roomId, onInsert }: { roomId: strin
           <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 sm:gap-4">
             <div className="grid content-start gap-3">
               <Label htmlFor="offer-budget" className="leading-snug">งบราคาเงินสดสูงสุด (บาท)</Label>
-              <Input id="offer-budget" type="number" min="1" max="1000000" value={budget} onChange={(event) => setBudget(event.target.value)} placeholder="ใช้งบจากแชท" disabled={offer.isPending} />
+              <NumberInput id="offer-budget" min="1" max="1000000" value={budget} onChange={(event) => setBudget(event.target.value)} placeholder="ใช้งบจากแชท" disabled={offer.isPending} />
             </div>
             <div className="grid content-start gap-3">
               <Label htmlFor="offer-months">จำนวนงวดที่ต้องการ</Label>
-              <Input id="offer-months" type="number" min="1" max="60" step="1" value={months} onChange={(event) => setMonths(event.target.value)} disabled={offer.isPending} />
+              <NumberInput id="offer-months" min="1" max="60" step="1" value={months} onChange={(event) => setMonths(event.target.value)} disabled={offer.isPending} />
             </div>
           </div>
           {inputError && <p role="alert" className="text-sm text-destructive leading-snug">{inputError}</p>}

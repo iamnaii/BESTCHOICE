@@ -40,7 +40,7 @@ export default function EditorSidebar({ activeId, onSelect, onBack }: Props) {
           </button>
         )}
         <h1 className="text-white font-bold text-sm">BESTCHOICEPHONE</h1>
-        <p className="text-white/50 text-xs">Document Template Editor</p>
+        <p className="text-white/50 text-xs">แก้ไขแม่แบบเอกสาร</p>
       </div>
 
       {/* Menu */}

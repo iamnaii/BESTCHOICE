@@ -88,7 +88,7 @@ export default function CreditCheckPanel({ contractId }: { contractId: string })
       return data;
     },
     onSuccess: () => {
-      toast.success('อัปโหลด Statement สำเร็จ');
+      toast.success("อัปโหลด รายการเดินบัญชี สำเร็จ");
       refetchCreditCheckEverywhere();
       if (fileInputRef.current) fileInputRef.current.value = '';
     },
@@ -162,7 +162,7 @@ export default function CreditCheckPanel({ contractId }: { contractId: string })
       {!creditCheck && (
         <div className="bg-card rounded-lg border p-4 space-y-3">
           <h3 className="text-sm font-semibold text-foreground">ตรวจสอบเครดิตลูกค้า</h3>
-          <p className="text-xs text-muted-foreground">อัปโหลด Statement ธนาคารย้อนหลัง 3 เดือน เพื่อให้ AI วิเคราะห์ความสามารถในการผ่อนชำระ</p>
+          <p className="text-xs text-muted-foreground">อัปโหลด รายการเดินบัญชี ธนาคารย้อนหลัง 3 เดือน เพื่อให้ AI วิเคราะห์ความสามารถในการผ่อนชำระ</p>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div>
               <label htmlFor={`${uiFieldId}-1`} className="block text-xs text-muted-foreground mb-1">ธนาคาร</label>
@@ -175,7 +175,7 @@ export default function CreditCheckPanel({ contractId }: { contractId: string })
               />
             </div>
             <div>
-              <label htmlFor={`${uiFieldId}-2`} className="block text-xs text-muted-foreground mb-1">Statement (ภาพ/PDF, 3 เดือน)</label>
+              <label htmlFor={`${uiFieldId}-2`} className="block text-xs text-muted-foreground mb-1">รายการเดินบัญชี (ภาพ/PDF, 3 เดือน)</label>
               <input id={`${uiFieldId}-2`}
                 ref={fileInputRef}
                 type="file"
@@ -209,7 +209,7 @@ export default function CreditCheckPanel({ contractId }: { contractId: string })
           {/* Bank info */}
           <div className="flex items-center gap-4 text-sm text-muted-foreground">
             {creditCheck.bankName && <span>ธนาคาร: {creditCheck.bankName}</span>}
-            <span>Statement: {creditCheck.statementFiles.length} ไฟล์</span>
+            <span>รายการเดินบัญชี: {creditCheck.statementFiles.length} ไฟล์</span>
           </div>
 
           {/* Analyze button */}
@@ -297,7 +297,7 @@ export default function CreditCheckPanel({ contractId }: { contractId: string })
           {/* Override controls for managers */}
           {canOverride && (
             <div className="border-t pt-3 space-y-2">
-              <div className="text-xs text-muted-foreground font-medium">Override ผลตรวจสอบ (สำหรับผู้จัดการ)</div>
+              <div className="text-xs text-muted-foreground font-medium">แก้ไขแทนค่าเดิม ผลตรวจสอบ (สำหรับผู้จัดการ)</div>
               <div className="flex flex-col gap-2 sm:flex-row">
                 <NativeSelect wrapperClassName="w-full sm:w-44 sm:shrink-0"
                   aria-label="ผลพิจารณาเครดิต"

@@ -1,3 +1,4 @@
+import { NumberInput } from '@/components/ui/NumberInput';
 import { NativeSelect } from '@/components/ui/native-select';
 import { useId as useFieldId } from 'react';
 import { Card, CardHeader, CardContent, CardTitle } from '@/components/ui/card';
@@ -68,8 +69,7 @@ export default function BranchSupplierCard({
           </div>
           <div>
             <label htmlFor={`${fieldId}-3`} className="block text-sm font-medium text-foreground mb-3">ราคาทุน (บาท) *</label>
-            <input id={`${fieldId}-3`}
-              type="number"
+            <NumberInput unstyled id={`${fieldId}-3`}
               step="0.01"
               value={costPrice}
               onChange={(e) => onChange('costPrice', e.target.value)}

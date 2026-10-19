@@ -161,7 +161,7 @@ export default function PeriodClosePage() {
       <div className="rounded-xl border px-6 py-4 bg-card">
         <h2 className="text-2xl font-bold leading-snug">งวดบัญชี (Accounting Periods)</h2>
         <p className="text-xs text-muted-foreground mt-1 leading-snug">
-          ปิดงวดหลังยื่น ภ.พ.30 เพื่อ block การบันทึกย้อนหลัง
+          ปิดงวดหลังยื่น ภ.พ.30 เพื่อ ระงับ การบันทึกย้อนหลัง
         </p>
       </div>
 
@@ -228,7 +228,7 @@ export default function PeriodClosePage() {
                     ปิดเมื่อ
                   </th>
                   <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground">
-                    Review
+                    ตรวจสอบ
                   </th>
                   {(canClose || canReopen) && (
                     <th className="px-4 py-2.5 text-right text-xs font-medium text-muted-foreground">

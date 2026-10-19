@@ -1,3 +1,4 @@
+import { NumberInput } from '@/components/ui/NumberInput';
 import { NativeSelect } from '@/components/ui/native-select';
 import { UseFormReturn } from 'react-hook-form';
 import { useId } from 'react';
@@ -121,8 +122,7 @@ export default function SaleDetailsForm({
                     ราคาขาย *<span className="ml-1 text-primary">(จากระบบ)</span>
                   </FormLabel>
                   <FormControl>
-                    <input
-                      type="number"
+                    <NumberInput unstyled
                       {...field}
                       id={sellingPriceId}
                       value={field.value || 0}
@@ -144,8 +144,7 @@ export default function SaleDetailsForm({
                     ส่วนลด
                   </FormLabel>
                   <FormControl>
-                    <input
-                      type="number"
+                    <NumberInput unstyled
                       {...field}
                       value={field.value ?? 0}
                       onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}
@@ -257,8 +256,7 @@ export default function SaleDetailsForm({
                         เงินดาวน์
                       </FormLabel>
                       <FormControl>
-                        <input
-                          type="number"
+                        <NumberInput unstyled
                           {...field}
                           value={field.value ?? 0}
                           onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}

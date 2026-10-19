@@ -208,9 +208,9 @@ describe('RescheduleOverlay', () => {
     // Bundled breakdown: installment + fee + late fee → total. The rows render
     // with 0.00 while the quote loads — await the QUOTED amounts, not the labels.
     expect(await screen.findByText('ค่างวดงวดนี้ (คงเหลือ)')).toBeInTheDocument();
-    expect((await screen.findAllByText('1515.83 บาท')).length).toBeGreaterThanOrEqual(1);
+    expect((await screen.findAllByText('1,515.83 บาท')).length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText('ยอดปรับดิว (6b)')).toBeInTheDocument();
-    expect(await screen.findByText('1945.62 บาท')).toBeInTheDocument();
+    expect(await screen.findByText('1,945.62 บาท')).toBeInTheDocument();
     expect(screen.getByText('วันอ้างอิงดิวใหม่')).toBeInTheDocument();
     expect(screen.queryByText('ครบกำหนดใหม่ (งวดนี้)')).not.toBeInTheDocument();
     expect(screen.getByText(/งวดที่ 4 เป็นต้นไป ครบกำหนดวันเดียวกันทุกเดือน/)).toBeInTheDocument();
@@ -256,7 +256,7 @@ describe('RescheduleOverlay', () => {
 
     // Button label carries the full bundled collect amount (6b)
     const submitBtn = await screen.findByRole('button', {
-      name: 'เก็บเงิน 1945.62 + ยืนยันปรับดิว',
+      name: 'เก็บเงิน 1,945.62 + ยืนยันปรับดิว',
     });
 
     // JE preview box renders the lines the confirm will post
@@ -290,7 +290,7 @@ describe('RescheduleOverlay', () => {
     renderOverlay();
 
     const submitBtn = await screen.findByRole('button', {
-      name: 'เก็บเงิน 1945.62 + ยืนยันปรับดิว',
+      name: 'เก็บเงิน 1,945.62 + ยืนยันปรับดิว',
     });
     await waitFor(() => expect(submitBtn).toBeEnabled());
     await user.click(submitBtn);
@@ -310,7 +310,7 @@ describe('RescheduleOverlay', () => {
 
     await user.click(await screen.findByRole('button', { name: 'โอนธนาคาร' }));
 
-    const submitBtn = screen.getByRole('button', { name: 'เก็บเงิน 1945.62 + ยืนยันปรับดิว' });
+    const submitBtn = screen.getByRole('button', { name: 'เก็บเงิน 1,945.62 + ยืนยันปรับดิว' });
     // needRef gating — เลขอ้างอิงการโอน is required for TRANSFER
     expect(submitBtn).toBeDisabled();
 
@@ -431,10 +431,10 @@ describe('RescheduleOverlay', () => {
     expect(screen.getByText('รับชำระ (2B)')).toBeInTheDocument();
     expect(screen.getByText('รายการบัญชี (ลงทันทีตอนยืนยัน)')).toBeInTheDocument();
     // 2A: เดบิตลูกหนี้ค้างชำระเต็มงวด / เครดิตลูกหนี้ตามสัญญา · 2B: รับเงินทั้งก้อน เครดิตลูกหนี้ค้างชำระ
-    expect(screen.getByText('Dr 1515.83')).toBeInTheDocument();
-    expect(screen.getByText('Cr 1416.66')).toBeInTheDocument();
-    expect(screen.getByText('Dr 1869.83')).toBeInTheDocument();
-    expect(screen.getByText('Cr 1515.83')).toBeInTheDocument();
+    expect(screen.getByText('Dr 1,515.83')).toBeInTheDocument();
+    expect(screen.getByText('Cr 1,416.66')).toBeInTheDocument();
+    expect(screen.getByText('Dr 1,869.83')).toBeInTheDocument();
+    expect(screen.getByText('Cr 1,515.83')).toBeInTheDocument();
     expect(screen.getByText('Cr 354.00')).toBeInTheDocument();
   });
 });

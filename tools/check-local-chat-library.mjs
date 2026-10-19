@@ -55,7 +55,7 @@ export async function checkChatLibrary(page,origin,output,width){
  await page.getByRole('button',{name:'ส่งไฟล์ที่เลือก',exact:true}).click();await expect(page.locator('[data-library-staged]')).toContainText('ส่งสำเร็จ');assert.equal(await count(),before+2);
  await expect(page.getByRole('button',{name:'ส่งไฟล์ที่เลือก',exact:true})).toBeDisabled();
  // Existing reply tools remain available after adding the library entry.
- await openComposerTool(page, 'อิโมจิ / สติกเกอร์');await expect(page.getByRole('button',{name:'😊 Emoji',exact:true})).toBeVisible();await page.keyboard.press('Escape');
+ await openComposerTool(page, 'อิโมจิ / สติกเกอร์');await expect(page.getByRole('button',{name:'😊 อีโมจิ',exact:true})).toBeVisible();await page.keyboard.press('Escape');
  await openComposerTool(page, 'ส่งข้อมูลสินค้า');await expect(page.getByPlaceholder('ค้นหาชื่อรุ่น / ยี่ห้อ / IMEI')).toBeVisible();await page.getByPlaceholder('ค้นหาชื่อรุ่น / ยี่ห้อ / IMEI').fill('iPhone');await page.keyboard.press('Escape');
  await page.getByRole('button',{name:'ข้อความสำเร็จรูป',exact:true}).click();await page.getByRole('textbox', { name: 'ค้นหาข้อความสำเร็จรูป', exact: true }).fill('ขอบคุณ (ตัวอย่าง)');await page.getByText('ขอบคุณ (ตัวอย่าง)',{exact:true}).click();await page.getByRole('button',{name:'ใส่ข้อความ',exact:true}).click();await expect(page.getByRole('textbox',{name:'พิมพ์ข้อความ',exact:true})).toHaveValue('ขอบคุณที่สนใจ BESTCHOICE ครับ');
  if(width<1280)await page.getByRole('button',{name:'ข้อมูลลูกค้า',exact:true}).click();

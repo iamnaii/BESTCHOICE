@@ -202,7 +202,7 @@ export function ETaxInvoicePage() {
     <div className="container mx-auto px-4 py-6 max-w-6xl">
       <PageHeader
         title="e-Tax Invoice (สรรพากร)"
-        subtitle="ใบกำกับภาษี (กระดาษ ม.86/4) + Export CSV + สร้าง XML ตาม ขมธอ.21-2562"
+        subtitle="ใบกำกับภาษี (กระดาษ ม.86/4) + ส่งออก CSV + สร้าง XML ตาม ขมธอ.21-2562"
         icon={<FileText className="size-5" aria-hidden />}
         action={
           <div className="flex gap-2">
@@ -214,7 +214,7 @@ export function ETaxInvoicePage() {
             </Button>
             <Button variant="outline" onClick={handleExportCsv} disabled={!companyId}>
               <Download className="size-4 mr-2" aria-hidden />
-              Export CSV (รายเดือน)
+              ส่งออก CSV (รายเดือน)
             </Button>
           </div>
         }
@@ -364,9 +364,9 @@ export function ETaxInvoicePage() {
                                   {sub.rdSubmissionId && (
                                     <span
                                       className="text-[10px] text-muted-foreground font-mono leading-snug"
-                                      title="RD submission ID"
+                                      title="รหัสการส่งกรมสรรพากร"
                                     >
-                                      RD: {sub.rdSubmissionId}
+                                      กรมสรรพากร: {sub.rdSubmissionId}
                                     </span>
                                   )}
                                   {sub.rejectReason && (

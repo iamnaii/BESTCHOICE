@@ -1,3 +1,4 @@
+import { NumberInput } from '@/components/ui/NumberInput';
 import { NativeSelect } from '@/components/ui/native-select';
 import { useLayout } from '@/components/layout/LayoutContext';
 import { WORK_COMPANY } from '@/lib/company-scope';
@@ -696,7 +697,7 @@ function AfterSalesNewForm({ prefill }: { prefill?: ChatServicePrefill }) {
                     >
                       ค่าซ่อมประมาณ
                     </label>
-                    <input
+                    <NumberInput step="any" unstyled
                       id="as-estimated-cost"
                       inputMode="decimal"
                       value={estimatedCost}

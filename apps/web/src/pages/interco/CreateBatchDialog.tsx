@@ -44,7 +44,7 @@ const FINANCE_BANK_OPTIONS = [
 ];
 
 const SHOP_BANK_OPTIONS = [
-  { code: 'S11-1201', label: 'S11-1201 รับเข้า (default)' },
+  { code: 'S11-1201', label: "S11-1201 รับเข้า (ค่าเริ่มต้น)" },
   { code: 'S11-1202', label: 'S11-1202 จ่ายออก' },
 ];
 
@@ -190,7 +190,7 @@ export function CreateBatchDialog({
             • รวม ฿{fmtMoney(totalAmount)}
             {legacyCount > 0 && (
               <span className="block mt-1 text-warning-strong">
-                {legacyCount} สัญญาเป็น LEGACY (SHOP ไม่มียอดตั้งต้น) — ฝั่ง SHOP
+                {legacyCount} สัญญาเป็น สัญญาเดิม (SHOP ไม่มียอดตั้งต้น) — ฝั่ง SHOP
                 จะไม่ลงบัญชีให้สัญญากลุ่มนี้
               </span>
             )}

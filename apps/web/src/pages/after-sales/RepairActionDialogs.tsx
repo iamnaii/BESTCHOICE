@@ -1,3 +1,4 @@
+import { NumberInput } from '@/components/ui/NumberInput';
 import { NativeSelect } from '@/components/ui/native-select';
 import { useEffect, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
@@ -102,7 +103,7 @@ export function SendRepairDialog({ caseId, open, onOpenChange }: DialogBaseProps
           <label htmlFor="sr-cost" className="block text-xs leading-snug text-muted-foreground">
             ค่าซ่อมประมาณ
           </label>
-          <input
+          <NumberInput step="any" unstyled
             id="sr-cost"
             inputMode="decimal"
             value={estimatedCost}
@@ -184,7 +185,7 @@ export function MarkRepairedDialog({
           >
             ค่าซ่อมจริง <span className="text-destructive">*</span>
           </label>
-          <input
+          <NumberInput step="any" unstyled
             id="mr-actual-cost"
             inputMode="decimal"
             value={actualCost}

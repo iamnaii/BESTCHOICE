@@ -1,3 +1,4 @@
+import { NumberInput } from '@/components/ui/NumberInput';
 import { NativeSelect } from '@/components/ui/native-select';
 import { Copy, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -88,9 +89,8 @@ export function MoneyCells({
       <td className={cellCls}>
         <span className="relative block">
           <span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">฿</span>
-          <input
+          <NumberInput unstyled
             aria-label="ราคาต่อชิ้น"
-            type="number"
             min={0}
             step="0.01"
             inputMode="decimal"

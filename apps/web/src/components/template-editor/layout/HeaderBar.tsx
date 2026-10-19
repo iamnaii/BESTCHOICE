@@ -32,7 +32,7 @@ const QUICK_ADD_BLOCKS: { type: BlockType; label: string }[] = [
 const VIEW_MODES: { mode: ViewMode; icon: typeof Columns2; label: string }[] = [
   { mode: 'editor', icon: PenLine, label: 'แก้ไข' },
   { mode: 'split', icon: Columns2, label: 'แบ่งหน้า' },
-  { mode: 'preview', icon: Eye, label: 'Preview' },
+  { mode: 'preview', icon: Eye, label: "ดูตัวอย่าง" },
 ];
 
 export default function HeaderBar({ onBack, onToggleCheatSheet, showCheatSheet, viewMode, onViewModeChange }: Props) {
@@ -60,11 +60,11 @@ export default function HeaderBar({ onBack, onToggleCheatSheet, showCheatSheet, 
             fileBase64: base64,
             fileName: file.name,
           }, { timeout: 120000 });
-          toast.success(`สร้างเทมเพลตจากไฟล์สำเร็จ: ${data.name}`);
+          toast.success(`สร้างแม่แบบจากไฟล์สำเร็จ: ${data.name}`);
           await useTemplateStore.getState().fetchTemplates();
           if (data.id) await useTemplateStore.getState().loadTemplate(data.id);
         } catch {
-          toast.error('ไม่สามารถสร้างเทมเพลตจากไฟล์ได้');
+          toast.error("ไม่สามารถสร้างแม่แบบจากไฟล์ได้");
         } finally {
           setIsGenerating(false);
         }
@@ -81,7 +81,7 @@ export default function HeaderBar({ onBack, onToggleCheatSheet, showCheatSheet, 
     const id = e.target.value;
     if (id && id !== currentTemplate.id) {
       if (isDirty) {
-        setConfirmDialog({ open: true, message: 'มีการเปลี่ยนแปลงที่ยังไม่ได้บันทึก ต้องการเปลี่ยนเทมเพลตหรือไม่?', action: () => loadTemplate(id) });
+        setConfirmDialog({ open: true, message: "มีการเปลี่ยนแปลงที่ยังไม่ได้บันทึก ต้องการเปลี่ยนแม่แบบหรือไม่?", action: () => loadTemplate(id) });
         return;
       }
       loadTemplate(id);
@@ -102,7 +102,7 @@ export default function HeaderBar({ onBack, onToggleCheatSheet, showCheatSheet, 
       )}
 
       <NativeSelect wrapperClassName="w-auto min-w-0 flex-1 basis-48 max-w-full lg:max-w-80"
-        aria-label="เทมเพลตสัญญา"
+        aria-label="แม่แบบสัญญา"
         value={currentTemplate.id}
         onChange={handleTemplateChange}
         disabled={isLoading}
@@ -166,7 +166,7 @@ export default function HeaderBar({ onBack, onToggleCheatSheet, showCheatSheet, 
 
         <button data-ui-control="button"
           onClick={() => setShowSettings(true)}
-          aria-label="ตั้งค่าเทมเพลต"
+          aria-label="ตั้งค่าแม่แบบ"
           className="flex items-center gap-1.5 px-3 py-2 text-base text-muted-foreground border border-input rounded-lg hover:bg-muted transition-colors"
         >
           <Settings size={17} />
@@ -199,10 +199,10 @@ export default function HeaderBar({ onBack, onToggleCheatSheet, showCheatSheet, 
         <input ref={fileInputRef} type="file" accept=".pdf,.doc,.docx,.html,.txt" onChange={handleGenerateFromFile} className="hidden" />
         <button data-ui-control="button"
           onClick={() => fileInputRef.current?.click()}
-          aria-label="สร้างเทมเพลตจากไฟล์"
+          aria-label="สร้างแม่แบบจากไฟล์"
           disabled={isGenerating}
           className="flex items-center gap-1.5 px-3 py-2 text-base text-foreground border border-input rounded-lg hover:bg-muted transition-colors disabled:opacity-50"
-          title="สร้างเทมเพลตจากไฟล์ (OCR)"
+          title="สร้างแม่แบบจากไฟล์ (OCR)"
         >
           {isGenerating ? <Loader2 size={17} className="animate-spin" /> : <FileUp size={17} />}
           <span className="hidden lg:inline">จากไฟล์</span>
@@ -210,7 +210,7 @@ export default function HeaderBar({ onBack, onToggleCheatSheet, showCheatSheet, 
 
         <button data-ui-control="button"
           onClick={() => saveTemplateToApi()}
-          aria-label="บันทึกเทมเพลต"
+          aria-label="บันทึกแม่แบบ"
           disabled={isSaving}
           className="flex items-center gap-1.5 px-3 py-2 text-base text-foreground border border-input rounded-lg hover:bg-muted transition-colors disabled:opacity-50"
         >
@@ -221,7 +221,7 @@ export default function HeaderBar({ onBack, onToggleCheatSheet, showCheatSheet, 
         <button data-ui-control="button" data-ui-icon="true"
           onClick={() => undo()}
           className="p-2 text-muted-foreground border border-input rounded-lg hover:bg-muted transition-colors"
-          title="Undo (Ctrl+Z)"
+          title="เลิกทำ (Ctrl+Z)"
         >
           <Undo2 size={17} />
         </button>

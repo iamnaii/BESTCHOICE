@@ -1,3 +1,4 @@
+import { NumberInput } from '@/components/ui/NumberInput';
 import ScreenTable from '@/components/ui/ScreenTable';
 import { NativeSelect } from '@/components/ui/native-select';
 import { useEffect, useState } from 'react';
@@ -457,7 +458,7 @@ export function SwitchToRepairDialog({
           <label htmlFor="sw-cost" className="block text-xs leading-snug text-muted-foreground">
             ค่าซ่อมประมาณ
           </label>
-          <input
+          <NumberInput step="any" unstyled
             id="sw-cost"
             inputMode="decimal"
             value={estimatedCost}

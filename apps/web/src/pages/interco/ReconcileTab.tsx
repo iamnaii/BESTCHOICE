@@ -91,7 +91,7 @@ export function ReconcileTab({
           <div className="flex items-start gap-2 rounded-md border border-border bg-muted/40 p-3 text-sm leading-snug">
             <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0 text-muted-foreground" />
             <div className="text-muted-foreground">
-              ระบบ<strong>ไม่ตั้ง JE ปรับปรุงให้อัตโนมัติ</strong> —
+              ระบบ<strong>ไม่ตั้ง รายการบัญชี ปรับปรุงให้อัตโนมัติ</strong> —
               ต้องให้ผู้มีอำนาจ/ผู้สอบบัญชีตัดสินก่อนแก้ทุกกรณี ·
               การกระทบยอดรายเดือนรันเองอัตโนมัติวันที่ 1 เวลา 08:00 น. และสร้างใบงานหนึ่งใบต่อเดือน
             </div>

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import api from '@/lib/api';
@@ -25,6 +25,8 @@ import { formatNumberDecimal, formatDateMedium } from '@/utils/formatters';
 import { Badge } from '@/components/ui/badge';
 import { INPUT_VAT_AGE_WARN_MONTHS } from '@/lib/input-vat';
 import { Calculator, Download } from 'lucide-react';
+import { exportToExcel } from '@/utils/excel.util';
+import { createExportGuard, ExportError } from '@/lib/fetch-export-pages';
 
 const MONTHS = [
   'ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.',
@@ -167,7 +169,7 @@ function BreakdownRows({ data, rows }: { data: OutputVatBreakdown; rows: Breakdo
           }`}
         >
           <dt>{row.label}</dt>
-          <dd className="font-mono tabular-nums text-foreground">
+          <dd className="shrink-0 whitespace-nowrap font-mono tabular-nums text-foreground">
             {`${formatNumberDecimal(data[row.key] ?? '0', 2)} ฿`}
           </dd>
         </div>
@@ -216,11 +218,11 @@ function InstallmentInputVatSection({ data }: { data: VatData }) {
       <dl className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4 text-sm">
         <div className="flex justify-between gap-3 border-b border-dashed border-border py-1">
           <dt className="text-muted-foreground">ภาษีซื้อค่าใช้จ่าย</dt>
-          <dd className="font-mono tabular-nums">{formatNumberDecimal(data.vatInputExpense ?? '0', 2)} ฿</dd>
+          <dd className="shrink-0 whitespace-nowrap font-mono tabular-nums">{formatNumberDecimal(data.vatInputExpense ?? '0', 2)} ฿</dd>
         </div>
         <div className="flex justify-between gap-3 border-b border-dashed border-border py-1">
           <dt className="text-muted-foreground">ภาษีซื้อเครื่องขายผ่อน</dt>
-          <dd className="font-mono tabular-nums font-semibold">{formatNumberDecimal(data.vatInputInstallment ?? '0', 2)} ฿</dd>
+          <dd className="shrink-0 whitespace-nowrap font-mono tabular-nums font-semibold">{formatNumberDecimal(data.vatInputInstallment ?? '0', 2)} ฿</dd>
         </div>
       </dl>
       {lines.length === 0 ? (
@@ -284,6 +286,8 @@ export default function VatPage() {
   const now = new Date();
   const [year, setYear] = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth() + 1);
+  const [exporting, setExporting] = useState(false);
+  const exportPending = useRef(false);
 
   const query = useQuery({
     queryKey: ['vat-monthly', year, month],
@@ -292,6 +296,86 @@ export default function VatPage() {
         .get<VatData>(`/finance-tax/vat-monthly?year=${year}&month=${month}`)
         .then((r) => r.data),
   });
+  const currentReport = useRef(query.data);
+  currentReport.current = query.data;
+
+  const downloadExcel = async () => {
+    const report = query.data;
+    if (!report || exportPending.current) return;
+    exportPending.current = true;
+    setExporting(true);
+    const assertCompany = createExportGuard();
+    const assertCurrent = () => {
+      assertCompany();
+      if (currentReport.current !== report) throw new ExportError('รายงานมีการเปลี่ยนแปลง กรุณาส่งออกใหม่');
+    };
+    try {
+      await exportToExcel({
+        filename: `VAT-${report.period.year}-${String(report.period.month).padStart(2, '0')}.xlsx`,
+        sheetName: 'ภาษีรายเดือน',
+        columns: [
+          { header: 'หมวด', key: 'section', width: 22 },
+          { header: 'วันที่', key: 'date', width: 18 },
+          { header: 'เลขเอกสาร', key: 'document', width: 24 },
+          { header: 'รหัสบัญชี', key: 'account', width: 18 },
+          { header: 'รายละเอียด', key: 'description', width: 55 },
+          { header: 'เดบิต', key: 'debit', width: 18 },
+          { header: 'เครดิต', key: 'credit', width: 18 },
+          { header: 'ยอดเงิน', key: 'amount', width: 18 },
+          { header: 'สัญญา', key: 'contract', width: 24 },
+          { header: 'ใบรับของ', key: 'goodsReceipt', width: 24 },
+          { header: 'ใบกำกับภาษี', key: 'taxInvoice', width: 24 },
+          { header: 'วันที่ใบกำกับ', key: 'taxInvoiceDate', width: 18 },
+          { header: 'อายุใบกำกับ (เดือน)', key: 'invoiceAgeMonths', width: 22 },
+          { header: 'สถานะ', key: 'status', width: 22 },
+        ],
+        data: [
+          ...[
+            ['ภาษีขายเดือนนี้ (ภ.พ.30)', report.vatOutput],
+            ['ภาษีขายรอเรียกเก็บ', report.vatDeferred],
+            ['ภาษีซื้อ', report.vatInput],
+            ['ภาษีสุทธิ', report.netVat],
+          ].map(([description, amount]) => ({ section: 'สรุป', description, amount: Number(amount) })),
+          ...(report.outputVat ? [
+            ...(report.outputVat.mandatory60DayIncluded ? OUTPUT_VAT_ROWS_WITH_60DAY : OUTPUT_VAT_ROWS).map((row) => ({
+              section: 'ที่มาของภาษีขาย', description: row.label,
+              amount: Number(report.outputVat![row.key] ?? '0'),
+            })),
+            ...MANDATORY_60DAY_ROWS.map((row) => ({
+              section: 'ภาษีขาย 60 วัน', description: row.label,
+              amount: Number(report.outputVat![row.key] ?? '0'),
+              status: report.outputVat!.mandatory60DayIncluded ? 'รวมในภาษีขายแล้ว' : 'ยังไม่รวมในภาษีขาย',
+            })),
+          ] : []),
+          ...(report.installmentInputVatLines !== undefined ? [
+            { section: 'สรุปภาษีซื้อ', description: 'ภาษีซื้อค่าใช้จ่าย', amount: Number(report.vatInputExpense ?? '0') },
+            { section: 'สรุปภาษีซื้อ', description: 'ภาษีซื้อเครื่องขายผ่อน', amount: Number(report.vatInputInstallment ?? '0') },
+          ] : []),
+          ...report.lines.map((line) => ({
+            section: 'รายการบัญชี', date: formatDateMedium(line.postedAt),
+            document: line.documentNumber, account: line.accountCode,
+            description: line.description, debit: line.debit, credit: line.credit,
+          })),
+          ...(report.installmentInputVatLines ?? []).map((line) => ({
+            section: 'ภาษีซื้อเครื่องขายผ่อน', date: formatDateMedium(line.postedAt),
+            document: line.entryNumber,
+            contract: line.contractNumber ?? '', goodsReceipt: line.grNumber ?? '',
+            taxInvoice: line.taxInvoiceNumber ?? '',
+            taxInvoiceDate: line.taxInvoiceDate ? formatDateMedium(line.taxInvoiceDate) : '',
+            invoiceAgeMonths: line.invoiceAgeMonths ?? '',
+            status: line.reversal ? 'กลับรายการ' : line.reversed ? 'ถูกกลับรายการ' : 'เคลมแล้ว',
+            amount: Number(line.amount),
+          })),
+        ],
+        assertCurrent,
+      });
+    } catch (error) {
+      toast.error(error instanceof ExportError ? error.message : 'ส่งออก Excel ไม่สำเร็จ กรุณาลองใหม่');
+    } finally {
+      exportPending.current = false;
+      setExporting(false);
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -364,23 +448,26 @@ export default function VatPage() {
                 {query.data.outputVat && <OutputVatBreakdownCard data={query.data.outputVat} />}
                 {query.data.installmentInputVatLines !== undefined && <InstallmentInputVatSection data={query.data} />}
 
-                <div className="flex justify-end mb-4 gap-2">
+                <div className="flex flex-wrap items-center justify-end mb-4 gap-2">
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => toast.info('Excel export — coming soon')}
+                    onClick={downloadExcel}
+                    disabled={exporting || query.isFetching}
                   >
                     <Download className="size-4 mr-1.5" />
-                    Excel
+                    {exporting ? 'กำลังส่งออก…' : 'ส่งออก Excel'}
                   </Button>
                   <Button
-                    variant="primary"
+                    variant="outline"
                     size="sm"
-                    onClick={() => toast.info('XML e-filing — coming soon')}
+                    disabled
+                    aria-describedby="vat-xml-availability"
                   >
                     <Download className="size-4 mr-1.5" />
-                    XML (e-filing)
+                    ส่งออก XML
                   </Button>
+                  <span id="vat-xml-availability" className="text-xs text-muted-foreground leading-snug">การส่งออก XML ยังไม่เปิดใช้งาน</span>
                 </div>
 
                 <Table>

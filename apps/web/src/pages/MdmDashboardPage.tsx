@@ -121,16 +121,16 @@ function getModelTypeLabel(type: 0 | 1 | 2): string {
 
 function StatusBadge({ device }: { device: MdmDevice }) {
   if (device.lossStatus === 1) {
-    return <Badge variant="destructive">Lost Mode</Badge>;
+    return <Badge variant="destructive">โหมดสูญหาย</Badge>;
   }
   if (device.status === 1) {
     return (
       <Badge className="bg-success/10 text-success border-success/20 leading-snug">
-        Managed
+        อยู่ในการจัดการ
       </Badge>
     );
   }
-  return <Badge variant="secondary">Not Managed</Badge>;
+  return <Badge variant="secondary">ไม่ได้อยู่ในการจัดการ</Badge>;
 }
 
 /* ─── Copy Button ─── */
@@ -256,12 +256,12 @@ export default function MdmDashboardPage() {
     mutationFn: (data: { imei: string; reason: string }) =>
       api.post('/mdm/lock', data).then((r) => r.data),
     onSuccess: () => {
-      toast.success('ล็อค Lost Mode สำเร็จ');
+      toast.success("ล็อค โหมดสูญหาย สำเร็จ");
       setLockDevice(null);
       setLockReason('');
       queryClient.invalidateQueries({ queryKey: ['mdm-devices'] });
     },
-    onError: () => toast.error('ไม่สามารถล็อค Lost Mode ได้'),
+    onError: () => toast.error("ไม่สามารถล็อค โหมดสูญหาย ได้"),
   });
 
   const unlockMutation = useMutation({
@@ -311,11 +311,11 @@ export default function MdmDashboardPage() {
     mutationFn: (data: { deviceId: number; imageId: string }) =>
       api.post('/mdm/devices/wallpaper', data).then((r) => r.data),
     onSuccess: () => {
-      toast.success('ตั้ง Wallpaper สำเร็จ');
+      toast.success("ตั้งภาพพื้นหลังสำเร็จ");
       setWallpaperDevice(null);
       setSelectedWallpaper(null);
     },
-    onError: () => toast.error('ไม่สามารถตั้ง Wallpaper ได้'),
+    onError: () => toast.error("ไม่สามารถตั้งภาพพื้นหลังได้"),
   });
 
   const devices = devicesQuery.data?.data ?? [];
@@ -353,9 +353,9 @@ export default function MdmDashboardPage() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">ทั้งหมด</SelectItem>
-            <SelectItem value="managed">Managed</SelectItem>
-            <SelectItem value="lost">Lost Mode</SelectItem>
-            <SelectItem value="not-managed">Not Managed</SelectItem>
+            <SelectItem value="managed">อยู่ในการจัดการ</SelectItem>
+            <SelectItem value="lost">โหมดสูญหาย</SelectItem>
+            <SelectItem value="not-managed">ไม่ได้อยู่ในการจัดการ</SelectItem>
           </SelectContent>
         </Select>
         <Select
@@ -405,7 +405,7 @@ export default function MdmDashboardPage() {
                 สถานะ
               </th>
               <th className="text-left px-4 py-3 font-medium text-muted-foreground leading-snug">
-                Last Seen
+                พบล่าสุด
               </th>
               <th className="px-4 py-3" />
             </tr>
@@ -483,7 +483,7 @@ export default function MdmDashboardPage() {
                             }}
                           >
                             <Lock size={14} className="mr-2" />
-                            ล็อค Lost Mode
+                            ล็อคโหมดสูญหาย
                           </DropdownMenuItem>
                           <DropdownMenuItem
                             onClick={() => setUnlockDevice(device)}
@@ -522,7 +522,7 @@ export default function MdmDashboardPage() {
                             }}
                           >
                             <Image size={14} className="mr-2" />
-                            ตั้ง Wallpaper
+                            ตั้งภาพพื้นหลัง
                           </DropdownMenuItem>
                         </>
                       )}
@@ -596,14 +596,14 @@ export default function MdmDashboardPage() {
                 </p>
               </div>
               <div>
-                <p className="text-muted-foreground">Device ID</p>
+                <p className="text-muted-foreground">รหัสอุปกรณ์</p>
                 <p className="font-mono text-foreground">
                   {detailDevice.deviceId}
                   <CopyButton text={detailDevice.deviceId} />
                 </p>
               </div>
               <div>
-                <p className="text-muted-foreground">OS Version</p>
+                <p className="text-muted-foreground">รุ่นระบบปฏิบัติการ</p>
                 <p className="font-medium text-foreground">iOS {detailDevice.osVersion}</p>
               </div>
               <div>
@@ -619,7 +619,7 @@ export default function MdmDashboardPage() {
                 </div>
               </div>
               <div>
-                <p className="text-muted-foreground">Last Seen</p>
+                <p className="text-muted-foreground">พบล่าสุด</p>
                 <p className="font-medium text-foreground">{relativeTime(detailDevice.lastTime)}</p>
               </div>
             </div>
@@ -636,12 +636,12 @@ export default function MdmDashboardPage() {
       <Dialog open={!!lockDevice} onOpenChange={(o) => !o && setLockDevice(null)}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>ล็อค Lost Mode</DialogTitle>
+            <DialogTitle>ล็อคโหมดสูญหาย</DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
             <p className="text-[13px] text-muted-foreground leading-snug">
               เครื่อง <span className="font-medium text-foreground">{lockDevice?.productName}</span>{' '}
-              จะเข้าสู่ Lost Mode ทันที กรุณาระบุเหตุผล
+              จะเข้าสู่ โหมดสูญหาย ทันที กรุณาระบุเหตุผล
             </p>
             <div>
               <Label htmlFor={`${uiFieldId}-1`} className="text-[13px] leading-snug">เหตุผล</Label>
@@ -671,7 +671,7 @@ export default function MdmDashboardPage() {
                 }
               }}
             >
-              {lockMutation.isPending ? 'กำลังล็อค...' : 'ล็อค Lost Mode'}
+              {lockMutation.isPending ? 'กำลังล็อค...' : "ล็อคโหมดสูญหาย"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -682,7 +682,7 @@ export default function MdmDashboardPage() {
         open={!!unlockDevice}
         onOpenChange={(o) => !o && setUnlockDevice(null)}
         title="ปลดล็อคอุปกรณ์"
-        description={`ต้องการปลดล็อค ${unlockDevice?.productName ?? ''} ออกจาก Lost Mode ใช่หรือไม่?`}
+        description={`ต้องการปลดล็อค ${unlockDevice?.productName ?? ''} ออกจาก โหมดสูญหาย ใช่หรือไม่?`}
         confirmLabel="ปลดล็อค"
         loading={unlockMutation.isPending}
         onConfirm={() => {
@@ -723,15 +723,15 @@ export default function MdmDashboardPage() {
             <div className="space-y-3 text-[13px] leading-snug">
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <p className="text-muted-foreground">Latitude</p>
+                  <p className="text-muted-foreground">ละติจูด</p>
                   <p className="font-mono text-foreground">{locationQuery.data.latitude}</p>
                 </div>
                 <div>
-                  <p className="text-muted-foreground">Longitude</p>
+                  <p className="text-muted-foreground">ลองจิจูด</p>
                   <p className="font-mono text-foreground">{locationQuery.data.longitude}</p>
                 </div>
                 <div>
-                  <p className="text-muted-foreground">Accuracy</p>
+                  <p className="text-muted-foreground">ความแม่นยำ</p>
                   <p className="font-medium text-foreground">
                     ±{locationQuery.data.accuracy} เมตร
                   </p>
@@ -869,16 +869,16 @@ export default function MdmDashboardPage() {
       <Dialog open={!!wallpaperDevice} onOpenChange={(o) => !o && setWallpaperDevice(null)}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>ตั้ง Wallpaper</DialogTitle>
+            <DialogTitle>ตั้งภาพพื้นหลัง</DialogTitle>
           </DialogHeader>
           {wallpapersQuery.isLoading && (
             <p className="text-[13px] text-muted-foreground leading-snug py-4 text-center">
-              กำลังโหลด Wallpapers...
+              กำลังโหลดภาพพื้นหลัง...
             </p>
           )}
           {wallpapersQuery.isError && (
             <p className="text-[13px] text-destructive leading-snug py-4 text-center">
-              ไม่สามารถโหลด Wallpapers ได้
+              ไม่สามารถโหลดภาพพื้นหลังได้
             </p>
           )}
           {wallpapersQuery.data && (
@@ -922,7 +922,7 @@ export default function MdmDashboardPage() {
                 }
               }}
             >
-              {wallpaperMutation.isPending ? 'กำลังตั้งค่า...' : 'ตั้ง Wallpaper'}
+              {wallpaperMutation.isPending ? 'กำลังตั้งค่า...' : "ตั้งภาพพื้นหลัง"}
             </Button>
           </DialogFooter>
         </DialogContent>

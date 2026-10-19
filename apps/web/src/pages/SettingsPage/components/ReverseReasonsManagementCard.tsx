@@ -100,7 +100,7 @@ export function ReverseReasonsManagementCard() {
         </CardHeader>
         <CardContent className="space-y-4">
           <p className="text-sm text-muted-foreground leading-snug">
-            รายการเหตุผลที่แสดงใน dropdown ของหน้ายืนยันการกลับรายการ —
+            รายการเหตุผลที่แสดงใน รายการเลือก ของหน้ายืนยันการกลับรายการ —
             ใช้ร่วม 3 modules (รายได้อื่น · รายจ่าย · สินทรัพย์)
           </p>
 
@@ -183,7 +183,7 @@ export function ReverseReasonsManagementCard() {
           <div className="flex flex-col items-stretch sm:flex-row sm:items-center sm:justify-between gap-3">
             <div className="flex items-start gap-2 text-xs text-muted-foreground leading-snug">
               <Lightbulb size={14} className="mt-0.5 shrink-0" aria-hidden />
-              ปิดใช้งานแทนการลบ — เก็บ audit trail ที่อ้างเหตุผลเก่าไว้
+              ปิดใช้งานแทนการลบ — เก็บ ประวัติการดำเนินการ ที่อ้างเหตุผลเก่าไว้
             </div>
             <Button className="shrink-0" onClick={() => setCreating(true)} disabled={!isOwner}>
               <Plus size={14} className="mr-1.5" aria-hidden />
@@ -258,7 +258,7 @@ function ReasonEditDialog({
         <DialogHeader>
           <DialogTitle>{row ? 'แก้ไขเหตุผล' : 'เพิ่มเหตุผลใหม่'}</DialogTitle>
           <DialogDescription className="leading-snug">
-            ข้อความนี้จะปรากฏใน dropdown เวลายกเลิก/กลับรายการ
+            ข้อความนี้จะปรากฏใน รายการเลือก เวลายกเลิก/กลับรายการ
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4 py-2">

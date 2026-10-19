@@ -149,7 +149,7 @@ export default function AssetRegisterPage() {
       },
       {
         key: 'netBookValueAt',
-        label: 'มูลค่าตามบัญชีสุทธิ (NBV)',
+        label: "มูลค่าตามบัญชีสุทธิ (มูลค่าตามบัญชีสุทธิ)",
         render: (row: AssetRegisterRow) => (
           <span className="tabular-nums font-semibold">
             {formatNumberDecimal(parseFloat(row.netBookValueAt))}
@@ -232,7 +232,7 @@ export default function AssetRegisterPage() {
         </Card>
         <Card>
           <CardContent className="p-4">
-            <div className="text-sm text-muted-foreground">มูลค่าตามบัญชีสุทธิ (NBV) รวม</div>
+            <div className="text-sm text-muted-foreground">มูลค่าตามบัญชีสุทธิ (มูลค่าตามบัญชีสุทธิ) รวม</div>
             <div className="text-2xl font-semibold tabular-nums">
               <AnimatedCounter value={parseFloat(summary?.totalNbv ?? '0')} decimals={2} />
             </div>

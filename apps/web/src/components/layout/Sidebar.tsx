@@ -83,7 +83,7 @@ function NavBadge({ badgeKey }: { badgeKey: MenuBadgeKey }) {
 
 /* ── Role label map ─────────────────────────────── */
 const roleBadgeMap: Record<string, { label: string; cls: string }> = {
-  OWNER:          { label: 'OWNER',        cls: 'bg-primary text-primary-foreground' },
+  OWNER:          { label: "เจ้าของ",        cls: 'bg-primary text-primary-foreground' },
   BRANCH_MANAGER: { label: 'ผจก.สาขา',    cls: 'bg-info text-info-foreground' },
   FINANCE_MANAGER:{ label: 'การเงิน',      cls: 'bg-primary text-primary-foreground' },
   ACCOUNTANT:     { label: 'บัญชี',        cls: 'bg-accent-purple text-accent-purple-foreground' },
@@ -495,7 +495,7 @@ function ExpandedSidebar({ onToggle }: { onToggle: () => void }) {
               BEST<span className="text-primary">CHOICE</span>
             </span>
             <span className="text-[10px] text-muted-foreground font-medium tracking-widest uppercase">
-              Finance Management
+              ระบบบริหารร้านและการเงิน
             </span>
           </div>
         </Link>
@@ -654,7 +654,7 @@ function MobileSidebarContent() {
             BEST<span className="text-primary">CHOICE</span>
           </span>
           <span className="text-[10px] text-muted-foreground font-medium tracking-widest uppercase">
-            Finance Management
+            ระบบบริหารร้านและการเงิน
           </span>
         </div>
       </div>

@@ -46,7 +46,7 @@ describe('chat media picker extracted from composer', () => {
     expect(emoji).toHaveBeenCalledWith('🙏');
     expect(screen.queryByRole('button', { name: 'GIF' })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /📦 สติกเกอร์/ }));
-    fireEvent.click(screen.getByTitle('Sticker 52002734'));
+    fireEvent.click(screen.getByTitle('สติกเกอร์ 52002734'));
     expect(sticker).toHaveBeenCalledWith(11537, 52002734);
     expect(fetchGif).not.toHaveBeenCalled();
   });

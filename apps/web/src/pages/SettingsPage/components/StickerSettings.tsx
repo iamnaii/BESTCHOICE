@@ -6,12 +6,12 @@ const SECTION_KEY = 'sticker';
 
 const stickerGroup: ConfigGroup = {
   key: SECTION_KEY,
-  title: 'ค่า default สติกเกอร์ติดเครื่อง',
-  subtitle: 'ใช้เมื่อ PricingTemplate ของรุ่นนั้นไม่ได้ override ดาวน์/จำนวนเดือน',
+  title: "ค่าเริ่มต้น สติกเกอร์ติดเครื่อง",
+  subtitle: "ใช้เมื่อรุ่นสินค้ายังไม่ได้กำหนดเงินดาวน์หรือจำนวนงวดเฉพาะ",
   items: [
     {
       key: 'sticker.rate1.defaultDown',
-      label: 'ดาวน์เรทที่ 1 default (บาท)',
+      label: "ดาวน์เรทที่ 1 ค่าเริ่มต้น (บาท)",
       shortLabel: 'ดาวน์ เรท 1',
       suffix: ' บาท',
       type: 'number',
@@ -20,7 +20,7 @@ const stickerGroup: ConfigGroup = {
     },
     {
       key: 'sticker.rate1.defaultTerm',
-      label: 'จำนวนเดือนเรทที่ 1 default',
+      label: "จำนวนเดือนเรทที่ 1 ค่าเริ่มต้น",
       shortLabel: 'เดือน เรท 1',
       suffix: ' เดือน',
       type: 'number',
@@ -29,7 +29,7 @@ const stickerGroup: ConfigGroup = {
     },
     {
       key: 'sticker.rate2.defaultDown',
-      label: 'ดาวน์เรทที่ 2 default (บาท)',
+      label: "ดาวน์เรทที่ 2 ค่าเริ่มต้น (บาท)",
       shortLabel: 'ดาวน์ เรท 2',
       suffix: ' บาท',
       type: 'number',
@@ -38,7 +38,7 @@ const stickerGroup: ConfigGroup = {
     },
     {
       key: 'sticker.rate2.defaultTerm',
-      label: 'จำนวนเดือนเรทที่ 2 default',
+      label: "จำนวนเดือนเรทที่ 2 ค่าเริ่มต้น",
       shortLabel: 'เดือน เรท 2',
       suffix: ' เดือน',
       type: 'number',

@@ -70,9 +70,7 @@ function BSSection({ section }: { section: BSSection }) {
             <span
               className={`tabular-nums ${Number(r.netBalance) < 0 ? 'text-destructive' : ''}`}
             >
-              {Number(r.netBalance) < 0
-                ? `(${fmt(Math.abs(Number(r.netBalance)))})`
-                : fmt(Number(r.netBalance))}
+              {fmt(Number(r.netBalance))}
             </span>
           </div>
         ))
@@ -151,7 +149,7 @@ export default function BalanceSheetPage() {
                     : 'bg-destructive/10 text-destructive'
                 }`}
               >
-                {bs.isBalanced ? 'Balanced ✓' : 'Unbalanced ✗'}
+                {bs.isBalanced ? "ยอดสมดุล ✓" : "ยอดไม่สมดุล ✗"}
               </span>
             </div>
 

@@ -1,3 +1,4 @@
+import { NumberInput } from '@/components/ui/NumberInput';
 import { NativeSelect } from '@/components/ui/native-select';
 import { useRef as useReturnFocusRef } from 'react';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
@@ -285,7 +286,7 @@ export function CustomerCreateModal({
                 </div>
                 <div>
                   <label htmlFor={`${uiFieldId}-19`} className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">เงินเดือน</label>
-                  <input id={`${uiFieldId}-19`} type="number" value={custForm.salary} onChange={(e) => setCustForm({ ...custForm, salary: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" placeholder="0.00" />
+                  <NumberInput unstyled id={`${uiFieldId}-19`} value={custForm.salary} onChange={(e) => setCustForm({ ...custForm, salary: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" placeholder="0.00" />
                 </div>
               </div>
               <div className="mt-2">

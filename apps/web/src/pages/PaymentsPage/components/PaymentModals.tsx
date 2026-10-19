@@ -1,3 +1,4 @@
+import { NumberInput } from '@/components/ui/NumberInput';
 import { NativeSelect } from '@/components/ui/native-select';
 import Modal from '@/components/ui/Modal';
 import Decimal from 'decimal.js';
@@ -66,7 +67,7 @@ function SlipScannerSection({
           {result.amount && <div className="text-xs"><span className="text-muted-foreground">จำนวนเงิน:</span> <span className="font-bold text-success">{result.amount.toLocaleString()} ฿</span></div>}
           {result.senderName && <div className="text-xs"><span className="text-muted-foreground">ผู้โอน:</span> {result.senderName} {result.senderBank && `(${result.senderBank})`}</div>}
           {result.receiverName && <div className="text-xs"><span className="text-muted-foreground">ผู้รับ:</span> {result.receiverName} {result.receiverBank && `(${result.receiverBank})`}</div>}
-          {result.transactionRef && <div className="text-xs"><span className="text-muted-foreground">Ref:</span> <span className="font-mono">{result.transactionRef}</span></div>}
+          {result.transactionRef && <div className="text-xs"><span className="text-muted-foreground">อ้างอิง:</span> <span className="font-mono">{result.transactionRef}</span></div>}
           {result.transactionDate && <div className="text-xs"><span className="text-muted-foreground">วันเวลา:</span> {result.transactionDate} {result.transactionTime || ''}</div>}
           {result.slipType && <div className="text-xs"><span className="text-muted-foreground">ประเภท:</span> {slipTypeLabels[result.slipType] || result.slipType}</div>}
         </div>
@@ -251,7 +252,7 @@ export function RecordPaymentModal({
               <div className="grid grid-cols-3 gap-4">
                 <div>
                   <label htmlFor={`${uiFieldId}-1`} className="block text-xs font-medium text-foreground mb-1.5">จำนวนเงินที่รับ <span className="text-destructive">*</span></label>
-                  <input id={`${uiFieldId}-1`} type="number" value={payForm.amount} onChange={(e) => onPayFormChange({ ...payForm, amount: Number(e.target.value) })} className={inputClass} min={0} />
+                  <NumberInput unstyled id={`${uiFieldId}-1`} value={payForm.amount} onChange={(e) => onPayFormChange({ ...payForm, amount: Number(e.target.value) })} className={inputClass} min={0} />
                 </div>
                 <div>
                   <label htmlFor={`${uiFieldId}-2`} className="block text-xs font-medium text-foreground mb-1.5">วันที่ชำระ</label>

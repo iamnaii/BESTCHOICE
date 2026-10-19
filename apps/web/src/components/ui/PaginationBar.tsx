@@ -49,10 +49,10 @@ export function PaginationBar({
       </span>
 
       <div className="flex max-w-full flex-wrap items-center gap-1 [&_button]:max-lg:min-w-11">
-        <Button className="hidden sm:inline-flex" variant="ghost" size="sm" aria-label="First" onClick={() => onPageChange(1)} disabled={page === 1}>
+        <Button className="hidden sm:inline-flex" variant="ghost" size="sm" aria-label="หน้าแรก" onClick={() => onPageChange(1)} disabled={page === 1}>
           <ChevronsLeft className="w-4 h-4" />
         </Button>
-        <Button variant="ghost" size="sm" aria-label="Prev" onClick={() => onPageChange(page - 1)} disabled={page === 1}>
+        <Button variant="ghost" size="sm" aria-label="ก่อนหน้า" onClick={() => onPageChange(page - 1)} disabled={page === 1}>
           <ChevronLeft className="w-4 h-4" />
         </Button>
         {pagesAround(page, totalPages).map((p) => (
@@ -68,10 +68,10 @@ export function PaginationBar({
             {p}
           </Button>
         ))}
-        <Button variant="ghost" size="sm" aria-label="Next" onClick={() => onPageChange(page + 1)} disabled={page === totalPages}>
+        <Button variant="ghost" size="sm" aria-label="ถัดไป" onClick={() => onPageChange(page + 1)} disabled={page === totalPages}>
           <ChevronRight className="w-4 h-4" />
         </Button>
-        <Button className="hidden sm:inline-flex" variant="ghost" size="sm" aria-label="Last" onClick={() => onPageChange(totalPages)} disabled={page === totalPages}>
+        <Button className="hidden sm:inline-flex" variant="ghost" size="sm" aria-label="หน้าสุดท้าย" onClick={() => onPageChange(totalPages)} disabled={page === totalPages}>
           <ChevronsRight className="w-4 h-4" />
         </Button>
       </div>

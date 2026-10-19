@@ -1,3 +1,4 @@
+import { formatNumericText } from '@/utils/numericText';
 import { toBangkokDateString } from '@/lib/date';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
@@ -112,13 +113,13 @@ export default function ChatbotFinanceAnalyticsPage() {
               to="/chatbot-finance/knowledge"
               className="px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm hover:bg-primary/90 font-medium"
             >
-              จัดการ Knowledge Base
+              จัดการ คลังความรู้
             </Link>
             <Link
               to="/chatbot-finance/learning"
               className="px-4 py-2 rounded-lg border border-border text-foreground text-sm hover:bg-accent"
             >
-              Learning Hub
+              ศูนย์เรียนรู้
             </Link>
           </div>
         }
@@ -128,13 +129,13 @@ export default function ChatbotFinanceAnalyticsPage() {
       <section>
         <h2 className="text-sm font-semibold text-foreground/80 mb-2">วันนี้</h2>
         <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-          <StatCard label="Sessions ใหม่" value={data.today.sessions} accent="blue" />
+          <StatCard label="บทสนทนา ใหม่" value={data.today.sessions} accent="blue" />
           <StatCard label="ข้อความรวม" value={data.today.messages} accent="blue" />
-          <StatCard label="Handoff" value={data.today.handoffs} accent="orange" />
+          <StatCard label="ส่งต่อพนักงาน" value={data.today.handoffs} accent="orange" />
           <StatCard label="Auto-trigger" value={data.today.autoTriggers} accent="green" />
           <StatCard
-            label="API Cost"
-            value={`$${data.today.totalCostUsd.toFixed(4)}`}
+            label="ค่าใช้บริการ API"
+            value={`$${formatNumericText(data.today.totalCostUsd.toFixed(4))}`}
             hint="ประมาณ"
             accent="blue"
           />
@@ -145,14 +146,14 @@ export default function ChatbotFinanceAnalyticsPage() {
       <section>
         <h2 className="text-sm font-semibold text-foreground/80 mb-2">รวมทั้งหมด</h2>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <StatCard label="Sessions ทั้งหมด" value={data.total.sessions} />
+          <StatCard label="บทสนทนา ทั้งหมด" value={data.total.sessions} />
           <StatCard label="ลูกค้า Verified" value={data.total.verifiedCustomers} accent="green" />
           <StatCard
-            label="Active Handoff"
+            label="งานที่ส่งต่อพนักงาน"
             value={data.total.activeHandoffs}
             accent={data.total.activeHandoffs > 0 ? 'red' : 'green'}
           />
-          <StatCard label="Knowledge Entries" value={data.total.knowledgeEntries} />
+          <StatCard label="รายการความรู้" value={data.total.knowledgeEntries} />
         </div>
       </section>
 
@@ -214,8 +215,8 @@ export default function ChatbotFinanceAnalyticsPage() {
             <>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
                 <StatCard label="ข้อความรวม" value={dateRange.data.totalMessages} accent="blue" />
-                <StatCard label="API Cost รวม" value={`$${dateRange.data.totalCost.toFixed(4)}`} accent="orange" />
-                <StatCard label="Handoff" value={dateRange.data.handoffs} accent="red" />
+                <StatCard label="API Cost รวม" value={`$${formatNumericText(dateRange.data.totalCost.toFixed(4))}`} accent="orange" />
+                <StatCard label="ส่งต่อพนักงาน" value={dateRange.data.handoffs} accent="red" />
               </div>
 
               <div className="space-y-1">
@@ -235,7 +236,7 @@ export default function ChatbotFinanceAnalyticsPage() {
                         </div>
                         <div className="w-10 text-right text-[10px] text-foreground/80">{d.messages}</div>
                         <div className="w-16 text-right text-[10px] text-muted-foreground">
-                          ${d.cost.toFixed(4)}
+                          ${formatNumericText(d.cost.toFixed(4))}
                         </div>
                       </div>
                     );

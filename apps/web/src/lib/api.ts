@@ -2,6 +2,7 @@ import axios from 'axios';
 import { API_URL } from '@/lib/env';
 import { getRequestCompany } from './company-scope';
 import { currentLocation, shouldSkipLoginRedirect } from '@/lib/public-routes';
+import { localizeErrorMessage } from './localize-error-message';
 
 // In-memory token storage — not accessible via XSS unlike localStorage
 let accessToken: string | null = null;
@@ -252,7 +253,7 @@ export function getErrorMessage(error: unknown): string {
   if (!err.response) return 'ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้';
   if (err.response.status === 429) return 'คำขอถี่เกินไป กรุณารอสักครู่';
   const msg = err.response.data?.message;
-  return (Array.isArray(msg) ? msg[0] : msg) || 'เกิดข้อผิดพลาด';
+  return localizeErrorMessage(msg, err.response.status);
 }
 
 export default api;

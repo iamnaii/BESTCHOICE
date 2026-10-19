@@ -247,14 +247,17 @@ export default function AssetsListPage() {
       {
         key: 'status',
         label: 'สถานะ',
-        render: (row: Asset): ReactNode => <AssetStatusBadge status={row.status} />,
+        render: (row: Asset): ReactNode => (
+          <div className="w-max"><AssetStatusBadge status={row.status} /></div>
+        ),
       },
       {
         key: 'actions',
-        label: '',
+        label: 'จัดการ',
+        align: 'right' as const,
         sortable: false,
         render: (row: Asset): ReactNode => (
-          <div className="flex items-center gap-1">
+          <div className="ml-auto flex w-max items-center gap-2">
             {row.status === 'DRAFT' && (
               <>
                 <Button
@@ -407,8 +410,8 @@ export default function AssetsListPage() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="ALL">สถานะทั้งหมด</SelectItem>
-              <SelectItem value="DRAFT">DRAFT — ฉบับร่าง</SelectItem>
-              <SelectItem value="POSTED">POSTED — บันทึกแล้ว</SelectItem>
+              <SelectItem value="DRAFT">ฉบับร่าง</SelectItem>
+              <SelectItem value="POSTED">ลงบัญชีแล้ว — บันทึกแล้ว</SelectItem>
               <SelectItem value="REVERSED">REVERSED — กลับรายการ</SelectItem>
               <SelectItem value="DISPOSED">จำหน่าย</SelectItem>
               <SelectItem value="WRITTEN_OFF">ตัดบัญชี</SelectItem>
@@ -448,7 +451,7 @@ export default function AssetsListPage() {
         open={!!deleteId}
         onOpenChange={(open) => !open && setDeleteId(null)}
         title="ลบเอกสาร?"
-        description="การลบเอกสารจะไม่สามารถกู้คืนได้ (DRAFT เท่านั้น)"
+        description="การลบเอกสารจะไม่สามารถกู้คืนได้ (ฉบับร่าง เท่านั้น)"
         variant="destructive"
         confirmLabel="ลบ"
         loading={deleteMutation.isPending}

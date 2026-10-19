@@ -31,7 +31,7 @@ export default function PreStartScreen({ data, isLoading, onStart, starting }: P
           วันนี้ไม่มีคิวงานของคุณ
         </div>
         <div className="text-base text-muted-foreground leading-relaxed">
-          ดู pool กลางถ้าอยากหยิบงานเพิ่ม
+          ดู กองงานกลาง กลางถ้าอยากหยิบงานเพิ่ม
         </div>
       </div>
     );

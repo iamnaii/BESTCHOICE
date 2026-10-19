@@ -67,7 +67,7 @@ export function ToleranceApprovalDialog({
               </div>
               {!canApprove && (
                 <p className="text-destructive text-xs pt-1">
-                  คุณไม่มีสิทธิ์อนุมัติส่วนต่าง — ต้องเป็น OWNER, FINANCE_MANAGER, ACCOUNTANT หรือ BRANCH_MANAGER
+                  คุณไม่มีสิทธิ์อนุมัติส่วนต่าง — ต้องเป็น เจ้าของ, ผู้จัดการการเงิน, ฝ่ายบัญชี หรือ ผู้จัดการสาขา
                 </p>
               )}
               {canApprove && (

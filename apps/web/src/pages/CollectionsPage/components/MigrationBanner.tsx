@@ -48,7 +48,7 @@ export default function MigrationBanner() {
       <Info className="mt-0.5 size-4 shrink-0 text-primary" aria-hidden="true" />
       <div className="flex-1">
         <p className="font-medium text-foreground">
-          ย้ายจาก /overdue มาที่ /collections แล้ว อัปเดต bookmark ได้เลย
+          ย้ายจาก /overdue มาที่ /collections แล้ว อัปเดตบุ๊กมาร์กได้เลย
         </p>
         <p className="text-xs text-muted-foreground mt-0.5">
           หน้าเดิมจะ redirect อัตโนมัติ — ฟีเจอร์ทั้งหมดอยู่ที่นี่ครบ

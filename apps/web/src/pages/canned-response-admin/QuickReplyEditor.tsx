@@ -88,7 +88,7 @@ function SortableQuickReplyRow({
                 className="text-xs border border-border rounded px-2 py-1 bg-background"
               >
                 <option value="">— ตั้งเอง (custom payload) —</option>
-                <optgroup label="ส่ง template ตอบกลับ">
+                <optgroup label="ส่ง แม่แบบตอบกลับ">
                   {allTemplates
                     .filter((t) => t.id !== selfId && t.isActive !== false)
                     .map((t) => (
@@ -107,7 +107,7 @@ function SortableQuickReplyRow({
               className="text-xs font-mono"
             />
             <p className="text-[11px] text-muted-foreground leading-snug">
-              เลือก template ด้านบนเพื่อให้บอทส่ง template นั้นตอบกลับเมื่อลูกค้ากดปุ่ม — หรือพิมพ์ payload เอง
+              เลือกแม่แบบด้านบนเพื่อให้บอทส่ง แม่แบบนั้นตอบกลับเมื่อลูกค้ากดปุ่ม — หรือพิมพ์ payload เอง
               (รูปแบบ <code>TEMPLATE:&lt;id&gt;</code> สำหรับ template, payload อื่นจะถูก route ไปยัง intent matcher)
             </p>
           </>
@@ -121,8 +121,7 @@ function SortableQuickReplyRow({
               className="text-xs font-mono"
             />
             <p className="text-[11px] text-amber-700 leading-snug">
-              ⚠ URL quick reply ใช้ได้กับ LINE เต็มที่ — บน Facebook จะเปลี่ยนเป็น text+payload
-              (ลูกค้าต้องกดส่งเอง URL ไม่เปิด browser)
+              ⚠ ปุ่มลิงก์เปิดเว็บไซต์ได้ใน LINE ส่วน Facebook จะแสดงเป็นข้อความที่ลูกค้าต้องกดส่งเอง
             </p>
           </>
         )}
@@ -194,11 +193,11 @@ export default function QuickReplyEditor({ cannedResponseId, allTemplates = [] }
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <h4 className="text-sm font-semibold leading-snug">Quick Reply ({items.length}/13)</h4>
+        <h4 className="text-sm font-semibold leading-snug">ปุ่มตอบกลับด่วน ({items.length}/13)</h4>
         {canAdd && (
           <Button size="sm" variant="outline" onClick={() => createMut.mutate()}>
             <Plus className="w-3.5 h-3.5 mr-1.5" />
-            เพิ่ม Quick Reply
+            เพิ่ม ปุ่มตอบกลับด่วน
           </Button>
         )}
       </div>
@@ -216,7 +215,7 @@ export default function QuickReplyEditor({ cannedResponseId, allTemplates = [] }
               />
             ))}
             {items.length === 0 && (
-              <p className="text-xs text-muted-foreground italic">ยังไม่มี Quick Reply — เพิ่มได้สูงสุด 13 ปุ่ม</p>
+              <p className="text-xs text-muted-foreground italic">ยังไม่มี ปุ่มตอบกลับด่วน — เพิ่มได้สูงสุด 13 ปุ่ม</p>
             )}
           </div>
         </SortableContext>

@@ -375,8 +375,8 @@ export default function OtherIncomeListPage() {
                         <span className="flex items-center gap-1">
                           {doc.isOverridden && (
                             <span
-                              title="POST ด้วย Override JV — ตรวจ audit log"
-                              aria-label="Override JV"
+                              title="ลงบัญชี ด้วย แก้ไขรายการบัญชี — ตรวจ ประวัติการดำเนินการ"
+                              aria-label="แก้ไขรายการบัญชี"
                             >
                               <Pencil className="size-3.5 inline text-warning-strong" />
                             </span>
@@ -389,7 +389,7 @@ export default function OtherIncomeListPage() {
                             <span
                               className="ml-1 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-destructive/10 text-destructive"
                               title="ใบกลับรายการ"
-                              aria-label="Reversal"
+                              aria-label="กลับรายการ"
                             >
                               R
                             </span>

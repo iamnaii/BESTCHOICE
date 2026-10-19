@@ -122,7 +122,7 @@ describe('MessageTemplatePicker — preview', () => {
 
   it('shows empty state when no template selected', async () => {
     render(wrap(<MessageTemplatePicker isOpen={true} onClose={vi.fn()} onInsert={vi.fn()} roomId="r1" />));
-    expect(await screen.findByText('เลือก template เพื่อดูตัวอย่าง')).toBeInTheDocument();
+    expect(await screen.findByText('เลือกแม่แบบเพื่อดูตัวอย่าง')).toBeInTheDocument();
   });
 
   it('fetches preview when template selected', async () => {

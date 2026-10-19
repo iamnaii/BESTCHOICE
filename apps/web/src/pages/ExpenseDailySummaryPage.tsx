@@ -206,7 +206,7 @@ export default function ExpenseDailySummaryPage() {
         <div className="text-center py-12 text-muted-foreground">ไม่พบข้อมูลในวันที่เลือก</div>
       ) : (
         <div className="bc-document bc-daily-sheet bg-white p-6 print:p-0">
-          <DocumentHeader company={companyName} title="ใบสรุปรายจ่ายประจำวัน" subtitle="DAILY EXPENSE SUMMARY"
+          <DocumentHeader company={companyName} title="ใบสรุปรายจ่ายประจำวัน" subtitle="สรุปรายจ่ายรายวัน"
             date={formatThaiDateLong(date)} />
           <div className="bc-doc-parties"><div>สาขา {summary.branchName ?? '-'}</div><div>ผู้จัดทำ {user?.name ?? '-'}</div></div>
           {/* Documents table */}

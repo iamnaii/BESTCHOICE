@@ -34,12 +34,12 @@ const DOCUMENT_TYPES = [
   { value: 'KYC_SELFIE', label: 'รูปถ่ายลูกค้าถือบัตรประชาชน', required: true },
   { value: 'DEVICE_PHOTO', label: 'รูปถ่ายสินค้า', required: true },
   { value: 'DEVICE_IMEI_PHOTO', label: 'รูปถ่าย IMEI สินค้า', required: true },
-  { value: 'FACEBOOK_PROFILE', label: 'Profile Facebook', required: true },
+  { value: 'FACEBOOK_PROFILE', label: "โปรไฟล์ Facebook", required: true },
   { value: 'FACEBOOK_POST', label: 'Post Facebook ล่าสุด (ไม่เกิน 1 เดือน)', required: true },
-  { value: 'LINE_PROFILE', label: 'Profile LINE', required: true },
+  { value: 'LINE_PROFILE', label: "โปรไฟล์ LINE", required: true },
   { value: 'DEVICE_RECEIPT_PHOTO', label: 'รูปรับเครื่อง', required: true },
   { value: 'GUARDIAN_DOC', label: 'เอกสารผู้ปกครอง', required: false },
-  { value: 'BANK_STATEMENT', label: 'Statement ธนาคาร / หลักฐานการทำงาน', required: true },
+  { value: 'BANK_STATEMENT', label: "รายการเดินบัญชี ธนาคาร / หลักฐานการทำงาน", required: true },
 ];
 
 const OCR_TYPES: Record<string, { endpoint: string; label: string }> = {
@@ -291,13 +291,13 @@ export default function DocumentUpload({ contractId, customerId, contractStatus 
                     ) : (
                       <div className="w-full h-full flex flex-col items-center justify-center gap-1 p-1">
                         <FileText className="w-6 h-6 text-destructive" />
-                        <div className="text-[9px] text-muted-foreground text-center truncate w-full px-1">Statement {idx + 1}</div>
+                        <div className="text-[9px] text-muted-foreground text-center truncate w-full px-1">รายการเดินบัญชี {idx + 1}</div>
                       </div>
                     )}
                     <div className="absolute inset-0 bg-black/60 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100 transition flex items-center justify-center">
                       <button data-ui-control="button"
                         type="button"
-                        onClick={() => { if (isRoomCreditDocument(url)) void openCreditDocument(url); else setViewingFile({ url, name: `Statement ${idx + 1}`, label: 'Statement ธนาคาร' }); }}
+                        onClick={() => { if (isRoomCreditDocument(url)) void openCreditDocument(url); else setViewingFile({ url, name: `Statement ${idx + 1}`, label: "รายการเดินบัญชีธนาคาร" }); }}
                         className="min-h-11 min-w-11 inline-flex items-center justify-center bg-background/90 rounded text-foreground hover:bg-background"
                         aria-label="ดูเอกสาร"
                       >

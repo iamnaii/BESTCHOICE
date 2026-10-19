@@ -72,7 +72,7 @@ export default function CardBubbleEditor({ bubble, onChange }: Props) {
             <div key={i} className="grid grid-cols-[minmax(0,1fr)_2.75rem] items-center gap-2 border border-border rounded p-2 sm:grid-cols-[minmax(0,1fr)_8rem_minmax(0,1fr)_2.75rem]">
               <Input value={b.label} onChange={(e) => updateButton(i, { label: e.target.value })} placeholder="ป้ายปุ่ม" className="col-start-1 row-start-1 min-w-0 text-xs" />
               <NativeSelect wrapperClassName="col-start-1 row-start-2 sm:col-start-2 sm:row-start-1" aria-label={`ชนิดปุ่ม ${i + 1}`} value={b.type} onChange={(e) => updateButton(i, { type: e.target.value as 'URL' | 'MESSAGE' | 'POSTBACK' })} className="text-xs border border-border rounded px-1.5 py-1 bg-background">
-                <option value="MESSAGE">Msg</option>
+                <option value="MESSAGE">ข้อความ</option>
                 <option value="URL">URL</option>
                 <option value="POSTBACK">Postback</option>
               </NativeSelect>

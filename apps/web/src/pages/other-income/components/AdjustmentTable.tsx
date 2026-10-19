@@ -1,3 +1,5 @@
+import { FormNumberInput } from '@/components/ui/FormNumberInput';
+import { formatNumericText } from '@/utils/numericText';
 import {
   useFieldArray,
   type Control,
@@ -43,7 +45,7 @@ export function AdjustmentTable({
   return (
     <div className="rounded-lg border p-3 bg-card">
       <p className="text-sm font-bold mb-2">
-        บัญชีบันทึกผลต่าง {totalDiff.toFixed(2)} ฿{' '}
+        บัญชีบันทึกผลต่าง {formatNumericText(totalDiff.toFixed(2))} ฿{' '}
         <span className="text-muted-foreground font-normal text-xs">
           (รวมต้องเท่ากับผลต่าง)
         </span>
@@ -71,10 +73,9 @@ export function AdjustmentTable({
               />
             </div>
             <div className="col-start-2 min-w-0 sm:col-span-3 sm:col-start-auto">
-              <input
-                type="number"
+              <FormNumberInput unstyled
                 step="0.01"
-                {...register(`adjustments.${idx}.amount`)}
+                name={`adjustments.${idx}.amount`} control={control}
                 aria-label={`จำนวนผลต่างรายการ ${idx + 1}`}
                 className="w-full border rounded px-2 py-1 text-right font-mono"
                 placeholder="0.00"
@@ -106,14 +107,14 @@ export function AdjustmentTable({
             onClick={() => append({ accountCode: '', amount: remaining, note: '' })}
             className="inline-flex max-w-full max-lg:min-h-11 items-center gap-1 px-2 py-1 border rounded-md text-left text-xs bg-primary/10 hover:bg-primary/20"
           >
-            <Plus size={12} /> เพิ่มผลต่างที่เหลือ {remaining.toFixed(2)} ฿
+            <Plus size={12} /> เพิ่มผลต่างที่เหลือ {formatNumericText(remaining.toFixed(2))} ฿
           </button>
         )}
       </div>
       <div className="mt-2 pt-2 border-t text-xs flex flex-wrap justify-between gap-2">
         <span className="text-muted-foreground">รวมผลต่างที่ระบุ:</span>
         <span className="font-mono font-bold">
-          {sumSpec.toFixed(2)} / {totalDiff.toFixed(2)} ฿
+          {formatNumericText(sumSpec.toFixed(2))} / {formatNumericText(totalDiff.toFixed(2))} ฿
         </span>
       </div>
       {!balanced && (

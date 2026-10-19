@@ -320,7 +320,7 @@ test.describe('Audit Logs', () => {
 
   test('should load audit logs page', async ({ page }) => {
     if (await hasErrorBoundary(page)) return;
-    await expect(page.getByText('Audit Logs').first()).toBeVisible({ timeout: 15000 });
+    await expect(page.getByText('ประวัติการดำเนินการ').first()).toBeVisible({ timeout: 15000 });
   });
 
   test('should display subtitle', async ({ page }) => {
@@ -382,7 +382,7 @@ test.describe('Financial Audit', () => {
 
   test('should load financial audit page', async ({ page }) => {
     if (await hasErrorBoundary(page)) return;
-    await expect(page.getByText(/Financial Audit/).first()).toBeVisible({ timeout: 15000 });
+    await expect(page.getByText('ประวัติการตรวจสอบการเงิน').first()).toBeVisible({ timeout: 15000 });
   });
 
   test('should display subtitle', async ({ page }) => {

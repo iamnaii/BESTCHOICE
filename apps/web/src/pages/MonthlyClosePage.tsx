@@ -143,7 +143,7 @@ function DetailPanel({ period, month, year, companyId, onActionSuccess }: Detail
     mutationFn: () =>
       api.post('/expenses/periods/start-review', { companyId, year, month }),
     onSuccess: () => {
-      toast.success(`เริ่ม Review งวด ${THAI_MONTHS_FULL[month - 1]} ${year} แล้ว`);
+      toast.success(`เริ่ม ตรวจสอบ งวด ${THAI_MONTHS_FULL[month - 1]} ${year} แล้ว`);
       mutationOptions.onSuccess();
     },
     onError: (err) => toast.error(getErrorMessage(err)),
@@ -163,7 +163,7 @@ function DetailPanel({ period, month, year, companyId, onActionSuccess }: Detail
     mutationFn: () =>
       api.post('/expenses/periods/sync-peak', { companyId, year, month }),
     onSuccess: () => {
-      toast.success(`Sync ไป PEAK สำเร็จ`);
+      toast.success("เชื่อมข้อมูล ไป PEAK สำเร็จ");
       mutationOptions.onSuccess();
     },
     onError: (err) => toast.error(getErrorMessage(err)),
@@ -217,7 +217,7 @@ function DetailPanel({ period, month, year, companyId, onActionSuccess }: Detail
           )}
           {period?.peakSyncedAt && (
             <div>
-              <p className="text-2xs uppercase tracking-wider text-muted-foreground mb-0.5">Sync PEAK เมื่อ</p>
+              <p className="text-2xs uppercase tracking-wider text-muted-foreground mb-0.5">เชื่อมข้อมูล PEAK เมื่อ</p>
               <p className="text-sm font-medium">{formatThaiDateShort(period.peakSyncedAt)}</p>
             </div>
           )}
@@ -226,7 +226,7 @@ function DetailPanel({ period, month, year, companyId, onActionSuccess }: Detail
         {/* PEAK sync result */}
         {period?.peakSyncResult && (
           <div className="rounded-lg border border-primary/20 bg-primary/5 p-3">
-            <p className="text-2xs uppercase tracking-wider text-muted-foreground mb-1">ผลการ Sync PEAK</p>
+            <p className="text-2xs uppercase tracking-wider text-muted-foreground mb-1">ผลการ เชื่อมข้อมูล PEAK</p>
             <p className="text-sm">{period.peakSyncResult}</p>
           </div>
         )}
@@ -251,7 +251,7 @@ function DetailPanel({ period, month, year, companyId, onActionSuccess }: Detail
 
         {/* No issues, no period → placeholder */}
         {!period && (
-          <p className="text-sm text-muted-foreground">ยังไม่มีข้อมูลงวดนี้ — สถานะ เปิด โดย default</p>
+          <p className="text-sm text-muted-foreground">ยังไม่มีข้อมูลงวดนี้ — สถานะ เปิด โดย ค่าเริ่มต้น</p>
         )}
 
         {/* Action Buttons */}
@@ -267,7 +267,7 @@ function DetailPanel({ period, month, year, companyId, onActionSuccess }: Detail
               ) : (
                 <Clock className="h-4 w-4" />
               )}
-              เริ่ม Review
+              เริ่ม ตรวจสอบ
             </Button>
           )}
 
@@ -299,7 +299,7 @@ function DetailPanel({ period, month, year, companyId, onActionSuccess }: Detail
               ) : (
                 <RefreshCw className="h-4 w-4" />
               )}
-              Sync ไป PEAK
+              เชื่อมข้อมูล ไป PEAK
             </Button>
           )}
 
@@ -365,7 +365,7 @@ export default function MonthlyClosePage() {
     <div className="space-y-6">
       <PageHeader
         title="ปิดบัญชีรายเดือน"
-        subtitle="จัดการสถานะงวดบัญชีและ Sync ไป PEAK"
+        subtitle="จัดการสถานะงวดบัญชีและ เชื่อมข้อมูล ไป PEAK"
         icon={<Calendar className="h-5 w-5" />}
       />
 

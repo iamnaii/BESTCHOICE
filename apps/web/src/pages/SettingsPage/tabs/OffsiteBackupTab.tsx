@@ -175,9 +175,9 @@ export function OffsiteBackupTab() {
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             <div className="rounded-lg bg-muted p-3">
-              <p className="text-xs text-muted-foreground leading-snug">Destination Bucket</p>
+              <p className="text-xs text-muted-foreground leading-snug">พื้นที่จัดเก็บปลายทาง</p>
               <p className="text-sm font-mono text-foreground mt-1 break-all">
-                {data.destBucket || <span className="text-muted-foreground italic">— ปกปิดสำหรับ role นี้</span>}
+                {data.destBucket || <span className="text-muted-foreground italic">— ปกปิดสำหรับ บทบาท นี้</span>}
               </p>
             </div>
             <div className="rounded-lg bg-muted p-3">
@@ -185,7 +185,7 @@ export function OffsiteBackupTab() {
               <p className="text-sm font-semibold text-foreground mt-1">{data.retentionDays} วัน</p>
             </div>
             <div className="rounded-lg bg-muted p-3">
-              <p className="text-xs text-muted-foreground leading-snug">SQL Source Bucket</p>
+              <p className="text-xs text-muted-foreground leading-snug">พื้นที่จัดเก็บไฟล์ SQL ต้นทาง</p>
               <p className="text-sm font-mono text-foreground mt-1 break-all">
                 {data.sqlSourceBucket === null ? (
                   <span className="text-muted-foreground italic leading-snug">— ปกปิด / ไม่ได้ตั้งค่า</span>
@@ -241,7 +241,7 @@ export function OffsiteBackupTab() {
                     <TableHead className="text-right">ไฟล์</TableHead>
                     <TableHead className="text-right">ขนาด</TableHead>
                     <TableHead className="text-right">ระยะเวลา</TableHead>
-                    <TableHead>Trigger</TableHead>
+                    <TableHead>เหตุการณ์</TableHead>
                     <TableHead>หมายเหตุ</TableHead>
                   </TableRow>
                 </TableHeader>

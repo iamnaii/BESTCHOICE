@@ -102,7 +102,7 @@ test.describe('/collections power features', () => {
     if (await hasErrorBoundary(page)) return;
 
     // Look for the 360 button (ChevronRight) on any contract card. Skip if none.
-    const openBtn = page.locator('[title="เปิด Customer 360"]').first();
+    const openBtn = page.locator('[title="เปิด ข้อมูลลูกค้ารอบด้าน"]').first();
     if (!(await openBtn.isVisible({ timeout: 3000 }).catch(() => false))) {
       return; // No contracts to test with — environment has no data
     }

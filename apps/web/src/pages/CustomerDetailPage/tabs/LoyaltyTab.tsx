@@ -1,3 +1,4 @@
+import { NumberInput } from '@/components/ui/NumberInput';
 import { useState } from 'react';
 import { useIsMutating, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -92,8 +93,7 @@ export default function LoyaltyTab({ customerId, canEdit, loyaltyPoints, loyalty
           <CardContent>
             <div className="text-xs text-muted-foreground mb-3">1 แต้ม = ส่วนลด 1 บาท · แต้มหมดอายุหลัง 1 ปี</div>
             <div className="flex gap-3 flex-wrap">
-              <input
-                type="number"
+              <NumberInput unstyled
                 placeholder="จำนวนแต้ม"
                 value={redeemForm.amount}
                 onChange={(e) => setRedeemForm((p) => ({ ...p, amount: e.target.value }))}

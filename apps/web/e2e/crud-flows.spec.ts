@@ -296,7 +296,7 @@ test.describe('Expense CRUD Flow', () => {
 
     // Amount
     const amountInput = form
-      .locator('input[name="amount"], input[type="number"]')
+      .locator('input[name="amount"]:not([type="hidden"]), input[data-numeric-input]')
       .first()
       .or(form.getByPlaceholder(/จำนวนเงิน|amount/i).first());
     if (await amountInput.isVisible({ timeout: 3000 }).catch(() => false)) {
@@ -582,12 +582,11 @@ test.describe('Contract Create Wizard Flow', () => {
       await expect(planSection).toBeVisible();
 
       // Fill down payment
-      const downInput = page
-        .locator('input[name="downPayment"], input[name="down"]')
-        .first()
-        .or(page.getByPlaceholder(/ดาวน์|down/i).first());
+      const downInput = page.getByRole('spinbutton', { name: /เงินดาวน์/ }).first();
       if (await downInput.isVisible({ timeout: 3000 }).catch(() => false)) {
         await downInput.fill('3000');
+        await expect(downInput).toHaveValue('3,000');
+        await expect(page.locator('input[type="hidden"][name="downPayment"]')).toHaveValue('3000');
         await page.waitForTimeout(500);
       }
 

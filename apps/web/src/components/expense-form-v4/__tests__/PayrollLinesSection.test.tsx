@@ -72,7 +72,7 @@ describe('PayrollLinesSection — employee link + pre-fill', () => {
     await user.click(screen.getByText('สมชาย ใจดี'));
 
     // base prefilled = 16000; SSO = min(16000*0.05, 875) = 800
-    expect(screen.getByDisplayValue('16000')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('16,000')).toBeInTheDocument();
     await waitFor(() => expect(screen.getByDisplayValue('800')).toBeInTheDocument());
   });
 
@@ -94,7 +94,7 @@ describe('PayrollLinesSection — employee link + pre-fill', () => {
     await waitFor(() => expect(screen.getByText('สมชาย ใจดี')).toBeInTheDocument());
     await user.click(screen.getByText('สมชาย ใจดี'));
 
-    expect(screen.getByDisplayValue('16000')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('16,000')).toBeInTheDocument();
     // SSO stays 0 (its input still shows 0)
     const zeros = screen.getAllByDisplayValue('0');
     expect(zeros.length).toBeGreaterThan(0);

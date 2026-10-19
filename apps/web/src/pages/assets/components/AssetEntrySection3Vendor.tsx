@@ -1,3 +1,4 @@
+import { FormNumberInput } from '@/components/ui/FormNumberInput';
 // Asset module — EntryPage Section 3 (vendor + payment)
 // PR 2a Task 5 (P6): vendor master combobox + inline "+ เพิ่มผู้ขายใหม่" dialog
 // + partial-payment amount input ("จำนวนเงินที่จ่าย").
@@ -179,17 +180,15 @@ export function AssetEntrySection3Vendor() {
         </div>
         <div className="md:col-span-2">
           <Label htmlFor="vendor-amount-paid">จำนวนเงินที่จ่าย</Label>
-          <Input
+          <FormNumberInput
             id="vendor-amount-paid"
-            type="number"
             step="0.01"
             min="0"
-            {...register('vendorAmountPaid', { valueAsNumber: true })}
+            name={'vendorAmountPaid'} valueAsNumber
             placeholder="ว่างไว้ = ชำระเต็มจำนวน"
           />
           <p className="text-xs text-muted-foreground mt-1">
-            หากชำระบางส่วน — JE preview จะตั้งเป็นเจ้าหนี้สำหรับยอดคงเหลือ (รองรับใน
-            phase ถัดไป)
+            ตัวอย่างรายการบัญชียังคำนวณแบบชำระเต็มจำนวน ยังไม่รองรับการแยกยอดค้างจ่ายจากช่องนี้
           </p>
           {errors.vendorAmountPaid && (
             <p className="text-sm text-destructive mt-1">

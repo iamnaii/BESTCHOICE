@@ -107,11 +107,11 @@ export default function Customer360SnapshotCard({
         className={wrapperClass}
         style={positionStyle}
         role="dialog"
-        aria-label="Customer 360 snapshot"
+        aria-label="สรุปข้อมูลลูกค้ารอบด้าน"
       >
         <div className="flex items-center justify-between border-b border-border px-4 py-2.5">
           <div className="text-2xs font-medium uppercase tracking-wide text-muted-foreground leading-snug">
-            Customer 360 — สรุปด่วน
+            ข้อมูลลูกค้ารอบด้าน — สรุปด่วน
           </div>
           <button data-ui-control="button" data-ui-icon="true"
             onClick={onClose}

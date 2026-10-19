@@ -15,7 +15,7 @@ export default function VideoBubbleEditor({ bubble, onChange }: Props) {
         <Input id="vid-url" value={bubble.mediaUrl ?? ''} onChange={(e) => onChange({ mediaUrl: e.target.value })} placeholder="https://.../video.mp4" />
       </div>
       <div>
-        <Label htmlFor="vid-thumb" className="text-xs">URL รูปปก (preview)</Label>
+        <Label htmlFor="vid-thumb" className="text-xs">URL รูปปก (ดูตัวอย่าง)</Label>
         <Input id="vid-thumb" value={bubble.thumbnailUrl ?? ''} onChange={(e) => onChange({ thumbnailUrl: e.target.value })} placeholder="https://.../thumb.jpg" />
       </div>
       {bubble.mediaUrl && (
@@ -24,7 +24,7 @@ export default function VideoBubbleEditor({ bubble, onChange }: Props) {
       <p className="text-xs text-muted-foreground leading-snug">
         ใช้ video URL ที่ public — LINE ต้องเป็น HTTPS + mp4 ≤ 200MB ≤ 1 นาที
         <br />
-        รูปปก (preview) ต้องระบุเสมอเป็น JPEG/PNG — LINE จะ reject ถ้าไม่มี
+        รูปปก (ดูตัวอย่าง) ต้องระบุเสมอเป็น JPEG/PNG — LINE จะ reject ถ้าไม่มี
       </p>
     </div>
   );

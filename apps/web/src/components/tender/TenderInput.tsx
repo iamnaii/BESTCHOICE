@@ -1,3 +1,4 @@
+import { NumberInput } from '@/components/ui/NumberInput';
 import { NativeSelect } from '@/components/ui/native-select';
 import { useEffect, useId, useState } from 'react';
 import { Plus } from 'lucide-react';
@@ -128,7 +129,7 @@ export function TenderInput({ due, value, onChange, dueLabel = 'ยอดที�
               </div>
               <div>
                 <label htmlFor={amountId} className={labelClass}>จำนวนเงิน{single ? '' : ` วิธีที่ ${index + 1}`}</label>
-                <input id={amountId} type="number" inputMode="decimal" min="0" step="0.01" value={row.amount}
+                <NumberInput unstyled id={amountId} inputMode="decimal" min="0" step="0.01" value={row.amount}
                   // บรรทัดเดียว = ยอดเต็มเสมอ ไม่ให้แก้ (แก้ได้เมื่อแบ่งจ่ายหลายวิธี)
                   readOnly={single} disabled={disabled} className={`${fieldClass} text-right ${single ? 'bg-muted/40' : ''}`}
                   onChange={(e) => onAmountChange(index, e.target.value)} />
@@ -156,7 +157,7 @@ export function TenderInput({ due, value, onChange, dueLabel = 'ยอดที�
         <div className="grid grid-cols-2 gap-3 items-end rounded-lg bg-muted/40 p-3">
           <div>
             <label htmlFor={`${uid}-handed`} className={labelClass}>ลูกค้ายื่นเงินมา</label>
-            <input id={`${uid}-handed`} type="number" inputMode="decimal" min="0" value={handed} disabled={disabled}
+            <NumberInput unstyled id={`${uid}-handed`} inputMode="decimal" min="0" value={handed} disabled={disabled}
               className={`${fieldClass} text-right`} onChange={(e) => setHanded(e.target.value)} />
           </div>
           <div className="pb-1">

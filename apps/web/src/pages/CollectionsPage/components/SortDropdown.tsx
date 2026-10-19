@@ -17,7 +17,7 @@ export type QueueSortValue =
   | 'random';
 
 const SORT_OPTIONS: { value: QueueSortValue; label: string }[] = [
-  { value: 'priority', label: 'Priority' },
+  { value: 'priority', label: "ลำดับความสำคัญ" },
   { value: 'outstanding_desc', label: 'ยอดค้าง สูง→ต่ำ' },
   { value: 'outstanding_asc', label: 'ยอดค้าง ต่ำ→สูง' },
   { value: 'days_overdue_desc', label: 'เลยกำหนดนานสุด' },

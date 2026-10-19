@@ -82,7 +82,7 @@ export default function FacebookCommentPageSettings() {
           <p role="status">กำลังโหลด…</p>
         ) : (
           <>
-            <p className="break-all">Page: {row.pageId}</p>
+            <p className="break-all">เพจ: {row.pageId}</p>
             <div className="space-y-2 rounded-md bg-muted p-3" aria-label="สถานะคอมเมนต์">
               <p>
                 รับคอมเมนต์: <strong>{receiving ? 'พร้อมรับเหตุการณ์ใหม่' : 'ยังไม่พร้อม'}</strong>

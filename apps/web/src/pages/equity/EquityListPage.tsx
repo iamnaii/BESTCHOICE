@@ -140,7 +140,7 @@ export default function EquityListPage() {
   return (
     <div className="space-y-4">
       <PageHeader
-        title="ส่วนของผู้ถือหุ้น (Equity)"
+        title="ส่วนของผู้ถือหุ้น"
         subtitle="เพิ่มทุน · ลดทุน · ปันผล · กรรมการถอนเงิน · ปรับปรุงย้อนหลัง"
         icon={<Landmark size={20} />}
         action={

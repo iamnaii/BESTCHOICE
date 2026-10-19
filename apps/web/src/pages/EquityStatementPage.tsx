@@ -96,7 +96,7 @@ export function EquityStatementPage() {
     <div>
       <PageHeader
         title="งบแสดงการเปลี่ยนแปลงในส่วนของผู้ถือหุ้น"
-        subtitle="Statement of Changes in Equity"
+        subtitle="การเปลี่ยนแปลงส่วนของผู้ถือหุ้น"
         icon={<Landmark className="size-6" />}
       />
 
@@ -188,12 +188,12 @@ export function EquityStatementPage() {
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
                 {[
                   {
-                    label: 'ทุนจดทะเบียน (Authorized)',
+                    label: "ทุนจดทะเบียน",
                     value: equity.capitalStatus.authorized,
                     hint: 'GL 31-1101',
                   },
                   {
-                    label: 'ทุนชำระแล้ว (Paid-up)',
+                    label: "ทุนชำระแล้ว",
                     value: equity.capitalStatus.paidUp,
                     hint: 'Authorized − ค้างชำระ',
                   },

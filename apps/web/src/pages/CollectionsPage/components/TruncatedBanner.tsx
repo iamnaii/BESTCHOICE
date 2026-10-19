@@ -22,11 +22,11 @@ export function TruncatedBanner({ onOpenFilter }: TruncatedBannerProps) {
       <div className="flex items-center gap-2">
         <AlertTriangle className="h-4 w-4 text-warning-strong" aria-hidden="true" />
         <span className="text-foreground leading-snug">
-          แสดง 500 แถวแรก — ปรับ filter ให้แคบลงเพื่อเห็นทั้งหมด
+          แสดง 500 แถวแรก — ปรับ ตัวกรอง ให้แคบลงเพื่อเห็นทั้งหมด
         </span>
       </div>
       <Button variant="ghost" size="sm" onClick={onOpenFilter}>
-        เปิด filter
+        เปิด ตัวกรอง
       </Button>
     </div>
   );

@@ -18,7 +18,7 @@ import { gotoWithRetry, hasErrorBoundary } from './helpers/navigation';
 async function pageMounted(page: Page): Promise<boolean> {
   if (await hasErrorBoundary(page)) return false;
   return page
-    .getByText('บัญชีตาม Role')
+    .getByText('บัญชีตาม บทบาท')
     .first()
     .isVisible({ timeout: 6000 })
     .catch(() => false);
@@ -31,7 +31,7 @@ test.describe('AccountRolesPage — admin', () => {
 
     if (!(await pageMounted(page))) return;
 
-    await expect(page.getByText('บัญชีตาม Role').first()).toBeVisible();
+    await expect(page.getByText('บัญชีตาม บทบาท').first()).toBeVisible();
 
     // After the query resolves we expect either a table with rows, or the
     // "seed your data" empty state. Both are valid; we only assert no crash
@@ -63,7 +63,7 @@ test.describe('AccountRolesPage — admin', () => {
     if (mounted) {
       // ACCOUNTANT sees the table but Edit should still be disabled at the
       // backend (PUT is OWNER only). Frontend may or may not gate the button.
-      await expect(page.getByText('บัญชีตาม Role').first()).toBeVisible();
+      await expect(page.getByText('บัญชีตาม บทบาท').first()).toBeVisible();
     } else {
       // Redirected — verify no error boundary surfaced.
       expect(await hasErrorBoundary(page)).toBeFalsy();
@@ -104,7 +104,7 @@ test.describe('AccountRolesPage — admin', () => {
     // The page renders Lock from lucide-react with a `title` attribute on
     // its wrapper `<span>`. We probe for the title text — survives both
     // rendered-but-empty data and populated cases.
-    const lockMarker = page.locator('span[title*="Required role"]').first();
+    const lockMarker = page.locator('span[title="บทบาทจำเป็น — ปิดใช้งานไม่ได้"]').first();
     const hasLock = await lockMarker.isVisible({ timeout: 4000 }).catch(() => false);
 
     if (!hasLock) {

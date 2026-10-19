@@ -77,7 +77,7 @@ function NormalBalanceBadge({ value }: { value: 'Dr' | 'Cr' | 'Dr/Cr' }) {
     <span
       className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium leading-snug ${color}`}
     >
-      Normal: {value}
+      ด้านปกติ: {value}
     </span>
   );
 }
@@ -207,7 +207,7 @@ export function GeneralLedgerPage() {
     <div>
       <PageHeader
         title="บัญชีแยกประเภท"
-        subtitle="General Ledger — รายการเดินบัญชีแยกตามรหัสบัญชี"
+        subtitle="บัญชีแยกประเภท — รายการเดินบัญชีแยกตามรหัสบัญชี"
         icon={<BookOpen className="size-6" />}
       />
 
@@ -380,7 +380,7 @@ export function GeneralLedgerPage() {
                             วันที่
                           </th>
                           <th className="text-left p-3 font-medium text-muted-foreground whitespace-nowrap">
-                            เลขที่ JE
+                            เลขที่ รายการบัญชี
                           </th>
                           <th className="text-left p-3 font-medium text-muted-foreground">
                             คำอธิบาย

@@ -49,7 +49,7 @@ export function JournalPreviewTable({ preview }: { preview: JournalPreview }) {
         <span>Dr รวม = Cr รวม</span>
         <span className="font-mono">
           {formatNumberDecimal(preview.totalDebit)} = {formatNumberDecimal(preview.totalCredit)}{' '}
-          {preview.isBalanced ? 'BALANCED' : 'UNBALANCED'}
+          {preview.isBalanced ? "ยอดสมดุล" : "ยอดไม่สมดุล"}
         </span>
       </div>
     </>

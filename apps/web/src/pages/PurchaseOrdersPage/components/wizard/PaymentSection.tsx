@@ -1,3 +1,4 @@
+import { NumberInput } from '@/components/ui/NumberInput';
 import { NativeSelect } from '@/components/ui/native-select';
 import { CreditCard, ImagePlus, Paperclip } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -142,10 +143,9 @@ export function PaymentSection({
           </div>
           <div>
             <label htmlFor={`${idPrefix}-paid-amount`} className={labelCls}>จำนวนที่จ่าย (บาท)</label>
-            <input
+            <NumberInput unstyled
               id={`${idPrefix}-paid-amount`}
               aria-label="จำนวนที่จ่าย"
-              type="number"
               min="0"
               step="0.01"
               value={payment.paidAmount}

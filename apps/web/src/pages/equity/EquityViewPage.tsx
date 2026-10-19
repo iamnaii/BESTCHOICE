@@ -84,7 +84,7 @@ export default function EquityViewPage() {
                     {/* Maker-Checker query gates ส่งอนุมัติ/ลงบัญชี — ห้ามถือว่า loading/error = OFF (fail-closed) */}
                     {mc.isLoading ? null : mc.isError ? (
                       <span className="inline-flex items-center px-2 text-xs text-destructive leading-snug">
-                        โหลดสถานะ Maker-Checker ไม่สำเร็จ — รีเฟรชหน้า
+                        โหลดสถานะ การแยกผู้บันทึกและผู้อนุมัติ ไม่สำเร็จ — รีเฟรชหน้า
                       </span>
                     ) : mc.data?.enabled ? (
                       <Button onClick={() => mut(() => equityApi.submit(doc.id), 'ส่งอนุมัติแล้ว')}>

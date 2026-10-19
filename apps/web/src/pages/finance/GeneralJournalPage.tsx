@@ -89,7 +89,7 @@ export default function GeneralJournalPage() {
     <div>
       <PageHeader
         title="สมุดรายวันทั่วไป"
-        subtitle="General Journal — รายการบันทึกบัญชีทั้งหมด"
+        subtitle="สมุดรายวันทั่วไป — รายการบันทึกบัญชีทั้งหมด"
         icon={<BookOpen className="size-6" />}
       />
 

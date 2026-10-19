@@ -3,7 +3,7 @@ import { formControlClass } from '@/components/ui/form-styles';
 import { useId as useFieldId } from 'react';
 import { getReportDateRange } from '@/lib/date';
 import { useAccountingPermissions } from '@/hooks/useAccountingPermissions';
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef } from 'react';
 import { useSearchParams, useNavigate } from 'react-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { usePaginationParams } from '@/hooks/usePaginationParams';
@@ -21,6 +21,7 @@ import { ReverseConfirmDialog } from '@/components/accounting';
 import { Receipt, Plus, Pencil, MoreVertical, Bookmark, Wallet, BarChart3, Search, SlidersHorizontal, Eye, ArrowRight, ChevronDown, FileText, CreditCard, Send, CheckCircle2 } from 'lucide-react';
 import ThaiDateInput from '@/components/ui/ThaiDateInput';
 import { Button } from '@/components/ui/button';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { formatDateShortThai, formatNumberDecimal } from '@/utils/formatters';
 import { accountDisplayName } from '@/utils/accountName';
 import { ExpenseFormV4 } from '@/components/expense-form-v4/ExpenseFormV4';
@@ -77,12 +78,12 @@ function getDocumentType(e: Expense): { label: string; cls: string } {
     case 'VENDOR_SETTLEMENT':
       return { label: 'จ่ายเจ้าหนี้', cls: 'bg-muted text-muted-foreground border-border' };
     case 'PETTY_CASH_REIMBURSEMENT':
-      return { label: 'Petty Cash', cls: 'bg-accent/30 text-foreground border-border' };
+      return { label: "เงินสดย่อย", cls: 'bg-accent/30 text-foreground border-border' };
     case 'EXPENSE':
     default:
       return e.status === 'ACCRUAL'
         ? { label: 'ตั้งหนี้', cls: 'bg-warning/10 text-warning-strong border-warning/20' }
-        : { label: 'Same-day', cls: 'bg-success/10 text-success border-success/20' };
+        : { label: "จ่ายวันเดียวกัน", cls: 'bg-success/10 text-success border-success/20' };
   }
 }
 
@@ -96,9 +97,9 @@ function getStatusBadge(e: Expense): { label: string; cls: string } {
   if (e.status === 'APPROVED')
     return { label: 'อนุมัติแล้ว', cls: 'bg-info/10 text-info border-info/40' };
   if (e.status === 'VOIDED')
-    return { label: 'VOIDED', cls: 'bg-muted text-muted-foreground border-border' };
+    return { label: "ยกเลิกแล้ว", cls: 'bg-muted text-muted-foreground border-border' };
   if (e.status === 'ACCRUAL')
-    return { label: 'ACCRUAL', cls: 'bg-success/10 text-success border-success/20' };
+    return { label: "ตั้งค้างจ่าย", cls: 'bg-success/10 text-success border-success/20' };
   return { label: 'ผ่านรายการ', cls: 'bg-success/10 text-success border-success/20' };
 }
 
@@ -143,8 +144,13 @@ export default function ExpensesPage() {
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
   const debouncedSearch = useDebounce(search, 300);
   const [showForm, setShowForm] = useState(false);
-  const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
-  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const menuTriggers = useRef(new Map<string, HTMLButtonElement>());
+  const activeMenuRecord = useRef<string | null>(null);
+  const restoreMenuFocus = (event: Event) => {
+    event.preventDefault();
+    // Dialog state can remount table cells; resolve the current trigger by row ID.
+    if (activeMenuRecord.current) menuTriggers.current.get(activeMenuRecord.current)?.focus();
+  };
   const [showCreateMenu, setShowCreateMenu] = useState(false);
   const navigate = useNavigate();
   const [confirmDialog, setConfirmDialog] = useState<{ open: boolean; message: string; action: () => void }>({ open: false, message: '', action: () => {} });
@@ -234,18 +240,13 @@ export default function ExpensesPage() {
     onError: (err: unknown) => toast.error(getErrorMessage(err)),
   });
 
-  const openCreate = () => { setEditingExpense(null); setShowForm(true); };
+  const openCreate = () => { setShowForm(true); };
   const openEdit = (e: Expense) => {
-    // R3-2 (2026-08-06) — ร่างใบเงินเดือนแก้ไขได้จริงผ่านฟอร์ม edit mode
-    // (PATCH /expense-documents/:id/payroll). ประเภทอื่นยังใช้ flow เดิม.
-    if (e.documentType === 'PAYROLL') {
-      setOpenMenuId(null);
-      navigate(`/expenses/new?edit=${e.id}`);
-      return;
-    }
-    setEditingExpense(e); setShowForm(true); setOpenMenuId(null);
+    // The form only supports PATCH for payroll. Other document types create new records.
+    if (e.status !== 'DRAFT' || e.documentType !== 'PAYROLL') return;
+    navigate(`/expenses/new?edit=${e.id}`);
   };
-  const handleFormSaved = () => { setShowForm(false); setEditingExpense(null); invalidateAll(); };
+  const handleFormSaved = () => { setShowForm(false); invalidateAll(); };
 
   // D1.2.1 — Approval Workflow. Flags + mutations stay at page level so all
   // row actions share the same react-query cache invalidations + sonner toasts.
@@ -312,8 +313,7 @@ export default function ExpensesPage() {
         return (
           <div className="text-right">
             <div className={`font-mono font-medium text-sm ${isCredit ? 'text-destructive' : ''}`}>
-              {isCredit ? '-' : ''}
-              {fmt(Math.abs(amt))}
+              {fmt(isCredit ? -Math.abs(amt) : amt)}
             </div>
             {isUnpaid && (
               <div className="text-xs text-muted-foreground">
@@ -357,50 +357,59 @@ export default function ExpensesPage() {
     },
     {
       key: 'actions',
-      label: 'ACTION',
+      label: 'จัดการ',
+      align: 'right' as const,
       render: (e: Expense) => (
-        <div className="flex items-center gap-1">
+        <div className="ml-auto flex w-max items-center gap-2" onClick={(event) => event.stopPropagation()}>
           <button data-ui-control="button" data-ui-icon="true"
             onClick={(ev) => { ev.stopPropagation(); navigate(`/expenses/${e.id}`); }}
-            className="inline-flex size-7 max-lg:size-11 shrink-0 items-center justify-center hover:bg-muted rounded transition-colors"
+            className="inline-flex size-11 shrink-0 items-center justify-center hover:bg-muted rounded transition-colors"
             title="ดูรายละเอียด"
             aria-label={`ดูรายละเอียด ${e.number}`}
           >
             <Eye className="size-4 text-muted-foreground" />
           </button>
           {e.status !== 'VOIDED' && (
-            <div className="relative">
-              <button data-ui-control="button" data-ui-icon="true"
-                onClick={(ev) => { ev.stopPropagation(); setOpenMenuId(openMenuId === e.id ? null : e.id); }}
-                className="inline-flex size-7 max-lg:size-11 shrink-0 items-center justify-center hover:bg-muted rounded transition-colors"
-                aria-label={`เมนู ${e.number}`}
-                aria-expanded={openMenuId === e.id}
-              >
-                <MoreVertical className="size-4 text-muted-foreground" />
-              </button>
-              {openMenuId === e.id && (
-                <div className="absolute right-0 top-full mt-1 z-10 bg-card border border-border rounded-lg shadow-lg py-1 min-w-[160px] max-lg:[&_button]:min-h-11">
+            <DropdownMenu onOpenChange={(open) => { if (open) activeMenuRecord.current = e.id; }}>
+              <DropdownMenuTrigger asChild>
+                <button ref={(node) => {
+                  if (node) menuTriggers.current.set(e.id, node);
+                  else menuTriggers.current.delete(e.id);
+                }} data-ui-control="button" data-ui-icon="true"
+                  type="button"
+                  className="inline-flex size-11 shrink-0 items-center justify-center hover:bg-muted rounded transition-colors"
+                  aria-label={`เมนู ${e.number}`}
+                >
+                  <MoreVertical className="size-4 text-muted-foreground" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="min-w-44">
                   {e.status === 'DRAFT' && (
                     <>
-                      <button onClick={() => openEdit(e)} className="w-full px-3 py-1.5 text-sm text-left hover:bg-muted flex items-center gap-2">
-                        <Pencil className="size-3.5" /> แก้ไข
-                      </button>
+                      <DropdownMenuItem disabled={e.documentType !== 'PAYROLL'} onSelect={() => openEdit(e)} className="min-h-11 flex items-center gap-2">
+                        <Pencil className="size-4" /> แก้ไข
+                      </DropdownMenuItem>
+                      {e.documentType !== 'PAYROLL' && (
+                        <p className="max-w-56 px-2 pb-2 text-xs leading-snug text-muted-foreground">
+                          ยังไม่รองรับการแก้ไขเอกสารประเภทนี้
+                        </p>
+                      )}
                       {/* D1.2.1.1 — "ส่งขออนุมัติ" only when approval workflow is enabled. */}
                       {uiFlags.approvalEnabled && (
                         <>
-                          <button
-                            onClick={() =>
+                          <DropdownMenuItem
+                            onSelect={() =>
                               setConfirmDialog({
                                 open: true,
                                 message: `ส่งเอกสาร "${e.number}" ขออนุมัติ?`,
                                 action: () => submitForApproval.mutate(e.id),
                               })
                             }
-                            className="w-full px-3 py-1.5 text-sm text-left hover:bg-muted flex items-center gap-2"
+                            className="min-h-11 flex items-center gap-2"
                             disabled={submitForApproval.isPending}
                           >
-                            <Send className="size-3.5" /> ส่งขออนุมัติ
-                          </button>
+                            <Send className="size-4" /> ส่งขออนุมัติ
+                          </DropdownMenuItem>
                           {(() => {
                             // D1.2.1.2 / D1.2.1.4 — explain WHY this doc needs approval.
                             const reason = getApprovalReason({
@@ -424,12 +433,12 @@ export default function ExpensesPage() {
                           users follow the new lifecycle. Backend gate also rejects
                           direct POST on DRAFT when approvalEnabled is true. */}
                       {!uiFlags.approvalEnabled && permissions.can('EXPENSE_POST') && (
-                        <button
-                          onClick={() => setConfirmDialog({ open: true, message: `โพสต์ "${e.number}"?`, action: () => actionMutation.mutate({ id: e.id, action: 'post' }) })}
-                          className="w-full px-3 py-1.5 text-sm text-left hover:bg-muted"
+                        <DropdownMenuItem
+                          onSelect={() => setConfirmDialog({ open: true, message: `โพสต์ "${e.number}"?`, action: () => actionMutation.mutate({ id: e.id, action: 'post' }) })}
+                          className="min-h-11"
                         >
                           โพสต์
-                        </button>
+                        </DropdownMenuItem>
                       )}
                     </>
                   )}
@@ -437,47 +446,46 @@ export default function ExpensesPage() {
                       current user is in approversList (or OWNER). Backend
                       assertUserCanApprove() re-validates. */}
                   {e.status === 'PENDING_APPROVAL' && isApprover && (
-                    <button
-                      onClick={() =>
+                    <DropdownMenuItem
+                      onSelect={() =>
                         setConfirmDialog({
                           open: true,
                           message: `อนุมัติเอกสาร "${e.number}"?`,
                           action: () => approve.mutate(e.id),
                         })
                       }
-                      className="w-full px-3 py-1.5 text-sm text-left hover:bg-muted flex items-center gap-2 text-info"
+                      className="min-h-11 flex items-center gap-2 text-info"
                       disabled={approve.isPending}
                     >
-                      <CheckCircle2 className="size-3.5" /> อนุมัติเอกสาร
-                    </button>
+                      <CheckCircle2 className="size-4" /> อนุมัติเอกสาร
+                    </DropdownMenuItem>
                   )}
                   {/* APPROVED docs that didn't auto-post fall back to the legacy
                       POST action — OWNER can still finalize them manually. */}
                   {e.status === 'APPROVED' && permissions.can('EXPENSE_POST') && (
-                    <button
-                      onClick={() =>
+                    <DropdownMenuItem
+                      onSelect={() =>
                         setConfirmDialog({
                           open: true,
                           message: `โพสต์ "${e.number}"?`,
                           action: () => actionMutation.mutate({ id: e.id, action: 'post' }),
                         })
                       }
-                      className="w-full px-3 py-1.5 text-sm text-left hover:bg-muted"
+                      className="min-h-11"
                     >
                       โพสต์
-                    </button>
+                    </DropdownMenuItem>
                   )}
                   {permissions.can('EXPENSE_CANCEL') && (
-                    <button
-                      onClick={() => { setReverseDialog({ open: true, id: e.id, number: e.number }); setOpenMenuId(null); }}
-                      className="w-full px-3 py-1.5 text-sm text-left hover:bg-muted text-destructive"
+                    <DropdownMenuItem
+                      onSelect={() => { setReverseDialog({ open: true, id: e.id, number: e.number }); }}
+                      className="min-h-11 text-destructive"
                     >
                       ยกเลิก
-                    </button>
+                    </DropdownMenuItem>
                   )}
-                </div>
-              )}
-            </div>
+              </DropdownMenuContent>
+            </DropdownMenu>
           )}
         </div>
       ),
@@ -485,7 +493,7 @@ export default function ExpensesPage() {
   ];
 
   return (
-    <div onClick={() => { setOpenMenuId(null); setShowCreateMenu(false); }} onKeyDown={(e) => { if (e.key === 'Escape') { setOpenMenuId(null); setShowCreateMenu(false); } }}>
+    <div onClick={() => { setShowCreateMenu(false); }} onKeyDown={(e) => { if (e.key === 'Escape') { setShowCreateMenu(false); } }}>
       <ReopenedPeriodBanner />
       {/* Compact branded header */}
       <div className="flex items-center justify-between gap-4 pb-4 mb-5 border-b border-border flex-wrap">
@@ -690,12 +698,12 @@ export default function ExpensesPage() {
       {showForm && (
         <ExpenseFormV4
           branchId={(branchFilter) || branches[0]?.id || ''}
-          onClose={() => { setShowForm(false); setEditingExpense(null); }}
+          onClose={() => { setShowForm(false); }}
           onSaved={handleFormSaved}
         />
       )}
 
-      <ConfirmDialog open={confirmDialog.open} onOpenChange={(open) => setConfirmDialog(prev => ({ ...prev, open }))} description={confirmDialog.message} onConfirm={confirmDialog.action} />
+      <ConfirmDialog onCloseAutoFocus={restoreMenuFocus} open={confirmDialog.open} onOpenChange={(open) => setConfirmDialog(prev => ({ ...prev, open }))} description={confirmDialog.message} onConfirm={confirmDialog.action} />
 
       {/* InternalControlActionBar — unified ReverseConfirmDialog.
           The expense backend still expects the legacy `{reasonCode, reasonDetail, reverseDate}`
@@ -706,6 +714,7 @@ export default function ExpensesPage() {
           date picker yet — backdating remains available via the legacy form
           if/when the owner reopens that affordance. */}
       <ReverseConfirmDialog
+        onCloseAutoFocus={restoreMenuFocus}
         open={reverseDialog.open}
         onOpenChange={(open) => setReverseDialog((prev) => ({ ...prev, open }))}
         module="expense"

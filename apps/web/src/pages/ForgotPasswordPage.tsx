@@ -42,7 +42,7 @@ export default function ForgotPasswordPage() {
           <img src="/logo-icon.svg" alt="BESTCHOICE" className="size-10 shrink-0" />
           <div>
             <div className="text-lg font-extrabold text-foreground">BEST<span className="text-primary">CHOICE</span></div>
-            <div className="text-xs text-muted-foreground">Finance Management</div>
+            <div className="text-xs text-muted-foreground">ระบบบริหารร้านและการเงิน</div>
           </div>
         </div>
         {submitted ? (

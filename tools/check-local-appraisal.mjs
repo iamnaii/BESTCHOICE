@@ -87,6 +87,7 @@ export async function checkAppraisal(page, origin, output, width) {
   await expect(savedDialog.getByText('คำตอบแบบประเมินสภาพเครื่อง', { exact: true })).toBeVisible();
   await expect(savedDialog.getByText(changedChoice.label, { exact: true }).last()).toBeVisible();
   await page.screenshot({ path: join(output, `trade-in-inspection-saved-${width}.png`) });
-  await savedDialog.getByRole('button', { name: 'ปิด', exact: true }).click();
+  await savedDialog.getByLabel('ปิด', { exact: true }).click();
+  await expect(savedDialog).toHaveCount(0);
   return { id: item.id, flow: item.flow, price: quote.price, questions: answers.length };
 }

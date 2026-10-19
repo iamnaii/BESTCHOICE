@@ -1,3 +1,4 @@
+import { NumberInput } from '@/components/ui/NumberInput';
 import { useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -54,7 +55,7 @@ export default function CashDepositDialog({ holding, onClose }: { holding: CashH
         </dl>
         <div className="space-y-1">
           <label htmlFor="cash-deposit-amount" className="block text-xs text-muted-foreground leading-snug">ยอดที่นำฝากครั้งนี้ <span className="text-destructive">*</span></label>
-          <input id="cash-deposit-amount" inputMode="decimal" value={amountText} onChange={(e) => setAmountText(e.target.value)}
+          <NumberInput step="any" unstyled id="cash-deposit-amount" inputMode="decimal" value={amountText} onChange={(e) => setAmountText(e.target.value)}
             className="h-12 w-full rounded-lg border border-input bg-background px-3.5 text-right text-lg font-semibold tabular-nums" />
           {amountText.trim() !== '' && amount == null && <p className="text-xs text-destructive leading-snug">กรอกเป็นตัวเลข ทศนิยมไม่เกิน 2 ตำแหน่ง</p>}
           {over && <p className="text-xs text-destructive leading-snug">ยอดนำฝากเกินเงินที่ยังไม่ได้นำฝาก ({baht(holding.outstanding)})</p>}

@@ -1,3 +1,4 @@
+import { NumberInput } from '@/components/ui/NumberInput';
 import { useId as useUiFieldId, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -110,10 +111,10 @@ export function OverpriceRulesTab() {
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead>Label</TableHead>
-            <TableHead>Series Pattern</TableHead>
+            <TableHead>ป้ายข้อความ</TableHead>
+            <TableHead>รูปแบบชื่อรุ่น</TableHead>
             <TableHead>สภาพ</TableHead>
-            <TableHead className="text-right">Allowance (฿)</TableHead>
+            <TableHead className="text-right">ส่วนเพิ่มที่อนุญาต (฿)</TableHead>
             <TableHead className="text-right">ผ่อนสูงสุด</TableHead>
             <TableHead>ใช้งาน</TableHead>
             <TableHead>การกระทำ</TableHead>
@@ -228,11 +229,11 @@ function OverpriceRuleFormDialog({ initial, onClose, onSaved }: DialogProps) {
     <Dialog open onOpenChange={(open) => !open && onClose()}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>{initial ? 'แก้ไข' : 'เพิ่ม'} Over Price Rule</DialogTitle>
+          <DialogTitle>{initial ? 'แก้ไข' : 'เพิ่ม'} กฎส่วนเพิ่มราคา</DialogTitle>
         </DialogHeader>
         <div className="space-y-3">
           <div>
-            <label htmlFor={`${uiFieldId}-1`} className="text-sm font-medium">Label</label>
+            <label htmlFor={`${uiFieldId}-1`} className="text-sm font-medium">ป้ายข้อความ</label>
             <Input id={`${uiFieldId}-1`}
               value={form.label}
               onChange={(e) => setForm((f) => ({ ...f, label: e.target.value }))}
@@ -240,14 +241,14 @@ function OverpriceRuleFormDialog({ initial, onClose, onSaved }: DialogProps) {
             />
           </div>
           <div>
-            <label htmlFor={`${uiFieldId}-2`} className="text-sm font-medium">Series Pattern</label>
+            <label htmlFor={`${uiFieldId}-2`} className="text-sm font-medium">รูปแบบชื่อรุ่น</label>
             <Input id={`${uiFieldId}-2`}
               value={form.seriesPattern}
               onChange={(e) => setForm((f) => ({ ...f, seriesPattern: e.target.value }))}
               placeholder="เช่น iPhone 14|iPhone 15"
             />
             <p className="text-xs text-muted-foreground mt-1 leading-snug">
-              ใช้ | คั่นหลาย series เช่น iPhone 14|iPhone 15
+              ใช้ | คั่นหลาย ตระกูลรุ่น เช่น iPhone 14|iPhone 15
             </p>
           </div>
           <div>
@@ -268,22 +269,20 @@ function OverpriceRuleFormDialog({ initial, onClose, onSaved }: DialogProps) {
             </Select>
           </div>
           <div>
-            <label htmlFor={`${uiFieldId}-4`} className="text-sm font-medium">Allowance (฿)</label>
-            <Input id={`${uiFieldId}-4`}
-              type="number"
+            <label htmlFor={`${uiFieldId}-4`} className="text-sm font-medium">ส่วนเพิ่มที่อนุญาต (฿)</label>
+            <NumberInput id={`${uiFieldId}-4`}
               step="0.01"
               value={form.allowance}
               onChange={(e) => setForm((f) => ({ ...f, allowance: e.target.value }))}
               placeholder="เช่น 500"
             />
             <p className="text-xs text-muted-foreground mt-1 leading-snug">
-              ราคาที่อนุญาตให้เกินได้จาก max price ของ GFIN
+              ส่วนเพิ่มที่อนุญาตจากราคาสูงสุดของ GFIN
             </p>
           </div>
           <div>
             <label htmlFor={`${uiFieldId}-5`} className="text-sm font-medium">ผ่อนได้สูงสุด (งวด)</label>
-            <Input id={`${uiFieldId}-5`}
-              type="number"
+            <NumberInput id={`${uiFieldId}-5`}
               min="1"
               max="36"
               value={form.maxMonths}
@@ -291,7 +290,7 @@ function OverpriceRuleFormDialog({ initial, onClose, onSaved }: DialogProps) {
               placeholder="ว่าง = ไม่จำกัด"
             />
             <p className="text-xs text-muted-foreground mt-1 leading-snug">
-              ตามคอลัมน์ "ผ่อนสูงสุด" ในตารางราคา GFIN (12 series = 10 · 13-15 = 12 · 16-17 = 15)
+              ตามคอลัมน์ "ผ่อนสูงสุด" ในตารางราคา GFIN (12 ตระกูลรุ่น = 10 · 13-15 = 12 · 16-17 = 15)
             </p>
           </div>
         </div>

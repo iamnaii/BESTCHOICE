@@ -260,7 +260,7 @@ function FormTabContent({
               </h3>
               <Button variant="outline" size="sm" onClick={handleExport}>
                 <Download className="size-4 mr-2" aria-hidden />
-                Export XLSX
+                ส่งออก Excel
               </Button>
             </CardHeader>
             <CardContent>

@@ -1,5 +1,5 @@
 import { NativeSelect } from '@/components/ui/native-select';
-import { useEffect, useMemo, useState } from 'react';
+import { ComponentProps, useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { AlertTriangle, Undo2 } from 'lucide-react';
 import {
@@ -36,6 +36,7 @@ import type { IcabModule, IcabReverseReason } from './types';
 export interface ReverseConfirmDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  onCloseAutoFocus?: ComponentProps<typeof DialogContent>['onCloseAutoFocus'];
   module: IcabModule;
   /** Original document number — e.g. `RT-202605-00006`. */
   docNumber: string;
@@ -79,6 +80,7 @@ const DEFAULT_IMPACT_NOTES: Record<IcabModule, string[]> = {
 export function ReverseConfirmDialog({
   open,
   onOpenChange,
+  onCloseAutoFocus,
   module,
   docNumber,
   docSubtitle,
@@ -127,7 +129,7 @@ export function ReverseConfirmDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-xl">
+      <DialogContent className="sm:max-w-xl" onCloseAutoFocus={onCloseAutoFocus}>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-destructive leading-snug">
             <AlertTriangle size={20} aria-hidden />
@@ -193,7 +195,7 @@ export function ReverseConfirmDialog({
             />
             {noteRequired && (
               <p className="text-xs text-muted-foreground leading-snug">
-                อย่างน้อย 5 ตัวอักษร — เก็บใน audit log ถาวร
+                อย่างน้อย 5 ตัวอักษร — เก็บใน ประวัติการดำเนินการ ถาวร
               </p>
             )}
           </div>

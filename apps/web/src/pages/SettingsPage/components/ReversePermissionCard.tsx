@@ -29,14 +29,14 @@ type Mode =
   | 'CUSTOM';
 
 const MODE_OPTIONS: { value: Mode; label: string; sublabel: string }[] = [
-  { value: 'OWNER_ONLY', label: 'OWNER เท่านั้น', sublabel: 'เข้มที่สุด' },
-  { value: 'OWNER+FINANCE_MANAGER', label: 'OWNER + ผู้จัดการการเงิน', sublabel: 'Default' },
+  { value: 'OWNER_ONLY', label: "เจ้าของ เท่านั้น", sublabel: 'เข้มที่สุด' },
+  { value: 'OWNER+FINANCE_MANAGER', label: "เจ้าของ + ผู้จัดการการเงิน", sublabel: 'Default' },
   {
     value: 'OWNER+FINANCE_MANAGER+ACCOUNTANT',
-    label: 'OWNER + ผู้จัดการการเงิน + ฝ่ายบัญชี',
+    label: "เจ้าของ + ผู้จัดการการเงิน + ฝ่ายบัญชี",
     sublabel: 'กว้างขึ้น',
   },
-  { value: 'CUSTOM', label: 'กำหนดเอง (Custom)', sublabel: 'ติ๊กรายบุคคล' },
+  { value: 'CUSTOM', label: "กำหนดเอง", sublabel: 'ติ๊กรายบุคคล' },
 ];
 
 interface UserRow {
@@ -148,8 +148,8 @@ export function ReversePermissionCard() {
         <div className="flex items-start gap-2 rounded-md bg-muted p-3">
           <Info className="w-4 h-4 mt-0.5 text-muted-foreground shrink-0" aria-hidden />
           <p className="text-xs text-muted-foreground leading-snug">
-            OWNER มีสิทธิ์เสมอ ไม่ว่าจะเลือก mode ใด ·{' '}
-            การเปลี่ยน mode มีผลทันที (ผ่าน in-memory cache 5 นาที)
+            เจ้าของมีสิทธิ์เสมอ ไม่ว่าจะเลือกโหมดใด ·{' '}
+            ระบบอาจใช้เวลาสูงสุด 5 นาทีในการอัปเดตสิทธิ์
           </p>
         </div>
 

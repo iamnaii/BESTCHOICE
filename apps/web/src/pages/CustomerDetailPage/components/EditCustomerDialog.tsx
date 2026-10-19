@@ -1,3 +1,4 @@
+import { NumberInput } from '@/components/ui/NumberInput';
 import { NativeSelect } from '@/components/ui/native-select';
 import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
@@ -217,7 +218,7 @@ export default function EditCustomerDialog({ customer, open, onClose }: EditCust
               <AddressForm value={editAddrCurrent} onChange={setEditAddrCurrent} />
             )}
             <div className="mt-3">
-              <label htmlFor="customer-edit-6" className="block text-xs font-medium text-foreground mb-1.5">Link Google Map</label>
+              <label htmlFor="customer-edit-6" className="block text-xs font-medium text-foreground mb-1.5">ลิงก์ Google Maps</label>
               <input id="customer-edit-6" type="url" value={editForm.googleMapLink} onChange={(e) => setEditForm({ ...editForm, googleMapLink: e.target.value })} className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20" placeholder="https://maps.google.com/..." />
             </div>
           </div>
@@ -296,7 +297,7 @@ export default function EditCustomerDialog({ customer, open, onClose }: EditCust
               </div>
               <div>
                 <label htmlFor="customer-edit-18" className="block text-xs font-medium text-foreground mb-1.5">เงินเดือน</label>
-                <input id="customer-edit-18" type="number" value={editForm.salary} onChange={(e) => setEditForm({ ...editForm, salary: e.target.value })} className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20" placeholder="0.00" />
+                <NumberInput unstyled id="customer-edit-18" value={editForm.salary} onChange={(e) => setEditForm({ ...editForm, salary: e.target.value })} className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20" placeholder="0.00" />
               </div>
             </div>
             <div className="mt-2">

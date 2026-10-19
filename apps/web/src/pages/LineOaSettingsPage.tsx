@@ -234,7 +234,7 @@ export default function LineOaSettingsPage() {
                 : 'ทำตาม 3 ขั้นตอนด้านล่างเพื่อเชื่อมต่อ LINE OA กับระบบ'}
             </p>
             {testResult?.success && testResult.botInfo?.pictureUrl && (
-              <img src={testResult.botInfo.pictureUrl} alt="Bot" className="w-10 h-10 rounded-full mt-2" />
+              <img src={testResult.botInfo.pictureUrl} alt="บอต" className="w-10 h-10 rounded-full mt-2" />
             )}
           </div>
           {data?.isConfigured && (
@@ -516,7 +516,7 @@ export default function LineOaSettingsPage() {
                     type="text"
                     value={form.owner_line_id || ''}
                     onChange={(e) => handleChange('owner_line_id', e.target.value)}
-                    placeholder="พิมพ์ #owner ในแชท Bot หรือวาง User ID ที่นี่"
+                    placeholder="พิมพ์ #owner ในแชท บอต หรือวาง User ID ที่นี่"
                     className="flex-1 border rounded-lg px-3 py-2.5 text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background font-mono"
                   />
                   <button data-ui-control="button"
@@ -533,8 +533,8 @@ export default function LineOaSettingsPage() {
                 <div className="mt-2 p-3 bg-warning/5 dark:bg-warning/10 border border-warning/20 rounded-lg">
                   <p className="text-sm text-warning-strong font-medium mb-1">วิธีง่ายที่สุด:</p>
                   <ol className="text-xs text-warning-strong space-y-1 list-decimal list-inside">
-                    <li>เพิ่ม Bot เป็นเพื่อนในไลน์</li>
-                    <li>พิมพ์ <strong>#owner</strong> ส่งไปในแชท Bot</li>
+                    <li>เพิ่มบอตเป็นเพื่อนในไลน์</li>
+                    <li>พิมพ์ <strong>#owner</strong> ส่งไปในแชท บอต</li>
                     <li>กลับมากดปุ่ม <strong>"ดึง User ID"</strong> ด้านบน</li>
                   </ol>
                 </div>

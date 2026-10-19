@@ -63,7 +63,7 @@ export default function AiPerformancePage() {
 
   return (
     <div>
-      <PageHeader title="AI Performance" subtitle="ประสิทธิภาพและสถิติการตอบแชทด้วย AI" />
+      <PageHeader title="ประสิทธิภาพ AI" subtitle="ประสิทธิภาพและสถิติการตอบแชทด้วย AI" />
 
       {/* Date filter */}
       <div className="flex items-center gap-3 mb-6 flex-wrap">
@@ -97,34 +97,34 @@ export default function AiPerformancePage() {
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
           <StatCard
             icon={<Bot className="w-4 h-4 text-muted-foreground" />}
-            label="Auto-Reply Rate"
+            label="อัตราตอบอัตโนมัติ"
             value={data ? `${data.autoReplyRate.toFixed(1)}%` : '—'}
             sub="% ของแชทที่ AI ตอบได้"
             color="text-foreground"
           />
           <StatCard
             icon={<ThumbsUp className="w-4 h-4 text-success" />}
-            label="Accept Rate"
+            label="อัตราการยอมรับ"
             value={data ? `${data.acceptRate.toFixed(1)}%` : '—'}
             sub="ลูกค้ายอมรับคำตอบ AI"
             color="text-foreground"
           />
           <StatCard
             icon={<ArrowRightLeft className="w-4 h-4 text-muted-foreground" />}
-            label="Handoff Rate"
+            label="อัตราส่งต่อพนักงาน"
             value={data ? `${data.handoffRate.toFixed(1)}%` : '—'}
             sub="โอนให้พนักงาน"
             color="text-foreground"
           />
           <StatCard
             icon={<Database className="w-4 h-4 text-muted-foreground" />}
-            label="Training Pairs"
+            label="คู่คำถามคำตอบ"
             value={data ? (data.trainingPairs ?? 0).toLocaleString() : '—'}
             sub="คู่ข้อมูล training"
           />
           <StatCard
             icon={<TrendingUp className="w-4 h-4 text-muted-foreground" />}
-            label="Avg Confidence"
+            label="ความมั่นใจเฉลี่ย"
             value={data ? `${(data.avgConfidence * 100).toFixed(1)}%` : '—'}
             sub="ความมั่นใจเฉลี่ย"
             color="text-foreground"
@@ -137,7 +137,7 @@ export default function AiPerformancePage() {
             {data.totalSessions !== undefined && (
               <StatCard
                 icon={<BarChart3 className="w-4 h-4 text-muted-foreground" />}
-                label="Sessions ทั้งหมด"
+                label="บทสนทนา ทั้งหมด"
                 value={data.totalSessions.toLocaleString()}
               />
             )}

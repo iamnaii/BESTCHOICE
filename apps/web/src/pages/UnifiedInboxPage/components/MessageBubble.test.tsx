@@ -21,20 +21,20 @@ describe('MessageBubble — image click opens lightbox', () => {
     fireEvent.click(button);
     expect(onCreditMessage).toHaveBeenCalledWith('m1');
     const dataTransfer = { setData: vi.fn(), clearData: vi.fn(), effectAllowed: '' };
-    fireEvent.dragStart(screen.getByAltText('media'), { dataTransfer });
+    fireEvent.dragStart(screen.getByAltText('สื่อแนบ'), { dataTransfer });
     expect(dataTransfer.clearData).toHaveBeenCalled();
     expect(dataTransfer.setData).toHaveBeenCalledExactlyOnceWith('application/x-bestchoice-credit-message', 'm1');
   });
   it('shows attached state and prevents using an image that failed to load', () => {
     render(<MessageBubble message={imageMessage} onCreditMessage={vi.fn()} creditAttached />);
     expect(screen.getByRole('button', { name: 'เอาออกจากการตรวจเครดิต' })).toBeInTheDocument();
-    fireEvent.error(screen.getByAltText('media'));
+    fireEvent.error(screen.getByAltText('สื่อแนบ'));
     expect(screen.getByRole('button', { name: /โหลดไฟล์ไม่ได้/ })).toBeDisabled();
   });
   it('enables a refreshed media URL after the old image expired', () => {
     const props = { message: imageMessage, onCreditMessage: vi.fn() };
     const view = render(<MessageBubble {...props} />);
-    fireEvent.error(screen.getByAltText('media'));
+    fireEvent.error(screen.getByAltText('สื่อแนบ'));
     view.rerender(<MessageBubble {...props} message={{ ...imageMessage, mediaUrl: 'https://example.com/new.jpg' }} />);
     expect(screen.getByRole('button', { name: 'แนบเพื่อตรวจเครดิต' })).toBeEnabled();
   });
@@ -44,7 +44,7 @@ describe('MessageBubble — image click opens lightbox', () => {
     const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null);
     render(<MessageBubble message={imageMessage} />);
 
-    fireEvent.click(screen.getByAltText('media'));
+    fireEvent.click(screen.getByAltText('สื่อแนบ'));
 
     // Lightbox dialog appears with its zoom controls…
     expect(screen.getByRole('button', { name: 'ซูมเข้า' })).toBeInTheDocument();
@@ -55,7 +55,7 @@ describe('MessageBubble — image click opens lightbox', () => {
 
   it('close button dismisses the lightbox', () => {
     render(<MessageBubble message={imageMessage} />);
-    fireEvent.click(screen.getByAltText('media'));
+    fireEvent.click(screen.getByAltText('สื่อแนบ'));
 
     fireEvent.click(screen.getByRole('button', { name: 'ปิด' }));
     expect(screen.queryByRole('button', { name: 'ซูมเข้า' })).not.toBeInTheDocument();

@@ -1,3 +1,4 @@
+import { NumberInput } from '@/components/ui/NumberInput';
 import { NativeSelect } from '@/components/ui/native-select';
 import { formControlClass } from '@/components/ui/form-styles';
 import { useId as useFieldId } from 'react';
@@ -158,7 +159,7 @@ export function ItemLinesSection({ lines, onChange, priceTypeLabel }: Props) {
         <Plus className="size-4" /> เพิ่มบัญชี
       </button>
       <p className="text-xs text-muted-foreground">
-        {priceTypeLabel} — ยอด VAT/WHT คำนวณจาก server เมื่อกด Preview/บันทึก
+        {priceTypeLabel} — ระบบคำนวณ VAT และภาษีหัก ณ ที่จ่ายเมื่อดูตัวอย่างหรือบันทึก
       </p>
     </div>
   );
@@ -177,8 +178,7 @@ function Field({
   return (
     <div>
       <label htmlFor={`${fieldId}-3`} className="mb-1 block text-xs font-medium">{label}</label>
-      <input id={`${fieldId}-3`}
-        type="number"
+      <NumberInput unstyled id={`${fieldId}-3`}
         step="0.01"
         value={value}
         onChange={(e) => onChange(e.target.value)}

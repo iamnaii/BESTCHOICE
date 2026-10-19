@@ -1,3 +1,4 @@
+import { NumberInput } from '@/components/ui/NumberInput';
 import ScreenTable from '@/components/ui/ScreenTable';
 import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -82,7 +83,7 @@ export default function AccountRolesPage() {
   return (
     <div className="flex flex-col gap-4">
       <PageHeader
-        title="บัญชีตาม Role"
+        title="บัญชีตาม บทบาท"
         subtitle="กำหนดบัญชีสำหรับรายการอัตโนมัติ · แก้ไขได้เฉพาะเจ้าของ"
       />
 
@@ -139,10 +140,10 @@ function RoleMapTable({
       <ScreenTable className="w-full text-sm">
         <thead className="bg-muted/50 text-muted-foreground">
           <tr>
-            <th className="px-4 py-3 text-left font-medium leading-snug">Role</th>
+            <th className="px-4 py-3 text-left font-medium leading-snug">บทบาท</th>
             <th className="px-4 py-3 text-left font-medium leading-snug">รหัสบัญชี</th>
             <th className="px-4 py-3 text-left font-medium leading-snug">ชื่อบัญชี</th>
-            <th className="px-4 py-3 text-right font-medium leading-snug">Priority</th>
+            <th className="px-4 py-3 text-right font-medium leading-snug">ลำดับความสำคัญ</th>
             <th className="px-4 py-3 text-center font-medium leading-snug">ใช้งาน</th>
             <th className="px-4 py-3 text-left font-medium leading-snug">หมายเหตุ</th>
             <th className="px-4 py-3 text-right font-medium leading-snug">การจัดการ</th>
@@ -155,7 +156,7 @@ function RoleMapTable({
                 <td className="px-4 py-3 align-top">
                   <div className="flex items-center gap-1.5">
                     {row.required ? (
-                      <span title="Required role — ห้ามปิดใช้งาน">
+                      <span title="บทบาทจำเป็น — ปิดใช้งานไม่ได้">
                         <Lock className="h-3.5 w-3.5 text-muted-foreground" aria-hidden />
                       </span>
                     ) : null}
@@ -245,7 +246,7 @@ function EditRoleMapDialog({
       return (await api.put(`/settings/role-map/${row.id}`, payload)).data;
     },
     onSuccess: () => {
-      toast.success('บันทึก role mapping สำเร็จ');
+      toast.success("บันทึกการกำหนดบทบาทบัญชีสำเร็จ");
       onSuccess();
     },
     onError: (err) => {
@@ -258,7 +259,7 @@ function EditRoleMapDialog({
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle className="leading-snug">
-            แก้ไข role: <code className="font-mono text-sm">{row.role}</code>
+            แก้ไข บทบาท: <code className="font-mono text-sm">{row.role}</code>
           </DialogTitle>
           <DialogDescription className="leading-snug">
             การเปลี่ยนบัญชีมีผลกับรายการอัตโนมัติที่ใช้บทบาทนี้ทันที
@@ -321,15 +322,14 @@ function EditRoleMapDialog({
             <label className="text-sm font-medium leading-snug" htmlFor="ar-priority">
               ลำดับความสำคัญ (Priority)
             </label>
-            <Input
+            <NumberInput
               id="ar-priority"
-              type="number"
               min={1}
               value={priority}
               onChange={(e) => setPriority(e.target.value)}
             />
             <p className="text-xs text-muted-foreground leading-snug">
-              เลขต่ำกว่าจะถูกใช้ก่อน เมื่อ role เดียวกันมีหลายแถว
+              เลขต่ำกว่าจะถูกใช้ก่อน เมื่อ บทบาท เดียวกันมีหลายแถว
             </p>
           </div>
 
@@ -341,7 +341,7 @@ function EditRoleMapDialog({
               </label>
               {row.required ? (
                 <p className="text-xs text-muted-foreground leading-snug">
-                  Role นี้จำเป็นสำหรับระบบ — ปิดใช้งานไม่ได้
+                  บทบาท นี้จำเป็นสำหรับระบบ — ปิดใช้งานไม่ได้
                 </p>
               ) : (
                 <p className="text-xs text-muted-foreground leading-snug">

@@ -59,7 +59,7 @@ export default function BulkDispatchDialog({ open, rows, onClose }: Props) {
 
         <div className="flex gap-2 items-end p-3 bg-muted rounded-md">
           <div>
-            <label htmlFor={`${uiFieldId}-1`} className="text-xs text-muted-foreground">Prefix</label>
+            <label htmlFor={`${uiFieldId}-1`} className="text-xs text-muted-foreground">คำนำหน้า</label>
             <Input id={`${uiFieldId}-1`}
               placeholder="EM"
               value={bookletPrefix}
@@ -79,7 +79,7 @@ export default function BulkDispatchDialog({ open, rows, onClose }: Props) {
             />
           </div>
           <Button size="sm" variant="outline" onClick={applyBooklet}>
-            ใช้ tracking ต่อเนื่อง
+            ใช้ ติดตามพัสดุ ต่อเนื่อง
           </Button>
         </div>
 

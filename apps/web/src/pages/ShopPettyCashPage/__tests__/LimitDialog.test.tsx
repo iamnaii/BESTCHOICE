@@ -23,9 +23,9 @@ describe('LimitDialog — ตั้งวงเงินเงินสดย่
   it('ค่าเริ่มต้นในช่อง = วงเงินปัจจุบัน · ปุ่มลัด 4 ค่า · ส่งตัวเลข', () => {
     const p = renderDialog();
     const input = screen.getByRole('spinbutton', { name: 'วงเงินเงินสดย่อย (บาท)' }) as HTMLInputElement;
-    expect(input.value).toBe('20000.00');
+    expect(input.value).toBe('20,000.00');
     fireEvent.click(screen.getByRole('button', { name: '30,000' }));
-    expect(input.value).toBe('30000.00');
+    expect(input.value).toBe('30,000.00');
     fireEvent.click(screen.getByRole('button', { name: 'บันทึกวงเงิน' }));
     expect(p.onSubmit).toHaveBeenCalledWith(30000);
   });

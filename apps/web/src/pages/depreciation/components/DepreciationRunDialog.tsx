@@ -47,8 +47,7 @@ export function DepreciationRunDialog({
             </span>
           </p>
           <p className="text-muted-foreground mt-2">
-            ระบบจะสร้าง Journal Entry และ Depreciation Entry สำหรับสินทรัพย์ทั้งหมด
-            ไม่สามารถยกเลิกได้ (ใช้ Reverse เพื่อกลับรายการภายหลัง)
+            ระบบจะบันทึกบัญชีและค่าเสื่อมราคาสำหรับสินทรัพย์ทั้งหมด หากต้องการยกเลิกภายหลังให้ใช้การกลับรายการ
           </p>
         </div>
         <DialogFooter>

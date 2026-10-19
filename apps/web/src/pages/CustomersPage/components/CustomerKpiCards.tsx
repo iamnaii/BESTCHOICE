@@ -119,7 +119,7 @@ export function prospectKpiCards(summary?: ProspectTabSummary): KpiCardSpec[] {
     },
     {
       key: 'prechecked',
-      label: 'ผ่าน pre-check',
+      label: "ผ่านการตรวจเบื้องต้น",
       tone: 'info',
       value: summary?.prechecked ?? 0,
       params: { precheck: 'FULL_CHECK_PASSED' },

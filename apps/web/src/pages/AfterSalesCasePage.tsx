@@ -262,7 +262,7 @@ export default function AfterSalesCasePage() {
               return (
                 <div className={`space-y-3 rounded-xl border p-4 sm:p-5 ${headerTone(data.stage)}`}>
                   <nav
-                    aria-label="breadcrumb"
+                    aria-label="เส้นทาง"
                     className="text-xs leading-snug text-muted-foreground"
                   >
                     <Link to="/after-sales" className="hover:underline">

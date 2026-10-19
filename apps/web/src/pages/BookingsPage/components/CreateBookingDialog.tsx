@@ -1,3 +1,4 @@
+import { NumberInput } from '@/components/ui/NumberInput';
 import { formControlClass } from '@/components/ui/form-styles';
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -352,9 +353,8 @@ export default function CreateBookingDialog({
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="space-y-1.5">
                   <Label htmlFor="booking-price">ราคาตกลง (บาท)</Label>
-                  <Input
+                  <NumberInput
                     id="booking-price"
-                    type="number"
                     min={0}
                     step="0.01"
                     value={agreedPrice}
@@ -376,9 +376,8 @@ export default function CreateBookingDialog({
                 <Label htmlFor="booking-deposit">
                   {paidEdit ? 'มัดจำที่รับแล้ว (บาท)' : 'เงินมัดจำที่จะรับ (บาท)'}
                 </Label>
-                <Input
+                <NumberInput
                   id="booking-deposit"
-                  type="number"
                   min={0}
                   step="0.01"
                   value={deposit}

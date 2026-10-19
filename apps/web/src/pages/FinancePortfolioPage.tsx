@@ -341,7 +341,7 @@ export default function FinancePortfolioPage() {
       {/* Aging Breakdown */}
       <div>
         <h2 className="mb-3 text-sm font-semibold text-muted-foreground uppercase tracking-wide">
-          การวิเคราะห์อายุหนี้ (Aging)
+          การวิเคราะห์อายุหนี้
         </h2>
         <div className="finance-card-grid grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
           {agingCards.map((card) => (

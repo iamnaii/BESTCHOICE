@@ -197,10 +197,8 @@ test.describe('POS Checkout Flow', () => {
 
     // These fields may only appear after product selection.
     // Just verify the page is stable and no errors.
-    const priceInput = page.locator('input[name*="price"], input[placeholder*="ราคา"]').first();
-    const discountInput = page
-      .locator('input[name*="discount"], input[placeholder*="ส่วนลด"]')
-      .first();
+    const priceInput = page.getByRole('spinbutton', { name: /ราคาขาย/ }).first();
+    const discountInput = page.getByRole('spinbutton', { name: /ส่วนลด/ }).first();
 
     if (await priceInput.isVisible({ timeout: 5000 }).catch(() => false)) {
       await expect(priceInput).toBeVisible();

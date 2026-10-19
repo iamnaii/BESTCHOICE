@@ -27,7 +27,7 @@ describe('Contract preview confirmation', () => {
     render(<StepContractReview contractId="c1" previewHtml="<p>สัญญาแรก</p>" previewState="ready" {...actions} />);
     const next = screen.getByRole('button', { name: 'เซ็นสัญญา' });
     expect(screen.getByRole('checkbox')).toBeDisabled();
-    fireEvent.load(screen.getByTitle('contract-preview'));
+    fireEvent.load(screen.getByTitle('ตัวอย่างสัญญา'));
     expect(next).toBeDisabled();
     await userEvent.click(screen.getByRole('checkbox'));
     expect(next).toBeEnabled();
@@ -39,7 +39,7 @@ describe('Contract preview confirmation', () => {
     const actions = callbacks();
     const props = { contractId: 'c1', previewHtml: '<p>สัญญาแรก</p>', previewState: 'ready' as const, ...actions };
     const view = render(<StepContractReview {...props} />);
-    fireEvent.load(screen.getByTitle('contract-preview'));
+    fireEvent.load(screen.getByTitle('ตัวอย่างสัญญา'));
     await userEvent.click(screen.getByRole('checkbox'));
     expect(screen.getByRole('button', { name: 'เซ็นสัญญา' })).toBeEnabled();
     if (change === 'retry') {
@@ -53,7 +53,7 @@ describe('Contract preview confirmation', () => {
     }
     expect(screen.getByRole('checkbox')).not.toBeChecked();
     expect(screen.getByRole('button', { name: 'เซ็นสัญญา' })).toBeDisabled();
-    fireEvent.load(screen.getByTitle('contract-preview'));
+    fireEvent.load(screen.getByTitle('ตัวอย่างสัญญา'));
     expect(screen.getByRole('button', { name: 'เซ็นสัญญา' })).toBeDisabled();
   });
 

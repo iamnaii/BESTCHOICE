@@ -1,3 +1,4 @@
+import { formatNumericText } from '@/utils/numericText';
 import ScreenTable from '@/components/ui/ScreenTable';
 import type { DailySheet } from '@/lib/otherIncome.types';
 
@@ -37,7 +38,7 @@ export function DailySheetSummaryTable({ title, rows }: DailySheetSummaryTablePr
                 <td className="px-3 py-2 text-xs leading-snug">{r.name}</td>
                 <td className="px-3 py-2 text-right text-xs text-muted-foreground">{r.count}</td>
                 <td className="px-3 py-2 text-right font-mono font-bold">
-                  {Number(r.total).toFixed(2)} ฿
+                  {formatNumericText(Number(r.total).toFixed(2))} ฿
                 </td>
               </tr>
             ))}

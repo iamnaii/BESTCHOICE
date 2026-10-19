@@ -471,13 +471,13 @@ export default function TemplateForm({
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      title={editingTemplate ? 'แก้ไข Template' : 'สร้าง Template ใหม่'}
+      title={editingTemplate ? "แก้ไขแม่แบบ" : "สร้างแม่แบบใหม่"}
       size="lg"
     >
       <form onSubmit={handleTemplateSave} className="flex flex-col gap-5 lg:gap-7.5">
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label htmlFor={`${uiFieldId}-1`} className="block text-sm font-medium text-foreground mb-1">Event Type *</label>
+            <label htmlFor={`${uiFieldId}-1`} className="block text-sm font-medium text-foreground mb-1">ประเภทเหตุการณ์ *</label>
             <input id={`${uiFieldId}-1`}
               type="text"
               value={templateForm.eventType}
@@ -490,11 +490,11 @@ export default function TemplateForm({
               required
             />
             <div className="text-xs text-muted-foreground mt-1">
-              ใช้สำหรับ scheduler หา template เช่น dunning.reminder, payment.due_in_3_days
+              รหัสเหตุการณ์สำหรับเลือกแม่แบบอัตโนมัติ เช่น dunning.reminder, payment.due_in_3_days
             </div>
           </div>
           <div>
-            <label htmlFor={`${uiFieldId}-2`} className="block text-sm font-medium text-foreground mb-1">ชื่อ Template *</label>
+            <label htmlFor={`${uiFieldId}-2`} className="block text-sm font-medium text-foreground mb-1">ชื่อแม่แบบ *</label>
             <input id={`${uiFieldId}-2`}
               type="text"
               value={templateForm.name}
@@ -614,7 +614,7 @@ export default function TemplateForm({
         {/* Sample data editor */}
         <div>
           <label htmlFor={`${uiFieldId}-7`} className="block text-sm font-medium text-foreground mb-1">
-            ข้อมูลตัวอย่าง (JSON สำหรับ preview)
+            ข้อมูลตัวอย่าง (JSON สำหรับ ดูตัวอย่าง)
           </label>
           <textarea id={`${uiFieldId}-7`}
             value={templateForm.sampleData}
@@ -634,16 +634,16 @@ export default function TemplateForm({
             onClick={() => previewMutation.mutate()}
             disabled={previewMutation.isPending || !templateForm.eventType || !editingTemplate}
             className="px-4 py-2 border border-input rounded-lg text-sm hover:bg-accent disabled:opacity-50"
-            title={!editingTemplate ? 'บันทึก template ก่อนเพื่อใช้ Preview' : ''}
+            title={!editingTemplate ? "บันทึก แม่แบบก่อนเพื่อใช้ ดูตัวอย่าง" : ''}
           >
-            {previewMutation.isPending ? 'กำลัง...' : 'Preview'}
+            {previewMutation.isPending ? 'กำลัง...' : "ดูตัวอย่าง"}
           </button>
           <button data-ui-control="button"
             type="button"
             onClick={() => testSendMutation.mutate()}
             disabled={testSendMutation.isPending || !templateForm.eventType || !editingTemplate}
             className="px-4 py-2 border border-input rounded-lg text-sm hover:bg-accent disabled:opacity-50"
-            title={!editingTemplate ? 'บันทึก template ก่อนเพื่อใช้ Test send' : ''}
+            title={!editingTemplate ? "บันทึก แม่แบบก่อนเพื่อใช้ ทดสอบส่ง" : ''}
           >
             {testSendMutation.isPending ? 'กำลังส่ง...' : 'ส่งทดสอบให้ตัวเอง'}
           </button>
@@ -660,7 +660,7 @@ export default function TemplateForm({
                   onClick={loadDefaultFlexTemplate}
                   className="px-3 py-1 text-xs bg-info/10 text-info dark:bg-info/15 rounded-md hover:bg-info/20 font-medium"
                 >
-                  โหลด Template เริ่มต้น
+                  โหลดแม่แบบ เริ่มต้น
                 </button>
                 <button data-ui-control="button"
                   type="button"
@@ -772,7 +772,7 @@ export default function TemplateForm({
             className="bg-card rounded-lg p-6 max-w-2xl w-full mx-4 max-h-[80vh] overflow-auto"
             onClick={(e) => e.stopPropagation()}
           >
-            <h3 className="font-semibold mb-2">Preview</h3>
+            <h3 className="font-semibold mb-2">ดูตัวอย่าง</h3>
             <pre className="bg-muted p-3 rounded text-sm whitespace-pre-wrap mb-2">
               {previewResult.rendered}
             </pre>

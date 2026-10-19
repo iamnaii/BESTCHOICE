@@ -1,3 +1,4 @@
+import { NumberInput } from '@/components/ui/NumberInput';
 import { useId as useExtraFieldId, useId as useUiFieldId, useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Phone, PhoneIncoming, PhoneOutgoing, Clock } from 'lucide-react';
@@ -454,8 +455,7 @@ export default function ContactLogDialog({ open, contract, onClose, onSaved }: P
                       ยอด <span className="text-destructive">*</span>
                     </label>
                     <div className="relative">
-                      <input id={`${uiExtraFieldId}-2-${idx}`}
-                        type="number"
+                      <NumberInput unstyled id={`${uiExtraFieldId}-2-${idx}`}
                         inputMode="decimal"
                         min={0.01}
                         step="0.01"

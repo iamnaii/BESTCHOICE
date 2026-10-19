@@ -76,7 +76,7 @@ export function FilterPresetsDropdown({ currentFilter, onApply }: Props) {
         <DropdownMenuTrigger asChild>
           <Button variant="outline" size="sm" className="gap-1.5">
             <Bookmark className="size-3.5" />
-            Presets
+            ชุดตัวกรอง
             <ChevronDown className="size-3.5 opacity-60" />
           </Button>
         </DropdownMenuTrigger>
@@ -118,7 +118,7 @@ export function FilterPresetsDropdown({ currentFilter, onApply }: Props) {
                       del.mutate(p.id);
                     }}
                     className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive transition-opacity"
-                    aria-label={`ลบ preset ${p.name}`}
+                    aria-label={`ลบ ชุดตัวกรอง ${p.name}`}
                   >
                     <Trash2 className="size-3.5" />
                   </button>
@@ -130,7 +130,7 @@ export function FilterPresetsDropdown({ currentFilter, onApply }: Props) {
           <DropdownMenuSeparator />
           <DropdownMenuItem onSelect={() => setSaveOpen(true)} className="cursor-pointer">
             <Save className="mr-2 size-4" />
-            บันทึก filter ปัจจุบัน
+            บันทึก ตัวกรอง ปัจจุบัน
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
@@ -138,11 +138,11 @@ export function FilterPresetsDropdown({ currentFilter, onApply }: Props) {
       <Dialog open={saveOpen} onOpenChange={setSaveOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>บันทึก Filter Preset</DialogTitle>
+            <DialogTitle>บันทึก ชุดตัวกรอง</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-1.5">
-              <Label htmlFor="preset-name">ชื่อ preset</Label>
+              <Label htmlFor="preset-name">ชื่อ ชุดตัวกรอง</Label>
               <Input
                 id="preset-name"
                 value={name}

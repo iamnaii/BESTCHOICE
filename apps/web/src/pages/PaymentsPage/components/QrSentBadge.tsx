@@ -154,7 +154,7 @@ export function QrSentBadge({ paymentId }: { paymentId: string }) {
               className="size-64 rounded-lg border border-border bg-white p-2"
             />
             <div className="text-sm font-mono">฿{amountThb}</div>
-            <div className="text-xs text-muted-foreground font-mono">REF {data.token}</div>
+            <div className="text-xs text-muted-foreground font-mono">อ้างอิง {data.token}</div>
           </div>
         </DialogContent>
       </Dialog>

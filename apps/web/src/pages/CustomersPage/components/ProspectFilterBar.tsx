@@ -91,7 +91,7 @@ export default function ProspectFilterBar({
         />
         <FilterSelect
           ariaLabel="ผล pre-check"
-          placeholder="ทุกผล pre-check"
+          placeholder="ทุกผล ตรวจเบื้องต้น"
           width={148}
           value={precheck}
           onChange={(value) => setFilters({ precheck: value })}

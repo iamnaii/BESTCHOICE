@@ -61,8 +61,8 @@ export default function LetterTable({
             <th className="p-3 text-left">สัญญา</th>
             <th className="p-3 text-left">ประเภท</th>
             <th className="p-3 text-left">วันที่</th>
-            {status === 'DISPATCHED' && <th className="p-3 text-left">Tracking</th>}
-            <th className="p-3 text-right">Action</th>
+            {status === 'DISPATCHED' && <th className="p-3 text-left">ติดตาม</th>}
+            <th className="p-3 text-right">จัดการ</th>
           </tr>
         </thead>
         <tbody>

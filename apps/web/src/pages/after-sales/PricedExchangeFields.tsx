@@ -1,3 +1,4 @@
+import { NumberInput } from '@/components/ui/NumberInput';
 import { NativeSelect } from '@/components/ui/native-select';
 import { useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
@@ -125,7 +126,7 @@ export default function PricedExchangeFields({
               >
                 ราคารับซื้อเครื่องเดิม (บาท) <span className="text-destructive">*</span>
               </label>
-              <input
+              <NumberInput step="any" unstyled
                 id="pf-buyback"
                 inputMode="decimal"
                 value={value.buybackPrice}
@@ -177,7 +178,7 @@ export default function PricedExchangeFields({
               <label htmlFor="pf-rate" className="block text-xs leading-snug text-muted-foreground">
                 อัตราดอกเบี้ย (%/เดือน)
               </label>
-              <input
+              <NumberInput step="any" unstyled
                 id="pf-rate"
                 inputMode="decimal"
                 value={value.newInterestRatePct}

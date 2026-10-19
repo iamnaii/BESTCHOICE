@@ -175,10 +175,10 @@ export default function DocTypeConfigForm({ typeKey, label }: DocTypeConfigFormP
           <div className="grid gap-4 sm:grid-cols-2">
             {/* Prefix */}
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor={`${typeKey}-prefix`}>Prefix (2-4 ตัวอักษร)</Label>
+              <Label htmlFor={`${typeKey}-prefix`}>คำนำหน้า (2-4 ตัวอักษร)</Label>
               <Input
                 id={`${typeKey}-prefix`}
-                aria-label={`prefix สำหรับ ${label}`}
+                aria-label={`คำนำหน้า สำหรับ ${label}`}
                 value={form.prefix}
                 maxLength={4}
                 onChange={(e) => setField('prefix', e.target.value)}
@@ -273,7 +273,7 @@ export default function DocTypeConfigForm({ typeKey, label }: DocTypeConfigFormP
                   ต้องการอนุมัติก่อนสร้าง
                 </Label>
                 <p className="text-xs text-muted-foreground leading-snug">
-                  เอกสารจะอยู่ในสถานะ PENDING_APPROVAL จนกว่าผู้มีสิทธิ์จะอนุมัติ
+                  เอกสารจะอยู่ในสถานะรออนุมัติ จนกว่าผู้มีสิทธิ์จะอนุมัติ
                 </p>
               </div>
               <Switch

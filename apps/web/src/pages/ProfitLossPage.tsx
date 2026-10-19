@@ -85,7 +85,7 @@ function PLRow({ label, amount, bold, indent, sub }: { label: string; amount: nu
     <div className={`flex justify-between items-center py-1.5 ${bold ? 'font-semibold border-t border-border pt-2' : ''} ${indent ? 'pl-6' : ''} ${sub ? 'text-muted-foreground text-sm' : ''}`}>
       <span>{label}</span>
       <span className={`tabular-nums ${isNeg ? 'text-destructive' : ''} ${bold ? 'text-base' : 'text-sm'}`}>
-        {isNeg ? `(${fmt(Math.abs(amount))})` : fmt(amount)}
+        {fmt(amount)}
       </span>
     </div>
   );
@@ -148,7 +148,7 @@ export default function ProfitLossPage() {
     <div>
       <PageHeader
         title="งบกำไรขาดทุน"
-        subtitle="Profit & Loss Statement (ผังบัญชีไทย)"
+        subtitle="งบกำไรขาดทุนตามผังบัญชีไทย"
         icon={<DollarSign className="size-6" />}
       />
 
@@ -331,7 +331,7 @@ export default function ProfitLossPage() {
 
               {/* Net Profit */}
               <div className={`flex justify-between items-center py-3 mt-3 border-t-2 border-double border-foreground ${isProfit ? 'text-success' : 'text-destructive'}`}>
-                <span className="text-lg font-bold">กำไรสุทธิ (Net Profit)</span>
+                <span className="text-lg font-bold">กำไรสุทธิ</span>
                 <span className="text-lg font-bold tabular-nums">{fmt(pl.netProfit)}</span>
               </div>
             </CardContent>

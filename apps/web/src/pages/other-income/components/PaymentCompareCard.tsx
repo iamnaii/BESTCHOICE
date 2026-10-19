@@ -1,3 +1,4 @@
+import { formatNumericText } from '@/utils/numericText';
 interface Props {
   expected: number;
   received: number | null | undefined;
@@ -23,10 +24,10 @@ export function PaymentCompareCard({ expected, received }: Props) {
     label = 'ตรงพอดี';
   } else if (diff > 0) {
     tone = 'info';
-    label = `รับเกิน ${diff.toFixed(2)} ฿`;
+    label = `รับเกิน ${formatNumericText(diff.toFixed(2))} ฿`;
   } else {
     tone = 'warning';
-    label = `ขาด ${Math.abs(diff).toFixed(2)} ฿`;
+    label = `ขาด ${formatNumericText(Math.abs(diff).toFixed(2))} ฿`;
   }
   const colorMap = {
     success: 'border-success bg-success/10 text-success',
@@ -38,11 +39,11 @@ export function PaymentCompareCard({ expected, received }: Props) {
       <div className="grid grid-cols-3 gap-2 text-center text-xs">
         <div>
           <p className="opacity-70">ยอดสุทธิ</p>
-          <p className="font-mono font-bold">{expected.toFixed(2)}</p>
+          <p className="font-mono font-bold">{formatNumericText(expected.toFixed(2))}</p>
         </div>
         <div className="border-x">
           <p className="opacity-70">ได้รับจริง</p>
-          <p className="font-mono font-bold">{received.toFixed(2)}</p>
+          <p className="font-mono font-bold">{formatNumericText(received.toFixed(2))}</p>
         </div>
         <div>
           <p className="opacity-70">สถานะ</p>

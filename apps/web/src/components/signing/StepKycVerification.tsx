@@ -175,7 +175,7 @@ export default function StepKycVerification({ contractId, customerName, customer
               {/* Ref Code */}
               {otpRef && (
                 <div className="bg-info/10 border border-info/30 rounded-lg px-4 py-2.5 text-center">
-                  <span className="text-xs text-info">Ref:</span>
+                  <span className="text-xs text-info">อ้างอิง:</span>
                   <span className="ml-2 text-lg font-bold text-info tracking-widest">{otpRef}</span>
                   <p className="text-xs text-info mt-0.5">ตรวจสอบ Ref ให้ตรงกับ SMS ที่ได้รับ</p>
                 </div>

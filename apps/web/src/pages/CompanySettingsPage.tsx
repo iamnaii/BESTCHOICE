@@ -1,3 +1,4 @@
+import { NumberInput } from '@/components/ui/NumberInput';
 import { NativeSelect } from '@/components/ui/native-select';
 import { useId as useUiFieldId, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -241,9 +242,8 @@ function EditCompanyDialog({
                 <label htmlFor={`${uiFieldId}-7`} className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
                   อัตรา VAT (%)
                 </label>
-                <input id={`${uiFieldId}-7`}
+                <NumberInput unstyled id={`${uiFieldId}-7`}
                   className={inputClass}
-                  type="number"
                   step="0.01"
                   min="0"
                   max="100"
@@ -527,9 +527,8 @@ function AddCompanyDialog({
                 <label htmlFor={`${uiFieldId}-6`} className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
                   อัตรา VAT (%)
                 </label>
-                <input id={`${uiFieldId}-6`}
+                <NumberInput unstyled id={`${uiFieldId}-6`}
                   className={inputClass}
-                  type="number"
                   step="0.01"
                   min="0"
                   max="100"

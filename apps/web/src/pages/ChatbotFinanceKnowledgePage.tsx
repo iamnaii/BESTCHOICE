@@ -1,3 +1,4 @@
+import { NumberInput } from '@/components/ui/NumberInput';
 import ScreenTable from '@/components/ui/ScreenTable';
 import { NativeSelect } from '@/components/ui/native-select';
 import { useId as useUiFieldId, useState } from 'react';
@@ -153,7 +154,7 @@ function KnowledgeBaseTab() {
           onClick={startCreate}
           className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm hover:bg-primary/90"
         >
-          + เพิ่ม FAQ
+          + เพิ่ม คำถามที่พบบ่อย
         </button>
       </div>
 
@@ -168,7 +169,7 @@ function KnowledgeBaseTab() {
             errorTitle="ไม่สามารถโหลด Knowledge Base ได้"
           >
           {list.data?.length === 0 ? (
-            <p className="text-sm text-muted-foreground">ยังไม่มี FAQ</p>
+            <p className="text-sm text-muted-foreground">ยังไม่มี คำถามที่พบบ่อย</p>
           ) : (
             list.data?.map((kb) => (
               <div
@@ -194,7 +195,7 @@ function KnowledgeBaseTab() {
                       {kb.channel ?? 'ทุกช่องทาง'}
                     </Badge>
                     {!kb.active && (
-                      <Badge variant="secondary" className="text-[10px] px-2 py-0.5">inactive</Badge>
+                      <Badge variant="secondary" className="text-[10px] px-2 py-0.5">ปิดใช้งาน</Badge>
                     )}
                   </div>
                 </div>
@@ -208,17 +209,17 @@ function KnowledgeBaseTab() {
         {/* Form */}
         <div className="col-span-7 bg-card border rounded-xl p-4">
           {!isCreating && !editing ? (
-            <p className="text-muted-foreground text-sm">เลือก FAQ จากด้านซ้ายเพื่อแก้ไข หรือกด "+ เพิ่ม FAQ"</p>
+            <p className="text-muted-foreground text-sm">เลือก คำถามที่พบบ่อย จากด้านซ้ายเพื่อแก้ไข หรือกด "+ เพิ่ม คำถามที่พบบ่อย"</p>
           ) : (
             <form
               onSubmit={(e) => { e.preventDefault(); saveMutation.mutate(); }}
               className="space-y-3"
             >
-              <h2 className="font-bold">{editing ? 'แก้ไข FAQ' : 'เพิ่ม FAQ ใหม่'}</h2>
+              <h2 className="font-bold">{editing ? "แก้ไข คำถามที่พบบ่อย" : "เพิ่ม คำถามที่พบบ่อย ใหม่"}</h2>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label htmlFor={`${uiFieldId}-1`} className="text-xs text-muted-foreground">Intent (ID ภาษาอังกฤษ)</label>
+                  <label htmlFor={`${uiFieldId}-1`} className="text-xs text-muted-foreground">รหัสความต้องการลูกค้า (ภาษาอังกฤษ)</label>
                   <input id={`${uiFieldId}-1`}
                     type="text"
                     value={form.intent}
@@ -229,7 +230,7 @@ function KnowledgeBaseTab() {
                   />
                 </div>
                 <div>
-                  <label htmlFor={`${uiFieldId}-2`} className="text-xs text-muted-foreground">Category</label>
+                  <label htmlFor={`${uiFieldId}-2`} className="text-xs text-muted-foreground">หมวดหมู่</label>
                   <input id={`${uiFieldId}-2`}
                     type="text"
                     value={form.category}
@@ -242,7 +243,7 @@ function KnowledgeBaseTab() {
               </div>
 
               <div>
-                <label htmlFor={`${uiFieldId}-3`} className="text-xs text-muted-foreground">Trigger Keywords (คั่นด้วย comma)</label>
+                <label htmlFor={`${uiFieldId}-3`} className="text-xs text-muted-foreground">คำค้นที่ใช้จับคู่ (คั่นด้วยจุลภาค)</label>
                 <input id={`${uiFieldId}-3`}
                   type="text"
                   value={form.triggerKeywords.join(', ')}
@@ -253,7 +254,7 @@ function KnowledgeBaseTab() {
               </div>
 
               <div>
-                <label htmlFor={`${uiFieldId}-4`} className="text-xs text-muted-foreground">Example Questions (1 บรรทัด/คำถาม)</label>
+                <label htmlFor={`${uiFieldId}-4`} className="text-xs text-muted-foreground">ตัวอย่างคำถาม (บรรทัดละ 1 คำถาม)</label>
                 <textarea id={`${uiFieldId}-4`}
                   value={form.exampleQuestions.join('\n')}
                   onChange={(e) => setForm({ ...form, exampleQuestions: e.target.value.split('\n').map((s) => s.trim()).filter(Boolean) })}
@@ -264,7 +265,7 @@ function KnowledgeBaseTab() {
               </div>
 
               <div>
-                <label htmlFor={`${uiFieldId}-5`} className="text-xs text-muted-foreground">Response Template</label>
+                <label htmlFor={`${uiFieldId}-5`} className="text-xs text-muted-foreground">แม่แบบคำตอบ</label>
                 <textarea id={`${uiFieldId}-5`}
                   value={form.responseTemplate}
                   onChange={(e) => setForm({ ...form, responseTemplate: e.target.value })}
@@ -276,7 +277,7 @@ function KnowledgeBaseTab() {
 
               <div>
                 <label htmlFor={`${uiFieldId}-6`} className="block text-sm font-medium text-foreground mb-1 leading-snug">
-                  ช่องทางที่ใช้ FAQ นี้
+                  ช่องทางที่ใช้ คำถามที่พบบ่อย นี้
                 </label>
                 <NativeSelect wrapperClassName="max-w-full w-full" id={`${uiFieldId}-6`}
                   className="rounded-md border border-border bg-background px-3 py-2 text-sm"
@@ -285,7 +286,7 @@ function KnowledgeBaseTab() {
                 >
                   <option value="">ทุกช่องทาง (ใช้ได้ทั้งน้องเบสและบอทขาย)</option>
                   <option value="LINE_FINANCE">LINE Finance (น้องเบส)</option>
-                  <option value="LINE_SHOP">LINE Shop</option>
+                  <option value="LINE_SHOP">LINE งานหน้าร้าน</option>
                   <option value="FACEBOOK">Facebook</option>
                   <option value="WEB">เว็บไซต์</option>
                 </NativeSelect>
@@ -296,21 +297,20 @@ function KnowledgeBaseTab() {
 
               <div className="grid grid-cols-3 gap-3">
                 <div>
-                  <label htmlFor={`${uiFieldId}-7`} className="text-xs text-muted-foreground">Response Type</label>
+                  <label htmlFor={`${uiFieldId}-7`} className="text-xs text-muted-foreground">รูปแบบคำตอบ</label>
                   <NativeSelect wrapperClassName="max-w-full w-full mt-1" id={`${uiFieldId}-7`}
                     value={form.responseType}
                     onChange={(e) => setForm({ ...form, responseType: e.target.value })}
                     className="px-3 py-2 border rounded-lg text-sm"
                   >
-                    <option value="auto">auto (bot ตอบได้)</option>
-                    <option value="info">info (อธิบาย)</option>
-                    <option value="handoff">handoff (ส่งต่อคน)</option>
+                    <option value="auto">บอตตอบอัตโนมัติ</option>
+                    <option value="info">ข้อมูลสำหรับอธิบาย</option>
+                    <option value="handoff">ส่งต่อพนักงาน (ส่งต่อคน)</option>
                   </NativeSelect>
                 </div>
                 <div>
-                  <label htmlFor={`${uiFieldId}-8`} className="text-xs text-muted-foreground">Priority</label>
-                  <input id={`${uiFieldId}-8`}
-                    type="number"
+                  <label htmlFor={`${uiFieldId}-8`} className="text-xs text-muted-foreground">ลำดับความสำคัญ</label>
+                  <NumberInput unstyled id={`${uiFieldId}-8`}
                     value={form.priority}
                     onChange={(e) => setForm({ ...form, priority: Number(e.target.value) })}
                     className="w-full px-3 py-2 border rounded-lg text-sm mt-1"
@@ -323,7 +323,7 @@ function KnowledgeBaseTab() {
                       checked={form.active}
                       onChange={(e) => setForm({ ...form, active: e.target.checked })}
                     />
-                    Active
+                    เปิดใช้งาน
                   </label>
                   <label className="flex items-center gap-2 mt-1">
                     <input
@@ -331,7 +331,7 @@ function KnowledgeBaseTab() {
                       checked={form.requiresAuth}
                       onChange={(e) => setForm({ ...form, requiresAuth: e.target.checked })}
                     />
-                    Requires Auth
+                    ต้องยืนยันตัวตน
                   </label>
                 </div>
               </div>
@@ -425,7 +425,7 @@ function SuggestionsTab() {
       await api.patch(`/chatbot/finance/admin/kb-suggestions/${id}/approve`);
     },
     onSuccess: () => {
-      toast.success('อนุมัติแล้ว — สร้าง KB entry เรียบร้อย');
+      toast.success("อนุมัติแล้ว — สร้าง รายการความรู้ เรียบร้อย");
       queryClient.invalidateQueries({ queryKey: ['chatbot-finance-kb-suggestions'] });
       queryClient.invalidateQueries({ queryKey: ['chatbot-finance-kb'] });
     },
@@ -486,7 +486,7 @@ function SuggestionsTab() {
                 <thead>
                   <tr className="bg-muted text-left text-xs text-muted-foreground uppercase">
                     <th className="px-4 py-3">คำถามลูกค้า</th>
-                    <th className="px-4 py-3">Intent</th>
+                    <th className="px-4 py-3">ความต้องการลูกค้า</th>
                     <th className="px-4 py-3">แหล่งที่มา</th>
                     <th className="px-4 py-3">สถานะ</th>
                     <th className="px-4 py-3">วันที่</th>
@@ -576,7 +576,7 @@ function SuggestionsTab() {
                     </div>
                     {item.suggestedTemplate && (
                       <div className="col-span-2">
-                        <p className="text-xs text-muted-foreground mb-1">Template ที่แนะนำ</p>
+                        <p className="text-xs text-muted-foreground mb-1">แม่แบบที่แนะนำ</p>
                         <pre className="bg-muted p-2 rounded text-xs font-mono whitespace-pre-wrap">
                           {item.suggestedTemplate}
                         </pre>
@@ -584,7 +584,7 @@ function SuggestionsTab() {
                     )}
                     {item.suggestedKeywords.length > 0 && (
                       <div className="col-span-2">
-                        <p className="text-xs text-muted-foreground mb-1">Keywords ที่แนะนำ</p>
+                        <p className="text-xs text-muted-foreground mb-1">คำค้นที่แนะนำ</p>
                         <div className="flex gap-1 flex-wrap">
                           {item.suggestedKeywords.map((kw, i) => (
                             <span
@@ -614,13 +614,13 @@ export default function ChatbotFinanceKnowledgePage() {
   return (
     <div>
       <PageHeader
-        title="Finance Bot — Knowledge Base"
-        subtitle="จัดการ FAQ และ KB สำหรับ AI Finance Bot"
+        title="คลังความรู้บอตการเงิน"
+        subtitle="จัดการ คำถามที่พบบ่อย และ KB สำหรับ AI Finance บอต"
       />
 
       <Tabs defaultValue="knowledge">
         <TabsList variant="line" size="md">
-          <TabsTrigger value="knowledge">Knowledge Base</TabsTrigger>
+          <TabsTrigger value="knowledge">คลังความรู้</TabsTrigger>
           <TabsTrigger value="suggestions">ข้อเสนอแนะ</TabsTrigger>
         </TabsList>
 

@@ -122,7 +122,7 @@ export function CreditNoteLinesSection({ state, onChange, onLinesChange }: Props
           >
             <FilePlus2 className={`size-4 mt-0.5 ${isStandalone ? 'text-primary' : 'text-muted-foreground'}`} />
             <div className="space-y-0.5">
-              <div className="text-sm font-medium">Standalone (ไม่มีใบเดิม)</div>
+              <div className="text-sm font-medium">ไม่มีเอกสารต้นทาง</div>
               <div className="text-xs text-muted-foreground leading-snug">
                 ผู้ขายคืนเงินโดยไม่มีใบกำกับเดิม · ระบุผู้ขายเอง
               </div>
@@ -297,8 +297,7 @@ export function CreditNoteLinesSection({ state, onChange, onLinesChange }: Props
             <div className="rounded-lg border border-warning/30 bg-warning/5 p-2 text-xs text-warning-strong flex items-start gap-2">
               <AlertCircle className="size-3.5 mt-0.5 shrink-0" />
               <span>
-                ใบลดหนี้แบบ Standalone ไม่ถูก cap ด้วยยอดของเอกสารต้นฉบับ
-                — โปรดตรวจสอบยอดให้ถูกต้องก่อนกด POST
+                ใบลดหนี้ที่ไม่มีเอกสารต้นทางไม่จำกัดยอดตามเอกสารเดิม โปรดตรวจยอดก่อนลงบัญชี
               </span>
             </div>
           </div>

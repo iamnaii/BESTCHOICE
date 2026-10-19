@@ -1,3 +1,4 @@
+import { NumberInput } from '@/components/ui/NumberInput';
 import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -11,7 +12,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { CashAccountSelect, SHOP_CASH_ACCOUNT_CODES } from '@/components/CashAccountSelect';
 import { fmtMoney, type CashSettleCandidate } from './types';
@@ -171,9 +171,8 @@ function CashSettlementSession({
         <div className="space-y-4">
           <div className="space-y-1.5">
             <Label htmlFor="recall-cash-amount">{copy.amountLabel}</Label>
-            <Input
+            <NumberInput
               id="recall-cash-amount"
-              type="number"
               inputMode="decimal"
               step="0.01"
               min="0"

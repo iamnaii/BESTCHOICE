@@ -49,7 +49,7 @@ interface GreetingResponse {
 const MSG_TYPE_BUTTONS: { type: MessageType; icon: React.ReactNode; label: string }[] = [
   { type: 'text', icon: <MessageSquare className="size-3.5" />, label: 'ข้อความ' },
   { type: 'image', icon: <ImageIcon className="size-3.5" />, label: 'รูปภาพ' },
-  { type: 'flex', icon: <LayoutTemplate className="size-3.5" />, label: 'Flex Card' },
+  { type: 'flex', icon: <LayoutTemplate className="size-3.5" />, label: "การ์ดข้อความ" },
 ];
 
 const DEFAULT_MESSAGES: MessageItem[] = [
@@ -108,7 +108,7 @@ function MessagePreviewBubble({ message }: { message: MessageItem }) {
         {c.imageUrl ? (
           <img
             src={c.imageUrl}
-            alt="preview"
+            alt="ตัวอย่าง"
             className="max-w-full rounded-t-2xl"
             onError={(e) => {
               (e.target as HTMLImageElement).style.display = 'none';
@@ -172,7 +172,7 @@ function ImageEditor({ message, onChange }: EditorProps) {
       </div>
       <div>
         <label htmlFor={`${uiFieldId}-2`} className="mb-1.5 block text-sm font-medium text-foreground/80">
-          Caption <span className="text-muted-foreground font-normal">(ไม่บังคับ)</span>
+          คำบรรยาย <span className="text-muted-foreground font-normal">(ไม่บังคับ)</span>
         </label>
         <Input id={`${uiFieldId}-2`}
           placeholder="คำบรรยายใต้รูป..."
@@ -192,7 +192,7 @@ function FlexEditor({ message, onChange }: EditorProps) {
     <FlexContentEditor content={c} onChange={(content) => onChange({ ...message, content })} templateHoverClass="hover:border-primary/50">
       {/* Alt text */}
       <div>
-        <label htmlFor={`${uiFieldId}-1`} className="mb-1.5 block text-sm font-medium text-foreground/80">Alt Text</label>
+        <label htmlFor={`${uiFieldId}-1`} className="mb-1.5 block text-sm font-medium text-foreground/80">ข้อความทดแทน</label>
         <Input id={`${uiFieldId}-1`}
           placeholder="ข้อความสำรองสำหรับการแจ้งเตือน"
           value={c.altText}
@@ -367,7 +367,7 @@ export default function LineGreetingPage() {
     <div className="p-6 max-w-5xl mx-auto space-y-6">
       <PageHeader
         title="ข้อความต้อนรับ LINE"
-        subtitle="ข้อความที่ลูกค้าจะได้รับเมื่อเพิ่ม Bot เป็นเพื่อนครั้งแรก — รองรับหลายข้อความและ Flex Card"
+        subtitle="ข้อความที่ลูกค้าจะได้รับเมื่อเพิ่มบอตเป็นเพื่อนครั้งแรก — รองรับหลายข้อความและ การ์ดข้อความ"
         icon={<MessageSquareMore size={22} />}
       />
 
@@ -407,7 +407,7 @@ export default function LineGreetingPage() {
 
             {/* Quick Reply toggle */}
             <div className="rounded-xl border border-border/50 bg-card shadow-sm p-5">
-              <p className="text-sm font-semibold text-foreground mb-3">Quick Reply Buttons</p>
+              <p className="text-sm font-semibold text-foreground mb-3">ปุ่มตอบกลับด่วน</p>
               <label className="flex items-center gap-2 cursor-pointer">
                 <input
                   type="checkbox"
@@ -418,7 +418,7 @@ export default function LineGreetingPage() {
                   }}
                   className="accent-[#06C755]"
                 />
-                <span className="text-sm">แสดง Quick Reply ต่อท้ายข้อความสุดท้าย</span>
+                <span className="text-sm">แสดง ปุ่มตอบกลับด่วน ต่อท้ายข้อความสุดท้าย</span>
               </label>
               <p className="text-xs text-muted-foreground mt-1.5">
                 ปุ่มลัด: ดูสินค้า · สอบถามราคา · ดูสัญญา · คุยกับพนักงาน
@@ -535,19 +535,19 @@ export default function LineGreetingPage() {
         <ul className="space-y-1.5 text-sm text-info/90">
           <li className="flex items-start gap-2">
             <span className="mt-0.5 shrink-0">•</span>
-            <span>ส่งได้สูงสุด 5 ข้อความพร้อมกัน — ผสม Text, รูปภาพ, และ Flex Card ได้ตามต้องการ</span>
+            <span>ส่งพร้อมกันได้สูงสุด 5 ข้อความ โดยใช้ข้อความ รูปภาพ และการ์ดข้อความร่วมกันได้</span>
           </li>
           <li className="flex items-start gap-2">
             <span className="mt-0.5 shrink-0">•</span>
-            <span>Quick Reply จะแสดงต่อท้ายข้อความสุดท้ายเสมอ</span>
+            <span>ปุ่มตอบกลับด่วน จะแสดงต่อท้ายข้อความสุดท้ายเสมอ</span>
           </li>
           <li className="flex items-start gap-2">
             <span className="mt-0.5 shrink-0">•</span>
-            <span>ส่งเมื่อลูกค้า Follow ครั้งแรก และเมื่อ Unblock แล้ว Follow ใหม่</span>
+            <span>ส่งเมื่อลูกค้าเพิ่มเพื่อนครั้งแรก หรือปลดบล็อกแล้วเพิ่มเพื่อนอีกครั้ง</span>
           </li>
           <li className="flex items-start gap-2">
             <span className="mt-0.5 shrink-0">•</span>
-            <span>Flex Card — ใช้ Template mode สำหรับสินค้า/โปร หรือ JSON mode สำหรับ custom design</span>
+            <span>การ์ดข้อความ — เลือกแม่แบบสำหรับสินค้าหรือโปรโมชัน หรือแก้ไข JSON เพื่อออกแบบเอง</span>
           </li>
         </ul>
       </div>

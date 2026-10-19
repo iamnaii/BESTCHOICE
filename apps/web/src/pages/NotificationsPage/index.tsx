@@ -268,7 +268,7 @@ export default function NotificationsPage() {
           onClick={() => setActiveTab('templates')}
           className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px ${activeTab === 'templates' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
         >
-          Template ข้อความ
+          แม่แบบข้อความ
         </button>
         <button data-ui-control="button"
           onClick={() => setActiveTab('send')}
@@ -309,7 +309,7 @@ export default function NotificationsPage() {
           >
             <div>
               <label htmlFor={`${uiFieldId}-1`} className="block text-sm font-medium text-foreground mb-1">
-                Customer ID *
+                รหัสลูกค้า *
               </label>
               <input id={`${uiFieldId}-1`}
                 type="text"

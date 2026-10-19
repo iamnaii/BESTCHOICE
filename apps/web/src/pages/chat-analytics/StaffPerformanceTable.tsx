@@ -36,7 +36,7 @@ export default function StaffPerformanceTable({
                 </span>
               </span>
               <span className="text-sm tabular-nums">
-                Median {formatMetric(row.humanMedianMinutes, 'นาที')}
+                ค่ามัธยฐาน {formatMetric(row.humanMedianMinutes, 'นาที')}
                 <span className="block text-xs text-muted-foreground">
                   p90 {formatMetric(row.humanP90Minutes, 'นาที')}
                 </span>

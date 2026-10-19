@@ -1,3 +1,4 @@
+import { NumberInput } from '@/components/ui/NumberInput';
 import { useId as useUiFieldId, useState, useEffect } from 'react';
 import { Banknote, Landmark, QrCode, ImageUp, CircleCheck } from 'lucide-react';
 import { toast } from 'sonner';
@@ -140,8 +141,7 @@ export default function PaymentRecordDialog({ open, contract, onClose }: Props) 
           <label htmlFor={`${uiFieldId}-1`} className="text-xs font-medium text-muted-foreground mb-1.5 block leading-snug">
             จำนวนเงิน (บาท)
           </label>
-          <input id={`${uiFieldId}-1`}
-            type="number"
+          <NumberInput unstyled id={`${uiFieldId}-1`}
             inputMode="decimal"
             step="0.01"
             min="0.01"

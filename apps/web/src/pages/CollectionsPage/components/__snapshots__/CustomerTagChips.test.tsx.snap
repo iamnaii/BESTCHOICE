@@ -124,7 +124,7 @@ exports[`CustomerTagChips > snapshot — full render of all 5 tag types 1`] = `
   <span
     class="inline-flex items-center rounded-full border font-medium leading-snug bg-destructive/10 text-destructive border-destructive/30 text-2xs px-2 py-0.5 gap-1"
     data-testid="customer-tag-chip-BLACKLIST"
-    title="BLACKLIST"
+    title="ระงับทำสัญญา"
   >
     <svg
       aria-hidden="true"
@@ -148,7 +148,7 @@ exports[`CustomerTagChips > snapshot — full render of all 5 tag types 1`] = `
         d="M4.929 4.929 19.07 19.071"
       />
     </svg>
-    BLACKLIST
+    ระงับทำสัญญา
   </span>
 </div>
 `;

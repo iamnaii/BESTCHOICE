@@ -67,11 +67,11 @@ export function useRoomActions(
     mutationFn: (roomId: string) => api.patch(`/staff-chat/rooms/${roomId}/return-to-ai`),
     onSuccess: (_data, roomId) => {
       invalidateRoom(roomId);
-      toast.success('ส่งกลับ Bot แล้ว', {
+      toast.success("ส่งกลับบอตแล้ว", {
         action: { label: 'เลิกทำ', onClick: () => takeOverMutation.mutate(roomId) },
       });
     },
-    onError: () => toast.error('ส่งกลับ Bot ไม่สำเร็จ'),
+    onError: () => toast.error("ส่งกลับบอตไม่สำเร็จ"),
   });
 
   const releaseToAiMutation = useMutation({

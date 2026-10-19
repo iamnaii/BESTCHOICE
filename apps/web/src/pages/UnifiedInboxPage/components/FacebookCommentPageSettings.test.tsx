@@ -38,7 +38,7 @@ function show() {
 }
 async function open() {
   fireEvent.click(screen.getByText('ตั้งค่า Page และสาขา'));
-  await screen.findByText('Page: 123');
+  await screen.findByText('เพจ: 123');
 }
 describe('Facebook readiness setup', () => {
   beforeEach(() => {

@@ -259,7 +259,7 @@ it('preserves distinct AI toggle and return-to-bot/undo endpoints', async () => 
   expect(mocks.post).toHaveBeenCalledWith('/chat-ai/release-to-ai/A');
   await act(async () => result.current.returnToAIMutation.mutateAsync('A'));
   expect(mocks.patch).toHaveBeenCalledWith('/staff-chat/rooms/A/return-to-ai');
-  const undo = mocks.success.mock.calls.find(([text]) => text === 'ส่งกลับ Bot แล้ว')![1].action
+  const undo = mocks.success.mock.calls.find(([text]) => text === 'ส่งกลับบอตแล้ว')![1].action
     .onClick;
   await act(async () => undo());
   expect(mocks.post.mock.calls.filter(([path]) => path === '/chat-ai/take-over/A')).toHaveLength(2);

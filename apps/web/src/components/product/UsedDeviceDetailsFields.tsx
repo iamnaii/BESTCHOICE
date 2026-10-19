@@ -1,3 +1,4 @@
+import { NumberInput } from '@/components/ui/NumberInput';
 import ThaiDateInput from '@/components/ui/ThaiDateInput';
 import { cn } from '@/lib/utils';
 
@@ -27,9 +28,8 @@ export default function UsedDeviceDetailsFields({ value, onChange, idPrefix, sho
           % แบตเตอรี่
           {showRequired && <span className="text-destructive"> *</span>}
         </label>
-        <input
+        <NumberInput unstyled
           id={`battery-${idPrefix}`}
-          type="number"
           inputMode="numeric"
           min={0}
           max={100}

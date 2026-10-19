@@ -1,3 +1,4 @@
+import { NumberInput } from '@/components/ui/NumberInput';
 import { NativeSelect } from '@/components/ui/native-select';
 import { useId as useFieldId } from 'react';
 import { useMemo, useState, useEffect } from 'react';
@@ -270,7 +271,7 @@ export default function UserDetailPage() {
                       {EMPLOYMENT.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
                     </NativeSelect></div>
                   <div><label htmlFor={`${fieldId}-7`} className={labelClass}>ฐานเงินเดือน (บาท)</label>
-                    <input id={`${fieldId}-7`} className={inputClass} type="number" step="0.01" value={hr.baseSalary} onChange={(e) => setHr({ ...hr, baseSalary: e.target.value })} placeholder="0.00" /></div>
+                    <NumberInput unstyled id={`${fieldId}-7`} className={inputClass} step="0.01" value={hr.baseSalary} onChange={(e) => setHr({ ...hr, baseSalary: e.target.value })} placeholder="0.00" /></div>
                   <div><label htmlFor={`${fieldId}-8`} className={labelClass}>วันที่ลาออก</label>
                     <input id={`${fieldId}-8`} className={inputClass} type="date" value={hr.resignedDate} onChange={(e) => setHr({ ...hr, resignedDate: e.target.value })} /></div>
                   <div><label htmlFor={`${fieldId}-9`} className={labelClass}>ธนาคาร</label>

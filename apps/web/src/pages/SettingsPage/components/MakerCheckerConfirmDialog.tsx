@@ -40,8 +40,8 @@ export function MakerCheckerConfirmDialog({
           <DialogTitle className="flex items-center gap-2 text-destructive">
             <AlertTriangle className="w-5 h-5" />
             {isEnabling
-              ? 'คุณกำลังจะเปิดระบบ Maker-Checker'
-              : 'คุณกำลังจะปิดระบบ Maker-Checker'}
+              ? "คุณกำลังจะเปิดระบบ การแยกผู้บันทึกและผู้อนุมัติ"
+              : "คุณกำลังจะปิดระบบ การแยกผู้บันทึกและผู้อนุมัติ"}
           </DialogTitle>
         </DialogHeader>
 
@@ -49,15 +49,15 @@ export function MakerCheckerConfirmDialog({
           <p className="font-semibold">ผลกระทบ:</p>
           {isEnabling ? (
             <ul className="space-y-1 list-disc list-inside text-muted-foreground">
-              <li>เอกสารทุกฉบับจะต้องผ่านผู้อนุมัติก่อน POST</li>
-              <li>เอกสาร DRAFT ปัจจุบันจะต้องส่งอนุมัติ</li>
+              <li>เอกสารทุกฉบับจะต้องผ่านผู้อนุมัติก่อน ลงบัญชี</li>
+              <li>เอกสาร ฉบับร่างปัจจุบันจะต้องส่งอนุมัติ</li>
               <li>ผู้สร้าง ≠ ผู้อนุมัติ (segregation of duties)</li>
             </ul>
           ) : (
             <>
               <ul className="space-y-1 list-disc list-inside text-muted-foreground">
                 <li>เอกสารที่อยู่ในสถานะ READY จะถูก auto-approve</li>
-                <li>เอกสารใหม่จะ POST ทันที (ไม่ต้องอนุมัติ)</li>
+                <li>เอกสารใหม่จะ ลงบัญชี ทันที (ไม่ต้องอนุมัติ)</li>
               </ul>
               <p className="text-warning-strong font-medium">
                 จำนวนเอกสาร READY ตอนนี้: {pendingReadyCount} ฉบับ

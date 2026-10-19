@@ -114,7 +114,7 @@ export function ETaxConfigPage() {
     <div className="container mx-auto px-4 py-6 max-w-3xl">
       <PageHeader
         title="ตั้งค่า e-Tax Invoice (สรรพากร)"
-        subtitle="ขมธอ.21-2562 + ป.รัษฎากร ม.86/4 — ปรับเฉพาะ OWNER"
+        subtitle="ขมธอ.21-2562 + ป.รัษฎากร ม.86/4 — ปรับเฉพาะ เจ้าของ"
         icon={<ShieldCheck className="size-5" aria-hidden />}
       />
 
@@ -128,7 +128,7 @@ export function ETaxConfigPage() {
             โหมด disabled = ระบบสร้าง XML ได้ แต่ไม่ส่งให้สรรพากร
           </p>
           <p className="text-muted-foreground">
-            ก่อนเปิด <code className="px-1 bg-muted rounded">enabled</code> ต้องตั้งค่า:
+            ก่อนเปิด <code className="px-1 bg-muted rounded">เปิดใช้งาน</code> ต้องตั้งค่า:
             (1) ไฟล์ใบรับรอง (.p12/.pfx) จาก CA ที่ RD อนุมัติ (NDID/ThaiCERT/INET),
             (2) Username + Password ของ RD web service.
             กดปุ่ม &quot;ทดสอบการเชื่อมต่อ&quot; เพื่อยืนยันก่อนเปิดส่งจริง.
@@ -165,7 +165,7 @@ export function ETaxConfigPage() {
                     data-testid="etax-mode-select"
                   >
                     <option value="disabled">
-                      disabled — สร้าง XML เท่านั้น (default)
+                      disabled — สร้าง XML เท่านั้น (ค่าเริ่มต้น)
                     </option>
                     <option value="enabled">
                       enabled — ส่งให้สรรพากร (ต้องตั้งค่าครบ)
@@ -233,7 +233,7 @@ export function ETaxConfigPage() {
                     className={inputClass}
                   />
                   <p className="text-xs text-muted-foreground mt-1 leading-snug">
-                    Staging (default) / Production:
+                    ระบบทดสอบ (ค่าเริ่มต้น) / ระบบจริง:
                     <code className="break-all px-1 ml-1 bg-muted rounded">
                       https://etax.rd.go.th/etax_v2/etaxws
                     </code>

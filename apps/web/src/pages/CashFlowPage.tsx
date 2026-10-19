@@ -91,7 +91,7 @@ function CFRow({
     >
       <span>{label}</span>
       <span className={`tabular-nums ${colorClass} ${bold ? 'text-base' : 'text-sm'}`}>
-        {isNeg ? `(${fmt(Math.abs(amount))})` : fmt(amount)}
+        {fmt(amount)}
       </span>
     </div>
   );
@@ -172,7 +172,7 @@ export function CashFlowPage() {
     <div>
       <PageHeader
         title="งบกระแสเงินสด"
-        subtitle="Cash Flow Statement — วิธีทางอ้อม (Indirect Method)"
+        subtitle="งบกระแสเงินสด — วิธีทางอ้อม"
         icon={<Banknote className="size-6" />}
       />
 
@@ -276,7 +276,7 @@ export function CashFlowPage() {
               <div className="flex items-center gap-2 text-xs">
                 <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2.5 py-1 text-muted-foreground leading-snug">
                   <Activity className="size-3" />
-                  วิธีทางอ้อม (Indirect Method)
+                  วิธีทางอ้อม
                 </span>
                 <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2.5 py-1 text-muted-foreground leading-snug">
                   TFRS for NPAEs
@@ -285,7 +285,7 @@ export function CashFlowPage() {
               {cf.isReconciled ? (
                 <span className="inline-flex items-center gap-1.5 rounded-full bg-success/10 text-success px-2.5 py-1 text-xs leading-snug">
                   <CheckCircle2 className="size-3.5" />
-                  Reconciled ±{fmt(Math.abs(cf.drift))}฿
+                  กระทบยอดแล้ว ±{fmt(Math.abs(cf.drift))}฿
                 </span>
               ) : (
                 <span className="inline-flex items-center gap-1.5 rounded-full bg-warning/10 text-warning-strong px-2.5 py-1 text-xs leading-snug">
@@ -311,7 +311,7 @@ export function CashFlowPage() {
                   <div className="flex items-center gap-2 pt-2 pb-1 border-b border-border mb-1">
                     <span className="text-xs font-mono text-muted-foreground">1</span>
                     <span className="font-semibold text-foreground leading-snug">
-                      กิจกรรมดำเนินงาน (Operating — Indirect)
+                      กิจกรรมดำเนินงาน — วิธีทางอ้อม
                     </span>
                   </div>
                   <CFRow label="กำไรสุทธิ" amount={cf.operating.netIncome} indent />
@@ -369,18 +369,16 @@ export function CashFlowPage() {
                   <div className="flex items-center gap-2 pt-2 pb-1 border-b border-border mb-1">
                     <span className="text-xs font-mono text-muted-foreground">2</span>
                     <span className="font-semibold text-foreground leading-snug">
-                      กิจกรรมลงทุน (Investing)
+                      กิจกรรมลงทุน
                     </span>
                   </div>
                   {/* SP2 — known gap caveat (deferred to Phase A.5) */}
                   <div className="my-2 rounded-md border border-warning/40 bg-warning/5 p-3 text-xs text-warning-strong leading-snug flex items-start gap-2">
                     <AlertTriangle className="size-3.5 mt-0.5 shrink-0" />
                     <div>
-                      หมวด <strong>กิจกรรมลงทุน</strong> ใช้ข้อมูลจาก FixedAsset โดยตรง —
-                      หากมีการขายสินทรัพย์พร้อมกำไร/ขาดทุนในงวดเดียวกัน ตัวเลข Net Operating
-                      + Net Investing อาจคลาดเคลื่อนเล็กน้อย (รอ Phase A.5
-                      PPE/Depreciation flows). ตัวกรองบริษัทจะไม่มีผลกับยอด PPE
-                      เนื่องจาก FixedAsset ยังไม่มี companyId scope.
+                      หมวด <strong>กิจกรรมลงทุน</strong> ใช้ข้อมูลทะเบียนสินทรัพย์โดยตรง
+                      หากขายสินทรัพย์แล้วมีกำไรหรือขาดทุนในงวดเดียวกัน ยอดสุทธิจากกิจกรรมดำเนินงานและกิจกรรมลงทุนอาจคลาดเคลื่อน
+                      และตัวกรองบริษัทยังไม่มีผลกับยอดสินทรัพย์ถาวร กรุณาตรวจสอบรายการประกอบ
                     </div>
                   </div>
                   <CFRow
@@ -407,7 +405,7 @@ export function CashFlowPage() {
                   <div className="flex items-center gap-2 pt-2 pb-1 border-b border-border mb-1">
                     <span className="text-xs font-mono text-muted-foreground">3</span>
                     <span className="font-semibold text-foreground leading-snug">
-                      กิจกรรมจัดหาเงิน (Financing)
+                      กิจกรรมจัดหาเงิน
                     </span>
                   </div>
                   <CFRow
@@ -438,7 +436,7 @@ export function CashFlowPage() {
                   >
                     <span className="text-lg font-bold leading-snug flex items-center gap-2">
                       <Wallet className="size-5" />
-                      เงินสดปลายงวด (Closing Cash)
+                      เงินสดปลายงวด
                     </span>
                     <span className="text-lg font-bold tabular-nums">{fmt(cf.closingCash)}</span>
                   </div>

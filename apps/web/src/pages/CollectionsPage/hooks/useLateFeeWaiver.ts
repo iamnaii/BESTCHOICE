@@ -49,7 +49,7 @@ export function useCreateLateFeeWaiver() {
       return data as LateFeeWaiverRequest;
     },
     onSuccess: () => {
-      toast.success('ส่งคำขอ waive ค่าปรับแล้ว — รออนุมัติ');
+      toast.success("ส่งคำขอ ยกเว้น ค่าปรับแล้ว — รออนุมัติ");
       qc.invalidateQueries({ queryKey: QK });
     },
     onError: (err: unknown) => toast.error(getErrorMessage(err)),
@@ -64,7 +64,7 @@ export function useApproveLateFeeWaiver() {
       return data as LateFeeWaiverRequest;
     },
     onSuccess: () => {
-      toast.success('อนุมัติ waive ค่าปรับแล้ว');
+      toast.success("อนุมัติ ยกเว้น ค่าปรับแล้ว");
       qc.invalidateQueries({ queryKey: QK });
       // Customer 360 + queue surfaces show lateFee — refresh both.
       qc.invalidateQueries({ queryKey: ['customer-360'] });

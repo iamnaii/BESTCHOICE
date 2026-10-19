@@ -1,3 +1,4 @@
+import { NumberInput } from '@/components/ui/NumberInput';
 import { useEffect, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -43,9 +44,8 @@ export default function ProductWarrantyForm({ product, canEdit }: Props) {
       <h2 className="text-sm font-semibold">ประกันเครื่องนี้</h2>
       <div>
         <label htmlFor="shop-warranty-days" className="block text-sm mb-1">ระยะเวลาประกันร้าน (วัน)</label>
-        <input
+        <NumberInput unstyled
           id="shop-warranty-days"
-          type="number"
           min={0}
           step={1}
           value={days}

@@ -34,7 +34,7 @@ describe('CancelPODialog — ยกเลิกใบสั่งซื้อท
     const confirm = screen.getByRole('button', { name: 'ยืนยันยกเลิกใบสั่งซื้อ' });
     expect(confirm).toBeDisabled();
     fireEvent.click(screen.getByRole('radio', { name: 'ได้เงินมัดจำคืน' }));
-    expect((screen.getByRole('spinbutton', { name: 'จำนวนที่ได้คืน (บาท)' }) as HTMLInputElement).value).toBe('3000');
+    expect((screen.getByRole('spinbutton', { name: 'จำนวนที่ได้คืน (บาท)' }) as HTMLInputElement).value).toBe('3,000');
     expect(screen.getAllByText(/S11-1201/).length).toBeGreaterThan(0);
     expect(confirm).toBeDisabled();
     fireEvent.change(screen.getByRole('textbox', { name: 'ลิงก์หลักฐานการโอนคืน' }), { target: { value: 'https://x/refund.jpg' } });

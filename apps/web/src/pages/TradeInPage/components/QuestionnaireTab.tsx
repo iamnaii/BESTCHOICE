@@ -1,3 +1,4 @@
+import { NumberInput } from '@/components/ui/NumberInput';
 import ScreenTable from '@/components/ui/ScreenTable';
 import { NativeSelect } from '@/components/ui/native-select';
 import { useState } from 'react';
@@ -187,9 +188,8 @@ export default function QuestionnaireTab() {
                     {c.deductType === 'PERCENT' ? 'หัก %' : 'หักบาท'}
                   </td>
                   <td className="p-2 w-32">
-                    <Input
+                    <NumberInput
                       className="h-8"
-                      type="number"
                       value={edits[c.id]?.deductValue ?? String(Number(c.deductValue))}
                       onChange={(e) =>
                         setEdits((prev) => ({
@@ -258,9 +258,8 @@ export default function QuestionnaireTab() {
                   </NativeSelect>
                 </td>
                 <td className="p-2 w-32">
-                  <Input
+                  <NumberInput
                     className="h-8"
-                    type="number"
                     placeholder="ค่าหัก"
                     value={newChoice[q.id]?.deductValue ?? ''}
                     onChange={(e) =>

@@ -15,7 +15,7 @@ export default function AnalyticsCoverage({ data }: { data: ChatAnalyticsMeta })
         </p>
         <p>{data.cohortDefinition}</p>
         <p>
-          งานค้างเป็นยอดปัจจุบัน ไม่ใช่ snapshot ย้อนหลัง และแต่ละการเปิดรายการอ่านข้อมูลใหม่
+          งานค้างเป็นยอดปัจจุบัน ไม่ใช่ ข้อมูลที่บันทึกไว้ ย้อนหลัง และแต่ละการเปิดรายการอ่านข้อมูลใหม่
           ดูเวลาอัปเดตประกอบ
         </p>
       </div>

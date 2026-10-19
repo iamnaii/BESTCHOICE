@@ -77,7 +77,7 @@ const pages: NavEntry[] = [
   { label: 'ตั้งค่าระบบ', path: '/settings', icon: Settings, keywords: 'settings ตั้งค่า', roles: ['OWNER'] },
   { label: 'สถานะเอกสาร', path: '/document-dashboard', icon: FileText, keywords: 'document เอกสาร', roles: ['OWNER', 'BRANCH_MANAGER'] },
   { label: 'PDPA', path: '/pdpa', icon: Shield, keywords: 'pdpa privacy', roles: ['OWNER', 'BRANCH_MANAGER'] },
-  { label: 'ส่วนของผู้ถือหุ้น (Equity)', path: '/finance/equity', icon: Landmark, keywords: 'equity ทุน ปันผล ผู้ถือหุ้น เพิ่มทุน ถอนเงิน', roles: ['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT'] },
+  { label: "ส่วนของผู้ถือหุ้น", path: '/finance/equity', icon: Landmark, keywords: 'equity ทุน ปันผล ผู้ถือหุ้น เพิ่มทุน ถอนเงิน', roles: ['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT'] },
   { label: 'ทะเบียนปันผล + ภ.ง.ด.2', path: '/finance/dividend-register', icon: Coins, keywords: 'dividend ปันผล ภงด2 pnd2 wht', roles: ['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT'] },
 ];
 
@@ -363,7 +363,7 @@ export default function CommandPalette() {
                 >
                   <item.icon />
                   <span>{item.label}</span>
-                  {item.path === '/' && <CommandShortcut>Home</CommandShortcut>}
+                  {item.path === '/' && <CommandShortcut>หน้าหลัก</CommandShortcut>}
                 </CommandItem>
               ))}
             </CommandGroup>

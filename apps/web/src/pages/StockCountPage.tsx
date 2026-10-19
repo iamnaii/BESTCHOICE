@@ -10,6 +10,7 @@ import Modal from '@/components/ui/Modal';
 import QueryBoundary from '@/components/QueryBoundary';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { getStatusBadgeProps, stockCountStatusMap } from '@/lib/status-badges';
 
 const getErrorMessage = (err: unknown) => {
@@ -148,22 +149,26 @@ export default function StockCountPage() {
     { key: 'createdAt', label: 'วันที่', render: (item) => <span className="text-xs text-muted-foreground">{formatDateShort(item.createdAt)}</span> },
     {
       key: 'actions',
-      label: '',
+      label: 'จัดการ',
+      align: 'right',
+      width: '17rem',
+      cardFullWidth: true,
       render: (item) => (
-        <div className="flex gap-1 justify-center">
-          <button data-ui-control="button"
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <Button type="button" variant="outline"
             onClick={(e) => { e.stopPropagation(); openCountModal(item); }}
-            className="px-2 py-1 text-xs bg-primary/10 text-primary dark:bg-primary/15 rounded hover:bg-primary/20"
+            className="w-28 shrink-0 px-3"
           >
             {item.status === 'COMPLETED' ? 'ดูผล' : 'ตรวจนับ'}
-          </button>
+          </Button>
           {item.status === 'IN_PROGRESS' && (
-            <button data-ui-control="button"
+            <Button type="button" variant="outline"
               onClick={(e) => { e.stopPropagation(); cancelMutation.mutate(item.id); }}
-              className="px-2 py-1 text-xs bg-destructive/10 text-destructive dark:bg-destructive/15 rounded hover:bg-destructive/20"
+              disabled={cancelMutation.isPending}
+              className="w-28 shrink-0 px-3 text-destructive hover:text-destructive"
             >
               ยกเลิก
-            </button>
+            </Button>
           )}
         </div>
       ),

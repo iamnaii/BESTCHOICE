@@ -1,4 +1,4 @@
-import { ReactNode, useRef } from 'react';
+import { ComponentProps, ReactNode, useRef } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -11,6 +11,7 @@ interface ModalProps {
   onClose: () => void;
   title: string;
   children: ReactNode;
+  onCloseAutoFocus?: ComponentProps<typeof DialogContent>['onCloseAutoFocus'];
   size?: 'sm' | 'md' | 'lg' | 'xl' | '2xl' | 'full';
 }
 
@@ -23,7 +24,7 @@ const sizeClasses = {
   'full': 'max-w-[95vw]',
 };
 
-export default function Modal({ isOpen, onClose, title, children, size = 'md' }: ModalProps) {
+export default function Modal({ isOpen, onClose, title, children, size = 'md', onCloseAutoFocus }: ModalProps) {
   const returnFocus = useRef<HTMLElement | null>(null);
   return (
     <Dialog open={isOpen} onOpenChange={(open) => { if (!open) onClose(); }}>
@@ -31,7 +32,7 @@ export default function Modal({ isOpen, onClose, title, children, size = 'md' }:
         className={`${sizeClasses[size]} w-[calc(100%-1rem)] max-h-[calc(100dvh-1rem)] p-4 sm:p-6`}
         aria-describedby={undefined}
         onOpenAutoFocus={() => { returnFocus.current = document.activeElement instanceof HTMLElement ? document.activeElement : null; }}
-        onCloseAutoFocus={(event) => { event.preventDefault(); if (returnFocus.current?.isConnected) returnFocus.current.focus(); }}
+        onCloseAutoFocus={onCloseAutoFocus ?? ((event) => { event.preventDefault(); if (returnFocus.current?.isConnected) returnFocus.current.focus(); })}
       >
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>

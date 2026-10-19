@@ -154,7 +154,7 @@ describe('PaymentHistorySheet — แถวปิดสัญญา', () => {
     fireEvent.click(
       await screen.findByRole('button', { name: /ดูบันทึกบัญชีของการปิดสัญญา JE-202609-00051/ }),
     );
-    const dialog = await screen.findByRole('dialog', { name: /บันทึกบัญชี \(JE\)/ });
+    const dialog = await screen.findByRole('dialog', { name: /บันทึกบัญชี/ });
     expect(within(dialog).getByText(/ปิดสัญญา \(คืนเครื่อง \/ ยึดคืน\)/)).toBeInTheDocument();
     expect(within(dialog).getByText('JE-202609-00051')).toBeInTheDocument();
     expect(within(dialog).queryByText('JE-202609-00035')).not.toBeInTheDocument();

@@ -1,3 +1,4 @@
+import { NumberInput } from '@/components/ui/NumberInput';
 import { Minus, Plus } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -19,9 +20,8 @@ export function QtyStepper({ value, onChange, className }: QtyStepperProps) {
       <button type="button" aria-label="ลดจำนวน" disabled={n <= 1} onClick={() => onChange(String(n - 1))} className={btn}>
         <Minus className="size-3.5" />
       </button>
-      <input data-field-embedded
+      <NumberInput unstyled data-field-embedded
         aria-label="จำนวน"
-        type="number"
         min={1}
         step={1}
         inputMode="numeric"

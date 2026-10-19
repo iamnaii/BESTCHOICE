@@ -482,7 +482,7 @@ export function TodoForm({ open, onOpenChange, editing, staffUsers, defaults }: 
                     <button
                       onClick={() => removeTag(tag)}
                       className="hover:text-destructive"
-                      aria-label="remove tag"
+                      aria-label="ลบป้ายกำกับ"
                     >
                       <X className="size-3" />
                     </button>
@@ -509,7 +509,7 @@ export function TodoForm({ open, onOpenChange, editing, staffUsers, defaults }: 
               <div className="flex items-center justify-between mb-2">
                 <label className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
                   <CheckSquare className="size-3.5" />
-                  Checklist
+                  รายการตรวจสอบ
                   {(form.checklist?.length || 0) > 0 && (
                     <span className="text-2xs font-normal text-muted-foreground/70">
                       ({form.checklist?.filter((c) => c.done).length}/{form.checklist?.length})

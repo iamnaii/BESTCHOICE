@@ -1,3 +1,4 @@
+import { NumberInput } from '@/components/ui/NumberInput';
 import { useId as useUiFieldId, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import api, { getErrorMessage } from '@/lib/api';
@@ -174,7 +175,7 @@ export default function ProductEditModal({ product, onClose, onSuccess }: Props)
             </div>
             <div>
               <label htmlFor={`${uiFieldId}-10`} className={labelClass}>ราคาทุน (บาท)</label>
-              <input id={`${uiFieldId}-10`} type="number" step="0.01" value={form.costPrice} onChange={(e) => setForm({ ...form, costPrice: e.target.value })} className={inputClass} />
+              <NumberInput unstyled id={`${uiFieldId}-10`} step="0.01" value={form.costPrice} onChange={(e) => setForm({ ...form, costPrice: e.target.value })} className={inputClass} />
             </div>
           </div>
         </div>
@@ -193,7 +194,7 @@ export default function ProductEditModal({ product, onClose, onSuccess }: Props)
             <div className="grid grid-cols-2 gap-3 mb-3">
               <div>
                 <label htmlFor={`${uiFieldId}-11`} className={labelClass}>แบตเตอรี่ (%)</label>
-                <input id={`${uiFieldId}-11`} type="number" min="0" max="100" value={form.batteryHealth} onChange={(e) => setForm({ ...form, batteryHealth: e.target.value })} className={inputClass} />
+                <NumberInput unstyled id={`${uiFieldId}-11`} min="0" max="100" value={form.batteryHealth} onChange={(e) => setForm({ ...form, batteryHealth: e.target.value })} className={inputClass} />
               </div>
               <div>
                 <label htmlFor={`${uiFieldId}-12`} className={labelClass}>วันหมดประกัน</label>

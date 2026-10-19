@@ -38,7 +38,7 @@ function ChatImage({ src, onLoadError }: { src: string; onLoadError?: () => void
       )}
       <img
         src={src}
-        alt="media"
+        alt="สื่อแนบ"
         className="max-w-60 max-h-75 rounded-lg cursor-zoom-in"
         loading="lazy"
         onLoad={() => setLoaded(true)}
@@ -177,7 +177,7 @@ function MessageBubble({ message, customerAvatar, customerInitial, onCreditMessa
         <div className="flex flex-col max-w-[75%] items-end">
           {(isBot || isStaff) && (
             <span className="text-[11px] text-muted-foreground mb-0.5 px-1">
-              {isBot ? 'Bot' : message.staff?.name ?? 'พนักงาน'}
+              {isBot ? "บอต" : message.staff?.name ?? 'พนักงาน'}
             </span>
           )}
           <FlexBubblePreview flex={message.flexJson} />
@@ -235,7 +235,7 @@ function MessageBubble({ message, customerAvatar, customerInitial, onCreditMessa
         <div className="flex flex-col max-w-[75%] items-end">
           {(isBot || isStaff) && (
             <span className="text-[11px] text-muted-foreground mb-0.5 px-1">
-              {isBot ? 'Bot' : message.staff?.name ?? 'พนักงาน'}
+              {isBot ? "บอต" : message.staff?.name ?? 'พนักงาน'}
             </span>
           )}
           <PaymentFlexPreview data={paymentFlex} />
@@ -258,7 +258,7 @@ function MessageBubble({ message, customerAvatar, customerInitial, onCreditMessa
         <div className="flex flex-col max-w-[75%] items-end">
           {(isBot || isStaff) && (
             <span className="text-[11px] text-muted-foreground mb-0.5 px-1">
-              {isBot ? 'Bot' : message.staff?.name ?? 'พนักงาน'}
+              {isBot ? "บอต" : message.staff?.name ?? 'พนักงาน'}
             </span>
           )}
           <div className="w-[240px] rounded-2xl overflow-hidden border border-border bg-card shadow-sm">
@@ -275,7 +275,7 @@ function MessageBubble({ message, customerAvatar, customerInitial, onCreditMessa
               </div>
             </div>
             <div className="px-3.5 py-1.5 bg-muted/50 border-t border-border">
-              <span className="text-[9px] text-muted-foreground">Flex Message</span>
+              <span className="text-[9px] text-muted-foreground">ข้อความแบบการ์ด</span>
             </div>
           </div>
           <span className="flex items-center mt-0.5 px-1">
@@ -310,7 +310,7 @@ function MessageBubble({ message, customerAvatar, customerInitial, onCreditMessa
             onError={(e) => {
               (e.target as HTMLImageElement).src = `https://stickershop.line-scdn.net/stickershop/v1/sticker/${stickerId}/iPhone/sticker@2x.png`;
             }}
-            alt="sticker"
+            alt="สติกเกอร์"
             className="w-[120px] h-[120px] object-contain"
           />
           <span className="flex items-center mt-1 px-1 self-end">
@@ -350,7 +350,7 @@ function MessageBubble({ message, customerAvatar, customerInitial, onCreditMessa
         {/* Sender label */}
         {(isBot || isStaff) && (
           <span className="text-[11px] text-muted-foreground mb-0.5 px-1">
-            {isBot ? 'Bot' : message.staff?.name ?? 'พนักงาน'}
+            {isBot ? "บอต" : message.staff?.name ?? 'พนักงาน'}
           </span>
         )}
 

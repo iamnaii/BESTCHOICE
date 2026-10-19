@@ -72,7 +72,7 @@ describe('ClosePOShortDialog — ปิดใบ รับไม่ครบ', (
     const p = renderDialog({ summary: withDeposit });
     fireEvent.change(screen.getByRole('textbox', { name: /เหตุผลที่ปิดใบ/ }), { target: { value: 'ของหมด' } });
     fireEvent.click(screen.getByRole('radio', { name: 'ได้เงินมัดจำคืน' }));
-    expect((screen.getByRole('spinbutton', { name: 'จำนวนที่ได้คืน (บาท)' }) as HTMLInputElement).value).toBe('2000');
+    expect((screen.getByRole('spinbutton', { name: 'จำนวนที่ได้คืน (บาท)' }) as HTMLInputElement).value).toBe('2,000');
     const confirm = screen.getByRole('button', { name: 'ยืนยันปิดใบ รับไม่ครบ' });
     expect(confirm).toBeDisabled();
     fireEvent.change(screen.getByRole('textbox', { name: 'ลิงก์หลักฐานการโอนคืน' }), { target: { value: 'https://x/refund.jpg' } });

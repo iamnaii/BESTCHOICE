@@ -73,7 +73,7 @@ export function ReverseBatchDialog({
         <DialogHeader>
           <DialogTitle>ย้อนกลับรอบจ่าย {batchNumber}</DialogTitle>
           <DialogDescription className="leading-snug">
-            จะสร้าง JE กลับรายการทั้ง 2 ฝั่ง (สลับ Dr↔Cr) — สัญญาในรอบนี้จะกลับเข้าคิวรอจ่ายทันที
+            จะสร้าง รายการบัญชี กลับรายการทั้ง 2 ฝั่ง (สลับ Dr↔Cr) — สัญญาในรอบนี้จะกลับเข้าคิวรอจ่ายทันที
           </DialogDescription>
         </DialogHeader>
         <form

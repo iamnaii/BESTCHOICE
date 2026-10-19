@@ -244,7 +244,7 @@ export async function checkTradeIn(page, origin, output, width) {
       await expect(documentPreview.getByRole('link', { name: 'ดาวน์โหลด PDF' })).toBeVisible();
       await documentPreview.getByRole('button', { name: 'ปิดตัวอย่าง', exact: true }).click();
     }
-    await detail.getByRole('button', { name: 'Close', exact: true }).click();
+    await detail.getByLabel('ปิด', { exact: true }).click();
     await expect(detail).toHaveCount(0);
   }
   await page.screenshot({ path: join(output, `trade-in-list-${width}.png`), fullPage: true });

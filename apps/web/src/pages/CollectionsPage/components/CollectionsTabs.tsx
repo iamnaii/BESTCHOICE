@@ -43,7 +43,7 @@ export default function CollectionsTabs({
           <button data-ui-control="button"
             key={key}
             onClick={() => onChange(key)}
-            className={`inline-flex items-center gap-1.5 px-4 py-2.5 text-sm border-b-2 transition-colors whitespace-nowrap ${
+            className={`inline-flex shrink-0 items-center gap-1.5 px-4 py-2.5 text-sm border-b-2 transition-colors whitespace-nowrap ${
               isActive
                 ? 'border-primary text-primary font-medium'
                 : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border'

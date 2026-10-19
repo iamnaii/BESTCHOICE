@@ -63,7 +63,7 @@ export default function AssetJournalPage() {
   const columns = useMemo(() => [
     { key: 'entryDate', label: 'วันที่', render: (row: AssetJournalRow) => formatDateShortThai(row.entryDate) },
     {
-      key: 'entryNumber', label: 'เลขที่ JE',
+      key: 'entryNumber', label: "เลขที่ รายการบัญชี",
       render: (row: AssetJournalRow) => <span className="font-mono text-primary">{row.entryNumber}</span>,
     },
     {

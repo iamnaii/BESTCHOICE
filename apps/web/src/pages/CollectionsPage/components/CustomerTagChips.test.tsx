@@ -23,7 +23,7 @@ describe('CustomerTagChips', () => {
   it('renders the labelled chip per supplied tag', () => {
     render(<CustomerTagChips tags={[{ tag: 'VIP' }, { tag: 'BLACKLIST' }, { tag: 'NEW' }]} />);
     expect(screen.getByText('VIP')).toBeTruthy();
-    expect(screen.getByText('BLACKLIST')).toBeTruthy();
+    expect(screen.getByText('ระงับทำสัญญา')).toBeTruthy();
     expect(screen.getByText('ลูกค้าใหม่')).toBeTruthy();
   });
 

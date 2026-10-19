@@ -639,6 +639,98 @@ The544 current financial-family domain rows are partitioned into the fifteen rev
 - [ ] Separately reconcile 7 adjacent staff resource=none routes in `non-domain-staff-partition.json` → `finance_contract_config` without counting them as domain adapters. Reconcile actual read versus owner configuration semantics for interest configuration; a settings classification alone is not final runtime policy. Restore independently authorized Sale Contract-status filtering/navigation and TradeIn Contract navigation suppressed by earlier producers; no general SHOP financial view. Activation must resolve original financial/SHOP-origin/current-Product source before changing Product ownership, consuming reviewed exchange transactions and journal invariants.
 
 
+#### Serial execution of Task4.2.1
+
+R98 partitions the exact38domain+7adjacent surface below; R99 governs the first read-core producer. Later finite policy choices are settled in recorded checkpoints before runtime, without replacing the binding design. Root owns final parent reconciliation and actualJWT/browser/localcheck/preview8.
+
+### Task 4.2.1.1: Ordinary FINANCE Contract read core
+
+**Files/scope:** ContractsController.findAll and findOne; exactly2domain. Amend existing Sale contractStatus filtering and Sale/TradeIn Contract navigation with zero additional route credit.
+
+- [ ] Meaningful owned PostgreSQL/marked HTTP RED with exact authorized success/no-grants/foreign/current and asymmetric tuple controls; explicitly isolated both DB URLs, mocked external effects. Fixture/compiler failures are not behavioral RED.
+- [ ] R99 actual FINANCE/liveSHOPorigin/current assignedToId read source; paired original tuples; independent finite child/source/sensitive projection and authorization-aware search/filter/sort/count/pagination; explicit null/coverage semantics. Reuse existing canonical party helpers, keep mutation business reads separate.
+- [ ] Cover actual changed authorization/money/file behavior, relevant canonical regressions, types/touched lint and scoped coverage. Record exact commands/exits, self-review/commit and independent gate; preserve remaining audit5/approval6/UI7/system4.4/final8 obligations.
+
+### Task 4.2.1.2: Interest reference and owner configuration
+
+**Files/scope:** InterestConfigController.findAll, findByCategory, resolveConfig, findOne, create, update, remove; exactly7adjacentstaff and0domain.
+
+- [ ] Meaningful owned PostgreSQL/marked HTTP RED with exact authorized success/no-grants/foreign/current and asymmetric tuple controls; explicitly isolated both DB URLs, mocked external effects. Fixture/compiler failures are not behavioral RED.
+- [ ] Settle explicit central/global reference source and current dependent quote/sales read capability; owner-only writes remain durable/current. No saved grant expansion or permanent owner-only reads merely because resource=none.
+- [ ] Cover actual changed authorization/money/file behavior, relevant canonical regressions, types/touched lint and scoped coverage. Record exact commands/exits, self-review/commit and independent gate; preserve remaining audit5/approval6/UI7/system4.4/final8 obligations.
+
+### Task 4.2.1.3: Contract application preparation
+
+**Files/scope:** ContractsController.quote, create, update, updateBundles, validateForSubmit; exactly5domain.
+
+- [ ] Meaningful owned PostgreSQL/marked HTTP RED with exact authorized success/no-grants/foreign/current and asymmetric tuple controls; explicitly isolated both DB URLs, mocked external effects. Fixture/compiler failures are not behavioral RED.
+- [ ] Actual SHOP application sources, independent current Customer/Product/bundles/destination and salesperson/room links; preserve canonical quote/calculator, immutable named promotion terms and source/reservation locks. Resolve legacy exceptions as configurable capabilities without hidden cost/error leakage or guessed migration grants.
+- [ ] Cover actual changed authorization/money/file behavior, relevant canonical regressions, types/touched lint and scoped coverage. Record exact commands/exits, self-review/commit and independent gate; preserve remaining audit5/approval6/UI7/system4.4/final8 obligations.
+
+### Task 4.2.1.4: Contract review workflow
+
+**Files/scope:** ContractsController.submitForReview, approve, reject; exactly3domain.
+
+- [ ] Meaningful owned PostgreSQL/marked HTTP RED with exact authorized success/no-grants/foreign/current and asymmetric tuple controls; explicitly isolated both DB URLs, mocked external effects. Fixture/compiler failures are not behavioral RED.
+- [ ] Separate actual SHOP preparation/submit workflow and FINANCE review authority; preserve genuine maker/checker and explicitly adjudicated existing owner exception, never generalize discount-only selfapproval. Current source, named terms, state/CAS and required audit in actual transaction.
+- [ ] Cover actual changed authorization/money/file behavior, relevant canonical regressions, types/touched lint and scoped coverage. Record exact commands/exits, self-review/commit and independent gate; preserve remaining audit5/approval6/UI7/system4.4/final8 obligations.
+
+### Task 4.2.1.5: Canonical Contract activation
+
+**Files/scope:** ContractsController.activate; exactly1domain.
+
+- [ ] Meaningful owned PostgreSQL/marked HTTP RED with exact authorized success/no-grants/foreign/current and asymmetric tuple controls; explicitly isolated both DB URLs, mocked external effects. Fixture/compiler failures are not behavioral RED.
+- [ ] Separate contracts.activate capability and original FINANCE/SHOPorigin/currentProduct sources before ownership transfer; existing canonical Sale/stock/commission/journal/period/outbox/signatures/promotion reservation consumption exactly once. Current source/actor after locks and owned rollback; effects only after actual commit.
+- [ ] Cover actual changed authorization/money/file behavior, relevant canonical regressions, types/touched lint and scoped coverage. Record exact commands/exits, self-review/commit and independent gate; preserve remaining audit5/approval6/UI7/system4.4/final8 obligations.
+
+### Task 4.2.1.6: Contract consent, QR and customer delegation
+
+**Files/scope:** ContractsController.getQrData, recordPdpaConsent, getPdpaConsent and CustomerAccessController.generateAccessToken; exactly4domain.
+
+- [ ] Meaningful owned PostgreSQL/marked HTTP RED with exact authorized success/no-grants/foreign/current and asymmetric tuple controls; explicitly isolated both DB URLs, mocked external effects. Fixture/compiler failures are not behavioral RED.
+- [ ] Finite source and independent document/identity/delegation authority; secret-free audit and genuine signer/evidence, preserve public customer authentication separately. Explicit recipient/expiry/current authority and private proof, no fabricated consent or guessed file provenance.
+- [ ] Cover actual changed authorization/money/file behavior, relevant canonical regressions, types/touched lint and scoped coverage. Record exact commands/exits, self-review/commit and independent gate; preserve remaining audit5/approval6/UI7/system4.4/final8 obligations.
+
+### Task 4.2.1.7: Direct Contract exchange callers
+
+**Files/scope:** ContractExchangeController.submit, preview, listPending, listRecent, approve, cancel, reject; exactly7domain.
+
+- [ ] Meaningful owned PostgreSQL/marked HTTP RED with exact authorized success/no-grants/foreign/current and asymmetric tuple controls; explicitly isolated both DB URLs, mocked external effects. Fixture/compiler failures are not behavioral RED.
+- [ ] Consume reviewed canonical exchange source/action/state/window/override/current original+replacement Product/Customer/destination and actual financial executor. Lists scope before limit/count and sensitive fields. No second executor, fake actor, legacy role grants or reimplementation of reviewed Defect3.
+- [ ] Cover actual changed authorization/money/file behavior, relevant canonical regressions, types/touched lint and scoped coverage. Record exact commands/exits, self-review/commit and independent gate; preserve remaining audit5/approval6/UI7/system4.4/final8 obligations.
+
+### Task 4.2.1.8: Contract schedule and payoff reads
+
+**Files/scope:** ContractsController.getSchedule and getEarlyPayoffQuote; exactly2domain.
+
+- [ ] Meaningful owned PostgreSQL/marked HTTP RED with exact authorized success/no-grants/foreign/current and asymmetric tuple controls; explicitly isolated both DB URLs, mocked external effects. Fixture/compiler failures are not behavioral RED.
+- [ ] Actual FINANCE Contract and independent Payment/current monetary source, exact existing formulas and labelled projection; internal grossProfit/cost remain sensitive. Distinguish contractual payoff calculation from discretionary interest reduction and preserve later approval fingerprint integration.
+- [ ] Cover actual changed authorization/money/file behavior, relevant canonical regressions, types/touched lint and scoped coverage. Record exact commands/exits, self-review/commit and independent gate; preserve remaining audit5/approval6/UI7/system4.4/final8 obligations.
+
+### Task 4.2.1.9: Payoff and SHOP settlement execution
+
+**Files/scope:** ContractsController.earlyPayoff, earlyPayoffSlipVerify, earlyPayoffSlipConfirm, shopCollectSettlement; exactly4domain.
+
+- [ ] Meaningful owned PostgreSQL/marked HTTP RED with exact authorized success/no-grants/foreign/current and asymmetric tuple controls; explicitly isolated both DB URLs, mocked external effects. Fixture/compiler failures are not behavioral RED.
+- [ ] Actual immutable money/source/approval snapshot, real canonical tx/JE/period/CAS/idempotency and late-audit rollback; OCR evidence is not interest/penalty approval. Preserve15-minute slip ticket and formulas; stage verified files once with final current checks and controlled aftercommit effects.
+- [ ] Cover actual changed authorization/money/file behavior, relevant canonical regressions, types/touched lint and scoped coverage. Record exact commands/exits, self-review/commit and independent gate; preserve remaining audit5/approval6/UI7/system4.4/final8 obligations.
+
+### Task 4.2.1.10: Cancellation and draft disposal
+
+**Files/scope:** ContractsController.softDelete, listPendingCancellations, requestCancellation, approveCancellation, rejectCancellation; exactly5domain.
+
+- [ ] Meaningful owned PostgreSQL/marked HTTP RED with exact authorized success/no-grants/foreign/current and asymmetric tuple controls; explicitly isolated both DB URLs, mocked external effects. Fixture/compiler failures are not behavioral RED.
+- [ ] Classify genuine no-money draft disposal separately from applied cancellation/refund; owner-reserved approval, exact source/snapshot/current/once execution and actual canonical reversal/audit. Preserve named reservation release only for eligible unsigned draft, no recrediting committed loyalty or clearing evidence.
+- [ ] Cover actual changed authorization/money/file behavior, relevant canonical regressions, types/touched lint and scoped coverage. Record exact commands/exits, self-review/commit and independent gate; preserve remaining audit5/approval6/UI7/system4.4/final8 obligations.
+
+### Task 4.2.1.11: Derived Contract reads and exports
+
+**Files/scope:** ContractsController.exportRows, getDocumentDashboard, getMilestonesSummary, getSnapshot, listJournalEntries; exactly5domain.
+
+- [ ] Meaningful owned PostgreSQL/marked HTTP RED with exact authorized success/no-grants/foreign/current and asymmetric tuple controls; explicitly isolated both DB URLs, mocked external effects. Fixture/compiler failures are not behavioral RED.
+- [ ] Consume child1 source/query/projection and independent actual child sources before aggregates/CTEs/counts/limits/export; separate export/detail/sensitive capabilities, completeness/nulls and buffered files. Root parent reconciles38domain+7adjacent and restored consumers without duplicated route credit.
+- [ ] Cover actual changed authorization/money/file behavior, relevant canonical regressions, types/touched lint and scoped coverage. Record exact commands/exits, self-review/commit and independent gate; preserve remaining audit5/approval6/UI7/system4.4/final8 obligations.
+
 ### Task 4.2.2: Contract and customer documents
 
 **Files:** Shared employee-access scope/source/projector/execution infrastructure and contract-documents and documents. Exact baseline slice: `finance-planning-partition.json` → `contract_documents` (27 rows; ContractDocumentsController 8, DocumentsController 19).

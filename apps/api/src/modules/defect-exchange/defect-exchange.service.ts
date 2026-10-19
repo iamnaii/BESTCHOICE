@@ -1,3 +1,4 @@
+import { directDefectHistory } from '../employee-access/access-defect-history';
 import { Optional } from '@nestjs/common';
 import { AccessExchangeSourceService, exchangeActor } from '../employee-access/access-exchange-source.service';
 import { currentDomainAccess, domainAccessClient, onDomainCommit } from '../employee-access/access-execution-context';
@@ -544,7 +545,12 @@ export class DefectExchangeService {
   /**
    * List defect-exchange history — read from AuditLog to avoid adding a new model.
    */
-  async list(filters: { branchId?: string; from?: string; to?: string }, actor?: { id: string }) {
+  async list(
+    filters: { branchId?: string; from?: string; to?: string },
+    actor?: { id: string },
+    // Fixed internal direct-boundary policy, never a request option.
+    direct = false,
+  ) {
     const ctx = await exchangeActor(this.basePrisma, actor?.id);
     if (ctx && !this.access) throw new ForbiddenException('ไม่มีตัวตรวจแหล่งสิทธิ์เปลี่ยนเครื่อง');
     const where: Record<string, unknown> = { action: 'DEFECT_EXCHANGE' };
@@ -561,12 +567,15 @@ export class DefectExchangeService {
       take: 200,
       select: {
         id: true, createdAt: true, userId: true, entityId: true, newValue: true,
+        ...(ctx && direct ? { entity: true } : {}),
         user: { select: { id: true, email: true, name: true } },
       },
     });
     let rows = await fetchBatch();
     if (!ctx) return rows;
-    const visible: typeof rows = [];
+    const visible: Array<
+      (typeof rows)[number] | NonNullable<Awaited<ReturnType<typeof directDefectHistory>>>
+    > = [];
     // Source authorization and the explicit branch filter precede the final
     // history limit; unrelated audit rows must not consume visible slots.
     while (rows.length > 0) {
@@ -578,7 +587,12 @@ export class DefectExchangeService {
         try {
           const sources = await this.access!.sources({ oldContractId: contract.parentContractId, newContractId: contract.id }, false);
           this.access!.assert('defect-exchanges.read', sources);
-          visible.push(this.access!.project(row, sources));
+          // Correlation/projection must precede the final visible limit too.
+          const projected = direct
+            ? await directDefectHistory(ctx.client, row)
+            : this.access!.project(row, sources);
+          if (!projected) continue;
+          visible.push(projected);
           if (visible.length === 200) return visible;
         } catch (error) {
           if (!(error instanceof ForbiddenException)) throw error;

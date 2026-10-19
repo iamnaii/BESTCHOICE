@@ -2,6 +2,8 @@ import { IsInt, IsNumber, IsOptional, IsString, IsUUID, Max, Min } from 'class-v
 
 /** Calculation input only: quoting never claims credit, receives money or reserves stock. */
 export class ContractQuoteDto {
+  @IsOptional() @IsUUID() promotionId?: string;
+  @IsOptional() @IsUUID() priceId?: string;
   @IsString() customerId!: string;
   @IsString() productId!: string;
   @IsString() branchId!: string;

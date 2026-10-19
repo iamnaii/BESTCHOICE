@@ -1,3 +1,5 @@
+import { NamedContractQuote, prepareContractPromotion } from '../../promotions/contract-promotion-terms';
+import { currentDomainAccess } from '../../employee-access/access-execution-context';
 import { BadRequestException, ForbiddenException, Injectable } from '@nestjs/common';
 import { createHash } from 'node:crypto';
 import { Prisma } from '@prisma/client';
@@ -18,8 +20,11 @@ const money = (value: Prisma.Decimal | number | string) => new Prisma.Decimal(va
 export class ContractQuoteService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async resolve(dto: ContractQuoteDto, actor: ContractQuoteActor, tx: Prisma.TransactionClient = this.prisma): Promise<ContractQuote> {
-    if (!hasCrossBranchAccess(actor) && (!actor.branchId || actor.branchId !== dto.branchId)) {
+  async resolve(dto: ContractQuoteDto, actor: ContractQuoteActor, tx: Prisma.TransactionClient = this.prisma): Promise<NamedContractQuote> {
+    if (dto.promotionId) tx = currentDomainAccess()?.client ?? tx;
+    const namedPromotion = await prepareContractPromotion(dto, actor.id, tx);
+    if (namedPromotion) actor = { ...actor, role: currentDomainAccess()!.snapshot.isOwner ? 'OWNER' : 'SALES' };
+    if (!dto.promotionId && !hasCrossBranchAccess(actor) && (!actor.branchId || actor.branchId !== dto.branchId)) {
       throw new ForbiddenException('ไม่มีสิทธิ์คำนวณสัญญาของสาขานี้');
     }
     if (![dto.sellingPrice, dto.downPayment].every(Number.isFinite) || dto.sellingPrice <= 0 || dto.downPayment < 0) {
@@ -44,6 +49,11 @@ export class ContractQuoteService {
     if (credit) DiscountPolicy.assertDiscountAllowed(dto.sellingPrice, credit.bonus.toNumber(), actor.role, Number(product.costPrice), undefined);
     const sellingPrice = credit?.net ?? new Prisma.Decimal(dto.sellingPrice);
     const downPayment = new Prisma.Decimal(dto.downPayment).plus(credit?.base ?? 0);
+    if (namedPromotion) {
+      await tx.$queryRaw`SELECT id FROM interest_configs ORDER BY id FOR SHARE`;
+      await tx.$queryRaw`SELECT id FROM system_config ORDER BY id FOR SHARE`;
+      await tx.$queryRaw`SELECT id FROM company_info WHERE company_code IN ('SHOP', 'FINANCE') ORDER BY id FOR SHARE`;
+    }
     const config = await tx.interestConfig.findFirst({
       where: { isActive: true, deletedAt: null, productCategories: { has: product.category } },
       orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
@@ -57,7 +67,7 @@ export class ContractQuoteService {
     if (dto.totalMonths < params.minInstallmentMonths || dto.totalMonths > params.maxInstallmentMonths) {
       throw new BadRequestException(`จำนวนงวดต้องอยู่ระหว่าง ${params.minInstallmentMonths}-${params.maxInstallmentMonths} เดือน`);
     }
-    const rate = config ? await getRateForMonths(tx, config.id, dto.totalMonths)
+    const rate = namedPromotion ? new Prisma.Decimal(namedPromotion.monthlyRate).mul(dto.totalMonths) : config ? await getRateForMonths(tx, config.id, dto.totalMonths)
       : new Prisma.Decimal(params.interestRate).mul(dto.totalMonths);
     const interestTotal = roundBaht(roundBaht(sellingPrice.minus(downPayment).toNumber()) * Number(rate));
     const calc = calculateInstallmentWithInterest(sellingPrice.toNumber(), downPayment.toNumber(), interestTotal,
@@ -79,8 +89,8 @@ export class ContractQuoteService {
       totalMonths: dto.totalMonths, firstDueDate: schedule[0].dueDate, schedule,
     };
     const fingerprint = createHash('sha256').update(JSON.stringify({ customerId: dto.customerId, productId: dto.productId,
-      branchId: dto.branchId, paymentDueDay: dto.paymentDueDay ?? null, tradeInCreditId: dto.tradeInCreditId ?? null, grossSellingPrice: money(dto.sellingPrice), ...amounts })).digest('hex');
-    return { fingerprint, ...amounts };
+      branchId: dto.branchId, paymentDueDay: dto.paymentDueDay ?? null, tradeInCreditId: dto.tradeInCreditId ?? null, grossSellingPrice: money(dto.sellingPrice), ...(namedPromotion ? { namedPromotion } : {}), ...amounts })).digest('hex');
+    return { fingerprint, ...amounts, ...(namedPromotion ? { namedPromotion } : {}) };
   }
 }
 

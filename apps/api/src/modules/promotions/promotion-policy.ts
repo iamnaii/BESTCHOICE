@@ -50,7 +50,7 @@ export function validatePromotion(p: PromotionDefinition): PromotionConditions {
       !Number.isFinite(rate) ||
       rate < 0 ||
       rate > 9.9999 ||
-      Math.abs(rate * 10000 - Math.round(rate * 10000)) > 1e-6
+      !new Prisma.Decimal(rate).eq(new Prisma.Decimal(rate).toDecimalPlaces(4))
     )
       fail();
   } else if (amount !== null || rate !== null) fail();

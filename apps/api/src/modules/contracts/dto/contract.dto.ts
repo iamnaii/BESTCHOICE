@@ -5,6 +5,8 @@ import { MAX_TENDERS } from '../../shop-tenders/shop-tender.util';
 import { KBANK_ACCOUNT_CODE } from '../../../constants/cash-account.constants';
 
 export class CreateContractDto {
+  @IsOptional() @IsUUID() promotionId?: string;
+  @IsOptional() @IsUUID() priceId?: string;
   @IsOptional() @IsString() @Matches(/^[a-f0-9]{64}$/) quoteFingerprint?: string;
   @IsOptional() @IsIn(['CASH', 'BANK_TRANSFER', 'QR_EWALLET']) downPaymentMethod?: 'CASH' | 'BANK_TRANSFER' | 'QR_EWALLET';
   @IsOptional() @IsString() @MaxLength(128) downPaymentReference?: string;

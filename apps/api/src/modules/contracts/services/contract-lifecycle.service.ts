@@ -1,3 +1,6 @@
+import { reserveContractPromotion, releaseContractPromotion, assertContractPromotionTerms } from '../../promotions/contract-promotion-terms';
+import { namedExecution, assertNamedPreparation } from '../../promotions/contract-promotion-source';
+import { currentDomainAccess, domainAccessClient, onDomainCommit } from '../../employee-access/access-execution-context';
 import { isRetryablePrismaWriteError } from '../../../utils/transaction-retry.util';
 import { cleanupCreditContractSale } from '../../trade-in/services/credit-contract-cleanup.util';
 import { Injectable, HttpException, Logger, NotFoundException, BadRequestException, ForbiddenException, ConflictException, InternalServerErrorException } from '@nestjs/common';
@@ -42,8 +45,8 @@ export class ContractLifecycleService {
   private readonly logger = new Logger('ContractsService');
   private readonly structuredLogger = new StructuredLoggerService('ContractsService');
   constructor(
-    private prisma: PrismaService,
-    private query: ContractQueryService,
+    private basePrisma: PrismaService,
+    private baseQuery: ContractQueryService,
     private shopDownPaymentTemplate: ShopDownPaymentTemplate,
     private shopDownPaymentReversalTemplate: ShopDownPaymentReversalTemplate,
     private shopAccountResolver: ShopAccountResolver,
@@ -51,12 +54,17 @@ export class ContractLifecycleService {
     private audit?: AuditService,
   ) {}
 
+  private get prisma() { return domainAccessClient(this.basePrisma); }
+  private get query() { return currentDomainAccess() ? new ContractQueryService(this.prisma) : this.baseQuery; }
+
   async create(dto: CreateContractDto, salespersonId: string, salespersonRole?: string, salespersonBranchId?: string | null) {
+    if (dto.promotionId) namedExecution(salespersonId);
     const user = salespersonBranchId === undefined || !salespersonRole
       ? await this.prisma.user.findUnique({ where: { id: salespersonId }, select: { role: true, branchId: true } }) : null;
-    const actor = { id: salespersonId, role: salespersonRole ?? user?.role ?? 'SALES',
+    const actor = { id: salespersonId, role: dto.promotionId ? (namedExecution(salespersonId).snapshot.isOwner ? 'OWNER' : 'SALES') : salespersonRole ?? user?.role ?? 'SALES',
       branchId: salespersonBranchId === undefined ? user?.branchId : salespersonBranchId };
-    dto = { ...dto, sellingPrice: new Decimal(dto.sellingPrice).toDecimalPlaces(2).toNumber(),
+    // Named selection must compare the caller's exact baseline before canonical rounding.
+    dto = { ...dto, sellingPrice: dto.promotionId ? dto.sellingPrice : new Decimal(dto.sellingPrice).toDecimalPlaces(2).toNumber(),
       downPayment: new Decimal(dto.downPayment).toDecimalPlaces(2).toNumber() };
     const cashDown = dto.downPayment;
     const credits = new TradeInCreditService(this.prisma);
@@ -75,8 +83,9 @@ export class ContractLifecycleService {
       try {
         contract = await this.prisma.$transaction(async (tx) => {
           await lockCreditCustomer(tx, dto.customerId);
-          await assertCustomerContractPolicy(tx, dto.customerId, actor.role, dto.overrideActiveContractCheck);
+          if (!dto.promotionId) await assertCustomerContractPolicy(tx, dto.customerId, actor.role, dto.overrideActiveContractCheck);
           const quote = await new ContractQuoteService(this.prisma).resolve(dto, actor, tx);
+          if (dto.promotionId) await assertCustomerContractPolicy(tx, dto.customerId, actor.role, dto.overrideActiveContractCheck, false);
           if (dto.quoteFingerprint && dto.quoteFingerprint !== quote.fingerprint) {
             throw new ConflictException({ code: 'CONTRACT_QUOTE_CHANGED',
               message: 'เงื่อนไขผ่อนเปลี่ยนแล้ว กรุณาทบทวนยอดใหม่ก่อนยืนยัน', quote });
@@ -209,6 +218,7 @@ export class ContractLifecycleService {
 
           // claimCreditApproval linked the check atomically with its single-use approval.
 
+          await reserveContractPromotion(newContract, quote);
           return newContract;
         }, { timeout: 15000, isolationLevel: 'Serializable' });
         break; // success — exit retry loop
@@ -216,6 +226,7 @@ export class ContractLifecycleService {
         // Retry on unique constraint (P2002) or serialization failure (P2034)
         const prismaErr = err instanceof Prisma.PrismaClientKnownRequestError ? err : null;
         const isRetryable = isRetryablePrismaWriteError(err);
+        if (currentDomainAccess() && isRetryable) throw err;
         if (isRetryable && attempt < MAX_RETRIES - 1) {
           continue;
         }
@@ -259,6 +270,7 @@ export class ContractLifecycleService {
 
     const created = await this.query.findOne(contract!.id);
 
+    const afterCommit = async () => {
     // Audit the test-mode credit-gate bypass (best-effort; AuditService no-ops
     // without a userId). salespersonId is the actor that created the contract.
     if (creditGateBypassed && this.audit) {
@@ -296,6 +308,8 @@ export class ContractLifecycleService {
       monthlyPayment: Number(created.monthlyPayment),
       salespersonId,
     });
+    };
+    if (dto.promotionId) onDomainCommit(afterCommit); else await afterCommit();
     return created;
   }
 
@@ -323,6 +337,7 @@ export class ContractLifecycleService {
       await tx.$queryRaw`SELECT id FROM contracts WHERE id = ${id} FOR UPDATE`;
       const contract = await tx.contract.findFirst({ where: { id, deletedAt: null } });
       if (!contract) throw new NotFoundException('ไม่พบสัญญา');
+      if (contract.promotionFingerprint) throw new BadRequestException('สัญญาโปรโมชันแก้ของแถมไม่ได้ กรุณายกเลิกฉบับร่างแล้วสร้างใหม่');
       if (actor.role === 'BRANCH_MANAGER' && (!actor.branchId || actor.branchId !== contract.branchId)) {
         throw new ForbiddenException('แก้ไขของแถมได้เฉพาะสัญญาของสาขาตัวเอง');
       }
@@ -370,9 +385,10 @@ export class ContractLifecycleService {
   }
 
   async update(id: string, dto: UpdateContractDto, userId: string) {
+    if (currentDomainAccess()) await this.prisma.$queryRaw`SELECT id FROM contracts WHERE id = ${id} FOR UPDATE`;
     const initial = await this.query.findOne(id);
     const user = await this.prisma.user.findUnique({ where: { id: userId }, select: { role: true, branchId: true } });
-    if (initial.salespersonId !== userId && user?.role !== 'OWNER') {
+    if (initial.salespersonId !== userId && !(initial.promotionFingerprint ? namedExecution(userId).snapshot.isOwner : user?.role === 'OWNER')) {
       throw new ForbiddenException('เฉพาะพนักงานที่สร้างสัญญาเท่านั้นที่สามารถแก้ไขได้');
     }
     await this.prisma.$transaction(async (tx) => {
@@ -383,6 +399,11 @@ export class ContractLifecycleService {
       }
       if (contract.tradeInCreditSnapshot && Object.keys(dto).some(key => key !== 'notes')) {
         throw new BadRequestException('สัญญาที่ใช้เครดิตเทิร์นแก้ยอดไม่ได้ กรุณายกเลิกฉบับร่างแล้วสร้างใหม่');
+      }
+      if (contract.promotionFingerprint) {
+        await assertNamedPreparation(contract, userId);
+        await assertContractPromotionTerms(contract);
+        if (Object.keys(dto).some(key => key !== 'notes')) throw new BadRequestException('สัญญาโปรโมชันแก้ยอดไม่ได้ กรุณายกเลิกฉบับร่างแล้วสร้างใหม่');
       }
       const changed = (['sellingPrice', 'downPayment', 'totalMonths', 'interestRate', 'paymentDueDay'] as const)
         .some(key => dto[key] !== undefined && Number(dto[key]) !== Number(contract[key]));
@@ -424,6 +445,7 @@ export class ContractLifecycleService {
 
   // === SOFT DELETE: ลบสัญญา (เฉพาะ CREATING/REJECTED, ห้ามลบสัญญาที่ลงนามแล้ว) ===
   async softDelete(id: string, userId: string) {
+    if (currentDomainAccess()) await this.prisma.$queryRaw`SELECT id FROM contracts WHERE id = ${id} FOR UPDATE`;
     let contract = await this.query.findOne(id);
 
     // T5-C2 — Explicit terminal-status lockdown. Once a contract leaves DRAFT
@@ -482,6 +504,11 @@ export class ContractLifecycleService {
         throw new BadRequestException('สัญญาเปลี่ยนสถานะแล้ว กรุณาโหลดข้อมูลใหม่ก่อนลบ');
       }
       contract = { ...contract, ...current };
+      if (contract.promotionFingerprint) {
+        if (!namedExecution(userId).snapshot.isOwner) throw new ForbiddenException('เฉพาะเจ้าของปัจจุบันเท่านั้นที่ยกเลิกฉบับร่างได้');
+        await assertNamedPreparation(contract, userId);
+        await releaseContractPromotion(contract);
+      }
       // Reverse the SHOP down-payment JE if one was posted for this DRAFT contract.
       const downPayment = cashDownPayment(contract);
       await cleanupCreditContractSale(tx, contract, userId, 'ยกเลิกสัญญาใช้เครดิตเทิร์น');
@@ -608,12 +635,18 @@ export class ContractLifecycleService {
     newSalespersonId: string,
     actor: { id: string; role: string },
   ) {
+    if (currentDomainAccess()) await this.prisma.$queryRaw`SELECT id FROM contracts WHERE id = ${contractId} FOR UPDATE`;
     const contract = await this.prisma.contract.findUnique({
       where: { id: contractId },
       include: { signatures: { select: { id: true } } },
     });
     if (!contract || contract.deletedAt) {
       throw new NotFoundException('ไม่พบสัญญา');
+    }
+
+    if (contract.promotionFingerprint) {
+      await assertNamedPreparation(contract, actor.id);
+      await assertContractPromotionTerms(contract);
     }
 
     // Verify the new salesperson exists and is active
@@ -634,7 +667,7 @@ export class ContractLifecycleService {
     const isApproved = contract.workflowStatus === 'APPROVED';
     const isLocked = isApproved || hasSignatures;
 
-    if (isLocked && actor.role !== 'OWNER') {
+    if (isLocked && !(contract.promotionFingerprint ? namedExecution(actor.id).snapshot.isOwner : actor.role === 'OWNER')) {
       throw new ForbiddenException(
         'ไม่สามารถเปลี่ยนพนักงานขายได้ เนื่องจากสัญญาถูกอนุมัติหรือลงนามแล้ว ' +
         '(เฉพาะ OWNER เท่านั้นที่มีสิทธิ์แก้ไข)',

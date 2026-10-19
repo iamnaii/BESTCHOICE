@@ -4,13 +4,18 @@ import { isChatPlaceholder, type PlaceholderShape } from '../../chat-prospects/c
 import { firstTransferReference, type NormalizedTender } from '../../shop-tenders/shop-tender.util';
 
 /** Must run after lockCreditCustomer, in the same transaction as the credit claim. */
-export async function assertCustomerContractPolicy(tx: Prisma.TransactionClient, customerId: string, role: string, override = false) {
-  const activeContracts = await tx.contract.findMany({ where: { customerId, deletedAt: null,
-    status: { in: ['ACTIVE', 'OVERDUE', 'DEFAULT'] } }, select: { id: true, contractNumber: true, status: true } });
+export async function assertCustomerContractPolicy(tx: Prisma.TransactionClient, customerId: string, role: string, override = false, exposeActiveContracts = true) {
+  const where: Prisma.ContractWhereInput = { customerId, deletedAt: null,
+    status: { in: ['ACTIVE', 'OVERDUE', 'DEFAULT'] } };
+  // Named SHOP preparation may know the Customer without FINANCE Contract read.
+  // Preserve the whole-customer business gate without fetching or exposing details.
+  const activeContracts = exposeActiveContracts ? await tx.contract.findMany({ where,
+    select: { id: true, contractNumber: true, status: true } }) : [];
+  const hasActiveContracts = exposeActiveContracts ? activeContracts.length > 0 : await tx.contract.count({ where }) > 0;
   const canOverride = ['OWNER', 'BRANCH_MANAGER'].includes(role);
-  if (activeContracts.length && !(canOverride && override)) throw new ConflictException({
+  if (hasActiveContracts && !(canOverride && override)) throw new ConflictException({
     message: 'ลูกค้ายังมีสัญญาที่กำลังผ่อนอยู่ ไม่สามารถเปิดสัญญาใหม่ได้',
-    code: 'CUSTOMER_HAS_ACTIVE_CONTRACT', activeContracts, canOverride,
+    code: 'CUSTOMER_HAS_ACTIVE_CONTRACT', ...(exposeActiveContracts ? { activeContracts } : {}), canOverride,
   });
 }
 

@@ -183,7 +183,7 @@ export class PromotionsService {
     // Lock/re-read the actual Sale before reading evidence; campaign edits cannot invalidate a committed benefit.
     await this.prisma.$queryRaw`SELECT id FROM sales WHERE id = ${saleId} FOR UPDATE`;
     const usage = await this.prisma.promotionUsage.findFirst({
-      where: { promotionId, saleId, customerId, deletedAt: null, benefitId: { not: null } },
+      where: { promotionId, saleId, customerId, deletedAt: null, benefitId: { not: null }, AND: visiblePromotionUsageWhere(true) },
       include: { sale: true, benefit: true },
     });
     if (!usage || !usage.benefit || !(await promotionUsageVisible(usage, true)))

@@ -1,5 +1,8 @@
+import { domainAccessClient, onDomainCommit } from '../../employee-access/access-execution-context';
+import { assertNamedPreparation, namedExecution } from '../../promotions/contract-promotion-source';
+import { assertContractPromotionTerms, namedSignatureHash } from '../../promotions/contract-promotion-terms';
 import { contractSignatureRequirements } from '../../../utils/validation.util';
-import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ForbiddenException, Logger } from '@nestjs/common';
 import { SignerType } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { DocumentPersistenceService } from './document-persistence.service';
@@ -22,9 +25,11 @@ export class ContractSignatureService {
   private readonly logger = new Logger(ContractSignatureService.name);
 
   constructor(
-    private prisma: PrismaService,
+    private basePrisma: PrismaService,
     private getPersistence: () => DocumentPersistenceService,
   ) {}
+
+  private get prisma() { return domainAccessClient(this.basePrisma); }
 
   // ─── E-Signature (พ.ร.บ.ธุรกรรมทางอิเล็กทรอนิกส์ พ.ศ. 2544) ────
   async signContract(
@@ -52,6 +57,12 @@ export class ContractSignatureService {
         },
       });
       if (!contract || contract.deletedAt) throw new NotFoundException('ไม่พบสัญญา');
+      if (contract.promotionFingerprint) {
+        const ctx = namedExecution();
+        if (!options?.staffUserId || options.staffUserId !== ctx.snapshot.userId) throw new ForbiddenException('ผู้บันทึกลายเซ็นไม่ตรงกับผู้ดำเนินการปัจจุบัน');
+        await assertNamedPreparation(contract, options.staffUserId);
+        await assertContractPromotionTerms(contract);
+      }
 
       // Allow signing during CREATING, REJECTED, PENDING_REVIEW, and APPROVED (not after activation)
       const allowedWorkflow = ['CREATING', 'REJECTED', 'PENDING_REVIEW', 'APPROVED'];
@@ -86,7 +97,7 @@ export class ContractSignatureService {
           ? { tradeInCreditSnapshot: contract.tradeInCreditSnapshot }
           : {}),
       });
-      const contractHash = crypto.createHash('sha256').update(contractContent).digest('hex');
+      const contractHash = contract.promotionFingerprint ? namedSignatureHash(contract) : crypto.createHash('sha256').update(contractContent).digest('hex');
 
       const signature = await tx.signature.create({
         data: {
@@ -122,13 +133,14 @@ export class ContractSignatureService {
       // (puppeteer can take a few seconds). A salesperson fallback handles
       // the CUSTOMER-signs-via-LIFF case where staffUserId is null.
       const uploaderId = options?.staffUserId || contract.salespersonId;
-      this.getPersistence()
+      const generate = async () => { await this.getPersistence()
         .ensureSignedContractDocument(contractId, uploaderId)
         .catch((err) =>
           this.logger.error(
             `Auto-save SIGNED_CONTRACT for ${contractId} failed: ${err instanceof Error ? err.message : err}`,
           ),
-        );
+        ); };
+      if (contract.promotionFingerprint) onDomainCommit(generate); else void generate();
     }
 
     return signature;
@@ -143,6 +155,10 @@ export class ContractSignatureService {
         include: { signatures: { where: { deletedAt: null } } },
       });
       if (!contract || contract.deletedAt) throw new NotFoundException('ไม่พบสัญญา');
+      if (contract.promotionFingerprint) {
+        await assertNamedPreparation(contract);
+        await assertContractPromotionTerms(contract);
+      }
 
       if (contract.status !== 'DRAFT') {
         throw new BadRequestException('ไม่สามารถลบลายเซ็นหลังจากสัญญา ACTIVE แล้ว');

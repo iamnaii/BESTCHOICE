@@ -153,7 +153,7 @@ describe('StaffChatController', () => {
     it.each(['SHOP', 'FINANCE'] as const)('passes the authorized %s scope to room rows and counts', async (company) => {
       const req = { user: { id: 'staff-1' }, entityScope: company };
       await controller.listRooms({ waiting: true }, req);
-      expect(roomManager.listRooms).toHaveBeenCalledWith(expect.objectContaining({ company, waiting: true }));
+      expect(roomManager.listRooms).toHaveBeenCalledWith(expect.objectContaining({ company, waiting: true }), req.user);
       await controller.getRoomCounts(req, { tab: 'waiting' });
       expect(roomManager.getRoomBadgeCounts).toHaveBeenCalledWith('staff-1', expect.objectContaining({ company, tab: 'waiting' }));
       await controller.getUnreadCount(req);

@@ -12,6 +12,7 @@ export async function checkServiceCases(page,origin,output,width) {
  await page.goto(`${origin}/inbox/${f.roomId}?zone=shop`);
  await expect(page.getByRole('textbox',{name:'พิมพ์ข้อความ',exact:true})).toBeVisible();
  if(width<1280)await page.getByRole('button',{name:'ข้อมูลลูกค้า',exact:true}).click();
+ await page.getByRole('button',{name:'บริการหลังการขาย',exact:true}).filter({visible:true}).click();
  await page.getByRole('button',{name:'รับเรื่องหลังการขาย',exact:true}).click();
  let dialog=page.getByRole('dialog',{name:'รับเรื่องหลังการขาย',exact:true});
  await dialog.getByLabel('อาการที่ลูกค้าแจ้ง').fill(`หน้าจอสัมผัสไม่ตอบสนอง ${width}`);

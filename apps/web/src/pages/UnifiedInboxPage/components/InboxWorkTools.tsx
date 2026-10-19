@@ -19,7 +19,7 @@ import {
   LockKeyhole,
   LogOut,
   Moon,
-  MoreHorizontal,
+  Menu,
   Settings2,
   ShoppingCart,
   Sun,
@@ -360,34 +360,11 @@ export default function InboxWorkTools({
   );
   const header = (
     <header className="inbox-workspace-header">
-      <div className="inbox-workspace-identity">
-        <h1 className="font-semibold leading-snug">แชท</h1>
-        <p className="text-xs leading-snug text-muted-foreground" title={branchName}>
-          {identityLabel}
-        </p>
-      </div>
-      <button
-        type="button"
-        aria-label="เมนูงานแชท"
-        onClick={() => setMobileMenuOpen(true)}
-        className="inbox-touch"
-      >
-        <MoreHorizontal className="size-5" />
-      </button>
-      <nav className="inbox-mobile-work-tabs" aria-label="การสื่อสารและงานทีม">
-        <button type="button" aria-current="page" onClick={() => setPanel(null)}>
-          <Inbox className="size-4" />
-          แชทลูกค้า
-        </button>
-        <button
-          type="button"
-          aria-label="คิวงาน"
-          disabled={!work.enabled}
-          onClick={() => setPanel('queue')}
-        >
-          <ListTodo className="size-4" />
-          งานทีม {waitingCount ? <span>{waitingCount > 99 ? '99+' : waitingCount}</span> : null}
-        </button>
+      <nav className="inbox-mobile-bottom-nav" aria-label="การสื่อสารและงานทีม">
+        <button type="button" aria-current={chatActive ? 'page' : undefined} onClick={() => setPanel(null)}><Inbox aria-hidden="true" className="size-5" /><span>แชท</span></button>
+        <button type="button" aria-label="คิวงาน" disabled={!work.enabled} onClick={() => setPanel('queue')}><ListTodo aria-hidden="true" className="size-5" /><span>คิวงาน{waitingCount ? ` (${waitingCount > 99 ? '99+' : waitingCount})` : ''}</span></button>
+        {work.company === 'SHOP' && <button type="button" disabled={!flags?.chat_facebook_comments_enabled} onClick={() => setPanel('comments')}><Globe aria-hidden="true" className="size-5" /><span>คอมเมนต์</span></button>}
+        <button type="button" aria-label="เมนูงานแชท" onClick={() => setMobileMenuOpen(true)}><Menu aria-hidden="true" className="size-5" /><span>เมนู</span></button>
       </nav>
     </header>
   );
@@ -399,6 +376,8 @@ export default function InboxWorkTools({
           <SheetTitle>เมนูงานแชท</SheetTitle>
           <SheetDescription>{identityLabel}</SheetDescription>
           <div className="inbox-mobile-work-menu">
+            {homeLink}
+            {workZones.length >= 2 && <div className="flex gap-2" role="group" aria-label="หมวดงาน">{workZones.map(({ zone, label, Icon }) => <Button key={zone} className="flex-1" variant={zone === currentZone ? 'primary' : 'outline'} aria-pressed={zone === currentZone} onClick={() => { if (zone !== currentZone) navigate(getWorkZoneHref('/inbox', zone)); setMobileMenuOpen(false); }}><Icon className="size-4" aria-hidden="true" />{label}</Button>)}</div>}
             {workNavigation}
             {utilities}
           </div>

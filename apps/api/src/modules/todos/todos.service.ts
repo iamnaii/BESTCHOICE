@@ -113,7 +113,10 @@ export class TodosService {
     const [data, total] = await Promise.all([
       this.prisma.todo.findMany({
         where,
-        orderBy: [{ status: 'asc' }, { dueDate: 'asc' }, { createdAt: 'desc' }],
+        // Room follow-ups must be due-first before pagination, irrespective of workflow status.
+        orderBy: roomId
+          ? [{ dueDate: { sort: 'asc', nulls: 'last' } }, { id: 'asc' }]
+          : [{ status: 'asc' }, { dueDate: 'asc' }, { createdAt: 'desc' }],
         skip: (page - 1) * limit,
         take: limit,
         include: {

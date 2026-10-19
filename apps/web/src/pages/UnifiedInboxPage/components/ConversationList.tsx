@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { nextRoomIndex } from './list-nav';
 import { isEditableTarget } from '../hooks/useKeyboardShortcuts';
 import {
-  SlidersHorizontal,
+  MoreHorizontal,
   Search,
   MessageCircle,
   X,
@@ -12,7 +12,6 @@ import {
   Loader2,
   ArrowRight,
   ArrowLeft,
-  Clock,
 } from 'lucide-react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useDebounce } from '@/hooks/useDebounce';
@@ -20,8 +19,22 @@ import { cn } from '@/lib/utils';
 import api from '@/lib/api';
 import { toast } from 'sonner';
 import ConversationItem from './ConversationItem';
-import ChannelFilter, { type InboxTab, type WhoFilter, type StaffOption } from './ChannelFilter';
+import ChannelFilter, {
+  ActiveInboxFilters,
+  InboxTabs,
+  type InboxTab,
+  type WhoFilter,
+  type StaffOption,
+} from './ChannelFilter';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { deriveTabCounts, deriveChannelCounts } from './tab-counts';
+import QueryBoundary from '@/components/QueryBoundary';
 
 /** รูปตัวกรองของกล่องข้อความ — เจ้าของเคาะ 2026-09-05: ช่องทางเลือกทีละอัน · เมนูผู้ดูแลแทนเมนูบอท
  *  view: 'expired' = มุมมอง "ตอบไม่ทัน" (ห้อง FB ที่รอและพ้น 24 ชม.) เข้าได้จากบรรทัดสถานะของแท็บรอตอบเท่านั้น */
@@ -36,8 +49,11 @@ export interface InboxFilters {
 interface ConversationListProps {
   sessions: any[];
   activeRoomId: string | null;
-  onSelectRoom: (roomId: string) => void;
+  onSelectRoom: (roomId: string, messageId?: string) => void;
   isLoading: boolean;
+  isError?: boolean;
+  error?: unknown;
+  onRetry?: () => void;
   filters: InboxFilters;
   onFiltersChange: (filters: InboxFilters) => void;
   currentUserId?: string;
@@ -64,6 +80,9 @@ export default function ConversationList({
   activeRoomId,
   onSelectRoom,
   isLoading,
+  isError = false,
+  error,
+  onRetry,
   filters,
   onFiltersChange,
   currentUserId,
@@ -77,9 +96,7 @@ export default function ConversationList({
   isLoadingMore,
   onLoadMore,
 }: ConversationListProps) {
-  const [filtersOpen, setFiltersOpen] = useState(false);
   const [searchInput, setSearchInput] = useState(filters.search ?? '');
-  const [searchFocused, setSearchFocused] = useState(false);
   const debouncedSearch = useDebounce(searchInput, 300);
 
   const queryClient = useQueryClient();
@@ -148,7 +165,13 @@ export default function ConversationList({
   // fires while typing in the composer or search.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (isEditableTarget(e.target)) return;
+      if (isLoading || isError) return;
+      if (
+        isEditableTarget(e.target) ||
+        (e.target instanceof HTMLElement &&
+          e.target.closest('[role=dialog], [role=menu], [role=listbox]'))
+      )
+        return;
       if (e.key !== 'j' && e.key !== 'k') return;
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       e.preventDefault();
@@ -156,208 +179,188 @@ export default function ConversationList({
       const next = nextRoomIndex(idx, e.key === 'j' ? 1 : -1, visibleRooms.length);
       if (next < 0) return;
       const room = visibleRooms[next];
-      onSelectRoom(room.id);
+      onSelectRoom(room.id, room.searchMatch?.id);
       document.querySelector(`[data-room-id="${room.id}"]`)?.scrollIntoView({ block: 'nearest' });
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [visibleRooms, activeRoomId, onSelectRoom]);
+  }, [visibleRooms, activeRoomId, onSelectRoom, isLoading, isError]);
+
+  const filterProps = {
+    activeTab: filters.tab,
+    channel: filters.channel,
+    who: filters.who,
+    staff: staff ?? [],
+    currentUserId,
+    onApply: (values: { channel: string | null; who: WhoFilter }) =>
+      onFiltersChange({ ...filters, ...values }),
+  };
 
   return (
-    <div
-      className={cn(
-        'inbox-queue flex flex-col h-full border-r border-border',
-        filtersOpen && 'inbox-list-filters-open',
-      )}
-    >
-      <div className="hidden lg:flex items-center justify-between px-4 pt-5 pb-2">
-        <h2 className="text-base font-semibold leading-snug">กล่องข้อความ</h2>
-        <span className="rounded-md bg-muted px-2 py-1 text-xs text-muted-foreground">
-          {serverCounts?.all ?? sessions.length} ห้อง
-        </span>
-      </div>
-      {/* Search + Filters */}
-      <div className="px-4 pt-2 lg:pt-0 pb-2">
-        {/* Header row: connection pill (when not connected) + global bell toggle */}
-        {(connectionStatus && connectionStatus !== 'connected') || onToggleMuteAll ? (
-          <div className="inbox-list-controls mb-2 flex items-center justify-between gap-2">
-            {/* Connection status pill — shown only when not connected */}
-            {connectionStatus && connectionStatus !== 'connected' ? (
-              <div
-                className={cn(
-                  'flex items-center gap-1.5 rounded-md px-2 py-1 text-[11px] font-medium leading-snug',
-                  connectionStatus === 'disconnected'
-                    ? 'bg-destructive/10 text-destructive'
-                    : 'bg-warning/10 text-warning-strong',
-                )}
+    <div className="inbox-queue flex h-full min-h-0 flex-col border-r border-border">
+      <div className="inbox-queue-heading">
+        <div className="inbox-queue-title-row">
+          <div className="min-w-0"><h2 className="inbox-queue-title">กล่องข้อความ</h2>{typeof serverCounts?.all === 'number' && <p className="text-xs leading-snug text-muted-foreground">ทั้งหมด {serverCounts.all.toLocaleString('th-TH')} ห้อง</p>}</div>
+          <div className="flex shrink-0 items-center gap-1">
+            {onToggleMuteAll && (
+              <button
+                type="button"
+                data-ui-control="button"
+                data-ui-icon="true"
+                className="inbox-queue-icon"
+                onClick={onToggleMuteAll}
+                aria-pressed={muteAll ?? false}
+                aria-label={muteAll ? 'เปิดการแจ้งเตือน' : 'ปิดการแจ้งเตือน'}
+                title={muteAll ? 'เปิดการแจ้งเตือน' : 'ปิดการแจ้งเตือน'}
               >
-                <span
-                  className={cn(
-                    'size-1.5 rounded-full',
-                    connectionStatus === 'disconnected'
-                      ? 'bg-destructive'
-                      : 'bg-warning animate-pulse',
-                  )}
-                />
-                {connectionStatus === 'disconnected'
-                  ? 'ออฟไลน์ — ไม่ได้เชื่อมต่อเรียลไทม์'
-                  : connectionStatus === 'reconnecting'
-                    ? 'กำลังเชื่อมต่อใหม่...'
-                    : 'กำลังเชื่อมต่อ...'}
-              </div>
-            ) : (
-              <div />
+                {muteAll ? (
+                  <BellOff className="size-5" aria-hidden="true" />
+                ) : (
+                  <Bell className="size-5" aria-hidden="true" />
+                )}
+              </button>
             )}
-            {/* Right-side controls: mark-all-read + global mute bell toggle */}
-            <div className="flex items-center gap-1">
-              {unreadInView.length > 0 && (
-                <button data-ui-control="button"
-                  onClick={() => markAllReadMutation.mutate(unreadInView)}
-                  disabled={markAllReadMutation.isPending}
-                  className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium leading-snug text-muted-foreground hover:text-foreground hover:bg-muted transition-colors disabled:opacity-50"
-                  title="ทำเครื่องหมายอ่านทั้งหมดในมุมมองนี้"
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  data-ui-control="button"
+                  data-ui-icon="true"
+                  className="inbox-queue-icon"
+                  aria-label="เครื่องมือกล่องข้อความ"
+                  title="เครื่องมือกล่องข้อความ"
                 >
                   {markAllReadMutation.isPending ? (
-                    <Loader2 className="size-3 animate-spin" />
+                    <Loader2 className="size-5 animate-spin" aria-hidden="true" />
                   ) : (
-                    <CheckCheck className="size-3" />
+                    <MoreHorizontal className="size-5" aria-hidden="true" />
                   )}
-                  อ่านทั้งหมด
                 </button>
-              )}
-              {onToggleMuteAll && (
-                <button data-ui-control="button" data-ui-icon="true"
-                  type="button"
-                  onClick={onToggleMuteAll}
-                  title={muteAll ? 'เปิดการแจ้งเตือน' : 'ปิดการแจ้งเตือนทั้งหมด'}
-                  aria-label={muteAll ? 'เปิดการแจ้งเตือน' : 'ปิดการแจ้งเตือน'}
-                  className="p-1.5 min-h-11 min-w-11 inline-flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-muted"
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="max-w-[calc(100vw-2rem)]">
+                <DropdownMenuItem
+                  disabled={unreadInView.length === 0 || markAllReadMutation.isPending}
+                  onSelect={() => markAllReadMutation.mutate(unreadInView)}
+                  className="min-h-11"
                 >
-                  {muteAll ? <BellOff className="w-4 h-4" /> : <Bell className="w-4 h-4" />}
-                </button>
-              )}
-            </div>
+                  <CheckCheck aria-hidden="true" /> ทำเครื่องหมายว่าอ่านแล้ว
+                </DropdownMenuItem>
+                <DropdownMenuLabel className="font-normal">
+                  เฉพาะแชทที่โหลดในมุมมองนี้
+                </DropdownMenuLabel>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
-        ) : null}
-        {connectionStatus && connectionStatus !== 'connected' && !filtersOpen && (
-          <p className="lg:hidden mb-1 text-xs text-warning-strong" role="status">
+        </div>
+        {connectionStatus && connectionStatus !== 'connected' && (
+          <p
+            role="status"
+            className={cn(
+              'inbox-queue-connection',
+              connectionStatus === 'disconnected' ? 'text-destructive' : 'text-warning-strong',
+            )}
+          >
+            <span className="size-1.5 shrink-0 rounded-full bg-current" aria-hidden="true" />
             {connectionStatus === 'disconnected'
               ? 'ออฟไลน์ · กำลังลองเชื่อมต่อ'
-              : 'กำลังเชื่อมต่อ…'}
+              : connectionStatus === 'reconnecting'
+                ? 'กำลังเชื่อมต่อใหม่…'
+                : 'กำลังเชื่อมต่อ…'}
           </p>
         )}
-        {/* Search */}
-        <div className="relative mb-2 mr-12 lg:mr-0">
+        <div className="inbox-queue-search-row">
+          <div className="inbox-queue-search">
+            <Search className="size-5 shrink-0 text-muted-foreground" aria-hidden="true" />
+            <input
+              data-inbox-search-input
+              type="text"
+              placeholder="ค้นหาชื่อ เบอร์ หรือข้อความ"
+              aria-label="ค้นหาชื่อ เบอร์โทร หรือข้อความในแชท"
+              maxLength={200}
+              value={searchInput}
+              onChange={(event) => setSearchInput(event.target.value)}
+            />
+            {searchInput.length > 0 && (
+              <button
+                type="button"
+                className="inbox-queue-icon"
+                aria-label="ล้างการค้นหา"
+                onClick={() => {
+                  setSearchInput('');
+                  onFiltersChange({ ...filters, search: undefined });
+                }}
+              >
+                <X className="size-4" aria-hidden="true" />
+              </button>
+            )}
+          </div>
+          <ChannelFilter
+            {...filterProps}
+            channelCounts={
+              filters.view === 'expired'
+                ? channelCounts
+                : (serverCounts?.byChannel ?? channelCounts)
+            }
+          />
+        </div>
+        <InboxTabs
+          activeTab={filters.tab}
+          counts={serverCounts ?? tabCounts}
+          onTabChange={(tab) =>
+            onFiltersChange({
+              ...filters,
+              tab,
+              view: 'queue',
+              who: tab === 'mine' ? 'all' : filters.who,
+            })
+          }
+        />
+        <ActiveInboxFilters {...filterProps} />
+      </div>
+      <div className="inbox-queue-order">
+        <span>
+          {filters.view === 'expired'
+            ? `พ้นเวลาตอบ · ${expiredCount.toLocaleString('th-TH')} ห้อง`
+            : filters.tab === 'waiting'
+              ? 'ใกล้หมดเวลาก่อน'
+              : filters.tab === 'mine'
+                ? 'แชทที่คุณดูแล'
+                : `ทั้งหมด ${(serverCounts?.all ?? sessions.length).toLocaleString('th-TH')} ห้อง`}
+        </span>
+        {filters.tab === 'waiting' && filters.view !== 'expired' && expiredCount > 0 && (
           <button
             type="button"
-            className={cn(
-              'inbox-touch absolute -right-12 top-0 lg:hidden',
-              listFilterActive && 'text-primary bg-primary/10',
-            )}
-            aria-label="ตัวกรองและเครื่องมือ"
-            aria-expanded={filtersOpen}
-            onClick={() => setFiltersOpen((value) => !value)}
+            onClick={() => onFiltersChange({ ...filters, view: 'expired' })}
+            className="text-warning-strong"
           >
-            <SlidersHorizontal className="size-5" />
+            พ้นเวลาตอบ{' '}
+            <span className="font-semibold tabular-nums">
+              {expiredCount.toLocaleString('th-TH')}
+            </span>
+            <ArrowRight className="size-3.5" aria-hidden="true" />
           </button>
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground/60" />
-          <input
-            type="text"
-            placeholder="ค้นหาชื่อ, เบอร์..."
-            aria-label="ค้นหาชื่อลูกค้าหรือเบอร์โทร"
-            value={searchInput}
-            onChange={(e) => setSearchInput(e.target.value)}
-            onFocus={() => setSearchFocused(true)}
-            onBlur={() => setSearchFocused(false)}
-            className="min-h-10 w-full pl-8 pr-7 py-1.5 text-[13px] rounded-md bg-muted/40 border-0 focus:outline-none focus:ring-1 focus:ring-primary/20 focus:bg-background transition-all placeholder:text-muted-foreground/70"
-          />
-          {searchInput.length > 0 && (
-            <button
-              type="button"
-              onClick={() => {
-                setSearchInput('');
-                onFiltersChange({ ...filters, search: undefined }); // clear immediately, don't wait for debounce
-              }}
-              aria-label="ล้างการค้นหา"
-              className="absolute right-2 top-1/2 -translate-y-1/2 min-h-11 min-w-11 inline-flex items-center justify-center text-muted-foreground/50 hover:text-foreground"
-            >
-              <X className="w-3.5 h-3.5" />
-            </button>
-          )}
-        </div>
-      </div>
-
-      {/* แท็บ + เมนูช่องทาง + เมนูผู้ดูแล — เมนูบอทถูกถอด (เจ้าของ 2026-09-05: "ตรงนี้น่าจะเปลี่ยนเป็นอย่างอื่นแทน")
-          เปลี่ยนแท็บ = กลับคิวปกติเสมอ กันค้างอยู่ในมุมมอง "ตอบไม่ทัน" โดยไม่รู้ตัว */}
-      <ChannelFilter
-        activeTab={filters.tab}
-        onTabChange={(tab) =>
-          onFiltersChange({
-            ...filters,
-            tab,
-            view: 'queue',
-            who: tab === 'mine' ? 'all' : filters.who,
-          })
-        }
-        channel={filters.channel}
-        onChannelChange={(channel) => onFiltersChange({ ...filters, channel })}
-        who={filters.who}
-        onWhoChange={(who) => onFiltersChange({ ...filters, who })}
-        staff={staff ?? []}
-        currentUserId={currentUserId}
-        counts={serverCounts ?? tabCounts}
-        // byChannel ของเซิร์ฟเวอร์นับในจักรวาล "รอตอบ" — มุมมองตอบไม่ทันเป็นคนละกอง ใช้เลขจากแถวที่โหลดมา
-        channelCounts={
-          filters.view === 'expired' ? channelCounts : (serverCounts?.byChannel ?? channelCounts)
-        }
-      />
-
-      {/* Divider */}
-      <div className="h-px bg-border/60" />
-
-      {/* บรรทัดสถานะของกอง "รอตอบ" — บอกกติกาเรียง และทางเข้ามุมมอง "ตอบไม่ทัน" (สเปก §7 แก้ไข 2026-09-05)
-          ห้องที่พ้น 24 ชม. ไม่อยู่ในคิว เพราะตอบไปก็ส่งไม่ถึง — แต่ต้องมีที่ให้ดู ไม่ใช่หายไปเฉย ๆ */}
-      {filters.tab === 'waiting' && filters.view !== 'expired' && (
-        <div
-          className={cn(
-            'inbox-queue-order items-center gap-2 border-b border-border/60 bg-muted/30 px-4 py-2 text-xs leading-snug text-muted-foreground',
-            (serverCounts?.expired ?? 0) > 0 ? 'flex' : 'hidden lg:flex',
-          )}
-        >
-          <span className="truncate">เรียง: ใกล้หมดเวลาก่อน แล้วรอนานก่อน</span>
-          {(serverCounts?.expired ?? 0) > 0 && (
-            <button
-              type="button"
-              onClick={() => onFiltersChange({ ...filters, view: 'expired' })}
-              className="ml-auto inline-flex shrink-0 items-center gap-1 whitespace-nowrap font-medium text-foreground hover:underline"
-            >
-              ตอบไม่ทัน {serverCounts?.expired} <ArrowRight className="size-3" />
-            </button>
-          )}
-        </div>
-      )}
-      {filters.tab === 'waiting' && filters.view === 'expired' && (
-        <div className="flex items-center gap-2 border-b border-border/60 bg-muted px-4 py-2 text-[11px] leading-snug text-muted-foreground">
-          <Clock className="size-3 shrink-0" />
-          {/* สั้นพอกับ 320px — ผลของการพ้นหน้าต่างอธิบายในแถบเหนือช่องพิมพ์เมื่อเปิดห้อง */}
-          <span className="truncate">
-            <span className="font-medium text-foreground">
-              ตอบไม่ทัน {serverCounts?.expired ?? 0}
-            </span>{' '}
-            · พ้น 24 ชม. แล้ว
-          </span>
+        )}
+        {filters.view === 'expired' && (
           <button
             type="button"
             onClick={() => onFiltersChange({ ...filters, view: 'queue' })}
-            className="ml-auto inline-flex shrink-0 items-center gap-1 whitespace-nowrap font-medium text-foreground hover:underline"
+            className="text-primary"
           >
-            <ArrowLeft className="size-3" /> กลับคิว
+            <ArrowLeft className="size-3.5" aria-hidden="true" />
+            กลับคิว
           </button>
-        </div>
+        )}
+      </div>
+      {filters.view === 'expired' && (
+        <p className="border-b border-border bg-warning/5 px-4 py-3 text-xs leading-relaxed text-warning-strong">
+          ห้อง Facebook ที่พ้นเวลาตอบหรือยังไม่ทราบเวลา แยกจากคิวรอตอบ
+        </p>
       )}
 
       {/* Room list */}
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto" aria-busy={isLoading}>
+        {/* Keep search and filter controls mounted while only the result region loads or fails. */}
+        <QueryBoundary isLoading={false} isError={isError} error={error} onRetry={onRetry}>
         {isLoading ? (
           <div className="space-y-1 p-2">
             {[1, 2, 3].map((i) => (
@@ -388,7 +391,7 @@ export default function ConversationList({
                   onClick={() => onFiltersChange({ ...filters, view: 'expired' })}
                   className="text-xs text-primary hover:underline mt-1"
                 >
-                  มี {expiredCount} ห้องที่ตอบไม่ทัน →
+                  มี {expiredCount.toLocaleString('th-TH')} ห้องที่พ้นเวลาตอบ →
                 </button>
               </>
             ) : allClear ? (
@@ -404,7 +407,7 @@ export default function ConversationList({
               !filters.search ? (
               <>
                 <p className="text-sm font-medium text-muted-foreground leading-snug">
-                  ไม่มีห้องที่ตอบไม่ทัน
+                  ไม่มีห้องที่พ้นเวลาตอบ
                 </p>
                 <button
                   type="button"
@@ -428,15 +431,6 @@ export default function ConversationList({
                   ดูทั้งกอง
                 </button>
               </>
-            ) : sessions.length === 0 ? (
-              <>
-                <p className="text-sm font-medium text-muted-foreground leading-snug">
-                  ยังไม่มีการสนทนา
-                </p>
-                <p className="text-xs text-muted-foreground/80 mt-0.5 leading-snug">
-                  เมื่อมีลูกค้าทักเข้ามา แชทจะแสดงที่นี่
-                </p>
-              </>
             ) : filters.search ? (
               <>
                 <p className="text-sm font-medium text-muted-foreground leading-snug">
@@ -452,6 +446,28 @@ export default function ConversationList({
                 >
                   ล้างการค้นหา
                 </button>
+              </>
+            ) : filters.tab === 'mine' ? (
+              <>
+                <p className="text-sm font-medium text-muted-foreground leading-snug">
+                  ยังไม่มีแชทที่คุณดูแล
+                </p>
+                <button
+                  type="button"
+                  onClick={() => onFiltersChange({ ...filters, tab: 'all', view: 'queue' })}
+                  className="mt-1 min-h-11 text-xs text-primary hover:underline"
+                >
+                  ดูแชททั้งหมด
+                </button>
+              </>
+            ) : sessions.length === 0 ? (
+              <>
+                <p className="text-sm font-medium text-muted-foreground leading-snug">
+                  ยังไม่มีการสนทนา
+                </p>
+                <p className="text-xs text-muted-foreground/80 mt-0.5 leading-snug">
+                  เมื่อมีลูกค้าทักเข้ามา แชทจะแสดงที่นี่
+                </p>
               </>
             ) : (
               <>
@@ -484,6 +500,7 @@ export default function ConversationList({
                   session={session}
                   isActive={session.id === activeRoomId}
                   onSelect={onSelectRoom}
+                  search={filters.search}
                   onPin={handlePin}
                   aiSettings={aiSettings}
                 />
@@ -506,6 +523,7 @@ export default function ConversationList({
             )}
           </>
         )}
+        </QueryBoundary>
       </div>
     </div>
   );

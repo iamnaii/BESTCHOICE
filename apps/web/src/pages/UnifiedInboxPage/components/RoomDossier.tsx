@@ -3,8 +3,8 @@ import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import CloudCreditPicker from './CloudCreditPicker';
 import ChatServiceRequestSection from './ChatServiceRequestSection';
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/dialog';
-import { workDate } from './WorkQueue';
-import { X } from 'lucide-react';
+import { ArrowLeft, Paperclip } from 'lucide-react';
+import DossierDisclosure from './DossierDisclosure';
 import ChatFollowUpDialog from './ChatFollowUpDialog';
 import ChatHandoffDialog from './ChatHandoffDialog';
 import ChatHandoffCard from './ChatHandoffCard';
@@ -18,9 +18,8 @@ import GfinTab from './gfin/GfinTab';
 import { GFIN_MESSAGE_MIME, needsAttention, readSeen, markSeen } from './gfin/gfin';
 import type { FinanceApplicationModel } from '../hooks/useFinanceApplication';
 import { Link, useNavigate } from 'react-router';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  CalendarPlus,
   ExternalLink,
   Search,
   UserPlus,
@@ -30,7 +29,7 @@ import {
   Users,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { apptState } from './appointment';
+import RoomFollowUps from './RoomFollowUps';
 import api, { getErrorMessage } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { formatChatTimestamp } from '@/lib/chat-time';
@@ -263,12 +262,11 @@ function SamePersonHints({ hints, customerId, currentIsProspect, onMerge, onDism
 }
 
 /** ─── การ์ดผู้สนใจจากแชท (mockup 1388f98e บอร์ด 1-2) — ทุกห้องมีเจ้าของตั้งแต่ทักมา กล่องเหลือง "ยังไม่ผูก" จึงเหลือเฉพาะห้องที่ไม่มีเจ้าของจริง ๆ */
-function ProspectCard({ room, canFill, onFill, onLink, onOpenProfile, hints }: {
+function ProspectCard({ canFill, onFill, onLink, hints }: {
   room: DossierRoom;
   canFill: boolean;
   onFill: () => void;
   onLink: () => void;
-  onOpenProfile: () => void;
   /** กล่องคำใบ้ (SamePersonHints) — ผู้เรียกประกอบให้ ใช้ชุดเดียวกับห้องลูกค้าจริง */
   hints: React.ReactNode;
 }) {
@@ -278,14 +276,7 @@ function ProspectCard({ room, canFill, onFill, onLink, onOpenProfile, hints }: {
         <span className="inline-flex items-center rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-semibold leading-4 text-primary">ผู้สนใจจากแชท</span>
         <span className="inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-[11px] font-semibold leading-4 text-muted-foreground">ยังไม่มีเบอร์</span>
       </div>
-      <button type="button" onClick={onOpenProfile} className="mt-2 flex w-full items-center gap-2 rounded-lg border border-border bg-muted/40 px-2.5 py-2 text-left text-xs font-semibold hover:bg-muted">
-        <span className="min-w-0 flex-1 truncate">{room.customer?.name}</span>
-        <span className="text-muted-foreground">›</span>
-      </button>
-      <p className="m-0 mt-2 text-xs leading-relaxed text-muted-foreground">
-        เพิ่มเบอร์หรือผูกลูกค้าเดิม เพื่อเช็กเครดิต ทำสัญญา และดูแชทอื่น
-      </p>
-      <div className="mt-2 flex gap-1.5">
+      <div className="inbox-dossier-link-actions mt-2">
         <Button
           variant="primary"
           size="sm"
@@ -365,38 +356,6 @@ function ChannelsGroup({
           </Button>
         </>
       )}
-    </Group>
-  );
-}
-
-/** ─── นัดหมายของห้อง (Todo.roomId) — ตั้งได้แม้ยังไม่ผูกลูกค้า (ท่า OBI "นัดเป็นของห้อง") */
-function dueLabel(iso?: string | null): string {
-  if (!iso) return 'ไม่ระบุวัน';
-  return workDate(iso);
-}
-function AppointmentsGroup({ todos, onNew, onEdit }: { todos: Todo[]; onNew: () => void; onEdit?: (todo: Todo) => void }) {
-  const open = todos.filter((t) => !['DONE', 'CANCELLED'].includes(t.status));
-  const rows = [...open].sort((a, b) => (a.dueDate ?? '9').localeCompare(b.dueDate ?? '9')).slice(0, 4);
-  return (
-    <Group label="นัดหมาย" count={open.length} right={<button type="button" className="text-primary" onClick={onNew}>＋ ตั้งนัด</button>}>
-      {rows.length === 0 && <Hint>ยังไม่มีนัดในห้องนี้</Hint>}
-      {rows.map((t) => {
-        // ชิปสถานะใช้กติกาเดียวกับป้ายแถวรายชื่อ/แถบเตือน (apptState) — เลยนัด 9 นาทีต้องแดง ไม่ใช่ "รอถึงวัน"
-        const st = apptState(t.dueDate);
-        const overdue = !!st && st.tone === 'danger';
-        return (
-          <div key={t.id} className="mt-1.5 flex items-start gap-2.5 rounded-lg border border-border bg-muted/40 px-3 py-2 text-xs first:mt-0">
-            <div className="min-w-0 flex-1">
-              <p className="m-0 font-semibold"><span className="tabular-nums">{dueLabel(t.dueDate)}</span> · {t.title}</p>
-              {onEdit && <button type="button" className="min-h-9 text-primary" onClick={() => onEdit(t)}>ดู / แก้ไขนัด</button>}
-              <p className="m-0 text-muted-foreground">{t.assignee?.name ?? 'ยังไม่มอบหมาย'}{t.createdAt ? ` · ตั้งเมื่อ ${new Date(t.createdAt).toLocaleDateString('th-TH', { day: '2-digit', month: '2-digit' })}` : ''}</p>
-            </div>
-            <span className={cn('shrink-0 self-center whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-semibold', overdue ? 'bg-destructive/10 text-destructive' : st?.tone === 'warn' ? 'bg-warning/15 text-amber-800 dark:text-amber-200' : t.status === 'DOING' ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground')}>
-              {overdue ? st!.label : st?.tone === 'warn' ? 'วันนี้' : t.status === 'DOING' ? 'กำลังทำ' : 'รอถึงวัน'}
-            </span>
-          </div>
-        );
-      })}
     </Group>
   );
 }
@@ -509,10 +468,15 @@ export default function RoomDossier({ onClose, room, customerId, activeRoomId, o
   const creditDragDepth = useRef(0);
   const [creditDragging, setCreditDragging] = useState(false);
   const [creditFlash, setCreditFlash] = useState(false);
+  const [creditExpanded, setCreditExpanded] = useState(false);
+  useEffect(() => {
+    setCreditExpanded(!!(credit?.files.length || credit?.analysis || credit?.error || credit?.busy));
+  }, [room?.id, credit?.files.length, credit?.analysis?.id, credit?.analysis?.status, credit?.error, credit?.busy]);
   useEffect(() => { creditDragDepth.current = 0; setCreditDragging(false); }, [room?.id]);
   useEffect(() => {
     if (!creditFocus || creditFocus.roomId !== room?.id) return;
     setTab('customer');
+    setCreditExpanded(true);
     const timer = window.setTimeout(() => {
       if (creditRef.current?.getClientRects().length) {
         creditRef.current.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
@@ -538,6 +502,7 @@ export default function RoomDossier({ onClose, room, customerId, activeRoomId, o
      มาจากสองทาง: ปุ่มรวม (absorb-into) และ "ผูกกับลูกค้าเดิม" (PATCH rooms/:id/customer คืน `absorbed`)
      `roomId` จับตอนกด ไม่ใช่ตอนสำเร็จ: สลับห้องระหว่างรอ response ต้องไม่ไปโผล่ในห้องอื่น */
   const [mergeNotice, setMergeNotice] = useState<{ roomId: string; count: number; targetId: string; fromThisRoom: boolean } | null>(null);
+  useEffect(() => { if (mergeNotice?.roomId === room?.id) setCreditExpanded(true); }, [mergeNotice, room?.id]);
   // เปิดห้องใหม่ → กลับแท็บ 1 เสมอ (สิ่งที่ต้องรู้ก่อนพิมพ์คำแรก) · ข้อความหลังรวมของห้องก่อนหน้าหายไปด้วย
   const [tabRoom, setTabRoom] = useState<string | null>(null);
   if (room?.id && tabRoom !== room.id) {
@@ -590,12 +555,18 @@ export default function RoomDossier({ onClose, room, customerId, activeRoomId, o
   const [editingAppt, setEditingAppt] = useState<Todo | null>(null);
   const newAppointment = () => { setEditingAppt(null); setApptOpen(true); };
   // นัดของห้อง — คีย์ขึ้นต้น 'todos' เพื่อให้ TodoForm invalidate แล้วรายการนี้รีเฟรชด้วย
-  const todosQuery = useQuery({
-    queryKey: ['todos', ...work.key, 'room', room?.id],
-    queryFn: () => api.get('/todos', { params: { roomId: room!.id, limit: 20 } }).then((r) => r.data?.data ?? r.data ?? []),
+  const todosQuery = useInfiniteQuery({
+    queryKey: ['todos', ...work.key, 'room', room?.id, 'pages'],
+    initialPageParam: 1,
+    queryFn: async ({ pageParam }) => {
+      const { data } = await api.get('/todos', { params: { ...work.scope, roomId: room!.id, limit: 20, page: pageParam } });
+      const rows: Todo[] = Array.isArray(data) ? data : data?.data ?? [];
+      return { rows, total: typeof data?.total === 'number' ? data.total : rows.length };
+    },
+    getNextPageParam: (last, pages) => pages.reduce((n, page) => n + page.rows.length, 0) < last.total && last.rows.length ? pages.length + 1 : undefined,
     enabled: !!room?.id,
   });
-  const roomTodos: Todo[] = Array.isArray(todosQuery.data) ? todosQuery.data : [];
+  const roomTodos = todosQuery.data?.pages.flatMap(page => page.rows) ?? [];
   const staffQuery = useQuery<AssigneeRef[]>({
     queryKey: [...work.key, 'eligible', room?.id],
     queryFn: () => api.get(`/staff-chat/rooms/${room!.id}/eligible-staff`).then((r) => r.data),
@@ -625,11 +596,7 @@ export default function RoomDossier({ onClose, room, customerId, activeRoomId, o
   }
 
   const name = room.customer?.name ?? room.displayName ?? 'ไม่ระบุชื่อ';
-  const metaLine = placeholder
-    ? ['ผู้สนใจจากแชท · ยังไม่มีเบอร์', room.createdAt ? `เริ่มคุย ${fmtDate(room.createdAt)}` : null].filter(Boolean).join(' · ')
-    : linked
-      ? [room.customer?.phone ? `โทร ${room.customer.phone}` : null, room.createdAt ? `เริ่มคุย ${fmtDate(room.createdAt)}` : null].filter(Boolean).join(' · ')
-      : 'ยังไม่ได้ผูกกับลูกค้าในระบบ';
+  const metaLine = [channelLabel[room.channel] ?? room.channel, room.customer?.phone].filter(Boolean).join(' · ');
 
   const tabs: { key: TabKey; label: string; count?: number; dot?: boolean }[] = [
     { key: 'customer', label: 'ข้อมูลลูกค้า' },
@@ -690,24 +657,16 @@ export default function RoomDossier({ onClose, room, customerId, activeRoomId, o
         }
         if (credit?.busy) return;
         setTab('customer');
+        setCreditExpanded(true);
         const messageId = event.dataTransfer.getData(CREDIT_MESSAGE_MIME);
         if (messageId) { if (!credit?.files.some(file => file.sourceMessageId === messageId)) credit?.toggleMessage(messageId); }
         else credit?.upload(Array.from(event.dataTransfer.files));
       }}>
       {creditDragging && <div className="pointer-events-none absolute inset-0 z-30 flex items-center justify-center border-2 border-dashed border-primary bg-primary/10"><div className="rounded-xl border border-primary bg-card px-4 py-5 text-center text-primary shadow-sm"><p className="font-semibold leading-snug">{tab === 'gfin' ? 'วางที่นี่ = ใส่ในใบยื่น GFIN' : 'วางที่นี่ = ให้ AI ตรวจเครดิต'}</p><p className="mt-1 text-xs leading-snug">ลูกค้าไม่เห็น</p>{(tab === 'gfin' ? gfin?.busy : credit?.busy) && <p className="mt-2 text-xs">กำลังทำงาน กรุณารอก่อนแนบไฟล์</p>}</div></div>}
-      <header className="inbox-dossier-header flex shrink-0 items-center justify-between gap-2 px-5 py-6">
-        <div><p className="text-[10px] font-semibold tracking-widest text-muted-foreground">CUSTOMER WORKSPACE</p><h2 className="mt-1 text-base font-semibold leading-snug">ข้อมูลและการดำเนินงาน</h2></div>
-        <div className="flex shrink-0"><Button variant="ghost" size="icon" aria-label="เปิดโปรไฟล์ลูกค้าเต็มหน้า" disabled={!customerId} onClick={() => customerId && navigate(`/customers/${customerId}`)}><ExternalLink className="size-4" /></Button>{onClose && <Button variant="ghost" size="icon" className="size-9 shrink-0" aria-label="ปิดข้อมูลลูกค้า" onClick={onClose}><X className="size-4" /></Button>}</div>
+      <header className="inbox-dossier-header flex shrink-0 items-center justify-between gap-2 px-5 py-4">
+        <div className="flex min-w-0 items-center gap-2">{onClose && <Button variant="ghost" size="icon" aria-label="ปิดข้อมูลลูกค้า" onClick={onClose}><ArrowLeft className="size-5" /></Button>}<h2 className="text-base font-semibold leading-snug">ข้อมูลและงาน</h2></div>
+        <div className="flex shrink-0"><Button variant="ghost" size="icon" aria-label="เปิดโปรไฟล์ลูกค้าเต็มหน้า" disabled={!customerId} onClick={() => customerId && navigate(`/customers/${customerId}`)}><ExternalLink className="size-4" /></Button></div>
       </header>
-      <div className="inbox-next-action mx-4 mb-4 rounded-lg border border-primary/25 bg-primary/5 p-3">
-        <h3 className="text-sm font-semibold leading-snug">งานถัดไป</h3>
-        <p className="my-2 text-xs leading-snug text-muted-foreground">{todosQuery.isError ? 'โหลดงานไม่สำเร็จ — ลองเปิดรายการนัดด้านล่าง' : todosQuery.isLoading ? 'กำลังโหลดงาน…' : roomTodos.some(t => !['DONE', 'CANCELLED'].includes(t.status)) ? 'มีงานติดตามในห้องนี้ · ดูรายการนัดด้านล่าง' : 'ตอบคำถามลูกค้า แล้วกำหนดงานติดตาม'}</p>
-        <div className="flex flex-wrap items-center gap-2">
-          <Button variant="outline" size="sm" onClick={newAppointment}><CalendarPlus className="size-3.5" /> ตั้งนัด</Button>
-          {!!work.settings.data?.flags.chat_mentions_enabled && <Button variant="outline" size="sm" onClick={() => setHandoffOpen(true)}><Users className="size-3.5" /> ส่งงาน</Button>}
-        </div>
-      </div>
-
       {/* แท็บเม็ดยา */}
       <div role="tablist" data-gfin-seen-tick={seenTick} className="inbox-dossier-tabs flex shrink-0 border-b border-border px-2">
         {tabs.map((t) => {
@@ -725,7 +684,7 @@ export default function RoomDossier({ onClose, room, customerId, activeRoomId, o
                   : 'border-transparent text-muted-foreground hover:bg-muted',
               )}
             >
-              {t.label}
+              <span className="min-w-0">{t.label}</span>
               {t.dot && <span aria-label="มีความเคลื่อนไหวจาก GFIN" className="size-2 rounded-full bg-warning" />}
               {t.count != null && <span className={cn('font-semibold', on ? 'opacity-90' : 'text-muted-foreground')}>{t.count}</span>}
             </button>
@@ -737,18 +696,14 @@ export default function RoomDossier({ onClose, room, customerId, activeRoomId, o
       <div className="inbox-dossier-content flex-1 min-h-0 overflow-y-auto bg-card">
         {tab === 'customer' && (
           <div className="flex flex-col gap-2.5 p-2.5">
-            <div id="room-store-appointment"><CustomerAppointments customerId={customerId} roomId={room.id} /></div>
-            <Group label="ข้อมูลลูกค้า">
-              <div className="mb-4 flex min-w-0 items-center gap-3">
-                <Avatar className="size-9 shrink-0"><AvatarImage src={room.pictureUrl ?? undefined} alt="" /><AvatarFallback className="bg-primary/5 text-primary">{name[0]}</AvatarFallback></Avatar>
+            <section className="inbox-dossier-group inbox-customer-identity" aria-label="ข้อมูลลูกค้า">
+              <div className="mb-3 flex min-w-0 items-center gap-3">
+                <Avatar className="size-11 shrink-0"><AvatarImage src={room.pictureUrl ?? undefined} alt="" /><AvatarFallback className="bg-primary/5 text-primary">{name[0]}</AvatarFallback></Avatar>
                 <div className="min-w-0"><p className="truncate text-sm font-semibold">{name}</p><p className="mt-1 text-xs leading-snug text-muted-foreground">{metaLine}</p></div>
               </div>
               {linked ? (
                 <>
-                  <button type="button" onClick={() => navigate(`/customers/${customerId}`)} className="flex w-full items-center gap-2 rounded-lg border border-border bg-muted/40 px-2.5 py-2 text-left text-xs font-semibold hover:bg-muted">
-                    <span className="min-w-0 flex-1 truncate">{room.customer?.name}</span>
-                    <span className="text-muted-foreground">›</span>
-                  </button>
+                  <div className="flex flex-wrap items-center justify-between gap-2 text-xs"><span className="text-muted-foreground">ผูกข้อมูลลูกค้าแล้ว</span><Button variant="ghost" size="sm" onClick={() => navigate(`/customers/${customerId}`)}>ดูโปรไฟล์</Button></div>
                   {/* สเปค 3.6 — ลูกค้าจริงก็เห็นคำใบ้ (ดูดผู้สนใจอีกคนเข้าคนนี้) */}
                   {samePersonHints(false)}
                 </>
@@ -758,66 +713,54 @@ export default function RoomDossier({ onClose, room, customerId, activeRoomId, o
                   canFill={canFill}
                   onFill={() => setFillOpen(true)}
                   onLink={() => setLinkOpen(true)}
-                  onOpenProfile={() => navigate(`/customers/${customerId}`)}
                   hints={samePersonHints(true)}
                 />
               ) : (
-                <div className="rounded-[10px] border border-dashed border-warning bg-warning/10 p-3 text-xs leading-relaxed text-foreground">
-                  <p className="m-0 font-bold">⚠ ห้องนี้ยังไม่ได้ผูกกับลูกค้า</p>
-                  <p className="m-0 text-foreground/80">ผูกลูกค้าเพื่อเปิดดูสัญญา การชำระเงิน และแชทช่องทางอื่น</p>
-                  <div className="mt-2 flex gap-1.5">
-                    <Button variant="outline" size="sm" className="flex-1" onClick={() => setLinkOpen(true)}>
-                      <Search className="mr-1 size-3.5" /> ค้นหาลูกค้าเดิม
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="flex-1"
-                      disabled={!canCreate}
-                      title={canCreate ? undefined : 'สร้างลูกค้าได้เฉพาะเจ้าของ ผู้จัดการสาขา และฝ่ายขาย'}
-                      onClick={() => setCreateOpen(true)}
-                    >
-                      <UserPlus className="mr-1 size-3.5" /> สร้างลูกค้าใหม่
-                    </Button>
+                <div>
+                  <p className="text-xs text-muted-foreground">ยังไม่ผูกลูกค้า</p>
+                  <div className="inbox-dossier-link-actions mt-2">
+                    <Button variant="outline" size="sm" aria-label="ค้นหาลูกค้าเดิม" onClick={() => setLinkOpen(true)}><Search className="size-4" aria-hidden="true" />ผูกลูกค้า</Button>
+                    <Button variant="ghost" size="sm" aria-label="สร้างลูกค้าใหม่" disabled={!canCreate} title={canCreate ? undefined : 'สร้างลูกค้าได้เฉพาะเจ้าของ ผู้จัดการสาขา และฝ่ายขาย'} onClick={() => setCreateOpen(true)}><UserPlus className="size-4" aria-hidden="true" />สร้างใหม่</Button>
                   </div>
                 </div>
               )}
-              {/* ค่าของ "ห้อง" อยู่นอกกล่องลูกค้า (OBI PROTO-17) — จำเป็นที่สุดตอนยังไม่มีลูกค้าให้ดู */}
-              <dl className="mt-2.5 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5 text-xs">
-                <dt className="text-muted-foreground">เริ่มคุยเมื่อ</dt>
-                <dd className="m-0 tabular-nums">{fmtDateTime(room.createdAt) || '—'}</dd>
-                <dt className="text-muted-foreground">ข้อความ</dt>
-                <dd className="m-0 tabular-nums">
-                  {room.totalMessages ?? 0}
-                  {room.lastMessageAt ? ` · ล่าสุด ${formatChatTimestamp(room.lastMessageAt)}` : ''}
-                </dd>
-              </dl>
-            </Group>
+            </section>
 
-            <div ref={creditRef} className="scroll-mt-2">
-              <Group label="ตรวจเครดิต" count={credit?.files.length || null} className={creditFlash ? "ring-2 ring-primary/40" : undefined}>
+            <div id="room-appointments" className="scroll-mt-2">
+              <RoomFollowUps key={workIdentity}
+                todos={roomTodos} loading={todosQuery.isLoading} error={todosQuery.isError}
+                onRetry={() => { void (todosQuery.isFetchNextPageError ? todosQuery.fetchNextPage() : todosQuery.refetch()); }}
+                hasMore={todosQuery.hasNextPage} loadingMore={todosQuery.isFetchingNextPage}
+                onLoadMore={() => { void todosQuery.fetchNextPage(); }}
+                onNew={newAppointment} onEdit={todo => { setEditingAppt(todo); setApptOpen(true); }} />
+            </div>
+            <div id="room-store-appointment"><CustomerAppointments customerId={customerId} roomId={room.id} /></div>
+
+            <div ref={creditRef} className="inbox-dossier-credit scroll-mt-2">
+              <DossierDisclosure title="ตรวจเครดิต" open={creditExpanded} onOpenChange={setCreditExpanded}
+                summary={credit?.loading ? 'กำลังโหลดเอกสาร…' : credit?.busy ? 'กำลังดำเนินการ…' : credit?.error || credit?.analysis?.status === 'FAILED' ? 'มีข้อผิดพลาด กรุณาตรวจสอบ' : credit?.files.length ? `${credit.files.length} ไฟล์${credit.analysis?.status === 'COMPLETED' ? ' · มีผลวิเคราะห์' : ' · พร้อมตรวจ'}` : 'ยังไม่มีเอกสาร'}
+                className={creditFlash ? 'ring-2 ring-primary/40' : undefined}>
                 {placeholder && <Hint>ผลจะติดอยู่กับผู้สนใจคนนี้ และตามไปเมื่อรวมกับลูกค้าเดิม</Hint>}
                 {mergeNotice && mergeNotice.roomId === room.id && (
                   <p className="m-0 mb-2 text-xs leading-snug text-muted-foreground">
                     ผลวิเคราะห์ {mergeNotice.count} รายการ {mergeNotice.fromThisRoom ? 'ย้ายมาจากห้องนี้ตอนรวม' : 'ย้ายมาจากผู้สนใจที่รวมเข้ามา'} — ดูได้ใน<Link to={`/customers/${mergeNotice.targetId}?tab=credit`} className="font-semibold text-primary hover:underline">โปรไฟล์ลูกค้า › เครดิต</Link>
                   </p>
                 )}
-                <div className={!credit?.files.length ? 'inbox-credit-dropzone' : 'mb-3'}>
-                  {!credit?.files.length && <><p className="font-semibold text-foreground">ลากสเตทเม้นมาวางที่นี่</p><p>PDF / รูปภาพ · ลากจากแชทหรือเลือกไฟล์<br /><span className="text-[11px]">ไม่เกิน 10 MB/ไฟล์ · สูงสุด 10 ไฟล์</span></p></>}
+                <div className="mb-3 space-y-3">
+                  <div className="inbox-credit-dropzone"><p>ลากไฟล์จากแชทหรือเลือกไฟล์</p><p>PDF / รูปภาพ · ไม่เกิน 10 MB/ไฟล์ · สูงสุด 10 ไฟล์</p></div>
                   <CloudCreditPicker localPicker={<CreditFilePicker credit={credit} />} roomId={room.id} disabled={credit?.busy || credit?.loading} />
                 </div>
                 <RoomCreditCard key={room.id} credit={credit} customerId={customerId} hideEmptyState />
-              </Group>
+              </DossierDisclosure>
+              {!creditExpanded && <Button variant="outline" className="mb-4 w-full" disabled={!credit || credit.loading} onClick={() => setCreditExpanded(true)}><Paperclip className="size-4" aria-hidden="true" />แนบเอกสารตรวจเครดิต</Button>}
             </div>
 
-            <ChatSalesContext roomId={room.id} onLink={() => setLinkOpen(true)} onNew={newAppointment} />
+            <ChatSalesContext roomId={room.id} />
 
+            <ChatServiceRequestSection key={`service:${workIdentity}`} roomId={room.id} compact />
+
+            <DossierDisclosure key={`additional:${workIdentity}`} title="ข้อมูลเพิ่มเติม" summary="โฆษณา · ช่องทางแชท · ประวัติ">
             <AdGroup room={room} />
-
-            <div id="room-appointments" className="scroll-mt-2">
-              <ChatServiceRequestSection key={`service:${workIdentity}`} roomId={room.id} />
-              <AppointmentsGroup todos={roomTodos.filter(t => !['CHAT_HANDOFF', 'CHAT_SERVICE'].includes(t.workKind ?? ''))} onNew={newAppointment} onEdit={todo => { setEditingAppt(todo); setApptOpen(true); }} />
-            </div>
 
             {!!work.settings.data?.flags.chat_mentions_enabled && <Group label="งานที่ฝากทีม">
               <Button variant="outline" size="sm" onClick={() => setHandoffOpen(true)}>ส่งงานให้ทีม</Button>
@@ -829,6 +772,13 @@ export default function RoomDossier({ onClose, room, customerId, activeRoomId, o
             </Group>
 
             <ChannelsGroup room={room} linked={linked} placeholder={placeholder} onSelectRoom={onSelectRoom} onLink={() => setLinkOpen(true)} />
+            <Group label="ประวัติห้อง">
+              <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-2 text-xs leading-snug">
+                <dt className="text-muted-foreground">เริ่มคุยเมื่อ</dt><dd>{fmtDateTime(room.createdAt) || '—'}</dd>
+                <dt className="text-muted-foreground">ข้อความ</dt><dd>{room.totalMessages ?? 0}{room.lastMessageAt ? ` · ล่าสุด ${formatChatTimestamp(room.lastMessageAt)}` : ''}</dd>
+              </dl>
+            </Group>
+            </DossierDisclosure>
           </div>
         )}
 

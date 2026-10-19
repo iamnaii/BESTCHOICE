@@ -1,14 +1,17 @@
+import { useId, useState } from 'react';
+import { SlidersHorizontal, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { Button } from '@/components/ui/button';
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-} from '@/components/ui/select';
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog';
+import { Select, SelectContent, SelectItem, SelectTrigger } from '@/components/ui/select';
 
-/** สามใบ ไม่มีไอคอน ไม่มีเลขบน "ทั้งหมด" — วัดด้วย headless Chrome ที่คอลัมน์ 320px (ที่ว่าง 287px)
- *  สี่ใบ+ไอคอน = 342px ล้น · สามใบ+ไอคอน ป้าย "99+" ทั้งสามใบ = 310.5px ยังล้น · สามใบไม่มีไอคอน = 266.9px
- *  "ยังไม่อ่าน" ถูกตัด: วัดว่ามีคนกดเปิดหรือยัง ไม่ใช่ข้อเท็จจริงฝั่งลูกค้า · เลขบน "ทั้งหมด" ถูกตัด: 99+ ตลอดกาล */
 const TABS = [
   { key: 'waiting', label: 'รอตอบ' },
   { key: 'mine', label: 'ของฉัน' },
@@ -16,170 +19,275 @@ const TABS = [
 ] as const;
 
 export const CHANNELS = [
-  { key: 'FACEBOOK', label: 'Facebook', dot: 'bg-[#1877F2]' },
-  { key: 'LINE_FINANCE', label: 'LINE การเงิน', dot: 'bg-[#06C755]' },
-  { key: 'LINE_SHOP', label: 'LINE ร้าน', dot: 'bg-[#06C755]' },
-  { key: 'TIKTOK', label: 'TikTok', dot: 'bg-foreground' },
-  { key: 'WEB', label: 'เว็บ', dot: 'bg-muted-foreground' },
+  { key: 'FACEBOOK', label: 'Facebook' },
+  { key: 'LINE_FINANCE', label: 'LINE การเงิน' },
+  { key: 'LINE_SHOP', label: 'LINE ร้าน' },
+  { key: 'TIKTOK', label: 'TikTok' },
+  { key: 'WEB', label: 'เว็บ' },
 ] as const;
 
 export type InboxTab = 'waiting' | 'mine' | 'all';
-/** ตัวกรองผู้ดูแล: ทุกคน · ยังไม่มีคนดูแล · หรือ id พนักงาน */
 export type WhoFilter = 'all' | 'free' | (string & {});
+export interface StaffOption {
+  id: string;
+  name: string;
+}
 
-/** Radix Select ห้าม value="" ⇒ ใช้ sentinel แทน "ทุกอย่าง" */
 const ALL = '__all__';
 const FREE = '__free__';
 
-export interface StaffOption { id: string; name: string }
-
-interface ChannelFilterProps {
-  activeTab: InboxTab;
-  onTabChange: (tab: InboxTab) => void;
-  /** เลือกได้ทีละช่องทาง (เจ้าของเคาะ 2026-09-05) · null = ทุกช่องทาง */
+interface FilterValues {
   channel: string | null;
-  onChannelChange: (channel: string | null) => void;
   who: WhoFilter;
-  onWhoChange: (who: WhoFilter) => void;
-  /** พนักงานที่ปรากฏในเมนูผู้ดูแล (คนที่ถือห้องอยู่ + ตัวเอง) */
+}
+interface ChannelFilterProps extends FilterValues {
+  activeTab: InboxTab;
+  onApply: (values: FilterValues) => void;
   staff: StaffOption[];
   currentUserId?: string;
-  counts?: { mine: number; waiting: number };
-  /** จำนวนห้องต่อช่องทางในกองที่เปิดอยู่ — จากเซิร์ฟเวอร์ (นับในจักรวาลของแท็บ) */
   channelCounts?: Record<string, number>;
+}
+
+export function InboxTabs({
+  activeTab,
+  onTabChange,
+  counts,
+}: {
+  activeTab: InboxTab;
+  onTabChange: (tab: InboxTab) => void;
+  counts: { mine: number; waiting: number };
+}) {
+  return (
+    <div className="inbox-queue-tabs" role="group" aria-label="มุมมองแชท">
+      {TABS.map((tab) => {
+        const count = tab.key === 'all' ? undefined : counts[tab.key];
+        return (
+          <button
+            type="button"
+            data-ui-control="button"
+            key={tab.key}
+            onClick={() => onTabChange(tab.key)}
+            aria-pressed={activeTab === tab.key}
+          >
+            {tab.label}
+            {count !== undefined && count > 0 && (
+              <span
+                className="inbox-tab-count"
+                aria-label={`${count.toLocaleString('th-TH')} ห้อง`}
+              >
+                {count > 99 ? '99+' : count}
+              </span>
+            )}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function ownerLabel(who: WhoFilter, staff: StaffOption[], currentUserId?: string) {
+  if (who === 'all') return 'ทุกคน';
+  if (who === 'free') return 'ยังไม่มีผู้ดูแล';
+  if (who === currentUserId) return 'คุณ';
+  return staff.find((person) => person.id === who)?.name ?? 'ผู้ดูแลที่เลือก';
+}
+
+export function ActiveInboxFilters({
+  activeTab,
+  channel,
+  who,
+  staff,
+  currentUserId,
+  onApply,
+}: ChannelFilterProps) {
+  const chips = [
+    ...(channel
+      ? [{ key: 'channel', label: CHANNELS.find((item) => item.key === channel)?.label ?? channel }]
+      : []),
+    ...(activeTab !== 'mine' && who !== 'all'
+      ? [{ key: 'who', label: ownerLabel(who, staff, currentUserId) }]
+      : []),
+  ];
+  if (!chips.length) return null;
+  return (
+    <div className="inbox-active-filters" aria-label="ตัวกรองที่ใช้">
+      {chips.map((chip) => (
+        <button
+          type="button"
+          data-ui-control="button"
+          key={chip.key}
+          aria-label={`ล้างตัวกรอง ${chip.label}`}
+          onClick={() =>
+            onApply({
+              channel: chip.key === 'channel' ? null : channel,
+              who: chip.key === 'who' ? 'all' : who,
+            })
+          }
+        >
+          <span>{chip.label}</span>
+          <X className="size-3.5 shrink-0" aria-hidden="true" />
+        </button>
+      ))}
+    </div>
+  );
 }
 
 export default function ChannelFilter({
   activeTab,
-  onTabChange,
   channel,
-  onChannelChange,
   who,
-  onWhoChange,
+  onApply,
   staff,
   currentUserId,
-  counts,
   channelCounts,
 }: ChannelFilterProps) {
-  // เมนูช่องทางคงรูปทุกแท็บ: แสดงช่องทางที่มีห้องในกองนี้ + ใบที่เลือกอยู่ (กันติดตัวกรองแล้วหาปุ่มปลดไม่เจอ)
-  // ลำดับคงที่ตาม enum ไม่เรียงตามจำนวน — ปุ่มที่กดวันละหลายสิบครั้งต้องอยู่ที่เดิม
-  const visibleChannels = channelCounts
-    ? CHANNELS.filter((c) => (channelCounts[c.key] ?? 0) > 0 || channel === c.key)
-    : CHANNELS;
-  const selected = channel ? CHANNELS.find((c) => c.key === channel) : undefined;
-  const totalInTab = channelCounts ? Object.values(channelCounts).reduce((a, b) => a + b, 0) : undefined;
-  // ชื่อแรกพอ — "เอกนรินทร์ คงเดช (คุณ)" บนปุ่มทำสองเมนูตกบรรทัดที่ 320px
+  const [open, setOpen] = useState(false);
+  const [draftChannel, setDraftChannel] = useState(channel);
+  const [draftWho, setDraftWho] = useState(who);
+  const id = useId();
   const mineTab = activeTab === 'mine';
-  const whoStaff = staff.find((s) => s.id === who);
-  const whoLabel = whoStaff ? (whoStaff.id === currentUserId ? 'คุณ' : whoStaff.name.split(' ')[0]) : '…';
+  const activeCount = Number(channel !== null) + Number(!mineTab && who !== 'all');
+  // Keep the selected channel available when a live refresh changes the counts.
+  const visibleChannels = CHANNELS.filter(
+    (item) =>
+      !channelCounts ||
+      (channelCounts[item.key] ?? 0) > 0 ||
+      item.key === channel ||
+      item.key === draftChannel,
+  );
+  const totalInTab = channelCounts
+    ? Object.values(channelCounts).reduce((a, b) => a + b, 0)
+    : undefined;
+  const channelOptions = [
+    { key: ALL, label: 'ทั้งหมด', count: totalInTab },
+    ...visibleChannels.map((item) => ({ ...item, count: channelCounts?.[item.key] })),
+  ];
+  const unknownOwner =
+    draftWho !== 'all' && draftWho !== 'free' && !staff.some((person) => person.id === draftWho);
 
   return (
-    <div>
-      {/* แท็บกองงาน */}
-      <div className="grid grid-cols-3 px-4 pt-1.5 gap-1.5">
-        {TABS.map((tab) => {
-          const isActive = activeTab === tab.key;
-          const n = tab.key === 'waiting' ? counts?.waiting : tab.key === 'mine' ? counts?.mine : undefined;
-          return (
-            <button data-ui-control="button"
-              key={tab.key}
-              onClick={() => onTabChange(tab.key)}
-              aria-pressed={isActive}
-              className={cn(
-                'flex min-h-10 min-w-0 items-center justify-center gap-1 px-1 py-2 text-xs font-semibold rounded-md transition-colors',
-                isActive ? 'bg-primary text-primary-foreground' : 'bg-muted/60 text-muted-foreground hover:text-foreground',
-              )}
-            >
-              {tab.label}
-              {n !== undefined && n > 0 && (
-                <span
-                  className={cn(
-                    'ml-0.5 inline-flex items-center justify-center min-w-[15px] h-[15px] px-1 rounded-full text-[9px] font-bold leading-none',
-                    isActive ? 'bg-primary-foreground/15 text-primary-foreground' : 'bg-primary/10 text-primary',
-                  )}
-                >
-                  {n > 99 ? '99+' : n}
-                </span>
-              )}
-            </button>
-          );
-        })}
-      </div>
-
-      {/* เมนูช่องทาง + เมนูผู้ดูแล — รูปเดียวกัน กรองเฉพาะรายการ ไม่แตะเลขบนแท็บ */}
-      <div className="inbox-queue-filters grid grid-cols-2 gap-2 px-4 pt-3 pb-3">
-        <Select value={channel ?? ALL} onValueChange={(v) => onChannelChange(v === ALL ? null : v)}>
-          <SelectTrigger
-            aria-label="กรองตามช่องทาง"
-            className={cn(
-              'h-10 min-h-10 w-full min-w-0 gap-1 rounded-md border px-2 py-1 text-xs font-medium',
-              selected
-                ? 'bg-primary text-primary-foreground border-primary'
-                : 'bg-background text-muted-foreground border-border/60 hover:bg-muted',
-            )}
-          >
-            {selected ? (
-              <span className="inline-flex items-center gap-1.5">
-                <span className={cn('size-1.5 rounded-full', 'bg-primary-foreground/70')} />
-                {selected.label}
-              </span>
-            ) : (
-              <>
-                <span className="inbox-filter-label">ช่องทาง</span>
-                ทุกช่องทาง
-              </>
-            )}
-          </SelectTrigger>
-          <SelectContent className="min-w-[186px]">
-            <SelectItem value={ALL} className="text-xs">
-              <span className="flex w-full items-center gap-2">ทุกช่องทาง
-                {totalInTab !== undefined && <span className="ml-auto pl-3 font-mono text-[10.5px] tabular-nums text-muted-foreground">{totalInTab}</span>}
-              </span>
-            </SelectItem>
-            {visibleChannels.map((c) => (
-              <SelectItem key={c.key} value={c.key} className="text-xs">
-                <span className="flex w-full items-center gap-2">
-                  <span className={cn('size-1.5 rounded-full', c.dot)} />
-                  {c.label}
-                  {/* ตัวเลขในเมนูเขียนเต็ม ไม่ตัดที่ 99+ — ในเมนูมีที่พอ */}
-                  <span className="ml-auto pl-3 font-mono text-[10.5px] tabular-nums text-muted-foreground">{channelCounts?.[c.key] ?? 0}</span>
-                </span>
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-
-        {/* แท็บ "ของฉัน" ล็อกผู้ดูแลเป็นตัวเองอยู่แล้ว — เมนูอยู่ที่เดิม (ตำแหน่งคงที่) แต่ปิดและบอกตรง ๆ ว่า "คุณ" */}
-        <Select
-          value={mineTab ? ALL : who === 'all' ? ALL : who === 'free' ? FREE : who}
-          onValueChange={(v) => onWhoChange(v === ALL ? 'all' : v === FREE ? 'free' : v)}
-          disabled={mineTab}
+    <Dialog
+      open={open}
+      onOpenChange={(value) => {
+        if (value) {
+          setDraftChannel(channel);
+          setDraftWho(who);
+        }
+        setOpen(value);
+      }}
+    >
+      <DialogTrigger asChild>
+        <button
+          type="button"
+          data-ui-control="button"
+          data-ui-icon="true"
+          className={cn(
+            'inbox-queue-icon inbox-filter-trigger',
+            activeCount > 0 && 'inbox-filter-active',
+          )}
+          aria-label="ตัวกรองแชท"
+          aria-describedby={activeCount > 0 ? `${id}-active-count` : undefined}
+          title="ตัวกรองแชท"
         >
-          <SelectTrigger
-            aria-label="กรองตามผู้ดูแล"
-            className={cn(
-              'h-10 min-h-10 w-full min-w-0 gap-1 rounded-md border px-2 py-1 text-xs font-medium',
-              !mineTab && who !== 'all'
-                ? 'bg-primary text-primary-foreground border-primary'
-                : 'bg-background text-muted-foreground border-border/60 hover:bg-muted',
-              mineTab && 'opacity-60',
-            )}
-          >
-            <span className="inbox-filter-label">ผู้ดูแล</span>
-            {mineTab ? 'คุณ' : who === 'all' ? 'ทุกคน' : who === 'free' ? 'ยังไม่มีคนดูแล' : whoLabel}
-          </SelectTrigger>
-          <SelectContent className="min-w-[186px]">
-            <SelectItem value={ALL} className="text-xs">ทุกคน</SelectItem>
-            {/* "ยังไม่มีคนดูแล" = กองที่ใครก็หยิบได้ (สเปก §5 ใครตอบก่อนได้เป็นเจ้าของ) */}
-            <SelectItem value={FREE} className="text-xs">ยังไม่มีคนดูแล</SelectItem>
-            {staff.map((s) => (
-              <SelectItem key={s.id} value={s.id} className="text-xs">
-                {s.name}{s.id === currentUserId ? ' (คุณ)' : ''}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-    </div>
+          <SlidersHorizontal className="size-5" aria-hidden="true" />
+          {activeCount > 0 && (
+            <span className="inbox-filter-count" id={`${id}-active-count`}>
+              <span className="sr-only">ใช้ </span>
+              {activeCount}
+              <span className="sr-only"> ตัวกรอง</span>
+            </span>
+          )}
+        </button>
+      </DialogTrigger>
+      <DialogContent className="inbox-filter-dialog">
+        <div className="inbox-filter-handle" aria-hidden="true" />
+        <DialogHeader className="text-start">
+          <DialogTitle>ตัวกรองแชท</DialogTitle>
+          <DialogDescription>เลือกช่องทางและผู้ดูแลที่ต้องการดู</DialogDescription>
+        </DialogHeader>
+        <form
+          onSubmit={(event) => {
+            event.preventDefault();
+            onApply({ channel: draftChannel, who: mineTab ? 'all' : draftWho });
+            setOpen(false);
+          }}
+        >
+          <fieldset className="min-w-0">
+            <legend className="mb-3 text-sm font-medium">ช่องทาง</legend>
+            <div className="inbox-channel-options">
+              {channelOptions.map((item) => (
+                <label key={item.key} className="inbox-channel-option">
+                  <input
+                    type="radio"
+                    name={`${id}-channel`}
+                    value={item.key}
+                    checked={(draftChannel ?? ALL) === item.key}
+                    onChange={() => setDraftChannel(item.key === ALL ? null : item.key)}
+                  />
+                  <span>
+                    <span>{item.label}</span>
+                    {item.count !== undefined && (
+                      <small>{item.count.toLocaleString('th-TH')}</small>
+                    )}
+                  </span>
+                </label>
+              ))}
+            </div>
+          </fieldset>
+          <div className="mt-6">
+            <label
+              id={`${id}-owner-label`}
+              htmlFor={`${id}-owner`}
+              className="mb-3 block text-sm font-medium"
+            >
+              ผู้ดูแล
+            </label>
+            <Select
+              value={
+                mineTab ? ALL : draftWho === 'all' ? ALL : draftWho === 'free' ? FREE : draftWho
+              }
+              onValueChange={(value) =>
+                setDraftWho(value === ALL ? 'all' : value === FREE ? 'free' : value)
+              }
+              disabled={mineTab}
+            >
+              <SelectTrigger
+                id={`${id}-owner`}
+                aria-labelledby={`${id}-owner-label`}
+                className="w-full min-w-0"
+              >
+                <span className="truncate">
+                  {mineTab ? 'คุณ · มุมมองของฉัน' : ownerLabel(draftWho, staff, currentUserId)}
+                </span>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={ALL}>{mineTab ? 'คุณ · มุมมองของฉัน' : 'ทุกคน'}</SelectItem>
+                <SelectItem value={FREE}>ยังไม่มีผู้ดูแล</SelectItem>
+                {unknownOwner && <SelectItem value={draftWho}>ผู้ดูแลที่เลือก</SelectItem>}
+                {staff.map((person) => (
+                  <SelectItem key={person.id} value={person.id}>
+                    {person.name}
+                    {person.id === currentUserId ? ' (คุณ)' : ''}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="inbox-filter-actions">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                setDraftChannel(null);
+                setDraftWho('all');
+              }}
+            >
+              ล้างตัวกรอง
+            </Button>
+            <Button type="submit">แสดงแชท</Button>
+          </div>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 }

@@ -32,6 +32,7 @@ export async function checkChatTeam(page, origin, output, width) {
     await expect(chatDraft).toHaveValue('ฉบับร่างถึงลูกค้า');
     await chatDraft.fill('');
     if (width < 1280) await page.getByRole('button', { name: 'ข้อมูลลูกค้า', exact: true }).click();
+    await page.getByRole('button', { name: 'ข้อมูลเพิ่มเติม', exact: true }).filter({ visible: true }).click();
     await page.getByRole('button', { name: 'ส่งงานให้ทีม', exact: true }).filter({ visible: true }).click();
     let dialog = page.getByRole('dialog', { name: 'ส่งงานให้ทีม', exact: true });
     const title = `ฝากงานหน้าจอ ${width} ${Date.now()}`;

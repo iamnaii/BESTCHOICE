@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import { expect } from '@playwright/test';
 import { checkConversationPins } from './check-local-conversation-pins.mjs';
+import { checkInboxFilters } from './check-local-inbox-filters.mjs';
 
 // Visual contract from docs/prototypes/chat-operations V2.4, revised 2026-10-07
 // (owner: desktop Inbox is its own workspace — no app sidebar, a compact rail on the
@@ -47,6 +48,7 @@ export async function checkInboxNavigationScale(navigation) {
 }
 
 export async function checkInboxDesign(browser, origin, output) {
+  await checkInboxFilters(browser, origin, output);
   await checkConversationPins(browser, origin, output);
   const info = await (await fetch(new URL('/api/admin/preview/info', origin))).json();
   assert.equal(info.isolated, true);
@@ -84,7 +86,7 @@ export async function checkInboxDesign(browser, origin, output) {
         assert.equal(railBox.width, largeText ? 110 : 88);
         assert.ok(railBox.height >= height - 1, 'Rail spans the full viewport height');
         assert.equal(queue.x, railBox.x + railBox.width, 'Rail must not cover the conversation list');
-        assert.equal(queue.width, 288);
+        assert.ok(queue.width >= (largeText ? 360 : 288) - 1 && queue.width <= (largeText ? 420 : 336) + 1, 'Queue width adapts without squeezing labels or taking over the conversation');
         const railOverflow = await rail.evaluate((e) => e.scrollHeight - e.clientHeight);
         assert.ok(railOverflow <= 0, `Rail content overflows by ${railOverflow}px at ${width}x${height}`);
         await expect(rail.getByRole('link', { name: 'กลับหน้าหลัก', exact: true })).toBeVisible();
@@ -106,10 +108,18 @@ export async function checkInboxDesign(browser, origin, output) {
         assert.equal(await page.locator('.inbox-rail').count(), 0, 'Phones keep the compact header, not the rail');
       }
       if (width >= 1280) {
-        await expect(page.getByRole('heading', { name: 'ข้อมูลและการดำเนินงาน', exact: true })).toBeVisible();
+        await expect(page.getByRole('heading', { name: 'ข้อมูลและงาน', exact: true })).toBeVisible();
         const dossier = await page.locator('.inbox-dossier').boundingBox();
-        assert.equal(dossier.width, 330);
+        assert.equal(dossier.width, 360);
         assert.ok(Math.abs(dossier.x + dossier.width - width) <= 1);
+        const controls = await page.locator('.inbox-dossier-tabs button, .inbox-dossier-link-actions button').evaluateAll(elements => elements.map(element => {
+          const box = element.getBoundingClientRect();
+          const range = document.createRange();
+          range.selectNodeContents(element);
+          const text = range.getBoundingClientRect();
+          return { label: element.textContent, overflow: element.scrollWidth - element.clientWidth, left: text.left - box.left, right: box.right - text.right };
+        }));
+        for (const control of controls) assert.ok(control.overflow <= 1 && control.left >= 0 && control.right >= 0, `Dossier label overlaps at ${width}px: ${JSON.stringify(control)}`);
       }
       const overflow = await page.evaluate(() => document.documentElement.scrollWidth - innerWidth);
       assert.ok(overflow <= 1, `Horizontal overflow at ${width}px: ${overflow}`);

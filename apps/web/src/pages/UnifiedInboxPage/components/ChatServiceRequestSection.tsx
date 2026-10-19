@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import DossierDisclosure from './DossierDisclosure';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { useChatWorkSettings } from '../hooks/useChatWork';
@@ -6,7 +7,7 @@ import { useChatServiceRequests } from '../hooks/useChatServiceRequests';
 import ChatServiceRequestDialog from './ChatServiceRequestDialog';
 import ChatServiceRequestCard from './ChatServiceRequestCard';
 import { workDate } from './WorkQueue';
-export default function ChatServiceRequestSection({ roomId }: { roomId: string }) {
+export default function ChatServiceRequestSection({ roomId, compact = false }: { roomId: string; compact?: boolean }) {
   const work = useChatWorkSettings(),
     [page, setPage] = useState(1),
     [creating, setCreating] = useState(false),
@@ -14,10 +15,10 @@ export default function ChatServiceRequestSection({ roomId }: { roomId: string }
   const list = useChatServiceRequests(roomId, page);
   if (!work.settings.data?.flags.chat_service_requests_enabled || work.settings.isError)
     return null;
-  return (
+  const content = (
     <section className="space-y-3 border-b pb-4" aria-label="ติดตามหลังการขาย">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h3 className="text-sm font-semibold">ติดตามหลังการขาย</h3>
+        {!compact && <h3 className="text-sm font-semibold">ติดตามหลังการขาย</h3>}
         <Button variant="outline" size="sm" onClick={() => setCreating(true)}>
           รับเรื่องหลังการขาย
         </Button>
@@ -100,4 +101,5 @@ export default function ChatServiceRequestSection({ roomId }: { roomId: string }
       </Dialog>
     </section>
   );
+  return compact ? <DossierDisclosure title="บริการหลังการขาย" summary={list.isError ? 'โหลดใบรับเรื่องไม่ได้' : list.data?.total ? `${list.data.total} ใบรับเรื่อง` : undefined}>{content}</DossierDisclosure> : content;
 }

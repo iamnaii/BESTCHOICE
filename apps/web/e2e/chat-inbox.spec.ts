@@ -24,7 +24,9 @@ test.describe('Customer inbox and legacy /chat links', () => {
     const mine = page.getByRole('button', { name: /^ของฉัน/ });
     await mine.click();
     await expect(mine).toHaveAttribute('aria-pressed', 'true');
-    await expect(page.getByRole('combobox', { name: 'กรองตามช่องทาง' })).toBeVisible();
+    await page.getByRole('button', { name: 'ตัวกรองแชท', exact: true }).click();
+    await expect(page.getByRole('dialog', { name: 'ตัวกรองแชท' })).toBeVisible();
+    await expect(page.getByRole('group', { name: 'ช่องทาง', exact: true })).toBeVisible();
   });
 
   test('old chat link opens the mobile inbox without horizontal overflow', async ({ page }) => {
@@ -32,8 +34,9 @@ test.describe('Customer inbox and legacy /chat links', () => {
     await page.goto('/chat', { waitUntil: 'domcontentloaded' });
     await expect(page).toHaveURL((url) => url.pathname === '/inbox');
     await expect(page.getByRole('button', { name: /^รอตอบ/ })).toBeVisible();
-    await page.getByRole('button', { name: 'ตัวกรองและเครื่องมือ', exact: true }).click();
-    await expect(page.getByRole('combobox', { name: 'กรองตามช่องทาง' })).toBeVisible();
+    await page.getByRole('button', { name: 'ตัวกรองแชท', exact: true }).click();
+    await expect(page.getByRole('dialog', { name: 'ตัวกรองแชท' })).toBeVisible();
+    await expect(page.getByRole('group', { name: 'ช่องทาง', exact: true })).toBeVisible();
     const width = await page.evaluate(() => ({ viewport: innerWidth, content: document.documentElement.scrollWidth }));
     expect(width.content).toBeLessThanOrEqual(width.viewport + 1);
   });

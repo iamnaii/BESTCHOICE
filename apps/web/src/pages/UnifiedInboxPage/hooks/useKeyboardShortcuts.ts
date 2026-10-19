@@ -16,6 +16,16 @@ export const isEditableTarget = (el: EventTarget | null): boolean => {
 export function useKeyboardShortcuts(actions: ShortcutActions) {
   const handler = useCallback(
     (e: KeyboardEvent) => {
+      // Portalled filters, menus and pickers own their keyboard interaction.
+      // In particular Cmd/Ctrl+Shift+R must not resolve the room behind a dialog.
+      if (
+        e.defaultPrevented ||
+        (e.target instanceof HTMLElement &&
+          e.target.closest(
+            '[role="dialog"], [role="alertdialog"], [role="menu"], [role="listbox"]',
+          ))
+      )
+        return;
       // Don't hijack shortcuts while the user is typing in a field — Cmd+K /
       // Ctrl+Shift+R would otherwise yank focus out of the composer mid-message.
       // Escape stays active everywhere so it can still close the palette.

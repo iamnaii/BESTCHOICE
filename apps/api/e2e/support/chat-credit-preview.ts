@@ -45,6 +45,8 @@ import { ChatWorkSettingsService } from '../../src/modules/staff-chat/services/c
 import { StaffInboxController } from '../../src/modules/staff-chat/staff-inbox.controller';
 import { StaffInboxService } from '../../src/modules/staff-chat/services/staff-inbox.service';
 import { ChatWorkAccessService } from '../../src/modules/staff-chat/services/chat-work-access.service';
+import { SessionQueryDto } from '../../src/modules/chat-engine/dto/session-query.dto';
+import { ChatChannel } from '@prisma/client';
 import { ResponseCycleService } from '../../src/modules/chat-engine/services/response-cycle.service';
 import { seedChatWork, previewWorkController } from './preview-chat-work-fixture';
 import { chromium } from 'playwright';
@@ -195,6 +197,7 @@ const lifecycle = new ContractLifecycleService(db, contractQuery,
   { resolveBranchCashAccount: async () => 'S11-1101', resolveInflowCashAccount: async () => 'S11-1101' } as never);
 const manager = Object.assign(Object.create(RoomManagerService.prototype), {
   prisma: db,
+  storageService: { configured: false },
   responseCycles: new ResponseCycleService(db),
 }) as RoomManagerService;
 const sampleResult = {
@@ -380,6 +383,23 @@ class PreviewController {
   @Post('preview/fixture') fixture() {
     return fixture(`ทดสอบเบราว์เซอร์ ${Date.now()}`);
   }
+  @Post('preview/message-search-fixture') async messageSearchFixture() {
+    const key = `ค้นย้อนหลัง-${randomUUID().slice(0, 8)}`;
+    const room = await db.chatRoom.create({ data: {
+      channel: 'LINE_SHOP', displayName: 'ห้องตรวจค้นข้อความย้อนหลัง', assignedToId: actor.id,
+      lastMessageAt: new Date(), waitingSince: new Date(), lastCustomerAt: new Date(),
+    } });
+    const start = Date.now() - 180 * 60_000;
+    const target = await db.chatMessage.create({ data: {
+      roomId: room.id, role: 'CUSTOMER', type: 'TEXT',
+      text: `รายละเอียดรุ่นที่คุยกันก่อนหน้านี้ ${key} ขอสีดำค่ะ`, createdAt: new Date(start),
+    } });
+    await db.chatMessage.createMany({ data: Array.from({ length: 150 }, (_, i) => ({
+      roomId: room.id, role: 'CUSTOMER' as const, type: 'TEXT' as const,
+      text: `บทสนทนาต่อมา ${i + 1}`, createdAt: new Date(start + (i + 1) * 60_000),
+    })) });
+    return { roomId: room.id, messageId: target.id, key, text: target.text };
+  }
   @Post('preview/actor/:key') switchActor(@Param('key') key: string) {
     if (!previewActors[key]) throw new BadRequestException('Unknown synthetic actor');
     actor = previewActors[key];
@@ -394,7 +414,15 @@ class PreviewController {
       primaryCompany: 'SHOP',
     };
   }
-  @Get('staff-chat/rooms') async rooms(@Query('company') company = 'SHOP') {
+  @Get('staff-chat/rooms') async rooms(@Query('company') company = 'SHOP', @Query() query: SessionQueryDto) {
+    // Search exercises the real production predicate and permission checks on synthetic data.
+    if (query.search) return manager.listRooms({
+      company: company.toUpperCase() === 'FINANCE' ? 'FINANCE' : 'SHOP', search: query.search,
+      waiting: query.waiting, expired: query.expired, openOnly: query.openOnly,
+      assignedToId: query.assignedToId, unassignedOnly: query.unassignedOnly,
+      channels: query.channels?.split(',') as ChatChannel[] | undefined,
+      page: query.page, limit: query.limit,
+    }, actor);
     const data = await db.chatRoom.findMany({
       where: { deletedAt: null, channel: company.toUpperCase() === 'FINANCE' ? 'LINE_FINANCE' : { not: 'LINE_FINANCE' } },
       include: { customer: true, assignedTo: { select: { id: true, name: true } } },
@@ -402,8 +430,11 @@ class PreviewController {
     });
     return { data, total: data.length, page: 1, totalPages: 1 };
   }
-  @Get('staff-chat/rooms/counts') counts() {
-    return {};
+  @Get('staff-chat/rooms/counts') counts(@Query('company') company = 'SHOP', @Query('tab') tab?: string) {
+    return manager.getRoomBadgeCounts(actor.id, {
+      company: company.toUpperCase() === 'FINANCE' ? 'FINANCE' : 'SHOP',
+      tab: tab === 'mine' || tab === 'waiting' ? tab : 'all',
+    });
   }
   @Get('staff-chat/ai/settings') settings() {
     return {};
@@ -418,8 +449,13 @@ class PreviewController {
       notes: [],
     };
   }
-  @Get('staff-chat/rooms/:id/messages') async messages(@Param('id') roomId: string) {
-    const messages = await db.chatMessage.findMany({ where: { roomId }, orderBy: { createdAt: 'asc' } });
+  @Get('staff-chat/rooms/:id/messages/search') async searchRoomMessages(@Param('id') roomId: string, @Query('q') q: string, @Query('page') page = '1', @Query('company') company?: string) {
+    return manager.searchRoomMessages(roomId, { q: q.trim(), page: Math.max(1, Number(page) || 1), limit: 20 }, actor, company?.toUpperCase() === 'FINANCE' ? 'FINANCE' : 'SHOP');
+  }
+  @Get('staff-chat/rooms/:id/messages') async messages(@Param('id') roomId: string, @Query('around') around?: string, @Query('company') company?: string) {
+    const messages = around
+      ? await manager.getMessageContext(roomId, around, actor, company?.toUpperCase() === 'FINANCE' ? 'FINANCE' : 'SHOP')
+      : await manager.getRecentMessages(roomId, 100);
     return messages.map(message => ({...message, mediaUrl: message.mediaUrl?.startsWith('staff-chat/library/') ? `/api/admin/preview/library/media/${message.id}` : message.mediaUrl}));
   }
   @Patch('staff-chat/rooms/:id/customer') link(
@@ -650,7 +686,7 @@ async function main() {
       /^\/api\/customers\/(search|[^/]+(?:\/credit-check.*|\/detail|\/journey(?:\/summary)?)?)$/.test(path) ||
       (path === '/api/staff-chat/canned-responses' || /^\/api\/staff-chat\/rooms\/[^/]+\/canned-responses\/[^/]+\/preview$/.test(path)) ||
       /^\/api\/staff-chat\/library\//.test(path) ||
-      /^\/api\/staff-chat\/rooms(?:\/(counts|[^/]+(?:\/(messages|read|notes(?:\/[^/]+(?:\/pin)?)?|products|cross-channel|sales-disposition|eligible-staff|handoffs|follow-ups|service-requests|service-intake-options|finance-applications|sales-context(?:\/credit\/[^/]+)?|customer|prepare-offer|credit-check.*))?))?$/.test(
+      /^\/api\/staff-chat\/rooms(?:\/(counts|[^/]+(?:\/(messages(?:\/search)?|read|notes(?:\/[^/]+(?:\/pin)?)?|products|cross-channel|sales-disposition|eligible-staff|handoffs|follow-ups|service-requests|service-intake-options|finance-applications|sales-context(?:\/credit\/[^/]+)?|customer|prepare-offer|credit-check.*))?))?$/.test(
         path,
       ) ||
       /^\/api\/staff-chat\/(handoffs\/[^/]+|follow-ups\/[^/]+|work|work-settings|work-notifications(?:\/[^/]+\/read)?|work-targets\/[^/]+\/[^/]+)$/.test(path) ||

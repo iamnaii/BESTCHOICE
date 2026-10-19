@@ -5,12 +5,14 @@ import {
   Min,
   IsEnum,
   IsBoolean,
+  MaxLength,
 } from 'class-validator';
 import { Type, Transform } from 'class-transformer';
 
 export class SessionQueryDto {
   @IsOptional()
   @IsString()
+  @MaxLength(200, { message: 'คำค้นต้องไม่เกิน 200 ตัวอักษร' })
   search?: string;
 
   @IsOptional()

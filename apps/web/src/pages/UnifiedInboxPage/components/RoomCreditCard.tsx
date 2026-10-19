@@ -113,7 +113,7 @@ export default function RoomCreditCard({
                 className="min-w-0 flex-1 text-left hover:text-primary"
                 onClick={() => void openCreditDocument(file.url)}
               >
-                <span className="block font-semibold">Statement {index + 1}</span>
+                <span className="block break-all font-semibold">{file.name || `Statement ${index + 1}`}</span>
                 <span className="text-[11px] text-muted-foreground">
                   {file.mimeType === 'application/pdf' ? 'PDF' : 'รูปภาพ'} ·{' '}
                   {(file.size / 1024).toFixed(0)} KB

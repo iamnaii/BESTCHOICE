@@ -1,4 +1,4 @@
-vi.mock('../hooks/useChatWork', () => ({ useChatWorkSettings: () => ({ key: ['chat-work', 'SHOP'], company: 'SHOP', settings: { data: { flags: { chat_follow_up_enabled: false } } } }) }));
+vi.mock('../hooks/useChatWork', () => ({ useChatWorkSettings: () => ({ key: ['chat-work', 'SHOP'], company: 'SHOP', scope: { company: 'SHOP' }, settings: { data: { flags: { chat_follow_up_enabled: false } } } }) }));
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -70,10 +70,14 @@ const ROOM = {
 };
 
 describe('RoomDossier — แผงขวา 3 แท็บ (โครง OBI)', () => {
-  it('keeps credit as the second group after customer information', () => {
+  it('places a single follow-up section after customer information, before credit', () => {
     wrap(<RoomDossier room={ROOM} customerId={null} activeRoomId="r-1" />);
     const headings = Array.from(document.querySelectorAll('.inbox-dossier-group h3')).map(h => h.textContent);
-    expect(headings.slice(0, 3)).toEqual(['ข้อมูลลูกค้า', 'ตรวจเครดิต', 'มาจากโฆษณา']);
+    expect(headings[0]).toBe('งานติดตาม');
+    expect(screen.getByRole('region', { name: 'ข้อมูลลูกค้า' })).toBeVisible();
+    expect(screen.getByRole('button', { name: 'ตรวจเครดิต' })).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.getAllByRole('button', { name: 'ตั้งนัดติดตาม' })).toHaveLength(1);
+    expect(screen.queryByText('งานถัดไป')).not.toBeInTheDocument();
   });
   beforeEach(() => {
     apiGet.mockReset();
@@ -93,7 +97,7 @@ describe('RoomDossier — แผงขวา 3 แท็บ (โครง OBI)',
     expect(dlg).toHaveTextContent('บันทึกและผูกกับแชท');
     expect(JSON.parse(dlg.querySelector('span')!.textContent!)).toEqual({ firstName: 'สมชาย', lastName: 'ก.', facebookName: 'สมชาย ก.' });
     // ยังอยู่หน้าเดิม — ไม่มีการ navigate ไป /customers
-    expect(screen.getByText('⚠ ห้องนี้ยังไม่ได้ผูกกับลูกค้า')).toBeInTheDocument();
+    expect(screen.getByText('ยังไม่ผูกลูกค้า')).toBeInTheDocument();
   });
 
   it('ห้อง LINE ไม่เติมชื่อ Facebook', () => {
@@ -122,8 +126,10 @@ describe('RoomDossier — แผงขวา 3 แท็บ (โครง OBI)',
 
   it('ห้องยังไม่ผูก: หัวบอกตรง ๆ · กล่องเตือน + 2 ปุ่ม · เริ่มคุยเมื่อ · มาจากโฆษณา · ช่องทางแชทไม่วาดแถวที่ไม่รู้', () => {
     wrap(<RoomDossier room={ROOM} customerId={null} activeRoomId="r-1" />);
-    expect(screen.getByText('ยังไม่ได้ผูกกับลูกค้าในระบบ')).toBeInTheDocument();
-    expect(screen.getByText('⚠ ห้องนี้ยังไม่ได้ผูกกับลูกค้า')).toBeInTheDocument();
+    expect(screen.getByText('ยังไม่ผูกลูกค้า')).toBeVisible();
+    expect(screen.getByText('เริ่มคุยเมื่อ')).not.toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: 'ข้อมูลเพิ่มเติม' }));
+    expect(screen.getByText('ยังไม่ผูกลูกค้า')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /ค้นหาลูกค้าเดิม/ })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /สร้างลูกค้าใหม่/ })).toBeInTheDocument();
     expect(screen.getByText('เริ่มคุยเมื่อ')).toBeInTheDocument();
@@ -145,10 +151,35 @@ describe('RoomDossier — แผงขวา 3 แท็บ (โครง OBI)',
     );
     wrap(<RoomDossier room={ROOM} customerId={null} />);
     await waitFor(() => expect(screen.getByText(/มารับ iPhone 15/)).toBeInTheDocument());
-    expect(screen.getByText('แนน · ตั้งเมื่อ 04/09')).toBeInTheDocument();
+    expect(screen.getByText('ผู้ดูแล: แนน')).toBeInTheDocument();
     expect(screen.queryByTestId('todo-form')).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: /^ตั้งนัด$/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'ตั้งนัดติดตาม' }));
     expect(screen.getByTestId('todo-form')).toHaveTextContent('r-1|นัด สมชาย ก.');
+  });
+
+  it('loads more room work without losing the first page, and retries a failed next page', async () => {
+    let failNext = true;
+    const makeTask = (i: number) => ({ id: `page-task-${i}`, title: `งานหน้า ${i}`, status: 'TODO', workKind: 'CHAT_FOLLOW_UP', dueDate: `2099-01-${String(i).padStart(2, '0')}T09:00:00Z` });
+    apiGet.mockImplementation((url: string, cfg?: { params?: { page?: number } }) => {
+      if (url !== '/todos') return Promise.resolve({ data: [] });
+      if (cfg?.params?.page === 2) {
+        if (failNext) return Promise.reject(new Error('next page failed'));
+        return Promise.resolve({ data: { data: [makeTask(21)], total: 21 } });
+      }
+      return Promise.resolve({ data: { data: Array.from({ length: 20 }, (_, i) => makeTask(i + 1)), total: 21 } });
+    });
+    wrap(<RoomDossier room={ROOM} customerId={null} />);
+    await screen.findByText('งานหน้า 1');
+    const section = within(screen.getByRole('region', { name: 'งานติดตาม' }));
+    fireEvent.click(section.getByRole('button', { name: 'โหลดงานในห้องเพิ่มเติม' }));
+    await waitFor(() => expect(section.getByRole('alert')).toHaveTextContent('โหลดงานติดตามไม่สำเร็จ'));
+    expect(section.getByText('งานหน้า 1')).toBeInTheDocument();
+    failNext = false;
+    fireEvent.click(section.getByRole('button', { name: 'ลองใหม่' }));
+    await section.findByText('งานหน้า 21');
+    expect(section.getByText('งานหน้า 1')).toBeInTheDocument();
+    expect(section.queryByRole('button', { name: 'โหลดงานในห้องเพิ่มเติม' })).not.toBeInTheDocument();
+    expect(apiGet).toHaveBeenCalledWith('/todos', { params: { company: 'SHOP', roomId: 'r-1', limit: 20, page: 2 } });
   });
 
   it('ทักเพจโดยตรง (ไม่มี attribution) → บอกว่าไม่ได้มาจากโฆษณา ไม่ปั้นข้อมูล', () => {
@@ -303,12 +334,11 @@ describe('RoomDossier — การ์ดผู้สนใจจากแชท
     wrap(<RoomDossier room={PROSPECT_ROOM} customerId="p1" activeRoomId="r-1" />);
     expect(screen.getByText('ผู้สนใจจากแชท')).toBeInTheDocument();
     expect(screen.getByText('ยังไม่มีเบอร์')).toBeInTheDocument();
-    expect(screen.getByText(/ผู้สนใจจากแชท · ยังไม่มีเบอร์ · เริ่มคุย/)).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'ข้อมูลลูกค้า' })).toHaveTextContent('Facebook');
     expect(screen.getByRole('button', { name: /เพิ่มเบอร์\/ข้อมูล/ })).toBeEnabled();
     expect(screen.getByRole('button', { name: /ผูกกับลูกค้าเดิม/ })).toBeEnabled();
     expect(screen.queryByText('⚠ ห้องนี้ยังไม่ได้ผูกกับลูกค้า')).toBeNull();
     expect(screen.queryByRole('button', { name: /สร้างลูกค้าใหม่/ })).toBeNull();
-    expect(screen.getByText('เพิ่มเบอร์หรือผูกลูกค้าเดิม เพื่อเช็กเครดิต ทำสัญญา และดูแชทอื่น')).toBeInTheDocument();
     expect(screen.getByText('เพิ่มเบอร์หรือผูกลูกค้าเดิมเพื่อดูแชทช่องทางอื่น')).toBeInTheDocument();
     expect(apiGet).not.toHaveBeenCalledWith(expect.stringContaining('/cross-channel'));
     expect(apiGet).not.toHaveBeenCalledWith(expect.stringContaining('/chat-summary'));
@@ -431,7 +461,7 @@ describe('RoomDossier — การ์ดผู้สนใจจากแชท
     fireEvent.click(screen.getByRole('button', { name: 'รวมเป็นคนเดียวกัน' }));
     const notice = await screen.findByText(/ผลวิเคราะห์ 2 รายการ ย้ายมาจากห้องนี้ตอนรวม — ดูได้ใน/);
     expect(notice).toHaveTextContent('ผลวิเคราะห์ 2 รายการ ย้ายมาจากห้องนี้ตอนรวม — ดูได้ในโปรไฟล์ลูกค้า › เครดิต');
-    const creditGroup = screen.getByRole('heading', { name: 'ตรวจเครดิต' }).closest('section')!;
+    const creditGroup = screen.getByRole('button', { name: 'ตรวจเครดิต' }).closest<HTMLElement>('[data-slot=collapsible]')!;
     expect(creditGroup).toContainElement(notice);
     expect(within(creditGroup).getByRole('link', { name: 'โปรไฟล์ลูกค้า › เครดิต' })).toHaveAttribute('href', '/customers/c-line?tab=credit');
 
@@ -491,7 +521,7 @@ describe('RoomDossier — การ์ดผู้สนใจจากแชท
     await linkViaDialog();
     const notice = await screen.findByText(/ผลวิเคราะห์ 2 รายการ ย้ายมาจากห้องนี้ตอนรวม — ดูได้ใน/);
     expect(notice).toHaveTextContent('ผลวิเคราะห์ 2 รายการ ย้ายมาจากห้องนี้ตอนรวม — ดูได้ในโปรไฟล์ลูกค้า › เครดิต');
-    await waitFor(() => expect(screen.getByRole('heading', { name: 'ตรวจเครดิต' }).closest('section')).toContainElement(notice));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'ตรวจเครดิต' }).closest('[data-slot=collapsible]')).toContainElement(notice));
     expect(within(notice).getByRole('link', { name: 'โปรไฟล์ลูกค้า › เครดิต' })).toHaveAttribute('href', '/customers/c-old?tab=credit');
   });
 
@@ -550,12 +580,12 @@ describe('RoomDossier — คำใบ้อาจเป็นคนเดีย
 
   it('คำใบ้อยู่ในกลุ่มข้อมูลลูกค้าใต้ปุ่มชื่อ · รวม = ดูดผู้สนใจอีกคนเข้าคนนี้ · none = ตรวจสอบเอง · ไม่ใช่ = dismiss', async () => {
     wrap(<RoomDossier room={LINKED_ROOM} customerId="cus-1" activeRoomId="r-1" />);
-    const infoGroup = screen.getByRole('heading', { name: 'ข้อมูลลูกค้า' }).closest('section')!;
+    const infoGroup = screen.getByRole('region', { name: 'ข้อมูลลูกค้า' });
     const hints = within(infoGroup).getAllByText(/อาจเป็นคนเดียวกับ/);
     expect(hints).toHaveLength(2);
     expect(hints[0]).toHaveTextContent('— TikTok · ยังไม่มีเบอร์ · ทักเมื่อ');
     // ปุ่มชื่อลูกค้ามาก่อนคำใบ้
-    const nameButton = within(infoGroup).getByRole('button', { name: /สมชาย ใจดี/ });
+    const nameButton = within(infoGroup).getByRole('button', { name: 'ดูโปรไฟล์' });
     expect(nameButton.compareDocumentPosition(hints[0]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     // ห้องลูกค้าจริงไม่มีการ์ดผู้สนใจ
     expect(screen.queryByText('ผู้สนใจจากแชท')).toBeNull();
@@ -585,7 +615,7 @@ describe('RoomDossier — คำใบ้อาจเป็นคนเดีย
     wrap(<RoomDossier room={LINKED_ROOM} customerId="cus-1" activeRoomId="r-1" />);
     fireEvent.click(screen.getByRole('button', { name: 'รวมเป็นคนเดียวกัน' }));
     const notice = await screen.findByText(/ผลวิเคราะห์ 1 รายการ ย้ายมาจากผู้สนใจที่รวมเข้ามา — ดูได้ใน/);
-    expect(screen.getByRole('heading', { name: 'ตรวจเครดิต' }).closest('section')).toContainElement(notice);
+    expect(screen.getByRole('button', { name: 'ตรวจเครดิต' }).closest('[data-slot=collapsible]')).toContainElement(notice);
     expect(screen.getByRole('link', { name: 'โปรไฟล์ลูกค้า › เครดิต' })).toHaveAttribute('href', '/customers/cus-1?tab=credit');
   });
 

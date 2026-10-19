@@ -1,4 +1,6 @@
 import ChatLibraryPicker from './ChatLibraryPicker';
+import ChatHandoffDialog from './ChatHandoffDialog';
+import RoomMessageSearch from './RoomMessageSearch';
 import LibraryAttachmentTray from './LibraryAttachmentTray';
 import { useChatWorkSettings } from '../hooks/useChatWork';
 import { useLibraryDraft } from '../hooks/useLibraryDraft';
@@ -9,6 +11,8 @@ import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { useRef, useEffect, useLayoutEffect, useState, useMemo } from 'react';
 
 import {
+  Search,
+  Users,
   Cloud,
   Mic,
   Square,
@@ -88,6 +92,11 @@ interface ChatPanelProps {
   session: any;
   messages: any[];
   isLoadingMessages: boolean;
+  focusedMessageId?: string;
+  searchContextError?: boolean;
+  onRetrySearchContext?: () => void;
+  onReturnToLatest?: () => void;
+  onSelectSearchResult?: (messageId: string) => void;
   isCustomerTyping?: boolean;
   // Returns false when the send was rejected so the composer can keep the typed
   // text; sticker/GIF callers ignore the result.
@@ -138,6 +147,10 @@ export default function ChatPanel({
   session,
   messages,
   isLoadingMessages,
+  focusedMessageId,
+  searchContextError,
+  onRetrySearchContext,
+  onReturnToLatest,
   isCustomerTyping = false,
   onSendMessage,
   notes = [],
@@ -158,6 +171,7 @@ export default function ChatPanel({
   onReturnToAI,
   currentUserId,
   onShowCustomerInfo,
+  onSelectSearchResult,
   isUploadingFile = false,
   otherViewers,
   roomMuted,
@@ -176,6 +190,8 @@ export default function ChatPanel({
   const isMobile = useIsMobile();
   const [toolsOpen, setToolsOpen] = useState(false);
   const [roomMenuOpen, setRoomMenuOpen] = useState(false);
+  const [roomSearchOpen, setRoomSearchOpen] = useState(false);
+  const [handoffOpen, setHandoffOpen] = useState(false);
   const [aiOpen, setAiOpen] = useState(false);
   const fileDraft = useRoomFileDraft(session?.id);
   const noteDrafts = useRef(createNoteDraftStore());
@@ -195,6 +211,8 @@ export default function ChatPanel({
   );
   useEffect(() => {
     setComposerMode('chat');
+    setRoomSearchOpen(false);
+    setHandoffOpen(false);
     setToolsOpen(false);
     setRoomMenuOpen(false);
     setShowActions(false);
@@ -374,8 +392,9 @@ export default function ChatPanel({
   useEffect(() => {
     const log = messagesEndRef.current?.parentElement;
     if (!log) return;
-    followingLatest.current = true;
+    followingLatest.current = !focusedMessageId;
     const track = () => {
+      if (focusedMessageId) return;
       followingLatest.current = log.scrollHeight - log.scrollTop - log.clientHeight < 48;
     };
     const resize = new ResizeObserver(() => {
@@ -387,10 +406,17 @@ export default function ChatPanel({
       resize.disconnect();
       log.removeEventListener('scroll', track);
     };
-  }, [roomId]);
+  }, [roomId, focusedMessageId]);
   useEffect(() => {
     const anchor = messagesEndRef.current;
     if (!anchor || messages.length === 0) return;
+    if (focusedMessageId) {
+      const target = Array.from(anchor.parentElement?.querySelectorAll<HTMLElement>('[data-message-id]') ?? [])
+        .find((element) => element.dataset.messageId === focusedMessageId);
+      target?.scrollIntoView({ behavior: 'auto', block: 'center' });
+      scrolledRoomRef.current = undefined;
+      return;
+    }
     if (scrolledRoomRef.current !== roomId) {
       scrolledRoomRef.current = roomId;
       anchor.scrollIntoView({ behavior: 'auto' }); // jump to latest on room open
@@ -400,7 +426,7 @@ export default function ChatPanel({
     anchor.scrollIntoView({ behavior: 'smooth' });
     // pending/failed counts included so just-sent (or just-failed) ghosts —
     // rendered below the saved messages — scroll into view immediately.
-  }, [messages.length, notes.length, roomId, pendingSends?.length, failedSends?.length]);
+  }, [messages.length, notes.length, roomId, pendingSends?.length, failedSends?.length, focusedMessageId, isLoadingMessages]);
 
   // Auto-grow the textarea to fit its content (capped). Runs on every inputText
   // change — typing, send-clear, draft load (Task 2), emoji/template insert —
@@ -410,7 +436,7 @@ export default function ChatPanel({
     if (!el) return;
     el.style.height = 'auto';
     el.style.height = `${Math.min(el.scrollHeight, MAX_COMPOSER_HEIGHT)}px`;
-  }, [inputText]);
+  }, [inputText, focusedMessageId]);
 
   // On room change: persist the room you left, restore the room you entered,
   // drop the AI-suggestion association (it's room-scoped — see below), and focus
@@ -492,7 +518,7 @@ export default function ChatPanel({
   const voice = useVoiceTyping({
     roomId,
     enabled:
-      !!session && !session.resolvedAt && session.status !== 'IDLE' && !isNoteMode && !isSending,
+      !!session && !session.resolvedAt && session.status !== 'IDLE' && !isNoteMode && !isSending && !focusedMessageId,
     onText: (text) => {
       // Append to the current draft so edits made while listening are preserved.
       setInputText((previous) => previous + (previous && !/\s$/.test(previous) ? ' ' : '') + text);
@@ -794,6 +820,7 @@ export default function ChatPanel({
             )}
           </div>
         </div>
+        {onSelectSearchResult && <button type="button" className="inbox-room-search-trigger" aria-label="ค้นหาในแชท" onClick={() => setRoomSearchOpen(true)}><Search className="size-4" aria-hidden="true" /><span>ค้นหาในแชท</span></button>}
         <div className="inbox-room-toolbar ml-auto flex shrink-0 items-center gap-2">
           {onShowCustomerInfo && (
             <button data-ui-control="button" data-ui-icon="true"
@@ -874,6 +901,7 @@ export default function ChatPanel({
               </button>
             )}
           </div>
+          {!!librarySettings.settings.data?.flags.chat_mentions_enabled && <button type="button" className="inbox-room-handoff" onClick={() => setHandoffOpen(true)}><Users className="size-4" aria-hidden="true" /><span>ส่งงาน</span></button>}
           {/* ปิดงาน = ปุ่มหลักมีคำ (เดิมซ่อนใน ⋮) · ห้องที่ปิดแล้วปุ่มเดิมกลายเป็น "เปิดงานกลับ" */}
           {isResolved ? (
             onReopen && (
@@ -940,6 +968,7 @@ export default function ChatPanel({
             </span>
           </span>
         </button>
+        {onSelectSearchResult && <button type="button" className="inbox-touch" aria-label="ค้นหาในแชท" onClick={() => setRoomSearchOpen(true)}><Search className="size-5" aria-hidden="true" /></button>}
         <button
           type="button"
           onClick={() => setRoomMenuOpen(true)}
@@ -949,6 +978,13 @@ export default function ChatPanel({
           <MoreVertical className="size-5" />
         </button>
       </div>
+      {isMobile && <div className="inbox-mobile-room-actions">
+        <button type="button" aria-label="เปิดข้อมูลลูกค้า" onClick={onShowCustomerInfo}><UserCircle2 className="size-4" aria-hidden="true" />ข้อมูลลูกค้า</button>
+        {!!librarySettings.settings.data?.flags.chat_mentions_enabled && <button type="button" onClick={() => setHandoffOpen(true)}><Users className="size-4" aria-hidden="true" />ส่งงาน</button>}
+        {isResolved ? <button type="button" disabled={reopenPending} onClick={onReopen}><RotateCw className="size-4" aria-hidden="true" />เปิดงานกลับ</button> : <button type="button" className="inbox-mobile-resolve" onClick={onResolve}><Check className="size-4" aria-hidden="true" />ปิดงาน</button>}
+      </div>}
+      {onSelectSearchResult && <RoomMessageSearch key={`room-search:${librarySettings.company}:${session.id}`} roomId={session.id} open={roomSearchOpen} onClose={() => setRoomSearchOpen(false)} onSelect={onSelectSearchResult} />}
+      <ChatHandoffDialog key={`chat-handoff:${librarySettings.company}:${session.id}`} roomId={session.id} open={handoffOpen} onOpenChange={setHandoffOpen} />
       {isMobile && !aiPaused && !isResolved && onToggleAi && (
         <div className="inbox-bot-status">
           <Bot className="size-4 shrink-0" />
@@ -1077,6 +1113,15 @@ export default function ChatPanel({
       </div>
 
       {/* Messages */}
+      {focusedMessageId && (
+        <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-y border-border bg-primary/5 px-4 py-2 text-sm">
+          <span>{searchContextError ? 'เปิดข้อความไม่สำเร็จ อาจถูกลบหรือไม่มีสิทธิ์เข้าถึง' : 'ข้อความที่พบจากการค้นหาและบทสนทนาใกล้เคียง'}</span>
+          <div className="flex items-center gap-2">
+            {searchContextError && <button type="button" className="min-h-11 rounded-md px-3 text-primary" onClick={onRetrySearchContext}>ลองอีกครั้ง</button>}
+            <button type="button" className="min-h-11 rounded-md px-3 font-medium text-primary hover:bg-primary/10" onClick={onReturnToLatest}>กลับข้อความล่าสุด</button>
+          </div>
+        </div>
+      )}
       {pinnedNote && onUnpinNote && <PinnedNoteBar note={pinnedNote} onUnpin={onUnpinNote} />}
       <div
         className="inbox-message-log flex-1 min-h-0 overflow-y-auto px-5 py-5"
@@ -1108,7 +1153,7 @@ export default function ChatPanel({
               const showDateSeparator =
                 i === 0 || !isSameDay(new Date(prev.createdAt), new Date(item.createdAt));
               return (
-                <div key={item.id}>
+                <div key={item.id} data-message-id={item.id} className={item.id === focusedMessageId ? 'rounded-lg bg-primary/10 ring-1 ring-inset ring-primary/40' : undefined}>
                   {showDateSeparator && (
                     <div className="flex items-center gap-3 py-3 px-4">
                       <div className="flex-1 h-px bg-border" />
@@ -1254,7 +1299,7 @@ export default function ChatPanel({
         </div>
       )}
 
-      {!isResolved && !isMobile && (
+      {!isResolved && !isMobile && !focusedMessageId && (
         <AiSuggestPanel
           roomId={session.id}
           onSelectSuggestion={handleSelectSuggestion}
@@ -1263,7 +1308,7 @@ export default function ChatPanel({
       )}
 
       {/* One input across breakpoints: moving between mobile and desktop preserves drafts. */}
-      {!isResolved && (
+      {!isResolved && !focusedMessageId && (
         <div
           className={cn(
             'inbox-composer group/composer shrink-0 border-t border-border bg-card',

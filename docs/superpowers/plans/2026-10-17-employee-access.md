@@ -593,10 +593,12 @@ R92–96 separate the genuine global account/debit producer from four loyalty HT
 
 **Files:** LoyaltyController4, actual source/query/projector/verification helpers, DTO/current capability manifest boundaries and meaningful owned HTTP/PG tests; exactly4 SHOP routes.
 
-- [ ] Consume reviewed typed producer. Four useful authorized/denied actual marked HTTP paths, original tuples/current revocation; independently current Customer, earningPayment/FINANCEContract, typedSale/redemption and referralCustomer/Contract sources.
-- [ ] R93 explicit global balance or null/unavailable; scoped visible history/totals before counts/limits/ranking, no false global/lifetime/expiry claims, nullable referral hasContract when coverage incomplete.
-- [ ] Direct POST redeem verifies only genuine exact typed selected Sale redemption under R94 action/source rights. Arbitrary target/amount/customer/Contract/approver text cannot debit, reprice or createproof; duplicates zeroeffects. Explicit VERIFIED/alreadyRedeemed contract; current balance onlywithaccountread.
-- [ ] Preserve public/system/auth and canonical money paths, safe evidence and significant read contract; publish brokenCustomerDetail form migration, nullable metrics/UI7 and approval/audit/final8 obligations. Exact4registrations/evidence, types/lint/regressions/report/commit and independent gate.
+- [x] Consume reviewed typed producer. Four useful authorized/denied actual marked HTTP paths, original tuples/current revocation; independently current Customer, earningPayment/FINANCEContract, typedSale/redemption and referralCustomer/Contract sources.
+- [x] R93 explicit global balance or null/unavailable; scoped visible history/totals before counts/limits/ranking, no false global/lifetime/expiry claims, nullable referral hasContract when coverage incomplete.
+- [x] Direct POST redeem verifies only genuine exact typed selected Sale redemption under R94 action/source rights. Arbitrary target/amount/customer/Contract/approver text cannot debit, reprice or createproof; duplicates zeroeffects. Explicit VERIFIED/alreadyRedeemed contract; current balance onlywithaccountread.
+- [x] Preserve public/system/auth and canonical money paths, safe evidence and significant read contract; publish brokenCustomerDetail form migration, nullable metrics/UI7 and approval/audit/final8 obligations. Exact4registrations/evidence, types/lint/regressions/report/commit and independent gate.
+
+**Reviewed consumer completion:** db22914b8..cb88087dd; independent spec/quality PASS,0Critical/0Important/1Minor inherited Jest forceExit advisory. Final50 marked owned HTTP, separateaudit17/legacyloyalty6, shared/API/Webtypes andlint pass. Exactly4 real registrations with useful authorized/current-denial controls; scoped visible history/referral/nullaccount semantics and exact existing-Sale verification preserve money. SHOP277/280; only directDefect3 remains inthisparent. ActualJWT/browser/preview8 and allFINANCE/operations/audit/approval/UI/system obligations remain open.
 
 ### Task 4.1.6.3.3: Direct defect exchange and SHOP parent reconciliation
 

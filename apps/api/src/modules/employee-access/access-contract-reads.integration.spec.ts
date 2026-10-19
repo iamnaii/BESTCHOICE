@@ -39,7 +39,24 @@ if (
   process.env.DATABASE_URL_FINANCE !== url
 )
   throw new Error('Both database URLs must identify the owned isolated cluster');
-const db = new PrismaClient({ datasources: { db: { url } } });
+const db = new PrismaClient({
+  datasources: { db: { url } },
+  log: [{ emit: 'event', level: 'query' }],
+});
+let measuredQueries: string[] | undefined;
+let afterContractLockQuery: (() => void) | undefined;
+db.$on('query', (event) => {
+  measuredQueries?.push(event.query);
+  if (
+    afterContractLockQuery &&
+    event.query.includes('FROM contracts') &&
+    event.query.includes('FOR SHARE')
+  ) {
+    const once = afterContractLockQuery;
+    afterContractLockQuery = undefined;
+    once();
+  }
+});
 const snapshots = new AccessSnapshotService(db as PrismaService);
 const marker = randomUUID();
 let app: INestApplication,
@@ -459,7 +476,10 @@ async function saleFor(row: Awaited<ReturnType<typeof contract>>) {
     },
   });
 }
-async function saleRead(id: string, filters: { contractStatus?: string; limit?: number } = {}) {
+async function saleRead(
+  id: string,
+  filters: { contractStatus?: string; limit?: number; search?: string; branchId?: string } = {},
+) {
   const resources = new AccessResourceService(db as PrismaService, snapshots);
   const parties = new AccessTradeInProjectionService(resources);
   const projection = new AccessSalesProjectionService(resources, parties);
@@ -695,3 +715,306 @@ it.each(['navigation', 'status filter'])(
     } else expect(result.data.find((r) => r.id === sale.id)?.contractId).toBeNull();
   },
 );
+
+// I1: realistic synthetic portfolio shape, isolated DB only. Per-case customers,
+// products and twelve installments; ten genuine SHOP origins and explicit FINANCE.
+async function portfolio(size: number) {
+  const id = await user();
+  await grant(id, ['contracts.read', 'payments.read'], 'FINANCE');
+  const shop = await db.companyInfo.findUniqueOrThrow({ where: { companyCode: 'SHOP' } });
+  const branches = [branchA, branchB];
+  for (let i = 2; i < 10; i++)
+    branches.push(
+      (await db.branch.create({ data: { name: 'Scale ' + i, companyId: shop.id } })).id,
+    );
+  const prefix = 'SCALE-' + randomUUID();
+  for (let offset = 0; offset < size; offset += 500) {
+    const cases = Array.from({ length: Math.min(500, size - offset) }, (_, i) => ({
+      id: randomUUID(),
+      customerId: randomUUID(),
+      productId: randomUUID(),
+      branchId: branches[(offset + i) % branches.length],
+      index: offset + i,
+    }));
+    await db.customer.createMany({
+      data: cases.map((c) => ({
+        id: c.customerId,
+        name: 'Synthetic portfolio customer ' + c.index,
+        phone: '0811111111',
+      })),
+    });
+    await db.product.createMany({
+      data: cases.map((c) => ({
+        id: c.productId,
+        name: 'Synthetic phone ' + c.index,
+        brand: 'Apple',
+        model: 'Scale',
+        category: 'PHONE_NEW',
+        costPrice: 10000,
+        branchId: c.branchId,
+      })),
+    });
+    await db.contract.createMany({
+      data: cases.map((c) => ({
+        id: c.id,
+        contractNumber: prefix + '-' + c.index,
+        customerId: c.customerId,
+        productId: c.productId,
+        branchId: c.branchId,
+        salespersonId: actor,
+        assignedToId: id,
+        planType: 'STORE_WITH_INTEREST',
+        sellingPrice: 14000,
+        downPayment: 2000,
+        financedAmount: 12000,
+        interestRate: 0.01,
+        totalMonths: 12,
+        interestTotal: 1440,
+        monthlyPayment: 1120,
+        status: 'ACTIVE',
+        workflowStatus: 'APPROVED',
+        createdAt: new Date(Date.UTC(2025, c.index % 12, 1)),
+      })),
+    });
+    await db.payment.createMany({
+      data: cases.flatMap((c) =>
+        Array.from({ length: 12 }, (_, i) => ({
+          contractId: c.id,
+          installmentNo: i + 1,
+          dueDate: new Date(Date.UTC(2026, i, 1)),
+          amountDue: 1120,
+          amountPaid: i < 6 ? 1120 : 0,
+          status: i < 6 ? 'PAID' : 'PENDING',
+        })),
+      ),
+    });
+  }
+  // Fresh bulk-loaded clusters need planner statistics before measuring read work.
+  await db.$executeRaw`ANALYZE contracts`;
+  await db.$executeRaw`ANALYZE customers`;
+  await db.$executeRaw`ANALYZE products`;
+  await db.$executeRaw`ANALYZE payments`;
+  return { id, prefix };
+}
+let supportedPortfolio: Awaited<ReturnType<typeof portfolio>> | undefined;
+it.each([250, 10000])(
+  'I1 bounds query count and unrelated managed contention for %i cases',
+  async (size) => {
+    const fixture = await portfolio(size);
+    if (size === 10000) supportedPortfolio = fixture;
+    const other = await user();
+    await grant(other, ['contracts.read'], 'FINANCE', [branchA]);
+    let competing: Promise<request.Response> | undefined;
+    let observation: Promise<boolean> | undefined;
+    let competingMs = 0;
+    measuredQueries = [];
+    afterContractLockQuery = () => {
+      const started = performance.now();
+      let done = false;
+      competing = http('/contracts/' + contractA, other)
+        .expect(200)
+        .then((response) => {
+          competingMs = performance.now() - started;
+          done = true;
+          return response;
+        });
+      observation = (async () => {
+        for (let i = 0; i < 200 && !done; i++) {
+          const [state] = await db.$queryRaw<
+            { waiting: boolean }[]
+          >`SELECT EXISTS(SELECT 1 FROM pg_stat_activity WHERE wait_event_type='Lock' AND query LIKE '%pg_advisory_xact_lock(718294630)%' AND pid<>pg_backend_pid()) AS waiting`;
+          if (state.waiting) return true;
+          await new Promise((resolve) => setTimeout(resolve, 2));
+        }
+        return false;
+      })();
+    };
+    const started = performance.now();
+    try {
+      const response = await http('/contracts?limit=1&search=' + fixture.prefix, fixture.id).expect(
+        200,
+      );
+      const portfolioMs = performance.now() - started;
+      expect(competing).toBeDefined();
+      await competing;
+      const waitObserved = await observation;
+      const queries = measuredQueries;
+      measuredQueries = undefined;
+      const sourceLockQueries = queries.filter(
+        (q) =>
+          q.includes('FOR SHARE') &&
+          (q.includes('FROM contracts') ||
+            q.includes("company_code='FINANCE'") ||
+            q.includes('JOIN contracts c')),
+      ).length;
+      console.log(
+        'I1_PORTFOLIO',
+        JSON.stringify({
+          cases: size,
+          branches: 10,
+          installments: size * 12,
+          pageSize: 1,
+          totalQueries: queries.length,
+          sourceLockQueries,
+          portfolioMs: Math.round(portfolioMs),
+          unrelatedManagedMs: Math.round(competingMs),
+          advisoryWaitObserved: waitObserved,
+        }),
+      );
+      expect(response.body.total).toBe(size);
+      expect(response.body.data).toHaveLength(1);
+      expect(response.body.data[0].payments).toHaveLength(12);
+      expect(waitObserved).toBe(true);
+      // Two operations: one set of source locks for the portfolio and one detail.
+      expect(sourceLockQueries).toBeLessThanOrEqual(8);
+      expect(queries.length).toBeLessThan(200);
+      expect(portfolioMs).toBeLessThan(5000);
+      expect(competingMs).toBeLessThan(5000);
+    } finally {
+      afterContractLockQuery = undefined;
+      measuredQueries = undefined;
+      await competing;
+      await observation;
+    }
+  },
+  120000,
+);
+
+it('I1 rejects overflow without partial results and recovers through proven filters for Contracts and Sale status', async () => {
+  const fixture = supportedPortfolio ?? (await portfolio(10000));
+  const cases = await db.contract.findMany({
+    where: { contractNumber: { startsWith: fixture.prefix } },
+  });
+  await grant(fixture.id, ['sales.read'], 'SHOP');
+  for (let offset = 0; offset < cases.length; offset += 500) {
+    await db.sale.createMany({
+      data: cases.slice(offset, offset + 500).map((row) => ({
+        saleNumber: row.contractNumber,
+        saleType: 'INSTALLMENT',
+        contractId: row.id,
+        customerId: row.customerId,
+        productId: row.productId,
+        salespersonId: actor,
+        branchId: row.branchId,
+        sellingPrice: 14000,
+        netAmount: 14000,
+      })),
+    });
+  }
+  await db.$executeRaw`ANALYZE sales`;
+  measuredQueries = [];
+  const started = performance.now();
+  let exact;
+  let queries: string[];
+  try {
+    exact = await saleRead(fixture.id, {
+      contractStatus: 'ACTIVE',
+      limit: 1,
+      search: fixture.prefix,
+    });
+    queries = measuredQueries;
+  } finally {
+    measuredQueries = undefined;
+  }
+  // Four portfolio locks plus the independently projected one-row Contract link.
+  const sourceLockQueries = queries.filter(
+    (q) =>
+      q.includes('FOR SHARE') &&
+      (q.includes('FROM contracts') || q.includes("company_code='FINANCE'")),
+  ).length;
+  console.log(
+    'I1_SALE_PORTFOLIO',
+    JSON.stringify({
+      cases: 10000,
+      totalQueries: queries.length,
+      sourceLockQueries,
+      elapsedMs: Math.round(performance.now() - started),
+    }),
+  );
+  expect(exact.total).toBe(10000);
+  expect(exact.data).toHaveLength(1);
+  expect(sourceLockQueries).toBeLessThanOrEqual(8);
+  expect(queries.length).toBeLessThan(200);
+
+  const extra = await contract(branchB, fixture.id);
+  await db.contract.update({
+    where: { id: extra.id },
+    data: { contractNumber: fixture.prefix + '-overflow' },
+  });
+  const extraSale = await saleFor(extra);
+  await db.sale.update({
+    where: { id: extraSale.id },
+    data: { saleNumber: fixture.prefix + '-overflow' },
+  });
+  const overflow = await http('/contracts?limit=1&search=' + fixture.prefix, fixture.id).expect(
+    400,
+  );
+  expect(overflow.body.message).toBe('กรุณาระบุตัวกรองให้แคบลงแล้วลองอีกครั้ง');
+  expect(overflow.body.data).toBeUndefined();
+  expect(overflow.body.total).toBeUndefined();
+  expect(overflow.body.summary).toBeUndefined();
+  expect(JSON.stringify(overflow.body)).not.toMatch(/10000|10001|SCALE-/);
+  await expect(
+    saleRead(fixture.id, { contractStatus: 'ACTIVE', limit: 1, search: fixture.prefix }),
+  ).rejects.toMatchObject({ status: 400, message: overflow.body.message });
+  const narrowed = await http(
+    '/contracts?limit=1&search=' + fixture.prefix + '&branchId=' + branchA,
+    fixture.id,
+  ).expect(200);
+  expect(narrowed.body.total).toBe(1000);
+  expect(
+    (
+      await saleRead(fixture.id, {
+        contractStatus: 'ACTIVE',
+        limit: 1,
+        search: fixture.prefix,
+        branchId: branchA,
+      })
+    ).total,
+  ).toBe(1000);
+  // Unreadable contributors do not enter the overflow probe or disclose their count.
+  const scoped = await user();
+  await grant(scoped, ['contracts.read', 'payments.read'], 'FINANCE', [branchA]);
+  await grant(scoped, ['sales.read'], 'SHOP');
+  expect(
+    (await http('/contracts?limit=1&search=' + fixture.prefix, scoped).expect(200)).body.total,
+  ).toBe(1000);
+  expect(
+    (await saleRead(scoped, { contractStatus: 'ACTIVE', limit: 1, search: fixture.prefix })).total,
+  ).toBe(1000);
+}, 120000);
+
+it('I1 rechecks a portfolio origin after an observed branch dependency lock wait', async () => {
+  const shop = await db.companyInfo.findUniqueOrThrow({ where: { companyCode: 'SHOP' } });
+  const branch = await db.branch.create({ data: { name: 'Dependency wait', companyId: shop.id } });
+  const reader = await user();
+  await grant(reader, ['contracts.read'], 'FINANCE');
+  const row = await contract(branch.id);
+  let response: Promise<request.Response> | undefined;
+  await db.$transaction(
+    async (tx) => {
+      const [{ pid }] = await tx.$queryRaw<{ pid: number }[]>`SELECT pg_backend_pid() AS pid`;
+      await tx.$queryRaw`SELECT id FROM branches WHERE id=${branch.id} FOR UPDATE`;
+      response = http('/contracts?limit=1&search=' + row.contractNumber, reader).then((r) => r);
+      let waited = false;
+      for (let i = 0; i < 200; i++) {
+        await tx.$executeRaw`SELECT pg_stat_clear_snapshot()`;
+        const [state] = await tx.$queryRaw<
+          { waiting: boolean }[]
+        >`SELECT EXISTS(SELECT 1 FROM pg_stat_activity WHERE wait_event_type='Lock' AND ${pid}=ANY(pg_blocking_pids(pid))) AS waiting`;
+        if (state.waiting) {
+          waited = true;
+          break;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 5));
+      }
+      expect(waited).toBe(true);
+      await tx.branch.update({ where: { id: branch.id }, data: { isActive: false } });
+    },
+    { timeout: 10000 },
+  );
+  const result = await response!;
+  expect(result.status).toBe(200);
+  expect(result.body.total).toBe(0);
+  expect(result.body.data).toEqual([]);
+});

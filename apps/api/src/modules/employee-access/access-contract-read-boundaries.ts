@@ -5,7 +5,11 @@ import { ContractStatus, ContractWorkflowStatus, Prisma } from '@prisma/client';
 import { ContractsListQueryDto } from '../contracts/dto/contracts-list-query.dto';
 import { ACCESS_BOUNDARIES } from './access-policy.registry';
 import { AccessResourceService, PersistedAccessResolver } from './access-resource.service';
-import { AccessPartySourceService } from './access-party-source.service';
+import {
+  AccessPartySourceService,
+  FINANCE_CONTRACT_READ_LIMIT,
+  lockFinanceContractReadSources,
+} from './access-party-source.service';
 import { currentDomainAccess } from './access-execution-context';
 import { requestedAccessCompany } from './access-shop-boundaries';
 import { PartyQueryPlan } from './access-party-query-plan';
@@ -116,9 +120,12 @@ export class AccessContractReadBoundaries implements OnModuleInit {
                   where,
                   select: { id: true },
                   orderBy: { id: 'asc' },
+                  take: FINANCE_CONTRACT_READ_LIMIT + 1,
                 });
-                for (const candidate of ids)
-                  await this.sources.financeContract(ctx.client, candidate.id, true);
+                await lockFinanceContractReadSources(
+                  ctx.client,
+                  ids.map((candidate) => candidate.id),
+                );
                 const rows = await ctx.client.contract.findMany({
                   where,
                   select: contractReadSelect,

@@ -1,6 +1,6 @@
 import { AccessProcurementSourceService } from './access-procurement-source.service';
 import { maskNationalId } from '../../utils/pii.util';
-import { ForbiddenException, Injectable } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable } from '@nestjs/common';
 import {
   AccessResource,
   AccessSnapshot,
@@ -34,13 +34,34 @@ export function partyWriteExecution(client?: object) {
   if (ctx.scopeReads || (client && !isCurrentDomainClient(client))) throw unavailable();
   return ctx;
 }
+/** Measured owned-fixture envelope, not a production latency SLA. The extra
+ * candidate is only an overflow probe; callers must never return partial results. */
+export const FINANCE_CONTRACT_READ_LIMIT = 10000;
 /** Canonical ordinary FINANCE read-source lock order, shared by linked SHOP reads.
- * Policy is still evaluated by financeContract/financeContractReadWhere afterwards. */
+ * Callers supply SQL-proven contributors in the owned Serializable transaction.
+ * Row locks preserve current-source retry semantics without per-case roundtrips.
+ * Policy remains financeContract/financeContractReadWhere, not this lock helper. */
+export async function lockFinanceContractReadSources(
+  tx: AccessClient,
+  contractIds: readonly string[],
+): Promise<void> {
+  const ids = [...new Set(contractIds)].sort();
+  if (ids.length > FINANCE_CONTRACT_READ_LIMIT)
+    throw new BadRequestException('กรุณาระบุตัวกรองให้แคบลงแล้วลองอีกครั้ง');
+  if (!ids.length) return;
+  await tx.$queryRaw`SELECT id FROM contracts WHERE id=ANY(${ids}::text[]) ORDER BY id FOR SHARE`;
+  await tx.$queryRaw`SELECT id FROM company_info WHERE company_code='FINANCE' ORDER BY id FOR SHARE`;
+  await tx.$queryRaw`SELECT b.id FROM branches b WHERE b.id IN (
+    SELECT branch_id FROM contracts WHERE id=ANY(${ids}::text[])
+  ) ORDER BY b.id FOR SHARE OF b`;
+  await tx.$queryRaw`SELECT ci.id FROM company_info ci WHERE ci.id IN (
+    SELECT b.company_id FROM branches b WHERE b.id IN (
+      SELECT branch_id FROM contracts WHERE id=ANY(${ids}::text[])
+    )
+  ) ORDER BY ci.id FOR SHARE OF ci`;
+}
 export async function lockFinanceContractReadSource(tx: AccessClient, id: string): Promise<void> {
-  await tx.$queryRaw`SELECT id FROM contracts WHERE id=${id} FOR SHARE`;
-  await tx.$queryRaw`SELECT id FROM company_info WHERE company_code='FINANCE' FOR SHARE`;
-  await tx.$queryRaw`SELECT b.id FROM branches b JOIN contracts c ON c.branch_id=b.id WHERE c.id=${id} FOR SHARE OF b`;
-  await tx.$queryRaw`SELECT ci.id FROM company_info ci JOIN branches b ON b.company_id=ci.id JOIN contracts c ON c.branch_id=b.id WHERE c.id=${id} FOR SHARE OF ci`;
+  await lockFinanceContractReadSources(tx, [id]);
 }
 @Injectable()
 export class AccessPartySourceService {

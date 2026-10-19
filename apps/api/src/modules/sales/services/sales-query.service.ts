@@ -1,4 +1,4 @@
-import { lockFinanceContractReadSource } from '../../employee-access/access-party-source.service';
+import { FINANCE_CONTRACT_READ_LIMIT, lockFinanceContractReadSources } from '../../employee-access/access-party-source.service';
 import { currentFinanceReadWhere } from '../../employee-access/access-contract-read-scope';
 import { setSaleAggregateWhere } from '../../employee-access/access-sales-aggregate-context';
 import { AccessSnapshotService } from '../../employee-access/access-snapshot.service';
@@ -78,9 +78,14 @@ export class SalesQueryService {
     if (contractStatus && currentDomainAccess()) {
       // Status contributors beyond the visible page also need current source proof
       // after lock waits, before any count/aggregate/page result is returned.
-      const contributors = await db.sale.findMany({ where, select: { contractId: true } });
-      const ids = [...new Set(contributors.flatMap(row => row.contractId ? [row.contractId] : []))].sort();
-      for (const id of ids) await lockFinanceContractReadSource(db, id);
+      // Probe distinct Contracts in SQL, never joined Sale rows or only the page.
+      const contributors = await db.contract.findMany({
+        where: { sale: { is: where as Prisma.SaleWhereInput } },
+        select: { id: true },
+        orderBy: { id: 'asc' },
+        take: FINANCE_CONTRACT_READ_LIMIT + 1,
+      });
+      await lockFinanceContractReadSources(db, contributors.map(row => row.id));
     }
 
     if (limit > 200) assertExportRowCount(await db.sale.count({ where }));

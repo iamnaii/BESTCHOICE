@@ -402,6 +402,7 @@ const PERMISSION_DEFINITIONS = {
   'company.manage': ['จัดการบริษัท', 'system', 'OWNER'],
   'integrations.manage': ['จัดการการเชื่อมต่อและข้อมูลลับ', 'system', 'OWNER'],
   'security.manage': ['จัดการความปลอดภัยและเอสเอสโอ', 'system', 'OWNER'],
+  'interest-configs.read': ['ดูตารางดอกเบี้ยส่วนกลาง', 'system', 'GRANT'],
   'settings.finance.manage': ['ตั้งค่านโยบายการเงิน', 'system', 'OWNER'],
   'settings.accounting.manage': ['ตั้งค่านโยบายบัญชี', 'system', 'OWNER'],
   'settings.communication.manage': ['ตั้งค่าการสื่อสาร', 'system', 'OWNER'],
@@ -579,6 +580,7 @@ const DEFAULT_POSITION_DEFINITIONS = [
     name: 'ผู้จัดการสาขา',
     assignable: true,
     permissions: [
+      'interest-configs.read',
       'shop-tenders.read',
       'shop-tenders.count',
       'shop-tenders.confirm',
@@ -631,6 +633,7 @@ const DEFAULT_POSITION_DEFINITIONS = [
     name: 'พนักงานขาย',
     assignable: true,
     permissions: [
+      'interest-configs.read',
       'shop-tenders.read',
       'shop-tenders.count',
       'dashboard.read',
@@ -673,6 +676,7 @@ const DEFAULT_POSITION_DEFINITIONS = [
     name: 'พนักงานสต็อก',
     assignable: true,
     permissions: [
+      'interest-configs.read',
       'products.read',
       'inventory.read',
       'stock-receiving.read',
@@ -746,6 +750,7 @@ const DEFAULT_POSITION_DEFINITIONS = [
     name: 'ผู้จัดการการเงิน',
     assignable: true,
     permissions: [
+      'interest-configs.read',
       'shop-tenders.read',
       'shop-tenders.confirm',
       'shop-tenders.deposit',
@@ -811,6 +816,7 @@ const DEFAULT_POSITION_DEFINITIONS = [
     name: 'ฝ่ายบัญชี',
     assignable: true,
     permissions: [
+      'interest-configs.read',
       'shop-tenders.read',
       'sensitive.customer-identity.read',
       'accounting.read',

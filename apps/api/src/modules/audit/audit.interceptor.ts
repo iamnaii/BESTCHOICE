@@ -1,3 +1,4 @@
+import { InterestConfigController } from '../interest-config/interest-config.controller';
 import { ContractsController } from '../contracts/contracts.controller';
 import { DefectExchangeController } from '../defect-exchange/defect-exchange.controller';
 import { LoyaltyController } from '../loyalty/loyalty.controller';
@@ -109,7 +110,7 @@ export class AuditInterceptor implements NestInterceptor {
   }
 
   private isSharedReference(context: ExecutionContext): boolean {
-    return context.getClass() === StickersController || context.getClass() === PricingTemplatesController;
+    return context.getClass() === StickersController || context.getClass() === PricingTemplatesController || context.getClass() === InterestConfigController;
   }
 
   private isManagedSafeRead(context: ExecutionContext): boolean {

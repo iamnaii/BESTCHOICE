@@ -15,6 +15,7 @@ import { requestedAccessCompany } from './access-shop-boundaries';
 import { PartyQueryPlan } from './access-party-query-plan';
 import { ContractReadProjection, contractReadSelect } from './access-contract-read-projection';
 import { paginatedResponse } from '../../common/helpers/pagination.helper';
+import { readPreparation } from './access-contract-preparation-read';
 import { bangkokDateRange } from '../../utils/date.util';
 
 export const CONTRACT_READ_ROUTES = [
@@ -30,6 +31,22 @@ export class AccessContractReadBoundaries implements OnModuleInit {
   onModuleInit() {
     for (const route of CONTRACT_READ_ROUTES)
       ACCESS_BOUNDARIES.set(route, async (req, snapshot, permission) => {
+        if (req.query?.view === 'preparation') {
+          if (requestedAccessCompany(req) !== 'SHOP')
+            throw new ForbiddenException('คำขอนี้อยู่ในงานหน้าร้าน');
+          const detail = route === 'ContractsController.findOne';
+          const execute = () =>
+            readPreparation(
+              this.resources,
+              snapshot.userId,
+              detail,
+              String(req.params?.id ?? ''),
+              req.query ?? {},
+            );
+          return detail
+            ? { kind: 'selection', company: 'SHOP', execute }
+            : { kind: 'collection', company: 'SHOP', execute };
+        }
         if (requestedAccessCompany(req) !== 'FINANCE')
           throw new ForbiddenException('สัญญาอยู่ในงานการเงิน');
         const detail = route === 'ContractsController.findOne';
@@ -49,6 +66,8 @@ export class AccessContractReadBoundaries implements OnModuleInit {
               'FINANCE',
               resolver,
               async () => {
+                if (req.query?.view !== undefined)
+                  throw new BadRequestException('รูปแบบข้อมูลไม่ถูกต้อง');
                 const ctx = currentDomainAccess()!;
                 const plan = await PartyQueryPlan.create(ctx.client, this.sources);
                 const projection = new ContractReadProjection(plan, this.sources, this.resources);

@@ -3,6 +3,7 @@ import { ContractsListQueryDto } from './dto/contracts-list-query.dto';
 import { ContractQuoteDto } from './dto/contract-quote.dto';
 import {
   Controller,
+  ForbiddenException,
   Get,
   Post,
   Patch,
@@ -70,7 +71,10 @@ export class ContractsController {
   findAll(
     @Query() filters: ContractsListQueryDto,
     @CurrentUser() user: { id: string; role: string; branchId: string | null },
+    @Query('view') view?: unknown,
   ) {
+    // Explicit views are served only by the current managed access adapter.
+    if (view !== undefined) throw new ForbiddenException('ไม่มีสิทธิ์อ่านรูปแบบข้อมูลนี้');
     return this.contractsService.findAll(filters, user);
   }
 
@@ -92,7 +96,9 @@ export class ContractsController {
   findOne(
     @Param('id') id: string,
     @CurrentUser() user?: { id: string; role: string; branchId: string | null },
+    @Query('view') view?: unknown,
   ) {
+    if (view !== undefined) throw new ForbiddenException('ไม่มีสิทธิ์อ่านรูปแบบข้อมูลนี้');
     return this.contractsService.findOne(id, user);
   }
 

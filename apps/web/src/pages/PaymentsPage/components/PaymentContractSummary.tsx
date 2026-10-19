@@ -1,3 +1,4 @@
+import { formatNumericText } from '@/utils/numericText';
 import Decimal from 'decimal.js';
 import { AlertCircle, CheckCircle2, Info, Lock } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -65,7 +66,7 @@ export function ContractInfoPanel({
         `${receiptLateFee.toNumber().toLocaleString('th-TH', { minimumFractionDigits: 2 })} ฿`,
         receiptLateFee.gt(0),
       )}
-      {lateFeePaid.gt(0) && row('ค่าปรับที่รับแล้ว', `${lateFeePaid.toFixed(2)} ฿`)}
+      {lateFeePaid.gt(0) && row('ค่าปรับที่รับแล้ว', `${formatNumericText(lateFeePaid.toFixed(2))} ฿`)}
       {amountPaid.gt(0) && (
         <>
           {row(
@@ -92,7 +93,7 @@ export function ContractInfoPanel({
       )}
       <div className="pt-2 mt-1 border-t border-border">
         <div className="flex justify-between text-xs text-muted-foreground">
-          <span className="leading-snug">Net Exposure</span>
+          <span className="leading-snug">ยอดคงเหลืองวดนี้</span>
           <span className="font-medium leading-snug text-foreground">
             {netExposure.toNumber().toLocaleString('th-TH', { minimumFractionDigits: 2 })} ฿
           </span>

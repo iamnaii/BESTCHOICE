@@ -283,7 +283,7 @@ function DispatchSection({ letter, onClose }: DispatchSectionProps) {
 
   const handleSubmit = async () => {
     if (tracking.trim().length < 5) {
-      toast.error('เลข tracking ต้อง ≥ 5 ตัวอักษร');
+      toast.error("เลข ติดตามพัสดุ ต้อง ≥ 5 ตัวอักษร");
       return;
     }
     setBusy(true);
@@ -350,7 +350,7 @@ function DispatchSection({ letter, onClose }: DispatchSectionProps) {
       {/* Tracking number input */}
       <div>
         <label htmlFor={`${uiFieldId}-1`} className="text-xs font-medium text-muted-foreground mb-1.5 block leading-snug">
-          เลข EMS tracking *
+          เลข EMS ติดตามพัสดุ *
         </label>
         <input id={`${uiFieldId}-1`}
           type="text"

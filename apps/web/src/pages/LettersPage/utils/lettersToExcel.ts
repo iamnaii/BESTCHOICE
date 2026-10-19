@@ -57,7 +57,7 @@ export async function lettersToExcel(letters: LetterRow[]): Promise<Blob> {
     { header: 'สร้างเมื่อ', key: 'triggeredAt', width: 14 },
     { header: 'พิมพ์เมื่อ', key: 'pdfGeneratedAt', width: 14 },
     { header: 'ส่งเมื่อ', key: 'dispatchedAt', width: 14 },
-    { header: 'Tracking No.', key: 'trackingNumber', width: 18 },
+    { header: "เลขติดตาม", key: 'trackingNumber', width: 18 },
     { header: 'ลูกค้ารับเมื่อ', key: 'deliveredAt', width: 14 },
     { header: 'เหตุผลตีกลับ/ยกเลิก', key: 'cancelReason', width: 24 },
     { header: 'ผู้ส่ง', key: 'dispatchedBy', width: 16 },

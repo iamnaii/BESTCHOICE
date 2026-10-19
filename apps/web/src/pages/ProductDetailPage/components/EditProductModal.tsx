@@ -1,3 +1,4 @@
+import { NumberInput } from '@/components/ui/NumberInput';
 import { NativeSelect } from '@/components/ui/native-select';
 import Modal from '@/components/ui/Modal';
 import UsedDeviceDetailsFields from '@/components/product/UsedDeviceDetailsFields';
@@ -129,7 +130,7 @@ export default function EditProductModal({
             </NativeSelect>
             {statusLocked && (
               <p className="mt-1 text-xs text-muted-foreground leading-snug">
-                สถานะนี้ระบบจัดการผ่านรายการขาย/จอง/ยึดเครื่อง — แก้ผ่าน flow นั้นแทน
+                สถานะนี้ระบบจัดการผ่านรายการขาย/จอง/ยึดเครื่อง — แก้ผ่าน ขั้นตอน นั้นแทน
               </p>
             )}
             {!statusLocked && deniedRule && (
@@ -217,8 +218,7 @@ export default function EditProductModal({
 
         <div>
           <label htmlFor={`${uiFieldId}-10`} className="block text-xs font-medium text-foreground mb-1">ราคาทุน (บาท)</label>
-          <input id={`${uiFieldId}-10`}
-            type="number"
+          <NumberInput unstyled id={`${uiFieldId}-10`}
             step="0.01"
             value={editForm.costPrice}
             onChange={(e) => setEditForm({ ...editForm, costPrice: e.target.value })}
@@ -269,8 +269,7 @@ export default function EditProductModal({
             </div>
             <div>
               <label htmlFor={`${uiFieldId}-12`} className="block text-xs font-medium text-foreground mb-1">ประกันร้าน (วัน)</label>
-              <input id={`${uiFieldId}-12`}
-                type="number"
+              <NumberInput unstyled id={`${uiFieldId}-12`}
                 min="0"
                 step="1"
                 value={editForm.shopWarrantyDays}

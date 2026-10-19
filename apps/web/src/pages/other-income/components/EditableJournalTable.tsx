@@ -1,3 +1,5 @@
+import { NumberInput } from '@/components/ui/NumberInput';
+import { formatNumericText } from '@/utils/numericText';
 import ScreenTable from '@/components/ui/ScreenTable';
 import { useMemo } from 'react';
 import { Trash2, Plus, AlertCircle } from 'lucide-react';
@@ -55,7 +57,7 @@ function validateClientSide(lines: EditableJournalLine[]): ValidationIssue[] {
     const crTotal = crTotalCents / 100;
     issues.push({
       rule: 'V1',
-      msg: `Dr (${drTotal.toFixed(2)}) ≠ Cr (${crTotal.toFixed(2)}) — ผลต่าง ${(drTotal - crTotal).toFixed(2)} บาท`,
+      msg: `Dr (${formatNumericText(drTotal.toFixed(2))}) ≠ Cr (${formatNumericText(crTotal.toFixed(2))}) — ผลต่าง ${formatNumericText((drTotal - crTotal).toFixed(2))} บาท`,
     });
   }
 
@@ -100,8 +102,7 @@ export function EditableJournalTable({ lines, onChange }: Props) {
                   />
                 </td>
                 <td className="px-2 py-1">
-                  <Input
-                    type="number"
+                  <NumberInput
                     step="0.01"
                     min="0"
                     value={line.debit || ''}
@@ -110,8 +111,7 @@ export function EditableJournalTable({ lines, onChange }: Props) {
                   />
                 </td>
                 <td className="px-2 py-1">
-                  <Input
-                    type="number"
+                  <NumberInput
                     step="0.01"
                     min="0"
                     value={line.credit || ''}
@@ -139,8 +139,8 @@ export function EditableJournalTable({ lines, onChange }: Props) {
             ))}
             <tr className="border-t border-border bg-muted font-mono text-sm">
               <td className="px-2 py-2 font-semibold">รวม</td>
-              <td className="px-2 py-2 text-right">{drTotal}</td>
-              <td className="px-2 py-2 text-right">{crTotal}</td>
+              <td className="px-2 py-2 text-right">{formatNumericText(drTotal)}</td>
+              <td className="px-2 py-2 text-right">{formatNumericText(crTotal)}</td>
               <td colSpan={2}></td>
             </tr>
           </tbody>

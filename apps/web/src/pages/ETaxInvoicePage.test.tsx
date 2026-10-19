@@ -63,7 +63,7 @@ describe('ETaxInvoicePage', () => {
 
   it('renders Export CSV button (monthly)', () => {
     renderPage();
-    expect(screen.getByRole('button', { name: /Export CSV/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /ส่งออก CSV/i })).toBeInTheDocument();
   });
 
   it('prompts to pick a company when none selected', () => {

@@ -1,3 +1,4 @@
+import { NumberInput } from '@/components/ui/NumberInput';
 import ScreenTable from '@/components/ui/ScreenTable';
 import { NativeSelect } from '@/components/ui/native-select';
 import { useEffect, useMemo, useRef } from 'react';
@@ -185,8 +186,7 @@ export function SettlementLinesSection({ branchId, value, onChange }: Props) {
               <option value="PND53">ภงด.53</option>
               <option value="PND3">ภงด.3</option>
             </NativeSelect>
-            <input
-              type="number"
+            <NumberInput unstyled
               step="0.01"
               value={value.whtAmount}
               onChange={(e) => onChange({ ...value, whtAmount: e.target.value })}
@@ -268,8 +268,7 @@ export function SettlementLinesSection({ branchId, value, onChange }: Props) {
                       <td className="p-1.5 text-right">
                         {isSelected &&
                           (settlementPartialPaymentEnabled ? (
-                            <input
-                              type="number"
+                            <NumberInput unstyled
                               step="0.01"
                               min="0.01"
                               value={sel!.amount}
@@ -281,8 +280,7 @@ export function SettlementLinesSection({ branchId, value, onChange }: Props) {
                             // disabled input + matching value so the column lines
                             // up with the unlocked layout. Title surfaces the policy
                             // reason for keyboard / a11y users.
-                            <input
-                              type="number"
+                            <NumberInput unstyled
                               step="0.01"
                               min="0.01"
                               value={doc.totalAmount}

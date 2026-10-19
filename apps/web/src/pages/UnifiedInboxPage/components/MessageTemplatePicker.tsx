@@ -226,12 +226,12 @@ export default function MessageTemplatePicker({ isOpen, onClose, onInsert, roomI
           >
             {isError && (
               <div className="px-4 py-8 text-sm text-muted-foreground text-center">
-                โหลด template ไม่สำเร็จ
+                โหลดแม่แบบไม่สำเร็จ
               </div>
             )}
             {!isError && templates.length === 0 && (
               <div className="px-4 py-8 text-sm text-muted-foreground text-center leading-snug">
-                ยังไม่มี template — ไปสร้างที่
+                ยังไม่มี แม่แบบ — ไปสร้างที่
                 <br />
                 <a href="/admin/canned-responses" className="text-primary hover:underline">
                   /admin/canned-responses
@@ -314,7 +314,7 @@ export default function MessageTemplatePicker({ isOpen, onClose, onInsert, roomI
               <div className="flex-1 flex items-center justify-center text-sm text-muted-foreground leading-snug">
                 <div className="text-center">
                   <FileText className="w-10 h-10 mx-auto mb-2 text-muted-foreground/40" />
-                  เลือก template เพื่อดูตัวอย่าง
+                  เลือกแม่แบบเพื่อดูตัวอย่าง
                 </div>
               </div>
             )}
@@ -357,7 +357,7 @@ export default function MessageTemplatePicker({ isOpen, onClose, onInsert, roomI
                   {!isPreviewLoading && isPreviewError && (
                     <div className="bg-card border border-border rounded-lg p-4 text-sm leading-relaxed min-h-[80px]">
                       <span className="text-destructive">
-                        โหลดตัวอย่างไม่สำเร็จ — ลองเลือกใหม่หรือปิด/เปิด modal
+                        โหลดตัวอย่างไม่สำเร็จ — ลองเลือกใหม่หรือปิด/เปิด หน้าต่าง
                       </span>
                     </div>
                   )}
@@ -386,14 +386,14 @@ export default function MessageTemplatePicker({ isOpen, onClose, onInsert, roomI
                               <div className="flex items-center gap-2 text-xs text-muted-foreground">
                                 <img
                                   src={`https://stickershop.line-scdn.net/stickershop/v1/sticker/${b.stickerId}/android/sticker.png`}
-                                  alt="sticker"
+                                  alt="สติกเกอร์"
                                   className="w-16 h-16"
                                   onError={(e) => {
                                     (e.currentTarget as HTMLImageElement).style.display = 'none';
                                   }}
                                 />
                                 <span>
-                                  Sticker {b.stickerPackageId}/{b.stickerId}
+                                  สติกเกอร์ {b.stickerPackageId}/{b.stickerId}
                                 </span>
                               </div>
                             )}
@@ -461,7 +461,7 @@ export default function MessageTemplatePicker({ isOpen, onClose, onInsert, roomI
                             {b.type === 'JSON' && (
                               <details className="text-xs">
                                 <summary className="cursor-pointer text-muted-foreground">
-                                  JSON payload
+                                  ข้อมูล JSON
                                 </summary>
                                 <pre className="mt-1 p-2 bg-muted rounded font-mono text-[10px] overflow-x-auto">
                                   {JSON.stringify(b.json, null, 2)}
@@ -518,7 +518,7 @@ export default function MessageTemplatePicker({ isOpen, onClose, onInsert, roomI
           <Button
             disabled={!preview || !roomId || sendDirectMut.isPending}
             onClick={handleSendDirect}
-            title="ส่งทุก bubble + Quick Reply ทันทีโดยไม่ผ่านช่องตอบ"
+            title="ส่งข้อความทุกส่วนและปุ่มตอบกลับด่วนทันที โดยไม่วางในช่องพิมพ์"
           >
             <Send className="w-4 h-4 mr-1.5" />
             {sendDirectMut.isPending ? 'กำลังส่ง...' : 'ส่งทันที'}

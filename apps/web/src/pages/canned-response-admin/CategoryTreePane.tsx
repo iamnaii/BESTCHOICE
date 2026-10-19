@@ -134,7 +134,7 @@ export default function CategoryTreePane(props: Props) {
       <div className="flex-1 overflow-y-auto">
         {groups.length === 0 && (
           <div className="px-4 py-8 text-sm text-muted-foreground text-center leading-snug">
-            ยังไม่มี template
+            ยังไม่มี แม่แบบ
           </div>
         )}
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>

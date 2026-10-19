@@ -1,3 +1,4 @@
+import { NumberInput } from '@/components/ui/NumberInput';
 import { useEffect, useId, useState } from 'react';
 import { Info } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -45,7 +46,7 @@ export function LimitDialog({ open, limit, balance, pending, onClose, onSubmit }
         <div className="space-y-4 px-6 py-4">
           <div>
             <label className={formLabelClass} htmlFor={id}>วงเงินเงินสดย่อย (บาท)</label>
-            <input id={id} type="number" inputMode="decimal" step="0.01" min="0" value={value} onChange={(e) => setValue(e.target.value)}
+            <NumberInput unstyled id={id} inputMode="decimal" step="0.01" min="0" value={value} onChange={(e) => setValue(e.target.value)}
               aria-invalid={!!error} aria-describedby={`${id}-hint`}
               className={cn(formControlClass, 'text-right font-mono text-lg tabular-nums', error && 'border-destructive')} />
             <p id={`${id}-hint`} className={cn('mt-1 text-xs leading-snug', error ? 'text-destructive' : belowBalance ? 'text-warning-strong' : 'text-muted-foreground')}>
@@ -69,7 +70,7 @@ export function LimitDialog({ open, limit, balance, pending, onClose, onSubmit }
           </div>
           <div className="flex items-start gap-2 rounded-xl border border-border/50 bg-muted/40 p-3 text-xs leading-snug text-muted-foreground">
             <Info className="mt-0.5 size-4 shrink-0" aria-hidden />
-            <span>ค่าตั้งค่าตัวเดียวของทั้งร้าน (เงินสดย่อยกองเดียว ไม่แยกสาขา ไม่ระบุผู้ถือ) · OWNER เท่านั้นที่แก้ได้ · ไม่มีผลกับบัญชี แค่คุมปุ่มเติม</span>
+            <span>ค่าตั้งค่าตัวเดียวของทั้งร้าน (เงินสดย่อยกองเดียว ไม่แยกสาขา ไม่ระบุผู้ถือ) · เจ้าของ เท่านั้นที่แก้ได้ · ไม่มีผลกับบัญชี แค่คุมปุ่มเติม</span>
           </div>
         </div>
         <DialogFooter className="shrink-0 flex-row flex-wrap items-center justify-end gap-2 border-t border-border/50 px-6 py-3">

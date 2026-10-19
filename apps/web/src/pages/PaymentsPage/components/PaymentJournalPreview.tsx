@@ -189,7 +189,7 @@ export function JePreviewPanel({
           )}
         >
           <CheckCircle2 className="size-3" />
-          {preview && !preview.isBalanced ? 'UNBALANCED' : 'BALANCED'}
+          {preview && !preview.isBalanced ? "ยอดไม่สมดุล" : "ยอดสมดุล"}
         </span>
       </div>
 
@@ -209,7 +209,7 @@ export function JePreviewPanel({
         <div className="mb-3 rounded-lg border border-destructive/30 bg-destructive/5 p-2.5 text-xs leading-snug flex gap-2 text-destructive">
           <AlertCircle className="size-3.5 shrink-0 mt-0.5" />
           <div className="space-y-0.5">
-            <div className="font-medium">ไม่สามารถสร้าง JE preview ได้</div>
+            <div className="font-medium">ไม่สามารถสร้างตัวอย่างรายการบัญชีได้</div>
             <div className="text-[11px] opacity-90">{errorMessage}</div>
           </div>
         </div>
@@ -224,7 +224,7 @@ export function JePreviewPanel({
 
       {!isLoading && !preview && !errorMessage && (
         <p className="text-xs text-muted-foreground leading-snug py-2">
-          กรอกยอดรับเพื่อดู JE preview
+          กรอกยอดรับเพื่อดู ตัวอย่างรายการบัญชี
         </p>
       )}
 

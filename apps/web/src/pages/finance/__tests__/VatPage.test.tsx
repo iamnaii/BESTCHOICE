@@ -1,8 +1,11 @@
-import { render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import api from '@/lib/api';
 import VatPage from '../VatPage';
+import { exportToExcel } from '@/utils/excel.util';
+import { toast } from 'sonner';
+import { setRequestCompany } from '@/lib/company-scope';
 
 /**
  * หน้า /finance/vat (เมนู "VAT (ภ.พ.30)") — ภาษีขายจากตัวคำนวณเดียวของ ภ.พ.30 (2026-09-30)
@@ -15,6 +18,7 @@ vi.mock('@/lib/api', async (original) => ({
   default: { get: vi.fn() },
 }));
 vi.mock('sonner', () => ({ toast: { info: vi.fn(), error: vi.fn(), success: vi.fn() } }));
+vi.mock('@/utils/excel.util', () => ({ exportToExcel: vi.fn().mockResolvedValue(undefined) }));
 
 const OCTOBER = {
   period: { year: 2026, month: 10 },
@@ -42,11 +46,12 @@ const OCTOBER = {
 
 function renderPage() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return render(
+  const result = render(
     <QueryClientProvider client={client}>
       <VatPage />
     </QueryClientProvider>,
   );
+  return { ...result, client };
 }
 
 /** แถวของกล่อง "ที่มาของภาษีขายเดือนนี้" ตามลำดับบนจอ — [ป้าย, ยอดที่แสดง] */
@@ -60,9 +65,68 @@ async function breakdownRows() {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  setRequestCompany(undefined);
 });
 
 describe('VatPage — ภาษีขายเดือนนี้ (ภ.พ.30)', () => {
+  it('exports the displayed period and signed amounts, preserving document and account identifiers', async () => {
+    vi.mocked(api.get).mockResolvedValue({ data: {
+      ...OCTOBER, netVat: '-1234.50',
+      lines: [{ accountCode: '001-02', documentNumber: '000001', postedAt: '2026-10-01T00:00:00Z', description: 'รายการตัวอย่าง', debit: 12345.67, credit: 0 }],
+      installmentInputVatLines: [{ entryNumber: '000002', postedAt: '2026-10-01T00:00:00Z', contractNumber: 'FIN-01', grNumber: '000004', taxInvoiceNumber: '000003', taxInvoiceDate: '2026-03-01', invoiceAgeMonths: 7, amount: '-70.00', reversal: true }],
+    } });
+    renderPage();
+    fireEvent.click(await screen.findByRole('button', { name: 'ส่งออก Excel' }));
+    await waitFor(() => expect(exportToExcel).toHaveBeenCalledOnce());
+    const options = vi.mocked(exportToExcel).mock.calls[0][0];
+    expect(options.filename).toBe('VAT-2026-10.xlsx');
+    expect(options.data).toEqual(expect.arrayContaining([
+      expect.objectContaining({ description: 'ภาษีสุทธิ', amount: -1234.5 }),
+      expect.objectContaining({ document: '000001', account: '001-02', debit: 12345.67 }),
+      expect.objectContaining({ document: '000002', amount: -70, contract: 'FIN-01', goodsReceipt: '000004', taxInvoice: '000003', invoiceAgeMonths: 7, status: 'กลับรายการ', taxInvoiceDate: expect.stringContaining('2569') }),
+      expect.objectContaining({ section: 'ที่มาของภาษีขาย', description: 'หัก กลับรายการ', amount: 99.17 }),
+      expect.objectContaining({ section: 'ภาษีขาย 60 วัน', amount: 99.17, status: 'รวมในภาษีขายแล้ว' }),
+    ]));
+    expect(options.assertCurrent).toBeTypeOf('function');
+    expect(screen.getByRole('button', { name: 'ส่งออก XML' })).toBeDisabled();
+  });
+
+  it('rejects an export snapshot after the report changes', async () => {
+    vi.mocked(api.get).mockResolvedValue({ data: OCTOBER });
+    const { client } = renderPage();
+    fireEvent.click(await screen.findByRole('button', { name: 'ส่งออก Excel' }));
+    await waitFor(() => expect(exportToExcel).toHaveBeenCalledOnce());
+    const { assertCurrent } = vi.mocked(exportToExcel).mock.calls[0][0];
+    expect(() => assertCurrent?.()).not.toThrow();
+    await act(async () => {
+      client.setQueriesData({ queryKey: ['vat-monthly'] }, { ...OCTOBER, netVat: '-500.00' });
+    });
+    await screen.findByText('-500.00 ฿');
+    expect(() => assertCurrent?.()).toThrow('รายงานมีการเปลี่ยนแปลง กรุณาส่งออกใหม่');
+  });
+
+  it('rejects an export snapshot when the work company changes', async () => {
+    setRequestCompany('FINANCE');
+    vi.mocked(api.get).mockResolvedValue({ data: OCTOBER });
+    renderPage();
+    fireEvent.click(await screen.findByRole('button', { name: 'ส่งออก Excel' }));
+    await waitFor(() => expect(exportToExcel).toHaveBeenCalledOnce());
+    const { assertCurrent } = vi.mocked(exportToExcel).mock.calls[0][0];
+    expect(() => assertCurrent?.()).not.toThrow();
+    setRequestCompany('SHOP');
+    expect(() => assertCurrent?.()).toThrow();
+    setRequestCompany(undefined);
+  });
+
+  it('reports an export failure in Thai', async () => {
+    vi.mocked(api.get).mockResolvedValue({ data: OCTOBER });
+    vi.mocked(exportToExcel).mockRejectedValueOnce(new Error('write failed'));
+    renderPage();
+    fireEvent.click(await screen.findByRole('button', { name: 'ส่งออก Excel' }));
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('ส่งออก Excel ไม่สำเร็จ กรุณาลองใหม่'));
+    expect(screen.getByRole('button', { name: 'ส่งออก Excel' })).toBeEnabled();
+  });
+
   it('แยกที่มาของภาษีขาย: ตั้ง · หักกลับรายการ · หักใบลดหนี้ · หักเงินรับล่วงหน้าที่หักเข้างวด · หักอื่น ๆ · 21-2101 สุทธิ · บวกภาษีขาย 60 วันสุทธิ · รวม (mandatory60DayIncluded = true)', async () => {
     vi.mocked(api.get).mockResolvedValue({ data: OCTOBER });
     renderPage();

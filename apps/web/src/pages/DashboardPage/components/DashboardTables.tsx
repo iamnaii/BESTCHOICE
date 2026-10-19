@@ -61,7 +61,7 @@ export default function DashboardTables({
       {topOverdue.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle>สัญญาค้างชำระสูงสุด (Top 10)</CardTitle>
+            <CardTitle>สัญญาค้างชำระสูงสุด (10 อันดับแรก)</CardTitle>
             <CardToolbar>
               <span className="text-2xs text-destructive bg-destructive/10 px-2.5 py-1 rounded-md font-medium">
                 {topOverdue.length} รายการ
@@ -125,7 +125,7 @@ export default function DashboardTables({
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Layers className="size-4 text-muted-foreground" />
-              Collection Pipeline
+              ขั้นตอนติดตามหนี้
             </CardTitle>
             <CardToolbar>
               <span className="text-2xs text-destructive bg-destructive/10 px-2.5 py-1 rounded-md font-medium">

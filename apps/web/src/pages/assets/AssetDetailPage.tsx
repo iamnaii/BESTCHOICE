@@ -170,7 +170,7 @@ export default function AssetDetailPage() {
   const postMutation = useMutation({
     mutationFn: () => assetsApi.post(id!),
     onSuccess: (r) => {
-      toast.success(`POST แล้ว → ${r.entryNo}`);
+      toast.success(`ลงบัญชี แล้ว → ${r.entryNo}`);
       queryClient.invalidateQueries({ queryKey: ['asset', id] });
       queryClient.invalidateQueries({ queryKey: ['asset-audit', id] });
       queryClient.invalidateQueries({ queryKey: ['assets'] });
@@ -259,10 +259,10 @@ export default function AssetDetailPage() {
                   onClick={() => copyMutation.mutate()}
                   disabled={copyMutation.isPending}
                 >
-                  <Copy className="mr-2 size-4" /> คัดลอกเป็น DRAFT ใหม่
+                  <Copy className="mr-2 size-4" /> คัดลอกเป็น ฉบับร่างใหม่
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => navigate(`/assets/${id}/schedule`)}>
-                  <TrendingDown className="mr-2 size-4" /> ดูตารางมูลค่าตามบัญชีสุทธิ (NBV)
+                  <TrendingDown className="mr-2 size-4" /> ดูตารางมูลค่าตามบัญชีสุทธิ (มูลค่าตามบัญชีสุทธิ)
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => navigate(`/assets/${id}/audit`)}>
                   <History className="mr-2 size-4" /> ดูประวัติทั้งหมด
@@ -294,7 +294,7 @@ export default function AssetDetailPage() {
                       <dd className="font-mono">{asset.assetCode}</dd>
                     </div>
                     <div>
-                      <dt className="text-muted-foreground">Doc No.</dt>
+                      <dt className="text-muted-foreground">เลขที่เอกสาร</dt>
                       <dd className="font-mono">{asset.docNo}</dd>
                     </div>
                     <div>
@@ -366,7 +366,7 @@ export default function AssetDetailPage() {
                       <dd className="tabular-nums">{fmt(asset.accumulatedDepr)}</dd>
                     </div>
                     <div>
-                      <dt className="text-muted-foreground">มูลค่าตามบัญชีสุทธิ (NBV)</dt>
+                      <dt className="text-muted-foreground">มูลค่าตามบัญชีสุทธิ (มูลค่าตามบัญชีสุทธิ)</dt>
                       <dd className="tabular-nums font-medium">{fmt(asset.netBookValue)}</dd>
                     </div>
                     <div>
@@ -431,7 +431,7 @@ export default function AssetDetailPage() {
             <div className="space-y-4">
               <Card className="rounded-xl border border-border/50 bg-card shadow-sm">
                 <CardHeader>
-                  <CardTitle>Audit Trail</CardTitle>
+                  <CardTitle>ประวัติการดำเนินการ</CardTitle>
                 </CardHeader>
                 <CardContent>
                   {auditQuery.data?.length ? (
@@ -490,7 +490,7 @@ export default function AssetDetailPage() {
             open={showDelete}
             onOpenChange={setShowDelete}
             title="ลบสินทรัพย์?"
-            description="ลบได้เฉพาะสถานะ DRAFT ไม่สามารถกู้คืนได้"
+            description="ลบได้เฉพาะสถานะ ฉบับร่าง ไม่สามารถกู้คืนได้"
             variant="destructive"
             loading={deleteMutation.isPending}
             onConfirm={() => deleteMutation.mutate()}

@@ -27,13 +27,13 @@ export function SaveAsTemplateModal({ defaultName, isLoading, onCancel, onConfir
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between mb-3">
-          <h3 className="font-bold">บันทึกเป็น Template</h3>
+          <h3 className="font-bold">บันทึกเป็นแม่แบบ</h3>
           <button data-ui-control="button" data-ui-icon="true" onClick={onCancel} aria-label="ปิด">
             <X size={16} />
           </button>
         </div>
         <form onSubmit={handleSubmit}>
-          <label htmlFor={`${uiFieldId}-1`} className="text-xs text-muted-foreground font-medium">ชื่อ Template</label>
+          <label htmlFor={`${uiFieldId}-1`} className="text-xs text-muted-foreground font-medium">ชื่อแม่แบบ</label>
           <input id={`${uiFieldId}-1`}
             value={name}
             onChange={(e) => setName(e.target.value)}

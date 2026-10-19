@@ -28,11 +28,11 @@ export function MatchPreviewPanel() {
   return (
     <div className="space-y-4">
       <p className="text-sm text-muted-foreground leading-snug">
-        ป้อน Product ID เพื่อทดสอบว่าระบบจับคู่กับ GFIN config ได้ถูกต้องหรือไม่
+        ป้อน รหัสสินค้า เพื่อทดสอบว่าระบบจับคู่กับ GFIN การตั้งค่า ได้ถูกต้องหรือไม่
       </p>
       <div className="flex gap-2 max-w-xl">
         <Input
-          placeholder="Product ID"
+          placeholder="รหัสสินค้า"
           value={productId}
           onChange={(e) => setProductId(e.target.value)}
           onKeyDown={(e) => {
@@ -44,7 +44,7 @@ export function MatchPreviewPanel() {
           onClick={() => test.mutate()}
           disabled={!productId || test.isPending}
         >
-          ทดสอบ Match
+          ทดสอบ จับคู่
         </Button>
       </div>
       {result !== null && (

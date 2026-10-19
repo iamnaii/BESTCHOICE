@@ -769,7 +769,7 @@ export default function QuickBuyModal({
                       </>
                     ) : (
                       <>
-                        เคยขายมาแล้ว {sellerHistory.totalCount} ครั้ง — ข้อมูลถูก auto-fill
+                        เคยขายมาแล้ว {sellerHistory.totalCount} ครั้ง — ข้อมูลถูก กรอกอัตโนมัติ
                         จากครั้งล่าสุด
                       </>
                     )}

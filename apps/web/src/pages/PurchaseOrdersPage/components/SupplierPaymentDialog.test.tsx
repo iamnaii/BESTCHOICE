@@ -42,7 +42,7 @@ describe('SupplierPaymentDialog — บันทึกการจ่ายเ�
     expect(screen.getByText(/กสิกรไทย/)).toBeInTheDocument();
 
     const amount = screen.getByRole('spinbutton', { name: 'จำนวนเงิน (บาท)' });
-    expect((amount as HTMLInputElement).value).toBe('10729');
+    expect((amount as HTMLInputElement).value).toBe('10,729');
     const submit = screen.getByRole('button', { name: 'บันทึกและลงบัญชี' });
     expect(submit).toBeDisabled();
 

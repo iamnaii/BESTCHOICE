@@ -56,8 +56,8 @@ export const MANUAL_TAG_OPTIONS: { value: CustomerTagType; label: string; help: 
   },
   {
     value: 'BLACKLIST',
-    label: 'BLACKLIST',
-    help: 'manual เท่านั้น — ห้ามทำสัญญาใหม่',
+    label: 'ระงับทำสัญญา',
+    help: 'กำหนดด้วยตนเองเท่านั้น — ห้ามทำสัญญาใหม่',
   },
 ];
 
@@ -85,16 +85,16 @@ export default function CustomerTagDialog({ open, onClose, customerId }: Props) 
     <Dialog open={open} onOpenChange={(v) => (!v ? onClose() : undefined)}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>จัดการ Tags</DialogTitle>
+          <DialogTitle>จัดการ ป้ายกำกับ</DialogTitle>
           <DialogDescription>
-            เพิ่ม / ลบ tag manual สำหรับลูกค้า — auto tags จะถูก recompute อัตโนมัติทุกคืน
+            เพิ่มหรือลบป้ายกำกับลูกค้าได้ ส่วนป้ายกำกับอัตโนมัติจะคำนวณใหม่ทุกคืน
           </DialogDescription>
         </DialogHeader>
 
         <section className="space-y-4">
           <div>
             <div className="text-xs uppercase tracking-wider text-muted-foreground mb-2">
-              tags ปัจจุบัน
+              ป้ายกำกับ ปัจจุบัน
             </div>
             {isLoading ? (
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -102,7 +102,7 @@ export default function CustomerTagDialog({ open, onClose, customerId }: Props) 
                 กำลังโหลด...
               </div>
             ) : tags.length === 0 ? (
-              <div className="text-sm text-muted-foreground italic leading-snug">ยังไม่มี tag</div>
+              <div className="text-sm text-muted-foreground italic leading-snug">ยังไม่มี ป้ายกำกับ</div>
             ) : (
               <ul className="space-y-1.5" data-testid="customer-tag-list">
                 {tags.map((t) => {
@@ -128,7 +128,7 @@ export default function CustomerTagDialog({ open, onClose, customerId }: Props) 
                         onClick={() => handleRemove(t.id)}
                         disabled={remove.isPending || autoOnly}
                         className="rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground transition-colors disabled:opacity-40 disabled:hover:bg-transparent"
-                        title={autoOnly ? 'tag อัตโนมัติ — ถอดมือไม่ได้' : 'ลบ tag นี้'}
+                        title={autoOnly ? "ป้ายกำกับ อัตโนมัติ — ถอดมือไม่ได้" : "ลบ ป้ายกำกับ นี้"}
                         aria-label={`ลบ ${t.tag}`}
                       >
                         <X className="size-4" />
@@ -142,17 +142,17 @@ export default function CustomerTagDialog({ open, onClose, customerId }: Props) 
 
           <div className="space-y-2 border-t border-border pt-4">
             <div className="text-xs uppercase tracking-wider text-muted-foreground">
-              เพิ่ม tag manual
+              เพิ่ม ป้ายกำกับ ด้วยตนเอง
             </div>
             <div className="space-y-2">
               <div>
-                <Label htmlFor="tag-select">tag</Label>
+                <Label htmlFor="tag-select">ป้ายกำกับ</Label>
                 <Select
                   value={selectedTag}
                   onValueChange={(v) => setSelectedTag(v as CustomerTagType)}
                 >
                   <SelectTrigger id="tag-select">
-                    <SelectValue placeholder="เลือก tag..." />
+                    <SelectValue placeholder="เลือก ป้ายกำกับ..." />
                   </SelectTrigger>
                   <SelectContent>
                     {MANUAL_TAG_OPTIONS.map((t) => (
@@ -169,7 +169,7 @@ export default function CustomerTagDialog({ open, onClose, customerId }: Props) 
                 )}
               </div>
               <div>
-                <Label htmlFor="tag-reason">เหตุผล (optional)</Label>
+                <Label htmlFor="tag-reason">เหตุผล (ไม่บังคับ)</Label>
                 <input
                   id="tag-reason"
                   type="text"
@@ -183,7 +183,7 @@ export default function CustomerTagDialog({ open, onClose, customerId }: Props) 
             <div className="flex justify-end pt-2">
               <Button onClick={handleAdd} disabled={!selectedTag || apply.isPending} size="sm">
                 <Plus className="size-4" />
-                เพิ่ม tag
+                เพิ่ม ป้ายกำกับ
               </Button>
             </div>
           </div>

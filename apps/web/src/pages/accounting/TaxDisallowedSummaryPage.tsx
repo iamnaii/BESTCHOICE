@@ -81,7 +81,7 @@ export default function TaxDisallowedSummaryPage() {
           ))}
         </NativeSelect>
         <p className="text-xs text-muted-foreground mt-2 leading-snug">
-          ช่วง {from} ถึง {to} — เฉพาะเอกสาร POSTED (ที่ลงบัญชีแล้ว)
+          ช่วง {from} ถึง {to} — เฉพาะเอกสาร ลงบัญชีแล้ว (ที่ลงบัญชีแล้ว)
         </p>
       </div>
 
@@ -101,7 +101,7 @@ export default function TaxDisallowedSummaryPage() {
             />
             <Card
               icon={Layers}
-              label="ระดับบรรทัด (override)"
+              label="ระดับบรรทัด (แก้ไขแทนค่าเดิม)"
               sub={`${query.data.lineLevelCount.toLocaleString('th-TH')} บรรทัด`}
               value={query.data.lineLevelTotal}
             />
@@ -123,7 +123,7 @@ export default function TaxDisallowedSummaryPage() {
             ค่าใช้จ่ายต้องห้ามยัง <span className="font-medium text-foreground">บันทึกบัญชีตามปกติ</span> — Dr 5x-xxxx / Cr 21-xxxx เหมือนค่าใช้จ่ายทั่วไป.
           </li>
           <li>
-            Flag นี้ใช้สำหรับ <span className="font-medium text-foreground">รายงานภาษีเงินได้นิติบุคคล</span> เท่านั้น — ไม่กระทบ JE/งบกำไรขาดทุน.
+            เครื่องหมาย นี้ใช้สำหรับ <span className="font-medium text-foreground">รายงานภาษีเงินได้นิติบุคคล</span> เท่านั้น — ไม่กระทบ รายการบัญชี/งบกำไรขาดทุน.
           </li>
           <li>
             ตัวอย่าง: ค่ารับรองเกิน 2,000 บาท/คน/ครั้ง, ค่าปรับสรรพากร, รายจ่ายส่วนตัวของผู้ถือหุ้น, บริจาคเกินเพดาน 2% / 10%.

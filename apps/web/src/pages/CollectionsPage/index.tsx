@@ -85,7 +85,7 @@ export default function CollectionsPage() {
               className="h-7 px-3 text-xs"
               onClick={() => setView('SESSION')}
             >
-              Session
+              รอบการทำงาน
             </Button>
             <Button
               type="button"
@@ -94,7 +94,7 @@ export default function CollectionsPage() {
               className="h-7 px-3 text-xs"
               onClick={() => setView('LIBRARY')}
             >
-              Library
+              คลังข้อมูล
             </Button>
           </div>
         }

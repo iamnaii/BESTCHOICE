@@ -24,14 +24,14 @@ describe('PaginationBar', () => {
 
   it('disables Prev/First on page 1', () => {
     render(<PaginationBar {...props({ page: 1 })} />);
-    expect(screen.getByRole('button', { name: /First/i })).toBeDisabled();
-    expect(screen.getByRole('button', { name: /Prev/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /หน้าแรก/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /ก่อนหน้า/i })).toBeDisabled();
   });
 
   it('disables Next/Last on final page', () => {
     render(<PaginationBar {...props({ page: 5, size: 50, total: 247 })} />);
-    expect(screen.getByRole('button', { name: /Next/i })).toBeDisabled();
-    expect(screen.getByRole('button', { name: /Last/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /ถัดไป/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /หน้าสุดท้าย/i })).toBeDisabled();
   });
 
   it('calls onPageChange when numeric page clicked', () => {

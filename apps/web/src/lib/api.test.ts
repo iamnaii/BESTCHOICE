@@ -64,7 +64,7 @@ describe('lib/api', () => {
 
     it('falls back to the generic Thai error for an unexpected shape', () => {
       expect(getErrorMessage({ response: { status: 500, data: {} } })).toBe(
-        'เกิดข้อผิดพลาด',
+        'ระบบไม่สามารถดำเนินการได้ กรุณาตรวจสอบรายการก่อนทำซ้ำ หรือติดต่อผู้ดูแลระบบ',
       );
       expect(getErrorMessage(undefined)).toBe('ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้');
       expect(getErrorMessage(null)).toBe('ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้');

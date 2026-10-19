@@ -137,7 +137,7 @@ export function PendingTab({
           <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
           <div>
             <strong>ยอดคิวรอจ่ายไม่ตรงกับ GL ทั้งบัญชี</strong> — ส่วนต่าง ฿
-            {fmtMoney(Math.abs(drift))}. อาจมีรายการเดินบัญชีที่ไม่ผูกเลขที่สัญญา (JE
+            {fmtMoney(Math.abs(drift))}. อาจมีรายการเดินบัญชีที่ไม่ผูกเลขที่สัญญา (รายการบัญชี
             เส้นเก่าก่อนเปิดใช้รอบจ่าย) — ตรวจสอบก่อนเริ่ม บันทึกรอบย้อนหลัง
           </div>
         </div>
@@ -216,7 +216,7 @@ export function PendingTab({
                               {p.contractNumber}
                               {p.legacyNoShop && (
                                 <Badge variant="warning" appearance="light" size="sm">
-                                  LEGACY — SHOP ไม่มียอดตั้งต้น
+                                  สัญญาเดิม — SHOP ไม่มียอดตั้งต้น
                                 </Badge>
                               )}
                             </div>

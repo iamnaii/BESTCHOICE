@@ -1,3 +1,4 @@
+import { NumberInput } from '@/components/ui/NumberInput';
 import { NativeSelect } from '@/components/ui/native-select';
 import { downloadProtectedDocument } from '@/lib/document-download';
 import { queryErrorMessage } from '@/lib/query-error-message';
@@ -714,19 +715,19 @@ const deleteMutation = useMutation({
               <fieldset disabled={!!contract.tradeInCreditSnapshot} className="grid grid-cols-2 gap-3 disabled:opacity-60">
                 <div>
                   <label htmlFor={`${uiFieldId}-1`} className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ราคาขาย</label>
-                  <input id={`${uiFieldId}-1`} type="number" value={editForm.sellingPrice} onChange={(e) => setEditForm({ ...editForm, sellingPrice: parseFloat(e.target.value) || 0 })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
+                  <NumberInput unstyled id={`${uiFieldId}-1`} value={editForm.sellingPrice} onChange={(e) => setEditForm({ ...editForm, sellingPrice: parseFloat(e.target.value) || 0 })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
                 </div>
                 <div>
                   <label htmlFor={`${uiFieldId}-2`} className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">เงินดาวน์</label>
-                  <input id={`${uiFieldId}-2`} type="number" value={editForm.downPayment} onChange={(e) => setEditForm({ ...editForm, downPayment: parseFloat(e.target.value) || 0 })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
+                  <NumberInput unstyled id={`${uiFieldId}-2`} value={editForm.downPayment} onChange={(e) => setEditForm({ ...editForm, downPayment: parseFloat(e.target.value) || 0 })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
                 </div>
                 <div>
                   <label htmlFor={`${uiFieldId}-3`} className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">จำนวนงวด (เดือน)</label>
-                  <input id={`${uiFieldId}-3`} type="number" value={editForm.totalMonths} onChange={(e) => setEditForm({ ...editForm, totalMonths: parseInt(e.target.value) || 0 })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
+                  <NumberInput unstyled id={`${uiFieldId}-3`} value={editForm.totalMonths} onChange={(e) => setEditForm({ ...editForm, totalMonths: parseInt(e.target.value) || 0 })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
                 </div>
                 <div>
                   <label htmlFor={`${uiFieldId}-4`} className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">อัตราดอกเบี้ย (ทศนิยม เช่น 0.08)</label>
-                  <input id={`${uiFieldId}-4`} type="number" step="0.01" value={editForm.interestRate} onChange={(e) => setEditForm({ ...editForm, interestRate: parseFloat(e.target.value) || 0 })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
+                  <NumberInput unstyled id={`${uiFieldId}-4`} step="0.01" value={editForm.interestRate} onChange={(e) => setEditForm({ ...editForm, interestRate: parseFloat(e.target.value) || 0 })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
                 </div>
                 <div>
                   <label htmlFor={`${uiFieldId}-5`} className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">วันชำระ</label>
@@ -808,7 +809,7 @@ const deleteMutation = useMutation({
                   รายละเอียดการคำนวณ
                 </summary>
                 <div className="grid grid-cols-2 gap-3 mt-3">
-                  <Info label="ยอดปล่อย (Loan)" value={`${formatNumber(parseFloat(contract.sellingPrice) - parseFloat(contract.downPayment))} บาท`} />
+                  <Info label="ยอดปล่อย (สินเชื่อ)" value={`${formatNumber(parseFloat(contract.sellingPrice) - parseFloat(contract.downPayment))} บาท`} />
                   <Info label="อัตราดอกเบี้ย" value={`${(parseFloat(contract.interestRate) * 100).toFixed(2)}%${contract.interestConfig ? ` (${contract.interestConfig.name})` : ''}`} />
                   <Info label="ดอกเบี้ยรวม" value={`${formatNumber(contract.interestTotal)} บาท`} />
                   <Info label="ยอดจัดไฟแนนซ์" value={`${formatNumber(contract.financedAmount)} บาท`} />
@@ -1150,7 +1151,7 @@ function ContractPreviewFrame({ html }: { html: string }) {
   return (
     <iframe
       ref={iframeRef}
-      title="contract-preview"
+      title="ตัวอย่างสัญญา"
       className="w-full h-full border-0"
       sandbox="allow-same-origin allow-popups allow-modals allow-scripts"
     />

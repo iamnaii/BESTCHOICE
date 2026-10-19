@@ -43,7 +43,7 @@ describe('MovementDialog — เติม/คืนเงินสดย่อ�
     expect(submit).toBeDisabled();
 
     fireEvent.click(screen.getByRole('button', { name: 'เติมให้เต็มวงเงิน 13,486.00' }));
-    expect((amount as HTMLInputElement).value).toBe('13486.00');
+    expect((amount as HTMLInputElement).value).toBe('13,486.00');
     expect(submit).toBeEnabled();
     // แสดงรายการบัญชีที่จะลง
     expect(screen.getByText(/Dr S11-1106/)).toBeInTheDocument();
@@ -77,7 +77,7 @@ describe('MovementDialog — เติม/คืนเงินสดย่อ�
     expect(screen.getByText('คืนได้ไม่เกินยอดคงเหลือ 6,514.00 บาท — เงินสดย่อยติดลบไม่ได้')).toBeInTheDocument();
     expect(submit).toBeDisabled();
     fireEvent.click(screen.getByRole('button', { name: 'คืนทั้งหมด 6,514.00' }));
-    expect((amount as HTMLInputElement).value).toBe('6514.00');
+    expect((amount as HTMLInputElement).value).toBe('6,514.00');
     fireEvent.change(bank, { target: { value: 'S11-1202' } });
     expect(screen.getByText(/Dr S11-1202/)).toBeInTheDocument();
     expect(screen.getByText(/Cr S11-1106/)).toBeInTheDocument();

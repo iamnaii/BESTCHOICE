@@ -1,3 +1,4 @@
+import { NumberInput } from '@/components/ui/NumberInput';
 import { useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -92,7 +93,7 @@ function CountDialog({ status, onClose }: { status: CashCloseStatusResponse; onC
         </dl>
         <div className="space-y-1">
           <label htmlFor="cash-close-counted" className="block text-xs text-muted-foreground leading-snug">เงินสดที่นับได้จริงในลิ้นชัก <span className="text-destructive">*</span></label>
-          <input id="cash-close-counted" inputMode="decimal" autoFocus value={countedText} onChange={(e) => setCountedText(e.target.value)}
+          <NumberInput step="any" unstyled id="cash-close-counted" inputMode="decimal" autoFocus value={countedText} onChange={(e) => setCountedText(e.target.value)}
             placeholder="0.00" className={inputClass} />
           {countedText.trim() !== '' && counted == null && <p className="text-xs text-destructive leading-snug">กรอกเป็นตัวเลข ทศนิยมไม่เกิน 2 ตำแหน่ง</p>}
         </div>

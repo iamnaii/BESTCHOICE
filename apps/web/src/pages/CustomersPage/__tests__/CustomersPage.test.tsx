@@ -523,7 +523,7 @@ describe('การ์ด KPI กดเพื่อกรอง', () => {
     expect(locationText()).not.toContain('state=');
   });
 
-  it('แท็บผู้สนใจ: ผ่าน pre-check ยิง FULL_CHECK_PASSED (PRE_CHECK_PASSED ไม่มีข้อมูลจริง)', async () => {
+  it('แท็บผู้สนใจ: ผ่านการตรวจเบื้องต้น ยิง FULL_CHECK_PASSED (PRE_CHECK_PASSED ไม่มีข้อมูลจริง)', async () => {
     show('/customers?view=prospects');
     await screen.findByText('ผู้สนใจ หนึ่ง');
     const kpis = within(screen.getByRole('group', { name: 'ตัวเลขสรุป' }));
@@ -531,13 +531,13 @@ describe('การ์ด KPI กดเพื่อกรอง', () => {
       ['ผู้สนใจทั้งหมด', '30'],
       ['คุยกันใน 7 วัน', '4'],
       ['กำลังเช็คเครดิต', '2'],
-      ['ผ่าน pre-check', '5'],
+      ['ผ่านการตรวจเบื้องต้น', '5'],
       ['เงียบเกิน 30 วัน', '11'],
     ] as const) {
       const card = kpis.getByRole('button', { name: new RegExp(label) });
       expect(within(card).getByText(value)).toBeInTheDocument();
     }
-    fireEvent.click(kpis.getByRole('button', { name: /ผ่าน pre-check/ }));
+    fireEvent.click(kpis.getByRole('button', { name: /ผ่านการตรวจเบื้องต้น/ }));
     await waitFor(() => expect(locationText()).toContain('precheck=FULL_CHECK_PASSED'));
     await waitFor(() => expect(lastListParams().creditCheckStatus).toBe('FULL_CHECK_PASSED'));
 
@@ -671,7 +671,7 @@ describe('เซลล์ในตาราง', () => {
   it('แท็บผู้สนใจแสดงโลโก้ครบทุกช่องทางของคนนั้น และขีดเมื่อไม่มีเลย', async () => {
     show('/customers?view=prospects');
     const row = await screen.findByRole('row', { name: /ผู้สนใจ หนึ่ง/ });
-    expect(within(row).getByRole('link', { name: 'เปิดแชทLINE Finance' })).toHaveAttribute(
+    expect(within(row).getByRole('link', { name: 'เปิดแชทLINE งานการเงิน' })).toHaveAttribute(
       'href',
       '/inbox/room-line',
     );
@@ -966,7 +966,7 @@ describe('ดรอปดาวน์ ผล pre-check', () => {
 
   it('ยังเก็บ PRE_CHECK_PASSED ใน badge map (ข้อมูลเก่าต้องอ่านออก)', async () => {
     const { customerCreditStatusMap } = await import('@/lib/status-badges');
-    expect(customerCreditStatusMap.PRE_CHECK_PASSED?.label).toBe('ผ่าน pre-check');
+    expect(customerCreditStatusMap.PRE_CHECK_PASSED?.label).toBe('ผ่านการตรวจเบื้องต้น');
   });
 });
 

@@ -1,3 +1,4 @@
+import { NumberInput } from '@/components/ui/NumberInput';
 import { useId as useUiFieldId, useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
@@ -23,13 +24,13 @@ import { Sparkles, Route, Store } from 'lucide-react';
 const CHANNELS = [
   {
     value: 'LINE_FINANCE',
-    label: 'LINE Finance',
+    label: "LINE งานการเงิน",
     noop: 'น้องเบสตอบเองอยู่แล้ว — ค่านี้ไม่มีผล',
   },
-  { value: 'LINE_SHOP', label: 'LINE Shop', noop: null },
+  { value: 'LINE_SHOP', label: "LINE งานหน้าร้าน", noop: null },
   { value: 'FACEBOOK', label: 'Facebook', noop: null },
   { value: 'TIKTOK', label: 'TikTok', noop: 'ยังไม่ได้เชื่อมต่อ TikTok — ค่านี้ไม่มีผล' },
-  { value: 'WEB', label: 'Web', noop: null },
+  { value: 'WEB', label: "เว็บไซต์", noop: null },
 ] as const;
 
 interface AiSettings {
@@ -85,7 +86,7 @@ function AiSettingsForm({ initial }: { initial: AiSettings }) {
         <CardHeader>
           <CardTitle className="text-base flex items-center gap-2">
             <Sparkles className="w-4 h-4 text-muted-foreground" />
-            AI Auto Mode
+            โหมดตอบอัตโนมัติของ AI
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -167,8 +168,7 @@ function AiSettingsForm({ initial }: { initial: AiSettings }) {
         </CardHeader>
         <CardContent>
           <div className="flex items-center gap-3">
-            <Input
-              type="number"
+            <NumberInput
               min={1}
               max={100}
               aria-label="จำนวนตอบสูงสุดต่อห้องแชท" value={form.maxRepliesPerSession}
@@ -243,13 +243,13 @@ function ShopBotSetupForm() {
         llmProvider,
       }),
     onSuccess: () => {
-      toast.success('บันทึก SHOP Bot Setup เรียบร้อย');
+      toast.success("บันทึก SHOP บอต Setup เรียบร้อย");
       queryClient.invalidateQueries({ queryKey: ['ai-settings-shop-bot'] });
       queryClient.invalidateQueries({ queryKey: ['ai-settings', 'full'] });
       queryClient.invalidateQueries({ queryKey: ['ai-settings', 'lite'] });
     },
     onError: () => {
-      toast.error('ไม่สามารถบันทึก SHOP Bot Setup ได้');
+      toast.error("ไม่สามารถบันทึก SHOP บอต Setup ได้");
     },
   });
 
@@ -274,7 +274,7 @@ function ShopBotSetupForm() {
       <CardHeader>
         <CardTitle className="text-base flex items-center gap-2 leading-snug">
           <Store className="w-4 h-4 text-muted-foreground" />
-          SHOP Bot Setup
+          ตั้งค่าบอตหน้าร้าน
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -304,7 +304,7 @@ function ShopBotSetupForm() {
           />
         </div>
         <div className="space-y-2">
-          <Label htmlFor={`${uiFieldId}-3`} className="leading-snug">AI Provider</Label>
+          <Label htmlFor={`${uiFieldId}-3`} className="leading-snug">ผู้ให้บริการ AI</Label>
           <Select
             value={llmProvider}
             onValueChange={(v) => setLlmProvider(v as LlmProviderChoice)}

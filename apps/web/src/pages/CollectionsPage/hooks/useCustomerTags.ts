@@ -44,7 +44,7 @@ export function useApplyCustomerTag() {
       return data;
     },
     onSuccess: (_, vars) => {
-      toast.success('เพิ่ม tag สำเร็จ');
+      toast.success("เพิ่ม ป้ายกำกับ สำเร็จ");
       qc.invalidateQueries({ queryKey: ['customer-tags', vars.customerId] });
       // Tags drive dunning + queue chips — refresh queue too.
       qc.invalidateQueries({ queryKey: ['overdue-queue'] });
@@ -61,7 +61,7 @@ export function useRemoveCustomerTag() {
       return data;
     },
     onSuccess: (_, vars) => {
-      toast.success('ลบ tag แล้ว');
+      toast.success("ลบ ป้ายกำกับ แล้ว");
       qc.invalidateQueries({ queryKey: ['customer-tags', vars.customerId] });
       qc.invalidateQueries({ queryKey: ['overdue-queue'] });
     },

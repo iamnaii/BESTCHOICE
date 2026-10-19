@@ -34,7 +34,7 @@ describe('MakerCheckerConfirmDialog', () => {
         onCancel={onCancel}
       />
     );
-    expect(screen.getByText(/เปิดระบบ Maker-Checker/)).toBeInTheDocument();
+    expect(screen.getByText(/เปิดระบบ การแยกผู้บันทึกและผู้อนุมัติ/)).toBeInTheDocument();
     expect(screen.getByText(/ต้องผ่านผู้อนุมัติ/)).toBeInTheDocument();
     const confirmBtn = screen.getByRole('button', { name: /ยืนยันเปิด/ });
     expect(confirmBtn).toBeDisabled();
@@ -52,7 +52,7 @@ describe('MakerCheckerConfirmDialog', () => {
         onCancel={onCancel}
       />
     );
-    expect(screen.getByText(/ปิดระบบ Maker-Checker/)).toBeInTheDocument();
+    expect(screen.getByText(/ปิดระบบ การแยกผู้บันทึกและผู้อนุมัติ/)).toBeInTheDocument();
     expect(screen.getByText(/auto-approve/i)).toBeInTheDocument();
     expect(screen.getByText(/3 ฉบับ/)).toBeInTheDocument();
     const confirmBtn = screen.getByRole('button', { name: /ยืนยันปิด/ });

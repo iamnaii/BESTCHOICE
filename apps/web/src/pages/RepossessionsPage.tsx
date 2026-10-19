@@ -1,3 +1,4 @@
+import { NumberInput } from '@/components/ui/NumberInput';
 import ScreenTable from '@/components/ui/ScreenTable';
 import { NativeSelect } from '@/components/ui/native-select';
 import DocumentDownloadButton from '@/components/DocumentDownloadButton';
@@ -417,7 +418,7 @@ export default function RepossessionsPage() {
                 variant="info"
                 appearance="light"
                 size="sm"
-                title="ค่าเครื่องคืน (11-2107 DEVICE_RETURN) ยังไม่ถูกหัก — หักในรอบจ่าย INTER-CO ถัดไป หรือรับเงินสดที่หน้าจ่ายให้หน้าร้าน"
+                title="ค่าเครื่องคืน (11-2107 DEVICE_RETURN) ยังไม่ถูกหัก — หักในรอบจ่าย ระหว่างบริษัท ถัดไป หรือรับเงินสดที่หน้าจ่ายให้หน้าร้าน"
               >
                 รอหักในรอบจ่าย {deviceReturnOutstanding.toLocaleString()} ฿
               </Badge>
@@ -443,7 +444,7 @@ export default function RepossessionsPage() {
             onClick={() =>
               setJournalTarget({ id: r.contract.id, contractNumber: r.contract.contractNumber })
             }
-            title="บันทึกบัญชี (JE) ทุกใบของสัญญานี้ — JP5, ใบลดหนี้, จ่ายคืน, รับโอนหน้าร้าน"
+            title="บันทึกบัญชี ทุกใบของสัญญานี้ — JP5, ใบลดหนี้, จ่ายคืน, รับโอนหน้าร้าน"
             className="text-muted-foreground hover:text-foreground text-sm font-medium"
           >
             บัญชี
@@ -699,7 +700,7 @@ export default function RepossessionsPage() {
                   <th className="px-4 py-2 text-right">ค่าซ่อม</th>
                   <th className="px-4 py-2 text-right">ราคาขาย</th>
                   <th className="px-4 py-2 text-right">กำไร</th>
-                  <th className="px-4 py-2 text-right">Margin</th>
+                  <th className="px-4 py-2 text-right">ส่วนต่างกำไร</th>
                 </tr>
               </thead>
               <tbody className="divide-y">
@@ -852,8 +853,7 @@ export default function RepossessionsPage() {
               <label htmlFor={`${uiFieldId}-1`} className="block text-sm font-medium text-foreground mb-1">
                 จำนวนเงินที่รับโอน <span className="text-destructive">*</span>
               </label>
-              <input id={`${uiFieldId}-1`}
-                type="number"
+              <NumberInput unstyled id={`${uiFieldId}-1`}
                 min="0.01"
                 step="0.01"
                 value={settlementAmount}
@@ -923,8 +923,7 @@ export default function RepossessionsPage() {
               <label htmlFor={`${uiFieldId}-2`} className="block text-sm font-medium text-foreground mb-1">
                 จำนวนเงินที่จ่ายคืน <span className="text-destructive">*</span>
               </label>
-              <input id={`${uiFieldId}-2`}
-                type="number"
+              <NumberInput unstyled id={`${uiFieldId}-2`}
                 min="0.01"
                 step="0.01"
                 value={refundAmount}
@@ -1046,9 +1045,8 @@ export default function RepossessionsPage() {
                 >
                   ราคาเงินสด (บาท) <span className="text-destructive">*</span>
                 </label>
-                <input
+                <NumberInput unstyled
                   id="ready-for-sale-cash"
-                  type="number"
                   min="0.01"
                   step="0.01"
                   value={readyForSalePrice}
@@ -1065,9 +1063,8 @@ export default function RepossessionsPage() {
                 >
                   ราคาผ่อน BESTCHOICE (บาท) <span className="text-destructive">*</span>
                 </label>
-                <input
+                <NumberInput unstyled
                   id="ready-for-sale-installment"
-                  type="number"
                   min="0.01"
                   step="0.01"
                   value={readyForSaleInstallment}
@@ -1163,8 +1160,7 @@ export default function RepossessionsPage() {
                 <label htmlFor={`${uiFieldId}-4`} className="block text-sm font-medium text-foreground mb-1">
                   ค่าซ่อม (บาท)
                 </label>
-                <input id={`${uiFieldId}-4`}
-                  type="number"
+                <NumberInput unstyled id={`${uiFieldId}-4`}
                   value={updateForm.repairCost}
                   onChange={(e) => setUpdateForm({ ...updateForm, repairCost: e.target.value })}
                   disabled={selectedRepo.status === 'SOLD'}
@@ -1175,8 +1171,7 @@ export default function RepossessionsPage() {
                 <label htmlFor={`${uiFieldId}-5`} className="block text-sm font-medium text-foreground mb-1">
                   ราคาขายต่อ (บาท)
                 </label>
-                <input id={`${uiFieldId}-5`}
-                  type="number"
+                <NumberInput unstyled id={`${uiFieldId}-5`}
                   value={updateForm.resellPrice}
                   onChange={(e) => setUpdateForm({ ...updateForm, resellPrice: e.target.value })}
                   disabled={selectedRepo.status === 'SOLD'}

@@ -63,9 +63,10 @@ test.describe('Installment Calculation', () => {
 
     // Step 2: PlanDetailsStep — สรุปการคำนวณ section must be visible
     await expect(page.getByText('สรุปการคำนวณ').first()).toBeVisible({ timeout: 10000 });
-    await expect(page.getByText('ค่างวด/เดือน').first()).toBeVisible();
-    await expect(page.getByText('ยอดปล่อย (Loan)').first()).toBeVisible();
-    await expect(page.getByText('ดอกเบี้ยรวม').first()).toBeVisible();
+    await expect(page.getByText(/^ค่างวดปกติ \(\d+ งวด\)$/)).toBeVisible();
+    await page.getByText('รายละเอียดการคำนวณ (ภายใน)', { exact: true }).click();
+    await expect(page.getByText('ยอดปล่อย', { exact: true })).toBeVisible();
+    await expect(page.getByText(/^\+ ดอกเบี้ย \(/)).toBeVisible();
   });
 
   test('should show ค่างวด/เดือน as positive number in PlanDetailsStep', async ({ page }) => {
@@ -94,13 +95,11 @@ test.describe('Installment Calculation', () => {
     await nextBtn2.click();
 
     // Verify ค่างวด/เดือน is a positive numeric value
-    await expect(page.getByText('ค่างวด/เดือน').first()).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText(/^ค่างวดปกติ \(\d+ งวด\)$/)).toBeVisible({ timeout: 10000 });
 
     // The value is displayed as "X,XXX ฿" — verify it's > 0
-    const monthlyPaymentEl = page
-      .locator('.text-primary')
-      .filter({ hasText: /^\d[\d,]+ ฿$/ })
-      .first();
+    const monthlyPaymentEl = page.getByText(/^ค่างวดปกติ \(\d+ งวด\)$/)
+      .locator('..').locator('span').last();
 
     const hasValue = await monthlyPaymentEl.isVisible({ timeout: 3000 }).catch(() => false);
     if (hasValue) {
@@ -138,18 +137,14 @@ test.describe('Installment Calculation', () => {
 
     await expect(page.getByText('สรุปการคำนวณ').first()).toBeVisible({ timeout: 10000 });
 
-    // Read displayed values
-    const rows = page.locator('.bg-primary\\/5 .flex.justify-between');
-    const rowCount = await rows.count();
-
-    if (rowCount < 3) return; // Not enough data rows to verify
-
-    // Row 0: ราคาขาย | X,XXX ฿
-    // Row 1: เงินดาวน์ | -X,XXX ฿
-    // Row 2: ยอดปล่อย (Loan) | X,XXX ฿
-    const sellingPriceText = (await rows.nth(0).locator('span').last().textContent()) ?? '';
-    const downPaymentText = (await rows.nth(1).locator('span').last().textContent()) ?? '';
-    const principalText = (await rows.nth(2).locator('span').last().textContent()) ?? '';
+    // Resolve the actual summary rows rather than their changing visual order.
+    await page.getByText('รายละเอียดการคำนวณ (ภายใน)', { exact: true }).click();
+    const sellingPriceText = await page.getByText('ราคาเครื่อง', { exact: true })
+      .locator('..').locator('span').last().innerText();
+    const downPaymentText = await page.getByText('ชำระล่วงหน้ารวม (สด/โอน + เครื่องเทิร์น)', { exact: true })
+      .locator('..').locator('span').last().innerText();
+    const principalText = await page.getByText('ยอดปล่อย', { exact: true })
+      .locator('..').locator('span').last().innerText();
 
     const sellingPrice = parseBaht(sellingPriceText);
     const downPayment = parseBaht(downPaymentText.replace('-', ''));
@@ -188,32 +183,27 @@ test.describe('Installment Calculation', () => {
 
     await expect(page.getByText('สรุปการคำนวณ').first()).toBeVisible({ timeout: 10000 });
 
-    const downPaymentInput = page.locator('input[type="number"]').first();
+    const downPaymentInput = page.locator('input[data-numeric-input]').first();
     if (!(await downPaymentInput.isVisible({ timeout: 3000 }).catch(() => false))) return;
 
-    // Read initial monthly payment
-    await page.waitForTimeout(300);
-    const monthlyPaymentBefore =
-      (await page.locator('.border-t.pt-2 .text-primary').last().textContent()) ?? '';
+    const monthlyPayment = page.getByText(/^ค่างวดปกติ \(\d+ งวด\)$/)
+      .locator('..').locator('span').last();
+    await expect(monthlyPayment).toBeVisible();
+    const before = parseBaht(await monthlyPayment.innerText());
+    expect(before).toBeGreaterThan(0);
 
     // Increase down payment by 1000
-    const currentValue = await downPaymentInput.inputValue();
-    const newValue = String(Number(currentValue) + 1000);
-    await downPaymentInput.fill(newValue);
-    await downPaymentInput.dispatchEvent('input');
-    await page.waitForTimeout(300);
+    const currentValue = Number((await downPaymentInput.inputValue()).replace(/,/g, ''));
+    expect(Number.isFinite(currentValue)).toBe(true);
+    const newValue = currentValue + 1000;
+    await downPaymentInput.fill(String(newValue));
+    await expect(page.locator('input[type="hidden"][name="downPayment"]')).toHaveValue(String(newValue));
 
     // Monthly payment should decrease (more down = less financed)
-    const monthlyPaymentAfter =
-      (await page.locator('.border-t.pt-2 .text-primary').last().textContent()) ?? '';
-
-    if (monthlyPaymentBefore && monthlyPaymentAfter) {
-      const before = parseBaht(monthlyPaymentBefore);
-      const after = parseBaht(monthlyPaymentAfter);
-      if (before > 0 && after > 0) {
-        expect(after).toBeLessThanOrEqual(before);
-      }
-    }
+    await expect.poll(async () => {
+      const after = parseBaht(await monthlyPayment.innerText());
+      return { positive: after > 0, decreased: after < before };
+    }).toEqual({ positive: true, decreased: true });
   });
 
   test('should update ค่างวด/เดือน when changing installment months', async ({ page }) => {
@@ -252,14 +242,14 @@ test.describe('Installment Calculation', () => {
     // Read monthly payment with first option
     await monthSelect.selectOption({ index: 0 });
     await page.waitForTimeout(300);
-    const paymentWithFewerMonths =
-      (await page.locator('.border-t.pt-2 .text-primary').last().textContent()) ?? '';
+    const monthlyPayment = page.getByText(/^ค่างวดปกติ \(\d+ งวด\)$/)
+      .locator('..').locator('span').last();
+    const paymentWithFewerMonths = await monthlyPayment.innerText();
 
     // Read monthly payment with last option (more months = lower monthly)
     await monthSelect.selectOption({ index: options.length - 1 });
     await page.waitForTimeout(300);
-    const paymentWithMoreMonths =
-      (await page.locator('.border-t.pt-2 .text-primary').last().textContent()) ?? '';
+    const paymentWithMoreMonths = await monthlyPayment.innerText();
 
     if (paymentWithFewerMonths && paymentWithMoreMonths) {
       const fewerMonthsPayment = parseBaht(paymentWithFewerMonths);

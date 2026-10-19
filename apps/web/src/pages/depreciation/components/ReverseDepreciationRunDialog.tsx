@@ -41,8 +41,7 @@ export function ReverseDepreciationRunDialog({
         </DialogHeader>
         <div className="space-y-3">
           <p className="text-sm text-muted-foreground">
-            จะกลับรายการ Journal Entry ทั้งหมดในงวดนี้ + คืน accumulatedDepr
-            สินทรัพย์แต่ละตัว ไม่สามารถ undo ได้
+            จะกลับรายการบัญชีทั้งหมดในงวดนี้ และคืนยอดค่าเสื่อมราคาสะสมของสินทรัพย์แต่ละรายการ การดำเนินการนี้ย้อนคืนไม่ได้
           </p>
           <div className="space-y-1.5">
             <Label htmlFor={`${uiFieldId}-1`}>เหตุผล (ขั้นต่ำ 5 ตัวอักษร) *</Label>

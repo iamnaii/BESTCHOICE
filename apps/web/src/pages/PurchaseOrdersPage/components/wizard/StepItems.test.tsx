@@ -278,7 +278,7 @@ describe('StepItems — accessory rows (one line each, type fixed from the chip)
     expect(r.getByLabelText('รหัสสินค้า')).toHaveValue('F1601');
     expect(r.getByLabelText('รหัสสินค้า')).toHaveAttribute('readonly');
     expect(r.queryByRole('textbox', { name: 'ยี่ห้ออุปกรณ์' })).toBeNull();
-    expect(r.getByRole('spinbutton', { name: 'ราคาต่อชิ้น' })).toHaveValue(35);
+    expect(r.getByRole('spinbutton', { name: 'ราคาต่อชิ้น' })).toHaveValue('35');
     fireEvent.click(r.getByRole('button', { name: 'เพิ่มจำนวน' }));
     expect(p.updateItem).toHaveBeenCalledWith(0, 'quantity', '2');
   });

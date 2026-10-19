@@ -71,7 +71,7 @@ export function StockDashboardTab({ dashboard, isManager }: StockDashboardTabPro
     return (
       <div className="rounded-xl border border-border/60 p-8 text-center text-muted-foreground">
         <div className="animate-spin rounded-full h-7 w-7 border-b-2 border-primary mx-auto mb-3" />
-        กำลังโหลด Dashboard...
+        กำลังโหลด ภาพรวม...
       </div>
     );
   }

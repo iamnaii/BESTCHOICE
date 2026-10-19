@@ -31,7 +31,7 @@ import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import api, { getErrorMessage } from '@/lib/api';
 
 const FORMAT_OPTIONS = [
-  { value: 'PREFIX-YYMM-NNN', label: 'PREFIX-YYMM-NNN (default — YY+เดือน, 3 หลัก)' },
+  { value: 'PREFIX-YYMM-NNN', label: "PREFIX-YYMM-NNN (ค่าเริ่มต้น — YY+เดือน, 3 หลัก)" },
   { value: 'PREFIX-YYYYMMDD-NNNN', label: 'PREFIX-YYYYMMDD-NNNN (เลขรายวัน, 4 หลัก)' },
   { value: 'PREFIX-YYYYMM-NNNNN', label: 'PREFIX-YYYYMM-NNNNN (รายเดือน, 5 หลัก)' },
   { value: 'PREFIX-YYYY-NNNNNN', label: 'PREFIX-YYYY-NNNNNN (รายปี, 6 หลัก)' },
@@ -40,18 +40,18 @@ const FORMAT_OPTIONS = [
 const RESET_CYCLE_OPTIONS = [
   { value: 'DAILY', label: 'รายวัน' },
   { value: 'MONTHLY', label: 'รายเดือน' },
-  { value: 'YEARLY', label: 'รายปี (default)' },
+  { value: 'YEARLY', label: "รายปี (ค่าเริ่มต้น)" },
 ] as const;
 
 const DOC_TYPE_ROWS: { key: string; label: string; defaultPrefix: string }[] = [
-  { key: 'EXPENSE', label: 'รายจ่าย (Expense)', defaultPrefix: 'EX' },
-  { key: 'CREDIT_NOTE', label: 'ใบลดหนี้ (Credit Note)', defaultPrefix: 'CN' },
-  { key: 'PAYROLL', label: 'เงินเดือน (Payroll)', defaultPrefix: 'PR' },
-  { key: 'VENDOR_SETTLEMENT', label: 'จ่ายเจ้าหนี้ (Vendor Settlement)', defaultPrefix: 'SE' },
-  { key: 'OTHER_INCOME', label: 'รายได้อื่น (Other Income)', defaultPrefix: 'OI' },
-  { key: 'RECEIPT', label: 'ใบเสร็จรับเงิน (Receipt)', defaultPrefix: 'RT' },
-  { key: 'PETTY_CASH_REIMBURSEMENT', label: 'เงินสดย่อย (Petty Cash)', defaultPrefix: 'PC' },
-  { key: 'CONTRACT', label: 'สัญญาผ่อน (Contract)', defaultPrefix: 'CT' },
+  { key: 'EXPENSE', label: "รายจ่าย", defaultPrefix: 'EX' },
+  { key: 'CREDIT_NOTE', label: "ใบลดหนี้", defaultPrefix: 'CN' },
+  { key: 'PAYROLL', label: "เงินเดือน", defaultPrefix: 'PR' },
+  { key: 'VENDOR_SETTLEMENT', label: "จ่ายเจ้าหนี้", defaultPrefix: 'SE' },
+  { key: 'OTHER_INCOME', label: "รายได้อื่น", defaultPrefix: 'OI' },
+  { key: 'RECEIPT', label: "ใบเสร็จรับเงิน", defaultPrefix: 'RT' },
+  { key: 'PETTY_CASH_REIMBURSEMENT', label: "เงินสดย่อย", defaultPrefix: 'PC' },
+  { key: 'CONTRACT', label: "สัญญาผ่อน", defaultPrefix: 'CT' },
 ];
 
 const PREFIX_REGEX = /^[A-Z]{2,4}$/;
@@ -162,7 +162,7 @@ export default function NumberingConfigTab() {
         <CardContent className="grid gap-4 sm:grid-cols-2">
           <div className="flex flex-col gap-1.5">
             <label htmlFor="doc-number-format" className="text-sm font-medium text-foreground">
-              รูปแบบเลขที่ (Format)
+              รูปแบบเลขที่
             </label>
             <Select value={format} onValueChange={setFormat}>
               <SelectTrigger id="doc-number-format" aria-label="รูปแบบเลขที่">
@@ -179,7 +179,7 @@ export default function NumberingConfigTab() {
           </div>
           <div className="flex flex-col gap-1.5">
             <label htmlFor="doc-reset-cycle" className="text-sm font-medium text-foreground">
-              รอบการรีเซ็ต (Reset Cycle)
+              รอบการเริ่มเลขใหม่
             </label>
             <Select value={resetCycle} onValueChange={setResetCycle}>
               <SelectTrigger id="doc-reset-cycle" aria-label="รอบการรีเซ็ต">
@@ -200,9 +200,9 @@ export default function NumberingConfigTab() {
       {/* Per-doc-type table */}
       <Card>
         <CardHeader>
-          <CardTitle>Prefix และ Preview ต่อประเภทเอกสาร</CardTitle>
+          <CardTitle>คำนำหน้าและตัวอย่างเลขเอกสารแต่ละประเภท</CardTitle>
           <CardDescription>
-            ปรับ prefix 2-4 ตัวอักษร พิมพ์ใหญ่ A-Z เท่านั้น — preview จะอัปเดตอัตโนมัติ
+            กำหนดคำนำหน้า 2–4 ตัวอักษร ใช้ A–Z ตัวพิมพ์ใหญ่ ตัวอย่างจะอัปเดตอัตโนมัติ
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -213,7 +213,7 @@ export default function NumberingConfigTab() {
               <TableHeader>
                 <TableRow>
                   <TableHead>ประเภทเอกสาร</TableHead>
-                  <TableHead className="w-40">Prefix</TableHead>
+                  <TableHead className="w-40">คำนำหน้า</TableHead>
                   <TableHead>ตัวอย่างเลขที่ถัดไป</TableHead>
                 </TableRow>
               </TableHeader>
@@ -256,7 +256,7 @@ export default function NumberingConfigTab() {
         open={confirmOpen}
         onOpenChange={setConfirmOpen}
         title="ยืนยันการบันทึก"
-        description="การเปลี่ยนรูปแบบเลขที่หรือ prefix จะมีผลกับเอกสารใหม่ทั้งหมดทันที — เอกสารเดิมไม่ถูกแก้ไข ต้องการบันทึกหรือไม่?"
+        description="การเปลี่ยนรูปแบบเลขที่หรือ คำนำหน้า จะมีผลกับเอกสารใหม่ทั้งหมดทันที — เอกสารเดิมไม่ถูกแก้ไข ต้องการบันทึกหรือไม่?"
         confirmLabel="บันทึก"
         cancelLabel="ยกเลิก"
         loading={saveMutation.isPending}
@@ -308,7 +308,7 @@ function NumberingDocRow({
       <TableCell className="font-medium text-foreground">{label}</TableCell>
       <TableCell>
         <Input
-          aria-label={`prefix สำหรับ ${label}`}
+          aria-label={`คำนำหน้า สำหรับ ${label}`}
           value={state.prefix}
           maxLength={4}
           onChange={(e) => onPrefixChange(docType, e.target.value)}

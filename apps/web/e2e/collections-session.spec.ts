@@ -17,10 +17,10 @@ test.describe('Collections Guided Session', () => {
     if (await hasErrorBoundary(page)) return;
 
     // Toggle buttons exist and are visible
-    await expect(page.getByRole('button', { name: 'Session', exact: true })).toBeVisible({
+    await expect(page.getByRole('button', { name: 'รอบการทำงาน', exact: true })).toBeVisible({
       timeout: 10000,
     });
-    await expect(page.getByRole('button', { name: 'Library', exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'คลังข้อมูล', exact: true })).toBeVisible();
 
     // SALES stays on /collections (no role-based redirect exists)
     await expect(page).toHaveURL(/\/collections(\?|$)/);
@@ -31,7 +31,7 @@ test.describe('Collections Guided Session', () => {
     await gotoWithRetry(page, '/collections');
     if (await hasErrorBoundary(page)) return;
 
-    await page.getByRole('button', { name: 'Library', exact: true }).click();
+    await page.getByRole('button', { name: 'คลังข้อมูล', exact: true }).click();
 
     // Tab labels from CollectionsTabs (always-visible tabs for SALES)
     await expect(page.getByRole('button', { name: /คิววันนี้/ }).first()).toBeVisible({

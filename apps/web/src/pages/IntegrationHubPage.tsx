@@ -317,7 +317,7 @@ function ConfigDrawer({
         `อัปเดตรูป ${data?.updatedPicture ?? 0} ห้อง · เหลือที่ยังไม่มีรูป ${data?.remaining ?? 0}`,
       );
     },
-    onError: () => toast.error('Backfill รูปไม่สำเร็จ'),
+    onError: () => toast.error("เติมข้อมูลย้อนหลัง รูปไม่สำเร็จ"),
   });
 
   // Facebook only — ตั้งปุ่ม Get Started + ข้อความทักทาย + เมนูของเพจ (idempotent)

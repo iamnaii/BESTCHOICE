@@ -76,7 +76,7 @@ export function SmsTemplateForm({
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       <div>
-        <label htmlFor={`${uiFieldId}-1`} className="block text-sm font-medium text-foreground mb-1">ชื่อ template</label>
+        <label htmlFor={`${uiFieldId}-1`} className="block text-sm font-medium text-foreground mb-1">ชื่อแม่แบบ</label>
         <input id={`${uiFieldId}-1`}
           type="text"
           value={name}
@@ -90,7 +90,7 @@ export function SmsTemplateForm({
 
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <label htmlFor={`${uiFieldId}-2`} className="block text-sm font-medium text-foreground mb-1">Channel</label>
+          <label htmlFor={`${uiFieldId}-2`} className="block text-sm font-medium text-foreground mb-1">ช่องทาง</label>
           <NativeSelect wrapperClassName="max-w-full w-full" id={`${uiFieldId}-2`}
             value={channel}
             onChange={(e) => setChannel(e.target.value as SmsChannel)}
@@ -127,7 +127,7 @@ export function SmsTemplateForm({
           value={subject ?? ''}
           onChange={(e) => setSubject(e.target.value)}
           maxLength={200}
-          placeholder="หัวข้อ (ใช้กับ SMS / preheader LINE)"
+          placeholder="หัวข้อ (ใช้กับ SMS / ข้อความเกริ่น LINE)"
           className="w-full px-3 py-2 rounded-md border border-border bg-input text-foreground text-sm focus:outline-none focus:ring-1 focus:ring-primary"
         />
       </div>

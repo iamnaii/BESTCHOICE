@@ -1,3 +1,4 @@
+import { NumberInput } from '@/components/ui/NumberInput';
 import { useEffect, useId, useMemo, useState } from 'react';
 import { ArrowDownToLine, Paperclip, Plus } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -127,9 +128,8 @@ export function MovementDialog({ kind, open, summary, pending, onClose, onSubmit
           <div>
             <label className={formLabelClass} htmlFor={ids.amount}>{copy.amountLabel}</label>
             <div className="flex flex-wrap items-center gap-2">
-              <input
+              <NumberInput unstyled
                 id={ids.amount}
-                type="number"
                 inputMode="decimal"
                 step="0.01"
                 min="0.01"

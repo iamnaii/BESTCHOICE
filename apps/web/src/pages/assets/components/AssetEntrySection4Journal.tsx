@@ -18,7 +18,7 @@ export function AssetEntrySection4Journal({ calc }: { calc: CalculationResult })
     <Card>
       <AssetSectionHeader
         number={4}
-        title="AUTO JOURNAL PREVIEW"
+        title="ตัวอย่างรายการบัญชี"
         action={
           hasLines ? (
             <Badge variant={calc.isBalanced ? 'success' : 'destructive'}>

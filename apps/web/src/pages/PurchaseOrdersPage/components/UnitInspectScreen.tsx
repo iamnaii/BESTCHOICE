@@ -1,3 +1,4 @@
+import { NumberInput } from '@/components/ui/NumberInput';
 import { NativeSelect } from '@/components/ui/native-select';
 import { DeviceDisclosureFields } from '@/components/product/DeviceDisclosureFields';
 import { useRef, useState } from 'react';
@@ -438,9 +439,8 @@ export function UnitInspectScreen({
                 ราคาเงินสด (บาท)
                 <Req />
               </label>
-              <input
+              <NumberInput unstyled
                 id={`cash-${idx}`}
-                type="number"
                 inputMode="decimal"
                 min={0}
                 value={unit.sellingPrice}
@@ -454,9 +454,8 @@ export function UnitInspectScreen({
                 ราคาผ่อน (บาท)
                 <Req />
               </label>
-              <input
+              <NumberInput unstyled
                 id={`installment-${idx}`}
-                type="number"
                 inputMode="decimal"
                 min={0}
                 value={unit.installmentPrice}

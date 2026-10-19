@@ -20,7 +20,7 @@ interface Props {
 
 const REASONS: { value: SkipReason; label: string }[] = [
   { value: 'BUSY', label: 'ลูกค้าไม่ว่าง — โทรซ้ำภายหลัง' },
-  { value: 'WRONG_QUEUE', label: 'ไม่ใช่ลูกค้าของฉัน — คืนกลับ pool' },
+  { value: 'WRONG_QUEUE', label: "ไม่ใช่ลูกค้าของฉัน — คืนกลับ กองงานกลาง" },
   { value: 'PERSONAL_CONFLICT', label: 'มีเรื่องส่วนตัว — ขอข้าม' },
   { value: 'OTHER', label: 'อื่นๆ' },
 ];

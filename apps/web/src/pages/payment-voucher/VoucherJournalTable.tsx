@@ -31,7 +31,7 @@ export function VoucherJournalTable({
       {lines && lines.length > 0 && (
         <section className="mt-6">
           <p className="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wider">
-            Auto Journal
+            รายการบัญชีอัตโนมัติ
           </p>
           <table className="w-full text-xs border border-border">
             <thead className="bg-muted/40">

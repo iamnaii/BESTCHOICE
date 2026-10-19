@@ -261,7 +261,7 @@ export default function MigrationPage() {
               <li>- เลข ปชช. ที่มีอยู่แล้วจะถูกอัปเดต (upsert)</li>
               <li>- ข้อมูลสัญญาต้องมี: customerNationalId, productName, branchName, salespersonEmail</li>
               <li>- ต้องนำเข้าลูกค้าก่อนสัญญา</li>
-              <li>- ใช้ Bulk mode เพื่อนำเข้าทั้งลูกค้าและสัญญาพร้อมกัน</li>
+              <li>- ใช้ Bulk โหมด เพื่อนำเข้าทั้งลูกค้าและสัญญาพร้อมกัน</li>
             </ul>
           </div>
         </div>

@@ -128,7 +128,7 @@ export default function APAgingPage() {
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-4">
       <PageHeader
-        title="AP Aging"
+        title="อายุเจ้าหนี้"
         subtitle="เจ้าหนี้ค้างจ่าย จัดอายุตามวันที่ใบกำกับ — ใช้วางแผน Settlement"
         icon={<Wallet size={20} />}
       />

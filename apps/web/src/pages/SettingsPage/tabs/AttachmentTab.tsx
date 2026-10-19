@@ -1,3 +1,4 @@
+import { NumberInput } from '@/components/ui/NumberInput';
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -51,9 +52,8 @@ export function AttachmentTab() {
       <CardContent className="space-y-4">
         <div className="space-y-2">
           <Label htmlFor="att-threshold">ยอดที่ต้องบังคับแนบเอกสาร (บาท)</Label>
-          <Input
+          <NumberInput
             id="att-threshold"
-            type="number"
             step="0.01"
             min="0"
             value={threshold}

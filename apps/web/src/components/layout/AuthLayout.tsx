@@ -57,7 +57,7 @@ export default function AuthLayout({ children }: AuthLayoutProps) {
           </div>
           <div className="bg-white/10 backdrop-blur-xs border border-white/15 rounded-xl p-5">
             <div className="text-2xl font-bold text-white">99.9%</div>
-            <div className="text-sm text-white/70 mt-1">Uptime</div>
+            <div className="text-sm text-white/70 mt-1">ระยะเวลาทำงาน</div>
           </div>
         </div>
 

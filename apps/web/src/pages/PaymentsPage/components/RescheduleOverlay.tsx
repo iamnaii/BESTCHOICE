@@ -1,3 +1,5 @@
+import { NumberInput } from '@/components/ui/NumberInput';
+import { formatNumericText } from '@/utils/numericText';
 import { ActionEffect as Effect } from '@/components/ActionEffect';
 import { useId as useUiFieldId, useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -348,8 +350,7 @@ export function RescheduleOverlay({
               </button>
             ))}
             <div className="flex items-center gap-1.5">
-              <input
-                type="number"
+              <NumberInput unstyled
                 min={1}
                 max={365}
                 value={daysToShift}
@@ -372,10 +373,10 @@ export function RescheduleOverlay({
             )}
             <Row
               label="ค่าธรรมเนียมเลื่อนดิว"
-              value={quoteLoading ? 'กำลังคำนวณ…' : `${fee.toFixed(2)} บาท`}
+              value={quoteLoading ? 'กำลังคำนวณ…' : `${formatNumericText(fee.toFixed(2))} บาท`}
             />
             <p className="text-xs text-muted-foreground leading-snug">
-              คำนวณจาก ค่างวด ({new Decimal(monthlyPayment || 0).toFixed(2)}) ÷ 30 × {days} วัน
+              คำนวณจาก ค่างวด ({formatNumericText(new Decimal(monthlyPayment || 0).toFixed(2))}) ÷ 30 × {days} วัน
               (ปัดขึ้นเต็มบาท)
             </p>
           </div>
@@ -417,19 +418,19 @@ export function RescheduleOverlay({
                 {splitMode === 'SINGLE' && (
                   <Row
                     label="ค่างวดงวดนี้ (คงเหลือ)"
-                    value={`${new Decimal(quote?.installmentOutstanding ?? 0).toFixed(2)} บาท`}
+                    value={`${formatNumericText(new Decimal(quote?.installmentOutstanding ?? 0).toFixed(2))} บาท`}
                   />
                 )}
                 <Row
                   label={`ยอดปรับดิว (${splitMode === 'SPLIT' ? '6a' : '6b'})`}
-                  value={`${fee.toFixed(2)} บาท`}
+                  value={`${formatNumericText(fee.toFixed(2))} บาท`}
                 />
                 <Row
                   label="ค่าปรับค้างชำระ"
-                  value={lateFee.gt(0) ? `${lateFee.toFixed(2)} บาท` : 'ไม่มี'}
+                  value={lateFee.gt(0) ? `${formatNumericText(lateFee.toFixed(2))} บาท` : 'ไม่มี'}
                 />
                 <div className="border-t border-border pt-1.5">
-                  <Row label="รวมต้องเก็บวันนี้" value={`${collect.toFixed(2)} บาท`} bold />
+                  <Row label="รวมต้องเก็บวันนี้" value={`${formatNumericText(collect.toFixed(2))} บาท`} bold />
                 </div>
               </div>
 
@@ -499,7 +500,7 @@ export function RescheduleOverlay({
 
                   {method === 'QR' && (
                     <div className="rounded-lg border border-warning/40 bg-warning/10 px-3 py-2.5 text-xs text-warning-strong leading-snug">
-                      ระบบจะส่ง QR ยอด {collect.toFixed(2)} บาท ให้ลูกค้าใน LINE —
+                      ระบบจะส่ง QR ยอด {formatNumericText(collect.toFixed(2))} บาท ให้ลูกค้าใน LINE —
                       <strong> ดิวจะเลื่อนอัตโนมัติเมื่อเงินเข้าเท่านั้น</strong> (QR หมดอายุใน 24
                       ชม. ถ้าลูกค้าไม่จ่าย ดิวไม่เลื่อน)
                     </div>
@@ -525,7 +526,7 @@ export function RescheduleOverlay({
                                 <span className="text-muted-foreground">
                                   {l.accountCode} {l.accountName}
                                 </span>
-                                <span>{Number(l.debit) > 0 ? `Dr ${l.debit}` : `Cr ${l.credit}`}</span>
+                                <span>{Number(l.debit) > 0 ? `Dr ${formatNumericText(l.debit)}` : `Cr ${formatNumericText(l.credit)}`}</span>
                               </div>
                             ))}
                           </div>
@@ -543,7 +544,7 @@ export function RescheduleOverlay({
                             <span className="text-muted-foreground">
                               {l.accountCode} {l.accountName}
                             </span>
-                            <span>{Number(l.debit) > 0 ? `Dr ${l.debit}` : `Cr ${l.credit}`}</span>
+                            <span>{Number(l.debit) > 0 ? `Dr ${formatNumericText(l.debit)}` : `Cr ${formatNumericText(l.credit)}`}</span>
                           </div>
                         ))}
                       </div>
@@ -569,14 +570,14 @@ export function RescheduleOverlay({
           <ul className="space-y-1.5 text-sm">
             {hasCollect && method === 'QR' ? (
               <Effect
-                text={`ส่ง QR ยอด ${collect.toFixed(2)} บาท ให้ลูกค้า — ดิวเลื่อนเมื่อเงินเข้า`}
+                text={`ส่ง QR ยอด ${formatNumericText(collect.toFixed(2))} บาท ให้ลูกค้า — ดิวเลื่อนเมื่อเงินเข้า`}
                 warning
               />
             ) : (
               <>
                 {hasCollect && (
                   <Effect
-                    text={`เก็บเงิน ${collect.toFixed(2)} บาท${lateFee.gt(0) ? ` (รวมค่าปรับ ${lateFee.toFixed(2)} บาท → ลงบัญชี 42-1103)` : ''} + ลงบัญชีทันที`}
+                    text={`เก็บเงิน ${formatNumericText(collect.toFixed(2))} บาท${lateFee.gt(0) ? ` (รวมค่าปรับ ${formatNumericText(lateFee.toFixed(2))} บาท → ลงบัญชี 42-1103)` : ''} + ลงบัญชีทันที`}
                   />
                 )}
                 {lateFee.gt(0) && (
@@ -595,7 +596,7 @@ export function RescheduleOverlay({
             <Effect text="เดือนที่ไม่มีวันตรงกับดิวใหม่ ใช้วันสุดท้ายของเดือน" />
             {fee.gt(0) && (
               <Effect
-                text={`ยอดปรับดิว ${fee.toFixed(2)} บาท เป็นเงินชำระล่วงหน้าสำหรับหักค่างวดสุดท้าย`}
+                text={`ยอดปรับดิว ${formatNumericText(fee.toFixed(2))} บาท เป็นเงินชำระล่วงหน้าสำหรับหักค่างวดสุดท้าย`}
               />
             )}
             <Effect
@@ -623,7 +624,7 @@ export function RescheduleOverlay({
             : method === 'QR' && hasCollect
               ? 'ส่ง QR ให้ลูกค้า'
               : hasCollect
-                ? `เก็บเงิน ${collect.toFixed(2)} + ยืนยันปรับดิว`
+                ? `เก็บเงิน ${formatNumericText(collect.toFixed(2))} + ยืนยันปรับดิว`
                 : 'ยืนยันปรับดิว'}
         </button>
       </div>

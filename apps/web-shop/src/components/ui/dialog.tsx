@@ -77,7 +77,7 @@ function DialogContent({
         {showCloseButton && (
           <DialogClose className="cursor-pointer outline-hidden absolute end-5 top-5 rounded-sm opacity-60 ring-offset-background transition-opacity hover:opacity-100 focus:outline-hidden disabled:pointer-events-none data-[state=open]:bg-accent data-[state=open]:text-muted-foreground">
             <X className="size-4" />
-            <span className="sr-only">Close</span>
+            <span className="sr-only">ปิด</span>
           </DialogClose>
         )}
       </DialogPrimitive.Content>

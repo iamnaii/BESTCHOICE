@@ -316,7 +316,7 @@ export default function ReceiptsTab({ onVoided }: ReceiptsTabProps) {
         <Card className="rounded-xl border border-border/50 bg-card shadow-sm overflow-hidden hover:shadow-card-hover transition-all">
           <CardContent className="p-5 flex items-center justify-between">
             <div>
-              <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">Export</div>
+              <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ส่งออก</div>
               <div className="text-sm text-muted-foreground">ดาวน์โหลดข้อมูลตามตัวกรอง</div>
             </div>
             <button data-ui-control="button"

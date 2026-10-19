@@ -168,7 +168,7 @@ export function JeBlock({
           className={`text-xs font-medium leading-snug ${je.isBalanced ? 'text-success' : 'text-destructive'}`}
         >
           {money(je.totalDebit)} = {money(je.totalCredit)}{' '}
-          {je.isBalanced ? 'BALANCED' : 'UNBALANCED'}
+          {je.isBalanced ? "ยอดสมดุล" : "ยอดไม่สมดุล"}
         </span>
       </div>
       <div className="space-y-1">

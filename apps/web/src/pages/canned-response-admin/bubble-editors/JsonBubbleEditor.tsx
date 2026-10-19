@@ -39,7 +39,7 @@ export default function JsonBubbleEditor({ bubble, onChange }: Props) {
       />
       {error && <p className="text-xs text-destructive">JSON ผิด syntax: {error}</p>}
       <p className="text-xs text-muted-foreground leading-snug">
-        Raw mode — สำหรับ LINE Flex Bubble / Carousel หรือ FB Generic Template. ระบบจะส่งตรงไปยัง channel API. JSON parse บน blur — เปลี่ยน focus ออกก่อนเพื่อ save.
+        แก้ไข JSON สำหรับการ์ดข้อความ LINE หรือ Facebook ระบบตรวจรูปแบบและเก็บการแก้ไขเมื่อออกจากช่องกรอก
       </p>
     </div>
   );

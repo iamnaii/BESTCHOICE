@@ -158,7 +158,7 @@ export default function BlockItem({ block, index, totalBlocks, clauseIndex }: Pr
           {displayContent || <span className="text-muted-foreground italic">คลิกเพื่อเพิ่มเนื้อหา...</span>}
         </div>
       )}
-      <ConfirmDialog open={confirmDialog.open} onOpenChange={(open) => setConfirmDialog(prev => ({ ...prev, open }))} description="ต้องการลบ block นี้?" variant="destructive" onConfirm={confirmDialog.action} />
+      <ConfirmDialog open={confirmDialog.open} onOpenChange={(open) => setConfirmDialog(prev => ({ ...prev, open }))} description="ต้องการลบส่วนเนื้อหานี้?" variant="destructive" onConfirm={confirmDialog.action} />
     </div>
   );
 }

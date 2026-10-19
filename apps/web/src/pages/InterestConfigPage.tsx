@@ -1,3 +1,4 @@
+import { NumberInput } from '@/components/ui/NumberInput';
 import { useId as useUiFieldId, useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api, { getErrorMessage } from '@/lib/api';
@@ -78,7 +79,7 @@ function validateForm(form: typeof defaultForm): FormErrors {
  * remain in decimal form — those don't have a canonical-key counterpart yet.
  */
 const defaultKeys = [
-  { key: 'interest_rate', label: 'อัตราดอกเบี้ยต่อเดือน (Flat rate)', step: '0.01' },
+  { key: 'interest_rate', label: "อัตราดอกเบี้ยต่อเดือน (แบบคงที่)", step: '0.01' },
   { key: 'min_down_payment_pct', label: 'เงินดาวน์ขั้นต่ำ (%)', step: '0.01' },
   { key: 'store_commission_pct', label: 'ค่าคอมหน้าร้าน (เช่น 0.10 = 10%)', step: '0.01' },
   { key: 'VAT_RATE', label: 'VAT (%) — เช่น 7 = 7%', step: '0.01' },
@@ -140,7 +141,7 @@ export default function InterestConfigPage() {
       api.patch('/settings', { items }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['settings'] });
-      toast.success('บันทึกค่า default สำเร็จ');
+      toast.success("บันทึกค่าเริ่มต้นสำเร็จ");
       setDefaultsChanged(false);
       defaultsChangedRef.current = false;
     },
@@ -280,7 +281,7 @@ export default function InterestConfigPage() {
         subtitle="กำหนดอัตราดอกเบี้ยและเงื่อนไขตามประเภทสินค้า"
         action={
           <button data-ui-control="button" onClick={openCreate} className="px-4 py-2 bg-primary text-primary-foreground text-sm font-medium rounded-lg hover:bg-primary/90">
-            + สร้าง Config
+            + สร้าง การตั้งค่า
           </button>
         }
       />
@@ -290,8 +291,8 @@ export default function InterestConfigPage() {
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0 flex-1 basis-full sm:basis-0">
             <div className="flex flex-wrap items-center gap-2 mb-2">
-              <h3 className="text-lg font-semibold text-foreground">ค่า Default</h3>
-              <span className="rounded-full px-2.5 py-0.5 text-xs font-semibold bg-warning/20 text-warning-strong">ใช้เมื่อไม่มี config ตามประเภท</span>
+              <h3 className="text-lg font-semibold text-foreground">ค่าเริ่มต้น</h3>
+              <span className="rounded-full px-2.5 py-0.5 text-xs font-semibold bg-warning/20 text-warning-strong">ใช้เมื่อไม่มี การตั้งค่า ตามประเภท</span>
             </div>
             {!editingDefaults ? (
               <>
@@ -322,8 +323,7 @@ export default function InterestConfigPage() {
                   <div key={item.key} className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-4">
                     <label className="min-w-0 flex-1 text-sm text-foreground">{item.label}</label>
                     <div className="w-full sm:w-48 sm:shrink-0">
-                      <input
-                        type="number"
+                      <NumberInput unstyled
                         step={item.step}
                         value={defaults[item.key] ?? ''}
                         onChange={(e) => handleDefaultChange(item.key, e.target.value)}
@@ -490,8 +490,7 @@ export default function InterestConfigPage() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label htmlFor={`${uiFieldId}-2`} className="block text-sm font-medium text-foreground mb-1">ดอกเบี้ย (%)</label>
-                <input id={`${uiFieldId}-2`}
-                  type="number"
+                <NumberInput unstyled id={`${uiFieldId}-2`}
                   value={form.interestRate}
                   onChange={(e) => setForm((f) => ({ ...f, interestRate: Number(e.target.value) }))}
                   step="0.1"
@@ -503,8 +502,7 @@ export default function InterestConfigPage() {
               </div>
               <div>
                 <label htmlFor={`${uiFieldId}-3`} className="block text-sm font-medium text-foreground mb-1">ดาวน์ขั้นต่ำ (%)</label>
-                <input id={`${uiFieldId}-3`}
-                  type="number"
+                <NumberInput unstyled id={`${uiFieldId}-3`}
                   value={form.minDownPaymentPct}
                   onChange={(e) => setForm((f) => ({ ...f, minDownPaymentPct: Number(e.target.value) }))}
                   step="1"
@@ -520,8 +518,7 @@ export default function InterestConfigPage() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label htmlFor={`${uiFieldId}-4`} className="block text-sm font-medium text-foreground mb-1">ค่าคอมหน้าร้าน (%)</label>
-                <input id={`${uiFieldId}-4`}
-                  type="number"
+                <NumberInput unstyled id={`${uiFieldId}-4`}
                   value={form.storeCommissionPct}
                   onChange={(e) => setForm((f) => ({ ...f, storeCommissionPct: Number(e.target.value) }))}
                   step="1"
@@ -533,8 +530,7 @@ export default function InterestConfigPage() {
               </div>
               <div>
                 <label htmlFor={`${uiFieldId}-5`} className="block text-sm font-medium text-foreground mb-1">VAT (%)</label>
-                <input id={`${uiFieldId}-5`}
-                  type="number"
+                <NumberInput unstyled id={`${uiFieldId}-5`}
                   value={form.vatPct}
                   onChange={(e) => setForm((f) => ({ ...f, vatPct: Number(e.target.value) }))}
                   step="0.1"
@@ -550,8 +546,7 @@ export default function InterestConfigPage() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label htmlFor={`${uiFieldId}-6`} className="block text-sm font-medium text-foreground mb-1">งวดต่ำสุด (เดือน)</label>
-                <input id={`${uiFieldId}-6`}
-                  type="number"
+                <NumberInput unstyled id={`${uiFieldId}-6`}
                   value={form.minInstallmentMonths}
                   onChange={(e) => setForm((f) => ({ ...f, minInstallmentMonths: Number(e.target.value) }))}
                   min="1"
@@ -561,8 +556,7 @@ export default function InterestConfigPage() {
               </div>
               <div>
                 <label htmlFor={`${uiFieldId}-7`} className="block text-sm font-medium text-foreground mb-1">งวดสูงสุด (เดือน)</label>
-                <input id={`${uiFieldId}-7`}
-                  type="number"
+                <NumberInput unstyled id={`${uiFieldId}-7`}
                   value={form.maxInstallmentMonths}
                   onChange={(e) => setForm((f) => ({ ...f, maxInstallmentMonths: Number(e.target.value) }))}
                   min="1"

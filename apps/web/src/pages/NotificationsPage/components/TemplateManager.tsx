@@ -70,7 +70,7 @@ export default function TemplateManager({
   const deleteTemplateMutation = useMutation({
     mutationFn: async (eventType: string) => api.delete(`/notifications/templates/${eventType}`),
     onSuccess: () => {
-      toast.success('ลบเทมเพลตสำเร็จ');
+      toast.success("ลบแม่แบบสำเร็จ");
       queryClient.invalidateQueries({ queryKey: ['notification-templates'] });
     },
     onError: (err: unknown) => toast.error(getErrorMessage(err)),
@@ -87,7 +87,7 @@ export default function TemplateManager({
           onClick={onCreateTemplate}
           className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90"
         >
-          + สร้าง Template
+          + สร้างแม่แบบ
         </button>
         <div className="flex items-center gap-2 ml-auto">
           <label htmlFor={`${uiFieldId}-1`} className="text-sm text-muted-foreground">หมวดหมู่:</label>
@@ -112,10 +112,10 @@ export default function TemplateManager({
             <thead>
               <tr className="border-b border-border bg-muted/30">
                 <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                  ชื่อ Template
+                  ชื่อแม่แบบ
                 </th>
                 <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                  Event Type
+                  ประเภทเหตุการณ์
                 </th>
                 <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">
                   หมวดหมู่
@@ -145,7 +145,7 @@ export default function TemplateManager({
               ) : templates.length === 0 ? (
                 <tr>
                   <td colSpan={8} className="px-4 py-8 text-center text-muted-foreground">
-                    ยังไม่มี template
+                    ยังไม่มี แม่แบบ
                   </td>
                 </tr>
               ) : (
@@ -179,7 +179,7 @@ export default function TemplateManager({
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap">
                       <span className="text-xs text-muted-foreground">
-                        {template.format === 'flex' ? 'Flex' : 'Text'}
+                        {template.format === 'flex' ? 'Flex' : "ข้อความ"}
                       </span>
                     </td>
                     <td className="px-4 py-3 max-w-md">

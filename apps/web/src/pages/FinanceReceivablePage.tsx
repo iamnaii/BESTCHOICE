@@ -1,6 +1,7 @@
+import { NumberInput } from '@/components/ui/NumberInput';
 import { NativeSelect } from '@/components/ui/native-select';
 import { getReportDateRange, toBangkokDateString } from '@/lib/date';
-import { useId as useUiFieldId, useState } from 'react';
+import { useId as useUiFieldId, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -15,6 +16,7 @@ import { Badge } from '@/components/ui/badge';
 import { Banknote, Clock, AlertTriangle, CheckCircle2, Ban, Pencil, MoreVertical, Receipt, Percent, Wallet } from 'lucide-react';
 import AnimatedCounter from '@/components/ui/animated-counter';
 import { Button } from '@/components/ui/button';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { formatDateShortThai, formatDateShort } from '@/utils/formatters';
 import ThaiDateInput from '@/components/ui/ThaiDateInput';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
@@ -223,11 +225,16 @@ export default function FinanceReceivablePage() {
   const [selectedRecord, setSelectedRecord] = useState<FinanceReceivable | null>(null);
   const [selectedReceivable, setSelectedReceivable] = useState<FinanceReceivable | null>(null);
   const [brokenPromiseOnly, setBrokenPromiseOnly] = useState(false);
+  const menuTriggers = useRef(new Map<string, HTMLButtonElement>());
+  const restoreMenuFocus = (event: Event) => {
+    event.preventDefault();
+    // Table cells can remount as the dialog state changes; use the current row trigger.
+    if (selectedRecord) menuTriggers.current.get(selectedRecord.id)?.focus();
+  };
   const [isReceiveModalOpen, setIsReceiveModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isDisputeModalOpen, setIsDisputeModalOpen] = useState(false);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
-  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [receiveForm, setReceiveForm] = useState({ receivedAmount: '', receivedDate: toBangkokDateString(), bankRef: '', note: '' });
   const [editForm, setEditForm] = useState({ financeRefNumber: '', commissionRate: '', expectedDate: '', note: '' });
   const [disputeReason, setDisputeReason] = useState('');
@@ -298,9 +305,9 @@ export default function FinanceReceivablePage() {
     onError: (err: unknown) => toast.error(getErrorMessage(err)),
   });
 
-  const openReceiveModal = (r: FinanceReceivable) => { setSelectedRecord(r); setReceiveForm({ receivedAmount: r.netExpectedAmount, receivedDate: toBangkokDateString(), bankRef: '', note: '' }); setIsReceiveModalOpen(true); setOpenMenuId(null); };
-  const openEditModal = (r: FinanceReceivable) => { setSelectedRecord(r); setEditForm({ financeRefNumber: r.financeRefNumber || '', commissionRate: r.commissionRate ? (Number(r.commissionRate) * 100).toString() : '', expectedDate: r.expectedDate.slice(0, 10), note: r.note || '' }); setIsEditModalOpen(true); setOpenMenuId(null); };
-  const openDisputeModal = (r: FinanceReceivable) => { setSelectedRecord(r); setDisputeReason(''); setIsDisputeModalOpen(true); setOpenMenuId(null); };
+  const openReceiveModal = (r: FinanceReceivable) => { setSelectedRecord(r); setReceiveForm({ receivedAmount: r.netExpectedAmount, receivedDate: toBangkokDateString(), bankRef: '', note: '' }); setIsReceiveModalOpen(true); };
+  const openEditModal = (r: FinanceReceivable) => { setSelectedRecord(r); setEditForm({ financeRefNumber: r.financeRefNumber || '', commissionRate: r.commissionRate ? (Number(r.commissionRate) * 100).toString() : '', expectedDate: r.expectedDate.slice(0, 10), note: r.note || '' }); setIsEditModalOpen(true); };
+  const openDisputeModal = (r: FinanceReceivable) => { setSelectedRecord(r); setDisputeReason(''); setIsDisputeModalOpen(true); };
   const openDetailModal = (r: FinanceReceivable) => { setSelectedRecord(r); setIsDetailModalOpen(true); };
 
   const totalAll = (Number(summary?.pendingAmount || 0) + Number(summary?.receivedAmount || 0) + Number(summary?.overdueAmount || 0));
@@ -327,7 +334,7 @@ export default function FinanceReceivablePage() {
     },
     {
       key: 'financeCompany', label: 'ไฟแนนซ์',
-      render: (r: FinanceReceivable) => (<div><div className="font-medium">{r.financeCompany}</div>{r.financeRefNumber && <div className="text-xs text-muted-foreground">Ref: {r.financeRefNumber}</div>}</div>),
+      render: (r: FinanceReceivable) => (<div><div className="font-medium">{r.financeCompany}</div>{r.financeRefNumber && <div className="text-xs text-muted-foreground">อ้างอิง: {r.financeRefNumber}</div>}</div>),
     },
     {
       key: 'lastContactedAt',
@@ -378,21 +385,32 @@ export default function FinanceReceivablePage() {
       },
     },
     {
-      key: 'actions', label: '',
+      key: 'actions', label: 'จัดการ', align: 'right' as const, cardFullWidth: true,
       render: (r: FinanceReceivable) => {
         if (r.status === 'RECEIVED') return null;
         return (
-          <div className="flex items-center gap-1.5">
-            <button data-ui-control="button" onClick={() => openReceiveModal(r)} className="px-2.5 py-1 bg-primary text-primary-foreground rounded text-xs font-medium hover:bg-primary/90">บันทึกรับเงิน</button>
-            <div className="relative">
-              <button onClick={() => setOpenMenuId(openMenuId === r.id ? null : r.id)} className="p-1 hover:bg-muted rounded"><MoreVertical className="size-4 text-muted-foreground" /></button>
-              {openMenuId === r.id && (
-                <div className="absolute right-0 top-full mt-1 z-10 bg-background border rounded-lg shadow-lg py-1 min-w-[120px]">
-                  <button onClick={() => openEditModal(r)} className="w-full px-3 py-1.5 text-sm text-left hover:bg-muted flex items-center gap-2"><Pencil className="size-3.5" /> แก้ไข</button>
-                  {r.status !== 'DISPUTED' && <button onClick={() => openDisputeModal(r)} className="w-full px-3 py-1.5 text-sm text-left hover:bg-muted text-destructive">แจ้งปัญหา</button>}
-                </div>
-              )}
-            </div>
+          <div className="ml-auto flex w-max items-center gap-2">
+            <Button type="button" onClick={() => openReceiveModal(r)} className="w-28 shrink-0 px-3">บันทึกรับเงิน</Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button ref={(node) => {
+                  if (node) menuTriggers.current.set(r.id, node);
+                  else menuTriggers.current.delete(r.id);
+                }} type="button" variant="ghost" size="icon" title="เพิ่มเติม" aria-label={`เมนู ${r.sale.saleNumber}`}>
+                  <MoreVertical className="size-4" aria-hidden="true" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="min-w-44">
+                <DropdownMenuItem className="min-h-11" onSelect={() => openEditModal(r)}>
+                  <Pencil className="size-4" aria-hidden="true" /> แก้ไข
+                </DropdownMenuItem>
+                {r.status !== 'DISPUTED' && (
+                  <DropdownMenuItem className="min-h-11" variant="destructive" onSelect={() => openDisputeModal(r)}>
+                    <AlertTriangle className="size-4" aria-hidden="true" /> แจ้งปัญหา
+                  </DropdownMenuItem>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         );
       },
@@ -400,7 +418,7 @@ export default function FinanceReceivablePage() {
   ];
 
   return (
-    <div onClick={() => setOpenMenuId(null)} onKeyDown={(e) => { if (e.key === 'Escape') setOpenMenuId(null); }}>
+    <div>
       <PageHeader title="เงินรับจากไฟแนนซ์" subtitle={isError ? 'โหลดรายการไม่สำเร็จ' : isLoading ? 'กำลังโหลดรายการ' : `ทั้งหมด ${receivables?.total ?? 0} รายการ`} />
 
       <Tabs defaultValue="external" className="mb-6">
@@ -539,7 +557,7 @@ export default function FinanceReceivablePage() {
             <div className="border-t pt-3 space-y-2">
               <div className="flex justify-between"><span className="text-muted-foreground">เลขที่ขาย</span><span className="font-medium">{selectedRecord.sale.saleNumber}</span></div>
               <div className="flex justify-between"><span className="text-muted-foreground">ไฟแนนซ์</span><span className="font-medium">{selectedRecord.financeCompany}</span></div>
-              {selectedRecord.financeRefNumber && <div className="flex justify-between"><span className="text-muted-foreground">Ref</span><span>{selectedRecord.financeRefNumber}</span></div>}
+              {selectedRecord.financeRefNumber && <div className="flex justify-between"><span className="text-muted-foreground">อ้างอิง</span><span>{selectedRecord.financeRefNumber}</span></div>}
               <div className="flex justify-between"><span className="text-muted-foreground">ยอดเต็ม</span><span>{fmt(selectedRecord.expectedAmount)}</span></div>
               {selectedRecord.commissionRate && <div className="flex justify-between"><span className="text-muted-foreground">ค่าคอม ({(Number(selectedRecord.commissionRate)*100).toFixed(1)}%)</span><span className="text-destructive">-{fmt(selectedRecord.commissionAmount)}</span></div>}
               <div className="flex justify-between font-semibold"><span>ยอดสุทธิ</span><span>{fmt(selectedRecord.netExpectedAmount)}</span></div>
@@ -565,7 +583,7 @@ export default function FinanceReceivablePage() {
               <div>ไฟแนนซ์: <span className="font-medium">{selectedRecord.financeCompany}</span></div>
               <div>ยอดสุทธิ: <span className="font-medium text-primary">{fmt(selectedRecord.netExpectedAmount)} บาท</span></div>
             </div>
-            <div><label htmlFor={`${uiFieldId}-7`} className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">จำนวนเงินที่ได้รับ *</label><input id={`${uiFieldId}-7`} type="number" step="0.01" min="0.01" value={receiveForm.receivedAmount} onChange={(e) => setReceiveForm({ ...receiveForm, receivedAmount: e.target.value })} required className={inputClass} /></div>
+            <div><label htmlFor={`${uiFieldId}-7`} className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">จำนวนเงินที่ได้รับ *</label><NumberInput unstyled id={`${uiFieldId}-7`} step="0.01" min="0.01" value={receiveForm.receivedAmount} onChange={(e) => setReceiveForm({ ...receiveForm, receivedAmount: e.target.value })} required className={inputClass} /></div>
             <div><label htmlFor={`${uiFieldId}-8`} className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">วันที่ได้รับ *</label><ThaiDateInput id={`${uiFieldId}-8`} value={receiveForm.receivedDate} onChange={(e) => setReceiveForm({ ...receiveForm, receivedDate: e.target.value })} required className={inputClass} /></div>
             <div><label htmlFor={`${uiFieldId}-9`} className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">เลขอ้างอิงธนาคาร</label><input id={`${uiFieldId}-9`} type="text" value={receiveForm.bankRef} onChange={(e) => setReceiveForm({ ...receiveForm, bankRef: e.target.value })} placeholder="เลขอ้างอิงการโอน" className={inputClass} /></div>
             <div><label htmlFor={`${uiFieldId}-10`} className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">หมายเหตุ</label><textarea id={`${uiFieldId}-10`} value={receiveForm.note} onChange={(e) => setReceiveForm({ ...receiveForm, note: e.target.value })} rows={2} className={inputClass} /></div>
@@ -578,11 +596,11 @@ export default function FinanceReceivablePage() {
       </Modal>
 
       {/* Edit Modal */}
-      <Modal isOpen={isEditModalOpen} onClose={() => setIsEditModalOpen(false)} title="แก้ไขข้อมูล">
+      <Modal isOpen={isEditModalOpen} onClose={() => setIsEditModalOpen(false)} title="แก้ไขข้อมูล" onCloseAutoFocus={restoreMenuFocus}>
         {selectedRecord && (
           <form onSubmit={(e) => { e.preventDefault(); const d: Record<string, unknown> = {}; if (editForm.financeRefNumber) d.financeRefNumber = editForm.financeRefNumber; if (editForm.commissionRate) d.commissionRate = parseFloat(editForm.commissionRate) / 100; if (editForm.expectedDate) d.expectedDate = editForm.expectedDate; if (editForm.note) d.note = editForm.note; updateMutation.mutate({ id: selectedRecord.id, data: d }); }} className="space-y-4">
             <div><label htmlFor={`${uiFieldId}-11`} className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">เลข Ref ไฟแนนซ์</label><input id={`${uiFieldId}-11`} type="text" value={editForm.financeRefNumber} onChange={(e) => setEditForm({ ...editForm, financeRefNumber: e.target.value })} className={inputClass} /></div>
-            <div><label htmlFor={`${uiFieldId}-12`} className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ค่าคอมมิชชั่น (%)</label><input id={`${uiFieldId}-12`} type="number" step="0.1" min="0" max="100" value={editForm.commissionRate} onChange={(e) => setEditForm({ ...editForm, commissionRate: e.target.value })} className={inputClass} /></div>
+            <div><label htmlFor={`${uiFieldId}-12`} className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ค่าคอมมิชชั่น (%)</label><NumberInput unstyled id={`${uiFieldId}-12`} step="0.1" min="0" max="100" value={editForm.commissionRate} onChange={(e) => setEditForm({ ...editForm, commissionRate: e.target.value })} className={inputClass} /></div>
             <div><label htmlFor={`${uiFieldId}-13`} className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">กำหนดรับเงิน</label><ThaiDateInput id={`${uiFieldId}-13`} value={editForm.expectedDate} onChange={(e) => setEditForm({ ...editForm, expectedDate: e.target.value })} className={inputClass} /></div>
             <div><label htmlFor={`${uiFieldId}-14`} className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">หมายเหตุ</label><textarea id={`${uiFieldId}-14`} value={editForm.note} onChange={(e) => setEditForm({ ...editForm, note: e.target.value })} rows={2} className={inputClass} /></div>
             <div className="flex justify-end gap-3 pt-2">
@@ -594,7 +612,7 @@ export default function FinanceReceivablePage() {
       </Modal>
 
       {/* Dispute Modal */}
-      <Modal isOpen={isDisputeModalOpen} onClose={() => setIsDisputeModalOpen(false)} title="แจ้งปัญหา">
+      <Modal isOpen={isDisputeModalOpen} onClose={() => setIsDisputeModalOpen(false)} title="แจ้งปัญหา" onCloseAutoFocus={restoreMenuFocus}>
         {selectedRecord && (
           <div className="space-y-4">
             <div className="p-3 bg-muted rounded-lg text-sm">ไฟแนนซ์: <span className="font-medium">{selectedRecord.financeCompany}</span> &middot; ยอด: <span className="font-medium">{fmt(selectedRecord.netExpectedAmount)}</span></div>

@@ -1,3 +1,4 @@
+import { NumberInput } from '@/components/ui/NumberInput';
 import ScreenTable from '@/components/ui/ScreenTable';
 import { NativeSelect } from '@/components/ui/native-select';
 import { useId as useUiFieldId, useState, useRef } from 'react';
@@ -495,8 +496,7 @@ export default function PricingTemplatesPage() {
             <div className="space-y-3">
               <div>
                 <label htmlFor={`${uiFieldId}-5`} className="block text-sm font-medium text-foreground mb-1">ราคาเงินสด (บาท) *</label>
-                <input id={`${uiFieldId}-5`}
-                  type="number"
+                <NumberInput unstyled id={`${uiFieldId}-5`}
                   value={form.cashPrice}
                   onChange={(e) => setForm((f) => ({ ...f, cashPrice: e.target.value }))}
                   className="w-full px-3 py-2 border border-input rounded-lg text-sm"
@@ -505,8 +505,7 @@ export default function PricingTemplatesPage() {
               </div>
               <div>
                 <label htmlFor={`${uiFieldId}-6`} className="block text-sm font-medium text-foreground mb-1">ราคาผ่อน BESTCHOICE (บาท) *</label>
-                <input id={`${uiFieldId}-6`}
-                  type="number"
+                <NumberInput unstyled id={`${uiFieldId}-6`}
                   value={form.installmentBestchoicePrice}
                   onChange={(e) => setForm((f) => ({ ...f, installmentBestchoicePrice: e.target.value }))}
                   className="w-full px-3 py-2 border border-input rounded-lg text-sm"
@@ -515,8 +514,7 @@ export default function PricingTemplatesPage() {
               </div>
               <div>
                 <label htmlFor={`${uiFieldId}-7`} className="block text-sm font-medium text-foreground mb-1">ราคาผ่อนไฟแนนซ์ (บาท) *</label>
-                <input id={`${uiFieldId}-7`}
-                  type="number"
+                <NumberInput unstyled id={`${uiFieldId}-7`}
                   value={form.installmentFinancePrice}
                   onChange={(e) => setForm((f) => ({ ...f, installmentFinancePrice: e.target.value }))}
                   className="w-full px-3 py-2 border border-input rounded-lg text-sm"
@@ -527,13 +525,12 @@ export default function PricingTemplatesPage() {
 
             <div className="mt-4 pt-4 border-t border-border/40">
               <h3 className="text-sm font-medium text-muted-foreground mb-3">
-                ดาวน์ + จำนวนเดือน (เว้นว่าง = ใช้ default จาก Settings)
+                ดาวน์ + จำนวนเดือน (เว้นว่าง = ใช้ค่าเริ่มต้นจาก Settings)
               </h3>
               <div className="grid grid-cols-1 md:grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label htmlFor={`${uiFieldId}-8`} className="block text-sm font-medium text-foreground mb-1">ดาวน์เรทที่ 1 (บาท)</label>
-                  <input id={`${uiFieldId}-8`}
-                    type="number"
+                  <NumberInput unstyled id={`${uiFieldId}-8`}
                     min={0}
                     value={form.rate1DownPayment ?? ''}
                     onChange={(e) => setForm((f) => ({ ...f, rate1DownPayment: e.target.value === '' ? undefined : Number(e.target.value) }))}
@@ -542,8 +539,7 @@ export default function PricingTemplatesPage() {
                 </div>
                 <div>
                   <label htmlFor={`${uiFieldId}-9`} className="block text-sm font-medium text-foreground mb-1">จำนวนเดือนเรทที่ 1</label>
-                  <input id={`${uiFieldId}-9`}
-                    type="number"
+                  <NumberInput unstyled id={`${uiFieldId}-9`}
                     min={1}
                     value={form.rate1TermMonths ?? ''}
                     onChange={(e) => setForm((f) => ({ ...f, rate1TermMonths: e.target.value === '' ? undefined : Number(e.target.value) }))}
@@ -552,8 +548,7 @@ export default function PricingTemplatesPage() {
                 </div>
                 <div>
                   <label htmlFor={`${uiFieldId}-10`} className="block text-sm font-medium text-foreground mb-1">ดาวน์เรทที่ 2 (บาท)</label>
-                  <input id={`${uiFieldId}-10`}
-                    type="number"
+                  <NumberInput unstyled id={`${uiFieldId}-10`}
                     min={0}
                     value={form.rate2DownPayment ?? ''}
                     onChange={(e) => setForm((f) => ({ ...f, rate2DownPayment: e.target.value === '' ? undefined : Number(e.target.value) }))}
@@ -562,8 +557,7 @@ export default function PricingTemplatesPage() {
                 </div>
                 <div>
                   <label htmlFor={`${uiFieldId}-11`} className="block text-sm font-medium text-foreground mb-1">จำนวนเดือนเรทที่ 2</label>
-                  <input id={`${uiFieldId}-11`}
-                    type="number"
+                  <NumberInput unstyled id={`${uiFieldId}-11`}
                     min={1}
                     value={form.rate2TermMonths ?? ''}
                     onChange={(e) => setForm((f) => ({ ...f, rate2TermMonths: e.target.value === '' ? undefined : Number(e.target.value) }))}

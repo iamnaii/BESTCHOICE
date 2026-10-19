@@ -113,7 +113,7 @@ export function StepSupplier({
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1.4fr_1fr_1fr] lg:items-start">
         <div>
           <label htmlFor={`${uiFieldId}-1`} className={labelCls}>
-            ผู้ขาย (supplier) <span className="text-destructive">*</span>
+            ผู้จัดจำหน่าย <span className="text-destructive">*</span>
           </label>
           <ContactCombobox
             id={`${uiFieldId}-1`}

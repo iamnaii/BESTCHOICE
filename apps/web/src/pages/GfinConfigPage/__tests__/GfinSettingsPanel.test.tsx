@@ -51,10 +51,10 @@ describe('GfinSettingsPanel', () => {
     );
 
     const minDown = await screen.findByLabelText('ดาวน์ขั้นต่ำที่ GFIN ตั้งให้ร้าน (%)');
-    expect(minDown).toHaveValue(25);
-    expect(screen.getByLabelText('คอมมิชชั่นตั้งต้น มือถือ (%)')).toHaveValue(15);
-    expect(screen.getByLabelText('คอมมิชชั่นตั้งต้น iPad (%)')).toHaveValue(5);
-    expect(screen.getByLabelText('ค่าทำสัญญา (฿)')).toHaveValue(100);
+    expect(minDown).toHaveValue('25');
+    expect(screen.getByLabelText('คอมมิชชั่นตั้งต้น มือถือ (%)')).toHaveValue('15');
+    expect(screen.getByLabelText('คอมมิชชั่นตั้งต้น iPad (%)')).toHaveValue('5');
+    expect(screen.getByLabelText('ค่าทำสัญญา (฿)')).toHaveValue('100');
 
     await userEvent.clear(minDown);
     await userEvent.type(minDown, '30');

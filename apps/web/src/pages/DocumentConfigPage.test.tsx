@@ -80,7 +80,7 @@ describe('DocumentConfigPage (P4-SP3 tabbed shell)', () => {
     expect(screen.getByText('เลขที่/รูปแบบทั่วไป')).toBeInTheDocument();
     expect(screen.getByText('ใบรับเงินมัดจำ')).toBeInTheDocument();
     expect(screen.getByText('ใบเสร็จรับเงิน')).toBeInTheDocument();
-    expect(screen.getByText('ใบลดหนี้')).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'ใบลดหนี้' })).toBeInTheDocument();
     expect(screen.getByText('ใบสั่งซื้อ (PO)')).toBeInTheDocument();
     expect(screen.getByText('ค่าใช้จ่าย')).toBeInTheDocument();
     expect(screen.getByText('รับใบลดหนี้')).toBeInTheDocument();
@@ -101,8 +101,8 @@ describe('DocumentConfigPage (P4-SP3 tabbed shell)', () => {
     });
 
     // NumberingConfigTab renders the canonical 8 doc-type rows
-    expect(await screen.findByText('รายจ่าย (Expense)')).toBeInTheDocument();
-    expect(screen.getByText('ใบลดหนี้ (Credit Note)')).toBeInTheDocument();
-    expect(screen.getByText('สัญญาผ่อน (Contract)')).toBeInTheDocument();
+    expect(await screen.findByText('รายจ่าย')).toBeInTheDocument();
+    expect(screen.getByRole('cell', { name: 'ใบลดหนี้' })).toBeInTheDocument();
+    expect(screen.getByText('สัญญาผ่อน')).toBeInTheDocument();
   });
 });

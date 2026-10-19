@@ -76,10 +76,10 @@ function LineOnlineBadge({ lineOnlineAt }: { lineOnlineAt: string }) {
       className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs leading-snug ${
         fresh ? 'bg-success/10 text-success' : 'bg-muted text-muted-foreground'
       }`}
-      title={`LINE online ล่าสุด: ${ts.toLocaleString('th-TH')}`}
+      title={`ใช้งาน LINE ล่าสุด: ${ts.toLocaleString('th-TH')}`}
     >
       <Circle className={`size-2 ${fresh ? 'fill-success text-success' : 'fill-muted-foreground'}`} />
-      LINE {fresh ? 'online' : formatRelative(ageMs)}
+      LINE {fresh ? 'ออนไลน์' : formatRelative(ageMs)}
     </span>
   );
 }

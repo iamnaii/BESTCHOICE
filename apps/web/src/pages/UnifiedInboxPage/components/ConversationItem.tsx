@@ -117,7 +117,7 @@ const CHANNEL_CONFIG: Record<string, { bg: string; label: string; text: string }
   LINE_SHOP: { bg: 'bg-[#06C755]', label: 'L', text: 'LINE' },
   FACEBOOK: { bg: 'bg-[#1877F2]', label: 'f', text: 'FB' },
   TIKTOK: { bg: 'bg-foreground', label: '♪', text: 'TT' },
-  WEB: { bg: 'bg-muted-foreground', label: 'W', text: 'Web' },
+  WEB: { bg: 'bg-muted-foreground', label: 'W', text: "เว็บไซต์" },
 };
 
 function Avatar({ session, displayName }: { session: ConversationItemProps['session']; displayName: string }) {
@@ -231,7 +231,7 @@ function ConversationItem({ session, isActive, onSelect, onPin, aiSettings, sear
               )}>
                 {match ? <SearchExcerpt text={match.text} search={search!} /> : <>
                   {lastMessage?.role === 'STAFF' && <span className="text-primary font-medium">คุณ: </span>}
-                  {lastMessage?.role === 'BOT' && <span className="text-muted-foreground font-medium">Bot: </span>}
+                  {lastMessage?.role === 'BOT' && <span className="text-muted-foreground font-medium">บอต: </span>}
                   {lastMessage ? formatMessagePreview(lastMessage.text) : <span className="italic text-muted-foreground">ยังไม่มีข้อความ</span>}
                 </>}
               </p>

@@ -73,7 +73,7 @@ export default function TradeInDetailDialog({ id, onClose, onVoucher, voucherLoa
             </DialogDescription>
           </div>
           <DialogClose asChild>
-            <Button variant="ghost" size="icon" className="size-11" aria-label="Close">
+            <Button variant="ghost" size="icon" className="size-11" aria-label="ปิด">
               <X className="size-5" aria-hidden="true" />
             </Button>
           </DialogClose>

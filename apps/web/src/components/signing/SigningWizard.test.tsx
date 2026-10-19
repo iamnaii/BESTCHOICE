@@ -24,7 +24,7 @@ describe('Signing wizard document consent', () => {
   const advanceToSignature = async () => {
     await userEvent.click(screen.getByRole('button', { name: 'Complete KYC' }));
     await userEvent.click(screen.getByRole('button', { name: 'Complete PDPA' }));
-    fireEvent.load(screen.getByTitle('contract-preview'));
+    fireEvent.load(screen.getByTitle('ตัวอย่างสัญญา'));
     await userEvent.click(screen.getByRole('checkbox'));
     await userEvent.click(screen.getByRole('button', { name: 'เซ็นสัญญา' }));
     expect(screen.getByTestId('signature')).toHaveTextContent('Signing c1');
@@ -36,7 +36,7 @@ describe('Signing wizard document consent', () => {
     expect(screen.queryByTestId('signature')).not.toBeInTheDocument();
     view.rerender(<SigningWizard {...props} />);
     expect(screen.queryByTestId('signature')).not.toBeInTheDocument();
-    fireEvent.load(screen.getByTitle('contract-preview'));
+    fireEvent.load(screen.getByTitle('ตัวอย่างสัญญา'));
     expect(screen.getByRole('checkbox')).not.toBeChecked();
     expect(screen.getByRole('button', { name: 'เซ็นสัญญา' })).toBeDisabled();
   });
@@ -45,7 +45,7 @@ describe('Signing wizard document consent', () => {
     await advanceToSignature();
     view.rerender(<SigningWizard {...props} previewHtml="<p>Changed terms</p>" />);
     expect(screen.queryByTestId('signature')).not.toBeInTheDocument();
-    fireEvent.load(screen.getByTitle('contract-preview'));
+    fireEvent.load(screen.getByTitle('ตัวอย่างสัญญา'));
     expect(screen.getByRole('checkbox')).not.toBeChecked();
     await userEvent.click(screen.getByRole('checkbox'));
     await userEvent.click(screen.getByRole('button', { name: 'เซ็นสัญญา' }));
@@ -77,7 +77,7 @@ describe('Signing wizard document consent', () => {
     act(() => staleCompletion());
     expect(screen.getByRole('alert')).toBeVisible();
     view.rerender(<SigningWizard {...props} />);
-    fireEvent.load(screen.getByTitle('contract-preview'));
+    fireEvent.load(screen.getByTitle('ตัวอย่างสัญญา'));
     await userEvent.click(screen.getByRole('checkbox'));
     await userEvent.click(screen.getByRole('button', { name: 'เซ็นสัญญา' }));
     act(() => staleCompletion());

@@ -1,7 +1,7 @@
+import { NumberInput } from '@/components/ui/NumberInput';
 import { useState, type ReactNode } from 'react';
 import { ArrowRight, ChevronDown } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { cn } from '@/lib/utils';
@@ -53,9 +53,8 @@ export function BcPanel({
         <Label htmlFor="calc-bc-down" className="text-[13px] text-muted-foreground leading-snug">
           เงินดาวน์ (฿)
         </Label>
-        <Input
+        <NumberInput
           id="calc-bc-down"
-          type="number"
           min="0"
           value={bc.downAmount}
           onChange={(e) => onDownChange(e.target.value === '' ? null : Number(e.target.value))}

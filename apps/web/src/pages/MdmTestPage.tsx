@@ -133,7 +133,7 @@ export default function MdmTestPage() {
     <div className="space-y-6">
       <PageHeader
         title="ทดสอบระบบ MDM"
-        subtitle="จัดการล็อค/ปลดล็อคเครื่องผ่าน MDM PJ-Soft (สำหรับ OWNER เท่านั้น)"
+        subtitle="จัดการล็อค/ปลดล็อคเครื่องผ่าน MDM PJ-Soft (สำหรับ เจ้าของ เท่านั้น)"
       />
 
       {/* MDM Connection Status */}
@@ -243,7 +243,7 @@ export default function MdmTestPage() {
             {/* Section 2: Actions */}
             {deviceResult.found && device && (
               <div className="space-y-3">
-                <h3 className="text-sm font-semibold text-foreground">Actions</h3>
+                <h3 className="text-sm font-semibold text-foreground">การดำเนินการ</h3>
                 <div className="flex gap-2 flex-wrap">
                   {/* Lock button */}
                   <Button

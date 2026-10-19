@@ -166,8 +166,8 @@ export function BatchDetailSheet({ batchId, onClose, onChanged }: BatchDetailShe
                 />
                 <InfoField label="ผู้สร้างรอบ" value={batch.maker.name} />
                 <InfoField label="ผู้อนุมัติ" value={batch.approver?.name ?? '-'} />
-                <InfoField label="JE ฝั่ง FINANCE" value={batch.financeEntryNumber ?? '-'} mono />
-                <InfoField label="JE ฝั่ง SHOP" value={batch.shopEntryNumber ?? '-'} mono />
+                <InfoField label="รายการบัญชี ฝั่ง FINANCE" value={batch.financeEntryNumber ?? '-'} mono />
+                <InfoField label="รายการบัญชี ฝั่ง SHOP" value={batch.shopEntryNumber ?? '-'} mono />
                 {batch.note && <InfoField label="หมายเหตุ" value={batch.note} full />}
                 {batch.status === 'REVERSED' && batch.reverseReason && (
                   <InfoField label="เหตุผลย้อนกลับ" value={batch.reverseReason} full />
@@ -240,7 +240,7 @@ export function BatchDetailSheet({ batchId, onClose, onChanged }: BatchDetailShe
                                 )}
                                 {item.legacyNoShop && (
                                   <Badge variant="warning" appearance="light" size="sm">
-                                    LEGACY
+                                    ข้อมูลเดิม
                                   </Badge>
                                 )}
                               </div>

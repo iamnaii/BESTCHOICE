@@ -133,7 +133,7 @@ export default function PeakSyncPage() {
   return (
     <div>
       <PageHeader
-        title="PEAK Sync"
+        title="เชื่อมข้อมูล PEAK"
         subtitle="ตรวจสอบสถานะการเชื่อมต่อและส่งข้อมูลไปยัง PEAK"
         action={
           <div className="flex items-center gap-3">
@@ -255,7 +255,7 @@ export default function PeakSyncPage() {
                       สถานะงวด
                     </th>
                     <th className="text-left px-5 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                      วันที่ Sync PEAK
+                      วันที่ เชื่อมข้อมูล PEAK
                     </th>
                     <th className="text-left px-5 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wide">
                       วันที่ปิดงวด

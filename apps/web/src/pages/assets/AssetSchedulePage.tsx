@@ -71,7 +71,7 @@ export default function AssetSchedulePage() {
             </Card>
 
             <Card>
-              <CardHeader><CardTitle>ตารางมูลค่าตามบัญชีสุทธิ (NBV) รายเดือน ({query.data.rows.length} เดือน)</CardTitle></CardHeader>
+              <CardHeader><CardTitle>ตารางมูลค่าตามบัญชีสุทธิ (มูลค่าตามบัญชีสุทธิ) รายเดือน ({query.data.rows.length} เดือน)</CardTitle></CardHeader>
               <CardContent className="min-w-0">
                 <div className="max-w-full overflow-x-auto" tabIndex={0} role="region" aria-label="ตารางค่าเสื่อมราคา">
                 <ScreenTable className="w-full text-sm">
@@ -81,7 +81,7 @@ export default function AssetSchedulePage() {
                       <th className="text-right py-2 px-2">วัน</th>
                       <th className="text-right py-2 px-2">ค่าเสื่อม</th>
                       <th className="text-right py-2 px-2">ค่าเสื่อมสะสม</th>
-                      <th className="text-right py-2 px-2">มูลค่าตามบัญชีสุทธิ (NBV)</th>
+                      <th className="text-right py-2 px-2">มูลค่าตามบัญชีสุทธิ (มูลค่าตามบัญชีสุทธิ)</th>
                       <th className="text-left py-2 px-2">สถานะ</th>
                     </tr>
                   </thead>

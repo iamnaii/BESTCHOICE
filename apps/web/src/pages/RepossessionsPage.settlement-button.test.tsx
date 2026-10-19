@@ -95,7 +95,7 @@ describe('RepossessionsPage — รับโอนหน้าร้าน / ข
 
     const dialog = await screen.findByRole('dialog');
     const amount = within(dialog).getByPlaceholderText('0.00') as HTMLInputElement;
-    expect(amount.value).toBe('7000');
+    expect(amount.value).toBe('7,000');
   });
 
   it('no longer offers "ขายแล้ว" as a manual status for a READY_FOR_SALE row', async () => {

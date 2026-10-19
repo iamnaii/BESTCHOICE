@@ -225,7 +225,7 @@ function RevenueForecastChart({ data }: { data: ForecastData }) {
               <p className="text-xs text-muted-foreground mt-0.5">
                 {formatBaht(f.lower)} – {formatBaht(f.upper)}
               </p>
-              <p className="text-xs text-warning-strong/80">{f.confidence}% confidence</p>
+              <p className="text-xs text-warning-strong/80">{f.confidence}% ความมั่นใจ</p>
             </div>
           ))}
         </div>
@@ -252,7 +252,7 @@ function SalesHeatmapGrid({ data }: { data: HeatmapData }) {
     <div className="space-y-3">
       {data.peakDay && data.peakHour !== null && (
         <p className="text-sm text-foreground/70">
-          Peak: <strong>{data.peakDay.name}</strong> เวลา <strong>{data.peakHour}:00</strong>
+          สูงสุด: <strong>{data.peakDay.name}</strong> เวลา <strong>{data.peakHour}:00</strong>
         </p>
       )}
       <div className="overflow-x-auto">
@@ -314,9 +314,9 @@ function SalesHeatmapGrid({ data }: { data: HeatmapData }) {
 type Tab = 'cohort' | 'forecast' | 'heatmap';
 
 const TABS: { id: Tab; label: string; icon: React.ElementType }[] = [
-  { id: 'cohort', label: 'Cohort Retention', icon: Users },
-  { id: 'forecast', label: 'Revenue Forecast', icon: TrendingUp },
-  { id: 'heatmap', label: 'Sales Heatmap', icon: BarChart3 },
+  { id: 'cohort', label: "การกลับมาของลูกค้าแต่ละกลุ่ม", icon: Users },
+  { id: 'forecast', label: "คาดการณ์รายได้", icon: TrendingUp },
+  { id: 'heatmap', label: "ความหนาแน่นของยอดขาย", icon: BarChart3 },
 ];
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
@@ -360,7 +360,7 @@ export default function AnalyticsPage() {
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-6">
       <PageHeader
-        title="Analytics Dashboard"
+        title="ภาพรวมการวิเคราะห์"
         subtitle="วิเคราะห์ข้อมูลเชิงลึก: cohort retention, พยากรณ์รายได้, และ sales heatmap"
         icon={<BarChart3 className="w-6 h-6" aria-hidden="true" />}
       />
@@ -401,7 +401,7 @@ export default function AnalyticsPage() {
             <CardHeader>
               <div className="flex items-center justify-between">
                 <div>
-                  <h2 className="text-base font-semibold text-foreground">Cohort Retention Analysis</h2>
+                  <h2 className="text-base font-semibold text-foreground">วิเคราะห์การกลับมาของลูกค้าแต่ละกลุ่ม</h2>
                   <p className="text-sm text-muted-foreground mt-0.5">
                     ติดตามว่าลูกค้าในแต่ละ cohort ยังคงชำระเงินอยู่กี่เปอร์เซ็นต์ในเดือนถัดไป
                   </p>
@@ -425,7 +425,7 @@ export default function AnalyticsPage() {
         {activeTab === 'forecast' && forecastQuery.data && (
           <Card>
             <CardHeader>
-              <h2 className="text-base font-semibold text-foreground">Revenue Forecast</h2>
+              <h2 className="text-base font-semibold text-foreground">คาดการณ์รายได้</h2>
               <p className="text-sm text-muted-foreground mt-0.5">
                 พยากรณ์รายได้ 3 เดือนข้างหน้าจากข้อมูลย้อนหลัง 6 เดือน (linear regression)
               </p>
@@ -441,7 +441,7 @@ export default function AnalyticsPage() {
             <CardHeader>
               <div className="flex items-center justify-between">
                 <div>
-                  <h2 className="text-base font-semibold text-foreground">Sales Heatmap</h2>
+                  <h2 className="text-base font-semibold text-foreground">ความหนาแน่นของยอดขาย</h2>
                   <p className="text-sm text-muted-foreground mt-0.5">
                     ยอดขายตามวันและชั่วโมง (ข้อมูล {heatmapQuery.data.periodMonths} เดือนล่าสุด)
                   </p>

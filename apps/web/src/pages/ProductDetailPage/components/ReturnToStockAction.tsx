@@ -1,3 +1,4 @@
+import { NumberInput } from '@/components/ui/NumberInput';
 import { useState } from 'react';
 import { PackageCheck } from 'lucide-react';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
@@ -183,9 +184,8 @@ export default function ReturnToStockAction({
               >
                 ราคาเงินสด (บาท)
               </label>
-              <input
+              <NumberInput unstyled
                 id="return-to-stock-cash"
-                type="number"
                 min={0}
                 step="0.01"
                 value={cash}
@@ -200,9 +200,8 @@ export default function ReturnToStockAction({
               >
                 ราคาผ่อน (บาท)
               </label>
-              <input
+              <NumberInput unstyled
                 id="return-to-stock-installment"
-                type="number"
                 min={0}
                 step="0.01"
                 value={installment}

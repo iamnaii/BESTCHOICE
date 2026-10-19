@@ -9,7 +9,7 @@ export interface Crumb {
 export function Breadcrumb({ items }: { items: Crumb[] }) {
   return (
     <nav
-      aria-label="breadcrumb"
+      aria-label="เส้นทาง"
       className="flex flex-wrap items-center gap-1 text-xs text-muted-foreground leading-snug"
     >
       {items.map((c, i) => (

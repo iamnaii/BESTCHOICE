@@ -39,7 +39,7 @@ test.describe('/letters page', () => {
     });
 
     const downloadPromise = page.waitForEvent('download');
-    await page.getByRole('button', { name: /Export Excel/ }).click();
+    await page.getByRole('button', { name: 'ส่งออก Excel', exact: true }).click();
     const download = await downloadPromise;
     expect(download.suggestedFilename()).toMatch(/letters-.*\.xlsx/);
   });

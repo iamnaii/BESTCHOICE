@@ -45,7 +45,7 @@ test.describe('SP3 — Tax Module pages (ACCOUNTANT can view)', () => {
     await gotoWithRetry(page, '/finance/e-tax');
     const denied = await isAccessDenied(page, '/finance/e-tax');
     expect(denied).toBeFalsy();
-    await expect(page.getByText(/e-Tax Invoice/i).first()).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'ศูนย์เอกสารภาษีอิเล็กทรอนิกส์', exact: true })).toBeVisible();
   });
 
   test('legacy /tax-reports redirects to /finance/vat', async ({ page }) => {

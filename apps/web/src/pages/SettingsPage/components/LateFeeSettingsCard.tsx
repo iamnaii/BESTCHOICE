@@ -1,3 +1,4 @@
+import { NumberInput } from '@/components/ui/NumberInput';
 import { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -176,7 +177,7 @@ export function LateFeeSettingsCard() {
           </div>
 
           {!isOwner && (
-            <p className="text-xs text-muted-foreground mt-3 leading-snug">เฉพาะ OWNER เท่านั้นที่แก้ไขได้</p>
+            <p className="text-xs text-muted-foreground mt-3 leading-snug">เฉพาะ เจ้าของ เท่านั้นที่แก้ไขได้</p>
           )}
 
           {isLoading ? (
@@ -290,8 +291,7 @@ function FeePreview({
       <div className="flex flex-wrap items-end gap-3 mt-2">
         <label className="text-xs text-muted-foreground">
           วันที่ค้าง
-          <input
-            type="number"
+          <NumberInput unstyled
             step="1"
             value={days}
             onChange={(e) => onDays(e.target.value)}

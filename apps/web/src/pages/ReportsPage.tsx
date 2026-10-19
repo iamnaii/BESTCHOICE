@@ -193,7 +193,7 @@ function AgingReport() {
 
       {/* Aging Table */}
       <div className="bg-card rounded-xl border border-border p-5">
-        <h3 className="text-sm font-semibold text-foreground mb-4">รายงานอายุหนี้ (Aging Report)</h3>
+        <h3 className="text-sm font-semibold text-foreground mb-4">รายงานอายุหนี้</h3>
         <div className="overflow-x-auto">
           <ScreenTable className="w-full min-w-[34rem] text-sm [&_th]:whitespace-nowrap">
             <thead>
@@ -640,7 +640,7 @@ function EntityProfitReport() {
 
       {details.length === 0 && (
         <div className="bg-card rounded-xl border border-border p-8 text-center text-muted-foreground text-sm">
-          ไม่พบข้อมูล Inter-Company Transaction ในช่วงเวลาที่เลือก
+          ไม่พบข้อมูล รายการระหว่างบริษัท ในช่วงเวลาที่เลือก
         </div>
       )}
 

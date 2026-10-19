@@ -46,8 +46,8 @@ const ROLE_BADGE: Record<string, { label: string; icon: typeof User; cls: string
   CUSTOMER:     { label: 'ลูกค้า',   icon: User,     cls: 'bg-info/10 border-info/20' },
   BOT:          { label: 'น้องเบส', icon: Bot,      cls: 'bg-success/10 border-success/20' },
   STAFF:        { label: 'พนักงาน', icon: Briefcase, cls: 'bg-secondary/20 border-secondary/30' },
-  AUTO_TRIGGER: { label: 'Auto',    icon: Clock,    cls: 'bg-warning/10 border-warning/20' },
-  SYSTEM:       { label: 'System',  icon: Settings, cls: 'bg-muted border-border' },
+  AUTO_TRIGGER: { label: "อัตโนมัติ",    icon: Clock,    cls: 'bg-warning/10 border-warning/20' },
+  SYSTEM:       { label: "ระบบ",  icon: Settings, cls: 'bg-muted border-border' },
 };
 
 export default function ChatbotFinanceSessionsPage() {
@@ -87,7 +87,7 @@ export default function ChatbotFinanceSessionsPage() {
       await api.post(`/chatbot/finance/admin/sessions/${id}/return-to-bot`);
     },
     onSuccess: () => {
-      toast.success('คืน session ให้บอทแล้ว');
+      toast.success("คืน บทสนทนา ให้บอทแล้ว");
       queryClient.invalidateQueries({ queryKey: ['chatbot-finance-sessions'] });
       queryClient.invalidateQueries({ queryKey: ['chatbot-finance-session', selectedId] });
     },
@@ -97,8 +97,8 @@ export default function ChatbotFinanceSessionsPage() {
   return (
     <div>
       <PageHeader
-        title="Finance Bot — Sessions"
-        subtitle="ดูและจัดการบทสนทนาของ AI Finance Bot"
+        title="บทสนทนาบอตการเงิน"
+        subtitle="ดูและจัดการบทสนทนาของ AI Finance บอต"
       />
 
       <div className="flex gap-3 mb-4">
@@ -115,7 +115,7 @@ export default function ChatbotFinanceSessionsPage() {
             checked={handoffOnly}
             onChange={(e) => { setHandoffOnly(e.target.checked); setPage(1); }}
           />
-          เฉพาะ Handoff
+          เฉพาะ ส่งต่อพนักงาน
         </label>
       </div>
 
@@ -130,7 +130,7 @@ export default function ChatbotFinanceSessionsPage() {
             errorTitle="ไม่สามารถโหลด Sessions ได้"
           >
           {list.data?.items.length === 0 ? (
-            <div className="p-4 text-muted-foreground text-sm">ไม่พบ session</div>
+            <div className="p-4 text-muted-foreground text-sm">ไม่พบ บทสนทนา</div>
           ) : (
             <ul className="divide-y">
               {list.data?.items.map((s) => (
@@ -150,7 +150,7 @@ export default function ChatbotFinanceSessionsPage() {
                   <div className="flex justify-between items-start">
                     <div>
                       <p className="font-medium text-sm">
-                        {s.customer?.name || '(ยังไม่ verify)'}
+                        {s.customer?.name || "(ยังไม่ ยืนยันตัวตน)"}
                       </p>
                       <p className="text-xs text-muted-foreground">{s.customer?.phone || s.lineUserId.slice(0, 12)}</p>
                     </div>
@@ -199,7 +199,7 @@ export default function ChatbotFinanceSessionsPage() {
         <Card className="col-span-7">
           <CardContent className="p-4">
           {!selectedId ? (
-            <p className="text-muted-foreground text-sm">เลือก session เพื่อดูรายละเอียด</p>
+            <p className="text-muted-foreground text-sm">เลือก บทสนทนา เพื่อดูรายละเอียด</p>
           ) : detail.isLoading ? (
             <p className="text-muted-foreground text-sm">กำลังโหลด...</p>
           ) : !detail.data ? (
@@ -208,7 +208,7 @@ export default function ChatbotFinanceSessionsPage() {
             <>
               <div className="flex justify-between items-start mb-3">
                 <div>
-                  <h2 className="font-bold">{detail.data.customer?.name || '(ยังไม่ verify)'}</h2>
+                  <h2 className="font-bold">{detail.data.customer?.name || "(ยังไม่ ยืนยันตัวตน)"}</h2>
                   <p className="text-xs text-muted-foreground">{detail.data.customer?.phone || detail.data.lineUserId}</p>
                 </div>
                 {detail.data.handoffMode && (
@@ -224,7 +224,7 @@ export default function ChatbotFinanceSessionsPage() {
 
               {detail.data.handoffReason && (
                 <div className="mb-3 p-2 bg-warning/10 border border-warning/20 rounded-lg text-xs">
-                  <Pin className="size-3.5 inline mr-1" />Handoff: {detail.data.handoffReason}
+                  <Pin className="size-3.5 inline mr-1" />ส่งต่อพนักงาน: {detail.data.handoffReason}
                 </div>
               )}
 
@@ -239,7 +239,7 @@ export default function ChatbotFinanceSessionsPage() {
                       </div>
                       <p className="whitespace-pre-wrap">{m.text}</p>
                       {m.intent && (
-                        <p className="text-[10px] text-muted-foreground mt-1">intent: {m.intent}</p>
+                        <p className="text-[10px] text-muted-foreground mt-1">ความต้องการลูกค้า: {m.intent}</p>
                       )}
                     </div>
                   );

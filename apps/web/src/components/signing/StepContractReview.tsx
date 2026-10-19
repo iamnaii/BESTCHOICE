@@ -146,7 +146,7 @@ function ContractIframe({ html, onLoad }: { html: string; onLoad: () => void }) 
 
   return (
     <iframe
-      title="contract-preview"
+      title="ตัวอย่างสัญญา"
       className="w-full flex-1 border-0"
       style={{ minHeight: 0 }}
       srcDoc={styledHtml}

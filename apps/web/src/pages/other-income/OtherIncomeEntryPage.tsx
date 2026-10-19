@@ -1,3 +1,4 @@
+import { FormNumberInput } from '@/components/ui/FormNumberInput';
 import { NativeSelect } from '@/components/ui/native-select';
 import { useAccountingPermissions } from '@/hooks/useAccountingPermissions';
 import { useId as useExtraFieldId, useMemo, useEffect, useRef, useState } from 'react';
@@ -695,7 +696,7 @@ export default function OtherIncomeEntryPage() {
                     : 'bg-warning/15 text-warning-strong'
               }`}
             >
-              {docStatus}
+              {{ DRAFT: 'ฉบับร่าง', READY: 'รออนุมัติ', POSTED: 'ลงบัญชีแล้ว', REVERSED: 'กลับรายการแล้ว' }[docStatus] ?? 'ไม่ทราบสถานะ'}
             </span>
           </div>
         </div>
@@ -832,7 +833,7 @@ export default function OtherIncomeEntryPage() {
                     ))}
                   </ul>
                   <p className="text-[11px] text-muted-foreground leading-snug pt-1">
-                    คำเตือนนี้ไม่บล็อกการบันทึก กรุณายืนยันว่า lateFee
+                    คำเตือนนี้ไม่บล็อกการบันทึก กรุณายืนยันว่า ค่าปรับ
                     ของงวดเดิมไม่ทับซ้อนกับรายการนี้ก่อนลงบัญชี
                   </p>
                 </div>
@@ -979,11 +980,10 @@ export default function OtherIncomeEntryPage() {
                     )}
                   </div>
                   <div className="mt-1 relative">
-                    <input
-                      type="number"
+                    <FormNumberInput unstyled
                       step="0.01"
                       id={`${uiExtraFieldId}-received`}
-                      {...form.register('amountReceived')}
+                      name={'amountReceived'} control={form.control}
                       placeholder="0.00"
                       className="w-full border rounded-md px-3 py-2 text-sm font-mono text-right bg-background pr-8"
                     />

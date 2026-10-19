@@ -306,7 +306,7 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
       });
     } catch {
       if (requestId !== _loadRequestId) return;
-      toast.error('โหลดเทมเพลตไม่สำเร็จ');
+      toast.error("โหลดแม่แบบไม่สำเร็จ");
     } finally {
       if (requestId === _loadRequestId) {
         set({ isLoading: false });
@@ -352,7 +352,7 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
           lastSaved: new Date(),
         }));
       }
-      toast.success('บันทึกเทมเพลตสำเร็จ');
+      toast.success("บันทึกแม่แบบสำเร็จ");
       // Also save to localStorage as backup
       get().saveTemplate();
     } catch {
@@ -402,7 +402,7 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
         isDirty: true,
       };
     });
-    toast.success('เพิ่ม block แล้ว', { duration: 1500 });
+    toast.success("เพิ่มส่วนเนื้อหา แล้ว", { duration: 1500 });
   },
 
   updateBlock: (id, updates) => {
@@ -428,7 +428,7 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
         isDirty: true,
       };
     });
-    toast.success('ลบ block แล้ว', { duration: 1500 });
+    toast.success("ลบส่วนเนื้อหา แล้ว", { duration: 1500 });
   },
 
   duplicateBlock: (id) => {
@@ -446,7 +446,7 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
         isDirty: true,
       };
     });
-    toast.success('สำเนา block แล้ว', { duration: 1500 });
+    toast.success("สำเนา ส่วนเนื้อหา แล้ว", { duration: 1500 });
   },
 
   moveBlock: (fromIndex, toIndex) => {

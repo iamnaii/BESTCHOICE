@@ -1,3 +1,4 @@
+import { formatNumericText } from '@/utils/numericText';
 import { CheckCircle2, XCircle } from 'lucide-react';
 import { useMemo } from 'react';
 import { useCoaByCodes } from '@/hooks/useCoa';
@@ -60,7 +61,7 @@ export function AutoJournalPreview({ lines }: Props) {
                   {accountName || <span className="text-muted-foreground">—</span>}
                 </span>
                 <span className="col-start-3 row-start-1 font-bold sm:w-28 text-right shrink-0">
-                  {(isDr ? l.debit : l.credit).toFixed(2)}
+                  {formatNumericText((isDr ? l.debit : l.credit).toFixed(2))}
                 </span>
                 {l.description && (
                   <span className="col-span-3 min-w-0 text-muted-foreground break-words sm:w-40 sm:text-right sm:shrink-0">
@@ -77,12 +78,12 @@ export function AutoJournalPreview({ lines }: Props) {
         {balanced ? (
           <span className="inline-flex flex-wrap items-center gap-1.5 text-success font-bold font-mono">
             <CheckCircle2 size={14} />
-            {totalDr.toFixed(2)} = {totalCr.toFixed(2)} BALANCED
+            {formatNumericText(totalDr.toFixed(2))} = {formatNumericText(totalCr.toFixed(2))} ยอดสมดุล
           </span>
         ) : (
           <span className="inline-flex flex-wrap items-center gap-1.5 text-destructive font-bold font-mono">
             <XCircle size={14} />
-            Dr {totalDr.toFixed(2)} ≠ Cr {totalCr.toFixed(2)}
+            Dr {formatNumericText(totalDr.toFixed(2))} ≠ Cr {formatNumericText(totalCr.toFixed(2))}
           </span>
         )}
       </div>

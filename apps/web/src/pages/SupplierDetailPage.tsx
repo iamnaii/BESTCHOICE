@@ -373,7 +373,7 @@ export default function SupplierDetailPage() {
       {/* Purchase Orders */}
       <Card className="mb-6">
         <CardHeader>
-          <CardTitle>Purchase Orders ({purchaseOrdersTotal})</CardTitle>
+          <CardTitle>ใบสั่งซื้อ ({purchaseOrdersTotal})</CardTitle>
         </CardHeader>
         <CardContent className="p-0">
           <DataTable embedded

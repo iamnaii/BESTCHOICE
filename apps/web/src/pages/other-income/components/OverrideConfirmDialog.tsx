@@ -23,15 +23,15 @@ export function OverrideConfirmDialog({ open, onConfirm, onCancel }: Props) {
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-destructive">
             <AlertTriangle className="w-5 h-5" />
-            คุณกำลังจะแก้ไข Auto Journal ด้วยตนเอง
+            คุณกำลังจะแก้ไขรายการบัญชีอัตโนมัติด้วยตนเอง
           </DialogTitle>
         </DialogHeader>
 
         <div className="space-y-3 text-sm">
           <ul className="space-y-1 list-disc list-inside text-muted-foreground">
-            <li>ระบบจะตรวจสอบ V1/V2/V5 ก่อน POST</li>
-            <li>การกระทำนี้จะถูกบันทึกใน Audit Log</li>
-            <li>เอกสารจะมีเครื่องหมาย <Pencil className="size-3.5 inline" /> Modified ในรายการ</li>
+            <li>ระบบจะตรวจสอบความถูกต้องก่อนลงบัญชี</li>
+            <li>การแก้ไขนี้จะบันทึกในประวัติการดำเนินการ</li>
+            <li>เอกสารจะมีเครื่องหมาย <Pencil className="size-3.5 inline" /> แก้ไขแล้ว ในรายการ</li>
           </ul>
 
           <div className="flex items-start gap-2 pt-2">

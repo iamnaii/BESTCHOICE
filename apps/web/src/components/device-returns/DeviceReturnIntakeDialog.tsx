@@ -1,3 +1,4 @@
+import { NumberInput } from '@/components/ui/NumberInput';
 import { NativeSelect } from '@/components/ui/native-select';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -497,9 +498,8 @@ export function DeviceReturnIntakeDialog({ open, onClose, initialContractId, onC
                     >
                       ราคาประเมิน (฿) <span className="text-destructive">*</span>
                     </label>
-                    <input
+                    <NumberInput unstyled
                       id="device-return-appraisal"
-                      type="number"
                       min={0}
                       step="0.01"
                       value={appraisalPrice}
@@ -537,9 +537,8 @@ export function DeviceReturnIntakeDialog({ open, onClose, initialContractId, onC
                     >
                       ค่าซ่อม (฿)
                     </label>
-                    <input
+                    <NumberInput unstyled
                       id="device-return-repair-cost"
-                      type="number"
                       min={0}
                       step="0.01"
                       value={repairCost}
@@ -636,8 +635,8 @@ export function DeviceReturnIntakeDialog({ open, onClose, initialContractId, onC
                   <Effect text="สัญญาบอกเลิกอยู่แล้ว — สถานะไม่เปลี่ยนจนกว่า FINANCE ยืนยัน" />
                 )}
                 <Effect text="แจ้งลูกค้าทางไลน์ทันที (ไม่มีราคาประเมินในข้อความ)" />
-                <Effect text="รอ FINANCE ยืนยันบัญชี (JP5 + ขาคู่ SHOP) — ค่าเครื่องหักในรอบจ่าย INTER-CO ถัดไป" />
-                <Effect text="ปลดล็อค MDM (PJ-Soft) — ต้องทำ manual" warning />
+                <Effect text="รอ FINANCE ยืนยันบัญชี (JP5 + ขาคู่ SHOP) — ค่าเครื่องหักในรอบจ่าย ระหว่างบริษัท ถัดไป" />
+                <Effect text="ปลดล็อค MDM (PJ-Soft) — ต้องทำ ด้วยตนเอง" warning />
               </ul>
             </Section>
           </>

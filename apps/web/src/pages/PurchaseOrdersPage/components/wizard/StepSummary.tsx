@@ -1,3 +1,4 @@
+import { NumberInput } from '@/components/ui/NumberInput';
 import { Calculator, Pencil, StickyNote } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { formatNumberDecimal, formatDateShort } from '@/utils/formatters';
@@ -137,9 +138,8 @@ export function StepSummary({
           </div>
           <div className="flex items-center justify-between">
             <span className="leading-snug text-muted-foreground">หัก ส่วนลด{supplierHasVat ? ' (ก่อน VAT)' : ''}</span>
-            <input
+            <NumberInput unstyled
               aria-label="ส่วนลด"
-              type="number"
               min="0"
               step="0.01"
               placeholder="0"
@@ -164,9 +164,8 @@ export function StepSummary({
               </div>
               <div className="flex items-center justify-between">
                 <span className="leading-snug text-muted-foreground">หัก ส่วนลด (หลัง VAT)</span>
-                <input
+                <NumberInput unstyled
                   aria-label="ส่วนลด (หลัง VAT)"
-                  type="number"
                   min="0"
                   step="0.01"
                   placeholder="0"

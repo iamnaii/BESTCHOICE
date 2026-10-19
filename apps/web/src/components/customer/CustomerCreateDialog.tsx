@@ -1,3 +1,4 @@
+import { NumberInput } from '@/components/ui/NumberInput';
 import { NativeSelect } from '@/components/ui/native-select';
 import { useId as useFieldId } from 'react';
 import { formControlClass } from '@/components/ui/form-styles';
@@ -984,7 +985,7 @@ function CustomerCreateForm({ mode = 'create', fillCustomerId, initialValues, in
                         <FormItem>
                           <FormLabel className="text-xs font-medium">เงินเดือน</FormLabel>
                           <FormControl>
-                            <input type="number" {...field} className={inputClass} placeholder="0.00" />
+                            <NumberInput unstyled {...field} className={inputClass} placeholder="0.00" />
                           </FormControl>
                           <FormMessage className="text-xs" />
                         </FormItem>

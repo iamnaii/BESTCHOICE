@@ -64,10 +64,10 @@ export function VersionBadge({ className, variant = 'sidebar' }: VersionBadgePro
         >
           <div className="space-y-0.5">
             <div>
-              <span className="text-muted-foreground">Version:</span> {version}
+              <span className="text-muted-foreground">เวอร์ชัน:</span> {version}
             </div>
             <div>
-              <span className="text-muted-foreground">Built:</span> {builtAt}
+              <span className="text-muted-foreground">สร้างเมื่อ:</span> {builtAt}
             </div>
             <div>
               <span className="text-muted-foreground">Commit:</span> {commit}

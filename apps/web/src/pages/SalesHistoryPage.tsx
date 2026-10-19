@@ -505,7 +505,7 @@ export default function SalesHistoryPage() {
                 <div>ยอดไฟแนนซ์ {Number(s.financeAmount).toLocaleString()} ฿</div>
               )}
               {s.financeRefNumber && (
-                <div className="text-muted-foreground">Ref: {s.financeRefNumber}</div>
+                <div className="text-muted-foreground">อ้างอิง: {s.financeRefNumber}</div>
               )}
               {s.downPaymentAmount && Number(s.downPaymentAmount) > 0 && (
                 <div>ดาวน์ {Number(s.downPaymentAmount).toLocaleString()} ฿</div>

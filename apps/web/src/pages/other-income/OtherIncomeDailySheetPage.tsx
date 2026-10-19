@@ -1,3 +1,4 @@
+import { formatNumericText } from '@/utils/numericText';
 import ScreenTable from '@/components/ui/ScreenTable';
 import { formatIncomeAmount as fmt } from '@/utils/financial-display';
 import { DailySheetSummaryTable } from './components/DailySheetSummaryTable';
@@ -268,16 +269,16 @@ export default function OtherIncomeDailySheetPage() {
                             {d.items[0]?.accountCode ?? '-'}
                           </td>
                           <td className="px-2 py-2 text-right font-mono">
-                            {Number(d.incomeGross).toFixed(2)}
+                            {formatNumericText(Number(d.incomeGross).toFixed(2))}
                           </td>
                           <td className="px-2 py-2 text-right font-mono">
-                            {Number(d.vatAmount).toFixed(2)}
+                            {formatNumericText(Number(d.vatAmount).toFixed(2))}
                           </td>
                           <td className="px-2 py-2 text-right font-mono">
-                            {Number(d.whtAmount).toFixed(2)}
+                            {formatNumericText(Number(d.whtAmount).toFixed(2))}
                           </td>
                           <td className="px-2 py-2 text-right font-mono font-bold">
-                            {Number(d.netReceived).toFixed(2)}
+                            {formatNumericText(Number(d.netReceived).toFixed(2))}
                           </td>
                         </tr>
                       ))}

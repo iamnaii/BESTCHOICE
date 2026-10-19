@@ -1,3 +1,4 @@
+import { NumberInput } from '@/components/ui/NumberInput';
 import { NativeSelect } from '@/components/ui/native-select';
 import { formControlClass, formLabelClass, formTextareaClass } from '@/components/ui/form-styles';
 import { useId } from 'react';
@@ -67,7 +68,7 @@ export function DeviceDisclosureFields({ value, onChange, disabled }: {
       <DeviceOriginField value={value.deviceOrigin} onChange={(origin) => onChange('deviceOrigin', origin)} disabled={disabled} />
       <div>
         <label htmlFor={`${id}-days`} className={formLabelClass}>ประกันร้าน (วัน)</label>
-        <input id={`${id}-days`} type="number" min={0} step={1} className={cls} value={value.shopWarrantyDays ?? ''} disabled={disabled} onChange={(e) => onChange('shopWarrantyDays', e.target.value)} />
+        <NumberInput unstyled id={`${id}-days`} min={0} step={1} className={cls} value={value.shopWarrantyDays ?? ''} disabled={disabled} onChange={(e) => onChange('shopWarrantyDays', e.target.value)} />
       </div>
     </div>
     <p className="text-xs text-muted-foreground">ประกัน: เว้นว่างใช้เงื่อนไขมาตรฐานของร้าน · 0 = ไม่มีประกันร้าน · ระบุจำนวนวันเพื่อกำหนดเฉพาะเครื่อง</p>

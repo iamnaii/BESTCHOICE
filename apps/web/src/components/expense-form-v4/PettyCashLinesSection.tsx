@@ -1,3 +1,4 @@
+import { NumberInput } from '@/components/ui/NumberInput';
 import ScreenTable from '@/components/ui/ScreenTable';
 import { NativeSelect } from '@/components/ui/native-select';
 import { useId } from 'react';
@@ -56,7 +57,7 @@ export function PettyCashLinesSection({ value, onChange }: Props) {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
           <label htmlFor={custodianId} className="block text-xs font-medium mb-3 text-muted-foreground">
-            ผู้ดูแลเงินสดย่อย (custodian) — ทางเลือก
+            ผู้ดูแลเงินสดย่อย — ไม่บังคับ
           </label>
           <NameAutocomplete
             id={custodianId}
@@ -119,8 +120,7 @@ export function PettyCashLinesSection({ value, onChange }: Props) {
                   />
                 </td>
                 <td className="px-2 py-1.5">
-                  <input
-                    type="number"
+                  <NumberInput unstyled
                     step="0.01"
                     min="0"
                     value={l.amount}

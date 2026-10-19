@@ -240,7 +240,7 @@ export default function OtherIncomeViewPage() {
       note: string;
     }) => otherIncomeApi.reverse(id!, 'OTHER', note || reasonLabel, reasonLabel),
     onSuccess: (reversingDoc) => {
-      toast.success(`สร้าง Reversing Entry ${reversingDoc.docNumber} แล้ว`);
+      toast.success(`สร้าง รายการกลับบัญชี ${reversingDoc.docNumber} แล้ว`);
       queryClient.invalidateQueries({ queryKey: ['other-income'] });
       navigate(`/other-income/${reversingDoc.id}`);
     },
@@ -297,7 +297,7 @@ export default function OtherIncomeViewPage() {
   const saveTemplateMutation = useMutation({
     mutationFn: (name: string) => otherIncomeApi.templates.saveAsFromDoc(id!, name),
     onSuccess: () => {
-      toast.success('บันทึกเป็น template แล้ว');
+      toast.success("บันทึกเป็นแม่แบบแล้ว");
       setShowTemplateModal(false);
     },
     onError: (err: any) => toast.error(err?.response?.data?.message ?? 'บันทึก template ไม่สำเร็จ'),
@@ -345,7 +345,7 @@ export default function OtherIncomeViewPage() {
                   onClick={() => setShowTemplateModal(true)}
                   className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium border rounded-lg hover:bg-accent"
                 >
-                  บันทึกเป็น Template
+                  บันทึกเป็นแม่แบบ
                 </button>
               )}
               {doc.status === 'POSTED' && doc.customerId && (
@@ -388,7 +388,7 @@ export default function OtherIncomeViewPage() {
                       className="inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold bg-primary text-primary-foreground rounded-lg hover:bg-primary/90"
                     >
                       <Check size={14} />
-                      {permissions.can('INCOME_POST') ? 'แก้ไขและ POST' : 'แก้ไขร่าง'}
+                      {permissions.can('INCOME_POST') ? "แก้ไขและ ลงบัญชี" : 'แก้ไขร่าง'}
                     </button>
                   )}
                 </>
@@ -420,7 +420,7 @@ export default function OtherIncomeViewPage() {
               <div className="rounded-xl border-2 border-success bg-success/10 px-5 py-4 mb-4 flex items-center gap-4">
                 <CheckCircle2 size={24} className="text-success" />
                 <div className="flex-1">
-                  <p className="font-bold text-success">บันทึกและ POST เรียบร้อยแล้ว</p>
+                  <p className="font-bold text-success">บันทึกและ ลงบัญชี เรียบร้อยแล้ว</p>
                   <p className="text-xs text-success/80">เอกสาร {doc.docNumber} ลงบัญชีเรียบร้อย</p>
                 </div>
                 {doc.customerId && (
@@ -460,7 +460,7 @@ export default function OtherIncomeViewPage() {
                     />
                     <InfoRow label="ช่องทางรับเงิน" value={doc.paymentAccountCode} />
                     {doc.receiptNo && <InfoRow label="เลขที่ใบเสร็จ" value={doc.receiptNo} />}
-                    {doc.postedAt && <InfoRow label="วันที่ POST" value={fmtDate(doc.postedAt)} />}
+                    {doc.postedAt && <InfoRow label="วันที่ ลงบัญชี" value={fmtDate(doc.postedAt)} />}
                   </div>
                 </div>
 
@@ -581,14 +581,14 @@ export default function OtherIncomeViewPage() {
                     <InfoRow label="รายละเอียด" value={doc.reverseNote ?? '—'} />
                     {doc.reversedBy && (
                       <InfoRow
-                        label="เอกสาร Reversing"
+                        label="เอกสาร กลับรายการ"
                         value={
                           <button
                             type="button"
                             onClick={() => navigate(`/other-income/${doc.reversedBy!.id}`)}
                             className="font-mono text-primary hover:underline"
                           >
-                            {doc.reversedBy.docNumber} — ดูเอกสาร Reversing Entry
+                            {doc.reversedBy.docNumber} — ดูเอกสาร รายการกลับบัญชี
                           </button>
                         }
                       />
@@ -697,7 +697,7 @@ export default function OtherIncomeViewPage() {
                       </span>
                     </div>
                     {doc.isOverridden && (
-                      <p className="text-xs text-warning-strong pt-1">* JE ถูก override โดยผู้ใช้</p>
+                      <p className="text-xs text-warning-strong pt-1">* รายการบัญชี ถูก แก้ไขแทนค่าเดิม โดยผู้ใช้</p>
                     )}
                   </div>
                 </div>
@@ -709,7 +709,7 @@ export default function OtherIncomeViewPage() {
                 {doc.status === 'DRAFT' && (
                   <div className="rounded-xl border bg-card p-5 space-y-2">
                     <p className="text-sm text-muted-foreground">
-                      เอกสารนี้ยังเป็นร่าง — ยังไม่มี Journal Entry
+                      เอกสารนี้ยังเป็นร่าง — ยังไม่มี รายการบัญชี
                     </p>
                     {makerCheckerEnabled ? (
                       <button data-ui-control="button"
@@ -728,7 +728,7 @@ export default function OtherIncomeViewPage() {
                         className="w-full inline-flex items-center justify-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-semibold hover:bg-primary/90"
                       >
                         <Edit size={14} />
-                        {permissions.can('INCOME_POST') ? 'แก้ไขและ POST' : 'แก้ไขร่าง'}
+                        {permissions.can('INCOME_POST') ? "แก้ไขและ ลงบัญชี" : 'แก้ไขร่าง'}
                       </button>
                     )}
                   </div>
@@ -741,7 +741,7 @@ export default function OtherIncomeViewPage() {
                       รออนุมัติ
                     </div>
                     <p className="text-xs text-muted-foreground">
-                      เอกสารนี้รอผู้มีสิทธิ์อนุมัติ — ยังไม่มี Journal Entry
+                      เอกสารนี้รอผู้มีสิทธิ์อนุมัติ — ยังไม่มี รายการบัญชี
                     </p>
                   </div>
                 )}
@@ -765,7 +765,7 @@ export default function OtherIncomeViewPage() {
                         <div className="rounded border border-warning/50 bg-warning/10 p-3 space-y-2">
                           <div className="flex items-center gap-2 flex-wrap">
                             <span className="px-2 py-0.5 rounded bg-warning/20 font-mono text-xs font-semibold text-warning-strong">
-                              JV_OVERRIDDEN
+                              แก้ไขรายการบัญชีแล้ว
                             </span>
                             <span className="text-xs text-muted-foreground">
                               {log.user?.name ?? '—'} ·{' '}
@@ -783,13 +783,13 @@ export default function OtherIncomeViewPage() {
                             <div className="grid grid-cols-2 gap-4 mt-3 pt-3 border-t border-warning/30">
                               <div>
                                 <p className="font-semibold text-xs mb-2 text-muted-foreground">
-                                  Original (Auto)
+                                  รายการเดิมจากระบบ
                                 </p>
                                 <AuditJournalTable lines={(log.oldValue as { jvLines?: AuditJournalLine[] } | null)?.jvLines} />
                               </div>
                               <div>
                                 <p className="font-semibold text-xs mb-2 text-muted-foreground">
-                                  Modified
+                                  รายการที่แก้ไข
                                 </p>
                                 <AuditJournalTable lines={(log.newValue as { jvLines?: AuditJournalLine[] } | null)?.jvLines} />
                               </div>

@@ -512,7 +512,7 @@ export default function ContactDetailPage() {
               <Card>
                 <CardContent className="pt-6">
                   <p className="text-sm text-muted-foreground leading-snug">
-                    ยังไม่ผูกกับลูกค้า/ผู้จัดจำหน่าย — เพิ่ม role ได้ที่หน้าลูกค้าหรือผู้จัดจำหน่าย
+                    ยังไม่ผูกกับลูกค้า/ผู้จัดจำหน่าย — เพิ่ม บทบาท ได้ที่หน้าลูกค้าหรือผู้จัดจำหน่าย
                   </p>
                 </CardContent>
               </Card>

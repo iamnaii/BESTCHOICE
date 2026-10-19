@@ -103,7 +103,7 @@ export default function LateFeeWaiverDialog({ open, onClose, contract, payments 
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <Receipt className="size-4 text-muted-foreground" /> ขอ waive ค่าปรับ
+            <Receipt className="size-4 text-muted-foreground" /> ขอ ยกเว้น ค่าปรับ
           </DialogTitle>
           {contract && (
             <DialogDescription className="leading-snug">
@@ -116,12 +116,12 @@ export default function LateFeeWaiverDialog({ open, onClose, contract, payments 
         <div className="space-y-2">
           {eligible.length === 0 ? (
             <div className="rounded-lg border border-dashed border-border bg-muted/30 py-8 text-center text-sm text-muted-foreground leading-snug">
-              ไม่มีงวดที่มีค่าปรับให้ขอ waive
+              ไม่มีงวดที่มีค่าปรับให้ขอ ยกเว้น
             </div>
           ) : (
             <>
               <div className="flex items-center justify-between">
-                <Label className="text-xs text-muted-foreground">เลือกงวดที่ต้องการ waive</Label>
+                <Label className="text-xs text-muted-foreground">เลือกงวดที่ต้องการ ยกเว้น</Label>
                 <button
                   type="button"
                   onClick={toggleAll}
@@ -163,7 +163,7 @@ export default function LateFeeWaiverDialog({ open, onClose, contract, payments 
                 })}
               </div>
               <div className="flex items-center justify-between pt-1 text-sm">
-                <span className="text-muted-foreground leading-snug">รวมยอดที่ขอ waive</span>
+                <span className="text-muted-foreground leading-snug">รวมยอดที่ขอ ยกเว้น</span>
                 <span className="font-mono tabular-nums font-semibold text-foreground">
                   {totalSelected.toLocaleString()} ฿
                 </span>
@@ -187,7 +187,7 @@ export default function LateFeeWaiverDialog({ open, onClose, contract, payments 
         </div>
 
         <div className="text-2xs text-muted-foreground leading-snug">
-          คำขอนี้จะถูกส่งให้ผู้อนุมัติ (OWNER) — ผู้ขอและผู้อนุมัติต้องเป็นคนละคน
+          คำขอนี้จะถูกส่งให้ผู้อนุมัติ (เจ้าของ) — ผู้ขอและผู้อนุมัติต้องเป็นคนละคน
         </div>
 
         <DialogFooter>

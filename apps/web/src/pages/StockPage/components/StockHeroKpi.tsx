@@ -23,7 +23,7 @@ function MoMTone({ current, previous }: { current: number; previous: number }) {
     >
       {up ? <ArrowUpRight className="size-3" /> : <ArrowDownRight className="size-3" />}
       {up ? '+' : ''}
-      {delta.toFixed(0)}% MoM
+      {delta.toFixed(0)}% เทียบเดือนก่อน
     </span>
   );
 }

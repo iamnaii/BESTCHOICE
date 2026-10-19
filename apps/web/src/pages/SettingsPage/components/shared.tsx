@@ -73,7 +73,7 @@ export const configGroups: ConfigGroup[] = [
   },
   {
     key: 'payment_link',
-    title: 'Payment Gateway',
+    title: "ระบบรับชำระเงิน",
     subtitle: 'ตั้งค่าลิงก์ชำระเงิน (ชำระผ่าน PaySolutions)',
     items: [
       { key: 'payment_link_expiry_hours', label: 'อายุลิงก์ชำระเงิน (ชั่วโมง)', shortLabel: 'อายุ Link', suffix: ' ชม.', type: 'number', step: '1', desc: 'ลิงก์ชำระเงินหมดอายุหลังกี่ชั่วโมง' },

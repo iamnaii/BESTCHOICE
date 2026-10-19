@@ -1,3 +1,4 @@
+import { NumberInput } from '@/components/ui/NumberInput';
 import { X } from 'lucide-react';
 import { useTemplateStore } from '@/store/templateStore';
 import { useId as useUiFieldId } from 'react';
@@ -15,7 +16,7 @@ export default function SettingsModal() {
       <div className="bg-card rounded-xl shadow-2xl w-full max-w-lg">
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-border">
-          <h2 className="text-lg font-bold text-foreground">ตั้งค่าเทมเพลต</h2>
+          <h2 className="text-lg font-bold text-foreground">ตั้งค่าแม่แบบ</h2>
           <button onClick={() => setShowSettings(false)} className="p-2 text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-colors">
             <X size={20} />
           </button>
@@ -69,7 +70,7 @@ export default function SettingsModal() {
 
           {/* Footer text */}
           <div>
-            <label htmlFor={`${uiFieldId}-1`} className="block text-base font-medium text-foreground mb-1.5">Footer</label>
+            <label htmlFor={`${uiFieldId}-1`} className="block text-base font-medium text-foreground mb-1.5">ท้ายเอกสาร</label>
             <input id={`${uiFieldId}-1`}
               type="text"
               value={settings.footerText}
@@ -86,7 +87,7 @@ export default function SettingsModal() {
               onChange={e => updateSettings({ footerContent: e.target.value })}
               className="w-full px-3 py-2.5 border border-input rounded-lg text-base resize-y"
               rows={3}
-              placeholder="ข้อความท้ายเอกสาร (รองรับ template variables)"
+              placeholder="ข้อความท้ายเอกสาร (รองรับตัวแปรแม่แบบ)"
             />
           </div>
 
@@ -97,8 +98,7 @@ export default function SettingsModal() {
               {(['top', 'bottom', 'left', 'right'] as const).map(side => (
                 <div key={side}>
                   <label className="block text-sm text-muted-foreground mb-1 capitalize">{side === 'top' ? 'บน' : side === 'bottom' ? 'ล่าง' : side === 'left' ? 'ซ้าย' : 'ขวา'}</label>
-                  <input
-                    type="number"
+                  <NumberInput unstyled
                     value={settings.margins[side]}
                     onChange={e => updateSettings({ margins: { ...settings.margins, [side]: parseInt(e.target.value) || 0 } })}
                     className="w-full px-2 py-2 border border-input rounded text-base"
@@ -117,12 +117,11 @@ export default function SettingsModal() {
               {[
                 { key: 'body' as const, label: 'เนื้อหา' },
                 { key: 'heading' as const, label: 'หัวข้อ' },
-                { key: 'footer' as const, label: 'Footer' },
+                { key: 'footer' as const, label: "ท้ายเอกสาร" },
               ].map(item => (
                 <div key={item.key}>
                   <label className="block text-sm text-muted-foreground mb-1">{item.label}</label>
-                  <input
-                    type="number"
+                  <NumberInput unstyled
                     value={settings.fontSize[item.key]}
                     onChange={e => updateSettings({ fontSize: { ...settings.fontSize, [item.key]: parseInt(e.target.value) || 12 } })}
                     className="w-full px-2 py-2 border border-input rounded text-base"

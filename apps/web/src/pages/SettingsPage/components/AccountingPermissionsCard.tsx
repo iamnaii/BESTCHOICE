@@ -83,7 +83,7 @@ export function AccountingPermissionsCard() {
         {settings.data && (
           <UserPermissionTable users={users} permissions={ACCOUNTING_PERMISSIONS} labels={ACCOUNTING_PERMISSION_LABELS} saving={save.isPending} onToggle={togglePermission} isDisabled={(row, permission) => row.role === 'BRANCH_MANAGER' && permission.startsWith('INCOME_')} />
         )}
-        <p className="text-xs text-muted-foreground">OWNER มีสิทธิ์ทุกประเภทเสมอ ผู้จัดการสาขากำหนดได้เฉพาะรายจ่ายในสาขาตนเอง สิทธิ์ที่บันทึกมีผลในการทำรายการครั้งถัดไป</p>
+        <p className="text-xs text-muted-foreground">เจ้าของ มีสิทธิ์ทุกประเภทเสมอ ผู้จัดการสาขากำหนดได้เฉพาะรายจ่ายในสาขาตนเอง สิทธิ์ที่บันทึกมีผลในการทำรายการครั้งถัดไป</p>
         <div className="flex justify-end gap-2">
           <Button variant="outline" disabled={!pending || save.isPending} onClick={() => setPending(null)}>ยกเลิกการแก้ไข</Button>
           <Button disabled={!pending || save.isPending || settings.isError} onClick={() => save.mutate(users)}>

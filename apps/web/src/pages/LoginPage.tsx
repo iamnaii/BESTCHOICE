@@ -78,7 +78,7 @@ export default function LoginPage() {
             <div className="text-lg font-extrabold text-foreground">
               BEST<span className="text-primary">CHOICE</span>
             </div>
-            <div className="text-xs text-muted-foreground">Finance Management</div>
+            <div className="text-xs text-muted-foreground">ระบบบริหารร้านและการเงิน</div>
           </div>
         </div>
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -152,7 +152,7 @@ export default function LoginPage() {
             <p className="font-medium text-foreground text-xs mb-2">เข้าสู่ระบบด่วน:</p>
             <div className="grid grid-cols-2 gap-2">
               {[
-                { label: 'Admin', email: 'admin@bestchoice.com', pw: 'admin1234', role: 'OWNER' },
+                { label: "ผู้ดูแลระบบ", email: 'admin@bestchoice.com', pw: 'admin1234', role: 'OWNER' },
                 {
                   label: 'ผจก.สาขา',
                   email: 'manager1@bestchoice.com',

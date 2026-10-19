@@ -108,7 +108,7 @@ export default function SessionSummary({
       {/* Actions */}
       <div className="flex flex-col sm:flex-row gap-2 justify-center pt-2">
         <Button variant="outline" size="lg" className="h-14 text-base" onClick={onShowPool}>
-          ดูงานใน pool กลาง
+          ดูงานใน กองงานกลาง กลาง
         </Button>
         <Button size="lg" className="h-14 text-base font-semibold" onClick={onBackToHome}>
           กลับหน้าหลัก

@@ -60,7 +60,7 @@ export default function ImageBubbleEditor({ bubble, onChange }: Props) {
         )}
       </div>
       {bubble.mediaUrl && (
-        <img src={bubble.mediaUrl} alt="preview" className="max-w-xs max-h-48 rounded border border-border" />
+        <img src={bubble.mediaUrl} alt="ตัวอย่าง" className="max-w-xs max-h-48 rounded border border-border" />
       )}
     </div>
   );

@@ -22,7 +22,7 @@ export default function ExportExcelButton({ filters }: Props) {
         params: { ...filters, page: 1, limit: MAX_EXPORT },
       });
       if (data.total > MAX_EXPORT) {
-        toast.error('เกินจำนวนที่ export ได้ — กรุณาแคบ filter');
+        toast.error("รายการมากเกินกว่าจะส่งออกได้ กรุณาระบุตัวกรองให้แคบลง");
         return;
       }
       const blob = await lettersToExcel(data.data);
@@ -31,9 +31,9 @@ export default function ExportExcelButton({ filters }: Props) {
       a.download = `letters-${new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-')}.xlsx`;
       a.click();
       URL.revokeObjectURL(a.href);
-      toast.success(`Export ${data.data.length} แถวสำเร็จ`);
+      toast.success(`ส่งออก ${data.data.length} แถวสำเร็จ`);
     } catch (err: any) {
-      toast.error(`Export ล้มเหลว: ${err.message}`);
+      toast.error(`ส่งออก ล้มเหลว: ${err.message}`);
     } finally {
       setBusy(false);
     }
@@ -41,7 +41,7 @@ export default function ExportExcelButton({ filters }: Props) {
 
   return (
     <Button variant="outline" onClick={handleExport} disabled={busy}>
-      <Download className="size-4 mr-1" /> {busy ? 'กำลัง export...' : 'Export Excel'}
+      <Download className="size-4 mr-1" /> {busy ? "กำลัง ส่งออก..." : "ส่งออก Excel"}
     </Button>
   );
 }

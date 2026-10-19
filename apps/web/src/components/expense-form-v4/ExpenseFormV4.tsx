@@ -169,7 +169,7 @@ export function ExpenseFormV4({ branchId, onClose, onSaved, initialDocType, edit
       } | null;
     };
     if (doc.documentType !== 'PAYROLL' || doc.status !== 'DRAFT' || !doc.payroll) {
-      toast.error('แก้ไขได้เฉพาะร่างใบเงินเดือน (DRAFT)');
+      toast.error("แก้ไขได้เฉพาะร่างใบเงินเดือน (ฉบับร่าง)");
       onClose();
       return;
     }
@@ -285,7 +285,7 @@ export function ExpenseFormV4({ branchId, onClose, onSaved, initialDocType, edit
 
   const saveMutation = useMutation({
     mutationFn: async ({ andPost }: { andPost: boolean }) => {
-      if (andPost && !maySubmit) throw new Error('ไม่มีสิทธิ์บันทึกและ POST รายจ่าย');
+      if (andPost && !maySubmit) throw new Error("ไม่มีสิทธิ์บันทึกและ ลงบัญชี รายจ่าย");
       let createdId: string | null = null;
 
       if (state.docType === 'EXPENSE_SAMEDAY' || state.docType === 'EXPENSE_ACCRUAL') {
@@ -575,7 +575,7 @@ export function ExpenseFormV4({ branchId, onClose, onSaved, initialDocType, edit
                   setState(initial(branchId, user?.defaultCashAccountCode || '11-1101'));
                 if (m === 'copy')
                   toast.info('เปิดหน้ารายการเพื่อเลือกเอกสารเดิมที่จะคัดลอก');
-                if (m === 'template') toast.info('เลือก template จาก ใช้บ่อย ด้านล่าง');
+                if (m === 'template') toast.info("เลือกแม่แบบจาก ใช้บ่อย ด้านล่าง");
               }}
               onPickTemplate={async (tplId) => {
                 try {
@@ -608,7 +608,7 @@ export function ExpenseFormV4({ branchId, onClose, onSaved, initialDocType, edit
                           )
                         : [newLine()],
                   }));
-                  toast.success('นำเข้า template สำเร็จ');
+                  toast.success("นำเข้าแม่แบบสำเร็จ");
                 } catch (e) {
                   toast.error(getErrorMessage(e));
                 }
@@ -686,7 +686,7 @@ export function ExpenseFormV4({ branchId, onClose, onSaved, initialDocType, edit
                     while the flag is off, but we keep the && here as a second
                     line of defense for race conditions during the flag fetch. */}
                 {state.docType === 'PETTY_CASH_REIMBURSEMENT' && pettyCashEnabled && (
-                  <Section num={next()} title="รายการเงินสดย่อย (Petty Cash)" Icon={Receipt}>
+                  <Section num={next()} title="รายการเงินสดย่อย" Icon={Receipt}>
                     <PettyCashLinesSection
                       value={state.pettyCash}
                       onChange={(pc) => patch({ pettyCash: pc })}
@@ -780,7 +780,7 @@ export function ExpenseFormV4({ branchId, onClose, onSaved, initialDocType, edit
                     EXPENSE_ACCRUAL today; PAYROLL / VENDOR_SETTLEMENT /
                     CREDIT_NOTE previews are deferred (I3). */}
                 {(state.docType === 'EXPENSE_SAMEDAY' || state.docType === 'EXPENSE_ACCRUAL') && (
-                  <Section num={next()} title="AUTO JOURNAL PREVIEW" Icon={Check}>
+                  <Section num={next()} title="ตัวอย่างรายการบัญชี" Icon={Check}>
                     <JePreview preview={preview} loading={loading} error={error} />
                   </Section>
                 )}
@@ -796,7 +796,7 @@ export function ExpenseFormV4({ branchId, onClose, onSaved, initialDocType, edit
 
         {!maySubmit && (
           <p className="px-6 py-2 text-sm text-muted-foreground" role="status">
-            {permissions.isError ? 'โหลดสิทธิ์ไม่สำเร็จ' : permissions.isPending ? 'กำลังตรวจสอบสิทธิ์…' : 'ไม่มีสิทธิ์ POST รายจ่าย — สามารถบันทึกร่างได้'}
+            {permissions.isError ? 'โหลดสิทธิ์ไม่สำเร็จ' : permissions.isPending ? 'กำลังตรวจสอบสิทธิ์…' : "ไม่มีสิทธิ์ลงบัญชี รายจ่าย — สามารถบันทึกร่างได้"}
             {permissions.isError && <Button variant="ghost" onClick={() => permissions.refetch()}>ลองใหม่</Button>}
           </p>
         )}
@@ -826,7 +826,7 @@ export function ExpenseFormV4({ branchId, onClose, onSaved, initialDocType, edit
               className="h-auto min-h-11 whitespace-normal py-2"
               onClick={() => saveMutation.mutate({ andPost: true })}
               disabled={!ready || saveMutation.isPending || !maySubmit}
-              title={!maySubmit ? 'ไม่มีสิทธิ์ POST รายจ่าย — สามารถบันทึกร่างได้' : undefined}
+              title={!maySubmit ? "ไม่มีสิทธิ์ลงบัญชี รายจ่าย — สามารถบันทึกร่างได้" : undefined}
             >
               {requiresApproval
                 ? 'บันทึกและขออนุมัติ'

@@ -1,3 +1,4 @@
+import { NumberInput } from '@/components/ui/NumberInput';
 import { formControlClass } from '@/components/ui/form-styles';
 import { useState } from 'react';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
@@ -285,9 +286,8 @@ export default function BranchesPage() {
                         <label htmlFor="branch-cash-float" className="block text-xs font-medium text-foreground mb-1.5">
                           เงินทอนตั้งต้นของลิ้นชัก (บาท)
                         </label>
-                        <input
+                        <NumberInput step="any" unstyled
                           id="branch-cash-float"
-                          type="text"
                           inputMode="decimal"
                           value={form.shopCashFloat}
                           onChange={(e) => setForm({ ...form, shopCashFloat: e.target.value })}
@@ -306,7 +306,7 @@ export default function BranchesPage() {
                         <div>
                           <div className="text-sm font-medium text-foreground">เปิดใช้งานสาขา</div>
                           <div className="text-xs text-muted-foreground">
-                            ปิดเพื่อซ่อนจาก dropdown และหน้าสต็อก (ข้อมูลเดิมยังคงอยู่)
+                            ปิดเพื่อซ่อนจาก รายการเลือก และหน้าสต็อก (ข้อมูลเดิมยังคงอยู่)
                           </div>
                         </div>
                         <input

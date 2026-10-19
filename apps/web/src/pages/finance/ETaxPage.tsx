@@ -124,7 +124,7 @@ export default function ETaxPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="e-Tax Invoice — Document Center"
+        title="ศูนย์เอกสารภาษีอิเล็กทรอนิกส์"
         icon={<FileText className="size-5" />}
       />
       <Card>

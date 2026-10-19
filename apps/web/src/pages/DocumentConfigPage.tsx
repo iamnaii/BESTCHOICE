@@ -38,7 +38,7 @@ export default function DocumentConfigPage() {
     <div className="space-y-6">
       <PageHeader
         title="ตั้งค่าเอกสาร"
-        subtitle="กำหนด prefix, รูปแบบเลขที่ และตัวเลือกต่อประเภทเอกสาร"
+        subtitle="กำหนด คำนำหน้า, รูปแบบเลขที่ และตัวเลือกต่อประเภทเอกสาร"
         icon={<FileText className="size-5" aria-hidden="true" />}
       />
       <Tabs

@@ -1,3 +1,4 @@
+import { NumberInput } from '@/components/ui/NumberInput';
 import { NativeSelect } from '@/components/ui/native-select';
 import { useState } from 'react';
 import {
@@ -183,8 +184,7 @@ export default function AssetForm({
                   <label className="block text-xs font-medium text-foreground mb-1.5">
                     ราคาทุน (บาท) <span className="text-destructive">*</span>
                   </label>
-                  <input
-                    type="number"
+                  <NumberInput unstyled
                     className={inputClass}
                     value={form.costValue}
                     onChange={(e) => setField('costValue', e.target.value)}
@@ -198,8 +198,7 @@ export default function AssetForm({
                   <label className="block text-xs font-medium text-foreground mb-1.5">
                     มูลค่าซาก (บาท)
                   </label>
-                  <input
-                    type="number"
+                  <NumberInput unstyled
                     className={inputClass}
                     value={form.salvageValue}
                     onChange={(e) => setField('salvageValue', e.target.value)}
@@ -212,8 +211,7 @@ export default function AssetForm({
                   <label className="block text-xs font-medium text-foreground mb-1.5">
                     อายุใช้งาน (ปี)
                   </label>
-                  <input
-                    type="number"
+                  <NumberInput unstyled
                     className={inputClass}
                     value={form.usefulLife}
                     onChange={(e) => setField('usefulLife', e.target.value)}

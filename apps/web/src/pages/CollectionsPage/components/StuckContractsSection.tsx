@@ -97,7 +97,7 @@ export default function StuckContractsSection() {
               สัญญาที่ถูกค้าง
             </div>
             <div className="text-xs text-muted-foreground leading-snug">
-              ไม่มี call log / dunning / ติดต่อ ใน {days} วันที่ผ่านมา
+              ไม่มี call log / ทวงถามหนี้ / ติดต่อ ใน {days} วันที่ผ่านมา
             </div>
           </div>
           <div className="flex items-center gap-2 text-xs">

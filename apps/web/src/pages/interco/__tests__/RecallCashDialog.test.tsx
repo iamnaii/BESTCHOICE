@@ -62,7 +62,7 @@ describe('RecallCashDialog — kind', () => {
     view.rerender(
       <RecallCashDialog candidate={{ ...candidate }} kind="DEVICE_RETURN" onClose={onClose} />,
     );
-    expect(screen.getByLabelText(/ยอดรับเงินค่าเครื่องคืน/)).toHaveValue(1234.56);
+    expect(screen.getByLabelText(/ยอดรับเงินค่าเครื่องคืน/)).toHaveValue('1,234.56');
     fireEvent.click(submit());
     await waitFor(() => expect(apiPost).toHaveBeenCalledTimes(2));
     expect(apiPost.mock.calls[1][1]).toEqual(firstBody);
@@ -241,7 +241,7 @@ describe('RecallCashDialog — kind', () => {
     });
     const dialog = await screen.findByRole('dialog');
     expect(within(dialog).getByText('รับเงินสดค่าเครื่องคืนจากหน้าร้าน')).toBeInTheDocument();
-    expect(within(dialog).getByLabelText(/ยอดรับเงินค่าเครื่องคืน/)).toHaveValue(7000);
+    expect(within(dialog).getByLabelText(/ยอดรับเงินค่าเครื่องคืน/)).toHaveValue('7,000.00');
     fireEvent.click(within(dialog).getByRole('button', { name: 'บันทึกรับเงินค่าเครื่องคืน' }));
     await waitFor(() =>
       expect(apiPost).toHaveBeenCalledWith(
@@ -268,7 +268,7 @@ describe('RecallCashDialog — kind', () => {
     });
     const dialog = await screen.findByRole('dialog');
     expect(within(dialog).getByText('รับเงินสดคืนจากหน้าร้าน')).toBeInTheDocument();
-    expect(within(dialog).getByLabelText(/ยอดรับเงินคืน/)).toHaveValue(500);
+    expect(within(dialog).getByLabelText(/ยอดรับเงินคืน/)).toHaveValue('500.00');
     fireEvent.click(within(dialog).getByRole('button', { name: 'บันทึกรับเงินคืน' }));
     await waitFor(() =>
       expect(apiPost).toHaveBeenCalledWith(

@@ -387,7 +387,7 @@ const FINANCE_MANAGER_CONFIG: RoleMenuConfig = {
       icon: Receipt,
       zone: 'fin',
       items: [
-        { label: 'จ่ายให้หน้าร้าน (Inter-co)', path: '/accounting/intercompany', icon: Store },
+        { label: "จ่ายให้หน้าร้าน", path: '/accounting/intercompany', icon: Store },
         { label: 'ค่าใช้จ่ายดำเนินงาน', path: '/expenses', icon: Receipt },
       ],
     },
@@ -399,7 +399,7 @@ const FINANCE_MANAGER_CONFIG: RoleMenuConfig = {
       items: [
         { label: 'ปิดบัญชีรายเดือน', path: '/monthly-close', icon: CalendarDays },
         { label: 'ปิดบัญชีสิ้นปี', path: '/finance/year-end-closing', icon: CalendarDays },
-        { label: 'ส่วนของผู้ถือหุ้น (Equity)', path: '/finance/equity', icon: Landmark },
+        { label: "ส่วนของผู้ถือหุ้น", path: '/finance/equity', icon: Landmark },
         { label: 'ทะเบียนปันผล + ภ.ง.ด.2', path: '/finance/dividend-register', icon: Coins },
         // ไม่มี /accounting/periods — เป็น roles={['OWNER']} (ดูคอมเมนต์ทิศ B)
       ],
@@ -416,7 +416,7 @@ const FINANCE_MANAGER_CONFIG: RoleMenuConfig = {
         { label: 'ประกันสังคม (สปส.1-10)', path: '/finance/sso-report', icon: Calculator },
         { label: 'ภ.ง.ด.1ก / ใบ 50 ทวิ (รายปี)', path: '/finance/wht-annual', icon: Calculator },
         { label: 'e-Tax Invoice', path: '/finance/e-tax', icon: FileText },
-        { label: 'VAT Auto Journal', path: '/finance/vat-auto-journal', icon: Calculator },
+        { label: "รายการบัญชี VAT อัตโนมัติ", path: '/finance/vat-auto-journal', icon: Calculator },
       ],
     },
     {
@@ -425,10 +425,10 @@ const FINANCE_MANAGER_CONFIG: RoleMenuConfig = {
       icon: PieChart,
       zone: 'fin',
       items: [
-        { label: 'งบดุล (Balance Sheet)', path: '/finance/balance-sheet', icon: Landmark },
+        { label: "งบดุล", path: '/finance/balance-sheet', icon: Landmark },
         { label: 'กำไร-ขาดทุน (P&L)', path: '/profit-loss', icon: PieChart },
         { label: 'งบกระแสเงินสด', path: '/finance/cash-flow', icon: TrendingUp },
-        { label: 'งบ Equity', path: '/finance/equity-statement', icon: Landmark },
+        { label: "งบส่วนของผู้ถือหุ้น", path: '/finance/equity-statement', icon: Landmark },
       ],
     },
     {
@@ -440,11 +440,11 @@ const FINANCE_MANAGER_CONFIG: RoleMenuConfig = {
         { label: 'รายงานรวม', path: '/reports', icon: BarChart3 },
         // Tooltify import flow B — read-only historical sales dashboard (imported_sales table)
         { label: 'ยอดขายย้อนหลัง (Tooltify)', path: '/imported-sales', icon: History },
-        { label: 'รายงานลูกหนี้ + Aging', path: '/finance/aging-report', icon: BarChart3 },
+        { label: "รายงานลูกหนี้และอายุหนี้", path: '/finance/aging-report', icon: BarChart3 },
         { label: 'สมุดรายวัน', path: '/finance/general-journal', icon: BookOpen },
         { label: 'สมุดแยกประเภท', path: '/finance/general-ledger', icon: BookOpen },
         { label: 'รายงานหนี้สูญ', path: '/finance/bad-debt-report', icon: BarChart3 },
-        { label: 'รายงานลูกหนี้ Inter-co', path: '/finance/intercompany-report', icon: BarChart3 },
+        { label: "รายงานลูกหนี้ระหว่างบริษัท", path: '/finance/intercompany-report', icon: BarChart3 },
         { label: 'ค่าคอมมิชชัน', path: '/commissions', icon: Coins },
         { label: 'ตรวจสอบบัญชี', path: '/financial-audit', icon: ClipboardList },
         // P3-SP3 — PEAK CSV export (deep-linked from /settings#peak-mapping which is OWNER-only)
@@ -490,7 +490,7 @@ const ACCOUNTANT_CONFIG: RoleMenuConfig = {
       icon: HandCoins,
       zone: 'fin',
       items: [
-        { label: 'Dashboard การเงิน', path: '/finance-portfolio', icon: CircleDollarSign },
+        { label: "ภาพรวม การเงิน", path: '/finance-portfolio', icon: CircleDollarSign },
         { label: NAV_LABELS.payments, path: '/payments', icon: HandCoins },
         { label: 'บันทึกรายจ่าย', path: '/expenses', icon: Receipt },
         { label: 'จัดการจดหมาย', path: '/letters', icon: Mail },
@@ -534,9 +534,9 @@ const ACCOUNTANT_CONFIG: RoleMenuConfig = {
         // Tooltify import flow B — read-only historical sales dashboard (imported_sales table)
         { label: 'ยอดขายย้อนหลัง (Tooltify)', path: '/imported-sales', icon: History },
         // route อนุญาต role นี้อยู่แล้ว แต่เมนูไม่มี ⇒ MainLayout เด้ง (route-reachability.test.ts)
-        { label: 'รายงานลูกหนี้ + Aging', path: '/finance/aging-report', icon: BarChart3 },
+        { label: "รายงานลูกหนี้และอายุหนี้", path: '/finance/aging-report', icon: BarChart3 },
         { label: 'รายงานหนี้สูญ', path: '/finance/bad-debt-report', icon: BarChart3 },
-        { label: 'รายงานลูกหนี้ Inter-co', path: '/finance/intercompany-report', icon: BarChart3 },
+        { label: "รายงานลูกหนี้ระหว่างบริษัท", path: '/finance/intercompany-report', icon: BarChart3 },
       ],
     },
     assetMenuSection,
@@ -548,12 +548,12 @@ const ACCOUNTANT_CONFIG: RoleMenuConfig = {
       items: [
         { label: 'ปิดบัญชีรายเดือน', path: '/monthly-close', icon: CalendarDays },
         { label: 'ปิดบัญชีสิ้นปี', path: '/finance/year-end-closing', icon: CalendarDays },
-        { label: 'ส่วนของผู้ถือหุ้น (Equity)', path: '/finance/equity', icon: Landmark },
+        { label: "ส่วนของผู้ถือหุ้น", path: '/finance/equity', icon: Landmark },
         { label: 'ทะเบียนปันผล + ภ.ง.ด.2', path: '/finance/dividend-register', icon: Coins },
         // /accounting/periods เป็น ProtectedRoute roles={['OWNER']} (เป็นแค่ redirect ไป
         // /settings#periods ซึ่งอยู่หมวด system ที่ OWNER เท่านั้น) ⇒ role นี้กดแล้วโดนปฏิเสธ
         // เสมอ จึงถอดออกจากเมนู (ปักที่ route-reachability.test.ts ทิศ B)
-        { label: 'จ่ายให้หน้าร้าน (Inter-co)', path: '/accounting/intercompany', icon: ClipboardList },
+        { label: "จ่ายให้หน้าร้าน", path: '/accounting/intercompany', icon: ClipboardList },
         // ผังบัญชี + PEAK Sync ลบออก — ใช้ผ่าน settings › บัญชี & ภาษี (dedupe 2026-06-24)
         { label: 'ตรวจสอบบัญชี', path: '/financial-audit', icon: ClipboardList },
         { label: 'ส่งออก PEAK CSV', path: '/finance/peak-export', icon: Plug },
@@ -571,7 +571,7 @@ const ACCOUNTANT_CONFIG: RoleMenuConfig = {
         { label: 'ประกันสังคม (สปส.1-10)', path: '/finance/sso-report', icon: Receipt },
         { label: 'ภ.ง.ด.1ก / ใบ 50 ทวิ (รายปี)', path: '/finance/wht-annual', icon: Receipt },
         { label: 'e-Tax Invoice', path: '/finance/e-tax', icon: FileText },
-        { label: 'VAT Auto Journal', path: '/finance/vat-auto-journal', icon: Calculator },
+        { label: "รายการบัญชี VAT อัตโนมัติ", path: '/finance/vat-auto-journal', icon: Calculator },
       ],
     },
     {
@@ -582,10 +582,10 @@ const ACCOUNTANT_CONFIG: RoleMenuConfig = {
       items: [
         { label: 'กำไร-ขาดทุน (P&L)', path: '/profit-loss', icon: PieChart },
         { label: 'งบกระแสเงินสด', path: '/finance/cash-flow', icon: TrendingUp },
-        { label: 'งบ Equity', path: '/finance/equity-statement', icon: BarChart3 },
+        { label: "งบส่วนของผู้ถือหุ้น", path: '/finance/equity-statement', icon: BarChart3 },
         { label: 'สมุดแยกประเภท', path: '/finance/general-ledger', icon: BookOpen },
         // route อนุญาต role นี้อยู่แล้ว แต่เมนูไม่มี ⇒ MainLayout เด้ง (route-reachability.test.ts)
-        { label: 'งบดุล (Balance Sheet)', path: '/finance/balance-sheet', icon: Landmark },
+        { label: "งบดุล", path: '/finance/balance-sheet', icon: Landmark },
         { label: 'สมุดรายวัน', path: '/finance/general-journal', icon: BookOpen },
       ],
     },
@@ -698,7 +698,7 @@ const OWNER_CONFIG: RoleMenuConfig = {
       icon: TrendingDown,
       zone: 'fin',
       items: [
-        { label: 'จ่ายให้หน้าร้าน (Inter-co)', path: '/accounting/intercompany', icon: ClipboardList },
+        { label: "จ่ายให้หน้าร้าน", path: '/accounting/intercompany', icon: ClipboardList },
         { label: 'ค่าใช้จ่ายดำเนินงาน', path: '/expenses', icon: Receipt },
       ],
     },
@@ -711,7 +711,7 @@ const OWNER_CONFIG: RoleMenuConfig = {
       items: [
         { label: 'ปิดบัญชีรายเดือน', path: '/monthly-close', icon: CalendarDays },
         { label: 'ปิดบัญชีสิ้นปี', path: '/finance/year-end-closing', icon: CalendarDays },
-        { label: 'ส่วนของผู้ถือหุ้น (Equity)', path: '/finance/equity', icon: Landmark },
+        { label: "ส่วนของผู้ถือหุ้น", path: '/finance/equity', icon: Landmark },
         { label: 'ทะเบียนปันผล + ภ.ง.ด.2', path: '/finance/dividend-register', icon: Coins },
         { label: 'งวดบัญชี', path: '/accounting/periods', icon: CalendarDays },
       ],
@@ -728,7 +728,7 @@ const OWNER_CONFIG: RoleMenuConfig = {
         { label: 'ประกันสังคม (สปส.1-10)', path: '/finance/sso-report', icon: Receipt },
         { label: 'ภ.ง.ด.1ก / ใบ 50 ทวิ (รายปี)', path: '/finance/wht-annual', icon: Receipt },
         { label: 'e-Tax Invoice', path: '/finance/e-tax', icon: FileText },
-        { label: 'VAT Auto Journal', path: '/finance/vat-auto-journal', icon: Calculator },
+        { label: "รายการบัญชี VAT อัตโนมัติ", path: '/finance/vat-auto-journal', icon: Calculator },
       ],
     },
     {
@@ -738,10 +738,10 @@ const OWNER_CONFIG: RoleMenuConfig = {
       zone: 'fin',
       items: [
         // CSV §5 — "งบ 4 ประเภท" (full 4-statement set per TFRS)
-        { label: 'งบดุล (Balance Sheet)', path: '/finance/balance-sheet', icon: PieChart },
+        { label: "งบดุล", path: '/finance/balance-sheet', icon: PieChart },
         { label: 'กำไร-ขาดทุน (P&L)', path: '/profit-loss', icon: PieChart },
         { label: 'งบกระแสเงินสด', path: '/finance/cash-flow', icon: Banknote },
-        { label: 'งบ Equity', path: '/finance/equity-statement', icon: BarChart3 },
+        { label: "งบส่วนของผู้ถือหุ้น", path: '/finance/equity-statement', icon: BarChart3 },
       ],
     },
     {
@@ -754,11 +754,11 @@ const OWNER_CONFIG: RoleMenuConfig = {
         // Tooltify import flow B — read-only historical sales dashboard (imported_sales table)
         { label: 'ยอดขายย้อนหลัง (Tooltify)', path: '/imported-sales', icon: History },
         // CSV §6 placeholders — flagged "ต้องสร้าง"
-        { label: 'รายงานลูกหนี้ + Aging', path: '/finance/aging-report', icon: AlertTriangle },
+        { label: "รายงานลูกหนี้และอายุหนี้", path: '/finance/aging-report', icon: AlertTriangle },
         { label: 'สมุดรายวัน', path: '/finance/general-journal', icon: BookOpen },
         { label: 'สมุดแยกประเภท', path: '/finance/general-ledger', icon: BookOpen },
         { label: 'รายงานหนี้สูญ', path: '/finance/bad-debt-report', icon: TrendingDown },
-        { label: 'รายงานลูกหนี้ Inter-co', path: '/finance/intercompany-report', icon: Building2 },
+        { label: "รายงานลูกหนี้ระหว่างบริษัท", path: '/finance/intercompany-report', icon: Building2 },
         { label: 'ค่าคอมมิชชัน', path: '/commissions', icon: Coins },
         { label: 'ตรวจสอบบัญชี', path: '/financial-audit', icon: ClipboardList },
         // P3-SP3 — PEAK CSV export (mapping config lives in /settings#peak-mapping)
@@ -813,7 +813,7 @@ const OWNER_CONFIG: RoleMenuConfig = {
   bottomNav: [
     { label: NAV_LABELS.home, path: '/finance-portfolio', icon: CircleDollarSign },
     { label: 'รายงาน', path: '/reports', icon: BarChart3 },
-    { label: 'Collection', path: '/overdue', icon: AlertTriangle },
+    { label: "ติดตามหนี้", path: '/overdue', icon: AlertTriangle },
     { label: 'จัดการจดหมาย', path: '/letters', icon: Mail },
     { label: 'แชท', path: '/inbox', icon: MessageSquareMore, badgeKey: 'chat-unread' as const },
     { label: 'เพิ่มเติม', path: '#more', icon: MoreHorizontal, action: 'sidebar' as const },
@@ -836,10 +836,10 @@ const VIEWER_CONFIG: RoleMenuConfig = {
       icon: PieChart,
       zone: 'fin',
       items: [
-        { label: 'งบดุล (Balance Sheet)', path: '/finance/balance-sheet', icon: PieChart },
+        { label: "งบดุล", path: '/finance/balance-sheet', icon: PieChart },
         { label: 'กำไร-ขาดทุน (P&L)', path: '/profit-loss', icon: PieChart },
         { label: 'งบกระแสเงินสด', path: '/finance/cash-flow', icon: Banknote },
-        { label: 'งบ Equity', path: '/finance/equity-statement', icon: BarChart3 },
+        { label: "งบส่วนของผู้ถือหุ้น", path: '/finance/equity-statement', icon: BarChart3 },
       ],
     },
     {
@@ -849,11 +849,11 @@ const VIEWER_CONFIG: RoleMenuConfig = {
       zone: 'fin',
       items: [
         { label: 'รายงานรวม', path: '/reports', icon: BarChart3 },
-        { label: 'รายงานลูกหนี้ + Aging', path: '/finance/aging-report', icon: AlertTriangle },
+        { label: "รายงานลูกหนี้และอายุหนี้", path: '/finance/aging-report', icon: AlertTriangle },
         { label: 'สมุดรายวัน', path: '/finance/general-journal', icon: BookOpen },
         { label: 'สมุดแยกประเภท', path: '/finance/general-ledger', icon: BookOpen },
         { label: 'รายงานหนี้สูญ', path: '/finance/bad-debt-report', icon: TrendingDown },
-        { label: 'รายงานลูกหนี้ Inter-co', path: '/finance/intercompany-report', icon: Building2 },
+        { label: "รายงานลูกหนี้ระหว่างบริษัท", path: '/finance/intercompany-report', icon: Building2 },
         { label: 'ตรวจสอบบัญชี', path: '/financial-audit', icon: ClipboardList },
       ],
     },
@@ -873,7 +873,7 @@ const VIEWER_CONFIG: RoleMenuConfig = {
       icon: ScrollText,
       zone: 'fin',
       items: [
-        { label: 'Audit Log', path: '/audit-logs', icon: ScrollText },
+        { label: "ประวัติการดำเนินการ", path: '/audit-logs', icon: ScrollText },
       ],
     },
   ],
@@ -881,7 +881,7 @@ const VIEWER_CONFIG: RoleMenuConfig = {
     { label: 'รายงาน', path: '/reports', icon: BarChart3 },
     { label: 'งบดุล', path: '/finance/balance-sheet', icon: PieChart },
     { label: 'P&L', path: '/profit-loss', icon: PieChart },
-    { label: 'Audit Log', path: '/audit-logs', icon: ScrollText },
+    { label: "ประวัติการดำเนินการ", path: '/audit-logs', icon: ScrollText },
   ],
 };
 

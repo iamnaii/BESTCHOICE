@@ -40,7 +40,7 @@ export function useSnoozeContract() {
       return data as { id: string; snoozedUntil: string };
     },
     onSuccess: () => {
-      toast.success('Snooze สำเร็จ');
+      toast.success("พักการติดตาม สำเร็จ");
       // Refresh queue so the snoozed card disappears.
       qc.invalidateQueries({ queryKey: ['overdue-queue'] });
     },
@@ -58,7 +58,7 @@ export function useUnsnoozeContract() {
       return data as { unsnoozed: number };
     },
     onSuccess: () => {
-      toast.success('ยกเลิก snooze แล้ว');
+      toast.success("ยกเลิก พักการติดตาม แล้ว");
       qc.invalidateQueries({ queryKey: ['overdue-queue'] });
     },
     onError: (err: unknown) => toast.error(getErrorMessage(err)),

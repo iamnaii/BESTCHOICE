@@ -11,7 +11,7 @@ export default function StickersPage() {
     <div>
       <PageHeader
         title="ตั้งค่าสติกเกอร์"
-        subtitle="ค่า default สติกเกอร์ติดเครื่องเมื่อ PricingTemplate ไม่ได้ override"
+        subtitle="ค่าเริ่มต้น สติกเกอร์ติดเครื่องเมื่อ PricingTemplate ไม่ได้ แก้ไขแทนค่าเดิม"
       />
       <StickerSettings
         values={values}

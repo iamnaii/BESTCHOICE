@@ -150,11 +150,11 @@ export default function PaymentMethodSettingsPage() {
     <div className="space-y-4 p-4 md:p-6">
       <PageHeader
         title="ช่องทางรับชำระ × บัญชี"
-        subtitle="ตั้งค่าว่าช่องทางใดใช้บัญชีไหนได้บ้าง · เลือก default ของแต่ละช่องทาง"
+        subtitle="ตั้งค่าว่าช่องทางใดใช้บัญชีไหนได้บ้าง · เลือกค่าเริ่มต้นของแต่ละช่องทาง"
         action={
           <Button onClick={() => setAddOpen(true)} className="gap-2">
             <Plus className="size-4" />
-            เพิ่ม mapping
+            เพิ่มบัญชีรับเงิน
           </Button>
         }
       />
@@ -172,8 +172,8 @@ export default function PaymentMethodSettingsPage() {
               <tr className="bg-muted/40 text-xs uppercase tracking-wide text-muted-foreground">
                 <th className="text-left px-4 py-3 font-semibold">ช่องทาง</th>
                 <th className="text-left px-4 py-3 font-semibold">บัญชีรับเงิน</th>
-                <th className="text-center px-4 py-3 font-semibold w-20">Default</th>
-                <th className="text-center px-4 py-3 font-semibold w-20">Enabled</th>
+                <th className="text-center px-4 py-3 font-semibold w-28 whitespace-nowrap">ค่าเริ่มต้น</th>
+                <th className="text-center px-4 py-3 font-semibold w-28 whitespace-nowrap">เปิดใช้งาน</th>
                 <th className="text-right px-4 py-3 font-semibold w-32"></th>
               </tr>
             </thead>
@@ -247,7 +247,7 @@ export default function PaymentMethodSettingsPage() {
               {(configsQuery.data ?? []).length === 0 && (
                 <tr>
                   <td colSpan={5} className="px-4 py-12 text-center text-muted-foreground">
-                    ยังไม่มี mapping — เพิ่มด้วยปุ่ม "+ เพิ่ม mapping" ด้านบน
+                    ยังไม่มีบัญชีรับเงิน กด “เพิ่มบัญชีรับเงิน” เพื่อเริ่มต้น
                   </td>
                 </tr>
               )}
@@ -273,8 +273,8 @@ export default function PaymentMethodSettingsPage() {
         onOpenChange={(open) => {
           if (!open) setPendingDeleteId(null);
         }}
-        title="ลบ mapping"
-        description="แน่ใจไหม? บัญชีจะหายจาก wizard ทันที (กู้คืนได้โดย OWNER)"
+        title="ลบบัญชีจากช่องทางรับเงิน"
+        description="บัญชีนี้จะไม่ปรากฏในช่องทางรับเงิน ผู้เป็นเจ้าของสามารถเพิ่มกลับได้"
         confirmLabel="ลบ"
         variant="destructive"
         onConfirm={() => {
@@ -318,7 +318,7 @@ function AddMappingDialog({ open, onOpenChange, coaAccounts, existing, onCreated
       });
     },
     onSuccess: () => {
-      toast.success('เพิ่ม mapping แล้ว');
+      toast.success("เพิ่มบัญชีรับเงินแล้ว");
       // reset
       setAccountCode('');
       setIsDefault(false);
@@ -333,7 +333,7 @@ function AddMappingDialog({ open, onOpenChange, coaAccounts, existing, onCreated
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Plus className="size-4" />
-            เพิ่ม mapping ใหม่
+            เพิ่มบัญชีรับเงิน
           </DialogTitle>
           <DialogDescription>เลือกช่องทางและบัญชีที่ต้องการผูกกัน</DialogDescription>
         </DialogHeader>
@@ -381,7 +381,7 @@ function AddMappingDialog({ open, onOpenChange, coaAccounts, existing, onCreated
               onCheckedChange={(checked) => setIsDefault(checked === true)}
             />
             <Label htmlFor="is-default" className="cursor-pointer text-sm">
-              ตั้งเป็น default ของช่องทางนี้
+              ตั้งเป็น ค่าเริ่มต้นของช่องทางนี้
             </Label>
           </div>
         </div>

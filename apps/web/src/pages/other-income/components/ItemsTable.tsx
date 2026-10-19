@@ -1,3 +1,4 @@
+import { FormNumberInput } from '@/components/ui/FormNumberInput';
 import { NativeSelect } from '@/components/ui/native-select';
 import {
   useFieldArray,
@@ -108,28 +109,25 @@ export function ItemsTable({ control, register, watch, setValue }: Props) {
               <div className="grid grid-cols-2 md:grid-cols-6 gap-2 text-xs">
                 <div>
                   <label htmlFor={`${uiExtraFieldId}-1-${idx}`} className="text-muted-foreground font-medium">จำนวน</label>
-                  <input id={`${uiExtraFieldId}-1-${idx}`}
-                    type="number"
+                  <FormNumberInput unstyled id={`${uiExtraFieldId}-1-${idx}`}
                     step="0.01"
-                    {...register(`items.${idx}.quantity`)}
+                    name={`items.${idx}.quantity`} control={control}
                     className="mt-1 w-full border rounded px-2 py-1.5 text-right font-mono bg-background"
                   />
                 </div>
                 <div>
                   <label htmlFor={`${uiExtraFieldId}-2-${idx}`} className="text-muted-foreground font-medium">ราคา/หน่วย</label>
-                  <input id={`${uiExtraFieldId}-2-${idx}`}
-                    type="number"
+                  <FormNumberInput unstyled id={`${uiExtraFieldId}-2-${idx}`}
                     step="0.01"
-                    {...register(`items.${idx}.unitAmount`)}
+                    name={`items.${idx}.unitAmount`} control={control}
                     className="mt-1 w-full border rounded px-2 py-1.5 text-right font-mono bg-background"
                   />
                 </div>
                 <div>
                   <label htmlFor={`${uiExtraFieldId}-3-${idx}`} className="text-muted-foreground font-medium">ส่วนลด</label>
-                  <input id={`${uiExtraFieldId}-3-${idx}`}
-                    type="number"
+                  <FormNumberInput unstyled id={`${uiExtraFieldId}-3-${idx}`}
                     step="0.01"
-                    {...register(`items.${idx}.discountAmount`)}
+                    name={`items.${idx}.discountAmount`} control={control}
                     className="mt-1 w-full border rounded px-2 py-1.5 text-right font-mono bg-background"
                   />
                 </div>

@@ -249,7 +249,7 @@ for (const width of [1440, 390]) {
       const state = await fixture(page);
       await page.goto('/credit-checks');
       await expect(page.getByText('ยังไม่มีคะแนน', { exact: true })).toBeVisible();
-      await page.getByRole('button', { name: 'Next', exact: true }).click();
+      await page.getByRole('button', { name: 'ถัดไป', exact: true }).click();
       await expect(page.getByText('ลูกค้าตัวอย่าง 050', { exact: true }).first()).toBeVisible();
       await openFilters(page, width);
       state.holdPath = '/credit-checks'; let release!: () => void;
@@ -278,9 +278,9 @@ for (const width of [1440, 390]) {
       await page.goto('/pos');
       await page.getByRole('textbox', { name: 'ค้นหาสินค้า รุ่น หรือ IMEI' }).fill('TEST');
       await page.getByRole('button').filter({ hasText: 'TEST PHONE' }).first().click();
-      await expect(page.getByLabel(/ราคาขาย/)).toHaveValue('9000');
+      await expect(page.getByLabel(/ราคาขาย/)).toHaveValue('9,000');
       await page.getByRole('button', { name: /^ไฟแนนซ์นอก/ }).click();
-      await expect(page.getByLabel(/ราคาขาย/)).toHaveValue('10000');
+      await expect(page.getByLabel(/ราคาขาย/)).toHaveValue('10,000');
       await page.getByRole('textbox', { name: 'ค้นหาลูกค้า', exact: true }).fill('ลูกค้าตัวอย่าง 000');
       await page.getByRole('button', { name: /ลูกค้าตัวอย่าง 000 0800000000/ }).click();
       await page.getByRole('button', { name: /ไปสร้างสัญญาผ่อนชำระ/ }).click();
@@ -333,7 +333,7 @@ for (const width of [1440, 390]) {
       state.contracts.push({ ...state.contracts[0], id: 'excluded', contractNumber: 'OUTSIDE-FILTER', status: 'ACTIVE', branchId: 'another-branch' });
       await page.goto('/contracts?q=HP-UX&status=DRAFT&workflow=APPROVED&branchId=ux-branch&startDate=2026-09-01&endDate=2026-09-30');
       await expect(page.getByText('ลงนามแล้ว 4/5', { exact: true }).first()).toBeVisible();
-      await page.getByRole('button', { name: 'Next', exact: true }).click();
+      await page.getByRole('button', { name: 'ถัดไป', exact: true }).click();
       await expect(page.getByRole('link', { name: 'HP-UX-050', exact: true })).toBeVisible();
       const download = page.waitForEvent('download');
       await page.getByRole('button', { name: 'ส่งออก Excel', exact: true }).click();
@@ -348,7 +348,7 @@ for (const width of [1440, 390]) {
       expect((await readDownload(await current)).rowCount).toBe(51);
       await page.getByRole('button', { name: 'มุมมอง Kanban', exact: true }).click();
       await expect(page.getByText('จำนวนในแต่ละคอลัมน์เป็นรายการในหน้านี้', { exact: true })).toBeVisible();
-      await page.getByRole('button', { name: 'Next', exact: true }).click();
+      await page.getByRole('button', { name: 'ถัดไป', exact: true }).click();
       await expect(page.getByText('HP-UX-100', { exact: true })).toBeVisible();
       await snapshot(page, 'contracts-kanban-page3', width);
     });
@@ -459,7 +459,7 @@ for (const width of [1440, 390]) {
       await snapshot(page, 'documents-preview-error', width);
       state.failPath = '';
       await page.getByRole('alert').getByRole('button', { name: 'ลองใหม่' }).click();
-      await expect(page.locator('iframe[title="contract-preview"]')).toBeVisible();
+      await expect(page.locator('iframe[title="ตัวอย่างสัญญา"]')).toBeVisible();
     });
 
     test('documents: duplicate files never complete the required-type workflow step', async ({ page }) => {

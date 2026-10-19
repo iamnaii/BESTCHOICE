@@ -1,3 +1,4 @@
+import { NumberInput } from '@/components/ui/NumberInput';
 import { ActionEffect as Effect } from '@/components/ActionEffect';
 import { JournalPreviewTable } from '@/components/JournalPreviewTable';
 import PaymentApprovalRequestDialog from '@/components/payment/PaymentApprovalRequestDialog';
@@ -394,7 +395,7 @@ export function EarlyPayoffOverlay({
             </div>
             <div>
               <h3 className="text-sm font-semibold text-foreground">คำนวณยอดปิดสัญญา</h3>
-              <p className="text-xs text-muted-foreground">เลือก % ส่วนลดเพื่อ recalc</p>
+              <p className="text-xs text-muted-foreground">เลือก % ส่วนลดเพื่อ คำนวณใหม่</p>
             </div>
           </div>
 
@@ -418,8 +419,7 @@ export function EarlyPayoffOverlay({
                   {p}%
                 </button>
               ))}
-              <input id={`${uiFieldId}-1`}
-                type="number"
+              <NumberInput unstyled id={`${uiFieldId}-1`}
                 min={0}
                 max={MAX_DISCOUNT}
                 value={discountPct}
@@ -605,7 +605,7 @@ export function EarlyPayoffOverlay({
                 />
                 <p className="mt-1 text-xs text-muted-foreground leading-snug">
                   บัญชีถูกกำหนดเป็น 11-2107 อัตโนมัติโดยระบบ — กรอกบัญชีรับโอนจากหน้าร้านตอน
-                  settlement
+                  ชำระเงินระหว่างบริษัท
                 </p>
               </div>
             </div>
@@ -930,13 +930,13 @@ export function EarlyPayoffOverlay({
                 </div>
                 <div>
                   <h3 className="text-sm font-semibold text-foreground">
-                    JOURNAL AUTO — บันทึกทางบัญชี
+                    บันทึกบัญชีอัตโนมัติ
                   </h3>
                   <p className="text-xs text-muted-foreground">JP4 — ปิดยอดก่อนกำหนด (Policy A)</p>
                 </div>
               </div>
               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-primary/10 text-primary text-xs font-medium leading-snug">
-                AUTO
+                อัตโนมัติ
               </span>
             </div>
             <JournalPreviewTable preview={quote.journalPreview} />
@@ -972,9 +972,9 @@ export function EarlyPayoffOverlay({
           <ul className="space-y-1.5 text-sm">
             <Effect text="โอนกรรมสิทธิ์สินค้าจาก FINANCE → ลูกค้า" />
             <Effect text="ออกใบเสร็จและหนังสือปิดสัญญา" />
-            <Effect text="บันทึก JournalEntry (ตัด HP Receivable, รับรู้ดอกเบี้ย, VAT)" />
+            <Effect text="บันทึกบัญชีตัดลูกหนี้เช่าซื้อ รับรู้ดอกเบี้ย และ VAT" />
             <Effect text="แจ้งลูกค้าผ่าน LINE OA (ถ้าอนุญาต PDPA)" />
-            <Effect text="ปลดล็อค MDM (PJ-Soft) — ต้องทำ manual" warning />
+            <Effect text="ปลดล็อค MDM (PJ-Soft) — ต้องทำ ด้วยตนเอง" warning />
           </ul>
         </div>
       </div>
@@ -1209,8 +1209,7 @@ export function EarlyPayoffOverlay({
                   <label htmlFor={`${uiFieldId}-3`} className="block text-xs font-medium text-foreground mb-1.5">
                     จำนวนเงินที่รับโอน <span className="text-destructive">*</span>
                   </label>
-                  <input id={`${uiFieldId}-3`}
-                    type="number"
+                  <NumberInput unstyled id={`${uiFieldId}-3`}
                     min={0.01}
                     step={0.01}
                     value={settlementAmount}

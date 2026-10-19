@@ -171,7 +171,7 @@ export function PaymentFlexPreview({ data }: { data: ParsedPaymentFlex }) {
 function FlexFooter({ url }: { url: string }) {
   return (
     <div className="px-3.5 py-1.5 bg-muted/50 border-t border-border flex items-center justify-between">
-      <span className="text-[9px] text-muted-foreground">Flex Card · ส่งให้ลูกค้าใน LINE แล้ว</span>
+      <span className="text-[9px] text-muted-foreground">การ์ดข้อความ · ส่งให้ลูกค้าใน LINE แล้ว</span>
       <a
         href={url}
         target="_blank"

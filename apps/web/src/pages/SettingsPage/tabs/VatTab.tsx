@@ -1,10 +1,10 @@
+import { NumberInput } from '@/components/ui/NumberInput';
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import api, { getErrorMessage } from '@/lib/api';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import type { ConfigItem } from '../components/shared';
 
@@ -55,9 +55,8 @@ export function VatTab() {
       <CardContent className="space-y-4">
         <div className="space-y-2">
           <Label htmlFor="vat-rate">อัตรา VAT (%)</Label>
-          <Input
+          <NumberInput
             id="vat-rate"
-            type="number"
             step="0.01"
             min="0"
             max="100"

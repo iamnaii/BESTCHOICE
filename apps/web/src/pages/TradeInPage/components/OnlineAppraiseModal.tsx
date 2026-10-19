@@ -1,3 +1,4 @@
+import { NumberInput } from '@/components/ui/NumberInput';
 import { useId as useUiFieldId, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -144,7 +145,7 @@ export default function OnlineAppraiseModal({ item, onClose }: Props) {
                   setCashFallback(false);
                 }}
               >
-                กำหนดราคาเอง (OWNER)
+                กำหนดราคาเอง (เจ้าของ)
               </Button>
             )}
             {item.flow === 'EXCHANGE' && (
@@ -180,15 +181,14 @@ export default function OnlineAppraiseModal({ item, onClose }: Props) {
             <div className="space-y-3">
               <div>
                 <Label htmlFor={`${uiFieldId}-1`}>ราคาที่เสนอ (บาท) *</Label>
-                <Input id={`${uiFieldId}-1`}
+                <NumberInput id={`${uiFieldId}-1`}
                   className="mt-1"
-                  type="number"
                   value={manualPrice}
                   onChange={(e) => setManualPrice(e.target.value)}
                 />
               </div>
               <div>
-                <Label htmlFor={`${uiFieldId}-2`}>เหตุผล * (บันทึก audit)</Label>
+                <Label htmlFor={`${uiFieldId}-2`}>เหตุผล * (บันทึก การตรวจสอบ)</Label>
                 <Input id={`${uiFieldId}-2`}
                   className="mt-1"
                   value={manualReason}

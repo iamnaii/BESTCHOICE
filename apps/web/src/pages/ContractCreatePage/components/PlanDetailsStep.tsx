@@ -1,3 +1,4 @@
+import { NumberInput } from '@/components/ui/NumberInput';
 import { NativeSelect } from '@/components/ui/native-select';
 import { useEffect, useId } from 'react';
 import { useForm } from 'react-hook-form';
@@ -166,8 +167,7 @@ export function PlanDetailsStep({
                 เงินดาวน์ที่รับเป็นเงินสด/โอน <InfoTip text="กรอกเฉพาะเงินที่รับเพิ่ม ระบบรวมมูลค่าเครื่องเทิร์นให้ในการคำนวณยอดจัด" />
               </FormLabel>
               <FormControl>
-                <input
-                  type="number"
+                <NumberInput unstyled
                   id={`${dueDayInputId}-down`}
                   {...field}
                   onChange={(e) => {

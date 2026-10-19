@@ -64,13 +64,13 @@ describe('PdpaTab', () => {
 
     wrap(<PdpaTab />);
     await waitFor(() => {
-      expect(screen.getByText('พร้อมเปิด Strict Mode')).toBeInTheDocument();
+      expect(screen.getByText('พร้อมเปิด โหมดเข้มงวด')).toBeInTheDocument();
     });
     // Progress sentence uses sub-spans, so match the wrapper paragraph by
     // the text "เข้ารหัสไปแล้ว" + tolerance for the numeric spans.
     expect(screen.getByText(/เข้ารหัสไปแล้ว/)).toBeInTheDocument();
     // backfill button should be disabled when no plaintext rows remain
-    const backfillBtn = screen.getByRole('button', { name: /เริ่ม Backfill/ });
+    const backfillBtn = screen.getByRole('button', { name: /เริ่ม เติมข้อมูลย้อนหลัง/ });
     expect(backfillBtn).toBeDisabled();
   });
 
@@ -99,7 +99,7 @@ describe('PdpaTab', () => {
     await waitFor(() => {
       expect(screen.getByText(/ยังเหลือ 30 คน/)).toBeInTheDocument();
     });
-    const backfillBtn = screen.getByRole('button', { name: /เริ่ม Backfill/ });
+    const backfillBtn = screen.getByRole('button', { name: /เริ่ม เติมข้อมูลย้อนหลัง/ });
     expect(backfillBtn).not.toBeDisabled();
   });
 
@@ -130,7 +130,7 @@ describe('PdpaTab', () => {
       expect(screen.getByText('ยังไม่ได้ตั้ง')).toBeInTheDocument();
     });
     // Switch must be disabled until env is ready
-    const toggle = screen.getByRole('switch', { name: /เปิดปิด PDPA strict mode/ });
+    const toggle = screen.getByRole('switch', { name: /เปิดปิด PDPA โหมดเข้มงวด/ });
     expect(toggle).toBeDisabled();
   });
 

@@ -39,7 +39,7 @@ async function ensureLibraryView(page: Page): Promise<void> {
   const allTab = page.getByRole('button', { name: 'ทั้งหมด', exact: true });
   if (await allTab.isVisible({ timeout: 3000 }).catch(() => false)) return;
 
-  const libraryBtn = page.getByRole('button', { name: 'Library', exact: true });
+  const libraryBtn = page.getByRole('button', { name: 'คลังข้อมูล', exact: true });
   if (await libraryBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
     await libraryBtn.click();
   }

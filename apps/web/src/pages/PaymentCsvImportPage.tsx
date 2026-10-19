@@ -121,7 +121,7 @@ export default function PaymentCsvImportPage() {
         subtitle="นำเข้าข้อมูลการชำระเงินจากไฟล์ CSV"
         action={
           <button data-ui-control="button" onClick={downloadSample} className="px-4 py-2 bg-muted text-muted-foreground text-sm font-medium rounded-lg hover:bg-muted/80 border border-input transition-colors">
-            ดาวน์โหลดเทมเพลต CSV
+            ดาวน์โหลดแม่แบบ CSV
           </button>
         }
       />

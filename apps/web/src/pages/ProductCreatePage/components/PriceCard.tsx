@@ -1,3 +1,4 @@
+import { NumberInput } from '@/components/ui/NumberInput';
 import { formControlClass } from '@/components/ui/form-styles';
 import { cn } from '@/lib/utils';
 import { Card, CardHeader, CardContent, CardTitle } from '@/components/ui/card';
@@ -40,8 +41,7 @@ export default function PriceCard({ prices, onAdd, onRemove, onUpdate }: PriceCa
                 onChange={(e) => onUpdate(index, 'label', e.target.value)}
                 className={cn(formControlClass, 'sm:flex-1 sm:basis-40')}
               />
-              <input
-                type="number"
+              <NumberInput unstyled
                 step="0.01"
                 placeholder="จำนวนเงิน"
                 aria-label={`จำนวนเงินราคา ${index + 1}`}

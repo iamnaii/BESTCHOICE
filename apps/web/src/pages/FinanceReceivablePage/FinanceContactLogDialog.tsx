@@ -1,3 +1,4 @@
+import { NumberInput } from '@/components/ui/NumberInput';
 import { NativeSelect } from '@/components/ui/native-select';
 import { useId as useUiFieldId, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -122,8 +123,7 @@ export default function FinanceContactLogDialog({
             </div>
             <div>
               <label htmlFor={`${uiFieldId}-3`} className="block text-sm font-medium mb-1">ยอดที่นัด (บาท)</label>
-              <input id={`${uiFieldId}-3`}
-                type="number"
+              <NumberInput unstyled id={`${uiFieldId}-3`}
                 className="w-full px-3 py-2 border border-input rounded-lg bg-background"
                 value={promisedAmount}
                 onChange={(e) => setPromisedAmount(e.target.value)}

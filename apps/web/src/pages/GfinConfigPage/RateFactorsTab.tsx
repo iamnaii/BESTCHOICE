@@ -1,3 +1,4 @@
+import { NumberInput } from '@/components/ui/NumberInput';
 import { useId as useUiFieldId, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -102,7 +103,7 @@ export function RateFactorsTab() {
           <TableRow>
             <TableHead className="text-right">จำนวนงวด (เดือน)</TableHead>
             <TableHead className="text-right">% คอมมิชชั่น</TableHead>
-            <TableHead className="text-right">Factor</TableHead>
+            <TableHead className="text-right">ตัวคูณ</TableHead>
             <TableHead className="text-right">ค่าธรรมเนียมต่องวด (฿)</TableHead>
             <TableHead>ใช้งาน</TableHead>
             <TableHead>การกระทำ</TableHead>
@@ -214,13 +215,12 @@ function RateFactorFormDialog({ initial, onClose, onSaved }: DialogProps) {
     <Dialog open onOpenChange={(open) => !open && onClose()}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>{initial ? 'แก้ไข' : 'เพิ่ม'} Rate Factor</DialogTitle>
+          <DialogTitle>{initial ? 'แก้ไข' : 'เพิ่ม'} ตัวคูณอัตราผ่อน</DialogTitle>
         </DialogHeader>
         <div className="space-y-3">
           <div>
             <label htmlFor={`${uiFieldId}-1`} className="text-sm font-medium">จำนวนงวด (เดือน)</label>
-            <Input id={`${uiFieldId}-1`}
-              type="number"
+            <NumberInput id={`${uiFieldId}-1`}
               min="1"
               value={form.months}
               onChange={(e) => setForm((f) => ({ ...f, months: e.target.value }))}
@@ -229,8 +229,7 @@ function RateFactorFormDialog({ initial, onClose, onSaved }: DialogProps) {
           </div>
           <div>
             <label htmlFor={`${uiFieldId}-2`} className="text-sm font-medium">% คอมมิชชั่น</label>
-            <Input id={`${uiFieldId}-2`}
-              type="number"
+            <NumberInput id={`${uiFieldId}-2`}
               min="0"
               max="100"
               value={form.shopCommissionPct}
@@ -242,20 +241,19 @@ function RateFactorFormDialog({ initial, onClose, onSaved }: DialogProps) {
             </p>
           </div>
           <div>
-            <label htmlFor={`${uiFieldId}-3`} className="text-sm font-medium">Factor (6 ทศนิยม)</label>
+            <label htmlFor={`${uiFieldId}-3`} className="text-sm font-medium">ตัวคูณค่างวด (ทศนิยม 6 หลัก)</label>
             <Input id={`${uiFieldId}-3`}
               value={form.factor}
               onChange={(e) => setForm((f) => ({ ...f, factor: e.target.value }))}
               placeholder="เช่น 0.090000"
             />
             <p className="text-xs text-muted-foreground mt-1 leading-snug">
-              ค่า factor ที่ใช้คำนวณค่างวด — ระบุทศนิยม 6 หลัก
+              ค่า ตัวคูณค่างวด ที่ใช้คำนวณค่างวด — ระบุทศนิยม 6 หลัก
             </p>
           </div>
           <div>
             <label htmlFor={`${uiFieldId}-4`} className="text-sm font-medium">ค่าธรรมเนียมต่องวด (฿)</label>
-            <Input id={`${uiFieldId}-4`}
-              type="number"
+            <NumberInput id={`${uiFieldId}-4`}
               step="0.01"
               value={form.feePerInstallment}
               onChange={(e) =>

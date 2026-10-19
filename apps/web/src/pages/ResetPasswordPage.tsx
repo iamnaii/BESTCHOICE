@@ -71,7 +71,7 @@ export default function ResetPasswordPage() {
           </div>
           <div>
             <div className="text-lg font-bold text-foreground">BESTCHOICE</div>
-            <div className="text-xs text-muted-foreground">Finance Management</div>
+            <div className="text-xs text-muted-foreground">ระบบบริหารร้านและการเงิน</div>
           </div>
         </div>
         <form onSubmit={handleSubmit} className="space-y-4">

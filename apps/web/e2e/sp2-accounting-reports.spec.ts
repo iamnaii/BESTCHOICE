@@ -6,7 +6,7 @@ test.describe('SP2 — Accounting Reports', () => {
     await loginAsRole(page, 'ACCOUNTANT');
     await page.goto('/finance/cash-flow');
     await expect(page.getByText('งบกระแสเงินสด').first()).toBeVisible();
-    await expect(page.getByText(/Indirect Method/).first()).toBeVisible();
+    await expect(page.getByText(/วิธีทางอ้อม/).first()).toBeVisible();
   });
 
   test('ACCOUNTANT can view Equity Statement', async ({ page }) => {

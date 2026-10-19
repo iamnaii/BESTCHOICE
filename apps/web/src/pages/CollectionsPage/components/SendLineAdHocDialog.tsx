@@ -112,7 +112,7 @@ export default function SendLineAdHocDialog({ open, contract, onClose, onSent }:
         {/* Mode toggle */}
         <div className="flex gap-2">
           <button data-ui-control="button" onClick={() => setMode('template')} className={modeBtn(mode === 'template')}>
-            ใช้ template
+            ใช้แม่แบบ
           </button>
           <button data-ui-control="button" onClick={() => setMode('custom')} className={modeBtn(mode === 'custom')}>
             พิมพ์เอง
@@ -126,7 +126,7 @@ export default function SendLineAdHocDialog({ open, contract, onClose, onSent }:
               onChange={(e) => setTemplateId(e.target.value)}
               className="px-3 py-2 border border-input rounded-lg text-sm leading-snug"
             >
-              <option value="">— เลือก template —</option>
+              <option value="">— เลือกแม่แบบ —</option>
               {rules.map((r) => (
                 <option key={r.id} value={r.id}>
                   {r.name}
@@ -148,7 +148,7 @@ export default function SendLineAdHocDialog({ open, contract, onClose, onSent }:
 
             {rules.length === 0 && (
               <div className="text-xs text-muted-foreground italic leading-snug">
-                ยังไม่มี dunning rules — สร้างในหน้าตั้งค่าก่อน
+                ยังไม่มี กฎทวงถามหนี้ — สร้างในหน้าตั้งค่าก่อน
               </div>
             )}
           </div>

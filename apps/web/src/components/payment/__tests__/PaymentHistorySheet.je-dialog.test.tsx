@@ -240,9 +240,9 @@ describe('PaymentHistorySheet — fullscreen + JE one-page dialog', () => {
 
     // The JE dialog shows the entry + its Dr/Cr lines in one view.
     await waitFor(() => expect(screen.getByText('JE-202607-00042')).toBeInTheDocument());
-    expect(screen.getByText(/บันทึกบัญชี \(JE\)/)).toBeInTheDocument();
+    expect(screen.getByText(/บันทึกบัญชี/)).toBeInTheDocument();
     expect(screen.getByText('ลูกหนี้ค้างชำระ')).toBeInTheDocument();
-    expect(screen.getByText('BALANCED', { exact: false })).toBeInTheDocument();
+    expect(screen.getByText('ยอดสมดุล', { exact: false })).toBeInTheDocument();
   });
 
   it('credit-note row keeps the JE button but hides the void button (backend refuses CN void)', async () => {

@@ -1,3 +1,4 @@
+import { NumberInput } from '@/components/ui/NumberInput';
 import ScreenTable from '@/components/ui/ScreenTable';
 import { NativeSelect } from '@/components/ui/native-select';
 import { useId as useUiFieldId, useEffect, useState } from 'react';
@@ -147,9 +148,8 @@ export default function ValuationsTab() {
                   <td className="p-2">{row.storage}</td>
                   <td className="p-2">{row.condition}</td>
                   <td className="p-2">
-                    <Input
+                    <NumberInput
                       className="w-28 h-8"
-                      type="number"
                       value={edits[row.id] ?? String(Number(row.basePrice))}
                       onChange={(e) => setEdits((prev) => ({ ...prev, [row.id]: e.target.value }))}
                     />
@@ -205,7 +205,7 @@ export default function ValuationsTab() {
               <option value="D">D</option>
             </NativeSelect>
           </div>
-          <div><Label htmlFor={`${uiFieldId}-6`}>ราคา (บาท)</Label><Input id={`${uiFieldId}-6`} className="mt-1" type="number" value={form.basePrice} onChange={(e) => setForm((f) => ({ ...f, basePrice: e.target.value }))} /></div>
+          <div><Label htmlFor={`${uiFieldId}-6`}>ราคา (บาท)</Label><NumberInput id={`${uiFieldId}-6`} className="mt-1" value={form.basePrice} onChange={(e) => setForm((f) => ({ ...f, basePrice: e.target.value }))} /></div>
         </div>
         <Button
           onClick={() => {

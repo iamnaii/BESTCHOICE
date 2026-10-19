@@ -1,3 +1,4 @@
+import { NumberInput } from '@/components/ui/NumberInput';
 import { NativeSelect } from '@/components/ui/native-select';
 import { useId as useUiFieldId, useRef } from 'react';
 import { ArrowLeft, User, FileText, Clock, BarChart3 } from 'lucide-react';
@@ -237,7 +238,7 @@ export default function CreditCheckCreateModal({
                 </div>
                 <div>
                   <h3 className="text-sm font-semibold text-foreground">เอกสารประกอบ</h3>
-                  <p className="text-xs text-muted-foreground">สลิปเงินเดือนและ Statement ธนาคาร</p>
+                  <p className="text-xs text-muted-foreground">สลิปเงินเดือนและ รายการเดินบัญชี ธนาคาร</p>
                 </div>
               </div>
 
@@ -283,8 +284,8 @@ export default function CreditCheckCreateModal({
                       <label htmlFor={`${uiFieldId}-1`} className="block text-2xs text-muted-foreground mb-1">
                         เงินเดือนสุทธิ
                       </label>
-                      <input id={`${uiFieldId}-1`}
-                        type="text"
+                      <NumberInput unstyled step="any" id={`${uiFieldId}-1`}
+
                         value={salarySlipEditable.netSalary}
                         onChange={(e) =>
                           onSalarySlipEditableChange({
@@ -347,7 +348,7 @@ export default function CreditCheckCreateModal({
               {/* Part B: Statement ธนาคาร */}
               <div className="p-4 bg-muted/30 rounded-lg border border-border">
                 <h4 className="text-xs font-semibold text-foreground mb-3 uppercase tracking-wider">
-                  B. Statement ธนาคาร
+                  B. รายการเดินบัญชี ธนาคาร
                 </h4>
                 <div className="mb-3">
                   <label htmlFor={`${uiFieldId}-5`} className="block text-2xs text-muted-foreground mb-1">เลือกธนาคาร</label>
@@ -507,7 +508,7 @@ export default function CreditCheckCreateModal({
                 </div>
                 <div>
                   <h3 className="text-sm font-semibold text-foreground">สรุปวิเคราะห์</h3>
-                  <p className="text-xs text-muted-foreground">คำนวณ Risk Score และคำแนะนำ</p>
+                  <p className="text-xs text-muted-foreground">คำนวณ คะแนนความเสี่ยง และคำแนะนำ</p>
                 </div>
               </div>
 
@@ -532,7 +533,7 @@ export default function CreditCheckCreateModal({
                 <div className="space-y-4">
                   <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                     <div className="bg-muted/50 rounded-lg border p-3">
-                      <div className="text-2xs text-muted-foreground mb-1">Risk Score</div>
+                      <div className="text-2xs text-muted-foreground mb-1">คะแนนความเสี่ยง</div>
                       <span
                         className={`px-3 py-1 rounded-full text-sm font-bold ${
                           riskScore.riskLevel === 'LOW'
@@ -551,7 +552,7 @@ export default function CreditCheckCreateModal({
                       </span>
                     </div>
                     <div className="bg-muted/50 rounded-lg border p-3">
-                      <div className="text-2xs text-muted-foreground mb-1">Debt-to-Income</div>
+                      <div className="text-2xs text-muted-foreground mb-1">สัดส่วนหนี้ต่อรายได้</div>
                       <div
                         className={`text-lg font-bold ${
                           (riskScore.debtToIncome ?? 0) <= 40

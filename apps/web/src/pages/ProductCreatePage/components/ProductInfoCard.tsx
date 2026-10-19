@@ -1,3 +1,4 @@
+import { NumberInput } from '@/components/ui/NumberInput';
 import { NativeSelect } from '@/components/ui/native-select';
 import { useId as useFieldId } from 'react';
 import { DeviceDisclosureFields } from '@/components/product/DeviceDisclosureFields';
@@ -410,8 +411,7 @@ export default function ProductInfoCard({
             <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
               <div>
                 <label htmlFor={`${fieldId}-12`} className="block text-sm font-medium text-foreground mb-3">% แบตเตอรี่</label>
-                <input id={`${fieldId}-12`}
-                  type="number"
+                <NumberInput unstyled id={`${fieldId}-12`}
                   value={form.batteryHealth}
                   onChange={(e) => setForm({ ...form, batteryHealth: e.target.value })}
                   placeholder="เช่น 87"

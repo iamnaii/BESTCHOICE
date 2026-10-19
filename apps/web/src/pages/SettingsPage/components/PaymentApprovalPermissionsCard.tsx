@@ -69,7 +69,7 @@ export function PaymentApprovalPermissionsCard() {
       <CardContent className="space-y-4">
         <p className="text-sm text-muted-foreground">
           รับชำระตามปกติไม่ต้องอนุมัติ กำหนดผู้มีสิทธิ์อนุมัติข้อยกเว้นแต่ละประเภทเป็นรายคน
-          ผู้ขอและผู้อนุมัติต้องเป็นคนละคน ยกเว้น OWNER ที่ต้องระบุเหตุผลเมื่ออนุมัติรายการตนเอง
+          ผู้ขอและผู้อนุมัติต้องเป็นคนละคน ยกเว้น เจ้าของ ที่ต้องระบุเหตุผลเมื่ออนุมัติรายการตนเอง
         </p>
         {settings.isPending && <p className="text-sm text-muted-foreground" role="status">กำลังโหลดสิทธิ์…</p>}
         {settings.isError && (
@@ -81,7 +81,7 @@ export function PaymentApprovalPermissionsCard() {
         {settings.data && (
           <UserPermissionTable users={users} permissions={PAYMENT_APPROVAL_PERMISSIONS} labels={PAYMENT_APPROVAL_PERMISSION_LABELS} saving={save.isPending} onToggle={togglePermission} />
         )}
-        <p className="text-xs text-muted-foreground">OWNER มีสิทธิ์ทุกประเภทเสมอ สิทธิ์ที่บันทึกมีผลในการอนุมัติครั้งถัดไป</p>
+        <p className="text-xs text-muted-foreground">เจ้าของ มีสิทธิ์ทุกประเภทเสมอ สิทธิ์ที่บันทึกมีผลในการอนุมัติครั้งถัดไป</p>
         <div className="flex justify-end gap-2">
           <Button variant="outline" disabled={!pending || save.isPending} onClick={() => setPending(null)}>ยกเลิกการแก้ไข</Button>
           <Button disabled={!pending || save.isPending || settings.isError} onClick={() => save.mutate(users)}>

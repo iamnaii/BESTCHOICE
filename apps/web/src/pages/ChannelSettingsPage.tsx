@@ -27,9 +27,9 @@ const CHANNEL_META: Record<string, { color: string; icon: string; fields: { key:
     color: 'bg-success',
     icon: '💚',
     fields: [
-      { key: 'line_finance_channel_access_token', label: 'Channel Access Token (Finance)', secret: true, placeholder: 'Token ของ OA "ชำระค่างวด"' },
-      { key: 'line_finance_channel_secret', label: 'Channel Secret (Finance)', secret: true, placeholder: 'Secret ของ OA "ชำระค่างวด"' },
-      { key: 'line_finance_liff_id', label: 'LIFF ID (Finance)', secret: false, placeholder: 'สำหรับ verify ตัวตน' },
+      { key: 'line_finance_channel_access_token', label: "Channel Access Token (งานการเงิน)", secret: true, placeholder: 'Token ของ OA "ชำระค่างวด"' },
+      { key: 'line_finance_channel_secret', label: "Channel Secret (งานการเงิน)", secret: true, placeholder: 'Secret ของ OA "ชำระค่างวด"' },
+      { key: 'line_finance_liff_id', label: "LIFF ID (งานการเงิน)", secret: false, placeholder: "สำหรับยืนยันตัวตน" },
     ],
   },
   FACEBOOK: {
@@ -38,7 +38,7 @@ const CHANNEL_META: Record<string, { color: string; icon: string; fields: { key:
     fields: [
       { key: 'fb_page_access_token', label: 'Page Access Token', secret: true, placeholder: 'ดึงจาก Facebook Developer Console' },
       { key: 'fb_page_id', label: 'Page ID', secret: false, placeholder: 'เช่น 1234567890' },
-      { key: 'fb_app_secret', label: 'App Secret', secret: true, placeholder: 'สำหรับ verify webhook signature' },
+      { key: 'fb_app_secret', label: 'App Secret', secret: true, placeholder: "สำหรับตรวจสอบลายเซ็น webhook" },
       { key: 'fb_verify_token', label: 'Verify Token', secret: false, placeholder: 'กำหนดเอง สำหรับ webhook verification' },
     ],
   },
@@ -47,7 +47,7 @@ const CHANNEL_META: Record<string, { color: string; icon: string; fields: { key:
     icon: '🎵',
     fields: [
       { key: 'tiktok_bm_access_token', label: 'Business Messaging Access Token', secret: true, placeholder: 'ดึงจาก TikTok Business API Portal' },
-      { key: 'tiktok_bm_business_id', label: 'Business ID', secret: false, placeholder: 'TikTok Business Account ID' },
+      { key: 'tiktok_bm_business_id', label: "รหัสธุรกิจ", secret: false, placeholder: 'TikTok Business Account ID' },
     ],
   },
 };

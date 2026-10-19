@@ -1,3 +1,4 @@
+import { formatNumericText } from '@/utils/numericText';
 import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import Decimal from 'decimal.js';
 import { paymentToleranceGate } from './paymentToleranceGate';
@@ -577,7 +578,7 @@ export default function PaymentsPage() {
     const absDiff = Math.abs(diff);
     if (absDiff > 1.0) {
       toast.error(
-        `ส่วนต่างเกิน 1 ฿ (${absDiff.toFixed(2)} ฿) ไม่สามารถอนุมัติได้ กรุณาแก้ไขจำนวนเงิน`,
+        `ส่วนต่างเกิน 1 ฿ (${formatNumericText(absDiff.toFixed(2))} ฿) ไม่สามารถอนุมัติได้ กรุณาแก้ไขจำนวนเงิน`,
       );
       return;
     }
@@ -942,7 +943,7 @@ export default function PaymentsPage() {
             const gate = paymentToleranceGate(payload.case, payload.amount, remaining);
             if (gate.action === 'block') {
               toast.error(
-                `ส่วนต่างเกิน 1 ฿ (${gate.absDiff.toFixed(2)} ฿) ไม่สามารถอนุมัติได้ กรุณาแก้ไขจำนวนเงิน`,
+                `ส่วนต่างเกิน 1 ฿ (${formatNumericText(gate.absDiff.toFixed(2))} ฿) ไม่สามารถอนุมัติได้ กรุณาแก้ไขจำนวนเงิน`,
               );
               return;
             }

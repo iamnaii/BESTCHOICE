@@ -12,7 +12,7 @@ export default function StickerBubbleEditor({ bubble, onChange }: Props) {
     <div className="space-y-2">
       <div className="grid grid-cols-2 gap-2">
         <div>
-          <Label htmlFor="package-id" className="text-xs">Package ID</Label>
+          <Label htmlFor="package-id" className="text-xs">รหัสชุดสติกเกอร์</Label>
           <Input
             id="package-id"
             value={bubble.stickerPackageId ?? ''}
@@ -21,7 +21,7 @@ export default function StickerBubbleEditor({ bubble, onChange }: Props) {
           />
         </div>
         <div>
-          <Label htmlFor="sticker-id" className="text-xs">Sticker ID</Label>
+          <Label htmlFor="sticker-id" className="text-xs">รหัสสติกเกอร์</Label>
           <Input
             id="sticker-id"
             value={bubble.stickerId ?? ''}
@@ -33,14 +33,14 @@ export default function StickerBubbleEditor({ bubble, onChange }: Props) {
       <p className="text-xs text-muted-foreground leading-snug">
         ดู ID ได้ที่{' '}
         <a href="https://developers.line.biz/en/docs/messaging-api/sticker-list/" target="_blank" rel="noreferrer" className="text-primary hover:underline">
-          LINE Sticker docs
+          คู่มือสติกเกอร์ LINE
         </a>
         {' '}(สำหรับ LINE channel เท่านั้น)
       </p>
       {bubble.stickerPackageId && bubble.stickerId && (
         <img
           src={`https://stickershop.line-scdn.net/stickershop/v1/sticker/${bubble.stickerId}/android/sticker.png`}
-          alt="sticker preview"
+          alt="ตัวอย่างสติกเกอร์"
           className="w-24 h-24 border border-border rounded"
           onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
         />

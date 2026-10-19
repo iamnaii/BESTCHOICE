@@ -1,3 +1,4 @@
+import { NumberInput } from '@/components/ui/NumberInput';
 import ScreenTable from '@/components/ui/ScreenTable';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Building2, Landmark, Paperclip, Receipt } from 'lucide-react';
@@ -140,9 +141,8 @@ export function SupplierPaymentDialog({ open, po, summary, summaryLoading, pendi
               </div>
               <div>
                 <label className={labelCls} htmlFor="sp-amount">จำนวนเงิน (บาท)</label>
-                <input
+                <NumberInput unstyled
                   id="sp-amount"
-                  type="number"
                   min="0"
                   step="0.01"
                   inputMode="decimal"

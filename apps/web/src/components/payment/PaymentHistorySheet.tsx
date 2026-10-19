@@ -482,11 +482,11 @@ export default function PaymentHistorySheet({ contractId, onClose, onVoided }: P
                               <Td>
                                 {r.isVoided ? (
                                   <span className="px-2 py-0.5 rounded-full text-xs bg-muted text-muted-foreground">
-                                    VOIDED
+                                    ยกเลิกแล้ว
                                   </span>
                                 ) : (
                                   <span className="px-2 py-0.5 rounded-full text-xs bg-success/10 text-success">
-                                    ● PAID
+                                    ● ชำระแล้ว
                                   </span>
                                 )}
                               </Td>
@@ -502,7 +502,7 @@ export default function PaymentHistorySheet({ contractId, onClose, onVoided }: P
                                 <div className="flex items-center gap-1">
                                   <button data-ui-control="button" data-ui-icon="true"
                                     onClick={() => setJeTarget(r)}
-                                    title="ดูบันทึกบัญชี (JE)"
+                                    title="ดูบันทึกบัญชี"
                                     aria-label={
                                       r.noReceipt
                                         ? `ดูบันทึกบัญชีของงวด ${r.installmentNo}`
@@ -577,7 +577,7 @@ export default function PaymentHistorySheet({ contractId, onClose, onVoided }: P
         >
           <DialogHeader className="px-5 py-4 border-b border-border mb-0 text-start">
             <DialogTitle className="leading-snug">
-              บันทึกบัญชี (JE){' '}
+              บันทึกบัญชี{' '}
               {jeTarget && (
                 <span className="text-primary font-mono">— {jeTarget.receiptNumber}</span>
               )}
@@ -606,7 +606,7 @@ export default function PaymentHistorySheet({ contractId, onClose, onVoided }: P
               </div>
             ) : jeTargetJes.length === 0 ? (
               <div className="text-sm text-muted-foreground leading-snug text-center py-8">
-                ไม่พบบันทึกบัญชี (JE) สำหรับรายการนี้
+                ไม่พบบันทึกบัญชี สำหรับรายการนี้
               </div>
             ) : (
               <div className={`grid gap-3 ${jeTargetJes.length > 1 ? 'lg:grid-cols-2' : ''}`}>

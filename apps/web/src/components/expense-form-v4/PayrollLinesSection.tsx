@@ -1,3 +1,4 @@
+import { NumberInput } from '@/components/ui/NumberInput';
 import ScreenTable from '@/components/ui/ScreenTable';
 import { NativeSelect } from '@/components/ui/native-select';
 import { useId as useUiFieldId, useState } from 'react';
@@ -511,8 +512,7 @@ function PayrollRow({
           </span>
         </td>
         <td className="px-2 py-1">
-          <input aria-label="เงินเดือนพื้นฐาน"
-            type="number"
+          <NumberInput unstyled aria-label="เงินเดือนพื้นฐาน"
             step="0.01"
             value={row.baseSalary}
             onChange={(e) => onUpdate({ baseSalary: e.target.value })}
@@ -520,8 +520,7 @@ function PayrollRow({
           />
         </td>
         <td className="px-2 py-1">
-          <input aria-label="ประกันสังคมพนักงาน"
-            type="number"
+          <NumberInput unstyled aria-label="ประกันสังคมพนักงาน"
             step="0.01"
             value={row.ssoEmployee}
             onChange={(e) => onUpdate({ ssoEmployee: e.target.value })}
@@ -529,8 +528,7 @@ function PayrollRow({
           />
         </td>
         <td className="px-2 py-1">
-          <input aria-label="ภาษีหัก ณ ที่จ่าย"
-            type="number"
+          <NumberInput unstyled aria-label="ภาษีหัก ณ ที่จ่าย"
             step="0.01"
             value={row.whtAmount}
             onChange={(e) => onUpdate({ whtAmount: e.target.value })}
@@ -661,8 +659,7 @@ function CustomIncomeSubTable({
                 />
               </td>
               <td className="px-2 py-1">
-                <input aria-label="จำนวนเงิน"
-                  type="number"
+                <NumberInput unstyled aria-label="จำนวนเงิน"
                   step="0.01"
                   value={r.amount}
                   onChange={(e) => update(r.uid, { amount: e.target.value })}
@@ -716,7 +713,7 @@ function CustomIncomeSubTable({
             <span className="font-medium">ยกเว้นภาษี ม.42</span> —{' '}
             มี {taxExemptRows.length} รายการที่ติ๊กไม่เสียภาษี
             (ป.รัษฎากร ม.42). ตรวจสอบให้แน่ใจว่าเข้าเงื่อนไข เช่น เงินชดเชย ค่าใช้จ่ายเดินทาง
-            ตามอัตรา ก่อน POST เพราะ ภ.ง.ด.1 จะไม่นับฐานนี้
+            ตามอัตรา ก่อน ลงบัญชี เพราะ ภ.ง.ด.1 จะไม่นับฐานนี้
           </div>
         </div>
       )}
@@ -779,8 +776,7 @@ function CustomDeductionSubTable({
                 />
               </td>
               <td className="px-2 py-1">
-                <input aria-label="จำนวนเงิน"
-                  type="number"
+                <NumberInput unstyled aria-label="จำนวนเงิน"
                   step="0.01"
                   value={r.amount}
                   onChange={(e) => update(r.uid, { amount: e.target.value })}

@@ -124,7 +124,7 @@ function PDPAPage() {
       await api.post(`/pdpa/consent/${consentId}/revoke`, { reason });
     },
     onSuccess: () => {
-      toast.success('ถอน consent สำเร็จ');
+      toast.success("ถอน ความยินยอม สำเร็จ");
       refetchConsents();
       setShowRevokeModal(false);
       setPendingRevokeConsentId(null);
@@ -139,7 +139,7 @@ function PDPAPage() {
     <div className="animate-fade-in">
       <PageHeader
         title="PDPA & คุ้มครองข้อมูลส่วนบุคคล"
-        subtitle="จัดการ Consent และคำร้อง DSAR ตาม พ.ร.บ.คุ้มครองข้อมูลส่วนบุคคล พ.ศ. 2562"
+        subtitle="จัดการ ความยินยอม และคำร้อง DSAR ตาม พ.ร.บ.คุ้มครองข้อมูลส่วนบุคคล พ.ศ. 2562"
         action={
           <button data-ui-control="button"
             onClick={() => setShowCreateDSAR(true)}
@@ -162,7 +162,7 @@ function PDPAPage() {
           onClick={() => setTab('consent-lookup')}
           className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${tab === 'consent-lookup' ? 'bg-card text-primary shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
         >
-          ค้นหา Consent
+          ค้นหา ความยินยอม
         </button>
       </div>
 
@@ -250,9 +250,9 @@ function PDPAPage() {
       {tab === 'consent-lookup' && (
         <div className="bg-card rounded-xl border border-border/50 shadow-sm p-6">
           <div className="flex gap-3 mb-6">
-            <input aria-label="ใส่ Customer ID เพื่อค้นหา consent"
+            <input aria-label="ใส่ รหัสลูกค้า เพื่อค้นหา ความยินยอม"
               type="text"
-              placeholder="ใส่ Customer ID เพื่อค้นหา consent..."
+              placeholder="ใส่ รหัสลูกค้า เพื่อค้นหา ความยินยอม..."
               value={customerIdSearch}
               onChange={(e) => setCustomerIdSearch(e.target.value)}
               className="flex-1 px-3 py-2 border border-input rounded-lg text-sm bg-background focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
@@ -277,14 +277,14 @@ function PDPAPage() {
                         const cfg = getStatusBadgeProps(c.isActive ? 'active' : 'inactive', activeStatusMap);
                         return (
                           <Badge variant={cfg.variant} appearance={cfg.appearance} size="sm">
-                            {c.isActive ? 'Active' : 'Revoked'}
+                            {c.isActive ? "เปิดใช้งาน" : "เพิกถอนแล้ว"}
                           </Badge>
                         );
                       })()}
-                      <span className="text-xs text-muted-foreground ml-2">Version: {c.consentVersion}</span>
+                      <span className="text-xs text-muted-foreground ml-2">เวอร์ชัน: {c.consentVersion}</span>
                     </div>
                     <div className="text-xs text-muted-foreground">
-                      ให้ consent: {formatDateTime(c.consentedAt)}
+                      ให้ ความยินยอม: {formatDateTime(c.consentedAt)}
                       {c.revokedAt && <span className="text-destructive ml-2">ถอน: {formatDateTime(c.revokedAt)}</span>}
                     </div>
                   </div>
@@ -298,7 +298,7 @@ function PDPAPage() {
                       }}
                       className="mt-2 px-3 py-1 text-xs bg-destructive text-destructive-foreground rounded hover:bg-destructive/90"
                     >
-                      ถอน Consent
+                      ถอน ความยินยอม
                     </button>
                   )}
                 </div>
@@ -306,7 +306,7 @@ function PDPAPage() {
             </div>
           )}
           {consents && consents.length === 0 && customerIdSearch && (
-            <p className="text-sm text-muted-foreground text-center py-4">ไม่พบ consent สำหรับลูกค้านี้</p>
+            <p className="text-sm text-muted-foreground text-center py-4">ไม่พบ ความยินยอม สำหรับลูกค้านี้</p>
           )}
         </div>
       )}
@@ -360,10 +360,10 @@ function PDPAPage() {
 
       {/* Revoke Consent Modal */}
       {showRevokeModal && pendingRevokeConsentId && (
-        <Modal title="ถอน Consent" onClose={() => { if (!revokeMutation.isPending) { setShowRevokeModal(false); setPendingRevokeConsentId(null); } }}>
+        <Modal title="ถอน ความยินยอม" onClose={() => { if (!revokeMutation.isPending) { setShowRevokeModal(false); setPendingRevokeConsentId(null); } }}>
           <div className="flex flex-col gap-5 lg:gap-7.5">
             <div>
-              <label htmlFor={`${uiFieldId}-3`} className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">เหตุผลในการถอน consent</label>
+              <label htmlFor={`${uiFieldId}-3`} className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">เหตุผลในการถอน ความยินยอม</label>
               <textarea id={`${uiFieldId}-3`}
                 value={revokeReason}
                 onChange={(e) => setRevokeReason(e.target.value)}
@@ -401,13 +401,13 @@ function PDPAPage() {
         <Modal title="สร้างคำร้อง DSAR" onClose={() => setShowCreateDSAR(false)}>
           <div className="flex flex-col gap-5 lg:gap-7.5">
             <div>
-              <label htmlFor={`${uiFieldId}-4`} className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">Customer ID</label>
+              <label htmlFor={`${uiFieldId}-4`} className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">รหัสลูกค้า</label>
               <input id={`${uiFieldId}-4`}
                 type="text"
                 value={dsarForm.customerId}
                 onChange={(e) => setDsarForm({ ...dsarForm, customerId: e.target.value })}
                 className="w-full px-3 py-2 border rounded-lg text-sm"
-                placeholder="ใส่ Customer ID..."
+                placeholder="ใส่ รหัสลูกค้า..."
               />
             </div>
             <div>

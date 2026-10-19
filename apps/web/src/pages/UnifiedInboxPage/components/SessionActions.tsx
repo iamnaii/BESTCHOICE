@@ -282,7 +282,7 @@ export default function SessionActions({
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-muted text-muted-foreground rounded-lg hover:bg-accent transition-colors"
           >
             <Bot className="w-3.5 h-3.5" />
-            ส่งกลับ Bot
+            ส่งกลับบอต
           </button>
         )}
 

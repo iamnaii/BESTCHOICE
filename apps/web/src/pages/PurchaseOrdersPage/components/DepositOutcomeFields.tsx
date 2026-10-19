@@ -1,3 +1,4 @@
+import { NumberInput } from '@/components/ui/NumberInput';
 import ScreenTable from '@/components/ui/ScreenTable';
 import { useEffect, useMemo, useState } from 'react';
 import { Paperclip, Receipt } from 'lucide-react';
@@ -94,7 +95,7 @@ export function DepositOutcomeFields({ state, idPrefix }: { state: DepositOutcom
               </div>
               <div>
                 <label className={labelCls} htmlFor={`${idPrefix}-refund-amount`}>จำนวนที่ได้คืน (บาท)</label>
-                <input id={`${idPrefix}-refund-amount`} type="number" min="0" step="0.01" className={cn(fieldCls, 'text-right font-mono font-semibold tabular-nums')} value={form.refundAmount} onChange={(e) => set({ refundAmount: e.target.value })} />
+                <NumberInput unstyled id={`${idPrefix}-refund-amount`} min="0" step="0.01" className={cn(fieldCls, 'text-right font-mono font-semibold tabular-nums')} value={form.refundAmount} onChange={(e) => set({ refundAmount: e.target.value })} />
                 <p className={cn('mt-1 text-xs', errors.refundAmount ? 'text-destructive' : 'text-muted-foreground')}>{errors.refundAmount ?? 'ถ้าได้คืนไม่ครบ ส่วนต่างลงเป็นค่าใช้จ่าย'}</p>
               </div>
               <div>

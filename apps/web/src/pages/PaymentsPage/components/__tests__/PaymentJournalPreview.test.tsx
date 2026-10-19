@@ -155,7 +155,7 @@ describe('JePreviewPanel — รายการตั้งลูกหนี้
     );
 
     expect(screen.getByText(sentence)).toBeInTheDocument();
-    expect(screen.getByText('ไม่สามารถสร้าง JE preview ได้')).toBeInTheDocument();
+    expect(screen.getByText('ไม่สามารถสร้างตัวอย่างรายการบัญชีได้')).toBeInTheDocument();
     expect(screen.queryByText(/^2A —/)).not.toBeInTheDocument();
     expect(screen.queryByText(/^2B —/)).not.toBeInTheDocument();
     expect(screen.queryByText('ลงเมื่อเงินเข้า')).not.toBeInTheDocument();

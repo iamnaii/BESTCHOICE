@@ -64,7 +64,7 @@ export function SmsTemplatePreview({ template, liveBody }: Props) {
     return (
       <div className="rounded-lg border border-border bg-muted/30 p-6 text-center">
         <Eye className="w-8 h-8 mx-auto mb-2 text-muted-foreground" />
-        <p className="text-sm text-muted-foreground">เลือก template เพื่อดูตัวอย่าง</p>
+        <p className="text-sm text-muted-foreground">เลือกแม่แบบเพื่อดูตัวอย่าง</p>
       </div>
     );
   }
@@ -82,7 +82,7 @@ export function SmsTemplatePreview({ template, liveBody }: Props) {
           disabled={previewMutation.isPending}
           className="text-xs px-2 py-1 rounded border border-border hover:bg-accent disabled:opacity-50"
         >
-          {previewMutation.isPending ? 'กำลังโหลด...' : 'Render จาก server'}
+          {previewMutation.isPending ? 'กำลังโหลด...' : "Render จาก ระบบ"}
         </button>
       </div>
 

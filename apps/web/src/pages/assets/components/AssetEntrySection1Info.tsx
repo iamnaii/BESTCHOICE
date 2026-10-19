@@ -117,7 +117,7 @@ export function AssetEntrySection1Info({ assetCode, branches }: Props) {
           </Select>
         </div>
         <div>
-          <Label htmlFor="custodian">ผู้รับผิดชอบ (Custodian) *</Label>
+          <Label htmlFor="custodian">ผู้รับผิดชอบ *</Label>
           <NameAutocomplete
             id="custodian"
             value={watch('custodian') ?? ''}

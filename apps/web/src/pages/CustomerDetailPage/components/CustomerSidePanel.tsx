@@ -174,7 +174,7 @@ export default function CustomerSidePanel({ customer, role, canEdit, canUploadDo
           </div>
           {customer.googleMapLink && (
             <div>
-              <div className="mb-0.5 text-xs text-muted-foreground">Link Google Map</div>
+              <div className="mb-0.5 text-xs text-muted-foreground">ลิงก์ Google Maps</div>
               <a href={customer.googleMapLink} target="_blank" rel="noopener noreferrer" className="break-all text-sm text-primary hover:underline">
                 {customer.googleMapLink}
               </a>

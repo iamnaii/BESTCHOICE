@@ -42,7 +42,7 @@ const META: Record<CustomerTagType, ChipMeta> = {
     className: 'bg-primary/10 text-primary border-primary/30',
   },
   BLACKLIST: {
-    label: 'BLACKLIST',
+    label: 'ระงับทำสัญญา',
     icon: Ban,
     className: 'bg-destructive/10 text-destructive border-destructive/30',
   },

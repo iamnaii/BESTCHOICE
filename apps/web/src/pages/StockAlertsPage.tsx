@@ -1,3 +1,4 @@
+import { NumberInput } from '@/components/ui/NumberInput';
 import { NativeSelect } from '@/components/ui/native-select';
 import { useId as useUiFieldId, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -158,7 +159,7 @@ export default function StockAlertsPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['reorder-points'] });
       queryClient.invalidateQueries({ queryKey: ['low-stock-dashboard'] });
-      toast.success('สร้าง Reorder Point สำเร็จ');
+      toast.success("สร้าง จุดสั่งซื้อซ้ำ สำเร็จ");
       setShowCreateModal(false);
       resetForm();
     },
@@ -183,7 +184,7 @@ export default function StockAlertsPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['reorder-points'] });
       queryClient.invalidateQueries({ queryKey: ['low-stock-dashboard'] });
-      toast.success('ลบ Reorder Point สำเร็จ');
+      toast.success("ลบ จุดสั่งซื้อซ้ำ สำเร็จ");
     },
     onError: (err: unknown) => toast.error(getErrorMessage(err)),
   });
@@ -305,7 +306,7 @@ export default function StockAlertsPage() {
               </button>
               {user?.role === 'OWNER' && (
                 <button data-ui-control="button" data-ui-icon="true"
-                  onClick={() => setConfirmDialog({ open: true, message: 'ลบ Reorder Point นี้?', action: () => deleteMutation.mutate(r.id) })}
+                  onClick={() => setConfirmDialog({ open: true, message: "ลบ จุดสั่งซื้อซ้ำ นี้?", action: () => deleteMutation.mutate(r.id) })}
                   className="inline-flex size-11 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted/50 hover:text-destructive"
                   title="ลบ"
                 >
@@ -407,7 +408,7 @@ export default function StockAlertsPage() {
                 onClick={() => { resetForm(); setShowCreateModal(true); }}
                 className="min-h-11 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90"
               >
-                + Reorder Point
+                + จุดสั่งซื้อซ้ำ
               </button>
             </div>
           ) : undefined
@@ -478,7 +479,7 @@ export default function StockAlertsPage() {
             </div>
             <div className="rounded-xl border border-border/50 bg-card p-5 shadow-sm relative overflow-hidden hover:shadow-card-hover transition-all">
               <div className="absolute left-0 top-0 bottom-0 w-1 rounded-r-full bg-primary" />
-              <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">Reorder Points ทั้งหมด</div>
+              <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">จุดสั่งซื้อซ้ำ ทั้งหมด</div>
               <div className="text-2xl font-bold text-primary tabular-nums">{reorderPoints?.length || 0}</div>
             </div>
             <div className="rounded-xl border border-border/50 bg-card p-5 shadow-sm relative overflow-hidden hover:shadow-card-hover transition-all">
@@ -541,7 +542,7 @@ export default function StockAlertsPage() {
         <QueryBoundary isLoading={loadingRP && !reorderPoints} isError={rpError} error={rpErrorObj} onRetry={rpRefetch} errorTitle="ไม่สามารถโหลด Reorder Points ได้">
           <Card>
             <CardContent className="p-0">
-              <DataTable embedded columns={rpColumns} data={reorderPoints || []} isLoading={loadingRP} emptyMessage="ยังไม่มี Reorder Point" />
+              <DataTable embedded columns={rpColumns} data={reorderPoints || []} isLoading={loadingRP} emptyMessage="ยังไม่มี จุดสั่งซื้อซ้ำ" />
             </CardContent>
           </Card>
         </QueryBoundary>
@@ -560,7 +561,7 @@ export default function StockAlertsPage() {
       <Modal
         isOpen={showCreateModal || !!editingPoint}
         onClose={() => { setShowCreateModal(false); setEditingPoint(null); resetForm(); }}
-        title={editingPoint ? 'แก้ไข Reorder Point' : 'สร้าง Reorder Point ใหม่'}
+        title={editingPoint ? "แก้ไข จุดสั่งซื้อซ้ำ" : "สร้าง จุดสั่งซื้อซ้ำ ใหม่"}
         size="md"
       >
         <form
@@ -664,8 +665,7 @@ export default function StockAlertsPage() {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label htmlFor={`${uiFieldId}-6`} className="block text-sm font-medium text-foreground mb-3">จำนวนขั้นต่ำ (แจ้งเตือนเมื่อเหลือเท่านี้)</label>
-              <input id={`${uiFieldId}-6`}
-                type="number"
+              <NumberInput unstyled id={`${uiFieldId}-6`}
                 min="1"
                 value={form.minQuantity}
                 onChange={(e) => setForm({ ...form, minQuantity: e.target.value })}
@@ -675,8 +675,7 @@ export default function StockAlertsPage() {
             </div>
             <div>
               <label htmlFor={`${uiFieldId}-7`} className="block text-sm font-medium text-foreground mb-3">จำนวนที่ควรสั่งซื้อ</label>
-              <input id={`${uiFieldId}-7`}
-                type="number"
+              <NumberInput unstyled id={`${uiFieldId}-7`}
                 min="1"
                 value={form.reorderQuantity}
                 onChange={(e) => setForm({ ...form, reorderQuantity: e.target.value })}

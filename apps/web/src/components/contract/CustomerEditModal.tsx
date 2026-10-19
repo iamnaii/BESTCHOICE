@@ -1,3 +1,4 @@
+import { NumberInput } from '@/components/ui/NumberInput';
 import { NativeSelect } from '@/components/ui/native-select';
 import { useRef as useReturnFocusRef } from 'react';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
@@ -90,7 +91,7 @@ export default function CustomerEditModal({ customerId, customerSnapshot, custom
         while (refs.length < 4) refs.push({});
         setReferences(refs);
       } catch {
-        toast.error('ไม่สามารถโหลดข้อมูลลูกค้าเต็มได้ ใช้ข้อมูล snapshot แทน');
+        toast.error("โหลดข้อมูลลูกค้าฉบับเต็มไม่ได้ จึงแสดงข้อมูลที่บันทึกไว้แทน");
         const snap = customerSnapshot;
         setForm({
           prefix: snap?.prefix || '', name: snap?.name || customerBasic.name || '',
@@ -341,7 +342,7 @@ export default function CustomerEditModal({ customerId, customerSnapshot, custom
                   </div>
                   <div>
                     <label htmlFor={`${uiFieldId}-18`} className="block text-xs text-muted-foreground mb-1">เงินเดือน</label>
-                    <input id={`${uiFieldId}-18`} type="number" value={form.salary} onChange={(e) => setForm({ ...form, salary: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" placeholder="0.00" />
+                    <NumberInput unstyled id={`${uiFieldId}-18`} value={form.salary} onChange={(e) => setForm({ ...form, salary: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" placeholder="0.00" />
                   </div>
                 </div>
                 <div className="mt-2">

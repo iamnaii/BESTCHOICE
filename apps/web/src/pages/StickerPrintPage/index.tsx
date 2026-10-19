@@ -349,7 +349,7 @@ export default function StickerPrintPage() {
                         handleScan();
                       }
                     }}
-                    placeholder="ยิงบาร์โค้ด IMEI หรือวาง Product ID หลายตัว คั่นด้วยช่องว่าง / comma"
+                    placeholder="ยิงบาร์โค้ด IMEI หรือวาง รหัสสินค้า หลายตัว คั่นด้วยช่องว่าง / comma"
                     className="h-10 min-w-0 flex-1 rounded-lg border border-input bg-card px-3 font-mono text-sm text-foreground outline-none focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/20"
                     spellCheck={false}
                   />
@@ -524,7 +524,7 @@ export default function StickerPrintPage() {
             {printable.length > 0 && (
               <div className="rounded-xl border border-border bg-card px-4 py-3.5">
                 <div className="mb-2 flex items-center justify-between border-b border-border pb-2.5 font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
-                  <span>preview</span>
+                  <span>ตัวอย่าง</span>
                   <span className="tabular-nums">
                     {printable.length} ดวง · {tapeCm.toFixed(1)} cm
                   </span>

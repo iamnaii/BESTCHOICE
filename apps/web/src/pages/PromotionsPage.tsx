@@ -1,3 +1,4 @@
+import { NumberInput } from '@/components/ui/NumberInput';
 import { NativeSelect } from '@/components/ui/native-select';
 import { useId as useUiFieldId, useState } from 'react';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
@@ -249,19 +250,26 @@ export default function PromotionsPage() {
     },
     {
       key: 'actions',
-      label: '',
+      label: 'จัดการ',
+      align: 'right',
       render: (item) => (
-        <div className="flex items-center gap-1">
+        <div className="ml-auto flex w-max items-center gap-2">
           <Button
-            size="sm"
+            type="button"
+            size="icon"
             variant="ghost"
+            title="แก้ไข"
+            aria-label={`แก้ไข ${item.name}`}
             onClick={(e) => { e.stopPropagation(); openEdit(item); }}
           >
-            <Pencil className="size-3.5" />
+            <Pencil className="size-4" aria-hidden="true" />
           </Button>
           <Button
-            size="sm"
+            type="button"
+            size="icon"
             variant="ghost"
+            title="ลบ"
+            aria-label={`ลบ ${item.name}`}
             className="text-destructive hover:text-destructive"
             onClick={(e) => {
               e.stopPropagation();
@@ -269,7 +277,7 @@ export default function PromotionsPage() {
             }}
             disabled={deleteMutation.isPending}
           >
-            <Trash2 className="size-3.5" />
+            <Trash2 className="size-4" aria-hidden="true" />
           </Button>
         </div>
       ),
@@ -352,9 +360,8 @@ export default function PromotionsPage() {
                   ? 'อัตรา (%)'
                   : 'จำนวนเงิน (บาท)'}
               </Label>
-              <Input id={`${uiFieldId}-3`}
+              <NumberInput id={`${uiFieldId}-3`}
                 className="mt-1"
-                type="number"
                 step="0.01"
                 placeholder="0"
                 value={form.discountValue}
@@ -387,9 +394,8 @@ export default function PromotionsPage() {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <Label htmlFor={`${uiFieldId}-6`}>จำนวนใช้สูงสุด</Label>
-              <Input id={`${uiFieldId}-6`}
+              <NumberInput id={`${uiFieldId}-6`}
                 className="mt-1"
-                type="number"
                 placeholder="ไม่จำกัด"
                 value={form.maxUsage}
                 onChange={(e) => setForm((f) => ({ ...f, maxUsage: e.target.value }))}

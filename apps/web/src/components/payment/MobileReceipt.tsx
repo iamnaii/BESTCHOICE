@@ -34,7 +34,7 @@ export default function MobileReceipt({ receipt }: MobileReceiptProps) {
           {receipt.company?.logoUrl ? (
             <img
               src={receipt.company.logoUrl}
-              alt="Company Logo"
+              alt="โลโก้บริษัท"
               className="h-12 mx-auto mb-2 object-contain filter brightness-0 invert"
             />
           ) : (

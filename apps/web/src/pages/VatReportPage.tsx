@@ -107,7 +107,7 @@ export function VatReportPage() {
             aria-label="ดาวน์โหลด XLSX"
           >
             <Download className="size-4 mr-2" aria-hidden />
-            Export XLSX
+            ส่งออก Excel
           </Button>
         }
       />
@@ -304,7 +304,7 @@ export function VatReportPage() {
               <div className="mt-4 flex items-center justify-end">
                 <Button variant="outline" disabled aria-label="สร้างรายงาน (เร็วๆ นี้)">
                   <FileText className="size-4 mr-2" aria-hidden />
-                  สร้างรายงาน (Snapshot)
+                  สร้างรายงาน (ข้อมูลที่บันทึกไว้)
                 </Button>
               </div>
             </>

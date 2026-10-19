@@ -1,3 +1,4 @@
+import { NumberInput } from '@/components/ui/NumberInput';
 import ScreenTable from '@/components/ui/ScreenTable';
 import { NativeSelect } from '@/components/ui/native-select';
 import { toBangkokDateString } from '@/lib/date';
@@ -301,16 +302,14 @@ export default function EquityEntryPage() {
                           </option>
                         ))}
                     </NativeSelect></label>
-                    <label className="space-y-1 text-xs sm:col-span-2"><span>{isInit ? 'มูลค่าจอง (par)' : 'จำนวนเงิน'}</span><input
-                      type="number"
+                    <label className="space-y-1 text-xs sm:col-span-2"><span>{isInit ? 'มูลค่าจอง (par)' : 'จำนวนเงิน'}</span><NumberInput unstyled
                       className="w-full border border-border rounded-md px-2 py-2 text-sm bg-background text-right font-mono"
                       placeholder={isInit ? 'มูลค่าจอง (par)' : 'จำนวนเงิน'}
                       value={ln.amount || ''}
                       onChange={(e) => setLine(i, { amount: parseFloat(e.target.value) || 0 })}
                     /></label>
                     {isInit && (
-                      <label className="space-y-1 text-xs sm:col-span-2"><span>ชำระจริง</span><input
-                        type="number"
+                      <label className="space-y-1 text-xs sm:col-span-2"><span>ชำระจริง</span><NumberInput unstyled
                         className="w-full border border-border rounded-md px-2 py-2 text-sm bg-background text-right font-mono"
                         placeholder="ชำระจริง"
                         value={ln.paid ?? ''}
@@ -322,8 +321,7 @@ export default function EquityEntryPage() {
                       /></label>
                     )}
                     {isInc && (
-                      <label className="space-y-1 text-xs sm:col-span-2"><span>ส่วนเกินมูลค่า</span><input
-                        type="number"
+                      <label className="space-y-1 text-xs sm:col-span-2"><span>ส่วนเกินมูลค่า</span><NumberInput unstyled
                         className="w-full border border-border rounded-md px-2 py-2 text-sm bg-background text-right font-mono"
                         placeholder="ส่วนเกินมูลค่า"
                         value={ln.premium ?? ''}
@@ -335,8 +333,7 @@ export default function EquityEntryPage() {
                       /></label>
                     )}
                     {isDivPay && (
-                      <label className="space-y-1 text-xs sm:col-span-2"><span>ภาษีหัก ณ ที่จ่าย</span><input
-                        type="number"
+                      <label className="space-y-1 text-xs sm:col-span-2"><span>ภาษีหัก ณ ที่จ่าย</span><NumberInput unstyled
                         className="w-full border border-border rounded-md px-2 py-2 text-sm bg-background text-right font-mono"
                         placeholder="WHT (เว้นว่าง = อัตโนมัติ)"
                         value={ln.wht ?? ''}
@@ -405,8 +402,7 @@ export default function EquityEntryPage() {
                 </label>
                 <label className="text-sm space-y-1">
                   <span className="text-muted-foreground">ยอดปรับปรุง *</span>
-                  <input
-                    type="number"
+                  <NumberInput unstyled
                     className="w-full border border-border rounded-md px-3 py-2 bg-background text-right font-mono"
                     value={form.paAmount ?? ''}
                     onChange={(e) =>
@@ -423,7 +419,7 @@ export default function EquityEntryPage() {
 
           <div className="flex justify-end">
             <Button onClick={() => previewMut.mutate()} disabled={previewMut.isPending}>
-              ตรวจ Journal <ArrowRight className="h-4 w-4 ml-1" />
+              ตรวจ รายการบัญชี <ArrowRight className="h-4 w-4 ml-1" />
             </Button>
           </div>
         </QueryBoundary>
@@ -432,9 +428,9 @@ export default function EquityEntryPage() {
       {step === 2 && preview && (
         <Card>
           <CardHeader className="font-semibold flex-row items-center justify-between">
-            <span>2. Journal ที่จะลงบัญชี (สร้างโดยระบบ)</span>
+            <span>2. รายการบัญชี ที่จะลงบัญชี (สร้างโดยระบบ)</span>
             <span className="text-xs px-2 py-1 rounded-full bg-success/10 text-success leading-snug">
-              BALANCED — ตรวจโดย server
+              ยอดสมดุล — ตรวจสอบโดยระบบ
             </span>
           </CardHeader>
           <CardContent>
@@ -518,12 +514,12 @@ export default function EquityEntryPage() {
             )}
             {mcQuery.isLoading ? null : mcQuery.isError ? (
               <p className="text-xs text-destructive leading-snug">
-                โหลดสถานะ Maker-Checker ไม่สำเร็จ — รีเฟรชหน้า
+                โหลดสถานะ การแยกผู้บันทึกและผู้อนุมัติ ไม่สำเร็จ — รีเฟรชหน้า
               </p>
             ) : (
               mcQuery.data?.enabled && (
                 <p className="text-xs text-muted-foreground leading-snug">
-                  Maker-Checker เปิดอยู่ — หลังบันทึกร่างต้องส่งอนุมัติ
+                  การแยกผู้บันทึกและผู้อนุมัติ เปิดอยู่ — หลังบันทึกร่างต้องส่งอนุมัติ
                   และผู้อนุมัติต้องเป็นคนละคนกับผู้สร้าง
                 </p>
               )

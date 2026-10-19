@@ -658,9 +658,12 @@ R98 partitions the exact38domain+7adjacent surface below; R99 governs the first 
 
 **Files/scope:** InterestConfigController.findAll, findByCategory, resolveConfig, findOne, create, update, remove; exactly7adjacentstaff and0domain.
 
-- [ ] Meaningful owned PostgreSQL/marked HTTP RED with exact authorized success/no-grants/foreign/current and asymmetric tuple controls; explicitly isolated both DB URLs, mocked external effects. Fixture/compiler failures are not behavioral RED.
-- [ ] Settle explicit central/global reference source and current dependent quote/sales read capability; owner-only writes remain durable/current. No saved grant expansion or permanent owner-only reads merely because resource=none.
-- [ ] Cover actual changed authorization/money/file behavior, relevant canonical regressions, types/touched lint and scoped coverage. Record exact commands/exits, self-review/commit and independent gate; preserve remaining audit5/approval6/UI7/system4.4/final8 obligations.
+- [x] Meaningful owned PostgreSQL/marked HTTP RED with exact authorized success/no-grants/foreign/current and asymmetric tuple controls; explicitly isolated both DB URLs, mocked external effects. Fixture/compiler failures are not behavioral RED.
+- [x] R101 shared-reference read uses selected live SHOP/FINANCE and permission-specific COMPANY or nonempty live BRANCHES; ASSIGNED alone denies. Future SALES/BM/FM/ACCOUNTANT/STOCK defaults only, no saved grant expansion. Owner writes remain current protected-owner settings.finance.manage with actual transaction audit; canonical scoped quotes keep internal dependency reads.
+- [x] R110 preserves consistent oldest-active createdAt/id selection across named reference and ProductQuote consumers, matching ContractQuote; validate merged min/max on partial owner update in the actual transaction. Preserve formulas, fallback values, rates and active/deleted eligibility; no arbitrary new limits or backfill.
+- [x] Cover actual changed authorization/money/file behavior, relevant canonical regressions, types/touched lint and scoped coverage. Record exact commands/exits, self-review/commit and independent gate; preserve remaining audit5/approval6/UI7/system4.4/final8 obligations.
+
+**Reference completion:** 18c66d231 independently passes spec/quality, exact7 adjacent and0domain. Owned HTTP39/canonical67/shared47/internal quote1 with60 skipped, API/Web types, lint and inventory pass; scoped100%statements/functions/lines and96.42%branches. Required owner-write audit rollback/current authority proven; actualJWT/STOCK/fullguards/UI/global-label/localcheck/preview remain7/8, forced-exit Minor goes to final review. Parent4.2.1 remains36domain pending.
 
 ### Task 4.2.1.3: Contract application preparation
 
@@ -669,6 +672,26 @@ R98 partitions the exact38domain+7adjacent surface below; R99 governs the first 
 - [ ] Meaningful owned PostgreSQL/marked HTTP RED with exact authorized success/no-grants/foreign/current and asymmetric tuple controls; explicitly isolated both DB URLs, mocked external effects. Fixture/compiler failures are not behavioral RED.
 - [ ] Actual SHOP application sources, independent current Customer/Product/bundles/destination and salesperson/room links; preserve canonical quote/calculator, immutable named promotion terms and source/reservation locks. Resolve legacy exceptions as configurable capabilities without hidden cost/error leakage or guessed migration grants.
 - [ ] Cover actual changed authorization/money/file behavior, relevant canonical regressions, types/touched lint and scoped coverage. Record exact commands/exits, self-review/commit and independent gate; preserve remaining audit5/approval6/UI7/system4.4/final8 obligations.
+
+R111 splits this parent into two serial independently reviewed subunits. The existing two read GET amendments add zero routes; the original five preparation actions remain the parent allocation. No SHOP-to-FINANCE permission expansion or new route count is inferred. UI7 and genuine signing/document/KYC dependencies remain required before whole-flow completion.
+
+### Task 4.2.1.3.1: Own SHOP preparation source and read mode
+
+**Files/scope:** Amend existing ContractsController.findAll/findOne through focused preparation source/projection modules and shared response types; zero new route credit. Read R111 and task-4.2.1-preparation-read-checkpoint.md for exact authority, finite surface and downstream consumers.
+
+- [ ] Meaningful owned PostgreSQL/marked HTTP RED before runtime, explicit both DB URLs, current-maker SHOP-only list/detail positives, owner positive, other-maker/branch/no-update/ASSIGNED/active denials; no test fixture or compiler failure counted as RED.
+- [ ] Explicit view=preparation only with selected SHOP, typed SHOP_PREPARATION/PRE_ACTIVATION response. Require same-source contracts.read+contracts.update, current salesperson or protected owner, actual live SHOP origin and nondeleted DRAFT across all workflow states. Preserve ordinary selected-FINANCE behavior and R99/R100 projection exactly.
+- [ ] SQL predicates before search/filter/count/page, independent current Customer/Product/document source and nullable availability, no financial history/status/counts or raw private fields. Use ordered bounded contributor locking/current snapshots and retries under R109 with no fabricated FINANCE source; maximum page200, 10,000 supported contributors and generic overflow rejection before partial output.
+- [ ] Prove reassignment/revocation/activation after observed waits, hidden-child query noninterference, current origins and unchanged FINANCE/off-page behavior; API/shared/Web types and touched lint as affected, scoped coverage and reusable preparation source contract. Self-review, commit, independent gate. UI7 cache/render and real document/KYC/lessor signing dependencies stay explicitly incomplete.
+
+### Task 4.2.1.3.2: Canonical preparation actions and exceptions
+
+**Files/scope:** Original ContractsController.quote/create/update/updateBundles/validateForSubmit, exactly5domain. Consume the approved3.1 preparation source/read contract and R102/R110/R111; no new route credit for read amendments.
+
+- [ ] Meaningful owned PostgreSQL/marked HTTP RED and exact five authorized/no-grant/foreign/current controls; actual SHOP-only create→explicit preparation reload/list success without FINANCE grants after the adapters are implemented.
+- [ ] Preserve all parent3 source, quote/calculator, credit/reservation/stock/down-money/transaction/audit constraints. Add R102 configurable active-contract/damaged exceptions with no defaults or saved grants; preserve current maker/protected-owner edit boundary and independent affected old/new sources.
+- [ ] Checklist finite source-authorized availability, canonical validation, current actor/source after wait, same-transaction required evidence and rollback/retry/aftercommit correctness. Preserve existing named immutable terms and no external side effects during tests.
+- [ ] Relevant canonical regressions, API/shared/Web types and touched lint as affected, scoped coverage, report, self-review/commit and independent gate. Root reconciles the original five methods plus zero-credit read-mode integration before closing parent3; full signing/document/KYC/UI remains in its owning tasks.
 
 ### Task 4.2.1.4: Contract review workflow
 

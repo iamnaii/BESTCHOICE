@@ -755,6 +755,32 @@ R111 splits this parent into two serial independently reviewed subunits. The exi
 - [ ] R106: direct earlyPayoff is an honest request-only bridge into existing EARLY_PAYOFF approval creation, PENDING_APPROVAL with no money claim; actual queue approval/execution4.2.4/6 remains a required dependency. Positive computed reduction including default policy requires owner approval; OCR is payment evidence only. Preserve actual immutable money/source snapshot, canonical tx/JE/period/CAS/idempotency/late-audit rollback,15-minute ticket/formulas and staged verified files with final current checks and controlled aftercommit effects. SHOP settlement checks both actual FINANCE and SHOP payments.create.
 - [ ] Cover actual changed authorization/money/file behavior, relevant canonical regressions, types/touched lint and scoped coverage. Record exact commands/exits, self-review/commit and independent gate; preserve remaining audit5/approval6/UI7/system4.4/final8 obligations.
 
+R132 splits parent9 into the following three serial gates after actual producer/transaction inspection. The parent stays incomplete until all four original routes and downstream approval integration are proved; R133/R134 bind settlement source and new pending-source compatibility.
+
+### Task 4.2.1.9.1: Genuine payoff request producer and direct bridge
+
+**Files/scope:** Shared existing EARLY_PAYOFF PaymentApprovalRequest producer and ContractsController.earlyPayoff; exactly1domain, with existing request-controller producer reuse adding zero route credit.
+
+- [ ] Meaningful owned PostgreSQL/marked HTTP RED and root contemporaneous inspection before runtime; explicit both DB URLs, real canonical snapshot/quote, current/no-grant/foreign/asymmetric controls.
+- [ ] R106/R132/R134: selected FINANCE, independent actual Contract/Payment read and assignment-free payments.create, explicit bounded reason, server-only versioned current source envelope and genuine snapshot, same-client PENDING dedupe/request/safe audit. Response only requestId/PENDING_APPROVAL; no money, forged context or arbitrary slipUrl evidence. Existing shared consumer fails closed for this managed envelope until4.2.4/6 supplies the genuine current-owner consumption contract; legacy snapshots/defaults remain compatible.
+- [ ] Actual concurrent once-only pending creation, source/grant lock waits, required-audit rollback, no money/effects, forged body and compatibility-consumer tests; affected regressions/types/touched lint/scoped coverage, self-review/commit and independent gate.
+
+### Task 4.2.1.9.2: Private payoff evidence and atomic execution
+
+**Files/scope:** ContractsController.earlyPayoffSlipVerify/earlyPayoffSlipConfirm plus actual shared receipt/canonical money producer seams; exactly2domain.
+
+- [ ] Meaningful owned marked multipart HTTP/PG RED before runtime; actual FileInterceptor ordering,5MB/MIME validation and controlled private storage/OCR staging once.
+- [ ] R106/R129/R132/R134: fresh source/read/create/documents authority, actual immutable effective quote/fingerprint/15-minute evidence; positive reductions enter genuine pending owner review with explicit reason and never gain executable OCR authority. Zero-reduction or genuinely approved execution uses the canonical money writer, exact-client receipt/PaymentEvidence/fingerprint/audit and current period/CAS/idempotency; controlled effects only after actual outer commit. No alternate approval/money/receipt engine.
+- [ ] Real money/receipt/ownership rollback, duplicate/concurrent confirmation, current revocation/expiry/quote change, late file denial/no leaked bytes and aftercommit effect evidence; affected regressions/types/lint/coverage and independent gate.
+
+### Task 4.2.1.9.3: SHOP collection settlement
+
+**Files/scope:** ContractsController.shopCollectSettlement; exactly1domain.
+
+- [ ] Meaningful owned marked HTTP/PG RED before runtime and real canonical financial success.
+- [ ] R106/R133: actual FINANCE case payments.create without ASSIGNED plus actual live SHOP COMPANY payments.create uniformly, no borrowed collection branch. Exact contributor/current period/checked-date/no-negative/requestId dedupe and required same-transaction evidence; preserve canonical formulas and no bank integration.
+- [ ] Actual money/rollback/concurrency/current-source/both-book/no-payable controls, affected regressions/types/lint/coverage and independent gate; reconcile parent four routes and remaining4.4/5/6/UI7/final8 obligations.
+
 ### Task 4.2.1.10: Cancellation and draft disposal
 
 **Files/scope:** ContractsController.softDelete, listPendingCancellations, requestCancellation, approveCancellation, rejectCancellation; exactly5domain.

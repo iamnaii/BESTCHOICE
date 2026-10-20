@@ -1,3 +1,5 @@
+import { currentDomainAccess } from '../../employee-access/access-execution-context';
+import { preparationCreditWhere, assertPreparationCredit } from '../../employee-access/access-preparation-credit';
 import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import { CreditApproval, CreditCheck, Customer, Prisma } from '@prisma/client';
 import { createHash } from 'node:crypto';
@@ -219,10 +221,11 @@ export async function claimCreditApproval(tx: Tx, terms: ContractCreditTerms) {
   const approval = await tx.creditApproval.findFirst({
     where: { customerId: terms.customerId, ...(terms.creditApprovalId ? { id: terms.creditApprovalId } : {}),
       usedByContractId: null, supersededAt: null, deletedAt: null,
-      creditCheck: { is: { deletedAt: null, AND: creditHistoryAccess(terms.actor) } } },
+      creditCheck: { is: { deletedAt: null, AND: currentDomainAccess() ? preparationCreditWhere(terms.customerId) : creditHistoryAccess(terms.actor) } } },
     include: { creditCheck: true, customer: true }, orderBy: { createdAt: 'desc' },
   });
   if (!approval) throw new BadRequestException('ต้องมีผลอนุมัติยอดผ่อนที่ยังไม่ใช้ก่อนสร้างสัญญา');
+  if (currentDomainAccess()) await assertPreparationCredit(tx, approval.creditCheckId, terms.customerId);
   await validateCurrentApproval(tx, approval, terms);
   const claimed = await tx.creditApproval.updateMany({
     where: { id: approval.id, usedByContractId: null, supersededAt: null, deletedAt: null },

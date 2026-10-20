@@ -79,3 +79,25 @@ export interface ContractPreparationList {
   limit: number;
   totalPages: number;
 }
+
+/** Mutation acknowledgement contains no implicit read authority. */
+export interface ContractPreparationAcknowledgement {
+  id: string;
+  view: 'SHOP_PREPARATION';
+  applicationState: 'PRE_ACTIVATION';
+}
+/** Null readiness means a required independent category is unavailable. */
+export interface ContractPreparationChecklist {
+  valid: boolean | null;
+  errors: string[];
+  requiresGuardian: boolean;
+  signatureStatus: import('./signature-requirements').SignatureRequirements | null;
+  documentStatus: {
+    complete: boolean;
+    checklist: Array<{ type: string; label: string; present: boolean }>;
+  } | null;
+  availability: Record<
+    'customer' | 'product' | 'credit' | 'pdpa' | 'signatures' | 'documents',
+    ContractReadAvailability
+  >;
+}

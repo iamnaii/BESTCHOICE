@@ -1,3 +1,6 @@
+import { canAccess } from '@installment/shared';
+import { currentDomainAccess, domainAccessClient } from '../../employee-access/access-execution-context';
+import { assertPreparationCredit } from '../../employee-access/access-preparation-credit';
 import { assertExportRowCount, EXPORT_ROW_LIMIT, readExportSnapshot } from '../../../common/helpers/export-snapshot';
 import { bangkokDateRange } from '../../../utils/date.util';
 import { contractSignatureRequirements } from '../../../utils/validation.util';
@@ -211,7 +214,26 @@ export class ContractQueryService {
    * ตรวจสอบความครบถ้วนของสัญญาตามกฎหมาย
    */
   async validateForSubmit(id: string) {
-    const contract = await this.findOne(id);
+    const ctx = currentDomainAccess();
+    const db = domainAccessClient(this.prisma);
+    if (ctx) {
+      await db.$queryRaw`SELECT id FROM signatures WHERE contract_id=${id} ORDER BY id FOR SHARE`;
+      await db.$queryRaw`SELECT id FROM contract_documents WHERE contract_id=${id} ORDER BY id FOR SHARE`;
+    }
+    const contract = ctx ? await new ContractQueryService(db).findOne(id) : await this.findOne(id);
+    const source = { company: 'SHOP' as const, branchId: contract.branchId };
+    const signaturesVisible = !ctx || canAccess(ctx.snapshot, 'documents.read', source);
+    const documentsVisible = signaturesVisible && (!ctx || canAccess(ctx.snapshot, 'contract-documents.read', source));
+    let pdpaVisible = !ctx || canAccess(ctx.snapshot, 'pdpa.read', source);
+    if (ctx && contract.pdpaConsentId) {
+      await db.$queryRaw`SELECT id FROM pdpa_consents WHERE id=${contract.pdpaConsentId} FOR SHARE`;
+      pdpaVisible = pdpaVisible && !!(await db.pDPAConsent.count({ where: { id: contract.pdpaConsentId, customerId: contract.customerId, deletedAt: null } }));
+    }
+    let creditVisible = !ctx;
+    if (ctx && contract.creditCheck?.customerId === contract.customerId) {
+      try { await assertPreparationCredit(ctx.client, contract.creditCheck.id, contract.customerId); creditVisible = true; }
+      catch (error) { if (!(error instanceof ForbiddenException)) throw error; }
+    }
     const customer = contract.customer;
     const product = contract.product;
 
@@ -275,14 +297,14 @@ export class ContractQueryService {
 
     // 7. Check credit check status (test-mode bypass honored)
     if (
-      (!contract.creditCheck || contract.creditCheck.status !== 'APPROVED') &&
+      creditVisible && (!contract.creditCheck || contract.creditCheck.status !== 'APPROVED') &&
       !(await this.isTestModeEnabled())
     ) {
       errors.push('ต้องผ่านการตรวจเครดิตก่อน');
     }
 
     // 8. Check PDPA consent
-    if (!contract.pdpaConsentId) {
+    if (pdpaVisible && !contract.pdpaConsentId) {
       errors.push('ต้องได้รับความยินยอม PDPA ก่อน');
     }
 
@@ -299,11 +321,14 @@ export class ContractQueryService {
     );
 
     return {
-      valid: errors.length === 0,
+      valid: ctx && !(creditVisible && pdpaVisible && signaturesVisible && documentsVisible) ? null : errors.length === 0,
       errors,
-      signatureStatus: sigCheck,
-      documentStatus: docCheck,
+      signatureStatus: signaturesVisible ? sigCheck : null,
+      documentStatus: documentsVisible ? docCheck : null,
       requiresGuardian,
+      ...(ctx ? { availability: { customer: 'VISIBLE_CURRENT', product: 'VISIBLE_CURRENT',
+        credit: creditVisible ? 'VISIBLE_CURRENT' : 'UNAVAILABLE', pdpa: pdpaVisible ? 'VISIBLE_CURRENT' : 'UNAVAILABLE',
+        signatures: signaturesVisible ? 'VISIBLE_CURRENT' : 'UNAVAILABLE', documents: documentsVisible ? 'VISIBLE_CURRENT' : 'UNAVAILABLE' } } : {}),
     };
   }
 

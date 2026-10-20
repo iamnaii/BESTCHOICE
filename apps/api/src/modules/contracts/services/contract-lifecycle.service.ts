@@ -1,3 +1,4 @@
+import { currentPreparationSource } from '../../employee-access/access-contract-preparation-source';
 import { reserveContractPromotion, releaseContractPromotion, assertContractPromotionTerms } from '../../promotions/contract-promotion-terms';
 import { namedExecution, assertNamedPreparation } from '../../promotions/contract-promotion-source';
 import { currentDomainAccess, domainAccessClient, onDomainCommit } from '../../employee-access/access-execution-context';
@@ -58,7 +59,8 @@ export class ContractLifecycleService {
   private get query() { return currentDomainAccess() ? new ContractQueryService(this.prisma) : this.baseQuery; }
 
   async create(dto: CreateContractDto, salespersonId: string, salespersonRole?: string, salespersonBranchId?: string | null) {
-    if (dto.promotionId) namedExecution(salespersonId);
+    if (currentDomainAccess()) namedExecution(salespersonId);
+    else if (dto.promotionId) namedExecution(salespersonId);
     const user = salespersonBranchId === undefined || !salespersonRole
       ? await this.prisma.user.findUnique({ where: { id: salespersonId }, select: { role: true, branchId: true } }) : null;
     const actor = { id: salespersonId, role: dto.promotionId ? (namedExecution(salespersonId).snapshot.isOwner ? 'OWNER' : 'SALES') : salespersonRole ?? user?.role ?? 'SALES',
@@ -309,7 +311,7 @@ export class ContractLifecycleService {
       salespersonId,
     });
     };
-    if (dto.promotionId) onDomainCommit(afterCommit); else await afterCommit();
+    if (currentDomainAccess()) onDomainCommit(afterCommit); else await afterCommit();
     return created;
   }
 
@@ -335,13 +337,14 @@ export class ContractLifecycleService {
     await this.prisma.$transaction(async (tx) => {
       // ล็อกแถวสัญญา — แก้ของแถมพร้อมกันสองคำขอเป็น read-modify-write บนคอลัมน์เดียว
       await tx.$queryRaw`SELECT id FROM contracts WHERE id = ${id} FOR UPDATE`;
+      if (currentDomainAccess()) { namedExecution(actor.id, tx); await currentPreparationSource(id, ['contracts.update']); }
       const contract = await tx.contract.findFirst({ where: { id, deletedAt: null } });
       if (!contract) throw new NotFoundException('ไม่พบสัญญา');
       if (contract.promotionFingerprint) throw new BadRequestException('สัญญาโปรโมชันแก้ของแถมไม่ได้ กรุณายกเลิกฉบับร่างแล้วสร้างใหม่');
-      if (actor.role === 'BRANCH_MANAGER' && (!actor.branchId || actor.branchId !== contract.branchId)) {
+      if (!currentDomainAccess() && actor.role === 'BRANCH_MANAGER' && (!actor.branchId || actor.branchId !== contract.branchId)) {
         throw new ForbiddenException('แก้ไขของแถมได้เฉพาะสัญญาของสาขาตัวเอง');
       }
-      if (actor.role === 'SALES' && contract.salespersonId !== actor.id) {
+      if (!currentDomainAccess() && actor.role === 'SALES' && contract.salespersonId !== actor.id) {
         throw new ForbiddenException('แก้ไขของแถมได้เฉพาะสัญญาที่ตัวเองสร้าง');
       }
       if (contract.status !== 'DRAFT') {
@@ -385,10 +388,11 @@ export class ContractLifecycleService {
   }
 
   async update(id: string, dto: UpdateContractDto, userId: string) {
+    if (currentDomainAccess()) { namedExecution(userId); await currentPreparationSource(id, ['contracts.update']); }
     if (currentDomainAccess()) await this.prisma.$queryRaw`SELECT id FROM contracts WHERE id = ${id} FOR UPDATE`;
     const initial = await this.query.findOne(id);
     const user = await this.prisma.user.findUnique({ where: { id: userId }, select: { role: true, branchId: true } });
-    if (initial.salespersonId !== userId && !(initial.promotionFingerprint ? namedExecution(userId).snapshot.isOwner : user?.role === 'OWNER')) {
+    if (initial.salespersonId !== userId && !(currentDomainAccess() ? currentDomainAccess()!.snapshot.isOwner : user?.role === 'OWNER')) {
       throw new ForbiddenException('เฉพาะพนักงานที่สร้างสัญญาเท่านั้นที่สามารถแก้ไขได้');
     }
     await this.prisma.$transaction(async (tx) => {

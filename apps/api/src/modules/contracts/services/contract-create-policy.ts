@@ -1,4 +1,7 @@
-import { BadRequestException, ConflictException } from '@nestjs/common';
+import { canAccess } from '@installment/shared';
+import { currentDomainAccess, isCurrentDomainClient } from '../../employee-access/access-execution-context';
+import { exchangeContractSource } from '../../employee-access/access-exchange-source.service';
+import { BadRequestException, ConflictException, ForbiddenException } from '@nestjs/common';
 import { Customer, PaymentMethod, Prisma } from '@prisma/client';
 import { isChatPlaceholder, type PlaceholderShape } from '../../chat-prospects/chat-placeholder';
 import { firstTransferReference, type NormalizedTender } from '../../shop-tenders/shop-tender.util';
@@ -7,6 +10,25 @@ import { firstTransferReference, type NormalizedTender } from '../../shop-tender
 export async function assertCustomerContractPolicy(tx: Prisma.TransactionClient, customerId: string, role: string, override = false, exposeActiveContracts = true) {
   const where: Prisma.ContractWhereInput = { customerId, deletedAt: null,
     status: { in: ['ACTIVE', 'OVERDUE', 'DEFAULT'] } };
+  const ctx = currentDomainAccess();
+  if (ctx) {
+    if (!isCurrentDomainClient(tx)) throw new ConflictException('ต้องตรวจข้อยกเว้นในธุรกรรมเดียวกัน');
+    const rows = await tx.contract.findMany({ where, select: { id: true }, orderBy: { id: 'asc' } });
+    let canOverride = true;
+    for (const row of rows) {
+      try {
+        const source = await exchangeContractSource(tx, row.id, true);
+        if (!canAccess(ctx.snapshot, 'contracts.override-active-contract', source)) canOverride = false;
+      } catch (error) {
+        if (!(error instanceof ForbiddenException)) throw error;
+        canOverride = false;
+      }
+    }
+    if (rows.length && !(override && canOverride)) throw new ConflictException({
+      code: 'CUSTOMER_HAS_ACTIVE_CONTRACT', message: 'ลูกค้ายังมีสัญญาที่กำลังผ่อนอยู่ ไม่สามารถเปิดสัญญาใหม่ได้', canOverride,
+    });
+    return;
+  }
   // Named SHOP preparation may know the Customer without FINANCE Contract read.
   // Preserve the whole-customer business gate without fetching or exposing details.
   const activeContracts = exposeActiveContracts ? await tx.contract.findMany({ where,

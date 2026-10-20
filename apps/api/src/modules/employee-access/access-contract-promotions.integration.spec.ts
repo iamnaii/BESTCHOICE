@@ -1,3 +1,4 @@
+import { linkRoomCreditHistory, lockCreditRoom } from '../credit-check/services/room-credit-history';
 import { ContractCancellationService } from '../contracts/services/contract-cancellation.service';
 import { ContractCancellationTemplate } from '../journal/cpa-templates/contract-cancellation.template';
 import { ExchangeCancelReversalTemplate } from '../journal/cpa-templates/exchange-cancel-reversal.template';
@@ -94,7 +95,7 @@ async function grant(
       positionId: position.id,
       companyCode,
       scope,
-      branches: { create: [{ branchId }] },
+      ...(scope === 'COMPANY' ? {} : { branches: { create: [{ branchId }] } }),
     },
   });
 }
@@ -167,15 +168,11 @@ async function fixture(withActiveContract = false) {
         },
       })
     : null;
-  const check = await db.creditCheck.create({
-    data: {
-      customerId: customer.id,
-      checkType: 'FULL',
-      status: 'MANUAL_REVIEW',
-      statementFiles: ['synthetic://owned-statement'],
-      aiAnalysis: { monthlyIncome: 50000, monthlyExpense: 10000 },
-    },
-  });
+  const room = await db.chatRoom.create({ data: { customerId: customer.id, channel: 'LINE_SHOP', assignedToId: seller } });
+  await db.roomCreditAnalysis.create({ data: { roomId: room.id, status: 'COMPLETED', fileIds: ['synthetic-owned-statement'],
+    result: { monthlyIncome: 50000, monthlyExpense: 10000 } } });
+  await db.$transaction(async tx => { await lockCreditRoom(tx, room.id); await linkRoomCreditHistory(tx, room.id, customer.id); });
+  const check = await db.creditCheck.findFirstOrThrow({ where: { customerId: customer.id } });
   const overrides = new CreditCheckOverrideService(prisma);
   const basis = {
     verifiedMonthlyIncome: 50000,
@@ -267,6 +264,7 @@ beforeAll(async () => {
       },
     })
   ).id;
+  await grant(seller, ['credit-checks.read', 'chat.read'], 'SHOP', 'COMPANY');
   await grant(seller, [
     'contracts.create',
     'contracts.update',
@@ -275,6 +273,7 @@ beforeAll(async () => {
     'promotions.apply',
     'products.read',
     'customers.read',
+    'trade-in.read',
   ]);
   finance = (
     await db.user.create({

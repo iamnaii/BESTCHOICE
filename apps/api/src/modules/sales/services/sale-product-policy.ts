@@ -1,3 +1,4 @@
+import { canAccess } from '@installment/shared';
 import { currentDomainAccess } from '../../employee-access/access-execution-context';
 import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import { hasCrossBranchAccess } from '../../auth/branch-access.util';
@@ -26,8 +27,12 @@ export function assertSaleProductEligible(
     if (!previouslyDamagedAcknowledged) {
       throw new BadRequestException('สินค้านี้เคยมีสถานะ DAMAGED/LOST/WRITTEN_OFF — ต้องยืนยัน previouslyDamagedAcknowledged=true ว่าแจ้งลูกค้าแล้ว');
     }
-    if (!['OWNER', 'FINANCE_MANAGER'].includes(actor.role)) {
-      throw new ForbiddenException('ขายสินค้าที่เคย DAMAGED ต้องทำโดย OWNER / FINANCE_MANAGER เท่านั้น');
+    const ctx = currentDomainAccess();
+    const preparation = ctx && ['contracts.create', 'contracts.update'].includes(ctx.scope.permission);
+    const allowed = preparation ? canAccess(ctx.snapshot, 'products.sell-previously-damaged', { company: 'SHOP', branchId })
+      : ['OWNER', 'FINANCE_MANAGER'].includes(actor.role);
+    if (!allowed) {
+      throw new ForbiddenException(preparation ? 'ไม่มีสิทธิ์ขายสินค้าที่เคยเสียหายในสาขานี้' : 'ขายสินค้าที่เคย DAMAGED ต้องทำโดย OWNER / FINANCE_MANAGER เท่านั้น');
     }
   }
 }

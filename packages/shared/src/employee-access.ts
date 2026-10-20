@@ -46,6 +46,8 @@ const PERMISSION_DEFINITIONS = {
   'bookings.update': ['แก้ไขใบจอง', 'sales', 'GRANT'],
   'bookings.delete': ['ลบหรือปิดใช้งานใบจอง', 'sales', 'GRANT'],
   'contracts.read': ['ดูสัญญา', 'sales', 'GRANT'],
+  'contracts.override-active-contract': ['ข้ามข้อจำกัดสัญญาที่กำลังผ่อน', 'sales', 'GRANT'],
+  'products.sell-previously-damaged': ['ขายสินค้าที่เคยเสียหาย', 'stock', 'GRANT'],
   'contracts.create': ['สร้างสัญญา', 'sales', 'GRANT'],
   'contracts.update': ['แก้ไขสัญญา', 'sales', 'GRANT'],
   'contracts.activate': ['เปิดใช้งานสัญญา', 'sales', 'GRANT'],

@@ -287,3 +287,57 @@ describe('AuditInterceptor — มาสก์ไฟล์ base64 ทุกช�
     });
   });
 });
+
+// A principal can become managed while the request waits for the admission lock.
+// These two request entrances must not depend on that stale authentication flag.
+describe('payoff request audit classification', () => {
+  const { ContractsController } = jest.requireActual('../contracts/contracts.controller');
+  const { PaymentApprovalController } = jest.requireActual('../payments/payment-approval.controller');
+  const entrances = [
+    { controller: ContractsController, method: 'earlyPayoff', body: {} },
+    { controller: PaymentApprovalController, method: 'create', body: { action: 'EARLY_PAYOFF' } },
+  ];
+  it.each(entrances.flatMap(entrance => [false, true, undefined].flatMap(managed =>
+    [false, true].map(failed => ({ ...entrance, managed, failed })),
+  )))('safe $method audit with managed=$managed and failed=$failed', async ({ controller, method, body, managed, failed }) => {
+    const audit = { log: jest.fn().mockResolvedValue(undefined) };
+    const interceptor = new AuditInterceptor(audit as unknown as AuditService);
+    const req = {
+      method: 'POST', url: '/api/payoff-request',
+      user: { id: 'actor', access: managed === undefined ? undefined : { managed } },
+      body: { ...body, reason: 'PRIVATE-REASON', payload: { notes: 'PRIVATE-NOTES', slipUrl: 'https://example.invalid/PRIVATE-SLIP' } },
+      headers: { 'user-agent': 'PRIVATE-AGENT' }, ip: '192.0.2.9',
+    };
+    const context = {
+      getClass: () => controller,
+      getHandler: () => controller.prototype[method],
+      switchToHttp: () => ({ getRequest: () => req, getResponse: () => ({ statusCode: 201 }) }),
+    } as unknown as ExecutionContext;
+    const error = Object.assign(new Error('PRIVATE-ERROR'), { status: 409 });
+    const handler = { handle: () => failed ? throwError(() => error) : of({ requestId: 'request', status: 'PENDING_APPROVAL' }) };
+    const result = lastValueFrom(interceptor.intercept(context, handler));
+    if (failed) await expect(result).rejects.toBe(error); else await result;
+    expect(audit.log).toHaveBeenCalledTimes(1);
+    const event = audit.log.mock.calls[0][0];
+    expect(event.newValue).toEqual({ route: `${controller.name}.${method}`, outcome: failed ? 'ERROR' : 'SUCCESS', statusCode: failed ? 409 : 201, duration: expect.any(Number) });
+    expect(event.ipAddress).toBeUndefined();
+    expect(event.userAgent).toBeUndefined();
+    expect(JSON.stringify(event)).not.toContain('PRIVATE-');
+  });
+  it.each([
+    { controller: PaymentApprovalController, method: 'create', action: 'WAIVE_LATE_FEE' },
+    { controller: PaymentApprovalController, method: 'approve', action: 'EARLY_PAYOFF' },
+    { controller: ContractsController, method: 'earlyPayoffSlipConfirm', action: 'EARLY_PAYOFF' },
+  ])('does not change unrelated legacy $method/$action audit handling', async ({ controller, method, action }) => {
+    const audit = { log: jest.fn().mockResolvedValue(undefined) };
+    const interceptor = new AuditInterceptor(audit as unknown as AuditService);
+    const body = { action, reason: 'Legacy evidence' };
+    const context = {
+      getClass: () => controller,
+      getHandler: () => controller.prototype[method],
+      switchToHttp: () => ({ getRequest: () => ({ method: 'POST', url: '/api/legacy', body, user: { id: 'actor', access: { managed: false } }, headers: {}, ip: '192.0.2.9' }) }),
+    } as unknown as ExecutionContext;
+    await lastValueFrom(interceptor.intercept(context, { handle: () => of({ success: true }) }));
+    expect(audit.log.mock.calls[0][0].newValue).toEqual(body);
+  });
+});

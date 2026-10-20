@@ -736,24 +736,41 @@ it('managed owner cannot create an unmarked payoff through legacy queue compatib
 });
 
 it('legacy admission rechecks persisted management after a real User lock wait', async () => {
+  audit.log.mockClear();
   const requester = await user('OWNER');
   await db.user.update({ where: { id: requester }, data: { accessManaged: false } });
   const id = await contract();
   const input = {
     action: 'EARLY_PAYOFF',
     targetId: id,
-    reason: 'Current admission',
-    payload: { paymentMethod: 'BANK_TRANSFER' },
+    reason: 'NEVER-PRIVATE-STALE-REASON',
+    payload: {
+      paymentMethod: 'BANK_TRANSFER',
+      notes: 'NEVER-PRIVATE-STALE-NOTES',
+      slipUrl: 'https://example.invalid/NEVER-PRIVATE-STALE-SLIP',
+    },
   };
   const result = await observedLockWait(
     (tx) => tx.$queryRaw`SELECT id FROM users WHERE id=${requester} FOR UPDATE`,
     () =>
       http('/payments/approval-requests', requester)
+        .set('user-agent', 'NEVER-PRIVATE-STALE-AGENT')
         .send(input)
         .then((r) => r),
     (tx) => tx.user.update({ where: { id: requester }, data: { accessManaged: true } }),
   );
   expect(result.status).toBe(409);
+  expect(audit.log).toHaveBeenCalledTimes(1);
+  const event = audit.log.mock.calls[0][0];
+  expect(event.newValue).toEqual({
+    route: 'PaymentApprovalController.create',
+    outcome: 'ERROR',
+    statusCode: 409,
+    duration: expect.any(Number),
+  });
+  expect(event.ipAddress).toBeUndefined();
+  expect(event.userAgent).toBeUndefined();
+  expect(JSON.stringify(event)).not.toContain('NEVER-PRIVATE-STALE');
   expect(await db.paymentApprovalRequest.count({ where: { targetId: id } })).toBe(0);
   await http('/payments/approval-requests', requester).send(input).expect(403);
   await pending(id, requester);

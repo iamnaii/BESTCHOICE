@@ -128,14 +128,22 @@ export class AuditInterceptor implements NestInterceptor {
     return context.getClass() === StickersController || context.getClass() === PricingTemplatesController || context.getClass() === InterestConfigController;
   }
 
+  /** Admission can discover that an initially unmanaged actor is now managed.
+   * These exact request entrances never put private request evidence in HTTP audit. */
+  private isPayoffRequest(context: ExecutionContext): boolean {
+    return (context.getClass() === ContractsController &&
+      context.getHandler() === ContractsController.prototype.earlyPayoff) ||
+      (context.getClass() === PaymentApprovalController &&
+        context.getHandler() === PaymentApprovalController.prototype.create &&
+        context.switchToHttp().getRequest().body?.action === 'EARLY_PAYOFF');
+  }
+
   private isManagedSafeRead(context: ExecutionContext): boolean {
     if (this.isConsentHandler(context)) return true;
     if (this.isSharedReference(context)) return true;
+    if (this.isPayoffRequest(context)) return true;
     if (context.switchToHttp().getRequest().user?.access?.managed !== true) return false;
-    if (context.getClass() === PaymentApprovalController &&
-        context.getHandler() === PaymentApprovalController.prototype.create &&
-        context.switchToHttp().getRequest().body?.action === 'EARLY_PAYOFF') return true;
-    if (context.getClass() === ContractsController && [ContractsController.prototype.findAll, ContractsController.prototype.findOne, ContractsController.prototype.quote, ContractsController.prototype.create, ContractsController.prototype.update, ContractsController.prototype.updateBundles, ContractsController.prototype.validateForSubmit, ContractsController.prototype.submitForReview, ContractsController.prototype.approve, ContractsController.prototype.reject, ContractsController.prototype.activate, ContractsController.prototype.getSchedule, ContractsController.prototype.getEarlyPayoffQuote, ContractsController.prototype.earlyPayoff].some(handler => handler === context.getHandler())) return true;
+    if (context.getClass() === ContractsController && [ContractsController.prototype.findAll, ContractsController.prototype.findOne, ContractsController.prototype.quote, ContractsController.prototype.create, ContractsController.prototype.update, ContractsController.prototype.updateBundles, ContractsController.prototype.validateForSubmit, ContractsController.prototype.submitForReview, ContractsController.prototype.approve, ContractsController.prototype.reject, ContractsController.prototype.activate, ContractsController.prototype.getSchedule, ContractsController.prototype.getEarlyPayoffQuote].some(handler => handler === context.getHandler())) return true;
     if (context.getClass() === ContractExchangeController && [
       ContractExchangeController.prototype.submit, ContractExchangeController.prototype.preview,
       ContractExchangeController.prototype.listPending, ContractExchangeController.prototype.listRecent,
@@ -173,10 +181,11 @@ export class AuditInterceptor implements NestInterceptor {
     duration: number,
   ): Record<string, unknown> | undefined {
     const request = context.switchToHttp().getRequest();
-    if (request.user?.access?.managed !== true && !this.isSharedReference(context) && !this.isConsentHandler(context)) return undefined;
+    const safeRequest = this.isManagedSafeRead(context);
+    if (request.user?.access?.managed !== true && !safeRequest) return undefined;
     const handler = context.getHandler();
     const controller = context.getClass();
-    if (this.isManagedSafeRead(context)) {
+    if (safeRequest) {
       const code = statusCode ?? context.switchToHttp().getResponse().statusCode;
       return { route: `${controller.name}.${handler.name}`, outcome,
         statusCode: Number.isInteger(code) && code >= 100 && code <= 599 ? code : 500, duration };

@@ -148,6 +148,19 @@ export class AccessSnapshotService {
     };
   }
 
+  /** Reserved OCR needs current owner identity, not its unrelated assignment graph.
+   * Caller holds the same authority locks as the full snapshot path. */
+  async forOwnerInTransaction(tx: AccessClient, userId: string): Promise<AccessSnapshot> {
+    const user = await assertCurrentOwner(tx, userId);
+    return {
+      userId: user.id,
+      isOwner: true,
+      managed: user.accessManaged,
+      revision: user.accessRevision,
+      grants: [],
+    };
+  }
+
   async assertInTransaction(
     tx: AccessClient,
     userId: string,

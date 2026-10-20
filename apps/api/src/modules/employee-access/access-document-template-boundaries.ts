@@ -10,6 +10,7 @@ import { currentDomainAccess, domainAccessExecution } from './access-execution-c
 import { permissionScopes } from './access-context';
 import { requestedAccessCompany } from './access-shop-boundaries';
 import { safeReferenceError } from './access-shared-reference';
+import { accessTransaction, AccessTransactionDeadline } from './access-transaction-deadline';
 import {
   TEMPLATE_OPERATIONS,
   TemplateOperation,
@@ -63,19 +64,28 @@ export class AccessDocumentTemplateBoundaries implements OnModuleInit {
     }
     const company = requestedAccessCompany(req),
       eventId = randomUUID();
-    const run = async <R>(work: (snapshot: AccessSnapshot) => Promise<R>) =>
-      this.current(actorId, operation, company, async (snapshot) => {
-        this.validate(req, operation, snapshot.isOwner);
-        return work(snapshot);
-      });
+    const run = async <R>(
+      work: (snapshot: AccessSnapshot) => Promise<R>,
+      deadline?: AccessTransactionDeadline,
+    ) =>
+      this.current(
+        actorId,
+        operation,
+        company,
+        async (snapshot) => {
+          this.validate(req, operation, snapshot.isOwner);
+          return work(snapshot);
+        },
+        deadline,
+      );
     if (operation === 'generateTemplateFromFile') {
       return templateRequest.run(
         {
           actorId,
           operation,
-          stage: async (stage, check) =>
+          stage: async (stage, deadline) =>
             run(async () => {
-              check();
+              deadline.check();
               if (stage !== 'PREPARE')
                 await this.audit(
                   operation,
@@ -86,8 +96,8 @@ export class AccessDocumentTemplateBoundaries implements OnModuleInit {
                     : 'CONTRACT_TEMPLATE_OCR_COMPLETED',
                   eventId,
                 );
-              check();
-            }),
+              deadline.check();
+            }, deadline),
         },
         handler,
       );
@@ -167,6 +177,7 @@ export class AccessDocumentTemplateBoundaries implements OnModuleInit {
     operation: TemplateOperation,
     company: Company,
     handler: (snapshot: AccessSnapshot) => Promise<T>,
+    deadline?: AccessTransactionDeadline,
   ): Promise<T> {
     const work = async () => {
       const ctx = currentDomainAccess()!,
@@ -189,10 +200,14 @@ export class AccessDocumentTemplateBoundaries implements OnModuleInit {
       return handler(snapshot);
     };
     try {
-      const actorRow = await this.prisma.user.findUnique({
-        where: { id: actor },
-        select: { accessManaged: true },
-      });
+      const lookup = (tx: Prisma.TransactionClient) =>
+        tx.user.findUnique({
+          where: { id: actor },
+          select: { accessManaged: true },
+        });
+      const actorRow = deadline
+        ? await accessTransaction(this.prisma, lookup, { timeout: 30000 }, deadline)
+        : await lookup(this.prisma);
       if (!actorRow) throw deny();
       if (actorRow.accessManaged)
         return (
@@ -203,17 +218,21 @@ export class AccessDocumentTemplateBoundaries implements OnModuleInit {
             undefined,
             work,
             false,
-            { isolationLevel: 'Serializable', maxAttempts: 3 },
+            { isolationLevel: 'Serializable', maxAttempts: 3, deadline },
           )
         ).result;
       for (let attempt = 1; ; attempt++) {
+        deadline?.check();
         try {
-          return await this.prisma.$transaction(
+          return await accessTransaction(
+            this.prisma,
             async (tx) => {
               await lockEmployeeAccess(tx);
               await tx.$queryRaw`SELECT id FROM users WHERE id=${actor} FOR SHARE`;
               await tx.$queryRaw`SELECT id FROM company_info WHERE company_code=${company} FOR SHARE`;
-              const snapshot = await this.snapshots.forUserInTransaction(tx, actor);
+              const snapshot = deadline
+                ? await this.snapshots.forOwnerInTransaction(tx, actor)
+                : await this.snapshots.forUserInTransaction(tx, actor);
               const user = await tx.user.findUniqueOrThrow({ where: { id: actor } });
               if (
                 snapshot.managed ||
@@ -236,6 +255,7 @@ export class AccessDocumentTemplateBoundaries implements OnModuleInit {
               );
             },
             { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, timeout: 30000 },
+            deadline,
           );
         } catch (error) {
           if (attempt < 3 && retryable(error, false)) continue;

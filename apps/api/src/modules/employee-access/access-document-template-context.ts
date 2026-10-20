@@ -1,5 +1,6 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { AccessSnapshot } from '@installment/shared';
+import { AccessTransactionDeadline } from './access-transaction-deadline';
 
 export const TEMPLATE_OPERATIONS = [
   'findAllTemplates',
@@ -14,5 +15,8 @@ export const templateRequest = new AsyncLocalStorage<{
   actorId: string;
   operation: TemplateOperation;
   snapshot?: AccessSnapshot;
-  stage?: (stage: 'PREPARE' | 'ADMITTED' | 'COMPLETED', check: () => void) => Promise<void>;
+  stage?: (
+    stage: 'PREPARE' | 'ADMITTED' | 'COMPLETED',
+    deadline: AccessTransactionDeadline,
+  ) => Promise<void>;
 }>();

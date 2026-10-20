@@ -7,6 +7,7 @@ import { permissionScopes } from './access-context';
 import { domainAccessExecution } from './access-execution-context';
 import { productScopeWhere } from './access-query-scope';
 import { Prisma } from '@prisma/client';
+import { accessTransaction, AccessTransactionDeadline } from './access-transaction-deadline';
 
 export interface AccessExecutionOptions {
   domain?: 'procurement' | 'inventory' | 'adjustments' | 'trade-in' | 'parties';
@@ -16,6 +17,8 @@ export interface AccessExecutionOptions {
   retryUniqueConflict?: boolean;
   /** Internal bounded override for the owned Customer export snapshot only. */
   timeoutMs?: 30000 | 60000;
+  /** Opt-in OCR stage lifetime; never renew this absolute budget on retry. */
+  deadline?: AccessTransactionDeadline;
 }
 export function retryable(error: unknown, unique: boolean): boolean {
   if (!(error instanceof Prisma.PrismaClientKnownRequestError)) return false;
@@ -84,12 +87,15 @@ export class AccessResourceService {
    * The caller must supply a resolver for all records affected by the domain operation.
    */
   async execute<T>(userId: string, permission: PermissionKey, company: Company, resolver: PersistedAccessResolver | undefined, handler: () => Promise<T>, scopeReads = true, options: AccessExecutionOptions = {}): Promise<{ result: T; snapshot: AccessSnapshot; resolved?: ResolvedAccessResources; effectFailures: number }> {
+    if (options.deadline && (permission !== 'settings.documents.manage' || resolver))
+      throw new Error('OCR deadline requires the reserved owner reference operation');
     const isolationLevel = options.isolationLevel ?? Prisma.TransactionIsolationLevel.ReadCommitted;
     for (let attempt = 1; ; attempt++) {
+      options.deadline?.check();
       const effects = { commit: [] as Array<() => Promise<void>>, rollback: [] as Array<() => Promise<void>> };
       let completed: { result: T; snapshot: AccessSnapshot; resolved?: ResolvedAccessResources };
       try {
-        completed = await this.prisma.$transaction(async tx => {
+        completed = await accessTransaction(this.prisma, async tx => {
       await lockEmployeeAccess(tx);
       // Serializable may have established its snapshot before waiting for the
       // advisory lock. Lock all authority dependencies BEFORE reading them:
@@ -103,7 +109,9 @@ export class AccessResourceService {
         await tx.$queryRaw`SELECT id FROM branches WHERE id IN (SELECT branch_id FROM employee_access_assignment_branches WHERE assignment_id IN (SELECT id FROM employee_access_assignments WHERE user_id = ${userId})) ORDER BY id FOR SHARE`;
         await tx.$queryRaw`SELECT id FROM company_info WHERE company_code IN ('SHOP', 'FINANCE') ORDER BY id FOR SHARE`;
       }
-      const snapshot = await this.snapshots.forUserInTransaction(tx, userId);
+      const snapshot = options.deadline
+        ? await this.snapshots.forOwnerInTransaction(tx, userId)
+        : await this.snapshots.forUserInTransaction(tx, userId);
       if (!snapshot.managed) throw new ForbiddenException('สิทธิ์เปลี่ยนแปลง กรุณาโหลดใหม่');
       const resolved = resolver ? await resolver(tx, snapshot, true) : undefined;
       if (resolved) this.assert(snapshot, permission, resolved);
@@ -112,7 +120,7 @@ export class AccessResourceService {
       if (resolved?.emptySelection && !scopeReads) throw new ForbiddenException('รายการว่างต้องมีตัวกรองคำค้น');
       const result = await domainAccessExecution.run({ client: tx, snapshot, scope, scopeReads, domain: options.domain, receivingBranchId: resolved?.receivingBranchId, isolationLevel, effects, authorizedProductIds: scopeReads && !options.domain ? resolved?.productIds : undefined }, handler);
       return { result, snapshot, resolved };
-        }, { timeout: options.timeoutMs ?? 30000, isolationLevel });
+        }, { timeout: options.timeoutMs ?? 30000, isolationLevel }, options.deadline);
       } catch (error) {
         // Cleanup failure must not trigger a retry which could duplicate a file.
         await Promise.all(effects.rollback.map(cleanup => cleanup()));

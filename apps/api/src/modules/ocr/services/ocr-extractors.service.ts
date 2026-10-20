@@ -74,10 +74,11 @@ export class OcrExtractorsService {
       throw new BadRequestException('ไฟล์มีขนาดใหญ่เกินไป');
     const deadline = new TemplateGenerationDeadline();
     try {
-      await deadline.wait(() => entrance.stage!('PREPARE', deadline.check));
+      // Database stages own SQL cancellation and await rollback before returning.
+      await entrance.stage('PREPARE', deadline);
       const client = await deadline.wait(() => this.client.ensureAnthropicReady(), 5000);
       // Reload authority after acquisition, then commit required evidence before submission.
-      await deadline.wait(() => entrance.stage!('ADMITTED', deadline.check));
+      await entrance.stage('ADMITTED', deadline);
       deadline.check();
       const fileContent = isDocument
         ? { type: 'document' as const, source: { type: 'base64' as const, media_type: mediaType as 'application/pdf', data: base64Data } }
@@ -122,7 +123,7 @@ export class OcrExtractorsService {
       const placeholders = [...new Set((html.match(/\{[a-z_]+\}/g) || []))];
       if (placeholders.length > 1000 || placeholders.some(value => value.length > 256))
         throw new InternalServerErrorException('ผลลัพธ์เทมเพลตไม่ถูกต้อง');
-      await deadline.wait(() => entrance.stage!('COMPLETED', deadline.check));
+      await entrance.stage('COMPLETED', deadline);
       deadline.check();
       return { contentHtml: html, placeholders };
     } catch (error) {

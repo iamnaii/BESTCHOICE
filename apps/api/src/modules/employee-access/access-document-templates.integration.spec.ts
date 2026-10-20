@@ -1,8 +1,14 @@
-import { domainAccessExecution } from './access-execution-context';
+import {
+  currentDomainAccess,
+  domainAccessExecution,
+  onDomainRollback,
+} from './access-execution-context';
+import { accessTransaction, AccessTransactionDeadline } from './access-transaction-deadline';
+import { templateRequest } from './access-document-template-context';
 import { json } from 'express';
 import { AccessDocumentTemplateBoundaries } from './access-document-template-boundaries';
 import { randomUUID } from 'node:crypto';
-import { PrismaClient } from '@prisma/client';
+import { Prisma, PrismaClient } from '@prisma/client';
 import { Test } from '@nestjs/testing';
 import { APP_INTERCEPTOR } from '@nestjs/core';
 import { ExecutionContext, INestApplication, ValidationPipe, Logger } from '@nestjs/common';
@@ -793,46 +799,52 @@ it('internal rendering preserves full explicit selection and updatedAt resolutio
   });
 });
 
-it('a serializable authority retry cannot duplicate OCR admission or provider submission', async () => {
-  const actor = await user('OWNER'),
-    { path, body } = await routeCase('ocr');
-  let release!: () => void, ready!: () => void;
-  const gate = new Promise<void>((r) => {
-      release = r;
-    }),
-    locked = new Promise<void>((r) => {
-      ready = r;
-    });
-  const holder = db.$transaction(
-    async (tx) => {
-      await tx.user.update({ where: { id: actor }, data: { name: 'Changed owned actor' } });
-      ready();
-      await gate;
-    },
-    { timeout: 10000 },
-  );
-  await locked;
-  const before = transport.mock.calls.length;
-  const pending = http('post', path, actor)
-    .send(body)
-    .then((r) => r);
-  try {
-    await waitBlocked();
-  } finally {
-    release();
-  }
-  await holder;
-  expect((await pending).status).toBe(201);
-  expect(transport.mock.calls.length).toBe(before + 1);
-  expect(
-    await db.auditLog.count({ where: { userId: actor, action: 'CONTRACT_TEMPLATE_OCR_ADMITTED' } }),
-  ).toBe(1);
-  expect(
-    await db.auditLog.count({
-      where: { userId: actor, action: 'CONTRACT_TEMPLATE_OCR_COMPLETED' },
-    }),
-  ).toBe(1);
-});
+it.each([true, false])(
+  'a serializable authority retry cannot duplicate OCR admission or provider submission (managed=%s)',
+  async (managed) => {
+    const actor = await user('OWNER'),
+      { path, body } = await routeCase('ocr');
+    await db.user.update({ where: { id: actor }, data: { accessManaged: managed } });
+    let release!: () => void, ready!: () => void;
+    const gate = new Promise<void>((r) => {
+        release = r;
+      }),
+      locked = new Promise<void>((r) => {
+        ready = r;
+      });
+    const holder = db.$transaction(
+      async (tx) => {
+        await tx.user.update({ where: { id: actor }, data: { name: 'Changed owned actor' } });
+        ready();
+        await gate;
+      },
+      { timeout: 10000 },
+    );
+    await locked;
+    const before = transport.mock.calls.length;
+    const pending = http('post', path, actor)
+      .send(body)
+      .then((r) => r);
+    try {
+      await waitBlocked();
+    } finally {
+      release();
+    }
+    await holder;
+    expect((await pending).status).toBe(201);
+    expect(transport.mock.calls.length).toBe(before + 1);
+    expect(
+      await db.auditLog.count({
+        where: { userId: actor, action: 'CONTRACT_TEMPLATE_OCR_ADMITTED' },
+      }),
+    ).toBe(1);
+    expect(
+      await db.auditLog.count({
+        where: { userId: actor, action: 'CONTRACT_TEMPLATE_OCR_COMPLETED' },
+      }),
+    ).toBe(1);
+  },
+);
 
 it('total deadline while admission waits on authority cannot later submit', async () => {
   const actor = await user('OWNER'),
@@ -889,3 +901,593 @@ it('unrelated managed renderer context preserves the original injected-client vi
     expect(result).toEqual({ html: '<div>{contract_number}</div>', settings: null });
   });
 });
+
+it.each([true, false])(
+  'late COMPLETED expiry releases owned transaction and advisory lock with blocker still held (managed=%s)',
+  async (managed) => {
+    const actor = await user('OWNER'),
+      { path, body } = await routeCase('ocr');
+    await db.user.update({ where: { id: actor }, data: { accessManaged: managed } });
+    let release!: () => void,
+      holderPid = 0;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let holder: Promise<unknown> | undefined;
+    transport.mockImplementationOnce(async () => {
+      // Real elapsed provider time leaves only ~12s for the COMPLETED stage.
+      await new Promise((resolve) => setTimeout(resolve, 18000));
+      let ready!: () => void;
+      const locked = new Promise<void>((resolve) => {
+        ready = resolve;
+      });
+      holder = db.$transaction(
+        async (tx) => {
+          holderPid = Number(
+            (await tx.$queryRaw<Array<{ pid: number }>>`SELECT pg_backend_pid() AS pid`)[0].pid,
+          );
+          await tx.user.update({
+            where: { id: actor },
+            data: { name: 'Owned late completion blocker' },
+          });
+          ready();
+          await gate;
+        },
+        { timeout: 40000 },
+      );
+      await locked;
+      return {
+        content: [{ type: 'text', text: '<p>PRIVATE_LATE_COMPLETION</p>' }],
+        usage: { input_tokens: 1, output_tokens: 1 },
+      };
+    });
+    const before = transport.mock.calls.length,
+      started = Date.now();
+    const pending = http('post', path, actor)
+      .send(body)
+      .then((r) => r);
+    try {
+      while (!holderPid) await new Promise((resolve) => setTimeout(resolve, 20));
+      await waitBlocked();
+      const waiting = await db.$queryRaw<Array<{ pid: number; started: string }>>`
+        SELECT pid, xact_start::text AS started FROM pg_stat_activity WHERE ${holderPid} = ANY(pg_blocking_pids(pid))`;
+      expect(waiting).toHaveLength(1);
+      const stagePid = waiting[0].pid;
+      const response = await pending;
+      expect(response.status).toBe(500);
+      expect(Date.now() - started).toBeLessThan(32000);
+      // Observe rollback while the blocker is STILL held. A short scheduling allowance
+      // is not another transaction budget; the old stage retains locks for ~18s.
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      const activity = await db.$queryRaw<Array<{ active: boolean; locks: bigint }>>`
+        SELECT xact_start::text = ${waiting[0].started} AS active,
+          (SELECT count(*) FROM pg_locks WHERE pid=${stagePid} AND locktype='advisory' AND granted) AS locks
+        FROM pg_stat_activity WHERE pid=${stagePid}`;
+      const fresh = await http('get', '/contract-templates?company=SHOP')
+        .timeout({ response: 1000 })
+        .then(
+          (r) => r.status,
+          () => 'timeout',
+        );
+      console.log('OWNED_LATE_COMPLETION', {
+        marker,
+        managed,
+        holderPid,
+        stagePid,
+        elapsed: Date.now() - started,
+        activity,
+        fresh,
+      });
+      expect(activity.every((row) => !row.active && Number(row.locks) === 0)).toBe(true);
+      expect(fresh).toBe(200);
+      expect(
+        await db.auditLog.count({
+          where: { userId: actor, action: 'CONTRACT_TEMPLATE_OCR_ADMITTED' },
+        }),
+      ).toBe(1);
+      expect(
+        await db.auditLog.count({
+          where: { userId: actor, action: 'CONTRACT_TEMPLATE_OCR_COMPLETED' },
+        }),
+      ).toBe(0);
+      expect(transport.mock.calls.length).toBe(before + 1);
+    } finally {
+      release();
+      await holder;
+      await pending;
+    }
+  },
+  35000,
+);
+
+function budget(ms: number): AccessTransactionDeadline {
+  const expiresAt = Date.now() + ms;
+  return {
+    expiresAt,
+    check() {
+      if (Date.now() >= expiresAt) throw new Error('Owned deadline expired');
+    },
+  };
+}
+
+it('production OCR authority pre-locks bound successive table waits before snapshot includes', async () => {
+  const actor = await user('OWNER');
+  await grant(actor);
+  let releaseFirst!: () => void,
+    releaseSecond!: () => void,
+    firstReady!: () => void,
+    secondReady!: () => void,
+    firstPid = 0;
+  const firstGate = new Promise<void>((resolve) => {
+    releaseFirst = resolve;
+  });
+  const secondGate = new Promise<void>((resolve) => {
+    releaseSecond = resolve;
+  });
+  const firstLocked = new Promise<void>((resolve) => {
+    firstReady = resolve;
+  });
+  const secondLocked = new Promise<void>((resolve) => {
+    secondReady = resolve;
+  });
+  const firstHolder = db.$transaction(async (tx) => {
+    firstPid = (await tx.$queryRaw<Array<{ pid: number }>>`SELECT pg_backend_pid() AS pid`)[0].pid;
+    await tx.$executeRaw`LOCK TABLE employee_access_assignments IN ACCESS EXCLUSIVE MODE`;
+    firstReady();
+    await firstGate;
+  });
+  const secondHolder = db.$transaction(async (tx) => {
+    await tx.$executeRaw`LOCK TABLE access_positions IN ACCESS EXCLUSIVE MODE`;
+    secondReady();
+    await secondGate;
+  });
+  await Promise.all([firstLocked, secondLocked]);
+  const deadline = budget(600);
+  const pending = app
+    .get(AccessDocumentTemplateBoundaries)
+    .enter('generateTemplateFromFile', { user: { id: actor }, query: { company: 'SHOP' } }, () =>
+      templateRequest.getStore()!.stage!('PREPARE', deadline),
+    )
+    .then(
+      () => 'committed',
+      () => 'rolled-back',
+    );
+  try {
+    await waitBlocked();
+    const identity = (
+      await db.$queryRaw<Array<{ pid: number; started: string }>>`
+      SELECT pid, xact_start::text AS started FROM pg_stat_activity WHERE ${firstPid} = ANY(pg_blocking_pids(pid))`
+    )[0];
+    expect(identity).toBeDefined();
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    releaseFirst();
+    await firstHolder;
+    await new Promise((resolve) =>
+      setTimeout(resolve, Math.max(0, deadline.expiresAt + 100 - Date.now())),
+    );
+    const activity = await db.$queryRaw<Array<{ active: boolean; locks: bigint }>>`
+      SELECT xact_start::text = ${identity.started} AS active,
+        (SELECT count(*) FROM pg_locks WHERE pid=${identity.pid} AND locktype='advisory' AND granted) AS locks
+      FROM pg_stat_activity WHERE pid=${identity.pid}`;
+    console.log('OWNED_OCR_PRELOCK_DEADLINE', { marker, identity, activity });
+    expect(activity.every((row) => !row.active && Number(row.locks) === 0)).toBe(true);
+    expect(await pending).toBe('rolled-back');
+  } finally {
+    releaseFirst();
+    releaseSecond();
+    await Promise.all([firstHolder, secondHolder]);
+    await pending;
+  }
+});
+
+it.each(['include', 'relation select', 'nested write', 'unsupported method'])(
+  'bounded client rejects %s before executing a compound model operation',
+  async (shape) => {
+    const id = randomUUID();
+    await expect(
+      accessTransaction(
+        db as PrismaService,
+        async (tx) => {
+          if (shape === 'include')
+            await tx.employeeAccessAssignment.findUnique({
+              where: { id },
+              include: { position: true },
+            });
+          else if (shape === 'relation select')
+            await tx.employeeAccessAssignment.findUnique({
+              where: { id },
+              select: { position: true },
+            });
+          else if (shape === 'nested write')
+            await tx.auditLog.create({
+              data: {
+                id,
+                user: { connect: { id: owner } },
+                entity: 'test',
+                entityId: id,
+                action: 'UNSUPPORTED_NESTED',
+              },
+            });
+          else
+            await tx.user.update({
+              where: { id: owner },
+              data: { name: 'Unsupported compound method' },
+            });
+        },
+        { timeout: 30000 },
+        budget(1000),
+      ),
+    ).rejects.toThrow('Unsupported compound query');
+    expect(await db.auditLog.count({ where: { id } })).toBe(0);
+    expect((await db.user.findUniqueOrThrow({ where: { id: owner } })).name).not.toBe(
+      'Unsupported compound method',
+    );
+  },
+);
+
+it('bounded scalar JSON audit remains usable and reserved owner snapshot preserves persisted identity', async () => {
+  const actor = await user('OWNER');
+  await grant(actor);
+  await db.user.update({ where: { id: actor }, data: { accessRevision: 73 } });
+  const full = await snapshots.forUser(actor);
+  expect(full.grants).toHaveLength(1);
+  const result = await app.get(AccessResourceService).execute(
+    actor,
+    'settings.documents.manage',
+    'SHOP',
+    undefined,
+    async () => {
+      const ctx = currentDomainAccess()!;
+      await ctx.client.auditLog.create({
+        data: {
+          userId: actor,
+          entity: 'test',
+          entityId: actor,
+          action: 'OWNED_JSON',
+          newValue: { user: { connect: { id: 'JSON_SCALAR_NOT_A_RELATION' } } },
+        },
+      });
+      return ctx.snapshot;
+    },
+    false,
+    { isolationLevel: 'Serializable', deadline: budget(1000) },
+  );
+  expect(result.result).toEqual({
+    userId: actor,
+    isOwner: true,
+    managed: true,
+    revision: 73,
+    grants: [],
+  });
+  expect(await snapshots.forUser(actor)).toEqual(full);
+  expect(await db.auditLog.count({ where: { userId: actor, action: 'OWNED_JSON' } })).toBe(1);
+});
+
+it('pooled acquisition plus successful query cannot extend owned idle lock lifetime', async () => {
+  const single = new PrismaClient({ datasources: { db: { url: `${url}&connection_limit=1` } } });
+  let releasePool!: () => void,
+    poolReady!: () => void,
+    releaseIdle!: () => void,
+    idleReady!: () => void;
+  const poolGate = new Promise<void>((resolve) => {
+    releasePool = resolve;
+  });
+  const poolLocked = new Promise<void>((resolve) => {
+    poolReady = resolve;
+  });
+  const idleGate = new Promise<void>((resolve) => {
+    releaseIdle = resolve;
+  });
+  const idleLocked = new Promise<void>((resolve) => {
+    idleReady = resolve;
+  });
+  const holder = single.$transaction(async () => {
+    poolReady();
+    await poolGate;
+  });
+  await poolLocked;
+  const deadline = budget(800);
+  let identity!: { pid: number; started: string };
+  const pending = accessTransaction(
+    single as PrismaService,
+    async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(718294630)`;
+      identity = (
+        await tx.$queryRaw<Array<{ pid: number; started: string }>>`
+      SELECT pg_backend_pid() AS pid, transaction_timestamp()::text AS started`
+      )[0];
+      await tx.$executeRaw`SELECT pg_sleep(0.25)`;
+      idleReady();
+      await idleGate;
+    },
+    { timeout: 30000 },
+    deadline,
+  ).then(
+    () => 'committed',
+    () => 'rolled-back',
+  );
+  try {
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    releasePool();
+    await holder;
+    await idleLocked;
+    await new Promise((resolve) =>
+      setTimeout(resolve, Math.max(0, deadline.expiresAt + 100 - Date.now())),
+    );
+    const activity = await db.$queryRaw<Array<{ active: boolean; locks: bigint }>>`
+      SELECT xact_start::text = ${identity.started} AS active,
+        (SELECT count(*) FROM pg_locks WHERE pid=${identity.pid} AND locktype='advisory' AND granted) AS locks
+      FROM pg_stat_activity WHERE pid=${identity.pid}`;
+    expect(activity.every((row) => !row.active && Number(row.locks) === 0)).toBe(true);
+    await http('get', '/contract-templates?company=SHOP').timeout({ response: 1000 }).expect(200);
+  } finally {
+    releasePool();
+    releaseIdle();
+    await holder;
+    expect(await pending).toBe('rolled-back');
+    await single.$disconnect();
+  }
+});
+
+it('deadline covers the initial actor lookup before managed/legacy selection', async () => {
+  let release!: () => void, ready!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const locked = new Promise<void>((resolve) => {
+    ready = resolve;
+  });
+  const holder = db.$transaction(async (tx) => {
+    await tx.$executeRaw`LOCK TABLE users IN ACCESS EXCLUSIVE MODE`;
+    ready();
+    await gate;
+  });
+  await locked;
+  const started = Date.now(),
+    before = transport.mock.calls.length;
+  try {
+    await expect(
+      app
+        .get(AccessDocumentTemplateBoundaries)
+        .enter(
+          'generateTemplateFromFile',
+          { user: { id: owner }, query: { company: 'SHOP' } },
+          () => templateRequest.getStore()!.stage!('PREPARE', budget(300)),
+        ),
+    ).rejects.toThrow();
+    expect(Date.now() - started).toBeLessThan(1000);
+    const rows = await db.$queryRaw<Array<{ count: bigint }>>`
+      SELECT count(*) FROM pg_stat_activity WHERE wait_event_type='Lock' AND datname=current_database()`;
+    expect(Number(rows[0].count)).toBe(0);
+    expect(transport.mock.calls.length).toBe(before);
+  } finally {
+    release();
+    await holder;
+  }
+});
+
+it.each(['$queryRaw', '$executeRaw', '$queryRawUnsafe', '$executeRawUnsafe'] as const)(
+  'deadline cancels active %s SQL and rolls back earlier writes',
+  async (method) => {
+    const id = randomUUID(),
+      started = Date.now();
+    await expect(
+      accessTransaction(
+        db as PrismaService,
+        async (tx) => {
+          await tx.contractTemplate.create({ data: { ...payload(), id } });
+          if (method === '$queryRaw') await tx.$queryRaw`SELECT pg_sleep(2)`;
+          else if (method === '$executeRaw') await tx.$executeRaw`SELECT pg_sleep(2)`;
+          else await tx[method]('SELECT pg_sleep(2)');
+        },
+        { timeout: 30000 },
+        budget(300),
+      ),
+    ).rejects.toThrow();
+    expect(Date.now() - started).toBeLessThan(1000);
+    expect(await db.contractTemplate.count({ where: { id } })).toBe(0);
+  },
+);
+
+it('deadline cancels a model audit write, preserving atomic rollback', async () => {
+  const name = `owned_deadline_${randomUUID().replace(/-/g, '')}`,
+    id = randomUUID();
+  await db.$executeRawUnsafe(
+    `CREATE FUNCTION ${name}() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.action='OWNED_DEADLINE_AUDIT' THEN PERFORM pg_sleep(2); END IF; RETURN NEW; END $$`,
+  );
+  await db.$executeRawUnsafe(
+    `CREATE TRIGGER ${name} BEFORE INSERT ON audit_logs FOR EACH ROW EXECUTE FUNCTION ${name}()`,
+  );
+  try {
+    const started = Date.now();
+    await expect(
+      accessTransaction(
+        db as PrismaService,
+        async (tx) => {
+          await tx.contractTemplate.create({ data: { ...payload(), id } });
+          await tx.auditLog.create({
+            data: { userId: owner, entity: 'test', entityId: id, action: 'OWNED_DEADLINE_AUDIT' },
+          });
+        },
+        { timeout: 30000 },
+        budget(300),
+      ),
+    ).rejects.toThrow();
+    expect(Date.now() - started).toBeLessThan(1000);
+    expect(await db.contractTemplate.count({ where: { id } })).toBe(0);
+    expect(await db.auditLog.count({ where: { entityId: id } })).toBe(0);
+  } finally {
+    await db.$executeRawUnsafe(`DROP TRIGGER ${name} ON audit_logs`);
+    await db.$executeRawUnsafe(`DROP FUNCTION ${name}()`);
+  }
+});
+
+it('deadline refreshes serialized concurrent statements instead of renewing a per-query budget', async () => {
+  const started = Date.now();
+  await expect(
+    accessTransaction(
+      db as PrismaService,
+      async (tx) => {
+        await Promise.all([
+          tx.$executeRaw`SELECT pg_sleep(0.2)`,
+          tx.$executeRaw`SELECT pg_sleep(2)`,
+          tx.user.findUnique({ where: { id: owner } }),
+        ]);
+      },
+      { timeout: 30000 },
+      budget(400),
+    ),
+  ).rejects.toThrow();
+  expect(Date.now() - started).toBeLessThan(800);
+});
+
+it('deadline bounds pooled transaction acquisition and cannot start work after release', async () => {
+  const single = new PrismaClient({ datasources: { db: { url: `${url}&connection_limit=1` } } });
+  let release!: () => void,
+    ready!: () => void,
+    calls = 0;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const locked = new Promise<void>((resolve) => {
+    ready = resolve;
+  });
+  const holder = single.$transaction(async () => {
+    ready();
+    await gate;
+  });
+  await locked;
+  try {
+    const started = Date.now();
+    await expect(
+      accessTransaction(
+        single as PrismaService,
+        async () => {
+          calls++;
+        },
+        { timeout: 30000 },
+        budget(300),
+      ),
+    ).rejects.toThrow();
+    expect(Date.now() - started).toBeLessThan(1000);
+    expect(calls).toBe(0);
+  } finally {
+    release();
+    await holder;
+    await single.$disconnect();
+  }
+  expect(calls).toBe(0);
+});
+
+it('expired retry admission cannot renew the executor budget or replay rolled-back work', async () => {
+  const resources = app.get(AccessResourceService),
+    deadline = budget(250),
+    id = randomUUID();
+  let attempts = 0;
+  await expect(
+    resources.execute(
+      owner,
+      'settings.documents.manage',
+      'SHOP',
+      undefined,
+      async () => {
+        attempts++;
+        await currentDomainAccess()!.client.contractTemplate.create({ data: { ...payload(), id } });
+        onDomainRollback(async () => {
+          await new Promise((resolve) => setTimeout(resolve, 300));
+        });
+        throw new Prisma.PrismaClientKnownRequestError('Owned retry', {
+          code: 'P2034',
+          clientVersion: 'fixture',
+        });
+      },
+      false,
+      { isolationLevel: 'Serializable', maxAttempts: 3, deadline },
+    ),
+  ).rejects.toThrow('Owned deadline expired');
+  expect(attempts).toBe(1);
+  expect(await db.contractTemplate.count({ where: { id } })).toBe(0);
+});
+
+it('legacy retry admission rejects an exhausted absolute deadline before another attempt', async () => {
+  const actor = await user('OWNER');
+  await db.user.update({ where: { id: actor }, data: { accessManaged: false } });
+  const original = snapshots.forOwnerInTransaction.bind(snapshots);
+  let calls = 0;
+  const snapshot = jest
+    .spyOn(snapshots, 'forOwnerInTransaction')
+    .mockImplementation(async (tx, id) => {
+      const result = await original(tx, id);
+      if (id === actor) {
+        calls++;
+        await new Promise((resolve) => setTimeout(resolve, 350));
+        throw new Prisma.PrismaClientKnownRequestError('Owned retry', {
+          code: 'P2034',
+          clientVersion: 'fixture',
+        });
+      }
+      return result;
+    });
+  try {
+    await expect(
+      app
+        .get(AccessDocumentTemplateBoundaries)
+        .enter(
+          'generateTemplateFromFile',
+          { user: { id: actor }, query: { company: 'SHOP' } },
+          () => templateRequest.getStore()!.stage!('PREPARE', budget(250)),
+        ),
+    ).rejects.toThrow();
+    expect(calls).toBe(1);
+  } finally {
+    snapshot.mockRestore();
+  }
+});
+
+it('deadline prevents commit after work consumes the remaining budget', async () => {
+  const id = randomUUID();
+  await expect(
+    accessTransaction(
+      db as PrismaService,
+      async (tx) => {
+        await tx.contractTemplate.create({ data: { ...payload(), id } });
+        await new Promise((resolve) => setTimeout(resolve, 350));
+      },
+      { timeout: 30000 },
+      budget(250),
+    ),
+  ).rejects.toThrow();
+  expect(await db.contractTemplate.count({ where: { id } })).toBe(0);
+});
+
+it.each([undefined, 60000] as const)(
+  'unopted executor preserves default/export timeout %s and server settings',
+  async (timeoutMs) => {
+    const original = db.$transaction.bind(db),
+      options: unknown[] = [];
+    const transaction = jest.spyOn(db, '$transaction').mockImplementation((...args: unknown[]) => {
+      options.push(args[1]);
+      return (original as (...input: unknown[]) => Promise<unknown>)(...args);
+    });
+    try {
+      const result = await app
+        .get(AccessResourceService)
+        .execute(
+          owner,
+          'contract-templates.read',
+          'SHOP',
+          undefined,
+          () =>
+            currentDomainAccess()!.client.$queryRaw<
+              Array<{ value: string }>
+            >`SELECT current_setting('statement_timeout') AS value`,
+          false,
+          { timeoutMs },
+        );
+      expect(result.result).toEqual([{ value: '0' }]);
+      expect(options).toEqual([{ timeout: timeoutMs ?? 30000, isolationLevel: 'ReadCommitted' }]);
+    } finally {
+      transaction.mockRestore();
+    }
+  },
+);

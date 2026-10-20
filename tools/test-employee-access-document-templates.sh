@@ -18,7 +18,10 @@ export EMPLOYEE_ACCESS_TEST_DATABASE_URL="postgresql://access_test@localhost:554
 export DATABASE_URL="$EMPLOYEE_ACCESS_TEST_DATABASE_URL" DATABASE_URL_FINANCE="$EMPLOYEE_ACCESS_TEST_DATABASE_URL"
 npx prisma migrate deploy --schema apps/api/prisma/schema.prisma > "$ACCESS_TEST_ROOT/migrate.log"
 printf 'OWNED_TEMPLATE_DATABASE_URL=%s\nDATABASE_URL=%s\nDATABASE_URL_FINANCE=%s\n' "$EMPLOYEE_ACCESS_TEST_DATABASE_URL" "$DATABASE_URL" "$DATABASE_URL_FINANCE"
-if [[ "${1:-}" == "--compatibility" ]]; then
+if [[ "${1:-}" == "--executor" ]]; then
+  shift
+  npm test --workspace=@installment/api -- --runTestsByPath src/modules/employee-access/access-procurement-transaction.integration.spec.ts --testPathIgnorePatterns '/node_modules/' "$@"
+elif [[ "${1:-}" == "--compatibility" ]]; then
   shift
   npm test --workspace=@installment/api -- --config e2e/jest-chat-credit.json --runTestsByPath e2e/sales-documents.e2e-spec.ts "$@"
 elif [[ "${1:-}" == "--canonical" ]]; then

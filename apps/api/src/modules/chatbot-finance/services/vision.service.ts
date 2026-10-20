@@ -117,23 +117,16 @@ export class VisionService {
       const jsonStr = text.replace(/```json\n?|```/g, '').trim();
       try {
         const parsed = JSON.parse(jsonStr) as SlipExtraction;
-        this.logger.log(
-          `[Vision] Extracted: amount=${parsed.amount} confidence=${parsed.confidence}`,
-        );
+        this.logger.log('[Vision] Extraction completed');
         return parsed;
-      } catch (parseErr) {
-        // Log raw text (truncated) เพื่อ debug ว่า Claude ตอบรูปแบบอะไรมา
-        this.logger.error(
-          `[Vision] JSON parse failed: ${parseErr instanceof Error ? parseErr.message : parseErr}\n` +
-            `Raw response: ${text.slice(0, 500)}`,
-        );
+      } catch {
+        this.logger.error('[Vision] Invalid extraction response');
         return null;
       }
-    } catch (err) {
-      this.logger.error(
-        `[Vision] API error: ${err instanceof Error ? err.message : err}`,
-      );
-      Sentry.captureException(err, {
+    } catch {
+      this.logger.error('[Vision] Extraction unavailable');
+      Sentry.captureMessage('VISION_EXTRACT_UNAVAILABLE', {
+        level: 'error',
         tags: { module: 'chatbot-finance', action: 'vision_extract' },
       });
       return null;

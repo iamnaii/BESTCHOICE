@@ -17,6 +17,10 @@ import { ContractJournalQueryService } from '../journal/contract-journal-query.s
 import { EarlyPayoffSlipService } from './early-payoff-slip/early-payoff-slip.service';
 import { StorageService } from '../storage/storage.service';
 import { VisionService } from '../chatbot-finance/services/vision.service';
+import Anthropic from '@anthropic-ai/sdk';
+import { inspect } from 'node:util';
+import { IntegrationConfigService } from '../integrations/integration-config.service';
+import { AiUsageService } from '../ai-usage/ai-usage.service';
 import { FinanceConfigService } from '../chatbot-finance/services/finance-config.service';
 import { AccessPayoffRequestBoundary } from '../employee-access/access-payoff-request-boundary';
 import { AccessPartySourceService } from '../employee-access/access-party-source.service';
@@ -49,6 +53,7 @@ import { AccessResourceService } from '../employee-access/access-resource.servic
 import { currentDomainAccess } from '../employee-access/access-execution-context';
 
 jest.mock('@sentry/nestjs', () => ({ captureMessage: jest.fn(), captureException: jest.fn() }));
+jest.mock('@anthropic-ai/sdk', () => ({ __esModule: true, default: jest.fn() }));
 const url = process.env.PAYOFF_PRIVATE_TEST_DATABASE_URL;
 if (
   !url?.includes('/bc_payoff_private?host=/tmp/bc-payoff-private.') ||
@@ -1160,6 +1165,62 @@ it('legacy migration during failing OCR never logs provider-private canary text'
     expect(vision.extractSlip).toHaveBeenCalledTimes(1);
     expect(JSON.stringify(warn.mock.calls)).not.toContain('PRIVATE-OCR-MIGRATION-CANARY');
   } finally {
+    warn.mockRestore();
+  }
+});
+it('real Vision provider failure during legacy migration has safe Logger and Sentry diagnostics', async () => {
+  const c = await contract(),
+    who = await person(false);
+  const create = jest.fn(async () => {
+    await db.user.update({ where: { id: who }, data: { accessManaged: true } });
+    throw new Error('PRIVATE-REAL-VISION-MIGRATION-CANARY');
+  });
+  jest
+    .mocked(Anthropic)
+    .mockImplementation(() => ({ messages: { create } }) as unknown as Anthropic);
+  const realVision = new VisionService(
+    {
+      getValue: jest.fn().mockResolvedValue('synthetic-controlled-sdk-only'),
+    } as unknown as IntegrationConfigService,
+    { record: jest.fn().mockResolvedValue(undefined) } as unknown as AiUsageService,
+  );
+  const actualSlip = new EarlyPayoffSlipService(
+    prisma,
+    storage,
+    realVision,
+    financeConfig as unknown as FinanceConfigService,
+    service,
+    config,
+  );
+  const error = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+  const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+  jest.mocked(Sentry.captureException).mockClear();
+  try {
+    await expect(
+      actualSlip.verify(
+        c.id,
+        { buffer: imageBytes(), mimetype: 'image/png', size: 68 } as Express.Multer.File,
+        '0',
+        who,
+      ),
+    ).rejects.toThrow();
+    expect(create).toHaveBeenCalledTimes(1);
+    expect((await state(c.id)).paid).toBe(0);
+    expect(
+      inspect(
+        [
+          error.mock.calls,
+          warn.mock.calls,
+          jest.mocked(Logger.prototype.log).mock.calls,
+          jest.mocked(Sentry.captureException).mock.calls,
+          jest.mocked(Sentry.captureMessage).mock.calls,
+        ],
+        { depth: 10 },
+      ),
+    ).not.toContain('PRIVATE-REAL-VISION-MIGRATION-CANARY');
+    expect(Sentry.captureException).not.toHaveBeenCalled();
+  } finally {
+    error.mockRestore();
     warn.mockRestore();
   }
 });

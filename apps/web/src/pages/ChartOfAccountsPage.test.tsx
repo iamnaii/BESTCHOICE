@@ -130,7 +130,7 @@ describe('PEAK mapping inside the chart of accounts', () => {
     expect(screen.queryByRole('button', { name: /FINANCE \(การเงิน\)/ })).not.toBeInTheDocument();
     await user.click(peak.getByRole('button', { name: /บันทึก/ }));
     await waitFor(() => expect(apiMock.put).toHaveBeenCalledWith('/chart-of-accounts/peak-mapping', {
-      mappings: [{ id: 'a1', peakCode: '1110-01' }],
+      mappings: [{ id: 'a1', peakCode: '1110-01', peakSubCode: null, peakSubCodeSource: 'none' }],
     }));
   });
 

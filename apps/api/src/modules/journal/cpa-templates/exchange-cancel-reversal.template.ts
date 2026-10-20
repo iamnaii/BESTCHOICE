@@ -86,6 +86,7 @@ export class ExchangeCancelReversalTemplate {
   async reverse(
     input: CancelSweepInput,
     tx?: Prisma.TransactionClient,
+    postedAt?: Date,
   ): Promise<{ reversalJeIds: string[]; redirectedTotals: Record<string, Decimal> }> {
     const client = tx ?? this.prisma;
     const flowLabel = input.flowLabel ?? 'exchange-cancel';
@@ -163,6 +164,7 @@ export class ExchangeCancelReversalTemplate {
 
       const result = await this.journal.createAndPost(
         {
+          postedAt,
           description: `${descriptionPrefix} กลับรายการ ${je.entryNumber}`,
           reference: `${je.id}:${flowLabel}`,
           companyId: je.companyId, // สำคัญ: A.4 เป็น SHOP company

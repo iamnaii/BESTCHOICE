@@ -1903,7 +1903,8 @@ describe('ContractExchangeService.finalizeAfterActivation', () => {
     const result = await service.finalizeAfterActivation(newContract, tx);
 
     expect(callOrder).toEqual(['t1a', 't2', 't3', 't4']);
-    expect(templates.t1a.execute).toHaveBeenCalledWith('new-c', tx);
+    // R117: omitted operation date remains undefined, retaining the template default.
+    expect(templates.t1a.execute).toHaveBeenCalledWith('new-c', tx, undefined);
 
     // Old contract flip
     expect(tx.contract.update).toHaveBeenCalledWith(
@@ -2262,6 +2263,7 @@ describe('ContractExchangeService.finalizeAfterActivation', () => {
       expect(templates.t5.execute).toHaveBeenCalledWith(
         { oldContractId: 'old-c', requestId: 'r1' },
         tx,
+        undefined, // R117: legacy caller retains the template's default posting date.
       );
       expect(tx.badDebtProvision.updateMany).toHaveBeenCalledWith({
         where: { contractId: 'old-c', status: 'ACTIVE', deletedAt: null },

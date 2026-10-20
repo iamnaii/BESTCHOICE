@@ -216,6 +216,28 @@ export class ContractExchangeService {
     if (entry.userId) await this.audit.log(entry, tx);
     else await this.audit.log(entry); // Existing actorless internal calls remain inert.
   }
+  private async logRequested(
+    request: {
+      id: string; mode: string; status: string;
+      oldContractId: string; oldProductId: string; newProductId: string;
+    },
+    userId: string,
+  ) {
+    await this.log({
+      action: 'EXCHANGE_REQUESTED',
+      entity: 'contract_exchange_request',
+      entityId: request.id,
+      userId,
+      newValue: {
+        mode: request.mode,
+        status: request.status,
+        oldContractId: request.oldContractId,
+        oldProductId: request.oldProductId,
+        newProductId: request.newProductId,
+      },
+    });
+  }
+
   async submit(dto: SubmitExchangeRequestDto, user: RequestUser) {
     const sources = await this.authorize(user.id, 'contract-exchanges.create', dto, false);
     const oldContract = await this.prisma.contract.findUnique({
@@ -289,7 +311,7 @@ export class ContractExchangeService {
           'รุ่นเดิม+ราคาเดิม = เปลี่ยนแบบไม่มีรายการบัญชี (MEMO) — ห้ามระบุราคารับซื้อ',
         );
       }
-      return (this.prisma as any).contractExchangeRequest.create({
+      const request = await (this.prisma as any).contractExchangeRequest.create({
         data: {
           oldContractId: dto.oldContractId,
           oldProductId: dto.oldProductId,
@@ -301,6 +323,8 @@ export class ContractExchangeService {
           requestedById: user.id,
         },
       });
+      if (sources) await this.logRequested(request, user.id);
+      return request;
     }
 
     // ---------- PRICED (workbook Cases 2A-2G) ----------
@@ -358,6 +382,8 @@ export class ContractExchangeService {
         requestedById: user.id,
       },
     });
+
+    if (sources) await this.logRequested(request, user.id);
 
     // Managed AUTO only executes with independently authorized approval sources.
     // Otherwise leave PENDING for a separate approver; canonical failures still abort.
@@ -513,7 +539,7 @@ export class ContractExchangeService {
       blockers: { overdueBlocked, advanceBlocked },
       hasUnpaidLateFee,
     };
-    return sources ? this.access!.project(result, sources) : result;
+    return sources ? this.access!.projectPreview(result, sources, oldContract.productId) : result;
   }
 
   /**

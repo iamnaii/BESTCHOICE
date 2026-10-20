@@ -77,6 +77,7 @@ export class AccessExchangeSourceService {
     const productIds = new Set(
       [input.oldProductId, input.newProductId].filter((id): id is string => !!id),
     );
+    const contracts: Array<{ customerId: string; productId: string; source: AccessResource }> = [];
     for (const id of [
       ...new Set([input.oldContractId, input.newContractId].filter((id): id is string => !!id)),
     ].sort()) {
@@ -86,9 +87,19 @@ export class AccessExchangeSourceService {
         where: { id },
         select: { customerId: true, productId: true },
       });
+      contracts.push({ ...contract, source });
+      productIds.add(contract.productId);
+    }
+    // Read the real locked parent links, then lock their actual identities in order.
+    // Preserve the reviewed FINANCE / SHOP party lanes; no sibling authority is invented here.
+    for (const id of [...new Set(contracts.map((row) => row.customerId))].sort())
+      await tx.$queryRaw`SELECT id FROM customers WHERE id = ${id} FOR SHARE`;
+    for (const contract of contracts) {
       if (
-        !(await tx.customer.count({ where: { id: contract.customerId, deletedAt: null } })) ||
-        (!canAccess(ctx.snapshot, 'customers.read', source) &&
+        !(await tx.customer.count({
+          where: { id: contract.customerId, deletedAt: null, mergedIntoId: null },
+        })) ||
+        (!canAccess(ctx.snapshot, 'customers.read', contract.source) &&
           !(await this.parties.partyAllows(
             tx,
             ctx.snapshot,
@@ -98,7 +109,6 @@ export class AccessExchangeSourceService {
           )))
       )
         throw new ForbiddenException('ไม่มีสิทธิ์อ่านลูกค้าของสัญญา');
-      productIds.add(contract.productId);
     }
     const products = new Map<string, AccessResource>();
     for (const id of [...productIds].sort()) {
@@ -143,8 +153,8 @@ export class AccessExchangeSourceService {
       throw new ForbiddenException('ไม่มีสิทธิ์เปลี่ยนเครื่องในขอบเขตนี้');
   }
   /** Internal monetary snapshots stay nullable unless independently authorized. */
-  project<T>(value: T, sources: readonly AccessResource[]): T {
-    const cost = this.permits('sensitive.cost.read', sources);
+  project<T>(value: T, sources: readonly AccessResource[], costSources = sources): T {
+    const cost = this.permits('sensitive.cost.read', costSources);
     const profit = this.permits('sensitive.profit.read', sources);
     const financial = this.permits('contract-exchanges.read', sources);
     const visit = (input: unknown): unknown => {
@@ -174,6 +184,17 @@ export class AccessExchangeSourceService {
       );
     };
     return visit(value) as T;
+  }
+  async projectPreview<T>(
+    value: T,
+    sources: readonly AccessResource[],
+    oldProductId: string,
+  ): Promise<T> {
+    const ctx = currentDomainAccess()!;
+    const source = await this.resources.product(ctx.client, oldProductId, true);
+    if (!canAccess(ctx.snapshot, 'products.read', source))
+      throw new ForbiddenException('ไม่มีสิทธิ์อ่านสินค้า');
+    return this.project(value, sources, [source]);
   }
   async request(id: string, permission: PermissionKey, destinations: ExchangeDestinations = false) {
     const ctx = currentDomainAccess();

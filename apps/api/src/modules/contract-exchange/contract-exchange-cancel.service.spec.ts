@@ -182,6 +182,7 @@ describe('ExchangeCancelService (spec §9)', () => {
     expect(reversal.reverse).toHaveBeenCalledWith(
       { jeIds: ['je1', 'je2', 'je3', 'je4', 'je5'], newContractId: 'newC1' },
       txMock,
+      undefined, // R127: unmanaged callers retain the existing default posting date.
     );
     // Restore: old contract back to ACTIVE, exchangedAt cleared
     expect(txMock.contract.update).toHaveBeenCalledWith(

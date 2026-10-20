@@ -1260,3 +1260,34 @@ it('R119 real capture of fresh notice replaces revoked draft evidence before can
  expect(captured.result.pdpaConsentId).not.toBe(row.pdpaConsentId);
  expect((await action('activate',row.id,checker)).status).toBe(201);
 });
+
+it('Task4.2.1.7 positive ECL provision reverses through actual activation once and rolls back with its journal/audit', async () => {
+  const f = await exchangeFixture();
+  const amount = new Prisma.Decimal('1234.56');
+  const zero = new Prisma.Decimal(0);
+  await new JournalAutoService(db as PrismaService).createAndPost({
+    description: 'Owned positive ECL fixture',
+    metadata: {flow:'provision',contractId:f.old.id,idempotencyKey:randomUUID()},
+    lines: [{accountCode:'51-1103',dr:amount,cr:zero},{accountCode:'11-2102',dr:zero,cr:amount}],
+  });
+  const provision = await db.badDebtProvision.create({data:{contractId:f.old.id,provisionDate:new Date(),agingBucket:'31-60',daysOverdue:45,outstandingAmount:12345.6,provisionRate:.1,provisionAmount:amount}});
+  const before = await db.journalEntry.count();
+  await auditFailure(async () => {
+    expect((await action('activate', f.replacement.id, f.actor)).status).toBe(500);
+    expect(await db.journalEntry.count()).toBe(before);
+    expect((await db.badDebtProvision.findUniqueOrThrow({where:{id:provision.id}})).status).toBe('ACTIVE');
+    expect((await db.contractExchangeRequest.findUniqueOrThrow({where:{id:f.swap.id}})).eclReversalJeId).toBeNull();
+    expect(effects.filter(e=>e.refId===f.replacement.id)).toHaveLength(0);
+  });
+  const outcomes = await Promise.all([action('activate',f.replacement.id,f.actor),action('activate',f.replacement.id,f.actor)]);
+  expect(outcomes.filter(r=>r.status===201)).toHaveLength(1);
+  const swap=await db.contractExchangeRequest.findUniqueOrThrow({where:{id:f.swap.id}});
+  expect(swap.eclReversalJeId).toBeTruthy();
+  const lines=await db.journalLine.findMany({where:{journalEntryId:swap.eclReversalJeId!}});
+  expect(lines.map(l=>[l.accountCode,l.debit.toFixed(2),l.credit.toFixed(2)]).sort()).toEqual([['11-2102','1234.56','0.00'],['51-1103','0.00','1234.56']]);
+  expect((await db.badDebtProvision.findUniqueOrThrow({where:{id:provision.id}})).status).toBe('REVERSED');
+  const committed=await db.journalEntry.count();
+  expect((await action('activate',f.replacement.id,f.actor)).status).toBe(403);
+  expect(await db.journalEntry.count()).toBe(committed);
+  expect(effects.filter(e=>e.refId===f.replacement.id)).toHaveLength(2);
+});

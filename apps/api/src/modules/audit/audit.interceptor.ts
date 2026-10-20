@@ -1,3 +1,4 @@
+import { ContractExchangeController } from '../contract-exchange/contract-exchange.controller';
 import { CustomerAccessController } from '../customer-access/customer-access.controller';
 import { InterestConfigController } from '../interest-config/interest-config.controller';
 import { ContractsController } from '../contracts/contracts.controller';
@@ -131,6 +132,12 @@ export class AuditInterceptor implements NestInterceptor {
     if (this.isSharedReference(context)) return true;
     if (context.switchToHttp().getRequest().user?.access?.managed !== true) return false;
     if (context.getClass() === ContractsController && [ContractsController.prototype.findAll, ContractsController.prototype.findOne, ContractsController.prototype.quote, ContractsController.prototype.create, ContractsController.prototype.update, ContractsController.prototype.updateBundles, ContractsController.prototype.validateForSubmit, ContractsController.prototype.submitForReview, ContractsController.prototype.approve, ContractsController.prototype.reject, ContractsController.prototype.activate].some(handler => handler === context.getHandler())) return true;
+    if (context.getClass() === ContractExchangeController && [
+      ContractExchangeController.prototype.submit, ContractExchangeController.prototype.preview,
+      ContractExchangeController.prototype.listPending, ContractExchangeController.prototype.listRecent,
+      ContractExchangeController.prototype.approve, ContractExchangeController.prototype.reject,
+      ContractExchangeController.prototype.cancel,
+    ].some(handler => handler === context.getHandler())) return true;
     if (context.getClass() === DefectExchangeController && [
       DefectExchangeController.prototype.getEligibility, DefectExchangeController.prototype.execute,
       DefectExchangeController.prototype.list,

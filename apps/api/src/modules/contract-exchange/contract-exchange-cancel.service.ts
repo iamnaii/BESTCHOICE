@@ -1,3 +1,4 @@
+import { validatePeriodOpen } from '../../utils/period-lock.util';
 import { Optional } from '@nestjs/common';
 import { AccessExchangeSourceService, exchangeActor } from '../employee-access/access-exchange-source.service';
 import { currentDomainAccess, domainAccessClient } from '../employee-access/access-execution-context';
@@ -66,6 +67,23 @@ export class ExchangeCancelService {
       const old = await ctx.client.contract.findUniqueOrThrow({
         where: { id: request.oldContractId },
       });
+      if (request.status === 'APPROVED') {
+        const expectedOldProduct =
+          request.mode === 'MEMO' ? request.newProductId : request.oldProductId;
+        if (old.productId !== expectedOldProduct)
+          throw new ForbiddenException('คำขอเปลี่ยนเครื่องไม่ตรงกับสัญญาปัจจุบัน');
+        if (request.newContractId) {
+          const replacement = await ctx.client.contract.findUniqueOrThrow({
+            where: { id: request.newContractId },
+          });
+          if (
+            replacement.customerId !== old.customerId ||
+            replacement.productId !== request.newProductId ||
+            replacement.exchangedFromContractId !== old.id
+          )
+            throw new ForbiddenException('คำขอเปลี่ยนเครื่องไม่ตรงกับสัญญาปัจจุบัน');
+        }
+      }
       const applied = request.status === 'APPROVED' && (request.mode === 'MEMO' || !!old.exchangedAt);
       if (applied)
         this.access.assert(
@@ -191,6 +209,24 @@ export class ExchangeCancelService {
         return { id, cancelWindow: 'PRE_FINALIZE', penaltyAmount: null };
       }
 
+      // Managed reversal posts into the actual current books on one checked date.
+      // No-money MEMO / draft cancellation above does not acquire a period gate.
+      const postedAt = ctx ? now : undefined;
+      const bookIds = [shopCompanyId, financeCompanyId].sort();
+      if (postedAt) {
+        if (
+          await tx.companyInfo.count({
+            where: { id: { in: bookIds }, isActive: true, deletedAt: null },
+          }) !== 2
+        )
+          throw new ForbiddenException('ไม่พบสมุดบัญชีปัจจุบัน');
+        const year = postedAt.getFullYear();
+        const month = postedAt.getMonth() + 1;
+        await tx.$queryRaw`SELECT id FROM accounting_periods WHERE company_id=ANY(${bookIds}::text[]) AND year=${year} AND month=${month} ORDER BY id FOR SHARE`;
+        await tx.$queryRaw`SELECT id FROM system_config WHERE key='period_grace_days' FOR SHARE`;
+        for (const companyId of bookIds) await validatePeriodOpen(tx, postedAt, companyId);
+      }
+
       // ---------- FINALIZED (มี JE แล้ว) ----------
       // Status guard: finalized แต่สัญญาใหม่ไม่ ACTIVE (COMPLETED/TERMINATED/ฯลฯ)
       // = ยกเลิก swap ไม่ได้แล้ว
@@ -313,11 +349,18 @@ export class ExchangeCancelService {
         },
         include: { lines: true },
       });
+      if (ctx && candidates.length) {
+        const candidateIds = candidates.map((row) => row.id).sort();
+        await tx.$queryRaw`SELECT id FROM journal_entries WHERE id=ANY(${candidateIds}::text[]) ORDER BY id FOR UPDATE`;
+        await tx.$queryRaw`SELECT id FROM journal_lines WHERE journal_entry_id=ANY(${candidateIds}::text[]) ORDER BY id FOR SHARE`;
+      }
       for (const je of candidates) {
         const meta = (je.metadata ?? {}) as Record<string, unknown>;
         if (meta['reversed'] === true) continue;
         if (meta['flow'] === 'exchange-cancel') continue;
         if (meta['tag'] === 'REVERSAL') continue;
+        if (ctx && !bookIds.includes(je.companyId))
+          throw new ForbiddenException('รายการบัญชีไม่ตรงกับสมุดที่ตรวจสิทธิ์');
         const cashLine = je.lines.find((l) =>
           CASH_ACCOUNT_PREFIXES.some((p) => l.accountCode.startsWith(p)),
         );
@@ -364,6 +407,7 @@ export class ExchangeCancelService {
             : {}),
         },
         tx,
+        postedAt,
       );
 
       // Cross-check (C-2 — สูตรเดียวกับ generic Task 3/4): ยอดที่ redirect เข้า

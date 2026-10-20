@@ -36,7 +36,7 @@ type SourceFilter = 'ALL' | TradeInSubmissionSource;
 type FlowFilter = 'ALL' | TradeInFlow;
 
 /**
- * Segmented control — one visual container with an inset active pill, instead of
+ * Segmented control — one visual container with an active pill, instead of
  * loose pills that read as N independent buttons.
  * Radio semantics (not tabs): each group is "pick one of N", and the panels these
  * drive aren't wired as tabpanels.
@@ -64,7 +64,7 @@ function Segmented<T extends string>({
       <div
         role="radiogroup"
         aria-label={ariaLabel ?? label}
-        className="inline-flex max-w-full flex-wrap items-center gap-0.5 rounded-lg bg-muted p-0.5"
+        className="inline-flex min-h-11 max-w-full flex-wrap items-center gap-0.5 rounded-lg bg-muted"
       >
         {options.map(([key, text]) => {
           const active = value === key;
@@ -76,7 +76,7 @@ function Segmented<T extends string>({
               aria-checked={active}
               onClick={() => onChange(key)}
               className={cn(
-                'min-h-11 sm:min-h-0 rounded-md leading-snug whitespace-nowrap transition-colors',
+                'min-h-11 rounded-lg leading-snug whitespace-nowrap transition-colors',
                 size === 'sm' ? 'px-2.5 py-1.5 text-xs' : 'px-3.5 py-1.5 text-sm',
                 active
                   ? 'bg-card font-medium text-foreground shadow-xs'

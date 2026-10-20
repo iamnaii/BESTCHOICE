@@ -283,12 +283,14 @@ export default function SlipReviewTab() {
 
       {/* Status Filter + Export */}
       <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
-        <div className="flex gap-1 bg-muted rounded-xl p-1">
+        <div role="group" aria-label="สถานะสลิป" className="flex min-h-11 max-w-full flex-wrap gap-1 rounded-lg bg-muted">
           {['PENDING_REVIEW', 'APPROVED', 'REJECTED'].map((status) => (
             <button data-ui-control="button"
               key={status}
+              type="button"
+              aria-pressed={statusFilter === status}
               onClick={() => setStatusFilter(status)}
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+              className={`min-h-11 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                 statusFilter === status
                   ? 'bg-card text-primary shadow-sm'
                   : 'text-muted-foreground hover:text-foreground'

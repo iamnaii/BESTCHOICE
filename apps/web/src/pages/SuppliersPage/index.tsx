@@ -300,7 +300,7 @@ export default function SuppliersPage() {
               />
             </div>
             <div
-              className="inline-flex w-fit shrink-0 items-center rounded-lg bg-muted p-1"
+              className="inline-flex min-h-11 w-fit max-w-full shrink-0 flex-wrap items-center rounded-lg bg-muted"
               role="group"
               aria-label="กรองตามสถานะการใช้งาน"
             >
@@ -311,7 +311,7 @@ export default function SuppliersPage() {
                   onClick={() => setFilterActive(f.value)}
                   aria-pressed={filterActive === f.value}
                   className={cn(
-                    'cursor-pointer whitespace-nowrap rounded-md px-3 py-1.5 text-sm transition-colors',
+                    'min-h-11 cursor-pointer whitespace-nowrap rounded-lg px-3 py-1.5 text-sm transition-colors',
                     filterActive === f.value
                       ? 'bg-background font-medium text-foreground shadow-sm'
                       : 'text-muted-foreground hover:text-foreground',

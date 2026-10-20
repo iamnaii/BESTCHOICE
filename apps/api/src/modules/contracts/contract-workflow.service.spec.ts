@@ -141,6 +141,8 @@ describe('ContractWorkflowService', () => {
     jest.spyOn(creditApproval, 'assertContractCreditApproval').mockResolvedValue({ id: 'approved-cap' } as never);
 
     prisma = {
+      // Legacy canonical fixture; managed direct calls require owned current execution.
+      user: { findUnique: jest.fn().mockResolvedValue({ accessManaged: false }) },
       $queryRaw: jest.fn().mockResolvedValue([]),
       contract: {
         findUnique: jest.fn().mockResolvedValue(mockContract),

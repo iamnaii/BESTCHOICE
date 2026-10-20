@@ -47,81 +47,10 @@ export class AccessContractPreparationActions implements OnModuleInit {
                     : await currentPreparationSource(String(req.params?.id ?? ''), [
                         'contracts.update',
                       ]);
-                  if (
-                    !input ||
-                    typeof input.customerId !== 'string' ||
-                    typeof input.productId !== 'string' ||
-                    typeof input.branchId !== 'string'
-                  )
-                    throw new BadRequestException('ข้อมูลต้นทางไม่ถูกต้อง');
-                  const destination = await this.resources.branch(tx, input.branchId, true);
-                  if (
-                    destination.company !== 'SHOP' ||
-                    !canAccess(ctx.snapshot, permission, destination)
-                  )
-                    throw new ForbiddenException('ไม่มีสิทธิ์เตรียมสัญญาที่สาขานี้');
-                  // Genuine pre-parent Customer evidence, independent of the destination.
-                  // Lock every current contributing identity source before querying the predicate.
-                  await this.parties.customer(tx, input.customerId, true, false, true);
-                  const liveCompanies = await tx.companyInfo.findMany({
-                    where: {
-                      companyCode: { in: ['SHOP', 'FINANCE'] },
-                      isActive: true,
-                      deletedAt: null,
-                    },
-                    select: { companyCode: true },
-                  });
-                  if (
-                    !(await tx.customer.count({
-                      where: {
-                        id: input.customerId,
-                        mergedIntoId: null,
-                        OR: (['SHOP', 'FINANCE'] as const)
-                          .filter((company) =>
-                            liveCompanies.some((row) => row.companyCode === company),
-                          )
-                          .map((company) =>
-                            customerPartyWhere(
-                              preparationScope(ctx.snapshot, 'customers.read', company),
-                            ),
-                          ),
-                      },
-                    }))
-                  )
-                    throw new ForbiddenException('ไม่มีสิทธิ์อ่านลูกค้าต้นทาง');
-                  if (
-                    input.bundleProductIds != null &&
-                    (!Array.isArray(input.bundleProductIds) ||
-                      input.bundleProductIds.some((id: unknown) => typeof id !== 'string'))
-                  )
-                    throw new BadRequestException('สินค้าของแถมไม่ถูกต้อง');
-                  const next = method === 'updateBundles' ? req.body?.bundleProductIds : [];
-                  if (
-                    next != null &&
-                    (!Array.isArray(next) || next.some((id: unknown) => typeof id !== 'string'))
-                  )
-                    throw new BadRequestException('สินค้าของแถมไม่ถูกต้อง');
-                  if (
-                    (input.bundleProductIds?.length ?? 0) > MAX_CONTRACT_BUNDLES ||
-                    (next?.length ?? 0) > MAX_CONTRACT_BUNDLES
-                  )
-                    throw new BadRequestException('ของแถมต่อสัญญาได้ไม่เกิน 10 ชิ้น');
-                  const ids = [
-                    ...new Set<string>([
-                      input.productId,
-                      ...(input.bundleProductIds ?? []),
-                      ...(next ?? []),
-                    ]),
-                  ].sort();
-                  for (const id of ids) {
-                    const source = await this.resources.product(tx, id, true);
-                    if (
-                      source.company !== 'SHOP' ||
-                      source.branchId !== input.branchId ||
-                      !canAccess(ctx.snapshot, 'products.read', source)
-                    )
-                      throw new ForbiddenException('ไม่มีสิทธิ์อ่านสินค้าต้นทาง');
-                  }
+                  await this.assertCurrentSources(
+                    input,
+                    method === 'updateBundles' ? req.body?.bundleProductIds : [],
+                  );
                   const result = await handler();
                   if (['quote', 'validateForSubmit'].includes(method)) return result;
                   const id = method === 'create' ? (result as { id: string }).id : input.id;
@@ -159,5 +88,85 @@ export class AccessContractPreparationActions implements OnModuleInit {
             ).result,
         };
       });
+  }
+  /** Intrinsic preparation dependencies, shared by submit without granting read access.
+   * The caller owns the exact action/source proof and Serializable transaction. */
+  async assertCurrentSources(
+    input: { branchId: string; customerId: string; productId: string; bundleProductIds?: string[] },
+    next: string[] | undefined = [],
+  ): Promise<void> {
+    const ctx = currentDomainAccess();
+    if (
+      !ctx ||
+      ctx.scopeReads ||
+      ctx.scope.company !== 'SHOP' ||
+      ctx.isolationLevel !== 'Serializable'
+    )
+      throw new ForbiddenException('ต้องตรวจสิทธิ์ปัจจุบันในธุรกรรมเดียวกัน');
+    const tx = ctx.client;
+    const permission = ctx.scope.permission;
+    if (
+      !input ||
+      typeof input.customerId !== 'string' ||
+      typeof input.productId !== 'string' ||
+      typeof input.branchId !== 'string'
+    )
+      throw new BadRequestException('ข้อมูลต้นทางไม่ถูกต้อง');
+    const destination = await this.resources.branch(tx, input.branchId, true);
+    if (destination.company !== 'SHOP' || !canAccess(ctx.snapshot, permission, destination))
+      throw new ForbiddenException('ไม่มีสิทธิ์เตรียมสัญญาที่สาขานี้');
+    // Genuine pre-parent Customer evidence, independent of the destination.
+    // Lock every current contributing identity source before querying the predicate.
+    await this.parties.customer(tx, input.customerId, true, false, true);
+    const liveCompanies = await tx.companyInfo.findMany({
+      where: {
+        companyCode: { in: ['SHOP', 'FINANCE'] },
+        isActive: true,
+        deletedAt: null,
+      },
+      select: { companyCode: true },
+    });
+    if (
+      !(await tx.customer.count({
+        where: {
+          id: input.customerId,
+          mergedIntoId: null,
+          OR: (['SHOP', 'FINANCE'] as const)
+            .filter((company) => liveCompanies.some((row) => row.companyCode === company))
+            .map((company) =>
+              customerPartyWhere(preparationScope(ctx.snapshot, 'customers.read', company)),
+            ),
+        },
+      }))
+    )
+      throw new ForbiddenException('ไม่มีสิทธิ์อ่านลูกค้าต้นทาง');
+    if (
+      input.bundleProductIds != null &&
+      (!Array.isArray(input.bundleProductIds) ||
+        input.bundleProductIds.some((id: unknown) => typeof id !== 'string'))
+    )
+      throw new BadRequestException('สินค้าของแถมไม่ถูกต้อง');
+    if (
+      next != null &&
+      (!Array.isArray(next) || next.some((id: unknown) => typeof id !== 'string'))
+    )
+      throw new BadRequestException('สินค้าของแถมไม่ถูกต้อง');
+    if (
+      (input.bundleProductIds?.length ?? 0) > MAX_CONTRACT_BUNDLES ||
+      (next?.length ?? 0) > MAX_CONTRACT_BUNDLES
+    )
+      throw new BadRequestException('ของแถมต่อสัญญาได้ไม่เกิน 10 ชิ้น');
+    const ids = [
+      ...new Set<string>([input.productId, ...(input.bundleProductIds ?? []), ...(next ?? [])]),
+    ].sort();
+    for (const id of ids) {
+      const source = await this.resources.product(tx, id, true);
+      if (
+        source.company !== 'SHOP' ||
+        source.branchId !== input.branchId ||
+        !canAccess(ctx.snapshot, 'products.read', source)
+      )
+        throw new ForbiddenException('ไม่มีสิทธิ์อ่านสินค้าต้นทาง');
+    }
   }
 }

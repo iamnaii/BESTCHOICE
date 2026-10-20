@@ -620,6 +620,14 @@ it('denies non-owner maker/checker and requires reason for current owner self-ap
       'FINANCE',
     ),
   ).rejects.toMatchObject({ status: 400 });
+  await expect(
+    execute(
+      owner,
+      () => workflow.approveContract(f.contract.id, owner, 'OWNER', 'x'.repeat(2001)),
+      'contracts.approve',
+      'FINANCE',
+    ),
+  ).rejects.toMatchObject({ status: 400 });
   await execute(
     owner,
     () => workflow.approveContract(f.contract.id, owner, 'SALES', 'Synthetic owner review'),
@@ -631,6 +639,15 @@ it('denies non-owner maker/checker and requires reason for current owner self-ap
       where: { entityId: f.contract.id, action: 'CONTRACT_PROMOTION_OWNER_SELF_APPROVED' },
     }),
   ).toBe(1);
+  const selfApproval = await db.auditLog.findFirstOrThrow({
+    where: { entityId: f.contract.id, action: 'CONTRACT_PROMOTION_OWNER_SELF_APPROVED' },
+  });
+  expect(selfApproval.newValue).toEqual({
+    makerId: owner,
+    checkerId: owner,
+    reason: 'Synthetic owner review',
+    fingerprint: f.contract.promotionFingerprint,
+  });
   const own = await signed();
   const a = await grant(seller, ['contracts.approve'], 'FINANCE');
   try {

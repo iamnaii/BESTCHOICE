@@ -40,6 +40,7 @@ import { assertContractCreditApproval } from '../credit-check/services/credit-ap
 import { lockCreditCustomer } from '../credit-check/services/room-credit-history';
 import { JourneyEntryWriter } from '../customer-journey/journey-entry-writer.service';
 import { journeyDedupeKey } from '../customer-journey/journey-data-schemas';
+import { exchangeActor } from '../employee-access/access-exchange-source.service';
 
 @Injectable()
 export class ContractWorkflowService {
@@ -64,12 +65,28 @@ export class ContractWorkflowService {
   private get prisma() { return domainAccessClient(this.basePrisma); }
 
   private async transitionContract(id: string, action: 'prepare' | 'contracts.approve' | 'contracts.activate', userId?: string) {
+    if (action !== 'contracts.activate') {
+      const execution = await exchangeActor(this.basePrisma, userId);
+      if (execution) namedExecution(userId);
+    }
     if (currentDomainAccess()) await this.prisma.$queryRaw`SELECT id FROM contracts WHERE id = ${id} FOR UPDATE`;
     if (currentDomainAccess()) {
       await this.prisma.$queryRaw`SELECT id FROM signatures WHERE contract_id = ${id} ORDER BY id FOR SHARE`;
       await this.prisma.$queryRaw`SELECT id FROM contract_documents WHERE contract_id = ${id} ORDER BY id FOR SHARE`;
+      if (action !== 'contracts.activate') {
+        // These are internal validation/hash dependencies, not extra detail read grants.
+        await this.prisma.$queryRaw`SELECT cu.id FROM customers cu JOIN contracts c ON c.customer_id=cu.id WHERE c.id=${id} FOR SHARE OF cu`;
+        if (action === 'prepare') {
+          await this.prisma.$queryRaw`SELECT id FROM credit_checks WHERE contract_id=${id} ORDER BY id FOR SHARE`;
+          await this.prisma.$queryRaw`SELECT p.id FROM pdpa_consents p JOIN contracts c ON c.pdpa_consent_id=p.id WHERE c.id=${id} FOR SHARE OF p`;
+        }
+      }
     }
     const contract = await this.findOne(id);
+    if (currentDomainAccess() && !contract.promotionFingerprint) {
+      if (action === 'prepare') await assertNamedPreparation(contract, userId);
+      else if (action === 'contracts.approve') await assertNamedContractAction(id, action);
+    }
     if (contract.promotionFingerprint) {
       namedExecution(userId);
       if (action === 'prepare') await assertNamedPreparation(contract, userId);
@@ -212,7 +229,7 @@ export class ContractWorkflowService {
       throw new BadRequestException('สัญญาต้องอยู่ในสถานะ กำลังสร้าง หรือ ปฏิเสธ เท่านั้น');
     }
 
-    // Only the salesperson who created it can submit
+    // Only the current persisted salesperson can submit; owner cannot substitute.
     if (contract.salespersonId !== userId) {
       throw new ForbiddenException('เฉพาะพนักงานที่สร้างสัญญาเท่านั้นที่สามารถส่งตรวจสอบ');
     }
@@ -285,7 +302,7 @@ export class ContractWorkflowService {
     const contractHash = this.computeContractHash(contract);
 
     await this.prisma.contract.update({
-      where: { id },
+      where: { id, ...(currentDomainAccess() ? { status: 'DRAFT', workflowStatus: contract.workflowStatus, salespersonId: userId } : {}) },
       data: {
         workflowStatus: 'PENDING_REVIEW',
         contractHash,
@@ -297,6 +314,7 @@ export class ContractWorkflowService {
         hasAcknowledgement: true,
       },
     });
+    await this.recordDecisionAudit(contract, 'PENDING_REVIEW');
 
     return this.findOne(id, { id: userId, role: userRole });
   }
@@ -315,14 +333,29 @@ export class ContractWorkflowService {
     this.verifyContractHash(contract, 'APPROVED');
 
     // Prevent self-approval: salesperson cannot approve their own contract
-    // Exception: OWNER can always approve (for small business where owner is also salesperson)
-    if (contract.salespersonId === userId && !(contract.promotionFingerprint ? namedExecution(userId).snapshot.isOwner : userRole === 'OWNER')) {
+    // The preexisting protected-owner exception uses current authority for managed work.
+    if (contract.salespersonId === userId && !(currentDomainAccess()?.snapshot.isOwner ?? (userRole === 'OWNER'))) {
       throw new ForbiddenException('ไม่สามารถอนุมัติสัญญาที่ตัวเองสร้างได้');
     }
 
-    if (contract.promotionFingerprint && contract.salespersonId === userId) {
-      if (!reviewNotes?.trim()) throw new BadRequestException('เจ้าของอนุมัติสัญญาตัวเองต้องระบุเหตุผล');
-      await this.prisma.auditLog.create({ data: { userId, action: 'CONTRACT_PROMOTION_OWNER_SELF_APPROVED', entity: 'contract', entityId: id, newValue: { makerId: userId, checkerId: userId, reason: reviewNotes.trim(), fingerprint: contract.promotionFingerprint } } });
+    if ((currentDomainAccess() || contract.promotionFingerprint) && contract.salespersonId === userId) {
+      const reason = reviewNotes?.trim();
+      if (!reason || reason.length > 2000)
+        throw new BadRequestException('เจ้าของอนุมัติสัญญาตัวเองต้องระบุเหตุผลไม่เกิน 2000 ตัวอักษร');
+      await this.prisma.auditLog.create({
+        data: {
+          userId,
+          action: contract.promotionFingerprint ? 'CONTRACT_PROMOTION_OWNER_SELF_APPROVED' : 'CONTRACT_OWNER_SELF_APPROVED',
+          entity: 'contract',
+          entityId: id,
+          newValue: {
+            makerId: contract.salespersonId,
+            checkerId: userId,
+            reason,
+            ...(contract.promotionFingerprint ? { fingerprint: contract.promotionFingerprint } : {}),
+          },
+        },
+      });
     }
 
     // Check age for guardian requirement
@@ -358,7 +391,7 @@ export class ContractWorkflowService {
 
     const reviewedAt = new Date();
     await this.prisma.contract.update({
-      where: { id },
+      where: { id, ...(currentDomainAccess() ? { workflowStatus: 'PENDING_REVIEW', salespersonId: contract.salespersonId } : {}) },
       data: {
         workflowStatus: 'APPROVED',
         reviewedById: userId,
@@ -366,6 +399,7 @@ export class ContractWorkflowService {
         reviewNotes,
       },
     });
+    await this.recordDecisionAudit(contract, 'APPROVED');
     await this.recordReviewRound(contract, 'APPROVED', userId, reviewedAt);
 
     return this.findOne(id);
@@ -379,14 +413,15 @@ export class ContractWorkflowService {
       throw new BadRequestException('สัญญาต้องอยู่ในสถานะ รอตรวจสอบ');
     }
 
-    // OWNER can always reject (for small business where owner is also salesperson)
-    if (contract.salespersonId === userId && !(contract.promotionFingerprint ? namedExecution(userId).snapshot.isOwner : userRole === 'OWNER')) {
+    // Preserve the existing protected-owner self-rejection exception.
+    if (contract.salespersonId === userId && !(currentDomainAccess()?.snapshot.isOwner ?? (userRole === 'OWNER'))) {
       throw new ForbiddenException('ไม่สามารถปฏิเสธสัญญาที่ตัวเองสร้างได้');
     }
+    if (!reviewNotes?.trim()) throw new BadRequestException('ต้องระบุเหตุผลปฏิเสธสัญญา');
 
     const reviewedAt = new Date();
     await this.prisma.contract.update({
-      where: { id },
+      where: { id, ...(currentDomainAccess() ? { workflowStatus: 'PENDING_REVIEW', salespersonId: contract.salespersonId } : {}) },
       data: {
         workflowStatus: 'REJECTED',
         reviewedById: userId,
@@ -394,9 +429,34 @@ export class ContractWorkflowService {
         reviewNotes,
       },
     });
+    await this.recordDecisionAudit(contract, 'REJECTED');
     await this.recordReviewRound(contract, 'REJECTED', userId, reviewedAt);
 
     return this.findOne(id);
+  }
+
+  /** Managed transitions require durable proof in their actual owned transaction.
+   * No raw review notes, customer identity, signature or storage metadata. */
+  private async recordDecisionAudit(
+    contract: { id: string; salespersonId: string },
+    workflowStatus: 'PENDING_REVIEW' | 'APPROVED' | 'REJECTED',
+  ): Promise<void> {
+    const ctx = currentDomainAccess();
+    if (!ctx) return; // Explicit unmigrated compatibility; named execution is already strict.
+    await ctx.client.auditLog.create({
+      data: {
+        userId: ctx.snapshot.userId,
+        action: workflowStatus === 'PENDING_REVIEW' ? 'CONTRACT_SUBMITTED_FOR_REVIEW'
+          : workflowStatus === 'APPROVED' ? 'CONTRACT_REVIEW_APPROVED' : 'CONTRACT_REVIEW_REJECTED',
+        entity: 'contract',
+        entityId: contract.id,
+        newValue: {
+          makerId: contract.salespersonId,
+          checkerId: workflowStatus === 'PENDING_REVIEW' ? null : ctx.snapshot.userId,
+          workflowStatus,
+        },
+      },
+    });
   }
 
   /**

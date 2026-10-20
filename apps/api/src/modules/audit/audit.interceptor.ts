@@ -116,7 +116,7 @@ export class AuditInterceptor implements NestInterceptor {
   private isManagedSafeRead(context: ExecutionContext): boolean {
     if (this.isSharedReference(context)) return true;
     if (context.switchToHttp().getRequest().user?.access?.managed !== true) return false;
-    if (context.getClass() === ContractsController && [ContractsController.prototype.findAll, ContractsController.prototype.findOne, ContractsController.prototype.quote, ContractsController.prototype.create, ContractsController.prototype.update, ContractsController.prototype.updateBundles, ContractsController.prototype.validateForSubmit].some(handler => handler === context.getHandler())) return true;
+    if (context.getClass() === ContractsController && [ContractsController.prototype.findAll, ContractsController.prototype.findOne, ContractsController.prototype.quote, ContractsController.prototype.create, ContractsController.prototype.update, ContractsController.prototype.updateBundles, ContractsController.prototype.validateForSubmit, ContractsController.prototype.submitForReview, ContractsController.prototype.approve, ContractsController.prototype.reject].some(handler => handler === context.getHandler())) return true;
     if (context.getClass() === DefectExchangeController && [
       DefectExchangeController.prototype.getEligibility, DefectExchangeController.prototype.execute,
       DefectExchangeController.prototype.list,

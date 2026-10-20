@@ -31,6 +31,8 @@ function pendingContract() {
 
 function build(withWriter = true) {
   const prisma = {
+    // This suite describes explicitly unmigrated compatibility; managed execution is PG-covered.
+    user: { findUnique: jest.fn().mockResolvedValue({ accessManaged: false }) },
     contract: {
       findUnique: jest.fn().mockResolvedValue(pendingContract()),
       update: jest.fn().mockResolvedValue({}),

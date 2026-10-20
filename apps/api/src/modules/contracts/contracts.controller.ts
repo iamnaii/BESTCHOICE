@@ -1,3 +1,4 @@
+import { currentDomainAccess, onDomainCommit } from '../employee-access/access-execution-context';
 import { Throttle } from '@nestjs/throttler';
 import { ContractsListQueryDto } from './dto/contracts-list-query.dto';
 import { ContractQuoteDto } from './dto/contract-quote.dto';
@@ -225,11 +226,11 @@ export class ContractsController {
     @CurrentUser() user: { id: string; role: string; branchId: string | null },
   ) {
     // Enforce branch-level access before activation
-    await this.contractsService.findOne(id, user);
-    const activated = await this.workflowService.activate(id);
-    // การเดินทางของลูกค้า: contracts ไม่มี activatedAt และ activate(id) ไม่รับผู้ใช้ ⇒ บันทึกที่นี่หลัง tx ของ activate commit แล้ว
+    if (!currentDomainAccess()) await this.contractsService.findOne(id, user);
+    const activated = await this.workflowService.activate(id, user.id);
+    // Journey is controller-owned; managed activation defers it to the actual outer commit.
     // recordAfterCommit ไม่โยน error — สัญญาเปิดสำเร็จแล้วต้องคืนผลเสมอ · ไม่คัดลอกข้อมูลลูกค้า (PDPA)
-    await this.journeyEntries.recordAfterCommit({
+    const record = async () => { await this.journeyEntries.recordAfterCommit({
       customerId: activated.customerId,
       kind: 'CONTRACT_ACTIVATED',
       occurredAt: new Date(),
@@ -243,7 +244,8 @@ export class ContractsController {
         monthlyPayment: d(activated.monthlyPayment).toDecimalPlaces(2).toNumber(),
       },
       dedupeKey: journeyDedupeKey('CONTRACT_ACTIVATED', activated.id),
-    });
+    }); };
+    if (currentDomainAccess()) onDomainCommit(record); else await record();
     return activated;
   }
 

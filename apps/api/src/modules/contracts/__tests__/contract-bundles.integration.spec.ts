@@ -272,7 +272,7 @@ describe('ของแถมในสัญญาผ่อน — วงจร�
       ),
     ).rejects.toThrow('สินค้าไม่พร้อมขาย หรือถูกขายไปแล้ว');
 
-    await workflow.activate(contract.id);
+    await workflow.activate(contract.id, adminId);
 
     expect(await statusOf(phone.id)).toBe('SOLD_INSTALLMENT');
     expect(await statusOf(caseA.id)).toBe('SOLD_CASH');

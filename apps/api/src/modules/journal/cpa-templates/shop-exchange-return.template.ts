@@ -60,6 +60,7 @@ export class ShopExchangeReturnTemplate {
   async execute(
     input: ShopExchangeReturnInput,
     tx?: Prisma.TransactionClient,
+    postedAt?: Date,
   ): Promise<{ id: string; entryNumber: string }> {
     const buyback = new Decimal(input.buyback.toString());
     if (buyback.lte(0)) {
@@ -75,6 +76,7 @@ export class ShopExchangeReturnTemplate {
 
     return this.journal.createAndPost(
       {
+        postedAt,
         description: `Exchange A.4 — SHOP ซื้อเครื่องเดิมคืนที่ราคารับซื้อ (product ${input.oldProductId})`,
         // requestId suffix (C1b): journal_entries has a unique (referenceType,
         // referenceId) constraint — the canceled lifecycle's still-POSTED A.4

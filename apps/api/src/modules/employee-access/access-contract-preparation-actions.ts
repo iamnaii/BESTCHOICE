@@ -115,6 +115,18 @@ export class AccessContractPreparationActions implements OnModuleInit {
     const destination = await this.resources.branch(tx, input.branchId, true);
     if (destination.company !== 'SHOP' || !canAccess(ctx.snapshot, permission, destination))
       throw new ForbiddenException('ไม่มีสิทธิ์เตรียมสัญญาที่สาขานี้');
+    await this.assertRelatedSources(input, next);
+  }
+  /** Shared current Customer/Product dependencies. FINANCE activation consumes the
+   * same read proof without acquiring a SHOP preparation action or maker grant. */
+  async assertRelatedSources(
+    input: { branchId: string; customerId: string; productId: string; bundleProductIds?: string[] },
+    next: string[] | undefined = [],
+  ): Promise<void> {
+    const ctx = currentDomainAccess();
+    if (!ctx || ctx.scopeReads || ctx.isolationLevel !== 'Serializable')
+      throw new ForbiddenException('ต้องตรวจสิทธิ์ปัจจุบันในธุรกรรมเดียวกัน');
+    const tx = ctx.client;
     // Genuine pre-parent Customer evidence, independent of the destination.
     // Lock every current contributing identity source before querying the predicate.
     await this.parties.customer(tx, input.customerId, true, false, true);

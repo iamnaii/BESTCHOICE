@@ -181,7 +181,7 @@ describe('approved credit → real create/sign/activate → partial/complete pay
     await Promise.all(pdfJobs);
     await workflow.submitForReview(contractId, ownerId, 'OWNER');
     await workflow.approveContract(contractId, ownerId, 'OWNER', 'Synthetic approval');
-    await workflow.activate(contractId);
+    await workflow.activate(contractId, ownerId);
   }
 
   it('uses base value as cash-sale tender, bonus once, then restores credit on void', async () => {
@@ -498,7 +498,7 @@ describe('approved credit → real create/sign/activate → partial/complete pay
     expect(await db.signature.count({ where: { contractId, deletedAt: null } })).toBe(4);
     await workflow.submitForReview(contractId, ownerId, 'OWNER');
     await workflow.approveContract(contractId, ownerId, 'OWNER', 'Synthetic approval');
-    await workflow.activate(contractId);
+    await workflow.activate(contractId, ownerId);
     const active = await db.contract.findUniqueOrThrow({ where: { id: contractId } });
     expect(active.status).toBe('ACTIVE');
     expect(active.contractHash).toMatch(/^[a-f0-9]{64}$/);

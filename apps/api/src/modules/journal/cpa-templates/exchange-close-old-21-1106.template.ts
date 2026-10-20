@@ -55,6 +55,7 @@ export class ExchangeCloseOld21_1106Template {
   async execute(
     input: ExchangeCloseOldInput,
     tx?: Prisma.TransactionClient,
+    postedAt?: Date,
   ): Promise<{ id: string; entryNumber: string }> {
     // วิธีสุทธิ: plug = balancing figure ของบรรทัดคงที่ทั้งหมด (ไม่มีขา 41-1101)
     const threshold = input.oldGrossOutstanding.plus(input.oldVatReceivableOutstanding);
@@ -132,6 +133,7 @@ export class ExchangeCloseOld21_1106Template {
 
     return this.journal.createAndPost(
       {
+        postedAt,
         description: `Exchange A.2 — close old contract ${input.oldContractId}`,
         metadata: {
           flow: 'exchange-close-old-21-1106',

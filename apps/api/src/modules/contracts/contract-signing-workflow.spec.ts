@@ -155,6 +155,7 @@ describe('Contract Signing & Workflow', () => {
     mockCheckAgeEligibility.mockReturnValue({ eligible: true, requiresGuardian: false });
 
     txMock = {
+      user: { findUnique: jest.fn().mockResolvedValue({ id: 'activation-actor', role: 'OWNER', accessManaged: false, isActive: true, isSystemUser: false, deletedAt: null }) },
       $queryRaw: jest.fn().mockResolvedValue([]),
       // activate → closeRepossessionOnSale (2026-09-05): เครื่องปกติ = 0 แถว
       repossession: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
@@ -232,7 +233,7 @@ describe('Contract Signing & Workflow', () => {
       // ก้อน 5 — claimInputVatOnActivation อ่านใบรับของของเครื่องหลัก (null = ไม่มีใบรับของ → NOT_ELIGIBLE ไม่โพสต์ JE)
       goodsReceivingItem: { findUnique: jest.fn().mockResolvedValue(null) },
       user: {
-        findUnique: jest.fn().mockResolvedValue({ role: 'SALES' }),
+        findUnique: jest.fn().mockImplementation(async ({ where }: { where: { id: string } }) => where.id === 'activation-actor' ? { id: where.id, role: 'OWNER', accessManaged: false, isActive: true, isSystemUser: false, deletedAt: null } : { role: 'SALES', accessManaged: false }),
       },
       interestConfig: {
         findFirst: jest.fn().mockResolvedValue(null),
@@ -560,7 +561,7 @@ describe('Contract Signing & Workflow', () => {
       prisma.contract.findUnique.mockResolvedValue(approvedContract());
       txMock.contract.findUnique.mockResolvedValue(approvedContract());
 
-      await workflowService.activate('contract-1');
+      await workflowService.activate('contract-1', 'activation-actor');
       expect(prisma.$transaction).toHaveBeenCalled();
       expect(txMock.product.updateMany).toHaveBeenCalledWith({
         where: { id: 'product-1', status: 'RESERVED', deletedAt: null }, data: { status: 'SOLD_INSTALLMENT' },
@@ -572,7 +573,7 @@ describe('Contract Signing & Workflow', () => {
         makeContract({ workflowStatus: 'APPROVED', status: 'DRAFT', pdpaConsentId: null }),
       );
 
-      await expect(workflowService.activate('contract-1'))
+      await expect(workflowService.activate('contract-1', 'activation-actor'))
         .rejects.toThrow('PDPA');
     });
 
@@ -590,7 +591,7 @@ describe('Contract Signing & Workflow', () => {
         }),
       );
 
-      await expect(workflowService.activate('contract-1'))
+      await expect(workflowService.activate('contract-1', 'activation-actor'))
         .rejects.toThrow('ผู้ซื้อ');
     });
 
@@ -607,7 +608,7 @@ describe('Contract Signing & Workflow', () => {
         }),
       );
 
-      await expect(workflowService.activate('contract-1'))
+      await expect(workflowService.activate('contract-1', 'activation-actor'))
         .rejects.toThrow('พยาน');
     });
 
@@ -616,7 +617,7 @@ describe('Contract Signing & Workflow', () => {
         makeContract({ workflowStatus: 'CREATING', status: 'DRAFT' }),
       );
 
-      await expect(workflowService.activate('contract-1'))
+      await expect(workflowService.activate('contract-1', 'activation-actor'))
         .rejects.toThrow('อนุมัติ');
     });
 
@@ -625,7 +626,7 @@ describe('Contract Signing & Workflow', () => {
         makeContract({ workflowStatus: 'APPROVED', status: 'ACTIVE' }),
       );
 
-      await expect(workflowService.activate('contract-1'))
+      await expect(workflowService.activate('contract-1', 'activation-actor'))
         .rejects.toThrow('DRAFT');
     });
 
@@ -636,7 +637,7 @@ describe('Contract Signing & Workflow', () => {
         status: 'SOLD_CASH',
       });
 
-      await expect(workflowService.activate('contract-1'))
+      await expect(workflowService.activate('contract-1', 'activation-actor'))
         .rejects.toThrow('สินค้าไม่พร้อม');
     });
 
@@ -660,7 +661,7 @@ describe('Contract Signing & Workflow', () => {
         }),
       );
 
-      await expect(workflowService.activate('contract-1'))
+      await expect(workflowService.activate('contract-1', 'activation-actor'))
         .rejects.toThrow('ผู้ปกครอง');
     });
   });
@@ -715,7 +716,7 @@ describe('Contract Signing & Workflow', () => {
         makeContract({ workflowStatus: 'APPROVED', status: 'ACTIVE' }),
       );
 
-      await expect(workflowService.activate('contract-1'))
+      await expect(workflowService.activate('contract-1', 'activation-actor'))
         .rejects.toThrow('DRAFT');
     });
   });

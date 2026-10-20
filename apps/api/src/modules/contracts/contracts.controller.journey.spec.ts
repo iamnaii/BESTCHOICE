@@ -42,7 +42,7 @@ describe('ContractsController.activate — บันทึก CONTRACT_ACTIVATED
 
     expect(res).toBe(ACTIVATED);
     expect(contractsService.findOne).toHaveBeenCalledWith('contract-1', USER);
-    expect(workflowService.activate).toHaveBeenCalledWith('contract-1');
+    expect(workflowService.activate).toHaveBeenCalledWith('contract-1', USER.id);
     expect(journeyEntries.recordAfterCommit).toHaveBeenCalledTimes(1);
     const entry = journeyEntries.recordAfterCommit.mock.calls[0][0];
     expect(entry).toEqual({

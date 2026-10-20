@@ -1,6 +1,7 @@
+import { AccessResource } from '@installment/shared';
 import { Optional } from '@nestjs/common';
 import { AccessExchangeSourceService, ExchangeDestinations, exchangeActor, exchangeContractSource } from '../employee-access/access-exchange-source.service';
-import { currentDomainAccess, domainAccessClient } from '../employee-access/access-execution-context';
+import { currentDomainAccess, domainAccessClient, DomainAccessExecution, isCurrentDomainClient } from '../employee-access/access-execution-context';
 import { bkkYyyymmdd } from '../../utils/document-number-format.util';
 import { Injectable, BadRequestException, ConflictException, ForbiddenException, InternalServerErrorException, NotFoundException } from '@nestjs/common';
 import { Prisma, ProductCategory } from '@prisma/client';
@@ -83,6 +84,9 @@ export interface ExchangeContractForFinalize {
   productCostPrice: Prisma.Decimal | string | number | null;
 }
 
+// Opaque, process-local proof of the exact pre-transfer source. Never accepted
+// from JSON, never shared across transaction attempts or service instances.
+type ActivationReceipt = object;
 @Injectable()
 export class ContractExchangeService {
   constructor(
@@ -99,6 +103,84 @@ export class ContractExchangeService {
     private readonly installmentInputVatTemplate: InstallmentInputVatTemplate,
     @Optional() private readonly access?: AccessExchangeSourceService,
   ) {}
+
+  private readonly activationReceipts = new WeakMap<ActivationReceipt, {
+    execution: DomainAccessExecution;
+    requestId: string;
+    oldContractId: string;
+    newContractId: string;
+    oldProductId: string;
+    newProductId: string;
+    customerId: string;
+    sources: readonly AccessResource[];
+    oldStatus: string;
+    oldProductStatus: string;
+    oldOwnerId: string | null;
+    oldBranchId: string;
+    newBranchId: string;
+  }>();
+
+  async prepareActivation(newContractId: string, tx: Prisma.TransactionClient): Promise<ActivationReceipt> {
+    const ctx = await exchangeActor(this.basePrisma, undefined, tx);
+    if (!ctx || !this.access || ctx.isolationLevel !== 'Serializable' ||
+      ctx.scope.company !== 'FINANCE' || ctx.scope.permission !== 'contracts.activate')
+      throw new ForbiddenException('ต้องตรวจสิทธิ์เปลี่ยนเครื่องในธุรกรรมเดียวกัน');
+    const identity = await tx.contractExchangeRequest.findFirst({
+      where: { newContractId, deletedAt: null }, select: { id: true },
+    });
+    if (!identity) throw new ForbiddenException('ไม่พบคำขอเปลี่ยนเครื่องปัจจุบัน');
+    const { request: req, sources } = await this.access.request(identity.id, 'contract-exchanges.update', 'finalize');
+    this.access.assert('contracts.update', [
+      await exchangeContractSource(tx, req.oldContractId),
+      await exchangeContractSource(tx, newContractId),
+    ]);
+    this.access.assert('contracts.activate', [await exchangeContractSource(tx, newContractId)]);
+    const replacement = await tx.contract.findUniqueOrThrow({ where: { id: newContractId },
+      include: { product: { include: { ownedBy: true, branch: { include: { company: true } } } } } });
+    const old = await tx.contract.findUniqueOrThrow({ where: { id: req.oldContractId }, include: { product: true } });
+    if (req.status !== 'APPROVED' || req.mode !== 'PRICED' || req.newContractId !== newContractId ||
+      replacement.exchangedFromContractId !== req.oldContractId || replacement.productId !== req.newProductId ||
+      replacement.customerId !== old.customerId || old.productId !== req.oldProductId ||
+      replacement.status !== 'DRAFT' || replacement.workflowStatus !== 'APPROVED' ||
+      replacement.product.deletedAt || replacement.product.branchId !== replacement.branchId ||
+      !['RESERVED', 'IN_STOCK'].includes(replacement.product.status) ||
+      (replacement.product.ownedBy ?? replacement.product.branch.company)?.companyCode !== 'SHOP')
+      throw new ForbiddenException('คำขอเปลี่ยนเครื่องไม่ตรงกับสัญญาปัจจุบัน');
+    const receipt = Object.freeze(Object.create(null)) as ActivationReceipt;
+    this.activationReceipts.set(receipt, { execution: ctx, requestId: req.id,
+      oldContractId: req.oldContractId, newContractId, oldProductId: req.oldProductId,
+      newProductId: req.newProductId, customerId: replacement.customerId, sources, oldStatus: old.status,
+      oldProductStatus: old.product.status, oldOwnerId: old.product.ownedByCompanyId,
+      oldBranchId: old.branchId, newBranchId: replacement.branchId });
+    return receipt;
+  }
+
+  private async consumeActivationReceipt(receipt: ActivationReceipt, newContract: ExchangeContractForFinalize, tx: Prisma.TransactionClient) {
+    const proof = this.activationReceipts.get(receipt);
+    this.activationReceipts.delete(receipt);
+    const ctx = currentDomainAccess();
+    if (!proof || proof.execution !== ctx || !isCurrentDomainClient(tx) ||
+      proof.newContractId !== newContract.id || proof.oldContractId !== newContract.exchangedFromContractId ||
+      proof.newProductId !== newContract.productId)
+      throw new ForbiddenException('หลักฐานเปิดสัญญาเปลี่ยนเครื่องไม่ตรงกับธุรกรรม');
+    const req = await tx.contractExchangeRequest.findUniqueOrThrow({ where: { id: proof.requestId } });
+    const replacement = await tx.contract.findUniqueOrThrow({ where: { id: proof.newContractId }, include: { product: { include: { ownedBy: true } } } });
+    const old = await tx.contract.findUniqueOrThrow({ where: { id: proof.oldContractId }, include: { product: true } });
+    if (req.deletedAt || req.status !== 'APPROVED' || req.mode !== 'PRICED' ||
+      req.oldContractId !== proof.oldContractId || req.newContractId !== proof.newContractId ||
+      req.oldProductId !== proof.oldProductId || req.newProductId !== proof.newProductId ||
+      old.deletedAt || old.customerId !== proof.customerId || old.productId !== proof.oldProductId ||
+      old.status !== proof.oldStatus || old.branchId !== proof.oldBranchId || old.product.deletedAt ||
+      old.product.status !== proof.oldProductStatus || old.product.ownedByCompanyId !== proof.oldOwnerId ||
+      replacement.branchId !== proof.newBranchId || replacement.product.branchId !== proof.newBranchId ||
+      replacement.deletedAt || replacement.exchangedFromContractId !== proof.oldContractId ||
+      replacement.customerId !== proof.customerId || replacement.productId !== proof.newProductId ||
+      replacement.status !== 'ACTIVE' || replacement.workflowStatus !== 'APPROVED' ||
+      replacement.product.deletedAt || replacement.product.status !== 'SOLD_INSTALLMENT' ||
+      replacement.product.ownedBy?.companyCode !== 'FINANCE')
+      throw new ForbiddenException('ข้อมูลเปลี่ยนเครื่องไม่ตรงกับหลักฐานเปิดสัญญา');
+    return { request: req };
+  }
 
   private get prisma() {
     return domainAccessClient(this.basePrisma);
@@ -900,6 +982,8 @@ export class ContractExchangeService {
     newContract: ExchangeContractForFinalize,
     tx: Prisma.TransactionClient,
     actor?: RequestUser,
+    activationReceipt?: ActivationReceipt,
+    postedAt?: Date,
   ): Promise<{
     je1aId: string;
     je2Id: string;
@@ -908,6 +992,7 @@ export class ContractExchangeService {
     je5Id: string | null;
   }> {
     const ctx = await exchangeActor(this.basePrisma, actor?.id, tx);
+    if (activationReceipt && !ctx) throw new ForbiddenException('หลักฐานต้องใช้ในธุรกรรมเดิม');
     if (ctx) {
       if (!this.access) throw new ForbiddenException('ไม่มีตัวตรวจแหล่งสิทธิ์เปลี่ยนเครื่อง');
       const identity = await tx.contractExchangeRequest.findFirst({
@@ -919,11 +1004,9 @@ export class ContractExchangeService {
         select: { id: true },
       });
       if (!identity) throw new ForbiddenException('ไม่มีคำขอเปลี่ยนเครื่องที่อนุมัติตรงกับสินค้า');
-      const { request: req } = await this.access.request(
-        identity.id,
-        'contract-exchanges.update',
-        'finalize',
-      );
+      const { request: req } = activationReceipt
+        ? await this.consumeActivationReceipt(activationReceipt, newContract, tx)
+        : await this.access.request(identity.id, 'contract-exchanges.update', 'finalize');
       if (
         req.status !== 'APPROVED' || req.mode !== 'PRICED' ||
         req.oldContractId !== newContract.exchangedFromContractId ||
@@ -1051,14 +1134,14 @@ export class ContractExchangeService {
     const oldOutstanding = await this.computeOldOutstanding(tx, oldContractId);
 
     // 4. JE A.1 — open new HP receivable
-    const je1a = await this.t1a.execute(newContract.id, tx);
+    const je1a = await this.t1a.execute(newContract.id, tx, postedAt);
 
     // ก้อน 5 (Q3) — เครื่องใหม่ของสัญญาเปลี่ยนเครื่องเคลมภาษีซื้อตามปกติ ลงวันเดียวกับ A.1; เครื่องเก่าที่คืน SHOP ไม่กลับรายการ (รอฝ่ายบัญชี)
     await claimInputVatOnActivation(tx, this.installmentInputVatTemplate, {
       contractId: newContract.id,
       contractNumber: newContract.contractNumber,
       productId: newContract.productId,
-      postedAt: new Date(),
+      postedAt: postedAt ?? new Date(),
     });
 
     // 4b. SHOP-side inventory transfer (F2 — CPA ตอบข้อ 3, 2026-08-01):
@@ -1095,6 +1178,7 @@ export class ContractExchangeService {
     const shopAcc = this.shopAccountResolver.resolveProductAccounts(newContract.productCategory);
     await this.shopInventoryTransferTemplate.execute(
       {
+        postedAt,
         // Same idempotencyKey SHAPE ContractWorkflowService.activate uses
         // (`shop-inventory-transfer:${contract.id}`) so a contract can never
         // double-post regardless of which activation path it goes through.
@@ -1128,13 +1212,14 @@ export class ContractExchangeService {
         oldDeferredVatOutstanding: oldOutstanding.deferredVat,
       },
       tx,
+      postedAt,
     );
 
     // 6. JE A.3 — ตั้งลูกหนี้-หน้าร้าน 11-2107 ล้างบัญชีพัก 21-1106
     // (คำสั่งเจ้าของ 2026-08-03): ไม่มีขาเงินสด และไม่แตะ 21-1101/21-1102 ของ
     // สัญญาใหม่ — เจ้าหนี้นั้นค้างไว้ให้รอบจ่าย INTER-CO ปกติ. `buyback` คือ
     // ยอดเดียวกับที่ A.2 พักไว้ที่ 21-1106 ดังนั้น 21-1106 net = 0 เสมอ.
-    const je3 = await this.t3.execute({ newContractId: newContract.id, buyback }, tx);
+    const je3 = await this.t3.execute({ newContractId: newContract.id, buyback }, tx, postedAt);
 
     // 7. JE A.4 — SHOP ซื้อเครื่องเดิมคืนที่ราคารับซื้อ (workbook 2026-08-19 Phase 1).
     // costPrice เดิมยังต้องมี (data quality) และถูก snapshot ไว้ให้ cancel restore.
@@ -1157,10 +1242,11 @@ export class ContractExchangeService {
         newContractId: newContract.id,
       },
       tx,
+      postedAt,
     );
 
     // JE A.5 — ECL reversal on derecognition (workbook Case 4, synchronous ใน tx เดียวกัน)
-    const je5 = await this.t5.execute({ oldContractId, requestId: request.id }, tx);
+    const je5 = await this.t5.execute({ oldContractId, requestId: request.id }, tx, postedAt);
     if (je5) {
       await (tx as any).badDebtProvision.updateMany({
         where: { contractId: oldContractId, status: 'ACTIVE', deletedAt: null },

@@ -515,7 +515,7 @@ describe('State diagram ของเครื่อง — flow จริงบ�
     const product = await seedProduct('DR-RACE');
     const customer = await seedCustomer('DR-RACE');
     const contract = await seedSignedDraftContract('DR-RACE', customer.id, product.id);
-    await workflow.activate(contract.id);
+    await workflow.activate(contract.id, adminId);
     const closer = new PrismaClient(); // independent connection for the winning financial transaction
     const approvalConfigBefore = await closer.systemConfig.findUnique({
       where: { key: PAYMENT_APPROVAL_PERMISSIONS_KEY },
@@ -647,7 +647,7 @@ describe('State diagram ของเครื่อง — flow จริงบ�
     const product = await seedProduct('DR-OK');
     const customer = await seedCustomer('DR-OK');
     const contract = await seedSignedDraftContract('DR-OK', customer.id, product.id);
-    await workflow.activate(contract.id);
+    await workflow.activate(contract.id, adminId);
     const { service, effects } = buildIntake(new DeviceReturnNumberService(prisma as never));
     const row = await service.create(intakeDto(contract.id), OWNER_USER());
     expect(row.status).toBe('PENDING_CONFIRM');
@@ -675,7 +675,7 @@ describe('State diagram ของเครื่อง — flow จริงบ�
       const product = await seedProduct(`DR-${action}`);
       const customer = await seedCustomer(`DR-${action}`);
       const contract = await seedSignedDraftContract(`DR-${action}`, customer.id, product.id);
-      await workflow.activate(contract.id);
+      await workflow.activate(contract.id, adminId);
       const intake = buildIntake(new DeviceReturnNumberService(prisma as never));
       const pending = await intake.service.create(intakeDto(contract.id), OWNER_USER());
       const closer = new PrismaClient();
@@ -825,7 +825,7 @@ describe('State diagram ของเครื่อง — flow จริงบ�
     const product = await seedProduct('DR-ROLLBACK');
     const customer = await seedCustomer('DR-ROLLBACK');
     const contract = await seedSignedDraftContract('DR-ROLLBACK', customer.id, product.id);
-    await workflow.activate(contract.id);
+    await workflow.activate(contract.id, adminId);
     const intake = buildIntake(new DeviceReturnNumberService(prisma as never));
     const pending = await intake.service.create(intakeDto(contract.id), OWNER_USER());
     const before = {
@@ -899,7 +899,7 @@ describe('State diagram ของเครื่อง — flow จริงบ�
     const c2 = await seedSignedDraftContract('A2', customer2.id, product.id);
 
     // --- สัญญาแรก: เปิดผ่าน flow จริง (1A + SHOP legs + ย้ายกรรมสิทธิ์ + ตารางงวด)
-    await workflow.activate(c1.id);
+    await workflow.activate(c1.id, adminId);
 
     const afterFirst = await prisma.product.findUniqueOrThrow({ where: { id: product.id } });
     expect(afterFirst.status).toBe('SOLD_INSTALLMENT');
@@ -909,7 +909,7 @@ describe('State diagram ของเครื่อง — flow จริงบ�
     );
 
     // --- สัญญาที่สองบนเครื่องเดียวกัน: ต้องแพ้ที่ด่านสินค้า
-    await expect(workflow.activate(c2.id)).rejects.toThrow(ACTIVATE_GUARD_MSG);
+    await expect(workflow.activate(c2.id, adminId)).rejects.toThrow(ACTIVATE_GUARD_MSG);
 
     const c2After = await prisma.contract.findUniqueOrThrow({ where: { id: c2.id } });
     expect(c2After.status).toBe('DRAFT');
@@ -956,7 +956,7 @@ describe('State diagram ของเครื่อง — flow จริงบ�
     const product = await seedProduct('C1');
     const customer = await seedCustomer('C1');
     const contract = await seedSignedDraftContract('C1', customer.id, product.id);
-    await workflow.activate(contract.id);
+    await workflow.activate(contract.id, adminId);
 
     const imei = product.imeiSerial as string;
 
@@ -1014,7 +1014,7 @@ describe('State diagram ของเครื่อง — flow จริงบ�
     const contract = await seedSignedDraftContract('D1', customer.id, oldProduct.id);
 
     // เครื่องเก่าเข้าสถานะ SOLD_INSTALLMENT ผ่าน flow จริง
-    await workflow.activate(contract.id);
+    await workflow.activate(contract.id, adminId);
 
     // --- ส่งคำขอ + อนุมัติเปลี่ยนเครื่อง (MEMO: ไม่มี JE)
     const request = (await exchangeService.submit(
@@ -1093,7 +1093,7 @@ describe('State diagram ของเครื่อง — flow จริงบ�
     const customer = await seedCustomer('E1');
     const buyer = await seedCustomer('E2');
     const contract = await seedSignedDraftContract('E1', customer.id, product.id);
-    await workflow.activate(contract.id);
+    await workflow.activate(contract.id, adminId);
     await seedPendingPayments(contract.id, 12);
     const inventoryBefore = await accountNet('S11-2002');
 
@@ -1226,7 +1226,7 @@ describe('State diagram ของเครื่อง — flow จริงบ�
     const product = await seedProduct('E3');
     const customer = await seedCustomer('E3');
     const contract = await seedSignedDraftContract('E3', customer.id, product.id);
-    await workflow.activate(contract.id);
+    await workflow.activate(contract.id, adminId);
     // This fixture represents a fully paid loan, so the real schedule must carry no unpaid debt.
     for (const payment of await prisma.payment.findMany({ where: { contractId: contract.id } })) {
       await prisma.payment.update({
@@ -1270,7 +1270,7 @@ describe('State diagram ของเครื่อง — flow จริงบ�
     const customer = await seedCustomer('F1');
     const buyer = await seedCustomer('F2');
     const contract = await seedSignedDraftContract('F1', customer.id, oldProduct.id);
-    await workflow.activate(contract.id);
+    await workflow.activate(contract.id, adminId);
 
     const request = (await exchangeService.submit(
       {

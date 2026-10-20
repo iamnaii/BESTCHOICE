@@ -280,7 +280,7 @@ describe('สมุดเงินหน้าร้าน + บิลจ่า�
   it('เงินดาวน์จ่ายผสม → เปิดใช้ → ยกเลิกสัญญา: ไม่ชน cash tripwire และเงินดาวน์ยังอยู่ที่ลิ้นชัก/ธนาคารตามจริง', async () => {
     const since = new Date();
     const { contract } = await seedDraftWithSplitDown('A1', { signed: true });
-    await workflow.activate(contract.id);
+    await workflow.activate(contract.id, adminId);
 
     // ค่าคอมพนักงานขาย (เจ้าของเคาะ 2026-09-20): เกิดตอนเปิดใช้สัญญา กติกาเดียวกับขายสด = อัตรา × ราคาขาย
     const rule = await prisma.commissionRule.findFirst({ where: { isActive: true, deletedAt: null }, orderBy: { createdAt: 'desc' } });

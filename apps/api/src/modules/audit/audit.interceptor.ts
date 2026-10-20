@@ -1,3 +1,4 @@
+import { PaymentApprovalController } from '../payments/payment-approval.controller';
 import { ContractExchangeController } from '../contract-exchange/contract-exchange.controller';
 import { CustomerAccessController } from '../customer-access/customer-access.controller';
 import { InterestConfigController } from '../interest-config/interest-config.controller';
@@ -131,7 +132,10 @@ export class AuditInterceptor implements NestInterceptor {
     if (this.isConsentHandler(context)) return true;
     if (this.isSharedReference(context)) return true;
     if (context.switchToHttp().getRequest().user?.access?.managed !== true) return false;
-    if (context.getClass() === ContractsController && [ContractsController.prototype.findAll, ContractsController.prototype.findOne, ContractsController.prototype.quote, ContractsController.prototype.create, ContractsController.prototype.update, ContractsController.prototype.updateBundles, ContractsController.prototype.validateForSubmit, ContractsController.prototype.submitForReview, ContractsController.prototype.approve, ContractsController.prototype.reject, ContractsController.prototype.activate, ContractsController.prototype.getSchedule, ContractsController.prototype.getEarlyPayoffQuote].some(handler => handler === context.getHandler())) return true;
+    if (context.getClass() === PaymentApprovalController &&
+        context.getHandler() === PaymentApprovalController.prototype.create &&
+        context.switchToHttp().getRequest().body?.action === 'EARLY_PAYOFF') return true;
+    if (context.getClass() === ContractsController && [ContractsController.prototype.findAll, ContractsController.prototype.findOne, ContractsController.prototype.quote, ContractsController.prototype.create, ContractsController.prototype.update, ContractsController.prototype.updateBundles, ContractsController.prototype.validateForSubmit, ContractsController.prototype.submitForReview, ContractsController.prototype.approve, ContractsController.prototype.reject, ContractsController.prototype.activate, ContractsController.prototype.getSchedule, ContractsController.prototype.getEarlyPayoffQuote, ContractsController.prototype.earlyPayoff].some(handler => handler === context.getHandler())) return true;
     if (context.getClass() === ContractExchangeController && [
       ContractExchangeController.prototype.submit, ContractExchangeController.prototype.preview,
       ContractExchangeController.prototype.listPending, ContractExchangeController.prototype.listRecent,

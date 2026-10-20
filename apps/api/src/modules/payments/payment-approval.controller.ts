@@ -28,6 +28,7 @@ import { ContractPaymentService } from '../contracts/contract-payment.service';
 import { INSTALLMENT_MONEY_RECEIPT_TYPES } from '../receipts/receipt-types.constants';
 import { RecordPaymentDto } from './dto/payment.dto';
 import { EarlyPayoffDto } from '../contracts/dto/contract.dto';
+import { createEarlyPayoffRequest } from './services/early-payoff-request';
 import {
   getPaymentApprovalPermissions,
   type PaymentApprovalPermission,
@@ -79,6 +80,39 @@ export class PaymentApprovalController {
   @Post()
   async create(@Body() input: CreatePaymentApprovalDto, @CurrentUser('id') userId: string) {
     if (!input.reason?.trim()) throw new BadRequestException('กรุณาระบุเหตุผลที่ขออนุมัติ');
+    if (input.action === 'EARLY_PAYOFF') {
+      return this.prisma.$transaction(async (tx) => {
+        // Owner compatibility on the not-yet-managed queue must not create an
+        // unmarked request. Lock persisted admission before reading source/money.
+        await tx.$queryRaw`SELECT id FROM users WHERE id=${userId} FOR SHARE`;
+        const admission = await tx.user.findUnique({
+          where: { id: userId },
+          select: { accessManaged: true },
+        });
+        if (!admission || admission.accessManaged)
+          throw new ForbiddenException('คำขอปิดยอดนี้ต้องใช้ขั้นตอนคำขอที่รองรับสิทธิ์ปัจจุบัน');
+        const { user } = await getPaymentApprovalPermissions(tx, userId);
+        if (!PAYMENT_APPROVAL_USER_ROLES.includes(user.role))
+          throw new ForbiddenException('ไม่มีสิทธิ์สร้างคำขอรับชำระ');
+        const contract = await tx.contract.findFirst({
+          where: { id: input.targetId, deletedAt: null },
+          select: { branchId: true },
+        });
+        if (!contract) throw new BadRequestException('ไม่พบสัญญา');
+        assertApprovalBranch(user, contract.branchId);
+        return createEarlyPayoffRequest(tx, this.contractPayment, {
+          targetId: input.targetId,
+          userId,
+          reason: input.reason,
+          payload: input.payload,
+        });
+      }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }).catch((error: unknown) => {
+        if (error instanceof Prisma.PrismaClientKnownRequestError &&
+            (error.code === 'P2034' || (error.code === 'P2010' && error.meta?.code === '40001')))
+          throw new ConflictException('ข้อมูลหรือสิทธิ์เปลี่ยนแปลง กรุณาส่งคำขอใหม่');
+        throw error;
+      });
+    }
     let payload: object = {};
     let requiredPermissions: PaymentApprovalPermission[];
     if (input.action === 'RECORD_PAYMENT') {
@@ -102,19 +136,6 @@ export class PaymentApprovalController {
         requiredPermissions.push('PAYMENT_TOLERANCE');
       if (!requiredPermissions.length) throw new BadRequestException('รับเงินปกติไม่ต้องขออนุมัติ');
       payload = dto;
-    } else if (input.action === 'EARLY_PAYOFF') {
-      const dto = await validated(EarlyPayoffDto, input.payload);
-      if (
-        dto.discountPct !== undefined &&
-        (typeof dto.discountPct !== 'number' ||
-          !Number.isFinite(dto.discountPct) ||
-          dto.discountPct < 0 ||
-          dto.discountPct > 100)
-      )
-        throw new BadRequestException('ส่วนลดต้องอยู่ระหว่าง 0 ถึง 100');
-      dto.paymentDate ??= new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' });
-      payload = dto;
-      requiredPermissions = ['EARLY_PAYOFF'];
     } else {
       if (Object.keys(input.payload).length)
         throw new BadRequestException('คำขอนี้ใช้ข้อมูลจากรายการต้นฉบับเท่านั้น');
@@ -132,15 +153,6 @@ export class PaymentApprovalController {
         );
         assertApprovalBranch(user, contract.branchId);
         let reviewSummary: object = {};
-        if (input.action === 'EARLY_PAYOFF') {
-          const dto = payload as EarlyPayoffDto;
-          reviewSummary = await this.contractPayment.getEarlyPayoffQuote(
-            contract.id,
-            dto.discountPct,
-            dto.collectedByShop ? '11-2107' : dto.depositAccountCode,
-            tx,
-          );
-        }
         if (input.action === 'VOID_RECEIPT') {
           const receipt = await tx.receipt.findUniqueOrThrow({ where: { id: input.targetId } });
           const affected =

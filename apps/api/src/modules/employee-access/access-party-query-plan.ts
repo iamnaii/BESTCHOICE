@@ -6,7 +6,7 @@ import { supplierScopeWhere } from './access-procurement-scope';
 import { tradeInScopeWhere } from './access-trade-in-scope';
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { partyIdentityView } from './access-party-source.service';
-import { ForbiddenException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import { ChatChannel, Prisma } from '@prisma/client';
 import {
   Company,
@@ -28,7 +28,12 @@ import {
 import { warrantyContractScopeWhere, contractWarrantySelect } from './access-repair-scope';
 import { saleScopeWhere } from './access-sales-scope';
 import { productScopeWhere } from './access-query-scope';
-import { AccessPartySourceService, PartySource } from './access-party-source.service';
+import {
+  AccessPartySourceService,
+  PartySource,
+  FINANCE_CONTRACT_READ_LIMIT,
+  lockFinanceContractReadSources,
+} from './access-party-source.service';
 import { WORK_CHANNELS } from '../staff-chat/services/chat-work-access.service';
 
 // Explicit basic identity/derived response contract. New model columns are not
@@ -109,6 +114,7 @@ const FALSE = { id: { in: [] as string[] } };
  * Permissions remain evaluated by the shared original-tuple policy and source resolvers. */
 export class PartyQueryPlan {
   private readonly ctx = currentDomainAccess()!;
+  private readonly contractContributors = new Set<string>();
   private readonly sourceCache = new Map<string, Promise<PartySource[]>>();
   readonly live = new Set<Company>();
   customer: Prisma.CustomerWhereInput = FALSE;
@@ -199,6 +205,15 @@ export class PartyQueryPlan {
       ],
     };
     return plan;
+  }
+  /** Fresh plan per owned Serializable attempt: aggregate and label dependencies
+   * share one distinct Contract budget, including rows outside a five-item preview. */
+  async lockContractContributors(ids: readonly string[]) {
+    const additions = [...new Set(ids)].filter((id) => !this.contractContributors.has(id));
+    if (this.contractContributors.size + additions.length > FINANCE_CONTRACT_READ_LIMIT)
+      throw new BadRequestException('กรุณาระบุตัวกรองให้แคบลงแล้วลองอีกครั้ง');
+    await lockFinanceContractReadSources(this.db, additions);
+    additions.forEach((id) => this.contractContributors.add(id));
   }
   get actorId() {
     return this.ctx.snapshot.userId;

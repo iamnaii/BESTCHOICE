@@ -1,3 +1,4 @@
+import { requestedAccessCompany } from './access-shop-boundaries';
 import { AccessContractConsentAuthority } from './access-contract-consent-authority';
 import { currentDomainAccess } from './access-execution-context';
 import { AuditService } from '../audit/audit.service';
@@ -139,10 +140,14 @@ async function contract(branchId: string, assignedToId?: string, salespersonId =
   });
 }
 function http(path: string, id = actor, company = 'FINANCE') {
+  const requestMarker = randomUUID();
   return request(app.getHttpServer())
     .get(path)
     .set('x-test-user', id)
     .set('x-company-scope', company)
+    .set('x-owned-request', requestMarker)
+    .expect('x-owned-request', requestMarker)
+    .expect('x-selected-company', company)
     .expect('x-owned-contract-read-app', marker);
 }
 beforeAll(async () => {
@@ -210,13 +215,30 @@ beforeAll(async () => {
     .compile();
   app = module.createNestApplication();
   app.use(
-    (_req: unknown, res: { setHeader: (key: string, value: string) => void }, next: () => void) => {
+    (
+      req: { headers: Record<string, string> },
+      res: { setHeader: (key: string, value: string) => void },
+      next: () => void,
+    ) => {
       res.setHeader('x-owned-contract-read-app', marker);
+      res.setHeader('x-owned-request', req.headers['x-owned-request']);
+      res.setHeader('x-selected-company', requestedAccessCompany(req));
       next();
     },
   );
   app.useGlobalPipes(new ValidationPipe({ transform: true, whitelist: true }));
   await app.listen(0, '127.0.0.1');
+  const address = app.getHttpServer().address();
+  expect(address.address).toBe('127.0.0.1');
+  console.log(
+    'Owned Contract read HTTP listener',
+    address.address,
+    address.port,
+    'app',
+    marker,
+    'both databases',
+    url,
+  );
 }, 60000);
 afterAll(async () => {
   await app?.close();
@@ -654,6 +676,8 @@ it('keeps positive Customer/source filters and status summary on their proven SQ
   const id = await user(),
     row = await contract(branchA);
   await grant(id, ['contracts.read', 'customers.read', 'payments.read'], 'FINANCE');
+  await db.user.update({ where: { id: row.salespersonId }, data: { branchId: branchA } });
+  await grant(id, ['employees.read'], 'SHOP', [branchA]);
   const filters = new URLSearchParams({
     customerId: row.customerId,
     branchId: row.branchId,
@@ -1019,4 +1043,20 @@ it('I1 rechecks a portfolio origin after an observed branch dependency lock wait
   expect(result.status).toBe(200);
   expect(result.body.total).toBe(0);
   expect(result.body.data).toEqual([]);
+});
+
+it('R151 I1 ordinary list prevents denied staff attribution inference', async () => {
+  const id = await user(),
+    seller = await user();
+  const row = await contract(branchA, id, seller);
+  await db.user.update({ where: { id: seller }, data: { branchId: branchB } });
+  await grant(id, ['contracts.read'], 'FINANCE', [branchA], 'ASSIGNED');
+  const path = `/contracts?salespersonId=${seller}`;
+  expect((await http(path, id).expect(200)).body.total).toBe(0);
+  await grant(id, ['employees.read'], 'SHOP', [branchB]);
+  const positive = (await http(path, id).expect(200)).body;
+  expect(positive.total).toBe(1);
+  expect(positive.data[0].id).toBe(row.id);
+  await db.user.update({ where: { id: seller }, data: { isSystemUser: true } });
+  expect((await http(path, id).expect(200)).body.total).toBe(0);
 });

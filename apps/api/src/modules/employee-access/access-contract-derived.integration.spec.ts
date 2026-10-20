@@ -937,6 +937,11 @@ it('uses protected owner global attribution without inventing employee branch pr
     .body;
   expect(res.data[0].salesperson).toEqual({ id: seller, name: 'Test' });
   expect(res.data[0].availability.salesperson).toBe('VISIBLE_CURRENT');
+  for (const route of ['/contracts/export', '/contracts']) {
+    const filtered = await http(`${route}?salespersonId=${seller}`, owner).expect(200);
+    expect(filtered.body.total).toBe(1);
+    expect(filtered.body.data[0].id).toBe(row.id);
+  }
 });
 it('propagates document audit read failure instead of declaring an empty complete history', async () => {
   const id = await user(),
@@ -954,4 +959,245 @@ it('propagates document audit read failure instead of declaring an empty complet
       'ALTER TABLE owned_hidden_document_audit_logs RENAME TO document_audit_logs',
     );
   }
+});
+
+it.each(['/contracts/export', '/contracts'])(
+  'R151 I1 authorizes salesperson matching before counts for %s',
+  async (route) => {
+    const id = await user(),
+      seller = await user();
+    const row = await contract(branchA, id, seller);
+    await db.user.update({ where: { id: seller }, data: { branchId: branchB } });
+    await grant(id, ['contracts.read', 'contracts.export'], 'FINANCE', [branchA], 'ASSIGNED');
+    expect((await http(`${route}?salespersonId=${seller}`, id).expect(200)).body.total).toBe(0);
+    await grant(id, ['employees.read'], 'SHOP', [branchA]);
+    const path = `${route}?salespersonId=${seller}`;
+    expect((await http(path, id).expect(200)).body.total).toBe(0);
+    await grant(id, ['employees.read'], 'SHOP', [branchB]);
+    const positive = (await http(path, id).expect(200)).body;
+    expect(positive.total).toBe(1);
+    expect(positive.data[0].id).toBe(row.id);
+    for (const data of [
+      { isSystemUser: true },
+      { isSystemUser: false, deletedAt: new Date() },
+      { deletedAt: null, branchId: null },
+    ]) {
+      await db.user.update({ where: { id: seller }, data });
+      expect((await http(path, id).expect(200)).body.total).toBe(0);
+    }
+  },
+);
+it.each(['/contracts/export', '/contracts'])(
+  'R151 I1 rechecks salesperson matching after an observed User wait for %s',
+  async (route) => {
+    const id = await user(),
+      seller = await user();
+    await contract(branchA, id, seller);
+    await db.user.update({ where: { id: seller }, data: { branchId: branchA } });
+    await grant(id, ['contracts.read', 'contracts.export'], 'FINANCE', [branchA], 'ASSIGNED');
+    await grant(id, ['employees.read'], 'SHOP', [branchA]);
+    let pending: Promise<request.Response> | undefined;
+    let waited = false;
+    await db.$transaction(
+      async (tx) => {
+        const [{ pid }] = await tx.$queryRaw<{ pid: number }[]>`SELECT pg_backend_pid() AS pid`;
+        await tx.$queryRaw`SELECT id FROM users WHERE id=${seller} FOR UPDATE`;
+        pending = http(`${route}?salespersonId=${seller}`, id).then((res) => res);
+        waited = await observedWait(tx, pid);
+        await tx.user.update({ where: { id: seller }, data: { branchId: branchB } });
+      },
+      { timeout: 10000 },
+    );
+    const res = await pending!;
+    expect(waited).toBe(true);
+    expect(res.status).toBe(200);
+    expect(res.body.total).toBe(0);
+  },
+);
+it.each(['retirement', 'rebranch'])(
+  'R151 I2 rechecks independent sibling Customer provenance after Customer wait: %s',
+  async (change) => {
+    const id = await user();
+    const row = await contract(branchA, id),
+      proof = await contract(branchB);
+    await db.contract.update({ where: { id: proof.id }, data: { customerId: row.customerId } });
+    await grant(id, ['contracts.read', 'contracts.export'], 'FINANCE', [branchA], 'ASSIGNED');
+    await grant(id, ['customers.read'], 'FINANCE', [branchB]);
+    expect((await http('/contracts/export', id).expect(200)).body.data[0].customer.id).toBe(
+      row.customerId,
+    );
+    let pending: Promise<request.Response> | undefined;
+    await db.$transaction(
+      async (tx) => {
+        const [{ pid }] = await tx.$queryRaw<{ pid: number }[]>`SELECT pg_backend_pid() AS pid`;
+        await tx.$queryRaw`SELECT id FROM customers WHERE id=${row.customerId} FOR UPDATE`;
+        pending = http('/contracts/export', id).then((res) => res);
+        expect(await observedWait(tx, pid)).toBe(true);
+        await tx.contract.update({
+          where: { id: proof.id },
+          data: change === 'retirement' ? { deletedAt: new Date() } : { branchId: branchA },
+        });
+      },
+      { timeout: 10000 },
+    );
+    const res = await pending!;
+    expect(res.status).toBe(200);
+    expect(res.body.data[0].customer).toBeNull();
+  },
+);
+it('R151 I2 locks accepted independent room evidence and current identity assignment without chat rights', async () => {
+  const id = await user(),
+    row = await contract(branchA);
+  await db.customer.update({ where: { id: row.customerId }, data: { assignedToId: id } });
+  await grant(id, ['contracts.read', 'contracts.export'], 'FINANCE', [branchA]);
+  await grant(id, ['customers.read'], 'FINANCE', undefined, 'ASSIGNED');
+  const room = await db.chatRoom.create({
+    data: { customerId: row.customerId, channel: 'LINE_FINANCE' },
+  });
+  const positive = await http(`/contracts/export?customerId=${row.customerId}`, id).expect(200);
+  expect(positive.body.data[0].customer.id).toBe(row.customerId);
+  // Parent Contract remains independently sufficient, but room provenance must
+  // also be current. Exercise the actual room lock rather than SQL text alone.
+  let roomRequest: Promise<request.Response> | undefined;
+  let roomWaited = false;
+  await db.$transaction(
+    async (tx) => {
+      const [{ pid }] = await tx.$queryRaw<{ pid: number }[]>`SELECT pg_backend_pid() AS pid`;
+      await tx.$queryRaw`SELECT id FROM chat_rooms WHERE id=${room.id} FOR UPDATE`;
+      roomRequest = http(`/contracts/export?customerId=${row.customerId}`, id).then((res) => res);
+      roomWaited = await observedWait(tx, pid);
+      await tx.chatRoom.update({ where: { id: room.id }, data: { deletedAt: new Date() } });
+    },
+    { timeout: 10000 },
+  );
+  const afterRoomRetirement = await roomRequest!;
+  expect(roomWaited).toBe(true);
+  expect(afterRoomRetirement.status).toBe(200);
+  expect(afterRoomRetirement.body.data[0].customer.id).toBe(row.customerId);
+  let pending: Promise<request.Response> | undefined;
+  await db.$transaction(
+    async (tx) => {
+      const [{ pid }] = await tx.$queryRaw<{ pid: number }[]>`SELECT pg_backend_pid() AS pid`;
+      await tx.$queryRaw`SELECT id FROM customers WHERE id=${row.customerId} FOR UPDATE`;
+      pending = http('/contracts/export', id).then((res) => res);
+      expect(await observedWait(tx, pid)).toBe(true);
+      await tx.customer.update({ where: { id: row.customerId }, data: { assignedToId: denied } });
+    },
+    { timeout: 10000 },
+  );
+  const res = await pending!;
+  expect(res.status).toBe(200);
+  expect(res.body.data.find((r: { id: string }) => r.id === row.id).customer).toBeNull();
+});
+it('R151 I3 bounds complete milestone contributors plus older label dependencies, counting overlap once', async () => {
+  const fixture = await portfolio(10000);
+  const shop = await db.companyInfo.findUniqueOrThrow({ where: { companyCode: 'SHOP' } });
+  const branch = await db.branch.create({ data: { name: 'Milestone union', companyId: shop.id } });
+  await db.employeeAccessAssignment.updateMany({
+    where: { userId: fixture.id },
+    data: { deletedAt: new Date() },
+  });
+  await grant(fixture.id, ['contracts.read', 'payments.read'], 'FINANCE', [branch.id]);
+  await grant(fixture.id, ['customers.read'], 'FINANCE');
+  await db.contract.updateMany({
+    where: { contractNumber: { startsWith: fixture.prefix } },
+    data: { branchId: branch.id, createdAt: new Date() },
+  });
+  // Refresh statistics after changing every portfolio source/date, as for the
+  // initial bulk load above; stale pre-move stats misrepresent this finite shape.
+  await db.$executeRaw`ANALYZE contracts`;
+  await db.$executeRaw`ANALYZE payments`;
+  measuredQueries = [];
+  const start = performance.now();
+  let positive: request.Response;
+  try {
+    positive = await http('/contracts/milestones-summary', fixture.id).expect(200);
+    const queries = measuredQueries;
+    console.log(
+      'R151_MILESTONE_UNION',
+      JSON.stringify({
+        count: 10000,
+        queries: queries.length,
+        contractLocks: queries.filter(
+          (q) => q.includes('FROM contracts') && q.includes('FOR SHARE'),
+        ).length,
+        ms: performance.now() - start,
+      }),
+    );
+    expect(queries.length).toBeLessThan(150);
+  } finally {
+    measuredQueries = undefined;
+  }
+  expect(positive.body.newThisMonth.count).toBe(10000);
+  expect(positive.body.recentNewContracts).toHaveLength(5);
+  const preview = await db.contract.findUniqueOrThrow({
+    where: { id: positive.body.recentNewContracts[0].id },
+  });
+  const older = await contract(branch.id);
+  await db.contract.update({
+    where: { id: older.id },
+    data: { customerId: preview.customerId, status: 'DRAFT', createdAt: new Date('2000-01-01') },
+  });
+  const overflow = await http('/contracts/milestones-summary', fixture.id);
+  expect(overflow.status).toBe(400);
+  expect(overflow.body.newThisMonth).toBeUndefined();
+  expect(overflow.body.recentNewContracts).toBeUndefined();
+  await db.contract.update({ where: { id: older.id }, data: { deletedAt: new Date() } });
+  expect(
+    (await http('/contracts/milestones-summary', fixture.id).expect(200)).body.newThisMonth.count,
+  ).toBe(10000);
+}, 60000);
+
+it.each(['/contracts/export', '/contracts'])(
+  'R151 I1 rechecks salesperson own branch after an observed dependency wait for %s',
+  async (route) => {
+    const id = await user(),
+      seller = await user();
+    const shop = await db.companyInfo.findUniqueOrThrow({ where: { companyCode: 'SHOP' } });
+    const source = await db.branch.create({ data: { name: 'Staff original', companyId: shop.id } });
+    await db.user.update({ where: { id: seller }, data: { branchId: source.id } });
+    await contract(branchA, id, seller);
+    await grant(id, ['contracts.read', 'contracts.export'], 'FINANCE', [branchA], 'ASSIGNED');
+    await grant(id, ['employees.read'], 'SHOP');
+    let pending: Promise<request.Response> | undefined;
+    await db.$transaction(
+      async (tx) => {
+        const [{ pid }] = await tx.$queryRaw<{ pid: number }[]>`SELECT pg_backend_pid() AS pid`;
+        await tx.$queryRaw`SELECT id FROM branches WHERE id=${source.id} FOR UPDATE`;
+        pending = http(`${route}?salespersonId=${seller}`, id).then((res) => res);
+        expect(await observedWait(tx, pid)).toBe(true);
+        await tx.branch.update({ where: { id: source.id }, data: { isActive: false } });
+      },
+      { timeout: 10000 },
+    );
+    const res = await pending!;
+    expect(res.status).toBe(200);
+    expect(res.body.total).toBe(0);
+  },
+);
+it('R151 I2 accepts identity-assigned bounded sibling provenance without Contract assignment', async () => {
+  const id = await user(),
+    row = await contract(branchA, id),
+    proof = await contract(branchB);
+  await db.contract.update({ where: { id: proof.id }, data: { customerId: row.customerId } });
+  await db.customer.update({ where: { id: row.customerId }, data: { assignedToId: id } });
+  await grant(id, ['contracts.read', 'contracts.export'], 'FINANCE', [branchA], 'ASSIGNED');
+  await grant(id, ['customers.read'], 'FINANCE', [branchB], 'ASSIGNED');
+  const positive = await http('/contracts/export', id).expect(200);
+  expect(positive.body.total).toBe(1);
+  expect(positive.body.data[0].customer.id).toBe(row.customerId);
+  let pending: Promise<request.Response> | undefined;
+  await db.$transaction(
+    async (tx) => {
+      const [{ pid }] = await tx.$queryRaw<{ pid: number }[]>`SELECT pg_backend_pid() AS pid`;
+      await tx.$queryRaw`SELECT id FROM customers WHERE id=${row.customerId} FOR UPDATE`;
+      pending = http('/contracts/export', id).then((res) => res);
+      expect(await observedWait(tx, pid)).toBe(true);
+      await tx.customer.update({ where: { id: row.customerId }, data: { assignedToId: denied } });
+    },
+    { timeout: 10000 },
+  );
+  const res = await pending!;
+  expect(res.status).toBe(200);
+  expect(res.body.data[0].customer).toBeNull();
 });

@@ -9,7 +9,6 @@ import { AccessResourceService } from './access-resource.service';
 import {
   AccessPartySourceService,
   FINANCE_CONTRACT_READ_LIMIT,
-  lockFinanceContractReadSources,
 } from './access-party-source.service';
 import { currentDomainAccess } from './access-execution-context';
 import { requestedAccessCompany } from './access-shop-boundaries';
@@ -71,7 +70,10 @@ export class AccessContractDerivedBoundaries implements OnModuleInit {
                   (typeof query.branchId !== 'string' || !/^[0-9a-f-]{36}$/i.test(query.branchId))
                 )
                   throw new BadRequestException('สาขาไม่ถูกต้อง');
-                if (detail) return contractDerivedSnapshot(plan, id);
+                if (detail) {
+                  await plan.lockContractContributors([id]);
+                  return contractDerivedSnapshot(plan, id);
+                }
                 let where: Prisma.ContractWhereInput = plan.contract;
                 const month = milestoneMonth();
                 if (method === 'exportRows')
@@ -111,10 +113,7 @@ export class AccessContractDerivedBoundaries implements OnModuleInit {
                   orderBy: { id: 'asc' },
                   take: FINANCE_CONTRACT_READ_LIMIT + 1,
                 });
-                await lockFinanceContractReadSources(
-                  ctx.client,
-                  ids.map((row) => row.id),
-                );
+                await plan.lockContractContributors(ids.map((row) => row.id));
                 if (method === 'exportRows') {
                   const result = {
                     ...(await contractDerivedExport(plan, where)),

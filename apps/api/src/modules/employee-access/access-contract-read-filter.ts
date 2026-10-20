@@ -1,3 +1,4 @@
+import { lockContractStaffSources } from './access-contract-staff-source';
 import { BadRequestException } from '@nestjs/common';
 import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
@@ -37,7 +38,10 @@ export async function contractReadFilter(plan: PartyQueryPlan, query: Record<str
   if (filters.branchId) where.branchId = filters.branchId;
   if (filters.workflowStatus)
     where.workflowStatus = filters.workflowStatus as ContractWorkflowStatus;
-  if (filters.salespersonId) where.salespersonId = filters.salespersonId;
+  if (filters.salespersonId) {
+    const staff = await lockContractStaffSources(plan, [filters.salespersonId]);
+    and.push({ salespersonId: filters.salespersonId, salesperson: staff });
+  }
   if (filters.status)
     and.push(plan.finance('payments.read'), {
       status: filters.status as ContractStatus,

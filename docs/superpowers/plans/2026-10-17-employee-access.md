@@ -775,6 +775,24 @@ R132 splits parent9 into the following three serial gates after actual producer/
 - [ ] R106/R129/R132/R134: fresh source/read/create/documents authority, actual immutable effective quote/fingerprint/15-minute evidence; positive reductions enter genuine pending owner review with explicit reason and never gain executable OCR authority. Zero-reduction or genuinely approved execution uses the canonical money writer, exact-client receipt/PaymentEvidence/fingerprint/audit and current period/CAS/idempotency; controlled effects only after actual outer commit. No alternate approval/money/receipt engine.
 - [ ] Real money/receipt/ownership rollback, duplicate/concurrent confirmation, current revocation/expiry/quote change, late file denial/no leaked bytes and aftercommit effect evidence; affected regressions/types/lint/coverage and independent gate.
 
+R136 splits9.2 into the following serial gates. Its two HTTP routes remain pending until9.2.2; R137 binds actual actor/book/date and R138 binds positive-request privacy and genuine evidence semantics.
+
+### Task 4.2.1.9.2.1: Canonical payoff and receipt atomic producer
+
+**Files/scope:** Actual ContractPaymentService.earlyPayoff, shared receipt issuance, bounded JournalAuto/ECL provenance and owned effects; zero route credit. No evidence schema, OCR/HTTP adapters, queue consumer or settlement runtime.
+
+- [ ] Meaningful owned PostgreSQL canonical monetary RED and root contemporaneous acceptance before runtime; actual shared receipt/snapshot/sequence/journal/ownership, controlled effects, explicit equal bothDBURLs and fixture guard.
+- [ ] R106/R117/R132/R136/R137/R139: exact trusted current owned client/actor/source; one canonical money and receipt implementation; same-tx Payment/evidence/fingerprint/JP4/ECL/ownership/receipt/required audit with managed failure rollback. Explicit actual FINANCE/creator/checked Date, existing receipt math/no-JP4 link, legacy caller defaults preserved. Effects only after actual outer commit; no positive-reduction OCR authority or managed request consumption bypass.
+- [ ] Actual success, ownership/receipt/audit failure rollback, exact once/concurrency and aftercommit/retry effects, actual positive-ECL and required source/date/provenance controls; affected shared regressions/types/touched lint/scoped coverage, full report/commit and independent gate. HTTP2 remain9.2.2 and final approval consumer4.2.4/6 stays required.
+
+### Task 4.2.1.9.2.2: Private payoff evidence and multipart integration
+
+**Files/scope:** Actual immutable operation-specific payoff evidence producer and ContractsController.earlyPayoffSlipVerify/earlyPayoffSlipConfirm; exactly2domain. Reuse reviewed canonical producer9.2.1.
+
+- [ ] Meaningful actual FileInterceptor/ParseFilePipe marked multipart HTTP/ownedPG RED before runtime;5MB/MIME/actual bytes, write-once private storage/OCR staging once and current authorization before/after provider work.
+- [ ] R129/R134/R135/R138: positive-effective requests uniformly pending with explicit reason and genuine verified-or-unverified attachment, no hidden checks/amount/token oracle. Explicitzero uses opaque actor/source-bound15-minute ticket and exact fingerprint/current once-only confirmation; actualimmutable evidence, private object/hash and no generic PaymentEvidence approval authority. Preserve pending evidence beyond ticketexpiry; currentowner/exactapproval consumer remains4.2.4/6.
+- [ ] Actual money/receipt/ownership/audit rollback, duplicate/current revocation/expiry/changedquote/hiddenzero-loss/unreadableOCR/content-replay cases, genuine private byte preservation/cleanup outcomes and outercommit effects; regressions/types/lint/coverage and independent gate. No newbyte route/publicURL or fake cloudACL proof.
+
 ### Task 4.2.1.9.3: SHOP collection settlement
 
 **Files/scope:** ContractsController.shopCollectSettlement; exactly1domain.

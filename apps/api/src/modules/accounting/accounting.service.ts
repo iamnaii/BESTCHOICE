@@ -305,7 +305,7 @@ export class AccountingService implements OnModuleInit {
    * "give me everything" queries don't dump millions of rows.
    *
    * Output columns:
-   *   entryDate, entryNumber, peakCode, accountCode, accountName,
+   *   entryDate, entryNumber, peakCode, peakSubCode, accountCode, accountName,
    *   debit, credit, description, reference
    *
    * Money values are emitted via `.toString()` to preserve Decimal precision

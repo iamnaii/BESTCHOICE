@@ -33,6 +33,20 @@ describe('csv-fixture-loader', () => {
     });
   });
 
+  it('reads PEAK code / sub-code / source columns (FINANCE mapping v5)', () => {
+    const accounts = loadCoaFromCsv(path.join(FIX, 'finance-coa.csv'));
+    const byCode = new Map(accounts.map((a) => [a.code, a]));
+    expect(byCode.get('11-6101')).toMatchObject({ peakCode: '212203', peakSubCode: 'ADV001', peakSubCodeSource: 'fixed' });
+    expect(byCode.get('11-2101')).toMatchObject({ peakCode: '113101', peakSubCode: '', peakSubCodeSource: 'contact' });
+    expect(byCode.get('11-2106')).toMatchObject({ peakCode: '', peakSubCode: '', peakSubCodeSource: 'none' });
+    // Every FINANCE row carries a known source; fixed rows always carry a sub-code.
+    for (const a of accounts) {
+      expect(['none', 'fixed', 'contact', 'bank', 'cashbox']).toContain(a.peakSubCodeSource);
+      if (a.peakSubCodeSource === 'fixed') expect(a.peakSubCode).not.toBe('');
+      else expect(a.peakSubCode).toBe('');
+    }
+  });
+
   it('loads case-1-overpay with multiple JE blocks', () => {
     const cas = loadCaseFromCsv(path.join(FIX, 'case-1-overpay.csv'));
     expect(cas.entries.length).toBeGreaterThan(0);

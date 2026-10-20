@@ -13,6 +13,12 @@ export interface CoaRow {
   /// P3-SP3: PEAK external bookkeeping code (column "เลขบัญชีในพึค", index 8).
   /// Empty string when unmapped — seeder converts to null when persisting.
   peakCode: string;
+  /// PEAK sub-account code (column "รหัสย่อย PEAK", index 9) — empty unless the
+  /// account maps to a fixed PEAK sub-account (e.g. ADV001). Seeder → null when "".
+  peakSubCode: string;
+  /// Column "แหล่งรหัสย่อย" (index 10): none | fixed | contact | bank | cashbox.
+  /// Empty string = "not specified" — seeders leave the DB value untouched.
+  peakSubCodeSource: string;
 }
 
 export interface JeLine {
@@ -59,6 +65,10 @@ export function loadCoaFromCsv(csvPath: string): CoaRow[] {
       status: (cols[7] ?? '').trim(),
       // P3-SP3: PEAK code lives at index 8 ("เลขบัญชีในพึค"). Empty by default.
       peakCode: (cols[8] ?? '').trim(),
+      // FINANCE mapping v5 (ฝ่ายบัญชี 19/10/2569): sub-account code + its source
+      // live at index 9/10. Empty cells mean "leave the DB value alone" (seeders).
+      peakSubCode: (cols[9] ?? '').trim(),
+      peakSubCodeSource: (cols[10] ?? '').trim(),
     });
   }
   return rows;

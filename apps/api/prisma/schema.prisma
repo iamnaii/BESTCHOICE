@@ -772,6 +772,7 @@ enum BuybackSelectType {
 // ============================================================
 
 model Branch {
+  managedPayoffEvidence ManagedPayoffEvidence[]
   customerDelegations CustomerAccessToken[] @relation("CustomerDelegationOrigin")
   promotionBenefits SalePromotionBenefit[]
   accessContacts Contact[] @relation("ContactAccessBranch")
@@ -847,6 +848,7 @@ model Branch {
 }
 
 model User {
+  managedPayoffEvidence ManagedPayoffEvidence[]
   capturedContractConsents PDPAConsent[] @relation("ContractConsentCapturer")
   issuedCustomerDelegations CustomerAccessToken[] @relation("CustomerDelegationIssuer")
   createdCashSlipEvidence ShopCashSlipEvidence[]
@@ -1357,6 +1359,7 @@ model Customer {
 }
 
 model Contract {
+  managedPayoffEvidence ManagedPayoffEvidence[]
   promotionFingerprint String? @map("promotion_fingerprint")
   promotionTerms ContractPromotionTerms?
   chatServiceRequests ChatServiceRequest[]
@@ -1708,6 +1711,7 @@ model Payment {
 }
 
 model PaymentApprovalRequest {
+  managedPayoffEvidence ManagedPayoffEvidence?
   id                  String   @id @default(uuid())
   action              String
   targetId            String   @map("target_id")
@@ -3853,6 +3857,7 @@ model KycVerification {
 /// อย่ายอมรับ diff ที่เสนอ DROP INDEX receipts_source_journal_entry_key — index นี้กันการออกใบเสร็จซ้ำ
 /// สองใบให้รายการบัญชีรับชำระรายการเดียว (webhook ส่งซ้ำ / ผู้เรียกเรียกซ้ำ)
 model Receipt {
+  managedPayoffEvidence ManagedPayoffEvidence?
   id                    String    @id @default(uuid())
   receiptNumber         String    @unique @map("receipt_number") // RT-YYYYMM-NNNNN
   contractId            String    @map("contract_id")
@@ -3981,6 +3986,8 @@ model DocumentAuditLog {
 // ============================================================
 
 model CompanyInfo {
+  managedPayoffFinanceEvidence ManagedPayoffEvidence[] @relation("PayoffFinance")
+  managedPayoffOriginEvidence ManagedPayoffEvidence[] @relation("PayoffOrigin")
   customerDelegations CustomerAccessToken[] @relation("CustomerDelegationCompany")
   accessContacts Contact[] @relation("ContactAccessCompany")
   accessCustomers Customer[] @relation("CustomerAccessCompany")
@@ -9629,4 +9636,43 @@ model ContractPromotionReservation {
   updatedAt DateTime @updatedAt @map("updated_at")
   terms ContractPromotionTerms @relation(fields: [termsId], references: [id], onDelete: Restrict)
   @@map("contract_promotion_reservations")
+}
+
+/// Immutable operation-specific private evidence; mutable PaymentEvidence is not authority.
+model ManagedPayoffEvidence {
+  id String @id @default(uuid())
+  operationId String @unique @map("operation_id")
+  actorId String @map("actor_id")
+  contractId String @map("contract_id")
+  financeCompanyId String @map("finance_company_id")
+  originShopCompanyId String @map("origin_shop_company_id")
+  originBranchId String @map("origin_branch_id")
+  objectKey String @unique @map("object_key")
+  mimeType String @map("mime_type")
+  byteLength Int @map("byte_length")
+  contentHash String @map("content_hash")
+  reading Json
+  checks Json
+  verified Boolean
+  effectiveDiscountPct String @map("effective_discount_pct")
+  paymentDate String @map("payment_date")
+  moneySnapshot Json @map("money_snapshot")
+  moneyFingerprint String @map("money_fingerprint")
+  slipFingerprint String? @map("slip_fingerprint")
+  tokenHash String? @unique @map("token_hash")
+  expiresAt DateTime? @map("expires_at")
+  requestId String? @unique @map("request_id")
+  consumedAt DateTime? @map("consumed_at")
+  receiptId String? @unique @map("receipt_id")
+  createdAt DateTime @default(now()) @map("created_at")
+  actor User @relation(fields: [actorId], references: [id], onDelete: Restrict)
+  contract Contract @relation(fields: [contractId], references: [id], onDelete: Restrict)
+  financeCompany CompanyInfo @relation("PayoffFinance", fields: [financeCompanyId], references: [id], onDelete: Restrict)
+  originShopCompany CompanyInfo @relation("PayoffOrigin", fields: [originShopCompanyId], references: [id], onDelete: Restrict)
+  originBranch Branch @relation(fields: [originBranchId], references: [id], onDelete: Restrict)
+  request PaymentApprovalRequest? @relation(fields: [requestId], references: [id], onDelete: Restrict)
+  receipt Receipt? @relation(fields: [receiptId], references: [id], onDelete: Restrict)
+  @@index([contractId, createdAt])
+  @@index([contentHash])
+  @@map("managed_payoff_evidence")
 }

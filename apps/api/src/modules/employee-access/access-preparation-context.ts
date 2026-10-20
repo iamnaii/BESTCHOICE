@@ -5,7 +5,7 @@ import { AsyncLocalStorage } from 'node:async_hooks';
  * Uploads happen without an open transaction or the global authority lock. */
 export const procurementPreparation = new AsyncLocalStorage<{
   /** Identifies the narrow cash-slip preparer; never derived from request input. */
-  source?: 'shop-cash-slip';
+  source?: 'shop-cash-slip' | 'payoff-slip';
   authorize?: () => Promise<void>;
   execute: <T>(handler: () => Promise<T>) => Promise<T>;
 }>();

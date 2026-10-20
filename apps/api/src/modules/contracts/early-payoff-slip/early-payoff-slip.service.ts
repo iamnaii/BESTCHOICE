@@ -1,3 +1,6 @@
+import { ManagedPayoffEvidenceService } from './managed-payoff-evidence';
+import { currentDomainAccess } from '../../employee-access/access-execution-context';
+import { assertUnmanagedPayoffActor } from '../managed-payoff-execution';
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as crypto from 'crypto';
@@ -85,12 +88,29 @@ export class EarlyPayoffSlipService {
     private readonly config: ConfigService,
   ) {}
 
+  async verifyManaged(
+    contractId: string,
+    file: Express.Multer.File | undefined,
+    discountPctRaw: string | number | undefined,
+    actorId: string,
+    reason?: string,
+  ) {
+    return new ManagedPayoffEvidenceService(
+      this.prisma,
+      this.storage,
+      this.vision,
+      this.financeConfig,
+      this.contractPayment,
+    ).verify(contractId, actorId, file, discountPctRaw, reason);
+  }
+
   async verify(
     contractId: string,
     file: Express.Multer.File | undefined,
     discountPctRaw: string | number | undefined,
     actorId: string,
   ): Promise<EarlyPayoffSlipVerifyResult> {
+    await this.prisma.$transaction((tx) => assertUnmanagedPayoffActor(tx, actorId));
     if (!file || !isEvidenceImage(file)) {
       throw new BadRequestException('กรุณาแนบรูปสลิป (JPG/PNG/WEBP)');
     }
@@ -113,10 +133,8 @@ export class EarlyPayoffSlipService {
     let reading: SlipReading | null = null;
     try {
       reading = await this.vision.extractSlip(file.buffer, file.mimetype);
-    } catch (err) {
-      this.logger.warn(
-        `[early-payoff-slip] OCR failed for contract ${contractId}: ${err instanceof Error ? err.message : err}`,
-      );
+    } catch {
+      this.logger.warn('[early-payoff-slip] OCR unavailable');
       reading = null;
     }
 
@@ -125,55 +143,69 @@ export class EarlyPayoffSlipService {
       ? !!(await this.prisma.slipFingerprint.findUnique({ where: { hash }, select: { id: true } }))
       : false;
 
-    const now = new Date();
-    const checks = evaluateSlipChecks({
-      reading,
-      expectedAmount: quote.totalPayoff,
-      isCompanyAccount: (acct) => this.financeConfig.isCompanyBankAccount(acct),
-      reused,
-      now,
+    // A persisted migration/inactivation during provider work cannot release a
+    // readable legacy ticket. Providers and fingerprint lookup have finished;
+    // construct the unchanged legacy response while holding only this actor lock.
+    return this.prisma.$transaction(async (tx) => {
+      await assertUnmanagedPayoffActor(tx, actorId);
+      const now = new Date();
+      const checks = evaluateSlipChecks({
+        reading,
+        expectedAmount: quote.totalPayoff,
+        isCompanyAccount: (acct) => this.financeConfig.isCompanyBankAccount(acct),
+        reused,
+        now,
+      });
+      const matched = checks.every((c) => c.ok);
+      const paymentDate = bangkokDateString(slipPaymentDate(reading, now));
+
+      const ticket =
+        matched && reading && hash
+          ? this.sign({
+              v: TICKET_VERSION,
+              contractId,
+              actorId,
+              imageKey: key,
+              slipUrl,
+              hash,
+              amount: reading.amount as number,
+              refNo: reading.refNo ?? null,
+              bankName: reading.bankName ?? null,
+              date: reading.date ?? null,
+              confidence: reading.confidence,
+              expectedAmount: quote.totalPayoff,
+              discountPct,
+              paymentDate,
+              exp: now.getTime() + TICKET_TTL_MS,
+            })
+          : null;
+
+      return {
+        engine: 'OCR' as const,
+        available: reading !== null,
+        imageKey: key,
+        slipUrl,
+        reading,
+        expectedAmount: quote.totalPayoff,
+        discountPct,
+        checks,
+        matched,
+        paymentDate,
+        ticket,
+      };
     });
-    const matched = checks.every((c) => c.ok);
-    const paymentDate = bangkokDateString(slipPaymentDate(reading, now));
-
-    const ticket =
-      matched && reading && hash
-        ? this.sign({
-            v: TICKET_VERSION,
-            contractId,
-            actorId,
-            imageKey: key,
-            slipUrl,
-            hash,
-            amount: reading.amount as number,
-            refNo: reading.refNo ?? null,
-            bankName: reading.bankName ?? null,
-            date: reading.date ?? null,
-            confidence: reading.confidence,
-            expectedAmount: quote.totalPayoff,
-            discountPct,
-            paymentDate,
-            exp: now.getTime() + TICKET_TTL_MS,
-          })
-        : null;
-
-    return {
-      engine: 'OCR',
-      available: reading !== null,
-      imageKey: key,
-      slipUrl,
-      reading,
-      expectedAmount: quote.totalPayoff,
-      discountPct,
-      checks,
-      matched,
-      paymentDate,
-      ticket,
-    };
   }
 
   /** ยืนยันปิดสัญญาด้วยตั๋วที่ verify() ออกให้ — ตั๋วต้องเป็นของสัญญานี้และผู้กดคนเดิม */
   async confirm(contractId: string, userId: string, dto: EarlyPayoffSlipConfirmDto) {
+    if (currentDomainAccess())
+      return new ManagedPayoffEvidenceService(
+        this.prisma,
+        this.storage,
+        this.vision,
+        this.financeConfig,
+        this.contractPayment,
+      ).confirm(contractId, userId, dto);
     const t = this.parseTicket(dto.ticket, contractId, userId);
     const slipMatch: SlipMatchAuthorization = {
       imageKey: t.imageKey,

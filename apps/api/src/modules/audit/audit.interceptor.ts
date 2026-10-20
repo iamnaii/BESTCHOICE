@@ -132,7 +132,7 @@ export class AuditInterceptor implements NestInterceptor {
    * These exact request entrances never put private request evidence in HTTP audit. */
   private isPayoffRequest(context: ExecutionContext): boolean {
     return (context.getClass() === ContractsController &&
-      context.getHandler() === ContractsController.prototype.earlyPayoff) ||
+      [ContractsController.prototype.earlyPayoff, ContractsController.prototype.earlyPayoffSlipVerify, ContractsController.prototype.earlyPayoffSlipConfirm].some(handler => handler === context.getHandler())) ||
       (context.getClass() === PaymentApprovalController &&
         context.getHandler() === PaymentApprovalController.prototype.create &&
         context.switchToHttp().getRequest().body?.action === 'EARLY_PAYOFF');

@@ -24,6 +24,8 @@ export async function createEarlyPayoffRequest(
     reason: string;
     payload: Record<string, unknown>;
     managedSource?: ManagedPayoffRequestSource;
+    /** Server-only operation backlink, never a DTO field. */
+    managedEvidenceId?: string;
   },
 ) {
   if (typeof input.reason !== 'string' || !input.reason.trim() || input.reason.length > 1000)
@@ -60,6 +62,26 @@ export async function createEarlyPayoffRequest(
     dto.collectedByShop ? '11-2107' : dto.depositAccountCode,
     tx,
   );
+  if (input.managedEvidenceId) {
+    const evidence = await tx.managedPayoffEvidence.findUnique({
+      where: { id: input.managedEvidenceId },
+    });
+    const source = input.managedSource;
+    if (
+      !source ||
+      !evidence ||
+      evidence.requestId ||
+      evidence.consumedAt ||
+      evidence.tokenHash ||
+      evidence.actorId !== input.userId ||
+      evidence.contractId !== input.targetId ||
+      evidence.financeCompanyId !== source.financeCompanyId ||
+      evidence.originShopCompanyId !== source.originShopCompanyId ||
+      evidence.originBranchId !== source.originBranchId ||
+      Number(evidence.effectiveDiscountPct) <= 0
+    )
+      throw new BadRequestException('หลักฐานคำขอไม่ถูกต้อง');
+  }
   const request = await tx.paymentApprovalRequest.create({
     data: {
       id: randomUUID(),
@@ -74,11 +96,19 @@ export async function createEarlyPayoffRequest(
         ? approvalJson({
             ...(snapshot as object),
             [MANAGED_PAYOFF_SOURCE_KEY]: input.managedSource,
+            ...(input.managedEvidenceId
+              ? { managedPayoffEvidenceId: input.managedEvidenceId }
+              : {}),
           })
         : snapshot,
       reviewSummary: approvalJson(reviewSummary),
     },
   });
+  if (input.managedEvidenceId)
+    await tx.managedPayoffEvidence.update({
+      where: { id: input.managedEvidenceId },
+      data: { requestId: request.id },
+    });
   await tx.auditLog.create({
     data: {
       userId: input.userId,

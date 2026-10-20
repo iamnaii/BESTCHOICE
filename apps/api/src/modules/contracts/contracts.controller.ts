@@ -1,3 +1,4 @@
+import { procurementPreparation } from '../employee-access/access-preparation-context';
 import { currentDomainAccess, onDomainCommit } from '../employee-access/access-execution-context';
 import { Throttle } from '@nestjs/throttler';
 import { ContractsListQueryDto } from './dto/contracts-list-query.dto';
@@ -19,6 +20,7 @@ import {
   ParseFilePipe,
   MaxFileSizeValidator,
   FileTypeValidator,
+  ValidationPipe,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { Request } from 'express';
@@ -263,15 +265,15 @@ export class ContractsController {
 
   /**
    * ปิดสัญญาด้วยสลิป ขั้นที่ 1 (2026-09-24): อัปโหลดสลิป → อ่าน (OCR) → ตรวจ 5 ข้อกับยอดปิดสด
-   * ผ่านครบ = ได้ตั๋ว (15 นาที) ไปกดยืนยันขั้นที่ 2 โดยไม่ต้องเข้าคิวอนุมัติ · ไม่ผ่าน = ส่งขออนุมัติตามเดิม
-   * (แนบ slipUrl ไปกับคำขอได้). role เท่าเส้นทาง early-payoff เดิม.
+   * Managed: ส่วนลดบวกส่งคำขอพร้อมหลักฐานส่วนตัว; ศูนย์ที่ตรวจผ่านได้ตั๋วทึบอายุ 15 นาที.
+   * Genuine unmanaged callers retain the legacy response contract.
    */
   @Post(':id/early-payoff/slip')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER')
   @UseInterceptors(FileInterceptor('slip'))
   async earlyPayoffSlipVerify(
     @Param('id') id: string,
-    @Body() body: EarlyPayoffSlipVerifyDto,
+    @Body(new ValidationPipe({ transform: true, whitelist: true, forbidNonWhitelisted: true })) body: EarlyPayoffSlipVerifyDto,
     @UploadedFile(
       new ParseFilePipe({
         validators: [
@@ -285,6 +287,8 @@ export class ContractsController {
     file: Express.Multer.File,
     @CurrentUser() user: { id: string; role: string; branchId: string | null },
   ) {
+    if (procurementPreparation.getStore()?.source === 'payoff-slip')
+      return this.earlyPayoffSlip.verifyManaged(id, file, body.discountPct, user.id, body.reason);
     await this.contractsService.findOne(id, user);
     return this.earlyPayoffSlip.verify(id, file, body.discountPct, user.id);
   }
@@ -294,10 +298,10 @@ export class ContractsController {
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER')
   async earlyPayoffSlipConfirm(
     @Param('id') id: string,
-    @Body() dto: EarlyPayoffSlipConfirmDto,
+    @Body(new ValidationPipe({ transform: true, whitelist: true, forbidNonWhitelisted: true })) dto: EarlyPayoffSlipConfirmDto,
     @CurrentUser() user: { id: string; role: string; branchId: string | null },
   ) {
-    await this.contractsService.findOne(id, user);
+    if (!currentDomainAccess()) await this.contractsService.findOne(id, user);
     return this.earlyPayoffSlip.confirm(id, user.id, dto);
   }
 

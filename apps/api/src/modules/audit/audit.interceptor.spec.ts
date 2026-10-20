@@ -295,6 +295,8 @@ describe('payoff request audit classification', () => {
   const { PaymentApprovalController } = jest.requireActual('../payments/payment-approval.controller');
   const entrances = [
     { controller: ContractsController, method: 'earlyPayoff', body: {} },
+    { controller: ContractsController, method: 'earlyPayoffSlipVerify', body: {} },
+    { controller: ContractsController, method: 'earlyPayoffSlipConfirm', body: {} },
     { controller: PaymentApprovalController, method: 'create', body: { action: 'EARLY_PAYOFF' } },
   ];
   it.each(entrances.flatMap(entrance => [false, true, undefined].flatMap(managed =>
@@ -327,7 +329,6 @@ describe('payoff request audit classification', () => {
   it.each([
     { controller: PaymentApprovalController, method: 'create', action: 'WAIVE_LATE_FEE' },
     { controller: PaymentApprovalController, method: 'approve', action: 'EARLY_PAYOFF' },
-    { controller: ContractsController, method: 'earlyPayoffSlipConfirm', action: 'EARLY_PAYOFF' },
   ])('does not change unrelated legacy $method/$action audit handling', async ({ controller, method, action }) => {
     const audit = { log: jest.fn().mockResolvedValue(undefined) };
     const interceptor = new AuditInterceptor(audit as unknown as AuditService);

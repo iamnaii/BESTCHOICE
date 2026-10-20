@@ -464,7 +464,8 @@ it('both current owner and legacy permission approver cannot execute managed pen
     const response = await http(`/payments/approval-requests/${row.id}/approve`, reviewer)
       .send({ reason: 'Actual reviewer request' })
       .expect(403);
-    expect(response.body.message).toContain('ยังรอขั้นตอนอนุมัติของเจ้าของ');
+    // The reviewed canonical producer now rejects managed unbound execution before queue consumption.
+    expect(response.body.message).toBe('ไม่มีสิทธิ์ดำเนินการปิดสัญญานี้');
   }
   expect(await db.paymentApprovalRequest.findUnique({ where: { id: row.id } })).toMatchObject({
     status: 'PENDING',

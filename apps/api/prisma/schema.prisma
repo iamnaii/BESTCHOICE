@@ -8841,6 +8841,11 @@ model ContractCancellation {
   requestedBy            User                       @relation("CancellationRequester", fields: [requestedById], references: [id])
   reason                 String
   refundAmount           Decimal                    @map("refund_amount") @db.Decimal(12, 2)
+  /// Private managed approval evidence. Immutable; never included in public responses.
+  requestSnapshotVersion Int?    @map("request_snapshot_version")
+  requestSnapshot        Json?   @map("request_snapshot") @db.JsonB
+  requestFingerprint     String? @map("request_fingerprint") @db.VarChar(64)
+  rejectionReason        String? @map("rejection_reason") @db.VarChar(2000)
   status                 ContractCancellationStatus @default(PENDING)
   approvedById           String?                    @map("approved_by_id")
   approvedBy             User?                      @relation("CancellationApprover", fields: [approvedById], references: [id])

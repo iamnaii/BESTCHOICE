@@ -164,6 +164,7 @@ export class ShopTenderRecorder {
       reverseSplitJe: boolean;
       descriptionPrefix?: string;
       occurredAt?: Date;
+      managedCancellation?: boolean;
     },
   ): Promise<number> {
     const rows = await tx.shopTender.findMany({
@@ -196,8 +197,10 @@ export class ShopTenderRecorder {
       const split = await this.findSplitJe(tx, docKey(input.doc));
       if (split) {
         await this.deps.reversal.reverse(
-          { jeIds: [split.id], flowLabel: `${SHOP_TENDER_SPLIT_FLOW}-reversed`, descriptionPrefix: input.descriptionPrefix ?? '[คืนเงิน]' },
+          { jeIds: [split.id], flowLabel: `${SHOP_TENDER_SPLIT_FLOW}-reversed`, descriptionPrefix: input.descriptionPrefix ?? '[คืนเงิน]',
+            ...(input.managedCancellation ? {createdById:input.actorId,managedCancellation:true} : {}) },
           tx,
+          input.managedCancellation ? occurredAt : undefined,
         );
       }
     }

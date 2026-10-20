@@ -1,3 +1,5 @@
+import { assertManagedCancellationPosting } from '../managed-cancellation-posting';
+import { onDomainCommit } from '../../employee-access/access-execution-context';
 import { Injectable, Logger } from '@nestjs/common';
 import { Decimal } from '@prisma/client/runtime/library';
 import { Prisma } from '@prisma/client';
@@ -26,6 +28,8 @@ export interface CancelSweepSelector {
 
 export interface CancelSweepInput {
   jeIds: string[];
+  createdById?: string;
+  managedCancellation?: boolean;
   /**
    * ชื่อเดิมคงไว้ — คือ contractId ที่ใช้ sweep (exchange ส่ง newContractId, generic ส่ง contractId)
    *
@@ -162,9 +166,11 @@ export class ExchangeCancelReversalTemplate {
         };
       });
 
+      if (input.managedCancellation) await assertManagedCancellationPosting(client as Prisma.TransactionClient, input.createdById, postedAt!, je.companyId);
       const result = await this.journal.createAndPost(
         {
           postedAt,
+          ...(input.createdById ? { createdById: input.createdById } : {}),
           description: `${descriptionPrefix} กลับรายการ ${je.entryNumber}`,
           reference: `${je.id}:${flowLabel}`,
           companyId: je.companyId, // สำคัญ: A.4 เป็น SHOP company
@@ -210,7 +216,8 @@ export class ExchangeCancelReversalTemplate {
       });
       reversalJeIds.push(result.id);
     }
-    this.logger.log(`Exchange cancel — reversed ${reversalJeIds.length} JE(s)`);
+    const log = async () => { this.logger.log(`Exchange cancel — reversed ${reversalJeIds.length} JE(s)`); };
+    if (input.managedCancellation) onDomainCommit(log); else await log();
     return { reversalJeIds, redirectedTotals };
   }
 }

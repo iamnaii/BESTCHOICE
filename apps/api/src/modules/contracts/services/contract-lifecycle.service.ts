@@ -1,3 +1,4 @@
+import { cancellationActor, cancellationSource } from '../managed-cancellation-source';
 import { currentPreparationSource } from '../../employee-access/access-contract-preparation-source';
 import { reserveContractPromotion, releaseContractPromotion, assertContractPromotionTerms } from '../../promotions/contract-promotion-terms';
 import { namedExecution, assertNamedPreparation } from '../../promotions/contract-promotion-source';
@@ -449,8 +450,11 @@ export class ContractLifecycleService {
 
   // === SOFT DELETE: ลบสัญญา (เฉพาะ CREATING/REJECTED, ห้ามลบสัญญาที่ลงนามแล้ว) ===
   async softDelete(id: string, userId: string) {
-    if (currentDomainAccess()) await this.prisma.$queryRaw`SELECT id FROM contracts WHERE id = ${id} FOR UPDATE`;
-    let contract = await this.query.findOne(id);
+    const cancellationContext=await cancellationActor(this.basePrisma,userId,'contracts.update','SHOP');
+    if(cancellationContext) await cancellationSource(this.basePrisma,id,'delete');
+    let contract = cancellationContext
+      ? await this.prisma.contract.findUniqueOrThrow({where:{id,deletedAt:null},include:{signatures:{where:{deletedAt:null}}}})
+      : await this.query.findOne(id);
 
     // T5-C2 — Explicit terminal-status lockdown. Once a contract leaves DRAFT
     // (activation, payoff, repossession, bad-debt close-out, etc.) it becomes
@@ -509,6 +513,7 @@ export class ContractLifecycleService {
       }
       contract = { ...contract, ...current };
       if (contract.promotionFingerprint) {
+        if (current.signatures.length > 0) throw new BadRequestException('ยกเลิกการจองโปรโมชันได้เฉพาะฉบับร่างที่ยังไม่ลงนาม');
         if (!namedExecution(userId).snapshot.isOwner) throw new ForbiddenException('เฉพาะเจ้าของปัจจุบันเท่านั้นที่ยกเลิกฉบับร่างได้');
         await assertNamedPreparation(contract, userId);
         await releaseContractPromotion(contract);
@@ -517,7 +522,7 @@ export class ContractLifecycleService {
       const downPayment = cashDownPayment(contract);
       await cleanupCreditContractSale(tx, contract, userId, 'ยกเลิกสัญญาใช้เครดิตเทิร์น');
       await new TradeInCreditService(this.prisma).release(tx, contract.tradeInCreditSnapshot,
-        { contractId: id }, userId, 'ลบสัญญาฉบับร่าง', true);
+        { contractId: id }, userId, 'ลบสัญญาฉบับร่าง', true, cancellationContext ? {createdById:userId,postedAt:now,managedCancellation:true} : undefined);
       if (downPayment.gt(0)) {
         const downJe = await tx.journalEntry.findFirst({
           where: {
@@ -541,13 +546,14 @@ export class ContractLifecycleService {
               refundAccountCode,
               downAmount: downPayment,
               originalJournalEntryId: downJe.id,
+              ...(cancellationContext ? {postedAt:now,createdById:userId,managedCancellation:true} : {}),
             },
             tx,
           );
           // คืนเงินตามวิธีที่รับมา: reversal ข้างบนคืนเต็มยอดเข้าบัญชี primary — ดาวน์จ่ายผสมต้อง mirror JE
           // แยกยอดด้วย (ไม่งั้นบัญชี primary ติดลบเท่าส่วนของวิธีอื่น) · แถว OUT = ผู้กดลบร่าง
           await new ShopTenderRecorder(this.prisma).recordRefund(tx, { doc: { contractId: id }, kinds: ['CONTRACT_DOWN'],
-            actorId: userId, reverseSplitJe: true, descriptionPrefix: '[ลบร่างสัญญา]', occurredAt: now });
+            actorId: userId, reverseSplitJe: true, descriptionPrefix: '[ลบร่างสัญญา]', occurredAt: now, ...(cancellationContext ? {managedCancellation:true} : {}) });
         }
       }
 
@@ -606,11 +612,12 @@ export class ContractLifecycleService {
     });
 
     if (releaseSkippedFor) {
-      this.logger.warn(
+      const warn=async()=>{this.logger.warn(
         `[#1679] ลบร่างสัญญา ${contract.contractNumber} โดยไม่ปลดเครื่อง ${contract.productId} — ใบจอง ${releaseSkippedFor} ล็อกเครื่องอยู่`,
-      );
+      );};
+      if(cancellationContext) onDomainCommit(warn); else await warn();
     }
-
+    if(cancellationContext) return {id,deleted:true};
     return {
       message:
         cascadedSignatures > 0

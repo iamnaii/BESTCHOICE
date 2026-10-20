@@ -1149,13 +1149,14 @@ it('canonical active cancellation retains consumed quota and immutable usage his
       ),
     () => company,
   );
-  const request = await cancellation.requestCancellation(
-    f.contract.id,
-    owner,
-    'Owned cancellation test',
-    0,
-  );
-  await cancellation.approveCancellation(request.id, owner);
+  // This managed fixture consumes the same immutable producer and a different
+  // protected owner; direct legacy execution is no longer an authority bypass.
+  const checker = await db.user.create({data:{name:'Owned cancellation checker',email:randomUUID()+'@test.invalid',
+    password:'unused',role:'OWNER',accessManaged:true}});
+  const request = (await execute(owner, () => cancellation.requestCancellation(
+    f.contract.id, owner, 'Owned cancellation test', 0,
+  ), 'sales.cancel.request', 'FINANCE')).result;
+  await execute(checker.id, () => cancellation.approveCancellation(request.id, checker.id), 'sales.cancel.approve', 'FINANCE');
   const current = await state(f.contract.id);
   expect(current.contract.status).toBe('CANCELED');
   expect(current.terms.reservation?.state).toBe('CONSUMED');
@@ -1315,3 +1316,13 @@ it.each(['BRANCH_MANAGER', 'FINANCE_MANAGER'] as const)(
     }
   },
 );
+
+it('named rejected signed draft cannot release an unsigned-only reserved quota', async()=>{
+  const f=await signed();
+  await db.contract.update({where:{id:f.contract.id},data:{workflowStatus:'REJECTED'}});
+  const before=await db.signature.findMany({where:{contractId:f.contract.id}});
+  await expect(execute(owner,()=>lifecycle.softDelete(f.contract.id,owner),'contracts.update')).rejects.toMatchObject({status:400});
+  expect((await state(f.contract.id)).terms.reservation?.state).toBe('RESERVED');
+  expect((await db.promotion.findUniqueOrThrow({where:{id:f.promotion.id}})).currentUsageCount).toBe(1);
+  expect(await db.signature.findMany({where:{contractId:f.contract.id}})).toEqual(before);
+});

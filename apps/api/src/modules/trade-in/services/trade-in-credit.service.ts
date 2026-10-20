@@ -169,7 +169,7 @@ export class TradeInCreditService {
       baseAmount: quote.base.toFixed(2), bonusAmount: quote.bonus.toFixed(2), cashDownAmount: cash.toFixed(2), totalDownAmount: total.toFixed(2) };
   }
 
-  async release(tx: Prisma.TransactionClient, value: Prisma.JsonValue | undefined, target: Target, actorId: string, reason: string, reverse = false) {
+  async release(tx: Prisma.TransactionClient, value: Prisma.JsonValue | undefined, target: Target, actorId: string, reason: string, reverse = false, cancellationPosting?: {createdById:string;postedAt:Date;managedCancellation:true}) {
     const snapshot = creditSnapshot(value);
     if (!snapshot) return;
     const redemption = await tx.tradeInCreditRedemption.findUnique({ where: { id: snapshot.redemptionId } });
@@ -178,7 +178,8 @@ export class TradeInCreditService {
     if (redemption.releasedAt) return;
     if (reverse) await new ExchangeCancelReversalTemplate(this.journal, this.prisma).reverse({
       jeIds: [redemption.applicationJournalEntryId], flowLabel: 'shop-trade-in-credit-released',
-    }, tx);
+      ...(cancellationPosting ? {createdById:cancellationPosting.createdById,managedCancellation:true} : {}),
+    }, tx, cancellationPosting?.postedAt);
     const entry = await tx.journalEntry.findUnique({ where: { id: redemption.applicationJournalEntryId } });
     if ((entry?.metadata as Record<string, unknown> | null)?.reversed !== true) throw new BadRequestException('ต้องกลับรายการบัญชีใช้เครดิตก่อนคืนเครดิตเทิร์น');
     const released = await tx.tradeIn.updateMany({ where: { id: redemption.tradeInId, currentRedemptionId: redemption.id }, data: { currentRedemptionId: null } });

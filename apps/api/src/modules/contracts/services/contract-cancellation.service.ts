@@ -1,6 +1,10 @@
+import { randomUUID } from 'node:crypto';
+import { domainAccessClient } from '../../employee-access/access-execution-context';
+import { cancellationActor, cancellationReason, cancellationSource } from '../managed-cancellation-source';
+import { captureCancellationSnapshot, cancellationFingerprint } from '../cancellation-request-snapshot';
 import { cleanupCreditContractSale } from '../../trade-in/services/credit-contract-cleanup.util';
 import { TradeInCreditService } from '../../trade-in/services/trade-in-credit.service';
-import { Injectable, Logger, NotFoundException, BadRequestException, ConflictException, InternalServerErrorException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, BadRequestException, ConflictException, ForbiddenException, InternalServerErrorException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import * as Sentry from '@sentry/nestjs';
 import { Decimal } from '@prisma/client/runtime/library';
@@ -102,10 +106,12 @@ export class ContractCancellationService {
   private readonly logger = new Logger(ContractCancellationService.name);
 
   constructor(
-    private prisma: PrismaService,
+    private basePrisma: PrismaService,
     private getCancellationTemplate: () => ContractCancellationTemplate | undefined,
     private getCompanyResolver: () => CompanyResolverService | undefined = () => undefined,
   ) {}
+
+  private get prisma() { return domainAccessClient(this.basePrisma); }
 
   /**
    * Request a cancellation for an existing contract.
@@ -120,6 +126,16 @@ export class ContractCancellationService {
     reason: string,
     refundAmount: number,
   ) {
+    const ctx = await cancellationActor(this.basePrisma,userId,'sales.cancel.request','FINANCE');
+    const requestId = randomUUID();
+    let evidence: Prisma.InputJsonObject | undefined;
+    if (ctx) {
+      reason = cancellationReason(reason);
+      if (!Number.isFinite(refundAmount) || refundAmount !== 0) throw new BadRequestException('คำขอยกเลิกนี้ไม่รองรับการคืนเงิน กรุณาระบุ refundAmount เป็น 0');
+      const {contract:current} = await cancellationSource(this.basePrisma,contractId,'request');
+      if(current.status!=='ACTIVE') throw new BadRequestException('ขอยกเลิกได้เฉพาะสัญญาที่เปิดใช้งานแล้ว');
+      evidence = await captureCancellationSnapshot(ctx.client,current,{cancellationId:requestId,contractId,requestedById:userId,reason,refundAmount:'0.00'});
+    }
     const contract = await this.prisma.contract.findUnique({
       where: { id: contractId },
       select: { id: true, contractNumber: true, status: true, deletedAt: true },
@@ -140,6 +156,7 @@ export class ContractCancellationService {
 
     const cancellation = await this.prisma.contractCancellation.create({
       data: {
+        ...(ctx ? {id:requestId,requestSnapshotVersion:1,requestSnapshot:evidence!,requestFingerprint:cancellationFingerprint(evidence)} : {}),
         contractId,
         requestedById: userId,
         reason,
@@ -152,7 +169,12 @@ export class ContractCancellationService {
       },
     });
 
-    return cancellation;
+    if(ctx) {
+      await ctx.client.auditLog.create({data:{userId,action:'CONTRACT_CANCELLATION_REQUESTED',entity:'contract',entityId:contractId,
+        newValue:{cancellationId:cancellation.id,status:'PENDING',snapshotVersion:1}}});
+      return {id:cancellation.id,cancellationId:cancellation.id,contractId,status:'PENDING',execution:'CANCELLATION_ONLY'};
+    }
+    return publicLegacyCancellation(cancellation);
   }
 
   /**
@@ -160,6 +182,8 @@ export class ContractCancellationService {
    * Wrapped in a $transaction for full atomicity.
    */
   async approveCancellation(cancellationId: string, approverId: string) {
+    const ctx = await cancellationActor(this.basePrisma,approverId,'sales.cancel.approve','FINANCE');
+    if(ctx) await ctx.client.$queryRaw`SELECT id FROM contract_cancellations WHERE id=${cancellationId} FOR UPDATE`;
     const cancellation = await this.prisma.contractCancellation.findUnique({
       where: { id: cancellationId },
       include: { contract: true },
@@ -173,6 +197,19 @@ export class ContractCancellationService {
       );
     }
 
+    if (!ctx && cancellation.requestSnapshot != null) throw new ForbiddenException('คำขอนี้ต้องใช้สิทธิ์และหลักฐานการอนุมัติปัจจุบัน');
+    let managedSource: Awaited<ReturnType<typeof cancellationSource>> | undefined;
+    if(ctx) {
+      if(!ctx.snapshot.isOwner || cancellation.requestedById===approverId || cancellation.requestSnapshotVersion!==1 ||
+        !cancellation.requestSnapshot || !cancellation.requestFingerprint) throw new ForbiddenException('ไม่มีหลักฐานหรือสิทธิ์อนุมัติคำขอนี้');
+      managedSource=await cancellationSource(this.basePrisma,cancellation.contractId,'approve');
+      const evidence=await captureCancellationSnapshot(ctx.client,managedSource.contract,{cancellationId,contractId:cancellation.contractId,
+        requestedById:cancellation.requestedById,reason:cancellation.reason,refundAmount:'0.00'});
+      if(cancellationFingerprint(evidence)!==cancellation.requestFingerprint ||
+        cancellationFingerprint(cancellation.requestSnapshot)!==cancellation.requestFingerprint)
+        throw new ConflictException('ข้อมูลคำขอเปลี่ยนแล้ว ต้องปฏิเสธคำขอเดิมก่อนสร้างคำขอใหม่');
+    }
+    const checkedDate = new Date();
     const cancellationTemplate = this.getCancellationTemplate();
     if (!cancellationTemplate) {
       throw new InternalServerErrorException(
@@ -285,6 +322,7 @@ export class ContractCancellationService {
           isC2,
           settledTotal,
           settledShopTotal,
+          ...(ctx ? {createdById:approverId,postedAt:checkedDate,financeCompanyId:managedSource!.books.find(b=>b.companyCode==='FINANCE')!.id,managedCancellation:true} : {}),
         },
         tx,
       );
@@ -305,7 +343,7 @@ export class ContractCancellationService {
 
       // ── Restore (pattern exchange-cancel): product back to SHOP stock +
       // soft-delete schedule rows so crons/queues stop seeing the contract ──
-      const now = new Date();
+      const now = ctx ? checkedDate : new Date();
       const companyResolver = this.getCompanyResolver();
       if (!companyResolver) {
         throw new InternalServerErrorException(
@@ -351,22 +389,16 @@ export class ContractCancellationService {
         data: { deletedAt: now },
       });
 
-      // Update ContractCancellation → APPROVED
-      await tx.contractCancellation.update({
-        where: { id: cancellationId },
-        data: {
-          status: 'APPROVED',
-          approvedById: approverId,
-          approvedAt: now,
-          reversalJournalEntryId: reversalJE.id,
-        },
-      });
-
-      // Update Contract → CANCELED
-      await tx.contract.update({
-        where: { id: cancellation.contractId },
-        data: { status: 'CANCELED' },
-      });
+      const decisionData={status:'APPROVED' as const,approvedById:approverId,approvedAt:now,reversalJournalEntryId:reversalJE.id};
+      if(ctx) {
+        const decision=await tx.contractCancellation.updateMany({where:{id:cancellationId,status:'PENDING',deletedAt:null},data:decisionData});
+        if(decision.count!==1) throw new ConflictException('คำขอถูกดำเนินการแล้ว');
+        const changed=await tx.contract.updateMany({where:{id:cancellation.contractId,status:'ACTIVE',deletedAt:null},data:{status:'CANCELED'}});
+        if(changed.count!==1) throw new ConflictException('สัญญาเปลี่ยนสถานะแล้ว');
+      } else {
+        await tx.contractCancellation.update({where:{id:cancellationId},data:decisionData});
+        await tx.contract.update({where:{id:cancellation.contractId},data:{status:'CANCELED'}});
+      }
 
       // Audit log — เก็บ reversal ทั้งชุด (count + ids + first entryNumber).
       // C-2 ใช้ action แยก + บันทึกยอดเรียกคืนและรอบจ่ายที่เคยตัดจ่าย
@@ -440,6 +472,11 @@ export class ContractCancellationService {
     // งานมืออนุมัติทีละใบ ไม่ใช่เส้นทางรับเงินที่รันถี่; ด่านอื่นทั้งหมด (status /
     // paid / open-batch guard / cross-check / DB idempotency index) ยังทำงาน
     // เหมือนเดิมทุกประการ — ชั้นนี้เป็นตาข่ายสุดท้าย.
+    // Managed execution already owns Serializable/retries/effects. Never translate
+    // a retryable conflict or send telemetry before that outer transaction commits.
+    if(ctx) {
+      return run(ctx.client);
+    }
     try {
       return await this.prisma.$transaction(run, {
         isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
@@ -487,9 +524,14 @@ export class ContractCancellationService {
     approverId: string,
     reason: string,
   ) {
+    const ctx=await cancellationActor(this.basePrisma,approverId,'sales.cancel.approve','FINANCE');
+    if(ctx) {
+      reason=cancellationReason(reason);
+      await ctx.client.$queryRaw`SELECT id FROM contract_cancellations WHERE id=${cancellationId} FOR UPDATE`;
+    }
     const cancellation = await this.prisma.contractCancellation.findUnique({
       where: { id: cancellationId },
-      select: { id: true, status: true, deletedAt: true },
+      select: { id: true, contractId:true, status: true, deletedAt: true, requestSnapshotVersion:true },
     });
     if (!cancellation || cancellation.deletedAt) {
       throw new NotFoundException('ไม่พบคำขอยกเลิกสัญญา');
@@ -500,6 +542,16 @@ export class ContractCancellationService {
       );
     }
 
+    if(!ctx && cancellation.requestSnapshotVersion!=null) throw new ForbiddenException('คำขอนี้ต้องใช้สิทธิ์ปัจจุบัน');
+    if(ctx) {
+      await cancellationSource(this.basePrisma,cancellation.contractId,'reject');
+      const changed=await ctx.client.contractCancellation.updateMany({where:{id:cancellationId,status:'PENDING',deletedAt:null},
+        data:{status:'REJECTED',approvedById:approverId,approvedAt:new Date(),rejectionReason:reason}});
+      if(changed.count!==1) throw new ConflictException('คำขอถูกดำเนินการแล้ว');
+      await ctx.client.auditLog.create({data:{userId:approverId,action:'CANCELLATION_REJECTED',entity:'contract',entityId:cancellation.contractId,
+        oldValue:{cancellationId,status:'PENDING'},newValue:{status:'REJECTED',reasonRecorded:true}}});
+      return {cancellationId,status:'REJECTED'};
+    }
     const updated = await this.prisma.contractCancellation.update({
       where: { id: cancellationId },
       data: {
@@ -525,7 +577,7 @@ export class ContractCancellationService {
       },
     });
 
-    return updated;
+    return publicLegacyCancellation(updated);
   }
 
   /**
@@ -564,7 +616,7 @@ export class ContractCancellationService {
       const settled = settledMap.get(row.contractId);
       const settledInBatch = !!settled && settled.settledTotal.gt(0);
       return {
-        ...row,
+        ...publicLegacyCancellation(row),
         settledInBatch,
         recallAmount: settledInBatch
           ? settled.settledTotal.minus(settled.settledDeductions).toFixed(2)
@@ -572,4 +624,11 @@ export class ContractCancellationService {
       };
     });
   }
+}
+
+/** Additive private evidence must never escape the historic unmanaged shape. */
+function publicLegacyCancellation<T extends {requestSnapshot?:unknown;requestSnapshotVersion?:unknown;requestFingerprint?:unknown;rejectionReason?:unknown}>(row:T) {
+  const {requestSnapshot,requestSnapshotVersion,requestFingerprint,rejectionReason,...publicRow}=row;
+  void requestSnapshot;void requestSnapshotVersion;void requestFingerprint;void rejectionReason;
+  return publicRow;
 }

@@ -827,6 +827,30 @@ R136 splits9.2 into the following serial gates. Its two HTTP routes remain pendi
 - [ ] Consume child1 source/query/projection and independent actual child sources before aggregates/CTEs/counts/limits/export; separate export/detail/sensitive capabilities, completeness/nulls and buffered files. Root parent reconciles38domain+7adjacent and restored consumers without duplicated route credit.
 - [ ] Cover actual changed authorization/money/file behavior, relevant canonical regressions, types/touched lint and scoped coverage. Record exact commands/exits, self-review/commit and independent gate; preserve remaining audit5/approval6/UI7/system4.4/final8 obligations.
 
+#### Serial execution of Task4.2.1.11
+
+R150 retains all five original methods in two serial children. R149 defines independent dashboard categories, finite staff attribution, complete authorized milestone totals and snapshot contact/promise semantics. The parent remains pending until both child gates and exact source/evidence reconciliation.
+
+### Task 4.2.1.11.1: Contract aggregates, snapshot and buffered export
+
+**Files/scope:** ContractsController.exportRows, getDocumentDashboard, getMilestonesSummary, getSnapshot; exactly4domain. Reuse child1 source/query/projectors and canonical outstanding/signature/export helpers.
+
+- [x] Meaningful actual marked owned PostgreSQL/HTTP RED before runtime, explicit both DB URLs, real selector/app/request markers, authorized/no-grants/foreign/current/asymmetric controls. Fixture/compiler failures are not behavioral RED.
+- [x] R99/R100/R108/R109/R149: independent original tuple/category/current-source checks before filter/count/rank/limit; exact export-read intersection and bounded batch projection; truthful null/availability and complete authorized milestone totals with five previews; separate document-family metrics/history and actual chat/contact/promise sources. No alternate financial formula or new global identity authority.
+- [x] Useful positive/denial/current-source/rollback/boundary/performance evidence for all four, relevant canonical/read regressions, API/shared/Web types as affected, touched lint/scoped coverage; exact commands/exits, self-review/commit and independent gate. ActualJWT/fullguards/CSRF/freshbackend/browser/localcheck/preview8, source-aware UI7, audit5/system4.4 and approvals6 remain required.
+
+**R151 review correction:** The shared ordinary FINANCE list and export salespersonId filter must use the same independently authorized current staff-source predicate as attribution projection. Preserve all valid Customer identity provenance alternatives with sufficient bounded current-source locks. Apply the10,000 distinct Contract contributor union to the complete request, including milestone aggregate candidates and preview-label dependencies; no new route credit. Focused list/export/source-wait/union-bound regressions and scoped independent re-review are required.
+
+**Reviewed checkpoint:** b879a356e plus scoped fix1 f61581164; I1–I3 all addressed, no new findings. Final46derived/34ordinary tests and API/sharedtypes/lint pass; six CannotVerify dispositions retained in owning tasks. Exactlyfour domain routes credited, no shared-list duplicate credit. Parent11/journal11.2 and final integration remain open.
+
+### Task 4.2.1.11.2: Contract journal source proof and independent books
+
+**Files/scope:** ContractsController.listJournalEntries; exactly1domain. Actual canonical producers, ContractJournalQueryService and shared toContractJeView formatting; no duplicate money engine.
+
+- [ ] Concrete complete source-family matrix and root ruling before runtime, then meaningful actual marked owned PostgreSQL/HTTP RED; explicit both DB URLs/no providers. Retain all recognized current top-level contractId/reversal families; source-less history is not permission and unimplemented known families are not completion.
+- [ ] R108/R150: parent current Contract read plus independently genuine journal/cost/profit authority per real book, COMPANY when no genuine persisted branch source. Prove actual template/reference/typed parent/backlinks/current book without inventing universal AUTO/reference or reversal markers; scope before selection/limits and return finite typed category availability. Preserve canonical money formatting, deterministic order and intentional INTERCO-items/newContractId-only exclusions.
+- [ ] Canonical producer fixtures and positive/poisoned-parent/reversal/cross-book/current-source controls, bounded query/lock/response behavior, affected regressions/types/lint/coverage, exact commands/exits/self-review/commit and independent gate. Root reconciles parent11 five and parent4.2.1 exact38domain+7adjacent with all downstream obligations retained.
+
 ### Task 4.2.2: Contract and customer documents
 
 **Files:** Shared employee-access scope/source/projector/execution infrastructure and contract-documents and documents. Exact baseline slice: `finance-planning-partition.json` → `contract_documents` (27 rows; ContractDocumentsController 8, DocumentsController 19).

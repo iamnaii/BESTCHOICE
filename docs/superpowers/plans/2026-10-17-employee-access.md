@@ -721,9 +721,11 @@ R111 splits this parent into two serial independently reviewed subunits. The exi
 
 **Files/scope:** ContractsController.getQrData, recordPdpaConsent, getPdpaConsent and CustomerAccessController.generateAccessToken; exactly4domain.
 
-- [ ] Meaningful owned PostgreSQL/marked HTTP RED with exact authorized success/no-grants/foreign/current and asymmetric tuple controls; explicitly isolated both DB URLs, mocked external effects. Fixture/compiler failures are not behavioral RED.
-- [ ] Finite source and independent document/identity/delegation authority; secret-free audit and genuine signer/evidence, preserve public customer authentication separately. Explicit recipient/expiry/current authority and private proof, no fabricated consent or guessed file provenance.
-- [ ] Cover actual changed authorization/money/file behavior, relevant canonical regressions, types/touched lint and scoped coverage. Record exact commands/exits, self-review/commit and independent gate; preserve remaining audit5/approval6/UI7/system4.4/final8 obligations.
+- [x] Meaningful owned PostgreSQL/marked HTTP RED with exact authorized success/no-grants/foreign/current and asymmetric tuple controls; explicitly isolated both DB URLs, mocked external effects. Fixture/compiler failures are not behavioral RED.
+- [x] Finite source and independent document/identity/delegation authority; secret-free audit and genuine signer/evidence, preserve public customer authentication separately. Explicit recipient/expiry/current authority and private proof, no fabricated consent or guessed file provenance.
+- [x] Cover actual changed authorization/money/file behavior, relevant canonical regressions, types/touched lint and scoped coverage. Record exact commands/exits, self-review/commit and independent gate; preserve remaining audit5/approval6/UI7/system4.4/final8 obligations.
+
+**Consent/delegation completion:** e5e856bb2 independently passes spec/quality0Critical/0Important/3Minor. Exactly4staffmethods; current exact-source authority, genuine notice/version handshake, atomic capture/recapture/audit, future-only immutable token provenance and atomic50-use customer access. Public QR financial status is uniformly null. Final57ownedPG,89review,63activation,61named,33read,154focusedregressions pass; APItypes0/lint0errors7existingwarnings. Unchanged helper evidence supports R122 composition, while isolated FINANCE-only issuance/currentcase/no-sibling HTTP remains explicit final8 verification. UI7 must replace signature-only notice capture; no end-to-end/JWT/browser/localpreview completion claim. Parent15of38domain/23pending; FINANCEallocated15of544/529remaining.
 
 ### Task 4.2.1.7: Direct Contract exchange callers
 

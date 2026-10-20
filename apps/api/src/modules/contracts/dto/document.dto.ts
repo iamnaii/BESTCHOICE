@@ -1,18 +1,26 @@
-import { IsString, IsOptional, IsBoolean, IsArray, MaxLength, Matches } from 'class-validator';
+import { IsString, IsOptional, IsBoolean, IsArray, MaxLength, Matches, ArrayMaxSize, IsNotEmpty } from 'class-validator';
 
 export class CreateTemplateDto {
   @IsString()
+  @IsNotEmpty()
+  @MaxLength(256)
   name: string;
 
   @IsString()
   @IsOptional()
+  @MaxLength(128)
   type?: string = 'STORE_DIRECT';
 
   @IsString()
+  @MaxLength(1048576)
+  @IsNotEmpty()
   contentHtml: string;
 
   @IsArray()
   @IsOptional()
+  @ArrayMaxSize(1000)
+  @IsString({ each: true })
+  @MaxLength(256, { each: true })
   placeholders?: string[];
 
   @IsOptional()
@@ -29,14 +37,21 @@ export class CreateTemplateDto {
 export class UpdateTemplateDto {
   @IsString()
   @IsOptional()
+  @MaxLength(256)
+  @IsNotEmpty()
   name?: string;
 
   @IsString()
   @IsOptional()
+  @MaxLength(1048576)
+  @IsNotEmpty()
   contentHtml?: string;
 
   @IsArray()
   @IsOptional()
+  @ArrayMaxSize(1000)
+  @IsString({ each: true })
+  @MaxLength(256, { each: true })
   placeholders?: string[];
 
   @IsOptional()

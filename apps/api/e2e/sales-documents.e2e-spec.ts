@@ -1,3 +1,6 @@
+import { AccessDocumentTemplateBoundaries } from '../src/modules/employee-access/access-document-template-boundaries';
+import { AccessResourceService } from '../src/modules/employee-access/access-resource.service';
+import { AccessSnapshotService } from '../src/modules/employee-access/access-snapshot.service';
 import { randomUUID, createHash } from 'crypto';
 import { DocumentPersistenceService } from '../src/modules/contracts/services/document-persistence.service';
 import { NotificationDispatchService } from '../src/modules/notifications/services/notification-dispatch.service';
@@ -24,7 +27,8 @@ import { JwtAuthGuard } from '../src/modules/auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../src/modules/auth/guards/roles.guard';
 import { EntityScopeInterceptor } from '../src/interceptors/entity-scope.interceptor';
 
-if (!process.env.DATABASE_URL?.includes('/bc_chat_credit_test?host=/tmp/bc-chat-credit.')) throw new Error('Run tools/test-chat-credit.sh with its disposable database');
+const templateFixture = process.env.DATABASE_URL?.includes('/bc_access_task2?host=/tmp/bc-access-templates.') && process.env.DATABASE_URL_FINANCE === process.env.DATABASE_URL && process.env.EMPLOYEE_ACCESS_TEST_DATABASE_URL === process.env.DATABASE_URL;
+if (!templateFixture && !process.env.DATABASE_URL?.includes('/bc_chat_credit_test?host=/tmp/bc-chat-credit.')) throw new Error('Run an owned disposable database harness');
 
 describe('Staff sales documents on isolated PostgreSQL', () => {
   const db = new PrismaService();
@@ -62,7 +66,8 @@ describe('Staff sales documents on isolated PostgreSQL', () => {
     generatedA = (await generated(contractA)).id; files.set(`${contractA}.pdf`, pdf);
     generatedB = (await generated(contractB)).id; files.set(`${contractB}.pdf`, pdf);
     const module = await Test.createTestingModule({ controllers: [ContractDocumentsController, DocumentsController], providers: [
-      DocumentsService, ContractDocumentsService, ContractFileAccessGuard, RolesGuard,
+      DocumentsService, ContractDocumentsService, ContractFileAccessGuard,
+      AccessDocumentTemplateBoundaries, AccessResourceService, AccessSnapshotService, RolesGuard,
       { provide: PrismaService, useValue: db }, { provide: StorageService, useValue: storage },
       { provide: NotificationsService, useValue: notifications }, { provide: SettingsService, useValue: { findAll: async () => [] } }, { provide: OcrService, useValue: {} },
     ] }).overrideGuard(JwtAuthGuard).useValue({ canActivate: (ctx: ExecutionContext) => { ctx.switchToHttp().getRequest().user = actor; return true; } }).compile();

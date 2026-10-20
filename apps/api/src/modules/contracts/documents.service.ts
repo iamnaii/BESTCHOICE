@@ -53,7 +53,7 @@ export class DocumentsService {
   }
 
   findOneTemplate(id: string) {
-    return this.templateService.findOneTemplate(id);
+    return this.templateService.findOneTemplateForRequest(id);
   }
 
   createTemplate(dto: CreateTemplateDto) {

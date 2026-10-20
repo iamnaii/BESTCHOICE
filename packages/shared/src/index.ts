@@ -53,3 +53,4 @@ export * from './contract-read';
 export * from './contract-preparation-read';
 
 export * from './contract-derived-read';
+export * from './contract-template-access';

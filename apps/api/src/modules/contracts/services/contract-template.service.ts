@@ -1,5 +1,9 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { ContractTemplateReference, PlanType } from '@installment/shared';
+import { domainAccessClient } from '../../employee-access/access-execution-context';
+import { templateRequest } from '../../employee-access/access-document-template-context';
+import { validateTemplateInput } from './template-input';
+import { ContractTemplate, Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { CreateTemplateDto, UpdateTemplateDto } from '../dto/document.dto';
 import * as fs from 'fs';
@@ -16,13 +20,50 @@ import * as path from 'path';
  */
 @Injectable()
 export class ContractTemplateService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private readonly base: PrismaService) {}
+  private get prisma() { return templateRequest.getStore()?.snapshot ? domainAccessClient(this.base) : this.base; }
+
+  private async checkEditorSize(ids: string[]) {
+    if (!ids.length) return;
+    const [size] = await this.prisma.$queryRaw<Array<{ bytes: bigint }>>`
+      SELECT COALESCE(sum(octet_length(row_to_json(t)::text)),0)::bigint AS bytes
+      FROM contract_templates t WHERE id=ANY(${ids}::text[])`;
+    // Leave room for envelope/serialization overhead; never materialize an oversized historical body.
+    if (size.bytes > BigInt(15 * 1024 * 1024))
+      throw new BadRequestException('เทมเพลตมีขนาดใหญ่เกินไป กรุณาลดจำนวนรายการต่อหน้า');
+  }
+  private reference(row: { id: string; type: string; isActive: boolean }): ContractTemplateReference {
+    return { id: row.id, type: Object.values(PlanType).includes(row.type as typeof PlanType[keyof typeof PlanType])
+      ? row.type as ContractTemplateReference['type'] : null, isActive: row.isActive };
+  }
 
   // ─── Contract Templates ──────────────────────────────
-  async findAllTemplates(type?: string, page = 1, limit = 50) {
+  async findAllTemplates(type?: string, page = 1, limit = 50): Promise<{ data: Array<ContractTemplate | ContractTemplateReference>; total: number; page: number; limit: number }> {
     const safeLimit = Math.min(limit, 100);
-    const where: Record<string, unknown> = { isActive: true };
+    const entrance = templateRequest.getStore();
+    const where: Record<string, unknown> = { isActive: true, ...(entrance ? { deletedAt: null } : {}) };
     if (type) where.type = type;
+    if (entrance) {
+      const ids = await this.prisma.contractTemplate.findMany({
+        where, orderBy: [{ createdAt: 'desc' }, { id: 'asc' }],
+        skip: (page - 1) * safeLimit, take: safeLimit, select: { id: true },
+      });
+      if (ids.length) await this.prisma.$queryRaw`
+        SELECT id FROM contract_templates WHERE id=ANY(${ids.map(row => row.id)}::text[]) ORDER BY id FOR SHARE`;
+      const total = await this.prisma.contractTemplate.count({ where });
+      const selected = { id: { in: ids.map(row => row.id) } };
+      if (!entrance.snapshot?.isOwner) {
+        const rows = await this.prisma.contractTemplate.findMany({
+          where: selected, select: { id: true, type: true, isActive: true },
+        });
+        const byId = new Map(rows.map(row => [row.id, this.reference(row)]));
+        return { data: ids.map(row => byId.get(row.id)!), total, page, limit: safeLimit };
+      }
+      await this.checkEditorSize(ids.map(row => row.id));
+      const rows = await this.prisma.contractTemplate.findMany({ where: selected });
+      const byId = new Map(rows.map(row => [row.id, row]));
+      return { data: ids.map(row => byId.get(row.id)!), total, page, limit: safeLimit };
+    }
     const [data, total] = await Promise.all([
       this.prisma.contractTemplate.findMany({
         where,
@@ -35,13 +76,29 @@ export class ContractTemplateService {
     return { data, total, page, limit: safeLimit };
   }
 
-  async findOneTemplate(id: string) {
+  async findOneTemplateForRequest(id: string): Promise<ContractTemplate | ContractTemplateReference> {
+    const entrance = templateRequest.getStore();
+    if (entrance) {
+      const row = await this.prisma.contractTemplate.findFirst({
+        where: { id, deletedAt: null, ...(!entrance.snapshot?.isOwner ? { isActive: true } : {}) },
+        select: { id: true, type: true, isActive: true },
+      });
+      if (!row) throw new NotFoundException('ไม่พบเทมเพลต');
+      if (!entrance.snapshot?.isOwner) return this.reference(row);
+      await this.checkEditorSize([id]);
+    }
+    return this.findOneTemplate(id);
+  }
+
+  async findOneTemplate(id: string): Promise<ContractTemplate> {
+    if (templateRequest.getStore()?.snapshot?.isOwner) await this.checkEditorSize([id]);
     const template = await this.prisma.contractTemplate.findUnique({ where: { id } });
-    if (!template) throw new NotFoundException('ไม่พบเทมเพลต');
+    if (!template || (templateRequest.getStore() && template.deletedAt)) throw new NotFoundException('ไม่พบเทมเพลต');
     return template;
   }
 
-  async createTemplate(dto: CreateTemplateDto) {
+  async createTemplate(dto: CreateTemplateDto): Promise<ContractTemplate> {
+    validateTemplateInput(dto, true);
     // Sanitize HTML to prevent stored XSS
     const sanitizedHtml = this.sanitizeTemplateHtml(dto.contentHtml);
     const placeholders = dto.placeholders || this.extractPlaceholders(sanitizedHtml);
@@ -58,7 +115,8 @@ export class ContractTemplateService {
     });
   }
 
-  async updateTemplate(id: string, dto: UpdateTemplateDto) {
+  async updateTemplate(id: string, dto: UpdateTemplateDto): Promise<ContractTemplate> {
+    validateTemplateInput(dto, false);
     await this.findOneTemplate(id);
     const data: Record<string, unknown> = {};
     if (dto.name !== undefined) data.name = dto.name;
@@ -73,7 +131,7 @@ export class ContractTemplateService {
     return this.prisma.contractTemplate.update({ where: { id }, data });
   }
 
-  async deleteTemplate(id: string) {
+  async deleteTemplate(id: string): Promise<ContractTemplate> {
     await this.findOneTemplate(id);
     return this.prisma.contractTemplate.update({ where: { id }, data: { isActive: false } });
   }
@@ -100,7 +158,10 @@ export class ContractTemplateService {
     // Support both old {placeholder} and new {{= VARIABLE}} syntax
     const oldMatches = html.match(/\{[a-z_]+\}/g) || [];
     const newMatches = html.match(/\{\{=\s*[A-Z_][A-Z0-9_.]*\s*(?:\|[^}]*)?\}\}/g) || [];
-    return [...new Set([...oldMatches, ...newMatches])];
+    const values = [...new Set([...oldMatches, ...newMatches])];
+    if (values.length > 1000 || values.some(value => value.length > 256))
+      throw new BadRequestException('ตัวแปรเทมเพลตมีขนาดใหญ่เกินไป');
+    return values;
   }
 
   /**

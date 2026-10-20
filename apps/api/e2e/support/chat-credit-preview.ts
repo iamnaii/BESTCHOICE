@@ -1,3 +1,6 @@
+import { AccessDocumentTemplateBoundaries } from '../../src/modules/employee-access/access-document-template-boundaries';
+import { AccessResourceService } from '../../src/modules/employee-access/access-resource.service';
+import { AccessSnapshotService } from '../../src/modules/employee-access/access-snapshot.service';
 import { FacebookCommentRefreshService } from '../../src/modules/staff-chat/services/facebook-comment-refresh.service';
 import { FacebookCommentIngestService } from '../../src/modules/chat-adapters/facebook-comment-ingest.service';
 import { ChatLibraryController } from '../../src/modules/staff-chat/chat-library.controller';
@@ -548,6 +551,7 @@ async function main() {
       ChatHandoffService, NoteMentionService, { provide: StaffMessageService, useValue: Object.assign(Object.create(StaffMessageService.prototype), { prisma: db }) }, ChatSalesDispositionService, TodosService, ChatFollowUpService, ChatSalesContextService, JourneySummaryService, JourneyStateService, ChatWorkQueryService, ChatWorkSettingsService, StaffInboxService, ChatWorkAccessService,
       ...tradeInProviders(db, storageForPreview as StorageService),
       ProductPhotosService, DocumentsService, ContractDocumentsService, ContractFileAccessGuard,
+      AccessDocumentTemplateBoundaries, AccessResourceService, AccessSnapshotService,
       { provide: SettingsService, useValue: { findAll: () => db.systemConfig.findMany() } },
       { provide: NotificationsService, useValue: { send: () => { throw new Error('Document preview cannot send notifications'); } } },
       RoomCreditService,

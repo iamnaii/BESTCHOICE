@@ -1,3 +1,4 @@
+import { AccessDocumentTemplateBoundaries } from '../employee-access/access-document-template-boundaries';
 import { Controller, Get, Post, Patch, Delete, Param, Body, Query, UseGuards, Req, Res } from '@nestjs/common';
 import { Request, Response } from 'express';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
@@ -22,54 +23,56 @@ export class DocumentsController {
   constructor(
     private documentsService: DocumentsService,
     private ocrService: OcrService,
+    private templateAccess: AccessDocumentTemplateBoundaries,
   ) {}
 
   // ─── Contract Templates ──────────────────────────────
   @Get('contract-templates')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
   findAllTemplates(
+    @Req() req: Request,
     @Query('type') type?: string,
     @Query('page') page?: string,
     @Query('limit') limit?: string,
   ) {
     const parsedPage = page ? parseInt(page, 10) : undefined;
     const parsedLimit = limit ? Math.min(parseInt(limit, 10), 200) : undefined;
-    return this.documentsService.findAllTemplates(
+    return this.templateAccess.enter('findAllTemplates', req, () => this.documentsService.findAllTemplates(
       type,
       parsedPage && !isNaN(parsedPage) ? parsedPage : undefined,
       parsedLimit && !isNaN(parsedLimit) ? parsedLimit : undefined,
-    );
+    ));
   }
 
   @Post('contract-templates/generate-from-file')
   @Roles('OWNER')
   @Throttle({ short: { limit: 3, ttl: 60000 } })
-  generateTemplateFromFile(@Body() dto: OcrGenerateTemplateDto, @CurrentUser() user: { id: string }) {
-    return this.ocrService.generateTemplateHtml(dto.fileBase64, user.id);
+  generateTemplateFromFile(@Body() dto: OcrGenerateTemplateDto, @CurrentUser() user: { id: string }, @Req() req: Request) {
+    return this.templateAccess.enter('generateTemplateFromFile', req, () => this.ocrService.generateTemplateHtml(dto.fileBase64, user.id));
   }
 
   @Get('contract-templates/:id')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
-  findOneTemplate(@Param('id') id: string) {
-    return this.documentsService.findOneTemplate(id);
+  findOneTemplate(@Param('id') id: string, @Req() req: Request) {
+    return this.templateAccess.enter('findOneTemplate', req, () => this.documentsService.findOneTemplate(id));
   }
 
   @Post('contract-templates')
   @Roles('OWNER')
-  createTemplate(@Body() dto: CreateTemplateDto) {
-    return this.documentsService.createTemplate(dto);
+  createTemplate(@Body() dto: CreateTemplateDto, @Req() req: Request) {
+    return this.templateAccess.enter('createTemplate', req, () => this.documentsService.createTemplate(dto));
   }
 
   @Patch('contract-templates/:id')
   @Roles('OWNER')
-  updateTemplate(@Param('id') id: string, @Body() dto: UpdateTemplateDto) {
-    return this.documentsService.updateTemplate(id, dto);
+  updateTemplate(@Param('id') id: string, @Body() dto: UpdateTemplateDto, @Req() req: Request) {
+    return this.templateAccess.enter('updateTemplate', req, () => this.documentsService.updateTemplate(id, dto));
   }
 
   @Delete('contract-templates/:id')
   @Roles('OWNER')
-  deleteTemplate(@Param('id') id: string) {
-    return this.documentsService.deleteTemplate(id);
+  deleteTemplate(@Param('id') id: string, @Req() req: Request) {
+    return this.templateAccess.enter('deleteTemplate', req, () => this.documentsService.deleteTemplate(id));
   }
 
   // ─── E-Signature (พ.ร.บ.ธุรกรรมทางอิเล็กทรอนิกส์ พ.ศ. 2544) ──

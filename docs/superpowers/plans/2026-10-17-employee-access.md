@@ -711,9 +711,11 @@ R111 splits this parent into two serial independently reviewed subunits. The exi
 
 **Files/scope:** ContractsController.activate; exactly1domain.
 
-- [ ] Meaningful owned PostgreSQL/marked HTTP RED with exact authorized success/no-grants/foreign/current and asymmetric tuple controls; explicitly isolated both DB URLs, mocked external effects. Fixture/compiler failures are not behavioral RED.
-- [ ] Separate contracts.activate capability and original FINANCE/SHOPorigin/currentProduct sources before ownership transfer; existing canonical Sale/stock/commission/journal/period/outbox/signatures/promotion reservation consumption exactly once. Current source/actor after locks and owned rollback; effects only after actual commit.
-- [ ] Cover actual changed authorization/money/file behavior, relevant canonical regressions, types/touched lint and scoped coverage. Record exact commands/exits, self-review/commit and independent gate; preserve remaining audit5/approval6/UI7/system4.4/final8 obligations.
+- [x] Meaningful owned PostgreSQL/marked HTTP RED with exact authorized success/no-grants/foreign/current and asymmetric tuple controls; explicitly isolated both DB URLs, mocked external effects. Fixture/compiler failures are not behavioral RED.
+- [x] Separate contracts.activate capability and original FINANCE/SHOPorigin/currentProduct sources before ownership transfer; existing canonical Sale/stock/commission/journal/period/outbox/signatures/promotion reservation consumption exactly once. Current source/actor after locks and owned rollback; effects only after actual commit.
+- [x] Cover actual changed authorization/money/file behavior, relevant canonical regressions, types/touched lint and scoped coverage. Record exact commands/exits, self-review/commit and independent gate; preserve remaining audit5/approval6/UI7/system4.4/final8 obligations.
+
+**Activation completion:** d08ffb011 independently passes spec/quality with0Critical/0Important/2deferredMinors. Exactly1method, distinct FINANCE contracts.activate plus pre-transfer current sources, explicit actor admission, same-attempt opaque exchange proof, canonical money/required audit and actual outercommit effects. Final54ownedPG cases and final75affected/87policy-controller/27legacyPG/17credit cases pass; earlier canonical/named/preparation/review/exchange regressions are separate retained evidence. APItypes pass; lint0errors47existingwarnings. No durable outbox/crossDB claim; actual eligibleVAT/positiveECL/existingSale variants and realdelivery/fullJWT/guards/UI/localpreview remain owningintegration tasks. Parent11of38domain/27pending,7of7adjacent; FINANCEallocated11of544/533remaining.
 
 ### Task 4.2.1.6: Contract consent, QR and customer delegation
 

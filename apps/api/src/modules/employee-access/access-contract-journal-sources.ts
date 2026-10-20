@@ -127,11 +127,13 @@ export async function loadContractJournalSources(
     | 'je4Id'
     | 'eclReversalJeId'
     | 'reversalJeIds'
+    | 'status'
+    | 'cancelWindow'
   >;
   const exchanges = await lock(
     'contract_exchange_requests',
     await tx.$queryRaw<ExchangeIdentity[]>`
-    SELECT id, old_contract_id AS "oldContractId", new_contract_id AS "newContractId",
+    SELECT id, status, cancel_window AS "cancelWindow", old_contract_id AS "oldContractId", new_contract_id AS "newContractId",
       old_product_id AS "oldProductId", new_product_id AS "newProductId",
       je_1a_id AS "je1aId", je_2_id AS "je2Id", je_3_id AS "je3Id", je_4_id AS "je4Id",
       ecl_reversal_je_id AS "eclReversalJeId", ARRAY[]::text[] AS "reversalJeIds"

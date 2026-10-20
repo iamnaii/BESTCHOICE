@@ -135,6 +135,7 @@ export async function journalExchangeFixtures(
   oldId: string,
   newId: string,
   userId: string,
+  sweep = true,
 ) {
   const prisma = db as PrismaService,
     journal = new JournalAutoService(prisma),
@@ -192,9 +193,11 @@ export async function journalExchangeFixtures(
     where: { id: request.id },
     data: { je1aId: je1.id, je2Id: je2.id, je3Id: je3.id, je4Id: je4.id, eclReversalJeId: je5?.id },
   });
-  const reversed = await new ExchangeCancelReversalTemplate(journal, prisma).reverse({
-    jeIds: [je2.id],
-  });
+  const reversed = sweep
+    ? await new ExchangeCancelReversalTemplate(journal, prisma).reverse({
+        jeIds: [je2.id],
+      })
+    : { reversalJeIds: [] as string[] };
   await db.contractExchangeRequest.update({
     where: { id: request.id },
     data: { reversalJeIds: reversed.reversalJeIds },
@@ -720,4 +723,165 @@ export async function journalCashFixtures(
     requestId: token,
   });
   return { cancellation, recall, device, shop };
+}
+
+import { ExchangeCancelService } from '../contract-exchange/contract-exchange-cancel.service';
+
+export async function journalCancellationEclFixture(db: PrismaClient, id: string, userId: string) {
+  const prisma = db as PrismaService,
+    journal = new JournalAutoService(prisma);
+  await new ContractActivation1ATemplate(journal, prisma).execute(id);
+  await new BadDebtProvisionTemplate(journal, prisma).execute({
+    contractId: id,
+    provisionAmount: new Prisma.Decimal(100),
+    period: '2026-10',
+    runDate: '2026-10-01',
+  });
+  const cancellation = await db.contractCancellation.create({
+    data: {
+      contractId: id,
+      requestedById: userId,
+      approvedById: userId,
+      approvedAt: new Date(),
+      reason: 'owned ECL cancellation',
+      refundAmount: 0,
+      status: 'APPROVED',
+    },
+  });
+  await new ContractCancellationTemplate(
+    prisma,
+    new ExchangeCancelReversalTemplate(journal, prisma),
+    new EclStageReverseTemplate(journal, prisma),
+  ).execute({ contractId: id, cancellationId: cancellation.id });
+  const release = await db.journalEntry.findFirstOrThrow({
+    where: {
+      AND: [
+        { metadata: { path: ['contractId'], equals: id } },
+        { metadata: { path: ['fromBucket'], equals: 'CANCEL' } },
+      ],
+    },
+  });
+  return { cancellation, release };
+}
+
+export async function journalExchangeRecallFixture(
+  db: PrismaClient,
+  oldId: string,
+  newId: string,
+  userId: string,
+) {
+  const fixture = await journalExchangeFixtures(db, oldId, newId, userId, false);
+  const prisma = db as PrismaService,
+    journal = new JournalAutoService(prisma),
+    resolver = new CompanyResolverService(prisma);
+  const next = await db.contract.findUniqueOrThrow({ where: { id: newId } });
+  await db.contract.update({
+    where: { id: oldId },
+    data: { status: 'EXCHANGED', exchangedAt: new Date() },
+  });
+  await db.product.update({
+    where: { id: fixture.request.oldProductId },
+    data: { status: 'REFURBISHED' },
+  });
+  await db.contractExchangeRequest.update({
+    where: { id: fixture.request.id },
+    data: { status: 'APPROVED', approvedById: userId, approvedAt: new Date() },
+  });
+  await new ShopInventoryTransferTemplate(journal, prisma, resolver).execute({
+    contractId: newId,
+    productId: next.productId,
+    idempotencyKey: randomUUID(),
+    inventoryAccountCode: 'S11-2001',
+    cogsAccountCode: 'S50-1101',
+    revenueAccountCode: 'S41-1101',
+    costPrice: new Prisma.Decimal(7777),
+    salePrice: new Prisma.Decimal(14000),
+    downAmount: new Prisma.Decimal(2000),
+    financedAmount: new Prisma.Decimal(12000),
+    commission: new Prisma.Decimal(0),
+  });
+  // Durable prior payout snapshot, read by the actual cancellation service.
+  // This fixture does not claim to execute batch approval/provider transfer.
+  await db.interCoSettlementBatch.create({
+    data: {
+      batchNumber: 'OWNED-' + randomUUID(),
+      status: 'POSTED',
+      transferDate: new Date(),
+      financeBankCode: '11-1201',
+      shopBankCode: 'S11-1201',
+      totalFinanced: 12000,
+      totalCommission: 0,
+      totalAmount: 12000,
+      shopPostedAmount: 12000,
+      makerId: userId,
+      items: {
+        create: {
+          contractId: newId,
+          financedGl: 12000,
+          commissionGl: 0,
+          shopFinancedGl: 12000,
+          shopCommissionGl: 0,
+          swapCreditAmount: 100,
+        },
+      },
+    },
+  });
+  await db.user.update({ where: { id: userId }, data: { accessManaged: false } });
+  await new ExchangeCancelService(
+    prisma,
+    { log: async () => undefined } as never,
+    resolver,
+    new ExchangeCancelReversalTemplate(journal, prisma),
+  ).cancel(fixture.request.id, 'Owned exchange C2 cancellation', { id: userId, role: 'OWNER' });
+  const settlement = await new IntercoSettlementService(
+    prisma,
+    new IntercoPendingService(prisma),
+    {} as never,
+    {} as never,
+    resolver,
+    journal,
+    {} as never,
+    new ShopCollectSettlementTemplate(journal, prisma),
+  ).settleDeductionCash(
+    newId,
+    'PAYOUT_RECALL',
+    { amount: 100, requestId: randomUUID(), financeDepositAccountCode: '11-1201' },
+    userId,
+  );
+  const entries = await db.journalEntry.findMany({
+    where: { entryNumber: { in: [settlement.financeEntryNo, settlement.shopEntryNo] } },
+  });
+  return { requestId: fixture.request.id, entries };
+}
+
+export async function journalClearedExchangeHistoryFixture(
+  db: PrismaClient,
+  oldId: string,
+  newId: string,
+  userId: string,
+) {
+  const fixture = await journalExchangeFixtures(db, oldId, newId, userId, false);
+  const prisma = db as PrismaService,
+    journal = new JournalAutoService(prisma);
+  const schedule = await db.installmentSchedule.findFirstOrThrow({ where: { contractId: oldId } });
+  await new InstallmentAccrual2ATemplate(journal, prisma).execute(schedule.id);
+  const refreshed = await db.installmentSchedule.findUniqueOrThrow({ where: { id: schedule.id } });
+  const original = await db.journalEntry.findUniqueOrThrow({
+    where: { entryNumber: refreshed.accrualJournalEntryId! },
+  });
+  const reversed = await new ExchangeCancelReversalTemplate(journal, prisma).reverse({
+    jeIds: [original.id],
+  });
+  await db.contractExchangeRequest.update({
+    where: { id: fixture.request.id },
+    data: { reversalJeIds: reversed.reversalJeIds },
+  });
+  // Deliberate retained-history shape: actual canonical pair, missing completing
+  // link. This is a read-proof negative fixture, not a claim that the exchange
+  // cancellation service keeps schedules live or clears this field itself.
+  await db.installmentSchedule.update({
+    where: { id: schedule.id },
+    data: { accrualJournalEntryId: null },
+  });
+  return { request: fixture.request, original, reversalId: reversed.reversalJeIds[0] };
 }

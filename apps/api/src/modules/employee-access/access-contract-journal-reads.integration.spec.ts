@@ -13,6 +13,9 @@ import {
   journalHistoryFixtures,
   journalAccrualHistoryFixtures,
   journalCashFixtures,
+  journalCancellationEclFixture,
+  journalExchangeRecallFixture,
+  journalClearedExchangeHistoryFixture,
 } from './access-contract-journal-fixtures';
 import { AuditInterceptor } from '../audit/audit.interceptor';
 import { AuditService } from '../audit/audit.service';
@@ -764,7 +767,14 @@ test('exact 2000 typed source rows, cap+1 denial and recovery use bounded probes
 }, 60000);
 
 async function withHeldSource(
-  table: 'journal_entries' | 'payments' | 'contracts' | 'device_returns',
+  table:
+    | 'journal_entries'
+    | 'payments'
+    | 'contracts'
+    | 'device_returns'
+    | 'contract_cancellations'
+    | 'contract_exchange_requests'
+    | 'journal_lines',
   sourceId: string,
   contractId: string,
   mutation: (tx: Prisma.TransactionClient) => Promise<unknown>,
@@ -1060,3 +1070,248 @@ test('canonical seller-contact trade identity and schedule-optional direct colle
   expect(rows).toHaveLength(1);
   expect(rows[0].tag).toBe('reschedule-collect');
 });
+
+test('fix1 I1 canonical CANCEL-to-CANCEL ECL release requires its live approved cancellation', async () => {
+  const id = await contract();
+  const { cancellation, release } = await journalCancellationEclFixture(db, id, owner);
+  expect(
+    (await http(path(id, 'journal-entries'), fullFinance).expect(200)).body.data.map(
+      (r: { id: string }) => r.id,
+    ),
+  ).toContain(release.id);
+  await db.contractCancellation.update({
+    where: { id: cancellation.id },
+    data: { status: 'REJECTED' },
+  });
+  expect(
+    (await http(path(id, 'journal-entries'), fullFinance).expect(200)).body.data.map(
+      (r: { id: string }) => r.id,
+    ),
+  ).not.toContain(release.id);
+  await db.contractCancellation.update({
+    where: { id: cancellation.id },
+    data: { status: 'APPROVED' },
+  });
+  const waited = await withHeldSource('contract_cancellations', cancellation.id, id, (tx) =>
+    tx.contractCancellation.update({
+      where: { id: cancellation.id },
+      data: { status: 'REJECTED' },
+    }),
+  );
+  expect(waited.body.data.map((row: { id: string }) => row.id)).not.toContain(release.id);
+});
+
+test('fix1 I2 actual exchange C2 cancellation settles both recall books without generic cancellation', async () => {
+  const oldId = await contract(),
+    newId = await contract();
+  const fixture = await journalExchangeRecallFixture(db, oldId, newId, owner);
+  expect(fixture.entries).toHaveLength(2);
+  const books = await db.companyInfo.findMany({
+    where: { id: { in: fixture.entries.map((entry) => entry.companyId) } },
+    select: { id: true, companyCode: true },
+  });
+  expect(books.map((book) => book.companyCode).sort()).toEqual(['FINANCE', 'SHOP']);
+  for (const [reader, book] of [
+    [fullFinance, 'FINANCE'],
+    [fullShop, 'SHOP'],
+  ]) {
+    const own = fixture.entries.find(
+      (entry) => books.find((company) => company.id === entry.companyId)?.companyCode === book,
+    )!;
+    const response = (await http(path(newId, 'journal-entries'), reader).expect(200)).body.data;
+    expect(
+      response
+        .filter((row: { id: string }) => fixture.entries.some((entry) => entry.id === row.id))
+        .map((row: { id: string }) => row.id),
+    ).toEqual([own.id]);
+  }
+  const currentRequest = await db.contractExchangeRequest.findUniqueOrThrow({
+    where: { id: fixture.requestId },
+  });
+  expect(await db.contractCancellation.count({ where: { contractId: newId } })).toBe(0);
+  const visible = (await http(path(newId, 'journal-entries'), fullBoth).expect(200)).body.data.map(
+    (r: { id: string }) => r.id,
+  );
+  for (const entry of fixture.entries) expect(visible).toContain(entry.id);
+  await db.contractExchangeRequest.update({
+    where: { id: fixture.requestId },
+    data: { reversalJeIds: [] },
+  });
+  const poisoned = (await http(path(newId, 'journal-entries'), fullBoth).expect(200)).body.data.map(
+    (r: { id: string }) => r.id,
+  );
+  for (const entry of fixture.entries) expect(poisoned).not.toContain(entry.id);
+  await db.contractExchangeRequest.update({
+    where: { id: fixture.requestId },
+    data: { reversalJeIds: currentRequest.reversalJeIds },
+  });
+  const branchReader = await user();
+  await grant(branchReader, ['contracts.read'], 'FINANCE', [branchA]);
+  await grant(branchReader, ['journal.read', ...sensitive], 'FINANCE');
+  await grant(branchReader, ['journal.read', ...sensitive], 'SHOP');
+  const branchVisible = (
+    await http(path(newId, 'journal-entries'), branchReader).expect(200)
+  ).body.data.map((row: { id: string }) => row.id);
+  for (const entry of fixture.entries) expect(branchVisible).toContain(entry.id);
+  await db.contract.update({ where: { id: oldId }, data: { branchId: branchB } });
+  const inaccessibleOrigin = (
+    await http(path(newId, 'journal-entries'), branchReader).expect(200)
+  ).body.data.map((row: { id: string }) => row.id);
+  for (const entry of fixture.entries) expect(inaccessibleOrigin).not.toContain(entry.id);
+  await db.contract.update({ where: { id: oldId }, data: { branchId: branchA } });
+  const held = await withHeldSource(
+    'contract_exchange_requests',
+    fixture.requestId,
+    newId,
+    (tx) =>
+      tx.contractExchangeRequest.update({
+        where: { id: fixture.requestId },
+        data: { status: 'APPROVED' },
+      }),
+    200,
+    fullBoth,
+  );
+  for (const entry of fixture.entries)
+    expect(held.body.data.map((row: { id: string }) => row.id)).not.toContain(entry.id);
+});
+
+test('fix1 I3 cleared 2A history rejects the same invalid idempotency as reversal admission', async () => {
+  const id = await contract();
+  await journalAccrualHistoryFixtures(db, id);
+  const reversal = await db.journalEntry.findFirstOrThrow({
+    where: {
+      AND: [
+        { metadata: { path: ['contractId'], equals: id } },
+        { metadata: { path: ['flow'], equals: 'receipt-accrual-void' } },
+      ],
+    },
+  });
+  const meta = reversal.metadata as Prisma.JsonObject;
+  const before = (await http(path(id, 'journal-entries'), fullFinance).expect(200)).body.data.map(
+    (r: { id: string }) => r.id,
+  );
+  expect(before).toEqual(expect.arrayContaining([reversal.id, meta.originalEntryId]));
+  await db.journalEntry.update({
+    where: { id: reversal.id },
+    data: { metadata: { ...meta, idempotencyKey: 'invalid-pair' } },
+  });
+  const after = (await http(path(id, 'journal-entries'), fullFinance).expect(200)).body.data.map(
+    (r: { id: string }) => r.id,
+  );
+  expect(after).not.toContain(reversal.id);
+  expect(after).not.toContain(meta.originalEntryId);
+});
+
+test.each(['unmatched', 'deleted'] as const)(
+  'fix1 I4 overlong %s CoA code rejects whole entry and recovers',
+  async (kind) => {
+    const id = await contract();
+    await new ContractActivation1ATemplate(
+      new JournalAutoService(db as PrismaService),
+      db as PrismaService,
+    ).execute(id);
+    const entry = await db.journalEntry.findFirstOrThrow({
+      where: { metadata: { path: ['contractId'], equals: id } },
+      include: { lines: true },
+    });
+    const before = (await http(path(id, 'journal-entries'), fullFinance).expect(200)).body.data;
+    const exact = 'B'.repeat(64);
+    await db.journalLine.update({ where: { id: entry.lines[0].id }, data: { accountCode: exact } });
+    const supported = (await http(path(id, 'journal-entries'), fullFinance).expect(200)).body.data;
+    expect(
+      supported[0].lines.some(
+        (line: { accountCode: string; accountName: string }) =>
+          line.accountCode === exact && line.accountName === exact,
+      ),
+    ).toBe(true);
+    await db.journalLine.update({
+      where: { id: entry.lines[0].id },
+      data: { accountCode: exact + 'X' },
+    });
+    expect(
+      (await http(path(id, 'journal-entries'), fullFinance).expect(400)).body.data,
+    ).toBeUndefined();
+    const code = 'OVERLONG-' + randomUUID() + 'X'.repeat(10000);
+    if (kind === 'deleted')
+      await db.chartOfAccount.create({
+        data: {
+          code,
+          name: 'Deleted owned code',
+          type: 'ASSET',
+          normalBalance: 'Dr',
+          deletedAt: new Date(),
+        },
+      });
+    await db.journalLine.update({ where: { id: entry.lines[0].id }, data: { accountCode: code } });
+    const denied = await http(path(id, 'journal-entries'), fullFinance).expect(400);
+    expect(denied.body.data).toBeUndefined();
+    expect(denied.text).not.toContain('OVERLONG');
+    await db.journalLine.update({
+      where: { id: entry.lines[0].id },
+      data: { accountCode: entry.lines[0].accountCode },
+    });
+    expect((await http(path(id, 'journal-entries'), fullFinance).expect(200)).body.data).toEqual(
+      before,
+    );
+    const waited = await withHeldSource(
+      'journal_lines',
+      entry.lines[0].id,
+      id,
+      (tx) =>
+        tx.journalLine.update({
+          where: { id: entry.lines[0].id },
+          data: { accountCode: exact + 'X' },
+        }),
+      400,
+    );
+    expect(waited.body.data).toBeUndefined();
+    await db.journalLine.update({
+      where: { id: entry.lines[0].id },
+      data: { accountCode: entry.lines[0].accountCode },
+    });
+    expect((await http(path(id, 'journal-entries'), fullFinance).expect(200)).body.data).toEqual(
+      before,
+    );
+  },
+);
+
+test.each(['identity', 'authority', 'idempotency'] as const)(
+  'fix1 I3 cleared exchange history rejects poisoned %s on both sides',
+  async (poison) => {
+    const oldId = await contract(),
+      newId = await contract();
+    const fixture = await journalClearedExchangeHistoryFixture(db, oldId, newId, owner);
+    const reader = await user();
+    await grant(reader, ['contracts.read'], 'FINANCE', [branchA]);
+    await grant(reader, ['journal.read', ...sensitive], 'FINANCE');
+    expect(
+      (await http(path(oldId, 'journal-entries'), reader).expect(200)).body.data.map(
+        (r: { id: string }) => r.id,
+      ),
+    ).toEqual(expect.arrayContaining([fixture.original.id, fixture.reversalId]));
+    if (poison === 'identity') {
+      const foreign = await db.contract.findUniqueOrThrow({ where: { id: contractB } });
+      await db.contractExchangeRequest.update({
+        where: { id: fixture.request.id },
+        data: { newProductId: foreign.productId },
+      });
+    } else if (poison === 'authority') {
+      await db.contract.update({ where: { id: newId }, data: { branchId: branchB } });
+    } else {
+      const reverse = await db.journalEntry.findUniqueOrThrow({
+        where: { id: fixture.reversalId },
+      });
+      await db.journalEntry.update({
+        where: { id: reverse.id },
+        data: {
+          metadata: { ...(reverse.metadata as Prisma.JsonObject), idempotencyKey: 'invalid-sweep' },
+        },
+      });
+    }
+    const after = (await http(path(oldId, 'journal-entries'), reader).expect(200)).body.data.map(
+      (r: { id: string }) => r.id,
+    );
+    expect(after).not.toContain(fixture.reversalId);
+    expect(after).not.toContain(fixture.original.id);
+  },
+);

@@ -59,19 +59,112 @@ export class ContractJournalProof {
       this.auto(reversal, `${original.id}:${suffix}`)
     );
   }
+  /** Pair identity and current typed source only. Never calls prove(), so an
+   * original with a cleared backlink and its reversal cannot authorize each
+   * other recursively. Both admission paths apply this exact same validator. */
+  private pairValid(original: JournalIdentity, reversal: JournalIdentity): boolean {
+    const m = reversal.meta,
+      id = this.contractId,
+      s = this.sources;
+    if (
+      original.id === reversal.id ||
+      original.companyId !== reversal.companyId ||
+      original.meta.tag === 'REVERSAL' ||
+      original.meta.flow === 'shop-down-payment-reversal'
+    )
+      return false;
+    if (m.flow === 'shop-down-payment-reversal') {
+      return (
+        this.books.get(reversal.companyId) === 'SHOP' &&
+        m.tag === 'SHOP_DOWN_PAYMENT_REVERSAL' &&
+        m.contractId === id &&
+        m.originalJournalEntryId === original.id &&
+        this.auto(reversal, `contract:${id}:down-reversal`) &&
+        original.meta.flow === 'shop-down-payment' &&
+        !!m.idempotencyKey &&
+        m.idempotencyKey === m.reversedByBatchId &&
+        m.idempotencyKey === original.meta.reversedByIdempotencyKey
+      );
+    }
+    if (m.flow === 'receipt-void' || m.flow === 'refund-reversal') {
+      return (
+        this.markedPair(original, reversal, m.flow, 'void') &&
+        m.originalEntryNumber === original.entryNumber &&
+        original.meta.flow === 'payment-receipt'
+      );
+    }
+    if (m.flow === 'receipt-accrual-void') {
+      return (
+        this.markedPair(original, reversal, m.flow, 'accrual-void') &&
+        m.originalEntryNumber === original.entryNumber &&
+        original.meta.tag === '2A' &&
+        m.idempotencyKey === `${m.flow}:${original.id}`
+      );
+    }
+    if (m.flow === 'defect-exchange')
+      return this.markedPair(original, reversal, m.flow, 'reversal') && this.defect();
+    if (
+      m.flow === 'exchange-cancel' ||
+      m.flow === 'contract-cancellation' ||
+      m.flow === 'shop-trade-in-credit-released'
+    ) {
+      return (
+        this.markedPair(original, reversal, m.flow, m.flow) &&
+        m.reversesEntryId === original.id &&
+        m.idempotencyKey === `${m.flow === 'exchange-cancel' ? 'cancel' : m.flow}:${original.id}` &&
+        (m.flow === 'exchange-cancel'
+          ? s.exchanges.some((r) => r.reversalJeIds.includes(reversal.id) && this.exchangeValid(r))
+          : m.flow === 'contract-cancellation'
+            ? s.cancellations.some((r) => r.status === 'APPROVED')
+            : original.meta.flow === 'shop-trade-in-credit-applied' &&
+              s.redemptions.some(
+                (r) => r.applicationJournalEntryId === original.id && r.releasedAt,
+              ))
+      );
+    }
+    return false;
+  }
   private historyReversed(e: JournalIdentity) {
     return this.entries.some(
       (r) =>
-        (this.markedPair(e, r, 'receipt-accrual-void', 'accrual-void') &&
-          r.meta.originalEntryNumber === e.entryNumber) ||
-        (this.markedPair(e, r, 'contract-cancellation', 'contract-cancellation') &&
-          r.meta.reversesEntryId === e.id &&
-          this.sources.cancellations.some((c) => c.status === 'APPROVED')) ||
-        (this.markedPair(e, r, 'exchange-cancel', 'exchange-cancel') &&
-          r.meta.reversesEntryId === e.id &&
-          this.sources.exchanges.some((x) => x.reversalJeIds.includes(r.id))) ||
-        (this.markedPair(e, r, 'defect-exchange', 'reversal') && this.defect()),
+        [
+          'receipt-accrual-void',
+          'contract-cancellation',
+          'exchange-cancel',
+          'defect-exchange',
+        ].includes(r.meta.flow ?? '') && this.pairValid(e, r),
     );
+  }
+  private recallOrigin(e: JournalIdentity, depth: number) {
+    return this.entries.some((reversal) => {
+      const m = reversal.meta;
+      if (
+        reversal.companyId !== e.companyId ||
+        m.contractId !== this.contractId ||
+        m.shopReceivableType !== 'PAYOUT_RECALL' ||
+        !['contract-cancellation', 'exchange-cancel'].includes(m.flow ?? '')
+      )
+        return false;
+      const original = this.byId.get(m.originalEntryId ?? '');
+      if (!original || !this.pairValid(original, reversal)) return false;
+      if (
+        m.flow === 'exchange-cancel' &&
+        !this.sources.exchanges.some(
+          (request) =>
+            request.newContractId === this.contractId &&
+            request.status === 'CANCELED' &&
+            request.cancelWindow === 'AFTER_PAYOUT' &&
+            request.reversalJeIds.includes(reversal.id) &&
+            this.exchangeValid(request),
+        )
+      )
+        return false;
+      // Validate the original once; pairValid is nonrecursive. This keeps the
+      // SHOP cash -> FINANCE SCS -> originating original dependency bounded,
+      // independent of candidate ordering and without a reversal/original cycle.
+      const proven = this.prove(original, depth + 1);
+      return !!proven && !proven.originalId;
+    });
   }
   private defect() {
     const old = this.sources.contracts.find((c) => c.id === this.contractId);
@@ -123,50 +216,7 @@ export class ContractJournalProof {
       if (!original || original.id === e.id || original.companyId !== e.companyId) return null;
       const proven = this.prove(original, depth + 1);
       if (!proven || proven.originalId) return null;
-      let valid = false;
-      if (m.flow === 'shop-down-payment-reversal') {
-        valid =
-          book === 'SHOP' &&
-          m.tag === 'SHOP_DOWN_PAYMENT_REVERSAL' &&
-          m.contractId === id &&
-          auto(`contract:${id}:down-reversal`) &&
-          original.meta.flow === 'shop-down-payment' &&
-          !!m.idempotencyKey &&
-          m.idempotencyKey === m.reversedByBatchId &&
-          m.idempotencyKey === original.meta.reversedByIdempotencyKey;
-      } else if (m.flow === 'receipt-void' || m.flow === 'refund-reversal') {
-        valid =
-          this.markedPair(original, e, m.flow, 'void') &&
-          m.originalEntryNumber === original.entryNumber &&
-          original.meta.flow === 'payment-receipt';
-      } else if (m.flow === 'receipt-accrual-void') {
-        valid =
-          this.markedPair(original, e, m.flow, 'accrual-void') &&
-          m.originalEntryNumber === original.entryNumber &&
-          original.meta.tag === '2A' &&
-          m.idempotencyKey === `${m.flow}:${original.id}`;
-      } else if (m.flow === 'defect-exchange') {
-        valid = this.markedPair(original, e, m.flow, 'reversal') && this.defect();
-      } else if (
-        m.flow === 'exchange-cancel' ||
-        m.flow === 'contract-cancellation' ||
-        m.flow === 'shop-trade-in-credit-released'
-      ) {
-        valid =
-          this.markedPair(original, e, m.flow, m.flow) &&
-          m.reversesEntryId === original.id &&
-          m.idempotencyKey ===
-            `${m.flow === 'exchange-cancel' ? 'cancel' : m.flow}:${original.id}` &&
-          (m.flow === 'exchange-cancel'
-            ? s.exchanges.some((r) => r.reversalJeIds.includes(e.id) && this.exchangeValid(r))
-            : m.flow === 'contract-cancellation'
-              ? s.cancellations.some((r) => r.status === 'APPROVED')
-              : original.meta.flow === 'shop-trade-in-credit-applied' &&
-                s.redemptions.some(
-                  (r) => r.applicationJournalEntryId === original.id && r.releasedAt,
-                ));
-      }
-      return valid
+      return this.pairValid(original, e)
         ? result('กลับรายการบัญชี', { source: proven.source, originalId: original.id })
         : null;
     }
@@ -356,8 +406,10 @@ export class ContractJournalProof {
         return result('ตัดหนี้สูญ');
       if (
         is('ECL-STAGE-REVERSE', 'stage-reverse') &&
-        buckets.has(m.fromBucket ?? '') &&
-        buckets.has(m.toBucket ?? '') &&
+        ((buckets.has(m.fromBucket ?? '') && buckets.has(m.toBucket ?? '')) ||
+          (m.fromBucket === 'CANCEL' &&
+            m.toBucket === 'CANCEL' &&
+            s.cancellations.some((row) => row.status === 'APPROVED'))) &&
         /^\d{4}-(0[1-9]|1[0-2])$/.test(m.period ?? '')
       ) {
         const prefix = `${id}:ecl-stage-reverse:${m.period}:${m.fromBucket}-${m.toBucket}:`;
@@ -392,8 +444,7 @@ export class ContractJournalProof {
                 origin.meta.shopReceivableType === 'DEVICE_RETURN' &&
                 !!this.prove(origin, depth + 1),
             ))) &&
-        (m.shopReceivableType !== 'PAYOUT_RECALL' ||
-          s.cancellations.some((c) => c.status === 'APPROVED'))
+        (m.shopReceivableType !== 'PAYOUT_RECALL' || this.recallOrigin(e, depth))
       )
         return result('รับชำระจากหน้าร้าน');
     }

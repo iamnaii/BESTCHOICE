@@ -71,15 +71,19 @@ export class AccessContractJournalBoundary implements OnModuleInit {
                 });
                 const byId = new Map(proven.map((p) => [p.entry.id, p]));
                 const ids = [...byId.keys()];
+                // Probe scalar lengths, never the arbitrary code string, before
+                // the CoA lookup or shared formatter's code-as-name fallback.
                 const lineIds = ids.length
-                  ? await tx.journalLine.findMany({
-                      where: { journalEntryId: { in: ids }, deletedAt: null },
-                      take: CONTRACT_JOURNAL_LINE_LIMIT + 1,
-                      orderBy: { id: 'asc' },
-                      select: { id: true },
-                    })
+                  ? await tx.$queryRaw<Array<{ id: string; codeLength: number }>>`
+                  SELECT id, length(account_code) AS "codeLength" FROM journal_lines
+                  WHERE journal_entry_id=ANY(${ids}::text[]) AND deleted_at IS NULL
+                  ORDER BY id LIMIT ${CONTRACT_JOURNAL_LINE_LIMIT + 1}`
                   : [];
-                if (lineIds.length > CONTRACT_JOURNAL_LINE_LIMIT) throw journalOverflow();
+                if (
+                  lineIds.length > CONTRACT_JOURNAL_LINE_LIMIT ||
+                  lineIds.some((line) => line.codeLength > 64)
+                )
+                  throw journalOverflow();
                 if (lineIds.length)
                   await tx.$queryRaw`SELECT id FROM journal_lines WHERE id=ANY(${lineIds.map((l) => l.id)}::text[]) ORDER BY id FOR SHARE`;
                 const rows = ids.length

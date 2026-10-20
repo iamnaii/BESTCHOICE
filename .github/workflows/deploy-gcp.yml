@@ -56,7 +56,7 @@ jobs:
   # ============================================
   lint:
     name: Lint + Build API
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     if: inputs.skip_tests != true
     env:
@@ -87,7 +87,7 @@ jobs:
 
   test-web:
     name: Test Web
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     if: inputs.skip_tests != true
     env:
@@ -106,7 +106,7 @@ jobs:
 
   test-api:
     name: Test API
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 25
     if: inputs.skip_tests != true
     env:
@@ -168,7 +168,7 @@ jobs:
 
   test-integration:
     name: Integration (dual-Prisma + money invariants)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     if: inputs.skip_tests != true
     env:
@@ -333,7 +333,7 @@ jobs:
   # ============================================
   build-web:
     name: Build Web + Web-Shop
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
       NODE_OPTIONS: --max-old-space-size=6144
@@ -404,7 +404,7 @@ jobs:
   # ============================================
   test-chat-credit:
     name: Chat credit + approval
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     if: inputs.skip_tests != true
     env:
@@ -432,7 +432,7 @@ jobs:
 
   lint-and-test:
     name: Lint & Test
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     needs: [lint, test-web, test-api, test-integration, test-chat-credit, build-web]
     if: always()
@@ -460,7 +460,7 @@ jobs:
   # ============================================
   build-and-push-api:
     name: Build & Push API Image
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # build ขนานกับเทส (image ที่ build แล้วไม่ถูกใช้ถ้าเทสแดง) — ด่านจริงอยู่ที่ migrate-db/deploy
     # ซึ่ง needs: lint-and-test ⇒ เทสไม่ผ่าน = ไม่มีอะไรขึ้น prod เหมือนเดิม แต่ประหยัด ~8 นาที
     if: >-
@@ -515,7 +515,7 @@ jobs:
     if: >-
       always() && needs.build-and-push-api.result == 'success' &&
       needs.lint-and-test.result == 'success'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     steps:
       - name: Authenticate to GCP
@@ -565,7 +565,7 @@ jobs:
     # test-api อยู่ใน needs เพื่ออ่าน result (skipped = ทางลัดฉุกเฉิน) — ด่านจริงคือ migrate-db
     needs: [migrate-db, test-api]
     if: always() && needs.migrate-db.result == 'success'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     steps:
       # ทางลัดฉุกเฉินถูกใช้ → ทิ้งร่องรอยไว้ในหน้า run + summary ให้ตามย้อนหลังได้ว่าใครกด เมื่อไร
@@ -713,7 +713,7 @@ jobs:
   # ============================================
   deploy-web:
     name: Deploy Web to Firebase Hosting
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     # "Lint & Test" = job สรุปทุก gate (success แม้ gate ถูกข้ามด้วยทางลัดฉุกเฉิน) + ต้องมี artifact จาก build-web
     needs: [lint-and-test, build-web]

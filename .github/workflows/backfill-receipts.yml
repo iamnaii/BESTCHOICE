@@ -36,7 +36,7 @@ env:
 jobs:
   backfill-receipts:
     name: Backfill payment receipts (Cloud Run Job)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Authenticate to GCP
         uses: google-github-actions/auth@v2

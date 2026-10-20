@@ -15,7 +15,7 @@ env:
 jobs:
   e2e:
     name: E2E Tests
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # 30 -> 60 (2026-08-25): งบ 30 นาทีเดิม "ไม่เคยถูกทดสอบ" เพราะ job ตายที่ boot
     # ตั้งแต่นาทีที่ 5 มาตลอด (seed ล้าง account_role_map — แก้ใน PR #1483) พอเทส
     # ได้รันจริงครั้งแรก shard 1 ทำได้ 24m43s แล้วโดน cancel ที่ 30m15s ยังไม่จบ
@@ -164,7 +164,7 @@ jobs:
     name: Merge E2E Reports
     needs: e2e
     if: always()
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
 

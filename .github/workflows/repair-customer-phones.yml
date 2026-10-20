@@ -46,7 +46,7 @@ env:
 jobs:
   repair-customer-phones:
     name: Repair customer phones (Cloud Run Job)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Authenticate to GCP
         uses: google-github-actions/auth@v2

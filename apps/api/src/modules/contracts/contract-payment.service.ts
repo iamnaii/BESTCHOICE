@@ -29,7 +29,7 @@ import {
 import { emitDeferredWarnings, type DeferredWarning } from '../journal/deferred-warning';
 import { computeInstallmentBreakdown } from '../journal/compute-installment-breakdown';
 import { reconstructPriorCleared } from '../journal/reconstruct-prior';
-import { computePayoffQuote } from './compute-payoff-quote';
+import { computePayoffQuote, PayoffQuoteResult } from './compute-payoff-quote';
 import { JourneyEntryWriter } from '../customer-journey/journey-entry-writer.service';
 import { journeyDedupeKey } from '../customer-journey/journey-data-schemas';
 import { Decimal } from '@prisma/client/runtime/library';
@@ -71,6 +71,33 @@ function earlyPayoffApprovalMoney(summary: unknown): unknown {
   if (!summary || typeof summary !== 'object' || Array.isArray(summary)) return summary;
   return Object.fromEntries(Object.entries(summary).filter(([key]) => key !== 'journalPreview'));
 }
+
+type PayoffAmounts = Pick<
+  PayoffQuoteResult,
+  | 'totalRemaining'
+  | 'advancePayment'
+  | 'remainingBalance'
+  | 'remainingExVat'
+  | 'remainingCost'
+  | 'grossProfit'
+  | 'discountAmount'
+  | 'unpaidLateFees'
+  | 'totalPayoff'
+  | 'rescheduleAdvanceApplied'
+  | 'advanceBalanceApplied'
+> & { monthlyPayment: number; remainingMonths: number; discountPct: number };
+type PayoffJournalPreview = {
+  lines: {
+    accountCode: string;
+    accountName: string;
+    debit: string;
+    credit: string;
+    description: string;
+  }[];
+  totalDebit: string;
+  totalCredit: string;
+  isBalanced: boolean;
+};
 
 @Injectable()
 export class ContractPaymentService {
@@ -215,11 +242,60 @@ export class ContractPaymentService {
    */
   async getEarlyPayoffQuote(
     id: string,
+    discountPctInput: number | undefined,
+    depositAccountCode: string | undefined,
+    client: Prisma.TransactionClient,
+    options: { skipJournalPreview: true },
+  ): Promise<PayoffAmounts & { journalPreview: null }>;
+  async getEarlyPayoffQuote(
+    id: string,
+    discountPctInput?: number,
+    depositAccountCode?: string,
+    client?: Prisma.TransactionClient,
+  ): Promise<PayoffAmounts & { journalPreview: PayoffJournalPreview }>;
+  async getEarlyPayoffQuote(
+    id: string,
     discountPctInput?: number,
     depositAccountCode?: string,
     client: Prisma.TransactionClient = this.prisma,
-  ) {
-    const contract = await this.findOne(id, client);
+    options?: { skipJournalPreview: true },
+  ): Promise<PayoffAmounts & { journalPreview: PayoffJournalPreview | null }> {
+    // This shared calculator needs no Customer/Product/document payload. Staff
+    // owns source authorization outside it; existing internal/customer callers
+    // retain their independent authentication and the exact raw monetary result.
+    const contract = await client.contract.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        contractNumber: true,
+        deletedAt: true,
+        status: true,
+        totalMonths: true,
+        monthlyPayment: true,
+        creditBalance: true,
+        rescheduleAdvanceBalance: true,
+        advanceBalance: true,
+        vatPct: true,
+        sellingPrice: true,
+        downPayment: true,
+        storeCommission: true,
+        financedAmount: true,
+        interestTotal: true,
+        vatAmount: true,
+        payments: {
+          where: { deletedAt: null },
+          orderBy: { installmentNo: 'asc' },
+          select: {
+            installmentNo: true,
+            status: true,
+            amountPaid: true,
+            lateFee: true,
+            lateFeeWaived: true,
+          },
+        },
+      },
+    });
+    if (!contract || contract.deletedAt) throw new NotFoundException('ไม่พบสัญญา');
     if (!['ACTIVE', 'OVERDUE', 'DEFAULT'].includes(contract.status)) {
       throw new BadRequestException('สัญญาต้องอยู่ในสถานะ ACTIVE, OVERDUE หรือ DEFAULT');
     }
@@ -264,6 +340,27 @@ export class ContractPaymentService {
       payments: contract.payments,
     });
     const discountPercent = quote.discountPercent;
+    const amounts: PayoffAmounts = {
+      monthlyPayment: dRound(d(contract.monthlyPayment)).toNumber(),
+      remainingMonths,
+      totalRemaining: quote.totalRemaining,
+      advancePayment: quote.advancePayment,
+      remainingBalance: quote.remainingBalance,
+      remainingExVat: quote.remainingExVat,
+      remainingCost: quote.remainingCost,
+      grossProfit: quote.grossProfit,
+      discountPct: discountPercent, // percentage 0-100
+      discountAmount: quote.discountAmount,
+      unpaidLateFees: quote.unpaidLateFees,
+      totalPayoff: quote.totalPayoff,
+      // ยอดถังพักที่ยอดปิดดูดซับจริง — earlyPayoff() ใช้ต่อเป็นขา Dr 21-1103
+      rescheduleAdvanceApplied: quote.rescheduleAdvanceApplied,
+      // เงินรับล่วงหน้าถังรวมที่ยอดปิดหัก (PR5ข) — บรรทัดของตัวเองบนหน้าปิดยอด · ขา Dr 21-1103 บรรทัดที่สอง
+      advanceBalanceApplied: quote.advanceBalanceApplied,
+    };
+    // Internal-only option: a staff projection must not traverse hidden books
+    // or let their validation/errors influence the monetary-only response.
+    if (options?.skipJournalPreview) return { ...amounts, journalPreview: null };
 
     // ── JE preview (PR5 — ตามยอดในบัญชี · buildEarlyPayoffJournal) ─────────────
     // ฟังก์ชันเดียวกับที่ earlyPayoff() ใช้ลงรายการ ⇒ preview ที่ UI/LIFF เห็น === รายการที่ลงจริง
@@ -338,22 +435,7 @@ export class ContractPaymentService {
     const jeIsBalanced = jeTotalDr.toFixed(2) === jeTotalCr.toFixed(2);
 
     return {
-      monthlyPayment: dRound(d(contract.monthlyPayment)).toNumber(),
-      remainingMonths,
-      totalRemaining: quote.totalRemaining,
-      advancePayment: quote.advancePayment,
-      remainingBalance: quote.remainingBalance,
-      remainingExVat: quote.remainingExVat,
-      remainingCost: quote.remainingCost,
-      grossProfit: quote.grossProfit,
-      discountPct: discountPercent, // percentage 0-100
-      discountAmount: quote.discountAmount,
-      unpaidLateFees: quote.unpaidLateFees,
-      totalPayoff: quote.totalPayoff,
-      // ยอดถังพักที่ยอดปิดดูดซับจริง — earlyPayoff() ใช้ต่อเป็นขา Dr 21-1103
-      rescheduleAdvanceApplied: quote.rescheduleAdvanceApplied,
-      // เงินรับล่วงหน้าถังรวมที่ยอดปิดหัก (PR5ข) — บรรทัดของตัวเองบนหน้าปิดยอด · ขา Dr 21-1103 บรรทัดที่สอง
-      advanceBalanceApplied: quote.advanceBalanceApplied,
+      ...amounts,
       journalPreview: {
         lines: jeLines,
         totalDebit: jeTotalDr.toFixed(2),

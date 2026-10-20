@@ -38,7 +38,21 @@ const BARE_TOKEN_PATTERN = /(?<![A-Za-z0-9_-])[A-Za-z0-9_-]{43}(?![A-Za-z0-9_-])
 
 export function redactShareToken(url: string): string {
   if (typeof url !== 'string') return url;
-  return url.replace(BARE_TOKEN_PATTERN, '[redacted]');
+  const scrub = (text: string) => text.replace(BARE_TOKEN_PATTERN, '[redacted]')
+    .replace(/(?<![a-f0-9])[a-f0-9]{64}(?![a-f0-9])/gi, '[redacted]')
+    .replace(/(\/customer-access\/)[^/?\s]+/gi, '$1[redacted]')
+    .replace(/([?&]hash=)[^&\s]*/gi, '$1[redacted]');
+  let decoded = url;
+  for (let i = 0; i < 2; i++) {
+    try {
+      const next = decodeURIComponent(decoded);
+      if (next === decoded) break;
+      decoded = next;
+      const safe = scrub(decoded);
+      if (safe !== decoded) return safe;
+    } catch { break; }
+  }
+  return scrub(url);
 }
 
 /**

@@ -1,3 +1,4 @@
+import { CustomerAccessController } from '../customer-access/customer-access.controller';
 import { InterestConfigController } from '../interest-config/interest-config.controller';
 import { ContractsController } from '../contracts/contracts.controller';
 import { DefectExchangeController } from '../defect-exchange/defect-exchange.controller';
@@ -109,11 +110,24 @@ export class AuditInterceptor implements NestInterceptor {
     );
   }
 
+  private isConsentHandler(context: ExecutionContext): boolean {
+    return (
+      (context.getClass() === CustomerAccessController &&
+        context.getHandler() === CustomerAccessController.prototype.generateAccessToken) ||
+      (context.getClass() === ContractsController &&
+        [
+          ContractsController.prototype.getQrData,
+          ContractsController.prototype.getPdpaConsent,
+          ContractsController.prototype.recordPdpaConsent,
+        ].includes(context.getHandler() as typeof ContractsController.prototype.getQrData))
+    );
+  }
   private isSharedReference(context: ExecutionContext): boolean {
     return context.getClass() === StickersController || context.getClass() === PricingTemplatesController || context.getClass() === InterestConfigController;
   }
 
   private isManagedSafeRead(context: ExecutionContext): boolean {
+    if (this.isConsentHandler(context)) return true;
     if (this.isSharedReference(context)) return true;
     if (context.switchToHttp().getRequest().user?.access?.managed !== true) return false;
     if (context.getClass() === ContractsController && [ContractsController.prototype.findAll, ContractsController.prototype.findOne, ContractsController.prototype.quote, ContractsController.prototype.create, ContractsController.prototype.update, ContractsController.prototype.updateBundles, ContractsController.prototype.validateForSubmit, ContractsController.prototype.submitForReview, ContractsController.prototype.approve, ContractsController.prototype.reject, ContractsController.prototype.activate].some(handler => handler === context.getHandler())) return true;
@@ -148,7 +162,7 @@ export class AuditInterceptor implements NestInterceptor {
     duration: number,
   ): Record<string, unknown> | undefined {
     const request = context.switchToHttp().getRequest();
-    if (request.user?.access?.managed !== true && !this.isSharedReference(context)) return undefined;
+    if (request.user?.access?.managed !== true && !this.isSharedReference(context) && !this.isConsentHandler(context)) return undefined;
     const handler = context.getHandler();
     const controller = context.getClass();
     if (this.isManagedSafeRead(context)) {

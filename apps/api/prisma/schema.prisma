@@ -772,6 +772,7 @@ enum BuybackSelectType {
 // ============================================================
 
 model Branch {
+  customerDelegations CustomerAccessToken[] @relation("CustomerDelegationOrigin")
   promotionBenefits SalePromotionBenefit[]
   accessContacts Contact[] @relation("ContactAccessBranch")
   accessCustomers Customer[] @relation("CustomerAccessBranch")
@@ -846,6 +847,8 @@ model Branch {
 }
 
 model User {
+  capturedContractConsents PDPAConsent[] @relation("ContractConsentCapturer")
+  issuedCustomerDelegations CustomerAccessToken[] @relation("CustomerDelegationIssuer")
   createdCashSlipEvidence ShopCashSlipEvidence[]
   createdCustomerAttachments CustomerAttachment[]
   assignedContacts Contact[] @relation("ContactAssignedTo")
@@ -1166,6 +1169,7 @@ model Contact {
 }
 
 model Customer {
+  customerDelegations CustomerAccessToken[] @relation("CustomerDelegationRecipient")
   promotionBenefits SalePromotionBenefit[]
   /// Immutable authenticated origin. Historical nulls are never backfilled.
   accessCompanyCode String? @map("access_company_code")
@@ -3746,9 +3750,12 @@ model InviteToken {
 // ============================================================
 
 model PDPAConsent {
+  capturedBy User? @relation("ContractConsentCapturer", fields:[capturedById], references:[id], onDelete:Restrict)
   id                String        @id @default(uuid())
   customerId        String        @map("customer_id")
   consentVersion    String        @map("consent_version") // version ของ Privacy Notice
+  capturedById      String?       @map("captured_by_id")
+  noticeDigest      String?       @map("notice_digest")
   privacyNoticeText String        @map("privacy_notice_text") @db.Text // เนื้อหาที่ยินยอม
   purposes          String[]      @default([]) // วัตถุประสงค์ที่ยินยอม
   status            ConsentStatus @default(PENDING)
@@ -3923,6 +3930,16 @@ model Receipt {
 // ============================================================
 
 model CustomerAccessToken {
+  issuedBy User? @relation("CustomerDelegationIssuer",fields:[issuedById],references:[id],onDelete:Restrict)
+  recipientCustomer Customer? @relation("CustomerDelegationRecipient",fields:[recipientCustomerId],references:[id],onDelete:Restrict)
+  sourceBranch Branch? @relation("CustomerDelegationOrigin",fields:[sourceBranchId],references:[id],onDelete:Restrict)
+  accessCompany CompanyInfo? @relation("CustomerDelegationCompany",fields:[accessCompanyCode],references:[companyCode],onDelete:Restrict)
+  /// Future-only immutable delegation evidence; all null denotes an existing legacy token.
+  issuedById String? @map("issued_by_id")
+  recipientCustomerId String? @map("recipient_customer_id")
+  accessCompanyCode String? @map("access_company_code")
+  sourceBranchId String? @map("source_branch_id")
+  projectionVersion Int? @map("projection_version")
   id          String    @id @default(uuid())
   token       String    @unique
   contractId  String    @map("contract_id")
@@ -3964,6 +3981,7 @@ model DocumentAuditLog {
 // ============================================================
 
 model CompanyInfo {
+  customerDelegations CustomerAccessToken[] @relation("CustomerDelegationCompany")
   accessContacts Contact[] @relation("ContactAccessCompany")
   accessCustomers Customer[] @relation("CustomerAccessCompany")
   accessSuppliers Supplier[] @relation("SupplierAccessCompany")

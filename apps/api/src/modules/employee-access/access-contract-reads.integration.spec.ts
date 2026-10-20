@@ -1,3 +1,4 @@
+import { AccessContractConsentAuthority } from './access-contract-consent-authority';
 import { currentDomainAccess } from './access-execution-context';
 import { AuditService } from '../audit/audit.service';
 import { AuditInterceptor } from '../audit/audit.interceptor';
@@ -166,6 +167,7 @@ beforeAll(async () => {
     providers: [
       AuditService,
       ContractDocumentService,
+      AccessContractConsentAuthority,
       AccessContractReadBoundaries,
       AccessResourceService,
       AccessPartySourceService,
@@ -443,7 +445,7 @@ it('preserves the actual public hash verification contract', async () => {
   ).toBe(false);
   const res = await http('/contracts/' + contractA + '/verify?hash=NEVER-HASH', denied).expect(200);
   expect(res.body.verified).toBe(true);
-  expect(res.body.contract.status).toBe('ACTIVE');
+  expect(res.body.contract.status).toBeNull();
   expect(res.body.contract.customer).toBeUndefined();
 });
 it('records safe successful and denied HTTP metadata without request secrets', async () => {

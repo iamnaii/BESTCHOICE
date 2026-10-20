@@ -1,5 +1,7 @@
-import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException, ConflictException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { AccessContractConsentAuthority } from '../employee-access/access-contract-consent-authority';
+import { assertPresentedNotice, currentContractNotice, isValidContractConsent, linkedContractConsent, PresentedConsentNotice } from '../pdpa/contract-consent-evidence';
 import * as crypto from 'crypto';
 
 @Injectable()
@@ -7,6 +9,7 @@ export class ContractDocumentService {
   private readonly logger = new Logger(ContractDocumentService.name);
   constructor(
     private prisma: PrismaService,
+    private readonly consentAuthority: AccessContractConsentAuthority,
   ) {}
 
   // ─── QR Code Verification ────────────────────────────
@@ -17,8 +20,12 @@ export class ContractDocumentService {
       return { verified: false, reason: 'ต้องระบุ hash สำหรับการยืนยันสัญญา' };
     }
 
+    if (typeof hash !== 'string') {
+      return { verified: false, reason: 'ไม่พบสัญญาหรือ hash ไม่ถูกต้อง' };
+    }
+
     const contract = await this.prisma.contract.findUnique({
-      where: { id },
+      where: { id, deletedAt: null },
       select: {
         id: true,
         contractNumber: true,
@@ -27,6 +34,7 @@ export class ContractDocumentService {
         createdAt: true,
         // Only include minimal data for public verification — no customer PII
         signatures: {
+          where: { deletedAt: null },
           select: { signerType: true, signedAt: true },
         },
       },
@@ -38,8 +46,10 @@ export class ContractDocumentService {
     }
 
     // Use timing-safe comparison to prevent timing attacks
-    const isHashValid = contract.contractHash.length === hash.length &&
-      crypto.timingSafeEqual(Buffer.from(contract.contractHash), Buffer.from(hash));
+    const expected = Buffer.from(contract.contractHash);
+    const presented = Buffer.from(hash);
+    const isHashValid =
+      expected.length === presented.length && crypto.timingSafeEqual(expected, presented);
 
     if (!isHashValid) {
       return { verified: false, reason: 'ไม่พบสัญญาหรือ hash ไม่ถูกต้อง' };
@@ -51,7 +61,7 @@ export class ContractDocumentService {
       reason: 'สัญญาได้รับการยืนยันแล้ว',
       contract: {
         contractNumber: contract.contractNumber,
-        status: contract.status,
+        status: null,
         createdAt: contract.createdAt,
       },
       signatureCount: contract.signatures.length,
@@ -180,98 +190,131 @@ export class ContractDocumentService {
     };
   }
 
-  async getQrData(id: string) {
-    const contract = await this.prisma.contract.findUnique({
-      where: { id },
-      select: { id: true, contractNumber: true, contractHash: true },
-    });
-
-    if (!contract) throw new NotFoundException('ไม่พบสัญญา');
-
-    // QR code content: verification URL with contract ID and hash
-    const verifyUrl = `/api/contracts/${contract.id}/verify?hash=${contract.contractHash || ''}`;
-
-    return {
-      contractId: contract.id,
-      contractNumber: contract.contractNumber,
-      contractHash: contract.contractHash,
-      verifyUrl,
-      qrContent: JSON.stringify({
-        type: 'BESTCHOICE_CONTRACT',
-        id: contract.id,
-        number: contract.contractNumber,
-        hash: contract.contractHash,
+  async getQrData(id: string, actorId?: string) {
+    return this.consentAuthority.run(id, 'getQrData', actorId, async (_tx, contract) => {
+      if (!contract.contractHash) throw new BadRequestException('สัญญายังไม่มีหลักฐานสำหรับยืนยัน');
+      const verifyUrl = `/api/contracts/${contract.id}/verify?hash=${contract.contractHash}`;
+      return {
+        contractId: contract.id,
+        contractNumber: contract.contractNumber,
+        contractHash: contract.contractHash,
         verifyUrl,
-      }),
-    };
+        qrContent: JSON.stringify({
+          type: 'BESTCHOICE_CONTRACT',
+          id: contract.id,
+          number: contract.contractNumber,
+          hash: contract.contractHash,
+          verifyUrl,
+        }),
+      };
+    });
   }
 
-  /** Record PDPA consent and link to contract */
+  /** Staff captures genuine customer assent; the staff actor is not the signer. */
   async recordPdpaConsent(
     contractId: string,
     signatureImage: string,
     req: { ip?: string; userAgent?: string },
+    actorId?: string,
+    presented: PresentedConsentNotice = {},
   ) {
-    // Validate signature image size (max 2MB base64 ≈ ~2.7MB string)
-    const MAX_SIGNATURE_SIZE = 3 * 1024 * 1024; // 3MB string length
-    if (!signatureImage) {
-      throw new BadRequestException('ต้องมีลายเซ็น');
-    }
-    if (signatureImage.length > MAX_SIGNATURE_SIZE) {
-      throw new BadRequestException('ลายเซ็นมีขนาดใหญ่เกินไป (สูงสุด 2MB)');
-    }
-
-    const contract = await this.prisma.contract.findUnique({
-      where: { id: contractId },
-      include: { customer: true },
-    });
-    if (!contract || contract.deletedAt) throw new NotFoundException('ไม่พบสัญญา');
-    if (contract.pdpaConsentId) throw new BadRequestException('สัญญานี้มี PDPA consent แล้ว');
-
-    // Get privacy notice version
-    const versionConfig = await this.prisma.systemConfig.findUnique({
-      where: { key: 'pdpa_privacy_notice_version' },
-    });
-
-    const consent = await this.prisma.pDPAConsent.create({
-      data: {
-        customerId: contract.customerId,
-        consentVersion: versionConfig?.value || '1.0',
-        privacyNoticeText: 'ยินยอมตาม พ.ร.บ.คุ้มครองข้อมูลส่วนบุคคล พ.ศ. 2562',
-        purposes: [
-          'สัญญาผ่อนชำระสินค้า',
-          'ติดตามหนี้และบริหารสัญญา',
-          'จัดทำเอกสารทางกฎหมาย',
-          'ติดต่อสื่อสารเกี่ยวกับสัญญา',
-        ],
-        status: 'GRANTED',
-        grantedAt: new Date(),
-        ipAddress: req.ip || null,
-        deviceInfo: req.userAgent || null,
-        signatureImage: signatureImage || null,
+    return this.consentAuthority.run(
+      contractId,
+      'recordPdpaConsent',
+      actorId,
+      async (tx, contract, actor) => {
+        if (
+          typeof signatureImage !== 'string' ||
+          !signatureImage ||
+          signatureImage.length > 3 * 1024 * 1024
+        )
+          throw new BadRequestException('ต้องมีลายเซ็นขนาดไม่เกิน 3MB');
+        if (contract.status !== 'DRAFT')
+          throw new ConflictException('บันทึกความยินยอมได้เฉพาะก่อนเปิดสัญญา');
+        await tx.$queryRaw`SELECT id FROM customers WHERE id=${contract.customerId} FOR SHARE`;
+        if (
+          !(await tx.customer.count({
+            where: { id: contract.customerId, deletedAt: null, mergedIntoId: null },
+          }))
+        )
+          throw new BadRequestException('ไม่พบลูกค้าของสัญญา');
+        const notice = await currentContractNotice(tx);
+        assertPresentedNotice(presented, notice);
+        const old = await linkedContractConsent(tx, contract.pdpaConsentId);
+        if (isValidContractConsent(old, contract.customerId))
+          throw new ConflictException('สัญญามีความยินยอมที่ถูกต้องแล้ว');
+        const consent = await tx.pDPAConsent.create({
+          data: {
+            customerId: contract.customerId,
+            consentVersion: notice.version,
+            privacyNoticeText: notice.text,
+            purposes: notice.purposes,
+            noticeDigest: notice.digest,
+            capturedById: actor,
+            status: 'GRANTED',
+            grantedAt: new Date(),
+            signatureImage,
+            ipAddress: req.ip || null,
+            deviceInfo: req.userAgent || null,
+          },
+        });
+        const linked = await tx.contract.updateMany({
+          where: {
+            id: contract.id,
+            deletedAt: null,
+            status: 'DRAFT',
+            customerId: contract.customerId,
+            pdpaConsentId: contract.pdpaConsentId,
+          },
+          data: { pdpaConsentId: consent.id },
+        });
+        if (linked.count !== 1) throw new ConflictException('หลักฐานเปลี่ยนแปลง กรุณาโหลดใหม่');
+        await tx.auditLog.create({
+          data: {
+            userId: actor,
+            action: 'CONTRACT_PDPA_CAPTURE',
+            entity: 'contract',
+            entityId: contract.id,
+            newValue: {
+              contractId: contract.id,
+              oldConsentId: contract.pdpaConsentId,
+              newConsentId: consent.id,
+              recipientCustomerId: contract.customerId,
+              capturingActorId: actor,
+              noticeVersion: notice.version,
+              noticeDigest: notice.digest,
+              outcome: 'SUCCESS',
+            },
+          },
+        });
+        return { id: contract.id, pdpaConsentId: consent.id };
       },
-    });
-
-    // Link consent to contract
-    await this.prisma.contract.update({
-      where: { id: contractId },
-      data: { pdpaConsentId: consent.id },
-    });
-
-    return consent;
+    );
   }
 
-  /** Get PDPA consent for contract */
-  async getPdpaConsent(contractId: string) {
-    const contract = await this.prisma.contract.findUnique({
-      where: { id: contractId },
-      select: { pdpaConsentId: true },
-    });
-    if (!contract) throw new NotFoundException('ไม่พบสัญญา');
-    if (!contract.pdpaConsentId) return null;
-
-    return this.prisma.pDPAConsent.findUnique({
-      where: { id: contract.pdpaConsentId },
-    });
+  /** Finite evidence checklist; no signature, IP/device, or historical notice bytes. */
+  async getPdpaConsent(contractId: string, actorId?: string) {
+    return this.consentAuthority.run(
+      contractId,
+      'getPdpaConsent',
+      actorId,
+      async (tx, contract) => {
+        const notice = await currentContractNotice(tx);
+        const consent = await linkedContractConsent(tx, contract.pdpaConsentId);
+        const visible = consent && consent.customerId === contract.customerId && !consent.deletedAt;
+        return {
+          notice,
+          consent: visible
+            ? {
+                id: consent.id,
+                version: consent.consentVersion,
+                status: consent.status,
+                grantedAt: consent.grantedAt,
+                valid: isValidContractConsent(consent, contract.customerId),
+              }
+            : null,
+        };
+      },
+    );
   }
 }

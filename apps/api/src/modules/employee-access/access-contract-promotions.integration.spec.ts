@@ -1,3 +1,4 @@
+import { CONTRACT_CONSENT_PURPOSES } from '../pdpa/contract-consent-evidence';
 import { AccessContractPreparationActions } from './access-contract-preparation-actions';
 import { AccessPartySourceService } from './access-party-source.service';
 import { AccessProcurementSourceService } from './access-procurement-source.service';
@@ -379,6 +380,8 @@ async function signed(actor = seller, withBundle = false) {
       customerId: f.customer.id,
       consentVersion: 'owned',
       privacyNoticeText: 'Synthetic consent',
+      purposes: [...CONTRACT_CONSENT_PURPOSES],
+      grantedAt: new Date(),
       status: 'GRANTED',
     },
   });

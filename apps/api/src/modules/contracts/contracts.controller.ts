@@ -347,8 +347,8 @@ export class ContractsController {
   // === QR CODE DATA: ข้อมูลสำหรับสร้าง QR Code ===
   @Get(':id/qr-data')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
-  getQrData(@Param('id') id: string) {
-    return this.documentService.getQrData(id);
+  getQrData(@Param('id') id: string, @CurrentUser() user: { id: string }) {
+    return this.documentService.getQrData(id, user.id);
   }
 
   // === PDPA Consent: บันทึกความยินยอม PDPA และผูกกับสัญญา ===
@@ -357,18 +357,25 @@ export class ContractsController {
   recordPdpaConsent(
     @Param('id') id: string,
     @Body() dto: PdpaConsentDto,
+    @CurrentUser() user: { id: string },
     @Req() req: Request,
   ) {
-    return this.documentService.recordPdpaConsent(id, dto.signatureImage, {
-      ip: req.ip,
-      userAgent: req.headers?.['user-agent'],
-    });
+    return this.documentService.recordPdpaConsent(
+      id,
+      dto.signatureImage,
+      {
+        ip: req.ip,
+        userAgent: req.headers?.['user-agent'],
+      },
+      user.id,
+      dto,
+    );
   }
 
   @Get(':id/pdpa-consent')
   @Roles('OWNER', 'BRANCH_MANAGER', 'SALES')
-  getPdpaConsent(@Param('id') id: string) {
-    return this.documentService.getPdpaConsent(id);
+  getPdpaConsent(@Param('id') id: string, @CurrentUser() user: { id: string }) {
+    return this.documentService.getPdpaConsent(id, user.id);
   }
 
   // === P4-SP4: Contract Cancellation ===

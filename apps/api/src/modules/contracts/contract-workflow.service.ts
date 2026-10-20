@@ -1,3 +1,4 @@
+import { assertValidContractConsent } from '../pdpa/contract-consent-evidence';
 import { validatePeriodOpen } from '../../utils/period-lock.util';
 import { hasCrossBranchAccess } from '../auth/branch-access.util';
 import { currentDomainAccess, domainAccessClient, onDomainCommit } from '../employee-access/access-execution-context';
@@ -106,6 +107,8 @@ export class ContractWorkflowService {
       }
     }
     const contract = await this.findOne(id);
+    if (currentDomainAccess() && (action === 'prepare' || action === 'contracts.activate'))
+      await assertValidContractConsent(this.prisma, contract);
     if (currentDomainAccess() && !contract.promotionFingerprint) {
       if (action === 'contracts.approve') await assertNamedContractAction(id, action);
     }

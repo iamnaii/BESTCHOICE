@@ -1,3 +1,6 @@
+import { AccessContractConsentAuthority } from './access-contract-consent-authority';
+import { currentContractNotice } from '../pdpa/contract-consent-evidence';
+import { CONTRACT_CONSENT_PURPOSES } from '../pdpa/contract-consent-evidence';
 import { AccessExchangeSourceService } from './access-exchange-source.service';
 import { AccessTradeInProjectionService } from './access-trade-in-projection.service';
 import { ExchangeNewContract1ATemplate } from '../journal/cpa-templates/exchange-new-contract-1a.template';
@@ -164,6 +167,7 @@ async function fixture(
       customerId: customer.id,
       consentVersion: 'owned-test-v1',
       privacyNoticeText: 'Owned synthetic consent',
+      purposes: [...CONTRACT_CONSENT_PURPOSES],
       status: 'GRANTED',
       grantedAt: new Date(),
     },
@@ -280,7 +284,7 @@ beforeAll(async () => {
   checker = await user();
   denied = await user();
   asymmetric = await user();
-  await grant(maker, ['contracts.update', 'customers.read', 'products.read'], 'SHOP', [branchA]);
+  await grant(maker, ['contracts.update', 'customers.read', 'products.read', 'documents.create'], 'SHOP', [branchA]);
   await grant(checker, ['contracts.activate'], 'FINANCE', [branchA]);
   await grant(checker, ['customers.read', 'products.read'], 'SHOP', [branchA]);
   await seedShopCoa(db);
@@ -1224,4 +1228,35 @@ it('exchange activation receipt can only be minted before the genuine replacemen
     }),
   ).rejects.toMatchObject({ status: 403 });
   expect((await moneyState(f.replacement.id)).status).toBe('DRAFT');
+});
+
+for (const invalid of ['REVOKED','DELETED','WRONG_CUSTOMER','PENDING','NO_DATE','NO_NOTICE','NO_VERSION','NO_PURPOSES'] as const) {
+ it(`R119 canonical activate rejects ${invalid} linked evidence before effects`,async()=>{
+  const row=await fixture('activate');
+  const other=invalid==='WRONG_CUSTOMER'?await fixture('activate'):undefined;
+  await db.pDPAConsent.update({where:{id:row.pdpaConsentId!},data:
+   invalid==='REVOKED'?{revokedAt:new Date()}:
+   invalid==='DELETED'?{deletedAt:new Date()}:
+   invalid==='WRONG_CUSTOMER'?{customerId:other!.customerId}:
+   invalid==='PENDING'?{status:'PENDING'}:
+   invalid==='NO_DATE'?{grantedAt:null}:
+   invalid==='NO_NOTICE'?{privacyNoticeText:'  '}:
+   invalid==='NO_VERSION'?{consentVersion:''}:{purposes:[]}});
+  expect((await action('activate',row.id,checker)).status).toBe(400);
+  expect((await db.contract.findUniqueOrThrow({where:{id:row.id}})).status).toBe('DRAFT');
+  expect(await db.sale.count({where:{contractId:row.id}})).toBe(0);
+  expect(await db.auditLog.count({where:{entityId:row.id,action:'CONTRACT_ACTIVATED'}})).toBe(0);
+ });
+}
+
+it('R119 real capture of fresh notice replaces revoked draft evidence before canonical activate',async()=>{
+ const row=await fixture('activate');await db.pDPAConsent.update({where:{id:row.pdpaConsentId!},data:{status:'REVOKED',revokedAt:new Date()}});
+ const resources=app.get(AccessResourceService),parties=app.get(AccessPartySourceService);
+ const documentService=new ContractDocumentService(db as PrismaService,new AccessContractConsentAuthority(db as PrismaService,resources,parties));
+ const captured=await resources.execute(maker,'contracts.update','SHOP',undefined,async()=>{
+  const notice=await currentContractNotice(currentDomainAccess()!.client);
+  return documentService.recordPdpaConsent(row.id,'OWNED-CUSTOMER-CONSENT',{},maker,{presentedNoticeVersion:notice.version,presentedNoticeDigest:notice.digest,acceptedPurposes:notice.purposes});
+ },false,{isolationLevel:'Serializable',maxAttempts:3});
+ expect(captured.result.pdpaConsentId).not.toBe(row.pdpaConsentId);
+ expect((await action('activate',row.id,checker)).status).toBe(201);
 });

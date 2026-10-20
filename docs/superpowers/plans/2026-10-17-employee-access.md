@@ -741,9 +741,11 @@ R111 splits this parent into two serial independently reviewed subunits. The exi
 
 **Files/scope:** ContractsController.getSchedule and getEarlyPayoffQuote; exactly2domain.
 
-- [ ] Meaningful owned PostgreSQL/marked HTTP RED with exact authorized success/no-grants/foreign/current and asymmetric tuple controls; explicitly isolated both DB URLs, mocked external effects. Fixture/compiler failures are not behavioral RED.
-- [ ] Actual FINANCE Contract and independent Payment/current monetary source, exact existing formulas and labelled projection; internal grossProfit/cost remain sensitive. Distinguish contractual payoff calculation from discretionary interest reduction and preserve later approval fingerprint integration.
-- [ ] Cover actual changed authorization/money/file behavior, relevant canonical regressions, types/touched lint and scoped coverage. Record exact commands/exits, self-review/commit and independent gate; preserve remaining audit5/approval6/UI7/system4.4/final8 obligations.
+- [x] Meaningful owned PostgreSQL/marked HTTP RED with exact authorized success/no-grants/foreign/current and asymmetric tuple controls; explicitly isolated both DB URLs, mocked external effects. Fixture/compiler failures are not behavioral RED.
+- [x] Actual FINANCE Contract and independent Payment/current monetary source, exact existing formulas and labelled projection; internal grossProfit/cost remain sensitive. Distinguish contractual payoff calculation from discretionary interest reduction and preserve later approval fingerprint integration.
+- [x] Cover actual changed authorization/money/file behavior, relevant canonical regressions, types/touched lint and scoped coverage. Record exact commands/exits, self-review/commit and independent gate; preserve remaining audit5/approval6/UI7/system4.4/final8 obligations.
+
+**Schedule/payoff read completion:** c3b4b7b52 independently passes spec/quality0Critical/0Important/1Minor. Exactly2FINANCE reads, current ordinary Contract/Payment authority, finite schedule and R129–131 payoff projection; shared internal/customer math/defaults preserved and hidden GL skipped. Full journal preview requires fixed complete COMPANY journal/cost/profit authority on both live books, then actual contributor proof. Owned41 andcanonical178/14suites pass; shared/API/Webtypes pass, finalfocused1/40skip covers addedassertion, touchedlint0errors1existingwarning. Parent24/38domain14pending; FINANCEallocation24/544520remaining. Actualexecution/approval9/6, system4.4/audit5/UI7/final8 remain required; no universal contractual-margin non-inference orpreviewclaim.
 
 ### Task 4.2.1.9: Payoff and SHOP settlement execution
 

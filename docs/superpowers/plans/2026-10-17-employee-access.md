@@ -731,9 +731,11 @@ R111 splits this parent into two serial independently reviewed subunits. The exi
 
 **Files/scope:** ContractExchangeController.submit, preview, listPending, listRecent, approve, cancel, reject; exactly7domain.
 
-- [ ] Meaningful owned PostgreSQL/marked HTTP RED with exact authorized success/no-grants/foreign/current and asymmetric tuple controls; explicitly isolated both DB URLs, mocked external effects. Fixture/compiler failures are not behavioral RED.
-- [ ] Consume reviewed canonical exchange source/action/state/window/override/current original+replacement Product/Customer/destination and actual financial executor. Lists scope before limit/count and sensitive fields. No second executor, fake actor, legacy role grants or reimplementation of reviewed Defect3.
-- [ ] Cover actual changed authorization/money/file behavior, relevant canonical regressions, types/touched lint and scoped coverage. Record exact commands/exits, self-review/commit and independent gate; preserve remaining audit5/approval6/UI7/system4.4/final8 obligations.
+- [x] Meaningful owned PostgreSQL/marked HTTP RED with exact authorized success/no-grants/foreign/current and asymmetric tuple controls; explicitly isolated both DB URLs, mocked external effects. Fixture/compiler failures are not behavioral RED.
+- [x] Consume reviewed canonical exchange source/action/state/window/override/current original+replacement Product/Customer/destination and actual financial executor. Lists scope before limit/count and sensitive fields. No second executor, fake actor, legacy role grants or reimplementation of reviewed Defect3.
+- [x] Cover actual changed authorization/money/file behavior, relevant canonical regressions, types/touched lint and scoped coverage. Record exact commands/exits, self-review/commit and independent gate; preserve remaining audit5/approval6/UI7/system4.4/final8 obligations.
+
+**Direct exchange completion:** df421dd2f plus56fc7c322 independently pass spec/quality after one scoped fix for asynchronous error redaction. Exactly7direct routes, selectedSHOP with independently checked actual FINANCE/Customer/Product/destination sources; same canonical financial executor, atomic creation/decision evidence, current posting-period checks and replacement linkage. Final78direct,64activation (including actual positiveECL),22after-sales,17producer pass; canonical199 covered across196initialpasses and4focusedpasses after3arity expectation corrections, not a single final199rerun. APItypes0; fixlint clean, prior118existingwarnings/forcedexit remain2Minors. Parent22/38domain,16pending; FINANCEallocation22/544,522remaining. ActualJWT/fullguards/browser/localcheck/preview8, system4.4/audit5/approval6/UI7 remain mandatory.
 
 ### Task 4.2.1.8: Contract schedule and payoff reads
 

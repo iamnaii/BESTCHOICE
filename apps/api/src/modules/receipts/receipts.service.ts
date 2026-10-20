@@ -5,7 +5,7 @@ import { LineOaService } from '../line-oa/line-oa.service';
 import { JournalAutoService } from '../journal/journal-auto.service';
 import { ReceiptVoidReversalTemplate } from '../journal/cpa-templates/receipt-void-reversal.template';
 import { ReceiptNumberService } from './services/receipt-number.service';
-import { ReceiptIssuanceService } from './services/receipt-issuance.service';
+import { ReceiptIssuanceService, OwnedPayoffReceipt } from './services/receipt-issuance.service';
 import { ReceiptVoidService } from './services/receipt-void.service';
 import { ReceiptQueryService } from './services/receipt-query.service';
 import { ReceiptPdfService } from './services/receipt-pdf.service';
@@ -85,6 +85,7 @@ export class ReceiptsService {
     issuedById: string,
     paidDate?: Date,
     sourceJournalEntryNumber?: string,
+    ownedPayoff?: OwnedPayoffReceipt,
   ) {
     return this.issuance.generateReceipt(
       contractId,
@@ -97,6 +98,7 @@ export class ReceiptsService {
       issuedById,
       paidDate,
       sourceJournalEntryNumber,
+      ownedPayoff,
     );
   }
 

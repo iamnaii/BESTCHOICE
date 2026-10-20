@@ -24,6 +24,9 @@ export interface CreateAndPostInput {
    * are recorded against SHOP per Phase A.5b plan — see PR #795).
    */
   companyId?: string;
+  /** Trusted initiating employee for explicitly integrated owned operations.
+   * Omitted legacy/system callers retain the existing system identity. */
+  createdById?: string;
 }
 
 /**
@@ -111,7 +114,7 @@ export class JournalAutoService {
         // companyId required by schema. Defaults to FINANCE; callers (e.g.
         // expense-documents PR #795) pass SHOP id when posting SHOP-side flows.
         companyId,
-        createdById: await this.resolveSystemUserId(client),
+        createdById: input.createdById ?? await this.resolveSystemUserId(client),
         lines: {
           create: input.lines.map((l) => ({
             accountCode: l.accountCode,

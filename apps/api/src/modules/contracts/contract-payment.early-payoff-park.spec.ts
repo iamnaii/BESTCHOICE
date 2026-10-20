@@ -101,6 +101,9 @@ describe('ContractPaymentService.earlyPayoff — ถังพักงวดส�
       .mockResolvedValue({ id: 'je-ep-park', entryNumber: 'JE-EP-PARK-0001' });
 
     const tx = {
+      // Current persisted legacy admission is checked inside the money transaction.
+      $queryRaw: jest.fn().mockResolvedValue([]),
+      user: { findUnique: jest.fn().mockResolvedValue({ isActive: true, deletedAt: null, accessManaged: false }) },
       contract: {
         findUnique: jest.fn().mockResolvedValue({
           status: 'ACTIVE',

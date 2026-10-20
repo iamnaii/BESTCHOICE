@@ -81,6 +81,9 @@ describe('ContractPaymentService.earlyPayoff — slipMatch (ไม่ผ่า�
       .mockResolvedValue({ id: 'je-ep-park', entryNumber: 'JE-EP-PARK-0001' });
 
     const tx = {
+      // Current persisted legacy admission is checked inside the money transaction.
+      $queryRaw: jest.fn().mockResolvedValue([]),
+      user: { findUnique: jest.fn().mockResolvedValue({ isActive: true, deletedAt: null, accessManaged: false }) },
       contract: {
         // ทางสลิปตรงคิดยอดปิดสดใน tx (getEarlyPayoffQuote(id, …, tx)) จึงต้องได้สัญญาเต็มตัว
         findUnique: jest.fn().mockResolvedValue({

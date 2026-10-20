@@ -1,4 +1,4 @@
-import { Logger, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Logger, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { Prisma } from '@prisma/client';
 import * as crypto from 'crypto';
@@ -12,6 +12,13 @@ import {
 import { ReceiptNumberService } from './receipt-number.service';
 import { getReceiptDocumentBalance, persistReceiptDocumentBalance } from './receipt-document-balance';
 import { CreditNoteDeliveryService } from './credit-note-delivery.service';
+import { currentDomainAccess, onDomainCommit } from '../../employee-access/access-execution-context';
+
+/** Internal exact-client integration; never a DTO or an independent authority. */
+export interface OwnedPayoffReceipt {
+  client: Prisma.TransactionClient;
+  financeCompanyId: string;
+}
 
 /**
  * Receipt issuance: e-Receipt generation ($tx #1, NO journal entry) + manual
@@ -45,9 +52,19 @@ export class ReceiptIssuanceService {
     /** วันที่รับเงินจริง (D4 backdating) — default = ตอนออกใบ. ใบเสร็จต้องลงวันที่เงินเข้า ไม่ใช่วันที่พิมพ์ */
     paidDate?: Date,
     sourceJournalEntryNumber?: string,
+    ownedPayoff?: OwnedPayoffReceipt,
   ) {
+    if (ownedPayoff) {
+      const ctx = currentDomainAccess();
+      if (ctx?.client !== ownedPayoff.client || !ctx.effects ||
+        ctx.snapshot.userId !== issuedById || ctx.domain !== 'parties' ||
+        ctx.scope.permission !== 'payments.create' || ctx.scope.company !== 'FINANCE' ||
+        ctx.scopeReads || ctx.isolationLevel !== 'Serializable' || receiptType !== 'EARLY_PAYOFF' ||
+        sourceJournalEntryNumber)
+        throw new ForbiddenException('ไม่มีขอบเขตการออกใบเสร็จปิดสัญญา');
+    }
     const receiptPaidDate = paidDate ?? new Date();
-    return this.prisma.$transaction(async (tx) => {
+    const issue = async (tx: Prisma.TransactionClient) => {
       const contract = await tx.contract.findUnique({
         where: { id: contractId },
         include: {
@@ -58,7 +75,11 @@ export class ReceiptIssuanceService {
       if (!contract || contract.deletedAt) throw new NotFoundException('ไม่พบสัญญา');
 
       // Get company info
-      const company = await tx.companyInfo.findFirst({ where: { isActive: true, deletedAt: null } });
+      const company = await tx.companyInfo.findFirst({ where: {
+        isActive: true, deletedAt: null,
+        ...(ownedPayoff ? { id: ownedPayoff.financeCompanyId, companyCode: 'FINANCE' } : {}),
+      } });
+      if (ownedPayoff && !company) throw new ForbiddenException('ไม่พบบริษัทการเงินของใบเสร็จ');
       const receiverName = company?.nameTh || 'บริษัท เบสท์ช้อยส์โฟน จำกัด';
 
       // Calculate remaining balance with Decimal arithmetic — avoids float
@@ -269,19 +290,28 @@ export class ReceiptIssuanceService {
           });
 
           if (customer) {
+            if (ownedPayoff) {
+              const committedReceipt = receipt;
+              onDomainCommit(async () => {
+                await this.lineOaService!.sendPaymentReceipt(customer.id, committedReceipt);
+              });
+            } else {
             // Send receipt in background (don't wait)
             this.lineOaService.sendPaymentReceipt(customer.id, receipt).catch(err => {
               this.logger.error('[Receipt] Failed to send LINE receipt:', err);
             });
+            }
           }
         } catch (error) {
+          if (ownedPayoff) throw error;
           // Log but don't fail the receipt generation
           this.logger.error('[Receipt] Error checking LINE status:', error);
         }
       }
 
       return receipt;
-    });
+    };
+    return ownedPayoff ? issue(ownedPayoff.client) : this.prisma.$transaction(issue);
   }
 
   /** Manually push the receipt to the customer's LINE OA. */

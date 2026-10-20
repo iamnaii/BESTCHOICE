@@ -130,6 +130,9 @@ describe('ContractPaymentService early-payoff guards (Wave 3 MED gap-fill)', () 
 
     // tx mock — only reached if the period-lock guard PASSES.
     tx = {
+      // Current persisted legacy admission is checked inside the money transaction.
+      $queryRaw: jest.fn().mockResolvedValue([]),
+      user: { findUnique: jest.fn().mockResolvedValue({ isActive: true, deletedAt: null, accessManaged: false }) },
       contract: {
         findUnique: jest.fn().mockResolvedValue({
           status: 'ACTIVE',

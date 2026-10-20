@@ -42,6 +42,13 @@ import {
   canonical,
 } from '../payments/services/payment-approval-request.util';
 import { d, dAdd, dSub, dRound } from '../../utils/decimal.util';
+import { onDomainCommit } from '../employee-access/access-execution-context';
+import {
+  assertUnmanagedPayoffActor,
+  managedPayoffExecution,
+  lockPayoffPeriod,
+  ManagedPayoffExecution,
+} from './managed-payoff-execution';
 
 /**
  * ปิดสัญญาด้วยสลิปที่ตรวจแล้ว (คำสั่งเจ้าของ 2026-09-24: "ยอดตรงกับสลิป ปิดยอดได้เลยไม่ต้องอนุมัติ")
@@ -454,6 +461,13 @@ export class ContractPaymentService {
   ) {
     if (!approvalContext && !slipMatch)
       throw new ForbiddenException('กรุณาส่งคำขอปิดยอดผ่านหน้ารออนุมัติ หรือแนบสลิปที่ยอดตรง');
+    const managed = await managedPayoffExecution(this.prisma, id, userId);
+    // The legacy approval consumer is not the managed owner/source/money consumer.
+    // Keep even old unmarked requests closed until that integration owns this seam.
+    if (managed && approvalContext)
+      throw new ForbiddenException('รายการนี้ยังรอขั้นตอนอนุมัติของเจ้าของที่รองรับสิทธิ์ปัจจุบัน');
+    if (managed && dto.collectedByShop)
+      throw new ForbiddenException('หลักฐานรับชำระนี้ใช้สำหรับบริษัทการเงินเท่านั้น');
     // Resolve cash dimension once: dto > 11-1201 (KBank). Owner rule 2026-07-08:
     // direct FINANCE receipt is KBank-only — cash collected at a branch goes
     // through collectedByShop → 11-2107 instead.
@@ -462,8 +476,14 @@ export class ContractPaymentService {
     // when collectedByShop=true. The DTO's @IsIn([KBANK_ACCOUNT_CODE]) validator
     // stays intact — the client never names 11-2107 directly.
     const effectiveDepositCode = dto.collectedByShop ? '11-2107' : depositAccountCode;
-    let quote = await this.getEarlyPayoffQuote(id, dto.discountPct, effectiveDepositCode);
+    let quote = await this.getEarlyPayoffQuote(
+      id,
+      dto.discountPct,
+      effectiveDepositCode,
+      managed?.client,
+    );
     const paidDate = dto.paymentDate ? new Date(dto.paymentDate) : new Date();
+    if (!Number.isFinite(paidDate.getTime())) throw new BadRequestException('วันที่ชำระไม่ถูกต้อง');
     // Future check on BKK calendar days (mirror the payment wizard).
     if (isFutureBkkDay(paidDate)) {
       throw new BadRequestException('วันที่ชำระต้องไม่เป็นวันในอนาคต');
@@ -480,59 +500,71 @@ export class ContractPaymentService {
     // companyIds once BEFORE the transaction (and BEFORE the per-installment
     // loop) so the early-payoff JE callers pass both explicitly to
     // JournalAutoService.
-    const financeCompanyId = await this.resolveFinanceCompanyId();
-    const shopCompanyId = await this.resolveShopCompanyId();
+    const financeCompanyId = managed?.financeCompanyId ?? (await this.resolveFinanceCompanyId());
 
     // Period-lock guard (audit finding J3): cannot back-date an early payoff
     // into a closed (FINANCE) accounting period.
-    await validatePeriodOpen(this.prisma, paidDate, financeCompanyId);
+    if (managed) await lockPayoffPeriod(managed.client, paidDate, financeCompanyId);
+    await validatePeriodOpen(managed?.client ?? this.prisma, paidDate, financeCompanyId);
 
     // สัญญาณเตือน (คอลัมน์เงินของลูกค้าไม่ตรงยอดในบัญชี) — ส่งหลังธุรกรรม commit เท่านั้น
     let epWarnings: readonly DeferredWarning[] = [];
-    await this.prisma.$transaction(
-      async (tx) => {
-        if (approvalContext) {
-          const approval = await consumePaymentApproval(tx, approvalContext, 'EARLY_PAYOFF', id);
-          if (approval.requestedById !== userId)
-            throw new ForbiddenException('ผู้ขออนุมัติไม่ตรงกับผู้ทำรายการ');
-          quote = await this.getEarlyPayoffQuote(id, dto.discountPct, effectiveDepositCode, tx);
-          if (
-            canonical(earlyPayoffApprovalMoney(quote)) !==
-            canonical(earlyPayoffApprovalMoney(approval.reviewSummary))
-          ) {
-            throw new ConflictException('ยอดปิดสัญญาเปลี่ยนแล้ว กรุณาส่งขออนุมัติใหม่');
-          }
-        } else {
-          // ทางสลิปตรง — ตรวจซ้ำในทรานแซกชันเดียวกับ JE: ยอดปิดสดยังตรงกับสลิป และสลิปยังไม่ถูกใช้
-          // (SlipFingerprint.hash unique — ชนกับสลิปที่ลูกค้าเคยส่งบอทหรือปิดยอดไปแล้ว → 409)
-          const match = slipMatch!;
-          quote = await this.getEarlyPayoffQuote(id, dto.discountPct, effectiveDepositCode, tx);
-          // เทียบเป็นสตางค์ กันเศษ float (11106.01 − 11106 = 0.0100000000002)
-          if (Math.round(Math.abs(quote.totalPayoff - match.amount) * 100) > 1) {
-            throw new ConflictException(
-              'ยอดปิดสัญญาเปลี่ยนแล้ว ไม่ตรงกับสลิป กรุณาแนบสลิปใหม่หรือส่งขออนุมัติ',
-            );
-          }
-          try {
-            await tx.slipFingerprint.create({ data: { hash: match.hash, contractId: id } });
-          } catch (err) {
-            if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
-              throw new ConflictException('สลิปนี้ถูกใช้บันทึกรายการอื่นไปแล้ว');
-            }
-            throw err;
-          }
-          await tx.paymentEvidence.create({
-            data: {
-              contractId: id,
-              imageUrl: match.imageKey,
-              amount: match.amount,
-              status: 'APPROVED',
-              reviewedById: userId,
-              reviewedAt: new Date(),
-              reviewNote: 'EARLY_PAYOFF_SLIP_MATCH',
-            },
+    let receiptNumber: string | null = null;
+    let receiptId: string | null = null;
+    let paymentEvidenceId: string | null = null;
+    let slipFingerprintId: string | null = null;
+    const journalEntries: Array<{ id: string; entryNumber: string }> = [];
+    const execute = async (tx: Prisma.TransactionClient) => {
+      if (!managed) await assertUnmanagedPayoffActor(tx, userId);
+      if (approvalContext) {
+        const approval = await consumePaymentApproval(tx, approvalContext, 'EARLY_PAYOFF', id);
+        if (approval.requestedById !== userId)
+          throw new ForbiddenException('ผู้ขออนุมัติไม่ตรงกับผู้ทำรายการ');
+        quote = await this.getEarlyPayoffQuote(id, dto.discountPct, effectiveDepositCode, tx);
+        if (
+          canonical(earlyPayoffApprovalMoney(quote)) !==
+          canonical(earlyPayoffApprovalMoney(approval.reviewSummary))
+        ) {
+          throw new ConflictException('ยอดปิดสัญญาเปลี่ยนแล้ว กรุณาส่งขออนุมัติใหม่');
+        }
+      } else {
+        // ทางสลิปตรง — ตรวจซ้ำในทรานแซกชันเดียวกับ JE: ยอดปิดสดยังตรงกับสลิป และสลิปยังไม่ถูกใช้
+        // (SlipFingerprint.hash unique — ชนกับสลิปที่ลูกค้าเคยส่งบอทหรือปิดยอดไปแล้ว → 409)
+        const match = slipMatch!;
+        quote = await this.getEarlyPayoffQuote(id, dto.discountPct, effectiveDepositCode, tx);
+        if (managed && quote.discountAmount !== 0)
+          throw new ForbiddenException('รายการลดดอกเบี้ยต้องผ่านการอนุมัติจากเจ้าของ');
+        // เทียบเป็นสตางค์ กันเศษ float (11106.01 − 11106 = 0.0100000000002)
+        if (Math.round(Math.abs(quote.totalPayoff - match.amount) * 100) > 1) {
+          throw new ConflictException(
+            'ยอดปิดสัญญาเปลี่ยนแล้ว ไม่ตรงกับสลิป กรุณาแนบสลิปใหม่หรือส่งขออนุมัติ',
+          );
+        }
+        try {
+          const fingerprint = await tx.slipFingerprint.create({
+            data: { hash: match.hash, contractId: id },
           });
-          // audit ใน tx (atomic กับ JE) — แถวนี้บอกว่า "ปิดโดยไม่ผ่านคิวอนุมัติเพราะสลิปตรง" ใครกด ยอดเท่าไร
+          if (managed) slipFingerprintId = fingerprint.id;
+        } catch (err) {
+          if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+            throw new ConflictException('สลิปนี้ถูกใช้บันทึกรายการอื่นไปแล้ว');
+          }
+          throw err;
+        }
+        const evidence = await tx.paymentEvidence.create({
+          data: {
+            contractId: id,
+            imageUrl: match.imageKey,
+            amount: match.amount,
+            status: 'APPROVED',
+            reviewedById: userId,
+            reviewedAt: new Date(),
+            reviewNote: 'EARLY_PAYOFF_SLIP_MATCH',
+          },
+        });
+        if (managed) paymentEvidenceId = evidence.id;
+        // audit ใน tx (atomic กับ JE) — แถวนี้บอกว่า "ปิดโดยไม่ผ่านคิวอนุมัติเพราะสลิปตรง" ใครกด ยอดเท่าไร
+        if (!managed)
           await tx.auditLog.create({
             data: {
               userId,
@@ -551,248 +583,262 @@ export class ContractPaymentService {
               },
             },
           });
-        }
+      }
 
-        const freshContract = await tx.contract.findUnique({
-          where: { id },
-          select: { status: true, contractNumber: true, branchId: true },
-        });
-        if (!freshContract || !['ACTIVE', 'OVERDUE', 'DEFAULT'].includes(freshContract.status)) {
-          throw new BadRequestException('สถานะสัญญาไม่อนุญาตให้ปิดก่อนกำหนด');
-        }
+      const freshContract = await tx.contract.findUnique({
+        where: { id },
+        select: { status: true, contractNumber: true, branchId: true },
+      });
+      if (!freshContract || !['ACTIVE', 'OVERDUE', 'DEFAULT'].includes(freshContract.status)) {
+        throw new BadRequestException('สถานะสัญญาไม่อนุญาตให้ปิดก่อนกำหนด');
+      }
 
-        const unpaidPayments = await tx.payment.findMany({
-          where: { contractId: id, status: { not: 'PAID' }, deletedAt: null },
-          orderBy: { installmentNo: 'asc' },
-        });
+      const unpaidPayments = await tx.payment.findMany({
+        where: { contractId: id, status: { not: 'PAID' }, deletedAt: null },
+        orderBy: { installmentNo: 'asc' },
+      });
 
-        // Distribute totalPayoff across unpaid installments (FIFO).
-        // We update each Payment row individually but post ONE aggregated JE
-        // at the end via createEarlyPayoffJournal — per-installment JEs were
-        // unbalanced when discount > 0 (cash partial vs full breakdown).
-        // Snapshot the breakdown BEFORE any updates so the JE math reflects
-        // the as-of-payoff state, not the post-update partial payment.
-        const installmentSnapshots = unpaidPayments.map((p) => ({
-          amountDue: p.amountDue,
-          amountPaidBefore: p.amountPaid,
-          monthlyPrincipal: p.monthlyPrincipal,
-          monthlyInterest: p.monthlyInterest,
-          monthlyCommission: p.monthlyCommission,
-          vatAmount: p.vatAmount,
-          lateFee: p.lateFee,
-          lateFeeWaived: p.lateFeeWaived,
-        }));
+      // Distribute totalPayoff across unpaid installments (FIFO).
+      // We update each Payment row individually but post ONE aggregated JE
+      // at the end via createEarlyPayoffJournal — per-installment JEs were
+      // unbalanced when discount > 0 (cash partial vs full breakdown).
+      // Snapshot the breakdown BEFORE any updates so the JE math reflects
+      // the as-of-payoff state, not the post-update partial payment.
+      const installmentSnapshots = unpaidPayments.map((p) => ({
+        amountDue: p.amountDue,
+        amountPaidBefore: p.amountPaid,
+        monthlyPrincipal: p.monthlyPrincipal,
+        monthlyInterest: p.monthlyInterest,
+        monthlyCommission: p.monthlyCommission,
+        vatAmount: p.vatAmount,
+        lateFee: p.lateFee,
+        lateFeeWaived: p.lateFeeWaived,
+      }));
 
-        let remainingPayoff = d(quote.totalPayoff);
-        for (const payment of unpaidPayments) {
-          const lateFee = payment.lateFeeWaived ? d(0) : d(payment.lateFee);
-          const owed = dSub(dAdd(payment.amountDue, lateFee), payment.amountPaid);
-          const owedNum = owed.toNumber();
-          const payAmountNum = Math.min(remainingPayoff.toNumber(), Math.max(0, owedNum));
-          const payAmount = d(payAmountNum);
-          remainingPayoff = dSub(remainingPayoff, payAmount);
+      let remainingPayoff = d(quote.totalPayoff);
+      for (const payment of unpaidPayments) {
+        const lateFee = payment.lateFeeWaived ? d(0) : d(payment.lateFee);
+        const owed = dSub(dAdd(payment.amountDue, lateFee), payment.amountPaid);
+        const owedNum = owed.toNumber();
+        const payAmountNum = Math.min(remainingPayoff.toNumber(), Math.max(0, owedNum));
+        const payAmount = d(payAmountNum);
+        remainingPayoff = dSub(remainingPayoff, payAmount);
 
-          await tx.payment.update({
-            where: { id: payment.id },
-            data: {
-              status: 'PAID',
-              paidDate,
-              amountPaid: dAdd(payment.amountPaid, payAmount).toDecimalPlaces(2),
-              paymentMethod: dto.paymentMethod as PaymentMethod,
-              recordedById: userId,
-              evidenceUrl: dto.slipUrl ?? payment.evidenceUrl,
-              gatewayRef: dto.referenceNo ?? payment.gatewayRef,
-              notes: dto.notes ? `[ปิดก่อนกำหนด] ${dto.notes}` : '[ปิดก่อนกำหนด]',
-            },
-          });
-        }
-
-        // PR5 (คำตอบฝ่ายบัญชี เล่ม 1 ข้อ 5.1–5.4 · 29/09/2569): รายการ JP4 ล้างตามยอดในบัญชีของสัญญา —
-        // buildEarlyPayoffJournal ตัวเดียวกับที่ getEarlyPayoffQuote() ใช้ทำ preview ⇒ ที่ลงที่นี่ = รายการที่เห็นก่อนกด
-        // (preview === posted). เงินสด = quote.totalPayoff (เงินที่รับจริง — ก้อนเดียวกับที่กระจายเข้าแถว Payment
-        // ข้างบนและพิมพ์ในใบเสร็จ) · 52-1106 = ลูกหนี้ตามบัญชี − เงินที่รับ − เงินของลูกค้าที่หัก (ส่วนที่เหลือให้สมดุล
-        // — แทน ACCOUNTANT NOTE Wave-1 #11 เดิมที่เงินสดในรายการคิดจากงวด × ยอดต่องวด ไม่เท่าเงินที่รับ).
-        // The JP4 template can't be called directly here: it also creates Payment
-        // rows, which were already updated above (duplicate conflict).
-        {
-          const epContract = await tx.contract.findUniqueOrThrow({ where: { id } });
-          const epUnpaid = installmentSnapshots.length;
-          // ค่าปรับเข้า JE เป็นยอด NETTED — หัก Cr 42-1103 ที่เคยลงผ่านใบเสร็จ
-          // partial (FEE-FIRST) แล้ว กัน double-book (owner 2026-07-20 + review
-          // 2026-07-20). ใช้ unpaidPayments (สถานะก่อน flip PAID ข้างบน) + JE
-          // history ใน tx — JE ปิดยอดของรอบนี้ยังไม่ post จึงไม่ปนเข้ามา
-          const epLateFees = await this.computeUnbookedLateFees(tx, epContract, unpaidPayments);
-          // ถังพักงวดสุดท้าย (คำสั่งเจ้าของ 2026-08-16 §จุดหัก 3): quote หักเงินก้อนนี้ออกจากยอดที่ลูกค้าจ่าย →
-          // Dr 21-1103 แทนเงินสด · clamp ด้วยคอลัมน์ถังพักและยอด 21-1103 ในบัญชี ณ ตอนอยู่ใน tx (R-3 — กติกาเดียวกับ
-          // JP5) · เงินเกินของลูกค้า 21-5101 = min(คอลัมน์ที่ยอดปิดหักให้, ยอดในบัญชี) (X2) · ทั้งหมดใน buildEarlyPayoffJournal
-          const epJe = await buildEarlyPayoffJournal(tx, {
-            contract: epContract,
-            depositAccountCode: effectiveDepositCode,
-            cashReceived: quote.totalPayoff,
-            unpaidLateFees: epLateFees,
-            parkReliefApplied: quote.rescheduleAdvanceApplied,
-            // PR5ข: เงินรับล่วงหน้าถังรวมที่ยอดปิดหักให้ — clamp ด้วยคอลัมน์ถังรวมและยอด 21-1103 ในบัญชีที่เหลือหลังเงินพัก
-            advanceReliefApplied: quote.advanceBalanceApplied,
-            quoteDiscountAmount: quote.discountAmount,
-            discountPercent: quote.discountPct,
-          });
-          // เงินที่รับ + เงินของลูกค้าที่หัก เกินลูกหนี้ตามบัญชีเกิน 1.00 → ไม่มีบัญชีรับยอดนั้น (ไม่ใช่เศษสตางค์ และไม่ใช่
-          // ส่วนลด) — ปฏิเสธทั้งธุรกรรม (ฝ่ายบัญชียังไม่ระบุวิธีลง · accounting.md "ปิดยอดก่อนกำหนด (JP4)")
-          if (epJe.excessReceived.gt(0)) {
-            throw new Error(
-              `early payoff ${id}: money received + customer money exceed the contract ledger receivable by ` +
-                `${epJe.excessReceived.toFixed(2)} (> 1.00) — not posted`,
-            );
-          }
-          // คอลัมน์ไม่ตรงบัญชี / 52-1106 ต่างจากส่วนลดบนหน้าจอเกิน 1.00 — ส่งหลัง commit
-          epWarnings = epJe.warnings;
-
-          // Ledger-side line descriptions (the preview words them differently —
-          // only the money, shared via buildEarlyPayoffJournal, must match).
-          const epDescriptions: Record<string, string> = {
-            [effectiveDepositCode]: dto.collectedByShop
-              ? `หน้าร้านรับ ${epJe.cashReceived.toFixed(2)} ฿ ปิดยอด (ลูกหนี้-หน้าร้าน)`
-              : `รับ ${epJe.cashReceived.toFixed(2)} ฿ ปิดยอด`,
-            '21-1103': 'หักเงินพักปรับดิว (ปิดสัญญาก่อนกำหนด)',
-            '11-2106': 'ยกเลิกรายได้รอตัดบัญชี-ดอกเบี้ย',
-            '21-2102': 'ล้างภาษีขายรอเรียกเก็บ',
-            '52-1106': 'ส่วนลดดอกเบี้ย-ปิดยอดก่อนกำหนด',
-            '11-2101': 'ล้างลูกหนี้ Gross (excl. VAT)',
-            '11-2105': 'ล้างลูกหนี้ภาษีขายรอฯ',
-            '41-1101': 'รับรู้รายได้ดอกเบี้ย',
-            '21-2101': 'ภาษีขาย ภ.พ.30 ถึงกำหนด',
-            '42-1103': 'ค่าปรับชำระล่าช้า',
-          };
-
-          // Build metadata — stamp shop-collect flags when applicable
-          const jeMetadata: Prisma.JsonObject = {
-            tag: 'JP4',
-            flow: 'early-payoff',
-            contractId: id,
-            unpaidInstallments: epUnpaid,
-            discount: epJe.discount.toFixed(2),
-            interestDiscountPercent: quote.discountPct,
-            lateFees: epJe.lateFees.toFixed(2),
-            // PR5: ฐานของรายการ — เงินที่รับ · ลูกหนี้ตามบัญชีที่ล้าง · ส่วนลดตามสูตรยอดปิด (ต่างจาก 52-1106 ได้เศษสตางค์)
-            cashReceived: epJe.cashReceived.toFixed(2),
-            receivableCleared: epJe.receivableCleared.toFixed(2),
-            quoteDiscountAmount: d(quote.discountAmount).toFixed(2),
-            ...(epJe.parkRelief.gt(0) ? { parkRelief: epJe.parkRelief.toFixed(2) } : {}),
-            ...(epJe.advanceRelief.gt(0) ? { advanceRelief: epJe.advanceRelief.toFixed(2) } : {}),
-            ...(epJe.creditRelief.gt(0) ? { creditRelief: epJe.creditRelief.toFixed(2) } : {}),
-            ...(epJe.roundingGain.gt(0) ? { roundingGain: epJe.roundingGain.toFixed(2) } : {}),
-            // ส่วนของ 52-1106 ที่เกินฐานข้อ 5.2 (% ส่วนลด × ดอกเบี้ยรอตัดบัญชี) — เกิน 1.00 เท่านั้น (ไม่นับเศษสตางค์)
-            ...(epJe.discountBeyondDeferredBase.gt(EARLY_PAYOFF_ROUNDING_TOLERANCE)
-              ? { discountBeyondDeferredBase: epJe.discountBeyondDeferredBase.toFixed(2) }
-              : {}),
-            ...(dto.collectedByShop
-              ? {
-                  collectedByShop: true,
-                  shopReceivable: '11-2107',
-                  shopReceivableType: 'SHOP_COLLECT',
-                }
-              : {}),
-          };
-
-          await this.journalAutoService.createAndPost(
-            {
-              description: `ปิดยอดก่อนกำหนด — สัญญา ${freshContract.contractNumber} (${epUnpaid} งวดคงเหลือ)`,
-              reference: `${id}:early-payoff`,
-              // Backdate fix (2026-07-09): dto.paymentDate already drove
-              // Payment.paidDate + the period-lock guard, but the JE landed on
-              // "now" — a backdated payoff split the Payment date and the
-              // ledger date across months. Thread the same date through.
-              postedAt: paidDate,
-              metadata: jeMetadata,
-              lines: epJe.lines.map((l) => ({
-                accountCode: l.accountCode,
-                dr: l.dr,
-                cr: l.cr,
-                description: l.generalAdvance ? '' : (epDescriptions[l.accountCode] ?? ''),
-              })),
-            },
-            tx,
-          );
-
-          // ปลดถังพักงวดสุดท้ายให้ตรงกับขา Dr 21-1103 ที่เพิ่งลง — ต้องอยู่ใน tx
-          // เดียวกับ JE. ส่วนที่ยอดปิดดูดซับไม่หมด (ส่วนลดกินไปบางส่วน / ชน
-          // max(0,…)) คงค้างในถังตามเดิม ไม่ปลดเกินที่ลูกค้าได้ลดจริง.
-          if (epJe.parkRelief.gt(0)) {
-            await tx.contract.update({
-              where: { id },
-              data: { rescheduleAdvanceBalance: { decrement: epJe.parkRelief } },
-            });
-            await tx.auditLog.create({
-              data: {
-                userId,
-                action: 'RESCHEDULE_ADVANCE_CONSUMED',
-                entity: 'contract',
-                entityId: id,
-                newValue: {
-                  parkRelief: epJe.parkRelief.toFixed(2),
-                  beforeParkBalance: d(epContract.rescheduleAdvanceBalance ?? 0).toFixed(2),
-                  afterParkBalance: dSub(
-                    d(epContract.rescheduleAdvanceBalance ?? 0),
-                    epJe.parkRelief,
-                  ).toFixed(2),
-                  source: 'EARLY_PAYOFF_PARK_RELIEF',
-                },
-              },
-            });
-          }
-
-          // PR5ข (เจ้าของเคาะ 01/10/2569): ถังรวมลดเท่าบรรทัด Dr 21-1103 ของถังรวมที่เพิ่งลง — tx เดียวกับ JE (แบบเดียวกับ
-          // ถังพักข้างบน) · ส่วนที่ยอดปิดหักไม่หมด (ถังรวมใหญ่กว่ายอดค้าง) คงค้างในคอลัมน์ = ยอดในบัญชี
-          if (epJe.advanceRelief.gt(0)) {
-            await tx.contract.update({
-              where: { id },
-              data: { advanceBalance: { decrement: epJe.advanceRelief } },
-            });
-          }
-
-          // AuditLog for shop-collect payoff path
-          if (dto.collectedByShop) {
-            await tx.auditLog.create({
-              data: {
-                userId,
-                action: 'SHOP_COLLECT_PAYOFF',
-                entity: 'contract',
-                entityId: id,
-                newValue: {
-                  shopReceivable: '11-2107',
-                  shopReceivableType: 'SHOP_COLLECT',
-                  // PR5: ยอดที่หน้าร้านรับแทน = Dr 11-2107 = เงินที่ลูกค้าจ่าย (รวมค่าปรับ)
-                  cashReceived: epJe.cashReceived.toFixed(2),
-                  lateFees: epJe.lateFees.toFixed(2),
-                  unpaidInstallments: epUnpaid,
-                },
-              },
-            });
-          }
-        }
-
-        // Reset credit balance (used up by the early payoff) — PR5: รายการ JP4 ล้าง 21-5101 เท่าที่ยอดปิดหักให้และมีในบัญชี
-        // (X2) · ยอดในบัญชีที่เกินคอลัมน์ยังเป็นเงินของลูกค้า ค้างใน 21-5101 (สัญญาณเตือนหลัง commit)
-        const updated = await tx.contract.update({
-          where: { id },
+        await tx.payment.update({
+          where: { id: payment.id },
           data: {
-            status: 'EARLY_PAYOFF',
-            creditBalance: 0,
+            status: 'PAID',
+            paidDate,
+            amountPaid: dAdd(payment.amountPaid, payAmount).toDecimalPlaces(2),
+            paymentMethod: dto.paymentMethod as PaymentMethod,
+            recordedById: userId,
+            evidenceUrl: dto.slipUrl ?? payment.evidenceUrl,
+            gatewayRef: dto.referenceNo ?? payment.gatewayRef,
+            notes: dto.notes ? `[ปิดก่อนกำหนด] ${dto.notes}` : '[ปิดก่อนกำหนด]',
           },
-          select: { productId: true },
         });
+      }
 
-        // C1 (2026-07-30 owner decision): early payoff derecognizes the HP
-        // receivable in full — any ECL allowance still sitting on 11-2102 for
-        // this contract is now stale and must release back to P&L. Same
-        // convention as the JP5/write-off consume-then-release helper
-        // (glContractBalance + EclStageReverseTemplate), minus the "consume"
-        // leg — JP4 has no loss to net the provision against.
-        await this.releaseEclOnPayoff(tx, id);
+      // PR5 (คำตอบฝ่ายบัญชี เล่ม 1 ข้อ 5.1–5.4 · 29/09/2569): รายการ JP4 ล้างตามยอดในบัญชีของสัญญา —
+      // buildEarlyPayoffJournal ตัวเดียวกับที่ getEarlyPayoffQuote() ใช้ทำ preview ⇒ ที่ลงที่นี่ = รายการที่เห็นก่อนกด
+      // (preview === posted). เงินสด = quote.totalPayoff (เงินที่รับจริง — ก้อนเดียวกับที่กระจายเข้าแถว Payment
+      // ข้างบนและพิมพ์ในใบเสร็จ) · 52-1106 = ลูกหนี้ตามบัญชี − เงินที่รับ − เงินของลูกค้าที่หัก (ส่วนที่เหลือให้สมดุล
+      // — แทน ACCOUNTANT NOTE Wave-1 #11 เดิมที่เงินสดในรายการคิดจากงวด × ยอดต่องวด ไม่เท่าเงินที่รับ).
+      // The JP4 template can't be called directly here: it also creates Payment
+      // rows, which were already updated above (duplicate conflict).
+      {
+        const epContract = await tx.contract.findUniqueOrThrow({ where: { id } });
+        const epUnpaid = installmentSnapshots.length;
+        // ค่าปรับเข้า JE เป็นยอด NETTED — หัก Cr 42-1103 ที่เคยลงผ่านใบเสร็จ
+        // partial (FEE-FIRST) แล้ว กัน double-book (owner 2026-07-20 + review
+        // 2026-07-20). ใช้ unpaidPayments (สถานะก่อน flip PAID ข้างบน) + JE
+        // history ใน tx — JE ปิดยอดของรอบนี้ยังไม่ post จึงไม่ปนเข้ามา
+        const epLateFees = await this.computeUnbookedLateFees(tx, epContract, unpaidPayments);
+        // ถังพักงวดสุดท้าย (คำสั่งเจ้าของ 2026-08-16 §จุดหัก 3): quote หักเงินก้อนนี้ออกจากยอดที่ลูกค้าจ่าย →
+        // Dr 21-1103 แทนเงินสด · clamp ด้วยคอลัมน์ถังพักและยอด 21-1103 ในบัญชี ณ ตอนอยู่ใน tx (R-3 — กติกาเดียวกับ
+        // JP5) · เงินเกินของลูกค้า 21-5101 = min(คอลัมน์ที่ยอดปิดหักให้, ยอดในบัญชี) (X2) · ทั้งหมดใน buildEarlyPayoffJournal
+        const epJe = await buildEarlyPayoffJournal(tx, {
+          contract: epContract,
+          depositAccountCode: effectiveDepositCode,
+          cashReceived: quote.totalPayoff,
+          unpaidLateFees: epLateFees,
+          parkReliefApplied: quote.rescheduleAdvanceApplied,
+          // PR5ข: เงินรับล่วงหน้าถังรวมที่ยอดปิดหักให้ — clamp ด้วยคอลัมน์ถังรวมและยอด 21-1103 ในบัญชีที่เหลือหลังเงินพัก
+          advanceReliefApplied: quote.advanceBalanceApplied,
+          quoteDiscountAmount: quote.discountAmount,
+          discountPercent: quote.discountPct,
+        });
+        // เงินที่รับ + เงินของลูกค้าที่หัก เกินลูกหนี้ตามบัญชีเกิน 1.00 → ไม่มีบัญชีรับยอดนั้น (ไม่ใช่เศษสตางค์ และไม่ใช่
+        // ส่วนลด) — ปฏิเสธทั้งธุรกรรม (ฝ่ายบัญชียังไม่ระบุวิธีลง · accounting.md "ปิดยอดก่อนกำหนด (JP4)")
+        if (epJe.excessReceived.gt(0)) {
+          throw new Error(
+            `early payoff ${id}: money received + customer money exceed the contract ledger receivable by ` +
+              `${epJe.excessReceived.toFixed(2)} (> 1.00) — not posted`,
+          );
+        }
+        // คอลัมน์ไม่ตรงบัญชี / 52-1106 ต่างจากส่วนลดบนหน้าจอเกิน 1.00 — ส่งหลัง commit
+        epWarnings = epJe.warnings;
 
-        // Ownership release: FINANCE → null. Customer owns the device once
-        // the contract is closed via payoff, same semantics as COMPLETED.
-        if (updated?.productId) {
+        // Ledger-side line descriptions (the preview words them differently —
+        // only the money, shared via buildEarlyPayoffJournal, must match).
+        const epDescriptions: Record<string, string> = {
+          [effectiveDepositCode]: dto.collectedByShop
+            ? `หน้าร้านรับ ${epJe.cashReceived.toFixed(2)} ฿ ปิดยอด (ลูกหนี้-หน้าร้าน)`
+            : `รับ ${epJe.cashReceived.toFixed(2)} ฿ ปิดยอด`,
+          '21-1103': 'หักเงินพักปรับดิว (ปิดสัญญาก่อนกำหนด)',
+          '11-2106': 'ยกเลิกรายได้รอตัดบัญชี-ดอกเบี้ย',
+          '21-2102': 'ล้างภาษีขายรอเรียกเก็บ',
+          '52-1106': 'ส่วนลดดอกเบี้ย-ปิดยอดก่อนกำหนด',
+          '11-2101': 'ล้างลูกหนี้ Gross (excl. VAT)',
+          '11-2105': 'ล้างลูกหนี้ภาษีขายรอฯ',
+          '41-1101': 'รับรู้รายได้ดอกเบี้ย',
+          '21-2101': 'ภาษีขาย ภ.พ.30 ถึงกำหนด',
+          '42-1103': 'ค่าปรับชำระล่าช้า',
+        };
+
+        // Build metadata — stamp shop-collect flags when applicable
+        const jeMetadata: Prisma.JsonObject = {
+          tag: 'JP4',
+          flow: 'early-payoff',
+          contractId: id,
+          unpaidInstallments: epUnpaid,
+          discount: epJe.discount.toFixed(2),
+          interestDiscountPercent: quote.discountPct,
+          lateFees: epJe.lateFees.toFixed(2),
+          // PR5: ฐานของรายการ — เงินที่รับ · ลูกหนี้ตามบัญชีที่ล้าง · ส่วนลดตามสูตรยอดปิด (ต่างจาก 52-1106 ได้เศษสตางค์)
+          cashReceived: epJe.cashReceived.toFixed(2),
+          receivableCleared: epJe.receivableCleared.toFixed(2),
+          quoteDiscountAmount: d(quote.discountAmount).toFixed(2),
+          ...(epJe.parkRelief.gt(0) ? { parkRelief: epJe.parkRelief.toFixed(2) } : {}),
+          ...(epJe.advanceRelief.gt(0) ? { advanceRelief: epJe.advanceRelief.toFixed(2) } : {}),
+          ...(epJe.creditRelief.gt(0) ? { creditRelief: epJe.creditRelief.toFixed(2) } : {}),
+          ...(epJe.roundingGain.gt(0) ? { roundingGain: epJe.roundingGain.toFixed(2) } : {}),
+          // ส่วนของ 52-1106 ที่เกินฐานข้อ 5.2 (% ส่วนลด × ดอกเบี้ยรอตัดบัญชี) — เกิน 1.00 เท่านั้น (ไม่นับเศษสตางค์)
+          ...(epJe.discountBeyondDeferredBase.gt(EARLY_PAYOFF_ROUNDING_TOLERANCE)
+            ? { discountBeyondDeferredBase: epJe.discountBeyondDeferredBase.toFixed(2) }
+            : {}),
+          ...(dto.collectedByShop
+            ? {
+                collectedByShop: true,
+                shopReceivable: '11-2107',
+                shopReceivableType: 'SHOP_COLLECT',
+              }
+            : {}),
+        };
+
+        const posted = await this.journalAutoService.createAndPost(
+          {
+            description: `ปิดยอดก่อนกำหนด — สัญญา ${freshContract.contractNumber} (${epUnpaid} งวดคงเหลือ)`,
+            reference: `${id}:early-payoff`,
+            // Backdate fix (2026-07-09): dto.paymentDate already drove
+            // Payment.paidDate + the period-lock guard, but the JE landed on
+            // "now" — a backdated payoff split the Payment date and the
+            // ledger date across months. Thread the same date through.
+            postedAt: paidDate,
+            ...(managed ? { companyId: financeCompanyId, createdById: managed.actorId } : {}),
+            metadata: jeMetadata,
+            lines: epJe.lines.map((l) => ({
+              accountCode: l.accountCode,
+              dr: l.dr,
+              cr: l.cr,
+              description: l.generalAdvance ? '' : (epDescriptions[l.accountCode] ?? ''),
+            })),
+          },
+          tx,
+        );
+        if (managed) journalEntries.push(posted);
+
+        // ปลดถังพักงวดสุดท้ายให้ตรงกับขา Dr 21-1103 ที่เพิ่งลง — ต้องอยู่ใน tx
+        // เดียวกับ JE. ส่วนที่ยอดปิดดูดซับไม่หมด (ส่วนลดกินไปบางส่วน / ชน
+        // max(0,…)) คงค้างในถังตามเดิม ไม่ปลดเกินที่ลูกค้าได้ลดจริง.
+        if (epJe.parkRelief.gt(0)) {
+          await tx.contract.update({
+            where: { id },
+            data: { rescheduleAdvanceBalance: { decrement: epJe.parkRelief } },
+          });
+          await tx.auditLog.create({
+            data: {
+              userId,
+              action: 'RESCHEDULE_ADVANCE_CONSUMED',
+              entity: 'contract',
+              entityId: id,
+              newValue: managed
+                ? { source: 'EARLY_PAYOFF_PARK_RELIEF', contractId: id }
+                : {
+                    parkRelief: epJe.parkRelief.toFixed(2),
+                    beforeParkBalance: d(epContract.rescheduleAdvanceBalance ?? 0).toFixed(2),
+                    afterParkBalance: dSub(
+                      d(epContract.rescheduleAdvanceBalance ?? 0),
+                      epJe.parkRelief,
+                    ).toFixed(2),
+                    source: 'EARLY_PAYOFF_PARK_RELIEF',
+                  },
+            },
+          });
+        }
+
+        // PR5ข (เจ้าของเคาะ 01/10/2569): ถังรวมลดเท่าบรรทัด Dr 21-1103 ของถังรวมที่เพิ่งลง — tx เดียวกับ JE (แบบเดียวกับ
+        // ถังพักข้างบน) · ส่วนที่ยอดปิดหักไม่หมด (ถังรวมใหญ่กว่ายอดค้าง) คงค้างในคอลัมน์ = ยอดในบัญชี
+        if (epJe.advanceRelief.gt(0)) {
+          await tx.contract.update({
+            where: { id },
+            data: { advanceBalance: { decrement: epJe.advanceRelief } },
+          });
+        }
+
+        // AuditLog for shop-collect payoff path
+        if (dto.collectedByShop) {
+          await tx.auditLog.create({
+            data: {
+              userId,
+              action: 'SHOP_COLLECT_PAYOFF',
+              entity: 'contract',
+              entityId: id,
+              newValue: {
+                shopReceivable: '11-2107',
+                shopReceivableType: 'SHOP_COLLECT',
+                // PR5: ยอดที่หน้าร้านรับแทน = Dr 11-2107 = เงินที่ลูกค้าจ่าย (รวมค่าปรับ)
+                cashReceived: epJe.cashReceived.toFixed(2),
+                lateFees: epJe.lateFees.toFixed(2),
+                unpaidInstallments: epUnpaid,
+              },
+            },
+          });
+        }
+      }
+
+      // Reset credit balance (used up by the early payoff) — PR5: รายการ JP4 ล้าง 21-5101 เท่าที่ยอดปิดหักให้และมีในบัญชี
+      // (X2) · ยอดในบัญชีที่เกินคอลัมน์ยังเป็นเงินของลูกค้า ค้างใน 21-5101 (สัญญาณเตือนหลัง commit)
+      const updated = await tx.contract.update({
+        where: { id },
+        data: {
+          status: 'EARLY_PAYOFF',
+          creditBalance: 0,
+        },
+        select: { productId: true },
+      });
+
+      // C1 (2026-07-30 owner decision): early payoff derecognizes the HP
+      // receivable in full — any ECL allowance still sitting on 11-2102 for
+      // this contract is now stale and must release back to P&L. Same
+      // convention as the JP5/write-off consume-then-release helper
+      // (glContractBalance + EclStageReverseTemplate), minus the "consume"
+      // leg — JP4 has no loss to net the provision against.
+      const ecl = await this.releaseEclOnPayoff(tx, id, managed, paidDate);
+      if (managed && ecl) {
+        const entry = await tx.journalEntry.findUniqueOrThrow({
+          where: { entryNumber: ecl.entryNo },
+          select: { id: true, entryNumber: true },
+        });
+        journalEntries.push(entry);
+      }
+
+      // Ownership release: FINANCE → null. Customer owns the device once
+      // the contract is closed via payoff, same semantics as COMPLETED.
+      if (updated?.productId) {
+        if (managed) {
+          await this.productsService.transferOwnership(updated.productId, null, tx);
+        } else {
           try {
             await this.productsService.transferOwnership(updated.productId, null, tx);
           } catch (err) {
@@ -801,68 +847,124 @@ export class ContractPaymentService {
             );
           }
         }
-      },
-      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
-    );
-    emitDeferredWarnings(epWarnings);
+      }
+      if (managed) {
+        const receipt = await this.receiptsService.generateReceipt(
+          id,
+          null,
+          'EARLY_PAYOFF',
+          quote.totalPayoff,
+          null,
+          dto.paymentMethod,
+          dto.referenceNo ?? null,
+          userId,
+          paidDate,
+          undefined,
+          { client: tx, financeCompanyId },
+        );
+        receiptNumber = receipt.receiptNumber;
+        receiptId = receipt.id;
+        await tx.auditLog.create({
+          data: {
+            userId,
+            action: 'EARLY_PAYOFF_EXECUTED',
+            entity: 'contract',
+            entityId: id,
+            newValue: {
+              actorId: managed.actorId,
+              contractId: id,
+              financeCompanyId,
+              originShopCompanyId: managed.originShopCompanyId,
+              originBranchId: managed.originBranchId,
+              productId: managed.productId,
+              paymentIds: unpaidPayments.map((payment) => payment.id),
+              receiptId,
+              receiptNumber,
+              journalEntryIds: journalEntries.map((entry) => entry.id),
+              journalEntryNumbers: journalEntries.map((entry) => entry.entryNumber),
+              paymentEvidenceId,
+              slipFingerprintId,
+              status: 'EARLY_PAYOFF',
+            },
+          },
+        });
+      }
+    };
+    if (managed) await execute(managed.client);
+    else
+      await this.prisma.$transaction(execute, {
+        isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+      });
+    if (!managed) emitDeferredWarnings(epWarnings);
 
     // Issue the EARLY_PAYOFF receipt (post-commit; generateReceipt has its own tx +
     // sequence lock). Mirrors the normal recordPayment path — a receipt failure must
     // NOT roll back the committed payoff, so it's logged and swallowed.
-    let receiptNumber: string | null = null;
-    try {
-      const receipt = await this.receiptsService.generateReceipt(
-        id,
-        null,
-        'EARLY_PAYOFF',
-        quote.totalPayoff,
-        null,
-        dto.paymentMethod,
-        dto.referenceNo ?? null,
-        userId,
-        paidDate, // D4 backdating — ใบเสร็จลงวันที่รับเงินจริง (ตรงกับ Payment/JE)
-      );
-      receiptNumber = receipt?.receiptNumber ?? null;
-    } catch (err) {
-      this.logger.error(
-        `Failed to generate EARLY_PAYOFF receipt for contract ${id}: ${err instanceof Error ? err.message : err}`,
-      );
-    }
-
-    // การเดินทางของลูกค้า (เจ้าของ 2026-09-24 "ไม่มีประวัติว่าลูกค้าปิดยอด"): เขียนหลัง tx commit
-    // เหมือน CONTRACT_ACTIVATED — recordAfterCommit ไม่โยน และห้ามทำให้ปิดยอดที่สำเร็จแล้วล้มเหลว
-    // data = เลขสัญญา/เลขใบเสร็จ/ยอดปิดเท่านั้น (PDPA — ไม่คัดลอกข้อมูลลูกค้า)
-    if (this.journeyEntries) {
+    if (!managed) {
       try {
-        const closed = await this.prisma.contract.findUnique({
-          where: { id },
-          select: { customerId: true, contractNumber: true },
-        });
-        if (closed) {
-          await this.journeyEntries.recordAfterCommit({
-            customerId: closed.customerId,
-            kind: 'EARLY_PAYOFF',
-            occurredAt: paidDate,
-            actorType: 'STAFF',
-            actorUserId: userId,
-            refType: 'contract',
-            refId: id,
-            data: {
-              contractNumber: closed.contractNumber,
-              receiptNumber,
-              totalPayoff: quote.totalPayoff,
-            },
-            dedupeKey: journeyDedupeKey('EARLY_PAYOFF', id),
-          });
-        }
+        const receipt = await this.receiptsService.generateReceipt(
+          id,
+          null,
+          'EARLY_PAYOFF',
+          quote.totalPayoff,
+          null,
+          dto.paymentMethod,
+          dto.referenceNo ?? null,
+          userId,
+          paidDate, // D4 backdating — ใบเสร็จลงวันที่รับเงินจริง (ตรงกับ Payment/JE)
+        );
+        receiptNumber = receipt?.receiptNumber ?? null;
       } catch (err) {
         this.logger.error(
-          `Failed to record EARLY_PAYOFF journey entry for contract ${id}: ${err instanceof Error ? err.message : err}`,
+          `Failed to generate EARLY_PAYOFF receipt for contract ${id}: ${err instanceof Error ? err.message : err}`,
         );
       }
     }
 
-    return { ...quote, status: 'EARLY_PAYOFF', paidDate };
+    const afterCommit = async () => {
+      if (managed) emitDeferredWarnings(epWarnings);
+      // การเดินทางของลูกค้า (เจ้าของ 2026-09-24 "ไม่มีประวัติว่าลูกค้าปิดยอด"): เขียนหลัง tx commit
+      // เหมือน CONTRACT_ACTIVATED — recordAfterCommit ไม่โยน และห้ามทำให้ปิดยอดที่สำเร็จแล้วล้มเหลว
+      // data = เลขสัญญา/เลขใบเสร็จ/ยอดปิดเท่านั้น (PDPA — ไม่คัดลอกข้อมูลลูกค้า)
+      if (this.journeyEntries) {
+        try {
+          const closed = await this.prisma.contract.findUnique({
+            where: { id },
+            select: { customerId: true, contractNumber: true },
+          });
+          if (closed) {
+            await this.journeyEntries.recordAfterCommit({
+              customerId: closed.customerId,
+              kind: 'EARLY_PAYOFF',
+              occurredAt: paidDate,
+              actorType: 'STAFF',
+              actorUserId: userId,
+              refType: 'contract',
+              refId: id,
+              data: {
+                contractNumber: closed.contractNumber,
+                receiptNumber,
+                totalPayoff: quote.totalPayoff,
+              },
+              dedupeKey: journeyDedupeKey('EARLY_PAYOFF', id),
+            });
+          }
+        } catch (err) {
+          this.logger.error(
+            `Failed to record EARLY_PAYOFF journey entry for contract ${id}: ${err instanceof Error ? err.message : err}`,
+          );
+        }
+      }
+    };
+    if (managed) onDomainCommit(afterCommit);
+    else await afterCommit();
+
+    return {
+      ...quote,
+      status: 'EARLY_PAYOFF',
+      paidDate,
+      ...(managed ? { receiptId, receiptNumber } : {}),
+    };
   }
 
   /**
@@ -959,29 +1061,43 @@ export class ContractPaymentService {
   private async releaseEclOnPayoff(
     tx: Prisma.TransactionClient,
     contractId: string,
-  ): Promise<void> {
+    managed?: ManagedPayoffExecution,
+    paidDate?: Date,
+  ): Promise<{ entryNo: string } | null> {
+    let result: { entryNo: string } | null = null;
     const bal = await glContractBalance(tx, contractId, '11-2102', 'cr');
     // Negative 11-2102 = GL anomaly (Dr > Cr — e.g. past mis-posted JE). Same
     // alarm-and-skip convention as JP5/write-off (M1 hardening) — never
     // auto-heal, surface for manual investigation instead.
     if (bal.lt(0)) {
-      Sentry.captureMessage('JP4 payoff: negative 11-2102 balance', {
-        level: 'warning',
-        tags: { subsystem: 'bad-debt' },
-        extra: { contractId, balance: bal.toFixed(2) },
-      });
+      const warn = async () => {
+        Sentry.captureMessage('JP4 payoff: negative 11-2102 balance', {
+          level: 'warning',
+          tags: { subsystem: 'bad-debt' },
+          extra: { contractId, balance: bal.toFixed(2) },
+        });
+      };
+      if (managed) onDomainCommit(warn);
+      else await warn();
     }
     if (bal.gt(0)) {
       const activeRow = await tx.badDebtProvision.findFirst({
         where: { contractId, status: 'ACTIVE', deletedAt: null },
         orderBy: { provisionDate: 'desc' },
       });
-      await this.eclStageReverseTemplate.execute(
+      result = await this.eclStageReverseTemplate.execute(
         {
           contractId,
           reverseAmount: bal,
           fromBucket: activeRow?.agingBucket ?? 'CURRENT',
           toBucket: 'CURRENT',
+          ...(managed
+            ? {
+                companyId: managed.financeCompanyId,
+                createdById: managed.actorId,
+                postedAt: paidDate,
+              }
+            : {}),
         },
         tx,
       );
@@ -994,6 +1110,7 @@ export class ContractPaymentService {
       where: { status: 'ACTIVE', contractId, deletedAt: null },
       data: { status: 'REVERSED' },
     });
+    return result;
   }
 
   /** Shared findOne - reuses Prisma query for contract with full includes */

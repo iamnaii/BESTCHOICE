@@ -102,6 +102,9 @@ describe('ContractPaymentService — ปิดยอดหักเงินร�
       .mockResolvedValue({ id: 'je-ep-advance', entryNumber: 'JE-EP-ADVANCE-0001' });
 
     const tx = {
+      // Current persisted legacy admission is checked inside the money transaction.
+      $queryRaw: jest.fn().mockResolvedValue([]),
+      user: { findUnique: jest.fn().mockResolvedValue({ isActive: true, deletedAt: null, accessManaged: false }) },
       contract: {
         findUnique: jest.fn().mockResolvedValue(contract),
         findUniqueOrThrow: jest.fn().mockResolvedValue(contract),

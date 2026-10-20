@@ -193,6 +193,9 @@ describe('ContractPaymentService.earlyPayoff (EXECUTION / money-posting golden)'
 
     // tx mock used inside $transaction
     tx = {
+      // Current persisted legacy admission is checked inside the money transaction.
+      $queryRaw: jest.fn().mockResolvedValue([]),
+      user: { findUnique: jest.fn().mockResolvedValue({ isActive: true, deletedAt: null, accessManaged: false }) },
       contract: {
         findUnique: jest.fn().mockResolvedValue(freshContract),
         findUniqueOrThrow: jest.fn().mockResolvedValue(epContractRow),

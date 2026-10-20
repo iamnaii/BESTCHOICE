@@ -180,10 +180,10 @@ export default function ShopDailyCashPage() {
               </NativeSelect>
             )}
             {data && !own && (
-              <div role="tablist" aria-label="มุมมองของหน้าสรุปเงิน" className="flex w-full rounded-lg border border-border bg-muted p-[3px] sm:min-h-11 sm:w-auto">
+              <div role="tablist" aria-label="มุมมองของหน้าสรุปเงิน" className="flex min-h-11 w-full rounded-lg bg-muted ring-1 ring-inset ring-border sm:w-auto">
                 {([['DAILY', 'รายวัน'], ['HISTORY', 'ประวัติการส่งยอด']] as const).map(([key, label]) => (
                   <button data-ui-control="button" key={key} type="button" role="tab" aria-selected={tab === key} onClick={() => setTab(key)}
-                    className={`min-h-11 flex-1 rounded-md px-4 text-sm leading-snug sm:min-h-0 sm:flex-none ${tab === key ? 'bg-card font-semibold text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}>
+                    className={`min-h-11 flex-1 rounded-lg px-4 text-sm leading-snug sm:flex-none ${tab === key ? 'bg-card font-semibold text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}>
                     {label}
                   </button>
                 ))}

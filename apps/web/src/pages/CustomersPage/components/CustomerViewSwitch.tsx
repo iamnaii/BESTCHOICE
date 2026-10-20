@@ -32,7 +32,7 @@ export default function CustomerViewSwitch({
       <div
         role="group"
         aria-label="แสดงรายชื่อ"
-        className="flex min-h-11 gap-1 rounded-lg border border-border/80 bg-muted/50 p-1"
+        className="flex min-h-11 gap-1 rounded-lg bg-muted/50 ring-1 ring-inset ring-border/80"
       >
         {VIEW_OPTIONS.map((option) => {
           const on = view === option.key;
@@ -44,9 +44,9 @@ export default function CustomerViewSwitch({
               aria-pressed={on}
               onClick={() => setView(option.key)}
               className={cn(
-                'flex min-w-0 cursor-pointer items-center justify-center gap-2 whitespace-nowrap rounded-md px-4 text-sm leading-snug transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                'flex min-h-11 min-w-0 cursor-pointer items-center justify-center gap-2 whitespace-nowrap rounded-lg px-4 text-sm leading-snug transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
                 on
-                  ? 'bg-card font-semibold text-primary shadow-xs ring-1 ring-primary/35'
+                  ? 'bg-card font-semibold text-primary shadow-xs ring-1 ring-inset ring-primary/35'
                   : 'font-medium text-muted-foreground hover:text-foreground',
               )}
             >

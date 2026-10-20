@@ -2945,6 +2945,8 @@ The owner uses **PEAK** (peakaccount.com) as the CPA's external bookkeeping syst
 
 `ChartOfAccount.peakCode String?` (column `peak_code`, max 20 chars, partial index for non-null values). Migration `20260946000000_add_peak_code_to_chart_of_accounts` is idempotent (uses `IF NOT EXISTS`).
 
+**คำตัดสินเจ้าของ 2026-10-20: คงผังของระบบ ไม่ยุบ/ไม่เปลี่ยนเลขตาม PEAK** — PEAK ได้ข้อมูลผ่านชั้นแปล (รหัส PEAK + รหัสย่อย + กติกา export รายบรรทัด) ห้ามเสนอ renumber/collapse ผังอีก (เหตุผลใน `docs/superpowers/specs/2026-10-20-peak-mapping-subcode-design.md`).
+
 **FINANCE mapping v5 (ฝ่ายบัญชี 19/10/2569 — "สิ่งที่ต้องแจ้งโปรแกรม MAPPING" · 2026-10-20):** two more columns —
 `peakSubCode String?` (`peak_sub_code` — รหัสบัญชีย่อย PEAK เช่น `ADV001`, `CSH002`) and
 `peakSubCodeSource String @default("none")` (`peak_sub_code_source` — `none | fixed | contact | bank | cashbox`, string not

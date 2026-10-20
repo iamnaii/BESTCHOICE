@@ -51,3 +51,5 @@ export * from './customer-attachments';
 export * from './tender-access';
 export * from './contract-read';
 export * from './contract-preparation-read';
+
+export * from './contract-derived-read';

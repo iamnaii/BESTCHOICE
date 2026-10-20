@@ -1,8 +1,6 @@
+import { contractReadFilter } from './access-contract-read-filter';
 import { BadRequestException, ForbiddenException, Injectable, OnModuleInit } from '@nestjs/common';
-import { plainToInstance } from 'class-transformer';
-import { validate } from 'class-validator';
-import { ContractStatus, ContractWorkflowStatus, Prisma } from '@prisma/client';
-import { ContractsListQueryDto } from '../contracts/dto/contracts-list-query.dto';
+import { Prisma } from '@prisma/client';
 import { ACCESS_BOUNDARIES } from './access-policy.registry';
 import { AccessResourceService, PersistedAccessResolver } from './access-resource.service';
 import {
@@ -16,7 +14,6 @@ import { PartyQueryPlan } from './access-party-query-plan';
 import { ContractReadProjection, contractReadSelect } from './access-contract-read-projection';
 import { paginatedResponse } from '../../common/helpers/pagination.helper';
 import { readPreparation } from './access-contract-preparation-read';
-import { bangkokDateRange } from '../../utils/date.util';
 
 export const CONTRACT_READ_ROUTES = [
   'ContractsController.findAll',
@@ -79,60 +76,7 @@ export class AccessContractReadBoundaries implements OnModuleInit {
                   if (!row) throw new ForbiddenException('ไม่มีสิทธิ์อ่านสัญญานี้');
                   return projection.project(row);
                 }
-                const raw = { ...(req.query ?? {}) };
-                delete raw.company;
-                const allowed = [
-                  'status',
-                  'workflowStatus',
-                  'branchId',
-                  'customerId',
-                  'salespersonId',
-                  'search',
-                  'startDate',
-                  'endDate',
-                  'page',
-                  'limit',
-                ];
-                if (
-                  Object.keys(raw).some((key) => !allowed.includes(key)) ||
-                  Object.values(raw).some((value) => typeof value !== 'string')
-                )
-                  throw new BadRequestException('ตัวกรองไม่ถูกต้อง');
-                const filters = plainToInstance(ContractsListQueryDto, raw);
-                if ((await validate(filters)).length)
-                  throw new BadRequestException('ตัวกรองไม่ถูกต้อง');
-                const page = filters.page ?? 1,
-                  limit = filters.limit ?? 50;
-                if ((page - 1) * limit > 2147483647)
-                  throw new BadRequestException('หน้าไม่ถูกต้อง');
-                const where: Prisma.ContractWhereInput = { AND: [plan.contract] };
-                const and = where.AND as Prisma.ContractWhereInput[];
-                if (filters.branchId) where.branchId = filters.branchId;
-                if (filters.workflowStatus)
-                  where.workflowStatus = filters.workflowStatus as ContractWorkflowStatus;
-                if (filters.salespersonId) where.salespersonId = filters.salespersonId;
-                if (filters.status)
-                  and.push(plan.finance('payments.read'), {
-                    status: filters.status as ContractStatus,
-                  });
-                if (filters.customerId)
-                  and.push({ customerId: filters.customerId, customer: plan.customer });
-                if (filters.startDate !== undefined || filters.endDate !== undefined)
-                  where.createdAt = bangkokDateRange(filters.startDate, filters.endDate);
-                if (filters.search)
-                  and.push({
-                    OR: [
-                      { contractNumber: { contains: filters.search, mode: 'insensitive' } },
-                      {
-                        customer: {
-                          AND: [
-                            plan.customer,
-                            { name: { contains: filters.search, mode: 'insensitive' } },
-                          ],
-                        },
-                      },
-                    ],
-                  });
+                const { where, page, limit } = await contractReadFilter(plan, req.query ?? {});
                 // Lock proven candidates before projection/count. A concurrent source move
                 // causes the existing whole-attempt Serializable retry, then fresh policy.
                 const ids = await ctx.client.contract.findMany({

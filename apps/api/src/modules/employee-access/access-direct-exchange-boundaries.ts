@@ -91,7 +91,7 @@ export class AccessDirectExchangeBoundaries implements OnModuleInit {
                         !['A', 'B', 'C', 'D'].includes(q.deviceCondition))
                     )
                       throw new BadRequestException('ข้อมูลการตรวจสอบไม่ถูกต้อง');
-                    return service.buildPreview(
+                    return await service.buildPreview(
                       {
                         oldContractId: q.oldContractId,
                         newProductId: q.newProductId,
@@ -135,7 +135,7 @@ export class AccessDirectExchangeBoundaries implements OnModuleInit {
                         .cancel(id, dto.reason, actor);
                     }
                   }
-                  return directExchangeProjection(id, this.sources, this.resources, true);
+                  return await directExchangeProjection(id, this.sources, this.resources, true);
                 } catch (error) {
                   if (error instanceof HttpException && [400, 409].includes(error.getStatus()))
                     throw new HttpException(

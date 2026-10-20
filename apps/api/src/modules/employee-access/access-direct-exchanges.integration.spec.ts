@@ -1140,3 +1140,26 @@ it('R128 finalized cancellation rejects a substituted current Customer and prese
     'EXCHANGED',
   );
 });
+
+it('I1 preview conceals actual canonical credit-state rejection without independent Contract or credit read', async () => {
+  const who = await authorized(['contract-exchanges.read', 'products.read', 'customers.read']);
+  const f = await setup('preview');
+  const allowed = await invoke('preview', who.id, f);
+  marked(allowed);
+  expect(allowed.status).toBe(200);
+  expect(allowed.body).toMatchObject({ mode: 'MEMO', ncv: '0.00' });
+
+  await db.contract.update({
+    where: { id: f.oldContractId },
+    data: { tradeInCreditSnapshot: { tradeInId: randomUUID(), totalCredit: '1000.00' } },
+  });
+  const response = await invoke('preview', who.id, f);
+  marked(response);
+  expect(response.status).toBe(400);
+  expect(response.body).toEqual({
+    statusCode: 400,
+    message: 'ไม่สามารถดำเนินการตามสถานะหรือเงื่อนไขปัจจุบัน',
+  });
+  expect(JSON.stringify(response.body)).not.toContain('เครดิตเทิร์น');
+  expect(JSON.stringify(response.body)).not.toContain('ต้องตรวจการคืนเครดิตก่อน');
+});

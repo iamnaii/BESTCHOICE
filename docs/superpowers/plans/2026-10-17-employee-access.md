@@ -803,9 +803,11 @@ R136 splits9.2 into the following serial gates. Its two HTTP routes remain pendi
 
 **Files/scope:** ContractsController.shopCollectSettlement; exactly1domain.
 
-- [ ] Meaningful owned marked HTTP/PG RED before runtime and real canonical financial success.
-- [ ] R106/R133: actual FINANCE case payments.create without ASSIGNED plus actual live SHOP COMPANY payments.create uniformly, no borrowed collection branch. Exact contributor/current period/checked-date/no-negative/requestId dedupe and required same-transaction evidence; preserve canonical formulas and no bank integration.
-- [ ] Actual money/rollback/concurrency/current-source/both-book/no-payable controls, affected regressions/types/lint/coverage and independent gate; reconcile parent four routes and remaining4.4/5/6/UI7/final8 obligations.
+- [x] Meaningful owned marked HTTP/PG RED before runtime and real canonical financial success (11-case RED accepted contemporaneously at ea6d; final56 owned cases pass).
+- [x] R106/R133: actual FINANCE case payments.create without ASSIGNED plus actual live SHOP COMPANY payments.create uniformly, no borrowed collection branch. Exact contributor/current period/checked-date/no-negative/requestId dedupe and required same-transaction evidence; preserve canonical formulas and no bank integration.
+- [x] Actual money/rollback/concurrency/current-source/both-book/no-payable controls, affected regressions/types/lint/coverage and independent gate; reconcile parent four routes and remaining4.4/5/6/UI7/final8 obligations.
+
+**Settlement completion:** `1f576c129` independently passes spec and quality with0Critical/Important and1inherited regression-noiseMinor. Actual current FINANCE case plus SHOP COMPANY authority applies uniformly; real contributor books/interco provenance, exact transaction, canonical amounts/dedupe, same checkedDate/actualcreator/company and posting-specific period checks are proved. Final56owned plusfocusedrealP2002 assertion pass; canonical32+correctedtyped4+Jest18 composed regressions, APIsharedtypes and touchedlint pass. New runner exits naturally. Exactly1route adds FINANCE28/544,total308domain and Contract28/38;516FINANCE/10Contract remain. Parent9four original routes are independently gated, but9/9.2 positiveownerconsumer4.2.4/6 remains required. System4.4/audit5/UI7/fullJWTguardsCSRFfreshbackendbrowserlocalcheckrunningpreview8 remain incomplete.
 
 ### Task 4.2.1.10: Cancellation and draft disposal
 

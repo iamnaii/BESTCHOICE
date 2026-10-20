@@ -1,3 +1,13 @@
+import { NotificationsService } from '../notifications/notifications.service';
+import { JournalAutoService } from '../journal/journal-auto.service';
+import { ContractActivation1ATemplate } from '../journal/cpa-templates/contract-activation-1a.template';
+import { ProductsService } from '../products/products.service';
+import { ContractExchangeService } from '../contract-exchange/contract-exchange.service';
+import { ShopInventoryTransferTemplate } from '../journal/cpa-templates/shop-inventory-transfer.template';
+import { ShopDownPaymentTemplate } from '../journal/cpa-templates/shop-down-payment.template';
+import { ShopAccountResolver } from '../journal/shop-account-resolver.service';
+import { InstallmentInputVatTemplate } from '../journal/cpa-templates/installment-input-vat.template';
+import { TestModeService } from '../test-mode/test-mode.service';
 import { AccessContractReviewBoundaries } from './access-contract-review-boundaries';
 import { AccessContractPreparationActions } from './access-contract-preparation-actions';
 import { randomUUID } from 'node:crypto';
@@ -8,7 +18,12 @@ import {
   SignerType,
   ContractDocumentType,
 } from '@prisma/client';
-import { ExecutionContext, INestApplication, ValidationPipe } from '@nestjs/common';
+import {
+  ExecutionContext,
+  ForbiddenException,
+  INestApplication,
+  ValidationPipe,
+} from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { APP_INTERCEPTOR } from '@nestjs/core';
 import request from 'supertest';
@@ -56,29 +71,19 @@ const journey = {
     });
   },
 };
-// Review never calls the activation/stock/journal/provider dependencies. Fail on accidental use.
-const external = new Proxy(
-  {},
-  {
-    get: (_target, key) => () => {
-      throw new Error(`Unexpected external effect: ${String(key)}`);
-    },
-  },
-);
-const workflow = new ContractWorkflowService(
-  db as PrismaService,
-  external as never,
-  external as never,
-  external as never,
-  external as never,
-  external as never,
-  external as never,
-  external as never,
-  external as never,
-  external as never,
-  { isEnabled: async () => false } as never,
-  journey as never,
-);
+// Nest resolves the real WorkflowService and preparation producer. External effects fail on use.
+function unexpectedExternalEffect(): never {
+  throw new Error('Unexpected external effect');
+}
+const external = {
+  send: unexpectedExternalEffect,
+  execute: unexpectedExternalEffect,
+  transferOwnership: unexpectedExternalEffect,
+  finalizeAfterActivation: unexpectedExternalEffect,
+  resolveProductAccounts: unexpectedExternalEffect,
+  resolveBranchCashAccount: unexpectedExternalEffect,
+};
+let workflow: ContractWorkflowService;
 let app: INestApplication;
 let branchA: string,
   branchB: string,
@@ -123,7 +128,12 @@ async function grant(
     },
   });
 }
-async function fixture(method: Method, branchId = branchA, salespersonId = maker) {
+async function fixture(
+  method: Method,
+  branchId = branchA,
+  salespersonId = maker,
+  withCustomerOrigin = true,
+) {
   const customer = await db.customer.create({
     data: {
       name: 'PRIVATE-REVIEW-CUSTOMER',
@@ -133,8 +143,7 @@ async function fixture(method: Method, branchId = branchA, salespersonId = maker
       addressIdCard: 'Owned synthetic address',
       addressCurrent: 'Owned synthetic address',
       references: [{ name: 'Synthetic reference' }],
-      accessCompanyCode: 'SHOP',
-      accessBranchId: branchId,
+      ...(withCustomerOrigin ? { accessCompanyCode: 'SHOP', accessBranchId: branchId } : {}),
     },
   });
   const product = await db.product.create({
@@ -258,7 +267,20 @@ beforeAll(async () => {
       AccessPolicyService,
       { provide: PrismaService, useValue: db },
       { provide: AccessSnapshotService, useValue: snapshots },
-      { provide: ContractWorkflowService, useValue: workflow },
+      ContractWorkflowService,
+      { provide: TestModeService, useValue: { isEnabled: async () => false } },
+      { provide: JourneyEntryWriter, useValue: journey },
+      ...[
+        NotificationsService,
+        JournalAutoService,
+        ContractActivation1ATemplate,
+        ProductsService,
+        ContractExchangeService,
+        ShopInventoryTransferTemplate,
+        ShopDownPaymentTemplate,
+        ShopAccountResolver,
+        InstallmentInputVatTemplate,
+      ].map((provide) => ({ provide, useValue: external })),
       ...[
         ContractsService,
         ContractPaymentService,
@@ -266,7 +288,6 @@ beforeAll(async () => {
         ContractSnapshotService,
         ContractJournalQueryService,
         EarlyPayoffSlipService,
-        JourneyEntryWriter,
       ].map((provide) => ({ provide, useValue: {} })),
       { provide: APP_INTERCEPTOR, useClass: AuditInterceptor },
       { provide: APP_INTERCEPTOR, useClass: AccessPolicyInterceptor },
@@ -289,6 +310,7 @@ beforeAll(async () => {
     .overrideGuard(BranchGuard)
     .useValue({ canActivate: () => true })
     .compile();
+  workflow = module.get(ContractWorkflowService);
   app = module.createNestApplication();
   app.use(
     (_req: unknown, res: { setHeader: (key: string, value: string) => void }, next: () => void) => {
@@ -554,6 +576,85 @@ async function direct(
     { isolationLevel: 'Serializable', maxAttempts: 3 },
   );
 }
+
+async function directContributorFixture() {
+  const actor = await user();
+  await grant(actor, ['contracts.update', 'products.read'], 'SHOP', [branchA]);
+  await grant(actor, ['customers.read'], 'SHOP', [branchB]);
+  // Only this genuine Sale at B proves Customer read; preparation remains at A.
+  const row = await fixture('submit-review', branchA, actor, false);
+  const sale = await db.sale.create({
+    data: {
+      saleNumber: 'DIRECT-SOURCE-' + randomUUID(),
+      saleType: 'CASH',
+      customerId: row.customerId,
+      productId: row.productId,
+      branchId: branchB,
+      salespersonId: actor,
+      sellingPrice: 12000,
+      netAmount: 12000,
+    },
+  });
+  return { actor, row, sale };
+}
+async function directSubmitOutcome(id: string, actor: string) {
+  try {
+    await direct('submit-review', id, actor);
+    return 'SUBMITTED';
+  } catch (error) {
+    if (error instanceof ForbiddenException) return 'FORBIDDEN';
+    throw error;
+  }
+}
+it('I1 authorized direct submit consumes an independent current Sale Customer source', async () => {
+  const { actor, row } = await directContributorFixture();
+  expect(await directSubmitOutcome(row.id, actor)).toBe('SUBMITTED');
+  expect((await db.contract.findUniqueOrThrow({ where: { id: row.id } })).workflowStatus).toBe(
+    'PENDING_REVIEW',
+  );
+  expect(
+    await db.auditLog.count({
+      where: { entityId: row.id, action: 'CONTRACT_SUBMITTED_FOR_REVIEW' },
+    }),
+  ).toBe(1);
+});
+it('I1 direct submit rejects a nondeleted merged Customer using the preparation producer', async () => {
+  const row = await fixture('submit-review');
+  const target = await db.customer.create({ data: { name: 'Owned merge target' } });
+  await db.customer.update({ where: { id: row.customerId }, data: { mergedIntoId: target.id } });
+  expect(await directSubmitOutcome(row.id, maker)).toBe('FORBIDDEN');
+  expect((await db.contract.findUniqueOrThrow({ where: { id: row.id } })).workflowStatus).toBe(
+    'CREATING',
+  );
+  expect(
+    await db.auditLog.count({
+      where: { entityId: row.id, action: 'CONTRACT_SUBMITTED_FOR_REVIEW' },
+    }),
+  ).toBe(0);
+});
+it('I1 direct submit rechecks contributing Sale identity source after an actual observed wait', async () => {
+  const { actor, row, sale } = await directContributorFixture();
+  let outcome: Promise<string> | undefined;
+  await db.$transaction(async (tx) => {
+    const [{ pid }] = await tx.$queryRaw<{ pid: number }[]>`SELECT pg_backend_pid() AS pid`;
+    // Both versions reach a real wait: old helper waits only for Product after its
+    // stale Customer predicate; the unified producer first waits for this Sale.
+    await tx.$queryRaw`SELECT id FROM sales WHERE id=${sale.id} FOR UPDATE`;
+    await tx.$queryRaw`SELECT id FROM products WHERE id=${row.productId} FOR UPDATE`;
+    outcome = directSubmitOutcome(row.id, actor);
+    await observeWait(tx, pid);
+    await tx.sale.update({ where: { id: sale.id }, data: { branchId: branchA } });
+  });
+  expect(await outcome!).toBe('FORBIDDEN');
+  expect((await db.contract.findUniqueOrThrow({ where: { id: row.id } })).workflowStatus).toBe(
+    'CREATING',
+  );
+  expect(
+    await db.auditLog.count({
+      where: { entityId: row.id, action: 'CONTRACT_SUBMITTED_FOR_REVIEW' },
+    }),
+  ).toBe(0);
+});
 it.each(methods)(
   '%s managed service calls cannot run outside the current execution',
   async (method) => {

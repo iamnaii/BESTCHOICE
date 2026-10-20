@@ -16,4 +16,9 @@ mkdir "$ACCESS_TEST_ROOT/socket"
 export EMPLOYEE_ACCESS_TEST_DATABASE_URL="postgresql://access_test@localhost:55490/bc_access_contract_review?host=$ACCESS_TEST_ROOT/socket&schema=public"
 export DATABASE_URL="$EMPLOYEE_ACCESS_TEST_DATABASE_URL" DATABASE_URL_FINANCE="$EMPLOYEE_ACCESS_TEST_DATABASE_URL"
 npx prisma migrate deploy --schema apps/api/prisma/schema.prisma > "$ACCESS_TEST_ROOT/migrate.log"
-npm test --workspace=@installment/api -- --runTestsByPath src/modules/employee-access/access-contract-review.integration.spec.ts --testPathIgnorePatterns '/node_modules/' "$@"
+if [[ "${1:-}" == "--canonical" ]]; then
+  shift
+  npm test --workspace=@installment/api -- --runTestsByPath src/modules/contracts/contract-workflow.service.spec.ts src/modules/contracts/contract-workflow.journey.spec.ts src/modules/contracts/contract-signing-workflow.spec.ts src/modules/contracts/contract-hash.spec.ts --testPathIgnorePatterns '/node_modules/' "$@"
+else
+  npm test --workspace=@installment/api -- --runTestsByPath src/modules/employee-access/access-contract-review.integration.spec.ts --testPathIgnorePatterns '/node_modules/' "$@"
+fi

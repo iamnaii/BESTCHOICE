@@ -1,5 +1,5 @@
 import { currentDomainAccess, domainAccessClient, onDomainCommit } from '../employee-access/access-execution-context';
-import { assertNamedContractAction, assertNamedPreparation, assertNamedSources, namedExecution } from '../promotions/contract-promotion-source';
+import { assertNamedContractAction, assertNamedSources, namedExecution } from '../promotions/contract-promotion-source';
 import { assertContractPromotionTerms, assertNamedSignatures, consumeContractPromotion } from '../promotions/contract-promotion-terms';
 import { contractSignatureRequirements } from '../../utils/validation.util';
 import { cashDownPayment } from '../trade-in/services/trade-in-credit.service';
@@ -41,6 +41,8 @@ import { lockCreditCustomer } from '../credit-check/services/room-credit-history
 import { JourneyEntryWriter } from '../customer-journey/journey-entry-writer.service';
 import { journeyDedupeKey } from '../customer-journey/journey-data-schemas';
 import { exchangeActor } from '../employee-access/access-exchange-source.service';
+import { AccessContractPreparationActions } from '../employee-access/access-contract-preparation-actions';
+import { currentPreparationSource } from '../employee-access/access-contract-preparation-source';
 
 @Injectable()
 export class ContractWorkflowService {
@@ -60,6 +62,8 @@ export class ContractWorkflowService {
     // การเดินทางของลูกค้า (CONTRACT_REVIEWED) — @Optional: เทสเดิมประกอบ service ด้วย 9-10 อาร์กิวเมนต์
     // ContractsModule import CustomerJourneyModule อยู่แล้ว (ContractsController ฉีดแบบบังคับ ถ้าลืม import แอปจะบูตไม่ขึ้น)
     @Optional() private journeyEntries?: JourneyEntryWriter,
+    // Optional only for existing unmigrated/manual constructors; managed submit requires it.
+    @Optional() private preparation?: AccessContractPreparationActions,
   ) {}
 
   private get prisma() { return domainAccessClient(this.basePrisma); }
@@ -68,6 +72,12 @@ export class ContractWorkflowService {
     if (action !== 'contracts.activate') {
       const execution = await exchangeActor(this.basePrisma, userId);
       if (execution) namedExecution(userId);
+      if (execution && action === 'prepare') {
+        if (!this.preparation)
+          throw new InternalServerErrorException('ไม่พบตัวตรวจแหล่งข้อมูลคำขอสัญญา');
+        const source = await currentPreparationSource(id, ['contracts.update']);
+        await this.preparation.assertCurrentSources(source);
+      }
     }
     if (currentDomainAccess()) await this.prisma.$queryRaw`SELECT id FROM contracts WHERE id = ${id} FOR UPDATE`;
     if (currentDomainAccess()) {
@@ -84,13 +94,11 @@ export class ContractWorkflowService {
     }
     const contract = await this.findOne(id);
     if (currentDomainAccess() && !contract.promotionFingerprint) {
-      if (action === 'prepare') await assertNamedPreparation(contract, userId);
-      else if (action === 'contracts.approve') await assertNamedContractAction(id, action);
+      if (action === 'contracts.approve') await assertNamedContractAction(id, action);
     }
     if (contract.promotionFingerprint) {
       namedExecution(userId);
-      if (action === 'prepare') await assertNamedPreparation(contract, userId);
-      else {
+      if (action !== 'prepare') {
         await assertNamedContractAction(id, action);
         await assertNamedSources(contract);
       }

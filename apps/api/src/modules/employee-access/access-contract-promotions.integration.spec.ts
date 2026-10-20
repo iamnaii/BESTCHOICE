@@ -1,3 +1,6 @@
+import { AccessContractPreparationActions } from './access-contract-preparation-actions';
+import { AccessPartySourceService } from './access-party-source.service';
+import { AccessProcurementSourceService } from './access-procurement-source.service';
 import { linkRoomCreditHistory, lockCreditRoom } from '../credit-check/services/room-credit-history';
 import { ContractCancellationService } from '../contracts/services/contract-cancellation.service';
 import { ContractCancellationTemplate } from '../journal/cpa-templates/contract-cancellation.template';
@@ -71,6 +74,12 @@ const workflow = new ContractWorkflowService(
   new ShopDownPaymentTemplate(journal, prisma, company),
   accounts,
   new InstallmentInputVatTemplate(journal, prisma, company),
+  undefined,
+  undefined,
+  new AccessContractPreparationActions(
+    resources,
+    new AccessPartySourceService(resources, new AccessProcurementSourceService(resources)),
+  ),
 );
 const promotions = new PromotionsService(prisma);
 let branchId: string,

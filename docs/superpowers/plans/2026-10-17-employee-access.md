@@ -701,9 +701,11 @@ R111 splits this parent into two serial independently reviewed subunits. The exi
 
 **Files/scope:** ContractsController.submitForReview, approve, reject; exactly3domain.
 
-- [ ] Meaningful owned PostgreSQL/marked HTTP RED with exact authorized success/no-grants/foreign/current and asymmetric tuple controls; explicitly isolated both DB URLs, mocked external effects. Fixture/compiler failures are not behavioral RED.
-- [ ] Separate actual SHOP preparation/submit workflow and FINANCE review authority; preserve genuine maker/checker and explicitly adjudicated existing owner exception, never generalize discount-only selfapproval. Current source, named terms, state/CAS and required audit in actual transaction.
-- [ ] Cover actual changed authorization/money/file behavior, relevant canonical regressions, types/touched lint and scoped coverage. Record exact commands/exits, self-review/commit and independent gate; preserve remaining audit5/approval6/UI7/system4.4/final8 obligations.
+- [x] Meaningful owned PostgreSQL/marked HTTP RED with exact authorized success/no-grants/foreign/current and asymmetric tuple controls; explicitly isolated both DB URLs, mocked external effects. Fixture/compiler failures are not behavioral RED.
+- [x] Separate actual SHOP preparation/submit workflow and FINANCE review authority; preserve genuine maker/checker and explicitly adjudicated existing owner exception, never generalize discount-only selfapproval. Current source, named terms, state/CAS and required audit in actual transaction.
+- [x] Cover actual changed authorization/money/file behavior, relevant canonical regressions, types/touched lint and scoped coverage. Record exact commands/exits, self-review/commit and independent gate; preserve remaining audit5/approval6/UI7/system4.4/final8 obligations.
+
+**Review workflow completion:** ad846a7c7 independently passes spec/quality after one fix round. Exactly three methods; current-source canonical submit proof is shared by HTTP/direct execution, including merged-Customer rejection and contributing source locks. FINANCE review is assignment-free and current-maker/checker; owner own approval needs bounded reason/atomic evidence. Final80review+75canonical+37preparation+61named=253passes, API/shared/Web types and lint0errors/four preexisting warnings; initial572 is separate historical evidence. Contract parent10of38domain/28pending and7of7adjacent; FINANCEallocated10of544/534remaining. ExistingM1 remains finalreview, R114 legacy compatibility and PDPA link-presence limitation are explicit; actualJWT/fullguards/preview8, consentchild6, audit5/approval6/UI7/system4.4 remain required.
 
 ### Task 4.2.1.5: Canonical Contract activation
 

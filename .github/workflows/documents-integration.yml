@@ -58,7 +58,7 @@ jobs:
             label: UX/UI routes 320px
             args: uxui-pages.browser.docs-spec
             width: 320
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # Keep the full domain suite and each route viewport isolated; together they exceed 45 minutes.
     timeout-minutes: 45
     env:

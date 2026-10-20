@@ -41,7 +41,7 @@ env:
 jobs:
   backfill-user-companies:
     name: Backfill user companies (Cloud Run Job)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Authenticate to GCP
         uses: google-github-actions/auth@v2

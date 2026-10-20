@@ -1,3 +1,4 @@
+import { currentDomainAccess } from '../../employee-access/access-execution-context';
 import { Injectable, Logger, BadRequestException, ConflictException } from '@nestjs/common';
 import { Decimal } from '@prisma/client/runtime/library';
 import { Prisma } from '@prisma/client';
@@ -15,6 +16,13 @@ export interface ShopCollectSettlementInput {
   /** Amount to settle — must be ≤ outstanding 11-2107 balance + 0.01 tolerance. */
   amount: number | Decimal;
   postedById?: string;
+  /** Internal exact-client provenance for the owned remittance boundary only. */
+  ownedPosting?: {
+    client: Prisma.TransactionClient;
+    companyId: string;
+    createdById: string;
+    beforePost: (client: Prisma.TransactionClient) => Promise<void>;
+  };
   /** Optional caller-validated instant shared with a paired posting. */
   postedAt?: Date;
   /**
@@ -181,6 +189,14 @@ export class ShopCollectSettlementTemplate {
     }
 
     const client = outerTx ?? this.prisma;
+    const owned = input.ownedPosting;
+    if (
+      owned &&
+      (owned.client !== outerTx ||
+        currentDomainAccess()?.client !== outerTx ||
+        currentDomainAccess()?.snapshot.userId !== owned.createdById)
+    )
+      throw new BadRequestException('ไม่สามารถบันทึกรายการนี้ได้');
 
     // ── requestId idempotency (เช็คก่อน guard อื่นทั้งหมด) ─────────────────────
     // Checked BEFORE the outstanding computation so a retry that lands AFTER the
@@ -366,6 +382,7 @@ export class ShopCollectSettlementTemplate {
       }
     }
 
+    if (owned) await owned.beforePost(owned.client);
     const zero = new Decimal(0);
 
     // ── Post Dr cash / Cr 11-2107 ─────────────────────────────────────────────
@@ -381,6 +398,7 @@ export class ShopCollectSettlementTemplate {
       const result = await this.journal.createAndPost(
         {
           description: text.description(contractLabel),
+          ...(owned ? { companyId: owned.companyId, createdById: owned.createdById } : {}),
           ...(input.postedAt ? { postedAt: input.postedAt } : {}),
           reference: input.requestId
             ? `${contractId}:shop-collect-settlement:${input.requestId}`
@@ -464,6 +482,7 @@ export class ShopCollectSettlementTemplate {
       // requestId was supplied — translate it into the same clean 409 so the
       // client can safely retry instead of seeing a raw Prisma error.
       if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2034') {
+        if (owned) throw err; // Whole owned attempt retries before diagnostic effects.
         this.logger.warn(
           `[SCS] write conflict (P2034) on contract ${contractId} — rejecting with 409, client should retry`,
         );

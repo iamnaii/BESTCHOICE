@@ -1,3 +1,4 @@
+import { managedShopSettlement } from './managed-shop-settlement';
 import {
   Injectable,
   Logger,
@@ -973,74 +974,120 @@ export class ContractPaymentService {
    * collected cash to FINANCE, clearing the Dr 11-2107 receivable.
    */
   async shopCollectSettlement(id: string, userId: string, dto: ShopCollectSettlementDto) {
-    await this.prisma.$transaction(
-      async (tx) => {
-        const result = await this.shopCollectSettlementTemplate.execute(
-          {
-            contractId: id,
-            depositAccountCode: dto.depositAccountCode,
-            amount: dto.amount,
-            postedById: userId,
-            requestId: dto.requestId,
-          },
-          tx,
-        );
+    const managed = await managedShopSettlement(this.prisma, id, userId);
+    const execute = async (tx: Prisma.TransactionClient) => {
+      if (!managed) await assertUnmanagedPayoffActor(tx, userId);
+      const result = await this.shopCollectSettlementTemplate.execute(
+        {
+          contractId: id,
+          depositAccountCode: dto.depositAccountCode,
+          amount: dto.amount,
+          postedById: userId,
+          requestId: dto.requestId,
+          ...(managed
+            ? {
+                postedAt: managed.checkedDate,
+                ownedPosting: {
+                  client: managed.client,
+                  companyId: managed.financeCompanyId,
+                  createdById: managed.actorId,
+                  beforePost: (client) => managed.beforePost(client, managed.financeCompanyId),
+                },
+              }
+            : {}),
+        },
+        tx,
+      );
 
-        // ขาคู่ฝั่ง SHOP (2026-09-05): Dr S21-1104 / Cr S11-1202 — เฉพาะเมื่อสมุด SHOP มี
-        // เจ้าหนี้ SHOP_COLLECT ของสัญญานี้คุ้มยอด (ต้นทาง JP5 หลังฟีเจอร์นี้). แถวต้นทาง JP4
-        // หรือแถวก่อนฟีเจอร์ไม่มีขา Cr S21-1104 มาก่อน → ข้ามพร้อม flag ไม่ดัน S21-1104 ติดลบ.
-        // ใบ FINANCE ที่ dedupe (requestId ซ้ำ) → ไม่โพสต์ซ้ำเช่นกัน.
-        let shopLegEntryNo: string | null = null;
-        let shopLegSkipped: 'DEDUPED' | 'NO_SHOP_PAYABLE' | null = null;
-        if (result.deduped) {
-          shopLegSkipped = 'DEDUPED';
-        } else {
-          const amount = new Prisma.Decimal(String(dto.amount));
-          const shopPayable = await shopCollectShopBalance(tx, id);
-          if (shopPayable.plus('0.01').gte(amount)) {
-            const shopCompany = await tx.companyInfo.findFirst({
-              where: { companyCode: 'SHOP', deletedAt: null },
-              select: { id: true },
-            });
-            if (!shopCompany) throw new InternalServerErrorException('SHOP company not configured');
-            const shopLeg = await new ShopCollectShopLegs(this.journalAutoService).postSettlement(
-              {
-                contractId: id,
-                amount,
-                shopCompanyId: shopCompany.id,
-                requestId: dto.requestId,
-              },
-              tx,
-            );
-            shopLegEntryNo = shopLeg.entryNumber;
-          } else {
-            shopLegSkipped = 'NO_SHOP_PAYABLE';
-          }
-        }
-
-        await tx.auditLog.create({
-          data: {
-            userId,
-            action: 'SHOP_COLLECT_SETTLED',
-            entity: 'contract',
-            entityId: id,
-            newValue: {
-              depositAccountCode: dto.depositAccountCode,
-              amount: String(dto.amount),
-              requestId: dto.requestId ?? null,
-              deduped: result.deduped,
-              shopLegEntryNo,
-              shopLegSkipped,
+      // ขาคู่ฝั่ง SHOP (2026-09-05): Dr S21-1104 / Cr S11-1202 — เฉพาะเมื่อสมุด SHOP มี
+      // เจ้าหนี้ SHOP_COLLECT ของสัญญานี้คุ้มยอด (ต้นทาง JP5 หลังฟีเจอร์นี้). แถวต้นทาง JP4
+      // หรือแถวก่อนฟีเจอร์ไม่มีขา Cr S21-1104 มาก่อน → ข้ามพร้อม flag ไม่ดัน S21-1104 ติดลบ.
+      // ใบ FINANCE ที่ dedupe (requestId ซ้ำ) → ไม่โพสต์ซ้ำเช่นกัน.
+      let shopLegEntryNo: string | null = null;
+      let shopLegSkipped: 'DEDUPED' | 'NO_SHOP_PAYABLE' | null = null;
+      if (result.deduped) {
+        shopLegSkipped = 'DEDUPED';
+      } else {
+        const amount = new Prisma.Decimal(String(dto.amount));
+        const shopPayable = await shopCollectShopBalance(tx, id);
+        if (shopPayable.plus('0.01').gte(amount)) {
+          const shopCompany = managed
+            ? { id: managed.shopCompanyId }
+            : await tx.companyInfo.findFirst({
+                where: { companyCode: 'SHOP', deletedAt: null },
+                select: { id: true },
+              });
+          if (!shopCompany) throw new InternalServerErrorException('SHOP company not configured');
+          if (managed) await managed.beforePost(tx, managed.shopCompanyId);
+          const shopLeg = await new ShopCollectShopLegs(this.journalAutoService).postSettlement(
+            {
+              contractId: id,
+              amount,
+              shopCompanyId: shopCompany.id,
+              requestId: dto.requestId,
+              ...(managed
+                ? {
+                    postedAt: managed.checkedDate,
+                    createdById: managed.actorId,
+                  }
+                : {}),
             },
+            tx,
+          );
+          shopLegEntryNo = shopLeg.entryNumber;
+        } else {
+          shopLegSkipped = 'NO_SHOP_PAYABLE';
+        }
+      }
+
+      const financeEntry = managed
+        ? await tx.journalEntry.findUniqueOrThrow({
+            where: { entryNumber: result.entryNo },
+            select: { id: true },
+          })
+        : undefined;
+      const shopEntry =
+        managed && shopLegEntryNo
+          ? await tx.journalEntry.findUniqueOrThrow({
+              where: { entryNumber: shopLegEntryNo },
+              select: { id: true },
+            })
+          : undefined;
+      await tx.auditLog.create({
+        data: {
+          userId,
+          action: 'SHOP_COLLECT_SETTLED',
+          entity: 'contract',
+          entityId: id,
+          newValue: {
+            ...(managed
+              ? {
+                  financeCompanyId: managed.financeCompanyId,
+                  shopCompanyId: managed.shopCompanyId,
+                  originBranchId: managed.originBranchId,
+                  financeJournalEntryId: financeEntry!.id,
+                  financeEntryNo: result.entryNo,
+                  shopJournalEntryId: shopEntry?.id ?? null,
+                }
+              : {}),
+            depositAccountCode: dto.depositAccountCode,
+            amount: String(dto.amount),
+            requestId: dto.requestId ?? null,
+            deduped: result.deduped,
+            shopLegEntryNo,
+            shopLegSkipped,
           },
-        });
-      },
-      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
-    );
+        },
+      });
+    };
+    if (managed) await execute(managed.client);
+    else
+      await this.prisma.$transaction(execute, {
+        isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+      });
 
     return { success: true, contractId: id };
   }
-
   /**
    * C1 (owner decision 2026-07-30): early payoff (JP4) never touched 11-2102 —
    * once the contract leaves the daily bad-debt-provision cron's scope

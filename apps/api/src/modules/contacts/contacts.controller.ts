@@ -1,9 +1,10 @@
-import { Body, Controller, Get, Param, Post, Query, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
 import type { Request } from 'express';
 import { ContactsService } from './contacts.service';
 import { ListContactsDto } from './dto/list-contacts.dto';
 import { MergeContactsDto } from './dto/merge-contacts.dto';
 import { EnsureRoleDto } from './dto/ensure-role.dto';
+import { SetPeakContactCodeDto } from './dto/set-peak-contact-code.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -31,6 +32,17 @@ export class ContactsController {
   @Roles('OWNER')
   merge(@Body() dto: MergeContactsDto, @Req() req: AuthRequest) {
     return this.contacts.merge(dto, {
+      userId: req.user?.id,
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'] as string | undefined,
+    });
+  }
+
+  /** mapping v5: PEAK contact code used as the per-line sub-code in the PEAK export. */
+  @Patch(':id/peak-code')
+  @Roles('OWNER', 'ACCOUNTANT')
+  setPeakCode(@Param('id') id: string, @Body() dto: SetPeakContactCodeDto, @Req() req: AuthRequest) {
+    return this.contacts.setPeakContactCode(id, dto.peakContactCode, {
       userId: req.user?.id,
       ipAddress: req.ip,
       userAgent: req.headers['user-agent'] as string | undefined,

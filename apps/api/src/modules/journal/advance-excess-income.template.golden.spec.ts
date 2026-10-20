@@ -172,19 +172,19 @@ describe('AdvanceExcessIncomeTemplate (golden G6 / G9 / 22.2 · mock-based)', ()
         accountCode: '21-1103',
         debit: '1322.13',
         credit: '0',
-        description: 'รับรู้เงินพักส่วนเกินเป็นรายได้ (เงินพักค่าปรับดิวสะสมเกิน)',
+        description: 'รับรู้เงินพักส่วนเกินเป็นรายได้ (42-1106)',
       },
       {
         accountCode: '21-5101',
         debit: '300.00',
         credit: '0',
-        description: 'รับรู้เครดิตที่เหลือหลังปิดสัญญาเป็นรายได้ (เงินพักค่าปรับดิวสะสมเกิน)',
+        description: 'รับรู้เครดิตที่เหลือหลังปิดสัญญาเป็นรายได้ (42-1106)',
       },
       {
         accountCode: '42-1106',
         debit: '0',
         credit: '1516.01',
-        description: 'รับรู้เงินพักส่วนเกินเป็นรายได้ (เงินพักค่าปรับดิวสะสมเกิน)',
+        description: 'รับรู้เงินพักส่วนเกินเป็นรายได้ (42-1106)',
       },
       {
         accountCode: '21-2102',
@@ -417,7 +417,7 @@ describe('AdvanceExcessIncomeTemplate (golden G6 / G9 / 22.2 · mock-based)', ()
       '21-2102 0.00 52.34',
     ]);
     expect(posted().lines[1].description).toBe(
-      'รับรู้เครดิตที่เหลือหลังปิดสัญญาเป็นรายได้ (เงินพักค่าปรับดิวสะสมเกิน)',
+      'รับรู้เครดิตที่เหลือหลังปิดสัญญาเป็นรายได้ (42-1106)',
     );
     expect(posted().metadata[ADVANCE_VAT_META.consume]).toBe('52.34');
     expect(posted().metadata).toMatchObject({

@@ -40,13 +40,15 @@ describe('seedFinanceCoa', () => {
 
   // CPA/owner 2026-08-03: both accounts removed from the chart. PR4 ต7 (2026-10-11):
   // 42-1106 reopened under a NEW name (เงินพักค่าปรับดิวสะสมเกิน — income of the
+  // advance-excess sweep; renamed again to หนี้สูญได้รับคืน by mapping v5 round 2
+  // on 2026-10-20 per the accountant's file — the sweep still posts here; income of the
   // advance-excess sweep). FINANCE mapping v5 (ฝ่ายบัญชี 19/10/2569): 42-1107 reused as
   // "ส่วนลดรับ" (PEAK 510301) — a new meaning; the cancel-penalty name must not come back.
   it('seeds 42-1106 under its PR4 name and 42-1107 as ส่วนลดรับ (mapping v5)', async () => {
     await seedFinanceCoa(prisma);
     const reopened = await prisma.chartOfAccount.findUnique({ where: { code: '42-1106' } });
     expect(reopened).toMatchObject({
-      name: 'เงินพักค่าปรับดิวสะสมเกิน',
+      name: 'หนี้สูญได้รับคืน',
       type: 'รายได้',
       normalBalance: 'Cr',
       vatApplicable: false,

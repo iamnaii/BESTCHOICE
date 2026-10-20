@@ -30,7 +30,7 @@ export default function PeakExportPage() {
   const [startDate, setStartDate] = useState<string>(firstOfPreviousMonth());
   const [endDate, setEndDate] = useState<string>(lastOfPreviousMonth());
   const [busy, setBusy] = useState(false);
-  const [lastResult, setLastResult] = useState<{ rowCount: number; skipped: number } | null>(null);
+  const [lastResult, setLastResult] = useState<{ rowCount: number; skipped: number; unresolved: number } | null>(null);
 
   const rangeError = useMemo(() => {
     if (!startDate || !endDate) return 'กรุณาเลือกช่วงวันที่';
@@ -54,14 +54,19 @@ export default function PeakExportPage() {
       const blob = res.data as Blob;
       const skipped = Number(res.headers['x-skipped-lines'] ?? 0);
       const rowCount = Number(res.headers['x-row-count'] ?? 0);
+      // mapping v5: contact-source lines whose party has no PEAK contact code yet
+      const unresolved = Number(res.headers['x-unresolved-sub-codes'] ?? 0);
       const a = document.createElement('a');
       a.href = URL.createObjectURL(blob);
       a.download = `peak-journal-${startDate}_${endDate}.csv`;
       a.click();
       URL.revokeObjectURL(a.href);
-      setLastResult({ rowCount, skipped });
-      if (skipped > 0) {
-        toast.warning(`ดาวน์โหลด ${rowCount} บรรทัด — ข้าม ${skipped} บรรทัด (บัญชียังไม่จับคู่ PEAK)`);
+      setLastResult({ rowCount, skipped, unresolved });
+      const warnings: string[] = [];
+      if (skipped > 0) warnings.push(`ข้าม ${skipped} บรรทัด (บัญชียังไม่จับคู่ PEAK)`);
+      if (unresolved > 0) warnings.push(`รหัสย่อยยังหาไม่ได้ ${unresolved} บรรทัด (ผู้ติดต่อยังไม่มีรหัส PEAK)`);
+      if (warnings.length > 0) {
+        toast.warning(`ดาวน์โหลด ${rowCount} บรรทัด — ${warnings.join(' · ')}`);
       } else {
         toast.success(`ดาวน์โหลด ${rowCount} บรรทัดสำเร็จ`);
       }
@@ -124,7 +129,7 @@ export default function PeakExportPage() {
           </div>
 
           {lastResult && (
-            <Alert variant={lastResult.skipped > 0 ? 'warning' : 'success'}>
+            <Alert variant={lastResult.skipped > 0 || lastResult.unresolved > 0 ? 'warning' : 'success'}>
               <AlertTriangle className="size-4" aria-hidden />
               <AlertDescription className="leading-snug">
                 ส่งออก <Badge variant="primary">{lastResult.rowCount}</Badge> บรรทัด
@@ -133,6 +138,15 @@ export default function PeakExportPage() {
                     {' '}— ข้าม <Badge variant="warning">{lastResult.skipped}</Badge> บรรทัดที่บัญชียังไม่จับคู่ PEAK{' '}
                     <Link to="/settings/accounting/chart?tab=peak" className="underline text-primary">
                       ไปจับคู่ที่หน้าตั้งค่า
+                    </Link>
+                  </>
+                )}
+                {lastResult.unresolved > 0 && (
+                  <>
+                    {' '}— รหัสย่อยยังหาไม่ได้ <Badge variant="warning">{lastResult.unresolved}</Badge>{' '}
+                    บรรทัด (ผู้ติดต่อยังไม่มีรหัส PEAK){' '}
+                    <Link to="/contacts" className="underline text-primary">
+                      ไปใส่ที่รายชื่อผู้ติดต่อ
                     </Link>
                   </>
                 )}

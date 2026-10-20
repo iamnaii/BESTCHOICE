@@ -21,6 +21,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
+import { PeakContactCodeField } from '@/components/contacts/PeakContactCodeField';
 import {
   contactKeys,
   contactsApi,
@@ -91,10 +92,13 @@ function Kpi({ label, value, danger }: { label: string; value: string; danger?: 
 function IdentityHero({
   data,
   isOwner,
+  canEditPeak,
   onMerge,
 }: {
   data: ContactDetail;
   isOwner: boolean;
+  /** OWNER / ACCOUNTANT may set the PEAK contact code (mapping v5 — export sub-code). */
+  canEditPeak: boolean;
   onMerge: () => void;
 }) {
   const { copy } = useCopyToClipboard();
@@ -169,7 +173,7 @@ function IdentityHero({
           <Field label="อีเมล" value={data.email} />
           <Field label="ที่อยู่" value={data.address} />
           {data.lineId && <Field label="LINE ID" value={data.lineId} />}
-          {data.peakContactCode && <Field label="รหัส PEAK" value={data.peakContactCode} />}
+          <PeakContactCodeField contactId={data.id} value={data.peakContactCode} canEdit={canEditPeak} />
         </div>
       </CardContent>
     </Card>
@@ -504,7 +508,12 @@ export default function ContactDetailPage() {
       >
         {data && (
           <div className="flex flex-col gap-5">
-            <IdentityHero data={data} isOwner={isOwner} onMerge={() => setMergeOpen(true)} />
+            <IdentityHero
+              data={data}
+              isOwner={isOwner}
+              canEditPeak={isOwner || user?.role === 'ACCOUNTANT'}
+              onMerge={() => setMergeOpen(true)}
+            />
 
             <SummaryStrip customers={customers} suppliers={suppliers} />
 

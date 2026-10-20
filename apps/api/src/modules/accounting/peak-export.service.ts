@@ -22,8 +22,14 @@ export class PeakExportService {
    * "give me everything" queries don't dump millions of rows.
    *
    * Output columns:
-   *   entryDate, entryNumber, peakCode, accountCode, accountName,
+   *   entryDate, entryNumber, peakCode, peakSubCode, accountCode, accountName,
    *   debit, credit, description, reference
+   *
+   * `peakSubCode` (FINANCE mapping v5 · 19/10/2569) is filled only for accounts
+   * whose sub-code source is `fixed` (e.g. 11-6101 → 212203 / ADV001). Accounts
+   * whose sub-code is resolved per line (contact / bank / cashbox) emit an empty
+   * cell until the export rules for those sources land — the mapping already
+   * records WHICH source applies so that follow-up needs no schema change.
    *
    * Money values are emitted via `.toString()` to preserve Decimal precision
    * (matches the "DO NOT Number() on Prisma.Decimal in export" rule).
@@ -46,10 +52,17 @@ export class PeakExportService {
     //    is cheaper than joining inline because there are ~110 accounts total.
     const mappedAccounts = await this.prisma.chartOfAccount.findMany({
       where: { deletedAt: null, peakCode: { not: null } },
-      select: { code: true, name: true, peakCode: true },
+      select: { code: true, name: true, peakCode: true, peakSubCode: true, peakSubCodeSource: true },
     });
     const peakByCode = new Map(
-      mappedAccounts.map((a) => [a.code, { name: a.name, peakCode: a.peakCode! }]),
+      mappedAccounts.map((a) => [
+        a.code,
+        {
+          name: a.name,
+          peakCode: a.peakCode!,
+          peakSubCode: a.peakSubCodeSource === 'fixed' ? a.peakSubCode : null,
+        },
+      ]),
     );
 
     // Also load account names for un-mapped lines so we can report what was skipped.
@@ -109,6 +122,7 @@ export class PeakExportService {
       'entryDate',
       'entryNumber',
       'peakCode',
+      'peakSubCode',
       'accountCode',
       'accountName',
       'debit',
@@ -133,6 +147,7 @@ export class PeakExportService {
           ln.journalEntry.entryDate.toISOString().slice(0, 10),
           escape(ln.journalEntry.entryNumber),
           escape(mapping.peakCode),
+          escape(mapping.peakSubCode),
           escape(ln.accountCode),
           escape(nameByCode.get(ln.accountCode) ?? mapping.name),
           // String form keeps full Decimal precision — never Number()

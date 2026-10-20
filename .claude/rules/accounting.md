@@ -2945,13 +2945,37 @@ The owner uses **PEAK** (peakaccount.com) as the CPA's external bookkeeping syst
 
 `ChartOfAccount.peakCode String?` (column `peak_code`, max 20 chars, partial index for non-null values). Migration `20260946000000_add_peak_code_to_chart_of_accounts` is idempotent (uses `IF NOT EXISTS`).
 
-CSV fixture `apps/api/src/modules/journal/__tests__/fixtures/cpa-cases/finance-coa.csv` already has column 9 "เลขบัญชีในพึค" reserved — the CSV loader at `apps/api/src/modules/journal/__tests__/csv-fixture-loader.ts` now reads it as `peakCode`. Values remain EMPTY in the CSV; owner fills them via UI. The seeder (`apps/api/prisma/seed-coa-finance.ts`) only writes `peakCode` when the CSV cell is non-empty, so re-seeding never overwrites owner-set values.
+**คำตัดสินเจ้าของ 2026-10-20: คงผังของระบบ ไม่ยุบ/ไม่เปลี่ยนเลขตาม PEAK** — PEAK ได้ข้อมูลผ่านชั้นแปล (รหัส PEAK + รหัสย่อย + กติกา export รายบรรทัด) ห้ามเสนอ renumber/collapse ผังอีก (เหตุผลใน `docs/superpowers/specs/2026-10-20-peak-mapping-subcode-design.md`).
+
+**FINANCE mapping v5 (ฝ่ายบัญชี 19/10/2569 — "สิ่งที่ต้องแจ้งโปรแกรม MAPPING" · 2026-10-20):** two more columns —
+`peakSubCode String?` (`peak_sub_code` — รหัสบัญชีย่อย PEAK เช่น `ADV001`, `CSH002`) and
+`peakSubCodeSource String @default("none")` (`peak_sub_code_source` — `none | fixed | contact | bank | cashbox`, string not
+enum; `PEAK_SUB_CODE_SOURCES` in `peak-mapping.dto.ts`). Only `fixed` carries a value in `peakSubCode`; `contact` / `bank` /
+`cashbox` mean "resolve per journal line at export" (Contact.peakContactCode · bank account · cash holder) — the mapping records
+WHICH source applies, the per-line resolution is follow-up export-rule work. Migration `20261030000000_peak_mapping_sub_code`
+adds the columns **and carries the accountant's data**: PEAK codes for every FINANCE account in the file · new accounts
+`11-1401` `11-4104` `11-6101..6105` (สำรองจ่ายภาษีแทน SHOP · 212203/ADV001 — replaces `55-1101..1105`, now ไม่ใช้งาน) `42-1109`
+`53-1307` `53-1407` `53-1408` `53-1801` `53-1802` `54-1105` · **`42-1107` re-opened as "ส่วนลดรับ" (PEAK 510301)** — a NEW meaning,
+not the removed cancel-penalty account (the "ห้ามเพิ่มกลับ" note of 2026-08-03 covered the old meaning; the accountant
+assigned the code again in the 19/10 file) · `53-1304` → ค่าไปรษณีย์ · `53-1306` → ค่าขนส่ง (เปิดใช้). Cash/bank accounts stay
+separate internally (`11-1101..1103` → PEAK `111101` + fixed `CSH001..003`; `11-1201..1203` → `111301` + fixed `BSV001..003`)
+— same PEAK outcome as the file's "ยุบเข้า 11-1101 รหัสย่อย CSHxxx" without touching posting flows. Accounts the file leaves
+unmapped (`11-2106`, `41-1101`, `33-1101`, `39-9999`, and the ones it closes without a PEAK code) stay `peakCode = null` and are
+skipped by the export. **Not applied (owner decision pending):** closing `11-1102/1103/1202/1203`, `11-3101`, `21-1107`,
+`41-1102`, `51-1105` (live posting code references them) and renaming `42-1106` to "หนี้สูญได้รับคืน" (18.2/22.2 post sweep
+income there — the file maps it to 420111 as given).
+
+CSV fixture `apps/api/src/modules/journal/__tests__/fixtures/cpa-cases/finance-coa.csv` column 9 "เลขบัญชีในพึค" = `peakCode`,
+column 10 "รหัสย่อย PEAK" = `peakSubCode`, column 11 "แหล่งรหัสย่อย" = `peakSubCodeSource` (loader
+`apps/api/src/modules/journal/__tests__/csv-fixture-loader.ts`). Since mapping v5 the CSV carries the accountant's values
+(dev/test chart = prod chart). The seeders (`apps/api/prisma/seed-coa-finance.ts` / `seed-coa-shop.ts`) write any of the three only
+when the CSV cell is non-empty, so re-seeding never overwrites owner-set values.
 
 ### Settings UI
 
 `/settings#peak-mapping` (OWNER only — non-OWNER blocked by the global SettingsPage guard). Tab provides:
 
-- Editable table: `รหัสบัญชี | ชื่อบัญชี | รหัส PEAK` (in-row input, max 20 chars).
+- Editable table: `รหัสบัญชี | ชื่อบัญชี | รหัส PEAK` (in-row input, max 20 chars). Sub-code / source columns: API ready (mapping v5), UI pending the owner's mockup sign-off (รหัสย่อย PEAK + แหล่งรหัสย่อย — see spec `docs/superpowers/specs/2026-10-20-peak-mapping-subcode-design.md`).
 - Search by code/name/peakCode.
 - Bulk import: paste `internal_code,peak_code` lines (header row auto-skipped).
 - "ดาวน์โหลด CSV" → calls `GET /chart-of-accounts/peak-mapping/csv`.
@@ -2963,14 +2987,14 @@ ACC role cannot reach the tab (settings page is OWNER-only) but the API endpoint
 
 | Method | Path | Roles | Notes |
 |---|---|---|---|
-| GET | `/chart-of-accounts/peak-mapping` | OWNER, FM, ACC | Returns `{ id, code, name, type, peakCode }` for active accounts |
-| PUT | `/chart-of-accounts/peak-mapping` | OWNER, ACC | Bulk update; rejects empty-string (must be null or trimmed); writes `PEAK_MAPPING_UPDATED` audit log with diff |
-| GET | `/chart-of-accounts/peak-mapping/csv` | OWNER, FM, ACC | `text/csv; charset=utf-8` + UTF-8 BOM; filename `peak-mapping-YYYYMMDD.csv` (BKK) |
+| GET | `/chart-of-accounts/peak-mapping` | OWNER, FM, ACC | Returns `{ id, code, name, type, peakCode, peakSubCode, peakSubCodeSource }` for active accounts |
+| PUT | `/chart-of-accounts/peak-mapping` | OWNER, ACC | Bulk update; empty strings → null; `peakSubCode` / `peakSubCodeSource` OMITTED = keep stored value (old UI stays safe); source ≠ `fixed` clears the sub-code; `fixed` without a sub-code → 400; writes `PEAK_MAPPING_UPDATED` audit log with diff (`before/after` = peakCode + `peakSubCodeBefore/After` + `sourceBefore/After`) |
+| GET | `/chart-of-accounts/peak-mapping/csv` | OWNER, FM, ACC | `text/csv; charset=utf-8` + UTF-8 BOM; columns `code,name,peakCode,peakSubCode,peakSubCodeSource`; filename `peak-mapping-YYYYMMDD.csv` (BKK) |
 | GET | `/expenses/journal/export-peak?startDate&endDate` | OWNER, FM, ACC | CSV of POSTED journal lines tagged with mapped PEAK code |
 
 ### Export semantics
 
-`/expenses/journal/export-peak` returns CSV columns: `entryDate, entryNumber, peakCode, accountCode, accountName, debit, credit, description, reference`. Money values are emitted as `Prisma.Decimal.toString()` to preserve precision (never `Number()`).
+`/expenses/journal/export-peak` returns CSV columns: `entryDate, entryNumber, peakCode, peakSubCode, accountCode, accountName, debit, credit, description, reference`. `peakSubCode` is filled only when the account's source is `fixed` (dynamic sources emit an empty cell until the per-line export rules land). Money values are emitted as `Prisma.Decimal.toString()` to preserve precision (never `Number()`).
 
 Guards:
 - Date range capped at 186 days (~6 months). Longer ranges → `BadRequestException`.

@@ -4465,6 +4465,14 @@ model ChartOfAccount {
   /// P3-SP3: PEAK external account code for CPA bookkeeping handoff
   /// (peakaccount.com). Nullable — owner fills via /settings#peak-mapping.
   peakCode      String?   @map("peak_code")
+  /// PEAK sub-account code (รหัสบัญชีย่อย PEAK — e.g. ADV001, CSH002). Only
+  /// meaningful when peakSubCodeSource = 'fixed'; null otherwise.
+  peakSubCode   String?   @map("peak_sub_code")
+  /// Where the PEAK sub-account code comes from at export time:
+  /// 'none' | 'fixed' | 'contact' | 'bank' | 'cashbox'
+  /// (ฝ่ายบัญชี FINANCE mapping v5 · 19/10/2569). String, not a Prisma enum —
+  /// same style as ChartOfAccount.status / BankAccount.accountType.
+  peakSubCodeSource String @default("none") @map("peak_sub_code_source")
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
   deletedAt     DateTime?

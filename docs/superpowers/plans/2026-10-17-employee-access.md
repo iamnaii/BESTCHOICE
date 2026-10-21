@@ -873,11 +873,13 @@ R152 preserves all27 original methods as6+8+10+3 serial gates. Each child inheri
 
 ### Task 4.2.2.1: Global template catalog and OCR generation
 
-**Files/scope:** DocumentsController.findAllTemplates/findOneTemplate/createTemplate/updateTemplate/deleteTemplate/generateTemplateFromFile; exactly6domain. Global ContractTemplateService/OcrService inputs, existing catalog keys and owner-reserved settings.documents.manage must be reconciled explicitly.
+**Files/scope:** DocumentsController.findAllTemplates/findOneTemplate/createTemplate/updateTemplate/deleteTemplate/generateTemplateFromFile; exactly6 original domain-allocation methods with global-reference runtime policy (R157/R158). Global ContractTemplateService/OcrService inputs, existing catalog keys and owner-reserved settings.documents.manage must be reconciled explicitly.
 
-- [ ] Propose current global template/read/create/update/delete/OCR policy, selected-work and exact existing capability mapping; no invented source branch or raw-template lossy owner editor. Root ruling and actual marked isolatedHTTP/PG RED before runtime.
-- [ ] Preserve template CRUD/active/deleted validation, internal render resolution, arbitrary HTML/settings/blocks classification and safe finite lookup versus editor contracts. Template access is not authority to render a Customer or issue private bytes. OCR has explicit actor/current authority, bounded input/controlled provider and genuine effect/audit lifetime.
-- [ ] Useful positive/denied/current-source/invalid-input/provider-failure/required-evidence proof for all6, relevant canonical regressions/types/lint/coverage, exact report/freeze and independent gate. No provider calls or production edits; fullJWT/UI/final8 remain.
+- [x] Propose current global template/read/create/update/delete/OCR policy, selected-work and exact existing capability mapping; no invented source branch or raw-template lossy owner editor. Root ruling and actual marked isolatedHTTP/PG RED before runtime. R157 and actual18-test owned baseline accepted; initial713db23d8 plus fix59f3e473f independently gated.
+- [x] Preserve template CRUD/active/deleted validation, internal render resolution, arbitrary HTML/settings/blocks classification and safe finite lookup versus editor contracts. Template access is not authority to render a Customer or issue private bytes. OCR has explicit actor/current authority, bounded input/controlled provider and genuine effect/audit lifetime.
+- [x] Useful positive/denied/current-source/invalid-input/provider-failure/required-evidence proof for all6, relevant canonical regressions/types/lint/coverage, exact report/freeze and independent gate. No provider calls or production edits; fullJWT/UI/final8 remain.
+
+Checkpoint: final103 owned cases, executor6, types/lint and localcheck39 pass. I1 actual DB lifetime fixed underR159/R160; independent scoped spec/quality approved, zero new C/I/M. Initial historical-output/type bounds M1/M2 and validation-noise M3 remain explicit final-review carryovers. CV1 UI7/final8, CV2 audit5 and CV3 next3children remain required. These6countonce toward originalFINANCE allocation underR158: reviewed324domain=280SHOP+44FINANCE;500FINANCEremain, adjacent17/202unchanged. No whole-program/editor/full-auth claim.
 
 ### Task 4.2.2.2: Uploaded Contract documents and guarded evidence
 

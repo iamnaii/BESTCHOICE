@@ -7,7 +7,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { BookingStatus, Prisma } from '@prisma/client';
-import { bangkokCalendarParts, bangkokDateRange, bangkokMidnight, bangkokStartOfDay } from '../../utils/date.util';
+import { bangkokCalendarParts, bangkokDateRange, bangkokDateString, bangkokMidnight, bangkokStartOfDay } from '../../utils/date.util';
 import { normalizeThaiPhone } from '../../utils/thai-phone.util';
 import * as Sentry from '@sentry/node';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -300,6 +300,29 @@ export class BookingsService {
       expiringWithin3Days: expiring,
       closed: { converted, canceled, expired, total: converted + canceled + expired },
       forfeitedThisMonth: (forfeited._sum.depositAmount ?? ZERO).toFixed(2),
+    };
+  }
+
+  /**
+   * ใบจองที่ยังเปิดอยู่และ "หมดอายุวันนี้" (เวลาไทย) — การ์ดบนหน้าหลักหน้าร้าน.
+   * Booking มีแค่ expireDate ไม่มีวันนัดรับ จึงเป็น "หมดอายุ" ไม่ใช่ "ครบกำหนดรับ".
+   */
+  async countExpiringToday(user: RequestUser, branchId?: string, now = new Date()) {
+    const today = bangkokDateString(now);
+    const base: Prisma.BookingWhereInput = {
+      deletedAt: null,
+      status: { in: [...OPEN_BOOKING_STATUSES] },
+      expireDate: bangkokDateRange(today, today),
+    };
+    const { where, empty } = this.applyBranchScope(base, user, branchId);
+    if (empty) return { count: 0, depositTotal: 0, reservedUnits: 0 };
+
+    const rows = await this.prisma.booking.findMany({ where, select: { status: true, depositAmount: true } });
+    const paid = rows.filter((r) => r.status === 'PAID');
+    return {
+      count: rows.length,
+      depositTotal: paid.reduce((sum, r) => sum + Number(r.depositAmount), 0),
+      reservedUnits: paid.length,
     };
   }
 

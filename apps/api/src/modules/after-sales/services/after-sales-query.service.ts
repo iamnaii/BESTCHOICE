@@ -422,6 +422,26 @@ export class AfterSalesQueryService {
     };
   }
 
+  /**
+   * การ์ด "หลังการขายรอลูกค้ารับ" บนหน้าหลักหน้าร้าน — นับเคส stage READY_FOR_PICKUP
+   * และเคสที่รอเกินเกณฑ์ (STALE_DAYS.READY_FOR_PICKUP) ด้วย stageSince เดียวกับรายการ.
+   * ไม่ reconcile stage เพราะเป็นแค่ยอดนับ (แบบเดียวกับ exchanges ใน summary()).
+   */
+  async countReadyForPickup(branchId?: string, now = new Date()) {
+    const rows = await this.prisma.afterSalesCase.findMany({
+      where: { deletedAt: null, stage: 'READY_FOR_PICKUP', ...(branchId ? { branchId } : {}) },
+      select: {
+        receivedAt: true,
+        approvedAt: true,
+        repairTicket: { select: { sentToRepairAt: true, repairedAt: true } },
+      },
+    });
+    const overdue = rows.filter((r) =>
+      isStale('READY_FOR_PICKUP', stageSince('READY_FOR_PICKUP', r.repairTicket, r.receivedAt, r.approvedAt ?? null), now),
+    ).length;
+    return { waitingPickup: rows.length, overdue };
+  }
+
   /** แถบตัวเลขเจ้าของ (spec ข้อ 9) — PR 1 คิดจากใบซ่อมของเคส; PR 2 เติม openExchange/exchanges จริง */
   async summary(user: ReqUser, branchId?: string) {
     const scope = { deletedAt: null, ...this.branchWhere(user, branchId) };

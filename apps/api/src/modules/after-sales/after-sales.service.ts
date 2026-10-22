@@ -56,6 +56,11 @@ export class AfterSalesService {
     return this.querySvc.findByTicket(ticketId, user);
   }
 
+  /** หน้าหลักหน้าร้าน — เคสรอลูกค้ารับ + ที่รอเกินเกณฑ์ (ผู้เรียกบังคับ branchId ตามสิทธิ์เอง) */
+  countReadyForPickup(branchId?: string) {
+    return this.querySvc.countReadyForPickup(branchId);
+  }
+
   send(id: string, dto: SendDto, user: ReqUser) {
     return this.repairSvc.send(id, dto, user);
   }

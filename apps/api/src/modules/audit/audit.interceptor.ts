@@ -1,4 +1,5 @@
 import { DocumentsController } from '../contracts/documents.controller';
+import { ContractDocumentsController } from '../contracts/contract-documents.controller';
 import { PaymentApprovalController } from '../payments/payment-approval.controller';
 import { ContractExchangeController } from '../contract-exchange/contract-exchange.controller';
 import { CustomerAccessController } from '../customer-access/customer-access.controller';
@@ -128,6 +129,14 @@ export class AuditInterceptor implements NestInterceptor {
   private isSharedReference(context: ExecutionContext): boolean {
     return (context.getClass() === DocumentsController && [DocumentsController.prototype.findAllTemplates, DocumentsController.prototype.findOneTemplate, DocumentsController.prototype.createTemplate, DocumentsController.prototype.updateTemplate, DocumentsController.prototype.deleteTemplate, DocumentsController.prototype.generateTemplateFromFile].some(h => h === context.getHandler())) || context.getClass() === StickersController || context.getClass() === PricingTemplatesController || context.getClass() === InterestConfigController;
   }
+  private isUploadedContractDocument(context: ExecutionContext): boolean {
+    return context.getClass() === ContractDocumentsController && [
+      ContractDocumentsController.prototype.findByContract, ContractDocumentsController.prototype.getDocumentChecklist,
+      ContractDocumentsController.prototype.getDocumentAuditTrail, ContractDocumentsController.prototype.upload,
+      ContractDocumentsController.prototype.recordView, ContractDocumentsController.prototype.content,
+      ContractDocumentsController.prototype.recordDownload, ContractDocumentsController.prototype.remove,
+    ].some(handler => handler === context.getHandler());
+  }
 
   /** Admission can discover that an initially unmanaged actor is now managed.
    * These exact request entrances never put private request evidence in HTTP audit. */
@@ -140,6 +149,7 @@ export class AuditInterceptor implements NestInterceptor {
   }
 
   private isManagedSafeRead(context: ExecutionContext): boolean {
+    if (this.isUploadedContractDocument(context)) return true;
     if (this.isConsentHandler(context)) return true;
     if (this.isSharedReference(context)) return true;
     if (this.isPayoffRequest(context)) return true;

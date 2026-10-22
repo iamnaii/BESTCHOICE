@@ -772,6 +772,7 @@ enum BuybackSelectType {
 // ============================================================
 
 model Branch {
+  uploadedDocumentIdentities UploadedContractDocumentIdentity[]
   managedPayoffEvidence ManagedPayoffEvidence[]
   customerDelegations CustomerAccessToken[] @relation("CustomerDelegationOrigin")
   promotionBenefits SalePromotionBenefit[]
@@ -1171,6 +1172,7 @@ model Contact {
 }
 
 model Customer {
+  uploadedDocumentIdentities UploadedContractDocumentIdentity[]
   customerDelegations CustomerAccessToken[] @relation("CustomerDelegationRecipient")
   promotionBenefits SalePromotionBenefit[]
   /// Immutable authenticated origin. Historical nulls are never backfilled.
@@ -1359,6 +1361,7 @@ model Customer {
 }
 
 model Contract {
+  uploadedDocumentIdentities UploadedContractDocumentIdentity[]
   managedPayoffEvidence ManagedPayoffEvidence[]
   promotionFingerprint String? @map("promotion_fingerprint")
   promotionTerms ContractPromotionTerms?
@@ -3412,6 +3415,7 @@ model InterestConfigRate {
 }
 
 model ContractDocument {
+  uploadIdentity UploadedContractDocumentIdentity?
   id           String               @id @default(uuid())
   contractId   String               @map("contract_id")
   documentType ContractDocumentType @map("document_type")
@@ -9680,4 +9684,25 @@ model ManagedPayoffEvidence {
   @@index([contractId, createdAt])
   @@index([contentHash])
   @@map("managed_payoff_evidence")
+}
+
+// Additive trusted upload identity; retained originals are never guessed/backfilled.
+model UploadedContractDocumentIdentity {
+  id String @id @default(uuid())
+  documentId String @unique @map("document_id")
+  contractId String @map("contract_id")
+  customerId String @map("customer_id")
+  branchId String @map("branch_id")
+  producerKind String @map("producer_kind")
+  creationCompany String? @map("creation_company")
+  mimeType String @map("mime_type")
+  fileSize Int @map("file_size")
+  fileHash String @map("file_hash")
+  inlineValueHash String @map("inline_value_hash")
+  createdAt DateTime @default(now()) @map("created_at")
+  document ContractDocument @relation(fields: [documentId], references: [id], onDelete: Restrict)
+  contract Contract @relation(fields: [contractId], references: [id], onDelete: Restrict)
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  branch Branch @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  @@map("uploaded_contract_document_identities")
 }

@@ -1,3 +1,6 @@
+import { AccessContractFilesBoundaries } from '../src/modules/employee-access/access-contract-files-boundaries';
+import { AccessPartySourceService } from '../src/modules/employee-access/access-party-source.service';
+import { AccessProcurementSourceService } from '../src/modules/employee-access/access-procurement-source.service';
 import { AccessDocumentTemplateBoundaries } from '../src/modules/employee-access/access-document-template-boundaries';
 import { AccessResourceService } from '../src/modules/employee-access/access-resource.service';
 import { AccessSnapshotService } from '../src/modules/employee-access/access-snapshot.service';
@@ -67,10 +70,10 @@ describe('Staff sales documents on isolated PostgreSQL', () => {
     generatedB = (await generated(contractB)).id; files.set(`${contractB}.pdf`, pdf);
     const module = await Test.createTestingModule({ controllers: [ContractDocumentsController, DocumentsController], providers: [
       DocumentsService, ContractDocumentsService, ContractFileAccessGuard,
-      AccessDocumentTemplateBoundaries, AccessResourceService, AccessSnapshotService, RolesGuard,
+      AccessContractFilesBoundaries, AccessPartySourceService, AccessProcurementSourceService, AccessDocumentTemplateBoundaries, AccessResourceService, AccessSnapshotService, RolesGuard,
       { provide: PrismaService, useValue: db }, { provide: StorageService, useValue: storage },
       { provide: NotificationsService, useValue: notifications }, { provide: SettingsService, useValue: { findAll: async () => [] } }, { provide: OcrService, useValue: {} },
-    ] }).overrideGuard(JwtAuthGuard).useValue({ canActivate: (ctx: ExecutionContext) => { ctx.switchToHttp().getRequest().user = actor; return true; } }).compile();
+    ] }).overrideGuard(JwtAuthGuard).useValue({ canActivate: async (ctx: ExecutionContext) => { await db.user.update({ where: { id: actor.id }, data: { role: actor.role as 'OWNER' | 'SALES' | 'BRANCH_MANAGER' | 'FINANCE_MANAGER' | 'ACCOUNTANT', branchId: actor.branchId } }); ctx.switchToHttp().getRequest().user = actor; return true; } }).compile();
     documents = module.get(DocumentsService);
     app = module.createNestApplication({ logger: false });
     app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));

@@ -1,4 +1,15 @@
-import { Controller, Get, Post, Delete, Param, Body, Query, UseGuards, Req, Res } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Delete,
+  Param,
+  Body,
+  Query,
+  UseGuards,
+  Req,
+  Res,
+} from '@nestjs/common';
 import { Request, Response } from 'express';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { ContractDocumentsService } from './contract-documents.service';
@@ -10,6 +21,11 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { ContractFileAccessGuard } from './contract-file-access.guard';
 import { pipeDocumentStream } from './services/document-stream';
 import { PaginationDto } from '../../common/dto/pagination.dto';
+import { sendVerifiedContractDocument } from './services/verified-contract-document';
+import {
+  uploadedDocumentHandlers,
+  UPLOADED_DOCUMENT_OPERATIONS,
+} from '../employee-access/access-contract-files-context';
 
 @ApiTags('Documents')
 @ApiBearerAuth('JWT')
@@ -62,11 +78,19 @@ export class ContractDocumentsController {
 
   @Get(':docId/content')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
-  async content(@Param('contractId') contractId: string, @Param('docId') docId: string, @Res() res: Response,
-    @CurrentUser() user: { id: string }, @Req() req: Request) {
-    await this.service.recordView(contractId, docId, user.id, { ip: req.ip, userAgent: req.headers['user-agent'] });
-    const file = await this.service.getContent(contractId, docId);
-    pipeDocumentStream(res, file);
+  async content(
+    @Param('contractId') contractId: string,
+    @Param('docId') docId: string,
+    @Res() res: Response,
+    @CurrentUser() user: { id: string },
+    @Req() req: Request,
+  ) {
+    const file = await this.service.prepareContent(contractId, docId, user.id, {
+      ip: req.ip,
+      userAgent: req.headers['user-agent'],
+    });
+    if ('kind' in file) sendVerifiedContractDocument(res, file);
+    else pipeDocumentStream(res, file);
   }
 
   @Post(':docId/download')
@@ -93,3 +117,12 @@ export class ContractDocumentsController {
     return this.service.remove(contractId, docId, user.id, user.role);
   }
 }
+uploadedDocumentHandlers.set(
+  ContractDocumentsController,
+  new Map(
+    UPLOADED_DOCUMENT_OPERATIONS.map((operation) => [
+      ContractDocumentsController.prototype[operation],
+      operation,
+    ]),
+  ),
+);

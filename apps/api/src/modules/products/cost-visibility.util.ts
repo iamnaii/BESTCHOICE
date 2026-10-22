@@ -30,3 +30,40 @@ export function redactStockSummary<T extends { totalValue: number }>(
 ): (Omit<T, 'totalValue'> & { totalValue: number | null })[] {
   return rows.map(({ totalValue: _totalValue, ...rest }) => ({ ...rest, totalValue: null }));
 }
+
+type ValueRow = { value: number };
+type RedactedValueRow<T extends ValueRow> = Omit<T, 'value'> & { value: number | null };
+
+const nullValue = <T extends ValueRow>(rows: T[]): RedactedValueRow<T>[] =>
+  rows.map(({ value: _value, ...rest }) => ({ ...rest, value: null }));
+
+/**
+ * GET /products/stock/dashboard — ทุกตัวเลขที่คิดจาก costPrice ต้องหายไปสำหรับ
+ * SALES: `value` ของ aging/status/breakdown (= Σ costPrice), `costPrice` ของ
+ * slowMovers และ marginOverview ทั้งก้อน (ทุน/กำไร). count/วัน/การเคลื่อนไหว
+ * คงไว้ครบ. ใช้ null ไม่ใช่ 0 ด้วยเหตุผลเดียวกับ redactStockSummary.
+ */
+export function redactStockDashboard<
+  T extends {
+    stockAging: ValueRow[];
+    valueByStatus: ValueRow[];
+    byCategory: ValueRow[];
+    byBrand: ValueRow[];
+    byColor: ValueRow[];
+    byStorage: ValueRow[];
+    slowMovers: { costPrice?: unknown }[];
+    marginOverview: unknown;
+  },
+>(dashboard: T) {
+  return {
+    ...dashboard,
+    stockAging: nullValue(dashboard.stockAging),
+    valueByStatus: nullValue(dashboard.valueByStatus),
+    byCategory: nullValue(dashboard.byCategory),
+    byBrand: nullValue(dashboard.byBrand),
+    byColor: nullValue(dashboard.byColor),
+    byStorage: nullValue(dashboard.byStorage),
+    slowMovers: dashboard.slowMovers.map(omitCostPrice),
+    marginOverview: null,
+  };
+}

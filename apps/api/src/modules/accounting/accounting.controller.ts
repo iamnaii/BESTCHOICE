@@ -197,8 +197,13 @@ export class AccountingController {
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     res.setHeader('X-Skipped-Lines', String(result.skippedLineCount));
     res.setHeader('X-Row-Count', String(result.rowCount));
+    // mapping v5: contact-source lines whose party has no PEAK contact code yet
+    res.setHeader('X-Unresolved-Sub-Codes', String(result.unresolvedSubCodeCount));
     // Expose custom headers so the browser fetch() sees them through CORS.
-    res.setHeader('Access-Control-Expose-Headers', 'X-Skipped-Lines, X-Row-Count');
+    res.setHeader(
+      'Access-Control-Expose-Headers',
+      'X-Skipped-Lines, X-Row-Count, X-Unresolved-Sub-Codes',
+    );
     res.end(result.csv);
   }
 

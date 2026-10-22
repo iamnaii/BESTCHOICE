@@ -21,14 +21,18 @@ const CSV = path.join(__dirname, '__tests__', 'fixtures', 'cpa-cases', 'finance-
  * FINANCE mapping v5 (ฝ่ายบัญชี 19/10/2569 · 2026-10-20): รหัส 42-1107 ถูกใช้อีกครั้งเป็นบัญชีใหม่
  * "ส่วนลดรับ" (PEAK 510301 — ส่วนลดจากผู้ขาย) — คนละความหมายกับค่าปรับยกเลิกเปลี่ยนเครื่องที่ถูกลบ
  * ความหมายเดิมยังต้องไม่กลับมา (ชื่อ/ความหมายเดิมถูกปักไว้ข้างล่าง).
+ *
+ * mapping v5 รอบ 2 (เจ้าของเคาะ 20/10/2569 "ตามไฟล์ได้เลย"): 42-1106 เปลี่ยนชื่อเป็น "หนี้สูญได้รับคืน" ตามไฟล์
+ * (PEAK 420111) — ผู้เขียนบรรทัดยังเป็นรอบกวาดเงินพักส่วนเกิน + JP4 18.2 จนกว่าฝ่ายบัญชีระบุบัญชีรายได้ใหม่ ·
+ * 11-3101 / 21-1107 / 51-1105 ปิดใช้ (migration `20261031000000_coa_mapping_v5_closures`).
  */
 describe('Device Swap CoA (spec §10) — 42-1107 reused as ส่วนลดรับ (mapping v5) · 42-1106 reopened (PR4 ต7)', () => {
   const accounts = loadCoaFromCsv(CSV);
   const byCode = new Map(accounts.map((a: { code: string }) => [a.code, a]));
 
-  it('42-1106 reopened as เงินพักค่าปรับดิวสะสมเกิน (รายได้ · Cr · รายได้อื่น · ใช้งาน)', () => {
+  it('42-1106 = หนี้สูญได้รับคืน (ชื่อตามไฟล์ mapping v5 รอบ 2 · รายได้ · Cr · รายได้อื่น · ใช้งาน)', () => {
     expect(byCode.get('42-1106')).toMatchObject({
-      name: 'เงินพักค่าปรับดิวสะสมเกิน',
+      name: 'หนี้สูญได้รับคืน',
       type: 'รายได้',
       normalBalance: 'Cr',
       category: 'รายได้อื่น',
@@ -48,6 +52,18 @@ describe('Device Swap CoA (spec §10) — 42-1107 reused as ส่วนลด�
     expect(sql).toContain("'เงินพักค่าปรับดิวสะสมเกิน'");
     expect(sql).toMatch(/INSERT INTO "chart_of_accounts"[\s\S]*'42-1106'[\s\S]*ON CONFLICT \("code"\) DO NOTHING/);
     expect(sql).not.toContain("'42-1107'");
+  });
+
+  it('mapping v5 round-2 migration renames 42-1106 → หนี้สูญได้รับคืน and closes 11-3101 / 21-1107 / 51-1105 (idempotent)', () => {
+    const sql = fs.readFileSync(
+      path.join(__dirname, '../../../prisma/migrations/20261031000000_coa_mapping_v5_closures/migration.sql'),
+      'utf-8',
+    );
+    expect(sql).toMatch(/UPDATE "chart_of_accounts"[\s\S]*"status" = 'ไม่ใช้งาน'[\s\S]*'11-3101', '21-1107', '51-1105'[\s\S]*AND "status" <> 'ไม่ใช้งาน'/);
+    expect(sql).toMatch(/UPDATE "chart_of_accounts"[\s\S]*"name" = 'หนี้สูญได้รับคืน'[\s\S]*"code" = '42-1106'[\s\S]*AND "name" <> 'หนี้สูญได้รับคืน'/);
+    // cash/bank holder accounts and 41-1102 are deliberately NOT closed (owner: ไม่ต้องยุบ · file points 41-1102 at a code we don't have)
+    for (const code of ['11-1102', '11-1103', '11-1202', '11-1203', '41-1102']) expect(sql).not.toContain(`'${code}'`);
+    for (const code of ['11-3101', '21-1107', '51-1105']) expect(byCode.get(code)).toMatchObject({ status: 'ไม่ใช้งาน' });
   });
 
   it('42-1107 is ส่วนลดรับ (mapping v5) — the exchange-cancel penalty meaning stays gone', () => {

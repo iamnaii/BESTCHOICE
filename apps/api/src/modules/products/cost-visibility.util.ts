@@ -1,3 +1,5 @@
+import type { ShopHomeResponse } from '../shop-home/shop-home.types';
+
 /**
  * จุดเดียวที่ตัดสินว่าใครเห็น "ราคาทุน" — owner decision 2026-08-04 §1.4:
  * SALES ต้องไม่เห็นราคาทุน/กำไร และต้องบังคับที่ฝั่ง server (การซ่อนใน DOM
@@ -65,5 +67,28 @@ export function redactStockDashboard<
     byStorage: nullValue(dashboard.byStorage),
     slowMovers: dashboard.slowMovers.map(omitCostPrice),
     marginOverview: null,
+  };
+}
+
+/**
+ * GET /shop-home — หน้าหลักหน้าร้านมีต้นทุน/กำไรซ่อนอยู่ 4 จุด:
+ * watch[].costValue (ทุนจมของเครื่องค้าง 90+ วัน), monthly[].cost/grossProfit,
+ * thisMonth (ทุกช่องยกเว้นยอดขาย) และ slowMovers[].costPrice.
+ * คืน object ใหม่ ไม่แตะต้นฉบับ.
+ */
+export function redactShopHome(r: ShopHomeResponse): ShopHomeResponse {
+  return {
+    ...r,
+    watch: r.watch.map((w) => ({ ...w, costValue: null })),
+    monthly: r.monthly.map((m) => ({ ...m, cost: null, grossProfit: null })),
+    thisMonth: {
+      sales: r.thisMonth.sales,
+      salesMomPct: r.thisMonth.salesMomPct,
+      cost: null,
+      grossProfit: null,
+      grossMarginPct: null,
+      grossProfitMomPct: null,
+    },
+    slowMovers: r.slowMovers.map(omitCostPrice),
   };
 }

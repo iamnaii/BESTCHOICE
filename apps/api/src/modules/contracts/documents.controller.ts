@@ -1,3 +1,6 @@
+import { GeneratedDocumentsService } from './services/generated-documents.service';
+import { GENERATED_DOCUMENT_OPERATIONS, generatedDocumentHandlers } from '../employee-access/access-generated-documents-context';
+import { sendGeneratedDocument } from './services/send-generated-document';
 import { AccessDocumentTemplateBoundaries } from '../employee-access/access-document-template-boundaries';
 import { Controller, Get, Post, Patch, Delete, Param, Body, Query, UseGuards, Req, Res } from '@nestjs/common';
 import { Request, Response } from 'express';
@@ -5,7 +8,6 @@ import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { DocumentsService } from './documents.service';
 import { ContractFileAccess } from './contract-file-access.guard';
-import { pipeDocumentStream } from './services/document-stream';
 import { PaginationDto } from '../../common/dto/pagination.dto';
 import { CreateTemplateDto, UpdateTemplateDto, SignContractDto, GenerateDocumentDto } from './dto/document.dto';
 import { OcrGenerateTemplateDto } from '../ocr/dto/ocr.dto';
@@ -24,6 +26,7 @@ export class DocumentsController {
     private documentsService: DocumentsService,
     private ocrService: OcrService,
     private templateAccess: AccessDocumentTemplateBoundaries,
+    private generated: GeneratedDocumentsService,
   ) {}
 
   // ─── Contract Templates ──────────────────────────────
@@ -123,97 +126,60 @@ export class DocumentsController {
     );
   }
 
-  // ─── E-Document ───────────────────────────────────────
+  // ─── Generated documents: staged source/effects/final commit ───
   @Post('contracts/:id/generate-document')
   @ContractFileAccess()
   @Roles('OWNER', 'BRANCH_MANAGER', 'SALES')
-  generateDocument(
-    @Param('id') id: string,
-    @Body() dto: GenerateDocumentDto,
-    @CurrentUser() user: { id: string },
-  ) {
-    return this.documentsService.generateDocument(id, user.id, dto.documentType || 'CONTRACT', dto.templateId);
+  generateDocument(@Body() _dto: GenerateDocumentDto, @Req() req: Request) {
+    return this.generated.execute('generateDocument', req);
   }
-
   @Get('contracts/:id/download-pdf')
   @ContractFileAccess()
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
-  async downloadPdf(
-    @Param('id') id: string,
-    @CurrentUser() user: { id: string },
-    @Res() res: Response,
-  ) {
-    const pdfBuffer = await this.documentsService.generatePdfBuffer(id, user.id);
-    const contract = await this.documentsService.getContractNumber(id);
-    res.set({
-      'Content-Type': 'application/pdf',
-      'Content-Disposition': `attachment; filename="${encodeURIComponent(contract || 'contract')}.pdf"`,
-      'Content-Length': pdfBuffer.length,
-    });
-    res.send(pdfBuffer);
+  async downloadPdf(@Req() req: Request, @Res() res: Response) {
+    sendGeneratedDocument(res, await this.generated.execute('downloadPdf', req));
   }
-
   @Post('contracts/:id/generate-signed-documents')
   @ContractFileAccess()
   @Roles('OWNER', 'BRANCH_MANAGER', 'SALES')
-  generateSignedDocuments(
-    @Param('id') id: string,
-    @CurrentUser() user: { id: string },
-  ) {
-    return this.documentsService.generateSignedDocuments(id, user.id);
+  generateSignedDocuments(@Body() _dto: GenerateDocumentDto, @Req() req: Request) {
+    return this.generated.execute('generateSignedDocuments', req);
   }
-
-  /** Bulk-regenerate signed contract PDFs after template changes. Old PDFs retained. */
   @Post('contracts/admin/regenerate-signed-pdfs')
+  @ContractFileAccess()
   @Roles('OWNER')
-  regenerateSignedContractPdfs(@CurrentUser() user: { id: string }) {
-    return this.documentsService.regenerateSignedContractPdfs(user.id);
+  regenerateSignedContractPdfs(@Body() _dto: GenerateDocumentDto, @Req() req: Request) {
+    return this.generated.execute('regenerateSignedContractPdfs', req);
   }
-
   @Post('contracts/:id/generate-pdpa-document')
   @ContractFileAccess()
   @Roles('OWNER', 'BRANCH_MANAGER', 'SALES')
-  generatePdpaDocument(
-    @Param('id') id: string,
-    @CurrentUser() user: { id: string },
-  ) {
-    return this.documentsService.generatePdpaDocument(id, user.id);
+  generatePdpaDocument(@Body() _dto: GenerateDocumentDto, @Req() req: Request) {
+    return this.generated.execute('generatePdpaDocument', req);
   }
-
   @Get('contracts/:id/e-documents')
   @ContractFileAccess()
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
-  getDocuments(@Param('id') id: string, @Query() pagination: PaginationDto) {
-    return this.documentsService.getDocuments(id, pagination.page, pagination.limit);
+  getDocuments(@Req() req: Request, @Query() _pagination: PaginationDto) {
+    return this.generated.execute('getDocuments', req);
   }
-
   @Get('contracts/:id/preview')
   @ContractFileAccess()
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
-  previewContract(@Param('id') id: string, @Query('templateId') templateId?: string) {
-    return this.documentsService.previewContract(id, templateId);
-  }
-
+  previewContract(@Req() req: Request) { return this.generated.execute('previewContract', req); }
   @Get('documents/:id')
   @ContractFileAccess('generated')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
-  getDocument(@Param('id') id: string) {
-    return this.documentsService.getDocument(id);
-  }
-
-  // ─── Document Download ───────────────────────────────
+  getDocument(@Req() req: Request) { return this.generated.execute('getDocument', req); }
   @Get('documents/:id/download')
   @ContractFileAccess('generated')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
-  async downloadDocument(@Param('id') id: string, @Res() res: Response) {
-    const file = await this.documentsService.getDocumentStream(id);
-    pipeDocumentStream(res, file);
+  async downloadDocument(@Req() req: Request, @Res() res: Response) {
+    sendGeneratedDocument(res, await this.generated.execute('downloadDocument', req));
   }
-
   @Get('documents/:id/signed-url')
   @ContractFileAccess('generated')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
-  getSignedUrl(@Param('id') id: string) {
-    return this.documentsService.getDocumentSignedUrl(id);
-  }
+  getSignedUrl(@Req() req: Request) { return this.generated.execute('getSignedUrl', req); }
 }
+generatedDocumentHandlers.set(DocumentsController, new Map(GENERATED_DOCUMENT_OPERATIONS.map(operation => [DocumentsController.prototype[operation], operation])));

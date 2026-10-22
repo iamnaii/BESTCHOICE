@@ -1,3 +1,4 @@
+import { GeneratedEffectBudget, renderOwnedGeneratedPdf } from './generated-document-effects';
 import { DOCUMENT_STYLE, documentTypographyCss } from '@installment/shared';
 import { embeddedDocumentFonts } from '../../../assets/fonts/document-fonts';
 import { creditSnapshot, cashDownPayment } from '../../trade-in/services/trade-in-credit.service';
@@ -188,12 +189,12 @@ ${(() => {
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  async replacePlaceholders(html: string, contract: any, lessorSig?: { image: string; name: string } | null): Promise<string> {
+  async replacePlaceholders(html: string, contract: any, lessorSig?: { image: string; name: string } | null, prepared?: { config: Record<string,string>; photos: string[] }): Promise<string> {
     const disclosure = readProductDisclosure(contract.productDisclosure);
     // Load configurable settings with hardcoded fallbacks
     const configMap: Record<string, string> = {};
     try {
-      const allSettings = await this.settingsService.findAll();
+      const allSettings = prepared ? Object.entries(prepared.config).map(([key,value])=>({key,value})) : await this.settingsService.findAll();
       for (const s of allSettings) configMap[s.key] = s.value;
     } catch (err) {
       this.logger.warn('Settings not available, using defaults', err instanceof Error ? err.message : err);
@@ -351,7 +352,7 @@ ${(() => {
 
     // Device photos grid for page 6 — query DEVICE_PHOTO documents
     if (html.includes('{device_photos_grid}')) {
-      const devicePhotos = await this.prisma.contractDocument.findMany({
+      const devicePhotos = prepared ? prepared.photos.map(fileUrl=>({fileUrl})) : await this.prisma.contractDocument.findMany({
         where: { contractId: contract.id, documentType: 'DEVICE_PHOTO', deletedAt: null, isLatest: true },
         orderBy: { createdAt: 'asc' },
         take: 6,
@@ -361,7 +362,7 @@ ${(() => {
       if (devicePhotos.length > 0) {
         // Convert S3 URLs to base64 data URLs so Puppeteer can render them in PDF
         const base64Urls = await Promise.all(
-          devicePhotos.map((p) => this.fileUrlToBase64DataUrl(p.fileUrl)),
+          devicePhotos.map((p) => prepared ? Promise.resolve(p.fileUrl) : this.fileUrlToBase64DataUrl(p.fileUrl)),
         );
         const photoRows: string[] = [];
         for (let i = 0; i < devicePhotos.length; i += 2) {
@@ -659,7 +660,8 @@ ${(() => {
   }
 
   // ─── PDF Generation (Puppeteer) ──────────────────────
-  async htmlToPdf(html: string, contractNumber?: string): Promise<Buffer> {
+  async htmlToPdf(html: string, contractNumber?: string, budget?: GeneratedEffectBudget): Promise<Buffer> {
+    if (budget) return renderOwnedGeneratedPdf(html, contractNumber, budget);
     // Dynamic import — uses puppeteer-core with system Chromium
     const puppeteer = await import('puppeteer-core');
     const executablePath = process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/chromium-browser';

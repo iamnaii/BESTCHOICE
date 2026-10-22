@@ -5,7 +5,7 @@ export interface UploadedContractDocumentReference {
   isLatest: boolean;
   isImmutable: boolean;
   createdAt: string;
-  contentStatus: 'VERIFIED_UPLOAD' | 'UNVERIFIED';
+  contentStatus: 'VERIFIED_UPLOAD' | 'VERIFIED_GENERATED' | 'UNVERIFIED';
 }
 export interface UploadedContractDocumentList {
   availability: 'available' | 'unavailable';

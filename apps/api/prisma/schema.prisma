@@ -772,6 +772,8 @@ enum BuybackSelectType {
 // ============================================================
 
 model Branch {
+  generatedDocumentIdentities GeneratedDocumentIdentity[]
+
   uploadedDocumentIdentities UploadedContractDocumentIdentity[]
   managedPayoffEvidence ManagedPayoffEvidence[]
   customerDelegations CustomerAccessToken[] @relation("CustomerDelegationOrigin")
@@ -1172,6 +1174,8 @@ model Contact {
 }
 
 model Customer {
+  generatedDocumentIdentities GeneratedDocumentIdentity[]
+
   uploadedDocumentIdentities UploadedContractDocumentIdentity[]
   customerDelegations CustomerAccessToken[] @relation("CustomerDelegationRecipient")
   promotionBenefits SalePromotionBenefit[]
@@ -1361,6 +1365,10 @@ model Customer {
 }
 
 model Contract {
+  signedDocumentEvents SignedDocumentProductionEvent[]
+
+  generatedDocumentIdentities GeneratedDocumentIdentity[]
+
   uploadedDocumentIdentities UploadedContractDocumentIdentity[]
   managedPayoffEvidence ManagedPayoffEvidence[]
   promotionFingerprint String? @map("promotion_fingerprint")
@@ -2578,6 +2586,8 @@ model ContractTemplate {
 }
 
 model EDocument {
+  generatedDocumentIdentities GeneratedDocumentIdentity[]
+
   id           String    @id @default(uuid())
   contractId   String    @map("contract_id")
   documentType String    @map("document_type") // CONTRACT, RECEIPT_DOWN, RECEIPT_INSTALLMENT, PAYOFF
@@ -3415,6 +3425,8 @@ model InterestConfigRate {
 }
 
 model ContractDocument {
+  generatedIdentityLink GeneratedContractDocumentLink?
+
   uploadIdentity UploadedContractDocumentIdentity?
   id           String               @id @default(uuid())
   contractId   String               @map("contract_id")
@@ -9705,4 +9717,58 @@ model UploadedContractDocumentIdentity {
   customer Customer @relation(fields: [customerId], references: [id], onDelete: Restrict)
   branch Branch @relation(fields: [branchId], references: [id], onDelete: Restrict)
   @@map("uploaded_contract_document_identities")
+}
+
+/// Immutable generated-byte provenance; originals and source IDs are retained.
+model GeneratedDocumentIdentity {
+  id String @id @default(uuid())
+  documentId String @unique @map("document_id")
+  contractId String @map("contract_id")
+  customerId String @map("customer_id")
+  branchId String @map("branch_id")
+  producerKind String @map("producer_kind")
+  creationCompany String? @map("creation_company")
+  operationToken String @unique @map("operation_token")
+  storageKey String @unique @map("storage_key")
+  mimeType String @map("mime_type")
+  fileSize Int @map("file_size")
+  fileHash String @map("file_hash")
+  sourceRevision String @map("source_revision")
+  dependencyRevision String @map("dependency_revision")
+  documentType String @map("document_type")
+  sourceComplete Boolean @map("source_complete")
+  manifest Json
+  createdAt DateTime @default(now()) @map("created_at")
+  document EDocument @relation(fields:[documentId], references:[id], onDelete:Restrict)
+  contract Contract @relation(fields:[contractId], references:[id], onDelete:Restrict)
+  customer Customer @relation(fields:[customerId], references:[id], onDelete:Restrict)
+  branch Branch @relation(fields:[branchId], references:[id], onDelete:Restrict)
+  attachments GeneratedContractDocumentLink[]
+  @@map("generated_document_identities")
+}
+/// Immutable link from a genuine signed attachment to its canonical producer.
+model GeneratedContractDocumentLink {
+  id String @id @default(uuid())
+  documentId String @unique @map("document_id")
+  identityId String @map("identity_id")
+  createdAt DateTime @default(now()) @map("created_at")
+  document ContractDocument @relation(fields:[documentId], references:[id], onDelete:Restrict)
+  identity GeneratedDocumentIdentity @relation(fields:[identityId], references:[id], onDelete:Restrict)
+  @@map("generated_contract_document_links")
+}
+/// Only the future canonical signature transaction may mint this committed event.
+/// This child exposes a fail-closed verifier, no caller-userId minting function.
+model SignedDocumentProductionEvent {
+  id String @id @default(uuid())
+  contractId String @map("contract_id")
+  sourceRevision String @map("source_revision")
+  signatureIds String[] @map("signature_ids")
+  contractManifest Json @map("contract_manifest")
+  pdpaManifest Json @map("pdpa_manifest")
+  contractDependencyRevision String @map("contract_dependency_revision")
+  pdpaDependencyRevision String @map("pdpa_dependency_revision")
+  producerKind String @map("producer_kind")
+  createdAt DateTime @default(now()) @map("created_at")
+  contract Contract @relation(fields:[contractId], references:[id], onDelete:Restrict)
+  @@map("signed_document_production_events")
 }

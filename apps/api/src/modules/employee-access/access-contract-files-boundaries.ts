@@ -117,6 +117,7 @@ export class AccessContractFilesBoundaries implements OnModuleInit {
         {
           actorId: req.user!.id!,
           operation,
+          prepare: (work) => this.current(operation, req, work, false),
           release: (work) => {
             if (used) throw deny();
             used = true;
@@ -288,7 +289,7 @@ export class AccessContractFilesBoundaries implements OnModuleInit {
             return result;
           },
           false,
-          { isolationLevel: 'Serializable', maxAttempts: 3 },
+          { domain: 'parties', isolationLevel: 'Serializable', maxAttempts: 3 },
         )
       ).result;
     } catch (error) {

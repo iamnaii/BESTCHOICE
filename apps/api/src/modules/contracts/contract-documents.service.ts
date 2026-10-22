@@ -1,5 +1,7 @@
+import { GeneratedDocumentsService } from './services/generated-documents.service';
 import {
   Injectable,
+  Optional,
   NotFoundException,
   BadRequestException,
   ForbiddenException,
@@ -58,6 +60,7 @@ export class ContractDocumentsService {
   constructor(
     private prisma: PrismaService,
     private storage: StorageService,
+    @Optional() private generated?: GeneratedDocumentsService,
   ) {}
   private get db(): Prisma.TransactionClient {
     return (
@@ -103,6 +106,13 @@ export class ContractDocumentsService {
     req?: { ip?: string; userAgent?: string },
   ): Promise<VerifiedContractDocumentBuffer | LegacyDocumentStream> {
     const request = uploadedDocumentRequest.getStore();
+    if (request?.prepare && request.release && this.generated) {
+      const staged = await request.prepare(() => this.generated!.prepareUploadedAttachment(contractId, docId));
+      if (staged) {
+        const bytes = await this.generated.acquireGeneratedBytes(staged);
+        return request.release(() => this.generated!.releaseUploadedAttachment(contractId, docId, staged, bytes));
+      }
+    }
     if (request?.release)
       return request.release(async () => {
         if (!this.managed) {
@@ -194,6 +204,7 @@ export class ContractDocumentsService {
     isImmutable: boolean;
     createdAt: Date;
     uploadIdentity?: { contractId: string; customerId: string; branchId: string } | null;
+    generatedIdentityLink?: { identity: { contractId:string;customerId:string;branchId:string } } | null;
   }): UploadedContractDocumentReference {
     const proof = this.proof;
     const valid =
@@ -209,7 +220,7 @@ export class ContractDocumentsService {
       isLatest: doc.isLatest,
       isImmutable: doc.isImmutable,
       createdAt: doc.createdAt.toISOString(),
-      contentStatus: valid ? 'VERIFIED_UPLOAD' : 'UNVERIFIED',
+      contentStatus: valid ? 'VERIFIED_UPLOAD' : doc.generatedIdentityLink && proof && doc.generatedIdentityLink.identity.contractId===proof.contractId && doc.generatedIdentityLink.identity.customerId===proof.customerId && doc.generatedIdentityLink.identity.branchId===proof.branchId ? 'VERIFIED_GENERATED' : 'UNVERIFIED',
     };
   }
   private readonly referenceSelect = {
@@ -220,6 +231,7 @@ export class ContractDocumentsService {
     isImmutable: true,
     createdAt: true,
     uploadIdentity: { select: { contractId: true, customerId: true, branchId: true } },
+    generatedIdentityLink: { select: { identity: { select: { contractId:true,customerId:true,branchId:true } } } },
   } as const;
 
   async getContent(contractId: string, docId: string): Promise<LegacyDocumentStream> {

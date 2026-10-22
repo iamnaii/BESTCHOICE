@@ -97,6 +97,10 @@ export class SignContractDto {
 }
 
 export class GenerateDocumentDto {
+  @IsOptional()
+  @Matches(/^BUILTIN$/, { message: 'ตัวเลือกแม่แบบไม่ถูกต้อง' })
+  templateSource?: 'BUILTIN';
+
   @IsString()
   @IsOptional()
   templateId?: string;

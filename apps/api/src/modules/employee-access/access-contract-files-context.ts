@@ -29,5 +29,6 @@ export const uploadedDocumentRequest = new AsyncLocalStorage<{
   operation: UploadedDocumentOperation;
   proof?: UploadedDocumentProof;
   legacyClient?: Prisma.TransactionClient;
+  prepare?: <T>(handler: () => Promise<T>) => Promise<T>;
   release?: <T>(handler: () => Promise<T>) => Promise<T>;
 }>();

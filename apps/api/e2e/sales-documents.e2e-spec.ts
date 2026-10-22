@@ -1,3 +1,5 @@
+import { GeneratedDocumentsService } from '../src/modules/contracts/services/generated-documents.service';
+import { AccessGeneratedDocumentsBoundaries } from '../src/modules/employee-access/access-generated-documents-boundaries';
 import { AccessContractFilesBoundaries } from '../src/modules/employee-access/access-contract-files-boundaries';
 import { AccessPartySourceService } from '../src/modules/employee-access/access-party-source.service';
 import { AccessProcurementSourceService } from '../src/modules/employee-access/access-procurement-source.service';
@@ -68,7 +70,7 @@ describe('Staff sales documents on isolated PostgreSQL', () => {
     const generated = async (contractId: string) => db.eDocument.create({ data: { contractId, documentType: 'CONTRACT', fileUrl: `${contractId}.pdf`, fileHash: 'test', createdById: userId } });
     generatedA = (await generated(contractA)).id; files.set(`${contractA}.pdf`, pdf);
     generatedB = (await generated(contractB)).id; files.set(`${contractB}.pdf`, pdf);
-    const module = await Test.createTestingModule({ controllers: [ContractDocumentsController, DocumentsController], providers: [
+    const module = await Test.createTestingModule({ controllers: [ContractDocumentsController, DocumentsController], providers: [GeneratedDocumentsService, AccessGeneratedDocumentsBoundaries,
       DocumentsService, ContractDocumentsService, ContractFileAccessGuard,
       AccessContractFilesBoundaries, AccessPartySourceService, AccessProcurementSourceService, AccessDocumentTemplateBoundaries, AccessResourceService, AccessSnapshotService, RolesGuard,
       { provide: PrismaService, useValue: db }, { provide: StorageService, useValue: storage },

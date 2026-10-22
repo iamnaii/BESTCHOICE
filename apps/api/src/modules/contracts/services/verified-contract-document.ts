@@ -13,7 +13,7 @@ export interface VerifiedContractDocumentSource {
 /** Returned only AFTER current authorization and required release evidence commit.
  * Generated child3 must supply its own verified identity/source implementation. */
 export interface VerifiedContractDocumentBuffer {
-  kind: 'verified-upload';
+  kind: 'verified-upload' | 'verified-generated';
   source: VerifiedContractDocumentSource;
   bytes: Buffer;
   contentType: 'application/pdf' | 'image/png' | 'image/jpeg' | 'image/gif' | 'image/webp';

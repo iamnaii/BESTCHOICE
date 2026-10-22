@@ -55,3 +55,4 @@ export * from './contract-preparation-read';
 export * from './contract-derived-read';
 export * from './contract-template-access';
 export * from './contract-uploaded-documents';
+export * from './contract-generated-documents';

@@ -1,3 +1,4 @@
+import { generatedDocumentHandlers } from '../employee-access/access-generated-documents-context';
 import { DocumentsController } from '../contracts/documents.controller';
 import { ContractDocumentsController } from '../contracts/contract-documents.controller';
 import { PaymentApprovalController } from '../payments/payment-approval.controller';
@@ -149,6 +150,7 @@ export class AuditInterceptor implements NestInterceptor {
   }
 
   private isManagedSafeRead(context: ExecutionContext): boolean {
+    if (generatedDocumentHandlers.get(context.getClass())?.has(context.getHandler())) return true;
     if (this.isUploadedContractDocument(context)) return true;
     if (this.isConsentHandler(context)) return true;
     if (this.isSharedReference(context)) return true;

@@ -1,3 +1,4 @@
+import { Writable } from 'node:stream';
 import { Test, TestingModule } from '@nestjs/testing';
 import { mkdtempSync, readFileSync, existsSync, rmSync, promises as fs } from 'fs';
 import { tmpdir } from 'os';
@@ -11,6 +12,7 @@ jest.mock('@google-cloud/storage', () => ({
     bucket: jest.fn().mockReturnValue({
       file: jest.fn().mockReturnValue({
         save: jest.fn().mockResolvedValue(undefined),
+        createWriteStream: jest.fn().mockImplementation(() => new (jest.requireActual('node:stream').Writable)({ write(_chunk: unknown, _encoding: string, done: () => void) { done(); } })),
         getMetadata: jest.fn().mockResolvedValue([{ generation: '123', metadata: {} }]),
         exists: jest.fn().mockResolvedValue([true]),
         createReadStream: jest.fn().mockReturnValue('mock-gcs-stream'),
@@ -355,10 +357,21 @@ describe('Customer attachment conditional provider ownership', () => {
     const service = new StorageService(new ConfigService({ STORAGE_LOCAL_DIR: '', S3_ENDPOINT: '', GCS_BUCKET: 'test' }));
     const gcs = sdk.Storage.mock.results.at(-1).value, file = gcs.bucket().file();
     await service.uploadOwned('new-key', Buffer.from('data'), 'image/png', 'own-token');
-    expect(file.save).toHaveBeenCalledWith(expect.any(Buffer), expect.objectContaining({ preconditionOpts: { ifGenerationMatch: 0 }, metadata: { metadata: { customerAttachmentOperation: 'own-token' } } }));
+    expect(file.createWriteStream).toHaveBeenCalledWith(expect.objectContaining({ preconditionOpts: { ifGenerationMatch: 0 }, metadata: { metadata: { customerAttachmentOperation: 'own-token' } } }));
     file.getMetadata.mockResolvedValueOnce([{ generation: '123', metadata: { customerAttachmentOperation: 'other-token' } }]);
     await service.deleteOwned('new-key', 'own-token'); expect(file.delete).not.toHaveBeenCalled();
     file.getMetadata.mockResolvedValueOnce([{ generation: '124', metadata: { customerAttachmentOperation: 'own-token' } }]);
     await service.deleteOwned('new-key', 'own-token'); expect(file.delete).toHaveBeenCalledWith({ ifGenerationMatch: '124' });
   });
+});
+
+it('GCS operation-owned cancellation destroys only its created stream', async () => {
+  const sdk=jest.requireMock('@google-cloud/storage');
+  const service=new StorageService(new ConfigService({STORAGE_LOCAL_DIR:'',S3_ENDPOINT:'',GCS_BUCKET:'test'}));
+  const file=sdk.Storage.mock.results.at(-1).value.bucket().file();
+  const stream=new Writable({write(_chunk,_encoding,_done){ /* controlled pending provider */ }});
+  file.createWriteStream.mockReturnValueOnce(stream);
+  const controller=new AbortController();
+  const upload=service.uploadOwned('owned',Buffer.from('data'),'application/pdf','owned-token',controller.signal);
+  controller.abort();await expect(upload).rejects.toThrow('Owned upload aborted');expect(stream.destroyed).toBe(true);expect(file.delete).not.toHaveBeenCalled();
 });

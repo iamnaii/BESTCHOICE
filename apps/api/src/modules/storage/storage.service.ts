@@ -146,7 +146,8 @@ export class StorageService {
 
   /** Narrow create-only primitive for provenance-backed Customer attachments.
    * Token metadata is operation ownership, never a caller filename/key prefix. */
-  async uploadOwned(key: string, body: Buffer, contentType: string, operationToken: string): Promise<void> {
+  async uploadOwned(key: string, body: Buffer, contentType: string, operationToken: string, signal?: AbortSignal): Promise<void> {
+    signal?.throwIfAborted();
     if (!this.configured) throw new BadRequestException('Storage not configured');
     if (this.backend === 'local') {
       const target = this.localPath(key);
@@ -164,11 +165,15 @@ export class StorageService {
       return;
     }
     if (this.backend === 'gcs' && this.gcs) {
-      await this.gcs.bucket(this.bucket).file(key).save(body, { resumable: false, contentType, preconditionOpts: { ifGenerationMatch: 0 }, metadata: { metadata: { customerAttachmentOperation: operationToken } } });
+      const stream = this.gcs.bucket(this.bucket).file(key).createWriteStream({ resumable: false, contentType, preconditionOpts: { ifGenerationMatch: 0 }, metadata: { metadata: { customerAttachmentOperation: operationToken } } });
+      const abort = () => stream.destroy(new Error('Owned upload aborted'));
+      signal?.addEventListener('abort', abort, { once: true });
+      try { await new Promise<void>((resolve, reject) => { stream.once('finish', resolve); stream.once('error', reject); if (signal?.aborted) abort(); else stream.end(body); }); }
+      finally { signal?.removeEventListener('abort', abort); }
       return;
     }
     if (this.backend === 's3' && this.s3) {
-      await this.s3.send(new PutObjectCommand({ Bucket: this.bucket, Key: key, Body: body, ContentType: contentType, IfNoneMatch: '*', Metadata: { 'customer-attachment-operation': operationToken } }));
+      await this.s3.send(new PutObjectCommand({ Bucket: this.bucket, Key: key, Body: body, ContentType: contentType, IfNoneMatch: '*', Metadata: { 'customer-attachment-operation': operationToken } }), { abortSignal: signal });
       return;
     }
     throw new BadRequestException('Storage not configured');
@@ -206,7 +211,8 @@ export class StorageService {
     return { status: 'retained', reason: 'storage-unavailable' };
   }
 
-  async getStream(key: string): Promise<Readable> {
+  async getStream(key: string, signal?: AbortSignal): Promise<Readable> {
+    signal?.throwIfAborted();
     if (this.backend === 'local') {
       const target = this.localPath(key);
       if (!existsSync(target)) throw new BadRequestException(`ไม่พบไฟล์: ${key}`);
@@ -223,7 +229,7 @@ export class StorageService {
     if (this.backend === 's3' && this.s3) {
       const response = await this.s3.send(new GetObjectCommand({
         Bucket: this.bucket, Key: key,
-      }));
+      }), { abortSignal: signal });
       return response.Body as Readable;
     }
 

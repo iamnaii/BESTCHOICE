@@ -1,3 +1,5 @@
+import { GeneratedDocumentsService } from '../../src/modules/contracts/services/generated-documents.service';
+import { AccessGeneratedDocumentsBoundaries } from '../../src/modules/employee-access/access-generated-documents-boundaries';
 import { AccessContractFilesBoundaries } from '../../src/modules/employee-access/access-contract-files-boundaries';
 import { AccessPartySourceService } from '../../src/modules/employee-access/access-party-source.service';
 import { AccessProcurementSourceService } from '../../src/modules/employee-access/access-procurement-source.service';
@@ -548,7 +550,7 @@ async function main() {
       GlobalCreditCheckController,
       PreviewController,
     ],
-    providers: [ChatLibraryService, ChatLibraryDeliveryService, { provide: MessageRouterService, useValue: library.router }, ChatAnalyticsV2Service, ChatSalesAttributionService,
+    providers: [GeneratedDocumentsService, AccessGeneratedDocumentsBoundaries, ChatLibraryService, ChatLibraryDeliveryService, { provide: MessageRouterService, useValue: library.router }, ChatAnalyticsV2Service, ChatSalesAttributionService,
       ChatServiceRequestService, ChatServiceCaseLinkService, ...afterSales.providers,
       FacebookCommentRefreshService, { provide: FacebookCommentIngestService, useValue: facebookComments.ingest }, FacebookCommentWorkService, FacebookCommentReplyService, { provide: FacebookCommentClient, useValue: facebookComments.client },
       ChatHandoffService, NoteMentionService, { provide: StaffMessageService, useValue: Object.assign(Object.create(StaffMessageService.prototype), { prisma: db }) }, ChatSalesDispositionService, TodosService, ChatFollowUpService, ChatSalesContextService, JourneySummaryService, JourneyStateService, ChatWorkQueryService, ChatWorkSettingsService, StaffInboxService, ChatWorkAccessService,

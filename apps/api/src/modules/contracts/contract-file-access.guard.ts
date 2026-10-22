@@ -1,3 +1,5 @@
+import { AccessGeneratedDocumentsBoundaries } from '../employee-access/access-generated-documents-boundaries';
+import { generatedDocumentHandlers } from '../employee-access/access-generated-documents-context';
 import {
   applyDecorators,
   CanActivate,
@@ -22,10 +24,17 @@ export class ContractFileAccessGuard implements CanActivate {
     private readonly documents: ContractDocumentsService,
     private readonly reflector: Reflector,
     @Optional() private readonly uploads?: AccessContractFilesBoundaries,
+    @Optional() private readonly generated?: AccessGeneratedDocumentsBoundaries,
   ) {}
 
   async canActivate(context: ExecutionContext) {
     const req = context.switchToHttp().getRequest();
+    const generatedOperation = generatedDocumentHandlers.get(context.getClass())?.get(context.getHandler());
+    if (generatedOperation) {
+      if (!this.generated) throw new ForbiddenException('ต้องตรวจสิทธิ์เอกสารปัจจุบัน');
+      await this.generated.preflight(generatedOperation, req);
+      return true;
+    }
     const operation = uploadedDocumentHandlers.get(context.getClass())?.get(context.getHandler());
     if (operation) {
       if (this.uploads) {

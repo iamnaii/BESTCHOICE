@@ -1,5 +1,5 @@
 import { Link } from 'react-router';
-import { PackagePlus, Plus, Search } from 'lucide-react';
+import { HelpCircle, PackagePlus, Plus, Search } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { useCommandPalette } from '@/components/CommandPalette';
@@ -9,6 +9,7 @@ import { DashboardSkeleton } from '@/components/ui/page-skeletons';
 import { Button } from '@/components/ui/button';
 import MyTodayTasksCard from '@/pages/DashboardPage/components/MyTodayTasksCard';
 import HomeActionsGrid from '@/pages/DashboardPage/components/HomeActionsGrid';
+import DashboardMySales from '@/pages/DashboardPage/components/DashboardMySales';
 import { useShopHome } from './hooks/useShopHome';
 import TodayKpiStrip from './components/TodayKpiStrip';
 import WatchList from './components/WatchList';
@@ -88,7 +89,32 @@ export default function ShopHomePage() {
             <SlowMoversCard slowMovers={q.data.slowMovers} stockAging={q.data.stockAging} />
           </div>
 
+          {/* ของเดิมบนหน้าเริ่มงาน (StaffHome) ที่ SALES ใช้ทุกวัน — หน้าหลักหน้าร้านมาแทนจึงต้องไม่หาย */}
           {isSales && <MyTodayTasksCard />}
+          {isSales && (
+            <details className="rounded-xl border border-border bg-card p-4">
+              <summary className="flex min-h-11 cursor-pointer items-center gap-2 rounded-md text-sm font-medium leading-snug focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring">
+                <HelpCircle className="size-4 text-primary" aria-hidden="true" />
+                เริ่มใช้งานครั้งแรก · ดูคำแนะนำ
+              </summary>
+              <div className="mt-3 space-y-3 text-sm text-muted-foreground leading-snug">
+                <p>
+                  <strong className="text-foreground">หาลูกค้าก่อน:</strong> ใช้ปุ่มค้นหาด้านบนด้วยชื่อ
+                  เบอร์โทร IMEI หรือเลขที่สัญญา
+                </p>
+                <p>
+                  <strong className="text-foreground">ทำสัญญาผ่อน:</strong> เตรียมข้อมูลสินค้าและลูกค้า
+                  แล้วทำตามขั้นตอนที่แสดงบนหน้าจอ หากเครดิตยังไม่ผ่าน ให้ตรวจสถานะและสิ่งที่ต้องทำต่อก่อน
+                </p>
+                <p>
+                  <strong className="text-foreground">ใช้คำตอบจาก AI:</strong>{' '}
+                  อ่านร่างและตรวจข้อมูลลูกค้าก่อนส่ง ตรวจข้อความยืนยันบนหน้าจอว่ารายการบันทึกแล้ว
+                </p>
+                <p>งานอื่นยังอยู่ในเมนูด้านข้าง เปิดคำแนะนำนี้ดูซ้ำได้ทุกเมื่อ</p>
+              </div>
+            </details>
+          )}
+          {isSales && <DashboardMySales />}
         </div>
       )}
     </QueryBoundary>

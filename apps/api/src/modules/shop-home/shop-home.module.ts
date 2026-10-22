@@ -4,7 +4,7 @@ import { BookingsModule } from '../bookings/bookings.module';
 import { AfterSalesModule } from '../after-sales/after-sales.module';
 import { ShopTendersModule } from '../shop-tenders/shop-tenders.module';
 import { InventoryModule } from '../inventory/inventory.module';
-import { PurchaseOrdersModule } from '../purchase-orders/purchase-orders.module';
+import { JournalModule } from '../journal/journal.module';
 import { ProductsModule } from '../products/products.module';
 import { AccountingModule } from '../accounting/accounting.module';
 import { ShopHomeController } from './shop-home.controller';
@@ -21,7 +21,7 @@ import { ShopHomeService } from './shop-home.service';
     AfterSalesModule,
     ShopTendersModule,
     InventoryModule,
-    PurchaseOrdersModule,
+    JournalModule, // CompanyResolverService — resolve บริษัทร้านครั้งเดียวสำหรับงบ 6 เดือน
     ProductsModule,
     AccountingModule,
   ],

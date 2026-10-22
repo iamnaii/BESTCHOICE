@@ -7,7 +7,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { BookingStatus, Prisma } from '@prisma/client';
-import { bangkokCalendarParts, bangkokDateRange, bangkokDateString, bangkokMidnight, bangkokStartOfDay } from '../../utils/date.util';
+import { bangkokCalendarParts, bangkokDateRange, bangkokMidnight, bangkokStartOfDay } from '../../utils/date.util';
 import { normalizeThaiPhone } from '../../utils/thai-phone.util';
 import * as Sentry from '@sentry/node';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -308,11 +308,12 @@ export class BookingsService {
    * Booking มีแค่ expireDate ไม่มีวันนัดรับ จึงเป็น "หมดอายุ" ไม่ใช่ "ครบกำหนดรับ".
    */
   async countExpiringToday(user: RequestUser, branchId?: string, now = new Date()) {
-    const today = bangkokDateString(now);
+    // expireDate = เที่ยงคืนไทยของ "วันถัดจาก" วันสุดท้ายที่ใช้ได้ (ดู expiringBefore) — ใบที่ใช้ได้ถึงวันนี้
+    // จึงมี expireDate = พรุ่งนี้ 00:00 ต้องใช้ช่วง (วันนี้ 00:00, พรุ่งนี้ 00:00] ไม่ใช่ช่วงของวันนี้ตรง ๆ
     const base: Prisma.BookingWhereInput = {
       deletedAt: null,
       status: { in: [...OPEN_BOOKING_STATUSES] },
-      expireDate: bangkokDateRange(today, today),
+      expireDate: { gt: bangkokStartOfDay(now), lte: expiringBefore(now, 0) },
     };
     const { where, empty } = this.applyBranchScope(base, user, branchId);
     if (empty) return { count: 0, depositTotal: 0, reservedUnits: 0 };

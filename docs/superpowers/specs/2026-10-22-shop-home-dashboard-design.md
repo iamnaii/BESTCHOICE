@@ -94,7 +94,8 @@ type ShopHomeResponse = {
 **ที่มาของแต่ละก้อน** (ใช้ service ที่มีอยู่ ไม่เขียน query ซ้ำ ถ้าของเดิมให้ไม่ครบค่อยเพิ่ม method ใน service เจ้าของข้อมูล)
 - `today.sales` ← sales daily-summary ของวันนี้ (เวลาไทย)
 - `today.cashDrawer` ← สรุปเงินสดหน้าร้านรายวัน (สถานะปิดยอดของวันนี้ + ยอดคงเหลือ)
-- `today.bookingsExpiringToday` ← นับใบจองเปิดอยู่ที่ `expireDate` = วันนี้ (summary เดิมไม่มีตัวนับนี้)
+- `today.bookingsExpiringToday` ← นับใบจองเปิดอยู่ที่ใช้ได้ถึงสิ้นวันนี้ (`expireDate` ∈ (วันนี้ 00:00, พรุ่งนี้ 00:00] เพราะระบบเก็บ expireDate เป็นเที่ยงคืนของวันถัดจากวันสุดท้าย; summary เดิมไม่มีตัวนับนี้)
+- SALES บนหน้านี้ยังได้การ์ด "ยอดขายของฉัน" และกล่องคำแนะนำเริ่มใช้งานจาก StaffHome ด้วย (ไม่ให้ของที่ใช้ทุกวันหาย)
 - `today.afterSales` ← นับเคสสถานะ "รอลูกค้ารับ" และที่เลยวันนัด
 - `watch` ← stock dashboard `actionRequired` (qcPending, photoPending, pendingTransfers, repossessed, agingOver90) + ตาราง `StockAlert` ที่ ACTIVE (cron ดูแล ไม่ใช่การนับสดแบบ N+1) + PO สถานะ DRAFT
 - `monthly`/`thisMonth` ← งบ SHOP รายเดือนจาก journal: ยอดขาย = เฉพาะบัญชี S41 (S42 รายได้อื่นไม่นับ) − ต้นทุนขาย S50; `cost`/`grossProfit` เป็น null สำหรับ SALES

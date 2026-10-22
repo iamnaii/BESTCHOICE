@@ -63,9 +63,13 @@ describe('ShopHomeService.build', () => {
     d.actionRequired = { ...d.actionRequired, ...(over.actionRequired ?? {}) };
     const m = {
       prisma: {
-        purchaseOrder: { findFirst: jest.fn().mockResolvedValue(over.latestDraftPo === undefined ? { poNumber: 'PO-2610-014' } : over.latestDraftPo) },
+        purchaseOrder: {
+          findFirst: jest.fn().mockResolvedValue(over.latestDraftPo === undefined ? { poNumber: 'PO-2610-014' } : over.latestDraftPo),
+          count: jest.fn().mockResolvedValue(over.pendingApproval ?? 1),
+        },
         branch: { findUnique: jest.fn().mockResolvedValue({ name: 'สาขา 2' }) },
       },
+      companies: { getShopCompanyId: jest.fn().mockResolvedValue('shop-co') },
       sales: {
         getDailySummary: jest.fn().mockResolvedValue({ totalSales: 6, cashSales: 3, installmentSales: 2, externalFinanceSales: 1, totalRevenue: 48900, sales: [] }),
         getTopSellers30d: jest.fn().mockResolvedValue({ byModel: [{ name: 'Apple iPhone 15', count: 14 }], byCategory: [{ name: 'PHONE_NEW', count: 20 }] }),
@@ -79,7 +83,6 @@ describe('ShopHomeService.build', () => {
           over.alerts ?? { total: 4, data: [{ brand: 'ฟิล์ม', model: '15 Pro' }, { brand: 'เคสใส', model: '14' }, { brand: 'สายชาร์จ', model: '20W' }, { brand: 'หูฟัง', model: 'Buds' }] },
         ),
       },
-      purchaseOrders: { getSummary: jest.fn().mockResolvedValue({ pendingApproval: over.pendingApproval ?? 1 }) },
       accounting: {
         getProfitLossFromJournal: jest.fn(async (start: Date, _end: Date, _companyId?: string, _scope?: string) =>
           plRows(pl[monthOf(start)] ?? {}),
@@ -88,7 +91,7 @@ describe('ShopHomeService.build', () => {
     };
     const service = new ShopHomeService(
       m.prisma as never, m.sales as never, m.bookings as never, m.afterSales as never, m.cashClose as never,
-      m.stock as never, m.reorderPoints as never, m.purchaseOrders as never, m.accounting as never,
+      m.stock as never, m.reorderPoints as never, m.companies as never, m.accounting as never,
     );
     return { m, service };
   }
@@ -195,7 +198,7 @@ describe('ShopHomeService.build', () => {
     expect(r.watch[0]).toMatchObject({ key: 'LOW_STOCK', count: 9, detail: 'A 1 · B 2' });
   });
 
-  it('branchId → ส่งต่อให้ทุก service ย่อย ยกเว้น P&L และ PO summary; ชื่อสาขามาจาก branch.findUnique', async () => {
+  it('branchId → ส่งต่อให้ทุก service ย่อย ยกเว้น P&L และ PO (ไม่มีสาขา); ชื่อสาขามาจาก branch.findUnique', async () => {
     const { service, m } = deps();
     const r = await service.build(owner, 'b-2', now);
     expect(r.branch).toEqual({ id: 'b-2', name: 'สาขา 2' });
@@ -205,7 +208,20 @@ describe('ShopHomeService.build', () => {
     expect(m.afterSales.countReadyForPickup).toHaveBeenCalledWith('b-2');
     expect(m.cashClose.getDrawerSnapshot).toHaveBeenCalledWith('b-2', now);
     expect(m.stock.getStockDashboard).toHaveBeenCalledWith('b-2');
-    expect(m.purchaseOrders.getSummary).toHaveBeenCalledWith();
-    expect(m.accounting.getProfitLossFromJournal.mock.calls.every((c) => c[2] === undefined)).toBe(true);
+  });
+
+  it('PO รออนุมัติ: นับและหาเลขล่าสุดเฉพาะใบที่ไม่ถูกลบ (deletedAt null) ตรงกับ pendingApproval ของหน้า PO', async () => {
+    const { service, m } = deps();
+    await service.build(owner, undefined, now);
+    expect(m.prisma.purchaseOrder.count).toHaveBeenCalledWith({ where: { deletedAt: null, status: 'DRAFT' } });
+    expect(m.prisma.purchaseOrder.findFirst.mock.calls[0][0].where).toEqual({ deletedAt: null, status: 'DRAFT' });
+  });
+
+  it('P&L: resolve company ของร้านครั้งเดียว แล้วส่ง companyId ให้ทั้ง 6 เดือน (ลด query ซ้ำ)', async () => {
+    const { service, m } = deps();
+    await service.build(owner, undefined, now);
+    expect(m.companies.getShopCompanyId).toHaveBeenCalledTimes(1);
+    expect(m.accounting.getProfitLossFromJournal).toHaveBeenCalledTimes(6);
+    expect(m.accounting.getProfitLossFromJournal.mock.calls.every((c) => c[2] === 'shop-co' && c[3] === 'SHOP')).toBe(true);
   });
 });

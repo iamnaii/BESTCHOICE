@@ -1,10 +1,30 @@
-import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { Bar, BarChart, CartesianGrid, Cell, LabelList, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import type { ShopHomeResponse } from '../types';
 import { baht, monthLabel, signedPct } from '../format';
 
 interface Props {
   monthly: ShopHomeResponse['monthly'];
   thisMonth: ShopHomeResponse['thisMonth'];
+}
+
+export interface ChartRow {
+  month: string;
+  ยอดขาย: number;
+  ต้นทุน: number | null;
+  กำไรขั้นต้น: number | null;
+  /** เดือนสุดท้าย = เดือนปัจจุบัน → เน้นแท่ง */
+  isCurrent: boolean;
+}
+
+/** แถวข้อมูลกราฟ: ชื่อเดือนไทย · ค่าตามจริง (null เมื่อ server ตัดต้นทุน ไม่ใส่ 0 ปลอม) · ธงเดือนปัจจุบัน */
+export function buildChartRows(monthly: ShopHomeResponse['monthly']): ChartRow[] {
+  return monthly.map((m, i) => ({
+    month: monthLabel(m.month),
+    ยอดขาย: m.sales,
+    ต้นทุน: m.cost,
+    กำไรขั้นต้น: m.grossProfit,
+    isCurrent: i === monthly.length - 1,
+  }));
 }
 
 function Stat({ label, value, tone }: { label: string; value: React.ReactNode; tone?: 'up' | 'down' }) {
@@ -25,12 +45,7 @@ const MOM_LABEL = 'เทียบเดือนก่อนทั้งเด�
  */
 export default function MonthlyChart({ monthly, thisMonth }: Props) {
   const showCost = thisMonth.cost != null;
-  const data = monthly.map((m) => ({
-    month: monthLabel(m.month),
-    ยอดขาย: m.sales,
-    ต้นทุน: m.cost ?? 0,
-    กำไรขั้นต้น: m.grossProfit ?? 0,
-  }));
+  const data = buildChartRows(monthly);
   const momTone = (pct: number | null) => (pct == null ? undefined : pct >= 0 ? 'up' : 'down');
 
   return (
@@ -133,14 +148,32 @@ export default function MonthlyChart({ monthly, thisMonth }: Props) {
                 labelStyle={{ color: 'hsl(var(--foreground))' }}
               />
               <Legend wrapperStyle={{ fontSize: 12 }} iconType="circle" />
-              <Bar dataKey="ยอดขาย" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
+              {/* เดือนปัจจุบันเน้นเต็มสี เดือนก่อนหน้าจางลง (spec §4 ข้อ 4) */}
+              <Bar dataKey="ยอดขาย" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]}>
+                {data.map((row) => (
+                  <Cell key={row.month} fillOpacity={row.isCurrent ? 1 : 0.55} />
+                ))}
+                {showCost && (
+                  <LabelList
+                    dataKey="กำไรขั้นต้น"
+                    position="top"
+                    fontSize={10}
+                    className="fill-foreground"
+                    formatter={(value: unknown) => (value == null ? '' : `${Math.round(Number(value) / 1000)}k`)}
+                  />
+                )}
+              </Bar>
               {showCost && (
                 <Bar
                   dataKey="ต้นทุน"
                   fill="url(#shop-home-cost-hatch)"
                   stroke="hsl(var(--muted-foreground))"
                   radius={[4, 4, 0, 0]}
-                />
+                >
+                  {data.map((row) => (
+                    <Cell key={row.month} fillOpacity={row.isCurrent ? 1 : 0.55} />
+                  ))}
+                </Bar>
               )}
             </BarChart>
           </ResponsiveContainer>

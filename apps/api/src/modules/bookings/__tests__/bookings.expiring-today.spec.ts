@@ -18,15 +18,21 @@ describe('BookingsService.countExpiringToday', () => {
       { status: 'PENDING_DEPOSIT', depositAmount: '1000' },
       { status: 'PAID', depositAmount: '1000' },
     ]);
+    const now = new Date('2026-10-22T03:00:00Z'); // 10:00 ไทย 22 ต.ค.
 
-    expect(await service.countExpiringToday(owner, 'b-1')).toEqual({ count: 3, depositTotal: 4000, reservedUnits: 2 });
+    expect(await service.countExpiringToday(owner, 'b-1', now)).toEqual({ count: 3, depositTotal: 4000, reservedUnits: 2 });
 
     const where = db.booking.findMany.mock.calls[0][0].where;
     expect(where.status.in).toEqual([...OPEN_BOOKING_STATUSES]);
     expect(where.branchId).toBe('b-1');
     expect(where.deletedAt).toBeNull();
-    expect(where.expireDate).toEqual({ gte: expect.any(Date), lt: expect.any(Date) });
-    expect(where.expireDate.lt.getTime() - where.expireDate.gte.getTime()).toBe(86400000);
+    // ใบจองเก็บ expireDate = เที่ยงคืนไทยของ "วันถัดจาก" วันสุดท้ายที่ใช้ได้ (expiringBefore)
+    // ใบที่ใช้ได้ถึงวันนี้จึงมี expireDate = พรุ่งนี้ 00:00 → ต้องใช้ (วันนี้ 00:00, พรุ่งนี้ 00:00]
+    // ไม่ใช่ [วันนี้ 00:00, พรุ่งนี้ 00:00) ซึ่งจะจับได้แค่ใบที่หมดอายุไปแล้วเมื่อวาน (cron เปลี่ยนเป็น EXPIRED ไปแล้ว)
+    expect(where.expireDate).toEqual({
+      gt: new Date('2026-10-21T17:00:00Z'),
+      lte: new Date('2026-10-22T17:00:00Z'),
+    });
   });
 
   it('ไม่มีใบจอง → 0 ทุกช่อง', async () => {

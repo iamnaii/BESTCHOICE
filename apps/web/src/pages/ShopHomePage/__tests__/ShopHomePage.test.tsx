@@ -23,6 +23,9 @@ vi.mock('@/pages/DashboardPage/components/MyTodayTasksCard', () => ({
 vi.mock('@/pages/DashboardPage/components/HomeActionsGrid', () => ({
   default: () => <section aria-label="home-actions" />,
 }));
+vi.mock('@/pages/DashboardPage/components/DashboardMySales', () => ({
+  default: () => <section aria-label="my-sales" />,
+}));
 
 const full = (): ShopHomeResponse => ({
   generatedAt: '2026-10-22T01:12:00.000Z',
@@ -112,6 +115,8 @@ describe('หน้าหลักหน้าร้าน', () => {
     expect(api.get).toHaveBeenCalledWith('/shop-home');
     expect(screen.queryByLabelText('home-actions')).toBeNull();
     expect(screen.queryByLabelText('my-today-tasks')).toBeNull();
+    expect(screen.queryByLabelText('my-sales')).toBeNull();
+    expect(screen.queryByText(/เริ่มใช้งานครั้งแรก/)).toBeNull();
   });
 
   it('SALES (response ถูกตัด): ไม่มีคำว่า "ทุน" ในหน้า หัวกราฟ "ยอดขาย 6 เดือน" และมีการ์ดงานของฉัน + ปุ่มเริ่มงาน', async () => {
@@ -122,6 +127,9 @@ describe('หน้าหลักหน้าร้าน', () => {
     expect(screen.getByText('384,400')).toBeInTheDocument();
     expect(screen.getByLabelText('my-today-tasks')).toBeInTheDocument();
     expect(screen.getByLabelText('home-actions')).toBeInTheDocument();
+    // ของเดิมบนหน้าเริ่มงาน (StaffHome) ที่ SALES เคยเห็นทุกวัน ต้องไม่หายเมื่อหน้าหลักหน้าร้านมาแทน
+    expect(screen.getByLabelText('my-sales')).toBeInTheDocument();
+    expect(screen.getByText(/เริ่มใช้งานครั้งแรก/)).toBeInTheDocument();
     expect(screen.queryByText('ใบสั่งซื้อรออนุมัติ')).toBeNull();
     expect(screen.queryByRole('link', { name: 'รับของเข้า' })).toBeNull();
     // แถวสินค้าใกล้หมดเป็นข้อความธรรมดา ไม่ใช่ลิงก์ (SALES เปิด /stock/alerts ไม่ได้)

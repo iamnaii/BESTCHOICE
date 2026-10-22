@@ -6,7 +6,7 @@ import { AfterSalesService } from '../after-sales/after-sales.service';
 import { ShopCashCloseService } from '../shop-tenders/shop-cash-close.service';
 import { ProductsStockService } from '../products/products-stock.service';
 import { ReorderPointsService } from '../inventory/reorder-points.service';
-import { PurchaseOrdersService } from '../purchase-orders/purchase-orders.service';
+import { CompanyResolverService } from '../journal/company-resolver.service';
 import { AccountingService } from '../accounting/accounting.service';
 import { bangkokCalendarParts, bangkokDateString, bangkokMidnight } from '../../utils/date.util';
 import type { ShopHomeMonth, ShopHomeResponse, ShopHomeWatchItem } from './shop-home.types';
@@ -18,7 +18,8 @@ type LedgerRow = { code: string; amount: unknown };
 /**
  * หน้าหลักหน้าร้าน — ประกอบ response เต็มจาก service เจ้าของข้อมูล (spec §5).
  * ไม่ตัดต้นทุนที่นี่: controller เรียก redactShopHome() ตาม canSeeCost(role).
- * ไม่ query Prisma ตรงยกเว้นเลข PO ร่างล่าสุดและชื่อสาขา (plan Task 4).
+ * ไม่ query Prisma ตรงยกเว้น PO ร่าง (นับ + เลขล่าสุด; PurchaseOrder ไม่มีสาขา และ getSummary() ของ
+ * หน้า PO ยิง 7 count เพื่อได้เลขเดียว) และชื่อสาขา (plan Task 4 + review fix #4/#5).
  */
 @Injectable()
 export class ShopHomeService {
@@ -30,13 +31,14 @@ export class ShopHomeService {
     private readonly cashClose: ShopCashCloseService,
     private readonly stock: ProductsStockService,
     private readonly reorderPoints: ReorderPointsService,
-    private readonly purchaseOrders: PurchaseOrdersService,
+    private readonly companies: CompanyResolverService,
     private readonly accounting: AccountingService,
   ) {}
 
   async build(actor: ShopHomeActor, branchId: string | undefined, now = new Date()): Promise<ShopHomeResponse> {
     const today = bangkokDateString(now);
-    const [daily, drawer, expiring, pickup, dashboard, alerts, poSummary, latestDraftPo, topSellers, monthly, branch] =
+    const draftPoWhere = { deletedAt: null, status: 'DRAFT' as const };
+    const [daily, drawer, expiring, pickup, dashboard, alerts, pendingPoCount, latestDraftPo, topSellers, monthly, branch] =
       await Promise.all([
         this.sales.getDailySummary(today, actor, branchId),
         this.cashClose.getDrawerSnapshot(branchId, now),
@@ -44,9 +46,9 @@ export class ShopHomeService {
         this.afterSales.countReadyForPickup(branchId),
         this.stock.getStockDashboard(branchId),
         this.reorderPoints.getActiveAlerts(branchId, 1, 4),
-        this.purchaseOrders.getSummary(),
+        this.prisma.purchaseOrder.count({ where: draftPoWhere }),
         this.prisma.purchaseOrder.findFirst({
-          where: { status: 'DRAFT' },
+          where: draftPoWhere,
           orderBy: { createdAt: 'desc' },
           select: { poNumber: true },
         }),
@@ -76,7 +78,7 @@ export class ShopHomeService {
       },
       { key: 'TRANSFER_PENDING', count: a.pendingTransfers, severity: 'wait', detail: null, costValue: null },
       { key: 'REPOSSESSED', count: a.repossessed, severity: 'wait', detail: null, costValue: null },
-      { key: 'PO_APPROVAL', count: poSummary.pendingApproval, severity: 'info', detail: latestDraftPo?.poNumber ?? null, costValue: null },
+      { key: 'PO_APPROVAL', count: pendingPoCount, severity: 'info', detail: latestDraftPo?.poNumber ?? null, costValue: null },
     ];
     const watch = candidates.filter((w) => w.count > 0);
 
@@ -123,6 +125,8 @@ export class ShopHomeService {
    */
   private async loadMonthly(now: Date): Promise<ShopHomeMonth[]> {
     const { year, month } = bangkokCalendarParts(now); // month เป็น 0-based
+    // resolve บริษัทของร้านครั้งเดียว — getProfitLossFromJournal จะ resolve ซ้ำทุกครั้งถ้าไม่ส่ง companyId
+    const companyId = await this.companies.getShopCompanyId();
     const rows = await Promise.all(
       Array.from({ length: 6 }, (_, i) => {
         const d = new Date(Date.UTC(year, month - 5 + i, 1));
@@ -130,7 +134,7 @@ export class ShopHomeService {
       }).map(async ({ y, m }) => {
         const start = bangkokMidnight(y, m, 1);
         const end = new Date(bangkokMidnight(y, m + 1, 1).getTime() - 1);
-        const pl = await this.accounting.getProfitLossFromJournal(start, end, undefined, 'SHOP');
+        const pl = await this.accounting.getProfitLossFromJournal(start, end, companyId, 'SHOP');
         const sales = sumByPrefix(pl.revenue.rows, 'S41');
         const cost = sumByPrefix(pl.expenses.rows, 'S50');
         return { month: `${y}-${String(m + 1).padStart(2, '0')}`, sales, cost, grossProfit: sales - cost };

@@ -20,9 +20,10 @@ import PageHeader from '@/components/ui/PageHeader';
 import QueryBoundary from '@/components/QueryBoundary';
 import { useDebounce } from '@/hooks/useDebounce';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
+import { useUiFlags } from '@/hooks/useUiFlags';
 import { cn } from '@/lib/utils';
 import type { StockProduct } from '@/pages/StockPage/types';
-import { StickerCard, STICKER_STYLES } from './StickerCard';
+import { DEFAULT_STICKER_SIZE, STICKER_SIZES, StickerCard, stickerStyles, type StickerSize } from './StickerCard';
 import { DEFAULT_PICKER_SORT, StickerPickerTable } from './StickerPickerTable';
 import { buildStickerView, type StickerProductData, type StickerQuotes, type StickerView } from './stickerView';
 import { useStickerQuotes, type QuotableProduct } from './useStickerQuotes';
@@ -44,8 +45,14 @@ type QueueState = 'ready' | 'noPrice' | 'loading' | 'missing';
 
 const PAGE_SIZE = 20;
 const ALL_BRANDS = 'ทั้งหมด';
-const TAPE_PER_STICKER_MM = 52;
+/** ช่องว่างระหว่างดวงบนม้วน (มม.) — บวกกับความสูงดวงเป็นเทปที่ใช้ต่อดวง */
+const TAPE_GAP_MM = 2;
 const PREVIEW_LIMIT = 8;
+
+/** ขนาดม้วนจากตั้งค่า — เซิร์ฟเวอร์รุ่นก่อนก้อน 3 ไม่ส่งช่องนี้ และค่าแปลก ๆ ตกไปขนาดเริ่มต้น */
+function resolveStickerSize(raw: string | undefined): StickerSize {
+  return raw && raw in STICKER_SIZES ? (raw as StickerSize) : DEFAULT_STICKER_SIZE;
+}
 const RECENT_KEY = 'sticker-print:recent';
 const MAX_RECENT = 8;
 const EMPTY_QUOTES: StickerQuotes = { rate1: null, rate2: null };
@@ -91,13 +98,18 @@ const QUEUE_ICON: Record<QueueState, typeof CheckCircle2> = {
 };
 
 /**
- * หน้าพิมพ์สติกเกอร์ติดเครื่อง (thermal 50×30 มม.) — ราคาและค่างวดจากตัวเครื่อง สูตรเดียวกับหน้าสินค้า
+ * หน้าพิมพ์สติกเกอร์ติดเครื่อง (thermal — ขนาดม้วนและ QR ตามตั้งค่า ค่าเริ่มต้น 60×40 มม. + QR)
+ * ราคาและค่างวดจากตัวเครื่อง สูตรเดียวกับหน้าสินค้า
  * ซ้าย: ตารางเลือกเครื่องพร้อมขาย (เรียงรับเข้าใหม่ → เก่า) · ขวา: คิวพิมพ์ + พรีวิวดวง + ปุ่มพิมพ์
  * เครื่องที่ยังไม่ตั้งราคาถูกเตือนในคิวและถูกข้ามตอนพิมพ์ (ไม่มีดวง ฿0 อีก)
  */
 export default function StickerPrintPage() {
   useDocumentTitle('พิมพ์สติกเกอร์');
   const [searchParams] = useSearchParams();
+  const flags = useUiFlags();
+  const size = resolveStickerSize(flags.stickerSize);
+  const showQr = flags.stickerShowQr ?? true;
+  const sizeLabel = STICKER_SIZES[size].label;
 
   const [items, setItems] = useState<PrintItem[]>(() =>
     (searchParams.get('productIds') ?? '')
@@ -201,7 +213,7 @@ export default function StickerPrintPage() {
     () => new Map(queue.filter((entry) => entry.product).map((entry) => [entry.product!.productId, entry.item.qty])),
     [queue],
   );
-  const tapeCm = (printable.length * TAPE_PER_STICKER_MM) / 10;
+  const tapeCm = (printable.length * (STICKER_SIZES[size].h + TAPE_GAP_MM)) / 10;
 
   /* ─── การกระทำ ────────────────────────────────────────────────────────────── */
   const addKeys = useCallback(
@@ -264,14 +276,14 @@ export default function StickerPrintPage() {
 
   return (
     <div>
-      <style>{STICKER_STYLES}</style>
+      <style>{stickerStyles(size)}</style>
       <div className="print:hidden">
         <PageHeader
           icon={<Tag aria-hidden="true" className="size-4" strokeWidth={1.75} />}
           title="พิมพ์สติกเกอร์"
-        subtitle="เลือกเครื่องเข้าคิวเพื่อพิมพ์สติกเกอร์ 50 × 30 มม."
-        helpLabel="วิธีพิมพ์สติกเกอร์"
-        help="เลือกเครื่องจากสต็อกพร้อมขายแล้วพิมพ์พร้อมกันได้หลายเครื่อง ราคาและค่างวดอ้างอิงข้อมูลของแต่ละเครื่อง ใช้กับเครื่องพิมพ์ความร้อนขนาด 50 × 30 มม."
+          subtitle={`เลือกเครื่องเข้าคิวเพื่อพิมพ์สติกเกอร์ ${sizeLabel}`}
+          helpLabel="วิธีพิมพ์สติกเกอร์"
+          help={`เลือกเครื่องจากสต็อกพร้อมขายแล้วพิมพ์พร้อมกันได้หลายเครื่อง ราคาและค่างวดอ้างอิงข้อมูลของแต่ละเครื่อง ใช้กับเครื่องพิมพ์ความร้อนขนาด ${sizeLabel}${showQr ? ' พร้อม QR ของ IMEI/รหัสสินค้าให้เครื่องยิงอ่าน' : ''} — เปลี่ยนขนาดม้วนหรือเปิด/ปิด QR ได้ที่ ตั้งค่า › สินค้า › สติกเกอร์ฉลาก`}
           action={
             <div className="hidden items-center gap-3 rounded-md border border-border bg-card px-3.5 py-1.5 text-xs sm:flex">
               <span>
@@ -532,7 +544,7 @@ export default function StickerPrintPage() {
                 <div className="flex max-h-96 flex-col items-center gap-3 overflow-y-auto rounded-lg bg-background p-2.5">
                   {printable.slice(0, PREVIEW_LIMIT).map((view, index) => (
                     <div key={`${view.productId}-${index}`} className="bg-white p-1.5 shadow-md">
-                      <StickerCard view={view} />
+                      <StickerCard view={view} size={size} showQr={showQr} />
                     </div>
                   ))}
                   {printable.length > PREVIEW_LIMIT && (
@@ -565,7 +577,7 @@ export default function StickerPrintPage() {
       {/* ─── ชุดพิมพ์จริง (แสดงเฉพาะตอนพิมพ์) ─────────────────────────────────── */}
       <div className="print-stickers hidden print:block">
         {printable.map((view, index) => (
-          <StickerCard key={`print-${view.productId}-${index}`} view={view} />
+          <StickerCard key={`print-${view.productId}-${index}`} view={view} size={size} showQr={showQr} />
         ))}
       </div>
     </div>

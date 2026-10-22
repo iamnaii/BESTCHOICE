@@ -885,9 +885,11 @@ Checkpoint: final103 owned cases, executor6, types/lint and localcheck39 pass. I
 
 **Files/scope:** all8ContractDocumentsController methods: findByContract/getDocumentChecklist/getDocumentAuditTrail/upload/recordView/content/recordDownload/remove. Consume actual current Contract/Customer/preparation and source-sensitive file policy, including genuine ContractFileAccessGuard before interceptor.
 
-- [ ] Concrete parent/document/sensitive/classification/provenance and selectedSHOP-preparation/FINANCE policy plus marked ownedHTTP/PG RED before runtime. Preserve all original file validation/DTO/query/version/state/immutable evidence; no blanket managed guard bypass, guessed historical file source or filename authority.
-- [ ] Scope metadata/checklist/history before counts/limits; finite activity labels and genuine retained document-to-parent audit relationship. Separate VIEW/download intent from actual delivery; private headers and buffered/authenticated content must release no byte before final current authorization/required audit commit. Writes join canonical owned transaction and operation-owned staging/cleanup.
-- [ ] All8 useful allowed/denied/source substitution/current-wait/malicious bytes/header/hash/rollback/delivery tests, source/storage interface for rendering child3, types/lint/coverage/report/freeze and independent gate. Preserve customer/public/system callers and retained originals; no real provider.
+- [x] Concrete parent/document/sensitive/classification/provenance and selectedSHOP-preparation/FINANCE policy plus marked ownedHTTP/PG RED before runtime. Preserve all original file validation/DTO/query/version/state/immutable evidence; no blanket managed guard bypass, guessed historical file source or filename authority. R161–166 and actual marked RED accepted; final eb9b8a8f6 independently gated.
+- [x] Scope metadata/checklist/history before counts/limits; finite activity labels and genuine retained document-to-parent audit relationship. Separate VIEW/download intent from actual delivery; private headers and buffered/authenticated content must release no byte before final current authorization/required audit commit. Writes join canonical owned transaction and operation-owned staging/cleanup.
+- [x] All8 useful allowed/denied/source substitution/current-wait/malicious bytes/header/hash/rollback/delivery tests, source/storage interface for rendering child3, types/lint/coverage/report/freeze and independent gate. Preserve customer/public/system callers and retained originals; no real provider.
+
+Checkpoint: eb9b8a8f6 passes 105 owned HTTP/PG and 19 current canonical cases, types/lint/coverage and 39 local checks. Independent review is spec compliant and quality approved, with 0 Critical, 0 Important and 2 Minor findings deferred to final review. Typed source/response contracts and all six cross-task obligations are assigned in task-4.2.2.2-cv-disposition.md. Reviewed domain count is 332: 280 SHOP plus 52 FINANCE; 492 FINANCE remain. The document group has 14 of 27 methods reviewed; ten generated-document and three signature methods remain. No whole-program, full-JWT/CSRF or managed-UI claim.
 
 ### Task 4.2.2.3: Generated documents, rendering and authenticated delivery
 
@@ -1220,6 +1222,7 @@ Checkpoint: final103 owned cases, executor6, types/lint and localcheck39 pass. I
 - [ ] Complete meaningful safe reason capture for managed skip-tracing and other reason-required operations. A reasonProvided flag is not the reason. Reconcile a validated structured business-reason contract or appropriately protected business-detail source with UI7 and source-filtered audit detail; do not put arbitrary secret-bearing free text into safe activity payloads or claim omitted text can be recovered. Cover actual reason recording/retrieval/denial and keep legacy stored history intact.
 - [ ] Return safe activity summaries to all staff; expose details only through whitelist and source-specific grants. Deny raw legacy log endpoints/exports to viewers lacking source access. No content-edit/delete endpoints. Existing archive updates remain possible.
 - [ ] Focused tests/types, commit. Identify server-observed versus client-requested events accurately.
+- [ ] Consume uploaded-document gate eb9b8a8f6: keep atomic required evidence and finite intent/release labels; integrate direct audit writes with append-only/chain history, all-person display and auth/pre-interceptor denial capture. Safe source-sensitive details/search/stats/export remain required.
 
 ### Task 6: Discount and financial approval enforcement
 
@@ -1244,8 +1247,11 @@ Checkpoint: final103 owned cases, executor6, types/lint and localcheck39 pass. I
 - [ ] Build username assignment editor with position + company + scope/branch per row, current effective access/explanation, migration preview and differences; saving applies reviewed positions, no per-user permission toggles. Make legacy status visible. Allow multiple positions per branch/context.
 - [ ] Connect frontend navigation/action availability to effective scoped access. Build all-staff activity table with safe filters, archived option, expandable authorized details; no raw sensitive payload rendering. Integrate discount requests/caps/owner reason and refund approval/execution controls with actual APIs.
 - [ ] Use existing Thai typography/tokens/PageHeader/forms, keyboard labels and responsive layouts. Build/tests/types, commit. No static fake interactions presented as working backend.
+- [ ] Consume UploadedContractDocument* contracts in DocumentUpload.tsx and ContractDetailPage.tsx: unavailable/null count/presence/completeness, conditional guardian, UNVERIFIED files, authenticated opening, selected work and actor/work/current-source cache invalidation. Uploaded API gate does not prove usable managed UI.
 
 ### Task 8: Isolated end-to-end verification and working local preview
+
+Uploaded-document gate eb9b8a8f6 uses synthetic JWT identity and 39 baseline browser checks. This task must close actual JWT/Roles/CSRF/current snapshot and selected-work document browser proof on the fresh checkout backend; see task-4.2.2.2-cv-disposition.md. Historical/context-free provenance repair and real employee migration are not silently authorized by a passing localcheck.
 
 **Files:** Create `tools/test-employee-access.sh`, `apps/api/e2e/employee-access.e2e-spec.ts`, `tools/check-local-employee-access.mjs`; extend preview support and `tools/local-check.mjs` to exercise actual feature services; write `docs/guides/employee-access.md`.
 

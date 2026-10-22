@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import type { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { hasCrossBranchAccess } from '../../auth/branch-access.util';
 import { readStringFlag } from '../../../utils/config.util';
@@ -33,6 +34,11 @@ export type ScanReason =
 
 export type ScanActor = { role: string; branchId?: string | null };
 
+/** แถวเดียวกับที่ `GET /products` ส่ง (include เดิม) + `effectiveShopWarrantyDays` ที่ findAll เติมให้ */
+export type ScanProductRow = Prisma.ProductGetPayload<{ include: typeof productInclude }> & {
+  effectiveShopWarrantyDays: number;
+};
+
 export interface ScanOutcome {
   /** ค่าที่ค้น (trim แล้ว) */
   code: string;
@@ -40,7 +46,7 @@ export interface ScanOutcome {
   /** === (reason === 'SELLABLE') */
   sellable: boolean;
   /** แถวเต็มรูปเดียวกับ GET /products (+ effectiveShopWarrantyDays) — null เมื่อไม่พบ/ถูกลบ */
-  product: (Record<string, unknown> & { id: string; status: string; effectiveShopWarrantyDays: number }) | null;
+  product: ScanProductRow | null;
   branch: { id: string; name: string } | null;
   booking: { id: string; bookingNumber: string; customerName: string; expireDate: string } | null;
   contract: { id: string; contractNumber: string; customerName: string; status: string } | null;

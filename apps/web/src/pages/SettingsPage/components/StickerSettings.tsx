@@ -1,4 +1,5 @@
 import { useId } from 'react';
+import { NativeSelect } from '@/components/ui/native-select';
 import { useAuth } from '@/contexts/AuthContext';
 import { DEFAULT_STICKER_SIZE, STICKER_SIZES, type StickerSize } from '@/pages/StickerPrintPage/StickerCard';
 import { SettingsCard, StatCard } from './shared';
@@ -109,18 +110,18 @@ export default function StickerSettings({
                 <label htmlFor={sizeId} className="flex-1 text-sm text-foreground">
                   ขนาดม้วน
                 </label>
-                <select
+                <NativeSelect
                   id={sizeId}
                   value={size}
                   onChange={(e) => setDraft((prev) => ({ ...prev, [SIZE_KEY]: e.target.value }))}
-                  className="w-48 rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground outline-hidden focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background"
+                  wrapperClassName="w-48"
                 >
                   {(Object.keys(STICKER_SIZES) as StickerSize[]).map((key) => (
                     <option key={key} value={key}>
                       {STICKER_SIZES[key].label}
                     </option>
                   ))}
-                </select>
+                </NativeSelect>
               </div>
               <div className="ml-0.5 mt-1 text-xs text-muted-foreground/70 leading-snug">{STICKER_SIZES[size].hint}</div>
             </div>

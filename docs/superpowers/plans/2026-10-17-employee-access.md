@@ -895,9 +895,11 @@ Checkpoint: eb9b8a8f6 passes 105 owned HTTP/PG and 19 current canonical cases, t
 
 **Files/scope:** DocumentsController.generateDocument/generatePdpaDocument/generateSignedDocuments/previewContract/downloadPdf/regenerateSignedContractPdfs/getDocument/getDocuments/downloadDocument/getSignedUrl; exactly10domain. Consume gated template/source/uploaded-evidence infrastructure.
 
-- [ ] Propose actual renderer inputs/current independent sensitive sources, preview versus immutable canonical signed artifact, generated-record/file proof, finite batch bounds and signed-URL compatibility; marked ownedHTTP/PG RED and root policy ruling before runtime.
-- [ ] Preserve canonical documentSourceRevision/state/signature retention; no redacted viewer DTO persisted as official original. Bound renderer/acquisition/staging, final current-source/required-evidence commit before response bytes, actual @Res/stream headers/terminal failures, operation-owned cleanup and postcommit effects. Existing customer/public authentication and old artifacts remain.
-- [ ] Useful all10 positives/denials/current revocation and source change during render/store, malicious source/HTML/file substitution, batchpartial/failure semantics and realno-byte-before-commit evidence; controlled providers/canonical regressions/types/lint/coverage/report/freeze/gate. Publish reviewed aftercommit canonical generator for signature child4 and explicit UI7 file/share contract.
+- [x] Propose actual renderer inputs/current independent sensitive sources, preview versus immutable canonical signed artifact, generated-record/file proof, finite batch bounds and signed-URL compatibility; marked ownedHTTP/PG RED and root policy ruling before runtime.
+- [x] Preserve canonical documentSourceRevision/state/signature retention; no redacted viewer DTO persisted as official original. Bound renderer/acquisition/staging, final current-source/required-evidence commit before response bytes, actual @Res/stream headers/terminal failures, operation-owned cleanup and postcommit effects. Existing customer/public authentication and old artifacts remain.
+- [x] Useful all10 positives/denials/current revocation and source change during render/store, malicious source/HTML/file substitution, batchpartial/failure semantics and realno-byte-before-commit evidence; controlled providers/canonical regressions/types/lint/coverage/report/freeze/gate. Publish reviewed aftercommit canonical generator for signature child4 and explicit UI7 file/share contract.
+
+Checkpoint: `672180ee9` closes the exact ten generated-document methods after scoped fix1 review: all four Important findings and the required current-revocation/selection/retry evidence gap are addressed, with no new Critical/Important/Minor breakage. Final covering124, canonical165, uploaded105 and local39 checks pass. Two original Minors remain for final whole-branch review. R167–172 and the explicit CV disposition retain genuine signature event/consumer work in child4, UI7 file/template choices, audit5 and full-auth/browser8. Reviewed original domain count is342:280SHOP+62FINANCE;482FINANCE remain. Documents24/27 are gated; signature3 remain. No whole-program, production migration or managed-UI completion claim.
 
 ### Task 4.2.2.4: Signature evidence and automatic signed-document consumer
 
@@ -1224,6 +1226,8 @@ Checkpoint: eb9b8a8f6 passes 105 owned HTTP/PG and 19 current canonical cases, t
 - [ ] Focused tests/types, commit. Identify server-observed versus client-requested events accurately.
 - [ ] Consume uploaded-document gate eb9b8a8f6: keep atomic required evidence and finite intent/release labels; integrate direct audit writes with append-only/chain history, all-person display and auth/pre-interceptor denial capture. Safe source-sensitive details/search/stats/export remain required.
 
+- [ ] Reconcile generated-document exact10 outer audit payloads for managed/legacy/malformed/error cases, with safe finite route/outcome fields and no private template/file/source/provider data. Internal required mutation/release evidence remains enforced in the document adapter.
+
 ### Task 6: Discount and financial approval enforcement
 
 **Files:** Modify sales discount policy and actual sale writer/DTO/controller, existing refunds/refund permission helper, late-fee-waiver, cancellation and interest-reduction mutation paths; create focused approval service/DTO/tests and schema additive migration if needed.
@@ -1248,6 +1252,9 @@ Checkpoint: eb9b8a8f6 passes 105 owned HTTP/PG and 19 current canonical cases, t
 - [ ] Connect frontend navigation/action availability to effective scoped access. Build all-staff activity table with safe filters, archived option, expandable authorized details; no raw sensitive payload rendering. Integrate discount requests/caps/owner reason and refund approval/execution controls with actual APIs.
 - [ ] Use existing Thai typography/tokens/PageHeader/forms, keyboard labels and responsive layouts. Build/tests/types, commit. No static fake interactions presented as working backend.
 - [ ] Consume UploadedContractDocument* contracts in DocumentUpload.tsx and ContractDetailPage.tsx: unavailable/null count/presence/completeness, conditional guardian, UNVERIFIED files, authenticated opening, selected work and actor/work/current-source cache invalidation. Uploaded API gate does not prove usable managed UI.
+- [ ] Consume generated-document contracts from Task4.2.2.3: finite metadata and UNVERIFIED status, authenticated descriptor followed by current-auth/current-company blob GET with objectURL cleanup, and explicit BUILTIN choice versus owner-only custom template. Update Customer360, Contract preview/download and StepComplete signed-generation consumers; never silently replace customized contract terms or treat the authenticated descriptor as a portable public URL. Clear private previews/cache after actor/work/authority changes and handle partial signed results honestly.
+
+- [ ] Consume the final Task4.2.2.4 signature presence/capture contract in StepSignature: distinguish unavailable/loading/error from an empty signature list, prevent automatic COMPANY capture until current source and signature state are loaded and authorized, preserve guardian requirements and clear actor/work-bound signature caches. Saved own/lessor signature inputs keep their independent authority; a capture permission is not a general private-signature read grant.
 
 ### Task 8: Isolated end-to-end verification and working local preview
 
@@ -1259,6 +1266,8 @@ Uploaded-document gate eb9b8a8f6 uses synthetic JWT identity and 39 baseline bro
 
 - [ ] Exercise owner create/edit/assign positions, manager A + sales B, accountant A + sales B, reassign/revoke live session, costs/profits, approval/rejection/selfapproval/refund duplicate, all-staff audit visibility and archived redaction through HTTP and browser rather than mocks alone.
 - [ ] Exercise coverage checker and public/customer/integration boundaries. Include representative export/realtime and automated actor tests. Verify durable audit failure rolls back sensitive mutations. Confirm no unexplained inventory gaps.
+- [ ] Exercise generated document preview/create/open/download with real JWT/Roles/CSRF and selected work, explicit template choice, historical unverified state, current revocation and generated signed attachment through the shared ContractDocument route. The isolated controlled-provider gate and owned Chromium smoke do not replace this actual staff browser integration.
+- [ ] Exercise the changed sales-documents e2e fixture and independently authenticated customer plus genuine legacy historical generated-document delivery; synthetic JWT fixtures and the six canonical unit suites do not establish this compatibility proof.
 - [ ] Run isolated regression appropriate to finance changes, then `npm run local:check` with a free LOCAL_PREVIEW_PORT. Fix failures with focused reproduction; only rerun broad checks after changes justify it. Feature smoke must use real services; existing unrelated fixture routes may remain synthetic and documented.
 - [ ] Inspect desktop/mobile screenshots, verify route navigation and mutation persistence, leave preview running. Write configuration/migration guide including review required before live user migration and no guessed caps.
 - [ ] Commit verification/support changes, record precise results and limitations for final independent review. No merge/push/deploy.

@@ -5,7 +5,9 @@ import type { Product } from './types';
 /**
  * ยิง QR / IMEI ที่หน้าขาย (A4 · 2026-10-22) — ถ้อยคำของแถบเขียว/แถบแดง · pure ไม่มี DOM
  * ข้อเท็จจริงมาจาก `GET /products/scan` (ใครจอง ขายเมื่อไร อยู่สาขาไหน) ที่นี่แค่แปลงเป็นประโยค + ปุ่มพาไปต่อ
- * ลิงก์ทุกตัวตรวจแล้วว่า SALES เข้าถึงได้: `/bookings?bookingId=` · `/contracts/:id` · `/sales?saleId=` · `/stock?q=`
+ * ลิงก์ทุกตัวตรวจแล้วว่า SALES เข้าถึงได้: `/bookings?bookingId=` · `/contracts/:id` · `/sales?saleId=` ·
+ * `/stock/products?view=all&q=` (หน้ารายการสินค้า — `/stock` เฉย ๆ คือภาพรวมที่ไม่อ่าน `q` · ต้อง `view=all`
+ * ไม่งั้นเห็นเฉพาะเครื่องพร้อมขาย) · `OTHER_BRANCH` ไม่มีลิงก์: SALES/BM เปิดคลังของสาขาอื่นไม่ได้ (`findAll` บังคับสาขา)
  */
 
 export type ScanReason =
@@ -67,7 +69,7 @@ export function honorific(name: string): string {
 }
 
 function stockLink(code: string): ScanBlockMessage['link'] {
-  return { label: 'ดูในคลังสินค้า', to: `/stock?q=${encodeURIComponent(code)}` };
+  return { label: 'ดูในคลังสินค้า', to: `/stock/products?view=all&q=${encodeURIComponent(code)}` };
 }
 
 export function describeScanBlock(outcome: ScanOutcome): ScanBlockMessage {
@@ -88,8 +90,8 @@ export function describeScanBlock(outcome: ScanOutcome): ScanBlockMessage {
     case 'OTHER_BRANCH':
       return {
         title: `${BLOCK}อยู่สาขาอื่น`,
-        detail: `เครื่องอยู่ที่ ${outcome.branch?.name ?? 'สาขาอื่น'} — ต้องโอนมาสาขานี้ก่อน`,
-        link: stockLink(code),
+        detail: `เครื่องอยู่ที่ ${outcome.branch?.name ?? 'สาขาอื่น'} — ให้ผู้จัดการโอนมาสาขานี้ก่อน`,
+        link: null,
       };
     case 'BOOKED': {
       const b = outcome.booking;
@@ -147,5 +149,8 @@ export function describeScanBlock(outcome: ScanOutcome): ScanBlockMessage {
     }
     case 'SELLABLE':
       return { title: '', detail: null, link: null };
+    default:
+      // reason ใหม่จาก API ที่แท็บเก่ายังไม่รู้จัก (ข้าม deploy) — แสดงรหัสดิบ ไม่ล้มทั้งหน้าขาย
+      return { title: `${BLOCK}${String(outcome.reason)}`, detail: null, link: null };
   }
 }

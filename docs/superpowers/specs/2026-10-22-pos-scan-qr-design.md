@@ -84,20 +84,21 @@ interface ScanOutcome {
   IMEI 15 หลัก / รหัสสินค้า / uuid ผ่านทั้งหมด.
 - `scanIdLabel(product)`: imei → `{ label: 'IMEI', text }` · `legacyProductCode` → `{ label: 'รหัส', text }` · ไม่งั้น `{ label: 'ID', text: id.slice(0, 8) }` (กติกาเดียวกับสติกเกอร์ A5).
 - `describeScanBlock(outcome)` → `{ title, detail, link: { label, to } | null }` — ข้อความทุกเหตุผล (ชี้ทางเฉพาะที่ role ที่เจอ error เข้าถึงได้จริง — ตรวจ `App.tsx` แล้ว:
-  `/bookings` `/stock` `/sales` `/contracts/:id` เปิดให้ SALES ทุกเส้นทาง · `/bookings?bookingId=` `/sales?saleId=` `/stock?q=` เป็น deep link ที่มีอยู่แล้ว):
+  `/bookings` `/stock/products` `/sales` `/contracts/:id` เปิดให้ SALES ทุกเส้นทาง · `/bookings?bookingId=` `/sales?saleId=` `/stock/products?view=all&q=` เป็น deep link ที่มีอยู่แล้ว — **`/stock` เฉย ๆ คือหน้าภาพรวมที่ไม่อ่าน `q`** และหน้ารายการสินค้าต้อง `view=all` ไม่งั้นเห็นเฉพาะเครื่องพร้อมขาย (ผลตรวจทานอิสระ 2026-10-22)):
 
 | reason | title (ต่อท้าย "เครื่องนี้ขายไม่ได้ตอนนี้ · ") | detail | link |
 |---|---|---|---|
 | `NOT_FOUND` | *(ไม่มีคำนำ)* `ไม่พบรหัส “<code>” ในระบบ` | `ถ้าพิมพ์ชื่อรุ่น ให้เลือกจากรายการด้านล่าง · ถ้ายิงจากสติกเกอร์ ลองยิงใหม่อีกครั้ง` | — |
 | `DELETED` | *(ไม่มีคำนำ)* `เครื่องรหัส <code> ถูกลบออกจากระบบแล้ว` | `ถ้าเครื่องยังอยู่จริง ให้ผู้จัดการตรวจสอบก่อนขาย` | — |
-| `OTHER_BRANCH` | `อยู่สาขาอื่น` | `เครื่องอยู่ที่ <branch.name> — ต้องโอนมาสาขานี้ก่อน` | `ดูในคลังสินค้า` → `/stock?q=<code>` |
+| `OTHER_BRANCH` | `อยู่สาขาอื่น` | `เครื่องอยู่ที่ <branch.name> — ให้ผู้จัดการโอนมาสาขานี้ก่อน` | — (role ที่ได้เหตุผลนี้มีแค่ SALES/BM ซึ่งหน้าคลังสินค้าไม่แสดงเครื่องของสาขาอื่นให้ — `findAll` บังคับ `branchId` เมื่อ `groupAccessories` · โอนเครื่องทำได้เฉพาะ OWNER/BM) |
 | `BOOKED` | `จองไว้แล้ว` | `ใบจอง <bookingNumber> ของ<ชื่อลูกค้า> หมดอายุ <D MMM>` | `เปิดใบจอง <bookingNumber>` → `/bookings?bookingId=<id>` |
 | `DRAFT_CONTRACT` | `ติดร่างสัญญา` | `ร่างสัญญา <contractNumber> ของ<ชื่อลูกค้า>` | `เปิดร่างสัญญา <contractNumber>` → `/contracts/<id>` |
-| `WEB_RESERVED` | `ลูกค้าจองผ่านเว็บ` | `หมดเวลาจอง <DD/MM/YYYY HH:mm>` (`formatDateTime`) | `ดูในคลังสินค้า` → `/stock?q=<code>` |
-| `RESERVED` | `ติดจอง` | `ระบบไม่พบว่าใครถือเครื่องนี้ — ให้ผู้จัดการตรวจสถานะในคลังสินค้า` | `ดูในคลังสินค้า` → `/stock?q=<code>` |
+| `WEB_RESERVED` | `ลูกค้าจองผ่านเว็บ` | `หมดเวลาจอง <DD/MM/YYYY HH:mm>` (`formatDateTime`) | `ดูในคลังสินค้า` → `/stock/products?view=all&q=<code>` |
+| `RESERVED` | `ติดจอง` | `ระบบไม่พบว่าใครถือเครื่องนี้ — ให้ผู้จัดการตรวจสถานะในคลังสินค้า` | `ดูในคลังสินค้า` → `/stock/products?view=all&q=<code>` |
 | `ON_CONTRACT` | `ติดสัญญาผ่อน` | `สัญญา <contractNumber> ของ<ชื่อลูกค้า>` | `เปิดสัญญา <contractNumber>` → `/contracts/<id>` |
 | `SOLD` | `ขายไปแล้ว` | มีใบขาย: `ใบขาย <saleNumber> ของ<ชื่อลูกค้า> เมื่อ <D MMM>` · ไม่มี: `ไม่พบใบขายของเครื่องนี้ — ให้ผู้จัดการตรวจประวัติการขาย` | มีใบขาย: `เปิดใบขาย <saleNumber>` → `/sales?saleId=<id>` |
-| `NOT_READY` | `<statusLabels[status].label ?? status>` (เช่น รอถ่ายรูป) | `เครื่องยังไม่ผ่านขั้นตอนเข้าคลัง — ต้องเป็น “พร้อมขาย” ก่อนจึงขายได้` | `ดูในคลังสินค้า` → `/stock?q=<code>` |
+| `NOT_READY` | `<statusLabels[status].label ?? status>` (เช่น รอถ่ายรูป) | `เครื่องยังไม่ผ่านขั้นตอนเข้าคลัง — ต้องเป็น “พร้อมขาย” ก่อนจึงขายได้` | `ดูในคลังสินค้า` → `/stock/products?view=all&q=<code>` |
+| *(reason ที่เว็บยังไม่รู้จัก — แท็บเก่าข้าม deploy)* | `<reason ดิบ>` | — | — |
 
 "ของ<ชื่อลูกค้า>" = `ของ` + `honorific(name)`: เติม `คุณ` หน้าชื่อเมื่อชื่อยังไม่ขึ้นต้นด้วย นาย/นาง/นางสาว/คุณ (ข้อมูลลูกค้าบางแถวเก็บคำนำหน้าในชื่อ).
 
@@ -130,6 +131,7 @@ interface ScanOutcome {
 
 ## ที่รู้ว่ายังเปิด
 
-- ยิงเครื่องของสาขาอื่นที่ขายไปแล้ว: ลิงก์ `/sales?saleId=` อาจเปิดไม่เห็นใบ (หน้าประวัติการขายกรองสาขาของ SALES) — ข้อเท็จจริงถูก ปุ่มอาจว่าง; ยอมรับได้.
+- ยิงเครื่องของสาขาอื่นที่ขายไปแล้ว/ติดสัญญา: ลิงก์ `/sales?saleId=` และ `/contracts/:id` อาจเปิดไม่เห็นใบ (หน้าปลายทาง scope สาขาของ SALES) — ข้อเท็จจริงถูก ปุ่มอาจว่าง; ยอมรับได้.
+- เครื่องที่ `wasPreviouslyDamaged` ถูกเลือกให้แล้วไปชนด่านตอนบันทึกขาย (POS ไม่มีช่องยืนยัน `previouslyDamagedAcknowledged` — เหมือนกดจากรายการเดิม) — งานต่อ: ส่งธงใน `ScanOutcome` ขึ้นคำเตือนบนแถบเขียว หรือเพิ่ม UI ยืนยันที่ POS.
 - เครื่องยิงบางรุ่นส่ง Tab แทน Enter — ตั้งค่าที่ตัวเครื่องยิงเป็น Enter (suffix CR) · ไม่รองรับ Tab ในรอบนี้.
 - ไม่มี endpoint ค้นค่าเท่ากันสำหรับหน้าอื่น (รับซื้อ/โอน/นับสต็อก) — ถ้าต้องการให้ reuse `ProductScanService` ไม่เขียนชุดที่สอง.

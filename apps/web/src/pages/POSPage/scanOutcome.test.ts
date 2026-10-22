@@ -84,13 +84,13 @@ describe('describeScanBlock — ข้อความแถบแดงต่อ
     });
   });
 
-  it('OTHER_BRANCH บอกชื่อสาขา + ลิงก์คลังสินค้าพร้อมรหัสที่ยิง', () => {
+  it('OTHER_BRANCH บอกชื่อสาขา — ไม่มีลิงก์ (SALES/BM เปิดคลังของสาขาอื่นไม่ได้ · โอนเครื่องเป็นงานผู้จัดการ)', () => {
     expect(
       describeScanBlock(outcome({ reason: 'OTHER_BRANCH', sellable: false, branch: { id: 'b2', name: 'สำนักงานใหญ่' } })),
     ).toEqual({
       title: `${BLOCK}อยู่สาขาอื่น`,
-      detail: 'เครื่องอยู่ที่ สำนักงานใหญ่ — ต้องโอนมาสาขานี้ก่อน',
-      link: { label: 'ดูในคลังสินค้า', to: `/stock?q=${CODE}` },
+      detail: 'เครื่องอยู่ที่ สำนักงานใหญ่ — ให้ผู้จัดการโอนมาสาขานี้ก่อน',
+      link: null,
     });
   });
 
@@ -131,12 +131,12 @@ describe('describeScanBlock — ข้อความแถบแดงต่อ
     expect(describeScanBlock(outcome({ reason: 'WEB_RESERVED', sellable: false, reservation: { expiresAt } }))).toEqual({
       title: `${BLOCK}ลูกค้าจองผ่านเว็บ`,
       detail: `หมดเวลาจอง ${formatDateTime(expiresAt)}`,
-      link: { label: 'ดูในคลังสินค้า', to: `/stock?q=${CODE}` },
+      link: { label: 'ดูในคลังสินค้า', to: `/stock/products?view=all&q=${CODE}` },
     });
     expect(describeScanBlock(outcome({ reason: 'RESERVED', sellable: false }))).toEqual({
       title: `${BLOCK}ติดจอง`,
       detail: 'ระบบไม่พบว่าใครถือเครื่องนี้ — ให้ผู้จัดการตรวจสถานะในคลังสินค้า',
-      link: { label: 'ดูในคลังสินค้า', to: `/stock?q=${CODE}` },
+      link: { label: 'ดูในคลังสินค้า', to: `/stock/products?view=all&q=${CODE}` },
     });
   });
 
@@ -167,7 +167,7 @@ describe('describeScanBlock — ข้อความแถบแดงต่อ
     ).toEqual({
       title: `${BLOCK}รอถ่ายรูป`,
       detail: 'เครื่องยังไม่ผ่านขั้นตอนเข้าคลัง — ต้องเป็น “พร้อมขาย” ก่อนจึงขายได้',
-      link: { label: 'ดูในคลังสินค้า', to: `/stock?q=${CODE}` },
+      link: { label: 'ดูในคลังสินค้า', to: `/stock/products?view=all&q=${CODE}` },
     });
     expect(
       describeScanBlock(outcome({ reason: 'NOT_READY', sellable: false, product: { ...product, status: 'FUTURE_STATUS' } as Product }))
@@ -175,9 +175,17 @@ describe('describeScanBlock — ข้อความแถบแดงต่อ
     ).toBe(`${BLOCK}FUTURE_STATUS`);
   });
 
-  it('รหัสที่มีอักขระพิเศษถูก encode ในลิงก์คลังสินค้า', () => {
+  it('รหัสที่มีอักขระพิเศษถูก encode ในลิงก์คลังสินค้า (หน้ารายการสินค้า มุมมอง "ทั้งหมด" ถึงจะเห็นเครื่องที่ไม่พร้อมขาย)', () => {
     expect(describeScanBlock(outcome({ code: 'P 1/2', reason: 'RESERVED', sellable: false })).link?.to).toBe(
-      '/stock?q=P%201%2F2',
+      '/stock/products?view=all&q=P%201%2F2',
     );
+  });
+
+  it('reason ที่เว็บยังไม่รู้จัก (แท็บเก่าข้าม deploy) → แสดงรหัสเหตุผลดิบ ไม่ล้มทั้งหน้าขาย', () => {
+    expect(describeScanBlock(outcome({ reason: 'SOMETHING_NEW' as ScanOutcome['reason'], sellable: false }))).toEqual({
+      title: `${BLOCK}SOMETHING_NEW`,
+      detail: null,
+      link: null,
+    });
   });
 });

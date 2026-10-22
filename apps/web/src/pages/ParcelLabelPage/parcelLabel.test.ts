@@ -10,6 +10,13 @@ import {
   type ParcelLabelSources,
 } from './parcelLabel';
 
+const customerSource: NonNullable<ParcelLabelSources['customer']> = {
+  prefix: 'นางสาว',
+  name: 'สมหญิง ใจดี',
+  phone: '0899999999',
+  addressCurrent: '99/1 ม.2 ต.ท่าหิน อ.เมืองลพบุรี จ.ลพบุรี 15000',
+};
+
 const sources: ParcelLabelSources = {
   sale: {
     id: 's1',
@@ -21,12 +28,7 @@ const sources: ParcelLabelSources = {
       { id: 'acc2', name: 'ฟิล์มกระจก' },
     ],
   },
-  customer: {
-    prefix: 'นางสาว',
-    name: 'สมหญิง ใจดี',
-    phone: '0899999999',
-    addressCurrent: '99/1 ม.2 ต.ท่าหิน อ.เมืองลพบุรี จ.ลพบุรี 15000',
-  },
+  customer: customerSource,
   company: { nameTh: 'บริษัท เบสท์ช้อยส์โฟน จำกัด', address: '12 ถ.นารายณ์มหาราช ลพบุรี', phone: '036-000000' },
   origin: 'https://app.test',
 };
@@ -96,7 +98,7 @@ describe('buildParcelLabelDraft', () => {
     const draft = buildParcelLabelDraft({
       ...sources,
       sale: { ...sources.sale, product: { name: 'หูฟัง', imeiSerial: null, serialNumber: 'SN-77' }, bundleProducts: [] },
-      customer: { ...sources.customer, prefix: null, phone: null },
+      customer: { ...customerSource, prefix: null, phone: null },
     });
     expect(draft.recipientName).toBe('สมหญิง ใจดี');
     expect(draft.phone).toBe('0811111111');

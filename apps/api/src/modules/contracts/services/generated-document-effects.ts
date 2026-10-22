@@ -235,18 +235,45 @@ export async function renderOwnedGeneratedPdf(
       /[&<>"']/g,
       (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!,
     );
-    const result = await budget.wait(() =>
-      page.pdf({
-        format: 'A4',
-        printBackground: true,
-        timeout: Math.max(1, budget.expiresAt - Date.now()),
-        margin: { top: '20mm', right: '19mm', bottom: '20mm', left: '19mm' },
-        displayHeaderFooter: true,
-        headerTemplate: '<span></span>',
-        footerTemplate: `<style>${fontCss}</style><div style="font-family:'TH Sarabun PSK';width:100%;padding:0 19mm;font-size:16px">สัญญาเช่าซื้อเลขที่ ${label} — หน้าที่ <span class="pageNumber"></span> / <span class="totalPages"></span></div>`,
-      }),
+    const result = await budget.wait(
+      () =>
+        page.createPDFStream({
+          format: 'A4',
+          printBackground: true,
+          timeout: Math.max(1, budget.expiresAt - Date.now()),
+          margin: { top: '20mm', right: '19mm', bottom: '20mm', left: '19mm' },
+          displayHeaderFooter: true,
+          headerTemplate: '<span></span>',
+          footerTemplate: `<style>${fontCss}</style><div style="font-family:'TH Sarabun PSK';width:100%;padding:0 19mm;font-size:16px">สัญญาเช่าซื้อเลขที่ ${label} — หน้าที่ <span class="pageNumber"></span> / <span class="totalPages"></span></div>`,
+        }),
+      async (late) => {
+        await late.cancel();
+      },
     );
-    const bytes = Buffer.from(result);
+    const reader = result.getReader();
+    const cancel = () => {
+      void reader.cancel().catch(() => undefined);
+    };
+    budget.controller.signal.addEventListener('abort', cancel, { once: true });
+    let bytes: Buffer;
+    try {
+      bytes = await budget.wait(async () => {
+        const chunks: Buffer[] = [];
+        let size = 0;
+        for (;;) {
+          const { value, done } = await reader.read();
+          budget.check();
+          if (done) return Buffer.concat(chunks, size);
+          size += value.byteLength;
+          if (size > GENERATED_PDF_LIMIT) throw new BadRequestException('ไฟล์เอกสารใหญ่เกินไป');
+          chunks.push(Buffer.from(value));
+        }
+      });
+    } finally {
+      budget.controller.signal.removeEventListener('abort', cancel);
+      cancel();
+      reader.releaseLock();
+    }
     if (
       !bytes.length ||
       bytes.length > GENERATED_PDF_LIMIT ||
@@ -271,6 +298,10 @@ async function close(browser: import('puppeteer-core').Browser) {
         }, 1000);
       }),
     ]);
+  } catch {
+    // A rejected close is as terminal as a hung close: only this launch's
+    // process belongs to this operation.
+    browser.process()?.kill('SIGKILL');
   } finally {
     if (timer) clearTimeout(timer);
   }

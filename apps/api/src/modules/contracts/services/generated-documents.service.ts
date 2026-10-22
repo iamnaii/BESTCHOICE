@@ -1,4 +1,7 @@
-import { currentDomainAccess } from '../../employee-access/access-execution-context';
+import {
+  currentDomainAccess,
+  onDomainCommit,
+} from '../../employee-access/access-execution-context';
 import { uploadedDocumentRequest } from '../../employee-access/access-contract-files-context';
 import { VerifiedContractDocumentBuffer } from './verified-contract-document';
 import { DocumentsService } from '../documents.service';
@@ -354,7 +357,7 @@ export class GeneratedDocumentsService {
     const manifest = parseGeneratedManifest(identity.manifest);
     if (proof.managed && manifest.template.kind === 'CUSTOM' && !proof.owner)
       throw generatedDenied();
-    if (!(await this.access.inputs(proof, manifest))) throw generatedDenied();
+    if (!(await this.identitySourcesVisible(proof, identity))) throw generatedDenied();
     const doc = await proof.tx.eDocument.findUnique({
       where: { id, contractId: parent.id, deletedAt: null },
       select: { fileUrl: true, fileHash: true, documentType: true },
@@ -368,6 +371,23 @@ export class GeneratedDocumentsService {
       identity.fileSize > GENERATED_PDF_LIMIT
     )
       throw generatedDenied();
+
+    return identity;
+  }
+  private async identitySourcesVisible(
+    proof: GeneratedAuthority,
+    identity: GeneratedDocumentIdentity,
+  ): Promise<boolean> {
+    const parent = proof.parent;
+    if (
+      !parent ||
+      identity.contractId !== parent.id ||
+      identity.customerId !== parent.customerId ||
+      identity.branchId !== parent.branchId
+    )
+      throw generatedDenied();
+    const manifest = parseGeneratedManifest(identity.manifest);
+    const visible = await this.access.inputs(proof, manifest);
     for (const photo of manifest.photos) {
       const original = await proof.tx.uploadedContractDocumentIdentity.findUnique({
         where: { id: photo.identityId },
@@ -384,7 +404,49 @@ export class GeneratedDocumentsService {
       )
         throw generatedDenied();
     }
-    return identity;
+    return visible;
+  }
+  /** Identifiable shared references/counts need every retained original source,
+   * including rows outside the requested page. Raw custom bytes remain owner-only. */
+  async uploadedReferencesVisible(contractId: string, includeDeleted = false): Promise<boolean> {
+    const ctx = currentDomainAccess(),
+      request = uploadedDocumentRequest.getStore();
+    if (
+      !ctx ||
+      !request?.proof ||
+      request.proof.contractId !== contractId ||
+      !['findByContract', 'getDocumentChecklist', 'getDocumentAuditTrail'].includes(
+        request.operation,
+      ) ||
+      request.actorId !== ctx.snapshot.userId ||
+      ctx.isolationLevel !== 'Serializable'
+    )
+      throw generatedDenied();
+    const parent = await ctx.client.contract.findUniqueOrThrow({
+      where: { id: contractId, deletedAt: null },
+      select: { id: true, customerId: true, branchId: true, productId: true, salespersonId: true },
+    });
+    const links = await ctx.client.generatedContractDocumentLink.findMany({
+      where: { document: { contractId, ...(includeDeleted ? {} : { deletedAt: null }) } },
+      include: { identity: true },
+      orderBy: { documentId: 'asc' },
+      take: 1001,
+    });
+    if (links.length > 1000) throw generatedDenied();
+    const proof: GeneratedAuthority = {
+      tx: ctx.client,
+      actorId: request.actorId,
+      managed: true,
+      owner: ctx.snapshot.isOwner,
+      company: request.proof.company,
+      parent,
+      visible: request.proof.visible,
+      snapshot: ctx.snapshot,
+    };
+    let visible = proof.visible;
+    for (const link of links)
+      if (!(await this.identitySourcesVisible(proof, link.identity))) visible = false;
+    return visible;
   }
   private async references(
     operation: 'getDocuments' | 'getDocument',
@@ -452,11 +514,7 @@ export class GeneratedDocumentsService {
       const refs: GeneratedContractDocumentReference[] = [];
       for (const row of rows) {
         const identity = row.generatedDocumentIdentities[0];
-        if (
-          identity &&
-          !(await this.access.inputs(proof, parseGeneratedManifest(identity.manifest)))
-        )
-          return unavailable();
+        if (identity && !(await this.identitySourcesVisible(proof, identity))) return unavailable();
         if (
           identity &&
           (identity.contractId !== proof.parent!.id ||
@@ -871,7 +929,6 @@ export class GeneratedDocumentsService {
     bytes: Buffer,
   ): Promise<VerifiedContractDocumentBuffer> {
     if (this.attachments.get(staged) !== bytes) throw generatedDenied();
-    this.attachments.delete(staged);
     const identity = await this.prepareUploadedAttachment(contractId, documentId),
       ctx = currentDomainAccess(),
       proof = uploadedDocumentRequest.getStore()?.proof;
@@ -891,6 +948,11 @@ export class GeneratedDocumentsService {
         userId: ctx.snapshot.userId,
         action: 'CONTENT_RELEASE_AUTHORIZED',
       },
+    });
+    // Request adapter enforces one release invocation; retry attempts retain
+    // the exact acquired bytes until the outer evidence transaction commits.
+    onDomainCommit(async () => {
+      this.attachments.delete(staged);
     });
     return {
       kind: 'verified-generated',

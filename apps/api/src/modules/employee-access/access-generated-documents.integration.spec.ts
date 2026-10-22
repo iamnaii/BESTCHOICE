@@ -1227,3 +1227,377 @@ describe('generated producer pair database constraints', () => {
     },
   );
 });
+
+describe('fix1 generated attachment retry and reference authority', () => {
+  async function signed(actor = maker) {
+    const data = await fixture(actor);
+    await http('generateSignedDocuments', data.contract.id, data.document.id, owner).expect(201);
+    const attachment = await db.contractDocument.findFirstOrThrow({
+      where: { contractId: data.contract.id, documentType: 'SIGNED_CONTRACT' },
+    });
+    return { ...data, attachment };
+  }
+  it('retries a real aborted generated attachment release and commits exactly one byte release', async () => {
+    const data = await signed();
+    await db.$executeRawUnsafe('CREATE SEQUENCE owned_generated_retry_seq');
+    await db.$executeRawUnsafe(
+      `CREATE FUNCTION owned_generated_retry() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.document_id='${data.attachment.id}' AND NEW.action='CONTENT_RELEASE_AUTHORIZED' AND nextval('owned_generated_retry_seq')=1 THEN RAISE EXCEPTION 'OWNED_RETRY' USING ERRCODE='40001'; END IF; RETURN NEW; END; $$`,
+    );
+    await db.$executeRawUnsafe(
+      'CREATE TRIGGER owned_generated_retry BEFORE INSERT ON document_audit_logs FOR EACH ROW EXECUTE FUNCTION owned_generated_retry()',
+    );
+    try {
+      storage.getStream.mockClear();
+      const response = await request(app.getHttpServer())
+        .get(`/contracts/${data.contract.id}/documents/${data.attachment.id}/content?company=SHOP`)
+        .set('x-test-user', maker)
+        .expect(200);
+      expect(response.body).toEqual(pdf);
+      expect(storage.getStream).toHaveBeenCalledTimes(1);
+      expect(
+        await db.documentAuditLog.count({
+          where: { documentId: data.attachment.id, action: 'CONTENT_RELEASE_AUTHORIZED' },
+        }),
+      ).toBe(1);
+      expect(
+        await db.auditLog.count({
+          where: { entityId: data.attachment.id, action: 'CONTRACT_DOCUMENT_CONTENT' },
+        }),
+      ).toBe(1);
+      const [sequence] = await db.$queryRaw<
+        Array<{ last_value: bigint }>
+      >`SELECT last_value FROM owned_generated_retry_seq`;
+      expect(sequence.last_value).toBe(2n);
+    } finally {
+      await db.$executeRawUnsafe('DROP TRIGGER owned_generated_retry ON document_audit_logs');
+      await db.$executeRawUnsafe('DROP FUNCTION owned_generated_retry()');
+      await db.$executeRawUnsafe('DROP SEQUENCE owned_generated_retry_seq');
+    }
+  });
+  it.each(['products.read', 'employees.read', 'deleted-product'] as const)(
+    'shared generated list/history/checklist enforce original %s',
+    async (missing) => {
+      const actor = await user();
+      await grant(
+        actor,
+        permissions.filter((key) => key !== missing),
+      );
+      const data = await signed(actor);
+      if (missing === 'deleted-product')
+        await db.product.update({
+          where: { id: data.contract.productId },
+          data: { deletedAt: new Date() },
+        });
+      for (const suffix of ['', '/audit-trail', '/checklist']) {
+        const response = await request(app.getHttpServer())
+          .get(`/contracts/${data.contract.id}/documents${suffix}?company=SHOP`)
+          .set('x-test-user', actor);
+        if (missing === 'deleted-product') expect(response.status).toBe(403);
+        else {
+          expect(response.status).toBe(200);
+          expect(response.body.availability).toBe('unavailable');
+          expect(JSON.stringify(response.body)).not.toContain(data.attachment.id);
+          if (suffix === '/checklist') expect(response.body.complete).toBeNull();
+          else expect(response.body).toMatchObject({ data: [], total: null });
+        }
+      }
+    },
+  );
+});
+
+describe('fix1 current authority and selection fences', () => {
+  it.each(operations)(
+    '%s rechecks current actor after successful preflight and a real authority lock wait',
+    async (operation) => {
+      const actor = await user('OWNER');
+      const data = await produced(actor);
+      render.mockClear();
+      storage.uploadOwned.mockClear();
+      storage.getStream.mockClear();
+      const boundary = app.get(AccessGeneratedDocumentsBoundaries),
+        original = boundary.preflight.bind(boundary);
+      let release!: () => void,
+        blocker: Promise<unknown> | undefined,
+        pid = 0;
+      const held = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const preflight = jest
+        .spyOn(boundary, 'preflight')
+        .mockImplementationOnce(async (op, req) => {
+          const result = await original(op, req);
+          let ready!: () => void;
+          const started = new Promise<void>((resolve) => {
+            ready = resolve;
+          });
+          blocker = db.$transaction(
+            async (tx) => {
+              const [row] = await tx.$queryRaw<
+                Array<{ pid: number }>
+              >`SELECT pg_backend_pid() AS pid`;
+              pid = row.pid;
+              await tx.user.update({ where: { id: actor }, data: { isActive: false } });
+              ready();
+              await held;
+            },
+            { timeout: 15000 },
+          );
+          await started;
+          return result;
+        });
+      try {
+        const pending = http(operation, data.contract.id, data.id, actor).then(
+          (response) => response,
+        );
+        const end = Date.now() + 5000;
+        while (!pid && Date.now() < end) await new Promise((resolve) => setTimeout(resolve, 5));
+        expect(pid).not.toBe(0);
+        await blockedBy(pid);
+        release();
+        await blocker;
+        const response = await pending;
+        expect(response.status).toBe(403);
+        expect(response.headers['content-disposition']).toBeUndefined();
+        expect(render).not.toHaveBeenCalled();
+        expect(storage.uploadOwned).not.toHaveBeenCalled();
+        expect(storage.getStream).not.toHaveBeenCalled();
+        expect(
+          await db.generatedDocumentIdentity.count({ where: { contractId: data.contract.id } }),
+        ).toBe(1);
+      } finally {
+        release();
+        await blocker;
+        preflight.mockRestore();
+      }
+    },
+  );
+  it.each(['role', 'branch'] as const)(
+    'legacy current %s change during render rejects final generation',
+    async (change) => {
+      const actor = await user();
+      await db.user.update({ where: { id: actor }, data: { accessManaged: false } });
+      const data = await fixture(actor);
+      const foreign = await db.branch.create({
+        data: {
+          name: 'Legacy moved',
+          companyId: (await db.companyInfo.findUniqueOrThrow({ where: { companyCode: 'SHOP' } }))
+            .id,
+        },
+      });
+      render.mockImplementationOnce(async () => {
+        await db.user.update({
+          where: { id: actor },
+          data: change === 'role' ? { role: 'ACCOUNTANT' } : { branchId: foreign.id },
+        });
+        return pdf;
+      });
+      await http('generateDocument', data.contract.id, data.document.id, actor).expect(403);
+      expect(
+        await db.generatedDocumentIdentity.count({ where: { contractId: data.contract.id } }),
+      ).toBe(0);
+      expect(storage.deleteOwned).toHaveBeenCalledTimes(1);
+    },
+  );
+  it.each(['insert', 'reorder'] as const)(
+    'template selection %s during upload rejects the final source fence',
+    async (change) => {
+      const data = await fixture(owner),
+        ids: string[] = [];
+      const old = await db.contractTemplate.create({
+        data: {
+          name: 'Old candidate',
+          type: 'STORE_DIRECT',
+          contentHtml: '<p>OLD</p>',
+          isActive: true,
+          updatedAt: new Date('2030-01-01'),
+        },
+      });
+      ids.push(old.id);
+      const selected = await db.contractTemplate.create({
+        data: {
+          name: 'Selected',
+          type: 'STORE_DIRECT',
+          contentHtml: '<p>SELECTED</p>',
+          isActive: true,
+          updatedAt: new Date('2031-01-01'),
+        },
+      });
+      ids.push(selected.id);
+      storage.uploadOwned.mockImplementationOnce(async (key, bytes) => {
+        files.set(key, bytes);
+        if (change === 'insert')
+          ids.push(
+            (
+              await db.contractTemplate.create({
+                data: {
+                  name: 'Inserted',
+                  type: 'STORE_DIRECT',
+                  contentHtml: '<p>INSERTED</p>',
+                  isActive: true,
+                  updatedAt: new Date('2032-01-01'),
+                },
+              })
+            ).id,
+          );
+        else
+          await db.contractTemplate.update({
+            where: { id: old.id },
+            data: { updatedAt: new Date('2032-01-01') },
+          });
+      });
+      try {
+        await request(app.getHttpServer())
+          .post(`/contracts/${data.contract.id}/generate-document?company=SHOP`)
+          .set('x-test-user', owner)
+          .send({ documentType: 'CONTRACT' })
+          .expect(400);
+        expect(render).toHaveBeenCalledTimes(1);
+        expect(
+          await db.generatedDocumentIdentity.count({ where: { contractId: data.contract.id } }),
+        ).toBe(0);
+        expect(storage.deleteOwned).toHaveBeenCalledTimes(1);
+      } finally {
+        await db.contractTemplate.updateMany({
+          where: { id: { in: ids } },
+          data: { isActive: false },
+        });
+      }
+    },
+  );
+  async function photo(contractId: string) {
+    const png =
+      'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jZ1kAAAAASUVORK5CYII=';
+    const response = await request(app.getHttpServer())
+      .post(`/contracts/${contractId}/documents?company=SHOP`)
+      .set('x-test-user', owner)
+      .send({ documentType: 'DEVICE_PHOTO', fileName: 'owned.png', fileUrl: png })
+      .expect(201);
+    return response.body.id as string;
+  }
+  it.each(['insert', 'reorder'] as const)(
+    'selected photo %s during upload rejects the final source fence',
+    async (change) => {
+      const data = await fixture(owner);
+      const first = await photo(data.contract.id),
+        second = await photo(data.contract.id);
+      // Canonical upload versions one type. Retained real identities remain valid;
+      // deliberately select both as a two-photo gallery for ordering proof.
+      await db.contractDocument.update({
+        where: { id: first },
+        data: { isLatest: true, createdAt: new Date('2020-01-01') },
+      });
+      await db.contractDocument.update({
+        where: { id: second },
+        data: { createdAt: new Date('2021-01-01') },
+      });
+      const template = await db.contractTemplate.create({
+        data: {
+          name: 'Photo fence',
+          type: 'STORE_DIRECT',
+          contentHtml: '<div>{device_photos_grid}</div>',
+          isActive: true,
+        },
+      });
+      storage.uploadOwned.mockImplementationOnce(async (key, bytes) => {
+        files.set(key, bytes);
+        if (change === 'insert') await photo(data.contract.id);
+        else
+          await db.contractDocument.update({
+            where: { id: first },
+            data: { createdAt: new Date('2022-01-01') },
+          });
+      });
+      try {
+        await request(app.getHttpServer())
+          .post(`/contracts/${data.contract.id}/generate-document?company=SHOP`)
+          .set('x-test-user', owner)
+          .send({ documentType: 'CONTRACT', templateId: template.id })
+          .expect(400);
+        expect(render).toHaveBeenCalledTimes(1);
+        expect(
+          await db.generatedDocumentIdentity.count({ where: { contractId: data.contract.id } }),
+        ).toBe(0);
+        expect(storage.deleteOwned).toHaveBeenCalledTimes(1);
+      } finally {
+        await db.contractTemplate.update({ where: { id: template.id }, data: { isActive: false } });
+      }
+    },
+  );
+  it.each(['payment', 'signature', 'consent', 'photo'] as const)(
+    'retained original %s reparenting rejects even the owner',
+    async (kind) => {
+      const data = await fixture(owner),
+        other = await fixture(owner);
+      let inputId: string, templateId: string | undefined;
+      if (kind === 'payment')
+        inputId = (
+          await db.payment.create({
+            data: {
+              contractId: data.contract.id,
+              installmentNo: 1,
+              dueDate: new Date(),
+              amountDue: 1000,
+            },
+          })
+        ).id;
+      else if (kind === 'signature')
+        inputId = (await db.signature.findFirstOrThrow({ where: { contractId: data.contract.id } }))
+          .id;
+      else if (kind === 'consent') inputId = data.contract.pdpaConsentId!;
+      else {
+        inputId = await photo(data.contract.id);
+        templateId = (
+          await db.contractTemplate.create({
+            data: {
+              name: 'Retained photo',
+              type: 'STORE_DIRECT',
+              contentHtml: '<div>{device_photos_grid}</div>',
+              isActive: true,
+            },
+          })
+        ).id;
+      }
+      try {
+        const response = await request(app.getHttpServer())
+          .post(`/contracts/${data.contract.id}/generate-document?company=SHOP`)
+          .set('x-test-user', owner)
+          .send({
+            documentType: 'CONTRACT',
+            ...(templateId ? { templateId } : { templateSource: 'BUILTIN' }),
+          })
+          .expect(201);
+        await http('downloadDocument', data.contract.id, response.body.id, owner).expect(200);
+        if (kind === 'payment')
+          await db.payment.update({
+            where: { id: inputId },
+            data: { contractId: other.contract.id },
+          });
+        else if (kind === 'signature')
+          await db.signature.update({
+            where: { id: inputId },
+            data: { contractId: other.contract.id },
+          });
+        else if (kind === 'consent')
+          await db.pDPAConsent.update({
+            where: { id: inputId },
+            data: { customerId: other.customer.id },
+          });
+        else
+          await db.contractDocument.update({
+            where: { id: inputId },
+            data: { contractId: other.contract.id },
+          });
+        storage.getStream.mockClear();
+        await http('downloadDocument', data.contract.id, response.body.id, owner).expect(403);
+        await http('getDocument', data.contract.id, response.body.id, owner).expect(403);
+        expect(storage.getStream).not.toHaveBeenCalled();
+      } finally {
+        if (templateId)
+          await db.contractTemplate.update({
+            where: { id: templateId },
+            data: { isActive: false },
+          });
+      }
+    },
+  );
+});

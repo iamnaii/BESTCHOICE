@@ -107,10 +107,14 @@ export class ContractDocumentsService {
   ): Promise<VerifiedContractDocumentBuffer | LegacyDocumentStream> {
     const request = uploadedDocumentRequest.getStore();
     if (request?.prepare && request.release && this.generated) {
-      const staged = await request.prepare(() => this.generated!.prepareUploadedAttachment(contractId, docId));
+      const staged = await request.prepare(() =>
+        this.generated!.prepareUploadedAttachment(contractId, docId),
+      );
       if (staged) {
         const bytes = await this.generated.acquireGeneratedBytes(staged);
-        return request.release(() => this.generated!.releaseUploadedAttachment(contractId, docId, staged, bytes));
+        return request.release(() =>
+          this.generated!.releaseUploadedAttachment(contractId, docId, staged, bytes),
+        );
       }
     }
     if (request?.release)
@@ -196,6 +200,19 @@ export class ContractDocumentsService {
       filename: `document-${doc.version}.${extension}`,
     };
   }
+  private async referencesVisible(contractId: string, includeDeleted = false): Promise<boolean> {
+    if (!this.proof?.visible) return false;
+    if (this.generated) return this.generated.uploadedReferencesVisible(contractId, includeDeleted);
+    // Optional only for deployments/tests with uploaded-only documents. A missing
+    // generated verifier must never silently authorize a linked reference.
+    if (
+      await this.db.generatedContractDocumentLink.count({
+        where: { document: { contractId, ...(includeDeleted ? {} : { deletedAt: null }) } },
+      })
+    )
+      throw new ForbiddenException('ไม่มีสิทธิ์เข้าถึงเอกสาร');
+    return true;
+  }
   private reference(doc: {
     id: string;
     documentType: string;
@@ -204,7 +221,9 @@ export class ContractDocumentsService {
     isImmutable: boolean;
     createdAt: Date;
     uploadIdentity?: { contractId: string; customerId: string; branchId: string } | null;
-    generatedIdentityLink?: { identity: { contractId:string;customerId:string;branchId:string } } | null;
+    generatedIdentityLink?: {
+      identity: { contractId: string; customerId: string; branchId: string };
+    } | null;
   }): UploadedContractDocumentReference {
     const proof = this.proof;
     const valid =
@@ -220,7 +239,15 @@ export class ContractDocumentsService {
       isLatest: doc.isLatest,
       isImmutable: doc.isImmutable,
       createdAt: doc.createdAt.toISOString(),
-      contentStatus: valid ? 'VERIFIED_UPLOAD' : doc.generatedIdentityLink && proof && doc.generatedIdentityLink.identity.contractId===proof.contractId && doc.generatedIdentityLink.identity.customerId===proof.customerId && doc.generatedIdentityLink.identity.branchId===proof.branchId ? 'VERIFIED_GENERATED' : 'UNVERIFIED',
+      contentStatus: valid
+        ? 'VERIFIED_UPLOAD'
+        : doc.generatedIdentityLink &&
+            proof &&
+            doc.generatedIdentityLink.identity.contractId === proof.contractId &&
+            doc.generatedIdentityLink.identity.customerId === proof.customerId &&
+            doc.generatedIdentityLink.identity.branchId === proof.branchId
+          ? 'VERIFIED_GENERATED'
+          : 'UNVERIFIED',
     };
   }
   private readonly referenceSelect = {
@@ -231,7 +258,9 @@ export class ContractDocumentsService {
     isImmutable: true,
     createdAt: true,
     uploadIdentity: { select: { contractId: true, customerId: true, branchId: true } },
-    generatedIdentityLink: { select: { identity: { select: { contractId:true,customerId:true,branchId:true } } } },
+    generatedIdentityLink: {
+      select: { identity: { select: { contractId: true, customerId: true, branchId: true } } },
+    },
   } as const;
 
   async getContent(contractId: string, docId: string): Promise<LegacyDocumentStream> {
@@ -309,7 +338,7 @@ export class ContractDocumentsService {
     this.assertOperation('findByContract', contractId);
     const safeLimit = Math.min(limit, 100);
     if (this.managed) {
-      if (!this.proof?.visible)
+      if (!(await this.referencesVisible(contractId)))
         return {
           availability: 'unavailable',
           data: [],
@@ -358,6 +387,7 @@ export class ContractDocumentsService {
     this.assertOperation('getDocumentChecklist', contractId);
     if (this.managed) {
       const proof = this.proof!;
+      const visible = await this.referencesVisible(contractId);
       const required = [
         {
           type: 'SIGNED_CONTRACT',
@@ -372,7 +402,7 @@ export class ContractDocumentsService {
         },
         { type: 'DEVICE_PHOTO', label: 'รูปถ่ายสินค้า + หน้าจอแสดง IMEI', autoGenerate: false },
       ];
-      const documents = proof.visible
+      const documents = visible
         ? await this.db.contractDocument.findMany({
             where: { contractId, isLatest: true, deletedAt: null },
             select: { documentType: true },
@@ -381,7 +411,7 @@ export class ContractDocumentsService {
       const types = new Set<string>(documents.map((doc) => doc.documentType));
       const checklist: UploadedContractDocumentChecklist['checklist'] = required.map((item) => ({
         ...item,
-        present: proof.visible ? types.has(item.type) : null,
+        present: visible ? types.has(item.type) : null,
       }));
       if (proof.requiresGuardian !== false)
         checklist.push({
@@ -389,14 +419,13 @@ export class ContractDocumentsService {
           label: 'เอกสารผู้ปกครอง (อายุ 17-19)',
           autoGenerate: false,
           conditional: proof.requiresGuardian === null,
-          present:
-            proof.visible && proof.requiresGuardian !== null ? types.has('GUARDIAN_DOC') : null,
+          present: visible && proof.requiresGuardian !== null ? types.has('GUARDIAN_DOC') : null,
         });
       return {
-        availability: proof.visible ? 'available' : 'unavailable',
+        availability: visible ? 'available' : 'unavailable',
         requiresGuardian: proof.requiresGuardian,
         complete:
-          proof.visible && proof.requiresGuardian !== null
+          visible && proof.requiresGuardian !== null
             ? checklist.every((item) => item.present)
             : null,
         checklist,
@@ -687,7 +716,7 @@ export class ContractDocumentsService {
   async getDocumentAuditTrail(contractId: string) {
     this.assertOperation('getDocumentAuditTrail', contractId);
     if (this.managed) {
-      if (!this.proof?.visible)
+      if (!(await this.referencesVisible(contractId, true)))
         return {
           availability: 'unavailable',
           total: null,

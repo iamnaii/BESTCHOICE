@@ -125,3 +125,83 @@ it('preview HTML carries fixed CSP and strips CSS resource functions without url
   expect(safe).toContain('http-equiv="Content-Security-Policy"');
   expect(safe).toContain("default-src 'none'");
 });
+
+it('renderer cancels PDF acquisition at the byte cap without draining the remaining stream', async () => {
+  const { CdpPage } = await import('puppeteer-core/lib/cjs/puppeteer/cdp/Page.js');
+  let produced = 0,
+    cancelled = false;
+  const stream = jest.spyOn(CdpPage.prototype, 'createPDFStream').mockImplementation(
+    async () =>
+      new ReadableStream<Uint8Array>({
+        pull(controller) {
+          produced++;
+          controller.enqueue(Buffer.alloc(1024 * 1024));
+          if (produced === 30) controller.close();
+        },
+        cancel() {
+          cancelled = true;
+        },
+      }),
+  );
+  try {
+    const rendering = new DocumentRenderingService(undefined!, undefined!, undefined!);
+    await expect(
+      rendering.htmlToPdf('<p>ไทย</p>', 'LIMIT', new GeneratedEffectBudget()),
+    ).rejects.toThrow();
+    expect(cancelled).toBe(true);
+    expect(produced).toBeLessThanOrEqual(22);
+  } finally {
+    stream.mockRestore();
+  }
+}, 60000);
+
+it.each(['reject', 'hang'] as const)(
+  'renderer terminates its owned browser when close %s',
+  async (mode) => {
+    const { CdpBrowser } = await import('puppeteer-core/lib/cjs/puppeteer/cdp/Browser.js');
+    const original = CdpBrowser.prototype.close;
+    const launched: Array<InstanceType<typeof CdpBrowser>> = [];
+    const close = jest.spyOn(CdpBrowser.prototype, 'close').mockImplementation(function () {
+      launched.push(this);
+      return mode === 'reject'
+        ? Promise.reject(new Error('OWNED_CLOSE_REJECTED'))
+        : new Promise<void>(() => undefined);
+    });
+    try {
+      const rendering = new DocumentRenderingService(undefined!, undefined!, undefined!);
+      const bytes = await rendering.htmlToPdf('<p>ไทย</p>', 'CLOSE', new GeneratedEffectBudget());
+      expect(bytes.subarray(0, 5).toString()).toBe('%PDF-');
+      expect(launched[0]?.process()?.killed).toBe(true);
+      const process = launched[0].process()!;
+      if (process.exitCode === null && process.signalCode === null)
+        await new Promise<void>((resolve) => process.once('exit', () => resolve()));
+      expect(process.signalCode).toBe('SIGKILL');
+    } finally {
+      close.mockRestore();
+      for (const browser of launched) if (!browser.process()?.killed) await original.call(browser);
+    }
+  },
+  60000,
+);
+
+it('renderer cancels a stalled PDF stream at its existing effect deadline', async () => {
+  const { CdpPage } = await import('puppeteer-core/lib/cjs/puppeteer/cdp/Page.js');
+  const budget = new GeneratedEffectBudget();
+  let cancelled = false;
+  const stream = jest.spyOn(CdpPage.prototype, 'createPDFStream').mockImplementation(async () => {
+    Object.defineProperty(budget, 'expiresAt', { value: Date.now() + 20 });
+    return new ReadableStream<Uint8Array>({
+      cancel() {
+        cancelled = true;
+      },
+    });
+  });
+  try {
+    const rendering = new DocumentRenderingService(undefined!, undefined!, undefined!);
+    await expect(rendering.htmlToPdf('<p>ไทย</p>', 'STALL', budget)).rejects.toThrow();
+    expect(budget.controller.signal.aborted).toBe(true);
+    expect(cancelled).toBe(true);
+  } finally {
+    stream.mockRestore();
+  }
+}, 60000);

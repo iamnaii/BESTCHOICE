@@ -42,10 +42,12 @@ describe('sticker settings — ขนาดม้วน + QR (ก้อน 3 A5,
         <StickersPage />
       </QueryClientProvider>,
     );
+    return client;
   }
 
-  it('แสดงค่าปัจจุบัน · เปลี่ยนเป็น 50×40 และปิด QR · บันทึกเฉพาะ 2 คีย์ของสติกเกอร์', async () => {
-    setup();
+  it('แสดงค่าปัจจุบัน · เปลี่ยนเป็น 50×40 และปิด QR · บันทึกเฉพาะ 2 คีย์ของสติกเกอร์ · หน้าพิมพ์เห็นค่าใหม่ทันที', async () => {
+    const client = setup();
+    const invalidate = vi.spyOn(client, 'invalidateQueries');
     await screen.findByText('60 × 40 มม.');
     expect(screen.getByText('เปิด')).toBeInTheDocument();
 
@@ -69,6 +71,8 @@ describe('sticker settings — ขนาดม้วน + QR (ก้อน 3 A5,
     ]);
     expect(await screen.findByText('50 × 40 มม.')).toBeInTheDocument();
     expect(screen.getByText('ปิด')).toBeInTheDocument();
+    // หน้าพิมพ์สติกเกอร์อ่านธงจาก ['settings-ui-flags'] (staleTime 5 นาที) — ต้องล้าง cache ตอนบันทึก
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['settings-ui-flags'] });
   });
 
   it('ยังไม่เคยตั้งค่า → แสดงค่าเริ่มต้น 60 × 40 + QR เปิด และบันทึกเป็นค่าจริง ไม่ใช่ค่าว่าง', async () => {

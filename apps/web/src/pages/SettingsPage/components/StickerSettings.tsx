@@ -1,7 +1,7 @@
 import { useId } from 'react';
 import { NativeSelect } from '@/components/ui/native-select';
 import { useAuth } from '@/contexts/AuthContext';
-import { DEFAULT_STICKER_SIZE, STICKER_SIZES, type StickerSize } from '@/pages/StickerPrintPage/StickerCard';
+import { DEFAULT_STICKER_SIZE, STICKER_SIZES, type StickerSize } from '@/pages/StickerPrintPage/stickerSizes';
 import { SettingsCard, StatCard } from './shared';
 import type { ConfigGroup } from './shared';
 

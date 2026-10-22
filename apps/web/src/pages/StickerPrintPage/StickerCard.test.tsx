@@ -39,7 +39,7 @@ describe('StickerCard — แบบ ค (เจ้าของเคาะ 2026-
     expect(screen.getByText('BESTCHOICE')).toBeInTheDocument();
     expect(screen.getByTestId('sticker-qr').querySelector('svg')).not.toBeNull();
     expect(container.querySelector('.st-rule')).not.toBeNull();
-    // สเปก 42 ตัวอักษรยังพอดี 60×40 ที่ 8pt — ไม่ต้องย่อ
+    // สเปก+ประกัน 43 ตัวอักษรยังพอดี 60×40 ที่ 8pt — ไม่ต้องย่อ
     expect(container.querySelector('.st-spec')).not.toHaveClass('st-spec--long');
   });
 
@@ -100,5 +100,26 @@ describe('StickerCard — แบบ ค (เจ้าของเคาะ 2026-
     expect(stickerStyles('50x40')).toContain('.sticker--50x40');
     expect(stickerStyles('50x30')).toContain('@page { size: 50mm 30mm; margin: 0; }');
     expect(STICKER_SIZES['60x40']).toMatchObject({ w: 60, h: 40, label: '60 × 40 มม.' });
+  });
+
+  it('วันหมดประกันไม่ถูก … ตัด: ส่วนสีความจุเท่านั้นที่ย่อได้ (ชื่อสีอังกฤษกว้างกว่าที่นับตัวอักษร)', () => {
+    const css = stickerStyles('60x40');
+    // .st-spec เป็น flex: ส่วนสเปกหด+ตัดด้วย … ส่วนประกันไม่หด
+    expect(css).toMatch(/\.st-spec \{[^}]*display: flex;/);
+    expect(css).toMatch(/\.st-spec-text \{[^}]*text-overflow: ellipsis;/);
+    expect(css).toMatch(/\.st-warranty \{[^}]*flex-shrink: 0;/);
+    const { container } = render(
+      <StickerCard view={{ ...base, spec: 'Desert Titanium · 1TB', warrantyLabel: 'ประกันศูนย์ 30/09/27' }} size="60x40" showQr />,
+    );
+    expect(container.querySelector('.st-warranty')?.textContent).toBe('ประกันศูนย์ 30/09/27');
+  });
+
+  it('ม้วน 50×30 ยังรักษาความสูงบรรทัดไทย ≥ 1.35 กับขอบขาว QR 0.8 มม. และเรท/ชื่อร้านพิมพ์ดำล้วน', () => {
+    const css = stickerStyles('50x30');
+    expect(css).toMatch(/\.sticker--50x30 \{[^}]*--st-model-lh: 1\.35;/);
+    expect(css).toMatch(/\.sticker--50x30 \{[^}]*--st-spec-lh: 1\.35;/);
+    expect(css).toMatch(/\.sticker--50x30 \{[^}]*--st-qr-pad: 0\.8mm;/);
+    expect(css).not.toMatch(/\.st-rate-no \{[^}]*#333/);
+    expect(css).toMatch(/\.st-footer \{[^}]*line-height: 1\.35;/);
   });
 });

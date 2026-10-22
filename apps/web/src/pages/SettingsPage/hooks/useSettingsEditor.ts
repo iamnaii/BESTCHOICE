@@ -29,6 +29,8 @@ export function useSettingsEditor() {
       api.patch('/settings', { items }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['settings'] });
+      // หลายคีย์ในหน้านี้ถูกอ่านผ่าน GET /settings/ui-flags (staleTime 5 นาที) — ล้างให้หน้าอื่นเห็นค่าใหม่ทันที
+      queryClient.invalidateQueries({ queryKey: ['settings-ui-flags'] });
       toast.success('บันทึกสำเร็จ');
       setEditingSection(null);
     },

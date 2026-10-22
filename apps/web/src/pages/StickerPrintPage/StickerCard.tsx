@@ -1,32 +1,9 @@
 import { QRCodeSVG } from 'qrcode.react';
 import { cn } from '@/lib/utils';
+import { DEFAULT_STICKER_SIZE, STICKER_SIZES, type StickerSize } from './stickerSizes';
 import type { StickerView } from './stickerView';
 
-/** ขนาดม้วนสติกเกอร์ที่รองรับ — ค่าจาก SystemConfig `sticker_size` ผ่าน ui-flags (ก้อน 3 A5) */
-export type StickerSize = '60x40' | '50x40' | '50x30';
-
-export const STICKER_SIZES: Record<StickerSize, { w: number; h: number; label: string; hint: string }> = {
-  '60x40': {
-    w: 60,
-    h: 40,
-    label: '60 × 40 มม.',
-    hint: 'แนะนำ — ต้องเป็น Xprinter 3 นิ้วขึ้นไป (XP-365B / 420B / 470B) ถึงพิมพ์กว้าง 60 มม. ได้',
-  },
-  '50x40': {
-    w: 50,
-    h: 40,
-    label: '50 × 40 มม.',
-    hint: 'สำหรับ Xprinter 2 นิ้ว (XP-233B / 237B) ที่หัวพิมพ์กว้างแค่ 48–56 มม.',
-  },
-  '50x30': {
-    w: 50,
-    h: 30,
-    label: '50 × 30 มม.',
-    hint: 'ม้วนเดิม — ตัวหนังสือและ QR เล็กลง ใช้จนกว่าม้วนจะหมด',
-  },
-};
-
-export const DEFAULT_STICKER_SIZE: StickerSize = '60x40';
+export { DEFAULT_STICKER_SIZE, STICKER_SIZES, type StickerSize } from './stickerSizes';
 
 /**
  * จำนวนตัวอักษรของบรรทัดสเปกที่พอดีความกว้างดวง — `normal` ที่ขนาดปกติ · `long` เมื่อย่อลงขั้นหนึ่ง
@@ -74,7 +51,7 @@ export function fitSpec(
 /**
  * ค่าตัวอักษร/ระยะต่อขนาด (หน่วย pt และ mm) — ตามตารางใน spec
  * `docs/superpowers/specs/2026-10-22-sticker-60x40-qr-design.md` ที่เจ้าของดูจาก mockup + PDF ตัวอย่างแล้ว
- * ความสูงบรรทัดไทยทุกบรรทัด ≥ 1.25 (ฟอนต์ IBM Plex Sans Thai สูงกว่า 1.2 — ต่ำกว่านี้สระบนถูกตัด/ทับ)
+ * ความสูงบรรทัดไทย: รุ่น/สเปก ≥ 1.35 · เรท ≥ 1.3 (ฟอนต์ IBM Plex Sans Thai สูงกว่า 1.2 — ต่ำกว่านี้สระบนถูกตัด/ทับ)
  * ทุกค่าออกเป็น CSS variable บน `.sticker--<size>` จึงวางดวงหลายขนาดบนหน้าเดียวกันได้โดยไม่ตีกัน
  */
 const METRICS: Record<StickerSize, Record<string, string>> = {
@@ -131,20 +108,20 @@ const METRICS: Record<StickerSize, Record<string, string>> = {
   '50x30': {
     pad: '1.2mm',
     model: '10pt',
-    'model-lh': '1.3',
+    'model-lh': '1.35',
     spec: '7pt',
     'spec-long': '6.5pt',
-    'spec-lh': '1.3',
+    'spec-lh': '1.35',
     baht: '8pt',
-    price: '16pt',
-    'chip-h': '2.8mm',
+    price: '15pt',
+    'chip-h': '3mm',
     chip: '6.5pt',
     'chip-border': '0.22mm',
     qr: '8mm',
-    'qr-pad': '0.6mm',
+    'qr-pad': '0.8mm',
     rule: '0.2mm',
     rate: '7.5pt',
-    'rate-lh': '1.25',
+    'rate-lh': '1.3',
     'rate-col': '5.8mm',
     id: '6pt',
     brand: '5pt',
@@ -189,7 +166,7 @@ export function StickerCard({
       {(specText || fitted.warranty) && (
         <div className={cn('st-spec', fitted.long && 'st-spec--long')}>
           {specText && <span className="st-spec-text">{specText}</span>}
-          {specText && fitted.warranty && <span className="st-dot"> · </span>}
+          {specText && fitted.warranty && <span className="st-dot">·</span>}
           {fitted.warranty && <b className="st-warranty">{fitted.warranty}</b>}
         </div>
       )}
@@ -298,16 +275,21 @@ const BASE_STYLES = `
     overflow: hidden;
     text-overflow: ellipsis;
   }
+  /* สเปกเป็น flex: ส่วนสี/ความจุหดและตัดด้วย … ได้ ส่วนประกันศูนย์ไม่หด — วันหมดประกันต้องไม่หาย
+     (fitSpec นับตัวอักษร แต่ชื่อสีอังกฤษกว้างกว่าไทย จึงต้องมีตาข่ายนี้) */
   .st-spec {
+    display: flex;
+    align-items: baseline;
+    gap: 0.8mm;
     font-size: var(--st-spec);
     font-weight: 500;
     line-height: var(--st-spec-lh);
     white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
   }
   .st-spec--long { font-size: var(--st-spec-long); }
-  .st-warranty { font-weight: 700; }
+  .st-spec-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .st-dot { flex-shrink: 0; }
+  .st-warranty { font-weight: 700; flex-shrink: 0; }
   .st-row { display: flex; gap: 1.4mm; align-items: flex-start; margin-top: var(--st-row-gap); }
   .st-left { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1mm; }
   .st-price { display: flex; align-items: baseline; gap: 0.6mm; line-height: 1; }
@@ -340,7 +322,7 @@ const BASE_STYLES = `
     line-height: var(--st-rate-lh);
     white-space: nowrap;
   }
-  .st-rate-no { font-weight: 600; color: #333; }
+  .st-rate-no { font-weight: 600; }
   .st-rate-monthly { font-weight: 700; }
   .st-rate-none { color: #555; }
   .st-x { color: #555; font-weight: 400; }
@@ -352,10 +334,10 @@ const BASE_STYLES = `
     gap: 1mm;
     font-family: var(--font-mono);
     letter-spacing: 0.02em;
-    line-height: 1.2;
+    line-height: 1.35;
     white-space: nowrap;
   }
-  .st-id { font-size: var(--st-id); font-weight: 500; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .st-id { font-size: var(--st-id); font-weight: 500; min-width: 0; }
   .st-id-label { margin-right: 0.8mm; }
   .st-brand { font-size: var(--st-brand); font-weight: 700; letter-spacing: 0.06em; flex-shrink: 0; }
   /* ไม่มีเรท (อุปกรณ์เสริม / ไม่มีตาราง): แถวราคา+QR ยืดเต็มดวง ราคาและ QR ใหญ่ขึ้น */
@@ -393,6 +375,3 @@ export function stickerStyles(size: StickerSize): string {
   }
 `;
 }
-
-/** @deprecated ใช้ `stickerStyles(size)` — คงไว้ให้โค้ดเดิมคอมไพล์จนกว่าหน้าพิมพ์จะอ่านขนาดจากตั้งค่า */
-export const STICKER_STYLES = stickerStyles(DEFAULT_STICKER_SIZE);

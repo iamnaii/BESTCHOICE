@@ -45,6 +45,7 @@ describe('buildStickerView — มือ 1', () => {
       productId: 'p1',
       model: 'iPhone 15',
       spec: 'ดำ · 128GB',
+      origin: null,
       warrantyLabel: 'ประกันศูนย์ 27/08/27',
       used: null,
       cash: '19,900',
@@ -56,6 +57,13 @@ describe('buildStickerView — มือ 1', () => {
       idLabel: 'IMEI',
       idText: '351000000007919',
     });
+  });
+
+  it('ที่มาเครื่องแยกช่อง: ไทย = ศูนย์ไทย · นอก = เครื่องนอก · ไม่ระบุ = null (สเปกคงเป็นสี · ความจุ)', () => {
+    expect(buildStickerView(product({ deviceOrigin: 'THAI' }), quotes)?.origin).toBe('ศูนย์ไทย');
+    expect(buildStickerView(product({ deviceOrigin: 'IMPORTED' }), quotes)?.origin).toBe('เครื่องนอก');
+    expect(buildStickerView(product({ deviceOrigin: null }), quotes)?.origin).toBeNull();
+    expect(buildStickerView(product({ deviceOrigin: 'THAI' }), quotes)?.spec).toBe('ดำ · 128GB');
   });
 
   it('ไม่มีประกันศูนย์ = ไม่มีป้าย · รุ่นที่ไม่มีในตาราง GFIN = เรท 1 อย่างเดียว', () => {

@@ -45,6 +45,8 @@ export interface StickerView {
   /** รุ่นอย่างเดียว ไม่มียี่ห้อ (คำตัดสินเจ้าของ) · อุปกรณ์ที่ไม่มีรุ่นใช้ชื่อสินค้า */
   model: string;
   spec: string | null;
+  /** ที่มาเครื่อง "ศูนย์ไทย" / "เครื่องนอก" — แยกจาก spec เพราะเป็นส่วนแรกที่ดวงตัดทิ้งเมื่อบรรทัดยาวเกิน */
+  origin: string | null;
   /** "ประกันศูนย์ DD/MM/YY" เมื่อยังไม่หมดประกัน */
   warrantyLabel: string | null;
   /** เฉพาะมือสอง — ชิป %แบต + มีกล่อง/ไม่มีกล่อง (null ในช่อง = ไม่ระบุ ไม่มีชิปนั้น) */
@@ -60,6 +62,13 @@ export interface StickerView {
 }
 
 const ID_TEXT_LENGTH = 8;
+
+/** ที่มาเครื่องบนบรรทัดสเปก (mockup แบบ ค ที่เจ้าของเคาะมี "ศูนย์ไทย") — ไม่ระบุ = ไม่พิมพ์ */
+function originLabel(origin: StickerProductData['deviceOrigin']): string | null {
+  if (origin === 'THAI') return 'ศูนย์ไทย';
+  if (origin === 'IMPORTED') return 'เครื่องนอก';
+  return null;
+}
 
 function resolveStickerId(
   product: Pick<StickerProductData, 'productId' | 'imei' | 'code'>,
@@ -122,6 +131,7 @@ export function buildStickerView(product: StickerProductData, quotes: StickerQuo
     productId: product.productId,
     model: nonEmpty(product.model) ?? nonEmpty(product.name) ?? '-',
     spec: [nonEmpty(product.color), nonEmpty(product.storage)].filter((p): p is string => p !== null).join(' · ') || null,
+    origin: originLabel(product.deviceOrigin),
     warrantyLabel: warrantyShort ? `ประกันศูนย์ ${warrantyShort}` : null,
     used,
     cash: formatBaht(cash),

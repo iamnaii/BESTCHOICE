@@ -171,7 +171,14 @@ export class SalesQueryService {
       },
     });
     if (!sale) throw new NotFoundException('ไม่พบใบขาย');
-    return projectSaleForActor({ ...sale, receiptBreakdown: bookingReceipt(sale) }, actor);
+    // ใบปะหน้าพัสดุ (A6 · 2026-10-22): ชื่อของแถมในกล่อง — `bundleProductIds` เป็น string[] ไม่ใช่ relation
+    const bundleProducts = sale.bundleProductIds.length
+      ? await this.prisma.product.findMany({
+          where: { id: { in: sale.bundleProductIds }, deletedAt: null },
+          select: { id: true, name: true },
+        })
+      : [];
+    return projectSaleForActor({ ...sale, receiptBreakdown: bookingReceipt(sale), bundleProducts }, actor);
   }
 
   async getPosConfig() {

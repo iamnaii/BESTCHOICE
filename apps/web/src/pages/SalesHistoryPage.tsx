@@ -23,7 +23,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { getStatusBadgeProps, saleTypeMap, contractStatusMap } from '@/lib/status-badges';
-import { Download, RotateCcw, Ban, Info } from 'lucide-react';
+import { Download, RotateCcw, Ban, Info, Package } from 'lucide-react';
 import { formatDateShort, formatDateTime } from '@/utils/formatters';
 import ThaiDateInput from '@/components/ui/ThaiDateInput';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
@@ -828,6 +828,7 @@ export default function SalesHistoryPage() {
               {isOwner && saleDetail.data.costPriceSnapshot == null && <p className="text-muted-foreground">ไม่ทราบต้นทุน ณ วันขาย จึงยังคำนวณกำไรไม่ได้</p>}
               {saleDetail.data.receiptBreakdown && <BookingSaleReceipt receipt={saleDetail.data.receiptBreakdown} />}
               <div>{!saleDetail.data.receiptBreakdown && <p>วิธีรับ: {saleMethodLabel(saleDetail.data) || 'ยังไม่ระบุ'}</p>}<p>พนักงาน: {saleDetail.data.salesperson.name}</p><p>สาขา: {saleDetail.data.branch.name}</p></div>
+              {!saleDetail.data.deletedAt && <Link to={`/sales/${saleDetail.data.id}/parcel-label`} className="inline-flex min-h-10 items-center gap-2 rounded-md border border-border bg-background px-3 text-sm font-medium hover:bg-accent"><Package aria-hidden="true" className="size-4" />พิมพ์ใบปะหน้าพัสดุ</Link>}
               {saleDetail.data.tradeInCreditSnapshot && <div className="rounded-lg border border-border p-3">
                 <p>เงินสด/โอนสุทธิ {Number(saleDetail.data.tradeInCreditSnapshot.cashDownAmount).toLocaleString()} บาท</p>
                 <p>เครดิตเทิร์น {Number(saleDetail.data.tradeInCreditSnapshot.baseAmount).toLocaleString()} บาท</p>

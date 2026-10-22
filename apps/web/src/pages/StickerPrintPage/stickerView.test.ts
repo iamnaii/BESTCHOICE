@@ -52,7 +52,9 @@ describe('buildStickerView — มือ 1', () => {
         { no: 1, down: '2,985', monthly: '1,840.07', months: 12 },
         { no: 2, down: '1,900', monthly: '3,327', months: 12 },
       ],
-      imei: '351000000007919',
+      qrValue: '351000000007919',
+      idLabel: 'IMEI',
+      idText: '351000000007919',
     });
   });
 
@@ -78,12 +80,25 @@ describe('buildStickerView — มือ 1', () => {
 
   it('อุปกรณ์ที่ไม่มีรุ่นใช้ชื่อสินค้าแทน · ไม่มีสี/ความจุ = ไม่มีบรรทัดสเปก', () => {
     const view = buildStickerView(
-      product({ category: 'ACCESSORY', model: '', name: 'เคสใส iPhone 16', color: null, storage: null, imei: null }),
+      product({ category: 'ACCESSORY', model: '', name: 'เคสใส iPhone 16', color: null, storage: null, imei: null, code: 'F17P01' }),
       { rate1: null, rate2: null },
     );
     expect(view?.model).toBe('เคสใส iPhone 16');
     expect(view?.spec).toBeNull();
-    expect(view?.imei).toBeNull();
+    // ไม่มี IMEI → QR และบรรทัดล่างใช้รหัสสินค้าเดิม
+    expect(view?.qrValue).toBe('F17P01');
+    expect(view?.idLabel).toBe('รหัส');
+    expect(view?.idText).toBe('F17P01');
+  });
+
+  it('ไม่มีทั้ง IMEI และรหัสสินค้าเดิม → QR = product id ทั้งก้อน · บรรทัดล่างพิมพ์ ID 8 ตัวแรก', () => {
+    const view = buildStickerView(
+      product({ productId: '0a1b2c3d-4e5f-6789-abcd-ef0123456789', category: 'ACCESSORY', imei: null, code: null }),
+      { rate1: null, rate2: null },
+    );
+    expect(view?.qrValue).toBe('0a1b2c3d-4e5f-6789-abcd-ef0123456789');
+    expect(view?.idLabel).toBe('ID');
+    expect(view?.idText).toBe('0a1b2c3d');
   });
 });
 

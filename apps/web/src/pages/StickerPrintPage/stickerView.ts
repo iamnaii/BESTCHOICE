@@ -18,6 +18,8 @@ export interface StickerProductData {
   /** YYYY-MM-DD เฉพาะประกันศูนย์ที่ยังไม่หมด */
   warrantyExpireDate: string | null;
   imei: string | null;
+  /** รหัสสินค้าเดิม (Tooltify) — optional เพราะ API รุ่นก่อนก้อน 3 ไม่ส่ง */
+  code?: string | null;
   stockInDate: string | null;
   cashPrice: string | null;
   installmentPrice: string | null;
@@ -49,7 +51,24 @@ export interface StickerView {
   used: { battery: number | null; box: boolean | null } | null;
   cash: string;
   rates: StickerRateView[];
-  imei: string | null;
+  /** สิ่งที่อยู่ใน QR: IMEI → รหัสสินค้าเดิม → product id ทั้งก้อน (ตามลำดับที่มี) */
+  qrValue: string;
+  /** ป้ายบรรทัดล่าง — บอกว่า idText คืออะไร */
+  idLabel: 'IMEI' | 'รหัส' | 'ID';
+  /** ข้อความบรรทัดล่างเผื่อยิงไม่ติด — IMEI/รหัสเต็ม · product id พิมพ์แค่ 8 ตัวแรก */
+  idText: string;
+}
+
+const ID_TEXT_LENGTH = 8;
+
+function resolveStickerId(
+  product: Pick<StickerProductData, 'productId' | 'imei' | 'code'>,
+): Pick<StickerView, 'qrValue' | 'idLabel' | 'idText'> {
+  const imei = nonEmpty(product.imei);
+  if (imei) return { qrValue: imei, idLabel: 'IMEI', idText: imei };
+  const code = nonEmpty(product.code);
+  if (code) return { qrValue: code, idLabel: 'รหัส', idText: code };
+  return { qrValue: product.productId, idLabel: 'ID', idText: product.productId.slice(0, ID_TEXT_LENGTH) };
 }
 
 const nonEmpty = (value: string | null | undefined): string | null => {
@@ -107,6 +126,6 @@ export function buildStickerView(product: StickerProductData, quotes: StickerQuo
     used,
     cash: formatBaht(cash),
     rates: [rateView(1, quotes.rate1), rateView(2, quotes.rate2)].filter((r): r is StickerRateView => r !== null),
-    imei: nonEmpty(product.imei),
+    ...resolveStickerId(product),
   };
 }

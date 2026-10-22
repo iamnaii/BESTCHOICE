@@ -31,7 +31,7 @@
 
 | โซนที่เลือก (`useLayout().workZone`) | OWNER / BM / FM / ACC | SALES |
 |---|---|---|
-| `shop` | ShopHome เต็ม | ShopHome แบบไม่มีต้นทุน + การ์ด "งานของฉันวันนี้" (ย้ายมาจาก StaffHome) ท้ายหน้า |
+| `shop` | ShopHome เต็ม | ShopHome แบบไม่มีต้นทุน + ตารางปุ่ม "เริ่มงาน" ใต้การ์ดวันนี้ + การ์ด "งานของฉันวันนี้" ท้ายหน้า (ทั้งสองย้ายมาจาก StaffHome ไม่หายไป) |
 | `fin` | ManagementDashboard (เดิม) | ไม่มีโซนนี้ |
 
 ใช้ `workZone` ไม่ใช่ `currentZone` เพื่อให้กดเฟืองตั้งค่าแล้วกลับมา `/` ยังได้หน้าเดิมที่ทำงานอยู่
@@ -42,7 +42,7 @@
 2. **การ์ดวันนี้ 4 ใบ** (แถวเดียว ย่อเป็น 2 คอลัมน์บนมือถือ)
    - ยอดขายวันนี้: ยอดสุทธิ (บาท) · "N บิล · ขายสด a · ผ่อน b · ไฟแนนซ์นอก c" → `/sales`
    - เงินสดในลิ้นชัก: ยอดปัจจุบัน · สถานะ "ยังไม่ปิดยอดวันนี้ · ปิดยอดเมื่อวาน HH:MM" (สีเตือน) หรือ "ปิดยอดแล้ว HH:MM" → `/shop/daily-cash`
-   - จองครบกำหนดวันนี้: จำนวนใบ · "มัดจำรวม X ฿ · เครื่องจองไว้แล้ว N" → `/bookings`
+   - ใบจองหมดอายุวันนี้: จำนวนใบ · "มัดจำรวม X ฿ · จ่ายมัดจำแล้ว N ใบ · ควรตามลูกค้า" → `/bookings` (Booking มีแค่ `expireDate` ไม่มีวันนัดรับ จึงห้ามใช้คำว่า "นัดรับ")
    - หลังการขายรอลูกค้ารับ: จำนวนเคส · "เกินกำหนดนัด N เคส" (สีแดงถ้า > 0) → `/after-sales`
 3. **สิ่งที่ต้องดูวันนี้** รายการแถวกดได้ แต่ละแถว = ชิปตัวเลข + คำกำกับความเร่งด่วน (ด่วน / รอ / แจ้ง) + ชื่อเรื่อง + รายละเอียดสั้น + ลูกศร แสดงเฉพาะแถวที่ count > 0 ถ้าไม่มีเลยขึ้น "ไม่มีงานค้าง วันนี้ว่าง"
    | เรื่อง | ความเร่งด่วน | รายละเอียด | ลิงก์ |
@@ -52,9 +52,9 @@
    | รอ QC / รอถ่ายรูป | รอ | "รอ QC a · รอถ่ายรูป b" | `/purchase-orders/qc` |
    | โอนระหว่างสาขาค้างรับ | รอ | จำนวน | `/stock/transfers` |
    | เครื่องยึดคืนรอตีราคา | รอ | จำนวน | `/stock/products?view=all&status=REPOSSESSED` |
-   | ใบสั่งซื้อรออนุมัติ | แจ้ง | เลข PO ล่าสุด | `/purchase-orders` |
+   | ใบสั่งซื้อรออนุมัติ | แจ้ง | เลข PO ล่าสุด | `/purchase-orders` (ไม่ส่งแถวนี้ให้ SALES เพราะ `/purchase-orders/summary` ไม่เปิดให้ SALES; ส่วนสินค้าใกล้หมดเปิดให้ทุกบทบาทโดยตั้งใจ) |
    ท้ายการ์ด: "รายการนี้มาจากเงื่อนไขที่ตั้งไว้ (จุดสั่งซื้อซ้ำ · 90 วัน · สถานะเครื่อง)"
-4. **กราฟ 6 เดือน** หัว "ยอดขาย · ต้นทุน · กำไรขั้นต้น 6 เดือน" (SALES: "ยอดขาย 6 เดือน") · แถวตัวเลข: กำไรขั้นต้นเดือนนี้ + % margin · เทียบเดือนก่อน ±% · ต้นทุนขาย (SALES: ยอดขายเดือนนี้ + เทียบเดือนก่อน) · แท่งคู่ต่อเดือน ยอดขาย (เขียว) / ต้นทุน (ลายเส้น) + ป้ายกำไรขั้นต้นเหนือแท่ง · เดือนปัจจุบันเน้น · หมายเหตุ "กำไรขั้นต้น = ยอดขายหน้าร้าน − ต้นทุนเครื่องที่ขาย ไม่รวมค่าใช้จ่ายดำเนินงาน" · บนมือถือกราฟเลื่อนซ้ายขวา
+4. **กราฟ 6 เดือน** หัว "ยอดขาย · ต้นทุน · กำไรขั้นต้น 6 เดือน" (SALES: "ยอดขาย 6 เดือน") · แถวตัวเลข: กำไรขั้นต้นเดือนนี้ + % margin · "เทียบเดือนก่อนทั้งเดือน" ±% · ต้นทุนขาย (SALES: ยอดขายเดือนนี้ + เทียบเดือนก่อน) · เดือนนำหน้าที่ยังไม่มีบัญชีร้าน (ยอดขายและต้นทุน 0) ไม่แสดงเป็นแท่ง 0 ให้ตัดทิ้ง กราฟจึงมี 1–6 แท่ง · แท่งคู่ต่อเดือน ยอดขาย (เขียว) / ต้นทุน (ลายเส้น) + ป้ายกำไรขั้นต้นเหนือแท่ง · เดือนปัจจุบันเน้น · หมายเหตุ "กำไรขั้นต้น = ยอดขายหน้าร้าน − ต้นทุนเครื่องที่ขาย ไม่รวมค่าใช้จ่ายดำเนินงาน" · บนมือถือกราฟเลื่อนซ้ายขวา
 5. **ขายดี 30 วัน** แท็บ "ตามรุ่น | ตามหมวด" 5 อันดับ แถบสัดส่วน + จำนวนชิ้น · ท้ายการ์ด "นับจากรายการขายที่ไม่ถูกยกเลิก" · กดชื่อรุ่น → `/stock/products?search=<รุ่น>`
 6. **ค้างสต๊อกนานสุด** 5 อันดับ: ลำดับ (แดงถ้า > 90 วัน, เหลืองถ้า 31–90) · ชื่อ · "ทุน X" (เฉพาะเมื่อมี cost) · จำนวนวัน · ลิงก์ "ดูทั้งหมด N เครื่อง" → `/stock/products?sortBy=stockInDate&sortDirection=asc` · ท้ายการ์ด: จำนวนตามช่วงอายุ 0–30 / 31–60 / 61–90 / 90+
    ลิงก์ที่บทบาทนั้นเปิดไม่ได้ (เช่น `/stock/alerts` สำหรับ FM/ACC/SALES) ให้แสดงเป็นแถวธรรมดาไม่ใช่ลิงก์
@@ -73,7 +73,7 @@ type ShopHomeResponse = {
   today: {
     sales: { count: number; netAmount: number; cash: number; installment: number; externalFinance: number }; // นับบิลตาม saleType (daily-summary ไม่แยกวิธีรับเงิน)
     cashDrawer: { balance: number; closedToday: boolean; lastClosedAt: string | null };
-    bookingsDueToday: { count: number; depositTotal: number; reservedUnits: number };
+    bookingsExpiringToday: { count: number; depositTotal: number; reservedUnits: number };
     afterSales: { waitingPickup: number; overdue: number };
   };
   watch: Array<{
@@ -83,7 +83,7 @@ type ShopHomeResponse = {
     detail: string | null;                   // ข้อความสั้นที่ server ประกอบแล้ว (ชื่อ SKU, เลข PO)
     costValue: number | null;                // เฉพาะ AGING_90; null เมื่อไม่มีสิทธิ์ดูต้นทุน
   }>;                                        // เฉพาะรายการที่ count > 0 เรียงตาม severity
-  monthly: Array<{ month: string; sales: number; cost: number | null; grossProfit: number | null }>; // 6 เดือน เก่า→ใหม่, month = 'YYYY-MM'
+  monthly: Array<{ month: string; sales: number; cost: number | null; grossProfit: number | null }>; // 1–6 เดือน เก่า→ใหม่, month = 'YYYY-MM', ตัดเดือนนำหน้าที่ว่างออก
   thisMonth: { sales: number; salesMomPct: number | null; cost: number | null; grossProfit: number | null; grossMarginPct: number | null; grossProfitMomPct: number | null };
   topSellers30d: { byModel: Array<{ name: string; count: number }>; byCategory: Array<{ name: string; count: number }> }; // สูงสุด 5
   slowMovers: Array<{ name: string; days: number; costPrice?: number }>; // สูงสุด 5 เฉพาะ ≥ 30 วัน
@@ -94,16 +94,16 @@ type ShopHomeResponse = {
 **ที่มาของแต่ละก้อน** (ใช้ service ที่มีอยู่ ไม่เขียน query ซ้ำ ถ้าของเดิมให้ไม่ครบค่อยเพิ่ม method ใน service เจ้าของข้อมูล)
 - `today.sales` ← sales daily-summary ของวันนี้ (เวลาไทย)
 - `today.cashDrawer` ← สรุปเงินสดหน้าร้านรายวัน (สถานะปิดยอดของวันนี้ + ยอดคงเหลือ)
-- `today.bookingsDueToday` ← bookings summary ช่วง from=to=วันนี้
+- `today.bookingsExpiringToday` ← นับใบจองเปิดอยู่ที่ `expireDate` = วันนี้ (summary เดิมไม่มีตัวนับนี้)
 - `today.afterSales` ← นับเคสสถานะ "รอลูกค้ารับ" และที่เลยวันนัด
-- `watch` ← stock dashboard `actionRequired` (qcPending, photoPending, pendingTransfers, repossessed, agingOver90) + low-stock (reorder points) + PO สถานะรออนุมัติ
-- `monthly`/`thisMonth` ← งบ SHOP รายเดือน รายได้ขาย (S41) − ต้นทุนขาย (S50) 6 เดือน; `cost`/`grossProfit` เป็น null สำหรับ SALES
+- `watch` ← stock dashboard `actionRequired` (qcPending, photoPending, pendingTransfers, repossessed, agingOver90) + ตาราง `StockAlert` ที่ ACTIVE (cron ดูแล ไม่ใช่การนับสดแบบ N+1) + PO สถานะ DRAFT
+- `monthly`/`thisMonth` ← งบ SHOP รายเดือนจาก journal: ยอดขาย = เฉพาะบัญชี S41 (S42 รายได้อื่นไม่นับ) − ต้นทุนขาย S50; `cost`/`grossProfit` เป็น null สำหรับ SALES
 - `topSellers30d` ← รายการขาย 30 วันที่ไม่ถูกยกเลิก จัดกลุ่มตาม `brand model` และตาม `category`
 - `slowMovers`, `stockAging` ← stock dashboard (ตัด `costPrice` ด้วย `omitCostPrice` เมื่อไม่มีสิทธิ์)
 
 **การตัดต้นทุน**: service ประกอบ response เต็มเสมอ แล้ว controller เรียก `redactShopHome(response)` เมื่อ `!canSeeCost(user.role)` (เพิ่มใน `cost-visibility.util.ts` ข้าง `redactStockDashboard`) — เหตุผล: มีจุดเดียวที่ตัดสิน และเทสต์ได้โดยไม่ต้องต่อ DB
 
-**สาขา**: `branchId` ไม่ส่ง = ทุกสาขา (OWNER/FM/ACC); BM ถูกบังคับเป็นสาขาตัวเองด้วย guard/util เดียวกับ `GET /products/stock`
+**สาขา**: บทบาทข้ามสาขา (OWNER/FM/ACC ตาม `getBranchScope`) ไม่ส่ง `branchId` = ทุกสาขา; บทบาทประจำสาขา (BM, SALES) ถูกบังคับเป็นสาขาตัวเองเสมอ ไม่ว่าจะส่งอะไรมา; ถ้าไม่มีสาขาผูก → 403
 
 **เวลา**: วันนี้ = วันที่ไทย (`bangkokDateString()`); เดือนในกราฟ = ปฏิทินไทย label "ต.ค." จากฝั่งเว็บ
 
@@ -128,6 +128,7 @@ type ShopHomeResponse = {
 
 ## 9. ความเสี่ยงที่รู้อยู่แล้ว
 
-- งบ SHOP รายเดือนคำนวณจาก ledger ต้องเรียกทีละเดือน 6 ครั้ง ถ้าช้า (> 1 วิ) ให้ cache ฝั่ง server 5 นาทีต่อสาขา
+- งบ SHOP รายเดือนเรียก `journalLine.groupBy` 6 ครั้ง (ครั้งละ query เดียว) ไม่ต้องมี cache ฝั่ง server; staleTime 60 วินาทีฝั่งเว็บพอ
+- ประวัติขายที่นำเข้าจาก Tooltify อยู่ตาราง `ImportedSale` ไม่ได้ลงสมุดรายวัน กราฟจึงเริ่มจากเดือนที่บัญชีร้านเดินจริง
 - `stockInDate` ว่างในของเก่า → อายุสต๊อกนับจาก `createdAt` (พฤติกรรมเดิมของ stock dashboard ยอมรับ)
 - ต้นทุนก่อน/หลัง 2026-09-29 รวม VAT ไม่เท่ากัน (ข้อจำกัดข้อมูลเดิม แสดงหมายเหตุใต้กราฟแล้ว)

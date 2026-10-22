@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { MemoryRouter, Route, Routes } from 'react-router';
+import { Link, MemoryRouter, Outlet, Route, Routes } from 'react-router';
 import ParcelLabelPage from './index';
 import { PARCEL_LABEL_FORMAT_KEY } from './parcelLabel';
 
@@ -24,13 +24,19 @@ const sale = {
   product: { id: 'p1', name: 'Apple iPhone 15 Pro Max 256GB ดำ', imeiSerial: '357200606382344', serialNumber: null },
   bundleProducts: [{ id: 'acc1', name: 'เคสใส' }],
 };
+/** ที่อยู่จากฟอร์มเว็บเก็บเป็น JSON (`serializeAddress`) — เส้นทางหลักของข้อมูลจริง */
 const customer = {
   id: 'c1',
   prefix: 'นางสาว',
   name: 'สมหญิง ใจดี',
   phone: '0899999999',
-  addressCurrent: '99/1 ม.2 ต.ท่าหิน อ.เมืองลพบุรี จ.ลพบุรี 15000',
+  addressCurrent: JSON.stringify({
+    houseNo: '99/1', moo: '2', village: '', soi: '', road: '',
+    province: 'ลพบุรี', district: 'อำเภอเมืองลพบุรี', subdistrict: 'ตำบลท่าหิน', postalCode: '15000',
+  }),
 };
+const sale2 = { ...sale, id: 's2', saleNumber: 'S-20261022-0002', customer: { id: 'c2', name: 'สมชาย รักดี', phone: '0822222222' } };
+const customer2 = { id: 'c2', prefix: 'นาย', name: 'สมชาย รักดี', phone: '0822222222', addressCurrent: '45 หมู่ 3 ต.บางพลี จ.สมุทรปราการ 10540' };
 const company = { shop: { nameTh: 'บริษัท เบสท์ช้อยส์โฟน จำกัด', address: '12 ถ.นารายณ์มหาราช', phone: '036-000000' }, finance: null };
 
 function renderPage() {
@@ -39,7 +45,9 @@ function renderPage() {
     <QueryClientProvider client={client}>
       <MemoryRouter initialEntries={['/sales/s1/parcel-label']}>
         <Routes>
-          <Route path="/sales/:id/parcel-label" element={<ParcelLabelPage />} />
+          <Route element={<><Link to="/sales/s2/parcel-label">ไปใบ s2</Link><Outlet /></>}>
+            <Route path="/sales/:id/parcel-label" element={<ParcelLabelPage />} />
+          </Route>
           <Route path="/sales" element={<div>หน้าประวัติการขาย</div>} />
         </Routes>
       </MemoryRouter>
@@ -53,7 +61,9 @@ beforeEach(() => {
   mocks.get.mockReset();
   mocks.get.mockImplementation(async (path: string) => {
     if (path === '/sales/s1') return { data: sale };
+    if (path === '/sales/s2') return { data: sale2 };
     if (path === '/customers/c1') return { data: customer };
+    if (path === '/customers/c2') return { data: customer2 };
     if (path === '/company/public') return { data: company };
     throw new Error(`unexpected ${path}`);
   });
@@ -74,7 +84,7 @@ describe('ParcelLabelPage', () => {
 
     expect((await screen.findByLabelText('ชื่อผู้รับ')) as HTMLInputElement).toHaveValue('นางสาว สมหญิง ใจดี');
     expect(screen.getByLabelText('เบอร์โทร')).toHaveValue('0899999999');
-    expect(screen.getByLabelText('ที่อยู่')).toHaveValue('99/1 ม.2 ต.ท่าหิน อ.เมืองลพบุรี');
+    expect(screen.getByLabelText('ที่อยู่')).toHaveValue('99/1 หมู่ 2 ตำบลท่าหิน อำเภอเมืองลพบุรี');
     expect(screen.getByLabelText('จังหวัด')).toHaveValue('ลพบุรี');
     expect(screen.getByLabelText('รหัสไปรษณีย์')).toHaveValue('15000');
     expect(screen.getByLabelText('เก็บเงินปลายทาง')).toHaveValue('ไม่มี');
@@ -117,6 +127,32 @@ describe('ParcelLabelPage', () => {
     fireEvent.click(await screen.findByRole('button', { name: /พิมพ์ใบปะหน้า/ }));
 
     expect(print).toHaveBeenCalledTimes(1);
+  });
+
+  it('ลูกค้าโหลดไม่ได้ (403) → ยังพิมพ์ได้ ใช้ชื่อ/เบอร์จากใบขาย ที่อยู่ว่างให้กรอกเอง', async () => {
+    mocks.get.mockImplementation(async (path: string) => {
+      if (path === '/sales/s1') return { data: sale };
+      if (path === '/customers/c1') throw new Error('Forbidden');
+      if (path === '/company/public') return { data: company };
+      throw new Error(`unexpected ${path}`);
+    });
+    renderPage();
+
+    expect(await screen.findByLabelText('ชื่อผู้รับ')).toHaveValue('สมหญิง ใจดี');
+    expect(screen.getByLabelText('เบอร์โทร')).toHaveValue('0811111111');
+    expect(screen.getByLabelText('ที่อยู่')).toHaveValue('');
+    expect(screen.getByRole('button', { name: /พิมพ์ใบปะหน้า/ })).toBeInTheDocument();
+  });
+
+  it('เปลี่ยนใบขายขณะหน้ายัง mount (back/forward) → ฟอร์มและ QR เป็นของใบใหม่ ไม่ค้างใบเก่า', async () => {
+    renderPage();
+    expect(await screen.findByLabelText('ชื่อผู้รับ')).toHaveValue('นางสาว สมหญิง ใจดี');
+
+    fireEvent.click(screen.getByRole('link', { name: 'ไปใบ s2' }));
+
+    await waitFor(() => expect(screen.getByLabelText('ชื่อผู้รับ')).toHaveValue('นาย สมชาย รักดี'));
+    expect(screen.getByLabelText('จังหวัด')).toHaveValue('สมุทรปราการ');
+    expect(within(paper()).getByRole('img', { name: 'QR เปิดใบขาย S-20261022-0002' })).toBeInTheDocument();
   });
 
   it('ใบขายที่ยกเลิกแล้ว → ไม่มีปุ่มพิมพ์ และบอกเหตุผล', async () => {

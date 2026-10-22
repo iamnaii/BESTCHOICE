@@ -64,12 +64,13 @@ export default function ParcelLabelPage() {
 
   useDocumentTitle(saleQuery.data ? `ใบปะหน้าพัสดุ ${saleQuery.data.saleNumber}` : 'ใบปะหน้าพัสดุ');
 
-  // ร่างครั้งเดียวเมื่อข้อมูลครบ — ลูกค้า/บริษัทโหลดไม่ได้ยังพิมพ์ได้ (ช่องว่างให้กรอกเอง)
+  // ร่างเมื่อข้อมูลครบ และร่างใหม่เมื่อ :id เปลี่ยนขณะหน้ายัง mount (back/forward) — ไม่งั้นฟอร์ม/QR ค้างใบเก่า
+  // ลูกค้า/บริษัทโหลดไม่ได้ยังพิมพ์ได้ (ช่องว่างให้กรอกเอง)
   const sale = saleQuery.data;
   const customerSettled = !!customerId && !customerQuery.isPending;
   const companySettled = !companyQuery.isPending;
   useEffect(() => {
-    if (draft || !sale || !customerSettled || !companySettled) return;
+    if (!sale || draft?.saleId === sale.id || !customerSettled || !companySettled) return;
     setDraft(
       buildParcelLabelDraft({
         sale,
@@ -205,7 +206,7 @@ export default function ParcelLabelPage() {
 
             <section className="parcel-print rounded-xl border border-border bg-card p-4 print:border-0 print:bg-transparent print:p-0">
               <div className="print:hidden mb-3 font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground">ตัวอย่าง (ขนาดจริง)</div>
-              <div className="flex justify-center overflow-x-auto">
+              <div className="flex justify-center overflow-x-auto print:block print:overflow-visible">
                 <ParcelLabelCard draft={draft} />
               </div>
             </section>

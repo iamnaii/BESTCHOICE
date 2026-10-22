@@ -1,4 +1,5 @@
 import { THAI_ADDRESS_DATA } from '@/data/thai-address-data';
+import { composeAddress, deserializeAddress } from '@/components/ui/AddressForm';
 
 /**
  * ใบปะหน้าพัสดุจากใบขาย (A6 · 2026-10-22) — ส่วน pure: ขนส่ง · แยกจังหวัด/รหัสไปรษณีย์จากที่อยู่บรรทัดเดียวของลูกค้า ·
@@ -58,13 +59,44 @@ export interface ParsedThaiAddress {
   postalCode: string | null;
 }
 
+const EMPTY_ADDRESS: ParsedThaiAddress = { lines: '', province: null, postalCode: null };
+
+type ProvinceHit = { index: number; length: number; province: string; prefixStart: number };
+
 /**
- * ที่อยู่ปัจจุบันของลูกค้าเป็นข้อความบรรทัดเดียว — จังหวัด = ชื่อจังหวัดที่ปรากฏ**ท้ายสุด** (ชื่ออำเภอมักซ้อนชื่อจังหวัด เช่น "เมืองลพบุรี")
+ * หาชื่อจังหวัดในข้อความแบบมีขอบคำ — รับเฉพาะที่ (ก) ตัวอักษรก่อนหน้าเป็นต้นข้อความ/ช่องว่าง/`.` และ
+ * (ข) มี "จ."/"จังหวัด" นำหน้า หรือเป็นคำท้ายข้อความ (ถัดไปมีแต่ช่องว่าง) — ชื่อจังหวัดที่ซ้อนในชื่อถนน/ตำบล/อำเภอ
+ * ("ถ.ตากสิน" · "ต.สระแก้ว อ.เมือง" · "ศรีเชียงใหม่") จึงไม่ถูกเดาเป็นจังหวัด (ผลตรวจทานอิสระ 2026-10-22)
+ */
+function findProvince(text: string): ProvinceHit | null {
+  const candidates = [...PROVINCE_ALIASES, ...PROVINCES.map((p) => ({ alias: p, province: p }))];
+  let best: ProvinceHit | null = null;
+  for (const { alias, province } of candidates) {
+    let from = 0;
+    for (;;) {
+      const index = text.indexOf(alias, from);
+      if (index < 0) break;
+      from = index + 1;
+      const before = text.slice(0, index);
+      const prev = before.slice(-1);
+      const boundaryBefore = index === 0 || /\s|\./.test(prev);
+      const prefix = PROVINCE_PREFIX.exec(before); // "จังหวัดเชียงใหม่" ติดกันก็นับ — คำนำหน้าคือขอบคำในตัว
+      const tailOk = /^\s*$/.test(text.slice(index + alias.length));
+      if (!prefix && !(boundaryBefore && tailOk)) continue;
+      const hit: ProvinceHit = { index, length: alias.length, province, prefixStart: prefix ? prefix.index : index };
+      if (!best || hit.index > best.index || (hit.index === best.index && hit.length > best.length)) best = hit;
+    }
+  }
+  return best;
+}
+
+/**
+ * ที่อยู่ปัจจุบันของลูกค้าเป็นข้อความบรรทัดเดียว (ข้อมูลเก่า/นำเข้า) — จังหวัด = ชื่อจังหวัดที่ปรากฏ**ท้ายสุด**ตามกติกา `findProvince`
  * รหัสไปรษณีย์ = เลข 5 หลักตัวสุดท้าย · จับไม่ได้ = null และคงข้อความเดิมไว้ให้พนักงานแก้เอง
  */
 export function parseThaiAddress(text: string | null | undefined): ParsedThaiAddress {
   let rest = (text ?? '').trim();
-  if (!rest) return { lines: '', province: null, postalCode: null };
+  if (!rest) return { ...EMPTY_ADDRESS };
 
   let postalCode: string | null = null;
   let zipMatch: RegExpExecArray | null = null;
@@ -76,22 +108,29 @@ export function parseThaiAddress(text: string | null | undefined): ParsedThaiAdd
   }
 
   let province: string | null = null;
-  let best: { index: number; length: number; province: string } | null = null;
-  const candidates = [...PROVINCE_ALIASES, ...PROVINCES.map((p) => ({ alias: p, province: p }))];
-  for (const { alias, province: name } of candidates) {
-    const index = rest.lastIndexOf(alias);
-    if (index < 0) continue;
-    if (!best || index > best.index || (index === best.index && alias.length > best.length)) {
-      best = { index, length: alias.length, province: name };
-    }
-  }
-  if (best) {
-    province = best.province;
-    const before = rest.slice(0, best.index).replace(PROVINCE_PREFIX, '');
-    rest = `${before} ${rest.slice(best.index + best.length)}`;
+  const hit = findProvince(rest);
+  if (hit) {
+    province = hit.province;
+    rest = `${rest.slice(0, hit.prefixStart)} ${rest.slice(hit.index + hit.length)}`;
   }
 
   return { lines: rest.replace(/\s+/g, ' ').trim(), province, postalCode };
+}
+
+/**
+ * ที่อยู่ลูกค้าจากฟอร์มเว็บเก็บเป็น JSON (`serializeAddress` ใน AddressForm) — อ่านโครงสร้างตรง ๆ ก่อน;
+ * ข้อความบรรทัดเดียว (ข้อมูลเก่า / นำเข้า / บอท) ค่อย `parseThaiAddress`
+ */
+export function resolveCustomerAddress(text: string | null | undefined): ParsedThaiAddress {
+  const trimmed = (text ?? '').trim();
+  if (!trimmed) return { ...EMPTY_ADDRESS };
+  if (!trimmed.startsWith('{')) return parseThaiAddress(trimmed);
+  const addr = deserializeAddress(trimmed);
+  return {
+    lines: composeAddress({ ...addr, province: '', postalCode: '' }),
+    province: addr.province.trim() || null,
+    postalCode: addr.postalCode.trim() || null,
+  };
 }
 
 export interface ParcelLabelSources {
@@ -128,7 +167,7 @@ export interface ParcelLabelDraft {
 const clean = (value: string | null | undefined): string => (value ?? '').trim();
 
 export function buildParcelLabelDraft({ sale, customer, company, origin }: ParcelLabelSources): ParcelLabelDraft {
-  const parsed = parseThaiAddress(customer?.addressCurrent);
+  const parsed = resolveCustomerAddress(customer?.addressCurrent);
   const baseName = clean(customer?.name) || clean(sale.customer.name);
   const prefix = clean(customer?.prefix);
   return {
@@ -201,7 +240,12 @@ const PAPER_STYLES = `
 .parcel-label .pl-sender-hint { text-align: right; white-space: nowrap; }
 `;
 
-/** CSS ของกระดาษ + @page ตามรูปแบบ — A4 = ฉลากขนาดจริงพร้อมเส้นประให้ตัด */
+/**
+ * CSS ของกระดาษ + @page ตามรูปแบบ — A4 = ฉลากขนาดจริงพร้อมเส้นประให้ตัด
+ * ตอนพิมพ์ต้องหลบ chrome ของ MainLayout (`.wrapper` มี padding-left ตามเมนู 264/70px ซึ่ง index.css ไม่รีเซ็ตในโหมดพิมพ์):
+ * ซ่อนทุกอย่างด้วย visibility แล้ววาง `.parcel-print` ที่มุมซ้ายบนของกระดาษ — แบบเดียวกับหน้าสติกเกอร์ (`StickerCard` `.print-stickers`)
+ * ไม่งั้นฉลาก 100×150 เริ่มที่ 74 มม. จากขอบซ้ายและถูกตัดไป 3/4 (ผลตรวจทานอิสระ 2026-10-22)
+ */
 export function labelStyles(format: ParcelLabelFormat): string {
   const page =
     format === 'LABEL_100x150'
@@ -212,7 +256,12 @@ export function labelStyles(format: ParcelLabelFormat): string {
   return `${PAPER_STYLES}
 @media print {
   ${page}
-  .parcel-print { position: static; }
-  .parcel-print .parcel-label { page-break-inside: avoid; box-shadow: none; }
+  html, body { margin: 0; padding: 0; background: #fff; }
+  body * { visibility: hidden !important; }
+  .parcel-print, .parcel-print * { visibility: visible !important; }
+  .parcel-print { position: absolute; top: 0; left: 0; width: 100mm; margin: 0; padding: 0; border: 0; display: block !important; overflow: visible !important; }
+  .parcel-print > .print\\:hidden { display: none !important; }
+  .parcel-print > :not(.print\\:hidden) { display: block !important; overflow: visible !important; }
+  .parcel-print .parcel-label { page-break-inside: avoid; break-inside: avoid; box-shadow: none; margin: 0; }
 }`;
 }

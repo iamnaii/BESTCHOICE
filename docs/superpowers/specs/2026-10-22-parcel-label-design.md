@@ -40,9 +40,11 @@ SALES ได้เลขบัตรแบบ mask ซึ่งไม่ใช�
 
 - `CARRIERS: { code: 'FLASH' | 'KERRY' | 'JT_EXPRESS' | 'THAILAND_POST'; label: string }[]` = Flash · Kerry · J&T · ไปรษณีย์ (ลำดับตาม mockup ·
   รหัสตาม enum `OnlineShippingMethod` เดิม ตัด `BRANCH_PICKUP`).
+- `resolveCustomerAddress(text)` — **ที่อยู่ลูกค้าจากฟอร์มเว็บเก็บเป็น JSON** (`serializeAddress` ใน `components/ui/AddressForm.tsx` — ผู้เขียน `CustomerCreateDialog`/`CustomerEditModal`/`CreateContactModal`):
+  ข้อความขึ้นต้น `{` → `deserializeAddress` แล้ว `lines = composeAddress({...addr, province:'', postalCode:''})` + จังหวัด/รหัสจากโครงสร้างตรง ๆ · ไม่ใช่ JSON (ข้อมูลเก่า/นำเข้า/บอท) → `parseThaiAddress` (ผลตรวจทานอิสระ 2026-10-22 — ฉบับแรกพิมพ์ก้อน JSON ลงฉลาก).
 - `parseThaiAddress(text: string): { lines: string; province: string | null; postalCode: string | null }` — ที่อยู่ปัจจุบันของลูกค้าเป็นข้อความบรรทัดเดียว
   (`Customer.addressCurrent`): รหัสไปรษณีย์ = ตัวเลข 5 หลักตัวสุดท้ายในข้อความ · จังหวัด = ชื่อจังหวัด (จาก `THAI_ADDRESS_DATA` คอลัมน์แรก 77 ชื่อ)
-  ที่ปรากฏ**ท้ายสุด**ในข้อความ (รับ `จ.`/`จังหวัด` นำหน้า · `กทม.`/`กรุงเทพฯ`/`กรุงเทพ` = กรุงเทพมหานคร) · `lines` = ข้อความเดิมที่ถอดรหัสไปรษณีย์และ
+  ที่ปรากฏ**ท้ายสุด**ในข้อความ **แบบมีขอบคำ**: ตัวอักษรก่อนหน้าเป็นต้นข้อความ/ช่องว่าง/`.` และ (มี `จ.`/`จังหวัด` นำหน้า — ติดกันก็ได้ — หรือเป็นคำท้ายข้อความ) — ชื่อจังหวัดที่ซ้อนในชื่อถนน/ตำบล/อำเภอ (ถ.ตากสิน · ต.สระแก้ว อ.เมือง · ศรีเชียงใหม่) ไม่ถูกเดา (`province: null` และไม่แตะ `lines`) · `กทม.`/`กรุงเทพฯ`/`กรุงเทพ` = กรุงเทพมหานคร · `lines` = ข้อความเดิมที่ถอดรหัสไปรษณีย์และ
   จังหวัด (พร้อมคำนำหน้า) ตัวที่จับได้ออก แล้วยุบช่องว่างซ้ำ · จับไม่ได้ = `null` และ `lines` คงข้อความเดิม · ว่าง = `{ lines: '', province: null, postalCode: null }`.
 - `buildParcelLabelDraft({ sale, customer, company, origin }): ParcelLabelDraft` —
   ```ts
@@ -60,7 +62,9 @@ SALES ได้เลขบัตรแบบ mask ซึ่งไม่ใช�
   }
   ```
 - `labelStyles(format: ParcelLabelFormat): string` — CSS ของกระดาษ (หน่วย mm/pt) + `@media print` ตามรูปแบบ: `LABEL_100x150` → `@page { size: 100mm 150mm; margin: 0 }`
-  · `A4` → `@page { size: A4; margin: 12mm }` และฉลากมีเส้นประรอบ (ตัดตาม) · `page-break-inside: avoid`.
+  · `A4` → `@page { size: A4; margin: 12mm }` และฉลากมีเส้นประรอบ (ตัดตาม) · `page-break-inside: avoid` · **หลบ chrome ของ MainLayout ตอนพิมพ์แบบหน้าสติกเกอร์**:
+  `body * { visibility: hidden }` + `.parcel-print, .parcel-print * { visibility: visible }` + `.parcel-print { position: absolute; top: 0; left: 0 }` — `.wrapper` ของ MainLayout มี `padding-left` ตามเมนู (264/70px) ที่ `index.css` ไม่รีเซ็ตในโหมดพิมพ์
+  ฉบับแรกจึงพิมพ์ฉลากเริ่มที่ 74 มม. และถูกตัด (ผลตรวจทานอิสระ 2026-10-22 · วัดซ้ำหลังแก้ด้วย Chromium: ทุกฉาก 1 หน้า ฉลากที่ 0,0 ขนาด 100×150).
 - `PARCEL_LABEL_FORMAT_KEY = 'parcel-label:format'` · `readLabelFormat()` / `writeLabelFormat()` ห่อ `try/catch` (localStorage ใช้ไม่ได้ = A4).
 
 ### `ParcelLabelCard.tsx` — กระดาษตาม mockup (100×150 มม. · ขาวดำ)
@@ -79,8 +83,8 @@ SALES ได้เลขบัตรแบบ mask ซึ่งไม่ใช�
 
 ### `index.tsx` — หน้า `/sales/:id/parcel-label`
 
-- โหลด `GET /sales/:id` · `GET /customers/:customerId` · `GET /company/public` (QueryBoundary) → `buildParcelLabelDraft` ครั้งเดียวเมื่อข้อมูลครบ
-  (`useState` + `useEffect` ตั้งค่าเริ่มเมื่อ draft ยังว่าง) · ใบขายที่ยกเลิกแล้ว (`deletedAt`) = แถบเตือน + ไม่มีปุ่มพิมพ์.
+- โหลด `GET /sales/:id` · `GET /customers/:customerId` · `GET /company/public` (QueryBoundary) → `buildParcelLabelDraft` เมื่อข้อมูลครบ และ**ร่างใหม่เมื่อ `:id` เปลี่ยนขณะหน้ายัง mount** (back/forward — `draft.saleId !== sale.id`; ฉบับแรกค้างใบเก่า) ·
+  ลูกค้า/บริษัทโหลดไม่ได้ (403/404) ยังพิมพ์ได้ — ชื่อ/เบอร์จากใบขาย ที่อยู่ว่างให้กรอก · ใบขายที่ยกเลิกแล้ว (`deletedAt`) = แถบเตือน + ไม่มีปุ่มพิมพ์.
 - ฟอร์มซ้าย (`print:hidden`): ชื่อผู้รับ · เบอร์ · ที่อยู่ (textarea) · จังหวัด · รหัสไปรษณีย์ · ขนส่ง (ปุ่มเลือก 4 ตัว + "ยังไม่เลือก") · เก็บเงินปลายทาง ·
   หมายเหตุถึงขนส่ง · รูปแบบกระดาษ (`NativeSelect`: "ฉลาก 100 × 150 มม." / "A4 (ตัดตามเส้นประ)") — เปลี่ยนแล้วจำไว้ · ของในกล่อง/ผู้ส่ง/QR แสดงอย่างเดียว
   (แก้ไม่ได้ — มาจากใบขาย/ตั้งค่าบริษัท; ลิงก์ "แก้ที่ตั้งค่าบริษัท" ไม่ใส่เพราะ SALES เข้าไม่ได้).

@@ -6,6 +6,7 @@ import {
   labelStyles,
   parseThaiAddress,
   readLabelFormat,
+  resolveCustomerAddress,
   writeLabelFormat,
   type ParcelLabelSources,
 } from './parcelLabel';
@@ -72,6 +73,40 @@ describe('parseThaiAddress — ที่อยู่บรรทัดเดี�
   it('ว่าง / null → ว่างทั้งหมด', () => {
     expect(parseThaiAddress('')).toEqual({ lines: '', province: null, postalCode: null });
     expect(parseThaiAddress(null)).toEqual({ lines: '', province: null, postalCode: null });
+  });
+
+  it('ชื่อจังหวัดที่ซ้อนในชื่อถนน/ตำบล/อำเภอ โดยไม่มี "จ." และไม่ได้อยู่ท้ายข้อความ → ไม่เดา (null) และไม่แตะบรรทัด', () => {
+    expect(parseThaiAddress('123 ถ.ตากสิน แขวงบุคคโล เขตธนบุรี 10600')).toEqual({
+      lines: '123 ถ.ตากสิน แขวงบุคคโล เขตธนบุรี',
+      province: null,
+      postalCode: '10600',
+    });
+    expect(parseThaiAddress('12 ต.สระแก้ว อ.เมือง 40000')).toEqual({ lines: '12 ต.สระแก้ว อ.เมือง', province: null, postalCode: '40000' });
+    expect(parseThaiAddress('8 ต.ศรีเชียงใหม่ อ.ศรีเชียงใหม่')).toEqual({ lines: '8 ต.ศรีเชียงใหม่ อ.ศรีเชียงใหม่', province: null, postalCode: null });
+  });
+
+  it('จังหวัดขึ้นก่อน (มี "จ." นำ) → ใช้ตัวที่มีคำนำหน้า ไม่ตัดชื่ออำเภอที่ซ้อน', () => {
+    expect(parseThaiAddress('จ.ลพบุรี อ.เมืองลพบุรี ต.ท่าหิน 99/1 ม.2 15000')).toEqual({
+      lines: 'อ.เมืองลพบุรี ต.ท่าหิน 99/1 ม.2',
+      province: 'ลพบุรี',
+      postalCode: '15000',
+    });
+  });
+});
+
+describe('resolveCustomerAddress — ที่อยู่ลูกค้าจากฟอร์มเว็บเป็น JSON (serializeAddress) ก่อน · ข้อความเดิมค่อย parse', () => {
+  const json = JSON.stringify({
+    houseNo: '99/1', moo: '2', village: '', soi: '', road: '',
+    province: 'ลพบุรี', district: 'อำเภอเมืองลพบุรี', subdistrict: 'ตำบลท่าหิน', postalCode: '15000',
+  });
+  it('JSON → บรรทัดจาก composeAddress (ไม่มีจังหวัด/รหัส) + จังหวัด + รหัส', () => {
+    expect(resolveCustomerAddress(json)).toEqual({ lines: '99/1 หมู่ 2 ตำบลท่าหิน อำเภอเมืองลพบุรี', province: 'ลพบุรี', postalCode: '15000' });
+  });
+  it('JSON ที่ช่องว่างทั้งหมด → ว่าง ไม่พิมพ์ก้อน JSON', () => {
+    expect(resolveCustomerAddress(JSON.stringify({ province: '', district: '', subdistrict: '', postalCode: '' }))).toEqual({ lines: '', province: null, postalCode: null });
+  });
+  it('ข้อความเดิม → parseThaiAddress', () => {
+    expect(resolveCustomerAddress('99/1 ม.2 ต.ท่าหิน อ.เมืองลพบุรี จ.ลพบุรี 15000').province).toBe('ลพบุรี');
   });
 });
 
@@ -152,5 +187,15 @@ describe('labelStyles — @page ตามรูปแบบ', () => {
     expect(labelStyles('LABEL_100x150')).toContain('margin: 0');
     expect(labelStyles('A4')).toContain('size: A4');
     expect(labelStyles('A4')).toContain('dashed');
+  });
+
+  it('ตอนพิมพ์หลบ chrome ของ MainLayout (padding-left ของเมนู) แบบหน้าสติกเกอร์: ซ่อนทุกอย่างแล้ววาง .parcel-print ที่มุมซ้ายบน', () => {
+    for (const format of ['LABEL_100x150', 'A4'] as const) {
+      const css = labelStyles(format);
+      expect(css).toContain('body * { visibility: hidden !important; }');
+      expect(css).toContain('.parcel-print, .parcel-print * { visibility: visible !important; }');
+      expect(css).toMatch(/\.parcel-print \{[^}]*position: absolute;[^}]*top: 0;[^}]*left: 0;/);
+      expect(css).not.toContain('position: static');
+    }
   });
 });

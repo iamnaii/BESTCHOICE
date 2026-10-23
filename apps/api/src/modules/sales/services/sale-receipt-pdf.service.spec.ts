@@ -85,13 +85,34 @@ describe('SaleReceiptPdfService.generate', () => {
     expect(JSON.stringify(where)).not.toContain('branchId');
   });
 
-  it('staff path renders a voided sale with the watermark and reports voided=true', async () => {
-    prisma.sale.findFirst.mockResolvedValue(baseSale({ deletedAt: new Date('2026-10-23T01:00:00Z'), voidReason: 'คีย์ผิด' }));
+  it('staff path renders a voided sale with the watermark, keeps the old token and never mints a new one', async () => {
+    prisma.sale.findFirst.mockResolvedValue(baseSale({ deletedAt: new Date('2026-10-23T01:00:00Z'), voidReason: 'คีย์ผิด', receiptToken: 'old-token' }));
+    tokens.ensureToken.mockRejectedValue(new NotFoundException('ไม่พบใบขาย')); // ของจริง: ensureToken กรอง deletedAt
     const result = await service.generate('s1', owner);
     expect(result.voided).toBe(true);
     expect(result.saleNumber).toBe('SL-20261022-0001');
     expect(Buffer.isBuffer(result.pdf)).toBe(true);
     expect(setContent.mock.calls[0][0]).toContain('ยกเลิกเมื่อ');
+    expect(tokens.ensureToken).not.toHaveBeenCalled();
+    expect(tokens.publicUrl).toHaveBeenCalledWith('old-token');
+  });
+
+  it('staff path on a voided sale that never had a token prints no QR block', async () => {
+    prisma.sale.findFirst.mockResolvedValue(baseSale({ deletedAt: new Date('2026-10-23T01:00:00Z'), voidReason: 'คีย์ผิด', receiptToken: null }));
+    tokens.ensureToken.mockRejectedValue(new NotFoundException('ไม่พบใบขาย'));
+    const result = await service.generate('s1', owner);
+    expect(result.voided).toBe(true);
+    expect(tokens.ensureToken).not.toHaveBeenCalled();
+    expect(setContent.mock.calls[0][0]).not.toContain('สแกนเพื่อเปิดใบเสร็จ');
+  });
+
+  it('public path reads the existing token and does not extend its expiry', async () => {
+    prisma.sale.findFirst.mockResolvedValue(baseSale({ receiptToken: 'live-token', receiptTokenExpiresAt: new Date(Date.now() + 86_400_000) }));
+    const result = await service.generate('s1', null);
+    expect(result.voided).toBe(false);
+    expect(tokens.ensureToken).not.toHaveBeenCalled();
+    expect(tokens.publicUrl).toHaveBeenCalledWith('live-token');
+    expect(setContent.mock.calls[0][0]).toContain('สแกนเพื่อเปิดใบเสร็จ');
   });
 
   it('reads the SHOP company, default warranty terms and refreshes the public token once', async () => {
@@ -119,7 +140,7 @@ describe('SaleReceiptPdfService.generate', () => {
 
   it('loads bundle products for the freebie rows', async () => {
     prisma.sale.findFirst.mockResolvedValue(baseSale({ bundleProductIds: ['b1'] }));
-    prisma.product.findMany.mockResolvedValue([{ name: 'เคสใส', imeiSerial: null, legacyProductCode: 'ACC-1' }]);
+    prisma.product.findMany.mockResolvedValue([{ id: 'b1', name: 'เคสใส', imeiSerial: null, legacyProductCode: 'ACC-1' }]);
     await service.generate('s1', owner);
     expect(prisma.product.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ id: { in: ['b1'] } }) }));
     expect(setContent.mock.calls[0][0]).toContain('เคสใส');

@@ -125,18 +125,25 @@ export function toSaleReceiptModel(
   const saleType: SaleReceiptType = sale.saleType === 'EXTERNAL_FINANCE' ? 'EXTERNAL_FINANCE' : 'CASH';
   const methodLabel = (m: string | null) => (m && PAYMENT_METHOD_RECEIPT_LABEL[m]) || m || 'ไม่ระบุ';
 
-  const tenderRows = [...sale.shopTenders].sort((a, b) => a.seq - b.seq);
-  const tenders: SaleReceiptModel['tenders'] = tenderRows.length
-    ? tenderRows.map((t) => ({ label: methodLabel(t.method), amount: fixed(t.amount), reference: t.reference || null }))
-    : [{ label: methodLabel(sale.paymentMethod), amount: fixed(sale.amountReceived ?? sale.netAmount), reference: null }];
-  const receivedFromTenders = tenderRows.length
-    ? tenderRows.reduce((sum, t) => sum.plus(dec(t.amount)), new Prisma.Decimal(0))
-    : dec(sale.amountReceived ?? sale.netAmount);
-
+  // ใบจากการจอง: มัดจำเป็น tender ของ Booking ไม่ใช่ของ Sale (bookings.service convertToSale เขียนเฉพาะส่วนที่รับเพิ่ม;
+  // จ่ายครบล่วงหน้า = ไม่มี tender เลย) ⇒ เงินที่รับ = มัดจำ + Σ tender ของใบขาย และห้ามถอยไปใช้ paymentMethod ซ้ำซ้อนกับมัดจำ
   const deposit = sale.receiptBreakdown?.depositAmount;
+  const depositAmount = deposit ? dec(deposit) : new Prisma.Decimal(0);
   const depositLine = deposit
     ? { label: `มัดจำจอง (${methodLabel(sale.receiptBreakdown?.depositMethod ?? null)})`, amount: fixed(deposit) }
     : null;
+
+  const tenderRows = [...sale.shopTenders].sort((a, b) => a.seq - b.seq);
+  const tenders: SaleReceiptModel['tenders'] = tenderRows.length
+    ? tenderRows.map((t) => ({ label: methodLabel(t.method), amount: fixed(t.amount), reference: t.reference || null }))
+    : deposit
+      ? []
+      : [{ label: methodLabel(sale.paymentMethod), amount: fixed(sale.amountReceived ?? sale.netAmount), reference: null }];
+  const receivedFromTenders = tenderRows.length
+    ? tenderRows.reduce((sum, t) => sum.plus(dec(t.amount)), depositAmount)
+    : deposit
+      ? depositAmount
+      : dec(sale.amountReceived ?? sale.netAmount);
 
   const finance =
     saleType === 'EXTERNAL_FINANCE'
@@ -230,10 +237,12 @@ export function buildSaleReceiptHtml(m: SaleReceiptModel, fontCss: string): stri
     )
     .join('');
 
+  // ลำดับต้องบวกลบลงตัวตามนิยามของระบบ: netAmount = ราคา − ส่วนลด (ยังไม่หัก base เทิร์น) · เงินที่รับ = net − เครดิตเทิร์น − ยอดจัดไฟแนนซ์
   const totalsRows = [
     `<span>รวมรายการ</span><span>${money(m.totals.gross)}</span>`,
     Number(m.totals.discount) > 0 ? `<span>ส่วนลด</span><span>−${money(m.totals.discount)}</span>` : '',
-    m.totals.tradeIn ? `<span>เครดิตเทิร์น (ใบรับเทิร์น ${e(m.totals.tradeIn.voucher)})</span><span>−${money(m.totals.tradeIn.amount)}</span>` : '',
+    `<span><strong>ยอดสุทธิ</strong></span><span><strong>${money(m.totals.net)}</strong></span>`,
+    m.totals.tradeIn ? `<span>หักเครดิตเทิร์น (ใบรับเทิร์น ${e(m.totals.tradeIn.voucher)})</span><span>−${money(m.totals.tradeIn.amount)}</span>` : '',
     m.finance ? `<span>จัดไฟแนนซ์ ${e(m.finance.company)}</span><span>−${money(m.finance.amount)}</span>` : '',
   ]
     .filter(Boolean)
@@ -286,9 +295,9 @@ ${voidHtml}<div class="bc-doc-header">
 <table class="items"><thead><tr><th>รายการ</th><th class="right">จำนวน</th><th class="right">ราคา</th><th class="right">จำนวนเงิน</th></tr></thead><tbody>${mainRow}${bundleRows}</tbody></table>
 <div class="bc-doc-closing">
 <div class="bc-doc-total-grid"><div><p class="bc-doc-label">จำนวนเงิน (ตัวอักษร)</p><strong>${e(thaiBahtText(Number(grandAmount)))}</strong>${warrantyHtml}</div>
-<div><div class="bc-doc-totals">${totalsRows}<span><strong>ยอดสุทธิ</strong></span><span><strong>${money(m.totals.net)}</strong></span></div><div class="bc-doc-grand"><span>${grandLabel}</span><span>${money(grandAmount)} บาท</span></div></div></div>
+<div><div class="bc-doc-totals">${totalsRows}</div><div class="bc-doc-grand"><span>${grandLabel}</span><span>${money(grandAmount)} บาท</span></div></div></div>
 <p class="notice">${e(m.notice)}</p>
-<div class="bc-doc-approval"><div class="bc-doc-qr"><img src="${m.qrDataUrl}" alt="เปิดใบเสร็จ"/><p class="bc-doc-kicker">สแกนเพื่อเปิดใบเสร็จ</p></div><div><p class="bc-doc-label">ติดต่อ</p><p>สาขา${e(m.branchName)}${m.company.phone ? ` · โทร ${e(m.company.phone)}` : ''}</p></div><div class="bc-doc-signature"><div class="sign-space">${e(m.salespersonName)}</div><strong>${e(m.salespersonName)}</strong><p>ผู้ขาย · ${fmtDateShort(m.createdAt)}</p></div></div>
+<div class="bc-doc-approval"><div class="bc-doc-qr">${m.qrDataUrl ? `<img src="${m.qrDataUrl}" alt="เปิดใบเสร็จ"/><p class="bc-doc-kicker">สแกนเพื่อเปิดใบเสร็จ</p>` : ''}</div><div><p class="bc-doc-label">ติดต่อ</p><p>สาขา${e(m.branchName)}${m.company.phone ? ` · โทร ${e(m.company.phone)}` : ''}</p></div><div class="bc-doc-signature"><div class="sign-space">${e(m.salespersonName)}</div><strong>${e(m.salespersonName)}</strong><p>ผู้ขาย · ${fmtDateShort(m.createdAt)}</p></div></div>
 <footer class="bc-doc-footer"><span>${e(m.saleNumber)}</span><span>ออกโดยระบบ BESTCHOICE</span></footer></div>
 ${paperSpacingScript()}
 </body>

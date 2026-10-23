@@ -7,12 +7,14 @@ import { embeddedDocumentFonts } from '../../../assets/fonts/document-fonts';
 import { PrismaService } from '../../../prisma/prisma.service';
 import type { SalesReadActor } from '../sales-read.types';
 import { bookingReceipt, bookingReceiptSelect } from './booking-receipt';
-import { buildSaleReceiptHtml, toSaleReceiptModel, type SaleForReceipt } from './sale-receipt-html';
+import { buildSaleReceiptHtml, toSaleReceiptModel, type SaleForReceipt, type SaleReceiptModel } from './sale-receipt-html';
 import { SaleReceiptTokenService } from './sale-receipt-token.service';
 import { salesBranchWhere } from './sales-read-policy';
 import { SALE_TENDERS_SELECT } from './sales-query.service';
 
 export const INSTALLMENT_RECEIPT_MSG = 'ใบขายผ่อนชำระใช้ใบเสร็จของสัญญา';
+
+type BundleRow = { id: string; name: string; imeiSerial: string | null; legacyProductCode: string | null };
 
 /** ข้อความเงื่อนไขประกันร้านท้ายใบเสร็จ — แก้ได้ที่ ตั้งค่า › สินค้า & การขาย › ใบเสร็จขายสด */
 export async function loadReceiptTerms(prisma: PrismaService): Promise<string> {
@@ -20,7 +22,7 @@ export async function loadReceiptTerms(prisma: PrismaService): Promise<string> {
   return row?.value?.trim() || DEFAULT_RECEIPT_WARRANTY_TERMS;
 }
 
-const RECEIPT_SALE_INCLUDE = {
+export const RECEIPT_SALE_INCLUDE = {
   customer: { select: { name: true, phone: true, legacyMemberCode: true } },
   product: { select: { name: true, brand: true, model: true, storage: true, imeiSerial: true, serialNumber: true, category: true } },
   branch: { select: { name: true } },
@@ -34,8 +36,9 @@ const RECEIPT_SALE_INCLUDE = {
  * (`Receipt.contractId` บังคับ) แบบเดียวกับใบเสร็จรายได้อื่น (`other-income/services/receipt-pdf.service.ts`).
  *
  * - `actor` มี = เส้นทางพนักงาน: ขอบเขตสาขาเดิมของ `/sales` (`salesBranchWhere`) · ใบยกเลิกเปิดได้พร้อมลายน้ำ
- * - `actor` null = เส้นทางสาธารณะผ่าน token: ใบยกเลิก = ไม่พบ
- * - ออก/ต่ออายุ token ทุกครั้ง เพราะ QR บนกระดาษชี้ลิงก์สาธารณะ
+ *   (ไม่ออก token ใหม่ — ใช้ของเดิมถ้ามี ลิงก์นั้น 404 เองเพราะ `findSaleIdByToken` กรองใบยกเลิก; ไม่มี = ไม่พิมพ์ QR)
+ * - `actor` null = เส้นทางสาธารณะผ่าน token: ใบยกเลิก = ไม่พบ · **ไม่ต่ออายุ token** (ลูกค้าเปิดซ้ำต้องไม่ยืดอายุลิงก์เอง)
+ * - ใบที่ยังมีผลที่พนักงานพิมพ์: ออก/ต่ออายุ token ทุกครั้ง เพราะ QR บนกระดาษชี้ลิงก์สาธารณะ
  */
 @Injectable()
 export class SaleReceiptPdfService {
@@ -46,7 +49,8 @@ export class SaleReceiptPdfService {
     private readonly tokens: SaleReceiptTokenService,
   ) {}
 
-  async generate(saleId: string, actor: SalesReadActor | null): Promise<{ pdf: Buffer; saleNumber: string; voided: boolean }> {
+  /** โหลดใบขาย → model ของใบเสร็จ (ไม่แตะ puppeteer) — ใช้เทสบน DB จริงได้ */
+  async loadReceiptModel(saleId: string, actor: SalesReadActor | null): Promise<SaleReceiptModel> {
     const where: Prisma.SaleWhereInput = actor
       ? { AND: [{ id: saleId }, salesBranchWhere(actor)] }
       : { id: saleId, deletedAt: null };
@@ -56,30 +60,36 @@ export class SaleReceiptPdfService {
       throw new BadRequestException(INSTALLMENT_RECEIPT_MSG);
     }
 
-    const [bundleProducts, company, terms, { token }] = await Promise.all([
+    const [bundleProducts, company, terms, token] = await Promise.all([
       sale.bundleProductIds.length
         ? this.prisma.product.findMany({
             where: { id: { in: sale.bundleProductIds } },
-            select: { name: true, imeiSerial: true, legacyProductCode: true },
+            select: { id: true, name: true, imeiSerial: true, legacyProductCode: true },
           })
-        : Promise.resolve([]),
+        : Promise.resolve([] as BundleRow[]),
       this.prisma.companyInfo.findFirst({ where: { companyCode: 'SHOP' } }),
       loadReceiptTerms(this.prisma),
-      this.tokens.ensureToken(sale.id),
+      this.resolveToken(sale, actor),
     ]);
 
-    const qrDataUrl = await QRCode.toDataURL(this.tokens.publicUrl(token), {
-      margin: 0,
-      width: 220,
-      color: { dark: '#172b25', light: '#ffffff' },
-    });
+    const qrDataUrl = token
+      ? await QRCode.toDataURL(this.tokens.publicUrl(token), { margin: 0, width: 220, color: { dark: '#172b25', light: '#ffffff' } })
+      : '';
 
-    const input: SaleForReceipt = { ...sale, bundleProducts, receiptBreakdown: bookingReceipt(sale) };
-    const model = toSaleReceiptModel(input, {
+    // พิมพ์ของแถมตามลำดับที่หน้าขายเลือก (findMany ไม่รับประกันลำดับ)
+    const byId = new Map<string, BundleRow>(bundleProducts.map((b) => [b.id, b]));
+    const orderedBundle = sale.bundleProductIds.map((id) => byId.get(id)).filter((b): b is BundleRow => !!b);
+
+    const input: SaleForReceipt = { ...sale, bundleProducts: orderedBundle, receiptBreakdown: bookingReceipt(sale) };
+    return toSaleReceiptModel(input, {
       company: company ? { nameTh: company.nameTh, address: company.address, taxId: company.taxId, phone: company.phone } : null,
       terms,
       qrDataUrl,
     });
+  }
+
+  async generate(saleId: string, actor: SalesReadActor | null): Promise<{ pdf: Buffer; saleNumber: string; voided: boolean }> {
+    const model = await this.loadReceiptModel(saleId, actor);
     const html = buildSaleReceiptHtml(model, embeddedDocumentFonts());
 
     const browser = await puppeteer.launch({ args: ['--no-sandbox', '--disable-setuid-sandbox'] });
@@ -89,7 +99,7 @@ export class SaleReceiptPdfService {
       await page.setContent(html, { waitUntil: 'domcontentloaded', timeout: 10_000 });
       await page.evaluate('document.fonts.ready');
       const pdf = await page.pdf({ format: 'A4', margin: { top: '0', right: '0', bottom: '0', left: '0' }, printBackground: true });
-      return { pdf: Buffer.from(pdf), saleNumber: sale.saleNumber, voided: !!sale.deletedAt };
+      return { pdf: Buffer.from(pdf), saleNumber: model.saleNumber, voided: !!model.voided };
     } finally {
       try {
         await browser.close();
@@ -97,5 +107,14 @@ export class SaleReceiptPdfService {
         this.logger.warn(`[sale-receipt] browser.close failed: ${String(err)}`);
       }
     }
+  }
+
+  /** token ที่ QR บนใบจะชี้ไป — ดู docblock ของ class ว่าใครออกใหม่/ใครใช้ของเดิม */
+  private async resolveToken(
+    sale: { id: string; deletedAt: Date | null; receiptToken: string | null },
+    actor: SalesReadActor | null,
+  ): Promise<string | null> {
+    if (!actor || sale.deletedAt) return sale.receiptToken ?? null;
+    return (await this.tokens.ensureToken(sale.id)).token;
   }
 }

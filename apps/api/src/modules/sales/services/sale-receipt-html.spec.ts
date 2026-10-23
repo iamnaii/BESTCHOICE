@@ -22,9 +22,10 @@ function cashSale(overrides: Partial<SaleForReceipt> = {}): SaleForReceipt {
     saleNumber: 'SL-20261022-0001',
     saleType: 'CASH',
     createdAt: new Date('2026-10-22T07:32:00Z'),
+    // ตามโค้ดขายจริง: netAmount = sellingPrice − discount (ยังไม่หัก base เทิร์น) · cashDue = net − base = 22,900
     sellingPrice: D('31900'),
     discount: D('1000'),
-    netAmount: D('22900'),
+    netAmount: D('30900'),
     paymentMethod: 'CASH',
     amountReceived: D('22900'),
     financeCompany: null,
@@ -107,12 +108,41 @@ describe('toSaleReceiptModel', () => {
     expect(m.totals.received).toBe('22900.00');
   });
 
-  it('exposes the trade-in credit line with the voucher number', () => {
+  it('exposes the trade-in credit line with the voucher number; net is before the credit, received after', () => {
     const m = toSaleReceiptModel(cashSale(), ctx);
     expect(m.totals.tradeIn).toEqual({ voucher: 'TI-20261022-0003', amount: '8000.00' });
     expect(m.totals.gross).toBe('31900.00');
     expect(m.totals.discount).toBe('1000.00');
-    expect(m.totals.net).toBe('22900.00');
+    expect(m.totals.net).toBe('30900.00');
+    expect(m.totals.received).toBe('22900.00');
+  });
+
+  it('adds the booking deposit to the amount received and never prints a fallback tender beside it', () => {
+    const noTradeIn = { tradeInCreditSnapshot: null, sellingPrice: D('23900'), discount: D('1000'), netAmount: D('22900') };
+    const balancePaid = toSaleReceiptModel(
+      cashSale({
+        ...noTradeIn,
+        receiptBreakdown: { depositAmount: '5000.00', depositMethod: 'BANK_TRANSFER', additionalAmount: '17900.00' },
+        shopTenders: [{ method: 'BANK_TRANSFER', amount: D('17900'), reference: '2510221432', seq: 1 }],
+      }),
+      ctx,
+    );
+    expect(balancePaid.depositLine).toEqual({ label: 'มัดจำจอง (โอน)', amount: '5000.00' });
+    expect(balancePaid.tenders).toEqual([{ label: 'โอน', amount: '17900.00', reference: '2510221432' }]);
+    expect(balancePaid.totals.received).toBe('22900.00');
+
+    const prepaid = toSaleReceiptModel(
+      cashSale({
+        ...noTradeIn,
+        amountReceived: D('22900'),
+        receiptBreakdown: { depositAmount: '22900.00', depositMethod: 'CASH', additionalAmount: '0.00' },
+        shopTenders: [],
+      }),
+      ctx,
+    );
+    expect(prepaid.depositLine).toEqual({ label: 'มัดจำจอง (เงินสด)', amount: '22900.00' });
+    expect(prepaid.tenders).toEqual([]);
+    expect(prepaid.totals.received).toBe('22900.00');
   });
 
   it('maps an external-finance sale to a down-payment receipt', () => {
@@ -174,7 +204,15 @@ describe('buildSaleReceiptHtml', () => {
     expect((html.match(/ของแถม/g) ?? []).length).toBeGreaterThanOrEqual(2);
     expect(html).toContain('TI-20261022-0003');
     expect(html).toContain('22,900.00');
+    expect(html).toContain('30,900.00');
     expect(html).toContain(thaiBahtText(22900));
+    // ลำดับสรุปเงินต้องบวกลบลงตัว: ยอดสุทธิ (net) → หักเครดิตเทิร์น → จำนวนเงินที่รับ
+    const netAt = html.indexOf('ยอดสุทธิ');
+    const tradeInAt = html.indexOf('หักเครดิตเทิร์น');
+    const receivedAt = html.indexOf('จำนวนเงินที่รับ');
+    expect(netAt).toBeGreaterThan(0);
+    expect(tradeInAt).toBeGreaterThan(netAt);
+    expect(receivedAt).toBeGreaterThan(tradeInAt);
     expect(html).toContain('ประกันร้าน 7 วัน');
     expect(html).toContain(DEFAULT_RECEIPT_WARRANTY_TERMS);
     expect(html).toContain('ไม่ใช่ใบกำกับภาษี');
@@ -199,6 +237,13 @@ describe('buildSaleReceiptHtml', () => {
     const html = buildSaleReceiptHtml(toSaleReceiptModel(sale, ctx), fontCss);
     expect(html).toContain('A&amp;B &lt;x&gt;');
     expect(html).not.toContain('A&B <x>');
+  });
+
+  it('omits the QR block when there is no public link (voided sale that never had a token)', () => {
+    const html = buildSaleReceiptHtml(toSaleReceiptModel(cashSale(), { ...ctx, qrDataUrl: '' }), fontCss);
+    expect(html).not.toContain('<img src="data:image');
+    expect(html).not.toContain('สแกนเพื่อเปิดใบเสร็จ');
+    expect(html).toContain('ติดต่อ');
   });
 
   it('stamps the void watermark and cancellation line on a voided sale', () => {

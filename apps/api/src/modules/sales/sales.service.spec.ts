@@ -847,7 +847,7 @@ describe('SalesController — POST /sales/:id/void', () => {
         reversalEntryNumbers: ['JE-1'],
       }),
     };
-    const controller = new SalesController({} as never, voidService as never);
+    const controller = new SalesController({} as never, voidService as never, {} as never, {} as never, {} as never);
 
     const user = { id: 'u1', role: 'OWNER', branchId: 'branch-1' };
     await controller.voidSale('s1', { reason: 'คีย์ผิดรุ่นเครื่อง' }, user);

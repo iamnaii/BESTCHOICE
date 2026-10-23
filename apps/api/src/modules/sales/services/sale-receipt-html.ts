@@ -259,13 +259,15 @@ ${TRANSACTION_PAGE_CSS}
 ${transactionDocumentCss('body')}
 html, body { margin: 0; padding: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 .item-name { font-weight: 700; } .item-meta { color: #52645d; } .mono { font-variant-numeric: tabular-nums; letter-spacing: .02em; }
-.items { table-layout: fixed; } .items th:nth-child(2) { width: 14mm; } .items th:nth-child(3) { width: 26mm; } .items th:nth-child(4) { width: 28mm; }
+.items { table-layout: fixed; } .items thead th { white-space: nowrap; } .items th:nth-child(2) { width: 18mm; } .items th:nth-child(3) { width: 26mm; } .items th:nth-child(4) { width: 28mm; }
 .items td.right { white-space: nowrap; }
 .wbox { margin-top: 3mm; border: 1px solid #d4dfd9; border-radius: 2mm; padding: 2mm 3mm; break-inside: avoid; }
 .wbox p { color: #52645d; margin-top: 1mm; }
 .notice { margin-top: 3mm; color: #52645d; }
 .bc-doc-approval { grid-auto-flow: initial; grid-template-columns: 24mm minmax(0,1fr) minmax(0,1fr); }
-.void { position: fixed; inset: 44% 0 auto; text-align: center; transform: rotate(-20deg); color: rgba(185,28,28,.22); font-size: 44pt; font-weight: 800; letter-spacing: .1em; }
+body { position: relative; }
+/* ลายน้ำอยู่ในกล่องกว้าง 70% กลางหน้า — หมุนแล้วไม่ล้นขอบกระดาษ (ล้น = Chrome เพิ่มหน้าเปล่า) · font-size !important สู้กับ typography ของเอกสาร */
+.void { position: absolute; top: 40%; left: 15%; right: 15%; text-align: center; transform: rotate(-20deg); color: rgba(185,28,28,.22); font-size: 64pt !important; line-height: 1 !important; font-weight: 800; letter-spacing: .1em; pointer-events: none; }
 .void-line { color: #b91c1c; font-weight: 700; }
 ${PAPER_SPACING_CSS}
 </style>

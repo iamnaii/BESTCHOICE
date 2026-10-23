@@ -17,7 +17,9 @@ if (!process.env.DATABASE_URL?.includes('/bc_chat_credit_test?host=/tmp/bc-chat-
  */
 describe('Sale receipt on isolated PostgreSQL', () => {
   const db = new PrismaService();
-  const prefix = `ISOLATED-SALE-RECEIPT-${randomUUID()}`;
+  // ห้ามมีตัวเลขในเลขใบขายที่ seed: `generateSaleNumber` เอา MAX(saleNumber) ทั้งตารางแล้วดึงตัวเลขออกมา +1 —
+  // ถ้า spec นี้รันก่อนเพื่อน (jest ไม่มี cache เวลา) เลขจาก uuid จะทำให้ตัวนับของ spec อื่นเพี้ยนไปชน unique
+  const prefix = `ISOLATED-SALE-RECEIPT-${randomUUID().replace(/\d/g, '')}`;
   const config = { get: () => 'https://shop.example.test' } as unknown as ConfigService;
   const tokens = new SaleReceiptTokenService(db, config);
   const service = new SaleReceiptPdfService(db, tokens);

@@ -19,11 +19,11 @@ vi.mock('@/components/PdfPreview', () => ({
 }));
 
 import { toast } from 'sonner';
-import SaleReceiptActions, { lineResultMessage, receiptFilename, receiptPdfPath } from '../SaleReceiptActions';
+import SaleReceiptActions, { lineResultMessage, receiptFilename, receiptPdfPath, type SaleReceiptActionsSale } from '../SaleReceiptActions';
 
-const cashSale = { id: 's1', saleNumber: 'SL-1', saleType: 'CASH', deletedAt: null };
+const cashSale: SaleReceiptActionsSale = { id: 's1', saleNumber: 'SL-1', saleType: 'CASH', deletedAt: null };
 
-function renderActions(sale: Partial<typeof cashSale> & { saleType: string }) {
+function renderActions(sale: Partial<SaleReceiptActionsSale> & { saleType: string }) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
   return render(
     <QueryClientProvider client={qc}>

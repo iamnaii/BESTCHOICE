@@ -111,7 +111,7 @@ beforeEach(() => {
           }
         : [],
   }));
-  mocks.post.mockResolvedValue({ data: { id: 's1', saleNumber: 'TEST-SALE-1' } });
+  mocks.post.mockResolvedValue({ data: { id: 's1', saleNumber: 'TEST-SALE-1', saleType: 'CASH', netAmount: '9000' } });
 });
 
 describe('POS price selection', () => {
@@ -266,5 +266,22 @@ describe('POS price selection', () => {
       'aria-pressed',
       'true',
     );
+  });
+});
+
+describe('POSPage — กล่องหลังขายสำเร็จ (ก้อน 4)', () => {
+  it('shows the sale-done dialog with receipt actions instead of a toast, and ขายต่อ clears it', async () => {
+    renderPOS();
+    await selectProduct();
+    await userEvent.click(screen.getByRole('button', { name: 'เลือกลูกค้าทดสอบ' }));
+    await userEvent.click(screen.getByRole('button', { name: 'บันทึกการขาย' }));
+    await userEvent.click(screen.getByRole('button', { name: 'ยืนยันบันทึกการขาย' }));
+    await waitFor(() => expect(mocks.post).toHaveBeenCalledWith('/sales', expect.anything()));
+    const done = await screen.findByText('ขายสำเร็จ · TEST-SALE-1');
+    expect(done).toBeVisible();
+    expect(screen.getByRole('button', { name: 'พิมพ์ใบเสร็จ' })).toBeVisible();
+    expect(screen.getByRole('button', { name: 'ส่ง LINE' })).toBeVisible();
+    await userEvent.click(screen.getByRole('button', { name: 'ขายต่อ' }));
+    await waitFor(() => expect(screen.queryByText('ขายสำเร็จ · TEST-SALE-1')).not.toBeInTheDocument());
   });
 });

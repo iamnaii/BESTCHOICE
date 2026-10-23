@@ -45,3 +45,4 @@ export * from './chat-analytics';
 export * from './chat-library';
 
 export * from './appointment-confirmation';
+export * from './sale-receipt';

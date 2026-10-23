@@ -3129,6 +3129,9 @@ model Sale {
   voidedById        String?        @map("voided_by_id")
   /// PR 5 หลังการขาย — เคสเปลี่ยนรุ่นเดิมขายสดครั้งล่าสุดที่สลับเครื่องบนใบนี้ (เครื่องเดิม/เวลา = case.productId/approvedAt)
   exchangeCaseId    String?        @map("exchange_case_id")
+  /// ใบเสร็จขายสด (ก้อน 4 · 2026-10-23): token ลิงก์สาธารณะ `/r/:token` — ต่ออายุทุกครั้งที่ออกเอกสาร ไม่หมุน token
+  receiptToken          String?   @unique @map("receipt_token")
+  receiptTokenExpiresAt DateTime? @map("receipt_token_expires_at")
   createdAt         DateTime       @default(now()) @map("created_at")
   updatedAt         DateTime       @updatedAt @map("updated_at")
   deletedAt         DateTime?      @map("deleted_at")

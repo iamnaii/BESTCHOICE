@@ -28,6 +28,8 @@ import { ReserveProductDto } from './dto/reserve-product.dto';
 import { ReturnToStockDto } from './dto/return-to-stock.dto';
 import { RejectTransferDto } from './dto/reject-transfer.dto';
 import { StockListPaginationDto } from './dto/stock-list-pagination.dto';
+import { ScanProductDto } from './dto/scan-product.dto';
+import { ProductScanService } from './services/product-scan.service';
 import { hasCrossBranchAccess } from '../auth/branch-access.util';
 import { PaginationDto } from '../../common/dto/pagination.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -47,6 +49,7 @@ export class ProductsController {
     private productsPricingService: ProductsPricingService,
     private productsStockService: ProductsStockService,
     private onlineListing: ProductsOnlineListingService,
+    private productScan: ProductScanService,
   ) {}
 
   @Get()
@@ -200,6 +203,22 @@ export class ProductsController {
     const transfer = await this.productsStockService.getTransferById(transferId, user);
     if (canSeeCost(user.role)) return transfer;
     return { ...transfer, product: omitCostPrice(transfer.product) };
+  }
+
+  /**
+   * ยิง QR / IMEI ที่หน้าขาย (A4 · 2026-10-22) — ค้นค่าเท่ากัน (IMEI / รหัสเดิม / id) แล้วบอกว่าขายได้ไหม เพราะอะไร
+   * ต้องอยู่ก่อน `@Get(':id')` ไม่งั้น "scan" ถูกอ่านเป็น id · `product` เป็นแถวเต็มรูปเดียวกับ findAll จึงตัด costPrice ให้ SALES
+   */
+  @Get('scan')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
+  @ApiOperation({ summary: 'ยิง QR/IMEI หน้าขาย — ค้นค่าเท่ากันและเหตุผลที่ขายไม่ได้' })
+  async scan(
+    @Query() dto: ScanProductDto,
+    @CurrentUser() user: { role: string; branchId?: string | null },
+  ) {
+    const outcome = await this.productScan.scan(dto.code, user);
+    if (canSeeCost(user.role) || !outcome.product) return outcome;
+    return { ...outcome, product: omitCostPrice(outcome.product) };
   }
 
   @Get(':id/workflow')

@@ -4,6 +4,7 @@ import { ProductsService } from './products.service';
 import { ProductsPricingService } from './products-pricing.service';
 import { ProductsStockService } from './products-stock.service';
 import { ProductsOnlineListingService } from './products-online-listing.service';
+import { ProductScanService } from './services/product-scan.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { BranchGuard } from '../auth/guards/branch.guard';
@@ -23,6 +24,7 @@ describe('ProductsController — cost visibility by role', () => {
   let controller: ProductsController;
   let products: { findAll: jest.Mock; findOneDetail: jest.Mock };
   let stock: { getStock: jest.Mock; reserve: jest.Mock; unreserve: jest.Mock; getTransferById: jest.Mock };
+  let scan: { scan: jest.Mock };
 
   beforeEach(async () => {
     products = {
@@ -52,6 +54,13 @@ describe('ProductsController — cost visibility by role', () => {
       // different shape from the other 4 endpoints, must strip at the nested key.
       getTransferById: jest.fn().mockResolvedValue({ ...transferRow, product: { ...transferRow.product } }),
     };
+    // ยิง QR หน้าขาย (A4) — service คืนแถวเต็มรูปเดียวกับ findAll จึงต้องตัด costPrice ให้ SALES เหมือนกัน
+    scan = {
+      scan: jest.fn().mockResolvedValue({
+        code: 'x', reason: 'SELLABLE', sellable: true, product: { ...productRow },
+        branch: null, booking: null, contract: null, sale: null, reservation: null,
+      }),
+    };
 
     const module = await Test.createTestingModule({
       controllers: [ProductsController],
@@ -60,6 +69,7 @@ describe('ProductsController — cost visibility by role', () => {
         { provide: ProductsPricingService, useValue: {} },
         { provide: ProductsStockService, useValue: stock },
         { provide: ProductsOnlineListingService, useValue: {} },
+        { provide: ProductScanService, useValue: scan },
       ],
     })
       .overrideGuard(JwtAuthGuard)
@@ -91,6 +101,28 @@ describe('ProductsController — cost visibility by role', () => {
   it('GET /products/:id — SALES ไม่ได้ costPrice / OWNER ได้', async () => {
     expect(await controller.findOne('p-1', sales)).not.toHaveProperty('costPrice');
     expect(await controller.findOne('p-1', owner)).toHaveProperty('costPrice', '12000');
+  });
+
+  it('GET /products/scan — SALES ไม่ได้ costPrice ใน product / OWNER ได้ · ส่ง actor ให้ service', async () => {
+    const res = await controller.scan({ code: 'x' }, sales);
+    expect(res.product).not.toHaveProperty('costPrice');
+    expect(res.product).toHaveProperty('cashPrice', '15900');
+    expect(res.reason).toBe('SELLABLE');
+    expect(scan.scan).toHaveBeenCalledWith('x', sales);
+
+    expect((await controller.scan({ code: 'x' }, owner)).product).toHaveProperty('costPrice', '12000');
+  });
+
+  it('GET /products/scan — ไม่พบ (product null) ส่งผลลัพธ์ผ่านตามเดิม', async () => {
+    scan.scan.mockResolvedValueOnce({
+      code: 'nope', reason: 'NOT_FOUND', sellable: false, product: null,
+      branch: null, booking: null, contract: null, sale: null, reservation: null,
+    });
+    const res = await controller.scan({ code: 'nope' }, sales);
+    expect(res).toEqual({
+      code: 'nope', reason: 'NOT_FOUND', sellable: false, product: null,
+      branch: null, booking: null, contract: null, sale: null, reservation: null,
+    });
   });
 
   it('GET /products/stock — SALES ไม่ได้ costPrice และ summary.totalValue เป็น null', async () => {
@@ -167,6 +199,7 @@ describe('ProductsController.returnToStock — สิทธิ์ + การส
         { provide: ProductsPricingService, useValue: {} },
         { provide: ProductsStockService, useValue: {} },
         { provide: ProductsOnlineListingService, useValue: {} },
+        { provide: ProductScanService, useValue: { scan: jest.fn() } },
       ],
     })
       .overrideGuard(JwtAuthGuard)
@@ -195,6 +228,7 @@ describe('ProductsController.returnToStock — สิทธิ์ + การส
         { provide: ProductsPricingService, useValue: {} },
         { provide: ProductsStockService, useValue: {} },
         { provide: ProductsOnlineListingService, useValue: {} },
+        { provide: ProductScanService, useValue: { scan: jest.fn() } },
       ],
     })
       .overrideGuard(JwtAuthGuard)

@@ -1,6 +1,6 @@
 # ด่าน blacklist ตอนทำสัญญา (ก้อน 5 — C3) — Design Spec
 
-**วันที่:** 2026-10-24 (รอบ 3 — แก้หลัง scrutinize: ด่านสองจุด create + activate · เก็บการปลด SOFT ลงแถวสัญญา · ข้อความใบรับคืนรอยืนยัน) · **ที่มา:** เทียบ Tooltify ข้อ C3 "ตรวจ blacklist อัตโนมัติตอนบันทึกสัญญา" (Tooltify มีเครือข่ายข้ามร้าน — ทำเองไม่ได้ ทำได้เฉพาะตรวจภายในร้าน) · mockup: canvas `MBXL8LNXn7hWzF6ktvL3R5` (v5)
+**วันที่:** 2026-10-24 (รอบ 3 — แก้หลัง scrutinize: ด่านสองจุด create + activate · เก็บการปลด SOFT ลงแถวสัญญา · ข้อความใบรับคืนรอยืนยัน · **+ แก้หลัง review ท้ายเอกสาร**) · **ที่มา:** เทียบ Tooltify ข้อ C3 "ตรวจ blacklist อัตโนมัติตอนบันทึกสัญญา" (Tooltify มีเครือข่ายข้ามร้าน — ทำเองไม่ได้ ทำได้เฉพาะตรวจภายในร้าน) · mockup: canvas `MBXL8LNXn7hWzF6ktvL3R5` (v5)
 
 ## เจตนา
 
@@ -114,3 +114,13 @@ Web: `CustomerSelectStep` (HARD ปิดปุ่ม/ไม่มี checkbox �
 ## นอกขอบเขต
 
 POS · รับซื้อ/เทิร์น · เครือข่ายข้ามร้าน · auto-tag · จับคู่ด้วยชื่อ · เบอร์สำรองของสมาชิก set (ไม่มี hash) · เตือนตอนสร้าง/แก้ลูกค้า · endpoint ปลด SOFT บนร่างที่สร้างไปแล้ว · ประวัติ "เคยหนียึด" ถาวรหลังจ่ายครบ
+
+## แก้หลัง review ทั้งสาขา (2026-10-24 — reviewer ชุดสด: C1 + I1–I3)
+
+1. **สัญญาทดแทนจากเปลี่ยนเครื่องตำหนิ 7 วัน ข้ามด่านตอน activate** — `defect-exchange.service.ts` สร้างสัญญาทดแทนด้วย `parentContractId` (ไม่ใช่ `exchangedFromContractId`) แล้วเปิดใช้ผ่าน `activate()` ตามปกติ ⇒ spec เดิมเข้าใจผิดว่าไม่เข้าด่าน. ตอนนี้ `activate()` ข้ามด่าน blacklist + ตาข่าย `assertCustomerContractPolicy` เมื่อ `parentContractId` ชี้สัญญาที่ `status = DEFECT_EXCHANGED` (ต่อเนื่องจากสัญญาเดิมของลูกค้าคนเดิม — ตรรกะเดียวกับเปลี่ยนเครื่อง) · parent สถานะอื่น = ไม่ข้าม (**คำตัดสินผม** ตามข้อเสนอ reviewer — ไม่งั้นเงินลูกค้าค้างใน 21-1106 โดยไม่มีทางไปต่อ)
+2. **ปลด SOFT ได้ตอนเปิดใช้ด้วย** — `activate(id, actorId?, { actorRole?, blacklistOverrideReason? })`: ไม่มี `blacklistOverriddenAt` → OWNER/BM ส่งเหตุผล (`ActivateContractDto.blacklistOverrideReason` ใน body `POST /contracts/:id/activate`) ⇒ เขียน `blacklistOverride*` ตอน update เป็น ACTIVE + audit `CONTRACT_BLACKLIST_OVERRIDDEN` (`stage: 'ACTIVATE'`) หลัง commit · ไม่ส่ง → 409 REVIEW `canOverride` ตามบทบาท ข้อความ "กรอกเหตุผลเพื่ออนุมัติแล้วเปิดใช้สัญญา" / บทบาทที่ปลดไม่ได้ (FM) "ให้ OWNER/ผู้จัดการสาขาเป็นผู้เปิดใช้สัญญาพร้อมเหตุผล" · เหตุผล: ร่างที่อนุมัติ/ลงนามแล้ว**ลบไม่ได้** (`softDelete` รับเฉพาะ CREATING/REJECTED · `DELETE /contracts/:id` = OWNER เท่านั้น) ข้อความเดิม "ลบร่างแล้วสร้างใหม่" จึงชี้ทางที่ไม่มีจริง และ `activate` มี actor อยู่แล้ว (controller ส่ง `user.id`) — ความเข้าใจเดิมในรอบ 3 ผิด · web: หน้ารายละเอียดสัญญาเปิด `BlacklistOverrideDialog` (กล่องเดียวกับ SOFT ในขั้นเลือกลูกค้า — reasons + Textarea ≥10 + "อนุมัติและเปิดใช้สัญญา") เมื่อ 409 REVIEW `canOverride: true` · **UI ชิ้นนี้ไม่ได้ผ่าน mockup ก่อน** (reuse แบบที่เคาะแล้ว) — แจ้งเจ้าของ
+3. **`PHONE_MATCH` ใช้ `phoneHash` ที่เก็บไว้เฉพาะเมื่อแถวไม่มีเบอร์ plaintext** — แถว hash ค้างจากบั๊ก skip-tracing เดิม (database.md / `findLivePhoneOwner`) ต้องไม่ทำให้คนที่ถือเบอร์นั้นตอนนี้ถูกห้ามถาวร
+4. **กล่องแดง HARD ที่มี `MANUAL_TAG`**: OWNER/FINANCE_MANAGER ได้ปุ่ม "ถอด tag" เปิด `CustomerTagDialog` (ตัวจริงจาก CollectionsPage) ตรงนั้น ปิดแล้ว refetch — ลิงก์เดิมไป `/customers/:id` ซึ่งไม่มีปุ่มถอด tag ถูกถอด
+
+Minor ที่ reviewer ยกและ**ยังไม่แก้** (บันทึกใน ledger/PR): ถอดรหัส references ล้ม = ข้ามทั้งคน (ควรข้ามเฉพาะส่วน references) · `staleTime: 0` บนป้ายแชท/หัวหน้าลูกค้า · `/credit-checks` size=200 เกิน batch 100 · DTO `@Length` ไม่ trim · `GET /customers/:id/blacklist` id ไม่มี = NONE · กล่องกระพริบตอน refetch · query set สาขา `repossession.is`/`tags.some` ยังไม่มี e2e · `MANUAL_TAG.message` ต่อ reason free text (PII ที่พนักงานพิมพ์เองอาจรั่วถึง SALES) · `useCallback` deps ไม่มีผล
+

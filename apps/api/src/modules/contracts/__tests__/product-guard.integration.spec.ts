@@ -46,6 +46,7 @@ const service = new ContractWorkflowService(
   null as never, // shopDownPaymentTemplate
   null as never, // shopAccountResolver
   null as never, // installmentInputVatTemplate (ก้อน 5)
+  new CustomerBlacklistService(prisma as never, new CustomerPiiService(prisma as never)), // ก้อน 5 C3
 );
 
 /**

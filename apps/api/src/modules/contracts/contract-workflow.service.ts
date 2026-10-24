@@ -40,6 +40,9 @@ import { assertContractCreditApproval } from '../credit-check/services/credit-ap
 import { lockCreditCustomer } from '../credit-check/services/room-credit-history';
 import { JourneyEntryWriter } from '../customer-journey/journey-entry-writer.service';
 import { journeyDedupeKey } from '../customer-journey/journey-data-schemas';
+import { assertBlacklistGate } from './services/contract-blacklist-gate';
+import { assertCustomerContractPolicy } from './services/contract-create-policy';
+import { CustomerBlacklistService } from '../customers/customer-blacklist.service';
 
 @Injectable()
 export class ContractWorkflowService {
@@ -55,6 +58,7 @@ export class ContractWorkflowService {
     private shopDownPaymentTemplate: ShopDownPaymentTemplate,
     private shopAccountResolver: ShopAccountResolver,
     private installmentInputVatTemplate: InstallmentInputVatTemplate,
+    private blacklist: CustomerBlacklistService, // ก้อน 5 C3 — บังคับ: ContractsModule import CustomerBlacklistModule
     @Optional() private testMode?: TestModeService,
     // การเดินทางของลูกค้า (CONTRACT_REVIEWED) — @Optional: เทสเดิมประกอบ service ด้วย 9-10 อาร์กิวเมนต์
     // ContractsModule import CustomerJourneyModule อยู่แล้ว (ContractsController ฉีดแบบบังคับ ถ้าลืม import แอปจะบูตไม่ขึ้น)
@@ -411,6 +415,16 @@ export class ContractWorkflowService {
       throw new BadRequestException('ต้องได้รับความยินยอม PDPA ก่อนเปิดใช้งานสัญญา');
     }
 
+    // ก้อน 5 C3 — ด่าน blacklist ณ จุดที่สัญญาเริ่มมีผลจริง (ร่าง 2 ใบเปิดใช้ทั้งคู่ไม่ได้ · ติด tag/ถูกบอกเลิกหลังสร้างร่างก็ไม่ผ่าน)
+    // สัญญาเปลี่ยนเครื่องข้าม — สัญญาเดิมของลูกค้าคนเดิมยัง ACTIVE โดยชอบ · SOFT ผ่านเฉพาะเมื่อร่างถูกปลดไว้ตอนสร้าง (blacklistOverriddenAt)
+    // activate(id) ไม่มี actor จึงไม่มีทางปลดที่นี่ — ข้อความชี้ให้ลบร่างแล้วสร้างใหม่ (spec รอบ 3)
+    const isExchangeContract = !!(contract as any).exchangedFromContractId;
+    if (!isExchangeContract) {
+      const blacklistResult = await this.blacklist.evaluate(contract.customerId);
+      assertBlacklistGate({ result: blacklistResult, actorRole: 'SYSTEM', stage: 'ACTIVATE',
+        persistedOverride: !!(contract as { blacklistOverriddenAt?: Date | null }).blacklistOverriddenAt });
+    }
+
     // T5-C20: re-verify integrity hash before activation. Approval already
     // checked it, but documents/signatures can still drift between approve
     // and activate — activate is where money/ownership moves so a second
@@ -470,8 +484,7 @@ export class ContractWorkflowService {
     // SOLD_INSTALLMENT + FINANCE ownership — that part is identical.
     //
     // Capture as a plain bool so the closure inside $transaction reads it
-    // without re-deriving from the contract object.
-    const isExchangeContract = !!(contract as any).exchangedFromContractId;
+    // without re-deriving from the contract object. (ประกาศไว้ข้างบนตั้งแต่ด่าน blacklist — ก้อน 5 C3)
 
     await this.prisma.$transaction(async (tx) => {
       // Re-check product status inside transaction to prevent race condition
@@ -485,6 +498,8 @@ export class ContractWorkflowService {
         paymentDueDay: current.paymentDueDay,
         monthlyAmounts: current.payments.map(payment => Number(payment.amountDue)),
         firstPaymentDue: current.payments[0]?.dueDate });
+      // ก้อน 5 C3 — ตาข่าย 1 คน 1 เครื่อง ใน tx: ร่างสองใบเปิดใช้พร้อมกัน ล็อกแถวลูกค้าทำให้ใบหลังเห็น ACTIVE ของใบแรก
+      if (!isExchangeContract) await assertCustomerContractPolicy(tx, current.customerId);
       // (เงื่อนไข `deletedAt: null` ต้องเหมือนด่านนอก tx เป๊ะ — ไม่งั้นการลบที่แทรกเข้ามา
       // ระหว่างสองด่านจะหลุดผ่านด่านใน tx ซึ่งเป็นตาข่ายสุดท้ายก่อนเงิน/กรรมสิทธิ์ขยับ)
       const prod = await tx.product.findFirst({

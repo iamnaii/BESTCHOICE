@@ -54,6 +54,7 @@ const workflow = new ContractWorkflowService(
   new ProductsService(prisma as never), null as never,
   new ShopInventoryTransferTemplate(journal, prisma as never, companyResolver), shopDownPayment, shopAccountResolver,
   new InstallmentInputVatTemplate(journal, prisma as never, companyResolver),
+  new CustomerBlacklistService(prisma as never, new CustomerPiiService(prisma as never)), // ก้อน 5 C3
 );
 const lifecycle = new ContractLifecycleService(
   prisma as never, new ContractQueryService(prisma as never), shopDownPayment,

@@ -70,6 +70,7 @@ const sum = (entries: Entry[], account: string, side: 'debit' | 'credit') => ent
 
 describe('approved credit → real create/sign/activate → partial/complete payment → ledger', () => {
   let ownerId: string, branchId: string, shopId: string, financeId: string;
+  let salesId: string; // ก้อน 5 C3 — บทบาทที่ปลด SOFT ไม่ได้
   let credits: CreditCheckService, lifecycle: ContractLifecycleService, signatures: ContractSignatureService;
   let workflow: ContractWorkflowService, payments: PaymentsService, accrual: InstallmentAccrual2ATemplate;
   let tradeIns: TradeInService, tradeCredits: TradeInCreditService, sales: SaleCreationService;
@@ -92,6 +93,9 @@ describe('approved credit → real create/sign/activate → partial/complete pay
       if (companyCode === 'SHOP') shopId = company.id; else financeId = company.id;
     }
     branchId = (await db.branch.create({ data: { name: `ISOLATED CREDIT ${randomUUID()}`, companyId: shopId, shopCashAccountCode: 'S11-1101' } })).id;
+    salesId = (await db.user.upsert({ where: { email: 'sales@isolated.test' },
+      create: { email: 'sales@isolated.test', password: 'unused', name: 'ISOLATED SALES', role: 'SALES', branchId, accessibleCompanies: ['SHOP'], primaryCompany: 'SHOP' },
+      update: { role: 'SALES', branchId, isActive: true, deletedAt: null } })).id;
     await db.interestConfig.create({ data: { name: 'ISOLATED CREDIT 5% × 12', productCategories: ['ACCESSORY'],
       interestRate: '0.0500', minDownPaymentPct: '0.2000', storeCommissionPct: '0.1000', vatPct: '0.0700',
       minInstallmentMonths: 6, maxInstallmentMonths: 12 } });
@@ -123,7 +127,8 @@ describe('approved credit → real create/sign/activate → partial/complete pay
     }) as never);
     workflow = new ContractWorkflowService(db, null as never, journal, new ContractActivation1ATemplate(journal, db),
       products, null as never, new ShopInventoryTransferTemplate(journal, db, resolver), down, shopAccounts,
-      new InstallmentInputVatTemplate(journal, db, resolver)); // ก้อน 5 — ภาษีซื้อเครื่องหลักหลัง 1A
+      new InstallmentInputVatTemplate(journal, db, resolver), // ก้อน 5 — ภาษีซื้อเครื่องหลักหลัง 1A
+      new CustomerBlacklistService(db, new CustomerPiiService(db))); // ก้อน 5 C3 — ด่าน blacklist ตอน activate
     const receipts = new ReceiptsService(db, journal, new ReceiptVoidReversalTemplate(journal, db), undefined);
     const badDebt = new BadDebtService(db, journal, new BadDebtProvisionTemplate(journal, db),
       new BadDebtWriteOffTemplate(journal, db), new EclStageReverseTemplate(journal, db),
@@ -565,4 +570,86 @@ describe('approved credit → real create/sign/activate → partial/complete pay
     }
     expect((await db.contract.findUniqueOrThrow({ where: { id: contractId } })).status).toBe('COMPLETED');
   }, 120_000);
+
+  // ─── ก้อน 5 C3 — ด่าน blacklist สองจุด (create + activate) บน DB จริง ──────────────
+  // ลูกค้า/เครื่องเปล่า ไม่มี trade-in · ชื่อห้ามมีตัวเลข (generateSaleNumber อ่าน MAX(saleNumber) ทั้งตาราง)
+  const syntheticPhone = () => `0${randomUUID().replace(/\D/g, '').padEnd(9, '7').slice(0, 9)}`;
+  async function plainCustomer(label: string, extra: Record<string, unknown> = {}) {
+    const prefix = `0${String(Math.floor(Math.random() * 1e11)).padStart(11, '0')}`;
+    const nationalId = prefix + (11 - [...prefix].reduce((s, n, i) => s + Number(n) * (13 - i), 0) % 11) % 10;
+    const phone = syntheticPhone(); const pii = new CustomerPiiService(db);
+    // submitForReview บังคับผู้ติดต่อฉุกเฉิน ≥ 1 — ค่าเริ่มต้นเบอร์สุ่มที่ไม่ชนใคร (เคสผู้อ้างอิงส่ง references ทับเอง)
+    return db.customer.create({ data: { name: `ISOLATED BLACKLIST ${label}`, nationalId, nationalIdHash: pii.hash(nationalId),
+      phone, phoneHash: pii.hash(phone), birthDate: new Date('1990-01-01'), addressIdCard: '1 Synthetic Road', addressCurrent: '1 Synthetic Road',
+      references: [{ firstName: 'ผู้ติดต่อ', lastName: 'ฉุกเฉิน', phone: syntheticPhone(), relationship: 'เพื่อน' }],
+      salary: 30000, salaryPayDay: 25, ...extra } });
+  }
+  const plainProduct = () => db.product.create({ data: { name: 'ISOLATED BLACKLIST DEVICE', brand: 'SYNTHETIC', model: 'PLAIN', category: 'ACCESSORY',
+    imeiSerial: `SYNTHETIC-${randomUUID()}`, branchId, ownedByCompanyId: shopId, costPrice: 6000, status: 'IN_STOCK' } });
+  // ดาวน์ 3,000 = 20% ของ 15,000 (ขั้นต่ำของ interestConfig ในชุดนี้ — เคส exchange ใช้เครดิตเทิร์นช่วยจึงดาวน์ 2,000 ได้)
+  const plainDto = (customerId: string, productId: string) => ({ customerId, productId, branchId, sellingPrice: 15000, downPayment: 3000,
+    totalMonths: 12, paymentDueDay: 25, paymentMethod: 'CASH' as const });
+
+  describe('blacklist gate (ก้อน 5 C3)', () => {
+    it('two drafts: first activates, second is HARD at activate and at create', async () => {
+      const customer = await plainCustomer('TWO DRAFTS');
+      await approve(customer.id);
+      const first = await lifecycle.create(plainDto(customer.id, (await plainProduct()).id), ownerId, 'OWNER');
+      await approve(customer.id);
+      const second = await lifecycle.create(plainDto(customer.id, (await plainProduct()).id), ownerId, 'OWNER');
+      // การอนุมัติเครดิตใบที่ 2 supersede ใบแรก ⇒ เปิดใช้ร่างใบหลังก่อน แล้วร่างใบแรกต้องชนด่าน (ด่านอยู่ก่อนด่านเครดิต)
+      await activate(second.id, customer.id);
+      await expect(activate(first.id, customer.id)).rejects.toMatchObject({ response: { code: 'CUSTOMER_BLACKLISTED',
+        reasons: [expect.objectContaining({ code: 'ACTIVE_CONTRACT', contractNumber: second.contractNumber })] } });
+      expect((await db.contract.findUniqueOrThrow({ where: { id: first.id } })).status).toBe('DRAFT');
+      await approve(customer.id);
+      await expect(lifecycle.create(plainDto(customer.id, (await plainProduct()).id), ownerId, 'OWNER'))
+        .rejects.toMatchObject({ response: { code: 'CUSTOMER_BLACKLISTED' } });
+    }, 180_000);
+
+    it('manual BLACKLIST tag added after the draft blocks activation', async () => {
+      const customer = await plainCustomer('TAGGED LATER'); await approve(customer.id);
+      const draft = await lifecycle.create(plainDto(customer.id, (await plainProduct()).id), ownerId, 'OWNER');
+      await db.customerTag.create({ data: { customerId: customer.id, tag: 'BLACKLIST', source: 'MANUAL', reason: 'ทดสอบด่าน', appliedByUserId: ownerId } });
+      await expect(activate(draft.id, customer.id)).rejects.toMatchObject({ response: { code: 'CUSTOMER_BLACKLISTED',
+        reasons: [expect.objectContaining({ code: 'MANUAL_TAG' })] } });
+      expect((await db.contract.findUniqueOrThrow({ where: { id: draft.id } })).status).toBe('DRAFT');
+    }, 120_000);
+
+    it('TERMINATED blocks a new contract until it is paid off to COMPLETED', async () => {
+      const customer = await plainCustomer('TERMINATED'); await approve(customer.id);
+      const first = await lifecycle.create(plainDto(customer.id, (await plainProduct()).id), ownerId, 'OWNER');
+      await activate(first.id, customer.id);
+      await db.contract.update({ where: { id: first.id }, data: { status: 'TERMINATED' } });
+      await approve(customer.id);
+      await expect(lifecycle.create(plainDto(customer.id, (await plainProduct()).id), ownerId, 'OWNER')).rejects.toMatchObject({ response: {
+        code: 'CUSTOMER_BLACKLISTED', reasons: [expect.objectContaining({ code: 'TERMINATED_UNRETURNED', contractNumber: first.contractNumber })] } });
+      await db.contract.update({ where: { id: first.id }, data: { status: 'COMPLETED' } });
+      const again = await lifecycle.create(plainDto(customer.id, (await plainProduct()).id), ownerId, 'OWNER');
+      expect(again.status).toBe('DRAFT');
+    }, 120_000);
+
+    it('phone match with a blacklisted customer is HARD; a reference link is SOFT and activates on the persisted override', async () => {
+      const bad = await plainCustomer('BAD DEBTOR'); await approve(bad.id);
+      const c = await lifecycle.create(plainDto(bad.id, (await plainProduct()).id), ownerId, 'OWNER'); await activate(c.id, bad.id);
+      await db.contract.update({ where: { id: c.id }, data: { status: 'TERMINATED' } });
+      const pii = new CustomerPiiService(db);
+      const twin = await plainCustomer('PHONE TWIN', { phone: bad.phone, phoneHash: pii.hash(bad.phone!) }); await approve(twin.id);
+      await expect(lifecycle.create(plainDto(twin.id, (await plainProduct()).id), ownerId, 'OWNER')).rejects.toMatchObject({ response: {
+        code: 'CUSTOMER_BLACKLISTED', reasons: [expect.objectContaining({ code: 'PHONE_MATCH', related: expect.objectContaining({ customerId: bad.id }) })] } });
+      const ref = await plainCustomer('REFERENCES BAD', { references: [{ firstName: 'อ้างอิง', lastName: 'ทดสอบ', phone: bad.phone, relationship: 'เพื่อน' }] });
+      await approve(ref.id);
+      const product = await plainProduct();
+      await expect(lifecycle.create(plainDto(ref.id, product.id), ownerId, 'OWNER')).rejects.toMatchObject({ response: { code: 'CUSTOMER_BLACKLIST_REVIEW', canOverride: true } });
+      await expect(lifecycle.create({ ...plainDto(ref.id, product.id), blacklistOverrideReason: 'ผู้จัดการตรวจแล้วว่าไม่ใช่คนเดียวกัน' }, salesId, 'SALES'))
+        .rejects.toMatchObject({ response: { code: 'CUSTOMER_BLACKLIST_REVIEW', canOverride: false } });
+      const draft = await lifecycle.create({ ...plainDto(ref.id, product.id), blacklistOverrideReason: 'ผู้จัดการตรวจแล้วว่าไม่ใช่คนเดียวกัน' }, ownerId, 'OWNER');
+      const row = await db.contract.findUniqueOrThrow({ where: { id: draft.id } });
+      expect(row).toMatchObject({ blacklistOverriddenById: ownerId, blacklistOverrideReason: 'ผู้จัดการตรวจแล้วว่าไม่ใช่คนเดียวกัน' });
+      expect(row.blacklistOverriddenAt).toBeInstanceOf(Date);
+      await activate(draft.id, ref.id);
+      expect((await db.contract.findUniqueOrThrow({ where: { id: draft.id } })).status).toBe('ACTIVE');
+      expect(await db.auditLog.count({ where: { action: 'CONTRACT_BLACKLIST_OVERRIDDEN', entityId: draft.id } })).toBe(1);
+    }, 180_000);
+  });
 });

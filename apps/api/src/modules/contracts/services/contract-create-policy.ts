@@ -4,13 +4,16 @@ import { isChatPlaceholder, type PlaceholderShape } from '../../chat-prospects/c
 import { firstTransferReference, type NormalizedTender } from '../../shop-tenders/shop-tender.util';
 
 /** Must run after lockCreditCustomer, in the same transaction as the credit claim. */
-export async function assertCustomerContractPolicy(tx: Prisma.TransactionClient, customerId: string, role: string, override = false) {
+/**
+ * 1 คนผ่อนได้ 1 เครื่อง (ก้อน 5 C3 — คำตัดสินเจ้าของ 2026-10-23): ตาข่ายชั้นสุดท้ายใน tx ของ create()/activate()
+ * fail-closed เสมอ — ไม่มี role/flag ปลด (ช่อง "อนุมัติผ่อนซ้อน" ถอดแล้ว; ด่านหลักอยู่ที่ assertBlacklistGate นอก tx)
+ */
+export async function assertCustomerContractPolicy(tx: Prisma.TransactionClient, customerId: string) {
   const activeContracts = await tx.contract.findMany({ where: { customerId, deletedAt: null,
     status: { in: ['ACTIVE', 'OVERDUE', 'DEFAULT'] } }, select: { id: true, contractNumber: true, status: true } });
-  const canOverride = ['OWNER', 'BRANCH_MANAGER'].includes(role);
-  if (activeContracts.length && !(canOverride && override)) throw new ConflictException({
+  if (activeContracts.length) throw new ConflictException({
     message: 'ลูกค้ายังมีสัญญาที่กำลังผ่อนอยู่ ไม่สามารถเปิดสัญญาใหม่ได้',
-    code: 'CUSTOMER_HAS_ACTIVE_CONTRACT', activeContracts, canOverride,
+    code: 'CUSTOMER_HAS_ACTIVE_CONTRACT', activeContracts,
   });
 }
 

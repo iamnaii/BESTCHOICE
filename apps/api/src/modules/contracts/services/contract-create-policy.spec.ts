@@ -4,12 +4,15 @@ import { normalizeTenders } from '../../shop-tenders/shop-tender.util';
 
 describe('shared contract creation policy', () => {
   const tx = { contract: { findMany: jest.fn().mockResolvedValue([{ id: 'active', contractNumber: 'ACTIVE-1', status: 'ACTIVE' }]) } };
-  it.each(['OWNER', 'BRANCH_MANAGER'])('allows a deliberate %s active-contract override', async role => {
-    await expect(assertCustomerContractPolicy(tx as unknown as Prisma.TransactionClient, 'customer', role, true)).resolves.toBeUndefined();
-    await expect(assertCustomerContractPolicy(tx as unknown as Prisma.TransactionClient, 'customer', role, false)).rejects.toMatchObject({ response: { code: 'CUSTOMER_HAS_ACTIVE_CONTRACT', canOverride: true } });
+  it('rejects any live contract — no role or flag can bypass', async () => {
+    await expect(assertCustomerContractPolicy(tx as unknown as Prisma.TransactionClient, 'customer'))
+      .rejects.toMatchObject({ response: { code: 'CUSTOMER_HAS_ACTIVE_CONTRACT', activeContracts: [expect.objectContaining({ contractNumber: 'ACTIVE-1' })] } });
+    expect(assertCustomerContractPolicy.length).toBe(2);
   });
-  it('does not let SALES bypass the policy with a forged flag', async () => {
-    await expect(assertCustomerContractPolicy(tx as unknown as Prisma.TransactionClient, 'customer', 'SALES', true)).rejects.toMatchObject({ response: { canOverride: false } });
+  it('passes when the customer has no live contract', async () => {
+    const empty = { contract: { findMany: jest.fn().mockResolvedValue([]) } };
+    await expect(assertCustomerContractPolicy(empty as unknown as Prisma.TransactionClient, 'customer')).resolves.toBeUndefined();
+    expect(empty.contract.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ status: { in: ['ACTIVE', 'OVERDUE', 'DEFAULT'] } }) }));
   });
   it('records no tender, date or reference when no additional money is received', () => {
     expect(contractDownTender(normalizeTenders(undefined, 0, { method: 'BANK_TRANSFER', reference: 'unused' }))).toEqual({ downPaymentMethod: null, downPaymentReceivedAt: null, downPaymentReference: null });

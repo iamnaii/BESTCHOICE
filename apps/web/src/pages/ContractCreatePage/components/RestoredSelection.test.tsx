@@ -10,7 +10,8 @@ it('shows the restored customer outside the search page and starts credit from t
   render(<CustomerSelectStep customers={[]} customerSearch="" setCustomerSearch={vi.fn()}
     selectedCustomer={{ id: 'customer-a', name: 'ลูกค้าที่กู้คืน', nationalId: '1234567890123' } as Customer}
     setSelectedCustomer={vi.fn()} onNext={vi.fn()} latestCreditCheck={null} customerCreditApproved={false}
-    onOpenCredit={onOpenCredit} onOpenCustomerModal={vi.fn()} overrideActiveContractCheck={false} setOverrideActiveContractCheck={vi.fn()} />);
+    onOpenCredit={onOpenCredit} onOpenCustomerModal={vi.fn()} blacklist={{ level: 'NONE', reasons: [], checkedAt: 't' }} blacklistStatus="ready" onRetryBlacklist={vi.fn()}
+    overrideAccepted={false} setOverrideAccepted={vi.fn()} overrideReason="" setOverrideReason={vi.fn()} />);
   expect(screen.getByText('ลูกค้าที่กู้คืน')).toBeVisible();
   expect(screen.queryByText('ไม่พบลูกค้า')).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: 'ไปตรวจเครดิต' }));

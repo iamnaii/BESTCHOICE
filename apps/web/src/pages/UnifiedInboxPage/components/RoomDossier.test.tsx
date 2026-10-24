@@ -89,6 +89,15 @@ describe('RoomDossier — แผงขวา 3 แท็บ (โครง OBI)',
     authRole.role = 'SALES';
   });
 
+  it('ก้อน 5 C3 — หัวแผงโชว์ป้าย blacklist ของลูกค้าที่ผูกไว้ (เหตุผลชุดเดียวกับหน้าสร้างสัญญา)', async () => {
+    apiGet.mockImplementation(async (url: unknown) => {
+      if (url === '/customers/c-1/blacklist') return { data: { level: 'SOFT', checkedAt: 't', reasons: [{ code: 'REFERENCES_BLACKLISTED', level: 'SOFT', message: 'ผู้อ้างอิง "ก" คือ ข ที่ติด blacklist' }] } };
+      return { data: [] };
+    });
+    wrap(<RoomDossier room={{ ...ROOM, customer: { id: 'c-1', name: 'สมชาย ก.', phone: '0812345678' } }} customerId="c-1" activeRoomId="r-1" />);
+    expect(await screen.findByText('ต้องให้ผู้จัดการอนุมัติ')).toBeInTheDocument();
+  });
+
   it('สร้างลูกค้าใหม่: เปิดเป็น popup ในห้อง (ไม่ navigate) · เติมชื่อ/นามสกุลจากชื่อห้อง + ชื่อ Facebook เมื่อเป็นห้อง Facebook · ป้ายปุ่ม "บันทึกและผูกกับแชท"', () => {
     wrap(<RoomDossier room={ROOM} customerId={null} activeRoomId="r-1" />);
     expect(screen.queryByTestId('create-dialog')).toBeNull();

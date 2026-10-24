@@ -128,7 +128,6 @@ const baseDto = {
   planType: 'STORE_DIRECT' as const,
   notes: null,
   interestRate: undefined,
-  overrideActiveContractCheck: false,
 };
 
 // ─── suite ───────────────────────────────────────────────────────────────────
@@ -137,6 +136,8 @@ describe('ContractLifecycleService — ShopDownPayment wiring', () => {
   let service: ContractLifecycleService;
   let prisma: any;
   let tx: any;
+  let blacklist: { evaluate: jest.Mock };
+  let audit: { log: jest.Mock };
   let shopDownPaymentTemplate: jest.Mocked<Pick<ShopDownPaymentTemplate, 'execute'>>;
   let shopDownPaymentReversalTemplate: jest.Mocked<Pick<ShopDownPaymentReversalTemplate, 'execute'>>;
   let shopAccountResolver: jest.Mocked<Pick<ShopAccountResolver, 'resolveBranchCashAccount' | 'resolveInflowCashAccount'>>;
@@ -242,14 +243,17 @@ describe('ContractLifecycleService — ShopDownPayment wiring', () => {
       resolveInflowCashAccount: jest.fn(async (_branch, method) => method === 'CASH' ? 'S11-1102' : 'S11-1201'),
     };
 
+    blacklist = { evaluate: jest.fn().mockResolvedValue({ level: 'NONE', reasons: [], checkedAt: 't' }) };
+    audit = { log: jest.fn().mockResolvedValue(undefined) };
     service = new ContractLifecycleService(
       prisma as any,
       queryMock as any,
       shopDownPaymentTemplate as any,
       shopDownPaymentReversalTemplate as any,
       shopAccountResolver as any,
+      blacklist as any, // ก้อน 5 C3 — ด่าน blacklist (ค่าเริ่มต้น NONE)
       undefined, // warrantyService — optional
-      undefined, // audit — optional
+      audit as any,
     );
   });
 
@@ -530,6 +534,52 @@ describe('ContractLifecycleService — ShopDownPayment wiring', () => {
       expect(warn).toHaveBeenCalledTimes(1);
       expect(String(warn.mock.calls[0][0])).toContain('BK-20261005-0001');
       expect(warnInsideTx).toEqual([false]);
+    });
+  });
+
+  describe('blacklist gate (ก้อน 5 C3)', () => {
+    const hardResult = { level: 'HARD', reasons: [{ code: 'MANUAL_TAG', level: 'HARD', message: 'ติด tag' }], checkedAt: 't' };
+    const softResult = { level: 'SOFT', reasons: [{ code: 'REFERENCES_BLACKLISTED', level: 'SOFT', message: 'อ้างอิง' }], checkedAt: 't' };
+    const REASON = '  ลูกค้าเก่าของสาขา ผู้จัดการรับรองเอง ';
+
+    it('HARD → 409 CUSTOMER_BLACKLISTED before any transaction', async () => {
+      blacklist.evaluate.mockResolvedValue(hardResult);
+      await expect(service.create(baseDto as never, 'owner-1', 'OWNER')).rejects.toMatchObject({ response: { code: 'CUSTOMER_BLACKLISTED' } });
+      expect(blacklist.evaluate).toHaveBeenCalledWith('cust-1');
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('SOFT without reason → 409 REVIEW; SALES with reason → 409 REVIEW canOverride false', async () => {
+      blacklist.evaluate.mockResolvedValue(softResult);
+      await expect(service.create(baseDto as never, 'owner-1', 'OWNER')).rejects.toMatchObject({ response: { code: 'CUSTOMER_BLACKLIST_REVIEW', canOverride: true } });
+      await expect(service.create({ ...baseDto, blacklistOverrideReason: REASON } as never, 'sales-1', 'SALES')).rejects.toMatchObject({ response: { code: 'CUSTOMER_BLACKLIST_REVIEW', canOverride: false } });
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('SOFT with reason by OWNER persists override columns and audits after commit', async () => {
+      blacklist.evaluate.mockResolvedValue(softResult);
+      await service.create({ ...baseDto, blacklistOverrideReason: REASON } as never, 'owner-1', 'OWNER');
+      expect(tx.contract.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({
+        blacklistOverrideReason: 'ลูกค้าเก่าของสาขา ผู้จัดการรับรองเอง', blacklistOverriddenById: 'owner-1', blacklistOverriddenAt: expect.any(Date) }) }));
+      expect(audit.log).toHaveBeenCalledWith(expect.objectContaining({ action: 'CONTRACT_BLACKLIST_OVERRIDDEN', entity: 'contract', userId: 'owner-1',
+        newValue: expect.objectContaining({ customerId: 'cust-1', level: 'SOFT', overrideReason: 'ลูกค้าเก่าของสาขา ผู้จัดการรับรองเอง', reasons: softResult.reasons }) }));
+    });
+
+    it('NONE writes no override columns even when a reason is sent', async () => {
+      await service.create({ ...baseDto, blacklistOverrideReason: REASON } as never, 'owner-1', 'OWNER');
+      expect(tx.contract.create.mock.calls[0][0].data).not.toHaveProperty('blacklistOverrideReason');
+      expect(audit.log).not.toHaveBeenCalledWith(expect.objectContaining({ action: 'CONTRACT_BLACKLIST_OVERRIDDEN' }));
+    });
+
+    it('test mode does not bypass the blacklist gate', async () => {
+      queryMock.isTestModeEnabled.mockResolvedValue(true);
+      blacklist.evaluate.mockResolvedValue(hardResult);
+      await expect(service.create(baseDto as never, 'owner-1', 'OWNER')).rejects.toMatchObject({ response: { code: 'CUSTOMER_BLACKLISTED' } });
+    });
+
+    it('in-tx active-contract policy is fail-closed (legacy flag ignored)', async () => {
+      tx.contract.findMany.mockResolvedValueOnce([{ id: 'a', contractNumber: 'A', status: 'ACTIVE' }]);
+      await expect(service.create({ ...baseDto, overrideActiveContractCheck: true } as never, 'owner-1', 'OWNER')).rejects.toMatchObject({ response: { code: 'CUSTOMER_HAS_ACTIVE_CONTRACT' } });
     });
   });
 

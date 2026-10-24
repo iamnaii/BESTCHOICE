@@ -1,3 +1,5 @@
+import { CustomerBlacklistService } from '../../src/modules/customers/customer-blacklist.service';
+import { CustomerPiiService } from '../../src/modules/customers/customer-pii.service';
 import { AppointmentConfirmationService } from '../../src/modules/store-appointments/appointment-confirmation.service';
 import { StoreAppointmentsController } from '../../src/modules/store-appointments/store-appointments.controller';
 import { AppointmentLinksController, AppointmentPublicController } from '../../src/modules/store-appointments/appointment-links.controller';
@@ -194,7 +196,8 @@ const promotions = new PromotionsService(db);
 const gfin = new GfinConfigService(db, new AuditService(db));
 const lifecycle = new ContractLifecycleService(db, contractQuery,
   { execute: async () => ({}) } as never, { execute: async () => ({}) } as never,
-  { resolveBranchCashAccount: async () => 'S11-1101', resolveInflowCashAccount: async () => 'S11-1101' } as never);
+  { resolveBranchCashAccount: async () => 'S11-1101', resolveInflowCashAccount: async () => 'S11-1101' } as never,
+  new CustomerBlacklistService(db, new CustomerPiiService(db)));
 const manager = Object.assign(Object.create(RoomManagerService.prototype), {
   prisma: db,
   storageService: { configured: false },

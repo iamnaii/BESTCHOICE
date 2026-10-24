@@ -25,7 +25,7 @@ describe('CustomerTierBadge', () => {
 
   it('renders BLACKLIST label', () => {
     render(<CustomerTierBadge tier="BLACKLIST" />);
-    expect(screen.getByText('ห้ามทำสัญญา')).toBeInTheDocument();
+    expect(screen.getByText('ประวัติเสีย')).toBeInTheDocument(); // ก้อน 5 C3 — ป้าย 'ห้ามทำสัญญา' เป็นของ CustomerBlacklistBadge
   });
 
   it('applies GOLD colour tokens', () => {

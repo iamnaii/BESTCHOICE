@@ -1021,6 +1021,7 @@ model User {
 
   // P3 Collections UI — customer tag attribution + late fee waiver workflow
   appliedTags            CustomerTag[]          @relation("CustomerTagAppliedBy")
+  blacklistOverriddenContracts Contract[] @relation("ContractBlacklistOverriddenBy") // ก้อน 5 C3
   lateFeeWaiverRequests  LateFeeWaiverRequest[] @relation("LateFeeWaiverRequester")
   approvedLateFeeWaivers LateFeeWaiverRequest[] @relation("LateFeeWaiverApprover")
 
@@ -1532,6 +1533,12 @@ model Contract {
   inputVatAmount         Decimal?       @map("input_vat_amount") @db.Decimal(12, 2)
   inputVatJournalEntryId String?        @unique @map("input_vat_journal_entry_id")
   inputVatReason         String?        @map("input_vat_reason")
+
+  // ก้อน 5 C3 — การปลด SOFT blacklist ที่บันทึกตอนสร้างร่าง (activate อ่าน blacklistOverriddenAt)
+  blacklistOverrideReason String?   @map("blacklist_override_reason")
+  blacklistOverriddenById String?   @map("blacklist_overridden_by_id")
+  blacklistOverriddenAt   DateTime? @map("blacklist_overridden_at")
+  blacklistOverriddenBy   User?     @relation("ContractBlacklistOverriddenBy", fields: [blacklistOverriddenById], references: [id], onDelete: SetNull)
 
   // SP2 — Same-price device exchange self-relation (new contract links back to old contract)
   exchangedFromContractId String?   @unique @map("exchanged_from_contract_id")

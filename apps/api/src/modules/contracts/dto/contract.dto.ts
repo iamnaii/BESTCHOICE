@@ -1,4 +1,4 @@
-import { IsString, IsNumber, IsOptional, IsInt, IsBoolean, IsPositive, Min, Max, Matches, IsIn, IsDateString, IsUUID, MaxLength, IsArray, ArrayMaxSize, ValidateNested } from 'class-validator';
+import { IsString, IsNumber, IsOptional, IsInt, IsBoolean, IsPositive, Min, Max, Matches, IsIn, IsDateString, IsUUID, MaxLength, Length, IsArray, ArrayMaxSize, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
 import { TenderInputDto } from '../../shop-tenders/dto/tender-input.dto';
 import { MAX_TENDERS } from '../../shop-tenders/shop-tender.util';
@@ -66,10 +66,14 @@ export class CreateContractDto {
   @IsOptional()
   paymentDueDay?: number;
 
-  /** OWNER/BRANCH_MANAGER อนุญาตให้ลูกค้าผ่อนซ้อนได้ (override active-contract check) */
-  @IsBoolean()
+  /**
+   * ก้อน 5 C3 — เหตุผลปลด blacklist ระดับ SOFT (OWNER/BRANCH_MANAGER เท่านั้น — ตัดสินใน assertBlacklistGate)
+   * ช่อง "อนุมัติผ่อนซ้อน" (overrideActiveContractCheck) ถอดแล้ว: มีสัญญาผ่อนอยู่ = HARD ไม่มีใครปลด
+   */
+  @IsString()
+  @Length(10, 500, { message: 'กรุณาระบุเหตุผล 10–500 ตัวอักษร' })
   @IsOptional()
-  overrideActiveContractCheck?: boolean;
+  blacklistOverrideReason?: string;
 
   /** ของแถม (อุปกรณ์เสริมเท่านั้น) — จองตอนสร้าง ตัดสต๊อกตอนเปิดใช้ (contract-bundle.util.ts) */
   @IsArray({ message: 'กรุณาระบุรายการของแถมเป็นรายการ' })

@@ -1,3 +1,4 @@
+import { CustomerBlacklistService } from '../src/modules/customers/customer-blacklist.service';
 import { ContractQuoteService } from '../src/modules/contracts/services/contract-quote.service';
 import { SalesQueryService } from '../src/modules/sales/services/sales-query.service';
 import { CustomerPiiService } from '../src/modules/customers/customer-pii.service';
@@ -108,7 +109,7 @@ describe('approved credit → real create/sign/activate → partial/complete pay
     tradeCredits = new TradeInCreditService(db);
     const down = new ShopDownPaymentTemplate(journal, db, resolver);
     lifecycle = new ContractLifecycleService(db, new ContractQueryService(db), down,
-      new ShopDownPaymentReversalTemplate(journal, db, resolver), shopAccounts, undefined, audit);
+      new ShopDownPaymentReversalTemplate(journal, db, resolver), shopAccounts, new CustomerBlacklistService(db, new CustomerPiiService(db)), undefined, audit);
     const config = new ConfigService({});
     credits = new CreditCheckService(db, new IntegrationConfigService(db, config), new AiProviderService(new AiUsageService(db, config)));
     // Only PDF generation/storage and external notifications are substituted.

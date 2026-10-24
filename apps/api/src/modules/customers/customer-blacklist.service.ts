@@ -177,7 +177,10 @@ export class CustomerBlacklistService {
     } catch {
       return null;
     }
-    const primary = new Set<string>([...(row.phoneHash ? [row.phoneHash] : []), ...this.keysFor(dec.phone)]);
+    // hash ที่เก็บไว้ใช้เฉพาะเมื่อไม่มี plaintext ให้เทียบ — แถวที่ hash ค้างจากเบอร์เดิม (database.md / findLivePhoneOwner)
+    // ต้องไม่ทำให้คนที่ถือเบอร์นั้นตอนนี้ถูกห้ามถาวร (review I2)
+    const plain = this.keysFor(dec.phone);
+    const primary = new Set<string>(plain.length ? plain : (row.phoneHash ? [row.phoneHash] : []));
     const secondary = new Set<string>(this.keysFor(dec.phoneSecondary));
     const refs = Array.isArray(dec.references)
       ? dec.references

@@ -6,14 +6,15 @@
 import { ContractWorkflowService } from './contract-workflow.service';
 
 const stub = {} as never;
-function build(opts: { exchanged: boolean; level: 'NONE' | 'SOFT' | 'HARD'; persisted?: boolean }) {
-  const prisma = { $transaction: jest.fn() };
+function build(opts: { exchanged: boolean; level: 'NONE' | 'SOFT' | 'HARD'; persisted?: boolean; parentStatus?: string }) {
+  const prisma = { $transaction: jest.fn(), contract: { findUnique: jest.fn().mockResolvedValue(opts.parentStatus ? { status: opts.parentStatus } : null) } };
   const reasons = opts.level === 'NONE' ? [] : [{ code: opts.level === 'HARD' ? 'MANUAL_TAG' : 'REFERENCES_BLACKLISTED', level: opts.level, message: 'x' }];
   const blacklist = { evaluate: jest.fn().mockResolvedValue({ level: opts.level, reasons, checkedAt: 't' }) };
   const service = new ContractWorkflowService(prisma as never, stub, stub, stub, stub, stub, stub, stub, stub, stub, blacklist as never);
   jest.spyOn(service as unknown as { findOne: () => Promise<unknown> }, 'findOne').mockResolvedValue({
     id: 'c1', customerId: 'cust-1', workflowStatus: 'APPROVED', status: 'DRAFT', pdpaConsentId: 'pdpa-1',
     exchangedFromContractId: opts.exchanged ? 'old-contract' : null,
+    parentContractId: opts.parentStatus ? 'parent-contract' : null,
     blacklistOverriddenAt: opts.persisted ? new Date('2026-10-24T00:00:00Z') : null,
     documents: [], signatures: [], payments: [],
   });
@@ -37,7 +38,7 @@ describe('ContractWorkflowService.activate — blacklist gate', () => {
   it('SOFT without a persisted override blocks with the activate-stage message', async () => {
     const { service, prisma } = build({ exchanged: false, level: 'SOFT' });
     await expect(service.activate('c1')).rejects.toMatchObject({ response: { code: 'CUSTOMER_BLACKLIST_REVIEW', canOverride: false,
-      message: expect.stringContaining('ลบร่างนี้แล้วสร้างสัญญาใหม่') } });
+      message: expect.stringContaining('ให้ OWNER/ผู้จัดการสาขาเป็นผู้เปิดใช้สัญญาพร้อมเหตุผล') } });
     expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 
@@ -47,5 +48,27 @@ describe('ContractWorkflowService.activate — blacklist gate', () => {
     expect(blacklist.evaluate).toHaveBeenCalledWith('cust-1');
     // ล้มทีหลังที่ด่าน hash/ลายเซ็น (stub) — แต่ต้องไม่ใช่ 409 ของด่าน blacklist
     expect(String((err as { response?: { code?: string } })?.response?.code ?? '')).not.toMatch(/CUSTOMER_BLACKLIST/);
+  });
+
+  it('skips the gate for a defect-exchange replacement (parent contract DEFECT_EXCHANGED) — continuation of the same customer', async () => {
+    const { service, blacklist } = build({ exchanged: false, level: 'HARD', parentStatus: 'DEFECT_EXCHANGED' });
+    await service.activate('c1').catch(() => undefined);
+    expect(blacklist.evaluate).not.toHaveBeenCalled();
+  });
+
+  it('a parentContractId whose parent is not DEFECT_EXCHANGED does not skip the gate', async () => {
+    const { service, blacklist } = build({ exchanged: false, level: 'HARD', parentStatus: 'ACTIVE' });
+    await expect(service.activate('c1')).rejects.toMatchObject({ response: { code: 'CUSTOMER_BLACKLISTED' } });
+    expect(blacklist.evaluate).toHaveBeenCalledWith('cust-1');
+  });
+
+  it('SOFT without persisted override: OWNER can override at activation with a reason; FINANCE_MANAGER cannot', async () => {
+    const owner = build({ exchanged: false, level: 'SOFT' });
+    const err = await owner.service.activate('c1', 'owner-1', { actorRole: 'OWNER', blacklistOverrideReason: 'ผู้จัดการตรวจแล้ว ไม่ใช่คนเดียวกัน' }).catch((e: unknown) => e);
+    expect(String((err as { response?: { code?: string } })?.response?.code ?? '')).not.toMatch(/CUSTOMER_BLACKLIST/);
+    const fm = build({ exchanged: false, level: 'SOFT' });
+    await expect(fm.service.activate('c1', 'fm-1', { actorRole: 'FINANCE_MANAGER', blacklistOverrideReason: 'ผู้จัดการตรวจแล้ว ไม่ใช่คนเดียวกัน' }))
+      .rejects.toMatchObject({ response: { code: 'CUSTOMER_BLACKLIST_REVIEW', canOverride: false } });
+    expect(fm.prisma.$transaction).not.toHaveBeenCalled();
   });
 });

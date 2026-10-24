@@ -4,6 +4,7 @@ import {
   assertBlacklistGate,
   BLACKLIST_HARD_MSG,
   BLACKLIST_REVIEW_AT_ACTIVATE_MSG,
+  BLACKLIST_REVIEW_AT_ACTIVATE_NO_ROLE_MSG,
   BLACKLIST_REVIEW_MSG,
 } from './contract-blacklist-gate';
 
@@ -44,9 +45,17 @@ describe('assertBlacklistGate', () => {
       .toBe('ลูกค้าเก่าของสาขา ผู้จัดการรับรองเอง');
   });
 
-  it('SOFT at ACTIVATE passes only with a persisted override', () => {
+  it('SOFT at ACTIVATE passes with a persisted override, or with a fresh OWNER/BM reason (returned trimmed)', () => {
     expect(assertBlacklistGate({ result: soft, actorRole: 'SYSTEM', stage: 'ACTIVATE', persistedOverride: true })).toBeNull();
-    expect(response(() => assertBlacklistGate({ result: soft, actorRole: 'OWNER', stage: 'ACTIVATE', overrideReason: REASON })))
-      .toMatchObject({ code: 'CUSTOMER_BLACKLIST_REVIEW', canOverride: false, message: BLACKLIST_REVIEW_AT_ACTIVATE_MSG });
+    expect(assertBlacklistGate({ result: soft, actorRole: 'OWNER', stage: 'ACTIVATE', overrideReason: `  ${REASON}  ` })).toBe(REASON);
+    expect(assertBlacklistGate({ result: soft, actorRole: 'BRANCH_MANAGER', stage: 'ACTIVATE', overrideReason: REASON })).toBe(REASON);
+  });
+
+  it('SOFT at ACTIVATE without a usable override → REVIEW; canOverride follows the role and the message names the real path', () => {
+    expect(response(() => assertBlacklistGate({ result: soft, actorRole: 'OWNER', stage: 'ACTIVATE' })))
+      .toMatchObject({ code: 'CUSTOMER_BLACKLIST_REVIEW', canOverride: true, message: BLACKLIST_REVIEW_AT_ACTIVATE_MSG });
+    expect(response(() => assertBlacklistGate({ result: soft, actorRole: 'FINANCE_MANAGER', stage: 'ACTIVATE', overrideReason: REASON })))
+      .toMatchObject({ code: 'CUSTOMER_BLACKLIST_REVIEW', canOverride: false, message: BLACKLIST_REVIEW_AT_ACTIVATE_NO_ROLE_MSG });
+    expect(BLACKLIST_REVIEW_AT_ACTIVATE_MSG).not.toMatch(/ลบร่าง/);
   });
 });

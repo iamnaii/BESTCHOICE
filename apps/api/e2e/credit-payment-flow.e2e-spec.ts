@@ -128,7 +128,8 @@ describe('approved credit → real create/sign/activate → partial/complete pay
     workflow = new ContractWorkflowService(db, null as never, journal, new ContractActivation1ATemplate(journal, db),
       products, null as never, new ShopInventoryTransferTemplate(journal, db, resolver), down, shopAccounts,
       new InstallmentInputVatTemplate(journal, db, resolver), // ก้อน 5 — ภาษีซื้อเครื่องหลักหลัง 1A
-      new CustomerBlacklistService(db, new CustomerPiiService(db))); // ก้อน 5 C3 — ด่าน blacklist ตอน activate
+      new CustomerBlacklistService(db, new CustomerPiiService(db)), // ก้อน 5 C3 — ด่าน blacklist ตอน activate
+      undefined, undefined, undefined, audit); // audit = CONTRACT_BLACKLIST_OVERRIDDEN ตอนปลด SOFT ที่ activate
     const receipts = new ReceiptsService(db, journal, new ReceiptVoidReversalTemplate(journal, db), undefined);
     const badDebt = new BadDebtService(db, journal, new BadDebtProvisionTemplate(journal, db),
       new BadDebtWriteOffTemplate(journal, db), new EclStageReverseTemplate(journal, db),
@@ -177,7 +178,8 @@ describe('approved credit → real create/sign/activate → partial/complete pay
       affordability: { ...basis, contextToken: preview.contextToken, approvedMonthlyPayment: 2000, confirmed: true } }, ownerId, 'OWNER');
   }
 
-  async function activate(contractId: string, customerId: string) {
+  /** ยินยอม PDPA + เอกสาร + ลายเซ็น 4 ฝ่าย + ส่งตรวจ + อนุมัติ — เตรียมร่างให้พร้อมเปิดใช้ (เรียกครั้งเดียวต่อร่าง) */
+  async function prepareForActivation(contractId: string, customerId: string) {
     const consent = await db.pDPAConsent.create({ data: { customerId, consentVersion: 'SYNTHETIC-1', privacyNoticeText: 'Synthetic consent', status: 'GRANTED', grantedAt: new Date(), purposes: ['CONTRACT'] } });
     await db.contract.update({ where: { id: contractId }, data: { pdpaConsentId: consent.id } });
     await db.contractDocument.createMany({ data: (['ID_CARD_COPY', 'KYC_SELFIE', 'DEVICE_PHOTO'] as const).map(documentType => ({
@@ -187,7 +189,10 @@ describe('approved credit → real create/sign/activate → partial/complete pay
     await Promise.all(pdfJobs);
     await workflow.submitForReview(contractId, ownerId, 'OWNER');
     await workflow.approveContract(contractId, ownerId, 'OWNER', 'Synthetic approval');
-    await workflow.activate(contractId);
+  }
+  async function activate(contractId: string, customerId: string) {
+    await prepareForActivation(contractId, customerId);
+    await workflow.activate(contractId, ownerId, { actorRole: 'OWNER' });
   }
 
   it('uses base value as cash-sale tender, bonus once, then restores credit on void', async () => {
@@ -628,6 +633,26 @@ describe('approved credit → real create/sign/activate → partial/complete pay
       const again = await lifecycle.create(plainDto(customer.id, (await plainProduct()).id), ownerId, 'OWNER');
       expect(again.status).toBe('DRAFT');
     }, 120_000);
+
+    it('SOFT that appears after the draft: activation asks for a manager reason, then OWNER overrides at activation (persisted + audited)', async () => {
+      const clean = await plainCustomer('LATE SOFT'); await approve(clean.id);
+      const draft = await lifecycle.create(plainDto(clean.id, (await plainProduct()).id), ownerId, 'OWNER');
+      await prepareForActivation(draft.id, clean.id);
+      // คนที่ติด blacklist ภายหลังเคยใส่ลูกค้าคนนี้เป็นผู้อ้างอิง ⇒ REFERENCED_BY_BLACKLISTED (SOFT) เกิดหลังสร้างร่าง
+      const bad = await plainCustomer('LATE BAD DEBTOR', { references: [{ firstName: 'อ้าง', lastName: 'ถึง', phone: clean.phone, relationship: 'ญาติ' }] });
+      await approve(bad.id);
+      const badContract = await lifecycle.create(plainDto(bad.id, (await plainProduct()).id), ownerId, 'OWNER'); await activate(badContract.id, bad.id);
+      await db.contract.update({ where: { id: badContract.id }, data: { status: 'TERMINATED' } });
+      await expect(workflow.activate(draft.id, salesId, { actorRole: 'FINANCE_MANAGER' })).rejects.toMatchObject({ response: { code: 'CUSTOMER_BLACKLIST_REVIEW', canOverride: false } });
+      await expect(workflow.activate(draft.id, ownerId, { actorRole: 'OWNER' })).rejects.toMatchObject({ response: { code: 'CUSTOMER_BLACKLIST_REVIEW', canOverride: true,
+        reasons: [expect.objectContaining({ code: 'REFERENCED_BY_BLACKLISTED', related: expect.objectContaining({ customerId: bad.id }) })] } });
+      expect((await db.contract.findUniqueOrThrow({ where: { id: draft.id } })).status).toBe('DRAFT');
+      await workflow.activate(draft.id, ownerId, { actorRole: 'OWNER', blacklistOverrideReason: 'ตรวจแล้ว ผู้อ้างอิงเป็นคนละคน' });
+      const row = await db.contract.findUniqueOrThrow({ where: { id: draft.id } });
+      expect(row).toMatchObject({ status: 'ACTIVE', blacklistOverriddenById: ownerId, blacklistOverrideReason: 'ตรวจแล้ว ผู้อ้างอิงเป็นคนละคน' });
+      expect(row.blacklistOverriddenAt).toBeInstanceOf(Date);
+      expect(await db.auditLog.count({ where: { action: 'CONTRACT_BLACKLIST_OVERRIDDEN', entityId: draft.id } })).toBe(1);
+    }, 180_000);
 
     it('phone match with a blacklisted customer is HARD; a reference link is SOFT and activates on the persisted override', async () => {
       const bad = await plainCustomer('BAD DEBTOR'); await approve(bad.id);

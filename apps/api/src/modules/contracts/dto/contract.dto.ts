@@ -84,6 +84,14 @@ export class CreateContractDto {
 }
 
 /** PATCH /contracts/:id/bundles — แทนที่รายการของแถมทั้งชุด (ส่ง [] = ไม่มีของแถม) */
+/** ก้อน 5 C3 — เปิดใช้สัญญา: OWNER/BM ปลด blacklist ระดับ SOFT ที่เกิดหลังสร้างร่างได้ด้วยเหตุผล (ร่างที่อนุมัติแล้วลบไม่ได้) */
+export class ActivateContractDto {
+  @IsString()
+  @Length(10, 500, { message: 'กรุณาระบุเหตุผล 10–500 ตัวอักษร' })
+  @IsOptional()
+  blacklistOverrideReason?: string;
+}
+
 export class UpdateContractBundlesDto {
   @IsArray({ message: 'กรุณาระบุรายการของแถมเป็นรายการ' })
   @ArrayMaxSize(10, { message: 'ของแถมต่อสัญญาได้ไม่เกิน 10 ชิ้น' })

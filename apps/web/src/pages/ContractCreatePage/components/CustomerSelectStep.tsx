@@ -1,6 +1,6 @@
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
+import CustomerTagDialog from '@/pages/CollectionsPage/components/CustomerTagDialog';
 import { AlertTriangle, Loader2, ShieldAlert, ShieldBan } from 'lucide-react';
-import { Link } from 'react-router';
 import { BLACKLIST_OVERRIDE_REASON_MIN, canOverrideBlacklist, type CustomerBlacklistResult } from '@installment/shared';
 import BlacklistReasonList from '@/components/customer/BlacklistReasonList';
 import { Button } from '@/components/ui/button';
@@ -65,6 +65,8 @@ export function CustomerSelectStep({
   const canRemoveTag = user?.role === 'OWNER' || user?.role === 'FINANCE_MANAGER';
   const roleLabel = user?.role === 'OWNER' ? 'เจ้าของ' : 'ผู้จัดการสาขา';
   const reasonLen = overrideReason.trim().length;
+  // ก้อน 5 C3 — กล่องถอด tag ของจริง (CollectionsPage) เปิดได้จากที่นี่ ปิดแล้วตรวจ blacklist ใหม่ (review I3)
+  const [tagDialogOpen, setTagDialogOpen] = useState(false);
 
   /** กล่องผลตรวจ blacklist (ก้อน 5 C3) — HARD แดงไม่มีทางปลด · SOFT เหลืองให้ OWNER/BM ปลด · โหลด/ล้ม = fail-closed */
   function renderBlacklistBox() {
@@ -96,12 +98,16 @@ export function CustomerSelectStep({
             <div className="min-w-0 flex-1">
               <div className="text-sm font-semibold leading-snug text-destructive">ห้ามทำสัญญา — ลูกค้าติด blacklist</div>
               <BlacklistReasonList reasons={blacklist.reasons} className="mt-2" />
-              <div className="mt-2 text-xs leading-snug text-muted-foreground">
-                {'ไม่มีการอนุมัติข้าม — '}
-                {hasTag && canRemoveTag
-                  ? <>ถ้า tag ติดผิด <Link to={`/customers/${selectedCustomer.id}`} className="font-medium text-primary hover:underline">ถอด tag ได้ที่หน้าลูกค้า</Link></>
-                  : 'ติดต่อเจ้าของ/ผู้จัดการการเงิน'}
+              <div className="mt-2 flex flex-wrap items-center gap-2 text-xs leading-snug text-muted-foreground">
+                <span>{'ไม่มีการอนุมัติข้าม — '}{hasTag && canRemoveTag ? 'ถ้า tag ติดผิด ถอดได้ที่นี่' : 'ติดต่อเจ้าของ/ผู้จัดการการเงิน'}</span>
+                {hasTag && canRemoveTag && (
+                  <Button type="button" variant="outline" size="sm" onClick={() => setTagDialogOpen(true)}>ถอด tag</Button>
+                )}
               </div>
+              {hasTag && canRemoveTag && (
+                <CustomerTagDialog open={tagDialogOpen} customerId={selectedCustomer.id}
+                  onClose={() => { setTagDialogOpen(false); onRetryBlacklist(); }} />
+              )}
             </div>
           </div>
         </div>

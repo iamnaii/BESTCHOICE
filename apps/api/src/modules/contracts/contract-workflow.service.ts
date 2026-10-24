@@ -43,6 +43,8 @@ import { journeyDedupeKey } from '../customer-journey/journey-data-schemas';
 import { assertBlacklistGate } from './services/contract-blacklist-gate';
 import { assertCustomerContractPolicy } from './services/contract-create-policy';
 import { CustomerBlacklistService } from '../customers/customer-blacklist.service';
+import { AuditService } from '../audit/audit.service';
+import type { CustomerBlacklistResult } from '@installment/shared';
 
 @Injectable()
 export class ContractWorkflowService {
@@ -68,6 +70,8 @@ export class ContractWorkflowService {
     // ปิดวงที่ระดับไฟล์ (บูตไม่ขึ้น: "module at index … is undefined") ⇒ ดึงผ่าน ModuleRef ตอนใช้ (strict:false) แทนการ import
     // โมดูล · @Optional: spec เดิม `new` service ด้วย 9–11 อาร์กิวเมนต์ — ไม่มี = เครดิตค้าง + Sentry (NO_PAYMENTS_SERVICE)
     @Optional() private moduleRef?: ModuleRef,
+    // ก้อน 5 C3 — audit การปลด SOFT ตอนเปิดใช้ (AuditModule เป็น @Global · @Optional เพื่อ spec/e2e ที่ `new` service)
+    @Optional() private audit?: AuditService,
   ) {}
 
   /**
@@ -399,7 +403,7 @@ export class ContractWorkflowService {
     });
   }
 
-  async activate(id: string, actorId?: string) {
+  async activate(id: string, actorId?: string, options?: { actorRole?: string; blacklistOverrideReason?: string | null }) {
     const contract = await this.findOne(id);
 
     // Must be APPROVED workflow and DRAFT status
@@ -419,10 +423,20 @@ export class ContractWorkflowService {
     // สัญญาเปลี่ยนเครื่องข้าม — สัญญาเดิมของลูกค้าคนเดิมยัง ACTIVE โดยชอบ · SOFT ผ่านเฉพาะเมื่อร่างถูกปลดไว้ตอนสร้าง (blacklistOverriddenAt)
     // activate(id) ไม่มี actor จึงไม่มีทางปลดที่นี่ — ข้อความชี้ให้ลบร่างแล้วสร้างใหม่ (spec รอบ 3)
     const isExchangeContract = !!(contract as any).exchangedFromContractId;
-    if (!isExchangeContract) {
-      const blacklistResult = await this.blacklist.evaluate(contract.customerId);
-      assertBlacklistGate({ result: blacklistResult, actorRole: 'SYSTEM', stage: 'ACTIVATE',
-        persistedOverride: !!(contract as { blacklistOverriddenAt?: Date | null }).blacklistOverriddenAt });
+    // สัญญาทดแทนจากเปลี่ยนเครื่องตำหนิ 7 วัน (defect-exchange — parentContractId ชี้สัญญาที่ DEFECT_EXCHANGED) = ต่อเนื่องจาก
+    // สัญญาเดิมของลูกค้าคนเดิม ข้ามด่านเช่นเดียวกับเปลี่ยนเครื่อง (review C1 — ไม่งั้นเงินลูกค้าค้างใน 21-1106 ไม่มีทางไปต่อ)
+    const parentContractId = (contract as { parentContractId?: string | null }).parentContractId ?? null;
+    const parent = parentContractId
+      ? await this.prisma.contract.findUnique({ where: { id: parentContractId }, select: { status: true } }) : null;
+    const skipBlacklistGate = isExchangeContract || parent?.status === 'DEFECT_EXCHANGED';
+    let blacklistResult: CustomerBlacklistResult | null = null;
+    let blacklistOverrideReason: string | null = null;
+    if (!skipBlacklistGate) {
+      blacklistResult = await this.blacklist.evaluate(contract.customerId);
+      // OWNER/BM ปลด SOFT ได้ที่จุดนี้ด้วยเหตุผล (ร่างที่อนุมัติ/ลงนามแล้วลบไม่ได้ — review I1) · บทบาทอื่น = 409 ให้คนที่ปลดได้เปิดใช้
+      blacklistOverrideReason = assertBlacklistGate({ result: blacklistResult, actorRole: options?.actorRole ?? 'SYSTEM', stage: 'ACTIVATE',
+        persistedOverride: !!(contract as { blacklistOverriddenAt?: Date | null }).blacklistOverriddenAt,
+        overrideReason: options?.blacklistOverrideReason });
     }
 
     // T5-C20: re-verify integrity hash before activation. Approval already
@@ -499,7 +513,7 @@ export class ContractWorkflowService {
         monthlyAmounts: current.payments.map(payment => Number(payment.amountDue)),
         firstPaymentDue: current.payments[0]?.dueDate });
       // ก้อน 5 C3 — ตาข่าย 1 คน 1 เครื่อง ใน tx: ร่างสองใบเปิดใช้พร้อมกัน ล็อกแถวลูกค้าทำให้ใบหลังเห็น ACTIVE ของใบแรก
-      if (!isExchangeContract) await assertCustomerContractPolicy(tx, current.customerId);
+      if (!skipBlacklistGate) await assertCustomerContractPolicy(tx, current.customerId);
       // (เงื่อนไข `deletedAt: null` ต้องเหมือนด่านนอก tx เป๊ะ — ไม่งั้นการลบที่แทรกเข้ามา
       // ระหว่างสองด่านจะหลุดผ่านด่านใน tx ซึ่งเป็นตาข่ายสุดท้ายก่อนเงิน/กรรมสิทธิ์ขยับ)
       const prod = await tx.product.findFirst({
@@ -526,6 +540,10 @@ export class ContractWorkflowService {
         where: { id },
         data: {
           status: 'ACTIVE',
+          // ก้อน 5 C3 — การปลด SOFT ที่กดตอนเปิดใช้ (เขียนที่นี่ ไม่ใช่ตอนสร้างร่าง)
+          ...(blacklistOverrideReason
+            ? { blacklistOverrideReason, blacklistOverriddenById: actorId ?? null, blacklistOverriddenAt: new Date() }
+            : {}),
         },
       });
       // ของแถมของสัญญา (จองไว้ตั้งแต่ตอนสร้าง) → ตัดสต๊อกพร้อมเครื่องหลัก. อ่านจากแถวใน tx (`current`)
@@ -777,6 +795,11 @@ export class ContractWorkflowService {
     });
 
     // Send LINE notification to customer (non-blocking)
+    // ก้อน 5 C3 — audit การปลด SOFT ตอนเปิดใช้ หลัง commit (AuditService เปิด tx ของตัวเอง — ห้ามเรียกใน tx)
+    if (blacklistOverrideReason && blacklistResult && this.audit) {
+      await this.audit.log({ userId: actorId, action: 'CONTRACT_BLACKLIST_OVERRIDDEN', entity: 'contract', entityId: id,
+        newValue: { customerId: contract.customerId, level: 'SOFT', stage: 'ACTIVATE', reasons: blacklistResult.reasons, overrideReason: blacklistOverrideReason } });
+    }
     this.sendContractActivatedNotification(contract).catch(err =>
       this.logger.warn(`Failed to send contract activation notification: ${err?.message || err}`),
     );

@@ -14,32 +14,37 @@ import {
  */
 export const BLACKLIST_HARD_MSG = 'ลูกค้าติด blacklist ไม่สามารถทำสัญญาได้';
 export const BLACKLIST_REVIEW_MSG = 'ลูกค้ามีประวัติที่ต้องให้ผู้จัดการอนุมัติก่อนทำสัญญา';
+/** ACTIVATE + บทบาทที่ปลดได้ (OWNER/BM) แต่ยังไม่ส่งเหตุผล — หน้าเว็บเปิดกล่องให้กรอกแล้วยิงซ้ำ */
 export const BLACKLIST_REVIEW_AT_ACTIVATE_MSG =
-  'ลูกค้ามีประวัติที่ต้องให้ผู้จัดการอนุมัติ (เกิดหลังสร้างร่าง) — ให้ OWNER/ผู้จัดการสาขาลบร่างนี้แล้วสร้างสัญญาใหม่พร้อมอนุมัติ';
+  'ลูกค้ามีประวัติที่ต้องให้ผู้จัดการอนุมัติ (เกิดหลังสร้างร่าง) — กรอกเหตุผลเพื่ออนุมัติแล้วเปิดใช้สัญญา';
+/** ACTIVATE + บทบาทที่ปลดไม่ได้ (เช่น FINANCE_MANAGER) — ร่างที่อนุมัติ/ลงนามแล้วลบไม่ได้ จึงต้องให้คนที่ปลดได้เป็นผู้เปิดใช้ */
+export const BLACKLIST_REVIEW_AT_ACTIVATE_NO_ROLE_MSG =
+  'ลูกค้ามีประวัติที่ต้องให้ผู้จัดการอนุมัติ (เกิดหลังสร้างร่าง) — ให้ OWNER/ผู้จัดการสาขาเป็นผู้เปิดใช้สัญญาพร้อมเหตุผล';
 
 export interface BlacklistGateInput {
   result: CustomerBlacklistResult;
   actorRole: string;
   stage: 'CREATE' | 'ACTIVATE';
-  /** เหตุผลปลด SOFT ที่ส่งมากับคำขอสร้างร่าง (CREATE เท่านั้น) */
+  /** เหตุผลปลด SOFT ที่ส่งมากับคำขอ (CREATE: ตอนสร้างร่าง · ACTIVATE: ตอนกดเปิดใช้โดย OWNER/BM) */
   overrideReason?: string | null;
   /** ร่างนี้ถูกปลด SOFT ไว้แล้วตอนสร้าง (ACTIVATE เท่านั้น — อ่านจาก Contract.blacklistOverriddenAt) */
   persistedOverride?: boolean;
 }
 
-/** คืนเหตุผลที่ trim แล้วเมื่อ CREATE+SOFT+ปลดได้ · null เมื่อผ่านโดยไม่ต้องปลด · โยน ConflictException เมื่อห้าม */
+/** คืนเหตุผลที่ trim แล้วเมื่อ SOFT ถูกปลดด้วยเหตุผลใหม่ (caller เขียนลงสัญญา) · null เมื่อผ่านโดยไม่ต้องปลด/ปลดไว้แล้ว · โยน ConflictException เมื่อห้าม */
 export function assertBlacklistGate(input: BlacklistGateInput): string | null {
   const { result, actorRole, stage } = input;
   if (result.level === 'NONE') return null;
   if (result.level === 'HARD') {
     throw new ConflictException({ code: BLACKLIST_ERROR_CODE.HARD, level: 'HARD', reasons: result.reasons, message: BLACKLIST_HARD_MSG });
   }
+  const canOverride = canOverrideBlacklist(actorRole);
   if (stage === 'ACTIVATE') {
     if (input.persistedOverride) return null;
+    if (canOverride && isValidBlacklistOverrideReason(input.overrideReason)) return input.overrideReason.trim();
     throw new ConflictException({ code: BLACKLIST_ERROR_CODE.SOFT, level: 'SOFT', reasons: result.reasons,
-      canOverride: false, message: BLACKLIST_REVIEW_AT_ACTIVATE_MSG });
+      canOverride, message: canOverride ? BLACKLIST_REVIEW_AT_ACTIVATE_MSG : BLACKLIST_REVIEW_AT_ACTIVATE_NO_ROLE_MSG });
   }
-  const canOverride = canOverrideBlacklist(actorRole);
   if (canOverride && isValidBlacklistOverrideReason(input.overrideReason)) return input.overrideReason.trim();
   throw new ConflictException({ code: BLACKLIST_ERROR_CODE.SOFT, level: 'SOFT', reasons: result.reasons,
     canOverride, message: BLACKLIST_REVIEW_MSG });

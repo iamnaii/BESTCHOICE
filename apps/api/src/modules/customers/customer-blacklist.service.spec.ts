@@ -124,6 +124,18 @@ describe('CustomerBlacklistService', () => {
     ]);
   });
 
+  it('a stale stored phoneHash does not match when the plaintext phone differs (findLivePhoneOwner rule)', async () => {
+    const { pii } = build({});
+    const staleHash = pii.hash('0812345678')!;
+    const { service } = build({
+      customers: [cust('x', { phone: '0812345678', phoneHash: staleHash })],
+      set: [cust('a', { name: 'เอ', phone: '0899999999', phoneHash: staleHash })], // hash ค้างจากเบอร์เดิม — plaintext เป็นเบอร์อื่น
+    });
+    await expect(service.evaluate('x')).resolves.toMatchObject({ level: 'NONE', reasons: [] });
+    const noPlain = build({ customers: [cust('x', { phone: '0812345678', phoneHash: staleHash })], set: [cust('b', { name: 'บี', phone: null, phoneHash: staleHash })] });
+    expect((await noPlain.service.evaluate('x')).reasons.map((r) => r.code)).toEqual(['PHONE_MATCH']); // ไม่มี plaintext ให้เทียบ → ใช้ hash ที่เก็บไว้
+  });
+
   it('SOFT reference links both directions', async () => {
     const { pii } = build({});
     const { service } = build({

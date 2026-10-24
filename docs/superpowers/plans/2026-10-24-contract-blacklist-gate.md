@@ -323,7 +323,10 @@ describe('blacklist gate (ก้อน 5 C3)', () => {
     await activate(draft.id, b.customer.id); // ผ่าน
     expect(await db.auditLog.count({ where: { action: 'CONTRACT_BLACKLIST_OVERRIDDEN', entityId: draft.id } })).toBe(1);
   });
-  it('exchange contract skips the gate', …); // ถ้ามี fixture เปลี่ยนเครื่องในไฟล์อยู่แล้ว (Case 2A ใน exchange-priced-flow อยู่คนละไฟล์) → ให้ยืนยันผ่าน unit แทน: ใน `contract-workflow.journey.spec.ts` หรือ spec ใหม่ `contract-workflow.blacklist.spec.ts` — `blacklist.evaluate` ต้องไม่ถูกเรียกเมื่อ `exchangedFromContractId` มีค่า (mock `findOne` ด้วย jest.spyOn)
+  // 'exchange contract skips the gate' = unit spec ใหม่ `apps/api/src/modules/contracts/contract-workflow.blacklist.spec.ts`:
+  //   ประกอบ service ด้วย stub 10 ตัว + blacklist mock · `jest.spyOn(service, 'findOne').mockResolvedValue({ id, customerId: 'c', workflowStatus: 'APPROVED', status: 'DRAFT', pdpaConsentId: 'p', exchangedFromContractId: 'old', blacklistOverriddenAt: null } as never)`
+  //   → `await service.activate(id).catch(() => undefined)` (ล้มทีหลังที่ verifyContractHash — ไม่สนใจ) แล้ว `expect(blacklist.evaluate).not.toHaveBeenCalled()` · เคสคู่: `exchangedFromContractId: null` + evaluate → HARD ⇒ `rejects.toMatchObject({ response: { code: 'CUSTOMER_BLACKLISTED' } })` และ `$transaction` ไม่ถูกเรียก
+  //   ⇒ ด่าน blacklist ใน activate() ต้องวาง **ก่อน** verifyContractHash (หลังด่าน PDPA)
 });
 ```
 `salesId` = `db.user.upsert({ where: { email: 'sales@isolated.test' }, create: { …role: 'SALES', branchId }, update: {} }).id` ใน beforeAll.

@@ -4,6 +4,8 @@ import { downloadProtectedDocument } from '@/lib/document-download';
 import { queryErrorMessage } from '@/lib/query-error-message';
 import { contractBalances } from '@/lib/contract-balances';
 import type { SignatureRequirements } from '@installment/shared';
+import { BLACKLIST_ERROR_CODE } from '@installment/shared';
+import { isAxiosError } from 'axios';
 import { useParams, useNavigate, Link } from 'react-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import Decimal from 'decimal.js';
@@ -218,7 +220,15 @@ export default function ContractDetailPage() {
   const activateMutation = useMutation({
     mutationFn: async () => { const { data } = await api.post(`/contracts/${id}/activate`); return data; },
     onSuccess: () => { toast.success('เปิดใช้งานสัญญาแล้ว'); invalidateContract(); },
-    onError: (err: unknown) => toast.error(getErrorMessage(err)),
+    onError: (err: unknown) => {
+      // ก้อน 5 C3 — ด่าน blacklist ตอนเปิดใช้: บอกเหตุผลทุกข้อ (ร่าง 2 ใบ / ติด tag หลังสร้างร่าง / ต้องลบร่างแล้วสร้างใหม่)
+      const body = isAxiosError(err) ? (err.response?.data as { code?: string; message?: string; reasons?: { message: string }[] } | undefined) : undefined;
+      if (body?.code && (Object.values(BLACKLIST_ERROR_CODE) as string[]).includes(body.code)) {
+        toast.error([body.message, ...(body.reasons ?? []).map((r) => r.message)].filter(Boolean).join('\n'));
+        return;
+      }
+      toast.error(getErrorMessage(err));
+    },
   });
 
 const deleteMutation = useMutation({

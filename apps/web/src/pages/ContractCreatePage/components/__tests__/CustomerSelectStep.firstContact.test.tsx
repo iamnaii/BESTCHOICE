@@ -38,7 +38,9 @@ function renderStep(over: Partial<CustomerSelectStepProps> = {}) {
     customers: [person(), person({ id: 'b', name: 'ลูกค้าสังเคราะห์ ข', phone: '0800000002', nationalId: '1000000000002' })],
     customerSearch: '', setCustomerSearch: vi.fn(), selectedCustomer: null, setSelectedCustomer: vi.fn(), onNext: vi.fn(),
     latestCreditCheck: null, customerCreditApproved: false, onOpenCredit: vi.fn(), onOpenCustomerModal: vi.fn(),
-    overrideActiveContractCheck: false, setOverrideActiveContractCheck: vi.fn(), ...over,
+    // ก้อน 5 C3 — ผลตรวจ blacklist แทนช่องอนุมัติผ่อนซ้อนเดิม (ค่าเริ่มต้น NONE พร้อมใช้)
+    blacklist: { level: 'NONE', reasons: [], checkedAt: 't' }, blacklistStatus: 'ready', onRetryBlacklist: vi.fn(),
+    overrideAccepted: false, setOverrideAccepted: vi.fn(), overrideReason: '', setOverrideReason: vi.fn(), ...over,
   };
   return render(<CustomerSelectStep {...props} />);
 }
@@ -61,11 +63,13 @@ describe('CustomerSelectStep — บรรทัดช่องทางแร�
     expect(screen.queryByText(/ทักแชทครั้งแรกทาง/)).toBeNull();
   });
 
-  it('ช่องการ์ดอยู่ระหว่างแถบเตือนสัญญาค้างกับกล่องเครดิต', () => {
+  it('ช่องการ์ดอยู่ระหว่างกล่อง blacklist กับกล่องเครดิต', () => {
+    // ก้อน 5 C3 — แถบเตือนสัญญาค้างเดิมกลายเป็นกล่องผล blacklist (HARD: มีสัญญาผ่อนอยู่)
     const blocked = person({ activeContracts: 1 });
-    renderStep({ customers: [blocked], selectedCustomer: blocked, heardFromSlot: <div data-testid="heard-from-slot">การ์ด</div> });
+    renderStep({ customers: [blocked], selectedCustomer: blocked, heardFromSlot: <div data-testid="heard-from-slot">การ์ด</div>,
+      blacklist: { level: 'HARD', checkedAt: 't', reasons: [{ code: 'ACTIVE_CONTRACT', level: 'HARD', message: 'มีสัญญาผ่อนอยู่ CT-A (กำลังผ่อน) — 1 คนผ่อนได้ 1 เครื่อง ต้องปิดสัญญาเดิมก่อน' }] } });
 
-    const banner = screen.getByText('ลูกค้ายังมีสัญญาที่กำลังผ่อนอยู่ 1 รายการ');
+    const banner = screen.getByRole('alert');
     const slot = screen.getByTestId('heard-from-slot');
     const credit = screen.getByText('สถานะเครดิต: ยังไม่ได้ตรวจ');
     expect(banner.compareDocumentPosition(slot) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
@@ -111,6 +115,7 @@ describe('ContractCreatePage ขั้นเลือกลูกค้า — �
     mocks.summary = walkIn();
     mocks.get.mockReset();
     mocks.get.mockImplementation(async (url: string) => {
+      if (url.endsWith('/blacklist')) return { data: { level: 'NONE', reasons: [], checkedAt: 't' } }; // ก้อน 5 C3
       if (url === '/products/product') return { data: product };
       if (url === '/customers/customer') return { data: selected };
       if (url === '/customers/customer/journey/summary') return { data: mocks.summary };

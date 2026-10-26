@@ -107,10 +107,10 @@ jobs:
   test-api:
     name: Test API
     runs-on: ubuntu-24.04
-    timeout-minutes: 25
+    timeout-minutes: 35 # 2026-10-27: 5 shard ต่อเนื่อง (main ใช้ ~16 นาที; สาขา epic suite ใหญ่กว่า)
     if: inputs.skip_tests != true
     env:
-      NODE_OPTIONS: --max-old-space-size=6144
+      NODE_OPTIONS: --max-old-space-size=8192
 
     # jest unit specs บางไฟล์ต่อ DB จริง (asset-journal, credit-check, room-manager …) จึงต้องมี
     # Postgres ทั้งสองตัว + migrate เหมือนเดิม (ซ้ำกับ test-integration โดยจำเป็น — GitHub Actions
@@ -160,7 +160,13 @@ jobs:
         env:
           DATABASE_URL_FINANCE: postgresql://test:test@localhost:5433/test_finance_db?schema=public
       - name: Test API
-        run: npm run test --workspace=apps/api
+        # 2026-10-27: epic employee-access ทำให้ suite โต (1,105 ไฟล์) — รัน --runInBand ต่อเนื่องใน process
+        # เดียว heap โตสะสมจน OOM (exit 134 ที่ ~320 suite / 6 GB) จึงแบ่งเป็น 5 shard รันทีละ process
+        # (ยัง runInBand ภายใน shard เพื่อไม่ให้ spec ที่ต่อ DB จริงชนกัน)
+        run: |
+          for shard in 1 2 3 4 5; do
+            npm run test --workspace=apps/api -- --shard=$shard/5
+          done
         env:
           DATABASE_URL: postgresql://test:test@localhost:5432/test_db?schema=public
           DATABASE_URL_FINANCE: postgresql://test:test@localhost:5433/test_finance_db?schema=public

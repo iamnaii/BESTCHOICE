@@ -18,7 +18,7 @@ import DataTable from '@/components/ui/DataTable';
 import QueryBoundary from '@/components/QueryBoundary';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { ReverseConfirmDialog } from '@/components/accounting';
-import { Receipt, Plus, Pencil, MoreVertical, Bookmark, Wallet, BarChart3, Search, SlidersHorizontal, Eye, ArrowRight, ChevronDown, FileText, CreditCard, Send, CheckCircle2 } from 'lucide-react';
+import { Receipt, Plus, Pencil, MoreVertical, Bookmark, CalendarClock, Wallet, BarChart3, Search, SlidersHorizontal, Eye, ArrowRight, ChevronDown, FileText, CreditCard, Send, CheckCircle2 } from 'lucide-react';
 import ThaiDateInput from '@/components/ui/ThaiDateInput';
 import { Button } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
@@ -516,6 +516,16 @@ export default function ExpensesPage() {
               <Bookmark className="size-3.5 text-muted-foreground" />
               <span className="text-foreground">รายการโปรด</span>
               <span className="text-primary font-semibold ml-0.5 font-mono">0</span>
+            </button>
+          )}
+          {templatesEnabled && (
+            <button data-ui-control="button"
+              type="button"
+              onClick={() => navigate('/expenses/recurring-bills')}
+              className="px-3 py-1.5 rounded-lg border border-border text-xs flex items-center gap-1.5 hover:bg-muted transition-colors"
+            >
+              <CalendarClock className="size-3.5 text-muted-foreground" />
+              <span className="text-foreground">บิลประจำ</span>
             </button>
           )}
           <button data-ui-control="button" type="button" onClick={() => navigate('/expenses/ap-aging')} className="px-3 py-1.5 rounded-lg border border-border text-xs flex items-center gap-1.5 hover:bg-muted transition-colors">

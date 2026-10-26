@@ -3,6 +3,7 @@
  *
  * DESTRUCTIVE: Truncates expense_documents + expense_details + payroll_*
  * + settlement_* + credit_note_details + expense_templates + related
+ * + recurring_bill_occurrences (งวดบิลประจำ — ถูกล้างผ่าน CASCADE ของ expense_documents/expense_templates)
  * journal_entries (metadata.flow LIKE 'expense-%') and journal_lines.
  *
  * Run as Cloud Run Job after PR-1 deploys, or locally for dev reset.

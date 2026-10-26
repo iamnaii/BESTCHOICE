@@ -1,5 +1,5 @@
 import type { LucideIcon } from 'lucide-react';
-import { AlertTriangle, Package, FileCheck, ImageIcon, Banknote } from 'lucide-react';
+import { AlertTriangle, Package, FileCheck, ImageIcon, Banknote, CalendarClock } from 'lucide-react';
 
 /* ─── Types ─── */
 
@@ -208,6 +208,8 @@ export const alertIconMap: Record<string, LucideIcon> = {
   payment_mismatch: ImageIcon,
   cash_close_missed: Banknote,
   cash_close_awaiting: Banknote,
+  // ก้อน 6 — บิลประจำครบกำหนดใน 3 วัน/เกินกำหนด (dashboard-ops computeRecurringBillsAlert)
+  recurring_bills_due: CalendarClock,
 };
 
 export const alertSeverityStyles = {

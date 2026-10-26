@@ -249,6 +249,7 @@ export const PRODUCT_STATUS_REPORT_ONLY: ReadonlyArray<string> = [
  * เพื่อบังคับให้มีคนตัดสินใจ แทนที่จะเดาแล้วล้างของที่กู้ไม่ได้ทิ้ง
  */
 export const WIPE_TABLES: ReadonlySet<string> = new Set([
+  'recurring_bill_occurrences',  // งวดบิลประจำ (ก้อน 6) — ลูกของ expense_documents + todos ที่ล้าง (spec §15.1 · รีวิว I3)
   // ── ไม่อยู่ใน schema.prisma แต่มีจริงบน DB (สร้างโดย migration ตรง ๆ) ──
   '_b5_active_hold_dedupe_backup',  // สำรอง product_reservations ก่อน dedupe — ต้นฉบับก็ล้าง
   'credit_approvals',  // ผลอนุมัติวงเงิน — ลูกของ credit_checks + contracts (ล้างทั้งคู่, FK RESTRICT)

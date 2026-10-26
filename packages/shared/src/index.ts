@@ -59,6 +59,7 @@ export * from './contract-generated-documents';
 
 export * from './contract-signatures';
 export * from './appointment-confirmation';
+export * from './recurring-bill';
 export * from './sale-receipt';
 
 export * from './customer-blacklist';

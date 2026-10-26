@@ -8,6 +8,8 @@ import { createExportGuard, ExportError, fetchExportSnapshot, type ExportSnapsho
 import { useState, useMemo, useEffect, useRef } from 'react';
 import type { TradeInCreditSnapshot } from '@installment/shared';
 import { DeviceDisclosureSummary, deviceOriginLabel, type DeviceDisclosureInfo } from '@/components/product/DeviceDisclosureSummary';
+import SaleReceiptActions from '@/components/sales/SaleReceiptActions';
+import { hasSaleReceipt } from '@/components/sales/saleReceipt';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate, useSearchParams } from 'react-router';
@@ -827,6 +829,8 @@ export default function SalesHistoryPage() {
               </dl>
               {isOwner && saleDetail.data.costPriceSnapshot == null && <p className="text-muted-foreground">ไม่ทราบต้นทุน ณ วันขาย จึงยังคำนวณกำไรไม่ได้</p>}
               {saleDetail.data.receiptBreakdown && <BookingSaleReceipt receipt={saleDetail.data.receiptBreakdown} />}
+              {/* ก้อน 4: ใบเสร็จขายสด — ใบผ่อนใช้ใบเสร็จของสัญญา (hasSaleReceipt) */}
+              {hasSaleReceipt(saleDetail.data.saleType) && <div className="space-y-2"><p className="text-muted-foreground">เอกสาร</p><SaleReceiptActions sale={saleDetail.data} size="sm" /></div>}
               <div>{!saleDetail.data.receiptBreakdown && <p>วิธีรับ: {saleMethodLabel(saleDetail.data) || 'ยังไม่ระบุ'}</p>}<p>พนักงาน: {saleDetail.data.salesperson.name}</p><p>สาขา: {saleDetail.data.branch.name}</p></div>
               {!saleDetail.data.deletedAt && <Link to={`/sales/${saleDetail.data.id}/parcel-label`} className="inline-flex min-h-10 items-center gap-2 rounded-md border border-border bg-background px-3 text-sm font-medium hover:bg-accent"><Package aria-hidden="true" className="size-4" />พิมพ์ใบปะหน้าพัสดุ</Link>}
               {saleDetail.data.tradeInCreditSnapshot && <div className="rounded-lg border border-border p-3">

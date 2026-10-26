@@ -20,7 +20,7 @@ const CONTRACT_SALE_SELECT = {
  * All reads are actor-scoped, including detail, summaries and POS suggestions.
  */
 /** เงินที่รับจริงของใบขาย (บิลจ่ายผสม = หลายแถว) — หน้าจอใช้แสดง "เงินสด + โอน" แทนวิธีเดียวใน `paymentMethod` */
-const SALE_TENDERS_SELECT = {
+export const SALE_TENDERS_SELECT = {
   where: { direction: 'IN' },
   select: { method: true, amount: true, reference: true, seq: true },
   orderBy: { seq: 'asc' },

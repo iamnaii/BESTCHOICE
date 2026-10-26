@@ -893,6 +893,10 @@ model User {
   nickname          String?   @map("nickname")
   phone             String?   @map("phone")
   lineId            String?   @map("line_id")
+  /// ก้อน 7 (A16) — userId ของ Messaging API ที่ "ไลน์พนักงาน" (Staff OA) เห็น ได้จากการผูกด้วยรหัส 6 หลักผ่าน webhook · ใช้ push แจ้งเตือนภายใน (lineId ข้างบนเป็นไอดีค้นหาเพื่อน push ไม่ได้)
+  lineStaffUserId       String?   @unique @map("line_staff_user_id")
+  lineLinkCode          String?   @map("line_link_code")
+  lineLinkCodeExpiresAt DateTime? @map("line_link_code_expires_at")
   address           String?   @map("address") @db.Text
   avatarUrl         String?   @map("avatar_url") @db.Text
   startDate         DateTime? @map("start_date")

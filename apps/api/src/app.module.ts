@@ -34,6 +34,7 @@ import { RepossessionsModule } from './modules/repossessions/repossessions.modul
 import { DeviceReturnsModule } from './modules/device-returns/device-returns.module';
 import { PurchaseOrdersModule } from './modules/purchase-orders/purchase-orders.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
+import { StaffNotifyModule } from './modules/staff-notify/staff-notify.module';
 import { NotificationQueueModule } from './modules/notifications/notification-queue.module';
 import { SchedulerModule } from './modules/notifications/scheduler.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
@@ -223,6 +224,7 @@ import { AppCacheModule } from './cache/cache.module';
     CollectionsSessionModule,
     // MASTER: Communication
     NotificationsModule,
+    StaffNotifyModule,
     NotificationQueueModule.register(),
     SchedulerModule,
     // MASTER: Intelligence

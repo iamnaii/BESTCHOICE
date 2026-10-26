@@ -25,6 +25,9 @@ interface Props {
   onCreated?: (row: StockAdjustmentRow) => void;
   /** เปิดจากหน้าสินค้า — ข้ามขั้นค้นเครื่อง */
   initialProduct?: ProductLookupRow | null;
+  /** เปิดจากถังขยะ (ก้อน 8 A10): ตั้งเหตุผลและคำค้นให้ก่อน (เช่น FOUND + IMEI ของเครื่องที่ถูกลบ) */
+  initialReason?: AdjustmentReason | '';
+  initialQuery?: string;
 }
 
 const MAX_PHOTOS = 6;
@@ -32,7 +35,7 @@ const INPUT_CLS =
   'w-full px-3 py-2 border border-input rounded-lg text-sm bg-background focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden';
 
 /** ฟอร์มคำขอตัดสินค้า (ก้อน 3): ค้นเครื่อง → เหตุผล → รูป (บังคับเมื่อเสียหาย) → หมายเหตุ → preview บัญชี → ส่งให้เจ้าของอนุมัติ */
-export default function RequestAdjustmentDialog({ open, onClose, onCreated, initialProduct = null }: Props) {
+export default function RequestAdjustmentDialog({ open, onClose, onCreated, initialProduct = null, initialReason = '', initialQuery = '' }: Props) {
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebounce(search, 300);
   const [product, setProduct] = useState<ProductLookupRow | null>(initialProduct);
@@ -45,12 +48,12 @@ export default function RequestAdjustmentDialog({ open, onClose, onCreated, init
   useEffect(() => {
     if (open) {
       setProduct(initialProduct);
-      setSearch('');
-      setReason('');
+      setSearch(initialQuery);
+      setReason(initialReason);
       setNotes('');
       setFiles([]);
     }
-  }, [open, initialProduct]);
+  }, [open, initialProduct, initialReason, initialQuery]);
 
   const isImei = /^\d{6,}$/.test(debouncedSearch.trim());
   const lookup = useProductLookup(

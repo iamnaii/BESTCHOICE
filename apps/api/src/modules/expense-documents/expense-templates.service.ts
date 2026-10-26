@@ -130,16 +130,7 @@ export class ExpenseTemplatesService {
   private async readUserQuotaCap(
     client: Prisma.TransactionClient | PrismaService,
   ): Promise<number> {
-    const row = await client.systemConfig
-      .findFirst({
-        where: { key: 'max_templates_per_user', deletedAt: null },
-        select: { value: true },
-      })
-      .catch(() => null);
-    const raw = row?.value ? Number(row.value) : NaN;
-    return Number.isFinite(raw) && raw >= 1
-      ? Math.min(Math.floor(raw), 1000)
-      : 20;
+    return readTemplateQuotaCap(client);
   }
 
   /**
@@ -385,3 +376,21 @@ export class ExpenseTemplatesService {
     }
   }
 }
+
+/**
+ * โควต้าแม่แบบต่อผู้ใช้ (`max_templates_per_user`, ค่าเริ่มต้น 20, clamp 1–1000) — ใช้ร่วมกันระหว่าง
+ * การสร้างแม่แบบและการกู้คืนจากถังขยะ (ก้อน 8 A10) เพื่อไม่ให้มีสูตรโควต้าสองชุด
+ */
+export async function readTemplateQuotaCap(
+  client: Prisma.TransactionClient | PrismaService,
+): Promise<number> {
+  const row = await client.systemConfig
+    .findFirst({
+      where: { key: 'max_templates_per_user', deletedAt: null },
+      select: { value: true },
+    })
+    .catch(() => null);
+  const raw = row?.value ? Number(row.value) : NaN;
+  return Number.isFinite(raw) && raw >= 1 ? Math.min(Math.floor(raw), 1000) : 20;
+}
+

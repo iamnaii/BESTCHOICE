@@ -1,5 +1,8 @@
+import { BadRequestException, ConflictException } from '@nestjs/common';
 import type { Prisma } from '@prisma/client';
 import { maskPhone } from '../../utils/pii.util';
+import { lockCustomerPhone } from '../customers/customer-phone-lock';
+import { readTemplateQuotaCap } from '../expense-documents/expense-templates.service';
 
 /**
  * ถังขยะรวม (ก้อน 8 · A10) — allow-list เดียวของระบบว่า "อะไรกู้ได้ และกู้แล้วต้องคืนอะไร" (สเปก §4)
@@ -88,6 +91,9 @@ const safePhone = (value: unknown): string => (typeof value === 'string' && valu
 const joinParts = (...parts: Array<string | null | undefined>): string => parts.filter((p) => p && String(p).trim().length > 0).join(' · ');
 
 const BASE_SELECT = { id: true, deletedAt: true } as const;
+const draftOnly = (label: string) => async (_ctx: TrashRestoreContext, row: TrashAnyRow) => {
+  if (row.status !== 'DRAFT') throw new BadRequestException(`กู้ได้เฉพาะ${label}ฉบับร่าง — ใบที่ลงบัญชีแล้วใช้การกลับรายการแทน`);
+};
 /** §13.1 — ประเภทที่การลบตั้ง flag ปิดใช้งาน: กู้แล้วยังปิดอยู่ ให้เปิดเองที่หน้านั้น (ทุกหน้ามีสวิตช์) */
 const stillDisabled = (page: string) => () => [`กู้แล้วยังปิดใช้งานอยู่ — เปิดได้ที่หน้า ${page}`];
 
@@ -101,6 +107,25 @@ export const TRASH_REGISTRY: readonly TrashEntry[] = [
     auditEntities: ['customers'],
     toRow: (r) => ({ title: r.name, subtitle: joinParts(`โทร ${safePhone(r.phone)}`, r.email ? 'มีอีเมล' : null), link: `/customers/${r.id}` }),
     restorable: true,
+    // database.md "ล็อกเบอร์หลัก": ล็อก → ตรวจซ้ำบน tx เดียวกัน → เขียน · ล็อกต้องเป็นคำสั่งแรกของ tx
+    check: async ({ tx }, r) => {
+      await lockCustomerPhone(tx, null, r.phone);
+      if (r.phoneHash) {
+        const dup = await tx.customer.findFirst({ where: { phoneHash: r.phoneHash, deletedAt: null, id: { not: r.id } }, select: { id: true, name: true } });
+        if (dup) throw new ConflictException(`กู้ไม่ได้: เบอร์ ${safePhone(r.phone)} ถูกใช้โดยลูกค้า "${dup.name}" แล้ว — แก้เบอร์ของคนนั้นก่อน หรือรวมเป็นคนเดียวกัน`);
+      }
+      if (r.email) {
+        const dup = await tx.customer.findFirst({ where: { email: { equals: r.email, mode: 'insensitive' }, deletedAt: null, id: { not: r.id } }, select: { id: true, name: true } });
+        if (dup) throw new ConflictException(`กู้ไม่ได้: อีเมลนี้ถูกใช้โดยลูกค้า "${dup.name}" แล้ว — แก้อีเมลของคนนั้นก่อน หรือรวมเป็นคนเดียวกัน`);
+      }
+    },
+    // แคชที่ cron ลบทิ้งตอนลูกค้าถูกลบ + §13.2 ห้องแชทอาจถูกผูกไปกับผู้สนใจคนใหม่แล้ว
+    afterRestore: async (r, services) => {
+      await services.journeyState?.recompute([r.id]);
+      await services.tags?.recomputeForCustomer(r.id);
+      const rooms = await services.prisma.chatRoom.count({ where: { customerId: r.id } });
+      return rooms === 0 ? ['ห้องแชทเดิมอาจถูกผูกกับผู้สนใจคนใหม่ไปแล้ว — ถ้าซ้ำ ให้รวมเป็นคนเดียวกันที่หน้าลูกค้า'] : [];
+    },
   },
   {
     type: 'booking', label: 'ใบจอง', group: 'ลูกค้าและการขาย', model: 'booking',
@@ -109,6 +134,12 @@ export const TRASH_REGISTRY: readonly TrashEntry[] = [
     auditEntities: ['bookings'],
     toRow: (r) => ({ title: `${r.bookingNumber} · ${r.customer?.name ?? '-'}`, subtitle: joinParts(`ยอด ${money(r.totalAmount)}`, r.branch?.name, r.status === 'PENDING_DEPOSIT' ? 'รอมัดจำ' : r.status) }),
     restorable: true,
+    // partial unique bookings(locked_product_id) WHERE deleted_at IS NULL
+    check: async ({ tx }, r) => {
+      if (!r.lockedProductId) return;
+      const other = await tx.booking.findFirst({ where: { lockedProductId: r.lockedProductId, deletedAt: null, id: { not: r.id } }, select: { bookingNumber: true } });
+      if (other) throw new ConflictException(`กู้ไม่ได้: เครื่องถูกใบจอง ${other.bookingNumber} ล็อกอยู่`);
+    },
   },
   {
     type: 'todo', label: 'งาน', group: 'ลูกค้าและการขาย', model: 'todo',
@@ -153,6 +184,12 @@ export const TRASH_REGISTRY: readonly TrashEntry[] = [
     auditEntities: ['expense-documents', 'expense_document'],
     toRow: (r) => ({ title: `${r.number} · ${r.vendorName ?? '-'}`, subtitle: joinParts(`ยอด ${money(r.totalAmount)}`, r.branch?.name, r.status === 'DRAFT' ? 'ร่าง (ยังไม่ลงบัญชี)' : r.status), link: `/expenses/${r.id}` }),
     restorable: true,
+    // partial unique expense_documents(number) WHERE deleted_at IS NULL — เลขอาจถูกออกใหม่แล้ว
+    check: async (ctx, r) => {
+      await draftOnly('ใบรายจ่าย')(ctx, r);
+      const dup = await ctx.tx.expenseDocument.findFirst({ where: { number: r.number, deletedAt: null, id: { not: r.id } }, select: { id: true } });
+      if (dup) throw new ConflictException(`กู้ไม่ได้: เลขที่ ${r.number} ถูกออกให้ใบใหม่แล้ว — สร้างใบใหม่แทน`);
+    },
   },
   {
     type: 'other_income', label: 'รายได้อื่น (ร่าง)', group: 'เอกสารการเงิน (ร่าง)', model: 'otherIncome',
@@ -161,6 +198,7 @@ export const TRASH_REGISTRY: readonly TrashEntry[] = [
     auditEntities: ['other-income', 'other_income'],
     toRow: (r) => ({ title: `${r.docNumber} · ${r.counterpartyName ?? '-'}`, subtitle: joinParts(`ยอด ${money(r.totalAmount)}`, r.status === 'DRAFT' ? 'ร่าง' : r.status) }),
     restorable: true,
+    check: draftOnly('รายได้อื่น'),
   },
   {
     type: 'fixed_asset', label: 'สินทรัพย์ (ร่าง)', group: 'เอกสารการเงิน (ร่าง)', model: 'fixedAsset',
@@ -169,6 +207,7 @@ export const TRASH_REGISTRY: readonly TrashEntry[] = [
     auditEntities: ['assets'],
     toRow: (r) => ({ title: `${r.assetCode} · ${r.name}`, subtitle: joinParts(r.docNo, `ต้นทุน ${money(r.purchaseCost)}`, r.status) }),
     restorable: true,
+    check: draftOnly('สินทรัพย์'),
   },
 
   // ─── แม่แบบ ──────────────────────────────────────────────────────────────────────────────
@@ -179,6 +218,11 @@ export const TRASH_REGISTRY: readonly TrashEntry[] = [
     auditEntities: ['expense-templates'],
     toRow: (r) => ({ title: r.name, subtitle: joinParts(r.branch?.name, r.isRecurring ? 'บิลประจำ' : 'แม่แบบรายจ่าย') }),
     restorable: true,
+    check: async ({ tx }, r) => {
+      const cap = await readTemplateQuotaCap(tx);
+      const live = await tx.expenseTemplate.count({ where: { createdById: r.createdById, deletedAt: null } });
+      if (live >= cap) throw new ConflictException(`กู้ไม่ได้: แม่แบบของผู้ใช้นี้เต็มโควต้า (${cap}) — ลบแม่แบบอื่นก่อน`);
+    },
     warnings: (r) => (r.isRecurring ? ['บิลประจำจะเริ่มสร้างงวดใหม่ในรอบถัดไป (งวดเดิมที่ค้างไม่ถูกแตะ)'] : []),
   },
   {
@@ -274,6 +318,10 @@ export const TRASH_REGISTRY: readonly TrashEntry[] = [
     auditEntities: ['trade-ins'],
     toRow: (r) => ({ title: r.title, subtitle: joinParts(r.key) }),
     restorable: true,
+    // การลบคำถาม soft-delete ตัวเลือกด้วย timestamp เดียวกัน — กู้คืนเฉพาะชุดนั้น
+    restoreExtra: async ({ tx }, r) => {
+      await tx.buybackChoice.updateMany({ where: { questionId: r.id, deletedAt: r.deletedAt }, data: { deletedAt: null } });
+    },
   },
   {
     type: 'reverse_reason', label: 'เหตุผลกลับรายการ', group: 'ตั้งค่า', model: 'reverseReason',

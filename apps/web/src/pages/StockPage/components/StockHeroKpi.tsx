@@ -30,11 +30,12 @@ function MoMTone({ current, previous }: { current: number; previous: number }) {
 
 export function StockHeroKpi({ totalInStock, totalValue, dashboard, isManager }: StockHeroKpiProps) {
   const avgDays = dashboard?.stockTurnover.avgDaysInStock;
-  const marginPct = dashboard?.marginOverview.avgMarginPct;
+  // marginOverview เป็น null เมื่อ server ตัดต้นทุนออก (SALES)
+  const marginPct = dashboard?.marginOverview?.avgMarginPct;
   const soldThisMonth = dashboard?.stockTurnover.soldThisMonth ?? 0;
   const soldLastMonth = dashboard?.stockTurnover.soldLastMonth ?? 0;
-  const totalCost = dashboard?.marginOverview.totalCost ?? 0;
-  const totalSell = dashboard?.marginOverview.totalSell ?? 0;
+  const totalCost = dashboard?.marginOverview?.totalCost ?? 0;
+  const totalSell = dashboard?.marginOverview?.totalSell ?? 0;
   const avgDaysAlarm = avgDays != null && avgDays > 90;
 
   return (

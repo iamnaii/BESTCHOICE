@@ -254,6 +254,14 @@ export class SettingsFlagsService {
     /** D1.2.2.7 — render verification QR code on voucher footers. Default true. */
     voucherShowQrCode: boolean;
     /**
+     * ก้อน 3 A5 (2026-10-22) — ขนาดม้วนสติกเกอร์ติดเครื่องที่หน้าพิมพ์ใช้ตั้ง `@page`.
+     * `60x40` ค่าเริ่มต้น (Xprinter 3 นิ้วขึ้นไป) · `50x40` สำหรับเครื่อง 2 นิ้ว · `50x30` ม้วนเก่า.
+     * ค่าอื่น/ว่าง → `60x40`.
+     */
+    stickerSize: '60x40' | '50x40' | '50x30';
+    /** ก้อน 3 A5 — พิมพ์ QR (IMEI / รหัสสินค้า) บนดวงสติกเกอร์. Default true. */
+    stickerShowQr: boolean;
+    /**
      * D1.2.2.6 — UI language preference. 'th' default. The web app applies
      * the value to `document.documentElement.lang` at boot, but translation
      * tables are NOT yet provided — strings remain in their authored Thai
@@ -711,6 +719,12 @@ export class SettingsFlagsService {
       true,
     );
     const voucherShowQrCode = await this.readBoolean('voucher_show_qr_code', true);
+    const stickerSize = pickEnum(
+      await this.getKey('sticker_size'),
+      ['60x40', '50x40', '50x30'] as const,
+      '60x40',
+    );
+    const stickerShowQr = await this.readBoolean('sticker_show_qr', true);
     // D1.2.2.6 — language. Whitelist 'th' / 'en'; everything else → 'th'.
     const language = pickEnum(await this.getKey('language'), ['th', 'en'] as const, 'th');
     // D1.1.2.1 — DocumentType → prefix map (defaults applied per type when
@@ -993,6 +1007,8 @@ export class SettingsFlagsService {
       reverseReasons,
       paymentDateAllowFuture,
       voucherShowQrCode,
+      stickerSize,
+      stickerShowQr,
       language,
       docPrefixMap,
       settlementDefaultTick,

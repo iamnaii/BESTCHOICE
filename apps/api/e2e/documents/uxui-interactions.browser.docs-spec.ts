@@ -20,7 +20,7 @@ describe('UX/UI mobile controls on the real isolated API', () => {
         await page.goto(`${web.origin}/contract-templates`);
         await page.getByRole('button', { name: 'เพิ่ม', exact: true }).waitFor();
         await page.waitForLoadState('networkidle');
-        await page.locator('select[aria-label="เทมเพลตสัญญา"]:not(:disabled)').waitFor();
+        await page.locator('select[aria-label="แม่แบบสัญญา"]:not(:disabled)').waitFor();
         await page.evaluate(value => document.documentElement.classList.toggle('dark', value), dark);
         const blocksBefore = await page.getByRole('button', { name: /^ย่อ .*รูปภาพ/ }).count();
         await page.getByRole('button', { name: 'เพิ่ม', exact: true }).click();
@@ -36,7 +36,7 @@ describe('UX/UI mobile controls on the real isolated API', () => {
         await last.click({ timeout: 5000 });
         await page.getByRole('button', { name: /^ย่อ .*รูปภาพ/ }).nth(blocksBefore).waitFor({ state: 'attached', timeout: 5000 });
         expect(await page.getByRole('button', { name: /^ย่อ .*รูปภาพ/ }).count()).toBe(blocksBefore + 1);
-        await page.getByRole('button', { name: 'Preview', exact: true }).click();
+        await page.getByRole('button', { name: 'ดูตัวอย่าง', exact: true }).click();
         expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
         saveArtifact('uxui-interactions', `editor-preview-320-${dark ? 'dark' : 'light'}.png`, await page.screenshot());
         // Leave before the 30-second autosave; no template is persisted by this test.

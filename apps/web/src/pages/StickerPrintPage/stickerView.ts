@@ -18,6 +18,8 @@ export interface StickerProductData {
   /** YYYY-MM-DD เฉพาะประกันศูนย์ที่ยังไม่หมด */
   warrantyExpireDate: string | null;
   imei: string | null;
+  /** รหัสสินค้าเดิม (Tooltify) — optional เพราะ API รุ่นก่อนก้อน 3 ไม่ส่ง */
+  code?: string | null;
   stockInDate: string | null;
   cashPrice: string | null;
   installmentPrice: string | null;
@@ -43,13 +45,39 @@ export interface StickerView {
   /** รุ่นอย่างเดียว ไม่มียี่ห้อ (คำตัดสินเจ้าของ) · อุปกรณ์ที่ไม่มีรุ่นใช้ชื่อสินค้า */
   model: string;
   spec: string | null;
+  /** ที่มาเครื่อง "ศูนย์ไทย" / "เครื่องนอก" — แยกจาก spec เพราะเป็นส่วนแรกที่ดวงตัดทิ้งเมื่อบรรทัดยาวเกิน */
+  origin: string | null;
   /** "ประกันศูนย์ DD/MM/YY" เมื่อยังไม่หมดประกัน */
   warrantyLabel: string | null;
   /** เฉพาะมือสอง — ชิป %แบต + มีกล่อง/ไม่มีกล่อง (null ในช่อง = ไม่ระบุ ไม่มีชิปนั้น) */
   used: { battery: number | null; box: boolean | null } | null;
   cash: string;
   rates: StickerRateView[];
-  imei: string | null;
+  /** สิ่งที่อยู่ใน QR: IMEI → รหัสสินค้าเดิม → product id ทั้งก้อน (ตามลำดับที่มี) */
+  qrValue: string;
+  /** ป้ายบรรทัดล่าง — บอกว่า idText คืออะไร */
+  idLabel: 'IMEI' | 'รหัส' | 'ID';
+  /** ข้อความบรรทัดล่างเผื่อยิงไม่ติด — IMEI/รหัสเต็ม · product id พิมพ์แค่ 8 ตัวแรก */
+  idText: string;
+}
+
+const ID_TEXT_LENGTH = 8;
+
+/** ที่มาเครื่องบนบรรทัดสเปก (mockup แบบ ค ที่เจ้าของเคาะมี "ศูนย์ไทย") — ไม่ระบุ = ไม่พิมพ์ */
+function originLabel(origin: StickerProductData['deviceOrigin']): string | null {
+  if (origin === 'THAI') return 'ศูนย์ไทย';
+  if (origin === 'IMPORTED') return 'เครื่องนอก';
+  return null;
+}
+
+function resolveStickerId(
+  product: Pick<StickerProductData, 'productId' | 'imei' | 'code'>,
+): Pick<StickerView, 'qrValue' | 'idLabel' | 'idText'> {
+  const imei = nonEmpty(product.imei);
+  if (imei) return { qrValue: imei, idLabel: 'IMEI', idText: imei };
+  const code = nonEmpty(product.code);
+  if (code) return { qrValue: code, idLabel: 'รหัส', idText: code };
+  return { qrValue: product.productId, idLabel: 'ID', idText: product.productId.slice(0, ID_TEXT_LENGTH) };
 }
 
 const nonEmpty = (value: string | null | undefined): string | null => {
@@ -103,10 +131,11 @@ export function buildStickerView(product: StickerProductData, quotes: StickerQuo
     productId: product.productId,
     model: nonEmpty(product.model) ?? nonEmpty(product.name) ?? '-',
     spec: [nonEmpty(product.color), nonEmpty(product.storage)].filter((p): p is string => p !== null).join(' · ') || null,
+    origin: originLabel(product.deviceOrigin),
     warrantyLabel: warrantyShort ? `ประกันศูนย์ ${warrantyShort}` : null,
     used,
     cash: formatBaht(cash),
     rates: [rateView(1, quotes.rate1), rateView(2, quotes.rate2)].filter((r): r is StickerRateView => r !== null),
-    imei: nonEmpty(product.imei),
+    ...resolveStickerId(product),
   };
 }

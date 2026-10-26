@@ -93,6 +93,7 @@ const FinancialAuditPage = lazy(() => import('@/pages/FinancialAuditPage'));
 const PaymentCsvImportPage = lazy(() => import('@/pages/PaymentCsvImportPage'));
 const POSPage = lazy(() => import('@/pages/POSPage'));
 const SalesHistoryPage = lazy(() => import('@/pages/SalesHistoryPage'));
+const ParcelLabelPage = lazy(() => import('@/pages/ParcelLabelPage'));
 const ShopDailyCashPage = lazy(() => import('@/pages/ShopDailyCashPage'));
 const ShopPettyCashPage = lazy(() => import('@/pages/ShopPettyCashPage'));
 const AfterSalesPage = lazy(() => import('@/pages/AfterSalesPage'));
@@ -507,6 +508,8 @@ function App() {
           <Route path="/stickers" element={<StickerPrintPage />} />
           <Route path="/pos" element={<ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'SALES']}><POSPage /></ProtectedRoute>} />
           <Route path="/sales" element={<SalesHistoryPage />} />
+          {/* ใบปะหน้าพัสดุจากใบขาย (A6 · 2026-10-22) — role เดียวกับ /sales (API scope สาขาเอง) */}
+          <Route path="/sales/:id/parcel-label" element={<ParcelLabelPage />} />
           <Route path="/shop/daily-cash" element={<ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'BRANCH_MANAGER', 'SALES']}><ShopDailyCashPage /></ProtectedRoute>} />
           {/* เงินสดย่อยหน้าร้าน S11-1106 (ข้อ 20.2 · 2026-10-18) — เติม/คืน OWNER+FM · ดู ACCOUNTANT/VIEWER */}
           <Route path="/shop/petty-cash" element={<ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'VIEWER']}><ShopPettyCashPage /></ProtectedRoute>} />

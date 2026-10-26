@@ -451,7 +451,7 @@ export default function AssetsListPage() {
         open={!!deleteId}
         onOpenChange={(open) => !open && setDeleteId(null)}
         title="ลบเอกสาร?"
-        description="การลบเอกสารจะไม่สามารถกู้คืนได้ (ฉบับร่าง เท่านั้น)"
+        description="ลบได้เฉพาะฉบับร่าง — เจ้าของกู้คืนได้จากถังขยะ (ตั้งค่า › ระบบ)"
         variant="destructive"
         confirmLabel="ลบ"
         loading={deleteMutation.isPending}

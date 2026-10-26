@@ -384,7 +384,7 @@ export default function CustomersPage() {
         title={isBuyers ? 'ลบลูกค้า' : 'ลบรายชื่อ'}
         description={
           deleteTarget
-            ? `ต้องการลบ "${deleteTarget.name}" ใช่หรือไม่? การลบจะไม่สามารถกู้คืนได้จากหน้าจอ หากมีสัญญาที่ยังเปิดอยู่จะไม่สามารถลบได้`
+            ? `ต้องการลบ "${deleteTarget.name}" ใช่หรือไม่? เจ้าของกู้คืนได้จาก ตั้งค่า › ถังขยะ · หากมีสัญญาที่ยังเปิดอยู่จะไม่สามารถลบได้`
             : ''
         }
         confirmLabel="ลบ"

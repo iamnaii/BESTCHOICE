@@ -490,7 +490,7 @@ export default function AssetDetailPage() {
             open={showDelete}
             onOpenChange={setShowDelete}
             title="ลบสินทรัพย์?"
-            description="ลบได้เฉพาะสถานะ ฉบับร่าง ไม่สามารถกู้คืนได้"
+            description="ลบได้เฉพาะสถานะ ฉบับร่าง — เจ้าของกู้คืนได้จากถังขยะ (ตั้งค่า › ระบบ)"
             variant="destructive"
             loading={deleteMutation.isPending}
             onConfirm={() => deleteMutation.mutate()}

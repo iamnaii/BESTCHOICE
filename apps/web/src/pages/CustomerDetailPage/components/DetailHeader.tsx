@@ -8,6 +8,8 @@ import { Button } from '@/components/ui/button';
 import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from '@/components/ui/breadcrumb';
 import { CallButton } from '@/components/CallButton';
 import CustomerTierBadge from '@/components/customer/CustomerTierBadge';
+import CustomerBlacklistBadge from '@/components/customer/CustomerBlacklistBadge';
+import { useCustomerBlacklist } from '@/hooks/useCustomerBlacklist';
 import CustomerCreateDialog, { splitDisplayName } from '@/components/customer/CustomerCreateDialog';
 import ProspectPhoneLine from '@/components/customer/ProspectPhoneLine';
 import { useCopyToClipboard } from '@/hooks/useCopyToClipboard';
@@ -55,6 +57,8 @@ export default function DetailHeader({ customer, tier, role, canEdit, canStartCr
   onEdit: () => void;
   onStartCredit: () => void;
 }) {
+  // ก้อน 5 C3 — ป้าย blacklist ข้างป้ายระดับลูกค้า (ทุก kind — ผู้สนใจก็เบอร์ซ้ำได้)
+  const blacklist = useCustomerBlacklist(customer.id);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [fillOpen, setFillOpen] = useState(false);
@@ -106,6 +110,7 @@ export default function DetailHeader({ customer, tier, role, canEdit, canStartCr
             ) : (
               tier && <CustomerTierBadge tier={tier} size="md" />
             )}
+            <CustomerBlacklistBadge result={blacklist.data} size="md" />
             <CustomerTagChips tags={customer.tags} compact />
             {customer.isForeigner && <Badge variant="warning" appearance="light" size="md">ชาวต่างชาติ</Badge>}
           </div>

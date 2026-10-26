@@ -19,6 +19,8 @@
  *   cd apps/api && npx vitest run --no-file-parallelism src/modules/purchase-orders/__tests__/installment-input-vat.integration.spec.ts
  * CI: glob `PO_FILES` ครอบแล้ว · Cleanup: SCOPED ตาม id ที่สเปคนี้สร้าง
  */
+import { CustomerBlacklistService } from '../../customers/customer-blacklist.service';
+import { CustomerPiiService } from '../../customers/customer-pii.service';
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { HttpException } from '@nestjs/common';
 import { PrismaClient } from '@prisma/client';
@@ -74,6 +76,7 @@ const workflow = new ContractWorkflowService(
   new ShopDownPaymentTemplate(journal, prisma as never, companyResolver),
   shopAccountResolver,
   inputVatTemplate,
+  new CustomerBlacklistService(prisma as never, new CustomerPiiService(prisma as never)), // ก้อน 5 C3
 );
 const cancellations = new ContractCancellationService(
   prisma as never,

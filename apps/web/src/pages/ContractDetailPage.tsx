@@ -4,6 +4,10 @@ import { downloadProtectedDocument } from '@/lib/document-download';
 import { queryErrorMessage } from '@/lib/query-error-message';
 import { contractBalances } from '@/lib/contract-balances';
 import type { SignatureRequirements } from '@installment/shared';
+import { BLACKLIST_ERROR_CODE } from '@installment/shared';
+import { isAxiosError } from 'axios';
+import BlacklistOverrideDialog from '@/components/contract/BlacklistOverrideDialog';
+import type { BlacklistReason } from '@installment/shared';
 import { useParams, useNavigate, Link } from 'react-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import Decimal from 'decimal.js';
@@ -215,10 +219,24 @@ export default function ContractDetailPage() {
     onError: (err: unknown) => toast.error(getErrorMessage(err)),
   });
 
+  // ก้อน 5 C3 — SOFT ที่เกิดหลังสร้างร่าง + ผู้กดเป็น OWNER/BM → เปิดกล่องกรอกเหตุผลแล้วยิงเปิดใช้ซ้ำ (ร่างที่อนุมัติแล้วลบไม่ได้)
+  const [blacklistReview, setBlacklistReview] = useState<{ reasons: BlacklistReason[] } | null>(null);
   const activateMutation = useMutation({
-    mutationFn: async () => { const { data } = await api.post(`/contracts/${id}/activate`); return data; },
-    onSuccess: () => { toast.success('เปิดใช้งานสัญญาแล้ว'); invalidateContract(); },
-    onError: (err: unknown) => toast.error(getErrorMessage(err)),
+    mutationFn: async (blacklistOverrideReason?: string) => {
+      const { data } = await api.post(`/contracts/${id}/activate`, blacklistOverrideReason ? { blacklistOverrideReason } : undefined);
+      return data;
+    },
+    onSuccess: () => { toast.success('เปิดใช้งานสัญญาแล้ว'); setBlacklistReview(null); invalidateContract(); },
+    onError: (err: unknown) => {
+      // ก้อน 5 C3 — ด่าน blacklist ตอนเปิดใช้: HARD/บทบาทที่ปลดไม่ได้ = บอกเหตุผลทุกข้อ · SOFT + ปลดได้ = เปิดกล่องเหตุผล
+      const body = isAxiosError(err) ? (err.response?.data as { code?: string; message?: string; canOverride?: boolean; reasons?: BlacklistReason[] } | undefined) : undefined;
+      if (body?.code === BLACKLIST_ERROR_CODE.SOFT && body.canOverride) { setBlacklistReview({ reasons: body.reasons ?? [] }); return; }
+      if (body?.code && (Object.values(BLACKLIST_ERROR_CODE) as string[]).includes(body.code)) {
+        toast.error([body.message, ...(body.reasons ?? []).map((r) => r.message)].filter(Boolean).join('\n'));
+        return;
+      }
+      toast.error(getErrorMessage(err));
+    },
   });
 
 const deleteMutation = useMutation({
@@ -337,7 +355,7 @@ const deleteMutation = useMutation({
 
             {/* Workflow buttons */}
             {canActivate && contract.workflowStatus === 'APPROVED' && contract.status === 'DRAFT' && (
-              <button data-ui-control="button" onClick={() => activateMutation.mutate()} disabled={activateMutation.isPending || !allSigned} title={!allSigned ? 'ต้องลงนามครบทุกฝ่ายที่ระบุในสัญญา' : ''} className="px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50">
+              <button data-ui-control="button" onClick={() => activateMutation.mutate(undefined)} disabled={activateMutation.isPending || !allSigned} title={!allSigned ? 'ต้องลงนามครบทุกฝ่ายที่ระบุในสัญญา' : ''} className="px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50">
                 {activateMutation.isPending ? 'กำลังเปิด...' : 'เปิดใช้งานสัญญา'}
               </button>
             )}
@@ -440,7 +458,7 @@ const deleteMutation = useMutation({
           })(),
           {
             text: allSigned ? 'สัญญาอนุมัติแล้ว พร้อมเปิดใช้งาน' : 'ต้องลงนามครบก่อนเปิดใช้งาน',
-            action: allSigned && canActivate ? () => activateMutation.mutate() : undefined,
+            action: allSigned && canActivate ? () => activateMutation.mutate(undefined) : undefined,
             actionLabel: allSigned && canActivate ? 'เปิดใช้งานสัญญา' : undefined,
           },
         ];
@@ -1107,6 +1125,8 @@ const deleteMutation = useMutation({
         </Modal>
       )}
 
+      <BlacklistOverrideDialog open={!!blacklistReview} reasons={blacklistReview?.reasons ?? []} pending={activateMutation.isPending}
+        onClose={() => setBlacklistReview(null)} onConfirm={(reason) => activateMutation.mutate(reason)} />
       <ConfirmDialog
         open={confirmDialog.open}
         onOpenChange={(open) => setConfirmDialog((prev) => ({ ...prev, open }))}

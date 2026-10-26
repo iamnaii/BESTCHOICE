@@ -13,6 +13,8 @@ import api, { getErrorMessage } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { useDebounce } from '@/hooks/useDebounce';
+import { useCustomerBlacklistBatch } from '@/hooks/useCustomerBlacklist';
+import CustomerBlacklistBadge from '@/components/customer/CustomerBlacklistBadge';
 import PageHeader from '@/components/ui/PageHeader';
 import DataTable from '@/components/ui/DataTable';
 import QueryBoundary from '@/components/QueryBoundary';
@@ -151,6 +153,10 @@ export default function CreditChecksPage() {
     onError: (err) => toast.error(getErrorMessage(err)),
   });
 
+  // ก้อน 5 C3 — ผลตรวจ blacklist ของลูกค้าทุกแถวในหน้า (batch เดียว) → ป้ายใต้ชื่อ
+
+  const blacklistBatch = useCustomerBlacklistBatch((query.data?.data ?? []).map((r) => r.customer?.id));
+
   const columns = [
     {
       key: 'customer',
@@ -160,6 +166,11 @@ export default function CreditChecksPage() {
           <div className="text-sm font-medium text-foreground leading-snug truncate">
             {c.customer?.name ?? '—'}
           </div>
+          {c.customer && blacklistBatch.data?.[c.customer.id] && (
+            <div onClick={(e) => e.stopPropagation()} className="mt-1">
+              <CustomerBlacklistBadge result={blacklistBatch.data[c.customer.id]} />
+            </div>
+          )}
           <div className="text-xs text-muted-foreground tabular-nums">
             {c.customer?.phone ?? ''}
             {c.customer?.occupation ? ` · ${c.customer.occupation}` : ''}

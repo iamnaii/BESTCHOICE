@@ -32,6 +32,8 @@
  * Cleanup: SCOPED ตาม id ที่สเปคนี้สร้าง + สวีปตาม prefix `LIFECYCLETEST-` ปิดท้าย
  * (`audit_logs` ลบไม่ได้ — DB trigger `audit_logs_no_delete` ทำให้มัน immutable ตามดีไซน์)
  */
+import { CustomerBlacklistService } from '../../customers/customer-blacklist.service';
+import { CustomerPiiService } from '../../customers/customer-pii.service';
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { ConflictException } from '@nestjs/common';
 import { earlyPayoffWithApproval } from '../../../../e2e/helpers/payment-approval';
@@ -95,6 +97,7 @@ const workflow = new ContractWorkflowService(
   new ShopDownPaymentTemplate(journal, prisma as never, companyResolver),
   shopAccountResolver,
   new InstallmentInputVatTemplate(journal, prisma as never, companyResolver),
+  new CustomerBlacklistService(prisma as never, new CustomerPiiService(prisma as never)), // ก้อน 5 C3
 );
 
 // POS — `SalesService` ประกอบ SaleWriter/SaleCreation ให้เองในคอนสตรักเตอร์

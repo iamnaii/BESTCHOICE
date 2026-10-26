@@ -43,7 +43,8 @@ describe('ContractsController.activate — บันทึก CONTRACT_ACTIVATED
     expect(res).toBe(ACTIVATED);
     expect(contractsService.findOne).toHaveBeenCalledWith('contract-1', USER);
     // 15ข — controller ส่งผู้กดเปิดใช้ให้ activate ใช้เป็น actor ของการใช้เครดิตอัตโนมัติ
-    expect(workflowService.activate).toHaveBeenCalledWith('contract-1', 'fm-1');
+    // ก้อน 5 C3 — ส่งบทบาท + เหตุผลปลด SOFT (ไม่มี = undefined) เข้าด่าน blacklist ตอนเปิดใช้ด้วย
+    expect(workflowService.activate).toHaveBeenCalledWith('contract-1', 'fm-1', { actorRole: 'FINANCE_MANAGER', blacklistOverrideReason: undefined });
     expect(journeyEntries.recordAfterCommit).toHaveBeenCalledTimes(1);
     const entry = journeyEntries.recordAfterCommit.mock.calls[0][0];
     expect(entry).toEqual({

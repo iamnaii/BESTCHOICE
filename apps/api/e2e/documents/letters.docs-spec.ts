@@ -79,7 +79,12 @@ describe('DOC-09 collection letters — real job, real renderer, real guards, pr
       [world.users.owner, world.users.financeManager, world.users.accountant, world.users.branchManagerA, world.users.salesA, world.users.salesB].map((u) => h.login(u.email, u.password)),
     );
     // The owner gets a synthetic LINE id so the job's owner alert goes through the recorded transport.
-    await h.prisma.user.update({ where: { id: world.users.owner.id }, data: { lineId: `TEST-NOT-SENT-OWNER-${world.prefix}` } });
+    // Since ก้อน 7 (A16) the alert travels StaffNotifyService → NotificationsService: the recipient is the
+    // staff-link id (`lineStaffUserId`, not `lineId`) and nothing is sent until the Staff OA has a channel
+    // token (Integration Hub › ไลน์พนักงาน) — both are seeded here; the token never leaves the process
+    // because the transport is the recorded fake.
+    await h.prisma.user.update({ where: { id: world.users.owner.id }, data: { lineId: `TEST-NOT-SENT-OWNER-${world.prefix}`, lineStaffUserId: `TEST-NOT-SENT-OWNER-${world.prefix}` } });
+    await setSystemConfig(h.prisma, 'integration.line-staff.channelToken', `TEST-NOT-SENT-STAFF-TOKEN-${world.prefix}`);
     await setSystemConfig(h.prisma, 'letter_coordinator_name', `${'ทดสอบระบบ'} ผู้ประสานงาน`);
     await setSystemConfig(h.prisma, 'letter_coordinator_phone', '02-000-0000');
     const make = (label: string, branchId: string, salespersonId: string, oldestOverdueDays: number, extra: Partial<Parameters<typeof createOverdueContract>[1]> = {}) =>

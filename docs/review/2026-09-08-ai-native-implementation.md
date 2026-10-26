@@ -125,7 +125,7 @@ npm run test --workspace=@installment/shared
 CREDIT_RUN_API_REGRESSION=1 bash tools/test-chat-credit.sh
 npm run build --workspace=apps/api
 npm run build --workspace=apps/web
-npm exec --yes --package=node@20 -- node tools/verify-shared-runtime.cjs .
+npm exec --yes --package=node@24 -- node tools/verify-shared-runtime.cjs .
 node --test tools/credit-ci.test.mjs tools/preview-chat-credit.test.mjs
 ```
 

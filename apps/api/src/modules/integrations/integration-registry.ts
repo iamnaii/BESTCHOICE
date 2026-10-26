@@ -115,6 +115,8 @@ export const INTEGRATIONS: IntegrationDef[] = [
     name: 'LINE STAFF (พนักงาน)',
     description: 'ไลน์พนักงาน — แจ้งเตือนทีมงาน',
     icon: 'line',
+    webhookUrl: `${BASE}/api/webhooks/line-staff`,
+    webhookNote: 'ตั้ง Webhook URL นี้ใน LINE Developers ของไลน์พนักงาน (เปิด Use webhook) — ใช้ผูกบัญชีพนักงานด้วยรหัส 6 หลักจากหน้าผู้ใช้',
     fields: [
       {
         key: 'channelToken',

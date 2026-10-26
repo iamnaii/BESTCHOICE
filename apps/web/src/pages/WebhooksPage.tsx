@@ -392,7 +392,7 @@ export default function WebhooksPage() {
         open={!!deleteTarget}
         onOpenChange={(open) => !open && setDeleteTarget(null)}
         title="ลบ Webhook Subscription"
-        description={`ต้องการลบ "${deleteTarget?.name}" ใช่หรือไม่? การดำเนินการนี้ไม่สามารถยกเลิกได้`}
+        description={`ต้องการลบ "${deleteTarget?.name}" ใช่หรือไม่? เจ้าของกู้คืนได้จากถังขยะ (ตั้งค่า › ระบบ)`}
         confirmLabel="ลบ"
         variant="destructive"
         onConfirm={() => {

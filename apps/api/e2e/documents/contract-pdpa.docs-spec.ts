@@ -27,6 +27,10 @@ const scenario = (record: Omit<ScenarioRecord, 'documents' | 'guards' | 'rendere
 });
 
 type GeneratedDoc = { id: string; fileUrl: string; fileHash: string; documentType: string; pdfGenerated: boolean };
+// employee-access epic: the HTTP acknowledgement carries id/documentType/pdfGenerated only (storage keys stay
+// private to the server); this reference flow reads the persisted fileUrl/fileHash straight from the row.
+type GeneratedAck = { id: string; documentType: string; pdfGenerated: boolean };
+let withStoredKeys: (ack: GeneratedAck) => Promise<GeneratedDoc>;
 const CONTRACT_TITLE = 'สัญญาเช่าซื้อโทรศัพท์มือถือ';
 const CLOSING = 'จึงลงลายมือชื่อไว้เป็นสำคัญ';
 
@@ -41,6 +45,7 @@ describe('DOC-00 reference flow — contract + PDPA through the real API', () =>
 
   beforeAll(async () => {
     h = await startDocumentsApp();
+    withStoredKeys = async (ack) => ({ ...ack, ...(await h.prisma.eDocument.findUniqueOrThrow({ where: { id: ack.id }, select: { fileUrl: true, fileHash: true } })) });
     world = await seedDocumentsWorld(h.prisma);
     [owner, salesA, salesB, accountant] = await Promise.all([world.users.owner, world.users.salesA, world.users.salesB, world.users.accountant].map((u) => h.login(u.email, u.password)));
   }, 180000);
@@ -95,7 +100,8 @@ describe('DOC-00 reference flow — contract + PDPA through the real API', () =>
   it('generates contract + PDPA PDFs with Chromium and stores bytes whose sha256 equals the persisted hash', async () => {
     const a = world.contracts.a;
     const response = await h.client({ session: salesA }).post(`/contracts/${a.id}/generate-signed-documents`).expect(201);
-    const { contract, pdpa, errors } = response.body.data as { contract: GeneratedDoc; pdpa: GeneratedDoc; errors?: string[] };
+    const { contract: contractAck, pdpa: pdpaAck, errors } = response.body.data as { contract: GeneratedAck; pdpa: GeneratedAck; errors?: string[] };
+    const [contract, pdpa] = await Promise.all([withStoredKeys(contractAck), withStoredKeys(pdpaAck)]);
     expect(errors).toBeUndefined();
     expect(contract.pdfGenerated).toBe(true);
     expect(pdpa.pdfGenerated).toBe(true);
@@ -125,12 +131,15 @@ describe('DOC-00 reference flow — contract + PDPA through the real API', () =>
       const bytes = bodyBuffer(response);
       expect(sha256(bytes)).toBe(doc.fileHash);
       expect(bytes.equals(stored(doc))).toBe(true);
-      expect(response.headers['content-disposition']).toContain(encodeURIComponent(doc.fileUrl.split('/').pop()!));
+      // employee-access epic: downloads carry a generic attachment name; the storage key never reaches the client.
+      expect(response.headers['content-disposition']).toMatch(/^attachment; filename="[^"]+\.pdf"$/);
       expect(response.headers['cache-control']).toContain('no-store');
       expect(response.headers['x-content-type-options']).toBe('nosniff');
       artifacts.push(saveArtifact(DOMAIN, `${kind}-default.pdf`, bytes).relativePath);
       const meta = await h.client({ session: salesA }).get(`/documents/${doc.id}`).expect(200);
-      expect(meta.body.data.fileHash).toBe(doc.fileHash);
+      // employee-access epic: metadata is a verified reference (no storage key / hash in the response);
+      // the hash was already proven above against the persisted row and the downloaded bytes.
+      expect(meta.body.data).toMatchObject({ availability: 'available', document: { id: doc.id, contentStatus: 'VERIFIED_GENERATED' } });
     }
     const listing = await h.client({ session: salesA }).get(`/contracts/${world.contracts.a.id}/e-documents`).expect(200);
     expect(listing.body.data.data.map((row: { id: string }) => row.id).sort()).toEqual([generated.contract!.id, generated.pdpa!.id].sort());
@@ -177,7 +186,7 @@ describe('DOC-00 reference flow — contract + PDPA through the real API', () =>
   it('enforces branch, role and company scope with real guards; denials carry JSON, never bytes', async () => {
     const b = world.contracts.b;
     const ownerGenerated = await h.client({ session: owner }).post(`/contracts/${b.id}/generate-signed-documents`).expect(201);
-    const docB: GeneratedDoc = ownerGenerated.body.data.contract;
+    const docB: GeneratedDoc = await withStoredKeys(ownerGenerated.body.data.contract);
     const foreign = h.client({ session: salesA });
     for (const path of [`/contracts/${b.id}/preview`, `/contracts/${b.id}/e-documents`, `/contracts/${b.id}/download-pdf`, `/documents/${docB.id}/download`, `/documents/${docB.id}`, `/documents/${docB.id}/signed-url`]) {
       const response = await foreign.get(path).expect(403);
@@ -226,10 +235,13 @@ describe('DOC-00 reference flow — contract + PDPA through the real API', () =>
     recordScenario(DOMAIN, scenario({ id: `${DOMAIN}/deleted-and-missing`, title: 'Deleted document / deleted contract → 404; missing storage object → JSON error, no regeneration', routes: ['GET /api/documents/:id/download', 'GET /api/contracts/:id/e-documents', 'GET /api/contracts/:id/preview'], renderer: 'none', artifacts: [] }));
   });
 
-  it('answers signed-url requests with an explicit 501 in local storage instead of a fake link', async () => {
-    const response = await h.client({ session: salesA }).get(`/documents/${generated.contract!.id}/signed-url`).expect(501);
-    expect(response.body.message).toContain('signed URL');
-    recordScenario(DOMAIN, scenario({ id: `${DOMAIN}/signed-url-unsupported`, title: 'GET /documents/:id/signed-url → 501 with Thai message under local storage', routes: ['GET /api/documents/:id/signed-url'], renderer: 'none', artifacts: [], unverified: ['GCS/S3 signed URL issuance (needs real bucket — DOC-13)'] }));
+  it('answers signed-url requests with an authenticated download descriptor instead of a fake link', async () => {
+    // employee-access epic: no presigned storage links for generated documents — the descriptor points
+    // back at the guarded download route (expiresIn 0 = session-bound, never a public URL).
+    const response = await h.client({ session: salesA }).get(`/documents/${generated.contract!.id}/signed-url`).expect(200);
+    expect(response.body.data).toMatchObject({ kind: 'authenticated', expiresIn: 0 });
+    expect(String(response.body.data.url)).toContain(`/documents/${generated.contract!.id}/download`);
+    recordScenario(DOMAIN, scenario({ id: `${DOMAIN}/signed-url-authenticated`, title: 'GET /documents/:id/signed-url → authenticated download descriptor (no presigned storage link)', routes: ['GET /api/documents/:id/signed-url'], renderer: 'none', artifacts: [], unverified: ['GCS/S3 signed URL issuance (needs real bucket — DOC-13)'] }));
   });
 
   it('applies template font/size overrides identically in preview HTML and the Chromium PDF, keeping a long consent with its signature', async () => {
@@ -265,7 +277,8 @@ describe('DOC-00 reference flow — contract + PDPA through the real API', () =>
     saveArtifact(DOMAIN, 'contract-preview-override.html', preview.body.data.html);
 
     const regenerated = await admin.post(`/contracts/${a.id}/generate-signed-documents`).expect(201);
-    const { contract, pdpa, errors } = regenerated.body.data as { contract: GeneratedDoc; pdpa: GeneratedDoc; errors?: string[] };
+    const { contract: contractAck, pdpa: pdpaAck, errors } = regenerated.body.data as { contract: GeneratedAck; pdpa: GeneratedAck; errors?: string[] };
+    const [contract, pdpa] = await Promise.all([withStoredKeys(contractAck), withStoredKeys(pdpaAck)]);
     expect(errors).toBeUndefined();
     expect(contract.fileUrl).not.toBe(generated.contract!.fileUrl);
 

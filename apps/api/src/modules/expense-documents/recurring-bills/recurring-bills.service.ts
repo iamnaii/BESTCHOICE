@@ -135,7 +135,7 @@ export const RULE_CHANGED_REASON = 'แม่แบบเปลี่ยนร�
 
 type TodoView = 'UPCOMING' | 'DUE_TODAY' | 'OVERDUE' | 'UNPOSTED' | 'MISSED';
 
-interface TemplateRow {
+export interface TemplateRow {
   id: string;
   name: string;
   documentType: string;
@@ -152,7 +152,7 @@ interface TemplateRow {
   branch: { name: string } | null;
 }
 
-interface OccurrenceRow {
+export interface OccurrenceRow {
   id: string;
   templateId: string;
   periodKey: string;

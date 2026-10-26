@@ -10,10 +10,11 @@ test.describe('Login Page', () => {
     // Use loginAsAdmin which handles webkit-compatible redirect
     await loginAsAdmin(page);
 
-    // Verify dashboard content — use heading role to avoid strict mode violation.
-    // DashboardPage renders <PageHeader title="แดชบอร์ด"> → <h1>แดชบอร์ด</h1>;
-    // the remaining "Dashboard" strings are menu items, not headings.
-    await expect(page.getByRole('heading', { name: 'แดชบอร์ด' })).toBeVisible({
+    // Verify the landing page — use heading role to avoid strict mode violation.
+    // `/` is zone-based since shop-home (#1724): shop zone (OWNER default) renders
+    // <PageHeader title="หน้าหลักหน้าร้าน">, finance zone renders "แดชบอร์ด"; either proves
+    // the login landed on the home page (the remaining strings are menu items, not headings).
+    await expect(page.getByRole('heading', { name: /^(หน้าหลักหน้าร้าน|แดชบอร์ด)$/ })).toBeVisible({
       timeout: 10000,
     });
   });

@@ -147,6 +147,18 @@ export class StaffNotifyService {
     return [...out.values()];
   }
 
+  /** พนักงานที่กติกาเปิดอยู่ชี้ถึง (ตามบทบาท) แต่ยังไม่ผูก LINE — ให้หน้าตั้งค่าโชว์รายชื่อ */
+  async listUnlinkedUsers(rules: Record<string, StaffNotifyRule>): Promise<Array<{ id: string; name: string; role: string; branchName: string | null }>> {
+    const roles = [...new Set(Object.values(rules).filter((r) => r.enabled).flatMap((r) => r.roles))];
+    if (roles.length === 0) return [];
+    const users = (await this.prisma.user.findMany({
+      where: { isActive: true, deletedAt: null, isSystemUser: false, lineStaffUserId: null, role: { in: roles as never } },
+      select: { id: true, name: true, role: true, branch: { select: { name: true } } },
+      orderBy: [{ role: 'asc' }, { name: 'asc' }],
+    })) as Array<{ id: string; name: string; role: string; branch: { name: string | null } | null }>;
+    return users.map((u) => ({ id: u.id, name: u.name, role: u.role, branchName: u.branch?.name ?? null }));
+  }
+
   /** ข้อความที่ใช้ไปเดือนนี้ (นับ SENT ต่อผู้รับ) เทียบเพดาน */
   async usage(now: Date = new Date()): Promise<{ used: number; cap: number; monthKey: string }> {
     const { start, monthKey } = bkkMonthStart(now);

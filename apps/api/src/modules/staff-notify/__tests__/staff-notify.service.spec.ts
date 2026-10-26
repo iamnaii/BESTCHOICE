@@ -169,3 +169,17 @@ describe('StaffNotifyService.notify', () => {
     expect(calls.find((c) => c.recipient === 'G1')).not.toHaveProperty('fallbackPhone');
   });
 });
+
+describe('StaffNotifyService.listUnlinkedUsers', () => {
+  it('lists active non-system users without lineStaffUserId whose role appears in an enabled rule', async () => {
+    prisma.user.findMany.mockResolvedValue([{ id: 'u2', name: 'สมหญิง', role: 'ACCOUNTANT', branch: { name: null } }, { id: 'u3', name: 'เอก', role: 'BRANCH_MANAGER', branch: { name: 'บางนา' } }]);
+    const rules = { 'stock.low': { enabled: true, roles: ['OWNER', 'BRANCH_MANAGER'], branchScoped: true, includeGroup: false }, 'chat.handoff': { enabled: false, roles: ['SALES'], branchScoped: false, includeGroup: false } };
+    const res = await service.listUnlinkedUsers(rules as never);
+    expect(prisma.user.findMany).toHaveBeenCalledWith({
+      where: { isActive: true, deletedAt: null, isSystemUser: false, lineStaffUserId: null, role: { in: ['OWNER', 'BRANCH_MANAGER'] } },
+      select: { id: true, name: true, role: true, branch: { select: { name: true } } },
+      orderBy: [{ role: 'asc' }, { name: 'asc' }],
+    });
+    expect(res).toEqual([{ id: 'u2', name: 'สมหญิง', role: 'ACCOUNTANT', branchName: null }, { id: 'u3', name: 'เอก', role: 'BRANCH_MANAGER', branchName: 'บางนา' }]);
+  });
+});

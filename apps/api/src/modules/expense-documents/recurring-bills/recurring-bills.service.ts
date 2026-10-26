@@ -106,7 +106,8 @@ export interface RecurringBillRow {
   documentMissing: boolean;
   templateDeleted: boolean;
   paymentConfigured: boolean;
-  document: { id: string; number: string; status: string; totalAmount: string | null; paidAt: string | null } | null;
+  /** ใบที่ผูกอยู่ แม้ถูกลบ/ยกเลิกแล้วก็ยังส่งมาให้หน้าเว็บบอกได้ว่า "EX-… ถูกลบ" — ดู `documentMissing` ว่ายังใช้ได้ไหม */
+  document: { id: string; number: string; status: string; totalAmount: string | null; paidAt: string | null; deletedAt: string | null } | null;
   todoId: string | null;
   paidAt: string | null;
   paidById: string | null;
@@ -114,6 +115,10 @@ export interface RecurringBillRow {
   paidNote: string | null;
   skipReason: string | null;
   skippedByName: string | null;
+  /** ISO ตอนข้าม (คนหรือระบบ) — null เมื่อไม่ได้ข้าม */
+  skippedAt: string | null;
+  /** ISO เที่ยงคืนไทยของวันที่หน้าต่างเตือนเปิด = วันที่ระบบจะสร้างร่าง (ครบกำหนด − เตือนล่วงหน้า) · null เมื่อแม่แบบไม่มีกติกา */
+  windowOpensOn: string | null;
 }
 
 export interface RecurringBillMonthView {
@@ -169,6 +174,7 @@ export interface OccurrenceRow {
   todo: { id: string; status: string; deletedAt: Date | null } | null;
   paidNote?: string | null;
   skipReason?: string | null;
+  skippedAt?: Date | null;
   skippedById?: string | null;
   paidBy?: { name: string } | null;
   skippedBy?: { name: string } | null;
@@ -702,8 +708,8 @@ export class RecurringBillsService {
       documentMissing: !live,
       templateDeleted: !!tpl.deletedAt,
       paymentConfigured: !!(pf.paymentMethod && pf.depositAccountCode),
-      document: live && doc
-        ? { id: doc.id, number: doc.number, status: doc.status, totalAmount: doc.totalAmount == null ? null : String(doc.totalAmount), paidAt: doc.paidAt ? doc.paidAt.toISOString() : null }
+      document: doc
+        ? { id: doc.id, number: doc.number, status: doc.status, totalAmount: doc.totalAmount == null ? null : String(doc.totalAmount), paidAt: doc.paidAt ? doc.paidAt.toISOString() : null, deletedAt: doc.deletedAt ? doc.deletedAt.toISOString() : null }
         : null,
       todoId: r.todoId,
       paidAt: r.paidAt ? r.paidAt.toISOString() : null,
@@ -712,6 +718,8 @@ export class RecurringBillsService {
       paidNote: r.paidNote ?? null,
       skipReason: r.skipReason ?? null,
       skippedByName: r.skippedBy?.name ?? null,
+      skippedAt: r.skippedAt ? r.skippedAt.toISOString() : null,
+      windowOpensOn: rule ? bkkMidnightOf(reminderWindowOpens(rule, r.periodKey, Math.max(0, tpl.reminderLeadDays ?? 3))).toISOString() : null,
     };
   }
 
@@ -745,6 +753,8 @@ export class RecurringBillsService {
       paidNote: null,
       skipReason: null,
       skippedByName: null,
+      skippedAt: null,
+      windowOpensOn: bkkMidnightOf(reminderWindowOpens(rule, key, Math.max(0, tpl.reminderLeadDays ?? 3))).toISOString(),
     };
   }
 

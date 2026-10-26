@@ -400,7 +400,7 @@ describe('listMonth', () => {
       occurrence({ id: 'o-net', templateId: 'tpl-net', template: net, dueDate: bkkMidnight(2026, 10, 24), estimatedAmount: '1284' }),
       occurrence({ id: 'o-wh', templateId: 'tpl-wh', template: wh, dueDate: bkkMidnight(2026, 10, 26), estimatedAmount: '12000', expenseDocumentId: 'd-wh', expenseDocument: { ...draftDoc('d-wh', 'EX-20261023-0005'), deletedAt: new Date() } }),
       occurrence({ id: 'o-ins', templateId: 'tpl-ins', template: ins, periodKey: '2026', dueDate: bkkMidnight(2026, 10, 29), estimatedAmount: '18900', expenseDocumentId: 'd-ins', expenseDocument: draftDoc('d-ins', 'EX-20261026-0001') }),
-      occurrence({ id: 'o-acct', templateId: 'tpl-acct', template: acct, periodKey: '2026-Q4', dueDate: bkkMidnight(2026, 10, 5), status: 'SKIPPED', skippedById: 'u-ek', skipReason: 'จ่ายล่วงหน้าทั้งปีไปแล้วเมื่อ ก.ค.', skippedBy: { name: 'เอก' }, estimatedAmount: '6000', expenseDocument: draftDoc('d-acct', 'EX-20261002-0004') }),
+      occurrence({ id: 'o-acct', templateId: 'tpl-acct', template: acct, periodKey: '2026-Q4', dueDate: bkkMidnight(2026, 10, 5), status: 'SKIPPED', skippedAt: bkkNoon(2026, 10, 3), skippedById: 'u-ek', skipReason: 'จ่ายล่วงหน้าทั้งปีไปแล้วเมื่อ ก.ค.', skippedBy: { name: 'เอก' }, estimatedAmount: '6000', expenseDocument: draftDoc('d-acct', 'EX-20261002-0004') }),
     ];
     return { rows, templates: [rent, elec, net, wh, ins, water, acct] };
   }
@@ -416,10 +416,14 @@ describe('listMonth', () => {
     expect(byName['ค่าไฟ']).toMatchObject({ status: 'PAID_UNPOSTED', paidByName: 'สมหญิง', paidNote: 'ตัดบัตรอัตโนมัติ' });
     expect(byName['อินเทอร์เน็ต']).toMatchObject({ status: 'OVERDUE', daysOverdue: 2, documentMissing: false, document: expect.objectContaining({ number: 'EX-20261021-0002', status: 'DRAFT' }) });
     expect(byName['ค่าเช่าโกดัง']).toMatchObject({ status: 'DUE_TODAY', documentMissing: true, branch: { id: 'br-2', name: 'บางนา' } });
+    expect(byName['ค่าเช่าโกดัง'].document).toMatchObject({ number: 'EX-20261023-0005', deletedAt: expect.any(String) }); // หน้าเว็บโชว์ "EX-… ถูกลบ 25 ต.ค." (§15.2)
+    expect(byName['อินเทอร์เน็ต'].document).toMatchObject({ deletedAt: null });
     expect(byName['ประกันภัยร้าน']).toMatchObject({ status: 'PENDING', daysUntilDue: 3, periodLabel: 'ปี 2569', document: expect.objectContaining({ number: 'EX-20261026-0001', status: 'DRAFT' }) });
     expect(byName['ค่าน้ำ']).toMatchObject({ status: 'UPCOMING', occurrenceId: null, awaitingSystem: false, periodKey: '2026-10', expectedAmount: '900' });
     expect(byName['ค่าน้ำ'].dueDate).toBe(bkkMidnight(2026, 10, 31).toISOString());
-    expect(byName['ค่าทำบัญชี']).toMatchObject({ status: 'SKIPPED', skippedByName: 'เอก', periodLabel: 'ไตรมาส 4/2569' });
+    expect(byName['ค่าน้ำ'].windowOpensOn).toBe(bkkMidnight(2026, 10, 28).toISOString()); // lead 3 → หน้าเว็บบอก "ระบบจะสร้างร่าง 28 ต.ค."
+    expect(byName['อินเทอร์เน็ต'].windowOpensOn).toBe(bkkMidnight(2026, 10, 21).toISOString());
+    expect(byName['ค่าทำบัญชี']).toMatchObject({ status: 'SKIPPED', skippedByName: 'เอก', periodLabel: 'ไตรมาส 4/2569', skippedAt: bkkNoon(2026, 10, 3).toISOString() });
     expect(view.summary).toEqual({ upcoming: 1, pending: 1, dueToday: 1, overdue: 1, paid: 1, paidUnposted: 1, skipped: 1, amountRemaining: '33084.00' });
     expect(prisma.recurringBillOccurrence.findMany.mock.calls[0][0].where).toMatchObject({ dueDate: { gte: bkkMidnight(2026, 10, 1), lt: bkkMidnight(2026, 11, 1) } });
   });

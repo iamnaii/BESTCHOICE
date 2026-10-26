@@ -24,7 +24,7 @@ on:
         default: false
 
 env:
-  NODE_VERSION: '20'
+  NODE_VERSION: '24'
   GAR_LOCATION: asia-southeast1
   API_IMAGE: asia-southeast1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/bestchoice/api
 

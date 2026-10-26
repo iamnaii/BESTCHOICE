@@ -39,10 +39,13 @@ it.each(['detail', 'submit-review'])(
     const db = {
       contract: { findUnique: jest.fn().mockResolvedValue(contract), update: jest.fn() },
       creditCheck: { findFirst: jest.fn().mockResolvedValue(null) },
+      // epic: workflow transitions verify the actor is a legacy (unmanaged) user before proceeding
+      user: { findUnique: jest.fn().mockResolvedValue({ accessManaged: false }) },
     };
     const query = new ContractQueryService(db as unknown as PrismaService);
+    // ContractWorkflowService.prisma is a getter over basePrisma (domain-access client); seed the base.
     const workflow = Object.assign(Object.create(ContractWorkflowService.prototype), {
-      prisma: db,
+      basePrisma: db,
     }) as ContractWorkflowService;
     const response =
       endpoint === 'detail'

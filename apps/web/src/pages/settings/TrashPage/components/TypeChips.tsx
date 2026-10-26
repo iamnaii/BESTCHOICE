@@ -7,6 +7,7 @@ interface Props {
 }
 
 const CHIP = 'inline-flex min-h-11 lg:min-h-9 items-center gap-2 rounded-full border px-3 text-sm transition-colors';
+/* ปุ่มกรองแบบ aria-pressed ใน role=group — ไม่ใช่ tablist (ไม่มี tabpanel/ลูกศร) */
 const COUNT = 'inline-flex min-w-5 items-center justify-center rounded-full px-1.5 text-xs font-semibold tabular-nums';
 
 /** chips ประเภท — โชว์เฉพาะประเภทที่มีของ (count > 0) + "ทั้งหมด" */
@@ -19,8 +20,7 @@ export default function TypeChips({ types, value, onChange }: Props) {
       <button
         key={key}
         type="button"
-        role="tab"
-        aria-selected={active}
+        aria-pressed={active}
         data-ui-control="button"
         onClick={() => onChange(key)}
         className={`${CHIP} ${active ? 'border-primary bg-primary text-primary-foreground' : 'border-input bg-background text-foreground hover:bg-muted'}`}
@@ -32,9 +32,9 @@ export default function TypeChips({ types, value, onChange }: Props) {
     );
   };
   return (
-    <div role="tablist" aria-label="ประเภทของที่ถูกลบ" className="flex flex-wrap gap-2">
+    <div role="group" aria-label="ประเภทของที่ถูกลบ" className="flex flex-wrap gap-2">
       {chip('', 'ทั้งหมด', total)}
-      {visible.map((t) => chip(t.type, t.label, t.count, t.restorable ? undefined : '· กู้ผ่านทางอื่น'))}
+      {visible.map((t) => chip(t.type, t.label, t.count, t.hint ? `· ${t.hint}` : undefined))}
     </div>
   );
 }

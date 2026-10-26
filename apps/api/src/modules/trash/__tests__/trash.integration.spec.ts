@@ -2,6 +2,8 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { PrismaClient } from '@prisma/client';
 import { ConflictException, NotFoundException } from '@nestjs/common';
 import { AuditService } from '../../audit/audit.service';
+import { hashPII } from '../../../utils/pii.util';
+import { normalizeThaiPhone } from '../../../utils/thai-phone.util';
 import { TrashService } from '../trash.service';
 
 /**
@@ -19,8 +21,10 @@ const NOW = new Date();
 let ownerId: string;
 let branchId: string;
 
-const customer = (name: string, phoneHash: string, deleted: boolean) =>
-  prisma.customer.create({ data: { name: `${name} ${stamp}`, phone: `08${String(stamp).slice(-8)}`, phoneHash, deletedAt: deleted ? NOW : null } as never });
+/** เบอร์เดียวกันทั้งไฟล์ · phone_hash สูตรเดียวกับ CustomerWriteService (hash ของเบอร์ normalize) — ตัวตรวจซ้ำตอนกู้คำนวณจากเบอร์ ไม่ใช่ hash ที่ค้างในแถว */
+const PHONE = `08${String(stamp).slice(-8)}`;
+const customer = (name: string, deleted: boolean, phone = PHONE) =>
+  prisma.customer.create({ data: { name: `${name} ${stamp}`, phone, phoneHash: hashPII(normalizeThaiPhone(phone)!, process.env.PII_HASH_SALT || ''), deletedAt: deleted ? NOW : null } as never });
 
 beforeAll(async () => {
   ownerId = (await prisma.user.create({ data: { email: `trash-owner-${stamp}@test.local`, password: 'x', name: 'เจ้าของถังขยะ', role: 'OWNER', isActive: true } })).id;
@@ -33,7 +37,7 @@ afterAll(async () => {
 
 describe('trash bin บน Postgres จริง', () => {
   it('I1 + I4: ลูกค้าที่ถูกลบขึ้นในถัง → กู้คืน → กลับมา live · กู้ซ้ำ 404 · audit RESTORED มี rowHash/sequenceNumber', async () => {
-    const a = await customer('ลูกค้า A', `h-a-${stamp}`, true);
+    const a = await customer('ลูกค้า A', true, `09${String(stamp).slice(-8)}`);
     const listed = await service.list({ type: 'customer', q: `ลูกค้า A ${stamp}`, days: 90, page: 1, pageSize: 50 }, NOW);
     expect(listed.data.map((r) => r.id)).toContain(a.id);
     expect(listed.data.find((r) => r.id === a.id)).toMatchObject({ restorable: true, deletedBy: null });
@@ -53,9 +57,8 @@ describe('trash bin บน Postgres จริง', () => {
   });
 
   it('I2: ลูกค้าอีกคนถือเบอร์เดียวกันอยู่ → กู้ 409 และแถวยังถูกลบ', async () => {
-    const hash = `h-dup-${stamp}`;
-    await customer('ลูกค้า B live', hash, false);
-    const c = await customer('ลูกค้า C deleted', hash, true);
+    await customer('ลูกค้า B live', false);
+    const c = await customer('ลูกค้า C deleted', true);
     await expect(service.restore('customer', c.id, { id: ownerId })).rejects.toThrow(ConflictException);
     const still = await prisma.customer.findUnique({ where: { id: c.id }, select: { deletedAt: true } });
     expect(still?.deletedAt).not.toBeNull();
@@ -70,7 +73,7 @@ describe('trash bin บน Postgres จริง', () => {
   });
 
   it('I5: "ลบโดย" มาจากแถว AuditLog action DELETE ที่ใกล้เวลาลบ', async () => {
-    const e = await customer('ลูกค้า E', `h-e-${stamp}`, true);
+    const e = await customer('ลูกค้า E', true, `06${String(stamp).slice(-8)}`);
     await audit.log({ action: 'DELETE', entity: 'customers', entityId: e.id, userId: ownerId });
     const listed = await service.list({ type: 'customer', q: `ลูกค้า E ${stamp}`, days: 90, page: 1, pageSize: 50 }, NOW);
     expect(listed.data.find((r) => r.id === e.id)?.deletedBy).toEqual({ id: ownerId, name: 'เจ้าของถังขยะ', system: false });

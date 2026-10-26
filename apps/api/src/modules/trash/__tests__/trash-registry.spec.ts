@@ -26,9 +26,12 @@ describe('trash registry', () => {
     expect(problems).toEqual([]);
   });
 
-  it('R3 merged customers and non-draft contracts never enter the bin', () => {
+  it('R3 extraWhere mirrors what the delete buttons allow (merged customers, non-draft docs, paid bookings never enter)', () => {
     expect(trashEntry('customer')!.extraWhere).toEqual({ mergedIntoId: null });
     expect(trashEntry('contract')!.extraWhere).toMatchObject({ status: 'DRAFT' });
+    expect(trashEntry('booking')!.extraWhere).toEqual({ status: 'PENDING_DEPOSIT' });
+    expect(trashEntry('repair_ticket')!.extraWhere).toEqual({ status: 'CANCELLED' });
+    for (const t of ['expense_document', 'other_income', 'fixed_asset']) expect(trashEntry(t)!.extraWhere).toEqual({ status: 'DRAFT' });
   });
 
   it('R4 product and contract are not directly restorable; product points at the FOUND request', () => {
@@ -42,12 +45,29 @@ describe('trash registry', () => {
     expect((contract.restorable as { reason: string }).reason).toMatch(/ทำสัญญาใหม่/);
   });
 
-  it('R5 types whose delete flipped a flag come back still disabled and say where to enable (§13.1)', () => {
-    for (const t of ['notification_template', 'sms_template', 'interest_config', 'reverse_reason', 'payment_method_config', 'chat_knowledge', 'external_finance_company', 'supplier', 'branch']) {
+  it('R5 types whose delete flipped a flag and whose page has a switch come back disabled and say where (§13.1)', () => {
+    for (const t of ['sms_template', 'reverse_reason', 'payment_method_config', 'chat_knowledge', 'supplier', 'branch']) {
       const e = trashEntry(t)!;
+      expect(e.restoreData).toBeUndefined();
       expect(e.warnings!({}).some((w) => w.includes('ยังปิดใช้งาน'))).toBe(true);
     }
     expect(trashEntry('promotion')!.warnings).toBeUndefined();
+    // ไม่มีสวิตช์บนหน้าจอ → กู้แล้วเปิดใช้งานเลย พร้อมเตือน (รีวิว Important 1)
+    expect(trashEntry('notification_template')!.restoreData!({})).toEqual({ isActive: true });
+    expect(trashEntry('notification_template')!.warnings!({}).some((w) => w.includes('ส่งตาม event ทันที'))).toBe(true);
+    expect(trashEntry('interest_config')!.restoreData!({})).toEqual({ isActive: true });
+    expect(trashEntry('interest_config')!.check).toBeDefined();
+    // การลบไฟแนนซ์นอกไม่ได้ปิด flag → ไม่เตือนเรื่องปิดใช้งาน
+    expect(trashEntry('external_finance_company')!.warnings).toBeUndefined();
+    expect(trashEntry('sms_template')!.warnings!({})[0]).toContain('สื่อสารลูกค้า');
+  });
+
+  it('R9 expense documents retired by the recurring-bill system (audit newValue.reason) are blocked', () => {
+    const e = trashEntry('expense_document')!;
+    expect(e.auditBlocks!({ newValue: { reason: 'RULE_CHANGED' } })).toMatch(/บิลประจำ/);
+    expect(e.auditBlocks!({ newValue: { deletedAt: 'x' } })).toBeNull();
+    expect(e.auditBlocks!({ newValue: null })).toBeNull();
+    expect(trashEntry('customer')!.auditBlocks).toBeUndefined();
   });
 
   it('R6 customer row masks the phone', () => {

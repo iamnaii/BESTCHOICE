@@ -16,7 +16,7 @@ const mkDelegate = (): Delegate => ({
   findFirst: jest.fn().mockResolvedValue(null),
   count: jest.fn().mockResolvedValue(0),
   findMany: jest.fn().mockResolvedValue([]),
-  updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+  updateMany: jest.fn().mockResolvedValue({ count: 1 }), // compare-and-set ชนะโดยปริยาย · เทสที่ทดสอบการแพ้ override เป็น 0
 });
 
 function harness(overrides: Record<string, Partial<Delegate>> = {}) {
@@ -65,10 +65,10 @@ describe('TrashService.restore', () => {
     await expect(service.restore('promotion', 'pr1', ACTOR)).rejects.toThrow(NotFoundException);
   });
 
-  it('TR4 generic restore writes only deletedAt:null and returns the registry warnings', async () => {
-    const { service, delegate } = harness({ notificationTemplate: { findUnique: jest.fn().mockResolvedValue({ id: 'nt1', eventType: 'X', name: 'x', deletedAt: NOW }) } });
-    const result = await service.restore('notification_template', 'nt1', ACTOR);
-    expect(delegate('notificationTemplate').update).toHaveBeenCalledWith({ where: { id: 'nt1' }, data: { deletedAt: null } });
+  it('TR4 generic restore = compare-and-set updateMany(deletedAt not null + extraWhere) and the registry warnings', async () => {
+    const { service, delegate } = harness({ smsTemplate: { findUnique: jest.fn().mockResolvedValue({ id: 'nt1', name: 'x', deletedAt: NOW }) } });
+    const result = await service.restore('sms_template', 'nt1', ACTOR);
+    expect(delegate('smsTemplate').updateMany).toHaveBeenCalledWith({ where: { id: 'nt1', deletedAt: { not: null } }, data: { deletedAt: null } });
     expect(result.ok).toBe(true);
     expect(result.warnings.some((w) => w.includes('ยังปิดใช้งาน'))).toBe(true);
   });
@@ -82,7 +82,7 @@ describe('TrashService.restore', () => {
   });
 
   it('TR6 unique violation that slipped past the pre-check → 409 ภาษาไทย', async () => {
-    const { service } = harness({ promotion: { findUnique: jest.fn().mockResolvedValue({ id: 'pr1', name: 'โปร', deletedAt: NOW }), update: jest.fn().mockRejectedValue(Object.assign(new Error('dup'), { code: 'P2002' })) } });
+    const { service } = harness({ promotion: { findUnique: jest.fn().mockResolvedValue({ id: 'pr1', name: 'โปร', deletedAt: NOW }), updateMany: jest.fn().mockRejectedValue(Object.assign(new Error('dup'), { code: 'P2002' })) } });
     await expect(service.restore('promotion', 'pr1', ACTOR)).rejects.toThrow(ConflictException);
   });
 
@@ -119,9 +119,43 @@ describe('TrashService.restore', () => {
 
   it('TR11 every restorable entry can be restored through the generic path (smoke)', async () => {
     for (const entry of TRASH_REGISTRY.filter((e) => e.restorable === true && !e.check)) {
-      const { service, delegate } = harness({ [entry.model]: { findUnique: jest.fn().mockResolvedValue({ id: 'r1', deletedAt: NOW, roles: [] }) } });
+      const { service, delegate } = harness({ [entry.model]: { findUnique: jest.fn().mockResolvedValue({ id: 'r1', deletedAt: NOW, ...(entry.extraWhere ?? {}) }) } });
       await service.restore(entry.type, 'r1', ACTOR);
-      expect(delegate(entry.model).update).toHaveBeenCalledWith({ where: { id: 'r1' }, data: { deletedAt: null } });
+      expect(delegate(entry.model).updateMany).toHaveBeenCalledWith({ where: { id: 'r1', deletedAt: { not: null }, ...(entry.extraWhere ?? {}) }, data: { deletedAt: null, ...(entry.restoreData?.({}) ?? {}) } });
+    }
+  });
+
+  it('TR9 a merged customer placeholder is not restorable even by id (Review Focus 3)', async () => {
+    const { service, delegate } = harness({ customer: { findUnique: jest.fn().mockResolvedValue({ id: 'c1', name: 'x', phone: null, phoneHash: null, email: null, mergedIntoId: 'c9', deletedAt: NOW }) } });
+    await expect(service.restore('customer', 'c1', ACTOR)).rejects.toThrow(NotFoundException);
+    expect(delegate('customer').updateMany).not.toHaveBeenCalled();
+  });
+
+  it('TR12 compare-and-set: a concurrent restore that already cleared deletedAt → 404, no audit', async () => {
+    const { service, audit } = harness({ promotion: { findUnique: jest.fn().mockResolvedValue({ id: 'pr1', name: 'โปร', deletedAt: NOW }), updateMany: jest.fn().mockResolvedValue({ count: 0 }) } });
+    await expect(service.restore('promotion', 'pr1', ACTOR)).rejects.toThrow(NotFoundException);
+    expect(audit.log).not.toHaveBeenCalled();
+  });
+
+  it('TR13 an expense draft the recurring-bill system retired (audit newValue.reason) → 400', async () => {
+    const { service, auditLog, delegate } = harness({ expenseDocument: { findUnique: jest.fn().mockResolvedValue({ id: 'e1', number: 'EX-1', status: 'DRAFT', deletedAt: NOW }) } });
+    auditLog.findMany.mockResolvedValue([{ entityId: 'e1', createdAt: NOW, newValue: { reason: 'SKIPPED' }, user: { id: 'u-ek', name: 'เอก', isSystemUser: false } }]);
+    await expect(service.restore('expense_document', 'e1', ACTOR)).rejects.toThrow(/บิลประจำ/);
+    expect(delegate('expenseDocument').updateMany).not.toHaveBeenCalled();
+  });
+
+  it('TR14 per-type check runs as the first statement of the transaction (before any read)', async () => {
+    const order: string[] = [];
+    const { service, tx } = harness({ promotion: { findUnique: jest.fn().mockResolvedValue({ id: 'pr1', name: 'โปร', deletedAt: NOW }) } });
+    const entry = trashEntry('promotion')!;
+    const original = entry.check;
+    (entry as { check?: unknown }).check = jest.fn(async () => { order.push('check'); });
+    tx.promotion.updateMany.mockImplementation(async () => { order.push('updateMany'); return { count: 1 }; });
+    try {
+      await service.restore('promotion', 'pr1', ACTOR);
+      expect(order).toEqual(['check', 'updateMany']);
+    } finally {
+      (entry as { check?: unknown }).check = original;
     }
   });
 });

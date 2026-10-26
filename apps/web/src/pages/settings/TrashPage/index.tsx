@@ -47,6 +47,8 @@ export default function TrashPage() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [target, setTarget] = useState<RestoreTarget | null>(null);
   const [bulkResults, setBulkResults] = useState<TrashBulkResultItem[] | null>(null);
+  /** แถวที่ส่งกู้ — เก็บไว้ให้สรุปผลแสดงชื่อ แม้ list โหลดใหม่แล้วแถวหายไป */
+  const [bulkRows, setBulkRows] = useState<TrashRow[]>([]);
 
   const types = useTrashTypes(days);
   const list = useTrashList({ type, q, days, page, pageSize: PAGE_SIZE });
@@ -100,6 +102,7 @@ export default function TrashPage() {
       });
       return;
     }
+    setBulkRows(target.rows);
     restoreBulk.mutate(target.rows, {
       onSuccess: (res) => {
         setTarget(null);
@@ -185,7 +188,7 @@ export default function TrashPage() {
       )}
 
       <RestoreConfirmDialog target={target} loading={restore.isPending || restoreBulk.isPending} onConfirm={confirm} onCancel={() => setTarget(null)} />
-      <BulkResultDialog results={bulkResults} rowsByKey={rowsByKey} onClose={() => setBulkResults(null)} />
+      <BulkResultDialog results={bulkResults} rowsByKey={new Map(bulkRows.map((r) => [trashRowKey(r), r]))} onClose={() => setBulkResults(null)} />
     </div>
   );
 }

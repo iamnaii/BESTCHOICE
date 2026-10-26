@@ -56,6 +56,28 @@ describe('TrashService.list / listTypes', () => {
     expect(result).toMatchObject({ total: 4, capped: true });
   });
 
+  it('TS2b capped total = Σ min(count, 50) so the last page is never empty', async () => {
+    const { prisma } = makePrisma({ customer: { count: jest.fn().mockResolvedValue(80) }, booking: { count: jest.fn().mockResolvedValue(2) } });
+    const result = await service(prisma).list({ days: 90, page: 1, pageSize: 50 }, NOW);
+    expect(result.total).toBe(52);
+  });
+
+  it('TS6 a type with no searchFields returns nothing when searching (never leaks every row)', async () => {
+    const { prisma, delegate } = makePrisma({ gfinRateFactor: { findMany: jest.fn().mockResolvedValue([{ id: 'g1', months: 12, deletedAt: NOW }]), count: jest.fn().mockResolvedValue(1) } });
+    const result = await service(prisma).list({ type: 'gfin_rate_factor', q: '12', days: 0, page: 1, pageSize: 50 }, NOW);
+    expect(result.data).toEqual([]);
+    expect(delegate('gfinRateFactor').findMany).not.toHaveBeenCalled();
+  });
+
+  it('TS3b an expense draft retired by the system (audit newValue.reason) is listed but not restorable', async () => {
+    const { prisma, auditLog } = makePrisma({ expenseDocument: { findMany: jest.fn().mockResolvedValue([{ id: 'e1', number: 'EX-1', status: 'DRAFT', deletedAt: NOW }]), count: jest.fn().mockResolvedValue(1) } });
+    auditLog.findMany.mockResolvedValue([{ entityId: 'e1', createdAt: NOW, newValue: { reason: 'SKIPPED' }, user: { id: 'u-ek', name: 'เอก', isSystemUser: false } }]);
+    const [row] = (await service(prisma).list({ type: 'expense_document', days: 0, page: 1, pageSize: 50 }, NOW)).data;
+    expect(row.deletedBy).toMatchObject({ name: 'เอก' });
+    expect(row.restorable).toBe(false);
+    expect(row.reason).toMatch(/บิลประจำ/);
+  });
+
   it('TS3 deletedBy: nearest DELETE audit within 10 min, by (entity, entityId); none → null; system user → not restorable', async () => {
     const { prisma, auditLog } = makePrisma({
       expenseDocument: { findMany: jest.fn().mockResolvedValue([

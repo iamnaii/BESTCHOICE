@@ -22,18 +22,18 @@ export function restoreEffects(row: Pick<TrashRow, 'type' | 'typeLabel'>): strin
   const base = [`${row.typeLabel}จะกลับมาแสดงและใช้งานได้ทันที`, 'บันทึกในประวัติการดำเนินการว่าเจ้าของกู้คืนเมื่อไร'];
   switch (row.type) {
     case 'customer':
-      return [base[0], 'ระบบตรวจเบอร์/อีเมลซ้ำกับลูกค้าที่ยังอยู่ก่อน — ถ้าซ้ำจะไม่กู้และบอกว่าซ้ำกับใคร', 'สัญญา แท็ก ห้องแชท ประวัติเดิม ไม่ถูกแตะ', base[1]];
+      return [base[0], 'ระบบตรวจเบอร์/อีเมลซ้ำกับลูกค้าที่ยังอยู่ก่อน — ถ้าซ้ำจะไม่กู้และบอกว่าซ้ำกับใคร', 'สัญญา ห้องแชท ประวัติเดิมไม่ถูกแตะ · แท็กอัตโนมัติคำนวณใหม่', base[1]];
     case 'expense_document':
     case 'other_income':
     case 'fixed_asset':
       return [base[0], 'กู้ได้เฉพาะฉบับร่าง · ถ้าเลขที่ถูกออกให้ใบใหม่แล้วระบบจะแจ้ง', base[1]];
     case 'notification_template':
-    case 'sms_template':
     case 'interest_config':
+      return [`${row.typeLabel}จะกลับมาเปิดใช้ทันที (หน้านั้นไม่มีสวิตช์เปิด/ปิด)`, base[1]];
+    case 'sms_template':
     case 'reverse_reason':
     case 'payment_method_config':
     case 'chat_knowledge':
-    case 'external_finance_company':
     case 'supplier':
     case 'branch':
       return [`${row.typeLabel}จะกลับมาแบบ "ปิดใช้งาน" — เปิดใช้เองที่หน้านั้นอีกครั้ง`, base[1]];

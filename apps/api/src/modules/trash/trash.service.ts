@@ -85,7 +85,14 @@ export interface TrashBulkResult {
 interface AuditHit {
   entityId: string;
   createdAt: Date;
+  newValue: unknown;
   user: { id: string; name: string; isSystemUser: boolean } | null;
+}
+
+/** ผลหา "ใครลบ" ต่อแถว + เหตุผลที่กู้ไม่ได้จากแถว audit (ระบบลบเอง / ร่างบิลประจำถูกแทน) */
+export interface TrashDeletionInfo {
+  deletedBy: TrashDeletedBy | null;
+  block: string | null;
 }
 
 @Injectable()
@@ -100,7 +107,7 @@ export class TrashService {
 
   // ─── อ่าน ─────────────────────────────────────────────────────────────────────────────
 
-  async listTypes(days: number, now: Date = new Date()): Promise<Array<{ type: TrashType; label: string; group: string; count: number; restorable: boolean }>> {
+  async listTypes(days: number, now: Date = new Date()): Promise<Array<{ type: TrashType; label: string; group: string; count: number; restorable: boolean; hint?: string }>> {
     return Promise.all(
       TRASH_REGISTRY.map(async (entry) => ({
         type: entry.type,
@@ -108,6 +115,7 @@ export class TrashService {
         group: entry.group,
         count: await this.delegate(entry).count({ where: this.deletedWhere(entry, days, now) }),
         restorable: entry.restorable === true,
+        hint: entry.restorable !== true && entry.restorable.actionLabel ? `กู้ผ่าน${entry.restorable.actionLabel.replace(/^ขอ/, 'คำขอ')}` : undefined,
       })),
     );
   }
@@ -121,6 +129,7 @@ export class TrashService {
     const fetched = await Promise.all(
       entries.map(async (entry) => {
         const where = this.searchWhere(entry, query.q, this.deletedWhere(entry, query.days, now));
+        if (!where) return { entry, rows: [] as TrashAnyRow[], count: 0 }; // ค้นหาในประเภทที่ไม่มีฟิลด์ค้น = ไม่มีผล (ไม่ใช่ทุกแถว)
         const delegate = this.delegate(entry);
         const [rows, count] = await Promise.all([
           delegate.findMany({
@@ -140,20 +149,21 @@ export class TrashService {
       .flatMap(({ entry, rows }) => rows.map((row) => ({ entry, row })))
       .sort((a, b) => new Date(b.row.deletedAt).getTime() - new Date(a.row.deletedAt).getTime());
     const pageItems = single ? merged : merged.slice((page - 1) * pageSize, page * pageSize);
-    const deletedBy = await this.resolveDeletedBy(pageItems);
+    const deletion = await this.resolveDeletedBy(pageItems);
 
     return {
-      data: pageItems.map(({ entry, row }) => this.toTrashRow(entry, row, deletedBy.get(`${entry.type}:${row.id}`) ?? null)),
-      total: fetched.reduce((sum, f) => sum + f.count, 0),
+      data: pageItems.map(({ entry, row }) => this.toTrashRow(entry, row, deletion.get(`${entry.type}:${row.id}`) ?? { deletedBy: null, block: null })),
+      // ดูรวม: ข้อมูลถูกตัดที่ PER_TYPE_CAP ต่อประเภท ⇒ total ต้องนับเท่าที่แสดงได้ ไม่งั้นหน้าท้าย ๆ ว่าง
+      total: fetched.reduce((sum, f) => sum + (single ? f.count : Math.min(f.count, TRASH_PER_TYPE_CAP)), 0),
       page,
       pageSize,
       capped: !single,
     };
   }
 
-  /** ใครลบ — แถว AuditLog การลบที่ใกล้ `deletedAt` ที่สุดภายใน ±10 นาที · ค้นด้วย (entity, entityId) ตาม index */
-  async resolveDeletedBy(items: Array<{ entry: TrashEntry; row: TrashAnyRow }>): Promise<Map<string, TrashDeletedBy | null>> {
-    const result = new Map<string, TrashDeletedBy | null>();
+  /** ใครลบ — แถว AuditLog การลบที่ใกล้ `deletedAt` ที่สุดภายใน ±10 นาที · ค้นด้วย (entity, entityId) ตาม index · + เหตุผลบล็อกจาก audit */
+  async resolveDeletedBy(items: Array<{ entry: TrashEntry; row: TrashAnyRow }>): Promise<Map<string, TrashDeletionInfo>> {
+    const result = new Map<string, TrashDeletionInfo>();
     if (items.length === 0) return result;
     const auditIdOf = (entry: TrashEntry, row: TrashAnyRow) => (entry.auditEntityId ? entry.auditEntityId(row) : row.id);
     const byEntry = new Map<TrashEntry, string[]>();
@@ -167,7 +177,7 @@ export class TrashService {
         action: { in: DELETE_AUDIT_ACTIONS },
         OR: [...byEntry.entries()].map(([entry, ids]) => ({ entity: { in: entry.auditEntities }, entityId: { in: ids } })),
       },
-      select: { entityId: true, createdAt: true, user: { select: { id: true, name: true, isSystemUser: true } } },
+      select: { entityId: true, createdAt: true, newValue: true, user: { select: { id: true, name: true, isSystemUser: true } } },
     })) as AuditHit[];
     for (const { entry, row } of items) {
       const auditId = auditIdOf(entry, row);
@@ -179,7 +189,10 @@ export class TrashService {
         if (distance > TRASH_AUDIT_MATCH_WINDOW_MS) continue;
         if (!best || distance < Math.abs(new Date(best.createdAt).getTime() - deletedAt)) best = hit;
       }
-      result.set(`${entry.type}:${row.id}`, best?.user ? { id: best.user.id, name: best.user.name, system: !!best.user.isSystemUser } : null);
+      result.set(`${entry.type}:${row.id}`, {
+        deletedBy: best?.user ? { id: best.user.id, name: best.user.name, system: !!best.user.isSystemUser } : null,
+        block: best ? (entry.auditBlocks?.({ newValue: best.newValue }) ?? null) : null,
+      });
     }
     return result;
   }
@@ -203,20 +216,22 @@ export class TrashService {
     // ตรวจนอก tx ก่อน: ยังอยู่ในถังจริง · ไม่ใช่ของที่ระบบลบเอง (สเปก §13.3)
     const peek = (await delegate.findUnique({ where: { id }, select: entry.select })) as TrashAnyRow | null;
     if (!peek || !peek.deletedAt || !this.matchesExtraWhere(entry, peek)) throw new NotFoundException(NOT_IN_TRASH_MESSAGE);
-    const deletedBy = (await this.resolveDeletedBy([{ entry, row: peek }])).get(`${entry.type}:${id}`);
-    if (deletedBy?.system) throw new BadRequestException(SYSTEM_DELETED_REASON);
+    const deletion = (await this.resolveDeletedBy([{ entry, row: peek }])).get(`${entry.type}:${id}`);
+    if (deletion?.block) throw new BadRequestException(deletion.block);
+    if (deletion?.deletedBy?.system) throw new BadRequestException(SYSTEM_DELETED_REASON);
 
-    let row: TrashAnyRow;
+    const row: TrashAnyRow = peek;
+    const data = { deletedAt: null, ...(entry.restoreData?.(row) ?? {}) };
     try {
-      row = await this.prisma.$transaction(async (tx) => {
-        const txDelegate = (tx as unknown as Record<string, { findUnique: (args: unknown) => Promise<unknown>; update: (args: unknown) => Promise<unknown> }>)[entry.model];
-        const current = (await txDelegate.findUnique({ where: { id }, select: entry.select })) as TrashAnyRow | null;
-        if (!current || !current.deletedAt) throw new NotFoundException(NOT_IN_TRASH_MESSAGE);
+      await this.prisma.$transaction(async (tx) => {
         const ctx = { tx, actorId: actor.id };
-        await entry.check?.(ctx, current);
-        await txDelegate.update({ where: { id }, data: { deletedAt: null } });
-        await entry.restoreExtra?.(ctx, current);
-        return current;
+        // check ก่อนทุกอย่าง — ล็อกเบอร์ลูกค้าต้องเป็นคำสั่งแรกของ tx (database.md)
+        await entry.check?.(ctx, row);
+        // compare-and-set: กู้พร้อมกันสองครั้งได้แถวเดียว · extraWhere ตัดสินที่ DB
+        const txDelegate = (tx as unknown as Record<string, { updateMany: (args: unknown) => Promise<{ count: number }> }>)[entry.model];
+        const { count } = await txDelegate.updateMany({ where: { id, deletedAt: { not: null }, ...(entry.extraWhere ?? {}) }, data });
+        if (count !== 1) throw new NotFoundException(NOT_IN_TRASH_MESSAGE);
+        await entry.restoreExtra?.(ctx, row);
       });
     } catch (err) {
       if ((err as { code?: string })?.code === 'P2002') throw new ConflictException('กู้ไม่ได้: ข้อมูลซ้ำกับรายการที่ยังใช้งานอยู่');
@@ -241,7 +256,7 @@ export class TrashService {
       entityId: id,
       userId: actor.id,
       oldValue: { deletedAt: new Date(row.deletedAt).toISOString() },
-      newValue: { changes: ['deletedAt'], warnings },
+      newValue: { changes: Object.keys(data), warnings },
     });
 
     return { ok: true, warnings, link: entry.toRow(row).link };
@@ -296,15 +311,19 @@ export class TrashService {
     return { deletedAt, ...(entry.extraWhere ?? {}) };
   }
 
-  protected searchWhere(entry: TrashEntry, q: string | undefined, base: Record<string, unknown>): Record<string, unknown> {
+  /** null = ประเภทนี้ค้นไม่ได้ (ไม่มีฟิลด์ข้อความ) จึงไม่มีผลเมื่อมีคำค้น */
+  protected searchWhere(entry: TrashEntry, q: string | undefined, base: Record<string, unknown>): Record<string, unknown> | null {
     const term = q?.trim();
-    if (!term || entry.searchFields.length === 0) return base;
+    if (!term) return base;
+    if (entry.searchFields.length === 0) return null;
     return { ...base, OR: entry.searchFields.map((field) => ({ [field]: { contains: term, mode: 'insensitive' } })) };
   }
 
-  protected toTrashRow(entry: TrashEntry, row: TrashAnyRow, deletedBy: TrashDeletedBy | null): TrashRow {
+  protected toTrashRow(entry: TrashEntry, row: TrashAnyRow, deletion: TrashDeletionInfo): TrashRow {
     const view = entry.toRow(row);
+    const { deletedBy, block } = deletion;
     const base = { type: entry.type, typeLabel: entry.label, group: entry.group, id: row.id as string, title: view.title, subtitle: view.subtitle, deletedAt: row.deletedAt as Date, deletedBy, link: view.link };
+    if (block) return { ...base, restorable: false, reason: block };
     if (deletedBy?.system) return { ...base, restorable: false, reason: SYSTEM_DELETED_REASON };
     if (entry.restorable === true) return { ...base, restorable: true };
     return { ...base, restorable: false, reason: entry.restorable.reason, actionLabel: entry.restorable.actionLabel, link: entry.restorable.linkFor?.(row) ?? view.link };

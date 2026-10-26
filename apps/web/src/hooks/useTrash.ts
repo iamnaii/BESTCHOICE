@@ -13,6 +13,8 @@ export interface TrashTypeInfo {
   group: string;
   count: number;
   restorable: boolean;
+  /** ประเภทที่กู้ตรงไม่ได้แต่มีทางอื่น เช่น "กู้ผ่านคำขอพบของคืน" */
+  hint?: string;
 }
 
 export interface TrashDeletedBy {

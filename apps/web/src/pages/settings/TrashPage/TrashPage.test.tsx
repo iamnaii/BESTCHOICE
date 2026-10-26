@@ -21,7 +21,7 @@ const TYPES = [
   { type: 'booking', label: 'ใบจอง', group: 'ลูกค้าและการขาย', count: 1, restorable: true },
   { type: 'contract', label: 'ร่างสัญญา', group: 'ลูกค้าและการขาย', count: 1, restorable: false },
   { type: 'promotion', label: 'โปรโมชัน', group: 'ตั้งค่า', count: 0, restorable: true },
-  { type: 'product', label: 'สินค้า', group: 'สินค้า', count: 1, restorable: false },
+  { type: 'product', label: 'สินค้า', group: 'สินค้า', count: 1, restorable: false, hint: 'กู้ผ่านคำขอพบของคืน' },
 ];
 const ROWS = [
   { type: 'customer', typeLabel: 'ลูกค้า / ผู้สนใจ', group: 'ลูกค้าและการขาย', id: 'c1', title: 'สมหญิง ทองดี', subtitle: 'โทร 08x-xxx-1234', deletedAt: '2026-10-25T07:02:00.000Z', deletedBy: { id: 'u-ek', name: 'เอก', system: false }, restorable: true, link: '/customers/c1' },
@@ -47,9 +47,12 @@ beforeEach(() => {
 describe('TrashPage', () => {
   it('T1 แสดง chips ที่มีของ แถวกู้ได้/ชี้ทาง/กู้ไม่ได้ และผู้ลบ', async () => {
     wrap();
-    expect(await screen.findByRole('tab', { name: /ทั้งหมด/ })).toBeInTheDocument();
-    expect(await screen.findByRole('tab', { name: /ลูกค้า \/ ผู้สนใจ/ })).toHaveTextContent('2');
-    expect(screen.queryByRole('tab', { name: /โปรโมชัน/ })).not.toBeInTheDocument(); // count 0 ไม่โชว์
+    const chips = within(await screen.findByRole('group', { name: 'ประเภทของที่ถูกลบ' }));
+    expect(chips.getByRole('button', { name: /ทั้งหมด/ })).toHaveAttribute('aria-pressed', 'true');
+    expect(await chips.findByRole('button', { name: /ลูกค้า \/ ผู้สนใจ/ })).toHaveTextContent('2');
+    expect(chips.queryByRole('button', { name: /โปรโมชัน/ })).not.toBeInTheDocument(); // count 0 ไม่โชว์
+    expect(chips.getByRole('button', { name: /สินค้า/ })).toHaveTextContent('กู้ผ่านคำขอพบของคืน');
+    expect(chips.getByRole('button', { name: /ร่างสัญญา/ })).not.toHaveTextContent('กู้ผ่าน');
 
     const customer = await screen.findByRole('row', { name: /สมหญิง ทองดี/ });
     expect(within(customer).getByRole('button', { name: 'กู้คืน' })).toBeInTheDocument();
@@ -70,7 +73,7 @@ describe('TrashPage', () => {
   it('T2 กด chip ประเภท → ขอรายการเฉพาะประเภทนั้น', async () => {
     const user = userEvent.setup();
     wrap();
-    await user.click(await screen.findByRole('tab', { name: /ลูกค้า \/ ผู้สนใจ/ }));
+    await user.click(await screen.findByRole('button', { name: /ลูกค้า \/ ผู้สนใจ/ }));
     await waitFor(() => expect(lastListParams()).toMatchObject({ type: 'customer', days: 90, page: 1 }));
   });
 
@@ -107,7 +110,10 @@ describe('TrashPage', () => {
 
   it('T6 เลือกหลายรายการ → กู้คืนที่เลือก → POST bulk → สรุปผลรายตัว', async () => {
     const user = userEvent.setup();
-    apiMock.post.mockResolvedValue({ data: { results: [{ type: 'customer', id: 'c1', ok: true, warnings: [] }, { type: 'booking', id: 'b1', ok: false, error: 'เครื่องถูกใบจอง BK-9 ล็อกอยู่' }] } });
+    apiMock.post.mockImplementation(async () => {
+      apiMock.get.mockImplementation(async (path: string) => ({ data: path === '/trash/types' ? { types: TYPES } : listResponse(ROWS.filter((r) => r.id !== 'c1')) }));
+      return { data: { results: [{ type: 'customer', id: 'c1', ok: true, warnings: [] }, { type: 'booking', id: 'b1', ok: false, error: 'เครื่องถูกใบจอง BK-9 ล็อกอยู่' }] } };
+    });
     wrap();
     await user.click(await screen.findByRole('checkbox', { name: /เลือก สมหญิง/ }));
     await user.click(screen.getByRole('checkbox', { name: /เลือก BK-20261024-0007/ }));
@@ -117,6 +123,9 @@ describe('TrashPage', () => {
     const result = await screen.findByRole('dialog', { name: /สำเร็จ 1/ });
     expect(result).toHaveTextContent('ไม่สำเร็จ 1');
     expect(result).toHaveTextContent('BK-9');
+    // รีวิว Minor 1 — ชื่อรายการต้องอยู่แม้ list โหลดใหม่แล้วแถวหายไป
+    expect(result).toHaveTextContent('สมหญิง ทองดี');
+    expect(result).toHaveTextContent('BK-20261024-0007');
   });
 
   it('T7 ว่าง → ข้อความ + "ดูทั้งหมด" ขอ days=0', async () => {

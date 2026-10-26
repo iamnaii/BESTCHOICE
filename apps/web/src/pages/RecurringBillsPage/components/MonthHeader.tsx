@@ -1,5 +1,6 @@
 import { CalendarClock, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { NativeSelect } from '@/components/ui/native-select';
 import { currentMonthKey, monthTitle, shiftMonth } from './labels';
 
 interface MonthHeaderProps {
@@ -36,17 +37,12 @@ export function MonthHeader({ month, onMonthChange, branchId, onBranchChange, br
           </Button>
         </div>
         {showBranch && (
-          <select
-            aria-label="สาขา"
-            value={branchId}
-            onChange={(e) => onBranchChange(e.target.value)}
-            className="h-8 rounded-md border border-input bg-background px-2 text-xs text-foreground"
-          >
+          <NativeSelect aria-label="สาขา" wrapperClassName="w-auto" value={branchId} onChange={(e) => onBranchChange(e.target.value)}>
             <option value="">ทุกสาขา</option>
             {branches.map((b) => (
               <option key={b.id} value={b.id}>{b.name}</option>
             ))}
-          </select>
+          </NativeSelect>
         )}
         <Button variant="primary" size="sm" onClick={onCreate}>+ บิลประจำ</Button>
       </div>

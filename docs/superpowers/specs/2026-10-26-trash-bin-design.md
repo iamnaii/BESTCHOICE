@@ -153,3 +153,15 @@ Sale · Payment · InstallmentSchedule · FinanceReceivable · Receipt/LoyaltyPo
 
 - ไม่มี migration · ไม่มี env ใหม่ · ไม่มีข้อมูลต้อง backfill
 - หลัง deploy เจ้าของเปิด ตั้งค่า › ระบบ › ถังขยะ ตรวจว่ารายการล่าสุดตรงกับที่รู้ว่าถูกลบไป (เช่น ลูกค้าที่ลบผิดล่าสุด) แล้วลองกู้ 1 รายการ
+
+## 13. ส่วนแก้หลัง builder-check (ทับข้อที่ขัดกันข้างบน — คำตัดสินของผู้เขียน เจ้าของทบทวน)
+
+13.1 **กู้แล้วกลับมาแบบ "ปิดใช้งาน"** สำหรับประเภทที่การลบตั้ง flag (`isActive`/`active`/`enabled` = false): notification_template · sms_template · interest_config · reverse_reason · payment_method_config · chat_knowledge · external_finance_company · supplier · branch — restore ล้างแค่ `deletedAt` และเตือน "กู้แล้วยังปิดใช้งานอยู่ — เปิดได้ที่หน้า <ชื่อหน้า>" (ทุกหน้ามีสวิตช์เปิด/ปิดใน update DTO อยู่แล้ว) — **กลับคำตัดสิน §11 ข้อ 1** เหตุผล: การลบเขียนทับ flag โดยไม่เก็บค่าเดิม และ `interest_config` ถูกเลือกแบบ "ตัวที่เปิดอยู่และสร้างก่อนชนะ" การกู้แบบเปิดทันทีจะเปลี่ยนดอกเบี้ย/ค่างวดของทั้งหมวดโดยไม่มีใครรู้
+13.2 **ลูกค้าที่ห้องแชทถูกผูกไปกับผู้สนใจใหม่** (`ensureForRoom` สร้าง placeholder ใหม่เมื่อลูกค้าเดิมถูกลบ): ไม่รวมอัตโนมัติ · หลังกู้ ถ้าลูกค้าไม่มี `ChatRoom` ผูกอยู่เลย → warning "ห้องแชทเดิมอาจถูกผูกกับผู้สนใจคนใหม่ไปแล้ว — ถ้าซ้ำ ให้รวมเป็นคนเดียวกันที่หน้าลูกค้า" (ทาง `POST /customers/:id/absorb-into/:targetId` ที่มีอยู่) · ตรวจซ้ำเบอร์/อีเมลยังทำตามเดิม
+13.3 **ฐานโค้ด = `main`** (ไม่พึ่ง #1733) · **แถวที่ "ระบบ" ลบเอง = กู้ไม่ได้**: ถ้าแถว audit การลบมี `userId` ของผู้ใช้ระบบ (`User.isSystemUser`) → แสดง "ลบโดยระบบ" + `restorable: false` เหตุผล "ระบบลบเอง (เช่น งวดบิลประจำถูกแทน) — กู้ไม่ได้" และ `restore` ปฏิเสธ 400 — ครอบ `retireDraft` ของบิลประจำหลัง #1733 merge โดยไม่ต้องแก้ registry
+13.4 **แถวที่สคริปต์ลบ** (ไม่มี audit เลย เช่น `cleanup:test-pack`, `wipe:stock-go-live`): แสดงตามปกติ "ลบโดย: ไม่ทราบ" และกู้ได้ — หน้าต่าง 90 วัน + ค้นหา + chip ประเภท เป็นตัวช่วย ไม่ซ่อนด้วย marker ข้อมูลทดสอบ (marker อยู่คนละฟิลด์ต่อโมเดล — ไม่คุ้ม)
+13.5 **งานที่ผูกห้องแชท** ตอนลบไม่ถูก soft-delete (ตั้ง CANCELLED อย่างเดียว) — นอกขอบเขต ถังแสดงเฉพาะงานที่ `deletedAt` ไม่ว่าง · ตัดคำเตือน "CANCELLED" ใน §4.1
+13.6 **ไม่รวม** EmployeeProfile (ข้อมูลบัญชีธนาคารเงินเดือน · มีทาง "เพิ่มกลับเข้า payroll" เดิม), ตัวเลือกคำถามรับซื้อที่ลบทีละตัว, ไฟล์ใบสมัครไฟแนนซ์ — ตัด `EMPLOYEE_PROFILE_DELETED` ออกจากรายการ action
+13.7 **"ลบโดย" ค้นด้วย `(entity, entityId)`** ตาม index ของ AuditLog — registry ระบุ `auditEntities` (ชื่อ segment ของ URL ที่ interceptor เขียน เช่น `customers`) และ `auditEntityId?(row)` สำหรับ route ที่ไม่ได้ใช้ id แถว (คดี = `contractId`) · route ที่ entityId ว่าง (แม่แบบแจ้งเตือนลบด้วย eventType) = "ไม่ทราบ"
+13.8 `TrashEntry.restoreData` ถูกตัดออก (ไม่มีประเภทไหนใช้หลัง 13.1)
+

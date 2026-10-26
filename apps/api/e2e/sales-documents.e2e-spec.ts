@@ -53,6 +53,14 @@ describe('Staff sales documents on isolated PostgreSQL', () => {
   const pdf = Buffer.from('%PDF-1.4\n%Synthetic document test\n%%EOF');
   const render = jest.spyOn(DocumentRenderingService.prototype, 'htmlToPdf');
   const read = (path: string) => request(app.getHttpServer()).get(path).query({ company: 'shop' });
+  let signatureBoundary: AccessSignaturesBoundaries;
+  // Signature writes run inside the staff signature-capture boundary (epic contract); direct
+  // service calls from the test go through the same preflight/current pair as the HTTP guard.
+  const withSignatureBoundary = async <T,>(op: 'signContract' | 'deleteSignature', contractId: string, work: () => Promise<T>, signerType?: string): Promise<T> => {
+    const req = { user: { id: userId }, params: { id: contractId, ...(signerType ? { signerType } : {}) }, query: { company: 'SHOP' }, headers: {}, body: {} } as never;
+    await signatureBoundary.preflight(op, req);
+    return signatureBoundary.current(op, req, () => work());
+  };
   beforeAll(async () => {
     await db.$connect();
     // Generated-document provenance resolves the product's owning company (branch.company); keep the
@@ -85,6 +93,7 @@ describe('Staff sales documents on isolated PostgreSQL', () => {
       { provide: NotificationsService, useValue: notifications }, { provide: SettingsService, useValue: { findAll: async () => [] } }, { provide: OcrService, useValue: {} },
     ] }).overrideGuard(JwtAuthGuard).useValue({ canActivate: async (ctx: ExecutionContext) => { await db.user.update({ where: { id: actor.id }, data: { role: actor.role as 'OWNER' | 'SALES' | 'BRANCH_MANAGER' | 'FINANCE_MANAGER' | 'ACCOUNTANT', branchId: actor.branchId } }); ctx.switchToHttp().getRequest().user = actor; return true; } }).compile();
     documents = module.get(DocumentsService);
+    signatureBoundary = module.get(AccessSignaturesBoundaries);
     app = module.createNestApplication({ logger: false });
     app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
     app.useGlobalInterceptors(new EntityScopeInterceptor());
@@ -191,14 +200,14 @@ describe('Staff sales documents on isolated PostgreSQL', () => {
     const oldHash = createHash('sha256').update(oldBytes).digest('hex');
     const generating = documents.generateSignedDocuments(contractA, userId);
     await rendering;
-    await documents.deleteSignature(contractA, 'WITNESS_2');
+    await withSignatureBoundary('deleteSignature', contractA, () => documents.deleteSignature(contractA, 'WITNESS_2'), 'WITNESS_2');
     expect(await db.contractDocument.count({ where: { contractId: contractA, documentType: 'SIGNED_CONTRACT', isLatest: true, deletedAt: null } })).toBe(0);
     expect(await db.eDocument.count({ where: { contractId: contractA, documentType: 'CONTRACT', deletedAt: null } })).toBe(0);
     expect(await db.notificationLog.count({ where: { relatedId: contractA, subject: 'CONTRACT_DOCUMENTS_READY', status: 'DELAYED' } })).toBe(0);
     // Control the independent auto-save hook; retry below exercises actual persistence.
     const auto = jest.spyOn(DocumentPersistenceService.prototype, 'ensureSignedContractDocument').mockResolvedValueOnce(null);
     try {
-      await documents.signContract(contractA, 'data:image/png;base64,bmV3', 'WITNESS_2', {}, { staffUserId: userId });
+      await withSignatureBoundary('signContract', contractA, () => documents.signContract(contractA, 'data:image/png;base64,bmV3', 'WITNESS_2', {}, { staffUserId: userId }));
     } finally { auto.mockRestore(); finish(oldBytes); }
     const stale = await generating;
     expect(stale.errors?.join(' ')).toContain('เปลี่ยน');
@@ -218,7 +227,7 @@ describe('Staff sales documents on isolated PostgreSQL', () => {
       {} as NotificationTemplateService);
     const processing = dispatch.processRetryQueue();
     await checking;
-    await documents.deleteSignature(contractA, 'WITNESS_2');
+    await withSignatureBoundary('deleteSignature', contractA, () => documents.deleteSignature(contractA, 'WITNESS_2'), 'WITNESS_2');
     proceed();
     await processing;
     expect(sendLine).not.toHaveBeenCalled();

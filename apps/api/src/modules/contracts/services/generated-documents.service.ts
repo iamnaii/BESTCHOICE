@@ -21,6 +21,7 @@ import {
   Injectable,
   Logger,
   ServiceUnavailableException,
+  HttpException,
 } from '@nestjs/common';
 import { GeneratedDocumentIdentity, Prisma } from '@prisma/client';
 import { randomUUID, createHash } from 'node:crypto';
@@ -744,7 +745,12 @@ export class GeneratedDocumentsService {
             late.stream.destroy();
           },
         );
-      const bytes = await budget.buffer(file.stream);
+      // Same contract as main's pipeDocumentStream: a storage read that fails after the
+      // document was authorized is a retryable 503, not an internal error.
+      const bytes = await budget.buffer(file.stream).catch((error: unknown) => {
+        if (error instanceof HttpException) throw error;
+        throw new ServiceUnavailableException('ดาวน์โหลดเอกสารไม่สำเร็จ กรุณาลองใหม่');
+      });
       await this.authority('downloadDocument', req, async (proof) => {
         if (proof.managed) throw generatedDenied();
         const current = await proof.tx.eDocument.findUniqueOrThrow({

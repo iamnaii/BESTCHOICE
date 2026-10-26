@@ -1,4 +1,5 @@
 import { DocumentRenderingService } from './document-rendering.service';
+import { existsSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { Readable } from 'node:stream';
 import { GeneratedEffectBudget, inertGeneratedHtml } from './generated-document-effects';
@@ -43,7 +44,7 @@ const resolveOwnedChromium = (): string | undefined => {
   try {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const candidate = require('@playwright/test').chromium.executablePath() as string;
-    if (candidate && require('node:fs').existsSync(candidate)) {
+    if (candidate && existsSync(candidate)) {
       process.env.PUPPETEER_EXECUTABLE_PATH = candidate;
       return candidate;
     }

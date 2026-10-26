@@ -190,8 +190,6 @@ describe('LoginAuditService.record', () => {
     });
 
     it('still tracks KnownDevice + sends LINE alert when login_log disabled (security-independent)', async () => {
-      const origEnv = process.env.SHOP_STAFF_LINE_ID;
-      process.env.SHOP_STAFF_LINE_ID = 'U-staff';
       prisma.systemConfig.findFirst.mockImplementation((args: { where: { key: string } }) =>
         Promise.resolve(
           args.where.key === 'login_log_enabled' ? { value: 'false' } : null,
@@ -212,7 +210,6 @@ describe('LoginAuditService.record', () => {
       await new Promise((r) => setImmediate(r));
       expect(staffNotify.notify).toHaveBeenCalledTimes(1);
 
-      process.env.SHOP_STAFF_LINE_ID = origEnv;
     });
 
     it('writes LoginAuditLog when login_log_enabled=true (explicit)', async () => {

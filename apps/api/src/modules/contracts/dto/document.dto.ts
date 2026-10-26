@@ -66,6 +66,15 @@ export class UpdateTemplateDto {
 }
 
 export class SignContractDto {
+  @IsOptional()
+  @Matches(/^BUILTIN$/)
+  templateSource?: 'BUILTIN';
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(36)
+  templateId?: string;
+
   @IsString()
   @MaxLength(500000, { message: 'ลายเซ็นต้องมีขนาดไม่เกิน 500KB' })
   @Matches(/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/, { message: 'ลายเซ็นต้องเป็นรูปแบบ base64 image เท่านั้น' })

@@ -9,19 +9,9 @@ import { DocumentRenderingService } from './services/document-rendering.service'
 import { DocumentPersistenceService } from './services/document-persistence.service';
 import { ContractSignatureService } from './services/contract-signature.service';
 
-/**
- * DocumentsService — facade over the four sub-services that resulted from the
- * Template/Signature/Rendering/Persistence decomposition. The 4-arg constructor
- * and all 20 public method signatures are preserved byte-identically; the
- * sub-services are constructed INTERNALLY from the four injected leaf deps, so
- * the module, the two controllers (documents.controller + line-oa/liff-api.controller),
- * and the three specs (which mock the four leaf deps) need no changes.
- *
- * Construction order: Template (prisma) → Rendering (prisma, storage, settings) →
- * Persistence (…, template, rendering) → Signature (prisma, () => persistence).
- * The fire-and-forget signContract → ensureSignedContractDocument hook resolves
- * Persistence lazily through the arrow, so it stays non-awaited / non-tx.
- */
+/** Canonical document facade. Staff signature orchestration owns authorization,
+ * capture provenance and committed-event production; customer document streaming
+ * retains its separate authenticated caller and existing persistence facade. */
 @Injectable()
 export class DocumentsService {
   private readonly templateService: ContractTemplateService;
@@ -44,7 +34,7 @@ export class DocumentsService {
       this.templateService,
       this.renderingService,
     );
-    this.signatureService = new ContractSignatureService(this.prisma, () => this.persistenceService);
+    this.signatureService = new ContractSignatureService(this.prisma);
   }
 
   // ─── Contract Templates (ContractTemplateService) ────
@@ -90,9 +80,6 @@ export class DocumentsService {
     return this.signatureService.deleteSignature(contractId, signerType);
   }
 
-  getSignatures(contractId: string, page = 1, limit = 50) {
-    return this.signatureService.getSignatures(contractId, page, limit);
-  }
 
   // ─── E-Document Generation / Persistence (DocumentPersistenceService) ────
   ensureSignedContractDocument(contractId: string, uploadedByUserId: string) {

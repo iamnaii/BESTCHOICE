@@ -1,3 +1,5 @@
+import { ContractSignaturesAccessService } from './services/contract-signatures-access.service';
+import { SIGNATURE_OPERATIONS, signatureHandlers } from '../employee-access/access-signatures-boundaries';
 import { GeneratedDocumentsService } from './services/generated-documents.service';
 import { GENERATED_DOCUMENT_OPERATIONS, generatedDocumentHandlers } from '../employee-access/access-generated-documents-context';
 import { sendGeneratedDocument } from './services/send-generated-document';
@@ -27,6 +29,7 @@ export class DocumentsController {
     private ocrService: OcrService,
     private templateAccess: AccessDocumentTemplateBoundaries,
     private generated: GeneratedDocumentsService,
+    private signatures: ContractSignaturesAccessService,
   ) {}
 
   // ─── Contract Templates ──────────────────────────────
@@ -87,43 +90,22 @@ export class DocumentsController {
     @Param('id') id: string,
     @Body() dto: SignContractDto,
     @Req() req: Request,
-    @CurrentUser() user: { id: string },
   ) {
-    return this.documentsService.signContract(id, dto.signatureImage, dto.signerType, {
-      ip: req.ip,
-      userAgent: req.headers?.['user-agent'],
-    }, {
-      signatureSvg: dto.signatureSvg,
-      signerName: dto.signerName,
-      screenSize: dto.screenSize,
-      gpsLatitude: dto.gpsLatitude,
-      gpsLongitude: dto.gpsLongitude,
-      staffUserId: user.id,
-    });
+    return this.signatures.capture(req, dto);
   }
 
   @Delete('contracts/:id/signatures/:signerType')
   @ContractFileAccess()
   @Roles('OWNER', 'BRANCH_MANAGER', 'SALES')
-  deleteSignature(@Param('id') id: string, @Param('signerType') signerType: string) {
-    return this.documentsService.deleteSignature(id, signerType);
+  deleteSignature(@Req() req: Request) {
+    return this.signatures.remove(req);
   }
 
   @Get('contracts/:id/signatures')
   @ContractFileAccess()
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
-  getSignatures(
-    @Param('id') id: string,
-    @Query('page') page?: string,
-    @Query('limit') limit?: string,
-  ) {
-    const parsedPage = page ? parseInt(page, 10) : undefined;
-    const parsedLimit = limit ? Math.min(parseInt(limit, 10), 200) : undefined;
-    return this.documentsService.getSignatures(
-      id,
-      parsedPage && !isNaN(parsedPage) ? parsedPage : undefined,
-      parsedLimit && !isNaN(parsedLimit) ? parsedLimit : undefined,
-    );
+  getSignatures(@Req() req: Request) {
+    return this.signatures.list(req);
   }
 
   // ─── Generated documents: staged source/effects/final commit ───
@@ -183,3 +165,5 @@ export class DocumentsController {
   getSignedUrl(@Req() req: Request) { return this.generated.execute('getSignedUrl', req); }
 }
 generatedDocumentHandlers.set(DocumentsController, new Map(GENERATED_DOCUMENT_OPERATIONS.map(operation => [DocumentsController.prototype[operation], operation])));
+
+signatureHandlers.set(DocumentsController, new Map(SIGNATURE_OPERATIONS.map(operation => [DocumentsController.prototype[operation], operation])));

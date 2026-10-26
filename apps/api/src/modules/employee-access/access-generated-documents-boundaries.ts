@@ -1,3 +1,4 @@
+import { assertSignatureAuthority, SignatureAuthority } from './access-signatures-boundaries';
 import {
   BadRequestException,
   ForbiddenException,
@@ -6,7 +7,7 @@ import {
   OnModuleInit,
 } from '@nestjs/common';
 import { AccessSnapshot, canAccess, PermissionKey } from '@installment/shared';
-import { Prisma } from '@prisma/client';
+import { Prisma, SignedDocumentProductionEvent } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AccessResourceService } from './access-resource.service';
 import { AccessPartySourceService } from './access-party-source.service';
@@ -80,7 +81,92 @@ export class AccessGeneratedDocumentsBoundaries implements OnModuleInit {
     work: (proof: GeneratedAuthority) => Promise<T>,
     contractId?: string,
   ): Promise<T> {
-    const actorId = req.user?.id;
+    this.validate(operation, req);
+    return this.withPrincipal(
+      operation,
+      {
+        actorId: req.user?.id,
+        company: requestedAccessCompany(req),
+        recordId: String(req.params.id),
+      },
+      work,
+      contractId,
+    );
+  }
+  async signatureProducer<T>(
+    proof: SignatureAuthority,
+    work: (proof: GeneratedAuthority) => Promise<T>,
+  ) {
+    assertSignatureAuthority(proof);
+    if (proof.operation !== 'signContract') throw generatedDenied();
+    return this.withPrincipal(
+      'generateSignedDocuments',
+      {
+        actorId: proof.actorId,
+        company: proof.company,
+        recordId: proof.parent.id,
+        channel: proof.managed ? 'MANAGED_STAFF' : 'LEGACY_STAFF',
+      },
+      work,
+      undefined,
+      proof,
+    );
+  }
+  async currentEvent<T>(
+    eventId: string,
+    work: (proof: GeneratedAuthority, event: SignedDocumentProductionEvent) => Promise<T>,
+  ) {
+    const event = await this.prisma.signedDocumentProductionEvent.findUnique({
+      where: { id: eventId },
+    });
+    if (
+      !event ||
+      event.producerKind !== 'CANONICAL_SIGNATURE_COMPLETION' ||
+      !event.initiatorUserId ||
+      !['MANAGED_STAFF', 'LEGACY_STAFF'].includes(event.initiatorChannel ?? '') ||
+      !event.templateChoice
+    )
+      throw generatedDenied();
+    let company: 'SHOP' | 'FINANCE';
+    if (event.initiatorChannel === 'MANAGED_STAFF') {
+      if (event.selectedCompany !== 'SHOP' && event.selectedCompany !== 'FINANCE')
+        throw generatedDenied();
+      company = event.selectedCompany;
+    } else {
+      if (event.selectedCompany !== null) throw generatedDenied();
+      const parent = await this.prisma.contract.findUnique({
+        where: { id: event.contractId },
+        select: { branch: { select: { company: { select: { companyCode: true } } } } },
+      });
+      const actual = parent?.branch.company?.companyCode;
+      if (actual !== 'SHOP' && actual !== 'FINANCE') throw generatedDenied();
+      company = actual; // Actual source only; not a selected-work or permission grant.
+    }
+    return this.withPrincipal(
+      'generateSignedDocuments',
+      {
+        actorId: event.initiatorUserId,
+        company,
+        recordId: event.contractId,
+        channel: event.initiatorChannel!,
+      },
+      (proof) => work(proof, event),
+    );
+  }
+
+  private async withPrincipal<T>(
+    operation: GeneratedDocumentOperation,
+    principal: {
+      actorId?: string;
+      company: 'SHOP' | 'FINANCE';
+      recordId: string;
+      channel?: string;
+    },
+    work: (proof: GeneratedAuthority) => Promise<T>,
+    contractId?: string,
+    existing?: SignatureAuthority,
+  ): Promise<T> {
+    const actorId = principal.actorId;
     if (!actorId) throw generatedDenied();
     const actor = await this.prisma.user.findUnique({
       where: { id: actorId },
@@ -93,10 +179,15 @@ export class AccessGeneratedDocumentsBoundaries implements OnModuleInit {
       },
     });
     if (!actor?.isActive || actor.deletedAt || actor.isSystemUser) throw generatedDenied();
-    this.validate(operation, req);
-    const company = requestedAccessCompany(req);
+    if (
+      principal.channel &&
+      principal.channel !== (actor.accessManaged ? 'MANAGED_STAFF' : 'LEGACY_STAFF')
+    )
+      throw generatedDenied();
+    const company = principal.company;
     const run = async (tx: Prisma.TransactionClient, snapshot?: AccessSnapshot): Promise<T> => {
       let owner = !!snapshot?.isOwner;
+      let legacyActor: { role: string; branchId: string | null } | undefined;
       if (!snapshot) {
         await lockEmployeeAccess(tx);
         await tx.$queryRaw`SELECT id FROM users WHERE id=${actorId} FOR SHARE`;
@@ -117,7 +208,7 @@ export class AccessGeneratedDocumentsBoundaries implements OnModuleInit {
           ? ['OWNER', 'BRANCH_MANAGER', 'SALES']
           : ['OWNER', 'BRANCH_MANAGER', 'SALES', 'FINANCE_MANAGER', 'ACCOUNTANT'];
         if (!roles.includes(live.role)) throw generatedDenied();
-        req.user = { ...req.user, id: actorId, role: live.role, branchId: live.branchId };
+        legacyActor = live;
         owner = live.role === 'OWNER';
       }
       if (operation === 'regenerateSignedContractPdfs' && !owner) throw generatedDenied();
@@ -133,15 +224,15 @@ export class AccessGeneratedDocumentsBoundaries implements OnModuleInit {
       };
       if (operation === 'regenerateSignedContractPdfs' && !contractId) return work(base);
       const documentRoute = ['getDocument', 'downloadDocument', 'getSignedUrl'].includes(operation);
-      let parentId = contractId ?? String(req.params.id);
+      let parentId = contractId ?? principal.recordId;
       if (documentRoute && !contractId) {
         const document = await tx.eDocument.findUnique({
-          where: { id: String(req.params.id), deletedAt: null },
+          where: { id: principal.recordId, deletedAt: null },
           select: { contractId: true },
         });
         if (!document) throw new NotFoundException('ไม่พบเอกสาร');
         parentId = document.contractId;
-        base.documentId = String(req.params.id);
+        base.documentId = principal.recordId;
       }
       await tx.$queryRaw`SELECT id FROM contracts WHERE id=${parentId} FOR UPDATE`;
       const parent = await tx.contract.findUnique({
@@ -157,7 +248,7 @@ export class AccessGeneratedDocumentsBoundaries implements OnModuleInit {
       if (!parent) throw new NotFoundException('ไม่พบสัญญา');
       base.parent = parent;
       if (!snapshot) {
-        if (!hasCrossBranchAccess(req.user!) && req.user?.branchId !== parent.branchId)
+        if (!hasCrossBranchAccess(legacyActor!) && legacyActor?.branchId !== parent.branchId)
           throw generatedDenied();
       } else {
         const mutation = generationOperation(operation);
@@ -224,6 +315,7 @@ export class AccessGeneratedDocumentsBoundaries implements OnModuleInit {
       }
       return work(base);
     };
+    if (existing) return run(existing.tx, existing.managed ? existing.snapshot : undefined);
     if (!actor.accessManaged)
       return this.prisma.$transaction((tx) => run(tx), {
         timeout: 30000,

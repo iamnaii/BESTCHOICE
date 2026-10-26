@@ -1,3 +1,4 @@
+import { ContractSignaturesAccessService } from '../contracts/services/contract-signatures-access.service';
 import {
   currentDomainAccess,
   domainAccessExecution,
@@ -141,7 +142,7 @@ beforeAll(async () => {
   await grant(reader);
   const module = await Test.createTestingModule({
     controllers: [DocumentsController],
-    providers: [
+    providers: [{ provide: ContractSignaturesAccessService, useValue: {} }, 
       AccessDocumentTemplateBoundaries,
       DocumentsService,
       OcrService,

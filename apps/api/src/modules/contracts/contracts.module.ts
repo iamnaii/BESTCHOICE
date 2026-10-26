@@ -1,3 +1,4 @@
+import { ContractSignaturesAccessService } from './services/contract-signatures-access.service';
 import { GeneratedDocumentsService } from './services/generated-documents.service';
 import { Module, forwardRef } from '@nestjs/common';
 import { ContractsController } from './contracts.controller';
@@ -52,7 +53,7 @@ import { EarlyPayoffSlipService } from './early-payoff-slip/early-payoff-slip.se
     ChatbotFinanceModule,
   ],
   controllers: [ContractsController, ContractDocumentsController, DocumentsController],
-  providers: [GeneratedDocumentsService, ContractsService, ContractWorkflowService, ContractPaymentService, EarlyPayoffSlipService, ContractDocumentService, ContractSnapshotService, ContractDocumentsService, DocumentsService, ContractFileAccessGuard, GhostSaleCron],
+  providers: [ContractSignaturesAccessService, GeneratedDocumentsService, ContractsService, ContractWorkflowService, ContractPaymentService, EarlyPayoffSlipService, ContractDocumentService, ContractSnapshotService, ContractDocumentsService, DocumentsService, ContractFileAccessGuard, GhostSaleCron],
   exports: [GeneratedDocumentsService, ContractsService, ContractWorkflowService, ContractPaymentService, ContractDocumentService, ContractSnapshotService, ContractDocumentsService, DocumentsService],
 })
 export class ContractsModule {}

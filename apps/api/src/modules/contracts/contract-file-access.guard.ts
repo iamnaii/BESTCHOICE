@@ -1,3 +1,4 @@
+import { AccessSignaturesBoundaries, signatureHandlers } from '../employee-access/access-signatures-boundaries';
 import { AccessGeneratedDocumentsBoundaries } from '../employee-access/access-generated-documents-boundaries';
 import { generatedDocumentHandlers } from '../employee-access/access-generated-documents-context';
 import {
@@ -25,10 +26,17 @@ export class ContractFileAccessGuard implements CanActivate {
     private readonly reflector: Reflector,
     @Optional() private readonly uploads?: AccessContractFilesBoundaries,
     @Optional() private readonly generated?: AccessGeneratedDocumentsBoundaries,
+    @Optional() private readonly signatures?: AccessSignaturesBoundaries,
   ) {}
 
   async canActivate(context: ExecutionContext) {
     const req = context.switchToHttp().getRequest();
+    const signature = signatureHandlers.get(context.getClass())?.get(context.getHandler());
+    if (signature) {
+      if (!this.signatures) throw new ForbiddenException('ต้องตรวจสิทธิ์ลายเซ็นปัจจุบัน');
+      await this.signatures.preflight(signature, req);
+      return true;
+    }
     const generatedOperation = generatedDocumentHandlers.get(context.getClass())?.get(context.getHandler());
     if (generatedOperation) {
       if (!this.generated) throw new ForbiddenException('ต้องตรวจสิทธิ์เอกสารปัจจุบัน');

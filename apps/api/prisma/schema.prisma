@@ -2629,6 +2629,7 @@ model Signature {
   // Restrict: e-signatures are eIDAS evidence and cannot be erased.
   contract Contract @relation(fields: [contractId], references: [id], onDelete: Restrict)
 
+  captureIdentity SignatureCaptureIdentity?
   @@index([contractId])
   @@map("signatures")
 }
@@ -9738,6 +9739,8 @@ model GeneratedDocumentIdentity {
   documentType String @map("document_type")
   sourceComplete Boolean @map("source_complete")
   manifest Json
+  signatureEventId String? @map("signature_event_id")
+  signatureEvent SignedDocumentProductionEvent? @relation(fields:[signatureEventId], references:[id], onDelete:Restrict)
   createdAt DateTime @default(now()) @map("created_at")
   document EDocument @relation(fields:[documentId], references:[id], onDelete:Restrict)
   contract Contract @relation(fields:[contractId], references:[id], onDelete:Restrict)
@@ -9756,8 +9759,7 @@ model GeneratedContractDocumentLink {
   identity GeneratedDocumentIdentity @relation(fields:[identityId], references:[id], onDelete:Restrict)
   @@map("generated_contract_document_links")
 }
-/// Only the future canonical signature transaction may mint this committed event.
-/// This child exposes a fail-closed verifier, no caller-userId minting function.
+/// Immutable completion inputs minted only by admitted canonical capture; no historical backfill.
 model SignedDocumentProductionEvent {
   id String @id @default(uuid())
   contractId String @map("contract_id")
@@ -9768,7 +9770,43 @@ model SignedDocumentProductionEvent {
   contractDependencyRevision String @map("contract_dependency_revision")
   pdpaDependencyRevision String @map("pdpa_dependency_revision")
   producerKind String @map("producer_kind")
+  initiatorUserId String? @map("initiator_user_id")
+  initiatorChannel String? @map("initiator_channel")
+  selectedCompany String? @map("selected_company")
+  templateChoice Json? @map("template_choice")
   createdAt DateTime @default(now()) @map("created_at")
+  generatedIdentities GeneratedDocumentIdentity[]
+  consumption SignedDocumentProductionConsumption?
   contract Contract @relation(fields:[contractId], references:[id], onDelete:Restrict)
   @@map("signed_document_production_events")
+}
+
+/// Immutable submitted original and canonical capture provenance; no historical backfill.
+model SignatureCaptureIdentity {
+  id String @id @default(uuid())
+  signatureId String @unique @map("signature_id")
+  contractId String @map("contract_id")
+  customerId String @map("customer_id")
+  branchId String @map("branch_id")
+  productIds String[] @map("product_ids")
+  capturedById String @map("captured_by_id")
+  originalDataUrl String @map("original_data_url") @db.Text
+  submittedHash String @map("submitted_hash")
+  submittedSize Int @map("submitted_size")
+  canonicalHash String @map("canonical_hash")
+  canonicalSize Int @map("canonical_size")
+  contractHash String @map("contract_hash")
+  evidenceRevision String @map("evidence_revision")
+  createdAt DateTime @default(now()) @map("created_at")
+  signature Signature @relation(fields:[signatureId], references:[id], onDelete:Restrict)
+  @@map("signature_capture_identities")
+}
+/// Durable event consumption claim, terminal status only; no automatic retry promise.
+model SignedDocumentProductionConsumption {
+  eventId String @id @map("event_id")
+  status String
+  createdAt DateTime @default(now()) @map("created_at")
+  completedAt DateTime? @map("completed_at")
+  event SignedDocumentProductionEvent @relation(fields:[eventId], references:[id], onDelete:Restrict)
+  @@map("signed_document_production_consumptions")
 }

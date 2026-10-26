@@ -905,7 +905,7 @@ Checkpoint: `672180ee9` closes the exact ten generated-document methods after sc
 
 **Files/scope:** DocumentsController.signContract/getSignatures/deleteSignature; exactly3domain. Consume reviewed current file/source guard and canonical generated-document producer after actual outer commit.
 
-- [ ] Propose exact capture/read/delete/current actor/independent source/sensitive signature policy, SHOP preparation versus FINANCE, actual customerLIFF counterpart and signature payload validation; marked ownedHTTP/PG RED before runtime.
+- [x] Propose exact capture/read/delete/current actor/independent source/sensitive signature policy, SHOP preparation versus FINANCE, actual customerLIFF counterpart and signature payload validation; marked ownedHTTP/PG RED before runtime. R173–176 and actual15-test RED accepted; final runtime/review still pending.
 - [ ] Preserve DRAFT/workflow/state/STAFF=COMPANY alias/current canonical hash and immutable evidence; finite acknowledgement and independently authorized read. Required audit uses owned transaction, and automatic official generation runs only after actual outer commit with genuine principal/initiator/current source, once across retry/rollback; no viewer-redacted canonical output or legacy salesperson impersonation.
 - [ ] All3 allowed/denied/current wait/duplicate/state/customer-auth/rollback/effect/renderer integration proofs, canonical regressions/types/lint/coverage/report/freeze and independent gate. Root reconciles exact27/allchild contracts; actualfullJWT/browser/UI7/localcheck/final8 remain.
 
@@ -918,6 +918,28 @@ Checkpoint: `672180ee9` closes the exact ten generated-document methods after sc
 - [ ] Constrain search/candidates/results through actual customer/application/case provenance before counts; preserve public/customer authentication. Staff-triggered external checks require current case authority, explicit initiator and postcommit effect handling; mock external providers and avoid real submissions. Protect identity documents and source-sensitive values.
 - [ ] All financial/access writes and existing durable evidence join the actual canonical transaction; recheck after lock waits and whole-attempt retries. Convert managed legacy role/personal-grant vetoes to capabilities while retaining independent workflow/accounting constraints. Preserve file validation, DTO/query/HTTP contracts and operation-owned effects.
 - [ ] Run focused relevant regressions, API types, changed-file lint and coverage; reconcile every allocated route with usable positive and denied controls, publish source/projection/transaction/UI/approval contracts, self-review and commit. Missing adapters remain incomplete, never count as enabled.
+
+#### Serial execution of Task4.2.3
+
+R177 preserves all19 original methods as15credit+4KYC serial gates after complete document27. Each child inherits every parent source/current actor/privacy/transaction/canonical financial/effect/durable evidence/test duty. Fresh finite policy proposal and actual marked owned HTTP/PG RED precede runtime; missing adapters and permanent denial earn no completion credit.
+
+### Task 4.2.3.1: Credit source, decisions and controlled analysis
+
+**Files/scope:** CreditCheckController.analyze/create/findByContract/override; CustomerCreditCheckController.analyze/create/findByCustomer/findLatest/override; GlobalCreditCheckController.calculateDtiRiskScore/findAll/getAutoScore/getCustomerHistory/previewAffordability/updateAiFields. Exactly15 original methods; actual credit-check facade and canonical source/approval/AI/risk/derived consumers.
+
+- [ ] Propose exact source/action/sensitive policy, SHOP preparation versus FINANCE, actual decision capabilities, complete canonical calculation versus finite viewer output, input/output and external-effect bounds; marked owned HTTP/PG RED and root ruling before runtime. Preserve parent/child correlation and current original scoped tuples.
+- [ ] Produce authenticated immutable origin for useful new unlinked credit and integrate actual Customer query/journey/merge/completeness/ranking and Contract/Room canonical consumers. Historical unknown origin stays unavailable; no creator/name/source inference or guessed backfill.
+- [ ] Preserve canonical FULL-before-PRE/latest, affordability commitments/context tokens/immutable approval and claim-once arithmetic; independently authorize shared Customer writes. Actual write-shaped analysis/autoscore, source/evidence changes, safe AI fallback, current initiator and once-only controlled effects must join genuine transaction/aftercommit boundaries with required evidence.
+- [ ] All15 useful positives/denials/current waits/parent substitution/scoped search/count/summary/sensitive evidence/financial invariance/rollback/retry/AI stale-result controls; relevant regressions/types/lint/coverage/report/commit/current localcheck and independent spec/quality gate. Publish typed query/merge/room/system/UI/audit/full-auth obligations; no extra route or KYC credit.
+
+### Task 4.2.3.2: KYC sessions, OTP and identity evidence
+
+**Files/scope:** KycController.getStatus/sendOtp/uploadIdCard/verifyOtp; exactly4 original methods. Actual Contract/Customer/session, controlled SMS, image storage and StepKycVerification contract.
+
+- [ ] Propose current source/recipient/action/sensitive policy, genuine legacy and actual customer/public callers, finite status/input contracts and external effect/transaction ownership; marked owned HTTP/PG RED and root ruling before runtime. No invented customer counterpart or inherited application database.
+- [ ] Preserve actual OTP throttle/rate/expiry/attempt constants, default-off controlled test mode and genuine bypass evidence. Wrong-attempt/expiry/lockout updates must remain durable despite HTTP errors; concurrent increments and resend/session CAS cannot revive stale verification.
+- [ ] Bound/validate real image bytes/decode and actual current verified session; owned staging/current phone-source recheck/cleanup, required audit and finite proof status remain honest. SMS/image effects run once under current initiator/source with controlled providers; do not claim sent-message rollback or semantic identity authenticity.
+- [ ] All4 useful positive/denial/current-wait/source/phone/session/attempt-concurrency/expiry/resend/image/required-evidence/effect-failure tests; relevant regressions/types/lint/coverage/report/commit/current localcheck and independent gate. Reconcile parent19 exactly with credit15; Task5/7/8 safe activity/typed UI/full JWT/browser remain required.
 
 ### Task 4.2.4: Payments, refunds, receipts and fee-waiver boundaries
 
@@ -1255,6 +1277,7 @@ Checkpoint: `672180ee9` closes the exact ten generated-document methods after sc
 - [ ] Consume generated-document contracts from Task4.2.2.3: finite metadata and UNVERIFIED status, authenticated descriptor followed by current-auth/current-company blob GET with objectURL cleanup, and explicit BUILTIN choice versus owner-only custom template. Update Customer360, Contract preview/download and StepComplete signed-generation consumers; never silently replace customized contract terms or treat the authenticated descriptor as a portable public URL. Clear private previews/cache after actor/work/authority changes and handle partial signed results honestly.
 
 - [ ] Consume the final Task4.2.2.4 signature presence/capture contract in StepSignature: distinguish unavailable/loading/error from an empty signature list, prevent automatic COMPANY capture until current source and signature state are loaded and authorized, preserve guardian requirements and clear actor/work-bound signature caches. Saved own/lessor signature inputs keep their independent authority; a capture permission is not a general private-signature read grant.
+- [ ] Show signature CAPTURED separately from production outcome; UNAVAILABLE/PARTIAL/FAILED must not be presented as generated or delivered documents. Explicit completion template choice preserves custom terms, and presence never requests private EVIDENCE implicitly. Historical UNVERIFIED evidence and normalized-image versus retained-original semantics must remain honest; no claim of HTML/template assent from the server generation-input event.
 
 ### Task 8: Isolated end-to-end verification and working local preview
 

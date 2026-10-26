@@ -1,3 +1,4 @@
+import { AccessSignaturesBoundaries, SignatureOperation } from './access-signatures-boundaries';
 import { CONTRACT_CONSENT_PURPOSES } from '../pdpa/contract-consent-evidence';
 import { AccessContractPreparationActions } from './access-contract-preparation-actions';
 import { AccessPartySourceService } from './access-party-source.service';
@@ -9,7 +10,6 @@ import { ExchangeCancelReversalTemplate } from '../journal/cpa-templates/exchang
 import { EclStageReverseTemplate } from '../journal/cpa-templates/ecl-stage-reverse.template';
 import { ContractWorkflowService } from '../contracts/contract-workflow.service';
 import { ContractSignatureService } from '../contracts/services/contract-signature.service';
-import { DocumentPersistenceService } from '../contracts/services/document-persistence.service';
 import { ContractActivation1ATemplate } from '../journal/cpa-templates/contract-activation-1a.template';
 import { ShopInventoryTransferTemplate } from '../journal/cpa-templates/shop-inventory-transfer.template';
 import { InstallmentInputVatTemplate } from '../journal/cpa-templates/installment-input-vat.template';
@@ -60,10 +60,21 @@ const lifecycle = new ContractLifecycleService(
 const provider = jest.fn(async () => {
   expect(currentDomainAccess()).toBeUndefined();
 });
-const signatures = new ContractSignatureService(
-  prisma,
-  () => ({ ensureSignedContractDocument: provider }) as unknown as DocumentPersistenceService,
-);
+const canonicalSignatures = new ContractSignatureService(prisma);
+const signatureBoundary = new AccessSignaturesBoundaries(prisma, resources, new AccessPartySourceService(resources, new AccessProcurementSourceService(resources)), new AccessSnapshotService(prisma));
+// This canonical fixture deliberately supplies non-raster synthetic bytes; HTTP
+// image validation is covered by the owned signature suite. Admission itself is
+// genuine and joins the existing owned Serializable execution.
+async function admittedSignature<T>(operation: SignatureOperation, contractId: string, work: () => Promise<T>) {
+  const ctx = currentDomainAccess()!;
+  const req = { user: { id: ctx.snapshot.userId }, params: { id: contractId, signerType: 'CUSTOMER' }, query: { company: ctx.scope.company }, headers: {}, body: {} };
+  await signatureBoundary.preflight(operation, req);
+  return signatureBoundary.current(operation, req, work);
+}
+const signatures = {
+  signContract: (...args: Parameters<ContractSignatureService['signContract']>) => admittedSignature('signContract', args[0], () => canonicalSignatures.signContract(...args)),
+  deleteSignature: (...args: Parameters<ContractSignatureService['deleteSignature']>) => admittedSignature('deleteSignature', args[0], () => canonicalSignatures.deleteSignature(...args)),
+};
 const workflow = new ContractWorkflowService(
   prisma,
   { send: provider } as never,
@@ -278,6 +289,8 @@ beforeAll(async () => {
   await grant(seller, [
     'contracts.create',
     'contracts.update',
+    'contracts.read',
+    'contract-documents.update',
     'promotions.read',
     'sales.read',
     'promotions.apply',

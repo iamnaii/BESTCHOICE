@@ -1,3 +1,4 @@
+import { signatureHandlers } from '../employee-access/access-signatures-boundaries';
 import { generatedDocumentHandlers } from '../employee-access/access-generated-documents-context';
 import { DocumentsController } from '../contracts/documents.controller';
 import { ContractDocumentsController } from '../contracts/contract-documents.controller';
@@ -150,6 +151,7 @@ export class AuditInterceptor implements NestInterceptor {
   }
 
   private isManagedSafeRead(context: ExecutionContext): boolean {
+    if (signatureHandlers.get(context.getClass())?.has(context.getHandler())) return true;
     if (generatedDocumentHandlers.get(context.getClass())?.has(context.getHandler())) return true;
     if (this.isUploadedContractDocument(context)) return true;
     if (this.isConsentHandler(context)) return true;

@@ -1,3 +1,5 @@
+import { AccessSignaturesBoundaries } from './access-signatures-boundaries';
+import { ContractSignaturesAccessService } from '../contracts/services/contract-signatures-access.service';
 import { ContractDocumentsController } from '../contracts/contract-documents.controller';
 import { get as nodeGet } from 'node:http';
 import { GeneratedDocumentsService } from '../contracts/services/generated-documents.service';
@@ -271,7 +273,7 @@ beforeAll(async () => {
   });
   const module = await Test.createTestingModule({
     controllers: [DocumentsController, ContractDocumentsController],
-    providers: [
+    providers: [AccessSignaturesBoundaries, ContractSignaturesAccessService, 
       GeneratedDocumentsService,
       AccessGeneratedDocumentsBoundaries,
       DocumentsService,

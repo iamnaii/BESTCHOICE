@@ -1,32 +1,20 @@
-import { domainAccessClient, onDomainCommit } from '../../employee-access/access-execution-context';
+import { currentSignatureAuthority, signatureDenied } from '../../employee-access/access-signatures-boundaries';
+import { domainAccessClient } from '../../employee-access/access-execution-context';
 import { assertNamedPreparation, namedExecution } from '../../promotions/contract-promotion-source';
-import { assertContractPromotionTerms, namedSignatureHash } from '../../promotions/contract-promotion-terms';
-import { contractSignatureRequirements } from '../../../utils/validation.util';
-import { Injectable, NotFoundException, BadRequestException, ForbiddenException, Logger } from '@nestjs/common';
+import { assertContractPromotionTerms } from '../../promotions/contract-promotion-terms';
+import { Injectable, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { SignerType } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
-import { DocumentPersistenceService } from './document-persistence.service';
-import * as crypto from 'crypto';
+import { canonicalSignatureHash } from './signature-capture';
 
-/**
- * ContractSignatureService — e-signature lifecycle (พ.ร.บ.ธุรกรรมทางอิเล็กทรอนิกส์
- * พ.ศ. 2544): signContract / deleteSignature / getSignatures. Extracted VERBATIM
- * from DocumentsService.
- *
- * The all-4-signed → ensureSignedContractDocument hook is intentionally
- * fire-and-forget (non-awaited, .catch-wrapped, no transaction): puppeteer can take
- * seconds and must NOT block the signing response or roll back the signature on PDF
- * failure. DocumentPersistenceService is resolved through a late-bound accessor
- * supplied by the facade (matching the contract-cancellation late-bind pattern) so
- * the cross-seam call wires cleanly without a construction-order dependency.
- */
+/** Canonical lifecycle only. The staff capture boundary owns authorization,
+ * immutable evidence and outer-commit production; this facade never impersonates
+ * a salesperson or starts an unowned render effect. */
 @Injectable()
 export class ContractSignatureService {
-  private readonly logger = new Logger(ContractSignatureService.name);
 
   constructor(
     private basePrisma: PrismaService,
-    private getPersistence: () => DocumentPersistenceService,
   ) {}
 
   private get prisma() { return domainAccessClient(this.basePrisma); }
@@ -46,12 +34,14 @@ export class ContractSignatureService {
       staffUserId?: string;
     },
   ) {
-    const { contract, signature } = await this.prisma.$transaction(async (tx) => {
+    const authority = currentSignatureAuthority('signContract');
+    if (authority.parent.id !== contractId || options?.staffUserId !== authority.actorId) throw signatureDenied();
+    const { signature } = await this.prisma.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT id FROM contracts WHERE id = ${contractId} FOR UPDATE`;
       const contract = await tx.contract.findUnique({
         where: { id: contractId },
         include: {
-          signatures: { where: { deletedAt: null } },
+          signatures: { where: { deletedAt: null }, select: { id: true, signerType: true } },
           product: true,
           customer: { select: { birthDate: true } },
         },
@@ -84,20 +74,7 @@ export class ContractSignatureService {
         );
 
       // Generate SHA-256 hash of contract content at signing time (พิสูจน์ว่าเอกสารไม่ถูกแก้ไขหลังเซ็น)
-      const contractContent = JSON.stringify({
-        contractNumber: contract.contractNumber,
-        customerId: contract.customerId,
-        productId: contract.productId,
-        sellingPrice: contract.sellingPrice,
-        downPayment: contract.downPayment,
-        totalMonths: contract.totalMonths,
-        monthlyPayment: contract.monthlyPayment,
-        imei: contract.product?.imeiSerial,
-        ...(contract.tradeInCreditSnapshot
-          ? { tradeInCreditSnapshot: contract.tradeInCreditSnapshot }
-          : {}),
-      });
-      const contractHash = contract.promotionFingerprint ? namedSignatureHash(contract) : crypto.createHash('sha256').update(contractContent).digest('hex');
+      const contractHash = canonicalSignatureHash(contract);
 
       const signature = await tx.signature.create({
         data: {
@@ -119,40 +96,18 @@ export class ContractSignatureService {
       return { contract, signature };
     });
 
-    // After all 4 required signatures are present, auto-generate the signed
-    // contract PDF and save it as a ContractDocument (SIGNED_CONTRACT).
-    // This satisfies the reviewer checklist without the user having to
-    // manually upload a signed PDF — the system already has everything it
-    // needs to produce one deterministically.
-    const allSigned = contractSignatureRequirements({
-      ...contract,
-      signatures: [...contract.signatures, signature],
-    }).complete;
-    if (allSigned) {
-      // Fire-and-forget — don't block the signing response on PDF generation
-      // (puppeteer can take a few seconds). A salesperson fallback handles
-      // the CUSTOMER-signs-via-LIFF case where staffUserId is null.
-      const uploaderId = options?.staffUserId || contract.salespersonId;
-      const generate = async () => { await this.getPersistence()
-        .ensureSignedContractDocument(contractId, uploaderId)
-        .catch((err) =>
-          this.logger.error(
-            `Auto-save SIGNED_CONTRACT for ${contractId} failed: ${err instanceof Error ? err.message : err}`,
-          ),
-        ); };
-      if (contract.promotionFingerprint) onDomainCommit(generate); else void generate();
-    }
-
     return signature;
   }
 
   // ─── Delete Signature (ลบลายเซ็นเพื่อเซ็นใหม่, เฉพาะก่อน ACTIVE) ───
   async deleteSignature(contractId: string, signerType: string) {
+    const authority = currentSignatureAuthority('deleteSignature');
+    if (authority.parent.id !== contractId) throw signatureDenied();
     return this.prisma.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT id FROM contracts WHERE id = ${contractId} FOR UPDATE`;
       const contract = await tx.contract.findUnique({
         where: { id: contractId },
-        include: { signatures: { where: { deletedAt: null } } },
+        include: { signatures: { where: { deletedAt: null }, select: { id: true, signerType: true } } },
       });
       if (!contract || contract.deletedAt) throw new NotFoundException('ไม่พบสัญญา');
       if (contract.promotionFingerprint) {
@@ -203,18 +158,4 @@ export class ContractSignatureService {
     });
   }
 
-  async getSignatures(contractId: string, page = 1, limit = 50) {
-    const safeLimit = Math.min(limit, 100);
-    const where = { contractId, deletedAt: null };
-    const [data, total] = await Promise.all([
-      this.prisma.signature.findMany({
-        where,
-        orderBy: { signedAt: 'asc' },
-        skip: (page - 1) * safeLimit,
-        take: safeLimit,
-      }),
-      this.prisma.signature.count({ where }),
-    ]);
-    return { data, total, page, limit: safeLimit };
-  }
 }

@@ -1,4 +1,11 @@
 import {
+  SignatureAuthority,
+  assertSignatureAuthority,
+} from '../../employee-access/access-signatures-boundaries';
+import { verifiedSignatureIdentities } from './signature-identity';
+import { canonicalSignatureHash } from './signature-capture';
+import { canAccess } from '@installment/shared';
+import {
   currentDomainAccess,
   onDomainCommit,
 } from '../../employee-access/access-execution-context';
@@ -10,6 +17,7 @@ import { preparationSourceWhere } from '../../employee-access/access-contract-pr
 import { currentFinanceReadWhere } from '../../employee-access/access-contract-read-scope';
 import {
   BadRequestException,
+  ForbiddenException,
   Injectable,
   Logger,
   ServiceUnavailableException,
@@ -57,6 +65,10 @@ import { contractSignatureRequirements } from '../../../utils/validation.util';
 import { formatDateLong } from '../../../utils/thai-date.util';
 import { escapeHtml } from './contract-document-format.util';
 import { matchesDocumentMime } from './document-mime.util';
+type ProductionInput = { kind: 'signature-event'; eventId: string; choice: TemplateChoice };
+type GenerationInput = GeneratedRequest | ProductionInput;
+const isProduction = (input: GenerationInput): input is ProductionInput =>
+  'kind' in input && input.kind === 'signature-event';
 export interface VerifiedGeneratedDocument {
   kind: 'verified-generated';
   bytes: Buffer;
@@ -80,6 +92,157 @@ export class GeneratedDocumentsService {
     this.templates = new ContractTemplateService(prisma);
     this.rendering = new DocumentRenderingService(prisma, storage, settings);
   }
+  private async authority<T>(
+    operation: GeneratedDocumentOperation,
+    input: GenerationInput,
+    work: (proof: GeneratedAuthority) => Promise<T>,
+    contractId?: string,
+  ): Promise<T> {
+    if (!isProduction(input)) return this.access.current(operation, input, work, contractId);
+    return this.access.currentEvent(input.eventId, async (proof, event) => {
+      const pair = await this.prepareSignaturePair(proof, input.choice);
+      if (
+        pair.contract.sourceRevision !== event.sourceRevision ||
+        pair.contract.dependencyRevision !== event.contractDependencyRevision ||
+        pair.pdpa.dependencyRevision !== event.pdpaDependencyRevision ||
+        documentSourceRevision(pair.contract.manifest) !==
+          documentSourceRevision(event.contractManifest) ||
+        documentSourceRevision(pair.pdpa.manifest) !== documentSourceRevision(event.pdpaManifest) ||
+        documentSourceRevision([...event.signatureIds].sort()) !==
+          documentSourceRevision(pair.contract.source.signatures.map((s) => s.id).sort())
+      )
+        throw generatedDenied();
+      return work(proof);
+    });
+  }
+  private async prepareSignaturePair(proof: GeneratedAuthority, choice: TemplateChoice) {
+    if (!proof.parent) throw generatedDenied();
+    if (
+      proof.snapshot &&
+      !canAccess(proof.snapshot, 'documents.read', {
+        company: proof.company,
+        branchId: proof.parent.branchId,
+      })
+    )
+      throw generatedDenied();
+    const contract = await prepareGeneratedSource(
+      proof,
+      this.access,
+      this.templates,
+      'CONTRACT',
+      choice,
+    );
+    const pdpa = await prepareGeneratedSource(
+      proof,
+      this.access,
+      this.templates,
+      'PDPA_CONSENT',
+      choice,
+    );
+    if (!contractSignatureRequirements(contract.source).complete) throw generatedDenied();
+    const identities = await verifiedSignatureIdentities(
+      proof.tx,
+      contract.source,
+      contract.source.signatures,
+      {
+        contractHash: canonicalSignatureHash(contract.source),
+        productIds: [...new Set([contract.source.productId, ...contract.source.bundleProductIds])],
+      },
+    );
+    if (!identities) throw generatedDenied();
+    for (const identity of identities) {
+      if (
+        !(await this.access.inputs(proof, {
+          products: identity.productIds,
+          payments: [],
+          signatures: [identity.signatureId],
+          consent: null,
+          salesperson: identity.capturedById,
+        }))
+      )
+        throw generatedDenied();
+    }
+    return { contract, pdpa };
+  }
+  /** Only the live canonical capture boundary can mint. The proof is request-local,
+   * registered by that boundary and bound to its current owned transaction. */
+  async mintSignatureEvent(
+    proof: SignatureAuthority,
+    choice: TemplateChoice,
+  ): Promise<string | null> {
+    assertSignatureAuthority(proof);
+    let pair: Awaited<ReturnType<GeneratedDocumentsService['prepareSignaturePair']>>;
+    try {
+      pair = await this.access.signatureProducer(proof, (authority) =>
+        this.prepareSignaturePair(authority, choice),
+      );
+    } catch (error) {
+      if (error instanceof BadRequestException || error instanceof ForbiddenException) return null;
+      throw error;
+    }
+    const event = await proof.tx.signedDocumentProductionEvent.create({
+      data: {
+        contractId: proof.parent.id,
+        sourceRevision: pair.contract.sourceRevision,
+        signatureIds: pair.contract.source.signatures.map((s) => s.id).sort(),
+        contractManifest: pair.contract.manifest as unknown as Prisma.InputJsonValue,
+        pdpaManifest: pair.pdpa.manifest as unknown as Prisma.InputJsonValue,
+        contractDependencyRevision: pair.contract.dependencyRevision,
+        pdpaDependencyRevision: pair.pdpa.dependencyRevision,
+        producerKind: 'CANONICAL_SIGNATURE_COMPLETION',
+        initiatorUserId: proof.actorId,
+        initiatorChannel: proof.managed ? 'MANAGED_STAFF' : 'LEGACY_STAFF',
+        selectedCompany: proof.managed ? proof.company : null,
+        templateChoice: choice as Prisma.InputJsonValue,
+      },
+    });
+    return event.id;
+  }
+  async consumeSignatureEvent(
+    eventId: string,
+  ): Promise<'SUCCESS' | 'PARTIAL' | 'FAILED' | 'PENDING'> {
+    // A retained bound event is required to claim. Current source and initiator
+    // are independently verified before effects; an eventId/plan is not a grant.
+    const event = await this.prisma.signedDocumentProductionEvent.findUnique({
+      where: { id: eventId },
+    });
+    if (
+      !event?.templateChoice ||
+      !event.initiatorUserId ||
+      !['MANAGED_STAFF', 'LEGACY_STAFF'].includes(event.initiatorChannel ?? '') ||
+      (event.initiatorChannel === 'MANAGED_STAFF'
+        ? !['SHOP', 'FINANCE'].includes(event.selectedCompany ?? '')
+        : event.selectedCompany !== null) ||
+      typeof event.templateChoice !== 'object' ||
+      Array.isArray(event.templateChoice)
+    )
+      throw generatedDenied();
+    const choice = event.templateChoice as TemplateChoice;
+    const input: ProductionInput = { kind: 'signature-event', eventId, choice };
+    const claim = await this.prisma.signedDocumentProductionConsumption.createMany({
+      data: { eventId, status: 'RUNNING' },
+      skipDuplicates: true,
+    });
+    if (!claim.count) {
+      const previous = await this.prisma.signedDocumentProductionConsumption.findUniqueOrThrow({
+        where: { eventId },
+      });
+      return previous.status === 'RUNNING'
+        ? 'PENDING'
+        : (previous.status as 'SUCCESS' | 'PARTIAL' | 'FAILED');
+    }
+    let status: 'SUCCESS' | 'PARTIAL' | 'FAILED' = 'FAILED';
+    try {
+      status = (await this.signed(input)).status;
+    } catch {
+      /* signature already committed */
+    }
+    await this.prisma.signedDocumentProductionConsumption.update({
+      where: { eventId },
+      data: { status, completedAt: new Date() },
+    });
+    return status;
+  }
   async execute(operation: GeneratedDocumentOperation, req: GeneratedRequest): Promise<unknown> {
     if (operation === 'getDocuments' || operation === 'getDocument')
       return this.references(operation, req);
@@ -96,7 +259,8 @@ export class GeneratedDocumentsService {
     if (!['CONTRACT', 'PDPA_CONSENT'].includes(type)) return this.legacyUnknown(req, type);
     return (await this.generate(operation, req, type, new GeneratedEffectBudget())).ack;
   }
-  private choice(req: GeneratedRequest, operation: GeneratedDocumentOperation): TemplateChoice {
+  private choice(req: GenerationInput, operation: GeneratedDocumentOperation): TemplateChoice {
+    if (isProduction(req)) return req.choice;
     const input = ['previewContract', 'downloadPdf'].includes(operation)
       ? req.query
       : (req.body ?? {});
@@ -148,11 +312,11 @@ export class GeneratedDocumentsService {
   }
   private async prepare(
     operation: GeneratedDocumentOperation,
-    req: GeneratedRequest,
+    req: GenerationInput,
     type: GeneratedType,
     contractId?: string,
   ) {
-    return this.access.current(
+    return this.authority(
       operation,
       req,
       (proof) =>
@@ -196,7 +360,7 @@ export class GeneratedDocumentsService {
   }
   private async generate(
     operation: GeneratedDocumentOperation,
-    req: GeneratedRequest,
+    req: GenerationInput,
     type: GeneratedType,
     budget: GeneratedEffectBudget,
     contractId?: string,
@@ -218,6 +382,7 @@ export class GeneratedDocumentsService {
     )
       throw new BadRequestException('ผลลัพธ์ PDF ไม่ถูกต้อง');
     if (!this.storage.configured) throw new ServiceUnavailableException('ยังไม่พร้อมจัดเก็บเอกสาร');
+    if (isProduction(req)) await this.authority(operation, req, async () => undefined);
     const token = randomUUID(),
       key = `generated-contracts/${randomUUID()}.pdf`;
     let committed = false;
@@ -228,7 +393,7 @@ export class GeneratedDocumentsService {
         () => this.cleanup(key, token),
       );
       budget.check();
-      const identity = await this.access.current(
+      const identity = await this.authority(
         operation,
         req,
         async (proof) => {
@@ -253,6 +418,7 @@ export class GeneratedDocumentsService {
           const identity = await proof.tx.generatedDocumentIdentity.create({
             data: {
               documentId: doc.id,
+              signatureEventId: isProduction(req) ? req.eventId : null,
               contractId: doc.contractId,
               customerId: prepared.source.customerId,
               branchId: prepared.source.branchId,
@@ -307,7 +473,7 @@ export class GeneratedDocumentsService {
         !matchesDocumentMime(bytes, 'application/pdf'))
     )
       throw new BadRequestException('ผลลัพธ์ PDF ไม่ถูกต้อง');
-    await this.access.current(operation, req, async (proof) => {
+    await this.authority(operation, req, async (proof) => {
       const current = await prepareGeneratedSource(
         proof,
         this.access,
@@ -458,7 +624,7 @@ export class GeneratedDocumentsService {
         document: GeneratedContractDocumentReference | null;
       }
   > {
-    return this.access.current(operation, req, async (proof) => {
+    return this.authority(operation, req, async (proof) => {
       const page = Number(req.query.page ?? 1),
         limit = Number(req.query.limit ?? 50);
       const unavailable = () =>
@@ -546,7 +712,7 @@ export class GeneratedDocumentsService {
     });
   }
   private async descriptor(req: GeneratedRequest): Promise<AuthenticatedGeneratedDocumentDelivery> {
-    return this.access.current('getSignedUrl', req, async (proof) => {
+    return this.authority('getSignedUrl', req, async (proof) => {
       if (proof.managed) await this.identity(proof, proof.documentId!);
       await this.access.evidence(proof, 'GENERATED_DELIVERY_DESCRIPTOR', proof.documentId!);
       return {
@@ -562,7 +728,7 @@ export class GeneratedDocumentsService {
     | VerifiedGeneratedDocument
     | { kind: 'legacy-generated'; bytes: Buffer; filename: string; contentType: string }
   > {
-    const legacy = await this.access.current('downloadDocument', req, async (proof) =>
+    const legacy = await this.authority('downloadDocument', req, async (proof) =>
       !proof.managed
         ? proof.tx.eDocument.findUniqueOrThrow({
             where: { id: proof.documentId! },
@@ -579,7 +745,7 @@ export class GeneratedDocumentsService {
           },
         );
       const bytes = await budget.buffer(file.stream);
-      await this.access.current('downloadDocument', req, async (proof) => {
+      await this.authority('downloadDocument', req, async (proof) => {
         if (proof.managed) throw generatedDenied();
         const current = await proof.tx.eDocument.findUniqueOrThrow({
           where: { id: legacy.id, deletedAt: null },
@@ -596,7 +762,7 @@ export class GeneratedDocumentsService {
         contentType: file.contentType,
       };
     }
-    const prepared = await this.access.current('downloadDocument', req, (proof) =>
+    const prepared = await this.authority('downloadDocument', req, (proof) =>
       this.identity(proof, proof.documentId!),
     );
     const budget = new GeneratedEffectBudget();
@@ -613,7 +779,7 @@ export class GeneratedDocumentsService {
       !matchesDocumentMime(bytes, prepared.mimeType)
     )
       throw generatedDenied();
-    await this.access.current('downloadDocument', req, async (proof) => {
+    await this.authority('downloadDocument', req, async (proof) => {
       const current = await this.identity(proof, proof.documentId!);
       if (current.id !== prepared.id) throw generatedDenied();
       budget.check();
@@ -626,7 +792,7 @@ export class GeneratedDocumentsService {
       contentType: 'application/pdf',
     };
   }
-  private async signed(req: GeneratedRequest): Promise<GeneratedSignedDocumentsResult> {
+  private async signed(req: GenerationInput): Promise<GeneratedSignedDocumentsResult> {
     await this.prepare('generateSignedDocuments', req, 'CONTRACT');
     const budget = new GeneratedEffectBudget();
     const result: GeneratedSignedDocumentsResult = { status: 'FAILED' },
@@ -650,7 +816,7 @@ export class GeneratedDocumentsService {
     }
     if (contract && pdpa && !errors.length)
       try {
-        await this.access.current('generateSignedDocuments', req, async (proof) => {
+        await this.authority('generateSignedDocuments', req, async (proof) => {
           const current = await prepareGeneratedSource(
             proof,
             this.access,
@@ -707,8 +873,8 @@ export class GeneratedDocumentsService {
     if (errors.length) result.errors = errors;
     return result;
   }
-  private async attach(req: GeneratedRequest, identity: GeneratedDocumentIdentity) {
-    return this.access.current('generateSignedDocuments', req, async (proof) => {
+  private async attach(req: GenerationInput, identity: GeneratedDocumentIdentity) {
+    return this.authority('generateSignedDocuments', req, async (proof) => {
       const current = await prepareGeneratedSource(
         proof,
         this.access,
@@ -788,7 +954,7 @@ export class GeneratedDocumentsService {
     });
   }
   private async batch(req: GeneratedRequest) {
-    const ids = await this.access.current('regenerateSignedContractPdfs', req, async (proof) => {
+    const ids = await this.authority('regenerateSignedContractPdfs', req, async (proof) => {
       const scoped = proof.snapshot
         ? proof.company === 'SHOP'
           ? preparationSourceWhere(proof.snapshot, ['contracts.read', 'contracts.update'])
@@ -972,7 +1138,7 @@ export class GeneratedDocumentsService {
   private async legacyUnknown(req: GeneratedRequest, type: unknown) {
     if (typeof type !== 'string' || type.length > 100)
       throw new BadRequestException('ประเภทเอกสารไม่รองรับ');
-    const prepared = await this.access.current('generateDocument', req, (proof) => {
+    const prepared = await this.authority('generateDocument', req, (proof) => {
       if (proof.managed) throw new BadRequestException('ประเภทเอกสารไม่รองรับ');
       return prepareGeneratedSource(
         proof,
@@ -1002,7 +1168,7 @@ export class GeneratedDocumentsService {
           this.storage.uploadOwned(key, bytes, 'application/pdf', token, budget.controller.signal),
         () => this.cleanup(key, token),
       );
-      const doc = await this.access.current('generateDocument', req, async (proof) => {
+      const doc = await this.authority('generateDocument', req, async (proof) => {
         if (proof.managed) throw generatedDenied();
         const current = await prepareGeneratedSource(
           proof,

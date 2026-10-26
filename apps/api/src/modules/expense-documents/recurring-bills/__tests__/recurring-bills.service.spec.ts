@@ -360,3 +360,21 @@ describe('notifier + view status', () => {
     expect(viewStatusOf({ status: 'PENDING', paidById: null, dueDate: bkkMidnight(2026, 10, 29) }, null, today)).toBe('PENDING');
   });
 });
+
+describe('retireOpenOccurrences (แม่แบบเปลี่ยนรอบ — §15.5)', () => {
+  it('skips every PENDING occurrence whose document is not paid, closes its todo and deletes the system draft', async () => {
+    prisma.recurringBillOccurrence.findMany.mockResolvedValue([
+      occurrence({ id: 'occ-a' }),
+      occurrence({ id: 'occ-b', todoId: null, todo: null, expenseDocumentId: null, expenseDocument: null }),
+      occurrence({ id: 'occ-c', expenseDocument: { id: 'doc-c', number: 'EX-C', status: 'POSTED', paidAt: NOW, deletedAt: null, documentDate: NOW, createdById: 'u' } }),
+    ]);
+    const res = await service.retireOpenOccurrences('tpl-1', 'แม่แบบเปลี่ยนรอบ', SYSTEM, NOW);
+    expect(res.retired).toBe(2);
+    expect(prisma.recurringBillOccurrence.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { templateId: 'tpl-1', status: 'PENDING' } }));
+    expect(prisma.recurringBillOccurrence.updateMany).toHaveBeenCalledWith({ where: { id: 'occ-a', status: 'PENDING' }, data: { status: 'SKIPPED', skippedAt: NOW, skippedById: null, skipReason: 'แม่แบบเปลี่ยนรอบ' } });
+    expect(prisma.recurringBillOccurrence.updateMany).not.toHaveBeenCalledWith(expect.objectContaining({ where: { id: 'occ-c', status: 'PENDING' } }));
+    expect(prisma.todo.updateMany).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ id: 'todo-1' }), data: expect.objectContaining({ status: 'DONE' }) }));
+    expect(prisma.expenseDocument.updateMany).toHaveBeenCalledWith(expect.objectContaining({ where: { id: 'doc-1', status: 'DRAFT', deletedAt: null } }));
+    expect(prisma.auditLog.create).toHaveBeenCalledTimes(1);
+  });
+});

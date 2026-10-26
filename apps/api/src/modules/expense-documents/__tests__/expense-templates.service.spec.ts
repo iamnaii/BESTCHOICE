@@ -74,8 +74,9 @@ describe('ExpenseTemplatesService', () => {
       } as never, { id: 'u1', branchId: 'b1', role: 'OWNER' });
       expect(prisma.$transaction).toHaveBeenCalledTimes(1);
       // count + create both invoked once inside the tx callback.
+      // D5: โควต้านับเฉพาะแม่แบบที่ไม่ใช่บิลประจำ (spec §13 ข้อ 5)
       expect(prisma.expenseTemplate.count).toHaveBeenCalledWith({
-        where: { createdById: 'u1', deletedAt: null },
+        where: { createdById: 'u1', deletedAt: null, isRecurring: false },
       });
       expect(prisma.expenseTemplate.create).toHaveBeenCalled();
     });
@@ -200,6 +201,110 @@ describe('ExpenseTemplatesService', () => {
       });
       await expect(service.instantiate('tpl-1', { id: 'u1', branchId: 'b1', role: 'BRANCH_MANAGER' }))
         .rejects.toThrow(ForbiddenException);
+    });
+  });
+});
+
+// ─── ก้อน 6 บิลประจำ (D5) — กติกาแม่แบบบิลประจำ (spec §8 + §15.1/§15.5) ─────────────
+describe('recurring bill rules (D5)', () => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let prisma: any;
+  let service: ExpenseTemplatesService;
+  const owner = { id: 'u1', branchId: 'b1', role: 'OWNER' };
+  const base = { name: 'ค่าเน็ต', documentType: 'EXPENSE', branchId: 'b1', prefilledData: { vendorName: 'AIS', category: '53-1302', sampleAmount: 1284 } };
+
+  beforeEach(() => {
+    prisma = {
+      expenseTemplate: {
+        create: jest.fn().mockImplementation(({ data }: { data: Record<string, unknown> }) => Promise.resolve({ id: 'tpl-1', ...data })),
+        count: jest.fn().mockResolvedValue(0),
+        findFirst: jest.fn(),
+        findMany: jest.fn().mockResolvedValue([]),
+        findUniqueOrThrow: jest.fn(),
+        update: jest.fn().mockImplementation(({ data }: { data: Record<string, unknown> }) => Promise.resolve({ id: 'tpl-1', ...data })),
+      },
+      systemConfig: { findFirst: jest.fn().mockResolvedValue(null) },
+      $transaction: jest.fn().mockImplementation((cb: (tx: unknown) => Promise<unknown>) => cb(prisma)),
+    };
+    service = new ExpenseTemplatesService(prisma, { create: jest.fn() } as never);
+  });
+
+  const create = (dto: Record<string, unknown>) => service.create({ ...base, ...dto } as never, owner);
+
+  it('QUARTERLY without recurringMonth → 400 ไทย', async () => {
+    await expect(create({ isRecurring: true, recurrence: 'QUARTERLY', recurringDay: 5 })).rejects.toThrow(/เดือน/);
+  });
+  it('YEARLY with recurringMonth 13 → 400', async () => {
+    await expect(create({ isRecurring: true, recurrence: 'YEARLY', recurringDay: 1, recurringMonth: 13 })).rejects.toThrow(BadRequestException);
+  });
+  it('MONTHLY with a recurringMonth → 400', async () => {
+    await expect(create({ isRecurring: true, recurrence: 'MONTHLY', recurringDay: 1, recurringMonth: 2 })).rejects.toThrow(BadRequestException);
+  });
+  it('isRecurring without recurrence → 400', async () => {
+    await expect(create({ isRecurring: true, recurringDay: 1 })).rejects.toThrow(/ความถี่/);
+  });
+  it('PAYROLL cannot be a recurring bill', async () => {
+    await expect(create({ documentType: 'PAYROLL', isRecurring: true, recurrence: 'MONTHLY', recurringDay: 1 })).rejects.toThrow(/ใบรายจ่าย/);
+  });
+  it('reminderLeadDays 31 → 400; startsOn too far back / ahead → 400', async () => {
+    await expect(create({ isRecurring: true, recurrence: 'MONTHLY', recurringDay: 1, reminderLeadDays: 31 })).rejects.toThrow(BadRequestException);
+    await expect(create({ isRecurring: true, recurrence: 'MONTHLY', recurringDay: 1, startsOn: '2020-01-01' })).rejects.toThrow(/ย้อนหลัง/);
+    await expect(create({ isRecurring: true, recurrence: 'MONTHLY', recurringDay: 1, startsOn: '2099-01-01' })).rejects.toThrow(BadRequestException);
+  });
+  it('invalid paymentMethod / depositAccountCode in prefilledData → 400', async () => {
+    await expect(create({ prefilledData: { ...base.prefilledData, paymentMethod: 'CREDIT_BALANCE' }, isRecurring: true, recurrence: 'MONTHLY', recurringDay: 1 })).rejects.toThrow(/วิธีจ่าย/);
+    await expect(create({ prefilledData: { ...base.prefilledData, paymentMethod: 'BANK_TRANSFER', depositAccountCode: '99-9999' }, isRecurring: true, recurrence: 'MONTHLY', recurringDay: 1 })).rejects.toThrow(/บัญชี/);
+  });
+  it('a recurring bill is exempt from the per-user quota, while plain templates still count', async () => {
+    prisma.expenseTemplate.count.mockResolvedValue(20);
+    await expect(create({ isRecurring: true, recurrence: 'MONTHLY', recurringDay: 1 })).resolves.toBeTruthy();
+    expect(prisma.expenseTemplate.count).toHaveBeenCalledWith({ where: { createdById: 'u1', deletedAt: null, isRecurring: false } });
+    await expect(create({})).rejects.toThrow(/โควต้า/);
+  });
+  it('stores recurrence fields and normalises startsOn to Thai midnight (default = today)', async () => {
+    await create({ isRecurring: true, recurrence: 'QUARTERLY', recurringDay: 31, recurringMonth: 2, reminderLeadDays: 7, prefilledData: { ...base.prefilledData, paymentMethod: 'BANK_TRANSFER', depositAccountCode: '11-1201' } });
+    const data = prisma.expenseTemplate.create.mock.calls[0][0].data;
+    expect(data).toMatchObject({ isRecurring: true, recurrence: 'QUARTERLY', recurringDay: 31, recurringMonth: 2, reminderLeadDays: 7 });
+    expect(data.startsOn).toBeInstanceOf(Date);
+    expect(data.startsOn.getUTCHours()).toBe(17); // เที่ยงคืนไทย = 17:00Z ของวันก่อน
+    await create({ isRecurring: true, recurrence: 'MONTHLY', recurringDay: 5, startsOn: '2026-11-01' });
+    expect(prisma.expenseTemplate.create.mock.calls[1][0].data.startsOn).toEqual(new Date('2026-10-31T17:00:00.000Z'));
+  });
+
+  describe('update', () => {
+    const existing = {
+      id: 'tpl-1', name: 'ค่าเน็ต', documentType: 'EXPENSE', branchId: 'b1', deletedAt: null, createdById: 'u1',
+      isRecurring: true, recurrence: 'MONTHLY', recurringDay: 24, recurringMonth: null, reminderLeadDays: 3,
+      startsOn: new Date('2026-09-30T17:00:00.000Z'), prefilledData: base.prefilledData,
+    };
+    beforeEach(() => prisma.expenseTemplate.findUniqueOrThrow.mockResolvedValue(existing));
+
+    it('validates on the merged row — switching to QUARTERLY without a month → 400', async () => {
+      await expect(service.update('tpl-1', { recurrence: 'QUARTERLY' } as never, owner)).rejects.toThrow(/เดือน/);
+    });
+    it('turning isRecurring off clears recurrence fields, no ruleChanged', async () => {
+      const res = await service.update('tpl-1', { isRecurring: false } as never, owner);
+      expect(prisma.expenseTemplate.update.mock.calls[0][0].data).toMatchObject({ isRecurring: false, recurrence: null, recurringMonth: null });
+      expect(res.ruleChanged).toBe(false);
+    });
+    it('changing the day marks ruleChanged and moves startsOn forward to today', async () => {
+      const res = await service.update('tpl-1', { recurringDay: 10 } as never, owner);
+      expect(res.ruleChanged).toBe(true);
+      const data = prisma.expenseTemplate.update.mock.calls[0][0].data;
+      expect(data.recurringDay).toBe(10);
+      expect((data.startsOn as Date).getTime()).toBeGreaterThan(existing.startsOn.getTime());
+      expect((data.startsOn as Date).getUTCHours()).toBe(17);
+    });
+    it('renaming only does not mark ruleChanged nor touch startsOn', async () => {
+      const res = await service.update('tpl-1', { name: 'ค่าเน็ตบ้าน' } as never, owner);
+      expect(res.ruleChanged).toBe(false);
+      expect(prisma.expenseTemplate.update.mock.calls[0][0].data.startsOn).toBeUndefined();
+    });
+    it('turning isRecurring on for the first time sets startsOn = today and ruleChanged', async () => {
+      prisma.expenseTemplate.findUniqueOrThrow.mockResolvedValue({ ...existing, isRecurring: false, recurrence: null, recurringDay: null, startsOn: null });
+      const res = await service.update('tpl-1', { isRecurring: true, recurrence: 'MONTHLY', recurringDay: 5 } as never, owner);
+      expect(res.ruleChanged).toBe(true);
+      expect(prisma.expenseTemplate.update.mock.calls[0][0].data.startsOn).toBeInstanceOf(Date);
     });
   });
 });

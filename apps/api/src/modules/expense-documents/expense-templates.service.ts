@@ -13,11 +13,91 @@ import { CreateTemplateDto } from './dto/create-template.dto';
 import { UpdateTemplateDto } from './dto/update-template.dto';
 import { hasCrossBranchAccess } from '../auth/branch-access.util';
 import { TEMPLATES_DISABLED_MESSAGE, isTemplatesEnabled } from './templates-flag.util';
+import { CASH_ACCOUNT_CODES } from '../../constants/cash-account.constants';
+import { bangkokCalendarParts, bangkokMidnight } from '../../utils/date.util';
+import {
+  RECURRING_BILL_DEFAULT_LEAD_DAYS,
+  RECURRING_BILL_LEAD_DAYS_MAX,
+  RECURRING_BILL_STARTS_ON_MAX_FUTURE_DAYS,
+  RECURRING_BILL_STARTS_ON_MAX_PAST_DAYS,
+} from '@installment/shared';
 
-interface UserContext {
+export interface UserContext {
   id: string;
   branchId?: string | null;
   role?: string;
+}
+
+/** วิธีจ่ายที่บิลประจำตั้งล่วงหน้าได้ (ค่าของ enum PaymentMethod ที่มีความหมายกับรายจ่าย) */
+export const RECURRING_PAYMENT_METHODS = ['CASH', 'BANK_TRANSFER', 'QR_EWALLET', 'CARD'] as const;
+
+interface RecurringFields {
+  isRecurring?: boolean | null;
+  recurrence?: string | null;
+  recurringDay?: number | null;
+  recurringMonth?: number | null;
+  reminderLeadDays?: number | null;
+  documentType?: string;
+  prefilledData?: unknown;
+}
+
+/**
+ * กติกาบิลประจำ (spec §8 + §15.5) — ตรวจบน **แถวที่รวมแล้ว** (`{...tpl, ...dto}`) ทั้ง create และ update
+ * เพราะ UpdateTemplateDto เป็น Partial — ฟิลด์คู่ (isRecurring⇔recurrence, QUARTERLY⇔recurringMonth) ตรวจทีละ body ไม่ได้
+ */
+export function assertRecurringRule(m: RecurringFields): void {
+  const pf = (m.prefilledData ?? {}) as Record<string, unknown>;
+  if (pf.paymentMethod != null && !(RECURRING_PAYMENT_METHODS as readonly string[]).includes(String(pf.paymentMethod))) {
+    throw new BadRequestException('วิธีจ่ายของบิลต้องเป็น เงินสด / โอน / QR / บัตร');
+  }
+  if (pf.depositAccountCode != null && !(CASH_ACCOUNT_CODES as readonly string[]).includes(String(pf.depositAccountCode))) {
+    throw new BadRequestException('บัญชีที่จ่ายไม่อยู่ในรายการบัญชีเงินสด/ธนาคาร');
+  }
+  if (!m.isRecurring) return;
+  if (m.documentType !== 'EXPENSE') {
+    throw new BadRequestException('บิลประจำสร้างได้เฉพาะใบรายจ่าย — เงินเดือน/ใบจ่ายเจ้าหนี้ตั้งเป็นบิลประจำไม่ได้');
+  }
+  if (!m.recurrence) {
+    throw new BadRequestException('บิลประจำต้องระบุความถี่ (รายเดือน / ราย 3 เดือน / รายปี)');
+  }
+  if (m.recurringDay == null || m.recurringDay < 1 || m.recurringDay > 31) {
+    throw new BadRequestException('บิลประจำต้องระบุวันครบกำหนด 1-31');
+  }
+  const month = m.recurringMonth ?? null;
+  if (m.recurrence === 'QUARTERLY' && (month == null || month < 1 || month > 3)) {
+    throw new BadRequestException('ราย 3 เดือนต้องระบุว่าเป็นเดือนที่ 1-3 ของไตรมาส');
+  }
+  if (m.recurrence === 'YEARLY' && (month == null || month < 1 || month > 12)) {
+    throw new BadRequestException('รายปีต้องระบุเดือน 1-12');
+  }
+  if (m.recurrence === 'MONTHLY' && month != null) {
+    throw new BadRequestException('รายเดือนไม่ต้องระบุเดือน');
+  }
+  const lead = m.reminderLeadDays ?? RECURRING_BILL_DEFAULT_LEAD_DAYS;
+  if (lead < 0 || lead > RECURRING_BILL_LEAD_DAYS_MAX) {
+    throw new BadRequestException(`เตือนล่วงหน้าได้ 0-${RECURRING_BILL_LEAD_DAYS_MAX} วัน`);
+  }
+}
+
+/** เที่ยงคืนไทยของวันนี้ */
+export function bkkTodayMidnight(now: Date = new Date()): Date {
+  const p = bangkokCalendarParts(now);
+  return bangkokMidnight(p.year, p.month, p.day);
+}
+
+/** `YYYY-MM-DD` → เที่ยงคืนไทย · ตรวจช่วง [วันนี้−90, วันนี้+365] (spec §15.1) */
+export function normalizeStartsOn(input: string, now: Date = new Date()): Date {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(input);
+  if (!m) throw new BadRequestException('วันเริ่มนับงวดต้องเป็นรูปแบบ YYYY-MM-DD');
+  const value = bangkokMidnight(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  const diffDays = Math.round((value.getTime() - bkkTodayMidnight(now).getTime()) / 86_400_000);
+  if (diffDays < -RECURRING_BILL_STARTS_ON_MAX_PAST_DAYS) {
+    throw new BadRequestException(`วันเริ่มนับงวดย้อนหลังได้ไม่เกิน ${RECURRING_BILL_STARTS_ON_MAX_PAST_DAYS} วัน`);
+  }
+  if (diffDays > RECURRING_BILL_STARTS_ON_MAX_FUTURE_DAYS) {
+    throw new BadRequestException('วันเริ่มนับงวดล่วงหน้าได้ไม่เกิน 1 ปี');
+  }
+  return value;
 }
 
 @Injectable()
@@ -85,9 +165,9 @@ export class ExpenseTemplatesService {
         'ใบลดหนี้บันทึกเป็นรายการโปรดไม่ได้ — แต่ละใบลดหนี้ต้องผูกกับเอกสารต้นฉบับเฉพาะ',
       );
     }
-    if (dto.isRecurring && (dto.recurringDay == null || dto.recurringDay < 1 || dto.recurringDay > 31)) {
-      throw new BadRequestException('Recurring template ต้องระบุ recurringDay 1-31');
-    }
+    assertRecurringRule(dto);
+    const isRecurring = dto.isRecurring ?? false;
+    const startsOn = isRecurring ? (dto.startsOn ? normalizeStartsOn(dto.startsOn) : bkkTodayMidnight()) : null;
     // D1.2.4.2 — TOCTOU-safe quota: count + cap-read + insert all happen
     // inside a single transaction. Two concurrent create() calls under
     // load can no longer both read `count = cap-1` then both insert
@@ -99,10 +179,11 @@ export class ExpenseTemplatesService {
     // is still narrow enough that user-facing burst-create is safe.)
     return this.prisma.$transaction(async (tx) => {
       const cap = await this.readUserQuotaCap(tx);
+      // โควต้านับเฉพาะรายการโปรดส่วนตัว — บิลประจำเป็นของร้าน ไม่นับ (spec §13 ข้อ 5)
       const existing = await tx.expenseTemplate.count({
-        where: { createdById: user.id, deletedAt: null },
+        where: { createdById: user.id, deletedAt: null, isRecurring: false },
       });
-      if (existing >= cap) {
+      if (!isRecurring && existing >= cap) {
         throw new BadRequestException(
           'โควต้าเทมเพลตเต็มแล้ว — ลบเทมเพลตเก่าก่อนสร้างใหม่',
         );
@@ -113,8 +194,12 @@ export class ExpenseTemplatesService {
           documentType: dto.documentType as never,
           branchId: dto.branchId,
           prefilledData: dto.prefilledData as Prisma.InputJsonValue,
-          isRecurring: dto.isRecurring ?? false,
+          isRecurring,
           recurringDay: dto.recurringDay ?? null,
+          recurrence: isRecurring ? (dto.recurrence as never) : null,
+          recurringMonth: isRecurring ? (dto.recurringMonth ?? null) : null,
+          reminderLeadDays: dto.reminderLeadDays ?? RECURRING_BILL_DEFAULT_LEAD_DAYS,
+          startsOn,
           createdById: user.id,
         },
       });
@@ -166,18 +251,54 @@ export class ExpenseTemplatesService {
     return tpl;
   }
 
+  /**
+   * แก้แม่แบบ — กติกาบิลประจำตรวจบนแถวที่รวมแล้ว · `ruleChanged` = ความถี่/วัน/เดือนเปลี่ยน หรือเพิ่งเปิดเป็นบิลประจำ
+   * (ผู้เรียกใช้ปิดงวดค้างของกติกาเดิมแล้วสร้างงวดใหม่ — spec §15.5) · เปลี่ยนกติกา ⇒ `startsOn` เลื่อนมาอย่างน้อยวันนี้
+   */
   async update(id: string, dto: UpdateTemplateDto, user: UserContext) {
     await this.assertTemplatesEnabled();
     const tpl = await this.findOne(id, user);
-    if (dto.isRecurring === true && (dto.recurringDay ?? tpl.recurringDay) == null) {
-      throw new BadRequestException('Recurring template ต้องระบุ recurringDay 1-31');
-    }
+    const isRecurring = dto.isRecurring ?? tpl.isRecurring;
+    const merged = {
+      ...tpl,
+      ...dto,
+      isRecurring,
+      documentType: tpl.documentType,
+      prefilledData: dto.prefilledData ?? tpl.prefilledData,
+      // สลับมารายเดือนโดยไม่ส่งเดือน = ล้างเดือนให้เอง
+      recurringMonth:
+        dto.recurringMonth !== undefined ? dto.recurringMonth : dto.recurrence === 'MONTHLY' ? null : tpl.recurringMonth,
+    };
+    assertRecurringRule(merged);
+
+    const ruleChanged =
+      isRecurring &&
+      (!tpl.isRecurring ||
+        merged.recurrence !== tpl.recurrence ||
+        merged.recurringDay !== tpl.recurringDay ||
+        (merged.recurringMonth ?? null) !== (tpl.recurringMonth ?? null));
+
     const data: Prisma.ExpenseTemplateUpdateInput = {};
     if (dto.name !== undefined) data.name = dto.name;
     if (dto.prefilledData !== undefined) data.prefilledData = dto.prefilledData as Prisma.InputJsonValue;
     if (dto.isRecurring !== undefined) data.isRecurring = dto.isRecurring;
     if (dto.recurringDay !== undefined) data.recurringDay = dto.recurringDay;
-    return this.prisma.expenseTemplate.update({ where: { id }, data });
+    if (dto.reminderLeadDays !== undefined) data.reminderLeadDays = dto.reminderLeadDays;
+    if (!isRecurring) {
+      data.recurrence = null;
+      data.recurringMonth = null;
+    } else {
+      if (dto.recurrence !== undefined) data.recurrence = dto.recurrence as never;
+      if (dto.recurringMonth !== undefined || dto.recurrence === 'MONTHLY') data.recurringMonth = merged.recurringMonth ?? null;
+      if (dto.startsOn) {
+        data.startsOn = normalizeStartsOn(dto.startsOn);
+      } else if (ruleChanged) {
+        const today = bkkTodayMidnight();
+        data.startsOn = tpl.startsOn && tpl.startsOn.getTime() > today.getTime() ? tpl.startsOn : today;
+      }
+    }
+    const updated = await this.prisma.expenseTemplate.update({ where: { id }, data });
+    return { ...updated, ruleChanged };
   }
 
   async softDelete(id: string, user: UserContext) {

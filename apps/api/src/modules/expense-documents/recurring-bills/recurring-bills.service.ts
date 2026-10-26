@@ -359,7 +359,7 @@ export class RecurringBillsService {
       });
       if (res.count === 1) {
         if (linked && linked.id !== paidDoc.id && linked.status === 'DRAFT' && !linked.deletedAt) {
-          await this.retireDraft(linked, who, paidDoc.number, now);
+          await this.retireDraft(linked, who, `งวดบิลประจำจ่ายผ่านใบ ${paidDoc.number} แล้ว — ลบร่างที่ระบบสร้าง`, now);
         }
         if (row.todoId) await this.closeTodo(row.todoId, now);
         result.paid++;
@@ -461,8 +461,37 @@ export class RecurringBillsService {
     })) as OccurrenceDocument | null;
   }
 
-  /** ร่างระบบของงวดที่ถูกแทนด้วยใบอื่น — ลบ (soft) ใน tx เดียวกับ audit ตรง (ไม่ผ่าน lifecycle ที่ต้องการสิทธิ์) */
-  private async retireDraft(draft: OccurrenceDocument, who: RecurringBillActor, paidNumber: string, now: Date) {
+  /**
+   * แม่แบบเปลี่ยนรอบ (spec §15.5): งวด PENDING ที่ใบยังไม่จ่าย → SKIPPED ระบบ + ปิดงาน + ลบร่างที่ยัง DRAFT
+   * งวดที่ใบจ่ายแล้วปล่อยไว้ให้ขั้น B ปิดตามปกติ
+   */
+  async retireOpenOccurrences(templateId: string, reason: string, actor: RecurringBillActor, now: Date = new Date()): Promise<{ retired: number }> {
+    const rows = (await this.prisma.recurringBillOccurrence.findMany({
+      where: { templateId, status: 'PENDING' },
+      include: {
+        expenseDocument: { select: OCCURRENCE_DOCUMENT_SELECT },
+        todo: { select: { id: true, status: true, deletedAt: true } },
+      },
+    })) as unknown as Array<Pick<OccurrenceRow, 'id' | 'todoId' | 'expenseDocument' | 'todo'>>;
+    let retired = 0;
+    for (const row of rows) {
+      if (isExpenseDocumentPaid(row.expenseDocument)) continue;
+      const res = await this.prisma.recurringBillOccurrence.updateMany({
+        where: { id: row.id, status: 'PENDING' },
+        data: { status: 'SKIPPED', skippedAt: now, skippedById: null, skipReason: reason },
+      });
+      if (res.count !== 1) continue;
+      if (row.todoId) await this.closeTodo(row.todoId, now);
+      if (row.expenseDocument && row.expenseDocument.status === 'DRAFT' && !row.expenseDocument.deletedAt) {
+        await this.retireDraft(row.expenseDocument, actor, `${reason} — ลบร่างที่ระบบสร้างให้งวดเดิม`, now);
+      }
+      retired++;
+    }
+    return { retired };
+  }
+
+  /** ร่างระบบของงวดที่ถูกแทน/ยกเลิก — ลบ (soft) ใน tx เดียวกับ audit ตรง (ไม่ผ่าน lifecycle ที่ต้องการสิทธิ์) */
+  private async retireDraft(draft: OccurrenceDocument, who: RecurringBillActor, reason: string, now: Date) {
     await this.prisma.$transaction(async (tx) => {
       const res = await tx.expenseDocument.updateMany({
         where: { id: draft.id, status: 'DRAFT', deletedAt: null },
@@ -476,7 +505,7 @@ export class RecurringBillsService {
           entityId: draft.id,
           userId: who.id,
           oldValue: { status: 'DRAFT' },
-          newValue: { deletedAt: now, reason: `งวดบิลประจำจ่ายผ่านใบ ${paidNumber} แล้ว — ลบร่างที่ระบบสร้าง` },
+          newValue: { deletedAt: now, reason },
         },
       });
     });

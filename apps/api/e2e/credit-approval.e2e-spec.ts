@@ -1,3 +1,5 @@
+import { CustomerBlacklistService } from '../src/modules/customers/customer-blacklist.service';
+import { CustomerPiiService } from '../src/modules/customers/customer-pii.service';
 import { assertContractCreditApproval } from '../src/modules/credit-check/services/credit-approval';
 import { computeInstallmentBreakdown } from '../src/modules/journal/compute-installment-breakdown';
 import { Body, Controller, INestApplication, Post, ValidationPipe } from '@nestjs/common';
@@ -47,7 +49,8 @@ describe('verified credit approval with PostgreSQL and real HTTP controllers', (
       findOne: (id: string) => db.contract.findUniqueOrThrow({ where: { id }, include: { payments: { orderBy: { installmentNo: 'asc' } } } }),
     } as never, { execute: jest.fn().mockResolvedValue({}) } as never,
     { execute: jest.fn().mockResolvedValue({}) } as never,
-    { resolveBranchCashAccount: async () => 'S11-1101', resolveInflowCashAccount: async () => 'S11-1101' } as never);
+    { resolveBranchCashAccount: async () => 'S11-1101', resolveInflowCashAccount: async () => 'S11-1101' } as never,
+    new CustomerBlacklistService(db, new CustomerPiiService(db))); // ก้อน 5 C3
     const module = await Test.createTestingModule({
       controllers: [GlobalCreditCheckController, CustomerCreditCheckController, ApprovalContractTestController],
       providers: [

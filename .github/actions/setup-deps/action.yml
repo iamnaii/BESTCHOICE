@@ -9,7 +9,7 @@ inputs:
   node-version:
     description: Node.js major version
     required: false
-    default: '20'
+    default: '24'
   prisma:
     description: Prisma clients to generate — none | shop | both (SHOP + FINANCE)
     required: false

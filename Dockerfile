@@ -1,7 +1,7 @@
 # ============================================
 # Stage 1: Install dependencies
 # ============================================
-FROM node:20-alpine AS deps
+FROM node:24-alpine AS deps
 WORKDIR /app
 COPY package.json package-lock.json* ./
 COPY apps/api/package.json apps/api/
@@ -26,8 +26,11 @@ RUN npm ci --include=dev
 # ============================================
 # Stage 2: Build API
 # ============================================
-FROM node:20-alpine AS builder
+FROM node:24-alpine AS builder
 WORKDIR /app
+# nest build (tsc) ต้องการ heap > 2 GB — V8 ตั้งเพดานเริ่มต้นตาม RAM ของเครื่อง build
+# (RAM/4) เครื่อง 8 GB จึงได้แค่ ~2 GB แล้ว OOM (exit 134) ล็อกไว้ให้ไม่ขึ้นกับขนาด runner
+ENV NODE_OPTIONS=--max-old-space-size=4096
 
 # After Tier 1 npm update (commit 85598bd), the @nestjs/cli binary is
 # fully hoisted to root node_modules/.bin/nest. apps/api/node_modules
@@ -46,7 +49,7 @@ RUN cd apps/api && npx prisma generate && npm run build
 # ============================================
 # Stage 3: Production Runtime
 # ============================================
-FROM node:20-alpine AS runner
+FROM node:24-alpine AS runner
 WORKDIR /app
 
 ENV NODE_ENV=production

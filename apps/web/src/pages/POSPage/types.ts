@@ -10,6 +10,8 @@ export interface Product {
   brand: string;
   model: string;
   imeiSerial: string | null;
+  /** รหัสสินค้าเดิมจากโปรแกรมเขียว — QR บนสติกเกอร์ใช้แทน IMEI เมื่อไม่มี (A5/A4) */
+  legacyProductCode?: string | null;
   category: string;
   costPrice: string;
   branchId: string;

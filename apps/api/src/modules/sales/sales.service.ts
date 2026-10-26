@@ -95,4 +95,8 @@ export class SalesService {
   async getDailySummary(date: string, actor: SalesReadActor, branchId?: string) {
     return this.query.getDailySummary(date, actor, branchId);
   }
+
+  async getTopSellers30d(actor: SalesReadActor, branchId?: string) {
+    return this.query.getTopSellers30d(actor, branchId);
+  }
 }

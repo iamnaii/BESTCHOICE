@@ -29,7 +29,7 @@ import { EarlyPayoffSlipConfirmDto, EarlyPayoffSlipVerifyDto } from './dto/early
 import { ContractDocumentService } from './contract-document.service';
 import { ContractSnapshotService } from './contract-snapshot.service';
 import { ContractJournalQueryService } from '../journal/contract-journal-query.service';
-import { CreateContractDto, UpdateContractDto, UpdateContractBundlesDto, EarlyPayoffDto, ReviewContractDto, RejectContractDto, RequestCancellationDto, RejectCancellationDto, ShopCollectSettlementDto } from './dto/contract.dto';
+import { CreateContractDto, UpdateContractDto, UpdateContractBundlesDto, EarlyPayoffDto, ReviewContractDto, RejectContractDto, RequestCancellationDto, RejectCancellationDto, ShopCollectSettlementDto, ActivateContractDto } from './dto/contract.dto';
 import { PdpaConsentDto } from './dto/pdpa-consent.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -217,10 +217,12 @@ export class ContractsController {
   async activate(
     @Param('id') id: string,
     @CurrentUser() user: { id: string; role: string; branchId: string | null },
+    @Body() dto?: ActivateContractDto,
   ) {
     // Enforce branch-level access before activation
     await this.contractsService.findOne(id, user);
-    const activated = await this.workflowService.activate(id, user.id);
+    // ก้อน 5 C3 — ส่งบทบาท + เหตุผลปลด SOFT (ถ้ามี) เข้าด่าน blacklist ตอนเปิดใช้
+    const activated = await this.workflowService.activate(id, user.id, { actorRole: user.role, blacklistOverrideReason: dto?.blacklistOverrideReason });
     // การเดินทางของลูกค้า: contracts ไม่มี activatedAt และ activate(id) ไม่รับผู้ใช้ ⇒ บันทึกที่นี่หลัง tx ของ activate commit แล้ว
     // recordAfterCommit ไม่โยน error — สัญญาเปิดสำเร็จแล้วต้องคืนผลเสมอ · ไม่คัดลอกข้อมูลลูกค้า (PDPA)
     await this.journeyEntries.recordAfterCommit({

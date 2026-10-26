@@ -38,6 +38,7 @@ import { StaffNotifyModule } from './modules/staff-notify/staff-notify.module';
 import { NotificationQueueModule } from './modules/notifications/notification-queue.module';
 import { SchedulerModule } from './modules/notifications/scheduler.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
+import { ShopHomeModule } from './modules/shop-home/shop-home.module';
 import { ReportsModule } from './modules/reports/reports.module';
 import { MigrationModule } from './modules/migration/migration.module';
 import { AuditModule } from './modules/audit/audit.module';
@@ -229,6 +230,7 @@ import { AppCacheModule } from './cache/cache.module';
     SchedulerModule,
     // MASTER: Intelligence
     DashboardModule,
+    ShopHomeModule, // หน้าหลักหน้าร้าน — นอก /dashboard เพราะ SALES ใช้ได้
     ReportsModule,
     // MASTER: Polish
     MigrationModule,

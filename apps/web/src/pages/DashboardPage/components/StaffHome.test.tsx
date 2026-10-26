@@ -13,6 +13,10 @@ vi.mock('@/contexts/AuthContext', () => ({
   }),
 }));
 vi.mock('@/lib/api', () => ({ default: { get: vi.fn() } }));
+// หน้า `/` เลือกหน้าตามโซน — โซนการเงินยังได้ StaffHome สำหรับ SALES (โซนหน้าร้านไปหน้าหลักหน้าร้านแทน)
+vi.mock('@/components/layout/LayoutContext', () => ({
+  useLayout: () => ({ workZone: 'fin', currentZone: 'fin' }),
+}));
 vi.mock('@/components/CommandPalette', () => ({ useCommandPalette: () => ({ open: openSearch }) }));
 vi.mock('./DashboardMySales', () => ({ default: () => <section aria-label="ยอดขายของฉัน" /> }));
 

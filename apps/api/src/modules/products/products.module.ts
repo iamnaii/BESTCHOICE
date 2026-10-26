@@ -5,6 +5,7 @@ import { ProductsPricingService } from './products-pricing.service';
 import { ProductsStockService } from './products-stock.service';
 import { ProductsOnlineListingService } from './products-online-listing.service';
 import { WarrantyService } from './warranty.service';
+import { ProductScanService } from './services/product-scan.service';
 
 @Module({
   controllers: [ProductsController],
@@ -14,6 +15,7 @@ import { WarrantyService } from './warranty.service';
     ProductsStockService,
     ProductsOnlineListingService,
     WarrantyService,
+    ProductScanService,
   ],
   exports: [
     ProductsService,
@@ -21,6 +23,7 @@ import { WarrantyService } from './warranty.service';
     ProductsStockService,
     ProductsOnlineListingService,
     WarrantyService,
+    ProductScanService,
   ],
 })
 export class ProductsModule {}

@@ -1,7 +1,11 @@
 import { Throttle } from '@nestjs/throttler';
 import { SalesListQueryDto } from './dto/sales-list-query.dto';
 import { bangkokDateString } from '../../utils/date.util';
-import { Controller, Get, Post, Param, Body, Query, UseGuards } from '@nestjs/common';
+import { BadRequestException, Controller, Get, Post, Param, Body, Query, Res, UseGuards } from '@nestjs/common';
+import type { Response } from 'express';
+import { SaleReceiptLineService } from './services/sale-receipt-line.service';
+import { INSTALLMENT_RECEIPT_MSG, SaleReceiptPdfService } from './services/sale-receipt-pdf.service';
+import { SaleReceiptTokenService } from './services/sale-receipt-token.service';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { SalesService } from './sales.service';
 import { SaleVoidService } from './services/sale-void.service';
@@ -22,6 +26,9 @@ export class SalesController {
   constructor(
     private salesService: SalesService,
     private saleVoidService: SaleVoidService,
+    private readonly receiptPdf: SaleReceiptPdfService,
+    private readonly receiptTokens: SaleReceiptTokenService,
+    private readonly receiptLine: SaleReceiptLineService,
   ) {}
 
   @Get('export')
@@ -71,6 +78,40 @@ export class SalesController {
       user,
       branchId,
     );
+  }
+
+  // ─── ใบเสร็จขายสด (ก้อน 4 · 2026-10-23) — ต้องอยู่ก่อน `:id` ─────────────────────────────
+  // พนักงานเปิด PDF ได้แม้ใบถูกยกเลิก (ลายน้ำ) แต่แชร์/ส่ง LINE ไม่ได้ · ขอบเขตสาขาตาม salesBranchWhere ใน service
+  @Get(':id/receipt.pdf')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
+  async getReceiptPdf(@Param('id') id: string, @CurrentUser() user: SalesReadActor, @Res() res: Response) {
+    const { pdf, saleNumber } = await this.receiptPdf.generate(id, user);
+    res.set({
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `inline; filename="${encodeURIComponent(`ใบเสร็จ-${saleNumber}`)}.pdf"`,
+      'Cache-Control': 'private, no-store',
+      'Content-Length': pdf.length.toString(),
+    });
+    res.send(pdf);
+  }
+
+  @Post(':id/receipt/share')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
+  async shareReceipt(@Param('id') id: string, @CurrentUser() user: SalesReadActor) {
+    // findOne = ด่านสาขา/ไม่พบ เดิมของ /sales/:id — token ออกให้เฉพาะใบที่ยังมีผลและเป็นขายสด/ไฟแนนซ์นอก
+    const sale = await this.salesService.findOne(id, user);
+    if (sale.saleType !== 'CASH' && sale.saleType !== 'EXTERNAL_FINANCE') {
+      throw new BadRequestException(INSTALLMENT_RECEIPT_MSG);
+    }
+    if (sale.deletedAt) throw new BadRequestException('ใบขายนี้ถูกยกเลิกแล้ว');
+    const { token, expiresAt } = await this.receiptTokens.ensureToken(id);
+    return { url: this.receiptTokens.publicUrl(token), expiresAt };
+  }
+
+  @Post(':id/receipt/line')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
+  sendReceiptLine(@Param('id') id: string, @CurrentUser() user: SalesReadActor) {
+    return this.receiptLine.send(id, user);
   }
 
   @Get(':id')

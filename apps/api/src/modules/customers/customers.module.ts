@@ -9,6 +9,7 @@ import { CustomerChatRoomsService } from './services/customer-chat-rooms.service
 import { CustomerTierService } from './customer-tier.service';
 import { SkipTracingService } from './skip-tracing.service';
 import { CustomerPiiModule } from './customer-pii.module';
+import { CustomerBlacklistModule } from './customer-blacklist.module';
 import { OverdueModule } from '../overdue/overdue.module';
 import { ContactsModule } from '../contacts/contacts.module';
 import { TestModeModule } from '../test-mode/test-mode.module';
@@ -21,7 +22,7 @@ import { CustomerJourneyModule } from '../customer-journey/customer-journey.modu
   // IntegrationsModule จึงไม่มี cycle กลับมาหา customers)
   // ChatProspectsModule — export CustomerMergeService สำหรับ POST /customers/:id/absorb-into/:targetId
   // (ไม่ import อะไรกลับมา — ตรวจแล้วไม่มี cycle)
-  imports: [OverdueModule, CustomerPiiModule, ContactsModule, TestModeModule, CreditCheckModule, ChatProspectsModule, CustomerJourneyModule],
+  imports: [OverdueModule, CustomerPiiModule, CustomerBlacklistModule, ContactsModule, TestModeModule, CreditCheckModule, ChatProspectsModule, CustomerJourneyModule],
   controllers: [CustomersController],
   providers: [
     CustomersService,

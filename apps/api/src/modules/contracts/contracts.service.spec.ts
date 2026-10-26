@@ -9,6 +9,7 @@ import { ShopDownPaymentTemplate } from '../journal/cpa-templates/shop-down-paym
 import { ShopDownPaymentReversalTemplate } from '../journal/cpa-templates/shop-down-payment-reversal.template';
 import { ShopAccountResolver } from '../journal/shop-account-resolver.service';
 import * as creditApproval from '../credit-check/services/credit-approval';
+import { CustomerBlacklistService } from '../customers/customer-blacklist.service';
 
 /**
  * ContractsService unit tests.
@@ -306,6 +307,7 @@ describe('ContractsService', () => {
         { provide: ShopDownPaymentTemplate, useValue: { execute: jest.fn().mockResolvedValue({ entryNo: 'JE-001', journalEntryId: 'je-1' }) } },
         { provide: ShopDownPaymentReversalTemplate, useValue: { execute: jest.fn().mockResolvedValue({ entryNo: 'JE-REV-001', journalEntryId: 'je-rev-1' }) } },
         { provide: ShopAccountResolver, useValue: { resolveBranchCashAccount: jest.fn().mockResolvedValue('S11-1102'), resolveInflowCashAccount: jest.fn().mockResolvedValue('S11-1102'), resolveProductAccounts: jest.fn() } },
+        { provide: CustomerBlacklistService, useValue: { evaluate: jest.fn().mockResolvedValue({ level: 'NONE', reasons: [], checkedAt: 't' }), evaluateMany: jest.fn().mockResolvedValue({}) } }, // ก้อน 5 C3
       ],
     }).compile();
 
@@ -1406,6 +1408,7 @@ describe('ContractsService', () => {
           { provide: ShopDownPaymentTemplate, useValue: { execute: jest.fn().mockResolvedValue({ entryNo: 'JE-001', journalEntryId: 'je-1' }) } },
           { provide: ShopDownPaymentReversalTemplate, useValue: { execute: jest.fn().mockResolvedValue({ entryNo: 'JE-REV-001', journalEntryId: 'je-rev-1' }) } },
           { provide: ShopAccountResolver, useValue: { resolveBranchCashAccount: jest.fn().mockResolvedValue('S11-1102'), resolveInflowCashAccount: jest.fn().mockResolvedValue('S11-1102'), resolveProductAccounts: jest.fn() } },
+          { provide: CustomerBlacklistService, useValue: { evaluate: jest.fn().mockResolvedValue({ level: 'NONE', reasons: [], checkedAt: 't' }), evaluateMany: jest.fn().mockResolvedValue({}) } }, // ก้อน 5 C3
         ],
       }).compile();
       const svcWithTemplate = moduleWithTemplate.get<ContractsService>(ContractsService);

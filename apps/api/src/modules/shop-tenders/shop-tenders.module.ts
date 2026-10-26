@@ -16,5 +16,7 @@ import { CashCloseAlertsCron } from './crons/cash-close-alerts.cron';
   imports: [JournalModule],
   controllers: [ShopTendersController],
   providers: [ShopTendersReportService, ShopCashCloseService, ShopCashHoldingService, ShopCashOverviewService, CashCloseAlertsCron],
+  // ShopHomeModule ใช้ getDrawerSnapshot() สำหรับการ์ดเงินสดในลิ้นชัก
+  exports: [ShopCashCloseService],
 })
 export class ShopTendersModule {}

@@ -76,6 +76,11 @@ export function StockDashboardTab({ dashboard, isManager }: StockDashboardTabPro
     );
   }
 
+  // SALES ได้ value เป็น null จาก server (ไม่มีสิทธิ์ดูต้นทุน) → แสดงสัดส่วนตามจำนวนชิ้นแทน
+  const statusHasValue = dashboard.valueByStatus.every((i) => i.value != null);
+  const statusWeight = (i: { count: number; value: number | null }) =>
+    statusHasValue ? (i.value ?? 0) : i.count;
+
   return (
     <div className="flex flex-col gap-4">
       {/* Stock Aging buckets — 4 across */}
@@ -96,9 +101,11 @@ export function StockDashboardTab({ dashboard, isManager }: StockDashboardTabPro
                   </span>
                   <span className="text-[11px] text-muted-foreground">ชิ้น</span>
                 </div>
-                <div className="text-[11px] text-muted-foreground mt-0.5 tabular-nums">
-                  {bucket.value.toLocaleString()} ฿
-                </div>
+                {bucket.value != null && (
+                  <div className="text-[11px] text-muted-foreground mt-0.5 tabular-nums">
+                    {bucket.value.toLocaleString()} ฿
+                  </div>
+                )}
               </div>
             );
           })}
@@ -109,9 +116,11 @@ export function StockDashboardTab({ dashboard, isManager }: StockDashboardTabPro
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* Value by Status */}
         <div className="rounded-xl border border-border/60 p-4 bg-card">
-          <SectionTitle icon={<PieChartIcon />} hint="by status">มูลค่าสต็อคตามสถานะ</SectionTitle>
+          <SectionTitle icon={<PieChartIcon />} hint="by status">
+            {statusHasValue ? 'มูลค่าสต็อคตามสถานะ' : 'สต็อคตามสถานะ'}
+          </SectionTitle>
           {(() => {
-            const total = dashboard.valueByStatus.reduce((s, i) => s + i.value, 0);
+            const total = dashboard.valueByStatus.reduce((s, i) => s + statusWeight(i), 0);
             if (total === 0) {
               return <div className="text-sm text-muted-foreground text-center py-6">ยังไม่มีข้อมูล</div>;
             }
@@ -119,7 +128,7 @@ export function StockDashboardTab({ dashboard, isManager }: StockDashboardTabPro
               <>
                 <div className="flex h-2.5 w-full overflow-hidden rounded-full bg-muted mb-4">
                   {dashboard.valueByStatus.map((item) => {
-                    const pct = (item.value / total) * 100;
+                    const pct = (statusWeight(item) / total) * 100;
                     const color = STATUS_BAR_COLOR[item.status] ?? 'bg-muted-foreground';
                     return (
                       <div
@@ -134,23 +143,25 @@ export function StockDashboardTab({ dashboard, isManager }: StockDashboardTabPro
                 <div className="space-y-1.5">
                   {dashboard.valueByStatus.map((item) => {
                     const s = statusLabels[item.status] || { label: item.status, className: 'bg-muted text-foreground' };
-                    const pct = (item.value / total) * 100;
+                    const pct = (statusWeight(item) / total) * 100;
                     const dotColor = STATUS_BAR_COLOR[item.status] ?? 'bg-muted-foreground';
                     return (
                       <div key={item.status} className="flex items-center justify-between py-1 text-[13px]">
                         <div className="flex items-center gap-2 min-w-0">
                           <span className={`size-2 rounded-full shrink-0 ${dotColor}`} />
                           <span className="text-foreground truncate">{s.label}</span>
-                          <span className="text-muted-foreground/80 text-[11px] tabular-nums">
-                            {item.count}
-                          </span>
+                          {statusHasValue && (
+                            <span className="text-muted-foreground/80 text-[11px] tabular-nums">
+                              {item.count}
+                            </span>
+                          )}
                         </div>
                         <div className="flex items-center gap-2.5 shrink-0">
                           <span className="text-[11px] text-muted-foreground tabular-nums">
                             {pct.toFixed(0)}%
                           </span>
                           <span className="font-medium tabular-nums">
-                            {item.value.toLocaleString()} ฿
+                            {statusHasValue ? `${(item.value ?? 0).toLocaleString()} ฿` : `${item.count} ชิ้น`}
                           </span>
                         </div>
                       </div>
@@ -158,7 +169,9 @@ export function StockDashboardTab({ dashboard, isManager }: StockDashboardTabPro
                   })}
                   <div className="flex items-center justify-between pt-2 mt-1 border-t border-border text-[13px] font-semibold">
                     <span>รวม</span>
-                    <span className="tabular-nums">{total.toLocaleString()} ฿</span>
+                    <span className="tabular-nums">
+                      {statusHasValue ? `${total.toLocaleString()} ฿` : `${total} ชิ้น`}
+                    </span>
                   </div>
                 </div>
               </>
@@ -344,7 +357,7 @@ export function StockDashboardTab({ dashboard, isManager }: StockDashboardTabPro
                     </span>
                     <div className="flex-1 min-w-0">
                       <div className="text-[13px] font-medium truncate">{item.name}</div>
-                      {isManager && (
+                      {isManager && item.costPrice != null && (
                         <div className="text-[11px] text-muted-foreground tabular-nums">
                           {(Number(item.costPrice) || 0).toLocaleString()} ฿
                         </div>

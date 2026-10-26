@@ -44,3 +44,36 @@ describe('Sales filtered report totals', () => {
     expect(db.saleCostSnapshot.aggregate).not.toHaveBeenCalled();
   });
 });
+
+describe('Sales findOne bundle products (ใบปะหน้าพัสดุ A6)', () => {
+  const owner = { id: 'owner', role: 'OWNER' };
+  function fixture(bundleProductIds: string[]) {
+    const db = {
+      sale: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: 's1', saleNumber: 'S-20261022-0001', bundleProductIds,
+          customer: { id: 'c1', name: 'สมหญิง', phone: '0800000000', nationalId: null },
+          product: { id: 'p1', name: 'iPhone 15', costPrice: '1' },
+          booking: null, costSnapshot: null,
+        }),
+      },
+      product: { findMany: jest.fn().mockResolvedValue([{ id: 'acc1', name: 'เคสใส' }, { id: 'acc2', name: 'ฟิล์มกระจก' }]) },
+    };
+    return { db, service: new SalesQueryService(db as unknown as PrismaService) };
+  }
+  it('resolves bundle product names for the label (ของแถมในกล่อง)', async () => {
+    const { db, service } = fixture(['acc1', 'acc2']);
+    const result = await service.findOne('s1', owner);
+    expect(result.bundleProducts).toEqual([{ id: 'acc1', name: 'เคสใส' }, { id: 'acc2', name: 'ฟิล์มกระจก' }]);
+    expect(db.product.findMany).toHaveBeenCalledWith({
+      where: { id: { in: ['acc1', 'acc2'] }, deletedAt: null },
+      select: { id: true, name: true },
+    });
+  });
+  it('returns [] without querying when the sale has no bundle', async () => {
+    const { db, service } = fixture([]);
+    const result = await service.findOne('s1', owner);
+    expect(result.bundleProducts).toEqual([]);
+    expect(db.product.findMany).not.toHaveBeenCalled();
+  });
+});

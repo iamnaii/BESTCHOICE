@@ -169,10 +169,7 @@ https://YOUR_CLOUD_RUN_URL/api/line-oa/webhook
 
 ### สร้าง Release ใหม่ (สำหรับ Developer)
 
-```bash
-# Tag แล้ว push — GitHub Actions จะ build + สร้าง Release ให้อัตโนมัติ
-git tag card-reader-v1.0.0
-git push origin card-reader-v1.0.0
-```
-
-หรือกด **Actions → Build Card Reader → Run workflow** บน GitHub ก็ได้
+workflow **Build Card Reader** ถูกถอดออกแล้ว (2026-10-26 — คำสั่งเจ้าของ: งาน build บน Windows runner
+แดงทุกครั้งตั้งแต่ 2026-05 เพราะ `pcsclite` คอมไพล์ไม่ผ่านบน image `windows-2025-vs2026`). ตัวติดตั้งชุดล่าสุด
+ยังโหลดได้จาก Release `card-reader-latest` ตามเดิม; ถ้าต้อง build ใหม่ ให้ build จากเครื่อง Windows ด้วย
+`npm run build` ใน `apps/card-reader` แล้วอัปโหลดไฟล์ zip ขึ้น Release ด้วยมือ

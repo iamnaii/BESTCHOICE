@@ -6,7 +6,7 @@ import { toast } from 'sonner';
 import api, { getErrorMessage } from '@/lib/api';
 import { Bookmark, Plus, Trash2, Repeat, ArrowLeft, CalendarClock, Pencil } from 'lucide-react';
 import { RecurringBillDialog, type ExpenseTemplate } from '@/components/expense-templates/RecurringBillDialog';
-import { nextPeriodMonthKey, recurringCardLine } from '@/components/expense-templates/recurring-template.util';
+import { billMonthKey, recurringCardLine } from '@/components/expense-templates/recurring-template.util';
 import { formatNumberDecimal } from '@/utils/formatters';
 import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
@@ -141,7 +141,7 @@ export default function ExpenseFavoritesPage() {
             const recurringLine = tpl.isRecurring ? recurringCardLine(tpl, now) : null;
             const amount = tpl.prefilledData.sampleAmount;
             const category = tpl.prefilledData.category as string | undefined;
-            const nextMonth = tpl.isRecurring ? nextPeriodMonthKey(tpl, now) : null;
+            const nextMonth = tpl.isRecurring ? billMonthKey(tpl, now) : null;
             return (
               <article
                 key={tpl.id}

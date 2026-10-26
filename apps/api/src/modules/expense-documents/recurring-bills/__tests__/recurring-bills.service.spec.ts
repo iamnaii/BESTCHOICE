@@ -108,7 +108,7 @@ describe('generateForTemplate (ขั้น A)', () => {
     expect(createArg).toMatchObject({ templateId: 'tpl-1', periodKey: '2026-10', status: 'PENDING', dueDate: bkkMidnight(2026, 10, 28) });
     expect(String(createArg.estimatedAmount)).toBe('1284');
     expect(templates.instantiate).toHaveBeenCalledWith('tpl-1', SYSTEM, { documentDate: bkkNoon(2026, 10, 28) });
-    expect(prisma.recurringBillOccurrence.update).toHaveBeenCalledWith(expect.objectContaining({ where: { id: 'occ-1' }, data: { expenseDocumentId: 'doc-1' } }));
+    expect(prisma.recurringBillOccurrence.updateMany).toHaveBeenCalledWith({ where: { id: 'occ-1', expenseDocumentId: null }, data: { expenseDocumentId: 'doc-1' } }); // CAS กันผูกซ้ำ (รีวิว I1)
     const todo = prisma.todo.create.mock.calls[0][0].data;
     expect(todo.title).toBe('บิลประจำ: อินเทอร์เน็ต AIS Fibre (ลาดพร้าว) · ครบกำหนด 28 ต.ค. 69');
     expect(todo).toMatchObject({ priority: 'MEDIUM', tags: ['recurring-bill', 'rb:occ-1'], branchId: 'br-1', createdById: 'sys-1', dueDate: bkkNoon(2026, 10, 28) });
@@ -175,7 +175,7 @@ describe('generateForTemplate (ขั้น A)', () => {
     const where = prisma.expenseDocument.findFirst.mock.calls[0][0].where;
     expect(where).toMatchObject({ fromTemplateId: 'tpl-1', createdById: 'sys-1', recurringBillOccurrence: null, deletedAt: null });
     expect(where.documentDate).toEqual({ gte: bkkMidnight(2026, 10, 28), lt: bkkMidnight(2026, 10, 29) });
-    expect(prisma.recurringBillOccurrence.update).toHaveBeenCalledWith(expect.objectContaining({ data: { expenseDocumentId: 'doc-x' } }));
+    expect(prisma.recurringBillOccurrence.updateMany).toHaveBeenCalledWith({ where: { id: 'occ-1', expenseDocumentId: null }, data: { expenseDocumentId: 'doc-x' } }); // CAS (รีวิว I1)
   });
 
   it('A9 a P2002 on create (another instance won) counts as skippedExisting, not failed', async () => {
@@ -361,21 +361,56 @@ describe('notifier + view status', () => {
   });
 });
 
-describe('retireOpenOccurrences (แม่แบบเปลี่ยนรอบ — §15.5)', () => {
-  it('skips every PENDING occurrence whose document is not paid, closes its todo and deletes the system draft', async () => {
+describe('retireOpenOccurrences (แม่แบบเปลี่ยนรอบ — §15.5 · รีวิว C1)', () => {
+  it('skips only PENDING occurrences not yet due whose document is still a draft (or missing); overdue / due-today / progressed / paid rows stay', async () => {
     prisma.recurringBillOccurrence.findMany.mockResolvedValue([
-      occurrence({ id: 'occ-a' }),
-      occurrence({ id: 'occ-b', todoId: null, todo: null, expenseDocumentId: null, expenseDocument: null }),
-      occurrence({ id: 'occ-c', expenseDocument: { id: 'doc-c', number: 'EX-C', status: 'POSTED', paidAt: NOW, deletedAt: null, documentDate: NOW, createdById: 'u' } }),
+      occurrence({ id: 'occ-a', dueDate: bkkMidnight(2026, 10, 28) }),
+      occurrence({ id: 'occ-b', dueDate: bkkMidnight(2026, 10, 30), todoId: null, todo: null, expenseDocumentId: null, expenseDocument: null }),
+      occurrence({ id: 'occ-c', dueDate: bkkMidnight(2026, 10, 28), expenseDocument: { id: 'doc-c', number: 'EX-C', status: 'POSTED', paidAt: NOW, deletedAt: null, documentDate: NOW, createdById: 'u' } }),
+      occurrence({ id: 'occ-d' }), // ครบกำหนด 24 ต.ค. = เกินกำหนดแล้ว — คนยังต้องจ่ายบิลนี้
+      occurrence({ id: 'occ-e', dueDate: bkkMidnight(2026, 10, 29), expenseDocument: { id: 'doc-e', number: 'EX-E', status: 'ACCRUAL', paidAt: null, deletedAt: null, documentDate: NOW, createdById: 'u' } }),
+      occurrence({ id: 'occ-f', dueDate: bkkMidnight(2026, 10, 26) }), // ครบกำหนดวันนี้ — ปล่อยไว้
     ]);
     const res = await service.retireOpenOccurrences('tpl-1', 'แม่แบบเปลี่ยนรอบ', SYSTEM, NOW);
     expect(res.retired).toBe(2);
-    expect(prisma.recurringBillOccurrence.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { templateId: 'tpl-1', status: 'PENDING' } }));
+    const retiredIds = prisma.recurringBillOccurrence.updateMany.mock.calls.map((c: [{ where: { id: string } }]) => c[0].where.id);
+    expect([...retiredIds].sort()).toEqual(['occ-a', 'occ-b']);
     expect(prisma.recurringBillOccurrence.updateMany).toHaveBeenCalledWith({ where: { id: 'occ-a', status: 'PENDING' }, data: { status: 'SKIPPED', skippedAt: NOW, skippedById: null, skipReason: 'แม่แบบเปลี่ยนรอบ' } });
-    expect(prisma.recurringBillOccurrence.updateMany).not.toHaveBeenCalledWith(expect.objectContaining({ where: { id: 'occ-c', status: 'PENDING' } }));
     expect(prisma.todo.updateMany).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ id: 'todo-1' }), data: expect.objectContaining({ status: 'DONE' }) }));
     expect(prisma.expenseDocument.updateMany).toHaveBeenCalledWith(expect.objectContaining({ where: { id: 'doc-1', status: 'DRAFT', deletedAt: null } }));
     expect(prisma.auditLog.create).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('generateForTemplate after a rule change (รีวิว C1 · Review Focus #1)', () => {
+  it('A10 revives the period the rule change retired under the same key: new dueDate, new draft, todo back to TODO, UPCOMING notice', async () => {
+    // 22 ต.ค. สร้างงวด 2026-10 (วันที่ 25) · 23 ต.ค. แก้เป็นวันที่ 28 → แถวเดิมถูกปิด "แม่แบบเปลี่ยนรอบ" · 26 ต.ค. หน้าต่างของวันที่ 28 เปิด
+    prisma.recurringBillOccurrence.findMany.mockResolvedValue([
+      { id: 'occ-r', periodKey: '2026-10', status: 'SKIPPED', skippedById: null, skipReason: 'แม่แบบเปลี่ยนรอบ', dueDate: bkkMidnight(2026, 10, 25), todoId: 'todo-r', expenseDocumentId: 'doc-old' },
+    ]);
+    const res = await service.generateForTemplate('tpl-1', NOW, SYSTEM);
+    expect(res.revived).toEqual(['2026-10']);
+    expect(res.created).toEqual([]);
+    expect(prisma.recurringBillOccurrence.create).not.toHaveBeenCalled();
+    expect(prisma.recurringBillOccurrence.updateMany).toHaveBeenCalledWith({
+      where: { id: 'occ-r', status: 'SKIPPED', skippedById: null, skipReason: 'แม่แบบเปลี่ยนรอบ' },
+      data: expect.objectContaining({ status: 'PENDING', dueDate: bkkMidnight(2026, 10, 28), skippedAt: null, skippedById: null, skipReason: null, lastRemindedOn: null }),
+    });
+    expect(templates.instantiate).toHaveBeenCalledWith('tpl-1', SYSTEM, { documentDate: bkkNoon(2026, 10, 28) });
+    expect(prisma.recurringBillOccurrence.updateMany).toHaveBeenCalledWith({ where: { id: 'occ-r', expenseDocumentId: 'doc-old' }, data: { expenseDocumentId: 'doc-1' } });
+    expect(prisma.todo.updateMany).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ id: 'todo-r' }), data: expect.objectContaining({ status: 'TODO', completedAt: null, dueDate: bkkNoon(2026, 10, 28), priority: 'MEDIUM' }) }));
+    expect(prisma.todo.create).not.toHaveBeenCalled();
+    expect(notifier.notify).toHaveBeenCalledWith(expect.objectContaining({ kind: 'UPCOMING', occurrenceId: 'occ-r', daysOverdue: -2 }));
+  });
+
+  it('A11 a period the rule change left alone (already due, still PENDING) is neither re-created nor revived', async () => {
+    prisma.recurringBillOccurrence.findMany.mockResolvedValue([
+      { id: 'occ-p', periodKey: '2026-10', status: 'PENDING', skippedById: null, skipReason: null, dueDate: bkkMidnight(2026, 10, 24), todoId: 'todo-p', expenseDocumentId: 'doc-p' },
+    ]);
+    const res = await service.generateForTemplate('tpl-1', NOW, SYSTEM);
+    expect(res).toEqual({ created: [], revived: [], skippedMissed: [], skippedExisting: 0 });
+    expect(prisma.recurringBillOccurrence.create).not.toHaveBeenCalled();
+    expect(prisma.recurringBillOccurrence.updateMany).not.toHaveBeenCalled();
   });
 });
 
@@ -512,8 +547,26 @@ describe('occurrence actions', () => {
     prisma.recurringBillOccurrence.findUnique.mockResolvedValue(occurrence({ expenseDocument: { id: 'doc-1', number: 'EX-1', status: 'VOIDED', paidAt: null, deletedAt: null, documentDate: NOW, createdById: 'u' } }));
     const res = await service.createDraft('occ-1', ACC, NOW);
     expect(templates.instantiate).toHaveBeenCalledWith('tpl-1', ACC, { documentDate: bkkNoon(2026, 10, 24) });
-    expect(prisma.recurringBillOccurrence.update).toHaveBeenCalledWith(expect.objectContaining({ data: { expenseDocumentId: 'doc-1' } }));
+    expect(prisma.recurringBillOccurrence.updateMany).toHaveBeenCalledWith({ where: { id: 'occ-1', expenseDocumentId: 'doc-1' }, data: { expenseDocumentId: 'doc-1' } });
     expect(res.documentNumber).toBe('EX-20261028-0001');
     expect(audit.log).toHaveBeenCalledWith(expect.objectContaining({ action: 'RECURRING_BILL_DRAFT_CREATED' }));
+  });
+
+  it('M5 templates_enabled=false → markPaid/skip/reopen 403 with the standard message, nothing written (รีวิว M1 · Review Focus #3)', async () => {
+    prisma.systemConfig.findFirst.mockResolvedValue({ value: 'false' });
+    await expect(service.markPaid('occ-1', ACC, {}, NOW)).rejects.toThrow('ระบบรายการโปรดถูกปิดใช้งานชั่วคราว');
+    await expect(service.skip('occ-1', ACC, { reason: 'จ่ายล่วงหน้าแล้ว' }, NOW)).rejects.toThrow('ระบบรายการโปรดถูกปิดใช้งานชั่วคราว');
+    await expect(service.reopen('occ-1', ACC, NOW)).rejects.toThrow('ระบบรายการโปรดถูกปิดใช้งานชั่วคราว');
+    expect(prisma.recurringBillOccurrence.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('M6 createDraft loses the link race → its extra draft is soft-deleted and 409 (รีวิว I1 · Review Focus #5)', async () => {
+    prisma.recurringBillOccurrence.findUnique.mockResolvedValue(occurrence({ expenseDocument: { ...occurrence().expenseDocument, deletedAt: new Date() } }));
+    templates.instantiate.mockResolvedValue({ id: 'doc-new', number: 'EX-NEW' });
+    prisma.recurringBillOccurrence.updateMany.mockResolvedValue({ count: 0 });
+    await expect(service.createDraft('occ-1', ACC, NOW)).rejects.toThrow(/ร่าง.*อยู่แล้ว/);
+    expect(prisma.recurringBillOccurrence.updateMany).toHaveBeenCalledWith({ where: { id: 'occ-1', expenseDocumentId: 'doc-1' }, data: { expenseDocumentId: 'doc-new' } });
+    expect(prisma.expenseDocument.updateMany).toHaveBeenCalledWith(expect.objectContaining({ where: { id: 'doc-new', status: 'DRAFT', deletedAt: null }, data: expect.objectContaining({ deletedAt: expect.any(Date) }) }));
+    expect(audit.log).not.toHaveBeenCalledWith(expect.objectContaining({ action: 'RECURRING_BILL_DRAFT_CREATED' }));
   });
 });

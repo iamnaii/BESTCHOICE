@@ -79,6 +79,29 @@ interface FormState {
   isRecurring: boolean;
 }
 
+type ErrorKey = keyof FormState | 'payment';
+type Errors = Partial<Record<ErrorKey, string>>;
+
+/** id ของช่องกรอก — ใช้ผูก label, aria-describedby ของข้อความผิดพลาด และโฟกัสช่องแรกที่ผิด */
+const FIELD_IDS: Record<ErrorKey, string> = {
+  name: 'rb-name',
+  vendorName: 'rb-vendor',
+  vendorSupplierId: 'rb-vendor',
+  branchId: 'rb-branch',
+  category: 'rb-category',
+  sampleAmount: 'rb-amount',
+  paymentMethod: 'rb-payment',
+  depositAccountCode: 'rb-deposit',
+  payment: 'rb-payment',
+  recurrence: 'rb-recurrence',
+  recurringDay: 'rb-day',
+  recurringMonth: 'rb-month',
+  reminderLeadDays: 'rb-lead',
+  startsOn: 'rb-starts',
+  isRecurring: 'rb-enabled',
+};
+const FIELD_ORDER: ErrorKey[] = ['name', 'branchId', 'category', 'sampleAmount', 'payment', 'recurrence', 'recurringDay', 'recurringMonth', 'reminderLeadDays', 'startsOn'];
+
 function initialState(tpl: ExpenseTemplate | null, lockedBranchId: string | null, now: Date): FormState {
   const pf = (tpl?.prefilledData ?? {}) as Record<string, unknown>;
   const str = (v: unknown) => (v == null ? '' : String(v));
@@ -100,10 +123,11 @@ function initialState(tpl: ExpenseTemplate | null, lockedBranchId: string | null
   };
 }
 
-type Errors = Partial<Record<keyof FormState | 'payment', string>>;
-
-/** ข้อความเดียวกับ assertRecurringRule / normalizeStartsOn ฝั่ง API (Task 4) */
-export function validateRecurringForm(f: FormState, now: Date): Errors {
+/**
+ * ข้อความเดียวกับ assertRecurringRule / normalizeStartsOn ฝั่ง API (Task 4)
+ * `startsOnUnchanged` = โหมดแก้ไขที่ไม่ได้แตะวันเริ่ม — ไม่ตรวจเพดานย้อนหลัง ไม่งั้นบิลเก่าเกิน 90 วันแก้อะไรไม่ได้ (รีวิว I2)
+ */
+export function validateRecurringForm(f: FormState, now: Date, opts: { startsOnUnchanged?: boolean } = {}): Errors {
   const e: Errors = {};
   if (!f.name.trim()) e.name = 'กรุณาระบุชื่อบิล';
   if (!f.branchId) e.branchId = 'กรุณาเลือกสาขา';
@@ -120,7 +144,7 @@ export function validateRecurringForm(f: FormState, now: Date): Errors {
   if (!Number.isInteger(lead) || lead < 0 || lead > RECURRING_BILL_LEAD_DAYS_MAX) e.reminderLeadDays = `เตือนล่วงหน้าได้ 0-${RECURRING_BILL_LEAD_DAYS_MAX} วัน`;
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(f.startsOn);
   if (!m) e.startsOn = 'วันเริ่มนับงวดต้องเป็นรูปแบบ YYYY-MM-DD';
-  else {
+  else if (!opts.startsOnUnchanged) {
     const today = bkkCalendarDate(now);
     const start = { year: Number(m[1]), month: Number(m[2]), day: Number(m[3]) };
     if (compareCalendarDate(start, addCalendarDays(today, -RECURRING_BILL_STARTS_ON_MAX_PAST_DAYS)) < 0) e.startsOn = `วันเริ่มนับงวดย้อนหลังได้ไม่เกิน ${RECURRING_BILL_STARTS_ON_MAX_PAST_DAYS} วัน`;
@@ -161,14 +185,15 @@ export function RecurringBillDialog({ open, onClose, template = null, templateId
   });
   const tpl = template ?? (templateId ? fetched ?? null : null);
   const editing = !!(template || templateId);
-  const [form, setForm] = useState<FormState>(() => initialState(tpl, lockedBranchId, clock));
+  const initial = useMemo(() => initialState(tpl, lockedBranchId, clock), [tpl, lockedBranchId, clock]);
+  const [form, setForm] = useState<FormState>(initial);
   const [errors, setErrors] = useState<Errors>({});
   useEffect(() => {
     if (open) {
-      setForm(initialState(tpl, lockedBranchId, clock));
+      setForm(initial);
       setErrors({});
     }
-  }, [open, tpl, lockedBranchId, clock]);
+  }, [open, initial]);
 
   const { data: branches = [] } = useQuery<{ id: string; name: string }[]>({
     queryKey: ['branches'],
@@ -193,6 +218,8 @@ export function RecurringBillDialog({ open, onClose, template = null, templateId
   const preview = rule && Number.isInteger(leadDays) && leadDays >= 0 && leadDays <= RECURRING_BILL_LEAD_DAYS_MAX && Number(form.recurringDay) <= 31
     ? recurringPreviewText(rule, leadDays, startsOnCal, clock)
     : null;
+  // โหมดแก้ไขที่ไม่แตะวันเริ่ม = ไม่ส่ง startsOn (API จะเลื่อนให้เองเมื่อเปลี่ยนรอบ) — รีวิว I2
+  const startsOnUnchanged = !!tpl && form.startsOn === initial.startsOn;
 
   const save = useMutation({
     mutationFn: async () => {
@@ -204,14 +231,14 @@ export function RecurringBillDialog({ open, onClose, template = null, templateId
         recurringDay: Number(form.recurringDay),
         recurringMonth: form.recurrence === 'MONTHLY' ? null : Number(form.recurringMonth),
         reminderLeadDays: Number(form.reminderLeadDays),
-        startsOn: form.startsOn,
+        ...(startsOnUnchanged ? {} : { startsOn: form.startsOn }),
       };
       if (tpl) return (await api.patch(`/expense-templates/${tpl.id}`, common)).data as { ruleChanged?: boolean };
       return (await api.post('/expense-templates', { documentType: 'EXPENSE', branchId: form.branchId, ...common })).data as { ruleChanged?: boolean };
     },
     onSuccess: (data) => {
       toast.success(tpl ? 'บันทึกบิลประจำแล้ว' : 'ตั้งบิลประจำแล้ว — ระบบจะสร้างร่างและเตือนก่อนครบกำหนด');
-      if (data?.ruleChanged) toast.info('เปลี่ยนรอบแล้ว — งวดที่ค้างถูกปิด ระบบนับงวดใหม่ตั้งแต่วันนี้');
+      if (data?.ruleChanged) toast.info('เปลี่ยนรอบแล้ว — งวดที่ยังไม่ถึงถูกปรับตามรอบใหม่ งวดที่ครบกำหนดแล้วยังคงอยู่');
       void qc.invalidateQueries({ queryKey: ['expense-templates'] });
       void qc.invalidateQueries({ queryKey: ['recurring-bills'] });
       onClose();
@@ -220,9 +247,14 @@ export function RecurringBillDialog({ open, onClose, template = null, templateId
   });
 
   const submit = () => {
-    const e = validateRecurringForm(form, clock);
+    const e = validateRecurringForm(form, clock, { startsOnUnchanged });
     setErrors(e);
-    if (Object.keys(e).length === 0) save.mutate();
+    const first = FIELD_ORDER.find((k) => e[k]);
+    if (first) {
+      document.getElementById(FIELD_IDS[first])?.focus();
+      return;
+    }
+    save.mutate();
   };
 
   const branchLocked = editing || !!lockedBranchId;
@@ -232,8 +264,13 @@ export function RecurringBillDialog({ open, onClose, template = null, templateId
       : form.recurrence === 'YEARLY'
         ? MONTH_NAMES_TH.map((name, i) => ({ value: String(i + 1), label: name }))
         : [];
-  const err = (key: keyof Errors) => (errors[key] ? <p className="text-xs text-destructive" role="alert">{errors[key]}</p> : null);
+  const a11y = (key: ErrorKey) => (errors[key] ? { 'aria-invalid': true as const, 'aria-describedby': `${FIELD_IDS[key]}-error` } : {});
+  const err = (key: ErrorKey) =>
+    errors[key] ? (
+      <p id={`${FIELD_IDS[key]}-error`} className="text-xs text-destructive" role="alert">{errors[key]}</p>
+    ) : null;
   const hint = (text: string) => <p className="text-xs text-muted-foreground">{text}</p>;
+  const req = <span aria-hidden="true" className="ml-0.5 text-destructive">*</span>;
 
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
@@ -247,8 +284,8 @@ export function RecurringBillDialog({ open, onClose, template = null, templateId
         ) : (
           <div className="grid gap-4 md:grid-cols-2">
             <div className="space-y-1 md:col-span-2">
-              <Label htmlFor="rb-name">ชื่อบิล</Label>
-              <Input id="rb-name" value={form.name} onChange={(e) => set('name', e.target.value)} placeholder="เช่น ค่าเช่าร้าน สาขาลาดพร้าว" required />
+              <div className="flex items-center"><Label htmlFor="rb-name">ชื่อบิล</Label>{req}</div>
+              <Input id="rb-name" value={form.name} onChange={(e) => set('name', e.target.value)} placeholder="เช่น ค่าเช่าร้าน สาขาลาดพร้าว" required {...a11y('name')} />
               {err('name')}
             </div>
             <div className="space-y-1 md:col-span-2">
@@ -257,8 +294,8 @@ export function RecurringBillDialog({ open, onClose, template = null, templateId
               {hint('พิมพ์เองหรือเลือกจากรายชื่อผู้จัดจำหน่าย')}
             </div>
             <div className="space-y-1">
-              <Label htmlFor="rb-branch">สาขา</Label>
-              <NativeSelect id="rb-branch" value={form.branchId} disabled={branchLocked} onChange={(e) => set('branchId', e.target.value)} required>
+              <div className="flex items-center"><Label htmlFor="rb-branch">สาขา</Label>{req}</div>
+              <NativeSelect id="rb-branch" value={form.branchId} disabled={branchLocked} onChange={(e) => set('branchId', e.target.value)} required {...a11y('branchId')}>
                 <option value="">— เลือก —</option>
                 {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
                 {tpl && !branches.some((b) => b.id === tpl.branchId) && <option value={tpl.branchId}>{tpl.branch?.name ?? tpl.branchId}</option>}
@@ -267,7 +304,7 @@ export function RecurringBillDialog({ open, onClose, template = null, templateId
             </div>
             <div className="space-y-1">
               <Label htmlFor="rb-category">บัญชีค่าใช้จ่าย</Label>
-              <NativeSelect id="rb-category" value={form.category} onChange={(e) => set('category', e.target.value)}>
+              <NativeSelect id="rb-category" value={form.category} onChange={(e) => set('category', e.target.value)} {...a11y('category')}>
                 <option value="">— เลือก —</option>
                 {groups.flatMap((g) => g.accounts.map((a) => <option key={a.code} value={a.code}>{a.code} {accountDisplayName(a.name)}</option>))}
               </NativeSelect>
@@ -275,24 +312,25 @@ export function RecurringBillDialog({ open, onClose, template = null, templateId
             </div>
             <div className="space-y-1">
               <Label htmlFor="rb-amount">ยอดประมาณ (บาท)</Label>
-              <Input id="rb-amount" type="number" min={0} step="0.01" inputMode="decimal" value={form.sampleAmount} onChange={(e) => set('sampleAmount', e.target.value)} />
+              <Input id="rb-amount" type="number" min={0} step="0.01" inputMode="decimal" value={form.sampleAmount} onChange={(e) => set('sampleAmount', e.target.value)} {...a11y('sampleAmount')} />
               {err('sampleAmount') ?? hint('ใช้เป็นยอดตั้งต้นของร่าง และคำนวณ "ยังต้องจ่ายเดือนนี้"')}
             </div>
             <div className="space-y-1">
               <Label htmlFor="rb-payment">วิธีจ่าย</Label>
-              <NativeSelect id="rb-payment" value={form.paymentMethod} onChange={(e) => set('paymentMethod', e.target.value)}>
+              <NativeSelect id="rb-payment" value={form.paymentMethod} onChange={(e) => set('paymentMethod', e.target.value)} {...a11y('payment')}>
                 <option value="">ไม่ตั้ง — ร่างจะลงเป็นตั้งหนี้ ต้องทำใบจ่ายเจ้าหนี้ต่อ</option>
                 {PAYMENT_METHODS.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
               </NativeSelect>
+              {err('payment')}
             </div>
             <div className="space-y-1">
               <Label htmlFor="rb-deposit">บัญชีที่จ่าย</Label>
               <CashAccountSelect id="rb-deposit" value={form.depositAccountCode} onChange={(code) => set('depositAccountCode', code)} placeholder="— เลือกบัญชีเงินสด/ธนาคาร —" />
-              {err('payment') ?? hint('ตั้งทั้งสองช่อง = ร่างโพสต์เป็นจ่ายทันที ระบบปิดงวดให้เอง')}
+              {hint('ตั้งทั้งสองช่อง = ร่างโพสต์เป็นจ่ายทันที ระบบปิดงวดให้เอง')}
             </div>
             <div className="space-y-1">
-              <Label htmlFor="rb-recurrence">ความถี่</Label>
-              <NativeSelect id="rb-recurrence" value={form.recurrence} onChange={(e) => onRecurrence(e.target.value as RecurrenceKind)} required>
+              <div className="flex items-center"><Label htmlFor="rb-recurrence">ความถี่</Label>{req}</div>
+              <NativeSelect id="rb-recurrence" value={form.recurrence} onChange={(e) => onRecurrence(e.target.value as RecurrenceKind)} required {...a11y('recurrence')}>
                 <option value="MONTHLY">รายเดือน</option>
                 <option value="QUARTERLY">ราย 3 เดือน</option>
                 <option value="YEARLY">รายปี</option>
@@ -300,13 +338,13 @@ export function RecurringBillDialog({ open, onClose, template = null, templateId
               {err('recurrence')}
             </div>
             <div className="space-y-1">
-              <Label htmlFor="rb-day">วันครบกำหนด (วันที่ของเดือน)</Label>
-              <Input id="rb-day" type="number" min={1} max={31} inputMode="numeric" value={form.recurringDay} onChange={(e) => set('recurringDay', e.target.value)} required />
+              <div className="flex items-center"><Label htmlFor="rb-day">วันครบกำหนด (วันที่ของเดือน)</Label>{req}</div>
+              <Input id="rb-day" type="number" min={1} max={31} inputMode="numeric" value={form.recurringDay} onChange={(e) => set('recurringDay', e.target.value)} required {...a11y('recurringDay')} />
               {err('recurringDay') ?? hint('1–31 · เดือนที่มีไม่ถึงวันนั้น ใช้วันสุดท้ายของเดือน (เช่น 31 → 28 ก.พ.)')}
             </div>
             <div className="space-y-1">
-              <Label htmlFor="rb-month">เดือน</Label>
-              <NativeSelect id="rb-month" value={form.recurringMonth} disabled={form.recurrence === 'MONTHLY'} onChange={(e) => set('recurringMonth', e.target.value)}>
+              <div className="flex items-center"><Label htmlFor="rb-month">เดือน</Label>{form.recurrence !== 'MONTHLY' && req}</div>
+              <NativeSelect id="rb-month" value={form.recurringMonth} disabled={form.recurrence === 'MONTHLY'} onChange={(e) => set('recurringMonth', e.target.value)} {...a11y('recurringMonth')}>
                 <option value="">{form.recurrence === 'MONTHLY' ? '— ทุกเดือน —' : '— เลือก —'}</option>
                 {monthOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
               </NativeSelect>
@@ -314,13 +352,13 @@ export function RecurringBillDialog({ open, onClose, template = null, templateId
             </div>
             <div className="space-y-1">
               <Label htmlFor="rb-lead">เตือนล่วงหน้า (วัน)</Label>
-              <Input id="rb-lead" type="number" min={0} max={RECURRING_BILL_LEAD_DAYS_MAX} inputMode="numeric" value={form.reminderLeadDays} onChange={(e) => set('reminderLeadDays', e.target.value)} />
+              <Input id="rb-lead" type="number" min={0} max={RECURRING_BILL_LEAD_DAYS_MAX} inputMode="numeric" value={form.reminderLeadDays} onChange={(e) => set('reminderLeadDays', e.target.value)} {...a11y('reminderLeadDays')} />
               {err('reminderLeadDays') ?? hint(`ระบบสร้างร่าง + งาน + แจ้งเตือนก่อนครบกำหนดกี่วัน (0–${RECURRING_BILL_LEAD_DAYS_MAX}) · ค่าเริ่มต้น ${RECURRING_BILL_DEFAULT_LEAD_DAYS}`)}
             </div>
             <div className="space-y-1">
               <Label htmlFor="rb-starts">เริ่มนับงวดแรกตั้งแต่</Label>
-              <Input id="rb-starts" type="date" value={form.startsOn} onChange={(e) => set('startsOn', e.target.value)} />
-              {err('startsOn') ?? hint('งวดที่ครบกำหนดก่อนวันนี้จะไม่ถูกสร้างย้อนหลัง')}
+              <Input id="rb-starts" type="date" value={form.startsOn} onChange={(e) => set('startsOn', e.target.value)} {...a11y('startsOn')} />
+              {err('startsOn') ?? hint('งวดที่ครบกำหนดก่อนวันนี้เกิน 7 วันจะถูกบันทึกเป็น "งวดหลุด" ไม่สร้างร่างย้อนหลัง')}
             </div>
             <div className="md:col-span-2 rounded-lg border border-border bg-muted/40 px-3 py-2 text-sm" data-testid="recurring-preview">
               {preview ?? <span className="text-muted-foreground">กรอกความถี่และวันครบกำหนดเพื่อดูงวดถัดไป</span>}

@@ -11,7 +11,7 @@ describe('RecurringBillsCron', () => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let tx: any;
   let cron: RecurringBillsCron;
-  const RESULT = { disabled: false, templates: 1, created: 1, skippedMissed: 0, paid: 0, reverted: 0, unpostedClosed: 0, reminded: 0, repaired: 0, failed: 0 };
+  const RESULT = { disabled: false, templates: 1, created: 1, revived: 0, skippedMissed: 0, paid: 0, reverted: 0, unpostedClosed: 0, reminded: 0, repaired: 0, failed: 0 };
 
   beforeEach(() => {
     jest.clearAllMocks();

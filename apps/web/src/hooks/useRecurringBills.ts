@@ -94,6 +94,12 @@ export interface MarkPaidInput {
   reopenFirst?: boolean;
 }
 
+/** 409 "งวดนี้อยู่ในสถานะรอจ่ายอยู่แล้ว" จาก reopen */
+function isAlreadyPending(err: unknown): boolean {
+  const e = err as { response?: { status?: number; data?: { message?: string } } } | undefined;
+  return e?.response?.status === 409 && String(e.response.data?.message ?? '').includes('รอจ่ายอยู่แล้ว');
+}
+
 /** 4 การทำบนงวด — ทุกตัว invalidate หน้าบิลประจำ + รายการใบรายจ่าย (ร่างถูกสร้าง/ลบตามการทำ) */
 export function useRecurringBillActions() {
   const qc = useQueryClient();
@@ -101,27 +107,34 @@ export function useRecurringBillActions() {
     void qc.invalidateQueries({ queryKey: [RECURRING_BILLS_QUERY_KEY] });
     void qc.invalidateQueries({ queryKey: ['expense-documents'] });
   };
+  // รีวิว M2: ทุกการทำ refresh ทั้งสำเร็จและล้ม (onSettled) — CAS 409 "สถานะเปลี่ยนแล้ว" หรือขั้นสองของงวดหลุดล้ม หน้าต้องตามความจริงบน server
   const markPaid = useMutation({
     mutationFn: async ({ id, note, paidAt, reopenFirst }: MarkPaidInput) => {
-      if (reopenFirst) await api.post(`/recurring-bills/${id}/reopen`);
+      if (reopenFirst) {
+        try {
+          await api.post(`/recurring-bills/${id}/reopen`);
+        } catch (err) {
+          if (!isAlreadyPending(err)) throw err; // เปิดไปแล้วจากรอบก่อนที่ล้มกลางทาง → บันทึกจ่ายต่อได้เลย
+        }
+      }
       const body: { note?: string; paidAt?: string } = {};
       if (note) body.note = note;
       if (paidAt) body.paidAt = paidAt;
       return (await api.post(`/recurring-bills/${id}/mark-paid`, body)).data;
     },
-    onSuccess: refresh,
+    onSettled: refresh,
   });
   const skip = useMutation({
     mutationFn: async ({ id, reason }: { id: string; reason: string }) => (await api.post(`/recurring-bills/${id}/skip`, { reason })).data,
-    onSuccess: refresh,
+    onSettled: refresh,
   });
   const reopen = useMutation({
     mutationFn: async (id: string) => (await api.post(`/recurring-bills/${id}/reopen`)).data,
-    onSuccess: refresh,
+    onSettled: refresh,
   });
   const createDraft = useMutation({
     mutationFn: async (id: string) => (await api.post(`/recurring-bills/${id}/create-draft`)).data,
-    onSuccess: refresh,
+    onSettled: refresh,
   });
   return { markPaid, skip, reopen, createDraft };
 }

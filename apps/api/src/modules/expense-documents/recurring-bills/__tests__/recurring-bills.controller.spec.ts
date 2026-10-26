@@ -47,7 +47,7 @@ describe('ExpenseTemplatesController — recurring bill hooks', () => {
       update: jest.fn().mockResolvedValue({ id: 'tpl-1', isRecurring: true, ruleChanged: true }),
     };
     bills = {
-      generateForTemplate: jest.fn().mockResolvedValue({ created: ['2026-10'], skippedMissed: [], skippedExisting: 0 }),
+      generateForTemplate: jest.fn().mockResolvedValue({ created: ['2026-10'], revived: [], skippedMissed: [], skippedExisting: 0 }),
       retireOpenOccurrences: jest.fn().mockResolvedValue({ retired: 1 }),
     };
     controller = new ExpenseTemplatesController(templates, bills);

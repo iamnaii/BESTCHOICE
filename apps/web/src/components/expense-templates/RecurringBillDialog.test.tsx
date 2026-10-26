@@ -159,10 +159,38 @@ describe('กล่องตั้งบิลประจำ', () => {
     await u.clear(field('เตือนล่วงหน้า (วัน)'));
     await u.type(field('เตือนล่วงหน้า (วัน)'), '5');
     await u.click(submit());
-    await waitFor(() => expect(apiPatch).toHaveBeenCalledWith('/expense-templates/tpl-1', expect.objectContaining({ name: 'ประกันภัยร้าน (รายปี)', isRecurring: true, recurrence: 'YEARLY', recurringDay: 29, recurringMonth: 10, reminderLeadDays: 5, startsOn: '2026-10-26' })));
+    await waitFor(() => expect(apiPatch).toHaveBeenCalledWith('/expense-templates/tpl-1', expect.objectContaining({ name: 'ประกันภัยร้าน (รายปี)', isRecurring: true, recurrence: 'YEARLY', recurringDay: 29, recurringMonth: 10, reminderLeadDays: 5 })));
     const body = apiPatch.mock.calls[0][1] as Record<string, unknown>;
     expect(body).not.toHaveProperty('branchId');
     expect(body).not.toHaveProperty('documentType');
+    expect(body).not.toHaveProperty('startsOn'); // ไม่ได้แก้วันเริ่ม = ไม่ส่ง (รีวิว I2)
+  });
+
+  it('โหมดแก้ไข: บิลเก่าที่เริ่มนับเกิน 90 วัน บันทึกได้ถ้าไม่แตะวันเริ่ม (รีวิว I2)', async () => {
+    const u = userEvent.setup();
+    mount({ template: { ...template, startsOn: '2026-06-25T17:00:00.000Z' } }); // 26 มิ.ย. 69 = 122 วันก่อน NOW
+    await screen.findByRole('dialog');
+    expect(field('เริ่มนับงวดแรกตั้งแต่')).toHaveValue('2026-06-26');
+    await u.clear(field('เตือนล่วงหน้า (วัน)'));
+    await u.type(field('เตือนล่วงหน้า (วัน)'), '5');
+    await u.click(submit());
+    await waitFor(() => expect(apiPatch).toHaveBeenCalled());
+    expect(apiPatch.mock.calls[0][1]).not.toHaveProperty('startsOn');
+    expect(screen.queryByText(/ย้อนหลังได้ไม่เกิน/)).toBeNull();
+  });
+
+  it('ส่งไม่ผ่าน: ช่องที่ผิดมี aria-invalid + aria-describedby ชี้ข้อความผิดพลาด และโฟกัสไปช่องแรกที่ผิด', async () => {
+    const u = userEvent.setup();
+    mount();
+    await screen.findByRole('dialog');
+    await u.click(submit());
+    const day = field('วันครบกำหนด (วันที่ของเดือน)');
+    expect(day).toHaveAttribute('aria-invalid', 'true');
+    const errId = day.getAttribute('aria-describedby');
+    expect(errId).toBeTruthy();
+    expect(document.getElementById(errId!)).toHaveTextContent('บิลประจำต้องระบุวันครบกำหนด 1-31');
+    expect(field('ชื่อบิล')).toHaveFocus();
+    expect(apiPost).not.toHaveBeenCalled();
   });
 
   it('ผู้จัดการสาขาสร้างใหม่: สาขาถูกล็อกเป็นสาขาตนเอง', async () => {

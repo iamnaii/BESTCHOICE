@@ -21,13 +21,13 @@ const templates = [
   {
     id: 'tpl-net', name: 'อินเทอร์เน็ต AIS Fibre', documentType: 'EXPENSE', branchId: 'br-1',
     prefilledData: { vendorName: 'บมจ.แอดวานซ์ ไวร์เลส เน็ทเวอร์ค', category: '53-1302', sampleAmount: 1284 },
-    isRecurring: true, recurringDay: 24, recurrence: 'MONTHLY', recurringMonth: null, reminderLeadDays: 3, startsOn: '2026-10-25T17:00:00.000Z',
+    isRecurring: true, recurringDay: 24, recurrence: 'MONTHLY', recurringMonth: null, reminderLeadDays: 3, startsOn: '2026-09-30T17:00:00.000Z',
     branch: { id: 'br-1', name: 'ลาดพร้าว' }, createdBy: { id: 'u', name: 'เอก' }, createdAt: '', updatedAt: '',
   },
   {
     id: 'tpl-acct', name: 'ค่าทำบัญชี', documentType: 'EXPENSE', branchId: 'br-1',
     prefilledData: { vendorName: 'สนง.บัญชีเอกสิทธิ์', category: '53-1301', sampleAmount: 6000 },
-    isRecurring: true, recurringDay: 5, recurrence: 'QUARTERLY', recurringMonth: 1, reminderLeadDays: 7, startsOn: '2026-10-25T17:00:00.000Z',
+    isRecurring: true, recurringDay: 5, recurrence: 'QUARTERLY', recurringMonth: 1, reminderLeadDays: 7, startsOn: '2026-09-30T17:00:00.000Z',
     branch: { id: 'br-1', name: 'ลาดพร้าว' }, createdBy: { id: 'u', name: 'เอก' }, createdAt: '', updatedAt: '',
   },
   {
@@ -66,8 +66,11 @@ describe('หน้ารายการโปรด — การ์ดบิ�
     expect(within(card('ค่าซ่อมเครื่องปรับอากาศ')).getByRole('button', { name: 'ใช้' })).toBeInTheDocument();
     expect(within(card('ค่าซ่อมเครื่องปรับอากาศ')).queryByText('บิลประจำ')).toBeNull();
     expect(screen.getByRole('heading', { name: /รายการโปรด/ })).toHaveTextContent('(1/20)');
+    // งวดของเดือนนี้ (24 ต.ค.) ครบกำหนดไปแล้ว → ต้องเปิดเดือนที่งวดนั้นอยู่ ไม่ใช่เดือนของงวดถัดไป (รีวิว I4)
     await u.click(within(card('อินเทอร์เน็ต AIS Fibre')).getByRole('button', { name: 'เปิดร่างงวดนี้' }));
-    expect(screen.getByTestId('location')).toHaveTextContent('/expenses/recurring-bills?month=2026-11');
+    expect(screen.getByTestId('location')).toHaveTextContent('/expenses/recurring-bills?month=2026-10');
+    await u.click(within(card('ค่าทำบัญชี')).getByRole('button', { name: 'เปิดร่างงวดนี้' }));
+    expect(screen.getByTestId('location')).toHaveTextContent('/expenses/recurring-bills?month=2026-10'); // ไตรมาส 4 ครบ 5 ต.ค.
   });
 
   it('"แก้ไข" เปิดกล่องพร้อมแม่แบบเดิม · "+ บิลประจำ" เปิดกล่องว่าง · "บิลประจำเดือนนี้" ไปหน้าบิลประจำ', async () => {

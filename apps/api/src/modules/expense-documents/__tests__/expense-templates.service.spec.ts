@@ -1,4 +1,7 @@
 import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
+import { addCalendarDays, bkkCalendarDate } from '@installment/shared';
+import { bkkMidnightOf } from '../recurring-bills/recurring-bills.service';
+const dayKey = (d: { year: number; month: number; day: number }) => `${d.year}-${String(d.month).padStart(2, '0')}-${String(d.day).padStart(2, '0')}`;
 import { ExpenseTemplatesService } from '../expense-templates.service';
 
 describe('ExpenseTemplatesService', () => {
@@ -267,8 +270,9 @@ describe('recurring bill rules (D5)', () => {
     expect(data).toMatchObject({ isRecurring: true, recurrence: 'QUARTERLY', recurringDay: 31, recurringMonth: 2, reminderLeadDays: 7 });
     expect(data.startsOn).toBeInstanceOf(Date);
     expect(data.startsOn.getUTCHours()).toBe(17); // เที่ยงคืนไทย = 17:00Z ของวันก่อน
-    await create({ isRecurring: true, recurrence: 'MONTHLY', recurringDay: 5, startsOn: '2026-11-01' });
-    expect(prisma.expenseTemplate.create.mock.calls[1][0].data.startsOn).toEqual(new Date('2026-10-31T17:00:00.000Z'));
+    const in5 = addCalendarDays(bkkCalendarDate(new Date()), 5); // สัมพัทธ์กับวันนี้ — กันเทสหมดอายุเมื่อเกินเพดาน 90 วัน (รีวิว M8)
+    await create({ isRecurring: true, recurrence: 'MONTHLY', recurringDay: 5, startsOn: dayKey(in5) });
+    expect(prisma.expenseTemplate.create.mock.calls[1][0].data.startsOn).toEqual(bkkMidnightOf(in5));
   });
 
   describe('update', () => {
@@ -294,6 +298,30 @@ describe('recurring bill rules (D5)', () => {
       expect(data.recurringDay).toBe(10);
       expect((data.startsOn as Date).getTime()).toBeGreaterThan(existing.startsOn.getTime());
       expect((data.startsOn as Date).getUTCHours()).toBe(17);
+    });
+    it('echoing the stored startsOn (older than 90 days) is accepted — only a changed value is range-checked; a rule change still moves it to today (รีวิว I2)', async () => {
+      const update = (dto: Record<string, unknown>) => service.update('tpl-1', dto as never, owner);
+      const d = addCalendarDays(bkkCalendarDate(new Date()), -120);
+      const stored = bkkMidnightOf(d);
+      prisma.expenseTemplate.findUniqueOrThrow.mockResolvedValue({ ...existing, startsOn: stored });
+      const renamed = await update({ name: 'ชื่อใหม่', startsOn: dayKey(d) });
+      expect(renamed.ruleChanged).toBe(false);
+      expect(prisma.expenseTemplate.update.mock.calls[0][0].data.startsOn).toBeUndefined();
+      jest.clearAllMocks();
+      prisma.expenseTemplate.findUniqueOrThrow.mockResolvedValue({ ...existing, startsOn: stored });
+      const res = await update({ recurringDay: 28, startsOn: dayKey(d) });
+      expect(res.ruleChanged).toBe(true);
+      const moved = prisma.expenseTemplate.update.mock.calls[0][0].data.startsOn as Date;
+      expect(moved.getTime()).toBeGreaterThan(stored.getTime());
+      expect(moved.getUTCHours()).toBe(17);
+      await expect(update({ name: 'x', startsOn: '2020-01-01' })).rejects.toThrow(/ย้อนหลัง/);
+    });
+    it('a rule change with an explicit future startsOn keeps that date (max(startsOn, today))', async () => {
+      const update = (dto: Record<string, unknown>) => service.update('tpl-1', dto as never, owner);
+      const d = addCalendarDays(bkkCalendarDate(new Date()), 10);
+      const res = await update({ recurringDay: 28, startsOn: dayKey(d) });
+      expect(res.ruleChanged).toBe(true);
+      expect(prisma.expenseTemplate.update.mock.calls[0][0].data.startsOn).toEqual(bkkMidnightOf(d));
     });
     it('renaming only does not mark ruleChanged nor touch startsOn', async () => {
       const res = await service.update('tpl-1', { name: 'ค่าเน็ตบ้าน' } as never, owner);

@@ -92,6 +92,7 @@ describe('หน้าบิลประจำ — เดือนเดีย�
       expect(within(billRow(name)).getByTestId('bill-document')).toHaveTextContent(doc);
     }
     expect(within(billRow('ค่าน้ำ สาขาบางนา')).getByText('ระบบจะสร้างร่าง 28 ต.ค. 69')).toBeInTheDocument();
+    expect(within(billRow('อินเทอร์เน็ต AIS Fibre')).getByText('งาน HIGH ใน /todos · เตือนซ้ำทุกวัน')).toBeInTheDocument(); // ยังไม่ส่ง LINE จริง — ห้ามอ้าง (รีวิว M3)
     expect(within(billRow('ค่าเช่าโกดัง')).getByTestId('bill-document')).toHaveTextContent('EX-20261023-0005');
     expect(within(billRow('ค่าเช่าโกดัง')).getByText('ถูกลบ 25 ต.ค. 69')).toBeInTheDocument();
     expect(within(billRow('ค่าน้ำ สาขาบางนา')).getByText('ยังไม่ตั้งวิธีจ่าย')).toBeInTheDocument();
@@ -159,6 +160,22 @@ describe('หน้าบิลประจำ — เดือนเดีย�
     await u.click(within(billRow('บิลหลุด')).getByRole('button', { name: 'จ่ายแล้ว' }));
     await u.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'บันทึกจ่ายแล้ว' }));
     await waitFor(() => expect(postedPaths()).toEqual(['/recurring-bills/occ-9/reopen', '/recurring-bills/occ-9/mark-paid']));
+  });
+
+  it('งวดหลุด: เปิดใหม่ตอบ 409 "รอจ่ายอยู่แล้ว" → ยังบันทึกจ่ายต่อ · บันทึกจ่ายล้ม → หน้าโหลดใหม่เอง (รีวิว M2)', async () => {
+    const u = userEvent.setup();
+    mount({ ...view, rows: [row({ occurrenceId: 'occ-9', templateId: 'tpl-9', templateName: 'บิลหลุด', status: 'SKIPPED', dueDate: bkk(2026, 10, 10), documentMissing: true, skippedAt: '2026-10-20T01:05:00.000Z', skipReason: 'งวดผ่านไปก่อนระบบเริ่มติดตาม', skippedByName: null })] });
+    await screen.findByRole('row', { name: 'บิลหลุด' });
+    apiPost.mockImplementation((path: string) =>
+      path.endsWith('/reopen')
+        ? Promise.reject({ response: { status: 409, data: { message: 'งวดนี้อยู่ในสถานะรอจ่ายอยู่แล้ว' } } })
+        : Promise.reject({ response: { status: 500, data: { message: 'boom' } } }),
+    );
+    const getsBefore = apiGet.mock.calls.length;
+    await u.click(within(billRow('บิลหลุด')).getByRole('button', { name: 'จ่ายแล้ว' }));
+    await u.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'บันทึกจ่ายแล้ว' }));
+    await waitFor(() => expect(postedPaths()).toEqual(['/recurring-bills/occ-9/reopen', '/recurring-bills/occ-9/mark-paid']));
+    await waitFor(() => expect(apiGet.mock.calls.length).toBeGreaterThan(getsBefore));
   });
 
   it('ร่างถูกลบ: "สร้างร่างใหม่" ยิง create-draft · "เปิดใหม่" ยิง reopen', async () => {

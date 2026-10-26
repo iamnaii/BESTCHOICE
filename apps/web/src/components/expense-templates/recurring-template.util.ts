@@ -3,6 +3,7 @@ import {
   compareCalendarDate,
   dueDateForPeriod,
   formatCalendarDateTh,
+  periodKeyFor,
   periodsFrom,
   reminderWindowOpens,
   type CalendarDate,
@@ -87,11 +88,18 @@ export function recurringCardLine(t: RecurringRuleFields & { reminderLeadDays: n
   return `ทุกวันที่ ${rule.recurringDay} · ${recurrenceText(rule)} · เตือนล่วงหน้า ${t.reminderLeadDays} วัน · งวดถัดไป ${formatCalendarDateTh(next.due)}`;
 }
 
-/** เดือน (YYYY-MM) ของงวดถัดไป — ใช้ลิงก์ไปหน้าบิลประจำ */
-export function nextPeriodMonthKey(t: RecurringRuleFields & { reminderLeadDays: number; startsOn: string | null }, now: Date): string | null {
+/**
+ * เดือน (YYYY-MM) ที่ปุ่ม "เปิดร่างงวดนี้" ควรเปิด = งวดที่ครอบวันนี้ (ครบกำหนดไปแล้วในเดือนนี้ = งวดที่ค้าง หรือกำลังจะถึง)
+ * ถ้างวดนั้นอยู่ก่อน startsOn (ตั้งบิลหลังวันครบกำหนด) ระบบไม่เคยสร้าง → ใช้งวดถัดไป (รีวิว I4)
+ */
+export function billMonthKey(t: RecurringRuleFields & { reminderLeadDays: number; startsOn: string | null }, now: Date): string | null {
   const rule = ruleOfTemplate(t);
   if (!rule) return null;
-  const [next] = upcomingPeriods(rule, t.reminderLeadDays, calendarOfIso(t.startsOn), now, 1);
+  const today = bkkCalendarDate(now);
+  const startsOn = calendarOfIso(t.startsOn);
+  const current = dueDateForPeriod(rule, periodKeyFor(rule, today));
+  if (!startsOn || compareCalendarDate(current, startsOn) >= 0) return monthKeyOf(current);
+  const [next] = upcomingPeriods(rule, t.reminderLeadDays, startsOn, now, 1);
   return monthKeyOf(next.due);
 }
 

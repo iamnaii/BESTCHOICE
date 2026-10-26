@@ -36,7 +36,7 @@ import { getBranchScope } from '../../auth/branch-access.util';
 import { bangkokMidnight } from '../../../utils/date.util';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { ExpenseTemplatesService } from '../expense-templates.service';
-import { isTemplatesEnabled } from '../templates-flag.util';
+import { TEMPLATES_DISABLED_MESSAGE, isTemplatesEnabled } from '../templates-flag.util';
 import { OCCURRENCE_DOCUMENT_SELECT, isExpenseDocumentPaid, isLiveDocument, type OccurrenceDocument } from './recurring-bill-paid.util';
 import { viewStatusOf } from './recurring-bill-view.util';
 import type { MarkPaidDto } from './dto/mark-paid.dto';
@@ -57,6 +57,8 @@ export interface RecurringBillActor {
 
 export interface GenerateResult {
   created: string[];
+  /** งวดที่ถูกปิดเพราะ "แม่แบบเปลี่ยนรอบ" แล้วฟื้นด้วยวันครบกำหนดใหม่ภายใต้ key เดิม (รีวิว C1) */
+  revived: string[];
   skippedMissed: string[];
   skippedExisting: number;
 }
@@ -74,10 +76,22 @@ export interface RunDailyResult extends SyncResult {
   disabled: boolean;
   templates: number;
   created: number;
+  revived: number;
   skippedMissed: number;
 }
 
 export const MISSED_PERIOD_REASON = 'งวดผ่านไปก่อนระบบเริ่มติดตาม';
+
+/** แถวงวดที่มีอยู่แล้วของแม่แบบ (ขั้น A อ่านมาตัดสินว่า ข้าม หรือ ฟื้น) */
+interface PriorRow {
+  id: string;
+  periodKey: string;
+  status?: string;
+  skippedById?: string | null;
+  skipReason?: string | null;
+  todoId?: string | null;
+  expenseDocumentId?: string | null;
+}
 
 /** ผู้ใช้ที่เรียก endpoint (จาก @CurrentUser) */
 export interface ScopedUser {
@@ -254,7 +268,7 @@ export class RecurringBillsService {
   /** รอบตรวจรายวัน (cron 08:05) — ขั้น A ทุกแม่แบบ แล้วขั้น B */
   async runDaily(now: Date = new Date()): Promise<RunDailyResult> {
     const zero: RunDailyResult = {
-      disabled: false, templates: 0, created: 0, skippedMissed: 0,
+      disabled: false, templates: 0, created: 0, revived: 0, skippedMissed: 0,
       paid: 0, reverted: 0, unpostedClosed: 0, reminded: 0, repaired: 0, failed: 0,
     };
     if (!(await isTemplatesEnabled(this.prisma))) {
@@ -277,6 +291,7 @@ export class RecurringBillsService {
       try {
         const r = await this.generateForTemplate(tpl.id, now, actor);
         result.created += r.created.length;
+        result.revived += r.revived.length;
         result.skippedMissed += r.skippedMissed.length;
       } catch (err) {
         result.failed++;
@@ -302,7 +317,7 @@ export class RecurringBillsService {
    * `actor` ว่าง = หาผู้ใช้ระบบ (ไม่มี = throw)
    */
   async generateForTemplate(templateId: string, now: Date = new Date(), actor?: RecurringBillActor): Promise<GenerateResult> {
-    const result: GenerateResult = { created: [], skippedMissed: [], skippedExisting: 0 };
+    const result: GenerateResult = { created: [], revived: [], skippedMissed: [], skippedExisting: 0 };
     const who = actor ?? (await this.findSystemUser());
     if (!who) throw new Error('ไม่พบผู้ใช้ระบบ (isSystemUser) — สร้างงวดบิลประจำไม่ได้');
     const tpl = (await this.prisma.expenseTemplate.findUnique({
@@ -317,18 +332,27 @@ export class RecurringBillsService {
     const floor = addCalendarDays(today, -RECURRING_BILL_CATCHUP_DAYS);
     const scanFrom = compareCalendarDate(startsOn, floor) > 0 ? startsOn : floor;
     const lead = Math.max(0, tpl.reminderLeadDays ?? 3);
-    const existing = new Set(
-      (await this.prisma.recurringBillOccurrence.findMany({ where: { templateId: tpl.id }, select: { periodKey: true } })).map(
-        (r) => r.periodKey,
-      ),
-    );
+    const existingRows = (await this.prisma.recurringBillOccurrence.findMany({
+      where: { templateId: tpl.id },
+      select: { id: true, periodKey: true, status: true, skippedById: true, skipReason: true, todoId: true, expenseDocumentId: true },
+    })) as PriorRow[];
+    const existing = new Map(existingRows.map((r) => [r.periodKey, r]));
 
     let key = prevPeriodKey(rule, periodKeyFor(rule, scanFrom));
     for (let guard = 0; guard < 60; guard++, key = nextPeriodKey(rule, key)) {
       const due = dueDateForPeriod(rule, key);
       if (compareCalendarDate(reminderWindowOpens(rule, key, lead), today) > 0) break;
       if (compareCalendarDate(due, startsOn) < 0) continue;
-      if (existing.has(key)) continue;
+      const prior = existing.get(key);
+      if (prior) {
+        // รีวิว C1: แม่แบบเปลี่ยนรอบแล้วงวดใหม่ตก key เดิม (เช่น วันที่ 25 → 28 ในเดือนเดียวกัน) — ฟื้นแถวที่ระบบเพิ่งปิด
+        // ไม่งั้นงวดของเดือนนั้นจะไม่มีวันถูกสร้างอีก · แถวอื่น (PENDING/PAID/คนข้าม) = งวดมีคนดูแลแล้ว ข้าม
+        const retiredByRuleChange = prior.status === 'SKIPPED' && prior.skippedById == null && prior.skipReason === RULE_CHANGED_REASON;
+        if (retiredByRuleChange && compareCalendarDate(due, floor) >= 0 && (await this.revivePeriod(prior, tpl, due, today, who))) {
+          result.revived.push(key);
+        }
+        continue;
+      }
 
       const missed = compareCalendarDate(due, floor) < 0;
       const diff = calendarDayDiff(due, today);
@@ -364,7 +388,7 @@ export class RecurringBillsService {
       let docNumber: string | null = null;
       let draftFailed = false;
       try {
-        docNumber = (await this.ensureDraft(tpl, occId, due, who))?.number ?? null;
+        docNumber = (await this.ensureDraft(tpl, occId, due, who, null))?.number ?? null;
       } catch (err) {
         draftFailed = true;
         Sentry.captureException(err, { tags: { cron: 'recurring-bills', stage: 'draft' }, extra: { templateId: tpl.id, periodKey: key } });
@@ -377,8 +401,60 @@ export class RecurringBillsService {
     return result;
   }
 
-  /** ②③ — ร่างของงวด: ใช้ร่างของผู้กระทำที่ลงวันครบกำหนดอยู่แล้ว (รอบก่อนผูกไม่สำเร็จ) ไม่งั้น instantiate */
-  private async ensureDraft(tpl: TemplateRow, occId: string, due: CalendarDate, who: RecurringBillActor) {
+  /**
+   * รีวิว C1: ฟื้นงวดที่ "แม่แบบเปลี่ยนรอบ" ปิดไว้ ให้กลับเป็น PENDING ด้วยวันครบกำหนดใหม่ + ร่างใหม่ + งานเดิมเปิดกลับ (งวดละงานเดียว)
+   * CAS บนสถานะ/เหตุผลเดิม — instance อื่นที่ฟื้นไปก่อนทำให้ count 0 แล้วข้ามเงียบ
+   */
+  private async revivePeriod(prior: PriorRow, tpl: TemplateRow, due: CalendarDate, today: CalendarDate, who: RecurringBillActor): Promise<boolean> {
+    const diff = calendarDayDiff(due, today);
+    const view: TodoView = diff > 0 ? 'OVERDUE' : diff === 0 ? 'DUE_TODAY' : 'UPCOMING';
+    const res = await this.prisma.recurringBillOccurrence.updateMany({
+      where: { id: prior.id, status: 'SKIPPED', skippedById: null, skipReason: RULE_CHANGED_REASON },
+      data: {
+        status: 'PENDING',
+        dueDate: bkkMidnightOf(due),
+        estimatedAmount: estimatedAmountOf(tpl.prefilledData),
+        skippedAt: null,
+        skippedById: null,
+        skipReason: null,
+        lastRemindedOn: view === 'UPCOMING' ? null : dateOnlyOf(today),
+      },
+    });
+    if (res.count !== 1) return false;
+    let docNumber: string | null = null;
+    let draftFailed = false;
+    try {
+      docNumber = (await this.ensureDraft(tpl, prior.id, due, who, prior.expenseDocumentId ?? null))?.number ?? null;
+    } catch (err) {
+      draftFailed = true;
+      Sentry.captureException(err, { tags: { cron: 'recurring-bills', stage: 'revive-draft' }, extra: { templateId: tpl.id, occurrenceId: prior.id } });
+      this.logger.error(`[recurring-bills] revive draft failed for ${tpl.id}/${prior.id}: ${(err as Error).message}`);
+    }
+    if (prior.todoId) {
+      // งานเดิมของงวด (ถูกปิดตอน retire) — เปิดกลับพร้อมชื่อ/วันใหม่ · คนลบงานไปแล้ว = ไม่สร้างใหม่ (กติกา B7)
+      await this.prisma.todo.updateMany({
+        where: { id: prior.todoId, deletedAt: null },
+        data: {
+          status: 'TODO',
+          completedAt: null,
+          title: this.todoTitle(tpl, due, view, diff, docNumber),
+          description: this.todoDescription(tpl, due, view, docNumber, draftFailed),
+          priority: view === 'UPCOMING' ? 'MEDIUM' : 'HIGH',
+          dueDate: bkkNoonOf(due),
+        },
+      });
+    } else {
+      await this.createTodo({ occId: prior.id, tpl, due, view, daysOverdue: diff, actorId: who.id, docNumber, draftFailed });
+    }
+    await this.safeNotify(view as RecurringBillEventKind, { occId: prior.id, tpl, due, daysOverdue: diff, docNumber });
+    return true;
+  }
+
+  /**
+   * ②③ — ร่างของงวด: ใช้ร่างของผู้กระทำที่ลงวันครบกำหนดอยู่แล้ว (รอบก่อนผูกไม่สำเร็จ) ไม่งั้น instantiate
+   * ผูกด้วย CAS บน `expenseDocumentId` เดิม (รีวิว I1): สองคนกด "สร้างร่างใหม่" พร้อมกัน คนแพ้ลบร่างของตัวเองแล้วได้ 409 — ไม่เหลือร่างซ้ำ
+   */
+  private async ensureDraft(tpl: TemplateRow, occId: string, due: CalendarDate, who: RecurringBillActor, previousDocId: string | null) {
     const dayStart = bkkMidnightOf(due);
     const dayEnd = bkkMidnightOf(addCalendarDays(due, 1));
     const existing = await this.prisma.expenseDocument.findFirst({
@@ -392,9 +468,16 @@ export class RecurringBillsService {
       },
       select: { id: true, number: true },
     });
-    const doc = existing ?? (await this.templates.instantiate(tpl.id, who, { documentDate: bkkNoonOf(due) }));
-    await this.prisma.recurringBillOccurrence.update({ where: { id: occId }, data: { expenseDocumentId: doc.id } });
-    return doc as { id: string; number: string };
+    const doc = (existing ?? (await this.templates.instantiate(tpl.id, who, { documentDate: bkkNoonOf(due) }))) as { id: string; number: string };
+    const linked = await this.prisma.recurringBillOccurrence.updateMany({
+      where: { id: occId, expenseDocumentId: previousDocId },
+      data: { expenseDocumentId: doc.id },
+    });
+    if (linked.count !== 1) {
+      if (!existing) await this.retireDraft({ id: doc.id } as OccurrenceDocument, who, 'ร่างซ้ำ — งวดถูกผูกกับใบอื่นไปก่อนแล้ว', new Date());
+      throw new ConflictException(RECURRING_BILL_ERROR.DRAFT_EXISTS);
+    }
+    return doc;
   }
 
   /** ขั้น B — อัปเดตงวด PENDING ทุกแถว + งวด PAID ที่ยังต้องดูแล (120 วันหลังสุด) */
@@ -554,10 +637,15 @@ export class RecurringBillsService {
         expenseDocument: { select: OCCURRENCE_DOCUMENT_SELECT },
         todo: { select: { id: true, status: true, deletedAt: true } },
       },
-    })) as unknown as Array<Pick<OccurrenceRow, 'id' | 'todoId' | 'expenseDocument' | 'todo'>>;
+    })) as unknown as Array<Pick<OccurrenceRow, 'id' | 'todoId' | 'dueDate' | 'expenseDocument' | 'todo'>>;
+    const today = bkkCalendarDate(now);
     let retired = 0;
     for (const row of rows) {
       if (isExpenseDocumentPaid(row.expenseDocument)) continue;
+      // รีวิว C1: แก้กติกามีผลกับงวดที่ยังไม่ถึงเท่านั้น — งวดที่ครบ/เกินกำหนดแล้ว หรือใบเดินไปไกลกว่าร่าง คนยังผูกพันกับบิลนั้นอยู่
+      if (compareCalendarDate(bkkCalendarDate(row.dueDate), today) <= 0) continue;
+      const doc = row.expenseDocument;
+      if (doc && !doc.deletedAt && doc.status !== 'DRAFT' && doc.status !== 'VOIDED') continue;
       const res = await this.prisma.recurringBillOccurrence.updateMany({
         where: { id: row.id, status: 'PENDING' },
         data: { status: 'SKIPPED', skippedAt: now, skippedById: null, skipReason: reason },
@@ -760,6 +848,11 @@ export class RecurringBillsService {
 
   // ─── การกระทำบนงวด (spec §8 + §15.5) — ทุก transition เป็น CAS ────────────────
 
+  /** สวิตช์ templates_enabled ปิด = การทำบนงวดทุกอย่าง 403 ข้อความเดิม (สเปก §13 ข้อ 4 · รีวิว M1) */
+  private async assertTemplatesEnabled() {
+    if (!(await isTemplatesEnabled(this.prisma))) throw new ForbiddenException(TEMPLATES_DISABLED_MESSAGE);
+  }
+
   private async loadOccurrence(id: string): Promise<OccurrenceRow> {
     const occ = (await this.prisma.recurringBillOccurrence.findUnique({
       where: { id },
@@ -785,6 +878,7 @@ export class RecurringBillsService {
   }
 
   async markPaid(id: string, user: ScopedUser, dto: MarkPaidDto, now: Date = new Date()) {
+    await this.assertTemplatesEnabled();
     const occ = await this.loadOccurrence(id);
     this.assertScope(user, occ.template.branchId);
     if (occ.status !== 'PENDING') throw new ConflictException(RECURRING_BILL_ERROR.NOT_PENDING);
@@ -817,6 +911,7 @@ export class RecurringBillsService {
   }
 
   async skip(id: string, user: ScopedUser, dto: SkipOccurrenceDto, now: Date = new Date()) {
+    await this.assertTemplatesEnabled();
     const occ = await this.loadOccurrence(id);
     this.assertScope(user, occ.template.branchId);
     if (occ.status !== 'PENDING') throw new ConflictException(RECURRING_BILL_ERROR.NOT_PENDING);
@@ -835,6 +930,7 @@ export class RecurringBillsService {
   }
 
   async reopen(id: string, user: ScopedUser, now: Date = new Date()) {
+    await this.assertTemplatesEnabled();
     const occ = await this.loadOccurrence(id);
     this.assertScope(user, occ.template.branchId);
     if (occ.status === 'PENDING') throw new ConflictException('งวดนี้อยู่ในสถานะรอจ่ายอยู่แล้ว');
@@ -853,7 +949,7 @@ export class RecurringBillsService {
     let docNumber = isLiveDocument(occ.expenseDocument) ? occ.expenseDocument!.number : null;
     if (!docNumber && !occ.template.deletedAt) {
       try {
-        docNumber = (await this.ensureDraft(occ.template, occ.id, due, actor)).number;
+        docNumber = (await this.ensureDraft(occ.template, occ.id, due, actor, occ.expenseDocumentId ?? null)).number;
       } catch (err) {
         Sentry.captureException(err, { tags: { cron: 'recurring-bills', stage: 'reopen-draft' }, extra: { occurrenceId: id } });
       }
@@ -878,7 +974,7 @@ export class RecurringBillsService {
     if (occ.status === 'SKIPPED') throw new ConflictException('งวดที่ข้ามแล้ว ให้กด "เปิดใหม่" ก่อนสร้างร่าง');
     const due = bkkCalendarDate(occ.dueDate);
     const actor: RecurringBillActor = { id: user.id, branchId: user.branchId ?? null, role: user.role ?? '' };
-    const doc = await this.ensureDraft(occ.template, occ.id, due, actor);
+    const doc = await this.ensureDraft(occ.template, occ.id, due, actor, occ.expenseDocumentId ?? null);
     void now;
     await this.logAudit(user, 'RECURRING_BILL_DRAFT_CREATED', occ, { documentId: doc.id, documentNumber: doc.number });
     return { occurrenceId: occ.id, documentId: doc.id, documentNumber: doc.number };

@@ -91,9 +91,9 @@ export function statusDetail(row: RecurringBillRow): string {
     case 'PAID_UNPOSTED':
       return `${fmtDateTh(row.paidAt)} · ${by(row.paidByName)}${isLiveDocument(row.document) ? ` · งาน: ลงบัญชีใบ ${row.document.number}` : ''}`;
     case 'OVERDUE':
-      return 'เตือน LINE ทุกวัน · งาน HIGH ใน /todos';
+      return 'งาน HIGH ใน /todos · เตือนซ้ำทุกวัน'; // LINE จริงมาก้อน 7 — ห้ามอ้างบนจอ (รีวิว M3)
     case 'DUE_TODAY':
-      return 'เตือน LINE วันนี้ · งาน HIGH ใน /todos';
+      return 'งาน HIGH ใน /todos · ครบกำหนดวันนี้';
     case 'PENDING':
       return `${row.documentMissing ? 'ไม่มีร่าง' : 'สร้างร่างแล้ว'} · งาน MEDIUM ใน /todos`;
     case 'UPCOMING':

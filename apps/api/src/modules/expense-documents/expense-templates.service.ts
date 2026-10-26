@@ -85,11 +85,15 @@ export function bkkTodayMidnight(now: Date = new Date()): Date {
   return bangkokMidnight(p.year, p.month, p.day);
 }
 
-/** `YYYY-MM-DD` → เที่ยงคืนไทย · ตรวจช่วง [วันนี้−90, วันนี้+365] (spec §15.1) */
-export function normalizeStartsOn(input: string, now: Date = new Date()): Date {
+/**
+ * `YYYY-MM-DD` → เที่ยงคืนไทย · ตรวจช่วง [วันนี้−90, วันนี้+365] (spec §15.1)
+ * `unchangedFrom` = ค่าที่เก็บอยู่ (กล่องแก้ไขสะท้อนค่าเดิมกลับมา) — ค่าเดิมไม่ตรวจช่วง ไม่งั้นบิลที่เริ่มนับเกิน 90 วันแก้อะไรไม่ได้ (รีวิว I2)
+ */
+export function normalizeStartsOn(input: string, now: Date = new Date(), unchangedFrom?: Date | null): Date {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(input);
   if (!m) throw new BadRequestException('วันเริ่มนับงวดต้องเป็นรูปแบบ YYYY-MM-DD');
   const value = bangkokMidnight(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  if (unchangedFrom && value.getTime() === unchangedFrom.getTime()) return value;
   const diffDays = Math.round((value.getTime() - bkkTodayMidnight(now).getTime()) / 86_400_000);
   if (diffDays < -RECURRING_BILL_STARTS_ON_MAX_PAST_DAYS) {
     throw new BadRequestException(`วันเริ่มนับงวดย้อนหลังได้ไม่เกิน ${RECURRING_BILL_STARTS_ON_MAX_PAST_DAYS} วัน`);
@@ -290,11 +294,14 @@ export class ExpenseTemplatesService {
     } else {
       if (dto.recurrence !== undefined) data.recurrence = dto.recurrence as never;
       if (dto.recurringMonth !== undefined || dto.recurrence === 'MONTHLY') data.recurringMonth = merged.recurringMonth ?? null;
-      if (dto.startsOn) {
-        data.startsOn = normalizeStartsOn(dto.startsOn);
-      } else if (ruleChanged) {
+      // รีวิว I2: ค่าเดิมที่สะท้อนกลับมาไม่ตรวจช่วง · เปลี่ยนกติกา ⇒ startsOn = max(ค่าที่ได้, วันนี้) เสมอ (สเปก §15.5)
+      const provided = dto.startsOn ? normalizeStartsOn(dto.startsOn, new Date(), tpl.startsOn) : null;
+      if (ruleChanged) {
         const today = bkkTodayMidnight();
-        data.startsOn = tpl.startsOn && tpl.startsOn.getTime() > today.getTime() ? tpl.startsOn : today;
+        const base = provided ?? tpl.startsOn;
+        data.startsOn = base && base.getTime() > today.getTime() ? base : today;
+      } else if (provided && (!tpl.startsOn || provided.getTime() !== tpl.startsOn.getTime())) {
+        data.startsOn = provided;
       }
     }
     const updated = await this.prisma.expenseTemplate.update({ where: { id }, data });

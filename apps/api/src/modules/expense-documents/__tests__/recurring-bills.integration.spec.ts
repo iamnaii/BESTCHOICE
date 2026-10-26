@@ -15,7 +15,7 @@ import { ExpenseDocumentLifecycleService } from '../services/expense-document-li
 import { ExpenseSameDayTemplate } from '../../journal/cpa-templates/expense-same-day.template';
 import { ExpenseAccrualTemplate } from '../../journal/cpa-templates/expense-accrual.template';
 import { ExpenseTemplatesService } from '../expense-templates.service';
-import { RecurringBillsService, bkkMidnightOf, type RecurringBillActor } from '../recurring-bills/recurring-bills.service';
+import { RecurringBillsService, RULE_CHANGED_REASON, bkkMidnightOf, type RecurringBillActor } from '../recurring-bills/recurring-bills.service';
 import { bangkokDateString } from '../../../utils/date.util';
 
 /**
@@ -241,5 +241,45 @@ describe('บิลประจำบนฐานข้อมูลจริง'
     expect(rows).toHaveLength(1);
     const todos = await prisma.todo.findMany({ where: { tags: { hasEvery: ['recurring-bill', `rb:${rows[0].id}`] } } });
     expect(todos).toHaveLength(1);
+  }, 60_000);
+
+  it('แก้วันครบกำหนดหลังมีงวดแล้ว (25 → 28 ในเดือนเดียวกัน): งวดเดิมถูกปิด "แม่แบบเปลี่ยนรอบ" แล้วฟื้นด้วยวันใหม่ ไม่หายเงียบ (รีวิว C1)', async () => {
+    const at = (day: number) => new Date(Date.UTC(2026, 9, day, 1, 5)); // 08:05 ไทย ต.ค. 2569
+    const tpl = await makeTemplate({ name: `ค่าเช่าโกดัง-C1 ${stamp}`, recurringDay: 25, startsOn: bkkMidnightOf({ year: 2026, month: 10, day: 20 }) });
+    const first = await bills.generateForTemplate(tpl.id, at(22), system);
+    expect(first.created).toEqual(['2026-10']);
+    const before = await prisma.recurringBillOccurrence.findUniqueOrThrow({ where: { templateId_periodKey: { templateId: tpl.id, periodKey: '2026-10' } } });
+    expect(before.dueDate).toEqual(bkkMidnightOf({ year: 2026, month: 10, day: 25 }));
+    const oldDocId = before.expenseDocumentId!;
+    // 23 ต.ค. แก้เป็นวันที่ 28 — ลำดับเดียวกับ controller: update แม่แบบ → retire → generate
+    await prisma.expenseTemplate.update({ where: { id: tpl.id }, data: { recurringDay: 28, startsOn: bkkMidnightOf({ year: 2026, month: 10, day: 23 }) } });
+    expect((await bills.retireOpenOccurrences(tpl.id, RULE_CHANGED_REASON, owner(), at(23))).retired).toBe(1);
+    expect((await bills.generateForTemplate(tpl.id, at(23), owner())).revived).toEqual([]); // หน้าต่างของวันที่ 28 เปิด 25 ต.ค.
+    const gen = await bills.generateForTemplate(tpl.id, at(26), system);
+    expect(gen.revived).toEqual(['2026-10']);
+    expect(gen.created).toEqual([]);
+    const after = await prisma.recurringBillOccurrence.findUniqueOrThrow({ where: { id: before.id }, include: { expenseDocument: true, todo: true } });
+    expect(after).toMatchObject({ status: 'PENDING', skippedById: null, skipReason: null, dueDate: bkkMidnightOf({ year: 2026, month: 10, day: 28 }) });
+    expect(after.expenseDocument!.id).not.toBe(oldDocId);
+    expect(after.expenseDocument!.deletedAt).toBeNull();
+    expect(bkkCalendarDate(after.expenseDocument!.documentDate)).toEqual({ year: 2026, month: 10, day: 28 });
+    expect((await prisma.expenseDocument.findUniqueOrThrow({ where: { id: oldDocId } })).deletedAt).not.toBeNull();
+    expect(after.todo).toMatchObject({ id: before.todoId, status: 'TODO' });
+  }, 60_000);
+
+  it('สองคนกด "สร้างร่างใหม่" พร้อมกัน → ได้ร่างเดียว อีกคน 409 และร่างที่แพ้ถูกลบ (รีวิว I1)', async () => {
+    const now = new Date();
+    const today = bkkCalendarDate(now);
+    const due = addCalendarDays(today, 2);
+    const tpl = await makeTemplate({ name: `บิลแข่ง ${stamp}`, recurringDay: due.day, startsOn: bkkMidnightOf(today) });
+    await bills.generateForTemplate(tpl.id, now, system);
+    const occ = await prisma.recurringBillOccurrence.findFirstOrThrow({ where: { templateId: tpl.id } });
+    await prisma.expenseDocument.update({ where: { id: occ.expenseDocumentId! }, data: { deletedAt: now } }); // ร่างถูกลบไป
+    const results = await Promise.allSettled([bills.createDraft(occ.id, owner(), now), bills.createDraft(occ.id, owner(), now)]);
+    expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
+    expect(results.filter((r) => r.status === 'rejected')).toHaveLength(1);
+    const live = await prisma.expenseDocument.findMany({ where: { fromTemplateId: tpl.id, deletedAt: null } });
+    expect(live).toHaveLength(1);
+    expect((await prisma.recurringBillOccurrence.findUniqueOrThrow({ where: { id: occ.id } })).expenseDocumentId).toBe(live[0].id);
   }, 60_000);
 });

@@ -13,6 +13,10 @@ import { TrashService } from '../trash.service';
  * รัน: bash tools/test-db-vitest.sh src/modules/trash/__tests__/trash.integration.spec.ts
  */
 
+/** งาน Integration บน CI ไม่ตั้ง PII_HASH_SALT (harness ในเครื่องตั้งให้) — spec ตั้งเองเมื่อไม่มี เพราะทั้ง seed และตัวตรวจเบอร์ซ้ำตอนกู้ใช้ hashPII (ต้อง ≥ 32 ตัวอักษร) */
+const SALT = process.env.PII_HASH_SALT || 'trash-integration-spec-salt-0123456789abcdef';
+process.env.PII_HASH_SALT = SALT;
+
 const prisma = new PrismaClient();
 const audit = new AuditService(prisma as never);
 const service = new TrashService(prisma as never, audit, { get: () => undefined } as never);
@@ -24,7 +28,7 @@ let branchId: string;
 /** เบอร์เดียวกันทั้งไฟล์ · phone_hash สูตรเดียวกับ CustomerWriteService (hash ของเบอร์ normalize) — ตัวตรวจซ้ำตอนกู้คำนวณจากเบอร์ ไม่ใช่ hash ที่ค้างในแถว */
 const PHONE = `08${String(stamp).slice(-8)}`;
 const customer = (name: string, deleted: boolean, phone = PHONE) =>
-  prisma.customer.create({ data: { name: `${name} ${stamp}`, phone, phoneHash: hashPII(normalizeThaiPhone(phone)!, process.env.PII_HASH_SALT || ''), deletedAt: deleted ? NOW : null } as never });
+  prisma.customer.create({ data: { name: `${name} ${stamp}`, phone, phoneHash: hashPII(normalizeThaiPhone(phone)!, SALT), deletedAt: deleted ? NOW : null } as never });
 
 beforeAll(async () => {
   ownerId = (await prisma.user.create({ data: { email: `trash-owner-${stamp}@test.local`, password: 'x', name: 'เจ้าของถังขยะ', role: 'OWNER', isActive: true } })).id;

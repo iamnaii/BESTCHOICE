@@ -23,6 +23,7 @@ import { PettyCashService } from './services/petty-cash.service';
 import { PayrollCustomService } from './services/payroll-custom.service';
 import { RecurringBillsCron } from './crons/recurring-bills.cron';
 import { RecurringBillsService } from './recurring-bills/recurring-bills.service';
+import { RecurringBillsController } from './recurring-bills/recurring-bills.controller';
 import { LoggingRecurringBillNotifier, RECURRING_BILL_NOTIFIER } from './recurring-bills/recurring-bill-notifier';
 import { PettyCashReplenishAlertCron } from './crons/petty-cash-replenish-alert.cron';
 import { DraftAlertsCron } from './crons/draft-alerts.cron';
@@ -45,6 +46,7 @@ import { ReversePermissionGuard } from './reverse-permission.guard';
     ExpenseDocumentsController,
     ExpenseTemplatesController,
     TemplateCategoriesController,
+    RecurringBillsController,
   ],
   providers: [
     ExpenseDocumentsService,

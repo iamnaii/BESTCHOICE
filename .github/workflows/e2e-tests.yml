@@ -112,9 +112,10 @@ jobs:
         env:
           VITE_API_URL: http://localhost:3000/api
 
+      # Browser binaries cached per Playwright version (.github/actions/playwright-chromium);
+      # apps/web uses the hoisted root @playwright/test, so the root install is the right one.
       - name: Install Playwright Browsers
-        run: npx playwright install --with-deps chromium
-        working-directory: apps/web
+        uses: ./.github/actions/playwright-chromium
 
       - name: Start API server
         run: node apps/api/dist/src/main.js &

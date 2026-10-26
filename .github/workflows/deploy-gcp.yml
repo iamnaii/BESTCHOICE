@@ -359,8 +359,9 @@ jobs:
           GIT_COMMIT: ${{ github.sha }}
 
       # Hosting policy must permit voice typing before release; browser tests also run on PRs.
+      # Browser binaries cached per Playwright version (.github/actions/playwright-chromium).
       - name: Install Playwright Chromium (hosting policy + shop prerender)
-        run: npx playwright install --with-deps chromium
+        uses: ./.github/actions/playwright-chromium
 
       - name: Verify Hosting microphone policy
         run: node --test tools/hosting-microphone.test.mjs
@@ -405,7 +406,9 @@ jobs:
   test-chat-credit:
     name: Chat credit + approval
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    # 15 → 25 (2026-10-26): a normal run is 5–6 minutes, but run 40292778203 timed out with every
+    # test green because `playwright install --with-deps` waited ~10 minutes on a slow apt mirror.
+    timeout-minutes: 25
     if: inputs.skip_tests != true
     env:
       NODE_OPTIONS: --max-old-space-size=6144
@@ -420,7 +423,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y postgresql-16 postgresql-16-pgvector
       - name: Install Chromium
-        run: npx playwright install --with-deps chromium
+        uses: ./.github/actions/playwright-chromium
       - name: Verify credit flow on isolated PostgreSQL
         run: bash tools/test-chat-credit.sh
       # Operations specs enforce a disposable socket DB and must never run against

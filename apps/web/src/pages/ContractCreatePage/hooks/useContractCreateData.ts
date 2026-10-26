@@ -3,6 +3,9 @@ import { useDebounce } from '@/hooks/useDebounce';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useTenders } from '@/components/tender/TenderInput';
 import type { AvailableTradeInCredit, ContractQuote } from '@installment/shared';
+import { BLACKLIST_ERROR_CODE, isValidBlacklistOverrideReason } from '@installment/shared';
+import { isAxiosError } from 'axios';
+import { useCustomerBlacklist } from '@/hooks/useCustomerBlacklist';
 import Decimal from 'decimal.js';
 import { contractCreditIssue, type ApprovedContractLimit } from '../credit-approval';
 import { useNavigate, useSearchParams } from 'react-router';
@@ -62,8 +65,12 @@ export function useContractCreateData() {
     productRestored.current = true;
     setSelectedProductState(value);
   }, []);
+  // ก้อน 5 C3 — การปลด blacklist ระดับ SOFT (OWNER/BM ติ๊ก + เหตุผล) — รีเซ็ตทุกครั้งที่เปลี่ยนลูกค้า
+  const [overrideAccepted, setOverrideAccepted] = useState(false);
+  const [overrideReason, setOverrideReason] = useState('');
   const setSelectedCustomer = useCallback((value: Customer | null) => {
     setTradeInCreditId(''); setTradeInCredit(null);
+    setOverrideAccepted(false); setOverrideReason('');
     customerRestored.current = true;
     setSelectedCustomerState(value);
   }, []);
@@ -103,7 +110,6 @@ export function useContractCreateData() {
   const [previouslyDamagedAcknowledged, setPreviouslyDamagedAcknowledged] = useState(false);
   const [notes, setNotes] = useState(entry.restored?.notes ?? '');
   const [paymentDueDay, setPaymentDueDay] = useState<number>(entry.restored?.paymentDueDay ?? 1);
-  const [overrideActiveContractCheck, setOverrideActiveContractCheck] = useState(false);
 
   useEffect(() => { setPreviouslyDamagedAcknowledged(false); }, [selectedProduct?.id, selectedCustomer?.id]);
 
@@ -123,7 +129,7 @@ export function useContractCreateData() {
 
   // Reset override flag when customer changes
   useEffect(() => {
-    setOverrideActiveContractCheck(false);
+    setOverrideAccepted(false); setOverrideReason('');
   }, [selectedCustomer?.id]);
 
   useEffect(() => {
@@ -305,6 +311,13 @@ export function useContractCreateData() {
     enabled: !!selectedCustomer,
     staleTime: 0,
   });
+  // ก้อน 5 C3 — ผลตรวจ blacklist ของลูกค้าที่เลือก (API ตัดสิน) — fail-closed: โหลดอยู่/ล้ม = ไปต่อไม่ได้
+  const blacklistQuery = useCustomerBlacklist(selectedCustomer?.id);
+  const blacklist = blacklistQuery.data;
+  const blacklistStatus: 'idle' | 'loading' | 'error' | 'ready' = !selectedCustomer ? 'idle'
+    : blacklistQuery.isError ? 'error'
+      : blacklistQuery.isSuccess && !blacklistQuery.isFetching ? 'ready' : 'loading';
+  const refetchBlacklist = useCallback(() => { void blacklistQuery.refetch(); }, [blacklistQuery]);
   // A cached approval may have been consumed or revoked while staff were away.
   const latestCreditCheck = latestCreditQuery.isFetchedAfterMount && !latestCreditQuery.isError
     ? latestCreditQuery.data : undefined;
@@ -394,6 +407,14 @@ export function useContractCreateData() {
       navigate(`/contracts/${data.id}`);
     },
     onError: (err: unknown) => {
+      // ก้อน 5 C3 — ด่าน blacklist ที่ API (สถานะเปลี่ยนระหว่างกรอก): กลับขั้นเลือกลูกค้า + โหลดผลใหม่ + บอกเหตุผลทุกข้อ
+      const body = isAxiosError(err) ? (err.response?.data as { code?: string; message?: string; reasons?: { message: string }[] } | undefined) : undefined;
+      if (body?.code && (Object.values(BLACKLIST_ERROR_CODE) as string[]).includes(body.code)) {
+        toast.error([body.message, ...(body.reasons ?? []).map((r) => r.message)].filter(Boolean).join('\n'));
+        setStep(1); setOverrideAccepted(false);
+        void blacklistQuery.refetch();
+        return;
+      }
       toast.error(getErrorMessage(err));
     },
   });
@@ -460,7 +481,8 @@ export function useContractCreateData() {
       paymentDueDay,
       creditApprovalId: creditApproval!.id,
       ...(bundleProducts.length ? { bundleProductIds: bundleProducts.map((p) => p.id) } : {}),
-      ...(overrideActiveContractCheck ? { overrideActiveContractCheck: true } : {}),
+      // ก้อน 5 C3 — เหตุผลปลด SOFT (เฉพาะเมื่อผลเป็น SOFT และผู้จัดการติ๊กแล้ว) · ช่องผ่อนซ้อนเดิมถอดแล้ว
+      ...(blacklist?.level === 'SOFT' && overrideAccepted ? { blacklistOverrideReason: overrideReason.trim() } : {}),
     });
   };
 
@@ -473,8 +495,10 @@ export function useContractCreateData() {
     if (step === 0) return !!selectedProduct;
     if (step === 1) {
       if (!selectedCustomer || !customerCreditApproved) return false;
-      const blocking = (selectedCustomer.activeContracts ?? 0) + (selectedCustomer.overdueContracts ?? 0);
-      if (blocking > 0 && !overrideActiveContractCheck) return false;
+      // ก้อน 5 C3 — fail-closed: ต้องมีผลตรวจ blacklist แล้วเท่านั้น · HARD ไปต่อไม่ได้ · SOFT ต้องติ๊ก + เหตุผล ≥10 ตัว
+      if (blacklistStatus !== 'ready' || !blacklist) return false;
+      if (blacklist.level === 'HARD') return false;
+      if (blacklist.level === 'SOFT') return overrideAccepted && isValidBlacklistOverrideReason(overrideReason);
       return true;
     }
     if (step === 2) {
@@ -515,8 +539,13 @@ export function useContractCreateData() {
     setNotes,
     paymentDueDay,
     setPaymentDueDay,
-    overrideActiveContractCheck,
-    setOverrideActiveContractCheck,
+    blacklist,
+    blacklistStatus,
+    refetchBlacklist,
+    overrideAccepted,
+    setOverrideAccepted,
+    overrideReason,
+    setOverrideReason,
 
     // Queries
     products,

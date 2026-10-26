@@ -6,14 +6,15 @@ import type { ReactNode } from 'react';
 import { useContractCreateData } from './useContractCreateData';
 import { useContractCalculation } from './useContractCalculation';
 
-const mocks = vi.hoisted(() => ({ get: vi.fn(), userId: 'staff-a' }));
-vi.mock('@/lib/api', () => ({ default: { get: mocks.get, post: vi.fn(), patch: vi.fn() }, getErrorMessage: () => 'error' }));
+const mocks = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), userId: 'staff-a' }));
+vi.mock('@/lib/api', () => ({ default: { get: mocks.get, post: mocks.post, patch: vi.fn() }, getErrorMessage: () => 'error' }));
 vi.mock('@/contexts/AuthContext', () => ({ useAuth: () => ({ user: { id: mocks.userId, role: 'SALES' } }) }));
 vi.mock('sonner', () => ({ toast: Object.assign(vi.fn(), { error: vi.fn(), success: vi.fn() }) }));
 
 const product = { id: 'product-a', name: 'Phone', category: 'PHONE', status: 'IN_STOCK', installmentPrice: '10000', prices: [] };
 const customer = { id: 'customer-a', name: 'Customer', salaryPayDay: 20 };
 let credit: unknown;
+let blacklist: unknown = { level: 'NONE', reasons: [], checkedAt: 't' };
 const saved = { step: 2, customerId: customer.id, productId: product.id, fromRoom: 'room-a', downPayment: 3500,
   totalMonths: 18, paymentDueDay: 20, notes: 'internal draft notes', savedAt: new Date().toISOString() };
 function mount(path: string, client = new QueryClient({ defaultOptions: { queries: { retry: false } } })) {
@@ -32,10 +33,13 @@ beforeEach(() => {
   localStorage.clear();
   mocks.userId = 'staff-a';
   credit = null;
+  blacklist = { level: 'NONE', reasons: [], checkedAt: 't' };
+  mocks.post.mockReset().mockResolvedValue({ data: { id: 'contract-new' } });
   mocks.get.mockReset().mockImplementation(async (path: string) => {
     if (path === `/products/${product.id}`) return { data: product };
     if (path === `/customers/${customer.id}`) return { data: customer };
     if (path.endsWith('/credit-check/latest')) return { data: credit };
+    if (path.endsWith('/blacklist')) return { data: blacklist };
     if (path.startsWith('/interest-configs/')) return { data: { interestRate: '0.01', minDownPaymentPct: '0.15', storeCommissionPct: '0.1', vatPct: '0.07', minInstallmentMonths: 6, maxInstallmentMonths: 24 } };
     if (path === '/sales/config') return { data: { minInstallmentMonths: 6, maxInstallmentMonths: 12 } };
     return { data: { data: [] } }; // Selected IDs intentionally absent from paginated search results.
@@ -200,5 +204,68 @@ describe('ของแถมในสัญญาผ่อน', () => {
     expect(JSON.parse(localStorage.getItem('bestchoice-contract-draft:staff-a')!).bundleProductIds).toEqual(['acc-1']);
     act(() => result.current.removeBundle('acc-1'));
     expect(result.current.bundleProducts).toEqual([]);
+  });
+});
+
+describe('blacklist gate (ก้อน 5 C3)', () => {
+  const approved = { id: 'credit-a', status: 'APPROVED', checkType: 'FULL', aiScore: null,
+    approvals: [{ id: 'approval-a', salaryPayDay: 25, approvedMonthlyPayment: '2500', supersededAt: null, usedByContractId: null }] };
+  const soft = { level: 'SOFT', reasons: [{ code: 'REFERENCES_BLACKLISTED', level: 'SOFT', message: 'x' }], checkedAt: 't' };
+  const next = (r: { current: { canNext: (a: number, b: number, c: number, d: number) => boolean } }) => r.current.canNext(10000, 0.15, 6, 24);
+
+  it('disables next while the blacklist query is loading or failed, enables on NONE', async () => {
+    credit = approved;
+    let resolveBl!: (v: unknown) => void;
+    const pending = new Promise(resolve => { resolveBl = resolve; });
+    const original = mocks.get.getMockImplementation()!;
+    mocks.get.mockImplementation((path: string) => path.endsWith('/blacklist') ? pending : original(path));
+    const { result } = mount(`/contracts/create?customerId=${customer.id}&productId=${product.id}`);
+    await waitFor(() => expect(result.current.selectedCustomer?.id).toBe(customer.id));
+    await waitFor(() => expect(result.current.customerCreditApproved).toBe(true));
+    act(() => result.current.setStep(1));
+    expect(result.current.blacklistStatus).toBe('loading');
+    expect(next(result)).toBe(false);
+    await act(async () => { resolveBl({ data: { level: 'NONE', reasons: [], checkedAt: 't' } }); await pending; });
+    await waitFor(() => expect(result.current.blacklistStatus).toBe('ready'));
+    expect(next(result)).toBe(true);
+  });
+
+  it('keeps next disabled when the blacklist query fails', async () => {
+    credit = approved;
+    const original = mocks.get.getMockImplementation()!;
+    mocks.get.mockImplementation((path: string) => path.endsWith('/blacklist') ? Promise.reject(new Error('boom')) : original(path));
+    const { result } = mount(`/contracts/create?customerId=${customer.id}&productId=${product.id}`);
+    await waitFor(() => expect(result.current.customerCreditApproved).toBe(true));
+    act(() => result.current.setStep(1));
+    await waitFor(() => expect(result.current.blacklistStatus).toBe('error'));
+    expect(next(result)).toBe(false);
+  });
+
+  it('HARD disables next; SOFT needs tick + a 10-char reason and sends it trimmed', async () => {
+    credit = approved; blacklist = soft;
+    const { result } = mount(`/contracts/create?customerId=${customer.id}&productId=${product.id}`);
+    await waitFor(() => expect(result.current.customerCreditApproved).toBe(true));
+    act(() => result.current.setStep(1));
+    await waitFor(() => expect(result.current.blacklistStatus).toBe('ready'));
+    expect(result.current.blacklist?.level).toBe('SOFT');
+    expect(next(result)).toBe(false);
+    act(() => { result.current.setOverrideAccepted(true); result.current.setOverrideReason('  สั้น '); });
+    expect(next(result)).toBe(false);
+    act(() => result.current.setOverrideReason('  ผู้จัดการตรวจแล้ว ไม่ใช่คนเดียวกัน  '));
+    expect(next(result)).toBe(true);
+    await waitFor(() => expect(result.current.configPending).toBe(false));
+    // งวดสุดท้าย = 6000 − 1000×5 = 1000 ≤ ยอดอนุมัติ 2500 (contractCreditIssue) · 6 งวดคือค่าเริ่มต้นจาก config
+    act(() => result.current.handleSubmit(10000, { monthlyPayment: 1000, financedAmount: 6000 }, { fingerprint: 'fp' } as never));
+    await waitFor(() => expect(mocks.post).toHaveBeenCalledWith('/contracts', expect.objectContaining({ blacklistOverrideReason: 'ผู้จัดการตรวจแล้ว ไม่ใช่คนเดียวกัน' })));
+  });
+
+  it('switching customer resets the override tick and reason', async () => {
+    credit = approved; blacklist = soft;
+    const { result } = mount(`/contracts/create?customerId=${customer.id}&productId=${product.id}`);
+    await waitFor(() => expect(result.current.selectedCustomer?.id).toBe(customer.id));
+    act(() => { result.current.setOverrideAccepted(true); result.current.setOverrideReason('เหตุผลยาวพอสิบตัว'); });
+    act(() => result.current.setSelectedCustomer({ ...customer, id: 'customer-b', name: 'Other' } as never));
+    expect(result.current.overrideAccepted).toBe(false);
+    expect(result.current.overrideReason).toBe('');
   });
 });

@@ -1,15 +1,34 @@
 {
-  "name": "BESTCHOICE - ระบบผ่อนชำระ",
+  "id": "/",
+  "name": "BESTCHOICE - ระบบหน้าร้านและผ่อนชำระ",
   "short_name": "BESTCHOICE",
-  "description": "ระบบบริหารจัดการสัญญาผ่อนชำระ",
-  "theme_color": "#4f46e5",
-  "background_color": "#f9fafb",
+  "description": "ระบบบริหารร้านมือถือและสัญญาผ่อนชำระ BESTCHOICE",
+  "theme_color": "#0b7a55",
+  "background_color": "#f9f8f6",
   "display": "standalone",
   "orientation": "any",
   "start_url": "/",
   "scope": "/",
   "lang": "th",
   "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-512-maskable.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
     {
       "src": "/logo-icon.svg",
       "sizes": "any",

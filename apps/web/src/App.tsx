@@ -93,6 +93,7 @@ const FinancialAuditPage = lazy(() => import('@/pages/FinancialAuditPage'));
 const PaymentCsvImportPage = lazy(() => import('@/pages/PaymentCsvImportPage'));
 const POSPage = lazy(() => import('@/pages/POSPage'));
 const SalesHistoryPage = lazy(() => import('@/pages/SalesHistoryPage'));
+const ParcelLabelPage = lazy(() => import('@/pages/ParcelLabelPage'));
 const ShopDailyCashPage = lazy(() => import('@/pages/ShopDailyCashPage'));
 const ShopPettyCashPage = lazy(() => import('@/pages/ShopPettyCashPage'));
 const AfterSalesPage = lazy(() => import('@/pages/AfterSalesPage'));
@@ -120,6 +121,7 @@ const PDPAPage = lazy(() => import('@/pages/PDPAPage'));
 const ReceiptVerifyPage = lazy(() => import('@/pages/ReceiptVerifyPage'));
 const CustomerPortalPage = lazy(() => import('@/pages/CustomerPortalPage'));
 const CreditNoteViewPage = lazy(() => import('@/pages/CreditNoteViewPage'));
+const SaleReceiptViewPage = lazy(() => import('@/pages/SaleReceiptViewPage'));
 const ContractVerifyPage = lazy(() => import('@/pages/ContractVerifyPage'));
 const LiffPayment = lazy(() => import('@/pages/liff/LiffPayment'));
 const LiffContract = lazy(() => import('@/pages/liff/LiffContract'));
@@ -304,6 +306,9 @@ function App() {
         {/* Public ใบลดหนี้ (Credit Note) viewer — opened from the CN LINE Flex
             message link (receipts-public.controller.ts, token-based, no auth). */}
         <Route path="/cn/:token" element={<CreditNoteViewPage />} />
+        {/* Public ใบเสร็จรับเงินขายสด viewer — opened from the shop LINE Flex / QR on paper /
+            copied link (sales-receipt-public.controller.ts, token-based, no auth — ก้อน 4). */}
+        <Route path="/r/:token" element={<SaleReceiptViewPage />} />
 
         {/* LIFF Pages (public, opened from LINE) */}
         <Route path="/visit" element={<PublicAppointmentPage />} />
@@ -503,6 +508,8 @@ function App() {
           <Route path="/stickers" element={<StickerPrintPage />} />
           <Route path="/pos" element={<ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'SALES']}><POSPage /></ProtectedRoute>} />
           <Route path="/sales" element={<SalesHistoryPage />} />
+          {/* ใบปะหน้าพัสดุจากใบขาย (A6 · 2026-10-22) — role เดียวกับ /sales (API scope สาขาเอง) */}
+          <Route path="/sales/:id/parcel-label" element={<ParcelLabelPage />} />
           <Route path="/shop/daily-cash" element={<ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'BRANCH_MANAGER', 'SALES']}><ShopDailyCashPage /></ProtectedRoute>} />
           {/* เงินสดย่อยหน้าร้าน S11-1106 (ข้อ 20.2 · 2026-10-18) — เติม/คืน OWNER+FM · ดู ACCOUNTANT/VIEWER */}
           <Route path="/shop/petty-cash" element={<ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'VIEWER']}><ShopPettyCashPage /></ProtectedRoute>} />

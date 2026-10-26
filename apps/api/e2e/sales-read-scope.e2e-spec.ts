@@ -12,6 +12,9 @@ import { ShopCashSaleTemplate } from '../src/modules/journal/cpa-templates/shop-
 import { ShopAccountResolver } from '../src/modules/journal/shop-account-resolver.service';
 import { ShopExternalFinanceSaleTemplate } from '../src/modules/journal/cpa-templates/shop-external-finance-sale.template';
 import { SaleWarrantyNotifierService } from '../src/modules/sales/services/sale-warranty-notifier.service';
+import { SaleReceiptLineService } from '../src/modules/sales/services/sale-receipt-line.service';
+import { SaleReceiptPdfService } from '../src/modules/sales/services/sale-receipt-pdf.service';
+import { SaleReceiptTokenService } from '../src/modules/sales/services/sale-receipt-token.service';
 import { JwtAuthGuard } from '../src/modules/auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../src/modules/auth/guards/roles.guard';
 import { BranchGuard } from '../src/modules/auth/guards/branch.guard';
@@ -72,7 +75,9 @@ describe('Sales read authorization on isolated PostgreSQL', () => {
       controllers: [SalesController],
       providers: [SalesService, RolesGuard, BranchGuard, { provide: PrismaService, useValue: db },
         ...[SaleVoidService, InterCompanyService, ShopCashSaleTemplate, ShopAccountResolver,
-          ShopExternalFinanceSaleTemplate, ShopDownPaymentTemplate, SaleWarrantyNotifierService].map(provide => ({ provide, useValue: {} })),
+          ShopExternalFinanceSaleTemplate, ShopDownPaymentTemplate, SaleWarrantyNotifierService,
+          // ใบเสร็จขายสด (ก้อน 4) — controller รับ 3 service นี้ใน constructor (บทเรียน #1727: e2e ที่ประกอบ controller เองต้องตามให้ครบ)
+          SaleReceiptPdfService, SaleReceiptTokenService, SaleReceiptLineService].map(provide => ({ provide, useValue: {} })),
       ],
     }).overrideGuard(JwtAuthGuard).useValue({ canActivate: (context: ExecutionContext) => {
       context.switchToHttp().getRequest().user = actor;

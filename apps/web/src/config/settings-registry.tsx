@@ -15,6 +15,7 @@ const DunningSettingsPage = lazy(() => import('@/pages/DunningSettingsPage'));
 const CollectionsSettingsPage = lazy(() => import('@/pages/SettingsPage/CollectionsPage'));
 const PricingTemplatesPage = lazy(() => import('@/pages/PricingTemplatesPage'));
 const StickersSettingsPage = lazy(() => import('@/pages/SettingsPage/StickersPage'));
+const ReceiptsSettingsPage = lazy(() => import('@/pages/SettingsPage/ReceiptsSettingsPage'));
 const AiAdminPage = lazy(() => import('@/pages/AiAdminPage'));
 const AiPersonaPage = lazy(() => import('@/pages/AiPersonaPage'));
 const AiSettingsPage = lazy(() => import('@/pages/AiSettingsPage'));
@@ -144,6 +145,7 @@ export const settingsRegistry: SettingsCategory[] = [
     items: [
       { id: 'pricing', label: 'ตั้งราคา', roles: ['OWNER'], kind: 'route', component: PricingTemplatesPage, path: '/settings/products/pricing' },
       { id: 'stickers', label: 'สติกเกอร์ฉลาก', roles: ['OWNER'], kind: 'route', component: StickersSettingsPage, path: '/settings/products/stickers' },
+      { id: 'receipts', label: 'ใบเสร็จขายสด', roles: ['OWNER'], kind: 'route', component: ReceiptsSettingsPage, path: '/settings/products/receipts' },
       { id: 'promotions', label: 'โปรโมชัน', roles: ['OWNER'], kind: 'external', path: '/promotions' },
       { id: 'contract-templates', label: 'แบบสัญญา', roles: ['OWNER'], kind: 'external', path: '/contract-templates' },
     ],

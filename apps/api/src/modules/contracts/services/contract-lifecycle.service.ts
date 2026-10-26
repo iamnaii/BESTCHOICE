@@ -8,6 +8,8 @@ import { StructuredLoggerService } from '../../../common/logger';
 import { TradeInCreditService, cashDownPayment } from '../../trade-in/services/trade-in-credit.service';
 import { ContractQuoteService, contractQuotePayments } from './contract-quote.service';
 import { assertCustomerContractPolicy, assertCustomerHasPhone, customerContractSnapshot, contractDownTender } from './contract-create-policy';
+import { assertBlacklistGate } from './contract-blacklist-gate';
+import { CustomerBlacklistService } from '../../customers/customer-blacklist.service';
 import { ShopTenderRecorder } from '../../shop-tenders/shop-tender.recorder';
 import { normalizeTenders } from '../../shop-tenders/shop-tender.util';
 import { assertSaleProductEligible } from '../../sales/services/sale-product-policy';
@@ -47,6 +49,7 @@ export class ContractLifecycleService {
     private shopDownPaymentTemplate: ShopDownPaymentTemplate,
     private shopDownPaymentReversalTemplate: ShopDownPaymentReversalTemplate,
     private shopAccountResolver: ShopAccountResolver,
+    private blacklist: CustomerBlacklistService,
     private warrantyService?: WarrantyService,
     private audit?: AuditService,
   ) {}
@@ -65,6 +68,11 @@ export class ContractLifecycleService {
     // gate is skipped. Read once here (outside the retry loop) so retries don't
     // re-query and so audit is written at most once.
     const testModeOn = await this.query.isTestModeEnabled();
+    // ก้อน 5 C3 — ด่าน blacklist (นอก tx เหมือน testModeOn): HARD → 409 ทุกบทบาท · SOFT → ต้องมีเหตุผลจาก OWNER/BM
+    // โหมดทดสอบไม่ข้ามด่านนี้ (เจ้าของ: ห้ามเด็ดขาด) · ตาข่าย ACTIVE_CONTRACT ซ้ำใน tx ที่ assertCustomerContractPolicy
+    const blacklistResult = await this.blacklist.evaluate(dto.customerId);
+    const blacklistOverrideReason = assertBlacklistGate({ result: blacklistResult, actorRole: actor.role, stage: 'CREATE',
+      overrideReason: dto.blacklistOverrideReason });
 
     // Create contract + payment schedule in transaction
     // Retry up to 3 times on unique constraint / serialization errors
@@ -75,7 +83,7 @@ export class ContractLifecycleService {
       try {
         contract = await this.prisma.$transaction(async (tx) => {
           await lockCreditCustomer(tx, dto.customerId);
-          await assertCustomerContractPolicy(tx, dto.customerId, actor.role, dto.overrideActiveContractCheck);
+          await assertCustomerContractPolicy(tx, dto.customerId);
           const quote = await new ContractQuoteService(this.prisma).resolve(dto, actor, tx);
           if (dto.quoteFingerprint && dto.quoteFingerprint !== quote.fingerprint) {
             throw new ConflictException({ code: 'CONTRACT_QUOTE_CHANGED',
@@ -146,6 +154,10 @@ export class ContractLifecycleService {
               interestConfigId: quote.configId,
               customerSnapshot,
               productDisclosure: captureProductDisclosure(currentProduct, await readStringFlag(tx, SHOP_WARRANTY_DAYS_CONFIG_KEY, '')),
+              // ก้อน 5 C3 — การปลด SOFT บันทึกลงร่าง ให้ activate() ตรวจซ้ำได้
+              ...(blacklistOverrideReason
+                ? { blacklistOverrideReason, blacklistOverriddenById: actor.id, blacklistOverriddenAt: new Date() }
+                : {}),
             },
           });
 
@@ -258,6 +270,12 @@ export class ContractLifecycleService {
     }
 
     const created = await this.query.findOne(contract!.id);
+
+    // ก้อน 5 C3 — audit การปลด SOFT หลัง commit (AuditService เปิด tx ของตัวเอง — ห้ามเรียกใน tx)
+    if (blacklistOverrideReason && this.audit) {
+      await this.audit.log({ userId: salespersonId, action: 'CONTRACT_BLACKLIST_OVERRIDDEN', entity: 'contract', entityId: created.id,
+        newValue: { customerId: dto.customerId, level: 'SOFT', reasons: blacklistResult.reasons, overrideReason: blacklistOverrideReason } });
+    }
 
     // Audit the test-mode credit-gate bypass (best-effort; AuditService no-ops
     // without a userId). salespersonId is the actor that created the contract.

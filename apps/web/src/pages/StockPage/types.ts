@@ -49,16 +49,19 @@ export interface BranchSummary {
   totalValue: number | null;
 }
 
+/** `value` = ผลรวม costPrice — SALES ได้ null จาก server (ไม่มีสิทธิ์ดูต้นทุน) */
 export interface AgingBucket {
   label: string;
+  min?: number;
+  max?: number;
   count: number;
-  value: number;
+  value: number | null;
 }
 
 export interface BreakdownItem {
   name: string;
   count: number;
-  value: number;
+  value: number | null;
 }
 
 export interface StockDashboard {
@@ -71,7 +74,7 @@ export interface StockDashboard {
     repossessed: number;
     agingOver90: number;
   };
-  valueByStatus: { status: string; count: number; value: number }[];
+  valueByStatus: { status: string; count: number; value: number | null }[];
   byCategory: BreakdownItem[];
   byBrand: BreakdownItem[];
   byColor: BreakdownItem[];
@@ -84,7 +87,9 @@ export interface StockDashboard {
     currentStock: number;
   };
   topSellers: { name: string; count: number }[];
-  slowMovers: { name: string; days: number; costPrice: number }[];
+  /** costPrice ไม่มีเมื่อ server ตัดต้นทุนออก (SALES) */
+  slowMovers: { name: string; days: number; costPrice?: number }[];
+  /** null เมื่อ server ตัดต้นทุนออก (SALES) */
   marginOverview: {
     totalCost: number;
     totalSell: number;
@@ -92,5 +97,5 @@ export interface StockDashboard {
     avgMarginPct: number;
     avgMarginPerUnit: number;
     itemsWithPrice: number;
-  };
+  } | null;
 }

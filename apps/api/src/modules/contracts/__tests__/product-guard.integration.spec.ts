@@ -24,6 +24,8 @@
  * #1679 (ระยะสั้น) ใช้ฐานเดียวกัน: RESERVED ไม่มีเจ้าของในสคีมา — เครื่องที่ใบจอง PAID ล็อกไว้
  * (Booking.lockedProductId) ต้องเปิดสัญญาไม่ได้ แม้ร่างสัญญาจะชี้เครื่องนั้นและสถานะเป็น RESERVED
  */
+import { CustomerBlacklistService } from '../../customers/customer-blacklist.service';
+import { CustomerPiiService } from '../../customers/customer-pii.service';
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { PrismaClient } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
@@ -44,6 +46,7 @@ const service = new ContractWorkflowService(
   null as never, // shopDownPaymentTemplate
   null as never, // shopAccountResolver
   null as never, // installmentInputVatTemplate (ก้อน 5)
+  new CustomerBlacklistService(prisma as never, new CustomerPiiService(prisma as never)), // ก้อน 5 C3
 );
 
 /**
@@ -59,6 +62,7 @@ const lifecycleService = new ContractLifecycleService(
   null as never,
   null as never,
   null as never,
+  new CustomerBlacklistService(prisma as never, new CustomerPiiService(prisma as never)), // ก้อน 5 C3
 );
 
 const dec = (s: string) => new Decimal(s);

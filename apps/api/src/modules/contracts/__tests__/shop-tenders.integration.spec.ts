@@ -9,6 +9,8 @@
  *
  * รัน: vitest (jest มองไม่เห็น *.integration.spec.ts) — CI glob `src/modules/contracts/__tests__/*.integration.spec.ts`
  */
+import { CustomerBlacklistService } from '../../customers/customer-blacklist.service';
+import { CustomerPiiService } from '../../customers/customer-pii.service';
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { PrismaClient } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
@@ -52,10 +54,12 @@ const workflow = new ContractWorkflowService(
   new ProductsService(prisma as never), null as never,
   new ShopInventoryTransferTemplate(journal, prisma as never, companyResolver), shopDownPayment, shopAccountResolver,
   new InstallmentInputVatTemplate(journal, prisma as never, companyResolver),
+  new CustomerBlacklistService(prisma as never, new CustomerPiiService(prisma as never)), // ก้อน 5 C3
 );
 const lifecycle = new ContractLifecycleService(
   prisma as never, new ContractQueryService(prisma as never), shopDownPayment,
   new ShopDownPaymentReversalTemplate(journal, prisma as never, companyResolver), shopAccountResolver,
+  new CustomerBlacklistService(prisma as never, new CustomerPiiService(prisma as never)), // ก้อน 5 C3
 );
 const cancellationTemplate = new ContractCancellationTemplate(
   prisma as never, new ExchangeCancelReversalTemplate(journal, prisma as never), new EclStageReverseTemplate(journal, prisma as never),

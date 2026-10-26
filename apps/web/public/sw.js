@@ -7,7 +7,7 @@
  * - Navigation: Network-first with offline fallback
  */
 
-const CACHE_NAME = 'bestchoice-v1';
+const CACHE_NAME = 'bestchoice-v2'; // v2: ไอคอน PNG + manifest สีใหม่ — ให้ activate ล้างแคชเก่าที่อาจเก็บ manifest เดิมไว้
 
 // dev (localhost): SW ตัวเก่าที่ยังคุมแท็บอยู่ต้องถอดตัวเองทิ้งตอน activate — ไม่งั้นแท็บที่เคยเปิดไว้
 // จะโดน shell เก่าจากแคชจนหน้าขาว แม้ index.html ใหม่จะเลิกลงทะเบียนแล้ว

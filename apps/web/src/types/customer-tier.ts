@@ -28,5 +28,5 @@ export const TIER_LABELS: Record<CustomerTier, string> = {
   GOOD: 'ลูกค้าดี',
   NEW: 'ลูกค้าใหม่',
   RISKY: 'ต้องระวัง',
-  BLACKLIST: 'ห้ามทำสัญญา',
+  BLACKLIST: 'ประวัติเสีย', // ก้อน 5 C3 — คำว่า 'ห้ามทำสัญญา' เป็นของป้าย blacklist (CustomerBlacklistBadge) ไม่ให้สองป้ายขัดกัน
 };

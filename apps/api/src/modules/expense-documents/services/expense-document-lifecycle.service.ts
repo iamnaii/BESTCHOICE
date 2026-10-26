@@ -4,10 +4,11 @@ import {
   ForbiddenException,
   NotFoundException,
   Logger,
-} from '@nestjs/common';
+ Optional } from '@nestjs/common';
 import { Prisma, DocumentStatus } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { NotificationsService } from '../../notifications/notifications.service';
+import { StaffNotifyService } from '../../staff-notify/staff-notify.service';
 import {
   getApprovalRequiredDocTypes,
   getReverseReasons,
@@ -69,6 +70,8 @@ export class ExpenseDocumentLifecycleService {
     // notifications? so the existing param contract stays positional-stable.
     private readonly journal: JournalAutoService,
     private readonly notifications?: NotificationsService,
+    // ก้อน 7 A16 — ท่อ LINE พนักงาน (global module · optional เพื่อให้ spec/ผู้ประกอบเองไม่ต้องส่ง)
+    @Optional() private readonly staffNotify?: StaffNotifyService,
   ) {}
 
   // ─── Submit for approval (DRAFT → PENDING_APPROVAL) ─────────────────
@@ -172,7 +175,7 @@ export class ExpenseDocumentLifecycleService {
       const [policy, users, document] = await Promise.all([
         this.prisma.systemConfig.findFirst({ where: { key: ACCOUNTING_PERMISSIONS_KEY, deletedAt: null }, select: { value: true } }),
         this.prisma.user.findMany({ where: { isActive: true, deletedAt: null, isSystemUser: false, role: { in: ['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'BRANCH_MANAGER'] } }, select: { id: true, role: true, branchId: true } }),
-        this.prisma.expenseDocument.findUnique({ where: { id: doc.id }, select: { branchId: true } }),
+        this.prisma.expenseDocument.findUnique({ where: { id: doc.id }, select: { branchId: true, vendorName: true, branch: { select: { name: true } }, createdBy: { select: { name: true } } } }),
       ]);
       const grants = parseAccountingPermissions(policy?.value);
       const recipients = users.filter((user) =>
@@ -197,6 +200,18 @@ export class ExpenseDocumentLifecycleService {
           }),
         ),
       );
+      // ก้อน 7 A16 — LINE พนักงาน: ผู้อนุมัติที่กรองแล้วเป็นผู้รับเพิ่ม + บทบาทตามสวิตช์ expense.pending_approval
+      if (this.staffNotify) {
+        const d = document as { branchId?: string | null; vendorName?: string | null; branch?: { name: string } | null; createdBy?: { name: string } | null } | null;
+        await this.staffNotify.notify('expense.pending_approval', {
+          title: `ใบรายจ่ายรออนุมัติ ${doc.documentNumber}`,
+          lines: [d?.vendorName ?? '—', `ยอด ${Number(totalStr).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} บาท · สาขา ${d?.branch?.name ?? '—'}`, `โดย ${d?.createdBy?.name ?? '—'}`],
+          link: `/expenses/${doc.id}`,
+          branchId: d?.branchId ?? null,
+          dedupeKey: `${doc.id}:PENDING_APPROVAL`,
+          extraRecipientUserIds: recipients,
+        });
+      }
     } catch (err) {
       // Log and swallow — notification failure must NOT roll back the
       // status flip already persisted in the parent transaction.

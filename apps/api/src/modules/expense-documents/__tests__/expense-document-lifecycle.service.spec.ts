@@ -84,6 +84,24 @@ describe('ExpenseDocumentLifecycleService — notifyApprovers fan-out (via facad
     expect(send).not.toHaveBeenCalled();
   });
 
+  it('(e) also pushes LINE through the staff hub with the resolved approvers as extra recipients (ก้อน 7 A16)', async () => {
+    const send = jest.fn().mockResolvedValue(undefined);
+    const staffNotify = { notify: jest.fn().mockResolvedValue({ sent: 1 }) };
+    const prisma = makePrisma({ users: [{ id: 'owner-1', role: 'OWNER', branchId: null }, { id: 'owner-2', role: 'OWNER', branchId: null }] });
+    const { service } = makeExpenseDocumentsService({ prisma, notifications: { send }, staffNotify });
+    await service.submitForApproval('doc-1', 'user-1');
+    expect(staffNotify.notify).toHaveBeenCalledTimes(1);
+    expect(staffNotify.notify).toHaveBeenCalledWith('expense.pending_approval', expect.objectContaining({
+      title: 'ใบรายจ่ายรออนุมัติ EX-20260610-0001',
+      lines: expect.arrayContaining([expect.stringMatching(/1,234\.56/)]),
+      link: '/expenses/doc-1',
+      branchId: 'branch-1',
+      dedupeKey: 'doc-1:PENDING_APPROVAL',
+      extraRecipientUserIds: ['owner-1', 'owner-2'],
+    }));
+    expect(send).toHaveBeenCalledTimes(2); // IN_APP คงเดิม
+  });
+
   it('(b) notifications undefined → submit still succeeds, no throw', async () => {
     const prisma = makePrisma({ users: [{ id: 'owner-1', role: 'OWNER', branchId: null }] });
     // notifications omitted → factory default undefined.

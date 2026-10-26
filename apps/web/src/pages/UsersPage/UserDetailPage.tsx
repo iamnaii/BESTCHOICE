@@ -17,6 +17,8 @@ import { ChevronLeft } from 'lucide-react';
 import { usersApi, userKeys, type EmploymentType } from '@/lib/api/users';
 import { roleLabels, inputClass, labelClass, MIN_PASSWORD_LENGTH } from './types';
 import PersonalFields, { type PersonalForm } from './components/PersonalFields';
+import StaffLineLinkCard from './components/StaffLineLinkCard';
+import { useAuth } from '@/contexts/AuthContext';
 
 const EMPLOYMENT: { value: EmploymentType; label: string }[] = [
   { value: 'MONTHLY', label: 'รายเดือน' },
@@ -42,6 +44,8 @@ export default function UserDetailPage() {
   const qc = useQueryClient();
   useDocumentTitle(isNew ? 'เพิ่มผู้ใช้' : 'รายละเอียดผู้ใช้');
   const { viewerRoleEnabled } = useUiFlags();
+  const { user: me } = useAuth();
+  const isOwner = me?.role === 'OWNER';
 
   const [tab, setTab] = useState('account');
   const [account, setAccount] = useState({ email: '', password: '', role: 'SALES', branchId: '', isActive: true });
@@ -252,6 +256,17 @@ export default function UserDetailPage() {
                 setMany={(patch) => setPersonal((p) => ({ ...p, ...patch }))}
               />
             </div>
+            {isOwner && !isNew && detail.data && (
+              <div className="mt-4">
+                <StaffLineLinkCard
+                  userId={detail.data.id}
+                  userName={detail.data.name}
+                  lineStaffUserId={detail.data.lineStaffUserId ?? null}
+                  linkCode={detail.data.lineLinkCode}
+                  linkCodeExpiresAt={detail.data.lineLinkCodeExpiresAt}
+                />
+              </div>
+            )}
           </TabsContent>
 
           <TabsContent value="hr">

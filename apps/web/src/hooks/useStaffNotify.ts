@@ -101,3 +101,38 @@ export function sameStaffNotifyRule(a: StaffNotifyRule | undefined, b: StaffNoti
     [...a.roles].sort().join(',') === [...b.roles].sort().join(',')
   );
 }
+
+// ─── ผูก LINE รายคน (หน้าผู้ใช้ › ไลน์พนักงาน) — สเปก §13.1 ──────────────────────────────────────────
+
+export interface StaffLineLinkCode {
+  code: string;
+  /** ISO — 15 นาทีหลังสร้าง */
+  expiresAt: string;
+}
+
+const userDetailKey = (userId: string) => ['users', 'detail', userId] as const;
+
+/** สร้างรหัส 6 หลักให้พนักงานส่งในแชท Staff OA */
+export function useIssueStaffLineCode(userId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async () => (await api.post(`/staff-notify/users/${userId}/link-code`)).data as StaffLineLinkCode,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: userDetailKey(userId) }),
+  });
+}
+
+/** ข้อความทดสอบถึงพนักงานคนนั้น (ยืนยันว่าผูกถูกคน) */
+export function useStaffLineTest(userId: string) {
+  return useMutation({ mutationFn: async () => (await api.post(`/staff-notify/users/${userId}/test`)).data as { ok: true } });
+}
+
+export function useUnlinkStaffLine(userId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async () => (await api.delete(`/staff-notify/users/${userId}/link`)).data as { ok: true },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: userDetailKey(userId) }),
+  });
+}
+
+/** `U4af4…abcd` — โชว์แค่หัวท้ายของ LINE userId */
+export const maskLineUserId = (id: string) => (id.length > 5 ? `${id[0]}…${id.slice(-4)}` : id);

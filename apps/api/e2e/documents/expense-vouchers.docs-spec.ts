@@ -688,7 +688,7 @@ describe('DOC-03 expense vouchers, petty cash and daily summary — real command
       expect(foldThai(pdf.pages[originalPage - 1].text)).toContain(foldThai('ยอดสุทธิที่จ่าย'));
       expect(foldThai(pdf.pages[originalPage - 1].text)).toContain(foldThai('(ตราประทับ)'));
       expect(allText(pdf)).toContain(foldThai('สองหมื่นห้าร้อยเจ็ดสิบห้าบาทถ้วน'));
-      expect(allText(pdf)).not.toContain(foldThai('พิมพ์ / Save PDF'));
+      expect(allText(pdf)).not.toContain(foldThai('พิมพ์ / บันทึก PDF'));
       const artifacts = [...screenshots, printed.printMediaShot, printed.artifact, saveArtifact(DOMAIN, 'voucher-page-print-multi.pdf.json', JSON.stringify({ ...pdfSummary(pdf), variant: printed.variant, fontLoaded: printed.fontLoaded, tried: printed.tried, originalPage, copyPage, certificatePage, consoleErrors: errors }, null, 2)).relativePath];
 
       // voucher_print_mode=single → the copy disappears. ui-flags are cached by React Query, so this is the one full reload (POST /auth/refresh) of the file.

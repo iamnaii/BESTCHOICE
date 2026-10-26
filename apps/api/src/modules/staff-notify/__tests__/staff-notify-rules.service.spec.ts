@@ -9,13 +9,16 @@ jest.mock('@sentry/nestjs', () => ({ captureException: jest.fn(), captureMessage
 let prisma: any;
 let service: StaffNotifyRulesService;
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let audit: any;
 beforeEach(() => {
   jest.clearAllMocks();
   prisma = {
     systemConfig: { findFirst: jest.fn().mockResolvedValue(null), upsert: jest.fn().mockResolvedValue({}) },
     auditLog: { create: jest.fn().mockResolvedValue({}) },
   };
-  service = new StaffNotifyRulesService(prisma);
+  audit = { log: jest.fn().mockResolvedValue(undefined) };
+  service = new StaffNotifyRulesService(prisma, audit);
 });
 
 describe('StaffEventCatalog', () => {
@@ -32,6 +35,7 @@ describe('StaffEventCatalog', () => {
     expect(catalogItem('chat.handoff')).toMatchObject({ defaults: { roles: ['OWNER', 'FINANCE_MANAGER'], includeGroup: true }, dedupeWindowHours: 1 });
     expect(catalogItem('sale.completed').defaults.enabled).toBe(false); // โควต้า §13.2
     expect(catalogItem('contract.activated').defaults.enabled).toBe(false);
+    expect(catalogItem('chat.web_inquiry').defaults.enabled).toBe(false); // รีวิว I3 — ฟอร์มสาธารณะ ห้ามกินโควต้าโดยค่าเริ่มต้น
     expect(catalogItem('auth.new_device_login').dedupeWindowHours).toBe(0);
     for (const item of STAFF_EVENT_CATALOG) {
       expect(item.sample.title.length).toBeGreaterThan(0);
@@ -76,7 +80,7 @@ describe('StaffNotifyRulesService', () => {
     expect(Object.keys(stored)).toHaveLength(18);
     expect(stored['chat.handoff']).toEqual(catalogItem('chat.handoff').defaults);
     expect(upsert.update).toMatchObject({ value: upsert.create.value, deletedAt: null });
-    expect(prisma.auditLog.create).toHaveBeenCalledWith({ data: expect.objectContaining({ action: 'STAFF_NOTIFY_RULES_UPDATED', entity: 'system_config', entityId: STAFF_NOTIFY_RULES_KEY, userId: 'u1' }) });
+    expect(audit.log).toHaveBeenCalledWith(expect.objectContaining({ action: 'STAFF_NOTIFY_RULES_UPDATED', entity: 'system_config', entityId: STAFF_NOTIFY_RULES_KEY, userId: 'u1' }));
   });
 
   it('R5 invalid input → 400 with Thai message, nothing written', async () => {
@@ -97,6 +101,6 @@ describe('StaffNotifyRulesService', () => {
     await expect(service.saveMonthlyCap(100001, 'u1')).rejects.toThrow(BadRequestException);
     await service.saveMonthlyCap(500, 'u1');
     expect(prisma.systemConfig.upsert).toHaveBeenCalledWith(expect.objectContaining({ where: { key: STAFF_NOTIFY_MONTHLY_CAP_KEY }, create: expect.objectContaining({ value: '500' }) }));
-    expect(prisma.auditLog.create).toHaveBeenCalledWith({ data: expect.objectContaining({ action: 'STAFF_NOTIFY_CAP_UPDATED', entityId: STAFF_NOTIFY_MONTHLY_CAP_KEY }) });
+    expect(audit.log).toHaveBeenCalledWith(expect.objectContaining({ action: 'STAFF_NOTIFY_CAP_UPDATED', entityId: STAFF_NOTIFY_MONTHLY_CAP_KEY }));
   });
 });

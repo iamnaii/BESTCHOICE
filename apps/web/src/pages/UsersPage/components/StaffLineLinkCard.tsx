@@ -4,16 +4,17 @@ import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { CircleCheck, Loader2 } from 'lucide-react';
 import { getErrorMessage } from '@/lib/api';
-import { userKeys } from '@/lib/api/users';
+import { usersApi } from '@/lib/api/users';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
-import { maskLineUserId, useIssueStaffLineCode, useStaffLineTest, useUnlinkStaffLine } from '@/hooks/useStaffNotify';
+import { STAFF_LINE_LINK_KEY, maskLineUserId, useIssueStaffLineCode, useStaffLineTest, useUnlinkStaffLine } from '@/hooks/useStaffNotify';
 
 /**
  * บล็อก "ไลน์พนักงาน (แจ้งเตือนภายใน)" บนหน้าผู้ใช้ — OWNER เท่านั้น (ก้อน 7 A16 · สเปก §13.1)
  * ยังไม่ผูก → สร้างรหัส 6 หลัก (หมดอายุ 15 นาที) → พนักงานส่งรหัสในแชท Staff OA → webhook ผูก `lineStaffUserId` → หน้านี้ poll จนเห็นสถานะ
  * ผูกแล้ว → ส่งข้อความทดสอบ / ยกเลิกการผูก
+ * สถานะผูกถือในการ์ด (override ค่าจาก props) และโพลด้วยคีย์แยก — ห้าม invalidate `users.detail` เพราะหน้าจะ sync ฟอร์มทับค่าที่แก้ค้างไว้ (รีวิว M6)
  */
 
 const POLL_MS = 5_000;
@@ -31,9 +32,11 @@ const formatRemaining = (ms: number) => {
   return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
 };
 
-export default function StaffLineLinkCard({ userId, userName, lineStaffUserId, linkCode, linkCodeExpiresAt }: Props) {
+export default function StaffLineLinkCard({ userId, userName, lineStaffUserId: lineStaffUserIdProp, linkCode, linkCodeExpiresAt }: Props) {
   const headingId = useId();
   const queryClient = useQueryClient();
+  const [linkOverride, setLinkOverride] = useState<string | null | undefined>(undefined);
+  const lineStaffUserId = linkOverride === undefined ? lineStaffUserIdProp : linkOverride;
   const issue = useIssueStaffLineCode(userId);
   const sendTest = useStaffLineTest(userId);
   const unlink = useUnlinkStaffLine(userId);
@@ -48,12 +51,23 @@ export default function StaffLineLinkCard({ userId, userName, lineStaffUserId, l
   useEffect(() => {
     if (!codeLive) return;
     const tick = setInterval(() => setNow(Date.now()), 1_000);
-    const poll = setInterval(() => queryClient.invalidateQueries({ queryKey: userKeys.detail(userId) }), POLL_MS);
+    const poll = setInterval(() => {
+      queryClient
+        .fetchQuery({ queryKey: STAFF_LINE_LINK_KEY(userId), queryFn: () => usersApi.detail(userId), staleTime: 0 })
+        .then((u) => {
+          if (u?.lineStaffUserId) setLinkOverride(u.lineStaffUserId);
+        })
+        .catch(() => undefined);
+    }, POLL_MS);
     return () => {
       clearInterval(tick);
       clearInterval(poll);
     };
   }, [codeLive, queryClient, userId]);
+
+  useEffect(() => {
+    setLinkOverride(undefined); // props เปลี่ยน (โหลดหน้าใหม่/ผู้ใช้คนอื่น) → กลับไปเชื่อค่าจากเซิร์ฟเวอร์
+  }, [lineStaffUserIdProp]);
 
   useEffect(() => {
     if (lineStaffUserId) setIssued(null);
@@ -77,6 +91,8 @@ export default function StaffLineLinkCard({ userId, userName, lineStaffUserId, l
       onSuccess: () => {
         toast.success('ยกเลิกการผูก LINE แล้ว');
         setConfirmUnlink(false);
+        setLinkOverride(null);
+        setIssued(null);
       },
       onError: (err: unknown) => toast.error(getErrorMessage(err)),
     });
@@ -119,10 +135,7 @@ export default function StaffLineLinkCard({ userId, userName, lineStaffUserId, l
             </div>
           </div>
           <ol className="list-decimal space-y-1 pl-5 text-sm">
-            <li>
-              ให้ {userName} เพิ่มเพื่อนไลน์พนักงาน (QR / ลิงก์อยู่ที่{' '}
-              <Link to="/settings/integrations/hub" className="text-primary underline-offset-2 hover:underline">Integration Hub › ไลน์พนักงาน</Link>)
-            </li>
+            <li>ให้ {userName} เพิ่มเพื่อนไลน์พนักงาน — สแกน QR ของ OA จาก LINE Official Account Manager หรือค้นหาด้วย LINE ID ของ OA (ดูชื่อ OA ที่ <Link to="/settings/integrations/hub" className="text-primary underline-offset-2 hover:underline">Integration Hub › ไลน์พนักงาน</Link>)</li>
             <li>ส่งรหัสนี้ในแชทกับไลน์พนักงาน</li>
             <li>รอข้อความ "ผูกสำเร็จ" ใน LINE — หน้านี้จะอัปเดตสถานะเอง</li>
           </ol>

@@ -209,7 +209,7 @@ describe('ReorderPointsService', () => {
         title: expect.stringMatching(/^ของต่ำกว่าจุดสั่งซื้อซ้ำ: /),
         branchId: baseReorderPoint.branchId,
         dedupeKey: baseReorderPoint.id,
-        link: '/stock/reorder-points',
+        link: '/stock/alerts',
       }));
       expect(notifications.send.mock.calls.map((c: [{ channel: string }]) => c[0].channel)).not.toContain('LINE');
     });

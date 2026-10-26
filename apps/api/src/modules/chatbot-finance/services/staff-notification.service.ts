@@ -71,7 +71,7 @@ export class StaffNotificationService {
       await this.staffNotify.notify('chat.handoff', {
         title: `${PRIORITY_EMOJI[params.priority]} ลูกค้ารอคุย [${PRIORITY_LABEL[params.priority]}]`,
         lines: [`👤 ${customerName}`, `📞 ${phone}`, `📌 เรื่อง: ${params.reason}`, `📝 ${params.summary}`, '📜 บทสนทนาล่าสุด:', ...recentMessages],
-        link: `/inbox?room=${params.roomId}`,
+        link: `/inbox/${params.roomId}`,
         dedupeKey: params.roomId,
       });
     } catch (err) {

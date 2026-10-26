@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, Injectable, Logger } from '@nestjs/common';
+import { BadGatewayException, BadRequestException, ConflictException, Injectable, Logger } from '@nestjs/common';
 import * as Sentry from '@sentry/nestjs';
 import { NotificationCategory } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -174,14 +174,17 @@ export class StaffNotifyService {
     const u = await this.loadLinkedUser(userId);
     if (!(await this.lineConfig.isConfigured())) throw new ConflictException('ไลน์พนักงานยังไม่ได้ตั้งค่า — ไปที่ Integration Hub › ไลน์พนักงาน');
     const when = now.toLocaleString('th-TH', { timeZone: 'Asia/Bangkok', day: 'numeric', month: 'short', year: '2-digit', hour: '2-digit', minute: '2-digit' });
-    await this.notifications.send({
+    const res = await this.notifications.send({
       channel: 'LINE',
       channelKey: STAFF_LINE_CHANNEL_KEY,
       recipient: u.lineStaffUserId,
       message: `🔧 ทดสอบการเชื่อมต่อ LINE พนักงาน\nถ้าได้รับข้อความนี้ แปลว่า LINE ของ "${u.name}" ผูกถูกคนแล้ว\nส่งโดย ${byName} · ${when}`,
       relatedId: `staff:test:${userId}`,
       category: NotificationCategory.STAFF,
+      noRetry: true,
     });
+    // NotificationsService ไม่ throw เมื่อ LINE ล้ม (คืน FAILED + เข้าคิว retry) — ปุ่มทดสอบต้องบอกความจริง (รีวิว I2)
+    if (res && res.status !== 'SENT') throw new BadGatewayException(`ส่งไม่สำเร็จ (${res.status}${res.errorMsg ? `: ${res.errorMsg}` : ''}) — ตรวจ token ของไลน์พนักงาน และว่า "${u.name}" ยังเป็นเพื่อนกับ OA อยู่`);
     return { ok: true };
   }
 
@@ -192,7 +195,7 @@ export class StaffNotifyService {
     if (!(await this.lineConfig.isConfigured())) throw new ConflictException('ไลน์พนักงานยังไม่ได้ตั้งค่า — ไปที่ Integration Hub › ไลน์พนักงาน');
     const result = { ...EMPTY(), recipients: 1 };
     try {
-      await this.deliver({ userId: u.id, lineId: u.lineStaffUserId, name: u.name, phone: null }, { ...item.sample, smsFallback: false }, `staff:${event}:sample`, now);
+      await this.deliver({ userId: u.id, lineId: u.lineStaffUserId, name: u.name, phone: null }, { ...item.sample, smsFallback: false }, `staff:${event}:sample`, now, { noRetry: true });
       result.sent = 1;
     } catch (err) {
       result.failed = 1;
@@ -218,7 +221,7 @@ export class StaffNotifyService {
     return !!hit;
   }
 
-  private async deliver(r: StaffRecipient, payload: StaffEventPayload, relatedId: string, now: Date): Promise<void> {
+  private async deliver(r: StaffRecipient, payload: StaffEventPayload, relatedId: string, now: Date, opts: { noRetry?: boolean } = {}): Promise<void> {
     if (payload.flex) {
       const flex = { type: 'flex', altText: payload.flex.altText, contents: payload.flex.contents } as unknown as FlexMessagePayload;
       try {
@@ -234,7 +237,7 @@ export class StaffNotifyService {
       }
       return;
     }
-    await this.notifications.send({
+    const res = await this.notifications.send({
       channel: 'LINE',
       channelKey: STAFF_LINE_CHANNEL_KEY,
       recipient: r.lineId,
@@ -242,7 +245,10 @@ export class StaffNotifyService {
       relatedId,
       category: NotificationCategory.STAFF,
       ...(payload.smsFallback && r.phone ? { fallbackPhone: r.phone } : {}),
+      ...(opts.noRetry ? { noRetry: true } : {}),
     });
+    // NotificationsService คืน FAILED แทนการ throw — นับเป็นล้ม ไม่ใช่ส่งแล้ว (รีวิว I2)
+    if (res && res.status !== 'SENT') throw new Error(`ส่งไม่สำเร็จ (${res.status}${res.errorMsg ? `: ${res.errorMsg}` : ''})`);
   }
 
   private warnThrottled(kind: 'notConfigured' | 'quota', now: Date, message: string) {

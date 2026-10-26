@@ -37,7 +37,7 @@ describe('StaffNotificationService → StaffNotifyService', () => {
       '📝 ลูกค้าอยากปิดยอด',
     ]));
     expect(payload.lines.join('\n')).toContain('ขอคุยกับพนักงานได้ไหมครับ');
-    expect(payload).toMatchObject({ link: '/inbox?room=room-1', dedupeKey: 'room-1' });
+    expect(payload).toMatchObject({ link: '/inbox/room-1', dedupeKey: 'room-1' });
   });
 
   it('H2 slip review keeps the old wording; dedupe by evidence', async () => {

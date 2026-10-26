@@ -14,6 +14,16 @@ describe('ShopLineChatService → StaffNotifyService', () => {
     await expect(service.notifyStaffOfInquiry({ name: 'a', phone: '', message: 'm' })).resolves.toBeUndefined();
   });
 
+  it('W3 hub that never settles must not hold the public request (รีวิว I6)', async () => {
+    const staffNotify = { notify: jest.fn(() => new Promise<never>(() => undefined)) };
+    const service = new ShopLineChatService(staffNotify as never);
+    const outcome = await Promise.race([
+      service.notifyStaffOfInquiry({ name: 'a', phone: '0812345678', message: 'm' }).then(() => 'done'),
+      new Promise<string>((resolve) => setTimeout(() => resolve('hung'), 300)),
+    ]);
+    expect(outcome).toBe('done');
+  });
+
   it('W2 without the hub (optional dep) it only logs', async () => {
     const service = new ShopLineChatService(undefined);
     await expect(service.notifyStaffOfInquiry({ name: 'a', phone: '0812345678', message: 'm' })).resolves.toBeUndefined();

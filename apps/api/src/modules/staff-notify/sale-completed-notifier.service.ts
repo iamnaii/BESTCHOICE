@@ -45,7 +45,7 @@ export class SaleCompletedNotifier {
       await this.staffNotify.notify('sale.completed', {
         title: `ขายสดสำเร็จ ${sale.saleNumber}`,
         lines: [`สาขา ${sale.branch?.name ?? '—'}`, `${productLabel} · ${amount} บาท`, `โดย ${sale.salesperson?.name ?? '—'}`],
-        link: `/sales/${sale.id}`,
+        link: '/sales', // หน้า /sales/:id ไม่มี (รีวิว I5)
         branchId: sale.branchId,
         dedupeKey: sale.id,
       });

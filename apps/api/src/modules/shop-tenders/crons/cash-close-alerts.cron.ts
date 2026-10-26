@@ -1,6 +1,7 @@
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import * as Sentry from '@sentry/nestjs';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { bangkokDateString } from '../../../utils/date.util';
 import { StaffNotifyService } from '../../staff-notify/staff-notify.service';
@@ -27,35 +28,53 @@ export class CashCloseAlertsCron {
     await this.tick();
   }
 
-  async tick(now: Date = new Date()): Promise<{ missed: number; awaiting: number }> {
+  /** advisory lock แบบ RecurringBillsCron — Cloud Run รัน scheduler ทุก instance (รีวิว I4) · ล็อกระดับ tx เพราะ connection pool */
+  static readonly LOCK_KEY = 'cash-close-alerts:tick';
+  static readonly LOCK_TIMEOUT_MS = 5 * 60_000;
+
+  async tick(now: Date = new Date()): Promise<{ missed: number; awaiting: number } | null> {
     try {
-      const unclosed = await findUnclosedYesterday(this.prisma, now);
-      for (const { branchId, branchName, date, cashIn } of unclosed) {
-        await this.staffNotify?.notify('cash_close.missed', {
-          title: `${branchName} ยังไม่ปิดยอดเงินสดของเมื่อวาน`,
-          lines: [`${date} เงินสดเข้า ${cashIn.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} บาท แต่ไม่มีใบปิดยอด`],
-          link: `/shop/daily-cash?branch=${branchId}`,
-          branchId,
-          dedupeKey: `${branchId}:${date}`,
-        });
-      }
-
-      const awaiting = await this.prisma.shopCashClose.count({ where: staleAwaitingConfirmWhere(now) });
-      if (awaiting > 0) {
-        await this.staffNotify?.notify('cash_close.awaiting', {
-          title: `มี ${awaiting} ยอดเงินสดที่นับแล้ว รอยืนยันรับเงินเกิน 1 วัน`,
-          lines: [],
-          link: '/shop/daily-cash',
-          dedupeKey: bangkokDateString(now),
-        });
-      }
-
-      this.logger.log(`cash-close alerts: missed=${unclosed.length} awaiting=${awaiting}`);
-      return { missed: unclosed.length, awaiting };
+      return await this.prisma.$transaction(
+        async (tx) => {
+          const rows = await tx.$queryRaw<Array<{ locked: boolean }>>`SELECT pg_try_advisory_xact_lock(hashtext(${CashCloseAlertsCron.LOCK_KEY})) AS locked`;
+          if (!rows?.[0]?.locked) {
+            this.logger.log('[cash-close-alerts] instance อื่นถือล็อกรอบนี้อยู่ — ข้าม');
+            return null;
+          }
+          return this.run(tx, now);
+        },
+        { timeout: CashCloseAlertsCron.LOCK_TIMEOUT_MS },
+      );
     } catch (err) {
       Sentry.captureException(err, { tags: { kind: 'cron-job', cron: 'cash-close-alerts' } });
       this.logger.error(`cash-close alerts cron failed: ${(err as Error).message}`);
       return { missed: 0, awaiting: 0 };
     }
+  }
+
+  private async run(db: Prisma.TransactionClient, now: Date): Promise<{ missed: number; awaiting: number }> {
+    const unclosed = await findUnclosedYesterday(db, now);
+    for (const { branchId, branchName, date, cashIn } of unclosed) {
+      await this.staffNotify?.notify('cash_close.missed', {
+        title: `${branchName} ยังไม่ปิดยอดเงินสดของเมื่อวาน`,
+        lines: [`${date} เงินสดเข้า ${cashIn.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} บาท แต่ไม่มีใบปิดยอด`],
+        link: '/shop/daily-cash', // หน้าไม่อ่าน ?branch= (รีวิว I5)
+        branchId,
+        dedupeKey: `${branchId}:${date}`,
+      });
+    }
+
+    const awaiting = await db.shopCashClose.count({ where: staleAwaitingConfirmWhere(now) });
+    if (awaiting > 0) {
+      await this.staffNotify?.notify('cash_close.awaiting', {
+        title: `มี ${awaiting} ยอดเงินสดที่นับแล้ว รอยืนยันรับเงินเกิน 1 วัน`,
+        lines: [],
+        link: '/shop/daily-cash',
+        dedupeKey: bangkokDateString(now),
+      });
+    }
+
+    this.logger.log(`cash-close alerts: missed=${unclosed.length} awaiting=${awaiting}`);
+    return { missed: unclosed.length, awaiting };
   }
 }

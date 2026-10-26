@@ -26,11 +26,12 @@ export class ShopLineChatService {
       return;
     }
     try {
-      await this.staffNotify.notify('chat.web_inquiry', {
+      // fire-and-forget — endpoint สาธารณะต้องไม่รอ LINE (รีวิว I6)
+      void this.staffNotify.notify('chat.web_inquiry', {
         title: 'ข้อความสอบถามจากเว็บ',
         lines: [`ชื่อ: ${inquiry.name}`, `โทร: ${inquiry.phone ? maskPhone(inquiry.phone) : '-'}`, `ข้อความ: ${inquiry.message}`],
         link: '/inbox',
-      });
+      }).catch((err) => this.logger.error(`[ShopLineChat] staff hub failed (phone ***${phoneTail}): ${err instanceof Error ? err.message : err}`));
     } catch (err) {
       this.logger.error(`[ShopLineChat] Failed to notify staff (phone ***${phoneTail}): ${err instanceof Error ? err.message : err}`);
     }

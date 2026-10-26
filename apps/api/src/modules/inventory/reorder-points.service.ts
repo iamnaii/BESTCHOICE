@@ -216,7 +216,7 @@ export class ReorderPointsService {
               const r = await this.staffNotify.notify('stock.low', {
                 title: `ของต่ำกว่าจุดสั่งซื้อซ้ำ: ${productDesc}`,
                 lines: [`สาขา ${rp.branch.name}`, `เหลือ ${currentStock} เครื่อง (ขั้นต่ำ ${rp.minQuantity} · สั่งเพิ่ม ${rp.reorderQuantity})`],
-                link: '/stock/reorder-points',
+                link: '/stock/alerts',
                 branchId: rp.branchId,
                 dedupeKey: rp.id,
               });

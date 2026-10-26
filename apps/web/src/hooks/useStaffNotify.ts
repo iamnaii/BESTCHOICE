@@ -110,16 +110,18 @@ export interface StaffLineLinkCode {
   expiresAt: string;
 }
 
-const userDetailKey = (userId: string) => ['users', 'detail', userId] as const;
-
-/** สร้างรหัส 6 หลักให้พนักงานส่งในแชท Staff OA */
+/**
+ * สร้างรหัส 6 หลักให้พนักงานส่งในแชท Staff OA
+ * ไม่ invalidate `users.detail` — หน้าผู้ใช้ sync ฟอร์มจาก query นั้นทุกครั้งที่โหลด ค่าที่แก้ค้างไว้จะหาย (รีวิว M6); การ์ดถือสถานะผูกเอง
+ */
 export function useIssueStaffLineCode(userId: string) {
-  const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async () => (await api.post(`/staff-notify/users/${userId}/link-code`)).data as StaffLineLinkCode,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: userDetailKey(userId) }),
   });
 }
+
+/** โพลสถานะผูกระหว่างรอพนักงานส่งรหัส — คีย์แยกจาก `users.detail` (ไม่กระทบฟอร์มบนหน้า) */
+export const STAFF_LINE_LINK_KEY = (userId: string) => ['staff-line-link', userId] as const;
 
 /** ข้อความทดสอบถึงพนักงานคนนั้น (ยืนยันว่าผูกถูกคน) */
 export function useStaffLineTest(userId: string) {
@@ -127,11 +129,7 @@ export function useStaffLineTest(userId: string) {
 }
 
 export function useUnlinkStaffLine(userId: string) {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: async () => (await api.delete(`/staff-notify/users/${userId}/link`)).data as { ok: true },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: userDetailKey(userId) }),
-  });
+  return useMutation({ mutationFn: async () => (await api.delete(`/staff-notify/users/${userId}/link`)).data as { ok: true } });
 }
 
 /** `U4af4…abcd` — โชว์แค่หัวท้ายของ LINE userId */

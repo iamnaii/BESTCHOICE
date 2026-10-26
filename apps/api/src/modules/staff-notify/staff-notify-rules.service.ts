@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import * as Sentry from '@sentry/nestjs';
 import { PrismaService } from '../../prisma/prisma.service';
+import { AuditService } from '../audit/audit.service';
 import {
   STAFF_EVENT_CATALOG,
   STAFF_NOTIFY_DEFAULT_MONTHLY_CAP,
@@ -22,7 +23,10 @@ export type StaffNotifyRules = Record<StaffEventKey, StaffNotifyRule>;
 @Injectable()
 export class StaffNotifyRulesService {
   private readonly logger = new Logger(StaffNotifyRulesService.name);
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly audit: AuditService,
+  ) {}
 
   static defaults(): StaffNotifyRules {
     return Object.fromEntries(STAFF_EVENT_CATALOG.map((c) => [c.key, { ...c.defaults, roles: [...c.defaults.roles] }])) as StaffNotifyRules;
@@ -90,9 +94,8 @@ export class StaffNotifyRulesService {
       create: { key: STAFF_NOTIFY_RULES_KEY, value, label: 'กติกาแจ้งพนักงานทาง LINE (ผู้รับต่อเหตุการณ์)' },
       update: { value, deletedAt: null },
     });
-    await this.prisma.auditLog.create({
-      data: { action: 'STAFF_NOTIFY_RULES_UPDATED', entity: 'system_config', entityId: STAFF_NOTIFY_RULES_KEY, userId: actorId, oldValue: before as object, newValue: rules as object },
-    });
+    // ผ่าน AuditService หลัง commit → แถวอยู่ใน Merkle chain (database.md · รีวิว M3)
+    await this.audit.log({ action: 'STAFF_NOTIFY_RULES_UPDATED', entity: 'system_config', entityId: STAFF_NOTIFY_RULES_KEY, userId: actorId, oldValue: before as unknown as Record<string, unknown>, newValue: rules as unknown as Record<string, unknown> });
     return rules;
   }
 
@@ -112,9 +115,7 @@ export class StaffNotifyRulesService {
       create: { key: STAFF_NOTIFY_MONTHLY_CAP_KEY, value: String(n), label: 'เพดานข้อความ LINE พนักงานต่อเดือน' },
       update: { value: String(n), deletedAt: null },
     });
-    await this.prisma.auditLog.create({
-      data: { action: 'STAFF_NOTIFY_CAP_UPDATED', entity: 'system_config', entityId: STAFF_NOTIFY_MONTHLY_CAP_KEY, userId: actorId, oldValue: { cap: before }, newValue: { cap: n } },
-    });
+    await this.audit.log({ action: 'STAFF_NOTIFY_CAP_UPDATED', entity: 'system_config', entityId: STAFF_NOTIFY_MONTHLY_CAP_KEY, userId: actorId, oldValue: { cap: before }, newValue: { cap: n } });
     return n;
   }
 }

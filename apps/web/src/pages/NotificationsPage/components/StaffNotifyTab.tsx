@@ -25,6 +25,8 @@ import {
  */
 
 const CHECKBOX_CLASS = 'size-4 accent-primary cursor-pointer disabled:cursor-not-allowed';
+/** label ห่อ input → พื้นที่กด ≥44px บนมือถือ (สเปก §7) โดยช่องติ๊กยังเล็กบนจอใหญ่ */
+const CHECKBOX_LABEL_CLASS = 'inline-flex cursor-pointer items-center justify-center max-lg:min-h-11 max-lg:min-w-11';
 const SECONDARY_BUTTON = 'inline-flex items-center gap-1.5 rounded-lg border border-input bg-background px-3 py-2 text-sm font-medium hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed';
 const PRIMARY_BUTTON = 'inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed';
 
@@ -227,17 +229,23 @@ function GroupRows({ group, items, rules, fieldId, configured, testingKey, onTog
             </td>
             {STAFF_ROLES.map((role) => (
               <td key={role} className="px-2 py-2 text-center">
-                <input type="checkbox" id={`${idBase}-${role}`} className={CHECKBOX_CLASS} checked={rule.roles.includes(role)} onChange={(e) => onRole(item.key, role, e.target.checked)} />
-                <label htmlFor={`${idBase}-${role}`} className="sr-only">{`${item.label} — ${STAFF_ROLE_LABELS[role]}`}</label>
+                <label className={CHECKBOX_LABEL_CLASS}>
+                  <input type="checkbox" id={`${idBase}-${role}`} className={CHECKBOX_CLASS} checked={rule.roles.includes(role)} onChange={(e) => onRole(item.key, role, e.target.checked)} />
+                  <span className="sr-only">{`${item.label} — ${STAFF_ROLE_LABELS[role]}`}</span>
+                </label>
               </td>
             ))}
             <td className="px-2 py-2 text-center">
-              <input type="checkbox" id={`${idBase}-group`} className={CHECKBOX_CLASS} checked={rule.includeGroup} onChange={(e) => onFlag(item.key, 'includeGroup', e.target.checked)} />
-              <label htmlFor={`${idBase}-group`} className="sr-only">{`${item.label} — กลุ่ม LINE`}</label>
+              <label className={CHECKBOX_LABEL_CLASS}>
+                <input type="checkbox" id={`${idBase}-group`} className={CHECKBOX_CLASS} checked={rule.includeGroup} onChange={(e) => onFlag(item.key, 'includeGroup', e.target.checked)} />
+                <span className="sr-only">{`${item.label} — กลุ่ม LINE`}</span>
+              </label>
             </td>
             <td className="px-2 py-2 text-center">
-              <input type="checkbox" id={`${idBase}-branch`} className={CHECKBOX_CLASS} checked={rule.branchScoped} onChange={(e) => onFlag(item.key, 'branchScoped', e.target.checked)} />
-              <label htmlFor={`${idBase}-branch`} className="sr-only">{`${item.label} — เฉพาะสาขาที่เกี่ยว`}</label>
+              <label className={CHECKBOX_LABEL_CLASS}>
+                <input type="checkbox" id={`${idBase}-branch`} className={CHECKBOX_CLASS} checked={rule.branchScoped} onChange={(e) => onFlag(item.key, 'branchScoped', e.target.checked)} />
+                <span className="sr-only">{`${item.label} — เฉพาะสาขาที่เกี่ยว`}</span>
+              </label>
             </td>
             <td className="px-2 py-2">
               <button type="button" data-ui-control="button" className={`${SECONDARY_BUTTON} whitespace-nowrap px-2.5 py-1.5 text-xs`} disabled={!configured || !rule.enabled || testing} onClick={() => onTest(item.key)}>

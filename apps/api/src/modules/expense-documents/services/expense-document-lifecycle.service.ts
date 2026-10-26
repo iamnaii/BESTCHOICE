@@ -203,14 +203,14 @@ export class ExpenseDocumentLifecycleService {
       // ก้อน 7 A16 — LINE พนักงาน: ผู้อนุมัติที่กรองแล้วเป็นผู้รับเพิ่ม + บทบาทตามสวิตช์ expense.pending_approval
       if (this.staffNotify) {
         const d = document as { branchId?: string | null; vendorName?: string | null; branch?: { name: string } | null; createdBy?: { name: string } | null } | null;
-        await this.staffNotify.notify('expense.pending_approval', {
+        // fire-and-forget — request ส่งขออนุมัติต้องไม่รอ LINE (รีวิว I6) · ไม่ dedupe: ตีกลับแล้วส่งใหม่วันเดียวกันต้องแจ้งอีก (รีวิว M12)
+        void this.staffNotify.notify('expense.pending_approval', {
           title: `ใบรายจ่ายรออนุมัติ ${doc.documentNumber}`,
           lines: [d?.vendorName ?? '—', `ยอด ${Number(totalStr).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} บาท · สาขา ${d?.branch?.name ?? '—'}`, `โดย ${d?.createdBy?.name ?? '—'}`],
           link: `/expenses/${doc.id}`,
           branchId: d?.branchId ?? null,
-          dedupeKey: `${doc.id}:PENDING_APPROVAL`,
           extraRecipientUserIds: recipients,
-        });
+        }).catch(() => undefined);
       }
     } catch (err) {
       // Log and swallow — notification failure must NOT roll back the

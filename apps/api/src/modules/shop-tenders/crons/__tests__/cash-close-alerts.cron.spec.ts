@@ -6,12 +6,18 @@ jest.mock('@sentry/nestjs', () => ({ captureException: jest.fn(), captureMessage
 const NOW = new Date('2026-10-26T03:00:00.000Z'); // 26 ต.ค. 2569 10:00 ไทย → "เมื่อวาน" = 2026-10-25
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const makePrisma = (over: Record<string, any> = {}) => ({
-  shopTender: { groupBy: jest.fn().mockResolvedValue([]) },
-  shopCashClose: { findFirst: jest.fn().mockResolvedValue(null), count: jest.fn().mockResolvedValue(0) },
-  branch: { findUnique: jest.fn(async ({ where }: { where: { id: string } }) => ({ name: `สาขา ${where.id}` })) },
-  ...over,
-});
+const makePrisma = (over: Record<string, any> = {}) => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const p: any = {
+    shopTender: { groupBy: jest.fn().mockResolvedValue([]) },
+    shopCashClose: { findFirst: jest.fn().mockResolvedValue(null), count: jest.fn().mockResolvedValue(0) },
+    branch: { findUnique: jest.fn(async ({ where }: { where: { id: string } }) => ({ name: `สาขา ${where.id}` })) },
+    $queryRaw: jest.fn().mockResolvedValue([{ locked: true }]),
+    ...over,
+  };
+  p.$transaction = jest.fn(async (fn: (tx: unknown) => unknown) => fn(p));
+  return p;
+};
 
 describe('CashCloseAlertsCron (ก้อน 7 A16 — เงินสดหน้าร้าน 10:00)', () => {
   const staffNotify = { notify: jest.fn().mockResolvedValue({ recipients: 1, sent: 1, deduped: 0, failed: 0, quotaSkipped: 0 }) };
@@ -33,7 +39,7 @@ describe('CashCloseAlertsCron (ก้อน 7 A16 — เงินสดหน�
     expect(staffNotify.notify).toHaveBeenNthCalledWith(1, 'cash_close.missed', expect.objectContaining({
       title: 'สาขา br-1 ยังไม่ปิดยอดเงินสดของเมื่อวาน',
       lines: [expect.stringMatching(/เงินสดเข้า 3,500\.00 บาท แต่ไม่มีใบปิดยอด/)],
-      link: '/shop/daily-cash?branch=br-1',
+      link: '/shop/daily-cash',
       branchId: 'br-1',
       dedupeKey: 'br-1:2026-10-25',
     }));
@@ -75,6 +81,16 @@ describe('CashCloseAlertsCron (ก้อน 7 A16 — เงินสดหน�
     await expect(cron.tick(NOW)).resolves.toEqual({ missed: 0, awaiting: 0 });
     expect(Sentry.captureException).toHaveBeenCalledTimes(1);
     expect(staffNotify.notify).not.toHaveBeenCalled();
+  });
+
+  it('CC6: instance อื่นถือ advisory lock → ข้ามรอบ ไม่แจ้ง (รีวิว I4 — Cloud Run หลาย instance)', async () => {
+    const prisma = makePrisma();
+    prisma.$queryRaw.mockResolvedValue([{ locked: false }]);
+    prisma.shopCashClose.count.mockResolvedValue(3);
+    const cron = new CashCloseAlertsCron(prisma as never, staffNotify as never);
+    await expect(cron.tick(NOW)).resolves.toBeNull();
+    expect(staffNotify.notify).not.toHaveBeenCalled();
+    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
   });
 
   it('CC5: ไม่มี StaffNotifyService (optional) → ข้ามเงียบ ไม่พัง', async () => {

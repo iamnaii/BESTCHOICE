@@ -15,7 +15,7 @@ describe('SaleCompletedNotifier', () => {
     expect(staffNotify.notify).toHaveBeenCalledWith('sale.completed', {
       title: 'ขายสดสำเร็จ S-20261026-0012',
       lines: ['สาขา ลาดพร้าว', 'Apple iPhone 15 128GB · 28,900.00 บาท', 'โดย เอก'],
-      link: '/sales/sale-1',
+      link: '/sales',
       branchId: 'br-1',
       dedupeKey: 'sale-1',
     });

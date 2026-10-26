@@ -183,3 +183,18 @@ describe('StaffNotifyService.listUnlinkedUsers', () => {
     expect(res).toEqual([{ id: 'u2', name: 'สมหญิง', role: 'ACCOUNTANT', branchName: null }, { id: 'u3', name: 'เอก', role: 'BRANCH_MANAGER', branchName: 'บางนา' }]);
   });
 });
+
+describe('StaffNotifyService — delivery status (รีวิว I2)', () => {
+  it('S10 NotificationsService resolves FAILED → counted as failed, not sent', async () => {
+    notifications.send.mockResolvedValue({ id: 'n1', status: 'FAILED', errorMsg: 'invalid token' });
+    const result = await service.notify('stock.low', { title: 't', lines: [] }, NOW);
+    expect(result).toMatchObject({ recipients: 2, sent: 0, failed: 2 });
+  });
+
+  it('S11 testToUser / sendSample surface a FAILED push instead of reporting success', async () => {
+    notifications.send.mockResolvedValue({ id: 'n1', status: 'FAILED', errorMsg: 'invalid token' });
+    await expect(service.testToUser('a', 'เจ้าของ', NOW)).rejects.toThrow(/ส่งไม่สำเร็จ/);
+    const sample = await service.sendSample('stock.low', 'a', NOW);
+    expect(sample).toMatchObject({ sent: 0, failed: 1 });
+  });
+});

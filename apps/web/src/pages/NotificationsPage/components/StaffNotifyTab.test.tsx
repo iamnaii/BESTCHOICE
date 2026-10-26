@@ -86,6 +86,8 @@ describe('StaffNotifyTab', () => {
     expect(screen.getByLabelText('ของต่ำกว่าจุดสั่งซื้อซ้ำ — ผจก.สาขา')).toBeChecked();
     expect(screen.getByLabelText('ของต่ำกว่าจุดสั่งซื้อซ้ำ — บัญชี')).not.toBeChecked();
     expect(screen.getByLabelText('ของต่ำกว่าจุดสั่งซื้อซ้ำ — เฉพาะสาขาที่เกี่ยว')).toBeChecked();
+    // รีวิว M8 / สเปก §7 — ช่องติ๊กต้องมีพื้นที่กด ≥44px บนมือถือ (label ห่อ input)
+    expect(screen.getByLabelText('ของต่ำกว่าจุดสั่งซื้อซ้ำ — บัญชี').closest('label')).toHaveClass('max-lg:min-h-11');
     expect(screen.getByRole('button', { name: 'บันทึกกติกา' })).toBeDisabled();
   });
 

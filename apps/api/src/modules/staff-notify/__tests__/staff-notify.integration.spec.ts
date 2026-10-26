@@ -4,6 +4,7 @@ import { StaffNotifyRulesService } from '../staff-notify-rules.service';
 import { StaffLineConfigService } from '../staff-line-config.service';
 import { STAFF_LINE_CHANNEL_KEY, StaffNotifyService } from '../staff-notify.service';
 import { STAFF_NOTIFY_RULES_KEY } from '../staff-event-catalog';
+import { AuditService } from '../../audit/audit.service';
 
 /**
  * ก้อน 7 A16 — แจ้งพนักงานทาง LINE บนฐานข้อมูลจริง (spec §4, §5, §9):
@@ -28,7 +29,7 @@ const notifications = {
   }),
 };
 const lineOa = { sendFlexMessage: vi.fn(), pushMessage: vi.fn() };
-const rules = new StaffNotifyRulesService(prisma as never);
+const rules = new StaffNotifyRulesService(prisma as never, new AuditService(prisma as never));
 const service = new StaffNotifyService(prisma as never, rules, lineConfig, notifications as never, lineOa as never);
 
 let branchA: string;

@@ -89,9 +89,10 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # Browser binaries cached per Playwright version (.github/actions/playwright-chromium);
+      # the hoisted root @playwright/test is the one tools/docs-integration.mjs resolves.
       - name: Chromium (Playwright) with system libraries
-        run: npx playwright install --with-deps chromium
-        working-directory: apps/web
+        uses: ./.github/actions/playwright-chromium
 
       - name: Documents and route integration
         run: npm run docs:check -- ${{ matrix.args }}

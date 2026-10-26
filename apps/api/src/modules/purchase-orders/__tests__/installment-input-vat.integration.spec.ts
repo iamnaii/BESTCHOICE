@@ -303,7 +303,7 @@ describe('ก้อน 5 — ภาษีซื้อเครื่องขา
 
     const customer = await seedCustomer('C1');
     const contract = await seedSignedDraftContract('C1', customer.id, a);
-    await workflow.activate(contract.id);
+    await workflow.activate(contract.id, adminId);
 
     const [je] = await inputVatEntries(contract.id);
     expect(je).toBeDefined();
@@ -357,7 +357,7 @@ describe('ก้อน 5 — ภาษีซื้อเครื่องขา
     const { a } = await receiveBoth(po, { supplierDocType: 'TAX_INVOICE', supplierDocNumber: `IV-${RUN}-2` });
     const customer = await seedCustomer('C2');
     const c1 = await seedSignedDraftContract('C2A', customer.id, a);
-    await workflow.activate(c1.id);
+    await workflow.activate(c1.id, adminId);
     const [original] = await inputVatEntries(c1.id);
 
     const req = await cancellations.requestCancellation(c1.id, adminId, 'ทดสอบยกเลิกก้อน 5', 0);
@@ -377,7 +377,7 @@ describe('ก้อน 5 — ภาษีซื้อเครื่องขา
     const fresh = await prisma.product.findUniqueOrThrow({ where: { id: a.id } });
     expect(fresh.status).toBe('IN_STOCK');
     const c2 = await seedSignedDraftContract('C2B', customer.id, a);
-    await workflow.activate(c2.id);
+    await workflow.activate(c2.id, adminId);
     expect(await inputVatEntries(c2.id)).toHaveLength(0);
     const c2Row = await contractRow(c2.id);
     expect(c2Row).toMatchObject({ inputVatStatus: 'NOT_ELIGIBLE' });
@@ -390,7 +390,7 @@ describe('ก้อน 5 — ภาษีซื้อเครื่องขา
     const { a, receivingId } = await receiveBoth(po, { supplierDocType: 'DELIVERY_NOTE', supplierDocNumber: `DN-${RUN}-3` });
     const customer = await seedCustomer('C3');
     const contract = await seedSignedDraftContract('C3', customer.id, a);
-    await workflow.activate(contract.id);
+    await workflow.activate(contract.id, adminId);
     expect(await contractRow(contract.id)).toMatchObject({ inputVatStatus: 'PENDING_INVOICE', inputVatJournalEntryId: null });
     expect(await inputVatEntries(contract.id)).toHaveLength(0);
     expect(await prisma.todo.count({ where: { tags: { has: INPUT_VAT_PERIOD_TODO_TAG }, title: { contains: contract.contractNumber } } })).toBe(0);
@@ -428,7 +428,7 @@ describe('ก้อน 5 — ภาษีซื้อเครื่องขา
     expect(dec(a.receivingItem!.receivedVat!.toString()).toFixed(2)).toBe('0.00');
     const customer = await seedCustomer('C4');
     const contract = await seedSignedDraftContract('C4', customer.id, a);
-    await workflow.activate(contract.id);
+    await workflow.activate(contract.id, adminId);
     expect(await contractRow(contract.id)).toMatchObject({ inputVatStatus: 'NOT_ELIGIBLE', inputVatReason: expect.stringContaining('ไม่จด VAT') });
     expect(await inputVatEntries(contract.id)).toHaveLength(0);
     await expect(taxInvoiceService.record(po.id, receivingId, { number: 'IV-X', date: today() }, undefined, { id: adminId, role: 'OWNER' })).rejects.toThrow('ไม่จด VAT');
@@ -440,7 +440,7 @@ describe('ก้อน 5 — ภาษีซื้อเครื่องขา
     const { a, receivingId } = await receiveBoth(po, { supplierDocType: 'DELIVERY_NOTE', supplierDocNumber: `DN-${RUN}-5` });
     const customer = await seedCustomer('C5');
     const contract = await seedSignedDraftContract('C5', customer.id, a);
-    await workflow.activate(contract.id);
+    await workflow.activate(contract.id, adminId);
     const req = await cancellations.requestCancellation(contract.id, adminId, 'ยกเลิกก่อนใบกำกับมา', 0);
     await cancellations.approveCancellation(req.id, adminId);
     expect(await contractRow(contract.id)).toMatchObject({ inputVatStatus: 'REVERSED', inputVatReason: 'สัญญาถูกยกเลิกก่อนได้ใบกำกับภาษี' });
@@ -467,7 +467,7 @@ describe('ก้อน 5 — ภาษีซื้อเครื่องขา
     const { a, receivingId } = await receiveBoth(po, { supplierDocType: 'DELIVERY_NOTE', supplierDocNumber: `DN-${RUN}-7` });
     const customer = await seedCustomer('C7');
     const contract = await seedSignedDraftContract('C7', customer.id, a);
-    await workflow.activate(contract.id);
+    await workflow.activate(contract.id, adminId);
     const dto = { number: `IV-${RUN}-7`, date: today() };
     const results = await Promise.allSettled([
       taxInvoiceService.record(po.id, receivingId, dto, undefined, { id: adminId, role: 'OWNER' }),

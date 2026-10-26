@@ -19,6 +19,8 @@ import { Test } from '@nestjs/testing';
 import request from 'supertest';
 import { PrismaService } from '../src/prisma/prisma.service';
 import { DocumentsController } from '../src/modules/contracts/documents.controller';
+import { ContractSignaturesAccessService } from '../src/modules/contracts/services/contract-signatures-access.service';
+import { AccessSignaturesBoundaries } from '../src/modules/employee-access/access-signatures-boundaries';
 import { ContractDocumentsController } from '../src/modules/contracts/contract-documents.controller';
 import { DocumentsService } from '../src/modules/contracts/documents.service';
 import { ContractDocumentsService } from '../src/modules/contracts/contract-documents.service';
@@ -53,8 +55,14 @@ describe('Staff sales documents on isolated PostgreSQL', () => {
   const read = (path: string) => request(app.getHttpServer()).get(path).query({ company: 'shop' });
   beforeAll(async () => {
     await db.$connect();
-    branchA = (await db.branch.create({ data: { name: `${prefix}-A` } })).id;
-    branchB = (await db.branch.create({ data: { name: `${prefix}-B` } })).id;
+    // Generated-document provenance resolves the product's owning company (branch.company); keep the
+    // fixture realistic like bookings-lifecycle: branches belong to the SHOP company.
+    const shopId = (await db.companyInfo.upsert({ where: { companyCode: 'SHOP' }, create: {
+      companyCode: 'SHOP', nameTh: 'ISOLATED SHOP', taxId: '9999999999996', address: 'Synthetic Road',
+      directorName: 'Synthetic Director', vatRegistered: true, vatRate: '0.0700',
+    }, update: {} })).id;
+    branchA = (await db.branch.create({ data: { name: `${prefix}-A`, companyId: shopId } })).id;
+    branchB = (await db.branch.create({ data: { name: `${prefix}-B`, companyId: shopId } })).id;
     userId = (await db.user.create({ data: { name: prefix, email: `${prefix}@example.invalid`, password: 'unused', role: 'OWNER', branchId: branchA } })).id;
     const customer = await db.customer.create({ data: { name: prefix, phone: '0800000000', nationalId: `799${Date.now().toString().slice(-10)}`, birthDate: new Date('1990-01-01'), lineIdFinance: `TEST-NOT-SENT-${prefix}` } });
     const make = async (branchId: string, name: string) => {
@@ -70,7 +78,7 @@ describe('Staff sales documents on isolated PostgreSQL', () => {
     const generated = async (contractId: string) => db.eDocument.create({ data: { contractId, documentType: 'CONTRACT', fileUrl: `${contractId}.pdf`, fileHash: 'test', createdById: userId } });
     generatedA = (await generated(contractA)).id; files.set(`${contractA}.pdf`, pdf);
     generatedB = (await generated(contractB)).id; files.set(`${contractB}.pdf`, pdf);
-    const module = await Test.createTestingModule({ controllers: [ContractDocumentsController, DocumentsController], providers: [GeneratedDocumentsService, AccessGeneratedDocumentsBoundaries,
+    const module = await Test.createTestingModule({ controllers: [ContractDocumentsController, DocumentsController], providers: [GeneratedDocumentsService, AccessGeneratedDocumentsBoundaries, ContractSignaturesAccessService, AccessSignaturesBoundaries,
       DocumentsService, ContractDocumentsService, ContractFileAccessGuard,
       AccessContractFilesBoundaries, AccessPartySourceService, AccessProcurementSourceService, AccessDocumentTemplateBoundaries, AccessResourceService, AccessSnapshotService, RolesGuard,
       { provide: PrismaService, useValue: db }, { provide: StorageService, useValue: storage },

@@ -200,7 +200,8 @@ export class ShopTenderRecorder {
           { jeIds: [split.id], flowLabel: `${SHOP_TENDER_SPLIT_FLOW}-reversed`, descriptionPrefix: input.descriptionPrefix ?? '[คืนเงิน]',
             ...(input.managedCancellation ? {createdById:input.actorId,managedCancellation:true} : {}) },
           tx,
-          input.managedCancellation ? occurredAt : undefined,
+          // legacy callers keep main's 2-argument call shape (spec asserts exact args)
+          ...(input.managedCancellation ? [occurredAt] : []),
         );
       }
     }

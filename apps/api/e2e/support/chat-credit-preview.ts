@@ -64,6 +64,8 @@ import { SettingsService } from '../../src/modules/settings/settings.service';
 import { NotificationsService } from '../../src/modules/notifications/notifications.service';
 import { DocumentsService } from '../../src/modules/contracts/documents.service';
 import { DocumentsController } from '../../src/modules/contracts/documents.controller';
+import { ContractSignaturesAccessService } from '../../src/modules/contracts/services/contract-signatures-access.service';
+import { AccessSignaturesBoundaries } from '../../src/modules/employee-access/access-signatures-boundaries';
 import { ContractDocumentsService } from '../../src/modules/contracts/contract-documents.service';
 import { ContractDocumentsController } from '../../src/modules/contracts/contract-documents.controller';
 import { ContractFileAccessGuard } from '../../src/modules/contracts/contract-file-access.guard';
@@ -597,7 +599,7 @@ async function main() {
       GlobalCreditCheckController,
       PreviewController,
     ],
-    providers: [GeneratedDocumentsService, AccessGeneratedDocumentsBoundaries, AppointmentConfirmationService, StoreAppointmentsService, AppointmentScheduleService, AppointmentLinksService, ChatLibraryService, ChatLibraryDeliveryService, { provide: MessageRouterService, useValue: library.router }, ChatAnalyticsV2Service, ChatSalesAttributionService,
+    providers: [GeneratedDocumentsService, AccessGeneratedDocumentsBoundaries, ContractSignaturesAccessService, AccessSignaturesBoundaries, AppointmentConfirmationService, StoreAppointmentsService, AppointmentScheduleService, AppointmentLinksService, ChatLibraryService, ChatLibraryDeliveryService, { provide: MessageRouterService, useValue: library.router }, ChatAnalyticsV2Service, ChatSalesAttributionService,
       ChatServiceRequestService, ChatServiceCaseLinkService, ...afterSales.providers,
       FacebookCommentRefreshService, { provide: FacebookCommentIngestService, useValue: facebookComments.ingest }, FacebookCommentWorkService, FacebookCommentReplyService, { provide: FacebookCommentClient, useValue: facebookComments.client },
       ChatHandoffService, NoteMentionService, { provide: StaffMessageService, useValue: Object.assign(Object.create(StaffMessageService.prototype), { prisma: db }) }, ChatSalesDispositionService, TodosService, ChatFollowUpService, ChatSalesContextService, JourneySummaryService, JourneyStateService, ChatWorkQueryService, ChatWorkSettingsService, StaffInboxService, ChatWorkAccessService,

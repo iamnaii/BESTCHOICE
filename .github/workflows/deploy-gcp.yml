@@ -266,7 +266,9 @@ jobs:
           EXCH_FILES=$(ls src/modules/contract-exchange/__tests__/*.integration.spec.ts)
           INTERCO_FILES=$(ls src/modules/interco-settlement/__tests__/*.integration.spec.ts)
           # + __tests__/ level added 2026-08-20 (Phase 3 contract-cancellation C-1)
-          CONTRACTS_FILES=$(ls src/modules/contracts/*.integration.spec.ts src/modules/contracts/__tests__/*.integration.spec.ts)
+          # employee-access epic: *-access/payoff-* specs are jest-format (jest.* globals) and run through
+          # tools/test-employee-access-*.sh on their own isolated DB — vitest's collector crashes on them
+          CONTRACTS_FILES=$(ls src/modules/contracts/*.integration.spec.ts src/modules/contracts/__tests__/*.integration.spec.ts | grep -v -E '/(cancellation-access|payoff-atomic|payoff-private|shop-settlement-access)\.integration\.spec\.ts$')
           JOURNAL_FILES="src/modules/journal/__tests__/scenario-helpers.spec.ts src/modules/journal/cron/installment-accrual.cron.spec.ts src/modules/journal/cron/advance-excess-income.cron.spec.ts src/modules/journal/cron/vat-60day.cron.spec.ts"
           OVERDUE_FILES=$(ls src/modules/overdue/*.integration.spec.ts src/modules/overdue/services/*.integration.spec.ts)
           PAYMENTS_FILES=$(ls src/modules/payments/services/*.integration.spec.ts)

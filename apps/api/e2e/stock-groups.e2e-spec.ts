@@ -10,6 +10,7 @@ import { ProductsService } from '../src/modules/products/products.service';
 import { ProductsPricingService } from '../src/modules/products/products-pricing.service';
 import { ProductsStockService } from '../src/modules/products/products-stock.service';
 import { ProductsOnlineListingService } from '../src/modules/products/products-online-listing.service';
+import { ProductScanService } from '../src/modules/products/services/product-scan.service';
 import { JwtAuthGuard } from '../src/modules/auth/guards/jwt-auth.guard';
 
 if (!process.env.DATABASE_URL?.includes('/bc_chat_credit_test?host=/tmp/bc-chat-credit.')) {
@@ -94,6 +95,7 @@ describe('Stock accessory groups on isolated PostgreSQL', () => {
         { provide: ProductsPricingService, useValue: {} },
         { provide: ProductsStockService, useValue: {} },
         { provide: ProductsOnlineListingService, useValue: {} },
+        { provide: ProductScanService, useValue: {} },
       ],
     })
       .overrideGuard(JwtAuthGuard)

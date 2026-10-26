@@ -77,6 +77,18 @@ describe('SettingsService.getUiFlags — flag normalisation', () => {
     expect(f.approvalRequiredDocTypes).toEqual(['PAYROLL']);
   });
 
+  it('sticker flags: defaults 60x40 + QR on; whitelisted size override; junk size falls back', async () => {
+    let f = await service.getUiFlags();
+    expect(f.stickerSize).toBe('60x40');
+    expect(f.stickerShowQr).toBe(true);
+    keyMap.sticker_size = '50x40';
+    f = await service.getUiFlags();
+    expect(f.stickerSize).toBe('50x40');
+    keyMap.sticker_size = '70x50';
+    f = await service.getUiFlags();
+    expect(f.stickerSize).toBe('60x40');
+  });
+
   it('passes through valid whitelisted / in-range overrides', async () => {
     keyMap = {
       language: 'en',

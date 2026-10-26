@@ -50,7 +50,7 @@ it('clears the old customer basis when selecting another credit record', () => {
   const view = render(<CreditAffordabilityForm creditCheckId="first" onChange={onChange} />);
   fillBasis();
   view.rerender(<CreditAffordabilityForm creditCheckId="second" onChange={onChange} />);
-  expect(screen.getByLabelText(/รายได้ประจำที่ยืนยัน/)).toHaveValue(null);
+  expect(screen.getByLabelText(/รายได้ประจำที่ยืนยัน/)).toHaveValue('');
   expect(screen.getByRole('button', { name: 'คำนวณเพดาน' })).toBeDisabled();
 });
 

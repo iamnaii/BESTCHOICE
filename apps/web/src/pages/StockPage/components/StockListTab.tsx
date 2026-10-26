@@ -1,3 +1,4 @@
+import { NativeSelect } from '@/components/ui/native-select';
 import { DeviceOriginFilter } from '@/components/product/DeviceOriginFilter';
 import { useId, useState, type ReactNode } from 'react';
 import DataTable, { type TableSort } from '@/components/ui/DataTable';
@@ -65,7 +66,7 @@ const VIEW_OPTIONS: Array<{ key: StockView; label: string }> = [
   { key: 'all', label: 'ทั้งหมด' },
 ];
 
-/** สวิตช์ 2 ปุ่มพร้อมตัวเลขนับ — รางสี muted ปุ่มที่เลือกเป็นสี card ตัวหนังสือ primary (แบบเดียวกับ toggle-group) */
+/** Keep the rail's border inset so 44px buttons align with adjacent 44px fields. */
 function StockViewSwitch({
   view,
   setView,
@@ -81,21 +82,21 @@ function StockViewSwitch({
     <div
       role="group"
       aria-label="แสดงสินค้า"
-      className={cn('flex h-11 gap-1 rounded-lg border border-border/80 bg-muted/50 p-1', className)}
+      className={cn('flex min-h-11 gap-1 rounded-lg bg-muted/50 ring-1 ring-inset ring-border/80', className)}
     >
       {VIEW_OPTIONS.map((option) => {
         const on = view === option.key;
         const count = counts ? (option.key === 'ready' ? counts.ready : counts.all) : null;
         return (
-          <button
+          <button data-ui-control="button"
             key={option.key}
             type="button"
             aria-pressed={on}
             onClick={() => setView(option.key)}
             className={cn(
-              'flex min-w-0 flex-1 cursor-pointer items-center justify-center gap-2 whitespace-nowrap rounded-md px-3.5 text-sm leading-snug transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+              'flex min-h-11 min-w-0 flex-1 cursor-pointer items-center justify-center gap-2 whitespace-nowrap rounded-lg px-3.5 text-sm leading-snug transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
               on
-                ? 'bg-card font-semibold text-primary shadow-xs ring-1 ring-primary/35'
+                ? 'bg-card font-semibold text-primary shadow-xs ring-1 ring-inset ring-primary/35'
                 : 'font-medium text-muted-foreground hover:text-foreground',
             )}
           >
@@ -261,7 +262,8 @@ export function StockListTab({
               id={`${id}-device-origin`}
               value={filterDeviceOrigin}
               onChange={setFilterDeviceOrigin}
-              className={cn(selectClass, 'mb-0')}
+              wrapperClassName="mb-0 w-full"
+              className={selectClass}
             />
           </div>
           <div className="min-w-0 flex-[1_1_240px]">
@@ -328,7 +330,7 @@ export function StockListTab({
               >
                 สถานะ
               </label>
-              <select
+              <NativeSelect wrapperClassName="max-w-full w-full min-w-0"
                 id={`${id}-status`}
                 value={filterStatus}
                 onChange={(event) => setFilterStatus(event.target.value)}
@@ -340,7 +342,7 @@ export function StockListTab({
                     {value.label}
                   </option>
                 ))}
-              </select>
+              </NativeSelect>
             </div>
             )}
             <div className="min-w-0">
@@ -350,7 +352,7 @@ export function StockListTab({
               >
                 สาขา
               </label>
-              <select
+              <NativeSelect wrapperClassName="max-w-full w-full min-w-0"
                 id={`${id}-branch`}
                 value={filterBranch}
                 onChange={(event) => setFilterBranch(event.target.value)}
@@ -362,7 +364,7 @@ export function StockListTab({
                     {branch.name}
                   </option>
                 ))}
-              </select>
+              </NativeSelect>
             </div>
           </div>
           {hasAdditionalFilters && (
@@ -398,7 +400,7 @@ export function StockListTab({
                 >
                   เรียงตาม
                 </label>
-                <select
+                <NativeSelect wrapperClassName="max-w-full w-full min-w-0"
                   id={`${id}-sort`}
                   className={selectClass}
                   value={sort?.key ?? ''}
@@ -416,7 +418,7 @@ export function StockListTab({
                         {column.label}
                       </option>
                     ))}
-                </select>
+                </NativeSelect>
               </div>
               {sort && (
                 <Button

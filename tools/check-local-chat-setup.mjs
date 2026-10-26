@@ -1,3 +1,4 @@
+import { showWorkControl, toggleChatTheme } from './chat-ui.mjs';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import { expect } from '@playwright/test';
@@ -42,7 +43,7 @@ export async function checkChatSetup(browser, origin, output) {
       const page = await context.newPage();
       await page.goto(new URL('/inbox?zone=shop', origin).href);
       await expect(page.getByRole('button', { name: 'คิวงาน', exact: true })).toBeDisabled();
-      await page.getByRole('button', { name: 'ตั้งค่างานแชท', exact: true }).click();
+      await (await showWorkControl(page, 'ตั้งค่างานแชท')).click();
       const dialog = page.getByRole('dialog', { name: 'ตั้งค่างานแชท', exact: true });
       await expect(dialog).toBeVisible();
       await dialog.getByText('ตั้งค่า Page และสาขา', { exact: true }).click();
@@ -62,8 +63,8 @@ export async function checkChatSetup(browser, origin, output) {
       await expect(dialog).toBeHidden();
       assert.equal(saves, 1);
       await expect(page.getByRole('button', { name: 'คิวงาน', exact: true })).toBeEnabled();
-      await expect(page.getByRole('button', { name: 'คอมเมนต์', exact: true })).toBeEnabled();
-      await page.getByRole('button', { name: 'คิวงาน', exact: true }).click();
+      await expect(await showWorkControl(page, 'คอมเมนต์')).toBeEnabled();
+      await (await showWorkControl(page, 'คิวงาน')).click();
       await expect(page.getByRole('heading', { name: 'คิวงานแชท', exact: true })).toBeVisible();
     } finally { await context.unrouteAll({ behavior: 'wait' }); await context.close(); }
   }

@@ -38,6 +38,7 @@ function buildCaseA(overrides: Record<string, unknown> = {}) {
     deviceImei: '111111111111111',
     branchId: BRANCH_A,
     replacementContractId: null,
+    replacementSaleId: null,
     productId: 'prod-a-old',
     replacementProductId: null,
     approvedAt: null,
@@ -88,6 +89,10 @@ describe('AfterSalesQueryService — branch scoping + summary money gate', () =>
         findMany: jest.fn().mockResolvedValue([]),
       },
       contract: {
+        findMany: jest.fn().mockResolvedValue([]),
+      },
+      // PR 5 — attachExchange() หาเลขใบขายของเคสขายสด
+      sale: {
         findMany: jest.fn().mockResolvedValue([]),
       },
     };
@@ -476,8 +481,11 @@ describe('AfterSalesQueryService — branch scoping + summary money gate', () =>
           imeiSerial: '222',
         },
         replacementContract: null,
+        sale: null, // PR 5 — เคสผ่อน (ไม่มี saleId) ไม่มีใบขาย
         requestedBy: { id: 'u-a', name: 'พนักงาน A' },
       });
+      // PR 5 — ไม่มีแถวไหนเป็นเคสขายสด ⇒ ห้ามยิง sale.findMany
+      expect(prisma.sale.findMany).not.toHaveBeenCalled();
       expect(prisma.product.findMany).toHaveBeenCalledTimes(1);
       expect(prisma.product.findMany).toHaveBeenCalledWith({
         where: { id: { in: expect.arrayContaining(['prod-old', 'prod-new']) }, deletedAt: null },
@@ -661,10 +669,33 @@ describe('AfterSalesQueryService — branch scoping + summary money gate', () =>
       expect(result.openExchange).toBe(2);
       expect(result.exchanges).toBe(4);
       const countArgs = prisma.afterSalesCase.count.mock.calls[0][0];
-      expect(countArgs.where.outcome).toEqual({ in: ['SAME_MODEL_EXCHANGE', 'PRICED_EXCHANGE'] });
+      expect(countArgs.where.outcome).toEqual({
+        in: ['SAME_MODEL_EXCHANGE', 'PRICED_EXCHANGE', 'CASH_SAME_MODEL_EXCHANGE'],
+      });
       expect(countArgs.where.closedAt.gte).toBeInstanceOf(Date);
       // residual sweep — swap ที่ถูกยกเลิกหลังปิด (closedAt ยังอยู่ แต่ cancelledAt ตั้งแล้ว) ไม่นับ
       expect(countArgs.where.cancelledAt).toBeNull();
+    });
+
+    it('PR 5 — openExchange นับ CASH_SAME_MODEL_EXCHANGE ด้วย และ count() ของ exchanges รวม outcome นี้', async () => {
+      const openCash = buildCaseA({
+        id: 'as-9',
+        outcome: 'CASH_SAME_MODEL_EXCHANGE',
+        stage: 'AWAITING_APPROVAL',
+        replacementContractId: null,
+        replacementSaleId: null,
+      });
+      prisma.afterSalesCase.findMany.mockResolvedValue([openCash]);
+      prisma.repairTicket.findMany.mockResolvedValue([]);
+      prisma.afterSalesCase.count.mockResolvedValue(0);
+
+      const result = await svc.summary(owner);
+
+      expect(result.openExchange).toBe(1);
+      const countArgs = prisma.afterSalesCase.count.mock.calls[0][0];
+      expect(countArgs.where.outcome).toEqual({
+        in: ['SAME_MODEL_EXCHANGE', 'PRICED_EXCHANGE', 'CASH_SAME_MODEL_EXCHANGE'],
+      });
     });
   });
 

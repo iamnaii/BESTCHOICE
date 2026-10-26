@@ -30,6 +30,11 @@ export function projectSaleForActor<T extends {
   const customer = actor.role === 'SALES' && sale.customer.nationalId
     ? { ...sale.customer, nationalId: maskNationalId(sale.customer.nationalId) }
     : sale.customer;
-  const { costSnapshot, ...safeSale } = sale;
+  // ใบเสร็จขายสด (ก้อน 4): token ลิงก์สาธารณะเป็น bearer credential ของเอกสารลูกค้า — ออกให้ผ่าน
+  // POST /sales/:id/receipt/share เท่านั้น ห้ามรั่วไปกับ payload รายการ/รายละเอียด
+  const { costSnapshot, receiptToken: _token, receiptTokenExpiresAt: _tokenExpiry, ...safeSale } = sale as T & {
+    receiptToken?: unknown;
+    receiptTokenExpiresAt?: unknown;
+  };
   return { ...safeSale, ...(actor.role === 'OWNER' ? { costPriceSnapshot: costSnapshot?.mainProductCost ?? null } : {}), customer, product: actor.role === 'OWNER' ? sale.product : productWithoutCost };
 }

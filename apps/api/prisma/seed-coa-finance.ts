@@ -20,6 +20,19 @@ export async function seedFinanceCoa(
     // P3-SP3: empty string in CSV → null in DB so the partial index stays sparse
     // and the editable UI shows the cell as "unmapped" instead of "".
     const peakCode = r.peakCode && r.peakCode.length > 0 ? r.peakCode : null;
+    // FINANCE mapping v5 (19/10/2569): sub-code columns follow the same rule —
+    // empty CSV cell = leave whatever the owner set in the DB.
+    const peakSubCodeSource =
+      r.peakSubCodeSource && r.peakSubCodeSource.length > 0 ? r.peakSubCodeSource : null;
+    // A sub-code only makes sense for a fixed source: when the CSV names a non-fixed
+    // source we also clear the sub-code so a row never ends up "contact + ADV001".
+    // `undefined` = leave the stored value alone (CSV cell empty, source unknown).
+    const peakSubCode: string | null | undefined =
+      r.peakSubCode && r.peakSubCode.length > 0
+        ? r.peakSubCode
+        : peakSubCodeSource !== null && peakSubCodeSource !== 'fixed'
+          ? null
+          : undefined;
 
     const existing = await prisma.chartOfAccount.findUnique({ where: { code: r.code } });
     if (existing) {
@@ -33,7 +46,9 @@ export async function seedFinanceCoa(
         // Only flag peakCode as changed when CSV provides a non-empty value —
         // owners fill PEAK codes via the UI, so we must never overwrite existing
         // owner-set values with the empty CSV cells.
-        (peakCode !== null && existing.peakCode !== peakCode);
+        (peakCode !== null && existing.peakCode !== peakCode) ||
+        (peakSubCode !== undefined && existing.peakSubCode !== peakSubCode) ||
+        (peakSubCodeSource !== null && existing.peakSubCodeSource !== peakSubCodeSource);
       if (changed) {
         await prisma.chartOfAccount.update({
           where: { code: r.code },
@@ -46,6 +61,8 @@ export async function seedFinanceCoa(
             notes,
             // Same rule on update path — only write when CSV has a value.
             ...(peakCode !== null ? { peakCode } : {}),
+            ...(peakSubCode !== undefined ? { peakSubCode } : {}),
+            ...(peakSubCodeSource !== null ? { peakSubCodeSource } : {}),
           },
         });
         updated++;
@@ -62,6 +79,8 @@ export async function seedFinanceCoa(
           notes,
           status: r.status || 'ใช้งาน',
           peakCode,
+          peakSubCode: peakSubCode ?? null,
+          peakSubCodeSource: peakSubCodeSource ?? 'none',
         },
       });
       created++;

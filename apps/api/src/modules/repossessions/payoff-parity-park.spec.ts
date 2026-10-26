@@ -86,6 +86,8 @@ describe('Payoff parity (ถังพักงวดสุดท้าย): JP4 
       },
       chartOfAccount: { findMany: jest.fn().mockResolvedValue([]) },
       // PR5: preview ของ JP4 อ่านยอดในบัญชี — ถังพักมี 21-1103 หนุนเท่าคอลัมน์ (ขา Dr 21-1103 = ยอดที่ยอดปิดหักให้)
+      // PR4: advanceVatOutstanding อ่าน stamp จาก journalEntry — ไม่มีรายการที่ประทับในฟิกซ์เจอร์นี้
+      journalEntry: { findMany: jest.fn().mockResolvedValue([]) },
       journalLine: {
         findMany: jest.fn(ledgerLines({ '21-1103': contract.rescheduleAdvanceBalance.toString() })),
       },

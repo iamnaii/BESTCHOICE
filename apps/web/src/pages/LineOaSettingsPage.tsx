@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useId as useUiFieldId, useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import api, { getErrorMessage } from '@/lib/api';
@@ -50,6 +50,7 @@ const TEST_MESSAGE_TYPES = [
 ];
 
 export default function LineOaSettingsPage() {
+  const uiFieldId = useUiFieldId();
   const queryClient = useQueryClient();
   const { copy } = useCopyToClipboard();
   const [form, setForm] = useState<Record<string, string>>({});
@@ -188,7 +189,7 @@ export default function LineOaSettingsPage() {
   const hasLiff = !!(form.liff_id);
 
   return (
-    <div className="p-6 max-w-4xl mx-auto">
+    <div className="min-w-0 p-0 sm:p-6 max-w-4xl mx-auto">
       <PageHeader
         title="เชื่อมต่อ LINE OA"
         subtitle="ตั้งค่าเชื่อมต่อ LINE Official Account เพื่อส่งแจ้งเตือนและรับชำระเงินผ่านไลน์"
@@ -209,7 +210,7 @@ export default function LineOaSettingsPage() {
             ? 'bg-info/10 border-info/30'
             : 'bg-warning/5 dark:bg-warning/10 border-warning/30'
       }`}>
-        <div className="flex items-start gap-4">
+        <div className="flex flex-wrap items-start gap-4">
           <div className={`w-12 h-12 rounded-xl flex items-center justify-center text-2xl shrink-0 ${
             data?.isConfigured && testResult?.success
               ? 'bg-success/20'
@@ -233,11 +234,11 @@ export default function LineOaSettingsPage() {
                 : 'ทำตาม 3 ขั้นตอนด้านล่างเพื่อเชื่อมต่อ LINE OA กับระบบ'}
             </p>
             {testResult?.success && testResult.botInfo?.pictureUrl && (
-              <img src={testResult.botInfo.pictureUrl} alt="Bot" className="w-10 h-10 rounded-full mt-2" />
+              <img src={testResult.botInfo.pictureUrl} alt="บอต" className="w-10 h-10 rounded-full mt-2" />
             )}
           </div>
           {data?.isConfigured && (
-            <button
+            <button data-ui-control="button"
               onClick={() => testMutation.mutate()}
               disabled={testMutation.isPending}
               className="px-5 py-2.5 bg-primary text-primary-foreground rounded-xl font-medium hover:bg-primary/90 disabled:bg-muted shrink-0"
@@ -288,11 +289,11 @@ export default function LineOaSettingsPage() {
 
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-foreground mb-1">
+                <label htmlFor={`${uiFieldId}-1`} className="block text-sm font-medium text-foreground mb-1">
                   Channel Access Token <span className="text-destructive">*</span>
                 </label>
                 <div className="relative">
-                  <input
+                  <input id={`${uiFieldId}-1`}
                     type={showSecrets['token'] ? 'text' : 'password'}
                     value={form.line_channel_access_token || ''}
                     onChange={(e) => handleChange('line_channel_access_token', e.target.value)}
@@ -310,11 +311,11 @@ export default function LineOaSettingsPage() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-foreground mb-1">
+                <label htmlFor={`${uiFieldId}-2`} className="block text-sm font-medium text-foreground mb-1">
                   Channel Secret <span className="text-destructive">*</span>
                 </label>
                 <div className="relative">
-                  <input
+                  <input id={`${uiFieldId}-2`}
                     type={showSecrets['secret'] ? 'text' : 'password'}
                     value={form.line_channel_secret || ''}
                     onChange={(e) => handleChange('line_channel_secret', e.target.value)}
@@ -365,7 +366,7 @@ export default function LineOaSettingsPage() {
                 <code className="flex-1 text-sm bg-muted px-4 py-3 rounded-lg border text-foreground font-mono break-all">
                   {webhookData.webhookUrl}
                 </code>
-                <button
+                <button data-ui-control="button"
                   type="button"
                   onClick={() => copyToClipboard(webhookData.webhookUrl)}
                   className="px-4 py-3 bg-primary text-primary-foreground text-sm rounded-lg hover:bg-primary/90 shrink-0 font-medium"
@@ -400,7 +401,7 @@ export default function LineOaSettingsPage() {
                 <li>ตั้งค่า:
                   <ul className="ml-5 mt-1 space-y-0.5 list-disc">
                     <li><strong>Size</strong>: Full</li>
-                    <li><strong>Endpoint URL</strong>: <code className="bg-warning/20 px-1 rounded">{`${window.location.origin}/liff/register`}</code></li>
+                    <li><strong>Endpoint URL</strong>: <code className="break-all bg-warning/20 px-1 rounded">{`${window.location.origin}/liff/register`}</code></li>
                     <li><strong>Scope</strong>: เลือก <strong>profile</strong> และ <strong>openid</strong></li>
                     <li><strong>Bot link feature</strong>: Aggressive</li>
                   </ul>
@@ -414,10 +415,10 @@ export default function LineOaSettingsPage() {
 
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-foreground mb-1">
+                <label htmlFor={`${uiFieldId}-3`} className="block text-sm font-medium text-foreground mb-1">
                   LIFF ID
                 </label>
-                <input
+                <input id={`${uiFieldId}-3`}
                   type="text"
                   value={form.liff_id || ''}
                   onChange={(e) => handleChange('liff_id', e.target.value)}
@@ -427,10 +428,10 @@ export default function LineOaSettingsPage() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-foreground mb-1">
+                <label htmlFor={`${uiFieldId}-4`} className="block text-sm font-medium text-foreground mb-1">
                   Payment Link URL
                 </label>
-                <input
+                <input id={`${uiFieldId}-4`}
                   type="text"
                   value={form.payment_link_base_url || ''}
                   onChange={(e) => handleChange('payment_link_base_url', e.target.value)}
@@ -452,8 +453,8 @@ export default function LineOaSettingsPage() {
         </div>
 
         {/* Save Button */}
-        <div className="ml-4 flex gap-3 pt-2">
-          <button
+        <div className="sm:ml-4 flex flex-col sm:flex-row sm:flex-wrap gap-3 pt-2">
+          <button data-ui-control="button"
             type="submit"
             disabled={saveMutation.isPending || (!hasToken && !hasSecret)}
             className="px-8 py-3 bg-primary text-primary-foreground rounded-xl font-semibold hover:bg-primary/90 disabled:bg-muted disabled:cursor-not-allowed text-base shadow-card"
@@ -461,7 +462,7 @@ export default function LineOaSettingsPage() {
             {saveMutation.isPending ? 'กำลังบันทึก...' : 'บันทึกการตั้งค่า'}
           </button>
           {data?.isConfigured && (
-            <button
+            <button data-ui-control="button"
               type="button"
               onClick={() => testMutation.mutate()}
               disabled={testMutation.isPending}
@@ -499,26 +500,26 @@ export default function LineOaSettingsPage() {
       {/* Test Send Messages */}
       {data?.isConfigured && (
         <div className="mt-10 mb-6">
-          <h3 className="font-semibold text-foreground mb-4 ml-4">ทดสอบส่งข้อความ</h3>
-          <div className="rounded-xl border border-border/50 bg-card shadow-sm p-5 ml-4 border-l-4 border-l-warning">
+          <h3 className="font-semibold text-foreground mb-4 sm:ml-4">ทดสอบส่งข้อความ</h3>
+          <div className="rounded-xl border border-border/50 bg-card shadow-sm p-5 sm:ml-4 border-l-4 border-l-warning">
             <p className="text-sm text-muted-foreground mb-4">
               ส่งตัวอย่าง Flex Message ให้ตัวเองดูก่อน เพื่อตรวจสอบว่าข้อความแสดงผลถูกต้อง
             </p>
 
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-foreground mb-1">
+                <label htmlFor={`${uiFieldId}-5`} className="block text-sm font-medium text-foreground mb-1">
                   LINE User ID ของเจ้าของ
                 </label>
                 <div className="flex gap-2">
-                  <input
+                  <input id={`${uiFieldId}-5`}
                     type="text"
                     value={form.owner_line_id || ''}
                     onChange={(e) => handleChange('owner_line_id', e.target.value)}
-                    placeholder="พิมพ์ #owner ในแชท Bot หรือวาง User ID ที่นี่"
+                    placeholder="พิมพ์ #owner ในแชท บอต หรือวาง User ID ที่นี่"
                     className="flex-1 border rounded-lg px-3 py-2.5 text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background font-mono"
                   />
-                  <button
+                  <button data-ui-control="button"
                     type="button"
                     onClick={() => {
                       queryClient.invalidateQueries({ queryKey: ['line-oa-settings'] });
@@ -532,8 +533,8 @@ export default function LineOaSettingsPage() {
                 <div className="mt-2 p-3 bg-warning/5 dark:bg-warning/10 border border-warning/20 rounded-lg">
                   <p className="text-sm text-warning-strong font-medium mb-1">วิธีง่ายที่สุด:</p>
                   <ol className="text-xs text-warning-strong space-y-1 list-decimal list-inside">
-                    <li>เพิ่ม Bot เป็นเพื่อนในไลน์</li>
-                    <li>พิมพ์ <strong>#owner</strong> ส่งไปในแชท Bot</li>
+                    <li>เพิ่มบอตเป็นเพื่อนในไลน์</li>
+                    <li>พิมพ์ <strong>#owner</strong> ส่งไปในแชท บอต</li>
                     <li>กลับมากดปุ่ม <strong>"ดึง User ID"</strong> ด้านบน</li>
                   </ol>
                 </div>
@@ -543,13 +544,14 @@ export default function LineOaSettingsPage() {
                 <label className="block text-sm font-medium text-foreground mb-1">
                   ประเภทข้อความ
                 </label>
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   {TEST_MESSAGE_TYPES.map((t) => (
                     <button
+                      data-ui-control="button"
                       key={t.value}
                       type="button"
                       onClick={() => setTestMsgType(t.value)}
-                      className={`px-3 py-2 text-sm rounded-lg border text-left transition-colors ${
+                      className={`justify-start px-3 py-2 text-sm rounded-lg border text-left transition-colors ${
                         testMsgType === t.value
                           ? 'border-primary bg-primary/10 text-primary font-medium'
                           : 'border-border hover:border-primary/50 text-foreground'
@@ -562,7 +564,7 @@ export default function LineOaSettingsPage() {
               </div>
 
               <div className="flex items-center gap-3 flex-wrap">
-                <button
+                <button data-ui-control="button"
                   type="button"
                   onClick={() => testSendMutation.mutate()}
                   disabled={testSendMutation.isPending || testSendAllMutation.isPending || !form.owner_line_id}
@@ -570,7 +572,7 @@ export default function LineOaSettingsPage() {
                 >
                   {testSendMutation.isPending ? 'กำลังส่ง...' : 'ส่งทดสอบ'}
                 </button>
-                <button
+                <button data-ui-control="button"
                   type="button"
                   onClick={() => testSendAllMutation.mutate()}
                   disabled={testSendMutation.isPending || testSendAllMutation.isPending || !form.owner_line_id}

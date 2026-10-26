@@ -2,14 +2,14 @@ import { test, expect } from '@playwright/test';
 import { loginViaAPI, getAuthHeaders } from './helpers/auth';
 import { unwrapResponse } from './helpers/api-utils';
 
+import { backlogFixtures } from './helpers/backlog-fixtures';
+
 const API_URL = process.env.API_DIRECT_URL || 'http://localhost:3000';
 
 test.describe('Invite Resend Feature', () => {
-  test.beforeEach(async ({ page }) => {
-    await loginViaAPI(page);
-  });
 
   test('should display invites tab on /users page', async ({ page }) => {
+    await loginViaAPI(page);
     await page.goto('/users', { waitUntil: 'domcontentloaded' });
 
     // Tab "คำเชิญ" should be visible
@@ -21,9 +21,10 @@ test.describe('Invite Resend Feature', () => {
   });
 
   test('should create invite and show it in invites tab', async ({ page }) => {
+    await loginViaAPI(page);
     // POST /api/invite triggers email sending — hangs without SMTP config.
     // Use a short timeout to detect if the email service is available.
-    const uniqueEmail = `test-invite-${Date.now()}@example.com`;
+    const uniqueEmail = `test-invite-${Date.now()}@example.invalid`;
     let createRes;
     try {
       createRes = await page.request.post(`${API_URL}/api/invite`, {
@@ -52,8 +53,9 @@ test.describe('Invite Resend Feature', () => {
   });
 
   test('should resend invite via API and verify new invite created', async ({ page }) => {
+    await loginViaAPI(page);
     // Step 1: Create an invite via API (may hang if email service unavailable)
-    const uniqueEmail = `resend-test-${Date.now()}@example.com`;
+    const uniqueEmail = `resend-test-${Date.now()}@example.invalid`;
 
     let createRes;
     try {
@@ -133,65 +135,27 @@ test.describe('Invite Resend Feature', () => {
   });
 
   test('should not show resend button for used invites', async ({ page }) => {
-    // Verify UI logic: getInviteStatus returns 'ใช้แล้ว' when usedAt is set,
-    // and render() returns null (no buttons) for used invites.
-    // We test this by checking the API returns usedAt field, and verifying
-    // the UI doesn't show action buttons for used invites.
-    await page.goto('/users', { waitUntil: 'domcontentloaded' });
-    const inviteTab = page.getByText('คำเชิญ').first();
-    await expect(inviteTab).toBeVisible({ timeout: 15000 });
-    await inviteTab.click();
-
-    // Wait for the invites table to load
-    await page.waitForTimeout(1000);
-
-    // Find any row with status "ใช้แล้ว"
-    const usedRows = page.getByText('ใช้แล้ว');
-    const count = await usedRows.count();
-
-    if (count > 0) {
-      // Each "ใช้แล้ว" row should NOT have a "ส่งซ้ำ" button
-      // The render() function returns null for used invites
-      for (let i = 0; i < count; i++) {
-        const row = usedRows.nth(i).locator('../..').first();
-        await expect(row.getByText('ส่งซ้ำ')).not.toBeVisible();
-      }
-    } else {
-      // No used invites exist — skip this assertion
-      test.skip();
-    }
+    const used = backlogFixtures().usedInvite;
+    await loginViaAPI(page);
+    await page.goto('/users'); await page.getByRole('button', { name: /^คำเชิญ/ }).click();
+    await page.getByRole('button', { name: /^ใช้แล้ว/ }).click();
+    const row = page.getByRole('row').filter({ hasText: used.email });
+    await expect(row).toHaveCount(1); await expect(row).toContainText('ใช้แล้ว');
+    await expect(row.getByRole('button', { name: 'ส่งซ้ำ' })).toHaveCount(0);
   });
 
   test('should resend API endpoint reject used invites', async ({ page }) => {
-    // Verify backend: resend endpoint returns 400 for used invites
-    // This tests the service-level guard: if (invite.usedAt) throw BadRequestException
-
-    // First find a used invite via API
-    const listRes = await page.request.get(`${API_URL}/api/invite?limit=50`, {
-      headers: getAuthHeaders(),
-    });
-    if (!listRes.ok()) {
-      // API may return 429 (rate limited) or 401 — skip gracefully
-      test.skip();
-      return;
-    }
-    const listData = unwrapResponse(await listRes.json());
-    const invites = Array.isArray(listData) ? listData : (listData.data ?? []);
-    const usedInvite = invites.find((i: { usedAt: string | null }) => i.usedAt !== null);
-
-    if (!usedInvite) {
-      // No used invites in DB — skip test
-      test.skip();
-      return;
-    }
-
-    // Try to resend a used invite — should fail with 400
-    const resendRes = await page.request.post(`${API_URL}/api/invite/${usedInvite.id}/resend`, {
-      headers: getAuthHeaders(),
-    });
-    expect(resendRes.status()).toBe(400);
-
-    const body = unwrapResponse(await resendRes.json());
-    expect(body.message).toContain('ถูกใช้แล้ว');
+    const used = backlogFixtures().usedInvite;
+    await loginViaAPI(page);
+    const list = async () => {
+      const response = await page.request.get(`${API_URL}/api/invite?limit=100`, { headers: getAuthHeaders() });
+      expect(response.status()).toBe(200);
+      const body = unwrapResponse(await response.json());
+      return (Array.isArray(body) ? body : body.data).filter((row: { email: string }) => row.email === used.email);
+    };
+    const before = await list(); expect(before).toHaveLength(1); expect(before[0].usedAt).toBeTruthy();
+    const response = await page.request.post(`${API_URL}/api/invite/${used.id}/resend`, { headers: getAuthHeaders() });
+    expect(response.status()).toBe(400); expect(unwrapResponse(await response.json()).message).toContain('ถูกใช้แล้ว');
+    expect(await list()).toEqual(before);
   });
 });

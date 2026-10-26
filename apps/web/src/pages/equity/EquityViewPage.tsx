@@ -1,3 +1,4 @@
+import ScreenTable from '@/components/ui/ScreenTable';
 import { useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -83,7 +84,7 @@ export default function EquityViewPage() {
                     {/* Maker-Checker query gates ส่งอนุมัติ/ลงบัญชี — ห้ามถือว่า loading/error = OFF (fail-closed) */}
                     {mc.isLoading ? null : mc.isError ? (
                       <span className="inline-flex items-center px-2 text-xs text-destructive leading-snug">
-                        โหลดสถานะ Maker-Checker ไม่สำเร็จ — รีเฟรชหน้า
+                        โหลดสถานะ การแยกผู้บันทึกและผู้อนุมัติ ไม่สำเร็จ — รีเฟรชหน้า
                       </span>
                     ) : mc.data?.enabled ? (
                       <Button onClick={() => mut(() => equityApi.submit(doc.id), 'ส่งอนุมัติแล้ว')}>
@@ -179,7 +180,7 @@ export default function EquityViewPage() {
             <Card>
               <CardHeader className="font-semibold">ผู้ถือหุ้น</CardHeader>
               <CardContent>
-                <table className="w-full text-sm">
+                <ScreenTable className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-border text-left text-xs text-muted-foreground uppercase">
                       <th className="py-2">ชื่อ</th>
@@ -208,7 +209,7 @@ export default function EquityViewPage() {
                       </tr>
                     ))}
                   </tbody>
-                </table>
+                </ScreenTable>
               </CardContent>
             </Card>
           )}

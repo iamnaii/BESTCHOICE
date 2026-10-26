@@ -227,6 +227,45 @@ export class ContactsService {
     return result;
   }
 
+  /**
+   * mapping v5 (ฝ่ายบัญชี 19/10/2569 · เจ้าของ 20/10): set the PEAK contact code
+   * ("รหัสผู้ติดต่อ" C00xxx) that the PEAK journal export emits as the sub-code of
+   * this contact's receivable / payable lines. Empty = clear. Unchanged = no-op
+   * (no write, no audit). Audit is written AFTER the update (AuditService.log
+   * opens its own root transaction — .claude/rules/database.md).
+   */
+  async setPeakContactCode(
+    id: string,
+    raw: string | null | undefined,
+    actor?: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
+    const trimmed = (raw ?? '').trim();
+    const next = trimmed.length > 0 ? trimmed : null;
+    if (next && !/^[A-Za-z0-9\-_.]{1,20}$/.test(next)) {
+      throw new BadRequestException('รหัสผู้ติดต่อ PEAK ต้องเป็น A-Z 0-9 - _ . และยาวไม่เกิน 20 ตัวอักษร');
+    }
+    const select = { id: true, contactCode: true, peakContactCode: true } as const;
+    const existing = await this.prisma.contact.findFirst({ where: { id, deletedAt: null }, select });
+    if (!existing) throw new NotFoundException('ไม่พบผู้ติดต่อ');
+    if ((existing.peakContactCode ?? null) === next) return existing;
+    const updated = await this.prisma.contact.update({
+      where: { id },
+      data: { peakContactCode: next },
+      select,
+    });
+    await this.audit.log({
+      userId: actor?.userId,
+      action: 'CONTACT_PEAK_CODE_SET',
+      entity: 'contact',
+      entityId: id,
+      oldValue: { peakContactCode: existing.peakContactCode ?? null },
+      newValue: { peakContactCode: next, contactCode: existing.contactCode },
+      ipAddress: actor?.ipAddress,
+      userAgent: actor?.userAgent,
+    });
+    return updated;
+  }
+
   async ensureRole(
     id: string,
     role: 'SUPPLIER' | 'CUSTOMER' | 'TRADE_IN_SELLER',

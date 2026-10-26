@@ -35,6 +35,7 @@ import { ShopDownPaymentReversalTemplate } from '../journal/cpa-templates/shop-d
 import { CreditCheckOverrideService } from '../credit-check/services/credit-check-override.service';
 import { seedShopCoa } from '../../../prisma/seed-coa-shop';
 import { TradeInCreditService } from '../trade-in/services/trade-in-credit.service';
+import type { CustomerBlacklistService } from '../customers/customer-blacklist.service';
 
 const url = process.env.EMPLOYEE_ACCESS_TEST_DATABASE_URL;
 if (
@@ -50,12 +51,19 @@ const resources = new AccessResourceService(prisma, new AccessSnapshotService(pr
 const journal = new JournalAutoService(prisma);
 const company = new CompanyResolverService(prisma);
 const accounts = new ShopAccountResolver(prisma);
+// ก้อน 5 C3 — the blacklist gate (outside the tx) has its own specs; these R91 cases pin the canonical
+// in-transaction one-live-contract net and its managed redaction, so the gate evaluates NONE here.
+// Open design doubt (orchestrator): the real gate's HARD/SOFT reasons carry contract numbers/names.
+const blacklist = {
+  evaluate: jest.fn(async () => ({ level: 'NONE', reasons: [], checkedAt: new Date().toISOString() })),
+} as unknown as CustomerBlacklistService;
 const lifecycle = new ContractLifecycleService(
   prisma,
   new ContractQueryService(prisma),
   new ShopDownPaymentTemplate(journal, prisma, company),
   new ShopDownPaymentReversalTemplate(journal, prisma, company),
   accounts,
+  blacklist,
 );
 const provider = jest.fn(async () => {
   expect(currentDomainAccess()).toBeUndefined();
@@ -86,6 +94,7 @@ const workflow = new ContractWorkflowService(
   new ShopDownPaymentTemplate(journal, prisma, company),
   accounts,
   new InstallmentInputVatTemplate(journal, prisma, company),
+  blacklist,
   undefined,
   undefined,
   new AccessContractPreparationActions(
@@ -1210,23 +1219,20 @@ it('rejects fractional baseline mismatch before canonical create rounds caller m
 });
 
 it.each(['SALES', 'BRANCH_MANAGER', 'FINANCE_MANAGER'] as const)(
-  'R91 hides active FINANCE details and refuses forged OWNER override for current %s',
+  'R91 hides active FINANCE details and a forged OWNER role unlocks nothing for current %s',
   async (role) => {
     const f = await fixture(true);
     await db.user.update({ where: { id: seller }, data: { role } });
     try {
       const failure = await execute(seller, () =>
-        lifecycle.create(
-          { ...f.dto, overrideActiveContractCheck: true },
-          seller,
-          'OWNER',
-          branchId,
-        ),
+        lifecycle.create(f.dto, seller, 'OWNER', branchId),
       ).catch((error) => error);
+      // 2026-10-23 owner ruling: one live contract per customer, fail-closed — no override exists.
       expect(failure).toMatchObject({
         status: 409,
-        response: { code: 'CUSTOMER_HAS_ACTIVE_CONTRACT', canOverride: false },
+        response: { code: 'CUSTOMER_HAS_ACTIVE_CONTRACT' },
       });
+      expect(failure.response).not.toHaveProperty('canOverride');
       expect(failure.response).not.toHaveProperty('activeContracts');
       expect(JSON.stringify(failure.response)).not.toContain(f.hiddenContract!.id);
       expect(JSON.stringify(failure.response)).not.toContain(f.hiddenContract!.contractNumber);
@@ -1282,22 +1288,26 @@ it('R91 named trade-credit quote uses current owner authority instead of supplie
     await db.user.update({ where: { id: seller }, data: { role: 'SALES' } });
   }
 });
-it('R91 current owner still needs explicit active override and damaged acknowledgment, then creates the genuine named draft', async () => {
-  const f = await fixture(true);
+it('R91 current owner is refused fail-closed on an active contract, needs damaged acknowledgment, then creates the genuine named draft', async () => {
+  // 2026-10-23 owner ruling: the active-contract exception no longer exists — not even for the owner.
+  const active = await fixture(true);
   const failure = await execute(owner, () =>
-    lifecycle.create(f.dto, owner, 'SALES', branchId),
+    lifecycle.create(active.dto, owner, 'SALES', branchId),
   ).catch((error) => error);
-  expect(failure).toMatchObject({ status: 409, response: { canOverride: true } });
+  expect(failure).toMatchObject({ status: 409, response: { code: 'CUSTOMER_HAS_ACTIVE_CONTRACT' } });
+  expect(failure.response).not.toHaveProperty('canOverride');
   expect(failure.response).not.toHaveProperty('activeContracts');
+  expect(await db.contract.count({ where: { productId: active.product.id } })).toBe(0);
+  const f = await fixture();
   await db.product.update({ where: { id: f.product.id }, data: { wasPreviouslyDamaged: true } });
   await expect(
     execute(owner, () =>
-      lifecycle.create({ ...f.dto, overrideActiveContractCheck: true }, owner, 'SALES', branchId),
+      lifecycle.create(f.dto, owner, 'SALES', branchId),
     ),
   ).rejects.toMatchObject({ status: 400 });
   const { result } = await execute(owner, () =>
     lifecycle.create(
-      { ...f.dto, overrideActiveContractCheck: true, previouslyDamagedAcknowledged: true },
+      { ...f.dto, previouslyDamagedAcknowledged: true },
       owner,
       'SALES',
       branchId,

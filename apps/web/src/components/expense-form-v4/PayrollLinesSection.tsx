@@ -1,4 +1,7 @@
-import { useState } from 'react';
+import { NumberInput } from '@/components/ui/NumberInput';
+import ScreenTable from '@/components/ui/ScreenTable';
+import { NativeSelect } from '@/components/ui/native-select';
+import { useId as useUiFieldId, useState } from 'react';
 import { AlertTriangle, ChevronDown, ChevronRight, CopyPlus, Plus, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { suggestMonthlyWht } from '@/utils/pit-withholding';
@@ -72,6 +75,7 @@ export function PayrollLinesSection({
   onDocumentDateChange,
   branchId,
 }: Props) {
+  const uiFieldId = useUiFieldId();
   const { taxExemptWarningEnabled } = useUiFlags();
   const updateField = (patch: Partial<PayrollFormFields>) => onChange({ ...value, ...patch });
   const [copyLoading, setCopyLoading] = useState(false);
@@ -283,7 +287,7 @@ export function PayrollLinesSection({
               { key: 'FINANCE', label: 'ส่วนกลาง (FINANCE)' },
             ] as const
           ).map((opt) => (
-            <button
+            <button data-ui-control="button"
               key={opt.key}
               type="button"
               onClick={() => setScope(opt.key)}
@@ -305,7 +309,7 @@ export function PayrollLinesSection({
             : 'ลงบัญชีเป็นค่าใช้จ่ายส่วนกลาง (ผัง FINANCE: 53-1101) — จ่ายจากบัญชี FINANCE'}
         </p>
         {branchId && (
-          <button
+          <button data-ui-control="button"
             type="button"
             onClick={copyFromLatest}
             disabled={copyLoading}
@@ -317,10 +321,10 @@ export function PayrollLinesSection({
         )}
       </div>
 
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div>
-          <label className="block text-xs font-medium mb-1">ปี (พ.ศ.)</label>
-          <select
+          <label htmlFor={`${uiFieldId}-1`} className="block text-xs font-medium mb-1">ปี (พ.ศ.)</label>
+          <NativeSelect wrapperClassName="max-w-full w-full" id={`${uiFieldId}-1`}
             value={value.year}
             onChange={(e) => {
               const y = Number(e.target.value);
@@ -329,7 +333,7 @@ export function PayrollLinesSection({
                 payrollPeriod: `${y - 543}-${String(value.month).padStart(2, '0')}`,
               });
             }}
-            className="w-full px-3 py-2 border border-input rounded-lg text-sm bg-background"
+            className="px-3 py-2 border border-input rounded-lg text-sm bg-background"
           >
             {[0, 1, 2, 3, 4].map((offset) => {
               const y = currentBuddhistYear - offset;
@@ -339,11 +343,11 @@ export function PayrollLinesSection({
                 </option>
               );
             })}
-          </select>
+          </NativeSelect>
         </div>
         <div>
-          <label className="block text-xs font-medium mb-1">เดือน</label>
-          <select
+          <label htmlFor={`${uiFieldId}-2`} className="block text-xs font-medium mb-1">เดือน</label>
+          <NativeSelect wrapperClassName="max-w-full w-full" id={`${uiFieldId}-2`}
             value={value.month}
             onChange={(e) => {
               const m = Number(e.target.value);
@@ -352,20 +356,20 @@ export function PayrollLinesSection({
                 payrollPeriod: `${value.year - 543}-${String(m).padStart(2, '0')}`,
               });
             }}
-            className="w-full px-3 py-2 border border-input rounded-lg text-sm bg-background"
+            className="px-3 py-2 border border-input rounded-lg text-sm bg-background"
           >
             {THAI_MONTHS_FULL.map((label, idx) => (
               <option key={idx} value={idx + 1}>
                 {label}
               </option>
             ))}
-          </select>
+          </NativeSelect>
         </div>
         <div>
-          <label className="block text-xs font-medium mb-1">
+          <label htmlFor={`${uiFieldId}-3`} className="block text-xs font-medium mb-1">
             วันที่จ่ายเงิน <span className="text-destructive">*</span>
           </label>
-          <ThaiDateInput
+          <ThaiDateInput id={`${uiFieldId}-3`}
             value={documentDate}
             onChange={(e) => onDocumentDateChange(e.target.value)}
             required
@@ -374,8 +378,8 @@ export function PayrollLinesSection({
         </div>
       </div>
 
-      <div className="rounded-xl border border-border overflow-hidden">
-        <table className="w-full text-sm">
+      <div className="max-w-full overflow-x-auto rounded-xl border border-border" role="region" aria-label="รายการเงินเดือน" tabIndex={0}>
+        <ScreenTable className="w-full min-w-[52rem] text-sm">
           <thead className="bg-muted/50">
             <tr>
               <th className="w-8 px-2 py-2"></th>
@@ -436,10 +440,10 @@ export function PayrollLinesSection({
               </tr>
             )}
           </tfoot>
-        </table>
+        </ScreenTable>
       </div>
 
-      <button
+      <button data-ui-control="button"
         type="button"
         onClick={addLine}
         className="w-full flex items-center justify-center gap-1.5 py-2 border-2 border-dashed border-border rounded-lg text-sm text-muted-foreground hover:text-foreground hover:border-primary"
@@ -508,8 +512,7 @@ function PayrollRow({
           </span>
         </td>
         <td className="px-2 py-1">
-          <input
-            type="number"
+          <NumberInput unstyled aria-label="เงินเดือนพื้นฐาน"
             step="0.01"
             value={row.baseSalary}
             onChange={(e) => onUpdate({ baseSalary: e.target.value })}
@@ -517,8 +520,7 @@ function PayrollRow({
           />
         </td>
         <td className="px-2 py-1">
-          <input
-            type="number"
+          <NumberInput unstyled aria-label="ประกันสังคมพนักงาน"
             step="0.01"
             value={row.ssoEmployee}
             onChange={(e) => onUpdate({ ssoEmployee: e.target.value })}
@@ -526,8 +528,7 @@ function PayrollRow({
           />
         </td>
         <td className="px-2 py-1">
-          <input
-            type="number"
+          <NumberInput unstyled aria-label="ภาษีหัก ณ ที่จ่าย"
             step="0.01"
             value={row.whtAmount}
             onChange={(e) => onUpdate({ whtAmount: e.target.value })}
@@ -614,7 +615,7 @@ function CustomIncomeSubTable({
       <div className="bg-emerald-50 dark:bg-emerald-950/30 px-3 py-1.5 text-xs font-medium text-emerald-900 dark:text-emerald-100">
         + รายได้พิเศษ (โบนัส / OT / เบี้ยเลี้ยง)
       </div>
-      <table className="w-full text-xs">
+      <ScreenTable className="w-full text-xs">
         <thead className="bg-muted/30 text-muted-foreground">
           <tr>
             <th className="text-left px-2 py-1 w-40">บัญชี</th>
@@ -635,10 +636,10 @@ function CustomIncomeSubTable({
           {rows.map((r) => (
             <tr key={r.uid} className="border-t border-border">
               <td className="px-2 py-1">
-                <select
+                <NativeSelect wrapperClassName="max-w-full w-full" aria-label="บัญชี"
                   value={r.accountCode}
                   onChange={(e) => update(r.uid, { accountCode: e.target.value })}
-                  className="w-full px-1.5 py-1 border border-input rounded text-xs bg-background"
+                  className="px-1.5 py-1 border border-input rounded text-xs bg-background"
                 >
                   {r.accountCode === '' && <option value="">— เลือกบัญชี —</option>}
                   {options.map((opt) => (
@@ -646,10 +647,10 @@ function CustomIncomeSubTable({
                       {opt.label}
                     </option>
                   ))}
-                </select>
+                </NativeSelect>
               </td>
               <td className="px-2 py-1">
-                <input
+                <input aria-label="คำอธิบาย"
                   type="text"
                   value={r.name}
                   onChange={(e) => update(r.uid, { name: e.target.value })}
@@ -658,8 +659,7 @@ function CustomIncomeSubTable({
                 />
               </td>
               <td className="px-2 py-1">
-                <input
-                  type="number"
+                <NumberInput unstyled aria-label="จำนวนเงิน"
                   step="0.01"
                   value={r.amount}
                   onChange={(e) => update(r.uid, { amount: e.target.value })}
@@ -695,8 +695,8 @@ function CustomIncomeSubTable({
             </tr>
           ))}
         </tbody>
-      </table>
-      <button
+      </ScreenTable>
+      <button data-ui-control="button"
         type="button"
         onClick={add}
         className="w-full flex items-center justify-center gap-1 py-1.5 text-xs text-muted-foreground hover:text-foreground border-t border-border"
@@ -713,7 +713,7 @@ function CustomIncomeSubTable({
             <span className="font-medium">ยกเว้นภาษี ม.42</span> —{' '}
             มี {taxExemptRows.length} รายการที่ติ๊กไม่เสียภาษี
             (ป.รัษฎากร ม.42). ตรวจสอบให้แน่ใจว่าเข้าเงื่อนไข เช่น เงินชดเชย ค่าใช้จ่ายเดินทาง
-            ตามอัตรา ก่อน POST เพราะ ภ.ง.ด.1 จะไม่นับฐานนี้
+            ตามอัตรา ก่อน ลงบัญชี เพราะ ภ.ง.ด.1 จะไม่นับฐานนี้
           </div>
         </div>
       )}
@@ -738,7 +738,7 @@ function CustomDeductionSubTable({
       <div className="bg-amber-50 dark:bg-amber-950/30 px-3 py-1.5 text-xs font-medium text-amber-900 dark:text-amber-100">
         − รายการหัก (คืนเงินยืม / ทดรองจ่าย / ค่ายูนิฟอร์ม)
       </div>
-      <table className="w-full text-xs">
+      <ScreenTable className="w-full text-xs">
         <thead className="bg-muted/30 text-muted-foreground">
           <tr>
             <th className="text-left px-2 py-1 w-32">บัญชี</th>
@@ -758,7 +758,7 @@ function CustomDeductionSubTable({
           {rows.map((r) => (
             <tr key={r.uid} className="border-t border-border">
               <td className="px-2 py-1">
-                <input
+                <input aria-label="บัญชี"
                   type="text"
                   value={r.accountCode}
                   onChange={(e) => update(r.uid, { accountCode: e.target.value })}
@@ -767,7 +767,7 @@ function CustomDeductionSubTable({
                 />
               </td>
               <td className="px-2 py-1">
-                <input
+                <input aria-label="คำอธิบาย"
                   type="text"
                   value={r.name}
                   onChange={(e) => update(r.uid, { name: e.target.value })}
@@ -776,8 +776,7 @@ function CustomDeductionSubTable({
                 />
               </td>
               <td className="px-2 py-1">
-                <input
-                  type="number"
+                <NumberInput unstyled aria-label="จำนวนเงิน"
                   step="0.01"
                   value={r.amount}
                   onChange={(e) => update(r.uid, { amount: e.target.value })}
@@ -797,8 +796,8 @@ function CustomDeductionSubTable({
             </tr>
           ))}
         </tbody>
-      </table>
-      <button
+      </ScreenTable>
+      <button data-ui-control="button"
         type="button"
         onClick={add}
         className="w-full flex items-center justify-center gap-1 py-1.5 text-xs text-muted-foreground hover:text-foreground border-t border-border"

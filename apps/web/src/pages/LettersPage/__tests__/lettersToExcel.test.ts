@@ -34,7 +34,7 @@ describe('lettersToExcel', () => {
     expect(sheet.name).toBe('Letters');
     const headerRow = sheet.getRow(1).values as string[];
     expect(headerRow).toContain('เลขจดหมาย');
-    expect(headerRow).toContain('Tracking No.');
+    expect(headerRow).toContain('เลขติดตาม');
   });
 
   it('writes Thai-format dates', async () => {

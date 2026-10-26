@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { NativeSelect } from '@/components/ui/native-select';
+import { useId as useUiFieldId, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api, { getErrorMessage } from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
@@ -54,6 +55,7 @@ const requestTypeLabels: Record<string, string> = {
 };
 
 function PDPAPage() {
+  const uiFieldId = useUiFieldId();
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const [tab, setTab] = useState<'dsar' | 'consent-lookup'>('dsar');
@@ -122,7 +124,7 @@ function PDPAPage() {
       await api.post(`/pdpa/consent/${consentId}/revoke`, { reason });
     },
     onSuccess: () => {
-      toast.success('ถอน consent สำเร็จ');
+      toast.success("ถอน ความยินยอม สำเร็จ");
       refetchConsents();
       setShowRevokeModal(false);
       setPendingRevokeConsentId(null);
@@ -137,9 +139,9 @@ function PDPAPage() {
     <div className="animate-fade-in">
       <PageHeader
         title="PDPA & คุ้มครองข้อมูลส่วนบุคคล"
-        subtitle="จัดการ Consent และคำร้อง DSAR ตาม พ.ร.บ.คุ้มครองข้อมูลส่วนบุคคล พ.ศ. 2562"
+        subtitle="จัดการ ความยินยอม และคำร้อง DSAR ตาม พ.ร.บ.คุ้มครองข้อมูลส่วนบุคคล พ.ศ. 2562"
         action={
-          <button
+          <button data-ui-control="button"
             onClick={() => setShowCreateDSAR(true)}
             className="px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90"
           >
@@ -150,17 +152,17 @@ function PDPAPage() {
 
       {/* Tabs */}
       <div className="flex gap-1 mb-6 bg-muted rounded-lg p-1 w-fit">
-        <button
+        <button data-ui-control="button"
           onClick={() => setTab('dsar')}
           className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${tab === 'dsar' ? 'bg-card text-primary shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
         >
           คำร้อง DSAR
         </button>
-        <button
+        <button data-ui-control="button"
           onClick={() => setTab('consent-lookup')}
           className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${tab === 'consent-lookup' ? 'bg-card text-primary shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
         >
-          ค้นหา Consent
+          ค้นหา ความยินยอม
         </button>
       </div>
 
@@ -174,7 +176,7 @@ function PDPAPage() {
         >
         <Card>
           <CardContent className="p-0">
-          <DataTable
+          <DataTable embedded
             data={dsarRequests}
             isLoading={dsarLoading}
             columns={[
@@ -226,7 +228,7 @@ function PDPAPage() {
                 label: '',
                 render: (r: DSARRequest) => (
                   r.status === 'PENDING' && user?.role === 'OWNER' ? (
-                    <button
+                    <button data-ui-control="button"
                       onClick={() => { setSelectedDSAR(r); setProcessForm({ status: 'COMPLETED', responseNotes: '' }); setShowProcessModal(true); }}
                       className="px-3 py-1 text-xs bg-primary text-primary-foreground rounded hover:bg-primary/90"
                     >
@@ -248,14 +250,14 @@ function PDPAPage() {
       {tab === 'consent-lookup' && (
         <div className="bg-card rounded-xl border border-border/50 shadow-sm p-6">
           <div className="flex gap-3 mb-6">
-            <input
+            <input aria-label="ใส่ รหัสลูกค้า เพื่อค้นหา ความยินยอม"
               type="text"
-              placeholder="ใส่ Customer ID เพื่อค้นหา consent..."
+              placeholder="ใส่ รหัสลูกค้า เพื่อค้นหา ความยินยอม..."
               value={customerIdSearch}
               onChange={(e) => setCustomerIdSearch(e.target.value)}
               className="flex-1 px-3 py-2 border border-input rounded-lg text-sm bg-background focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
             />
-            <button
+            <button data-ui-control="button"
               onClick={() => refetchConsents()}
               className="px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors"
             >
@@ -275,20 +277,20 @@ function PDPAPage() {
                         const cfg = getStatusBadgeProps(c.isActive ? 'active' : 'inactive', activeStatusMap);
                         return (
                           <Badge variant={cfg.variant} appearance={cfg.appearance} size="sm">
-                            {c.isActive ? 'Active' : 'Revoked'}
+                            {c.isActive ? "เปิดใช้งาน" : "เพิกถอนแล้ว"}
                           </Badge>
                         );
                       })()}
-                      <span className="text-xs text-muted-foreground ml-2">Version: {c.consentVersion}</span>
+                      <span className="text-xs text-muted-foreground ml-2">เวอร์ชัน: {c.consentVersion}</span>
                     </div>
                     <div className="text-xs text-muted-foreground">
-                      ให้ consent: {formatDateTime(c.consentedAt)}
+                      ให้ ความยินยอม: {formatDateTime(c.consentedAt)}
                       {c.revokedAt && <span className="text-destructive ml-2">ถอน: {formatDateTime(c.revokedAt)}</span>}
                     </div>
                   </div>
                   {c.revokeReason && <div className="text-xs text-destructive mt-1">เหตุผล: {c.revokeReason}</div>}
                   {c.isActive && user?.role === 'OWNER' && (
-                    <button
+                    <button data-ui-control="button"
                       onClick={() => {
                         setPendingRevokeConsentId(c.id);
                         setRevokeReason('');
@@ -296,7 +298,7 @@ function PDPAPage() {
                       }}
                       className="mt-2 px-3 py-1 text-xs bg-destructive text-destructive-foreground rounded hover:bg-destructive/90"
                     >
-                      ถอน Consent
+                      ถอน ความยินยอม
                     </button>
                   )}
                 </div>
@@ -304,7 +306,7 @@ function PDPAPage() {
             </div>
           )}
           {consents && consents.length === 0 && customerIdSearch && (
-            <p className="text-sm text-muted-foreground text-center py-4">ไม่พบ consent สำหรับลูกค้านี้</p>
+            <p className="text-sm text-muted-foreground text-center py-4">ไม่พบ ความยินยอม สำหรับลูกค้านี้</p>
           )}
         </div>
       )}
@@ -319,20 +321,20 @@ function PDPAPage() {
               <div className="text-sm text-muted-foreground mt-1">{selectedDSAR.description}</div>
             </div>
             <div>
-              <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">สถานะ</label>
-              <select
+              <label htmlFor={`${uiFieldId}-1`} className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">สถานะ</label>
+              <NativeSelect wrapperClassName="max-w-full w-full" id={`${uiFieldId}-1`}
                 value={processForm.status}
                 onChange={(e) => setProcessForm({ ...processForm, status: e.target.value })}
-                className="w-full px-3 py-2 border rounded-lg text-sm"
+                className="px-3 py-2 border rounded-lg text-sm"
               >
                 <option value="COMPLETED">เสร็จสิ้น</option>
                 <option value="IN_PROGRESS">กำลังดำเนินการ</option>
                 <option value="REJECTED">ปฏิเสธ</option>
-              </select>
+              </NativeSelect>
             </div>
             <div>
-              <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">หมายเหตุ</label>
-              <textarea
+              <label htmlFor={`${uiFieldId}-2`} className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">หมายเหตุ</label>
+              <textarea id={`${uiFieldId}-2`}
                 value={processForm.responseNotes}
                 onChange={(e) => setProcessForm({ ...processForm, responseNotes: e.target.value })}
                 rows={3}
@@ -341,14 +343,14 @@ function PDPAPage() {
               />
             </div>
             <div className="flex gap-2">
-              <button
+              <button data-ui-control="button"
                 onClick={() => processMutation.mutate()}
                 disabled={!processForm.responseNotes || processMutation.isPending}
                 className="px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50"
               >
                 {processMutation.isPending ? 'กำลังบันทึก...' : 'บันทึก'}
               </button>
-              <button onClick={() => setShowProcessModal(false)} className="px-4 py-2 text-sm border rounded-lg">
+              <button data-ui-control="button" onClick={() => setShowProcessModal(false)} className="px-4 py-2 text-sm border rounded-lg">
                 ยกเลิก
               </button>
             </div>
@@ -358,11 +360,11 @@ function PDPAPage() {
 
       {/* Revoke Consent Modal */}
       {showRevokeModal && pendingRevokeConsentId && (
-        <Modal title="ถอน Consent" onClose={() => { if (!revokeMutation.isPending) { setShowRevokeModal(false); setPendingRevokeConsentId(null); } }}>
+        <Modal title="ถอน ความยินยอม" onClose={() => { if (!revokeMutation.isPending) { setShowRevokeModal(false); setPendingRevokeConsentId(null); } }}>
           <div className="flex flex-col gap-5 lg:gap-7.5">
             <div>
-              <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">เหตุผลในการถอน consent</label>
-              <textarea
+              <label htmlFor={`${uiFieldId}-3`} className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">เหตุผลในการถอน ความยินยอม</label>
+              <textarea id={`${uiFieldId}-3`}
                 value={revokeReason}
                 onChange={(e) => setRevokeReason(e.target.value)}
                 rows={3}
@@ -372,7 +374,7 @@ function PDPAPage() {
               />
             </div>
             <div className="flex gap-2">
-              <button
+              <button data-ui-control="button"
                 onClick={() => {
                   if (!revokeReason.trim()) { toast.error('กรุณาระบุเหตุผล'); return; }
                   revokeMutation.mutate({ consentId: pendingRevokeConsentId, reason: revokeReason.trim() });
@@ -382,7 +384,7 @@ function PDPAPage() {
               >
                 {revokeMutation.isPending ? 'กำลังถอน...' : 'ยืนยันถอน'}
               </button>
-              <button
+              <button data-ui-control="button"
                 onClick={() => { setShowRevokeModal(false); setPendingRevokeConsentId(null); setRevokeReason(''); }}
                 disabled={revokeMutation.isPending}
                 className="px-4 py-2 text-sm border rounded-lg"
@@ -399,30 +401,30 @@ function PDPAPage() {
         <Modal title="สร้างคำร้อง DSAR" onClose={() => setShowCreateDSAR(false)}>
           <div className="flex flex-col gap-5 lg:gap-7.5">
             <div>
-              <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">Customer ID</label>
-              <input
+              <label htmlFor={`${uiFieldId}-4`} className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">รหัสลูกค้า</label>
+              <input id={`${uiFieldId}-4`}
                 type="text"
                 value={dsarForm.customerId}
                 onChange={(e) => setDsarForm({ ...dsarForm, customerId: e.target.value })}
                 className="w-full px-3 py-2 border rounded-lg text-sm"
-                placeholder="ใส่ Customer ID..."
+                placeholder="ใส่ รหัสลูกค้า..."
               />
             </div>
             <div>
-              <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ประเภทคำร้อง</label>
-              <select
+              <label htmlFor={`${uiFieldId}-5`} className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ประเภทคำร้อง</label>
+              <NativeSelect wrapperClassName="max-w-full w-full" id={`${uiFieldId}-5`}
                 value={dsarForm.requestType}
                 onChange={(e) => setDsarForm({ ...dsarForm, requestType: e.target.value })}
-                className="w-full px-3 py-2 border rounded-lg text-sm"
+                className="px-3 py-2 border rounded-lg text-sm"
               >
                 {Object.entries(requestTypeLabels).map(([value, label]) => (
                   <option key={value} value={value}>{label}</option>
                 ))}
-              </select>
+              </NativeSelect>
             </div>
             <div>
-              <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">รายละเอียด</label>
-              <textarea
+              <label htmlFor={`${uiFieldId}-6`} className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">รายละเอียด</label>
+              <textarea id={`${uiFieldId}-6`}
                 value={dsarForm.description}
                 onChange={(e) => setDsarForm({ ...dsarForm, description: e.target.value })}
                 rows={3}
@@ -431,14 +433,14 @@ function PDPAPage() {
               />
             </div>
             <div className="flex gap-2">
-              <button
+              <button data-ui-control="button"
                 onClick={() => submitDSARMutation.mutate()}
                 disabled={!dsarForm.customerId || !dsarForm.description || submitDSARMutation.isPending}
                 className="px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50"
               >
                 {submitDSARMutation.isPending ? 'กำลังส่ง...' : 'ส่งคำร้อง'}
               </button>
-              <button onClick={() => setShowCreateDSAR(false)} className="px-4 py-2 text-sm border rounded-lg">
+              <button data-ui-control="button" onClick={() => setShowCreateDSAR(false)} className="px-4 py-2 text-sm border rounded-lg">
                 ยกเลิก
               </button>
             </div>

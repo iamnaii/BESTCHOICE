@@ -1,5 +1,7 @@
+import { FormNumberInput } from '@/components/ui/FormNumberInput';
+import { NativeSelect } from '@/components/ui/native-select';
 import { useAccountingPermissions } from '@/hooks/useAccountingPermissions';
-import { useMemo, useEffect, useRef, useState } from 'react';
+import { useId as useExtraFieldId, useMemo, useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router';
 import { useForm } from 'react-hook-form';
 import { standardSchemaResolver } from '@hookform/resolvers/standard-schema';
@@ -244,6 +246,7 @@ function SectionHeader({
 }
 
 export default function OtherIncomeEntryPage() {
+  const uiExtraFieldId = useExtraFieldId();
   const permissions = useAccountingPermissions();
   const navigate = useNavigate();
   const { id } = useParams<{ id?: string }>();
@@ -382,7 +385,7 @@ export default function OtherIncomeEntryPage() {
       );
     },
     onSuccess: (doc) => {
-      toast.success('บันทึกและ POST เอกสารแล้ว');
+      toast.success('บันทึกและลงบัญชีเอกสารแล้ว');
       queryClient.invalidateQueries({ queryKey: ['other-income'] });
       navigate(`/other-income/${doc.id}`);
     },
@@ -391,7 +394,7 @@ export default function OtherIncomeEntryPage() {
       if (Array.isArray(apiErrors)) {
         apiErrors.forEach((e: any) => toast.error(`${e.rule}: ${e.msg}`));
       } else {
-        toast.error(err?.response?.data?.message ?? 'ไม่สามารถ POST เอกสารได้');
+        toast.error(err?.response?.data?.message ?? 'ไม่สามารถลงบัญชีเอกสารได้');
       }
     },
   });
@@ -660,10 +663,10 @@ export default function OtherIncomeEntryPage() {
   const userDisplayName = user?.name || user?.email || 'ผู้ใช้ปัจจุบัน';
 
   return (
-    <div className="max-w-5xl mx-auto p-4 md:p-6 pb-6">
+    <div className="max-w-5xl mx-auto px-0 py-4 md:p-6 pb-6">
       <div>
         {/* Custom header */}
-        <div className="flex items-start justify-between gap-4 mb-6">
+        <div className="flex flex-col sm:flex-row items-start justify-between gap-4 mb-6">
           <div className="min-w-0">
             <button
               type="button"
@@ -676,12 +679,12 @@ export default function OtherIncomeEntryPage() {
               {isEdit ? 'แก้ไขเอกสารรายได้อื่น' : 'บันทึกรายได้อื่น'}
             </h1>
             <p className="text-xs text-muted-foreground mt-0.5">
-              กลุ่มบัญชี 42-XXXX · Auto Journal · Validation V1-V10
+              บันทึกรายได้อื่นและตรวจสอบรายการบัญชีก่อนยืนยัน
             </p>
           </div>
-          <div className="text-right shrink-0">
+          <div className="min-w-0 max-w-full sm:text-right">
             <p className="text-xs text-muted-foreground">เลขที่เอกสาร</p>
-            <p className="font-mono text-sm font-semibold text-foreground">
+            <p className="font-mono text-sm font-semibold text-foreground break-all">
               {docNumber ?? '— จะออกหลังบันทึก —'}
             </p>
             <span
@@ -693,7 +696,7 @@ export default function OtherIncomeEntryPage() {
                     : 'bg-warning/15 text-warning-strong'
               }`}
             >
-              {docStatus}
+              {{ DRAFT: 'ฉบับร่าง', READY: 'รออนุมัติ', POSTED: 'ลงบัญชีแล้ว', REVERSED: 'กลับรายการแล้ว' }[docStatus] ?? 'ไม่ทราบสถานะ'}
             </span>
           </div>
         </div>
@@ -773,10 +776,10 @@ export default function OtherIncomeEntryPage() {
               </div>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
-                  <label className="text-xs font-medium text-muted-foreground">
+                  <label htmlFor={`${uiExtraFieldId}-1`} className="text-xs font-medium text-muted-foreground">
                     วันที่ออกเอกสาร <span className="text-destructive">*</span>
                   </label>
-                  <input
+                  <input id={`${uiExtraFieldId}-1`}
                     type="date"
                     {...form.register('issueDate')}
                     className="mt-1 w-full border rounded-md px-3 py-2 text-sm bg-background"
@@ -788,24 +791,24 @@ export default function OtherIncomeEntryPage() {
                   )}
                 </div>
                 <div>
-                  <label className="text-xs font-medium text-muted-foreground">
+                  <label htmlFor={`${uiExtraFieldId}-2`} className="text-xs font-medium text-muted-foreground">
                     วันที่ครบกำหนด
                   </label>
-                  <input
+                  <input id={`${uiExtraFieldId}-2`}
                     type="date"
                     {...form.register('dueDate')}
                     className="mt-1 w-full border rounded-md px-3 py-2 text-sm bg-background"
                   />
                 </div>
                 <div>
-                  <label className="text-xs font-medium text-muted-foreground">ประเภท VAT</label>
-                  <select
+                  <label htmlFor={`${uiExtraFieldId}-3`} className="text-xs font-medium text-muted-foreground">ประเภท VAT</label>
+                  <NativeSelect wrapperClassName="max-w-full mt-1 w-full" id={`${uiExtraFieldId}-3`}
                     {...form.register('priceType')}
-                    className="mt-1 w-full border rounded-md px-3 py-2 text-sm bg-background"
+                    className="border rounded-md px-3 py-2 text-sm bg-background"
                   >
                     <option value="EXCLUSIVE">แยกภาษี</option>
                     <option value="INCLUSIVE">รวมภาษี</option>
-                  </select>
+                  </NativeSelect>
                 </div>
               </div>
             </div>
@@ -830,8 +833,8 @@ export default function OtherIncomeEntryPage() {
                     ))}
                   </ul>
                   <p className="text-[11px] text-muted-foreground leading-snug pt-1">
-                    คำเตือนนี้ไม่บล็อกการบันทึก กรุณายืนยันว่า lateFee
-                    ของงวดเดิมไม่ทับซ้อนกับรายการนี้ก่อนกด POST
+                    คำเตือนนี้ไม่บล็อกการบันทึก กรุณายืนยันว่า ค่าปรับ
+                    ของงวดเดิมไม่ทับซ้อนกับรายการนี้ก่อนลงบัญชี
                   </p>
                 </div>
               </div>
@@ -948,16 +951,16 @@ export default function OtherIncomeEntryPage() {
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="text-xs font-medium text-muted-foreground">วันที่ชำระ</label>
-                  <input
+                  <label htmlFor={`${uiExtraFieldId}-4`} className="text-xs font-medium text-muted-foreground">วันที่ชำระ</label>
+                  <input id={`${uiExtraFieldId}-4`}
                     type="date"
                     {...form.register('paymentDate')}
                     className="mt-1 w-full border rounded-md px-3 py-2 text-sm bg-background"
                   />
                 </div>
                 <div>
-                  <div className="flex items-center justify-between">
-                    <label className="text-xs font-medium text-muted-foreground">
+                  <div className="flex flex-wrap items-center justify-between gap-x-2">
+                    <label htmlFor={`${uiExtraFieldId}-received`} className="text-xs font-medium text-muted-foreground">
                       จำนวนเงินที่ได้รับจริง <span className="text-destructive">*</span>
                     </label>
                     {incomeTotals.net > 0 && (
@@ -969,7 +972,7 @@ export default function OtherIncomeEntryPage() {
                             shouldValidate: true,
                           })
                         }
-                        className="inline-flex items-center gap-1 text-xs text-primary font-semibold hover:underline"
+                        className="inline-flex max-w-full min-h-6 max-lg:min-h-11 items-center gap-1 text-left text-xs text-primary font-semibold hover:underline"
                       >
                         <Zap size={11} />
                         ใช้ยอดสุทธิ ({fmt(incomeTotals.net)})
@@ -977,10 +980,10 @@ export default function OtherIncomeEntryPage() {
                     )}
                   </div>
                   <div className="mt-1 relative">
-                    <input
-                      type="number"
+                    <FormNumberInput unstyled
                       step="0.01"
-                      {...form.register('amountReceived')}
+                      id={`${uiExtraFieldId}-received`}
+                      name={'amountReceived'} control={form.control}
                       placeholder="0.00"
                       className="w-full border rounded-md px-3 py-2 text-sm font-mono text-right bg-background pr-8"
                     />
@@ -1024,6 +1027,7 @@ export default function OtherIncomeEntryPage() {
           <section className="rounded-xl border bg-card p-5">
             <SectionHeader num={4} title="หมายเหตุสำหรับลูกค้า" />
             <textarea
+              aria-label="หมายเหตุสำหรับลูกค้า"
               {...form.register('customerNote')}
               rows={3}
               placeholder="ข้อความที่จะแสดงในใบเสร็จ (ไม่บังคับ)"
@@ -1038,7 +1042,7 @@ export default function OtherIncomeEntryPage() {
                 <XCircle size={16} className="text-destructive shrink-0 mt-0.5" />
                 <div className="min-w-0">
                   <p className="text-sm font-bold text-destructive">
-                    ต้องแก้ไข {validationMessages.length} ข้อก่อน POST:
+                    ต้องแก้ไข {validationMessages.length} ข้อก่อนลงบัญชี:
                   </p>
                   <ul className="mt-1 space-y-0.5 text-xs text-destructive/90">
                     {validationMessages.map((m, i) => (
@@ -1057,7 +1061,7 @@ export default function OtherIncomeEntryPage() {
           <section className="rounded-xl border bg-card p-5">
             <SectionHeader
               num={6}
-              title={overrideMode ? 'JOURNAL LINES (OVERRIDE)' : 'AUTO JOURNAL PREVIEW'}
+              title={overrideMode ? 'รายการบัญชีที่ปรับเอง' : 'ตัวอย่างรายการบัญชี'}
               action={
                 <label className="inline-flex items-center gap-1.5 text-xs cursor-pointer">
                   <input
@@ -1078,7 +1082,7 @@ export default function OtherIncomeEntryPage() {
                       overrideMode ? 'text-warning-strong font-semibold' : 'text-muted-foreground'
                     }
                   >
-                    ใช้เอง (Override)
+                    ปรับรายการเอง
                   </span>
                 </label>
               }
@@ -1133,7 +1137,7 @@ export default function OtherIncomeEntryPage() {
                   <div className="flex items-start gap-2 mb-3 text-xs text-warning-strong">
                     <AlertTriangle size={14} className="shrink-0 mt-0.5" />
                     <span>
-                      ยอดรับ ≥ {formatNumber(attachmentThreshold)} ฿ — ต้องแนบไฟล์ประกอบเพื่อ POST
+                      ยอดรับ ≥ {formatNumber(attachmentThreshold)} ฿ — ต้องแนบไฟล์ประกอบเพื่อลงบัญชี
                     </span>
                   </div>
                 )}
@@ -1240,12 +1244,12 @@ export default function OtherIncomeEntryPage() {
                 </div>
               </div>
               <div className="rounded-xl bg-primary/10 p-4 text-primary">
-                <p className="text-xs font-semibold opacity-80">จำนวนเงินทั้งสิ้น</p>
+                <p className="text-xs font-semibold">จำนวนเงินทั้งสิ้น</p>
                 <p className="text-3xl font-bold font-mono mt-1">{fmt(incomeTotals.total)} ฿</p>
-                <p className="text-xs mt-2 opacity-80">
+                <p className="text-xs mt-2">
                   บัญชีรายได้: {values.items?.[0]?.accountCode || '—'}
                 </p>
-                <p className="text-xs opacity-80">
+                <p className="text-xs">
                   ลูกค้า: {values.counterpartyName?.trim() || '—'}
                 </p>
               </div>
@@ -1260,7 +1264,7 @@ export default function OtherIncomeEntryPage() {
         </form>
       </div>
 
-      {!makerCheckerEnabled && !permissions.can('INCOME_POST') && <p className="mt-4 text-sm text-muted-foreground" role="status">ไม่มีสิทธิ์ POST รายรับ — สามารถบันทึกร่างได้</p>}
+      {!makerCheckerEnabled && !permissions.can('INCOME_POST') && <p className="mt-4 text-sm text-muted-foreground" role="status">ไม่มีสิทธิ์ลงบัญชีรายรับ — สามารถบันทึกร่างได้</p>}
       {/* InternalControlActionBar — shared across 3 accounting modules.
           Entry page only renders the DRAFT state, so no audit log is needed
           (the document doesn't exist yet) — we pass an empty array. */}

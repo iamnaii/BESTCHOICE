@@ -57,6 +57,31 @@ type PostedLine = {
 /** บรรทัดที่ส่งให้ JournalAutoService.createAndPost. */
 type MirroredLine = { accountCode: string; dr: Decimal; cr: Decimal; description: string };
 
+/** ย้ายบรรทัดกระจกที่บัญชีขึ้นต้นด้วย prefix ไปบัญชีปลายทาง — ใช้โดยเปลี่ยนเครื่องตำหนิ (ขาเงินสด → 21-1106) */
+export interface ReceiptVoidRedirect {
+  accountPrefixes: readonly string[];
+  to: string;
+  description: string;
+}
+
+/**
+ * บรรทัดกระจกหลัง redirect: บัญชีเปลี่ยน ยอด/ฝั่งเท่าเดิม คำอธิบายต่อท้าย ` · <description>`.
+ * ไม่ส่ง redirect = คืน array เดิม (ไม่ copy) และ `redirected: false`.
+ */
+export function redirectMirroredLines(
+  lines: MirroredLine[],
+  redirect: ReceiptVoidRedirect | undefined,
+): { lines: MirroredLine[]; redirected: boolean } {
+  if (!redirect) return { lines, redirected: false };
+  let redirected = false;
+  const out = lines.map((l) => {
+    if (!redirect.accountPrefixes.some((p) => l.accountCode.startsWith(p))) return l;
+    redirected = true;
+    return { ...l, accountCode: redirect.to, description: `${l.description} · ${redirect.description}` };
+  });
+  return { lines: out, redirected };
+}
+
 /**
  * กระจกของบรรทัดที่ลงไว้ — สลับ debit/credit ทีละบรรทัด ตามลำดับเดิม. ยอดมาจากสมุดบัญชี ไม่คำนวณใหม่.
  * ใช้ร่วมกันโดยรายการกลับใบรับชำระ (voidReceipt) และรายการกลับรายการตั้งลูกหนี้งวด
@@ -356,7 +381,7 @@ export class ReceiptVoidReversalTemplate {
   async voidReceipt(
     originalJournalEntryId: string,
     tx?: Prisma.TransactionClient,
-    opts?: { flow?: string },
+    opts?: { flow?: string; redirect?: ReceiptVoidRedirect },
   ): Promise<{ entryNo: string }> {
     const client = tx ?? this.prisma;
     const flow = opts?.flow ?? 'receipt-void';
@@ -408,7 +433,10 @@ export class ReceiptVoidReversalTemplate {
     }
 
     // Build reversed lines
-    const reversedLines = mirrorPostedLines(originalJe.lines, '[VOID]');
+    const { lines: reversedLines, redirected } = redirectMirroredLines(
+      mirrorPostedLines(originalJe.lines, '[VOID]'),
+      opts?.redirect,
+    );
 
     const result = await this.journal.createAndPost(
       {
@@ -425,6 +453,8 @@ export class ReceiptVoidReversalTemplate {
           ...(typeof existingMeta['contractId'] === 'string'
             ? { contractId: existingMeta['contractId'] }
             : {}),
+          // เปลี่ยนเครื่องตำหนิ: ขาเงินสดถูกย้ายไปบัญชีพัก — บอกผู้อ่านรายการว่าไม่มีเงินสดออกจริง
+          ...(redirected && opts?.redirect ? { redirectedTo: opts.redirect.to } : {}),
         },
         lines: reversedLines,
       },

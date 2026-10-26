@@ -1,8 +1,8 @@
+import { NumberInput } from '@/components/ui/NumberInput';
 import { useState, type ReactNode } from 'react';
 import { ChevronDown, Lock } from 'lucide-react';
 import { gfinDownPctOptions, type GfinDeviceOrigin } from '@installment/shared';
 import { deviceOriginLabel } from '@/components/product/DeviceDisclosureSummary';
-import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
   Select,
@@ -165,9 +165,8 @@ export function GfinPanel({
             <Label htmlFor="calc-gfin-down-amount" className="text-[13px] text-muted-foreground leading-snug">
               จำนวนเงินดาวน์
             </Label>
-            <Input
+            <NumberInput
               id="calc-gfin-down-amount"
-              type="number"
               min="0"
               value={Math.round(r.downAmountByFormula.toNumber())}
               onChange={(e) => {

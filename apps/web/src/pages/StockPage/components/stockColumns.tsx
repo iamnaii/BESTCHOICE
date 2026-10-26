@@ -30,7 +30,7 @@ import {
  * เจ้าของ 2026-09-11: "จัดตารางให้พอดีหน้าคอม ขี้เกียจเลื่อนไปเลื่อนมา" แล้วย้ำว่า
  * "ต้องการให้ข้อมูลครบเหมือนเดิม แต่ให้พอดีหน้า" ⇒ **คอลัมน์ทุกคอลัมน์คงไว้ครบ ไม่ยุบ ไม่ซ่อน**
  * ที่ทำคือบีบความกว้างต่อคอลัมน์ + ตาราง density `dense` (padding 16px แทน 24px) ให้ผลรวมของ
- * แท็บที่กว้างที่สุด (มือ 2: 14 คอลัมน์) = 1,152px พอดีพื้นที่ตารางบนจอ 1280 (sidebar 70 + ระยะขอบ)
+ * ความกว้างขั้นต่ำคำนวณจากคอลัมน์ที่แสดงจริง รวมพื้นที่ของปุ่มจัดการ
  * หัวคอลัมน์และข้อความยาวยอมให้ขึ้นบรรทัดใหม่ในคอลัมน์แคบแทนการเลื่อนแนวนอน
  *
  * `desktopHidden` / `mobileHidden` เผื่อไว้สำหรับคอลัมน์ที่อยากโชว์แค่ฝั่งเดียว (ตอนนี้ไม่มีคอลัมน์ใช้)
@@ -383,7 +383,7 @@ export function buildStockColumns({
       stickyRight: true,
       sortable: false,
       hideable: false,
-      width: '96px',
+      width: '112px',
       render: (product) =>
         product.stockGroup ? (
           <Button
@@ -395,7 +395,7 @@ export function buildStockColumns({
             <ChevronRight aria-hidden="true" className="size-4" />
           </Button>
         ) : (
-          <div className="flex items-center justify-end gap-1">
+          <div className="flex flex-wrap items-center justify-end gap-2">
             {isManager && (
               <Button
                 variant="ghost"

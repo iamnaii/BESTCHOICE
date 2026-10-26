@@ -1,3 +1,4 @@
+import { FormNumberInput } from '@/components/ui/FormNumberInput';
 // Asset module — EntryPage Section 3 (vendor + payment)
 // PR 2a Task 5 (P6): vendor master combobox + inline "+ เพิ่มผู้ขายใหม่" dialog
 // + partial-payment amount input ("จำนวนเงินที่จ่าย").
@@ -26,8 +27,11 @@ import { CASH_ACCOUNTS } from '../types';
 import { AssetSectionHeader } from './AssetSectionHeader';
 import { ContactCombobox, type ContactPickResult } from '@/components/contacts/ContactCombobox';
 import { contactsApi } from '@/lib/api/contacts';
+import { useId as useUiFieldId } from 'react';
+
 
 export function AssetEntrySection3Vendor() {
+  const uiFieldId = useUiFieldId();
   const {
     register,
     setValue,
@@ -114,8 +118,8 @@ export function AssetEntrySection3Vendor() {
           <Input id="tax-invoice-no" {...register('taxInvoiceNo')} placeholder="INV-2026-XXXXX" />
         </div>
         <div>
-          <Label>วันที่ใบกำกับ</Label>
-          <ThaiDateInput
+          <Label htmlFor={`${uiFieldId}-1`}>วันที่ใบกำกับ</Label>
+          <ThaiDateInput id={`${uiFieldId}-1`}
             value={invoiceDate ?? ''}
             onChange={(e) => setValue('invoiceDate', e.target.value)}
           />
@@ -126,8 +130,8 @@ export function AssetEntrySection3Vendor() {
           <p className="mt-1 text-xs text-muted-foreground">ปล่อยว่างถ้าไม่มี</p>
         </div>
         <div>
-          <Label>วันที่ซื้อ *</Label>
-          <ThaiDateInput
+          <Label htmlFor={`${uiFieldId}-2`}>วันที่ซื้อ *</Label>
+          <ThaiDateInput id={`${uiFieldId}-2`}
             value={purchaseDate}
             onChange={(e) => setValue('purchaseDate', e.target.value, { shouldValidate: true })}
           />
@@ -136,14 +140,14 @@ export function AssetEntrySection3Vendor() {
           )}
         </div>
         <div>
-          <Label>วิธีชำระ</Label>
+          <Label htmlFor={`${uiFieldId}-3`}>วิธีชำระ</Label>
           <Select
             value={paymentMethod ?? 'CASH'}
             onValueChange={(v) =>
               setValue('paymentMethod', v as AssetEntryFormValues['paymentMethod'])
             }
           >
-            <SelectTrigger>
+            <SelectTrigger id={`${uiFieldId}-3`}>
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -154,12 +158,12 @@ export function AssetEntrySection3Vendor() {
           </Select>
         </div>
         <div>
-          <Label>ช่องทางการชำระเงิน (Cr) *</Label>
+          <Label htmlFor={`${uiFieldId}-4`}>ช่องทางการชำระเงิน (Cr) *</Label>
           <Select
             value={paymentAccount}
             onValueChange={(v) => setValue('paymentAccount', v, { shouldValidate: true })}
           >
-            <SelectTrigger>
+            <SelectTrigger id={`${uiFieldId}-4`}>
               <SelectValue placeholder="เลือกบัญชี" />
             </SelectTrigger>
             <SelectContent>
@@ -176,17 +180,15 @@ export function AssetEntrySection3Vendor() {
         </div>
         <div className="md:col-span-2">
           <Label htmlFor="vendor-amount-paid">จำนวนเงินที่จ่าย</Label>
-          <Input
+          <FormNumberInput
             id="vendor-amount-paid"
-            type="number"
             step="0.01"
             min="0"
-            {...register('vendorAmountPaid', { valueAsNumber: true })}
+            name={'vendorAmountPaid'} valueAsNumber
             placeholder="ว่างไว้ = ชำระเต็มจำนวน"
           />
           <p className="text-xs text-muted-foreground mt-1">
-            หากชำระบางส่วน — JE preview จะตั้งเป็นเจ้าหนี้สำหรับยอดคงเหลือ (รองรับใน
-            phase ถัดไป)
+            ตัวอย่างรายการบัญชียังคำนวณแบบชำระเต็มจำนวน ยังไม่รองรับการแยกยอดค้างจ่ายจากช่องนี้
           </p>
           {errors.vendorAmountPaid && (
             <p className="text-sm text-destructive mt-1">

@@ -1,3 +1,4 @@
+import ScreenTable from '@/components/ui/ScreenTable';
 import { useEffect, useState } from 'react';
 import { isAxiosError } from 'axios';
 import { getErrorMessage } from '@/lib/api';
@@ -126,7 +127,7 @@ export default function ContractCreatePage() {
         title="สร้างสัญญาผ่อนชำระ"
         subtitle={STEPS[data.step]}
         action={
-          <button onClick={() => data.navigate('/contracts')} className="px-4 py-2 text-sm text-muted-foreground border border-input rounded-lg">
+          <button data-ui-control="button" onClick={() => data.navigate('/contracts')} className="px-4 py-2 text-sm text-muted-foreground border border-input rounded-lg">
             ยกเลิก
           </button>
         }
@@ -166,8 +167,13 @@ export default function ContractCreatePage() {
           customerCreditApproved={data.customerCreditApproved}
           onOpenCredit={data.openCustomerCredit}
           onOpenCustomerModal={() => { data.resetCustForm(); data.setShowCustomerModal(true); }}
-          overrideActiveContractCheck={data.overrideActiveContractCheck}
-          setOverrideActiveContractCheck={data.setOverrideActiveContractCheck}
+          blacklist={data.blacklist}
+          blacklistStatus={data.blacklistStatus}
+          onRetryBlacklist={data.refetchBlacklist}
+          overrideAccepted={data.overrideAccepted}
+          setOverrideAccepted={data.setOverrideAccepted}
+          overrideReason={data.overrideReason}
+          setOverrideReason={data.setOverrideReason}
           heardFromSlot={heardFromSlot}
           firstContactLine={firstContactLine}
         />
@@ -248,9 +254,9 @@ export default function ContractCreatePage() {
               <p>ชำระ{data.creditApproval.salaryPayDay === 31 ? 'ทุกสิ้นเดือน' : `วันที่ ${data.creditApproval.salaryPayDay} ของเดือน`}</p>
               {creditSchedule[0] && <p>งวดแรก: {creditSchedule[0].dueDate.toLocaleDateString('th-TH', { timeZone: 'Asia/Bangkok' })} · {creditSchedule[0].amount.toLocaleString('th-TH')} บาท</p>}
               <details><summary className="cursor-pointer text-primary">ดูตารางงวดก่อนสร้างสัญญา</summary>
-                <table className="mt-2 w-full text-left"><thead><tr><th>งวด</th><th>ครบกำหนด</th><th className="text-right">บาท</th></tr></thead>
+                <ScreenTable className="mt-2 w-full text-left"><thead><tr><th>งวด</th><th>ครบกำหนด</th><th className="text-right">บาท</th></tr></thead>
                   <tbody>{creditSchedule.map(row => <tr key={row.installmentNo}><td>{row.installmentNo}</td><td>{row.dueDate.toLocaleDateString('th-TH', { timeZone: 'Asia/Bangkok' })}</td><td className="text-right">{row.amount.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</td></tr>)}</tbody>
-                </table>
+                </ScreenTable>
               </details>
             </>}
             {creditIssue && <p role="alert" className="text-destructive">{creditIssue}</p>}

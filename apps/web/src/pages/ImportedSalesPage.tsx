@@ -1,3 +1,5 @@
+import ScreenTable from '@/components/ui/ScreenTable';
+import { NativeSelect } from '@/components/ui/native-select';
 import { useState } from 'react';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { useQuery } from '@tanstack/react-query';
@@ -59,8 +61,8 @@ export default function ImportedSalesPage() {
       )}
 
       <div className="flex gap-2">
-        <select
-          className="border border-border bg-background text-foreground rounded-md px-3 py-2 text-sm"
+        <NativeSelect wrapperClassName="max-w-full w-auto"
+          className="border border-border bg-background text-foreground rounded-md px-3 py-2 text-sm" aria-label="ช่องทางขาย"
           value={channel}
           onChange={(e) => { setChannel(e.target.value); setPage(1); }}
         >
@@ -68,11 +70,11 @@ export default function ImportedSalesPage() {
           <option value="CASH">เงินสด (ราคาปลีก)</option>
           <option value="INSTALLMENT">BESTCHOICE ไฟแนนซ์ (ราคา 2)</option>
           <option value="EXTERNAL_FINANCE">GFIN (ราคา 3)</option>
-        </select>
+        </NativeSelect>
       </div>
 
       <div className="overflow-x-auto rounded-lg border border-border">
-        <table className="w-full text-sm">
+        <ScreenTable className="w-full text-sm">
           <thead className="bg-muted text-muted-foreground">
             <tr>
               {['บาร์โค้ด/IMEI', 'สินค้า', 'หมวด', 'ช่องทาง', 'ราคาขาย', 'กำไร', 'คนขาย', 'วันที่'].map((h) => (
@@ -94,7 +96,7 @@ export default function ImportedSalesPage() {
               </tr>
             ))}
           </tbody>
-        </table>
+        </ScreenTable>
         {list && list.data.length === 0 && (
           <div className="px-3 py-8 text-center text-sm text-muted-foreground leading-snug">ไม่พบรายการ</div>
         )}
@@ -102,7 +104,7 @@ export default function ImportedSalesPage() {
 
       {list && (
         <div className="flex items-center gap-3 text-sm">
-          <button
+          <button data-ui-control="button"
             className="px-3 py-1 rounded border border-border text-foreground disabled:opacity-50"
             disabled={page <= 1}
             onClick={() => setPage((p) => p - 1)}
@@ -110,7 +112,7 @@ export default function ImportedSalesPage() {
             ก่อนหน้า
           </button>
           <span className="text-muted-foreground leading-snug">หน้า {list.page} · ทั้งหมด {list.total.toLocaleString('th-TH')} รายการ</span>
-          <button
+          <button data-ui-control="button"
             className="px-3 py-1 rounded border border-border text-foreground disabled:opacity-50"
             disabled={page * list.limit >= list.total}
             onClick={() => setPage((p) => p + 1)}

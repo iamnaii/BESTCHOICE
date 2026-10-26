@@ -2,6 +2,7 @@ import { Prisma } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
 import { EarlyPayoffJP4Template } from './cpa-templates/early-payoff-jp4.template';
 import { ledgerLines } from './__tests__/ledger-lines-mock';
+import { ADVANCE_VAT_CONSUME_DESCRIPTION } from './advance-vat';
 
 /**
  * Fast (mock-based, NO DB) golden for EarlyPayoffJP4Template.execute().
@@ -57,7 +58,12 @@ describe('EarlyPayoffJP4Template.execute (case-4 golden · mock-based)', () => {
   let tmpl: EarlyPayoffJP4Template;
 
   const build = (
-    opts: { rescheduleAdvanceBalance?: string; ledger?: Record<string, string> } = {},
+    opts: {
+      rescheduleAdvanceBalance?: string;
+      ledger?: Record<string, string>;
+      /** metadata ของรายการ POSTED ของสัญญา (stamp ภาษีของเงินรับล่วงหน้า — PR4) */
+      stamps?: Array<Record<string, unknown>>;
+    } = {},
   ) => {
     createAndPost = jest.fn().mockResolvedValue({ id: 'je-1', entryNumber: 'JE-JP4-0001' });
     // ยอดในบัญชีอ่านในธุรกรรมของการลงรายการ (tx) เท่านั้น — prisma ไม่มี journalLine
@@ -65,6 +71,9 @@ describe('EarlyPayoffJP4Template.execute (case-4 golden · mock-based)', () => {
       payment: { create: jest.fn().mockResolvedValue({}) },
       contract: { update: jest.fn().mockResolvedValue({}) },
       journalLine: { findMany: jest.fn(ledgerLines(opts.ledger ?? LEDGER_AFTER_SIX_PAID)) },
+      journalEntry: {
+        findMany: jest.fn().mockResolvedValue((opts.stamps ?? []).map((metadata) => ({ metadata }))),
+      },
     };
     const prisma = {
       contract: {
@@ -142,11 +151,38 @@ describe('EarlyPayoffJP4Template.execute (case-4 golden · mock-based)', () => {
     expect(lineFor(je, '21-2101')!.cr.toFixed(2)).toBe('594.98');
   });
 
-  it('เงินที่รับเกินลูกหนี้ตามบัญชีเกิน 1.00 → throw ไม่ลงรายการ', async () => {
-    await expect(run('0', '9096.03')).rejects.toThrow(
-      'exceed the contract ledger receivable by 1.01 (> 1.00) — not posted',
+  it('18.2: เงินที่รับเกินลูกหนี้ตามบัญชี 1.01 (> 1.00) → ลงได้ · Cr 42-1106 0.94 + Cr 21-2101 0.07 (ภาษี 7/107) · metadata excessIncome/excessVat · สมดุล', async () => {
+    const je = await run('0', '9096.03');
+    expect(createAndPost).toHaveBeenCalledTimes(1);
+    expect(lineFor(je, '52-1106')).toBeUndefined();
+    expect(lineFor(je, '53-1503')).toBeUndefined();
+    expect(lineFor(je, '42-1106')!.cr.toFixed(2)).toBe('0.94');
+    expect(lineFor(je, '42-1106')!.description).toBe(
+      'เงินที่รับเกินยอดปิด — รับรู้เป็นรายได้ (ฝ่ายบัญชี 18.2)',
     );
-    expect(createAndPost).not.toHaveBeenCalled();
+    const vatLines = je.lines.filter((l) => l.accountCode === '21-2101');
+    expect(vatLines.map((l) => `${l.cr.toFixed(2)}|${l.description}`)).toEqual([
+      '594.98|ภาษีขาย ภ.พ.30 ถึงกำหนด (Policy A: VAT ไม่ลดตามส่วนลด)',
+      '0.07|ภาษีขายของเงินที่รับเกินยอดปิด',
+    ]);
+    const dr = je.lines.reduce((a, l) => a.plus(l.dr), new Decimal(0));
+    const cr = je.lines.reduce((a, l) => a.plus(l.cr), new Decimal(0));
+    expect(dr.toFixed(2)).toBe('12691.01');
+    expect(cr.toFixed(2)).toBe('12691.01');
+    const meta = je.metadata as Record<string, string>;
+    expect(meta.excessIncome).toBe('1.01');
+    expect(meta.excessVat).toBe('0.07');
+    expect(meta.roundingGain).toBeUndefined();
+    expect(meta.discount).toBe('0.00');
+  });
+
+  it('เงินที่รับเกินลูกหนี้ตามบัญชีพอดี 1.00 → Cr 53-1503 1.00 (เศษสตางค์ — ไม่ใช่รายได้)', async () => {
+    const je = await run('0', '9096.02');
+    expect(lineFor(je, '53-1503')!.cr.toFixed(2)).toBe('1.00');
+    expect(lineFor(je, '42-1106')).toBeUndefined();
+    const meta = je.metadata as Record<string, string>;
+    expect(meta.roundingGain).toBe('1.00');
+    expect(meta.excessIncome).toBeUndefined();
   });
 
   it('เงินพัก 354 (คอลัมน์ 354) แต่ยอด 21-1103 ในบัญชี 200 → Dr 21-1103 200.00 (clamp ด้วยยอดในบัญชีแบบเส้นทางจริง) · 52-1106 รับส่วนที่ขาด', async () => {
@@ -169,5 +205,50 @@ describe('EarlyPayoffJP4Template.execute (case-4 golden · mock-based)', () => {
     expect(meta.parkRelief).toBe('200.00');
     // 52-1106 เกินฐานข้อ 5.2 (50% × 3,000.00) เกิน 1.00 → บันทึกใน metadata
     expect(meta.discountBeyondDeferredBase).toBe('154.04');
+  });
+
+  it('PR4 (ต8): เงินพัก 354 ที่พักภาษี 23.16 ไว้ (21-2102 ในบัญชี 571.82) → ขากลับ Dr 21-2101 / Cr 21-2102 23.16 (คำอธิบายของ PR4) · ขาล้าง 21-2102 = 571.82 + 23.16 = 594.98 · metadata advanceVatReversal + stamp consume', async () => {
+    build({
+      rescheduleAdvanceBalance: '354',
+      ledger: { ...LEDGER_AFTER_SIX_PAID, '21-2102': '571.82', '21-1103': '354.00' },
+      stamps: [{ contractId: contract.id, advanceVatPark: '23.16' }],
+    });
+    await tmpl.execute({
+      contractId: contract.id,
+      depositAccountCode: '11-1101',
+      cashReceived: new Prisma.Decimal('7240.98'),
+      interestDiscountPercent: new Prisma.Decimal('50'),
+      parkRelief: new Prisma.Decimal('354.00'),
+    });
+    const je = createAndPost.mock.calls[0][0] as CapturedJe;
+    const of = (code: string) => je.lines.filter((l) => l.accountCode === code);
+    expect(of('21-2101').map((l) => `${l.dr.toFixed(2)}/${l.cr.toFixed(2)}`)).toEqual([
+      '23.16/0.00',
+      '0.00/594.98',
+    ]);
+    expect(of('21-2102').map((l) => `${l.dr.toFixed(2)}/${l.cr.toFixed(2)}`)).toEqual([
+      '0.00/23.16',
+      '594.98/0.00',
+    ]);
+    expect(of('21-2101')[0].description).toBe(ADVANCE_VAT_CONSUME_DESCRIPTION);
+    expect(of('21-2102')[0].description).toBe(ADVANCE_VAT_CONSUME_DESCRIPTION);
+    expect(of('21-2102')[1].description).toBe('ล้างภาษีขายรอเรียกเก็บ');
+    // ส่วนลดเท่าเดิม — คู่ภาษีสมดุลกันเอง ไม่แตะ plug (9,095.02 − 7,240.98 − 354.00)
+    expect(lineFor(je, '52-1106')!.dr.toFixed(2)).toBe('1500.04');
+    const dr = je.lines.reduce((s, l) => s.plus(l.dr), dec(0));
+    const cr = je.lines.reduce((s, l) => s.plus(l.cr), dec(0));
+    expect(dr.toFixed(2)).toBe(cr.toFixed(2));
+    const meta = je.metadata as Record<string, string>;
+    expect(meta.settleVat).toBe('594.98');
+    expect(meta.advanceVatReversal).toBe('23.16');
+    expect(meta.advanceVatConsume).toBe('23.16');
+  });
+
+  it('ไม่มี stamp → ไม่มีขากลับ และ metadata ไม่มี advanceVatReversal (รายการเดิมทุกไบต์)', async () => {
+    const je = await run('50', '7594.98');
+    expect(je.lines.filter((l) => l.accountCode === '21-2102')).toHaveLength(1);
+    expect(je.lines.filter((l) => l.accountCode === '21-2101')).toHaveLength(1);
+    expect(je.metadata).not.toHaveProperty('advanceVatReversal');
+    expect(je.metadata).not.toHaveProperty('advanceVatConsume');
   });
 });

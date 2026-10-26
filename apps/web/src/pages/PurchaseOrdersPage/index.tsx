@@ -24,6 +24,7 @@ import { SupplierPaymentDialog, VoidSupplierPaymentDialog } from './components/S
 import TaxInvoiceDialog from './components/TaxInvoiceDialog';
 import type { GoodsReceivingRecord } from './types';
 import { CancelPODialog } from './components/CancelPODialog';
+import { ClosePOShortDialog } from './components/ClosePOShortDialog';
 import { GoodsReceivingModal } from './components/GoodsReceivingModal';
 import { PurchasingSummaryStrip } from './components/PurchasingSummaryStrip';
 import type { SummaryFilterAction } from './summaryStrip';
@@ -46,7 +47,16 @@ export default function PurchaseOrdersPage() {
   const [taxInvoiceTarget, setTaxInvoiceTarget] = useState<GoodsReceivingRecord | null>(null);
   const canRecordPayments = user?.role === 'OWNER' || user?.role === 'BRANCH_MANAGER';
   const canVoidPayments = user?.role === 'OWNER';
-  const poPayments = usePoPayments(data.selectedPO?.id ?? null, data.isDetailModalOpen || data.isPaymentDialogOpen || !!data.cancelTarget);
+  // คำตัดสินเจ้าของ 2026-10-11: ผจก.การเงิน / ฝ่ายบัญชี เข้าหน้านี้แบบดูอย่างเดียว — สร้าง/สั่งซื้อ/รับสินค้า/ยกเลิก/จ่ายเงิน
+  // เป็นของเจ้าของกิจการ + ผู้จัดการสาขา (@Roles('OWNER','BRANCH_MANAGER') ของ API ซึ่งตอบ 403 ให้สอง role นั้นอยู่แล้ว) ·
+  // อนุมัติ/ปฏิเสธใบรออนุมัติเป็นของเจ้าของกิจการคนเดียว (@Roles('OWNER')) · บัญชียังบันทึกใบกำกับภาษีได้ตาม Q1 (คุมใน taxInvoiceAction)
+  const canManagePO = user?.role === 'OWNER' || user?.role === 'BRANCH_MANAGER';
+  const canApprovePO = user?.role === 'OWNER';
+  const readOnly = !canManagePO;
+  const poPayments = usePoPayments(
+    data.selectedPO?.id ?? null,
+    data.isDetailModalOpen || data.isPaymentDialogOpen || !!data.cancelTarget || !!data.closeShortTarget,
+  );
   // แท็บเจ้าหนี้รายผู้จัดจำหน่าย (กระดาน 5) — ยอดจากสมุดบัญชี เลือกเดือน/ผู้จัดจำหน่ายได้
   const [ledgerMonth, setLedgerMonth] = useState(() => todayIso().slice(0, 7));
   const [ledgerSupplierId, setLedgerSupplierId] = useState<string | null>(null);
@@ -123,6 +133,8 @@ export default function PurchaseOrdersPage() {
   const onSummaryCardClick = useCallback(
     (action: SummaryFilterAction) => {
       if ('panel' in action) {
+        // /purchase-orders/qc เป็น route ของ OWNER/BM เท่านั้น — การ์ดถูกทำให้กดไม่ได้สำหรับ role อื่นอยู่แล้ว (PurchasingSummaryStrip) นี่คือตาข่าย
+        if (!canManagePO) return;
         navigate('/purchase-orders/qc'); // รอถ่ายรูป → the photo queue page
         return;
       }
@@ -134,17 +146,18 @@ export default function PurchaseOrdersPage() {
       data.setStatusFilter(action.status);
       data.setOverdueOnly(action.overdueOnly);
     },
-    [data, navigate],
+    [canManagePO, data, navigate],
   );
 
   return (
     <div>
       <PageHeader
         title="ใบสั่งซื้อ (PO)"
-        subtitle="จัดการการสั่งซื้อสินค้า"
+        subtitle={readOnly ? 'ดูอย่างเดียว — สร้าง รับสินค้า และจ่ายเงินทำโดยเจ้าของกิจการหรือผู้จัดการสาขา' : 'จัดการการสั่งซื้อสินค้า'}
         action={
           <div className="flex gap-2">
-            {(data.summary?.waitingQc ?? 0) > 0 && (
+            {/* /purchase-orders/qc เป็น route ของ OWNER/BM เท่านั้น — role ดูอย่างเดียวกดแล้วจะโดนเด้ง "ไม่มีสิทธิ์" */}
+            {canManagePO && (data.summary?.waitingQc ?? 0) > 0 && (
               <Link
                 to="/purchase-orders/qc"
                 className="inline-flex items-center gap-1.5 px-3 py-2 text-sm border border-input rounded-lg hover:bg-muted transition-colors"
@@ -154,7 +167,7 @@ export default function PurchaseOrdersPage() {
               </Link>
             )}
             {data.pos.length > 0 && (
-              <button
+              <button data-ui-control="button"
                 onClick={async () => {
                   try {
                     await exportToExcel({
@@ -189,27 +202,29 @@ export default function PurchaseOrdersPage() {
               </button>
             )}
             {/* One entry for both ways in (owner 2026-09-06): the wizard asks "ของถึงแล้วหรือยัง" on step 1 */}
-            <button
-              onClick={() => data.setIsCreateModalOpen(true)}
-              className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors"
-            >
-              + ซื้อสินค้า
-            </button>
+            {canManagePO && (
+              <button data-ui-control="button"
+                onClick={() => data.setIsCreateModalOpen(true)}
+                className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors"
+              >
+                + ซื้อสินค้า
+              </button>
+            )}
           </div>
         }
       />
 
-      <PurchasingSummaryStrip summary={data.summary} onCardClick={onSummaryCardClick} />
+      <PurchasingSummaryStrip summary={data.summary} onCardClick={onSummaryCardClick} readOnly={readOnly} />
 
       {/* Tabs */}
       <div className="flex gap-1 mb-5 border-b border-border/60">
-        <button
+        <button data-ui-control="button"
           onClick={() => data.setActiveTab('list')}
           className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${data.activeTab === 'list' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
         >
           รายการ PO
         </button>
-        <button
+        <button data-ui-control="button"
           onClick={() => data.setActiveTab('payable')}
           className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${data.activeTab === 'payable' ? 'border-destructive text-destructive' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
         >
@@ -240,6 +255,8 @@ export default function PurchaseOrdersPage() {
           suppliers={data.suppliers}
           overdueOnly={data.overdueOnly}
           setOverdueOnly={data.setOverdueOnly}
+          readOnly={readOnly}
+          canApprove={canApprovePO}
         />
       ) : (
         <AccountsPayableTab
@@ -255,6 +272,7 @@ export default function PurchaseOrdersPage() {
           movements={ledgerMovements.data}
           movementsLoading={ledgerMovements.isLoading}
           onOpenPo={openPoFromLedger}
+          readOnly={readOnly}
         />
       )}
 
@@ -292,6 +310,7 @@ export default function PurchaseOrdersPage() {
 
       <PODetailModal
         isOpen={data.isDetailModalOpen}
+        returnFocusKey={data.detailReturnFocusKey}
         onClose={() => {
           data.setIsDetailModalOpen(false);
           data.setPODetail(null);
@@ -308,7 +327,9 @@ export default function PurchaseOrdersPage() {
           data.setVoidTarget(payment);
         }}
         onCancel={(po) => data.openCancelDialog(po)}
+        onCloseShort={(po) => data.openCloseShortDialog(po)}
         role={user?.role}
+        readOnly={readOnly}
         onRecordTaxInvoice={(po, receiving) => {
           data.setSelectedPO(po);
           setTaxInvoiceTarget(receiving);
@@ -352,6 +373,27 @@ export default function PurchaseOrdersPage() {
           data.cancelTarget &&
           data.cancelMutation.mutate(
             { id: data.cancelTarget.id, payload },
+            {
+              onSuccess: () => {
+                data.setIsDetailModalOpen(false);
+                data.setPODetail(null);
+              },
+            },
+          )
+        }
+      />
+
+      <ClosePOShortDialog
+        open={!!data.closeShortTarget}
+        po={data.closeShortTarget}
+        summary={poPayments.data?.summary ?? null}
+        summaryLoading={poPayments.isLoading}
+        pending={data.closeShortMutation.isPending}
+        onClose={() => data.setCloseShortTarget(null)}
+        onConfirm={(payload) =>
+          data.closeShortTarget &&
+          data.closeShortMutation.mutate(
+            { id: data.closeShortTarget.id, payload },
             {
               onSuccess: () => {
                 data.setIsDetailModalOpen(false);

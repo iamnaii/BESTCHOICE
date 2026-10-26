@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { toBangkokDateString } from '@/lib/date';
+import { useEffect, useRef, useState } from 'react';
 import { UseMutationResult } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { ChevronLeft, ClipboardCheck, FileText, Info, Package, type LucideIcon } from 'lucide-react';
@@ -6,6 +7,7 @@ import { cn } from '@/lib/utils';
 import type { ContactPickResult } from '@/components/contacts/ContactCombobox';
 import { useIsMobile } from '@/hooks/useIsMobile';
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from '@/components/ui/drawer';
+import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import type { ItemForm, PoFormState, PurchaseMode, ReceivingUnitForm, SupplierOption } from '../types';
 import type { AccessorySku, CatalogEntry, PhoneMode } from '../po-catalog.util';
 import { allItemsComplete } from '../po-catalog.util';
@@ -77,7 +79,7 @@ const primaryBtn =
   'px-6 py-2.5 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50 font-semibold transition-colors shadow-sm whitespace-nowrap';
 const outlineBtn = 'px-6 py-2.5 text-sm border border-input rounded-lg hover:bg-muted transition-colors';
 
-const todayIso = () => new Date().toISOString().split('T')[0];
+const todayIso = () => toBangkokDateString();
 
 /**
  * ซื้อสินค้า — one wizard for both ways in (owner 2026-09-06 "รวมกันได้เลยไหม"). Step 1 holds the
@@ -119,6 +121,9 @@ export function PurchaseModal(props: PurchaseModalProps) {
     directReceiveMutation,
   } = props;
   const isMobile = useIsMobile();
+  const returnFocus = useRef<HTMLElement | null>(null);
+  const captureFocus = () => { returnFocus.current = document.activeElement instanceof HTMLElement ? document.activeElement : null; };
+  const restoreFocus = (event: Event) => { event.preventDefault(); if (returnFocus.current?.isConnected) returnFocus.current.focus(); };
   const [units, setUnits] = useState<ReceivingUnitForm[]>([]);
   // ข3 — เอกสารจากผู้จัดจำหน่ายของรับเข้าตรง: ค่าเริ่มต้นตามสถานะ VAT ของผู้ขายที่เลือก (ผูกกับผู้ขาย — เปลี่ยนผู้ขาย = เริ่มใหม่)
   const [supplierDocState, setSupplierDocState] = useState<{ supplierId: string; doc: SupplierDocForm } | null>(null);
@@ -284,7 +289,7 @@ export function PurchaseModal(props: PurchaseModalProps) {
 
   const footer = (
     <div className="sticky bottom-0 shrink-0 border-t bg-background/95 px-4 py-4 backdrop-blur-xs sm:px-6 flex items-center justify-between gap-3">
-      <button type="button" onClick={() => (step === 0 ? onClose() : back())} className={outlineBtn}>
+      <button data-ui-control="button" type="button" onClick={() => (step === 0 ? onClose() : back())} className={outlineBtn}>
         {step === 0 ? 'ยกเลิก' : 'ย้อนกลับ'}
       </button>
       <div className="flex items-center gap-4">
@@ -295,22 +300,22 @@ export function PurchaseModal(props: PurchaseModalProps) {
           </span>
         )}
         {step === 0 && (
-          <button key="first" type="button" onClick={goFromFirst} disabled={!canNext} className={primaryBtn}>
+          <button data-ui-control="button" key="first" type="button" onClick={goFromFirst} disabled={!canNext} className={primaryBtn}>
             {firstLabel}
           </button>
         )}
         {isInspect && (
-          <button key="inspect" type="button" onClick={goSummary} className={primaryBtn}>
+          <button data-ui-control="button" key="inspect" type="button" onClick={goSummary} className={primaryBtn}>
             ถัดไป: สรุป + จ่ายเงิน
           </button>
         )}
         {isLast && !receive && (
-          <button key="create" type="button" onClick={handleCreate} disabled={pending} className={primaryBtn}>
+          <button data-ui-control="button" key="create" type="button" onClick={handleCreate} disabled={pending} className={primaryBtn}>
             {createMutation.isPending ? 'กำลังสร้าง...' : 'สร้าง PO'}
           </button>
         )}
         {isLast && receive && (
-          <button key="receive" type="button" onClick={submitReceive} disabled={pending} className={primaryBtn}>
+          <button data-ui-control="button" key="receive" type="button" onClick={submitReceive} disabled={pending} className={primaryBtn}>
             {directReceiveMutation.isPending ? 'กำลังรับเข้า…' : `ยืนยันรับเข้าตรง ${units.length} ชิ้น`}
           </button>
         )}
@@ -337,12 +342,13 @@ export function PurchaseModal(props: PurchaseModalProps) {
   if (isMobile) {
     return (
       <Drawer
+        autoFocus
         open={isOpen}
         onOpenChange={(o) => {
           if (!o) onClose();
         }}
       >
-        <DrawerContent className="h-[92dvh]">
+        <DrawerContent className="h-[92dvh]" aria-describedby={undefined} onOpenAutoFocus={captureFocus} onCloseAutoFocus={restoreFocus}>
           <DrawerHeader className="text-left">
             <DrawerTitle className="leading-snug">{title}</DrawerTitle>
             <div className="pt-2">{stepperEl}</div>
@@ -354,20 +360,22 @@ export function PurchaseModal(props: PurchaseModalProps) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-start justify-center pt-8 pb-8" role="dialog" aria-modal="true" aria-label="ซื้อสินค้า">
+    <Dialog open={isOpen} onOpenChange={(open) => { if (!open) onClose(); }}>
       {/* 7xl while the nine-column items table is on screen; the per-unit cards and the summary keep narrower frames */}
-      <div className={cn('w-full bg-background rounded-xl shadow-2xl overflow-hidden flex flex-col max-h-[calc(100vh-4rem)]', width)}>
+      <DialogContent aria-label="ซื้อสินค้า" aria-describedby={undefined} showCloseButton={false}
+        onOpenAutoFocus={captureFocus} onCloseAutoFocus={restoreFocus}
+        className={cn('top-8 translate-y-0 w-[calc(100%-2rem)] rounded-xl p-0 overflow-hidden max-h-[calc(100dvh-4rem)]', width)}>
         <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-xs border-b px-6 py-4 flex items-center justify-between shrink-0">
           <button type="button" onClick={onClose} className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors">
             <ChevronLeft className="size-4" />
             ปิด
           </button>
-          <h2 className="text-lg font-semibold text-foreground leading-snug">{title}</h2>
+          <DialogTitle className="text-lg font-semibold text-foreground leading-snug">{title}</DialogTitle>
           <div className="w-16" />
         </div>
         <div className="px-6 pt-4 shrink-0">{stepperEl}</div>
         {body}
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }

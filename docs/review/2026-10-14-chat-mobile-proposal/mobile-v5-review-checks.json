@@ -1,0 +1,11 @@
+{
+  "status": "pass",
+  "checks": [
+    "quote-preview-per-room",
+    "quote-send-matches-preview",
+    "latest-message-visible-after-tool-expansion",
+    "multiline-draft-after-mode-switch",
+    "viewport-shrink-expand-bottom-anchor-320-375-390-430"
+  ],
+  "limit": "Viewport resize simulation; no physical keyboard verification"
+}

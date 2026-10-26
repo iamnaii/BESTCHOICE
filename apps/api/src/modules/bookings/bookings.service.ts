@@ -311,6 +311,30 @@ export class BookingsService {
     };
   }
 
+  /**
+   * ใบจองที่ยังเปิดอยู่และ "หมดอายุวันนี้" (เวลาไทย) — การ์ดบนหน้าหลักหน้าร้าน.
+   * Booking มีแค่ expireDate ไม่มีวันนัดรับ จึงเป็น "หมดอายุ" ไม่ใช่ "ครบกำหนดรับ".
+   */
+  async countExpiringToday(user: RequestUser, branchId?: string, now = new Date()) {
+    // expireDate = เที่ยงคืนไทยของ "วันถัดจาก" วันสุดท้ายที่ใช้ได้ (ดู expiringBefore) — ใบที่ใช้ได้ถึงวันนี้
+    // จึงมี expireDate = พรุ่งนี้ 00:00 ต้องใช้ช่วง (วันนี้ 00:00, พรุ่งนี้ 00:00] ไม่ใช่ช่วงของวันนี้ตรง ๆ
+    const base: Prisma.BookingWhereInput = {
+      deletedAt: null,
+      status: { in: [...OPEN_BOOKING_STATUSES] },
+      expireDate: { gt: bangkokStartOfDay(now), lte: expiringBefore(now, 0) },
+    };
+    const { where, empty } = this.applyBranchScope(base, user, branchId);
+    if (empty) return { count: 0, depositTotal: 0, reservedUnits: 0 };
+
+    const rows = await this.prisma.booking.findMany({ where, select: { status: true, depositAmount: true } });
+    const paid = rows.filter((r) => r.status === 'PAID');
+    return {
+      count: rows.length,
+      depositTotal: paid.reduce((sum, r) => sum + Number(r.depositAmount), 0),
+      reservedUnits: paid.length,
+    };
+  }
+
   async findOne(id: string, user: RequestUser) {
     const baseWhere: Prisma.BookingWhereInput = { id, deletedAt: null };
     const { where, empty } = this.applyBranchScope(baseWhere, user);

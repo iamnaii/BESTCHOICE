@@ -1,3 +1,8 @@
+import { NumberInput } from '@/components/ui/NumberInput';
+import { formatNumericText } from '@/utils/numericText';
+import { NativeSelect } from '@/components/ui/native-select';
+import { formControlClass } from '@/components/ui/form-styles';
+import { useId as useFieldId } from 'react';
 // Section 5 — Multi-line Adjustment (Fix Report v1.0 P0-4).
 //
 // Renders when the user wants to reconcile a `amountPaid ≠ totalAmount − wht`
@@ -49,6 +54,7 @@ export function AdjustmentSection({
   suggestedAccounts,
   netExpected,
 }: Props) {
+  const fieldId = useFieldId();
   // D1.1.6 — read configurable adjustment codes from getUiFlags so OWNER
   // can rebind without a frontend deploy. Caller-supplied list still wins
   // (overrides the flag) — preserves backwards-compatible API.
@@ -101,7 +107,7 @@ export function AdjustmentSection({
           5
         </div>
         <div className="min-w-0">
-          <h2 className="text-base font-semibold">บัญชีปรับผลต่าง (Multi-line)</h2>
+          <h2 className="text-base font-semibold">บัญชีปรับผลต่าง</h2>
           <p className="text-xs text-muted-foreground">
             ใช้เมื่อจำนวนเงินที่จ่ายจริงไม่ตรงกับยอดที่ใบกำกับฯ ระบุ (ปัดเศษ / ส่วนลดเล็กน้อย / จ่ายเกิน / จ่ายน้อย)
           </p>
@@ -110,30 +116,29 @@ export function AdjustmentSection({
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
         <div>
-          <label className="block text-xs font-medium text-muted-foreground mb-1">
-            ยอดที่จ่ายจริง (amount paid)
+          <label htmlFor={`${fieldId}-1`} className="block text-xs font-medium text-muted-foreground mb-1">
+            ยอดที่จ่ายจริง
           </label>
-          <input
-            type="number"
+          <NumberInput unstyled id={`${fieldId}-1`}
             step="0.01"
             value={amountPaid}
             onChange={(e) => onAmountPaidChange(e.target.value)}
-            placeholder={netExpected}
-            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm tabular-nums focus:outline-none focus:ring-2 focus:ring-primary"
+            placeholder={formatNumericText(netExpected)}
+            className={formControlClass}
           />
-          <p className="mt-1 text-xs text-muted-foreground">ปล่อยว่าง = ใช้ค่า default {netExpected}</p>
+          <p className="mt-1 text-xs text-muted-foreground">เว้นว่างเพื่อใช้ยอด {formatNumericText(netExpected)}</p>
         </div>
         <div>
           <label className="block text-xs font-medium text-muted-foreground mb-1">
-            ยอดที่ใบกำกับฯ ระบุ (net expected = total − WHT)
+            ยอดสุทธิหลังหักภาษี ณ ที่จ่าย
           </label>
           <div className="rounded-md bg-muted px-3 py-2 text-sm font-mono tabular-nums text-foreground">
-            {netExpected || '0.00'}
+            {formatNumericText(netExpected || '0.00')}
           </div>
         </div>
         <div>
           <label className="block text-xs font-medium text-muted-foreground mb-1">
-            ผลต่างที่ต้องปรับ (diff)
+            ผลต่างที่ต้องปรับ
           </label>
           <div
             className={`rounded-md px-3 py-2 text-sm font-mono tabular-nums ${
@@ -145,7 +150,7 @@ export function AdjustmentSection({
             }`}
           >
             {diffNum >= 0 ? '+' : ''}
-            {diffNum.toFixed(2)}
+            {formatNumericText(diffNum.toFixed(2))}
             {diffNum > 0.005 && ' (จ่ายเกิน → Cr)'}
             {diffNum < -0.005 && ' (จ่ายน้อย → Dr)'}
           </div>
@@ -161,10 +166,10 @@ export function AdjustmentSection({
                 className="grid grid-cols-12 gap-2 items-start rounded-lg border border-border bg-muted/30 p-3"
               >
                 <div className="col-span-12 md:col-span-5">
-                  <label className="block text-xs text-muted-foreground mb-1">
+                  <label htmlFor={`${fieldId}-${row.uid}-2`} className="block text-xs text-muted-foreground mb-1">
                     บัญชี #{idx + 1}
                   </label>
-                  <select
+                  <NativeSelect wrapperClassName="max-w-full w-full min-w-0" id={`${fieldId}-${row.uid}-2`}
                     value={row.accountCode}
                     onChange={(e) => {
                       const code = e.target.value;
@@ -174,7 +179,7 @@ export function AdjustmentSection({
                         side: match?.defaultSide ?? row.side,
                       });
                     }}
-                    className="w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                    className={formControlClass}
                   >
                     <option value="">— เลือกบัญชี —</option>
                     {effectiveSuggested.map((s) => (
@@ -182,48 +187,47 @@ export function AdjustmentSection({
                         {accountDisplayName(s.name)}
                       </option>
                     ))}
-                  </select>
+                  </NativeSelect>
                 </div>
-                <div className="col-span-4 md:col-span-2">
-                  <label className="block text-xs text-muted-foreground mb-1">Dr/Cr</label>
-                  <select
+                <div className="col-span-12 sm:col-span-6 md:col-span-2">
+                  <label htmlFor={`${fieldId}-${row.uid}-3`} className="block text-xs text-muted-foreground mb-1">Dr/Cr</label>
+                  <NativeSelect wrapperClassName="max-w-full w-full min-w-0" id={`${fieldId}-${row.uid}-3`}
                     value={row.side}
                     onChange={(e) =>
                       updateRow(row.uid, { side: e.target.value as 'DR' | 'CR' })
                     }
-                    className="w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                    className={formControlClass}
                   >
                     <option value="DR">Dr</option>
                     <option value="CR">Cr</option>
-                  </select>
+                  </NativeSelect>
                 </div>
-                <div className="col-span-4 md:col-span-2">
-                  <label className="block text-xs text-muted-foreground mb-1">จำนวน</label>
-                  <input
-                    type="number"
+                <div className="col-span-12 sm:col-span-6 md:col-span-2">
+                  <label htmlFor={`${fieldId}-${row.uid}-4`} className="block text-xs text-muted-foreground mb-1">จำนวน</label>
+                  <NumberInput unstyled id={`${fieldId}-${row.uid}-4`}
                     step="0.01"
                     min="0"
                     value={row.amount}
                     onChange={(e) => updateRow(row.uid, { amount: e.target.value })}
-                    className="w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm text-right tabular-nums focus:outline-none focus:ring-2 focus:ring-primary"
+                    className={formControlClass}
                   />
                 </div>
-                <div className="col-span-3 md:col-span-2">
-                  <label className="block text-xs text-muted-foreground mb-1">หมายเหตุ</label>
-                  <input
+                <div className="col-span-12 md:col-span-2">
+                  <label htmlFor={`${fieldId}-${row.uid}-5`} className="block text-xs text-muted-foreground mb-1">หมายเหตุ</label>
+                  <input id={`${fieldId}-${row.uid}-5`}
                     type="text"
                     value={row.note}
                     onChange={(e) => updateRow(row.uid, { note: e.target.value })}
                     placeholder="ปัดเศษ / ส่วนลด..."
-                    className="w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                    className={formControlClass}
                   />
                 </div>
-                <div className="col-span-1 flex items-end justify-end pt-5">
-                  <button
+                <div className="col-span-12 flex items-end justify-end md:col-span-1 md:pt-5">
+                  <button data-ui-control="button" data-ui-icon="true"
                     type="button"
                     onClick={() => removeRow(row.uid)}
                     aria-label={`ลบบัญชีปรับ #${idx + 1}`}
-                    className="rounded-md p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors"
+                    className="flex min-h-11 min-w-11 items-center justify-center rounded-md p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors"
                   >
                     <Trash2 size={14} />
                   </button>
@@ -233,7 +237,7 @@ export function AdjustmentSection({
           </div>
 
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <button
+            <button data-ui-control="button"
               type="button"
               onClick={addRow}
               className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-3 py-1.5 text-sm font-medium hover:bg-accent"
@@ -254,13 +258,13 @@ export function AdjustmentSection({
                 <>
                   <CheckCircle2 size={14} />
                   ผลต่างปรับครบ ({signedSum >= 0 ? '+' : ''}
-                  {signedSum.toFixed(2)} = {diffNum.toFixed(2)})
+                  {formatNumericText(signedSum.toFixed(2))} = {formatNumericText(diffNum.toFixed(2))})
                 </>
               ) : (
                 <>
                   <AlertCircle size={14} />
                   V12: ยังขาด {remaining >= 0 ? '+' : ''}
-                  {remaining.toFixed(2)} (ผลรวม signed = {signedSum.toFixed(2)})
+                  {formatNumericText(remaining.toFixed(2))} (ผลรวมตามเครื่องหมาย = {formatNumericText(signedSum.toFixed(2))})
                 </>
               )}
             </div>
@@ -271,13 +275,13 @@ export function AdjustmentSection({
       {!adjustmentsActive && (
         <div className="flex items-center justify-between rounded-md border border-dashed border-border bg-muted/20 px-4 py-3 text-sm">
           <span className="text-muted-foreground">ไม่มีผลต่าง — ไม่ต้องเพิ่มบัญชีปรับ</span>
-          <button
+          <button data-ui-control="button"
             type="button"
             onClick={addRow}
             className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-3 py-1 text-xs hover:bg-accent"
           >
             <Plus size={12} />
-            เพิ่มแบบ manual
+            เพิ่มแบบ ด้วยตนเอง
           </button>
         </div>
       )}

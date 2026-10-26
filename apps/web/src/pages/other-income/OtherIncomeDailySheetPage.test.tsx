@@ -38,7 +38,7 @@ it('keeps account and payment rows independent, ordered, and formatted to two de
   const tables = await screen.findAllByRole('table');
   expect(tables).toHaveLength(2);
   const accounts = within(tables[0]).getAllByRole('row');
-  expect(accounts[1]).toHaveTextContent('42-1101รายได้ทดสอบ21234.56 ฿');
+  expect(accounts[1]).toHaveTextContent('42-1101รายได้ทดสอบ21,234.56 ฿');
   expect(accounts[2]).toHaveTextContent('42-1102คืนเงิน1-0.01 ฿');
   expect(tables[1]).toHaveTextContent('11-1101เงินสดทดสอบ00.00 ฿');
   expect(tables[1]).not.toHaveTextContent('42-1101');

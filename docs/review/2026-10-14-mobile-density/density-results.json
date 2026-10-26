@@ -1,0 +1,1800 @@
+{
+  "results": [
+    {
+      "name": "other-income-320-light",
+      "status": "PASS",
+      "metrics": [
+        {
+          "box": {
+            "x": 16,
+            "y": 251,
+            "width": 138,
+            "height": 145.90625,
+            "bottom": 396.90625,
+            "lineHeight": 21,
+            "text": "ทั้งหมด1,234,567"
+          },
+          "label": {
+            "x": 29,
+            "y": 264,
+            "width": 112,
+            "height": 40,
+            "bottom": 304,
+            "lineHeight": 21,
+            "text": "ทั้งหมด"
+          }
+        },
+        {
+          "box": {
+            "x": 166,
+            "y": 251,
+            "width": 138,
+            "height": 145.90625,
+            "bottom": 396.90625,
+            "lineHeight": 21,
+            "text": "ค้างดำเนินการ1,234,567"
+          },
+          "label": {
+            "x": 179,
+            "y": 264,
+            "width": 112,
+            "height": 40,
+            "bottom": 304,
+            "lineHeight": 21,
+            "text": "ค้างดำเนินการ"
+          }
+        },
+        {
+          "box": {
+            "x": 16,
+            "y": 408.90625,
+            "width": 138,
+            "height": 145.90625,
+            "bottom": 554.8125,
+            "lineHeight": 21,
+            "text": "ลงบัญชีแล้ว1,234,567"
+          },
+          "label": {
+            "x": 29,
+            "y": 421.90625,
+            "width": 112,
+            "height": 40,
+            "bottom": 461.90625,
+            "lineHeight": 21,
+            "text": "ลงบัญชีแล้ว"
+          }
+        },
+        {
+          "box": {
+            "x": 166,
+            "y": 408.90625,
+            "width": 138,
+            "height": 145.90625,
+            "bottom": 554.8125,
+            "lineHeight": 21,
+            "text": "ยกเลิก1,234,567"
+          },
+          "label": {
+            "x": 179,
+            "y": 421.90625,
+            "width": 112,
+            "height": 40,
+            "bottom": 461.90625,
+            "lineHeight": 21,
+            "text": "ยกเลิก"
+          }
+        }
+      ]
+    },
+    {
+      "name": "letters-320-light",
+      "status": "PASS",
+      "metrics": {
+        "title": {
+          "x": 16,
+          "y": 80,
+          "width": 168.28125,
+          "height": 33,
+          "bottom": 113,
+          "lineHeight": 33,
+          "text": "จัดการจดหมาย"
+        }
+      }
+    },
+    {
+      "name": "trade-in-320-light",
+      "status": "PASS",
+      "metrics": {
+        "search": {
+          "x": 37,
+          "y": 358,
+          "width": 246,
+          "height": 44,
+          "bottom": 402,
+          "lineHeight": 24,
+          "text": ""
+        }
+      }
+    },
+    {
+      "name": "customers-320-light",
+      "status": "PASS",
+      "metrics": {
+        "box": {
+          "x": 16,
+          "y": 320,
+          "width": 288,
+          "height": 226,
+          "bottom": 546,
+          "lineHeight": 21,
+          "text": "ลูกค้าทั้งหมด25ผ่อนกับเรา23เงินสด1ไฟแนนซ์นอก1ค้างชำระ1มาจากแชท0"
+        }
+      }
+    },
+    {
+      "name": "expenses-320-light",
+      "status": "PASS",
+      "metrics": {
+        "title": {
+          "x": 68,
+          "y": 60,
+          "width": 205.40625,
+          "height": 33,
+          "bottom": 93,
+          "lineHeight": 33,
+          "text": "ค่าใช้จ่าย"
+        },
+        "search": {
+          "x": 16,
+          "y": 652.0625,
+          "width": 236,
+          "height": 46,
+          "bottom": 698.0625,
+          "lineHeight": 24,
+          "text": ""
+        }
+      }
+    },
+    {
+      "name": "other-income-320-dark",
+      "status": "PASS",
+      "metrics": [
+        {
+          "box": {
+            "x": 16,
+            "y": 251,
+            "width": 138,
+            "height": 145.90625,
+            "bottom": 396.90625,
+            "lineHeight": 21,
+            "text": "ทั้งหมด1,234,567"
+          },
+          "label": {
+            "x": 29,
+            "y": 264,
+            "width": 112,
+            "height": 40,
+            "bottom": 304,
+            "lineHeight": 21,
+            "text": "ทั้งหมด"
+          }
+        },
+        {
+          "box": {
+            "x": 166,
+            "y": 251,
+            "width": 138,
+            "height": 145.90625,
+            "bottom": 396.90625,
+            "lineHeight": 21,
+            "text": "ค้างดำเนินการ1,234,567"
+          },
+          "label": {
+            "x": 179,
+            "y": 264,
+            "width": 112,
+            "height": 40,
+            "bottom": 304,
+            "lineHeight": 21,
+            "text": "ค้างดำเนินการ"
+          }
+        },
+        {
+          "box": {
+            "x": 16,
+            "y": 408.90625,
+            "width": 138,
+            "height": 145.90625,
+            "bottom": 554.8125,
+            "lineHeight": 21,
+            "text": "ลงบัญชีแล้ว1,234,567"
+          },
+          "label": {
+            "x": 29,
+            "y": 421.90625,
+            "width": 112,
+            "height": 40,
+            "bottom": 461.90625,
+            "lineHeight": 21,
+            "text": "ลงบัญชีแล้ว"
+          }
+        },
+        {
+          "box": {
+            "x": 166,
+            "y": 408.90625,
+            "width": 138,
+            "height": 145.90625,
+            "bottom": 554.8125,
+            "lineHeight": 21,
+            "text": "ยกเลิก1,234,567"
+          },
+          "label": {
+            "x": 179,
+            "y": 421.90625,
+            "width": 112,
+            "height": 40,
+            "bottom": 461.90625,
+            "lineHeight": 21,
+            "text": "ยกเลิก"
+          }
+        }
+      ]
+    },
+    {
+      "name": "letters-320-dark",
+      "status": "PASS",
+      "metrics": {
+        "title": {
+          "x": 16,
+          "y": 80,
+          "width": 168.28125,
+          "height": 33,
+          "bottom": 113,
+          "lineHeight": 33,
+          "text": "จัดการจดหมาย"
+        }
+      }
+    },
+    {
+      "name": "trade-in-320-dark",
+      "status": "PASS",
+      "metrics": {
+        "search": {
+          "x": 37,
+          "y": 358,
+          "width": 246,
+          "height": 44,
+          "bottom": 402,
+          "lineHeight": 24,
+          "text": ""
+        }
+      }
+    },
+    {
+      "name": "customers-320-dark",
+      "status": "PASS",
+      "metrics": {
+        "box": {
+          "x": 16,
+          "y": 320,
+          "width": 288,
+          "height": 232,
+          "bottom": 552,
+          "lineHeight": 21,
+          "text": "ลูกค้าทั้งหมด25ผ่อนกับเรา23เงินสด1ไฟแนนซ์นอก1ค้างชำระ1มาจากแชท0"
+        }
+      }
+    },
+    {
+      "name": "expenses-320-dark",
+      "status": "PASS",
+      "metrics": {
+        "title": {
+          "x": 68,
+          "y": 60,
+          "width": 205.40625,
+          "height": 33,
+          "bottom": 93,
+          "lineHeight": 33,
+          "text": "ค่าใช้จ่าย"
+        },
+        "search": {
+          "x": 16,
+          "y": 652.0625,
+          "width": 236,
+          "height": 46,
+          "bottom": 698.0625,
+          "lineHeight": 24,
+          "text": ""
+        }
+      }
+    },
+    {
+      "name": "storefront-320",
+      "status": "PASS",
+      "metrics": {
+        "first": {
+          "x": 16,
+          "y": 533,
+          "width": 139,
+          "height": 388.9375,
+          "bottom": 921.9375,
+          "lineHeight": 27.2,
+          "text": "AGRADE AiPhone 15 Pro Max#4200256GB · ไทเทเนียมธรรมชาติเครื่องไทยดาวน์฿3,885ผ่อน ฿1,890/เดือน · 12 งวดดูเครื่องนี้"
+        },
+        "second": {
+          "x": 165,
+          "y": 533,
+          "width": 139,
+          "height": 388.9375,
+          "bottom": 921.9375,
+          "lineHeight": 27.2,
+          "text": "BGRADE Bแบตเตอรี่ดีสภาพสวยiPhone 14#4201256GB · ไทเทเนียมธรรมชาติเครื่องนอกดาวน์฿3,885ผ่อน ฿1,890/เดือน · 12 งวดดูเครื่องนี้"
+        },
+        "headings": [
+          {
+            "x": 29,
+            "y": 642.75,
+            "width": 113,
+            "height": 48,
+            "bottom": 690.75,
+            "lineHeight": 24,
+            "text": "iPhone 15 Pro Max"
+          },
+          {
+            "x": 178,
+            "y": 642.75,
+            "width": 113,
+            "height": 24,
+            "bottom": 666.75,
+            "lineHeight": 24,
+            "text": "iPhone 14"
+          },
+          {
+            "x": 29,
+            "y": 1041.6875,
+            "width": 113,
+            "height": 24,
+            "bottom": 1065.6875,
+            "lineHeight": 24,
+            "text": "iPhone 13 Pro"
+          },
+          {
+            "x": 178,
+            "y": 1041.6875,
+            "width": 113,
+            "height": 24,
+            "bottom": 1065.6875,
+            "lineHeight": 24,
+            "text": "iPhone 16"
+          },
+          {
+            "x": 29,
+            "y": 1416.625,
+            "width": 113,
+            "height": 24,
+            "bottom": 1440.625,
+            "lineHeight": 24,
+            "text": "iPhone 15"
+          },
+          {
+            "x": 178,
+            "y": 1416.625,
+            "width": 113,
+            "height": 24,
+            "bottom": 1440.625,
+            "lineHeight": 24,
+            "text": "iPhone 12"
+          }
+        ]
+      }
+    },
+    {
+      "name": "other-income-375-light",
+      "status": "PASS",
+      "metrics": [
+        {
+          "box": {
+            "x": 16,
+            "y": 251,
+            "width": 165.5,
+            "height": 145.90625,
+            "bottom": 396.90625,
+            "lineHeight": 21,
+            "text": "ทั้งหมด1,234,567"
+          },
+          "label": {
+            "x": 29,
+            "y": 264,
+            "width": 139.5,
+            "height": 40,
+            "bottom": 304,
+            "lineHeight": 21,
+            "text": "ทั้งหมด"
+          }
+        },
+        {
+          "box": {
+            "x": 193.5,
+            "y": 251,
+            "width": 165.5,
+            "height": 145.90625,
+            "bottom": 396.90625,
+            "lineHeight": 21,
+            "text": "ค้างดำเนินการ1,234,567"
+          },
+          "label": {
+            "x": 206.5,
+            "y": 264,
+            "width": 139.5,
+            "height": 40,
+            "bottom": 304,
+            "lineHeight": 21,
+            "text": "ค้างดำเนินการ"
+          }
+        },
+        {
+          "box": {
+            "x": 16,
+            "y": 408.90625,
+            "width": 165.5,
+            "height": 145.90625,
+            "bottom": 554.8125,
+            "lineHeight": 21,
+            "text": "ลงบัญชีแล้ว1,234,567"
+          },
+          "label": {
+            "x": 29,
+            "y": 421.90625,
+            "width": 139.5,
+            "height": 40,
+            "bottom": 461.90625,
+            "lineHeight": 21,
+            "text": "ลงบัญชีแล้ว"
+          }
+        },
+        {
+          "box": {
+            "x": 193.5,
+            "y": 408.90625,
+            "width": 165.5,
+            "height": 145.90625,
+            "bottom": 554.8125,
+            "lineHeight": 21,
+            "text": "ยกเลิก1,234,567"
+          },
+          "label": {
+            "x": 206.5,
+            "y": 421.90625,
+            "width": 139.5,
+            "height": 40,
+            "bottom": 461.90625,
+            "lineHeight": 21,
+            "text": "ยกเลิก"
+          }
+        }
+      ]
+    },
+    {
+      "name": "letters-375-light",
+      "status": "PASS",
+      "metrics": {
+        "title": {
+          "x": 16,
+          "y": 80,
+          "width": 168.28125,
+          "height": 33,
+          "bottom": 113,
+          "lineHeight": 33,
+          "text": "จัดการจดหมาย"
+        }
+      }
+    },
+    {
+      "name": "trade-in-375-light",
+      "status": "PASS",
+      "metrics": {
+        "search": {
+          "x": 37,
+          "y": 358,
+          "width": 301,
+          "height": 44,
+          "bottom": 402,
+          "lineHeight": 24,
+          "text": ""
+        }
+      }
+    },
+    {
+      "name": "customers-375-light",
+      "status": "PASS",
+      "metrics": {
+        "box": {
+          "x": 16,
+          "y": 320,
+          "width": 343,
+          "height": 226,
+          "bottom": 546,
+          "lineHeight": 21,
+          "text": "ลูกค้าทั้งหมด25ผ่อนกับเรา23เงินสด1ไฟแนนซ์นอก1ค้างชำระ1มาจากแชท0"
+        }
+      }
+    },
+    {
+      "name": "expenses-375-light",
+      "status": "PASS",
+      "metrics": {
+        "title": {
+          "x": 68,
+          "y": 60,
+          "width": 205.40625,
+          "height": 33,
+          "bottom": 93,
+          "lineHeight": 33,
+          "text": "ค่าใช้จ่าย"
+        },
+        "search": {
+          "x": 16,
+          "y": 652.0625,
+          "width": 291,
+          "height": 46,
+          "bottom": 698.0625,
+          "lineHeight": 24,
+          "text": ""
+        }
+      }
+    },
+    {
+      "name": "other-income-375-dark",
+      "status": "PASS",
+      "metrics": [
+        {
+          "box": {
+            "x": 16,
+            "y": 251,
+            "width": 165.5,
+            "height": 145.90625,
+            "bottom": 396.90625,
+            "lineHeight": 21,
+            "text": "ทั้งหมด1,234,567"
+          },
+          "label": {
+            "x": 29,
+            "y": 264,
+            "width": 139.5,
+            "height": 40,
+            "bottom": 304,
+            "lineHeight": 21,
+            "text": "ทั้งหมด"
+          }
+        },
+        {
+          "box": {
+            "x": 193.5,
+            "y": 251,
+            "width": 165.5,
+            "height": 145.90625,
+            "bottom": 396.90625,
+            "lineHeight": 21,
+            "text": "ค้างดำเนินการ1,234,567"
+          },
+          "label": {
+            "x": 206.5,
+            "y": 264,
+            "width": 139.5,
+            "height": 40,
+            "bottom": 304,
+            "lineHeight": 21,
+            "text": "ค้างดำเนินการ"
+          }
+        },
+        {
+          "box": {
+            "x": 16,
+            "y": 408.90625,
+            "width": 165.5,
+            "height": 145.90625,
+            "bottom": 554.8125,
+            "lineHeight": 21,
+            "text": "ลงบัญชีแล้ว1,234,567"
+          },
+          "label": {
+            "x": 29,
+            "y": 421.90625,
+            "width": 139.5,
+            "height": 40,
+            "bottom": 461.90625,
+            "lineHeight": 21,
+            "text": "ลงบัญชีแล้ว"
+          }
+        },
+        {
+          "box": {
+            "x": 193.5,
+            "y": 408.90625,
+            "width": 165.5,
+            "height": 145.90625,
+            "bottom": 554.8125,
+            "lineHeight": 21,
+            "text": "ยกเลิก1,234,567"
+          },
+          "label": {
+            "x": 206.5,
+            "y": 421.90625,
+            "width": 139.5,
+            "height": 40,
+            "bottom": 461.90625,
+            "lineHeight": 21,
+            "text": "ยกเลิก"
+          }
+        }
+      ]
+    },
+    {
+      "name": "letters-375-dark",
+      "status": "PASS",
+      "metrics": {
+        "title": {
+          "x": 16,
+          "y": 80,
+          "width": 168.28125,
+          "height": 33,
+          "bottom": 113,
+          "lineHeight": 33,
+          "text": "จัดการจดหมาย"
+        }
+      }
+    },
+    {
+      "name": "trade-in-375-dark",
+      "status": "PASS",
+      "metrics": {
+        "search": {
+          "x": 37,
+          "y": 358,
+          "width": 301,
+          "height": 44,
+          "bottom": 402,
+          "lineHeight": 24,
+          "text": ""
+        }
+      }
+    },
+    {
+      "name": "customers-375-dark",
+      "status": "PASS",
+      "metrics": {
+        "box": {
+          "x": 16,
+          "y": 320,
+          "width": 343,
+          "height": 232,
+          "bottom": 552,
+          "lineHeight": 21,
+          "text": "ลูกค้าทั้งหมด25ผ่อนกับเรา23เงินสด1ไฟแนนซ์นอก1ค้างชำระ1มาจากแชท0"
+        }
+      }
+    },
+    {
+      "name": "expenses-375-dark",
+      "status": "PASS",
+      "metrics": {
+        "title": {
+          "x": 68,
+          "y": 60,
+          "width": 205.40625,
+          "height": 33,
+          "bottom": 93,
+          "lineHeight": 33,
+          "text": "ค่าใช้จ่าย"
+        },
+        "search": {
+          "x": 16,
+          "y": 652.0625,
+          "width": 291,
+          "height": 46,
+          "bottom": 698.0625,
+          "lineHeight": 24,
+          "text": ""
+        }
+      }
+    },
+    {
+      "name": "storefront-375",
+      "status": "PASS",
+      "metrics": {
+        "first": {
+          "x": 16,
+          "y": 497,
+          "width": 166.5,
+          "height": 409.5625,
+          "bottom": 906.5625,
+          "lineHeight": 27.2,
+          "text": "AGRADE AiPhone 15 Pro Max#4200256GB · ไทเทเนียมธรรมชาติเครื่องไทยดาวน์฿3,885ผ่อน ฿1,890/เดือน · 12 งวดดูเครื่องนี้"
+        },
+        "second": {
+          "x": 192.5,
+          "y": 497,
+          "width": 166.5,
+          "height": 409.5625,
+          "bottom": 906.5625,
+          "lineHeight": 27.2,
+          "text": "BGRADE Bแบตเตอรี่ดีสภาพสวยiPhone 14#4201256GB · ไทเทเนียมธรรมชาติเครื่องนอกดาวน์฿3,885ผ่อน ฿1,890/เดือน · 12 งวดดูเครื่องนี้"
+        },
+        "headings": [
+          {
+            "x": 29,
+            "y": 627.375,
+            "width": 140.5,
+            "height": 48,
+            "bottom": 675.375,
+            "lineHeight": 24,
+            "text": "iPhone 15 Pro Max"
+          },
+          {
+            "x": 205.5,
+            "y": 627.375,
+            "width": 140.5,
+            "height": 24,
+            "bottom": 651.375,
+            "lineHeight": 24,
+            "text": "iPhone 14"
+          },
+          {
+            "x": 29,
+            "y": 1046.9375,
+            "width": 140.5,
+            "height": 24,
+            "bottom": 1070.9375,
+            "lineHeight": 24,
+            "text": "iPhone 13 Pro"
+          },
+          {
+            "x": 205.5,
+            "y": 1046.9375,
+            "width": 140.5,
+            "height": 24,
+            "bottom": 1070.9375,
+            "lineHeight": 24,
+            "text": "iPhone 16"
+          },
+          {
+            "x": 29,
+            "y": 1442.5,
+            "width": 140.5,
+            "height": 24,
+            "bottom": 1466.5,
+            "lineHeight": 24,
+            "text": "iPhone 15"
+          },
+          {
+            "x": 205.5,
+            "y": 1442.5,
+            "width": 140.5,
+            "height": 24,
+            "bottom": 1466.5,
+            "lineHeight": 24,
+            "text": "iPhone 12"
+          }
+        ]
+      }
+    },
+    {
+      "name": "other-income-390-light",
+      "status": "PASS",
+      "metrics": [
+        {
+          "box": {
+            "x": 16,
+            "y": 251,
+            "width": 173,
+            "height": 145.90625,
+            "bottom": 396.90625,
+            "lineHeight": 21,
+            "text": "ทั้งหมด1,234,567"
+          },
+          "label": {
+            "x": 29,
+            "y": 264,
+            "width": 147,
+            "height": 40,
+            "bottom": 304,
+            "lineHeight": 21,
+            "text": "ทั้งหมด"
+          }
+        },
+        {
+          "box": {
+            "x": 201,
+            "y": 251,
+            "width": 173,
+            "height": 145.90625,
+            "bottom": 396.90625,
+            "lineHeight": 21,
+            "text": "ค้างดำเนินการ1,234,567"
+          },
+          "label": {
+            "x": 214,
+            "y": 264,
+            "width": 147,
+            "height": 40,
+            "bottom": 304,
+            "lineHeight": 21,
+            "text": "ค้างดำเนินการ"
+          }
+        },
+        {
+          "box": {
+            "x": 16,
+            "y": 408.90625,
+            "width": 173,
+            "height": 145.90625,
+            "bottom": 554.8125,
+            "lineHeight": 21,
+            "text": "ลงบัญชีแล้ว1,234,567"
+          },
+          "label": {
+            "x": 29,
+            "y": 421.90625,
+            "width": 147,
+            "height": 40,
+            "bottom": 461.90625,
+            "lineHeight": 21,
+            "text": "ลงบัญชีแล้ว"
+          }
+        },
+        {
+          "box": {
+            "x": 201,
+            "y": 408.90625,
+            "width": 173,
+            "height": 145.90625,
+            "bottom": 554.8125,
+            "lineHeight": 21,
+            "text": "ยกเลิก1,234,567"
+          },
+          "label": {
+            "x": 214,
+            "y": 421.90625,
+            "width": 147,
+            "height": 40,
+            "bottom": 461.90625,
+            "lineHeight": 21,
+            "text": "ยกเลิก"
+          }
+        }
+      ]
+    },
+    {
+      "name": "letters-390-light",
+      "status": "PASS",
+      "metrics": {
+        "title": {
+          "x": 16,
+          "y": 80,
+          "width": 168.28125,
+          "height": 33,
+          "bottom": 113,
+          "lineHeight": 33,
+          "text": "จัดการจดหมาย"
+        }
+      }
+    },
+    {
+      "name": "trade-in-390-light",
+      "status": "PASS",
+      "metrics": {
+        "search": {
+          "x": 37,
+          "y": 312,
+          "width": 316,
+          "height": 44,
+          "bottom": 356,
+          "lineHeight": 24,
+          "text": ""
+        }
+      }
+    },
+    {
+      "name": "customers-390-light",
+      "status": "PASS",
+      "metrics": {
+        "box": {
+          "x": 16,
+          "y": 320,
+          "width": 358,
+          "height": 226,
+          "bottom": 546,
+          "lineHeight": 21,
+          "text": "ลูกค้าทั้งหมด25ผ่อนกับเรา23เงินสด1ไฟแนนซ์นอก1ค้างชำระ1มาจากแชท0"
+        }
+      }
+    },
+    {
+      "name": "expenses-390-light",
+      "status": "PASS",
+      "metrics": {
+        "title": {
+          "x": 68,
+          "y": 60,
+          "width": 205.40625,
+          "height": 33,
+          "bottom": 93,
+          "lineHeight": 33,
+          "text": "ค่าใช้จ่าย"
+        },
+        "search": {
+          "x": 16,
+          "y": 652.0625,
+          "width": 306,
+          "height": 46,
+          "bottom": 698.0625,
+          "lineHeight": 24,
+          "text": ""
+        }
+      }
+    },
+    {
+      "name": "other-income-390-dark",
+      "status": "PASS",
+      "metrics": [
+        {
+          "box": {
+            "x": 16,
+            "y": 251,
+            "width": 173,
+            "height": 145.90625,
+            "bottom": 396.90625,
+            "lineHeight": 21,
+            "text": "ทั้งหมด1,234,567"
+          },
+          "label": {
+            "x": 29,
+            "y": 264,
+            "width": 147,
+            "height": 40,
+            "bottom": 304,
+            "lineHeight": 21,
+            "text": "ทั้งหมด"
+          }
+        },
+        {
+          "box": {
+            "x": 201,
+            "y": 251,
+            "width": 173,
+            "height": 145.90625,
+            "bottom": 396.90625,
+            "lineHeight": 21,
+            "text": "ค้างดำเนินการ1,234,567"
+          },
+          "label": {
+            "x": 214,
+            "y": 264,
+            "width": 147,
+            "height": 40,
+            "bottom": 304,
+            "lineHeight": 21,
+            "text": "ค้างดำเนินการ"
+          }
+        },
+        {
+          "box": {
+            "x": 16,
+            "y": 408.90625,
+            "width": 173,
+            "height": 145.90625,
+            "bottom": 554.8125,
+            "lineHeight": 21,
+            "text": "ลงบัญชีแล้ว1,234,567"
+          },
+          "label": {
+            "x": 29,
+            "y": 421.90625,
+            "width": 147,
+            "height": 40,
+            "bottom": 461.90625,
+            "lineHeight": 21,
+            "text": "ลงบัญชีแล้ว"
+          }
+        },
+        {
+          "box": {
+            "x": 201,
+            "y": 408.90625,
+            "width": 173,
+            "height": 145.90625,
+            "bottom": 554.8125,
+            "lineHeight": 21,
+            "text": "ยกเลิก1,234,567"
+          },
+          "label": {
+            "x": 214,
+            "y": 421.90625,
+            "width": 147,
+            "height": 40,
+            "bottom": 461.90625,
+            "lineHeight": 21,
+            "text": "ยกเลิก"
+          }
+        }
+      ]
+    },
+    {
+      "name": "letters-390-dark",
+      "status": "PASS",
+      "metrics": {
+        "title": {
+          "x": 16,
+          "y": 80,
+          "width": 168.28125,
+          "height": 33,
+          "bottom": 113,
+          "lineHeight": 33,
+          "text": "จัดการจดหมาย"
+        }
+      }
+    },
+    {
+      "name": "trade-in-390-dark",
+      "status": "PASS",
+      "metrics": {
+        "search": {
+          "x": 37,
+          "y": 312,
+          "width": 316,
+          "height": 44,
+          "bottom": 356,
+          "lineHeight": 24,
+          "text": ""
+        }
+      }
+    },
+    {
+      "name": "customers-390-dark",
+      "status": "PASS",
+      "metrics": {
+        "box": {
+          "x": 16,
+          "y": 320,
+          "width": 358,
+          "height": 232,
+          "bottom": 552,
+          "lineHeight": 21,
+          "text": "ลูกค้าทั้งหมด25ผ่อนกับเรา23เงินสด1ไฟแนนซ์นอก1ค้างชำระ1มาจากแชท0"
+        }
+      }
+    },
+    {
+      "name": "expenses-390-dark",
+      "status": "PASS",
+      "metrics": {
+        "title": {
+          "x": 68,
+          "y": 60,
+          "width": 205.40625,
+          "height": 33,
+          "bottom": 93,
+          "lineHeight": 33,
+          "text": "ค่าใช้จ่าย"
+        },
+        "search": {
+          "x": 16,
+          "y": 652.0625,
+          "width": 306,
+          "height": 46,
+          "bottom": 698.0625,
+          "lineHeight": 24,
+          "text": ""
+        }
+      }
+    },
+    {
+      "name": "storefront-390",
+      "status": "PASS",
+      "metrics": {
+        "first": {
+          "x": 16,
+          "y": 497,
+          "width": 174,
+          "height": 373.1875,
+          "bottom": 870.1875,
+          "lineHeight": 27.2,
+          "text": "AGRADE AiPhone 15 Pro Max#4200256GB · ไทเทเนียมธรรมชาติเครื่องไทยดาวน์฿3,885ผ่อน ฿1,890/เดือน · 12 งวดดูเครื่องนี้"
+        },
+        "second": {
+          "x": 200,
+          "y": 497,
+          "width": 174,
+          "height": 373.1875,
+          "bottom": 870.1875,
+          "lineHeight": 27.2,
+          "text": "BGRADE Bแบตเตอรี่ดีสภาพสวยiPhone 14#4201256GB · ไทเทเนียมธรรมชาติเครื่องนอกดาวน์฿3,885ผ่อน ฿1,890/เดือน · 12 งวดดูเครื่องนี้"
+        },
+        "headings": [
+          {
+            "x": 29,
+            "y": 633,
+            "width": 148,
+            "height": 24,
+            "bottom": 657,
+            "lineHeight": 24,
+            "text": "iPhone 15 Pro Max"
+          },
+          {
+            "x": 213,
+            "y": 633,
+            "width": 148,
+            "height": 24,
+            "bottom": 657,
+            "lineHeight": 24,
+            "text": "iPhone 14"
+          },
+          {
+            "x": 29,
+            "y": 1016.1875,
+            "width": 148,
+            "height": 24,
+            "bottom": 1040.1875,
+            "lineHeight": 24,
+            "text": "iPhone 13 Pro"
+          },
+          {
+            "x": 213,
+            "y": 1016.1875,
+            "width": 148,
+            "height": 24,
+            "bottom": 1040.1875,
+            "lineHeight": 24,
+            "text": "iPhone 16"
+          },
+          {
+            "x": 29,
+            "y": 1399.375,
+            "width": 148,
+            "height": 24,
+            "bottom": 1423.375,
+            "lineHeight": 24,
+            "text": "iPhone 15"
+          },
+          {
+            "x": 213,
+            "y": 1399.375,
+            "width": 148,
+            "height": 24,
+            "bottom": 1423.375,
+            "lineHeight": 24,
+            "text": "iPhone 12"
+          }
+        ]
+      }
+    },
+    {
+      "name": "other-income-430-light",
+      "status": "PASS",
+      "metrics": [
+        {
+          "box": {
+            "x": 16,
+            "y": 230,
+            "width": 193,
+            "height": 106,
+            "bottom": 336,
+            "lineHeight": 21,
+            "text": "ทั้งหมด1,234,567"
+          },
+          "label": {
+            "x": 29,
+            "y": 243,
+            "width": 167,
+            "height": 40,
+            "bottom": 283,
+            "lineHeight": 21,
+            "text": "ทั้งหมด"
+          }
+        },
+        {
+          "box": {
+            "x": 221,
+            "y": 230,
+            "width": 193,
+            "height": 106,
+            "bottom": 336,
+            "lineHeight": 21,
+            "text": "ค้างดำเนินการ1,234,567"
+          },
+          "label": {
+            "x": 234,
+            "y": 243,
+            "width": 167,
+            "height": 40,
+            "bottom": 283,
+            "lineHeight": 21,
+            "text": "ค้างดำเนินการ"
+          }
+        },
+        {
+          "box": {
+            "x": 16,
+            "y": 348,
+            "width": 193,
+            "height": 106,
+            "bottom": 454,
+            "lineHeight": 21,
+            "text": "ลงบัญชีแล้ว1,234,567"
+          },
+          "label": {
+            "x": 29,
+            "y": 361,
+            "width": 167,
+            "height": 40,
+            "bottom": 401,
+            "lineHeight": 21,
+            "text": "ลงบัญชีแล้ว"
+          }
+        },
+        {
+          "box": {
+            "x": 221,
+            "y": 348,
+            "width": 193,
+            "height": 106,
+            "bottom": 454,
+            "lineHeight": 21,
+            "text": "ยกเลิก1,234,567"
+          },
+          "label": {
+            "x": 234,
+            "y": 361,
+            "width": 167,
+            "height": 40,
+            "bottom": 401,
+            "lineHeight": 21,
+            "text": "ยกเลิก"
+          }
+        }
+      ]
+    },
+    {
+      "name": "letters-430-light",
+      "status": "PASS",
+      "metrics": {
+        "title": {
+          "x": 16,
+          "y": 80,
+          "width": 168.28125,
+          "height": 33,
+          "bottom": 113,
+          "lineHeight": 33,
+          "text": "จัดการจดหมาย"
+        }
+      }
+    },
+    {
+      "name": "trade-in-430-light",
+      "status": "PASS",
+      "metrics": {
+        "search": {
+          "x": 37,
+          "y": 312,
+          "width": 356,
+          "height": 44,
+          "bottom": 356,
+          "lineHeight": 24,
+          "text": ""
+        }
+      }
+    },
+    {
+      "name": "customers-430-light",
+      "status": "PASS",
+      "metrics": {
+        "box": {
+          "x": 16,
+          "y": 320,
+          "width": 398,
+          "height": 226,
+          "bottom": 546,
+          "lineHeight": 21,
+          "text": "ลูกค้าทั้งหมด25ผ่อนกับเรา23เงินสด1ไฟแนนซ์นอก1ค้างชำระ1มาจากแชท0"
+        }
+      }
+    },
+    {
+      "name": "expenses-430-light",
+      "status": "PASS",
+      "metrics": {
+        "title": {
+          "x": 68,
+          "y": 60,
+          "width": 205.40625,
+          "height": 33,
+          "bottom": 93,
+          "lineHeight": 33,
+          "text": "ค่าใช้จ่าย"
+        },
+        "search": {
+          "x": 16,
+          "y": 612.0625,
+          "width": 346,
+          "height": 46,
+          "bottom": 658.0625,
+          "lineHeight": 24,
+          "text": ""
+        }
+      }
+    },
+    {
+      "name": "other-income-430-dark",
+      "status": "PASS",
+      "metrics": [
+        {
+          "box": {
+            "x": 16,
+            "y": 230,
+            "width": 193,
+            "height": 106,
+            "bottom": 336,
+            "lineHeight": 21,
+            "text": "ทั้งหมด1,234,567"
+          },
+          "label": {
+            "x": 29,
+            "y": 243,
+            "width": 167,
+            "height": 40,
+            "bottom": 283,
+            "lineHeight": 21,
+            "text": "ทั้งหมด"
+          }
+        },
+        {
+          "box": {
+            "x": 221,
+            "y": 230,
+            "width": 193,
+            "height": 106,
+            "bottom": 336,
+            "lineHeight": 21,
+            "text": "ค้างดำเนินการ1,234,567"
+          },
+          "label": {
+            "x": 234,
+            "y": 243,
+            "width": 167,
+            "height": 40,
+            "bottom": 283,
+            "lineHeight": 21,
+            "text": "ค้างดำเนินการ"
+          }
+        },
+        {
+          "box": {
+            "x": 16,
+            "y": 348,
+            "width": 193,
+            "height": 106,
+            "bottom": 454,
+            "lineHeight": 21,
+            "text": "ลงบัญชีแล้ว1,234,567"
+          },
+          "label": {
+            "x": 29,
+            "y": 361,
+            "width": 167,
+            "height": 40,
+            "bottom": 401,
+            "lineHeight": 21,
+            "text": "ลงบัญชีแล้ว"
+          }
+        },
+        {
+          "box": {
+            "x": 221,
+            "y": 348,
+            "width": 193,
+            "height": 106,
+            "bottom": 454,
+            "lineHeight": 21,
+            "text": "ยกเลิก1,234,567"
+          },
+          "label": {
+            "x": 234,
+            "y": 361,
+            "width": 167,
+            "height": 40,
+            "bottom": 401,
+            "lineHeight": 21,
+            "text": "ยกเลิก"
+          }
+        }
+      ]
+    },
+    {
+      "name": "letters-430-dark",
+      "status": "PASS",
+      "metrics": {
+        "title": {
+          "x": 16,
+          "y": 80,
+          "width": 168.28125,
+          "height": 33,
+          "bottom": 113,
+          "lineHeight": 33,
+          "text": "จัดการจดหมาย"
+        }
+      }
+    },
+    {
+      "name": "trade-in-430-dark",
+      "status": "PASS",
+      "metrics": {
+        "search": {
+          "x": 37,
+          "y": 312,
+          "width": 356,
+          "height": 44,
+          "bottom": 356,
+          "lineHeight": 24,
+          "text": ""
+        }
+      }
+    },
+    {
+      "name": "customers-430-dark",
+      "status": "PASS",
+      "metrics": {
+        "box": {
+          "x": 16,
+          "y": 320,
+          "width": 398,
+          "height": 232,
+          "bottom": 552,
+          "lineHeight": 21,
+          "text": "ลูกค้าทั้งหมด25ผ่อนกับเรา23เงินสด1ไฟแนนซ์นอก1ค้างชำระ1มาจากแชท0"
+        }
+      }
+    },
+    {
+      "name": "expenses-430-dark",
+      "status": "PASS",
+      "metrics": {
+        "title": {
+          "x": 68,
+          "y": 60,
+          "width": 205.40625,
+          "height": 33,
+          "bottom": 93,
+          "lineHeight": 33,
+          "text": "ค่าใช้จ่าย"
+        },
+        "search": {
+          "x": 16,
+          "y": 612.0625,
+          "width": 346,
+          "height": 46,
+          "bottom": 658.0625,
+          "lineHeight": 24,
+          "text": ""
+        }
+      }
+    },
+    {
+      "name": "storefront-430",
+      "status": "PASS",
+      "metrics": {
+        "first": {
+          "x": 16,
+          "y": 476,
+          "width": 194,
+          "height": 388.1875,
+          "bottom": 864.1875,
+          "lineHeight": 27.2,
+          "text": "AGRADE AiPhone 15 Pro Max#4200256GB · ไทเทเนียมธรรมชาติเครื่องไทยดาวน์฿3,885ผ่อน ฿1,890/เดือน · 12 งวดดูเครื่องนี้"
+        },
+        "second": {
+          "x": 220,
+          "y": 476,
+          "width": 194,
+          "height": 388.1875,
+          "bottom": 864.1875,
+          "lineHeight": 27.2,
+          "text": "BGRADE Bแบตเตอรี่ดีสภาพสวยiPhone 14#4201256GB · ไทเทเนียมธรรมชาติเครื่องนอกดาวน์฿3,885ผ่อน ฿1,890/เดือน · 12 งวดดูเครื่องนี้"
+        },
+        "headings": [
+          {
+            "x": 29,
+            "y": 627,
+            "width": 168,
+            "height": 24,
+            "bottom": 651,
+            "lineHeight": 24,
+            "text": "iPhone 15 Pro Max"
+          },
+          {
+            "x": 233,
+            "y": 627,
+            "width": 168,
+            "height": 24,
+            "bottom": 651,
+            "lineHeight": 24,
+            "text": "iPhone 14"
+          },
+          {
+            "x": 29,
+            "y": 1025.1875,
+            "width": 168,
+            "height": 24,
+            "bottom": 1049.1875,
+            "lineHeight": 24,
+            "text": "iPhone 13 Pro"
+          },
+          {
+            "x": 233,
+            "y": 1025.1875,
+            "width": 168,
+            "height": 24,
+            "bottom": 1049.1875,
+            "lineHeight": 24,
+            "text": "iPhone 16"
+          },
+          {
+            "x": 29,
+            "y": 1423.375,
+            "width": 168,
+            "height": 24,
+            "bottom": 1447.375,
+            "lineHeight": 24,
+            "text": "iPhone 15"
+          },
+          {
+            "x": 233,
+            "y": 1423.375,
+            "width": 168,
+            "height": 24,
+            "bottom": 1447.375,
+            "lineHeight": 24,
+            "text": "iPhone 12"
+          }
+        ]
+      }
+    },
+    {
+      "name": "other-income-1440-light",
+      "status": "PASS",
+      "metrics": [
+        {
+          "box": {
+            "x": 139,
+            "y": 206,
+            "width": 299,
+            "height": 114,
+            "bottom": 320,
+            "lineHeight": 21,
+            "text": "ทั้งหมด1,234,567"
+          },
+          "label": {
+            "x": 156,
+            "y": 223,
+            "width": 265,
+            "height": 40,
+            "bottom": 263,
+            "lineHeight": 21,
+            "text": "ทั้งหมด"
+          }
+        },
+        {
+          "box": {
+            "x": 450,
+            "y": 206,
+            "width": 299,
+            "height": 114,
+            "bottom": 320,
+            "lineHeight": 21,
+            "text": "ค้างดำเนินการ1,234,567"
+          },
+          "label": {
+            "x": 467,
+            "y": 223,
+            "width": 265,
+            "height": 40,
+            "bottom": 263,
+            "lineHeight": 21,
+            "text": "ค้างดำเนินการ"
+          }
+        },
+        {
+          "box": {
+            "x": 761,
+            "y": 206,
+            "width": 299,
+            "height": 114,
+            "bottom": 320,
+            "lineHeight": 21,
+            "text": "ลงบัญชีแล้ว1,234,567"
+          },
+          "label": {
+            "x": 778,
+            "y": 223,
+            "width": 265,
+            "height": 40,
+            "bottom": 263,
+            "lineHeight": 21,
+            "text": "ลงบัญชีแล้ว"
+          }
+        },
+        {
+          "box": {
+            "x": 1072,
+            "y": 206,
+            "width": 299,
+            "height": 114,
+            "bottom": 320,
+            "lineHeight": 21,
+            "text": "ยกเลิก1,234,567"
+          },
+          "label": {
+            "x": 1089,
+            "y": 223,
+            "width": 265,
+            "height": 40,
+            "bottom": 263,
+            "lineHeight": 21,
+            "text": "ยกเลิก"
+          }
+        }
+      ]
+    },
+    {
+      "name": "letters-1440-light",
+      "status": "PASS",
+      "metrics": {
+        "title": {
+          "x": 308,
+          "y": 76,
+          "width": 181.03125,
+          "height": 36,
+          "bottom": 112,
+          "lineHeight": 36,
+          "text": "จัดการจดหมาย"
+        }
+      }
+    },
+    {
+      "name": "trade-in-1440-light",
+      "status": "PASS",
+      "metrics": {
+        "search": {
+          "x": 313,
+          "y": 249,
+          "width": 288,
+          "height": 32,
+          "bottom": 281,
+          "lineHeight": 21,
+          "text": ""
+        }
+      }
+    },
+    {
+      "name": "customers-1440-light",
+      "status": "PASS",
+      "metrics": {
+        "box": {
+          "x": 292,
+          "y": 242,
+          "width": 1120,
+          "height": 87.90625,
+          "bottom": 329.90625,
+          "lineHeight": 21,
+          "text": "ลูกค้าทั้งหมด25ผ่อนกับเรา23เงินสด1ไฟแนนซ์นอก1ค้างชำระ1มาจากแชท0"
+        }
+      }
+    },
+    {
+      "name": "expenses-1440-light",
+      "status": "PASS",
+      "metrics": {
+        "title": {
+          "x": 344,
+          "y": 60,
+          "width": 205.40625,
+          "height": 36,
+          "bottom": 96,
+          "lineHeight": 36,
+          "text": "ค่าใช้จ่าย"
+        },
+        "search": {
+          "x": 292,
+          "y": 386.53125,
+          "width": 735.609375,
+          "height": 43,
+          "bottom": 429.53125,
+          "lineHeight": 21,
+          "text": ""
+        }
+      }
+    },
+    {
+      "name": "storefront-1440",
+      "status": "PASS",
+      "metrics": {
+        "first": {
+          "x": 418,
+          "y": 460,
+          "width": 298,
+          "height": 464.1875,
+          "bottom": 924.1875,
+          "lineHeight": 27.2,
+          "text": "AGRADE AiPhone 15 Pro Max#4200256GB · ไทเทเนียมธรรมชาติเครื่องไทยดาวน์฿3,885ผ่อน ฿1,890/เดือน · 12 งวดดูเครื่องนี้"
+        },
+        "second": {
+          "x": 728,
+          "y": 460,
+          "width": 298,
+          "height": 464.1875,
+          "bottom": 924.1875,
+          "lineHeight": 27.2,
+          "text": "BGRADE Bแบตเตอรี่ดีสภาพสวยiPhone 14#4201256GB · ไทเทเนียมธรรมชาติเครื่องนอกดาวน์฿3,885ผ่อน ฿1,890/เดือน · 12 งวดดูเครื่องนี้"
+        },
+        "headings": [
+          {
+            "x": 433,
+            "y": 688,
+            "width": 147.03125,
+            "height": 24,
+            "bottom": 712,
+            "lineHeight": 24,
+            "text": "iPhone 15 Pro Max"
+          },
+          {
+            "x": 743,
+            "y": 688,
+            "width": 77.8125,
+            "height": 24,
+            "bottom": 712,
+            "lineHeight": 24,
+            "text": "iPhone 14"
+          },
+          {
+            "x": 1053,
+            "y": 688,
+            "width": 108.734375,
+            "height": 24,
+            "bottom": 712,
+            "lineHeight": 24,
+            "text": "iPhone 13 Pro"
+          },
+          {
+            "x": 433,
+            "y": 1164.1875,
+            "width": 77.8125,
+            "height": 24,
+            "bottom": 1188.1875,
+            "lineHeight": 24,
+            "text": "iPhone 16"
+          },
+          {
+            "x": 743,
+            "y": 1164.1875,
+            "width": 77.8125,
+            "height": 24,
+            "bottom": 1188.1875,
+            "lineHeight": 24,
+            "text": "iPhone 15"
+          },
+          {
+            "x": 1053,
+            "y": 1164.1875,
+            "width": 77.8125,
+            "height": 24,
+            "bottom": 1188.1875,
+            "lineHeight": 24,
+            "text": "iPhone 12"
+          }
+        ]
+      }
+    }
+  ],
+  "failures": []
+}

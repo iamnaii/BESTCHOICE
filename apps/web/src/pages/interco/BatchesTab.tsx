@@ -1,3 +1,4 @@
+import ScreenTable from '@/components/ui/ScreenTable';
 import { Layers } from 'lucide-react';
 import QueryBoundary from '@/components/QueryBoundary';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
@@ -62,7 +63,7 @@ export function BatchesTab({
     <div className="space-y-4 pt-4">
       <div className="flex flex-wrap gap-2">
         {STATUS_CHIPS.map((chip) => (
-          <button
+          <button data-ui-control="button"
             key={chip.label}
             type="button"
             onClick={() => onStatusFilterChange(chip.value)}
@@ -93,7 +94,7 @@ export function BatchesTab({
           </CardHeader>
           <CardContent className="p-0">
             <div className="overflow-x-auto">
-              <table className="w-full text-sm leading-snug">
+              <ScreenTable className="w-full text-sm leading-snug">
                 <thead className="bg-muted/50">
                   <tr>
                     <th className="text-left p-3 font-medium text-muted-foreground">เลขที่รอบ</th>
@@ -145,7 +146,7 @@ export function BatchesTab({
                     ))
                   )}
                 </tbody>
-              </table>
+              </ScreenTable>
             </div>
             {data && data.total > 0 && (
               <div className="px-3">

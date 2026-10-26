@@ -1,4 +1,6 @@
-import { useState } from 'react';
+import ScreenTable from '@/components/ui/ScreenTable';
+import { getReportDateRange } from '@/lib/date';
+import { useId as useUiFieldId, useState } from 'react';
 import { Link } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
 import { Building2, TrendingDown, TrendingUp } from 'lucide-react';
@@ -58,9 +60,7 @@ function fmt(n: number | null | undefined): string {
 }
 
 function fmtSigned(n: number): string {
-  const abs = Math.abs(n);
-  const str = abs.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  return n < 0 ? `(${str})` : str;
+  return fmt(n);
 }
 
 const inputClass =
@@ -120,10 +120,10 @@ function SummaryCard({ line }: SummaryCardProps) {
 // ── Main page ──────────────────────────────────────────────────────
 
 export default function IntercompanyReportPage() {
-  const now = new Date();
-  const firstOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-  const [startDate, setStartDate] = useState(firstOfMonth.toISOString().split('T')[0]);
-  const [endDate, setEndDate] = useState(now.toISOString().split('T')[0]);
+  const uiFieldId = useUiFieldId();
+  const range = getReportDateRange('this_month');
+  const [startDate, setStartDate] = useState(range.startDate);
+  const [endDate, setEndDate] = useState(range.endDate);
 
   // Summary report
   const {
@@ -201,7 +201,7 @@ export default function IntercompanyReportPage() {
   return (
     <div>
       <PageHeader
-        title="รายงานลูกหนี้ Inter-co"
+        title="รายงานลูกหนี้ระหว่างบริษัท"
         subtitle="FINANCE ↔ SHOP — ยอดเจ้าหนี้หน้าร้าน (21-1101, 21-1102)"
         icon={<Building2 className="size-5" />}
       />
@@ -209,20 +209,20 @@ export default function IntercompanyReportPage() {
       {/* Date range controls */}
       <div className="flex flex-wrap gap-3 mb-6">
         <div>
-          <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
+          <label htmlFor={`${uiFieldId}-1`} className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
             ตั้งแต่
           </label>
-          <ThaiDateInput
+          <ThaiDateInput id={`${uiFieldId}-1`}
             value={startDate}
             onChange={(e) => setStartDate(e.target.value)}
             className={`${inputClass} w-auto`}
           />
         </div>
         <div>
-          <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
+          <label htmlFor={`${uiFieldId}-2`} className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
             ถึง
           </label>
-          <ThaiDateInput
+          <ThaiDateInput id={`${uiFieldId}-2`}
             value={endDate}
             onChange={(e) => setEndDate(e.target.value)}
             className={`${inputClass} w-auto`}
@@ -302,7 +302,7 @@ export default function IntercompanyReportPage() {
               </div>
             ) : (
               <div className="overflow-x-auto">
-                <table className="w-full text-sm leading-snug">
+                <ScreenTable className="w-full text-sm leading-snug">
                   <thead className="bg-muted/50">
                     <tr>
                       <th className="text-left p-3 font-medium text-muted-foreground whitespace-nowrap">
@@ -386,7 +386,7 @@ export default function IntercompanyReportPage() {
                       </td>
                     </tr>
                   </tfoot>
-                </table>
+                </ScreenTable>
               </div>
             )}
           </CardContent>

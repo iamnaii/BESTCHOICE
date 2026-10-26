@@ -1,3 +1,4 @@
+import { NativeSelect } from '@/components/ui/native-select';
 import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import Modal from '@/components/ui/Modal';
@@ -110,28 +111,28 @@ export default function SendLineAdHocDialog({ open, contract, onClose, onSent }:
       <div className="space-y-4">
         {/* Mode toggle */}
         <div className="flex gap-2">
-          <button onClick={() => setMode('template')} className={modeBtn(mode === 'template')}>
-            ใช้ template
+          <button data-ui-control="button" onClick={() => setMode('template')} className={modeBtn(mode === 'template')}>
+            ใช้แม่แบบ
           </button>
-          <button onClick={() => setMode('custom')} className={modeBtn(mode === 'custom')}>
+          <button data-ui-control="button" onClick={() => setMode('custom')} className={modeBtn(mode === 'custom')}>
             พิมพ์เอง
           </button>
         </div>
 
         {mode === 'template' ? (
           <div className="space-y-3">
-            <select
+            <NativeSelect wrapperClassName="max-w-full w-full"
               value={templateId}
               onChange={(e) => setTemplateId(e.target.value)}
-              className="w-full px-3 py-2 border border-input rounded-lg text-sm leading-snug"
+              className="px-3 py-2 border border-input rounded-lg text-sm leading-snug"
             >
-              <option value="">— เลือก template —</option>
+              <option value="">— เลือกแม่แบบ —</option>
               {rules.map((r) => (
                 <option key={r.id} value={r.id}>
                   {r.name}
                 </option>
               ))}
-            </select>
+            </NativeSelect>
 
             {/* Message preview with substituted vars */}
             {selectedRule && contract && (
@@ -147,7 +148,7 @@ export default function SendLineAdHocDialog({ open, contract, onClose, onSent }:
 
             {rules.length === 0 && (
               <div className="text-xs text-muted-foreground italic leading-snug">
-                ยังไม่มี dunning rules — สร้างในหน้าตั้งค่าก่อน
+                ยังไม่มี กฎทวงถามหนี้ — สร้างในหน้าตั้งค่าก่อน
               </div>
             )}
           </div>
@@ -169,14 +170,14 @@ export default function SendLineAdHocDialog({ open, contract, onClose, onSent }:
 
         {/* Submit */}
         <div className="flex justify-end gap-2 pt-1">
-          <button
+          <button data-ui-control="button"
             onClick={onClose}
             disabled={mutation.isPending}
             className="px-4 py-2 text-sm rounded-lg border border-input hover:bg-muted transition-colors disabled:opacity-50"
           >
             ยกเลิก
           </button>
-          <button
+          <button data-ui-control="button"
             onClick={handleSubmit}
             disabled={!canSubmit || mutation.isPending}
             className="px-4 py-2 text-sm font-medium rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"

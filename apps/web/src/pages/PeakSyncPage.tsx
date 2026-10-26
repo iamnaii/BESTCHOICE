@@ -1,3 +1,5 @@
+import ScreenTable from '@/components/ui/ScreenTable';
+import { NativeSelect } from '@/components/ui/native-select';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { CheckCircle2, XCircle, RefreshCw, Link2, Calendar, Database } from 'lucide-react';
@@ -131,11 +133,11 @@ export default function PeakSyncPage() {
   return (
     <div>
       <PageHeader
-        title="PEAK Sync"
+        title="เชื่อมข้อมูล PEAK"
         subtitle="ตรวจสอบสถานะการเชื่อมต่อและส่งข้อมูลไปยัง PEAK"
         action={
           <div className="flex items-center gap-3">
-            <select
+            <NativeSelect wrapperClassName="max-w-full w-auto" aria-label="ปี"
               value={selectedYear}
               onChange={(e) => setSelectedYear(Number(e.target.value))}
               className="text-sm border border-input rounded-lg px-3 py-2 bg-background"
@@ -145,8 +147,8 @@ export default function PeakSyncPage() {
                   ปี {y + 543} ({y})
                 </option>
               ))}
-            </select>
-            <button
+            </NativeSelect>
+            <button data-ui-control="button"
               onClick={handleRefresh}
               disabled={isRefreshing}
               className="px-4 py-2 text-sm border border-input rounded-lg hover:bg-muted/50 disabled:opacity-50 flex items-center gap-2"
@@ -243,7 +245,7 @@ export default function PeakSyncPage() {
               </span>
             </div>
             <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+              <ScreenTable className="w-full text-sm">
                 <thead className="bg-muted/40">
                   <tr>
                     <th className="text-left px-5 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wide">
@@ -253,7 +255,7 @@ export default function PeakSyncPage() {
                       สถานะงวด
                     </th>
                     <th className="text-left px-5 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                      วันที่ Sync PEAK
+                      วันที่ เชื่อมข้อมูล PEAK
                     </th>
                     <th className="text-left px-5 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wide">
                       วันที่ปิดงวด
@@ -302,7 +304,7 @@ export default function PeakSyncPage() {
                     );
                   })}
                 </tbody>
-              </table>
+              </ScreenTable>
               {periods.length === 0 && !periodsQuery.isLoading && (
                 <div className="py-12 text-center text-sm text-muted-foreground">
                   ไม่พบข้อมูลงวดบัญชี

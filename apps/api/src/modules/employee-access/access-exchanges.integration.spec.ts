@@ -13,6 +13,8 @@ import {
 import { currentDomainAccess } from './access-execution-context';
 import { DefectExchangeService } from '../defect-exchange/defect-exchange.service';
 import { DefectExchangeReversalTemplate } from '../journal/cpa-templates/defect-exchange-reversal.template';
+import { ReceiptNumberService } from '../receipts/services/receipt-number.service';
+import { ReceiptVoidReversalTemplate } from '../journal/cpa-templates/receipt-void-reversal.template';
 import { ShopAccountResolver } from '../journal/shop-account-resolver.service';
 import { ShopInventoryTransferTemplate } from '../journal/cpa-templates/shop-inventory-transfer.template';
 import { ExchangeCancelReversalTemplate } from '../journal/cpa-templates/exchange-cancel-reversal.template';
@@ -127,6 +129,8 @@ const defect = new DefectExchangeService(
   journal,
   new DefectExchangeReversalTemplate(journal, db as PrismaService),
   repair,
+  new ReceiptVoidReversalTemplate(journal, db as PrismaService),
+  new ReceiptNumberService(db as PrismaService),
   access,
 );
 let branchId: string,

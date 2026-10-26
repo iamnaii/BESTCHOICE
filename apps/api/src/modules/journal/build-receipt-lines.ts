@@ -1,5 +1,6 @@
 import { Decimal } from '@prisma/client/runtime/library';
 import { SplitReceiptResult } from './split-receipt';
+import { advanceVatOf, buildAdvanceVatConsumeLines, buildAdvanceVatParkLines } from './advance-vat';
 
 export interface ReceiptLine {
   accountCode: string;
@@ -25,6 +26,12 @@ export interface BuildReceiptLinesInput {
   overpayCode: string;
   /** Resolved adj_underpay code (default 52-1104). */
   underpayCode: string;
+  /**
+   * PR4 (ต3/ต4): ภาษีขายของเงินรับล่วงหน้า/เครดิตที่ออกจากถังในใบนี้ (Dr 21-1103 advanceConsume · Dr 21-5101 delta)
+   * ที่ผู้เรียก resolve มาแล้ว (`resolveConsumeVat` — เพดาน "ยังค้าง" · ใบสุดท้ายรับเศษ) → ขากลับ `Dr 21-2101 / Cr 21-2102`.
+   * ไม่ส่ง / 0 = ไม่มีขากลับ (เงินก่อน PR4 · เครดิตจากเปลี่ยนเครื่องเสีย — G7).
+   */
+  advanceVatConsume?: Decimal;
 }
 
 /**
@@ -41,6 +48,12 @@ export interface BuildReceiptLinesInput {
  *   Dr 52-1105 = lateFeeWaived
  *
  * Balance holds: Dr(delta + advanceConsume + waived) = Cr(principal + grossLateFee + ...).
+ *
+ * PR4 (ภาษีขายของเงินรับล่วงหน้า ณ วันรับ): เงินที่พักเป็นเงินรับล่วงหน้า (Cr 21-1103 advanceCredit) ได้ขาพักภาษี
+ * `Dr 21-2102 / Cr 21-2101 = HALF_UP(advanceCredit × 7/107)` ต่อท้ายในรายการเดียวกัน — คู่ที่สมดุลกันเอง ยอด 21-1103
+ * ยังเต็มจำนวน (แบบ X). เงินที่ออกจากถัง (Dr 21-1103 advanceConsume · Dr 21-5101 delta) ได้ขากลับ
+ * `Dr 21-2101 / Cr 21-2102 = advanceVatConsume` ที่ผู้เรียก resolve จากสมุด (ต4). preview ใช้ตัวสร้างนี้ตัวเดียวกัน
+ * จึงเห็นทั้งขาพักและขากลับเหมือนรายการที่ลงจริง.
  */
 export function buildReceiptLines(input: BuildReceiptLinesInput): ReceiptLine[] {
   const { split } = input;
@@ -53,6 +66,8 @@ export function buildReceiptLines(input: BuildReceiptLinesInput): ReceiptLine[] 
   if (input.advanceConsume.gt(0)) {
     lines.push({ accountCode: '21-1103', dr: input.advanceConsume, cr: zero, description: 'หักเงินรับล่วงหน้า' });
   }
+  // PR4: ขากลับของภาษีที่รับรู้ตอนพัก — ตามหลังบรรทัดที่เงินออกจากถัง (Dr 21-1103 หรือ Dr 21-5101 ข้างบน)
+  lines.push(...buildAdvanceVatConsumeLines(input.advanceVatConsume ?? zero));
   if (split.underpayRounding.gt(0)) {
     lines.push({
       accountCode: input.underpayCode,
@@ -83,6 +98,7 @@ export function buildReceiptLines(input: BuildReceiptLinesInput): ReceiptLine[] 
   }
   if (input.advanceCredit.gt(0)) {
     lines.push({ accountCode: '21-1103', dr: zero, cr: input.advanceCredit, description: 'เงินรับล่วงหน้า' });
+    lines.push(...buildAdvanceVatParkLines(advanceVatOf(input.advanceCredit)));
   }
 
   return lines;

@@ -8,6 +8,8 @@ import { PrismaModule } from '../../prisma/prisma.module';
 import { ContractActivation1ATemplate } from './cpa-templates/contract-activation-1a.template';
 import { InstallmentAccrual2ATemplate } from './cpa-templates/installment-accrual-2a.template';
 import { InstallmentAccrualCron } from './cron/installment-accrual.cron';
+import { AdvanceExcessIncomeTemplate } from './cpa-templates/advance-excess-income.template';
+import { AdvanceExcessIncomeCron } from './cron/advance-excess-income.cron';
 import { PaymentReceiptTemplate } from './cpa-templates/payment-receipt.template';
 import { EarlyPayoffJP4Template } from './cpa-templates/early-payoff-jp4.template';
 import { RepossessionJP5Template } from './cpa-templates/repossession-jp5.template';
@@ -43,6 +45,7 @@ import { CompanyResolverService } from './company-resolver.service';
 import { ShopAccountResolver } from './shop-account-resolver.service';
 import { PairedJournalService } from './paired-journal.service';
 import { ShopCashSaleTemplate } from './cpa-templates/shop-cash-sale.template';
+import { ShopCashExchangeTemplate } from './cpa-templates/shop-cash-exchange.template';
 import { ShopDownPaymentTemplate } from './cpa-templates/shop-down-payment.template';
 import { ShopBookingDepositTemplate } from './cpa-templates/shop-booking-deposit.template';
 import { ShopBookingForfeitTemplate } from './cpa-templates/shop-booking-forfeit.template';
@@ -55,6 +58,7 @@ import { ShopTradeInTemplate } from './cpa-templates/shop-trade-in.template';
 import { ShopGoodsReceivingTemplate } from './cpa-templates/shop-goods-receiving.template';
 // ก้อน 2 (2026-10-05) — จ่ายเงินผู้จัดจำหน่าย / มัดจำ
 import { ShopSupplierPaymentTemplate } from './cpa-templates/shop-supplier-payment.template';
+import { ShopPettyCashTemplate } from './cpa-templates/shop-petty-cash.template';
 import { ShopStockWriteOffTemplate } from './cpa-templates/shop-stock-writeoff.template';
 import { InstallmentInputVatTemplate } from './cpa-templates/installment-input-vat.template';
 import { ShopExpenseTemplate } from './cpa-templates/shop-expense.template';
@@ -87,6 +91,8 @@ import { RefundWaiveTemplate } from './cpa-templates/refund-waive.template';
     ContractActivation1ATemplate,
     InstallmentAccrual2ATemplate,
     InstallmentAccrualCron,
+    AdvanceExcessIncomeTemplate,
+    AdvanceExcessIncomeCron,
     PaymentReceiptTemplate,
     EarlyPayoffJP4Template,
     RepossessionJP5Template,
@@ -122,6 +128,7 @@ import { RefundWaiveTemplate } from './cpa-templates/refund-waive.template';
     ShopAccountResolver,
     PairedJournalService,
     ShopCashSaleTemplate,
+    ShopCashExchangeTemplate,
     ShopDownPaymentTemplate,
     ShopBookingDepositTemplate,
     ShopBookingForfeitTemplate,
@@ -133,6 +140,7 @@ import { RefundWaiveTemplate } from './cpa-templates/refund-waive.template';
     ShopTradeInTemplate,
     ShopGoodsReceivingTemplate,
     ShopSupplierPaymentTemplate,
+    ShopPettyCashTemplate,
     ShopStockWriteOffTemplate,
     InstallmentInputVatTemplate,
     ShopExpenseTemplate,
@@ -192,6 +200,7 @@ import { RefundWaiveTemplate } from './cpa-templates/refund-waive.template';
     ShopAccountResolver,
     PairedJournalService,
     ShopCashSaleTemplate,
+    ShopCashExchangeTemplate,
     ShopDownPaymentTemplate,
     ShopBookingDepositTemplate,
     ShopBookingForfeitTemplate,
@@ -203,6 +212,7 @@ import { RefundWaiveTemplate } from './cpa-templates/refund-waive.template';
     ShopTradeInTemplate,
     ShopGoodsReceivingTemplate,
     ShopSupplierPaymentTemplate,
+    ShopPettyCashTemplate,
     ShopStockWriteOffTemplate,
     InstallmentInputVatTemplate,
     ShopExpenseTemplate,

@@ -1,3 +1,7 @@
+import { NumberInput } from '@/components/ui/NumberInput';
+import { NativeSelect } from '@/components/ui/native-select';
+import { formControlClass } from '@/components/ui/form-styles';
+import { useId as useFieldId } from 'react';
 import { useCoaGroups } from '@/hooks/useCoa';
 import { Plus, Trash2 } from 'lucide-react';
 import { ExpenseLineForm, newLine } from './types';
@@ -14,6 +18,7 @@ interface Props {
 }
 
 export function ItemLinesSection({ lines, onChange, priceTypeLabel }: Props) {
+  const fieldId = useFieldId();
   const { data: coaData } = useCoaGroups({ type: 'ค่าใช้จ่าย' });
   const groups = coaData?.groups ?? [];
 
@@ -49,11 +54,11 @@ export function ItemLinesSection({ lines, onChange, priceTypeLabel }: Props) {
               <span className="font-mono text-xs text-muted-foreground">#{idx + 1}</span>
               <span>{line.category || 'เลือกบัญชี'}</span>
             </div>
-            <button
+            <button data-ui-control="button"
               type="button"
               onClick={() => removeLine(line.uid)}
               disabled={lines.length === 1}
-              className="text-muted-foreground hover:text-destructive disabled:opacity-30"
+              className="flex min-h-11 min-w-11 items-center justify-center rounded-md text-muted-foreground hover:text-destructive disabled:opacity-30"
               aria-label="ลบรายการ"
             >
               <Trash2 className="size-4" />
@@ -61,11 +66,11 @@ export function ItemLinesSection({ lines, onChange, priceTypeLabel }: Props) {
           </div>
           <div className="space-y-3 p-4">
             <div>
-              <label className="mb-1 block text-xs font-medium">บัญชีค่าใช้จ่าย</label>
-              <select
+              <label htmlFor={`${fieldId}-${line.uid}-1`} className="mb-1 block text-xs font-medium">บัญชีค่าใช้จ่าย</label>
+              <NativeSelect wrapperClassName="max-w-full w-full min-w-0" id={`${fieldId}-${line.uid}-1`}
                 value={line.category}
                 onChange={(e) => updateLine(line.uid, { category: e.target.value })}
-                className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
+                className={formControlClass}
               >
                 <option value="">— เลือก —</option>
                 {groups.flatMap((g) =>
@@ -75,9 +80,9 @@ export function ItemLinesSection({ lines, onChange, priceTypeLabel }: Props) {
                     </option>
                   )),
                 )}
-              </select>
+              </NativeSelect>
             </div>
-            <div className="grid grid-cols-6 gap-2">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
               <Field
                 label="จำนวน"
                 value={line.quantity}
@@ -113,13 +118,13 @@ export function ItemLinesSection({ lines, onChange, priceTypeLabel }: Props) {
               </div>
             </div>
             <div>
-              <label className="mb-1 block text-xs font-medium">คำอธิบาย</label>
-              <input
+              <label htmlFor={`${fieldId}-${line.uid}-2`} className="mb-1 block text-xs font-medium">คำอธิบาย</label>
+              <input id={`${fieldId}-${line.uid}-2`}
                 type="text"
                 value={line.description}
                 onChange={(e) => updateLine(line.uid, { description: e.target.value })}
                 placeholder="ค่าไฟฟ้าสาขา A เดือน เม.ย. 2569"
-                className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
+                className={formControlClass}
               />
             </div>
             {/* Phase A.5 — Per-line tax-disallowed override.
@@ -146,7 +151,7 @@ export function ItemLinesSection({ lines, onChange, priceTypeLabel }: Props) {
           </div>
         </div>
       ))}
-      <button
+      <button data-ui-control="button"
         type="button"
         onClick={addLine}
         className="flex w-full items-center justify-center gap-1.5 rounded-xl border-2 border-dashed border-border py-3 text-sm text-muted-foreground hover:border-primary hover:text-foreground"
@@ -154,7 +159,7 @@ export function ItemLinesSection({ lines, onChange, priceTypeLabel }: Props) {
         <Plus className="size-4" /> เพิ่มบัญชี
       </button>
       <p className="text-xs text-muted-foreground">
-        {priceTypeLabel} — ยอด VAT/WHT คำนวณจาก server เมื่อกด Preview/บันทึก
+        {priceTypeLabel} — ระบบคำนวณ VAT และภาษีหัก ณ ที่จ่ายเมื่อดูตัวอย่างหรือบันทึก
       </p>
     </div>
   );
@@ -169,15 +174,15 @@ function Field({
   value: string;
   onChange: (v: string) => void;
 }) {
+  const fieldId = useFieldId();
   return (
     <div>
-      <label className="mb-1 block text-xs font-medium">{label}</label>
-      <input
-        type="number"
+      <label htmlFor={`${fieldId}-3`} className="mb-1 block text-xs font-medium">{label}</label>
+      <NumberInput unstyled id={`${fieldId}-3`}
         step="0.01"
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="w-full rounded-lg border border-input bg-background px-3 py-2 text-right font-mono text-sm"
+        className={`${formControlClass} text-right tabular-nums`}
       />
     </div>
   );
@@ -194,20 +199,21 @@ function SelectField({
   onChange: (v: string) => void;
   options: string[];
 }) {
+  const fieldId = useFieldId();
   return (
     <div>
-      <label className="mb-1 block text-xs font-medium">{label}</label>
-      <select
+      <label htmlFor={`${fieldId}-4`} className="mb-1 block text-xs font-medium">{label}</label>
+      <NativeSelect wrapperClassName="max-w-full w-full min-w-0" id={`${fieldId}-4`}
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
+        className={formControlClass}
       >
         {options.map((o) => (
           <option key={o} value={o}>
             {o}%
           </option>
         ))}
-      </select>
+      </NativeSelect>
     </div>
   );
 }
@@ -228,20 +234,21 @@ function SelectFieldLabeled({
   onChange: (v: string) => void;
   options: { value: string; label: string }[];
 }) {
+  const fieldId = useFieldId();
   return (
     <div>
-      <label className="mb-1 block text-xs font-medium">{label}</label>
-      <select
+      <label htmlFor={`${fieldId}-5`} className="mb-1 block text-xs font-medium">{label}</label>
+      <NativeSelect wrapperClassName="max-w-full w-full min-w-0" id={`${fieldId}-5`}
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
+        className={formControlClass}
       >
         {options.map((o) => (
           <option key={o.value} value={o.value}>
             {o.label}
           </option>
         ))}
-      </select>
+      </NativeSelect>
     </div>
   );
 }

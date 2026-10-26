@@ -14,10 +14,10 @@ export default function CheatSheet() {
   };
 
   return (
-    <div className="w-[300px] bg-card border-r border-border overflow-y-auto">
+    <div className="w-full max-h-48 lg:max-h-none lg:w-[300px] shrink-0 bg-card border-r border-border overflow-y-auto">
       <div className="sticky top-0 z-10 bg-card/95 backdrop-blur-xs border-b border-border px-4 py-3">
-        <h3 className="text-base font-bold text-foreground">Template Syntax</h3>
-        <p className="text-sm text-muted-foreground mt-0.5">คลิกเพื่อ copy syntax</p>
+        <h3 className="text-base font-bold text-foreground">รูปแบบตัวแปรแม่แบบ</h3>
+        <p className="text-sm text-muted-foreground mt-0.5">คลิกเพื่อคัดลอกรูปแบบตัวแปร</p>
       </div>
 
       <div className="p-4 space-y-5">
@@ -26,7 +26,7 @@ export default function CheatSheet() {
             <div className="text-sm font-bold text-muted-foreground uppercase tracking-wider mb-2.5">{group.group}</div>
             <div className="flex flex-wrap gap-2">
               {group.items.map(item => (
-                <button
+                <button data-ui-control="button"
                   key={item.syntax}
                   onClick={() => handleCopy(item.syntax)}
                   className={`group/item relative inline-flex items-center gap-1.5 px-2.5 py-2 rounded-lg text-sm font-mono transition-all hover:shadow-sm ${item.bgColor} ${item.color} hover:opacity-90`}

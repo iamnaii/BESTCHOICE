@@ -1,8 +1,11 @@
-import { useEffect, useMemo, useState } from 'react';
+import { NumberInput } from '@/components/ui/NumberInput';
+import ScreenTable from '@/components/ui/ScreenTable';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Building2, Landmark, Paperclip, Receipt } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import ThaiDateInput from '@/components/ui/ThaiDateInput';
+import { NativeSelect } from '@/components/ui/native-select';
 import { cn } from '@/lib/utils';
 import { formatNumberDecimal } from '@/utils/formatters';
 import type { PurchaseOrder, RecordSupplierPaymentPayload, SupplierPayment, SupplierPaymentSummary } from '../types';
@@ -10,6 +13,8 @@ import { fieldCls, labelCls } from './wizard/chrome';
 import {
   PAYMENT_KIND_LABEL,
   SHOP_PAYING_BANK,
+  SUPPLIER_PAYMENT_ACCOUNTS,
+  isBankPaymentAccount,
   paymentChip,
   paymentFormErrors,
   previewLines,
@@ -29,7 +34,7 @@ export interface SupplierPaymentDialogProps {
 }
 
 const money = (v: string | number) => formatNumberDecimal(Number(v) || 0, 2);
-const emptyForm = (): SupplierPaymentForm => ({ paidAt: todayIso(), amount: '', slipUrl: '', reference: '', note: '' });
+const emptyForm = (): SupplierPaymentForm => ({ paidAt: todayIso(), amount: '', slipUrl: '', reference: '', note: '', paymentAccountCode: SHOP_PAYING_BANK.code });
 
 function Tile({ label, value, hint, tone }: { label: string; value: string; hint?: string; tone?: string }) {
   return (
@@ -43,7 +48,8 @@ function Tile({ label, value, hint, tone }: { label: string; value: string; hint
 
 /**
  * บันทึกการจ่ายเงินผู้จัดจำหน่าย (ก้อน 2 · แบบหน้าจอกระดาน 1/2 ที่เจ้าของเคาะ 2026-10-05):
- * โอนธนาคารเท่านั้นจาก S11-1202 · สลิปบังคับ · ชนิดรายการโปรแกรมตัดสินจากฐานะ (มีเจ้าหนี้ = ชำระ ไม่งั้น = มัดจำ) ·
+ * เลือกบัญชีที่จ่ายได้ (2026-10-13 — ค่าเริ่มต้น S11-1202 · ธนาคารสลิปบังคับ · เงินสดย่อย/เงินสดเจ้าของไม่บังคับ) ·
+ * ชนิดรายการโปรแกรมตัดสินจากฐานะ (มีเจ้าหนี้ = ชำระ ไม่งั้น = มัดจำ) ·
  * พรีวิวรายการบัญชีก่อนกด. Plain buttons — ไม่ใช้ submit (ดู CreatePOModal เรื่อง type-flip)
  */
 export function SupplierPaymentDialog({ open, po, summary, summaryLoading, pending, onClose, onSubmit }: SupplierPaymentDialogProps) {
@@ -59,9 +65,11 @@ export function SupplierPaymentDialog({ open, po, summary, summaryLoading, pendi
     setRequestId(typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`);
   }, [open, po?.id, summary?.payableOutstanding]);
 
+  const returnFocus = useRef<HTMLElement | null>(null);
   const errors = useMemo(() => (summary ? paymentFormErrors(form, summary) : {}), [form, summary]);
   const amountNumber = Number(form.amount) || 0;
-  const lines = useMemo(() => (summary ? previewLines(summary, amountNumber) : []), [summary, amountNumber]);
+  const lines = useMemo(() => (summary ? previewLines(summary, amountNumber, form.paymentAccountCode) : []), [summary, amountNumber, form.paymentAccountCode]);
+  const bankSelected = isBankPaymentAccount(form.paymentAccountCode);
   const chip = summary ? paymentChip(summary) : null;
   const canSubmit = !!summary && !summaryLoading && !pending && Object.keys(errors).length === 0;
 
@@ -81,15 +89,20 @@ export function SupplierPaymentDialog({ open, po, summary, summaryLoading, pendi
   if (!po) return null;
   return (
     <Dialog open={open} onOpenChange={(next) => !next && !pending && onClose()}>
-      <DialogContent className="max-w-2xl gap-0 p-0" aria-describedby={undefined}>
-        <DialogHeader className="border-b border-border/50 px-6 py-4">
+      <DialogContent
+        className="max-h-[calc(100dvh-2rem)] max-w-2xl gap-0 overflow-hidden p-0"
+        aria-describedby={undefined}
+        onOpenAutoFocus={() => { returnFocus.current = document.activeElement instanceof HTMLElement ? document.activeElement : null; }}
+        onCloseAutoFocus={(event) => { event.preventDefault(); if (returnFocus.current?.isConnected) returnFocus.current.focus(); }}
+      >
+        <DialogHeader className="mb-0 shrink-0 border-b border-border/50 px-6 py-4">
           <DialogTitle className="text-lg">บันทึกการจ่ายเงิน {po.poNumber}</DialogTitle>
           <DialogDescription className="text-xs">
-            {po.supplier.name} · โอนธนาคารเท่านั้น (ไม่มีจ่ายเงินสด) · ลงบัญชีสมุดหน้าร้านทันทีที่บันทึก
+            {po.supplier.name} · โอนธนาคาร (แนบสลิป) หรือจ่ายจากเงินสดย่อย (ไม่เกินยอดในบัญชี) · ลงบัญชีสมุดหน้าร้านทันทีที่บันทึก
           </DialogDescription>
         </DialogHeader>
 
-        <div className="max-h-[calc(100vh-14rem)] space-y-4 overflow-y-auto px-6 py-4">
+        <div className="min-h-0 min-w-0 space-y-4 overflow-y-auto px-6 py-4">
           <section className="grid grid-cols-2 gap-3 rounded-xl border border-border/50 bg-card p-4 shadow-sm sm:grid-cols-4" aria-label="ฐานะใบสั่งซื้อ">
             <Tile label="ยอดสุทธิ" value={money(summary?.netAmount ?? po.netAmount)} />
             <Tile label="จ่ายแล้ว" value={money(summary?.paidTotal ?? po.paidAmount)} tone="text-success" />
@@ -102,10 +115,10 @@ export function SupplierPaymentDialog({ open, po, summary, summaryLoading, pendi
           </section>
 
           <section className="rounded-xl border border-border/50 bg-card p-4 shadow-sm">
-            <div className="mb-3 flex items-center justify-between gap-3">
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-2.5">
                 <div className="flex size-7 items-center justify-center rounded-md bg-success/10 text-success"><Landmark className="size-4" aria-hidden /></div>
-                <h3 className="text-sm font-semibold text-foreground">รายละเอียดการโอน</h3>
+                <h3 className="text-sm font-semibold text-foreground">รายละเอียดการจ่าย</h3>
               </div>
               {summaryLoading ? (
                 <span className="text-xs text-muted-foreground">กำลังอ่านฐานะจากสมุดบัญชี…</span>
@@ -120,17 +133,16 @@ export function SupplierPaymentDialog({ open, po, summary, summaryLoading, pendi
                 ยังไม่รับของ โปรแกรมจะลงเป็นเงินมัดจำ (S11-4201) ไม่ใช่เจ้าหนี้ · ตอนรับของ มัดจำจะถูกหักเข้าเจ้าหนี้ให้อัตโนมัติ ไม่ต้องกดอะไรเพิ่ม
               </p>
             )}
-            <div className="grid gap-3 sm:grid-cols-2">
+            <div className="grid min-w-0 grid-cols-1 gap-4 sm:grid-cols-2 [&>div]:min-w-0">
               <div>
-                <div className={labelCls}>วันที่โอน</div>
-                <ThaiDateInput aria-label="วันที่โอน" value={form.paidAt} onChange={(e) => set({ paidAt: e.target.value })} className={fieldCls} max={todayIso()} />
+                <label className={labelCls} htmlFor="sp-date">{bankSelected ? 'วันที่โอน' : 'วันที่จ่าย'}</label>
+                <ThaiDateInput id="sp-date" aria-label={bankSelected ? 'วันที่โอน' : 'วันที่จ่าย'} value={form.paidAt} onChange={(e) => set({ paidAt: e.target.value })} className={fieldCls} max={todayIso()} />
                 {errors.paidAt && <p className="mt-1 text-xs text-destructive">{errors.paidAt}</p>}
               </div>
               <div>
                 <label className={labelCls} htmlFor="sp-amount">จำนวนเงิน (บาท)</label>
-                <input
+                <NumberInput unstyled
                   id="sp-amount"
-                  type="number"
                   min="0"
                   step="0.01"
                   inputMode="decimal"
@@ -143,27 +155,39 @@ export function SupplierPaymentDialog({ open, po, summary, summaryLoading, pendi
                 </p>
               </div>
               <div>
-                <div className={labelCls}>โอนจากบัญชี</div>
-                <div className={cn(fieldCls, 'flex items-center justify-between bg-muted/40 text-muted-foreground')}>
-                  <span>{SHOP_PAYING_BANK.label}</span>
-                  <span className="font-mono text-xs">{SHOP_PAYING_BANK.code}</span>
-                </div>
-                <p className="mt-1 text-xs text-muted-foreground">โอนธนาคารเท่านั้น · ไม่มีจ่ายเงินสด</p>
+                <label className={labelCls} htmlFor="sp-account">จ่ายจากบัญชี</label>
+                <NativeSelect
+                  id="sp-account"
+                  className={fieldCls}
+                  value={form.paymentAccountCode}
+                  onChange={(e) => set({ paymentAccountCode: e.target.value })}
+                  aria-describedby="sp-account-hint"
+                >
+                  {SUPPLIER_PAYMENT_ACCOUNTS.map((a) => (
+                    <option key={a.code} value={a.code}>{a.label} · {a.code}</option>
+                  ))}
+                </NativeSelect>
+                <p id="sp-account-hint" className="mt-1 text-xs text-muted-foreground">
+                  {bankSelected ? 'โอนธนาคาร · ต้องแนบสลิป' : 'จ่ายเงินสดย่อย · ไม่ต้องแนบสลิป (แนบหลักฐานได้) · จ่ายได้ไม่เกินยอดเงินสดย่อยในบัญชี'}
+                </p>
+                {errors.paymentAccountCode && <p className="mt-1 text-xs text-destructive">{errors.paymentAccountCode}</p>}
               </div>
+              {bankSelected && (
               <div>
                 <div className={labelCls}>โอนเข้าบัญชีผู้จัดจำหน่าย</div>
-                <div className={cn(fieldCls, 'flex items-center justify-between bg-muted/40 text-muted-foreground')}>
-                  <span className="flex items-center gap-1.5 truncate"><Building2 className="size-3.5 shrink-0" aria-hidden />{po.bankNameSnapshot || po.supplier.name}</span>
-                  <span className="font-mono text-xs">{po.bankAccountSnapshot || '—'}</span>
+                <div className={cn(fieldCls, 'flex h-auto min-h-11 flex-wrap items-center justify-between gap-x-2 gap-y-1 py-2 bg-muted/40 text-muted-foreground')}>
+                  <span className="flex min-w-0 items-center gap-1.5"><Building2 className="size-3.5 shrink-0" aria-hidden /><span className="min-w-0 break-words">{po.bankNameSnapshot || po.supplier.name}</span></span>
+                  <span className="min-w-0 break-all font-mono text-xs">{po.bankAccountSnapshot || '—'}</span>
                 </div>
                 <p className="mt-1 text-xs text-muted-foreground">ตามบัญชีที่บันทึกไว้ตอนออกใบสั่งซื้อ</p>
               </div>
+              )}
               <div>
-                <div className={labelCls}>สลิปโอนเงิน <span className="text-destructive">*</span></div>
+                <div className={labelCls}>{bankSelected ? 'สลิปโอนเงิน' : 'หลักฐานการจ่าย'} {bankSelected && <span className="text-destructive">*</span>}</div>
                 <div className="flex items-center gap-2">
                   <label className={cn(fieldCls, 'flex cursor-pointer items-center gap-2 border-dashed text-muted-foreground hover:bg-accent')}>
                     <Paperclip className="size-4 shrink-0" aria-hidden />
-                    <span className="truncate">{slipName || (form.slipUrl ? 'แนบแล้ว' : 'เลือกรูปสลิป')}</span>
+                    <span className="truncate">{slipName || (form.slipUrl ? 'แนบแล้ว' : bankSelected ? 'เลือกรูปสลิป' : 'เลือกรูปหลักฐาน')}</span>
                     <input type="file" accept="image/*" className="hidden" onChange={onPickFile} />
                   </label>
                 </div>
@@ -172,7 +196,7 @@ export function SupplierPaymentDialog({ open, po, summary, summaryLoading, pendi
                   id="sp-slip-url"
                   type="text"
                   className={cn(fieldCls, 'mt-2')}
-                  placeholder="หรือวางลิงก์รูปสลิป"
+                  placeholder={bankSelected ? 'หรือวางลิงก์รูปสลิป' : 'หรือวางลิงก์รูปหลักฐาน'}
                   value={form.slipUrl.startsWith('data:') ? '' : form.slipUrl}
                   onChange={(e) => {
                     set({ slipUrl: e.target.value });
@@ -182,8 +206,8 @@ export function SupplierPaymentDialog({ open, po, summary, summaryLoading, pendi
                 {errors.slipUrl && <p className="mt-1 text-xs text-destructive">{errors.slipUrl}</p>}
               </div>
               <div>
-                <label className={labelCls} htmlFor="sp-ref">เลขอ้างอิงการโอน</label>
-                <input id="sp-ref" type="text" className={cn(fieldCls, 'font-mono')} value={form.reference} onChange={(e) => set({ reference: e.target.value })} placeholder="จากสลิป" />
+                <label className={labelCls} htmlFor="sp-ref">{bankSelected ? 'เลขอ้างอิงการโอน' : 'เลขอ้างอิง'}</label>
+                <input id="sp-ref" type="text" className={cn(fieldCls, 'font-mono')} value={form.reference} onChange={(e) => set({ reference: e.target.value })} placeholder={bankSelected ? 'จากสลิป' : 'เช่น เลขใบเสร็จ/บิลเงินสดของผู้จัดจำหน่าย'} />
                 <label className={cn(labelCls, 'mt-3')} htmlFor="sp-note">หมายเหตุ</label>
                 <input id="sp-note" type="text" className={fieldCls} value={form.note} onChange={(e) => set({ note: e.target.value })} placeholder="เช่น จ่ายงวดสุดท้ายหลังตรวจรับครบ" />
               </div>
@@ -196,7 +220,8 @@ export function SupplierPaymentDialog({ open, po, summary, summaryLoading, pendi
                 <Receipt className="size-4" aria-hidden />
                 รายการบัญชีที่จะลงอัตโนมัติ · สมุดหน้าร้าน · ผู้จัดจำหน่าย: {po.supplier.name}
               </div>
-              <table className="w-full text-sm">
+              <div className="overflow-x-auto" role="region" aria-label="รายการบัญชีที่จะลง">
+              <ScreenTable className="w-full min-w-96 text-sm">
                 <thead>
                   <tr className="text-xs text-muted-foreground">
                     <th className="py-1 text-left font-medium">รหัส</th>
@@ -215,14 +240,15 @@ export function SupplierPaymentDialog({ open, po, summary, summaryLoading, pendi
                     </tr>
                   ))}
                 </tbody>
-              </table>
+              </ScreenTable>
+              </div>
             </section>
           )}
         </div>
 
-        <DialogFooter className="flex-row items-center justify-between gap-3 border-t border-border/50 px-6 py-3">
+        <DialogFooter className="shrink-0 flex-col items-stretch gap-3 border-t border-border/50 px-6 py-3 sm:flex-row sm:items-center sm:justify-between">
           <span className="text-xs text-muted-foreground">กดได้เฉพาะ เจ้าของ · ผู้จัดการสาขา</span>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap justify-end gap-2">
             <Button type="button" variant="outline" onClick={onClose} disabled={pending}>ยกเลิก</Button>
             <Button
               type="button"
@@ -232,7 +258,8 @@ export function SupplierPaymentDialog({ open, po, summary, summaryLoading, pendi
                 onSubmit({
                   paidAt: form.paidAt,
                   amount: Number(form.amount),
-                  slipUrl: form.slipUrl.trim(),
+                  paymentAccountCode: form.paymentAccountCode,
+                  slipUrl: form.slipUrl.trim() || undefined,
                   reference: form.reference.trim() || undefined,
                   note: form.note.trim() || undefined,
                   requestId,

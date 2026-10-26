@@ -111,7 +111,7 @@ beforeEach(() => {
           }
         : [],
   }));
-  mocks.post.mockResolvedValue({ data: { id: 's1', saleNumber: 'TEST-SALE-1' } });
+  mocks.post.mockResolvedValue({ data: { id: 's1', saleNumber: 'TEST-SALE-1', saleType: 'CASH', netAmount: '9000' } });
 });
 
 describe('POS price selection', () => {
@@ -122,7 +122,7 @@ describe('POS price selection', () => {
     await userEvent.click(screen.getByRole('button', { name: /ไปสร้างสัญญาผ่อนชำระ/ }));
     expect(screen.getByText(/ราคา ส่วนลด เครดิตเทิร์น/)).toBeVisible();
     await userEvent.click(screen.getByRole('button', { name: 'กลับมาแก้ไข' }));
-    expect(priceInput()).toHaveValue(9000);
+    expect(priceInput()).toHaveValue('9,000');
     await userEvent.click(screen.getByRole('button', { name: /ไปสร้างสัญญาผ่อนชำระ/ }));
     await userEvent.click(screen.getByRole('button', { name: 'ไปสร้างสัญญาด้วยข้อมูลนี้' }));
     expect(screen.getByLabelText('current location')).toHaveTextContent(
@@ -158,7 +158,7 @@ describe('POS price selection', () => {
   it('initializes CASH from the cash price and submits that exact amount', async () => {
     renderPOS();
     await selectProduct();
-    expect(priceInput()).toHaveValue(9000);
+    expect(priceInput()).toHaveValue('9,000');
     await userEvent.click(screen.getByRole('button', { name: 'เลือกลูกค้าทดสอบ' }));
     await userEvent.click(screen.getByRole('button', { name: 'เพิ่มของแถมทดสอบ' }));
     await userEvent.click(screen.getByRole('button', { name: 'บันทึกการขาย' }));
@@ -184,16 +184,16 @@ describe('POS price selection', () => {
     renderPOS();
     await selectProduct();
     await userEvent.click(screen.getByRole('button', { name: /ไฟแนนซ์นอก/ }));
-    expect(priceInput()).toHaveValue(10000);
+    expect(priceInput()).toHaveValue('10,000');
     await userEvent.click(screen.getByRole('button', { name: 'เงินสด' }));
-    expect(priceInput()).toHaveValue(9000);
+    expect(priceInput()).toHaveValue('9,000');
   });
 
   it('prefers the cash column without highlighting a mismatched price row', async () => {
     Object.assign(mocks.product, { cashPrice: '8500', installmentPrice: '10000' });
     renderPOS();
     await selectProduct();
-    expect(priceInput()).toHaveValue(8500);
+    expect(priceInput()).toHaveValue('8,500');
     expect(screen.getByRole('button', { name: /ราคาเงินสด/ })).toHaveAttribute(
       'aria-pressed',
       'false',
@@ -223,7 +223,7 @@ describe('POS price selection', () => {
     renderPOS();
     await selectProduct();
     await userEvent.click(screen.getByRole('button', { name: 'เลือกลูกค้าทดสอบ' }));
-    expect(priceInput()).toHaveValue(0);
+    expect(priceInput()).toHaveValue('0');
     expect(screen.getByText(/ยังไม่ได้ตั้งราคาเงินสด/)).toBeVisible();
     expect(screen.getByRole('button', { name: 'บันทึกการขาย' })).toBeDisabled();
   });
@@ -232,9 +232,9 @@ describe('POS price selection', () => {
     renderPOS();
     await selectProduct();
     await userEvent.click(screen.getByRole('button', { name: /ราคาผ่อน BESTCHOICE/ }));
-    expect(priceInput()).toHaveValue(10000);
+    expect(priceInput()).toHaveValue('10,000');
     await userEvent.click(screen.getByRole('button', { name: 'เลือกลูกค้าทดสอบ' }));
-    expect(priceInput()).toHaveValue(10000);
+    expect(priceInput()).toHaveValue('10,000');
   });
 
   it('clears incompatible gifts when switching model within the same branch', async () => {
@@ -260,11 +260,28 @@ describe('POS price selection', () => {
       prices: [{ id: 'p2-cash', label: 'ราคาเงินสด', amount: '8000', isDefault: true }],
     };
     await selectProduct();
-    expect(priceInput()).toHaveValue(8000);
-    expect(discount).toHaveValue(100);
+    expect(priceInput()).toHaveValue('8,000');
+    expect(discount).toHaveValue('100');
     expect(screen.getByRole('button', { name: /ราคาเงินสด/ })).toHaveAttribute(
       'aria-pressed',
       'true',
     );
+  });
+});
+
+describe('POSPage — กล่องหลังขายสำเร็จ (ก้อน 4)', () => {
+  it('shows the sale-done dialog with receipt actions instead of a toast, and ขายต่อ clears it', async () => {
+    renderPOS();
+    await selectProduct();
+    await userEvent.click(screen.getByRole('button', { name: 'เลือกลูกค้าทดสอบ' }));
+    await userEvent.click(screen.getByRole('button', { name: 'บันทึกการขาย' }));
+    await userEvent.click(screen.getByRole('button', { name: 'ยืนยันบันทึกการขาย' }));
+    await waitFor(() => expect(mocks.post).toHaveBeenCalledWith('/sales', expect.anything()));
+    const done = await screen.findByText('ขายสำเร็จ · TEST-SALE-1');
+    expect(done).toBeVisible();
+    expect(screen.getByRole('button', { name: 'พิมพ์ใบเสร็จ' })).toBeVisible();
+    expect(screen.getByRole('button', { name: 'ส่ง LINE' })).toBeVisible();
+    await userEvent.click(screen.getByRole('button', { name: 'ขายต่อ' }));
+    await waitFor(() => expect(screen.queryByText('ขายสำเร็จ · TEST-SALE-1')).not.toBeInTheDocument());
   });
 });

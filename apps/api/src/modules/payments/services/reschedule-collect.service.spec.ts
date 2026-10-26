@@ -24,6 +24,7 @@ jest.mock('@sentry/nestjs', () => ({
 }));
 
 import { BadRequestException } from '@nestjs/common';
+import { addBkkDays } from '../../../utils/date.util';
 import { Prisma } from '@prisma/client';
 import * as Sentry from '@sentry/nestjs';
 import { RescheduleCollectService } from './reschedule-collect.service';
@@ -198,7 +199,19 @@ describe('RescheduleCollectService (ปรับดิว collect-first)', () =>
       'เงินรับล่วงหน้างวดสุดท้าย — ค่าธรรมเนียมปรับดิว (6a)',
     );
     expect(line('42-1103').cr.toFixed(2)).toBe('100.00');
+    // PR4 ต2(ข): ค่าธรรมเนียม 6a เข้าถัง ⇒ พักภาษีขาย HALF_UP(1044 × 7/107) = 68.30 ในรายการเดียวกัน + stamp
+    expect(line('21-2102').dr.toFixed(2)).toBe('68.30');
+    expect(line('21-2101').cr.toFixed(2)).toBe('68.30');
+    expect(line('21-2102').description).toBe('ภาษีขายของเงินรับล่วงหน้า (รับรู้ ณ วันรับ)');
+    expect(je.metadata.advanceVatPark).toBe('68.30');
+    // ค่าปรับ (42-1103) ไม่มี VAT — ขาพักคิดจากค่าธรรมเนียมอย่างเดียว ไม่ใช่ยอดที่รับทั้งก้อน
+    const sum = (k: 'dr' | 'cr') =>
+      je.lines.reduce((s: Prisma.Decimal, l: AnyObj) => s.plus(l[k]), new Prisma.Decimal(0));
+    expect(sum('dr').toFixed(2)).toBe(sum('cr').toFixed(2));
     expect(je.metadata.tag).toBe('reschedule-collect'); // NOT 'receipt' — reconstructPrior must ignore
+    // PR4ข: ใบกำกับภาษีของ 6a พิมพ์ "งวดที่ N เลื่อน D วัน (ครบกำหนดใหม่ …)" จาก metadata — stamp วันครบกำหนดใหม่ (เที่ยงคืนไทย)
+    expect(je.metadata.daysToShift).toBe(7);
+    expect(je.metadata.newDueDate).toBe(addBkkDays(DUE_5D_AGO, 7).toISOString());
     // JE posts on the shared tx (2nd arg).
     expect(journalAuto.createAndPost.mock.calls[0][1]).toBe(prisma);
 

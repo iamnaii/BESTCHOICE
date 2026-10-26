@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { NativeSelect } from '@/components/ui/native-select';
+import { useId as useUiFieldId, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import api from '@/lib/api';
@@ -49,6 +50,7 @@ const inputClass =
   'w-full px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden bg-background text-foreground leading-snug';
 
 export function ETaxConfigPage() {
+  const uiFieldId = useUiFieldId();
   const qc = useQueryClient();
   const [form, setForm] = useState<ETaxConfig | null>(null);
   const [showSecrets, setShowSecrets] = useState<Record<string, boolean>>({});
@@ -112,7 +114,7 @@ export function ETaxConfigPage() {
     <div className="container mx-auto px-4 py-6 max-w-3xl">
       <PageHeader
         title="ตั้งค่า e-Tax Invoice (สรรพากร)"
-        subtitle="ขมธอ.21-2562 + ป.รัษฎากร ม.86/4 — ปรับเฉพาะ OWNER"
+        subtitle="ขมธอ.21-2562 + ป.รัษฎากร ม.86/4 — ปรับเฉพาะ เจ้าของ"
         icon={<ShieldCheck className="size-5" aria-hidden />}
       />
 
@@ -126,7 +128,7 @@ export function ETaxConfigPage() {
             โหมด disabled = ระบบสร้าง XML ได้ แต่ไม่ส่งให้สรรพากร
           </p>
           <p className="text-muted-foreground">
-            ก่อนเปิด <code className="px-1 bg-muted rounded">enabled</code> ต้องตั้งค่า:
+            ก่อนเปิด <code className="px-1 bg-muted rounded">เปิดใช้งาน</code> ต้องตั้งค่า:
             (1) ไฟล์ใบรับรอง (.p12/.pfx) จาก CA ที่ RD อนุมัติ (NDID/ThaiCERT/INET),
             (2) Username + Password ของ RD web service.
             กดปุ่ม &quot;ทดสอบการเชื่อมต่อ&quot; เพื่อยืนยันก่อนเปิดส่งจริง.
@@ -151,10 +153,10 @@ export function ETaxConfigPage() {
               <div className="grid grid-cols-1 gap-4">
                 {/* Submit Mode */}
                 <div>
-                  <label className="text-xs text-muted-foreground leading-snug mb-1 block">
+                  <label htmlFor={`${uiFieldId}-1`} className="text-xs text-muted-foreground leading-snug mb-1 block">
                     โหมดส่ง RD
                   </label>
-                  <select
+                  <NativeSelect wrapperClassName="max-w-full w-full" id={`${uiFieldId}-1`}
                     value={form.submitMode}
                     onChange={(e) =>
                       setForm({ ...form, submitMode: e.target.value })
@@ -163,20 +165,20 @@ export function ETaxConfigPage() {
                     data-testid="etax-mode-select"
                   >
                     <option value="disabled">
-                      disabled — สร้าง XML เท่านั้น (default)
+                      disabled — สร้าง XML เท่านั้น (ค่าเริ่มต้น)
                     </option>
                     <option value="enabled">
                       enabled — ส่งให้สรรพากร (ต้องตั้งค่าครบ)
                     </option>
-                  </select>
+                  </NativeSelect>
                 </div>
 
                 {/* Cert Path */}
                 <div>
-                  <label className="text-xs text-muted-foreground leading-snug mb-1 block">
+                  <label htmlFor={`${uiFieldId}-2`} className="text-xs text-muted-foreground leading-snug mb-1 block">
                     Path ไฟล์ใบรับรอง (.p12/.pfx)
                   </label>
-                  <input
+                  <input id={`${uiFieldId}-2`}
                     type="text"
                     value={form.certPath}
                     onChange={(e) => setForm({ ...form, certPath: e.target.value })}
@@ -187,11 +189,11 @@ export function ETaxConfigPage() {
 
                 {/* Cert Password */}
                 <div>
-                  <label className="text-xs text-muted-foreground leading-snug mb-1 block">
+                  <label htmlFor={`${uiFieldId}-3`} className="text-xs text-muted-foreground leading-snug mb-1 block">
                     รหัสผ่านใบรับรอง
                   </label>
                   <div className="flex gap-2">
-                    <input
+                    <input id={`${uiFieldId}-3`}
                       type={showSecrets.certPassword ? 'text' : 'password'}
                       value={form.certPassword}
                       onChange={(e) =>
@@ -218,10 +220,10 @@ export function ETaxConfigPage() {
 
                 {/* RD Endpoint */}
                 <div>
-                  <label className="text-xs text-muted-foreground leading-snug mb-1 block">
+                  <label htmlFor={`${uiFieldId}-4`} className="text-xs text-muted-foreground leading-snug mb-1 block">
                     URL ของ RD web service
                   </label>
-                  <input
+                  <input id={`${uiFieldId}-4`}
                     type="url"
                     value={form.rdEndpoint}
                     onChange={(e) =>
@@ -231,8 +233,8 @@ export function ETaxConfigPage() {
                     className={inputClass}
                   />
                   <p className="text-xs text-muted-foreground mt-1 leading-snug">
-                    Staging (default) / Production:
-                    <code className="px-1 ml-1 bg-muted rounded">
+                    ระบบทดสอบ (ค่าเริ่มต้น) / ระบบจริง:
+                    <code className="break-all px-1 ml-1 bg-muted rounded">
                       https://etax.rd.go.th/etax_v2/etaxws
                     </code>
                   </p>
@@ -240,10 +242,10 @@ export function ETaxConfigPage() {
 
                 {/* RD Username */}
                 <div>
-                  <label className="text-xs text-muted-foreground leading-snug mb-1 block">
+                  <label htmlFor={`${uiFieldId}-5`} className="text-xs text-muted-foreground leading-snug mb-1 block">
                     Username (RD)
                   </label>
-                  <input
+                  <input id={`${uiFieldId}-5`}
                     type="text"
                     value={form.rdUsername}
                     onChange={(e) =>
@@ -256,11 +258,11 @@ export function ETaxConfigPage() {
 
                 {/* RD Password */}
                 <div>
-                  <label className="text-xs text-muted-foreground leading-snug mb-1 block">
+                  <label htmlFor={`${uiFieldId}-6`} className="text-xs text-muted-foreground leading-snug mb-1 block">
                     Password (RD)
                   </label>
                   <div className="flex gap-2">
-                    <input
+                    <input id={`${uiFieldId}-6`}
                       type={showSecrets.rdPassword ? 'text' : 'password'}
                       value={form.rdPassword}
                       onChange={(e) =>

@@ -21,6 +21,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
+import { PeakContactCodeField } from '@/components/contacts/PeakContactCodeField';
 import {
   contactKeys,
   contactsApi,
@@ -91,10 +92,13 @@ function Kpi({ label, value, danger }: { label: string; value: string; danger?: 
 function IdentityHero({
   data,
   isOwner,
+  canEditPeak,
   onMerge,
 }: {
   data: ContactDetail;
   isOwner: boolean;
+  /** OWNER / ACCOUNTANT may set the PEAK contact code (mapping v5 — export sub-code). */
+  canEditPeak: boolean;
   onMerge: () => void;
 }) {
   const { copy } = useCopyToClipboard();
@@ -118,7 +122,7 @@ function IdentityHero({
           </div>
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
-              <h1 className="text-lg font-semibold text-foreground leading-snug">{data.name}</h1>
+              <h1 className="text-lg font-semibold text-foreground leading-snug break-words">{data.name}</h1>
               {roles.map((r) => (
                 <Badge key={r} variant={ROLE_BADGE_VARIANT[r]} appearance="light" size="sm">
                   {ROLE_LABELS[r]}
@@ -130,11 +134,11 @@ function IdentityHero({
                 </Badge>
               )}
             </div>
-            <p className="text-sm text-muted-foreground leading-snug mt-0.5">
+            <p className="text-sm text-muted-foreground leading-snug mt-0.5 break-all">
               {data.contactCode} · {entityType}
             </p>
           </div>
-          <div className="flex flex-none flex-wrap items-center justify-end gap-2">
+          <div className="flex min-w-0 w-full max-w-full flex-wrap items-center gap-2 sm:w-auto sm:justify-end">
             {data.phone && (
               <Button asChild variant="outline" size="sm">
                 <a href={`tel:${data.phone}`}>
@@ -169,7 +173,7 @@ function IdentityHero({
           <Field label="อีเมล" value={data.email} />
           <Field label="ที่อยู่" value={data.address} />
           {data.lineId && <Field label="LINE ID" value={data.lineId} />}
-          {data.peakContactCode && <Field label="รหัส PEAK" value={data.peakContactCode} />}
+          <PeakContactCodeField contactId={data.id} value={data.peakContactCode} canEdit={canEditPeak} />
         </div>
       </CardContent>
     </Card>
@@ -378,7 +382,7 @@ function MergeContactsDialog({
           <div className="flex flex-col gap-3">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
-              <Input
+              <Input aria-label="ค้นหาด้วยชื่อ / รหัส / เบอร์"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="ค้นหาด้วยชื่อ / รหัส / เบอร์"
@@ -480,7 +484,7 @@ export default function ContactDetailPage() {
         <span className="text-sm text-muted-foreground leading-snug">
           ผู้ติดต่อ{data ? ` / ${data.name}` : ''}
         </span>
-        <button
+        <button data-ui-control="button" data-ui-icon="true"
           onClick={() => navigate('/contacts')}
           className="flex items-center justify-center size-9 self-start rounded-md text-muted-foreground transition-colors hover:bg-accent"
           aria-label="กลับ"
@@ -504,7 +508,12 @@ export default function ContactDetailPage() {
       >
         {data && (
           <div className="flex flex-col gap-5">
-            <IdentityHero data={data} isOwner={isOwner} onMerge={() => setMergeOpen(true)} />
+            <IdentityHero
+              data={data}
+              isOwner={isOwner}
+              canEditPeak={isOwner || user?.role === 'ACCOUNTANT'}
+              onMerge={() => setMergeOpen(true)}
+            />
 
             <SummaryStrip customers={customers} suppliers={suppliers} />
 
@@ -512,7 +521,7 @@ export default function ContactDetailPage() {
               <Card>
                 <CardContent className="pt-6">
                   <p className="text-sm text-muted-foreground leading-snug">
-                    ยังไม่ผูกกับลูกค้า/ผู้จัดจำหน่าย — เพิ่ม role ได้ที่หน้าลูกค้าหรือผู้จัดจำหน่าย
+                    ยังไม่ผูกกับลูกค้า/ผู้จัดจำหน่าย — เพิ่ม บทบาท ได้ที่หน้าลูกค้าหรือผู้จัดจำหน่าย
                   </p>
                 </CardContent>
               </Card>

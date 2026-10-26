@@ -1,3 +1,5 @@
+import ScreenTable from '@/components/ui/ScreenTable';
+import { NativeSelect } from '@/components/ui/native-select';
 import DocumentHeader from '@/components/DocumentHeader';
 import { printDocument } from '@/lib/print-document';
 import { useState } from 'react';
@@ -65,7 +67,7 @@ export default function DividendRegisterPage() {
       />
 
       <div className="flex items-center gap-2 flex-wrap">
-        <select
+        <NativeSelect wrapperClassName="max-w-full w-auto" aria-label="ปี"
           className="border border-border rounded-md px-3 py-2 text-sm bg-background"
           value={year}
           onChange={(e) => setYear(parseInt(e.target.value, 10))}
@@ -75,10 +77,10 @@ export default function DividendRegisterPage() {
               ปี {y + 543}
             </option>
           ))}
-        </select>
-        <div className="ml-auto flex items-center gap-2">
-          <select
-            className="border border-border rounded-md px-3 py-2 text-sm bg-background"
+        </NativeSelect>
+        <div className="ml-auto flex flex-wrap items-center gap-2">
+          <NativeSelect wrapperClassName="max-w-full w-auto"
+            className="border border-border rounded-md px-3 py-2 text-sm bg-background" aria-label="เดือนที่ส่งออก"
             value={xlsxMonth}
             onChange={(e) => setXlsxMonth(parseInt(e.target.value, 10))}
           >
@@ -87,7 +89,7 @@ export default function DividendRegisterPage() {
                 เดือน {m}
               </option>
             ))}
-          </select>
+          </NativeSelect>
           <Button variant="outline" onClick={() => downloadXlsx(xlsxMonth)}>
             <Download className="h-4 w-4 mr-1" /> ภ.ง.ด.2 XLSX
           </Button>
@@ -102,7 +104,8 @@ export default function DividendRegisterPage() {
       >
         <Card>
           <CardContent className="pt-4">
-            <table className="w-full text-sm">
+            <div className="overflow-x-auto print:overflow-visible">
+            <ScreenTable className="w-full min-w-[800px] text-sm print:min-w-0">
               <thead>
                 <tr className="border-b border-border text-left text-xs text-muted-foreground uppercase">
                   <th className="py-2 print:w-[25%]">ผู้ถือหุ้น</th>
@@ -171,7 +174,8 @@ export default function DividendRegisterPage() {
                   </tr>
                 </tfoot>
               )}
-            </table>
+            </ScreenTable>
+            </div>
           </CardContent>
         </Card>
       </QueryBoundary>

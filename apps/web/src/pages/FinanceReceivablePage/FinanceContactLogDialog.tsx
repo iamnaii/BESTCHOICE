@@ -1,4 +1,6 @@
-import { useState } from 'react';
+import { NumberInput } from '@/components/ui/NumberInput';
+import { NativeSelect } from '@/components/ui/native-select';
+import { useId as useUiFieldId, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import Modal from '@/components/ui/Modal';
@@ -35,6 +37,7 @@ export default function FinanceContactLogDialog({
   open,
   onClose,
 }: Props) {
+  const uiFieldId = useUiFieldId();
   const qc = useQueryClient();
   const [contactId, setContactId] = useState<string | undefined>();
   const [result, setResult] = useState<FinanceContactLog['result']>('ANSWERED');
@@ -72,9 +75,9 @@ export default function FinanceContactLogDialog({
     <Modal isOpen={open} onClose={onClose} title="บันทึกการติดต่อไฟแนนซ์">
       <div className="space-y-4">
         <div>
-          <label className="block text-sm font-medium mb-2">ผู้ติดต่อ</label>
-          <select
-            className="w-full px-3 py-2 border border-input rounded-lg bg-background"
+          <label htmlFor={`${uiFieldId}-1`} className="block text-sm font-medium mb-2">ผู้ติดต่อ</label>
+          <NativeSelect wrapperClassName="max-w-full w-full" id={`${uiFieldId}-1`}
+            className="px-3 py-2 border border-input rounded-lg bg-background"
             value={contactId ?? ''}
             onChange={(e) => setContactId(e.target.value || undefined)}
           >
@@ -86,14 +89,14 @@ export default function FinanceContactLogDialog({
                 {c.isPrimary ? ' ★ ตัวหลัก' : ''}
               </option>
             ))}
-          </select>
+          </NativeSelect>
         </div>
 
         <div>
           <label className="block text-sm font-medium mb-2">ผลการติดต่อ</label>
           <div className="flex flex-wrap gap-2">
             {RESULT_OPTIONS.map((opt) => (
-              <button
+              <button data-ui-control="button"
                 key={opt.value}
                 type="button"
                 onClick={() => setResult(opt.value)}
@@ -112,16 +115,15 @@ export default function FinanceContactLogDialog({
         {result === 'PROMISED' && (
           <div className="space-y-3 p-3 bg-amber-50 border border-amber-200 rounded-lg">
             <div>
-              <label className="block text-sm font-medium mb-1">วันที่นัดโอน</label>
-              <ThaiDateInput
+              <label htmlFor={`${uiFieldId}-2`} className="block text-sm font-medium mb-1">วันที่นัดโอน</label>
+              <ThaiDateInput id={`${uiFieldId}-2`}
                 value={promisedDate}
                 onChange={(e) => setPromisedDate(e.target.value)}
               />
             </div>
             <div>
-              <label className="block text-sm font-medium mb-1">ยอดที่นัด (บาท)</label>
-              <input
-                type="number"
+              <label htmlFor={`${uiFieldId}-3`} className="block text-sm font-medium mb-1">ยอดที่นัด (บาท)</label>
+              <NumberInput unstyled id={`${uiFieldId}-3`}
                 className="w-full px-3 py-2 border border-input rounded-lg bg-background"
                 value={promisedAmount}
                 onChange={(e) => setPromisedAmount(e.target.value)}
@@ -133,8 +135,8 @@ export default function FinanceContactLogDialog({
         )}
 
         <div>
-          <label className="block text-sm font-medium mb-2">โน้ต</label>
-          <textarea
+          <label htmlFor={`${uiFieldId}-4`} className="block text-sm font-medium mb-2">โน้ต</label>
+          <textarea id={`${uiFieldId}-4`}
             className="w-full px-3 py-2 border border-input rounded-lg bg-background"
             rows={3}
             value={notes}

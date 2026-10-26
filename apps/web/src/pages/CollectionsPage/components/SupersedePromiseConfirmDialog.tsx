@@ -57,13 +57,13 @@ export default function SupersedePromiseConfirmDialog({
         )}
 
         <div className="flex gap-2 justify-end pt-2 border-t border-border/40">
-          <button
+          <button data-ui-control="button"
             onClick={onCancel}
             className="px-5 py-2.5 text-base border border-input rounded-lg hover:bg-muted transition-colors"
           >
             ยกเลิก
           </button>
-          <button
+          <button data-ui-control="button"
             onClick={onConfirm}
             className="px-5 py-2.5 text-base bg-primary text-primary-foreground rounded-lg font-semibold hover:bg-primary/90 transition-colors"
           >

@@ -1,7 +1,7 @@
 import { FlexContentEditor } from '@/components/line-message/FlexContentEditor';
 import type { FlexContent as BaseFlexContent } from '@/lib/line-flex';
 import { FlexPreviewCard } from '@/components/line-message/FlexPreviewCard';
-import { useState, useCallback, useEffect } from 'react';
+import { useId as useUiFieldId, useState, useCallback, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { MessageSquareMore, Save, RotateCcw, MessageSquare, Image as ImageIcon, LayoutTemplate, Plus, Trash2, GripVertical } from 'lucide-react';
@@ -49,7 +49,7 @@ interface GreetingResponse {
 const MSG_TYPE_BUTTONS: { type: MessageType; icon: React.ReactNode; label: string }[] = [
   { type: 'text', icon: <MessageSquare className="size-3.5" />, label: 'ข้อความ' },
   { type: 'image', icon: <ImageIcon className="size-3.5" />, label: 'รูปภาพ' },
-  { type: 'flex', icon: <LayoutTemplate className="size-3.5" />, label: 'Flex Card' },
+  { type: 'flex', icon: <LayoutTemplate className="size-3.5" />, label: "การ์ดข้อความ" },
 ];
 
 const DEFAULT_MESSAGES: MessageItem[] = [
@@ -108,7 +108,7 @@ function MessagePreviewBubble({ message }: { message: MessageItem }) {
         {c.imageUrl ? (
           <img
             src={c.imageUrl}
-            alt="preview"
+            alt="ตัวอย่าง"
             className="max-w-full rounded-t-2xl"
             onError={(e) => {
               (e.target as HTMLImageElement).style.display = 'none';
@@ -144,7 +144,7 @@ function TextEditor({ message, onChange }: EditorProps) {
     <div>
       <Textarea
         className="min-h-[120px] resize-none"
-        placeholder="พิมพ์ข้อความต้อนรับ..."
+        aria-label="ข้อความต้อนรับ" placeholder="พิมพ์ข้อความต้อนรับ..."
         value={c.text}
         onChange={(e) => onChange({ ...message, content: { ...c, text: e.target.value } })}
         maxLength={5000}
@@ -157,12 +157,13 @@ function TextEditor({ message, onChange }: EditorProps) {
 }
 
 function ImageEditor({ message, onChange }: EditorProps) {
+  const uiFieldId = useUiFieldId();
   const c = message.content as ImageContent;
   return (
     <div className="space-y-3">
       <div>
-        <label className="mb-1.5 block text-sm font-medium text-foreground/80">URL รูปภาพ</label>
-        <Input
+        <label htmlFor={`${uiFieldId}-1`} className="mb-1.5 block text-sm font-medium text-foreground/80">URL รูปภาพ</label>
+        <Input id={`${uiFieldId}-1`}
           placeholder="https://example.com/image.jpg"
           value={c.imageUrl}
           onChange={(e) => onChange({ ...message, content: { ...c, imageUrl: e.target.value } })}
@@ -170,10 +171,10 @@ function ImageEditor({ message, onChange }: EditorProps) {
         <p className="mt-1 text-xs text-muted-foreground">ต้องเป็น HTTPS และขนาดไม่เกิน 10MB</p>
       </div>
       <div>
-        <label className="mb-1.5 block text-sm font-medium text-foreground/80">
-          Caption <span className="text-muted-foreground font-normal">(ไม่บังคับ)</span>
+        <label htmlFor={`${uiFieldId}-2`} className="mb-1.5 block text-sm font-medium text-foreground/80">
+          คำบรรยาย <span className="text-muted-foreground font-normal">(ไม่บังคับ)</span>
         </label>
-        <Input
+        <Input id={`${uiFieldId}-2`}
           placeholder="คำบรรยายใต้รูป..."
           value={c.caption}
           onChange={(e) => onChange({ ...message, content: { ...c, caption: e.target.value } })}
@@ -185,13 +186,14 @@ function ImageEditor({ message, onChange }: EditorProps) {
 }
 
 function FlexEditor({ message, onChange }: EditorProps) {
+  const uiFieldId = useUiFieldId();
   const c = message.content as FlexContent;
   return (
     <FlexContentEditor content={c} onChange={(content) => onChange({ ...message, content })} templateHoverClass="hover:border-primary/50">
       {/* Alt text */}
       <div>
-        <label className="mb-1.5 block text-sm font-medium text-foreground/80">Alt Text</label>
-        <Input
+        <label htmlFor={`${uiFieldId}-1`} className="mb-1.5 block text-sm font-medium text-foreground/80">ข้อความทดแทน</label>
+        <Input id={`${uiFieldId}-1`}
           placeholder="ข้อความสำรองสำหรับการแจ้งเตือน"
           value={c.altText}
           onChange={(e) => onChange({ ...message, content: { ...c, altText: e.target.value } })}
@@ -244,7 +246,7 @@ function MessageCard({ message, index, total, onChange, onDelete }: MessageCardP
             </CardTitle>
           </div>
           {total > 1 && (
-            <button
+            <button data-ui-control="button"
               type="button"
               onClick={onDelete}
               className="flex items-center gap-1 rounded-full px-3 py-1 text-xs text-destructive hover:bg-destructive/10 transition-all duration-200"
@@ -259,7 +261,7 @@ function MessageCard({ message, index, total, onChange, onDelete }: MessageCardP
         {/* Type selector */}
         <div className="flex flex-wrap gap-1.5">
           {MSG_TYPE_BUTTONS.map((btn) => (
-            <button
+            <button data-ui-control="button"
               key={btn.type}
               type="button"
               onClick={() => changeType(btn.type)}
@@ -365,7 +367,7 @@ export default function LineGreetingPage() {
     <div className="p-6 max-w-5xl mx-auto space-y-6">
       <PageHeader
         title="ข้อความต้อนรับ LINE"
-        subtitle="ข้อความที่ลูกค้าจะได้รับเมื่อเพิ่ม Bot เป็นเพื่อนครั้งแรก — รองรับหลายข้อความและ Flex Card"
+        subtitle="ข้อความที่ลูกค้าจะได้รับเมื่อเพิ่มบอตเป็นเพื่อนครั้งแรก — รองรับหลายข้อความและ การ์ดข้อความ"
         icon={<MessageSquareMore size={22} />}
       />
 
@@ -393,7 +395,7 @@ export default function LineGreetingPage() {
 
             {/* Add message */}
             {messages.length < 5 && (
-              <button
+              <button data-ui-control="button"
                 type="button"
                 onClick={addMessage}
                 className="w-full flex items-center justify-center gap-2 rounded-xl border-2 border-dashed border-border py-3.5 text-sm text-muted-foreground hover:border-primary/50 hover:text-primary hover:bg-primary/5 transition-all duration-200"
@@ -405,7 +407,7 @@ export default function LineGreetingPage() {
 
             {/* Quick Reply toggle */}
             <div className="rounded-xl border border-border/50 bg-card shadow-sm p-5">
-              <p className="text-sm font-semibold text-foreground mb-3">Quick Reply Buttons</p>
+              <p className="text-sm font-semibold text-foreground mb-3">ปุ่มตอบกลับด่วน</p>
               <label className="flex items-center gap-2 cursor-pointer">
                 <input
                   type="checkbox"
@@ -416,7 +418,7 @@ export default function LineGreetingPage() {
                   }}
                   className="accent-[#06C755]"
                 />
-                <span className="text-sm">แสดง Quick Reply ต่อท้ายข้อความสุดท้าย</span>
+                <span className="text-sm">แสดง ปุ่มตอบกลับด่วน ต่อท้ายข้อความสุดท้าย</span>
               </label>
               <p className="text-xs text-muted-foreground mt-1.5">
                 ปุ่มลัด: ดูสินค้า · สอบถามราคา · ดูสัญญา · คุยกับพนักงาน
@@ -533,19 +535,19 @@ export default function LineGreetingPage() {
         <ul className="space-y-1.5 text-sm text-info/90">
           <li className="flex items-start gap-2">
             <span className="mt-0.5 shrink-0">•</span>
-            <span>ส่งได้สูงสุด 5 ข้อความพร้อมกัน — ผสม Text, รูปภาพ, และ Flex Card ได้ตามต้องการ</span>
+            <span>ส่งพร้อมกันได้สูงสุด 5 ข้อความ โดยใช้ข้อความ รูปภาพ และการ์ดข้อความร่วมกันได้</span>
           </li>
           <li className="flex items-start gap-2">
             <span className="mt-0.5 shrink-0">•</span>
-            <span>Quick Reply จะแสดงต่อท้ายข้อความสุดท้ายเสมอ</span>
+            <span>ปุ่มตอบกลับด่วน จะแสดงต่อท้ายข้อความสุดท้ายเสมอ</span>
           </li>
           <li className="flex items-start gap-2">
             <span className="mt-0.5 shrink-0">•</span>
-            <span>ส่งเมื่อลูกค้า Follow ครั้งแรก และเมื่อ Unblock แล้ว Follow ใหม่</span>
+            <span>ส่งเมื่อลูกค้าเพิ่มเพื่อนครั้งแรก หรือปลดบล็อกแล้วเพิ่มเพื่อนอีกครั้ง</span>
           </li>
           <li className="flex items-start gap-2">
             <span className="mt-0.5 shrink-0">•</span>
-            <span>Flex Card — ใช้ Template mode สำหรับสินค้า/โปร หรือ JSON mode สำหรับ custom design</span>
+            <span>การ์ดข้อความ — เลือกแม่แบบสำหรับสินค้าหรือโปรโมชัน หรือแก้ไข JSON เพื่อออกแบบเอง</span>
           </li>
         </ul>
       </div>

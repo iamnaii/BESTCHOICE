@@ -17,6 +17,7 @@ import {
   Logger,
   Optional,
 } from '@nestjs/common';
+import type { DeliveredAccessories } from '../utils/delivered-accessories';
 import type { Readable } from 'stream';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { StorageService } from '../../storage/storage.service';
@@ -26,16 +27,32 @@ import { buildAfterSalesDocHtml, type DocCompany } from '../documents/after-sale
 import {
   composeHandoverDoc,
   composeReceiptDoc,
+  composeReplacementHandoverDoc,
+  composeReturnDoc,
   handoverBlockReason,
   PHOTO_ANGLES,
+  returnBlockReason,
   type DocPayer,
   type DocSource,
 } from '../documents/after-sales-doc-compose';
 import { dropOffOutcome } from '../utils/after-sales-outcomes.util';
+import { addDays } from 'date-fns';
+import { shopWarrantyDatesFor } from '../../sales/services/sale-shop-warranty.util';
 
 type ReqUser = { id: string; role: string; branchId?: string | null };
 type CaseDetail = Awaited<ReturnType<AfterSalesQueryService['getCase']>>;
-export type AfterSalesDocKind = 'RECEIPT' | 'HANDOVER';
+export type AfterSalesDocKind = 'RECEIPT' | 'HANDOVER' | 'RETURN' | 'REPLACEMENT_HANDOVER';
+
+const DOC_NOTE: Record<AfterSalesDocKind, string> = {
+  RECEIPT: 'ใบรับฝากเครื่อง',
+  HANDOVER: 'ใบส่งมอบ',
+  RETURN: 'ใบรับคืนเครื่อง',
+  REPLACEMENT_HANDOVER: 'ใบส่งมอบเครื่องทดแทน',
+};
+const CASH_DOCS_NOTE = 'พิมพ์ใบรับคืนเครื่อง + ใบส่งมอบเครื่องทดแทน';
+const PRINT_DEDUPE_MS = 5 * 60 * 1000;
+/** Employee-access generation evidence kind: one rendered document, or PR 5's two-page cash pack. */
+type GeneratedDocKind = AfterSalesDocKind | 'RETURN+REPLACEMENT_HANDOVER';
 
 const MIME_BY_EXT: Record<string, string> = {
   jpg: 'image/jpeg',
@@ -62,9 +79,14 @@ const toDate = (v: unknown): Date | null =>
 const label = (...parts: (string | null | undefined)[]) =>
   parts.filter((p): p is string => !!p && p.trim().length > 0).join(' · ');
 
-/** Managed documents authorize current sources independently of JSON views. Rendered
- * bytes and required generation evidence join the actual outer transaction; controllers
- * deliver only after commit. Historical PRINTED events are never rewritten. */
+/**
+ * ใบรับฝากเครื่อง / ใบส่งมอบ (PR 4, สเปก 6) + ใบรับคืนเครื่อง / ใบส่งมอบเครื่องทดแทน (PR 5).
+ * ขอบเขตสาขา + stage จริงมาจาก `getCase` เสมอ (route มีแต่ :id — security.md) และต้องผ่านก่อนแตะ
+ * storage หรือ Chromium · การพิมพ์ลงไทม์ไลน์เป็น `AfterSalesEvent` kind PRINTED (กันซ้ำ 5 นาที).
+ * Managed documents authorize current sources independently of JSON views. Rendered bytes and
+ * required generation evidence join the actual outer transaction; controllers deliver only after
+ * commit. Historical PRINTED events are never rewritten.
+ */
 @Injectable()
 export class AfterSalesDocumentService {
   private readonly logger = new Logger(AfterSalesDocumentService.name);
@@ -89,22 +111,65 @@ export class AfterSalesDocumentService {
   ): Promise<{ pdf: Buffer; caseNumber: string }> {
     const managed = await afterSalesActor(this.basePrisma, user.id, this.prisma);
     if (managed && !this.streams) throw new ForbiddenException('ระบบเอกสารยังไม่พร้อม');
-    const loaded = managed ? await this.streams!.document(caseId, user.id, kind) : null;
+    // Managed export authority: the streams boundary only distinguishes RECEIPT (intake photo
+    // keys) from every other case document; RETURN/REPLACEMENT_HANDOVER load no photos.
+    const loaded = managed
+      ? await this.streams!.document(caseId, user.id, kind === 'RECEIPT' ? 'RECEIPT' : 'HANDOVER')
+      : null;
     const c = loaded?.documentCase ?? (await this.query.getCase(caseId, user));
-    if (kind === 'HANDOVER') {
-      const reason = handoverBlockReason({
-        outcome: c.outcome,
-        stage: c.stage,
-        hasRepairTicket: !!c.repairTicket && !c.repairTicket.deletedAt,
-      });
-      if (reason) throw new BadRequestException(reason);
-    }
-    const source = await this.loadSource(c, kind, user);
-    if (loaded && kind === 'RECEIPT') source.outcome = loaded.receiptOutcome;
-    const doc = kind === 'RECEIPT' ? composeReceiptDoc(source) : composeHandoverDoc(source);
+    const isCash = c.outcome === 'CASH_SAME_MODEL_EXCHANGE';
+    // PR 5 — route handover.pdf เดิมของเคสขายสดให้ใบส่งมอบเครื่องทดแทน
+    const effective: AfterSalesDocKind =
+      kind === 'HANDOVER' && isCash ? 'REPLACEMENT_HANDOVER' : kind;
+    this.assertPrintable(c, effective);
+    const source = await this.loadSource(c, effective, user);
+    if (loaded && effective === 'RECEIPT') source.outcome = loaded.receiptOutcome;
+    const doc = this.compose(source, effective);
     const pdf = await this.renderer.htmlToPdf(buildAfterSalesDocHtml(doc));
-    await this.recordGenerated(caseId, kind, user.id);
+    await this.recordRendered(caseId, effective, DOC_NOTE[effective], user.id);
     return { pdf, caseNumber: c.caseNumber };
+  }
+
+  /** PR 5 — ปุ่ม "พิมพ์ใบรับคืน + ใบส่งมอบ (2 ใบ)": PDF เดียว 2 หน้า · PRINTED ใบเดียว */
+  async renderCashExchangeDocs(
+    caseId: string,
+    user: ReqUser,
+  ): Promise<{ pdf: Buffer; caseNumber: string }> {
+    const managed = await afterSalesActor(this.basePrisma, user.id, this.prisma);
+    if (managed && !this.streams) throw new ForbiddenException('ระบบเอกสารยังไม่พร้อม');
+    const loaded = managed ? await this.streams!.document(caseId, user.id, 'HANDOVER') : null;
+    const c = loaded?.documentCase ?? (await this.query.getCase(caseId, user));
+    this.assertPrintable(c, 'RETURN');
+    const source = await this.loadSource(c, 'REPLACEMENT_HANDOVER', user);
+    const pdf = await this.renderer.htmlToPdf(
+      buildAfterSalesDocHtml([composeReturnDoc(source), composeReplacementHandoverDoc(source)]),
+    );
+    await this.recordRendered(caseId, 'RETURN+REPLACEMENT_HANDOVER', CASH_DOCS_NOTE, user.id);
+    return { pdf, caseNumber: c.caseNumber };
+  }
+
+  private assertPrintable(c: CaseDetail | AfterSalesDocumentCase, kind: AfterSalesDocKind) {
+    const hasRepairTicket = !!c.repairTicket && !c.repairTicket.deletedAt;
+    const reason =
+      kind === 'HANDOVER'
+        ? handoverBlockReason({ outcome: c.outcome, stage: c.stage, hasRepairTicket })
+        : kind === 'RETURN' || kind === 'REPLACEMENT_HANDOVER'
+          ? returnBlockReason({ outcome: c.outcome, stage: c.stage })
+          : null;
+    if (reason) throw new BadRequestException(reason);
+  }
+
+  private compose(source: DocSource, kind: AfterSalesDocKind) {
+    switch (kind) {
+      case 'RECEIPT':
+        return composeReceiptDoc(source);
+      case 'HANDOVER':
+        return composeHandoverDoc(source);
+      case 'RETURN':
+        return composeReturnDoc(source);
+      case 'REPLACEMENT_HANDOVER':
+        return composeReplacementHandoverDoc(source);
+    }
   }
 
   private async loadSource(
@@ -115,11 +180,12 @@ export class AfterSalesDocumentService {
     if (!c.customer || !c.branch || !c.receivedBy)
       throw new ForbiddenException('ไม่พบแหล่งเอกสารที่ตรวจสอบได้');
     const ex = c.exchange;
-    const [row, printer, company, contract, sale, product, newContract, newProduct] =
+    const printedAt = new Date();
+    const [row, printer, company, contract, sale, product, newContract, newProduct, approver] =
       await Promise.all([
         this.prisma.afterSalesCase.findUniqueOrThrow({
           where: { id: c.id },
-          select: { photoKeys: true },
+          select: { photoKeys: true, deliveredAccessories: true },
         }),
         this.prisma.user.findUnique({ where: { id: user.id }, select: { name: true } }),
         this.loadCompany(c.branchId),
@@ -130,7 +196,17 @@ export class AfterSalesDocumentService {
             })
           : null,
         c.saleId
-          ? this.prisma.sale.findUnique({ where: { id: c.saleId }, select: { saleNumber: true } })
+          ? this.prisma.sale.findUnique({
+              where: { id: c.saleId },
+              select: {
+                saleNumber: true,
+                saleType: true,
+                financeCompany: true,
+                createdAt: true,
+                shopWarrantyStartDate: true,
+                shopWarrantyEndDate: true,
+              },
+            })
           : null,
         c.productId
           ? this.prisma.product.findUnique({
@@ -144,11 +220,23 @@ export class AfterSalesDocumentService {
               select: { contractNumber: true, shopWarrantyEndDate: true },
             })
           : null,
-        kind === 'HANDOVER' && ex?.newProduct
+        (kind === 'HANDOVER' || kind === 'REPLACEMENT_HANDOVER') && ex?.newProduct
           ? this.prisma.product.findUnique({
               where: { id: ex.newProduct.id },
-              select: { color: true, category: true, warrantyExpireDate: true },
+              // PR 5 — shopWarrantyDays/deviceOrigin/warrantyTerms ให้ shopWarrantyDatesFor ของใบส่งมอบที่พิมพ์ก่อนส่งมอบ
+              select: {
+                color: true,
+                category: true,
+                warrantyExpireDate: true,
+                shopWarrantyDays: true,
+                deviceOrigin: true,
+                warrantyTerms: true,
+              },
             })
+          : null,
+        // PR 5 — ผู้ยืนยันเปลี่ยนเครื่อง (พิมพ์บนใบรับคืน)
+        c.approvedById
+          ? this.prisma.user.findUnique({ where: { id: c.approvedById }, select: { name: true } })
           : null,
       ]);
     const photos = kind === 'RECEIPT' ? await this.loadPhotos(row.photoKeys) : [];
@@ -156,6 +244,13 @@ export class AfterSalesDocumentService {
     const a = (c.accessories ?? {}) as Record<string, unknown>;
     const t = c.repairTicket && !c.repairTicket.deletedAt ? c.repairTicket : null;
     const shopWarrantyEnd = toDate(w.shopWarrantyEndDate);
+    // PR 5 — ใบส่งมอบเครื่องทดแทนที่พิมพ์ก่อนกดส่งมอบ (READY_FOR_PICKUP): แถว Sale ยังถือวันของการขายรอบแรก
+    // (deliverCash ตั้งใหม่ตอนส่งมอบเท่านั้น) ⇒ คิดล่วงหน้าด้วยตัวคำนวณเดียวกับ deliverCash จากวันพิมพ์
+    // (ตัวเลขบนใบที่ลูกค้าเซ็น = ตัวเลขที่จะเขียนลงใบขาย) · หลังปิดเคสอ่านค่าที่ deliverCash เขียนไว้ตามเดิม
+    const cashPending =
+      c.outcome === 'CASH_SAME_MODEL_EXCHANGE' && !c.closedAt && newProduct
+        ? await shopWarrantyDatesFor(this.prisma, newProduct, printedAt)
+        : null;
 
     return {
       company,
@@ -163,7 +258,7 @@ export class AfterSalesDocumentService {
       branchName: c.branch.name,
       receivedAt: c.receivedAt,
       receivedByName: c.receivedBy.name,
-      printedAt: new Date(),
+      printedAt,
       printedByName: printer?.name ?? '—',
       customerName: c.customer.name,
       customerPhone: c.customer.phone ?? null,
@@ -249,9 +344,34 @@ export class AfterSalesDocumentService {
             newImei: ex.newProduct?.imeiSerial ?? null,
             replacementContractNumber:
               newContract?.contractNumber ?? ex.replacementContract?.contractNumber ?? null,
+            // PR 5 — เคสขายสด: ประกันร้านของเครื่องทดแทนอยู่บนใบขาย (ตั้งใหม่ตอนส่งมอบ)
             newShopWarrantyEnd:
-              newContract?.shopWarrantyEndDate ?? contract?.shopWarrantyEndDate ?? shopWarrantyEnd,
+              c.outcome === 'CASH_SAME_MODEL_EXCHANGE'
+                ? cashPending
+                  ? cashPending.shopWarrantyEndDate
+                  : (sale?.shopWarrantyEndDate ?? null)
+                : (newContract?.shopWarrantyEndDate ??
+                  contract?.shopWarrantyEndDate ??
+                  shopWarrantyEnd),
             newManufacturerWarrantyEnd: newProduct?.warrantyExpireDate ?? null,
+            saleType:
+              sale?.saleType === 'CASH' || sale?.saleType === 'EXTERNAL_FINANCE'
+                ? sale.saleType
+                : null,
+            financeCompany: sale?.financeCompany ?? null,
+            sevenDayEnd:
+              c.outcome !== 'CASH_SAME_MODEL_EXCHANGE'
+                ? null
+                : cashPending
+                  ? addDays(printedAt, 6)
+                  : sale?.shopWarrantyStartDate
+                    ? new Date(sale.shopWarrantyStartDate.getTime() + 6 * 86_400_000)
+                    : null,
+            deliveredNote: c.timeline.find((e) => e.kind === 'DELIVERED')?.note ?? null,
+            deliveredAccessories: (row.deliveredAccessories as DeliveredAccessories | null | undefined) ?? null,
+            approvedByName: approver?.name ?? null,
+            approvedAt: c.approvedAt ?? null,
+            repairTicketNumber: t?.ticketNumber ?? null,
           }
         : null,
     };
@@ -292,7 +412,47 @@ export class AfterSalesDocumentService {
     return out;
   }
 
-  private async recordGenerated(caseId: string, kind: AfterSalesDocKind, actorId: string) {
+  /**
+   * Timeline/evidence after a successful render. Unmanaged callers keep main's PRINTED event
+   * (5-minute dedupe, best-effort) plus additive best-effort generation audit. Managed actors
+   * (employee-access) record only the required atomic GENERATED evidence inside the owned
+   * transaction — that path never claims a paper print (epic ruling; no main behaviour exists there).
+   */
+  private async recordRendered(
+    caseId: string,
+    kind: GeneratedDocKind,
+    note: string,
+    actorId: string,
+  ) {
+    if (currentDomainAccess()) return this.recordGenerated(caseId, kind, actorId);
+    await this.recordPrinted(caseId, note, actorId);
+    await this.recordGenerated(caseId, kind, actorId);
+  }
+
+  private async recordPrinted(caseId: string, note: string, actorId: string) {
+    try {
+      const recent = await this.prisma.afterSalesEvent.findFirst({
+        where: {
+          caseId,
+          kind: 'PRINTED',
+          note,
+          actorId,
+          createdAt: { gte: new Date(Date.now() - PRINT_DEDUPE_MS) },
+        },
+        select: { id: true },
+      });
+      if (recent) return;
+      await this.prisma.afterSalesEvent.create({
+        data: { caseId, kind: 'PRINTED', note, actorId },
+      });
+    } catch (err) {
+      this.logger.warn(
+        `after-sales PRINTED event not recorded for ${caseId}: ${(err as Error).message}`,
+      );
+    }
+  }
+
+  private async recordGenerated(caseId: string, kind: GeneratedDocKind, actorId: string) {
     const entry = {
       userId: actorId,
       action: 'AFTER_SALES_DOCUMENT_GENERATED',

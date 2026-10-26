@@ -48,7 +48,7 @@ export default function AiTrainingPage() {
     mutationFn: () => api.post('/staff-chat/ai/training-extract'),
     onSuccess: (res: any) => {
       const count = res.data?.created ?? 0;
-      toast.success(`สกัด ${count} training pairs สำเร็จ`);
+      toast.success(`ดึงคู่คำถามคำตอบสำเร็จ ${count} คู่`);
       queryClient.invalidateQueries({ queryKey: ['ai-training-stats'] });
     },
     onError: () => {
@@ -89,7 +89,7 @@ export default function AiTrainingPage() {
 
   return (
     <div>
-      <PageHeader title="AI Training" subtitle="จัดการข้อมูล training สำหรับ AI" />
+      <PageHeader title="ฝึกสอน AI" subtitle="จัดการข้อมูล การฝึกสอน สำหรับ AI" />
 
       {/* Re-extract action */}
       <div className="flex justify-end mb-4">
@@ -100,7 +100,7 @@ export default function AiTrainingPage() {
           className="flex items-center gap-2"
         >
           <RefreshCw className={`w-4 h-4 ${reExtractMutation.isPending ? 'animate-spin' : ''}`} />
-          {reExtractMutation.isPending ? 'กำลังสกัด...' : 'Re-extract จาก Chat History'}
+          {reExtractMutation.isPending ? 'กำลังสกัด...' : "ดึงข้อมูลจากประวัติแชทใหม่"}
         </Button>
       </div>
 
@@ -114,12 +114,12 @@ export default function AiTrainingPage() {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
           <StatCard
             icon={<Database className="w-4 h-4 text-muted-foreground" />}
-            label="Training Pairs ทั้งหมด"
+            label="คู่คำถามคำตอบ ทั้งหมด"
             value={(stats?.totalPairs ?? 0).toLocaleString()}
           />
           <StatCard
             icon={<CheckCircle className="w-4 h-4 text-success" />}
-            label="Pairs ใช้ได้ (quality ≥ 0.7)"
+            label="คู่คำถามคำตอบที่ผ่านเกณฑ์ (คะแนน ≥ 0.7)"
             value={(stats?.usablePairs ?? 0).toLocaleString()}
             sub={
               stats?.totalPairs
@@ -149,7 +149,7 @@ export default function AiTrainingPage() {
                 {Object.entries(stats?.bySource ?? {}).map(([source, count]) => (
                   <div key={source} className="flex justify-between items-center text-sm">
                     <span className="text-foreground">{source}</span>
-                    <span className="font-medium text-foreground">{(count as number).toLocaleString()} pairs</span>
+                    <span className="font-medium text-foreground">{(count as number).toLocaleString()} คู่คำถามคำตอบ</span>
                   </div>
                 ))}
               </div>

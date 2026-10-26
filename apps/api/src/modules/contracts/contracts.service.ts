@@ -11,6 +11,7 @@ import { TestModeService } from '../test-mode/test-mode.service';
 import { AuditService } from '../audit/audit.service';
 import { ContractQueryService, BranchAccessUser } from './services/contract-query.service';
 import { ContractLifecycleService } from './services/contract-lifecycle.service';
+import { CustomerBlacklistService } from '../customers/customer-blacklist.service';
 import { ContractCancellationService } from './services/contract-cancellation.service';
 import { ShopDownPaymentTemplate } from '../journal/cpa-templates/shop-down-payment.template';
 import { ShopDownPaymentReversalTemplate } from '../journal/cpa-templates/shop-down-payment-reversal.template';
@@ -48,6 +49,7 @@ export class ContractsService {
     private shopDownPaymentTemplate: ShopDownPaymentTemplate,
     private shopDownPaymentReversalTemplate: ShopDownPaymentReversalTemplate,
     private shopAccountResolver: ShopAccountResolver,
+    private blacklist: CustomerBlacklistService, // ก้อน 5 C3 — บังคับ: ContractsModule ต้อง import CustomerBlacklistModule
     @Optional() private warrantyService?: WarrantyService,
     @Optional() private cancellationTemplate?: ContractCancellationTemplate,
     @Optional() private testMode?: TestModeService,
@@ -55,7 +57,7 @@ export class ContractsService {
     @Optional() private companyResolver?: CompanyResolverService,
   ) {
     this.query = new ContractQueryService(prisma, testMode);
-    this.lifecycle = new ContractLifecycleService(prisma, this.query, shopDownPaymentTemplate, shopDownPaymentReversalTemplate, shopAccountResolver, warrantyService, audit);
+    this.lifecycle = new ContractLifecycleService(prisma, this.query, shopDownPaymentTemplate, shopDownPaymentReversalTemplate, shopAccountResolver, blacklist, warrantyService, audit);
     // Late-bind the cancellation template + company resolver via accessors so
     // a post-construction mutation of the private fields (the unit-test hack)
     // is honored.

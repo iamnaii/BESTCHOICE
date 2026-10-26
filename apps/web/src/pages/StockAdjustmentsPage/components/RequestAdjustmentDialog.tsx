@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, Search, X } from 'lucide-react';
 import { useDebounce } from '@/hooks/useDebounce';
 import Modal from '@/components/ui/Modal';
+import { formLabelClass } from '@/components/ui/form-styles';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { getStatusBadgeProps, productStatusMap } from '@/lib/status-badges';
@@ -24,6 +25,9 @@ interface Props {
   onCreated?: (row: StockAdjustmentRow) => void;
   /** เปิดจากหน้าสินค้า — ข้ามขั้นค้นเครื่อง */
   initialProduct?: ProductLookupRow | null;
+  /** เปิดจากถังขยะ (ก้อน 8 A10): ตั้งเหตุผลและคำค้นให้ก่อน (เช่น FOUND + IMEI ของเครื่องที่ถูกลบ) */
+  initialReason?: AdjustmentReason | '';
+  initialQuery?: string;
 }
 
 const MAX_PHOTOS = 6;
@@ -31,7 +35,7 @@ const INPUT_CLS =
   'w-full px-3 py-2 border border-input rounded-lg text-sm bg-background focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden';
 
 /** ฟอร์มคำขอตัดสินค้า (ก้อน 3): ค้นเครื่อง → เหตุผล → รูป (บังคับเมื่อเสียหาย) → หมายเหตุ → preview บัญชี → ส่งให้เจ้าของอนุมัติ */
-export default function RequestAdjustmentDialog({ open, onClose, onCreated, initialProduct = null }: Props) {
+export default function RequestAdjustmentDialog({ open, onClose, onCreated, initialProduct = null, initialReason = '', initialQuery = '' }: Props) {
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebounce(search, 300);
   const [product, setProduct] = useState<ProductLookupRow | null>(initialProduct);
@@ -44,12 +48,12 @@ export default function RequestAdjustmentDialog({ open, onClose, onCreated, init
   useEffect(() => {
     if (open) {
       setProduct(initialProduct);
-      setSearch('');
-      setReason('');
+      setSearch(initialQuery);
+      setReason(initialReason);
       setNotes('');
       setFiles([]);
     }
-  }, [open, initialProduct]);
+  }, [open, initialProduct, initialReason, initialQuery]);
 
   const isImei = /^\d{6,}$/.test(debouncedSearch.trim());
   const lookup = useProductLookup(
@@ -64,10 +68,12 @@ export default function RequestAdjustmentDialog({ open, onClose, onCreated, init
     [product, reason, files.length, notes],
   );
   const previewHolds = preview.data?.holdsProduct ?? option?.holdsProduct ?? false;
+  // เครื่องจากใบสั่งซื้อที่ยังไม่เข้าคลัง — API ปฏิเสธด้วยข้อความเดียวกัน (คำตัดสินเจ้าของ 2026-10-06: ตีกลับผู้จัดจำหน่ายเท่านั้น)
+  const blocked = preview.data?.blockedReason ?? null;
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (errors.length || !product) return;
+    if (errors.length || !product || blocked) return;
     createRequest.mutate(buildRequestFormData({ productId: product.id, reason, photoCount: files.length, notes }, files), {
       onSuccess: (row) => {
         onCreated?.(row);
@@ -92,7 +98,7 @@ export default function RequestAdjustmentDialog({ open, onClose, onCreated, init
 
         {/* 1. เครื่อง */}
         <div>
-          <label htmlFor="sa-search" className="block text-sm font-medium text-foreground mb-1">
+          <label htmlFor="sa-search" className={formLabelClass}>
             เครื่อง
           </label>
           {product ? (
@@ -157,6 +163,11 @@ export default function RequestAdjustmentDialog({ open, onClose, onCreated, init
                         <span className="text-xs text-muted-foreground ml-2">
                           {getStatusBadgeProps(p.status, productStatusMap).label} · {p.branch.name}
                         </span>
+                        {p.poUnbooked && (
+                          <Badge variant="warning" appearance="light" className="ml-2">
+                            ยังไม่เข้าคลัง — ต้องตีกลับผู้จัดจำหน่าย
+                          </Badge>
+                        )}
                       </button>
                     ))
                   ) : (
@@ -172,7 +183,7 @@ export default function RequestAdjustmentDialog({ open, onClose, onCreated, init
 
         {/* 2. เหตุผล */}
         <fieldset>
-          <legend className="block text-sm font-medium text-foreground mb-1">เหตุผล</legend>
+          <legend className={formLabelClass}>เหตุผล</legend>
           <div className="grid gap-2 sm:grid-cols-2">
             {REASON_OPTIONS.map((o) => (
               <label
@@ -201,7 +212,7 @@ export default function RequestAdjustmentDialog({ open, onClose, onCreated, init
 
         {/* 3. รูปหลักฐาน */}
         <div>
-          <label htmlFor="sa-photos" className="block text-sm font-medium text-foreground mb-1">
+          <label htmlFor="sa-photos" className={formLabelClass}>
             รูปหลักฐาน {option?.requiresPhoto ? <span className="text-destructive">*</span> : <span className="text-muted-foreground font-normal">(ไม่บังคับ)</span>}
           </label>
           <input
@@ -235,7 +246,7 @@ export default function RequestAdjustmentDialog({ open, onClose, onCreated, init
 
         {/* 4. หมายเหตุ */}
         <div>
-          <label htmlFor="sa-notes" className="block text-sm font-medium text-foreground mb-1">
+          <label htmlFor="sa-notes" className={formLabelClass}>
             หมายเหตุ
           </label>
           <textarea
@@ -253,11 +264,21 @@ export default function RequestAdjustmentDialog({ open, onClose, onCreated, init
         {product && reason && (
           <>
             <JournalPreviewBox preview={preview.data} isLoading={preview.isLoading} />
-            {previewHolds && (
-              <div className="flex items-start gap-2 rounded-lg border border-warning/40 bg-warning/10 p-3 text-xs text-warning-strong leading-snug">
+            {blocked ? (
+              <div
+                role="alert"
+                className="flex items-start gap-2 rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive leading-snug"
+              >
                 <AlertTriangle className="size-4 shrink-0 mt-0.5" />
-                <span>ส่งคำขอแล้วเครื่องนี้จะถูกพักขายทันที (ขาย/จอง/โอนไม่ได้) จนกว่าเจ้าของจะพิจารณา</span>
+                <span>{blocked}</span>
               </div>
+            ) : (
+              previewHolds && (
+                <div className="flex items-start gap-2 rounded-lg border border-warning/40 bg-warning/10 p-3 text-xs text-warning-strong leading-snug">
+                  <AlertTriangle className="size-4 shrink-0 mt-0.5" />
+                  <span>ส่งคำขอแล้วเครื่องนี้จะถูกพักขายทันที (ขาย/จอง/โอนไม่ได้) จนกว่าเจ้าของจะพิจารณา</span>
+                </div>
+              )
             )}
           </>
         )}
@@ -274,7 +295,7 @@ export default function RequestAdjustmentDialog({ open, onClose, onCreated, init
           <Button type="button" variant="outline" onClick={onClose}>
             ปิด
           </Button>
-          <Button type="submit" disabled={errors.length > 0 || createRequest.isPending}>
+          <Button type="submit" disabled={errors.length > 0 || !!blocked || createRequest.isPending}>
             {createRequest.isPending ? 'กำลังส่ง...' : 'ส่งคำขอ'}
           </Button>
         </div>

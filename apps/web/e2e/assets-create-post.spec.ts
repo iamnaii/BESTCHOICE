@@ -93,8 +93,8 @@ test.describe('Asset — create + POST', () => {
     await expect(page.getByText('ข้อมูลสินทรัพย์ & เอกสาร').first()).toBeVisible({
       timeout: 15000,
     });
-    // The "บันทึก & POST" sticky button should be present
-    await expect(page.getByRole('button', { name: /บันทึก.*POST/ }).first()).toBeVisible({
+    // The "บันทึกและลงบัญชี" sticky button should be present
+    await expect(page.getByRole('button', { name: 'บันทึกและลงบัญชี', exact: true })).toBeVisible({
       timeout: 10000,
     });
     await expect(page.locator('body')).not.toContainText('เกิดข้อผิดพลาด');

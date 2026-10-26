@@ -25,7 +25,7 @@ export default function CertificatePayerNotice({ query, onClose }: { query: Cert
       ) : (
         <p className="leading-snug">
           ไม่พบข้อมูลบริษัทฝั่ง FINANCE (นิติบุคคลจดทะเบียน) จึงออกใบรับรองไม่ได้ —
-          ให้ OWNER ตั้งค่าบริษัทรหัส FINANCE ที่ ตั้งค่า › บริษัท &amp; สาขา › บริษัทในเครือ ก่อน
+          ให้ เจ้าของ ตั้งค่าบริษัทรหัส FINANCE ที่ ตั้งค่า › บริษัท &amp; สาขา › บริษัทในเครือ ก่อน
         </p>
       )}
       <Button variant="ghost" size="sm" onClick={onClose}>

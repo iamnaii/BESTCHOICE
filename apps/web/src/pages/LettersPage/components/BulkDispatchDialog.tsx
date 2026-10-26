@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useId as useUiFieldId, useEffect, useState } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -14,6 +14,7 @@ interface Props {
 const EMS_REGEX = /^[A-Z]{2}\d{9}TH$/i;
 
 export default function BulkDispatchDialog({ open, rows, onClose }: Props) {
+  const uiFieldId = useUiFieldId();
   const [trackingMap, setTrackingMap] = useState<Record<string, string>>({});
   const [bookletPrefix, setBookletPrefix] = useState('');
   const [bookletStart, setBookletStart] = useState('');
@@ -58,8 +59,8 @@ export default function BulkDispatchDialog({ open, rows, onClose }: Props) {
 
         <div className="flex gap-2 items-end p-3 bg-muted rounded-md">
           <div>
-            <label className="text-xs text-muted-foreground">Prefix</label>
-            <Input
+            <label htmlFor={`${uiFieldId}-1`} className="text-xs text-muted-foreground">คำนำหน้า</label>
+            <Input id={`${uiFieldId}-1`}
               placeholder="EM"
               value={bookletPrefix}
               onChange={(e) => setBookletPrefix(e.target.value.toUpperCase())}
@@ -68,8 +69,8 @@ export default function BulkDispatchDialog({ open, rows, onClose }: Props) {
             />
           </div>
           <div>
-            <label className="text-xs text-muted-foreground">เลขเริ่ม</label>
-            <Input
+            <label htmlFor={`${uiFieldId}-2`} className="text-xs text-muted-foreground">เลขเริ่ม</label>
+            <Input id={`${uiFieldId}-2`}
               placeholder="123456789"
               value={bookletStart}
               onChange={(e) => setBookletStart(e.target.value)}
@@ -78,7 +79,7 @@ export default function BulkDispatchDialog({ open, rows, onClose }: Props) {
             />
           </div>
           <Button size="sm" variant="outline" onClick={applyBooklet}>
-            ใช้ tracking ต่อเนื่อง
+            ใช้ ติดตามพัสดุ ต่อเนื่อง
           </Button>
         </div>
 

@@ -11,16 +11,12 @@ import {
   currentDomainAccess,
   onDomainCommit,
 } from '../../employee-access/access-execution-context';
-import {
-  hasGlobalOpenAfterSalesCase,
-  classifyAfterSalesStage,
-} from './after-sales-stage-reconcile';
+import { hasGlobalOpenAfterSalesCase } from './after-sales-stage-reconcile';
 import { ChatServiceCaseLinkService } from './chat-service-case-link.service';
 import {
   BadRequestException,
   ConflictException,
   ForbiddenException,
-  HttpException,
   Injectable,
   Optional,
 } from '@nestjs/common';
@@ -34,18 +30,19 @@ import {
   CreateRepairTicketDto,
   RepairPayerInput,
 } from '../../repair-tickets/dto/create-repair-ticket.dto';
-import { ContractExchangeService } from '../../contract-exchange/contract-exchange.service';
 import { DefectExchangeService } from '../../defect-exchange/defect-exchange.service';
 import { AfterSalesDocNumberService } from './after-sales-doc-number.service';
 import { AfterSalesLookupService, LookupResult } from './after-sales-lookup.service';
 import { AfterSalesLineService } from './after-sales-line.service';
 import { reconcileStage, RECONCILE_SELECT } from './after-sales-stage-reconcile';
 import { WINDOW_REASON_RE } from '../utils/after-sales-outcomes.util';
+import { assertCashReplacement } from '../utils/assert-cash-replacement';
 import type { AfterSalesLineMoment } from '../utils/after-sales-line-copy.util';
 import { CreateCaseDto } from '../dto/create-case.dto';
 import { assertEvidenceImage, evidenceImageExtension } from '../../../utils/upload-image.util';
 import { hashLockKey } from '../../../utils/advisory-lock.util';
 import { hasCrossBranchAccess } from '../../auth/branch-access.util';
+import { deviceSwapClosed } from '../../contract-exchange/device-swap-closed.policy';
 
 type ReqUser = { id: string; role: string; branchId?: string | null };
 
@@ -70,7 +67,6 @@ export class AfterSalesCaseService {
     private readonly repair: RepairTicketsService,
     private readonly docNumber: AfterSalesDocNumberService,
     private readonly lookupSvc: AfterSalesLookupService,
-    private readonly contractExchange: ContractExchangeService,
     private readonly defect: DefectExchangeService,
     private readonly line: AfterSalesLineService,
     @Optional() private readonly chatLinks?: ChatServiceCaseLinkService,
@@ -175,14 +171,19 @@ export class AfterSalesCaseService {
     if (!outcome?.enabled)
       throw new BadRequestException(outcome?.reason ?? 'ทางออกนี้ทำไม่ได้กับเครื่องนี้');
 
-    // Task 4 — เปิดทางออกเปลี่ยนเครื่องตอนแจ้งปัญหา (SAME_MODEL_EXCHANGE / PRICED_EXCHANGE)
+    // Task 4 — เปิดทางออกเปลี่ยนเครื่องตอนแจ้งปัญหา (SAME_MODEL_EXCHANGE — PRICED_EXCHANGE ถูกปิด 410 ด้านบน)
     const isSameModel = dto.outcome === 'SAME_MODEL_EXCHANGE';
-    const isPriced = dto.outcome === 'PRICED_EXCHANGE';
-    if ((isSameModel || isPriced) && !dto.replacementProductId) {
+    // PR 5 — เปลี่ยนรุ่นเดิมขายสด: ไม่มีสัญญา ด่านเครื่องทดแทนเป็น assertCashReplacement (ตัวเดียวกับตอนยืนยัน)
+    // (PRICED_EXCHANGE ปิด 410 ตั้งแต่ต้นเมธอด 2026-10-06 จึงไม่มีกิ่งของมันที่นี่)
+    const isCashSameModel = dto.outcome === 'CASH_SAME_MODEL_EXCHANGE';
+    if ((isSameModel || isCashSameModel) && !dto.replacementProductId) {
       throw new BadRequestException('ต้องเลือกเครื่องทดแทนจากสต๊อก');
     }
-    if ((isSameModel || isPriced) && !look.contract) {
+    if (isSameModel && !look.contract) {
       throw new BadRequestException('ทางออกนี้ใช้ได้กับสัญญาผ่อนเท่านั้น');
+    }
+    if (isCashSameModel && (!look.sale || look.contract || !look.product)) {
+      throw new BadRequestException('ทางออกนี้ใช้ได้กับใบขายสด/ไฟแนนซ์นอกเท่านั้น');
     }
     // R28 — ข้อมูลเครื่องทดแทน (สำหรับข้อความ event OUTCOME_SET ของ (a)) ต้องมาจากการค้นจริง
     // ไม่ใช่จาก DefectExchangeService.checkEligibility ซึ่งไม่คืน imeiSerial กลับมา
@@ -213,6 +214,22 @@ export class AfterSalesCaseService {
         where: { id: dto.replacementProductId, deletedAt: null },
         select: { brand: true, model: true, storage: true, imeiSerial: true },
       });
+    }
+    if (isCashSameModel) {
+      const p = await assertCashReplacement(
+        this.prisma,
+        {
+          sale: { id: look.sale!.id, productId: look.product!.id, customerId },
+          caseBranchId: dto.branchId,
+        },
+        dto.replacementProductId!,
+      );
+      replacementProduct = {
+        brand: p.brand,
+        model: p.model,
+        storage: p.storage,
+        imeiSerial: p.imeiSerial,
+      };
     }
 
     const imei = look.product?.imeiSerial ?? dto.imei;
@@ -248,6 +265,10 @@ export class AfterSalesCaseService {
           input,
           true,
         );
+      else if (dto.outcome === 'CASH_SAME_MODEL_EXCHANGE')
+        // PR 5 cash swap is sale-sourced: the managed exchange boundary authorizes contract
+        // sources only (confirm/deliver deny it too) ⇒ fail closed until a sale-source rule exists.
+        throw new ForbiddenException('ไม่มีสิทธิ์ดำเนินการในแหล่งนี้');
       else {
         await this.repairAccess!.linked(ctx.client, ctx.snapshot, input, true);
         this.exchangeAccess!.assert(
@@ -295,7 +316,7 @@ export class AfterSalesCaseService {
       customerId,
       outcome,
       isSameModel,
-      isPriced,
+      isCashSameModel,
       replacementProduct,
       imei,
       requestFingerprint,
@@ -315,6 +336,10 @@ export class AfterSalesCaseService {
   }
 
   async createCase(dto: CreateCaseDto, files: Express.Multer.File[], user: ReqUser) {
+    // คำตัดสินเจ้าของ 2026-10-06 — เมนูเปลี่ยนเครื่องแบบมีราคาปิดทั้งหมด: 410 ตั้งแต่บรรทัดแรก ก่อนแตะ
+    // สาขา/รูป/lookup/storage/tx/engine (DTO ยังรับค่า PRICED_EXCHANGE เพื่อให้ไคลเอนต์เก่าได้ข้อความชี้ทาง)
+    // — ทั้งผู้ใช้ทั่วไปและ managed actor (ก่อนเข้า preparation/preflight ใด ๆ)
+    if (dto.outcome === 'PRICED_EXCHANGE') throw deviceSwapClosed();
     return this.createAttempt(dto, files, user);
   }
   private async createAttempt(
@@ -403,7 +428,8 @@ export class AfterSalesCaseService {
       if (existing) return existing;
     }
     const input = await this.preflight(dto, files, user);
-    const { look, customerId, outcome, isSameModel, isPriced, replacementProduct, imei } = input;
+    const { look, customerId, outcome, isSameModel, isCashSameModel, replacementProduct, imei } =
+      input;
     if (look.openCase) {
       if (dto.serviceRequestId) {
         const existing = await this.chatLinks!.existingForCreation(dto.serviceRequestId, user);
@@ -564,11 +590,10 @@ export class AfterSalesCaseService {
           return repairResult;
         }
 
-        // กิ่งเปลี่ยนเครื่อง (SAME_MODEL_EXCHANGE / PRICED_EXCHANGE) — ไม่เรียก repair.createInTx
-        // events: RECEIVED เสมอ + OUTCOME_SET เฉพาะ SAME_MODEL (ข้อความ (a)) — PRICED_EXCHANGE
-        // ยังไม่รู้ mode/tier ตอนนี้ (ต้องรอ contractExchange.submit หลัง tx commit) จึงเติม
-        // OUTCOME_SET ของมันทีหลังผ่าน update() แทน (ดู (d))
-        const exchangeEvents = isSameModel
+        // กิ่งเปลี่ยนเครื่อง (SAME_MODEL_EXCHANGE / CASH_SAME_MODEL_EXCHANGE) — ไม่เรียก repair.createInTx
+        // events: RECEIVED เสมอ + OUTCOME_SET (ผ่อน/ขายสด — ข้อความ (a)) · PRICED_EXCHANGE ปิด 410 ตั้งแต่ต้นเมธอด
+        // (2026-10-06) จึงไม่มีกิ่ง submit หลัง commit อีกต่อไป
+        const exchangeEvents = isSameModel || isCashSameModel
           ? [
               receivedEvent,
               {
@@ -630,109 +655,6 @@ export class AfterSalesCaseService {
       return result;
     }
 
-    // Task 4 — PRICED_EXCHANGE: ยื่นคำขอเปลี่ยนเครื่องแบบมีราคาหลัง tx commit (นอก try/catch ของรูป
-    // ด้านบน — Review Focus 3). ทำไม compensation ไม่ใช่ tx เดียว: contractExchange.submit() เปิด
-    // $transaction ของตัวเองและมี preview/ราคากลางภายใน ไม่แตะ engine ตามข้อจำกัด · เคสที่ถูกยกเลิก
-    // ยังอยู่เป็นประวัติ (IMEI เปิดใหม่ได้เพราะ stage CANCELLED) รูปที่อัปโหลดไปแล้วไม่ถูกลบ
-    if (isPriced) {
-      // R30 (fix round 1, Important — ruling P-G) — เฉพาะ submit() เท่านั้นที่อยู่ใน try/catch
-      // ของ compensation นี้: ถ้า submit() เองล้มเหลว คำขอเปลี่ยนเครื่องไม่เคยถูกสร้างขึ้นจริง
-      // จึงยกเลิกเคสเป็น CANCELLED ได้อย่างปลอดภัย. แต่ถ้า submit() สำเร็จแล้ว (คำขอถูกสร้างจริง
-      // ในอีก $transaction หนึ่ง) การ update ที่ตามมาเป็นเพียงการ "เชื่อมโยง" exchangeRequestId
-      // กลับมาไว้บนเคส — ถ้า update นี้พังทีหลัง ต้องปล่อยให้ error หลุดออกไปตามจริง (เคสค้างที่
-      // AWAITING_APPROVAL) ไม่ใช่ไปยกเลิกเคสเป็น CANCELLED เพราะคำขอที่สร้างไปแล้วจะกลายเป็น
-      // คำขอกำพร้า (ไม่มีเคสไหนอ้างถึง) ในขณะที่ข้อความบอกผู้ใช้ว่า "ยื่นคำขอไม่สำเร็จ" ซึ่งไม่จริง
-      let req: { id: string; mode: string; approvalTier: string | null };
-      try {
-        req = await this.contractExchange.submit(
-          {
-            oldContractId: look.contract!.id,
-            oldProductId: look.product!.id,
-            newProductId: dto.replacementProductId!,
-            conditionNote: dto.conditionNote ?? dto.symptom,
-            buybackPrice: dto.buybackPrice,
-            deviceCondition: dto.deviceCondition,
-            newTotalMonths: dto.newTotalMonths,
-            newInterestRate: dto.newInterestRate,
-          },
-          user,
-        );
-      } catch (err) {
-        if (currentDomainAccess()) throw err;
-        const reason = `ยื่นคำขอไม่สำเร็จ: ${
-          err instanceof HttpException
-            ? ((err.getResponse() as any)?.message ?? err.message)
-            : 'ระบบขัดข้อง'
-        }`;
-        await this.prisma.afterSalesCase.update({
-          where: { id: result.id },
-          data: {
-            stage: 'CANCELLED',
-            cancelledAt: new Date(),
-            cancelReason: reason,
-            events: { create: { kind: 'CANCELLED', actorId: user.id, note: reason } },
-          },
-        });
-        throw err;
-      }
-
-      // เชื่อมโยง exchangeRequestId กลับมาไว้บนเคส — อยู่นอก try/catch ด้านบนโดยตั้งใจ (ดูคอมเมนต์)
-      await this.prisma.afterSalesCase.update({
-        where: { id: result.id },
-        data: {
-          exchangeRequestId: req.id,
-          events: {
-            create: {
-              kind: 'OUTCOME_SET',
-              actorId: user.id,
-              note: `เปลี่ยนแบบมีราคา · ${req.mode} · tier ${req.approvalTier ?? '-'}`,
-            },
-          },
-        },
-      });
-      result = { ...result, exchangeRequestId: req.id };
-
-      // M13 — tier AUTO: submit() อนุมัติคำขอให้ในตัว ⇒ ตอนนี้คำขออาจ APPROVED แล้ว — reconcile ทันที
-      // (คืน stage จริงให้ผู้เรียก ไม่ใช่ AWAITING_APPROVAL ที่เพิ่งเขียน) และบันทึกผู้อนุมัติ/event
-      // APPROVED ให้ไทม์ไลน์ตรงกับที่เกิดขึ้นจริง (ผู้ยื่นคือผู้ที่ทำให้อนุมัติอัตโนมัติ)
-      const linked = await this.prisma.afterSalesCase.findFirst({
-        where: { id: result.id, deletedAt: null },
-        select: RECONCILE_SELECT,
-      });
-      if (linked) {
-        const reconciled = currentDomainAccess()
-          ? { stage: classifyAfterSalesStage(linked) }
-          : await reconcileStage(this.prisma, linked);
-        if (currentDomainAccess())
-          await this.prisma.afterSalesCase.update({
-            where: { id: result.id },
-            data: {
-              stage: reconciled.stage,
-              ...(reconciled.stage === 'CLOSED'
-                ? { closedAt: linked.exchangeRequest?.memoAppliedAt ?? new Date() }
-                : {}),
-            },
-          });
-        if (linked.exchangeRequest?.status === 'APPROVED') {
-          await this.prisma.afterSalesCase.update({
-            where: { id: result.id },
-            data: {
-              approvedAt: new Date(),
-              approvedById: user.id,
-              events: {
-                create: {
-                  kind: 'APPROVED',
-                  actorId: user.id,
-                  note: `อนุมัติอัตโนมัติ (AUTO) · ${linked.exchangeRequest.mode}`,
-                },
-              },
-            },
-          });
-        }
-        result = { ...result, stage: reconciled.stage };
-      }
-    }
-
     // R13 — audit.log อยู่นอก try/catch: ถ้ามันเองพังหลัง tx commit แล้ว ต้องไม่ไปลบรูปของ
     // เคสที่บันทึกสำเร็จแล้ว (catch ด้านบนมีไว้กัน storage/tx เท่านั้น)
     const auditEntry = {
@@ -750,21 +672,12 @@ export class AfterSalesCaseService {
     if (currentDomainAccess()) await this.audit.log(auditEntry, currentDomainAccess()!.client);
     else await this.audit.log(auditEntry);
 
-    // Task 3 — จังหวะ 1 (RECEIVED): หลัง commit + audit เสมอ — ทุก outcome รวม PRICED_EXCHANGE
-    // (ถึงจุดนี้ได้ก็ต่อเมื่อ submit()/compensation สำเร็จแล้วเท่านั้น — เคสที่ถูก CANCELLED เพราะ
-    // submit ล้มจะ throw ก่อนถึงบรรทัดนี้เสมอ จึงไม่ส่ง). fire-and-forget: LINE ล้มต้องไม่ทำให้
-    // การบันทึกล้ม (Global Constraints) — `.catch` เป็นเข็มขัดคู่กับ notifyMoment เองที่ไม่ throw.
-    // final fix I-3 — tier AUTO: submit() อนุมัติในตัว ⇒ result.stage (ที่ reconcile แล้วด้านบน — ทางออก
-    // อื่นเขียน stage ตรงตอนสร้าง: REPAIR = RECEIVED, SAME_MODEL = AWAITING_APPROVAL) อาจเป็น
-    // READY_FOR_PICKUP (PRICED) หรือ CLOSED (MEMO) แล้ว — จังหวะนั้นไม่มีผู้ส่งอื่นอีก (approvePriced
-    // รันซ้ำบนคำขอที่อนุมัติแล้วไม่ได้) จึงส่งต่อท้าย RECEIVED แบบเรียงลำดับ (.then) ให้ข้อความถึงตามลำดับ
-    const follow: AfterSalesLineMoment | null =
-      result.stage === 'READY_FOR_PICKUP' ? 'READY' : result.stage === 'CLOSED' ? 'CLOSED' : null;
+    // Task 3 — จังหวะ 1 (RECEIVED): หลัง commit + audit เสมอ — ทุก outcome ที่ยังเปิด (REPAIR = RECEIVED ·
+    // SAME_MODEL = AWAITING_APPROVAL; PRICED_EXCHANGE ปิด 410 ตั้งแต่ต้นเมธอด จึงไม่มีจังหวะ READY/CLOSED
+    // ต่อท้ายตอนสร้างเคสอีก). fire-and-forget: LINE ล้มต้องไม่ทำให้การบันทึกล้ม (Global Constraints) —
+    // `.catch` เป็นเข็มขัดคู่กับ notifyMoment เองที่ไม่ throw. Managed: ส่งหลัง owned execution commit.
     const notify = () =>
-      this.line
-        .notifyMoment(result.id, 'RECEIVED', user.id)
-        .then(() => (follow ? this.line.notifyMoment(result.id, follow, user.id) : undefined))
-        .catch(() => undefined);
+      this.line.notifyMoment(result.id, 'RECEIVED', user.id).catch(() => undefined);
     if (currentDomainAccess())
       onDomainCommit(async () => {
         await notify();

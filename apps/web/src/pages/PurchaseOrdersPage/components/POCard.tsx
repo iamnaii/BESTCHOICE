@@ -28,6 +28,10 @@ export interface POCardProps {
   approvePending: boolean;
   orderPending: boolean;
   rejectPending: boolean;
+  /** ดูอย่างเดียว (ผจก.การเงิน / ฝ่ายบัญชี — API ปฏิเสธการกระทำเหล่านี้อยู่แล้ว) ⇒ ไม่แสดงปุ่มกระทำเลย */
+  readOnly?: boolean;
+  /** อนุมัติ/ปฏิเสธ = เจ้าของกิจการเท่านั้น (API @Roles('OWNER')) */
+  canApprove?: boolean;
 }
 
 function POCardImpl({
@@ -41,6 +45,8 @@ function POCardImpl({
   approvePending,
   orderPending,
   rejectPending,
+  readOnly = false,
+  canApprove = true,
 }: POCardProps) {
   const statusCfg = getStatusBadgeProps(po.status, poStatusMap);
   const payCfg = getStatusBadgeProps(po.paymentStatus || 'UNPAID', poPaymentStatusMap);
@@ -63,8 +69,9 @@ function POCardImpl({
       {/* Header: PO number + net amount */}
       <div className="flex items-start justify-between gap-2">
         <button
+          data-po-detail-trigger={`${po.id}:number`}
           onClick={stop(() => openDetailModal(po))}
-          className="font-medium text-primary hover:underline text-left"
+          className="min-w-0 min-h-11 text-left font-medium text-primary hover:underline [overflow-wrap:anywhere]"
         >
           {po.poNumber}
         </button>
@@ -81,7 +88,7 @@ function POCardImpl({
 
       {/* Supplier */}
       <div className="mt-1.5">
-        <div className="font-medium text-foreground">{po.supplier.name}</div>
+        <div className="font-medium text-foreground [overflow-wrap:anywhere]">{po.supplier.name}</div>
         {po.supplier.contactName && !sameName && (
           <div className="text-xs text-muted-foreground">{po.supplier.contactName}</div>
         )}
@@ -127,7 +134,7 @@ function POCardImpl({
       </div>
 
       {/* Status-specific actions (detail is the whole-card tap + PO# button) */}
-      {(canReceive || po.status === 'DRAFT') && (
+      {!readOnly && (canReceive || (canApprove && po.status === 'DRAFT')) && (
         <div className="mt-3 flex flex-wrap gap-2" onClick={(e) => e.stopPropagation()}>
           {po.status === 'APPROVED' && (
             <button
@@ -150,7 +157,7 @@ function POCardImpl({
               รับสินค้า
             </button>
           )}
-          {po.status === 'DRAFT' && (
+          {canApprove && po.status === 'DRAFT' && (
             <>
               <button
                 onClick={stop(() => onApprove(po))}

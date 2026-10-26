@@ -258,7 +258,7 @@ export function ProductCard({ product: p, priceMode = 'combined' }: Props) {
 
       <div className="flex flex-col flex-1 px-1 pt-2.5">
         <Link to={to} className="block">
-          <div className="flex items-baseline justify-between gap-2 min-h-[38px]">
+          <div className="flex flex-col gap-1 sm:flex-row sm:items-baseline sm:justify-between sm:gap-2 sm:min-h-[38px]">
             <h3 className="font-display text-base font-bold text-foreground leading-snug">
               {p.model}
             </h3>
@@ -358,7 +358,7 @@ export function ProductCard({ product: p, priceMode = 'combined' }: Props) {
           </div>
         </Link>
 
-        <div className="mt-2.5">
+        <div className="mt-auto pt-2.5">
           {soldOut ? (
             <a
               href={shopInfo.lineUrl}

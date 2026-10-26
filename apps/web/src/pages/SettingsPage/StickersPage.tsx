@@ -11,7 +11,7 @@ export default function StickersPage() {
     <div>
       <PageHeader
         title="ตั้งค่าสติกเกอร์"
-        subtitle="ค่า default สติกเกอร์ติดเครื่องเมื่อ PricingTemplate ไม่ได้ override"
+        subtitle="ขนาดม้วนและ QR ของสติกเกอร์ติดเครื่อง — มีผลกับหน้าพิมพ์สติกเกอร์ทันที"
       />
       <StickerSettings
         values={values}

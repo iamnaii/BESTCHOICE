@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useId as useUiFieldId, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import api, { getErrorMessage } from '@/lib/api';
 import { toast } from 'sonner';
@@ -65,6 +65,7 @@ interface SsoPreview {
 const todayIso = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' });
 
 export default function SsoReportPage() {
+  const uiFieldId = useUiFieldId();
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const now = new Date();
@@ -203,7 +204,7 @@ export default function SsoReportPage() {
                     {data.items.length === 0 ? (
                       <TableRow>
                         <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
-                          ไม่มีใบเงินเดือนที่ POST แล้วในงวดนี้
+                          ไม่มีใบเงินเดือนที่ ลงบัญชี แล้วในงวดนี้
                         </TableCell>
                       </TableRow>
                     ) : (
@@ -246,7 +247,7 @@ export default function SsoReportPage() {
           <div className="space-y-4">
             <p className="text-sm text-muted-foreground leading-snug">
               ระบบจะลงบัญชีล้างเจ้าหนี้เงินสมทบ (ลูกจ้าง + นายจ้าง) และตัดเงินจากบัญชีที่เลือก
-              — ยอดคำนวณจากใบเงินเดือนที่ POST แล้วของงวดนี้เท่านั้น
+              — ยอดคำนวณจากใบเงินเดือนที่ ลงบัญชี แล้วของงวดนี้เท่านั้น
             </p>
             <div>
               <label className="block text-xs font-medium mb-1">จ่ายจากบัญชี</label>
@@ -257,8 +258,8 @@ export default function SsoReportPage() {
               />
             </div>
             <div>
-              <label className="block text-xs font-medium mb-1">วันที่จ่าย</label>
-              <ThaiDateInput
+              <label htmlFor={`${uiFieldId}-1`} className="block text-xs font-medium mb-1">วันที่จ่าย</label>
+              <ThaiDateInput id={`${uiFieldId}-1`}
                 value={payDate}
                 onChange={(e) => setPayDate(e.target.value)}
                 className="w-full px-3 py-2 border border-input rounded-lg text-sm bg-background"

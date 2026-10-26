@@ -113,15 +113,15 @@ export default function RoomCreditCard({
                 className="min-w-0 flex-1 text-left hover:text-primary"
                 onClick={() => void openCreditDocument(file.url)}
               >
-                <span className="block font-semibold">Statement {index + 1}</span>
+                <span className="block break-all font-semibold">{file.name || `Statement ${index + 1}`}</span>
                 <span className="text-[11px] text-muted-foreground">
                   {file.mimeType === 'application/pdf' ? 'PDF' : 'รูปภาพ'} ·{' '}
                   {(file.size / 1024).toFixed(0)} KB
                 </span>
               </button>
-              <button
+              <button data-ui-control="button"
                 type="button"
-                aria-label={`เอา Statement ${index + 1} ออก`}
+                aria-label={`เอา รายการเดินบัญชี ${index + 1} ออก`}
                 disabled={credit?.busy}
                 className="flex min-h-11 min-w-11 items-center justify-center rounded-md text-muted-foreground hover:bg-accent disabled:opacity-40"
                 onClick={() => credit?.remove(file.id)}

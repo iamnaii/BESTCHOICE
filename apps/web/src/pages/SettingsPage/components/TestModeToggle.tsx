@@ -52,7 +52,7 @@ export function TestModeToggle() {
             checked={currentEnabled}
             onCheckedChange={handleToggle}
             disabled={!isOwner || mutation.isPending}
-            aria-label="Toggle Test Mode"
+            aria-label="เปลี่ยนโหมดทดสอบ"
           />
           <span className="text-sm font-medium">
             {currentEnabled ? 'เปิดใช้งาน' : 'ปิดใช้งาน'}
@@ -61,7 +61,7 @@ export function TestModeToggle() {
 
         {!isOwner && (
           <p className="text-xs text-muted-foreground leading-snug">
-            เฉพาะ OWNER เท่านั้นที่เปลี่ยนได้
+            เฉพาะ เจ้าของ เท่านั้นที่เปลี่ยนได้
           </p>
         )}
 

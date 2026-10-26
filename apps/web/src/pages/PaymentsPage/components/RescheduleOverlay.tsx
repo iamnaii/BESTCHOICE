@@ -1,5 +1,7 @@
+import { NumberInput } from '@/components/ui/NumberInput';
+import { formatNumericText } from '@/utils/numericText';
 import { ActionEffect as Effect } from '@/components/ActionEffect';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useId as useUiFieldId, useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import Decimal from 'decimal.js';
@@ -76,6 +78,7 @@ export function RescheduleOverlay({
   onClose,
   onSuccess,
 }: Props) {
+  const uiFieldId = useUiFieldId();
   const queryClient = useQueryClient();
   const [daysToShift, setDaysToShift] = useState(7);
   const [splitMode, setSplitMode] = useState<'SINGLE' | 'SPLIT'>('SINGLE');
@@ -333,7 +336,7 @@ export function RescheduleOverlay({
           </label>
           <div className="flex flex-wrap gap-2 mb-3">
             {QUICK_DAYS.map((d) => (
-              <button
+              <button data-ui-control="button"
                 key={d}
                 type="button"
                 onClick={() => setDaysToShift(d)}
@@ -347,8 +350,7 @@ export function RescheduleOverlay({
               </button>
             ))}
             <div className="flex items-center gap-1.5">
-              <input
-                type="number"
+              <NumberInput unstyled
                 min={1}
                 max={365}
                 value={daysToShift}
@@ -371,10 +373,10 @@ export function RescheduleOverlay({
             )}
             <Row
               label="ค่าธรรมเนียมเลื่อนดิว"
-              value={quoteLoading ? 'กำลังคำนวณ…' : `${fee.toFixed(2)} บาท`}
+              value={quoteLoading ? 'กำลังคำนวณ…' : `${formatNumericText(fee.toFixed(2))} บาท`}
             />
             <p className="text-xs text-muted-foreground leading-snug">
-              คำนวณจาก ค่างวด ({new Decimal(monthlyPayment || 0).toFixed(2)}) ÷ 30 × {days} วัน
+              คำนวณจาก ค่างวด ({formatNumericText(new Decimal(monthlyPayment || 0).toFixed(2))}) ÷ 30 × {days} วัน
               (ปัดขึ้นเต็มบาท)
             </p>
           </div>
@@ -416,19 +418,19 @@ export function RescheduleOverlay({
                 {splitMode === 'SINGLE' && (
                   <Row
                     label="ค่างวดงวดนี้ (คงเหลือ)"
-                    value={`${new Decimal(quote?.installmentOutstanding ?? 0).toFixed(2)} บาท`}
+                    value={`${formatNumericText(new Decimal(quote?.installmentOutstanding ?? 0).toFixed(2))} บาท`}
                   />
                 )}
                 <Row
                   label={`ยอดปรับดิว (${splitMode === 'SPLIT' ? '6a' : '6b'})`}
-                  value={`${fee.toFixed(2)} บาท`}
+                  value={`${formatNumericText(fee.toFixed(2))} บาท`}
                 />
                 <Row
                   label="ค่าปรับค้างชำระ"
-                  value={lateFee.gt(0) ? `${lateFee.toFixed(2)} บาท` : 'ไม่มี'}
+                  value={lateFee.gt(0) ? `${formatNumericText(lateFee.toFixed(2))} บาท` : 'ไม่มี'}
                 />
                 <div className="border-t border-border pt-1.5">
-                  <Row label="รวมต้องเก็บวันนี้" value={`${collect.toFixed(2)} บาท`} bold />
+                  <Row label="รวมต้องเก็บวันนี้" value={`${formatNumericText(collect.toFixed(2))} บาท`} bold />
                 </div>
               </div>
 
@@ -474,10 +476,10 @@ export function RescheduleOverlay({
                       {method === 'TRANSFER' && (
                         <>
                           <div>
-                            <label className="block text-xs font-medium text-foreground mb-1 leading-snug">
+                            <label htmlFor={`${uiFieldId}-1`} className="block text-xs font-medium text-foreground mb-1 leading-snug">
                               เลขอ้างอิงการโอน <span className="text-destructive">*</span>
                             </label>
-                            <input
+                            <input id={`${uiFieldId}-1`}
                               type="text"
                               value={referenceNumber}
                               onChange={(e) => setReferenceNumber(e.target.value)}
@@ -498,7 +500,7 @@ export function RescheduleOverlay({
 
                   {method === 'QR' && (
                     <div className="rounded-lg border border-warning/40 bg-warning/10 px-3 py-2.5 text-xs text-warning-strong leading-snug">
-                      ระบบจะส่ง QR ยอด {collect.toFixed(2)} บาท ให้ลูกค้าใน LINE —
+                      ระบบจะส่ง QR ยอด {formatNumericText(collect.toFixed(2))} บาท ให้ลูกค้าใน LINE —
                       <strong> ดิวจะเลื่อนอัตโนมัติเมื่อเงินเข้าเท่านั้น</strong> (QR หมดอายุใน 24
                       ชม. ถ้าลูกค้าไม่จ่าย ดิวไม่เลื่อน)
                     </div>
@@ -524,7 +526,7 @@ export function RescheduleOverlay({
                                 <span className="text-muted-foreground">
                                   {l.accountCode} {l.accountName}
                                 </span>
-                                <span>{Number(l.debit) > 0 ? `Dr ${l.debit}` : `Cr ${l.credit}`}</span>
+                                <span>{Number(l.debit) > 0 ? `Dr ${formatNumericText(l.debit)}` : `Cr ${formatNumericText(l.credit)}`}</span>
                               </div>
                             ))}
                           </div>
@@ -542,7 +544,7 @@ export function RescheduleOverlay({
                             <span className="text-muted-foreground">
                               {l.accountCode} {l.accountName}
                             </span>
-                            <span>{Number(l.debit) > 0 ? `Dr ${l.debit}` : `Cr ${l.credit}`}</span>
+                            <span>{Number(l.debit) > 0 ? `Dr ${formatNumericText(l.debit)}` : `Cr ${formatNumericText(l.credit)}`}</span>
                           </div>
                         ))}
                       </div>
@@ -568,14 +570,14 @@ export function RescheduleOverlay({
           <ul className="space-y-1.5 text-sm">
             {hasCollect && method === 'QR' ? (
               <Effect
-                text={`ส่ง QR ยอด ${collect.toFixed(2)} บาท ให้ลูกค้า — ดิวเลื่อนเมื่อเงินเข้า`}
+                text={`ส่ง QR ยอด ${formatNumericText(collect.toFixed(2))} บาท ให้ลูกค้า — ดิวเลื่อนเมื่อเงินเข้า`}
                 warning
               />
             ) : (
               <>
                 {hasCollect && (
                   <Effect
-                    text={`เก็บเงิน ${collect.toFixed(2)} บาท${lateFee.gt(0) ? ` (รวมค่าปรับ ${lateFee.toFixed(2)} บาท → ลงบัญชี 42-1103)` : ''} + ลงบัญชีทันที`}
+                    text={`เก็บเงิน ${formatNumericText(collect.toFixed(2))} บาท${lateFee.gt(0) ? ` (รวมค่าปรับ ${formatNumericText(lateFee.toFixed(2))} บาท → ลงบัญชี 42-1103)` : ''} + ลงบัญชีทันที`}
                   />
                 )}
                 {lateFee.gt(0) && (
@@ -594,7 +596,7 @@ export function RescheduleOverlay({
             <Effect text="เดือนที่ไม่มีวันตรงกับดิวใหม่ ใช้วันสุดท้ายของเดือน" />
             {fee.gt(0) && (
               <Effect
-                text={`ยอดปรับดิว ${fee.toFixed(2)} บาท เป็นเงินชำระล่วงหน้าสำหรับหักค่างวดสุดท้าย`}
+                text={`ยอดปรับดิว ${formatNumericText(fee.toFixed(2))} บาท เป็นเงินชำระล่วงหน้าสำหรับหักค่างวดสุดท้าย`}
               />
             )}
             <Effect
@@ -606,13 +608,13 @@ export function RescheduleOverlay({
 
       {/* Footer */}
       <div className="sticky bottom-0 bg-background/95 backdrop-blur-xs border-t px-6 py-4 flex items-center justify-end gap-3">
-        <button
+        <button data-ui-control="button"
           onClick={onClose}
           className="px-6 py-2.5 text-sm leading-snug border border-input rounded-lg hover:bg-muted transition-colors"
         >
           ยกเลิก
         </button>
-        <button
+        <button data-ui-control="button"
           onClick={submit}
           disabled={!canSubmit}
           className="px-6 py-2.5 text-sm leading-snug bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50 font-semibold transition-colors shadow-sm"
@@ -622,7 +624,7 @@ export function RescheduleOverlay({
             : method === 'QR' && hasCollect
               ? 'ส่ง QR ให้ลูกค้า'
               : hasCollect
-                ? `เก็บเงิน ${collect.toFixed(2)} + ยืนยันปรับดิว`
+                ? `เก็บเงิน ${formatNumericText(collect.toFixed(2))} + ยืนยันปรับดิว`
                 : 'ยืนยันปรับดิว'}
         </button>
       </div>
@@ -715,7 +717,7 @@ function MethodButton({
   label: string;
 }) {
   return (
-    <button
+    <button data-ui-control="button"
       type="button"
       aria-pressed={active}
       onClick={onClick}

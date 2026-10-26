@@ -1,3 +1,4 @@
+import ScreenTable from '@/components/ui/ScreenTable';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router';
 import { Clock, Inbox } from 'lucide-react';
@@ -46,7 +47,7 @@ export default function OtherIncomePendingApprovalPage() {
           </div>
         ) : (
           <div className="rounded-xl border bg-card overflow-hidden">
-            <table className="w-full text-sm">
+            <ScreenTable className="w-full text-sm">
               <thead className="bg-muted/50 text-xs font-medium text-muted-foreground">
                 <tr>
                   <th className="px-4 py-2 text-left">เลขที่</th>
@@ -81,7 +82,7 @@ export default function OtherIncomePendingApprovalPage() {
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </ScreenTable>
           </div>
         )}
         <PaginationBar

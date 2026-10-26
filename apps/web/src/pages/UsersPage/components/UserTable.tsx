@@ -235,8 +235,8 @@ export function UserTable({
             asChild
             onClick={(e) => e.stopPropagation()}
           >
-            <button
-              className="inline-flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+            <button data-ui-control="button" data-ui-icon="true"
+              className="inline-flex size-11 lg:size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
               aria-label="เมนูการทำงาน"
             >
               <MoreVertical className="size-4" />
@@ -277,7 +277,7 @@ export function UserTable({
   const filterToolbar = (
     <div className="flex items-center gap-2 flex-wrap">
       <Select value={roleFilter} onValueChange={setRoleFilter}>
-        <SelectTrigger className="h-9 w-auto min-w-[140px]">
+        <SelectTrigger aria-label="ตำแหน่ง" className="h-9 w-auto min-w-[140px]">
           <SelectValue placeholder="ตำแหน่งทั้งหมด" />
         </SelectTrigger>
         <SelectContent>
@@ -290,7 +290,7 @@ export function UserTable({
         </SelectContent>
       </Select>
       <Select value={branchFilter} onValueChange={setBranchFilter}>
-        <SelectTrigger className="h-9 w-auto min-w-[140px]">
+        <SelectTrigger aria-label="สาขา" className="h-9 w-auto min-w-[140px]">
           <SelectValue placeholder="สาขาทั้งหมด" />
         </SelectTrigger>
         <SelectContent>
@@ -307,7 +307,7 @@ export function UserTable({
         value={activeFilter}
         onValueChange={(v) => setActiveFilter(v as 'ALL' | 'ACTIVE' | 'INACTIVE')}
       >
-        <SelectTrigger className="h-9 w-auto min-w-[120px]">
+        <SelectTrigger aria-label="สถานะผู้ใช้" className="h-9 w-auto min-w-[120px]">
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
@@ -454,7 +454,7 @@ export function InviteTable({
         if (status.label === 'ใช้แล้ว') return null;
         return (
           <div className="flex items-center gap-3 whitespace-nowrap">
-            <button
+            <button data-ui-control="button"
               onClick={() => onResend(i.id, i.email)}
               disabled={isResendPending}
               className="text-primary hover:text-primary/80 text-sm font-medium disabled:opacity-50"
@@ -462,7 +462,7 @@ export function InviteTable({
               ส่งซ้ำ
             </button>
             {status.label === 'รอลงทะเบียน' && (
-              <button
+              <button data-ui-control="button"
                 onClick={() => onRevoke(i.id, i.email)}
                 className="text-destructive hover:text-destructive/80 text-sm font-medium"
               >
@@ -485,7 +485,7 @@ export function InviteTable({
           { value: 'ALL' as const, label: 'ทั้งหมด' },
         ]
       ).map((opt) => (
-        <button
+        <button data-ui-control="button"
           key={opt.value}
           onClick={() => setStatusFilter(opt.value)}
           className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors whitespace-nowrap ${

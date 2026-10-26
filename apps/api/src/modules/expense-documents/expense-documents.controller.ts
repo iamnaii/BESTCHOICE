@@ -130,6 +130,15 @@ export class ExpenseDocumentsController {
     return this.service.list(query, { branchId: req.user.branchId, role: req.user.role });
   }
 
+  @Get('verify-number/:number')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
+  resolveNumber(
+    @Param('number') number: string,
+    @CurrentUser() user: { branchId?: string | null; role: string },
+  ) {
+    return this.service.resolveNumber(number, user);
+  }
+
   @Get('summary')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
   summary(

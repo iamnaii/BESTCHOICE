@@ -136,10 +136,10 @@ export default function CollectionDashboardPage() {
   return (
     <div className="flex flex-col gap-5 lg:gap-7.5">
       <PageHeader
-        title="Collection Dashboard"
+        title="ภาพรวมการติดตามหนี้"
         subtitle="ติดตามและวิเคราะห์การเก็บเงินค้างชำระ"
         action={
-          <div className="hidden sm:flex items-center gap-2 text-xs text-primary-foreground/70 bg-primary-foreground/10 border border-primary-foreground/15 rounded-lg px-3 py-2">
+          <div className="hidden sm:flex items-center gap-2 text-xs text-muted-foreground bg-primary-foreground/10 border border-primary-foreground/15 rounded-lg px-3 py-2">
             <RefreshCw className="size-3 animate-spin [animation-duration:10s]" />
             <span>อัปเดตอัตโนมัติทุก 60 วินาที</span>
           </div>
@@ -173,7 +173,7 @@ export default function CollectionDashboardPage() {
                     {(data?.collectionRate.current ?? 0).toFixed(1)}%
                   </div>
                   <div className="text-xs font-medium text-muted-foreground mt-1.5 uppercase tracking-wider">
-                    Collection Rate
+                    อัตราเก็บเงิน
                   </div>
                   <MoMIndicator value={data?.collectionRate.mom} />
                 </div>
@@ -267,7 +267,7 @@ export default function CollectionDashboardPage() {
                     {(data?.collectionRate.lastMonth ?? 0).toFixed(1)}%
                   </div>
                   <div className="text-xs font-medium text-muted-foreground mt-1.5 uppercase tracking-wider">
-                    Collection Rate เดือนก่อน
+                    อัตราเก็บเงิน เดือนก่อน
                   </div>
                 </div>
               </CardContent>
@@ -277,7 +277,7 @@ export default function CollectionDashboardPage() {
           {/* ─── Aging Buckets ─── */}
           <div>
             <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-3">
-              Aging Buckets — สัดส่วนหนี้ค้างตามอายุ
+              สัดส่วนหนี้ค้างตามอายุหนี้
             </h2>
             <div className="finance-card-grid grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
               {(data?.agingBuckets ?? []).map((bucket, idx) => {

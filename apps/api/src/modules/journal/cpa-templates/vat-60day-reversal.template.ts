@@ -32,6 +32,13 @@ import { computeInstallmentBreakdown } from '../compute-installment-breakdown';
  *
  * Idempotent: returns null if vat60dayJournalEntryId is already null
  * (no mandatory JE was ever posted, or already reversed).
+ *
+ * วันที่ลงรายการกลับ (2026-10-17): ผู้เรียกที่ลงรายการปิดสัญญาย้อนวัน (JP4 `postedAt` = วันที่รับเงิน ·
+ * JP5 `input.postedAt`) ส่ง `postedAt` มาให้รายการกลับอยู่เดือนเดียวกับรายการปิด — ภ.พ.30 รายเดือน
+ * (ที่รวม 21-2103) จึงไม่นับภาษีของงวดเดียวกันซ้ำข้ามเดือน · แต่ห้ามกลับ**ก่อน**วันที่ของรายการตั้งที่มันกลับ
+ * (รอบภาษีขาย 60 วันอาจตั้งหลังวันที่รับเงินที่ย้อน ขณะสัญญายัง ACTIVE ในฐานข้อมูล) ⇒ ใช้
+ * max(postedAt ที่ขอ, entryDate ของรายการตั้ง) · ไม่ส่ง = ตอนนี้ (พฤติกรรมเดิมของเส้นทางรับชำระ —
+ * ใบรับชำระที่ย้อนวันยังมีช่องว่างเดือนเดียวกันนี้อยู่ รองานต่อเนื่อง)
  */
 @Injectable()
 export class Vat60dayReversalTemplate {
@@ -43,6 +50,7 @@ export class Vat60dayReversalTemplate {
   async execute(
     installmentScheduleId: string,
     outerTx?: Prisma.TransactionClient,
+    postedAt?: Date,
   ): Promise<{ entryNo: string } | null> {
     const exec = async (tx: Prisma.TransactionClient) => {
       const inst = await tx.installmentSchedule.findUniqueOrThrow({
@@ -73,7 +81,7 @@ export class Vat60dayReversalTemplate {
       // count drops to zero.
       const mandatoryEntry = await tx.journalEntry.findUnique({
         where: { entryNumber: inst.vat60dayJournalEntryId },
-        select: { metadata: true },
+        select: { metadata: true, entryDate: true },
       });
       const meta = (mandatoryEntry?.metadata ?? {}) as Record<string, unknown>;
       let vatPerInst: Decimal;
@@ -109,10 +117,18 @@ export class Vat60dayReversalTemplate {
 
       const zero = new Decimal(0);
 
+      // วันที่ลงรายการกลับ — ดู docblock: วันที่ของรายการปิดที่ผู้เรียกส่ง แต่ไม่ก่อนวันที่ของรายการตั้ง · ไม่ส่ง = ตอนนี้
+      const mandatoryAt = mandatoryEntry?.entryDate ?? null;
+      const reversalPostedAt =
+        postedAt && mandatoryAt && mandatoryAt.getTime() > postedAt.getTime()
+          ? mandatoryAt
+          : postedAt;
+
       const result = await this.journal.createAndPost(
         {
           description: `VAT 60-day reversal งวด #${inst.installmentNo} สัญญา ${c.contractNumber}`,
           reference: `${inst.id}:vat60-reversal`,
+          postedAt: reversalPostedAt,
           metadata: {
             tag: 'VAT60-REVERSAL',
             flow: 'reversal',

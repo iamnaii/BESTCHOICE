@@ -168,7 +168,7 @@ export function useCreditCheckCreate({ open, preselectedCustomer, onSuccess }: U
 
   const handleStatementOcr = async () => {
     if (statementFiles.length === 0) {
-      toast.error('กรุณาเลือกไฟล์ Statement');
+      toast.error("กรุณาเลือกไฟล์ รายการเดินบัญชี");
       return;
     }
     const supported = statementFiles.filter(
@@ -187,7 +187,7 @@ export function useCreditCheckCreate({ open, preselectedCustomer, onSuccess }: U
         { timeout: 120000 },
       );
       setStatementResult(data);
-      toast.success(`วิเคราะห์ Statement สำเร็จ (ความมั่นใจ ${(data.confidence * 100).toFixed(0)}%)`);
+      toast.success(`วิเคราะห์ รายการเดินบัญชี สำเร็จ (ความมั่นใจ ${(data.confidence * 100).toFixed(0)}%)`);
     } catch (err) {
       toast.error(getErrorMessage(err));
     } finally {
@@ -200,7 +200,7 @@ export function useCreditCheckCreate({ open, preselectedCustomer, onSuccess }: U
     try {
       const { data } = await api.post<RiskScoreResult>(`/credit-checks/${creditCheckId}/calculate-risk`);
       setRiskScore(data);
-      toast.success('คำนวณ Risk Score สำเร็จ');
+      toast.success("คำนวณ คะแนนความเสี่ยง สำเร็จ");
     } catch (err) {
       toast.error(getErrorMessage(err));
     } finally {

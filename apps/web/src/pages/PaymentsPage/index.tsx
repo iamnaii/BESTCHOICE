@@ -1,3 +1,4 @@
+import { formatNumericText } from '@/utils/numericText';
 import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import Decimal from 'decimal.js';
 import { paymentToleranceGate } from './paymentToleranceGate';
@@ -577,7 +578,7 @@ export default function PaymentsPage() {
     const absDiff = Math.abs(diff);
     if (absDiff > 1.0) {
       toast.error(
-        `ส่วนต่างเกิน 1 ฿ (${absDiff.toFixed(2)} ฿) ไม่สามารถอนุมัติได้ กรุณาแก้ไขจำนวนเงิน`,
+        `ส่วนต่างเกิน 1 ฿ (${formatNumericText(absDiff.toFixed(2))} ฿) ไม่สามารถอนุมัติได้ กรุณาแก้ไขจำนวนเงิน`,
       );
       return;
     }
@@ -715,7 +716,7 @@ export default function PaymentsPage() {
               className="hidden"
               onChange={handleQuickSlipScan}
             />
-            <button
+            <button data-ui-control="button"
               onClick={() => quickSlipFileRef.current?.click()}
               disabled={quickOcrLoading}
               className="inline-flex items-center gap-2 px-5 py-2.5 bg-primary text-primary-foreground rounded-lg text-sm font-semibold hover:bg-primary/90 transition-colors shadow-sm disabled:opacity-50"
@@ -732,7 +733,7 @@ export default function PaymentsPage() {
                 </>
               )}
             </button>
-            <button
+            <button data-ui-control="button"
               onClick={() => setTab('slip-review')}
               className="inline-flex items-center gap-2 px-4 py-2.5 border border-input rounded-lg text-sm font-medium hover:bg-muted transition-colors"
             >
@@ -745,7 +746,7 @@ export default function PaymentsPage() {
 
       {/* Tabs — Metronic segment tabs */}
       <div className="finance-summary-tabs flex gap-0 mb-5 border-b border-border/60">
-        <button
+        <button data-ui-control="button"
           onClick={() => setTab('pending')}
           className={`px-5 py-3 text-sm font-medium border-b-2 -mb-px transition-all ${tab === 'pending' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
         >
@@ -758,26 +759,26 @@ export default function PaymentsPage() {
             </span>
           )}
         </button>
-        <button
+        <button data-ui-control="button"
           onClick={() => setTab('paid')}
           className={`px-5 py-3 text-sm font-medium border-b-2 -mb-px transition-all ${tab === 'paid' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
         >
           ชำระครบ
         </button>
-        <button
+        <button data-ui-control="button"
           onClick={() => setTab('summary')}
           className={`px-5 py-3 text-sm font-medium border-b-2 -mb-px transition-all ${tab === 'summary' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
         >
           สรุปรายวัน
         </button>
-        <button
+        <button data-ui-control="button"
           onClick={() => setTab('slip-review')}
           className={`px-5 py-3 text-sm font-medium border-b-2 -mb-px transition-all ${tab === 'slip-review' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
         >
           ตรวจสอบสลิป
         </button>
         {canSeeReceipts && (
-          <button
+          <button data-ui-control="button"
             onClick={() => setTab('receipts')}
             className={`px-5 py-3 text-sm font-medium border-b-2 -mb-px transition-all ${tab === 'receipts' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
           >
@@ -833,7 +834,7 @@ export default function PaymentsPage() {
               onToggleSelect={toggleSelect}
               onToggleAll={toggleAll}
               onOpenPayModal={openPayModal}
-              onViewHistory={(contractId) => setHistoryContractId(contractId)}
+              onViewHistory={setHistoryContractId}
               batchTotal={batchTotal}
               onShowBatchModal={() => setShowBatchModal(true)}
               onClearSelection={() => setSelectedIds(new Set())}
@@ -896,7 +897,7 @@ export default function PaymentsPage() {
               onToggleSelect={toggleSelect}
               onToggleAll={toggleAll}
               onOpenPayModal={openPayModal}
-              onViewHistory={(contractId) => setHistoryContractId(contractId)}
+              onViewHistory={setHistoryContractId}
               batchTotal={0}
               onShowBatchModal={() => {}}
               onClearSelection={() => {}}
@@ -905,7 +906,9 @@ export default function PaymentsPage() {
         </div>
       )}
 
-      <PaymentApprovalQueue />
+      <div className="my-6">
+        <PaymentApprovalQueue />
+      </div>
 
       {/* Summary Tab */}
       {tab === 'summary' && (
@@ -940,7 +943,7 @@ export default function PaymentsPage() {
             const gate = paymentToleranceGate(payload.case, payload.amount, remaining);
             if (gate.action === 'block') {
               toast.error(
-                `ส่วนต่างเกิน 1 ฿ (${gate.absDiff.toFixed(2)} ฿) ไม่สามารถอนุมัติได้ กรุณาแก้ไขจำนวนเงิน`,
+                `ส่วนต่างเกิน 1 ฿ (${formatNumericText(gate.absDiff.toFixed(2))} ฿) ไม่สามารถอนุมัติได้ กรุณาแก้ไขจำนวนเงิน`,
               );
               return;
             }

@@ -40,6 +40,37 @@ describe('ProductPickerDialog', () => {
     vi.mocked(api.post).mockReset().mockResolvedValue({ data: { sent: 2, photoSkipped: false, errors: [] } });
   });
 
+  it('แสดงข้อผิดพลาดค้นหาและลองใหม่ โดยเก็บคำค้นเดิม', async () => {
+    vi.mocked(api.get).mockRejectedValueOnce(new Error('offline')).mockResolvedValue({ data: [HIT] });
+    render(wrap(<ProductPickerDialog isOpen onClose={vi.fn()} onInsert={vi.fn()} roomId="r1" />));
+    fireEvent.change(screen.getByPlaceholderText('ค้นหาชื่อรุ่น / ยี่ห้อ / IMEI'), { target: { value: 'iphone' } });
+    expect(await screen.findByRole('alert')).toHaveTextContent('ค้นสินค้าไม่สำเร็จ');
+    expect(screen.queryByText('ไม่พบเครื่องที่ตรงกับคำค้น')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'ลองใหม่' }));
+    expect(await screen.findByText('Apple iPhone 13')).toBeVisible();
+    expect(screen.getByPlaceholderText('ค้นหาชื่อรุ่น / ยี่ห้อ / IMEI')).toHaveValue('iphone');
+  });
+
+  it('โหลดสรุปไม่สำเร็จแล้วลองใหม่ได้ โดยยังไม่แทรกหรือส่งข้อมูล', async () => {
+    let failed = false;
+    vi.mocked(api.get).mockImplementation((url: string) => {
+      if (!url.includes('/summary')) return Promise.resolve({ data: [HIT] });
+      if (!failed) { failed = true; return Promise.reject(new Error('offline')); }
+      return Promise.resolve({ data: { productId: 'p1', text: 'สรุปสินค้า' } });
+    });
+    const onInsert = vi.fn();
+    render(wrap(<ProductPickerDialog isOpen onClose={vi.fn()} onInsert={onInsert} roomId="r1" />));
+    fireEvent.change(screen.getByPlaceholderText('ค้นหาชื่อรุ่น / ยี่ห้อ / IMEI'), { target: { value: 'iphone' } });
+    fireEvent.click(await screen.findByText('Apple iPhone 13'));
+    expect(await screen.findByRole('alert')).toHaveTextContent('โหลดสรุปสินค้าไม่สำเร็จ');
+    expect(screen.getByRole('button', { name: 'แทรกสรุปในกล่องพิมพ์' })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: 'ลองโหลดสรุปอีกครั้ง' }));
+    expect(await screen.findByText('สรุปสินค้า')).toBeVisible();
+    expect(screen.getByRole('button', { name: 'แทรกสรุปในกล่องพิมพ์' })).toBeEnabled();
+    expect(onInsert).not.toHaveBeenCalled();
+    expect(api.post).not.toHaveBeenCalled();
+  });
+
   it('ค้นแล้วโชว์ราคาเงินสด + ค่างวดจริง', async () => {
     vi.mocked(api.get).mockResolvedValue({ data: [HIT] });
     render(wrap(<ProductPickerDialog isOpen onClose={vi.fn()} onInsert={vi.fn()} roomId="r1" />));

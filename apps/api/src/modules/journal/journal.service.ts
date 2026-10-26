@@ -4,6 +4,11 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { CreateJournalEntryDto } from './dto/journal.dto';
 import { validatePeriodOpen } from '../../utils/period-lock.util';
 import { nextEntryNumber } from './entry-number.util';
+import {
+  ADVANCE_EXCESS_INCOME_FLOW,
+  ADVANCE_EXCESS_INCOME_REVERSE_FLOW,
+  ADVANCE_EXCESS_REVERSE_CLI,
+} from './advance-excess-income.util';
 
 @Injectable()
 export class JournalService {
@@ -262,6 +267,16 @@ export class JournalService {
 
     if (entry.status !== 'POSTED') {
       throw new BadRequestException('สถานะไม่ถูกต้อง');
+    }
+
+    // PR4 final review I2 — รายการรอบกวาดเงินพักส่วนเกิน (และกระจกของมัน) ห้ามยกเลิกทางนี้: void ตั้งต้นฉบับเป็น VOIDED
+    // (หลุดจาก TB) และสร้างรายการกลับที่ไม่มี metadata ⇒ 21-1103 ทั้งบัญชีเกินจริง · 42-1106 ติดลบ · ต้นฉบับยังถือ key
+    // จึงลงรอบกวาดซ้ำไม่ได้ · ต้องกลับแบบกระจกด้วย AdvanceExcessIncomeTemplate.reverse (CLI advance-excess:reverse)
+    const flow = (entry.metadata as Record<string, unknown> | null)?.flow;
+    if (flow === ADVANCE_EXCESS_INCOME_FLOW || flow === ADVANCE_EXCESS_INCOME_REVERSE_FLOW) {
+      throw new BadRequestException(
+        `รายการรอบกวาดเงินพักส่วนเกิน (42-1106) ยกเลิกด้วยการยกเลิกรายการบัญชีไม่ได้ — ให้ผู้ดูแลระบบกลับรายการแบบกระจกด้วยคำสั่ง ${ADVANCE_EXCESS_REVERSE_CLI} (ระบุเลขสัญญา + เหตุผล)`,
+      );
     }
 
     // The reversal entry is dated today (not the original's date), so the OPEN-period

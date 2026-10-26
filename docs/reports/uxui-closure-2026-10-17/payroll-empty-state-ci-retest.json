@@ -1,0 +1,36 @@
+{
+  "runId": "20261017T092743Z-1430",
+  "status": "PASS",
+  "startedAt": "2026-10-17T09:27:46.055Z",
+  "revision": "07817aa175d6bca834a7bfd1a6c226313c3e897c",
+  "sourceFingerprint": "f557749b40864578b556d35cfb949f3971310ebbc9f87a8e7a90a11c2f121d0a",
+  "scope": "API integration with real JWT login, real guards/interceptors, real renderer and real storage adapter on synthetic data, plus browser scenarios on the real web app in headless Chromium. Not covered: native PDF viewers / OS print dialog, physical printers, staging/GCS.",
+  "simulated": [
+    "Outbound LINE / SMS / e-mail transports are recorded by the harness and never sent",
+    "Storage is a private local directory (signed URLs answer 501)",
+    "All company / branch / user / customer / contract rows are synthetic and marked as test data",
+    "Outbound provider credentials are pinned to empty strings for the process",
+    "Scheduled jobs (cron / interval / timeout discovered by AppModule) are suppressed before bootstrap mounts timers; scenarios invoke required jobs explicitly. Native timers are outside this boundary"
+  ],
+  "unsupported": [
+    "GET /api/documents/:id/signed-url (501 under local storage)",
+    "Presigned uploads (501 under local storage)",
+    "Customer-facing OTP / LINE delivery"
+  ],
+  "jest": {
+    "available": true,
+    "total": 11,
+    "passed": 11,
+    "failed": 0,
+    "pending": 0,
+    "suites": 1,
+    "failures": []
+  },
+  "change": "Test-only correction: current accessible year selector and annual empty-state copy; assert GET /api/admin/tax/pnd1-annual-preview previous-year 200 response with matching year, empty items and count 0. Retains no-certificate, print and payer-isolation checks.",
+  "ci_failure": "39018908297: 153/154 tests and 75/75 PDFs; one assertion waited for old empty-state copy. Captured CI body confirms current empty-state is displayed for the selected year.",
+  "pdfArtifacts": {
+    "passed": 4,
+    "total": 4
+  },
+  "review": "shared_field_review: PASS after correcting browser response prefix to /api/admin; assertions strengthened, production code unchanged."
+}

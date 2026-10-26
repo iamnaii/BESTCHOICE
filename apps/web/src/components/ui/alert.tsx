@@ -93,7 +93,7 @@ function Alert({ className, variant, size, appearance, close = false, onClose, c
       {close && (
         <button
           onClick={onClose}
-          aria-label="Dismiss"
+          aria-label="ปิดข้อความ"
           data-slot="alert-close"
           className="shrink-0 size-4 opacity-60 hover:opacity-100"
         >

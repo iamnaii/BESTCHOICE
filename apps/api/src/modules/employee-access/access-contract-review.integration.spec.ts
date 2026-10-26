@@ -44,6 +44,7 @@ import { AuditInterceptor } from '../audit/audit.interceptor';
 import { ContractsController } from '../contracts/contracts.controller';
 import { ContractsService } from '../contracts/contracts.service';
 import { ContractWorkflowService } from '../contracts/contract-workflow.service';
+import { CustomerBlacklistService } from '../customers/customer-blacklist.service';
 import { ContractPaymentService } from '../contracts/contract-payment.service';
 import { ContractDocumentService } from '../contracts/contract-document.service';
 import { ContractSnapshotService } from '../contracts/contract-snapshot.service';
@@ -284,6 +285,7 @@ beforeAll(async () => {
         ShopDownPaymentTemplate,
         ShopAccountResolver,
         InstallmentInputVatTemplate,
+        CustomerBlacklistService, // ก้อน 5 C3 — required by ContractWorkflowService; review never reaches activate()
       ].map((provide) => ({ provide, useValue: external })),
       ...[
         ContractsService,

@@ -40,7 +40,7 @@ function ContractReview({ previewHtml, previewState, onRetryPreview, onComplete,
         ) : (
           <div role="alert" className="flex flex-col gap-3 items-center justify-center flex-1 p-4">
             <p className="text-sm text-destructive">โหลดเอกสารสัญญาไม่สำเร็จ</p>
-            <button type="button" onClick={onRetryPreview}
+            <button data-ui-control="button" type="button" onClick={onRetryPreview}
               className="rounded-lg border border-input px-4 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
               ลองใหม่
             </button>
@@ -146,7 +146,7 @@ function ContractIframe({ html, onLoad }: { html: string; onLoad: () => void }) 
 
   return (
     <iframe
-      title="contract-preview"
+      title="ตัวอย่างสัญญา"
       className="w-full flex-1 border-0"
       style={{ minHeight: 0 }}
       srcDoc={styledHtml}

@@ -52,6 +52,32 @@ describe('Follow-up tasks and immutable work history', () => {
     assigneeId: actor.id,
     dueAt: '2026-10-06T23:59:00+07:00',
   });
+  it('keeps the earliest room work visible before pagination across statuses, with undated work last', async () => {
+    const room = await db.chatRoom.create({ data: { channel: 'FACEBOOK', assignedToId: actor.id } });
+    const doingId = randomUUID();
+    const reviewId = randomUUID();
+    const undatedId = randomUUID();
+    const base = { roomId: room.id, createdById: actor.id, assigneeId: actor.id, workKind: 'CHAT_FOLLOW_UP' as const, title: 'Pagination order' };
+    await db.todo.createMany({ data: [
+      ...Array.from({ length: 25 }, () => ({ ...base, id: randomUUID(), status: 'TODO' as const, dueDate: new Date('2026-12-01T00:00:00Z') })),
+      { ...base, id: undatedId, status: 'TODO', dueDate: null },
+      { ...base, id: doingId, status: 'DOING', dueDate: new Date('2026-10-01T00:00:00Z') },
+      { ...base, id: reviewId, status: 'REVIEW', dueDate: new Date('2026-10-02T00:00:00Z') },
+      { ...base, id: randomUUID(), status: 'DONE', dueDate: new Date('2026-09-01T00:00:00Z') },
+      { ...base, id: randomUUID(), status: 'CANCELLED', dueDate: new Date('2026-09-01T00:00:00Z') },
+    ] });
+    const query = { currentUserId: actor.id, company: 'SHOP' as const, roomId: room.id, limit: 20 };
+    const first = await todos.findAll({ ...query, page: 1 });
+    const second = await todos.findAll({ ...query, page: 2 });
+    expect(first.data.slice(0, 2).map(t => t.id)).toEqual([doingId, reviewId]);
+    expect(first.total).toBe(28);
+    expect(first.data).toHaveLength(20);
+    expect(second.data).toHaveLength(8);
+    expect(second.data.at(-1)?.id).toBe(undatedId);
+    expect(new Set([...first.data, ...second.data].map(t => t.id)).size).toBe(28);
+    expect((await todos.findAll({ ...query, page: 1 })).data.map(t => t.id)).toEqual(first.data.map(t => t.id));
+  });
+
   it('deduplicates concurrent create and commits exactly one history and inbox record', async () => {
     const request = input();
     const [a, b] = await Promise.all([

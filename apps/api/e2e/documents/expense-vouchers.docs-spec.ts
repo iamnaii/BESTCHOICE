@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { randomUUID } from 'crypto';
 import { sign } from 'jsonwebtoken';
-import type { BrowserContext, Page } from '@playwright/test';
+import { expect as browserExpect, type BrowserContext, type Page } from '@playwright/test';
 import { DOCUMENT_STYLE, SELF_APPROVAL_DENIED_MESSAGE } from '@installment/shared';
 import { bodyBuffer, DocumentsHarness, Session, startDocumentsApp } from './support/harness';
 import { DocumentsWorld, seedDocumentsWorld, WorldUser } from './support/fixtures';
@@ -688,7 +688,7 @@ describe('DOC-03 expense vouchers, petty cash and daily summary — real command
       expect(foldThai(pdf.pages[originalPage - 1].text)).toContain(foldThai('ยอดสุทธิที่จ่าย'));
       expect(foldThai(pdf.pages[originalPage - 1].text)).toContain(foldThai('(ตราประทับ)'));
       expect(allText(pdf)).toContain(foldThai('สองหมื่นห้าร้อยเจ็ดสิบห้าบาทถ้วน'));
-      expect(allText(pdf)).not.toContain(foldThai('พิมพ์ / Save PDF'));
+      expect(allText(pdf)).not.toContain(foldThai('พิมพ์ / บันทึก PDF'));
       const artifacts = [...screenshots, printed.printMediaShot, printed.artifact, saveArtifact(DOMAIN, 'voucher-page-print-multi.pdf.json', JSON.stringify({ ...pdfSummary(pdf), variant: printed.variant, fontLoaded: printed.fontLoaded, tried: printed.tried, originalPage, copyPage, certificatePage, consoleErrors: errors }, null, 2)).relativePath];
 
       // voucher_print_mode=single → the copy disappears. ui-flags are cached by React Query, so this is the one full reload (POST /auth/refresh) of the file.
@@ -827,10 +827,15 @@ describe('DOC-03 expense vouchers, petty cash and daily summary — real command
       expect(await page.locator('article.voucher-sheet').count()).toBe(0);
       const unknownShot = saveArtifact(DOMAIN, 'print-entry-unknown-id.png', await page.screenshot({ fullPage: true })).relativePath;
 
+      const deniedDetail = page.waitForResponse((response) =>
+        new URL(response.url()).pathname.endsWith(`/expense-documents/${docs.cash!.id}`)
+        && response.request().method() === 'GET');
       await runtime.navigate(page, `/expenses/${docs.cash!.id}/voucher`);
-      await alert.waitFor({ state: 'visible', timeout: 60_000 });
+      expect((await deniedDetail).status()).toBe(403);
+      // SPA navigation can leave the previous 404 alert visible until React
+      // commits the next query. Wait for this document's denial, not any alert.
+      await browserExpect(alert).toContainText('ไม่มีสิทธิ์เข้าถึงข้อมูล', { timeout: 60_000 });
       const foreignText = await alert.innerText();
-      expect(foreignText).toContain('ไม่สามารถโหลดข้อมูลได้');
       expect(await page.locator('article.voucher-sheet').count()).toBe(0);
       expect(await page.content()).not.toContain(docs.cash!.number);
       const foreignShot = saveArtifact(DOMAIN, 'print-entry-other-branch.png', await page.screenshot({ fullPage: true })).relativePath;
@@ -838,6 +843,40 @@ describe('DOC-03 expense vouchers, petty cash and daily summary — real command
       recordScenario(DOMAIN, scenario({ id: `${DOMAIN}/browser-print-entry-errors`, title: 'PaymentVoucherPage: unknown id (404) and other-branch document (403, BRANCH_MANAGER B) both show the QueryBoundary error with a working retry, never a sheet or the document number', routes: ['POST /api/auth/login', 'GET /api/expense-documents/:id'], renderer: 'none', artifacts: [unknownShot, foreignShot], notes: `messages: unknown="${unknownText.replace(/\s+/g, ' ').trim()}" foreign="${foreignText.replace(/\s+/g, ' ').trim()}"; ${consoleNote(errors)}` }));
     }, 300000);
   });
+
+  it('resolves issued voucher numbers with real guards, including reversals', async () => {
+    for (const doc of [docs.cash!, docs.voided!, docs.draft!]) {
+      const path = `/expense-documents/verify-number/${encodeURIComponent(doc.number.toLowerCase())}`;
+      const found = await api(accountant).get(path).expect(200);
+      expect(found.body.data).toEqual({ id: doc.id, number: doc.number });
+      await api(null).get(path).expect(401);
+      await api(salesA).get(path).expect(403);
+      await api(branchManagerB).get(path).expect(404);
+      await api(branchManagerA, 'FINANCE').get(path).expect(403);
+      await api(branchManagerA).get(path).expect(200);
+      await api(owner).get(`${path}999`).expect(404);
+    }
+    recordScenario(DOMAIN, scenario({ id: `${DOMAIN}/legacy-number-scope`, title: 'Exact number lookup includes voided records; guest 401, SALES 403, other branch 404, wrong company 403, near-match 404', routes: ['GET /api/expense-documents/verify-number/:number'], renderer: 'none', artifacts: [] }));
+  });
+
+  it('opens a legacy QR through cold guest login and returns to the voucher detail', async () => {
+    if (!web) web = await startWeb(h);
+    const opened = await web.page({ width: 390, height: 844 });
+    try {
+      await opened.page.goto(`${web.origin}/verify/${docs.cash!.number}`);
+      await opened.page.waitForURL('**/login');
+      await loginSlot();
+      await opened.page.locator('#email').fill(world.users.accountant.email);
+      await opened.page.locator('#password').fill(world.password);
+      await opened.page.getByRole('button', { name: 'เข้าสู่ระบบ', exact: true }).click();
+      await opened.page.waitForURL(`**/expenses/verify/${docs.cash!.id}`);
+      await waitForText(opened.page, docs.cash!.number, 'legacy-number-detail');
+      expect(await opened.page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
+      const screenshot = saveArtifact(DOMAIN, 'legacy-number-guest-return-390.png', await opened.page.screenshot({ fullPage: true })).relativePath;
+      expect(pageErrors(opened.errors)).toEqual([]);
+      recordScenario(DOMAIN, scenario({ id: `${DOMAIN}/legacy-number-browser`, title: 'Legacy voucher QR → real login → exact document detail at 390px', routes: ['/verify/:number', '/login', '/expenses/verify-number/:number', '/expenses/verify/:id'], renderer: 'chromium', artifacts: [screenshot] }));
+    } finally { await opened.context.close(); }
+  }, 180000);
 
   it('never called an outbound transport during the whole flow', () => {
     expect(h.external.calls).toEqual([]);

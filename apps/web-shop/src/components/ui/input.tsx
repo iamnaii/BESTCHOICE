@@ -17,7 +17,7 @@ const inputVariants = cva(
       variant: {
         lg: 'h-12 px-4 text-base leading-snug rounded-md file:pr-4 file:mr-4',
         md: 'h-11 px-3 text-base md:text-sm leading-snug rounded-md file:pr-3 file:mr-3',
-        sm: 'h-10 px-2.5 text-base md:text-sm leading-snug rounded-md file:pr-2.5 file:mr-2.5',
+        sm: 'h-11 px-2.5 text-base md:text-sm leading-snug rounded-md file:pr-2.5 file:mr-2.5',
       },
     },
     defaultVariants: {
@@ -31,7 +31,7 @@ const inputAddonVariants = cva(
   {
     variants: {
       variant: {
-        sm: 'rounded-md h-10 min-w-10 text-base md:text-sm leading-snug px-2.5 [&_svg:not([class*=size-])]:size-3.5',
+        sm: 'rounded-md h-11 min-w-11 text-base md:text-sm leading-snug px-2.5 [&_svg:not([class*=size-])]:size-3.5',
         md: 'rounded-md h-11 min-w-11 px-3 text-base md:text-sm leading-snug [&_svg:not([class*=size-])]:size-[18px]',
         lg: 'rounded-md h-12 min-w-12 px-4 text-base leading-snug [&_svg:not([class*=size-])]:size-[18px]',
       },

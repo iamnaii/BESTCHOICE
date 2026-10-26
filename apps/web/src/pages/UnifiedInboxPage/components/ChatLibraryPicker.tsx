@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState } from 'react';
+import { NativeSelect } from '@/components/ui/native-select';
+import { useEffect, useId, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Cloud, FileText, Folder, Loader2, Plus, Upload } from 'lucide-react';
+import { ChevronDown, Cloud, FileText, Folder, Loader2, Plus, Upload } from 'lucide-react';
 import type { ChatLibraryFile, ChatLibraryFolder, ChatLibraryPage } from '@installment/shared';
 import {
   Dialog,
@@ -63,6 +64,9 @@ export default function ChatLibraryPicker({
   const { company, key } = useChatWorkSettings();
   const client = useQueryClient();
   const [folderId, setFolderId] = useState('');
+  const [foldersOpen, setFoldersOpen] = useState(false);
+  const foldersId = useId();
+  const folderToggleRef = useRef<HTMLButtonElement>(null);
   const [folderPage, setFolderPage] = useState(1);
   const [search, setSearch] = useState('');
   const [kind, setKind] = useState('');
@@ -80,6 +84,7 @@ export default function ChatLibraryPicker({
     setSelected([]);
     setDetail(null);
     setFolderId('');
+    setFoldersOpen(false);
     setFolderPage(1);
     setPage(1);
     setSearch('');
@@ -160,13 +165,20 @@ export default function ChatLibraryPicker({
           : prev,
     );
   };
+  const chooseFolder = (id: string) => {
+    setFolderId(id);
+    setPage(1);
+    // The mobile list collapses after selection; keep focus on its visible trigger.
+    if (folderToggleRef.current?.getClientRects().length) folderToggleRef.current.focus();
+    setFoldersOpen(false);
+  };
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="inbox-library-dialog flex max-h-[90dvh] w-[calc(100%_-_1rem)] max-w-5xl flex-col gap-3 overflow-hidden p-4 sm:p-6"
+        className="inbox-library-dialog flex max-h-[90dvh] w-[calc(100%_-_1rem)] max-w-5xl flex-col gap-4 overflow-hidden rounded-2xl p-4 sm:rounded-2xl sm:p-6"
         aria-describedby="library-description"
       >
-        <DialogHeader>
+        <DialogHeader className="mb-0 text-left">
           <DialogTitle className="flex items-center gap-2">
             <Cloud className="size-5" />
             คลังไฟล์ในระบบ
@@ -177,7 +189,12 @@ export default function ChatLibraryPicker({
         </DialogHeader>
         <div className="grid min-h-0 flex-1 gap-4 overflow-y-auto md:grid-cols-[180px_minmax(0,1fr)] xl:grid-cols-[180px_minmax(0,1fr)_200px]">
           <aside className="space-y-2 md:border-r md:pr-3">
-            <h3 className="text-sm font-semibold">โฟลเดอร์</h3>
+            <h3 className="hidden text-sm font-semibold md:block">โฟลเดอร์</h3>
+            <Button ref={folderToggleRef} type="button" variant="outline" className="min-h-11 w-full justify-between md:hidden" aria-expanded={foldersOpen} aria-controls={foldersId} onClick={() => setFoldersOpen(value => !value)}>
+              <span className="flex min-w-0 items-center gap-2"><Folder className="size-4 shrink-0" aria-hidden="true" /><span className="truncate">โฟลเดอร์ · {folderId ? folders.data?.data.find(f => f.id === folderId)?.name ?? 'ที่เลือก' : 'ทุกไฟล์'}</span></span>
+              <ChevronDown className={cn('size-4 shrink-0 transition-transform', foldersOpen && 'rotate-180')} aria-hidden="true" />
+            </Button>
+            <div id={foldersId} className={cn('space-y-2', !foldersOpen && 'hidden md:block')}>
             {folders.isError ? (
               <div role="alert" className="text-sm">
                 โหลดโฟลเดอร์ไม่ได้{' '}
@@ -191,10 +208,7 @@ export default function ChatLibraryPicker({
                   <Button
                     variant={!folderId ? 'secondary' : 'ghost'}
                     className="min-h-11 justify-start"
-                    onClick={() => {
-                      setFolderId('');
-                      setPage(1);
-                    }}
+                    onClick={() => chooseFolder('')}
                   >
                     ทุกไฟล์
                   </Button>
@@ -203,10 +217,7 @@ export default function ChatLibraryPicker({
                       key={f.id}
                       variant={folderId === f.id ? 'secondary' : 'ghost'}
                       className="min-h-11 justify-start whitespace-normal break-words text-left"
-                      onClick={() => {
-                        setFolderId(f.id);
-                        setPage(1);
-                      }}
+                      onClick={() => chooseFolder(f.id)}
                     >
                       <Folder className="size-4 shrink-0" />
                       {f.name}
@@ -249,6 +260,7 @@ export default function ChatLibraryPicker({
               <Plus className="size-4" />
               เพิ่มโฟลเดอร์
             </Button>
+            </div>
           </aside>
           <section className="min-w-0 space-y-3">
             <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_140px]">
@@ -266,19 +278,19 @@ export default function ChatLibraryPicker({
               </div>
               <div>
                 <Label htmlFor="library-kind">ประเภท</Label>
-                <select
+                <NativeSelect wrapperClassName="max-w-full w-full"
                   id="library-kind"
                   value={kind}
                   onChange={(e) => {
                     setKind(e.target.value);
                     setPage(1);
                   }}
-                  className="h-10 w-full rounded-md border border-input bg-background px-2 text-sm"
+                  className="h-10 rounded-md border border-input bg-background px-2 text-sm"
                 >
                   <option value="">ทั้งหมด</option>
                   <option value="image">รูปภาพ</option>
                   <option value="pdf">PDF</option>
-                </select>
+                </NativeSelect>
               </div>
             </div>
             <div className="flex flex-wrap items-center justify-between gap-2">

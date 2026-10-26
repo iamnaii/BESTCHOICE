@@ -53,6 +53,8 @@ const CASE_FOR_LINE_SELECT = {
   warrantySnapshot: true,
   replacementProductId: true,
   replacementContractId: true,
+  saleId: true, // PR 5 — loadReplacement อ่านประกันร้านจากใบขายของเคสขายสด
+  replacementSaleId: true, // PR 5 — marker ของเคสขายสด
   // final fix I-5 — PRICED_EXCHANGE: เครื่อง/สัญญาที่คุ้มครองเครื่องทดแทนอยู่บนคำขอ ไม่ใช่บนเคส
   exchangeRequest: {
     select: { mode: true, oldContractId: true, newContractId: true, newProductId: true },
@@ -256,6 +258,16 @@ export class AfterSalesLineService {
       });
       shopWarrantyEndDate = contract?.shopWarrantyEndDate
         ? contract.shopWarrantyEndDate.toISOString()
+        : null;
+    }
+    // PR 5 — เคสขายสดไม่มีสัญญา: ประกันร้านของเครื่องทดแทนอยู่บนใบขายเดิม (ตั้งใหม่ตอนส่งมอบ)
+    if (!coveringContractId && c.outcome === 'CASH_SAME_MODEL_EXCHANGE' && c.saleId) {
+      const sale = await this.prisma.sale.findFirst({
+        where: { id: c.saleId, deletedAt: null },
+        select: { shopWarrantyEndDate: true },
+      });
+      shopWarrantyEndDate = sale?.shopWarrantyEndDate
+        ? sale.shopWarrantyEndDate.toISOString()
         : null;
     }
 

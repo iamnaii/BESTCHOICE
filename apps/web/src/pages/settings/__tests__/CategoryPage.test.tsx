@@ -114,7 +114,7 @@ describe('CategoryPage', () => {
   it('render external item เป็นลิงก์', () => {
     role = 'OWNER';
     renderCat('system');
-    const link = screen.getByRole('link', { name: /Audit Log/ });
+    const link = screen.getByRole('link', { name: /ประวัติการดำเนินการ/ });
     expect(link.getAttribute('href')).toBe('/audit-logs');
   });
 

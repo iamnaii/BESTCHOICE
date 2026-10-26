@@ -37,12 +37,12 @@ export function TemplatePickerCombobox({ onApply }: Props) {
 
   return (
     <div className="relative" ref={ref}>
-      <button
+      <button data-ui-control="button"
         type="button"
         onClick={() => setOpen((v) => !v)}
         className="inline-flex items-center gap-1 px-3 py-1.5 border rounded-md text-xs hover:bg-accent"
       >
-        ใช้ template <ChevronDown size={12} />
+        ใช้แม่แบบ <ChevronDown size={12} />
       </button>
       {open && (
         <div className="absolute z-10 mt-1 w-72 max-h-72 overflow-auto border rounded-md bg-popover shadow-lg">
@@ -60,7 +60,7 @@ export function TemplatePickerCombobox({ onApply }: Props) {
             </button>
           ))}
           {query.data?.length === 0 && (
-            <div className="px-3 py-4 text-xs text-muted-foreground text-center">ไม่มี template</div>
+            <div className="px-3 py-4 text-xs text-muted-foreground text-center">ไม่มี แม่แบบ</div>
           )}
           {query.isLoading && (
             <div className="px-3 py-4 text-xs text-muted-foreground text-center">กำลังโหลด...</div>

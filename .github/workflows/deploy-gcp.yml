@@ -24,7 +24,7 @@ on:
         default: false
 
 env:
-  NODE_VERSION: '20'
+  NODE_VERSION: '24'
   GAR_LOCATION: asia-southeast1
   API_IMAGE: asia-southeast1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/bestchoice/api
 
@@ -56,7 +56,7 @@ jobs:
   # ============================================
   lint:
     name: Lint + Build API
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     if: inputs.skip_tests != true
     env:
@@ -87,7 +87,7 @@ jobs:
 
   test-web:
     name: Test Web
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     if: inputs.skip_tests != true
     env:
@@ -106,7 +106,7 @@ jobs:
 
   test-api:
     name: Test API
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 25
     if: inputs.skip_tests != true
     env:
@@ -168,7 +168,7 @@ jobs:
 
   test-integration:
     name: Integration (dual-Prisma + money invariants)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     if: inputs.skip_tests != true
     env:
@@ -267,7 +267,7 @@ jobs:
           INTERCO_FILES=$(ls src/modules/interco-settlement/__tests__/*.integration.spec.ts)
           # + __tests__/ level added 2026-08-20 (Phase 3 contract-cancellation C-1)
           CONTRACTS_FILES=$(ls src/modules/contracts/*.integration.spec.ts src/modules/contracts/__tests__/*.integration.spec.ts)
-          JOURNAL_FILES="src/modules/journal/__tests__/scenario-helpers.spec.ts src/modules/journal/cron/installment-accrual.cron.spec.ts"
+          JOURNAL_FILES="src/modules/journal/__tests__/scenario-helpers.spec.ts src/modules/journal/cron/installment-accrual.cron.spec.ts src/modules/journal/cron/advance-excess-income.cron.spec.ts src/modules/journal/cron/vat-60day.cron.spec.ts"
           OVERDUE_FILES=$(ls src/modules/overdue/*.integration.spec.ts src/modules/overdue/services/*.integration.spec.ts)
           PAYMENTS_FILES=$(ls src/modules/payments/services/*.integration.spec.ts)
           # Payroll SHOP-side E2E (2026-08-06) — jest ignores *.integration.spec.ts
@@ -292,6 +292,12 @@ jobs:
           INVENTORY_FILES=$(ls src/modules/inventory/__tests__/*.integration.spec.ts)
           # ล็อกเครื่องใบจอง (PR 2, 2026-10-05) — โฟลเดอร์ใหม่ ⇒ glob ใหม่ (glob ไม่ recurse เอง)
           BOOKINGS_FILES=$(ls src/modules/bookings/__tests__/*.integration.spec.ts)
+          # เปลี่ยนเครื่องตำหนิ 15ข (2026-10-17) — โฟลเดอร์ใหม่ ⇒ glob ใหม่ (glob ไม่ recurse เอง)
+          DEFECT_FILES=$(ls src/modules/defect-exchange/__tests__/*.integration.spec.ts)
+          # เงินสดย่อยหน้าร้าน 20.2 (2026-10-18) — โฟลเดอร์ใหม่ ⇒ glob ใหม่
+          PETTY_FILES=$(ls src/modules/shop-petty-cash/__tests__/*.integration.spec.ts)
+          # ถังขยะรวม ก้อน 8 A10 (2026-10-26) — โฟลเดอร์ใหม่ ⇒ glob ใหม่ (glob ไม่ recurse เอง)
+          TRASH_FILES=$(ls src/modules/trash/__tests__/*.integration.spec.ts)
           npx vitest run --no-file-parallelism $FILES \
             src/modules/installments/reschedule.service.spec.ts \
             $ACCT_FILES \
@@ -311,7 +317,10 @@ jobs:
             $AFTERSALES_FILES \
             $PO_FILES \
             $INVENTORY_FILES \
-            $BOOKINGS_FILES
+            $BOOKINGS_FILES \
+            $DEFECT_FILES \
+            $PETTY_FILES \
+            $TRASH_FILES
         env:
           DATABASE_URL: postgresql://test:test@localhost:5432/test_db?schema=public
           DATABASE_URL_FINANCE: postgresql://test:test@localhost:5433/test_finance_db?schema=public
@@ -327,7 +336,7 @@ jobs:
   # ============================================
   build-web:
     name: Build Web + Web-Shop
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
       NODE_OPTIONS: --max-old-space-size=6144
@@ -353,8 +362,9 @@ jobs:
           GIT_COMMIT: ${{ github.sha }}
 
       # Hosting policy must permit voice typing before release; browser tests also run on PRs.
+      # Browser binaries cached per Playwright version (.github/actions/playwright-chromium).
       - name: Install Playwright Chromium (hosting policy + shop prerender)
-        run: npx playwright install --with-deps chromium
+        uses: ./.github/actions/playwright-chromium
 
       - name: Verify Hosting microphone policy
         run: node --test tools/hosting-microphone.test.mjs
@@ -398,8 +408,10 @@ jobs:
   # ============================================
   test-chat-credit:
     name: Chat credit + approval
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
+    runs-on: ubuntu-24.04
+    # 15 → 25 (2026-10-26): a normal run is 5–6 minutes, but run 40292778203 timed out with every
+    # test green because `playwright install --with-deps` waited ~10 minutes on a slow apt mirror.
+    timeout-minutes: 25
     if: inputs.skip_tests != true
     env:
       NODE_OPTIONS: --max-old-space-size=6144
@@ -414,17 +426,19 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y postgresql-16 postgresql-16-pgvector
       - name: Install Chromium
-        run: npx playwright install --with-deps chromium
+        uses: ./.github/actions/playwright-chromium
       - name: Verify credit flow on isolated PostgreSQL
         run: bash tools/test-chat-credit.sh
       # Operations specs enforce a disposable socket DB and must never run against
       # the general integration service database. Keep this as a blocking gate.
       - name: Verify chat operations on isolated PostgreSQL
         run: CREDIT_SUITE=chat-operations bash tools/test-chat-credit.sh
+      - name: Verify store appointments on isolated PostgreSQL
+        run: bash tools/test-store-appointments.sh
 
   lint-and-test:
     name: Lint & Test
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     needs: [lint, test-web, test-api, test-integration, test-chat-credit, build-web]
     if: always()
@@ -452,7 +466,7 @@ jobs:
   # ============================================
   build-and-push-api:
     name: Build & Push API Image
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # build ขนานกับเทส (image ที่ build แล้วไม่ถูกใช้ถ้าเทสแดง) — ด่านจริงอยู่ที่ migrate-db/deploy
     # ซึ่ง needs: lint-and-test ⇒ เทสไม่ผ่าน = ไม่มีอะไรขึ้น prod เหมือนเดิม แต่ประหยัด ~8 นาที
     if: >-
@@ -507,7 +521,7 @@ jobs:
     if: >-
       always() && needs.build-and-push-api.result == 'success' &&
       needs.lint-and-test.result == 'success'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     steps:
       - name: Authenticate to GCP
@@ -557,7 +571,7 @@ jobs:
     # test-api อยู่ใน needs เพื่ออ่าน result (skipped = ทางลัดฉุกเฉิน) — ด่านจริงคือ migrate-db
     needs: [migrate-db, test-api]
     if: always() && needs.migrate-db.result == 'success'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     steps:
       # ทางลัดฉุกเฉินถูกใช้ → ทิ้งร่องรอยไว้ในหน้า run + summary ให้ตามย้อนหลังได้ว่าใครกด เมื่อไร
@@ -705,7 +719,7 @@ jobs:
   # ============================================
   deploy-web:
     name: Deploy Web to Firebase Hosting
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     # "Lint & Test" = job สรุปทุก gate (success แม้ gate ถูกข้ามด้วยทางลัดฉุกเฉิน) + ต้องมี artifact จาก build-web
     needs: [lint-and-test, build-web]

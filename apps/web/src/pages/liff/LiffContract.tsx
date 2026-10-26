@@ -312,7 +312,7 @@ export default function LiffContract() {
 
         {/* Top bar */}
         <header className="sticky top-0 z-20 flex items-center justify-between px-5 py-3.5 backdrop-blur-xl border-b border-border/50" style={{ backgroundColor: 'rgb(250 250 247 / 0.85)' }}>
-          <button
+          <button data-ui-control="button" data-ui-icon="true"
             type="button"
             aria-label="ย้อนกลับ"
             className="grid h-9 w-9 place-items-center rounded-full text-foreground hover:bg-accent -ml-1.5"
@@ -603,7 +603,7 @@ export default function LiffContract() {
               <span className="relative z-[1] grid h-[22px] w-[22px] place-items-center rounded-md bg-amber-900 text-white">
                 <Percent className="size-3" strokeWidth={3} />
               </span>
-              <span className="relative z-[1]">ปิดยอด · ลดดอกเบี้ย 50%</span>
+              <span className="relative z-[1]">ปิดยอดก่อนกำหนด · ลดดอกเบี้ย</span>
             </a>
           ) : (
             <a
@@ -703,7 +703,7 @@ export default function LiffContract() {
                         ฿{formatNumber(totalAmount)}
                       </span>
                       {!isPaid && !isCurrent && (
-                        <button
+                        <button data-ui-control="button"
                           type="button"
                           className="grid h-7 w-7 place-items-center rounded-lg border border-border/70 bg-card text-muted-foreground hover:text-foreground hover:border-border active:scale-95 transition"
                           aria-label={`ชำระงวดที่ ${p.installmentNo}`}

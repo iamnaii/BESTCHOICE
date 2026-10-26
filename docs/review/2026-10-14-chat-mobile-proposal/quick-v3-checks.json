@@ -1,0 +1,90 @@
+{
+  "scope": "Design prototype only; no real messaging or APIs",
+  "results": [
+    {
+      "width": 320,
+      "theme": "light",
+      "status": "PASS",
+      "overflow": false,
+      "clippedCategories": [],
+      "small": []
+    },
+    {
+      "width": 320,
+      "theme": "dark",
+      "status": "PASS",
+      "overflow": false,
+      "clippedCategories": [],
+      "small": []
+    },
+    {
+      "width": 375,
+      "theme": "light",
+      "status": "PASS",
+      "overflow": false,
+      "clippedCategories": [],
+      "small": []
+    },
+    {
+      "width": 375,
+      "theme": "dark",
+      "status": "PASS",
+      "overflow": false,
+      "clippedCategories": [],
+      "small": []
+    },
+    {
+      "width": 390,
+      "theme": "light",
+      "status": "PASS",
+      "overflow": false,
+      "clippedCategories": [],
+      "small": []
+    },
+    {
+      "width": 390,
+      "theme": "dark",
+      "status": "PASS",
+      "overflow": false,
+      "clippedCategories": [],
+      "small": []
+    },
+    {
+      "width": 430,
+      "theme": "light",
+      "status": "PASS",
+      "overflow": false,
+      "clippedCategories": [],
+      "small": []
+    },
+    {
+      "width": 430,
+      "theme": "dark",
+      "status": "PASS",
+      "overflow": false,
+      "clippedCategories": [],
+      "small": []
+    },
+    {
+      "width": 320,
+      "height": 568,
+      "theme": "dark",
+      "status": "PASS",
+      "scope": "Preview action visible, Escape back and close, focus return"
+    },
+    {
+      "width": 375,
+      "height": 440,
+      "theme": "dark",
+      "status": "PASS",
+      "scope": "Preview action visible, Escape back and close, focus return"
+    },
+    {
+      "width": 844,
+      "height": 390,
+      "theme": "dark",
+      "status": "PASS",
+      "scope": "Preview action visible, Escape back and close, focus return"
+    }
+  ]
+}

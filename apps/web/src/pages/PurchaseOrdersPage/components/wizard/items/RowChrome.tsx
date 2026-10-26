@@ -1,3 +1,5 @@
+import { NumberInput } from '@/components/ui/NumberInput';
+import { NativeSelect } from '@/components/ui/native-select';
 import { Copy, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { formatNumberDecimal } from '@/utils/formatters';
@@ -49,7 +51,7 @@ export function CompactSelect({
   className?: string;
 }) {
   return (
-    <select
+    <NativeSelect wrapperClassName="max-w-full w-full"
       aria-label={label}
       value={value}
       onChange={(e) => onChange(e.target.value)}
@@ -62,7 +64,7 @@ export function CompactSelect({
           {o}
         </option>
       ))}
-    </select>
+    </NativeSelect>
   );
 }
 
@@ -87,9 +89,8 @@ export function MoneyCells({
       <td className={cellCls}>
         <span className="relative block">
           <span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">฿</span>
-          <input
+          <NumberInput unstyled
             aria-label="ราคาต่อชิ้น"
-            type="number"
             min={0}
             step="0.01"
             inputMode="decimal"

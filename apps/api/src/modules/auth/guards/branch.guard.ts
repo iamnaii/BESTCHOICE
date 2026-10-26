@@ -5,6 +5,8 @@ import {
   ExecutionContext,
   ForbiddenException,
 } from '@nestjs/common';
+import { Reflector } from '@nestjs/core';
+import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
 import { hasCrossBranchAccess } from '../branch-access.util';
 
 /**
@@ -24,7 +26,14 @@ import { hasCrossBranchAccess } from '../branch-access.util';
  */
 @Injectable()
 export class BranchGuard implements CanActivate {
+  constructor(private readonly reflector: Reflector) {}
+
   canActivate(context: ExecutionContext): boolean {
+    // Public capabilities (for example a contract QR hash) are checked by
+    // their endpoint. JwtAuthGuard intentionally does not populate a user.
+    if (this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, [context.getHandler(), context.getClass()])) {
+      return true;
+    }
     const request = context.switchToHttp().getRequest();
     const user = request.user;
 

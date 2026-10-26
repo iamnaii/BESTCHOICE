@@ -87,6 +87,25 @@ describe('poHistory', () => {
     expect(h[1].key).toBe('created-ordered');
   });
 
+  // ปิดใบ รับไม่ครบ (2026-10-11): ใบเก็บเวลา/ผู้ปิด/เหตุผล จึงเป็นรายการจริง (มีเวลา) ขึ้นบนสุด ถัดจากใบรับของ
+  it('a closed-short PO ends with a timed ปิดใบ รับไม่ครบ event carrying who + why', () => {
+    const h = poHistory(
+      {
+        status: 'CLOSED_SHORT', orderDate: '2026-09-06', createdAt: '2026-09-06T15:31:00.000Z', orderedAt: '2026-09-06T15:31:02.000Z',
+        createdBy: owner, approvedBy: null,
+        closedAt: '2026-10-11T04:20:00.000Z', closedBy: manager, closeReason: 'ของหมด ผู้ขายไม่ส่งที่เหลือ',
+      },
+      [gr()],
+    );
+    expect(h.map((e) => e.key)).toEqual(['closed-short', 'gr:gr1', 'created-ordered']);
+    expect(h[0]).toMatchObject({ at: '2026-10-11T04:20:00.000Z', title: 'ปิดใบ รับไม่ครบ', by: manager.name, tone: 'muted' });
+    expect(h[0].detail).toContain('ของหมด ผู้ขายไม่ส่งที่เหลือ');
+    expect(h[0].detail).toContain('เปิดใบใหม่');
+    // ไม่มีเหตุผล/ผู้ปิด (ข้อมูลเก่า) → ยังขึ้นรายการ ไม่พัง
+    const bare = poHistory({ status: 'CLOSED_SHORT', orderDate: '2026-09-06', orderedAt: null, createdBy: owner, approvedBy: null });
+    expect(bare[0]).toMatchObject({ key: 'closed-short', at: null, by: null });
+  });
+
   it('falls back to orderDate when the API sends no createdAt', () => {
     const h = poHistory({ status: 'ORDERED', orderDate: '2026-09-06', orderedAt: '2026-09-06T15:31:02.000Z', createdBy: owner, approvedBy: null });
     // orderDate (midnight) is far from orderedAt → not collapsed, but nothing crashes
@@ -136,6 +155,6 @@ describe('item columns (same vocabulary as the purchase wizard)', () => {
 
   it('canReceive only for approved/ordered/partially received', () => {
     expect(['APPROVED', 'ORDERED', 'PARTIALLY_RECEIVED'].every((status) => canReceive({ status }))).toBe(true);
-    expect(['DRAFT', 'FULLY_RECEIVED', 'CANCELLED'].some((status) => canReceive({ status }))).toBe(false);
+    expect(['DRAFT', 'FULLY_RECEIVED', 'CANCELLED', 'CLOSED_SHORT'].some((status) => canReceive({ status }))).toBe(false);
   });
 });

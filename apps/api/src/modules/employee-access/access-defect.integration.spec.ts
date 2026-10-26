@@ -27,6 +27,8 @@ import { AccessRepairSourceService } from './access-repair-source.service';
 import { AccessProcurementSourceService } from './access-procurement-source.service';
 import { JournalAutoService } from '../journal/journal-auto.service';
 import { DefectExchangeReversalTemplate } from '../journal/cpa-templates/defect-exchange-reversal.template';
+import { ReceiptNumberService } from '../receipts/services/receipt-number.service';
+import { ReceiptVoidReversalTemplate } from '../journal/cpa-templates/receipt-void-reversal.template';
 import { ContractActivation1ATemplate } from '../journal/cpa-templates/contract-activation-1a.template';
 import { seedStatementReview } from '../contracts/__tests__/credit-approval.fixture';
 import { seedShopCoa } from '../../../prisma/seed-coa-shop';
@@ -60,6 +62,8 @@ const defect = new DefectExchangeService(
   journal,
   new DefectExchangeReversalTemplate(journal, db as PrismaService),
   repair,
+  new ReceiptVoidReversalTemplate(journal, db as PrismaService),
+  new ReceiptNumberService(db as PrismaService),
   sources,
 );
 const act1a = new ContractActivation1ATemplate(journal, db as PrismaService);

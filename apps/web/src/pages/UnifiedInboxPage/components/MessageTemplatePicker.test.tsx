@@ -27,7 +27,7 @@ describe('MessageTemplatePicker', () => {
         />,
       ),
     );
-    expect(screen.getByText('เลือกข้อความสำเร็จรูป')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'ตอบด่วน' })).toBeInTheDocument();
   });
 
   it('does not render when isOpen=false', () => {
@@ -122,7 +122,7 @@ describe('MessageTemplatePicker — preview', () => {
 
   it('shows empty state when no template selected', async () => {
     render(wrap(<MessageTemplatePicker isOpen={true} onClose={vi.fn()} onInsert={vi.fn()} roomId="r1" />));
-    expect(await screen.findByText('เลือก template เพื่อดูตัวอย่าง')).toBeInTheDocument();
+    expect(await screen.findByText('เลือกแม่แบบเพื่อดูตัวอย่าง')).toBeInTheDocument();
   });
 
   it('fetches preview when template selected', async () => {

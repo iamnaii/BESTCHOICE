@@ -1,3 +1,4 @@
+import { formatNumericText } from '@/utils/numericText';
 import Decimal from 'decimal.js';
 
 interface Props {
@@ -41,8 +42,8 @@ export function AdvanceBalanceBanner({
   // leading '·' rendered a stray dot whenever the generic bucket was empty and
   // only the park bucket had money ("· พักงวดสุดท้าย 354.00 ฿ · พักใน 21-1103").
   const detailParts = [
-    advanceBalance.gt(0) ? `จากชำระงวดก่อนเกิน ${advanceBalance.toFixed(2)} ฿` : null,
-    park.gt(0) ? `พักงวดสุดท้าย ${park.toFixed(2)} ฿` : null,
+    advanceBalance.gt(0) ? `จากชำระงวดก่อนเกิน ${formatNumericText(advanceBalance.toFixed(2))} ฿` : null,
+    park.gt(0) ? `พักงวดสุดท้าย ${formatNumericText(park.toFixed(2))} ฿` : null,
     'พักใน 21-1103',
     consumeAdvance ? 'ระบบจะหักอัตโนมัติ' : 'ไม่หัก — เก็บไว้งวดถัดไป',
   ].filter((part): part is string => part !== null);
@@ -58,16 +59,16 @@ export function AdvanceBalanceBanner({
       />
       <div className="min-w-0 space-y-0.5">
         <div className="text-sm font-medium text-foreground leading-snug">
-          มีเครดิตคงเหลือ {totalCredit.toFixed(2)} ฿
+          มีเครดิตคงเหลือ {formatNumericText(totalCredit.toFixed(2))} ฿
         </div>
         <div className="text-xs text-muted-foreground leading-snug">{detailParts.join(' · ')}</div>
         <div className="text-xs leading-snug">
           {consumeAdvance ? (
             <span className="text-primary font-medium">
-              หักแล้ว เหลือเก็บ {netDue.toFixed(2)} ฿
+              หักแล้ว เหลือเก็บ {formatNumericText(netDue.toFixed(2))} ฿
             </span>
           ) : (
-            <span className="text-muted-foreground">เก็บเต็ม {amountDue.toFixed(2)} ฿</span>
+            <span className="text-muted-foreground">เก็บเต็ม {formatNumericText(amountDue.toFixed(2))} ฿</span>
           )}
         </div>
       </div>

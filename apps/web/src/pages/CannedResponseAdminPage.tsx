@@ -164,7 +164,7 @@ export default function CannedResponseAdminPage() {
     },
     onSuccess: () => {
       invalidate();
-      toast.success('ทำซ้ำหมวดแล้ว (รวม bubbles + quick replies ทุก template)');
+      toast.success("ทำซ้ำหมวดพร้อมข้อความและปุ่มตอบกลับด่วนทุกแม่แบบแล้ว");
     },
     onError: (e: any) => toast.error(getErrorMessage(e) ?? 'ทำซ้ำหมวดไม่สำเร็จ'),
   });
@@ -219,7 +219,7 @@ export default function CannedResponseAdminPage() {
     onSuccess: (created: any) => {
       invalidate();
       setSelectedId(created?.id ?? null);
-      toast.success('ทำซ้ำแล้ว (รวม bubbles + quick replies)');
+      toast.success("ทำซ้ำพร้อมข้อความและปุ่มตอบกลับด่วนแล้ว");
     },
     onError: (e: any) => toast.error(getErrorMessage(e) ?? 'ทำซ้ำไม่สำเร็จ'),
   });
@@ -228,7 +228,7 @@ export default function CannedResponseAdminPage() {
     const cat = category === 'อื่นๆ' ? null : category;
     createMutation.mutate({
       shortcut: `/new-${Date.now().toString(36).slice(-4)}`,
-      title: 'Template ใหม่',
+      title: "แม่แบบใหม่",
       content: '',
       category: cat,
       sortOrder: Math.max(0, ...templates.map((t) => t.sortOrder)) + 1,
@@ -247,7 +247,7 @@ export default function CannedResponseAdminPage() {
     }
     createMutation.mutate({
       shortcut: `/new-${Date.now().toString(36).slice(-4)}`,
-      title: 'Template ใหม่',
+      title: "แม่แบบใหม่",
       content: '',
       category: name,
       sortOrder: Math.max(0, ...templates.map((t) => t.sortOrder)) + 1,
@@ -329,7 +329,7 @@ export default function CannedResponseAdminPage() {
         onOpenChange={(open) => {
           if (!open) setConfirmDelete(null);
         }}
-        title={isCategoryDelete ? 'ลบหมวดทั้งหมด' : 'ลบ Template'}
+        title={isCategoryDelete ? 'ลบหมวดทั้งหมด' : "ลบแม่แบบ"}
         description={
           confirmDelete
             ? confirmDelete.kind === 'category'
@@ -361,7 +361,7 @@ export default function CannedResponseAdminPage() {
               onKeyDown={(e) => {
                 if (e.key === 'Enter') confirmNewCategory();
               }}
-              placeholder="ชื่อหมวด เช่น 'เรทผ่อน iPhone'"
+              aria-label="ชื่อหมวดข้อความ" placeholder="ชื่อหมวด เช่น 'เรทผ่อน iPhone'"
             />
           </div>
           <DialogFooter>

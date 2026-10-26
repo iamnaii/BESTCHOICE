@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { NumberInput } from '@/components/ui/NumberInput';
+import { useId as useUiFieldId, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import api, { getErrorMessage } from '@/lib/api';
@@ -19,6 +20,7 @@ type Mode = 'AS_ANSWERED' | 'REVISED' | 'MANUAL';
 
 /** §7.4 — ยืนยันราคา record จาก instant quote: ตรงตามตอบ / แก้คำตอบ / OWNER free-hand */
 export default function OnlineAppraiseModal({ item, onClose }: Props) {
+  const uiFieldId = useUiFieldId();
   const queryClient = useQueryClient();
   const { user } = useAuth();
   const isOwner = user?.role === 'OWNER';
@@ -143,7 +145,7 @@ export default function OnlineAppraiseModal({ item, onClose }: Props) {
                   setCashFallback(false);
                 }}
               >
-                กำหนดราคาเอง (OWNER)
+                กำหนดราคาเอง (เจ้าของ)
               </Button>
             )}
             {item.flow === 'EXCHANGE' && (
@@ -178,17 +180,16 @@ export default function OnlineAppraiseModal({ item, onClose }: Props) {
           {mode === 'MANUAL' && (
             <div className="space-y-3">
               <div>
-                <Label>ราคาที่เสนอ (บาท) *</Label>
-                <Input
+                <Label htmlFor={`${uiFieldId}-1`}>ราคาที่เสนอ (บาท) *</Label>
+                <NumberInput id={`${uiFieldId}-1`}
                   className="mt-1"
-                  type="number"
                   value={manualPrice}
                   onChange={(e) => setManualPrice(e.target.value)}
                 />
               </div>
               <div>
-                <Label>เหตุผล * (บันทึก audit)</Label>
-                <Input
+                <Label htmlFor={`${uiFieldId}-2`}>เหตุผล * (บันทึก การตรวจสอบ)</Label>
+                <Input id={`${uiFieldId}-2`}
                   className="mt-1"
                   value={manualReason}
                   onChange={(e) => setManualReason(e.target.value)}

@@ -1,5 +1,6 @@
+import { safeLoginReturnPath } from '@/lib/verification-links';
 import { useState, FormEvent } from 'react';
-import { useNavigate, Link } from 'react-router';
+import { useNavigate, useLocation, Link } from 'react-router';
 import { useAuth } from '@/contexts/AuthContext';
 import { getLandingPathForRole } from '@/config/menu';
 import { toast } from 'sonner';
@@ -7,6 +8,7 @@ import AuthLayout from '@/components/layout/AuthLayout';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
+import { formControlClass, formLabelClass } from '@/components/ui/form-styles';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
@@ -14,6 +16,7 @@ export default function LoginPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { login } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -22,7 +25,7 @@ export default function LoginPage() {
     try {
       const result = await login(email, password);
       toast.success('เข้าสู่ระบบสำเร็จ');
-      navigate(getLandingPathForRole(result.role ?? ''));
+      navigate(safeLoginReturnPath(location.state?.from, getLandingPathForRole(result.role ?? '')), { replace: true });
     } catch (error: unknown) {
       const err = error as {
         response?: { status?: number; data?: { message?: string } };
@@ -51,7 +54,7 @@ export default function LoginPage() {
       setPassword(pw);
       const result = await login(emailVal, pw);
       toast.success(`เข้าสู่ระบบเป็น ${label}`);
-      navigate(getLandingPathForRole(result.role ?? ''));
+      navigate(safeLoginReturnPath(location.state?.from, getLandingPathForRole(result.role ?? '')), { replace: true });
     } catch {
       toast.error('เข้าสู่ระบบไม่สำเร็จ');
     } finally {
@@ -75,13 +78,14 @@ export default function LoginPage() {
             <div className="text-lg font-extrabold text-foreground">
               BEST<span className="text-primary">CHOICE</span>
             </div>
-            <div className="text-xs text-muted-foreground">Finance Management</div>
+            <div className="text-xs text-muted-foreground">ระบบบริหารร้านและการเงิน</div>
           </div>
         </div>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <Label htmlFor="email">อีเมล</Label>
+            <Label htmlFor="email" className={formLabelClass}>อีเมล</Label>
             <Input
+              className={formControlClass}
               id="email"
               type="email"
               data-testid="login-email"
@@ -94,8 +98,9 @@ export default function LoginPage() {
           </div>
 
           <div>
-            <Label htmlFor="password">รหัสผ่าน</Label>
+            <Label htmlFor="password" className={formLabelClass}>รหัสผ่าน</Label>
             <Input
+              className={formControlClass}
               id="password"
               type="password"
               data-testid="login-password"
@@ -112,7 +117,7 @@ export default function LoginPage() {
             type="submit"
             data-testid="login-submit"
             disabled={isSubmitting}
-            className="w-full"
+            className="w-full h-11 min-h-11"
             variant="primary"
             size="lg"
           >
@@ -147,7 +152,7 @@ export default function LoginPage() {
             <p className="font-medium text-foreground text-xs mb-2">เข้าสู่ระบบด่วน:</p>
             <div className="grid grid-cols-2 gap-2">
               {[
-                { label: 'Admin', email: 'admin@bestchoice.com', pw: 'admin1234', role: 'OWNER' },
+                { label: "ผู้ดูแลระบบ", email: 'admin@bestchoice.com', pw: 'admin1234', role: 'OWNER' },
                 {
                   label: 'ผจก.สาขา',
                   email: 'manager1@bestchoice.com',

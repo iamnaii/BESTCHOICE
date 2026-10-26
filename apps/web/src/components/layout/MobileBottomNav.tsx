@@ -19,7 +19,9 @@ function MobileBottomNav() {
   const tabs = useMemo<BottomNavItem[]>(() => {
     // ส่ง accessibleCompanies เหมือน LayoutContext/Sidebar — แท็บล่างต้องเป็นชุดเดียวกับโซนที่ผู้ใช้เข้าได้จริง
     const zoneConfig = getZoneConfigForRole(user?.role ?? '', user?.accessibleCompanies);
-    const rawTabs: BottomNavItem[] = zoneConfig?.bottomNav[currentZone] ?? [];
+    const configured: BottomNavItem[] = zoneConfig?.bottomNav[currentZone] ?? [];
+    // Letters remain available in the sidebar; keep four daily tasks plus More.
+    const rawTabs = configured.length > 5 ? configured.filter(tab => tab.path !== '/letters') : configured;
     if (!collectionsEnabled) return rawTabs;
     return rawTabs.map((tab) =>
       tab.path === '/overdue' ? { ...tab, path: '/collections' } : tab,
@@ -36,7 +38,7 @@ function MobileBottomNav() {
       className="fixed bottom-0 left-0 right-0 z-30 lg:hidden bg-background/97 backdrop-blur-lg border-t border-border/50 safe-area-bottom"
       aria-label="เมนูด้านล่าง"
     >
-      <div className="flex items-stretch h-[56px]">
+      <div className="flex items-stretch min-h-[64px]">
         {tabs.map((tab) => {
           const active = !tab.action && isActive(tab.path);
 
@@ -48,14 +50,14 @@ function MobileBottomNav() {
                 onClick={exitSettings}
                 data-testid="exit-settings-bottomnav"
                 className={cn(
-                  'flex flex-col items-center justify-center gap-0.5 flex-1 px-1 py-1.5',
+                  'flex flex-col items-center justify-center gap-0.5 flex-1 min-w-0 px-1 py-2',
                   'text-muted-foreground hover:text-foreground',
-                  'active:scale-90 transition-all duration-150 focus-visible:outline-hidden',
+                  'active:scale-95 transition-all duration-150 focus-visible:outline-hidden',
                 )}
                 aria-label="ออกจากตั้งค่า"
               >
                 <tab.icon className="size-[22px]" strokeWidth={1.75} />
-                <span className="text-[10px] font-medium leading-snug">{tab.label}</span>
+                <span className="text-xs leading-snug whitespace-nowrap font-medium">{tab.label}</span>
               </button>
             );
           }
@@ -66,14 +68,14 @@ function MobileBottomNav() {
                 key={tab.label}
                 onClick={() => setMobileSidebarOpen(true)}
                 className={cn(
-                  'flex flex-col items-center justify-center gap-0.5 flex-1 px-1 py-1.5',
+                  'flex flex-col items-center justify-center gap-0.5 flex-1 min-w-0 px-1 py-2',
                   'text-muted-foreground hover:text-foreground',
-                  'active:scale-90 transition-all duration-150 focus-visible:outline-hidden',
+                  'active:scale-95 transition-all duration-150 focus-visible:outline-hidden',
                 )}
                 aria-label="เปิดเมนูเพิ่มเติม"
               >
                 <tab.icon className="size-[22px]" strokeWidth={1.75} />
-                <span className="text-[10px] font-medium">{tab.label}</span>
+                <span className="text-xs leading-snug whitespace-nowrap font-medium">{tab.label}</span>
               </button>
             );
           }
@@ -83,8 +85,8 @@ function MobileBottomNav() {
               key={tab.path}
               to={tab.path}
               className={cn(
-                'relative flex flex-col items-center justify-center gap-0.5 flex-1 px-1 py-1.5',
-                'transition-all duration-150 active:scale-90 focus-visible:outline-hidden',
+                'relative flex flex-col items-center justify-center gap-0.5 flex-1 min-w-0 px-1 py-2',
+                'transition-all duration-150 active:scale-95 focus-visible:outline-hidden',
                 active ? 'text-primary' : 'text-muted-foreground hover:text-foreground',
               )}
               aria-current={active ? 'page' : undefined}
@@ -103,7 +105,7 @@ function MobileBottomNav() {
                 />
                 {tab.badgeKey === 'chat-unread' && <ChatBadgeDot />}
               </div>
-              <span className={cn('text-[10px]', active ? 'font-bold' : 'font-medium')}>
+              <span className={cn('text-xs leading-snug whitespace-nowrap', active ? 'font-bold' : 'font-medium')}>
                 {tab.label}
               </span>
             </Link>

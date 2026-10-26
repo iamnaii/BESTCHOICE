@@ -387,7 +387,7 @@ export function InternalControlActionBar(props: InternalControlActionBarProps) {
                         disabled={isLoading || !canPost}
                       >
                         <CheckCircle2 size={14} className="mr-1.5" aria-hidden />
-                        บันทึก & POST
+                        บันทึกและลงบัญชี
                       </Button>
                     )}
               </>
@@ -412,7 +412,7 @@ export function InternalControlActionBar(props: InternalControlActionBarProps) {
                 {onApprove && (
                   <Button type="button" size="sm" onClick={onApprove} disabled={isLoading}>
                     <CheckCircle2 size={14} className="mr-1.5" aria-hidden />
-                    อนุมัติ & POST
+                    อนุมัติและลงบัญชี
                   </Button>
                 )}
               </>

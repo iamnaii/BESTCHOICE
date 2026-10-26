@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { AlertTriangle } from 'lucide-react';
-import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
+import { Alert, AlertTitle, AlertDescription, AlertIcon, AlertContent } from '@/components/ui/alert';
 import { accountingApi, type ReopenedPeriod } from '@/lib/accounting';
 import { formatThaiDateTime } from '@/lib/date';
 import { useAuth } from '@/contexts/AuthContext';
@@ -40,9 +40,10 @@ export function ReopenedPeriodBanner() {
           <Alert
             key={p.id || periodLabel}
             variant="warning"
-            className="border-warning bg-warning/10"
+            appearance="light"
           >
-            <AlertTriangle className="w-4 h-4 text-warning-strong" />
+            <AlertIcon><AlertTriangle /></AlertIcon>
+            <AlertContent className="min-w-0 flex-1 break-words">
             <AlertTitle>งวด {periodLabel} ถูกเปิดชั่วคราว</AlertTitle>
             <AlertDescription className="space-y-1">
               <p>
@@ -54,6 +55,7 @@ export function ReopenedPeriodBanner() {
                 <p className="text-destructive font-medium">ภ.พ.30 ยื่นแล้ว — ต้องยื่นแก้ไขด้วย</p>
               )}
             </AlertDescription>
+            </AlertContent>
           </Alert>
         );
       })}

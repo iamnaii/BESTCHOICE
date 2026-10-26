@@ -1,10 +1,11 @@
-import { useState, useEffect } from 'react';
+import { NumberInput } from '@/components/ui/NumberInput';
+import { useId as useExtraFieldId, useId as useUiFieldId, useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Phone, PhoneIncoming, PhoneOutgoing, Clock } from 'lucide-react';
 import api from '@/lib/api';
 import Modal from '@/components/ui/Modal';
 import { formatNumber } from '@/utils/formatters';
-import { formatThaiDateShort } from '@/lib/date';
+import { formatThaiDateShort, toBangkokDateString, computeDefaultTimeRange } from '@/lib/date';
 import { useContactLog } from '../hooks/useContactLog';
 import { usePromiseSlots } from '../hooks/usePromiseSlots';
 import SupersedePromiseConfirmDialog from './SupersedePromiseConfirmDialog';
@@ -81,13 +82,11 @@ const QUICK_DATE_OPTIONS: Array<{
 function dateOffset(days: number): string {
   const d = new Date();
   d.setDate(d.getDate() + days);
-  return d.toISOString().split('T')[0];
+  return toBangkokDateString(d);
 }
 
 function endOfThisMonth(): string {
-  const d = new Date();
-  const last = new Date(d.getFullYear(), d.getMonth() + 1, 0);
-  return last.toISOString().split('T')[0];
+  return computeDefaultTimeRange('this_month').endDate;
 }
 
 function getTomorrow(): string {
@@ -111,6 +110,8 @@ interface ActivePromiseSummary {
 }
 
 export default function ContactLogDialog({ open, contract, onClose, onSaved }: Props) {
+  const uiExtraFieldId = useExtraFieldId();
+  const uiFieldId = useUiFieldId();
   const [outcome, setOutcome] = useState<Outcome | null>(null);
   const [notes, setNotes] = useState('');
   const [settlementNotes, setSettlementNotes] = useState('');
@@ -144,6 +145,7 @@ export default function ContactLogDialog({ open, contract, onClose, onSaved }: P
     },
     enabled: open && !!contract && outcome === 'WILL_PAY',
     refetchOnWindowFocus: false,
+    staleTime: 0,
   });
 
   const installmentsQuery = useQuery({
@@ -197,7 +199,8 @@ export default function ContactLogDialog({ open, contract, onClose, onSaved }: P
     const amt = Number(s.settlementAmount);
     return !!s.settlementDate && Number.isFinite(amt) && amt > 0;
   });
-  const canSave = outcome !== null && (!showSettlement || slotsValid) && !mutation.isPending;
+  const promiseReady = cycleDeadlineQuery.isSuccess && !cycleDeadlineQuery.isFetching;
+  const canSave = outcome !== null && (!showSettlement || (slotsValid && promiseReady)) && !mutation.isPending;
 
   function handleClose() {
     if (mutation.isPending) return;
@@ -246,7 +249,7 @@ export default function ContactLogDialog({ open, contract, onClose, onSaved }: P
   }
 
   function handleSubmit() {
-    if (!contract || !outcome) return;
+    if (!contract || !outcome || !canSave) return;
     if (showSettlement && activePromise) {
       setSupersedeConfirmOpen(true);
       return;
@@ -409,7 +412,7 @@ export default function ContactLogDialog({ open, contract, onClose, onSaved }: P
 
                   {/* Date pills + date input */}
                   <div>
-                    <label className="text-xs font-medium text-muted-foreground mb-1.5 block leading-snug">
+                    <label htmlFor={`${uiExtraFieldId}-1-${idx}`} className="text-xs font-medium text-muted-foreground mb-1.5 block leading-snug">
                       วันที่นัด <span className="text-destructive">*</span>
                     </label>
                     <div className="flex flex-wrap gap-1.5 mb-2">
@@ -421,7 +424,7 @@ export default function ContactLogDialog({ open, contract, onClose, onSaved }: P
                             : '';
                         const active = slot.settlementDate === computed;
                         return (
-                          <button
+                          <button data-ui-control="button"
                             key={opt.label}
                             type="button"
                             onClick={() => updateSlot(slot.id, { settlementDate: computed })}
@@ -436,7 +439,7 @@ export default function ContactLogDialog({ open, contract, onClose, onSaved }: P
                         );
                       })}
                     </div>
-                    <input
+                    <input id={`${uiExtraFieldId}-1-${idx}`}
                       type="date"
                       min={getTomorrow()}
                       max={cycleDeadline ? cycleDeadline.slice(0, 10) : undefined}
@@ -448,12 +451,11 @@ export default function ContactLogDialog({ open, contract, onClose, onSaved }: P
 
                   {/* Amount */}
                   <div>
-                    <label className="text-xs font-medium text-muted-foreground mb-1.5 block leading-snug">
+                    <label htmlFor={`${uiExtraFieldId}-2-${idx}`} className="text-xs font-medium text-muted-foreground mb-1.5 block leading-snug">
                       ยอด <span className="text-destructive">*</span>
                     </label>
                     <div className="relative">
-                      <input
-                        type="number"
+                      <NumberInput unstyled id={`${uiExtraFieldId}-2-${idx}`}
                         inputMode="decimal"
                         min={0.01}
                         step="0.01"
@@ -492,7 +494,7 @@ export default function ContactLogDialog({ open, contract, onClose, onSaved }: P
               })()}
 
               {/* Add slot button */}
-              <button
+              <button data-ui-control="button"
                 type="button"
                 onClick={addSlot}
                 className="w-full px-3 py-2 rounded-lg border-2 border-dashed border-border hover:bg-muted text-sm font-medium leading-snug transition-colors"
@@ -531,10 +533,10 @@ export default function ContactLogDialog({ open, contract, onClose, onSaved }: P
 
               {/* Settlement notes */}
               <div>
-                <label className="text-sm font-semibold text-foreground mb-1.5 block leading-snug">
+                <label htmlFor={`${uiFieldId}-1`} className="text-sm font-semibold text-foreground mb-1.5 block leading-snug">
                   รายละเอียดการนัด
                 </label>
-                <textarea
+                <textarea id={`${uiFieldId}-1`}
                   value={settlementNotes}
                   onChange={(e) => setSettlementNotes(e.target.value)}
                   placeholder="ช่องทางการชำระ, หมายเหตุ..."
@@ -547,10 +549,10 @@ export default function ContactLogDialog({ open, contract, onClose, onSaved }: P
 
           {/* Notes */}
           <div>
-            <label className="text-sm font-semibold text-foreground mb-1.5 block leading-snug">
+            <label htmlFor={`${uiFieldId}-2`} className="text-sm font-semibold text-foreground mb-1.5 block leading-snug">
               บันทึก
             </label>
-            <textarea
+            <textarea id={`${uiFieldId}-2`}
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               placeholder="รายละเอียดการสนทนา..."
@@ -567,15 +569,23 @@ export default function ContactLogDialog({ open, contract, onClose, onSaved }: P
           )}
 
           {/* Actions */}
+          {showSettlement && cycleDeadlineQuery.isError && (
+            <div role="alert" className="text-sm text-destructive">
+              โหลดข้อมูลนัดเดิมไม่สำเร็จ{' '}
+              <button type="button" className="min-h-11 px-2 underline" onClick={() => cycleDeadlineQuery.refetch()}>
+                ลองใหม่
+              </button>
+            </div>
+          )}
           <div className="flex gap-2 justify-end pt-2 border-t border-border/40">
-            <button
+            <button data-ui-control="button"
               onClick={handleClose}
               disabled={mutation.isPending}
               className="px-5 py-2.5 text-base border border-input rounded-lg hover:bg-muted transition-colors disabled:opacity-50"
             >
               ยกเลิก
             </button>
-            <button
+            <button data-ui-control="button"
               onClick={handleSubmit}
               disabled={!canSave}
               className="px-5 py-2.5 text-base bg-primary text-primary-foreground rounded-lg font-semibold hover:bg-primary/90 transition-colors disabled:opacity-50"

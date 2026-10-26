@@ -45,6 +45,13 @@ export async function checkLocalPages(page, origin, output, width) {
   const customers = await customersPromise;
   assert.equal(customers.status(), 200);
   assert.ok(Array.isArray((await customers.json()).data));
+  // Repeated preview runs add customers, so this fixture can move off page one.
+  const customerName = 'ลูกค้าพอร์ตตัวอย่าง ACTIVE';
+  const searchResponse = page.waitForResponse(r => new URL(r.url()).pathname.endsWith('/customers') && new URL(r.url()).searchParams.get('search') === customerName);
+  await page.getByRole('textbox', { name: 'ค้นหาลูกค้า', exact: true }).fill(customerName);
+  const searched = await searchResponse;
+  assert.equal(searched.status(), 200);
+  assert.ok((await searched.json()).data.some(customer => customer.name === customerName));
   await expect(page.getByText('ลูกค้าพอร์ตตัวอย่าง ACTIVE', { exact: true })).toBeVisible();
   await expect(page.getByText('เกิดข้อผิดพลาด', { exact: true })).toHaveCount(0);
 }

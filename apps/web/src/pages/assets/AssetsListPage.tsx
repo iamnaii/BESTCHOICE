@@ -247,14 +247,17 @@ export default function AssetsListPage() {
       {
         key: 'status',
         label: 'สถานะ',
-        render: (row: Asset): ReactNode => <AssetStatusBadge status={row.status} />,
+        render: (row: Asset): ReactNode => (
+          <div className="w-max"><AssetStatusBadge status={row.status} /></div>
+        ),
       },
       {
         key: 'actions',
-        label: '',
+        label: 'จัดการ',
+        align: 'right' as const,
         sortable: false,
         render: (row: Asset): ReactNode => (
-          <div className="flex items-center gap-1">
+          <div className="ml-auto flex w-max items-center gap-2">
             {row.status === 'DRAFT' && (
               <>
                 <Button
@@ -312,7 +315,7 @@ export default function AssetsListPage() {
       <AssetHubTabs />
       <PageHeader
         title="ซื้อสินทรัพย์ถาวร"
-        subtitle="จัดการการซื้อสินทรัพย์ถาวร (กลุ่ม 12-21XX) — อุปกรณ์ · ส่วนปรับปรุง · ตกแต่ง · ยานพาหนะ · TFRS + Accrual VAT"
+        subtitle="จัดการสินทรัพย์ถาวรและติดตามค่าเสื่อมราคา"
         icon={<Boxes className="size-5" />}
         breadcrumb={
           <Breadcrumb>
@@ -376,7 +379,7 @@ export default function AssetsListPage() {
         <CardContent className="p-4 flex flex-col md:flex-row gap-3">
           <div className="relative flex-1 min-w-[200px]">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
-            <Input
+            <Input aria-label="ค้นหาเลขที่เอกสาร / รหัสสินทรัพย์ / ชื่อ / ผู้ขาย"
               className="pl-10"
               placeholder="ค้นหาเลขที่เอกสาร / รหัสสินทรัพย์ / ชื่อ / ผู้ขาย..."
               value={searchInput}
@@ -387,7 +390,7 @@ export default function AssetsListPage() {
             value={category || 'ALL'}
             onValueChange={(v) => setParam('category', v === 'ALL' ? null : v)}
           >
-            <SelectTrigger className="w-full md:w-48">
+            <SelectTrigger aria-label="หมวดสินทรัพย์" className="w-full md:w-48">
               <SelectValue placeholder="ประเภททั้งหมด" />
             </SelectTrigger>
             <SelectContent>
@@ -402,13 +405,13 @@ export default function AssetsListPage() {
             value={status || 'ALL'}
             onValueChange={(v) => setParam('status', v === 'ALL' ? null : v)}
           >
-            <SelectTrigger className="w-full md:w-48">
+            <SelectTrigger aria-label="สถานะสินทรัพย์" className="w-full md:w-48">
               <SelectValue placeholder="สถานะทั้งหมด" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="ALL">สถานะทั้งหมด</SelectItem>
-              <SelectItem value="DRAFT">DRAFT — ฉบับร่าง</SelectItem>
-              <SelectItem value="POSTED">POSTED — บันทึกแล้ว</SelectItem>
+              <SelectItem value="DRAFT">ฉบับร่าง</SelectItem>
+              <SelectItem value="POSTED">ลงบัญชีแล้ว — บันทึกแล้ว</SelectItem>
               <SelectItem value="REVERSED">REVERSED — กลับรายการ</SelectItem>
               <SelectItem value="DISPOSED">จำหน่าย</SelectItem>
               <SelectItem value="WRITTEN_OFF">ตัดบัญชี</SelectItem>
@@ -448,7 +451,7 @@ export default function AssetsListPage() {
         open={!!deleteId}
         onOpenChange={(open) => !open && setDeleteId(null)}
         title="ลบเอกสาร?"
-        description="การลบเอกสารจะไม่สามารถกู้คืนได้ (DRAFT เท่านั้น)"
+        description="ลบได้เฉพาะฉบับร่าง — เจ้าของกู้คืนได้จากถังขยะ (ตั้งค่า › ระบบ)"
         variant="destructive"
         confirmLabel="ลบ"
         loading={deleteMutation.isPending}

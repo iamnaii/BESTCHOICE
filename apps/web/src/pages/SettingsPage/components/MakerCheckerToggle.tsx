@@ -41,7 +41,7 @@ export function MakerCheckerToggle() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>ระบบ Maker-Checker (ผู้สร้าง ≠ ผู้อนุมัติ)</CardTitle>
+        <CardTitle>ระบบแยกผู้บันทึกและผู้อนุมัติ</CardTitle>
       </CardHeader>
       <CardContent className="space-y-3">
         <div className="flex items-center gap-3">
@@ -53,7 +53,7 @@ export function MakerCheckerToggle() {
               setShowConfirm(true);
             }}
             disabled={!isOwner || mutation.isPending}
-            aria-label="Toggle Maker-Checker"
+            aria-label="เปลี่ยนการแยกผู้บันทึกและผู้อนุมัติ"
           />
           <span className="text-sm font-medium">
             {currentEnabled ? 'เปิดใช้งาน' : 'ปิดใช้งาน'}
@@ -61,13 +61,13 @@ export function MakerCheckerToggle() {
         </div>
 
         {!isOwner && (
-          <p className="text-xs text-muted-foreground">เฉพาะ OWNER เท่านั้นที่เปลี่ยนได้</p>
+          <p className="text-xs text-muted-foreground">เฉพาะ เจ้าของ เท่านั้นที่เปลี่ยนได้</p>
         )}
 
         <div className="flex items-start gap-2 rounded-md bg-muted p-3">
           <Info className="w-4 h-4 mt-0.5 text-muted-foreground shrink-0" />
           <p className="text-xs text-muted-foreground">
-            เมื่อเปิด — เอกสารทุกฉบับต้องผ่านผู้อนุมัติก่อน POST (segregation of duties)
+            เมื่อเปิด — เอกสารทุกฉบับต้องผ่านผู้อนุมัติก่อน ลงบัญชี (segregation of duties)
           </p>
         </div>
 

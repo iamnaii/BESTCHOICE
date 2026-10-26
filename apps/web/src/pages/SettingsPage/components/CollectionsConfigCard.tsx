@@ -1,8 +1,8 @@
-import { useEffect, useState } from 'react';
+import { NumberInput } from '@/components/ui/NumberInput';
+import { useId, useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
-import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import api, { getErrorMessage } from '@/lib/api';
@@ -25,41 +25,42 @@ const FIELDS: Array<{
   {
     key: 'dailyCap',
     label: 'คิวสูงสุดต่อพนักงาน/วัน',
-    description: 'ระบบจะดันส่วนเกินเข้า pool กลาง',
+    description: "ระบบจะดันส่วนเกินเข้า กองงานกลาง กลาง",
     min: 5,
     max: 200,
   },
   {
     key: 'workloadFloor',
     label: 'คิวขั้นต่ำต่อพนักงาน/วัน',
-    description: 'ดึงจาก pool มาเติมถ้าไม่ถึง',
+    description: "ดึงจาก กองงานกลาง มาเติมถ้าไม่ถึง",
     min: 0,
     max: 100,
   },
   {
     key: 'etaPerContractMin',
     label: 'ประมาณการเวลาต่อราย (นาที)',
-    description: 'ใช้คำนวณ ETA ของ session',
+    description: "ใช้คำนวณ ETA ของ รอบการทำงาน",
     min: 1,
     max: 60,
   },
   {
     key: 'sessionTargetMin',
-    label: 'เป้าเวลา session (นาที)',
-    description: 'Timer เปลี่ยนสีเหลืองที่ 100% และแดงที่ 130%',
+    label: "เป้าเวลา รอบการทำงาน (นาที)",
+    description: "ตัวจับเวลา เปลี่ยนสีเหลืองที่ 100% และแดงที่ 130%",
     min: 30,
     max: 480,
   },
   {
     key: 'selfClaimLockHours',
-    label: 'Lock self-claim (ชั่วโมง)',
-    description: 'หยิบจาก pool แล้วต้องทำภายในเวลานี้',
+    label: "ระยะเวลาถือครองงานที่รับเอง (ชั่วโมง)",
+    description: "หยิบจาก กองงานกลาง แล้วต้องทำภายในเวลานี้",
     min: 1,
     max: 24,
   },
 ];
 
 export default function CollectionsConfigCard() {
+  const fieldId = useId();
   const qc = useQueryClient();
   const { data, isLoading } = useQuery<CollectionsConfig>({
     queryKey: ['settings', 'collections'],
@@ -104,9 +105,8 @@ export default function CollectionsConfigCard() {
       <CardContent className="space-y-4">
         {FIELDS.map((f) => (
           <div key={f.key} className="space-y-1.5">
-            <Label className="leading-snug">{f.label}</Label>
-            <Input
-              type="number"
+            <Label htmlFor={`${fieldId}-${f.key}`} className="leading-snug">{f.label}</Label>
+            <NumberInput id={`${fieldId}-${f.key}`}
               min={f.min}
               max={f.max}
               value={draft[f.key]}

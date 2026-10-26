@@ -13,6 +13,7 @@ import { PaymentReceiptTemplate } from '../journal/cpa-templates/payment-receipt
 import { Vat60dayReversalTemplate } from '../journal/cpa-templates/vat-60day-reversal.template';
 import { PaymentsService } from '../payments/payments.service';
 import { BadDebtService } from '../accounting/bad-debt.service';
+import { ReceiptsService } from '../receipts/receipts.service';
 import type { DeferredWarning } from '../journal/deferred-warning';
 
 // Same Sentry-transport stub the sibling specs use — captureMessage is
@@ -79,6 +80,7 @@ describe('PaySolutionsService.handlePaymentCallback — FIFO money + close (char
   let vat60Reversal: { execute: jest.Mock };
   let journalAuto: { createAndPost: jest.Mock; createPaymentJournal: jest.Mock };
   let badDebtService: { reverseStageOnPayment: jest.Mock };
+  let receipts: { generateReceipt: jest.Mock };
   let sendEarlyPayoffSpy: jest.SpyInstance;
   let sendPaymentSuccessSpy: jest.SpyInstance;
 
@@ -209,6 +211,7 @@ describe('PaySolutionsService.handlePaymentCallback — FIFO money + close (char
     template = { execute: jest.fn().mockResolvedValue({ entryNo: 'JE-MOCK', split: {} }) };
     vat60Reversal = { execute: jest.fn().mockResolvedValue(null) };
     badDebtService = { reverseStageOnPayment: jest.fn().mockResolvedValue(null) };
+    receipts = { generateReceipt: jest.fn().mockResolvedValue({ id: 'rcpt-mock' }) };
 
     const lineOa = {} as Partial<LineOaService>;
     const integrationConfig = {
@@ -237,6 +240,8 @@ describe('PaySolutionsService.handlePaymentCallback — FIFO money + close (char
         { provide: Vat60dayReversalTemplate, useValue: vat60Reversal },
         { provide: PaymentsService, useValue: { recordPayment: jest.fn() } },
         { provide: BadDebtService, useValue: badDebtService },
+        // PR4ข: ใบเสร็จหลัง commit (ใบค่างวดต่องวด + ใบส่วนเกินลิงก์ชำระ) — mock ให้ assert การเรียก
+        { provide: ReceiptsService, useValue: receipts },
       ],
     }).compile();
 
@@ -406,7 +411,14 @@ describe('PaySolutionsService.handlePaymentCallback — FIFO money + close (char
       expect(jeTx).toBe(tx); // inside the serializable tx
       expect(jeInput.reference).toBe(`${refno}-surplus`);
       expect(jeInput.metadata.tag).toBe('paysolutions-surplus-advance');
-      expect(jeInput.lines).toHaveLength(2);
+      // PR4 ต2(ค): เงินเกินเข้าถัง 21-1103 ⇒ พักภาษีขาย HALF_UP(500 × 7/107) = 32.71 ในรายการเดียวกัน + stamp
+      expect(jeInput.lines).toHaveLength(4);
+      expect(jeInput.metadata.advanceVatPark).toBe('32.71');
+      const park2102 = jeInput.lines.find((l: { accountCode: string }) => l.accountCode === '21-2102');
+      const park2101 = jeInput.lines.find((l: { accountCode: string }) => l.accountCode === '21-2101');
+      expect(park2102.dr.toString()).toBe('32.71');
+      expect(park2101.cr.toString()).toBe('32.71');
+      expect(park2102.description).toBe('ภาษีขายของเงินรับล่วงหน้า (รับรู้ ณ วันรับ)');
       const drLine = jeInput.lines.find((l: { accountCode: string }) => l.accountCode === '11-1202');
       const crLine = jeInput.lines.find((l: { accountCode: string }) => l.accountCode === '21-1103');
       expect(drLine).toBeDefined();
@@ -443,6 +455,90 @@ describe('PaySolutionsService.handlePaymentCallback — FIFO money + close (char
         (c: unknown[]) => c[0] === 'paysolutions-overpay-surplus',
       );
       expect(sentryOverpayCalls).toHaveLength(0);
+    });
+
+    // ── PR4ข (ฝ่ายบัญชี 16/10/2569 ข้อ 23.2): เงินส่วนเกินได้ใบกำกับภาษีใบแยกหลัง commit ──
+    it('PR4ข overpay 2500/[1000,1000]: รายการส่วนเกิน stamp ยอดโอน/เข้างวด/งวด · หลัง commit ออกใบ ADVANCE_SURPLUS 500 ผูกรายการส่วนเกิน (ใบที่ 3 ต่อจากใบงวด 2 ใบ)', async () => {
+      const unpaid = [makeRow(1), makeRow(2)];
+      const tx = buildTx({ unpaid, stillUnpaid: 0, contractProductId: null });
+      buildPrisma({ link: makeLink({ amount: new Prisma.Decimal(2500) }), tx });
+      await buildService();
+
+      await service.handlePaymentCallback({
+        refno,
+        result_code: '00',
+        order_no: 'o-1',
+        transaction_id: 'tx-1',
+        total: '2500',
+      });
+
+      const [jeInput] = journalAuto.createAndPost.mock.calls[0];
+      expect(jeInput.metadata).toMatchObject({
+        tag: 'paysolutions-surplus-advance',
+        surplus: '500',
+        paidAmount: '2500',
+        appliedAmount: '2000',
+        installmentNos: [1, 2],
+        nextInstallmentNo: null,
+      });
+
+      expect(receipts.generateReceipt).toHaveBeenCalledTimes(3);
+      expect(receipts.generateReceipt.mock.calls[2]).toEqual([
+        contractId,
+        null,
+        'ADVANCE_SURPLUS',
+        500,
+        null,
+        'ONLINE_GATEWAY',
+        'tx-1',
+        'owner-1',
+        expect.any(Date),
+        'JE-S-001',
+      ]);
+      // ใบส่วนเกินออกหลังใบงวดทั้งสอง (ลำดับเลขที่ใบ: งวดก่อน ส่วนเกินทีหลัง)
+      expect(receipts.generateReceipt.mock.calls[0][2]).toBe('INSTALLMENT');
+      expect(receipts.generateReceipt.mock.calls[1][2]).toBe('INSTALLMENT');
+    });
+
+    it('PR4ข: ใบส่วนเกินออกไม่สำเร็จ → webhook ไม่ล้ม (เงินลงบัญชีแล้ว) + Sentry error path paysolutions-webhook-surplus พร้อมเลขที่รายการสำหรับออกซ้ำ', async () => {
+      const unpaid = [makeRow(1), makeRow(2)];
+      const tx = buildTx({ unpaid, stillUnpaid: 0, contractProductId: null });
+      buildPrisma({ link: makeLink({ amount: new Prisma.Decimal(2500) }), tx });
+      await buildService();
+      receipts.generateReceipt.mockImplementation(async (_c: string, _p: string | null, type: string) => {
+        if (type === 'ADVANCE_SURPLUS') throw new Error('receipt down');
+        return { id: 'rcpt-mock' };
+      });
+
+      await expect(
+        service.handlePaymentCallback({
+          refno,
+          result_code: '00',
+          order_no: 'o-1',
+          transaction_id: 'tx-1',
+          total: '2500',
+        }),
+      ).resolves.toBeUndefined();
+
+      expect(Sentry.captureException).toHaveBeenCalledWith(
+        expect.any(Error),
+        expect.objectContaining({
+          tags: expect.objectContaining({ path: 'paysolutions-webhook-surplus' }),
+          extra: expect.objectContaining({ journalEntryNumber: 'JE-S-001', amount: '500.00' }),
+        }),
+      );
+    });
+
+    it('PR4ข: จ่ายพอดีไม่มีส่วนเกิน → ไม่มีใบ ADVANCE_SURPLUS (ออกเฉพาะใบงวด)', async () => {
+      const unpaid = [makeRow(1)];
+      const tx = buildTx({ unpaid, stillUnpaid: 0, contractProductId: null });
+      buildPrisma({ link: makeLink({ amount: new Prisma.Decimal(1000) }), tx });
+      await buildService();
+
+      await service.handlePaymentCallback({ refno, result_code: '00', order_no: 'o-1', transaction_id: 'tx-1', total: '1000' });
+
+      expect(receipts.generateReceipt).toHaveBeenCalledTimes(1);
+      expect(receipts.generateReceipt.mock.calls[0][2]).toBe('INSTALLMENT');
     });
 
     it('lateFeeWaived=true: owed uses lateFee 0 — a 1000 installment with a waived 200 lateFee is fully PAID by 1000', async () => {

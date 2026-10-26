@@ -7,6 +7,8 @@ import { ExecutionContext, INestApplication, ValidationPipe } from '@nestjs/comm
 import request from 'supertest';
 import { ContractsController } from './contracts.controller';
 import { ContractsService } from './contracts.service';
+import { CustomerBlacklistService } from '../customers/customer-blacklist.service';
+import { CustomerPiiService } from '../customers/customer-pii.service';
 import { ContractWorkflowService } from './contract-workflow.service';
 import { ContractDocumentService } from './contract-document.service';
 import { ContractSnapshotService } from './contract-snapshot.service';
@@ -66,6 +68,7 @@ const service = new ContractsService(
   new ShopDownPaymentTemplate(journal, prisma, resolver),
   new ShopDownPaymentReversalTemplate(journal, prisma, resolver),
   new ShopAccountResolver(prisma),
+  new CustomerBlacklistService(prisma, new CustomerPiiService(prisma)), // ก้อน 5 C3 — บังคับ
   undefined,
   template,
   undefined,

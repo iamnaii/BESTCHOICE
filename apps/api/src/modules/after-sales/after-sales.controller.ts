@@ -41,6 +41,7 @@ import { ExchangeConfirmDto } from './dto/exchange-confirm.dto';
 import { ExchangeRejectDto } from './dto/exchange-reject.dto';
 import { SwitchToRepairDto } from './dto/switch-to-repair.dto';
 import { ApproveExchangeRequestDto } from './dto/exchange-approve.dto';
+import { ExchangeDeliverDto } from './dto/exchange-deliver.dto';
 
 const ALL = ['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES'] as const;
 const STAFF = ['OWNER', 'BRANCH_MANAGER', 'SALES'] as const;
@@ -150,8 +151,23 @@ export class AfterSalesController {
 
   @Post(':id/exchange/deliver')
   @Roles(...STAFF)
-  deliverExchange(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: any) {
-    return this.svc.deliver(id, user);
+  deliverExchange(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: ExchangeDeliverDto,
+    @CurrentUser() user: any,
+  ) {
+    return this.svc.deliver(id, user, dto);
+  }
+
+  /** PR 5 — รายการบัญชีที่จะลงเมื่อยืนยันเปลี่ยนรุ่นเดิมขายสด (MGR — เห็นต้นทุน) */
+  @Get(':id/exchange/cash-preview')
+  @Roles(...MGR)
+  cashExchangePreview(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query('replacementProductId') replacementProductId: string | undefined,
+    @CurrentUser() user: any,
+  ) {
+    return this.svc.cashExchangePreview(id, replacementProductId || undefined, user);
   }
 
   @Post(':id/exchange/reject')
@@ -275,6 +291,30 @@ export class AfterSalesController {
     };
     if (currentDomainAccess()) onDomainCommit(send);
     else await send();
+  }
+
+  /** PR 5 — ใบรับคืนเครื่อง (เคสขายสดที่ยืนยันแล้ว) */
+  @Get(':id/return.pdf')
+  @Roles(...ALL)
+  async returnPdf(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: any,
+    @Res() res: Response,
+  ) {
+    const { pdf, caseNumber } = await this.docs.render(id, 'RETURN', user);
+    sendPdf(res, pdf, `after-sales-return-${caseNumber}.pdf`);
+  }
+
+  /** PR 5 — ใบรับคืน + ใบส่งมอบเครื่องทดแทน ใน PDF เดียว 2 หน้า */
+  @Get(':id/exchange-docs.pdf')
+  @Roles(...ALL)
+  async exchangeDocsPdf(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: any,
+    @Res() res: Response,
+  ) {
+    const { pdf, caseNumber } = await this.docs.renderCashExchangeDocs(id, user);
+    sendPdf(res, pdf, `after-sales-exchange-docs-${caseNumber}.pdf`);
   }
 
   @Post(':id/photos')

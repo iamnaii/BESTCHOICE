@@ -9,7 +9,7 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Check, ChevronDown, ChevronRight, FileText, Search, Send } from 'lucide-react';
+import { ArrowLeft, Check, ChevronDown, ChevronRight, FileText, Search, Send } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import api from '@/lib/api';
@@ -72,7 +72,7 @@ export default function MessageTemplatePicker({ isOpen, onClose, onInsert, roomI
       setCollapsedCategories(new Set());
       setPendingInsertId(null);
     }
-  }, [isOpen]);
+  }, [isOpen, roomId]);
 
   const { data: templates = [], isError } = useQuery<CannedResponse[]>({
     queryKey: ['canned-responses-picker'],
@@ -136,7 +136,9 @@ export default function MessageTemplatePicker({ isOpen, onClose, onInsert, roomI
       if (errors.length > 0) {
         toast.error(`ส่งสำเร็จ ${sent}/${sent + errors.length} bubble — บาง bubble ล้มเหลว`);
       } else if (dropped > 0) {
-        toast.success(`ส่ง ${sent} bubble แล้ว (${dropped} bubble ถูก drop เพราะ channel ไม่รองรับ)`);
+        toast.success(
+          `ส่ง ${sent} bubble แล้ว (${dropped} bubble ถูก drop เพราะ channel ไม่รองรับ)`,
+        );
       } else {
         toast.success(`ส่ง ${sent} bubble แล้ว`);
       }
@@ -190,13 +192,11 @@ export default function MessageTemplatePicker({ isOpen, onClose, onInsert, roomI
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-4xl p-0 gap-0 flex flex-col h-[min(600px,80vh)]">
+      <DialogContent className="inbox-quick-replies max-w-4xl p-0 gap-0 flex flex-col h-[min(600px,80vh)]">
         <DialogHeader className="px-5 py-3.5 border-b border-border">
-          <DialogTitle className="text-base font-semibold leading-snug">
-            เลือกข้อความสำเร็จรูป
-          </DialogTitle>
+          <DialogTitle className="text-base font-semibold leading-snug">ตอบด่วน</DialogTitle>
           <DialogDescription className="text-xs leading-snug">
-            คลิกเพื่อดูตัวอย่าง · <span className="font-medium text-foreground">ดับเบิลคลิก = ใส่ในช่องตอบทันที</span> — ตัวแปร เช่น {'{customerName}'} จะถูกแทนค่าอัตโนมัติ
+            เลือกข้อความ ดูตัวอย่าง แล้วใส่ในช่องตอบ
           </DialogDescription>
         </DialogHeader>
 
@@ -208,7 +208,8 @@ export default function MessageTemplatePicker({ isOpen, onClose, onInsert, roomI
               autoFocus
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="ค้นหาตามชื่อ, เนื้อหา, หรือ shortcut..."
+              aria-label="ค้นหาข้อความสำเร็จรูป"
+              placeholder="ค้นหาข้อความ…"
               className="pl-9"
             />
           </div>
@@ -217,20 +218,30 @@ export default function MessageTemplatePicker({ isOpen, onClose, onInsert, roomI
         {/* Body: tree + preview */}
         <div className="flex-1 flex overflow-hidden">
           {/* Left: tree */}
-          <div className="w-80 border-r border-border overflow-y-auto py-2">
+          <div
+            className={cn(
+              'inbox-quick-list w-80 border-r border-border overflow-y-auto py-2',
+              selectedId && 'inbox-quick-list-selected',
+            )}
+          >
             {isError && (
               <div className="px-4 py-8 text-sm text-muted-foreground text-center">
-                โหลด template ไม่สำเร็จ
+                โหลดแม่แบบไม่สำเร็จ
               </div>
             )}
             {!isError && templates.length === 0 && (
               <div className="px-4 py-8 text-sm text-muted-foreground text-center leading-snug">
-                ยังไม่มี template — ไปสร้างที่
+                ยังไม่มี แม่แบบ — ไปสร้างที่
                 <br />
                 <a href="/admin/canned-responses" className="text-primary hover:underline">
                   /admin/canned-responses
                 </a>
               </div>
+            )}
+            {!isError && templates.length > 0 && grouped.length === 0 && (
+              <p className="px-4 py-8 text-center text-sm text-muted-foreground">
+                ไม่พบข้อความ ลองค้นหาด้วยคำอื่น
+              </p>
             )}
             {grouped.map(([cat, items]) => {
               // default = กางทุกกลุ่ม; ระหว่างค้นหาบังคับกางเสมอเพื่อให้เห็นผลลัพธ์
@@ -293,24 +304,46 @@ export default function MessageTemplatePicker({ isOpen, onClose, onInsert, roomI
           </div>
 
           {/* Right: preview */}
-          <div className="flex-1 flex flex-col overflow-hidden bg-muted/10">
+          <div
+            className={cn(
+              'inbox-quick-preview flex-1 flex flex-col overflow-hidden bg-muted/10',
+              !selectedId && 'inbox-quick-preview-empty',
+            )}
+          >
             {!selectedId && (
               <div className="flex-1 flex items-center justify-center text-sm text-muted-foreground leading-snug">
                 <div className="text-center">
                   <FileText className="w-10 h-10 mx-auto mb-2 text-muted-foreground/40" />
-                  เลือก template เพื่อดูตัวอย่าง
+                  เลือกแม่แบบเพื่อดูตัวอย่าง
                 </div>
               </div>
             )}
             {selectedId && (
               <>
-                <div className="flex items-center justify-between px-5 py-2.5 border-b border-border bg-card">
+                <div className="flex items-center gap-2 px-3 py-2 border-b border-border bg-card">
+                  <button
+                    type="button"
+                    aria-label="กลับไปรายการตอบด่วน"
+                    className="inbox-touch lg:hidden"
+                    onClick={() => {
+                      setSelectedId(null);
+                      setPendingInsertId(null);
+                    }}
+                  >
+                    <ArrowLeft className="size-5" />
+                  </button>
                   <div className="flex items-center gap-2 leading-snug">
-                    <span className="text-sm font-semibold text-foreground">{preview?.title ?? '...'}</span>
+                    <span className="text-sm font-semibold text-foreground">
+                      {preview?.title ?? '...'}
+                    </span>
                     {preview?.shortcut && (
                       <>
                         <span className="text-xs text-muted-foreground">·</span>
-                        <code className="text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">{preview.shortcut.startsWith('/') ? preview.shortcut : `/${preview.shortcut}`}</code>
+                        <code className="text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+                          {preview.shortcut.startsWith('/')
+                            ? preview.shortcut
+                            : `/${preview.shortcut}`}
+                        </code>
                       </>
                     )}
                   </div>
@@ -323,11 +356,14 @@ export default function MessageTemplatePicker({ isOpen, onClose, onInsert, roomI
                   )}
                   {!isPreviewLoading && isPreviewError && (
                     <div className="bg-card border border-border rounded-lg p-4 text-sm leading-relaxed min-h-[80px]">
-                      <span className="text-destructive">โหลดตัวอย่างไม่สำเร็จ — ลองเลือกใหม่หรือปิด/เปิด modal</span>
+                      <span className="text-destructive">
+                        โหลดตัวอย่างไม่สำเร็จ — ลองเลือกใหม่หรือปิด/เปิด หน้าต่าง
+                      </span>
                     </div>
                   )}
-                  {!isPreviewLoading && !isPreviewError && (
-                    preview?.bubbles && preview.bubbles.length > 0 ? (
+                  {!isPreviewLoading &&
+                    !isPreviewError &&
+                    (preview?.bubbles && preview.bubbles.length > 0 ? (
                       <div className="space-y-2">
                         <div className="text-[11px] uppercase tracking-wider text-muted-foreground">
                           ตัวอย่าง ({preview.bubbles.length} บับเบิ้ล)
@@ -335,31 +371,60 @@ export default function MessageTemplatePicker({ isOpen, onClose, onInsert, roomI
                         {preview.bubbles.map((b: any) => (
                           <div key={b.id} className="bg-card border border-border rounded-lg p-3">
                             {b.type === 'TEXT' && (
-                              <div className="text-sm whitespace-pre-line leading-relaxed">{b.text}</div>
+                              <div className="text-sm whitespace-pre-line leading-relaxed">
+                                {b.text}
+                              </div>
                             )}
                             {b.type === 'IMAGE' && b.mediaUrl && (
-                              <img src={b.mediaUrl} alt="" className="max-w-full max-h-48 rounded" />
+                              <img
+                                src={b.mediaUrl}
+                                alt=""
+                                className="max-w-full max-h-48 rounded"
+                              />
                             )}
                             {b.type === 'STICKER' && b.stickerPackageId && (
                               <div className="flex items-center gap-2 text-xs text-muted-foreground">
                                 <img
                                   src={`https://stickershop.line-scdn.net/stickershop/v1/sticker/${b.stickerId}/android/sticker.png`}
-                                  alt="sticker"
+                                  alt="สติกเกอร์"
                                   className="w-16 h-16"
-                                  onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
+                                  onError={(e) => {
+                                    (e.currentTarget as HTMLImageElement).style.display = 'none';
+                                  }}
                                 />
-                                <span>Sticker {b.stickerPackageId}/{b.stickerId}</span>
+                                <span>
+                                  สติกเกอร์ {b.stickerPackageId}/{b.stickerId}
+                                </span>
                               </div>
                             )}
                             {b.type === 'CARD' && (
                               <div className="border border-border rounded overflow-hidden">
-                                {b.json?.heroImageUrl && <img src={b.json.heroImageUrl} alt="" className="w-full max-h-32 object-cover" />}
-                                {b.json?.title && <div className="px-3 py-2 text-sm font-semibold">{b.json.title}</div>}
-                                {b.json?.subtitle && <div className="px-3 pb-2 text-xs text-muted-foreground">{b.json.subtitle}</div>}
+                                {b.json?.heroImageUrl && (
+                                  <img
+                                    src={b.json.heroImageUrl}
+                                    alt=""
+                                    className="w-full max-h-32 object-cover"
+                                  />
+                                )}
+                                {b.json?.title && (
+                                  <div className="px-3 py-2 text-sm font-semibold">
+                                    {b.json.title}
+                                  </div>
+                                )}
+                                {b.json?.subtitle && (
+                                  <div className="px-3 pb-2 text-xs text-muted-foreground">
+                                    {b.json.subtitle}
+                                  </div>
+                                )}
                                 {Array.isArray(b.json?.buttons) && b.json.buttons.length > 0 && (
                                   <div className="px-3 pb-2 flex flex-col gap-1">
                                     {b.json.buttons.map((btn: any, i: number) => (
-                                      <span key={i} className="text-xs border border-border rounded py-1 text-center text-primary">{btn.label}</span>
+                                      <span
+                                        key={i}
+                                        className="text-xs border border-border rounded py-1 text-center text-primary"
+                                      >
+                                        {btn.label}
+                                      </span>
                                     ))}
                                   </div>
                                 )}
@@ -367,22 +432,40 @@ export default function MessageTemplatePicker({ isOpen, onClose, onInsert, roomI
                             )}
                             {b.type === 'LOCATION' && (
                               <div className="text-xs">
-                                <div className="font-medium">{b.locationTitle ?? '(ไม่มีชื่อ)'}</div>
-                                {b.address && <div className="text-muted-foreground">{b.address}</div>}
+                                <div className="font-medium">
+                                  {b.locationTitle ?? '(ไม่มีชื่อ)'}
+                                </div>
+                                {b.address && (
+                                  <div className="text-muted-foreground">{b.address}</div>
+                                )}
                                 {b.latitude && b.longitude && (
-                                  <a href={`https://www.google.com/maps?q=${b.latitude},${b.longitude}`} target="_blank" rel="noreferrer" className="text-primary hover:underline">
+                                  <a
+                                    href={`https://www.google.com/maps?q=${b.latitude},${b.longitude}`}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="text-primary hover:underline"
+                                  >
                                     {b.latitude}, {b.longitude}
                                   </a>
                                 )}
                               </div>
                             )}
                             {b.type === 'VIDEO' && b.mediaUrl && (
-                              <video src={b.mediaUrl} poster={b.thumbnailUrl ?? undefined} controls className="max-w-full max-h-48 rounded" />
+                              <video
+                                src={b.mediaUrl}
+                                poster={b.thumbnailUrl ?? undefined}
+                                controls
+                                className="max-w-full max-h-48 rounded"
+                              />
                             )}
                             {b.type === 'JSON' && (
                               <details className="text-xs">
-                                <summary className="cursor-pointer text-muted-foreground">JSON payload</summary>
-                                <pre className="mt-1 p-2 bg-muted rounded font-mono text-[10px] overflow-x-auto">{JSON.stringify(b.json, null, 2)}</pre>
+                                <summary className="cursor-pointer text-muted-foreground">
+                                  ข้อมูล JSON
+                                </summary>
+                                <pre className="mt-1 p-2 bg-muted rounded font-mono text-[10px] overflow-x-auto">
+                                  {JSON.stringify(b.json, null, 2)}
+                                </pre>
                               </details>
                             )}
                           </div>
@@ -390,21 +473,28 @@ export default function MessageTemplatePicker({ isOpen, onClose, onInsert, roomI
                       </div>
                     ) : (
                       <>
-                        <div className="text-[11px] uppercase tracking-wider text-muted-foreground mb-2">ตัวอย่าง (แทนค่าตัวแปรจากลูกค้า)</div>
+                        <div className="text-[11px] uppercase tracking-wider text-muted-foreground mb-2">
+                          ตัวอย่าง (แทนค่าตัวแปรจากลูกค้า)
+                        </div>
                         <div className="bg-card border border-border rounded-lg p-4 text-sm leading-relaxed whitespace-pre-line min-h-[80px]">
                           {preview?.expandedContent}
                         </div>
                       </>
-                    )
-                  )}
-                  {!isPreviewLoading && !isPreviewError && preview?.content && preview.content !== preview.expandedContent && (!preview.bubbles || preview.bubbles.length === 0) && (
-                    <>
-                      <div className="text-[11px] uppercase tracking-wider text-muted-foreground mt-4 mb-2">เนื้อหาต้นฉบับ</div>
-                      <div className="bg-muted border border-border rounded-lg p-3 text-xs font-mono text-muted-foreground whitespace-pre-line">
-                        {preview.content}
-                      </div>
-                    </>
-                  )}
+                    ))}
+                  {!isPreviewLoading &&
+                    !isPreviewError &&
+                    preview?.content &&
+                    preview.content !== preview.expandedContent &&
+                    (!preview.bubbles || preview.bubbles.length === 0) && (
+                      <>
+                        <div className="text-[11px] uppercase tracking-wider text-muted-foreground mt-4 mb-2">
+                          เนื้อหาต้นฉบับ
+                        </div>
+                        <div className="bg-muted border border-border rounded-lg p-3 text-xs font-mono text-muted-foreground whitespace-pre-line">
+                          {preview.content}
+                        </div>
+                      </>
+                    )}
                 </div>
               </>
             )}
@@ -412,7 +502,12 @@ export default function MessageTemplatePicker({ isOpen, onClose, onInsert, roomI
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-border bg-muted/30">
+        <div
+          className={cn(
+            'inbox-quick-footer flex items-center justify-end gap-2 px-5 py-3 border-t border-border bg-muted/30',
+            !selectedId && 'inbox-quick-footer-empty',
+          )}
+        >
           <Button variant="ghost" onClick={onClose}>
             ยกเลิก
           </Button>
@@ -423,7 +518,7 @@ export default function MessageTemplatePicker({ isOpen, onClose, onInsert, roomI
           <Button
             disabled={!preview || !roomId || sendDirectMut.isPending}
             onClick={handleSendDirect}
-            title="ส่งทุก bubble + Quick Reply ทันทีโดยไม่ผ่านช่องตอบ"
+            title="ส่งข้อความทุกส่วนและปุ่มตอบกลับด่วนทันที โดยไม่วางในช่องพิมพ์"
           >
             <Send className="w-4 h-4 mr-1.5" />
             {sendDirectMut.isPending ? 'กำลังส่ง...' : 'ส่งทันที'}

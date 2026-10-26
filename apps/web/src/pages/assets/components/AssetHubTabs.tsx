@@ -68,7 +68,7 @@ export default function AssetHubTabs() {
   const groups: HubTab[][] = [
     [{ label: 'เอกสาร', path: '/assets', icon: FileText, end: true, badge: draftCount || 0 }],
     [
-      { label: 'ทะเบียน + NBV', path: '/assets/register', icon: BookOpen },
+      { label: "ทะเบียน + มูลค่าตามบัญชีสุทธิ", path: '/assets/register', icon: BookOpen },
       { label: 'สมุดรายวัน', path: '/assets/journal', icon: NotebookText },
       { label: 'สรุปแยกหมวด', path: '/assets/summary-report', icon: BarChart3 },
     ],
@@ -81,7 +81,7 @@ export default function AssetHubTabs() {
         roles: ['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT'],
       },
       {
-        label: 'Audit',
+        label: "ประวัติการดำเนินการ",
         path: '/assets/audit',
         icon: ShieldCheck,
         roles: ['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT'],

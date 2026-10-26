@@ -305,8 +305,11 @@ export class AccountingService implements OnModuleInit {
    * "give me everything" queries don't dump millions of rows.
    *
    * Output columns:
-   *   entryDate, entryNumber, peakCode, accountCode, accountName,
+   *   entryDate, entryNumber, peakCode, peakSubCode, accountCode, accountName,
    *   debit, credit, description, reference
+   *
+   * `unresolvedSubCodeCount` (mapping v5 round 2): contact-source lines whose
+   * party has no PEAK contact code yet — exported with an empty sub-code cell.
    *
    * Money values are emitted via `.toString()` to preserve Decimal precision
    * (matches the "DO NOT Number() on Prisma.Decimal in export" rule).
@@ -314,7 +317,7 @@ export class AccountingService implements OnModuleInit {
   async exportJournalWithPeakCodes(
     periodStart: Date,
     periodEnd: Date,
-  ): Promise<{ csv: string; rowCount: number; skippedLineCount: number }> {
+  ): Promise<{ csv: string; rowCount: number; skippedLineCount: number; unresolvedSubCodeCount: number }> {
     return this.peakExport.exportJournalWithPeakCodes(periodStart, periodEnd);
   }
 

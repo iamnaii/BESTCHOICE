@@ -239,7 +239,7 @@ export default function SupplierDetailPage() {
         action={
           <div className="flex gap-2">
             {isManager && (
-              <button
+              <button data-ui-control="button"
                 onClick={() => {
                   const action = supplier.isActive ? 'ซ่อน' : 'เปิดใช้งาน';
                   setConfirmDialog({ open: true, message: `ต้องการ${action}ผู้จัดจำหน่าย "${supplier.name}" ?`, action: () => toggleActiveMutation.mutate({ supplierId: supplier.id, isActive: !supplier.isActive }) });
@@ -254,7 +254,7 @@ export default function SupplierDetailPage() {
                 {supplier.isActive ? 'ซ่อนผู้จัดจำหน่าย' : 'เปิดใช้งาน'}
               </button>
             )}
-            <button
+            <button data-ui-control="button"
               onClick={() => navigate('/suppliers')}
               className="px-4 py-2 text-sm text-muted-foreground hover:text-foreground border border-input rounded-lg"
             >
@@ -373,10 +373,10 @@ export default function SupplierDetailPage() {
       {/* Purchase Orders */}
       <Card className="mb-6">
         <CardHeader>
-          <CardTitle>Purchase Orders ({purchaseOrdersTotal})</CardTitle>
+          <CardTitle>ใบสั่งซื้อ ({purchaseOrdersTotal})</CardTitle>
         </CardHeader>
         <CardContent className="p-0">
-          <DataTable
+          <DataTable embedded
             columns={poColumns}
             data={purchaseOrders}
             isLoading={historyLoading}
@@ -391,7 +391,7 @@ export default function SupplierDetailPage() {
           <CardTitle>ประวัติการซื้อสินค้า ({productsTotal})</CardTitle>
         </CardHeader>
         <CardContent className="p-0">
-          <DataTable
+          <DataTable embedded
             columns={productColumns}
             data={products}
             isLoading={historyLoading}

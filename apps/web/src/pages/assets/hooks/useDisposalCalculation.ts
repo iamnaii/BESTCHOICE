@@ -21,8 +21,8 @@ const round2 = (n: Decimal | string | number): Decimal =>
   new Decimal(n).toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
 
 export function useDisposalCalculation(
-  asset: Asset | undefined,
-  values: Partial<DisposalFormValues>,
+  asset: Pick<Asset, 'category' | 'netBookValue' | 'accumulatedDepr' | 'purchaseCost' | 'coaCostAccount' | 'coaDeprAccount'> | undefined,
+  values: Omit<Partial<DisposalFormValues>, 'proceeds'> & { proceeds?: number | string },
 ): DisposalCalculation {
   // Collect candidate codes BEFORE the JE memo so we can resolve names via CoA.
   // Disposal touches at most 5 distinct codes; `useCoaByCodes` is cached.
@@ -62,10 +62,18 @@ export function useDisposalCalculation(
     const nbv = round2(asset.netBookValue);
     const accumulatedDepr = round2(asset.accumulatedDepr);
     const purchaseCost = round2(asset.purchaseCost);
-    const proceeds =
-      values.disposalType === 'SALE'
-        ? round2(values.proceeds ?? 0)
-        : ZERO;
+    // react-hook-form watches the raw input before schema coercion: an empty
+    // number field is ''. Keep incomplete editing safe without accepting it
+    // as a valid sale. The submit schema still requires a positive price.
+    let saleProceeds = ZERO;
+    try {
+      const raw = values.proceeds;
+      if (raw !== undefined && String(raw).trim() !== '') {
+        const parsed = round2(raw);
+        if (parsed.isFinite()) saleProceeds = parsed;
+      }
+    } catch { /* Incomplete numeric input has no preview amount. */ }
+    const proceeds = values.disposalType === 'SALE' ? saleProceeds : ZERO;
     const gainLoss = round2(proceeds.minus(nbv));
 
     const coa = CATEGORY_COA[asset.category];
@@ -125,7 +133,7 @@ export function useDisposalCalculation(
 
     const totalDr = lines.reduce<Decimal>((s, l) => s.plus(l.debit), ZERO);
     const totalCr = lines.reduce<Decimal>((s, l) => s.plus(l.credit), ZERO);
-    const isBalanced = totalDr.equals(totalCr);
+    const isBalanced = totalDr.equals(totalCr) && (values.disposalType !== 'SALE' || proceeds.gt(0));
 
     return {
       nbv: nbv.toNumber(),

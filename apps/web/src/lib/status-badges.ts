@@ -21,7 +21,7 @@ export interface StatusConfig {
 // ─── Contract statuses ───────────────────────────────────────────────────────
 
 export const contractStatusMap: Record<string, StatusConfig> = {
-  DRAFT: { variant: 'secondary', label: 'ร่าง' },
+  DRAFT: { variant: 'secondary', label: 'ฉบับร่าง' },
   ACTIVE: { variant: 'success', appearance: 'light', label: 'ผ่อนอยู่' },
   OVERDUE: { variant: 'warning', appearance: 'light', label: 'ค้างชำระ' },
   DEFAULT: { variant: 'destructive', appearance: 'light', label: 'ผิดนัด' },
@@ -135,7 +135,7 @@ export const creditCheckStatusMap: Record<string, StatusConfig> = {
 export const customerCreditStatusMap: Record<string, StatusConfig> = {
   NONE: { variant: 'secondary', label: 'ยังไม่เคยตรวจ' },
   UNDER_REVIEW: { variant: 'warning', appearance: 'light', label: 'รอผู้จัดการตรวจ' },
-  PRE_CHECK_PASSED: { variant: 'info', appearance: 'light', label: 'ผ่าน pre-check' },
+  PRE_CHECK_PASSED: { variant: 'info', appearance: 'light', label: "ผ่านการตรวจเบื้องต้น" },
   FULL_CHECK_PASSED: { variant: 'success', appearance: 'light', label: 'ผ่านเต็ม' },
   REJECTED: { variant: 'destructive', appearance: 'light', label: 'ไม่ผ่าน' },
 };
@@ -176,6 +176,8 @@ export const poStatusMap: Record<string, StatusConfig> = {
   PARTIALLY_RECEIVED: { variant: 'warning', appearance: 'light', label: 'รับบางส่วน' },
   FULLY_RECEIVED: { variant: 'success', appearance: 'light', label: 'รับครบแล้ว' },
   CANCELLED: { variant: 'destructive', appearance: 'light', label: 'ยกเลิก' },
+  /** ปิดถาวรหลังรับของบางส่วน (2026-10-11) — ไม่ใช่ความผิดพลาดแบบยกเลิก จึงเป็นป้ายกลาง ๆ */
+  CLOSED_SHORT: { variant: 'secondary', label: 'ปิดใบ รับไม่ครบ' },
 };
 
 // ─── Purchase Order payment statuses ─────────────────────────────────────────
@@ -190,7 +192,7 @@ export const poPaymentStatusMap: Record<string, StatusConfig> = {
 // ─── Stock count statuses ────────────────────────────────────────────────────
 
 export const stockCountStatusMap: Record<string, StatusConfig> = {
-  DRAFT: { variant: 'secondary', label: 'ร่าง' },
+  DRAFT: { variant: 'secondary', label: 'ฉบับร่าง' },
   IN_PROGRESS: { variant: 'warning', appearance: 'light', label: 'กำลังตรวจนับ' },
   COMPLETED: { variant: 'success', appearance: 'light', label: 'เสร็จสิ้น' },
   CANCELLED: { variant: 'destructive', appearance: 'light', label: 'ยกเลิก' },
@@ -246,8 +248,8 @@ export const sessionStatusMap: Record<string, StatusConfig> = {
 // ─── Session / message priority ──────────────────────────────────────────────
 
 export const sessionPriorityMap: Record<string, StatusConfig> = {
-  CRITICAL: { variant: 'destructive', label: 'CRITICAL' },
-  HIGH: { variant: 'warning', label: 'HIGH' },
+  CRITICAL: { variant: 'destructive', label: "วิกฤต" },
+  HIGH: { variant: 'warning', label: "สูง" },
   NORMAL: { variant: 'secondary', label: 'ปกติ' },
   LOW: { variant: 'secondary', label: 'ต่ำ' },
 };
@@ -255,9 +257,9 @@ export const sessionPriorityMap: Record<string, StatusConfig> = {
 // ─── Chatbot KB response types ────────────────────────────────────────────────
 
 export const kbResponseTypeMap: Record<string, StatusConfig> = {
-  handoff: { variant: 'warning', appearance: 'light', label: 'handoff' },
-  info: { variant: 'info', appearance: 'light', label: 'info' },
-  auto: { variant: 'success', appearance: 'light', label: 'auto' },
+  handoff: { variant: 'warning', appearance: 'light', label: "ส่งต่อพนักงาน" },
+  info: { variant: 'info', appearance: 'light', label: 'ข้อมูลประกอบ' },
+  auto: { variant: 'success', appearance: 'light', label: 'ตอบอัตโนมัติ' },
 };
 
 // ─── Chatbot suggestion / KB suggestion statuses ──────────────────────────────
@@ -271,9 +273,9 @@ export const kbSuggestionStatusMap: Record<string, StatusConfig> = {
 // ─── Chatbot suggestion source ────────────────────────────────────────────────
 
 export const kbSuggestionSourceMap: Record<string, StatusConfig> = {
-  handoff: { variant: 'warning', appearance: 'light', label: 'Handoff' },
-  low_rating: { variant: 'destructive', appearance: 'light', label: 'Feedback ต่ำ' },
-  auto_analysis: { variant: 'info', appearance: 'light', label: 'Auto' },
+  handoff: { variant: 'warning', appearance: 'light', label: "ส่งต่อพนักงาน" },
+  low_rating: { variant: 'destructive', appearance: 'light', label: "ผลตอบรับ ต่ำ" },
+  auto_analysis: { variant: 'info', appearance: 'light', label: "อัตโนมัติ" },
 };
 
 // ─── Accounting period statuses ───────────────────────────────────────────────
@@ -282,9 +284,9 @@ export const accountingPeriodStatusMap: Record<string, StatusConfig> = {
   OPEN: { variant: 'secondary', label: 'เปิด' },
   REVIEW: { variant: 'warning', appearance: 'light', label: 'รีวิว' },
   CLOSED: { variant: 'primary', appearance: 'light', label: 'ปิดแล้ว' },
-  SYNCED: { variant: 'success', appearance: 'light', label: 'Sync แล้ว' },
+  SYNCED: { variant: 'success', appearance: 'light', label: "เชื่อมข้อมูล แล้ว" },
   // Tax report statuses
-  DRAFT: { variant: 'warning', appearance: 'light', label: 'แบบร่าง' },
+  DRAFT: { variant: 'warning', appearance: 'light', label: 'ฉบับร่าง' },
   GENERATED: { variant: 'primary', appearance: 'light', label: 'สร้างแล้ว' },
   SUBMITTED: { variant: 'success', appearance: 'light', label: 'ยื่นแล้ว' },
 };
@@ -292,7 +294,7 @@ export const accountingPeriodStatusMap: Record<string, StatusConfig> = {
 // ─── Commission payout statuses ───────────────────────────────────────────────
 
 export const payoutStatusMap: Record<string, StatusConfig> = {
-  DRAFT: { variant: 'secondary', label: 'ร่าง' },
+  DRAFT: { variant: 'secondary', label: 'ฉบับร่าง' },
   APPROVED: { variant: 'primary', appearance: 'light', label: 'อนุมัติแล้ว' },
   PAID: { variant: 'success', appearance: 'light', label: 'จ่ายแล้ว' },
   CANCELLED: { variant: 'destructive', appearance: 'light', label: 'ยกเลิก' },
@@ -343,8 +345,8 @@ export const auditActionMap: Record<string, StatusConfig> = {
 // ─── Generic active/inactive ──────────────────────────────────────────────────
 
 export const activeStatusMap: Record<string, StatusConfig> = {
-  active: { variant: 'success', appearance: 'light', label: 'Active' },
-  inactive: { variant: 'secondary', label: 'Inactive' },
+  active: { variant: 'success', appearance: 'light', label: "เปิดใช้งาน" },
+  inactive: { variant: 'secondary', label: "ปิดใช้งาน" },
   configured: { variant: 'success', appearance: 'light', label: 'ตั้งค่าแล้ว' },
   not_configured: { variant: 'destructive', appearance: 'light', label: 'ยังไม่ได้ตั้งค่า' },
 };
@@ -368,7 +370,7 @@ export const commissionStatusMap: Record<string, StatusConfig> = {
 // ─── Expense statuses ──────────────────────────────────────────────────────────
 
 export const expenseStatusMap: Record<string, StatusConfig> = {
-  DRAFT: { variant: 'secondary', label: 'ร่าง' },
+  DRAFT: { variant: 'secondary', label: 'ฉบับร่าง' },
   PENDING: { variant: 'warning', appearance: 'light', label: 'รออนุมัติ' },
   PENDING_APPROVAL: { variant: 'warning', appearance: 'light', label: 'รออนุมัติ' },
   APPROVED: { variant: 'success', appearance: 'light', label: 'อนุมัติแล้ว' },
@@ -391,7 +393,7 @@ export const promotionStatusMap: Record<string, StatusConfig> = {
   ACTIVE: { variant: 'success', appearance: 'light', label: 'ใช้งาน' },
   SCHEDULED: { variant: 'info', appearance: 'light', label: 'รอเริ่ม' },
   EXPIRED: { variant: 'secondary', label: 'หมดอายุ' },
-  DRAFT: { variant: 'warning', appearance: 'light', label: 'ร่าง' },
+  DRAFT: { variant: 'warning', appearance: 'light', label: 'ฉบับร่าง' },
 };
 
 // ─── Trade-in statuses ────────────────────────────────────────────────────────
@@ -418,8 +420,8 @@ export const receiptStatusMap: Record<string, StatusConfig> = {
 export const notificationChannelMap: Record<string, StatusConfig> = {
   LINE: { variant: 'success', appearance: 'light', label: 'LINE' },
   SMS: { variant: 'info', appearance: 'light', label: 'SMS' },
-  EMAIL: { variant: 'primary', appearance: 'light', label: 'Email' },
-  PUSH: { variant: 'warning', appearance: 'light', label: 'Push' },
+  EMAIL: { variant: 'primary', appearance: 'light', label: "อีเมล" },
+  PUSH: { variant: 'warning', appearance: 'light', label: "แจ้งเตือนในแอป" },
 };
 
 // ─── Webhook statuses ─────────────────────────────────────────────────────────
@@ -441,7 +443,7 @@ export const assetStatusMap: Record<string, StatusConfig> = {
   MAINTENANCE: { variant: 'warning', appearance: 'light', label: 'ซ่อมบำรุง' },
   RETIRED: { variant: 'secondary', label: 'เลิกใช้' },
   // New asset-module lifecycle (Phase 1)
-  DRAFT: { variant: 'secondary', label: 'ร่าง' },
+  DRAFT: { variant: 'secondary', label: 'ฉบับร่าง' },
   POSTED: { variant: 'success', appearance: 'light', label: 'ลงบัญชีแล้ว' },
   REVERSED: { variant: 'outline', label: 'กลับรายการ' },
   DISPOSED: { variant: 'secondary', label: 'จำหน่ายแล้ว' },
@@ -500,7 +502,7 @@ export const saleTypeMap: Record<string, StatusConfig> = {
 // ─── Document statuses ────────────────────────────────────────────────────────
 
 export const documentStatusMap: Record<string, StatusConfig> = {
-  DRAFT: { variant: 'secondary', label: 'ร่าง' },
+  DRAFT: { variant: 'secondary', label: 'ฉบับร่าง' },
   PENDING: { variant: 'warning', appearance: 'light', label: 'รอ' },
   SIGNED: { variant: 'success', appearance: 'light', label: 'เซ็นแล้ว' },
   EXPIRED: { variant: 'destructive', appearance: 'light', label: 'หมดอายุ' },

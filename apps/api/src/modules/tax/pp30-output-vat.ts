@@ -1,6 +1,7 @@
 import { BadRequestException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { bangkokMidnight } from '../../utils/date.util';
+import { ADVANCE_VAT_CONSUME_DESCRIPTION, ADVANCE_VAT_META } from '../journal/advance-vat';
 
 /**
  * ภาษีขายของแบบ ภ.พ.30 — การคำนวณเดียวของระบบ (2026-09-30)
@@ -12,7 +13,7 @@ import { bangkokMidnight } from '../../utils/date.util';
  *
  * กติกา:
  *   - ภาษีขาย = Σ(เครดิต − เดบิต) ของ 21-2101 — ทศนิยมด้วย Prisma.Decimal เท่านั้น
- *   - ภาษีขาย 60 วัน (21-2103) = Σ(เครดิต − เดบิต) แสดงแยกเป็นข้อมูลประกอบ **ไม่รวมในยอด** จนกว่าฝ่ายบัญชีจะตอบ
+ *   - ภาษีขาย 60 วัน (21-2103) = Σ(เครดิต − เดบิต) แสดงแยก และ **รวมสุทธิในยอด** ตั้งแต่ 16/10/2569 (ฝ่ายบัญชีข้อ 11.1)
  *     (`PP30_INCLUDES_MANDATORY_60DAY`)
  *   - รายการ: สถานะ POSTED · รายการและบรรทัดไม่ถูกลบ · `companyId` ที่ผู้เรียกส่ง
  *   - เดือน: `entryDate` (วันที่ของรายการ) ภายในเดือนตามปฏิทินไทย [วันที่ 1 00:00 น., วันที่ 1 ของเดือนถัดไป 00:00 น.)
@@ -42,26 +43,41 @@ export const PP30_MANDATORY_60DAY_VAT_ACCOUNT = '21-2103';
 export const PP30_VAT_SETTLEMENT_ACCOUNT = '21-3201';
 
 /**
- * รวมภาษีขาย 60 วัน (21-2103) ในยอดภาษีขายของ ภ.พ.30 หรือไม่ — คำตัดสินผู้คุมงาน 2026-09-30: **ไม่รวม จนกว่าฝ่ายบัญชีจะตอบ**
- * (กลับคำตัดสิน "Critical #2" เดิมที่รวม 21-2103). เหตุ: 2A ตั้งภาษีขายของทุกงวดเข้า 21-2101 ณ วันครบกำหนดแล้ว แต่รอบ 60 วัน
- * (`vat-60day.cron.ts`) ตั้ง 21-2103 ซ้ำโดยไม่ดูว่างวดตั้งลูกหนี้งวดแล้วหรือสัญญาปิดไปแล้ว. false = 21-2103 เป็นข้อมูลประกอบแยก
- * (ตั้ง / กลับ / สุทธิ) ไม่อยู่ใน `totalOutputVat` · เปลี่ยนค่าต้องแก้ข้อความ "ยังไม่รวม" บนหน้า /finance/vat และในไฟล์ Excel
- * ภ.พ.30 (`tax-export.service.ts`) พร้อมกัน — checklist ตอนเปลี่ยนค่า เพิ่มอีก 2 ข้อ (F3, 2026-09-30, คอมเมนต์เตือน
- * ล่วงหน้าเท่านั้น ยังไม่แก้ UI ในรอบนี้): (1) กล่อง "ที่มาของภาษีขายเดือนนี้" บนหน้า `/finance/vat` ต้องมีแถวภาษีขาย
- * 60 วันรวมอยู่ในยอดหลักด้วย ไม่ใช่แค่กล่องข้อมูลประกอบแยกอย่างวันนี้ (2) หัวข้อย่อย "ภาษีขาย 60 วัน (21-2103) —
- * ข้อมูลประกอบ ยังไม่รวม…" ที่ `VatPage.tsx` (`OutputVatBreakdownCard`, ~:148) ต้องอ่านจาก `mandatory60DayIncluded`
- * แทนข้อความตายตัว
+ * รวมภาษีขาย 60 วัน (21-2103) สุทธิในยอดภาษีขายของ ภ.พ.30 — **true ตั้งแต่ฝ่ายบัญชีตอบ 16/10/2569 ข้อ 11.1**: ภาษีขาย
+ * 60 วันคือภาษีที่ไฟแนนซ์ต้องนำส่งแทนลูกค้าตามระเบียบกรมสรรพากร จึงอยู่ใน ภ.พ.30 — แต่ต้องไม่ซ้ำกับงวดที่ตั้งภาษีขายเข้า
+ * 21-2101 แล้ว. การกันซ้ำอยู่ที่ต้นทาง: `vat-60day.cron.ts` + `Vat60dayMandatoryTemplate` ไม่ตั้ง 21-2103 ให้งวดที่ตั้ง
+ * ลูกหนี้งวดแล้ว (ทั้งงวดหรือบางส่วน) และไม่ตั้งให้สัญญาที่ยึดคืน/ปิด/ยกเลิก (ข้อ 11.2) · งวดที่ถูกตั้ง 21-2103 ไปก่อนแล้ว 2A
+ * ค่อยตั้งทีหลัง (งวดบัญชีปิดแล้วเปิดใหม่ ฯลฯ) รอบ 2A กลับ 21-2103 เองในธุรกรรมเดียวกัน (`InstallmentAccrual2ATemplate.run`)
+ * ⇒ ภาษีของงวดหนึ่งอยู่ใน 21-2101 หรือ 21-2103 อย่างใดอย่างหนึ่ง รวมสุทธิ (ตั้ง − กลับ) ได้ตรง ๆ. **ยังเปิดอยู่:** JP5 /
+ * ตัดหนี้สูญ / ปิดยอดก่อนกำหนด (`ContractPaymentService.earlyPayoff`) ไม่กลับ 21-2103 ของงวดที่เคยตั้ง 60 วันไว้ ขณะที่
+ * ขาล้าง 21-2102 → 21-2101 ของมันครอบงวดนั้นด้วย ⇒ ซ้ำถาวรเฉพาะสัญญาที่ตั้ง 60 วันไว้ก่อนปิด/ยึด (accounting.md "VAT 60-Day
+ * Rule"). บรรทัด 21-2103 ซ้ำที่ลงไว้ก่อน 16/10/2569 เป็นข้อมูลทดสอบ (prod ยังไม่มีสัญญาจริง — ล้างก่อนเริ่มใช้จริง) ไม่มี backfill.
+ *
+ * ผลต่อผู้ใช้ตัวเลข: `totalOutputVat = settledNet + mandatory60Day.net` · `mandatory60DayIncluded: true` ใน JSON — หน้า
+ * `/finance/vat` (`VatPage.tsx` `OutputVatBreakdownCard`) และไฟล์ Excel ภ.พ.30 (`tax-export.service.ts`) อ่านธงนี้
+ * จากข้อมูลเพื่อเลือกข้อความ "รวมในยอดแล้ว" / "ยังไม่รวม" (snapshot ปิดงวด / TaxReport ที่เก็บก่อน 16/10 ยังเป็น false
+ * จึงยังแสดงข้อความเดิมได้ถูก). ประวัติ: 2026-09-30 ตั้งเป็น false ระหว่างรอฝ่ายบัญชี (รอบ 60 วันเดิมตั้งซ้ำกับ 2A).
  */
-export const PP30_INCLUDES_MANDATORY_60DAY = false; // รอฝ่ายบัญชีตอบ
+export const PP30_INCLUDES_MANDATORY_60DAY = true;
 
-/** ที่มาของเดบิต 21-2101 — REVERSAL = กลับรายการ · CREDIT_NOTE = ใบลดหนี้ ม.82/5 · OTHER = ระบุที่มาไม่ได้ */
-export type Pp30ReductionKind = 'REVERSAL' | 'CREDIT_NOTE' | 'OTHER';
+/**
+ * ที่มาของเดบิต 21-2101 — REVERSAL = กลับรายการ · CREDIT_NOTE = ใบลดหนี้ ม.82/5 ·
+ * ADVANCE_APPLIED = เงินรับล่วงหน้าที่ถูกหักเข้างวด (ภาษีรับรู้ไปแล้ว ณ วันรับเงิน — PR4 ต3/ต10) ·
+ * OTHER = ระบุที่มาไม่ได้
+ */
+export type Pp30ReductionKind = 'REVERSAL' | 'CREDIT_NOTE' | 'ADVANCE_APPLIED' | 'OTHER';
 
 /** บรรทัดสมุดบัญชีที่ตัวคำนวณอ่าน — รูปเดียวกับที่ `loadPp30OutputVatLines` select */
 export interface Pp30OutputVatLine {
   accountCode: string;
   debit: Prisma.Decimal;
   credit: Prisma.Decimal;
+  /**
+   * คำอธิบายของ**บรรทัด** (ไม่ใช่ของรายการ) — ใช้ตัดสินต่อบรรทัดเมื่อรายการเดียวมีเดบิต 21-2101 สองที่มา
+   * (JP5 / ตัดหนี้สูญ: บรรทัดใบลดหนี้ ม.82/5 + บรรทัดขากลับภาษีเงินรับล่วงหน้า — PR4 final review I1). undefined/null =
+   * ตัดสินระดับรายการตามเดิม (mock เดิมที่ไม่ส่งฟิลด์นี้ทำงานได้เหมือนเดิม)
+   */
+  description?: string | null;
   journalEntry: {
     id: string;
     entryNumber: string;
@@ -92,18 +108,20 @@ export interface Pp30ReductionLine {
 export interface Pp30OutputVatSummary {
   /** Σ เครดิต 21-2101 ของเดือน (ทุกบรรทัด ทุกที่มา) */
   settledGross: Prisma.Decimal;
-  /** Σ เดบิต 21-2101 แยกที่มา — total = reversal + creditNote + other */
+  /** Σ เดบิต 21-2101 แยกที่มา — total = reversal + creditNote + advanceApplied + other */
   reductions: {
     reversal: Prisma.Decimal;
     creditNote: Prisma.Decimal;
+    /** ขากลับของภาษีเงินรับล่วงหน้าเมื่อเงินนั้นถูกหักเข้างวด (stamp `advanceVatConsume`) — PR4 ต10 */
+    advanceApplied: Prisma.Decimal;
     other: Prisma.Decimal;
     total: Prisma.Decimal;
   };
   /** settledGross − reductions.total */
   settledNet: Prisma.Decimal;
-  /** 21-2103 ภาษีขาย 60 วัน — net = credit − debit (ข้อมูลประกอบ — ดู `mandatory60DayIncluded`) */
+  /** 21-2103 ภาษีขาย 60 วัน — net = credit − debit (แสดงแยกเสมอ · รวมใน `totalOutputVat` ตาม `mandatory60DayIncluded`) */
   mandatory60Day: { credit: Prisma.Decimal; debit: Prisma.Decimal; net: Prisma.Decimal };
-  /** `PP30_INCLUDES_MANDATORY_60DAY` — false = 21-2103 ไม่รวมใน `totalOutputVat` */
+  /** `PP30_INCLUDES_MANDATORY_60DAY` ณ ตอนคำนวณ — true (ตั้งแต่ 16/10/2569) = 21-2103 สุทธิรวมใน `totalOutputVat` · snapshot เก่าอาจเป็น false */
   mandatory60DayIncluded: boolean;
   /** ภาษีขายของแบบ ภ.พ.30 = settledNet (+ mandatory60Day.net เฉพาะเมื่อ `mandatory60DayIncluded`) */
   totalOutputVat: Prisma.Decimal;
@@ -128,6 +146,7 @@ export interface Pp30OutputVatJson {
   settledGross: string;
   reductionReversal: string;
   reductionCreditNote: string;
+  reductionAdvanceApplied: string;
   reductionOther: string;
   reductionTotal: string;
   settledNet: string;
@@ -164,12 +183,21 @@ function asObject(value: Prisma.JsonValue | null | undefined): Record<string, un
  *     ในรอบนี้ ดู `.claude/rules/accounting.md` หัวข้อ ภ.พ.30 ส่วน "ยังเปิดอยู่")
  *   - เอกสารรายได้อื่นแบบกลับรายการ (`-R`): `metadata.source === 'OTHER_INCOME'` และ `otherIncomeId` ลงท้าย `:reversal`
  *   - ใบลดหนี้ ม.82/5: ยึดคืน (`tag 'JP5'` + `flow 'repossession'`) · ตัดหนี้สูญ (`tag 'BAD-DEBT'` + `flow 'write-off'`)
+ *   - เงินรับล่วงหน้าที่หักเข้างวด (PR4 ต10): รายการที่ stamp `advanceVatConsume` เป็นตัวเลข > 0 — ขากลับ
+ *     `Dr 21-2101 / Cr 21-2102` ของภาษีที่รับรู้ไปแล้ว ณ วันรับเงิน (ต2) จึงไม่ใช่ "อื่น ๆ". ตรวจ**หลัง**กลับรายการ:
+ *     รายการกลับแบบกระจกที่ copy stamp/คำอธิบายมาด้วยยังเป็น REVERSAL ตามเดิม. **ตัดสินต่อบรรทัดเมื่อผู้เรียกส่ง `line`**
+ *     (final review I1): รายการ JP5 / ตัดหนี้สูญ มีเดบิต 21-2101 สองที่มาในรายการเดียว — บรรทัดใบลดหนี้ ม.82/5 และ
+ *     บรรทัดขากลับ (คำอธิบาย = `ADVANCE_VAT_CONSUME_DESCRIPTION` จาก `buildAdvanceVatConsumeLines`) ⇒ บรรทัดขากลับ
+ *     เป็น ADVANCE_APPLIED บรรทัดใบลดหนี้เป็น CREDIT_NOTE. ไม่ส่ง `line` = ตัดสินระดับรายการ (ใบลดหนี้ชนะ stamp)
  *   - นอกนั้น = OTHER
  */
-export function classifyOutputVatReduction(entry: {
-  referenceType: string | null;
-  metadata: Prisma.JsonValue | null;
-}): Pp30ReductionKind {
+export function classifyOutputVatReduction(
+  entry: {
+    referenceType: string | null;
+    metadata: Prisma.JsonValue | null;
+  },
+  line?: { description?: string | null },
+): Pp30ReductionKind {
   const meta = asObject(entry.metadata);
   if (meta.tag === 'REVERSAL') return 'REVERSAL';
   if (entry.referenceType === 'REVERSAL') return 'REVERSAL';
@@ -180,13 +208,29 @@ export function classifyOutputVatReduction(entry: {
   ) {
     return 'REVERSAL';
   }
+  const hasConsumeStamp = isPositiveAmount(meta[ADVANCE_VAT_META.consume]);
+  // final review I1 — บรรทัดขากลับในรายการที่มีใบลดหนี้ด้วย (JP5 / ตัดหนี้สูญ) ต้องไม่ถูกนับเป็นใบลดหนี้
+  if (hasConsumeStamp && line?.description === ADVANCE_VAT_CONSUME_DESCRIPTION)
+    return 'ADVANCE_APPLIED';
   if (
     (meta.tag === 'JP5' && meta.flow === 'repossession') ||
     (meta.tag === 'BAD-DEBT' && meta.flow === 'write-off')
   ) {
     return 'CREDIT_NOTE';
   }
+  if (hasConsumeStamp) return 'ADVANCE_APPLIED';
   return 'OTHER';
+}
+
+/** stamp จำนวนเงินใน metadata เป็นสตริง/ตัวเลขที่ parse ได้และ > 0 (ว่าง · ศูนย์ · ไม่ใช่ตัวเลข = false) */
+function isPositiveAmount(value: unknown): boolean {
+  if (typeof value !== 'string' && typeof value !== 'number') return false;
+  if (typeof value === 'string' && value.trim() === '') return false;
+  try {
+    return new Prisma.Decimal(value).gt(0);
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -218,6 +262,7 @@ export function summarizePp30OutputVat(lines: Pp30OutputVatLine[]): Pp30OutputVa
   let settledGross = ZERO;
   let reversal = ZERO;
   let creditNote = ZERO;
+  let advanceApplied = ZERO;
   let other = ZERO;
   let m60Credit = ZERO;
   let m60Debit = ZERO;
@@ -238,9 +283,10 @@ export function summarizePp30OutputVat(lines: Pp30OutputVatLine[]): Pp30OutputVa
     if (!countsAsPp30SettledVat(line)) continue; // บัญชีอื่นที่ไม่ใช่ 21-2101/21-2103 ถูกข้าม
     settledGross = settledGross.plus(credit);
     if (debit.isZero()) continue;
-    const kind = classifyOutputVatReduction(line.journalEntry);
+    const kind = classifyOutputVatReduction(line.journalEntry, line);
     if (kind === 'REVERSAL') reversal = reversal.plus(debit);
     else if (kind === 'CREDIT_NOTE') creditNote = creditNote.plus(debit);
+    else if (kind === 'ADVANCE_APPLIED') advanceApplied = advanceApplied.plus(debit);
     else other = other.plus(debit);
     reductionLines.push({
       entryId: line.journalEntry.id,
@@ -252,12 +298,12 @@ export function summarizePp30OutputVat(lines: Pp30OutputVatLine[]): Pp30OutputVa
     });
   }
 
-  const total = reversal.plus(creditNote).plus(other);
+  const total = reversal.plus(creditNote).plus(advanceApplied).plus(other);
   const settledNet = settledGross.minus(total);
   const m60Net = m60Credit.minus(m60Debit);
   return {
     settledGross,
-    reductions: { reversal, creditNote, other, total },
+    reductions: { reversal, creditNote, advanceApplied, other, total },
     settledNet,
     mandatory60Day: { credit: m60Credit, debit: m60Debit, net: m60Net },
     mandatory60DayIncluded: PP30_INCLUDES_MANDATORY_60DAY,
@@ -271,6 +317,7 @@ export function toPp30OutputVatJson(summary: Pp30OutputVatSummary): Pp30OutputVa
     settledGross: summary.settledGross.toFixed(2),
     reductionReversal: summary.reductions.reversal.toFixed(2),
     reductionCreditNote: summary.reductions.creditNote.toFixed(2),
+    reductionAdvanceApplied: summary.reductions.advanceApplied.toFixed(2),
     reductionOther: summary.reductions.other.toFixed(2),
     reductionTotal: summary.reductions.total.toFixed(2),
     settledNet: summary.settledNet.toFixed(2),
@@ -371,6 +418,7 @@ export async function loadPp30OutputVatLines(
         accountCode: true,
         debit: true,
         credit: true,
+        description: true,
         journalEntry: {
           select: {
             id: true,

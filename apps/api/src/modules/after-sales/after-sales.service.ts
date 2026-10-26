@@ -18,6 +18,7 @@ import { ExchangeConfirmDto } from './dto/exchange-confirm.dto';
 import { ExchangeRejectDto } from './dto/exchange-reject.dto';
 import { SwitchToRepairDto } from './dto/switch-to-repair.dto';
 import { ApproveExchangeRequestDto } from './dto/exchange-approve.dto';
+import { ExchangeDeliverDto } from './dto/exchange-deliver.dto';
 
 type ReqUser = { id: string; role: string; branchId?: string | null };
 
@@ -53,6 +54,11 @@ export class AfterSalesService {
 
   findByTicket(ticketId: string, user: ReqUser) {
     return this.querySvc.findByTicket(ticketId, user);
+  }
+
+  /** หน้าหลักหน้าร้าน — เคสรอลูกค้ารับ + ที่รอเกินเกณฑ์ (ผู้เรียกบังคับ branchId ตามสิทธิ์เอง) */
+  countReadyForPickup(branchId?: string) {
+    return this.querySvc.countReadyForPickup(branchId);
   }
 
   send(id: string, dto: SendDto, user: ReqUser) {
@@ -101,8 +107,13 @@ export class AfterSalesService {
     return this.exchangeSvc.confirmSameModel(id, dto, user);
   }
 
-  deliver(id: string, user: ReqUser) {
-    return this.exchangeSvc.deliver(id, user);
+  deliver(id: string, user: ReqUser, dto?: ExchangeDeliverDto) {
+    return this.exchangeSvc.deliver(id, user, dto);
+  }
+
+  /** PR 5 — กล่องรายการบัญชีที่จะลงในกล่องยืนยันเปลี่ยนรุ่นเดิมขายสด */
+  cashExchangePreview(id: string, replacementProductId: string | undefined, user: ReqUser) {
+    return this.exchangeSvc.cashExchangePreview(id, replacementProductId, user);
   }
 
   rejectSameModel(id: string, dto: ExchangeRejectDto, user: ReqUser) {

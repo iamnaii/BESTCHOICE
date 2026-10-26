@@ -1,3 +1,4 @@
+import { NativeSelect } from '@/components/ui/native-select';
 import { useState } from 'react';
 import { useParams, useNavigate, useLocation, Link, Outlet } from 'react-router';
 import { ChevronRight, Search } from 'lucide-react';
@@ -80,7 +81,7 @@ export function SettingsLayout() {
       {/* search */}
       <div className="relative mb-4 max-w-md">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
-        <input
+        <input aria-label="ค้นหาการตั้งค่า"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="ค้นหาการตั้งค่า…"
@@ -109,16 +110,16 @@ export function SettingsLayout() {
 
       {isMobile ? (
         <div className="space-y-4">
-          <select
+          <NativeSelect wrapperClassName="max-w-full w-full"
             value={categoryId}
             onChange={(e) => navigate(`/settings/${e.target.value}`)}
-            className="w-full rounded-lg border border-border bg-background py-2 px-3 text-sm"
+            className="rounded-lg border border-border bg-background py-2 px-3 text-sm"
             aria-label="เลือกหมวดตั้งค่า"
           >
             {cats.map((c) => (
               <option key={c.id} value={c.id}>{c.label}</option>
             ))}
-          </select>
+          </NativeSelect>
           <Outlet />
         </div>
       ) : (

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { receiveProgress, isOverdue, supplierContactIsRedundant, canCancel, splitLeadingTag, pieceCount, itemsSummary } from './po-list.util';
+import { receiveProgress, isOverdue, supplierContactIsRedundant, canCancel, canCloseShort, isClosedShort, unreceivedQty, splitLeadingTag, pieceCount, itemsSummary } from './po-list.util';
 
 describe('receiveProgress', () => {
   it('sums received/ordered across items and computes pct', () => {
@@ -53,6 +53,24 @@ describe('supplierContactIsRedundant', () => {
 
 // Owner 2026-09-06: an ORDERED PO with nothing received yet can still be cancelled (the API's
 // cancel() rule) — the list/card must offer the action, not just for DRAFT (found by QA).
+// ปิดใบ รับไม่ครบ (คำตัดสินเจ้าของ 2026-10-11): เฉพาะใบรับบางส่วน · ใบที่ปิดแล้วรับของ/ยกเลิก/ปิดซ้ำไม่ได้ · "(ปิด N)" = ชิ้นที่ไม่รับ
+describe('canCloseShort / isClosedShort / unreceivedQty', () => {
+  const po = (status: string, received: number[] = [1, 0]) => ({ status, items: received.map((r) => ({ quantity: 2, receivedQty: r })) });
+  it('PARTIALLY_RECEIVED only', () => {
+    expect(canCloseShort(po('PARTIALLY_RECEIVED'))).toBe(true);
+    for (const s of ['DRAFT', 'APPROVED', 'ORDERED', 'FULLY_RECEIVED', 'CANCELLED', 'CLOSED_SHORT']) expect(canCloseShort(po(s))).toBe(false);
+  });
+  it('a closed-short PO is neither cancellable nor closable again', () => {
+    expect(isClosedShort(po('CLOSED_SHORT'))).toBe(true);
+    expect(canCancel(po('CLOSED_SHORT'))).toBe(false);
+    expect(canCloseShort(po('CLOSED_SHORT'))).toBe(false);
+  });
+  it('unreceivedQty sums the shortfall per line, never negative', () => {
+    expect(unreceivedQty({ items: [{ quantity: 5, receivedQty: 2 }, { quantity: 1, receivedQty: 1 }, { quantity: 1, receivedQty: 3 }] })).toBe(3);
+    expect(unreceivedQty({ items: [] })).toBe(0);
+  });
+});
+
 describe('canCancel', () => {
   const po = (status: string, received: number[] = [0]) => ({
     status,

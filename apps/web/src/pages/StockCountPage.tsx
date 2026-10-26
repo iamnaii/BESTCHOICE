@@ -1,3 +1,4 @@
+import { NativeSelect } from '@/components/ui/native-select';
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
@@ -9,6 +10,7 @@ import Modal from '@/components/ui/Modal';
 import QueryBoundary from '@/components/QueryBoundary';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { getStatusBadgeProps, stockCountStatusMap } from '@/lib/status-badges';
 
 const getErrorMessage = (err: unknown) => {
@@ -147,22 +149,26 @@ export default function StockCountPage() {
     { key: 'createdAt', label: 'วันที่', render: (item) => <span className="text-xs text-muted-foreground">{formatDateShort(item.createdAt)}</span> },
     {
       key: 'actions',
-      label: '',
+      label: 'จัดการ',
+      align: 'right',
+      width: '17rem',
+      cardFullWidth: true,
       render: (item) => (
-        <div className="flex gap-1 justify-center">
-          <button
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <Button type="button" variant="outline"
             onClick={(e) => { e.stopPropagation(); openCountModal(item); }}
-            className="px-2 py-1 text-xs bg-primary/10 text-primary dark:bg-primary/15 rounded hover:bg-primary/20"
+            className="w-28 shrink-0 px-3"
           >
             {item.status === 'COMPLETED' ? 'ดูผล' : 'ตรวจนับ'}
-          </button>
+          </Button>
           {item.status === 'IN_PROGRESS' && (
-            <button
+            <Button type="button" variant="outline"
               onClick={(e) => { e.stopPropagation(); cancelMutation.mutate(item.id); }}
-              className="px-2 py-1 text-xs bg-destructive/10 text-destructive dark:bg-destructive/15 rounded hover:bg-destructive/20"
+              disabled={cancelMutation.isPending}
+              className="w-28 shrink-0 px-3 text-destructive hover:text-destructive"
             >
               ยกเลิก
-            </button>
+            </Button>
           )}
         </div>
       ),
@@ -173,20 +179,21 @@ export default function StockCountPage() {
     <div>
       <PageHeader title="ตรวจนับสต๊อก" subtitle="ตรวจนับสินค้าจริงเทียบกับในระบบ" />
 
-      <div className="flex items-center gap-3 mb-5">
-        <select
+      <div className="flex flex-wrap items-center gap-3 mb-5">
+        <NativeSelect wrapperClassName="min-w-0 max-w-full w-full sm:w-auto"
+          aria-label="สาขาที่ตรวจนับ"
           value={selectedBranch}
           onChange={(e) => setSelectedBranch(e.target.value)}
-          className="px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
+          className="min-h-11 px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
         >
           <option value="">ทุกสาขา</option>
           {(branches || []).map((b: { id: string; name: string }) => (
             <option key={b.id} value={b.id}>{b.name}</option>
           ))}
-        </select>
-        <button
+        </NativeSelect>
+        <button data-ui-control="button"
           onClick={() => setIsCreateModalOpen(true)}
-          className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors"
+          className="min-h-11 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors"
         >
           + สร้างรายการตรวจนับ
         </button>
@@ -201,7 +208,7 @@ export default function StockCountPage() {
       >
         <Card>
           <CardContent className="p-0">
-            <DataTable
+            <DataTable embedded
               columns={stockCountColumns}
               data={counts}
               isLoading={isLoading}
@@ -254,7 +261,7 @@ export default function StockCountPage() {
                       </div>
                     </div>
                     <div className="flex gap-1">
-                      <button
+                      <button data-ui-control="button"
                         type="button"
                         onClick={() => updateItem(idx, 'actualFound', true)}
                         className={`px-3 py-1 rounded text-xs font-medium transition-colors ${
@@ -263,7 +270,7 @@ export default function StockCountPage() {
                       >
                         พบ
                       </button>
-                      <button
+                      <button data-ui-control="button"
                         type="button"
                         onClick={() => updateItem(idx, 'actualFound', false)}
                         className={`px-3 py-1 rounded text-xs font-medium transition-colors ${
@@ -296,7 +303,7 @@ export default function StockCountPage() {
                     <span className="text-destructive">ไม่พบ: <strong>{countItems.filter((i) => !i.actualFound).length}</strong></span>
                   </div>
                 </div>
-                <button
+                <button data-ui-control="button"
                   type="submit"
                   disabled={submitMutation.isPending}
                   className="w-full py-2 bg-primary text-primary-foreground rounded-lg font-medium hover:bg-primary/90 disabled:opacity-50"

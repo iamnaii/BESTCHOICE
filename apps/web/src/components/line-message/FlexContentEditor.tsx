@@ -30,7 +30,7 @@ export function FlexContentEditor<T extends FlexContent>({
       {/* Mode toggle */}
       <div className="flex gap-1 rounded-full bg-muted p-1 w-fit">
         {(['template', 'json'] as FlexMode[]).map((mode) => (
-          <button
+          <button data-ui-control="button"
             key={mode}
             type="button"
             onClick={() => onChange({ ...c, flexMode: mode })}
@@ -41,7 +41,7 @@ export function FlexContentEditor<T extends FlexContent>({
                 : 'text-muted-foreground hover:text-foreground/80',
             )}
           >
-            {mode === 'template' ? 'Template' : 'JSON'}
+            {mode === 'template' ? "แม่แบบ" : 'JSON'}
           </button>
         ))}
       </div>
@@ -56,7 +56,7 @@ export function FlexContentEditor<T extends FlexContent>({
                 { name: string; fields: string[] },
               ][]
             ).map(([key, t]) => (
-              <button
+              <button data-ui-control="button"
                 key={key}
                 type="button"
                 onClick={() => onChange({ ...c, templateKey: key, fields: {} })}
@@ -94,7 +94,7 @@ export function FlexContentEditor<T extends FlexContent>({
           {/* Mini preview */}
           <div className="space-y-2">
             <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-              Preview
+              ดูตัวอย่าง
             </p>
             <FlexPreviewCard content={c} />
           </div>
@@ -104,7 +104,7 @@ export function FlexContentEditor<T extends FlexContent>({
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
           <div className="space-y-2">
             <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-              JSON Editor
+              แก้ไข JSON
             </p>
             <div className="rounded-xl overflow-hidden border border-border shadow-sm">
               <div className="bg-muted px-3 py-2 flex items-center gap-2 border-b border-border">
@@ -145,7 +145,7 @@ export function FlexContentEditor<T extends FlexContent>({
           </div>
           <div className="space-y-2">
             <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-              Live Preview
+              ตัวอย่างทันที
             </p>
             <FlexPreviewCard content={c} />
           </div>

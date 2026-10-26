@@ -1,4 +1,6 @@
-import { useRef } from 'react';
+import { NumberInput } from '@/components/ui/NumberInput';
+import { NativeSelect } from '@/components/ui/native-select';
+import { useId as useUiFieldId, useRef } from 'react';
 import { ArrowLeft, User, FileText, Clock, BarChart3 } from 'lucide-react';
 import ProspectPhoneLine from '@/components/customer/ProspectPhoneLine';
 import {
@@ -105,6 +107,7 @@ export default function CreditCheckCreateModal({
   isSaving,
   onSave,
 }: CreditCheckCreateModalProps) {
+  const uiFieldId = useUiFieldId();
   // Keep a local ref for the hidden book-bank input (passed via prop)
   const _bookBankRef = bookBankFileRef;
 
@@ -138,7 +141,7 @@ export default function CreditCheckCreateModal({
 
             {!selectedCustomer ? (
               <div>
-                <input
+                <input aria-label="ค้นหาชื่อ, เบอร์โทร, เลขบัตร"
                   type="text"
                   placeholder="ค้นหาชื่อ, เบอร์โทร, เลขบัตร..."
                   value={customerSearch}
@@ -235,7 +238,7 @@ export default function CreditCheckCreateModal({
                 </div>
                 <div>
                   <h3 className="text-sm font-semibold text-foreground">เอกสารประกอบ</h3>
-                  <p className="text-xs text-muted-foreground">สลิปเงินเดือนและ Statement ธนาคาร</p>
+                  <p className="text-xs text-muted-foreground">สลิปเงินเดือนและ รายการเดินบัญชี ธนาคาร</p>
                 </div>
               </div>
 
@@ -258,7 +261,7 @@ export default function CreditCheckCreateModal({
                     }}
                     className="flex-1 text-sm text-muted-foreground file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-success/10 file:text-success"
                   />
-                  <button
+                  <button data-ui-control="button"
                     onClick={onSalarySlipOcr}
                     disabled={salarySlipLoading || salarySlipFiles.length === 0}
                     className="inline-flex items-center gap-2 px-4 py-2 bg-success text-success-foreground rounded-lg text-xs font-medium hover:bg-success/90 disabled:opacity-50"
@@ -278,11 +281,11 @@ export default function CreditCheckCreateModal({
                 {salarySlipResult && (
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-3">
                     <div>
-                      <label className="block text-2xs text-muted-foreground mb-1">
+                      <label htmlFor={`${uiFieldId}-1`} className="block text-2xs text-muted-foreground mb-1">
                         เงินเดือนสุทธิ
                       </label>
-                      <input
-                        type="text"
+                      <NumberInput unstyled step="any" id={`${uiFieldId}-1`}
+
                         value={salarySlipEditable.netSalary}
                         onChange={(e) =>
                           onSalarySlipEditableChange({
@@ -294,8 +297,8 @@ export default function CreditCheckCreateModal({
                       />
                     </div>
                     <div>
-                      <label className="block text-2xs text-muted-foreground mb-1">ชื่อบริษัท</label>
-                      <input
+                      <label htmlFor={`${uiFieldId}-2`} className="block text-2xs text-muted-foreground mb-1">ชื่อบริษัท</label>
+                      <input id={`${uiFieldId}-2`}
                         type="text"
                         value={salarySlipEditable.employerName}
                         onChange={(e) =>
@@ -308,10 +311,10 @@ export default function CreditCheckCreateModal({
                       />
                     </div>
                     <div>
-                      <label className="block text-2xs text-muted-foreground mb-1">
+                      <label htmlFor={`${uiFieldId}-3`} className="block text-2xs text-muted-foreground mb-1">
                         วันเงินเดือนออก
                       </label>
-                      <input
+                      <input id={`${uiFieldId}-3`}
                         type="text"
                         value={salarySlipEditable.payDay}
                         onChange={(e) =>
@@ -325,8 +328,8 @@ export default function CreditCheckCreateModal({
                       />
                     </div>
                     <div>
-                      <label className="block text-2xs text-muted-foreground mb-1">ธนาคาร</label>
-                      <input
+                      <label htmlFor={`${uiFieldId}-4`} className="block text-2xs text-muted-foreground mb-1">ธนาคาร</label>
+                      <input id={`${uiFieldId}-4`}
                         type="text"
                         value={salarySlipEditable.bankName}
                         onChange={(e) =>
@@ -345,14 +348,14 @@ export default function CreditCheckCreateModal({
               {/* Part B: Statement ธนาคาร */}
               <div className="p-4 bg-muted/30 rounded-lg border border-border">
                 <h4 className="text-xs font-semibold text-foreground mb-3 uppercase tracking-wider">
-                  B. Statement ธนาคาร
+                  B. รายการเดินบัญชี ธนาคาร
                 </h4>
                 <div className="mb-3">
-                  <label className="block text-2xs text-muted-foreground mb-1">เลือกธนาคาร</label>
-                  <select
+                  <label htmlFor={`${uiFieldId}-5`} className="block text-2xs text-muted-foreground mb-1">เลือกธนาคาร</label>
+                  <NativeSelect wrapperClassName="max-w-full w-full" id={`${uiFieldId}-5`}
                     value={statementBankName}
                     onChange={(e) => onStatementBankNameChange(e.target.value)}
-                    className="w-full px-3 py-2 border border-input rounded-lg text-sm"
+                    className="px-3 py-2 border border-input rounded-lg text-sm"
                   >
                     <option value="">-- เลือกธนาคาร --</option>
                     {BANK_OPTIONS.map((b) => (
@@ -360,7 +363,7 @@ export default function CreditCheckCreateModal({
                         {b}
                       </option>
                     ))}
-                  </select>
+                  </NativeSelect>
                 </div>
                 <div className="flex items-center gap-3 mb-3">
                   <input
@@ -373,7 +376,7 @@ export default function CreditCheckCreateModal({
                     }}
                     className="flex-1 text-sm text-muted-foreground file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-success/10 file:text-success"
                   />
-                  <button
+                  <button data-ui-control="button"
                     onClick={onStatementOcr}
                     disabled={statementLoading || statementFiles.length === 0}
                     className="inline-flex items-center gap-2 px-4 py-2 bg-success text-success-foreground rounded-lg text-xs font-medium hover:bg-success/90 disabled:opacity-50"
@@ -505,13 +508,13 @@ export default function CreditCheckCreateModal({
                 </div>
                 <div>
                   <h3 className="text-sm font-semibold text-foreground">สรุปวิเคราะห์</h3>
-                  <p className="text-xs text-muted-foreground">คำนวณ Risk Score และคำแนะนำ</p>
+                  <p className="text-xs text-muted-foreground">คำนวณ คะแนนความเสี่ยง และคำแนะนำ</p>
                 </div>
               </div>
 
               {!riskScore ? (
                 <div className="text-center py-4">
-                  <button
+                  <button data-ui-control="button"
                     onClick={() => onCalculateRisk(selectedCustomer.id)}
                     disabled={riskLoading}
                     className="inline-flex items-center gap-2 px-5 py-2.5 bg-warning text-warning-foreground rounded-lg text-sm font-medium hover:bg-warning/90 disabled:opacity-50"
@@ -530,7 +533,7 @@ export default function CreditCheckCreateModal({
                 <div className="space-y-4">
                   <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                     <div className="bg-muted/50 rounded-lg border p-3">
-                      <div className="text-2xs text-muted-foreground mb-1">Risk Score</div>
+                      <div className="text-2xs text-muted-foreground mb-1">คะแนนความเสี่ยง</div>
                       <span
                         className={`px-3 py-1 rounded-full text-sm font-bold ${
                           riskScore.riskLevel === 'LOW'
@@ -549,7 +552,7 @@ export default function CreditCheckCreateModal({
                       </span>
                     </div>
                     <div className="bg-muted/50 rounded-lg border p-3">
-                      <div className="text-2xs text-muted-foreground mb-1">Debt-to-Income</div>
+                      <div className="text-2xs text-muted-foreground mb-1">สัดส่วนหนี้ต่อรายได้</div>
                       <div
                         className={`text-lg font-bold ${
                           (riskScore.debtToIncome ?? 0) <= 40
@@ -586,8 +589,8 @@ export default function CreditCheckCreateModal({
               )}
 
               <div className="mt-4">
-                <label className="block text-xs font-medium text-foreground mb-1.5">หมายเหตุ</label>
-                <textarea
+                <label htmlFor={`${uiFieldId}-6`} className="block text-xs font-medium text-foreground mb-1.5">หมายเหตุ</label>
+                <textarea id={`${uiFieldId}-6`}
                   value={reviewNotesDraft}
                   onChange={(e) => onReviewNotesDraftChange(e.target.value)}
                   rows={2}
@@ -602,13 +605,13 @@ export default function CreditCheckCreateModal({
         {/* Footer */}
         {selectedCustomer && (
           <div className="sticky bottom-0 z-10 bg-background/95 backdrop-blur-xs border-t px-6 py-4 flex items-center justify-between">
-            <button
+            <button data-ui-control="button"
               onClick={onClose}
               className="px-4 py-2 text-sm border border-input rounded-lg hover:bg-muted"
             >
               ยกเลิก
             </button>
-            <button
+            <button data-ui-control="button"
               onClick={onSave}
               disabled={isSaving}
               className="px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"

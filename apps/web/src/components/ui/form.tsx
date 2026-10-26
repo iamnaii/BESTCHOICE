@@ -6,8 +6,8 @@ import {
   type FieldValues,
   type FieldPath,
   type ControllerProps,
-  type UseFormReturn,
 } from 'react-hook-form';
+import { Slot } from '@radix-ui/react-slot';
 import { cn } from '@/lib/utils';
 import { Label } from '@/components/ui/label';
 
@@ -23,6 +23,7 @@ type FormFieldContextValue<
 };
 
 const FormFieldContext = React.createContext<FormFieldContextValue>({} as FormFieldContextValue);
+const FormItemContext = React.createContext<{ id: string }>({ id: '' });
 
 function FormField<
   TFieldValues extends FieldValues = FieldValues,
@@ -38,26 +39,36 @@ function FormField<
 /* ─── useFormField hook ─── */
 function useFormField() {
   const fieldContext = React.useContext(FormFieldContext);
+  const { id } = React.useContext(FormItemContext);
   const { getFieldState, formState } = useFormContext();
   const fieldState = getFieldState(fieldContext.name, formState);
 
   return {
     name: fieldContext.name,
+    formItemId: `${id}-control`,
+    formDescriptionId: `${id}-description`,
+    formMessageId: `${id}-error`,
     ...fieldState,
   };
 }
 
 /* ─── Form Item ─── */
 function FormItem({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
-  return <div data-slot="form-item" className={cn('space-y-1.5', className)} {...props} />;
+  const id = React.useId();
+  return (
+    <FormItemContext.Provider value={{ id }}>
+      <div data-slot="form-item" className={cn('min-w-0 space-y-1.5', className)} {...props} />
+    </FormItemContext.Provider>
+  );
 }
 
 /* ─── Form Label ─── */
 function FormLabel({ className, ...props }: React.ComponentProps<typeof Label>) {
-  const { error } = useFormField();
+  const { error, formItemId } = useFormField();
   return (
     <Label
       data-slot="form-label"
+      htmlFor={formItemId}
       className={cn(
         'text-xs font-medium',
         error && 'text-destructive',
@@ -69,13 +80,14 @@ function FormLabel({ className, ...props }: React.ComponentProps<typeof Label>) 
 }
 
 /* ─── Form Control — wraps the input with aria attributes ─── */
-function FormControl({ ...props }: React.ComponentProps<'div'>) {
-  const { error, name } = useFormField();
+function FormControl({ ...props }: React.ComponentProps<typeof Slot>) {
+  const { error, formItemId, formDescriptionId, formMessageId } = useFormField();
   return (
-    <div
+    <Slot
       data-slot="form-control"
+      id={formItemId}
       aria-invalid={!!error}
-      aria-describedby={error ? `${name}-error` : undefined}
+      aria-describedby={error ? `${formDescriptionId} ${formMessageId}` : formDescriptionId}
       {...props}
     />
   );
@@ -83,8 +95,10 @@ function FormControl({ ...props }: React.ComponentProps<'div'>) {
 
 /* ─── Form Description ─── */
 function FormDescription({ className, ...props }: React.HTMLAttributes<HTMLParagraphElement>) {
+  const { formDescriptionId } = useFormField();
   return (
     <p
+      id={formDescriptionId}
       data-slot="form-description"
       className={cn('text-2xs text-muted-foreground', className)}
       {...props}
@@ -94,14 +108,14 @@ function FormDescription({ className, ...props }: React.HTMLAttributes<HTMLParag
 
 /* ─── Form Message (error) ─── */
 function FormMessage({ className, children, ...props }: React.HTMLAttributes<HTMLParagraphElement>) {
-  const { error, name } = useFormField();
+  const { error, formMessageId } = useFormField();
   const body = error ? String(error.message) : children;
 
   if (!body) return null;
 
   return (
     <p
-      id={`${name}-error`}
+      id={formMessageId}
       data-slot="form-message"
       className={cn('text-2xs font-medium text-destructive animate-in fade-in-0 slide-in-from-top-1 duration-200', className)}
       {...props}

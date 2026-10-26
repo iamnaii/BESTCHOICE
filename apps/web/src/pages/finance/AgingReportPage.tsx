@@ -1,4 +1,7 @@
-import { useState } from 'react';
+import ScreenTable from '@/components/ui/ScreenTable';
+import { OVERDUE_BUCKETS } from '@/lib/aging-presentation';
+import { toBangkokDateString } from '@/lib/date';
+import { useId as useUiFieldId, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router';
 import api from '@/lib/api';
@@ -31,40 +34,11 @@ interface AgingData {
   customers: AgingCustomer[];
 }
 
-const BUCKET_KEYS = [
-  'bucket_0_30',
-  'bucket_31_60',
-  'bucket_61_90',
-  'bucket_90_plus',
-] as const;
-
-const BUCKET_LABELS: Record<string, string> = {
-  bucket_0_30: '0–30 วัน',
-  bucket_31_60: '31–60 วัน',
-  bucket_61_90: '61–90 วัน',
-  bucket_90_plus: '90+ วัน',
-};
-
-const BUCKET_BAR_COLORS: Record<string, string> = {
-  bucket_0_30: 'bg-success',
-  bucket_31_60: 'bg-warning',
-  bucket_61_90: 'bg-orange-500',
-  bucket_90_plus: 'bg-destructive',
-};
-
-const BUCKET_VALUE_COLORS: Record<string, string> = {
-  bucket_0_30: 'text-success',
-  bucket_31_60: 'text-warning-strong',
-  bucket_61_90: 'text-orange-500',
-  bucket_90_plus: 'text-destructive',
-};
-
-const BUCKET_BADGE_COLORS: Record<string, string> = {
-  bucket_0_30: 'bg-success/10 text-success',
-  bucket_31_60: 'bg-warning/10 text-warning-strong',
-  bucket_61_90: 'bg-orange-500/10 text-orange-600',
-  bucket_90_plus: 'bg-destructive/10 text-destructive',
-};
+const BUCKET_KEYS = OVERDUE_BUCKETS.map(bucket => bucket.key);
+const BUCKET_LABELS: Record<string, string> = Object.fromEntries(OVERDUE_BUCKETS.map(b => [b.key, b.label]));
+const BUCKET_BAR_COLORS: Record<string, string> = Object.fromEntries(OVERDUE_BUCKETS.map(b => [b.key, b.bar]));
+const BUCKET_VALUE_COLORS: Record<string, string> = Object.fromEntries(OVERDUE_BUCKETS.map(b => [b.key, b.text]));
+const BUCKET_BADGE_COLORS: Record<string, string> = Object.fromEntries(OVERDUE_BUCKETS.map(b => [b.key, b.badge]));
 
 function fmt(n: number | null | undefined): string {
   if (n == null) return '0.00';
@@ -75,8 +49,9 @@ const inputClass =
   'w-full px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden';
 
 export default function AgingReportPage() {
+  const uiFieldId = useUiFieldId();
   const now = new Date();
-  const [asOfDate, setAsOfDate] = useState(now.toISOString().split('T')[0]);
+  const [asOfDate, setAsOfDate] = useState(toBangkokDateString(now));
   const { cacheTtlReports } = useUiFlags();
 
   const {
@@ -99,16 +74,16 @@ export default function AgingReportPage() {
     <div>
       <PageHeader
         title="รายงานลูกหนี้ + วิเคราะห์อายุหนี้"
-        subtitle="Aging Report — แยกตามอายุหนี้ที่ค้างชำระ"
+        subtitle="นับวันเกินกำหนดชำระ ไม่รวมยอดที่ยังไม่ถึงกำหนด"
         icon={<AlertTriangle className="size-6" />}
       />
 
       <div className="flex flex-wrap gap-3 mb-6">
         <div>
-          <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
+          <label htmlFor={`${uiFieldId}-1`} className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
             ณ วันที่
           </label>
-          <ThaiDateInput
+          <ThaiDateInput id={`${uiFieldId}-1`}
             value={asOfDate}
             onChange={(e) => setAsOfDate(e.target.value)}
             className={`${inputClass} w-auto`}
@@ -174,7 +149,7 @@ export default function AgingReportPage() {
                   </div>
                 ) : (
                   <div className="overflow-x-auto">
-                    <table className="w-full text-sm leading-snug">
+                    <ScreenTable className="w-full text-sm leading-snug">
                       <thead className="bg-muted/50">
                         <tr>
                           <th className="text-left p-3 font-medium text-muted-foreground">ลูกค้า</th>
@@ -219,7 +194,7 @@ export default function AgingReportPage() {
                           </tr>
                         ))}
                       </tbody>
-                    </table>
+                    </ScreenTable>
                   </div>
                 )}
               </CardContent>

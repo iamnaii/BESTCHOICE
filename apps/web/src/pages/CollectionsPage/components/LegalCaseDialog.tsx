@@ -1,3 +1,4 @@
+import { NativeSelect } from '@/components/ui/native-select';
 import { useEffect, useRef, useState } from 'react';
 import { Loader2, Upload, FileText } from 'lucide-react';
 import { toast } from 'sonner';
@@ -220,18 +221,18 @@ export default function LegalCaseDialog({ open, onClose, contractId }: Props) {
                 <div className="flex gap-2 items-end">
                   <div className="space-y-1 flex-1">
                     <Label htmlFor="legal-doc-kind">ประเภท</Label>
-                    <select
+                    <NativeSelect wrapperClassName="max-w-full w-full"
                       id="legal-doc-kind"
                       value={docKind}
                       onChange={(e) => setDocKind(e.target.value as LegalDocKind)}
-                      className="w-full rounded-md border border-border bg-background px-2 py-2 text-sm"
+                      className="rounded-md border border-border bg-background px-2 py-2 text-sm"
                     >
                       {DOC_KIND_OPTIONS.map((o) => (
                         <option key={o.value} value={o.value}>
                           {o.label}
                         </option>
                       ))}
-                    </select>
+                    </NativeSelect>
                   </div>
                   <Button
                     type="button"

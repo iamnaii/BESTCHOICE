@@ -246,7 +246,7 @@ export class AccessShopBoundaries implements OnModuleInit {
     switch (route) {
       case 'ProductsController.findAll': return products().findAll(pagination, req.user, textFilter(query, 'search'), textFilter(query, 'branchId'), status, textFilter(query, 'category'), textFilter(query, 'brand'), textFilter(query, 'supplierId'), textFilter(query, 'model'), textFilter(query, 'storage'), textFilter(query, 'deviceOrigin'), textFilter(query, 'compatibleWithProductId'));
       case 'ProductsController.getStock': return products().getStock(pagination, req.user, textFilter(query, 'search'), textFilter(query, 'branchId'), textFilter(query, 'status'), textFilter(query, 'category'), textFilter(query, 'brand'));
-      case 'ProductsController.getStockDashboard': return products().getStockDashboard(textFilter(query, 'branchId'));
+      case 'ProductsController.getStockDashboard': return products().getStockDashboard(req.user, textFilter(query, 'branchId'));
       case 'ProductsController.getBrands': return products().getBrands();
       case 'ProductsController.findAccessorySkus': return products().findAccessorySkus(req.user, textFilter(query, 'search'), textFilter(query, 'limit'));
       case 'ProductsController.getWarrantyExpiring': {

@@ -7,6 +7,14 @@ import { loadVatRateDecimal } from '../../../utils/vat-rate.util';
 import { PoQueryService } from './po-query.service';
 import { SUPPLIER_TERMS_SELECT, computePoAmounts, resolvePaymentTerms, assertPoNetNotNegative } from './po-amounts.util';
 import { DepositOutcomeInput, SupplierPaymentService } from './supplier-payment.service';
+import { closeDepositRejectTodos } from './po-deposit-reject-todo';
+
+export interface ClosePOShortInput {
+  /** เหตุผลที่ปิดใบ (บังคับ) — ขึ้นในประวัติของใบ */
+  reason: string;
+  /** ผลของมัดจำค้าง (ถ้ามี) — กติกาเดียวกับยกเลิกใบ */
+  deposit?: DepositOutcomeInput;
+}
 
 /**
  * วันที่คาดรับสินค้าต้องไม่ก่อนวันที่สั่งซื้อ — compared at day granularity (UTC).
@@ -268,6 +276,65 @@ export class PoLifecycleService {
       ? await this.supplierPayments.notifyPeriodClosed(result.depositClosed, userId)
       : false;
     return { ...result.updated, depositClosed: result.depositClosed, accountingNotified };
+  }
+
+  /**
+   * ปิดใบ รับไม่ครบ (คำตัดสินเจ้าของ 2026-10-11 — เคาะตาม mockup 4 ข้อ): ใบที่รับของบางส่วนแล้วผู้จัดจำหน่ายไม่ส่งที่เหลือ
+   *  1. OWNER / BRANCH_MANAGER ปิดได้ — เฉพาะใบสถานะ "รับบางส่วน" (PARTIALLY_RECEIVED)
+   *  2. ปิดแล้วแก้ไม่ได้ — ของที่มาทีหลังต้องเปิดใบใหม่ (สถานะ CLOSED_SHORT ไม่อยู่ใน allow-list ของการรับของ/ยกเลิก)
+   *  3. ยอดสุทธิของใบคงเดิม แต่เพดานจ่าย = มูลค่าของที่รับจริงตามบัญชี (supplierPaymentPosition capToBooked)
+   *  4. ใบหายจากการ์ด "รับบางส่วน" / "เลยกำหนดส่ง" เอง (นับตามสถานะ)
+   * มัดจำค้าง (ถ้ามี) ปิดด้วยกติกาเดียวกับยกเลิกใบ — ได้คืน / ไม่ได้คืน — ใน tx เดียวกัน · ต้องไม่มีเครื่องของใบนี้ค้างในคิวรอถ่ายรูป
+   * (หน่วยเหล่านั้นยังไม่ลงบัญชี มัดจำที่ค้างอาจเป็นของมัน — ยืนยันรูปหรือตีกลับให้ครบก่อน) · งานตีกลับ (po-deposit-reject) ของใบปิดให้เอง
+   */
+  async closeShort(id: string, userId: string, input: ClosePOShortInput) {
+    const reason = input.reason?.trim();
+    if (!reason) throw new BadRequestException('กรุณาระบุเหตุผลที่ปิดใบ');
+    const po = await this.query.findOne(id);
+    if (po.status !== 'PARTIALLY_RECEIVED') {
+      throw new BadRequestException('ปิดใบ รับไม่ครบ ได้เฉพาะใบที่รับสินค้าบางส่วนแล้ว (สถานะ "รับบางส่วน") — ใบที่ยังไม่ได้รับของใช้ปุ่มยกเลิก PO');
+    }
+
+    const result = await this.prisma.$transaction(
+      async (tx) => {
+        // ล็อกแถวใบแล้วอ่านสถานะใหม่ใน tx — การรับของ/ยกเลิกที่ commit ระหว่างอ่านกับเขียนต้องไม่ถูกเขียนทับ (กติกาเดียวกับ cancel)
+        await tx.$queryRaw`SELECT id FROM purchase_orders WHERE id = ${id} FOR UPDATE`;
+        const fresh = await tx.purchaseOrder.findUnique({
+          where: { id },
+          select: { status: true, netAmount: true, items: { where: { deletedAt: null }, select: { quantity: true, receivedQty: true } } },
+        });
+        if (!fresh || fresh.status !== 'PARTIALLY_RECEIVED') {
+          throw new BadRequestException('ใบสั่งซื้อเปลี่ยนสถานะระหว่างทำรายการ — รีเฟรชแล้วลองใหม่');
+        }
+        const photoPending = await tx.product.count({ where: { poId: id, status: 'PHOTO_PENDING', deletedAt: null } });
+        if (photoPending > 0) {
+          throw new BadRequestException(
+            `มีเครื่องจากใบนี้รอถ่ายรูปอยู่ ${photoPending} ชิ้น — ยืนยันรูปเข้าคลังหรือกด "ไม่รับเข้าคลัง" ให้ครบก่อน จึงปิดใบได้`,
+          );
+        }
+        const depositClosed = await this.supplierPayments.closeDepositsOnCancelInTx(tx, id, input.deposit, userId, new Date(), 'ปิดใบ');
+        const unreceivedQty = fresh.items.reduce((sum, i) => sum + Math.max(i.quantity - i.receivedQty, 0), 0);
+        const updated = await tx.purchaseOrder.update({
+          where: { id },
+          data: { status: 'CLOSED_SHORT', closedAt: new Date(), closedById: userId, closeReason: reason },
+        });
+        // เพดานจ่ายเปลี่ยนเป็นของที่รับจริงทันทีที่ปิด — คอลัมน์สรุป paidAmount/paymentStatus ต้องคิดใหม่ด้วยสถานะใหม่
+        // (ไม่งั้นใบที่จ่ายค่าของที่รับครบแล้วยังค้างใน AP / การ์ดค้างจ่าย — ผู้ตรวจอิสระ 2026-10-11 ข้อ 2)
+        await this.supplierPayments.refreshPoSummaryInTx(
+          tx,
+          id,
+          await this.supplierPayments.positionInTx(tx, { id, netAmount: fresh.netAmount, status: 'CLOSED_SHORT' }),
+        );
+        // มัดจำค้างของใบเป็นศูนย์แล้วทุกกรณี (ไม่มี = null · มี = ปิดข้างบน) ⇒ งานตีกลับที่เปิดอยู่จบ
+        const todosClosed = await closeDepositRejectTodos(tx, id);
+        return { updated, depositClosed, unreceivedQty, todosClosed };
+      },
+      { timeout: 30_000 },
+    );
+    const accountingNotified = result.depositClosed?.periodClosed
+      ? await this.supplierPayments.notifyPeriodClosed(result.depositClosed, userId)
+      : false;
+    return { ...result.updated, depositClosed: result.depositClosed, accountingNotified, unreceivedQty: result.unreceivedQty, todosClosed: result.todosClosed };
   }
 
   /**

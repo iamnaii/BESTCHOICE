@@ -392,7 +392,7 @@ describe('DOC-08 dividend withholding certificates and register — real equity 
         return dialog.innerText();
       };
       const closeCertificate = async () => {
-        await dialog.getByRole('button', { name: 'ปิด' }).click();
+        await dialog.getByRole('button', { name: 'ปิด', exact: true }).first().click();
         await dialog.waitFor({ state: 'hidden', timeout: 15_000 });
       };
 
@@ -466,7 +466,7 @@ describe('DOC-08 dividend withholding certificates and register — real equity 
         expect(noFinance).not.toContain('หนังสือรับรองการหักภาษี ณ ที่จ่าย');
         expect(await dialog.getByRole('button', { name: 'พิมพ์' }).count()).toBe(0);
         noFinanceShot = saveArtifact(DOMAIN, 'certificate-no-finance-1440.png', await page.screenshot({ fullPage: true })).relativePath;
-        await dialog.getByRole('button', { name: 'ปิด' }).click();
+        await dialog.getByRole('button', { name: 'ปิด', exact: true }).first().click();
         await dialog.waitFor({ state: 'hidden', timeout: 15_000 });
       } finally {
         await h.prisma.companyInfo.update({ where: { id: financeRow.id }, data: { companyCode: 'FINANCE' } });

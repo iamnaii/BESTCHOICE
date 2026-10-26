@@ -6,6 +6,15 @@ import { AccessProcurementSourceService } from '../../src/modules/employee-acces
 import { AccessDocumentTemplateBoundaries } from '../../src/modules/employee-access/access-document-template-boundaries';
 import { AccessResourceService } from '../../src/modules/employee-access/access-resource.service';
 import { AccessSnapshotService } from '../../src/modules/employee-access/access-snapshot.service';
+import { CustomerBlacklistService } from '../../src/modules/customers/customer-blacklist.service';
+import { CustomerPiiService } from '../../src/modules/customers/customer-pii.service';
+import { AppointmentConfirmationService } from '../../src/modules/store-appointments/appointment-confirmation.service';
+import { StoreAppointmentsController } from '../../src/modules/store-appointments/store-appointments.controller';
+import { AppointmentLinksController, AppointmentPublicController } from '../../src/modules/store-appointments/appointment-links.controller';
+import { StoreAppointmentsService } from '../../src/modules/store-appointments/store-appointments.service';
+import { AppointmentScheduleService } from '../../src/modules/store-appointments/appointment-schedule.service';
+import { AppointmentLinksService } from '../../src/modules/store-appointments/appointment-links.service';
+import { seedAppointmentPreview } from './preview-appointments-fixture';
 import { FacebookCommentRefreshService } from '../../src/modules/staff-chat/services/facebook-comment-refresh.service';
 import { FacebookCommentIngestService } from '../../src/modules/chat-adapters/facebook-comment-ingest.service';
 import { ChatLibraryController } from '../../src/modules/staff-chat/chat-library.controller';
@@ -46,6 +55,8 @@ import { ChatWorkSettingsService } from '../../src/modules/staff-chat/services/c
 import { StaffInboxController } from '../../src/modules/staff-chat/staff-inbox.controller';
 import { StaffInboxService } from '../../src/modules/staff-chat/services/staff-inbox.service';
 import { ChatWorkAccessService } from '../../src/modules/staff-chat/services/chat-work-access.service';
+import { SessionQueryDto } from '../../src/modules/chat-engine/dto/session-query.dto';
+import { ChatChannel } from '@prisma/client';
 import { ResponseCycleService } from '../../src/modules/chat-engine/services/response-cycle.service';
 import { seedChatWork, previewWorkController } from './preview-chat-work-fixture';
 import { chromium } from 'playwright';
@@ -85,7 +96,7 @@ import { CreateContractDto } from '../../src/modules/contracts/dto/contract.dto'
 import { loadInstallmentConfig } from '../../src/utils/config.util';
 /** Isolated manual preview. Never imported by AppModule or deployed with API source. */
 import 'reflect-metadata';
-import { Body, Controller, Get, Param, Patch, Post, Query, ValidationPipe } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Param, Patch, Post, Query, ValidationPipe } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import { createReadStream, existsSync, readFileSync, writeFileSync } from 'node:fs';
@@ -193,9 +204,11 @@ const promotions = new PromotionsService(db);
 const gfin = new GfinConfigService(db, new AuditService(db));
 const lifecycle = new ContractLifecycleService(db, contractQuery,
   { execute: async () => ({}) } as never, { execute: async () => ({}) } as never,
-  { resolveBranchCashAccount: async () => 'S11-1101', resolveInflowCashAccount: async () => 'S11-1101' } as never);
+  { resolveBranchCashAccount: async () => 'S11-1101', resolveInflowCashAccount: async () => 'S11-1101' } as never,
+  new CustomerBlacklistService(db, new CustomerPiiService(db)));
 const manager = Object.assign(Object.create(RoomManagerService.prototype), {
   prisma: db,
+  storageService: { configured: false },
   responseCycles: new ResponseCycleService(db),
 }) as RoomManagerService;
 const sampleResult = {
@@ -317,7 +330,7 @@ class PreviewController {
   @Get('customers/upsell-candidates') customerUpsell(@Query('limit') limit = '5') {
     return customerAnalytics.getUpsellCandidates(undefined, Math.max(1, Math.min(parseInt(limit, 10) || 5, 50)));
   }
-  @Get('reports/entity-profit') entityProfit(@Query('startDate') startDate?: string, @Query('endDate') endDate?: string) {
+  @Get('reports/entity-profit') entityProfit(@Query('startDate') startDate: string, @Query('endDate') endDate: string) {
     return revenueReports.getEntityProfitReport(startDate, endDate);
   }
   @Get('reports/comparative-pl') comparativePL(@Query('year') year: string, @Query('month') month: string) {
@@ -381,6 +394,23 @@ class PreviewController {
   @Post('preview/fixture') fixture() {
     return fixture(`ทดสอบเบราว์เซอร์ ${Date.now()}`);
   }
+  @Post('preview/message-search-fixture') async messageSearchFixture() {
+    const key = `ค้นย้อนหลัง-${randomUUID().slice(0, 8)}`;
+    const room = await db.chatRoom.create({ data: {
+      channel: 'LINE_SHOP', displayName: 'ห้องตรวจค้นข้อความย้อนหลัง', assignedToId: actor.id,
+      lastMessageAt: new Date(), waitingSince: new Date(), lastCustomerAt: new Date(),
+    } });
+    const start = Date.now() - 180 * 60_000;
+    const target = await db.chatMessage.create({ data: {
+      roomId: room.id, role: 'CUSTOMER', type: 'TEXT',
+      text: `รายละเอียดรุ่นที่คุยกันก่อนหน้านี้ ${key} ขอสีดำค่ะ`, createdAt: new Date(start),
+    } });
+    await db.chatMessage.createMany({ data: Array.from({ length: 150 }, (_, i) => ({
+      roomId: room.id, role: 'CUSTOMER' as const, type: 'TEXT' as const,
+      text: `บทสนทนาต่อมา ${i + 1}`, createdAt: new Date(start + (i + 1) * 60_000),
+    })) });
+    return { roomId: room.id, messageId: target.id, key, text: target.text };
+  }
   @Post('preview/actor/:key') switchActor(@Param('key') key: string) {
     if (!previewActors[key]) throw new BadRequestException('Unknown synthetic actor');
     actor = previewActors[key];
@@ -395,7 +425,15 @@ class PreviewController {
       primaryCompany: 'SHOP',
     };
   }
-  @Get('staff-chat/rooms') async rooms(@Query('company') company = 'SHOP') {
+  @Get('staff-chat/rooms') async rooms(@Query('company') company = 'SHOP', @Query() query: SessionQueryDto) {
+    // Search exercises the real production predicate and permission checks on synthetic data.
+    if (query.search) return manager.listRooms({
+      company: company.toUpperCase() === 'FINANCE' ? 'FINANCE' : 'SHOP', search: query.search,
+      waiting: query.waiting, expired: query.expired, openOnly: query.openOnly,
+      assignedToId: query.assignedToId, unassignedOnly: query.unassignedOnly,
+      channels: query.channels?.split(',') as ChatChannel[] | undefined,
+      page: query.page, limit: query.limit,
+    }, actor);
     const data = await db.chatRoom.findMany({
       where: { deletedAt: null, channel: company.toUpperCase() === 'FINANCE' ? 'LINE_FINANCE' : { not: 'LINE_FINANCE' } },
       include: { customer: true, assignedTo: { select: { id: true, name: true } } },
@@ -403,8 +441,11 @@ class PreviewController {
     });
     return { data, total: data.length, page: 1, totalPages: 1 };
   }
-  @Get('staff-chat/rooms/counts') counts() {
-    return {};
+  @Get('staff-chat/rooms/counts') counts(@Query('company') company = 'SHOP', @Query('tab') tab?: string) {
+    return manager.getRoomBadgeCounts(actor.id, {
+      company: company.toUpperCase() === 'FINANCE' ? 'FINANCE' : 'SHOP',
+      tab: tab === 'mine' || tab === 'waiting' ? tab : 'all',
+    });
   }
   @Get('staff-chat/ai/settings') settings() {
     return {};
@@ -419,8 +460,13 @@ class PreviewController {
       notes: [],
     };
   }
-  @Get('staff-chat/rooms/:id/messages') async messages(@Param('id') roomId: string) {
-    const messages = await db.chatMessage.findMany({ where: { roomId }, orderBy: { createdAt: 'asc' } });
+  @Get('staff-chat/rooms/:id/messages/search') async searchRoomMessages(@Param('id') roomId: string, @Query('q') q: string, @Query('page') page = '1', @Query('company') company?: string) {
+    return manager.searchRoomMessages(roomId, { q: q.trim(), page: Math.max(1, Number(page) || 1), limit: 20 }, actor, company?.toUpperCase() === 'FINANCE' ? 'FINANCE' : 'SHOP');
+  }
+  @Get('staff-chat/rooms/:id/messages') async messages(@Param('id') roomId: string, @Query('around') around?: string, @Query('company') company?: string) {
+    const messages = around
+      ? await manager.getMessageContext(roomId, around, actor, company?.toUpperCase() === 'FINANCE' ? 'FINANCE' : 'SHOP')
+      : await manager.getRecentMessages(roomId, 100);
     return messages.map(message => ({...message, mediaUrl: message.mediaUrl?.startsWith('staff-chat/library/') ? `/api/admin/preview/library/media/${message.id}` : message.mediaUrl}));
   }
   @Patch('staff-chat/rooms/:id/customer') link(
@@ -534,10 +580,11 @@ async function main() {
   const facebookComments = await previewFacebookComments(db, actor.id);
   await db.systemConfig.upsert({where:{key:'chat_cloud_library_enabled'},create:{key:'chat_cloud_library_enabled',value:'true'},update:{value:'true',deletedAt:null}});
   await db.cannedResponse.upsert({where:{shortcut:'/preview-thanks'},create:{shortcut:'/preview-thanks',title:'ขอบคุณ (ตัวอย่าง)',content:'ขอบคุณที่สนใจ BESTCHOICE ครับ'},update:{}});
+  const appointmentFixture = await seedAppointmentPreview(db, actor.id);
   const library = previewChatLibrary(db, manager, storageForPreview as StorageService, () => actor.id);
   const afterSales = previewAfterSales(db, storageForPreview as StorageService, () => actor);
   const module = await Test.createTestingModule({
-    controllers: [ChatLibraryController, library.controller, previewChatAnalytics(db,manager,()=>actor.id,previewActors.receiver.id), ChatAnalyticsController,
+    controllers: [StoreAppointmentsController, AppointmentLinksController, AppointmentPublicController, ChatLibraryController, library.controller, previewChatAnalytics(db,manager,()=>actor.id,previewActors.receiver.id), ChatAnalyticsController,
       ChatServiceRequestController, AfterSalesController, afterSales.controller,
       FacebookCommentsController, facebookComments.controller,
       ChatHandoffController, RoomNotesController, TodosController, ChatFollowUpController, ChatSalesContextController, ChatWorkController, ChatWorkSettingsController, StaffInboxController, previewWorkController(db, manager, () => actor.id),
@@ -550,7 +597,7 @@ async function main() {
       GlobalCreditCheckController,
       PreviewController,
     ],
-    providers: [GeneratedDocumentsService, AccessGeneratedDocumentsBoundaries, ChatLibraryService, ChatLibraryDeliveryService, { provide: MessageRouterService, useValue: library.router }, ChatAnalyticsV2Service, ChatSalesAttributionService,
+    providers: [GeneratedDocumentsService, AccessGeneratedDocumentsBoundaries, AppointmentConfirmationService, StoreAppointmentsService, AppointmentScheduleService, AppointmentLinksService, ChatLibraryService, ChatLibraryDeliveryService, { provide: MessageRouterService, useValue: library.router }, ChatAnalyticsV2Service, ChatSalesAttributionService,
       ChatServiceRequestService, ChatServiceCaseLinkService, ...afterSales.providers,
       FacebookCommentRefreshService, { provide: FacebookCommentIngestService, useValue: facebookComments.ingest }, FacebookCommentWorkService, FacebookCommentReplyService, { provide: FacebookCommentClient, useValue: facebookComments.client },
       ChatHandoffService, NoteMentionService, { provide: StaffMessageService, useValue: Object.assign(Object.create(StaffMessageService.prototype), { prisma: db }) }, ChatSalesDispositionService, TodosService, ChatFollowUpService, ChatSalesContextService, JourneySummaryService, JourneyStateService, ChatWorkQueryService, ChatWorkSettingsService, StaffInboxService, ChatWorkAccessService,
@@ -646,11 +693,12 @@ async function main() {
     )
       return res.json({ data: [], total: 0 });
     if (
+      /^\/api\/(store-appointments|store-appointment-links|store-appointments-public)(\/|$)/.test(path) ||
       /^\/api\/(todos|trade-ins|contacts|promotions|gfin-config|documents|preview|auth\/me|credit-checks|ocr\/bank-statement|products|contracts|interest-configs|sales|bookings)/.test(path) || path.startsWith('/api/chat-analytics/v2/') || path.startsWith('/api/staff-chat/facebook-comments') || path.startsWith('/api/staff-chat/service-requests/') || path.startsWith('/api/after-sales') || path === '/api/customers' || path === '/api/users' ||
       /^\/api\/customers\/(search|[^/]+(?:\/credit-check.*|\/detail|\/journey(?:\/summary)?)?)$/.test(path) ||
       (path === '/api/staff-chat/canned-responses' || /^\/api\/staff-chat\/rooms\/[^/]+\/canned-responses\/[^/]+\/preview$/.test(path)) ||
       /^\/api\/staff-chat\/library\//.test(path) ||
-      /^\/api\/staff-chat\/rooms(?:\/(counts|[^/]+(?:\/(messages|read|notes(?:\/[^/]+(?:\/pin)?)?|products|cross-channel|sales-disposition|eligible-staff|handoffs|follow-ups|service-requests|service-intake-options|finance-applications|sales-context(?:\/credit\/[^/]+)?|customer|prepare-offer|credit-check.*))?))?$/.test(
+      /^\/api\/staff-chat\/rooms(?:\/(counts|[^/]+(?:\/(messages(?:\/search)?|read|notes(?:\/[^/]+(?:\/pin)?)?|products|cross-channel|sales-disposition|eligible-staff|handoffs|follow-ups|service-requests|service-intake-options|finance-applications|sales-context(?:\/credit\/[^/]+)?|customer|prepare-offer|credit-check.*))?))?$/.test(
         path,
       ) ||
       /^\/api\/staff-chat\/(handoffs\/[^/]+|follow-ups\/[^/]+|work|work-settings|work-notifications(?:\/[^/]+\/read)?|work-targets\/[^/]+\/[^/]+)$/.test(path) ||
@@ -681,10 +729,13 @@ async function main() {
       stdio: ['ignore', 'inherit', 'inherit', 'ipc'],
     },
   );
+  const appointmentMessages = module.get(AppointmentConfirmationService);
+  const confirmationTimer = setInterval(() => void appointmentMessages.flush(), 1000);
   let stopping = false;
   const stop = async (code = 0) => {
     if (stopping) return;
     stopping = true;
+    clearInterval(confirmationTimer);
     if (vite.pid && vite.exitCode === null && vite.signalCode === null) {
       const exited = new Promise<void>(resolve => vite.once('exit', () => resolve()));
       vite.kill('SIGTERM');
@@ -704,6 +755,7 @@ async function main() {
     vite.once('message', () => { clearTimeout(timeout); ready(); });
   });
   info = {
+    appointmentFixture,
     chatWorkRooms,
     previewActors,
     isolated: true,

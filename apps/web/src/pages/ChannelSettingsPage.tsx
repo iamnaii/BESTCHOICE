@@ -1,9 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useId, useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
 import { toast } from 'sonner';
 import PageHeader from '@/components/ui/PageHeader';
 import QueryBoundary from '@/components/QueryBoundary';
+import { formControlClass, formLabelClass } from '@/components/ui/form-styles';
 import { Save, Eye, EyeOff, CheckCircle, XCircle, Copy, ExternalLink } from 'lucide-react';
 
 interface ChannelConfig {
@@ -26,9 +27,9 @@ const CHANNEL_META: Record<string, { color: string; icon: string; fields: { key:
     color: 'bg-success',
     icon: '💚',
     fields: [
-      { key: 'line_finance_channel_access_token', label: 'Channel Access Token (Finance)', secret: true, placeholder: 'Token ของ OA "ชำระค่างวด"' },
-      { key: 'line_finance_channel_secret', label: 'Channel Secret (Finance)', secret: true, placeholder: 'Secret ของ OA "ชำระค่างวด"' },
-      { key: 'line_finance_liff_id', label: 'LIFF ID (Finance)', secret: false, placeholder: 'สำหรับ verify ตัวตน' },
+      { key: 'line_finance_channel_access_token', label: "Channel Access Token (งานการเงิน)", secret: true, placeholder: 'Token ของ OA "ชำระค่างวด"' },
+      { key: 'line_finance_channel_secret', label: "Channel Secret (งานการเงิน)", secret: true, placeholder: 'Secret ของ OA "ชำระค่างวด"' },
+      { key: 'line_finance_liff_id', label: "LIFF ID (งานการเงิน)", secret: false, placeholder: "สำหรับยืนยันตัวตน" },
     ],
   },
   FACEBOOK: {
@@ -37,7 +38,7 @@ const CHANNEL_META: Record<string, { color: string; icon: string; fields: { key:
     fields: [
       { key: 'fb_page_access_token', label: 'Page Access Token', secret: true, placeholder: 'ดึงจาก Facebook Developer Console' },
       { key: 'fb_page_id', label: 'Page ID', secret: false, placeholder: 'เช่น 1234567890' },
-      { key: 'fb_app_secret', label: 'App Secret', secret: true, placeholder: 'สำหรับ verify webhook signature' },
+      { key: 'fb_app_secret', label: 'App Secret', secret: true, placeholder: "สำหรับตรวจสอบลายเซ็น webhook" },
       { key: 'fb_verify_token', label: 'Verify Token', secret: false, placeholder: 'กำหนดเอง สำหรับ webhook verification' },
     ],
   },
@@ -46,12 +47,13 @@ const CHANNEL_META: Record<string, { color: string; icon: string; fields: { key:
     icon: '🎵',
     fields: [
       { key: 'tiktok_bm_access_token', label: 'Business Messaging Access Token', secret: true, placeholder: 'ดึงจาก TikTok Business API Portal' },
-      { key: 'tiktok_bm_business_id', label: 'Business ID', secret: false, placeholder: 'TikTok Business Account ID' },
+      { key: 'tiktok_bm_business_id', label: "รหัสธุรกิจ", secret: false, placeholder: 'TikTok Business Account ID' },
     ],
   },
 };
 
 export default function ChannelSettingsPage() {
+  const fieldId = useId();
   const queryClient = useQueryClient();
   const [forms, setForms] = useState<Record<string, Record<string, string>>>({});
   const [showSecrets, setShowSecrets] = useState<Record<string, boolean>>({});
@@ -108,8 +110,8 @@ export default function ChannelSettingsPage() {
             return (
               <div key={channelKey} className="bg-card rounded-xl shadow-sm overflow-hidden">
                 {/* Header */}
-                <div className="flex items-center justify-between px-6 py-4 border-b border-border">
-                  <div className="flex items-center gap-3">
+                <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-4 sm:px-6 border-b border-border">
+                  <div className="flex min-w-0 items-center gap-3">
                     <span className="text-2xl">{meta.icon}</span>
                     <div>
                       <h3 className="font-semibold text-foreground">{channelCfg.label}</h3>
@@ -128,10 +130,10 @@ export default function ChannelSettingsPage() {
                       </div>
                     </div>
                   </div>
-                  <button
+                  <button data-ui-control="button"
                     onClick={() => saveMutation.mutate(channelKey)}
                     disabled={saveMutation.isPending}
-                    className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground text-sm rounded-lg hover:bg-primary/90 disabled:opacity-50 transition-colors"
+                    className="flex min-h-11 items-center gap-2 px-4 py-2 bg-primary text-primary-foreground text-sm rounded-lg hover:bg-primary/90 disabled:opacity-50 transition-colors"
                   >
                     <Save className="w-4 h-4" />
                     บันทึก
@@ -139,15 +141,15 @@ export default function ChannelSettingsPage() {
                 </div>
 
                 {/* Fields */}
-                <div className="px-6 py-4 space-y-4">
+                <div className="px-4 py-4 sm:px-6 space-y-5">
                   {meta.fields.map((field) => (
                     <div key={field.key}>
-                      <label className="block text-sm font-medium text-foreground mb-1">
+                      <label htmlFor={`${fieldId}-${field.key}`} className={formLabelClass}>
                         {field.label}
                       </label>
                       <div className="relative">
                         <input
-                          type={field.secret && !showSecrets[field.key] ? 'password' : 'text'}
+                          id={`${fieldId}-${field.key}`} type={field.secret && !showSecrets[field.key] ? 'password' : 'text'}
                           value={forms[channelKey]?.[field.key] ?? ''}
                           onChange={(e) =>
                             setForms((prev) => ({
@@ -156,7 +158,7 @@ export default function ChannelSettingsPage() {
                             }))
                           }
                           placeholder={field.placeholder}
-                          className="w-full px-3 py-2 pr-10 text-sm border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-ring"
+                          className={`${formControlClass} ${field.secret ? 'pr-14' : ''}`}
                         />
                         {field.secret && (
                           <button
@@ -165,7 +167,8 @@ export default function ChannelSettingsPage() {
                               setShowSecrets((prev) => ({ ...prev, [field.key]: !prev[field.key] }))
                             }
                             aria-label={showSecrets[field.key] ? 'ซ่อน secret' : 'แสดง secret'}
-                            className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-muted-foreground hover:text-muted-foreground"
+                            aria-pressed={!!showSecrets[field.key]}
+                            className="absolute right-px top-1/2 -translate-y-1/2 inline-flex size-11 items-center justify-center rounded-lg text-muted-foreground hover:text-foreground"
                           >
                             {showSecrets[field.key] ? (
                               <EyeOff className="w-4 h-4" />
@@ -185,16 +188,16 @@ export default function ChannelSettingsPage() {
                         Webhook URL (ตั้งค่าใน Developer Console)
                       </label>
                       <div className="flex items-center gap-2">
-                        <code className="flex-1 text-xs text-muted-foreground bg-card px-2 py-1.5 rounded border border-border truncate">
+                        <code className="min-w-0 flex-1 text-xs text-muted-foreground bg-card px-2 py-1.5 rounded border border-border truncate">
                           {webhook.url}
                         </code>
-                        <button
+                        <button data-ui-control="button" data-ui-icon="true"
                           onClick={() => {
                             navigator.clipboard.writeText(webhook.url);
                             toast.success('คัดลอก Webhook URL แล้ว');
                           }}
                           aria-label="คัดลอก webhook URL"
-                          className="p-1.5 text-muted-foreground hover:text-muted-foreground"
+                          className="inline-flex size-11 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground"
                         >
                           <Copy className="w-4 h-4" />
                         </button>

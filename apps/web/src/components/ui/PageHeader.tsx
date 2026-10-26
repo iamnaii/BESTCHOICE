@@ -1,9 +1,13 @@
 import { cn } from '@/lib/utils';
 import type { ReactNode } from 'react';
+import InlineHelp from './InlineHelp';
 
 interface PageHeaderProps {
   title: string;
   subtitle?: string;
+  /** Optional background instructions; essential conditions belong in the visible page. */
+  help?: ReactNode;
+  helpLabel?: string;
   icon?: ReactNode;
   action?: ReactNode;
   breadcrumb?: ReactNode;
@@ -19,6 +23,8 @@ interface PageHeaderProps {
 export default function PageHeader({
   title,
   subtitle,
+  help,
+  helpLabel,
   icon,
   action,
   breadcrumb,
@@ -27,14 +33,14 @@ export default function PageHeader({
   className,
 }: PageHeaderProps) {
   return (
-    <div className={cn('flex flex-col gap-2 py-5 mb-5 border-b border-border', className)}>
+    <div className={cn('min-w-0 flex flex-col gap-3 py-5 mb-5 border-b border-border', className)}>
       {breadcrumb}
-      <div className="flex items-center justify-between flex-wrap gap-2">
-        <div className="flex items-center gap-3">
+      <div className="flex min-w-0 items-start justify-between flex-wrap gap-3">
+        <div className="flex min-w-0 max-w-full items-start gap-3">
           {onBack && (
-            <button
+            <button data-ui-control="button" data-ui-icon="true"
               onClick={onBack}
-              className="flex items-center justify-center size-9 rounded-md hover:bg-accent text-muted-foreground transition-colors"
+              className="flex items-center justify-center size-11 shrink-0 rounded-md hover:bg-accent text-muted-foreground transition-colors"
               aria-label="กลับ"
             >
               <svg
@@ -57,14 +63,23 @@ export default function PageHeader({
             </div>
           )}
           <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <h1 className="text-lg font-semibold text-foreground">{title}</h1>
+            <div className="flex min-w-0 flex-wrap items-center gap-2">
+              <h1 className="text-[1.375rem] lg:text-2xl leading-snug font-semibold text-foreground break-words">
+                {title}
+              </h1>
               {badge}
             </div>
-            {subtitle && <p className="text-[13px] text-muted-foreground">{subtitle}</p>}
+            {subtitle && (
+              <p className="mt-1 max-w-prose text-sm leading-relaxed text-muted-foreground break-words">
+                {subtitle}
+              </p>
+            )}
+            {help && <InlineHelp label={helpLabel}>{help}</InlineHelp>}
           </div>
         </div>
-        {action && <div className="flex items-center gap-2.5">{action}</div>}
+        {action && (
+          <div className="flex min-w-0 max-w-full flex-wrap items-center gap-2.5">{action}</div>
+        )}
       </div>
     </div>
   );

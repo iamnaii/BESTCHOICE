@@ -1,4 +1,7 @@
+import { NumberInput } from '@/components/ui/NumberInput';
 import Modal from '@/components/ui/Modal';
+import { useId as useUiFieldId } from 'react';
+
 
 interface Props {
   isOpen: boolean;
@@ -19,15 +22,15 @@ export default function EditSellingPriceModal({
   onSubmit,
   isPending,
 }: Props) {
+  const uiFieldId = useUiFieldId();
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="แก้ราคาขาย">
       <form onSubmit={onSubmit} className="space-y-4">
         <div>
-          <label className="block text-sm font-medium text-foreground mb-1 leading-snug">
+          <label htmlFor={`${uiFieldId}-1`} className="block text-sm font-medium text-foreground mb-1 leading-snug">
             ราคาเงินสด (บาท)
           </label>
-          <input
-            type="number"
+          <NumberInput unstyled id={`${uiFieldId}-1`}
             step="0.01"
             min="1"
             value={cashPrice}
@@ -36,11 +39,10 @@ export default function EditSellingPriceModal({
           />
         </div>
         <div>
-          <label className="block text-sm font-medium text-foreground mb-1 leading-snug">
+          <label htmlFor={`${uiFieldId}-2`} className="block text-sm font-medium text-foreground mb-1 leading-snug">
             ราคาผ่อน — ราคาตั้งต้นสำหรับคำนวณค่างวด (บาท)
           </label>
-          <input
-            type="number"
+          <NumberInput unstyled id={`${uiFieldId}-2`}
             step="0.01"
             min="1"
             value={installmentPrice}
@@ -52,10 +54,10 @@ export default function EditSellingPriceModal({
           ราคานี้คือแหล่งเดียวที่เว็บลูกค้า/บอท/เครื่องคิดค่างวดใช้ — เว้นว่าง = ไม่แก้ไขค่านี้
         </p>
         <div className="flex justify-end gap-3 pt-2">
-          <button type="button" onClick={onClose} className="px-4 py-2 text-sm text-muted-foreground">
+          <button data-ui-control="button" type="button" onClick={onClose} className="px-4 py-2 text-sm text-muted-foreground">
             ยกเลิก
           </button>
-          <button
+          <button data-ui-control="button"
             type="submit"
             disabled={isPending}
             className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 disabled:opacity-50"

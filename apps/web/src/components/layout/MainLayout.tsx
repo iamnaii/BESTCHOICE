@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
+import PageShell from '@/components/ui/PageShell';
+import { useEffect, useRef } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
@@ -7,7 +8,6 @@ import { useGlobalShortcuts } from '@/hooks/useGlobalShortcuts';
 import { useUiFlags } from '@/hooks/useUiFlags';
 import { LayoutProvider, useLayout } from './LayoutContext';
 import Sidebar from './Sidebar';
-import { InboxNavigationContext } from './InboxNavigationContext';
 import TopBar from './TopBar';
 import { Sheet, SheetContent, SheetBody, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import CommandPalette from '@/components/CommandPalette';
@@ -59,7 +59,6 @@ const FULL_BLEED_ROUTES = ['/inbox'];
 
 function MainContent() {
   const isMobile = useIsMobile();
-  const [inboxNavigationHost, setInboxNavigationHost] = useState<HTMLDivElement | null>(null);
   const { effectiveSidebarCollapse, currentZone, workZone, setCurrentZone, enterSettings } = useLayout();
   const { pathname, search, hash } = useLocation();
   // key ของ <main> เปลี่ยนตามหน้า (เพื่อ fadeIn + รีเซ็ตโฟกัสเมื่อเปลี่ยนหน้า) — แต่ห้องแชทอยู่ใน URL
@@ -152,16 +151,19 @@ function MainContent() {
 
   const isFullBleed = FULL_BLEED_ROUTES.some((r) => pathname === r || pathname.startsWith(r + '/'));
 
+  /* /inbox บนจอใหญ่ = พื้นที่งานแชทเต็มจอ ไม่วาดเมนูระบบ (เจ้าของเคาะ 2026-10-07: "เข้าแชทแล้วยุบเมนูอื่นออกเลย
+     ค่อยกดกลับหน้าหลัก") — แถบข้างแบบย่อ ของ inbox เอง (InboxWorkTools) เป็นทางกลับหน้าหลักและสวิตช์หมวดงาน */
+  const hideShellSidebar = isFullBleed && !isMobile;
+
   /* Sidebar offset applied via padding-left so the content
      shifts correctly when sidebar collapses / expands. */
-  const sidebarOffset = isMobile
+  const sidebarOffset = isMobile || hideShellSidebar
     ? 0
     : effectiveSidebarCollapse
       ? SIDEBAR_COLLAPSED_W
-      : isFullBleed ? 188 : SIDEBAR_EXPANDED_W;
+      : SIDEBAR_EXPANDED_W;
 
   return (
-    <InboxNavigationContext.Provider value={{ host: inboxNavigationHost, setHost: setInboxNavigationHost }}>
     <div className="app-shell flex min-h-screen flex-col bg-background">
       <SkipLink />
 
@@ -170,8 +172,8 @@ function MainContent() {
 
       <div className="app-workspace flex flex-1 min-h-0">
 
-      {/* Desktop Sidebar */}
-      {!isMobile && <Sidebar />}
+      {/* Desktop Sidebar — ยกเว้นหน้าแชทที่เป็นพื้นที่งานเต็มจอ */}
+      {!isMobile && !hideShellSidebar && <Sidebar />}
 
       {/* Mobile Sheet Sidebar */}
       {isMobile && <MobileSidebar />}
@@ -192,16 +194,16 @@ function MainContent() {
           {isFullBleed ? (
             <Outlet />
           ) : (
-            <div className="container-fluid px-5 lg:px-7 pt-0 pb-20 lg:pb-8 animate-fadeIn">
+            <PageShell kind={/\/(?:new|create|edit)(?:\/|$)/.test(pathname) ? 'form' : /(?:report|statement|ledger|journal|cash-flow|profit-loss)/.test(pathname) ? 'report' : 'data'}>
               <Outlet />
-            </div>
+            </PageShell>
           )}
         </main>
       </div>
       </div>
 
       {/* Mobile bottom tab bar */}
-      {isMobile && <MobileBottomNav />}
+      {isMobile && !/^\/inbox(?:\/|$)/.test(pathname) && <MobileBottomNav />}
 
       {/* Inbound call popup (Yeastar PBX) */}
       <InboundCallPopup />
@@ -214,7 +216,6 @@ function MainContent() {
         <ShortcutsHelpOverlay onClose={() => setShowShortcutsHelp(false)} />
       )}
     </div>
-    </InboxNavigationContext.Provider>
   );
 }
 

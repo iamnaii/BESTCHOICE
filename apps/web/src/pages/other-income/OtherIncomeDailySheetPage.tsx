@@ -1,3 +1,5 @@
+import { formatNumericText } from '@/utils/numericText';
+import ScreenTable from '@/components/ui/ScreenTable';
 import { formatIncomeAmount as fmt } from '@/utils/financial-display';
 import { DailySheetSummaryTable } from './components/DailySheetSummaryTable';
 import { printDocument } from '@/lib/print-document';
@@ -7,6 +9,7 @@ import { useQuery } from '@tanstack/react-query';
 import { ArrowLeft, Download, Printer, Info } from 'lucide-react';
 import { otherIncomeApi } from '@/lib/otherIncome';
 import QueryBoundary from '@/components/QueryBoundary';
+import { formControlClass } from '@/components/ui/form-styles';
 import { DateRangeChips } from './components/DateRangeChips';
 import { useUiFlags } from '@/hooks/useUiFlags';
 import { computeDefaultTimeRange, formatThaiDateLong } from '@/lib/date';
@@ -114,7 +117,7 @@ export default function OtherIncomeDailySheetPage() {
             <h2 className="text-2xl font-bold leading-snug mt-1">สรุปรายได้อื่น</h2>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
-            <button
+            <button data-ui-control="button"
               type="button"
               onClick={exportCsv}
               disabled={!sheet.data}
@@ -122,7 +125,7 @@ export default function OtherIncomeDailySheetPage() {
             >
               <Download size={14} /> CSV
             </button>
-            <button
+            <button data-ui-control="button"
               type="button"
               onClick={printDocument}
               className="inline-flex items-center gap-1 px-4 py-1.5 text-sm bg-primary text-primary-foreground rounded-md hover:bg-primary/90"
@@ -153,18 +156,18 @@ export default function OtherIncomeDailySheetPage() {
           }}
         />
         <div className="flex flex-wrap items-center gap-2">
-          <input
+          <input aria-label="วันที่เริ่ม"
             type="date"
             data-date-range-custom-start="true"
             value={startDate}
             onChange={(e) => setStartDate(e.target.value)}
-            className="border border-border rounded-md px-3 py-2 text-sm bg-background"
+            className={`${formControlClass} w-full sm:w-auto`}
           />
-          <input
+          <input aria-label="วันที่สิ้นสุด"
             type="date"
             value={endDate}
             onChange={(e) => setEndDate(e.target.value)}
-            className="border border-border rounded-md px-3 py-2 text-sm bg-background"
+            className={`${formControlClass} w-full sm:w-auto`}
           />
         </div>
       </div>
@@ -213,7 +216,7 @@ export default function OtherIncomeDailySheetPage() {
                 </p>
               ) : (
                 <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
+                  <ScreenTable className="w-full text-sm">
                     <thead className="bg-muted">
                       <tr>
                         <th className="px-2 py-2 text-left text-xs font-medium text-muted-foreground">
@@ -266,21 +269,21 @@ export default function OtherIncomeDailySheetPage() {
                             {d.items[0]?.accountCode ?? '-'}
                           </td>
                           <td className="px-2 py-2 text-right font-mono">
-                            {Number(d.incomeGross).toFixed(2)}
+                            {formatNumericText(Number(d.incomeGross).toFixed(2))}
                           </td>
                           <td className="px-2 py-2 text-right font-mono">
-                            {Number(d.vatAmount).toFixed(2)}
+                            {formatNumericText(Number(d.vatAmount).toFixed(2))}
                           </td>
                           <td className="px-2 py-2 text-right font-mono">
-                            {Number(d.whtAmount).toFixed(2)}
+                            {formatNumericText(Number(d.whtAmount).toFixed(2))}
                           </td>
                           <td className="px-2 py-2 text-right font-mono font-bold">
-                            {Number(d.netReceived).toFixed(2)}
+                            {formatNumericText(Number(d.netReceived).toFixed(2))}
                           </td>
                         </tr>
                       ))}
                     </tbody>
-                  </table>
+                  </ScreenTable>
                 </div>
               )}
             </div>

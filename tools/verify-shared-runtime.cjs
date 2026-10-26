@@ -1,6 +1,6 @@
 // Build the API first: npm run build --workspace=@installment/api
-// Run with production Node 20 (npm exec uses its cache; no project/global install):
-// npm exec --yes --package=node@20 -- node tools/verify-shared-runtime.cjs .
+// Run with production Node 24 (npm exec uses its cache; no project/global install):
+// npm exec --yes --package=node@24 -- node tools/verify-shared-runtime.cjs .
 // The optional argument is the repository root; default is this script's parent directory.
 // Only copies compiled artifacts into a temporary runtime; always removes it afterward.
 const assert = require('node:assert/strict');
@@ -9,11 +9,11 @@ const path = require('node:path');
 const os = require('node:os');
 const { execFileSync } = require('node:child_process');
 const workspace = process.argv[2] ? path.resolve(process.argv[2]) : path.resolve(__dirname, '..');
-assert.equal(process.versions.node.split('.')[0], '20', 'This smoke must use Node 20');
+assert.equal(process.versions.node.split('.')[0], '24', 'This smoke must use Node 24');
 for (const artifact of ['apps/api/dist/src/utils/installment-calc.util.js', 'packages/shared/dist/index.js']) {
   assert(fs.existsSync(path.join(workspace, artifact)), `Missing ${artifact}; run npm run build --workspace=@installment/api first`);
 }
-const runtimeRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'bestchoice-calculator-node20-'));
+const runtimeRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'bestchoice-calculator-node24-'));
 try {
   const copy = (source, target) => {
     const destination = path.join(runtimeRoot, target);

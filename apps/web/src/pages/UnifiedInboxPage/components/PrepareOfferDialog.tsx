@@ -1,3 +1,4 @@
+import { NumberInput } from '@/components/ui/NumberInput';
 import { useState } from 'react';
 import { Link } from 'react-router';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
@@ -74,24 +75,25 @@ export default function PrepareOfferDialog({ roomId, onInsert }: { roomId: strin
           <Sparkles className="size-4" aria-hidden="true" /> เตรียมข้อเสนอ
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-h-[90dvh] w-[calc(100%-2rem)] max-w-xl overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>สรุปความต้องการและเตรียมข้อเสนอ</DialogTitle>
-          <DialogDescription className="leading-snug">AI อ่านข้อความลูกค้าเพื่อหารุ่นที่สนใจ ค้นสินค้าที่เปิดขายออนไลน์และพร้อมขายในสาขาที่คุณมีสิทธิ์ ราคาและค่างวดมาจากข้อมูลสินค้าและเครื่องคิดกลาง</DialogDescription>
+      <DialogContent className="max-h-[90dvh] w-[calc(100%-2rem)] max-w-xl gap-6 overflow-y-auto rounded-2xl p-5 sm:rounded-2xl sm:p-6">
+        <DialogHeader className="mb-0 space-y-2 text-left">
+          <DialogTitle>เตรียมข้อเสนอ</DialogTitle>
+          <DialogDescription className="leading-relaxed">ค้นสินค้าพร้อมขายที่เหมาะกับลูกค้า แล้วตรวจร่างก่อนส่ง</DialogDescription>
         </DialogHeader>
-        <form className="space-y-3" onSubmit={(event) => { event.preventDefault(); prepare(); }}>
-          <div className="space-y-1.5">
+        <form className="grid gap-6" onSubmit={(event) => { event.preventDefault(); prepare(); }}>
+          <div className="grid gap-3">
             <Label htmlFor="offer-query">รุ่นหรือความต้องการ</Label>
-            <Input id="offer-query" value={query} onChange={(event) => setQuery(event.target.value)} maxLength={120} placeholder="ไม่ใส่ = ให้ AI อ่านจากแชท เช่น iPhone 15" disabled={offer.isPending} />
+            <Input id="offer-query" value={query} onChange={(event) => setQuery(event.target.value)} maxLength={120} placeholder="เช่น iPhone 15" aria-describedby="offer-query-hint" disabled={offer.isPending} />
+            <p id="offer-query-hint" className="text-xs text-muted-foreground">เว้นรุ่นหรืองบว่างไว้ เพื่อให้ AI อ่านจากแชท</p>
           </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
+          <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 sm:gap-4">
+            <div className="grid content-start gap-3">
               <Label htmlFor="offer-budget" className="leading-snug">งบราคาเงินสดสูงสุด (บาท)</Label>
-              <Input id="offer-budget" type="number" min="1" max="1000000" value={budget} onChange={(event) => setBudget(event.target.value)} placeholder="ใช้งบจากแชท" disabled={offer.isPending} />
+              <NumberInput id="offer-budget" min="1" max="1000000" value={budget} onChange={(event) => setBudget(event.target.value)} placeholder="ใช้งบจากแชท" disabled={offer.isPending} />
             </div>
-            <div className="space-y-1.5">
+            <div className="grid content-start gap-3">
               <Label htmlFor="offer-months">จำนวนงวดที่ต้องการ</Label>
-              <Input id="offer-months" type="number" min="1" max="60" step="1" value={months} onChange={(event) => setMonths(event.target.value)} disabled={offer.isPending} />
+              <NumberInput id="offer-months" min="1" max="60" step="1" value={months} onChange={(event) => setMonths(event.target.value)} disabled={offer.isPending} />
             </div>
           </div>
           {inputError && <p role="alert" className="text-sm text-destructive leading-snug">{inputError}</p>}

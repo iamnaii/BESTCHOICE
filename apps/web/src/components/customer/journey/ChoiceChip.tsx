@@ -22,7 +22,7 @@ export interface ChoiceChipProps {
 export function ChoiceChip({ active, busy = false, disabled = false, onClick, children }: ChoiceChipProps) {
   const pressed = active || busy;
   return (
-    <button
+    <button data-ui-control="button"
       type="button"
       aria-pressed={pressed}
       aria-busy={busy || undefined}

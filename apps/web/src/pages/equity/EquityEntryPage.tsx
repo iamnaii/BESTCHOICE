@@ -1,3 +1,7 @@
+import { NumberInput } from '@/components/ui/NumberInput';
+import ScreenTable from '@/components/ui/ScreenTable';
+import { NativeSelect } from '@/components/ui/native-select';
+import { toBangkokDateString } from '@/lib/date';
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { useMutation, useQuery } from '@tanstack/react-query';
@@ -63,7 +67,7 @@ export default function EquityEntryPage() {
   const [step, setStep] = useState(1);
   const [form, setForm] = useState<EquityFormValues>({
     txnType: 'CAP_INC',
-    txnDate: new Date().toISOString().slice(0, 10),
+    txnDate: toBangkokDateString(),
     lines: [emptyLine()],
   });
   const [preview, setPreview] = useState<JournalPreview | null>(null);
@@ -250,8 +254,8 @@ export default function EquityEntryPage() {
               {NEEDS_PAYMENT.includes(t) && (
                 <label className="text-sm space-y-1 md:col-span-2">
                   <span className="text-muted-foreground">ช่องทางเงินสด/ธนาคาร *</span>
-                  <select
-                    className="w-full border border-border rounded-md px-3 py-2 bg-background"
+                  <NativeSelect wrapperClassName="max-w-full w-full"
+                    className="border border-border rounded-md px-3 py-2 bg-background"
                     value={form.paymentAccountCode ?? ''}
                     onChange={(e) => setForm({ ...form, paymentAccountCode: e.target.value })}
                   >
@@ -261,7 +265,7 @@ export default function EquityEntryPage() {
                         {a.code} · {a.label}
                       </option>
                     ))}
-                  </select>
+                  </NativeSelect>
                 </label>
               )}
             </CardContent>
@@ -283,9 +287,9 @@ export default function EquityEntryPage() {
               </CardHeader>
               <CardContent className="space-y-2">
                 {form.lines.map((ln, i) => (
-                  <div key={i} className="grid grid-cols-12 gap-2 items-center">
-                    <select
-                      className="col-span-4 border border-border rounded-md px-2 py-2 text-sm bg-background"
+                  <div key={i} className="grid grid-cols-1 sm:grid-cols-12 gap-2 items-end">
+                    <label className="space-y-1 text-xs sm:col-span-4"><span>ผู้ถือหุ้น</span><NativeSelect wrapperClassName="max-w-full w-full"
+                      className="border border-border rounded-md px-2 py-2 text-sm bg-background"
                       value={ln.shareholderId}
                       onChange={(e) => setLine(i, { shareholderId: e.target.value })}
                     >
@@ -297,18 +301,16 @@ export default function EquityEntryPage() {
                             {s.name}
                           </option>
                         ))}
-                    </select>
-                    <input
-                      type="number"
-                      className="col-span-2 border border-border rounded-md px-2 py-2 text-sm bg-background text-right font-mono"
+                    </NativeSelect></label>
+                    <label className="space-y-1 text-xs sm:col-span-2"><span>{isInit ? 'มูลค่าจอง (par)' : 'จำนวนเงิน'}</span><NumberInput unstyled
+                      className="w-full border border-border rounded-md px-2 py-2 text-sm bg-background text-right font-mono"
                       placeholder={isInit ? 'มูลค่าจอง (par)' : 'จำนวนเงิน'}
                       value={ln.amount || ''}
                       onChange={(e) => setLine(i, { amount: parseFloat(e.target.value) || 0 })}
-                    />
+                    /></label>
                     {isInit && (
-                      <input
-                        type="number"
-                        className="col-span-2 border border-border rounded-md px-2 py-2 text-sm bg-background text-right font-mono"
+                      <label className="space-y-1 text-xs sm:col-span-2"><span>ชำระจริง</span><NumberInput unstyled
+                        className="w-full border border-border rounded-md px-2 py-2 text-sm bg-background text-right font-mono"
                         placeholder="ชำระจริง"
                         value={ln.paid ?? ''}
                         onChange={(e) =>
@@ -316,12 +318,11 @@ export default function EquityEntryPage() {
                             paid: e.target.value === '' ? undefined : parseFloat(e.target.value),
                           })
                         }
-                      />
+                      /></label>
                     )}
                     {isInc && (
-                      <input
-                        type="number"
-                        className="col-span-2 border border-border rounded-md px-2 py-2 text-sm bg-background text-right font-mono"
+                      <label className="space-y-1 text-xs sm:col-span-2"><span>ส่วนเกินมูลค่า</span><NumberInput unstyled
+                        className="w-full border border-border rounded-md px-2 py-2 text-sm bg-background text-right font-mono"
                         placeholder="ส่วนเกินมูลค่า"
                         value={ln.premium ?? ''}
                         onChange={(e) =>
@@ -329,12 +330,11 @@ export default function EquityEntryPage() {
                             premium: e.target.value === '' ? undefined : parseFloat(e.target.value),
                           })
                         }
-                      />
+                      /></label>
                     )}
                     {isDivPay && (
-                      <input
-                        type="number"
-                        className="col-span-2 border border-border rounded-md px-2 py-2 text-sm bg-background text-right font-mono"
+                      <label className="space-y-1 text-xs sm:col-span-2"><span>ภาษีหัก ณ ที่จ่าย</span><NumberInput unstyled
+                        className="w-full border border-border rounded-md px-2 py-2 text-sm bg-background text-right font-mono"
                         placeholder="WHT (เว้นว่าง = อัตโนมัติ)"
                         value={ln.wht ?? ''}
                         onChange={(e) =>
@@ -342,11 +342,11 @@ export default function EquityEntryPage() {
                             wht: e.target.value === '' ? undefined : parseFloat(e.target.value),
                           })
                         }
-                      />
+                      /></label>
                     )}
                     <button
                       type="button"
-                      className="col-span-1 text-destructive"
+                      className="sm:col-span-1 min-h-11 flex items-center justify-center text-destructive"
                       aria-label="ลบผู้ถือหุ้น"
                       onClick={() =>
                         setForm((f) => ({ ...f, lines: f.lines.filter((_, j) => j !== i) }))
@@ -381,15 +381,15 @@ export default function EquityEntryPage() {
               <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-3">
                 <label className="text-sm space-y-1">
                   <span className="text-muted-foreground">ทิศทาง *</span>
-                  <select
-                    className="w-full border border-border rounded-md px-3 py-2 bg-background"
+                  <NativeSelect wrapperClassName="max-w-full w-full"
+                    className="border border-border rounded-md px-3 py-2 bg-background"
                     value={form.paDirection ?? ''}
                     onChange={(e) => setForm({ ...form, paDirection: e.target.value })}
                   >
                     <option value="">— เลือก —</option>
                     <option value="DR_OTHER_CR_RE">Dr บัญชีคู่ / Cr 32-1101 (กำไรสะสมเพิ่ม)</option>
                     <option value="DR_RE_CR_OTHER">Dr 32-1101 / Cr บัญชีคู่ (กำไรสะสมลด)</option>
-                  </select>
+                  </NativeSelect>
                 </label>
                 <label className="text-sm space-y-1">
                   <span className="text-muted-foreground">รหัสบัญชีคู่ *</span>
@@ -402,8 +402,7 @@ export default function EquityEntryPage() {
                 </label>
                 <label className="text-sm space-y-1">
                   <span className="text-muted-foreground">ยอดปรับปรุง *</span>
-                  <input
-                    type="number"
+                  <NumberInput unstyled
                     className="w-full border border-border rounded-md px-3 py-2 bg-background text-right font-mono"
                     value={form.paAmount ?? ''}
                     onChange={(e) =>
@@ -420,7 +419,7 @@ export default function EquityEntryPage() {
 
           <div className="flex justify-end">
             <Button onClick={() => previewMut.mutate()} disabled={previewMut.isPending}>
-              ตรวจ Journal <ArrowRight className="h-4 w-4 ml-1" />
+              ตรวจ รายการบัญชี <ArrowRight className="h-4 w-4 ml-1" />
             </Button>
           </div>
         </QueryBoundary>
@@ -429,13 +428,13 @@ export default function EquityEntryPage() {
       {step === 2 && preview && (
         <Card>
           <CardHeader className="font-semibold flex-row items-center justify-between">
-            <span>2. Journal ที่จะลงบัญชี (สร้างโดยระบบ)</span>
+            <span>2. รายการบัญชี ที่จะลงบัญชี (สร้างโดยระบบ)</span>
             <span className="text-xs px-2 py-1 rounded-full bg-success/10 text-success leading-snug">
-              BALANCED — ตรวจโดย server
+              ยอดสมดุล — ตรวจสอบโดยระบบ
             </span>
           </CardHeader>
           <CardContent>
-            <table className="w-full text-sm">
+            <ScreenTable className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border text-left text-xs text-muted-foreground uppercase">
                   <th className="py-2">รหัส</th>
@@ -460,7 +459,7 @@ export default function EquityEntryPage() {
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </ScreenTable>
             {isDivPay && (
               <p className="text-xs text-muted-foreground mt-2 leading-snug">
                 WHT ที่คำนวณจริงต่อราย:{' '}
@@ -515,12 +514,12 @@ export default function EquityEntryPage() {
             )}
             {mcQuery.isLoading ? null : mcQuery.isError ? (
               <p className="text-xs text-destructive leading-snug">
-                โหลดสถานะ Maker-Checker ไม่สำเร็จ — รีเฟรชหน้า
+                โหลดสถานะ การแยกผู้บันทึกและผู้อนุมัติ ไม่สำเร็จ — รีเฟรชหน้า
               </p>
             ) : (
               mcQuery.data?.enabled && (
                 <p className="text-xs text-muted-foreground leading-snug">
-                  Maker-Checker เปิดอยู่ — หลังบันทึกร่างต้องส่งอนุมัติ
+                  การแยกผู้บันทึกและผู้อนุมัติ เปิดอยู่ — หลังบันทึกร่างต้องส่งอนุมัติ
                   และผู้อนุมัติต้องเป็นคนละคนกับผู้สร้าง
                 </p>
               )

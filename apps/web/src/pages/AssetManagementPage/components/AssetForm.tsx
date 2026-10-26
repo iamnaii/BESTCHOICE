@@ -1,3 +1,5 @@
+import { NumberInput } from '@/components/ui/NumberInput';
+import { NativeSelect } from '@/components/ui/native-select';
 import { useState } from 'react';
 import {
   Package,
@@ -86,7 +88,7 @@ export default function AssetForm({
                       placeholder="เช่น FA-001"
                       required
                     />
-                    <button
+                    <button data-ui-control="button"
                       type="button"
                       onClick={() => setField('assetCode', `FA-${String(Date.now()).slice(-6)}`)}
                       className="px-3 py-2 text-xs font-medium bg-primary/10 text-primary rounded-lg hover:bg-primary/20 transition-colors whitespace-nowrap"
@@ -135,7 +137,7 @@ export default function AssetForm({
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-xs font-medium text-foreground mb-1.5">หมวดหมู่</label>
-                <select
+                <NativeSelect wrapperClassName="max-w-full w-full"
                   className={inputClass}
                   value={form.category}
                   onChange={(e) => setField('category', e.target.value)}
@@ -145,11 +147,11 @@ export default function AssetForm({
                       {opt.label}
                     </option>
                   ))}
-                </select>
+                </NativeSelect>
               </div>
               <div>
                 <label className="block text-xs font-medium text-foreground mb-1.5">สาขา</label>
-                <select
+                <NativeSelect wrapperClassName="max-w-full w-full"
                   className={inputClass}
                   value={form.branchId}
                   onChange={(e) => setField('branchId', e.target.value)}
@@ -160,7 +162,7 @@ export default function AssetForm({
                       {b.name}
                     </option>
                   ))}
-                </select>
+                </NativeSelect>
               </div>
             </div>
           </div>
@@ -182,8 +184,7 @@ export default function AssetForm({
                   <label className="block text-xs font-medium text-foreground mb-1.5">
                     ราคาทุน (บาท) <span className="text-destructive">*</span>
                   </label>
-                  <input
-                    type="number"
+                  <NumberInput unstyled
                     className={inputClass}
                     value={form.costValue}
                     onChange={(e) => setField('costValue', e.target.value)}
@@ -197,8 +198,7 @@ export default function AssetForm({
                   <label className="block text-xs font-medium text-foreground mb-1.5">
                     มูลค่าซาก (บาท)
                   </label>
-                  <input
-                    type="number"
+                  <NumberInput unstyled
                     className={inputClass}
                     value={form.salvageValue}
                     onChange={(e) => setField('salvageValue', e.target.value)}
@@ -211,8 +211,7 @@ export default function AssetForm({
                   <label className="block text-xs font-medium text-foreground mb-1.5">
                     อายุใช้งาน (ปี)
                   </label>
-                  <input
-                    type="number"
+                  <NumberInput unstyled
                     className={inputClass}
                     value={form.usefulLife}
                     onChange={(e) => setField('usefulLife', e.target.value)}
@@ -303,7 +302,7 @@ export default function AssetForm({
                   <label className="block text-xs font-medium text-foreground mb-1.5">
                     รหัสบัญชีสินทรัพย์
                   </label>
-                  <select
+                  <NativeSelect wrapperClassName="max-w-full w-full"
                     className={inputClass}
                     value={form.assetAccountCode}
                     onChange={(e) => setField('assetAccountCode', e.target.value)}
@@ -314,13 +313,13 @@ export default function AssetForm({
                         {accountDisplayName(a.name)}
                       </option>
                     ))}
-                  </select>
+                  </NativeSelect>
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-foreground mb-1.5">
                     รหัสบัญชีค่าเสื่อม
                   </label>
-                  <select
+                  <NativeSelect wrapperClassName="max-w-full w-full"
                     className={inputClass}
                     value={form.depreciationAccountCode}
                     onChange={(e) => setField('depreciationAccountCode', e.target.value)}
@@ -331,13 +330,13 @@ export default function AssetForm({
                         {accountDisplayName(a.name)}
                       </option>
                     ))}
-                  </select>
+                  </NativeSelect>
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-foreground mb-1.5">
                     รหัสบัญชีค่าเสื่อมสะสม
                   </label>
-                  <select
+                  <NativeSelect wrapperClassName="max-w-full w-full"
                     className={inputClass}
                     value={form.accumulatedDepreAccountCode}
                     onChange={(e) => setField('accumulatedDepreAccountCode', e.target.value)}
@@ -348,7 +347,7 @@ export default function AssetForm({
                         {accountDisplayName(a.name)}
                       </option>
                     ))}
-                  </select>
+                  </NativeSelect>
                 </div>
               </div>
             )}

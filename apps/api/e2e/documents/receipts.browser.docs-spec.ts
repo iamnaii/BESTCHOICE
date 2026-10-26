@@ -204,18 +204,23 @@ describe('DOC-01 browser evidence — receipts download points in the real web a
       // 2. Server failure → toast with the server message, nothing saved; retry → saved.
       await page.route(pdfRoute, (route) => route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ statusCode: 503, message: 'ดาวน์โหลดเอกสารไม่สำเร็จ กรุณาลองใหม่' }) }), { times: 1 });
       await button().click();
-      await page.getByText('ดาวน์โหลดเอกสารไม่สำเร็จ กรุณาลองใหม่').first().waitFor({ timeout: 15_000 });
+      const failedToast = page.locator('[data-sonner-toast]').filter({ hasText: 'ดาวน์โหลดเอกสารไม่สำเร็จ กรุณาลองใหม่' });
+      await failedToast.waitFor({ timeout: 15_000 });
       expect(downloads).toHaveLength(1);
       const shotToast = await shot(page, 'receipts-tab-download-failed-1440.png');
       await expectDownload(page, () => button().click(), `${receipt.receiptNumber}.pdf`);
       expect(downloads).toHaveLength(2);
+      // Clear the intentional 503 notification before checking for new errors.
+      const closeToast = failedToast.getByRole('button', { name: 'Close toast' });
+      if (await closeToast.isVisible()) await closeToast.click();
+      await failedToast.waitFor({ state: 'detached' });
 
       // 3. Leave the page (in-app navigation) while the request is in flight → aborted, nothing saved, no error toast.
       await page.route(pdfRoute, async (route) => { await new Promise((resolve) => setTimeout(resolve, 2500)); await route.continue().catch(() => undefined); });
       await button().click();
       await web.navigate(page, '/dashboard');
       expect(await noDownloadWithin(page, 4000)).toBe(true);
-      expect(await page.getByText('ไม่สำเร็จ').count()).toBe(0);
+      expect(await page.locator('[data-sonner-toast][data-type=error]').count()).toBe(0);
       await page.unroute(pdfRoute);
 
       // 4. Switch the work company while the request is in flight → nothing saved for the old scope.

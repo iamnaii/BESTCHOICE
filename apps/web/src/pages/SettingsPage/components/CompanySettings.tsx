@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useId as useUiFieldId, useState, useCallback, useEffect, useRef } from 'react';
 import { configGroups, SettingsCard, StatCard, EditField, type ConfigGroup } from './shared';
 
 // ── SignatureEditor: canvas drawing for company card edit mode ──
@@ -18,6 +18,7 @@ function SignatureEditor({
   onSignatureDraw: (dataUrl: string) => void;
   onRemove: () => void;
 }) {
+  const uiFieldId = useUiFieldId();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isDrawing, setIsDrawing] = useState(false);
   const [hasDrawn, setHasDrawn] = useState(false);
@@ -100,9 +101,9 @@ function SignatureEditor({
       </div>
 
       <div className="flex items-center gap-4 mb-3">
-        <label className="flex-1 text-sm text-foreground">ชื่อผู้ให้เช่าซื้อ</label>
+        <label htmlFor={`${uiFieldId}-1`} className="flex-1 text-sm text-foreground">ชื่อผู้ให้เช่าซื้อ</label>
         <div className="w-48">
-          <input
+          <input id={`${uiFieldId}-1`}
             type="text"
             value={signerName}
             onChange={(e) => onSignerNameChange(e.target.value)}
@@ -170,7 +171,7 @@ function SignatureEditor({
             />
           </div>
           <div className="flex gap-2">
-            <button
+            <button data-ui-control="button"
               onClick={handleConfirmDraw}
               disabled={!hasDrawn}
               type="button"
@@ -178,14 +179,14 @@ function SignatureEditor({
             >
               ยืนยันลายเซ็น
             </button>
-            <button
+            <button data-ui-control="button"
               onClick={clearCanvas}
               type="button"
               className="text-xs text-muted-foreground hover:text-foreground"
             >
               ล้าง
             </button>
-            <button
+            <button data-ui-control="button"
               onClick={() => {
                 setShowCanvas(false);
                 setHasDrawn(false);

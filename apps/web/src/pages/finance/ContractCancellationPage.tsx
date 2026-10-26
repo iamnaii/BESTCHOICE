@@ -1,3 +1,4 @@
+import ScreenTable from '@/components/ui/ScreenTable';
 import { useState } from 'react';
 import { Link } from 'react-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -168,7 +169,7 @@ export default function ContractCancellationPage() {
               </div>
             ) : (
               <div className="overflow-x-auto">
-                <table className="w-full text-sm leading-snug">
+                <ScreenTable className="w-full text-sm leading-snug">
                   <thead className="bg-muted/50">
                     <tr>
                       <th className="text-left p-3 font-medium text-muted-foreground">วันที่ขอ</th>
@@ -221,7 +222,7 @@ export default function ContractCancellationPage() {
                               variant="warning"
                               appearance="light"
                               size="sm"
-                              title="สัญญาถูกตัดจ่ายผ่านรอบจ่าย INTER-CO แล้ว — อนุมัติแล้วระบบจะตั้งลูกหนี้เรียกคืนจากหน้าร้าน (11-2107) เพื่อหักในรอบจ่ายถัดไปหรือรับเงินสดคืน"
+                              title="สัญญาถูกตัดจ่ายผ่านรอบจ่าย ระหว่างบริษัท แล้ว — อนุมัติแล้วระบบจะตั้งลูกหนี้เรียกคืนจากหน้าร้าน (11-2107) เพื่อหักในรอบจ่ายถัดไปหรือรับเงินสดคืน"
                             >
                               ตัดจ่ายแล้ว — จะตั้งเรียกคืน ฿
                               {formatNumberDecimal(Number(item.recallAmount ?? 0), 2)}
@@ -231,7 +232,7 @@ export default function ContractCancellationPage() {
                               variant="secondary"
                               appearance="light"
                               size="sm"
-                              title="ยังไม่เคยถูกตัดจ่ายในรอบจ่าย INTER-CO — อนุมัติแล้วระบบกลับรายการบัญชีทั้งชุด (JE ทุกใบของสัญญา)"
+                              title="ยังไม่เคยถูกตัดจ่ายในรอบจ่าย ระหว่างบริษัท — อนุมัติแล้วระบบกลับรายการบัญชีทั้งชุด (รายการบัญชี ทุกใบของสัญญา)"
                             >
                               ยังไม่ตัดจ่าย — กลับรายการทั้งชุด
                             </Badge>
@@ -263,7 +264,7 @@ export default function ContractCancellationPage() {
                       </tr>
                     ))}
                   </tbody>
-                </table>
+                </ScreenTable>
               </div>
             )}
           </CardContent>

@@ -81,7 +81,7 @@ export default function ProductHeaderActions({
         </Link>
       )}
       {isManager && (
-        <button type="button" onClick={onEdit} className={OUTLINE}>
+        <button data-ui-control="button" type="button" onClick={onEdit} className={OUTLINE}>
           <Pencil className="size-4" aria-hidden />
           แก้ไขข้อมูล
         </button>
@@ -89,7 +89,7 @@ export default function ProductHeaderActions({
       {menuItems.length > 0 && (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <button type="button" aria-label="เมนูเพิ่มเติม" className={`${OUTLINE} px-2.5`}>
+            <button data-ui-control="button" type="button" aria-label="เมนูเพิ่มเติม" className={`${OUTLINE} px-2.5`}>
               <MoreHorizontal className="size-5" aria-hidden />
             </button>
           </DropdownMenuTrigger>

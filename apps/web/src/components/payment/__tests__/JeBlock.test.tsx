@@ -83,7 +83,7 @@ describe('JeBlock', () => {
     expect(screen.getByText('JE-202609-0007')).toBeInTheDocument();
     expect(screen.getByText('JP5 — ยึดเครื่อง')).toBeInTheDocument();
     expect(screen.getByText('ธนาคาร KBank')).toBeInTheDocument();
-    expect(screen.getByText(/BALANCED/)).toBeInTheDocument();
+    expect(screen.getByText(/ยอดสมดุล/)).toBeInTheDocument();
   });
 
   it('marks a reversal JE with the destructive label', () => {

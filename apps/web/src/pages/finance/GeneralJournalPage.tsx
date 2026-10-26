@@ -1,4 +1,6 @@
-import { useState } from 'react';
+import ScreenTable from '@/components/ui/ScreenTable';
+import { getReportDateRange } from '@/lib/date';
+import { useId as useUiFieldId, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
 import QueryBoundary from '@/components/QueryBoundary';
@@ -44,10 +46,10 @@ const inputClass =
   'w-full px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden';
 
 export default function GeneralJournalPage() {
-  const now = new Date();
-  const firstOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-  const [startDate, setStartDate] = useState(firstOfMonth.toISOString().split('T')[0]);
-  const [endDate, setEndDate] = useState(now.toISOString().split('T')[0]);
+  const uiFieldId = useUiFieldId();
+  const range = getReportDateRange('this_month');
+  const [startDate, setStartDate] = useState(range.startDate);
+  const [endDate, setEndDate] = useState(range.endDate);
   const [page, setPage] = useState(1);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [companyId, setCompanyId] = useState('');
@@ -87,26 +89,26 @@ export default function GeneralJournalPage() {
     <div>
       <PageHeader
         title="สมุดรายวันทั่วไป"
-        subtitle="General Journal — รายการบันทึกบัญชีทั้งหมด"
+        subtitle="สมุดรายวันทั่วไป — รายการบันทึกบัญชีทั้งหมด"
         icon={<BookOpen className="size-6" />}
       />
 
       <div className="flex flex-wrap gap-3 mb-6">
         <div>
-          <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
+          <label htmlFor={`${uiFieldId}-1`} className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
             ตั้งแต่
           </label>
-          <ThaiDateInput
+          <ThaiDateInput id={`${uiFieldId}-1`}
             value={startDate}
             onChange={(e) => { setStartDate(e.target.value); setPage(1); }}
             className={`${inputClass} w-auto`}
           />
         </div>
         <div>
-          <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
+          <label htmlFor={`${uiFieldId}-2`} className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
             ถึง
           </label>
-          <ThaiDateInput
+          <ThaiDateInput id={`${uiFieldId}-2`}
             value={endDate}
             onChange={(e) => { setEndDate(e.target.value); setPage(1); }}
             className={`${inputClass} w-auto`}
@@ -118,21 +120,21 @@ export default function GeneralJournalPage() {
             {
               label: 'เดือนนี้',
               fn: () => {
-                setStartDate(firstOfMonth.toISOString().split('T')[0]);
-                setEndDate(now.toISOString().split('T')[0]);
+                setStartDate(range.startDate);
+                setEndDate(range.endDate);
                 setPage(1);
               },
             },
             {
               label: 'ปีนี้',
               fn: () => {
-                setStartDate(`${now.getFullYear()}-01-01`);
-                setEndDate(now.toISOString().split('T')[0]);
+                setStartDate(getReportDateRange('this_year').startDate);
+                setEndDate(range.endDate);
                 setPage(1);
               },
             },
           ].map((p) => (
-            <button
+            <button data-ui-control="button"
               key={p.label}
               onClick={p.fn}
               className="px-3 py-2 text-xs border border-input rounded-lg hover:bg-accent transition-colors leading-snug"
@@ -196,7 +198,7 @@ export default function GeneralJournalPage() {
 
                     {expanded.has(je.id) && (
                       <div className="border-t border-border/40 bg-muted/20">
-                        <table className="w-full text-xs leading-snug">
+                        <ScreenTable className="w-full text-xs leading-snug">
                           <thead className="bg-muted/40">
                             <tr>
                               <th className="text-left p-2 font-medium text-muted-foreground">รหัสบัญชี</th>
@@ -219,7 +221,7 @@ export default function GeneralJournalPage() {
                               </tr>
                             ))}
                           </tbody>
-                        </table>
+                        </ScreenTable>
                       </div>
                     )}
                   </Card>

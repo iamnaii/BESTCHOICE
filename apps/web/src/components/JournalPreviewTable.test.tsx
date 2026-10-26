@@ -38,7 +38,7 @@ it.each([true, false])(
     expect(rows[2].children[3]).toHaveTextContent('1,234.56');
     expect(screen.getByText('คำอธิบาย')).toBeInTheDocument();
     expect(
-      screen.getByText(`1,234.56 = 1,234.56 ${isBalanced ? 'BALANCED' : 'UNBALANCED'}`),
+      screen.getByText(`1,234.56 = 1,234.56 ${isBalanced ? 'ยอดสมดุล' : 'ยอดไม่สมดุล'}`),
     ).toBeInTheDocument();
     expect(screen.getByText('Dr รวม = Cr รวม').parentElement).toHaveClass(
       isBalanced ? 'text-success' : 'text-destructive',

@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react';
+import { NativeSelect } from '@/components/ui/native-select';
+import { useId as useUiFieldId, useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
@@ -142,7 +143,7 @@ function DetailPanel({ period, month, year, companyId, onActionSuccess }: Detail
     mutationFn: () =>
       api.post('/expenses/periods/start-review', { companyId, year, month }),
     onSuccess: () => {
-      toast.success(`เริ่ม Review งวด ${THAI_MONTHS_FULL[month - 1]} ${year} แล้ว`);
+      toast.success(`เริ่ม ตรวจสอบ งวด ${THAI_MONTHS_FULL[month - 1]} ${year} แล้ว`);
       mutationOptions.onSuccess();
     },
     onError: (err) => toast.error(getErrorMessage(err)),
@@ -162,7 +163,7 @@ function DetailPanel({ period, month, year, companyId, onActionSuccess }: Detail
     mutationFn: () =>
       api.post('/expenses/periods/sync-peak', { companyId, year, month }),
     onSuccess: () => {
-      toast.success(`Sync ไป PEAK สำเร็จ`);
+      toast.success("เชื่อมข้อมูล ไป PEAK สำเร็จ");
       mutationOptions.onSuccess();
     },
     onError: (err) => toast.error(getErrorMessage(err)),
@@ -216,7 +217,7 @@ function DetailPanel({ period, month, year, companyId, onActionSuccess }: Detail
           )}
           {period?.peakSyncedAt && (
             <div>
-              <p className="text-2xs uppercase tracking-wider text-muted-foreground mb-0.5">Sync PEAK เมื่อ</p>
+              <p className="text-2xs uppercase tracking-wider text-muted-foreground mb-0.5">เชื่อมข้อมูล PEAK เมื่อ</p>
               <p className="text-sm font-medium">{formatThaiDateShort(period.peakSyncedAt)}</p>
             </div>
           )}
@@ -225,7 +226,7 @@ function DetailPanel({ period, month, year, companyId, onActionSuccess }: Detail
         {/* PEAK sync result */}
         {period?.peakSyncResult && (
           <div className="rounded-lg border border-primary/20 bg-primary/5 p-3">
-            <p className="text-2xs uppercase tracking-wider text-muted-foreground mb-1">ผลการ Sync PEAK</p>
+            <p className="text-2xs uppercase tracking-wider text-muted-foreground mb-1">ผลการ เชื่อมข้อมูล PEAK</p>
             <p className="text-sm">{period.peakSyncResult}</p>
           </div>
         )}
@@ -250,7 +251,7 @@ function DetailPanel({ period, month, year, companyId, onActionSuccess }: Detail
 
         {/* No issues, no period → placeholder */}
         {!period && (
-          <p className="text-sm text-muted-foreground">ยังไม่มีข้อมูลงวดนี้ — สถานะ เปิด โดย default</p>
+          <p className="text-sm text-muted-foreground">ยังไม่มีข้อมูลงวดนี้ — สถานะ เปิด โดย ค่าเริ่มต้น</p>
         )}
 
         {/* Action Buttons */}
@@ -266,7 +267,7 @@ function DetailPanel({ period, month, year, companyId, onActionSuccess }: Detail
               ) : (
                 <Clock className="h-4 w-4" />
               )}
-              เริ่ม Review
+              เริ่ม ตรวจสอบ
             </Button>
           )}
 
@@ -298,7 +299,7 @@ function DetailPanel({ period, month, year, companyId, onActionSuccess }: Detail
               ) : (
                 <RefreshCw className="h-4 w-4" />
               )}
-              Sync ไป PEAK
+              เชื่อมข้อมูล ไป PEAK
             </Button>
           )}
 
@@ -326,6 +327,7 @@ function DetailPanel({ period, month, year, companyId, onActionSuccess }: Detail
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function MonthlyClosePage() {
+  const uiFieldId = useUiFieldId();
   const currentYear = new Date().getFullYear();
   const [year, setYear] = useState(currentYear);
   const [selectedMonth, setSelectedMonth] = useState<number | null>(new Date().getMonth() + 1);
@@ -363,29 +365,29 @@ export default function MonthlyClosePage() {
     <div className="space-y-6">
       <PageHeader
         title="ปิดบัญชีรายเดือน"
-        subtitle="จัดการสถานะงวดบัญชีและ Sync ไป PEAK"
+        subtitle="จัดการสถานะงวดบัญชีและ เชื่อมข้อมูล ไป PEAK"
         icon={<Calendar className="h-5 w-5" />}
       />
 
       {/* Controls */}
-      <div className="flex flex-wrap items-center gap-4">
+      <div className="flex flex-wrap items-end gap-4 [&>div]:min-w-0 [&>div]:max-w-full">
         {/* Company selector */}
         {companies.length > 0 && (
           <div>
-            <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
+            <label htmlFor={`${uiFieldId}-1`} className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
               นิติบุคคล
             </label>
-            <select
+            <NativeSelect wrapperClassName="max-w-full w-auto sm:min-w-[180px]" id={`${uiFieldId}-1`}
               value={companyId}
               onChange={(e) => setCompanyId(e.target.value)}
-              className="px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden min-w-[180px]"
+              className="px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
             >
               {companies.map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.nameTh} ({c.companyCode})
                 </option>
               ))}
-            </select>
+            </NativeSelect>
           </div>
         )}
 
@@ -394,23 +396,21 @@ export default function MonthlyClosePage() {
           <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
             ปี (ค.ศ.)
           </label>
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-2">
             <Button
               variant="outline"
               size="icon"
-              className="h-9 w-9"
               onClick={() => setYear((y) => y - 1)}
               aria-label="ปีก่อนหน้า"
             >
               <ChevronLeft className="h-4 w-4" />
             </Button>
-            <span className="w-20 text-center font-semibold text-sm tabular-nums">
+            <span className="min-w-[7.5rem] whitespace-nowrap px-2 text-center font-semibold text-sm tabular-nums">
               {year} / {year + 543}
             </span>
             <Button
               variant="outline"
               size="icon"
-              className="h-9 w-9"
               onClick={() => setYear((y) => y + 1)}
               aria-label="ปีถัดไป"
               disabled={year >= currentYear + 1}

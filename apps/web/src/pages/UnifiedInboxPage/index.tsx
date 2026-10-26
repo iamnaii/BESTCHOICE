@@ -1,3 +1,5 @@
+import { getRequestCompany } from '@/lib/company-scope';
+import { hasCompanyAccess } from '@installment/shared';
 import './inbox-workspace.css';
 import InboxWorkTools from './components/InboxWorkTools';
 import { useRoomNotes } from './hooks/useRoomNotes';
@@ -11,9 +13,9 @@ import { NOTIFICATION_SOUND_URL } from './components/notification-sound';
 import { showChatNotification, requestNotificationPermissionIfNeeded } from './components/chat-notification';
 import AppointmentAlertBar from './components/AppointmentAlertBar';
 import { apptState, nextAppointment } from './components/appointment';
+import { fetchRoomAppointmentSummaries } from './components/room-appointment-summaries';
 import { toast } from 'sonner';
-import { Lock } from 'lucide-react';
-import QueryBoundary from '@/components/QueryBoundary';
+import { ArrowLeft, Lock } from 'lucide-react';
 import ConversationList, { type InboxFilters } from './components/ConversationList';
 import { describeSendError } from './components/send-error';
 import { buildRoomListParams } from './components/room-query';
@@ -44,7 +46,19 @@ export default function UnifiedInboxPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const { roomId: roomIdParam } = useParams<{ roomId: string }>();
+  const workspaceRef = useRef<HTMLDivElement>(null);
   const [activeRoomId, setActiveRoomId] = useState<string | null>(null);
+  const [searchTarget, setSearchTarget] = useState<{ roomId: string; messageId: string } | null>(null);
+  useEffect(() => {
+    setSearchTarget((target) => target?.roomId === roomIdParam ? target : null);
+  }, [roomIdParam]);
+  const focusedMessageId = searchTarget?.roomId === activeRoomId ? searchTarget.messageId : undefined;
+  const searchContext = useQuery({
+    queryKey: ['chat-message-context', activeRoomId, focusedMessageId, getRequestCompany()],
+    queryFn: () => api.get(`/staff-chat/rooms/${activeRoomId}/messages`, { params: { around: focusedMessageId } }).then((r) => r.data),
+    enabled: !!focusedMessageId,
+    retry: false,
+  });
   const [customerPanelOpen, setCustomerPanelOpen] = useState(false);
   const [creditFocus, setCreditFocus] = useState<{ roomId: string; tick: number } | null>(null);
   const activeCreditRoomRef = useRef(activeRoomId);
@@ -223,16 +237,18 @@ export default function UnifiedInboxPage() {
       lastPage.page * lastPage.limit < lastPage.total ? lastPage.page + 1 : undefined,
   });
 
+  const appointmentRoomIds = [...new Set<string>([...(sessionsQuery.data?.pages.flatMap((p: {data?: {id:string}[]})=>(p.data||[]).map(r=>r.id))||[]),...(activeRoomId?[activeRoomId]:[])])].slice(0,500);
+  const appointmentSummaries=useQuery({queryKey:['appointments','room-summaries',appointmentRoomIds],queryFn:({signal})=>fetchRoomAppointmentSummaries(appointmentRoomIds,signal),enabled:getRequestCompany()!=='FINANCE'&&!!appointmentRoomIds.length&&!!user&&['OWNER','BRANCH_MANAGER','SALES'].includes(user.role)&&hasCompanyAccess(user.role,user.accessibleCompanies,'SHOP'),refetchInterval:30_000});
   const sessions = useMemo(() => {
     const flat = sessionsQuery.data?.pages.flatMap((p: any) => p.data ?? []) ?? [];
     // Offset pagination over a mutable lastMessageAt order can repeat a room at a
     // page boundary if rooms shift between fetches — dedup by id to avoid React
     // key collisions / double rows. Map preserves first-seen (server) order.
-    const list = [...new Map(flat.map((r: any) => [r.id, r])).values()];
+    const list = [...new Map(flat.map((r: any) => [r.id, r])).values()].map((r:any)=>({...r,storeAppointment:appointmentSummaries.data?.[r.id]}));
     // ห้องที่ถึงนัด/ใกล้ถึง (≤15 นาที) ลอยขึ้นบนสุด — ชั้น 1 (เจ้าของเคาะ 2026-09-06) · ลำดับเดิมคงที่ในแต่ละกลุ่ม
-    const urgent = (r: any) => !!apptState(nextAppointment(r.todos)?.dueDate)?.urgent;
+    const urgent = (r: any) => !!apptState(nextAppointment([...(r.todos||[]),...(r.storeAppointment?[r.storeAppointment]:[])])?.dueDate)?.urgent;
     return [...list.filter(urgent), ...list.filter((r) => !urgent(r))];
-  }, [sessionsQuery.data?.pages]);
+  }, [sessionsQuery.data?.pages,appointmentSummaries.data]);
 
   // ตัวนับจากเซิร์ฟเวอร์ — นับทั้งจักรวาลห้อง ไม่ใช่แค่หน้าที่โหลดมา
   // ส่ง tab ไปด้วยเพราะเมนูช่องทางต้องนับในจักรวาลของแท็บที่เปิดอยู่
@@ -308,7 +324,8 @@ export default function UnifiedInboxPage() {
   // ถามครั้งเดียวต่อรอบ — ถ้าผู้ใช้กดไม่อนุญาต เบราว์เซอร์จะไม่ถามซ้ำเองอยู่แล้ว
   const askedNotifyRef = useRef(false);
   const handleSelectRoom = useCallback(
-    (roomId: string) => {
+    (roomId: string, messageId?: string) => {
+      setSearchTarget(messageId ? { roomId, messageId } : null);
       if (!askedNotifyRef.current) {
         askedNotifyRef.current = true;
         requestNotificationPermissionIfNeeded();
@@ -331,30 +348,68 @@ export default function UnifiedInboxPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- ทำงานเฉพาะเมื่อ URL เปลี่ยน
   }, [roomIdParam]);
 
+  // iOS browser chrome/keyboard can resize visualViewport without changing dvh.
+  useEffect(() => {
+    const viewport = window.visualViewport;
+    const update = () => {
+      const root = workspaceRef.current;
+      if (!root) return;
+      if (roomIdParam && window.innerWidth < 1024 && (!viewport || viewport.scale === 1)) {
+        const bannerHeight = document.querySelector('[data-testid="test-mode-banner"]')?.getBoundingClientRect().height ?? 0;
+        root.style.setProperty('--inbox-viewport-height', `${(viewport?.height ?? window.innerHeight) - bannerHeight}px`);
+        root.style.setProperty('--inbox-viewport-top', `${(viewport?.offsetTop ?? 0) + bannerHeight}px`);
+      } else {
+        root.style.removeProperty('--inbox-viewport-height');
+        root.style.removeProperty('--inbox-viewport-top');
+      }
+    };
+    const bannerResize = new ResizeObserver(update);
+    const watchBanner = () => {
+      bannerResize.disconnect();
+      const banner = document.querySelector('[data-testid="test-mode-banner"]');
+      if (banner) bannerResize.observe(banner);
+      update();
+    };
+    const shellChanges = new MutationObserver(watchBanner);
+    const shell = workspaceRef.current?.closest('.app-shell');
+    if (shell) shellChanges.observe(shell, { childList: true });
+    watchBanner();
+    update();
+    viewport?.addEventListener('resize', update);
+    viewport?.addEventListener('scroll', update);
+    window.addEventListener('resize', update);
+    return () => {
+      bannerResize.disconnect();
+      shellChanges.disconnect();
+      viewport?.removeEventListener('resize', update);
+      viewport?.removeEventListener('scroll', update);
+      window.removeEventListener('resize', update);
+    };
+  }, [roomIdParam]);
+
   const customerId = sessionQuery.data?.customerId ?? null;
 
   // Exclude yourself so your own second tab never warns about you.
   const otherViewers = roomViewers.filter((v) => v.userId !== user?.id);
 
   return (
-    <div className="inbox-workspace h-dvh flex flex-col bg-card overflow-hidden pb-[calc(56px+env(safe-area-inset-bottom))] lg:pb-0">
-      {/* แถบเตือนนัดเหนือทุกแผง (ชั้น 2 ท่า OBI apptAlert) — โผล่เฉพาะเมื่อมีนัดถึงเวลา/ใกล้ถึง */}
+    <div ref={workspaceRef} className={`inbox-workspace h-dvh flex flex-col lg:flex-row bg-card overflow-hidden ${roomIdParam ? 'inbox-room-open' : 'pb-[calc(64px+env(safe-area-inset-bottom))]'} lg:pb-0`}>
+      {/* จอใหญ่: แถบข้างแบบย่อซ้ายสุด (ไม่มีเมนูระบบบนหน้านี้) · จอเล็ก: แถบหัวแบบย่อด้านบน */}
       <InboxWorkTools onSelectRoom={handleSelectRoom} branchName={user?.branchName ?? undefined} />
-      <AppointmentAlertBar onGoToRoom={handleSelectRoom} />
+      <div className="flex flex-1 flex-col min-w-0 min-h-0">
+      {/* แถบเตือนนัดเหนือทุกแผง (ชั้น 2 ท่า OBI apptAlert) — โผล่เฉพาะเมื่อมีนัดถึงเวลา/ใกล้ถึง */}
+      <div className="inbox-global-appointments"><AppointmentAlertBar onGoToRoom={handleSelectRoom} /></div>
       <div className="flex flex-1 min-h-0">
       {/* Left panel: Conversation list */}
       <div className={`inbox-conversations w-80 flex-shrink-0 min-h-0 ${activeRoomId ? 'hidden lg:flex lg:flex-col' : 'flex flex-col w-full lg:w-80'}`}>
-        <QueryBoundary
-          isLoading={sessionsQuery.isLoading}
-          isError={sessionsQuery.isError}
-          error={sessionsQuery.error}
-          onRetry={() => sessionsQuery.refetch()}
-        >
           <ConversationList
             sessions={sessions}
             activeRoomId={activeRoomId}
             onSelectRoom={handleSelectRoom}
             isLoading={sessionsQuery.isLoading}
+            isError={sessionsQuery.isError}
+            error={sessionsQuery.error}
+            onRetry={() => void sessionsQuery.refetch()}
             filters={filters}
             onFiltersChange={setFilters}
             currentUserId={user?.id}
@@ -368,7 +423,6 @@ export default function UnifiedInboxPage() {
             isLoadingMore={sessionsQuery.isFetchingNextPage}
             onLoadMore={() => sessionsQuery.fetchNextPage()}
           />
-        </QueryBoundary>
       </div>
 
       {/* Center panel: Chat */}
@@ -377,7 +431,8 @@ export default function UnifiedInboxPage() {
           /* เดิม sessionQuery ไม่มี error handling ⇒ 403 ทำให้ ChatPanel ได้ session = undefined
              แล้วเรนเดอร์หน้าว่าง "เลือกการสนทนา" เหมือนยังไม่ได้คลิกอะไร พนักงานจึงงงว่ากดไม่ติด
              ทั้งที่ห้องยังอยู่ในรายการของทุกคน (SALES เปิดห้องที่เพื่อนรับไปแล้วไม่ได้) */
-          <div className="flex-1 flex items-center justify-center p-6">
+          <div className="relative flex-1 flex items-center justify-center p-6">
+            <button type="button" aria-label="กลับ" className="inbox-touch absolute left-2 top-2 lg:hidden" onClick={() => navigate('/inbox')}><ArrowLeft className="size-5" /></button>
             <div className="max-w-sm text-center space-y-2">
               <Lock className="size-8 mx-auto text-muted-foreground" />
               <p className="text-sm font-medium text-foreground">เปิดห้องนี้ไม่ได้</p>
@@ -386,9 +441,14 @@ export default function UnifiedInboxPage() {
           </div>
         ) : (
         <ChatPanel
-          session={sessionQuery.data}
-          messages={messagesQuery.data ?? []}
-          notes={Array.isArray(notesQuery.data) ? notesQuery.data : []}
+          session={sessionQuery.data ? {...sessionQuery.data,storeAppointment:appointmentSummaries.data?.[activeRoomId!]} : undefined}
+          messages={(focusedMessageId ? searchContext.data : messagesQuery.data) ?? []}
+          focusedMessageId={focusedMessageId}
+          searchContextError={searchContext.isError}
+          onRetrySearchContext={() => void searchContext.refetch()}
+          onReturnToLatest={() => setSearchTarget(null)}
+          onSelectSearchResult={messageId => activeRoomId && setSearchTarget({ roomId: activeRoomId, messageId })}
+          notes={!focusedMessageId && Array.isArray(notesQuery.data) ? notesQuery.data : []}
           pinnedNote={sessionQuery.data?.notes?.[0] ?? null}
           currentUserRole={user?.role}
           onAddNote={async (draft) => {
@@ -399,7 +459,7 @@ export default function UnifiedInboxPage() {
           onPinNote={(noteId) => activeRoomId && pinNoteMutation.mutate({ roomId: activeRoomId, noteId })}
           onUnpinNote={(noteId) => activeRoomId && unpinNoteMutation.mutate({ roomId: activeRoomId, noteId })}
           onDeleteNote={(noteId) => activeRoomId && deleteNoteMutation.mutate({ roomId: activeRoomId, noteId })}
-          isLoadingMessages={messagesQuery.isLoading}
+          isLoadingMessages={focusedMessageId ? searchContext.isFetching : messagesQuery.isLoading}
           isCustomerTyping={isCustomerTyping}
           onStartTyping={() => activeRoomId && startTyping(activeRoomId)}
           onStopTyping={() => activeRoomId && stopTyping(activeRoomId)}
@@ -457,7 +517,7 @@ export default function UnifiedInboxPage() {
 
       {/* Right panel as Drawer on < xl */}
       <Sheet open={customerPanelOpen} onOpenChange={setCustomerPanelOpen}>
-        <SheetContent side="right" close={false} className="w-80 p-0 xl:hidden">
+        <SheetContent side="right" close={false} className="inbox-customer-sheet w-full max-w-full gap-0 p-0 sm:max-w-md xl:hidden">
           <SheetTitle className="sr-only">ข้อมูลลูกค้า</SheetTitle>
           <RoomDossier
             onClose={() => setCustomerPanelOpen(false)}
@@ -476,6 +536,7 @@ export default function UnifiedInboxPage() {
           />
         </SheetContent>
       </Sheet>
+      </div>
       </div>
       <GfinSlotPicker
         open={!!slotPick && slotPick.roomId === activeRoomId}

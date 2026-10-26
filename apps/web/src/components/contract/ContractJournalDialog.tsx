@@ -79,7 +79,7 @@ export default function ContractJournalDialog({ contractId, contractNumber, onCl
             {contractNumber && <span className="text-primary font-mono">— {contractNumber}</span>}
           </DialogTitle>
           <div className="text-xs text-muted-foreground leading-snug mt-0.5">
-            JE ทุกใบที่ผูกกับสัญญานี้ ทั้งสมุด FINANCE และ SHOP · {data.length} ใบ
+            รายการบัญชี ทุกใบที่ผูกกับสัญญานี้ ทั้งสมุด FINANCE และ SHOP · {data.length} ใบ
           </div>
         </DialogHeader>
         <DialogBody className="flex-1 overflow-auto px-5 py-4">

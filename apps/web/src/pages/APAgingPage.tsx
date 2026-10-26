@@ -1,3 +1,4 @@
+import ScreenTable from '@/components/ui/ScreenTable';
 // Fix Report v1.0 P1-1 — AP Aging Page
 //
 // Shows unpaid ACCRUAL expenses bucketed by days overdue (0-30 / 31-60 / 61-90
@@ -127,7 +128,7 @@ export default function APAgingPage() {
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-4">
       <PageHeader
-        title="AP Aging"
+        title="อายุเจ้าหนี้"
         subtitle="เจ้าหนี้ค้างจ่าย จัดอายุตามวันที่ใบกำกับ — ใช้วางแผน Settlement"
         icon={<Wallet size={20} />}
       />
@@ -194,7 +195,7 @@ export default function APAgingPage() {
       <div className="flex flex-wrap items-center gap-3 rounded-xl border border-border/60 bg-card p-3">
         <div className="relative flex-1 min-w-[220px]">
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-          <input
+          <input aria-label="ค้นหาชื่อผู้จัดจำหน่าย"
             type="text"
             value={vendor}
             onChange={(e) => setVendor(e.target.value)}
@@ -203,7 +204,7 @@ export default function APAgingPage() {
           />
         </div>
         {bucket && (
-          <button
+          <button data-ui-control="button"
             type="button"
             onClick={() => setBucket('')}
             className="px-3 py-2 text-sm border border-border rounded-md hover:bg-accent"
@@ -222,7 +223,7 @@ export default function APAgingPage() {
             <span className="text-xs text-muted-foreground">
               เลือก {selected.size} · รวม {formatNumberDecimal(selectionTotal.toFixed(2))} ฿
             </span>
-            <button
+            <button data-ui-control="button"
               type="button"
               onClick={handleBatchSettle}
               disabled={selected.size === 0 || !sameVendor}
@@ -247,16 +248,17 @@ export default function APAgingPage() {
         error={query.error}
         onRetry={query.refetch}
       >
-        <div className="rounded-xl border border-border/60 bg-card overflow-hidden">
-          <table className="w-full text-sm">
+        <div role="region" aria-label="เอกสารค้างจ่าย" tabIndex={0} className="rounded-xl border border-border/60 bg-card overflow-x-auto">
+          <ScreenTable className="w-full min-w-[48rem] text-sm">
             <thead className="bg-muted/40">
               <tr className="text-left text-xs text-muted-foreground">
-                <th className="p-3 w-10">
-                  <button
+                <th className="p-3 w-[4.25rem]">
+                  <button data-ui-control="button" data-ui-icon="true"
                     type="button"
                     onClick={toggleAll}
                     aria-label="เลือกทั้งหมด"
-                    className="flex items-center"
+                    aria-pressed={selected.size === docs.length && docs.length > 0}
+                    className="inline-flex size-6 max-lg:size-11 items-center justify-center rounded-md hover:bg-muted"
                   >
                     {selected.size === docs.length && docs.length > 0 ? (
                       <CheckSquare size={16} className="text-primary" />
@@ -293,11 +295,12 @@ export default function APAgingPage() {
                       )}
                     >
                       <td className="p-3">
-                        <button
+                        <button data-ui-control="button" data-ui-icon="true"
                           type="button"
                           onClick={() => toggleRow(d.id)}
                           aria-label={`เลือก ${d.number}`}
-                          className="flex items-center"
+                          aria-pressed={isSelected}
+                          className="inline-flex size-6 max-lg:size-11 items-center justify-center rounded-md hover:bg-muted"
                         >
                           {isSelected ? (
                             <CheckSquare size={16} className="text-primary" />
@@ -332,7 +335,7 @@ export default function APAgingPage() {
                         <Link
                           to={`/expenses/${d.id}`}
                           aria-label={`เปิด ${d.number}`}
-                          className="text-muted-foreground hover:text-primary"
+                          className="inline-flex size-6 max-lg:size-11 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-primary"
                         >
                           <ExternalLink size={14} />
                         </Link>
@@ -342,7 +345,7 @@ export default function APAgingPage() {
                 })
               )}
             </tbody>
-          </table>
+          </ScreenTable>
         </div>
       </QueryBoundary>
     </div>

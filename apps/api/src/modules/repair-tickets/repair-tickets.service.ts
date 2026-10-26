@@ -196,6 +196,16 @@ export class RepairTicketsService {
     return this.lifecycle.markReplaced(id, replacementContractId, user, tx);
   }
 
+  /** PR 5 — ซ่อมไม่ได้ → เปลี่ยนรุ่นเดิมบนใบขายสด (ไม่มีสัญญาใหม่) — ไม่เขียน audit ผู้เรียกเขียนหลัง commit */
+  async markReplacedBySale(
+    id: string,
+    ref: { caseNumber: string; saleNumber: string },
+    user: ReqUser,
+    tx: Prisma.TransactionClient | PrismaService = this.prisma,
+  ) {
+    return this.lifecycle.markReplacedBySale(id, ref, user, tx);
+  }
+
   // ─── Query (read-only) ──────────────────────────────────────────────────────
 
   async findAll(dto: ListRepairTicketsDto, user: ReqUser) {

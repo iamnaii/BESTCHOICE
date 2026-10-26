@@ -4,6 +4,7 @@ import { toast } from 'sonner';
 import api from '@/lib/api';
 import AuthLayout from '@/components/layout/AuthLayout';
 import { Input } from '@/components/ui/input';
+import { formControlClass, formLabelClass } from '@/components/ui/form-styles';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 
@@ -41,7 +42,7 @@ export default function ForgotPasswordPage() {
           <img src="/logo-icon.svg" alt="BESTCHOICE" className="size-10 shrink-0" />
           <div>
             <div className="text-lg font-extrabold text-foreground">BEST<span className="text-primary">CHOICE</span></div>
-            <div className="text-xs text-muted-foreground">Finance Management</div>
+            <div className="text-xs text-muted-foreground">ระบบบริหารร้านและการเงิน</div>
           </div>
         </div>
         {submitted ? (
@@ -67,9 +68,10 @@ export default function ForgotPasswordPage() {
         ) : (
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <Label htmlFor="email">อีเมล</Label>
+              <Label htmlFor="email" className={formLabelClass}>อีเมล</Label>
               <Input
                 id="email"
+                className={formControlClass}
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
@@ -81,7 +83,7 @@ export default function ForgotPasswordPage() {
             <Button
               type="submit"
               disabled={isSubmitting}
-              className="w-full"
+              className="w-full h-11 min-h-11"
               variant="primary"
               size="lg"
             >

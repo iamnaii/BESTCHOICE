@@ -1,4 +1,6 @@
-import { useEffect, useState } from 'react';
+import { NumberInput } from '@/components/ui/NumberInput';
+import { NativeSelect } from '@/components/ui/native-select';
+import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import AddressForm, { AddressData, deserializeAddress, emptyAddress, serializeAddress } from '@/components/ui/AddressForm';
 import ThaiDateInput from '@/components/ui/ThaiDateInput';
@@ -6,6 +8,7 @@ import { RELATIONSHIP_OPTIONS, THAI_NAME_PREFIXES } from '@/lib/constants';
 import api, { getErrorMessage } from '@/lib/api';
 import { toast } from 'sonner';
 import { invalidateCustomerJourney } from '@/hooks/customer-journey/useCustomerJourney';
+import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import type { CustomerDetail, ReferenceData } from '../types';
 
 interface EditCustomerDialogProps {
@@ -16,6 +19,7 @@ interface EditCustomerDialogProps {
 
 export default function EditCustomerDialog({ customer, open, onClose }: EditCustomerDialogProps) {
   const queryClient = useQueryClient();
+  const returnFocus = useRef<HTMLElement | null>(null);
 
   const [editForm, setEditForm] = useState({
     prefix: '', name: '', nickname: '', phone: '', phoneSecondary: '',
@@ -126,18 +130,24 @@ export default function EditCustomerDialog({ customer, open, onClose }: EditCust
   if (!open) return null;
 
   return (
-      <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-start justify-center pt-8 pb-8" role="dialog" aria-modal="true" aria-label="แก้ไขข้อมูลลูกค้า">
-        <div className="w-full max-w-3xl bg-background rounded-xl shadow-modal overflow-hidden flex flex-col max-h-[calc(100vh-4rem)]">
-          <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-xs border-b px-6 py-4 flex items-center justify-between shrink-0">
-            <button type="button" onClick={onClose} className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors">
+      <Dialog open={open} onOpenChange={(next) => { if (!next) onClose(); }}>
+        <DialogContent
+          showCloseButton={false}
+          aria-describedby={undefined}
+          className="max-w-3xl p-0 rounded-xl overflow-hidden max-h-[calc(100dvh-2rem)]"
+          onOpenAutoFocus={() => { returnFocus.current = document.activeElement as HTMLElement; }}
+          onCloseAutoFocus={(event) => { event.preventDefault(); returnFocus.current?.focus(); }}
+        >
+          <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-xs border-b px-4 sm:px-6 py-3 flex items-center justify-between gap-2 shrink-0">
+            <button type="button" onClick={onClose} className="min-h-11 shrink-0 flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors">
               <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6"/></svg>
               กลับ
             </button>
-            <h2 className="text-lg font-semibold text-foreground">แก้ไขข้อมูลลูกค้า</h2>
-            <div className="w-16" />
+            <DialogTitle className="text-base sm:text-lg">แก้ไขข้อมูลลูกค้า</DialogTitle>
+            <div className="hidden sm:block w-16" />
           </div>
-        <form onSubmit={(e) => { e.preventDefault(); updateCustomerMutation.mutate(); }} className="flex-1 overflow-y-auto flex flex-col">
-          <div className="p-6 space-y-5 flex-1">
+        <form onSubmit={(e) => { e.preventDefault(); updateCustomerMutation.mutate(); }} className="min-h-0 flex-1 overflow-y-auto overscroll-contain flex flex-col">
+          <div className="p-3 sm:p-6 space-y-5 flex-1">
 
           {/* ข้อมูลส่วนตัว */}
           <div className="rounded-xl border border-border bg-card p-5">
@@ -150,25 +160,25 @@ export default function EditCustomerDialog({ customer, open, onClose }: EditCust
                 <p className="text-xs text-muted-foreground">ชื่อ, คำนำหน้า, วันเกิด</p>
               </div>
             </div>
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
               <div>
-                <label className="block text-xs font-medium text-foreground mb-1.5">คำนำหน้า</label>
-                <select value={editForm.prefix} onChange={(e) => setEditForm({ ...editForm, prefix: e.target.value })} className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20">
+                <label htmlFor="customer-edit-1" className="block text-xs font-medium text-foreground mb-1.5">คำนำหน้า</label>
+                <NativeSelect wrapperClassName="max-w-full w-full" id="customer-edit-1" value={editForm.prefix} onChange={(e) => setEditForm({ ...editForm, prefix: e.target.value })} className="h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20">
                   <option value="">-- เลือก --</option>
                   {THAI_NAME_PREFIXES.map(p => <option key={p} value={p}>{p}</option>)}
-                </select>
+                </NativeSelect>
               </div>
               <div>
-                <label className="block text-xs font-medium text-foreground mb-1.5">ชื่อ-นามสกุล <span className="text-destructive">*</span></label>
-                <input type="text" value={editForm.name} onChange={(e) => setEditForm({ ...editForm, name: e.target.value })} className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20" required />
+                <label htmlFor="customer-edit-2" className="block text-xs font-medium text-foreground mb-1.5">ชื่อ-นามสกุล <span className="text-destructive">*</span></label>
+                <input id="customer-edit-2" type="text" value={editForm.name} onChange={(e) => setEditForm({ ...editForm, name: e.target.value })} className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20" required />
               </div>
               <div>
-                <label className="block text-xs font-medium text-foreground mb-1.5">ชื่อเล่น</label>
-                <input type="text" value={editForm.nickname} onChange={(e) => setEditForm({ ...editForm, nickname: e.target.value })} className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20" />
+                <label htmlFor="customer-edit-3" className="block text-xs font-medium text-foreground mb-1.5">ชื่อเล่น</label>
+                <input id="customer-edit-3" type="text" value={editForm.nickname} onChange={(e) => setEditForm({ ...editForm, nickname: e.target.value })} className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20" />
               </div>
               <div>
-                <label className="block text-xs font-medium text-foreground mb-1.5">วันเกิด</label>
-                <ThaiDateInput value={editForm.birthDate} onChange={(e) => setEditForm({ ...editForm, birthDate: e.target.value })} className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20" />
+                <label htmlFor="customer-edit-4" className="block text-xs font-medium text-foreground mb-1.5">วันเกิด</label>
+                <ThaiDateInput id="customer-edit-4" value={editForm.birthDate} onChange={(e) => setEditForm({ ...editForm, birthDate: e.target.value })} className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20" />
               </div>
             </div>
           </div>
@@ -197,8 +207,8 @@ export default function EditCustomerDialog({ customer, open, onClose }: EditCust
                   <p className="text-xs text-muted-foreground">ที่พักอาศัยจริง</p>
                 </div>
               </div>
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input type="checkbox" checked={editSameAddress} onChange={(e) => setEditSameAddress(e.target.checked)} className="rounded border-input text-primary focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background" />
+              <label htmlFor="customer-edit-5" className="flex items-center gap-2 cursor-pointer">
+                <input id="customer-edit-5" type="checkbox" checked={editSameAddress} onChange={(e) => setEditSameAddress(e.target.checked)} className="rounded border-input text-primary focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background" />
                 <span className="text-xs text-muted-foreground">เหมือนที่อยู่ตามบัตร</span>
               </label>
             </div>
@@ -208,8 +218,8 @@ export default function EditCustomerDialog({ customer, open, onClose }: EditCust
               <AddressForm value={editAddrCurrent} onChange={setEditAddrCurrent} />
             )}
             <div className="mt-3">
-              <label className="block text-xs font-medium text-foreground mb-1.5">Link Google Map</label>
-              <input type="url" value={editForm.googleMapLink} onChange={(e) => setEditForm({ ...editForm, googleMapLink: e.target.value })} className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20" placeholder="https://maps.google.com/..." />
+              <label htmlFor="customer-edit-6" className="block text-xs font-medium text-foreground mb-1.5">ลิงก์ Google Maps</label>
+              <input id="customer-edit-6" type="url" value={editForm.googleMapLink} onChange={(e) => setEditForm({ ...editForm, googleMapLink: e.target.value })} className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20" placeholder="https://maps.google.com/..." />
             </div>
           </div>
 
@@ -224,39 +234,39 @@ export default function EditCustomerDialog({ customer, open, onClose }: EditCust
                 <p className="text-xs text-muted-foreground">เบอร์โทร, อีเมล, LINE, Facebook</p>
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 {/* R41: ผู้สนใจจากแชทยังไม่มีเบอร์ — ช่องนี้ไม่ required สำหรับเขา ดาวจึงต้องหายไปด้วย ไม่ใช่ค้างอยู่ */}
-                <label className="block text-xs font-medium text-foreground mb-1.5">เบอร์หลัก{!customer?.chatPlaceholder && <span className="text-destructive"> *</span>}</label>
-                <input type="tel" value={editForm.phone} onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })} className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20" required={!customer?.chatPlaceholder} />
+                <label htmlFor="customer-edit-7" className="block text-xs font-medium text-foreground mb-1.5">เบอร์หลัก{!customer?.chatPlaceholder && <span className="text-destructive"> *</span>}</label>
+                <input id="customer-edit-7" type="tel" value={editForm.phone} onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })} className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20" required={!customer?.chatPlaceholder} />
               </div>
               <div>
-                <label className="block text-xs font-medium text-foreground mb-1.5">เบอร์สำรอง</label>
-                <input type="tel" value={editForm.phoneSecondary} onChange={(e) => setEditForm({ ...editForm, phoneSecondary: e.target.value })} className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20" />
+                <label htmlFor="customer-edit-8" className="block text-xs font-medium text-foreground mb-1.5">เบอร์สำรอง</label>
+                <input id="customer-edit-8" type="tel" value={editForm.phoneSecondary} onChange={(e) => setEditForm({ ...editForm, phoneSecondary: e.target.value })} className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20" />
               </div>
               <div>
-                <label className="block text-xs font-medium text-foreground mb-1.5">อีเมล</label>
-                <input type="email" value={editForm.email} onChange={(e) => setEditForm({ ...editForm, email: e.target.value })} className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20" />
+                <label htmlFor="customer-edit-9" className="block text-xs font-medium text-foreground mb-1.5">อีเมล</label>
+                <input id="customer-edit-9" type="email" value={editForm.email} onChange={(e) => setEditForm({ ...editForm, email: e.target.value })} className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20" />
               </div>
               <div>
-                <label className="block text-xs font-medium text-foreground mb-1.5">LINE ID (Finance / น้องเบส)</label>
-                <input type="text" value={editForm.lineIdFinance} onChange={(e) => setEditForm({ ...editForm, lineIdFinance: e.target.value })} className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20" placeholder="U1234567890abcdef..." />
+                <label htmlFor="customer-edit-10" className="block text-xs font-medium text-foreground mb-1.5">LINE ID (Finance / น้องเบส)</label>
+                <input id="customer-edit-10" type="text" value={editForm.lineIdFinance} onChange={(e) => setEditForm({ ...editForm, lineIdFinance: e.target.value })} className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20" placeholder="U1234567890abcdef..." />
               </div>
               <div>
-                <label className="block text-xs font-medium text-foreground mb-1.5">LINE ID (Shop / ร้าน)</label>
-                <input type="text" value={editForm.lineIdShop} onChange={(e) => setEditForm({ ...editForm, lineIdShop: e.target.value })} className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20" placeholder="U1234567890abcdef..." />
+                <label htmlFor="customer-edit-11" className="block text-xs font-medium text-foreground mb-1.5">LINE ID (Shop / ร้าน)</label>
+                <input id="customer-edit-11" type="text" value={editForm.lineIdShop} onChange={(e) => setEditForm({ ...editForm, lineIdShop: e.target.value })} className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20" placeholder="U1234567890abcdef..." />
               </div>
               <div>
-                <label className="block text-xs font-medium text-foreground mb-1.5">ลิงก์ Facebook</label>
-                <input type="url" value={editForm.facebookLink} onChange={(e) => setEditForm({ ...editForm, facebookLink: e.target.value })} className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20" />
+                <label htmlFor="customer-edit-12" className="block text-xs font-medium text-foreground mb-1.5">ลิงก์ Facebook</label>
+                <input id="customer-edit-12" type="url" value={editForm.facebookLink} onChange={(e) => setEditForm({ ...editForm, facebookLink: e.target.value })} className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20" />
               </div>
               <div>
-                <label className="block text-xs font-medium text-foreground mb-1.5">ชื่อ Facebook</label>
-                <input type="text" value={editForm.facebookName} onChange={(e) => setEditForm({ ...editForm, facebookName: e.target.value })} className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20" />
+                <label htmlFor="customer-edit-13" className="block text-xs font-medium text-foreground mb-1.5">ชื่อ Facebook</label>
+                <input id="customer-edit-13" type="text" value={editForm.facebookName} onChange={(e) => setEditForm({ ...editForm, facebookName: e.target.value })} className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20" />
               </div>
               <div>
-                <label className="block text-xs font-medium text-foreground mb-1.5">จำนวนเพื่อน Facebook</label>
-                <input type="text" value={editForm.facebookFriends} onChange={(e) => setEditForm({ ...editForm, facebookFriends: e.target.value })} className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20" />
+                <label htmlFor="customer-edit-14" className="block text-xs font-medium text-foreground mb-1.5">จำนวนเพื่อน Facebook</label>
+                <input id="customer-edit-14" type="text" value={editForm.facebookFriends} onChange={(e) => setEditForm({ ...editForm, facebookFriends: e.target.value })} className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20" />
               </div>
             </div>
           </div>
@@ -272,22 +282,22 @@ export default function EditCustomerDialog({ customer, open, onClose }: EditCust
                 <p className="text-xs text-muted-foreground">อาชีพ, ที่ทำงาน, รายได้</p>
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-3 mb-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
               <div>
-                <label className="block text-xs font-medium text-foreground mb-1.5">ชื่อที่ทำงาน</label>
-                <input type="text" value={editForm.workplace} onChange={(e) => setEditForm({ ...editForm, workplace: e.target.value })} className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20" />
+                <label htmlFor="customer-edit-15" className="block text-xs font-medium text-foreground mb-1.5">ชื่อที่ทำงาน</label>
+                <input id="customer-edit-15" type="text" value={editForm.workplace} onChange={(e) => setEditForm({ ...editForm, workplace: e.target.value })} className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20" />
               </div>
               <div>
-                <label className="block text-xs font-medium text-foreground mb-1.5">อาชีพ</label>
-                <input type="text" value={editForm.occupation} onChange={(e) => setEditForm({ ...editForm, occupation: e.target.value })} className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20" />
+                <label htmlFor="customer-edit-16" className="block text-xs font-medium text-foreground mb-1.5">อาชีพ</label>
+                <input id="customer-edit-16" type="text" value={editForm.occupation} onChange={(e) => setEditForm({ ...editForm, occupation: e.target.value })} className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20" />
               </div>
               <div>
-                <label className="block text-xs font-medium text-foreground mb-1.5">รายละเอียดอาชีพ</label>
-                <input type="text" value={editForm.occupationDetail} onChange={(e) => setEditForm({ ...editForm, occupationDetail: e.target.value })} className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20" />
+                <label htmlFor="customer-edit-17" className="block text-xs font-medium text-foreground mb-1.5">รายละเอียดอาชีพ</label>
+                <input id="customer-edit-17" type="text" value={editForm.occupationDetail} onChange={(e) => setEditForm({ ...editForm, occupationDetail: e.target.value })} className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20" />
               </div>
               <div>
-                <label className="block text-xs font-medium text-foreground mb-1.5">เงินเดือน</label>
-                <input type="number" value={editForm.salary} onChange={(e) => setEditForm({ ...editForm, salary: e.target.value })} className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20" placeholder="0.00" />
+                <label htmlFor="customer-edit-18" className="block text-xs font-medium text-foreground mb-1.5">เงินเดือน</label>
+                <NumberInput unstyled id="customer-edit-18" value={editForm.salary} onChange={(e) => setEditForm({ ...editForm, salary: e.target.value })} className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20" placeholder="0.00" />
               </div>
             </div>
             <div className="mt-2">
@@ -311,32 +321,32 @@ export default function EditCustomerDialog({ customer, open, onClose }: EditCust
               {editRefs.map((ref, idx) => (
                 <div key={idx}>
                   <div className="text-xs font-medium text-muted-foreground mb-2">บุคคลอ้างอิง {idx + 1}</div>
-                  <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
                     <div>
-                      <label className="block text-xs font-medium text-foreground mb-1.5">คำนำหน้า</label>
-                      <select value={ref.prefix || ''} onChange={(e) => updateEditRef(idx, 'prefix', e.target.value)} className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20">
+                      <label htmlFor={`customer-edit-19-${idx}`} className="block text-xs font-medium text-foreground mb-1.5">คำนำหน้า</label>
+                      <NativeSelect wrapperClassName="max-w-full w-full" id={`customer-edit-19-${idx}`} value={ref.prefix || ''} onChange={(e) => updateEditRef(idx, 'prefix', e.target.value)} className="h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20">
                         <option value="">-- เลือก --</option>
                         {THAI_NAME_PREFIXES.map(p => <option key={p} value={p}>{p}</option>)}
-                      </select>
+                      </NativeSelect>
                     </div>
                     <div>
-                      <label className="block text-xs font-medium text-foreground mb-1.5">ชื่อ</label>
-                      <input type="text" value={ref.firstName || ''} onChange={(e) => updateEditRef(idx, 'firstName', e.target.value)} className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20" />
+                      <label htmlFor={`customer-edit-20-${idx}`} className="block text-xs font-medium text-foreground mb-1.5">ชื่อ</label>
+                      <input id={`customer-edit-20-${idx}`} type="text" value={ref.firstName || ''} onChange={(e) => updateEditRef(idx, 'firstName', e.target.value)} className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20" />
                     </div>
                     <div>
-                      <label className="block text-xs font-medium text-foreground mb-1.5">นามสกุล</label>
-                      <input type="text" value={ref.lastName || ''} onChange={(e) => updateEditRef(idx, 'lastName', e.target.value)} className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20" />
+                      <label htmlFor={`customer-edit-21-${idx}`} className="block text-xs font-medium text-foreground mb-1.5">นามสกุล</label>
+                      <input id={`customer-edit-21-${idx}`} type="text" value={ref.lastName || ''} onChange={(e) => updateEditRef(idx, 'lastName', e.target.value)} className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20" />
                     </div>
                     <div>
-                      <label className="block text-xs font-medium text-foreground mb-1.5">เบอร์โทร</label>
-                      <input type="tel" value={ref.phone || ''} onChange={(e) => updateEditRef(idx, 'phone', e.target.value)} className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20" />
+                      <label htmlFor={`customer-edit-22-${idx}`} className="block text-xs font-medium text-foreground mb-1.5">เบอร์โทร</label>
+                      <input id={`customer-edit-22-${idx}`} type="tel" value={ref.phone || ''} onChange={(e) => updateEditRef(idx, 'phone', e.target.value)} className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20" />
                     </div>
                     <div>
-                      <label className="block text-xs font-medium text-foreground mb-1.5">ความสัมพันธ์</label>
-                      <select value={ref.relationship || ''} onChange={(e) => updateEditRef(idx, 'relationship', e.target.value)} className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20">
+                      <label htmlFor={`customer-edit-23-${idx}`} className="block text-xs font-medium text-foreground mb-1.5">ความสัมพันธ์</label>
+                      <NativeSelect wrapperClassName="max-w-full w-full" id={`customer-edit-23-${idx}`} value={ref.relationship || ''} onChange={(e) => updateEditRef(idx, 'relationship', e.target.value)} className="h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20">
                         <option value="">-- เลือก --</option>
                         {RELATIONSHIP_OPTIONS.map(r => <option key={r} value={r}>{r}</option>)}
-                      </select>
+                      </NativeSelect>
                     </div>
                   </div>
                 </div>
@@ -355,13 +365,13 @@ export default function EditCustomerDialog({ customer, open, onClose }: EditCust
 
           </div>
           <div className="sticky bottom-0 bg-background/95 backdrop-blur-xs border-t px-6 py-4 flex justify-end gap-3 shrink-0">
-            <button type="button" onClick={onClose} className="px-6 py-2.5 text-sm border border-input rounded-lg hover:bg-muted transition-colors">ยกเลิก</button>
-            <button type="submit" disabled={updateCustomerMutation.isPending} className="px-6 py-2.5 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50 font-semibold transition-colors shadow-sm">
+            <button data-ui-control="button" type="button" onClick={onClose} className="px-6 py-2.5 text-sm border border-input rounded-lg hover:bg-muted transition-colors">ยกเลิก</button>
+            <button data-ui-control="button" type="submit" disabled={updateCustomerMutation.isPending} className="px-6 py-2.5 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50 font-semibold transition-colors shadow-sm">
               {updateCustomerMutation.isPending ? 'กำลังบันทึก...' : 'บันทึก'}
             </button>
           </div>
         </form>
-        </div>
-      </div>
+        </DialogContent>
+      </Dialog>
   );
 }

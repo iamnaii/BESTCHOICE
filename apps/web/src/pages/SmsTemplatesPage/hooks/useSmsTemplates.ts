@@ -61,7 +61,7 @@ export function useCreateTemplate() {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['sms-templates'] });
-      toast.success('สร้าง template เรียบร้อย');
+      toast.success("สร้างแม่แบบเรียบร้อย");
     },
     onError: (err: any) => {
       toast.error(err?.response?.data?.message ?? 'สร้าง template ล้มเหลว');
@@ -78,7 +78,7 @@ export function useUpdateTemplate() {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['sms-templates'] });
-      toast.success('บันทึก template เรียบร้อย');
+      toast.success("บันทึก แม่แบบเรียบร้อย");
     },
     onError: (err: any) => {
       toast.error(err?.response?.data?.message ?? 'บันทึก template ล้มเหลว');
@@ -94,7 +94,7 @@ export function useDeleteTemplate() {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['sms-templates'] });
-      toast.success('ลบ template เรียบร้อย');
+      toast.success("ลบแม่แบบเรียบร้อย");
     },
     onError: (err: any) => {
       toast.error(err?.response?.data?.message ?? 'ลบ template ล้มเหลว');
@@ -142,7 +142,7 @@ export function useCreateVariant() {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['sms-templates'] });
-      toast.success('สร้าง A/B variant เรียบร้อย');
+      toast.success("สร้าง รูปแบบทดสอบ A/B เรียบร้อย");
     },
     onError: (err: any) => {
       toast.error(err?.response?.data?.message ?? 'สร้าง variant ล้มเหลว');

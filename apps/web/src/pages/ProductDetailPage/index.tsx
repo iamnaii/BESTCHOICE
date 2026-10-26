@@ -1,4 +1,5 @@
-import { useState, useMemo } from 'react';
+import { NativeSelect } from '@/components/ui/native-select';
+import { useId as useUiFieldId, useState, useMemo } from 'react';
 import type { PartsHistoryValue } from '@installment/shared';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { useParams, Link } from 'react-router';
@@ -116,6 +117,7 @@ const SOLD_STATUSES = new Set(['SOLD_INSTALLMENT', 'SOLD_CASH', 'SOLD_RESELL']);
  * spec: docs/superpowers/specs/2026-09-11-product-detail-redesign-design.md
  */
 export default function ProductDetailPage() {
+  const uiFieldId = useUiFieldId();
   const { id } = useParams<{ id: string }>();
   const { user } = useAuth();
   const queryClient = useQueryClient();
@@ -464,7 +466,7 @@ export default function ProductDetailPage() {
           ...(product.category === 'PHONE_USED' ? [{ key: 'photos' as Tab, label: 'รูปถ่าย' }] : []),
           { key: 'online' as Tab, label: 'ขึ้นเว็บ' },
         ]).map((tab) => (
-          <button
+          <button data-ui-control="button"
             key={tab.key}
             onClick={() => setActiveTab(tab.key)}
             className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
@@ -599,11 +601,11 @@ export default function ProductDetailPage() {
             <div className="font-medium">{product.branch.name}</div>
           </div>
           <div>
-            <label className="block text-sm font-medium text-foreground mb-1">สาขาปลายทาง *</label>
-            <select
+            <label htmlFor={`${uiFieldId}-1`} className="block text-sm font-medium text-foreground mb-1">สาขาปลายทาง *</label>
+            <NativeSelect wrapperClassName="max-w-full w-full" id={`${uiFieldId}-1`}
               value={transferForm.toBranchId}
               onChange={(e) => setTransferForm({ ...transferForm, toBranchId: e.target.value })}
-              className="w-full px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
+              className="px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
               required
             >
               <option value="">เลือกสาขา</option>
@@ -612,11 +614,11 @@ export default function ProductDetailPage() {
                 .map((b) => (
                   <option key={b.id} value={b.id}>{b.name}</option>
                 ))}
-            </select>
+            </NativeSelect>
           </div>
           <div>
-            <label className="block text-sm font-medium text-foreground mb-1">หมายเหตุ</label>
-            <textarea
+            <label htmlFor={`${uiFieldId}-2`} className="block text-sm font-medium text-foreground mb-1">หมายเหตุ</label>
+            <textarea id={`${uiFieldId}-2`}
               value={transferForm.notes}
               onChange={(e) => setTransferForm({ ...transferForm, notes: e.target.value })}
               rows={2}
@@ -624,14 +626,14 @@ export default function ProductDetailPage() {
             />
           </div>
           <div className="flex justify-end gap-3 pt-2">
-            <button
+            <button data-ui-control="button"
               type="button"
               onClick={() => setIsTransferModalOpen(false)}
               className="px-4 py-2 text-sm text-muted-foreground"
             >
               ยกเลิก
             </button>
-            <button
+            <button data-ui-control="button"
               type="submit"
               disabled={transferMutation.isPending}
               className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 disabled:opacity-50"

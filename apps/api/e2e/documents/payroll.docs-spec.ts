@@ -484,7 +484,7 @@ describe('DOC-04 payroll slips and annual 50 ทวิ — real workflow, real j
       expect(pageStream(pdf, 1)).toContain(foldThai(money(money1.net)));
       expect(pageStream(pdf, 2)).toContain(foldThai(money(money2.net)));
       expect(pageStream(pdf, 3)).toContain(foldThai(money(money3.net)));
-      expect(streamText(pdf)).not.toContain(foldThai('พิมพ์ / Save PDF'));
+      expect(streamText(pdf)).not.toContain(foldThai('พิมพ์ / บันทึก PDF'));
       expect(pageErrors(errors)).toEqual([]);
       const artifacts = [...screenshots, printed.printMediaShot, printed.artifact, saveArtifact(DOMAIN, 'payroll-slips-print.pdf.json', JSON.stringify({ ...pdfSummary(pdf), fontLoaded: printed.fontLoaded, consoleErrors: errors }, null, 2)).relativePath];
       recordScenario(DOMAIN, scenario({ id: `${DOMAIN}/browser-payroll-slips`, title: 'PaymentVoucherPage for a PAYROLL document: three slips (1/3..3/3), each with only its employee, base + custom income (ม.42 badge on exempt), SSO/WHT/deduction, net in words, ผู้รับเงิน/ผู้จัดทำ; print-media PDF = 3 A4 portrait pages in TH Sarabun PSK 16 pt, one employee per page', routes: ['POST /api/auth/login', 'GET /api/expense-documents/:id', 'GET /api/companies/public'], artifacts, notes: consoleNote(errors) }));
@@ -544,7 +544,7 @@ describe('DOC-04 payroll slips and annual 50 ทวิ — real workflow, real j
       for (const token of ['ทดสอบระบบ บริษัทไฟแนนซ์', '0000000000000', 'ทดสอบระบบ พนักงาน e1', e1.nationalId, '37,000.00', '350.00', 'ลงชื่อ ผู้จ่ายเงิน']) expect(certStream).toContain(foldThai(token));
       for (const other of ['ทดสอบระบบ พนักงาน e2', 'ทดสอบระบบ พนักงาน e4', 'ภ.ง.ด.1ก + ใบ 50 ทวิ — สรุปรายปี', 'ดาวน์โหลด Excel']) expect(certStream).not.toContain(foldThai(other));
       expect(pageContaining(certPrint.pdf, 'ลงชื่อ ผู้จ่ายเงิน')).toBe(pageContaining(certPrint.pdf, 'ภาษีที่หักนำส่ง'));
-      await dialog.getByRole('button', { name: 'ปิด' }).click();
+      await dialog.getByRole('button', { name: 'ปิด', exact: true }).first().click();
       await dialog.waitFor({ state: 'hidden', timeout: 15_000 });
 
       // Certificate for e2 (tax id from the profile override) and for the free-text employee (no tax id → dotted line).
@@ -554,20 +554,28 @@ describe('DOC-04 payroll slips and annual 50 ทวิ — real workflow, real j
       const cert2Print = await printToPdf(page, 'wht-certificate-e2-print');
       expect(streamText(cert2Print.pdf)).toContain(foldThai(e2.taxId));
       expect(streamText(cert2Print.pdf)).not.toContain(foldThai('ทดสอบระบบ พนักงาน e1'));
-      await dialog.getByRole('button', { name: 'ปิด' }).click();
+      await dialog.getByRole('button', { name: 'ปิด', exact: true }).first().click();
       await dialog.waitFor({ state: 'hidden', timeout: 15_000 });
       const cert3 = await openCertificate(E3_NAME(), 'wht-certificate-e3');
       expect(cert3).toContain(E3_NAME());
       expect(cert3).toContain('เลขประจำตัวผู้เสียภาษี ................................');
       expect(cert3).toContain('18,000.00');
-      await dialog.getByRole('button', { name: 'ปิด' }).click();
+      await dialog.getByRole('button', { name: 'ปิด', exact: true }).first().click();
       await dialog.waitFor({ state: 'hidden', timeout: 15_000 });
 
       // Another tax year: the table empties and no certificate is offered.
-      // A combobox takes no accessible name from its content (ARIA), so match the Radix trigger by its visible text.
-      await page.getByRole('combobox').filter({ hasText: 'ปีภาษี' }).first().click();
+      await page.getByRole('combobox', { name: 'ปี', exact: true }).click();
+      const previousYearResponse = page.waitForResponse((response) => {
+        const url = new URL(response.url());
+        return url.pathname === '/api/admin/tax/pnd1-annual-preview'
+          && url.searchParams.get('year') === String(YEAR - 1)
+          && response.request().method() === 'GET';
+      });
       await page.getByRole('option', { name: `ปีภาษี ${YEAR - 1 + 543}` }).click();
-      await waitForText(page, `ไม่มีใบเงินเดือนที่ POST แล้วในปี ${YEAR - 1 + 543}`, 'wht-annual-previous-year');
+      const previousYear = await previousYearResponse;
+      expect(previousYear.status()).toBe(200);
+      expect((await previousYear.json()).data).toMatchObject({ year: YEAR - 1, items: [], count: 0 });
+      await waitForText(page, `ยังไม่มีรายการเงินเดือนที่ลงบัญชีในปี ${YEAR - 1 + 543}`, 'wht-annual-previous-year');
       expect(await page.getByRole('button', { name: /50 ทวิ/ }).count()).toBe(0);
       const emptyShot = saveArtifact(DOMAIN, 'wht-annual-previous-year-1440.png', await page.screenshot({ fullPage: true })).relativePath;
 
@@ -589,7 +597,7 @@ describe('DOC-04 payroll slips and annual 50 ทวิ — real workflow, real j
         expect(noFinance).not.toContain('ทดสอบระบบ พนักงาน e1');
         expect(await dialog.getByRole('button', { name: 'พิมพ์' }).count()).toBe(0);
         noFinanceShot = saveArtifact(DOMAIN, 'wht-certificate-no-finance-1440.png', await page.screenshot({ fullPage: true })).relativePath;
-        await dialog.getByRole('button', { name: 'ปิด' }).click();
+        await dialog.getByRole('button', { name: 'ปิด', exact: true }).first().click();
         await dialog.waitFor({ state: 'hidden', timeout: 15_000 });
       } finally {
         await h.prisma.companyInfo.update({ where: { id: financeRow.id }, data: { companyCode: 'FINANCE' } });

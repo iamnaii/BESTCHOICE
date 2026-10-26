@@ -1,0 +1,57 @@
+{
+  "status": "FAIL",
+  "scope": "Basic checks + synthetic Inbox, customers, dashboard, FINANCE portfolio, work-company navigation and trade-in-to-stock flow; not a full backend/financial regression",
+  "repo": "/Users/iamnaii/Desktop/App/BESTCHOICE-layout-audit",
+  "revision": "c5d26edcf",
+  "sourceFingerprint": "5b0fd4021eed57dfba09449c037de95b6b6505e68ada9dd7f8f696a9a5c142e4",
+  "startedAt": "2026-10-17T05:58:08.211Z",
+  "checks": [
+    {
+      "label": "Local tooling",
+      "status": "PASS"
+    },
+    {
+      "label": "Prisma SHOP",
+      "status": "PASS"
+    },
+    {
+      "label": "Prisma FINANCE",
+      "status": "PASS"
+    },
+    {
+      "label": "API + Web types",
+      "status": "PASS"
+    },
+    {
+      "label": "API lint (no autofix)",
+      "status": "PASS"
+    },
+    {
+      "label": "Web lint",
+      "status": "PASS"
+    },
+    {
+      "label": "Web tests",
+      "status": "PASS"
+    },
+    {
+      "label": "Shared tests",
+      "status": "PASS"
+    },
+    {
+      "label": "Storefront tests",
+      "status": "PASS"
+    },
+    {
+      "label": "Storefront build + types",
+      "status": "PASS"
+    },
+    {
+      "label": "Web build",
+      "status": "PASS"
+    }
+  ],
+  "currentCheck": "Web build",
+  "error": "Source changed during checks; run local:check again.\n+ actual - expected\n\n+ 'a3b9ee9c844a61db2cecbe3f156877e9b10b117ce24364062a3eea5ef9097a37'\n- '5b0fd4021eed57dfba09449c037de95b6b6505e68ada9dd7f8f696a9a5c142e4'\n",
+  "finishedAt": "2026-10-17T06:00:20.188Z"
+}

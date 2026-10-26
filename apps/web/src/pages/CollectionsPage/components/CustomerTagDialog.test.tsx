@@ -88,18 +88,18 @@ describe('CustomerTagDialog — RETURNED_DEVICE เป็น AUTO-only', () => {
 
   it('offers only the five manual tags in the actual selector and still applies VIP', async () => {
     render(<CustomerTagDialog open onClose={() => {}} customerId="cu1" />);
-    fireEvent.keyDown(screen.getByRole('combobox', { name: 'tag' }), { key: 'ArrowDown' });
+    fireEvent.keyDown(screen.getByRole('combobox', { name: 'ป้ายกำกับ' }), { key: 'ArrowDown' });
     const options = await screen.findAllByRole('option');
     expect(options.map((option) => option.textContent)).toEqual([
       'VIP',
       'เสี่ยงสูง',
       'ลูกค้าใหม่',
       'ลูกค้าประจำ',
-      'BLACKLIST',
+      'ระงับทำสัญญา',
     ]);
     expect(screen.queryByRole('option', { name: 'เคยคืนเครื่อง' })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('option', { name: 'VIP' }));
-    fireEvent.click(screen.getByRole('button', { name: 'เพิ่ม tag' }));
+    fireEvent.click(screen.getByRole('button', { name: 'เพิ่ม ป้ายกำกับ' }));
     await waitFor(() =>
       expect(mutations.apply).toHaveBeenCalledWith({
         customerId: 'cu1',

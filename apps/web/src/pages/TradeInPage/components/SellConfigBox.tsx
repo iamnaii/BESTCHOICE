@@ -1,13 +1,14 @@
-import { useEffect, useState } from 'react';
+import { NumberInput } from '@/components/ui/NumberInput';
+import { useId as useUiFieldId, useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import api, { getErrorMessage } from '@/lib/api';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 
 /** โบนัสเทิร์น % — ราคาเทิร์นบนเว็บ = เงินสด × (1+โบนัส) มีผล quote ถัดไปทันที */
 export default function SellConfigBox() {
+  const uiFieldId = useUiFieldId();
   const queryClient = useQueryClient();
   const [value, setValue] = useState('');
 
@@ -34,10 +35,9 @@ export default function SellConfigBox() {
   return (
     <div className="rounded-lg border border-border p-3 flex flex-wrap items-end gap-3">
       <div>
-        <Label>โบนัสเทิร์น (%)</Label>
-        <Input
+        <Label htmlFor={`${uiFieldId}-1`}>โบนัสเทิร์น (%)</Label>
+        <NumberInput id={`${uiFieldId}-1`}
           className="mt-1 w-28"
-          type="number"
           min={0}
           max={100}
           value={value}

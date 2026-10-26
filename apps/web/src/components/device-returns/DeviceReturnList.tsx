@@ -1,3 +1,4 @@
+import ScreenTable from '@/components/ui/ScreenTable';
 import { useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -129,7 +130,7 @@ export function DeviceReturnList({ onConfirm }: Props) {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="min-w-full text-sm">
+            <ScreenTable className="min-w-full text-sm">
               <thead className="bg-secondary text-muted-foreground text-xs">
                 <tr>
                   <th className="px-4 py-2 text-left">เลขที่ใบ / วันที่รับ</th>
@@ -215,7 +216,7 @@ export function DeviceReturnList({ onConfirm }: Props) {
                       <td className="px-4 py-2 text-right whitespace-nowrap">
                         <div className="inline-flex items-center gap-3">
                           {canPreview && !canConfirm && (
-                            <button
+                            <button data-ui-control="button"
                               type="button"
                               onClick={() => onConfirm(r)}
                               title="ดูตัวเลขยอดปิด/กำไรขาดทุน — ยืนยันได้เฉพาะเจ้าของ / ผจก.การเงิน"
@@ -226,14 +227,14 @@ export function DeviceReturnList({ onConfirm }: Props) {
                           )}
                           {canConfirm && (
                             <>
-                              <button
+                              <button data-ui-control="button"
                                 type="button"
                                 onClick={() => onConfirm(r)}
                                 className="px-3 py-1.5 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors"
                               >
                                 ยืนยัน
                               </button>
-                              <button
+                              <button data-ui-control="button"
                                 type="button"
                                 onClick={() => setRejectTarget(r)}
                                 className="text-destructive hover:text-destructive/80 text-sm font-medium"
@@ -243,7 +244,7 @@ export function DeviceReturnList({ onConfirm }: Props) {
                             </>
                           )}
                           {showResend && (
-                            <button
+                            <button data-ui-control="button"
                               type="button"
                               onClick={() => {
                                 if (resendSubmitting.current) return;
@@ -259,7 +260,7 @@ export function DeviceReturnList({ onConfirm }: Props) {
                             </button>
                           )}
                           {canCancel && (
-                            <button
+                            <button data-ui-control="button"
                               type="button"
                               onClick={() => setCancelTarget(r)}
                               className="text-warning-strong hover:text-warning-strong/80 text-sm font-medium"
@@ -273,7 +274,7 @@ export function DeviceReturnList({ onConfirm }: Props) {
                   );
                 })}
               </tbody>
-            </table>
+            </ScreenTable>
           </div>
         )}
       </QueryBoundary>

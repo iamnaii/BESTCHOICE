@@ -1,3 +1,4 @@
+import { NativeSelect } from '@/components/ui/native-select';
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router';
@@ -67,7 +68,7 @@ export default function ExpenseFavoritesPage() {
       return data;
     },
     onSuccess: () => {
-      toast.success('สร้างเอกสารร่างจาก template สำเร็จ');
+      toast.success("สร้างเอกสารร่างจาก แม่แบบสำเร็จ");
       queryClient.invalidateQueries({ queryKey: ['expenses'] });
       navigate('/expenses');
     },
@@ -77,7 +78,7 @@ export default function ExpenseFavoritesPage() {
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => api.delete(`/expense-templates/${id}`),
     onSuccess: () => {
-      toast.success('ลบ template สำเร็จ');
+      toast.success("ลบแม่แบบสำเร็จ");
       queryClient.invalidateQueries({ queryKey: ['expense-templates'] });
     },
     onError: (err) => toast.error(getErrorMessage(err)),
@@ -111,7 +112,7 @@ export default function ExpenseFavoritesPage() {
             </span>
           </h1>
         </div>
-        <select
+        <NativeSelect wrapperClassName="max-w-full w-auto" aria-label="ประเภทเอกสาร"
           value={filterType}
           onChange={(e) => setFilterType(e.target.value)}
           className="px-3 py-2 border border-input rounded-lg text-sm bg-background"
@@ -120,7 +121,7 @@ export default function ExpenseFavoritesPage() {
           <option value="EXPENSE">รายจ่าย</option>
           <option value="PAYROLL">เงินเดือน</option>
           <option value="VENDOR_SETTLEMENT">จ่ายเจ้าหนี้</option>
-        </select>
+        </NativeSelect>
       </div>
 
       {isLoading ? (
@@ -184,7 +185,7 @@ export default function ExpenseFavoritesPage() {
       <ConfirmDialog
         open={confirmDelete.open}
         onOpenChange={(open) => setConfirmDelete((prev) => ({ ...prev, open }))}
-        description={`ลบ template "${confirmDelete.name}"?`}
+        description={`ลบแม่แบบ "${confirmDelete.name}"?`}
         onConfirm={() => deleteMutation.mutate(confirmDelete.id)}
       />
     </div>

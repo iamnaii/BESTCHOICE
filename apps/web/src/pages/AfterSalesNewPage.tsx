@@ -1,3 +1,5 @@
+import { NumberInput } from '@/components/ui/NumberInput';
+import { NativeSelect } from '@/components/ui/native-select';
 import { useLayout } from '@/components/layout/LayoutContext';
 import { WORK_COMPANY } from '@/lib/company-scope';
 import { useEffect, useState } from 'react';
@@ -238,7 +240,7 @@ function AfterSalesNewForm({ prefill }: { prefill?: ChatServicePrefill }) {
             maxLength={IMEI_MAX}
             onChange={(e) => setImeiInput(e.target.value)}
             placeholder="กรอกเลข IMEI 15 หลัก"
-            className={`${inputClass} h-14 flex-1 text-lg`}
+            className={`${inputClass} h-14 min-h-14 min-w-0 sm:flex-1 text-lg`}
           />
           <Button
             type="submit"
@@ -259,7 +261,10 @@ function AfterSalesNewForm({ prefill }: { prefill?: ChatServicePrefill }) {
   const sameModelOption = lookup.data?.outcomes.find((o) => o.outcome === 'SAME_MODEL_EXCHANGE');
   const outOfWindow = !!sameModelOption?.note?.includes('ข้ามกรอบ 7 วัน');
   const needsReplacement =
-    (outcome === 'SAME_MODEL_EXCHANGE' || outcome === 'PRICED_EXCHANGE') && !replacementProductId;
+    (outcome === 'SAME_MODEL_EXCHANGE' ||
+      outcome === 'PRICED_EXCHANGE' ||
+      outcome === 'CASH_SAME_MODEL_EXCHANGE') &&
+    !replacementProductId;
   const pricedBlocked =
     outcome === 'PRICED_EXCHANGE' &&
     !!(pricedPreview?.blockers.overdueBlocked || pricedPreview?.blockers.advanceBlocked);
@@ -294,6 +299,10 @@ function AfterSalesNewForm({ prefill }: { prefill?: ChatServicePrefill }) {
       parts.push(
         `ทางออก "${OUTCOME_LABEL.SAME_MODEL_EXCHANGE}" · รอ ผจก.สาขา ยืนยัน · เครื่องทดแทน ${replacementText}`,
       );
+    } else if (outcome === 'CASH_SAME_MODEL_EXCHANGE') {
+      parts.push(
+        `ทางออก "${OUTCOME_LABEL.CASH_SAME_MODEL_EXCHANGE}" · รอ ผจก.สาขา ยืนยัน · เครื่องทดแทน ${replacementText}`,
+      );
     } else if (outcome === 'PRICED_EXCHANGE') {
       const tierText = pricedPreview?.tier ? ` · ${tierApproverText(pricedPreview.tier)}` : '';
       parts.push(
@@ -327,7 +336,9 @@ function AfterSalesNewForm({ prefill }: { prefill?: ChatServicePrefill }) {
       return;
     }
     if (
-      (outcome === 'SAME_MODEL_EXCHANGE' || outcome === 'PRICED_EXCHANGE') &&
+      (outcome === 'SAME_MODEL_EXCHANGE' ||
+        outcome === 'PRICED_EXCHANGE' ||
+        outcome === 'CASH_SAME_MODEL_EXCHANGE') &&
       !replacementProductId
     ) {
       toast.error('ต้องเลือกเครื่องทดแทนก่อนบันทึก');
@@ -361,7 +372,11 @@ function AfterSalesNewForm({ prefill }: { prefill?: ChatServicePrefill }) {
       if (estimatedCost.trim()) form.append('estimatedCost', estimatedCost.trim());
       if (repairSupplier) form.append('repairSupplierId', repairSupplier.id);
     }
-    if (outcome === 'SAME_MODEL_EXCHANGE' || outcome === 'PRICED_EXCHANGE') {
+    if (
+      outcome === 'SAME_MODEL_EXCHANGE' ||
+      outcome === 'PRICED_EXCHANGE' ||
+      outcome === 'CASH_SAME_MODEL_EXCHANGE'
+    ) {
       form.append('replacementProductId', replacementProductId!);
     }
     if (outcome === 'PRICED_EXCHANGE') {
@@ -661,7 +676,7 @@ function AfterSalesNewForm({ prefill }: { prefill?: ChatServicePrefill }) {
                     >
                       ผู้จ่ายค่าซ่อม
                     </label>
-                    <select
+                    <NativeSelect wrapperClassName="max-w-full w-full"
                       id="as-payer"
                       value={payer}
                       onChange={(e) => setPayer(e.target.value as Payer)}
@@ -673,7 +688,7 @@ function AfterSalesNewForm({ prefill }: { prefill?: ChatServicePrefill }) {
                           {PAYER_LABEL[p]}
                         </option>
                       ))}
-                    </select>
+                    </NativeSelect>
                   </div>
                   <div className="space-y-1">
                     <label
@@ -682,7 +697,7 @@ function AfterSalesNewForm({ prefill }: { prefill?: ChatServicePrefill }) {
                     >
                       ค่าซ่อมประมาณ
                     </label>
-                    <input
+                    <NumberInput step="any" unstyled
                       id="as-estimated-cost"
                       inputMode="decimal"
                       value={estimatedCost}
@@ -719,6 +734,22 @@ function AfterSalesNewForm({ prefill }: { prefill?: ChatServicePrefill }) {
                 </div>
               )}
 
+              {outcome === 'CASH_SAME_MODEL_EXCHANGE' && (
+                <div className="space-y-3">
+                  <ReplacementProductPicker
+                    imei={imei}
+                    sameModel
+                    value={replacementProductId}
+                    onChange={setReplacementProductId}
+                    onProductsChange={setReplacementProducts}
+                  />
+                  <div className="rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm leading-snug text-warning-strong">
+                    <p>ผจก.สาขา ต้องยืนยันก่อนเปลี่ยน · สลับเครื่องบนใบขายเดิม ราคาเท่าเดิม ไม่มีเงินเปลี่ยนมือ</p>
+                    <p>ประกันร้านและกรอบ 7 วันของเครื่องทดแทนนับใหม่จากวันส่งมอบ</p>
+                  </div>
+                </div>
+              )}
+
               {outcome === 'PRICED_EXCHANGE' && (
                 <div className="space-y-3">
                   <ReplacementProductPicker
@@ -746,7 +777,7 @@ function AfterSalesNewForm({ prefill }: { prefill?: ChatServicePrefill }) {
                   >
                     สาขา <span className="text-destructive">*</span>
                   </label>
-                  <select
+                  <NativeSelect wrapperClassName="max-w-full w-full"
                     id="as-branch"
                     value={branchId}
                     onChange={(e) => setBranchId(e.target.value)}
@@ -758,7 +789,7 @@ function AfterSalesNewForm({ prefill }: { prefill?: ChatServicePrefill }) {
                         {b.name}
                       </option>
                     ))}
-                  </select>
+                  </NativeSelect>
                 </div>
               )}
             </Card>

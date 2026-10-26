@@ -119,7 +119,7 @@ export default function SessionView() {
           <div className="text-sm text-muted-foreground leading-snug mb-4">
             กดปุ่มด้านล่างเพื่อทำงานต่อ
           </div>
-          <button
+          <button data-ui-control="button"
             type="button"
             onClick={handleResume}
             className="rounded-lg bg-primary text-primary-foreground px-6 py-2.5 text-base font-medium hover:opacity-90 transition-opacity"

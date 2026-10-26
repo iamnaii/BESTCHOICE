@@ -21,6 +21,7 @@ import { createPortal } from 'react-dom';
 import { tenderMethodsLabel } from '@/components/tender/tender-utils';
 import { posSaleSchema, type PosSaleFormData } from '@/lib/schemas';
 import type { Product, Customer } from './types';
+import SaleDoneDialog, { type DoneSale } from './components/SaleDoneDialog';
 import {
   CASH_LABEL,
   INSTALLMENT_LABEL,
@@ -66,6 +67,8 @@ export default function POSPage() {
   const [saleType, setSaleType] = useState<SaleType>('CASH');
   const [handoffOpen, setHandoffOpen] = useState(false);
   const [reviewOpen, setReviewOpen] = useState(false);
+  // ก้อน 4: ใบขายที่เพิ่งบันทึก — เปิดกล่องพิมพ์ใบเสร็จ/ส่ง LINE ก่อนเคลียร์ฟอร์ม
+  const [doneSale, setDoneSale] = useState<DoneSale | null>(null);
 
   // Product search state
   const [productSearch, setProductSearch] = useState('');
@@ -244,9 +247,14 @@ export default function POSPage() {
     },
     onSuccess: (data) => {
       void invalidateSalesQueries(queryClient, 'sale-created');
+      setReviewOpen(false);
+      // ขายสด/ไฟแนนซ์นอก: กล่องหลังขายสำเร็จ (พิมพ์ใบเสร็จ/ส่ง LINE/คัดลอกลิงก์) แทน toast — ฟอร์มเคลียร์เมื่อกด "ขายต่อ"
+      if (data?.saleType === 'CASH' || data?.saleType === 'EXTERNAL_FINANCE') {
+        setDoneSale(data);
+        return;
+      }
       const typeLabel = saleTypeConfig[saleType].label;
       toast.success(`ขาย${typeLabel}สำเร็จ - ${data.saleNumber}`);
-      setReviewOpen(false);
       resetForm();
     },
     onError: (err: unknown) => {
@@ -303,7 +311,7 @@ export default function POSPage() {
 
       <div className="mb-4 flex flex-wrap items-center gap-2" aria-label="ประเภทการขาย">
         {posSaleTypes.map(([type, config]) => (
-          <button
+          <button data-ui-control="button"
             key={type}
             type="button"
             aria-pressed={saleType === type}
@@ -436,7 +444,7 @@ export default function POSPage() {
             ระบบตัดสต๊อกและออกใบขายให้เองเมื่อเปิดใช้สัญญา ไม่ต้องบันทึกที่หน้านี้ซ้ำ
           </p>
         </div>
-        <button
+        <button data-ui-control="button"
           type="button"
           onClick={() => setHandoffOpen(true)}
           className="min-h-11 inline-flex items-center gap-2 rounded-lg border border-input bg-background px-3 text-sm font-medium leading-snug hover:bg-accent"
@@ -453,7 +461,7 @@ export default function POSPage() {
             <p className="text-xs text-muted-foreground leading-snug">ยอดสุทธิ</p>
             <p className="font-bold text-primary tabular-nums">{netAmount.toLocaleString()} ฿</p>
           </div>
-          <button
+          <button data-ui-control="button"
             type="button"
             onClick={() =>
               goTo(
@@ -551,6 +559,13 @@ export default function POSPage() {
           </p>
         </div>
       </ConfirmDialog>
+      <SaleDoneDialog
+        sale={doneSale}
+        onClose={() => {
+          setDoneSale(null);
+          resetForm();
+        }}
+      />
     </div>
   );
 }

@@ -1,3 +1,4 @@
+import ScreenTable from '@/components/ui/ScreenTable';
 import { useNavigate } from 'react-router';
 import { Card, CardHeader, CardTitle, CardToolbar, CardTable } from '@/components/ui/card';
 import {
@@ -44,7 +45,8 @@ export default function DashboardWatchList({ watchListData, upsell }: DashboardW
             </CardToolbar>
           </CardHeader>
           <CardTable>
-            <table className="w-full text-sm">
+            <div className="overflow-x-auto">
+            <ScreenTable className="w-full text-sm">
               <thead>
                 <tr className="bg-muted/40 border-b border-border/60">
                   <th className="text-left px-5 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">ลูกค้า</th>
@@ -87,7 +89,8 @@ export default function DashboardWatchList({ watchListData, upsell }: DashboardW
                   );
                 })}
               </tbody>
-            </table>
+            </ScreenTable>
+          </div>
           </CardTable>
         </Card>
       )}
@@ -113,7 +116,8 @@ export default function DashboardWatchList({ watchListData, upsell }: DashboardW
             </CardToolbar>
           </CardHeader>
           <CardTable>
-            <table className="w-full text-sm">
+            <div className="overflow-x-auto">
+            <ScreenTable className="w-full text-sm">
               <thead>
                 <tr className="bg-muted/40 border-b border-border/60">
                   <th className="text-left px-5 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">ลูกค้า</th>
@@ -159,7 +163,8 @@ export default function DashboardWatchList({ watchListData, upsell }: DashboardW
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </ScreenTable>
+          </div>
           </CardTable>
         </Card>
       )}

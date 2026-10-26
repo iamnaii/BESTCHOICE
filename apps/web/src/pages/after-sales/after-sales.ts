@@ -95,6 +95,8 @@ export interface CaseExchangeInfo {
     imeiSerial: string | null;
   } | null;
   replacementContract: { id: string; contractNumber: string; status: string } | null;
+  /** PR 5 — ใบขายที่ถูกสลับเครื่อง (เคสขายสด) */
+  sale: { id: string; saleNumber: string } | null;
   requestedBy: { id: string; name: string } | null;
 }
 
@@ -177,6 +179,8 @@ export interface CaseDetail extends CaseRow {
    * เขียนตอนยืนยัน) และเดินทางมาถึง response จริงผ่าน `{...row}` ของ `decorate()`/`getCase()`
    * (`include` ไม่ตัดสกาลาร์ทิ้ง) แม้ Task 9 จะไม่ได้ประกาศไว้ในทีแรก — เพิ่มที่นี่ให้ตรงกับ API จริง */
   replacementContractId: string | null;
+  /** PR 5 — marker "ยืนยันแล้ว" ของเคสขายสด (= ใบขายเดิมที่ถูกสลับเครื่อง) ไม่มีสัญญาใหม่ */
+  replacementSaleId: string | null;
   /** final fix wave — สกาลาร์จริงบนโมเดล (เดินทางมาถึง response ผ่าน `{...row}` เหมือน
    * replacementContractId) ใช้ตัดสินว่าเคสเปลี่ยนเครื่องมีอะไรฝั่ง engine หรือยัง (M1/I2) */
   repairTicketId: string | null;
@@ -343,9 +347,16 @@ export type CaseDialogId =
   | 'exchange-deliver'
   | 'exchange-reject'
   | 'switch-to-repair'
-  | 'approve'
   | 'reject-priced'
   | 'cancel-swap';
+
+/** คำตัดสินเจ้าของ 2026-10-06 — เมนูเปลี่ยนเครื่องแบบมีราคา (device swap ทั้ง PRICED/MEMO) ปิดทั้งหมด
+ * (API ตอบ 410 ที่ยื่น/preview/อนุมัติ). ข้อความบนจอต้องชี้ทางที่กดได้จริง: คำขอที่ค้างอยู่ปิดได้ทางเดียว
+ * คือเจ้าของ "ปฏิเสธ" (ปุ่มรอง / ปุ่มในตารางรออนุมัติ) */
+export const DEVICE_SWAP_CLOSED_TEXT =
+  'เมนูเปลี่ยนเครื่องแบบมีราคาปิดใช้แล้ว (06/10/2569) — เจ้าของกด "ปฏิเสธ" เพื่อปิดเคส';
+/** ฉบับสั้นสำหรับตารางรออนุมัติ */
+export const DEVICE_SWAP_CLOSED_SHORT = 'ปิดใช้แล้ว — ปฏิเสธเพื่อปิดเคส';
 
 /** I4 (final fix wave) — ปุ่มหลักมีสามรูปแบบ: เปิด dialog · ลิงก์ไปหน้าอื่น (ขั้นถัดไปอยู่นอกหน้านี้ เช่น
  * เปิดใช้สัญญาใหม่ที่หน้าสัญญา) · ข้อความรอ (role ทำขั้นนี้ไม่ได้) */
@@ -360,6 +371,8 @@ export type SecondaryAction =
 
 const STAFF_SET = new Set(['OWNER', 'BRANCH_MANAGER', 'SALES']);
 const MGR_SET = new Set(['OWNER', 'BRANCH_MANAGER']);
+/** PR 5 — เคสจากใบขายสด/ไฟแนนซ์นอก (ไม่มีสัญญาผ่อน) */
+export const isCashCase = (d: Pick<CaseDetail, 'source'>) => d.source === 'CASH_SALE';
 /** role ที่เปิดใช้สัญญา (DRAFT → ACTIVE) ที่หน้าสัญญาได้ */
 const CONTRACT_ACTIVATOR_SET = new Set(['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER']);
 
@@ -430,6 +443,19 @@ export function primaryAction(data: CaseDetail, role: string): PrimaryAction | n
     return null;
   }
 
+  // PR 5 — เคสขายสด: ไม่มีสัญญาใหม่ ส่งมอบได้ทันทีที่ยืนยัน (marker = replacementSaleId)
+  if (outcome === 'CASH_SAME_MODEL_EXCHANGE') {
+    if (stage === 'READY_FOR_PICKUP' && data.replacementSaleId) {
+      if (!STAFF_SET.has(role)) return null;
+      return { label: 'ส่งมอบเครื่องทดแทน', dialog: 'exchange-deliver' };
+    }
+    if (stage === 'AWAITING_APPROVAL') {
+      if (MGR_SET.has(role)) return { label: 'ยืนยันเปลี่ยนเครื่อง', dialog: 'exchange-confirm' };
+      return { waitingText: `รอ ${APPROVER_LABEL.BRANCH_MANAGER} ยืนยัน` };
+    }
+    return null;
+  }
+
   if (outcome === 'REPAIR') {
     if (stage === 'RECEIVED') {
       if (!STAFF_SET.has(role)) return null;
@@ -457,19 +483,13 @@ export function primaryAction(data: CaseDetail, role: string): PrimaryAction | n
   }
 
   if (outcome === 'PRICED_EXCHANGE' && stage === 'AWAITING_APPROVAL') {
-    // P-M.2 (fix round 1): เหมือนกัน — role ใดก็ตามที่ไม่ใช่ผู้อนุมัติของ tier นี้เห็นข้อความรอ
-    // residual sweep — เคสที่ผูกคำขอไม่สำเร็จ (ไม่มีคำขอให้อนุมัติ) ไม่มีปุ่ม/ข้อความรอ — ทางออกเดียวคือ
+    // residual sweep — เคสที่ผูกคำขอไม่สำเร็จ (ไม่มีคำขอให้ปฏิเสธ) ไม่มีปุ่ม/ข้อความ — ทางออกเดียวคือ
     // "ยกเลิกเคส" (ปุ่มรอง, MGR)
     if (!data.exchange?.requestStatus) return null;
-    const approverRole = data.exchange?.approverRole ?? 'OWNER';
-    if (role === 'OWNER') return { label: 'อนุมัติ', dialog: 'approve' };
-    if (role === 'BRANCH_MANAGER' && approverRole === 'BRANCH_MANAGER') {
-      return { label: 'อนุมัติ', dialog: 'approve' };
-    }
-    return { waitingText: `รอ ${APPROVER_LABEL[approverRole]} อนุมัติ` };
+    // 2026-10-06 — ไม่มีปุ่ม "อนุมัติ" อีกต่อไปทุก role ทุก tier (API ตอบ 410): ข้อความชี้ทาง "ปฏิเสธ" แทน
+    return { waitingText: DEVICE_SWAP_CLOSED_TEXT };
   }
 
-  // CASH_SAME_MODEL_EXCHANGE (ยังไม่เปิดใช้ — engine ปฏิเสธเมื่อไม่มี contractId) ตกมาที่นี่
   return null;
 }
 
@@ -508,11 +528,20 @@ export function secondaryActions(data: CaseDetail, role: string): SecondaryActio
     !data.replacementContractId &&
     !data.exchangeRequestId;
 
+  // M4 (final review PR5) — ขายสดไม่มี override (⑥): กรอบ 7 วันมีแต่หดลงจาก snapshot ตอนเปิดเคส
+  // ถ้าตอนเปิดเคสก็ครบ/เกินแล้ว ปุ่ม "ซ่อมไม่ได้ → เปลี่ยนรุ่นเดิม" ย่อมได้ 400 เสมอ จึงไม่ต้องโชว์
+  // (API ยังตรวจด้วยข้อมูลสดตอนยืนยันอีกชั้น) · สัญญาผ่อนคงเดิม — ผจก. ข้ามกรอบได้ตอนยืนยัน
+  const canOfferSameModelFromRepair =
+    !!data.contractId ||
+    (isCashCase(data) &&
+      Number.isFinite(data.warrantySnapshot?.daysRemainingIn7Day) &&
+      data.warrantySnapshot.daysRemainingIn7Day > 0);
+
   if (outcome === 'REPAIR') {
     if (stage === 'RECEIVED') {
       const hasCenter = !!data.repairTicket?.repairSupplier;
       if (!hasCenter && isStaff) out.push({ kind: 'dialog', label: 'ส่งซ่อม', dialog: 'send' });
-      if (isMgr && data.contractId) {
+      if (isMgr && canOfferSameModelFromRepair) {
         out.push({
           kind: 'dialog',
           label: 'ซ่อมไม่ได้ → เปลี่ยนรุ่นเดิม',
@@ -522,7 +551,7 @@ export function secondaryActions(data: CaseDetail, role: string): SecondaryActio
       if (isMgr)
         out.push({ kind: 'dialog', label: 'ยกเลิกเคส', dialog: 'cancel', destructive: true });
     } else if (stage === 'IN_REPAIR') {
-      if (isMgr && data.contractId) {
+      if (isMgr && canOfferSameModelFromRepair) {
         out.push({
           kind: 'dialog',
           label: 'ซ่อมไม่ได้ → เปลี่ยนรุ่นเดิม',
@@ -566,6 +595,24 @@ export function secondaryActions(data: CaseDetail, role: string): SecondaryActio
     return out;
   }
 
+  // PR 5 — เคสขายสด: รออนุมัติมี ปฏิเสธ/เปลี่ยนเป็นซ่อม เหมือนเปลี่ยนรุ่นเดิมผ่อน · READY ไม่มีปุ่มรอง (ไม่มีสัญญาใหม่)
+  if (outcome === 'CASH_SAME_MODEL_EXCHANGE') {
+    if (stage === 'AWAITING_APPROVAL') {
+      if (isMgr) {
+        out.push({
+          kind: 'dialog',
+          label: 'ปฏิเสธ (ใส่เหตุผล)',
+          dialog: 'exchange-reject',
+          destructive: true,
+        });
+      }
+      if (isStaff) {
+        out.push({ kind: 'dialog', label: "เปลี่ยนเป็น 'ซ่อม' แทน", dialog: 'switch-to-repair' });
+      }
+    }
+    return out;
+  }
+
   if (outcome === 'PRICED_EXCHANGE') {
     if (stage === 'AWAITING_APPROVAL') {
       // I2 — ไม่มี "ยกเลิกคำขอ" ตอนรออนุมัติ: engine ยกเลิกได้เฉพาะคำขอ APPROVED (PENDING → 400 เสมอ)
@@ -584,23 +631,32 @@ export function secondaryActions(data: CaseDetail, role: string): SecondaryActio
   return out;
 }
 
-/** PR 4 — เอกสารพิมพ์ของเคส (ตรงกับ API `GET /after-sales/:id/receipt.pdf` | `/handover.pdf`) */
-export type CaseDocKind = 'receipt' | 'handover';
+/** PR 4/5 — เอกสารพิมพ์ของเคส (ตรงกับ API `GET /after-sales/:id/<kind>.pdf`) */
+export type CaseDocKind = 'receipt' | 'handover' | 'return' | 'exchange-docs';
 
 export const CASE_DOC_LABEL: Record<CaseDocKind, string> = {
   receipt: 'ใบรับฝากเครื่อง',
   handover: 'ใบส่งมอบ',
+  return: 'ใบรับคืนเครื่อง',
+  'exchange-docs': 'ใบรับคืน + ใบส่งมอบ (2 ใบ)',
 };
 
-/** mirror ของ `handoverBlockReason` ฝั่ง API (after-sales-doc-compose.ts) — ปุ่มโชว์เฉพาะตอนพิมพ์ได้จริง */
+/** mirror ของ `handoverBlockReason` ฝั่ง API (after-sales-doc-compose.ts) — ปุ่มโชว์เฉพาะตอนพิมพ์ได้จริง
+ * (PR 5: เคสขายสด handover.pdf = ใบส่งมอบเครื่องทดแทน) */
 export function canPrintHandover(
   data: Pick<CaseDetail, 'outcome' | 'stage' | 'repairTicket'>,
 ): boolean {
   if (!data.outcome) return false;
-  // ขายสด (PR 5) — API ยังไม่มีถ้อยคำใบส่งมอบของขายสด (HANDOVER_CASH_UNSUPPORTED_MSG)
-  if (data.outcome === 'CASH_SAME_MODEL_EXCHANGE') return false;
   if (data.stage !== 'READY_FOR_PICKUP' && data.stage !== 'CLOSED') return false;
   return data.outcome !== 'REPAIR' || !!data.repairTicket;
+}
+
+/** PR 5 — mirror ของ `returnBlockReason` ฝั่ง API */
+export function canPrintCashExchangeDocs(data: Pick<CaseDetail, 'outcome' | 'stage'>): boolean {
+  return (
+    data.outcome === 'CASH_SAME_MODEL_EXCHANGE' &&
+    (data.stage === 'READY_FOR_PICKUP' || data.stage === 'CLOSED')
+  );
 }
 
 export const afterSalesKeys = {

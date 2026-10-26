@@ -99,6 +99,7 @@ export class AccessAfterSalesStreams {
           select: {
             status: true,
             deletedAt: true,
+            ticketNumber: true, // PR 5 — printed on the cash return document
             payer: true,
             estimatedCostPayer: true,
             estimatedCost: true,
@@ -171,6 +172,7 @@ export class AccessAfterSalesStreams {
       repairStatus: ticket?.status ?? null,
       repairDeleted: !!ticket?.deletedAt,
       replacementContractId: row.replacementContractId,
+      replacementSaleId: row.replacementSaleId, // PR 5 — cash-sale exchange marker
       exchange: request
         ? {
             status: request.status,

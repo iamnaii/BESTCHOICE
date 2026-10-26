@@ -1,8 +1,10 @@
-import { useState, useEffect } from 'react';
+import { NumberInput } from '@/components/ui/NumberInput';
+import { useId as useUiFieldId, useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
 import { toast } from 'sonner';
 import PageHeader from '@/components/ui/PageHeader';
+import InlineHelp from '@/components/ui/InlineHelp';
 import QueryBoundary from '@/components/QueryBoundary';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
@@ -22,13 +24,13 @@ import { Sparkles, Route, Store } from 'lucide-react';
 const CHANNELS = [
   {
     value: 'LINE_FINANCE',
-    label: 'LINE Finance',
+    label: "LINE งานการเงิน",
     noop: 'น้องเบสตอบเองอยู่แล้ว — ค่านี้ไม่มีผล',
   },
-  { value: 'LINE_SHOP', label: 'LINE Shop', noop: null },
+  { value: 'LINE_SHOP', label: "LINE งานหน้าร้าน", noop: null },
   { value: 'FACEBOOK', label: 'Facebook', noop: null },
   { value: 'TIKTOK', label: 'TikTok', noop: 'ยังไม่ได้เชื่อมต่อ TikTok — ค่านี้ไม่มีผล' },
-  { value: 'WEB', label: 'Web', noop: null },
+  { value: 'WEB', label: "เว็บไซต์", noop: null },
 ] as const;
 
 interface AiSettings {
@@ -84,7 +86,7 @@ function AiSettingsForm({ initial }: { initial: AiSettings }) {
         <CardHeader>
           <CardTitle className="text-base flex items-center gap-2">
             <Sparkles className="w-4 h-4 text-muted-foreground" />
-            AI Auto Mode
+            โหมดตอบอัตโนมัติของ AI
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -166,13 +168,12 @@ function AiSettingsForm({ initial }: { initial: AiSettings }) {
         </CardHeader>
         <CardContent>
           <div className="flex items-center gap-3">
-            <Input
-              type="number"
+            <NumberInput
               min={1}
               max={100}
-              value={form.maxRepliesPerSession}
+              aria-label="จำนวนตอบสูงสุดต่อห้องแชท" value={form.maxRepliesPerSession}
               onChange={(e) => setForm((prev) => ({ ...prev, maxRepliesPerSession: Number(e.target.value) }))}
-              className="w-28"
+              className="w-28 shrink-0"
             />
             <span className="text-sm text-muted-foreground">
               ครั้ง ต่อ 24 ชม. — เกินแล้วจะโอนให้พนักงาน (นับเฉพาะ 24 ชม. ล่าสุด (rolling window))
@@ -199,6 +200,7 @@ interface ShopBotConfig {
 }
 
 function ShopBotSetupForm() {
+  const uiFieldId = useUiFieldId();
   const queryClient = useQueryClient();
   const [branchId, setBranchId] = useState('');
   const [testUserId, setTestUserId] = useState('');
@@ -241,13 +243,13 @@ function ShopBotSetupForm() {
         llmProvider,
       }),
     onSuccess: () => {
-      toast.success('บันทึก SHOP Bot Setup เรียบร้อย');
+      toast.success("บันทึก SHOP บอต Setup เรียบร้อย");
       queryClient.invalidateQueries({ queryKey: ['ai-settings-shop-bot'] });
       queryClient.invalidateQueries({ queryKey: ['ai-settings', 'full'] });
       queryClient.invalidateQueries({ queryKey: ['ai-settings', 'lite'] });
     },
     onError: () => {
-      toast.error('ไม่สามารถบันทึก SHOP Bot Setup ได้');
+      toast.error("ไม่สามารถบันทึก SHOP บอต Setup ได้");
     },
   });
 
@@ -272,14 +274,14 @@ function ShopBotSetupForm() {
       <CardHeader>
         <CardTitle className="text-base flex items-center gap-2 leading-snug">
           <Store className="w-4 h-4 text-muted-foreground" />
-          SHOP Bot Setup
+          ตั้งค่าบอตหน้าร้าน
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="space-y-2">
-          <Label className="leading-snug">Central Branch (เก็บ AI-captured leads)</Label>
+          <Label htmlFor={`${uiFieldId}-1`} className="leading-snug">Central Branch (เก็บ AI-captured leads)</Label>
           <Select value={branchId} onValueChange={setBranchId}>
-            <SelectTrigger>
+            <SelectTrigger id={`${uiFieldId}-1`}>
               <SelectValue placeholder="เลือกสาขา" />
             </SelectTrigger>
             <SelectContent>
@@ -292,36 +294,35 @@ function ShopBotSetupForm() {
           </Select>
         </div>
         <div className="space-y-2">
-          <Label className="leading-snug">
+          <Label htmlFor={`${uiFieldId}-2`} className="leading-snug">
             Test LINE userId (owner — ใช้ส่งข้อความทดสอบ)
           </Label>
-          <Input
+          <Input id={`${uiFieldId}-2`}
             value={testUserId}
             onChange={(e) => setTestUserId(e.target.value)}
             placeholder="U1234567890abcdef..."
           />
         </div>
         <div className="space-y-2">
-          <Label className="leading-snug">AI Provider</Label>
+          <Label htmlFor={`${uiFieldId}-3`} className="leading-snug">ผู้ให้บริการ AI</Label>
           <Select
             value={llmProvider}
             onValueChange={(v) => setLlmProvider(v as LlmProviderChoice)}
           >
-            <SelectTrigger>
+            <SelectTrigger id={`${uiFieldId}-3`}>
               <SelectValue placeholder="เลือก AI provider" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="claude">
-                Claude (Anthropic) — default, persona-refined Thai
+                Claude (Anthropic)
               </SelectItem>
               <SelectItem value="gemini">
-                Gemini 2.5-flash (Vertex) — ~8x ถูกกว่า, thinking-mode ปิด
+                Gemini 2.5 Flash (Google)
               </SelectItem>
             </SelectContent>
           </Select>
           <p className="text-xs text-muted-foreground leading-snug">
-            เปลี่ยน provider จะมีผลทันทีหลังกดบันทึก (cache ถูกล้างพร้อมกัน) —
-            ไม่ต้องรอ 60 วินาที, ไม่ต้อง redeploy
+            ผู้ให้บริการใหม่มีผลทันทีเมื่อบันทึก
           </p>
         </div>
         <div className="flex justify-end gap-2">
@@ -332,7 +333,7 @@ function ShopBotSetupForm() {
               testSendMutation.isPending || !shopBotQuery.data?.shopBotTestUserId
             }
           >
-            {testSendMutation.isPending ? 'กำลังส่ง...' : '🧪 ส่งข้อความทดสอบไปยัง LINE'}
+            {testSendMutation.isPending ? 'กำลังส่ง...' : 'ส่งข้อความทดสอบไปยัง LINE'}
           </Button>
           <Button
             onClick={() => saveMutation.mutate()}
@@ -365,12 +366,11 @@ function ChannelRoutingCard() {
       </CardHeader>
       <CardContent className="space-y-2">
         <p className="text-xs text-muted-foreground leading-snug mb-3">
-          การจับคู่อ้างอิงประเภทห้องแชท: ห้องที่มาจาก LINE FINANCE ใช้ Service Bot ส่วนช่องทางอื่น ๆ ใช้ Sales Bot
-          ตัวเดียวกัน (knowledge base เดียวกัน — สินค้า/ราคา/โปร/สาขา)
+          LINE FINANCE ใช้บอทบริการลูกค้า ช่องทางอื่นใช้บอทขายและฐานความรู้ร่วมกัน
         </p>
         <div className="rounded-lg border border-border divide-y divide-border">
           {CHANNEL_BOT_ROUTING.map((row) => (
-            <div key={row.channel} className="flex items-start justify-between gap-3 p-3">
+            <div key={row.channel} className="flex flex-wrap items-start justify-between gap-3 p-3">
               <div className="flex-1 min-w-0">
                 <p className="font-medium text-foreground leading-snug">{row.channel}</p>
                 <p className="text-xs text-muted-foreground leading-snug mt-0.5">{row.desc}</p>
@@ -469,10 +469,12 @@ export default function AiSettingsPage() {
 
   return (
     <div>
-      <PageHeader title="AI Settings" subtitle="ตั้งค่า AI Auto Mode สำหรับตอบแชทอัตโนมัติ" />
+      <PageHeader title="ตั้งค่า AI" subtitle="เลือกช่องทางและเงื่อนไขการตอบแชทอัตโนมัติ" />
       <div className="max-w-2xl space-y-6">
         {statusQuery.data && <AiRuntimeStatusStrip status={statusQuery.data} />}
-        <ChannelRoutingCard />
+        <InlineHelp label="บอทที่ตอบแต่ละช่องทาง">
+          <ChannelRoutingCard />
+        </InlineHelp>
         <QueryBoundary
           isLoading={settingsQuery.isLoading}
           isError={settingsQuery.isError}

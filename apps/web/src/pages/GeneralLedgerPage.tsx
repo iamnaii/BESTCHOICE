@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react';
+import ScreenTable from '@/components/ui/ScreenTable';
+import { useId as useUiFieldId, useMemo, useState } from 'react';
 import { Link } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -76,12 +77,13 @@ function NormalBalanceBadge({ value }: { value: 'Dr' | 'Cr' | 'Dr/Cr' }) {
     <span
       className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium leading-snug ${color}`}
     >
-      Normal: {value}
+      ด้านปกติ: {value}
     </span>
   );
 }
 
 export function GeneralLedgerPage() {
+  const uiFieldId = useUiFieldId();
   // Local-date formatting (NOT toISOString — that shifts a BKK local-midnight
   // date back one UTC day). Default = full current month, matching the
   // DateRangeChips "เดือนนี้" preset (owner 2026-07-02).
@@ -205,7 +207,7 @@ export function GeneralLedgerPage() {
     <div>
       <PageHeader
         title="บัญชีแยกประเภท"
-        subtitle="General Ledger — รายการเดินบัญชีแยกตามรหัสบัญชี"
+        subtitle="บัญชีแยกประเภท — รายการเดินบัญชีแยกตามรหัสบัญชี"
         icon={<BookOpen className="size-6" />}
       />
 
@@ -287,10 +289,10 @@ export function GeneralLedgerPage() {
           </Popover>
         </div>
         <div>
-          <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
+          <label htmlFor={`${uiFieldId}-1`} className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
             ตั้งแต่
           </label>
-          <ThaiDateInput
+          <ThaiDateInput id={`${uiFieldId}-1`}
             data-date-range-custom-start="true"
             value={startDate}
             onChange={(e) => setStartDate(e.target.value)}
@@ -298,10 +300,10 @@ export function GeneralLedgerPage() {
           />
         </div>
         <div>
-          <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
+          <label htmlFor={`${uiFieldId}-2`} className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
             ถึง
           </label>
-          <ThaiDateInput
+          <ThaiDateInput id={`${uiFieldId}-2`}
             value={endDate}
             onChange={(e) => setEndDate(e.target.value)}
             className={`${inputClass} w-auto`}
@@ -371,14 +373,14 @@ export function GeneralLedgerPage() {
               <Card className="rounded-xl border border-border/50 bg-card shadow-sm overflow-hidden">
                 <CardContent className="p-0">
                   <div className="overflow-x-auto max-h-[60vh] overflow-y-auto">
-                    <table className="w-full text-sm leading-snug">
+                    <ScreenTable className="w-full text-sm leading-snug">
                       <thead className="sticky top-0 z-10 bg-muted/80 backdrop-blur">
                         <tr>
                           <th className="text-left p-3 font-medium text-muted-foreground whitespace-nowrap">
                             วันที่
                           </th>
                           <th className="text-left p-3 font-medium text-muted-foreground whitespace-nowrap">
-                            เลขที่ JE
+                            เลขที่ รายการบัญชี
                           </th>
                           <th className="text-left p-3 font-medium text-muted-foreground">
                             คำอธิบาย
@@ -472,7 +474,7 @@ export function GeneralLedgerPage() {
                           </td>
                         </tr>
                       </tfoot>
-                    </table>
+                    </ScreenTable>
                   </div>
                 </CardContent>
               </Card>

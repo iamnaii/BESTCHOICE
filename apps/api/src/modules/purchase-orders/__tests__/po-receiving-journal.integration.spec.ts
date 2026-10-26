@@ -613,7 +613,7 @@ describe('รับสินค้าเข้าลงบัญชี — flow 
     expect((await prisma.goodsReceivingItem.findUnique({ where: { productId: waitingPhotos.id } }))!.journalEntryId).toBe(accepted!.id);
 
     // (ข) กด "ไม่รับเข้าคลัง" → เครื่องหายจากสต๊อก ไม่มีรายการบัญชีใด ๆ ของเครื่องนี้
-    await service.rejectQC([rejected.id], 'ตรวจแล้วไม่ผ่าน ส่งคืนผู้จัดจำหน่าย');
+    await service.rejectQC([rejected.id], 'ตรวจแล้วไม่ผ่าน ส่งคืนผู้จัดจำหน่าย', adminId);
     expect((await prisma.product.findUnique({ where: { id: rejected.id } }))!.deletedAt).not.toBeNull();
 
     // (ค) เข้าคลังทาง PATCH (ผู้จัดการตั้งราคา + เปลี่ยนสถานะ) → ลงบัญชีเหมือนกัน
@@ -677,8 +677,9 @@ describe('รับสินค้าเข้าลงบัญชี — flow 
     k3AdjustmentRequestNumbers.push(lostReq.requestNumber!);
     const lost = await stockAdjustmentsService.approve(lostReq.id, owner);
     // เครื่องยังไม่เคยลงบัญชีรับเข้า (รอถ่ายรูป) → ไม่มี JE ตัดจำหน่าย แต่แจ้งฝ่ายบัญชี (ข้อ 8)
-    expect([lost.journalEntryNo, lost.inventoryBooked, lost.accountingNotified]).toEqual([null, false, true]);
-    expect(await receivingEntries(po.id)).toHaveLength(1); // หายไม่ลงอะไร
+    // ข้อ 7 (ฝ่ายบัญชี 13/10/2569 แบบ ข): เครื่อง PO ที่หลุดจากคิวด้วยมือ → อนุมัติหาย = ลงรับเข้าก่อนแล้วตัด (มี JE · booked · ไม่มี Todo)
+    expect([lost.journalEntryNo !== null, lost.inventoryBooked, lost.accountingNotified]).toEqual([true, true, false]);
+    expect(await receivingEntries(po.id)).toHaveLength(2); // ใบรับของ + หน่วยที่ลงรับเข้าตอนตัด (ข้อ 7)
     const foundReq = await stockAdjustmentsService.createRequest({ productId: viaFound.id, reason: 'FOUND' }, [], owner);
     k3AdjustmentRequestNumbers.push(foundReq.requestNumber!);
     await stockAdjustmentsService.approve(foundReq.id, owner);
@@ -687,7 +688,7 @@ describe('รับสินค้าเข้าลงบัญชี — flow 
 
     // (ค) กด "ไม่รับเข้าคลัง" commit ไปก่อน แล้วคำขอยืนยันรูปที่อ่านค่าไว้ก่อนหน้า (ยังเห็นว่ารอถ่ายรูป)
     // มาเขียนสถานะทับ — จำลองลำดับเดียวกับที่ `completePhotos` ทำใน tx ของมัน
-    await service.rejectQC([raced.id], 'ตรวจแล้วไม่ผ่าน ส่งคืนผู้จัดจำหน่าย');
+    await service.rejectQC([raced.id], 'ตรวจแล้วไม่ผ่าน ส่งคืนผู้จัดจำหน่าย', adminId);
     const booking = new ReceivingAcceptanceJournal(prisma as never);
     await expect(
       prisma.$transaction(async (tx) => {
@@ -794,7 +795,8 @@ describe('รับสินค้าเข้าลงบัญชี — flow 
       await productsService.update(pending.id, { status: 'IN_STOCK', cashPrice: 5900 } as never, adminId);
       const unit = (await receivingEntries(po.id)).find((e) => e.referenceId === `gr:${result.receivingId}:${pending.id}`);
       expect(unit?.postedAt?.getTime()).toBe(receiving.createdAt.getTime());
-      expect(unit?.metadata).toMatchObject({ postedOnReceiveDate: true, postedOnAcceptanceDate: false });
+      // ข้อ 2 (ฝ่ายบัญชี 13/10/2569 แบบ ก): หน่วยที่เข้าคลังทีหลังลงวันที่รับของโดยกติกา — ไม่ใช่ "ถอยจากวันที่ในเอกสาร"
+      expect(unit?.metadata).toMatchObject({ postedOnReceiveDate: false, postedOnAcceptanceDate: false });
 
       // แจ้งฝ่ายบัญชี — งานหนึ่งใบ
       const todos = await prisma.todo.findMany({
@@ -899,7 +901,7 @@ describe('รับสินค้าเข้าลงบัญชี — flow 
     }
   }, 60_000);
 
-  it('ข3 — งวดของวันที่ในเอกสารปิดหลังรับของ: หน่วยที่เข้าคลังทีหลังลงวันที่รับของ + งานแจ้งฝ่ายบัญชี (ใบเดียวต่อใบรับของ)', async () => {
+  it('ข3/ข้อ 2 — งวดของวันที่ในเอกสารปิดหลังรับของ: หน่วยที่เข้าคลังทีหลังลงวันที่รับของโดยกติกา (แบบ ก) ไม่มีงานแจ้ง', async () => {
     const doc = pastDoc(5, 20);
     const supplier = await seedSupplier('K3LATE', false);
     const po = await createOrderedPo(supplier.id, [{ category: 'PHONE_USED', model: `${PREFIX}K3L`, quantity: 3, unitPrice: 4200 }]);
@@ -931,14 +933,13 @@ describe('รับสินค้าเข้าลงบัญชี — flow 
         await productsService.update(pending.id, { status: 'IN_STOCK', cashPrice: 5900 } as never, adminId);
         const unit = (await receivingEntries(po.id)).find((e) => e.referenceId === `gr:${result.receivingId}:${pending.id}`);
         expect(unit?.postedAt?.getTime()).toBe(receiving.createdAt.getTime());
-        expect(unit?.metadata).toMatchObject({ postedOnReceiveDate: true });
+        expect(unit?.metadata).toMatchObject({ postedOnReceiveDate: false, postedOnAcceptanceDate: false }); // แบบ ก
       }
       const todos = await prisma.todo.findMany({
         where: { tags: { has: 'goods-receiving-period' }, title: { contains: result.grNumber } },
       });
-      expect(todos).toHaveLength(1);
-      expect(todos[0].createdById).toBe(adminId);
-      expect(todos[0].tags).toEqual(['goods-receiving-period', `gr:${result.grNumber}:receive`]);
+      // ข้อ 2 แบบ ก: ไม่มีวันที่ถูกข้าม (ลงวันที่รับของโดยกติกา) จึงไม่มีงานแจ้งฝ่ายบัญชีจากหน่วยนี้
+      expect(todos).toHaveLength(0);
     } finally {
       await period.restore();
     }
@@ -985,8 +986,10 @@ describe('รับสินค้าเข้าลงบัญชี — flow 
       });
       expect(todos).toHaveLength(1);
       // ปิดสองเดือน = บอกทั้งสองเดือน (เดือนของเอกสารคือที่ที่เครื่องควรลง)
-      expect(todos[0].title).toContain(`ลงบัญชีวันที่รับเข้าคลังแทน (งวด${doc.monthLabel} และ ${receivedOn.monthLabel}ปิดแล้ว)`);
-      expect(todos[0].description).toContain(`วันที่ในเอกสาร (${doc.thai}) และวันที่รับของ (${receivedOn.thai})`);
+      // ข้อ 2 แบบ ก: วันที่ถูกข้ามมีแค่วันที่รับของ (ไม่ใช้วันที่ในเอกสารกับหน่วยที่เข้าคลังทีหลัง)
+      expect(todos[0].title).toContain(`ลงบัญชีวันที่รับเข้าคลังแทน (งวด${receivedOn.monthLabel}ปิดแล้ว)`);
+      expect(todos[0].description).toContain(`วันที่รับของ (${receivedOn.thai})`);
+      expect(todos[0].description).not.toContain('วันที่ในเอกสาร');
     } finally {
       for (const r of restores.reverse()) await r.restore();
       await prisma.goodsReceiving.update({ where: { id: result.receivingId }, data: { createdAt: realCreatedAt } });

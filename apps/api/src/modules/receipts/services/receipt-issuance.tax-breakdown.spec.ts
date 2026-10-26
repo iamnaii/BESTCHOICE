@@ -1,6 +1,7 @@
 import { BadRequestException, Logger } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { ReceiptIssuanceService } from './receipt-issuance.service';
+import { domainAccessExecution, type DomainAccessExecution } from '../../employee-access/access-execution-context';
 
 /**
  * ใบกำกับภาษีตามบัญชี (PR3 — คำตัดสินฝ่ายบัญชี D3–D5): generateReceipt เก็บค่าที่ใบค่างวดต้องพิมพ์ ณ ตอนออกใบ
@@ -164,29 +165,69 @@ describe('ReceiptIssuanceService — ใบกำกับภาษีตาม�
     for (const k of TAX_COLUMNS) expect(created[0][k]).toBeUndefined();
   });
 
-  it('ใบปิดยอดผูกรายการ JP4 ยังไม่ได้ (PR5) → ปฏิเสธเหมือนเดิม ก่อนสร้างใบ', async () => {
-    const { svc, created } = buildService({
-      source: {
-        id: 'je-jp4',
-        status: 'POSTED',
-        deletedAt: null,
-        metadata: { tag: 'JP4', flow: 'early-payoff', contractId: 'c1' },
-      },
-    });
+  // ใบปิดยอดก่อนกำหนดเป็นใบกำกับภาษีตามบัญชี (ฝ่ายบัญชี 16.1/16.2 · 2026-10-18): ผูกรายการ JP4 (tag JP4 · flow early-payoff ·
+  // paymentId ไม่มี) และคัดลอก receiptTax ที่ earlyPayoff ประทับไว้ — รวมช่องส่วนลดดอกเบี้ยปิดยอด
+  const PAYOFF_TAX = {
+    version: 1,
+    amount: '15189.98',
+    amountBeforeVat: '17000.00',
+    vatAmount: '1190.00',
+    roundingAmount: '0.00',
+    lateFeeAmount: '0.00',
+    lateFeeWaivedAmount: '0.00',
+    advanceAmount: '0.00',
+    advanceVatAmount: '0.00',
+    discountAmount: '3000.02',
+  };
+  const jp4Source = (meta: Record<string, unknown> = {}) => ({
+    id: 'je-jp4',
+    status: 'POSTED',
+    deletedAt: null,
+    metadata: { tag: 'JP4', flow: 'early-payoff', contractId: 'c1', receiptTax: PAYOFF_TAX, ...meta },
+  });
+
+  it('ใบปิดยอดผูกรายการ JP4 → เก็บค่าที่ประทับรวม discountAmount (16.1: 17,000 / 1,190 / ส่วนลด 3,000.02)', async () => {
+    const { svc, tx, created } = buildService({ source: jp4Source() });
+
+    await svc.generateReceipt('c1', null, 'EARLY_PAYOFF', 15189.98, null, 'BANK_TRANSFER', null, 'u1', undefined, 'JE-JP4');
+
+    expect(tx.journalEntry.findUnique).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { entryNumber: 'JE-JP4' } }),
+    );
+    expect(created).toHaveLength(1);
+    expect(created[0].sourceJournalEntryId).toBe('je-jp4');
+    expect(created[0].amountBeforeVat?.toString()).toBe('17000');
+    expect(created[0].vatAmount?.toString()).toBe('1190');
+    expect(created[0].discountAmount?.toString()).toBe('3000.02');
+    expect(created[0].advanceAmount?.toString()).toBe('0');
+  });
+
+  it('รายการ JP4 ไม่มี receiptTax (ปิดยอดที่ประทับไม่ได้ — เช่น มีเงินรับเกิน 18.2) → ผูกรายการแต่ช่องว่าง (พิมพ์แบบเดิม)', async () => {
+    const { svc, created } = buildService({ source: jp4Source({ receiptTax: undefined }) });
+
+    await svc.generateReceipt('c1', null, 'EARLY_PAYOFF', 15189.98, null, 'BANK_TRANSFER', null, 'u1', undefined, 'JE-JP4');
+
+    expect(created).toHaveLength(1);
+    expect(created[0].sourceJournalEntryId).toBe('je-jp4');
+    for (const k of [...TAX_COLUMNS, 'discountAmount']) expect(created[0][k]).toBeUndefined();
+  });
+
+  it('ยอดใบไม่ตรง receiptTax.amount ของ JP4 → ไม่เก็บค่า (ผูกรายการตามเดิม)', async () => {
+    const { svc, created } = buildService({ source: jp4Source() });
+
+    await svc.generateReceipt('c1', null, 'EARLY_PAYOFF', 15189.0, null, 'BANK_TRANSFER', null, 'u1', undefined, 'JE-JP4');
+
+    expect(created).toHaveLength(1);
+    expect(created[0].sourceJournalEntryId).toBe('je-jp4');
+    expect(created[0].discountAmount).toBeUndefined();
+    expect(created[0].vatAmount).toBeUndefined();
+  });
+
+  it('เลขที่รายการที่ส่งมาไม่ใช่ JP4 ของสัญญานี้ (สัญญาอื่น) → ปฏิเสธก่อนสร้างใบ', async () => {
+    const { svc, created } = buildService({ source: jp4Source({ contractId: 'c2' }) });
 
     await expect(
-      svc.generateReceipt(
-        'c1',
-        null,
-        'EARLY_PAYOFF',
-        17339.96,
-        null,
-        'BANK_TRANSFER',
-        null,
-        'u1',
-        undefined,
-        'JE-JP4',
-      ),
+      svc.generateReceipt('c1', null, 'EARLY_PAYOFF', 15189.98, null, 'BANK_TRANSFER', null, 'u1', undefined, 'JE-JP4'),
     ).rejects.toThrow('ไม่พบรายการบัญชีรับชำระที่ตรงกับใบเสร็จ');
     expect(created).toHaveLength(0);
   });
@@ -374,5 +415,152 @@ describe('ReceiptIssuanceService — ใบกำกับภาษีตาม�
     } finally {
       warn.mockRestore();
     }
+  });
+
+
+  // ── PR4ข (ฝ่ายบัญชี 16/10/2569 ข้อ 14 / 23.1 / 23.2): ใบปรับดิว 6a และใบส่วนเกินลิงก์ชำระเก็บค่าที่พิมพ์ ณ ตอนออกใบ ──
+  describe('PR4ข — ใบปรับดิว 6a / ใบส่วนเกินลิงก์ชำระ', () => {
+    const META_6A = {
+      tag: 'reschedule-collect',
+      contractId: 'c1',
+      paymentId: 'p1',
+      variant: '6a',
+      rescheduleFee: '1516',
+      lateFeeCollected: '50',
+      advanceVatPark: '99.18',
+    };
+    const source6a = (extra: Record<string, unknown> = {}) => ({
+      id: 'je-6a',
+      status: 'POSTED',
+      deletedAt: null,
+      metadata: { ...META_6A, ...extra },
+    });
+    const sourceSurplus = (extra: Record<string, unknown> = {}) => ({
+      id: 'je-surplus',
+      status: 'POSTED',
+      deletedAt: null,
+      // รายการส่วนเกินไม่มี paymentId (เงินพักไว้ที่สัญญา ไม่ผูกงวด)
+      metadata: {
+        tag: 'paysolutions-surplus-advance',
+        contractId: 'c1',
+        refno: 'REF-1',
+        surplus: '500',
+        advanceVatPark: '32.71',
+        ...extra,
+      },
+    });
+
+    it('ใบปรับดิว 6a: เก็บ 7 คอลัมน์จาก metadata ของรายการ reschedule-collect (ภาษี = stamp advanceVatPark) + remainingBalance null (ใช้ยอด ณ วันออกใบ)', async () => {
+      const { svc, created } = buildService({ source: source6a() });
+
+      await svc.generateReceipt('c1', 'p1', 'RESCHEDULE_FEE', 1566, 4, 'BANK_TRANSFER', 'SLIP-1', 'u1', undefined, 'JE-6A');
+
+      expect(created).toHaveLength(1);
+      expect(created[0].sourceJournalEntryId).toBe('je-6a');
+      expect(created[0].remainingBalance).toBeNull();
+      expect(TAX_COLUMNS.map((k) => [k, money(created[0][k])])).toEqual([
+        ['amountBeforeVat', '1416.82'],
+        ['vatAmount', '99.18'],
+        ['roundingAmount', '0.00'],
+        ['lateFeeAmount', '50.00'],
+        ['lateFeeWaivedAmount', '0.00'],
+        ['advanceAmount', '1516.00'],
+        ['advanceVatAmount', '99.18'],
+      ]);
+    });
+
+    it('ใบปรับดิว 6b (ค่าธรรมเนียมไม่ได้พัก — ไม่มี stamp ภาษี) → ผูกรายการแต่ไม่เก็บค่า (พิมพ์แบบเดิม)', async () => {
+      const { svc, created } = buildService({
+        source: source6a({ variant: '6b', advanceVatPark: undefined }),
+      });
+
+      await svc.generateReceipt('c1', 'p1', 'RESCHEDULE_FEE', 1566, 4, 'CASH', null, 'u1', undefined, 'JE-6B');
+
+      expect(created[0].sourceJournalEntryId).toBe('je-6a');
+      for (const k of TAX_COLUMNS) expect(created[0][k]).toBeUndefined();
+    });
+
+    it('ใบส่วนเกินลิงก์ชำระ (ADVANCE_SURPLUS · paymentId null): รับรายการ tag paysolutions-surplus-advance ที่ไม่มี paymentId · เก็บ 467.29 / 32.71 / เงินรับล่วงหน้า 500.00', async () => {
+      const { svc, created, tx } = buildService({ source: sourceSurplus() });
+      const paidAt = new Date('2026-10-13T05:00:00.000Z');
+
+      await svc.generateReceipt('c1', null, 'ADVANCE_SURPLUS', 500, null, 'ONLINE_GATEWAY', 'REF-1', 'u1', paidAt, 'JE-S');
+
+      expect(created).toHaveLength(1);
+      expect(created[0].sourceJournalEntryId).toBe('je-surplus');
+      expect(created[0].paymentId).toBeNull();
+      expect(created[0].installmentNo).toBeNull();
+      expect(created[0].paidDate).toEqual(paidAt);
+      expect(created[0].remainingBalance).toBeNull();
+      expect(TAX_COLUMNS.map((k) => [k, money(created[0][k])])).toEqual([
+        ['amountBeforeVat', '467.29'],
+        ['vatAmount', '32.71'],
+        ['roundingAmount', '0.00'],
+        ['lateFeeAmount', '0.00'],
+        ['lateFeeWaivedAmount', '0.00'],
+        ['advanceAmount', '500.00'],
+        ['advanceVatAmount', '32.71'],
+      ]);
+      // ไม่ใช่ใบค่างวด — ไม่อ่านแถว Payment มาทำ partial seq
+      expect(tx.payment.findUnique).not.toHaveBeenCalled();
+    });
+
+    it('ใบส่วนเกินที่ส่งเลขที่รายการรับชำระค่างวดมา (tag receipt) → ปฏิเสธก่อนสร้างใบ', async () => {
+      const { svc, created } = buildService({ source: receiptSource() });
+
+      await expect(
+        svc.generateReceipt('c1', null, 'ADVANCE_SURPLUS', 500, null, 'ONLINE_GATEWAY', 'REF-1', 'u1', undefined, 'JE-1'),
+      ).rejects.toThrow('ไม่พบรายการบัญชีรับชำระที่ตรงกับใบเสร็จ');
+      expect(created).toHaveLength(0);
+    });
+  });
+
+  // Managed (owned) payoff receipt: issued inside the same Serializable domain transaction as the JP4 —
+  // may link that JP4 so the 16.1/16.2 tax columns are stored, but the owned path stays EARLY_PAYOFF-only.
+  describe('ใบปิดยอดในธุรกรรมของสิทธิ์ตำแหน่ง (ownedPayoff)', () => {
+    function owned(tx: unknown) {
+      const ctx = {
+        snapshot: { userId: 'u1', isOwner: false, managed: true, revision: 1, grants: [] },
+        scope: { userId: 'u1', company: 'FINANCE', permission: 'payments.create', tuples: [] },
+        client: tx,
+        scopeReads: false,
+        domain: 'parties',
+        isolationLevel: 'Serializable',
+        effects: { commit: [], rollback: [] },
+      } as unknown as DomainAccessExecution;
+      return {
+        run: <T>(work: () => Promise<T>) => domainAccessExecution.run(ctx, work),
+        payoff: { client: tx as Prisma.TransactionClient, financeCompanyId: 'co-fin' },
+      };
+    }
+
+    it('ownedPayoff + เลขที่รายการ JP4 → ผูกรายการและเก็บค่าที่ประทับ (ไม่ปฏิเสธ)', async () => {
+      const { svc, tx, created } = buildService({ source: jp4Source() });
+      tx.companyInfo.findFirst.mockResolvedValue({ id: 'co-fin', nameTh: 'FINANCE' });
+      const { run, payoff } = owned(tx);
+
+      await run(() =>
+        svc.generateReceipt('c1', null, 'EARLY_PAYOFF', 15189.98, null, 'BANK_TRANSFER', null, 'u1', undefined, 'JE-JP4', payoff),
+      );
+
+      expect(tx.companyInfo.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({ where: expect.objectContaining({ id: 'co-fin', companyCode: 'FINANCE' }) }),
+      );
+      expect(created).toHaveLength(1);
+      expect(created[0].sourceJournalEntryId).toBe('je-jp4');
+      expect(created[0].vatAmount?.toString()).toBe('1190');
+      expect(created[0].discountAmount?.toString()).toBe('3000.02');
+    });
+
+    it('ownedPayoff กับใบชนิดอื่น (ส่งเลขที่รายการมาด้วย) → ยังปฏิเสธ ก่อนอ่านรายการบัญชี', async () => {
+      const { svc, tx, created } = buildService({ source: receiptSource() });
+      const { run, payoff } = owned(tx);
+
+      await expect(
+        run(() => svc.generateReceipt('c1', 'p1', 'INSTALLMENT', 6079, 3, 'CASH', null, 'u1', undefined, 'JE-1', payoff)),
+      ).rejects.toThrow('ไม่มีขอบเขตการออกใบเสร็จปิดสัญญา');
+      expect(tx.journalEntry.findUnique).not.toHaveBeenCalled();
+      expect(created).toHaveLength(0);
+    });
   });
 });

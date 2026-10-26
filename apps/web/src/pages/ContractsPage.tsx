@@ -1,3 +1,6 @@
+import { NativeSelect } from '@/components/ui/native-select';
+import { formControlClass } from '@/components/ui/form-styles';
+import { useId as useFieldId } from 'react';
 import type { SignatureRequirements } from '@installment/shared';
 import { PaginationBar } from '@/components/ui/PaginationBar';
 import { createExportGuard, ExportError, fetchExportSnapshot, type ExportSnapshot } from '@/lib/fetch-export-pages';
@@ -11,7 +14,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import PageHeader from '@/components/ui/PageHeader';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import DataTable from '@/components/ui/DataTable';
+import DataTable, { type Column } from '@/components/ui/DataTable';
 import WorkflowStatusBadge from '@/components/contract/WorkflowStatusBadge';
 import AnimatedCounter from '@/components/ui/animated-counter';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -64,6 +67,7 @@ type ViewTab = 'all' | 'my' | 'pending_review';
 type ViewMode = 'table' | 'kanban';
 
 export default function ContractsPage() {
+  const fieldId = useFieldId();
   const navigate = useNavigate();
   const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -201,89 +205,56 @@ export default function ContractsPage() {
     finally { setIsExporting(false); }
   };
 
-  const columns = useMemo(() => [
+  const columns = useMemo<Column<Contract>[]>(() => [
     {
-      key: 'contractNumber',
-      label: 'เลขสัญญา',
-      render: (c: Contract) => (
-        <Link to={`/contracts/${c.id}`} className="font-mono text-sm text-primary hover:underline">
-          {c.contractNumber}
-        </Link>
-      ),
+      key: 'contractNumber', label: 'สัญญา / ลูกค้า', cardFullWidth: true,
+      className: '[overflow-wrap:anywhere]',
+      render: (c: Contract) => <div className="space-y-1">
+        <Link to={`/contracts/${c.id}`} className="font-mono text-sm text-primary hover:underline">{c.contractNumber}</Link>
+        <div className="text-sm font-medium">{c.customer.name}</div>
+        <div className="text-xs text-muted-foreground whitespace-nowrap">{c.customer.phone}</div>
+      </div>,
     },
     {
-      key: 'customer',
-      label: 'ลูกค้า',
-      render: (c: Contract) => (
-        <div>
-          <div className="text-sm font-medium">{c.customer.name}</div>
-          <div className="text-xs text-muted-foreground">{c.customer.phone}</div>
-        </div>
-      ),
+      key: 'product', label: 'สินค้า', width: '14rem', cardFullWidth: true,
+      className: '[overflow-wrap:anywhere]',
+      render: (c: Contract) => <div className="flex flex-col items-start gap-1">
+        <span className="text-sm">{c.product.brand} {c.product.model}</span>
+        <span className="admin-status-badge text-2xs px-1.5 py-0.5 bg-muted rounded-md">
+          {c.product.category === 'PHONE_NEW' ? 'มือ1' : c.product.category === 'PHONE_USED' ? 'มือ2' : c.product.category}
+        </span>
+      </div>,
     },
     {
-      key: 'product',
-      label: 'สินค้า',
-      render: (c: Contract) => (
-        <div>
-          <span className="text-sm">{c.product.brand} {c.product.model}</span>
-          <span className="ml-1 text-2xs px-1.5 py-0.5 bg-muted rounded-md">
-            {c.product.category === 'PHONE_NEW' ? 'มือ1' : c.product.category === 'PHONE_USED' ? 'มือ2' : c.product.category}
-          </span>
-        </div>
-      ),
-    },
-    {
-      key: 'workflowStatus',
-      label: 'Workflow',
-      render: (c: Contract) => <WorkflowStatusBadge status={c.workflowStatus} />,
-    },
-    {
-      key: 'signatures',
-      label: 'ลงนาม',
-      render: (c: Contract) => {
-        const requirements = c.signatureRequirements;
-        if (!requirements) return <span className="text-xs text-muted-foreground">รอตรวจผู้ลงนาม</span>;
-        const count = requirements.checklist.filter(signer => signer.signed).length;
-        return <span className={`text-xs ${requirements.complete ? 'text-success' : 'text-warning-strong'}`}>
-          {requirements.complete ? 'ครบ' : 'ลงนามแล้ว'} {count}/{requirements.checklist.length}
-        </span>;
-      },
-    },
-    {
-      key: 'status',
-      label: 'สถานะ',
+      key: 'status', label: 'สถานะ / ลงนาม', width: '10rem',
       render: (c: Contract) => {
         const cfg = getStatusBadgeProps(c.status, contractStatusMap);
-        return <Badge className="admin-status-badge" variant={cfg.variant} appearance={cfg.appearance} size="sm">{cfg.label}</Badge>;
+        const requirements = c.signatureRequirements;
+        const count = requirements?.checklist.filter(signer => signer.signed).length;
+        return <div className="flex flex-col items-start gap-1.5">
+          <Badge className="admin-status-badge" variant={cfg.variant} appearance={cfg.appearance} size="sm">{cfg.label}</Badge>
+          <WorkflowStatusBadge status={c.workflowStatus} />
+          {requirements ? <span className={`text-xs ${requirements.complete ? 'text-success' : 'text-warning-strong'}`}>
+            {requirements.complete ? 'ครบ' : 'ลงนามแล้ว'} {count}/{requirements.checklist.length}
+          </span> : <span className="text-xs text-muted-foreground">รอตรวจผู้ลงนาม</span>}
+        </div>;
       },
     },
     {
-      key: 'monthlyPayment',
-      label: 'ค่างวด',
-      render: (c: Contract) => (
-        <div>
-          <span className="text-sm">{parseFloat(c.monthlyPayment).toLocaleString()} ฿ x {c.totalMonths}</span>
-          {c.paymentDueDay && <div className="text-2xs text-muted-foreground">วันที่ {c.paymentDueDay}</div>}
-        </div>
-      ),
+      key: 'monthlyPayment', label: 'ค่างวด', width: '11rem', align: 'right',
+      className: 'whitespace-nowrap tabular-nums',
+      render: (c: Contract) => <div>
+        <div className="text-sm font-medium">{parseFloat(c.monthlyPayment).toLocaleString()} ฿</div>
+        <div className="text-xs text-muted-foreground">{c.totalMonths} งวด{c.paymentDueDay ? ` · วันที่ ${c.paymentDueDay}` : ''}</div>
+      </div>,
     },
     {
-      key: 'docs',
-      label: 'เอกสาร',
-      render: (c: Contract) => (
-        <span className="text-xs text-muted-foreground">{c._count.contractDocuments} ไฟล์</span>
-      ),
-    },
-    {
-      key: 'salesperson',
-      label: 'พนักงาน',
-      render: (c: Contract) => <span className="text-xs">{c.salesperson.name}</span>,
-    },
-    {
-      key: 'createdAt',
-      label: 'วันที่สร้าง',
-      render: (c: Contract) => <span className="text-xs">{formatDateShort(c.createdAt)}</span>,
+      key: 'createdAt', label: 'ข้อมูลสัญญา', width: '12rem', cardFullWidth: true,
+      className: '[overflow-wrap:anywhere]',
+      render: (c: Contract) => <div className="space-y-1 text-xs text-muted-foreground">
+        <div><span className="whitespace-nowrap">สร้าง {formatDateShort(c.createdAt)}</span> · {c._count.contractDocuments} ไฟล์</div>
+        <div>พนักงาน {c.salesperson.name}</div>
+      </div>,
     },
   ], []);
 
@@ -312,9 +283,9 @@ export default function ContractsPage() {
           <div className="flex flex-wrap gap-2">
             {contracts.length > 0 && (
               <>
-              <select aria-label="ขอบเขตการส่งออก" value={exportScope} onChange={e => setExportScope(e.target.value)} className="rounded-md border border-input bg-background px-2 text-sm">
+              <NativeSelect wrapperClassName="max-w-full w-auto" aria-label="ขอบเขตการส่งออก" value={exportScope} onChange={e => setExportScope(e.target.value)} className="rounded-md border border-input bg-background px-2 text-sm">
                 <option value="all">ตามตัวกรองทั้งหมด</option><option value="page">หน้าปัจจุบัน</option>
-              </select>
+              </NativeSelect>
               <Button variant="outline" size="md" onClick={handleExport} disabled={isExporting || isError || isLoading}>
                 <Download className="size-4" />
                 ส่งออก Excel
@@ -373,21 +344,21 @@ export default function ContractsPage() {
 
       {/* View Tabs — Metronic line tabs style */}
       <div className="flex max-w-full overflow-x-auto gap-0 mb-5 border-b border-border/60">
-        <button
+        <button data-ui-control="button"
           onClick={() => updateParams({ tab: '', status: '', workflow: '', q: '', page: '' })}
           className={`px-5 py-3 text-sm font-medium border-b-2 -mb-px transition-all ${viewTab === 'all' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
         >
           ทั้งหมด
           {result && <span className={`ml-2 text-xs px-1.5 py-0.5 rounded-full ${viewTab === 'all' ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'}`}>{result.total}</span>}
         </button>
-        <button
+        <button data-ui-control="button"
           onClick={() => updateParams({ tab: 'my', status: '', workflow: '', q: '', page: '' })}
           className={`px-5 py-3 text-sm font-medium border-b-2 -mb-px transition-all ${viewTab === 'my' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
         >
           สัญญาของฉัน
         </button>
         {isManager && (
-          <button
+          <button data-ui-control="button"
             onClick={() => updateParams({ tab: 'pending_review', status: '', workflow: '', q: '', page: '' })}
             className={`px-5 py-3 text-sm font-medium border-b-2 -mb-px transition-all ${viewTab === 'pending_review' ? 'border-warning text-warning-strong' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
           >
@@ -407,10 +378,10 @@ export default function ContractsPage() {
               placeholder="ค้นหาเลขสัญญา, ชื่อลูกค้า..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="w-full pl-9 pr-3 py-2 border border-input rounded-lg text-sm bg-background outline-hidden focus:ring-2 focus:ring-ring/30"
+              className={`${formControlClass} pl-9`}
             />
           </div>
-          <select aria-label="สถานะสัญญา" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="px-3 py-2 border border-input rounded-lg text-sm bg-background outline-hidden focus:ring-2 focus:ring-ring/30">
+          <NativeSelect wrapperClassName="max-w-full min-w-0 w-full sm:w-auto" aria-label="สถานะสัญญา" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className={formControlClass}>
             <option value="">ทุกสถานะ</option>
             <option value="DRAFT">ร่าง</option>
             <option value="ACTIVE">ผ่อนอยู่</option>
@@ -420,16 +391,16 @@ export default function ContractsPage() {
             <option value="COMPLETED">ผ่อนครบ</option>
             <option value="EXCHANGED">เปลี่ยนเครื่อง</option>
             <option value="CLOSED_BAD_DEBT">หนี้สูญ</option>
-          </select>
+          </NativeSelect>
           {isOwner && (
-            <select aria-label="สาขา" value={branchFilter} onChange={(e) => setBranchFilter(e.target.value)} className="px-3 py-2 border border-input rounded-lg text-sm bg-background outline-hidden focus:ring-2 focus:ring-ring/30">
+            <NativeSelect wrapperClassName="max-w-full min-w-0 w-full sm:w-auto" aria-label="สาขา" value={branchFilter} onChange={(e) => setBranchFilter(e.target.value)} className={formControlClass}>
               <option value="">ทุกสาขา</option>
               {branches.map((b) => (
                 <option key={b.id} value={b.id}>{b.name}</option>
               ))}
-            </select>
+            </NativeSelect>
           )}
-          <button
+          <button data-ui-control="button"
             onClick={() => setShowDatePicker(!showDatePicker)}
             className={`inline-flex items-center gap-2 px-3 py-2 border rounded-lg text-sm transition-colors ${
               startDateFilter || endDateFilter
@@ -441,13 +412,13 @@ export default function ContractsPage() {
             {startDateFilter || endDateFilter ? 'กำหนดเวลาไว้' : 'ช่วงเวลา'}
           </button>
           {viewTab === 'all' && (
-            <select aria-label="ขั้นตอนสัญญา" value={workflowFilter} onChange={(e) => setWorkflowFilter(e.target.value)} className="px-3 py-2 border border-input rounded-lg text-sm bg-background outline-hidden focus:ring-2 focus:ring-ring/30">
+            <NativeSelect wrapperClassName="max-w-full min-w-0 w-full sm:w-auto" aria-label="ขั้นตอนสัญญา" value={workflowFilter} onChange={(e) => setWorkflowFilter(e.target.value)} className={formControlClass}>
               <option value="">ทุก Workflow</option>
               <option value="CREATING">กำลังสร้าง</option>
               <option value="PENDING_REVIEW">รอตรวจสอบ</option>
               <option value="APPROVED">อนุมัติแล้ว</option>
               <option value="REJECTED">ปฏิเสธ</option>
-            </select>
+            </NativeSelect>
           )}
         </div>
       </div>
@@ -462,8 +433,8 @@ export default function ContractsPage() {
           />
           <div className="flex gap-3">
             <div className="flex-1">
-              <label className="text-xs text-muted-foreground block mb-1">วันเริ่มต้น</label>
-              <ThaiDateInput
+              <label htmlFor={`${fieldId}-1`} className="text-xs text-muted-foreground block mb-1">วันเริ่มต้น</label>
+              <ThaiDateInput id={`${fieldId}-1`}
                 data-date-range-custom-start="true"
                 value={startDateFilter}
                 onChange={(e) => setStartDate(e.target.value)}
@@ -471,8 +442,8 @@ export default function ContractsPage() {
               />
             </div>
             <div className="flex-1">
-              <label className="text-xs text-muted-foreground block mb-1">วันสิ้นสุด</label>
-              <ThaiDateInput
+              <label htmlFor={`${fieldId}-2`} className="text-xs text-muted-foreground block mb-1">วันสิ้นสุด</label>
+              <ThaiDateInput id={`${fieldId}-2`}
                 value={endDateFilter}
                 onChange={(e) => setEndDate(e.target.value)}
                 className="w-full px-3 py-2 border border-input rounded-lg text-sm"
@@ -480,7 +451,7 @@ export default function ContractsPage() {
             </div>
             {(startDateFilter || endDateFilter) && (
               <div className="flex items-end">
-                <button
+                <button data-ui-control="button"
                   onClick={() => { setStartDate(''); setEndDate(''); }}
                   className="px-3 py-2 text-sm text-muted-foreground hover:text-foreground"
                 >
@@ -496,14 +467,14 @@ export default function ContractsPage() {
       <div className="flex items-center justify-between mb-4">
         <div />
         <div className="flex gap-1 bg-muted rounded-lg p-1">
-          <button
+          <button data-ui-control="button" data-ui-icon="true"
             onClick={() => setViewMode('table')}
             className={`p-2 rounded-md transition-all ${viewMode === 'table' ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
             aria-label="มุมมองตาราง"
           >
             <List className="size-4" />
           </button>
-          <button
+          <button data-ui-control="button" data-ui-icon="true"
             onClick={() => setViewMode('kanban')}
             className={`p-2 rounded-md transition-all ${viewMode === 'kanban' ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
             aria-label="มุมมอง Kanban"
@@ -529,10 +500,13 @@ export default function ContractsPage() {
           {viewMode === 'table' && (
             <DataTable
               columns={columns}
+              density="compact"
+              responsive
+              className="rounded-none border-0 shadow-none"
+              scrollLabel="ตารางสัญญาผ่อนชำระ"
               data={contracts}
               isLoading={isLoading}
               emptyMessage="ยังไม่มีสัญญา"
-
             />
           )}
 

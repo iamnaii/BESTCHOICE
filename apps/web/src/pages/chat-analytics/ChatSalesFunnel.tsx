@@ -32,7 +32,7 @@ export default function ChatSalesFunnel({
       <div className="grid min-w-0 gap-4 xl:grid-cols-2">
         <div className="min-w-0 rounded-xl border bg-card p-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <h3 className="font-medium">Journey · ขั้นปัจจุบัน</h3>
+            <h3 className="font-medium">ขั้นตอนการขายปัจจุบัน</h3>
             <Button variant="ghost" onClick={() => onFunnel('CONTACTED', 'all', 'ลูกค้าใน cohort')}>
               {funnel.customerCount} ลูกค้า
             </Button>

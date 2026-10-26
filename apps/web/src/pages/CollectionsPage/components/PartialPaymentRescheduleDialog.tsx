@@ -1,4 +1,6 @@
-import { useState, useEffect } from 'react';
+import { NumberInput } from '@/components/ui/NumberInput';
+import { toBangkokDateString, computeDefaultTimeRange } from '@/lib/date';
+import { useId as useUiFieldId, useState, useEffect } from 'react';
 import Modal from '@/components/ui/Modal';
 import { formatNumber } from '@/utils/formatters';
 import { usePartialPaymentReschedule } from '../hooks/usePartialPaymentReschedule';
@@ -29,13 +31,11 @@ const QUICK_DATE_OPTIONS: Array<{ label: string; offsetDays?: number; endOfMonth
 function dateOffset(days: number): string {
   const d = new Date();
   d.setDate(d.getDate() + days);
-  return d.toISOString().split('T')[0];
+  return toBangkokDateString(d);
 }
 
 function endOfThisMonth(): string {
-  const d = new Date();
-  const last = new Date(d.getFullYear(), d.getMonth() + 1, 0);
-  return last.toISOString().split('T')[0];
+  return computeDefaultTimeRange('this_month').endDate;
 }
 
 function getTomorrow(): string {
@@ -48,6 +48,7 @@ export default function PartialPaymentRescheduleDialog({
   onClose,
   onSaved,
 }: Props) {
+  const uiFieldId = useUiFieldId();
   const [amountPaid, setAmountPaid] = useState('');
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('CASH');
   const [transactionRef, setTransactionRef] = useState('');
@@ -144,11 +145,11 @@ export default function PartialPaymentRescheduleDialog({
           </div>
 
           <div>
-            <label className="text-sm font-medium text-foreground mb-1.5 block leading-snug">
+            <label htmlFor={`${uiFieldId}-1`} className="text-sm font-medium text-foreground mb-1.5 block leading-snug">
               จำนวนเงินที่จ่าย <span className="text-destructive">*</span>
             </label>
             <div className="flex flex-wrap gap-1.5 mb-2">
-              <button
+              <button data-ui-control="button"
                 type="button"
                 onClick={() => setAmountPaid(String(outstanding))}
                 className="px-3 py-1.5 rounded-full text-sm font-medium border border-input bg-card hover:bg-muted transition-colors"
@@ -157,8 +158,7 @@ export default function PartialPaymentRescheduleDialog({
               </button>
             </div>
             <div className="relative">
-              <input
-                type="number"
+              <NumberInput unstyled id={`${uiFieldId}-1`}
                 inputMode="decimal"
                 min={0.01}
                 max={outstanding}
@@ -187,7 +187,7 @@ export default function PartialPaymentRescheduleDialog({
             </label>
             <div className="grid grid-cols-3 gap-2">
               {PAYMENT_METHODS.map((m) => (
-                <button
+                <button data-ui-control="button"
                   key={m.value}
                   type="button"
                   onClick={() => setPaymentMethod(m.value)}
@@ -205,10 +205,10 @@ export default function PartialPaymentRescheduleDialog({
 
           {refRequired && (
             <div>
-              <label className="text-sm font-medium text-foreground mb-1.5 block leading-snug">
+              <label htmlFor={`${uiFieldId}-2`} className="text-sm font-medium text-foreground mb-1.5 block leading-snug">
                 เลขอ้างอิงธุรกรรม <span className="text-destructive">*</span>
               </label>
-              <input
+              <input id={`${uiFieldId}-2`}
                 type="text"
                 value={transactionRef}
                 onChange={(e) => setTransactionRef(e.target.value)}
@@ -239,7 +239,7 @@ export default function PartialPaymentRescheduleDialog({
             </div>
 
             <div>
-              <label className="text-sm font-medium text-foreground mb-2 block leading-snug">
+              <label htmlFor={`${uiFieldId}-3`} className="text-sm font-medium text-foreground mb-2 block leading-snug">
                 วันที่นัด <span className="text-destructive">*</span>
               </label>
               <div className="flex flex-wrap gap-1.5 mb-2.5">
@@ -251,7 +251,7 @@ export default function PartialPaymentRescheduleDialog({
                       : '';
                   const active = newSettlementDate === computed;
                   return (
-                    <button
+                    <button data-ui-control="button"
                       key={opt.label}
                       type="button"
                       onClick={() => pickQuickDate(opt)}
@@ -266,7 +266,7 @@ export default function PartialPaymentRescheduleDialog({
                   );
                 })}
               </div>
-              <input
+              <input id={`${uiFieldId}-3`}
                 type="date"
                 min={getTomorrow()}
                 value={newSettlementDate}
@@ -279,10 +279,10 @@ export default function PartialPaymentRescheduleDialog({
 
         {/* บันทึกเพิ่มเติม */}
         <div>
-          <label className="text-sm font-semibold text-foreground mb-1.5 block leading-snug">
+          <label htmlFor={`${uiFieldId}-4`} className="text-sm font-semibold text-foreground mb-1.5 block leading-snug">
             หมายเหตุ
           </label>
-          <textarea
+          <textarea id={`${uiFieldId}-4`}
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
             placeholder="รายละเอียดการสนทนา..."
@@ -299,14 +299,14 @@ export default function PartialPaymentRescheduleDialog({
 
         {/* Actions */}
         <div className="flex gap-2 justify-end pt-2 border-t border-border/40">
-          <button
+          <button data-ui-control="button"
             onClick={handleClose}
             disabled={mutation.isPending}
             className="px-5 py-2.5 text-base border border-input rounded-lg hover:bg-muted transition-colors disabled:opacity-50"
           >
             ยกเลิก
           </button>
-          <button
+          <button data-ui-control="button"
             onClick={handleSubmit}
             disabled={!canSave}
             className="px-5 py-2.5 text-base bg-primary text-primary-foreground rounded-lg font-semibold hover:bg-primary/90 transition-colors disabled:opacity-50"

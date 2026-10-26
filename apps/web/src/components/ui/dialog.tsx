@@ -11,7 +11,7 @@ const dialogContentVariants = cva(
   {
     variants: {
       variant: {
-        default: 'left-[50%] top-[50%] max-w-lg translate-x-[-50%] translate-y-[-50%] w-full',
+        default: 'left-[50%] top-[50%] max-w-lg translate-x-[-50%] translate-y-[-50%] w-[calc(100%-2rem)]',
         fullscreen: 'inset-5',
       },
     },
@@ -56,6 +56,7 @@ function DialogContent({
   showCloseButton = true,
   overlay = true,
   variant,
+  onEscapeKeyDown,
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Content> &
   VariantProps<typeof dialogContentVariants> & {
@@ -67,14 +68,23 @@ function DialogContent({
       {overlay && <DialogOverlay />}
       <DialogPrimitive.Content
         data-slot="dialog-content"
+        data-has-close={showCloseButton || undefined}
         className={cn(dialogContentVariants({ variant }), className)}
+        onEscapeKeyDown={(event) => {
+          onEscapeKeyDown?.(event);
+          // Radix listens in capture phase, before the inline combobox can close
+          // its options. Let the first Escape close that list, keeping form data.
+          if (event.target instanceof HTMLElement && event.target.matches('[data-inline-combobox="true"][aria-expanded="true"]')) {
+            event.preventDefault();
+          }
+        }}
         {...props}
       >
         {children}
         {showCloseButton && (
-          <DialogClose className="cursor-pointer outline-hidden absolute end-5 top-5 rounded-sm opacity-60 ring-offset-background transition-opacity hover:opacity-100 focus:outline-hidden disabled:pointer-events-none data-[state=open]:bg-accent data-[state=open]:text-muted-foreground">
+          <DialogClose className="cursor-pointer outline-hidden absolute end-2 top-2 flex size-11 items-center justify-center rounded-md opacity-60 ring-offset-background transition-opacity hover:opacity-100 focus:outline-hidden disabled:pointer-events-none data-[state=open]:bg-accent data-[state=open]:text-muted-foreground">
             <X className="size-4" />
-            <span className="sr-only">Close</span>
+            <span className="sr-only">ปิด</span>
           </DialogClose>
         )}
       </DialogPrimitive.Content>
@@ -85,7 +95,7 @@ function DialogContent({
 const DialogHeader = ({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) => (
   <div
     data-slot="dialog-header"
-    className={cn('flex flex-col space-y-1 text-center sm:text-start mb-5', className)}
+    className={cn('flex flex-col space-y-1 text-center sm:text-start mb-5 [[data-has-close]_&]:pe-8', className)}
     {...props}
   />
 );

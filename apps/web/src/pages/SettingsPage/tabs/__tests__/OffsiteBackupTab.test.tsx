@@ -192,7 +192,7 @@ describe('OffsiteBackupTab', () => {
     wrap(<OffsiteBackupTab />);
 
     await waitFor(() => {
-      expect(screen.getByText(/ปกปิดสำหรับ role นี้/)).toBeInTheDocument();
+      expect(screen.getByText(/ปกปิดสำหรับ บทบาท นี้/)).toBeInTheDocument();
     });
     // No "OFFSITE_BACKUP_SQL_SOURCE_BUCKET" warning when destBucket is masked
     // (warning only relevant when user can see infra config).

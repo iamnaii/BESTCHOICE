@@ -610,7 +610,8 @@ describe('device-return acceptance in the real admin browser', () => {
           await cashRow.getByRole('button', { name: 'รับเงินสดค่าเครื่อง', exact: true }).click();
           const dialog = finance.page.getByRole('dialog');
           await browserExpect(dialog).toContainText('S11-1202');
-          await browserExpect(dialog.locator('#recall-cash-amount')).toHaveValue(/^7000(?:\.0+)?$/);
+          // NumberInput (react-number-format, thousandSeparator) since 48da30675 — the field shows the formatted amount.
+          await browserExpect(dialog.locator('#recall-cash-amount')).toHaveValue(/^7,000(?:\.0+)?$/);
           await response(
             finance.page,
             `/interco-settlement/device-returns/${contract.id}/settle-cash`,

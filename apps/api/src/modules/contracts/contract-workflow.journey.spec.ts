@@ -51,6 +51,7 @@ function build(withWriter = true) {
     stub,
     stub,
     stub, // installmentInputVatTemplate (ก้อน 5)
+    stub, // blacklist (ก้อน 5 C3)
     undefined,
     withWriter ? (journeyEntries as unknown as JourneyEntryWriter) : undefined,
   );

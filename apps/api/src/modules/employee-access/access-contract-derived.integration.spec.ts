@@ -220,7 +220,8 @@ beforeAll(async () => {
       { provide: AccessSnapshotService, useValue: snapshots },
       {
         provide: ContractsService,
-        useValue: new ContractsService(db as PrismaService, {} as never, {} as never, {} as never),
+        // ก้อน 5 C3 — blacklist service is required; derived reads never reach create()/activate()
+        useValue: new ContractsService(db as PrismaService, {} as never, {} as never, {} as never, {} as never),
       },
       ...[
         ContractWorkflowService,

@@ -87,10 +87,10 @@ describe('MdmDeviceWidget endpoint role boundaries', () => {
       }
       if (currentRole === 'OWNER' || currentRole === 'FINANCE_MANAGER') {
         // OWNER's GPS dialog is open; underlying buttons remain in the DOM.
-        expect(screen.getByText('ล็อค Lost Mode', { selector: 'button' })).toBeInTheDocument();
+        expect(screen.getByText('ล็อคโหมดสูญหาย', { selector: 'button' })).toBeInTheDocument();
         expect(screen.getByText('ปลดล็อค', { selector: 'button' })).toBeInTheDocument();
       } else {
-        expect(screen.queryByText('ล็อค Lost Mode')).not.toBeInTheDocument();
+        expect(screen.queryByText('ล็อคโหมดสูญหาย')).not.toBeInTheDocument();
         expect(screen.queryByText('ปลดล็อค')).not.toBeInTheDocument();
       }
     },
@@ -101,7 +101,7 @@ describe('MdmDeviceWidget endpoint role boundaries', () => {
     async (currentRole) => {
       role = currentRole;
       mount();
-      fireEvent.click(await screen.findByRole('button', { name: 'ล็อค Lost Mode' }));
+      fireEvent.click(await screen.findByRole('button', { name: 'ล็อคโหมดสูญหาย' }));
       fireEvent.change(screen.getByPlaceholderText(/เหตุผลการล็อค/), {
         target: { value: 'ค้างชำระ' },
       });

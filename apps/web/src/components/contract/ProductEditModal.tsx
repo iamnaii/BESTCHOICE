@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { NumberInput } from '@/components/ui/NumberInput';
+import { useId as useUiFieldId, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import api, { getErrorMessage } from '@/lib/api';
 import { toast } from 'sonner';
@@ -30,6 +31,7 @@ interface Props {
 }
 
 export default function ProductEditModal({ product, onClose, onSuccess }: Props) {
+  const uiFieldId = useUiFieldId();
   const queryClient = useQueryClient();
   const [form, setForm] = useState({
     name: product.name,
@@ -115,37 +117,37 @@ export default function ProductEditModal({ product, onClose, onSuccess }: Props)
           </div>
           <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
             <div className="col-span-2 md:col-span-3">
-              <label className={labelClass}>ชื่อสินค้า <span className="text-destructive">*</span></label>
-              <input type="text" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className={inputClass} required />
+              <label htmlFor={`${uiFieldId}-1`} className={labelClass}>ชื่อสินค้า <span className="text-destructive">*</span></label>
+              <input id={`${uiFieldId}-1`} type="text" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className={inputClass} required />
             </div>
             {product.category !== 'ACCESSORY' ? (
               <>
                 <div>
-                  <label className={labelClass}>ยี่ห้อ <span className="text-destructive">*</span></label>
-                  <input type="text" value={form.brand} onChange={(e) => setForm({ ...form, brand: e.target.value })} className={inputClass} required />
+                  <label htmlFor={`${uiFieldId}-2`} className={labelClass}>ยี่ห้อ <span className="text-destructive">*</span></label>
+                  <input id={`${uiFieldId}-2`} type="text" value={form.brand} onChange={(e) => setForm({ ...form, brand: e.target.value })} className={inputClass} required />
                 </div>
                 <div>
-                  <label className={labelClass}>รุ่น <span className="text-destructive">*</span></label>
-                  <input type="text" value={form.model} onChange={(e) => setForm({ ...form, model: e.target.value })} className={inputClass} required />
+                  <label htmlFor={`${uiFieldId}-3`} className={labelClass}>รุ่น <span className="text-destructive">*</span></label>
+                  <input id={`${uiFieldId}-3`} type="text" value={form.model} onChange={(e) => setForm({ ...form, model: e.target.value })} className={inputClass} required />
                 </div>
                 <div>
-                  <label className={labelClass}>สี</label>
-                  <input type="text" value={form.color} onChange={(e) => setForm({ ...form, color: e.target.value })} className={inputClass} />
+                  <label htmlFor={`${uiFieldId}-4`} className={labelClass}>สี</label>
+                  <input id={`${uiFieldId}-4`} type="text" value={form.color} onChange={(e) => setForm({ ...form, color: e.target.value })} className={inputClass} />
                 </div>
                 <div>
-                  <label className={labelClass}>ความจุ</label>
-                  <input type="text" value={form.storage} onChange={(e) => setForm({ ...form, storage: e.target.value })} className={inputClass} />
+                  <label htmlFor={`${uiFieldId}-5`} className={labelClass}>ความจุ</label>
+                  <input id={`${uiFieldId}-5`} type="text" value={form.storage} onChange={(e) => setForm({ ...form, storage: e.target.value })} className={inputClass} />
                 </div>
               </>
             ) : (
               <>
                 <div>
-                  <label className={labelClass}>ประเภทอุปกรณ์</label>
-                  <input type="text" value={form.accessoryType} onChange={(e) => setForm({ ...form, accessoryType: e.target.value })} className={inputClass} />
+                  <label htmlFor={`${uiFieldId}-6`} className={labelClass}>ประเภทอุปกรณ์</label>
+                  <input id={`${uiFieldId}-6`} type="text" value={form.accessoryType} onChange={(e) => setForm({ ...form, accessoryType: e.target.value })} className={inputClass} />
                 </div>
                 <div>
-                  <label className={labelClass}>ยี่ห้ออุปกรณ์</label>
-                  <input type="text" value={form.accessoryBrand} onChange={(e) => setForm({ ...form, accessoryBrand: e.target.value })} className={inputClass} />
+                  <label htmlFor={`${uiFieldId}-7`} className={labelClass}>ยี่ห้ออุปกรณ์</label>
+                  <input id={`${uiFieldId}-7`} type="text" value={form.accessoryBrand} onChange={(e) => setForm({ ...form, accessoryBrand: e.target.value })} className={inputClass} />
                 </div>
               </>
             )}
@@ -164,16 +166,16 @@ export default function ProductEditModal({ product, onClose, onSuccess }: Props)
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className={labelClass}>IMEI / Serial</label>
-              <input type="text" value={form.imeiSerial} onChange={(e) => setForm({ ...form, imeiSerial: e.target.value })} className={`${inputClass} font-mono`} />
+              <label htmlFor={`${uiFieldId}-8`} className={labelClass}>IMEI / Serial</label>
+              <input id={`${uiFieldId}-8`} type="text" value={form.imeiSerial} onChange={(e) => setForm({ ...form, imeiSerial: e.target.value })} className={`${inputClass} font-mono`} />
             </div>
             <div>
-              <label className={labelClass}>Serial Number</label>
-              <input type="text" value={form.serialNumber} onChange={(e) => setForm({ ...form, serialNumber: e.target.value })} className={`${inputClass} font-mono`} />
+              <label htmlFor={`${uiFieldId}-9`} className={labelClass}>Serial Number</label>
+              <input id={`${uiFieldId}-9`} type="text" value={form.serialNumber} onChange={(e) => setForm({ ...form, serialNumber: e.target.value })} className={`${inputClass} font-mono`} />
             </div>
             <div>
-              <label className={labelClass}>ราคาทุน (บาท)</label>
-              <input type="number" step="0.01" value={form.costPrice} onChange={(e) => setForm({ ...form, costPrice: e.target.value })} className={inputClass} />
+              <label htmlFor={`${uiFieldId}-10`} className={labelClass}>ราคาทุน (บาท)</label>
+              <NumberInput unstyled id={`${uiFieldId}-10`} step="0.01" value={form.costPrice} onChange={(e) => setForm({ ...form, costPrice: e.target.value })} className={inputClass} />
             </div>
           </div>
         </div>
@@ -191,12 +193,12 @@ export default function ProductEditModal({ product, onClose, onSuccess }: Props)
             </div>
             <div className="grid grid-cols-2 gap-3 mb-3">
               <div>
-                <label className={labelClass}>แบตเตอรี่ (%)</label>
-                <input type="number" min="0" max="100" value={form.batteryHealth} onChange={(e) => setForm({ ...form, batteryHealth: e.target.value })} className={inputClass} />
+                <label htmlFor={`${uiFieldId}-11`} className={labelClass}>แบตเตอรี่ (%)</label>
+                <NumberInput unstyled id={`${uiFieldId}-11`} min="0" max="100" value={form.batteryHealth} onChange={(e) => setForm({ ...form, batteryHealth: e.target.value })} className={inputClass} />
               </div>
               <div>
-                <label className={labelClass}>วันหมดประกัน</label>
-                <ThaiDateInput value={form.warrantyExpireDate} onChange={(e) => setForm({ ...form, warrantyExpireDate: e.target.value })} className={inputClass} disabled={form.warrantyExpired} />
+                <label htmlFor={`${uiFieldId}-12`} className={labelClass}>วันหมดประกัน</label>
+                <ThaiDateInput id={`${uiFieldId}-12`} value={form.warrantyExpireDate} onChange={(e) => setForm({ ...form, warrantyExpireDate: e.target.value })} className={inputClass} disabled={form.warrantyExpired} />
               </div>
             </div>
             <div className="flex gap-6">
@@ -214,8 +216,8 @@ export default function ProductEditModal({ product, onClose, onSuccess }: Props)
 
         </div>
         <div className="sticky bottom-0 bg-background/95 backdrop-blur-xs border-t px-6 py-4 flex justify-end gap-3 shrink-0">
-          <button type="button" onClick={onClose} className="px-6 py-2.5 text-sm border border-input rounded-lg hover:bg-muted transition-colors">ยกเลิก</button>
-          <button type="submit" disabled={mutation.isPending} className="px-6 py-2.5 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50 font-semibold transition-colors shadow-sm">
+          <button data-ui-control="button" type="button" onClick={onClose} className="px-6 py-2.5 text-sm border border-input rounded-lg hover:bg-muted transition-colors">ยกเลิก</button>
+          <button data-ui-control="button" type="submit" disabled={mutation.isPending} className="px-6 py-2.5 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50 font-semibold transition-colors shadow-sm">
             {mutation.isPending ? 'กำลังบันทึก...' : 'บันทึก'}
           </button>
         </div>

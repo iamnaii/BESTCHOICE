@@ -1,9 +1,10 @@
+import { toBangkokDateString } from '@/lib/date';
 import { printDocument } from '@/lib/print-document';
 // Asset module — Phase 3 register page
 // As-of-date register with 4 stat cards, filters (category/status/search),
 // 9-column DataTable, CSV/Excel export. URL-synced filters.
 
-import { useState, useMemo, useEffect } from 'react';
+import { useId as useUiFieldId, useState, useMemo, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -12,6 +13,7 @@ import PageHeader from '@/components/ui/PageHeader';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { formControlClass, formLabelClass } from '@/components/ui/form-styles';
 import {
   Select,
   SelectContent,
@@ -40,9 +42,10 @@ import AssetHubTabs from './components/AssetHubTabs';
 // D1.2.3.2 — fallback when useUiFlags() hasn't resolved yet.
 const PAGE_SIZE_FALLBACK = 50;
 
-const today = () => new Date().toISOString().slice(0, 10);
+const today = () => toBangkokDateString();
 
 export default function AssetRegisterPage() {
+  const uiFieldId = useUiFieldId();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   // D1.2.3.2 — OWNER-configured pagination size.
@@ -146,7 +149,7 @@ export default function AssetRegisterPage() {
       },
       {
         key: 'netBookValueAt',
-        label: 'มูลค่าตามบัญชีสุทธิ (NBV)',
+        label: "มูลค่าตามบัญชีสุทธิ (มูลค่าตามบัญชีสุทธิ)",
         render: (row: AssetRegisterRow) => (
           <span className="tabular-nums font-semibold">
             {formatNumberDecimal(parseFloat(row.netBookValueAt))}
@@ -229,7 +232,7 @@ export default function AssetRegisterPage() {
         </Card>
         <Card>
           <CardContent className="p-4">
-            <div className="text-sm text-muted-foreground">มูลค่าตามบัญชีสุทธิ (NBV) รวม</div>
+            <div className="text-sm text-muted-foreground">มูลค่าตามบัญชีสุทธิ (มูลค่าตามบัญชีสุทธิ) รวม</div>
             <div className="text-2xl font-semibold tabular-nums">
               <AnimatedCounter value={parseFloat(summary?.totalNbv ?? '0')} decimals={2} />
             </div>
@@ -241,19 +244,20 @@ export default function AssetRegisterPage() {
       <Card data-print-hide="true">
         <CardContent className="p-4 grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
           <div>
-            <label className="text-sm font-medium mb-1 block">ณ วันที่</label>
-            <ThaiDateInput
+            <label htmlFor={`${uiFieldId}-1`} className={formLabelClass}>ณ วันที่</label>
+            <ThaiDateInput id={`${uiFieldId}-1`}
+              className={formControlClass}
               value={asOfDate}
               onChange={(e) => setParam('asOfDate', e.target.value || null)}
             />
           </div>
           <div>
-            <label className="text-sm font-medium mb-1 block">หมวด</label>
+            <label htmlFor={`${uiFieldId}-2`} className={formLabelClass}>หมวด</label>
             <Select
               value={category || 'ALL'}
               onValueChange={(v) => setParam('category', v === 'ALL' ? null : v)}
             >
-              <SelectTrigger>
+              <SelectTrigger id={`${uiFieldId}-2`} className={formControlClass}>
                 <SelectValue placeholder="หมวด" />
               </SelectTrigger>
               <SelectContent>
@@ -266,12 +270,12 @@ export default function AssetRegisterPage() {
             </Select>
           </div>
           <div>
-            <label className="text-sm font-medium mb-1 block">สถานะ</label>
+            <label htmlFor={`${uiFieldId}-3`} className={formLabelClass}>สถานะ</label>
             <Select
               value={status || 'ALL'}
               onValueChange={(v) => setParam('status', v === 'ALL' ? null : v)}
             >
-              <SelectTrigger>
+              <SelectTrigger id={`${uiFieldId}-3`} className={formControlClass}>
                 <SelectValue placeholder="สถานะ" />
               </SelectTrigger>
               <SelectContent>
@@ -283,11 +287,11 @@ export default function AssetRegisterPage() {
             </Select>
           </div>
           <div>
-            <label className="text-sm font-medium mb-1 block">ค้นหา</label>
+            <label htmlFor={`${uiFieldId}-4`} className={formLabelClass}>ค้นหา</label>
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                className="pl-10"
+              <Input id={`${uiFieldId}-4`}
+                className={`${formControlClass} pl-10`}
                 placeholder="ค้นหา รหัส/ชื่อ/serial"
                 value={searchInput}
                 onChange={(e) => setSearchInput(e.target.value)}

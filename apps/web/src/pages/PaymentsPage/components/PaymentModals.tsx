@@ -1,3 +1,5 @@
+import { NumberInput } from '@/components/ui/NumberInput';
+import { NativeSelect } from '@/components/ui/native-select';
 import Modal from '@/components/ui/Modal';
 import Decimal from 'decimal.js';
 import { toast } from 'sonner';
@@ -5,6 +7,8 @@ import { formatThaiDate } from '@/lib/date';
 import type { PendingPayment, OcrPaymentSlipResult } from '../types';
 import { slipTypeLabels, isSlipRequired } from '../types';
 import { CashAccountSelect } from '@/components/CashAccountSelect';
+import { useId as useUiFieldId } from 'react';
+
 
 /* ─── Slip Scanner Button ─── */
 function SlipScannerSection({
@@ -38,7 +42,7 @@ function SlipScannerSection({
         onChange={onScan}
         className="hidden"
       />
-      <button
+      <button data-ui-control="button"
         type="button"
         onClick={() => fileRef.current?.click()}
         disabled={loading}
@@ -63,7 +67,7 @@ function SlipScannerSection({
           {result.amount && <div className="text-xs"><span className="text-muted-foreground">จำนวนเงิน:</span> <span className="font-bold text-success">{result.amount.toLocaleString()} ฿</span></div>}
           {result.senderName && <div className="text-xs"><span className="text-muted-foreground">ผู้โอน:</span> {result.senderName} {result.senderBank && `(${result.senderBank})`}</div>}
           {result.receiverName && <div className="text-xs"><span className="text-muted-foreground">ผู้รับ:</span> {result.receiverName} {result.receiverBank && `(${result.receiverBank})`}</div>}
-          {result.transactionRef && <div className="text-xs"><span className="text-muted-foreground">Ref:</span> <span className="font-mono">{result.transactionRef}</span></div>}
+          {result.transactionRef && <div className="text-xs"><span className="text-muted-foreground">อ้างอิง:</span> <span className="font-mono">{result.transactionRef}</span></div>}
           {result.transactionDate && <div className="text-xs"><span className="text-muted-foreground">วันเวลา:</span> {result.transactionDate} {result.transactionTime || ''}</div>}
           {result.slipType && <div className="text-xs"><span className="text-muted-foreground">ประเภท:</span> {slipTypeLabels[result.slipType] || result.slipType}</div>}
         </div>
@@ -106,6 +110,7 @@ export function RecordPaymentModal({
   depositAccountCode,
   onDepositAccountCodeChange,
 }: RecordPaymentModalProps) {
+  const uiFieldId = useUiFieldId();
   if (!show || !payment) return null;
 
   // (Audit finding P0) Outstanding pre-fills the cashier's input field. JS float
@@ -246,25 +251,25 @@ export function RecordPaymentModal({
             <div className="space-y-4">
               <div className="grid grid-cols-3 gap-4">
                 <div>
-                  <label className="block text-xs font-medium text-foreground mb-1.5">จำนวนเงินที่รับ <span className="text-destructive">*</span></label>
-                  <input type="number" value={payForm.amount} onChange={(e) => onPayFormChange({ ...payForm, amount: Number(e.target.value) })} className={inputClass} min={0} />
+                  <label htmlFor={`${uiFieldId}-1`} className="block text-xs font-medium text-foreground mb-1.5">จำนวนเงินที่รับ <span className="text-destructive">*</span></label>
+                  <NumberInput unstyled id={`${uiFieldId}-1`} value={payForm.amount} onChange={(e) => onPayFormChange({ ...payForm, amount: Number(e.target.value) })} className={inputClass} min={0} />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-foreground mb-1.5">วันที่ชำระ</label>
-                  <input type="date" value={payForm.paidDate} onChange={(e) => onPayFormChange({ ...payForm, paidDate: e.target.value })} className={inputClass} />
+                  <label htmlFor={`${uiFieldId}-2`} className="block text-xs font-medium text-foreground mb-1.5">วันที่ชำระ</label>
+                  <input id={`${uiFieldId}-2`} type="date" value={payForm.paidDate} onChange={(e) => onPayFormChange({ ...payForm, paidDate: e.target.value })} className={inputClass} />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-foreground mb-1.5">วิธีชำระ</label>
-                  <select value={payForm.paymentMethod} onChange={(e) => onPayFormChange({ ...payForm, paymentMethod: e.target.value })} className={inputClass}>
+                  <label htmlFor={`${uiFieldId}-3`} className="block text-xs font-medium text-foreground mb-1.5">วิธีชำระ</label>
+                  <NativeSelect wrapperClassName="max-w-full w-full" id={`${uiFieldId}-3`} value={payForm.paymentMethod} onChange={(e) => onPayFormChange({ ...payForm, paymentMethod: e.target.value })} className={inputClass}>
                     <option value="CASH">เงินสด</option>
                     <option value="BANK_TRANSFER">โอนเงิน</option>
                     <option value="QR_EWALLET">QR/E-Wallet</option>
-                  </select>
+                  </NativeSelect>
                 </div>
               </div>
               <div>
-                <label className="block text-xs font-medium text-foreground mb-1.5">หมายเหตุ</label>
-                <input type="text" value={payForm.notes} onChange={(e) => onPayFormChange({ ...payForm, notes: e.target.value })} className={inputClass} placeholder="หมายเหตุเพิ่มเติม (ถ้ามี)" />
+                <label htmlFor={`${uiFieldId}-4`} className="block text-xs font-medium text-foreground mb-1.5">หมายเหตุ</label>
+                <input id={`${uiFieldId}-4`} type="text" value={payForm.notes} onChange={(e) => onPayFormChange({ ...payForm, notes: e.target.value })} className={inputClass} placeholder="หมายเหตุเพิ่มเติม (ถ้ามี)" />
               </div>
 
               {onDepositAccountCodeChange && (
@@ -297,8 +302,8 @@ export function RecordPaymentModal({
 
         {/* Sticky Footer */}
         <div className="sticky bottom-0 bg-background/95 backdrop-blur-xs border-t px-6 py-4 flex justify-end gap-3">
-          <button onClick={onClose} className="px-6 py-2.5 text-sm border border-input rounded-lg hover:bg-muted transition-colors">ยกเลิก</button>
-          <button onClick={onSubmit} disabled={isPending || payForm.amount <= 0} className="px-6 py-2.5 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50 font-semibold transition-colors shadow-sm">
+          <button data-ui-control="button" onClick={onClose} className="px-6 py-2.5 text-sm border border-input rounded-lg hover:bg-muted transition-colors">ยกเลิก</button>
+          <button data-ui-control="button" onClick={onSubmit} disabled={isPending || payForm.amount <= 0} className="px-6 py-2.5 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50 font-semibold transition-colors shadow-sm">
             {isPending ? 'กำลังบันทึก...' : 'ยืนยันรับชำระ'}
           </button>
         </div>
@@ -337,6 +342,7 @@ export function BatchPaymentModal({
   batchOcrLoading,
   batchSlipResult,
 }: BatchPaymentModalProps) {
+  const uiFieldId = useUiFieldId();
   if (!show) return null;
 
   return (
@@ -358,12 +364,12 @@ export function BatchPaymentModal({
           <span className="text-primary">{Math.round(batchTotal).toLocaleString()} ฿</span>
         </div>
         <div>
-          <label className="block text-sm font-medium mb-1">วิธีชำระ</label>
-          <select value={batchPayMethod} onChange={(e) => onBatchPayMethodChange(e.target.value)} className="w-full px-3 py-2 border border-input rounded-lg text-sm">
+          <label htmlFor={`${uiFieldId}-1`} className="block text-sm font-medium mb-1">วิธีชำระ</label>
+          <NativeSelect wrapperClassName="max-w-full w-full" id={`${uiFieldId}-1`} value={batchPayMethod} onChange={(e) => onBatchPayMethodChange(e.target.value)} className="px-3 py-2 border border-input rounded-lg text-sm">
             <option value="CASH">เงินสด</option>
             <option value="BANK_TRANSFER">โอนเงิน</option>
             <option value="QR_EWALLET">QR/E-Wallet</option>
-          </select>
+          </NativeSelect>
         </div>
 
         {isSlipRequired(batchPayMethod) && (
@@ -379,8 +385,8 @@ export function BatchPaymentModal({
         )}
 
         <div className="flex gap-3 pt-2">
-          <button onClick={onClose} className="flex-1 px-4 py-2 text-sm border border-input rounded-lg">ยกเลิก</button>
-          <button onClick={onSubmit} disabled={isPending || (isSlipRequired(batchPayMethod) && !batchSlipResult)} className="flex-1 px-4 py-2 text-sm bg-success text-success-foreground rounded-lg hover:bg-success/90 disabled:opacity-50">
+          <button data-ui-control="button" onClick={onClose} className="flex-1 px-4 py-2 text-sm border border-input rounded-lg">ยกเลิก</button>
+          <button data-ui-control="button" onClick={onSubmit} disabled={isPending || (isSlipRequired(batchPayMethod) && !batchSlipResult)} className="flex-1 px-4 py-2 text-sm bg-success text-success-foreground rounded-lg hover:bg-success/90 disabled:opacity-50">
             {isPending ? 'กำลังชำระ...' : `ยืนยันชำระ ${batchSelectedPayments.length} รายการ`}
           </button>
         </div>

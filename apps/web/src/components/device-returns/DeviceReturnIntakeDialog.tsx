@@ -1,3 +1,5 @@
+import { NumberInput } from '@/components/ui/NumberInput';
+import { NativeSelect } from '@/components/ui/native-select';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -436,7 +438,7 @@ export function DeviceReturnIntakeDialog({ open, onClose, initialContractId, onC
                   >
                     เหตุผลคืนเครื่อง <span className="text-destructive">*</span>
                   </label>
-                  <select
+                  <NativeSelect wrapperClassName="max-w-full w-full"
                     id="device-return-reason"
                     value={returnReason}
                     onChange={(e) => setReturnReason(e.target.value as ReturnReason | '')}
@@ -449,7 +451,7 @@ export function DeviceReturnIntakeDialog({ open, onClose, initialContractId, onC
                         {o.label}
                       </option>
                     ))}
-                  </select>
+                  </NativeSelect>
                   {reasonLocked && (
                     <p className="mt-1 text-[11px] text-muted-foreground leading-snug">
                       สัญญาบอกเลิกแล้ว — เหตุผลถูกตั้งเป็น "รับเครื่องคืนหลังบอกเลิกสัญญา" โดยระบบ
@@ -472,7 +474,7 @@ export function DeviceReturnIntakeDialog({ open, onClose, initialContractId, onC
                   </span>
                   <div className="flex gap-2">
                     {GRADES.map((g) => (
-                      <button
+                      <button data-ui-control="button"
                         key={g}
                         type="button"
                         aria-pressed={conditionGrade === g}
@@ -496,9 +498,8 @@ export function DeviceReturnIntakeDialog({ open, onClose, initialContractId, onC
                     >
                       ราคาประเมิน (฿) <span className="text-destructive">*</span>
                     </label>
-                    <input
+                    <NumberInput unstyled
                       id="device-return-appraisal"
-                      type="number"
                       min={0}
                       step="0.01"
                       value={appraisalPrice}
@@ -536,9 +537,8 @@ export function DeviceReturnIntakeDialog({ open, onClose, initialContractId, onC
                     >
                       ค่าซ่อม (฿)
                     </label>
-                    <input
+                    <NumberInput unstyled
                       id="device-return-repair-cost"
-                      type="number"
                       min={0}
                       step="0.01"
                       value={repairCost}
@@ -594,7 +594,7 @@ export function DeviceReturnIntakeDialog({ open, onClose, initialContractId, onC
                 >
                   สาขาที่รับเครื่อง <span className="text-destructive">*</span>
                 </label>
-                <select
+                <NativeSelect wrapperClassName="max-w-full w-full"
                   id="device-return-branch"
                   value={receivingBranchId}
                   onChange={(e) => setReceivingBranchId(e.target.value)}
@@ -608,7 +608,7 @@ export function DeviceReturnIntakeDialog({ open, onClose, initialContractId, onC
                         {b.name}
                       </option>
                     ))}
-                </select>
+                </NativeSelect>
                 {branches.isError && (
                   <div role="alert" className="mt-2 text-sm text-destructive leading-snug">
                     <p>โหลดสาขาไม่สำเร็จ: {getErrorMessage(branches.error)}</p>
@@ -635,8 +635,8 @@ export function DeviceReturnIntakeDialog({ open, onClose, initialContractId, onC
                   <Effect text="สัญญาบอกเลิกอยู่แล้ว — สถานะไม่เปลี่ยนจนกว่า FINANCE ยืนยัน" />
                 )}
                 <Effect text="แจ้งลูกค้าทางไลน์ทันที (ไม่มีราคาประเมินในข้อความ)" />
-                <Effect text="รอ FINANCE ยืนยันบัญชี (JP5 + ขาคู่ SHOP) — ค่าเครื่องหักในรอบจ่าย INTER-CO ถัดไป" />
-                <Effect text="ปลดล็อค MDM (PJ-Soft) — ต้องทำ manual" warning />
+                <Effect text="รอ FINANCE ยืนยันบัญชี (JP5 + ขาคู่ SHOP) — ค่าเครื่องหักในรอบจ่าย ระหว่างบริษัท ถัดไป" />
+                <Effect text="ปลดล็อค MDM (PJ-Soft) — ต้องทำ ด้วยตนเอง" warning />
               </ul>
             </Section>
           </>
@@ -654,7 +654,7 @@ export function DeviceReturnIntakeDialog({ open, onClose, initialContractId, onC
             </div>
           )}
           <div className="flex justify-end gap-3">
-            <button
+            <button data-ui-control="button"
               type="button"
               onClick={onClose}
               disabled={mutation.isPending}
@@ -662,7 +662,7 @@ export function DeviceReturnIntakeDialog({ open, onClose, initialContractId, onC
             >
               ยกเลิก
             </button>
-            <button
+            <button data-ui-control="button"
               type="button"
               onClick={() => {
                 if (!canSubmit || submitting.current) return;

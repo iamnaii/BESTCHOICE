@@ -1,0 +1,36 @@
+.table-size-probe {
+  position: absolute;
+  inset-inline: 0;
+  top: 0;
+  height: 1rem;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+[data-table-layout][data-table-measuring],
+[data-table-layout][data-table-measuring] * {
+  transition: none !important;
+}
+
+@media screen {
+  /* Scoped to the owning table: nested tables retain their own layout decision. */
+  [data-table-layout='fit'] > [data-responsive-table],
+  [data-table-layout='fit'] > [data-testid='data-table'] > [data-responsive-table] {
+    width: 100%;
+    min-width: 0 !important;
+    table-layout: auto;
+  }
+
+  [data-table-layout='fit'] > [data-responsive-table] > colgroup > col,
+  [data-table-layout='fit'] > [data-testid='data-table'] > [data-responsive-table] > colgroup > col {
+    width: auto !important;
+  }
+
+  [data-table-layout='fit'] > [data-responsive-table] > :is(thead, tbody, tfoot) > tr > :is(th, td),
+  [data-table-layout='fit'] > [data-testid='data-table'] > [data-responsive-table] > :is(thead, tbody, tfoot) > tr > :is(th, td) {
+    width: auto !important;
+    min-width: 0 !important;
+    padding-inline: clamp(0.5rem, 1cqw, 0.75rem);
+    overflow-wrap: normal;
+  }
+}

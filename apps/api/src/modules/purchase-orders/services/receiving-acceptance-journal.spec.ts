@@ -105,7 +105,7 @@ describe('ReceivingAcceptanceJournal.bookIfPending', () => {
     });
   });
 
-  describe('ข3 — ใบรับของที่มีวันที่ในเอกสารผู้จัดจำหน่าย', () => {
+  describe('ข3/ข้อ 2 — ใบรับของที่มีวันที่ในเอกสารผู้จัดจำหน่าย: หน่วยที่เข้าคลังทีหลังลงวันที่รับของเสมอ (แบบ ก — ฝ่ายบัญชี 13/10/2569)', () => {
     const docDate = new Date(2026, 5, 28); // 28 มิ.ย. 2569 — ก่อนวันรับของ
     const withDoc = () =>
       receivingRow({
@@ -121,34 +121,35 @@ describe('ReceivingAcceptanceJournal.bookIfPending', () => {
         },
       });
 
-    it('งวดของวันในเอกสารเปิด → ลงวันที่ในเอกสาร (วันเดียวกับใบรับของ) + stamp เอกสาร', async () => {
+    it('มีวันที่ในเอกสาร งวดเปิด → ลงวันที่รับของ ไม่ใช่วันที่ในเอกสาร (แบบ ก) · ยัง stamp เอกสารไว้อ้างอิง', async () => {
       const { tx, template, journal } = build({ locked: withDoc() });
 
       const result = await journal.bookIfPending(tx, 'prod-2', acceptedAt);
 
       const input = template.execute.mock.calls[0][0];
-      expect(input.postedAt).toBe(docDate);
+      expect(input.postedAt).toBe(receivedAt);
       expect(input).toMatchObject({
         postedOnAcceptanceDate: false,
         postedOnReceiveDate: false,
         supplierDocRef: 'ใบกำกับภาษี IV-0123',
         supplierDocMetadata: { supplierDocType: 'TAX_INVOICE', supplierDocNumber: 'IV-0123' },
       });
-      expect(result).toMatchObject({ postedAt: docDate, postedOnReceiveDate: false });
+      expect(result).toMatchObject({ postedAt: receivedAt, postedOnReceiveDate: false, postedOnAcceptanceDate: false });
+      expect(tx.todo.create).not.toHaveBeenCalled();
     });
 
-    it('งวดของวันในเอกสารปิด → ลงวันที่รับของ (แบบ ข เหมือนใบรับของ) ไม่ใช่วันที่รับเข้าคลัง', async () => {
+    it('งวดของวันในเอกสารปิด (แต่งวดวันรับของเปิด) → ลงวันที่รับของเหมือนเดิม ไม่มีงานแจ้ง (ไม่มีวันที่ถูกข้าม)', async () => {
       const { tx, template, journal } = build({ locked: withDoc(), closed: ['2026-6'] });
 
       const result = await journal.bookIfPending(tx, 'prod-2', acceptedAt);
 
       expect(template.execute.mock.calls[0][0].postedAt).toBe(receivedAt);
-      expect(result).toMatchObject({ postedAt: receivedAt, postedOnReceiveDate: true, postedOnAcceptanceDate: false });
-      expect(tx.todo.create).toHaveBeenCalledTimes(1);
+      expect(result).toMatchObject({ postedAt: receivedAt, postedOnReceiveDate: false, postedOnAcceptanceDate: false });
+      expect(tx.todo.create).not.toHaveBeenCalled();
     });
 
     it('มีงานแจ้งฝ่ายบัญชีของใบรับของนี้ค้างอยู่แล้ว → ไม่สร้างซ้ำ', async () => {
-      const { tx, journal } = build({ locked: withDoc(), closed: ['2026-6'] });
+      const { tx, journal } = build({ locked: withDoc(), closed: ['2026-6', '2026-7'] });
       tx.todo.findFirst.mockResolvedValue({ id: 'todo-1' });
 
       await journal.bookIfPending(tx, 'prod-2', acceptedAt);
@@ -156,14 +157,14 @@ describe('ReceivingAcceptanceJournal.bookIfPending', () => {
       expect(tx.todo.create).not.toHaveBeenCalled();
     });
 
-    it('ลงวันที่ในเอกสารได้ตามปกติ → ไม่มีงานแจ้งฝ่ายบัญชี', async () => {
+    it('ลงวันที่รับของได้ตามปกติ → ไม่มีงานแจ้งฝ่ายบัญชี', async () => {
       const { tx, journal } = build({ locked: withDoc() });
       await journal.bookIfPending(tx, 'prod-2', acceptedAt);
       expect(tx.todo.findFirst).not.toHaveBeenCalled();
       expect(tx.todo.create).not.toHaveBeenCalled();
     });
 
-    it('งวดของวันในเอกสารและวันรับของปิดทั้งคู่ → ลงวันที่รับเข้าคลัง', async () => {
+    it('งวดของวันรับของปิด (วันที่ในเอกสารไม่เกี่ยว) → ลงวันที่รับเข้าคลัง + งานแจ้ง', async () => {
       const { tx, template, journal } = build({ locked: withDoc(), closed: ['2026-6', '2026-7'] });
 
       const result = await journal.bookIfPending(tx, 'prod-2', acceptedAt);

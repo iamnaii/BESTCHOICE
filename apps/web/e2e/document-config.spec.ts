@@ -22,8 +22,8 @@ test.describe('ตั้งค่าเอกสาร (เลขที่/ร�
       timeout: 15000,
     });
     // Per-row "Prefix" column header + at least one canonical row label visible.
-    await expect(page.getByText('Prefix').first()).toBeVisible({ timeout: 10000 });
-    await expect(page.getByText('รายจ่าย (Expense)').first()).toBeVisible({ timeout: 10000 });
+    await expect(page.getByRole('columnheader', { name: 'คำนำหน้า', exact: true })).toBeVisible({ timeout: 10000 });
+    await expect(page.getByRole('cell', { name: 'รายจ่าย', exact: true })).toBeVisible({ timeout: 10000 });
     // No error boundary on this route.
     await expect(page.locator('body')).not.toContainText('เกิดข้อผิดพลาด');
   });

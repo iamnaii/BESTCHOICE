@@ -1,6 +1,6 @@
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { act, render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
-import { NoteMentionComposer } from './NoteMentionInput';
+import { NoteMentionComposer, createNoteDraftStore, type NoteDraft } from './NoteMentionInput';
 const people = [
   { id: 'a', name: 'เมย์', role: 'SALES', detail: 'รังสิต' },
   { id: 'b', name: 'เมย์', role: 'FINANCE_MANAGER', detail: 'สำนักงานใหญ่' },
@@ -72,4 +72,42 @@ describe('Internal note composer', () => {
     fireEvent.click(screen.getByRole('button', { name: 'ลองใหม่' }));
     expect(retry).toHaveBeenCalledOnce();
   });
+});
+
+it('keeps a newer room draft when an earlier unmounted editor finishes saving', async () => {
+  const cache = createNoteDraftStore();
+  let finish!: (value: boolean) => void;
+  const save = vi.fn((_draft: NoteDraft) => new Promise<boolean>(resolve => { finish = resolve; }));
+  const editor = (room: string) => <NoteMentionComposer key={room} people={people} onRetry={vi.fn()} onSave={save} draftCache={cache} draftKey={room} />;
+  const { rerender } = render(editor('A'));
+  fireEvent.change(screen.getByLabelText('พิมพ์โน้ตภายใน'), { target: { value: 'โน้ตเก่า' } });
+  fireEvent.click(screen.getByRole('button', { name: 'บันทึกโน้ต' }));
+  rerender(editor('B'));
+  rerender(editor('A'));
+  fireEvent.change(screen.getByLabelText('พิมพ์โน้ตภายใน'), { target: { value: 'ฉบับร่างใหม่' } });
+  await act(async () => { finish(true); });
+  rerender(editor('B'));
+  rerender(editor('A'));
+  expect(screen.getByLabelText('พิมพ์โน้ตภายใน')).toHaveValue('ฉบับร่างใหม่');
+});
+
+
+it('clears the currently remounted editor when the same saved draft completes', async () => {
+  const cache = createNoteDraftStore();
+  let finish!: (value: boolean) => void;
+  const save = vi.fn((_draft: NoteDraft) => new Promise<boolean>(resolve => { finish = resolve; }));
+  const editor = (room: string) => <NoteMentionComposer key={room} people={people} onRetry={vi.fn()} onSave={save} draftCache={cache} draftKey={room} />;
+  const { rerender } = render(editor('A'));
+  fireEvent.change(screen.getByLabelText('พิมพ์โน้ตภายใน'), { target: { value: 'บันทึกครั้งเดียว' } });
+  fireEvent.click(screen.getByRole('button', { name: 'บันทึกโน้ต' }));
+  rerender(editor('B')); rerender(editor('A'));
+  await act(async () => { finish(true); });
+  expect(screen.getByLabelText('พิมพ์โน้ตภายใน')).toHaveValue('');
+  fireEvent.change(screen.getByLabelText('พิมพ์โน้ตภายใน'), { target: { value: 'บันทึกครั้งเดียว' } });
+  fireEvent.click(screen.getByRole('button', { name: 'บันทึกโน้ต' }));
+  expect(save).toHaveBeenCalledTimes(2);
+  expect(save.mock.calls[1][0].clientRequestId).not.toBe(save.mock.calls[0][0].clientRequestId);
+  await act(async () => { finish(true); });
+  rerender(editor('B')); rerender(editor('A'));
+  expect(screen.getByLabelText('พิมพ์โน้ตภายใน')).toHaveValue('');
 });

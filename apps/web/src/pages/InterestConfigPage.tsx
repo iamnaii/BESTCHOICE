@@ -1,4 +1,5 @@
-import { useState, useEffect, useRef } from 'react';
+import { NumberInput } from '@/components/ui/NumberInput';
+import { useId as useUiFieldId, useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api, { getErrorMessage } from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
@@ -78,7 +79,7 @@ function validateForm(form: typeof defaultForm): FormErrors {
  * remain in decimal form — those don't have a canonical-key counterpart yet.
  */
 const defaultKeys = [
-  { key: 'interest_rate', label: 'อัตราดอกเบี้ยต่อเดือน (Flat rate)', step: '0.01' },
+  { key: 'interest_rate', label: "อัตราดอกเบี้ยต่อเดือน (แบบคงที่)", step: '0.01' },
   { key: 'min_down_payment_pct', label: 'เงินดาวน์ขั้นต่ำ (%)', step: '0.01' },
   { key: 'store_commission_pct', label: 'ค่าคอมหน้าร้าน (เช่น 0.10 = 10%)', step: '0.01' },
   { key: 'VAT_RATE', label: 'VAT (%) — เช่น 7 = 7%', step: '0.01' },
@@ -99,6 +100,7 @@ function toVatPercentString(raw: string | null | undefined): string {
 }
 
 export default function InterestConfigPage() {
+  const uiFieldId = useUiFieldId();
   const queryClient = useQueryClient();
   const [showModal, setShowModal] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
@@ -139,7 +141,7 @@ export default function InterestConfigPage() {
       api.patch('/settings', { items }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['settings'] });
-      toast.success('บันทึกค่า default สำเร็จ');
+      toast.success("บันทึกค่าเริ่มต้นสำเร็จ");
       setDefaultsChanged(false);
       defaultsChangedRef.current = false;
     },
@@ -278,19 +280,19 @@ export default function InterestConfigPage() {
         title="ตั้งค่าดอกเบี้ย"
         subtitle="กำหนดอัตราดอกเบี้ยและเงื่อนไขตามประเภทสินค้า"
         action={
-          <button onClick={openCreate} className="px-4 py-2 bg-primary text-primary-foreground text-sm font-medium rounded-lg hover:bg-primary/90">
-            + สร้าง Config
+          <button data-ui-control="button" onClick={openCreate} className="px-4 py-2 bg-primary text-primary-foreground text-sm font-medium rounded-lg hover:bg-primary/90">
+            + สร้าง การตั้งค่า
           </button>
         }
       />
 
       {/* Default fallback config — card style */}
       <div className="rounded-xl border border-warning/30 bg-card shadow-sm p-5 mb-5 lg:mb-7.5">
-        <div className="flex items-start justify-between">
-          <div className="flex-1">
-            <div className="flex items-center gap-2 mb-2">
-              <h3 className="text-lg font-semibold text-foreground">ค่า Default</h3>
-              <span className="rounded-full px-2.5 py-0.5 text-xs font-semibold bg-warning/20 text-warning-strong">ใช้เมื่อไม่มี config ตามประเภท</span>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0 flex-1 basis-full sm:basis-0">
+            <div className="flex flex-wrap items-center gap-2 mb-2">
+              <h3 className="text-lg font-semibold text-foreground">ค่าเริ่มต้น</h3>
+              <span className="rounded-full px-2.5 py-0.5 text-xs font-semibold bg-warning/20 text-warning-strong">ใช้เมื่อไม่มี การตั้งค่า ตามประเภท</span>
             </div>
             {!editingDefaults ? (
               <>
@@ -318,11 +320,10 @@ export default function InterestConfigPage() {
             ) : (
               <div className="flex flex-col gap-3 mt-2">
                 {defaultKeys.map((item) => (
-                  <div key={item.key} className="flex items-center gap-4">
-                    <label className="flex-1 text-sm text-foreground">{item.label}</label>
-                    <div className="w-48">
-                      <input
-                        type="number"
+                  <div key={item.key} className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-4">
+                    <label className="min-w-0 flex-1 text-sm text-foreground">{item.label}</label>
+                    <div className="w-full sm:w-48 sm:shrink-0">
+                      <NumberInput unstyled
                         step={item.step}
                         value={defaults[item.key] ?? ''}
                         onChange={(e) => handleDefaultChange(item.key, e.target.value)}
@@ -332,14 +333,14 @@ export default function InterestConfigPage() {
                   </div>
                 ))}
                 <div className="flex gap-2 pt-1">
-                  <button
+                  <button data-ui-control="button"
                     onClick={() => { handleSaveDefaults(); setEditingDefaults(false); }}
                     disabled={saveDefaultsMutation.isPending}
                     className="px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50"
                   >
                     {saveDefaultsMutation.isPending ? 'กำลังบันทึก...' : 'บันทึก'}
                   </button>
-                  <button
+                  <button data-ui-control="button"
                     onClick={() => { setEditingDefaults(false); setDefaultsChanged(false); defaultsChangedRef.current = false; }}
                     className="px-3 py-2 text-sm text-muted-foreground hover:text-foreground"
                   >
@@ -452,8 +453,8 @@ export default function InterestConfigPage() {
           <div className="space-y-4">
             {/* ชื่อ */}
             <div>
-              <label className="block text-sm font-medium text-foreground mb-1">ชื่อ</label>
-              <input
+              <label htmlFor={`${uiFieldId}-1`} className="block text-sm font-medium text-foreground mb-1">ชื่อ</label>
+              <input id={`${uiFieldId}-1`}
                 type="text"
                 value={form.name}
                 onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
@@ -468,7 +469,7 @@ export default function InterestConfigPage() {
               <label className="block text-sm font-medium text-foreground mb-1">ประเภทสินค้า</label>
               <div className="flex flex-wrap gap-2">
                 {CATEGORIES.map((cat) => (
-                  <button
+                  <button data-ui-control="button"
                     key={cat.value}
                     type="button"
                     onClick={() => toggleCategory(cat.value)}
@@ -486,11 +487,10 @@ export default function InterestConfigPage() {
             </div>
 
             {/* ดอกเบี้ย + ดาวน์ขั้นต่ำ */}
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <label className="block text-sm font-medium text-foreground mb-1">ดอกเบี้ย (%)</label>
-                <input
-                  type="number"
+                <label htmlFor={`${uiFieldId}-2`} className="block text-sm font-medium text-foreground mb-1">ดอกเบี้ย (%)</label>
+                <NumberInput unstyled id={`${uiFieldId}-2`}
                   value={form.interestRate}
                   onChange={(e) => setForm((f) => ({ ...f, interestRate: Number(e.target.value) }))}
                   step="0.1"
@@ -501,9 +501,8 @@ export default function InterestConfigPage() {
                 {touched && errors.interestRate && <p className="text-xs text-destructive mt-1">{errors.interestRate}</p>}
               </div>
               <div>
-                <label className="block text-sm font-medium text-foreground mb-1">ดาวน์ขั้นต่ำ (%)</label>
-                <input
-                  type="number"
+                <label htmlFor={`${uiFieldId}-3`} className="block text-sm font-medium text-foreground mb-1">ดาวน์ขั้นต่ำ (%)</label>
+                <NumberInput unstyled id={`${uiFieldId}-3`}
                   value={form.minDownPaymentPct}
                   onChange={(e) => setForm((f) => ({ ...f, minDownPaymentPct: Number(e.target.value) }))}
                   step="1"
@@ -516,11 +515,10 @@ export default function InterestConfigPage() {
             </div>
 
             {/* ค่าคอม + VAT */}
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <label className="block text-sm font-medium text-foreground mb-1">ค่าคอมหน้าร้าน (%)</label>
-                <input
-                  type="number"
+                <label htmlFor={`${uiFieldId}-4`} className="block text-sm font-medium text-foreground mb-1">ค่าคอมหน้าร้าน (%)</label>
+                <NumberInput unstyled id={`${uiFieldId}-4`}
                   value={form.storeCommissionPct}
                   onChange={(e) => setForm((f) => ({ ...f, storeCommissionPct: Number(e.target.value) }))}
                   step="1"
@@ -531,9 +529,8 @@ export default function InterestConfigPage() {
                 {touched && errors.storeCommissionPct && <p className="text-xs text-destructive mt-1">{errors.storeCommissionPct}</p>}
               </div>
               <div>
-                <label className="block text-sm font-medium text-foreground mb-1">VAT (%)</label>
-                <input
-                  type="number"
+                <label htmlFor={`${uiFieldId}-5`} className="block text-sm font-medium text-foreground mb-1">VAT (%)</label>
+                <NumberInput unstyled id={`${uiFieldId}-5`}
                   value={form.vatPct}
                   onChange={(e) => setForm((f) => ({ ...f, vatPct: Number(e.target.value) }))}
                   step="0.1"
@@ -546,11 +543,10 @@ export default function InterestConfigPage() {
             </div>
 
             {/* งวดต่ำสุด + สูงสุด */}
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <label className="block text-sm font-medium text-foreground mb-1">งวดต่ำสุด (เดือน)</label>
-                <input
-                  type="number"
+                <label htmlFor={`${uiFieldId}-6`} className="block text-sm font-medium text-foreground mb-1">งวดต่ำสุด (เดือน)</label>
+                <NumberInput unstyled id={`${uiFieldId}-6`}
                   value={form.minInstallmentMonths}
                   onChange={(e) => setForm((f) => ({ ...f, minInstallmentMonths: Number(e.target.value) }))}
                   min="1"
@@ -559,9 +555,8 @@ export default function InterestConfigPage() {
                 {touched && errors.minInstallmentMonths && <p className="text-xs text-destructive mt-1">{errors.minInstallmentMonths}</p>}
               </div>
               <div>
-                <label className="block text-sm font-medium text-foreground mb-1">งวดสูงสุด (เดือน)</label>
-                <input
-                  type="number"
+                <label htmlFor={`${uiFieldId}-7`} className="block text-sm font-medium text-foreground mb-1">งวดสูงสุด (เดือน)</label>
+                <NumberInput unstyled id={`${uiFieldId}-7`}
                   value={form.maxInstallmentMonths}
                   onChange={(e) => setForm((f) => ({ ...f, maxInstallmentMonths: Number(e.target.value) }))}
                   min="1"
@@ -603,8 +598,8 @@ export default function InterestConfigPage() {
 
             {/* Buttons */}
             <div className="flex gap-3 pt-2">
-              <button onClick={closeModal} className="flex-1 px-4 py-2 text-sm border border-input rounded-lg hover:bg-muted/50">ยกเลิก</button>
-              <button
+              <button data-ui-control="button" onClick={closeModal} className="flex-1 px-4 py-2 text-sm border border-input rounded-lg hover:bg-muted/50">ยกเลิก</button>
+              <button data-ui-control="button"
                 onClick={handleSave}
                 disabled={saveMutation.isPending}
                 className="flex-1 px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50"

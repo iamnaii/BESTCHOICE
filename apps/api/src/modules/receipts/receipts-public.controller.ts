@@ -9,13 +9,8 @@ import { ReceiptsService } from './receipts.service';
  * ใบลดหนี้ (Credit Note) — the link a customer taps from LINE after a
  * repossession/write-off CN is issued (CreditNoteDocumentService).
  *
- * This is a SEPARATE controller class rather than a `@Public()` route bolted
- * onto ReceiptsController: that controller's class-level guards are
- * `@UseGuards(JwtAuthGuard, RolesGuard, BranchGuard)`, and BranchGuard reads
- * `request.user` unconditionally — it has no `@Public()` escape hatch, so it
- * would throw ForbiddenException('ไม่พบข้อมูลผู้ใช้') on an unauthenticated
- * request regardless of any per-route decorator. A separate controller with
- * no class-level guards is the only clean way to expose one truly public GET.
+ * A separate controller keeps this token-only surface independent from
+ * the authenticated receipt-management routes and their role/branch guards.
  *
  * Access control is entirely token-based:
  *   - `publicToken` is a 256-bit random value (crypto.randomBytes(32)) — only

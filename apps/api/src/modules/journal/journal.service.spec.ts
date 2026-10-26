@@ -300,6 +300,24 @@ describe('JournalService.void — auto-reversal (T2-C9)', () => {
     service = mod.get(JournalService);
   });
 
+  it('PR4 final review I2: ปฏิเสธการยกเลิกรายการ flow advance-excess-income / -reverse — ต้องกลับรายการแบบกระจกด้วย advance-excess:reverse (void ตั้ง VOIDED + รายการกลับไม่มี metadata ⇒ 21-1103 เกินจริง · 42-1106 ติดลบ · รอบกวาดลงซ้ำไม่ได้)', async () => {
+    for (const flow of ['advance-excess-income', 'advance-excess-income-reverse']) {
+      prisma.journalEntry.findFirst.mockResolvedValue({
+        ...postedEntry(),
+        metadata: {
+          flow,
+          tag: flow === 'advance-excess-income' ? 'ADVANCE_EXCESS' : 'REVERSAL',
+          contractId: 'c-1',
+        },
+      });
+      await expect(service.void('je-original', 'u-owner')).rejects.toThrow(
+        /advance-excess:reverse/,
+      );
+      expect(tx.journalEntry.update).not.toHaveBeenCalled();
+      expect(tx.journalEntry.create).not.toHaveBeenCalled();
+    }
+  });
+
   it('rejects void when entry is not POSTED', async () => {
     prisma.journalEntry.findFirst.mockResolvedValue({ ...postedEntry(), status: 'DRAFT' });
     await expect(service.void('je-original', 'u-owner')).rejects.toThrow(BadRequestException);

@@ -1,3 +1,4 @@
+import { formControlClass } from '@/components/ui/form-styles';
 import ThaiDateInput from '@/components/ui/ThaiDateInput';
 import { DateRangeChips } from '@/components/ui/DateRangeChips';
 
@@ -26,7 +27,8 @@ export default function PaymentPeriodBar({ startDate, endDate, onChange }: Payme
           value={startDate}
           max={endDate || undefined}
           onChange={(e) => onChange({ startDate: e.target.value, endDate })}
-          className="px-3 py-2 border border-input rounded-lg text-sm bg-background outline-hidden focus:ring-2 focus:ring-ring/30"
+          className={formControlClass}
+          aria-label="วันที่เริ่ม"
           placeholder="วันที่เริ่ม"
         />
         <span className="text-xs text-muted-foreground">ถึง</span>
@@ -34,7 +36,8 @@ export default function PaymentPeriodBar({ startDate, endDate, onChange }: Payme
           value={endDate}
           min={startDate || undefined}
           onChange={(e) => onChange({ startDate, endDate: e.target.value })}
-          className="px-3 py-2 border border-input rounded-lg text-sm bg-background outline-hidden focus:ring-2 focus:ring-ring/30"
+          className={formControlClass}
+          aria-label="วันที่สิ้นสุด"
           placeholder="วันที่สิ้นสุด"
         />
       </div>

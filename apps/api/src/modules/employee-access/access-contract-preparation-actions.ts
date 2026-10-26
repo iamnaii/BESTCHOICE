@@ -64,10 +64,10 @@ export class AccessContractPreparationActions implements OnModuleInit {
                         operation: method,
                         source: 'SHOP',
                         outcome: 'SUCCESS',
+                        // The active-contract exception was retired (owner ruling 2026-10-23 — one live
+                        // contract per customer, fail-closed), so only the damaged acknowledgment is evidence.
                         ...(method === 'create'
                           ? {
-                              activeContractOverrideRequested:
-                                req.body.overrideActiveContractCheck === true,
                               previouslyDamagedAcknowledged:
                                 req.body.previouslyDamagedAcknowledged === true,
                             }

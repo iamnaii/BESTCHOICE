@@ -466,8 +466,9 @@ describe('chat credit with real PostgreSQL, HTTP and synthetic storage/OCR', () 
           });
           return route.fulfill({ json: { ...room, tags: [], notes: [] } });
         }
+        if (/^\/staff-chat\/rooms\/[^/]+\/(messages|upload)$/.test(path)
+          && route.request().method() === 'POST') outboundSends++;
         if (/^\/staff-chat\/rooms\/[^/]+\/messages$/.test(path)) {
-          if (route.request().method() === 'POST') outboundSends++;
           return route.fulfill({
             json: await db.chatMessage.findMany({
               where: { roomId: path.split('/')[3] },
@@ -514,10 +515,13 @@ describe('chat credit with real PostgreSQL, HTTP and synthetic storage/OCR', () 
       const chat = page.getByRole('log', { name: 'ประวัติข้อความ' }).locator('..');
       await chat.dispatchEvent('dragenter', { dataTransfer: externalFile });
       await browserExpect(
-        page.getByText('วางที่นี่ = ส่งให้ลูกค้า', { exact: true }),
+        page.getByText('วางไฟล์เพื่อแนบในฉบับร่าง', { exact: true }),
       ).toBeVisible();
-      await browserExpect(page.getByText('ลูกค้าเห็นทันที', { exact: true })).toBeVisible();
-      await chat.dispatchEvent('dragleave', { dataTransfer: externalFile });
+      await browserExpect(page.getByText('ตรวจไฟล์แล้วกดส่ง', { exact: true })).toBeVisible();
+      await chat.dispatchEvent('drop', { dataTransfer: externalFile });
+      await browserExpect(page.getByRole('list', { name: 'ไฟล์ที่รอส่ง' })).toContainText('test.pdf');
+      expect(outboundSends).toBe(0);
+      await page.getByRole('button', { name: 'นำไฟล์ test.pdf ออก', exact: true }).click();
       await dossier.dispatchEvent('dragenter', { dataTransfer: externalFile });
       await browserExpect(
         page.getByText('วางที่นี่ = ให้ AI ตรวจเครดิต', { exact: true }),

@@ -10,12 +10,12 @@ on:
   workflow_dispatch:
 
 env:
-  NODE_VERSION: '20'
+  NODE_VERSION: '24'
 
 jobs:
   e2e:
     name: E2E Tests
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # 30 -> 60 (2026-08-25): งบ 30 นาทีเดิม "ไม่เคยถูกทดสอบ" เพราะ job ตายที่ boot
     # ตั้งแต่นาทีที่ 5 มาตลอด (seed ล้าง account_role_map — แก้ใน PR #1483) พอเทส
     # ได้รันจริงครั้งแรก shard 1 ทำได้ 24m43s แล้วโดน cancel ที่ 30m15s ยังไม่จบ
@@ -112,9 +112,10 @@ jobs:
         env:
           VITE_API_URL: http://localhost:3000/api
 
+      # Browser binaries cached per Playwright version (.github/actions/playwright-chromium);
+      # apps/web uses the hoisted root @playwright/test, so the root install is the right one.
       - name: Install Playwright Browsers
-        run: npx playwright install --with-deps chromium
-        working-directory: apps/web
+        uses: ./.github/actions/playwright-chromium
 
       - name: Start API server
         run: node apps/api/dist/src/main.js &
@@ -164,14 +165,14 @@ jobs:
     name: Merge E2E Reports
     needs: e2e
     if: always()
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '24'
           cache: 'npm'
 
       - name: Install dependencies

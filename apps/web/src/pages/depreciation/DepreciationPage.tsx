@@ -2,7 +2,7 @@
 // Cron auto-runs at 01:00 BKK on the last day of each month; this page
 // is for catch-up / manual control + reversal of past runs.
 
-import { useState, useMemo, type ReactNode } from 'react';
+import { useId as useUiFieldId, useState, useMemo, type ReactNode } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import Decimal from 'decimal.js';
@@ -47,6 +47,7 @@ function lastTwelveMonths(): { value: string; label: string }[] {
 }
 
 export default function DepreciationPage() {
+  const uiFieldId = useUiFieldId();
   const queryClient = useQueryClient();
   const months = useMemo(() => lastTwelveMonths(), []);
   const [selectedPeriod, setSelectedPeriod] = useState(months[0].value);
@@ -158,20 +159,20 @@ export default function DepreciationPage() {
       <AssetHubTabs />
       <PageHeader
         title="ค่าเสื่อมราคา"
-        subtitle="Auto-run cron 01:00 BKK ทุกสิ้นเดือน · Manual run สำหรับ catch-up"
+        subtitle="คำนวณอัตโนมัติทุกสิ้นเดือน เวลา 01:00 น. หรือเลือกงวดเพื่อคำนวณย้อนหลัง"
         icon={<TrendingDown className="size-5" />}
       />
 
       <Card>
         <CardHeader>
-          <CardTitle>1. รัน Manual</CardTitle>
+          <CardTitle>คำนวณค่าเสื่อม</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="flex items-end gap-3">
-            <div className="flex-1 max-w-xs">
-              <label className="block text-sm font-medium mb-1">งวด</label>
+          <div className="flex flex-col sm:flex-row sm:items-end gap-3">
+            <div className="w-full min-w-0 sm:flex-1 sm:max-w-xs">
+              <label htmlFor={`${uiFieldId}-1`} className="block text-sm font-medium mb-1">งวด</label>
               <Select value={selectedPeriod} onValueChange={setSelectedPeriod}>
-                <SelectTrigger>
+                <SelectTrigger id={`${uiFieldId}-1`}>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -214,7 +215,7 @@ export default function DepreciationPage() {
             onRetry={() => listQuery.refetch()}
             errorTitle="โหลดประวัติไม่สำเร็จ"
           >
-            <DataTable
+            <DataTable embedded
               columns={columns}
               data={tableData}
               emptyMessage="ยังไม่มีประวัติการรันค่าเสื่อม"

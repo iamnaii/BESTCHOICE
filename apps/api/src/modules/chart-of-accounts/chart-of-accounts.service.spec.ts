@@ -197,24 +197,105 @@ describe('ChartOfAccountsService — PEAK mapping', () => {
       expect(result.updated).toBe(0);
       expect(prisma.auditLog!.create).not.toHaveBeenCalled();
     });
+
+    // ---- FINANCE mapping v5 (19/10/2569): sub-code + source ----
+    it('keeps the stored sub-code/source when the request omits them (old UI sends peakCode only)', async () => {
+      prisma.chartOfAccount.findMany.mockResolvedValue([
+        { id: 'a1', code: '11-6101', peakCode: null, peakSubCode: 'ADV001', peakSubCodeSource: 'fixed' },
+      ]);
+      prisma.chartOfAccount.update!.mockResolvedValue({});
+      prisma.auditLog!.create.mockResolvedValue({});
+      const result = await service.updatePeakMapping(
+        { mappings: [{ id: 'a1', peakCode: '212203' }] },
+        'user-1',
+      );
+      expect(result.updated).toBe(1);
+      expect(prisma.chartOfAccount.update).toHaveBeenCalledWith({
+        where: { id: 'a1' },
+        data: { peakCode: '212203' },
+      });
+    });
+
+    it('stores a fixed sub-code and records it in the audit diff', async () => {
+      prisma.chartOfAccount.findMany.mockResolvedValue([
+        { id: 'a1', code: '11-6101', peakCode: '212203', peakSubCode: null, peakSubCodeSource: 'none' },
+      ]);
+      prisma.chartOfAccount.update!.mockResolvedValue({});
+      prisma.auditLog!.create.mockResolvedValue({});
+      const result = await service.updatePeakMapping(
+        { mappings: [{ id: 'a1', peakCode: '212203', peakSubCode: ' ADV001 ', peakSubCodeSource: 'fixed' }] },
+        'user-1',
+      );
+      expect(result.updated).toBe(1);
+      expect(prisma.chartOfAccount.update).toHaveBeenCalledWith({
+        where: { id: 'a1' },
+        data: { peakSubCode: 'ADV001', peakSubCodeSource: 'fixed' },
+      });
+      expect(prisma.auditLog!.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            newValue: expect.objectContaining({
+              changes: [
+                expect.objectContaining({
+                  code: '11-6101',
+                  peakSubCodeBefore: null,
+                  peakSubCodeAfter: 'ADV001',
+                  sourceBefore: 'none',
+                  sourceAfter: 'fixed',
+                }),
+              ],
+            }),
+          }),
+        }),
+      );
+    });
+
+    it('rejects source "fixed" without a sub-code (all-or-nothing — nothing written)', async () => {
+      prisma.chartOfAccount.findMany.mockResolvedValue([
+        { id: 'a1', code: '11-6101', peakCode: '212203', peakSubCode: null, peakSubCodeSource: 'none' },
+      ]);
+      await expect(
+        service.updatePeakMapping(
+          { mappings: [{ id: 'a1', peakCode: '212203', peakSubCodeSource: 'fixed' }] },
+          'user-1',
+        ),
+      ).rejects.toThrow(/รหัสย่อย PEAK/);
+      expect(prisma.chartOfAccount.update).not.toHaveBeenCalled();
+    });
+
+    it('a per-line source (contact/bank/cashbox) clears any stored sub-code', async () => {
+      prisma.chartOfAccount.findMany.mockResolvedValue([
+        { id: 'a1', code: '11-2101', peakCode: '113101', peakSubCode: 'OLD001', peakSubCodeSource: 'fixed' },
+      ]);
+      prisma.chartOfAccount.update!.mockResolvedValue({});
+      prisma.auditLog!.create.mockResolvedValue({});
+      await service.updatePeakMapping(
+        { mappings: [{ id: 'a1', peakCode: '113101', peakSubCodeSource: 'contact' }] },
+        'user-1',
+      );
+      expect(prisma.chartOfAccount.update).toHaveBeenCalledWith({
+        where: { id: 'a1' },
+        data: { peakSubCode: null, peakSubCodeSource: 'contact' },
+      });
+    });
   });
 
   describe('exportPeakMappingCsv', () => {
     it('returns CSV with header + UTF-8 BOM + escaped Thai names', async () => {
       prisma.chartOfAccount.findMany.mockResolvedValue([
-        { id: 'a1', code: '11-1101', name: 'เงินสด, สาขา A', type: 'สินทรัพย์', peakCode: '1110-01' },
-        { id: 'a2', code: '11-1102', name: 'เงินสด', type: 'สินทรัพย์', peakCode: null },
+        { id: 'a1', code: '11-1101', name: 'เงินสด, สาขา A', type: 'สินทรัพย์', peakCode: '1110-01', peakSubCode: 'CSH001', peakSubCodeSource: 'fixed' },
+        { id: 'a2', code: '11-1102', name: 'เงินสด', type: 'สินทรัพย์', peakCode: null, peakSubCode: null, peakSubCodeSource: 'none' },
       ]);
       const csv = await service.exportPeakMappingCsv();
       const lines = csv.split('\n');
-      // BOM in header line
-      expect(lines[0]).toContain('code,name,peakCode');
+      // BOM in header line — mapping v5 adds the two sub-code columns after peakCode
+      expect(lines[0]).toContain('code,name,peakCode,peakSubCode,peakSubCodeSource');
       expect(csv.charCodeAt(0)).toBe(0xfeff);
       // Quoted because name contains comma
       expect(lines[1]).toContain('"เงินสด, สาขา A"');
-      expect(lines[1]).toContain('1110-01');
-      // Unmapped row has empty peakCode column
-      expect(lines[2]).toBe('11-1102,เงินสด,');
+      expect(lines[1]).toContain('1110-01,CSH001,fixed');
+      // Unmapped row has empty peakCode / sub-code columns
+      expect(lines[2]).toBe('11-1102,เงินสด,,,none');
     });
   });
 });

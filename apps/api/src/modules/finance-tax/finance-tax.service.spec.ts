@@ -194,7 +194,7 @@ describe('FinanceTaxService', () => {
 
     // ── 2026-09-30: ภาษีขายมาจากตัวคำนวณเดียวของ ภ.พ.30 ──
 
-    it('ภาษีขาย = ตัวคำนวณ ภ.พ.30: 21-2101 หักรายการกลับรายการ / ใบลดหนี้ ⇒ 793.32 · ภาษีขาย 60 วัน (21-2103) เป็นข้อมูลประกอบ ไม่รวม', async () => {
+    it('ภาษีขาย = ตัวคำนวณ ภ.พ.30: 21-2101 หักรายการกลับรายการ / ใบลดหนี้ ⇒ 793.32 + ภาษีขาย 60 วัน (21-2103) สุทธิ 99.17 = 892.49 (รวมตั้งแต่ 16/10/2569)', async () => {
       mockVatLines({
         output: [
           makeOutputLine('21-2101', '0', '99.17', { tag: '2A' }),
@@ -210,20 +210,21 @@ describe('FinanceTaxService', () => {
 
       const result = await service.getVatMonthly(2026, 5);
 
-      expect(result.vatOutput).toBe('793.32');
-      expect(result.netVat).toBe('693.32'); // 793.32 − ภาษีซื้อ 100.00 (60 วันไม่รวม)
+      expect(result.vatOutput).toBe('892.49');
+      expect(result.netVat).toBe('792.49'); // 892.49 − ภาษีซื้อ 100.00 (รวม 60 วันสุทธิ 99.17 — ก่อน 16/10 เป็น 693.32)
       expect(result.outputVat).toEqual({
         settledGross: '991.66',
         reductionReversal: '99.17',
         reductionCreditNote: '99.17',
+        reductionAdvanceApplied: '0.00',
         reductionOther: '0.00',
         reductionTotal: '198.34',
         settledNet: '793.32',
         mandatory60DayCredit: '198.34',
         mandatory60DayDebit: '99.17',
         mandatory60DayNet: '99.17',
-        mandatory60DayIncluded: false,
-        totalOutputVat: '793.32',
+        mandatory60DayIncluded: true,
+        totalOutputVat: '892.49',
       });
     });
 

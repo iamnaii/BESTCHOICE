@@ -1,3 +1,4 @@
+import { NativeSelect } from '@/components/ui/native-select';
 import { saleMargin } from '@/lib/sale-margin';
 import { BookingSaleReceipt, type BookingSaleReceiptData } from '@/components/sales/BookingSaleReceipt';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
@@ -7,6 +8,8 @@ import { createExportGuard, ExportError, fetchExportSnapshot, type ExportSnapsho
 import { useState, useMemo, useEffect, useRef } from 'react';
 import type { TradeInCreditSnapshot } from '@installment/shared';
 import { DeviceDisclosureSummary, deviceOriginLabel, type DeviceDisclosureInfo } from '@/components/product/DeviceDisclosureSummary';
+import SaleReceiptActions from '@/components/sales/SaleReceiptActions';
+import { hasSaleReceipt } from '@/components/sales/saleReceipt';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate, useSearchParams } from 'react-router';
@@ -22,18 +25,17 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { getStatusBadgeProps, saleTypeMap, contractStatusMap } from '@/lib/status-badges';
-import { Download, RotateCcw, Ban, Info } from 'lucide-react';
+import { Download, RotateCcw, Ban, Info, Package } from 'lucide-react';
 import { formatDateShort, formatDateTime } from '@/utils/formatters';
 import ThaiDateInput from '@/components/ui/ThaiDateInput';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch, SwitchWrapper } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
+import { voidGate } from './sales-history/void-gate';
 
 /** ตรงกับ `VoidSaleDto.reason` ฝั่ง API (MinLength 10) — กันยิงคำขอที่ 400 แน่ ๆ */
 const VOID_REASON_MIN = 10;
-/** ใบ INSTALLMENT ยกเลิกผ่านเส้นทางยกเลิกสัญญา — API ปฏิเสธอยู่แล้ว จึงซ่อนปุ่ม */
-const VOIDABLE_SALE_TYPES = new Set(['CASH', 'EXTERNAL_FINANCE']);
 
 interface Sale {
   costPriceSnapshot?: string | null;
@@ -60,6 +62,8 @@ interface Sale {
   deletedAt?: string | null;
   voidReason?: string | null;
   voidedBy?: { id: string; name: string } | null;
+  /** PR 5 — ใบขายที่ถูกสลับเครื่องจากเคสเปลี่ยนรุ่นเดิมขายสด (ยกเลิกใบขายไม่ได้อีก) */
+  exchangeCase?: { id: string; caseNumber: string; approvedAt: string | null; deviceImei: string | null } | null;
   customer: { id: string; name: string; phone: string };
   product: { id: string; name: string; brand: string; model: string; imeiSerial: string | null; serialNumber: string | null; costPrice?: string };
   branch: { id: string; name: string };
@@ -434,6 +438,11 @@ export default function SalesHistoryPage() {
           {(s.product.imeiSerial || s.product.serialNumber) && (
             <div className="text-xs text-muted-foreground font-mono">{s.product.imeiSerial || s.product.serialNumber}</div>
           )}
+          {s.exchangeCase && (
+            <span className="block text-2xs text-muted-foreground leading-snug">
+              เปลี่ยนเครื่อง {s.exchangeCase.approvedAt ? formatDateTime(s.exchangeCase.approvedAt) : '—'} · เดิม IMEI {s.exchangeCase.deviceImei ?? '—'}
+            </span>
+          )}
         </div>
       ),
     },
@@ -498,7 +507,7 @@ export default function SalesHistoryPage() {
                 <div>ยอดไฟแนนซ์ {Number(s.financeAmount).toLocaleString()} ฿</div>
               )}
               {s.financeRefNumber && (
-                <div className="text-muted-foreground">Ref: {s.financeRefNumber}</div>
+                <div className="text-muted-foreground">อ้างอิง: {s.financeRefNumber}</div>
               )}
               {s.downPaymentAmount && Number(s.downPaymentAmount) > 0 && (
                 <div>ดาวน์ {Number(s.downPaymentAmount).toLocaleString()} ฿</div>
@@ -537,16 +546,17 @@ export default function SalesHistoryPage() {
       key: 'actions',
       label: '',
       render: (s: Sale) => {
-        if (s.deletedAt) return null;
-        if (!VOIDABLE_SALE_TYPES.has(s.saleType)) {
+        const gate = voidGate(s);
+        if (gate.kind === 'none') return null;
+        if (gate.kind === 'text') {
           return (
-            <span className="text-2xs text-muted-foreground leading-snug" title="ใบขายผ่อนร้านยกเลิกผ่านหน้าสัญญา (ยกเลิกสัญญา) ไม่ใช่ที่นี่">
-              ยกเลิกผ่านสัญญา
+            <span className="text-2xs text-muted-foreground leading-snug" title={gate.title}>
+              {gate.text}
             </span>
           );
         }
         return (
-          <button
+          <button data-ui-control="button"
             type="button"
             onClick={(e) => { e.stopPropagation(); openVoidDialog(s); }}
             className="inline-flex items-center gap-1 px-2 py-1 text-xs rounded-md border border-destructive/40 text-destructive hover:bg-destructive/10 transition-colors whitespace-nowrap"
@@ -559,7 +569,7 @@ export default function SalesHistoryPage() {
     }] : []),
   ].filter(column => ['saleNumber', 'createdAt', 'saleType', 'product', 'customer', 'netAmount', 'actions'].includes(column.key)), [navigate, searchParams, salesData?.page, limit, isOwner, isOwnerOrManager]);
 
-  const inputClass = 'px-3 py-2 border border-input rounded-lg text-sm bg-background';
+  const inputClass = 'min-w-0 max-w-full px-3 py-2 border border-input rounded-lg text-sm bg-background';
 
   return (
     <div>
@@ -567,7 +577,7 @@ export default function SalesHistoryPage() {
 
       {/* Summary Cards */}
       {summary && salesData && (
-        <div className={`grid grid-cols-2 ${isOwner ? 'md:grid-cols-5' : 'md:grid-cols-4'} gap-5 mb-6`}>
+        <div className={`grid grid-cols-2 ${isOwner ? 'xl:grid-cols-5 [&>div:last-child]:max-xl:col-span-2' : 'xl:grid-cols-4'} gap-5 mb-6`}>
           <Card className="rounded-xl border border-border/50 bg-card shadow-sm overflow-hidden hover:shadow-card-hover transition-all">
             <div className="flex h-full">
               <div className="w-1 shrink-0 rounded-r-full bg-foreground/30" />
@@ -650,7 +660,7 @@ export default function SalesHistoryPage() {
             placeholder="ค้นหาเลขที่ขาย, ลูกค้า, สินค้า, ไฟแนนซ์..."
             className={`${inputClass} md:col-span-1`}
           />
-          <select
+          <NativeSelect wrapperClassName="w-auto min-w-0 max-w-full"
             aria-label="ประเภทการขาย" value={saleTypeFilter}
             onChange={(e) => setSaleTypeFilter(e.target.value)}
             className={inputClass}
@@ -659,8 +669,8 @@ export default function SalesHistoryPage() {
             <option value="CASH">เงินสด</option>
             <option value="INSTALLMENT">ผ่อนร้าน</option>
             <option value="EXTERNAL_FINANCE">ไฟแนนซ์</option>
-          </select>
-          <select
+          </NativeSelect>
+          <NativeSelect wrapperClassName="w-auto min-w-0 max-w-full"
             aria-label="วิธีชำระ" value={paymentMethodFilter}
             onChange={(e) => setPaymentMethodFilter(e.target.value)}
             className={inputClass}
@@ -669,8 +679,8 @@ export default function SalesHistoryPage() {
             <option value="CASH">เงินสด</option>
             <option value="BANK_TRANSFER">โอนเงิน</option>
             <option value="QR_EWALLET">QR/E-Wallet</option>
-          </select>
-          <select
+          </NativeSelect>
+          <NativeSelect wrapperClassName="w-auto min-w-0 max-w-full"
             aria-label="สถานะสัญญา" value={contractStatusFilter}
             onChange={(e) => setContractStatusFilter(e.target.value)}
             className={inputClass}
@@ -681,7 +691,7 @@ export default function SalesHistoryPage() {
             <option value="DEFAULT">ผิดนัด</option>
             <option value="COMPLETED">ปิดแล้ว</option>
             <option value="DRAFT">ร่าง</option>
-          </select>
+          </NativeSelect>
         </div>
 
         {/* Row 2: Date filters + shortcuts + Excel */}
@@ -698,19 +708,19 @@ export default function SalesHistoryPage() {
             className={`${inputClass} w-40`}
           />
           <div className="flex flex-wrap gap-1.5">
-            <button onClick={() => setDateRange('today')} className="px-3 py-2 text-xs rounded-lg border border-input hover:bg-accent transition-colors">วันนี้</button>
-            <button onClick={() => setDateRange('week')} className="px-3 py-2 text-xs rounded-lg border border-input hover:bg-accent transition-colors">สัปดาห์นี้</button>
-            <button onClick={() => setDateRange('last_month')} className="px-3 py-2 text-xs rounded-lg border border-input hover:bg-accent">เดือนก่อน</button>
-            <button onClick={() => setDateRange('month')} className="px-3 py-2 text-xs rounded-lg border border-input hover:bg-accent transition-colors">เดือนนี้</button>
+            <button data-ui-control="button" onClick={() => setDateRange('today')} className="px-3 py-2 text-xs rounded-lg border border-input hover:bg-accent transition-colors">วันนี้</button>
+            <button data-ui-control="button" onClick={() => setDateRange('week')} className="px-3 py-2 text-xs rounded-lg border border-input hover:bg-accent transition-colors">สัปดาห์นี้</button>
+            <button data-ui-control="button" onClick={() => setDateRange('last_month')} className="px-3 py-2 text-xs rounded-lg border border-input hover:bg-accent">เดือนก่อน</button>
+            <button data-ui-control="button" onClick={() => setDateRange('month')} className="px-3 py-2 text-xs rounded-lg border border-input hover:bg-accent transition-colors">เดือนนี้</button>
           </div>
           <div className="ml-auto flex gap-2">
             {hasActiveFilters && (
-              <button onClick={clearFilters} className="flex items-center gap-1.5 px-3 py-2 text-xs rounded-lg border border-input hover:bg-accent transition-colors text-muted-foreground">
+              <button data-ui-control="button" onClick={clearFilters} className="flex items-center gap-1.5 px-3 py-2 text-xs rounded-lg border border-input hover:bg-accent transition-colors text-muted-foreground">
                 <RotateCcw className="w-3.5 h-3.5" />
                 ล้างตัวกรอง
               </button>
             )}
-            <button onClick={exportExcel} disabled={isExporting || isError || isLoading} className="flex items-center gap-1.5 px-4 py-2 text-xs rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors font-medium">
+            <button data-ui-control="button" onClick={exportExcel} disabled={isExporting || isError || isLoading} className="flex items-center gap-1.5 px-4 py-2 text-xs rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors font-medium">
               <Download className="w-3.5 h-3.5" />
               ส่งออก Excel
             </button>
@@ -720,7 +730,7 @@ export default function SalesHistoryPage() {
         {/* Row 3: Salesperson + Branch (role-based) + show-voided switch */}
         {isOwnerOrManager && (
           <div className="flex flex-wrap items-center gap-3">
-            <select
+            <NativeSelect wrapperClassName="w-auto min-w-0 max-w-full"
               aria-label="พนักงานขาย" value={salespersonFilter}
               onChange={(e) => setSalespersonFilter(e.target.value)}
               className={inputClass}
@@ -729,9 +739,9 @@ export default function SalesHistoryPage() {
               {salespersons.map((sp) => (
                 <option key={sp.id} value={sp.id}>{sp.name}</option>
               ))}
-            </select>
+            </NativeSelect>
             {isOwner && (
-              <select
+              <NativeSelect wrapperClassName="w-auto min-w-0 max-w-full"
                 aria-label="สาขา" value={branchFilter}
                 onChange={(e) => setBranchFilter(e.target.value)}
                 className={inputClass}
@@ -740,7 +750,7 @@ export default function SalesHistoryPage() {
                 {branches.map((b) => (
                   <option key={b.id} value={b.id}>{b.name}</option>
                 ))}
-              </select>
+              </NativeSelect>
             )}
           </div>
         )}
@@ -819,7 +829,10 @@ export default function SalesHistoryPage() {
               </dl>
               {isOwner && saleDetail.data.costPriceSnapshot == null && <p className="text-muted-foreground">ไม่ทราบต้นทุน ณ วันขาย จึงยังคำนวณกำไรไม่ได้</p>}
               {saleDetail.data.receiptBreakdown && <BookingSaleReceipt receipt={saleDetail.data.receiptBreakdown} />}
+              {/* ก้อน 4: ใบเสร็จขายสด — ใบผ่อนใช้ใบเสร็จของสัญญา (hasSaleReceipt) */}
+              {hasSaleReceipt(saleDetail.data.saleType) && <div className="space-y-2"><p className="text-muted-foreground">เอกสาร</p><SaleReceiptActions sale={saleDetail.data} size="sm" /></div>}
               <div>{!saleDetail.data.receiptBreakdown && <p>วิธีรับ: {saleMethodLabel(saleDetail.data) || 'ยังไม่ระบุ'}</p>}<p>พนักงาน: {saleDetail.data.salesperson.name}</p><p>สาขา: {saleDetail.data.branch.name}</p></div>
+              {!saleDetail.data.deletedAt && <Link to={`/sales/${saleDetail.data.id}/parcel-label`} className="inline-flex min-h-10 items-center gap-2 rounded-md border border-border bg-background px-3 text-sm font-medium hover:bg-accent"><Package aria-hidden="true" className="size-4" />พิมพ์ใบปะหน้าพัสดุ</Link>}
               {saleDetail.data.tradeInCreditSnapshot && <div className="rounded-lg border border-border p-3">
                 <p>เงินสด/โอนสุทธิ {Number(saleDetail.data.tradeInCreditSnapshot.cashDownAmount).toLocaleString()} บาท</p>
                 <p>เครดิตเทิร์น {Number(saleDetail.data.tradeInCreditSnapshot.baseAmount).toLocaleString()} บาท</p>

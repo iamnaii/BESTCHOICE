@@ -1,0 +1,69 @@
+{
+  "scope": "Actual Inbox in isolated local API preview with more than 400 retained synthetic rooms; all room summary requests succeed within URL budget",
+  "results": [
+    {
+      "engine": "chromium",
+      "status": "PASS",
+      "uniqueRooms": 426,
+      "requests": [
+        {
+          "urlLength": 3786,
+          "status": 200,
+          "roomCount": 100
+        },
+        {
+          "urlLength": 3786,
+          "status": 200,
+          "roomCount": 100
+        },
+        {
+          "urlLength": 1048,
+          "status": 200,
+          "roomCount": 26
+        },
+        {
+          "urlLength": 3786,
+          "status": 200,
+          "roomCount": 100
+        },
+        {
+          "urlLength": 3786,
+          "status": 200,
+          "roomCount": 100
+        }
+      ]
+    },
+    {
+      "engine": "webkit",
+      "status": "PASS",
+      "uniqueRooms": 426,
+      "requests": [
+        {
+          "urlLength": 3786,
+          "status": 200,
+          "roomCount": 100
+        },
+        {
+          "urlLength": 3786,
+          "status": 200,
+          "roomCount": 100
+        },
+        {
+          "urlLength": 3786,
+          "status": 200,
+          "roomCount": 100
+        },
+        {
+          "urlLength": 3786,
+          "status": 200,
+          "roomCount": 100
+        },
+        {
+          "urlLength": 1048,
+          "status": 200,
+          "roomCount": 26
+        }
+      ]
+    }
+  ]
+}

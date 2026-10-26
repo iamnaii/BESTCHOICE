@@ -1,6 +1,7 @@
+import { NativeSelect } from '@/components/ui/native-select';
 import { bangkokInput, bangkokInstant } from '@/pages/UnifiedInboxPage/components/chat-work-time';
 import { getRequestCompany } from '@/lib/company-scope';
-import { useState, useEffect, useRef } from 'react';
+import { useId as useUiFieldId, useState, useEffect, useRef } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import api, { getErrorMessage } from '@/lib/api';
 import {
@@ -65,6 +66,7 @@ function formatRelative(dateStr: string) {
 }
 
 export function TodoForm({ open, onOpenChange, editing, staffUsers, defaults }: TodoFormProps) {
+  const uiFieldId = useUiFieldId();
   const queryClient = useQueryClient();
   const [form, setForm] = useState<typeof emptyForm>({ ...emptyForm });
   const [thumbUrls, setThumbUrls] = useState<Record<string, string>>({});
@@ -331,11 +333,11 @@ export function TodoForm({ open, onOpenChange, editing, staffUsers, defaults }: 
           <div className="px-6 py-5 space-y-5">
             {/* Title */}
             <div>
-              <label className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">
+              <label htmlFor={`${uiFieldId}-1`} className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">
                 <TypeIcon className="size-3.5" />
                 ชื่องาน <span className="text-destructive">*</span>
               </label>
-              <input
+              <input id={`${uiFieldId}-1`}
                 type="text"
                 value={form.title || ''}
                 onChange={(e) => setForm({ ...form, title: e.target.value })}
@@ -347,11 +349,11 @@ export function TodoForm({ open, onOpenChange, editing, staffUsers, defaults }: 
 
             {/* Description */}
             <div>
-              <label className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">
+              <label htmlFor={`${uiFieldId}-2`} className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">
                 <AlignLeft className="size-3.5" />
                 รายละเอียด
               </label>
-              <textarea
+              <textarea id={`${uiFieldId}-2`}
                 value={form.description || ''}
                 onChange={(e) => setForm({ ...form, description: e.target.value })}
                 ref={(el) => {
@@ -378,7 +380,7 @@ export function TodoForm({ open, onOpenChange, editing, staffUsers, defaults }: 
                     const cfg = priorityConfig[p];
                     const active = form.priority === p;
                     return (
-                      <button
+                      <button data-ui-control="button"
                         key={p}
                         type="button"
                         onClick={() => setForm({ ...form, priority: p })}
@@ -411,7 +413,7 @@ export function TodoForm({ open, onOpenChange, editing, staffUsers, defaults }: 
                   ] as const).map((s) => {
                     const active = form.status === s.v;
                     return (
-                      <button
+                      <button data-ui-control="button"
                         key={s.v}
                         type="button"
                         onClick={() => setForm({ ...form, status: s.v })}
@@ -433,11 +435,11 @@ export function TodoForm({ open, onOpenChange, editing, staffUsers, defaults }: 
             {/* Date + Assignee */}
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div>
-                <label className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">
+                <label htmlFor={`${uiFieldId}-3`} className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">
                   <Calendar className="size-3.5" />
                   {roomId ? 'ครบกำหนด (เวลาไทย)' : 'ครบกำหนด'}
                 </label>
-                <input
+                <input id={`${uiFieldId}-3`}
                   type={roomId ? "datetime-local" : "date"}
                   value={form.dueDate || ''}
                   onChange={(e) => setForm({ ...form, dueDate: e.target.value })}
@@ -445,14 +447,14 @@ export function TodoForm({ open, onOpenChange, editing, staffUsers, defaults }: 
                 />
               </div>
               <div>
-                <label className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">
+                <label htmlFor={`${uiFieldId}-4`} className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">
                   <UserIcon className="size-3.5" />
                   ผู้รับมอบหมาย
                 </label>
-                <select
+                <NativeSelect wrapperClassName="max-w-full w-full" id={`${uiFieldId}-4`}
                   value={form.assigneeId || ''}
                   onChange={(e) => setForm({ ...form, assigneeId: e.target.value })}
-                  className="w-full px-4 py-2.5 border border-input rounded-xl text-sm bg-card focus-visible:ring-2 focus-visible:ring-primary/20 focus:border-primary/50 outline-hidden transition-colors"
+                  className="px-4 py-2.5 border border-input rounded-xl text-sm bg-card focus-visible:ring-2 focus-visible:ring-primary/20 focus:border-primary/50 outline-hidden transition-colors"
                 >
                   <option value="">ไม่ระบุ</option>
                   {(roomId ? eligible.data ?? [] : staffUsers).map((u) => (
@@ -460,13 +462,13 @@ export function TodoForm({ open, onOpenChange, editing, staffUsers, defaults }: 
                       {u.nickname || u.name}
                     </option>
                   ))}
-                </select>
+                </NativeSelect>
               </div>
             </div>
 
             {/* Tags */}
             <div>
-              <label className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">
+              <label htmlFor={`${uiFieldId}-5`} className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">
                 <Tag className="size-3.5" />
                 แท็ก
               </label>
@@ -480,13 +482,13 @@ export function TodoForm({ open, onOpenChange, editing, staffUsers, defaults }: 
                     <button
                       onClick={() => removeTag(tag)}
                       className="hover:text-destructive"
-                      aria-label="remove tag"
+                      aria-label="ลบป้ายกำกับ"
                     >
                       <X className="size-3" />
                     </button>
                   </span>
                 ))}
-                <input
+                <input id={`${uiFieldId}-5`}
                   type="text"
                   value={form.tagsInput || ''}
                   onChange={(e) => setForm({ ...form, tagsInput: e.target.value })}
@@ -507,14 +509,14 @@ export function TodoForm({ open, onOpenChange, editing, staffUsers, defaults }: 
               <div className="flex items-center justify-between mb-2">
                 <label className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
                   <CheckSquare className="size-3.5" />
-                  Checklist
+                  รายการตรวจสอบ
                   {(form.checklist?.length || 0) > 0 && (
                     <span className="text-2xs font-normal text-muted-foreground/70">
                       ({form.checklist?.filter((c) => c.done).length}/{form.checklist?.length})
                     </span>
                   )}
                 </label>
-                <button
+                <button data-ui-control="button"
                   type="button"
                   onClick={addChecklist}
                   className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:bg-primary/10 px-2 py-1 rounded-md transition-colors"
@@ -674,7 +676,7 @@ export function TodoForm({ open, onOpenChange, editing, staffUsers, defaults }: 
             {/* Comments — only show when editing an existing todo */}
             {editing && (
               <div>
-                <label className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
+                <label htmlFor={`${uiFieldId}-6`} className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
                   <MessageSquare className="size-3.5" />
                   ความคิดเห็น
                   {comments.length > 0 && (
@@ -714,7 +716,7 @@ export function TodoForm({ open, onOpenChange, editing, staffUsers, defaults }: 
 
                 {/* Add comment input */}
                 <div className="flex gap-2">
-                  <input
+                  <input id={`${uiFieldId}-6`}
                     type="text"
                     value={commentText}
                     onChange={(e) => setCommentText(e.target.value)}
@@ -727,7 +729,7 @@ export function TodoForm({ open, onOpenChange, editing, staffUsers, defaults }: 
                     placeholder="เพิ่มความคิดเห็น..."
                     className="flex-1 px-3 py-2 border border-input rounded-lg text-sm bg-card focus-visible:ring-2 focus-visible:ring-primary/20 outline-hidden transition-colors"
                   />
-                  <button
+                  <button data-ui-control="button"
                     type="button"
                     onClick={() => addCommentMutation.mutate()}
                     disabled={!commentText.trim() || addCommentMutation.isPending}
@@ -743,14 +745,14 @@ export function TodoForm({ open, onOpenChange, editing, staffUsers, defaults }: 
 
           {conflict && <div role="alert" className="mx-6 mb-4 space-y-2 rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm"><p>มีคนแก้ไขงานนี้แล้ว ฉบับร่างยังอยู่ กรุณาเทียบข้อมูลล่าสุดก่อนบันทึก</p><button type="button" className="min-h-10 text-primary" onClick={async () => { try { setLatest((await api.get<Todo>(`/todos/${editing!.id}`)).data); } catch (e) { toast.error(getErrorMessage(e)); } }}>โหลดข้อมูลล่าสุดเพื่อเทียบ</button>{latest && <><p>{latest.title} · {latest.dueDate ? new Date(latest.dueDate).toLocaleString('th-TH', { timeZone: 'Asia/Bangkok' }) : 'ไม่มีกำหนดเวลา'} · {latest.status}</p><button type="button" className="min-h-10 text-primary" onClick={() => { setRevision(latest.revision ?? 0); setConflict(false); }}>ใช้ฉบับร่างนี้กับข้อมูลล่าสุด</button></>}</div>}
           <DialogFooter className="px-6 py-4 border-t border-border bg-muted/20">
-            <button
+            <button data-ui-control="button"
               type="button"
               onClick={() => onOpenChange(false)}
               className="px-5 py-2.5 text-sm font-medium border border-input rounded-xl hover:bg-muted transition-colors"
             >
               ยกเลิก
             </button>
-            <button
+            <button data-ui-control="button"
               type="button"
               onClick={() => saveMutation.mutate()}
               disabled={saveMutation.isPending || conflict || (!!roomId && (eligible.isLoading || eligible.isError))}

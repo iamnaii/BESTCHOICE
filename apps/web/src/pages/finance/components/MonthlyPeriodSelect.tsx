@@ -22,7 +22,7 @@ export function MonthlyPeriodSelect({
   return (
     <>
       <Select value={String(year)} onValueChange={(v) => onYearChange(parseInt(v, 10))}>
-        <SelectTrigger className="w-[110px]">
+        <SelectTrigger aria-label="ปี" className="w-[110px]">
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
@@ -34,7 +34,7 @@ export function MonthlyPeriodSelect({
         </SelectContent>
       </Select>
       <Select value={String(month)} onValueChange={(v) => onMonthChange(parseInt(v, 10))}>
-        <SelectTrigger className="w-[130px]">
+        <SelectTrigger aria-label="เดือน" className="w-[130px]">
           <SelectValue />
         </SelectTrigger>
         <SelectContent>

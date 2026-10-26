@@ -40,6 +40,7 @@ function detail(over: Partial<CaseDetail> = {}): CaseDetail {
         imeiSerial: '3542...2260',
       },
       replacementContract: null,
+      sale: null,
       requestedBy: { id: 'u1', name: 'นิภา' },
     },
     symptom: 'ลำโพงไม่ดัง',
@@ -63,6 +64,7 @@ function detail(over: Partial<CaseDetail> = {}): CaseDetail {
     saleId: null,
     replacementProductId: null,
     replacementContractId: null,
+    replacementSaleId: null,
     repairTicketId: null,
     exchangeRequestId: null,
   };
@@ -123,5 +125,54 @@ describe('ExchangeCard — P-M.1 (fix round 1): ป้าย 7 วันใช�
     });
     render(<ExchangeCard data={detailData} />);
     expect(screen.getByText('พ้นกรอบ 7 วัน — ผจก. ยืนยันได้')).toBeInTheDocument();
+  });
+  it('PR 5 — เคสขายสด: ชิป "ใบขาย SL-…" + "ราคาขายเท่าเดิม · ไม่มีเงินเปลี่ยนมือ" · นอกกรอบไม่อ้าง "ผจก. ยืนยันได้"', () => {
+    render(
+      <ExchangeCard
+        data={detail({
+          source: 'CASH_SALE',
+          contractId: null,
+          saleId: 'sale-1',
+          outcome: 'CASH_SAME_MODEL_EXCHANGE',
+          warrantySnapshot: {
+            status: 'IN_7DAY_DEFECT',
+            daysRemainingIn7Day: 0,
+            shopWarrantyEndDate: null,
+            manufacturerWarrantyEndDate: null,
+            checkedAt: '2026-10-12T00:00:00.000Z',
+          },
+          exchange: { ...detail().exchange!, sale: { id: 'sale-1', saleNumber: 'SL-0001' } },
+        })}
+      />,
+    );
+    expect(screen.getByText('ใบขาย SL-0001')).toBeInTheDocument();
+    expect(screen.getByText('ราคาขายเท่าเดิม · ไม่มีเงินเปลี่ยนมือ')).toBeInTheDocument();
+    expect(screen.queryByText(/ผจก\. ยืนยันได้/)).not.toBeInTheDocument();
+    expect(screen.getByText('ครบกำหนด 7 วันแล้ว')).toBeInTheDocument();
+  });
+  it('M5 (final review PR5) — เคสขายสดที่ยืนยันแล้ว (replacementSaleId ตั้ง) ไม่ขึ้นชิป "ครบกำหนด 7 วันแล้ว" ซึ่งเป็น snapshot ตอนเปิดเคส', () => {
+    render(
+      <ExchangeCard
+        data={detail({
+          source: 'CASH_SALE',
+          contractId: null,
+          saleId: 'sale-1',
+          outcome: 'CASH_SAME_MODEL_EXCHANGE',
+          stage: 'READY_FOR_PICKUP',
+          replacementSaleId: 'sale-1',
+          warrantySnapshot: {
+            status: 'IN_7DAY_DEFECT',
+            daysRemainingIn7Day: 0,
+            shopWarrantyEndDate: null,
+            manufacturerWarrantyEndDate: null,
+            checkedAt: '2026-10-12T00:00:00.000Z',
+          },
+          exchange: { ...detail().exchange!, sale: { id: 'sale-1', saleNumber: 'SL-0001' } },
+        })}
+      />,
+    );
+    expect(screen.getByText('ใบขาย SL-0001')).toBeInTheDocument();
+    expect(screen.queryByText('ครบกำหนด 7 วันแล้ว')).not.toBeInTheDocument();
+    expect(screen.queryByText(/ผจก\. ยืนยันได้/)).not.toBeInTheDocument();
   });
 });

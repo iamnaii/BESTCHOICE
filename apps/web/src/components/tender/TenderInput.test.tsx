@@ -45,7 +45,7 @@ describe('tender-utils', () => {
 describe('TenderInput', () => {
   it('single method: fills the full amount by itself — staff type nothing, save is enabled', () => {
     render(<Harness due={12500} />);
-    expect(screen.getByLabelText('จำนวนเงิน')).toHaveValue(12500);
+    expect(screen.getByLabelText('จำนวนเงิน')).toHaveValue('12,500.00');
     expect(screen.getByRole('status')).toHaveTextContent('รับครบแล้ว');
     expect(screen.getByRole('button', { name: 'บันทึก' })).toBeEnabled();
     expect(payloadOf()).toEqual([{ method: 'CASH', amount: 12500 }]);
@@ -58,7 +58,7 @@ describe('TenderInput', () => {
     }
     render(<Changing />);
     fireEvent.click(screen.getByRole('button', { name: 'ลดราคา' }));
-    expect(screen.getByLabelText('จำนวนเงิน')).toHaveValue(9400);
+    expect(screen.getByLabelText('จำนวนเงิน')).toHaveValue('9,400.00');
     expect(payloadOf()).toEqual([{ method: 'CASH', amount: 9400 }]);
   });
 
@@ -78,7 +78,7 @@ describe('TenderInput', () => {
     fireEvent.click(screen.getByRole('button', { name: /เพิ่มวิธีรับเงิน/ }));
     expect(screen.getByRole('button', { name: 'บันทึก' })).toBeDisabled();
     fireEvent.change(screen.getByLabelText('จำนวนเงิน วิธีที่ 1'), { target: { value: '5000' } });
-    expect(screen.getByLabelText('จำนวนเงิน วิธีที่ 2')).toHaveValue(4900);
+    expect(screen.getByLabelText('จำนวนเงิน วิธีที่ 2')).toHaveValue('4,900.00');
     fireEvent.change(screen.getByLabelText(/เลขอ้างอิงการโอน วิธีที่ 2/), { target: { value: '014820931177' } });
     expect(screen.getByRole('status')).toHaveTextContent('รับครบแล้ว');
     expect(payloadOf()).toEqual([{ method: 'CASH', amount: 5000 }, { method: 'BANK_TRANSFER', amount: 4900, reference: '014820931177' }]);
@@ -94,7 +94,7 @@ describe('TenderInput', () => {
     add(); add(); add();
     expect(screen.queryByRole('button', { name: /เพิ่มวิธีรับเงิน/ })).not.toBeInTheDocument();
     screen.getAllByRole('button', { name: 'นำออก' }).slice(1).forEach(() => fireEvent.click(screen.getAllByRole('button', { name: 'นำออก' })[1]));
-    expect(screen.getByLabelText('จำนวนเงิน')).toHaveValue(9900);
+    expect(screen.getByLabelText('จำนวนเงิน')).toHaveValue('9,900.00');
     expect(screen.getByRole('button', { name: 'บันทึก' })).toBeEnabled();
   });
 

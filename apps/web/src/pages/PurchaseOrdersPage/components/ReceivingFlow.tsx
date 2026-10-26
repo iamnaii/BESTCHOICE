@@ -310,7 +310,7 @@ export function ReceivingFlow({
             <span className="hidden text-[13px] text-muted-foreground sm:inline">
               ผ่าน {t.passed} · ไม่ผ่าน {t.rejected} · เหลือ {t.pending} ชิ้น
             </span>
-            <button
+            <button data-ui-control="button"
               type="button"
               onClick={() => setView('summary')}
               disabled={!ready}

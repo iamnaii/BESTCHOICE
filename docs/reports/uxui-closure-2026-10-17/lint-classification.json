@@ -1,0 +1,24 @@
+{
+  "api": {
+    "errors": 0,
+    "warnings": 3012,
+    "byRule": {
+      "configuration/directive": 34,
+      "@typescript-eslint/no-explicit-any": 2867,
+      "@typescript-eslint/no-unused-vars": 95,
+      "@typescript-eslint/no-floating-promises": 15,
+      "@typescript-eslint/no-misused-promises": 1
+    }
+  },
+  "web": {
+    "errors": 0,
+    "warnings": 467,
+    "byRule": {
+      "@typescript-eslint/no-unused-vars": 73,
+      "@typescript-eslint/no-explicit-any": 203,
+      "configuration/directive": 22,
+      "no-restricted-syntax": 169
+    }
+  },
+  "scope": "Snapshot before final verify/profile additions. Final local-check is authoritative for errors; existing warnings are not a zero-warning claim."
+}

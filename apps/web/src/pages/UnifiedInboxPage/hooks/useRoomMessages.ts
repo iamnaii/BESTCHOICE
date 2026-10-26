@@ -193,8 +193,14 @@ export function useRoomMessages(activeRoomId: string | null, connectionStatus: s
   });
 
   const handleSendFile = useCallback(
-    (file: File) => {
-      if (activeRoomId) uploadFileMutation.mutate({ file, roomId: activeRoomId });
+    async (file: File): Promise<boolean> => {
+      if (!activeRoomId) return false;
+      try {
+        const result = await uploadFileMutation.mutateAsync({ file, roomId: activeRoomId });
+        return resolveUploadFeedback(result).kind !== 'retryable';
+      } catch {
+        return false; // onError reports the reason; the composer retains the file.
+      }
     },
     [uploadFileMutation, activeRoomId],
   );

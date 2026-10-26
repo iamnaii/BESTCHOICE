@@ -1,3 +1,4 @@
+import { NativeSelect } from '@/components/ui/native-select';
 import { useMemo } from 'react';
 import { Eye, Pencil, Trash2 } from 'lucide-react';
 import { Building2 } from 'lucide-react';
@@ -128,7 +129,7 @@ export default function AssetTable({
         label: '',
         render: (item: Asset) => (
           <div className="flex items-center gap-1">
-            <button
+            <button data-ui-control="button" data-ui-icon="true"
               onClick={(e) => {
                 e.stopPropagation();
                 onView(item);
@@ -139,7 +140,7 @@ export default function AssetTable({
               <Eye className="size-4" />
             </button>
             {isOwnerOrManager && item.status !== 'DISPOSED' && (
-              <button
+              <button data-ui-control="button" data-ui-icon="true"
                 onClick={(e) => {
                   e.stopPropagation();
                   onEdit(item);
@@ -151,7 +152,7 @@ export default function AssetTable({
               </button>
             )}
             {isOwner && item.status === 'ACTIVE' && (
-              <button
+              <button data-ui-control="button" data-ui-icon="true"
                 onClick={(e) => {
                   e.stopPropagation();
                   onDispose(item);
@@ -180,10 +181,10 @@ export default function AssetTable({
           onChange={(e) => onSearchChange(e.target.value)}
           className={`${inputClass} max-w-xs`}
         />
-        <select
+        <NativeSelect wrapperClassName="w-full max-w-[180px]"
           value={statusFilter}
           onChange={(e) => onStatusFilterChange(e.target.value)}
-          className={`${inputClass} max-w-[180px]`}
+          className={inputClass}
         >
           <option value="">สถานะทั้งหมด</option>
           {statusFilterOptions.map(({ value, label }) => (
@@ -191,11 +192,11 @@ export default function AssetTable({
               {label}
             </option>
           ))}
-        </select>
-        <select
+        </NativeSelect>
+        <NativeSelect wrapperClassName="w-full max-w-[180px]"
           value={categoryFilter}
           onChange={(e) => onCategoryFilterChange(e.target.value)}
-          className={`${inputClass} max-w-[180px]`}
+          className={inputClass}
         >
           <option value="">หมวดหมู่ทั้งหมด</option>
           {categoryOptions.map((opt) => (
@@ -203,7 +204,7 @@ export default function AssetTable({
               {opt.label}
             </option>
           ))}
-        </select>
+        </NativeSelect>
       </div>
 
       {/* Data Table */}

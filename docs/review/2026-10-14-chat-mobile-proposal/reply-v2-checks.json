@@ -1,0 +1,97 @@
+{
+  "scope": "Design prototype only; not production app validation",
+  "checks": [
+    {
+      "width": 320,
+      "theme": "light",
+      "status": "PASS",
+      "overflow": false,
+      "composer": 163,
+      "log": 415,
+      "small": []
+    },
+    {
+      "width": 320,
+      "theme": "dark",
+      "status": "PASS",
+      "overflow": false,
+      "composer": 163,
+      "log": 415,
+      "small": []
+    },
+    {
+      "width": 375,
+      "theme": "light",
+      "status": "PASS",
+      "overflow": false,
+      "composer": 163,
+      "log": 415,
+      "small": []
+    },
+    {
+      "width": 375,
+      "theme": "dark",
+      "status": "PASS",
+      "overflow": false,
+      "composer": 163,
+      "log": 415,
+      "small": []
+    },
+    {
+      "width": 390,
+      "theme": "light",
+      "status": "PASS",
+      "overflow": false,
+      "composer": 163,
+      "log": 415,
+      "small": []
+    },
+    {
+      "width": 390,
+      "theme": "dark",
+      "status": "PASS",
+      "overflow": false,
+      "composer": 163,
+      "log": 415,
+      "small": []
+    },
+    {
+      "width": 430,
+      "theme": "light",
+      "status": "PASS",
+      "overflow": false,
+      "composer": 163,
+      "log": 415,
+      "small": []
+    },
+    {
+      "width": 430,
+      "theme": "dark",
+      "status": "PASS",
+      "overflow": false,
+      "composer": 163,
+      "log": 415,
+      "small": []
+    }
+  ],
+  "additionalChecks": [
+    {
+      "width": 320,
+      "height": 568,
+      "status": "PASS",
+      "scope": "Viewport reduction, Enter newline, send visible, dialog Escape/focus, note icon"
+    },
+    {
+      "width": 375,
+      "height": 440,
+      "status": "PASS",
+      "scope": "Viewport reduction, Enter newline, send visible, dialog Escape/focus, note icon"
+    },
+    {
+      "width": 844,
+      "height": 390,
+      "status": "PASS",
+      "scope": "Viewport reduction, Enter newline, send visible, dialog Escape/focus, note icon"
+    }
+  ]
+}

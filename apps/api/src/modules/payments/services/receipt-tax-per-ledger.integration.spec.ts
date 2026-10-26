@@ -420,8 +420,8 @@ describe('ใบกำกับภาษีตามบัญชี — ทุ�
     });
   });
 
-  describe('ปิดยอดก่อนกำหนด — ยังพิมพ์แบบเดิม (ย้ายไป PR5)', () => {
-    it('ใบเสร็จปิดยอดไม่ผูกรายการ JP4 และไม่เก็บค่า (ทุกช่องว่าง → PDF ใช้ตรรกะเดิม) · ยอดเท่ายอดปิด', async () => {
+  describe('ปิดยอดก่อนกำหนด — ใบกำกับภาษีตามบัญชี (ฝ่ายบัญชี 16.1/16.2 · 2026-10-18)', () => {
+    it('ใบเสร็จปิดยอดผูกรายการ JP4 และเก็บค่าตามบัญชี (17,000 / 1,190 · ส่วนลด = Dr 52-1106 · invariant) · ยอดเท่ายอดปิด', async () => {
       const c = await seedContract({
         dueDate: futureDue(),
         paymentRows: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
@@ -454,17 +454,33 @@ describe('ใบกำกับภาษีตามบัญชี — ทุ�
       expect(new Decimal(r.amount.toString()).toFixed(2)).toBe(
         new Decimal(payoff.totalPayoff).toFixed(2),
       );
-      expect(r.sourceJournalEntryId).toBeNull();
+      const jp4 = await prisma.journalEntry.findFirstOrThrow({
+        where: {
+          AND: [
+            { metadata: { path: ['contractId'], equals: c.id } } as never,
+            { metadata: { path: ['flow'], equals: 'early-payoff' } } as never,
+          ],
+        },
+        include: { lines: true },
+      });
+      expect(r.sourceJournalEntryId).toBe(jp4.id);
+      // ฐาน = ลูกหนี้ตามบัญชี 18,190 − ภาษีคงเหลือของ 12 งวด 1,190 · ส่วนลดดอกเบี้ย = Dr 52-1106 (แถวแยกไม่ลดฐานภาษี)
       expect(taxOf(r)).toEqual({
         amount: new Decimal(payoff.totalPayoff).toFixed(2),
-        amountBeforeVat: null,
-        vatAmount: null,
-        roundingAmount: null,
-        lateFeeAmount: null,
-        lateFeeWaivedAmount: null,
-        advanceAmount: null,
-        advanceVatAmount: null,
+        amountBeforeVat: '17000.00',
+        vatAmount: '1190.00',
+        roundingAmount: '0.00',
+        lateFeeAmount: '0.00',
+        lateFeeWaivedAmount: '0.00',
+        advanceAmount: '0.00',
+        advanceVatAmount: '0.00',
       });
+      const discountLine = jp4.lines.find((l) => l.accountCode === '52-1106');
+      const discount = new Decimal((r.discountAmount ?? 0).toString()).toFixed(2);
+      expect(discount).toBe(new Decimal((discountLine?.debit ?? 0).toString()).toFixed(2));
+      expect(new Decimal('17000.00').plus('1190.00').minus(discount).toFixed(2)).toBe(
+        new Decimal(payoff.totalPayoff).toFixed(2),
+      );
     });
   });
 

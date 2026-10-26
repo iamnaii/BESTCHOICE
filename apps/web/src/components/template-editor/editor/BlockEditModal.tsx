@@ -1,3 +1,4 @@
+import { NativeSelect } from '@/components/ui/native-select';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { X, ChevronDown, ChevronRight, Variable } from 'lucide-react';
 import type { Editor } from '@tiptap/react';
@@ -87,15 +88,15 @@ export default function BlockEditModal() {
             {/* Block type */}
             <div>
               <label className="block text-base font-semibold text-foreground mb-1.5">ประเภท</label>
-              <select
+              <NativeSelect wrapperClassName="max-w-full w-full"
                 value={form.type}
                 onChange={e => setForm(prev => ({ ...prev, type: e.target.value as BlockType }))}
-                className="w-full px-3 py-2.5 border border-input rounded-lg text-base focus:ring-2 focus:ring-primary focus:border-primary"
+                className="px-3 py-2.5 border border-input rounded-lg text-base focus:ring-2 focus:ring-primary focus:border-primary"
               >
                 {BLOCK_TYPES.map(t => (
                   <option key={t.value} value={t.value}>{t.label} — {t.description}</option>
                 ))}
-              </select>
+              </NativeSelect>
             </div>
 
             {/* Clause fields */}
@@ -137,13 +138,13 @@ export default function BlockEditModal() {
                   value={form.content || ''}
                   onChange={handleContentChange}
                   onEditorReady={handleEditorReady}
-                  placeholder="พิมพ์เนื้อหา... ใช้ toolbar จัดรูปแบบ หรือคลิกตัวแปรด้านขวาเพื่อแทรก"
+                  placeholder="พิมพ์เนื้อหา... ใช้ แถบเครื่องมือ จัดรูปแบบ หรือคลิกตัวแปรด้านขวาเพื่อแทรก"
                 />
               ) : (
                 <textarea
                   value={form.content || ''}
                   onChange={e => setForm(prev => ({ ...prev, content: e.target.value }))}
-                  placeholder="เนื้อหาสำหรับ block นี้..."
+                  placeholder="เนื้อหาสำหรับ ส่วนเนื้อหานี้..."
                   rows={6}
                   className="w-full px-3 py-2.5 border border-input rounded-lg text-base font-mono focus:ring-2 focus:ring-primary resize-y"
                 />

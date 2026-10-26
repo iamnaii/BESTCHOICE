@@ -163,4 +163,33 @@ describe('RepairTicketsService.lookupByImei', () => {
     const saleCall = prisma.sale.findFirst.mock.calls[0][0];
     expect(saleCall.orderBy).toEqual({ createdAt: 'desc' });
   });
+
+  describe('PR 5 — ใบขายไม่มีสัญญา: daysRemainingIn7Day จากวันขาย', () => {
+    const product = {
+      id: 'p-1', brand: 'Apple', model: 'iPhone 13', storage: '128GB',
+      imeiSerial: '359000000000001', category: 'PHONE_USED', warrantyExpireDate: null,
+    };
+    it('ขายสด 3 วันก่อน (shopWarrantyStartDate ตั้ง) → IN_7DAY_DEFECT และ daysRemainingIn7Day = 4', async () => {
+      const soldAt = new Date(Date.now() - 3 * 86400_000);
+      prisma.product.findFirst.mockResolvedValue(product);
+      prisma.sale.findFirst.mockResolvedValue({
+        id: 's-1', saleType: 'CASH', createdAt: soldAt, shopWarrantyStartDate: soldAt,
+        shopWarrantyEndDate: new Date(Date.now() + 57 * 86400_000),
+        customer: { id: 'c-1', name: 'ก', phone: null }, contract: null,
+      });
+      const r = await service.lookupByImei('359000000000001', ownerUser);
+      expect(r).toMatchObject({ found: true, warrantyStatus: 'IN_7DAY_DEFECT', daysRemainingIn7Day: 4 });
+    });
+    it('ขายสด 10 วันก่อน → IN_SHOP_WARRANTY และ daysRemainingIn7Day = 0', async () => {
+      const soldAt = new Date(Date.now() - 10 * 86400_000);
+      prisma.product.findFirst.mockResolvedValue(product);
+      prisma.sale.findFirst.mockResolvedValue({
+        id: 's-2', saleType: 'CASH', createdAt: soldAt, shopWarrantyStartDate: null,
+        shopWarrantyEndDate: new Date(Date.now() + 50 * 86400_000),
+        customer: { id: 'c-1', name: 'ก', phone: null }, contract: null,
+      });
+      const r = await service.lookupByImei('359000000000001', ownerUser);
+      expect(r).toMatchObject({ warrantyStatus: 'IN_SHOP_WARRANTY', daysRemainingIn7Day: 0 });
+    });
+  });
 });

@@ -76,14 +76,14 @@ export default function ComplianceDashboardSection() {
           />
           <ComplianceCard
             icon={<AlertTriangle className="h-5 w-5 text-warning-strong" aria-hidden />}
-            label="Audit anomalies"
+            label="รายการตรวจสอบผิดปกติ"
             value={audit.isLoading ? null : anomalyCount}
             hint="DENY events 7 วันที่ผ่านมา"
             onClick={() => setOpenCard('audit')}
           />
           <ComplianceCard
             icon={<Archive className="h-5 w-5 text-muted-foreground" aria-hidden />}
-            label="Voice memo retention"
+            label="ระยะเวลาเก็บเสียงบันทึก"
             value={retention.isLoading ? null : retentionPending}
             hint={
               retention.data
@@ -179,7 +179,7 @@ export default function ComplianceDashboardSection() {
           )}
           {openCard === 'audit' && (
             <DetailDialog
-              title="Audit summary"
+              title="สรุปการตรวจสอบ"
               description={`สรุปกิจกรรม ${audit.data?.period === 'month' ? '30 วัน' : '7 วัน'} ที่ผ่านมา`}
             >
               {audit.isLoading ? (
@@ -187,16 +187,16 @@ export default function ComplianceDashboardSection() {
               ) : (
                 <div className="space-y-4">
                   <div>
-                    <div className="text-xs text-muted-foreground mb-2">DENY events</div>
+                    <div className="text-xs text-muted-foreground mb-2">เหตุการณ์ที่ถูกปฏิเสธ</div>
                     <div className="text-2xl font-semibold">{anomalyCount}</div>
                   </div>
                   <div>
-                    <div className="text-xs text-muted-foreground mb-2">Top entities</div>
+                    <div className="text-xs text-muted-foreground mb-2">รายการที่พบมาก</div>
                     <Table>
                       <TableHeader>
                         <TableRow>
-                          <TableHead>Entity</TableHead>
-                          <TableHead className="text-right">Actions</TableHead>
+                          <TableHead>รายการ</TableHead>
+                          <TableHead className="text-right">การดำเนินการ</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -215,7 +215,7 @@ export default function ComplianceDashboardSection() {
           )}
           {openCard === 'retention' && (
             <DetailDialog
-              title="Voice memo retention"
+              title="ระยะเวลาเก็บเสียงบันทึก"
               description={
                 retention.data
                   ? `HOT > ${retention.data.hotDays} วัน → Glacier · > ${retention.data.deleteDays} วัน → Delete`

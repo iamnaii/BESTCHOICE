@@ -1,4 +1,6 @@
-import { useState } from 'react';
+import ScreenTable from '@/components/ui/ScreenTable';
+import { getReportDateRange } from '@/lib/date';
+import { useId as useUiFieldId, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
 import QueryBoundary from '@/components/QueryBoundary';
@@ -64,10 +66,10 @@ function fmtDate(s: string): string {
 }
 
 export function EquityStatementPage() {
-  const now = new Date();
-  const firstOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-  const [startDate, setStartDate] = useState(firstOfMonth.toISOString().split('T')[0]);
-  const [endDate, setEndDate] = useState(now.toISOString().split('T')[0]);
+  const uiFieldId = useUiFieldId();
+  const range = getReportDateRange('this_month');
+  const [startDate, setStartDate] = useState(range.startDate);
+  const [endDate, setEndDate] = useState(range.endDate);
   const [companyId, setCompanyId] = useState('');
   const [drillRow, setDrillRow] = useState<EquityRow | null>(null);
   const { cacheTtlReports } = useUiFlags();
@@ -94,26 +96,26 @@ export function EquityStatementPage() {
     <div>
       <PageHeader
         title="งบแสดงการเปลี่ยนแปลงในส่วนของผู้ถือหุ้น"
-        subtitle="Statement of Changes in Equity"
+        subtitle="การเปลี่ยนแปลงส่วนของผู้ถือหุ้น"
         icon={<Landmark className="size-6" />}
       />
 
       <div className="flex flex-wrap gap-3 mb-6">
         <div>
-          <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
+          <label htmlFor={`${uiFieldId}-1`} className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
             ตั้งแต่
           </label>
-          <ThaiDateInput
+          <ThaiDateInput id={`${uiFieldId}-1`}
             value={startDate}
             onChange={(e) => setStartDate(e.target.value)}
             className={`${inputClass} w-auto`}
           />
         </div>
         <div>
-          <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
+          <label htmlFor={`${uiFieldId}-2`} className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
             ถึง
           </label>
-          <ThaiDateInput
+          <ThaiDateInput id={`${uiFieldId}-2`}
             value={endDate}
             onChange={(e) => setEndDate(e.target.value)}
             className={`${inputClass} w-auto`}
@@ -125,19 +127,19 @@ export function EquityStatementPage() {
             {
               label: 'เดือนนี้',
               fn: () => {
-                setStartDate(firstOfMonth.toISOString().split('T')[0]);
-                setEndDate(now.toISOString().split('T')[0]);
+                setStartDate(range.startDate);
+                setEndDate(range.endDate);
               },
             },
             {
               label: 'ปีนี้',
               fn: () => {
-                setStartDate(`${now.getFullYear()}-01-01`);
-                setEndDate(now.toISOString().split('T')[0]);
+                setStartDate(getReportDateRange('this_year').startDate);
+                setEndDate(range.endDate);
               },
             },
           ].map((p) => (
-            <button
+            <button data-ui-control="button"
               key={p.label}
               onClick={p.fn}
               className="px-3 py-2 text-xs border border-input rounded-lg hover:bg-accent transition-colors leading-snug"
@@ -173,7 +175,7 @@ export function EquityStatementPage() {
             {/* Caveat banner */}
             <div className="flex items-start gap-2 rounded-lg border border-warning/50 bg-warning/10 p-3 my-4 leading-snug">
               <AlertTriangle className="size-5 text-warning-strong shrink-0 mt-0.5" />
-              <div className="text-sm text-warning-foreground">
+              <div className="text-sm text-foreground">
                 <strong>หมายเหตุ:</strong> {equity.caveat}
                 {' — '}
                 <span className="tabular-nums">
@@ -186,12 +188,12 @@ export function EquityStatementPage() {
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
                 {[
                   {
-                    label: 'ทุนจดทะเบียน (Authorized)',
+                    label: "ทุนจดทะเบียน",
                     value: equity.capitalStatus.authorized,
                     hint: 'GL 31-1101',
                   },
                   {
-                    label: 'ทุนชำระแล้ว (Paid-up)',
+                    label: "ทุนชำระแล้ว",
                     value: equity.capitalStatus.paidUp,
                     hint: 'Authorized − ค้างชำระ',
                   },
@@ -222,7 +224,7 @@ export function EquityStatementPage() {
             <Card className="rounded-xl border border-border/50 bg-card shadow-sm overflow-hidden">
               <CardContent className="p-0">
                 <div className="overflow-x-auto">
-                  <table className="w-full text-sm leading-snug">
+                  <ScreenTable className="w-full text-sm leading-snug">
                     <thead className="bg-muted/50">
                       <tr>
                         <th className="text-left p-3 font-medium text-muted-foreground">บัญชี</th>
@@ -286,7 +288,7 @@ export function EquityStatementPage() {
                         </td>
                       </tr>
                     </tbody>
-                  </table>
+                  </ScreenTable>
                 </div>
                 <div className="p-3 text-xs text-muted-foreground leading-snug border-t border-border bg-muted/30">
                   คลิกแถวเพื่อดูรายละเอียดการเคลื่อนไหว

@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { toBangkokDateString } from '@/lib/date';
+import { useId as useUiFieldId, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
 import QueryBoundary from '@/components/QueryBoundary';
@@ -69,9 +70,7 @@ function BSSection({ section }: { section: BSSection }) {
             <span
               className={`tabular-nums ${Number(r.netBalance) < 0 ? 'text-destructive' : ''}`}
             >
-              {Number(r.netBalance) < 0
-                ? `(${fmt(Math.abs(Number(r.netBalance)))})`
-                : fmt(Number(r.netBalance))}
+              {fmt(Number(r.netBalance))}
             </span>
           </div>
         ))
@@ -81,8 +80,9 @@ function BSSection({ section }: { section: BSSection }) {
 }
 
 export default function BalanceSheetPage() {
+  const uiFieldId = useUiFieldId();
   const now = new Date();
-  const [asOfDate, setAsOfDate] = useState(now.toISOString().split('T')[0]);
+  const [asOfDate, setAsOfDate] = useState(toBangkokDateString(now));
   const [companyId, setCompanyId] = useState('');
   const { cacheTtlReports } = useUiFlags();
 
@@ -116,10 +116,10 @@ export default function BalanceSheetPage() {
 
       <div className="flex flex-wrap gap-3 mb-6">
         <div>
-          <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
+          <label htmlFor={`${uiFieldId}-1`} className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
             ณ วันที่
           </label>
-          <ThaiDateInput
+          <ThaiDateInput id={`${uiFieldId}-1`}
             value={asOfDate}
             onChange={(e) => setAsOfDate(e.target.value)}
             className={`${inputClass} w-auto`}
@@ -149,7 +149,7 @@ export default function BalanceSheetPage() {
                     : 'bg-destructive/10 text-destructive'
                 }`}
               >
-                {bs.isBalanced ? 'Balanced ✓' : 'Unbalanced ✗'}
+                {bs.isBalanced ? "ยอดสมดุล ✓" : "ยอดไม่สมดุล ✗"}
               </span>
             </div>
 

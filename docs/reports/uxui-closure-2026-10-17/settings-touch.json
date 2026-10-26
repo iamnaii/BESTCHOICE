@@ -1,0 +1,77 @@
+{
+  "generatedAt": "2026-10-17T07:50:46.917Z",
+  "results": [
+    {
+      "engine": "chromium",
+      "width": 320,
+      "root": 20,
+      "theme": "dark",
+      "status": "PASS",
+      "actions": [
+        "reason create/reorder/toggle/keyboard/edit cancel/delete cancel/delete",
+        "maker-checker edge click + confirmation cancel",
+        "branch edit cancel + warehouse confirmation cancel"
+      ]
+    },
+    {
+      "engine": "chromium",
+      "width": 390,
+      "root": 16,
+      "theme": "light",
+      "status": "PASS",
+      "actions": [
+        "reason create/reorder/toggle/keyboard/edit cancel/delete cancel/delete",
+        "maker-checker edge click + confirmation cancel",
+        "branch edit cancel + warehouse confirmation cancel"
+      ]
+    },
+    {
+      "engine": "chromium",
+      "width": 1440,
+      "root": 16,
+      "theme": "light",
+      "status": "PASS",
+      "actions": [
+        "reason create/reorder/toggle/keyboard/edit cancel/delete cancel/delete",
+        "maker-checker edge click + confirmation cancel",
+        "branch edit cancel + warehouse confirmation cancel"
+      ]
+    },
+    {
+      "engine": "webkit",
+      "width": 320,
+      "root": 20,
+      "theme": "dark",
+      "status": "PASS",
+      "actions": [
+        "reason create/reorder/toggle/keyboard/edit cancel/delete cancel/delete",
+        "maker-checker edge click + confirmation cancel",
+        "branch edit cancel + warehouse confirmation cancel"
+      ]
+    },
+    {
+      "engine": "webkit",
+      "width": 390,
+      "root": 16,
+      "theme": "light",
+      "status": "PASS",
+      "actions": [
+        "reason create/reorder/toggle/keyboard/edit cancel/delete cancel/delete",
+        "maker-checker edge click + confirmation cancel",
+        "branch edit cancel + warehouse confirmation cancel"
+      ]
+    },
+    {
+      "engine": "webkit",
+      "width": 1440,
+      "root": 16,
+      "theme": "light",
+      "status": "PASS",
+      "actions": [
+        "reason create/reorder/toggle/keyboard/edit cancel/delete cancel/delete",
+        "maker-checker edge click + confirmation cancel",
+        "branch edit cancel + warehouse confirmation cancel"
+      ]
+    }
+  ]
+}

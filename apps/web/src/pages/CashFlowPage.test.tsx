@@ -87,10 +87,10 @@ describe('CashFlowPage', () => {
 
     // 3 section headers
     await waitFor(() => {
-      expect(screen.getByText(/กิจกรรมดำเนินงาน \(Operating/)).toBeInTheDocument();
+      expect(screen.getByText('กิจกรรมดำเนินงาน — วิธีทางอ้อม')).toBeInTheDocument();
     });
-    expect(screen.getByText(/กิจกรรมลงทุน \(Investing\)/)).toBeInTheDocument();
-    expect(screen.getByText(/กิจกรรมจัดหาเงิน \(Financing\)/)).toBeInTheDocument();
+    expect(screen.getByText('กิจกรรมลงทุน', { selector: 'section span' })).toBeInTheDocument();
+    expect(screen.getByText('กิจกรรมจัดหาเงิน', { selector: 'section span' })).toBeInTheDocument();
 
     // 4 summary cards (use getAllByText — labels appear in both card + section)
     expect(screen.getAllByText('กิจกรรมดำเนินงาน').length).toBeGreaterThanOrEqual(1);
@@ -99,11 +99,15 @@ describe('CashFlowPage', () => {
     expect(screen.getByText('กระแสเงินสดสุทธิ')).toBeInTheDocument();
 
     // Method + standard badges — text appears in both subtitle and chip; allow multiple
-    expect(screen.getAllByText(/วิธีทางอ้อม \(Indirect Method\)/).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText('วิธีทางอ้อม')).toBeInTheDocument();
     expect(screen.getByText('TFRS for NPAEs')).toBeInTheDocument();
 
+    // Negative values keep a visible minus, alongside grouping.
+    expect(screen.getAllByText('-5,000.00').length).toBeGreaterThan(0);
+    expect(screen.queryByText('(5,000.00)')).not.toBeInTheDocument();
+
     // Reconciliation badge
-    expect(screen.getByText(/Reconciled/)).toBeInTheDocument();
+    expect(screen.getByText(/กระทบยอดแล้ว/)).toBeInTheDocument();
   });
 
   it('shows drift warning when not reconciled', async () => {
@@ -115,4 +119,18 @@ describe('CashFlowPage', () => {
       expect(screen.getByText(/ข้อมูลคลาดเคลื่อน/)).toBeInTheDocument();
     });
   });
+});
+
+it('requests Bangkok month-to-date across the UTC month boundary', async () => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(new Date('2026-09-30T17:30:00Z'));
+  try {
+    apiGet.mockReset();
+    apiGet.mockResolvedValue({ data: sampleResponse });
+    renderPage();
+    await waitFor(() => expect(apiGet).toHaveBeenCalled());
+    const query = new URL(apiGet.mock.calls[0][0], 'https://example.invalid').searchParams;
+    expect(query.get('periodStart')).toBe('2026-10-01');
+    expect(query.get('periodEnd')).toBe('2026-10-01');
+  } finally { vi.useRealTimers(); }
 });

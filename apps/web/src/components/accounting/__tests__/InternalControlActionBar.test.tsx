@@ -67,7 +67,7 @@ describe('InternalControlActionBar', () => {
   });
 
   describe('DRAFT', () => {
-    it('shows ยกเลิก / บันทึกร่าง / บันทึก & POST when handlers provided', () => {
+    it('shows ยกเลิก / บันทึกร่าง / บันทึกและลงบัญชี when handlers provided', () => {
       render(
         wrap(
           <InternalControlActionBar
@@ -83,10 +83,10 @@ describe('InternalControlActionBar', () => {
       );
       expect(screen.getByRole('button', { name: /ยกเลิก/i })).toBeInTheDocument();
       expect(screen.getByRole('button', { name: /บันทึกร่าง/i })).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: /บันทึก & POST/i })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /บันทึกและลงบัญชี/i })).toBeInTheDocument();
     });
 
-    it('shows ส่งให้อนุมัติ instead of บันทึก & POST when maker-checker is enabled', () => {
+    it('shows ส่งให้อนุมัติ instead of บันทึกและลงบัญชี when maker-checker is enabled', () => {
       render(
         wrap(
           <InternalControlActionBar
@@ -102,7 +102,7 @@ describe('InternalControlActionBar', () => {
         ),
       );
       expect(screen.getByRole('button', { name: /ส่งให้อนุมัติ/i })).toBeInTheDocument();
-      expect(screen.queryByRole('button', { name: /บันทึก & POST/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /บันทึกและลงบัญชี/i })).not.toBeInTheDocument();
     });
 
     it('shows ต้องอนุมัติ badge under maker-checker', () => {
@@ -135,7 +135,7 @@ describe('InternalControlActionBar', () => {
           />,
         ),
       );
-      const postButton = screen.getByRole('button', { name: /บันทึก & POST/i });
+      const postButton = screen.getByRole('button', { name: /บันทึกและลงบัญชี/i });
       expect(postButton).toBeDisabled();
     });
   });
@@ -253,7 +253,7 @@ describe('InternalControlActionBar', () => {
   });
 
   describe('READY (maker-checker approver flow)', () => {
-    it('shows ปฏิเสธ + อนุมัติ & POST when viewer is approver', () => {
+    it('shows ปฏิเสธ + อนุมัติและลงบัญชี when viewer is approver', () => {
       render(
         wrap(
           <InternalControlActionBar
@@ -269,7 +269,7 @@ describe('InternalControlActionBar', () => {
         ),
       );
       expect(screen.getByRole('button', { name: /ปฏิเสธ/i })).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: /อนุมัติ & POST/i })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /อนุมัติและลงบัญชี/i })).toBeInTheDocument();
     });
 
     it('hides approver buttons when viewer is not approver', () => {
@@ -288,7 +288,7 @@ describe('InternalControlActionBar', () => {
         ),
       );
       expect(screen.queryByRole('button', { name: /ปฏิเสธ/i })).not.toBeInTheDocument();
-      expect(screen.queryByRole('button', { name: /อนุมัติ & POST/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /อนุมัติและลงบัญชี/i })).not.toBeInTheDocument();
     });
   });
 

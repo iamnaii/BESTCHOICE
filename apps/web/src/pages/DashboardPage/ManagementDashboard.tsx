@@ -1,3 +1,4 @@
+import { getReportDateRange } from '@/lib/date';
 import { useAuth } from '@/contexts/AuthContext';
 import { useQuery } from '@tanstack/react-query';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
@@ -138,9 +139,7 @@ export default function ManagementDashboard() {
   const { data: entityProfit, isError: entityProfitError } = useQuery<EntityProfit>({
     queryKey: ['dashboard-entity-profit'],
     queryFn: async () => {
-      const now = new Date();
-      const startDate = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
-      const endDate = now.toISOString().slice(0, 10);
+      const { startDate, endDate } = getReportDateRange('this_month');
       return (await api.get(`/reports/entity-profit?startDate=${startDate}&endDate=${endDate}`)).data;
     },
     enabled: user?.role === 'OWNER' || user?.role === 'FINANCE_MANAGER' || user?.role === 'ACCOUNTANT',

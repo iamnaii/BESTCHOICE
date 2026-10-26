@@ -1,4 +1,4 @@
-import { ReactNode } from 'react';
+import { ComponentProps, ReactNode, useRef } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -11,6 +11,7 @@ interface ModalProps {
   onClose: () => void;
   title: string;
   children: ReactNode;
+  onCloseAutoFocus?: ComponentProps<typeof DialogContent>['onCloseAutoFocus'];
   size?: 'sm' | 'md' | 'lg' | 'xl' | '2xl' | 'full';
 }
 
@@ -23,14 +24,20 @@ const sizeClasses = {
   'full': 'max-w-[95vw]',
 };
 
-export default function Modal({ isOpen, onClose, title, children, size = 'md' }: ModalProps) {
+export default function Modal({ isOpen, onClose, title, children, size = 'md', onCloseAutoFocus }: ModalProps) {
+  const returnFocus = useRef<HTMLElement | null>(null);
   return (
     <Dialog open={isOpen} onOpenChange={(open) => { if (!open) onClose(); }}>
-      <DialogContent className={sizeClasses[size]}>
+      <DialogContent
+        className={`${sizeClasses[size]} w-[calc(100%-1rem)] max-h-[calc(100dvh-1rem)] p-4 sm:p-6`}
+        aria-describedby={undefined}
+        onOpenAutoFocus={() => { returnFocus.current = document.activeElement instanceof HTMLElement ? document.activeElement : null; }}
+        onCloseAutoFocus={onCloseAutoFocus ?? ((event) => { event.preventDefault(); if (returnFocus.current?.isConnected) returnFocus.current.focus(); })}
+      >
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
         </DialogHeader>
-        <div className={`py-2 overflow-y-auto ${size === 'full' ? 'max-h-[90vh]' : 'max-h-[calc(100vh-10rem)]'}`}>{children}</div>
+        <div data-slot="modal-body" className={`-mx-2 min-h-0 px-2 py-2 overflow-y-auto ${size === 'full' ? 'max-h-[90dvh]' : 'max-h-[calc(100dvh-10rem)]'}`}>{children}</div>
       </DialogContent>
     </Dialog>
   );

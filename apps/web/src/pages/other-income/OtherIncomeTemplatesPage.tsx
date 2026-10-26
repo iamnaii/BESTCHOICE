@@ -37,7 +37,7 @@ export default function OtherIncomeTemplatesPage() {
   const deleteMutation = useMutation({
     mutationFn: (id: string) => otherIncomeApi.templates.remove(id),
     onSuccess: () => {
-      toast.success('ลบ template แล้ว');
+      toast.success("ลบแม่แบบแล้ว");
       queryClient.invalidateQueries({ queryKey: ['other-income-templates'] });
       setDeleteTarget(null);
     },
@@ -56,7 +56,7 @@ export default function OtherIncomeTemplatesPage() {
       <PageHeader
         title="Templates รายได้อื่น"
         action={
-          <button
+          <button data-ui-control="button"
             onClick={() => navigate('/other-income/new')}
             className="px-3 py-1.5 rounded-md border text-sm hover:bg-accent"
           >
@@ -71,14 +71,14 @@ export default function OtherIncomeTemplatesPage() {
             size={14}
             className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
           />
-          <input
+          <input aria-label="ค้นหาชื่อแม่แบบ"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="ค้นหาชื่อ template"
+            placeholder="ค้นหาชื่อแม่แบบ"
             className="w-full pl-9 pr-3 py-2 border rounded-md text-sm bg-background"
           />
         </div>
-        <button
+        <button data-ui-control="button"
           onClick={() => setFavoritesOnly((v) => !v)}
           className={`px-3 py-2 rounded-md border text-sm inline-flex items-center gap-1 ${
             favoritesOnly ? 'bg-warning/10 border-warning text-warning-strong' : ''
@@ -98,7 +98,7 @@ export default function OtherIncomeTemplatesPage() {
         {query.data?.length === 0 ? (
           <div className="text-center py-16 text-muted-foreground">
             <Inbox className="mx-auto mb-3 opacity-50" size={40} />
-            <p>ไม่มี Template — บันทึกจากเอกสารที่ POSTED แล้วเพื่อเริ่มต้น</p>
+            <p>ยังไม่มีแม่แบบ บันทึกจากเอกสารที่ลงบัญชีแล้วเพื่อเริ่มต้น</p>
           </div>
         ) : (
           <ul className="space-y-2">
@@ -109,7 +109,7 @@ export default function OtherIncomeTemplatesPage() {
                     updateMutation.mutate({ id: t.id, data: { isFavorite: !t.isFavorite } })
                   }
                   className="mt-1"
-                  aria-label={t.isFavorite ? 'ถอด template ออกจากรายการที่ชอบ' : 'เพิ่ม template เข้ารายการที่ชอบ'}
+                  aria-label={t.isFavorite ? "ถอด แม่แบบ ออกจากรายการที่ชอบ" : "เพิ่มแม่แบบ เข้ารายการที่ชอบ"}
                 >
                   <Star
                     size={16}
@@ -126,25 +126,25 @@ export default function OtherIncomeTemplatesPage() {
                   </div>
                 </div>
                 <div className="flex gap-1">
-                  <button
+                  <button data-ui-control="button"
                     onClick={() => applyTemplateMutation.mutate(t.id)}
                     className="px-3 py-1.5 rounded-md bg-primary text-primary-foreground text-xs inline-flex items-center gap-1 hover:bg-primary/90"
                   >
                     <PlayCircle size={12} /> ใช้
                   </button>
-                  <button
+                  <button data-ui-control="button" data-ui-icon="true"
                     onClick={() => setRenameTarget({ id: t.id, name: t.name })}
                     className="p-1.5 rounded-md border hover:bg-accent"
                     title="แก้ชื่อ"
-                    aria-label="แก้ชื่อ template"
+                    aria-label="แก้ชื่อแม่แบบ"
                   >
                     <Edit3 size={12} />
                   </button>
-                  <button
+                  <button data-ui-control="button" data-ui-icon="true"
                     onClick={() => setDeleteTarget({ id: t.id, name: t.name })}
                     className="p-1.5 rounded-md border hover:bg-destructive/10 text-destructive"
                     title="ลบ"
-                    aria-label="ลบ template"
+                    aria-label="ลบแม่แบบ"
                   >
                     <Trash2 size={12} />
                   </button>

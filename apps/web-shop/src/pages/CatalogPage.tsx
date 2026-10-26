@@ -71,9 +71,7 @@ function Pill({ active, onClick, children }: PillProps) {
       aria-pressed={active}
       onClick={onClick}
       className={cn(
-        // Guide chip: white, #DCE7E3 border, green-ink text, Prompt medium;
-        // active flips to the solid deep green.
-        'px-4 py-1.5 font-head text-sm font-medium rounded-full transition-colors leading-snug whitespace-nowrap',
+        'min-h-11 px-4 py-1.5 font-head text-sm font-medium rounded-full transition-colors leading-snug whitespace-nowrap',
         active
           ? 'bg-ink text-ink-foreground font-semibold'
           : 'bg-card text-accent-foreground ring-1 ring-inset ring-border hover:bg-muted',
@@ -244,11 +242,11 @@ export default function CatalogPage() {
   const activeSortLabel = SORTS.find((s) => s.v === sort)?.label ?? '';
 
   return (
-    <ShopLayout>
+    <ShopLayout mobileFloatingContact={false}>
       <Container className="py-4 md:py-6">
         {/* Hero plate — a white card on the tinted canvas, same family as the
             product cards rather than a full-bleed band. */}
-        <section className="rounded-[28px] md:rounded-[40px] bg-card px-6 py-8 md:px-10 md:py-11 shadow-md border border-border">
+        <section className="rounded-[28px] md:rounded-[40px] bg-card px-4 py-5 sm:px-6 sm:py-8 md:px-10 md:py-11 shadow-md border border-border">
           <div className="flex items-center gap-6 md:gap-10">
             <div className="hidden sm:block shrink-0">
               <svg width="112" height="112" viewBox="0 0 118 118" aria-hidden="true">
@@ -310,7 +308,7 @@ export default function CatalogPage() {
                 type="button"
                 onClick={() => updateFilters({ ...filters, deviceOrigin: undefined })}
                 aria-label={`ล้างตัวกรอง${deviceOriginLabel(filters.deviceOrigin)}`}
-                className="mb-3 inline-flex items-center gap-2 rounded-full bg-emerald-50 px-3 py-1.5 font-head text-sm text-emerald-800"
+                className="mb-3 min-h-11 inline-flex items-center gap-2 rounded-full bg-emerald-50 px-3 py-1.5 font-head text-sm text-emerald-800"
               >
                 {deviceOriginLabel(filters.deviceOrigin)}
                 <X className="size-3.5" aria-hidden />
@@ -324,7 +322,7 @@ export default function CatalogPage() {
               <div
                 role="group"
                 aria-label="รูปแบบราคา"
-                className="flex rounded-full bg-muted p-0.5 ring-1 ring-inset ring-border/70"
+                className="flex w-full sm:w-auto rounded-full bg-muted p-0.5 ring-1 ring-inset ring-border/70"
               >
                 {PRICE_MODES.map((m) => {
                   const Icon = m.icon;
@@ -336,7 +334,7 @@ export default function CatalogPage() {
                       aria-pressed={active}
                       onClick={() => setPriceMode(m.v)}
                       className={cn(
-                        'inline-flex items-center gap-1.5 px-3.5 py-1 font-head text-sm rounded-full leading-snug whitespace-nowrap transition-all',
+                        'min-h-11 flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 px-3.5 py-1 font-head text-sm rounded-full leading-snug whitespace-nowrap transition-all',
                         active
                           ? 'bg-white text-primary font-semibold shadow-sm'
                           : 'font-medium text-zinc-600 hover:text-primary',
@@ -372,7 +370,7 @@ export default function CatalogPage() {
                 <DialogTrigger asChild>
                   <button
                     type="button"
-                    className="lg:hidden inline-flex items-center gap-1.5 px-4 py-1.5 font-head text-sm rounded-full bg-card text-foreground ring-1 ring-inset ring-border leading-snug"
+                    className="min-h-11 lg:hidden inline-flex items-center gap-1.5 px-4 py-1.5 font-head text-sm rounded-full bg-card text-foreground ring-1 ring-inset ring-border leading-snug"
                   >
                     <SlidersHorizontal className="size-3.5" aria-hidden />
                     ตัวกรอง
@@ -396,14 +394,14 @@ export default function CatalogPage() {
                 <button
                   type="button"
                   onClick={clearSearch}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 font-head text-sm rounded-full bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition-colors leading-snug"
+                  className="min-h-11 inline-flex items-center gap-1.5 px-3 py-1.5 font-head text-sm rounded-full bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition-colors leading-snug"
                 >
                   ค้นหา: “{filters.search}”
                   <X className="size-3.5" aria-label="ล้างคำค้นหา" />
                 </button>
               )}
 
-              <div className="flex-1" />
+              <div className="hidden sm:block flex-1" />
 
               {/* Sort dropdown — listbox semantics for screen readers + ESC to
                  close (handled by effect). Outside-click closes via overlay. */}
@@ -414,7 +412,7 @@ export default function CatalogPage() {
                   aria-haspopup="listbox"
                   aria-expanded={sortOpen}
                   onClick={() => setSortOpen((o) => !o)}
-                  className="flex items-center gap-1.5 px-4 py-1.5 font-head text-sm rounded-full bg-card text-foreground ring-1 ring-inset ring-border hover:ring-foreground/25 transition-shadow leading-snug"
+                  className="min-h-11 flex items-center gap-1.5 px-4 py-1.5 font-head text-sm rounded-full bg-card text-foreground ring-1 ring-inset ring-border hover:ring-foreground/25 transition-shadow leading-snug"
                 >
                   <span className="text-muted-foreground">เรียง:</span>
                   <span>{activeSortLabel}</span>
@@ -448,7 +446,7 @@ export default function CatalogPage() {
                                 sortBtnRef.current?.focus();
                               }}
                               className={cn(
-                                'block w-full text-left px-3.5 py-2 font-head text-sm leading-snug',
+                                'min-h-11 sm:min-h-0 block w-full text-left px-3.5 py-2 font-head text-sm leading-snug',
                                 selected
                                   ? 'text-emerald-700 font-medium bg-emerald-50'
                                   : 'text-foreground hover:bg-muted',

@@ -38,7 +38,7 @@ export default function LandingNav({ onScrollTo }: LandingNavProps) {
               <button
                 key={item.section}
                 onClick={() => handleClick(item.section)}
-                className="text-sm text-white/70 hover:text-white transition-colors font-medium"
+                className="min-h-11 text-sm text-white/70 hover:text-white transition-colors font-medium"
               >
                 {item.label}
               </button>
@@ -49,7 +49,7 @@ export default function LandingNav({ onScrollTo }: LandingNavProps) {
           <div className="hidden md:flex items-center gap-3">
             <Link
               to="/login"
-              className="px-5 py-2 text-sm font-medium text-white bg-primary-600 hover:bg-primary-500 rounded-lg transition-colors"
+              className="min-h-11 inline-flex items-center px-5 py-2 text-sm font-medium text-white bg-primary-600 hover:bg-primary-500 rounded-lg transition-colors"
             >
               เข้าสู่ระบบ
             </Link>
@@ -60,7 +60,7 @@ export default function LandingNav({ onScrollTo }: LandingNavProps) {
             onClick={() => setMobileOpen(!mobileOpen)}
             aria-label={mobileOpen ? 'ปิดเมนู' : 'เปิดเมนู'}
             aria-expanded={mobileOpen}
-            className="md:hidden p-2 text-white/70 hover:text-white"
+            className="md:hidden size-11 inline-flex items-center justify-center p-2 text-white/70 hover:text-white"
           >
             <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               {mobileOpen ? (
@@ -81,14 +81,14 @@ export default function LandingNav({ onScrollTo }: LandingNavProps) {
               <button
                 key={item.section}
                 onClick={() => handleClick(item.section)}
-                className="block w-full text-left px-3 py-2.5 text-sm text-white/70 hover:text-white hover:bg-white/5 rounded-lg transition-colors"
+                className="min-h-11 block w-full text-left px-3 py-2.5 text-sm text-white/70 hover:text-white hover:bg-white/5 rounded-lg transition-colors"
               >
                 {item.label}
               </button>
             ))}
             <Link
               to="/login"
-              className="block w-full text-center mt-2 px-5 py-2.5 text-sm font-medium text-white bg-primary-600 hover:bg-primary-500 rounded-lg transition-colors"
+              className="min-h-11 flex items-center justify-center w-full text-center mt-2 px-5 py-2.5 text-sm font-medium text-white bg-primary-600 hover:bg-primary-500 rounded-lg transition-colors"
             >
               เข้าสู่ระบบ
             </Link>

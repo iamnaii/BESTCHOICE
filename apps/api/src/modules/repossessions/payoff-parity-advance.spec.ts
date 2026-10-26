@@ -68,6 +68,8 @@ describe('Payoff parity (เงินรับล่วงหน้าถัง�
       },
       chartOfAccount: { findMany: jest.fn().mockResolvedValue([]) },
       // preview ของ JP4 อ่านยอดในบัญชี — เงินของลูกค้ามีในบัญชีเท่าคอลัมน์
+      // PR4: advanceVatOutstanding อ่าน stamp จาก journalEntry — ไม่มีรายการที่ประทับในฟิกซ์เจอร์นี้
+      journalEntry: { findMany: jest.fn().mockResolvedValue([]) },
       journalLine: {
         findMany: jest.fn(
           ledgerLines({
@@ -182,6 +184,8 @@ describe('Payoff parity (เงินรับล่วงหน้าถัง�
         ),
       },
       payment: { findMany: jest.fn().mockResolvedValue([]) },
+      // PR4: advanceVatOutstanding อ่าน stamp จาก journalEntry — ไม่มีรายการที่ประทับในฟิกซ์เจอร์นี้
+      journalEntry: { findMany: jest.fn().mockResolvedValue([]) },
       journalLine: {
         findMany: jest.fn(
           ledgerLines({

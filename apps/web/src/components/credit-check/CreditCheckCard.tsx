@@ -99,7 +99,7 @@ export default function CreditCheckCard({
           {cc.bankName && <span className="text-xs text-muted-foreground">ธนาคาร: {cc.bankName}</span>}
           <span className="text-xs text-muted-foreground">{formatDateShort(cc.createdAt)}</span>
           {cc.statementMonths > 0 && (
-            <span className="text-xs text-muted-foreground">Statement {cc.statementMonths} เดือน</span>
+            <span className="text-xs text-muted-foreground">รายการเดินบัญชี {cc.statementMonths} เดือน</span>
           )}
           {cc.contract && (
             <span className="text-xs text-primary">สัญญา: {cc.contract.contractNumber}</span>
@@ -229,7 +229,7 @@ export default function CreditCheckCard({
 
       {cc.statementFiles.length > 0 && (
         <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-xs text-muted-foreground">ไฟล์ Statement:</span>
+          <span className="text-xs text-muted-foreground">ไฟล์ รายการเดินบัญชี:</span>
           {cc.statementFiles.map((url, i) => (
             <button
               key={i}

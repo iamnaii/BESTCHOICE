@@ -14,6 +14,13 @@ function openCalendar(label: string) {
 describe('ThaiDateInput — min / max', () => {
   afterEach(() => vi.useRealTimers());
 
+  it('opens the calendar from the focused field using the keyboard', () => {
+    render(<ThaiDateInput value="2026-09-13" onChange={vi.fn()} aria-label="วันที่สั่ง" />);
+    const input = screen.getByLabelText('วันที่สั่ง');
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(screen.getByRole('button', { name: 'วันนี้' })).toBeInTheDocument();
+  });
+
   it('disables calendar days before `min` and ignores clicks on them', () => {
     const onChange = vi.fn();
     render(<ThaiDateInput value="2026-09-13" onChange={onChange} min="2026-09-13" aria-label="วันที่คาดรับ" />);

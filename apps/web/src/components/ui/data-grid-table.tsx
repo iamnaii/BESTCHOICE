@@ -378,7 +378,7 @@ function DataGridTableRowSelect<TData>({ row, size }: { row: Row<TData>; size?: 
       <Checkbox
         checked={row.getIsSelected()}
         onCheckedChange={(value) => row.toggleSelected(!!value)}
-        aria-label="Select row"
+        aria-label="เลือกแถว"
         size={size ?? 'sm'}
         className="align-[inherit]"
       />
@@ -394,7 +394,7 @@ function DataGridTableRowSelectAll({ size }: { size?: 'sm' | 'md' | 'lg' }) {
       checked={table.getIsAllPageRowsSelected() || (table.getIsSomePageRowsSelected() && 'indeterminate')}
       disabled={isLoading || recordCount === 0}
       onCheckedChange={(value) => table.toggleAllPageRowsSelected(!!value)}
-      aria-label="Select all"
+      aria-label="เลือกทั้งหมด"
       size={size}
       className="align-[inherit]"
     />

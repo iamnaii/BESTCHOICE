@@ -1,3 +1,4 @@
+import ScreenTable from '@/components/ui/ScreenTable';
 import { useAccountingPermissions } from '@/hooks/useAccountingPermissions';
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router';
@@ -73,7 +74,6 @@ type StatusFilter = 'ALL' | 'IN_PROGRESS' | 'POSTED' | 'REVERSED';
 
 function StatusCard({
   label,
-  sub,
   icon,
   accent,
   value,
@@ -81,7 +81,6 @@ function StatusCard({
   onClick,
 }: {
   label: string;
-  sub: string;
   icon: React.ReactNode;
   accent: StatusAccent;
   value: number;
@@ -93,23 +92,18 @@ function StatusCard({
       type="button"
       onClick={onClick}
       aria-pressed={active}
-      className={`text-left rounded-xl border bg-card p-4 relative overflow-hidden transition-all hover:border-foreground/30 hover:bg-accent/30 ${
+      className={`min-w-0 text-left rounded-xl border bg-card p-3 sm:p-4 relative overflow-hidden transition-all hover:border-foreground/30 hover:bg-accent/30 ${
         active ? 'ring-2 ring-primary border-primary/40 bg-primary/5' : ''
       }`}
     >
       <span className={`absolute inset-x-0 top-0 h-1 ${ACCENT_BAR[accent]}`} />
-      <div className="flex items-start justify-between mb-3">
-        <div className="min-w-0">
-          <p className="text-sm font-semibold text-foreground leading-snug">{label}</p>
-          <p className="text-[10px] font-medium text-muted-foreground tracking-wider mt-0.5">
-            {sub}
-          </p>
-        </div>
-        <div className={`size-9 rounded-full flex items-center justify-center shrink-0 ${ACCENT_ICON[accent]}`}>
+      <p className="min-h-10 text-sm font-semibold text-foreground leading-snug">{label}</p>
+      <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+        <p className="max-w-full break-words text-2xl font-bold text-foreground tabular-nums">{value.toLocaleString()}</p>
+        <div aria-hidden="true" className={`ml-auto size-8 rounded-full flex items-center justify-center shrink-0 ${ACCENT_ICON[accent]}`}>
           {icon}
         </div>
       </div>
-      <p className="text-3xl font-bold font-mono text-foreground tabular-nums">{value}</p>
     </button>
   );
 }
@@ -228,14 +222,14 @@ export default function OtherIncomeListPage() {
   };
 
   return (
-    <div className="p-6 max-w-7xl mx-auto space-y-4">
+    <div className="max-w-7xl mx-auto space-y-4 sm:p-6">
       <ReopenedPeriodBanner />
       <PageHeader
         title="รายได้อื่น"
-        subtitle="จัดการเอกสารรับรู้รายได้อื่น (กลุ่ม 42-XXXX) — ดอกเบี้ยเงินฝาก, ค่าปรับ, รายได้หักค่าจ้าง ฯลฯ"
+        subtitle="บันทึกและติดตามรายได้อื่น เช่น ดอกเบี้ยเงินฝากและค่าปรับ"
         icon={<Receipt size={20} />}
         action={
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <Link
               to="/other-income/daily-sheet"
               className="inline-flex items-center gap-2 px-3 py-2 border rounded-lg text-sm font-medium hover:bg-accent transition-colors"
@@ -243,7 +237,7 @@ export default function OtherIncomeListPage() {
               <ChartBar size={16} />
               สรุปรายวัน
             </Link>
-            <button
+            <button data-ui-control="button"
               onClick={() => navigate('/other-income/new')}
               className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-semibold hover:bg-primary/90 transition-colors"
             >
@@ -258,7 +252,6 @@ export default function OtherIncomeListPage() {
       <div className="grid gap-3 mb-6 grid-cols-2 md:grid-cols-4">
         <StatusCard
           label="ทั้งหมด"
-          sub="ALL DOCS"
           icon={<FileText size={16} />}
           accent="primary"
           value={allCount}
@@ -267,7 +260,6 @@ export default function OtherIncomeListPage() {
         />
         <StatusCard
           label="ค้างดำเนินการ"
-          sub={makerCheckerEnabled ? 'DRAFT + READY' : 'DRAFT'}
           icon={<ClipboardCheck size={16} />}
           accent="warning"
           value={inProgressCount}
@@ -276,7 +268,6 @@ export default function OtherIncomeListPage() {
         />
         <StatusCard
           label="ลงบัญชีแล้ว"
-          sub="POSTED"
           icon={<CheckCircle2 size={16} />}
           accent="success"
           value={postedCount}
@@ -285,7 +276,6 @@ export default function OtherIncomeListPage() {
         />
         <StatusCard
           label="ยกเลิก"
-          sub="REVERSED"
           icon={<RotateCcw size={16} />}
           accent="muted"
           value={reversedCount}
@@ -298,7 +288,7 @@ export default function OtherIncomeListPage() {
       <div className="flex flex-wrap gap-3 mb-4">
         <div className="relative flex-1 min-w-[200px]">
           <Search size={14} className="absolute left-3 top-3 text-muted-foreground" />
-          <input
+          <input aria-label="ค้นหาเลขเอกสาร / คู่ค้า"
             type="text"
             value={q}
             onChange={(e) => { setQ(e.target.value); setPage(1); }}
@@ -321,7 +311,7 @@ export default function OtherIncomeListPage() {
         {/* Custom-range inputs: always rendered so users can type exact dates;
             the "ช่วงวันที่..." chip focuses the first input via DOM query. */}
         <div className="flex flex-wrap items-center gap-2 w-full">
-          <input
+          <input aria-label="วันที่เริ่ม"
             type="date"
             data-date-range-custom-start="true"
             value={startDate}
@@ -329,7 +319,7 @@ export default function OtherIncomeListPage() {
             className="border rounded-md px-3 py-2 text-sm bg-background"
             placeholder="วันที่เริ่ม"
           />
-          <input
+          <input aria-label="วันที่สิ้นสุด"
             type="date"
             value={endDate}
             onChange={(e) => { setEndDate(e.target.value); setPage(1); }}
@@ -351,7 +341,7 @@ export default function OtherIncomeListPage() {
             <div className="flex flex-col items-center justify-center py-16 text-center">
               <FileText size={40} className="text-muted-foreground mb-3 opacity-40" />
               <p className="text-muted-foreground text-sm">ไม่พบเอกสาร</p>
-              <button
+              <button data-ui-control="button"
                 onClick={() => navigate('/other-income/new')}
                 className="mt-4 inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-semibold hover:bg-primary/90"
               >
@@ -359,8 +349,8 @@ export default function OtherIncomeListPage() {
               </button>
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+            <div role="region" aria-label="รายการเอกสารรายได้อื่น" className="overflow-x-auto">
+              <ScreenTable className="w-full min-w-[64rem] text-sm [&_th]:whitespace-nowrap">
                 <thead>
                   <tr className="border-b bg-muted/30">
                     <th className="text-left px-4 py-3 font-medium text-muted-foreground text-xs">เลขเอกสาร</th>
@@ -381,33 +371,35 @@ export default function OtherIncomeListPage() {
                       className="border-b hover:bg-muted/20 cursor-pointer transition-colors"
                       onClick={() => navigate(`/other-income/${doc.id}`)}
                     >
-                      <td className="px-4 py-3 font-mono font-semibold text-primary">
+                      <td className="whitespace-nowrap px-4 py-3 font-mono font-semibold text-primary">
                         <span className="flex items-center gap-1">
                           {doc.isOverridden && (
                             <span
-                              title="POST ด้วย Override JV — ตรวจ audit log"
-                              aria-label="Override JV"
+                              title="ลงบัญชี ด้วย แก้ไขรายการบัญชี — ตรวจ ประวัติการดำเนินการ"
+                              aria-label="แก้ไขรายการบัญชี"
                             >
                               <Pencil className="size-3.5 inline text-warning-strong" />
                             </span>
                           )}
-                          {doc.docNumber}
+                          <Link to={`/other-income/${doc.id}`} onClick={event => event.stopPropagation()} className="inline-flex min-h-11 items-center rounded-sm hover:underline focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2">
+                            {doc.docNumber}
+                          </Link>
                           {/* W15 — visual marker for `-R` reversal docs in list view. */}
                           {doc.docNumber.endsWith('-R') && (
                             <span
                               className="ml-1 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-destructive/10 text-destructive"
                               title="ใบกลับรายการ"
-                              aria-label="Reversal"
+                              aria-label="กลับรายการ"
                             >
                               R
                             </span>
                           )}
                         </span>
                       </td>
-                      <td className="px-4 py-3 text-muted-foreground">
+                      <td className="whitespace-nowrap px-4 py-3 text-muted-foreground">
                         {fmtDate(doc.issueDate)}
                       </td>
-                      <td className="px-4 py-3">
+                      <td className="min-w-56 px-4 py-3">
                         {doc.counterpartyName ?? doc.customer?.name ?? (
                           <span className="text-muted-foreground">—</span>
                         )}
@@ -429,14 +421,14 @@ export default function OtherIncomeListPage() {
                       </td>
                       <td className="px-4 py-3 text-right">
                         {doc.status === 'DRAFT' && permissions.can('INCOME_CANCEL') && (
-                          <button
+                          <button data-ui-control="button"
                             type="button"
                             onClick={(e) => {
                               e.stopPropagation();
                               setConfirmDeleteId(doc.id);
                               setConfirmDeleteNumber(doc.docNumber);
                             }}
-                            className="text-xs text-destructive hover:opacity-80 px-2 py-1 rounded hover:bg-destructive/10"
+                            className="min-h-11 min-w-11 text-xs text-destructive hover:opacity-80 px-2 py-1 rounded hover:bg-destructive/10"
                           >
                             ลบ
                           </button>
@@ -445,7 +437,7 @@ export default function OtherIncomeListPage() {
                     </tr>
                   ))}
                 </tbody>
-              </table>
+              </ScreenTable>
             </div>
           )}
         </div>
@@ -464,7 +456,7 @@ export default function OtherIncomeListPage() {
         open={confirmDeleteId !== null}
         onOpenChange={(open) => { if (!open) setConfirmDeleteId(null); }}
         title="ลบฉบับร่าง"
-        description={`ต้องการลบร่างเอกสาร ${confirmDeleteNumber}? การดำเนินการนี้ไม่สามารถยกเลิกได้`}
+        description={`ต้องการลบร่างเอกสาร ${confirmDeleteNumber}? เจ้าของกู้คืนได้จากถังขยะ (ตั้งค่า › ระบบ)`}
         confirmLabel="ลบ"
         variant="destructive"
         loading={deleteMutation.isPending}

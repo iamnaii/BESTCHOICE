@@ -1,3 +1,5 @@
+import { NumberInput } from '@/components/ui/NumberInput';
+import { formControlClass } from '@/components/ui/form-styles';
 import { useState } from 'react';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -10,6 +12,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import AddressForm, { AddressData, emptyAddress, composeAddress, deserializeAddress } from '@/components/ui/AddressForm';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { getStatusBadgeProps, enabledStatusMap } from '@/lib/status-badges';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { CashAccountSelect, SHOP_CASH_ACCOUNT_CODES } from '@/components/CashAccountSelect';
@@ -161,20 +164,20 @@ export default function BranchesPage() {
       label: '',
       render: (b: Branch) =>
         user?.role === 'OWNER' ? (
-          <div className="flex gap-2">
-            <button
+          <div className="flex flex-wrap gap-2 min-w-36">
+            <Button variant="ghost" size="sm"
               onClick={() => openEdit(b)}
-              className="text-primary hover:text-primary/80 text-sm font-medium"
+              className="text-primary"
             >
               แก้ไข
-            </button>
+            </Button>
             {!b.isMainWarehouse && (
-              <button
+              <Button variant="ghost" size="sm"
                 onClick={() => setConfirmDialog({ open: true, message: `ตั้ง "${b.name}" เป็นคลังกลาง?`, action: () => setMainWarehouseMutation.mutate(b.id) })}
-                className="text-primary hover:text-primary/80 text-sm font-medium"
+                className="text-primary"
               >
                 ตั้งเป็นคลังกลาง
-              </button>
+              </Button>
             )}
           </div>
         ) : null,
@@ -188,7 +191,7 @@ export default function BranchesPage() {
         subtitle={`ทั้งหมด ${branches.length} สาขา`}
         action={
           user?.role === 'OWNER' ? (
-            <button
+            <button data-ui-control="button"
               onClick={openCreate}
               className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors"
             >
@@ -206,7 +209,7 @@ export default function BranchesPage() {
           onRetry={refetch}
           errorTitle="ไม่สามารถโหลดรายชื่อสาขาได้"
         >
-          <DataTable columns={columns} data={branches} isLoading={isLoading} />
+          <DataTable embedded columns={columns} data={branches} isLoading={isLoading} />
         </QueryBoundary>
       </Card>
 
@@ -235,22 +238,24 @@ export default function BranchesPage() {
                   </div>
                   <div className="space-y-4">
                     <div>
-                      <label className="block text-xs font-medium text-foreground mb-1.5">ชื่อสาขา <span className="text-destructive">*</span></label>
+                      <label htmlFor="branch-name" className="block text-xs font-medium text-foreground mb-1.5">ชื่อสาขา <span className="text-destructive">*</span></label>
                       <input
                         type="text"
+                        id="branch-name"
                         value={form.name}
                         onChange={(e) => setForm({ ...form, name: e.target.value })}
-                        className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20"
+                        className={formControlClass}
                         required
                       />
                     </div>
                     <div>
-                      <label className="block text-xs font-medium text-foreground mb-1.5">โทรศัพท์</label>
+                      <label htmlFor="branch-phone" className="block text-xs font-medium text-foreground mb-1.5">โทรศัพท์</label>
                       <input
                         type="text"
+                        id="branch-phone"
                         value={form.phone}
                         onChange={(e) => setForm({ ...form, phone: e.target.value })}
-                        className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20"
+                        className={formControlClass}
                       />
                     </div>
                     {editingBranch && (
@@ -281,14 +286,13 @@ export default function BranchesPage() {
                         <label htmlFor="branch-cash-float" className="block text-xs font-medium text-foreground mb-1.5">
                           เงินทอนตั้งต้นของลิ้นชัก (บาท)
                         </label>
-                        <input
+                        <NumberInput step="any" unstyled
                           id="branch-cash-float"
-                          type="text"
                           inputMode="decimal"
                           value={form.shopCashFloat}
                           onChange={(e) => setForm({ ...form, shopCashFloat: e.target.value })}
                           placeholder="เช่น 2000"
-                          className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm tabular-nums"
+                          className={formControlClass}
                         />
                         <p className={`mt-1.5 text-xs ${floatInvalid ? 'text-destructive' : 'text-muted-foreground'}`}>
                           {floatInvalid
@@ -302,7 +306,7 @@ export default function BranchesPage() {
                         <div>
                           <div className="text-sm font-medium text-foreground">เปิดใช้งานสาขา</div>
                           <div className="text-xs text-muted-foreground">
-                            ปิดเพื่อซ่อนจาก dropdown และหน้าสต็อก (ข้อมูลเดิมยังคงอยู่)
+                            ปิดเพื่อซ่อนจาก รายการเลือก และหน้าสต็อก (ข้อมูลเดิมยังคงอยู่)
                           </div>
                         </div>
                         <input
@@ -330,14 +334,14 @@ export default function BranchesPage() {
                 </div>
               </div>
               <div className="sticky bottom-0 bg-background/95 backdrop-blur-xs border-t px-6 py-4 flex justify-end gap-3 shrink-0">
-                <button
+                <button data-ui-control="button"
                   type="button"
                   onClick={closeModal}
                   className="px-6 py-2.5 text-sm border border-input rounded-lg hover:bg-muted transition-colors"
                 >
                   ยกเลิก
                 </button>
-                <button
+                <button data-ui-control="button"
                   type="submit"
                   disabled={saveMutation.isPending || floatInvalid}
                   className="px-6 py-2.5 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50 font-semibold transition-colors shadow-sm"

@@ -1,3 +1,4 @@
+import { NumberInput } from '@/components/ui/NumberInput';
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { CHAT_WORK_FLAGS, type ChatWorkFlag } from '@installment/shared';
@@ -83,9 +84,8 @@ function SettingsForm({ initial, onClose }: { initial: Settings; onClose: () => 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <label>
           เตือนผู้ดูแลเมื่อรอ (นาที)
-          <input
+          <NumberInput unstyled
             className="mt-1 min-h-11 w-full rounded-md border bg-background px-3"
-            type="number"
             min={1}
             max={1440}
             required
@@ -95,9 +95,8 @@ function SettingsForm({ initial, onClose }: { initial: Settings; onClose: () => 
         </label>
         <label>
           เตือนหัวหน้าเมื่อรอ (นาที)
-          <input
+          <NumberInput unstyled
             className="mt-1 min-h-11 w-full rounded-md border bg-background px-3"
-            type="number"
             min={owner}
             max={1440}
             required

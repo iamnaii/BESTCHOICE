@@ -1,3 +1,4 @@
+import ScreenTable from '@/components/ui/ScreenTable';
 import { CalendarClock, Info } from 'lucide-react';
 import QueryBoundary from '@/components/QueryBoundary';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
@@ -118,7 +119,7 @@ export function AgingTab({
             </CardHeader>
             <CardContent className="p-0">
               <div className="overflow-x-auto">
-                <table className="w-full text-sm leading-snug">
+                <ScreenTable className="w-full text-sm leading-snug">
                   <thead className="bg-muted/50">
                     <tr>
                       <th className="text-left p-3 font-medium text-muted-foreground">
@@ -258,7 +259,7 @@ export function AgingTab({
                       })
                     )}
                   </tbody>
-                </table>
+                </ScreenTable>
               </div>
             </CardContent>
           </Card>

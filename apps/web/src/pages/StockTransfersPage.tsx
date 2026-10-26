@@ -1,4 +1,6 @@
-import { useState, useMemo } from 'react';
+import ScreenTable from '@/components/ui/ScreenTable';
+import { NativeSelect } from '@/components/ui/native-select';
+import { useId as useUiFieldId, useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router';
 import { toast } from 'sonner';
@@ -53,6 +55,7 @@ const tabs: { key: TabKey; label: string }[] = [
 ];
 
 export default function StockTransfersPage() {
+  const uiFieldId = useUiFieldId();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -307,7 +310,7 @@ export default function StockTransfersPage() {
         subtitle="โอนออก ตรวจรับเข้า และดูประวัติทั้งหมด"
         action={
           transfers.length > 0 && (
-            <button
+            <button data-ui-control="button"
               onClick={async () => {
                 try {
                   await exportToExcel({
@@ -348,7 +351,7 @@ export default function StockTransfersPage() {
       <div className="mb-5 border-b border-border/60">
         <nav className="-mb-px flex gap-1">
           {tabs.map((tab) => (
-            <button
+            <button data-ui-control="button"
               key={tab.key}
               onClick={() => goToTab(tab.key)}
               className={clsx(
@@ -373,7 +376,7 @@ export default function StockTransfersPage() {
       {activeTab === 'outgoing' && (
         <div>
           <div className="mb-4">
-            <select
+            <NativeSelect wrapperClassName="max-w-full w-auto" aria-label="สถานะ"
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
               className="px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
@@ -383,7 +386,7 @@ export default function StockTransfersPage() {
               <option value="CONFIRMED">รับแล้ว</option>
               <option value="REJECTED">ปฏิเสธ</option>
               <option value="">ทั้งหมด</option>
-            </select>
+            </NativeSelect>
           </div>
 
           <QueryBoundary
@@ -441,7 +444,7 @@ export default function StockTransfersPage() {
                       </div>
                       <div className="flex gap-2 shrink-0" role="presentation" onClick={(e) => e.stopPropagation()}>
                         {batch.status === 'PENDING' && (
-                          <button
+                          <button data-ui-control="button"
                             onClick={() => {
                               setPendingShipBatch(batch.items);
                               setShippingNote('');
@@ -454,7 +457,7 @@ export default function StockTransfersPage() {
                           </button>
                         )}
                         {batch.status === 'IN_TRANSIT' && (
-                          <button
+                          <button data-ui-control="button"
                             onClick={() => openSlipModal(batch.items)}
                             className="px-3 py-1 bg-primary text-primary-foreground rounded text-xs font-medium hover:bg-primary/90"
                           >
@@ -467,7 +470,7 @@ export default function StockTransfersPage() {
                     {/* Expanded Product List */}
                     {isExpanded && (
                       <div className="border-t border-border">
-                        <table className="w-full text-sm">
+                        <ScreenTable className="w-full text-sm">
                           <thead>
                             <tr className="bg-muted/40">
                               <th className="px-4 py-2.5 text-left text-xs font-semibold text-muted-foreground w-8">#</th>
@@ -510,7 +513,7 @@ export default function StockTransfersPage() {
                               );
                             })}
                           </tbody>
-                        </table>
+                        </ScreenTable>
                         {/* Batch footer info */}
                         <div className="px-4 py-2 bg-muted text-xs text-muted-foreground flex gap-4 flex-wrap">
                           {batch.dispatchedBy && <span>จัดส่งโดย: {batch.dispatchedBy.name}</span>}
@@ -533,7 +536,7 @@ export default function StockTransfersPage() {
       {activeTab === 'incoming' && (
         <div>
           <div className="mb-4">
-            <select
+            <NativeSelect wrapperClassName="max-w-full w-auto" aria-label="สาขา"
               value={selectedBranch}
               onChange={(e) => setSelectedBranch(e.target.value)}
               className="px-3 py-2 border border-input rounded-lg text-sm"
@@ -542,7 +545,7 @@ export default function StockTransfersPage() {
               {(branches || []).map((b: { id: string; name: string }) => (
                 <option key={b.id} value={b.id}>{b.name}</option>
               ))}
-            </select>
+            </NativeSelect>
           </div>
 
           {!selectedBranch ? (
@@ -591,7 +594,7 @@ export default function StockTransfersPage() {
                         {batch.dispatchedAt && <span>ส่ง: {formatDateShort(batch.dispatchedAt)}</span>}
                       </div>
                       <div className="shrink-0" role="presentation" onClick={(e) => e.stopPropagation()}>
-                        <button
+                        <button data-ui-control="button"
                           onClick={() => openBatchReceiveModal(batch.items)}
                           className="px-3 py-1.5 bg-primary text-primary-foreground rounded text-xs font-medium hover:bg-primary/90"
                         >
@@ -603,7 +606,7 @@ export default function StockTransfersPage() {
                     {/* Expanded Product List */}
                     {isExpanded && (
                       <div className="border-t border-warning/10">
-                        <table className="w-full text-sm">
+                        <ScreenTable className="w-full text-sm">
                           <thead>
                             <tr className="bg-warning/5 dark:bg-warning/10">
                               <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground w-8">#</th>
@@ -630,7 +633,7 @@ export default function StockTransfersPage() {
                               </tr>
                             ))}
                           </tbody>
-                        </table>
+                        </ScreenTable>
                         {batch.trackingNote && (
                           <div className="px-4 py-2 bg-warning/5 dark:bg-warning/10 text-xs text-primary">
                             หมายเหตุจัดส่ง: {batch.trackingNote}
@@ -650,7 +653,7 @@ export default function StockTransfersPage() {
       {activeTab === 'history' && (
         <div>
           <div className="mb-4">
-            <select
+            <NativeSelect wrapperClassName="max-w-full w-auto" aria-label="สาขา"
               value={selectedBranch}
               onChange={(e) => setSelectedBranch(e.target.value)}
               className="px-3 py-2 border border-input rounded-lg text-sm"
@@ -659,14 +662,14 @@ export default function StockTransfersPage() {
               {(branches || []).map((b: { id: string; name: string }) => (
                 <option key={b.id} value={b.id}>{b.name}</option>
               ))}
-            </select>
+            </NativeSelect>
           </div>
 
           {historyList.length === 0 ? (
             <div className="text-center py-10 text-muted-foreground text-sm">ยังไม่มีประวัติการรับ</div>
           ) : (
             <div className="rounded-xl border border-border/60 overflow-hidden shadow-card">
-              <table className="w-full text-sm">
+              <ScreenTable className="w-full text-sm">
                 <thead className="bg-muted">
                   <tr>
                     <th className="text-left px-4 py-3 font-medium text-muted-foreground">สินค้า</th>
@@ -696,7 +699,7 @@ export default function StockTransfersPage() {
                     </tr>
                   ))}
                 </tbody>
-              </table>
+              </ScreenTable>
             </div>
           )}
         </div>
@@ -784,7 +787,7 @@ export default function StockTransfersPage() {
               )}
 
               <div className="border-t border-border pt-4">
-                <button
+                <button data-ui-control="button"
                   onClick={() => setIsSlipModalOpen(false)}
                   className="w-full py-2.5 bg-muted text-foreground rounded-lg font-medium hover:bg-muted transition-colors"
                 >
@@ -834,7 +837,7 @@ export default function StockTransfersPage() {
                       </div>
                       {/* PASS/REJECT toggle */}
                       <div className="flex gap-1 shrink-0">
-                        <button
+                        <button data-ui-control="button"
                           type="button"
                           onClick={() => updateItemStatus(t.id, 'status', 'PASS')}
                           className={`px-2.5 py-1 rounded text-xs font-medium transition-colors ${
@@ -843,7 +846,7 @@ export default function StockTransfersPage() {
                         >
                           ผ่าน
                         </button>
-                        <button
+                        <button data-ui-control="button"
                           type="button"
                           onClick={() => updateItemStatus(t.id, 'status', 'REJECT')}
                           className={`px-2.5 py-1 rounded text-xs font-medium transition-colors ${
@@ -905,8 +908,8 @@ export default function StockTransfersPage() {
 
             {/* Batch notes */}
             <div>
-              <label className="block text-sm font-medium text-foreground mb-1">หมายเหตุรวม</label>
-              <textarea
+              <label htmlFor={`${uiFieldId}-1`} className="block text-sm font-medium text-foreground mb-1">หมายเหตุรวม</label>
+              <textarea id={`${uiFieldId}-1`}
                 value={batchReceiveNotes}
                 onChange={(e) => setBatchReceiveNotes(e.target.value)}
                 className="w-full px-3 py-2 border border-input rounded-lg text-sm"
@@ -924,7 +927,7 @@ export default function StockTransfersPage() {
                   ไม่ผ่าน: <span className="text-destructive font-medium">{Object.values(itemStatuses).filter((s) => s.status === 'REJECT').length}</span>
                 </span>
               </div>
-              <button
+              <button data-ui-control="button"
                 type="submit"
                 disabled={batchSubmitting}
                 className="w-full py-2.5 bg-primary text-primary-foreground rounded-lg font-medium hover:bg-primary/90 disabled:opacity-50"
@@ -945,8 +948,8 @@ export default function StockTransfersPage() {
       >
         <div className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-foreground mb-1">หมายเหตุการจัดส่ง (ถ้ามี)</label>
-            <textarea
+            <label htmlFor={`${uiFieldId}-2`} className="block text-sm font-medium text-foreground mb-1">หมายเหตุการจัดส่ง (ถ้ามี)</label>
+            <textarea id={`${uiFieldId}-2`}
               value={shippingNote}
               onChange={(e) => setShippingNote(e.target.value)}
               className="w-full px-3 py-2 border border-input rounded-lg text-sm"
@@ -955,7 +958,7 @@ export default function StockTransfersPage() {
             />
           </div>
           <div className="flex gap-2 justify-end">
-            <button
+            <button data-ui-control="button"
               type="button"
               onClick={() => setShowShipModal(false)}
               disabled={dispatchMutation.isPending}
@@ -963,7 +966,7 @@ export default function StockTransfersPage() {
             >
               ยกเลิก
             </button>
-            <button
+            <button data-ui-control="button"
               type="button"
               onClick={() => {
                 pendingShipBatch.forEach((item) => {

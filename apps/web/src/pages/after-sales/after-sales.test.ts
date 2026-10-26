@@ -17,8 +17,11 @@ import {
   afterSalesKeys,
   primaryAction,
   secondaryActions,
+  DEVICE_SWAP_CLOSED_TEXT,
   stripLineTag,
   canPrintHandover,
+  canPrintCashExchangeDocs,
+  CASE_DOC_LABEL,
   type AfterSalesOutcome,
   type CaseDetail,
 } from './after-sales';
@@ -66,6 +69,7 @@ function detail(over: Partial<CaseDetail> = {}): CaseDetail {
     saleId: null,
     replacementProductId: null,
     replacementContractId: null,
+    replacementSaleId: null,
     repairTicketId: null,
     exchangeRequestId: null,
   };
@@ -292,6 +296,7 @@ describe('Task 11: primaryAction — ปุ่มหลักตาม outcome �
         approverRole: 'BRANCH_MANAGER',
         oldProduct: null,
         newProduct: null,
+        sale: null, // PR 5 — เคสผ่อนไม่มีใบขาย
         replacementContract: { id: 'ct-2', contractNumber: 'CT-2026-0099', status: 'DRAFT' },
         requestedBy: null,
       },
@@ -318,6 +323,7 @@ describe('Task 11: primaryAction — ปุ่มหลักตาม outcome �
       approverRole: 'BRANCH_MANAGER' as const,
       oldProduct: null,
       newProduct: null,
+      sale: null, // PR 5 — เคสผ่อนไม่มีใบขาย
       replacementContract: { id: 'ct-2', contractNumber: 'CT-2026-0099', status: 'ACTIVE' },
       requestedBy: null,
     };
@@ -340,6 +346,7 @@ describe('Task 11: primaryAction — ปุ่มหลักตาม outcome �
       replacementContractId: 'ct-2',
       exchange: {
         ...exchange,
+        sale: null, // PR 5 — เคสผ่อนไม่มีใบขาย
         replacementContract: { ...exchange.replacementContract, status: 'CANCELED' },
       },
     });
@@ -362,55 +369,44 @@ describe('Task 11: primaryAction — ปุ่มหลักตาม outcome �
     }
   });
 
-  it('PRICED_EXCHANGE AWAITING_APPROVAL tier REVIEW (approverRole=BRANCH_MANAGER) → OWNER และ BM ได้ "อนุมัติ" ทั้งคู่; SALES/FM/ACCOUNTANT ได้ข้อความรอ', () => {
-    const d = detail({
+  it('คำตัดสินเจ้าของ 2026-10-06: PRICED_EXCHANGE AWAITING_APPROVAL → ไม่มีปุ่ม "อนุมัติ" ทุก role ทุก tier/mode · ทุก role เห็นข้อความปิดใช้ที่ชี้ทาง "ปฏิเสธ" · คำขอที่ผูกไม่สำเร็จยัง null', () => {
+    const exchangeBase = {
+      kind: 'PRICED' as const,
+      mode: 'PRICED' as const,
+      approvalTier: 'REVIEW' as const,
+      requestStatus: 'PENDING' as const,
+      buybackPrice: '8500.00',
+      ncvSnapshot: '10000.00',
+      approverRole: 'BRANCH_MANAGER' as const,
+      oldProduct: null,
+      newProduct: null,
+      sale: null, // PR 5 — เคสผ่อนไม่มีใบขาย
+      replacementContract: null,
+      requestedBy: null,
+    };
+    const variants = [
+      { approvalTier: 'REVIEW' as const, approverRole: 'BRANCH_MANAGER' as const },
+      { approvalTier: 'ESCALATE' as const, approverRole: 'OWNER' as const },
+      { approvalTier: 'AUTO' as const, approverRole: 'BRANCH_MANAGER' as const, mode: 'MEMO' as const },
+    ];
+    for (const v of variants) {
+      const d = detail({
+        outcome: 'PRICED_EXCHANGE',
+        stage: 'AWAITING_APPROVAL',
+        exchange: { ...exchangeBase, ...v },
+      });
+      for (const role of ALL_ROLES) {
+        expect(primaryAction(d, role)).toEqual({ waitingText: DEVICE_SWAP_CLOSED_TEXT });
+      }
+    }
+    expect(DEVICE_SWAP_CLOSED_TEXT).toMatch(/ปฏิเสธ/);
+    // residual sweep — เคสที่ผูกคำขอไม่สำเร็จไม่มีปุ่ม/ข้อความ (ทางออกเดียวคือ "ยกเลิกเคส" ปุ่มรอง)
+    const stuck = detail({
       outcome: 'PRICED_EXCHANGE',
       stage: 'AWAITING_APPROVAL',
-      exchange: {
-        kind: 'PRICED',
-        mode: 'PRICED',
-        approvalTier: 'REVIEW',
-        requestStatus: 'PENDING',
-        buybackPrice: '8500.00',
-        ncvSnapshot: '10000.00',
-        approverRole: 'BRANCH_MANAGER',
-        oldProduct: null,
-        newProduct: null,
-        replacementContract: null,
-        requestedBy: null,
-      },
+      exchange: { ...exchangeBase, requestStatus: null, approvalTier: null },
     });
-    expect(primaryAction(d, 'OWNER')).toEqual({ label: 'อนุมัติ', dialog: 'approve' });
-    expect(primaryAction(d, 'BRANCH_MANAGER')).toEqual({ label: 'อนุมัติ', dialog: 'approve' });
-    // P-M.2 (fix round 1): SALES/FM/ACCOUNTANT ล้วนเห็นข้อความรอ ไม่ใช่แค่ SALES
-    for (const role of ['SALES', 'FINANCE_MANAGER', 'ACCOUNTANT']) {
-      expect(primaryAction(d, role)).toEqual({ waitingText: 'รอ ผจก.สาขา อนุมัติ' });
-    }
-  });
-
-  it('PRICED_EXCHANGE AWAITING_APPROVAL tier ESCALATE (approverRole=OWNER) → BM ไม่มีปุ่ม มี "รอ เจ้าของเท่านั้น อนุมัติ"; OWNER ได้ "อนุมัติ"', () => {
-    const d = detail({
-      outcome: 'PRICED_EXCHANGE',
-      stage: 'AWAITING_APPROVAL',
-      exchange: {
-        kind: 'PRICED',
-        mode: 'PRICED',
-        approvalTier: 'ESCALATE',
-        requestStatus: 'PENDING',
-        buybackPrice: '4000.00',
-        ncvSnapshot: '10000.00',
-        approverRole: 'OWNER',
-        oldProduct: null,
-        newProduct: null,
-        replacementContract: null,
-        requestedBy: null,
-      },
-    });
-    // P-M.2 (fix round 1): BM/SALES/FM/ACCOUNTANT ทั้งหมดไม่ใช่ OWNER → เห็นข้อความรอเดียวกัน
-    for (const role of ['BRANCH_MANAGER', 'SALES', 'FINANCE_MANAGER', 'ACCOUNTANT']) {
-      expect(primaryAction(d, role)).toEqual({ waitingText: 'รอ เจ้าของเท่านั้น อนุมัติ' });
-    }
-    expect(primaryAction(d, 'OWNER')).toEqual({ label: 'อนุมัติ', dialog: 'approve' });
+    for (const role of ALL_ROLES) expect(primaryAction(stuck, role)).toBeNull();
   });
 
   it('I4: PRICED_EXCHANGE READY_FOR_PICKUP สัญญาใหม่ DRAFT → ทางเดียวกับ SAME_MODEL: OWNER/BM/FM ได้ลิงก์ปุ่มหลัก · SALES/ACCOUNTANT ได้ข้อความรอ', () => {
@@ -428,6 +424,7 @@ describe('Task 11: primaryAction — ปุ่มหลักตาม outcome �
         approverRole: 'BRANCH_MANAGER',
         oldProduct: null,
         newProduct: null,
+        sale: null, // PR 5 — เคสผ่อนไม่มีใบขาย
         replacementContract: { id: 'ct-3', contractNumber: 'CT-2026-0100', status: 'DRAFT' },
         requestedBy: null,
       },
@@ -457,9 +454,97 @@ describe('Task 11: primaryAction — ปุ่มหลักตาม outcome �
     }
   });
 
-  it('CASH_SAME_MODEL_EXCHANGE — ยังไม่มีปุ่มใดๆ (engine ปฏิเสธเมื่อไม่มีสัญญาผ่อน)', () => {
-    const d = detail({ outcome: 'CASH_SAME_MODEL_EXCHANGE', stage: 'AWAITING_APPROVAL' });
-    for (const role of ALL_ROLES) expect(primaryAction(d, role)).toBeNull();
+  describe('PR 5 — CASH_SAME_MODEL_EXCHANGE', () => {
+    const cash = (over: Partial<CaseDetail> = {}) =>
+      detail({
+        source: 'CASH_SALE',
+        contractId: null,
+        saleId: 'sale-1',
+        outcome: 'CASH_SAME_MODEL_EXCHANGE',
+        stage: 'AWAITING_APPROVAL',
+        replacementProductId: 'p-new',
+        ...over,
+      });
+    it('AWAITING_APPROVAL → MGR "ยืนยันเปลี่ยนเครื่อง" (exchange-confirm) · อื่นรอ ผจก.', () => {
+      for (const role of ['OWNER', 'BRANCH_MANAGER'])
+        expect(primaryAction(cash(), role)).toEqual({
+          label: 'ยืนยันเปลี่ยนเครื่อง',
+          dialog: 'exchange-confirm',
+        });
+      for (const role of ['SALES', 'FINANCE_MANAGER', 'ACCOUNTANT'])
+        expect(primaryAction(cash(), role)).toEqual({ waitingText: 'รอ ผจก.สาขา ยืนยัน' });
+      expect(secondaryActions(cash(), 'BRANCH_MANAGER').map((a) => a.label)).toEqual([
+        'ปฏิเสธ (ใส่เหตุผล)',
+        "เปลี่ยนเป็น 'ซ่อม' แทน",
+      ]);
+    });
+    it('READY_FOR_PICKUP (replacementSaleId) → STAFF "ส่งมอบเครื่องทดแทน" (exchange-deliver) · FM/ACC ไม่มีปุ่ม · ไม่มีลิงก์สัญญา', () => {
+      const d = cash({ stage: 'READY_FOR_PICKUP', replacementSaleId: 'sale-1' });
+      for (const role of ['OWNER', 'BRANCH_MANAGER', 'SALES'])
+        expect(primaryAction(d, role)).toEqual({
+          label: 'ส่งมอบเครื่องทดแทน',
+          dialog: 'exchange-deliver',
+        });
+      for (const role of ['FINANCE_MANAGER', 'ACCOUNTANT']) expect(primaryAction(d, role)).toBeNull();
+      expect(secondaryActions(d, 'OWNER')).toEqual([]);
+    });
+    it('REPAIR ของใบขายสด (RECEIVED/IN_REPAIR) → MGR มีปุ่มรอง "ซ่อมไม่ได้ → เปลี่ยนรุ่นเดิม"', () => {
+      for (const stage of ['RECEIVED', 'IN_REPAIR'] as const) {
+        const d = detail({
+          source: 'CASH_SALE',
+          contractId: null,
+          saleId: 'sale-1',
+          outcome: 'REPAIR',
+          stage,
+          repairTicket: rt({ repairSupplier: { id: 's', name: 'ศูนย์' } }),
+        });
+        expect(secondaryActions(d, 'BRANCH_MANAGER').map((a) => a.label)).toContain(
+          'ซ่อมไม่ได้ → เปลี่ยนรุ่นเดิม',
+        );
+        expect(secondaryActions(d, 'SALES').map((a) => a.label)).not.toContain(
+          'ซ่อมไม่ได้ → เปลี่ยนรุ่นเดิม',
+        );
+      }
+    });
+    it('M4 (final review PR5) — REPAIR ของใบขายสดที่ครบ/เกินกรอบ 7 วันตอนเปิดเคส (daysRemainingIn7Day 0) → ไม่มีปุ่ม "ซ่อมไม่ได้ → เปลี่ยนรุ่นเดิม" (⑥ ไม่มี override · กรอบมีแต่หดลง)', () => {
+      for (const stage of ['RECEIVED', 'IN_REPAIR'] as const) {
+        const d = detail({
+          source: 'CASH_SALE',
+          contractId: null,
+          saleId: 'sale-1',
+          outcome: 'REPAIR',
+          stage,
+          repairTicket: rt({ repairSupplier: { id: 's', name: 'ศูนย์' } }),
+          warrantySnapshot: { ...detail().warrantySnapshot, daysRemainingIn7Day: 0 },
+        });
+        expect(secondaryActions(d, 'BRANCH_MANAGER').map((a) => a.label)).not.toContain(
+          'ซ่อมไม่ได้ → เปลี่ยนรุ่นเดิม',
+        );
+      }
+      // สัญญาผ่อนไม่เปลี่ยน — ผจก. ข้ามกรอบได้ตอนยืนยัน จึงยังเห็นปุ่ม
+      const inst = detail({
+        outcome: 'REPAIR',
+        stage: 'RECEIVED',
+        repairTicket: rt({ repairSupplier: { id: 's', name: 'ศูนย์' } }),
+        warrantySnapshot: { ...detail().warrantySnapshot, daysRemainingIn7Day: 0 },
+      });
+      expect(secondaryActions(inst, 'BRANCH_MANAGER').map((a) => a.label)).toContain(
+        'ซ่อมไม่ได้ → เปลี่ยนรุ่นเดิม',
+      );
+    });
+    it('canPrintHandover / canPrintCashExchangeDocs: READY/CLOSED พิมพ์ได้ · AWAITING ไม่ได้', () => {
+      for (const stage of ['READY_FOR_PICKUP', 'CLOSED'] as const) {
+        expect(
+          canPrintHandover({ outcome: 'CASH_SAME_MODEL_EXCHANGE', stage, repairTicket: null }),
+        ).toBe(true);
+        expect(canPrintCashExchangeDocs({ outcome: 'CASH_SAME_MODEL_EXCHANGE', stage })).toBe(true);
+      }
+      expect(
+        canPrintCashExchangeDocs({ outcome: 'CASH_SAME_MODEL_EXCHANGE', stage: 'AWAITING_APPROVAL' }),
+      ).toBe(false);
+      expect(canPrintCashExchangeDocs({ outcome: 'SAME_MODEL_EXCHANGE', stage: 'CLOSED' })).toBe(false);
+      expect(CASE_DOC_LABEL['exchange-docs']).toBe('ใบรับคืน + ใบส่งมอบ (2 ใบ)');
+    });
   });
 });
 
@@ -561,6 +646,7 @@ describe('Task 11: secondaryActions — ปุ่มรองตาม outcome �
         approverRole: 'BRANCH_MANAGER',
         oldProduct: null,
         newProduct: null,
+        sale: null, // PR 5 — เคสผ่อนไม่มีใบขาย
         replacementContract: { id: 'ct-2', contractNumber: 'CT-2026-0099', status: 'DRAFT' },
         requestedBy: null,
       },
@@ -570,6 +656,7 @@ describe('Task 11: secondaryActions — ปุ่มรองตาม outcome �
       ...d,
       exchange: {
         ...d.exchange!,
+        sale: null, // PR 5 — เคสผ่อนไม่มีใบขาย
         replacementContract: { id: 'ct-2', contractNumber: 'CT-2026-0099', status: 'ACTIVE' },
       },
     };
@@ -593,6 +680,7 @@ describe('Task 11: secondaryActions — ปุ่มรองตาม outcome �
         approverRole: 'BRANCH_MANAGER',
         oldProduct: null,
         newProduct: null,
+        sale: null, // PR 5 — เคสผ่อนไม่มีใบขาย
         replacementContract: null,
         requestedBy: null,
       },
@@ -632,6 +720,7 @@ describe('Task 11: secondaryActions — ปุ่มรองตาม outcome �
       approverRole: 'BRANCH_MANAGER' as const,
       oldProduct: null,
       newProduct: null,
+      sale: null, // PR 5 — เคสผ่อนไม่มีใบขาย
       replacementContract: null,
       requestedBy: null,
     };
@@ -702,11 +791,5 @@ describe('canPrintHandover — mirror ของ handoverBlockReason ฝั่ง
     expect(canPrintHandover({ outcome: 'REPAIR', stage: 'CLOSED', repairTicket: null })).toBe(
       false,
     );
-  });
-  it('(c) เปลี่ยนรุ่นเดิมขายสด → ไม่โชว์ปุ่ม (API ยังไม่รองรับใบส่งมอบของขายสด)', () => {
-    for (const stage of ['READY_FOR_PICKUP', 'CLOSED'] as const)
-      expect(
-        canPrintHandover({ outcome: 'CASH_SAME_MODEL_EXCHANGE', stage, repairTicket: null }),
-      ).toBe(false);
   });
 });

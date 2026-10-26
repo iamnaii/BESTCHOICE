@@ -6,6 +6,7 @@ import AuthLayout from '@/components/layout/AuthLayout';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
+import { formControlClass, formLabelClass } from '@/components/ui/form-styles';
 
 export default function ResetPasswordPage() {
   const [searchParams] = useSearchParams();
@@ -70,13 +71,14 @@ export default function ResetPasswordPage() {
           </div>
           <div>
             <div className="text-lg font-bold text-foreground">BESTCHOICE</div>
-            <div className="text-xs text-muted-foreground">Finance Management</div>
+            <div className="text-xs text-muted-foreground">ระบบบริหารร้านและการเงิน</div>
           </div>
         </div>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <Label htmlFor="newPassword">รหัสผ่านใหม่</Label>
+            <Label htmlFor="newPassword" className={formLabelClass}>รหัสผ่านใหม่</Label>
             <Input
+              className={formControlClass}
               id="newPassword"
               type="password"
               value={newPassword}
@@ -87,8 +89,9 @@ export default function ResetPasswordPage() {
             />
           </div>
           <div>
-            <Label htmlFor="confirmPassword">ยืนยันรหัสผ่านใหม่</Label>
+            <Label htmlFor="confirmPassword" className={formLabelClass}>ยืนยันรหัสผ่านใหม่</Label>
             <Input
+              className={formControlClass}
               id="confirmPassword"
               type="password"
               value={confirmPassword}
@@ -101,7 +104,7 @@ export default function ResetPasswordPage() {
           <Button
             type="submit"
             disabled={isSubmitting}
-            className="w-full"
+            className="w-full h-11 min-h-11"
             variant="primary"
             size="lg"
           >

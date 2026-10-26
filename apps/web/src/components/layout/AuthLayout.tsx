@@ -14,8 +14,8 @@ export default function AuthLayout({ children }: AuthLayoutProps) {
   return (
     <div className="grid lg:grid-cols-2 grow min-h-screen bg-background relative">
       {/* Left Side — Form */}
-      <div className="flex justify-center items-center p-8 lg:p-10 order-2 lg:order-1">
-        <div className="w-full max-w-[440px]">
+      <div className="flex min-w-0 justify-center items-center px-4 py-8 sm:px-8 lg:p-10 order-2 lg:order-1">
+        <div className="w-full min-w-0 max-w-[440px]">
           {/* Mobile logo */}
           <div className="lg:hidden flex items-center gap-2.5 mb-8">
             <img src="/logo-icon.svg" alt="BESTCHOICE" className="size-9 shrink-0" />
@@ -57,7 +57,7 @@ export default function AuthLayout({ children }: AuthLayoutProps) {
           </div>
           <div className="bg-white/10 backdrop-blur-xs border border-white/15 rounded-xl p-5">
             <div className="text-2xl font-bold text-white">99.9%</div>
-            <div className="text-sm text-white/70 mt-1">Uptime</div>
+            <div className="text-sm text-white/70 mt-1">ระยะเวลาทำงาน</div>
           </div>
         </div>
 

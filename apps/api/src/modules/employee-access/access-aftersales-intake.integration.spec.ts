@@ -12,6 +12,9 @@ import { AccessExchangeSourceService } from './access-exchange-source.service';
 import { currentDomainAccess } from './access-execution-context';
 import { DefectExchangeService } from '../defect-exchange/defect-exchange.service';
 import { DefectExchangeReversalTemplate } from '../journal/cpa-templates/defect-exchange-reversal.template';
+import { ShopCashExchangeTemplate } from '../journal/cpa-templates/shop-cash-exchange.template';
+import { ReceiptNumberService } from '../receipts/services/receipt-number.service';
+import { ReceiptVoidReversalTemplate } from '../journal/cpa-templates/receipt-void-reversal.template';
 import { ShopAccountResolver } from '../journal/shop-account-resolver.service';
 import { ShopInventoryTransferTemplate } from '../journal/cpa-templates/shop-inventory-transfer.template';
 import { ExchangeCancelReversalTemplate } from '../journal/cpa-templates/exchange-cancel-reversal.template';
@@ -93,6 +96,8 @@ const defect = new DefectExchangeService(
   journal,
   new DefectExchangeReversalTemplate(journal, db as PrismaService),
   repair,
+  new ReceiptVoidReversalTemplate(journal, db as PrismaService),
+  new ReceiptNumberService(db as PrismaService),
   access,
 );
 let branchId: string,
@@ -300,6 +305,9 @@ const facade = new AfterSalesExchangeService(
   cancel,
   {} as never,
   line as never,
+  new ShopCashExchangeTemplate(journal, db as PrismaService, companyResolver),
+  new ShopAccountResolver(db as PrismaService),
+  companyResolver,
   new AccessAfterSalesExchangeActionService(access, repairAccess),
 );
 import { AfterSalesCaseService } from '../after-sales/services/after-sales-case.service';
@@ -335,7 +343,6 @@ const intake = new AfterSalesCaseService(
   repair,
   new AfterSalesDocNumberService(db as PrismaService),
   lookup,
-  svc,
   defect,
   line as never,
   chatLinks,

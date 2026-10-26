@@ -119,9 +119,11 @@ try {
           'font-size',
           width < 1024 ? '22px' : '24px',
         );
+      // The desktop Inbox is its own workspace (2026-10-07): MainLayout renders no app
+      // sidebar there, so its wrapper has no left padding at any width.
       await expect(page.locator('.wrapper')).toHaveCSS(
         'padding-left',
-        width < 1024 ? '0px' : /^(70|264)px$/,
+        width < 1024 || path === '/inbox' ? '0px' : /^(70|264)px$/,
       );
       if (path === '/finance-portfolio' && width >= 1024) {
         const expand = page.getByRole('button', { name: 'ขยายเมนู', exact: true });
@@ -195,10 +197,15 @@ try {
         );
       }
       if (path === '/inbox') {
-        await page.getByRole('combobox', { name: 'กรองตามช่องทาง' }).click();
+        await page.getByRole('button', { name: 'ตัวกรองแชท', exact: true }).click();
+        await expect(page.getByRole('group', { name: 'ช่องทาง', exact: true })).toBeVisible();
+        await checkUiFonts(page, `Inbox filters ${width}px`);
+        await page.getByRole('combobox', { name: 'ผู้ดูแล', exact: true }).click();
         await expect(page.getByRole('option').first()).toBeVisible();
         await checkUiFonts(page, `Inbox menu ${width}px`);
         await page.keyboard.press('Escape');
+        await page.keyboard.press('Escape');
+        await expect(page.getByRole('dialog')).toHaveCount(0);
       }
       for (const input of await page
         .locator('input:visible:not([type=checkbox]):not([type=radio])')
@@ -334,11 +341,11 @@ try {
       for (const disabled of [true, false]) {
         snapshots.push(
           await page.evaluate(async (disabled) => {
-            const style = document.querySelector(
-              'style[data-vite-dev-id$="/styles/admin-typography.css"]',
-            );
-            if (!style?.sheet) throw new Error('Admin stylesheet missing');
-            style.sheet.disabled = disabled;
+            for (const file of ['admin-typography', 'admin-colors']) {
+              const style = document.querySelector(`style[data-vite-dev-id$="/styles/${file}.css"]`);
+              if (!style?.sheet) throw new Error(`${file} stylesheet missing`);
+              style.sheet.disabled = disabled;
+            }
             await new Promise((resolve) =>
               requestAnimationFrame(() => requestAnimationFrame(resolve)),
             );
@@ -347,6 +354,7 @@ try {
             ].map((e) => {
               const s = getComputedStyle(e),
                 r = e.getBoundingClientRect();
+              const paper = e.closest('.mobile-receipt, .template-paper, .sticker');
               return [
                 e.tagName,
                 s.fontFamily,
@@ -356,6 +364,7 @@ try {
                 s.letterSpacing,
                 r.width,
                 r.height,
+                ...(paper ? [s.color, s.backgroundColor, s.borderColor] : []),
               ];
             });
           }, disabled),
@@ -364,7 +373,7 @@ try {
       assert.deepEqual(
         snapshots[1],
         snapshots[0],
-        `${kind}: unchanged typography and geometry in ${media}`,
+        `${kind}: unchanged typography, geometry and paper colors in ${media}`,
       );
     }
     await page.emulateMedia({ media: 'screen' });

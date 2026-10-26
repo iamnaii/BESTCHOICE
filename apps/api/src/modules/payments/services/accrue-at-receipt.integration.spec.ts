@@ -45,6 +45,7 @@ import { InstallmentAccrualCron } from '../../journal/cron/installment-accrual.c
 import { RepossessionJP5Template } from '../../journal/cpa-templates/repossession-jp5.template';
 import { EarlyPayoffJP4Template } from '../../journal/cpa-templates/early-payoff-jp4.template';
 import { Vat60dayReversalTemplate } from '../../journal/cpa-templates/vat-60day-reversal.template';
+import { Vat60dayMandatoryTemplate } from '../../journal/cpa-templates/vat-60day-mandatory.template';
 import { ShopCollectSettlementTemplate } from '../../journal/cpa-templates/shop-collect-settlement.template';
 import { EclStageReverseTemplate } from '../../journal/cpa-templates/ecl-stage-reverse.template';
 import { ContractPaymentService } from '../../contracts/contract-payment.service';
@@ -485,7 +486,8 @@ describe('ตั้งลูกหนี้งวด ณ วันรับเ�
       { transferOwnership: noop } as never,
       { reverseStageOnPayment: noop } as never,
       receiptTemplate,
-      { execute: noop } as never,
+      // รายการกลับภาษีขาย 60 วันของจริง — เคสใบรับชำระย้อนวันตรวจวันที่ของรายการกลับ
+      new Vat60dayReversalTemplate(journal, prisma as never),
       {
         awardLoyaltyPoints: noop,
         sendPaymentSuccessLine: noop,
@@ -880,6 +882,57 @@ describe('ตั้งลูกหนี้งวด ณ วันรับเ�
     });
   });
 
+    it('ใบรับชำระย้อนวันข้ามเดือนของงวดที่ถูกตั้ง VAT บังคับ 60 วัน → รายการกลับ 21-2103 ลงวันเดียวกับใบรับชำระ (ไม่ก่อนรายการตั้ง — ภ.พ.30 รายเดือนไม่นับซ้ำ)', async () => {
+      const c = await seedContract({ dueDate: futureDue(), paymentRows: [1] });
+      const [inst] = await prisma.installmentSchedule.findMany({
+        where: { contractId: c.id },
+        orderBy: { installmentNo: 'asc' },
+      });
+      const m1 = await new Vat60dayMandatoryTemplate(journal, prisma as never).execute(inst.id);
+      // รอบภาษีขาย 60 วันตั้งไว้ 40 วันก่อน (ก่อนวันที่รับเงินที่ย้อน)
+      const fortyDaysAgo = new Date(Date.now() - 40 * DAY_MS);
+      await prisma.journalEntry.update({
+        where: { entryNumber: m1!.entryNo },
+        data: { entryDate: fortyDaysAgo, postedAt: fortyDaysAgo },
+      });
+
+      // วันที่รับเงิน = วันสุดท้ายของเดือนก่อน (เที่ยงวัน) — งวดบัญชีของเดือนนั้นต้องเปิดอยู่ตอนเทส
+      const now = new Date();
+      const paidDate = new Date(now.getFullYear(), now.getMonth(), 0, 12, 0, 0);
+      const finance = await prisma.companyInfo.findFirstOrThrow({ where: { companyCode: 'FINANCE' } });
+      const periodKey = { companyId: finance.id, year: paidDate.getFullYear(), month: paidDate.getMonth() + 1 };
+      const period = await prisma.accountingPeriod.findUnique({ where: { companyId_year_month: periodKey } });
+      const periodWasClosed = period != null && period.status !== 'OPEN';
+      if (periodWasClosed) {
+        await prisma.accountingPeriod.update({ where: { id: period!.id }, data: { status: 'OPEN' } });
+      }
+      try {
+        await record(c.id, 1, 1515.83, 'AAR-V60-BACK', { paidDate });
+      } finally {
+        if (periodWasClosed) {
+          await prisma.accountingPeriod.update({ where: { id: period!.id }, data: { status: period!.status } });
+        }
+      }
+
+      const [receipt] = await flowEntries(c.id, 'payment-receipt');
+      expect(receipt.entryDate.getTime()).toBe(paidDate.getTime());
+      const reversals = await prisma.journalEntry.findMany({
+        where: {
+          AND: [
+            { metadata: { path: ['contractId'], equals: c.id } } as never,
+            { metadata: { path: ['tag'], equals: 'VAT60-REVERSAL' } } as never,
+          ],
+        },
+      });
+      expect(reversals).toHaveLength(1);
+      expect((reversals[0].metadata as Record<string, unknown>).reversesEntry).toBe(m1!.entryNo);
+      // รายการกลับลงวันเดียวกับใบรับชำระที่ย้อน (เดือนก่อน) ไม่ใช่วันนี้
+      expect(reversals[0].entryDate.getTime()).toBe(paidDate.getTime());
+      expect(await balance(c.id, '21-2103', 'cr')).toBe('0.00');
+      expect(await balance(c.id, '11-2104', 'dr')).toBe('0.00');
+      expect((await scheduleOf(c.id, 1)).vat60dayJournalEntryId).toBeNull();
+    });
+
   describe('ใบรับชำระบางส่วน (คำตอบฝ่ายบัญชี ก1 29/09/2569)', () => {
     it('QR 1,000 ของงวดที่ยังไม่ถึงกำหนด → 2A เท่ายอดที่รับ แล้วใบรับชำระ Dr 11-1201 1,000 / Cr 11-2103 1,000', async () => {
       const c = await seedContract({ dueDate: futureDue(), paymentRows: [1, 2] });
@@ -1044,6 +1097,133 @@ describe('ตั้งลูกหนี้งวด ณ วันรับเ�
       }
     });
 
+    it('ปิดยอดก่อนกำหนด (JP4) ของสัญญาที่งวดถูกตั้ง VAT บังคับ 60 วัน (21-2103) ขณะยังเดิน → กลับ Dr 21-2103 / Cr 11-2104 ทุกงวดที่มีธงในธุรกรรมเดียวกัน · ธงถูกล้าง · บรรทัด JP4 ไม่เปลี่ยน (งวดที่ตั้งลูกหนี้บางส่วนแล้วไม่ถูกตั้ง 60 วัน — ข้อ 11.1)', async () => {
+      const c = await seedContract({
+        dueDate: futureDue(),
+        paymentRows: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+      });
+      await recordPartialQr(c.id, 1, 1000, 'AAR-JP4-V60');
+      // รอบภาษีขาย 60 วันขณะสัญญายัง ACTIVE: งวด 1 ตั้งลูกหนี้งวดบางส่วนแล้ว (accruedAmount > 0) ⇒ ข้อ 11.1 (ฝ่ายบัญชี 16/10/2569 —
+      // #1702) ไม่ตั้งซ้ำ คืน null · งวด 2 ยังไม่ตั้ง ⇒ ตั้ง 21-2103 — JP4 ต้องกลับเฉพาะงวดที่มีธงจริง
+      const insts = await prisma.installmentSchedule.findMany({
+        where: { contractId: c.id },
+        orderBy: { installmentNo: 'asc' },
+      });
+      const mandatory = new Vat60dayMandatoryTemplate(journal, prisma as never);
+      const m1 = await mandatory.execute(insts[0].id);
+      const m2 = await mandatory.execute(insts[1].id);
+      expect(m1).toBeNull();
+      expect(m2?.entryNo).toBeTruthy();
+      expect(await balance(c.id, '21-2103', 'cr')).toBe('99.17');
+      expect(await balance(c.id, '11-2104', 'dr')).toBe('99.17');
+
+      const contractPayments = earlyPayoffService();
+      await earlyPayoffWithApproval(prisma, contractPayments, c.id, await ownerIdOf(), {
+        paymentMethod: 'BANK_TRANSFER',
+        discountPct: 0,
+        depositAccountCode: '11-1201',
+      } as never);
+
+      // บรรทัด JP4 เท่าเทสก่อนหน้าทุกตัวอักษร — 21-2103 / 11-2104 ไม่อยู่ในรายการ JP4 (กลับผ่านรายการของ Vat60dayReversalTemplate แยกใบ)
+      const [jp4] = await flowEntries(c.id, 'early-payoff');
+      expect(sortedLines(jp4)).toEqual([
+        '11-1201:17190.08:0.00',
+        '11-2101:0.00:16065.42',
+        '11-2105:0.00:1124.58',
+        '11-2106:5670.15:0.00',
+        '21-2101:0.00:1124.58',
+        '21-2102:1124.58:0.00',
+        '41-1101:0.00:5670.15',
+        '53-1503:0.00:0.08',
+      ]);
+      expect(await balance(c.id, '21-2103', 'cr')).toBe('0.00');
+      expect(await balance(c.id, '11-2104', 'dr')).toBe('0.00');
+      expect(
+        await prisma.installmentSchedule.count({
+          where: { contractId: c.id, vat60dayJournalEntryId: { not: null } },
+        }),
+      ).toBe(0);
+      const reversals = await prisma.journalEntry.findMany({
+        where: {
+          AND: [
+            { metadata: { path: ['contractId'], equals: c.id } } as never,
+            { metadata: { path: ['tag'], equals: 'VAT60-REVERSAL' } } as never,
+          ],
+        },
+      });
+      expect(reversals.map((r) => (r.metadata as Record<string, unknown>).reversesEntry)).toEqual([
+        m2!.entryNo,
+      ]);
+      expect(
+        [...((jp4.metadata as Record<string, unknown>).vat60dayReversals as string[])].sort(),
+      ).toEqual(reversals.map((r) => r.entryNumber).sort());
+    });
+
+    it('ปิดยอดก่อนกำหนด (JP4) ย้อนวันข้ามเดือน → รายการกลับ 21-2103 ลงวันเดียวกับ JP4 (ภ.พ.30 รายเดือนไม่นับซ้ำ) · ธงที่ตั้งหลังวันที่ย้อนลงวันของรายการตั้ง', async () => {
+      const c = await seedContract({
+        dueDate: futureDue(),
+        paymentRows: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+      });
+      const insts = await prisma.installmentSchedule.findMany({
+        where: { contractId: c.id },
+        orderBy: { installmentNo: 'asc' },
+      });
+      const mandatory = new Vat60dayMandatoryTemplate(journal, prisma as never);
+      const m1 = await mandatory.execute(insts[0].id);
+      const m2 = await mandatory.execute(insts[1].id);
+      // งวด 1 ถูกตั้ง 40 วันก่อน (ก่อนวันที่รับเงินที่ย้อน) · งวด 2 ถูกตั้ง "วันนี้" (หลังวันที่รับเงินที่ย้อน — cron ไม่รู้ว่าเงินเข้าแล้ว)
+      const fortyDaysAgo = new Date(Date.now() - 40 * DAY_MS);
+      await prisma.journalEntry.update({
+        where: { entryNumber: m1!.entryNo },
+        data: { entryDate: fortyDaysAgo, postedAt: fortyDaysAgo },
+      });
+      const m2Entry = await prisma.journalEntry.findUniqueOrThrow({ where: { entryNumber: m2!.entryNo } });
+
+      // วันที่รับเงิน = วันสุดท้ายของเดือนก่อน (เที่ยงวัน) — งวดบัญชีของเดือนนั้นต้องเปิดอยู่ตอนเทส
+      const now = new Date();
+      const paidDate = new Date(now.getFullYear(), now.getMonth(), 0, 12, 0, 0);
+      const finance = await prisma.companyInfo.findFirstOrThrow({ where: { companyCode: 'FINANCE' } });
+      const periodKey = { companyId: finance.id, year: paidDate.getFullYear(), month: paidDate.getMonth() + 1 };
+      const period = await prisma.accountingPeriod.findUnique({ where: { companyId_year_month: periodKey } });
+      const periodWasClosed = period != null && period.status !== 'OPEN';
+      if (periodWasClosed) {
+        await prisma.accountingPeriod.update({ where: { id: period!.id }, data: { status: 'OPEN' } });
+      }
+      try {
+        const contractPayments = earlyPayoffService();
+        await earlyPayoffWithApproval(prisma, contractPayments, c.id, await ownerIdOf(), {
+          paymentMethod: 'BANK_TRANSFER',
+          discountPct: 0,
+          depositAccountCode: '11-1201',
+          paymentDate: paidDate.toISOString(),
+        } as never);
+      } finally {
+        if (periodWasClosed) {
+          await prisma.accountingPeriod.update({ where: { id: period!.id }, data: { status: period!.status } });
+        }
+      }
+
+      const [jp4] = await flowEntries(c.id, 'early-payoff');
+      expect(jp4.entryDate.getTime()).toBe(paidDate.getTime());
+      const reversals = await prisma.journalEntry.findMany({
+        where: {
+          AND: [
+            { metadata: { path: ['contractId'], equals: c.id } } as never,
+            { metadata: { path: ['tag'], equals: 'VAT60-REVERSAL' } } as never,
+          ],
+        },
+      });
+      const byReversed = new Map(
+        reversals.map((r) => [(r.metadata as Record<string, unknown>).reversesEntry as string, r]),
+      );
+      // งวด 1: รายการตั้งอยู่ก่อนวันที่รับเงิน → รายการกลับลงวันที่รับเงิน (เดือนเดียวกับ JP4)
+      expect(byReversed.get(m1!.entryNo)!.entryDate.getTime()).toBe(paidDate.getTime());
+      // งวด 2: รายการตั้งอยู่หลังวันที่รับเงิน → รายการกลับลงวันของรายการตั้ง (ไม่กลับก่อนตั้ง)
+      expect(byReversed.get(m2!.entryNo)!.entryDate.getTime()).toBe(m2Entry.entryDate.getTime());
+      expect(await balance(c.id, '21-2103', 'cr')).toBe('0.00');
+      expect(await balance(c.id, '11-2104', 'dr')).toBe('0.00');
+    });
+
     it('ปิดยอดก่อนกำหนด (JP4) ส่วนลด 50% หลังงวด 1 รับบางส่วน 1,000 → เงินสดในรายการ = เงินที่ลูกค้าจ่าย 14,657.33 · 52-1106 2,532.67 = ส่วนลดที่ให้จริง (คำตอบข้อ 5.3 — เดิมเงินสด 14,354.88 ต่าง 302.45)', async () => {
       const c = await seedContract({
         dueDate: futureDue(),
@@ -1180,6 +1360,9 @@ describe('ตั้งลูกหนี้งวด ณ วันรับเ�
         '11-1101:869.83:0.00',
         '11-2103:0.00:515.83',
         '21-1103:0.00:354.00',
+        // PR4: เงินที่พัก 354 ได้ขาพักภาษี 23.16 ในใบเดียวกัน (preview === posted)
+        '21-2101:0.00:23.16',
+        '21-2102:23.16:0.00',
       ]);
       expect(await accruedOf(c.id, 1)).toEqual(['1515.83', '99.17', '500.00']);
       expect(await balance(c.id, '11-2103', 'dr')).toBe('0.00');
@@ -1396,7 +1579,13 @@ describe('ตั้งลูกหนี้งวด ณ วันรับเ�
       expect(await accrualEntries(sched.id)).toHaveLength(2); // ใบบางส่วน 1,000 + ส่วนที่เหลือ 515.83
       const consumes = await flowEntries(c.id, 'advance-consume-on-accrual');
       expect(consumes).toHaveLength(1);
-      expect(sortedLines(consumes[0])).toEqual(['11-2103:0.00:515.83', '21-1103:515.83:0.00']);
+      expect(sortedLines(consumes[0])).toEqual([
+        '11-2103:0.00:515.83',
+        '21-1103:515.83:0.00',
+        // PR4: เงินรับล่วงหน้า 2,000 ที่พักพร้อมภาษี 130.84 — หัก 515.83 (ถังไม่หมด) ⇒ ขากลับ HALF_UP(515.83 × 7/107) = 33.75
+        '21-2101:33.75:0.00',
+        '21-2102:0.00:33.75',
+      ]);
       expect(await advanceOf(c.id)).toEqual({ generic: '1484.17', park: '0.00' });
       expect(await paidOf(c.id, 2)).toEqual({ amountPaid: '1515.83', status: 'PAID' });
       // งวด 1 สุทธิ 0 · งวด 2: Dr 1,000 + 515.83 (2A) − Cr 1,000 (ใบรับชำระ) − Cr 515.83 (หักเงินรับล่วงหน้า)
@@ -1420,7 +1609,13 @@ describe('ตั้งลูกหนี้งวด ณ วันรับเ�
 
       const consumes = await flowEntries(c.id, 'advance-consume-on-accrual');
       expect(consumes).toHaveLength(1);
-      expect(sortedLines(consumes[0])).toEqual(['11-2103:0.00:515.83', '21-1103:515.83:0.00']);
+      expect(sortedLines(consumes[0])).toEqual([
+        '11-2103:0.00:515.83',
+        '21-1103:515.83:0.00',
+        // PR4: เงินรับล่วงหน้า 2,000 ที่พักพร้อมภาษี 130.84 — หัก 515.83 (ถังไม่หมด) ⇒ ขากลับ HALF_UP(515.83 × 7/107) = 33.75
+        '21-2101:33.75:0.00',
+        '21-2102:0.00:33.75',
+      ]);
       expect(await advanceOf(c.id)).toEqual({ generic: '1484.17', park: '0.00' });
       // 1,000 + 515.83 < ยอดเรียกเก็บ 1,516.00 → แถวงวดยังค้าง 0.17 (เศษของยอดเรียกเก็บ ไม่ใช่ลูกหนี้ในบัญชี)
       expect(await paidOf(c.id, 2)).toEqual({ amountPaid: '1515.83', status: 'PARTIALLY_PAID' });

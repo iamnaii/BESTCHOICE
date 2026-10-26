@@ -254,7 +254,8 @@ describe('ReceiptsService', () => {
 
       // The WHERE's tag OR-filter must NOT include 'overpayment-credit' — that is the
       // exact exclusion that protects the customer credit balance.
-      const whereArg = tx.journalEntry.findMany.mock.calls[0][0].where;
+      // PR4 ต6ข: findMany ครั้งแรกคือด่าน advance-excess-income ของสัญญา — ตัวจับคู่ใบรับชำระเป็นครั้งที่ 2
+      const whereArg = tx.journalEntry.findMany.mock.calls[1][0].where;
       const orClause = whereArg.AND.find((c: any) => Array.isArray(c.OR))?.OR ?? [];
       const tags = orClause.map((c: any) => c.metadata?.equals);
       expect(tags).toEqual(expect.arrayContaining(['receipt', '2B', 'credit-allocation']));
@@ -301,6 +302,34 @@ describe('ReceiptsService', () => {
       await expect(
         service.voidReceipt(receiptId, 'wrong amount', userId, approverId, undefined, { requestId: 'void-request', actorId: approverId }),
       ).rejects.toThrow('JE reversal failed');
+    });
+  });
+
+  describe('voidReceipt — ADVANCE_SURPLUS (PR4ข)', () => {
+    it('ปฏิเสธการยกเลิกใบรับเงินส่วนเกินลิงก์ชำระ (paymentId null · ไม่มีเส้นทางกลับรายการ) โดยไม่แตะรายการบัญชี', async () => {
+      const tx = prisma.__tx;
+      tx.receipt.findUnique.mockResolvedValue({
+        id: receiptId,
+        receiptNumber: 'RT-202610-00041',
+        contractId: 'ct-1',
+        paymentId: null,
+        receiptType: 'ADVANCE_SURPLUS',
+        amount: 500,
+        installmentNo: null,
+        paymentMethod: 'ONLINE_GATEWAY',
+        isVoided: false,
+        deletedAt: null,
+        createdAt: new Date(),
+        paidDate: new Date(),
+      });
+
+      await expect(
+        service.voidReceipt(receiptId, 'บันทึกผิด', userId, approverId, 'OWNER', { requestId: 'void-request', actorId: approverId }),
+      ).rejects.toThrow('ใบเสร็จเงินรับล่วงหน้าจากลิงก์ชำระยังไม่รองรับการยกเลิก');
+      const template = (service as any).receiptVoidReversalTemplate;
+      expect(template.voidReceipt).not.toHaveBeenCalled();
+      expect(tx.receipt.update).not.toHaveBeenCalled();
+      expect(tx.receipt.create).not.toHaveBeenCalled();
     });
   });
 
@@ -609,11 +638,13 @@ describe('ReceiptsService', () => {
       const tx = prisma.__tx;
       setup(tx, { payment: { amountDue: 1515.83 } });
       tx.installmentSchedule.findUnique.mockResolvedValue({ id: 'sched-1' });
-      // 1st findMany = void's reversal targets (the cash receipt JE only —
+      // 1st findMany (PR4 ต6ข) = advance-excess-income guard — none for this
+      // contract; 2nd findMany = void's reversal targets (the cash receipt JE only —
       // the 2A advance-consume JE has no metadata.paymentId so it never
-      // matches); 2nd findMany = reconstructPriorCleared by scheduleId, which
+      // matches); 3rd findMany = reconstructPriorCleared by scheduleId, which
       // DOES see the surviving consume JE.
       tx.journalEntry.findMany
+        .mockResolvedValueOnce([])
         .mockResolvedValueOnce([
           {
             id: 'je-cash',

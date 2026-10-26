@@ -145,7 +145,7 @@ describe('BookingsPage', () => {
     await userEvent.click(await screen.findByText('สมชาย ใจดี'));
     expect(await screen.findByRole('dialog')).toBeInTheDocument();
     expect(screen.getByTestId('loc')).toHaveTextContent('bookingId=bk-1');
-    await userEvent.click(screen.getByRole('button', { name: /close/i }));
+    await userEvent.click(screen.getByRole('button', { name: 'ปิด' }));
     await waitFor(() => expect(screen.getByTestId('loc')).not.toHaveTextContent('bookingId'));
   });
 

@@ -34,14 +34,14 @@ export interface ChannelMeta {
 
 export const CHANNEL_META: Record<ChannelKey, ChannelMeta> = {
   LINE_FINANCE: {
-    label: 'LINE Finance',
+    label: "LINE งานการเงิน",
     short: 'LINE',
     letter: 'L',
     solid: 'bg-[#06C755]',
     tint: 'bg-success/10 text-success',
   },
   LINE_SHOP: {
-    label: 'LINE Shop',
+    label: "LINE งานหน้าร้าน",
     short: 'LINE Shop',
     letter: 'L',
     solid: 'bg-[#06C755]',

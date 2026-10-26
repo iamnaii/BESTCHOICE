@@ -1,0 +1,16 @@
+[
+  {
+    "width": 1440,
+    "headerPadding": "0px 20px",
+    "fieldBottomGap": 1,
+    "rowHeight": 38,
+    "documentOverflow": 0
+  },
+  {
+    "width": 390,
+    "headerPadding": "0px 20px",
+    "fieldBottomGap": 36,
+    "rowHeight": 74.75,
+    "documentOverflow": 0
+  }
+]

@@ -46,7 +46,7 @@ it('switches template/JSON, clears old fields and retains greeting extension fie
   const json = '{"type":"bubble","body":{"contents":[{"weight":"bold","text":"JSON ใหม่"}]}}';
   fireEvent.change(screen.getByRole('textbox'), { target: { value: json } });
   expect(screen.getByText('JSON ใหม่')).toBeInTheDocument();
-  fireEvent.click(screen.getByRole('button', { name: 'Template' }));
+  fireEvent.click(screen.getByRole('button', { name: 'แม่แบบ' }));
   expect(screen.getByPlaceholderText('ชื่อโปร')).toHaveValue('โปรใหม่');
   expect(JSON.parse(screen.getByTestId('content').textContent!)).toMatchObject({
     jsonValid: true,

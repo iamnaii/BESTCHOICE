@@ -1,3 +1,4 @@
+import { NameAutocomplete } from '@/components/ui/NameAutocomplete';
 import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -53,7 +54,7 @@ export default function TemplateEditorPane({ template, existingCategories, allTe
       <div className="flex-1 flex items-center justify-center text-sm text-muted-foreground leading-snug bg-muted/10">
         <div className="text-center">
           <FileText className="w-12 h-12 mx-auto mb-3 text-muted-foreground/40" />
-          เลือก template เพื่อแก้ไข
+          เลือกแม่แบบเพื่อแก้ไข
         </div>
       </div>
     );
@@ -69,7 +70,7 @@ export default function TemplateEditorPane({ template, existingCategories, allTe
 
   const handleSave = async () => {
     if (!form.title.trim()) {
-      toast.error('กรุณากรอกชื่อ template');
+      toast.error("กรุณากรอกชื่อแม่แบบ");
       return;
     }
     if (!form.shortcut.trim()) {
@@ -98,7 +99,7 @@ export default function TemplateEditorPane({ template, existingCategories, allTe
   return (
     <div className="flex-1 flex flex-col overflow-hidden bg-background">
       <div className="px-5 py-4 border-b border-border flex items-center justify-between">
-        <div className="text-sm font-semibold text-foreground leading-snug">แก้ไข Template</div>
+        <div className="text-sm font-semibold text-foreground leading-snug">แก้ไขแม่แบบ</div>
         <div className="flex items-center gap-2">
           <Button
             variant="ghost"
@@ -123,26 +124,23 @@ export default function TemplateEditorPane({ template, existingCategories, allTe
       <div className="flex-1 overflow-y-auto p-5 space-y-4">
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <Label htmlFor="title" className="text-xs">ชื่อ Template</Label>
+            <Label htmlFor="title" className="text-xs">ชื่อแม่แบบ</Label>
             <Input id="title" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} />
           </div>
           <div>
-            <Label htmlFor="shortcut" className="text-xs">Shortcut</Label>
+            <Label htmlFor="shortcut" className="text-xs">คำสั่งลัด</Label>
             <Input id="shortcut" value={form.shortcut} onChange={(e) => setForm({ ...form, shortcut: e.target.value })} placeholder="/example" />
           </div>
         </div>
         <div>
           <Label htmlFor="category" className="text-xs">หมวด</Label>
-          <Input
+          <NameAutocomplete
             id="category"
-            list="existing-categories"
+            options={existingCategories}
             value={form.category}
-            onChange={(e) => setForm({ ...form, category: e.target.value })}
+            onChange={(category) => setForm({ ...form, category })}
             placeholder="เลือกหมวดเดิมหรือพิมพ์ใหม่"
           />
-          <datalist id="existing-categories">
-            {existingCategories.map((c) => <option key={c} value={c} />)}
-          </datalist>
         </div>
         <div className="border-t border-border pt-3 space-y-3">
           <ChannelTabs value={activeChannel} onChange={setActiveChannel} counts={bubbleCounts} />

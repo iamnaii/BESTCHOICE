@@ -3,7 +3,10 @@ import {
   AccessAfterSalesExchangeActionService,
   ExchangeCaseOperation,
 } from '../../employee-access/access-after-sales-exchange-action';
-import { loadAfterSalesActionCase } from '../../employee-access/access-after-sales-action';
+import {
+  loadAfterSalesActionCase,
+  type AfterSalesMutationAcknowledgement,
+} from '../../employee-access/access-after-sales-action';
 import {
   currentDomainAccess,
   onDomainCommit,
@@ -20,7 +23,9 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import type { AfterSalesStage, Prisma, WarrantyStatus } from '@prisma/client';
+import { Prisma } from '@prisma/client';
+import type { AfterSalesStage, WarrantyStatus } from '@prisma/client';
+import * as Sentry from '@sentry/nestjs';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { AuditService } from '../../audit/audit.service';
 import { DefectExchangeService } from '../../defect-exchange/defect-exchange.service';
@@ -31,10 +36,12 @@ import {
 } from '../../repair-tickets/dto/create-repair-ticket.dto';
 import { hasCrossBranchAccess } from '../../auth/branch-access.util';
 import { ContractExchangeService } from '../../contract-exchange/contract-exchange.service';
+import { deviceSwapClosed } from '../../contract-exchange/device-swap-closed.policy';
 import { ExchangeCancelService } from '../../contract-exchange/contract-exchange-cancel.service';
 import { AfterSalesQueryService } from './after-sales-query.service';
 import { AfterSalesLookupService } from './after-sales-lookup.service';
 import { AfterSalesLineService } from './after-sales-line.service';
+import { exchangeConfirmNote } from '../utils/exchange-confirm-note';
 import { reconcileStage, ReconcilableCase, RECONCILE_SELECT } from './after-sales-stage-reconcile';
 import {
   payerDefaultFor,
@@ -46,6 +53,20 @@ import { ExchangeRejectDto } from '../dto/exchange-reject.dto';
 import { SwitchToRepairDto } from '../dto/switch-to-repair.dto';
 import { ApproveExchangeRequestDto } from '../dto/exchange-approve.dto';
 import { ReplacementProductsDto } from '../dto/replacement-products.dto';
+import { ShopCashExchangeTemplate } from '../../journal/cpa-templates/shop-cash-exchange.template';
+import { ShopAccountResolver } from '../../journal/shop-account-resolver.service';
+import { CompanyResolverService } from '../../journal/company-resolver.service';
+import { validatePeriodOpen } from '../../../utils/period-lock.util';
+import { preemptReservationsInTx } from '../../../utils/reservation-preempt.util';
+import { canSeeCost } from '../../products/cost-visibility.util';
+import { mainProductStatusFor } from '../../sales/services/sale-product-status.util';
+import { shopWarrantyDatesFor } from '../../sales/services/sale-shop-warranty.util';
+import { saleSoldAt } from '../../repair-tickets/utils/sale-sold-at';
+import { assertCashReplacement } from '../utils/assert-cash-replacement';
+import { cashExchangeWindowOpen } from '../utils/cash-exchange-window';
+import { CASH_OUT_OF_WINDOW_REASON } from '../utils/after-sales-outcomes.util';
+import { ExchangeDeliverDto } from '../dto/exchange-deliver.dto';
+import { deliveredAccessoriesText, normalizeDeliveredAccessories } from '../utils/delivered-accessories';
 
 type ReqUser = { id: string; role: string; branchId?: string | null };
 
@@ -56,12 +77,23 @@ const REPAIR_CONFIRM_STAGES: AfterSalesStage[] = ['RECEIVED', 'IN_REPAIR', 'READ
 const SAME_MODEL_PENDING_CAS = (id: string): Prisma.AfterSalesCaseWhereInput => ({
   id,
   deletedAt: null,
-  outcome: 'SAME_MODEL_EXCHANGE',
+  outcome: { in: ['SAME_MODEL_EXCHANGE', 'CASH_SAME_MODEL_EXCHANGE'] }, // PR 5 — ปฏิเสธ/เปลี่ยนเป็นซ่อม ใช้กับเคสขายสดด้วย
   stage: 'AWAITING_APPROVAL',
   replacementContractId: null,
+  replacementSaleId: null,
   approvedAt: null,
   cancelledAt: null,
 });
+
+/** PR 5 — ผลของ runCashConfirm ที่ confirmCashSameModel ใช้เขียน audit/คืนค่าหลัง commit */
+interface CashConfirmPosted {
+  saleNumber: string;
+  oldProductId: string;
+  oldCost: string;
+  newCost: string;
+  journalEntryNo: string | null;
+  repairTicketId: string | null;
+}
 
 /** Task 6 — `preview()` เป็น proxy บาง ๆ เหนือ `ContractExchangeService.buildPreview`; ไม่มี DTO
  * ของตัวเอง (ตาม Interfaces ของบรีฟ) เพราะ Task 8 (controller) เป็นผู้ประกอบ query object นี้เอง */
@@ -94,6 +126,9 @@ export class AfterSalesExchangeService {
     private readonly exchangeCancel: ExchangeCancelService,
     private readonly lookup: AfterSalesLookupService,
     private readonly line: AfterSalesLineService,
+    private readonly cashExchange: ShopCashExchangeTemplate,
+    private readonly shopAccounts: ShopAccountResolver,
+    private readonly companyResolver: CompanyResolverService,
     @Optional() private readonly exchangeActions?: AccessAfterSalesExchangeActionService,
   ) {}
 
@@ -178,11 +213,6 @@ export class AfterSalesExchangeService {
   }
 
   /** Task 6 — preview เปิดให้ STAFF (OWNER/BM/SALES) เท่านั้น ตาม Interfaces ของบรีฟ */
-  private assertStaff(user: ReqUser) {
-    if (!['OWNER', 'BRANCH_MANAGER', 'SALES'].includes(user.role)) {
-      throw new ForbiddenException('เฉพาะเจ้าของ ผจก.สาขา หรือพนักงานขาย');
-    }
-  }
 
   /**
    * Task 6 — ด่านร่วมของ approvePriced/rejectPriced/cancelSwap: เคสต้องเป็นทางออกมีราคา,
@@ -227,7 +257,11 @@ export class AfterSalesExchangeService {
    */
   async confirmSameModel(caseId: string, dto: ExchangeConfirmDto, user: ReqUser) {
     if (!(await afterSalesActor(this.basePrisma, user.id, this.prisma))) this.assertMgr(user);
+    // Managed actors: AccessAfterSalesExchangeActionService.load('confirm') authorizes only
+    // contract-sourced exchanges and denies a case without contractId (fail-closed for cash cases).
     const c = await this.exchangeCase(caseId, user, 'confirm', dto.replacementProductId);
+    // PR 5 — เคสขายสด/ไฟแนนซ์นอก (มี saleId ไม่มี contractId) เดินกิ่งของตัวเอง ไม่ผ่าน engine สัญญาผ่อน
+    if (c.saleId && !c.contractId) return this.confirmCashSameModel(c, dto, user);
     if (!c.contractId) throw new BadRequestException('เปลี่ยนรุ่นเดิมใช้ได้กับสัญญาผ่อนเท่านั้น');
     const fromRepair = c.outcome === 'REPAIR';
     if (!fromRepair && c.outcome !== 'SAME_MODEL_EXCHANGE') {
@@ -326,9 +360,13 @@ export class AfterSalesExchangeService {
           create: {
             kind: 'APPROVED',
             actorId: user.id,
-            note: `ยืนยันเปลี่ยนเครื่อง · สัญญาใหม่ ${newContract.contractNumber}${
-              outOfWindow ? ' · ข้ามกรอบ 7 วัน' : ''
-            }${fromRepair ? ' · จากใบซ่อม (ซ่อมไม่ได้)' : ''}`,
+            note: exchangeConfirmNote({
+              newContractNumber: newContract.contractNumber,
+              outOfWindow,
+              fromRepair,
+              creditNoteCount: res.creditNoteNumbers.length,
+              transferredCredit: res.transferredCredit,
+            }),
           },
         },
       },
@@ -339,18 +377,30 @@ export class AfterSalesExchangeService {
       action: 'AFTER_SALES_EXCHANGE_CONFIRMED',
       entity: 'after_sales_case',
       entityId: caseId,
-      newValue: { newContractId: newContract.id, bypass: outOfWindow, fromRepair },
+      newValue: {
+        newContractId: newContract.id,
+        bypass: outOfWindow,
+        fromRepair,
+        creditNoteNumbers: res.creditNoteNumbers,
+        transferredCredit: res.transferredCredit,
+      },
     });
 
     // Task 3 — จังหวะ 2 (READY): หลัง commit + audit เสมอ — fire-and-forget
     this.notify(caseId, 'READY', user.id);
 
-    if (currentDomainAccess()) return { id: caseId, stage: 'READY_FOR_PICKUP' as const };
+    if (currentDomainAccess()) {
+      // Typed (not a fresh literal) so callers can narrow installment vs cash vs managed ack.
+      const ack: AfterSalesMutationAcknowledgement = { id: caseId, stage: 'READY_FOR_PICKUP' };
+      return ack;
+    }
     return {
       id: caseId,
       stage: 'READY_FOR_PICKUP' as const,
       replacementContractId: newContract.id,
       contractNumber: newContract.contractNumber,
+      creditNoteNumbers: res.creditNoteNumbers,
+      transferredCredit: res.transferredCredit,
     };
   }
 
@@ -359,8 +409,33 @@ export class AfterSalesExchangeService {
    * ไม่งั้นลูกค้าจะถือเครื่องที่ยังไม่มีสัญญาผูกจริง (โครงสร้างเดียวกับสัญญาใหม่ทั่วไปที่ต้องเปิดใช้
    * ก่อนจึงนับว่าขายจริง)
    */
-  async deliver(caseId: string, user: ReqUser) {
+  /**
+   * M1 (final review PR5) — ปิดเคสตอนส่งมอบแบบ compare-and-set: updateMany where stage READY_FOR_PICKUP
+   * + closedAt null · count 0 = ถูกส่งมอบไปแล้ว (กดซ้อน) → 409 ทั้งธุรกรรมย้อนกลับ · events เขียนแยกผ่าน
+   * createMany ใน tx เดียวกัน (nested create ของ update ใช้กับ updateMany ไม่ได้) · ใช้ร่วมทั้งกิ่งผ่อนและขายสด
+   */
+  private async closeDeliveredCase(
+    tx: Prisma.TransactionClient,
+    caseId: string,
+    actorId: string,
+    events: { kind: 'DELIVERED' | 'CLOSED'; note: string }[],
+    extra: { deliveredAccessories?: Prisma.InputJsonValue } = {},
+  ) {
+    const claimed = await tx.afterSalesCase.updateMany({
+      where: { id: caseId, stage: 'READY_FOR_PICKUP', closedAt: null },
+      data: { ...extra, stage: 'CLOSED', closedAt: new Date() },
+    });
+    if (claimed.count !== 1) throw new ConflictException('เคสนี้ถูกส่งมอบไปแล้ว');
+    await tx.afterSalesEvent.createMany({
+      data: events.map((e) => ({ caseId, kind: e.kind, actorId, note: e.note })),
+    });
+    return tx.afterSalesCase.findUniqueOrThrow({ where: { id: caseId } });
+  }
+
+  async deliver(caseId: string, user: ReqUser, dto?: ExchangeDeliverDto) {
+    // Managed actors: load('deliver') requires the contract-sourced replacement (cash cases denied).
     const c = await this.exchangeCase(caseId, user, 'deliver');
+    if (c.outcome === 'CASH_SAME_MODEL_EXCHANGE') return this.deliverCash(c, dto ?? {}, user);
     if (c.outcome !== 'SAME_MODEL_EXCHANGE' || !c.replacementContractId) {
       throw new BadRequestException('เคสนี้ไม่ใช่ทางออกเปลี่ยนรุ่นเดิม');
     }
@@ -386,25 +461,20 @@ export class AfterSalesExchangeService {
       );
     }
 
-    const updated = await this.prisma.afterSalesCase.update({
-      where: { id: caseId },
-      data: {
-        closedAt: new Date(),
-        stage: 'CLOSED',
-        events: {
-          create: [
-            {
-              kind: 'DELIVERED',
-              actorId: user.id,
-              note: currentDomainAccess()
-                ? 'ส่งมอบเครื่องใหม่'
-                : `ส่งมอบเครื่องใหม่ · สัญญา ${newContract.contractNumber}`,
-            },
-            { kind: 'CLOSED', actorId: user.id, note: 'ปิดเคส' },
-          ],
+    // M1 (final review PR5) — กดซ้อน/ดับเบิลคลิกต้องไม่ได้ event DELIVERED+CLOSED/LINE สองชุด:
+    // CAS บน stage READY_FOR_PICKUP + closedAt null (updateMany count 0 = คนอื่นส่งมอบไปแล้ว → 409)
+    // แล้วค่อยเขียน events ใน tx เดียวกัน (managed: joins the owned execution transaction)
+    const updated = await this.prisma.$transaction(async (tx) =>
+      this.closeDeliveredCase(tx, caseId, user.id, [
+        {
+          kind: 'DELIVERED',
+          note: currentDomainAccess()
+            ? 'ส่งมอบเครื่องใหม่'
+            : `ส่งมอบเครื่องใหม่ · สัญญา ${newContract.contractNumber}`,
         },
-      },
-    });
+        { kind: 'CLOSED', note: 'ปิดเคส' },
+      ]),
+    );
 
     await this.log({
       userId: user.id,
@@ -420,11 +490,375 @@ export class AfterSalesExchangeService {
     return this.result(updated);
   }
 
+  /** PR 5 §5 — ยืนยันเปลี่ยนรุ่นเดิมบนใบขายสด/ไฟแนนซ์นอก (ทาง ก: สลับเครื่องบนใบขายเดิม + JE สลับต้นทุน) */
+  private async confirmCashSameModel(c: ExchangeCase, dto: ExchangeConfirmDto, user: ReqUser) {
+    // Employee access: the managed exchange boundary authorizes contract-sourced swaps only;
+    // a sale-sourced swap (stock flip + SHOP JE) has no capability check yet ⇒ fail closed.
+    if (currentDomainAccess()) throw new ForbiddenException('แหล่งเปลี่ยนเครื่องไม่ตรงกับเคส');
+    const fromRepair = c.outcome === 'REPAIR';
+    if (!fromRepair && c.outcome !== 'CASH_SAME_MODEL_EXCHANGE') {
+      throw new BadRequestException('เคสนี้ไม่ใช่ทางออกเปลี่ยนรุ่นเดิม');
+    }
+    if (['CLOSED', 'CANCELLED'].includes(c.stage)) throw new BadRequestException('เคสนี้จบแล้ว');
+    if (c.replacementSaleId) throw new ConflictException('ยืนยันไปแล้ว');
+    const newProductId = fromRepair ? dto.replacementProductId : c.replacementProductId;
+    if (!newProductId) throw new BadRequestException('ต้องเลือกเครื่องทดแทนจากสต๊อก');
+    const saleId = c.saleId!;
+
+    // CAS จองเคส (pattern M4) — ไม่มี engine ภายนอก แต่ยังต้องกันสองแท็บยืนยันซ้อนก่อนเปิด tx
+    const claimedAt = new Date();
+    const claim = await this.prisma.afterSalesCase.updateMany({
+      where: {
+        id: c.id,
+        deletedAt: null,
+        stage: { in: fromRepair ? REPAIR_CONFIRM_STAGES : ['AWAITING_APPROVAL'] },
+        replacementContractId: null,
+        replacementSaleId: null,
+        cancelledAt: null,
+        approvedAt: null,
+      },
+      data: { approvedAt: claimedAt, approvedById: user.id },
+    });
+    if (!claim.count) throw new ConflictException('เคสนี้ถูกดำเนินการไปแล้ว');
+
+    let posted: CashConfirmPosted;
+    try {
+      posted = await this.prisma.$transaction(
+        (tx) => this.runCashConfirm(tx, c, saleId, newProductId, fromRepair, user, claimedAt),
+        { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+      );
+    } catch (err) {
+      await this.prisma.afterSalesCase
+        .updateMany({
+          where: { id: c.id, approvedAt: claimedAt, replacementSaleId: null },
+          data: { approvedAt: null, approvedById: null },
+        })
+        .catch((releaseErr: unknown) =>
+          this.logger.error(
+            `ปล่อยการจองยืนยันเปลี่ยนเครื่อง (ขายสด) ไม่สำเร็จ caseId=${c.id}: ${String(releaseErr)}`,
+          ),
+        );
+      if (
+        err instanceof Prisma.PrismaClientKnownRequestError &&
+        (err.code === 'P2034' || err.code === 'P2002')
+      ) {
+        Sentry.captureMessage('[after-sales cash-exchange] write-conflict translated to 409', {
+          level: 'warning',
+          extra: { caseId: c.id, code: err.code },
+        });
+        throw new ConflictException('ระบบกำลังประมวลผลรายการของเคสนี้อยู่ — ลองใหม่อีกครั้ง');
+      }
+      throw err;
+    }
+
+    // database.md — audit หลัง commit เท่านั้น
+    await this.audit.log({
+      userId: user.id,
+      action: 'AFTER_SALES_CASH_EXCHANGE_CONFIRMED',
+      entity: 'after_sales_case',
+      entityId: c.id,
+      newValue: {
+        saleId,
+        saleNumber: posted.saleNumber,
+        oldProductId: posted.oldProductId,
+        newProductId,
+        journalEntryNo: posted.journalEntryNo,
+        fromRepair,
+        ...(canSeeCost(user.role) ? { oldCost: posted.oldCost, newCost: posted.newCost } : {}),
+      },
+    });
+    if (fromRepair && posted.repairTicketId) {
+      await this.audit.log({
+        userId: user.id,
+        action: 'REPAIR_TICKET_REPLACED_BY_SALE',
+        entity: 'repair_ticket',
+        entityId: posted.repairTicketId,
+        newValue: { saleId, afterSalesCaseId: c.id },
+      });
+    }
+    void this.line.notifyMoment(c.id, 'READY', user.id).catch(() => undefined);
+    return {
+      id: c.id,
+      stage: 'READY_FOR_PICKUP' as const,
+      replacementSaleId: saleId,
+      saleNumber: posted.saleNumber,
+      journalEntryNo: posted.journalEntryNo,
+    };
+  }
+
+  private async runCashConfirm(
+    tx: Prisma.TransactionClient,
+    c: ExchangeCase,
+    saleId: string,
+    newProductId: string,
+    fromRepair: boolean,
+    user: ReqUser,
+    claimedAt: Date,
+  ): Promise<CashConfirmPosted> {
+    const sale = await tx.sale.findUnique({
+      where: { id: saleId },
+      select: {
+        id: true,
+        saleNumber: true,
+        saleType: true,
+        productId: true,
+        customerId: true,
+        deletedAt: true,
+        exchangeCaseId: true,
+        shopWarrantyStartDate: true,
+        createdAt: true,
+        costSnapshot: { select: { mainProductCost: true } },
+      },
+    });
+    if (!sale || sale.deletedAt) {
+      throw new BadRequestException('ใบขายถูกยกเลิกไปแล้ว — เปลี่ยนเครื่องไม่ได้');
+    }
+    if (sale.productId !== c.productId) {
+      throw new ConflictException('เครื่องของใบขายเปลี่ยนไปแล้ว — เปิดเคสใหม่');
+    }
+    const expectedStatus = mainProductStatusFor(sale.saleType);
+    if (!expectedStatus) {
+      throw new BadRequestException('ใบขายประเภทนี้ไม่รองรับการเปลี่ยนรุ่นเดิมขายสด');
+    }
+    // §3.4 — ตรวจกรอบด้วยข้อมูลสด (ไม่ใช่ snapshot ตอนเปิดเคส) ทั้งเคสปกติและ fromRepair · ไม่มี override
+    if (!cashExchangeWindowOpen(saleSoldAt(sale)!)) {
+      throw new BadRequestException(CASH_OUT_OF_WINDOW_REASON);
+    }
+    const next = await assertCashReplacement(
+      tx,
+      {
+        sale: { id: sale.id, productId: sale.productId, customerId: sale.customerId },
+        caseBranchId: c.branchId,
+      },
+      newProductId,
+    );
+    if (!sale.costSnapshot) {
+      throw new BadRequestException('ไม่พบต้นทุนที่ลงบัญชีตอนขาย — ให้ฝ่ายบัญชีตรวจก่อน');
+    }
+    const oldCost = new Prisma.Decimal(sale.costSnapshot.mainProductCost.toString());
+    const newCost = new Prisma.Decimal(next.costPrice.toString());
+    const oldProduct = await tx.product.findUnique({
+      where: { id: sale.productId },
+      select: { category: true },
+    });
+    if (!oldProduct) throw new BadRequestException('ไม่พบเครื่องเดิมของใบขาย');
+
+    const shopCompanyId = await this.companyResolver.getShopCompanyId(tx);
+    await validatePeriodOpen(tx, new Date(), shopCompanyId);
+
+    const oldFlip = await tx.product.updateMany({
+      where: { id: sale.productId, status: expectedStatus, deletedAt: null },
+      data: { status: 'DEFECT_RETURN' },
+    });
+    if (oldFlip.count !== 1) {
+      throw new ConflictException('เครื่องเดิมไม่อยู่ในสถานะของใบขายนี้แล้ว');
+    }
+    const newFlip = await tx.product.updateMany({
+      where: { id: newProductId, status: 'IN_STOCK', deletedAt: null },
+      data: { status: expectedStatus },
+    });
+    if (newFlip.count !== 1) throw new ConflictException('เครื่องทดแทนถูกขาย/จองไปแล้ว');
+    await preemptReservationsInTx(tx, [newProductId]);
+
+    const je = await this.cashExchange.execute(
+      {
+        afterSalesCaseId: c.id,
+        caseNumber: c.caseNumber,
+        saleId: sale.id,
+        saleNumber: sale.saleNumber,
+        oldProductId: sale.productId,
+        newProductId,
+        oldCost,
+        newCost,
+        oldAccounts: this.shopAccounts.resolveProductAccounts(oldProduct.category),
+        newAccounts: this.shopAccounts.resolveProductAccounts(next.category),
+      },
+      tx,
+    );
+
+    const updatedSale = await tx.sale.update({
+      where: { id: sale.id },
+      data: {
+        productId: newProductId,
+        exchangeCaseId: c.id,
+        costSnapshot: {
+          upsert: { create: { mainProductCost: newCost }, update: { mainProductCost: newCost } },
+        },
+      },
+      select: { saleNumber: true },
+    });
+
+    let repairTicketId: string | null = null;
+    if (fromRepair && c.repairTicket?.id) {
+      await this.repair.markReplacedBySale(
+        c.repairTicket.id,
+        { caseNumber: c.caseNumber, saleNumber: updatedSale.saleNumber },
+        user,
+        tx,
+      );
+      repairTicketId = c.repairTicket.id;
+    }
+
+    await tx.afterSalesCase.update({
+      where: { id: c.id },
+      data: {
+        outcome: 'CASH_SAME_MODEL_EXCHANGE',
+        replacementProductId: newProductId,
+        replacementSaleId: sale.id,
+        approvedById: user.id,
+        approvedAt: claimedAt,
+        stage: 'READY_FOR_PICKUP',
+        events: {
+          create: {
+            kind: 'APPROVED',
+            actorId: user.id,
+            note: `ยืนยันเปลี่ยนเครื่อง · ใบขาย ${updatedSale.saleNumber} · เครื่องทดแทน IMEI ${next.imeiSerial ?? '—'}${fromRepair ? ' · จากใบซ่อม (ซ่อมไม่ได้)' : ''}`,
+          },
+        },
+      },
+    });
+    return {
+      saleNumber: updatedSale.saleNumber,
+      oldProductId: sale.productId,
+      oldCost: oldCost.toFixed(2),
+      newCost: newCost.toFixed(2),
+      journalEntryNo: je?.entryNo ?? null,
+      repairTicketId,
+    };
+  }
+
+  /** PR 5 §6 — ส่งมอบเครื่องทดแทนของเคสขายสด: ประกันร้าน + กรอบ 7 วันนับใหม่จากวันนี้ · ปิดเคส · ไม่มี JE */
+  private async deliverCash(c: ExchangeCase, dto: ExchangeDeliverDto, user: ReqUser) {
+    // Employee access: see confirmCashSameModel — sale-sourced delivery is not yet authorized for managed actors.
+    if (currentDomainAccess()) throw new ForbiddenException('แหล่งเปลี่ยนเครื่องไม่ตรงกับเคส');
+    if (!c.replacementSaleId || !c.replacementProductId) {
+      throw new BadRequestException('เคสนี้ยังไม่ได้ยืนยันเปลี่ยนเครื่อง');
+    }
+    if (c.stage !== 'READY_FOR_PICKUP') throw new BadRequestException('เคสนี้ยังไม่พร้อมส่งมอบ');
+    const now = new Date();
+    const { updated, saleNumber, shopWarrantyEndDate } = await this.prisma.$transaction(
+      async (tx) => {
+        const product = await tx.product.findUniqueOrThrow({
+          where: { id: c.replacementProductId! },
+          select: { category: true, shopWarrantyDays: true, deviceOrigin: true, warrantyTerms: true },
+        });
+        const w = await shopWarrantyDatesFor(tx, product, now);
+        const sale = await tx.sale.update({
+          where: { id: c.replacementSaleId! },
+          data: {
+            shopWarrantyStartDate: w.shopWarrantyStartDate,
+            shopWarrantyEndDate: w.shopWarrantyEndDate,
+          },
+          select: { saleNumber: true },
+        });
+        const accessories = deliveredAccessoriesText(dto.accessories);
+        const note = `ส่งมอบเครื่องทดแทน · ใบขาย ${sale.saleNumber}${accessories ? ` · อุปกรณ์: ${accessories}` : ''}${dto.note?.trim() ? ` · ${dto.note.trim()}` : ''}`;
+        // M1 — CAS เดียวกับกิ่งผ่อน: แพ้ = 409 และ tx ย้อนประกันที่เพิ่งเขียนกลับด้วย
+        // M3 — เก็บอุปกรณ์แบบโครงสร้างบนเคส (ใบส่งมอบอ่านจากตรงนี้ · note ยังมีข้อความไว้ให้คนอ่าน)
+        const updated = await this.closeDeliveredCase(
+          tx,
+          c.id,
+          user.id,
+          [
+            { kind: 'DELIVERED', note },
+            { kind: 'CLOSED', note: 'ปิดเคส' },
+          ],
+          dto.accessories ? { deliveredAccessories: normalizeDeliveredAccessories(dto.accessories) } : {},
+        );
+        return { updated, saleNumber: sale.saleNumber, shopWarrantyEndDate: w.shopWarrantyEndDate };
+      },
+    );
+    await this.audit.log({
+      userId: user.id,
+      action: 'AFTER_SALES_CASH_EXCHANGE_DELIVERED',
+      entity: 'after_sales_case',
+      entityId: c.id,
+      newValue: {
+        replacementSaleId: c.replacementSaleId,
+        saleNumber,
+        shopWarrantyEndDate: shopWarrantyEndDate?.toISOString() ?? null,
+      },
+    });
+    void this.line.notifyMoment(c.id, 'CLOSED', user.id).catch(() => undefined);
+    return updated;
+  }
+
+  /** PR 5 §11 — กล่อง "รายการบัญชีที่จะลง" ในกล่องยืนยัน (MGR) — คำนวณจากแหล่งเดียวกับ runCashConfirm ไม่เขียน DB */
+  async cashExchangePreview(
+    caseId: string,
+    replacementProductId: string | undefined,
+    user: ReqUser,
+  ) {
+    // Employee access: managed actors cannot confirm a cash swap (see confirmCashSameModel) and the
+    // source-aware cost projection does not cover this response ⇒ fail closed for them.
+    if (await afterSalesActor(this.basePrisma, user.id)) {
+      throw new ForbiddenException('แหล่งเปลี่ยนเครื่องไม่ตรงกับเคส');
+    }
+    this.assertMgr(user);
+    if (!canSeeCost(user.role)) throw new ForbiddenException('ไม่มีสิทธิ์ดูต้นทุน');
+    const c: ExchangeCase = await this.query.getCase(caseId, user);
+    if (!c.saleId || c.contractId) throw new BadRequestException('เคสนี้ไม่ใช่เคสขายสด');
+    const newProductId = replacementProductId ?? c.replacementProductId;
+    if (!newProductId) throw new BadRequestException('ต้องเลือกเครื่องทดแทนจากสต๊อก');
+    // M2 (final review PR5) — ใบขายที่ยกเลิกแล้ว (soft delete) ไม่ควร preview ได้ (confirm ตรวจอยู่แล้ว)
+    const sale = await this.prisma.sale.findFirst({
+      where: { id: c.saleId, deletedAt: null },
+      select: {
+        saleNumber: true,
+        productId: true,
+        customerId: true,
+        costSnapshot: { select: { mainProductCost: true } },
+      },
+    });
+    if (!sale) throw new NotFoundException('ไม่พบใบขาย');
+    const next = await assertCashReplacement(
+      this.prisma,
+      {
+        sale: { id: c.saleId, productId: sale.productId, customerId: sale.customerId },
+        caseBranchId: c.branchId,
+      },
+      newProductId,
+    );
+    if (!sale.costSnapshot) {
+      throw new BadRequestException('ไม่พบต้นทุนที่ลงบัญชีตอนขาย — ให้ฝ่ายบัญชีตรวจก่อน');
+    }
+    const oldProduct = await this.prisma.product.findUnique({
+      where: { id: sale.productId },
+      select: { category: true },
+    });
+    const oldA = this.shopAccounts.resolveProductAccounts(oldProduct?.category ?? 'PHONE_USED');
+    const newA = this.shopAccounts.resolveProductAccounts(next.category);
+    const oldCost = new Prisma.Decimal(sale.costSnapshot.mainProductCost.toString());
+    const newCost = new Prisma.Decimal(next.costPrice.toString());
+    const z = '0.00';
+    const lines = [
+      ...(oldCost.gt(0)
+        ? [
+            { accountCode: oldA.inventoryAccountCode, dr: oldCost.toFixed(2), cr: z },
+            { accountCode: oldA.cogsAccountCode, dr: z, cr: oldCost.toFixed(2) },
+          ]
+        : []),
+      ...(newCost.gt(0)
+        ? [
+            { accountCode: newA.cogsAccountCode, dr: newCost.toFixed(2), cr: z },
+            { accountCode: newA.inventoryAccountCode, dr: z, cr: newCost.toFixed(2) },
+          ]
+        : []),
+    ];
+    return {
+      saleNumber: sale.saleNumber,
+      oldCost: oldCost.toFixed(2),
+      newCost: newCost.toFixed(2),
+      replacementProductId: newProductId,
+      lines,
+    };
+  }
+
   /** ปฏิเสธคำขอเปลี่ยนรุ่นเดิม — เฉพาะตอนยังรออนุมัติ (ยังไม่ยืนยัน) */
   async rejectSameModel(caseId: string, dto: ExchangeRejectDto, user: ReqUser) {
     if (!(await afterSalesActor(this.basePrisma, user.id, this.prisma))) this.assertMgr(user);
     const c = await this.actionCase(caseId, user);
-    if (c.outcome !== 'SAME_MODEL_EXCHANGE') {
+    if (!['SAME_MODEL_EXCHANGE', 'CASH_SAME_MODEL_EXCHANGE'].includes(c.outcome ?? '')) {
       throw new BadRequestException('เคสนี้ไม่ใช่ทางออกเปลี่ยนรุ่นเดิม');
     }
     if (c.stage !== 'AWAITING_APPROVAL') {
@@ -463,7 +897,7 @@ export class AfterSalesExchangeService {
    */
   async switchToRepair(caseId: string, dto: SwitchToRepairDto, user: ReqUser) {
     const c = await this.actionCase(caseId, user);
-    if (c.outcome !== 'SAME_MODEL_EXCHANGE') {
+    if (!['SAME_MODEL_EXCHANGE', 'CASH_SAME_MODEL_EXCHANGE'].includes(c.outcome ?? '')) {
       throw new BadRequestException('เคสนี้ไม่ใช่ทางออกเปลี่ยนรุ่นเดิม');
     }
     if (c.stage !== 'AWAITING_APPROVAL') {
@@ -527,70 +961,17 @@ export class AfterSalesExchangeService {
   }
 
   /**
-   * อนุมัติคำขอเปลี่ยนเครื่องแบบมีราคา — MGR (engine บังคับ ESCALATE=OWNER เอง ที่นี่ไม่เช็คซ้ำ).
-   * MEMO mode ไม่มีสัญญาใหม่ (`newContractId: null`) เพราะแค่สลับ productId บนสัญญาเดิม; PRICED
-   * mode ต้องเปิดใช้สัญญาใหม่ที่หน้าสัญญาต่อก่อนเคสจะปิด (`reconcile` จึงได้ READY_FOR_PICKUP
-   * ไม่ใช่ CLOSED ทันที — CLOSED มาทีหลังตอนสัญญาใหม่พ้น DRAFT).
+   * อนุมัติคำขอเปลี่ยนเครื่องแบบมีราคา (ทั้ง MEMO และ PRICED) — **ปิดใช้ 2026-10-06** (คำตัดสินเจ้าของ:
+   * ลูกค้าต้องปิดยอดสัญญาเดิมก่อนทำสัญญาผ่อนใหม่) → 410 ก่อนแตะ role/getCase/engine. คำขอที่ค้างรออนุมัติ
+   * ปิดได้ทางเดียวคือ `rejectPriced` (OWNER); ที่อนุมัติไปแล้วก่อนปิดยกเลิกผ่าน `cancelSwap` ตามเดิม.
+   * คงเมธอดไว้ให้ route `POST /after-sales/:id/approve` ได้ข้อความชี้ทาง ไม่ใช่ 404 เงียบ ๆ.
    */
-  async approvePriced(caseId: string, dto: ApproveExchangeRequestDto, user: ReqUser) {
-    if (!(await afterSalesActor(this.basePrisma, user.id, this.prisma))) this.assertMgr(user);
-    const c = await this.exchangeCase(caseId, user, 'approve');
-    const requestId = this.assertPricedCase(c);
-
-    const res = await this.contractExchange.approve(requestId, user, dto);
-
-    let note: string;
-    if (currentDomainAccess()) {
-      note = res.mode === 'MEMO' ? 'อนุมัติ · MEMO ลงผลแล้ว' : 'อนุมัติ · PRICED รอเปิดใช้';
-    } else if (res.mode === 'MEMO') {
-      note = 'อนุมัติ · MEMO ลงผลแล้ว';
-    } else {
-      // res.newContractId is only null for MEMO — PRICED always creates a new contract, but
-      // read the contract number defensively (fall back to the raw id) rather than assume.
-      const newContract = res.newContractId
-        ? await this.prisma.contract.findUnique({
-            where: { id: res.newContractId, deletedAt: null },
-            select: { contractNumber: true },
-          })
-        : null;
-      const contractNumber = newContract?.contractNumber ?? res.newContractId ?? '';
-      note = `อนุมัติ · PRICED สัญญาใหม่ ${contractNumber} รอเปิดใช้`;
-    }
-
-    // The request is locked and its actual source/destinations authorized before approval.
-    // Refresh the action facts after ownership changes; no read view is implied.
-    const refreshed = currentDomainAccess()
-      ? await this.exchangeCase(caseId, user, 'approve')
-      : undefined;
-    await this.syncExchange(
-      caseId,
-      res.mode === 'MEMO' ? 'CLOSED' : 'READY_FOR_PICKUP',
-      undefined,
-      refreshed?.exchangeRequest?.memoAppliedAt,
-    );
-
-    const updated = await this.prisma.afterSalesCase.update({
-      where: { id: caseId },
-      data: {
-        approvedById: user.id,
-        approvedAt: new Date(),
-        events: { create: { kind: 'APPROVED', actorId: user.id, note } },
-      },
-    });
-
-    await this.log({
-      userId: user.id,
-      action: 'AFTER_SALES_EXCHANGE_APPROVED',
-      entity: 'after_sales_case',
-      entityId: caseId,
-      newValue: { exchangeRequestId: requestId, mode: res.mode, newContractId: res.newContractId },
-    });
-
-    // Task 3 — MEMO ลงผลแล้ว = เคสจบ (CLOSED); PRICED ยังต้องเปิดใช้สัญญาใหม่ที่หน้าสัญญาก่อน
-    // เคสจึงยัง READY_FOR_PICKUP รอส่งมอบ (READY) — หลัง commit + audit เสมอ, fire-and-forget
-    this.notify(caseId, res.mode === 'MEMO' ? 'CLOSED' : 'READY', user.id);
-
-    return this.result(updated);
+  async approvePriced(
+    _caseId: string,
+    _dto: ApproveExchangeRequestDto,
+    _user: ReqUser,
+  ): Promise<never> {
+    throw deviceSwapClosed();
   }
 
   /** ปฏิเสธคำขอเปลี่ยนเครื่องแบบมีราคา — OWNER เท่านั้น (ต่างจาก rejectSameModel ที่เป็น MGR) */
@@ -656,26 +1037,11 @@ export class AfterSalesExchangeService {
   }
 
   /**
-   * ตัวเลข NCV/tier/plan ก่อนอนุมัติจริง — หาสัญญาจาก IMEI แล้วส่งต่อ engine ตรง ๆ (คืนผลเดิม
-   * ไม่แปลง). STAFF เท่านั้น (OWNER/BM/SALES) เพราะเห็นเลขการเงินของสัญญา.
+   * ตัวเลข NCV/tier/plan ก่อนอนุมัติจริง — **ปิดใช้ 2026-10-06** พร้อมเมนูเปลี่ยนเครื่องแบบมีราคา → 410
+   * ก่อนแตะ role/lookup/engine (ไม่มีอะไรให้ preview เมื่อยื่นคำขอใหม่ไม่ได้แล้ว).
    */
-  async preview(q: PreviewQuery, user: ReqUser) {
-    const ctx = await afterSalesActor(this.basePrisma, user.id);
-    if (!ctx) this.assertStaff(user);
-    const found = await this.lookup.lookup({ imei: q.imei }, user);
-    if (!found.contract) throw new BadRequestException('ไม่พบสัญญาผ่อนของเครื่องนี้');
-
-    return this.contractExchange.buildPreview(
-      {
-        oldContractId: found.contract.id,
-        newProductId: q.replacementProductId,
-        buybackPrice: q.buybackPrice,
-        deviceCondition: q.deviceCondition,
-        newTotalMonths: q.newTotalMonths,
-        newInterestRate: q.newInterestRate,
-      },
-      user,
-    );
+  async preview(_q: PreviewQuery, _user: ReqUser): Promise<never> {
+    throw deviceSwapClosed();
   }
 
   /**

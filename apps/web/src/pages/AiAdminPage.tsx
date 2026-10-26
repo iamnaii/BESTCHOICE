@@ -1,3 +1,4 @@
+import { formatNumericText } from '@/utils/numericText';
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router';
@@ -96,8 +97,8 @@ interface LogsResponse {
 }
 
 function formatUsd(value: number): string {
-  if (value < 0.01) return `$${value.toFixed(4)}`;
-  return `$${value.toFixed(2)}`;
+  if (value < 0.01) return `$${formatNumericText(value.toFixed(4))}`;
+  return `$${formatNumericText(value.toFixed(2))}`;
 }
 
 function formatTokens(value: number): string {
@@ -193,7 +194,7 @@ export default function AiAdminPage() {
   return (
     <div>
       <PageHeader
-        title="AI Admin"
+        title="จัดการ AI"
         subtitle="ตรวจสอบต้นทุน การใช้งาน และประสิทธิภาพของ Claude API"
       />
 
@@ -206,8 +207,8 @@ export default function AiAdminPage() {
           <div className="flex items-center gap-3">
             <Activity className="w-5 h-5 text-primary" />
             <div>
-              <p className="font-semibold text-foreground">AI Performance</p>
-              <p className="text-xs text-muted-foreground">Auto-reply / accept / handoff</p>
+              <p className="font-semibold text-foreground">ประสิทธิภาพ AI</p>
+              <p className="text-xs text-muted-foreground">ตอบอัตโนมัติ / รับงาน / ส่งต่อ</p>
             </div>
           </div>
           <ArrowRight className="w-4 h-4 text-muted-foreground" />
@@ -219,8 +220,8 @@ export default function AiAdminPage() {
           <div className="flex items-center gap-3">
             <GraduationCap className="w-5 h-5 text-primary" />
             <div>
-              <p className="font-semibold text-foreground">Training</p>
-              <p className="text-xs text-muted-foreground">คู่ข้อมูล training</p>
+              <p className="font-semibold text-foreground">การฝึกสอน</p>
+              <p className="text-xs text-muted-foreground">คู่ข้อมูล การฝึกสอน</p>
             </div>
           </div>
           <ArrowRight className="w-4 h-4 text-muted-foreground" />
@@ -232,8 +233,8 @@ export default function AiAdminPage() {
           <div className="flex items-center gap-3">
             <SettingsIcon className="w-5 h-5 text-primary" />
             <div>
-              <p className="font-semibold text-foreground">AI Settings</p>
-              <p className="text-xs text-muted-foreground">Prompt / tone / handoff rules</p>
+              <p className="font-semibold text-foreground">ตั้งค่า AI</p>
+              <p className="text-xs text-muted-foreground">คำสั่ง / น้ำเสียง / เงื่อนไขส่งต่อ</p>
             </div>
           </div>
           <ArrowRight className="w-4 h-4 text-muted-foreground" />
@@ -299,7 +300,7 @@ export default function AiAdminPage() {
         <div className="flex items-center justify-between mb-3">
           <h3 className="font-semibold text-foreground">แนวโน้มค่าใช้จ่าย</h3>
           <Select value={String(trendDays)} onValueChange={(v) => setTrendDays(parseInt(v))}>
-            <SelectTrigger className="w-28">
+            <SelectTrigger aria-label="ช่วงเวลา" className="w-28">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -332,7 +333,7 @@ export default function AiAdminPage() {
                   tick={{ fontSize: 11 }}
                   tickFormatter={(d: string) => d.slice(5)}
                 />
-                <YAxis tick={{ fontSize: 11 }} tickFormatter={(v: number) => `$${v.toFixed(2)}`} />
+                <YAxis tick={{ fontSize: 11 }} tickFormatter={(v: number) => `$${formatNumericText(v.toFixed(2))}`} />
                 <ChartTooltip
                   formatter={(v) => formatUsd(Number(v))}
                   labelFormatter={(d) => String(d)}
@@ -354,13 +355,13 @@ export default function AiAdminPage() {
         <div className="flex items-center justify-between mb-3">
           <h3 className="font-semibold text-foreground">แยกตาม</h3>
           <Select value={groupBy} onValueChange={(v) => setGroupBy(v as typeof groupBy)}>
-            <SelectTrigger className="w-36">
+            <SelectTrigger aria-label="จัดกลุ่มตาม" className="w-36">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="service">Service</SelectItem>
-              <SelectItem value="model">Model</SelectItem>
-              <SelectItem value="user">User</SelectItem>
+              <SelectItem value="service">บริการ</SelectItem>
+              <SelectItem value="model">โมเดล</SelectItem>
+              <SelectItem value="user">ผู้ใช้</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -373,11 +374,11 @@ export default function AiAdminPage() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>{groupBy === 'user' ? 'ผู้ใช้' : groupBy === 'model' ? 'Model' : 'Service'}</TableHead>
-                <TableHead className="text-right">Calls</TableHead>
-                <TableHead className="text-right">Input tokens</TableHead>
-                <TableHead className="text-right">Output tokens</TableHead>
-                <TableHead className="text-right">Cost</TableHead>
+                <TableHead>{groupBy === 'user' ? 'ผู้ใช้' : groupBy === 'model' ? "โมเดล" : "บริการ"}</TableHead>
+                <TableHead className="text-right">จำนวนครั้ง</TableHead>
+                <TableHead className="text-right">โทเคนขาเข้า</TableHead>
+                <TableHead className="text-right">โทเคนขาออก</TableHead>
+                <TableHead className="text-right">ค่าใช้จ่าย</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -411,7 +412,7 @@ export default function AiAdminPage() {
         <div className="flex items-center justify-between mb-3">
           <h3 className="font-semibold text-foreground flex items-center gap-2">
             <FlaskConical className="w-4 h-4" />
-            Recent calls
+            การเรียกใช้ล่าสุด
           </h3>
           <Select
             value={logStatus}
@@ -420,7 +421,7 @@ export default function AiAdminPage() {
               setLogsPage(1);
             }}
           >
-            <SelectTrigger className="w-36">
+            <SelectTrigger aria-label="สถานะการทำงาน" className="w-36">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -440,10 +441,10 @@ export default function AiAdminPage() {
             <TableHeader>
               <TableRow>
                 <TableHead>เวลา</TableHead>
-                <TableHead>Service</TableHead>
-                <TableHead>Model</TableHead>
-                <TableHead className="text-right">Tokens</TableHead>
-                <TableHead className="text-right">Cost</TableHead>
+                <TableHead>บริการ</TableHead>
+                <TableHead>โมเดล</TableHead>
+                <TableHead className="text-right">โทเคน</TableHead>
+                <TableHead className="text-right">ค่าใช้จ่าย</TableHead>
                 <TableHead>สถานะ</TableHead>
               </TableRow>
             </TableHeader>
@@ -463,7 +464,7 @@ export default function AiAdminPage() {
                   <TableCell>
                     {row.status === 'success' ? (
                       <Badge variant="outline" className="text-success border-success/30">
-                        success
+                        สำเร็จ
                       </Badge>
                     ) : (
                       <Badge variant="outline" className="text-destructive border-destructive/30">

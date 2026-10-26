@@ -8,6 +8,9 @@ import {
 } from './compute-early-payoff-je';
 import { ledgerLines } from './__tests__/ledger-lines-mock';
 
+/** ไม่มีรายการที่ประทับภาษีของเงินรับล่วงหน้า (PR4) — advanceVatOutstanding = 0 */
+const noStamps = () => jest.fn().mockResolvedValue([]);
+
 /**
  * PR5 — ปิดยอดก่อนกำหนดล้างตามยอดในบัญชี (คำตอบฝ่ายบัญชี เล่ม 1 ข้อ 5.1–5.4 · 29/09/2569).
  * สัญญาตัวอย่างของฝ่ายบัญชี: 17,000/12 งวด งวดละ 1,515.83 (ขายสด 12,000 ดาวน์ 2,000 ค่าคอม 1,000 ดอกเบี้ย 6,000
@@ -66,7 +69,7 @@ describe('buildEarlyPayoffJE — รายการปิดยอดก่อ�
     expect(je.deferredInterestDiscountBase.toFixed(2)).toBe('3000.00');
     expect(je.discountBeyondDeferredBase.toFixed(2)).toBe('0.02');
     expect(je.roundingGain.toFixed(2)).toBe('0.00');
-    expect(je.excessReceived.toFixed(2)).toBe('0.00');
+    expect(je.excessIncome.toFixed(2)).toBe('0.00');
   });
 
   it('มีเงินพักค่าปรับดิว 1,044.00 ลูกค้าจ่าย 14,318.16 → Dr 21-1103 1,044.00 แทนเงินสด · 52-1106 2,827.84', () => {
@@ -284,7 +287,7 @@ describe('buildEarlyPayoffJE — รายการปิดยอดก่อ�
     expect(totals(je)).toEqual({ dr: '25380.08', cr: '25380.08' });
   });
 
-  it('เงินที่รับ + เงินของลูกค้าเกินลูกหนี้ตามบัญชี: พอดี 1.00 → Cr 53-1503 1.00 · เกิน 1.01 → excessReceived 1.01 ไม่มีบรรทัดรับ (ผู้เรียกปฏิเสธ)', () => {
+  it('เงินที่รับ + เงินของลูกค้าเกินลูกหนี้ตามบัญชี: พอดี 1.00 → Cr 53-1503 1.00 · เกิน 1.01 → รายได้ 42-1106 0.94 + ภาษีขาย 21-2101 0.07 (ฝ่ายบัญชี 18.2) สมดุล', () => {
     const atLimit = buildEarlyPayoffJE({
       depositAccountCode: '11-1201',
       cashReceived: '18191.00',
@@ -292,7 +295,7 @@ describe('buildEarlyPayoffJE — รายการปิดยอดก่อ�
       discountPercent: '0',
     });
     expect(atLimit.roundingGain.toFixed(2)).toBe('1.00');
-    expect(atLimit.excessReceived.toFixed(2)).toBe('0.00');
+    expect(atLimit.excessIncome.toFixed(2)).toBe('0.00');
     expect(totals(atLimit)).toEqual({ dr: '25381.00', cr: '25381.00' });
 
     const over = buildEarlyPayoffJE({
@@ -302,12 +305,18 @@ describe('buildEarlyPayoffJE — รายการปิดยอดก่อ�
       creditRelief: '300.00',
       discountPercent: '0',
     });
-    expect(over.excessReceived.toFixed(2)).toBe('1.01');
+    expect(over.excessIncome.toFixed(2)).toBe('1.01');
+    expect(over.excessVat.toFixed(2)).toBe('0.07');
     expect(over.roundingGain.toFixed(2)).toBe('0.00');
     expect(over.discount.toFixed(2)).toBe('0.00');
     expect(over.lines.map((l) => l.accountCode)).not.toContain('53-1503');
     expect(over.lines.map((l) => l.accountCode)).not.toContain('52-1106');
-    expect(totals(over)).toEqual({ dr: '25381.01', cr: '25380.00' });
+    const excessLines = over.lines.filter((l) => l.excessIncome);
+    expect(excessLines.map((l) => `${l.accountCode}:${l.cr.toFixed(2)}`)).toEqual([
+      '42-1106:0.94',
+      '21-2101:0.07',
+    ]);
+    expect(totals(over)).toEqual({ dr: '25381.01', cr: '25381.01' });
   });
 
   it('ยอดเงินที่ส่งเข้าติดลบหรือเกิน 2 ตำแหน่ง → throw (ห้ามลงยอดที่ฐานข้อมูลจะปัดเพี้ยน)', () => {
@@ -421,7 +430,10 @@ describe('readEarlyPayoffLedger / buildEarlyPayoffJournal — อ่านยอ
         '21-2102': '793.32',
       }),
     );
-    const l = await readEarlyPayoffLedger({ journalLine: { findMany } } as never, 'contract-x');
+    const l = await readEarlyPayoffLedger(
+      { journalEntry: { findMany: noStamps() }, journalLine: { findMany } } as never,
+      'contract-x',
+    );
     expect(
       [l.gross, l.accrued, l.vatReceivable, l.deferredInterest, l.deferredVat].map((v) =>
         v.toFixed(2),
@@ -450,22 +462,25 @@ describe('readEarlyPayoffLedger / buildEarlyPayoffJournal — อ่านยอ
         '21-5101': '300.00',
       }),
     );
-    const je = await buildEarlyPayoffJournal({ journalLine: { findMany } } as never, {
-      contract: contract({
-        advanceBalance: '500',
-        rescheduleAdvanceBalance: '1044',
-        creditBalance: '300',
-      }),
-      depositAccountCode: '11-1201',
-      // computePayoffQuote (เครดิต 300 · ถังพัก 1,044 · ถังรวม 500 · ส่วนลด 50%): ยอดปิด 13,740.81 · ส่วนลด 2,605.15
-      // (ก่อน PR5ข ถังรวมไม่ถูกหัก: ยอดปิด 14,158.35 · ส่วนลด 2,687.61 · 500 ค้างใน 21-1103)
-      cashReceived: '13740.81',
-      unpaidLateFees: '0',
-      parkReliefApplied: '1044.00',
-      advanceReliefApplied: '500.00',
-      quoteDiscountAmount: '2605.15',
-      discountPercent: '50',
-    });
+    const je = await buildEarlyPayoffJournal(
+      { journalEntry: { findMany: noStamps() }, journalLine: { findMany } } as never,
+      {
+        contract: contract({
+          advanceBalance: '500',
+          rescheduleAdvanceBalance: '1044',
+          creditBalance: '300',
+        }),
+        depositAccountCode: '11-1201',
+        // computePayoffQuote (เครดิต 300 · ถังพัก 1,044 · ถังรวม 500 · ส่วนลด 50%): ยอดปิด 13,740.81 · ส่วนลด 2,605.15
+        // (ก่อน PR5ข ถังรวมไม่ถูกหัก: ยอดปิด 14,158.35 · ส่วนลด 2,687.61 · 500 ค้างใน 21-1103)
+        cashReceived: '13740.81',
+        unpaidLateFees: '0',
+        parkReliefApplied: '1044.00',
+        advanceReliefApplied: '500.00',
+        quoteDiscountAmount: '2605.15',
+        discountPercent: '50',
+      },
+    );
     expect(je.parkRelief.toFixed(2)).toBe('1044.00');
     expect(je.advanceRelief.toFixed(2)).toBe('500.00');
     expect(je.creditRelief.toFixed(2)).toBe('300.00');
@@ -491,7 +506,10 @@ describe('readEarlyPayoffLedger / buildEarlyPayoffJournal — อ่านยอ
       '21-5101': '2000.00',
     };
     const notDeducted = await buildEarlyPayoffJournal(
-      { journalLine: { findMany: jest.fn(ledgerLines(ledger)) } } as never,
+      {
+        journalEntry: { findMany: noStamps() },
+        journalLine: { findMany: jest.fn(ledgerLines(ledger)) },
+      } as never,
       {
         contract: contract({}),
         depositAccountCode: '11-1201',
@@ -506,7 +524,7 @@ describe('readEarlyPayoffLedger / buildEarlyPayoffJournal — อ่านยอ
     expect(notDeducted.creditRelief.toFixed(2)).toBe('0.00');
     expect(notDeducted.lines.map((l) => l.accountCode)).not.toContain('21-5101');
     expect(notDeducted.discount.toFixed(2)).toBe('3000.02');
-    expect(notDeducted.excessReceived.toFixed(2)).toBe('0.00');
+    expect(notDeducted.excessIncome.toFixed(2)).toBe('0.00');
     expect(notDeducted.warnings.map((w) => w.tags.action)).toEqual([
       'close-advance-ledger-mismatch',
     ]);
@@ -517,7 +535,10 @@ describe('readEarlyPayoffLedger / buildEarlyPayoffJournal — อ่านยอ
 
     // computePayoffQuote (เครดิต 300): ยอดปิด 15,030.17 · ส่วนลด 2,859.79
     const partly = await buildEarlyPayoffJournal(
-      { journalLine: { findMany: jest.fn(ledgerLines(ledger)) } } as never,
+      {
+        journalEntry: { findMany: noStamps() },
+        journalLine: { findMany: jest.fn(ledgerLines(ledger)) },
+      } as never,
       {
         contract: contract({ creditBalance: '300' }),
         depositAccountCode: '11-1201',
@@ -553,7 +574,10 @@ describe('readEarlyPayoffLedger / buildEarlyPayoffJournal — อ่านยอ
     };
     // ปกติ: 3,000.02 เทียบจอ 2,999.98 (เศษงวดสุดท้าย 0.04)
     const normal = await buildEarlyPayoffJournal(
-      { journalLine: { findMany: jest.fn(ledgerLines(opened)) } } as never,
+      {
+        journalEntry: { findMany: noStamps() },
+        journalLine: { findMany: jest.fn(ledgerLines(opened)) },
+      } as never,
       input,
     );
     expect(normal.warnings).toEqual([]);
@@ -561,6 +585,7 @@ describe('readEarlyPayoffLedger / buildEarlyPayoffJournal — อ่านยอ
     // ลูกหนี้ในบัญชีเกินยอดค้างตามงวด 1,515.83 (เช่นแถวงวดถูกตั้ง PAID โดยไม่มีรายการรับชำระ)
     const anomaly = await buildEarlyPayoffJournal(
       {
+        journalEntry: { findMany: noStamps() },
         journalLine: {
           findMany: jest.fn(
             ledgerLines({
@@ -599,17 +624,20 @@ describe('readEarlyPayoffLedger / buildEarlyPayoffJournal — อ่านยอ
         '21-1103': '200.00',
       }),
     );
-    const je = await buildEarlyPayoffJournal({ journalLine: { findMany } } as never, {
-      contract: contract({ rescheduleAdvanceBalance: '354' }),
-      depositAccountCode: '11-1201',
-      // computePayoffQuote (ถังพัก 354 · ส่วนลด 50%): ยอดปิด 14,894.37 · ส่วนลด 2,941.59
-      cashReceived: '14894.37',
-      unpaidLateFees: '0',
-      parkReliefApplied: '354.00',
-      advanceReliefApplied: '0',
-      quoteDiscountAmount: '2941.59',
-      discountPercent: '50',
-    });
+    const je = await buildEarlyPayoffJournal(
+      { journalEntry: { findMany: noStamps() }, journalLine: { findMany } } as never,
+      {
+        contract: contract({ rescheduleAdvanceBalance: '354' }),
+        depositAccountCode: '11-1201',
+        // computePayoffQuote (ถังพัก 354 · ส่วนลด 50%): ยอดปิด 14,894.37 · ส่วนลด 2,941.59
+        cashReceived: '14894.37',
+        unpaidLateFees: '0',
+        parkReliefApplied: '354.00',
+        advanceReliefApplied: '0',
+        quoteDiscountAmount: '2941.59',
+        discountPercent: '50',
+      },
+    );
     expect(je.parkRelief.toFixed(2)).toBe('200.00');
     // 18,190.00 − 14,894.37 − 200.00 = 3,095.63 (ส่วนลดบนจอ 2,941.59 + เงินพักที่ไม่มีในบัญชี 154.00 + เศษ 0.04)
     expect(je.discount.toFixed(2)).toBe('3095.63');
@@ -649,6 +677,7 @@ describe('readEarlyPayoffLedger / buildEarlyPayoffJournal — อ่านยอ
     };
     const full = await buildEarlyPayoffJournal(
       {
+        journalEntry: { findMany: noStamps() },
         journalLine: { findMany: jest.fn(ledgerLines({ ...opened, '21-1103': '854.00' })) },
       } as never,
       input,
@@ -662,6 +691,7 @@ describe('readEarlyPayoffLedger / buildEarlyPayoffJournal — อ่านยอ
 
     const short = await buildEarlyPayoffJournal(
       {
+        journalEntry: { findMany: noStamps() },
         journalLine: { findMany: jest.fn(ledgerLines({ ...opened, '21-1103': '600.00' })) },
       } as never,
       input,
@@ -691,6 +721,7 @@ describe('readEarlyPayoffLedger / buildEarlyPayoffJournal — อ่านยอ
   it('PR5ข ถังรวม 50,000 ใหญ่กว่ายอดค้าง 18,189.96 → ยอดปิด 0.00 · หักเท่าที่ยอดปิดหักให้ 18,189.96 · 31,810.04 ค้างใน 21-1103 (เงินของลูกค้า) · 52-1106 0.04 (เศษงวดสุดท้าย) · ไม่มีสัญญาณ', async () => {
     const je = await buildEarlyPayoffJournal(
       {
+        journalEntry: { findMany: noStamps() },
         journalLine: {
           findMany: jest.fn(
             ledgerLines({
@@ -717,7 +748,248 @@ describe('readEarlyPayoffLedger / buildEarlyPayoffJournal — อ่านยอ
     );
     expect(je.advanceRelief.toFixed(2)).toBe('18189.96');
     expect(je.discount.toFixed(2)).toBe('0.04');
-    expect(je.excessReceived.toFixed(2)).toBe('0.00');
+    expect(je.excessIncome.toFixed(2)).toBe('0.00');
     expect(je.warnings).toEqual([]);
+  });
+});
+
+describe('PR4 (ต8) — ขากลับภาษีของเงินรับล่วงหน้าในรายการปิดยอดก่อนกำหนด', () => {
+  const d = (v: string) => new Decimal(v);
+  const tuples = (lines: EarlyPayoffJe['lines']) =>
+    lines.map((l) => `${l.accountCode} ${l.dr.toFixed(2)} ${l.cr.toFixed(2)}`);
+  const sum = (lines: EarlyPayoffJe['lines'], side: 'dr' | 'cr') =>
+    lines.reduce((s, l) => s.plus(l[side]), d('0')).toFixed(2);
+  /** 1A ของสัญญา 17,000/12 (ยังไม่จ่ายเลย) — 21-2102 ในบัญชีหลังพักภาษีของเงินรับล่วงหน้าแล้ว */
+  const unpaidLedger = (deferredVat: string): EarlyPayoffLedger => ({
+    gross: d('17000.00'),
+    accrued: d('0'),
+    vatReceivable: d('1190.00'),
+    deferredInterest: d('6000.00'),
+    deferredVat: d(deferredVat),
+  });
+
+  it('G4: เงินพัก 1,044.00 (ภาษีพัก 68.30 · 21-2102 ในบัญชี 1,121.70) ลูกค้าจ่าย 14,318.16 → ขากลับ Dr 21-2101 / Cr 21-2102 68.30 วางก่อนขาล้าง · ขาล้าง 21-2102 = 1,121.70 + 68.30 = 1,190.00 · 52-1106 2,827.84 เท่าเดิม · สมดุล 25,448.30', () => {
+    const je = buildEarlyPayoffJE({
+      depositAccountCode: '11-1201',
+      cashReceived: '14318.16',
+      ledger: unpaidLedger('1121.70'),
+      parkRelief: '1044.00',
+      discountPercent: '50',
+      advanceVatOutstanding: '68.30',
+      advanceVatReversal: '68.30',
+    });
+    expect(tuples(je.lines)).toEqual([
+      '11-1201 14318.16 0.00',
+      '11-2106 6000.00 0.00',
+      '21-2101 68.30 0.00',
+      '21-2102 0.00 68.30',
+      '21-2102 1190.00 0.00',
+      '52-1106 2827.84 0.00',
+      '21-1103 1044.00 0.00',
+      '11-2101 0.00 17000.00',
+      '11-2105 0.00 1190.00',
+      '41-1101 0.00 6000.00',
+      '21-2101 0.00 1190.00',
+    ]);
+    expect(sum(je.lines, 'dr')).toBe('25448.30');
+    expect(sum(je.lines, 'cr')).toBe('25448.30');
+    expect(je.deferredVat.toFixed(2)).toBe('1190.00');
+    expect(je.discount.toFixed(2)).toBe('2827.84');
+    expect(je.advanceVatReversal.toFixed(2)).toBe('68.30');
+    expect(je.advanceVatOutstanding.toFixed(2)).toBe('68.30');
+    // บรรทัดขากลับติดธงให้ผู้เรียกใส่คำอธิบายของ PR4 (ไม่ใช่คำอธิบายขาล้างของบัญชีเดียวกัน)
+    expect(je.lines.filter((l) => l.advanceVatReversal).map((l) => l.accountCode)).toEqual([
+      '21-2101',
+      '21-2102',
+    ]);
+    expect(
+      je.lines.filter((l) => !l.advanceVatReversal && l.accountCode === '21-2102'),
+    ).toHaveLength(1);
+  });
+
+  it('G8: ทุกงวดตั้งลูกหนี้แล้ว + เงินพัก 1,044 → 21-2102 ในบัญชี −68.30 · ขากลับ 68.30 ทำให้เป็น 0 · ไม่มีขาล้าง 21-2102 / 21-2101', () => {
+    const je = buildEarlyPayoffJE({
+      depositAccountCode: '11-1201',
+      cashReceived: '471.83',
+      ledger: {
+        gross: d('0'),
+        accrued: d('1515.83'),
+        vatReceivable: d('0'),
+        deferredInterest: d('0'),
+        deferredVat: d('-68.30'),
+      },
+      parkRelief: '1044.00',
+      discountPercent: '0',
+      advanceVatOutstanding: '68.30',
+      advanceVatReversal: '68.30',
+    });
+    expect(tuples(je.lines)).toEqual([
+      '11-1201 471.83 0.00',
+      '21-2101 68.30 0.00',
+      '21-2102 0.00 68.30',
+      '21-1103 1044.00 0.00',
+      '11-2103 0.00 1515.83',
+    ]);
+    expect(je.deferredVat.toFixed(2)).toBe('0.00');
+    // 21-2102 ของสัญญาหลังรายการ = −68.30 + 68.30 = 0 (ไม่ค้างติดลบถาวร)
+    expect(d('-68.30').plus('68.30').toFixed(2)).toBe('0.00');
+    expect(sum(je.lines, 'dr')).toBe(sum(je.lines, 'cr'));
+  });
+
+  it('G9: ถังพัก 2,000 (ภาษีพัก 130.84) แต่ยอดปิดหักได้ 1,500 → ขากลับ 98.13 · ขาล้าง = 1,059.16 + 130.84 (outstanding ทั้งก้อน ไม่ใช่ + ขากลับ) ⇒ 21-2102 หลังรายการ = −32.71 รอรอบกวาด', () => {
+    const je = buildEarlyPayoffJE({
+      depositAccountCode: '11-1201',
+      cashReceived: '13690.00',
+      ledger: unpaidLedger('1059.16'),
+      parkRelief: '1500.00',
+      discountPercent: '50',
+      advanceVatOutstanding: '130.84',
+      advanceVatReversal: '98.13',
+    });
+    const reversal = je.lines.filter((l) => l.advanceVatReversal);
+    expect(tuples(reversal)).toEqual(['21-2101 98.13 0.00', '21-2102 0.00 98.13']);
+    const clearing = je.lines.find((l) => !l.advanceVatReversal && l.accountCode === '21-2102')!;
+    expect(clearing.dr.toFixed(2)).toBe('1190.00');
+    expect(d('1059.16').plus('98.13').minus(clearing.dr).toFixed(2)).toBe('-32.71');
+    expect(je.discount.toFixed(2)).toBe('3000.00');
+    expect(sum(je.lines, 'dr')).toBe(sum(je.lines, 'cr'));
+  });
+
+  it('ไม่ส่งค่า PR4 = รายการเดิมทุกไบต์ (ไม่มีบรรทัดขากลับ · deferredVat = ยอดในบัญชี)', () => {
+    const je = buildEarlyPayoffJE({
+      depositAccountCode: '11-1201',
+      cashReceived: '15189.98',
+      ledger: unpaidLedger('1190.00'),
+      discountPercent: '50',
+    });
+    expect(je.lines.some((l) => l.advanceVatReversal)).toBe(false);
+    expect(je.advanceVatReversal.toFixed(2)).toBe('0.00');
+    expect(je.advanceVatOutstanding.toFixed(2)).toBe('0.00');
+    expect(tuples(je.lines)).toEqual([
+      '11-1201 15189.98 0.00',
+      '11-2106 6000.00 0.00',
+      '21-2102 1190.00 0.00',
+      '52-1106 3000.02 0.00',
+      '11-2101 0.00 17000.00',
+      '11-2105 0.00 1190.00',
+      '41-1101 0.00 6000.00',
+      '21-2101 0.00 1190.00',
+    ]);
+  });
+
+  it('ขากลับมากกว่าภาษีที่ยังค้าง = ผู้เรียกคำนวณผิด → throw', () => {
+    expect(() =>
+      buildEarlyPayoffJE({
+        depositAccountCode: '11-1201',
+        cashReceived: '15189.98',
+        ledger: unpaidLedger('1190.00'),
+        discountPercent: '50',
+        advanceVatOutstanding: '10.00',
+        advanceVatReversal: '10.01',
+      }),
+    ).toThrow(/advanceVatReversal/);
+  });
+
+  describe('buildEarlyPayoffJournal — อ่านภาษีที่ยังค้างจาก stamp ของรายการที่ POSTED', () => {
+    const contract = (cols: { rescheduleAdvanceBalance?: string; advanceBalance?: string }) => ({
+      id: 'contract-pr4',
+      contractNumber: 'CT-PR4',
+      advanceBalance: d(cols.advanceBalance ?? '0'),
+      rescheduleAdvanceBalance: d(cols.rescheduleAdvanceBalance ?? '0'),
+      creditBalance: d('0'),
+    });
+    const client = (ledger: Record<string, string>, stamps: Array<Record<string, unknown>>) => ({
+      journalLine: { findMany: jest.fn(ledgerLines(ledger)) },
+      journalEntry: {
+        findMany: jest.fn().mockResolvedValue(stamps.map((metadata) => ({ metadata }))),
+      },
+    });
+
+    it('G4: stamp advanceVatPark 68.30 + ยอดปิดหักเงินพักหมด (ถังเป็น 0) → ขากลับ = ภาษีที่ยังค้างทั้งก้อน 68.30 · ขาล้าง 1,190.00 · metadata-ready ตัวเลขเท่าตัวบริสุทธิ์', async () => {
+      const c = client(
+        {
+          '11-2101': '17000.00',
+          '11-2105': '1190.00',
+          '11-2106': '6000.00',
+          '21-2102': '1121.70',
+          '21-1103': '1044.00',
+        },
+        [{ contractId: 'contract-pr4', advanceVatPark: '68.30' }],
+      );
+      const je = await buildEarlyPayoffJournal(c as never, {
+        contract: contract({ rescheduleAdvanceBalance: '1044' }),
+        depositAccountCode: '11-1201',
+        cashReceived: '14318.16',
+        unpaidLateFees: '0',
+        parkReliefApplied: '1044.00',
+        advanceReliefApplied: '0',
+        quoteDiscountAmount: '2827.80',
+        discountPercent: '50',
+      });
+      expect(je.advanceVatOutstanding.toFixed(2)).toBe('68.30');
+      expect(je.advanceVatReversal.toFixed(2)).toBe('68.30');
+      expect(je.deferredVat.toFixed(2)).toBe('1190.00');
+      expect(tuples(je.lines.filter((l) => l.advanceVatReversal))).toEqual([
+        '21-2101 68.30 0.00',
+        '21-2102 0.00 68.30',
+      ]);
+      expect(sum(je.lines, 'dr')).toBe('25448.30');
+      expect(je.warnings).toEqual([]);
+      expect(c.journalEntry.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            status: 'POSTED',
+            metadata: { path: ['contractId'], equals: 'contract-pr4' },
+          }),
+        }),
+      );
+    });
+
+    it('G9: ถังพัก 2,000 (stamp 130.84) ยอดปิดหัก 1,500 → ขากลับ HALF_UP(1,500 × 7/107) = 98.13 (ถังยังเหลือ 500) · ขาล้าง = 1,059.16 + 130.84', async () => {
+      const c = client(
+        {
+          '11-2101': '17000.00',
+          '11-2105': '1190.00',
+          '11-2106': '6000.00',
+          '21-2102': '1059.16',
+          '21-1103': '2000.00',
+        },
+        [{ contractId: 'contract-pr4', advanceVatPark: '130.84' }],
+      );
+      const je = await buildEarlyPayoffJournal(c as never, {
+        contract: contract({ rescheduleAdvanceBalance: '2000' }),
+        depositAccountCode: '11-1201',
+        cashReceived: '13690.00',
+        unpaidLateFees: '0',
+        parkReliefApplied: '1500.00',
+        advanceReliefApplied: '0',
+        quoteDiscountAmount: '3000.00',
+        discountPercent: '50',
+      });
+      expect(je.parkRelief.toFixed(2)).toBe('1500.00');
+      expect(je.advanceVatOutstanding.toFixed(2)).toBe('130.84');
+      expect(je.advanceVatReversal.toFixed(2)).toBe('98.13');
+      expect(je.deferredVat.toFixed(2)).toBe('1190.00');
+      expect(je.warnings).toEqual([]);
+    });
+
+    it('ไม่มี stamp (เงินก่อน PR4 / ไม่มีเงินรับล่วงหน้า) → ไม่มีขากลับ รายการเท่าเดิม', async () => {
+      const c = client(
+        { '11-2101': '17000.00', '11-2105': '1190.00', '11-2106': '6000.00', '21-2102': '1190.00' },
+        [],
+      );
+      const je = await buildEarlyPayoffJournal(c as never, {
+        contract: contract({}),
+        depositAccountCode: '11-1201',
+        cashReceived: '15189.98',
+        unpaidLateFees: '0',
+        parkReliefApplied: '0',
+        advanceReliefApplied: '0',
+        quoteDiscountAmount: '3000.00',
+        discountPercent: '50',
+      });
+      expect(je.advanceVatReversal.toFixed(2)).toBe('0.00');
+      expect(je.lines).toHaveLength(8);
+    });
   });
 });

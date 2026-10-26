@@ -1,4 +1,4 @@
-import { useRef, type ReactNode } from 'react';
+import { useId as useUiFieldId, useRef, type ReactNode } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
@@ -34,7 +34,7 @@ function EmptyBox({ canEdit, onEdit }: { canEdit: boolean; onEdit: () => void })
     <div className="rounded-lg border border-dashed border-border px-3 py-2.5 text-[13px] leading-snug text-muted-foreground">
       ยังไม่กรอก
       {canEdit && (
-        <button type="button" onClick={onEdit} className="ml-2 font-medium text-primary hover:underline">
+        <button data-ui-control="button" type="button" onClick={onEdit} className="ml-2 inline-flex min-h-6 min-w-6 max-lg:min-h-11 max-lg:min-w-11 items-center justify-center rounded-md font-medium text-primary hover:underline">
           เพิ่ม
         </button>
       )}
@@ -52,6 +52,7 @@ export default function CustomerSidePanel({ customer, role, canEdit, canUploadDo
   canUploadDocuments: boolean;
   onEdit: () => void;
 }) {
+  const uiFieldId = useUiFieldId();
   const queryClient = useQueryClient();
   const docFileRef = useRef<HTMLInputElement>(null);
 
@@ -123,7 +124,7 @@ export default function CustomerSidePanel({ customer, role, canEdit, canUploadDo
         <CategoryHeader
           action={
             canEdit && (
-              <button type="button" onClick={onEdit} className="text-xs font-medium text-primary hover:underline">
+              <button data-ui-control="button" type="button" onClick={onEdit} className="inline-flex min-h-6 min-w-6 max-lg:min-h-11 max-lg:min-w-11 items-center justify-center rounded-md text-xs font-medium text-primary hover:underline">
                 แก้ไข
               </button>
             )
@@ -173,7 +174,7 @@ export default function CustomerSidePanel({ customer, role, canEdit, canUploadDo
           </div>
           {customer.googleMapLink && (
             <div>
-              <div className="mb-0.5 text-xs text-muted-foreground">Link Google Map</div>
+              <div className="mb-0.5 text-xs text-muted-foreground">ลิงก์ Google Maps</div>
               <a href={customer.googleMapLink} target="_blank" rel="noopener noreferrer" className="break-all text-sm text-primary hover:underline">
                 {customer.googleMapLink}
               </a>
@@ -253,8 +254,8 @@ export default function CustomerSidePanel({ customer, role, canEdit, canUploadDo
         <div className="border-t border-border p-4">
           <CategoryHeader>เอกสาร</CategoryHeader>
           <div className="mb-3">
-            <label className="mb-2 block text-xs text-muted-foreground">อัปโหลดเอกสาร (รูป/PDF ไม่เกิน 10MB)</label>
-            <input
+            <label htmlFor={`${uiFieldId}-1`} className="mb-2 block text-xs text-muted-foreground">อัปโหลดเอกสาร (รูป/PDF ไม่เกิน 10MB)</label>
+            <input id={`${uiFieldId}-1`}
               ref={docFileRef}
               type="file"
               accept="image/*,.pdf"

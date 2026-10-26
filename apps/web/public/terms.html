@@ -13,6 +13,9 @@
   <meta property="og:description" content="ข้อกำหนดและเงื่อนไขการใช้บริการของ BESTCHOICE" />
   <meta property="og:url" content="https://bestchoicephone.app/terms.html" />
 
+  <link rel="stylesheet" href="/fonts/noto-sans-thai-looped/fonts.css" />
+  <link rel="preload" href="/fonts/noto-sans-thai-looped/noto-sans-thai-looped-thai-variable.woff2" as="font" type="font/woff2" crossorigin />
+
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     html, body {
@@ -39,6 +42,10 @@
     footer { margin-top: 64px; padding-top: 24px; border-top: 1px solid #e5e7eb; text-align: center; font-size: 14px; color: #9ca3af; }
     a { color: #2563eb; text-decoration: underline; }
     a:hover { color: #1d4ed8; }
+    /* Screen UI follows the app; printed policy typography stays unchanged. */
+    @media screen {
+      html, body, code { font-family: "Noto Sans Thai Looped", system-ui, sans-serif; }
+    }
   </style>
 </head>
 <body>

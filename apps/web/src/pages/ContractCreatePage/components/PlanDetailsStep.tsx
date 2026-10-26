@@ -1,3 +1,5 @@
+import { NumberInput } from '@/components/ui/NumberInput';
+import { NativeSelect } from '@/components/ui/native-select';
 import { useEffect, useId } from 'react';
 import { useForm } from 'react-hook-form';
 import { standardSchemaResolver } from '@hookform/resolvers/standard-schema';
@@ -165,8 +167,7 @@ export function PlanDetailsStep({
                 เงินดาวน์ที่รับเป็นเงินสด/โอน <InfoTip text="กรอกเฉพาะเงินที่รับเพิ่ม ระบบรวมมูลค่าเครื่องเทิร์นให้ในการคำนวณยอดจัด" />
               </FormLabel>
               <FormControl>
-                <input
-                  type="number"
+                <NumberInput unstyled
                   id={`${dueDayInputId}-down`}
                   {...field}
                   onChange={(e) => {
@@ -192,7 +193,7 @@ export function PlanDetailsStep({
             <FormItem>
               <FormLabel htmlFor={`${dueDayInputId}-months`} className="text-sm font-medium text-foreground">จำนวนงวด (เดือน)</FormLabel>
               <FormControl>
-                <select
+                <NativeSelect wrapperClassName="max-w-full w-full"
                   id={`${dueDayInputId}-months`}
                   value={field.value}
                   onChange={(e) => {
@@ -200,12 +201,12 @@ export function PlanDetailsStep({
                     field.onChange(val);
                     setTotalMonths(val);
                   }}
-                  className="w-full px-3 py-2 border border-input rounded-lg text-sm"
+                  className="px-3 py-2 border border-input rounded-lg text-sm"
                 >
                   {monthOptions.map((m) => (
                     <option key={m} value={m}>{m} เดือน</option>
                   ))}
-                </select>
+                </NativeSelect>
               </FormControl>
               <FormMessage />
             </FormItem>
@@ -220,7 +221,7 @@ export function PlanDetailsStep({
             <FormItem>
               <FormLabel htmlFor={dueDayInputId} className="text-sm font-medium text-foreground">วันที่ครบกำหนดชำระ (ตามวันเงินเดือนออก)</FormLabel>
               <FormControl>
-                <select
+                <NativeSelect wrapperClassName="max-w-full w-full"
                   id={dueDayInputId}
                   aria-invalid={!!fieldState.error}
                   value={field.value}
@@ -229,12 +230,12 @@ export function PlanDetailsStep({
                     field.onChange(val);
                     setPaymentDueDay(val);
                   }}
-                  className="w-full px-3 py-2 border border-input rounded-lg text-sm"
+                  className="px-3 py-2 border border-input rounded-lg text-sm"
                 >
                   {Array.from({ length: 31 }, (_, i) => i + 1).map((d) => (
                     <option key={d} value={d}>{d === 31 ? 'สิ้นเดือน (วันสุดท้ายของเดือน)' : `วันที่ ${d} ของทุกเดือน`}</option>
                   ))}
-                </select>
+                </NativeSelect>
               </FormControl>
               <div className="text-xs text-muted-foreground">
                 {selectedCustomer?.salaryPayDay && field.value === selectedCustomer.salaryPayDay

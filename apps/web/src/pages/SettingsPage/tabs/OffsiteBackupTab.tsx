@@ -1,4 +1,5 @@
 import { formatDuration } from '@/lib/format-duration';
+import InlineHelp from '@/components/ui/InlineHelp';
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -137,24 +138,24 @@ export function OffsiteBackupTab() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Database className="size-5" />
-            Off-site Backup Replication
+            สำรองข้อมูลต่างภูมิภาค
           </CardTitle>
           <CardDescription className="leading-snug">
-            สำเนาข้อมูลสำคัญ (Cloud SQL dumps + เอกสารใน GCS) ไปยัง bucket อีก
-            ภูมิภาคหนึ่งวันละครั้ง (03:30 น. ตามเวลาไทย) เพื่อป้องกันเหตุการณ์
-            ภูมิภาคหลักล่ม / ลบข้อมูลโดยไม่ตั้งใจ
+            สำรองข้อมูลไปอีกภูมิภาคทุกวัน เวลา 03:30 น. ตามเวลาไทย
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex items-start justify-between gap-4 rounded-lg border border-border/60 bg-muted p-4">
-            <div className="flex-1">
+            <div className="min-w-0 flex-1">
               <p className="text-sm font-medium text-foreground leading-snug">เปิดใช้งาน Off-site Backup</p>
               <p className="text-xs text-muted-foreground leading-snug mt-1">
-                เมื่อเปิดอยู่ cron จะรันทุกวัน 03:30 น. และเขียนประวัติการรันลงตาราง
-                ด้านล่าง — ก่อนเปิดต้องให้ owner สร้าง destination bucket
-                และ grant สิทธิ์ให้ Cloud Run service account ก่อน
-                (ดู <code className="text-foreground">docs/guides/OFFSITE-BACKUP.md</code>)
+                ให้ผู้ดูแลตั้งค่าที่เก็บสำรองและสิทธิ์เข้าถึงก่อนเปิดใช้งาน
               </p>
+              <InlineHelp label="รายละเอียดการตั้งค่า">
+                สำรองเอกสารใน GCS และ SQL dump ไปยัง destination bucket ผู้ดูแลต้องให้สิทธิ์
+                Cloud Run service account ตามคู่มือ{' '}
+                <code className="break-all">docs/guides/OFFSITE-BACKUP.md</code>
+              </InlineHelp>
             </div>
             <Switch
               checked={data.enabled}
@@ -174,9 +175,9 @@ export function OffsiteBackupTab() {
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             <div className="rounded-lg bg-muted p-3">
-              <p className="text-xs text-muted-foreground leading-snug">Destination Bucket</p>
+              <p className="text-xs text-muted-foreground leading-snug">พื้นที่จัดเก็บปลายทาง</p>
               <p className="text-sm font-mono text-foreground mt-1 break-all">
-                {data.destBucket || <span className="text-muted-foreground italic">— ปกปิดสำหรับ role นี้</span>}
+                {data.destBucket || <span className="text-muted-foreground italic">— ปกปิดสำหรับ บทบาท นี้</span>}
               </p>
             </div>
             <div className="rounded-lg bg-muted p-3">
@@ -184,7 +185,7 @@ export function OffsiteBackupTab() {
               <p className="text-sm font-semibold text-foreground mt-1">{data.retentionDays} วัน</p>
             </div>
             <div className="rounded-lg bg-muted p-3">
-              <p className="text-xs text-muted-foreground leading-snug">SQL Source Bucket</p>
+              <p className="text-xs text-muted-foreground leading-snug">พื้นที่จัดเก็บไฟล์ SQL ต้นทาง</p>
               <p className="text-sm font-mono text-foreground mt-1 break-all">
                 {data.sqlSourceBucket === null ? (
                   <span className="text-muted-foreground italic leading-snug">— ปกปิด / ไม่ได้ตั้งค่า</span>
@@ -198,8 +199,8 @@ export function OffsiteBackupTab() {
           {data.destBucket !== null && !data.sqlSourceBucket && (
             <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-900 p-3 text-sm">
               <ShieldAlert className="size-4 mt-0.5 shrink-0 text-amber-600 dark:text-amber-400" />
-              <p className="text-amber-900 dark:text-amber-200 leading-snug">
-                ตั้งค่า <code>OFFSITE_BACKUP_SQL_SOURCE_BUCKET</code> เพื่อสำรอง SQL dump ด้วย
+              <p className="min-w-0 text-amber-900 dark:text-amber-200 leading-snug">
+                ตั้งค่า <code className="break-all">OFFSITE_BACKUP_SQL_SOURCE_BUCKET</code> เพื่อสำรอง SQL dump ด้วย
                 หากไม่ตั้ง จะมีเฉพาะเอกสาร (GCS) เท่านั้น
               </p>
             </div>
@@ -224,8 +225,7 @@ export function OffsiteBackupTab() {
         <CardHeader>
           <CardTitle>ประวัติการสำรองข้อมูล (7 ครั้งล่าสุด)</CardTitle>
           <CardDescription className="leading-snug">
-            แสดงการรันทั้งจาก cron และ manual trigger — รวมรอบที่ถูกข้ามเพราะ
-            Off-site Backup ปิดอยู่ ณ ขณะที่ cron ตื่น
+            รวมรอบอัตโนมัติ รอบที่สั่งเอง และรอบที่ข้ามเมื่อปิดการสำรอง
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -241,7 +241,7 @@ export function OffsiteBackupTab() {
                     <TableHead className="text-right">ไฟล์</TableHead>
                     <TableHead className="text-right">ขนาด</TableHead>
                     <TableHead className="text-right">ระยะเวลา</TableHead>
-                    <TableHead>Trigger</TableHead>
+                    <TableHead>เหตุการณ์</TableHead>
                     <TableHead>หมายเหตุ</TableHead>
                   </TableRow>
                 </TableHeader>

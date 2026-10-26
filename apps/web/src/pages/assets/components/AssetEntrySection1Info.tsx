@@ -20,6 +20,8 @@ import ThaiDateInput from '@/components/ui/ThaiDateInput';
 import type { AssetEntryFormValues } from '../schema';
 import { CATEGORY_LABEL } from '../types';
 import { AssetSectionHeader } from './AssetSectionHeader';
+import { useId as useExtraFieldId, useId as useUiFieldId } from 'react';
+
 
 interface Props {
   assetCode?: string; // shown read-only when editing
@@ -27,6 +29,8 @@ interface Props {
 }
 
 export function AssetEntrySection1Info({ assetCode, branches }: Props) {
+  const uiExtraFieldId = useExtraFieldId();
+  const uiFieldId = useUiFieldId();
   const {
     register,
     setValue,
@@ -53,23 +57,23 @@ export function AssetEntrySection1Info({ assetCode, branches }: Props) {
       <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {assetCode && (
           <div>
-            <Label>รหัสสินทรัพย์</Label>
-            <Input value={assetCode} readOnly className="font-mono bg-muted" />
+            <Label htmlFor={`${uiFieldId}-1`}>รหัสสินทรัพย์</Label>
+            <Input id={`${uiFieldId}-1`} value={assetCode} readOnly className="font-mono bg-muted" />
           </div>
         )}
         <div>
-          <Label>ชื่อสินทรัพย์ *</Label>
-          <Input {...register('name')} />
+          <Label htmlFor={`${uiExtraFieldId}-1`}>ชื่อสินทรัพย์ *</Label>
+          <Input id={`${uiExtraFieldId}-1`} {...register('name')} />
           {errors.name && (
             <p className="text-sm text-destructive mt-1">{errors.name.message}</p>
           )}
         </div>
         <div className="md:col-span-2">
-          <Label>คำอธิบาย</Label>
-          <Textarea {...register('description')} rows={2} />
+          <Label htmlFor={`${uiExtraFieldId}-2`}>คำอธิบาย</Label>
+          <Textarea id={`${uiExtraFieldId}-2`} {...register('description')} rows={2} />
         </div>
         <div>
-          <Label>ประเภทสินทรัพย์ *</Label>
+          <Label htmlFor={`${uiFieldId}-2`}>ประเภทสินทรัพย์ *</Label>
           <Select
             value={category}
             onValueChange={(v) =>
@@ -78,7 +82,7 @@ export function AssetEntrySection1Info({ assetCode, branches }: Props) {
               })
             }
           >
-            <SelectTrigger>
+            <SelectTrigger id={`${uiFieldId}-2`}>
               <SelectValue placeholder="เลือกประเภท" />
             </SelectTrigger>
             <SelectContent>
@@ -94,12 +98,12 @@ export function AssetEntrySection1Info({ assetCode, branches }: Props) {
           )}
         </div>
         <div>
-          <Label>สาขา (ที่วาง)</Label>
+          <Label htmlFor={`${uiFieldId}-3`}>สาขา (ที่วาง)</Label>
           <Select
             value={branchId ?? 'NONE'}
             onValueChange={(v) => setValue('branchId', v === 'NONE' ? undefined : v)}
           >
-            <SelectTrigger>
+            <SelectTrigger id={`${uiFieldId}-3`}>
               <SelectValue placeholder="ไม่ระบุ" />
             </SelectTrigger>
             <SelectContent>
@@ -113,7 +117,7 @@ export function AssetEntrySection1Info({ assetCode, branches }: Props) {
           </Select>
         </div>
         <div>
-          <Label htmlFor="custodian">ผู้รับผิดชอบ (Custodian) *</Label>
+          <Label htmlFor="custodian">ผู้รับผิดชอบ *</Label>
           <NameAutocomplete
             id="custodian"
             value={watch('custodian') ?? ''}
@@ -126,16 +130,16 @@ export function AssetEntrySection1Info({ assetCode, branches }: Props) {
           )}
         </div>
         <div>
-          <Label>สถานที่ตั้ง</Label>
-          <Input {...register('location')} placeholder="สำนักงาน / สาขา" />
+          <Label htmlFor={`${uiExtraFieldId}-3`}>สถานที่ตั้ง</Label>
+          <Input id={`${uiExtraFieldId}-3`} {...register('location')} placeholder="สำนักงาน / สาขา" />
         </div>
         <div>
-          <Label>Serial / S/N</Label>
-          <Input {...register('serialNo')} />
+          <Label htmlFor={`${uiExtraFieldId}-4`}>Serial / S/N</Label>
+          <Input id={`${uiExtraFieldId}-4`} {...register('serialNo')} />
         </div>
         <div>
-          <Label>วันหมดประกัน</Label>
-          <ThaiDateInput
+          <Label htmlFor={`${uiFieldId}-4`}>วันหมดประกัน</Label>
+          <ThaiDateInput id={`${uiFieldId}-4`}
             value={warrantyExpire ?? ''}
             onChange={(e) => setValue('warrantyExpire', e.target.value)}
           />

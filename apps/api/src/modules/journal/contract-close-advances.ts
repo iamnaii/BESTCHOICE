@@ -23,8 +23,18 @@ export interface ContractAdvanceColumns {
   creditBalance?: Prisma.Decimal | string | number | null;
 }
 
-/** เส้นทางปิดสัญญาที่อ่านยอดนี้ (ปิดยอดก่อนกำหนด JP4 — หักเงินพัก + ถังรวมเท่าที่ยอดปิดหัก (PR5ข) + เงินเกินของลูกค้า) */
-export type ContractCloseFlow = 'repossession' | 'write-off' | 'early-payoff';
+/**
+ * เส้นทางปิดสัญญาที่อ่านยอดนี้ (ปิดยอดก่อนกำหนด JP4 — หักเงินพัก + ถังรวมเท่าที่ยอดปิดหัก (PR5ข) + เงินเกินของลูกค้า) ·
+ * `excess-income` = รอบกวาดเงินพักส่วนเกิน → รายได้ 42-1106 (PR4 ต6 — ล้าง `.advance` และ `.credit` ทั้งยอดตั้งแต่ 22.2
+ * (16/10/2569) · ก่อนหน้านั้น `.credit` ใช้ตัดสิน `emptiesBucket` ของขาภาษีเท่านั้น)
+ */
+export type ContractCloseFlow =
+  | 'repossession'
+  | 'write-off'
+  | 'early-payoff'
+  | 'excess-income'
+  /** ขั้น ข ของเปลี่ยนเครื่องตำหนิ (15ข) — ล้างทั้ง `.advance` และ `.credit` เข้า 21-1106 */
+  | 'defect-exchange';
 
 export interface ContractCloseAdvances {
   /** ยอด Cr คงเหลือของ 21-1103 ของสัญญา (ทุกถังรวมกัน) — ไม่ติดลบ */

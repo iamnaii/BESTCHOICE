@@ -1,3 +1,4 @@
+import ScreenTable from '@/components/ui/ScreenTable';
 import { BookOpenText, ChevronRight, ExternalLink, Landmark } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { formatDateShort, formatNumberDecimal } from '@/utils/formatters';
@@ -18,6 +19,8 @@ export interface AccountsPayableTabProps {
   movementsLoading: boolean;
   /** เปิดใบสั่งซื้อ (หน้ารายละเอียดมีปุ่มบันทึกการจ่าย) */
   onOpenPo: (poId: string) => void;
+  /** ดูอย่างเดียว (ผจก.การเงิน / ฝ่ายบัญชี) — ข้อความต้องไม่ชี้ปุ่มที่สอง role นี้ไม่มี */
+  readOnly?: boolean;
 }
 
 const money = (v: string | number) => formatNumberDecimal(Number(v) || 0, 2);
@@ -56,7 +59,7 @@ const tdCls = 'px-3 py-2.5 align-middle';
  * เจ้าหนี้รายผู้จัดจำหน่ายจากสมุดบัญชี (ก้อน 2 · กระดาน 5 · คำตัดสินเจ้าของ 2026-10-05 ข้อ 2): ยอดอ่านจากบรรทัดรายการบัญชี
  * S21-1101 / S21-1102 / S11-4201 ตาม supplierId — ไม่ใช่จากช่อง "จ่ายแล้ว" ของใบ · กดชื่อเพื่อดูรายการเคลื่อนไหว + ใบค้างจ่าย
  */
-export function AccountsPayableTab({ ledger, isLoading, month, setMonth, selectedSupplierId, onSelectSupplier, movements, movementsLoading, onOpenPo }: AccountsPayableTabProps) {
+export function AccountsPayableTab({ ledger, isLoading, month, setMonth, selectedSupplierId, onSelectSupplier, movements, movementsLoading, onOpenPo, readOnly = false }: AccountsPayableTabProps) {
   const selected = ledger?.suppliers.find((r) => r.supplier.id === selectedSupplierId) ?? null;
   return (
     <div className="flex flex-col gap-5">
@@ -86,7 +89,7 @@ export function AccountsPayableTab({ ledger, isLoading, month, setMonth, selecte
 
       {ledger && ledger.suppliers.length > 0 && (
         <div className="overflow-x-auto rounded-xl border border-border/50 bg-card shadow-sm">
-          <table className="w-full min-w-[960px] border-collapse text-sm">
+          <ScreenTable className="w-full min-w-[960px] border-collapse text-sm">
             <thead className="bg-muted/50">
               <tr>
                 <th className={thCls}>ผู้จัดจำหน่าย</th>
@@ -132,7 +135,7 @@ export function AccountsPayableTab({ ledger, isLoading, month, setMonth, selecte
                       )}
                     </td>
                     <td className={cn(tdCls, 'text-right')}>
-                      <button type="button" onClick={() => onSelectSupplier(active ? null : row.supplier.id)} aria-label={`ดูรายการ ${row.supplier.name}`} className="rounded-lg border border-border bg-card p-1.5 text-muted-foreground hover:bg-accent">
+                      <button data-ui-control="button" data-ui-icon="true" type="button" onClick={() => onSelectSupplier(active ? null : row.supplier.id)} aria-label={`ดูรายการ ${row.supplier.name}`} className="rounded-lg border border-border bg-card p-1.5 text-muted-foreground hover:bg-accent">
                         <ChevronRight className={cn('size-4 transition-transform', active && 'rotate-90')} aria-hidden />
                       </button>
                     </td>
@@ -140,7 +143,7 @@ export function AccountsPayableTab({ ledger, isLoading, month, setMonth, selecte
                 );
               })}
             </tbody>
-          </table>
+          </ScreenTable>
         </div>
       )}
 
@@ -157,7 +160,7 @@ export function AccountsPayableTab({ ledger, isLoading, month, setMonth, selecte
             {movementsLoading && !movements && <p className="text-xs text-muted-foreground">กำลังอ่าน…</p>}
             {movements && movements.rows.length === 0 && <p className="text-xs text-muted-foreground">ไม่มีรายการในเดือนนี้</p>}
             {movements && movements.rows.length > 0 && (
-              <table className="w-full text-sm">
+              <ScreenTable className="w-full text-sm">
                 <thead>
                   <tr className="text-xs text-muted-foreground">
                     <th className="py-1.5 text-left font-medium">วันที่</th>
@@ -183,7 +186,7 @@ export function AccountsPayableTab({ ledger, isLoading, month, setMonth, selecte
                     </tr>
                   ))}
                 </tbody>
-              </table>
+              </ScreenTable>
             )}
             <div className="mt-3 text-right text-sm font-semibold">คงเหลือ {money(movements?.closing ?? selected.closing)}</div>
           </section>
@@ -202,13 +205,13 @@ export function AccountsPayableTab({ ledger, isLoading, month, setMonth, selecte
                     <div>
                       <div className="font-mono text-sm font-semibold">{po.poNumber}</div>
                       <div className="text-xs text-muted-foreground">
-                        คงค้าง <span className="font-mono tabular-nums text-destructive">{money(po.remaining)}</span> / {money(po.netAmount)}
+                        คงค้าง <span className="font-mono tabular-nums text-destructive">{money(po.remaining)}</span> / {money(po.paymentCap ?? po.netAmount)}
                         {po.dueDate ? ` · ครบกำหนด ${formatDateShort(po.dueDate)}` : ''}
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
                       <Badge variant={cfg.variant} appearance={cfg.appearance}>{cfg.label}</Badge>
-                      <button type="button" onClick={() => onOpenPo(po.id)} className="inline-flex items-center gap-1 rounded-lg border border-border bg-card px-2.5 py-1 text-xs font-medium hover:bg-accent" aria-label={`เปิดใบ ${po.poNumber}`}>
+                      <button data-ui-control="button" type="button" onClick={() => onOpenPo(po.id)} className="inline-flex items-center gap-1 rounded-lg border border-border bg-card px-2.5 py-1 text-xs font-medium hover:bg-accent" aria-label={`เปิดใบ ${po.poNumber}`}>
                         <ExternalLink className="size-3.5" aria-hidden />
                         เปิดใบ
                       </button>
@@ -217,7 +220,11 @@ export function AccountsPayableTab({ ledger, isLoading, month, setMonth, selecte
                 );
               })}
             </ul>
-            <p className="mt-3 text-xs text-muted-foreground">บันทึกการจ่ายจากปุ่ม "บันทึกการจ่าย" ในใบ — ทุกการจ่ายลงบัญชีและกลับมาแสดงที่นี่</p>
+            <p className="mt-3 text-xs leading-snug text-muted-foreground">
+              {readOnly
+                ? 'การจ่ายบันทึกโดยเจ้าของกิจการหรือผู้จัดการสาขาจากปุ่ม "บันทึกการจ่าย" ในใบ — ทุกการจ่ายลงบัญชีและแสดงที่นี่'
+                : 'บันทึกการจ่ายจากปุ่ม "บันทึกการจ่าย" ในใบ — ทุกการจ่ายลงบัญชีและกลับมาแสดงที่นี่'}
+            </p>
           </section>
         </div>
       )}

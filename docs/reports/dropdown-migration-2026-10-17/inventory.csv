@@ -1,0 +1,12 @@
+"kind","file","line","label","id","name","reachable","routes","className","style"
+"SHARED_NATIVE_IMPLEMENTATION","apps/web-shop/src/components/ui/native-select.tsx","20","","","","true","/products | /products/:id | /sell/quote","{cn(
+          inputVariants(),
+          'rounded-lg py-2 font-normal',
+          className,
+          'peer h-11 min-h-11 w-full min-w-0 max-w-full appearance-none overflow-hidden pr-10 text-base leading-normal md:text-base lg:text-sm',
+        )}",""
+"SHARED_NATIVE_IMPLEMENTATION","apps/web/src/components/ui/native-select.tsx","20","","","","true","/ | /accounting/intercompany | /accounting/tax-disallowed-summary | /after-sales | /after-sales/:id | /after-sales/new | /appointments | /assets/:id | /assets/:id/edit | /assets/new | /audit-logs | /bookings | /canned-responses | /chat-analytics | /chatbot-finance/knowledge | /collections | /commissions | /contacts | /contract-templates | /contracts | /contracts/:id | /contracts/create | /credit-checks | /customers | /customers/:id | /document-dashboard | /expenses | /expenses/:id | /expenses/daily-summary | /expenses/favorites | /expenses/new | /expenses/verify/:id | /finance-receivable | /finance/bad-debt-report | /finance/balance-sheet | /finance/cash-flow | /finance/dividend-register | /finance/e-tax | /finance/equity | /finance/equity-statement | /finance/equity/:id/edit | /finance/equity/new | /finance/general-journal | /finance/general-ledger | /finance/wht-report | /finance/year-end-closing | /imported-sales | /inbox/:roomId? | /inspections | /letters | /monthly-close | /notifications | /other-income | /other-income/:id | /other-income/:id/edit | /other-income/new | /other-income/pending-approval | /payments | /pdpa | /pos | /products/:id | /products/create | /profit-loss | /promotions | /purchase-orders | /purchase-orders/qc | /reports | /repossessions | /sales | /settings/:categoryId | /settings/accounting/chart | /settings/accounting/e-tax | /settings/accounting/peak-sync | /settings/accounting#periods | /settings/comms/dunning | /settings/comms/sms | /settings/company/entities | /settings/products/pricing | /settings/rich-menu | /shop/daily-cash | /stock/adjustments | /stock/alerts | /stock/count | /stock/products | /stock/transfers | /suppliers | /todos | /trade-in | /users | /users/:id | /users/new | /visit","{cn(
+          formControlClass,
+          className,
+          'peer h-11 min-h-11 w-full min-w-0 max-w-full appearance-none overflow-hidden pr-10 text-base leading-normal md:text-base lg:text-sm',
+        )}",""

@@ -1,3 +1,6 @@
+import ScreenTable from '@/components/ui/ScreenTable';
+import { formatNumberDecimal } from '@/utils/formatters';
+import EmptyState from '@/components/ui/EmptyState';
 import { useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardToolbar } from '@/components/ui/card';
 import {
@@ -12,10 +15,20 @@ import {
   Pie,
   Cell,
 } from 'recharts';
-import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from '@/components/ui/chart';
+import {
+  ChartContainer,
+  ChartTooltip,
+  ChartTooltipContent,
+  type ChartConfig,
+} from '@/components/ui/chart';
 import { cn } from '@/lib/utils';
 import type { MonthlyTrend, StatusDistribution } from '../types';
 import { statusLabels, statusColors, pieColors, ErrorBlock } from '../types';
+
+const trendConfig = {
+  newContracts: { label: 'สัญญาใหม่ (สัญญา)', color: 'hsl(var(--chart-1))' },
+  paymentsReceived: { label: 'ยอดชำระ (บาท)', color: 'hsl(var(--chart-4))' },
+} satisfies ChartConfig;
 
 interface DashboardChartsProps {
   trend: MonthlyTrend[];
@@ -34,7 +47,10 @@ export default function DashboardCharts({
   statusDistError,
   refetchStatusDist,
 }: DashboardChartsProps) {
-  const totalStatusCount = useMemo(() => statusDist.reduce((sum, s) => sum + s.count, 0), [statusDist]);
+  const totalStatusCount = useMemo(
+    () => statusDist.reduce((sum, s) => sum + s.count, 0),
+    [statusDist],
+  );
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
@@ -44,36 +60,46 @@ export default function DashboardCharts({
           <CardHeader>
             <CardTitle>แนวโน้ม 12 เดือน</CardTitle>
             <CardToolbar>
-              <div className="flex gap-4 text-2xs text-muted-foreground">
-                <span className="flex items-center gap-1.5">
-                  <span className="size-2.5 bg-primary rounded-full inline-block" /> สัญญาใหม่
-                </span>
-                <span className="flex items-center gap-1.5">
-                  <span className="size-2.5 bg-success rounded-full inline-block" /> ยอดชำระ
-                </span>
+              <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                {Object.entries(trendConfig).map(([key, series]) => (
+                  <span key={key} className="flex items-center gap-1.5">
+                    <span
+                      className="size-2.5 shrink-0 rounded-full"
+                      style={{ backgroundColor: series.color }}
+                    />
+                    {series.label}
+                  </span>
+                ))}
               </div>
             </CardToolbar>
           </CardHeader>
           <CardContent>
+            <p className="mb-2 text-xs text-muted-foreground">แกนซ้าย: จำนวนสัญญา · แกนขวา: บาท</p>
             {trendError ? (
               <ErrorBlock message="โหลดข้อมูลไม่สำเร็จ" onRetry={() => refetchTrend()} />
             ) : trend.length > 0 ? (
               <ChartContainer
-                config={{
-                  newContracts: { label: 'สัญญาใหม่', color: 'hsl(var(--chart-1))' },
-                  paymentsReceived: { label: 'ยอดชำระ (฿)', color: 'hsl(var(--chart-4))' },
-                } satisfies ChartConfig}
+                aria-label="สัญญาใหม่ใช้แกนซ้าย หน่วยสัญญา ยอดชำระใช้แกนขวา หน่วยบาท"
+                config={trendConfig}
                 className="h-[280px] w-full"
               >
-                <AreaChart data={trend} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
+                <AreaChart data={trend} margin={{ top: 20, right: 0, left: 0, bottom: 0 }}>
                   <defs>
                     <linearGradient id="gradContracts" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="5%" stopColor="var(--color-newContracts)" stopOpacity={0.3} />
                       <stop offset="95%" stopColor="var(--color-newContracts)" stopOpacity={0} />
                     </linearGradient>
                     <linearGradient id="gradPayments" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="var(--color-paymentsReceived)" stopOpacity={0.3} />
-                      <stop offset="95%" stopColor="var(--color-paymentsReceived)" stopOpacity={0} />
+                      <stop
+                        offset="5%"
+                        stopColor="var(--color-paymentsReceived)"
+                        stopOpacity={0.3}
+                      />
+                      <stop
+                        offset="95%"
+                        stopColor="var(--color-paymentsReceived)"
+                        stopOpacity={0}
+                      />
                     </linearGradient>
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} />
@@ -84,15 +110,30 @@ export default function DashboardCharts({
                     tickLine={false}
                   />
                   <YAxis
+                    yAxisId="contracts"
+                    width={36}
+                    allowDecimals={false}
                     tick={{ fontSize: 11 }}
                     axisLine={false}
                     tickLine={false}
+                  />
+                  <YAxis
+                    yAxisId="payments"
+                    orientation="right"
+                    width={54}
+                    tick={{ fontSize: 11 }}
+                    axisLine={false}
+                    tickLine={false}
+                    tickFormatter={(value: number) =>
+                      new Intl.NumberFormat('th-TH', { notation: 'compact' }).format(value)
+                    }
                   />
                   <ChartTooltip content={<ChartTooltipContent />} />
                   <Area
                     type="monotone"
                     dataKey="newContracts"
-                    name="สัญญาใหม่"
+                    yAxisId="contracts"
+                    name={trendConfig.newContracts.label}
                     stroke="var(--color-newContracts)"
                     strokeWidth={2}
                     fill="url(#gradContracts)"
@@ -100,7 +141,8 @@ export default function DashboardCharts({
                   <Area
                     type="monotone"
                     dataKey="paymentsReceived"
-                    name="ยอดชำระ (฿)"
+                    yAxisId="payments"
+                    name={trendConfig.paymentsReceived.label}
                     stroke="var(--color-paymentsReceived)"
                     strokeWidth={2}
                     fill="url(#gradPayments)"
@@ -108,7 +150,51 @@ export default function DashboardCharts({
                 </AreaChart>
               </ChartContainer>
             ) : (
-              <div className="text-center text-muted-foreground py-8 text-sm">ไม่มีข้อมูล</div>
+              <EmptyState
+                title="ยังไม่มีข้อมูลในช่วงนี้"
+                description="ข้อมูลจะแสดงเมื่อมีรายการในช่วงเวลาที่เลือก"
+                className="min-h-[280px] py-8"
+              />
+            )}
+            {!trendError && trend.length > 0 && (
+              <details className="mt-3 text-sm">
+                <summary className="cursor-pointer min-h-11 py-3 text-primary">
+                  ดูข้อมูลกราฟเป็นตาราง
+                </summary>
+                <div className="overflow-x-auto">
+                  <ScreenTable className="w-full min-w-90 text-sm [&_th]:px-2 [&_td]:px-2 [&_th]:py-2 [&_td]:py-1">
+                    <caption className="sr-only">แนวโน้มรายเดือน แยกจำนวนสัญญาและยอดชำระ</caption>
+                    <thead>
+                      <tr>
+                        <th scope="col" className="text-left">
+                          เดือน
+                        </th>
+                        <th scope="col" className="text-right">
+                          สัญญาใหม่ (สัญญา)
+                        </th>
+                        <th scope="col" className="text-right">
+                          ยอดชำระ (บาท)
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {trend.map((row) => (
+                        <tr key={row.month}>
+                          <th scope="row" className="text-left font-normal">
+                            {row.month}
+                          </th>
+                          <td className="text-right tabular-nums">
+                            {row.newContracts.toLocaleString('th-TH')}
+                          </td>
+                          <td className="text-right tabular-nums">
+                            {formatNumberDecimal(row.paymentsReceived, 2)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </ScreenTable>
+                </div>
+              </details>
             )}
           </CardContent>
         </Card>
@@ -148,7 +234,10 @@ export default function DashboardCharts({
                       stroke="none"
                     >
                       {statusDist.map((s) => (
-                        <Cell key={s.status} fill={pieColors[s.status] || 'hsl(var(--muted-foreground))'} />
+                        <Cell
+                          key={s.status}
+                          fill={pieColors[s.status] || 'hsl(var(--muted-foreground))'}
+                        />
                       ))}
                     </Pie>
                     <RechartsTooltip
@@ -167,25 +256,42 @@ export default function DashboardCharts({
                   {statusDist.map((s) => (
                     <div key={s.status} className="flex items-center gap-3">
                       <div className="w-24 text-xs text-foreground font-medium flex items-center gap-2">
-                        <span className={cn('size-2 rounded-full', statusColors[s.status] || 'bg-muted-foreground')} />
+                        <span
+                          className={cn(
+                            'size-2 rounded-full',
+                            statusColors[s.status] || 'bg-muted-foreground',
+                          )}
+                        />
                         {statusLabels[s.status] || s.status}
                       </div>
                       <div className="flex-1 bg-muted rounded-full h-2.5 overflow-hidden">
                         <div
-                          className={cn('h-full rounded-full opacity-80', statusColors[s.status] || 'bg-muted-foreground')}
+                          className={cn(
+                            'h-full rounded-full opacity-80',
+                            statusColors[s.status] || 'bg-muted-foreground',
+                          )}
                           style={{
-                            width: totalStatusCount > 0 ? `${(s.count / totalStatusCount) * 100}%` : '0%',
+                            width:
+                              totalStatusCount > 0
+                                ? `${(s.count / totalStatusCount) * 100}%`
+                                : '0%',
                             minWidth: s.count > 0 ? '8px' : '0',
                           }}
                         />
                       </div>
-                      <div className="w-10 text-right text-2sm font-semibold text-foreground">{s.count}</div>
+                      <div className="w-10 text-right text-2sm font-semibold text-foreground">
+                        {s.count}
+                      </div>
                     </div>
                   ))}
                 </div>
               </div>
             ) : (
-              <div className="text-center text-muted-foreground py-8 text-sm">ไม่มีข้อมูล</div>
+              <EmptyState
+                title="ยังไม่มีข้อมูลในช่วงนี้"
+                description="ข้อมูลจะแสดงเมื่อมีรายการในช่วงเวลาที่เลือก"
+                className="min-h-[280px] py-8"
+              />
             )}
           </CardContent>
         </Card>

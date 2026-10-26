@@ -21,7 +21,7 @@ export default function CustomerSummaryActions({ summaryText, shareUrl, isReady 
 
   return (
     <div className="flex gap-2 flex-wrap">
-      <button
+      <button data-ui-control="button"
         type="button"
         onClick={() => handleCopy(summaryText, 'คัดลอกสรุปแล้ว — วางในแชทได้เลย')}
         className="inline-flex items-center gap-1.5 px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 leading-snug min-h-11"
@@ -29,7 +29,7 @@ export default function CustomerSummaryActions({ summaryText, shareUrl, isReady 
         <Copy className="size-4" aria-hidden />
         คัดลอกสรุปส่งลูกค้า
       </button>
-      <button
+      <button data-ui-control="button"
         type="button"
         disabled={!isReady}
         title={isReady ? 'คัดลอกลิงก์หน้าสินค้าฝั่งลูกค้า' : 'เครื่องนี้ยังไม่ขึ้นเว็บ — ลิงก์จะเปิดไม่เจอ'}

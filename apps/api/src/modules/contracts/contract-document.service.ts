@@ -16,7 +16,7 @@ export class ContractDocumentService {
   // Public endpoint — hash is REQUIRED to prevent contract ID enumeration
   async verifyContract(id: string, hash?: string) {
     // Require hash to prevent unauthenticated ID enumeration
-    if (!hash) {
+    if (typeof hash !== 'string' || !hash) {
       return { verified: false, reason: 'ต้องระบุ hash สำหรับการยืนยันสัญญา' };
     }
 

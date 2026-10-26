@@ -20,19 +20,33 @@ function Harness({ line = false }: { line?: boolean }) {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  fetchGif.mockResolvedValue({ json: async () => ({ data: [{ id: '1', title: 'test GIF', images: { fixed_width: { url: 'https://example.test/test.gif' } } }] }) });
+  fetchGif.mockResolvedValue({ ok: true, json: async () => ({ data: [{ id: '1', title: 'test GIF', images: { fixed_width: { url: 'https://example.test/test.gif' } } }] }) });
   vi.stubGlobal('fetch', fetchGif);
 });
 afterEach(() => vi.unstubAllGlobals());
 
 describe('chat media picker extracted from composer', () => {
+  it('distinguishes provider failure from empty results and retries without clearing the query', async () => {
+    render(<Harness />);
+    fireEvent.click(screen.getByRole('button', { name: 'GIF' }));
+    await screen.findByRole('button', { name: 'test GIF' });
+    fetchGif.mockResolvedValueOnce({ ok: false });
+    fireEvent.change(screen.getByRole('textbox', { name: 'ค้นหา GIF' }), { target: { value: 'cats' } });
+    expect(await screen.findByRole('alert')).toHaveTextContent('โหลด GIF ไม่สำเร็จ');
+    expect(screen.queryByText('ไม่พบ GIF')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'ลองใหม่' }));
+    expect(await screen.findByRole('button', { name: 'test GIF' })).toBeVisible();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: 'ค้นหา GIF' })).toHaveValue('cats');
+    expect(fetchGif).toHaveBeenLastCalledWith(expect.stringContaining('q=cats'), expect.anything());
+  });
   it('inserts emoji and offers LINE stickers without fetching GIFs', () => {
     render(<Harness line />);
     fireEvent.click(screen.getByRole('button', { name: '🙏' }));
     expect(emoji).toHaveBeenCalledWith('🙏');
     expect(screen.queryByRole('button', { name: 'GIF' })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /📦 สติกเกอร์/ }));
-    fireEvent.click(screen.getByTitle('Sticker 52002734'));
+    fireEvent.click(screen.getByTitle('สติกเกอร์ 52002734'));
     expect(sticker).toHaveBeenCalledWith(11537, 52002734);
     expect(fetchGif).not.toHaveBeenCalled();
   });

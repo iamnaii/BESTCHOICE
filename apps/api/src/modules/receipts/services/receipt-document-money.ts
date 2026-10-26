@@ -1,7 +1,7 @@
 import { BadRequestException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { computeInstallmentBreakdown } from '../../journal/compute-installment-breakdown';
-import { INSTALLMENT_MONEY_RECEIPT_TYPES } from '../receipt-types.constants';
+import { ADVANCE_SURPLUS_RECEIPT_TYPE, INSTALLMENT_MONEY_RECEIPT_TYPES } from '../receipt-types.constants';
 
 type Money = Prisma.Decimal;
 type DecimalLike = { toString(): string } | number | string | null | undefined;
@@ -37,6 +37,8 @@ export interface ReceiptMoneyView {
   lateFeeWaivedAmount?: DecimalLike;
   advanceAmount?: DecimalLike;
   advanceVatAmount?: DecimalLike;
+  /** ส่วนลดดอกเบี้ยปิดยอด (ใบปิดยอดก่อนกำหนด 16.1 · 2026-10-18) — null/ไม่มี = 0 · ไม่ใช่เงื่อนไขของ hasStoredReceiptTax */
+  discountAmount?: DecimalLike;
   /**
    * ใบลดหนี้ตอนยกเลิกใบเสร็จ (PR3): งวดเป้าหมายของเงินพักค่าปรับดิวของใบที่ถูกยกเลิก — ประวัติการจัดสรรของใบลดหนี้เอง
    * ไม่มี (ReceiptQueryService.getReceipt หาให้ผ่าน voidedReceiptId) ใช้เฉพาะป้ายของแถวเงินรับล่วงหน้าในทางที่เก็บค่า
@@ -78,6 +80,8 @@ export interface ReceiptDocumentMoney {
   feePortion: Money;
   /** ปัดเศษนอกฐานภาษี (0 = ไม่มีแถว) */
   rounding: Money;
+  /** ส่วนลดดอกเบี้ยปิดยอด — แถวแยกไม่ลดฐานภาษี (0 = ไม่มีแถว · ใบที่ไม่ใช่ใบปิดยอด / ตรรกะเดิม = 0) */
+  discount: Money;
   /** สรุป: มูลค่าก่อนภาษี / ภาษีมูลค่าเพิ่ม */
   exclVat: Money;
   vatPart: Money;
@@ -270,6 +274,7 @@ export function legacyReceiptDocumentMoney(view: ReceiptMoneyView): ReceiptDocum
     feeWaived,
     feePortion,
     rounding: ZERO,
+    discount: ZERO,
     exclVat,
     vatPart,
     advanceOnly,
@@ -307,8 +312,10 @@ export function storedReceiptDocumentMoney(view: ReceiptMoneyView): ReceiptDocum
   const advance = toDec(view.advanceAmount);
   const advanceVat = toDec(view.advanceVatAmount);
   const vat = toDec(view.vatAmount);
+  // ใบปิดยอด (16.1): ส่วนลดดอกเบี้ยถูกหักจากเงินที่รับแต่ไม่ลดแถวค่างวด/ฐานภาษี ⇒ บวกกลับเข้าแถวค่างวด
+  const discount = toDec(view.discountAmount);
   const receiptType = view.receiptType ?? 'PAYMENT';
-  const installmentPortion = total.minus(fee).minus(rounding).minus(advance);
+  const installmentPortion = total.minus(fee).minus(rounding).minus(advance).plus(discount);
   const installmentVat = vat.minus(advanceVat);
   const rescheduleTarget =
     view.installmentAllocations?.find((a) => a.kind === 'RESCHEDULE_ADVANCE')?.installmentNo ??
@@ -325,8 +332,17 @@ export function storedReceiptDocumentMoney(view: ReceiptMoneyView): ReceiptDocum
           beforeVat: advance.minus(advanceVat),
         },
       ];
+  // PR4ข: ใบที่มีแต่เงินรับล่วงหน้า (ใบปรับดิว 6a · ใบส่วนเกินลิงก์ชำระ) — หัวเอกสารแสดง "งวดที่รับล่วงหน้า" ของงวดเป้าหมาย
+  // (ไม่รู้งวด = ไม่แสดง — ห้ามถอยไปใช้งวดที่ถูกเลื่อนของใบ 6a · final review I3) · เฉพาะสองชนิดนี้เท่านั้น: ใบค่างวดที่เงินทั้งก้อน
+  // กลายเป็นเงินรับล่วงหน้าทั่วไป (ปัดเศษ + พัก) ยังเป็น "งวดที่ชำระ N" ตาม PR3
+  const advanceOnly =
+    (receiptType === 'RESCHEDULE_FEE' || receiptType === ADVANCE_SURPLUS_RECEIPT_TYPE) &&
+    installmentPortion.isZero() &&
+    advance.gt(0);
   return {
-    vatBearing: !['DOWN_PAYMENT', 'RESCHEDULE_FEE'].includes(receiptType),
+    // ใบที่เก็บค่าแล้วเป็นใบกำกับภาษีทุกชนิดยกเว้นเงินดาวน์ (SHOP ไม่จด VAT) — ใบปรับดิว 6a เก็บค่าตั้งแต่ PR4ข
+    // (ภาษีรับรู้ ณ วันรับตั้งแต่ PR4) · ใบปรับดิวเก่าไม่มีค่าที่เก็บจึงไม่ผ่านทางนี้ (legacy — ไม่มี VAT ตามเดิม)
+    vatBearing: receiptType !== 'DOWN_PAYMENT',
     installmentPortion,
     installmentExclVat: installmentPortion.minus(installmentVat),
     installmentVat,
@@ -336,10 +352,11 @@ export function storedReceiptDocumentMoney(view: ReceiptMoneyView): ReceiptDocum
     feeWaived: waived,
     feePortion: fee,
     rounding,
+    discount,
     exclVat: toDec(view.amountBeforeVat),
     vatPart: vat,
-    advanceOnly: false,
-    displayedInstallmentNo: view.installmentNo,
+    advanceOnly,
+    displayedInstallmentNo: advanceOnly ? (rescheduleTarget ?? null) : view.installmentNo,
   };
 }
 
@@ -363,5 +380,6 @@ export function documentMoneyColumns(m: ReceiptDocumentMoney) {
     lateFeeWaivedAmount: m.feeWaived,
     advanceAmount: m.advancePortion,
     advanceVatAmount: m.advanceRows.reduce((sum, row) => sum.plus(row.vat), ZERO),
+    discountAmount: m.discount,
   };
 }

@@ -11,6 +11,11 @@ import { ProductsService } from '../../products/products.service';
 import { JournalAutoService } from '../../journal/journal-auto.service';
 import { PaymentReceiptTemplate } from '../../journal/cpa-templates/payment-receipt.template';
 import {
+  ADVANCE_VAT_META,
+  advanceVatOf,
+  buildAdvanceVatParkLines,
+} from '../../journal/advance-vat';
+import {
   emitDeferredWarnings,
   warningsOf,
   type DeferredWarning,
@@ -19,6 +24,7 @@ import { Vat60dayReversalTemplate } from '../../journal/cpa-templates/vat-60day-
 import { BadDebtService } from '../../accounting/bad-debt.service';
 import type { ReceiptsService } from '../../receipts/receipts.service';
 import { reportReceiptIssueFailure } from '../../receipts/services/receipt-issue-alert';
+import { ADVANCE_SURPLUS_RECEIPT_TYPE } from '../../receipts/receipt-types.constants';
 import { formatDateLong } from '../../../utils/thai-date.util';
 import { ensureInstallmentSchedules } from '../../../utils/installment-schedule.util';
 import { validatePeriodOpen } from '../../../utils/period-lock.util';
@@ -578,8 +584,21 @@ export class PaySolutionsWebhookService {
           // Gate on contractForJe (mirrors the per-installment JE gate above): if the
           // contract row is missing we skip the JE + advanceBalance update rather than
           // throw and roll back the whole webhook (consistency w/ the receipt-JE block). (review)
+          // PR4ข: ใบรับเงินส่วนเกิน (ADVANCE_SURPLUS) ออกหลัง commit ผูกรายการนี้ — เลขที่รายการ + ยอดส่งออกจาก tx
+          let surplusEntryNo: string | null = null;
+          let surplusAmount: Prisma.Decimal | null = null;
           if (remaining.gt(0) && contractForJe) {
-            await this.journalAutoService.createAndPost(
+            // PR4 (ต2 ค): เงินเกินที่พักเป็นเงินรับล่วงหน้า ⇒ รับรู้ภาษีขาย ณ วันรับ ในรายการเดียวกัน
+            const surplusVat = advanceVatOf(remaining);
+            // PR4ข: บริบทให้ใบรับเงินส่วนเกินพิมพ์ "ยอดโอน · เข้างวด · งวดที่เงินไปถึง · งวดถัดไปที่จะหัก"
+            // (ReceiptQueryService.surplusContext อ่านจาก metadata ของรายการนี้) — ส่วนเกินเกิดเมื่อเงินครอบ
+            // ทุกงวดค้างแล้ว จึงมักไม่มีงวดถัดไป (null) — แถวที่ยังไม่ PAID หลังจัดสรร (เช่น owed ≤ 0) ถือเป็นงวดถัดไป
+            const fullyPaidIds = new Set(
+              touchedSnapshots.filter((s) => s.isFinalReceipt).map((s) => s.id),
+            );
+            const nextInstallmentNo =
+              unpaidPayments.find((p) => !fullyPaidIds.has(p.id))?.installmentNo ?? null;
+            const surplusJe = await this.journalAutoService.createAndPost(
               {
                 description: `เงินรับล่วงหน้า (รับเกินผ่าน Pay Solutions) — refno ${refno}`,
                 reference: `${refno}-surplus`,
@@ -588,6 +607,11 @@ export class PaySolutionsWebhookService {
                   contractId: paymentLink.contractId,
                   refno,
                   surplus: remaining.toString(),
+                  ...(surplusVat.gt(0) ? { [ADVANCE_VAT_META.park]: surplusVat.toFixed(2) } : {}),
+                  paidAmount: paidAmount.toString(),
+                  appliedAmount: paidAmount.sub(remaining).toString(),
+                  installmentNos: touchedSnapshots.map((s) => s.installmentNo),
+                  nextInstallmentNo,
                 },
                 lines: [
                   {
@@ -602,10 +626,13 @@ export class PaySolutionsWebhookService {
                     cr: remaining,
                     description: 'เงินรับล่วงหน้า',
                   },
+                  ...buildAdvanceVatParkLines(surplusVat),
                 ],
               },
               tx,
             );
+            surplusEntryNo = surplusJe?.entryNumber ?? null;
+            surplusAmount = remaining;
             await tx.contract.update({
               where: { id: paymentLink.contractId! },
               data: { advanceBalance: { increment: remaining } },
@@ -638,6 +665,8 @@ export class PaySolutionsWebhookService {
             totalUnpaidAtStart: unpaidPayments.length,
             touchedSnapshots,
             paidAt: now,
+            surplusEntryNo,
+            surplusAmount,
           };
         },
         { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
@@ -689,6 +718,41 @@ export class PaySolutionsWebhookService {
               journalEntryNumber: snapshot.entryNo ?? null,
               paymentMethod: PaymentMethod.ONLINE_GATEWAY,
               amount: snapshot.payThis.toFixed(2),
+              transactionRef: transaction_id || refno,
+              issuedById: systemUserId,
+              paidDate: result.paidAt.toISOString(),
+            });
+          }
+        }
+        // PR4ข (ฝ่ายบัญชี 16/10/2569 ข้อ 23.2): เงินส่วนเกินที่พักเป็นเงินรับล่วงหน้าได้ใบกำกับภาษีใบแยก
+        // (ADVANCE_SURPLUS) ผูกรายการส่วนเกิน — ออกหลังใบงวดทุกใบ (ลำดับเลขที่ใบ: งวดก่อน ส่วนเกินทีหลัง)
+        // ใบไม่ผูกแถว Payment / งวด (paymentId + installmentNo = null) · ออกไม่สำเร็จ = Sentry path ของตัวเอง
+        if (result.surplusAmount && result.surplusAmount.gt(0)) {
+          try {
+            await this.receipts.generateReceipt(
+              paymentLink.contractId,
+              null,
+              ADVANCE_SURPLUS_RECEIPT_TYPE,
+              result.surplusAmount.toNumber(),
+              null,
+              PaymentMethod.ONLINE_GATEWAY,
+              transaction_id || refno,
+              systemUserId,
+              result.paidAt,
+              result.surplusEntryNo ?? undefined,
+            );
+          } catch (err) {
+            this.logger.error(
+              `Failed to generate ADVANCE_SURPLUS receipt for contract ${paymentLink.contractId} (refno=${refno}): ${err instanceof Error ? err.message : err}`,
+            );
+            reportReceiptIssueFailure(err, {
+              path: 'paysolutions-webhook-surplus',
+              contractId: paymentLink.contractId,
+              paymentId: null,
+              installmentNo: null,
+              journalEntryNumber: result.surplusEntryNo,
+              paymentMethod: PaymentMethod.ONLINE_GATEWAY,
+              amount: result.surplusAmount.toFixed(2),
               transactionRef: transaction_id || refno,
               issuedById: systemUserId,
               paidDate: result.paidAt.toISOString(),

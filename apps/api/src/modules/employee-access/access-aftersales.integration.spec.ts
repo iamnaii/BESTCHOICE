@@ -66,6 +66,8 @@ const defect = new DefectExchangeService(
   {} as never,
   {} as never,
   repair,
+  {} as never,
+  {} as never,
   exchangeSources,
 );
 const exchange = new ContractExchangeService(
@@ -107,6 +109,9 @@ const exchangeProxy = new AfterSalesExchangeService(
   exchange,
   {} as never,
   lookup,
+  {} as never,
+  {} as never,
+  {} as never,
   {} as never,
 );
 const facade = new AfterSalesService(lookup, {} as never, query, {} as never, exchangeProxy);

@@ -127,7 +127,7 @@ export default function ContractCard({
                 type="button"
                 onClick={() => onOpen360(contract)}
                 className="font-mono text-sm text-primary font-medium hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/30 rounded text-left leading-snug"
-                aria-label={`เปิด Customer 360 ของสัญญา ${contract.contractNumber}`}
+                aria-label={`เปิด ข้อมูลลูกค้ารอบด้าน ของสัญญา ${contract.contractNumber}`}
               >
                 {contract.contractNumber}
               </button>
@@ -229,7 +229,7 @@ export default function ContractCard({
           {contract.snoozedUntil && (
             <span
               className="inline-flex items-center gap-1 rounded-full border border-primary/30 bg-primary/10 text-primary text-xs font-medium px-2.5 py-1 leading-snug"
-              title={`Snooze ถึง ${new Date(contract.snoozedUntil).toLocaleString('th-TH')}`}
+              title={`พักการติดตาม ถึง ${new Date(contract.snoozedUntil).toLocaleString('th-TH')}`}
             >
               <Moon className="size-3.5" />
               ถึง {formatSnoozeUntil(contract.snoozedUntil)}
@@ -272,7 +272,7 @@ export default function ContractCard({
           {/* Skip tracing */}
           {contract.needsSkipTracing &&
             (onSkipTrace ? (
-              <button
+              <button data-ui-control="button"
                 onClick={() => onSkipTrace(contract)}
                 className="inline-flex items-center gap-1 rounded-full bg-muted text-muted-foreground hover:bg-primary/10 hover:text-primary border border-border text-xs font-medium px-2.5 py-1 leading-snug transition-colors"
                 title="เปิดวิซาร์ดหาเบอร์ใหม่"
@@ -331,7 +331,7 @@ export default function ContractCard({
               size="icon"
               variant="outline"
             />
-            <button
+            <button data-ui-control="button" data-ui-icon="true"
               onClick={() => onLogContact(contract)}
               className="rounded-lg border border-input p-2 hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
               title="บันทึกผลการโทร"
@@ -339,7 +339,7 @@ export default function ContractCard({
             >
               <NotebookPen className="size-4" />
             </button>
-            <button
+            <button data-ui-control="button" data-ui-icon="true"
               onClick={() => onSendLine?.(contract)}
               disabled={!contract.customer.lineIdFinance}
               className="rounded-lg border border-input p-2 hover:bg-accent text-muted-foreground hover:text-foreground disabled:opacity-40 transition-colors"
@@ -349,11 +349,11 @@ export default function ContractCard({
               <MessageSquare className="size-4" />
             </button>
             {onOpen360 && (
-              <button
+              <button data-ui-control="button" data-ui-icon="true"
                 onClick={() => onOpen360(contract)}
                 className="rounded-lg border border-input p-2 hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
-                title="เปิด Customer 360"
-                aria-label="เปิด Customer 360"
+                title="เปิด ข้อมูลลูกค้ารอบด้าน"
+                aria-label="เปิด ข้อมูลลูกค้ารอบด้าน"
               >
                 <ChevronRight className="size-4" />
               </button>
@@ -361,7 +361,7 @@ export default function ContractCard({
             {(onSnooze || onUnsnooze || onPartialPaymentReschedule) && (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <button
+                  <button data-ui-control="button" data-ui-icon="true"
                     className="rounded-lg border border-input p-2 hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
                     title="เพิ่มเติม"
                     aria-label="เพิ่มเติม"
@@ -378,12 +378,12 @@ export default function ContractCard({
                   )}
                   {onSnooze && !isSnoozed && (
                     <DropdownMenuItem onSelect={() => onSnooze(contract)}>
-                      <Moon className="size-4" /> Snooze จน...
+                      <Moon className="size-4" /> พักการติดตาม จน...
                     </DropdownMenuItem>
                   )}
                   {onUnsnooze && isSnoozed && (
                     <DropdownMenuItem onSelect={() => onUnsnooze(contract)}>
-                      <Moon className="size-4" /> ยกเลิก snooze
+                      <Moon className="size-4" /> ยกเลิก พักการติดตาม
                     </DropdownMenuItem>
                   )}
                 </DropdownMenuContent>

@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { NumberInput } from '@/components/ui/NumberInput';
+import { useId as useUiFieldId, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import api from '@/lib/api';
@@ -87,7 +88,7 @@ export function RateFactorsTab() {
         )}
       </div>
       <div className="flex gap-2">
-        <Input
+        <Input aria-label="ค้นหาจำนวนงวด หรือ % คอม"
           placeholder="ค้นหาจำนวนงวด หรือ % คอม..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
@@ -102,7 +103,7 @@ export function RateFactorsTab() {
           <TableRow>
             <TableHead className="text-right">จำนวนงวด (เดือน)</TableHead>
             <TableHead className="text-right">% คอมมิชชั่น</TableHead>
-            <TableHead className="text-right">Factor</TableHead>
+            <TableHead className="text-right">ตัวคูณ</TableHead>
             <TableHead className="text-right">ค่าธรรมเนียมต่องวด (฿)</TableHead>
             <TableHead>ใช้งาน</TableHead>
             <TableHead>การกระทำ</TableHead>
@@ -119,18 +120,21 @@ export function RateFactorsTab() {
               </TableCell>
               <TableCell>
                 <Switch
+                  aria-label={`เปิดใช้งาน ${`${row.months} งวด คอม ${row.shopCommissionPct}%`}`}
                   checked={row.isActive}
                   onCheckedChange={(v) => toggleActive.mutate({ id: row.id, isActive: v })}
                 />
               </TableCell>
               <TableCell>
                 <div className="flex gap-1">
-                  <Button variant="ghost" size="sm" onClick={() => setEditing(row)}>
+                  <Button variant="ghost" size="sm" mode="icon" aria-label={`แก้ไข ${`${row.months} งวด คอม ${row.shopCommissionPct}%`}`} onClick={() => setEditing(row)}>
                     <Pencil className="h-4 w-4" />
                   </Button>
                   <Button
                     variant="ghost"
                     size="sm"
+                    mode="icon"
+                    aria-label={`ลบ ${`${row.months} งวด คอม ${row.shopCommissionPct}%`}`}
                     onClick={() => {
                       if (confirm(`ลบเรท ${row.months} งวด คอม ${row.shopCommissionPct}%?`)) {
                         deleteRow.mutate(row.id);
@@ -178,6 +182,7 @@ interface DialogProps {
 }
 
 function RateFactorFormDialog({ initial, onClose, onSaved }: DialogProps) {
+  const uiFieldId = useUiFieldId();
   const [form, setForm] = useState({
     months: initial ? String(initial.months) : '',
     shopCommissionPct: initial ? String(initial.shopCommissionPct) : '15',
@@ -210,13 +215,12 @@ function RateFactorFormDialog({ initial, onClose, onSaved }: DialogProps) {
     <Dialog open onOpenChange={(open) => !open && onClose()}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>{initial ? 'แก้ไข' : 'เพิ่ม'} Rate Factor</DialogTitle>
+          <DialogTitle>{initial ? 'แก้ไข' : 'เพิ่ม'} ตัวคูณอัตราผ่อน</DialogTitle>
         </DialogHeader>
         <div className="space-y-3">
           <div>
-            <label className="text-sm font-medium">จำนวนงวด (เดือน)</label>
-            <Input
-              type="number"
+            <label htmlFor={`${uiFieldId}-1`} className="text-sm font-medium">จำนวนงวด (เดือน)</label>
+            <NumberInput id={`${uiFieldId}-1`}
               min="1"
               value={form.months}
               onChange={(e) => setForm((f) => ({ ...f, months: e.target.value }))}
@@ -224,9 +228,8 @@ function RateFactorFormDialog({ initial, onClose, onSaved }: DialogProps) {
             />
           </div>
           <div>
-            <label className="text-sm font-medium">% คอมมิชชั่น</label>
-            <Input
-              type="number"
+            <label htmlFor={`${uiFieldId}-2`} className="text-sm font-medium">% คอมมิชชั่น</label>
+            <NumberInput id={`${uiFieldId}-2`}
               min="0"
               max="100"
               value={form.shopCommissionPct}
@@ -238,20 +241,19 @@ function RateFactorFormDialog({ initial, onClose, onSaved }: DialogProps) {
             </p>
           </div>
           <div>
-            <label className="text-sm font-medium">Factor (6 ทศนิยม)</label>
-            <Input
+            <label htmlFor={`${uiFieldId}-3`} className="text-sm font-medium">ตัวคูณค่างวด (ทศนิยม 6 หลัก)</label>
+            <Input id={`${uiFieldId}-3`}
               value={form.factor}
               onChange={(e) => setForm((f) => ({ ...f, factor: e.target.value }))}
               placeholder="เช่น 0.090000"
             />
             <p className="text-xs text-muted-foreground mt-1 leading-snug">
-              ค่า factor ที่ใช้คำนวณค่างวด — ระบุทศนิยม 6 หลัก
+              ค่า ตัวคูณค่างวด ที่ใช้คำนวณค่างวด — ระบุทศนิยม 6 หลัก
             </p>
           </div>
           <div>
-            <label className="text-sm font-medium">ค่าธรรมเนียมต่องวด (฿)</label>
-            <Input
-              type="number"
+            <label htmlFor={`${uiFieldId}-4`} className="text-sm font-medium">ค่าธรรมเนียมต่องวด (฿)</label>
+            <NumberInput id={`${uiFieldId}-4`}
               step="0.01"
               value={form.feePerInstallment}
               onChange={(e) =>

@@ -102,6 +102,7 @@ export default function EReceiptAutoPage() {
                   </div>
                 </div>
                 <Switch
+                  aria-label="ส่งใบเสร็จอัตโนมัติเมื่อรับชำระ"
                   checked={draft.enabled}
                   onCheckedChange={(v) => setDraft({ ...draft, enabled: v })}
                 />
@@ -127,7 +128,7 @@ export default function EReceiptAutoPage() {
 
               {/* Template */}
               <div>
-                <label className="text-sm font-medium block mb-2">รูปแบบ Template</label>
+                <label className="text-sm font-medium block mb-2">รูปแบบ แม่แบบ</label>
                 <div className="flex gap-2">
                   {(['STANDARD', 'SIMPLE'] as const).map((t) => (
                     <Button

@@ -1,8 +1,15 @@
+import { NumberInput } from '@/components/ui/NumberInput';
+import { NativeSelect } from '@/components/ui/native-select';
+import { useRef as useReturnFocusRef } from 'react';
+import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { Building2, User2 } from 'lucide-react';
 import AddressForm, { AddressData } from '@/components/ui/AddressForm';
+import { formLabelClass } from '@/components/ui/form-styles';
 import { cn } from '@/lib/utils';
 import { formatIdNumberInput, formatPhoneInput } from '@/utils/mask.util';
 import type { PaymentMethod } from './SupplierTable';
+import { useId as useExtraFieldId, useId as useUiFieldId } from 'react';
+
 
 export type SupplierType = 'INDIVIDUAL' | 'JURISTIC';
 
@@ -72,6 +79,9 @@ export default function SupplierForm({
   onClose,
   onSubmit,
 }: SupplierFormProps) {
+  const uiExtraFieldId = useExtraFieldId();
+  const uiFieldId = useUiFieldId();
+  const returnFocus = useReturnFocusRef<HTMLElement | null>(null);
   const isJuristic = form.type === 'JURISTIC';
 
   const changeType = (nextType: SupplierType) => {
@@ -123,14 +133,13 @@ export default function SupplierForm({
   };
 
   return (
-    <div
-      className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-start justify-center pt-8 pb-8"
-      role="dialog"
-      aria-modal="true"
-      aria-label={isEditing ? 'แก้ไขผู้จัดจำหน่าย' : 'เพิ่มผู้จัดจำหน่ายใหม่'}
-    >
-      <div className="w-full max-w-2xl bg-background rounded-xl shadow-2xl overflow-hidden flex flex-col max-h-[calc(100vh-4rem)]">
-        <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-xs border-b px-6 py-4 flex items-center justify-between shrink-0">
+    <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
+      <DialogContent
+        onOpenAutoFocus={() => { returnFocus.current = document.activeElement instanceof HTMLElement ? document.activeElement : null; }}
+        onCloseAutoFocus={(event) => { event.preventDefault(); if (returnFocus.current?.isConnected) returnFocus.current.focus(); }}
+        aria-label={isEditing ? 'แก้ไขผู้จัดจำหน่าย' : 'เพิ่มผู้จัดจำหน่ายใหม่'} aria-describedby={undefined} showCloseButton={false} className="flex flex-col gap-0 p-0 w-[calc(100%-1rem)] sm:max-w-2xl max-h-[calc(100dvh-1rem)] overflow-hidden">
+
+        <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-xs border-b px-3 sm:px-6 py-4 flex items-center justify-between shrink-0">
           <button
             type="button"
             onClick={onClose}
@@ -151,23 +160,23 @@ export default function SupplierForm({
             </svg>
             กลับ
           </button>
-          <h2 className="text-lg font-semibold text-foreground">
+          <DialogTitle asChild><h2 className="text-lg font-semibold text-foreground">
             {isEditing ? 'แก้ไขผู้จัดจำหน่าย' : 'เพิ่มผู้จัดจำหน่ายใหม่'}
-          </h2>
+          </h2></DialogTitle>
           <div className="w-16" />
         </div>
 
         <form onSubmit={onSubmit} className="flex-1 overflow-y-auto flex flex-col">
-          <div className="p-6 space-y-5 flex-1">
+          <div className="p-3 sm:p-6 space-y-5 flex-1">
             {/* Type Selector */}
-            <div className="rounded-xl border border-border bg-card p-5">
+            <div className="rounded-xl border border-border bg-card p-3 sm:p-5">
               <div className="mb-3">
                 <h3 className="text-sm font-semibold text-foreground">ประเภทผู้จัดจำหน่าย</h3>
                 <p className="text-xs text-muted-foreground">
                   เลือกให้ตรงกับเอกสารประกอบใบกำกับภาษี
                 </p>
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <button
                   type="button"
                   onClick={() => changeType('JURISTIC')}
@@ -226,7 +235,7 @@ export default function SupplierForm({
             </div>
 
             {/* Main Info */}
-            <div className="rounded-xl border border-border bg-card p-5">
+            <div className="rounded-xl border border-border bg-card p-3 sm:p-5">
               <div className="flex items-center gap-2.5 mb-4">
                 <div className="flex items-center justify-center size-8 rounded-lg bg-primary/10 text-primary">
                   {isJuristic ? <Building2 className="size-4" /> : <User2 className="size-4" />}
@@ -242,13 +251,13 @@ export default function SupplierForm({
                   </p>
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 {!isJuristic && (
                   <div>
-                    <label className="block text-xs font-medium text-foreground mb-1.5">
+                    <label htmlFor={`${uiFieldId}-1`} className={formLabelClass}>
                       คำนำหน้า
                     </label>
-                    <select
+                    <NativeSelect id={`${uiFieldId}-1`}
                       value={form.titleName}
                       onChange={(e) => setForm({ ...form, titleName: e.target.value })}
                       className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20"
@@ -259,15 +268,15 @@ export default function SupplierForm({
                           {t}
                         </option>
                       ))}
-                    </select>
+                    </NativeSelect>
                   </div>
                 )}
-                <div className={cn(isJuristic ? 'col-span-2' : 'col-span-1')}>
-                  <label className="block text-xs font-medium text-foreground mb-1.5">
+                <div className={cn(isJuristic ? 'sm:col-span-2' : 'col-span-1')}>
+                  <label htmlFor={`${uiFieldId}-2`} className={formLabelClass}>
                     {isJuristic ? 'ชื่อบริษัท' : 'ชื่อ - นามสกุล'}{' '}
                     <span className="text-destructive">*</span>
                   </label>
-                  <input
+                  <input id={`${uiFieldId}-2`}
                     type="text"
                     value={form.name}
                     onChange={(e) => setForm({ ...form, name: e.target.value })}
@@ -277,10 +286,10 @@ export default function SupplierForm({
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-foreground mb-1.5">
+                  <label htmlFor={`${uiFieldId}-3`} className={formLabelClass}>
                     เบอร์โทรศัพท์ <span className="text-destructive">*</span>
                   </label>
-                  <input
+                  <input id={`${uiFieldId}-3`}
                     type="text"
                     value={form.phone}
                     onChange={(e) => setForm({ ...form, phone: formatPhone(e.target.value) })}
@@ -291,8 +300,8 @@ export default function SupplierForm({
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-foreground mb-1.5">เบอร์โทรสำรอง</label>
-                  <input
+                  <label htmlFor={`${uiFieldId}-4`} className={formLabelClass}>เบอร์โทรสำรอง</label>
+                  <input id={`${uiFieldId}-4`}
                     type="text"
                     value={form.phoneSecondary}
                     onChange={(e) =>
@@ -303,9 +312,9 @@ export default function SupplierForm({
                     className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20"
                   />
                 </div>
-                <div className={cn(isJuristic ? 'col-span-2' : 'col-span-1')}>
-                  <label className="block text-xs font-medium text-foreground mb-1.5">LINE ID</label>
-                  <input
+                <div className={cn(isJuristic ? 'sm:col-span-2' : 'col-span-1')}>
+                  <label htmlFor={`${uiFieldId}-5`} className={formLabelClass}>LINE ID</label>
+                  <input id={`${uiFieldId}-5`}
                     type="text"
                     value={form.lineId}
                     onChange={(e) => setForm({ ...form, lineId: e.target.value })}
@@ -314,8 +323,8 @@ export default function SupplierForm({
                 </div>
                 {!isJuristic && (
                   <div>
-                    <label className="block text-xs font-medium text-foreground mb-1.5">ชื่อเล่น</label>
-                    <input
+                    <label htmlFor={`${uiFieldId}-6`} className={formLabelClass}>ชื่อเล่น</label>
+                    <input id={`${uiFieldId}-6`}
                       type="text"
                       value={form.nickname}
                       onChange={(e) => setForm({ ...form, nickname: e.target.value })}
@@ -323,12 +332,12 @@ export default function SupplierForm({
                     />
                   </div>
                 )}
-                <div className="col-span-2 border-t pt-4">
-                  <label className="block text-xs font-medium text-foreground mb-1.5">
+                <div className="sm:col-span-2 border-t pt-4">
+                  <label htmlFor={`${uiFieldId}-7`} className={formLabelClass}>
                     {isJuristic ? 'เลขประจำตัวผู้เสียภาษี' : 'เลขประจำตัวประชาชน'}{' '}
                     <span className="text-destructive">*</span>
                   </label>
-                  <input
+                  <input id={`${uiFieldId}-7`}
                     type="text"
                     value={form.taxId}
                     onChange={(e) => setForm({ ...form, taxId: formatTaxId(e.target.value) })}
@@ -340,11 +349,11 @@ export default function SupplierForm({
                 </div>
                 {isJuristic && (
                   <>
-                    <div className="col-span-2">
-                      <label className="block text-xs font-medium text-foreground mb-1.5">
+                    <div className="sm:col-span-2">
+                      <label htmlFor={`${uiFieldId}-8`} className={formLabelClass}>
                         รหัสสาขา (5 หลัก) <span className="text-destructive">*</span>
                       </label>
-                      <input
+                      <input id={`${uiFieldId}-8`}
                         type="text"
                         value={form.branchCode}
                         onChange={(e) =>
@@ -360,7 +369,7 @@ export default function SupplierForm({
                         "00000" สำหรับสำนักงานใหญ่ — ใช้ในใบกำกับภาษีของผู้จด VAT
                       </p>
                     </div>
-                    <div className="col-span-2">
+                    <div className="sm:col-span-2">
                       <label className="flex items-center gap-3 cursor-pointer">
                         <span className="text-sm font-medium text-foreground">จดทะเบียน VAT</span>
                         <button
@@ -390,7 +399,7 @@ export default function SupplierForm({
 
             {/* Contact Person (JURISTIC only) */}
             {isJuristic && (
-              <div className="rounded-xl border border-border bg-card p-5">
+              <div className="rounded-xl border border-border bg-card p-3 sm:p-5">
                 <div className="flex items-center gap-2.5 mb-4">
                   <div className="flex items-center justify-center size-8 rounded-lg bg-primary/10 text-primary">
                     <User2 className="size-4" />
@@ -402,12 +411,12 @@ export default function SupplierForm({
                     </p>
                   </div>
                 </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="col-span-2">
-                    <label className="block text-xs font-medium text-foreground mb-1.5">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="sm:col-span-2">
+                    <label htmlFor={`${uiFieldId}-9`} className={formLabelClass}>
                       ชื่อ - นามสกุล
                     </label>
-                    <input
+                    <input id={`${uiFieldId}-9`}
                       type="text"
                       value={form.contactName}
                       onChange={(e) => setForm({ ...form, contactName: e.target.value })}
@@ -416,10 +425,10 @@ export default function SupplierForm({
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-foreground mb-1.5">
+                    <label htmlFor={`${uiFieldId}-10`} className={formLabelClass}>
                       เบอร์โทร
                     </label>
-                    <input
+                    <input id={`${uiFieldId}-10`}
                       type="text"
                       value={form.contactPhone}
                       onChange={(e) =>
@@ -431,10 +440,10 @@ export default function SupplierForm({
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-foreground mb-1.5">
+                    <label htmlFor={`${uiFieldId}-11`} className={formLabelClass}>
                       ตำแหน่ง
                     </label>
-                    <input
+                    <input id={`${uiFieldId}-11`}
                       type="text"
                       value={form.contactPosition}
                       onChange={(e) => setForm({ ...form, contactPosition: e.target.value })}
@@ -447,8 +456,8 @@ export default function SupplierForm({
             )}
 
             {/* Payment Methods */}
-            <div className="rounded-xl border border-border bg-card p-5">
-              <div className="flex items-center justify-between mb-4">
+            <div className="rounded-xl border border-border bg-card p-3 sm:p-5">
+              <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
                 <div className="flex items-center gap-2.5">
                   <div className="flex items-center justify-center size-8 rounded-lg bg-success/10 text-success">
                     <svg
@@ -471,10 +480,10 @@ export default function SupplierForm({
                     <p className="text-xs text-muted-foreground">วิธีรับชำระเงินจากผู้จัดจำหน่าย</p>
                   </div>
                 </div>
-                <button
+                <button data-ui-control="button"
                   type="button"
                   onClick={addPaymentMethod}
-                  className="px-3 py-1 text-xs bg-primary/5 dark:bg-primary/10 text-primary rounded-lg hover:bg-primary/15 transition-colors font-medium"
+                  className="min-h-11 shrink-0 px-3 py-2 text-xs bg-primary/5 dark:bg-primary/10 text-primary rounded-lg hover:bg-primary/15 transition-colors font-medium"
                 >
                   + เพิ่มวิธีชำระเงิน
                 </button>
@@ -504,20 +513,21 @@ export default function SupplierForm({
                         <span className="text-xs text-muted-foreground">ค่าเริ่มต้น</span>
                       </label>
                     </div>
-                    <button
+                    <button data-ui-control="button"
                       type="button"
                       onClick={() => removePaymentMethod(index)}
-                      className="text-destructive/80 hover:text-destructive text-xs font-medium"
+                      aria-label={`ลบวิธีชำระเงินที่ ${index + 1}`}
+                      className="min-h-11 min-w-11 rounded-md px-2 text-destructive hover:bg-destructive/10 text-xs font-medium"
                     >
                       ลบ
                     </button>
                   </div>
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
+                      <label htmlFor={`${uiExtraFieldId}-1-${index}`} className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
                         วิธีชำระเงิน *
                       </label>
-                      <select
+                      <NativeSelect id={`${uiExtraFieldId}-1-${index}`}
                         value={pm.paymentMethod}
                         onChange={(e) => updatePaymentMethod(index, 'paymentMethod', e.target.value)}
                         className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20"
@@ -528,14 +538,13 @@ export default function SupplierForm({
                         <option value="BANK_TRANSFER">โอนธนาคาร</option>
                         <option value="CHECK">เช็ค</option>
                         <option value="CREDIT">เครดิต</option>
-                      </select>
+                      </NativeSelect>
                     </div>
                     <div>
-                      <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
+                      <label htmlFor={`${uiExtraFieldId}-2-${index}`} className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
                         เครดิต (วัน)
                       </label>
-                      <input
-                        type="number"
+                      <NumberInput unstyled id={`${uiExtraFieldId}-2-${index}`}
                         value={pm.creditTermDays}
                         onChange={(e) =>
                           updatePaymentMethod(index, 'creditTermDays', e.target.value)
@@ -548,10 +557,10 @@ export default function SupplierForm({
                     {(pm.paymentMethod === 'BANK_TRANSFER' || pm.paymentMethod === 'CHECK') && (
                       <>
                         <div>
-                          <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
+                          <label htmlFor={`${uiExtraFieldId}-3-${index}`} className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
                             ธนาคาร
                           </label>
-                          <input
+                          <input id={`${uiExtraFieldId}-3-${index}`}
                             type="text"
                             value={pm.bankName}
                             onChange={(e) => updatePaymentMethod(index, 'bankName', e.target.value)}
@@ -560,10 +569,10 @@ export default function SupplierForm({
                           />
                         </div>
                         <div>
-                          <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
+                          <label htmlFor={`${uiExtraFieldId}-4-${index}`} className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
                             ชื่อบัญชี
                           </label>
-                          <input
+                          <input id={`${uiExtraFieldId}-4-${index}`}
                             type="text"
                             value={pm.bankAccountName}
                             onChange={(e) =>
@@ -572,11 +581,11 @@ export default function SupplierForm({
                             className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20"
                           />
                         </div>
-                        <div className="col-span-2">
-                          <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
+                        <div className="sm:col-span-2">
+                          <label htmlFor={`${uiExtraFieldId}-5-${index}`} className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
                             เลขบัญชี
                           </label>
-                          <input
+                          <input id={`${uiExtraFieldId}-5-${index}`}
                             type="text"
                             value={pm.bankAccountNumber}
                             onChange={(e) =>
@@ -594,7 +603,7 @@ export default function SupplierForm({
             </div>
 
             {/* Address */}
-            <div className="rounded-xl border border-border bg-card p-5">
+            <div className="rounded-xl border border-border bg-card p-3 sm:p-5">
               <div className="flex items-center gap-2.5 mb-4">
                 <div className="flex items-center justify-center size-8 rounded-lg bg-primary/10 text-primary">
                   <svg
@@ -627,7 +636,7 @@ export default function SupplierForm({
             </div>
 
             {/* Notes */}
-            <div className="rounded-xl border border-border bg-card p-5">
+            <div className="rounded-xl border border-border bg-card p-3 sm:p-5">
               <div className="flex items-center gap-2.5 mb-4">
                 <div className="flex items-center justify-center size-8 rounded-lg bg-destructive/10 text-destructive">
                   <svg
@@ -650,7 +659,7 @@ export default function SupplierForm({
                   <p className="text-xs text-muted-foreground">ข้อมูลเพิ่มเติม</p>
                 </div>
               </div>
-              <textarea
+              <textarea aria-label="หมายเหตุผู้จัดจำหน่าย"
                 value={form.notes}
                 onChange={(e) => setForm({ ...form, notes: e.target.value })}
                 rows={3}
@@ -659,15 +668,15 @@ export default function SupplierForm({
             </div>
           </div>
 
-          <div className="sticky bottom-0 bg-background/95 backdrop-blur-xs border-t px-6 py-4 flex justify-end gap-3 shrink-0">
-            <button
+          <div className="sticky bottom-0 bg-background/95 backdrop-blur-xs border-t px-3 sm:px-6 py-4 flex justify-end gap-3 shrink-0">
+            <button data-ui-control="button"
               type="button"
               onClick={onClose}
               className="px-6 py-2.5 text-sm border border-input rounded-lg hover:bg-muted transition-colors"
             >
               ยกเลิก
             </button>
-            <button
+            <button data-ui-control="button"
               type="submit"
               disabled={isPending}
               className="px-6 py-2.5 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50 font-semibold transition-colors shadow-sm"
@@ -676,7 +685,7 @@ export default function SupplierForm({
             </button>
           </div>
         </form>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }

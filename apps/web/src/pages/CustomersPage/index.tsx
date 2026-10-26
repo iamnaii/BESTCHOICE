@@ -259,7 +259,7 @@ export default function CustomersPage() {
           <div className="flex gap-2">
             {/* D1.3.3.1 — ซ่อนปุ่มส่งออกเมื่อ OWNER ปิด export_enabled */}
             {exportEnabled && (
-              <button
+              <button data-ui-control="button"
                 onClick={handleExport}
                 disabled={isExporting || q.isLoading || q.isError}
                 className="inline-flex items-center gap-1.5 rounded-lg border border-input px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-accent disabled:opacity-60"
@@ -271,7 +271,7 @@ export default function CustomersPage() {
             {/* ซ่อนจากบทบาทที่ `POST /customers` ไม่รับ (ผจก.การเงิน / ฝ่ายบัญชี)
                 ปักไว้ที่ config/__tests__/cta-reachability.test.ts */}
             {canCreateCustomer && (
-              <button
+              <button data-ui-control="button"
                 onClick={() => setIsModalOpen(true)}
                 className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
               >
@@ -384,7 +384,7 @@ export default function CustomersPage() {
         title={isBuyers ? 'ลบลูกค้า' : 'ลบรายชื่อ'}
         description={
           deleteTarget
-            ? `ต้องการลบ "${deleteTarget.name}" ใช่หรือไม่? การลบจะไม่สามารถกู้คืนได้จากหน้าจอ หากมีสัญญาที่ยังเปิดอยู่จะไม่สามารถลบได้`
+            ? `ต้องการลบ "${deleteTarget.name}" ใช่หรือไม่? เจ้าของกู้คืนได้จาก ตั้งค่า › ถังขยะ · หากมีสัญญาที่ยังเปิดอยู่จะไม่สามารถลบได้`
             : ''
         }
         confirmLabel="ลบ"

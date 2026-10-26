@@ -61,7 +61,7 @@ export default function VoiceMemoPlayback({
             ไฟล์เสียงเก็บในคลัง {restoreEta} ดึงกลับ
           </span>
         </div>
-        <button
+        <button data-ui-control="button"
           type="button"
           onClick={handleRestore}
           disabled={isRequesting || requested}

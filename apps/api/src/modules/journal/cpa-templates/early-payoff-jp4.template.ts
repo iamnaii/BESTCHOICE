@@ -5,9 +5,16 @@ import { JournalAutoService, JeLineInput } from '../journal-auto.service';
 import {
   EARLY_PAYOFF_ROUNDING_TOLERANCE,
   buildEarlyPayoffJE,
+  earlyPayoffExcessDescription,
   readEarlyPayoffLedger,
 } from '../compute-early-payoff-je';
 import { glContractBalance } from '../gl-contract-balance';
+import {
+  ADVANCE_VAT_CONSUME_DESCRIPTION,
+  ADVANCE_VAT_META,
+  advanceVatOutstanding,
+  consumeVatFor,
+} from '../advance-vat';
 import { computeInstallmentBreakdown } from '../compute-installment-breakdown';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { Vat60dayReversalTemplate } from './vat-60day-reversal.template';
@@ -52,7 +59,8 @@ export interface EarlyPayoffInput {
  * ใช้ฟังก์ชันบริสุทธิ์ `buildEarlyPayoffJE` ตัวเดียวกับเส้นทางจริง:
  *   Dr depositAccountCode   cashReceived (เงินที่รับจริง)
  *   Dr 11-2106 / Cr 41-1101 ดอกเบี้ยรอตัดบัญชีคงเหลือ (ส่วนที่ยังไม่ถึงกำหนด)
- *   Dr 21-2102 / Cr 21-2101 ภาษีขายรอเรียกเก็บคงเหลือ (Policy A — เต็มจำนวน ไม่ลดตามส่วนลด)
+ *   Dr 21-2101 / Cr 21-2102 ขากลับภาษีของเงินพักที่ยอดปิดหัก (PR4 ต8 — ยอดตาม consumeVatFor · วางก่อนขาล้าง)
+ *   Dr 21-2102 / Cr 21-2101 ภาษีขายรอเรียกเก็บคงเหลือ + ภาษีที่ยังค้างของเงินรับล่วงหน้า (Policy A — เต็มจำนวน ไม่ลดตามส่วนลด)
  *   Dr 52-1106              ส่วนลดที่ให้จริง = ลูกหนี้ตามบัญชี + ค่าปรับ − เงินที่รับ − เงินพัก
  *   Dr 21-1103              เงินพักค่าปรับดิว (clamp ด้วยคอลัมน์ถังพักและยอด 21-1103 ในบัญชี)
  *     Cr 11-2103 / 11-2101 / 11-2105  ลูกหนี้ตามยอดในบัญชี
@@ -118,29 +126,38 @@ export class EarlyPayoffJP4Template {
     const exec = async (tx: Prisma.TransactionClient) => {
       // PR5 — ฟังก์ชันบริสุทธิ์ตัวเดียวกับที่ preview และเส้นทางจริง (ContractPaymentService) ใช้ · ยอดล้างอ่านจากบัญชี
       // ในธุรกรรมเดียวกับการลงรายการ
+      // clamp ด้วยยอดในถังบนสัญญาและยอด 21-1103 ในบัญชี — ห้ามปลดหนี้เกินกว่าที่มีอยู่จริง (กติกาเดียวกับเส้นทางจริง)
+      const ledgerAdvance = Decimal.max(0, await glContractBalance(tx, c.id, '21-1103', 'cr'));
+      const parkRelief = Decimal.max(
+        0,
+        Decimal.min(
+          new Decimal(input.parkRelief ?? 0),
+          new Decimal(c.rescheduleAdvanceBalance ?? 0),
+          ledgerAdvance,
+        ),
+      );
+      // PR4 (ต8): ภาษีที่รับรู้ตอนพักแล้วและยังค้าง (p) + ขากลับ (r) ของเงินพักที่หัก — template ไม่แตะ 21-5101 แต่
+      // "ถังของสัญญาเป็น 0" ต้องนับ 21-5101 ด้วย (กติกาเดียวกับ buildEarlyPayoffJournal)
+      const ledgerCredit = Decimal.max(0, await glContractBalance(tx, c.id, '21-5101', 'cr'));
+      const vatOutstanding = await advanceVatOutstanding(tx, c.id);
+      const vatReversal = consumeVatFor(
+        vatOutstanding,
+        parkRelief,
+        ledgerAdvance.plus(ledgerCredit).minus(parkRelief).lte(0),
+      );
       const je = buildEarlyPayoffJE({
         depositAccountCode: input.depositAccountCode,
         cashReceived: input.cashReceived,
         ledger: await readEarlyPayoffLedger(tx, c.id),
         unpaidLateFees: input.unpaidLateFees ?? null,
-        // clamp ด้วยยอดในถังบนสัญญาและยอด 21-1103 ในบัญชี — ห้ามปลดหนี้เกินกว่าที่มีอยู่จริง (กติกาเดียวกับเส้นทางจริง)
-        parkRelief: Decimal.max(
-          0,
-          Decimal.min(
-            new Decimal(input.parkRelief ?? 0),
-            new Decimal(c.rescheduleAdvanceBalance ?? 0),
-            await glContractBalance(tx, c.id, '21-1103', 'cr'),
-          ),
-        ),
+        parkRelief,
+        advanceVatOutstanding: vatOutstanding,
+        advanceVatReversal: vatReversal,
         discountPercent: input.interestDiscountPercent,
       });
-      if (je.excessReceived.gt(0)) {
-        throw new Error(
-          `JP4 template: cashReceived + park relief exceed the contract ledger receivable by ` +
-            `${je.excessReceived.toFixed(2)} (> 1.00) — not posted`,
-        );
-      }
-      const { discount, parkRelief, cashReceived } = je;
+      // 18.2 (ฝ่ายบัญชี 16/10/2569): เงินที่รับ + เงินพักเกินลูกหนี้ตามบัญชีเกิน 1.00 → รายได้ 42-1106 + ภาษีขาย 7/107
+      // (บรรทัด `excessIncome` ของ builder — เดิม template ปฏิเสธ)
+      const { discount, cashReceived } = je;
 
       // Ledger-side line descriptions; the money (accountCode/dr/cr — no zero lines)
       // comes from the shared buildEarlyPayoffJE. บรรทัดที่ไม่มีในตาราง (11-2103 / 53-1503) ไม่มีคำอธิบาย.
@@ -159,7 +176,11 @@ export class EarlyPayoffJP4Template {
         accountCode: l.accountCode,
         dr: l.dr,
         cr: l.cr,
-        description: descriptions[l.accountCode] ?? '',
+        description: l.advanceVatReversal
+          ? ADVANCE_VAT_CONSUME_DESCRIPTION
+          : l.excessIncome
+            ? earlyPayoffExcessDescription(l.accountCode)
+            : (descriptions[l.accountCode] ?? ''),
       }));
 
       const result = await this.journal.createAndPost(
@@ -176,9 +197,20 @@ export class EarlyPayoffJP4Template {
             // Policy A — VAT ไม่ลดตามส่วนลด (CPA decision · vs ม.79+86/10)
             policy: 'A',
             settleVat: je.deferredVat.toFixed(2),
+            // PR4 (ต8): ขากลับภาษีของเงินพักที่หัก + stamp consume (advanceVatOutstanding ของสัญญาลดลงเท่านี้)
+            ...(je.advanceVatReversal.gt(0)
+              ? {
+                  advanceVatReversal: je.advanceVatReversal.toFixed(2),
+                  [ADVANCE_VAT_META.consume]: je.advanceVatReversal.toFixed(2),
+                }
+              : {}),
             cashReceived: cashReceived.toFixed(2),
             ...(parkRelief.gt(0) ? { parkRelief: parkRelief.toFixed(2) } : {}),
             ...(je.roundingGain.gt(0) ? { roundingGain: je.roundingGain.toFixed(2) } : {}),
+            // 18.2: เงินที่รับเกินยอดปิดที่รับรู้เป็นรายได้ 42-1106 (รวมภาษี) + ภาษีขาย 7/107 ของมัน
+            ...(je.excessIncome.gt(0)
+              ? { excessIncome: je.excessIncome.toFixed(2), excessVat: je.excessVat.toFixed(2) }
+              : {}),
             ...(je.discountBeyondDeferredBase.gt(EARLY_PAYOFF_ROUNDING_TOLERANCE)
               ? { discountBeyondDeferredBase: je.discountBeyondDeferredBase.toFixed(2) }
               : {}),

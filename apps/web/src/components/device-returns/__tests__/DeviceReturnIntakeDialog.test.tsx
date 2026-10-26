@@ -142,7 +142,7 @@ beforeEach(() => {
 
 describe('DeviceReturnIntakeDialog — request and validation boundaries', () => {
   async function ready() {
-    await waitFor(() => expect(appraisalInput().value).toBe('6500'));
+    await waitFor(() => expect(appraisalInput().value).toBe('6,500'));
     fireEvent.change(screen.getByLabelText(/เหตุผลคืนเครื่อง/), {
       target: { value: 'UNAFFORDABLE' },
     });
@@ -229,8 +229,8 @@ describe('DeviceReturnIntakeDialog — request and validation boundaries', () =>
     });
     fireEvent.click(screen.getByRole('button', { name: 'เปลี่ยนสัญญา' }));
     await pickContract();
-    await waitFor(() => expect(appraisalInput().value).toBe('6500'));
-    expect(screen.getByLabelText(/ค่าซ่อม/)).toHaveValue(0);
+    await waitFor(() => expect(appraisalInput().value).toBe('6,500'));
+    expect(screen.getByLabelText(/ค่าซ่อม/)).toHaveValue('0');
     expect(screen.getByLabelText(/รายละเอียดเพิ่มเติม/)).toHaveValue('');
     expect(screen.getByLabelText(/เหตุผลคืนเครื่อง/)).toHaveValue('');
   });
@@ -309,7 +309,7 @@ describe('DeviceReturnIntakeDialog — request and validation boundaries', () =>
     await waitFor(() => expect(toastError).toHaveBeenCalled());
     expect(apiPost).toHaveBeenCalledTimes(1);
     expect(onClose).not.toHaveBeenCalled();
-    expect(appraisalInput().value).toBe('6500');
+    expect(appraisalInput().value).toBe('6,500');
     expect(submitButton()).toBeEnabled();
   });
 
@@ -380,7 +380,7 @@ describe('DeviceReturnIntakeDialog — ค้นสัญญา + preview', () =
     routeApi();
     renderDialog({ initialContractId: 'c-1' });
     expect(screen.queryByPlaceholderText(/เลขสัญญา/)).not.toBeInTheDocument();
-    await waitFor(() => expect(appraisalInput().value).toBe('6500'));
+    await waitFor(() => expect(appraisalInput().value).toBe('6,500'));
     expect(screen.queryByRole('button', { name: 'เปลี่ยนสัญญา' })).not.toBeInTheDocument();
   });
 });
@@ -390,7 +390,7 @@ describe('DeviceReturnIntakeDialog — ราคาประเมิน + ต�
     currentUser = BM;
     routeApi();
     renderDialog({ initialContractId: 'c-1' });
-    await waitFor(() => expect(appraisalInput().value).toBe('6500'));
+    await waitFor(() => expect(appraisalInput().value).toBe('6,500'));
     expect(
       await screen.findByText(/ตารางรับซื้อ เกรด A: 6,500\.00 ฿ \(ค่าตั้งต้น/),
     ).toBeInTheDocument();
@@ -406,7 +406,7 @@ describe('DeviceReturnIntakeDialog — ราคาประเมิน + ต�
     fireEvent.change(appraisalInput(), { target: { value: '7000' } });
     fireEvent.click(screen.getByRole('button', { name: /^A$/ }));
     await waitFor(() => expect(screen.getByText(/ตารางรับซื้อ เกรด A/)).toBeInTheDocument());
-    expect(appraisalInput().value).toBe('7000');
+    expect(appraisalInput().value).toBe('7,000');
     expect(screen.getByText(/ต่างจากตาราง \+8%/)).toBeInTheDocument();
   });
 
@@ -414,7 +414,7 @@ describe('DeviceReturnIntakeDialog — ราคาประเมิน + ต�
     currentUser = BM;
     routeApi();
     renderDialog({ initialContractId: 'c-1' });
-    await waitFor(() => expect(appraisalInput().value).toBe('6500'));
+    await waitFor(() => expect(appraisalInput().value).toBe('6,500'));
     fireEvent.change(screen.getByLabelText(/เหตุผลคืนเครื่อง/), {
       target: { value: 'UNAFFORDABLE' },
     });
@@ -484,7 +484,7 @@ describe('DeviceReturnIntakeDialog — บันทึก', () => {
     currentUser = BM;
     routeApi();
     const { onClose, onCreated } = renderDialog({ initialContractId: 'c-1' });
-    await waitFor(() => expect(appraisalInput().value).toBe('6500'));
+    await waitFor(() => expect(appraisalInput().value).toBe('6,500'));
     fireEvent.change(screen.getByLabelText(/เหตุผลคืนเครื่อง/), {
       target: { value: 'NO_LONGER_NEEDED' },
     });
@@ -516,7 +516,7 @@ describe('DeviceReturnIntakeDialog — บันทึก', () => {
   it('OWNER: ต้องเลือกสาขาที่รับก่อน (สาขาที่ปิดใช้ไม่โผล่) แล้ว body มี receivingBranchId', async () => {
     routeApi();
     renderDialog({ initialContractId: 'c-1' });
-    await waitFor(() => expect(appraisalInput().value).toBe('6500'));
+    await waitFor(() => expect(appraisalInput().value).toBe('6,500'));
     fireEvent.change(screen.getByLabelText(/เหตุผลคืนเครื่อง/), {
       target: { value: 'UNAFFORDABLE' },
     });

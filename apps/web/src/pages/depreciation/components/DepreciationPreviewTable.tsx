@@ -1,3 +1,4 @@
+import ScreenTable from '@/components/ui/ScreenTable';
 // Depreciation module — preview table (Phase 2)
 // Per-asset rows with monthly depreciation + Dr/Cr account codes.
 
@@ -16,7 +17,8 @@ export function DepreciationPreviewTable({ preview }: { preview: DepreciationPre
 
   return (
     <div className="space-y-2">
-      <table className="w-full text-sm">
+      <div className="max-w-full overflow-x-auto" role="region" aria-label="ตัวอย่างค่าเสื่อมราคา" tabIndex={0}>
+      <ScreenTable className="w-full min-w-[36rem] text-sm">
         <thead>
           <tr className="border-b border-border">
             <th className="text-left py-2 px-2">รหัสสินทรัพย์</th>
@@ -48,7 +50,8 @@ export function DepreciationPreviewTable({ preview }: { preview: DepreciationPre
             <td colSpan={2} />
           </tr>
         </tbody>
-      </table>
+      </ScreenTable>
+      </div>
     </div>
   );
 }

@@ -1,3 +1,4 @@
+import { receiptVerificationPath } from '@/lib/verification-links';
 import type { Receipt } from '@/types/receipt';
 import { formatDateMedium } from '@/utils/formatters';
 import { QRCodeSVG } from 'qrcode.react';
@@ -14,6 +15,7 @@ const typeLabels: Record<string, string> = {
   EARLY_PAYOFF: 'ใบเสร็จปิดยอด',
   CREDIT_NOTE: 'ใบลดหนี้',
   RESCHEDULE_FEE: 'ใบเสร็จปรับดิว',
+  ADVANCE_SURPLUS: 'ใบเสร็จเงินรับล่วงหน้า',
 };
 
 const methodLabels = RECEIPT_METHOD_LABELS;
@@ -22,7 +24,7 @@ export default function MobileReceipt({ receipt }: MobileReceiptProps) {
   const thaiDate = formatDateMedium(receipt.paidDate);
 
   // Generate verify URL for QR code
-  const verifyUrl = `${window.location.origin}/verify/${receipt.receiptNumber}`;
+  const verifyUrl = `${window.location.origin}${receiptVerificationPath(receipt.receiptNumber)}`;
 
   return (
     <div className="mobile-receipt w-full max-w-md mx-auto bg-white rounded-xl shadow-lg overflow-hidden">
@@ -32,7 +34,7 @@ export default function MobileReceipt({ receipt }: MobileReceiptProps) {
           {receipt.company?.logoUrl ? (
             <img
               src={receipt.company.logoUrl}
-              alt="Company Logo"
+              alt="โลโก้บริษัท"
               className="h-12 mx-auto mb-2 object-contain filter brightness-0 invert"
             />
           ) : (

@@ -9,7 +9,7 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { ImageOff, Search, Smartphone } from 'lucide-react';
+import { ImageOff, Loader2, Search, Smartphone } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { useDebounce } from '@/hooks/useDebounce';
@@ -81,7 +81,7 @@ export default function ProductPickerDialog({ isOpen, onClose, onInsert, roomId 
     clientMessageIdRef.current = null;
   }, [selectedId]);
 
-  const { data: hits = [], isFetching } = useQuery<ChatProductHit[]>({
+  const { data: hits = [], isFetching, isError: searchFailed, refetch: retrySearch } = useQuery<ChatProductHit[]>({
     queryKey: ['chat-product-search', debounced],
     queryFn: () =>
       api.get('/staff-chat/products/search', { params: { q: debounced } }).then((r: any) => r.data),
@@ -89,7 +89,7 @@ export default function ProductPickerDialog({ isOpen, onClose, onInsert, roomId 
     refetchOnWindowFocus: false,
   });
 
-  const { data: summary } = useQuery<ProductSummary>({
+  const { data: summary, isError: summaryFailed, refetch: retrySummary } = useQuery<ProductSummary>({
     queryKey: ['chat-product-summary', selectedId],
     queryFn: () => api.get(`/staff-chat/products/${selectedId}/summary`).then((r: any) => r.data),
     enabled: !!selectedId,
@@ -138,17 +138,17 @@ export default function ProductPickerDialog({ isOpen, onClose, onInsert, roomId 
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-2xl">
-        <DialogHeader>
+      <DialogContent className="max-h-[90dvh] max-w-2xl gap-4 overflow-y-auto rounded-2xl p-4 sm:rounded-2xl sm:p-6">
+        <DialogHeader className="mb-0 text-left">
           <DialogTitle>ส่งข้อมูลสินค้าให้ลูกค้า</DialogTitle>
           <DialogDescription>
-            ค้นเครื่องในสต็อก แล้วเลือกว่าจะแทรกสรุปในกล่องพิมพ์ หรือส่งให้ลูกค้าเลย
+            ค้นสินค้า เลือกเครื่อง แล้วตรวจข้อมูลก่อนส่ง
           </DialogDescription>
         </DialogHeader>
 
         <div className="relative">
           <Search className="absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
+          <Input aria-label="ค้นหาชื่อรุ่น / ยี่ห้อ / IMEI"
             autoFocus
             value={search}
             onChange={(e) => setSearch(e.target.value)}
@@ -163,7 +163,9 @@ export default function ProductPickerDialog({ isOpen, onClose, onInsert, roomId 
               พิมพ์อย่างน้อย 2 ตัวอักษรเพื่อค้นหา
             </p>
           )}
-          {debounced.trim().length >= 2 && !isFetching && hits.length === 0 && (
+          {isFetching && <p role="status" className="flex items-center justify-center gap-2 px-3 py-6 text-sm text-muted-foreground"><Loader2 className="size-4 animate-spin" aria-hidden="true" />กำลังค้นสินค้า…</p>}
+          {searchFailed && <div role="alert" className="px-3 py-4 text-center text-sm"><p>ค้นสินค้าไม่สำเร็จ</p><Button type="button" variant="ghost" className="mt-2 min-h-11" onClick={() => void retrySearch()}>ลองใหม่</Button></div>}
+          {debounced.trim().length >= 2 && !isFetching && !searchFailed && hits.length === 0 && (
             <p className="px-3 py-6 text-center text-xs text-muted-foreground">
               ไม่พบเครื่องที่ตรงกับคำค้น
             </p>
@@ -173,8 +175,9 @@ export default function ProductPickerDialog({ isOpen, onClose, onInsert, roomId 
               key={h.id}
               type="button"
               onClick={() => setSelectedId(h.id)}
+              aria-pressed={selectedId === h.id}
               className={cn(
-                'flex w-full items-center gap-3 px-3 py-2 text-left transition-colors hover:bg-accent',
+                'grid w-full grid-cols-[44px_minmax(0,1fr)] items-center gap-x-3 gap-y-1 px-3 py-3 text-left transition-colors hover:bg-accent sm:grid-cols-[44px_minmax(0,1fr)_auto]',
                 selectedId === h.id && 'bg-accent',
               )}
             >
@@ -195,7 +198,7 @@ export default function ProductPickerDialog({ isOpen, onClose, onInsert, roomId 
                     .join(' · ')}
                 </span>
               </span>
-              <span className="shrink-0 text-right">
+              <span className="col-start-2 text-left sm:col-start-auto sm:text-right">
                 <span className="block text-[13px] font-bold leading-snug text-primary">
                   ฿{baht(h.cashPrice)}
                 </span>
@@ -218,13 +221,13 @@ export default function ProductPickerDialog({ isOpen, onClose, onInsert, roomId 
             {!selected.photoUrl && (
               <p className="mt-1 text-[11px] leading-snug text-warning-strong">ยังไม่มีรูปขึ้นเว็บ</p>
             )}
-            <pre className="mt-2 max-h-32 overflow-y-auto whitespace-pre-wrap text-[11px] leading-relaxed text-muted-foreground">
+            {summaryFailed ? <div role="alert" className="mt-2 text-sm"><p>โหลดสรุปสินค้าไม่สำเร็จ</p><Button type="button" variant="ghost" className="min-h-11" onClick={() => void retrySummary()}>ลองโหลดสรุปอีกครั้ง</Button></div> : <p className="mt-2 max-h-40 overflow-y-auto whitespace-pre-wrap break-words text-sm leading-relaxed text-muted-foreground">
               {summary?.text ?? 'กำลังเตรียมข้อความ...'}
-            </pre>
+            </p>}
           </div>
         )}
 
-        <div className="flex flex-wrap justify-end gap-2">
+        <div className="grid grid-cols-1 gap-2 border-t border-border pt-4 sm:flex sm:flex-wrap sm:justify-end [&>button]:min-h-11">
           <Button
             variant="outline"
             disabled={!summary}

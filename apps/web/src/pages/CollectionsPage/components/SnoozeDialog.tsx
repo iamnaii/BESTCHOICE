@@ -131,7 +131,7 @@ export default function SnoozeDialog({ open, onClose, contract }: Props) {
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <Moon className="size-4 text-muted-foreground" /> Snooze จน...
+            <Moon className="size-4 text-muted-foreground" /> พักการติดตาม จน...
           </DialogTitle>
           {contract && (
             <DialogDescription className="leading-snug">
@@ -223,7 +223,7 @@ export default function SnoozeDialog({ open, onClose, contract }: Props) {
               onClick={handleCustomSubmit}
               disabled={!customValue || snooze.isPending}
             >
-              Snooze
+              พักการแจ้งเตือน
             </Button>
           )}
         </DialogFooter>

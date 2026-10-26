@@ -1,3 +1,4 @@
+import ScreenTable from '@/components/ui/ScreenTable';
 import { useEffect, useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -146,7 +147,7 @@ export function ApproveConfirmDialog({
         <DialogHeader>
           <DialogTitle>ยืนยันอนุมัติรอบจ่าย {batch.batchNumber}</DialogTitle>
           <DialogDescription className="leading-snug">
-            ระบบจะสร้าง Journal Entry 2 ฝั่งพร้อมกัน (atomic ผ่าน PairedJournalService)
+            ระบบจะบันทึกบัญชีทั้งสองฝั่งพร้อมกัน
           </DialogDescription>
         </DialogHeader>
 
@@ -164,7 +165,7 @@ export function ApproveConfirmDialog({
                 onChange={(e) => setPostedAtOverride(e.target.value)}
               />
               <p className="text-xs text-muted-foreground leading-snug">
-                วันโอนจริง ({formatThaiDateShort(batch.transferDate)}) จะถูกบันทึกไว้ในรายละเอียด JE
+                วันโอนจริง ({formatThaiDateShort(batch.transferDate)}) จะถูกบันทึกไว้ในรายละเอียด รายการบัญชี
                 เสมอ (D4 — ลงเดือนที่เปิด + จดวันโอนจริงในหมายเหตุ)
               </p>
             </div>
@@ -216,13 +217,13 @@ export function ApproveConfirmDialog({
               <JournalPreviewBlock title="SHOP" lines={shopLines} />
             ) : (
               <p className="text-sm text-muted-foreground leading-snug rounded-md border border-border bg-muted p-3">
-                ไม่มีการลงบัญชีฝั่ง SHOP — ทุกสัญญาในรอบนี้เป็น LEGACY (SHOP ไม่มียอดตั้งต้น)
+                ไม่มีการลงบัญชีฝั่ง SHOP — ทุกสัญญาในรอบนี้เป็น สัญญาเดิม (SHOP ไม่มียอดตั้งต้น)
               </p>
             )}
 
             {legacyItems.length > 0 && nonLegacyItems.length > 0 && (
               <p className="text-xs text-warning-strong leading-snug">
-                ฝั่ง SHOP ไม่รวม {legacyItems.length} สัญญา (legacy)
+                ฝั่ง SHOP ไม่รวม {legacyItems.length} สัญญา (ข้อมูลเดิม)
               </p>
             )}
 
@@ -256,7 +257,8 @@ function JournalPreviewBlock({ title, lines }: { title: string; lines: PreviewLi
       <div className="bg-muted px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground leading-snug">
         {title}
       </div>
-      <table className="w-full text-sm">
+      <ScreenTable className="min-w-[24rem] w-full text-sm">
+<thead className="sr-only"><tr><th scope="col">รายการ</th><th scope="col">จำนวนเงิน</th></tr></thead>
         <tbody>
           {lines.map((l) => (
             <tr key={l.label} className="border-t border-border/60">
@@ -265,7 +267,7 @@ function JournalPreviewBlock({ title, lines }: { title: string; lines: PreviewLi
             </tr>
           ))}
         </tbody>
-      </table>
+      </ScreenTable>
     </div>
   );
 }

@@ -45,7 +45,7 @@ export default function PoolBrowser({ onClose }: { onClose: () => void }) {
       <div className="divide-y divide-border/40">
         {items.length === 0 ? (
           <div className="px-4 py-8 text-center text-sm text-muted-foreground leading-snug">
-            ไม่มีงานใน pool ตอนนี้
+            ไม่มีงานใน กองงานกลาง ตอนนี้
           </div>
         ) : (
           items.map((a) => (
@@ -64,7 +64,7 @@ export default function PoolBrowser({ onClose }: { onClose: () => void }) {
                     : '—'}
                   {a.escalationFlag && (
                     <span className="ml-2 inline-flex items-center gap-1 text-destructive">
-                      <AlertTriangle className="size-3" /> Escalation
+                      <AlertTriangle className="size-3" /> ส่งต่อดำเนินการ
                     </span>
                   )}
                 </div>
@@ -73,7 +73,7 @@ export default function PoolBrowser({ onClose }: { onClose: () => void }) {
                 size="sm"
                 onClick={() => {
                   claim.mutate(a.id, {
-                    onSuccess: () => toast.success('หยิบงานเข้า session แล้ว'),
+                    onSuccess: () => toast.success("หยิบงานเข้า รอบการทำงาน แล้ว"),
                     onError: () =>
                       toast.error('ไม่สามารถหยิบได้ — อาจมีคนอื่นหยิบไปก่อน'),
                   });

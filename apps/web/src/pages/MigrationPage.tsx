@@ -165,7 +165,7 @@ export default function MigrationPage() {
               { key: 'contracts' as ImportMode, label: 'สัญญา' },
               { key: 'bulk' as ImportMode, label: 'ทั้งหมด (Bulk)' },
             ].map((mode) => (
-              <button
+              <button data-ui-control="button"
                 key={mode.key}
                 onClick={() => {
                   setImportMode(mode.key);
@@ -189,18 +189,18 @@ export default function MigrationPage() {
             onChange={(e) => setJsonInput(e.target.value)}
             rows={16}
             className="w-full px-3 py-2 border border-input rounded-lg text-xs font-mono focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
-            placeholder={`วาง JSON ข้อมูล${importMode === 'customers' ? 'ลูกค้า' : importMode === 'contracts' ? 'สัญญา' : ''} ที่นี่...`}
+            aria-label="ข้อมูล JSON สำหรับนำเข้า" placeholder={`วาง JSON ข้อมูล${importMode === 'customers' ? 'ลูกค้า' : importMode === 'contracts' ? 'สัญญา' : ''} ที่นี่...`}
           />
 
           <div className="flex gap-2 mt-3">
-            <button
+            <button data-ui-control="button"
               onClick={handleImport}
               disabled={!jsonInput.trim() || importMutation.isPending}
               className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 disabled:opacity-50"
             >
               {importMutation.isPending ? 'กำลังนำเข้า...' : 'นำเข้าข้อมูล'}
             </button>
-            <button
+            <button data-ui-control="button"
               onClick={loadSampleData}
               className="px-4 py-2 bg-muted text-muted-foreground rounded-lg text-sm font-medium hover:bg-muted"
             >
@@ -261,7 +261,7 @@ export default function MigrationPage() {
               <li>- เลข ปชช. ที่มีอยู่แล้วจะถูกอัปเดต (upsert)</li>
               <li>- ข้อมูลสัญญาต้องมี: customerNationalId, productName, branchName, salespersonEmail</li>
               <li>- ต้องนำเข้าลูกค้าก่อนสัญญา</li>
-              <li>- ใช้ Bulk mode เพื่อนำเข้าทั้งลูกค้าและสัญญาพร้อมกัน</li>
+              <li>- ใช้ Bulk โหมด เพื่อนำเข้าทั้งลูกค้าและสัญญาพร้อมกัน</li>
             </ul>
           </div>
         </div>

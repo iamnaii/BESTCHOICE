@@ -66,6 +66,6 @@ describe('AssetAuditPage — global vs per-asset mode', () => {
 
   it('global mode: header text shows "ทั้งหมด"', async () => {
     renderAt('/assets/audit');
-    await waitFor(() => expect(screen.getByText(/Audit Log.*สินทรัพย์.*ทั้งหมด/)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/ประวัติการดำเนินการ.*สินทรัพย์.*ทั้งหมด/)).toBeInTheDocument());
   });
 });

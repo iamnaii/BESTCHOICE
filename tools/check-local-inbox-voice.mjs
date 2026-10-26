@@ -1,3 +1,4 @@
+import { chooseComposerMode, openComposerTool, showWorkControl, toggleChatTheme } from './chat-ui.mjs';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import { expect } from '@playwright/test';
@@ -49,8 +50,9 @@ export async function checkInboxVoice(browser, origin, output) {
       const send = page.getByRole('button', { name: 'ส่งข้อความ', exact: true });
       await input.fill('ข้อความเดิม');
       assert.equal(await page.evaluate(() => window.voiceInstances.length), 0);
-      await mic.click();
-      await expect(send).toBeDisabled();
+      await openComposerTool(page, 'พูดเป็นข้อความ');
+      if (width < 1024) await expect(send).toBeHidden();
+      else await expect(send).toBeDisabled();
       await page.evaluate(() => window.voiceInstances.at(-1).emit('กำลังพูด', false));
       await expect(input).toHaveValue('ข้อความเดิม');
       await expect(page.getByText('กำลังพูด', { exact: true })).toBeVisible();
@@ -62,7 +64,7 @@ export async function checkInboxVoice(browser, origin, output) {
       });
       await expect(input).toHaveValue('แก้ข้อความเดิม สวัสดีครับ');
       await input.press('Enter');
-      await expect(input).toHaveValue('แก้ข้อความเดิม สวัสดีครับ');
+      await expect(input).toHaveValue(width < 1024 ? 'แก้ข้อความเดิม สวัสดีครับ\n' : 'แก้ข้อความเดิม สวัสดีครับ');
       assert.equal(sends.length, 0, 'speech and Enter while listening must not send');
       await page.screenshot({ path: join(output, `inbox-voice-${width}.png`) });
       await page.getByRole('button', { name: 'หยุดรับเสียง', exact: true }).click();
@@ -73,7 +75,7 @@ export async function checkInboxVoice(browser, origin, output) {
       assert.equal(sends[0].text, 'ตรวจแล้ว ส่งข้อความนี้');
       await expect(input).toHaveValue('');
       await expect(mic).toBeEnabled();
-      await mic.click();
+      await openComposerTool(page, 'พูดเป็นข้อความ');
       await page.evaluate(roomB => {
         window.staleVoice = window.voiceInstances.at(-1).onresult;
         window.history.pushState({}, '', '/inbox/' + roomB);
@@ -84,12 +86,12 @@ export async function checkInboxVoice(browser, origin, output) {
       await expect.poll(() => page.evaluate(() => window.voiceInstances.at(-1).aborted)).toBe(true);
       await page.evaluate(() => window.staleVoice({ resultIndex: 0, results: [{ isFinal: true, 0: { transcript: 'ของห้องเก่า' } }] }));
       await expect(input).toHaveValue('');
-      await mic.click();
-      await page.getByRole('radio', { name: 'โน้ตภายใน', exact: true }).click();
+      await openComposerTool(page, 'พูดเป็นข้อความ');
+      await chooseComposerMode(page, 'note');
       await expect.poll(() => page.evaluate(() => window.voiceInstances.at(-1).aborted)).toBe(true);
       await expect(page.getByRole('textbox', { name: 'พิมพ์โน้ตภายใน', exact: true })).toHaveValue('');
-      await page.getByRole('radio', { name: 'ตอบลูกค้า', exact: true }).click();
-      await mic.click();
+      await chooseComposerMode(page, 'chat');
+      await openComposerTool(page, 'พูดเป็นข้อความ');
       await page.evaluate(() => window.voiceInstances.at(-1).onerror({ error: 'not-allowed' }));
       await expect(page.getByText(/เปิดไมค์ไม่ได้ กรุณาอนุญาต/)).toBeVisible();
       await input.fill('ยังพิมพ์ได้');
@@ -97,6 +99,8 @@ export async function checkInboxVoice(browser, origin, output) {
       // Feature unavailable: usable keyboard input and a visible dictation fallback.
       await page.evaluate(() => { window.SpeechRecognition = undefined; window.webkitSpeechRecognition = undefined; });
       await input.fill('พิมพ์ต่อ');
+      if (width < 1024 && !await page.locator('.inbox-voice-help').isVisible()) await page.getByRole('button', { name: 'เครื่องมือแชท', exact: true }).click();
+      await page.getByRole('button', { name: 'เกี่ยวกับการพิมพ์ด้วยเสียง', exact: true }).click();
       await expect(page.getByText(/เบราว์เซอร์นี้ยังใช้ปุ่มไมค์ไม่ได้/)).toBeVisible();
       await expect(send).toBeEnabled();
       assert.deepEqual(errors, []);

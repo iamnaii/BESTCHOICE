@@ -1,3 +1,5 @@
+import { FormNumberInput } from '@/components/ui/FormNumberInput';
+import { formatNumericText } from '@/utils/numericText';
 import {
   useFieldArray,
   type Control,
@@ -43,18 +45,18 @@ export function AdjustmentTable({
   return (
     <div className="rounded-lg border p-3 bg-card">
       <p className="text-sm font-bold mb-2">
-        บัญชีบันทึกผลต่าง {totalDiff.toFixed(2)} ฿{' '}
+        บัญชีบันทึกผลต่าง {formatNumericText(totalDiff.toFixed(2))} ฿{' '}
         <span className="text-muted-foreground font-normal text-xs">
           (รวมต้องเท่ากับผลต่าง)
         </span>
       </p>
       <div className="space-y-2">
         {fields.map((f, idx) => (
-          <div key={f.id} className="grid grid-cols-12 gap-2 items-start">
+          <div key={f.id} className="grid grid-cols-[1.5rem_minmax(0,1fr)_2.75rem] gap-2 items-start sm:grid-cols-12">
             <span className="col-span-1 inline-flex items-center justify-center w-5 h-5 rounded text-[10px] font-bold bg-muted">
               {idx + 1}
             </span>
-            <div className="col-span-5">
+            <div className="col-span-2 min-w-0 sm:col-span-5">
               <AccountSearchDropdown
                 value={watchedAdjustments[idx]?.accountCode ?? ''}
                 onChange={(code) => {
@@ -65,56 +67,59 @@ export function AdjustmentTable({
               />
               <input
                 {...register(`adjustments.${idx}.note`)}
+                aria-label={`หมายเหตุผลต่างรายการ ${idx + 1}`}
                 placeholder="หมายเหตุ (เช่น ค่าธรรมเนียมแบงก์)"
                 className="w-full border rounded px-2 py-1 text-xs mt-1"
               />
             </div>
-            <div className="col-span-3">
-              <input
-                type="number"
+            <div className="col-start-2 min-w-0 sm:col-span-3 sm:col-start-auto">
+              <FormNumberInput unstyled
                 step="0.01"
-                {...register(`adjustments.${idx}.amount`)}
+                name={`adjustments.${idx}.amount`} control={control}
+                aria-label={`จำนวนผลต่างรายการ ${idx + 1}`}
                 className="w-full border rounded px-2 py-1 text-right font-mono"
                 placeholder="0.00"
               />
             </div>
-            <button
+            <button data-ui-control="button" data-ui-icon="true"
               type="button"
               onClick={() => remove(idx)}
-              className="col-span-1 text-destructive hover:opacity-80"
+              aria-label={`ลบผลต่างรายการ ${idx + 1}`}
+              className="col-span-1 inline-flex size-6 max-lg:size-11 items-center justify-center rounded-md text-destructive hover:bg-destructive/10"
             >
               <Trash2 size={14} />
             </button>
           </div>
         ))}
       </div>
-      <div className="mt-2 flex items-center gap-2">
-        <button
+      <div className="mt-2 flex flex-wrap items-center gap-2">
+        <button data-ui-control="button"
           type="button"
           onClick={() => append({ accountCode: '', amount: 0, note: '' })}
-          className="inline-flex items-center gap-1 px-2 py-1 border rounded-md text-xs hover:bg-accent"
+          className="inline-flex max-lg:min-h-11 items-center gap-1 px-2 py-1 border rounded-md text-xs hover:bg-accent"
         >
           <Plus size={12} /> เพิ่มบัญชี
         </button>
         {!balanced && remaining > 0 && (
           <button
+            data-ui-control="button"
             type="button"
             onClick={() => append({ accountCode: '', amount: remaining, note: '' })}
-            className="inline-flex items-center gap-1 px-2 py-1 border rounded-md text-xs bg-primary/10 hover:bg-primary/20"
+            className="inline-flex max-w-full max-lg:min-h-11 items-center gap-1 px-2 py-1 border rounded-md text-left text-xs bg-primary/10 hover:bg-primary/20"
           >
-            <Plus size={12} /> เพิ่มผลต่างที่เหลือ {remaining.toFixed(2)} ฿
+            <Plus size={12} /> เพิ่มผลต่างที่เหลือ {formatNumericText(remaining.toFixed(2))} ฿
           </button>
         )}
       </div>
-      <div className="mt-2 pt-2 border-t text-xs flex justify-between">
+      <div className="mt-2 pt-2 border-t text-xs flex flex-wrap justify-between gap-2">
         <span className="text-muted-foreground">รวมผลต่างที่ระบุ:</span>
         <span className="font-mono font-bold">
-          {sumSpec.toFixed(2)} / {totalDiff.toFixed(2)} ฿
+          {formatNumericText(sumSpec.toFixed(2))} / {formatNumericText(totalDiff.toFixed(2))} ฿
         </span>
       </div>
       {!balanced && (
         <p className="text-[10px] mt-1 text-warning-strong">
-          ต้องระบุให้ครบ (V12: ผลรวม = ผลต่าง)
+          ระบุยอดรวมให้ตรงกับผลต่าง
         </p>
       )}
     </div>

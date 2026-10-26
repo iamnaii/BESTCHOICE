@@ -229,6 +229,8 @@ export class LiffApiController {
     // discount / credit) without exposing internal cost/profit terminology.
     return {
       remainingMonths: quote.remainingMonths,
+      dueMonths: quote.dueMonths,
+      discountPct: quote.discountPct,
       remainingPrincipal: quote.remainingCost,
       remainingInterest: Math.max(0, quote.grossProfit),
       discount: quote.discountAmount,

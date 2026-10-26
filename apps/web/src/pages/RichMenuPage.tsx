@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useId as useUiFieldId, useState, useRef, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { LayoutGrid, Trash2, Star, Upload, Plus, ImageIcon, Pencil, Copy, Sparkles, Phone, Check } from 'lucide-react';
@@ -8,6 +8,7 @@ import QueryBoundary from '@/components/QueryBoundary';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { NativeSelect } from '@/components/ui/native-select';
 import { Badge } from '@/components/ui/badge';
 import {
   DropdownMenu,
@@ -184,6 +185,7 @@ function ButtonEditor({
   onLayoutChange: (l: LayoutType) => void;
   hasCustomImage?: boolean;
 }) {
+  const uiFieldId = useUiFieldId();
   const layoutCfg = LAYOUT_OPTIONS.find((l) => l.value === layout) ?? LAYOUT_OPTIONS[0];
   const visibleCount = layoutCfg.cols * layoutCfg.rows;
   const btn = buttons[selectedButton];
@@ -192,8 +194,8 @@ function ButtonEditor({
     <div className="flex flex-col gap-5">
       {/* Layout selector */}
       <div>
-        <label className="block text-sm font-medium text-foreground mb-1.5">Layout เมนู</label>
-        <select
+        <label htmlFor={`${uiFieldId}-1`} className="block text-sm font-medium text-foreground mb-3">รูปแบบ เมนู</label>
+        <NativeSelect id={`${uiFieldId}-1`}
           value={layout}
           onChange={(e) => onLayoutChange(e.target.value as LayoutType)}
           className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
@@ -203,7 +205,7 @@ function ButtonEditor({
               {opt.label}
             </option>
           ))}
-        </select>
+        </NativeSelect>
       </div>
 
       {/* Button tabs */}
@@ -211,10 +213,11 @@ function ButtonEditor({
         <label className="block text-sm font-medium text-foreground mb-1.5">เลือกช่อง</label>
         <div className="flex flex-wrap gap-1.5">
           {buttons.slice(0, visibleCount).map((b, i) => (
-            <button
+            <button data-ui-control="button"
               key={i}
               onClick={() => onSelectButton(i)}
-              className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium border transition-all ${
+              aria-pressed={i === selectedButton}
+              className={`min-h-11 flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium border transition-all ${
                 i === selectedButton
                   ? 'border-transparent text-white shadow-sm'
                   : 'border-border bg-background text-muted-foreground hover:border-primary/50'
@@ -259,19 +262,19 @@ function ButtonEditor({
             <>
               {/* Emoji */}
               <div>
-                <label className="block text-xs font-medium text-muted-foreground mb-1">ไอคอน (Emoji)</label>
-                <Input
+                <label htmlFor={`${uiFieldId}-2`} className="block text-xs font-medium text-muted-foreground mb-3">ไอคอน (อีโมจิ)</label>
+                <Input id={`${uiFieldId}-2`}
                   value={btn.emoji}
                   onChange={(e) => onUpdateButton(selectedButton, { emoji: e.target.value })}
-                  className="w-16 text-center text-lg"
+                  className="h-11 min-h-11 w-16 text-center text-lg"
                   maxLength={2}
                 />
               </div>
 
               {/* Label */}
               <div>
-                <label className="block text-xs font-medium text-muted-foreground mb-1">ชื่อปุ่ม</label>
-                <Input
+                <label htmlFor={`${uiFieldId}-3`} className="block text-xs font-medium text-muted-foreground mb-3">ชื่อปุ่ม</label>
+                <Input id={`${uiFieldId}-3`}
                   value={btn.label}
                   onChange={(e) => onUpdateButton(selectedButton, { label: e.target.value })}
                   placeholder="เช่น ดูสินค้า"
@@ -285,12 +288,13 @@ function ButtonEditor({
                 <label className="block text-xs font-medium text-muted-foreground mb-1.5">สีพื้นหลัง</label>
                 <div className="flex flex-wrap gap-1.5">
                   {COLOR_PRESETS.map((preset) => (
-                    <button
+                    <button data-ui-control="button" data-ui-icon="true"
                       key={preset.value}
                       onClick={() => onUpdateButton(selectedButton, { color: preset.value })}
                       title={preset.name}
                       aria-label={preset.name}
-                      className={`w-7 h-7 rounded-full border-2 transition-transform hover:scale-110 ${
+                      aria-pressed={btn.color === preset.value}
+                      className={`size-11 shrink-0 rounded-full border-2 transition-transform hover:scale-110 ${
                         btn.color === preset.value ? 'border-foreground scale-110' : 'border-transparent'
                       }`}
                       style={{ backgroundColor: preset.value }}
@@ -303,9 +307,9 @@ function ButtonEditor({
 
           {/* Action type */}
           <div>
-            <label className="block text-xs font-medium text-muted-foreground mb-1.5">Action</label>
-            <div className="flex gap-3">
-              <label className="flex items-center gap-1.5 text-sm cursor-pointer">
+            <label className="block text-xs font-medium text-muted-foreground mb-1.5">จัดการ</label>
+            <div className="flex flex-wrap gap-x-3 gap-y-1">
+              <label className="min-h-11 flex items-center gap-1.5 text-sm cursor-pointer">
                 <input
                   type="radio"
                   name={`action-type-${selectedButton}`}
@@ -316,7 +320,7 @@ function ButtonEditor({
                 />
                 เปิดลิงก์ (URL)
               </label>
-              <label className="flex items-center gap-1.5 text-sm cursor-pointer">
+              <label className="min-h-11 flex items-center gap-1.5 text-sm cursor-pointer">
                 <input
                   type="radio"
                   name={`action-type-${selectedButton}`}
@@ -332,10 +336,10 @@ function ButtonEditor({
 
           {/* Action value */}
           <div>
-            <label className="block text-xs font-medium text-muted-foreground mb-1">
+            <label htmlFor={`${uiFieldId}-4`} className="block text-xs font-medium text-muted-foreground mb-3">
               {btn.actionType === 'uri' ? 'URL' : 'ข้อความที่จะส่ง'}
             </label>
-            <Input
+            <Input id={`${uiFieldId}-4`}
               value={btn.actionValue}
               onChange={(e) => onUpdateButton(selectedButton, { actionValue: e.target.value })}
               placeholder={btn.actionType === 'uri' ? 'https://liff.line.me/...' : 'เช่น โปรโมชัน'}
@@ -352,6 +356,7 @@ function ButtonEditor({
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function RichMenuPage() {
+  const uiFieldId = useUiFieldId();
   const queryClient = useQueryClient();
 
   // Channel
@@ -507,7 +512,7 @@ export default function RichMenuPage() {
       await api.post(`/line-oa/rich-menu/${menuId}/set-default?channel=${channel}`);
     },
     onSuccess: () => {
-      toast.success('ตั้งเป็น Default แล้ว');
+      toast.success("ตั้งเป็น ค่าเริ่มต้นแล้ว");
       queryClient.invalidateQueries({ queryKey: ['rich-menu-list', channel] });
       queryClient.invalidateQueries({ queryKey: ['rich-menu-aliases'] });
     },
@@ -544,7 +549,7 @@ export default function RichMenuPage() {
       await api.post(`/line-oa/rich-menu/${menuId}/set-alias`, { channel, variant });
     },
     onSuccess: (_, vars) => {
-      toast.success(`ตั้งเป็น ${vars.variant === 'default' ? 'Default' : 'Verified'} แล้ว`);
+      toast.success(`ตั้งเป็น ${vars.variant === 'default' ? 'ค่าเริ่มต้น' : 'เมนูลูกค้าที่ผูกเบอร์แล้ว'} แล้ว`);
       queryClient.invalidateQueries({ queryKey: ['rich-menu-aliases'] });
       queryClient.invalidateQueries({ queryKey: ['rich-menu-list', channel] });
     },
@@ -585,7 +590,7 @@ export default function RichMenuPage() {
       return res.data as { richMenuId: string };
     },
     onSuccess: () => {
-      toast.success('สร้าง + deploy Rich Menu จาก template สำเร็จ');
+      toast.success("สร้างและเผยแพร่ Rich Menu จากแม่แบบสำเร็จ");
       queryClient.invalidateQueries({ queryKey: ['rich-menu-list', channel] });
       queryClient.invalidateQueries({ queryKey: ['rich-menu-aliases'] });
       setActiveTab('list');
@@ -639,7 +644,7 @@ export default function RichMenuPage() {
           { key: 'shop', label: 'SHOP' },
           { key: 'finance', label: 'FINANCE' },
         ].map((ch) => (
-          <button
+          <button data-ui-control="button"
             key={ch.key}
             onClick={() => setChannel(ch.key as 'shop' | 'finance')}
             className={`px-5 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px ${
@@ -659,7 +664,7 @@ export default function RichMenuPage() {
           { key: 'create', label: 'สร้างเมนู' },
           { key: 'list', label: 'รายการเมนู' },
         ].map((tab) => (
-          <button
+          <button data-ui-control="button"
             key={tab.key}
             onClick={() => setActiveTab(tab.key as 'create' | 'list')}
             className={`px-5 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px ${
@@ -682,9 +687,9 @@ export default function RichMenuPage() {
               <div className="px-5 py-3.5 border-b border-primary/20 bg-primary/10 flex items-center gap-2">
                 <Sparkles size={18} className="text-primary" />
                 <div>
-                  <h2 className="text-base font-semibold text-foreground">สร้างอัตโนมัติจาก Template</h2>
+                  <h2 className="text-base font-semibold text-foreground">สร้างอัตโนมัติจาก แม่แบบ</h2>
                   <p className="text-xs text-muted-foreground mt-0.5">
-                    ระบบจะ generate รูป + ติดตั้ง alias ให้ครบในคลิกเดียว
+                    ระบบสร้างภาพและติดตั้งเมนูพร้อมใช้ในครั้งเดียว
                   </p>
                 </div>
               </div>
@@ -692,11 +697,11 @@ export default function RichMenuPage() {
                 {/* Call center phone input */}
                 <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-2 items-end">
                   <div>
-                    <label className="text-sm font-medium text-foreground mb-1 flex items-center gap-1.5">
+                    <label htmlFor={`${uiFieldId}-1`} className="text-sm font-medium text-foreground mb-1 flex items-center gap-1.5">
                       <Phone size={14} />
-                      เบอร์โทรศูนย์บริการ (Call Center)
+                      เบอร์โทรศูนย์บริการ
                     </label>
-                    <Input
+                    <Input id={`${uiFieldId}-1`}
                       type="tel"
                       value={callCenterPhone}
                       onChange={(e) => setCallCenterPhone(e.target.value)}
@@ -704,7 +709,7 @@ export default function RichMenuPage() {
                       className="font-mono"
                     />
                     <p className="text-xs text-muted-foreground mt-1">
-                      ใช้บนปุ่ม "โทรหาเจ้าหน้าที่" ในเมนูหลัง verify
+                      ใช้บนปุ่ม "โทรหาเจ้าหน้าที่" ในเมนูหลัง ยืนยันตัวตน
                     </p>
                   </div>
                   <Button
@@ -720,11 +725,11 @@ export default function RichMenuPage() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div className="rounded-lg border border-border bg-card p-4 space-y-2">
                     <div className="flex items-center gap-2">
-                      <Badge className="bg-muted text-muted-foreground border-0">Pre-verify</Badge>
-                      <span className="font-semibold text-sm">FINANCE — Default</span>
+                      <Badge className="bg-muted text-muted-foreground border-0">ก่อนยืนยันตัวตน</Badge>
+                      <span className="font-semibold text-sm">งานการเงิน — ค่าเริ่มต้น</span>
                     </div>
                     <p className="text-xs text-muted-foreground">
-                      เมนูก่อนลูกค้าผูกเบอร์: ผูกเบอร์ (hero) · วิธีชำระ · วิธีใช้งาน · ติดต่อ · FAQ · เปลี่ยนเบอร์
+                      เมนูก่อนผูกเบอร์: ผูกเบอร์ · วิธีชำระ · วิธีใช้งาน · ติดต่อ · คำถามที่พบบ่อย · เปลี่ยนเบอร์
                     </p>
                     <Button
                       className="w-full bg-gradient-to-r from-[#06C755] to-[#04a844] hover:from-[#04a844] hover:to-[#038537] text-white border-0"
@@ -734,18 +739,18 @@ export default function RichMenuPage() {
                       <Sparkles size={14} className="mr-1.5" />
                       {deployTemplateMutation.isPending &&
                       deployTemplateMutation.variables === 'finance-default'
-                        ? 'กำลัง generate...'
-                        : 'Generate + Deploy'}
+                        ? "กำลัง สร้าง..."
+                        : "สร้างและเผยแพร่"}
                     </Button>
                   </div>
 
                   <div className="rounded-lg border border-border bg-card p-4 space-y-2">
                     <div className="flex items-center gap-2">
-                      <Badge className="bg-primary/10 text-primary border-primary/30">Verified</Badge>
-                      <span className="font-semibold text-sm">FINANCE — Verified</span>
+                      <Badge className="bg-primary/10 text-primary border-primary/30">ยืนยันแล้ว</Badge>
+                      <span className="font-semibold text-sm">งานการเงิน — ยืนยันแล้ว</span>
                     </div>
                     <p className="text-xs text-muted-foreground">
-                      เมนูหลังผูกเบอร์: เช็คยอด (hero) · ตารางงวด · ชำระเงิน · ประวัติ · สัญญา · โทรหาเจ้าหน้าที่
+                      เมนูหลังผูกเบอร์: เช็กยอด · ตารางงวด · ชำระเงิน · ประวัติ · สัญญา · โทรหาเจ้าหน้าที่
                     </p>
                     <Button
                       className="w-full bg-gradient-to-r from-[#06C755] to-[#04a844] hover:from-[#04a844] hover:to-[#038537] text-white border-0"
@@ -756,12 +761,12 @@ export default function RichMenuPage() {
                       <Sparkles size={14} className="mr-1.5" />
                       {deployTemplateMutation.isPending &&
                       deployTemplateMutation.variables === 'finance-verified'
-                        ? 'กำลัง generate...'
-                        : 'Generate + Deploy'}
+                        ? "กำลัง สร้าง..."
+                        : "สร้างและเผยแพร่"}
                     </Button>
                     {!callCenterPhoneData?.phone && (
                       <p className="text-xs text-destructive">
-                        ต้องบันทึกเบอร์โทรก่อนจึงจะ deploy ได้
+                        ต้องบันทึกเบอร์โทรก่อนจึงจะ เผยแพร่ ได้
                       </p>
                     )}
                   </div>
@@ -821,19 +826,19 @@ export default function RichMenuPage() {
             </div>
             <div className="p-5 grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-foreground mb-1">ชื่อเมนู</label>
-                <Input
+                <label htmlFor={`${uiFieldId}-2`} className="block text-sm font-medium text-foreground mb-1">ชื่อเมนู</label>
+                <Input id={`${uiFieldId}-2`}
                   value={menuName}
                   onChange={(e) => setMenuName(e.target.value)}
                   placeholder="BESTCHOICE Menu"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-foreground mb-1">
+                <label htmlFor={`${uiFieldId}-3`} className="block text-sm font-medium text-foreground mb-1">
                   ข้อความแถบเมนู
-                  <span className="text-xs text-muted-foreground ml-1">(chatBarText)</span>
+                  <span className="text-xs text-muted-foreground ml-1"></span>
                 </label>
-                <Input
+                <Input id={`${uiFieldId}-3`}
                   value={chatBarText}
                   onChange={(e) => setChatBarText(e.target.value)}
                   placeholder="เมนู"
@@ -841,8 +846,8 @@ export default function RichMenuPage() {
                 />
               </div>
               <div className="sm:col-span-2">
-                <label className="block text-sm font-medium text-foreground mb-1">LIFF URL</label>
-                <Input
+                <label htmlFor={`${uiFieldId}-4`} className="block text-sm font-medium text-foreground mb-1">LIFF URL</label>
+                <Input id={`${uiFieldId}-4`}
                   type="url"
                   value={liffUrl}
                   onChange={(e) => setLiffUrl(e.target.value)}
@@ -1011,12 +1016,12 @@ export default function RichMenuPage() {
                         </div>
                         {isDefault && (
                           <Badge className="bg-success/10 text-success hover:bg-success/10 border-success/30 shrink-0">
-                            <Star className="size-3.5 inline mr-1" />Default
+                            <Star className="size-3.5 inline mr-1" />ค่าเริ่มต้น
                           </Badge>
                         )}
                         {isVerified && (
                           <Badge className="bg-primary/10 text-primary hover:bg-primary/10 border-primary/30 shrink-0">
-                            <Check className="size-3.5 inline mr-1" />Verified
+                            <Check className="size-3.5 inline mr-1" />ยืนยันแล้ว
                           </Badge>
                         )}
                       </div>
@@ -1034,14 +1039,14 @@ export default function RichMenuPage() {
                                 setAliasMutation.mutate({ menuId: menu.richMenuId, variant: 'default' })
                               }
                             >
-                              <Star className="size-3.5 inline mr-1" />Default (ลูกค้าใหม่)
+                              <Star className="size-3.5 inline mr-1" />ค่าเริ่มต้น (ลูกค้าใหม่)
                             </DropdownMenuItem>
                             <DropdownMenuItem
                               onClick={() =>
                                 setAliasMutation.mutate({ menuId: menu.richMenuId, variant: 'verified' })
                               }
                             >
-                              <Check className="size-3.5 inline mr-1" />Verified (ลูกค้าที่ verify แล้ว)
+                              <Check className="size-3.5 inline mr-1" />ลูกค้าที่ผูกเบอร์แล้ว
                             </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>

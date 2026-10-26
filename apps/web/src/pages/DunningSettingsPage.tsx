@@ -1,4 +1,6 @@
-import { useState, useRef } from 'react';
+import { NumberInput } from '@/components/ui/NumberInput';
+import { NativeSelect } from '@/components/ui/native-select';
+import { useId as useUiFieldId, useState, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
@@ -166,7 +168,7 @@ function LetterAssetField({
               if (f) handleChange(f);
             }}
           />
-          <button
+          <button data-ui-control="button"
             type="button"
             onClick={() => inputRef.current?.click()}
             disabled={uploading}
@@ -191,6 +193,7 @@ function LetterAssetField({
 }
 
 export default function DunningSettingsPage() {
+  const uiFieldId = useUiFieldId();
   const queryClient = useQueryClient();
   const [showModal, setShowModal] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
@@ -250,7 +253,7 @@ export default function DunningSettingsPage() {
       await api.delete(`/overdue/dunning-rules/${id}`);
     },
     onSuccess: () => {
-      toast.success('ลบ Rule สำเร็จ');
+      toast.success("ลบ กฎ สำเร็จ");
       queryClient.invalidateQueries({ queryKey: ['dunning-rules'] });
     },
     onError: (err: unknown) => toast.error(getErrorMessage(err)),
@@ -352,7 +355,7 @@ export default function DunningSettingsPage() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.name.trim()) {
-      toast.error('กรุณาระบุชื่อ Rule');
+      toast.error("กรุณาระบุชื่อ กฎ");
       return;
     }
     saveMutation.mutate();
@@ -362,21 +365,21 @@ export default function DunningSettingsPage() {
     <div className="space-y-6">
       <PageHeader
         title="ตั้งค่าระบบทวงหนี้อัตโนมัติ"
-        subtitle="กำหนด Rule การแจ้งเตือนและทวงหนี้ลูกค้าตามจำนวนวันที่ค้างชำระ"
+        subtitle="กำหนด กฎ การแจ้งเตือนและทวงหนี้ลูกค้าตามจำนวนวันที่ค้างชำระ"
         action={
           <div className="flex items-center gap-2">
             <a
               href="/settings/comms/sms"
               className="text-xs px-3 py-2 rounded-md border border-border hover:bg-accent text-foreground"
             >
-              จัดการ SMS Template
+              จัดการ SMS แม่แบบ
             </a>
-            <button
+            <button data-ui-control="button"
               onClick={openCreate}
               className="flex items-center gap-2 px-4 py-2 rounded-md bg-primary text-primary-foreground text-sm hover:bg-primary/90 transition-colors"
             >
               <Plus className="w-4 h-4" />
-              เพิ่ม Rule
+              เพิ่ม กฎ
             </button>
           </div>
         }
@@ -390,7 +393,7 @@ export default function DunningSettingsPage() {
             <div className="text-sm font-semibold">เอกสารและอุปกรณ์ติดตาม</div>
           </div>
           <p className="text-xs text-muted-foreground mb-4 leading-snug">
-            ลายเซ็นและหัวกระดาษสำหรับหนังสือทวงถาม · wallpaper เตือนบนเครื่องลูกค้าเมื่อถูกล็อค MDM
+            ลายเซ็นและหัวกระดาษสำหรับหนังสือทวงถาม · ภาพพื้นหลัง เตือนบนเครื่องลูกค้าเมื่อถูกล็อค MDM
           </p>
 
           <div className="space-y-4">
@@ -409,7 +412,7 @@ export default function DunningSettingsPage() {
               onSaved={(url) => saveConfig('letter_letterhead_url', url)}
             />
             <LetterAssetField
-              label="Wallpaper เตือนบนเครื่องลูกค้า"
+              label="ภาพพื้นหลัง เตือนบนเครื่องลูกค้า"
               hint="PNG 1080×1920px แนวตั้ง · แสดงบน lock screen เมื่อ MDM ล็อคเครื่อง"
               currentUrl={wallpaperUrl}
               uploadKind="MDM_WALLPAPER"
@@ -425,7 +428,7 @@ export default function DunningSettingsPage() {
           {!wallpaperUrl && mdmAutoPropose && (
             <div className="mt-3 rounded-lg bg-destructive/5 border border-destructive/20 p-3 flex items-start gap-2 text-xs text-destructive leading-snug">
               <AlertTriangle className="size-3.5 shrink-0 mt-0.5" />
-              <span>Wallpaper ยังไม่ตั้งค่า — MDM จะล็อคเครื่องโดยไม่เปลี่ยนรูป</span>
+              <span>ภาพพื้นหลัง ยังไม่ตั้งค่า — MDM จะล็อคเครื่องโดยไม่เปลี่ยนรูป</span>
             </div>
           )}
         </CardContent>
@@ -436,11 +439,11 @@ export default function DunningSettingsPage() {
         <div className="rounded-xl border border-border/50 bg-card shadow-sm p-5 mb-2">
           <div className="flex items-center gap-2 mb-3">
             <Bell className="size-4 text-primary" />
-            <div className="text-sm font-semibold">Event-triggered rules</div>
-            <Badge variant="secondary" appearance="outline" size="sm">read-only</Badge>
+            <div className="text-sm font-semibold">กฎตามเหตุการณ์</div>
+            <Badge variant="secondary" appearance="outline" size="sm">ดูได้อย่างเดียว</Badge>
           </div>
           <p className="text-xs text-muted-foreground mb-4">
-            Rules ที่ยิงตามเหตุการณ์ (ไม่ใช่ตามวัน) เช่น collector บันทึก NO_ANSWER → ส่ง LINE อัตโนมัติ
+            ส่งข้อความตามเหตุการณ์ เช่น ส่ง LINE เมื่อติดต่อแล้วไม่รับสาย
           </p>
           <div className="space-y-2">
             {eventRules.map((r) => {
@@ -453,7 +456,7 @@ export default function DunningSettingsPage() {
                   <div className="min-w-0 flex-1">
                     <div className="text-sm font-medium truncate">{r.name}</div>
                     <div className="text-xs text-muted-foreground mt-0.5">
-                      trigger: <span className="font-mono">{r.eventTrigger}</span>
+                      เหตุการณ์: <span className="font-mono">{r.eventTrigger}</span>
                       {' · '}
                       <Badge variant={channelCfg.variant} appearance={channelCfg.appearance} size="sm">
                         {channelCfg.label}
@@ -485,12 +488,12 @@ export default function DunningSettingsPage() {
         {sortedRules.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20 gap-3 text-muted-foreground rounded-xl border border-border/50 bg-card shadow-sm">
             <Bell className="w-10 h-10 opacity-40" />
-            <p className="text-sm">ยังไม่มี Rule ทวงหนี้</p>
+            <p className="text-sm">ยังไม่มี กฎ ทวงหนี้</p>
             <button
               onClick={openCreate}
               className="text-sm text-primary hover:underline"
             >
-              เพิ่ม Rule แรก
+              เพิ่ม กฎ แรก
             </button>
           </div>
         ) : (
@@ -550,20 +553,20 @@ export default function DunningSettingsPage() {
                             {rule.includePaymentLink && (
                               <span className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-info/20 text-info">
                                 <Link2 className="w-3 h-3" />
-                                Payment Link
+                                ลิงก์ชำระเงิน
                               </span>
                             )}
                             {/* Manual badge */}
                             {!rule.autoExecute && (
                               <span className="text-xs px-2 py-0.5 rounded-full bg-warning/20 text-warning-strong">
-                                Manual
+                                กำหนดเอง
                               </span>
                             )}
                           </div>
 
                           {/* Actions */}
                           <div className="flex items-center gap-1">
-                            <button
+                            <button data-ui-control="button" data-ui-icon="true"
                               onClick={() => handleToggle(rule)}
                               title={rule.isActive ? 'ปิดใช้งาน' : 'เปิดใช้งาน'}
                               className="p-1.5 rounded hover:bg-muted transition-colors"
@@ -574,14 +577,14 @@ export default function DunningSettingsPage() {
                                 <ToggleLeft className="w-5 h-5 text-muted-foreground" />
                               )}
                             </button>
-                            <button
+                            <button data-ui-control="button" data-ui-icon="true"
                               onClick={() => openEdit(rule)}
                               title="แก้ไข"
                               className="p-1.5 rounded hover:bg-muted transition-colors"
                             >
                               <Pencil className="w-4 h-4 text-muted-foreground hover:text-foreground" />
                             </button>
-                            <button
+                            <button data-ui-control="button" data-ui-icon="true"
                               onClick={() => handleDelete(rule)}
                               title="ลบ"
                               className="p-1.5 rounded hover:bg-destructive/20 transition-colors"
@@ -605,7 +608,7 @@ export default function DunningSettingsPage() {
                         {rule.escalateTo && (
                           <div className="flex items-center gap-1 mt-1 text-xs text-muted-foreground">
                             <ArrowRight className="w-3 h-3" />
-                            <span>Escalate: {rule.escalateTo}</span>
+                            <span>ส่งต่อ: {rule.escalateTo}</span>
                           </div>
                         )}
                       </div>
@@ -622,16 +625,16 @@ export default function DunningSettingsPage() {
       <Modal
         isOpen={showModal}
         onClose={closeModal}
-        title={editId ? 'แก้ไข Rule ทวงหนี้' : 'เพิ่ม Rule ทวงหนี้'}
+        title={editId ? "แก้ไข กฎ ทวงหนี้" : "เพิ่ม กฎ ทวงหนี้"}
         size="lg"
       >
         <form onSubmit={handleSubmit} className="space-y-4">
           {/* Name */}
           <div>
-            <label className="block text-sm font-medium text-foreground mb-1">
-              ชื่อ Rule <span className="text-destructive">*</span>
+            <label htmlFor={`${uiFieldId}-1`} className="block text-sm font-medium text-foreground mb-1">
+              ชื่อ กฎ <span className="text-destructive">*</span>
             </label>
-            <input
+            <input id={`${uiFieldId}-1`}
               type="text"
               value={form.name}
               onChange={(e) => handleFormChange('name', e.target.value)}
@@ -643,12 +646,11 @@ export default function DunningSettingsPage() {
           {/* TriggerDay + Channel */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-sm font-medium text-foreground mb-1">
+              <label htmlFor={`${uiFieldId}-2`} className="block text-sm font-medium text-foreground mb-1">
                 วันที่ทริกเกอร์{' '}
                 <span className="text-muted-foreground text-xs">(ลบ = ก่อนครบ)</span>
               </label>
-              <input
-                type="number"
+              <NumberInput unstyled id={`${uiFieldId}-2`}
                 value={form.triggerDay}
                 onChange={(e) =>
                   handleFormChange('triggerDay', parseInt(e.target.value, 10) || 0)
@@ -660,32 +662,32 @@ export default function DunningSettingsPage() {
               </p>
             </div>
             <div>
-              <label className="block text-sm font-medium text-foreground mb-1">ช่องทาง</label>
-              <select
+              <label htmlFor={`${uiFieldId}-3`} className="block text-sm font-medium text-foreground mb-1">ช่องทาง</label>
+              <NativeSelect wrapperClassName="max-w-full w-full" id={`${uiFieldId}-3`}
                 value={form.channel}
                 onChange={(e) => handleFormChange('channel', e.target.value as DunningChannel)}
-                className="w-full px-3 py-2 rounded-md border border-border bg-input text-foreground text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                className="px-3 py-2 rounded-md border border-border bg-input text-foreground text-sm focus:outline-none focus:ring-1 focus:ring-primary"
               >
                 {CHANNEL_OPTIONS.map((opt) => (
                   <option key={opt.value} value={opt.value}>
                     {opt.label}
                   </option>
                 ))}
-              </select>
+              </NativeSelect>
             </div>
           </div>
 
           {/* P3 E2: Optional SmsTemplate reference */}
           {(form.channel === 'LINE' || form.channel === 'SMS') && (
             <div>
-              <label className="block text-sm font-medium text-foreground mb-1">
-                ใช้ Template จาก SMS Template Library{' '}
+              <label htmlFor={`${uiFieldId}-4`} className="block text-sm font-medium text-foreground mb-1">
+                ใช้แม่แบบจากคลังข้อความ SMS{' '}
                 <span className="text-muted-foreground text-xs">(ไม่บังคับ)</span>
               </label>
-              <select
+              <NativeSelect wrapperClassName="max-w-full w-full" id={`${uiFieldId}-4`}
                 value={form.templateName}
                 onChange={(e) => handleFormChange('templateName', e.target.value)}
-                className="w-full px-3 py-2 rounded-md border border-border bg-input text-foreground text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                className="px-3 py-2 rounded-md border border-border bg-input text-foreground text-sm focus:outline-none focus:ring-1 focus:ring-primary"
               >
                 <option value="">— ใช้ข้อความ inline ด้านล่าง —</option>
                 {smsTemplates
@@ -695,18 +697,18 @@ export default function DunningSettingsPage() {
                       {t.name}
                     </option>
                   ))}
-              </select>
+              </NativeSelect>
               <p className="text-xs text-muted-foreground mt-1 leading-snug">
-                เมื่อตั้งค่าแล้ว ระบบจะใช้ body จาก template นี้แทนข้อความ inline ด้านล่าง — หาก template ถูกลบจะ fallback กลับมาที่ข้อความ inline อัตโนมัติ
+                ใช้ข้อความจากแม่แบบที่เลือก หากแม่แบบถูกลบจะใช้ข้อความสำรองด้านล่าง
               </p>
             </div>
           )}
 
           {/* Message Template */}
           <div>
-            <label className="block text-sm font-medium text-foreground mb-1">
-              เทมเพลตข้อความ {form.templateName && (
-                <span className="text-xs text-muted-foreground">(สำรองเมื่อ template หาย)</span>
+            <label htmlFor={`${uiFieldId}-5`} className="block text-sm font-medium text-foreground mb-1">
+              แม่แบบข้อความ {form.templateName && (
+                <span className="text-xs text-muted-foreground">(สำรองเมื่อ แม่แบบ หาย)</span>
               )}
             </label>
             <div className="flex flex-wrap gap-1 mb-2">
@@ -722,7 +724,7 @@ export default function DunningSettingsPage() {
                 </button>
               ))}
             </div>
-            <textarea
+            <textarea id={`${uiFieldId}-5`}
               value={form.messageTemplate}
               onChange={(e) => handleFormChange('messageTemplate', e.target.value)}
               rows={4}
@@ -733,11 +735,11 @@ export default function DunningSettingsPage() {
 
           {/* Escalate To */}
           <div>
-            <label className="block text-sm font-medium text-foreground mb-1">
-              Escalate ไปยัง Rule ID{' '}
+            <label htmlFor={`${uiFieldId}-6`} className="block text-sm font-medium text-foreground mb-1">
+              Escalate ไปยัง กฎ ID{' '}
               <span className="text-muted-foreground text-xs">(ไม่บังคับ)</span>
             </label>
-            <input
+            <input id={`${uiFieldId}-6`}
               type="text"
               value={form.escalateTo}
               onChange={(e) => handleFormChange('escalateTo', e.target.value)}
@@ -748,11 +750,10 @@ export default function DunningSettingsPage() {
 
           {/* Sort Order */}
           <div>
-            <label className="block text-sm font-medium text-foreground mb-1">
+            <label htmlFor={`${uiFieldId}-7`} className="block text-sm font-medium text-foreground mb-1">
               ลำดับ (sortOrder)
             </label>
-            <input
-              type="number"
+            <NumberInput unstyled id={`${uiFieldId}-7`}
               value={form.sortOrder}
               onChange={(e) =>
                 handleFormChange('sortOrder', parseInt(e.target.value, 10) || 0)
@@ -785,14 +786,14 @@ export default function DunningSettingsPage() {
 
           {/* Footer */}
           <div className="flex justify-end gap-2 pt-2 border-t border-border">
-            <button
+            <button data-ui-control="button"
               type="button"
               onClick={closeModal}
               className="px-4 py-2 rounded-md border border-border text-sm hover:bg-muted transition-colors"
             >
               ยกเลิก
             </button>
-            <button
+            <button data-ui-control="button"
               type="submit"
               disabled={saveMutation.isPending}
               className="px-4 py-2 rounded-md bg-primary text-primary-foreground text-sm hover:bg-primary/90 disabled:opacity-50 transition-colors"
@@ -801,7 +802,7 @@ export default function DunningSettingsPage() {
                 ? 'กำลังบันทึก...'
                 : editId
                   ? 'อัปเดต'
-                  : 'เพิ่ม Rule'}
+                  : "เพิ่ม กฎ"}
             </button>
           </div>
         </form>

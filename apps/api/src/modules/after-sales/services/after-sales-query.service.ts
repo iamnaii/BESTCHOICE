@@ -60,6 +60,8 @@ const ROW_SELECT = {
   branchId: true,
   closedAt: true, // PR 2: ทางออกเปลี่ยนเครื่องปิดด้วยการส่งมอบ — deriveStage/reconcileStage ต้องใช้ค่านี้
   replacementContractId: true, // R7: กิ่ง SAME_MODEL_EXCHANGE ของ deriveStage ต้องใช้ค่านี้
+  saleId: true, // PR 5 — attachExchange ใช้หาเลขใบขายของเคสขายสด
+  replacementSaleId: true, // PR 5 — marker ของ deriveStage (เคสขายสดไม่มีสัญญาใหม่)
   productId: true, // Task 7 — เครื่องเดิม (ruling P-K): resolve ผ่าน batched product.findMany เดียวกับเครื่องทดแทน
   replacementProductId: true, // Task 7 — เครื่องทดแทน (newProduct)
   approvedAt: true, // R25 (d) — stageSince(READY_FOR_PICKUP) นับอายุจากอนุมัติ ไม่ใช่ตอนรับเรื่อง
@@ -95,6 +97,7 @@ interface DecorateInput {
   receivedAt: Date;
   approvedAt?: Date | null; // R25 (d) — 4th arg ของ stageSince
   replacementContractId?: string | null;
+  replacementSaleId?: string | null; // PR 5
   repairTicket: {
     status: RepairStatus;
     deletedAt: Date | null;
@@ -118,6 +121,7 @@ interface ExchangeAttachInput {
   productId?: string | null;
   replacementProductId?: string | null;
   replacementContractId?: string | null;
+  saleId?: string | null; // PR 5 — ใบขายของเคสขายสด
   receivedBy?: { id: string; name: string } | null;
   exchangeRequest?: {
     status: ExchangeRequestStatus;
@@ -151,22 +155,26 @@ export interface CaseExchangeInfo {
     imeiSerial: string | null;
   } | null;
   replacementContract: { id: string; contractNumber: string; status: string } | null;
+  /** PR 5 — ใบขายที่ถูกสลับเครื่อง (เคสขายสด) */
+  sale: { id: string; saleNumber: string } | null;
   requestedBy: { id: string; name: string } | null;
 }
 
-/** เคสไหนถือ "เปลี่ยนเครื่อง" — ใช้แยกกันสองที่โดยตั้งใจ: กลุ่มนี้ (ใช้ตัดสิน exchange sub-object)
- * รวม CASH_SAME_MODEL_EXCHANGE ด้วยเพราะ deriveStage ปฏิบัติกับมันเหมือน SAME_MODEL_EXCHANGE ทุก
- * ประการ (OPEN_EXCHANGE_STAGE) — ส่วน summary() ข้อ openExchange/exchanges ใช้ EXCHANGE_OUTCOMES
- * แคบกว่า (ตามบรีฟข้อ verbatim: {SAME_MODEL_EXCHANGE, PRICED_EXCHANGE} เท่านั้น) */
+/** เคสไหนถือ "เปลี่ยนเครื่อง" — ใช้ตัดสิน exchange sub-object ของ CaseRow · รวม CASH_SAME_MODEL_EXCHANGE
+ * เพราะ deriveStage ปฏิบัติกับมันเหมือน SAME_MODEL_EXCHANGE ทุกประการ (OPEN_EXCHANGE_STAGE) · ตั้งแต่ PR 5
+ * EXCHANGE_OUTCOMES ของ summary() นับสามทางออกเท่ากัน */
 const EXCHANGE_KIND: Partial<Record<AfterSalesOutcome, 'SAME_MODEL' | 'PRICED'>> = {
   SAME_MODEL_EXCHANGE: 'SAME_MODEL',
   CASH_SAME_MODEL_EXCHANGE: 'SAME_MODEL',
   PRICED_EXCHANGE: 'PRICED',
 };
 
-/** summary() เท่านั้น — verbatim ตามบรีฟ: openExchange/exchanges นับเฉพาะสองทางออกนี้
- * (ไม่รวม CASH_SAME_MODEL_EXCHANGE ต่างจาก EXCHANGE_KIND ข้างบนโดยตั้งใจ) */
-const EXCHANGE_OUTCOMES = new Set<AfterSalesOutcome>(['SAME_MODEL_EXCHANGE', 'PRICED_EXCHANGE']);
+/** summary() — openExchange/exchanges นับทางออกเปลี่ยนเครื่องทั้งสาม (PR 5: นับเคสขายสดด้วย) */
+const EXCHANGE_OUTCOMES = new Set<AfterSalesOutcome>([
+  'SAME_MODEL_EXCHANGE',
+  'PRICED_EXCHANGE',
+  'CASH_SAME_MODEL_EXCHANGE',
+]);
 
 @Injectable()
 export class AfterSalesQueryService {
@@ -189,6 +197,7 @@ export class AfterSalesQueryService {
       repairStatus: row.repairTicket?.status ?? null,
       repairDeleted: !!row.repairTicket?.deletedAt,
       replacementContractId: row.replacementContractId ?? null,
+      replacementSaleId: row.replacementSaleId ?? null,
       exchange: row.exchangeRequest
         ? {
             status: row.exchangeRequest.status,
@@ -229,6 +238,7 @@ export class AfterSalesQueryService {
 
     const productIds = new Set<string>();
     const replacementContractIds = new Set<string>();
+    const saleIds = new Set<string>(); // PR 5 — เคสขายสด
     for (const r of rows) {
       const kind = kinds.get(r.id);
       if (!kind) continue;
@@ -237,9 +247,10 @@ export class AfterSalesQueryService {
       if (kind === 'SAME_MODEL' && r.replacementContractId) {
         replacementContractIds.add(r.replacementContractId);
       }
+      if (kind === 'SAME_MODEL' && r.saleId) saleIds.add(r.saleId);
     }
 
-    const [products, contracts] = await Promise.all([
+    const [products, contracts, sales] = await Promise.all([
       // database.md — ทุก query ใหม่ต้องกรอง deletedAt: null เมื่อโมเดลมีคอลัมน์นี้ (Product/Contract มี)
       productIds.size
         ? this.prisma.product.findMany({
@@ -253,9 +264,16 @@ export class AfterSalesQueryService {
             select: { id: true, contractNumber: true, status: true },
           })
         : Promise.resolve([]),
+      saleIds.size
+        ? this.prisma.sale.findMany({
+            where: { id: { in: [...saleIds] }, deletedAt: null },
+            select: { id: true, saleNumber: true },
+          })
+        : Promise.resolve([]),
     ]);
     const productById = new Map(products.map((p) => [p.id, p] as const));
     const contractById = new Map(contracts.map((c) => [c.id, c] as const));
+    const saleById = new Map(sales.map((s) => [s.id, s] as const));
 
     const out = new Map<string, CaseExchangeInfo>();
     for (const r of rows) {
@@ -300,6 +318,7 @@ export class AfterSalesQueryService {
             }
           : null,
         replacementContract,
+        sale: kind === 'SAME_MODEL' && r.saleId ? (saleById.get(r.saleId) ?? null) : null,
         requestedBy: r.receivedBy ? { id: r.receivedBy.id, name: r.receivedBy.name } : null,
       });
     }
@@ -404,6 +423,26 @@ export class AfterSalesQueryService {
     };
   }
 
+  /**
+   * การ์ด "หลังการขายรอลูกค้ารับ" บนหน้าหลักหน้าร้าน — นับเคส stage READY_FOR_PICKUP
+   * และเคสที่รอเกินเกณฑ์ (STALE_DAYS.READY_FOR_PICKUP) ด้วย stageSince เดียวกับรายการ.
+   * ไม่ reconcile stage เพราะเป็นแค่ยอดนับ (แบบเดียวกับ exchanges ใน summary()).
+   */
+  async countReadyForPickup(branchId?: string, now = new Date()) {
+    const rows = await this.prisma.afterSalesCase.findMany({
+      where: { deletedAt: null, stage: 'READY_FOR_PICKUP', ...(branchId ? { branchId } : {}) },
+      select: {
+        receivedAt: true,
+        approvedAt: true,
+        repairTicket: { select: { sentToRepairAt: true, repairedAt: true } },
+      },
+    });
+    const overdue = rows.filter((r) =>
+      isStale('READY_FOR_PICKUP', stageSince('READY_FOR_PICKUP', r.repairTicket, r.receivedAt, r.approvedAt ?? null), now),
+    ).length;
+    return { waitingPickup: rows.length, overdue };
+  }
+
   /** แถบตัวเลขเจ้าของ (spec ข้อ 9) — PR 1 คิดจากใบซ่อมของเคส; PR 2 เติม openExchange/exchanges จริง */
   async summary(user: ReqUser, branchId?: string) {
     const scope = { deletedAt: null, ...this.branchWhere(user, branchId) };
@@ -452,8 +491,7 @@ export class AfterSalesQueryService {
     return {
       open: rows.length,
       openRepair: rows.filter((r) => r.outcome === 'REPAIR').length,
-      // openExchange — เคสเปิดที่ outcome ∈ {SAME_MODEL_EXCHANGE, PRICED_EXCHANGE} (verbatim ตามบรีฟ
-      // — ไม่รวม CASH_SAME_MODEL_EXCHANGE)
+      // openExchange — เคสเปิดที่ outcome ∈ EXCHANGE_OUTCOMES (PR 5: รวม CASH_SAME_MODEL_EXCHANGE)
       openExchange: rows.filter((r) => r.outcome != null && EXCHANGE_OUTCOMES.has(r.outcome))
         .length,
       stale: rows.filter((r) => r.stale).length,

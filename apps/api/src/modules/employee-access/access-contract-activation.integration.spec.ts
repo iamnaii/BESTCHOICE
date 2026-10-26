@@ -44,6 +44,7 @@ import { AuditInterceptor } from '../audit/audit.interceptor';
 import { ContractsController } from '../contracts/contracts.controller';
 import { ContractsService } from '../contracts/contracts.service';
 import { ContractWorkflowService } from '../contracts/contract-workflow.service';
+import { CustomerBlacklistService } from '../customers/customer-blacklist.service';
 import { ContractPaymentService } from '../contracts/contract-payment.service';
 import { ContractDocumentService } from '../contracts/contract-document.service';
 import { ContractSnapshotService } from '../contracts/contract-snapshot.service';
@@ -322,6 +323,13 @@ beforeAll(async () => {
       ShopDownPaymentTemplate,
       ShopAccountResolver,
       InstallmentInputVatTemplate,
+      // ก้อน 5 C3 — ContractWorkflowService requires the blacklist gate. Its behaviour has its own specs;
+      // these owned activation cases pin source/money admission, so the gate evaluates NONE here.
+      // Open design doubt (orchestrator): managed activation × real gate (reason detail exposure).
+      {
+        provide: CustomerBlacklistService,
+        useValue: { evaluate: async () => ({ level: 'NONE', reasons: [], checkedAt: new Date().toISOString() }) },
+      },
       { provide: TestModeService, useValue: { isEnabled: async () => false } },
       { provide: JourneyEntryWriter, useValue: journey },
       {

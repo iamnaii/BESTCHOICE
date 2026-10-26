@@ -1,0 +1,2698 @@
+[
+  {
+    "id": "ADMIN-001",
+    "path": "/landing",
+    "name": "เปิดเมนู",
+    "height": 40,
+    "width": 40,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-001",
+    "path": "/landing",
+    "name": "ดูรายละเอียด",
+    "height": 27.953125,
+    "width": 88.5,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-001",
+    "path": "/landing",
+    "name": "ดูรายละเอียด",
+    "height": 27.953125,
+    "width": 88.5,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-001",
+    "path": "/landing",
+    "name": "หน้าแรก",
+    "height": 20.015625,
+    "width": 47.59375,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-001",
+    "path": "/landing",
+    "name": "สินค้า",
+    "height": 20.015625,
+    "width": 31.421875,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-001",
+    "path": "/landing",
+    "name": "บริการ",
+    "height": 20.015625,
+    "width": 36.609375,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-001",
+    "path": "/landing",
+    "name": "ติดต่อเรา",
+    "height": 20.015625,
+    "width": 52,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-033",
+    "path": "/branches",
+    "name": "+ เพิ่มสาขา",
+    "height": 37,
+    "width": 95.296875,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-033",
+    "path": "/branches",
+    "name": "ที่ตั้ง",
+    "height": 24,
+    "width": 43.375,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-033",
+    "path": "/branches",
+    "name": "โทรศัพท์",
+    "height": 24,
+    "width": 72.078125,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-035",
+    "path": "/purchase-orders",
+    "name": "ส่งออก Excel",
+    "height": 39,
+    "width": 125.078125,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-035",
+    "path": "/purchase-orders",
+    "name": "+ ซื้อสินค้า",
+    "height": 39,
+    "width": 92.078125,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-035",
+    "path": "/purchase-orders",
+    "name": "รายการ PO",
+    "height": 43,
+    "width": 97.84375,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-035",
+    "path": "/purchase-orders",
+    "name": "ยอดค้างชำระ ( ผู้จัดจำหน่าย )",
+    "height": 43,
+    "width": 198.78125,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-037",
+    "path": "/purchase-orders/9ece21c3-c7f5-4048-b72c-658f750f0756/goods-receivings/a3648e2b-5961-4191-88e9-9e4fb754493b/print",
+    "name": "กลับ",
+    "height": 21,
+    "width": 45.71875,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-039",
+    "path": "/stock/products",
+    "name": "พร้อมขาย2",
+    "height": 34,
+    "width": 155,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-039",
+    "path": "/stock/products",
+    "name": "ทั้งหมด2",
+    "height": 34,
+    "width": 155,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-039",
+    "path": "/stock/products",
+    "name": "ตัวกรอง",
+    "height": 44,
+    "width": 42,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-039",
+    "path": "/stock/products",
+    "name": "เลือกสินค้าหน้านี้",
+    "height": 20,
+    "width": 20,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-039",
+    "path": "/stock/products",
+    "name": "iPhone (ทดสอบระบบ)",
+    "height": 22,
+    "width": 155.265625,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-039",
+    "path": "/stock/products",
+    "name": "เลือก iPhone (ทดสอบระบบ) TEST-DOCS-BE87B96D-B",
+    "height": 20,
+    "width": 20,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-039",
+    "path": "/stock/products",
+    "name": "iPhone (ทดสอบระบบ)",
+    "height": 22,
+    "width": 155.265625,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-039",
+    "path": "/stock/products",
+    "name": "เลือก iPhone (ทดสอบระบบ) TEST-DOCS-BE87B96D-A",
+    "height": 20,
+    "width": 20,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-040",
+    "path": "/products",
+    "name": "พร้อมขาย2",
+    "height": 34,
+    "width": 155,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-040",
+    "path": "/products",
+    "name": "ทั้งหมด2",
+    "height": 34,
+    "width": 155,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-040",
+    "path": "/products",
+    "name": "ตัวกรอง",
+    "height": 44,
+    "width": 42,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-040",
+    "path": "/products",
+    "name": "เลือกสินค้าหน้านี้",
+    "height": 20,
+    "width": 20,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-040",
+    "path": "/products",
+    "name": "iPhone (ทดสอบระบบ)",
+    "height": 22,
+    "width": 155.265625,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-040",
+    "path": "/products",
+    "name": "เลือก iPhone (ทดสอบระบบ) TEST-DOCS-BE87B96D-B",
+    "height": 20,
+    "width": 20,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-040",
+    "path": "/products",
+    "name": "iPhone (ทดสอบระบบ)",
+    "height": 22,
+    "width": 155.265625,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-040",
+    "path": "/products",
+    "name": "เลือก iPhone (ทดสอบระบบ) TEST-DOCS-BE87B96D-A",
+    "height": 20,
+    "width": 20,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-041",
+    "path": "/stock/transfers",
+    "name": "โอนออก",
+    "height": 43,
+    "width": 79.8125,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-041",
+    "path": "/stock/transfers",
+    "name": "รอรับเข้า",
+    "height": 43,
+    "width": 81.609375,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-041",
+    "path": "/stock/transfers",
+    "name": "ประวัติ",
+    "height": 43,
+    "width": 69.53125,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-043",
+    "path": "/stock/adjustments",
+    "name": "รออนุมัติ",
+    "height": 37,
+    "width": 82.296875,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-043",
+    "path": "/stock/adjustments",
+    "name": "ประวัติทั้งหมด",
+    "height": 37,
+    "width": 113.640625,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-043",
+    "path": "/stock/adjustments",
+    "name": "เสียหายคงในสต๊อก",
+    "height": 37,
+    "width": 142.46875,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-043",
+    "path": "/stock/adjustments",
+    "name": "รายการบัญชี",
+    "height": 37,
+    "width": 104.171875,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-046",
+    "path": "/stock/branch-receiving",
+    "name": "โอนออก",
+    "height": 43,
+    "width": 79.8125,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-046",
+    "path": "/stock/branch-receiving",
+    "name": "รอรับเข้า",
+    "height": 43,
+    "width": 81.609375,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-046",
+    "path": "/stock/branch-receiving",
+    "name": "ประวัติ",
+    "height": 43,
+    "width": 69.53125,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-048",
+    "path": "/inspections/af60a362-7021-4570-ad3b-58386e8adb57",
+    "name": "กลับ",
+    "height": 21,
+    "width": 49.71875,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-049",
+    "path": "/suppliers",
+    "name": "ทั้งหมด",
+    "height": 33,
+    "width": 67.5,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-049",
+    "path": "/suppliers",
+    "name": "เปิดใช้งาน",
+    "height": 33,
+    "width": 82.234375,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-049",
+    "path": "/suppliers",
+    "name": "ปิดใช้งาน",
+    "height": 33,
+    "width": 76.890625,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-050",
+    "path": "/suppliers/61947e52-2329-418f-8925-e57615e91813",
+    "name": "ซ่อนผู้จัดจำหน่าย",
+    "height": 39,
+    "width": 131.71875,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-050",
+    "path": "/suppliers/61947e52-2329-418f-8925-e57615e91813",
+    "name": "กลับ",
+    "height": 39,
+    "width": 59.71875,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-051",
+    "path": "/products/create",
+    "name": "กลับ",
+    "height": 39,
+    "width": 59.71875,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-051",
+    "path": "/products/create",
+    "name": "+ เพิ่มราคา",
+    "height": 21,
+    "width": 62.796875,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-051",
+    "path": "/products/create",
+    "name": "ยกเลิก",
+    "height": 43,
+    "width": 88.59375,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-051",
+    "path": "/products/create",
+    "name": "บันทึกสินค้า",
+    "height": 43,
+    "width": 115.96875,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-052",
+    "path": "/products/af60a362-7021-4570-ad3b-58386e8adb57",
+    "name": "ข้อมูลสินค้า",
+    "height": 43,
+    "width": 97.296875,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-052",
+    "path": "/products/af60a362-7021-4570-ad3b-58386e8adb57",
+    "name": "ขึ้นเว็บ",
+    "height": 43,
+    "width": 69.265625,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-052",
+    "path": "/products/af60a362-7021-4570-ad3b-58386e8adb57",
+    "name": "คัดลอก IMEI",
+    "height": 14,
+    "width": 14,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-052",
+    "path": "/products/af60a362-7021-4570-ad3b-58386e8adb57",
+    "name": "แก้ราคา",
+    "height": 21,
+    "width": 45.21875,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-052",
+    "path": "/products/af60a362-7021-4570-ad3b-58386e8adb57",
+    "name": "ขึ้นเว็บ",
+    "height": 19.5,
+    "width": 50.609375,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-053",
+    "path": "/stickers",
+    "name": "สแกน IMEI / วาง ID",
+    "height": 44,
+    "width": 42,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-053",
+    "path": "/stickers",
+    "name": "ทั้งหมด",
+    "height": 32,
+    "width": 67.828125,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-053",
+    "path": "/stickers",
+    "name": "Apple",
+    "height": 32,
+    "width": 62.859375,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-053",
+    "path": "/stickers",
+    "name": "รุ่น / IMEI",
+    "height": 24,
+    "width": 104,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-053",
+    "path": "/stickers",
+    "name": "เงินสด",
+    "height": 24,
+    "width": 52,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-053",
+    "path": "/stickers",
+    "name": "รับเข้า",
+    "height": 24,
+    "width": 73.5,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-054",
+    "path": "/pos",
+    "name": "ล้างข้อมูล",
+    "height": 41,
+    "width": 318,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-055",
+    "path": "/sales",
+    "name": "วิธีคำนวณกำไรรวม",
+    "height": 32,
+    "width": 61.640625,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-055",
+    "path": "/sales",
+    "name": "วันนี้",
+    "height": 36,
+    "width": 46.75,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-055",
+    "path": "/sales",
+    "name": "สัปดาห์นี้",
+    "height": 36,
+    "width": 68.515625,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-055",
+    "path": "/sales",
+    "name": "เดือนก่อน",
+    "height": 36,
+    "width": 74.09375,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-055",
+    "path": "/sales",
+    "name": "เดือนนี้",
+    "height": 36,
+    "width": 59.6875,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-055",
+    "path": "/sales",
+    "name": "ส่งออก Excel",
+    "height": 34,
+    "width": 119.25,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-056",
+    "path": "/shop/daily-cash",
+    "name": "ทดสอบระบบ DOCS-BE87B96D สาขา A 4 ต.ค. ไม่มีเงินสด",
+    "height": 28,
+    "width": 19.421875,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-056",
+    "path": "/shop/daily-cash",
+    "name": "ทดสอบระบบ DOCS-BE87B96D สาขา A 5 ต.ค. ไม่มีเงินสด",
+    "height": 28,
+    "width": 19.421875,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-056",
+    "path": "/shop/daily-cash",
+    "name": "ทดสอบระบบ DOCS-BE87B96D สาขา A 6 ต.ค. ไม่มีเงินสด",
+    "height": 28,
+    "width": 19.4375,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-056",
+    "path": "/shop/daily-cash",
+    "name": "ทดสอบระบบ DOCS-BE87B96D สาขา A 7 ต.ค. ไม่มีเงินสด",
+    "height": 28,
+    "width": 19.421875,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-056",
+    "path": "/shop/daily-cash",
+    "name": "ทดสอบระบบ DOCS-BE87B96D สาขา A 8 ต.ค. ไม่มีเงินสด",
+    "height": 28,
+    "width": 19.4375,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-056",
+    "path": "/shop/daily-cash",
+    "name": "ทดสอบระบบ DOCS-BE87B96D สาขา A 9 ต.ค. ไม่มีเงินสด",
+    "height": 28,
+    "width": 19.421875,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-056",
+    "path": "/shop/daily-cash",
+    "name": "ทดสอบระบบ DOCS-BE87B96D สาขา A 10 ต.ค. ไม่มีเงินสด",
+    "height": 28,
+    "width": 19.4375,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-056",
+    "path": "/shop/daily-cash",
+    "name": "ทดสอบระบบ DOCS-BE87B96D สาขา A 11 ต.ค. ไม่มีเงินสด",
+    "height": 28,
+    "width": 19.421875,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-056",
+    "path": "/shop/daily-cash",
+    "name": "ทดสอบระบบ DOCS-BE87B96D สาขา A 12 ต.ค. ไม่มีเงินสด",
+    "height": 28,
+    "width": 19.421875,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-056",
+    "path": "/shop/daily-cash",
+    "name": "ทดสอบระบบ DOCS-BE87B96D สาขา A 13 ต.ค. ไม่มีเงินสด",
+    "height": 28,
+    "width": 19.4375,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-056",
+    "path": "/shop/daily-cash",
+    "name": "ทดสอบระบบ DOCS-BE87B96D สาขา A 14 ต.ค. ไม่มีเงินสด",
+    "height": 28,
+    "width": 19.421875,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-056",
+    "path": "/shop/daily-cash",
+    "name": "ทดสอบระบบ DOCS-BE87B96D สาขา A 15 ต.ค. ไม่มีเงินสด",
+    "height": 28,
+    "width": 19.4375,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-056",
+    "path": "/shop/daily-cash",
+    "name": "ทดสอบระบบ DOCS-BE87B96D สาขา A 16 ต.ค. ไม่มีเงินสด",
+    "height": 28,
+    "width": 19.421875,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-056",
+    "path": "/shop/daily-cash",
+    "name": "ทดสอบระบบ DOCS-BE87B96D สาขา A 17 ต.ค. ไม่มีเงินสด",
+    "height": 28,
+    "width": 19.4375,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-056",
+    "path": "/shop/daily-cash",
+    "name": "ทดสอบระบบ DOCS-BE87B96D สาขา B 4 ต.ค. ไม่มีเงินสด",
+    "height": 28,
+    "width": 19.421875,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-056",
+    "path": "/shop/daily-cash",
+    "name": "ทดสอบระบบ DOCS-BE87B96D สาขา B 5 ต.ค. ไม่มีเงินสด",
+    "height": 28,
+    "width": 19.421875,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-056",
+    "path": "/shop/daily-cash",
+    "name": "ทดสอบระบบ DOCS-BE87B96D สาขา B 6 ต.ค. ไม่มีเงินสด",
+    "height": 28,
+    "width": 19.4375,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-056",
+    "path": "/shop/daily-cash",
+    "name": "ทดสอบระบบ DOCS-BE87B96D สาขา B 7 ต.ค. ไม่มีเงินสด",
+    "height": 28,
+    "width": 19.421875,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-056",
+    "path": "/shop/daily-cash",
+    "name": "ทดสอบระบบ DOCS-BE87B96D สาขา B 8 ต.ค. ไม่มีเงินสด",
+    "height": 28,
+    "width": 19.4375,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-056",
+    "path": "/shop/daily-cash",
+    "name": "ทดสอบระบบ DOCS-BE87B96D สาขา B 9 ต.ค. ไม่มีเงินสด",
+    "height": 28,
+    "width": 19.421875,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-056",
+    "path": "/shop/daily-cash",
+    "name": "ทดสอบระบบ DOCS-BE87B96D สาขา B 10 ต.ค. ไม่มีเงินสด",
+    "height": 28,
+    "width": 19.4375,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-056",
+    "path": "/shop/daily-cash",
+    "name": "ทดสอบระบบ DOCS-BE87B96D สาขา B 11 ต.ค. ไม่มีเงินสด",
+    "height": 28,
+    "width": 19.421875,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-056",
+    "path": "/shop/daily-cash",
+    "name": "ทดสอบระบบ DOCS-BE87B96D สาขา B 12 ต.ค. ไม่มีเงินสด",
+    "height": 28,
+    "width": 19.421875,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-056",
+    "path": "/shop/daily-cash",
+    "name": "ทดสอบระบบ DOCS-BE87B96D สาขา B 13 ต.ค. ไม่มีเงินสด",
+    "height": 28,
+    "width": 19.4375,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-056",
+    "path": "/shop/daily-cash",
+    "name": "ทดสอบระบบ DOCS-BE87B96D สาขา B 14 ต.ค. ไม่มีเงินสด",
+    "height": 28,
+    "width": 19.421875,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-056",
+    "path": "/shop/daily-cash",
+    "name": "ทดสอบระบบ DOCS-BE87B96D สาขา B 15 ต.ค. ไม่มีเงินสด",
+    "height": 28,
+    "width": 19.4375,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-056",
+    "path": "/shop/daily-cash",
+    "name": "ทดสอบระบบ DOCS-BE87B96D สาขา B 16 ต.ค. ไม่มีเงินสด",
+    "height": 28,
+    "width": 19.421875,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-056",
+    "path": "/shop/daily-cash",
+    "name": "ทดสอบระบบ DOCS-BE87B96D สาขา B 17 ต.ค. ไม่มีเงินสด",
+    "height": 28,
+    "width": 19.4375,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-065",
+    "path": "/settings/stickers",
+    "name": "แก้ไข",
+    "height": 26,
+    "width": 41.765625,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-067",
+    "path": "/settings/general",
+    "name": "แก้ไข",
+    "height": 26,
+    "width": 41.765625,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-067",
+    "path": "/settings/general",
+    "name": "แก้ไข",
+    "height": 26,
+    "width": 41.765625,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-067",
+    "path": "/settings/general",
+    "name": "แก้ไข",
+    "height": 26,
+    "width": 41.765625,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-071",
+    "path": "/chatbot-finance/knowledge",
+    "name": "+ เพิ่ม FAQ",
+    "height": 37,
+    "width": 97.03125,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-072",
+    "path": "/chatbot-finance/learning",
+    "name": "รอตรวจสอบ",
+    "height": 33,
+    "width": 101.875,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-072",
+    "path": "/chatbot-finance/learning",
+    "name": "อนุมัติแล้ว",
+    "height": 33,
+    "width": 90.046875,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-072",
+    "path": "/chatbot-finance/learning",
+    "name": "ปฏิเสธแล้ว",
+    "height": 33,
+    "width": 93.8125,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-073",
+    "path": "/customers",
+    "name": "ส่งออก Excel",
+    "height": 39,
+    "width": 134.453125,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-073",
+    "path": "/customers",
+    "name": "+ เพิ่มลูกค้าใหม่",
+    "height": 39,
+    "width": 122.375,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-073",
+    "path": "/customers",
+    "name": "ลูกค้า0",
+    "height": 34,
+    "width": 91.28125,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-073",
+    "path": "/customers",
+    "name": "ผู้สนใจ1",
+    "height": 34,
+    "width": 97.9375,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-073",
+    "path": "/customers",
+    "name": "ลูกค้า",
+    "height": 24,
+    "width": 170,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-073",
+    "path": "/customers",
+    "name": "การซื้อ",
+    "height": 24,
+    "width": 98,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-075",
+    "path": "/customers/c9823335-386a-48c7-846d-1130bcac22fd",
+    "name": "คัดลอกเบอร์โทร",
+    "height": 14,
+    "width": 14,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-075",
+    "path": "/customers/c9823335-386a-48c7-846d-1130bcac22fd",
+    "name": "ดูการเดินทางทั้งหมด",
+    "height": 21,
+    "width": 133.9375,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-075",
+    "path": "/customers/c9823335-386a-48c7-846d-1130bcac22fd",
+    "name": "แก้ไข",
+    "height": 18,
+    "width": 26.21875,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-075",
+    "path": "/customers/c9823335-386a-48c7-846d-1130bcac22fd",
+    "name": "เพิ่ม",
+    "height": 19.5,
+    "width": 21.875,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-075",
+    "path": "/customers/c9823335-386a-48c7-846d-1130bcac22fd",
+    "name": "เพิ่ม",
+    "height": 19.5,
+    "width": 21.875,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-076",
+    "path": "/contacts",
+    "name": "เพิ่มผู้ติดต่อ",
+    "height": 37,
+    "width": 144.375,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-076",
+    "path": "/contacts",
+    "name": "ทั้งหมด",
+    "height": 35,
+    "width": 70.125,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-076",
+    "path": "/contacts",
+    "name": "ลูกค้า",
+    "height": 35,
+    "width": 57.796875,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-076",
+    "path": "/contacts",
+    "name": "ผู้จัดจำหน่าย",
+    "height": 35,
+    "width": 98.375,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-076",
+    "path": "/contacts",
+    "name": "คนขายมือสอง",
+    "height": 35,
+    "width": 107.75,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-076",
+    "path": "/contacts",
+    "name": "ไฟแนนซ์",
+    "height": 35,
+    "width": 75.3125,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-077",
+    "path": "/contacts/418014fc-289b-4fa8-acad-b1d5448cce7a",
+    "name": "กลับ",
+    "height": 36,
+    "width": 36,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-079",
+    "path": "/contracts",
+    "name": "ช่วงเวลา",
+    "height": 39,
+    "width": 96.671875,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-079",
+    "path": "/contracts",
+    "name": "มุมมองตาราง",
+    "height": 32,
+    "width": 32,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-079",
+    "path": "/contracts",
+    "name": "มุมมอง Kanban",
+    "height": 32,
+    "width": 32,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-080",
+    "path": "/contracts/create",
+    "name": "ยกเลิก",
+    "height": 39,
+    "width": 72.59375,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-081",
+    "path": "/contracts/338d4f65-5fad-45c5-b0ec-c240cfcc737c",
+    "name": "ลงนามสัญญา",
+    "height": 39,
+    "width": 109.28125,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-081",
+    "path": "/contracts/338d4f65-5fad-45c5-b0ec-c240cfcc737c",
+    "name": "ดาวน์โหลด PDF",
+    "height": 39,
+    "width": 124.578125,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-081",
+    "path": "/contracts/338d4f65-5fad-45c5-b0ec-c240cfcc737c",
+    "name": "ลบสัญญา",
+    "height": 39,
+    "width": 87.53125,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-081",
+    "path": "/contracts/338d4f65-5fad-45c5-b0ec-c240cfcc737c",
+    "name": "กลับ",
+    "height": 37,
+    "width": 57.71875,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-081",
+    "path": "/contracts/338d4f65-5fad-45c5-b0ec-c240cfcc737c",
+    "name": "ไปแนบเอกสาร",
+    "height": 33,
+    "width": 106.015625,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-081",
+    "path": "/contracts/338d4f65-5fad-45c5-b0ec-c240cfcc737c",
+    "name": "คัดลอกเลขที่สัญญา",
+    "height": 22,
+    "width": 22,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-081",
+    "path": "/contracts/338d4f65-5fad-45c5-b0ec-c240cfcc737c",
+    "name": "แก้ไข",
+    "height": 26,
+    "width": 49.765625,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-081",
+    "path": "/contracts/338d4f65-5fad-45c5-b0ec-c240cfcc737c",
+    "name": "แก้ไข",
+    "height": 26,
+    "width": 49.765625,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-081",
+    "path": "/contracts/338d4f65-5fad-45c5-b0ec-c240cfcc737c",
+    "name": "ดูรายละเอียดลูกค้า (ข้อมูลปัจจุบัน)",
+    "height": 18,
+    "width": 164.640625,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-081",
+    "path": "/contracts/338d4f65-5fad-45c5-b0ec-c240cfcc737c",
+    "name": "แก้ไข",
+    "height": 26,
+    "width": 49.765625,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-081",
+    "path": "/contracts/338d4f65-5fad-45c5-b0ec-c240cfcc737c",
+    "name": "ดูรายละเอียดสินค้า",
+    "height": 18,
+    "width": 90.375,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-082",
+    "path": "/contracts/338d4f65-5fad-45c5-b0ec-c240cfcc737c/sign",
+    "name": "กลับ",
+    "height": 39,
+    "width": 59.71875,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-084",
+    "path": "/payments",
+    "name": "สแกนสลิป",
+    "height": 41,
+    "width": 125.234375,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-084",
+    "path": "/payments",
+    "name": "ตรวจสอบสลิป",
+    "height": 43,
+    "width": 139.421875,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-084",
+    "path": "/payments",
+    "name": "การลงบัญชี: ค่าปรับล่าช้า (รอเก็บ)",
+    "height": 32,
+    "width": 76,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-084",
+    "path": "/payments",
+    "name": "การลงบัญชี: ค่าปรับที่ไม่เรียกเก็บ (อนุโลม)",
+    "height": 32,
+    "width": 76,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-084",
+    "path": "/payments",
+    "name": "การลงบัญชี: ค้าง ≥ 60 วัน",
+    "height": 32,
+    "width": 76,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-085",
+    "path": "/finance-receivable",
+    "name": "เดือนนี้",
+    "height": 36,
+    "width": 59.6875,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-085",
+    "path": "/finance-receivable",
+    "name": "3 เดือน",
+    "height": 36,
+    "width": 62.1875,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-085",
+    "path": "/finance-receivable",
+    "name": "ทั้งหมด",
+    "height": 36,
+    "width": 63.296875,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-086",
+    "path": "/finance-portfolio",
+    "name": "ทั้งหมด",
+    "height": 26,
+    "width": 61.828125,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-086",
+    "path": "/finance-portfolio",
+    "name": "ปกติ",
+    "height": 26,
+    "width": 47.15625,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-086",
+    "path": "/finance-portfolio",
+    "name": "ค้างชำระ",
+    "height": 26,
+    "width": 65.6875,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-086",
+    "path": "/finance-portfolio",
+    "name": "ผิดนัด",
+    "height": 26,
+    "width": 55.09375,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-086",
+    "path": "/finance-portfolio",
+    "name": "ชำระครบ",
+    "height": 26,
+    "width": 67.953125,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-086",
+    "path": "/finance-portfolio",
+    "name": "ปิดก่อนกำหนด",
+    "height": 26,
+    "width": 97.734375,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-086",
+    "path": "/finance-portfolio",
+    "name": "เปลี่ยนเครื่อง",
+    "height": 26,
+    "width": 88.921875,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-089",
+    "path": "/expenses/favorites",
+    "name": "กลับ",
+    "height": 21,
+    "width": 47.71875,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-091",
+    "path": "/expenses/ap-aging",
+    "name": "เลือกทั้งหมด",
+    "height": 16,
+    "width": 16,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-092",
+    "path": "/expenses/255ef209-6356-402d-b2fe-91971cf85cc8/voucher",
+    "name": "กลับ",
+    "height": 21,
+    "width": 45.71875,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-092",
+    "path": "/expenses/255ef209-6356-402d-b2fe-91971cf85cc8/voucher",
+    "name": "พิมพ์ / Save PDF",
+    "height": 33,
+    "width": 148.125,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-096",
+    "path": "/expenses",
+    "name": "รายการโปรด0",
+    "height": 32,
+    "width": 122.296875,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-096",
+    "path": "/expenses",
+    "name": "เจ้าหนี้คงค้าง0.00",
+    "height": 32,
+    "width": 141.375,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-096",
+    "path": "/expenses",
+    "name": "สรุปรายวัน",
+    "height": 32,
+    "width": 97.671875,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-096",
+    "path": "/expenses",
+    "name": "ตัวกรองเพิ่มเติม",
+    "height": 40,
+    "width": 40,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-096",
+    "path": "/expenses",
+    "name": "ดูรายละเอียด",
+    "height": 28,
+    "width": 28,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-096",
+    "path": "/expenses",
+    "name": "",
+    "height": 28,
+    "width": 28,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-097",
+    "path": "/commissions",
+    "name": "รายการคอมมิชชัน",
+    "height": 43,
+    "width": 158.734375,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-097",
+    "path": "/commissions",
+    "name": "ใบจ่ายรายเดือน",
+    "height": 43,
+    "width": 144.90625,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-098",
+    "path": "/payments/import-csv",
+    "name": "ดาวน์โหลดเทมเพลต CSV",
+    "height": 39,
+    "width": 179.421875,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-100",
+    "path": "/pdpa",
+    "name": "สร้างคำร้อง DSAR",
+    "height": 37,
+    "width": 135.703125,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-100",
+    "path": "/pdpa",
+    "name": "คำร้อง DSAR",
+    "height": 37,
+    "width": 108.953125,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-100",
+    "path": "/pdpa",
+    "name": "ค้นหา Consent",
+    "height": 37,
+    "width": 124.015625,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-101",
+    "path": "/receipts",
+    "name": "สแกนสลิป",
+    "height": 41,
+    "width": 125.234375,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-101",
+    "path": "/receipts",
+    "name": "ตรวจสอบสลิป",
+    "height": 43,
+    "width": 139.421875,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-103",
+    "path": "/overdue",
+    "name": "คิววันนี้",
+    "height": 43,
+    "width": 94.09375,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-103",
+    "path": "/overdue",
+    "name": "นัดชำระ",
+    "height": 43,
+    "width": 97.625,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-103",
+    "path": "/overdue",
+    "name": "ทั้งหมด",
+    "height": 43,
+    "width": 97.5,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-103",
+    "path": "/overdue",
+    "name": "ภาพรวมทีม",
+    "height": 43,
+    "width": 118.625,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-103",
+    "path": "/overdue",
+    "name": "วิเคราะห์",
+    "height": 43,
+    "width": 101.734375,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-104",
+    "path": "/overdue/uxui-not-found",
+    "name": "คิววันนี้",
+    "height": 43,
+    "width": 94.09375,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-104",
+    "path": "/overdue/uxui-not-found",
+    "name": "นัดชำระ",
+    "height": 43,
+    "width": 97.625,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-104",
+    "path": "/overdue/uxui-not-found",
+    "name": "ทั้งหมด",
+    "height": 43,
+    "width": 97.5,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-104",
+    "path": "/overdue/uxui-not-found",
+    "name": "ภาพรวมทีม",
+    "height": 43,
+    "width": 118.625,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-104",
+    "path": "/overdue/uxui-not-found",
+    "name": "วิเคราะห์",
+    "height": 43,
+    "width": 101.734375,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-105",
+    "path": "/collections",
+    "name": "คิววันนี้",
+    "height": 43,
+    "width": 94.09375,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-105",
+    "path": "/collections",
+    "name": "นัดชำระ",
+    "height": 43,
+    "width": 97.625,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-105",
+    "path": "/collections",
+    "name": "ทั้งหมด",
+    "height": 43,
+    "width": 97.5,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-105",
+    "path": "/collections",
+    "name": "ภาพรวมทีม",
+    "height": 43,
+    "width": 118.625,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-105",
+    "path": "/collections",
+    "name": "วิเคราะห์",
+    "height": 43,
+    "width": 101.734375,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-106",
+    "path": "/letters",
+    "name": "รอพิมพ์",
+    "height": 43,
+    "width": 98.046875,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-106",
+    "path": "/letters",
+    "name": "พิมพ์แล้ว",
+    "height": 43,
+    "width": 105.84375,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-106",
+    "path": "/letters",
+    "name": "ส่งแล้ว",
+    "height": 43,
+    "width": 92.625,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-106",
+    "path": "/letters",
+    "name": "ตีกลับ",
+    "height": 43,
+    "width": 88.65625,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-106",
+    "path": "/letters",
+    "name": "ยกเลิก",
+    "height": 43,
+    "width": 92.59375,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-106",
+    "path": "/letters",
+    "name": "เลือกทั้งหมดในหน้านี้",
+    "height": 20,
+    "width": 20,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-117",
+    "path": "/repossessions",
+    "name": "บันทึกรับเครื่องคืน",
+    "height": 37,
+    "width": 136.484375,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-118",
+    "path": "/notifications",
+    "name": "ส่งเตือนก่อนครบกำหนด",
+    "height": 37,
+    "width": 171.34375,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-118",
+    "path": "/notifications",
+    "name": "ส่งทวงหนี้ค้างชำระ",
+    "height": 37,
+    "width": 137.796875,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-119",
+    "path": "/slip-review",
+    "name": "สแกนสลิป",
+    "height": 41,
+    "width": 125.234375,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-119",
+    "path": "/slip-review",
+    "name": "ตรวจสอบสลิป",
+    "height": 43,
+    "width": 139.421875,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-119",
+    "path": "/slip-review",
+    "name": "รอตรวจ",
+    "height": 37,
+    "width": 77.34375,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-119",
+    "path": "/slip-review",
+    "name": "อนุมัติแล้ว",
+    "height": 37,
+    "width": 90.921875,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-119",
+    "path": "/slip-review",
+    "name": "ปฏิเสธแล้ว",
+    "height": 37,
+    "width": 94.71875,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-119",
+    "path": "/slip-review",
+    "name": "ส่งออก Excel",
+    "height": 39,
+    "width": 112.453125,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-121",
+    "path": "/profit-loss",
+    "name": "เดือนนี้",
+    "height": 36,
+    "width": 59.6875,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-121",
+    "path": "/profit-loss",
+    "name": "3 เดือน",
+    "height": 36,
+    "width": 62.1875,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-121",
+    "path": "/profit-loss",
+    "name": "ปีนี้",
+    "height": 36,
+    "width": 41.25,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-122",
+    "path": "/users",
+    "name": "ชื่อ",
+    "height": 24,
+    "width": 335.5,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-122",
+    "path": "/users",
+    "name": "รหัสพนง.",
+    "height": 33,
+    "width": 46.671875,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-122",
+    "path": "/users",
+    "name": "บทบาท (สิทธิ์)",
+    "height": 24,
+    "width": 97.859375,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-122",
+    "path": "/users",
+    "name": "สาขา",
+    "height": 24,
+    "width": 68.234375,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-122",
+    "path": "/users",
+    "name": "เข้าสู่ระบบล่าสุด",
+    "height": 33,
+    "width": 92.8125,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-122",
+    "path": "/users",
+    "name": "วันเริ่มงาน",
+    "height": 49.5,
+    "width": 39.203125,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-122",
+    "path": "/users",
+    "name": "สถานะ",
+    "height": 24,
+    "width": 53.390625,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-123",
+    "path": "/users/new",
+    "name": "กลับไปรายการผู้ใช้",
+    "height": 21,
+    "width": 125.53125,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-124",
+    "path": "/users/04d637ea-ca89-4188-9a75-fecd1f2b78c3",
+    "name": "กลับไปรายการผู้ใช้",
+    "height": 21,
+    "width": 125.53125,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-125",
+    "path": "/settings",
+    "name": "แก้ไข",
+    "height": 26,
+    "width": 41.765625,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-126",
+    "path": "/settings/company",
+    "name": "แก้ไข",
+    "height": 26,
+    "width": 41.765625,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-128",
+    "path": "/settings/interest-config",
+    "name": "+ สร้าง Config",
+    "height": 37,
+    "width": 119.296875,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-128",
+    "path": "/settings/interest-config",
+    "name": "แก้ไข",
+    "height": 26,
+    "width": 41.765625,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-128",
+    "path": "/settings/interest-config",
+    "name": "สร้างตั้งค่าแรก",
+    "height": 21,
+    "width": 82.390625,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-129",
+    "path": "/settings/pricing-templates",
+    "name": "เพิ่มราคาตั้งต้นรายการแรก",
+    "height": 21,
+    "width": 149.953125,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-131",
+    "path": "/audit-logs",
+    "name": "ส่งออก Excel",
+    "height": 39,
+    "width": 125.078125,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-131",
+    "path": "/audit-logs",
+    "name": "ทั้งหมด (Collections)",
+    "height": 28,
+    "width": 133.078125,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-131",
+    "path": "/audit-logs",
+    "name": "MDM",
+    "height": 28,
+    "width": 52.796875,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-131",
+    "path": "/audit-logs",
+    "name": "หนังสือ",
+    "height": 28,
+    "width": 58.09375,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-131",
+    "path": "/audit-logs",
+    "name": "Dunning escalation",
+    "height": 28,
+    "width": 132.90625,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-135",
+    "path": "/finance/equity",
+    "name": "เอกสารธุรกรรม",
+    "height": 39.21875,
+    "width": 120.671875,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-135",
+    "path": "/finance/equity",
+    "name": "ทะเบียนผู้ถือหุ้น",
+    "height": 39.21875,
+    "width": 142.515625,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-140",
+    "path": "/shop/accounting",
+    "name": "งบทดลอง (SHOP)",
+    "height": 34,
+    "width": 141.3125,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-140",
+    "path": "/shop/accounting",
+    "name": "งบกำไรขาดทุน (SHOP)",
+    "height": 34,
+    "width": 162.6875,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-141",
+    "path": "/accounting/intercompany",
+    "name": "รอจ่าย",
+    "height": 44,
+    "width": 37.28125,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-142",
+    "path": "/finance/cash-flow",
+    "name": "เดือนนี้",
+    "height": 36,
+    "width": 59.6875,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-142",
+    "path": "/finance/cash-flow",
+    "name": "3 เดือนล่าสุด",
+    "height": 36,
+    "width": 88.546875,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-142",
+    "path": "/finance/cash-flow",
+    "name": "ปีนี้",
+    "height": 36,
+    "width": 41.25,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-143",
+    "path": "/finance/equity-statement",
+    "name": "เดือนนี้",
+    "height": 36,
+    "width": 59.6875,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-143",
+    "path": "/finance/equity-statement",
+    "name": "ปีนี้",
+    "height": 36,
+    "width": 41.25,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-145",
+    "path": "/system-status",
+    "name": "รีเฟรช",
+    "height": 39,
+    "width": 93.28125,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-146",
+    "path": "/migration",
+    "name": "ลูกค้า",
+    "height": 30,
+    "width": 51.25,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-146",
+    "path": "/migration",
+    "name": "สัญญา",
+    "height": 30,
+    "width": 57.421875,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-146",
+    "path": "/migration",
+    "name": "ทั้งหมด (Bulk)",
+    "height": 30,
+    "width": 97.703125,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-146",
+    "path": "/migration",
+    "name": "ตัวอย่างข้อมูล",
+    "height": 37,
+    "width": 111.390625,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-147",
+    "path": "/settings/line-oa",
+    "name": "แสดง",
+    "height": 26,
+    "width": 44.265625,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-147",
+    "path": "/settings/line-oa",
+    "name": "แสดง",
+    "height": 26,
+    "width": 44.265625,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-158",
+    "path": "/settings/dunning",
+    "name": "เพิ่ม Rule",
+    "height": 37,
+    "width": 111.671875,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-158",
+    "path": "/settings/dunning",
+    "name": "อัปโหลด",
+    "height": 32,
+    "width": 87.484375,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-158",
+    "path": "/settings/dunning",
+    "name": "อัปโหลด",
+    "height": 32,
+    "width": 87.484375,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-158",
+    "path": "/settings/dunning",
+    "name": "อัปโหลด",
+    "height": 32,
+    "width": 87.484375,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-158",
+    "path": "/settings/dunning",
+    "name": "เพิ่ม Rule แรก",
+    "height": 21,
+    "width": 83.03125,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-159",
+    "path": "/settings/sms-templates",
+    "name": "เพิ่ม Template",
+    "height": 37,
+    "width": 143.625,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-159",
+    "path": "/settings/sms-templates",
+    "name": "ทั้งหมด",
+    "height": 28,
+    "width": 63.296875,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-159",
+    "path": "/settings/sms-templates",
+    "name": "LINE",
+    "height": 28,
+    "width": 52.15625,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-159",
+    "path": "/settings/sms-templates",
+    "name": "SMS",
+    "height": 28,
+    "width": 50.0625,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-160",
+    "path": "/settings/peak-sync",
+    "name": "รีเฟรช",
+    "height": 39,
+    "width": 93.28125,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-162",
+    "path": "/trade-in",
+    "name": "วันที่/เวลา",
+    "height": 24,
+    "width": 80,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-162",
+    "path": "/trade-in",
+    "name": "เลขใบสำคัญ",
+    "height": 24,
+    "width": 120,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-162",
+    "path": "/trade-in",
+    "name": "ผู้ขาย",
+    "height": 24,
+    "width": 122,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-162",
+    "path": "/trade-in",
+    "name": "ราคา",
+    "height": 24,
+    "width": 80,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-163",
+    "path": "/promotions",
+    "name": "ชื่อโปรโมชัน",
+    "height": 33,
+    "width": 67.78125,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-163",
+    "path": "/promotions",
+    "name": "ส่วนลด/อัตรา",
+    "height": 33,
+    "width": 63.03125,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-165",
+    "path": "/assets/new",
+    "name": "กลับไปหน้ารายการ",
+    "height": 21,
+    "width": 127.359375,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-165",
+    "path": "/assets/new",
+    "name": "ราคาต้องมากกว่า 0",
+    "height": 21,
+    "width": 107.5,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-166",
+    "path": "/assets/d50edb07-6012-4872-be55-b2ce3a4c652a/edit",
+    "name": "กลับไปหน้ารายการ",
+    "height": 21,
+    "width": 127.359375,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-166",
+    "path": "/assets/d50edb07-6012-4872-be55-b2ce3a4c652a/edit",
+    "name": "ล้างชื่อผู้ขาย",
+    "height": 18,
+    "width": 58.53125,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-175",
+    "path": "/assets/4a1453e4-1eb5-4376-94fa-5b91ccfa13fc/dispose",
+    "name": "",
+    "height": 20,
+    "width": 20,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-175",
+    "path": "/assets/4a1453e4-1eb5-4376-94fa-5b91ccfa13fc/dispose",
+    "name": "",
+    "height": 20,
+    "width": 20,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-183",
+    "path": "/webhooks",
+    "name": "เพิ่ม Webhook",
+    "height": 37,
+    "width": 146.609375,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-195",
+    "path": "/settings/rich-menu",
+    "name": "SHOP",
+    "height": 43,
+    "width": 77.71875,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-195",
+    "path": "/settings/rich-menu",
+    "name": "FINANCE",
+    "height": 43,
+    "width": 99.796875,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-195",
+    "path": "/settings/rich-menu",
+    "name": "สร้างเมนู",
+    "height": 43,
+    "width": 90.9375,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-195",
+    "path": "/settings/rich-menu",
+    "name": "รายการเมนู",
+    "height": 43,
+    "width": 105.34375,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-196",
+    "path": "/settings/line-greeting",
+    "name": "ข้อความ",
+    "height": 32,
+    "width": 86.078125,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-196",
+    "path": "/settings/line-greeting",
+    "name": "รูปภาพ",
+    "height": 32,
+    "width": 80.78125,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-196",
+    "path": "/settings/line-greeting",
+    "name": "Flex Card",
+    "height": 32,
+    "width": 98.609375,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-198",
+    "path": "/other-income",
+    "name": "สร้างเอกสารใหม่",
+    "height": 37,
+    "width": 152,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-199",
+    "path": "/other-income/new",
+    "name": "กลับไปหน้ารายการ",
+    "height": 18,
+    "width": 108.3125,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-199",
+    "path": "/other-income/new",
+    "name": "ใช้ template",
+    "height": 32,
+    "width": 106.890625,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-199",
+    "path": "/other-income/new",
+    "name": "ดอกเบี้ยเงินฝาก",
+    "height": 39,
+    "width": 290,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-200",
+    "path": "/other-income/daily-sheet",
+    "name": "กลับ",
+    "height": 15.953125,
+    "width": 38.046875,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-200",
+    "path": "/other-income/daily-sheet",
+    "name": "CSV",
+    "height": 34.015625,
+    "width": 68.9375,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-200",
+    "path": "/other-income/daily-sheet",
+    "name": "พิมพ์",
+    "height": 32.015625,
+    "width": 78.546875,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-202",
+    "path": "/other-income/templates",
+    "name": "+ สร้างเอกสารใหม่",
+    "height": 35,
+    "width": 130.609375,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-203",
+    "path": "/other-income/dbb039ac-65ee-42fc-af32-009c59fdee29",
+    "name": "แก้ไข",
+    "height": 39,
+    "width": 78.59375,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-203",
+    "path": "/other-income/dbb039ac-65ee-42fc-af32-009c59fdee29",
+    "name": "แก้ไขและ POST",
+    "height": 37,
+    "width": 268,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-204",
+    "path": "/other-income/dbb039ac-65ee-42fc-af32-009c59fdee29/edit",
+    "name": "กลับไปหน้ารายการ",
+    "height": 18,
+    "width": 108.3125,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-204",
+    "path": "/other-income/dbb039ac-65ee-42fc-af32-009c59fdee29/edit",
+    "name": "ใช้ template",
+    "height": 32,
+    "width": 106.890625,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-204",
+    "path": "/other-income/dbb039ac-65ee-42fc-af32-009c59fdee29/edit",
+    "name": "รายได้อื่น-ภาษีซื้อของสินค้าที่ขายผ่อน",
+    "height": 39,
+    "width": 290,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-204",
+    "path": "/other-income/dbb039ac-65ee-42fc-af32-009c59fdee29/edit",
+    "name": "ใช้ยอดสุทธิ (1,000.00)",
+    "height": 18,
+    "width": 130.65625,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-204",
+    "path": "/other-income/dbb039ac-65ee-42fc-af32-009c59fdee29/edit",
+    "name": "เพิ่มบัญชี",
+    "height": 28,
+    "width": 78.78125,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-204",
+    "path": "/other-income/dbb039ac-65ee-42fc-af32-009c59fdee29/edit",
+    "name": "เพิ่มผลต่างที่เหลือ 1000.00 ฿",
+    "height": 28,
+    "width": 178.140625,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-212",
+    "path": "/finance/general-journal",
+    "name": "เดือนนี้",
+    "height": 36,
+    "width": 59.6875,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-212",
+    "path": "/finance/general-journal",
+    "name": "ปีนี้",
+    "height": 36,
+    "width": 41.25,
+    "disabled": false
+  },
+  {
+    "id": "ADMIN-213",
+    "path": "/finance/bad-debt-report",
+    "name": "ปีนี้",
+    "height": 36,
+    "width": 41.25,
+    "disabled": false
+  },
+  {
+    "id": "SET-001",
+    "path": "/settings/company",
+    "name": "แก้ไข",
+    "height": 26,
+    "width": 41.765625,
+    "disabled": false
+  },
+  {
+    "id": "SET-002",
+    "path": "/settings/company#company-info",
+    "name": "แก้ไข",
+    "height": 26,
+    "width": 41.765625,
+    "disabled": false
+  },
+  {
+    "id": "SET-004",
+    "path": "/branches",
+    "name": "+ เพิ่มสาขา",
+    "height": 37,
+    "width": 95.296875,
+    "disabled": false
+  },
+  {
+    "id": "SET-004",
+    "path": "/branches",
+    "name": "ที่ตั้ง",
+    "height": 24,
+    "width": 43.375,
+    "disabled": false
+  },
+  {
+    "id": "SET-004",
+    "path": "/branches",
+    "name": "โทรศัพท์",
+    "height": 24,
+    "width": 72.078125,
+    "disabled": false
+  },
+  {
+    "id": "SET-006",
+    "path": "/users",
+    "name": "ชื่อ",
+    "height": 24,
+    "width": 335.5,
+    "disabled": false
+  },
+  {
+    "id": "SET-006",
+    "path": "/users",
+    "name": "รหัสพนง.",
+    "height": 33,
+    "width": 46.671875,
+    "disabled": false
+  },
+  {
+    "id": "SET-006",
+    "path": "/users",
+    "name": "บทบาท (สิทธิ์)",
+    "height": 24,
+    "width": 97.859375,
+    "disabled": false
+  },
+  {
+    "id": "SET-006",
+    "path": "/users",
+    "name": "สาขา",
+    "height": 24,
+    "width": 68.234375,
+    "disabled": false
+  },
+  {
+    "id": "SET-006",
+    "path": "/users",
+    "name": "เข้าสู่ระบบล่าสุด",
+    "height": 33,
+    "width": 92.8125,
+    "disabled": false
+  },
+  {
+    "id": "SET-006",
+    "path": "/users",
+    "name": "วันเริ่มงาน",
+    "height": 49.5,
+    "width": 39.203125,
+    "disabled": false
+  },
+  {
+    "id": "SET-006",
+    "path": "/users",
+    "name": "สถานะ",
+    "height": 24,
+    "width": 53.390625,
+    "disabled": false
+  },
+  {
+    "id": "SET-018",
+    "path": "/settings/accounting/peak-sync",
+    "name": "รีเฟรช",
+    "height": 39,
+    "width": 93.28125,
+    "disabled": false
+  },
+  {
+    "id": "SET-021",
+    "path": "/settings/finance",
+    "name": "แก้ไข",
+    "height": 26,
+    "width": 41.765625,
+    "disabled": false
+  },
+  {
+    "id": "SET-022",
+    "path": "/settings/finance/interest",
+    "name": "+ สร้าง Config",
+    "height": 37,
+    "width": 119.296875,
+    "disabled": false
+  },
+  {
+    "id": "SET-022",
+    "path": "/settings/finance/interest",
+    "name": "แก้ไข",
+    "height": 26,
+    "width": 41.765625,
+    "disabled": false
+  },
+  {
+    "id": "SET-022",
+    "path": "/settings/finance/interest",
+    "name": "สร้างตั้งค่าแรก",
+    "height": 21,
+    "width": 82.390625,
+    "disabled": false
+  },
+  {
+    "id": "SET-023",
+    "path": "/settings/finance#late-fee",
+    "name": "แก้ไข",
+    "height": 26,
+    "width": 41.765625,
+    "disabled": false
+  },
+  {
+    "id": "SET-027",
+    "path": "/settings/products/pricing",
+    "name": "เพิ่มราคาตั้งต้นรายการแรก",
+    "height": 21,
+    "width": 149.953125,
+    "disabled": false
+  },
+  {
+    "id": "SET-028",
+    "path": "/settings/products/stickers",
+    "name": "แก้ไข",
+    "height": 26,
+    "width": 41.765625,
+    "disabled": false
+  },
+  {
+    "id": "SET-029",
+    "path": "/promotions",
+    "name": "ชื่อโปรโมชัน",
+    "height": 33,
+    "width": 67.78125,
+    "disabled": false
+  },
+  {
+    "id": "SET-029",
+    "path": "/promotions",
+    "name": "ส่วนลด/อัตรา",
+    "height": 33,
+    "width": 63.03125,
+    "disabled": false
+  },
+  {
+    "id": "SET-032",
+    "path": "/settings/comms/line-oa",
+    "name": "แสดง",
+    "height": 26,
+    "width": 44.265625,
+    "disabled": false
+  },
+  {
+    "id": "SET-032",
+    "path": "/settings/comms/line-oa",
+    "name": "แสดง",
+    "height": 26,
+    "width": 44.265625,
+    "disabled": false
+  },
+  {
+    "id": "SET-033",
+    "path": "/settings/rich-menu",
+    "name": "SHOP",
+    "height": 43,
+    "width": 77.71875,
+    "disabled": false
+  },
+  {
+    "id": "SET-033",
+    "path": "/settings/rich-menu",
+    "name": "FINANCE",
+    "height": 43,
+    "width": 99.796875,
+    "disabled": false
+  },
+  {
+    "id": "SET-033",
+    "path": "/settings/rich-menu",
+    "name": "สร้างเมนู",
+    "height": 43,
+    "width": 90.9375,
+    "disabled": false
+  },
+  {
+    "id": "SET-033",
+    "path": "/settings/rich-menu",
+    "name": "รายการเมนู",
+    "height": 43,
+    "width": 105.34375,
+    "disabled": false
+  },
+  {
+    "id": "SET-034",
+    "path": "/settings/comms/greeting",
+    "name": "ข้อความ",
+    "height": 32,
+    "width": 86.078125,
+    "disabled": false
+  },
+  {
+    "id": "SET-034",
+    "path": "/settings/comms/greeting",
+    "name": "รูปภาพ",
+    "height": 32,
+    "width": 80.78125,
+    "disabled": false
+  },
+  {
+    "id": "SET-034",
+    "path": "/settings/comms/greeting",
+    "name": "Flex Card",
+    "height": 32,
+    "width": 98.609375,
+    "disabled": false
+  },
+  {
+    "id": "SET-035",
+    "path": "/settings/comms/sms",
+    "name": "เพิ่ม Template",
+    "height": 37,
+    "width": 143.625,
+    "disabled": false
+  },
+  {
+    "id": "SET-035",
+    "path": "/settings/comms/sms",
+    "name": "ทั้งหมด",
+    "height": 28,
+    "width": 63.296875,
+    "disabled": false
+  },
+  {
+    "id": "SET-035",
+    "path": "/settings/comms/sms",
+    "name": "LINE",
+    "height": 28,
+    "width": 52.15625,
+    "disabled": false
+  },
+  {
+    "id": "SET-035",
+    "path": "/settings/comms/sms",
+    "name": "SMS",
+    "height": 28,
+    "width": 50.0625,
+    "disabled": false
+  },
+  {
+    "id": "SET-037",
+    "path": "/settings/comms/dunning",
+    "name": "เพิ่ม Rule",
+    "height": 37,
+    "width": 111.671875,
+    "disabled": false
+  },
+  {
+    "id": "SET-037",
+    "path": "/settings/comms/dunning",
+    "name": "อัปโหลด",
+    "height": 32,
+    "width": 87.484375,
+    "disabled": false
+  },
+  {
+    "id": "SET-037",
+    "path": "/settings/comms/dunning",
+    "name": "อัปโหลด",
+    "height": 32,
+    "width": 87.484375,
+    "disabled": false
+  },
+  {
+    "id": "SET-037",
+    "path": "/settings/comms/dunning",
+    "name": "อัปโหลด",
+    "height": 32,
+    "width": 87.484375,
+    "disabled": false
+  },
+  {
+    "id": "SET-037",
+    "path": "/settings/comms/dunning",
+    "name": "เพิ่ม Rule แรก",
+    "height": 21,
+    "width": 83.03125,
+    "disabled": false
+  },
+  {
+    "id": "SET-052",
+    "path": "/audit-logs",
+    "name": "ส่งออก Excel",
+    "height": 39,
+    "width": 125.078125,
+    "disabled": false
+  },
+  {
+    "id": "SET-052",
+    "path": "/audit-logs",
+    "name": "ทั้งหมด (Collections)",
+    "height": 28,
+    "width": 133.078125,
+    "disabled": false
+  },
+  {
+    "id": "SET-052",
+    "path": "/audit-logs",
+    "name": "MDM",
+    "height": 28,
+    "width": 52.796875,
+    "disabled": false
+  },
+  {
+    "id": "SET-052",
+    "path": "/audit-logs",
+    "name": "หนังสือ",
+    "height": 28,
+    "width": 58.09375,
+    "disabled": false
+  },
+  {
+    "id": "SET-052",
+    "path": "/audit-logs",
+    "name": "Dunning escalation",
+    "height": 28,
+    "width": 132.90625,
+    "disabled": false
+  },
+  {
+    "id": "SET-053",
+    "path": "/system-status",
+    "name": "รีเฟรช",
+    "height": 39,
+    "width": 93.28125,
+    "disabled": false
+  }
+]

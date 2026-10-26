@@ -106,14 +106,14 @@ export default function GoodsReceiptPrintPage() {
             <ArrowLeft size={14} />
             กลับ
           </button>
-          <button
+          <button data-ui-control="button"
             type="button"
             onClick={printDocument}
             disabled={!grQuery.data || grQuery.isFetching || grQuery.isError}
             className="inline-flex min-h-11 items-center gap-1.5 px-3 py-1.5 text-sm font-semibold rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
           >
             <Printer size={14} />
-            พิมพ์ / Save PDF
+            พิมพ์ / บันทึก PDF
           </button>
         </div>
       </div>

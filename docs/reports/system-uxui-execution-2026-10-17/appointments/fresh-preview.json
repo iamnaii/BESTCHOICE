@@ -1,0 +1,54 @@
+{
+  "status": "PASS",
+  "url": "http://localhost:5206/appointments?zone=shop",
+  "sourceFingerprint": "01811cbcb7590c2d6343cbd5c692d69a9d425503ef871000637a921ed8419ee6",
+  "runId": "3318c7d9-61ff-48fb-87b9-3f1afdd3332a",
+  "results": [
+    {
+      "engine": "chromium",
+      "fields": [
+        {
+          "label": "สาขาที่ดู",
+          "appearance": "none",
+          "overflow": "visible",
+          "paddingRight": "40px",
+          "height": 44,
+          "inset": 12,
+          "center": 0
+        },
+        {
+          "label": "สาขา",
+          "appearance": "none",
+          "overflow": "visible",
+          "paddingRight": "40px",
+          "height": 44,
+          "inset": 12,
+          "center": 0
+        }
+      ]
+    },
+    {
+      "engine": "webkit",
+      "fields": [
+        {
+          "label": "สาขาที่ดู",
+          "appearance": "none",
+          "overflow": "hidden",
+          "paddingRight": "40px",
+          "height": 44,
+          "inset": 12,
+          "center": 0
+        },
+        {
+          "label": "สาขา",
+          "appearance": "none",
+          "overflow": "hidden",
+          "paddingRight": "40px",
+          "height": 44,
+          "inset": 12,
+          "center": 0
+        }
+      ]
+    }
+  ]
+}

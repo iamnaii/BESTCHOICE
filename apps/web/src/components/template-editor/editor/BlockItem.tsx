@@ -69,11 +69,12 @@ export default function BlockItem({ block, index, totalBlocks, clauseIndex }: Pr
       }`}
     >
       {/* Header */}
-      <div className="flex items-center gap-3 px-4 py-3.5 border-b border-border">
+      <div className="flex min-w-0 flex-wrap items-center gap-2 px-3 py-3 border-b border-border [&_button]:min-h-11 [&_button]:min-w-11">
         {/* Drag handle */}
         <button
           {...attributes}
           {...listeners}
+          aria-label={`ย้ายลำดับ ${label}`}
           className="cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground -ml-1"
         >
           <GripVertical size={20} />
@@ -82,6 +83,8 @@ export default function BlockItem({ block, index, totalBlocks, clauseIndex }: Pr
         {/* Collapse toggle */}
         <button
           onClick={() => toggleCollapse(block.id)}
+          aria-label={`${block.collapsed ? 'ขยาย' : 'ย่อ'} ${label}`}
+          aria-expanded={!block.collapsed}
           className="text-muted-foreground hover:text-foreground -ml-1"
         >
           {block.collapsed ? <ChevronRight size={18} /> : <ChevronDownIcon size={18} />}
@@ -102,7 +105,7 @@ export default function BlockItem({ block, index, totalBlocks, clauseIndex }: Pr
         <div className="flex-1" />
 
         {/* Controls */}
-        <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+        <div className="flex min-w-0 max-w-full flex-wrap items-center gap-0.5 lg:opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity">
           <button
             onClick={() => moveBlock(index, Math.max(0, index - 1))}
             disabled={index === 0}
@@ -149,13 +152,13 @@ export default function BlockItem({ block, index, totalBlocks, clauseIndex }: Pr
       {/* Content preview */}
       {!block.collapsed && (
         <div
-          className="px-5 py-3.5 text-base leading-relaxed text-foreground cursor-pointer hover:bg-muted/60 rounded-b-xl transition-colors"
+          className="px-5 py-3.5 break-words text-base leading-relaxed text-foreground cursor-pointer hover:bg-muted/60 rounded-b-xl transition-colors"
           onClick={() => setEditingBlock(block)}
         >
           {displayContent || <span className="text-muted-foreground italic">คลิกเพื่อเพิ่มเนื้อหา...</span>}
         </div>
       )}
-      <ConfirmDialog open={confirmDialog.open} onOpenChange={(open) => setConfirmDialog(prev => ({ ...prev, open }))} description="ต้องการลบ block นี้?" variant="destructive" onConfirm={confirmDialog.action} />
+      <ConfirmDialog open={confirmDialog.open} onOpenChange={(open) => setConfirmDialog(prev => ({ ...prev, open }))} description="ต้องการลบส่วนเนื้อหานี้?" variant="destructive" onConfirm={confirmDialog.action} />
     </div>
   );
 }

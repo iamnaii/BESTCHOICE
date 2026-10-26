@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useId as useUiFieldId, useState, useCallback, useEffect, useRef } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import api, { getErrorMessage } from '@/lib/api';
 import { toast } from 'sonner';
@@ -50,6 +50,7 @@ export default function StepSignature({
   onAllSigned,
   onBack,
 }: StepSignatureProps) {
+  const uiFieldId = useUiFieldId();
   const queryClient = useQueryClient();
   const [signerName, setSignerName] = useState(customerName || '');
   const [gpsLoading, setGpsLoading] = useState(false);
@@ -230,7 +231,7 @@ export default function StepSignature({
           const isCurrent = type === currentSigner;
           const isCompanyAuto = type === 'COMPANY' && companyAutoSigned;
           return (
-            <button
+            <button data-ui-control="button"
               key={type}
               type="button"
               onClick={() => {
@@ -286,8 +287,8 @@ export default function StepSignature({
         <>
           {/* Signer name input */}
           <div className="w-full mb-4">
-            <label className="block text-xs text-muted-foreground mb-1">ชื่อผู้ลงนาม</label>
-            <input
+            <label htmlFor={`${uiFieldId}-1`} className="block text-xs text-muted-foreground mb-1">ชื่อผู้ลงนาม</label>
+            <input id={`${uiFieldId}-1`}
               type="text"
               autoComplete="off"
               value={signerName}

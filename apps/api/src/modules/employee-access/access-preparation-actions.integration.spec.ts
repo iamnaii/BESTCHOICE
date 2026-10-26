@@ -196,6 +196,10 @@ beforeAll(async () => {
     new ShopDownPaymentTemplate(journal, prisma, company),
     new ShopDownPaymentReversalTemplate(journal, prisma, company),
     new ShopAccountResolver(prisma),
+    // ก้อน 5 C3 — the blacklist gate (outside the tx) has its own specs; these preparation cases pin the
+    // canonical in-transaction one-live-contract net and its managed redaction, so the gate evaluates NONE.
+    // Open design doubt (orchestrator): the real gate's HARD/SOFT reasons carry contract numbers/names.
+    { evaluate: async () => ({ level: 'NONE', reasons: [], checkedAt: new Date().toISOString() }) } as never,
     { setShopWarranty: warrantyEffect } as never,
   );
   const quotes = new ContractQuoteService(prisma);
@@ -549,19 +553,29 @@ it('R102 damaged permission is no-default, scoped, and still requires explicit a
     });
   }
 });
-it('R102 active-contract exception checks each actual FINANCE source without ASSIGNED and without record disclosure', async () => {
+it('R102 active contract is fail-closed for every actor and grant, without record disclosure (owner ruling 2026-10-23)', async () => {
   const f = await createFixture();
   const active = await contract(branchB);
   await db.contract.update({
     where: { id: active.id },
     data: { customerId: f.customer.id, status: 'ACTIVE', assignedToId: actor },
   });
-  const blocked = await postCreate({ ...f.dto, overrideActiveContractCheck: true });
-  expect(blocked.status).toBe(409);
-  expect(blocked.body.canOverride).toBe(false);
-  expect(JSON.stringify(blocked.body)).not.toMatch(
-    new RegExp(active.id + '|' + active.contractNumber),
-  );
+  const before = await db.contract.count({ where: { customerId: f.customer.id } });
+  const expectRefused = async () => {
+    const blocked = await postCreate(f.dto);
+    expect(blocked.status).toBe(409);
+    expect(blocked.body.code).toBe('CUSTOMER_HAS_ACTIVE_CONTRACT');
+    // The former exception (and its canOverride hint) no longer exists.
+    expect(blocked.body).not.toHaveProperty('canOverride');
+    expect(blocked.body).not.toHaveProperty('activeContracts');
+    expect(JSON.stringify(blocked.body)).not.toMatch(
+      new RegExp(active.id + '|' + active.contractNumber),
+    );
+    expect(await db.contract.count({ where: { customerId: f.customer.id } })).toBe(before);
+  };
+  await expectRefused();
+  // The retired catalog key is still assignable (stored positions are validated against the catalog)
+  // but grants nothing: neither an ASSIGNED nor an exact FINANCE branch grant unlocks a second contract.
   const assignedGrant = await grant(
     actor,
     ['contracts.override-active-contract'],
@@ -569,46 +583,14 @@ it('R102 active-contract exception checks each actual FINANCE source without ASS
     undefined,
     'ASSIGNED',
   );
-  expect((await postCreate({ ...f.dto, overrideActiveContractCheck: true })).status).toBe(409);
+  await expectRefused();
   await db.employeeAccessAssignment.update({
     where: { id: assignedGrant.id },
     data: { deletedAt: new Date() },
   });
   const scoped = await grant(actor, ['contracts.override-active-contract'], 'FINANCE', [branchB]);
   try {
-    const response = await postCreate(f.dto);
-    expect(response.status).toBe(409);
-    expect(response.body.canOverride).toBe(true);
-    // Approval must be freshly assessed with the added genuine commitment.
-    const overrides = new CreditCheckOverrideService(db as PrismaService);
-    const owner = await db.user.findUniqueOrThrow({ where: { email: 'admin@bestchoice.com' } });
-    const basis = {
-      verifiedMonthlyIncome: 50000,
-      livingExpenses: 10000,
-      externalMonthlyDebt: 0,
-      salaryPayDay: 5,
-      evidenceNotes: 'Synthetic reassessed commitment evidence in owned database.',
-    };
-    const preview = await overrides.approval.preview(f.check.id, basis, {
-      id: owner.id,
-      role: 'OWNER',
-    });
-    await overrides.overrideById(
-      f.check.id,
-      {
-        status: 'APPROVED',
-        overrideReason: 'Synthetic reassessment',
-        affordability: {
-          ...basis,
-          contextToken: preview.contextToken,
-          approvedMonthlyPayment: 5000,
-          confirmed: true,
-        },
-      },
-      owner.id,
-      'OWNER',
-    );
-    expect((await postCreate({ ...f.dto, overrideActiveContractCheck: true })).status).toBe(201);
+    await expectRefused();
   } finally {
     await db.employeeAccessAssignment.update({
       where: { id: scoped.id },

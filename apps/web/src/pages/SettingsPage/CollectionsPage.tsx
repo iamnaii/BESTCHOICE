@@ -9,7 +9,7 @@ export default function CollectionsPage() {
     <div>
       <PageHeader
         title="ตั้งค่าการติดตามหนี้"
-        subtitle="กำหนด workload cap, session target และ self-claim lock สำหรับทีม collections"
+        subtitle="กำหนดจำนวนงานสูงสุด เป้าหมายต่อรอบ และเวลารับผิดชอบงานสำหรับทีมติดตามหนี้"
       />
       <CollectionsConfigCard />
     </div>

@@ -626,7 +626,7 @@ export default function Customer360Panel({ customerId, activeRoomId, onSelectRoo
       <div className="p-4">
         <Popover>
           <PopoverTrigger asChild>
-            <button
+            <button data-ui-control="button"
               type="button"
               className="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
             >
@@ -803,7 +803,7 @@ export default function Customer360Panel({ customerId, activeRoomId, onSelectRoo
               )}
 
               <div className="pt-2 border-t border-border">
-                <button
+                <button data-ui-control="button"
                   type="button"
                   onClick={() => {
                     setCustomerInfoOpen(false);
@@ -894,7 +894,7 @@ export default function Customer360Panel({ customerId, activeRoomId, onSelectRoo
         {/* Quick-action row — promoted call + pay buttons */}
         {summary?.activeContracts?.length > 0 && (
           <div className="flex gap-2 mt-3">
-            <button
+            <button data-ui-control="button"
               type="button"
               onClick={handleCall}
               disabled={originateCall.isPending || callStatus === 'calling'}
@@ -903,7 +903,7 @@ export default function Customer360Panel({ customerId, activeRoomId, onSelectRoo
               <Phone className="w-3.5 h-3.5" />
               {originateCall.isPending || callStatus === 'calling' ? 'กำลังโทร...' : 'โทร'}
             </button>
-            <button
+            <button data-ui-control="button"
               type="button"
               onClick={() => triggerContractAction('send-link')}
               disabled={sendPaymentFlex.isPending}
@@ -1077,7 +1077,7 @@ function InternalNotesSection({
               </div>
             )}
 
-            <button
+            <button data-ui-control="button"
               type="button"
               onClick={() => {
                 if (noteText.trim()) addNote.mutate(noteText.trim());
@@ -1147,7 +1147,7 @@ function QuickActionBtn({
   disabled?: boolean;
 }) {
   return (
-    <button
+    <button data-ui-control="button"
       onClick={onClick}
       disabled={disabled}
       className={cn(

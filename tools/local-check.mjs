@@ -20,6 +20,7 @@ import { checkAppraisal } from './check-local-appraisal.mjs';
 import { checkInboxVoice } from './check-local-inbox-voice.mjs';
 import { checkInboxDesign } from './check-local-inbox-design.mjs';
 import { checkInboxLayout } from './check-local-inbox-layout.mjs';
+import { checkInboxSearch } from './check-local-inbox-search.mjs';
 
 const release = acquireLock('check');
 const report = { status: 'RUNNING', scope: 'Basic checks + synthetic Inbox, customers, dashboard, FINANCE portfolio, work-company navigation and trade-in-to-stock flow; not a full backend/financial regression',
@@ -61,7 +62,9 @@ try {
     await checkInboxVoice(browser, info.url, output);
     report.checks.push({ label: 'Inbox voice: simulated Thai speech/delivery, desktop/mobile, manual send and room isolation', status: 'PASS' });
     await checkInboxDesign(browser, info.url, output);
-    report.checks.push({ label: 'Approved Inbox V2.4 shell, expanded/collapsed sidebar, flags off, light/dark at 320–1512px', status: 'PASS' });
+    await checkInboxSearch(browser, info.url, output);
+    report.checks.push({ label: 'Inbox search: single focus ring, real scoped message search and older-message navigation on desktop/mobile, context failure and retry', status: 'PASS' });
+    report.checks.push({ label: 'Inbox shell: consistent navigation scale and compact rail without app sidebar on desktop, compact header on phones, flags off, light/dark at 320–1512px', status: 'PASS' });
     await checkChatSetup(browser, info.url, output);
     report.checks.push({ label: 'Owner setup from disabled navigation, explicit simulated feed subscription, queue activation at 320/1440px', status: 'PASS' });
     await checkInboxLayout(browser, info.url, output);
@@ -76,7 +79,11 @@ try {
       page.on('console', message => { if (message.type() === 'error') errors.push(`${message.text()} (${message.location().url})`); });
       await page.goto(info.url, { waitUntil: 'domcontentloaded' });
       await expect(page.getByRole('button', { name: /^รอตอบ/ })).toBeVisible();
-      await expect(page.getByRole('combobox', { name: 'กรองตามช่องทาง' })).toBeVisible();
+      await page.getByRole('button', { name: 'ตัวกรองแชท', exact: true }).click();
+      await expect(page.getByRole('dialog', { name: 'ตัวกรองแชท', exact: true })).toBeVisible();
+      await expect(page.getByRole('group', { name: 'ช่องทาง', exact: true })).toBeVisible();
+      await page.keyboard.press('Escape');
+      await expect(page.getByRole('dialog')).toHaveCount(0);
       await expect(page.getByText('เกิดข้อผิดพลาด', { exact: true })).toHaveCount(0);
       const width = await page.evaluate(() => ({ viewport: innerWidth, content: document.documentElement.scrollWidth }));
       assert.ok(width.content <= width.viewport + 1, 'Horizontal overflow');

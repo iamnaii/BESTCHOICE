@@ -1,3 +1,4 @@
+import { FormNumberInput } from '@/components/ui/FormNumberInput';
 // Asset module — EntryPage Section 2 (cost structure, expense-style line row)
 // Pure presentation. Uses parent FormProvider for state + useAssetCalculation result.
 //
@@ -7,7 +8,7 @@
 // basePrice is derived from the line (qty × unitPrice − discount) and kept in
 // sync via setValue so the rest of the form (calc, refines, submit) is unchanged.
 
-import { useEffect } from 'react';
+import { useId as useExtraFieldId, useId as useUiFieldId, useEffect } from 'react';
 import { useFormContext } from 'react-hook-form';
 import { Card, CardContent } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
@@ -29,8 +30,9 @@ const fmt = (n: number | string | null | undefined) =>
   n == null ? '-' : formatNumberDecimal(Number(n));
 
 export function AssetEntrySection2Cost({ calc }: { calc: CalculationResult }) {
+  const uiExtraFieldId = useExtraFieldId();
+  const uiFieldId = useUiFieldId();
   const {
-    register,
     setValue,
     watch,
     formState: { errors },
@@ -92,21 +94,21 @@ export function AssetEntrySection2Cost({ calc }: { calc: CalculationResult }) {
         {/* Line-item row — same shape as the expense-recording page */}
         <div className="grid grid-cols-2 gap-3 md:grid-cols-6">
           <div>
-            <Label>จำนวน</Label>
-            <Input type="number" step="1" min="0" {...register('quantity')} />
+            <Label htmlFor={`${uiExtraFieldId}-1`}>จำนวน</Label>
+            <FormNumberInput id={`${uiExtraFieldId}-1`} step="1" min="0" name={'quantity'} />
           </div>
           <div>
-            <Label>ราคา/หน่วย</Label>
-            <Input type="number" step="0.01" min="0" {...register('unitPrice')} />
+            <Label htmlFor={`${uiExtraFieldId}-2`}>ราคา/หน่วย</Label>
+            <FormNumberInput id={`${uiExtraFieldId}-2`} step="0.01" min="0" name={'unitPrice'} />
           </div>
           <div>
-            <Label>ส่วนลด</Label>
-            <Input type="number" step="0.01" min="0" {...register('discount')} />
+            <Label htmlFor={`${uiExtraFieldId}-3`}>ส่วนลด</Label>
+            <FormNumberInput id={`${uiExtraFieldId}-3`} step="0.01" min="0" name={'discount'} />
           </div>
           <div>
-            <Label>VAT%</Label>
+            <Label htmlFor={`${uiFieldId}-1`}>VAT%</Label>
             <Select value={vatPercent} onValueChange={onVatPercentChange}>
-              <SelectTrigger>
+              <SelectTrigger id={`${uiFieldId}-1`}>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -116,9 +118,9 @@ export function AssetEntrySection2Cost({ calc }: { calc: CalculationResult }) {
             </Select>
           </div>
           <div>
-            <Label>WHT%</Label>
+            <Label htmlFor={`${uiFieldId}-2`}>WHT%</Label>
             <Select value={whtPercent} onValueChange={onWhtPercentChange}>
-              <SelectTrigger>
+              <SelectTrigger id={`${uiFieldId}-2`}>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -131,8 +133,8 @@ export function AssetEntrySection2Cost({ calc }: { calc: CalculationResult }) {
             </Select>
           </div>
           <div>
-            <Label>ก่อนภาษี</Label>
-            <Input
+            <Label htmlFor={`${uiFieldId}-3`}>ก่อนภาษี</Label>
+            <Input id={`${uiFieldId}-3`}
               value={fmt(calc.basePrice)}
               readOnly
               className="bg-muted text-right tabular-nums"
@@ -155,7 +157,7 @@ export function AssetEntrySection2Cost({ calc }: { calc: CalculationResult }) {
                   checked={!!vatInclusive}
                   onChange={() => setValue('vatInclusive', true)}
                 />
-                ราคารวม VAT แล้ว (Inclusive)
+                ราคารวม VAT แล้ว
               </label>
               <label className="flex cursor-pointer items-center gap-2">
                 <input
@@ -165,11 +167,11 @@ export function AssetEntrySection2Cost({ calc }: { calc: CalculationResult }) {
                   checked={!vatInclusive}
                   onChange={() => setValue('vatInclusive', false)}
                 />
-                ราคายังไม่รวม VAT (Exclusive)
+                ราคายังไม่รวม VAT
               </label>
             </div>
             <div className="flex items-center gap-2">
-              <Label className="whitespace-nowrap text-xs text-muted-foreground">
+              <Label htmlFor={`${uiFieldId}-4`} className="whitespace-nowrap text-xs text-muted-foreground">
                 บัญชีภาษีซื้อ
               </Label>
               <Select
@@ -180,7 +182,7 @@ export function AssetEntrySection2Cost({ calc }: { calc: CalculationResult }) {
                   })
                 }
               >
-                <SelectTrigger className="h-9 w-[250px]">
+                <SelectTrigger id={`${uiFieldId}-4`} className="h-9 w-[250px]">
                   <SelectValue placeholder="เลือก" />
                 </SelectTrigger>
                 <SelectContent>
@@ -206,14 +208,14 @@ export function AssetEntrySection2Cost({ calc }: { calc: CalculationResult }) {
           <div className="space-y-3 rounded-r-lg border-l-4 border-warning bg-warning/5 p-3">
             <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
               <div>
-                <Label>แบบ ภ.ง.ด.</Label>
+                <Label htmlFor={`${uiFieldId}-5`}>แบบ ภ.ง.ด.</Label>
                 <Select
                   value={whtFormType}
                   onValueChange={(v) =>
                     setValue('whtFormType', v as AssetEntryFormValues['whtFormType'])
                   }
                 >
-                  <SelectTrigger>
+                  <SelectTrigger id={`${uiFieldId}-5`}>
                     <SelectValue placeholder="เลือก" />
                   </SelectTrigger>
                   <SelectContent>
@@ -223,7 +225,7 @@ export function AssetEntrySection2Cost({ calc }: { calc: CalculationResult }) {
                 </Select>
               </div>
               <div>
-                <Label>บัญชี WHT</Label>
+                <Label htmlFor={`${uiFieldId}-6`}>บัญชี WHT</Label>
                 <Select
                   value={whtAccount}
                   onValueChange={(v) =>
@@ -232,12 +234,12 @@ export function AssetEntrySection2Cost({ calc }: { calc: CalculationResult }) {
                     })
                   }
                 >
-                  <SelectTrigger>
+                  <SelectTrigger id={`${uiFieldId}-6`}>
                     <SelectValue placeholder="เลือก" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="21-3102">PND3 ค้างจ่าย</SelectItem>
-                    <SelectItem value="21-3103">PND53 ค้างจ่าย</SelectItem>
+                    <SelectItem value="21-3102">ภ.ง.ด.3 ค้างจ่าย</SelectItem>
+                    <SelectItem value="21-3103">ภ.ง.ด.53 ค้างจ่าย</SelectItem>
                   </SelectContent>
                 </Select>
                 {errors.whtAccount && (
@@ -245,12 +247,11 @@ export function AssetEntrySection2Cost({ calc }: { calc: CalculationResult }) {
                 )}
               </div>
               <div>
-                <Label>ฐานคำนวณ WHT (ค่าบริการ)</Label>
-                <Input
-                  type="number"
+                <Label htmlFor={`${uiExtraFieldId}-4`}>ฐานคำนวณ WHT (ค่าบริการ)</Label>
+                <FormNumberInput id={`${uiExtraFieldId}-4`}
                   step="0.01"
-                  {...register('whtBaseAmount')}
-                  placeholder="default = ค่าติดตั้ง"
+                  name={'whtBaseAmount'}
+                  placeholder="ค่าเริ่มต้นเท่ากับค่าติดตั้ง"
                 />
               </div>
             </div>
@@ -278,20 +279,20 @@ export function AssetEntrySection2Cost({ calc }: { calc: CalculationResult }) {
         <div>
           <div className="mb-2 flex items-center gap-1.5 text-sm font-medium text-foreground">
             <PackagePlus className="size-4 text-muted-foreground" />
-            ต้นทุนเพิ่มเติม (Capitalize เข้าราคาทุนสินทรัพย์)
+            ต้นทุนเพิ่มเติมที่รวมในราคาทุนสินทรัพย์
           </div>
           <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
             <div>
-              <Label>ค่าขนส่ง</Label>
-              <Input type="number" step="0.01" min="0" {...register('shippingCost')} />
+              <Label htmlFor={`${uiExtraFieldId}-5`}>ค่าขนส่ง</Label>
+              <FormNumberInput id={`${uiExtraFieldId}-5`} step="0.01" min="0" name={'shippingCost'} />
             </div>
             <div>
-              <Label>ค่าติดตั้ง</Label>
-              <Input type="number" step="0.01" min="0" {...register('installationCost')} />
+              <Label htmlFor={`${uiExtraFieldId}-6`}>ค่าติดตั้ง</Label>
+              <FormNumberInput id={`${uiExtraFieldId}-6`} step="0.01" min="0" name={'installationCost'} />
             </div>
             <div>
-              <Label>ต้นทุนอื่น ๆ</Label>
-              <Input type="number" step="0.01" min="0" {...register('otherCapitalized')} />
+              <Label htmlFor={`${uiExtraFieldId}-7`}>ต้นทุนอื่น ๆ</Label>
+              <FormNumberInput id={`${uiExtraFieldId}-7`} step="0.01" min="0" name={'otherCapitalized'} />
             </div>
           </div>
         </div>
@@ -299,15 +300,15 @@ export function AssetEntrySection2Cost({ calc }: { calc: CalculationResult }) {
         {/* Residual + useful life */}
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
           <div>
-            <Label>มูลค่าซาก (Residual)</Label>
-            <Input type="number" step="0.01" min="0" {...register('residualValue')} />
+            <Label htmlFor={`${uiExtraFieldId}-8`}>มูลค่าซาก</Label>
+            <FormNumberInput id={`${uiExtraFieldId}-8`} step="0.01" min="0" name={'residualValue'} />
             {errors.residualValue && (
               <p className="mt-1 text-sm text-destructive">{errors.residualValue.message}</p>
             )}
           </div>
           <div>
-            <Label>อายุการใช้งาน (เดือน) *</Label>
-            <Input type="number" step="1" min="1" {...register('usefulLifeMonths')} />
+            <Label htmlFor={`${uiExtraFieldId}-9`}>อายุการใช้งาน (เดือน) *</Label>
+            <FormNumberInput id={`${uiExtraFieldId}-9`} step="1" min="1" name={'usefulLifeMonths'} />
             {errors.usefulLifeMonths && (
               <p className="mt-1 text-sm text-destructive">{errors.usefulLifeMonths.message}</p>
             )}
@@ -326,7 +327,7 @@ export function AssetEntrySection2Cost({ calc }: { calc: CalculationResult }) {
           <div>
             <div className="flex items-center gap-1.5 text-muted-foreground">
               <Gem className="size-3.5 text-info" />
-              Capitalized Cost
+              ราคาทุนสินทรัพย์
             </div>
             <div className="text-xl font-semibold tabular-nums">{fmt(calc.purchaseCost)}</div>
           </div>

@@ -13,6 +13,9 @@ jest.mock('../../../utils/sequence.util', () => ({
   generateBookingNumber: jest.fn(), generateSaleNumber: jest.fn(),
 }));
 
+// fixture เวลาสัมพัทธ์ — ค่าตายตัว '2026-10-12T17:00Z' เคยทำให้เทสแดงทั้ง CI เมื่อวันนั้นผ่านไป
+const NEW_EXPIRE = new Date(Date.now() + 2 * 86_400_000);
+
 const OWNER = { id: 'u-owner', role: 'OWNER', branchId: null as string | null };
 
 describe('BookingsService — ไทม์ไลน์เหตุการณ์ของใบจอง', () => {
@@ -41,7 +44,7 @@ describe('BookingsService — ไทม์ไลน์เหตุการณ�
         $queryRaw: jest.fn().mockResolvedValue([]),
         booking: {
           findFirst: txBookingFindFirst,
-          update: jest.fn().mockResolvedValue({ id: 'bk-1', expireDate: new Date('2026-10-12T17:00:00.000Z'),
+          update: jest.fn().mockResolvedValue({ id: 'bk-1', expireDate: NEW_EXPIRE,
             depositAmount: new Prisma.Decimal(1000), totalAmount: new Prisma.Decimal(10000), notes: 'แก้แล้ว' }),
         },
         auditLog: txAuditLog,
@@ -81,7 +84,8 @@ describe('BookingsService — ไทม์ไลน์เหตุการณ�
   });
 
   it('update — เขียน AuditLog BOOKING_UPDATED ในธุรกรรมเดียว บอกว่าแก้ช่องไหน', async () => {
-    await service.update('bk-1', { notes: 'แก้แล้ว', expireDate: new Date(Date.now() + 2 * 86_400_000).toISOString() }, OWNER);
+    // วันที่ใหม่ต้องเป็นอนาคตเสมอ (assertNotExpired) และต่างจาก existing.expireDate (now+1 วัน) → now+2 วัน
+    await service.update('bk-1', { notes: 'แก้แล้ว', expireDate: NEW_EXPIRE.toISOString() }, OWNER);
     expect(prisma._txAuditLog.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         action: 'BOOKING_UPDATED', entity: 'booking', entityId: 'bk-1', userId: 'u-owner',

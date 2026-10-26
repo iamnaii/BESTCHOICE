@@ -1,0 +1,83 @@
+{
+  "generatedAt": "2026-10-17T07:55:59.338Z",
+  "results": [
+    {
+      "engine": "chromium",
+      "width": 320,
+      "root": 20,
+      "status": "PASS",
+      "fixture": "GET booking detail mocked; actual app, no mutation",
+      "actions": [
+        "header targets separate",
+        "long title clear of controls",
+        "More menu open/Escape restores focus",
+        "Close edge click"
+      ]
+    },
+    {
+      "engine": "chromium",
+      "width": 390,
+      "root": 16,
+      "status": "PASS",
+      "fixture": "GET booking detail mocked; actual app, no mutation",
+      "actions": [
+        "header targets separate",
+        "long title clear of controls",
+        "More menu open/Escape restores focus",
+        "Close edge click"
+      ]
+    },
+    {
+      "engine": "chromium",
+      "width": 1440,
+      "root": 16,
+      "status": "PASS",
+      "fixture": "GET booking detail mocked; actual app, no mutation",
+      "actions": [
+        "header targets separate",
+        "long title clear of controls",
+        "More menu open/Escape restores focus",
+        "Close edge click"
+      ]
+    },
+    {
+      "engine": "webkit",
+      "width": 320,
+      "root": 20,
+      "status": "PASS",
+      "fixture": "GET booking detail mocked; actual app, no mutation",
+      "actions": [
+        "header targets separate",
+        "long title clear of controls",
+        "More menu open/Escape restores focus",
+        "Close edge click"
+      ]
+    },
+    {
+      "engine": "webkit",
+      "width": 390,
+      "root": 16,
+      "status": "PASS",
+      "fixture": "GET booking detail mocked; actual app, no mutation",
+      "actions": [
+        "header targets separate",
+        "long title clear of controls",
+        "More menu open/Escape restores focus",
+        "Close edge click"
+      ]
+    },
+    {
+      "engine": "webkit",
+      "width": 1440,
+      "root": 16,
+      "status": "PASS",
+      "fixture": "GET booking detail mocked; actual app, no mutation",
+      "actions": [
+        "header targets separate",
+        "long title clear of controls",
+        "More menu open/Escape restores focus",
+        "Close edge click"
+      ]
+    }
+  ]
+}

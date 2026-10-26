@@ -1,3 +1,5 @@
+import ScreenTable from '@/components/ui/ScreenTable';
+import { NativeSelect } from '@/components/ui/native-select';
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -74,7 +76,7 @@ function ShareholdersTab() {
               value={form.taxId}
               onChange={(e) => setForm({ ...form, taxId: e.target.value })}
             />
-            <select
+            <NativeSelect wrapperClassName="max-w-full w-auto"
               className="border border-border rounded-md px-3 py-2 text-sm bg-background"
               value={form.type}
               onChange={(e) => setForm({ ...form, type: e.target.value })}
@@ -84,12 +86,13 @@ function ShareholdersTab() {
                   {l}
                 </option>
               ))}
-            </select>
+            </NativeSelect>
             <Button disabled={!form.name || createMut.isPending} onClick={() => createMut.mutate()}>
               <Plus className="h-4 w-4 mr-1" /> เพิ่ม
             </Button>
           </div>
-          <table className="w-full text-sm">
+          <div className="overflow-x-auto">
+          <ScreenTable className="w-full min-w-[640px] text-sm">
             <thead>
               <tr className="border-b border-border text-left text-xs text-muted-foreground uppercase">
                 <th className="py-2">ชื่อ</th>
@@ -117,7 +120,8 @@ function ShareholdersTab() {
                 </tr>
               )}
             </tbody>
-          </table>
+          </ScreenTable>
+          </div>
         </CardContent>
       </Card>
     </QueryBoundary>
@@ -136,11 +140,11 @@ export default function EquityListPage() {
   return (
     <div className="space-y-4">
       <PageHeader
-        title="ส่วนของผู้ถือหุ้น (Equity)"
+        title="ส่วนของผู้ถือหุ้น"
         subtitle="เพิ่มทุน · ลดทุน · ปันผล · กรรมการถอนเงิน · ปรับปรุงย้อนหลัง"
         icon={<Landmark size={20} />}
         action={
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <Button variant="outline" asChild>
               <Link to="/finance/dividend-register">
                 <Coins className="h-4 w-4 mr-1" /> ทะเบียนปันผล
@@ -165,7 +169,7 @@ export default function EquityListPage() {
             ['shareholders', 'ทะเบียนผู้ถือหุ้น'],
           ] as const
         ).map(([key, label]) => (
-          <button
+          <button data-ui-control="button"
             key={key}
             onClick={() => setTab(key)}
             className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px leading-snug ${
@@ -192,7 +196,7 @@ export default function EquityListPage() {
           <Card>
             <CardContent className="pt-4">
               <div className="mb-3">
-                <select
+                <NativeSelect wrapperClassName="max-w-full w-auto" aria-label="สถานะ"
                   className="border border-border rounded-md px-3 py-2 text-sm bg-background"
                   value={statusFilter}
                   onChange={(e) => setStatusFilter(e.target.value)}
@@ -203,9 +207,10 @@ export default function EquityListPage() {
                       {l}
                     </option>
                   ))}
-                </select>
+                </NativeSelect>
               </div>
-              <table className="w-full text-sm">
+              <div className="overflow-x-auto">
+          <ScreenTable className="w-full min-w-[640px] text-sm">
                 <thead>
                   <tr className="border-b border-border text-left text-xs text-muted-foreground uppercase">
                     <th className="py-2">เลขที่</th>
@@ -248,7 +253,8 @@ export default function EquityListPage() {
                     </tr>
                   )}
                 </tbody>
-              </table>
+              </ScreenTable>
+          </div>
             </CardContent>
           </Card>
         </QueryBoundary>

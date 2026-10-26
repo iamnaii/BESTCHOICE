@@ -1,7 +1,13 @@
+import { NumberInput } from '@/components/ui/NumberInput';
+import { NativeSelect } from '@/components/ui/native-select';
 import { downloadProtectedDocument } from '@/lib/document-download';
 import { queryErrorMessage } from '@/lib/query-error-message';
 import { contractBalances } from '@/lib/contract-balances';
 import type { SignatureRequirements } from '@installment/shared';
+import { BLACKLIST_ERROR_CODE } from '@installment/shared';
+import { isAxiosError } from 'axios';
+import BlacklistOverrideDialog from '@/components/contract/BlacklistOverrideDialog';
+import type { BlacklistReason } from '@installment/shared';
 import { useParams, useNavigate, Link } from 'react-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import Decimal from 'decimal.js';
@@ -26,7 +32,7 @@ import ContractInputVatCard from '@/components/contract/ContractInputVatCard';
 import type { ContractInputVat } from '@/lib/input-vat';
 import { ContractDeviceReturnActions } from '@/components/device-returns/ContractDeviceReturnActions';
 import { toast } from 'sonner';
-import { useState, useRef, useEffect } from 'react';
+import { useId as useUiFieldId, useState, useRef, useEffect } from 'react';
 import { Copy, CheckCircle2, XCircle, AlertTriangle, Check, ChevronRight, History, BookOpen } from 'lucide-react';
 import { useCopyToClipboard } from '@/hooks/useCopyToClipboard';
 import { useAuth } from '@/contexts/AuthContext';
@@ -102,6 +108,7 @@ interface EarlyPayoffQuote {
 
 
 export default function ContractDetailPage() {
+  const uiFieldId = useUiFieldId();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -212,10 +219,24 @@ export default function ContractDetailPage() {
     onError: (err: unknown) => toast.error(getErrorMessage(err)),
   });
 
+  // ก้อน 5 C3 — SOFT ที่เกิดหลังสร้างร่าง + ผู้กดเป็น OWNER/BM → เปิดกล่องกรอกเหตุผลแล้วยิงเปิดใช้ซ้ำ (ร่างที่อนุมัติแล้วลบไม่ได้)
+  const [blacklistReview, setBlacklistReview] = useState<{ reasons: BlacklistReason[] } | null>(null);
   const activateMutation = useMutation({
-    mutationFn: async () => { const { data } = await api.post(`/contracts/${id}/activate`); return data; },
-    onSuccess: () => { toast.success('เปิดใช้งานสัญญาแล้ว'); invalidateContract(); },
-    onError: (err: unknown) => toast.error(getErrorMessage(err)),
+    mutationFn: async (blacklistOverrideReason?: string) => {
+      const { data } = await api.post(`/contracts/${id}/activate`, blacklistOverrideReason ? { blacklistOverrideReason } : undefined);
+      return data;
+    },
+    onSuccess: () => { toast.success('เปิดใช้งานสัญญาแล้ว'); setBlacklistReview(null); invalidateContract(); },
+    onError: (err: unknown) => {
+      // ก้อน 5 C3 — ด่าน blacklist ตอนเปิดใช้: HARD/บทบาทที่ปลดไม่ได้ = บอกเหตุผลทุกข้อ · SOFT + ปลดได้ = เปิดกล่องเหตุผล
+      const body = isAxiosError(err) ? (err.response?.data as { code?: string; message?: string; canOverride?: boolean; reasons?: BlacklistReason[] } | undefined) : undefined;
+      if (body?.code === BLACKLIST_ERROR_CODE.SOFT && body.canOverride) { setBlacklistReview({ reasons: body.reasons ?? [] }); return; }
+      if (body?.code && (Object.values(BLACKLIST_ERROR_CODE) as string[]).includes(body.code)) {
+        toast.error([body.message, ...(body.reasons ?? []).map((r) => r.message)].filter(Boolean).join('\n'));
+        return;
+      }
+      toast.error(getErrorMessage(err));
+    },
   });
 
 const deleteMutation = useMutation({
@@ -321,10 +342,10 @@ const deleteMutation = useMutation({
         }
         action={
           <div className="flex gap-2 flex-wrap">
-            {canSign && <button onClick={() => navigate(`/contracts/${id}/sign`)} className="px-4 py-2 text-sm bg-secondary text-secondary-foreground rounded-lg hover:bg-secondary/80 shadow-sm">
+            {canSign && <button data-ui-control="button" onClick={() => navigate(`/contracts/${id}/sign`)} className="px-4 py-2 text-sm bg-secondary text-secondary-foreground rounded-lg hover:bg-secondary/80 shadow-sm">
               ลงนามสัญญา
             </button>}
-            <button
+            <button data-ui-control="button"
               onClick={() => downloadPdfMutation.mutate(contract.contractNumber)}
               disabled={downloadPdfMutation.isPending}
               className="px-4 py-2 text-sm border border-input bg-background text-foreground rounded-lg hover:bg-accent hover:text-accent-foreground shadow-sm"
@@ -334,7 +355,7 @@ const deleteMutation = useMutation({
 
             {/* Workflow buttons */}
             {canActivate && contract.workflowStatus === 'APPROVED' && contract.status === 'DRAFT' && (
-              <button onClick={() => activateMutation.mutate()} disabled={activateMutation.isPending || !allSigned} title={!allSigned ? 'ต้องลงนามครบทุกฝ่ายที่ระบุในสัญญา' : ''} className="px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50">
+              <button data-ui-control="button" onClick={() => activateMutation.mutate(undefined)} disabled={activateMutation.isPending || !allSigned} title={!allSigned ? 'ต้องลงนามครบทุกฝ่ายที่ระบุในสัญญา' : ''} className="px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50">
                 {activateMutation.isPending ? 'กำลังเปิด...' : 'เปิดใช้งานสัญญา'}
               </button>
             )}
@@ -342,7 +363,7 @@ const deleteMutation = useMutation({
             {/* ประวัติการชำระ — ทุกสถานะที่เคยเปิดใช้ รวมสัญญาที่ปิดแล้ว (คืนเครื่อง/ยกเลิก/บอกเลิก)
                 ไม่งั้นแถว "ปิดสัญญาแล้ว" ในหน้าประวัติเข้าถึงไม่ได้ (เจ้าของ 2026-09-24) — เกณฑ์เดียวกับปุ่มบันทึกบัญชี */}
             {contract.status !== 'DRAFT' && (
-              <button
+              <button data-ui-control="button"
                 onClick={() => setHistoryContractId(contract.id)}
                 className="inline-flex items-center gap-1.5 px-4 py-2 text-sm border border-input bg-background text-foreground rounded-lg hover:bg-accent hover:text-accent-foreground shadow-sm"
               >
@@ -354,7 +375,7 @@ const deleteMutation = useMutation({
             {/* บันทึกบัญชีของสัญญา — JE ทุกใบทั้งสมุด FINANCE/SHOP (spec 2026-09-05);
                 DRAFT ยังไม่มี JE จึงซ่อน */}
             {contract.status !== 'DRAFT' && (
-              <button
+              <button data-ui-control="button"
                 onClick={() => setJournalOpen(true)}
                 className="inline-flex items-center gap-1.5 px-4 py-2 text-sm border border-input bg-background text-foreground rounded-lg hover:bg-accent hover:text-accent-foreground shadow-sm"
               >
@@ -371,12 +392,12 @@ const deleteMutation = useMutation({
             />
 
             {canActivate && ['ACTIVE', 'OVERDUE', 'DEFAULT'].includes(contract.status) && (
-              <button onClick={() => setShowPayoffModal(true)} className="px-4 py-2 text-sm bg-warning text-warning-foreground rounded-lg hover:bg-warning/90 shadow-sm">
+              <button data-ui-control="button" onClick={() => setShowPayoffModal(true)} className="px-4 py-2 text-sm bg-warning text-warning-foreground rounded-lg hover:bg-warning/90 shadow-sm">
                 ปิดก่อนกำหนด
               </button>
             )}
             {canCreateCustomerLink && ['ACTIVE', 'OVERDUE', 'COMPLETED'].includes(contract.status) && (
-              <button
+              <button data-ui-control="button"
                 onClick={() => customerLinkMutation.mutate()}
                 disabled={customerLinkMutation.isPending}
                 className="px-4 py-2 text-sm bg-success text-success-foreground rounded-lg hover:bg-success/90 disabled:opacity-50 shadow-sm"
@@ -385,13 +406,13 @@ const deleteMutation = useMutation({
               </button>
             )}
             {canDelete && (
-              <button
+              <button data-ui-control="button"
                 onClick={() => {
                   const sigCount = contract.signatures?.length ?? 0;
                   const message =
                     sigCount > 0
-                      ? `สัญญานี้มีลายเซ็น ${sigCount} รายการที่เก็บไว้ก่อนถูกปฏิเสธ — การลบจะลบลายเซ็นด้วย (soft delete, กู้คืนได้) ยืนยันหรือไม่?`
-                      : 'ยืนยันลบสัญญานี้?';
+                      ? `สัญญานี้มีลายเซ็น ${sigCount} รายการที่เก็บไว้ก่อนถูกปฏิเสธ — การลบจะลบลายเซ็นด้วย — ลบแล้วกู้คืนไม่ได้ (เงินดาวน์/เครดิตเทิร์นถูกคืนทันที) ยืนยันหรือไม่?`
+                      : 'ยืนยันลบสัญญานี้? ลบแล้วกู้คืนไม่ได้ (เงินดาวน์/เครดิตเทิร์นถูกคืนทันที)';
                   setConfirmDialog({
                     open: true,
                     title: 'ลบสัญญา',
@@ -406,7 +427,7 @@ const deleteMutation = useMutation({
                 {deleteMutation.isPending ? 'กำลังลบ...' : 'ลบสัญญา'}
               </button>
             )}
-            <button onClick={() => navigate('/contracts')} className="px-4 py-2 text-sm bg-muted text-foreground rounded-lg hover:bg-muted/80 shadow-sm">
+            <button data-ui-control="button" onClick={() => navigate('/contracts')} className="px-4 py-2 text-sm bg-muted text-foreground rounded-lg hover:bg-muted/80 shadow-sm">
               กลับ
             </button>
           </div>
@@ -437,7 +458,7 @@ const deleteMutation = useMutation({
           })(),
           {
             text: allSigned ? 'สัญญาอนุมัติแล้ว พร้อมเปิดใช้งาน' : 'ต้องลงนามครบก่อนเปิดใช้งาน',
-            action: allSigned && canActivate ? () => activateMutation.mutate() : undefined,
+            action: allSigned && canActivate ? () => activateMutation.mutate(undefined) : undefined,
             actionLabel: allSigned && canActivate ? 'เปิดใช้งานสัญญา' : undefined,
           },
         ];
@@ -466,7 +487,7 @@ const deleteMutation = useMutation({
               <div className="flex items-center justify-between bg-primary/5 rounded-lg px-3 py-2 mt-1">
                 <span className="text-sm text-primary">{hint.text}</span>
                 {hint.action && hint.actionLabel && (
-                  <button onClick={hint.action} className="px-3 py-1.5 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 shrink-0 ml-2">
+                  <button data-ui-control="button" onClick={hint.action} className="px-3 py-1.5 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 shrink-0 ml-2">
                     {hint.actionLabel}
                   </button>
                 )}
@@ -516,7 +537,7 @@ const deleteMutation = useMutation({
             <div className="text-xs text-success mb-1">ยอดเครดิตคงเหลือ</div>
             <div className="text-xl font-bold text-success">{formatNumber(contract.creditBalance)} บาท</div>
             {['ACTIVE', 'OVERDUE'].includes(contract.status) && (
-              <button
+              <button data-ui-control="button"
                 onClick={() => setConfirmDialog({
                   open: true,
                   title: 'ใช้เครดิตชำระ',
@@ -649,7 +670,7 @@ const deleteMutation = useMutation({
             </div>
 
             <div className="flex gap-2 flex-wrap">
-              <button
+              <button data-ui-control="button"
                 onClick={() => approveMutation.mutate()}
                 disabled={approveMutation.isPending || (docChecklist && !docChecklist.complete)}
                 title={docChecklist && !docChecklist.complete ? 'เอกสารยังไม่ครบ' : ''}
@@ -657,7 +678,7 @@ const deleteMutation = useMutation({
               >
                 {approveMutation.isPending ? 'กำลังอนุมัติ...' : 'อนุมัติสัญญา'}
               </button>
-              <button
+              <button data-ui-control="button"
                 onClick={() => setShowRejectModal(true)}
                 className="px-6 py-2.5 text-sm font-semibold bg-destructive text-destructive-foreground rounded-lg hover:bg-destructive/90 transition-colors"
               >
@@ -691,7 +712,7 @@ const deleteMutation = useMutation({
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2">
               <h2 className="text-lg font-semibold text-foreground">ข้อมูลสัญญา</h2>
-              <button
+              <button data-ui-control="button" data-ui-icon="true"
                 onClick={() => { copyToClipboard(contract.contractNumber); toast.success('คัดลอกเลขที่สัญญาแล้ว'); }}
                 className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
                 aria-label="คัดลอกเลขที่สัญญา"
@@ -701,7 +722,7 @@ const deleteMutation = useMutation({
               </button>
             </div>
             {canEdit && !isEditing && (
-              <button onClick={startEditing} className="px-3 py-1 text-xs bg-warning/10 text-warning-strong rounded-lg hover:bg-warning/20">
+              <button data-ui-control="button" onClick={startEditing} className="px-3 py-1 text-xs bg-warning/10 text-warning-strong rounded-lg hover:bg-warning/20">
                 แก้ไข
               </button>
             )}
@@ -711,34 +732,34 @@ const deleteMutation = useMutation({
             <div className="space-y-3">
               <fieldset disabled={!!contract.tradeInCreditSnapshot} className="grid grid-cols-2 gap-3 disabled:opacity-60">
                 <div>
-                  <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ราคาขาย</label>
-                  <input type="number" value={editForm.sellingPrice} onChange={(e) => setEditForm({ ...editForm, sellingPrice: parseFloat(e.target.value) || 0 })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
+                  <label htmlFor={`${uiFieldId}-1`} className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ราคาขาย</label>
+                  <NumberInput unstyled id={`${uiFieldId}-1`} value={editForm.sellingPrice} onChange={(e) => setEditForm({ ...editForm, sellingPrice: parseFloat(e.target.value) || 0 })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
                 </div>
                 <div>
-                  <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">เงินดาวน์</label>
-                  <input type="number" value={editForm.downPayment} onChange={(e) => setEditForm({ ...editForm, downPayment: parseFloat(e.target.value) || 0 })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
+                  <label htmlFor={`${uiFieldId}-2`} className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">เงินดาวน์</label>
+                  <NumberInput unstyled id={`${uiFieldId}-2`} value={editForm.downPayment} onChange={(e) => setEditForm({ ...editForm, downPayment: parseFloat(e.target.value) || 0 })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
                 </div>
                 <div>
-                  <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">จำนวนงวด (เดือน)</label>
-                  <input type="number" value={editForm.totalMonths} onChange={(e) => setEditForm({ ...editForm, totalMonths: parseInt(e.target.value) || 0 })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
+                  <label htmlFor={`${uiFieldId}-3`} className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">จำนวนงวด (เดือน)</label>
+                  <NumberInput unstyled id={`${uiFieldId}-3`} value={editForm.totalMonths} onChange={(e) => setEditForm({ ...editForm, totalMonths: parseInt(e.target.value) || 0 })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
                 </div>
                 <div>
-                  <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">อัตราดอกเบี้ย (ทศนิยม เช่น 0.08)</label>
-                  <input type="number" step="0.01" value={editForm.interestRate} onChange={(e) => setEditForm({ ...editForm, interestRate: parseFloat(e.target.value) || 0 })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
+                  <label htmlFor={`${uiFieldId}-4`} className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">อัตราดอกเบี้ย (ทศนิยม เช่น 0.08)</label>
+                  <NumberInput unstyled id={`${uiFieldId}-4`} step="0.01" value={editForm.interestRate} onChange={(e) => setEditForm({ ...editForm, interestRate: parseFloat(e.target.value) || 0 })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
                 </div>
                 <div>
-                  <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">วันชำระ</label>
-                  <select value={editForm.paymentDueDay} onChange={(e) => setEditForm({ ...editForm, paymentDueDay: parseInt(e.target.value) || 1 })} className="w-full px-3 py-2 border border-input rounded-lg text-sm">
+                  <label htmlFor={`${uiFieldId}-5`} className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">วันชำระ</label>
+                  <NativeSelect wrapperClassName="max-w-full w-full" id={`${uiFieldId}-5`} value={editForm.paymentDueDay} onChange={(e) => setEditForm({ ...editForm, paymentDueDay: parseInt(e.target.value) || 1 })} className="px-3 py-2 border border-input rounded-lg text-sm">
                     {[...Array.from({ length: 28 }, (_, i) => i + 1), 31].map((d) => (
                       <option key={d} value={d}>{d === 31 ? 'สิ้นเดือน' : `วันที่ ${d}`}</option>
                     ))}
-                  </select>
+                  </NativeSelect>
                 </div>
               </fieldset>
               {contract.tradeInCreditSnapshot && <p className="text-xs text-muted-foreground">รายการใช้เครดิตเทิร์นแก้ได้เฉพาะหมายเหตุ หากเปลี่ยนยอดให้ยกเลิกร่างและสร้างใหม่</p>}
               <div>
-                <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">หมายเหตุ</label>
-                <textarea value={editForm.notes} onChange={(e) => setEditForm({ ...editForm, notes: e.target.value })} rows={2} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
+                <label htmlFor={`${uiFieldId}-6`} className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">หมายเหตุ</label>
+                <textarea id={`${uiFieldId}-6`} value={editForm.notes} onChange={(e) => setEditForm({ ...editForm, notes: e.target.value })} rows={2} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
               </div>
               {/* Preview calculation — Decimal arithmetic to match the backend */}
               {editForm.sellingPrice > 0 && editForm.downPayment >= 0 && editForm.totalMonths > 0 && editForm.downPayment < editForm.sellingPrice && (() => {
@@ -766,8 +787,8 @@ const deleteMutation = useMutation({
               {editForm.sellingPrice <= 0 && <div className="text-xs text-destructive">ราคาขายต้องมากกว่า 0</div>}
               {(editForm.paymentDueDay < 1 || (editForm.paymentDueDay > 28 && editForm.paymentDueDay !== 31)) && <div className="text-xs text-destructive">วันชำระต้องอยู่ระหว่าง 1-28 หรือสิ้นเดือน</div>}
               <div className="flex gap-2 pt-2">
-                <button onClick={() => setIsEditing(false)} className="px-4 py-2 text-sm border border-input rounded-lg">ยกเลิก</button>
-                <button
+                <button data-ui-control="button" onClick={() => setIsEditing(false)} className="px-4 py-2 text-sm border border-input rounded-lg">ยกเลิก</button>
+                <button data-ui-control="button"
                   onClick={() => updateMutation.mutate()}
                   disabled={updateMutation.isPending || editForm.totalMonths <= 0 || editForm.sellingPrice <= 0 || editForm.downPayment >= editForm.sellingPrice || editForm.paymentDueDay < 1 || (editForm.paymentDueDay > 28 && editForm.paymentDueDay !== 31)}
                   className="px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50"
@@ -806,7 +827,7 @@ const deleteMutation = useMutation({
                   รายละเอียดการคำนวณ
                 </summary>
                 <div className="grid grid-cols-2 gap-3 mt-3">
-                  <Info label="ยอดปล่อย (Loan)" value={`${formatNumber(parseFloat(contract.sellingPrice) - parseFloat(contract.downPayment))} บาท`} />
+                  <Info label="ยอดปล่อย (สินเชื่อ)" value={`${formatNumber(parseFloat(contract.sellingPrice) - parseFloat(contract.downPayment))} บาท`} />
                   <Info label="อัตราดอกเบี้ย" value={`${(parseFloat(contract.interestRate) * 100).toFixed(2)}%${contract.interestConfig ? ` (${contract.interestConfig.name})` : ''}`} />
                   <Info label="ดอกเบี้ยรวม" value={`${formatNumber(contract.interestTotal)} บาท`} />
                   <Info label="ยอดจัดไฟแนนซ์" value={`${formatNumber(contract.financedAmount)} บาท`} />
@@ -836,7 +857,7 @@ const deleteMutation = useMutation({
                 )}
               </div>
               {canEditMaster && (
-                <button onClick={() => setIsEditingCustomer(true)} className="px-3 py-1 text-xs bg-warning/10 text-warning-strong rounded-lg hover:bg-warning/20">
+                <button data-ui-control="button" onClick={() => setIsEditingCustomer(true)} className="px-3 py-1 text-xs bg-warning/10 text-warning-strong rounded-lg hover:bg-warning/20">
                   แก้ไข
                 </button>
               )}
@@ -864,7 +885,7 @@ const deleteMutation = useMutation({
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg font-semibold text-foreground">ข้อมูลสินค้า</h2>
               {canEditMaster && (
-                <button onClick={() => setIsEditingProduct(true)} className="px-3 py-1 text-xs bg-warning/10 text-warning-strong rounded-lg hover:bg-warning/20">
+                <button data-ui-control="button" onClick={() => setIsEditingProduct(true)} className="px-3 py-1 text-xs bg-warning/10 text-warning-strong rounded-lg hover:bg-warning/20">
                   แก้ไข
                 </button>
               )}
@@ -933,21 +954,21 @@ const deleteMutation = useMutation({
       />
 
       {/* Tabs: Schedule / Documents / Credit Check / Preview */}
-      <div className="flex gap-1 mb-4 border-b border-border/60">
-        <button
+      <div className="flex min-w-0 max-w-full overflow-x-auto gap-1 mb-4 border-b border-border/60 [&>button]:shrink-0 [&>button]:min-h-11">
+        <button data-ui-control="button"
           onClick={() => setActiveTab('schedule')}
           className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${activeTab === 'schedule' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
         >
           ตารางผ่อน
           <span className="ml-1.5 px-1.5 py-0.5 rounded-full text-2xs bg-muted text-muted-foreground">{paidCount}/{contract.totalMonths}</span>
         </button>
-        <button
+        <button data-ui-control="button"
           onClick={() => setActiveTab('preview')}
           className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${activeTab === 'preview' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
         >
           ดูสัญญา
         </button>
-        <button
+        <button data-ui-control="button"
           onClick={() => setActiveTab('documents')}
           className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${activeTab === 'documents' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
         >
@@ -956,7 +977,7 @@ const deleteMutation = useMutation({
             <span className="ml-1.5 px-1.5 py-0.5 rounded-full text-2xs bg-primary/10 text-primary">{contract.contractDocuments.length}</span>
           )}
         </button>
-        <button
+        <button data-ui-control="button"
           onClick={() => setActiveTab('credit')}
           className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${activeTab === 'credit' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
         >
@@ -1041,8 +1062,8 @@ const deleteMutation = useMutation({
               เมื่อส่งตรวจสอบแล้ว จะไม่สามารถแก้ไขสัญญาได้จนกว่าจะถูกปฏิเสธ ยืนยันหรือไม่?
             </p>
             <div className="flex gap-3">
-              <button onClick={() => setShowSubmitConfirm(false)} className="flex-1 px-4 py-2 text-sm border border-input rounded-lg">ยกเลิก</button>
-              <button
+              <button data-ui-control="button" onClick={() => setShowSubmitConfirm(false)} className="flex-1 px-4 py-2 text-sm border border-input rounded-lg">ยกเลิก</button>
+              <button data-ui-control="button"
                 onClick={() => { setShowSubmitConfirm(false); submitReviewMutation.mutate(); }}
                 disabled={submitReviewMutation.isPending}
                 className="flex-1 px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50"
@@ -1059,8 +1080,8 @@ const deleteMutation = useMutation({
         <Modal isOpen title="ปฏิเสธสัญญา" onClose={() => setShowRejectModal(false)}>
           <div className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-foreground mb-1">เหตุผลที่ปฏิเสธ *</label>
-              <textarea
+              <label htmlFor={`${uiFieldId}-7`} className="block text-sm font-medium text-foreground mb-1">เหตุผลที่ปฏิเสธ *</label>
+              <textarea id={`${uiFieldId}-7`}
                 value={rejectNotes}
                 onChange={(e) => setRejectNotes(e.target.value)}
                 rows={3}
@@ -1069,8 +1090,8 @@ const deleteMutation = useMutation({
               />
             </div>
             <div className="flex gap-3">
-              <button onClick={() => setShowRejectModal(false)} className="flex-1 px-4 py-2 text-sm border border-input rounded-lg">ยกเลิก</button>
-              <button
+              <button data-ui-control="button" onClick={() => setShowRejectModal(false)} className="flex-1 px-4 py-2 text-sm border border-input rounded-lg">ยกเลิก</button>
+              <button data-ui-control="button"
                 onClick={() => rejectMutation.mutate()}
                 disabled={!rejectNotes.trim() || rejectMutation.isPending}
                 className="flex-1 px-4 py-2 text-sm bg-destructive text-destructive-foreground rounded-lg hover:bg-destructive/90 disabled:opacity-50"
@@ -1093,7 +1114,7 @@ const deleteMutation = useMutation({
                 readOnly
                 className="flex-1 px-3 py-2 border rounded-lg text-sm bg-muted"
               />
-              <button
+              <button data-ui-control="button"
                 onClick={() => { copyToClipboard(customerLink); toast.success('คัดลอกลิงก์แล้ว'); }}
                 className="px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90"
               >
@@ -1104,6 +1125,8 @@ const deleteMutation = useMutation({
         </Modal>
       )}
 
+      <BlacklistOverrideDialog open={!!blacklistReview} reasons={blacklistReview?.reasons ?? []} pending={activateMutation.isPending}
+        onClose={() => setBlacklistReview(null)} onConfirm={(reason) => activateMutation.mutate(reason)} />
       <ConfirmDialog
         open={confirmDialog.open}
         onOpenChange={(open) => setConfirmDialog((prev) => ({ ...prev, open }))}
@@ -1148,7 +1171,7 @@ function ContractPreviewFrame({ html }: { html: string }) {
   return (
     <iframe
       ref={iframeRef}
-      title="contract-preview"
+      title="ตัวอย่างสัญญา"
       className="w-full h-full border-0"
       sandbox="allow-same-origin allow-popups allow-modals allow-scripts"
     />

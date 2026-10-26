@@ -10,6 +10,7 @@ import BlockEditModal from '@/components/template-editor/editor/BlockEditModal';
 import DocumentPreview from '@/components/template-editor/preview/DocumentPreview';
 import SettingsModal from '@/components/template-editor/modals/SettingsModal';
 import PDFExportModal from '@/components/template-editor/pdf/PDFExportModal';
+import { useIsMobile } from '@/hooks/useIsMobile';
 
 // Auto-save interval (30 seconds)
 const AUTO_SAVE_INTERVAL = 30_000;
@@ -17,6 +18,7 @@ const AUTO_SAVE_INTERVAL = 30_000;
 export type ViewMode = 'split' | 'editor' | 'preview';
 
 export default function ContractTemplatesPage() {
+  const isMobile = useIsMobile();
   const navigate = useNavigate();
   const [showCheatSheet, setShowCheatSheet] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>('split');
@@ -45,11 +47,12 @@ export default function ContractTemplatesPage() {
     return () => clearInterval(timer);
   }, [isDirty, saveTemplate, saveTemplateToApi]);
 
-  const showEditor = viewMode === 'split' || viewMode === 'editor';
-  const showPreview = viewMode === 'split' || viewMode === 'preview';
+  const effectiveView = isMobile && viewMode === 'split' ? 'editor' : viewMode;
+  const showEditor = effectiveView === 'split' || effectiveView === 'editor';
+  const showPreview = effectiveView === 'split' || effectiveView === 'preview';
 
   return (
-    <div className="-m-6 flex flex-col bg-secondary/80 font-sans" style={{ height: 'calc(100vh - 56px)' }}>
+    <div className="flex min-w-0 max-w-full flex-col overflow-hidden bg-secondary/80 font-sans min-h-[28rem] h-[calc(100dvh-10rem)] lg:h-[calc(100dvh-7rem)]">
       {/* Header Bar */}
       <HeaderBar
         onBack={() => {
@@ -61,25 +64,25 @@ export default function ContractTemplatesPage() {
         }}
         onToggleCheatSheet={() => setShowCheatSheet(v => !v)}
         showCheatSheet={showCheatSheet}
-        viewMode={viewMode}
+        viewMode={effectiveView}
         onViewModeChange={setViewMode}
       />
 
       {/* Content Area */}
-      <div className="flex-1 flex overflow-hidden">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col lg:flex-row overflow-hidden">
         {/* Cheat Sheet Panel (collapsible) */}
         {showCheatSheet && <CheatSheet />}
 
         {/* Editor Panel */}
         {showEditor && (
-          <div className={`overflow-y-auto bg-secondary ${showPreview ? 'w-1/2 border-r border-border' : 'flex-1'}`}>
+          <div className={`min-h-0 min-w-0 overflow-y-auto bg-secondary ${showPreview ? 'w-1/2 border-r border-border' : 'flex-1'}`}>
             <BlockList />
           </div>
         )}
 
         {/* Preview Panel */}
         {showPreview && (
-          <div className={showEditor ? 'w-1/2' : 'flex-1'}>
+          <div className={`min-h-0 min-w-0 ${showEditor ? 'w-1/2' : 'flex-1'}`}>
             <DocumentPreview compact={showEditor} />
           </div>
         )}

@@ -85,7 +85,7 @@ export function DateRangeChips({ startDate, endDate, onChange, showAllChip = tru
   const isCustom = !isAll && !isThisMonth && !isLastMonth;
 
   const chipClass = (active: boolean) =>
-    `px-3 py-1.5 text-xs font-medium rounded-md border transition-colors ${
+    `max-lg:min-h-11 px-3 py-1.5 text-xs font-medium rounded-md border transition-colors ${
       active
         ? 'bg-primary text-primary-foreground border-primary'
         : 'bg-background text-foreground border-border hover:bg-accent'
@@ -95,7 +95,7 @@ export function DateRangeChips({ startDate, endDate, onChange, showAllChip = tru
     <div className="flex items-center justify-between flex-wrap gap-2 w-full">
       <div role="radiogroup" aria-label="ช่วงวันที่" className="flex flex-wrap gap-2">
         {showAllChip && (
-          <button
+          <button data-ui-control="button"
             type="button"
             role="radio"
             aria-checked={isAll}
@@ -105,7 +105,7 @@ export function DateRangeChips({ startDate, endDate, onChange, showAllChip = tru
             ทั้งหมด
           </button>
         )}
-        <button
+        <button data-ui-control="button"
           type="button"
           role="radio"
           aria-checked={isThisMonth}
@@ -114,7 +114,7 @@ export function DateRangeChips({ startDate, endDate, onChange, showAllChip = tru
         >
           เดือนนี้
         </button>
-        <button
+        <button data-ui-control="button"
           type="button"
           role="radio"
           aria-checked={isLastMonth}
@@ -123,7 +123,7 @@ export function DateRangeChips({ startDate, endDate, onChange, showAllChip = tru
         >
           เดือนที่แล้ว
         </button>
-        <button
+        <button data-ui-control="button"
           type="button"
           role="radio"
           aria-checked={isCustom}

@@ -1,3 +1,4 @@
+import { NativeSelect } from '@/components/ui/native-select';
 import { useState } from 'react';
 import type { BuybackQuestion } from '@installment/shared';
 import { buybackSourceName } from '@installment/shared';
@@ -35,8 +36,8 @@ export default function ReferenceQuestionnaire({
         </div>
         <label className="space-y-1 text-sm">
           <span className="block font-medium">รุ่นและความจุ</span>
-          <select
-            className="min-h-11 max-w-full rounded-lg border border-input bg-background px-3"
+          <NativeSelect wrapperClassName="w-auto max-w-full"
+            className="min-h-11 rounded-lg border border-input bg-background px-3"
             value={active ? `${active.model}|${active.storage}` : ''}
             onChange={(event) => setSelection(event.target.value)}
           >
@@ -48,7 +49,7 @@ export default function ReferenceQuestionnaire({
                 {entry.model} · {entry.storage}
               </option>
             ))}
-          </select>
+          </NativeSelect>
         </label>
       </div>
       {profile && (

@@ -8,7 +8,7 @@ import { unwrapResponse } from './helpers/api-utils';
    สิ่งที่ตรวจจากซอร์สจริง (ต่างจากสมมติฐานของเทสรุ่นก่อนหน้า):
 
    - UI override ทั้งชุดอยู่บน **หน้า entry** (`/other-income/new`) ตั้งแต่แรก
-     ไม่ต้องบันทึกร่างก่อน: checkbox "ใช้เอง (Override)" → OverrideConfirmDialog →
+     ไม่ต้องบันทึกร่างก่อน: checkbox "ปรับรายการเอง" → OverrideConfirmDialog →
      EditableJournalTable (OtherIncomeEntryPage.tsx §6). ส่วน OtherIncomeViewPage
      ไม่ import สองคอมโพเนนต์นี้เลย — มีแค่ป้ายอ่านอย่างเดียว
    - ชื่อฟิลด์มาจาก react-hook-form `register()` เป็น field path:
@@ -17,7 +17,7 @@ import { unwrapResponse } from './helpers/api-utils';
    - ช่อง Dr/Cr ของ EditableJournalTable เป็น controlled input ผ่าน prop `onChange`
      **ไม่มี attribute `name`** ⇒ ต้องอ้างด้วยตำแหน่งคอลัมน์ในตาราง (ตารางเดียว
      บนหน้านี้) ปุ่มลบบรรทัดมี aria-label "ลบบรรทัดที่ N"
-   - marker บนหน้ารายการเป็นไอคอน lucide ที่มี `aria-label="Override JV"`
+   - marker บนหน้ารายการเป็นไอคอน lucide ที่มี `aria-label="แก้ไขรายการบัญชี"`
      ไม่ใช่ text node "✏"
    ================================================================ */
 
@@ -52,9 +52,11 @@ async function openEntryPage(page: Page, amount: string) {
   await page.waitForSelector('form', { timeout: 20000 });
 
   await page.selectOption('select[name="items.0.whtPct"]', '0');
-  await page.fill('input[name="items.0.unitAmount"]', amount);
+  await page.getByRole('spinbutton', { name: 'ราคา/หน่วย', exact: true }).fill(amount);
   await page.fill('input[name="items.0.description"]', 'E2E override JV');
-  await page.fill('input[name="amountReceived"]', amount);
+  await page.getByRole('spinbutton', { name: /^จำนวนเงินที่ได้รับจริง/ }).fill(amount);
+  await expect(page.locator('input[type="hidden"][name="items.0.unitAmount"]')).toHaveValue(amount);
+  await expect(page.locator('input[type="hidden"][name="amountReceived"]')).toHaveValue(amount);
 }
 
 /**
@@ -63,9 +65,9 @@ async function openEntryPage(page: Page, amount: string) {
  * จะรอสถานะ checked จน timeout
  */
 async function enterOverrideMode(page: Page) {
-  await page.locator('label:has-text("ใช้เอง (Override)") input[type="checkbox"]').click();
+  await page.getByRole('checkbox', { name: 'ปรับรายการเอง', exact: true }).click();
 
-  await expect(page.getByText('คุณกำลังจะแก้ไข Auto Journal ด้วยตนเอง').first()).toBeVisible({
+  await expect(page.getByText('คุณกำลังจะแก้ไขรายการบัญชีอัตโนมัติด้วยตนเอง').first()).toBeVisible({
     timeout: 10000,
   });
   await page.locator('#override-ack-checkbox').click();
@@ -77,7 +79,7 @@ async function enterOverrideMode(page: Page) {
 
 /** ปุ่ม POST บนแถบล่าง — maker-checker ของ other-income ปิดอยู่ (คีย์ไม่ถูก seed) */
 function postButton(page: Page) {
-  return page.getByRole('button', { name: /บันทึก & POST/ });
+  return page.getByRole('button', { name: 'บันทึกและลงบัญชี', exact: true });
 }
 
 test.describe('Other Income — Override JV', () => {
@@ -90,7 +92,7 @@ test.describe('Other Income — Override JV', () => {
     await enterOverrideMode(page);
 
     // 2 บรรทัด × (Dr, Cr) — ช่องอื่นในตารางเป็น text ไม่ใช่ number
-    const numeric = page.locator('table input[type="number"]');
+    const numeric = page.locator('table input[data-numeric-input]');
     await expect(numeric).toHaveCount(4);
 
     // บรรทัดที่ 2 = Dr เงินรับ → ทำให้ Dr ≠ Cr
@@ -128,7 +130,7 @@ test.describe('Other Income — Override JV', () => {
     // EditableJournalTable ล้างอีกฝั่งเป็น 0 ทุกครั้งที่แก้ (onChange ของช่อง Dr
     // ตั้ง credit:0 และกลับกัน) ⇒ สาขาของ V5 ที่เอื้อมถึงได้จริงคือ "ไม่มีทั้ง Dr และ Cr"
     // (ฝั่ง server ยังกันเคส "มีทั้งสอง" ไว้ — ครอบด้วย journal-override.service.spec.ts)
-    const numeric = page.locator('table input[type="number"]');
+    const numeric = page.locator('table input[data-numeric-input]');
     await numeric.nth(1).fill('0'); // ล้าง Cr ของบรรทัดรายได้
 
     await expect(page.getByText(/ไม่มีทั้ง Dr และ Cr/).first()).toBeVisible({ timeout: 10000 });
@@ -176,6 +178,6 @@ test.describe('Other Income — Override JV', () => {
     await page.getByPlaceholder('ค้นหาเลขเอกสาร / คู่ค้า').fill(doc.docNumber);
 
     const row = page.locator('tr', { hasText: doc.docNumber });
-    await expect(row.locator('[aria-label="Override JV"]')).toBeVisible({ timeout: 15000 });
+    await expect(row.locator('[aria-label="แก้ไขรายการบัญชี"]')).toBeVisible({ timeout: 15000 });
   });
 });

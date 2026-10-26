@@ -1,8 +1,9 @@
+import { toBangkokDateString } from '@/lib/date';
 // Asset module — Custodian/location transfer dialog (Phase 1)
 // Records AssetTransfer history row + updates Asset.custodian/location.
 // At least one of custodian/location must change. Reason required (min 5 chars).
 
-import { useState } from 'react';
+import { useId as useUiFieldId, useState } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -39,7 +40,8 @@ export function TransferAssetDialog({
   onConfirm,
   isPending,
 }: TransferAssetDialogProps) {
-  const today = new Date().toISOString().slice(0, 10);
+  const uiFieldId = useUiFieldId();
+  const today = toBangkokDateString();
   const custodianNames = useUserNames();
   const [transferDate, setTransferDate] = useState(today);
   const [toCustodian, setToCustodian] = useState(asset.custodian ?? '');
@@ -59,15 +61,16 @@ export function TransferAssetDialog({
         </DialogHeader>
         <div className="space-y-3">
           <div>
-            <Label>วันที่โอน *</Label>
-            <ThaiDateInput
+            <Label htmlFor={`${uiFieldId}-1`}>วันที่โอน *</Label>
+            <ThaiDateInput id={`${uiFieldId}-1`}
               value={transferDate}
               onChange={(e) => setTransferDate(e.target.value)}
             />
           </div>
           <div>
-            <Label>ผู้ดูแลใหม่</Label>
+            <Label htmlFor={`${uiFieldId}-custodian`}>ผู้ดูแลใหม่</Label>
             <NameAutocomplete
+              id={`${uiFieldId}-custodian`}
               value={toCustodian}
               onChange={setToCustodian}
               options={custodianNames}
@@ -78,8 +81,8 @@ export function TransferAssetDialog({
             </p>
           </div>
           <div>
-            <Label>ที่ตั้งใหม่</Label>
-            <Input
+            <Label htmlFor={`${uiFieldId}-2`}>ที่ตั้งใหม่</Label>
+            <Input id={`${uiFieldId}-2`}
               value={toLocation}
               onChange={(e) => setToLocation(e.target.value)}
               placeholder={asset.location ?? '-'}
@@ -89,8 +92,8 @@ export function TransferAssetDialog({
             </p>
           </div>
           <div>
-            <Label>เหตุผล (ขั้นต่ำ 5 ตัวอักษร) *</Label>
-            <Textarea
+            <Label htmlFor={`${uiFieldId}-3`}>เหตุผล (ขั้นต่ำ 5 ตัวอักษร) *</Label>
+            <Textarea id={`${uiFieldId}-3`}
               value={reason}
               onChange={(e) => setReason(e.target.value)}
               rows={2}

@@ -1,3 +1,5 @@
+import { NumberInput } from '@/components/ui/NumberInput';
+import { NativeSelect } from '@/components/ui/native-select';
 import { useEffect, useId, useRef, useState } from 'react';
 import api, { getErrorMessage } from '@/lib/api';
 import { Button } from '@/components/ui/button';
@@ -99,14 +101,14 @@ function CreditAffordabilityFields({ creditCheckId, onChange }: {
         ['externalMonthlyDebt', 'ค่างวดหนี้ภายนอก (ไม่รวม BESTCHOICE)'],
       ] as const).map(([field, label]) => <div key={field}>
         <label htmlFor={`${id}-${field}`} className="mb-1 block text-xs">{label}</label>
-        <input id={`${id}-${field}`} className={inputClass} type="number" min="0" max="9999999.99" step="0.01"
+        <NumberInput unstyled id={`${id}-${field}`} className={inputClass} min="0" max="9999999.99" step="0.01"
           value={values[field]} onChange={event => change(field, event.target.value)} />
       </div>)}
       <div><label htmlFor={`${id}-payday`} className="mb-1 block text-xs">วันเงินเดือนออก / วันครบกำหนดชำระ</label>
-        <select id={`${id}-payday`} className={inputClass} value={values.salaryPayDay} onChange={event => change('salaryPayDay', event.target.value)}>
+        <NativeSelect wrapperClassName="max-w-full w-full" id={`${id}-payday`} className={inputClass} value={values.salaryPayDay} onChange={event => change('salaryPayDay', event.target.value)}>
           <option value="">เลือกวันที่ยืนยันแล้ว</option>
           {Array.from({ length: 31 }, (_, index) => index + 1).map(day => <option key={day} value={day}>{day === 31 ? 'สิ้นเดือน' : `วันที่ ${day}`}</option>)}
-        </select>
+        </NativeSelect>
       </div>
     </div>
     <div><label htmlFor={`${id}-evidence`} className="mb-1 block text-xs">หลักฐานและที่มาของตัวเลข (อย่างน้อย 20 ตัวอักษร)</label>
@@ -124,7 +126,7 @@ function CreditAffordabilityFields({ creditCheckId, onChange }: {
       {preview.replacingPendingApproval && <p className="text-xs">การยืนยันครั้งนี้จะแทนยอดอนุมัติเดิมที่ยังไม่ได้นำไปใช้</p>}
       {preview.maximumMonthlyPayment <= 0 ? <p role="status">ข้อมูลครบแล้ว คำนวณได้ 0 บาท จึงยังอนุมัติค่างวดใหม่ไม่ได้</p> : <>
       <div><label htmlFor={`${id}-amount`} className="mb-1 block">อนุมัติค่างวดไม่เกิน (บาท/เดือน)</label>
-        <input id={`${id}-amount`} className={inputClass} type="number" min="0.01" max={preview.maximumMonthlyPayment} step="0.01"
+        <NumberInput unstyled id={`${id}-amount`} className={inputClass} min="0.01" max={preview.maximumMonthlyPayment} step="0.01"
           value={amount} onChange={event => { setAmount(event.target.value); setConfirmed(false); }} />
         {!amountValid && <p className="text-xs text-destructive">ยอดต้องมากกว่า 0 และไม่เกินเพดานที่คำนวณ</p>}
       </div>

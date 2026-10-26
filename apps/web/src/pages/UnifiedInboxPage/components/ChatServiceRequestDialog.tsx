@@ -1,3 +1,4 @@
+import { NativeSelect } from '@/components/ui/native-select';
 import { useRef, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -110,8 +111,8 @@ export default function ChatServiceRequestDialog({
             <div className="grid min-w-0 gap-3 sm:grid-cols-2">
               <label className="block min-w-0">
                 ผู้รับผิดชอบ
-                <select
-                  className={field}
+                <NativeSelect wrapperClassName="max-w-full mt-1 w-full min-w-0"
+                  className={`${field} mt-0`}
                   required
                   value={assignee}
                   onChange={(e) => setAssignee(e.target.value)}
@@ -123,7 +124,7 @@ export default function ChatServiceRequestDialog({
                         {s.name} {s.detail}
                       </option>
                     ))}
-                </select>
+                </NativeSelect>
               </label>
               <label className="block min-w-0">
                 นัดติดตาม (เวลาไทย)
@@ -155,8 +156,8 @@ export default function ChatServiceRequestDialog({
                 </p>
                 <label className="block">
                   ประเภทข้อมูล
-                  <select
-                    className={field}
+                  <NativeSelect wrapperClassName="max-w-full mt-1 w-full min-w-0"
+                    className={`${field} mt-0`}
                     value={kind}
                     onChange={(e) => {
                       setKind(e.target.value as Choice['kind']);
@@ -167,7 +168,7 @@ export default function ChatServiceRequestDialog({
                     <option value="SALE">ใบขาย / เครื่อง</option>
                     <option value="CONTRACT">สัญญา / เครื่อง</option>
                     <option value="MESSAGE">ข้อความในแชท</option>
-                  </select>
+                  </NativeSelect>
                 </label>
                 <label className="block">
                   ค้นหาข้อมูลอ้างอิง

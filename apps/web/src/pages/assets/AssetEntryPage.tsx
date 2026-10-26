@@ -1,3 +1,4 @@
+import { toBangkokDateString } from '@/lib/date';
 // Asset module — entry page (Asset Acquisition v3 design)
 // Form glue: hooks the section components together via FormProvider, drives live
 // JE preview via useAssetCalculation, and exposes save-draft / save-and-post
@@ -25,6 +26,7 @@ import { cn } from '@/lib/utils';
 import { formatNumberDecimal } from '@/utils/formatters';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { assetStatusMap } from '@/lib/status-badges';
 import { assetsApi } from './api';
 import { assetEntrySchema, type AssetEntryFormValues } from './schema';
 import { useAssetCalculation } from './hooks/useAssetCalculation';
@@ -38,7 +40,7 @@ interface Branch {
   name: string;
 }
 
-const today = () => new Date().toISOString().slice(0, 10);
+const today = () => toBangkokDateString();
 
 const defaultValues: AssetEntryFormValues = {
   name: '',
@@ -55,7 +57,7 @@ const defaultValues: AssetEntryFormValues = {
   hasWht: false,
   residualValue: 0,
   usefulLifeMonths: 36,
-  purchaseDate: today(),
+  purchaseDate: '',
   paymentAccount: '11-1201',
 };
 
@@ -98,7 +100,7 @@ export default function AssetEntryPage() {
     // (input is unknown, output is number). useForm<T> assumes input == output, so cast.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     resolver: standardSchemaResolver(assetEntrySchema) as any,
-    defaultValues,
+    defaultValues: { ...defaultValues, purchaseDate: today() },
     mode: 'onBlur',
   });
 
@@ -113,7 +115,7 @@ export default function AssetEntryPage() {
     if (assetQuery.data) {
       const a = assetQuery.data;
       if (a.status !== 'DRAFT') {
-        toast.error('แก้ไขได้เฉพาะสถานะ DRAFT');
+        toast.error("แก้ไขได้เฉพาะสถานะ ฉบับร่าง");
         navigate(`/assets/${a.id}`, { replace: true });
         return;
       }
@@ -190,7 +192,7 @@ export default function AssetEntryPage() {
   const postMutation = useMutation({
     mutationFn: () => assetsApi.post(id!),
     onSuccess: (result) => {
-      toast.success(`POST แล้ว → ${result.entryNo}`);
+      toast.success(`ลงบัญชีแล้ว → ${result.entryNo}`);
       queryClient.invalidateQueries({ queryKey: ['assets'] });
       queryClient.invalidateQueries({ queryKey: ['assets-summary'] });
       queryClient.invalidateQueries({ queryKey: ['asset', id] });
@@ -212,7 +214,7 @@ export default function AssetEntryPage() {
       const created = await createMutation.mutateAsync(values);
       try {
         const result = await assetsApi.post(created.id);
-        toast.success(`POST แล้ว → ${result.entryNo}`);
+        toast.success(`ลงบัญชีแล้ว → ${result.entryNo}`);
         queryClient.invalidateQueries({ queryKey: ['assets'] });
         queryClient.invalidateQueries({ queryKey: ['assets-summary'] });
         queryClient.invalidateQueries({ queryKey: ['asset', created.id] });
@@ -261,8 +263,7 @@ export default function AssetEntryPage() {
                 {isEdit ? 'แก้ไขเอกสารซื้อสินทรัพย์ถาวร' : 'บันทึกซื้อสินทรัพย์ถาวร'}
               </h1>
               <p className="mt-1 text-sm text-muted-foreground">
-                กลุ่มบัญชี 12-21XX · TFRS + Accrual VAT · Validation V1-V14 · Post-control
-                (Daily Review)
+                บันทึกข้อมูลสินทรัพย์ ต้นทุน และตรวจสอบรายการบัญชีก่อนยืนยัน
               </p>
             </div>
             <div className="text-right">
@@ -271,7 +272,7 @@ export default function AssetEntryPage() {
                 {assetCode ?? '— กำลังสร้าง —'}
               </div>
               <Badge variant="outline" className="mt-1">
-                {status}
+                {assetStatusMap[status]?.label ?? 'ไม่ทราบสถานะ'}
               </Badge>
             </div>
           </div>
@@ -291,14 +292,14 @@ export default function AssetEntryPage() {
             </div>
             <ul className="space-y-1 text-sm text-foreground/90 list-disc pl-9">
               {flatErrors.map((e) => (
-                <li key={e.field}>{e.message}</li>
+                <li key={e.field}><button type="button" className="text-left underline underline-offset-2" onClick={() => form.setFocus(e.field as keyof AssetEntryFormValues)}>{e.message}</button></li>
               ))}
             </ul>
           </div>
         )}
 
         {/* Sticky action bar — validation status + Σ Dr = Σ Cr + 3 actions */}
-        <div className="sticky bottom-[56px] lg:bottom-0 z-20 -mx-5 lg:-mx-7 px-5 lg:px-7 py-3 bg-background/95 backdrop-blur border-t border-border">
+        <div className="sticky bottom-[calc(64px+env(safe-area-inset-bottom,0px))] lg:bottom-0 z-20 -mx-4 lg:-mx-7 px-4 lg:px-7 py-3 bg-background/95 backdrop-blur border-t border-border">
           <div className="container mx-auto flex flex-wrap items-center justify-between gap-3">
             <div className="flex flex-wrap items-center gap-3 text-xs">
               {errorCount > 0 ? (
@@ -307,7 +308,7 @@ export default function AssetEntryPage() {
                   พบ {errorCount} ข้อผิดพลาด
                 </span>
               ) : (
-                <span className="inline-flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400">
+                <span className="inline-flex items-center gap-1.5 text-success">
                   <CheckCircle2 className="size-3.5" />
                   ผ่านการตรวจสอบ
                 </span>
@@ -316,7 +317,7 @@ export default function AssetEntryPage() {
                 className={cn(
                   'inline-flex items-center gap-1.5',
                   calc.isBalanced
-                    ? 'text-emerald-600 dark:text-emerald-400'
+                    ? 'text-success'
                     : 'text-destructive',
                 )}
               >
@@ -343,7 +344,7 @@ export default function AssetEntryPage() {
               </Button>
               <Button onClick={onSaveAndPost} disabled={isLoading || !canPost}>
                 <Send className="size-4" />
-                บันทึก & POST
+                บันทึกและลงบัญชี
               </Button>
             </div>
           </div>

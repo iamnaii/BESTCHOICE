@@ -22,7 +22,7 @@ describe('lib/public-routes', () => {
       expect(isPublicPage(at(pathname, search))).toBe(true);
     });
 
-    it.each(['/liff/contract', '/pay/abc123', '/customer-access/abc123', '/verify/abc123'])(
+    it.each(['/liff/contract', '/contract', '/history', '/early-payoff', '/pay/abc123', '/customer-access/abc123', '/verify/abc123'])(
       'ยังคงถือว่า %s เป็นหน้าสาธารณะเหมือนเดิม',
       (pathname) => {
         expect(isPublicPage(at(pathname))).toBe(true);
@@ -81,3 +81,10 @@ describe('lib/public-routes', () => {
     });
   });
 });
+
+it.each(['/receipts/verify/RT-202610-00001', '/verify/RT-202610-00001', '/verify/PV-202610-00001', '/verify/EX-2610-001', '/expenses/verify-number/PV-202610-00001', '/expenses/verify/00000000-0000-0000-0000-000000000001'])(
+  'loads the existing session and preserves protected document %s for login', (path) => {
+    expect(isPublicPage(at(path))).toBe(false);
+    expect(shouldSkipLoginRedirect(at(path))).toBe(true);
+  },
+);

@@ -14,21 +14,21 @@ export default function Pager({ page, totalPages, total, onPrev, onNext }: Pager
         หน้า {page} / {totalPages} · ทั้งหมด {total} เคส
       </span>
       <div className="flex gap-2">
-        <button
+        <button data-ui-control="button"
           type="button"
           aria-label="หน้าก่อนหน้า"
           disabled={page <= 1}
           onClick={onPrev}
-          className="min-h-9 rounded-lg border border-border bg-card px-3 text-sm leading-snug text-foreground hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
+          className="min-h-9 max-lg:min-h-11 rounded-lg border border-border bg-card px-3 text-sm leading-snug text-foreground hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
         >
           ก่อนหน้า
         </button>
-        <button
+        <button data-ui-control="button"
           type="button"
           aria-label="หน้าถัดไป"
           disabled={page >= totalPages}
           onClick={onNext}
-          className="min-h-9 rounded-lg border border-border bg-card px-3 text-sm leading-snug text-foreground hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
+          className="min-h-9 max-lg:min-h-11 rounded-lg border border-border bg-card px-3 text-sm leading-snug text-foreground hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
         >
           ถัดไป
         </button>

@@ -83,7 +83,7 @@ it('keeps a pending send with its originating room and reconciles only that room
   await act(async () => {
     pending.resolve({ data: {} });
   });
-  expect(invalidate).toHaveBeenCalledWith({ queryKey: ['chat-messages', 'A'] });
+  await waitFor(() => expect(invalidate).toHaveBeenCalledWith({ queryKey: ['chat-messages', 'A'] }));
   act(() => {
     client.setQueryData(['chat-messages', 'B'], [{ clientMessageId: token }]);
   });
@@ -145,16 +145,16 @@ it('finishes an upload for its original room and reuses the file token on retry'
     wrapper,
   });
   const file = new File(['image'], 'proof.png', { type: 'image/png' });
-  act(() => result.current.handleSendFile(file));
+  act(() => { void result.current.handleSendFile(file); });
   await waitFor(() => expect(mocks.post).toHaveBeenCalledOnce());
   const first = mocks.post.mock.calls[0][1] as FormData;
   expect(first.get('file')).toBe(file);
   rerender({ room: 'B' });
   await act(async () => pending.resolve({ data: { delivered: true } }));
-  expect(invalidate).toHaveBeenCalledWith({ queryKey: ['chat-messages', 'A'] });
+  await waitFor(() => expect(invalidate).toHaveBeenCalledWith({ queryKey: ['chat-messages', 'A'] }));
   expect(invalidate).not.toHaveBeenCalledWith({ queryKey: ['chat-messages', 'B'] });
   rerender({ room: 'A' });
-  act(() => result.current.handleSendFile(file));
+  act(() => { void result.current.handleSendFile(file); });
   await waitFor(() => expect(mocks.post).toHaveBeenCalledTimes(2));
   expect(mocks.post.mock.calls[1][1].get('clientMessageId')).toBe(first.get('clientMessageId'));
 });
@@ -259,7 +259,7 @@ it('preserves distinct AI toggle and return-to-bot/undo endpoints', async () => 
   expect(mocks.post).toHaveBeenCalledWith('/chat-ai/release-to-ai/A');
   await act(async () => result.current.returnToAIMutation.mutateAsync('A'));
   expect(mocks.patch).toHaveBeenCalledWith('/staff-chat/rooms/A/return-to-ai');
-  const undo = mocks.success.mock.calls.find(([text]) => text === 'ส่งกลับ Bot แล้ว')![1].action
+  const undo = mocks.success.mock.calls.find(([text]) => text === 'ส่งกลับบอตแล้ว')![1].action
     .onClick;
   await act(async () => undo());
   expect(mocks.post.mock.calls.filter(([path]) => path === '/chat-ai/take-over/A')).toHaveLength(2);

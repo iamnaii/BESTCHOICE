@@ -1,3 +1,4 @@
+import { formControlClass } from '@/components/ui/form-styles';
 import ResponsiveFilterPanel from '@/components/ui/ResponsiveFilterPanel';
 import { usePaginationParams } from '@/hooks/usePaginationParams';
 import { PaginationBar } from '@/components/ui/PaginationBar';
@@ -12,6 +13,8 @@ import api, { getErrorMessage } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { useDebounce } from '@/hooks/useDebounce';
+import { useCustomerBlacklistBatch } from '@/hooks/useCustomerBlacklist';
+import CustomerBlacklistBadge from '@/components/customer/CustomerBlacklistBadge';
 import PageHeader from '@/components/ui/PageHeader';
 import DataTable from '@/components/ui/DataTable';
 import QueryBoundary from '@/components/QueryBoundary';
@@ -150,6 +153,10 @@ export default function CreditChecksPage() {
     onError: (err) => toast.error(getErrorMessage(err)),
   });
 
+  // ก้อน 5 C3 — ผลตรวจ blacklist ของลูกค้าทุกแถวในหน้า (batch เดียว) → ป้ายใต้ชื่อ
+
+  const blacklistBatch = useCustomerBlacklistBatch((query.data?.data ?? []).map((r) => r.customer?.id));
+
   const columns = [
     {
       key: 'customer',
@@ -159,6 +166,11 @@ export default function CreditChecksPage() {
           <div className="text-sm font-medium text-foreground leading-snug truncate">
             {c.customer?.name ?? '—'}
           </div>
+          {c.customer && blacklistBatch.data?.[c.customer.id] && (
+            <div onClick={(e) => e.stopPropagation()} className="mt-1">
+              <CustomerBlacklistBadge result={blacklistBatch.data[c.customer.id]} />
+            </div>
+          )}
           <div className="text-xs text-muted-foreground tabular-nums">
             {c.customer?.phone ?? ''}
             {c.customer?.occupation ? ` · ${c.customer.occupation}` : ''}
@@ -304,11 +316,11 @@ export default function CreditChecksPage() {
                 placeholder="ค้นหาชื่อลูกค้า..."
                 aria-label="ค้นหารายการตรวจเครดิต" value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="px-3 py-2 border border-input rounded-lg text-sm bg-background outline-hidden focus:ring-2 focus:ring-ring/30 w-full min-w-0"
+                className={formControlClass}
               />
             }>
               <Select value={status} onValueChange={setStatus}>
-                <SelectTrigger className="h-10 w-auto min-w-44">
+                <SelectTrigger aria-label="สถานะตรวจเครดิต" className={`${formControlClass} w-auto min-w-44`}>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>

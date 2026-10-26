@@ -1,4 +1,6 @@
-import { useState } from 'react';
+import ScreenTable from '@/components/ui/ScreenTable';
+import { NativeSelect } from '@/components/ui/native-select';
+import { useId as useUiFieldId, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { CheckCircle2, XCircle, Pencil, Trash2 } from 'lucide-react';
@@ -50,6 +52,7 @@ export default function TemplateManager({
   onEditTemplate,
   onConfirmDelete,
 }: TemplateManagerProps) {
+  const uiFieldId = useUiFieldId();
   const queryClient = useQueryClient();
   const [categoryFilter, setCategoryFilter] = useState<string>('');
 
@@ -67,7 +70,7 @@ export default function TemplateManager({
   const deleteTemplateMutation = useMutation({
     mutationFn: async (eventType: string) => api.delete(`/notifications/templates/${eventType}`),
     onSuccess: () => {
-      toast.success('ลบเทมเพลตสำเร็จ');
+      toast.success("ลบแม่แบบสำเร็จ");
       queryClient.invalidateQueries({ queryKey: ['notification-templates'] });
     },
     onError: (err: unknown) => toast.error(getErrorMessage(err)),
@@ -80,15 +83,15 @@ export default function TemplateManager({
   return (
     <>
       <div className="mb-4 flex items-center gap-3 flex-wrap">
-        <button
+        <button data-ui-control="button"
           onClick={onCreateTemplate}
           className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90"
         >
-          + สร้าง Template
+          + สร้างแม่แบบ
         </button>
         <div className="flex items-center gap-2 ml-auto">
-          <label className="text-sm text-muted-foreground">หมวดหมู่:</label>
-          <select
+          <label htmlFor={`${uiFieldId}-1`} className="text-sm text-muted-foreground">หมวดหมู่:</label>
+          <NativeSelect wrapperClassName="max-w-full w-auto" id={`${uiFieldId}-1`}
             value={categoryFilter}
             onChange={(e) => setCategoryFilter(e.target.value)}
             className="px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
@@ -99,20 +102,20 @@ export default function TemplateManager({
             <option value="TRANSACTIONAL">TRANSACTIONAL (ใบเสร็จ)</option>
             <option value="STAFF">STAFF (ทีม)</option>
             <option value="MARKETING">MARKETING (โปรโมชั่น)</option>
-          </select>
+          </NativeSelect>
         </div>
       </div>
 
       <div className="rounded-lg border border-border bg-card overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full text-sm">
+          <ScreenTable className="w-full text-sm">
             <thead>
               <tr className="border-b border-border bg-muted/30">
                 <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                  ชื่อ Template
+                  ชื่อแม่แบบ
                 </th>
                 <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                  Event Type
+                  ประเภทเหตุการณ์
                 </th>
                 <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">
                   หมวดหมู่
@@ -142,7 +145,7 @@ export default function TemplateManager({
               ) : templates.length === 0 ? (
                 <tr>
                   <td colSpan={8} className="px-4 py-8 text-center text-muted-foreground">
-                    ยังไม่มี template
+                    ยังไม่มี แม่แบบ
                   </td>
                 </tr>
               ) : (
@@ -176,7 +179,7 @@ export default function TemplateManager({
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap">
                       <span className="text-xs text-muted-foreground">
-                        {template.format === 'flex' ? 'Flex' : 'Text'}
+                        {template.format === 'flex' ? 'Flex' : "ข้อความ"}
                       </span>
                     </td>
                     <td className="px-4 py-3 max-w-md">
@@ -199,7 +202,7 @@ export default function TemplateManager({
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap text-right">
                       <div className="inline-flex gap-1">
-                        <button
+                        <button data-ui-control="button" data-ui-icon="true"
                           type="button"
                           onClick={() => onEditTemplate(template)}
                           className="p-2 rounded-lg hover:bg-accent text-foreground"
@@ -208,7 +211,7 @@ export default function TemplateManager({
                         >
                           <Pencil className="size-4" />
                         </button>
-                        <button
+                        <button data-ui-control="button" data-ui-icon="true"
                           type="button"
                           onClick={() => handleDelete(template.eventType)}
                           disabled={deleteTemplateMutation.isPending}
@@ -224,7 +227,7 @@ export default function TemplateManager({
                 ))
               )}
             </tbody>
-          </table>
+          </ScreenTable>
         </div>
       </div>
     </>

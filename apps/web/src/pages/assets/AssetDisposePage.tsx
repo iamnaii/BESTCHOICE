@@ -1,3 +1,6 @@
+import { FormNumberInput } from '@/components/ui/FormNumberInput';
+import ScreenTable from '@/components/ui/ScreenTable';
+import { toBangkokDateString } from '@/lib/date';
 // Asset module — Disposal page (Phase 2)
 // 3-section form (วิธีจำหน่าย / รายละเอียด / Auto JE Preview).
 // SALE → cash + sale-discount fields visible. WRITE_OFF → reason only.
@@ -13,7 +16,6 @@ import PageHeader from '@/components/ui/PageHeader';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
-import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import {
@@ -32,10 +34,14 @@ import { assetsApi } from './api';
 import { CATEGORY_LABEL, CASH_ACCOUNTS } from './types';
 import { disposalSchema, type DisposalFormValues } from './disposal-schema';
 import { useDisposalCalculation } from './hooks/useDisposalCalculation';
+import { useId as useExtraFieldId, useId as useUiFieldId } from 'react';
 
-const today = () => new Date().toISOString().slice(0, 10);
+
+const today = () => toBangkokDateString();
 
 export default function AssetDisposePage() {
+  const uiExtraFieldId = useExtraFieldId();
+  const uiFieldId = useUiFieldId();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -104,7 +110,7 @@ export default function AssetDisposePage() {
       {assetQuery.data && assetQuery.data.status !== 'POSTED' && (
         <div className="p-8 text-center">
           <p className="text-destructive">
-            จำหน่ายได้เฉพาะสถานะ POSTED (ปัจจุบัน: {assetQuery.data.status})
+            จำหน่ายได้เฉพาะสถานะ ลงบัญชีแล้ว (ปัจจุบัน: {assetQuery.data.status})
           </p>
           <Button onClick={() => navigate(`/assets/${id}`)} className="mt-4">
             กลับ
@@ -148,7 +154,7 @@ export default function AssetDisposePage() {
                     </dd>
                   </div>
                   <div>
-                    <dt className="text-muted-foreground">มูลค่าตามบัญชีสุทธิ (NBV)</dt>
+                    <dt className="text-muted-foreground">มูลค่าตามบัญชีสุทธิ (มูลค่าตามบัญชีสุทธิ)</dt>
                     <dd className="tabular-nums font-semibold">
                       {formatNumberDecimal(calc.nbv)}
                     </dd>
@@ -177,7 +183,7 @@ export default function AssetDisposePage() {
                   </div>
                   <div className="flex items-center space-x-2">
                     <RadioGroupItem value="WRITE_OFF" id="r-writeoff" />
-                    <Label htmlFor="r-writeoff">Write-off (ตัดบัญชี)</Label>
+                    <Label htmlFor="r-writeoff">ตัดบัญชี</Label>
                   </div>
                 </RadioGroup>
               </CardContent>
@@ -190,8 +196,8 @@ export default function AssetDisposePage() {
               </CardHeader>
               <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <Label>วันที่จำหน่าย *</Label>
-                  <ThaiDateInput
+                  <Label htmlFor={`${uiFieldId}-1`}>วันที่จำหน่าย *</Label>
+                  <ThaiDateInput id={`${uiFieldId}-1`}
                     value={watched.disposalDate}
                     onChange={(e) =>
                       setValue('disposalDate', e.target.value, {
@@ -208,8 +214,8 @@ export default function AssetDisposePage() {
                 {watched.disposalType === 'SALE' && (
                   <>
                     <div>
-                      <Label>ราคาขาย *</Label>
-                      <Input type="number" step="0.01" {...register('proceeds')} />
+                      <Label htmlFor={`${uiExtraFieldId}-1`}>ราคาขาย *</Label>
+                      <FormNumberInput id={`${uiExtraFieldId}-1`} step="0.01" name={'proceeds'} />
                       {errors.proceeds && (
                         <p className="text-sm text-destructive mt-1">
                           {errors.proceeds.message}
@@ -217,7 +223,7 @@ export default function AssetDisposePage() {
                       )}
                     </div>
                     <div className="md:col-span-2">
-                      <Label>บัญชีรับเงิน *</Label>
+                      <Label htmlFor={`${uiFieldId}-2`}>บัญชีรับเงิน *</Label>
                       <Select
                         value={watched.depositAccountCode}
                         onValueChange={(v) =>
@@ -226,7 +232,7 @@ export default function AssetDisposePage() {
                           })
                         }
                       >
-                        <SelectTrigger>
+                        <SelectTrigger id={`${uiFieldId}-2`}>
                           <SelectValue placeholder="เลือกบัญชี" />
                         </SelectTrigger>
                         <SelectContent>
@@ -246,8 +252,8 @@ export default function AssetDisposePage() {
                   </>
                 )}
                 <div className="md:col-span-2">
-                  <Label>เหตุผล *</Label>
-                  <Textarea {...register('reason')} rows={3} />
+                  <Label htmlFor={`${uiExtraFieldId}-2`}>เหตุผล *</Label>
+                  <Textarea id={`${uiExtraFieldId}-2`} {...register('reason')} rows={3} />
                   {errors.reason && (
                     <p className="text-sm text-destructive mt-1">
                       {errors.reason.message}
@@ -260,7 +266,7 @@ export default function AssetDisposePage() {
             {/* Section 3: สรุปบัญชี */}
             <Card>
               <CardHeader className="flex flex-row items-center justify-between">
-                <CardTitle>3. สรุปบัญชี (Auto JE Preview)</CardTitle>
+                <CardTitle>3. สรุปบัญชี (ตัวอย่างรายการบัญชี)</CardTitle>
                 <Badge variant={calc.isBalanced ? 'success' : 'destructive'}>
                   {calc.isBalanced ? 'สมดุล' : 'ไม่สมดุล'}
                 </Badge>
@@ -268,7 +274,7 @@ export default function AssetDisposePage() {
               <CardContent>
                 <dl className="grid grid-cols-3 gap-4 text-sm pb-4 border-b">
                   <div>
-                    <dt className="text-muted-foreground">มูลค่าตามบัญชีสุทธิ (NBV)</dt>
+                    <dt className="text-muted-foreground">มูลค่าตามบัญชีสุทธิ (มูลค่าตามบัญชีสุทธิ)</dt>
                     <dd className="tabular-nums">{formatNumberDecimal(calc.nbv)}</dd>
                   </div>
                   <div>
@@ -284,18 +290,18 @@ export default function AssetDisposePage() {
                         calc.gainLoss >= 0 ? 'text-success' : 'text-destructive'
                       }`}
                     >
-                      {formatNumberDecimal(Math.abs(calc.gainLoss))}
+                      {formatNumberDecimal(calc.gainLoss)}
                     </dd>
                   </div>
                 </dl>
                 {calc.journalLines.length > 0 && (
-                  <table className="w-full text-sm mt-4">
+                  <ScreenTable className="w-full text-sm mt-4">
                     <thead>
                       <tr className="border-b">
                         <th className="text-left py-2 px-2">รหัส</th>
                         <th className="text-left py-2 px-2">ชื่อ</th>
-                        <th className="text-right py-2 px-2">Debit</th>
-                        <th className="text-right py-2 px-2">Credit</th>
+                        <th className="text-right py-2 px-2">เดบิต</th>
+                        <th className="text-right py-2 px-2">เครดิต</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -312,7 +318,7 @@ export default function AssetDisposePage() {
                         </tr>
                       ))}
                     </tbody>
-                  </table>
+                  </ScreenTable>
                 )}
               </CardContent>
             </Card>

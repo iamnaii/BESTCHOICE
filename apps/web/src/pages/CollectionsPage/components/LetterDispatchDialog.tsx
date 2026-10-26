@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useId as useUiFieldId, useState, useEffect, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { AlertTriangle, Download, Eye, FileText, Loader2, Upload } from 'lucide-react';
 import { toast } from 'sonner';
@@ -224,7 +224,7 @@ function GenerateSection({ letter, onGenerated, onClose }: GenerateSectionProps)
           </div>
           {!proceedWithoutSignature && (
             <div className="flex justify-end">
-              <button
+              <button data-ui-control="button"
                 type="button"
                 onClick={() => setProceedWithoutSignature(true)}
                 className="inline-flex items-center gap-1.5 rounded-lg border border-warning/50 bg-background px-3 py-1.5 text-xs font-medium text-warning-strong hover:bg-warning/10 transition-colors"
@@ -237,14 +237,14 @@ function GenerateSection({ letter, onGenerated, onClose }: GenerateSectionProps)
       )}
 
       <div className="flex gap-2 justify-end pt-2">
-        <button
+        <button data-ui-control="button"
           type="button"
           onClick={onClose}
           className="px-4 py-2 text-sm rounded-lg border border-input hover:bg-muted transition-colors"
         >
           ยกเลิก
         </button>
-        <button
+        <button data-ui-control="button"
           type="button"
           onClick={handleGenerate}
           disabled={busy || isLoadingDeps || signatureCheckBlocked}
@@ -275,6 +275,7 @@ interface DispatchSectionProps {
 }
 
 function DispatchSection({ letter, onClose }: DispatchSectionProps) {
+  const uiFieldId = useUiFieldId();
   const [tracking, setTracking] = useState('');
   const [busy, setBusy] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
@@ -282,7 +283,7 @@ function DispatchSection({ letter, onClose }: DispatchSectionProps) {
 
   const handleSubmit = async () => {
     if (tracking.trim().length < 5) {
-      toast.error('เลข tracking ต้อง ≥ 5 ตัวอักษร');
+      toast.error("เลข ติดตามพัสดุ ต้อง ≥ 5 ตัวอักษร");
       return;
     }
     setBusy(true);
@@ -306,7 +307,7 @@ function DispatchSection({ letter, onClose }: DispatchSectionProps) {
       {/* PDF preview + download */}
       {(
         <div className="flex items-center gap-2 flex-wrap">
-          <button
+          <button data-ui-control="button"
             type="button"
             onClick={() => setPreviewOpen(true)}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-input hover:bg-muted text-foreground transition-colors"
@@ -348,10 +349,10 @@ function DispatchSection({ letter, onClose }: DispatchSectionProps) {
 
       {/* Tracking number input */}
       <div>
-        <label className="text-xs font-medium text-muted-foreground mb-1.5 block leading-snug">
-          เลข EMS tracking *
+        <label htmlFor={`${uiFieldId}-1`} className="text-xs font-medium text-muted-foreground mb-1.5 block leading-snug">
+          เลข EMS ติดตามพัสดุ *
         </label>
-        <input
+        <input id={`${uiFieldId}-1`}
           type="text"
           value={tracking}
           onChange={(e) => setTracking(e.target.value)}
@@ -368,14 +369,14 @@ function DispatchSection({ letter, onClose }: DispatchSectionProps) {
 
       {/* Actions */}
       <div className="flex gap-2 justify-end pt-2">
-        <button
+        <button data-ui-control="button"
           type="button"
           onClick={onClose}
           className="px-4 py-2 text-sm rounded-lg border border-input hover:bg-muted transition-colors"
         >
           ยกเลิก
         </button>
-        <button
+        <button data-ui-control="button"
           type="button"
           onClick={handleSubmit}
           disabled={busy || !trackingValid}

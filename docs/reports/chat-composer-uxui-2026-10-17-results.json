@@ -1,0 +1,207 @@
+{
+  "sourceFingerprint": "e3926444d0ef82d0faa5de55ef9f4b6ac4554ff72d7801992ad541f2508347e5",
+  "cases": 9,
+  "states": 114,
+  "errors": [],
+  "scope": "UI actions; synthetic data and outbound, not external service acceptance",
+  "rows": [
+    {
+      "id": "1440-960-light-16",
+      "actions": [
+        "toolbar",
+        "attachment",
+        "library-empty",
+        "product-draft",
+        "product-photo",
+        "product-card",
+        "offer-result",
+        "emoji",
+        "gif-error",
+        "voice-active",
+        "voice-help",
+        "sticker"
+      ],
+      "buttons": 7
+    },
+    {
+      "id": "1440-960-dark-16",
+      "actions": [
+        "toolbar",
+        "attachment",
+        "library-empty",
+        "product-draft",
+        "product-photo",
+        "product-card",
+        "offer-result",
+        "emoji",
+        "gif-error",
+        "voice-active",
+        "voice-help",
+        "sticker"
+      ],
+      "buttons": 7
+    },
+    {
+      "id": "1024-960-light-16",
+      "actions": [
+        "toolbar",
+        "attachment",
+        "library-empty",
+        "product-draft",
+        "product-photo",
+        "product-card",
+        "offer-result",
+        "emoji",
+        "gif-error",
+        "voice-active",
+        "voice-help",
+        "sticker"
+      ],
+      "buttons": 7
+    },
+    {
+      "id": "390-844-light-16",
+      "actions": [
+        "toolbar",
+        "attachment",
+        "library-empty",
+        "product-draft",
+        "product-photo",
+        "product-card",
+        "offer-result",
+        "emoji",
+        "gif-error",
+        "voice-active",
+        "voice-help",
+        "ai-suggestions",
+        "sticker"
+      ],
+      "buttons": 7
+    },
+    {
+      "id": "390-844-dark-16",
+      "actions": [
+        "toolbar",
+        "attachment",
+        "library-empty",
+        "product-draft",
+        "product-photo",
+        "product-card",
+        "offer-result",
+        "emoji",
+        "gif-error",
+        "voice-active",
+        "voice-help",
+        "ai-suggestions",
+        "sticker"
+      ],
+      "buttons": 7
+    },
+    {
+      "id": "320-800-light-16",
+      "actions": [
+        "toolbar",
+        "attachment",
+        "library-empty",
+        "product-draft",
+        "product-photo",
+        "product-card",
+        "offer-result",
+        "emoji",
+        "gif-error",
+        "voice-active",
+        "voice-help",
+        "ai-suggestions",
+        "sticker"
+      ],
+      "buttons": 7
+    },
+    {
+      "id": "320-800-dark-16",
+      "actions": [
+        "toolbar",
+        "attachment",
+        "library-empty",
+        "product-draft",
+        "product-photo",
+        "product-card",
+        "offer-result",
+        "emoji",
+        "gif-error",
+        "voice-active",
+        "voice-help",
+        "ai-suggestions",
+        "sticker"
+      ],
+      "buttons": 7
+    },
+    {
+      "id": "812-375-light-16",
+      "actions": [
+        "toolbar",
+        "attachment",
+        "library-empty",
+        "product-draft",
+        "product-photo",
+        "product-card",
+        "offer-result",
+        "emoji",
+        "gif-error",
+        "voice-active",
+        "voice-help",
+        "ai-suggestions",
+        "sticker"
+      ],
+      "buttons": 7
+    },
+    {
+      "id": "390-844-light-20",
+      "actions": [
+        "toolbar",
+        "attachment",
+        "library-empty",
+        "product-draft",
+        "product-photo",
+        "product-card",
+        "offer-result",
+        "emoji",
+        "gif-error",
+        "voice-active",
+        "voice-help",
+        "ai-suggestions",
+        "sticker"
+      ],
+      "buttons": 7
+    }
+  ],
+  "stickerAssets": [
+    {
+      "pack": "Brown & Cony",
+      "images": 12,
+      "loaded": true
+    },
+    {
+      "pack": "Brown & Friends",
+      "images": 12,
+      "loaded": true
+    },
+    {
+      "pack": "Moon James",
+      "images": 10,
+      "loaded": true
+    }
+  ],
+  "localCheck": {
+    "status": "PASS",
+    "count": 39,
+    "allPass": true,
+    "finishedAt": "2026-10-17T03:18:11.846Z",
+    "sourceFingerprint": "e3926444d0ef82d0faa5de55ef9f4b6ac4554ff72d7801992ad541f2508347e5"
+  },
+  "unitTests": {
+    "web": 3362,
+    "shared": 149,
+    "storefront": 48,
+    "total": 3559
+  }
+}

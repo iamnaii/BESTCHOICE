@@ -5,6 +5,7 @@ import {
 import type { AfterSalesOutcome, AfterSalesStage } from '@prisma/client';
 import { formatThaiDateText } from '../../../utils/thai-date.util';
 import { PRICED_EXCHANGE_COST_LINE } from '../utils/after-sales-line-copy.util';
+import { deliveredAccessoriesText, type DeliveredAccessories } from '../utils/delivered-accessories';
 import type { AfterSalesDoc, DocBlock, DocCheck, DocCompany, DocKv } from './after-sales-doc-html';
 
 /**
@@ -73,6 +74,17 @@ export interface DocSource {
     replacementContractNumber: string | null;
     newShopWarrantyEnd: Date | null;
     newManufacturerWarrantyEnd: Date | null;
+    /** PR 5 — เคสขายสด */
+    saleType: 'CASH' | 'EXTERNAL_FINANCE' | null;
+    financeCompany: string | null;
+    sevenDayEnd: Date | null; // วันสุดท้ายของกรอบ 7 วันของเครื่องทดแทน (วันส่งมอบ + 6)
+    deliveredNote: string | null; // note ของ event DELIVERED (มีอุปกรณ์ที่ส่งมอบ) — เคสก่อน M3 ถอดอุปกรณ์จากข้อความนี้
+    /** M3 — อุปกรณ์ที่ส่งมอบแบบโครงสร้าง (`AfterSalesCase.deliveredAccessories`) · null = ยังไม่ส่งมอบ (พิมพ์ก่อนกดส่งมอบ) /
+     * ส่งมอบโดยไม่ส่งรายการอุปกรณ์ / เคสก่อน M3 / เคสที่ไม่ใช่ขายสด — ตอนนั้นถอดจาก `deliveredNote` ถ้ามี */
+    deliveredAccessories: DeliveredAccessories | null;
+    approvedByName: string | null;
+    approvedAt: Date | null;
+    repairTicketNumber: string | null;
   } | null;
 }
 
@@ -80,8 +92,8 @@ export const PHOTO_ANGLES = ['หน้า', 'หลัง', 'ซ้าย', '�
 export const SYMPTOM_MAX = 300;
 export const OTHER_MAX = 60;
 export const HANDOVER_NOT_READY_MSG = 'ใบส่งมอบพิมพ์ได้เมื่อเคสพร้อมให้ลูกค้ารับหรือปิดแล้ว';
-/** เปลี่ยนรุ่นเดิมขายสด (ยังไม่เปิดใช้จนถึง PR 5) — ถ้อยคำใบส่งมอบของสัญญาผ่อนใช้กับมันไม่ได้ */
-export const HANDOVER_CASH_UNSUPPORTED_MSG = 'ใบส่งมอบของการเปลี่ยนเครื่องขายสดยังไม่รองรับ';
+/** PR 5 — ใบรับคืนเครื่อง/ใบส่งมอบเครื่องทดแทน พิมพ์ได้เฉพาะเคสขายสดที่ยืนยันแล้ว (READY/CLOSED) */
+export const RETURN_NOT_READY_MSG = 'ใบรับคืนเครื่องพิมพ์ได้เฉพาะเคสเปลี่ยนรุ่นเดิมขายสดที่ยืนยันแล้ว';
 
 /** เงื่อนไขการรับฝาก — ร่างกระดาน 8 · ข้อ "ไม่มาติดต่อเกินกี่วัน" รอเจ้าของกำหนด (เพิ่มท้ายอาร์เรย์นี้) */
 export const RECEIPT_CONDITIONS = [
@@ -130,10 +142,18 @@ export function handoverBlockReason(c: {
   stage: AfterSalesStage;
   hasRepairTicket: boolean;
 }): string | null {
-  if (c.outcome === 'CASH_SAME_MODEL_EXCHANGE') return HANDOVER_CASH_UNSUPPORTED_MSG;
   if (!c.outcome || (c.stage !== 'READY_FOR_PICKUP' && c.stage !== 'CLOSED'))
     return HANDOVER_NOT_READY_MSG;
   if (c.outcome === 'REPAIR' && !c.hasRepairTicket) return 'ไม่พบใบซ่อมของเคสนี้';
+  return null;
+}
+
+export function returnBlockReason(c: {
+  outcome: AfterSalesOutcome | null;
+  stage: AfterSalesStage;
+}): string | null {
+  if (c.outcome !== 'CASH_SAME_MODEL_EXCHANGE') return RETURN_NOT_READY_MSG;
+  if (c.stage !== 'READY_FOR_PICKUP' && c.stage !== 'CLOSED') return RETURN_NOT_READY_MSG;
   return null;
 }
 
@@ -506,5 +526,214 @@ export function composeHandoverDoc(s: DocSource): AfterSalesDoc {
       },
     ],
     footer: footer(s),
+  };
+}
+
+function cashReturnReason(s: DocSource): string {
+  const ex = s.exchange;
+  if (ex?.fromRepair) {
+    return `ซ่อมไม่ได้ — เปลี่ยนรุ่นเดิมแทน${ex.repairTicketNumber ? ` (ใบซ่อม ${ex.repairTicketNumber})` : ''}`;
+  }
+  const purchased = s.warranty.purchasedAt
+    ? ` (ซื้อ ${date(s.warranty.purchasedAt)} · แจ้ง ${date(s.receivedAt)})`
+    : '';
+  return `เครื่องมีปัญหาภายใน 7 วันนับจากวันซื้อ${purchased} — อาการ: ${clip(s.symptom, SYMPTOM_MAX)}`;
+}
+
+/** PR 5 ใบที่ 1/2 — ใบรับคืนเครื่อง (ออกตอนส่งมอบ คู่กับใบส่งมอบเครื่องทดแทน) */
+export function composeReturnDoc(s: DocSource): AfterSalesDoc {
+  const ex = s.exchange;
+  const returnedAt = s.closedAt ?? s.printedAt;
+  const blocks: DocBlock[] = [
+    {
+      type: 'pair',
+      left: { title: 'ลูกค้า (ผู้ส่งคืน)', rows: customerRows(s) },
+      right: {
+        title: 'ใบขาย',
+        rows: [
+          { label: 'เลขที่', value: s.saleNumber ?? '—', strong: true },
+          { label: 'วันซื้อ', value: date(s.warranty.purchasedAt) },
+          { label: 'ราคาขาย', value: 'ไม่เปลี่ยน — ใบขายเดิมยังใช้อยู่' },
+          { label: 'สาขา', value: s.branchName },
+        ],
+      },
+    },
+    {
+      type: 'table',
+      title: 'เครื่องที่รับคืน',
+      head: ['เครื่อง', 'IMEI', 'Serial'],
+      rows: [
+        [
+          ex?.oldDeviceLabel ?? s.deviceLabel,
+          ex?.oldImei ?? s.deviceImei ?? '—',
+          s.deviceSerial ?? '—',
+        ],
+      ],
+      nowrapCols: IMEI_SERIAL_COLS,
+    },
+    {
+      type: 'checks',
+      label: 'อุปกรณ์ที่คืนมาด้วย (ตามใบรับฝาก)',
+      items: accessoryChecks(s.accessories),
+      trailing: { text: 'ปิด Find My / ปลดล็อกแล้ว', checked: s.unlockConfirmed },
+    },
+    { type: 'box', title: 'เหตุผลการรับคืน', text: cashReturnReason(s) },
+    {
+      type: 'section',
+      section: {
+        title: 'สภาพเครื่อง ณ วันรับคืน',
+        rows: [
+          { label: 'อ้างอิง', value: `รูปตอนซื้อและรูปตอนรับฝาก ${s.photoCount} รูป (ในระบบ)` },
+          {
+            label: 'ผู้ยืนยัน',
+            value: ex?.approvedByName
+              ? `${ex.approvedByName}${ex.approvedAt ? ` · ${date(ex.approvedAt)}` : ''}`
+              : '—',
+          },
+        ],
+      },
+    },
+    {
+      type: 'section',
+      section: {
+        title: 'ผลของการรับคืน',
+        rows: [
+          { label: 'เงิน', value: 'ไม่มีการคืนเงินหรือเงินเพิ่ม' },
+          { label: 'เครื่องเดิม', value: 'เครื่องเดิมเป็นของร้าน รอส่งเคลมผู้จัดจำหน่าย' },
+          { label: 'ใบขาย', value: 'ใบขายเดิมยังเป็นหลักฐานการซื้อ (เปลี่ยนเฉพาะเครื่อง)' },
+        ],
+      },
+    },
+  ];
+  return {
+    title: 'ใบรับคืนเครื่อง',
+    kicker: 'เปลี่ยนรุ่นเดิม (ขายสด) · ใบที่ 1/2 · ต้นฉบับ — ร้านเก็บ',
+    company: s.company,
+    meta: [
+      { label: 'เลขเคส', value: s.caseNumber },
+      { label: 'วันที่รับคืน', value: dateTime(returnedAt) },
+      { label: 'อ้างอิงใบขาย', value: s.saleNumber ?? '—' },
+      { label: 'พนักงาน', value: s.printedByName },
+    ],
+    blocks,
+    ack: 'ลูกค้าส่งคืนเครื่องเดิมพร้อมอุปกรณ์ตามรายการข้างต้นให้ร้าน และรับทราบว่าไม่มีการคืนเงินหรือเงินเพิ่ม',
+    signatures: [
+      { role: 'ลูกค้า (ผู้ส่งคืน)', name: s.customerName, sub: BLANK_DATE },
+      {
+        role: 'พนักงานผู้รับคืน',
+        name: s.printedByName,
+        sub: `${s.branchName} · ${formatThaiDateText(returnedAt)}`,
+      },
+    ],
+    footer: footer(s),
+  };
+}
+
+/** PR 5 ใบที่ 2/2 — ใบส่งมอบเครื่องทดแทน (ขายสด: ไม่มีสัญญาใหม่ ไม่มีเงินเปลี่ยนมือ) */
+export function composeReplacementHandoverDoc(s: DocSource): AfterSalesDoc {
+  const ex = s.exchange;
+  const handedOverAt = s.closedAt ?? s.printedAt;
+  const paymentLine =
+    ex?.saleType === 'EXTERNAL_FINANCE'
+      ? `ตามใบขายเดิม (ไฟแนนซ์ ${ex.financeCompany ?? '—'})`
+      : 'ชำระแล้วตามใบขายเดิม ไม่มีเงินเปลี่ยนมือ';
+  // M3 — ข้อมูลโครงสร้างมาก่อน (ไม่มีอุปกรณ์ = "ไม่มี") · เคสก่อน M3 (null) ถอดจากข้อความ note ของ event DELIVERED
+  const delivered = ex?.deliveredAccessories
+    ? (deliveredAccessoriesText(ex.deliveredAccessories) ?? 'ไม่มี')
+    : (ex?.deliveredNote
+        ?.split(' · ')
+        .find((p) => p.startsWith('อุปกรณ์: '))
+        ?.replace('อุปกรณ์: ', '') ?? null);
+  const blocks: DocBlock[] = [
+    {
+      type: 'pair',
+      left: { title: 'ลูกค้า (ผู้รับมอบ)', rows: customerRows(s) },
+      right: {
+        title: 'ใบขาย',
+        rows: [
+          { label: 'เลขที่', value: s.saleNumber ?? '—', strong: true },
+          { label: 'ราคาขาย', value: 'ราคาขายเท่าเดิม' },
+          { label: 'การชำระ', value: paymentLine },
+        ],
+      },
+    },
+    {
+      type: 'table',
+      title: 'เปลี่ยนรุ่นเดิม ความจุเดิม ราคาเท่าเดิม',
+      head: ['', 'เครื่อง', 'IMEI'],
+      rows: [
+        [
+          'เครื่องเดิม — รับคืนแล้ว (ใบที่ 1/2)',
+          ex?.oldDeviceLabel ?? s.deviceLabel,
+          ex?.oldImei ?? s.deviceImei ?? '—',
+        ],
+        ['เครื่องที่ส่งมอบ', ex?.newDeviceLabel ?? '—', ex?.newImei ?? '—'],
+      ],
+      strongRows: [1],
+      nowrapCols: [2],
+    },
+    { type: 'box', title: 'อุปกรณ์ที่ส่งมอบ', text: delivered ?? 'ตามที่ระบุในระบบ' },
+    {
+      type: 'pair',
+      left: {
+        title: 'ค่าใช้จ่าย',
+        rows: [
+          { label: 'ลูกค้าจ่าย', value: 'ไม่มี', strong: true },
+          {
+            label: 'เหตุผล',
+            value: ex?.fromRepair ? 'ซ่อมไม่ได้ — เปลี่ยนรุ่นเดิมแทน' : 'มีปัญหาภายใน 7 วันหลังซื้อ',
+          },
+        ],
+      },
+      right: {
+        title: 'ประกันของเครื่องที่ส่งมอบ (นับใหม่จากวันส่งมอบ)',
+        rows: [
+          {
+            label: 'ประกันร้าน',
+            value: ex?.newShopWarrantyEnd ? `ถึง ${date(ex.newShopWarrantyEnd)}` : 'ไม่มี',
+          },
+          { label: 'กรอบ 7 วัน', value: ex?.sevenDayEnd ? `ถึง ${date(ex.sevenDayEnd)}` : '—' },
+          {
+            label: 'ประกันศูนย์',
+            value: ex?.newManufacturerWarrantyEnd
+              ? `ถึง ${date(ex.newManufacturerWarrantyEnd)}`
+              : '— (มือสอง ไม่มี)',
+          },
+        ],
+      },
+    },
+    {
+      type: 'section',
+      section: {
+        title: 'ผลต่อใบขาย',
+        rows: [
+          { label: 'เลขที่/ราคา', value: 'ใบขายเดิม เลขเดิม ราคาเดิม — เปลี่ยนเฉพาะเครื่อง' },
+          { label: 'หลักฐาน', value: 'ใบขายเดิม + ใบนี้ + ใบรับคืน (ใบที่ 1/2)' },
+        ],
+      },
+    },
+  ];
+  return {
+    title: 'ใบส่งมอบเครื่องทดแทน',
+    kicker: 'เปลี่ยนรุ่นเดิม (ขายสด) · ใบที่ 2/2 · ต้นฉบับ — ร้านเก็บ',
+    company: s.company,
+    meta: [
+      { label: 'เลขเคส', value: s.caseNumber },
+      { label: 'วันที่ส่งมอบ', value: dateTime(handedOverAt) },
+      { label: 'อ้างอิงใบขาย', value: s.saleNumber ?? '—' },
+      { label: 'อ้างอิงใบรับคืน', value: `ใบที่ 1/2 · ${formatThaiDateText(handedOverAt)}` },
+      { label: 'พนักงาน', value: s.printedByName },
+    ],
+    blocks,
+    ack: 'ลูกค้าตรวจเครื่องที่ส่งมอบพร้อมอุปกรณ์ตามรายการข้างต้นแล้ว เปิดใช้งานได้ปกติ และรับทราบว่าใบขายเดิมยังเป็นหลักฐานการซื้อ',
+    signatures: [
+      { role: 'ลูกค้า (ผู้รับมอบ)', name: s.customerName, sub: BLANK_DATE },
+      {
+        role: 'พนักงานผู้ส่งมอบ',
+        name: s.printedByName,
+        sub: `${s.branchName} · ${formatThaiDateText(handedOverAt)}`,
+      },
+    ],
+    footer: `${footer(s)} · ใบขายเดิมยังเป็นหลักฐานการซื้อ`,
   };
 }

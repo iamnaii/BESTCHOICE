@@ -1,4 +1,8 @@
-import { reconcileStage, type ReconcilableCase } from '../services/after-sales-stage-reconcile';
+import {
+  RECONCILE_SELECT,
+  reconcileStage,
+  type ReconcilableCase,
+} from '../services/after-sales-stage-reconcile';
 
 function buildRow(overrides: Record<string, unknown> = {}) {
   return {
@@ -8,6 +12,7 @@ function buildRow(overrides: Record<string, unknown> = {}) {
     cancelledAt: null,
     closedAt: null,
     replacementContractId: null,
+    replacementSaleId: null,
     repairTicket: { status: 'IN_PROGRESS', deletedAt: null, returnedToCustomerAt: null },
     exchangeRequest: null,
     ...overrides,
@@ -274,5 +279,26 @@ describe('reconcileStage — A1 final-fix brief (self-heal drifted AfterSalesCas
     });
     expect(result.stage).toBe('CANCELLED');
     expect(result.closedAt).toBe(closedAt);
+  });
+  it('PR 5 — เคสขายสดที่ยืนยันแล้ว (replacementSaleId ตั้ง, stored stage AWAITING_APPROVAL) → derived READY_FOR_PICKUP และ CAS เขียน', async () => {
+    const row = buildRow({
+      outcome: 'CASH_SAME_MODEL_EXCHANGE',
+      stage: 'AWAITING_APPROVAL',
+      repairTicket: null,
+      replacementContractId: null,
+      replacementSaleId: 'sale-1',
+    });
+    const result = await reconcileStage(client, row as ReconcilableCase);
+    expect(result.stage).toBe('READY_FOR_PICKUP');
+    expect(client.afterSalesCase.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'as-1', stage: 'AWAITING_APPROVAL' },
+        data: expect.objectContaining({ stage: 'READY_FOR_PICKUP' }),
+      }),
+    );
+  });
+
+  it('RECONCILE_SELECT เลือก replacementSaleId (ทุกผู้อ่านต้องส่งให้ deriveStage)', () => {
+    expect(RECONCILE_SELECT).toMatchObject({ replacementSaleId: true, replacementContractId: true });
   });
 });

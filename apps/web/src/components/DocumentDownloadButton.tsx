@@ -26,7 +26,7 @@ export default function DocumentDownloadButton({ path, filename, children, class
     },
   });
   return (
-    <button
+    <button data-ui-control="button"
       {...props}
       type="button"
       className={cn('inline-flex min-h-11 min-w-11 items-center justify-center gap-1 rounded disabled:cursor-wait disabled:opacity-60', className)}

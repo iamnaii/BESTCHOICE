@@ -1,3 +1,4 @@
+import { NativeSelect } from '@/components/ui/native-select';
 import { useState } from 'react';
 import { Link } from 'react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -211,8 +212,8 @@ export default function ChatServiceRequestCard({ requestId }: { requestId: strin
         >
           <label className="block">
             ผู้รับผิดชอบ
-            <select
-              className={field}
+            <NativeSelect wrapperClassName="max-w-full mt-1 w-full min-w-0"
+              className={`${field} mt-0`}
               value={assignee}
               onChange={(e) => setAssignee(e.target.value)}
             >
@@ -227,7 +228,7 @@ export default function ChatServiceRequestCard({ requestId }: { requestId: strin
                       {s.name} {s.detail}
                     </option>
                   ))}
-            </select>
+            </NativeSelect>
           </label>
           {staff.isError && (
             <p role="alert">
@@ -251,8 +252,8 @@ export default function ChatServiceRequestCard({ requestId }: { requestId: strin
             <>
               <label className="block">
                 สถานะรับเรื่อง
-                <select
-                  className={field}
+                <NativeSelect wrapperClassName="max-w-full mt-1 w-full min-w-0"
+                  className={`${field} mt-0`}
                   value={status}
                   onChange={(e) => setStatus(e.target.value)}
                 >
@@ -263,7 +264,7 @@ export default function ChatServiceRequestCard({ requestId }: { requestId: strin
                         {v}
                       </option>
                     ))}
-                </select>
+                </NativeSelect>
               </label>
               {['RESOLVED', 'CANCELLED'].includes(status) && (
                 <label className="block">

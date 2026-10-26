@@ -6,7 +6,6 @@ import { MAX_TENDERS } from '../../shop-tenders/shop-tender.util';
 export class CreateSaleDto {
   @IsOptional() @IsUUID() promotionId?: string;
   @IsOptional() @IsUUID() priceId?: string;
-  @IsOptional() @IsBoolean() overrideActiveContractCheck?: boolean;
   @IsOptional() @IsString() @MaxLength(128) downPaymentReference?: string;
   @IsUUID() @IsOptional() tradeInCreditId?: string;
   @IsString()

@@ -65,7 +65,7 @@ export default function LandingPage() {
                 <h1 className="text-3xl lg:text-4xl xl:text-5xl font-bold text-primary-foreground leading-tight">
                   สินค้าคุณภาพ
                   <br />
-                  <span className="text-gradient">ผ่อนสบาย</span>
+                  <span className="text-primary-foreground underline decoration-primary-foreground/40 underline-offset-8">ผ่อนสบาย</span>
                   <br />
                   ราคาเป็นกันเอง
                 </h1>
@@ -148,6 +148,7 @@ export default function LandingPage() {
                 return (
                   <ProductCard
                     key={product.id}
+                    productId={product.id}
                     brand={product.brand}
                     model={product.model}
                     price={defaultPrice?.amount || product.costPrice}
@@ -353,10 +354,10 @@ export default function LandingPage() {
             <div>
               <h4 className="text-background font-semibold mb-4">ลิงก์</h4>
               <ul className="space-y-2 text-sm">
-                <li><button onClick={() => scrollTo('hero')} className="hover:text-background transition-colors">หน้าแรก</button></li>
-                <li><button onClick={() => scrollTo('products')} className="hover:text-background transition-colors">สินค้า</button></li>
-                <li><button onClick={() => scrollTo('services')} className="hover:text-background transition-colors">บริการ</button></li>
-                <li><button onClick={() => scrollTo('contact')} className="hover:text-background transition-colors">ติดต่อเรา</button></li>
+                <li><button onClick={() => scrollTo('hero')} className="min-h-11 inline-flex items-center hover:text-background transition-colors">หน้าแรก</button></li>
+                <li><button onClick={() => scrollTo('products')} className="min-h-11 inline-flex items-center hover:text-background transition-colors">สินค้า</button></li>
+                <li><button onClick={() => scrollTo('services')} className="min-h-11 inline-flex items-center hover:text-background transition-colors">บริการ</button></li>
+                <li><button onClick={() => scrollTo('contact')} className="min-h-11 inline-flex items-center hover:text-background transition-colors">ติดต่อเรา</button></li>
               </ul>
             </div>
             <div>

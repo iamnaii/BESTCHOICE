@@ -258,9 +258,10 @@ export default function SupplierTable({
     },
     {
       key: 'actions',
-      label: '',
+      label: 'จัดการ',
+      align: 'right' as const,
       render: (s: Supplier) => (
-        <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
+        <div className="ml-auto flex w-max items-center gap-2" onClick={(e) => e.stopPropagation()}>
           <Button
             variant="ghost"
             size="icon"

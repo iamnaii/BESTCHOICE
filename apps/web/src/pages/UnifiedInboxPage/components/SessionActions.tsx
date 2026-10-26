@@ -99,11 +99,11 @@ export default function SessionActions({
   const canTakeOver = !session?.aiPaused && !session?.handoffMode;
 
   return (
-    <div className="border-b border-border bg-muted px-4 py-2">
+    <div className="inbox-session-actions border-b border-border bg-muted px-4 py-2">
       <div className="flex items-center gap-2 flex-wrap">
         {/* Assign to me */}
         {!assignedToMe && (
-          <button
+          <button data-ui-control="button"
             onClick={() => {
               onAssign(currentUserId);
               onClose();
@@ -124,7 +124,7 @@ export default function SessionActions({
 
         {/* Transfer to other staff */}
         <div className="relative" ref={transferRef}>
-          <button
+          <button data-ui-control="button"
             onClick={() => setShowStaffList((v) => !v)}
             aria-haspopup="menu"
             aria-expanded={showStaffList}
@@ -177,7 +177,7 @@ export default function SessionActions({
         </div>
 
         {/* Resolve */}
-        <button
+        <button data-ui-control="button"
           onClick={onResolve}
           className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-success/10 text-success rounded-lg hover:bg-success/20 transition-colors"
         >
@@ -188,7 +188,7 @@ export default function SessionActions({
         {/* Create contract — เลือกเครื่องก่อน แล้ว prefill ทั้ง customerId + productId */}
         {session.customerId && (
           <div className="relative" ref={contractRef}>
-            <button
+            <button data-ui-control="button"
               onClick={() => setShowProductList((v) => !v)}
               aria-haspopup="menu"
               aria-expanded={showProductList}
@@ -249,7 +249,7 @@ export default function SessionActions({
 
         {/* Take over from AI (symmetric inverse of "ส่งกลับ Bot") */}
         {canTakeOver && (
-          <button
+          <button data-ui-control="button"
             onClick={async () => {
               if (!session?.id || isTakingOver) return;
               setIsTakingOver(true);
@@ -277,12 +277,12 @@ export default function SessionActions({
 
         {/* Return to AI bot */}
         {session.handoffMode && (
-          <button
+          <button data-ui-control="button"
             onClick={onReturnToAI}
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-muted text-muted-foreground rounded-lg hover:bg-accent transition-colors"
           >
             <Bot className="w-3.5 h-3.5" />
-            ส่งกลับ Bot
+            ส่งกลับบอต
           </button>
         )}
 

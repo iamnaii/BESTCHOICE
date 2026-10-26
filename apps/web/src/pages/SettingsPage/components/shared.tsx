@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useId as useUiFieldId, useState, useEffect } from 'react';
 
 // ── Shared interfaces ──
 
@@ -73,7 +73,7 @@ export const configGroups: ConfigGroup[] = [
   },
   {
     key: 'payment_link',
-    title: 'Payment Gateway',
+    title: "ระบบรับชำระเงิน",
     subtitle: 'ตั้งค่าลิงก์ชำระเงิน (ชำระผ่าน PaySolutions)',
     items: [
       { key: 'payment_link_expiry_hours', label: 'อายุลิงก์ชำระเงิน (ชั่วโมง)', shortLabel: 'อายุ Link', suffix: ' ชม.', type: 'number', step: '1', desc: 'ลิงก์ชำระเงินหมดอายุหลังกี่ชั่วโมง' },
@@ -115,13 +115,14 @@ export function EditField({
   value: string;
   onChange: (val: string) => void;
 }) {
+  const uiFieldId = useUiFieldId();
   const isAddress = item.key.includes('ADDRESS');
   return (
     <div>
       <div className={`flex ${isAddress ? 'flex-col gap-1' : 'items-center gap-4'}`}>
-        <label className={`${isAddress ? '' : 'flex-1'} text-sm text-foreground`}>{item.label}</label>
+        <label htmlFor={`${uiFieldId}-1`} className={`${isAddress ? '' : 'flex-1'} text-sm text-foreground`}>{item.label}</label>
         <div className={isAddress ? 'w-full' : 'w-48'}>
-          <input
+          <input id={`${uiFieldId}-1`}
             type={item.type}
             step={item.step}
             value={value}
@@ -229,14 +230,14 @@ export function SettingsCard({
                 ))
               )}
               <div className="flex gap-2 pt-2">
-                <button
+                <button data-ui-control="button"
                   onClick={handleSave}
                   disabled={isSaving}
                   className="px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50"
                 >
                   {isSaving ? 'กำลังบันทึก...' : 'บันทึก'}
                 </button>
-                <button onClick={onCancel} className="px-3 py-2 text-sm text-muted-foreground hover:text-foreground">
+                <button data-ui-control="button" onClick={onCancel} className="px-3 py-2 text-sm text-muted-foreground hover:text-foreground">
                   ยกเลิก
                 </button>
               </div>

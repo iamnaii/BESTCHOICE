@@ -3,6 +3,7 @@ import { Button } from '@/components/ui/button';
 import type { QueueFilterState, QueueSortOption } from '../hooks/useQueueFilter';
 import { FilterPresetsDropdown } from './FilterPresetsDropdown';
 import { SortDropdown } from './SortDropdown';
+import { COLLECTION_STATUS_OPTIONS, COLLECTION_PRODUCT_OPTIONS } from '../constants/filterLabels';
 
 interface FilterChipsBarProps {
   filter: QueueFilterState;
@@ -27,7 +28,7 @@ function buildChips(f: QueueFilterState): Chip[] {
   } else if (f.assigned === 'unassigned') {
     chips.push({
       key: 'assigned-unassigned',
-      label: 'ยังไม่ assign',
+      label: 'ยังไม่มอบหมาย',
       clear: { assigned: undefined },
     });
   }
@@ -53,7 +54,7 @@ function buildChips(f: QueueFilterState): Chip[] {
   f.contractStatuses?.forEach((s) =>
     chips.push({
       key: `status-${s}`,
-      label: s,
+      label: COLLECTION_STATUS_OPTIONS.find((option) => option.value === s)?.label ?? s,
       clear: { contractStatuses: f.contractStatuses!.filter((x) => x !== s) },
     }),
   );
@@ -61,7 +62,7 @@ function buildChips(f: QueueFilterState): Chip[] {
   f.productTypes?.forEach((p) =>
     chips.push({
       key: `product-${p}`,
-      label: p,
+      label: COLLECTION_PRODUCT_OPTIONS.find((option) => option.value === p)?.label ?? p,
       clear: { productTypes: f.productTypes!.filter((x) => x !== p) },
     }),
   );
@@ -203,7 +204,7 @@ export default function FilterChipsBar({
       </Button>
 
       {chips.map((chip) => (
-        <button
+        <button data-ui-control="button"
           key={chip.key}
           type="button"
           onClick={() => setFilter(chip.clear)}

@@ -333,4 +333,35 @@ describe('AfterSalesLookupService.lookup', () => {
       data: { stage: 'CLOSED', closedAt: expect.any(Date) },
     });
   });
+  it('PR 5 — พบใบขายสดมือสอง ใน 7 วัน → ส่ง productCategory ให้ computeOutcomes และ CASH_SAME_MODEL_EXCHANGE เปิด', async () => {
+    repair.lookupByImei.mockResolvedValue({
+      found: true,
+      product: {
+        id: 'product-9',
+        brand: 'Apple',
+        model: 'iPhone 13',
+        storage: '128GB',
+        imeiSerial: '359000000000009',
+        category: 'PHONE_USED',
+      },
+      sale: { id: 'sale-9', saleType: 'CASH' },
+      customer: { id: 'cust-9', name: 'ข', phone: null },
+      contract: null,
+      warrantyStatus: 'IN_7DAY_DEFECT',
+      daysRemainingIn7Day: 5,
+      purchasedAt: new Date(),
+      shopWarrantyEndDate: null,
+      manufacturerWarrantyEndDate: null,
+    });
+
+    const result = await svc.lookup({ imei: '359000000000009' }, user);
+
+    expect(result.source).toBe('CASH_SALE');
+    expect(result.product).toMatchObject({ category: 'PHONE_USED' });
+    expect(result.outcomes.find((o) => o.outcome === 'CASH_SAME_MODEL_EXCHANGE')).toMatchObject({
+      enabled: true,
+      implemented: true,
+    });
+    expect(defect.checkEligibility).not.toHaveBeenCalled();
+  });
 });

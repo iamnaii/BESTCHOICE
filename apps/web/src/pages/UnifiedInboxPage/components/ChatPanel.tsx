@@ -1,14 +1,50 @@
 import ChatLibraryPicker from './ChatLibraryPicker';
+import ChatHandoffDialog from './ChatHandoffDialog';
+import RoomMessageSearch from './RoomMessageSearch';
 import LibraryAttachmentTray from './LibraryAttachmentTray';
 import { useChatWorkSettings } from '../hooks/useChatWork';
 import { useLibraryDraft } from '../hooks/useLibraryDraft';
-import NoteMentionInput, { type NoteDraft } from './NoteMentionInput';
+import NoteMentionInput, { type NoteDraft, createNoteDraftStore } from './NoteMentionInput';
 import { ChatMediaPicker } from './ChatMediaPicker';
 import { useChatMediaPicker } from '../hooks/useChatMediaPicker';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { useRef, useEffect, useLayoutEffect, useState, useMemo } from 'react';
 
-import { Cloud, Mic, Square, Send, MoreVertical, ArrowLeft, Paperclip, Pin, MessageSquare, UserCircle2, MessageSquareQuote, Loader2, Upload, Eye, Bell, BellOff, Bot, BotOff, AlertCircle, RotateCw, Smartphone, Clock, StickyNote, Lock, Check, CalendarClock } from 'lucide-react';
+import {
+  Search,
+  Users,
+  Cloud,
+  Mic,
+  Square,
+  Send,
+  MoreVertical,
+  ArrowLeft,
+  Paperclip,
+  Pin,
+  MessageSquare,
+  UserCircle2,
+  MessageSquareQuote,
+  Loader2,
+  Upload,
+  Eye,
+  Bell,
+  BellOff,
+  Bot,
+  BotOff,
+  AlertCircle,
+  RotateCw,
+  Smartphone,
+  Clock,
+  Lock,
+  Check,
+  CalendarClock,
+  Plus,
+  ImagePlus,
+  X,
+  ChevronDown,
+  Sparkles,
+  CircleHelp,
+} from 'lucide-react';
 import { isSameDay } from 'date-fns';
 import { formatDateSeparator, formatChatTimestamp, formatWaitDuration } from '@/lib/chat-time';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
@@ -32,6 +68,17 @@ import api from '@/lib/api';
 import { getGeneratedAvatarUrl } from '@/lib/avatar';
 
 import { isAcceptedFile } from './upload-accept';
+import { useIsMobile } from '@/hooks/useIsMobile';
+import { useRoomFileDraft } from '../hooks/useRoomFileDraft';
+import { Sheet, SheetContent, SheetTitle, SheetDescription } from '@/components/ui/sheet';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuTrigger,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+} from '@/components/ui/dropdown-menu';
 
 const MAX_COMPOSER_HEIGHT = 128; // px — matches Tailwind max-h-32 (8rem)
 
@@ -45,11 +92,16 @@ interface ChatPanelProps {
   session: any;
   messages: any[];
   isLoadingMessages: boolean;
+  focusedMessageId?: string;
+  searchContextError?: boolean;
+  onRetrySearchContext?: () => void;
+  onReturnToLatest?: () => void;
+  onSelectSearchResult?: (messageId: string) => void;
   isCustomerTyping?: boolean;
   // Returns false when the send was rejected so the composer can keep the typed
   // text; sticker/GIF callers ignore the result.
   onSendMessage: (text: string) => void | Promise<boolean | void>;
-  onSendFile?: (file: File) => void;
+  onSendFile?: (file: File) => void | Promise<boolean | void>;
   onSendSticker?: (params: { packageId: number; stickerId: number }) => void;
   onBack: () => void;
   onAssign: (staffId: string) => void;
@@ -95,6 +147,10 @@ export default function ChatPanel({
   session,
   messages,
   isLoadingMessages,
+  focusedMessageId,
+  searchContextError,
+  onRetrySearchContext,
+  onReturnToLatest,
   isCustomerTyping = false,
   onSendMessage,
   notes = [],
@@ -115,6 +171,7 @@ export default function ChatPanel({
   onReturnToAI,
   currentUserId,
   onShowCustomerInfo,
+  onSelectSearchResult,
   isUploadingFile = false,
   otherViewers,
   roomMuted,
@@ -130,26 +187,57 @@ export default function ChatPanel({
   staffTypingName,
 }: ChatPanelProps) {
   const [inputText, setInputText] = useState('');
+  const isMobile = useIsMobile();
+  const [toolsOpen, setToolsOpen] = useState(false);
+  const [roomMenuOpen, setRoomMenuOpen] = useState(false);
+  const [roomSearchOpen, setRoomSearchOpen] = useState(false);
+  const [handoffOpen, setHandoffOpen] = useState(false);
+  const [aiOpen, setAiOpen] = useState(false);
+  const fileDraft = useRoomFileDraft(session?.id);
+  const noteDrafts = useRef(createNoteDraftStore());
+  const photoInputRef = useRef<HTMLInputElement>(null);
   // โหมดช่องพิมพ์ (ท่า OBI): คุยกับลูกค้า | โน้ตภายใน — เปลี่ยนห้องแล้วกลับโหมดคุยเสมอ กันเผลอ
   const [composerMode, setComposerMode] = useState<'chat' | 'note'>('chat');
   const isNoteMode = composerMode === 'note';
   const librarySettings = useChatWorkSettings();
-  const libraryEnabled = !librarySettings.settings.isError && !!librarySettings.settings.data?.flags.chat_cloud_library_enabled;
-  const libraryDraft = useLibraryDraft(session?.id ?? null, librarySettings.company, !isNoteMode && libraryEnabled, 'chat');
+  const libraryEnabled =
+    !librarySettings.settings.isError &&
+    !!librarySettings.settings.data?.flags.chat_cloud_library_enabled;
+  const libraryDraft = useLibraryDraft(
+    session?.id ?? null,
+    librarySettings.company,
+    !isNoteMode && libraryEnabled,
+    'chat',
+  );
   useEffect(() => {
     setComposerMode('chat');
+    setRoomSearchOpen(false);
+    setHandoffOpen(false);
+    setToolsOpen(false);
+    setRoomMenuOpen(false);
+    setShowActions(false);
+    setAiOpen(false);
+    setShowTemplatePicker(false);
+    setShowProductPicker(false);
+    setEmojiOpen(false);
   }, [session?.id]);
   const timeline = useMemo(() => mergeTimeline(messages, notes), [messages, notes]);
   const canDeleteNote = (n: RoomNote) =>
-    (n.staff?.id ?? n.staffId) === currentUserId || currentUserRole === 'OWNER' || currentUserRole === 'BRANCH_MANAGER';
+    (n.staff?.id ?? n.staffId) === currentUserId ||
+    currentUserRole === 'OWNER' ||
+    currentUserRole === 'BRANCH_MANAGER';
   const [isSending, setIsSending] = useState(false);
-  const [selectedSuggestion, setSelectedSuggestion] = useState<{ aiDraft: string; intent: string } | null>(null);
+  const [selectedSuggestion, setSelectedSuggestion] = useState<{
+    aiDraft: string;
+    intent: string;
+  } | null>(null);
   const [showActions, setShowActions] = useState(false);
   const [emojiOpen, setEmojiOpen] = useState(false);
   const mediaPicker = useChatMediaPicker();
   const [showTemplatePicker, setShowTemplatePicker] = useState(false);
   const [showProductPicker, setShowProductPicker] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const followingLatest = useRef(true);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const noteContainerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -179,9 +267,12 @@ export default function ChatPanel({
       onStopTyping?.();
     }
   };
-  useEffect(() => () => {
-    if (stopTypingTimerRef.current) clearTimeout(stopTypingTimerRef.current);
-  }, []);
+  useEffect(
+    () => () => {
+      if (stopTypingTimerRef.current) clearTimeout(stopTypingTimerRef.current);
+    },
+    [],
+  );
 
   const queryClient = useQueryClient();
   const pinMutation = useMutation({
@@ -209,10 +300,8 @@ export default function ChatPanel({
   const isLineChannel = session?.channel?.startsWith('LINE');
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file && onSendFile) {
-      onSendFile(file);
-    }
+    if (onSendFile) fileDraft.add(Array.from(e.target.files ?? []));
+    setToolsOpen(false);
     e.target.value = ''; // reset
   };
 
@@ -225,7 +314,7 @@ export default function ChatPanel({
       .filter((f): f is File => !!f);
     if (imageFiles.length === 0) return; // let normal text paste through — do NOT preventDefault
     e.preventDefault();
-    imageFiles.forEach((f) => onSendFile(f));
+    fileDraft.add(imageFiles);
   };
 
   // ─── Drag-and-drop ────────────────────────────────────────────────────────────
@@ -233,7 +322,7 @@ export default function ChatPanel({
   const dragDepth = useRef(0);
 
   const onDragEnter = (e: React.DragEvent) => {
-    if (!onSendFile || !Array.from(e.dataTransfer.types).includes('Files')) return;
+    if (!onSendFile || isNoteMode || !Array.from(e.dataTransfer.types).includes('Files')) return;
     e.preventDefault();
     dragDepth.current += 1;
     setIsDragging(true);
@@ -253,7 +342,7 @@ export default function ChatPanel({
     }
   };
   const onDrop = (e: React.DragEvent) => {
-    if (!onSendFile) return;
+    if (!onSendFile || isNoteMode) return;
     e.preventDefault();
     dragDepth.current = 0;
     setIsDragging(false);
@@ -263,7 +352,7 @@ export default function ChatPanel({
     if (accepted.length < files.length) {
       toast.error('บางไฟล์ส่งไม่ได้ (รองรับรูปภาพ, PDF, DOC)');
     }
-    accepted.forEach((f) => onSendFile(f));
+    fileDraft.add(accepted);
   };
 
   const insertEmoji = (emoji: string) => {
@@ -301,23 +390,43 @@ export default function ChatPanel({
   const roomId = session?.id as string | undefined;
   const scrolledRoomRef = useRef<string | undefined>(undefined);
   useEffect(() => {
+    const log = messagesEndRef.current?.parentElement;
+    if (!log) return;
+    followingLatest.current = !focusedMessageId;
+    const track = () => {
+      if (focusedMessageId) return;
+      followingLatest.current = log.scrollHeight - log.scrollTop - log.clientHeight < 48;
+    };
+    const resize = new ResizeObserver(() => {
+      if (followingLatest.current) log.scrollTop = log.scrollHeight;
+    });
+    resize.observe(log);
+    log.addEventListener('scroll', track, { passive: true });
+    return () => {
+      resize.disconnect();
+      log.removeEventListener('scroll', track);
+    };
+  }, [roomId, focusedMessageId]);
+  useEffect(() => {
     const anchor = messagesEndRef.current;
     if (!anchor || messages.length === 0) return;
+    if (focusedMessageId) {
+      const target = Array.from(anchor.parentElement?.querySelectorAll<HTMLElement>('[data-message-id]') ?? [])
+        .find((element) => element.dataset.messageId === focusedMessageId);
+      target?.scrollIntoView({ behavior: 'auto', block: 'center' });
+      scrolledRoomRef.current = undefined;
+      return;
+    }
     if (scrolledRoomRef.current !== roomId) {
       scrolledRoomRef.current = roomId;
       anchor.scrollIntoView({ behavior: 'auto' }); // jump to latest on room open
       return;
     }
-    const container = anchor.parentElement;
-    if (container) {
-      const distanceFromBottom =
-        container.scrollHeight - container.scrollTop - container.clientHeight;
-      if (distanceFromBottom > 150) return;
-    }
+    if (!followingLatest.current) return;
     anchor.scrollIntoView({ behavior: 'smooth' });
     // pending/failed counts included so just-sent (or just-failed) ghosts —
     // rendered below the saved messages — scroll into view immediately.
-  }, [messages.length, roomId, pendingSends?.length, failedSends?.length]);
+  }, [messages.length, notes.length, roomId, pendingSends?.length, failedSends?.length, focusedMessageId, isLoadingMessages]);
 
   // Auto-grow the textarea to fit its content (capped). Runs on every inputText
   // change — typing, send-clear, draft load (Task 2), emoji/template insert —
@@ -327,7 +436,7 @@ export default function ChatPanel({
     if (!el) return;
     el.style.height = 'auto';
     el.style.height = `${Math.min(el.scrollHeight, MAX_COMPOSER_HEIGHT)}px`;
-  }, [inputText]);
+  }, [inputText, focusedMessageId]);
 
   // On room change: persist the room you left, restore the room you entered,
   // drop the AI-suggestion association (it's room-scoped — see below), and focus
@@ -337,14 +446,23 @@ export default function ChatPanel({
   // keepPreviousData), so this runs A→undefined→B. Draft correctness relies on
   // swapRoomDraft saving ONLY when prevRoom is truthy (undefined bounce = no save).
   useEffect(() => {
-    const incoming = swapRoomDraft(draftsRef.current, prevRoomRef.current, roomId, inputTextRef.current);
+    const incoming = swapRoomDraft(
+      draftsRef.current,
+      prevRoomRef.current,
+      roomId,
+      inputTextRef.current,
+    );
     prevRoomRef.current = roomId;
     setInputText(incoming);
     // selectedSuggestion is metadata for THIS room's AI draft; carrying it into
     // another room would mislabel that room's send as an edit of this draft.
     setSelectedSuggestion(null);
     // Desktop only — on mobile, focus() pops the keyboard over the history.
-    if (roomId && typeof window !== 'undefined' && window.matchMedia?.('(min-width: 1024px)').matches) {
+    if (
+      roomId &&
+      typeof window !== 'undefined' &&
+      window.matchMedia?.('(min-width: 1024px)').matches
+    ) {
       inputRef.current?.focus({ preventScroll: true });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- room-change only; inputText read via inputTextRef
@@ -390,22 +508,34 @@ export default function ChatPanel({
 
   const getLastCustomerMessage = () => {
     const customerMsgs = messages.filter((m: any) => m.role === 'CUSTOMER');
-    return customerMsgs[customerMsgs.length - 1]?.text ?? customerMsgs[customerMsgs.length - 1]?.content ?? '';
+    return (
+      customerMsgs[customerMsgs.length - 1]?.text ??
+      customerMsgs[customerMsgs.length - 1]?.content ??
+      ''
+    );
   };
 
   const voice = useVoiceTyping({
     roomId,
-    enabled: !!session && !session.resolvedAt && session.status !== 'IDLE' && !isNoteMode && !isSending,
+    enabled:
+      !!session && !session.resolvedAt && session.status !== 'IDLE' && !isNoteMode && !isSending && !focusedMessageId,
     onText: (text) => {
       // Append to the current draft so edits made while listening are preserved.
-      setInputText(previous => previous + (previous && !/\s$/.test(previous) ? ' ' : '') + text);
+      setInputText((previous) => previous + (previous && !/\s$/.test(previous) ? ' ' : '') + text);
       setSelectedSuggestion(null);
     },
   });
 
   const handleSend = async () => {
     const text = inputText.trim();
-    if (!text || isSending || isNoteMode || voice.active) return;
+    if (
+      (!text && !fileDraft.files.length) ||
+      isSending ||
+      fileDraft.busy ||
+      isNoteMode ||
+      voice.active
+    )
+      return;
     // Clear the composer immediately — the in-flight ghost shows the text while
     // sending, and a FAILED ghost (with retry) owns it if the send fails. The
     // Batch-1 keep-text-in-composer path is replaced by that ghost.
@@ -417,7 +547,8 @@ export default function ChatPanel({
     setIsSending(true);
     let result: boolean | void;
     try {
-      result = await onSendMessage(text);
+      result = text ? await onSendMessage(text) : undefined;
+      if (onSendFile && fileDraft.files.length) await fileDraft.send(onSendFile);
     } finally {
       setIsSending(false);
     }
@@ -434,7 +565,7 @@ export default function ChatPanel({
         })
         .catch(() => {});
     }
-    inputRef.current?.focus();
+    if (!isMobile && prevRoomRef.current === roomId) inputRef.current?.focus();
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -448,16 +579,14 @@ export default function ChatPanel({
       setComposerMode('chat');
       return;
     }
-    if (e.key === 'Enter' && !e.shiftKey) {
+    if (e.key === 'Enter' && !e.shiftKey && !isMobile) {
       e.preventDefault();
       void handleSend();
     }
   };
 
   const lastMessageAt =
-    messages.length > 0
-      ? new Date(messages[messages.length - 1]?.createdAt ?? 0).getTime()
-      : 0;
+    messages.length > 0 ? new Date(messages[messages.length - 1]?.createdAt ?? 0).getTime() : 0;
 
   const handleSelectSuggestion = (text: string, metadata: { aiDraft: string; intent: string }) => {
     setInputText(text);
@@ -482,7 +611,15 @@ export default function ChatPanel({
 
   if (!session) {
     return (
-      <div className="flex-1 flex flex-col items-center justify-center text-center px-8">
+      <div className="relative flex-1 flex flex-col items-center justify-center text-center px-8">
+        <button
+          type="button"
+          onClick={onBack}
+          aria-label="กลับ"
+          className="inbox-touch absolute left-2 top-2 lg:hidden"
+        >
+          <ArrowLeft className="size-5" />
+        </button>
         <div className="relative mb-5">
           <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-primary/10 to-primary/5 flex items-center justify-center">
             <MessageSquare className="w-8 h-8 text-primary/40" />
@@ -515,15 +652,27 @@ export default function ChatPanel({
   const isResolved = !!session.resolvedAt || session.status === 'IDLE';
   const isLine = session.channel === 'LINE_FINANCE' || session.channel === 'LINE_SHOP';
   const channelLabel =
-    session.channel === 'LINE_FINANCE' ? 'LINE การเงิน'
-      : session.channel === 'LINE_SHOP' ? 'LINE ร้าน'
-        : session.channel === 'FACEBOOK' ? 'Facebook'
-          : session.channel === 'TIKTOK' ? 'TikTok'
+    session.channel === 'LINE_FINANCE'
+      ? 'LINE การเงิน'
+      : session.channel === 'LINE_SHOP'
+        ? 'LINE ร้าน'
+        : session.channel === 'FACEBOOK'
+          ? 'Facebook'
+          : session.channel === 'TIKTOK'
+            ? 'TikTok'
             : 'Web';
-  const channelDotClass = isLine ? 'bg-[#06C755]' : session.channel === 'FACEBOOK' ? 'bg-[#1877F2]' : 'bg-foreground/60';
-  const roomAppt = nextAppointment(session.todos);
+  const channelDotClass = isLine
+    ? 'bg-[#06C755]'
+    : session.channel === 'FACEBOOK'
+      ? 'bg-[#1877F2]'
+      : 'bg-foreground/60';
+  const roomAppt = nextAppointment([
+    ...(session.todos || []),
+    ...(session.storeAppointment ? [session.storeAppointment] : []),
+  ]);
   const roomApptState = apptState(roomAppt?.dueDate);
-  const assigneeFullName: string | null = session.assignedTo?.name ?? session.assignedStaff?.name ?? null;
+  const assigneeFullName: string | null =
+    session.assignedTo?.name ?? session.assignedStaff?.name ?? null;
   // ชิปใช้ชื่อต้นอย่างเดียว (ชื่อเต็มอยู่ใน title) — บรรทัดสถานะแคบ ชื่อ-นามสกุลไทยยาวจะชนปุ่มขวา
   const assigneeName = assigneeFullName ? assigneeFullName.trim().split(/\s+/)[0] : null;
   // บรรทัดสถานะหัวห้อง: รอตอบ (เหลือง · แดงเมื่อเกิน 1 ชม.) · ตอบแล้ว · ปิดงานแล้ว
@@ -534,7 +683,10 @@ export default function ChatPanel({
     }
     if (session.waitingSince) {
       const late = Date.now() - new Date(session.waitingSince).getTime() > 60 * 60_000;
-      return { tone: late ? 'text-destructive' : 'text-amber-700 dark:text-amber-300', text: `รอตอบ ${formatWaitDuration(session.waitingSince)}` };
+      return {
+        tone: late ? 'text-destructive' : 'text-amber-700 dark:text-amber-300',
+        text: `รอตอบ ${formatWaitDuration(session.waitingSince)}`,
+      };
     }
     return { tone: 'text-primary', text: 'ตอบแล้ว' };
   })();
@@ -554,28 +706,51 @@ export default function ChatPanel({
         <div className="absolute inset-0 z-20 flex items-center justify-center bg-primary/5 pointer-events-none">
           <div className="flex flex-col items-center gap-2 rounded-xl border-2 border-dashed border-primary bg-card/90 px-6 py-4 text-primary">
             <Upload className="size-6" />
-            <span className="text-sm font-medium leading-snug">วางที่นี่ = ส่งให้ลูกค้า</span>
-            <span className="text-xs leading-snug">ลูกค้าเห็นทันที</span>
+            <span className="text-sm font-medium leading-snug">วางไฟล์เพื่อแนบในฉบับร่าง</span>
+            <span className="text-xs leading-snug">ตรวจไฟล์แล้วกดส่ง</span>
           </div>
         </div>
       )}
       {/* Header — ชื่อ · รอตอบนานแค่ไหน · ใครดูแล · ปุ่มที่รู้ว่าทำอะไร (แบบที่เจ้าของโอเค 2026-09-06) */}
-      <div className="inbox-chat-header flex shrink-0 flex-wrap items-center gap-3 border-b border-border bg-card px-4 pt-5">
-          <button onClick={onBack} aria-label="กลับ" className="lg:hidden p-1 min-h-11 min-w-11 inline-flex items-center justify-center text-muted-foreground hover:text-foreground rounded-md hover:bg-muted transition-colors">
-            <ArrowLeft className="w-5 h-5" />
-          </button>
+      <div className="inbox-chat-header hidden lg:flex shrink-0 flex-wrap items-center gap-3 border-b border-border bg-card px-4 pt-5">
+        <button data-ui-control="button" data-ui-icon="true"
+          onClick={onBack}
+          aria-label="กลับ"
+          className="lg:hidden p-1 min-h-11 min-w-11 inline-flex items-center justify-center text-muted-foreground hover:text-foreground rounded-md hover:bg-muted transition-colors"
+        >
+          <ArrowLeft className="w-5 h-5" />
+        </button>
         <div className="relative shrink-0">
-          <Avatar className="size-10 bg-primary/5"><AvatarImage src={avatarUrl} alt={displayName} /><AvatarFallback className="bg-primary/5 font-semibold text-primary">{displayName[0]}</AvatarFallback></Avatar>
+          <Avatar className="size-10 bg-primary/5">
+            <AvatarImage src={avatarUrl} alt={displayName} />
+            <AvatarFallback className="bg-primary/5 font-semibold text-primary">
+              {displayName[0]}
+            </AvatarFallback>
+          </Avatar>
           {/* จุดสีช่องทางที่มุมรูป (ฟ้า = Facebook · เขียว = LINE) แทนเม็ดยาเต็มใบ */}
-          <span aria-hidden className={cn('absolute -bottom-0.5 -right-0.5 size-3 rounded-full ring-2 ring-card', channelDotClass)} />
+          <span
+            aria-hidden
+            className={cn(
+              'absolute -bottom-0.5 -right-0.5 size-3 rounded-full ring-2 ring-card',
+              channelDotClass,
+            )}
+          />
         </div>
         <div className="min-w-0 flex-1 basis-32 @md:basis-0">
-          <h3 className="truncate text-[15px] font-semibold leading-tight text-foreground" title={displayName}>{displayName}</h3>
+          <h3
+            className="truncate text-[15px] font-semibold leading-tight text-foreground"
+            title={displayName}
+          >
+            {displayName}
+          </h3>
           <div className="mt-0.5 flex items-center gap-1.5 overflow-hidden whitespace-nowrap text-[12px] text-muted-foreground [&>*]:shrink-0">
             <span>{channelLabel}</span>
             <span className="text-border">·</span>
             {/* สถานะจริงจาก waiting_since (PR1) แทน "กำลังสนทนา" ที่ไม่บอกอะไร */}
-            <span className={cn('inline-flex items-center gap-1 font-semibold', roomStatus.tone)} data-testid="room-status">
+            <span
+              className={cn('inline-flex items-center gap-1 font-semibold', roomStatus.tone)}
+              data-testid="room-status"
+            >
               <span className="size-[7px] rounded-full bg-current" />
               {roomStatus.text}
             </span>
@@ -587,7 +762,11 @@ export default function ChatPanel({
                   type="button"
                   onClick={() => setShowActions((v) => !v)}
                   aria-expanded={showActions}
-                  title={assigneeFullName ? `ผู้ดูแล: ${assigneeFullName} — กดเพื่อมอบหมาย/โอน` : 'ตอบก่อนได้เป็นเจ้าของห้อง — กดเพื่อมอบหมาย'}
+                  title={
+                    assigneeFullName
+                      ? `ผู้ดูแล: ${assigneeFullName} — กดเพื่อมอบหมาย/โอน`
+                      : 'ตอบก่อนได้เป็นเจ้าของห้อง — กดเพื่อมอบหมาย'
+                  }
                   className={cn(
                     'inline-flex h-5 max-w-[11rem] items-center gap-1 truncate rounded-full border text-[11.5px] leading-none transition-colors',
                     assigneeName
@@ -597,7 +776,9 @@ export default function ChatPanel({
                 >
                   {assigneeName ? (
                     <>
-                      <span className="grid size-4 place-items-center rounded-full bg-sky-500 text-[9px] font-bold text-white dark:bg-sky-400 dark:text-sky-950">{assigneeName[0]}</span>
+                      <span className="grid size-4 place-items-center rounded-full bg-sky-500 text-[9px] font-bold text-white dark:bg-sky-400 dark:text-sky-950">
+                        {assigneeName[0]}
+                      </span>
                       {assigneeName} ดูแล
                     </>
                   ) : (
@@ -615,7 +796,13 @@ export default function ChatPanel({
                   title={`${roomAppt.title} — กดเพื่อดูนัดในแผงขวา`}
                   onClick={() => {
                     if (window.innerWidth < 1280) onShowCustomerInfo?.();
-                    document.getElementById('room-appointments')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    document
+                      .getElementById(
+                        roomAppt.id === session.storeAppointment?.id
+                          ? 'room-store-appointment'
+                          : 'room-appointments',
+                      )
+                      ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
                   }}
                   className={cn(
                     'inline-flex h-5 max-w-[11rem] items-center gap-1 truncate rounded-full border px-2 text-[11.5px] font-semibold leading-none transition-colors',
@@ -633,9 +820,10 @@ export default function ChatPanel({
             )}
           </div>
         </div>
+        {onSelectSearchResult && <button type="button" className="inbox-room-search-trigger" aria-label="ค้นหาในแชท" onClick={() => setRoomSearchOpen(true)}><Search className="size-4" aria-hidden="true" /><span>ค้นหาในแชท</span></button>}
         <div className="inbox-room-toolbar ml-auto flex shrink-0 items-center gap-2">
           {onShowCustomerInfo && (
-            <button
+            <button data-ui-control="button" data-ui-icon="true"
               onClick={onShowCustomerInfo}
               className="xl:hidden size-8 inline-flex items-center justify-center text-muted-foreground hover:text-foreground/70 hover:bg-accent rounded-lg"
               title="ข้อมูลลูกค้า"
@@ -645,57 +833,79 @@ export default function ChatPanel({
             </button>
           )}
           {/* รางสถานะ 3 ปุ่ม: หมุด · บอท · แจ้งเตือน — อันที่ "เปิด" นูนขึ้นเป็นสีขาว */}
-          <div className="inbox-room-toggles flex items-center gap-1" role="group" aria-label="สถานะห้อง">
-            <button
+          <div
+            className="inbox-room-toggles flex items-center gap-1"
+            role="group"
+            aria-label="สถานะห้อง"
+          >
+            <button data-ui-control="button"
               type="button"
               onClick={() => pinMutation.mutate(!!session.pinnedAt)}
               disabled={pinMutation.isPending}
               className={cn(
                 'inline-flex min-h-10 items-center justify-center gap-1.5 rounded-md px-2 text-xs transition-colors',
-                session.pinnedAt ? 'bg-card text-warning-strong shadow-sm dark:bg-white/10 dark:text-amber-300' : 'text-muted-foreground hover:text-foreground',
+                session.pinnedAt
+                  ? 'bg-card text-warning-strong shadow-sm dark:bg-white/10 dark:text-amber-300'
+                  : 'text-muted-foreground hover:text-foreground',
               )}
               title={session.pinnedAt ? 'ปักหมุดอยู่ — กดเพื่อถอด' : 'ปักหมุดห้องนี้ไว้บนสุด'}
               aria-label={session.pinnedAt ? 'ถอดหมุดห้องแชท' : 'ปักหมุดห้องแชท'}
               aria-pressed={!!session.pinnedAt}
             >
-              <Pin className="size-4" /><span className="hidden @[34rem]:inline">ปักหมุด</span>
+              <Pin className="size-4" />
+              <span className="hidden @[34rem]:inline">ปักหมุด</span>
             </button>
             {onToggleAi && (
-              <button
+              <button data-ui-control="button"
                 type="button"
                 onClick={onToggleAi}
                 disabled={aiTogglePending}
-                title={aiPaused ? 'บอทหยุดตอบ (พนักงานตอบเอง) — กดเพื่อคืนให้บอท' : 'บอทตอบอัตโนมัติอยู่ — กดเพื่อหยุดและตอบเอง'}
+                title={
+                  aiPaused
+                    ? 'บอทหยุดตอบ (พนักงานตอบเอง) — กดเพื่อคืนให้บอท'
+                    : 'บอทตอบอัตโนมัติอยู่ — กดเพื่อหยุดและตอบเอง'
+                }
                 aria-label="สลับสถานะ AI"
                 aria-pressed={!aiPaused}
                 className={cn(
                   'inline-flex min-h-10 items-center justify-center gap-1.5 rounded-md px-2 text-xs transition-colors disabled:opacity-50',
-                  aiPaused ? 'text-muted-foreground hover:text-foreground' : 'bg-card text-primary shadow-sm dark:bg-white/10',
+                  aiPaused
+                    ? 'text-muted-foreground hover:text-foreground'
+                    : 'bg-card text-primary shadow-sm dark:bg-white/10',
                 )}
               >
-                {aiPaused ? <BotOff className="size-4" /> : <Bot className="size-4" />}<span className="hidden @[34rem]:inline">{aiPaused ? 'พนักงานตอบ' : 'บอทตอบ'}</span>
+                {aiPaused ? <BotOff className="size-4" /> : <Bot className="size-4" />}
+                <span className="hidden @[34rem]:inline">{aiPaused ? 'พนักงานตอบ' : 'บอทตอบ'}</span>
               </button>
             )}
             {onToggleRoomMute && (
-              <button
+              <button data-ui-control="button"
                 type="button"
                 onClick={onToggleRoomMute}
-                title={roomMuted ? 'ปิดเสียงห้องนี้อยู่ — กดเพื่อเปิด' : 'แจ้งเตือนเปิดอยู่ — กดเพื่อปิดเสียงห้องนี้'}
+                title={
+                  roomMuted
+                    ? 'ปิดเสียงห้องนี้อยู่ — กดเพื่อเปิด'
+                    : 'แจ้งเตือนเปิดอยู่ — กดเพื่อปิดเสียงห้องนี้'
+                }
                 aria-label="สลับการแจ้งเตือนห้องนี้"
                 aria-pressed={!!roomMuted}
                 className={cn(
                   'inline-flex min-h-10 items-center justify-center gap-1.5 rounded-md px-2 text-xs transition-colors',
-                  roomMuted ? 'bg-card text-destructive shadow-sm dark:bg-white/10 dark:text-red-300' : 'text-muted-foreground hover:text-foreground',
+                  roomMuted
+                    ? 'bg-card text-destructive shadow-sm dark:bg-white/10 dark:text-red-300'
+                    : 'text-muted-foreground hover:text-foreground',
                 )}
               >
-                {roomMuted ? <BellOff className="size-4" /> : <Bell className="size-4" />}<span className="hidden @[34rem]:inline">แจ้งเตือน</span>
+                {roomMuted ? <BellOff className="size-4" /> : <Bell className="size-4" />}
+                <span className="hidden @[34rem]:inline">แจ้งเตือน</span>
               </button>
             )}
           </div>
+          {!!librarySettings.settings.data?.flags.chat_mentions_enabled && <button type="button" className="inbox-room-handoff" onClick={() => setHandoffOpen(true)}><Users className="size-4" aria-hidden="true" /><span>ส่งงาน</span></button>}
           {/* ปิดงาน = ปุ่มหลักมีคำ (เดิมซ่อนใน ⋮) · ห้องที่ปิดแล้วปุ่มเดิมกลายเป็น "เปิดงานกลับ" */}
           {isResolved ? (
             onReopen && (
-              <button
+              <button data-ui-control="button"
                 type="button"
                 onClick={onReopen}
                 disabled={reopenPending}
@@ -703,12 +913,16 @@ export default function ChatPanel({
                 aria-label="เปิดงานกลับ"
                 className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border bg-card px-2 @lg:px-3 text-[12.5px] font-semibold text-foreground hover:bg-muted transition-colors disabled:opacity-50"
               >
-                {reopenPending ? <Loader2 className="size-3.5 animate-spin" /> : <RotateCw className="size-3.5" />}
+                {reopenPending ? (
+                  <Loader2 className="size-3.5 animate-spin" />
+                ) : (
+                  <RotateCw className="size-3.5" />
+                )}
                 <span className="hidden @lg:inline">เปิดงานกลับ</span>
               </button>
             )
           ) : (
-            <button
+            <button data-ui-control="button"
               type="button"
               onClick={onResolve}
               title="ปิดงาน — จบเรื่องนี้ ลูกค้าทักใหม่ห้องกลับมาเอง"
@@ -719,7 +933,7 @@ export default function ChatPanel({
               <span className="hidden @lg:inline">ปิดงาน</span>
             </button>
           )}
-          <button
+          <button data-ui-control="button" data-ui-icon="true"
             onClick={() => setShowActions(!showActions)}
             aria-label="ตัวเลือกเพิ่มเติม"
             aria-expanded={showActions}
@@ -731,8 +945,134 @@ export default function ChatPanel({
         </div>
       </div>
 
+      <div className="inbox-mobile-room-header lg:hidden">
+        <button type="button" onClick={onBack} aria-label="กลับ" className="inbox-touch">
+          <ArrowLeft className="size-5" />
+        </button>
+        <button
+          type="button"
+          onClick={onShowCustomerInfo}
+          aria-label="ข้อมูลลูกค้า"
+          className="inbox-mobile-identity"
+        >
+          <Avatar className="size-9 shrink-0">
+            <AvatarImage src={avatarUrl} alt="" />
+            <AvatarFallback>{displayName[0]}</AvatarFallback>
+          </Avatar>
+          <span className="min-w-0 text-left">
+            <span className="block truncate text-base font-semibold leading-snug">
+              {displayName}
+            </span>
+            <span className="block truncate text-xs leading-snug text-muted-foreground">
+              {channelLabel} · <span className={roomStatus.tone}>{roomStatus.text}</span>
+            </span>
+          </span>
+        </button>
+        {onSelectSearchResult && <button type="button" className="inbox-touch" aria-label="ค้นหาในแชท" onClick={() => setRoomSearchOpen(true)}><Search className="size-5" aria-hidden="true" /></button>}
+        <button
+          type="button"
+          onClick={() => setRoomMenuOpen(true)}
+          aria-label="เมนูห้องแชท"
+          className="inbox-touch"
+        >
+          <MoreVertical className="size-5" />
+        </button>
+      </div>
+      {isMobile && <div className="inbox-mobile-room-actions">
+        <button type="button" aria-label="เปิดข้อมูลลูกค้า" onClick={onShowCustomerInfo}><UserCircle2 className="size-4" aria-hidden="true" />ข้อมูลลูกค้า</button>
+        {!!librarySettings.settings.data?.flags.chat_mentions_enabled && <button type="button" onClick={() => setHandoffOpen(true)}><Users className="size-4" aria-hidden="true" />ส่งงาน</button>}
+        {isResolved ? <button type="button" disabled={reopenPending} onClick={onReopen}><RotateCw className="size-4" aria-hidden="true" />เปิดงานกลับ</button> : <button type="button" className="inbox-mobile-resolve" onClick={onResolve}><Check className="size-4" aria-hidden="true" />ปิดงาน</button>}
+      </div>}
+      {onSelectSearchResult && <RoomMessageSearch key={`room-search:${librarySettings.company}:${session.id}`} roomId={session.id} open={roomSearchOpen} onClose={() => setRoomSearchOpen(false)} onSelect={onSelectSearchResult} />}
+      <ChatHandoffDialog key={`chat-handoff:${librarySettings.company}:${session.id}`} roomId={session.id} open={handoffOpen} onOpenChange={setHandoffOpen} />
+      {isMobile && !aiPaused && !isResolved && onToggleAi && (
+        <div className="inbox-bot-status">
+          <Bot className="size-4 shrink-0" />
+          <span>บอทกำลังตอบอัตโนมัติ</span>
+          <button type="button" disabled={aiTogglePending} onClick={onToggleAi}>
+            ตอบเอง
+          </button>
+        </div>
+      )}
+      <Sheet open={roomMenuOpen} onOpenChange={setRoomMenuOpen}>
+        <SheetContent side="bottom" className="inbox-mobile-sheet">
+          <SheetTitle>จัดการห้องแชท</SheetTitle>
+          <SheetDescription>
+            {displayName}
+            {assigneeFullName ? ` · ${assigneeFullName} ดูแล` : ' · ยังไม่มีผู้ดูแล'}
+          </SheetDescription>
+          <div className="grid grid-cols-2 gap-2 [&>button]:min-h-11 [&>button]:rounded-lg [&>button]:border [&>button]:px-3 [&>button]:py-2 [&>button]:text-sm">
+            <button
+              type="button"
+              onClick={() => {
+                setRoomMenuOpen(false);
+                onShowCustomerInfo?.();
+              }}
+            >
+              <UserCircle2 className="inline size-4 mr-2" />
+              ข้อมูลลูกค้า
+            </button>
+            <button
+              type="button"
+              onClick={() => pinMutation.mutate(!!session.pinnedAt)}
+              disabled={pinMutation.isPending}
+              aria-pressed={!!session.pinnedAt}
+            >
+              <Pin className="inline size-4 mr-2" />
+              {session.pinnedAt ? 'ถอดหมุดห้องแชท' : 'ปักหมุดห้องแชท'}
+            </button>
+            {onToggleAi && (
+              <button
+                type="button"
+                onClick={onToggleAi}
+                disabled={aiTogglePending}
+                aria-label="สลับสถานะ AI"
+                aria-pressed={!aiPaused}
+              >
+                <Bot className="inline size-4 mr-2" />
+                {aiPaused ? 'เปิดบอทตอบ' : 'หยุดบอทตอบ'}
+              </button>
+            )}
+            {onToggleRoomMute && (
+              <button
+                type="button"
+                onClick={onToggleRoomMute}
+                aria-label="สลับการแจ้งเตือนห้องนี้"
+                aria-pressed={!!roomMuted}
+              >
+                <Bell className="inline size-4 mr-2" />
+                {roomMuted ? 'เปิดเสียงห้อง' : 'ปิดเสียงห้อง'}
+              </button>
+            )}
+          </div>
+          {isResolved ? (
+            <button data-ui-control="button"
+              type="button"
+              disabled={reopenPending}
+              className="min-h-11 rounded-lg border"
+              onClick={() => {
+                onReopen?.();
+                setRoomMenuOpen(false);
+              }}
+            >
+              เปิดงานกลับ
+            </button>
+          ) : (
+            <SessionActions
+              session={session}
+              onAssign={onAssign}
+              onTransfer={onTransfer}
+              onResolve={onResolve}
+              onReturnToAI={onReturnToAI}
+              onClose={() => setRoomMenuOpen(false)}
+              currentUserId={currentUserId}
+            />
+          )}
+        </SheetContent>
+      </Sheet>
+
       {/* Actions dropdown */}
-      {showActions && (
+      {showActions && !isMobile && (
         <SessionActions
           session={session}
           onAssign={onAssign}
@@ -754,22 +1094,49 @@ export default function ChatPanel({
         </div>
       )}
 
-      {session.waitingSince && !isResolved && <div className="inbox-wait-banner flex shrink-0 items-center gap-2 border-b border-warning/20 bg-warning/10 px-4 py-2.5 text-xs leading-snug text-warning-strong"><Clock className="size-4 shrink-0" /><span><strong>ลูกค้ารอ {formatWaitDuration(session.waitingSince)}</strong> · ยังไม่มีข้อความตอบกลับจากพนักงาน</span></div>}
+      {session.waitingSince && !isResolved && !isMobile && (
+        <div className="inbox-wait-banner flex shrink-0 items-center gap-2 border-b border-warning/20 bg-warning/10 px-4 py-2.5 text-xs leading-snug text-warning-strong">
+          <Clock className="size-4 shrink-0" />
+          <span>
+            <strong>ลูกค้ารอ {formatWaitDuration(session.waitingSince)}</strong> ·
+            ยังไม่มีข้อความตอบกลับจากพนักงาน
+          </span>
+        </div>
+      )}
 
       {/* Screen-reader live regions — siblings of the log, not nested inside it */}
-      <div className="sr-only" aria-live="polite" aria-atomic="true">{liveMsg}</div>
+      <div className="sr-only" aria-live="polite" aria-atomic="true">
+        {liveMsg}
+      </div>
       <div className="sr-only" aria-live="assertive" aria-atomic="true">
         {(failedSends ?? []).length > 0 ? 'ส่งข้อความไม่สำเร็จ' : ''}
       </div>
 
       {/* Messages */}
+      {focusedMessageId && (
+        <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-y border-border bg-primary/5 px-4 py-2 text-sm">
+          <span>{searchContextError ? 'เปิดข้อความไม่สำเร็จ อาจถูกลบหรือไม่มีสิทธิ์เข้าถึง' : 'ข้อความที่พบจากการค้นหาและบทสนทนาใกล้เคียง'}</span>
+          <div className="flex items-center gap-2">
+            {searchContextError && <button type="button" className="min-h-11 rounded-md px-3 text-primary" onClick={onRetrySearchContext}>ลองอีกครั้ง</button>}
+            <button type="button" className="min-h-11 rounded-md px-3 font-medium text-primary hover:bg-primary/10" onClick={onReturnToLatest}>กลับข้อความล่าสุด</button>
+          </div>
+        </div>
+      )}
       {pinnedNote && onUnpinNote && <PinnedNoteBar note={pinnedNote} onUnpin={onUnpinNote} />}
-      <div className="inbox-message-log flex-1 min-h-0 overflow-y-auto px-5 py-5" role="log" aria-label="ประวัติข้อความ">
+      <div
+        className="inbox-message-log flex-1 min-h-0 overflow-y-auto px-5 py-5"
+        role="log"
+        aria-label="ประวัติข้อความ"
+      >
         {isLoadingMessages ? (
           <div className="space-y-3 py-4">
             <span className="sr-only">กำลังโหลดข้อความ</span>
             {[0, 1, 2, 3, 4].map((i) => (
-              <div key={i} aria-hidden className={cn('flex', i % 2 ? 'justify-end' : 'justify-start')}>
+              <div
+                key={i}
+                aria-hidden
+                className={cn('flex', i % 2 ? 'justify-end' : 'justify-start')}
+              >
                 <div
                   className={cn(
                     'animate-pulse rounded-2xl bg-muted',
@@ -786,7 +1153,7 @@ export default function ChatPanel({
               const showDateSeparator =
                 i === 0 || !isSameDay(new Date(prev.createdAt), new Date(item.createdAt));
               return (
-                <div key={item.id}>
+                <div key={item.id} data-message-id={item.id} className={item.id === focusedMessageId ? 'rounded-lg bg-primary/10 ring-1 ring-inset ring-primary/40' : undefined}>
                   {showDateSeparator && (
                     <div className="flex items-center gap-3 py-3 px-4">
                       <div className="flex-1 h-px bg-border" />
@@ -824,9 +1191,18 @@ export default function ChatPanel({
             {isCustomerTyping && (
               <div className="px-4 py-1.5 flex items-center gap-2">
                 <div className="flex gap-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground animate-bounce" style={{ animationDelay: '0ms' }} />
-                  <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground animate-bounce" style={{ animationDelay: '150ms' }} />
-                  <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground animate-bounce" style={{ animationDelay: '300ms' }} />
+                  <span
+                    className="w-1.5 h-1.5 rounded-full bg-muted-foreground animate-bounce"
+                    style={{ animationDelay: '0ms' }}
+                  />
+                  <span
+                    className="w-1.5 h-1.5 rounded-full bg-muted-foreground animate-bounce"
+                    style={{ animationDelay: '150ms' }}
+                  />
+                  <span
+                    className="w-1.5 h-1.5 rounded-full bg-muted-foreground animate-bounce"
+                    style={{ animationDelay: '300ms' }}
+                  />
                 </div>
                 <span className="text-[11px] text-muted-foreground">กำลังพิมพ์...</span>
               </div>
@@ -834,11 +1210,22 @@ export default function ChatPanel({
             {staffTypingName && (
               <div className="px-4 py-1.5 flex items-center gap-2">
                 <div className="flex gap-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-primary/60 animate-bounce" style={{ animationDelay: '0ms' }} />
-                  <span className="w-1.5 h-1.5 rounded-full bg-primary/60 animate-bounce" style={{ animationDelay: '150ms' }} />
-                  <span className="w-1.5 h-1.5 rounded-full bg-primary/60 animate-bounce" style={{ animationDelay: '300ms' }} />
+                  <span
+                    className="w-1.5 h-1.5 rounded-full bg-primary/60 animate-bounce"
+                    style={{ animationDelay: '0ms' }}
+                  />
+                  <span
+                    className="w-1.5 h-1.5 rounded-full bg-primary/60 animate-bounce"
+                    style={{ animationDelay: '150ms' }}
+                  />
+                  <span
+                    className="w-1.5 h-1.5 rounded-full bg-primary/60 animate-bounce"
+                    style={{ animationDelay: '300ms' }}
+                  />
                 </div>
-                <span className="text-[11px] text-muted-foreground leading-snug">{staffTypingName} กำลังพิมพ์…</span>
+                <span className="text-[11px] text-muted-foreground leading-snug">
+                  {staffTypingName} กำลังพิมพ์…
+                </span>
               </div>
             )}
             {/* In-flight "sending" ghosts — keyed by clientMessageId; each drops when its saved row lands. */}
@@ -863,7 +1250,9 @@ export default function ChatPanel({
                     <AlertCircle className="size-3 shrink-0" />{' '}
                     {f.source === 'ws' ? 'ส่งถึงลูกค้าไม่สำเร็จ' : 'ส่งไม่สำเร็จ'}
                     {/* เหตุจริงจาก Facebook (สเปก §8.1) — ไม่เงียบ ไม่เดา */}
-                    {f.reason && <span className="font-normal text-destructive/80">· {f.reason}</span>}
+                    {f.reason && (
+                      <span className="font-normal text-destructive/80">· {f.reason}</span>
+                    )}
                     <button
                       type="button"
                       onClick={() => onRetrySend?.(f.id, f.text)}
@@ -884,19 +1273,33 @@ export default function ChatPanel({
 
       {/* หน้าต่าง 24 ชม. ของ Facebook (สเปก §8.1) — เตือน ไม่ปิดปุ่ม · อ่านจาก session.lastCustomerAt ที่เซิร์ฟเวอร์ตั้ง */}
       {!isResolved && !isNoteMode && fbWindow === 'closing' && (
-        <div role="status" className="flex items-start gap-2 border-t border-border/60 bg-warning/10 px-3 py-2 text-xs leading-snug text-foreground">
+        <div
+          role="status"
+          className="flex items-start gap-2 border-t border-border/60 bg-warning/10 px-3 py-2 text-xs leading-snug text-foreground"
+        >
           <Clock className="mt-0.5 size-3.5 shrink-0 text-warning-strong" />
-          <span><span className="font-semibold">ตอบได้อีก {fbWindowLeftText(session.lastCustomerAt)}</span> ก่อน Facebook ปิดหน้าต่าง 24 ชั่วโมง</span>
+          <span>
+            <span className="font-semibold">
+              ตอบได้อีก {fbWindowLeftText(session.lastCustomerAt)}
+            </span>{' '}
+            ก่อน Facebook ปิดหน้าต่าง 24 ชั่วโมง
+          </span>
         </div>
       )}
       {!isResolved && !isNoteMode && fbWindow === 'closed' && (
-        <div role="status" className="flex items-start gap-2 border-t border-border/60 bg-muted px-3 py-2 text-xs leading-snug text-muted-foreground">
+        <div
+          role="status"
+          className="flex items-start gap-2 border-t border-border/60 bg-muted px-3 py-2 text-xs leading-snug text-muted-foreground"
+        >
           <AlertCircle className="mt-0.5 size-3.5 shrink-0" />
-          <span><span className="font-semibold text-foreground">พ้น 24 ชั่วโมงแล้ว</span> Facebook อาจไม่ให้ส่งข้อความปกติ ถ้าส่งไม่ถึงให้ติดต่อทางโทรศัพท์แทน</span>
+          <span>
+            <span className="font-semibold text-foreground">พ้น 24 ชั่วโมงแล้ว</span> Facebook
+            อาจไม่ให้ส่งข้อความปกติ ถ้าส่งไม่ถึงให้ติดต่อทางโทรศัพท์แทน
+          </span>
         </div>
       )}
 
-      {!isResolved && (
+      {!isResolved && !isMobile && !focusedMessageId && (
         <AiSuggestPanel
           roomId={session.id}
           onSelectSuggestion={handleSelectSuggestion}
@@ -904,190 +1307,361 @@ export default function ChatPanel({
         />
       )}
 
-      {/* Input */}
-      {!isResolved && (
-        <div className="inbox-composer group/composer shrink-0 border-t border-border px-4 pt-3 pb-3 bg-card">
-          {/* แท็บโหมดเกาะขอบบนของการ์ด (แบบที่เจ้าของโอเค 2026-09-06): ตอบลูกค้า | โน้ตภายใน */}
-          <div className="inbox-composer-heading flex flex-wrap items-center justify-between gap-2 pb-2">
-          {onAddNote && (
-            <div className="flex items-center gap-1" role="radiogroup" aria-label="โหมดช่องพิมพ์">
-              <button
+      {/* One input across breakpoints: moving between mobile and desktop preserves drafts. */}
+      {!isResolved && !focusedMessageId && (
+        <div
+          className={cn(
+            'inbox-composer group/composer shrink-0 border-t border-border bg-card',
+            isNoteMode && 'inbox-composer-note',
+          )}
+        >
+          <div className="inbox-composer-heading flex items-center justify-between gap-2">
+            <div
+              className="hidden lg:flex items-center gap-1"
+              role="radiogroup"
+              aria-label="โหมดช่องพิมพ์"
+            >
+              <button data-ui-control="button"
                 type="button"
                 role="radio"
                 aria-checked={!isNoteMode}
-                onClick={() => { setComposerMode('chat'); inputRef.current?.focus(); }}
+                onClick={() => setComposerMode('chat')}
                 className={cn(
-                  'inline-flex min-h-9 items-center gap-1.5 rounded-md px-2 text-xs font-semibold transition-colors',
-                  !isNoteMode ? 'bg-primary/5 text-primary' : 'text-muted-foreground hover:bg-muted hover:text-foreground',
+                  'min-h-11 rounded-md px-2 text-xs',
+                  !isNoteMode && 'text-primary bg-primary/5',
                 )}
               >
-                <MessageSquare className="size-3.5" /> ตอบลูกค้า
+                ตอบลูกค้า
               </button>
+              {onAddNote && (
+                <button data-ui-control="button"
+                  type="button"
+                  role="radio"
+                  aria-checked={isNoteMode}
+                  onClick={() => setComposerMode('note')}
+                  className={cn(
+                    'min-h-11 rounded-md px-2 text-xs',
+                    isNoteMode && 'text-warning-strong bg-warning/10',
+                  )}
+                >
+                  โน้ตภายใน
+                </button>
+              )}
+            </div>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  className={cn(
+                    'lg:hidden inline-flex min-h-11 items-center gap-1.5 text-xs font-medium',
+                    isNoteMode ? 'text-warning-strong' : 'text-primary',
+                  )}
+                  aria-label="เลือกโหมดช่องพิมพ์"
+                >
+                  {isNoteMode ? (
+                    <Lock className="size-3.5" />
+                  ) : (
+                    <MessageSquare className="size-3.5" />
+                  )}
+                  {isNoteMode ? 'โน้ตภายใน · ลูกค้าไม่เห็น' : 'ตอบลูกค้า'}
+                  <ChevronDown className="size-3.5" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" side="top">
+                <DropdownMenuRadioGroup
+                  value={composerMode}
+                  onValueChange={(value) => {
+                    setComposerMode(value as 'chat' | 'note');
+                    setToolsOpen(false);
+                  }}
+                >
+                  <DropdownMenuRadioItem value="chat" className="min-h-11">
+                    ตอบลูกค้า
+                  </DropdownMenuRadioItem>
+                  {onAddNote && (
+                    <DropdownMenuRadioItem value="note" className="min-h-11">
+                      โน้ตภายใน · ลูกค้าไม่เห็น
+                    </DropdownMenuRadioItem>
+                  )}
+                </DropdownMenuRadioGroup>
+              </DropdownMenuContent>
+            </DropdownMenu>
+            {!isNoteMode && (
               <button
                 type="button"
-                role="radio"
-                aria-checked={isNoteMode}
-                onClick={() => { setComposerMode('note'); requestAnimationFrame(() => noteContainerRef.current?.querySelector('textarea')?.focus()); }}
-                className={cn(
-                  'inline-flex min-h-9 items-center gap-1.5 rounded-md px-2 text-xs font-semibold transition-colors',
-                  isNoteMode ? 'bg-warning/10 text-warning-strong' : 'text-muted-foreground hover:bg-muted hover:text-foreground',
-                )}
+                onClick={() => setShowTemplatePicker(true)}
+                aria-label="ข้อความสำเร็จรูป"
+                className="inline-flex min-h-11 items-center gap-1.5 px-2 text-xs text-muted-foreground"
               >
-                <StickyNote className="size-3.5" /> โน้ตภายใน
+                <MessageSquareQuote className="size-4" />
+                ตอบด่วน
               </button>
-            </div>
-          )}
-            {!isNoteMode && <PrepareOfferDialog key={session.id} roomId={session.id} onInsert={(text) => { setSelectedSuggestion(null); insertAtCaret(text); }} />}
+            )}
           </div>
           <div
             data-chat-composer-card
-            className={cn(
-              'flex flex-col rounded-xl border focus-within:outline-hidden transition-[box-shadow,border-color]',
-              isNoteMode
-                ? 'border-warning/50 bg-warning/10 focus-within:ring-2 focus-within:ring-warning-strong dark:border-amber-400/40 dark:bg-amber-400/10'
-                : 'border-border bg-card focus-within:border-primary focus-within:ring-2 focus-within:ring-primary',
-            )}
+            className={cn('inbox-composer-card', isNoteMode && 'border-warning/50 bg-warning/10')}
           >
-            {onAddNote && <div ref={noteContainerRef} hidden={!isNoteMode} onKeyDown={e => { if (e.key === 'Escape') { setComposerMode('chat'); requestAnimationFrame(() => inputRef.current?.focus()); } }}><NoteMentionInput roomId={session.id} onSave={onAddNote} /></div>}
-            <div hidden={isNoteMode}>
-            {!isNoteMode && (
-              <div className="px-3.5 pt-2 text-xs leading-snug text-muted-foreground">
-                <details className="text-[11px]"><summary className="cursor-pointer">พิมพ์ด้วยเสียงภาษาไทย</summary><p className="py-1">กดไมค์แล้วพูดภาษาไทย · เบราว์เซอร์อาจส่งเสียงไปบริการแปลงเสียง</p></details>
-                {!voice.supported && <p>{VOICE_FALLBACK}</p>}
-                <p role="status" aria-live="polite" className="break-words">
-                  {voice.error || (voice.phase === 'starting' ? 'กำลังเปิดไมค์…'
-                    : voice.phase === 'stopping' ? 'กำลังแปลงเสียงช่วงสุดท้าย…'
-                    : voice.active ? 'กำลังฟัง · กดหยุดแล้วตรวจข้อความก่อนส่ง' : '')}
-                  {voice.interim && <span className="block">{voice.interim}</span>}
-                </p>
+            {onAddNote && (
+              <div
+                ref={noteContainerRef}
+                hidden={!isNoteMode}
+                onKeyDown={(e) => {
+                  if (e.key === 'Escape') setComposerMode('chat');
+                }}
+              >
+                <NoteMentionInput
+                  roomId={session.id}
+                  onSave={onAddNote}
+                  draftCache={noteDrafts.current}
+                />
               </div>
             )}
-            {/* The card owns focus; suppress both the base ring and admin theme outline. */}
-            {libraryEnabled && <LibraryAttachmentTray draft={libraryDraft} />}
-            <textarea
-              data-chat-composer-input
-              ref={inputRef}
-              value={inputText}
-              onChange={(e) => {
-                const v = e.target.value;
-                setInputText(v);
-                // Drop the AI-draft association once the box is cleared, so an
-                // unrelated follow-up isn't logged as an "edit" of that draft.
-                if (selectedSuggestion && v.trim() === '') setSelectedSuggestion(null);
-                if (v.trim()) emitTyping();
-                else endTyping();
-              }}
-              onKeyDown={handleKeyDown}
-              onPaste={handlePaste}
-              onBlur={endTyping}
-              placeholder={isNoteMode ? 'พิมพ์โน้ตภายใน…' : `พิมพ์ข้อความถึง ${displayName}…`}
-              aria-label={isNoteMode ? 'พิมพ์โน้ตภายใน' : 'พิมพ์ข้อความ'}
-              rows={2}
-              className="block w-full resize-none overflow-y-auto bg-transparent px-3.5 pt-2.5 pb-1 text-sm leading-relaxed border-0 focus:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 max-h-32 placeholder:text-muted-foreground/60"
-            />
-            <div className="flex flex-wrap items-center justify-between gap-2 px-1.5 pb-1.5 pt-0.5">
-              {isNoteMode ? (
-                <span className="inline-flex min-w-0 flex-1 items-center gap-1.5 pl-2 text-[12px] leading-snug text-amber-800 dark:text-amber-200">
-                  <Lock className="size-3.5 shrink-0" /> <span>เห็นเฉพาะทีมงาน · ไม่ส่งถึงลูกค้า</span>
-                </span>
-              ) : (
-                <div className="flex min-w-0 flex-wrap items-center gap-0.5">
-            <button
-              type="button"
-              onClick={() => voice.active ? voice.stop() : voice.start()}
-              disabled={isSending || voice.phase === 'stopping'}
-              aria-label={voice.active ? 'หยุดรับเสียง' : 'พูดเป็นข้อความ'}
-              aria-pressed={voice.active}
-              title="พูดภาษาไทยเป็นข้อความ"
-              className={cn('size-11 inline-flex items-center justify-center rounded-lg transition-colors disabled:opacity-40',
-                voice.active ? 'bg-destructive/10 text-destructive' : 'text-muted-foreground hover:text-foreground hover:bg-muted')}
-            >
-              {voice.active ? <Square className="size-4" /> : <Mic className="size-4" />}
-            </button>
-            {/* File upload */}
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/*,.pdf,.doc,.docx"
-              onChange={handleFileSelect}
-              className="hidden"
-            />
-            <button
-              onClick={() => fileInputRef.current?.click()}
-              disabled={isUploadingFile}
-              aria-label="แนบไฟล์"
-              className="size-11 inline-flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-              title="แนบไฟล์/รูปภาพ"
-            >
-              {isUploadingFile ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                <Paperclip className="w-4 h-4" />
-              )}
-            </button>
-            {libraryEnabled && <button type="button" aria-label="เลือกไฟล์จากคลัง" title="เลือกไฟล์จากคลังในระบบ" className="inline-flex size-11 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground" onClick={()=>libraryDraft.setOpen(true)}><Cloud className="size-4"/></button>}
-            {/* Emoji / Sticker picker */}
-            <ChatMediaPicker
-              model={mediaPicker}
-              open={emojiOpen}
-              onOpenChange={setEmojiOpen}
-              isLineChannel={!!isLineChannel}
-              onEmoji={insertEmoji}
-              onSticker={handleStickerClick}
-              onGif={(url) => {
-                endTyping();
-                onSendMessage(`[gif:${url}]`);
-                setEmojiOpen(false);
-              }}
-            />
-            {/* Product picker */}
-            <button
-              onClick={() => setShowProductPicker(true)}
-              disabled={!session?.id}
-              aria-label="ส่งข้อมูลสินค้า"
-              className="size-11 inline-flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-              title="ส่งข้อมูล/รูปสินค้า"
-            >
-              <Smartphone className="w-4 h-4" /><span className="hidden @[40rem]:inline text-xs">สินค้า</span>
-            </button>
-            {/* Message template picker */}
-            <button
-              onClick={() => setShowTemplatePicker(true)}
-              disabled={!session?.id}
-              aria-label="ข้อความสำเร็จรูป"
-              className="size-11 inline-flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-              title="ข้อความสำเร็จรูป (Ctrl+K)"
-            >
-              <MessageSquareQuote className="w-4 h-4" /><span className="hidden @[40rem]:inline text-xs">ข้อความสำเร็จรูป</span>
-            </button>
+            <div hidden={isNoteMode}>
+              {(voice.active || voice.error || voice.interim) && (
+                <div className="px-3 py-2 text-xs text-muted-foreground">
+                  <p role="status">
+                    {voice.error ||
+                      (voice.phase === 'starting'
+                        ? 'กำลังเปิดไมค์…'
+                        : voice.phase === 'stopping'
+                          ? 'กำลังหยุดไมค์…'
+                          : 'กำลังฟัง… กดหยุดเมื่อต้องการส่ง')}
+                  </p>
+                  {voice.interim && <p>{voice.interim}</p>}
                 </div>
               )}
-              <div className="ml-auto flex shrink-0 items-center gap-3">
-                <span className="hidden @[36rem]:inline text-[11px] leading-snug text-muted-foreground/80 whitespace-nowrap">
-                  {isNoteMode ? 'Enter บันทึก · Esc กลับไปตอบ' : 'Enter ส่ง · Shift+Enter ขึ้นบรรทัด'}
-                </span>
+              {libraryEnabled && <LibraryAttachmentTray draft={libraryDraft} />}
+              {!!fileDraft.files.length && (
+                <ul aria-label="ไฟล์ที่รอส่ง" className="max-h-32 overflow-y-auto px-2 py-1">
+                  {fileDraft.files.map((file, index) => (
+                    <li key={index} className="flex items-center gap-2 text-xs">
+                      <Paperclip className="size-4 shrink-0" />
+                      <span className="min-w-0 flex-1 truncate">{file.name}</span>
+                      <button
+                        type="button"
+                        aria-label={`นำไฟล์ ${file.name} ออก`}
+                        disabled={fileDraft.busy}
+                        onClick={() => fileDraft.remove(file)}
+                        className="inbox-touch"
+                      >
+                        <X className="size-4" />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <div className="inbox-input-row">
                 <button
-                  onClick={() => void handleSend()}
-                  disabled={!inputText.trim() || isSending || voice.active}
-                  aria-label={isNoteMode ? 'บันทึกโน้ต' : 'ส่งข้อความ'}
-                  className={cn(
-                    'inline-flex h-11 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg px-3.5 text-[13px] font-semibold leading-snug transition-all duration-200',
-                    inputText.trim() && !isSending && !voice.active
-                      ? isNoteMode
-                        ? 'bg-warning text-amber-950 shadow-sm hover:bg-warning/90 dark:bg-amber-400 dark:hover:bg-amber-300'
-                        : 'bg-primary text-primary-foreground shadow-sm hover:bg-primary/90 hover:shadow-md'
-                      : 'bg-muted text-muted-foreground/50 cursor-not-allowed',
-                  )}
+                  type="button"
+                  aria-label="เครื่องมือแชท"
+                  aria-expanded={toolsOpen}
+                  onClick={() => {
+                    setToolsOpen((value) => !value);
+                    inputRef.current?.blur();
+                  }}
+                  className="inbox-touch lg:hidden"
                 >
-                  {isNoteMode ? 'บันทึกโน้ต' : 'ส่ง'}
-                  {isSending ? <Loader2 className="size-4 animate-spin" /> : isNoteMode ? <StickyNote className="size-4" /> : <Send className="size-4" />}
+                  {toolsOpen ? <X className="size-5" /> : <Plus className="size-5" />}
                 </button>
+                {!inputText && !fileDraft.files.length && onSendFile && (
+                  <button
+                    type="button"
+                    aria-label="แนบรูปภาพ"
+                    onClick={() => photoInputRef.current?.click()}
+                    className="inbox-touch lg:hidden"
+                  >
+                    <ImagePlus className="size-5" />
+                  </button>
+                )}
+                <textarea
+                  ref={inputRef}
+                  data-chat-composer-input
+                  value={inputText}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    setInputText(value);
+                    if (!value.trim()) {
+                      setSelectedSuggestion(null);
+                      endTyping();
+                    } else emitTyping();
+                  }}
+                  onKeyDown={handleKeyDown}
+                  onPaste={handlePaste}
+                  onBlur={endTyping}
+                  placeholder="พิมพ์ข้อความ…"
+                  aria-label="พิมพ์ข้อความ"
+                  rows={1}
+                  className="inbox-message-input focus-visible:ring-0 focus-visible:ring-offset-0"
+                />
+                {isMobile && (voice.active || (!inputText.trim() && !fileDraft.files.length)) ? (
+                  <button
+                    type="button"
+                    onClick={() => (voice.active ? voice.stop() : voice.start())}
+                    disabled={isSending || voice.phase === 'stopping'}
+                    aria-label={voice.active ? 'หยุดรับเสียง' : 'พูดเป็นข้อความ'}
+                    aria-pressed={voice.active}
+                    className={cn('inbox-touch', voice.active && 'text-destructive')}
+                  >
+                    {voice.active ? <Square className="size-5" /> : <Mic className="size-5" />}
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => void handleSend()}
+                    disabled={
+                      (!inputText.trim() && !fileDraft.files.length) ||
+                      isSending ||
+                      fileDraft.busy ||
+                      voice.active
+                    }
+                    aria-label="ส่งข้อความ"
+                    className="inbox-send-button"
+                  >
+                    {isSending || fileDraft.busy ? (
+                      <Loader2 className="size-5 animate-spin" />
+                    ) : (
+                      <Send className="size-5" />
+                    )}
+                    <span className="hidden lg:inline">ส่ง</span>
+                  </button>
+                )}
               </div>
-            </div>
+              <input
+                ref={fileInputRef}
+                type="file"
+                multiple
+                accept="image/*,.pdf,.doc,.docx"
+                onChange={handleFileSelect}
+                className="hidden"
+              />
+              <input
+                ref={photoInputRef}
+                type="file"
+                multiple
+                accept="image/*"
+                onChange={handleFileSelect}
+                className="hidden"
+              />
+              <div className={cn('inbox-composer-tools', toolsOpen ? 'grid' : 'hidden lg:flex')}>
+                {onSendFile && (
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={isUploadingFile}
+                    aria-label="แนบไฟล์"
+                  >
+                    <Paperclip className="size-5" />
+                    <span>ไฟล์</span>
+                  </button>
+                )}
+                {libraryEnabled && (
+                  <button
+                    type="button"
+                    aria-label="เลือกไฟล์จากคลัง"
+                    onClick={() => {
+                      libraryDraft.setOpen(true);
+                      setToolsOpen(false);
+                    }}
+                  >
+                    <Cloud className="size-5" />
+                    <span>คลังไฟล์</span>
+                  </button>
+                )}
+                <button
+                  type="button"
+                  aria-label="ส่งข้อมูลสินค้า"
+                  onClick={() => {
+                    setShowProductPicker(true);
+                    setToolsOpen(false);
+                  }}
+                >
+                  <Smartphone className="size-5" />
+                  <span>สินค้า</span>
+                </button>
+                <PrepareOfferDialog
+                  key={session.id}
+                  roomId={session.id}
+                  onInsert={(text) => {
+                    setSelectedSuggestion(null);
+                    insertAtCaret(text);
+                    setToolsOpen(false);
+                  }}
+                />
+                  <ChatMediaPicker
+                    model={mediaPicker}
+                    open={emojiOpen}
+                    onOpenChange={setEmojiOpen}
+                    isLineChannel={!!isLineChannel}
+                    onEmoji={insertEmoji}
+                    onSticker={handleStickerClick}
+                    onGif={(url) => {
+                      endTyping();
+                      onSendMessage(`[gif:${url}]`);
+                      setEmojiOpen(false);
+                    }}
+                  />
+                <button
+                  type="button"
+                  className="lg:hidden"
+                  onClick={() => {
+                    setAiOpen(true);
+                    setToolsOpen(false);
+                  }}
+                >
+                  <Sparkles className="size-5" />
+                  <span>AI แนะนำ</span>
+                </button>
+                <button
+                  type="button"
+                  className={cn(
+                    isMobile && (inputText.trim() || fileDraft.files.length) && !voice.active
+                      ? 'inline-flex'
+                      : 'hidden lg:inline-flex',
+                  )}
+                  onClick={() => (voice.active ? voice.stop() : voice.start())}
+                  disabled={isSending || voice.phase === 'stopping'}
+                  aria-label={voice.active ? 'หยุดรับเสียง' : 'พูดเป็นข้อความ'}
+                  aria-pressed={voice.active}
+                >
+                  {voice.active ? <Square className="size-5" /> : <Mic className="size-5" />}
+                  <span>{voice.active ? 'หยุดรับเสียง' : 'พูดเป็นข้อความ'}</span>
+                </button>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <button type="button" className="inbox-voice-help" aria-label="เกี่ยวกับการพิมพ์ด้วยเสียง" title="เกี่ยวกับการพิมพ์ด้วยเสียง">
+                      <CircleHelp aria-hidden="true" />
+                      <span>เกี่ยวกับการพิมพ์ด้วยเสียง</span>
+                    </button>
+                  </PopoverTrigger>
+                  <PopoverContent side="top" align="end" className="w-[min(20rem,calc(100vw-2rem))] rounded-xl text-sm leading-relaxed">
+                    <p className="font-semibold">พิมพ์ด้วยเสียง</p>
+                    <p className="mt-2 text-muted-foreground">
+                      {!voice.supported ? VOICE_FALLBACK : 'กดไมค์แล้วพูดภาษาไทย จากนั้นกดหยุดและตรวจข้อความก่อนส่ง เบราว์เซอร์อาจส่งเสียงไปบริการแปลงเสียง'}
+                    </p>
+                  </PopoverContent>
+                </Popover>
+              </div>
             </div>
           </div>
         </div>
       )}
+      <Sheet open={aiOpen} onOpenChange={setAiOpen}>
+        <SheetContent side="bottom" className="inbox-mobile-sheet">
+          <SheetTitle>AI แนะนำ</SheetTitle>
+          <SheetDescription>เลือกข้อความเพื่อแก้ไขก่อนส่ง</SheetDescription>
+          {aiOpen && (
+            <AiSuggestPanel
+              roomId={session.id}
+              lastMessageAt={lastMessageAt}
+              onSelectSuggestion={(text, metadata) => {
+                handleSelectSuggestion(text, metadata);
+                setAiOpen(false);
+              }}
+            />
+          )}
+        </SheetContent>
+      </Sheet>
 
       {/* แถบห้องปิดแล้ว — แทนช่องพิมพ์ · ปุ่ม "เปิดงานกลับ" อยู่หัวห้อง (ไม่ซ้ำ 2 ที่) */}
       {isResolved && (
@@ -1104,7 +1678,12 @@ export default function ChatPanel({
         roomId={session?.id ?? null}
       />
 
-      <ChatLibraryPicker key={`${librarySettings.company}:${session?.id}`} open={libraryDraft.open} onOpenChange={libraryDraft.setOpen} onAdd={libraryDraft.add} />
+      <ChatLibraryPicker
+        key={`${librarySettings.company}:${session?.id}`}
+        open={libraryDraft.open}
+        onOpenChange={libraryDraft.setOpen}
+        onAdd={libraryDraft.add}
+      />
       <ProductPickerDialog
         isOpen={showProductPicker}
         onClose={() => setShowProductPicker(false)}

@@ -1,3 +1,4 @@
+import { NativeSelect } from '@/components/ui/native-select';
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
@@ -129,7 +130,9 @@ export default function QcCenterPage() {
     <div className="pb-24">
       <PageHeader
         title="รอถ่ายรูป"
-        subtitle="มือถือมือสองทุกทาง จาก PO · รับซื้อมือสอง · ยึดเครื่องคืน ต้องถ่ายรูป 6 มุมก่อนขึ้นขาย · มือถือใหม่และอุปกรณ์เสริมเข้าคลังพร้อมขายตั้งแต่ตอนรับของ ไม่ผ่านหน้านี้"
+        subtitle="ถ่ายรูปมือถือมือสองให้ครบ 6 มุมก่อนขึ้นขาย"
+        helpLabel="เครื่องใดต้องเข้าคิวนี้"
+        help="รวมมือถือมือสองจากใบสั่งซื้อ รับซื้อ และยึดคืน ส่วนมือถือใหม่และอุปกรณ์เสริมพร้อมขายตั้งแต่รับเข้าคลัง ไม่ต้องผ่านคิวนี้"
         icon={<Camera className="size-5" />}
         badge={
           total > 0 ? (
@@ -144,7 +147,7 @@ export default function QcCenterPage() {
       <div className="flex flex-col sm:flex-row gap-2 mb-4">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
-          <input
+          <input aria-label="ค้นหาเลข PO / เลขสัญญา / ชื่อสินค้า / IMEI"
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
@@ -153,16 +156,16 @@ export default function QcCenterPage() {
           />
         </div>
         {canPickBranch && (
-          <select value={branchId} onChange={(e) => setBranchId(e.target.value)} className={selectCls} aria-label="สาขา">
+          <NativeSelect wrapperClassName="max-w-full w-auto" value={branchId} onChange={(e) => setBranchId(e.target.value)} className={selectCls} aria-label="สาขา">
             <option value="">ทุกสาขา</option>
             {(branches ?? []).map((b) => (
               <option key={b.id} value={b.id}>
                 {b.name}
               </option>
             ))}
-          </select>
+          </NativeSelect>
         )}
-        <select
+        <NativeSelect wrapperClassName="max-w-full w-auto"
           value={source}
           onChange={(e) => setSource(e.target.value as QcSource | '')}
           className={selectCls}
@@ -173,7 +176,7 @@ export default function QcCenterPage() {
               {o.label}
             </option>
           ))}
-        </select>
+        </NativeSelect>
       </div>
 
       <QueryBoundary
@@ -262,7 +265,7 @@ export default function QcCenterPage() {
                     <div className={`flex items-center gap-3 ${isMobile ? 'w-full flex-wrap' : 'shrink-0'}`}>
                       <AngleDots shot={p.photoAngles} />
                       <div className={`flex gap-2 ${isMobile ? 'w-full' : ''}`}>
-                        <button
+                        <button data-ui-control="button"
                           onClick={() => navigate(`/products/${p.id}`)}
                           title="ถ่ายรูป 6 มุมที่หน้ารายละเอียดสินค้า — ครบแล้วกดยืนยันรูป เครื่องจะขึ้นขายเอง"
                           className={`inline-flex items-center justify-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors ${isMobile ? 'flex-1' : ''}`}
@@ -270,7 +273,7 @@ export default function QcCenterPage() {
                           <Camera className="size-3.5" /> {primaryActionLabel(p)}
                         </button>
                         {rejectable && (
-                          <button
+                          <button data-ui-control="button"
                             onClick={() => {
                               setSelected(new Set([p.id]));
                               setRejectOpen(true);
@@ -295,13 +298,13 @@ export default function QcCenterPage() {
         <div className="fixed bottom-0 left-0 right-0 lg:left-[var(--sidebar-w,264px)] z-30 border-t border-border bg-card/95 backdrop-blur px-4 py-3 flex items-center justify-between gap-3">
           <span className="text-sm font-medium text-foreground leading-snug">เลือก {selectedVisible.length} ชิ้น</span>
           <div className="flex gap-2">
-            <button
+            <button data-ui-control="button"
               onClick={clearSelection}
               className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium border border-border hover:bg-muted transition-colors"
             >
               ยกเลิกการเลือก
             </button>
-            <button
+            <button data-ui-control="button"
               onClick={() => setRejectOpen(true)}
               disabled={rejectMutation.isPending}
               className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium border border-destructive/40 text-destructive hover:bg-destructive/10 transition-colors disabled:opacity-50"

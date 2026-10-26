@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useId as useUiFieldId, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
 import { Search, FileText, AlertCircle, Link2, FilePlus2 } from 'lucide-react';
@@ -30,6 +30,7 @@ interface Props {
  * Mode STANDALONE — free-form supplier + free-form lines, no source FK.
  */
 export function CreditNoteLinesSection({ state, onChange, onLinesChange }: Props) {
+  const uiFieldId = useUiFieldId();
   const [search, setSearch] = useState('');
   const isStandalone = state.cnMode === 'STANDALONE';
 
@@ -121,7 +122,7 @@ export function CreditNoteLinesSection({ state, onChange, onLinesChange }: Props
           >
             <FilePlus2 className={`size-4 mt-0.5 ${isStandalone ? 'text-primary' : 'text-muted-foreground'}`} />
             <div className="space-y-0.5">
-              <div className="text-sm font-medium">Standalone (ไม่มีใบเดิม)</div>
+              <div className="text-sm font-medium">ไม่มีเอกสารต้นทาง</div>
               <div className="text-xs text-muted-foreground leading-snug">
                 ผู้ขายคืนเงินโดยไม่มีใบกำกับเดิม · ระบุผู้ขายเอง
               </div>
@@ -171,7 +172,7 @@ export function CreditNoteLinesSection({ state, onChange, onLinesChange }: Props
               <>
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
-                  <input
+                  <input aria-label="ค้นหาเลข EX-... / ผู้ขาย (3 ตัวขึ้นไป)"
                     type="text"
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
@@ -225,10 +226,10 @@ export function CreditNoteLinesSection({ state, onChange, onLinesChange }: Props
             )}
 
             <div>
-              <label className="block text-xs font-medium mb-1">
+              <label htmlFor={`${uiFieldId}-1`} className="block text-xs font-medium mb-1">
                 เหตุผลลดหนี้ <span className="text-destructive">*</span>
               </label>
-              <input
+              <input id={`${uiFieldId}-1`}
                 type="text"
                 value={state.cnReason}
                 onChange={(e) => onChange({ cnReason: e.target.value })}
@@ -253,10 +254,10 @@ export function CreditNoteLinesSection({ state, onChange, onLinesChange }: Props
           <div className="p-4 space-y-3">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs font-medium mb-1">
+                <label htmlFor={`${uiFieldId}-2`} className="block text-xs font-medium mb-1">
                   ชื่อผู้ขาย <span className="text-destructive">*</span>
                 </label>
-                <input
+                <input id={`${uiFieldId}-2`}
                   type="text"
                   value={state.vendorName}
                   onChange={(e) => onChange({ vendorName: e.target.value })}
@@ -266,10 +267,10 @@ export function CreditNoteLinesSection({ state, onChange, onLinesChange }: Props
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium mb-1">
+                <label htmlFor={`${uiFieldId}-3`} className="block text-xs font-medium mb-1">
                   เลขผู้เสียภาษี (ทางเลือก)
                 </label>
-                <input
+                <input id={`${uiFieldId}-3`}
                   type="text"
                   value={state.vendorTaxId}
                   onChange={(e) => onChange({ vendorTaxId: e.target.value })}
@@ -281,10 +282,10 @@ export function CreditNoteLinesSection({ state, onChange, onLinesChange }: Props
             </div>
 
             <div>
-              <label className="block text-xs font-medium mb-1">
+              <label htmlFor={`${uiFieldId}-4`} className="block text-xs font-medium mb-1">
                 เหตุผลลดหนี้ <span className="text-destructive">*</span>
               </label>
-              <input
+              <input id={`${uiFieldId}-4`}
                 type="text"
                 value={state.cnReason}
                 onChange={(e) => onChange({ cnReason: e.target.value })}
@@ -296,8 +297,7 @@ export function CreditNoteLinesSection({ state, onChange, onLinesChange }: Props
             <div className="rounded-lg border border-warning/30 bg-warning/5 p-2 text-xs text-warning-strong flex items-start gap-2">
               <AlertCircle className="size-3.5 mt-0.5 shrink-0" />
               <span>
-                ใบลดหนี้แบบ Standalone ไม่ถูก cap ด้วยยอดของเอกสารต้นฉบับ
-                — โปรดตรวจสอบยอดให้ถูกต้องก่อนกด POST
+                ใบลดหนี้ที่ไม่มีเอกสารต้นทางไม่จำกัดยอดตามเอกสารเดิม โปรดตรวจยอดก่อนลงบัญชี
               </span>
             </div>
           </div>

@@ -41,7 +41,7 @@ export function ColorSelector({ value, onChange, colors = IPHONE_COLORS }: Color
     <div>
       <div className="flex flex-wrap gap-2 mb-2">
         {colors.map((color) => (
-          <button
+          <button data-ui-control="button"
             key={color.value}
             type="button"
             onClick={() => onChange(color.value)}
@@ -90,7 +90,7 @@ export function StorageSelector({ value, onChange, options = STORAGE_OPTIONS }: 
     <div>
       <div className="flex flex-wrap gap-2 mb-2">
         {options.map((opt) => (
-          <button
+          <button data-ui-control="button"
             key={opt}
             type="button"
             onClick={() => onChange(opt)}

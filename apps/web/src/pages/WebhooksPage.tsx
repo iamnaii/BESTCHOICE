@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useId as useUiFieldId, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Webhook, Plus, Trash2, Send, CheckCircle, XCircle, ChevronDown, ChevronRight } from 'lucide-react';
 import { toast } from 'sonner';
@@ -31,18 +31,19 @@ interface CreateWebhookForm {
 }
 
 const SUPPORTED_EVENTS = [
-  { value: 'payment.received', label: 'Payment Received — รับชำระค่างวด' },
-  { value: 'payment.overdue', label: 'Payment Overdue — ค้างชำระ' },
-  { value: 'contract.activated', label: 'Contract Activated — เปิดสัญญา' },
-  { value: 'contract.completed', label: 'Contract Completed — ปิดสัญญา' },
-  { value: 'contract.defaulted', label: 'Contract Defaulted — สัญญาผิดนัด' },
-  { value: 'trade_in.completed', label: 'Trade-in Completed — รับซื้อมือสอง' },
-  { value: 'customer.created', label: 'Customer Created — ลูกค้าใหม่' },
+  { value: 'payment.received', label: "รับชำระเงิน — รับชำระค่างวด" },
+  { value: 'payment.overdue', label: "ค้างชำระ" },
+  { value: 'contract.activated', label: "เปิดสัญญา" },
+  { value: 'contract.completed', label: "ผ่อนครบ — ปิดสัญญา" },
+  { value: 'contract.defaulted', label: "ผิดนัดชำระ — สัญญาผิดนัด" },
+  { value: 'trade_in.completed', label: "รับซื้อเสร็จสิ้น — รับซื้อมือสอง" },
+  { value: 'customer.created', label: "สร้างลูกค้า — ลูกค้าใหม่" },
 ];
 
 // ─── Form Component ───────────────────────────────────────────────────────────
 
 function AddWebhookForm({ onClose, onSuccess }: { onClose: () => void; onSuccess: () => void }) {
+  const uiFieldId = useUiFieldId();
   const [form, setForm] = useState<CreateWebhookForm>({
     name: '',
     url: '',
@@ -87,10 +88,10 @@ function AddWebhookForm({ onClose, onSuccess }: { onClose: () => void; onSuccess
     <form onSubmit={handleSubmit} className="space-y-4">
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
-          <label className="block text-sm font-medium text-foreground mb-1">
+          <label htmlFor={`${uiFieldId}-1`} className="block text-sm font-medium text-foreground mb-1">
             ชื่อ <span className="text-destructive">*</span>
           </label>
-          <input
+          <input id={`${uiFieldId}-1`}
             type="text"
             placeholder="เช่น Partner XYZ Integration"
             value={form.name}
@@ -100,10 +101,10 @@ function AddWebhookForm({ onClose, onSuccess }: { onClose: () => void; onSuccess
           />
         </div>
         <div>
-          <label className="block text-sm font-medium text-foreground mb-1">
+          <label htmlFor={`${uiFieldId}-2`} className="block text-sm font-medium text-foreground mb-1">
             URL <span className="text-destructive">*</span>
           </label>
-          <input
+          <input id={`${uiFieldId}-2`}
             type="url"
             placeholder="https://partner.com/webhook"
             value={form.url}
@@ -114,11 +115,11 @@ function AddWebhookForm({ onClose, onSuccess }: { onClose: () => void; onSuccess
         </div>
       </div>
       <div>
-        <label className="block text-sm font-medium text-foreground mb-1">
+        <label htmlFor={`${uiFieldId}-3`} className="block text-sm font-medium text-foreground mb-1">
           Secret Key <span className="text-destructive">*</span>
           <span className="text-xs text-muted-foreground ml-1">(ใช้สำหรับ HMAC-SHA256 signature ใน header X-Webhook-Signature)</span>
         </label>
-        <input
+        <input id={`${uiFieldId}-3`}
           type="text"
           placeholder="your-secret-key"
           value={form.secret}
@@ -129,7 +130,7 @@ function AddWebhookForm({ onClose, onSuccess }: { onClose: () => void; onSuccess
       </div>
       <div>
         <label className="block text-sm font-medium text-foreground mb-2">
-          Events <span className="text-destructive">*</span>
+          เหตุการณ์ <span className="text-destructive">*</span>
         </label>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
           {SUPPORTED_EVENTS.map((ev) => (
@@ -150,14 +151,14 @@ function AddWebhookForm({ onClose, onSuccess }: { onClose: () => void; onSuccess
         </div>
       </div>
       <div className="flex gap-3 pt-2">
-        <button
+        <button data-ui-control="button"
           type="submit"
           disabled={mutation.isPending}
           className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 disabled:opacity-50 transition-colors"
         >
           {mutation.isPending ? 'กำลังบันทึก...' : 'ลงทะเบียน Webhook'}
         </button>
-        <button
+        <button data-ui-control="button"
           type="button"
           onClick={onClose}
           className="px-4 py-2 border rounded-lg text-sm font-medium hover:bg-muted transition-colors"
@@ -215,7 +216,7 @@ function WebhookRow({
               const cfg = getStatusBadgeProps(sub.isActive ? 'active' : 'inactive', activeStatusMap);
               return (
                 <Badge variant={cfg.variant} appearance={cfg.appearance} className="text-xs">
-                  {sub.isActive ? 'Active' : 'Inactive'}
+                  {sub.isActive ? "เปิดใช้งาน" : "ปิดใช้งาน"}
                 </Badge>
               );
             })()}
@@ -230,7 +231,7 @@ function WebhookRow({
                 ) : (
                   <XCircle className="w-3 h-3" aria-hidden="true" />
                 )}
-                {sub.lastDelivery.success ? 'OK' : 'Failed'}
+                {sub.lastDelivery.success ? "ตกลง" : "ไม่สำเร็จ"}
               </Badge>
             )}
           </div>
@@ -238,16 +239,16 @@ function WebhookRow({
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
-          <button
+          <button data-ui-control="button"
             onClick={() => testMutation.mutate()}
             disabled={testMutation.isPending}
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs border rounded-md hover:bg-primary/10 hover:border-primary/30 text-primary transition-colors disabled:opacity-50"
             aria-label="ส่ง test event"
           >
             <Send className="w-3.5 h-3.5" aria-hidden="true" />
-            Test
+            ทดสอบ
           </button>
-          <button
+          <button data-ui-control="button"
             onClick={() => onDelete(sub.id, sub.name)}
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs border rounded-md hover:bg-destructive/10 hover:border-destructive/30 text-destructive transition-colors"
             aria-label="ลบ webhook"
@@ -323,7 +324,7 @@ export default function WebhooksPage() {
         icon={<Webhook className="w-6 h-6" aria-hidden="true" />}
         action={
           !showForm ? (
-            <button
+            <button data-ui-control="button"
               onClick={() => setShowForm(true)}
               className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors"
             >
@@ -391,7 +392,7 @@ export default function WebhooksPage() {
         open={!!deleteTarget}
         onOpenChange={(open) => !open && setDeleteTarget(null)}
         title="ลบ Webhook Subscription"
-        description={`ต้องการลบ "${deleteTarget?.name}" ใช่หรือไม่? การดำเนินการนี้ไม่สามารถยกเลิกได้`}
+        description={`ต้องการลบ "${deleteTarget?.name}" ใช่หรือไม่? เจ้าของกู้คืนได้จากถังขยะ (ตั้งค่า › ระบบ)`}
         confirmLabel="ลบ"
         variant="destructive"
         onConfirm={() => {

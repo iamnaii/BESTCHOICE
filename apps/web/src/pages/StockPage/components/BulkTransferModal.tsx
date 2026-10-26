@@ -1,6 +1,9 @@
+import { NativeSelect } from '@/components/ui/native-select';
 import { UseMutationResult } from '@tanstack/react-query';
 import Modal from '@/components/ui/Modal';
 import { StockProduct } from '../types';
+import { useId as useUiFieldId } from 'react';
+
 
 export interface BulkTransferModalProps {
   isOpen: boolean;
@@ -29,6 +32,7 @@ export function BulkTransferModal({
   bulkTransferMutation,
   onSubmit,
 }: BulkTransferModalProps) {
+  const uiFieldId = useUiFieldId();
   return (
     <Modal
       isOpen={isOpen}
@@ -52,24 +56,24 @@ export function BulkTransferModal({
 
         {/* Destination branch */}
         <div>
-          <label className="block text-sm font-medium text-foreground mb-1">สาขาปลายทาง</label>
-          <select
+          <label htmlFor={`${uiFieldId}-1`} className="block text-sm font-medium text-foreground mb-1">สาขาปลายทาง</label>
+          <NativeSelect wrapperClassName="max-w-full w-full" id={`${uiFieldId}-1`}
             value={transferBranchId}
             onChange={(e) => setTransferBranchId(e.target.value)}
-            className="w-full px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
+            className="px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
             required
           >
             <option value="">เลือกสาขา...</option>
             {branches.map(b => (
               <option key={b.id} value={b.id}>{b.name}</option>
             ))}
-          </select>
+          </NativeSelect>
         </div>
 
         {/* Notes */}
         <div>
-          <label className="block text-sm font-medium text-foreground mb-1">หมายเหตุ (ไม่บังคับ)</label>
-          <textarea
+          <label htmlFor={`${uiFieldId}-2`} className="block text-sm font-medium text-foreground mb-1">หมายเหตุ (ไม่บังคับ)</label>
+          <textarea id={`${uiFieldId}-2`}
             value={transferNotes}
             onChange={(e) => setTransferNotes(e.target.value)}
             rows={2}
@@ -80,14 +84,14 @@ export function BulkTransferModal({
 
         {/* Actions */}
         <div className="flex justify-end gap-2 pt-2">
-          <button
+          <button data-ui-control="button"
             type="button"
             onClick={onClose}
             className="px-4 py-2 text-sm text-muted-foreground hover:text-foreground border border-input rounded-lg"
           >
             ยกเลิก
           </button>
-          <button
+          <button data-ui-control="button"
             type="submit"
             disabled={bulkTransferMutation.isPending || !transferBranchId}
             className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 disabled:opacity-50 transition-colors"

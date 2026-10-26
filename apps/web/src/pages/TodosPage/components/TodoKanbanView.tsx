@@ -113,7 +113,7 @@ export function TodoKanbanView({
                         ? 'bg-success border-success text-success-foreground'
                         : 'border-muted-foreground/30 hover:border-primary'
                     }`}
-                    aria-label="toggle"
+                    aria-label="เปลี่ยนสถานะงาน"
                   >
                     {t.status === 'DONE' && <CheckCircle2 className="size-3" />}
                   </button>}
@@ -202,13 +202,13 @@ export function TodoKanbanView({
                       </div>
                     )}
                     {canDelete && !domainTask && (
-                      <button
+                      <button data-ui-control="button" data-ui-icon="true"
                         onClick={(e) => {
                           e.stopPropagation();
                           onDeleteRequest(t.id);
                         }}
                         className="size-6 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 inline-flex items-center justify-center transition-colors opacity-0 group-hover:opacity-100"
-                        aria-label="delete"
+                        aria-label="ลบงาน"
                       >
                         <Trash2 className="size-3.5" />
                       </button>

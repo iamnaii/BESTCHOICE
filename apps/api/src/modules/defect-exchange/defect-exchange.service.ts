@@ -28,6 +28,30 @@ import { Decimal } from '@prisma/client/runtime/library';
 import { readStringFlag } from '../../utils/config.util';
 import { captureProductDisclosure } from '../../utils/product-disclosure.util';
 import { SHOP_WARRANTY_DAYS_CONFIG_KEY } from '../warranty/shop-warranty-policy';
+import { ReceiptVoidReversalTemplate } from '../journal/cpa-templates/receipt-void-reversal.template';
+import { ReceiptNumberService } from '../receipts/services/receipt-number.service';
+import { glContractBalance } from '../journal/gl-contract-balance';
+import { validatePeriodOpen } from '../../utils/period-lock.util';
+import { emitDeferredWarnings, type DeferredWarning } from '../journal/deferred-warning';
+import { Prisma } from '@prisma/client';
+import { voidReceiptInTx, storedTaxColumnsOf } from '../receipts/services/receipt-void-core';
+import { unmirrorableCashMessage } from '../journal/cpa-templates/defect-exchange-reversal.template';
+import { CONTRACT_ADVANCE_COLUMNS_CLEARED, readContractCloseAdvances } from '../journal/contract-close-advances';
+import { ADVANCE_VAT_META, advanceVatOutstanding } from '../journal/advance-vat';
+import {
+  buildCreditInLines,
+  buildCreditOutLines,
+  DEFECT_EXCHANGE_CN_SOURCE,
+  DEFECT_EXCHANGE_CREDIT_IN_FLOW,
+  DEFECT_EXCHANGE_CREDIT_OUT_FLOW,
+  DEFECT_EXCHANGE_REDIRECT,
+  DEFECT_EXCHANGE_SUSPENSE_ACCOUNT,
+  DEFECT_EXCHANGE_TAG,
+  estimateCreditToTransfer,
+  exchangeMoneyBlockers,
+  listReceiptsToCreditNote,
+  sumReceiptAmounts,
+} from './defect-exchange-credit';
 
 type ReqUser = { id: string; role: string; branchId?: string | null };
 
@@ -43,6 +67,10 @@ export class DefectExchangeService {
     private journalAutoService: JournalAutoService,
     private defectExchangeReversalTemplate: DefectExchangeReversalTemplate,
     private repairTickets: RepairTicketsService,
+    /** 15ข — กระจกรับชำระ (redirect ขาเงินสด → 21-1106) + กลับ 2A ที่ลง ณ วันรับเงิน · export จาก JournalModule */
+    private receiptVoidReversal: ReceiptVoidReversalTemplate,
+    /** 15ข — เลขที่ใบลดหนี้ (advisory lock เดียวกับใบเสร็จ) · provide ตรงใน DefectExchangeModule (ReceiptsModule ไม่ export) */
+    private receiptNumbers: ReceiptNumberService,
     @Optional() private readonly access?: AccessExchangeSourceService,
   ) {}
   private get prisma() {
@@ -124,6 +152,35 @@ export class DefectExchangeService {
       reasons.push(`พ้นกำหนด 7 วันแล้ว (รับเครื่องเมื่อ ${baseDate.toISOString().slice(0, 10)})`);
     }
 
+    // 15ข — ด่านเงิน (spec §5): ปรับดิว / กวาด 42-1106 / คำขอ void ค้าง / ปิดยอด / ใบลดหนี้กำพร้า — เหตุผลเหล่านี้
+    // ไม่ใช่เหตุผลกรอบ 7 วัน ⇒ หลังการขายบล็อกเสมอแม้ ผจก. ข้ามกรอบ (WINDOW_REASON_RE ไม่จับ)
+    reasons.push(...(await exchangeMoneyBlockers(this.prisma, contract)));
+    // 15ข — ใบรับเงินที่จะออกใบลดหนี้ + เงินของลูกค้าที่ค้างในบัญชี → เครดิตที่จะย้ายไปสัญญาใหม่ (กล่องยืนยันหลังการขาย)
+    const receiptsToCreditNote = await listReceiptsToCreditNote(this.prisma, contract.id);
+    // ประมาณการต้องเท่ากับที่ขั้น ก/ค/ข จะทำจริง (ผู้ตรวจอิสระ I2): จำลองจากรายการบัญชีของสัญญาด้วยตัวจำแนกเดียวกับ template
+    // — ไม่ใช่ Σ ใบ + ยอดถังตอนนี้ (นับซ้ำ/ตกหล่นเมื่อมีใบที่จ่ายด้วยเครดิต หรือเงินที่รอบกลางคืนหักเข้างวดโดยไม่มีใบ)
+    const contractEntries = await this.prisma.journalEntry.findMany({
+      where: {
+        AND: [{ metadata: { path: ['contractId'], equals: contract.id } } as Prisma.JournalEntryWhereInput],
+        status: 'POSTED',
+        deletedAt: null,
+      },
+      select: { entryNumber: true, metadata: true, lines: { select: { accountCode: true, debit: true, credit: true } } },
+    });
+    const estimate = estimateCreditToTransfer({
+      entries: contractEntries,
+      livePaymentIds: new Set(receiptsToCreditNote.map((r) => r.paymentId).filter((x): x is string => !!x)),
+      ledgerAdvance: await glContractBalance(this.prisma, contract.id, '21-1103', 'cr'),
+      ledgerCredit: await glContractBalance(this.prisma, contract.id, '21-5101', 'cr'),
+    });
+    // รายการเงินสดที่ขั้น ค จะปฏิเสธ — บอกในกล่องยืนยันตั้งแต่ตอน preview (ไม่ใช่ 400 ตอนกดยืนยัน)
+    if (estimate.unmirrorable.length > 0) {
+      reasons.push(unmirrorableCashMessage(estimate.unmirrorable.join(', '), contract.contractNumber));
+    }
+    const creditToTransfer = estimate.estimate;
+    const ledgerAdvance = estimate.advanceAfter;
+    const ledgerCredit = estimate.creditAfter;
+
     let newProduct: { id: string; brand: string; model: string; storage: string | null; category: string; status: string } | null = null;
     let supplierClaimEligible = false;
 
@@ -176,17 +233,31 @@ export class DefectExchangeService {
       },
       newProduct,
       supplierClaimEligible,
+      receiptsToCreditNote: receiptsToCreditNote.map((r) => ({
+        id: r.id,
+        receiptNumber: r.receiptNumber,
+        receiptType: r.receiptType,
+        installmentNo: r.installmentNo,
+        paidDate: r.paidDate.toISOString(),
+        paymentMethod: r.paymentMethod,
+        amount: new Decimal(r.amount.toString()).toFixed(2),
+        vatAmount: r.vatAmount == null ? null : new Decimal(r.vatAmount.toString()).toFixed(2),
+      })),
+      creditToTransfer: creditToTransfer.toFixed(2),
+      ledgerAdvance: ledgerAdvance.toFixed(2),
+      ledgerCredit: ledgerCredit.toFixed(2),
     };
   }
 
   /**
    * Execute a 7-day defect exchange (MANAGER only):
-   *   - Close old contract → DEFECT_EXCHANGED
-   *   - Create new contract with IDENTICAL terms
-   *   - Transfer already-paid amounts as credit to new contract (amountPaid)
-   *   - Old product → DEFECT_RETURN
-   *   - New product → RESERVED (→ SOLD_INSTALLMENT on activate)
-   *   - Reversal journal on old + new activation journal (net zero until new activates)
+   *   - 15ข (ก) ใบรับเงินทุกใบของสัญญาเดิม → ใบลดหนี้ + un-pay + กลับ 2A ก่อนครบกำหนด · กระจกรับชำระย้ายขาเงินสด → 21-1106
+   *   - Close old contract → DEFECT_EXCHANGED · old product → DEFECT_RETURN
+   *   - (ค) reverse remaining JEs (1A · 2A ที่ครบกำหนด · SHOP legs) — ข้าม flow เครดิต/เงินลูกค้า
+   *   - (ข) เงินของลูกค้าที่เหลือ (21-1103 + 21-5101) → 21-1106 + กลับภาษีที่พัก
+   *   - Create new contract with IDENTICAL terms · (ง) Dr 21-1106 / Cr 21-5101 = T + creditBalance
+   *   - New product → RESERVED (→ SOLD_INSTALLMENT on activate; activate ใช้เครดิตชำระงวดอัตโนมัติ)
+   * Spec: docs/superpowers/specs/2026-10-17-defect-exchange-credit-note-design.md §3
    */
   async execute(dto: ExecuteDefectExchangeDto, user: ReqUser | string) {
     // Support legacy string userId calls (e.g. existing controller) as well as
@@ -234,7 +305,17 @@ export class DefectExchangeService {
           throw new ForbiddenException('ไม่มีสิทธิ์เปลี่ยนเครื่องจากเคสหลังการขาย');
       }
     }
-    return this.prisma.$transaction(
+
+    // 15ข — ทุกรายการลงวันนี้ (ใบลดหนี้/กระจก/การย้ายเครดิต) ⇒ งวดบัญชี FINANCE ของวันนี้ต้องเปิด (ด่านเดียวกับ void)
+    const finance = await this.prisma.companyInfo.findFirst({
+      where: { companyCode: 'FINANCE', deletedAt: null },
+      select: { id: true },
+    });
+    await validatePeriodOpen(this.prisma, new Date(), finance?.id);
+    /** สัญญาณเตือนจาก core/void และคอลัมน์ไม่ตรงบัญชี — ส่งหลัง commit เท่านั้น */
+    const warnings: DeferredWarning[] = [];
+
+    const result = await this.prisma.$transaction(
       async (tx) => {
         // === bypass-window guards (must run before eligibility check) ===
         if (dto.bypassWindowCheck) {
@@ -302,23 +383,8 @@ export class DefectExchangeService {
           supplierClaimEligible = eligForClaim.supplierClaimEligible;
         }
 
-        // Wave 3 T2 (ปพพ.386 C-6): Defect Exchange ไม่อนุญาตถ้ามี Payment record
-        // ใดๆ บนสัญญาเดิม. การชำระเงินแม้แต่งวดเดียว → ลูกค้าได้รับประโยชน์
-        // จากการครอบครอง → ไม่ใช่ "เครื่องตำหนิ" ที่จะคืนได้ตามกฎหมาย.
-        // ต้องยกเลิกการชำระก่อนถึงจะ exchange ได้.
-        const paidPaymentCount = await tx.payment.count({
-          where: {
-            contractId: dto.oldContractId,
-            deletedAt: null,
-            OR: [{ status: 'PAID' }, { amountPaid: { gt: 0 } }],
-          },
-        });
-        if (paidPaymentCount > 0) {
-          throw new BadRequestException(
-            'ไม่สามารถเปลี่ยนเครื่องตำหนิได้ — มีรายการชำระเงินแล้ว ' +
-              `(${paidPaymentCount} รายการ) · กรุณายกเลิก/คืนเงินค่างวดก่อน`,
-          );
-        }
+        // 15ข (เจ้าของ 17/10/2569 ทำตามคำตอบฝ่ายบัญชีข้อ 15 ข): ด่าน C-6 "มีรายการชำระแล้ว → ปฏิเสธ" ถูกถอด —
+        // ใบรับเงินของสัญญาเดิมได้ใบลดหนี้ และเงินย้ายเป็นเครดิตสัญญาใหม่ (ขั้น ก–ง ด้านล่าง).
 
         const oldContract = await tx.contract.findUnique({
           where: { id: dto.oldContractId },
@@ -333,6 +399,11 @@ export class DefectExchangeService {
         if (oldContract.tradeInCreditSnapshot) throw new BadRequestException('สัญญาที่ใช้เครดิตเทิร์นยังไม่รองรับการเปลี่ยนเครื่อง ต้องตรวจการคืนเครดิตก่อน');
         await lockCreditCustomer(tx, oldContract.customerId);
 
+        // 15ข — ด่านเงินใน tx (ทั้งทางปกติและ bypass ซึ่งข้าม checkEligibility): ปรับดิว / กวาด 42-1106 / คำขอ void ค้าง /
+        // ปิดยอด / ใบลดหนี้กำพร้า (spec §5) — ก่อนเขียนอะไรทั้งสิ้น
+        const moneyBlockers = await exchangeMoneyBlockers(tx, oldContract);
+        if (moneyBlockers.length > 0) throw new BadRequestException(moneyBlockers[0]);
+
         const newProductRec = await tx.product.findUnique({
           where: { id: dto.newProductId },
           // รั้วต้องเห็น PO ต้นทาง (อุปกรณ์เสริมไร้ IMEI จาก PO ทดสอบ) — ชนิดของรั้วบังคับ
@@ -345,6 +416,50 @@ export class DefectExchangeService {
         // กลับรายการ JE / สร้างสัญญาใหม่ / จองเครื่อง) และครอบทาง replace จากใบซ่อม
         // (`bypassWindowCheck` ข้าม checkEligibility แต่เดินผ่านบรรทัดนี้เหมือนกัน)
         assertSameTestSide(oldContract.customer, newProductRec);
+
+        // 15ข — ยอดบัญชีพักของสัญญาเดิมก่อนเริ่ม: T ของสัญญาใหม่ = ส่วนที่ขั้น ก/ข เพิ่มเข้ามา (delta) — สัญญาเดิมที่เป็นลูกของ
+        // การเปลี่ยนเครื่องครั้งก่อนถือ Dr credit-in ของตัวเองอยู่ (Review Focus 2) จึงต้องวัดจากจุดนี้ ไม่ใช่ยอดสุทธิ
+        const suspenseBefore = await glContractBalance(tx, oldContract.id, DEFECT_EXCHANGE_SUSPENSE_ACCOUNT, 'cr');
+
+        // 15ข — เลขที่สัญญาใหม่ต้องรู้ก่อนออกใบลดหนี้ (เหตุผลการยกเลิกอ้างถึง)
+        const contractNumber = await generateContractNumber(tx);
+
+        // === 15ข ขั้น ก — ใบรับเงินทุกใบที่ยังมีผล → ใบลดหนี้ (สัญญาเดิมยัง ACTIVE/OVERDUE ตรงนี้ จึงผ่านด่านสถานะของ core) ===
+        const liveReceipts = await listReceiptsToCreditNote(tx, oldContract.id);
+        const creditNoteNumbers: string[] = [];
+        const voidedReceiptNumbers: string[] = [];
+        for (const row of liveReceipts) {
+          const fresh = await tx.receipt.findUnique({ where: { id: row.id } });
+          // ถูกยกเลิกไปแล้วในฐานะใบพี่น้องของใบก่อนหน้า (paymentId เดียวกัน) — core จัดการให้แล้ว
+          if (!fresh || fresh.isVoided || fresh.deletedAt) continue;
+          const out = await voidReceiptInTx(
+            tx,
+            { reversal: this.receiptVoidReversal, numbers: this.receiptNumbers },
+            {
+              receipt: fresh,
+              reason: `เปลี่ยนเครื่องตำหนิภายใน 7 วัน → สัญญา ${contractNumber}`,
+              issuedById: reqUser.id,
+              approvedById: reqUser.id,
+              userRole: reqUser.role,
+              // ใบตั้งแต่ PR3 เก็บค่า ณ ตอนออก — ใบเก่ากว่านั้น (prod ไม่มี) ได้ใบลดหนี้แบบยอดอย่างเดียว
+              creditNoteMoney: storedTaxColumnsOf,
+              policy: { skipAgeLimit: true, cnSource: DEFECT_EXCHANGE_CN_SOURCE, redirect: DEFECT_EXCHANGE_REDIRECT },
+            },
+          );
+          warnings.push(...out.warnings);
+          creditNoteNumbers.push(out.creditNote.receiptNumber, ...out.siblingCreditNoteNumbers);
+          voidedReceiptNumbers.push(fresh.receiptNumber, ...out.siblingReceiptNumbers);
+        }
+        // Σ ยอดใบที่ถูกยกเลิกจริง (ใบพี่น้องรวมอยู่ในรายการอยู่แล้ว) — ใช้เป็นเพดานตรวจทาน ไม่ใช่ตัวตั้ง T:
+        // ใบที่จ่ายด้วยเครดิต/เงินรับล่วงหน้าไม่มีขาเงินสด กระจกของมันคืน 21-5101/21-1103 ซึ่งขั้น ข ย้ายให้แล้ว
+        const voidedRows =
+          liveReceipts.length > 0
+            ? await tx.receipt.findMany({
+                where: { id: { in: liveReceipts.map((r) => r.id) }, isVoided: true },
+                select: { amount: true },
+              })
+            : [];
+        const receiptsVoided = sumReceiptAmounts(voidedRows);
 
         // Close old contract
         await tx.contract.update({
@@ -361,21 +476,57 @@ export class DefectExchangeService {
           data: { status: 'DEFECT_RETURN' },
         });
 
-        // Phase A.5a: reverse all JEs for the old contract.
-        // Must run in the same outer tx so an exchange that fails to
-        // reverse cleanly rolls back the contract status update — never
-        // leaves a contract DEFECT_EXCHANGED with old JEs still active.
+        // === 15ข ขั้น ค — Phase A.5a: reverse the remaining JEs (1A · 2A ที่ครบกำหนด · SHOP legs). ===
+        // Must run in the same outer tx so an exchange that fails to reverse cleanly rolls back the
+        // contract status update. ข้าม flow เครดิต/รายการเงินสดของลูกค้า (template) — ขั้น ข ย้ายให้เอง.
         await this.defectExchangeReversalTemplate.reverseContract(oldContract.id, tx);
         // ก้อน 5 — JE ภาษีซื้อของสัญญาเดิมถูกกลับไปพร้อมกัน → สถานะบนสัญญาตามสมุด (PENDING_INVOICE = ถอนสิทธิ์เคลมย้อน)
         await markInputVatReversedIfSwept(tx, oldContract.id);
 
-        // Total paid by customer on old contract = down payment + sum of installment payments received
-        const paidInstallments = oldContract.payments
-          .filter((p) => p.status === 'PAID' || Number(p.amountPaid) > 0)
-          .reduce((sum, p) => sum.add(new Decimal(p.amountPaid)), new Decimal(0));
+        // === 15ข ขั้น ข — เงินของลูกค้าที่เหลือ (21-1103 ทุกถัง + 21-5101) → 21-1106 + กลับภาษีที่พักทั้งก้อน ===
+        // ผู้ตรวจอิสระ I1: อ่านคอลัมน์สดหลังขั้น ก/ค — การยกเลิกใบคืนค่า advanceBalance/creditBalance ให้สัญญาเดิมแล้ว (receipt-void-core)
+        // ถ้าใช้ snapshot ก่อนขั้น ก จะเตือน "คอลัมน์ไม่ตรงบัญชี" เท็จทุกครั้งที่สัญญาเดิมมีใบที่จ่ายด้วยเครดิต/หักเงินรับล่วงหน้า
+        const oldColumns = await tx.contract.findUniqueOrThrow({
+          where: { id: oldContract.id },
+          select: { id: true, contractNumber: true, advanceBalance: true, rescheduleAdvanceBalance: true, creditBalance: true },
+        });
+        const close = await readContractCloseAdvances(tx, oldColumns, 'defect-exchange');
+        warnings.push(...close.warnings);
+        const moneyOut = close.advance.plus(close.credit);
+        let creditOutEntryNo: string | null = null;
+        const vatOut = await advanceVatOutstanding(tx, oldContract.id);
+        if (moneyOut.gt(0)) {
+          const posted = await this.journalAutoService.createAndPost(
+            {
+              description: `[เปลี่ยนเครื่องตำหนิ] โอนเงินของลูกค้าที่เหลือเป็นเครดิตสัญญาใหม่ — สัญญา ${oldContract.contractNumber} → ${contractNumber}`,
+              reference: `defect-exchange-credit-out:${oldContract.id}`,
+              metadata: {
+                tag: DEFECT_EXCHANGE_TAG,
+                flow: DEFECT_EXCHANGE_CREDIT_OUT_FLOW,
+                idempotencyKey: `defect-exchange-credit-out:${oldContract.id}`,
+                contractId: oldContract.id,
+                newContractNumber: contractNumber,
+                advance: close.advance.toFixed(2),
+                credit: close.credit.toFixed(2),
+                amount: moneyOut.toFixed(2),
+                ...(vatOut.gt(0) ? { [ADVANCE_VAT_META.consume]: vatOut.toFixed(2) } : {}),
+              },
+              lines: buildCreditOutLines(close.advance, close.credit, vatOut),
+            },
+            tx,
+          );
+          creditOutEntryNo = posted.entryNumber;
+        } else if (vatOut.gt(0.01)) {
+          warnings.push({
+            message: '[defect-exchange] advance VAT outstanding with no customer money left to transfer',
+            tags: { module: 'defect-exchange', action: 'defect-exchange-orphan-advance-vat' },
+            extra: { contractId: oldContract.id, contractNumber: oldContract.contractNumber, advanceVatOutstanding: vatOut.toFixed(2) },
+          });
+        }
+        // คอลัมน์เงินของลูกค้าบนสัญญาเดิมเป็นศูนย์ในธุรกรรมเดียวกัน (เงินอยู่ที่ 21-1106 → สัญญาใหม่)
+        await tx.contract.update({ where: { id: oldContract.id }, data: CONTRACT_ADVANCE_COLUMNS_CLEARED });
 
         // Create new contract — copy terms verbatim, link to old
-        const contractNumber = await generateContractNumber(tx);
         const newContract = await tx.contract.create({
           data: {
             contractNumber,
@@ -426,11 +577,45 @@ export class DefectExchangeService {
           await tx.payment.createMany({ data: newPayments });
         }
 
-        // If customer had already paid installments, credit them to new contract via creditBalance
-        if (paidInstallments.greaterThan(0)) {
+        // === 15ข ขั้น ง — ตั้งเครดิตสัญญาใหม่ T = ส่วนที่ขั้น ก (ขาเงินสดที่ย้าย) + ข (เงินค้าง) เพิ่มเข้า 21-1106 ของสัญญาเดิม ===
+        // อ่านจากสมุด (delta ก่อน/หลัง) — ไม่ใช่ Σ ใบ + ข: ใบที่จ่ายด้วยเครดิตไม่มีขาเงินสด กระจกคืน 21-5101 แล้ว ข ย้ายให้
+        // (นับซ้ำถ้าบวกยอดใบ). ตรวจทานขอบเขต: ข ≤ T ≤ ข + Σ ใบ — นอกช่วง = บัญชีพักมีรายการที่ไม่รู้จัก ห้ามเดา ⇒
+        // ทั้ง tx rollback (500 + Sentry ให้ฝ่ายบัญชีตรวจ)
+        const suspenseAfter = await glContractBalance(tx, oldContract.id, DEFECT_EXCHANGE_SUSPENSE_ACCOUNT, 'cr');
+        const transferred = suspenseAfter.minus(suspenseBefore);
+        const cashFromReceipts = transferred.minus(moneyOut);
+        if (transferred.lt(0) || cashFromReceipts.lt(-0.01) || cashFromReceipts.gt(receiptsVoided.plus(0.01))) {
+          throw new Error(
+            `[defect-exchange] 21-1106 ของสัญญา ${oldContract.contractNumber} เพิ่มขึ้น ${transferred.toFixed(2)} ` +
+              `(เงินค้างที่ย้าย ${moneyOut.toFixed(2)} · ใบที่ยกเลิก ${receiptsVoided.toFixed(2)}) — บัญชีพักมีรายการที่ไม่รู้จัก ต้องตรวจก่อน`,
+          );
+        }
+        let creditInEntryNo: string | null = null;
+        if (transferred.gt(0)) {
+          const posted = await this.journalAutoService.createAndPost(
+            {
+              description: `[เปลี่ยนเครื่องตำหนิ] รับโอนเครดิตจากสัญญา ${oldContract.contractNumber} — สัญญา ${contractNumber}`,
+              reference: `defect-exchange-credit-in:${newContract.id}`,
+              metadata: {
+                tag: DEFECT_EXCHANGE_TAG,
+                flow: DEFECT_EXCHANGE_CREDIT_IN_FLOW,
+                idempotencyKey: `defect-exchange-credit-in:${newContract.id}`,
+                contractId: newContract.id,
+                exchangeOf: oldContract.id,
+                exchangeOfContractNumber: oldContract.contractNumber,
+                amount: transferred.toFixed(2),
+                receiptsVoided: receiptsVoided.toFixed(2),
+                cashFromReceipts: cashFromReceipts.toFixed(2),
+                ledgerMoved: moneyOut.toFixed(2),
+              },
+              lines: buildCreditInLines(transferred),
+            },
+            tx,
+          );
+          creditInEntryNo = posted.entryNumber;
           await tx.contract.update({
             where: { id: newContract.id },
-            data: { creditBalance: paidInstallments },
+            data: { creditBalance: transferred },
           });
         }
 
@@ -509,7 +694,15 @@ export class DefectExchangeService {
               newProductId: dto.newProductId,
               defectReason: dto.defectReason,
               photoUrls: dto.photoUrls ?? [],
-              transferredCredit: paidInstallments.toNumber(),
+              transferredCredit: transferred.toFixed(2),
+              creditNoteNumbers,
+              voidedReceiptNumbers,
+              receiptsVoided: receiptsVoided.toFixed(2),
+              cashFromReceipts: cashFromReceipts.toFixed(2),
+              ledgerAdvanceMoved: close.advance.toFixed(2),
+              ledgerCreditMoved: close.credit.toFixed(2),
+              creditOutEntryNo,
+              creditInEntryNo,
               supplierClaimEligible,
             },
             ipAddress: '',
@@ -517,7 +710,9 @@ export class DefectExchangeService {
         });
 
         const log = async () => {
-          this.logger.log(`Defect exchange: ${oldContract.contractNumber} → ${contractNumber} (credit ${paidInstallments})`);
+          this.logger.log(
+            `Defect exchange: ${oldContract.contractNumber} → ${contractNumber} (credit ${transferred.toFixed(2)} · CN ${creditNoteNumbers.length})`,
+          );
         };
         if (ctx) onDomainCommit(log);
         else await log();
@@ -533,13 +728,22 @@ export class DefectExchangeService {
             contractNumber,
             status: 'DRAFT',
             workflowStatus: 'CREATING',
-            creditBalance: paidInstallments.toNumber(),
+            creditBalance: transferred.toNumber(),
           },
           supplierClaimEligible,
+          creditNoteNumbers,
+          voidedReceiptNumbers,
+          transferredCredit: transferred.toFixed(2),
+          creditOutEntryNo,
+          creditInEntryNo,
         };
       },
       { isolationLevel: 'Serializable' },
     );
+    // Managed: the nested $transaction joins the owned execution — warnings only after its commit.
+    if (ctx) onDomainCommit(async () => emitDeferredWarnings(warnings));
+    else emitDeferredWarnings(warnings);
+    return result;
   }
 
   /**

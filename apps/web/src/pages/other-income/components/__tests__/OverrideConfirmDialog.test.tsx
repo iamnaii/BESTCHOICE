@@ -13,14 +13,14 @@ describe('OverrideConfirmDialog', () => {
 
   it('does not render when open=false', () => {
     render(<OverrideConfirmDialog open={false} onConfirm={onConfirm} onCancel={onCancel} />);
-    expect(screen.queryByText(/แก้ไข Auto Journal ด้วยตนเอง/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/แก้ไขรายการบัญชีอัตโนมัติด้วยตนเอง/)).not.toBeInTheDocument();
   });
 
   it('renders warning + impacts + checkbox when open', () => {
     render(<OverrideConfirmDialog open={true} onConfirm={onConfirm} onCancel={onCancel} />);
-    expect(screen.getByText(/แก้ไข Auto Journal ด้วยตนเอง/)).toBeInTheDocument();
-    expect(screen.getByText(/ตรวจสอบ V1\/V2\/V5/)).toBeInTheDocument();
-    expect(screen.getByText(/บันทึกใน Audit Log/)).toBeInTheDocument();
+    expect(screen.getByText(/แก้ไขรายการบัญชีอัตโนมัติด้วยตนเอง/)).toBeInTheDocument();
+    expect(screen.getByText(/ตรวจสอบความถูกต้องก่อนลงบัญชี/)).toBeInTheDocument();
+    expect(screen.getByText(/บันทึกในประวัติการดำเนินการ/)).toBeInTheDocument();
     expect(screen.getByText(/ฉันเข้าใจและรับผิดชอบ/)).toBeInTheDocument();
   });
 

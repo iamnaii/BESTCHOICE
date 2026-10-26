@@ -39,6 +39,7 @@ import { NotificationsModule } from './modules/notifications/notifications.modul
 import { NotificationQueueModule } from './modules/notifications/notification-queue.module';
 import { SchedulerModule } from './modules/notifications/scheduler.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
+import { ShopHomeModule } from './modules/shop-home/shop-home.module';
 import { ReportsModule } from './modules/reports/reports.module';
 import { MigrationModule } from './modules/migration/migration.module';
 import { AuditModule } from './modules/audit/audit.module';
@@ -71,8 +72,10 @@ import { FinanceReceivableContactLogsModule } from './modules/finance-receivable
 import { AccountingModule } from './modules/accounting/accounting.module';
 import { OtherIncomeModule } from './modules/other-income/other-income.module';
 import { EquityModule } from './modules/equity/equity.module';
+import { StoreAppointmentsModule } from './modules/store-appointments/store-appointments.module';
 import { BookingsModule } from './modules/bookings/bookings.module';
 import { ShopTendersModule } from './modules/shop-tenders/shop-tenders.module';
+import { ShopPettyCashModule } from './modules/shop-petty-cash/shop-petty-cash.module';
 import { ExpenseDocumentsModule } from './modules/expense-documents/expense-documents.module';
 import { PaymentMethodConfigModule } from './modules/payment-method-config/payment-method-config.module';
 import { CompanyModule } from './modules/company/company.module';
@@ -109,6 +112,7 @@ import { PeakModule } from './modules/peak/peak.module';
 import { MdmModule } from './modules/mdm/mdm.module';
 import { YeastarModule } from './modules/yeastar/yeastar.module';
 import { WebhooksModule } from './modules/webhooks/webhooks.module';
+import { TrashModule } from './modules/trash/trash.module';
 import { AnalyticsModule } from './modules/analytics/analytics.module';
 import { SearchModule } from './modules/search/search.module';
 import { LoyaltyModule } from './modules/loyalty/loyalty.module';
@@ -228,6 +232,7 @@ import { AppCacheModule } from './cache/cache.module';
     SchedulerModule,
     // MASTER: Intelligence
     DashboardModule,
+    ShopHomeModule, // หน้าหลักหน้าร้าน — นอก /dashboard เพราะ SALES ใช้ได้
     ReportsModule,
     // MASTER: Polish
     MigrationModule,
@@ -264,7 +269,9 @@ import { AppCacheModule } from './cache/cache.module';
     EquityModule,
     // P2-SP4 — การจอง / มัดจำ (SHOP-side reservation + deposit)
     BookingsModule,
+    StoreAppointmentsModule,
     ShopTendersModule,
+    ShopPettyCashModule,
     // Expense Documents (เอกสารค่าใช้จ่าย — accrual workflow)
     ExpenseDocumentsModule,
     // Payment method ↔ Cash account mapping (cashier wizard filter)
@@ -372,6 +379,7 @@ import { AppCacheModule } from './cache/cache.module';
     // InternalControlActionBar — admin-managed reverse-reason dropdown
     ReverseReasonsModule,
     WebhooksModule,
+    TrashModule,
     AnalyticsModule,
     SearchModule,
     // Data Audit — automated DB health checks (OWNER only)

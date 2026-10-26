@@ -119,7 +119,7 @@ export function prospectKpiCards(summary?: ProspectTabSummary): KpiCardSpec[] {
     },
     {
       key: 'prechecked',
-      label: 'ผ่าน pre-check',
+      label: "ผ่านการตรวจเบื้องต้น",
       tone: 'info',
       value: summary?.prechecked ?? 0,
       params: { precheck: 'FULL_CHECK_PASSED' },
@@ -156,7 +156,7 @@ export default function CustomerKpiCards({
       role="group"
       aria-label="ตัวเลขสรุป"
       className={cn(
-        'mb-5 grid grid-cols-2 gap-3 lg:gap-4',
+        'mb-5 grid grid-cols-2 gap-2 sm:gap-3 lg:gap-4',
         // 6 ใบ = 3+3 บนแท็บเล็ต · 5 ใบ = แถวเดียวตั้งแต่แท็บเล็ต (md:grid-cols-3 จะตัดเป็น 3+2)
         cards.length === 6 ? 'md:grid-cols-3 lg:grid-cols-6' : 'md:grid-cols-5',
       )}
@@ -176,19 +176,19 @@ export default function CustomerKpiCards({
                 type="button"
                 aria-pressed={on}
                 onClick={() => onPick(card.params)}
-                className="relative w-full cursor-pointer px-4 py-4 text-left transition-colors hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                className="relative h-full w-full cursor-pointer px-3 py-2.5 sm:px-4 sm:py-4 text-left transition-colors hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
               >
                 <span
                   aria-hidden="true"
                   className={cn('absolute inset-y-0 left-0 w-1', TONE_BAR[card.tone])}
                 />
                 <span className="block pl-2">
-                  <span className="mb-1.5 block text-xs font-medium leading-snug text-muted-foreground">
+                  <span className="mb-1 sm:mb-1.5 block text-xs font-medium leading-snug text-muted-foreground">
                     {card.label}
                   </span>
                   <span
                     className={cn(
-                      'block text-2xl font-bold tabular-nums',
+                      'block text-xl sm:text-2xl font-bold tabular-nums',
                       card.value > 0 ? TONE_TEXT[card.tone] : 'text-muted-foreground',
                     )}
                   >

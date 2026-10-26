@@ -168,7 +168,7 @@ export default function ProductContextCard({ roomId, empty }: ProductContextCard
               </div>
             )}
 
-            <button
+            <button data-ui-control="button"
               type="button"
               onClick={() => sendMut.mutate(product.id)}
               disabled={sendMut.isPending}

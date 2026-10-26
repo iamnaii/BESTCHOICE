@@ -22,7 +22,9 @@ const NO_BACKCLAIM_STATUSES = ['DRAFT', 'CANCELED', 'DEFECT_EXCHANGED'] as const
 
 /**
  * final review I1 — ใบกำกับใบเดียวเคลมได้ครั้งเดียว: เครื่องเดิมที่กลับมาขายผ่อนใหม่ (ยึดคืน → ขายใหม่ · เครื่องเก่าจากเปลี่ยนเครื่อง ·
- * MEMO) ต้องไม่เคลมซ้ำถ้าสัญญาเดิมยัง CLAIMED/PENDING อยู่ (ยกเลิกสัญญา = REVERSED จึงเคลมใหม่ได้ตาม 2.5)
+ * MEMO) ต้องไม่เคลมซ้ำถ้าสัญญาเดิมยัง CLAIMED/PENDING อยู่ · ข้อ 6 (ฝ่ายบัญชี 13/10/2569 ปรับแก้ 2.5): ยกเลิกสัญญา
+ * **ไม่กลับรายการ** JE ภาษีซื้อ (ตัวกวาด C-1/exchange-cancel/A.5a ข้าม flow นี้) ⇒ สัญญาที่ยกเลิกคง CLAIMED และถือว่า
+ * "เคลมไปแล้ว" ต่อสัญญาใหม่บนเครื่องเดิมด้วย — จงใจไม่กรองสถานะสัญญาในคิวรีนี้
  */
 async function findConflictingClaim(tx: Prisma.TransactionClient, productId: string, excludeContractId: string) {
   return tx.contract.findFirst({

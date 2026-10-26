@@ -1,3 +1,4 @@
+import ScreenTable from '@/components/ui/ScreenTable';
 import { AlertTriangle, RefreshCw, Scale } from 'lucide-react';
 import QueryBoundary from '@/components/QueryBoundary';
 import { useAuth } from '@/contexts/AuthContext';
@@ -90,7 +91,7 @@ export function ReconcileTab({
           <div className="flex items-start gap-2 rounded-md border border-border bg-muted/40 p-3 text-sm leading-snug">
             <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0 text-muted-foreground" />
             <div className="text-muted-foreground">
-              ระบบ<strong>ไม่ตั้ง JE ปรับปรุงให้อัตโนมัติ</strong> —
+              ระบบ<strong>ไม่ตั้ง รายการบัญชี ปรับปรุงให้อัตโนมัติ</strong> —
               ต้องให้ผู้มีอำนาจ/ผู้สอบบัญชีตัดสินก่อนแก้ทุกกรณี ·
               การกระทบยอดรายเดือนรันเองอัตโนมัติวันที่ 1 เวลา 08:00 น. และสร้างใบงานหนึ่งใบต่อเดือน
             </div>
@@ -121,7 +122,7 @@ export function ReconcileTab({
             </CardHeader>
             <CardContent className="p-0">
               <div className="overflow-x-auto">
-                <table className="w-full text-sm leading-snug">
+                <ScreenTable className="w-full text-sm leading-snug">
                   <thead className="bg-muted/50">
                     <tr>
                       <th className="text-left p-3 font-medium text-muted-foreground">
@@ -199,7 +200,7 @@ export function ReconcileTab({
                       ))
                     )}
                   </tbody>
-                </table>
+                </ScreenTable>
               </div>
             </CardContent>
           </Card>
@@ -216,7 +217,7 @@ export function ReconcileTab({
             </CardHeader>
             <CardContent className="p-0">
               <div className="overflow-x-auto">
-                <table className="w-full text-sm leading-snug">
+                <ScreenTable className="w-full text-sm leading-snug">
                   <thead className="bg-muted/50">
                     <tr>
                       <th className="text-left p-3 font-medium text-muted-foreground">
@@ -275,7 +276,7 @@ export function ReconcileTab({
                       ))
                     )}
                   </tbody>
-                </table>
+                </ScreenTable>
               </div>
             </CardContent>
           </Card>

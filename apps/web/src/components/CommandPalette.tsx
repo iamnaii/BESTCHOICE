@@ -67,7 +67,7 @@ const pages: NavEntry[] = [
   { label: 'ตรวจสอบสลิป', path: '/payments?tab=slip-review', icon: FileCheck, keywords: 'slip review สลิป', roles: ['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT'] },
   { label: 'ติดตามหนี้', path: '/overdue', icon: AlertTriangle, keywords: 'overdue หนี้ ค้าง ติดตาม' },
   { label: NAV_LABELS.stock, path: '/stock', icon: Warehouse, keywords: 'stock inventory สต็อก คลัง' },
-  { label: 'สั่งซื้อ', path: '/purchase-orders', icon: Warehouse, keywords: 'purchase order PO สั่งซื้อ', roles: ['OWNER', 'BRANCH_MANAGER'] },
+  { label: 'สั่งซื้อ', path: '/purchase-orders', icon: Warehouse, keywords: 'purchase order PO สั่งซื้อ', roles: ['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT'] },
   { label: 'รอถ่ายรูป', path: '/purchase-orders/qc', icon: ClipboardCheck, keywords: 'qc ถ่ายรูป 6 มุม มือสอง photo pending รอถ่ายรูป', roles: ['OWNER', 'BRANCH_MANAGER'] },
   { label: 'รายงาน', path: '/reports', icon: BarChart3, keywords: 'report รายงาน', roles: ['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT'] },
   { label: 'งบกำไรขาดทุน', path: '/profit-loss', icon: DollarSign, keywords: 'profit loss กำไร ขาดทุน', roles: ['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT'] },
@@ -77,7 +77,7 @@ const pages: NavEntry[] = [
   { label: 'ตั้งค่าระบบ', path: '/settings', icon: Settings, keywords: 'settings ตั้งค่า', roles: ['OWNER'] },
   { label: 'สถานะเอกสาร', path: '/document-dashboard', icon: FileText, keywords: 'document เอกสาร', roles: ['OWNER', 'BRANCH_MANAGER'] },
   { label: 'PDPA', path: '/pdpa', icon: Shield, keywords: 'pdpa privacy', roles: ['OWNER', 'BRANCH_MANAGER'] },
-  { label: 'ส่วนของผู้ถือหุ้น (Equity)', path: '/finance/equity', icon: Landmark, keywords: 'equity ทุน ปันผล ผู้ถือหุ้น เพิ่มทุน ถอนเงิน', roles: ['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT'] },
+  { label: "ส่วนของผู้ถือหุ้น", path: '/finance/equity', icon: Landmark, keywords: 'equity ทุน ปันผล ผู้ถือหุ้น เพิ่มทุน ถอนเงิน', roles: ['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT'] },
   { label: 'ทะเบียนปันผล + ภ.ง.ด.2', path: '/finance/dividend-register', icon: Coins, keywords: 'dividend ปันผล ภงด2 pnd2 wht', roles: ['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT'] },
 ];
 
@@ -363,7 +363,7 @@ export default function CommandPalette() {
                 >
                   <item.icon />
                   <span>{item.label}</span>
-                  {item.path === '/' && <CommandShortcut>Home</CommandShortcut>}
+                  {item.path === '/' && <CommandShortcut>หน้าหลัก</CommandShortcut>}
                 </CommandItem>
               ))}
             </CommandGroup>

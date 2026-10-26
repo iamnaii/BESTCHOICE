@@ -21,7 +21,7 @@ const GROUPS: ShortcutGroup[] = [
     title: 'ทั่วไป',
     rows: [
       { keys: ['?'], label: 'เปิด/ปิดหน้าช่วยเหลือ' },
-      { keys: ['Esc'], label: 'ปิด dialog หรือยกเลิก G-prefix' },
+      { keys: ['Esc'], label: "ปิด หน้าต่าง หรือยกเลิก G-คำนำหน้า" },
       { keys: ['/'], label: 'โฟกัสช่องค้นหา' },
     ],
   },
@@ -31,7 +31,7 @@ const GROUPS: ShortcutGroup[] = [
       { keys: ['G', 'Q'], label: 'คิววันนี้' },
       { keys: ['G', 'P'], label: 'นัดชำระ' },
       { keys: ['G', 'A'], label: 'รออนุมัติ' },
-      { keys: ['G', 'N'], label: 'วิเคราะห์ (Analytics)' },
+      { keys: ['G', 'N'], label: "วิเคราะห์ (การวิเคราะห์)" },
       { keys: ['G', 'L'], label: 'ทั้งหมด' },
     ],
   },
@@ -40,12 +40,12 @@ const GROUPS: ShortcutGroup[] = [
     rows: [
       { keys: ['J', '↓'], label: 'ย้ายโฟกัสลง' },
       { keys: ['K', '↑'], label: 'ย้ายโฟกัสขึ้น' },
-      { keys: ['Enter'], label: 'เปิด Customer 360' },
+      { keys: ['Enter'], label: "เปิด ข้อมูลลูกค้ารอบด้าน" },
       { keys: ['L'], label: 'ส่ง LINE' },
       { keys: ['C'], label: 'บันทึกการโทร' },
       { keys: ['P'], label: 'บันทึกชำระเงิน' },
-      { keys: ['S'], label: 'Snooze' },
-      { keys: ['A'], label: 'มอบหมาย / Assign' },
+      { keys: ['S'], label: "พักการแจ้งเตือน" },
+      { keys: ['A'], label: "มอบหมายงาน" },
     ],
   },
 ];

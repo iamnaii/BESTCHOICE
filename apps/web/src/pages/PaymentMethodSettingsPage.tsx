@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react';
+import ScreenTable from '@/components/ui/ScreenTable';
+import { useId as useUiFieldId, useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Banknote, Building2, QrCode, Plus, Pencil, Trash2, Star } from 'lucide-react';
@@ -149,11 +150,11 @@ export default function PaymentMethodSettingsPage() {
     <div className="space-y-4 p-4 md:p-6">
       <PageHeader
         title="ช่องทางรับชำระ × บัญชี"
-        subtitle="ตั้งค่าว่าช่องทางใดใช้บัญชีไหนได้บ้าง · เลือก default ของแต่ละช่องทาง"
+        subtitle="ตั้งค่าว่าช่องทางใดใช้บัญชีไหนได้บ้าง · เลือกค่าเริ่มต้นของแต่ละช่องทาง"
         action={
           <Button onClick={() => setAddOpen(true)} className="gap-2">
             <Plus className="size-4" />
-            เพิ่ม mapping
+            เพิ่มบัญชีรับเงิน
           </Button>
         }
       />
@@ -165,13 +166,14 @@ export default function PaymentMethodSettingsPage() {
         onRetry={configsQuery.refetch}
       >
         <div className="rounded-xl border border-border bg-card overflow-hidden">
-          <table className="w-full text-sm">
+          <div role="region" aria-label="ช่องทางรับชำระ" tabIndex={0} className="overflow-x-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring">
+          <ScreenTable className="w-full min-w-[42rem] text-sm">
             <thead>
               <tr className="bg-muted/40 text-xs uppercase tracking-wide text-muted-foreground">
                 <th className="text-left px-4 py-3 font-semibold">ช่องทาง</th>
                 <th className="text-left px-4 py-3 font-semibold">บัญชีรับเงิน</th>
-                <th className="text-center px-4 py-3 font-semibold w-20">Default</th>
-                <th className="text-center px-4 py-3 font-semibold w-20">Enabled</th>
+                <th className="text-center px-4 py-3 font-semibold w-28 whitespace-nowrap">ค่าเริ่มต้น</th>
+                <th className="text-center px-4 py-3 font-semibold w-28 whitespace-nowrap">เปิดใช้งาน</th>
                 <th className="text-right px-4 py-3 font-semibold w-32"></th>
               </tr>
             </thead>
@@ -182,7 +184,7 @@ export default function PaymentMethodSettingsPage() {
                   const acct = accountByCode.get(c.accountCode);
                   return (
                     <tr key={c.id} className="border-t border-border/50 hover:bg-muted/20">
-                      <td className="px-4 py-3">
+                      <td className="min-w-36 px-4 py-3">
                         <span
                           className={`inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold ${meta.tone}`}
                         >
@@ -190,7 +192,7 @@ export default function PaymentMethodSettingsPage() {
                           {meta.label}
                         </span>
                       </td>
-                      <td className="px-4 py-3">
+                      <td className="min-w-56 px-4 py-3">
                         <div className="flex flex-col">
                           <span className="font-semibold">{acct?.name ?? c.accountCode}</span>
                           <span className="text-xs text-muted-foreground font-mono">
@@ -200,25 +202,27 @@ export default function PaymentMethodSettingsPage() {
                         </div>
                       </td>
                       <td className="px-4 py-3 text-center">
-                        <button
+                        <button data-ui-control="button"
                           type="button"
                           onClick={() =>
                             updateMutation.mutate({ id: c.id, data: { isDefault: !c.isDefault } })
                           }
-                          className="inline-flex"
-                          aria-label={c.isDefault ? 'ตั้งเป็น default' : 'ไม่ใช่ default'}
+                          className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-md hover:bg-accent"
+                          aria-label={c.isDefault ? 'ยกเลิกค่าเริ่มต้น' : 'ตั้งเป็นค่าเริ่มต้น'}
+                          aria-pressed={c.isDefault}
                         >
                           <Star
                             className={`size-5 ${
                               c.isDefault
-                                ? 'fill-amber-400 text-amber-400'
-                                : 'text-muted-foreground/40 hover:text-muted-foreground'
+                                ? 'fill-warning-strong text-warning-strong'
+                                : 'text-muted-foreground'
                             }`}
                           />
                         </button>
                       </td>
                       <td className="px-4 py-3 text-center">
                         <Switch
+                          aria-label={`เปิดใช้งาน ${meta.label} ${acct?.name ?? c.accountCode}`}
                           checked={c.enabled}
                           onCheckedChange={(checked) =>
                             updateMutation.mutate({ id: c.id, data: { enabled: checked } })
@@ -227,10 +231,10 @@ export default function PaymentMethodSettingsPage() {
                       </td>
                       <td className="px-4 py-3 text-right">
                         <Button
-                          size="sm"
+                          size="icon"
                           variant="ghost"
                           onClick={() => setPendingDeleteId(c.id)}
-                          className="h-8 w-8 p-0 text-destructive hover:text-destructive"
+                          className="text-destructive hover:text-destructive"
                           aria-label="ลบ"
                         >
                           <Trash2 className="size-4" />
@@ -243,12 +247,13 @@ export default function PaymentMethodSettingsPage() {
               {(configsQuery.data ?? []).length === 0 && (
                 <tr>
                   <td colSpan={5} className="px-4 py-12 text-center text-muted-foreground">
-                    ยังไม่มี mapping — เพิ่มด้วยปุ่ม "+ เพิ่ม mapping" ด้านบน
+                    ยังไม่มีบัญชีรับเงิน กด “เพิ่มบัญชีรับเงิน” เพื่อเริ่มต้น
                   </td>
                 </tr>
               )}
             </tbody>
-          </table>
+          </ScreenTable>
+          </div>
         </div>
       </QueryBoundary>
 
@@ -268,8 +273,8 @@ export default function PaymentMethodSettingsPage() {
         onOpenChange={(open) => {
           if (!open) setPendingDeleteId(null);
         }}
-        title="ลบ mapping"
-        description="แน่ใจไหม? บัญชีจะหายจาก wizard ทันที (กู้คืนได้โดย OWNER)"
+        title="ลบบัญชีจากช่องทางรับเงิน"
+        description="บัญชีนี้จะไม่ปรากฏในช่องทางรับเงิน ผู้เป็นเจ้าของสามารถเพิ่มกลับได้"
         confirmLabel="ลบ"
         variant="destructive"
         onConfirm={() => {
@@ -290,6 +295,7 @@ interface AddMappingDialogProps {
 }
 
 function AddMappingDialog({ open, onOpenChange, coaAccounts, existing, onCreated }: AddMappingDialogProps) {
+  const uiFieldId = useUiFieldId();
   const [method, setMethod] = useState<Method>('CASH');
   const [accountCode, setAccountCode] = useState<string>('');
   const [isDefault, setIsDefault] = useState(false);
@@ -312,7 +318,7 @@ function AddMappingDialog({ open, onOpenChange, coaAccounts, existing, onCreated
       });
     },
     onSuccess: () => {
-      toast.success('เพิ่ม mapping แล้ว');
+      toast.success("เพิ่มบัญชีรับเงินแล้ว");
       // reset
       setAccountCode('');
       setIsDefault(false);
@@ -327,16 +333,16 @@ function AddMappingDialog({ open, onOpenChange, coaAccounts, existing, onCreated
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Plus className="size-4" />
-            เพิ่ม mapping ใหม่
+            เพิ่มบัญชีรับเงิน
           </DialogTitle>
           <DialogDescription>เลือกช่องทางและบัญชีที่ต้องการผูกกัน</DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4 py-2">
           <div className="space-y-1.5">
-            <Label>ช่องทาง</Label>
+            <Label htmlFor={`${uiFieldId}-1`}>ช่องทาง</Label>
             <Select value={method} onValueChange={(v) => { setMethod(v as Method); setAccountCode(''); }}>
-              <SelectTrigger>
+              <SelectTrigger id={`${uiFieldId}-1`}>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -348,9 +354,9 @@ function AddMappingDialog({ open, onOpenChange, coaAccounts, existing, onCreated
           </div>
 
           <div className="space-y-1.5">
-            <Label>บัญชีรับเงิน</Label>
+            <Label htmlFor={`${uiFieldId}-2`}>บัญชีรับเงิน</Label>
             <Select value={accountCode} onValueChange={setAccountCode}>
-              <SelectTrigger>
+              <SelectTrigger id={`${uiFieldId}-2`}>
                 <SelectValue placeholder="เลือกบัญชี" />
               </SelectTrigger>
               <SelectContent>
@@ -375,7 +381,7 @@ function AddMappingDialog({ open, onOpenChange, coaAccounts, existing, onCreated
               onCheckedChange={(checked) => setIsDefault(checked === true)}
             />
             <Label htmlFor="is-default" className="cursor-pointer text-sm">
-              ตั้งเป็น default ของช่องทางนี้
+              ตั้งเป็น ค่าเริ่มต้นของช่องทางนี้
             </Label>
           </div>
         </div>

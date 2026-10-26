@@ -1,8 +1,10 @@
+import ScreenTable from '@/components/ui/ScreenTable';
 import { Link } from 'react-router';
 import { ShieldAlert, UserCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   APPROVER_LABEL,
+  DEVICE_SWAP_CLOSED_SHORT,
   EXCHANGE_KIND_LABEL,
   TIER_LABEL,
   baht,
@@ -16,7 +18,7 @@ import {
  * Task 12 — ตารางแท็บ "รออนุมัติ" (mockup C). Presentational เท่านั้น: ไม่มี query/dialog เอง —
  * หน้า AfterSalesPage เป็นคนถือ dialog state + navigate (ดู jsdoc ของ onAction ด้านล่าง).
  */
-export type ApprovalAction = 'confirm' | 'approve' | 'reject' | 'open';
+export type ApprovalAction = 'confirm' | 'reject' | 'open';
 
 interface ApprovalTableProps {
   rows: CaseRow[];
@@ -25,15 +27,6 @@ interface ApprovalTableProps {
 }
 
 const MGR_ROLES = new Set(['OWNER', 'BRANCH_MANAGER']);
-
-/** กติกา enable/disable ของปุ่ม "อนุมัติ" แถว PRICED — helper บริสุทธิ์ตัวเดียว (spec 12.1:
- * OWNER อนุมัติได้ทุก tier, ผจก.สาขาอนุมัติได้เฉพาะ tier ที่ผู้อนุมัติเป็นผจก.สาขา) */
-export function canApprovePricedExchange(
-  role: string,
-  approverRole: ExchangeApproverRole,
-): boolean {
-  return role === 'OWNER' || (role === 'BRANCH_MANAGER' && approverRole === 'BRANCH_MANAGER');
-}
 
 function productLabel(p: CaseExchangeInfo['oldProduct']): string {
   return p ? [p.brand, p.model, p.storage].filter(Boolean).join(' ') : '—';
@@ -68,17 +61,22 @@ function TypePriceCell({ ex }: { ex: CaseExchangeInfo | null }) {
   );
 }
 
-/** T12-1 — แถว PRICED ต่อท้ายด้วย tier ของคำขอ เช่น "ผจก.สาขา (REVIEW)" / "เจ้าของเท่านั้น (ESCALATE)"
- * ส่วนแถว SAME_MODEL (ไม่มี tier) คงป้ายเปล่า */
+/** ป้าย "ใครอนุมัติได้" — แถว SAME_MODEL ตามผู้อนุมัติของคำขอ · แถว PRICED = "ปิดใช้แล้ว" (2026-10-06; เดิม T12-1 ต่อท้าย tier) */
 function ApproverChip({ ex }: { ex: CaseExchangeInfo | null }) {
+  // 2026-10-06 — แถว PRICED ไม่มีใครอนุมัติได้อีก (เมนูปิด) — ป้ายกลาง ๆ แทน tier/ผู้อนุมัติ ที่จะขัดกับข้อความปิดใช้ในช่องการกระทำ
+  if (ex?.kind === 'PRICED') {
+    return (
+      <span className="inline-flex items-center rounded-full border border-border bg-muted px-2.5 py-0.5 text-xs font-semibold leading-snug text-muted-foreground">
+        ปิดใช้แล้ว
+      </span>
+    );
+  }
   const approverRole: ExchangeApproverRole = ex?.approverRole ?? 'OWNER';
-  const tier = ex?.kind === 'PRICED' && ex.approvalTier ? ` (${TIER_LABEL[ex.approvalTier]})` : '';
   if (approverRole === 'OWNER') {
     return (
       <span className="inline-flex items-center gap-1 rounded-full border border-destructive/30 bg-destructive/10 px-2.5 py-0.5 text-xs font-semibold leading-snug text-destructive">
         <ShieldAlert aria-hidden className="h-3.5 w-3.5 shrink-0" />
         {APPROVER_LABEL.OWNER}
-        {tier}
       </span>
     );
   }
@@ -86,7 +84,6 @@ function ApproverChip({ ex }: { ex: CaseExchangeInfo | null }) {
     <span className="inline-flex items-center gap-1 rounded-full border border-warning/40 bg-warning/10 px-2.5 py-0.5 text-xs font-semibold leading-snug text-warning-strong">
       <UserCheck aria-hidden className="h-3.5 w-3.5 shrink-0" />
       {APPROVER_LABEL.BRANCH_MANAGER}
-      {tier}
     </span>
   );
 }
@@ -103,8 +100,6 @@ function ActionsCell({
   const ex = row.exchange;
   const isMgr = MGR_ROLES.has(role);
   const isOwner = role === 'OWNER';
-  const approverRole = ex?.approverRole ?? 'OWNER';
-  const canApprove = canApprovePricedExchange(role, approverRole);
 
   return (
     <div className="flex flex-wrap items-center gap-2">
@@ -123,20 +118,11 @@ function ActionsCell({
           </Button>
         </>
       )}
-      {/* residual sweep — แถวที่ผูกคำขอไม่สำเร็จ (requestStatus null) ไม่มีอนุมัติ/ปฏิเสธ เหลือแค่ "เปิดเคส" */}
+      {/* residual sweep — แถวที่ผูกคำขอไม่สำเร็จ (requestStatus null) ไม่มีปฏิเสธ เหลือแค่ "เปิดเคส" ·
+          2026-10-06 ปิดเมนูเปลี่ยนแบบมีราคา: ไม่มีปุ่ม "อนุมัติ" ทุก role — เจ้าของ "ปฏิเสธ" เพื่อปิดคำขอค้าง */}
       {ex?.kind === 'PRICED' && ex.requestStatus != null && isMgr && (
         <>
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={!canApprove}
-            onClick={() => onAction(row, 'approve')}
-          >
-            อนุมัติ
-          </Button>
-          {!canApprove && (
-            <span className="text-xs leading-snug text-warning-strong">รอเจ้าของอนุมัติ</span>
-          )}
+          <span className="text-xs leading-snug text-muted-foreground">{DEVICE_SWAP_CLOSED_SHORT}</span>
           {isOwner && (
             <Button
               variant="outline"
@@ -168,7 +154,7 @@ export default function ApprovalTable({ rows, role, onAction }: ApprovalTablePro
   return (
     <>
       <div className="hidden overflow-x-auto rounded-xl border border-border bg-card md:block">
-        <table className="w-full text-sm">
+        <ScreenTable className="w-full text-sm">
           <thead>
             <tr className="border-b border-border text-xs text-muted-foreground">
               <th className="px-3 py-2 text-left font-normal">ขอเมื่อ</th>
@@ -225,7 +211,7 @@ export default function ApprovalTable({ rows, role, onAction }: ApprovalTablePro
               );
             })}
           </tbody>
-        </table>
+        </ScreenTable>
       </div>
 
       <div className="space-y-2 md:hidden">

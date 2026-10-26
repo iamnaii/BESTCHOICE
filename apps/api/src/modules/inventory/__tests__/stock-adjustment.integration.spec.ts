@@ -9,7 +9,8 @@
  *   1. LOST บนเครื่องที่ลงบัญชีรับเข้าแล้ว → JE `Dr S53-1102 / Cr S11-2001` ที่ต้นทุน companyId SHOP · S11-2001 ของเครื่องกลับเป็น 0
  *   2. DAMAGED → ไม่มี JE · เครื่องคงในสต๊อก (ข7) · ตัดจำหน่ายต่อจาก DAMAGED ลง JE ได้
  *   3. FOUND → กลับรายการ JE เดิม (กระจก · ใบเดิม metadata.reversed) · เครื่องกลับ IN_STOCK · FOUND ซ้ำถูกปฏิเสธ
- *   4. เครื่องจาก PO ที่ยังรอถ่ายรูป (ไม่มี JE รับเข้า) → ตัดโดยไม่มี JE + Todo แจ้งฝ่ายบัญชี (ข้อ 8)
+ *   4. เครื่องจาก PO ที่ยังรอถ่ายรูป (ใบรับของยังไม่ลงบัญชี) → ขอตัดสินค้าไม่ได้ (400 ชี้ปุ่มตีกลับ) · preview/lookup บอกเหตุผล ·
+ *      ตีกลับผู้จัดจำหน่ายได้ตามเดิม (คำตัดสินเจ้าของ 2026-10-06 "เครื่องไม่ผ่าน คืน supplier เลย" — แทนข้อ 8 เดิมที่ตัดโดยไม่มี JE)
  *   5. reject / cancel คืนสถานะเดิม (ไม่ใช่ IN_STOCK เสมอ)
  *   6. สองคำขอพร้อมกันบนเครื่องเดียว (สองคอนเนกชัน) → สำเร็จใบเดียว อีกใบ 409 (partial unique index)
  *   7. เครื่องที่รออนุมัติ มองไม่เห็นจาก POS/จอง (ด่านทุกทางกรอง IN_STOCK)
@@ -339,23 +340,62 @@ describe('คำขอตัดสินค้า — flow จริงบน DB
     await expect(service.createRequest({ productId: product.id, reason: 'FOUND' }, [], owner())).rejects.toBeInstanceOf(BadRequestException);
   }, 120_000);
 
-  it('4. เครื่องมือสองที่ยังรอถ่ายรูป (ไม่มี JE รับเข้า) → ตัดจำหน่ายโดยไม่มี JE + Todo แจ้งฝ่ายบัญชี (ข้อ 8)', async () => {
+  it('4. เครื่องมือสองที่ยังรอถ่ายรูป (ใบรับของยังไม่ลงบัญชี) → ขอตัดสินค้าไม่ได้ ต้องตีกลับผู้จัดจำหน่าย (คำตัดสินเจ้าของ 2026-10-06)', async () => {
     const { product, receivingJeId } = await receiveOne('UNBOOKED1', 'PHONE_USED', 3000);
     expect(product.status).toBe('PHOTO_PENDING');
     expect(receivingJeId).toBeNull();
 
-    const req = await service.createRequest({ productId: product.id, reason: 'WRITE_OFF' }, [], owner());
-    const result = await service.approve(req.id, owner());
-    expect([result.journalEntryNo, result.inventoryBooked, result.accountingNotified, result.productStatus]).toEqual([null, false, true, 'WRITTEN_OFF']);
-    expect(await writeoffEntriesOf(req.id)).toHaveLength(0);
-    const todo = await prisma.todo.findFirst({
-      where: { tags: { hasEvery: [STOCK_ADJUSTMENT_UNBOOKED_TODO_TAG, adjustmentTodoKey(req.requestNumber!)] } },
-    });
-    expect(todo?.priority).toBe('MEDIUM');
-    expect(todo?.description).toMatch(/ไม่เคยลงบัญชีสินค้าคงคลัง/);
-    const row = await prisma.stockAdjustment.findUniqueOrThrow({ where: { id: req.id } });
-    expect([row.inventoryBooked, row.journalEntryId, row.bookedSource]).toEqual([false, null, null]);
-    expect(row.costAmount!.toFixed(2)).toBe('3210.00'); // 3,000 × 1.07
+    // ทุกเหตุผลตัดออกถูกปฏิเสธ — ข้อความชี้ปุ่มตีกลับ · ไม่มีใบ · ไม่พักขาย
+    const attempt = service.createRequest({ productId: product.id, reason: 'WRITE_OFF' }, [], owner());
+    await expect(attempt).rejects.toBeInstanceOf(BadRequestException);
+    await expect(attempt).rejects.toThrow(/ไม่รับเข้าคลัง/);
+    await expect(service.createRequest({ productId: product.id, reason: 'DAMAGED' }, [JPEG], owner())).rejects.toThrow(/ไม่รับเข้าคลัง/);
+    expect(await prisma.stockAdjustment.count({ where: { productId: product.id } })).toBe(0);
+    expect((await prisma.product.findUniqueOrThrow({ where: { id: product.id } })).status).toBe('PHOTO_PENDING');
+
+    // preview + ช่องค้นหาบอกเหตุผลเดียวกัน (ฟอร์มปิดปุ่มส่ง)
+    const pv = await service.preview(product.id, 'LOST', owner());
+    expect(pv.blockedReason).toMatch(/ไม่รับเข้าคลัง/);
+    expect(pv.journalLines).toHaveLength(0);
+    const rows = await service.lookupProduct({ imei: product.imeiSerial!, reason: 'LOST' }, owner());
+    expect(rows.find((r) => r.id === product.id)?.poUnbooked).toBe(true);
+
+    // ทางที่ถูก: ตีกลับผู้จัดจำหน่าย (soft delete · ไม่มีรายการบัญชี ตามคำตอบฝ่ายบัญชีข้อ 8)
+    await poService.rejectQC([product.id], 'ตีกลับผู้จัดจำหน่าย — ทดสอบ', adminId); // #1690 เพิ่ม userId (Todo ตีกลับ)
+    expect((await prisma.product.findUniqueOrThrow({ where: { id: product.id } })).deletedAt).not.toBeNull();
+    // แถวใบรับของของเครื่องนี้ยังไม่มีรายการบัญชี (ตีกลับไม่ลงอะไร) และไม่มีใบตัดสินค้าเกิดขึ้นเลย
+    const grItem = await prisma.goodsReceivingItem.findFirst({ where: { productId: product.id } });
+    expect(grItem?.journalEntryId ?? null).toBeNull();
+    expect(await prisma.stockAdjustment.count({ where: { productId: product.id } })).toBe(0);
+  }, 120_000);
+
+  it('4b. ข้อ 7 (ฝ่ายบัญชี 13/10/2569 แบบ ข): เครื่องจากใบรับของที่หลุดจากคิวรอถ่ายรูปด้วยมือ (INSPECTION) → WRITE_OFF อนุมัติ → ลงรับเข้า Dr S11-2002 / Cr S21-1101 ก่อน แล้วตัด Dr S53-1102 / Cr S11-2002 · ไม่มี Todo unbooked', async () => {
+    const { product } = await receiveOne('UNBOOKED2', 'PHONE_USED', 3000);
+    expect(product.status).toBe('PHOTO_PENDING');
+    // หลุดจากคิวด้วยมือ (ไม่มีปุ่มตีกลับที่สถานะนี้) — เดิมตัดได้แต่ไม่มี JE + Todo
+    await productsService.update(product.id, { status: 'INSPECTION' } as never, adminId);
+    const req = await service.createRequest({ productId: product.id, reason: 'WRITE_OFF', notes: 'เคลมไม่ได้' } as never, [], owner());
+    const res = await service.approve(req.id, owner());
+
+    const grItem = await prisma.goodsReceivingItem.findFirstOrThrow({ where: { productId: product.id }, select: { journalEntryId: true, receivedCost: true } });
+    expect(grItem.journalEntryId).not.toBeNull();
+    const grJe = await prisma.journalEntry.findUniqueOrThrow({ where: { id: grItem.journalEntryId! }, include: { lines: { where: { deletedAt: null } } } });
+    expect(grJe.lines.map((l) => [l.accountCode, dec(l.debit ?? 0).toFixed(2), dec(l.credit ?? 0).toFixed(2)]).sort()).toEqual([
+      ['S11-2002', dec(grItem.receivedCost!).toFixed(2), '0.00'],
+      ['S21-1101', '0.00', dec(grItem.receivedCost!).toFixed(2)],
+    ]);
+    expect(res.journalEntryNo).not.toBeNull();
+    expect(res.accountingNotified).toBe(false);
+    const wo = await writeoffEntriesOf(req.id);
+    expect(wo).toHaveLength(1);
+    expect(wo[0].lines.map((l) => [l.accountCode, dec(l.debit ?? 0).toFixed(2), dec(l.credit ?? 0).toFixed(2)]).sort()).toEqual([
+      ['S11-2002', '0.00', dec(product.costPrice).toFixed(2)],
+      ['S53-1102', dec(product.costPrice).toFixed(2), '0.00'],
+    ]);
+    // สุทธิ: สินค้าคงคลังของเครื่องกลับเป็น 0 · เจ้าหนี้ตั้ง · ขาดทุนตัดจำหน่าย
+    expect(await netOf('S11-2002', [grJe.id, wo[0].id])).toBe('0.00');
+    expect(await prisma.todo.count({ where: { tags: { has: 'stock-adjustment-unbooked' }, title: { contains: req.requestNumber ?? '' } } })).toBe(0);
+    expect((await prisma.product.findUniqueOrThrow({ where: { id: product.id } })).status).toBe('WRITTEN_OFF');
   }, 120_000);
 
   it('5. reject คืน IN_STOCK · cancel โดยผู้ขอคืน PHOTO_PENDING (สถานะเดิม ไม่ใช่ IN_STOCK)', async () => {
@@ -368,8 +408,10 @@ describe('คำขอตัดสินค้า — flow จริงบน DB
     // ใบที่พิจารณาแล้ว ยกเลิก/อนุมัติซ้ำไม่ได้
     await expect(service.approve(reqA.id, owner())).rejects.toBeInstanceOf(ConflictException);
 
-    const b = await receiveOne('CAN1', 'PHONE_USED', 2000);
-    expect(b.product.status).toBe('PHOTO_PENDING');
+    // เครื่องที่ลงบัญชีแล้วแต่ถูกเปลี่ยนสถานะมือเป็น INSPECTION (มือสองรอถ่ายรูปจาก PO ขอตัดไม่ได้แล้ว — เคส 4)
+    const b = await receiveOne('CAN1', 'PHONE_NEW', 2000);
+    await productsService.update(b.product.id, { status: 'INSPECTION' } as never, adminId);
+    expect((await prisma.product.findUniqueOrThrow({ where: { id: b.product.id } })).status).toBe('INSPECTION');
     const reqB = await service.createRequest({ productId: b.product.id, reason: 'LOST' }, [], salesOf(b.product.branchId));
     expect((await prisma.product.findUniqueOrThrow({ where: { id: b.product.id } })).status).toBe('ADJUSTMENT_PENDING');
     // คนอื่นยกเลิกไม่ได้
@@ -378,7 +420,7 @@ describe('คำขอตัดสินค้า — flow จริงบน DB
     ).rejects.toBeInstanceOf(ForbiddenException);
     const canceled = await service.cancel(reqB.id, salesOf(b.product.branchId));
     expect(canceled.status).toBe('CANCELED');
-    expect((await prisma.product.findUniqueOrThrow({ where: { id: b.product.id } })).status).toBe('PHOTO_PENDING');
+    expect((await prisma.product.findUniqueOrThrow({ where: { id: b.product.id } })).status).toBe('INSPECTION');
   }, 120_000);
 
   it('6. สองคำขอพร้อมกันบนเครื่องเดียว (สองคอนเนกชัน) → สำเร็จใบเดียว อีกใบ 409 · เครื่องมีคำขอค้าง 1 ใบ', async () => {

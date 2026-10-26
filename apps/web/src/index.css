@@ -3,13 +3,15 @@
 layer(base);
 
 @import 'tailwindcss';
+@import './styles/fonts.css';
 
 @plugin 'tailwindcss-animate';
 
 @custom-variant dark (&:is(.dark *));
 
 @theme {
-  --font-sans: 'Inter', 'IBM Plex Sans Thai', system-ui, -apple-system, sans-serif;
+  --font-sans: 'Noto Sans Thai Looped', system-ui, -apple-system, sans-serif;
+  --font-document-ui: 'Inter', 'IBM Plex Sans Thai', system-ui, -apple-system, sans-serif;
   --font-sarabun: 'TH Sarabun PSK', sans-serif;
   --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
 
@@ -409,10 +411,9 @@ layer(base);
     font-display: swap;
   }
 
-  /* ── Smooth Scroll ──────────────────────────────── */
-  html {
-    scroll-behavior: smooth;
-  }
+  /* Keep focus-driven form scrolling immediate. Smooth page-wide scrolling
+     can leave WebKit popovers anchored outside the viewport. Intentional
+     animated navigation requests behavior: 'smooth' at its call site. */
 
   /* ── Custom Scrollbar ───────────────────────────── */
   ::-webkit-scrollbar {
@@ -433,18 +434,22 @@ layer(base);
 
   /* ── Base Styles ─────────────────────────────────── */
   body {
-    font-family:
-      'Inter',
-      'IBM Plex Sans Thai',
-      system-ui,
-      -apple-system,
-      sans-serif;
+    font-family: var(--font-sans);
     font-size: 0.875rem; /* 14px */
     line-height: 1.5;
     color: hsl(var(--foreground));
     background-color: hsl(var(--background));
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* Paper retains its original inherited UI face; explicit Sarabun/sticker
+     styles continue to override this low-specificity base rule. */
+  :where(.voucher-sheet, .document-sheet, .bc-document,
+    .template-paper, .font-sarabun, .mobile-receipt,
+    .sticker, .print-stickers, .tiptap) {
+    --font-sans: var(--font-document-ui);
+    font-family: var(--font-document-ui);
   }
 
   /* Border color default */
@@ -476,6 +481,22 @@ layer(base);
   select option:hover {
     background-color: hsl(var(--accent));
     color: hsl(var(--accent-foreground));
+  }
+}
+
+/* Identifiers in public/LIFF UI use the same family as their labels.
+   Printed documents and editor content retain their existing monospace faces. */
+@media screen {
+  body :is(.font-mono, pre, code, kbd, samp):not(:where(
+    .voucher-sheet, .document-sheet, .bc-document,
+    .template-paper, .font-sarabun, .mobile-receipt,
+    .sticker, .print-stickers, .tiptap,
+    .voucher-sheet *, .document-sheet *, .bc-document *,
+    .template-paper *, .font-sarabun *, .mobile-receipt *,
+    .sticker *, .print-stickers *, .tiptap *
+  )) {
+    font-family: var(--font-sans);
+    font-variant-numeric: tabular-nums;
   }
 }
 

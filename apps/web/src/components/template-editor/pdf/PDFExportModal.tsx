@@ -48,7 +48,7 @@ export default function PDFExportModal() {
       <div className="bg-card rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-border">
-          <h2 className="text-lg font-bold text-foreground">Export PDF</h2>
+          <h2 className="text-lg font-bold text-foreground">ส่งออก PDF</h2>
           <button onClick={handleClose} className="p-2 text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-colors">
             <X size={20} />
           </button>
@@ -61,26 +61,26 @@ export default function PDFExportModal() {
               src={previewUrl}
               className="w-full border border-border rounded-lg"
               style={{ height: '65vh' }}
-              title="PDF Preview"
+              title="ตัวอย่าง PDF"
             />
           ) : (
             <div className="text-center py-16">
               <FileText className="size-14 mx-auto mb-4 text-muted-foreground" />
               <h3 className="text-lg font-medium text-foreground mb-2">{currentTemplate.name}</h3>
               <p className="text-base text-muted-foreground mb-6">
-                {currentTemplate.blocks.length} blocks | A4 | TH Sarabun PSK
+                {currentTemplate.blocks.length} ส่วนเนื้อหา | A4 | TH Sarabun PSK
               </p>
 
               <div className="flex items-center justify-center gap-4">
-                <button
+                <button data-ui-control="button"
                   onClick={() => handleGenerate('preview')}
                   disabled={isGenerating}
                   className="flex items-center gap-2 px-6 py-3 text-base border border-primary-300 text-primary-700 rounded-lg hover:bg-primary-50 disabled:opacity-50 transition-colors"
                 >
                   {isGenerating ? <Loader2 size={18} className="animate-spin" /> : <Eye size={18} />}
-                  Preview
+                  ดูตัวอย่าง
                 </button>
-                <button
+                <button data-ui-control="button"
                   onClick={() => handleGenerate('download')}
                   disabled={isGenerating}
                   className="flex items-center gap-2 px-6 py-3 text-base bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50 transition-colors"
@@ -96,13 +96,13 @@ export default function PDFExportModal() {
         {/* Footer */}
         {previewUrl && (
           <div className="flex items-center justify-between px-6 py-4 border-t border-border">
-            <button
+            <button data-ui-control="button"
               onClick={() => { URL.revokeObjectURL(previewUrl); setPreviewUrl(null); }}
               className="px-5 py-2.5 text-base text-foreground border border-input rounded-lg hover:bg-muted transition-colors"
             >
               กลับ
             </button>
-            <button
+            <button data-ui-control="button"
               onClick={() => handleGenerate('download')}
               disabled={isGenerating}
               className="flex items-center gap-2 px-5 py-2.5 text-base bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50 transition-colors"

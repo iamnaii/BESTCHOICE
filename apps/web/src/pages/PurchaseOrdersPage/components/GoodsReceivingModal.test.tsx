@@ -123,8 +123,8 @@ describe('GoodsReceivingModal — one device per screen', () => {
     // the second device waits for its own ผ่าน/ไม่ผ่าน; once passed it carries the line's prices
     expect(screen.queryByTestId('price-panel')).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'ผ่าน' }));
-    expect((screen.getByLabelText(/^ราคาเงินสด/) as HTMLInputElement).value).toBe('45900');
-    expect((screen.getByLabelText(/^ราคาผ่อน/) as HTMLInputElement).value).toBe('49900');
+    expect((screen.getByLabelText(/^ราคาเงินสด/) as HTMLInputElement).value).toBe('45,900');
+    expect((screen.getByLabelText(/^ราคาผ่อน/) as HTMLInputElement).value).toBe('49,900');
   });
 
   it('ไม่ผ่าน opens the red box and waits for a reason; the next button then says so', () => {

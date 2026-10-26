@@ -166,7 +166,7 @@ export function InstallmentCalculatorCard({
       );
     }
     if (loading) {
-      return <div className="text-sm text-muted-foreground leading-snug">กำลังโหลด config...</div>;
+      return <div className="text-sm text-muted-foreground leading-snug">กำลังโหลด การตั้งค่า...</div>;
     }
     return (
       <NoticeBox>

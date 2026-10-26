@@ -40,7 +40,7 @@ describe('PurchaseOrdersService.getSummary', () => {
           status: { notIn: ['CANCELLED', 'DRAFT'] },
           paymentStatus: { not: 'FULLY_PAID' },
           OR: [
-            { status: { in: ['PARTIALLY_RECEIVED', 'FULLY_RECEIVED'] } },
+            { status: { in: ['PARTIALLY_RECEIVED', 'FULLY_RECEIVED', 'CLOSED_SHORT'] } },
             { paidAmount: { gt: 0 } },
           ],
         }),
@@ -67,7 +67,7 @@ describe('PurchaseOrdersService.getAccountsPayable', () => {
           status: { notIn: ['CANCELLED', 'DRAFT'] },
           paymentStatus: { not: 'FULLY_PAID' },
           OR: [
-            { status: { in: ['PARTIALLY_RECEIVED', 'FULLY_RECEIVED'] } },
+            { status: { in: ['PARTIALLY_RECEIVED', 'FULLY_RECEIVED', 'CLOSED_SHORT'] } },
             { paidAmount: { gt: 0 } },
           ],
         }),

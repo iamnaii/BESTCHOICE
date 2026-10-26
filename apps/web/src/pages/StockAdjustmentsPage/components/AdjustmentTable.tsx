@@ -81,7 +81,7 @@ export default function AdjustmentTable({ rows, isLoading, user, onOpen, emptyMe
         a.journalEntryNo ? (
           <span className="text-xs font-mono">{a.journalEntryNo}</span>
         ) : a.status === 'APPROVED' && a.inventoryBooked === false ? (
-          <span className="text-xs text-warning-strong leading-snug">ไม่มี JE · แจ้งบัญชีแล้ว</span>
+          <span className="text-xs text-warning-strong leading-snug">ไม่มี รายการบัญชี · แจ้งบัญชีแล้ว</span>
         ) : (
           <span className="text-xs text-muted-foreground">-</span>
         ),
@@ -117,7 +117,7 @@ export default function AdjustmentTable({ rows, isLoading, user, onOpen, emptyMe
   return (
     <Card>
       <CardContent className="p-0">
-        <DataTable columns={columns} data={rows} isLoading={isLoading} emptyMessage={emptyMessage} onRowClick={onOpen} />
+        <DataTable embedded columns={columns} data={rows} isLoading={isLoading} emptyMessage={emptyMessage} onRowClick={onOpen} />
       </CardContent>
     </Card>
   );

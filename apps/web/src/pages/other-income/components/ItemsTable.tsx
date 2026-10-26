@@ -1,3 +1,5 @@
+import { FormNumberInput } from '@/components/ui/FormNumberInput';
+import { NativeSelect } from '@/components/ui/native-select';
 import {
   useFieldArray,
   type Control,
@@ -9,6 +11,8 @@ import { Plus, Trash2, Lightbulb } from 'lucide-react';
 import { AccountSearchDropdown } from './AccountSearchDropdown';
 import { formatNumberDecimal } from '@/utils/formatters';
 import type { OtherIncomeFormValues } from '@/lib/otherIncome.schema';
+import { useId as useExtraFieldId } from 'react';
+
 
 /** Per-account WHT% suggestion. Soft tooltip — never blocks. */
 const WHT_SUGGESTION: Record<string, { pct: number; reason: string }> = {
@@ -28,6 +32,7 @@ function fmt(n: number) {
 }
 
 export function ItemsTable({ control, register, watch, setValue }: Props) {
+  const uiExtraFieldId = useExtraFieldId();
   const { fields, append, remove } = useFieldArray({ control, name: 'items' });
   const items = watch('items');
   const priceType = watch('priceType');
@@ -103,44 +108,41 @@ export function ItemsTable({ control, register, watch, setValue }: Props) {
               </div>
               <div className="grid grid-cols-2 md:grid-cols-6 gap-2 text-xs">
                 <div>
-                  <label className="text-muted-foreground font-medium">จำนวน</label>
-                  <input
-                    type="number"
+                  <label htmlFor={`${uiExtraFieldId}-1-${idx}`} className="text-muted-foreground font-medium">จำนวน</label>
+                  <FormNumberInput unstyled id={`${uiExtraFieldId}-1-${idx}`}
                     step="0.01"
-                    {...register(`items.${idx}.quantity`)}
+                    name={`items.${idx}.quantity`} control={control}
                     className="mt-1 w-full border rounded px-2 py-1.5 text-right font-mono bg-background"
                   />
                 </div>
                 <div>
-                  <label className="text-muted-foreground font-medium">ราคา/หน่วย</label>
-                  <input
-                    type="number"
+                  <label htmlFor={`${uiExtraFieldId}-2-${idx}`} className="text-muted-foreground font-medium">ราคา/หน่วย</label>
+                  <FormNumberInput unstyled id={`${uiExtraFieldId}-2-${idx}`}
                     step="0.01"
-                    {...register(`items.${idx}.unitAmount`)}
+                    name={`items.${idx}.unitAmount`} control={control}
                     className="mt-1 w-full border rounded px-2 py-1.5 text-right font-mono bg-background"
                   />
                 </div>
                 <div>
-                  <label className="text-muted-foreground font-medium">ส่วนลด</label>
-                  <input
-                    type="number"
+                  <label htmlFor={`${uiExtraFieldId}-3-${idx}`} className="text-muted-foreground font-medium">ส่วนลด</label>
+                  <FormNumberInput unstyled id={`${uiExtraFieldId}-3-${idx}`}
                     step="0.01"
-                    {...register(`items.${idx}.discountAmount`)}
+                    name={`items.${idx}.discountAmount`} control={control}
                     className="mt-1 w-full border rounded px-2 py-1.5 text-right font-mono bg-background"
                   />
                 </div>
                 <div>
-                  <label className="text-muted-foreground font-medium">VAT%</label>
-                  <select
+                  <label htmlFor={`${uiExtraFieldId}-4-${idx}`} className="text-muted-foreground font-medium">VAT%</label>
+                  <NativeSelect wrapperClassName="max-w-full mt-1 w-full" id={`${uiExtraFieldId}-4-${idx}`}
                     {...register(`items.${idx}.vatPct`)}
-                    className="mt-1 w-full border rounded px-2 py-1.5 text-xs font-mono bg-background"
+                    className="border rounded px-2 py-1.5 text-xs font-mono bg-background"
                   >
                     <option value={0}>0%</option>
                     <option value={7}>7%</option>
-                  </select>
+                  </NativeSelect>
                 </div>
                 <div>
-                  <label
+                  <label htmlFor={`${uiExtraFieldId}-5-${idx}`}
                     className="text-muted-foreground font-medium inline-flex items-center gap-1"
                     title="แนะนำ: ดอกเบี้ย 15% / ค่าบริการ 3% / ค่าเช่า 5% / นิติบุคคล 1%"
                   >
@@ -152,17 +154,17 @@ export function ItemsTable({ control, register, watch, setValue }: Props) {
                       </span>
                     )}
                   </label>
-                  <select
+                  <NativeSelect wrapperClassName="max-w-full mt-1 w-full" id={`${uiExtraFieldId}-5-${idx}`}
                     {...register(`items.${idx}.whtPct`)}
                     title="แนะนำ: ดอกเบี้ย 15% / ค่าบริการ 3% / ค่าเช่า 5% / นิติบุคคล 1%"
-                    className="mt-1 w-full border rounded px-2 py-1.5 text-xs font-mono bg-background"
+                    className="border rounded px-2 py-1.5 text-xs font-mono bg-background"
                   >
                     {[0, 1, 2, 3, 5, 7, 10, 15].map((p) => (
                       <option key={p} value={p}>
                         {p}%
                       </option>
                     ))}
-                  </select>
+                  </NativeSelect>
                   {(() => {
                     const acc = items[idx]?.accountCode ?? '';
                     const sug = WHT_SUGGESTION[acc];
@@ -183,8 +185,8 @@ export function ItemsTable({ control, register, watch, setValue }: Props) {
                 </div>
               </div>
               <div>
-                <label className="text-xs text-muted-foreground font-medium">คำอธิบาย</label>
-                <input
+                <label htmlFor={`${uiExtraFieldId}-6-${idx}`} className="text-xs text-muted-foreground font-medium">คำอธิบาย</label>
+                <input id={`${uiExtraFieldId}-6-${idx}`}
                   type="text"
                   {...register(`items.${idx}.description`)}
                   className="mt-1 w-full border rounded px-2 py-1.5 text-xs bg-background"
@@ -208,7 +210,7 @@ export function ItemsTable({ control, register, watch, setValue }: Props) {
           </div>
         );
       })}
-      <button
+      <button data-ui-control="button"
         type="button"
         onClick={() =>
           append({

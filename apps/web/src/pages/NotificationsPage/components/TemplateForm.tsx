@@ -1,5 +1,6 @@
+import { NativeSelect } from '@/components/ui/native-select';
 import { extractTemplateVariables as extractVariables } from '@installment/shared';
-import { useCallback, useMemo, useState } from 'react';
+import { useId as useUiFieldId, useCallback, useMemo, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import api, { getErrorMessage } from '@/lib/api';
@@ -323,6 +324,7 @@ export default function TemplateForm({
   jsonError,
   setJsonError,
 }: TemplateFormProps) {
+  const uiFieldId = useUiFieldId();
   const queryClient = useQueryClient();
   const [previewModalOpen, setPreviewModalOpen] = useState(false);
   const [previewResult, setPreviewResult] = useState<{
@@ -469,14 +471,14 @@ export default function TemplateForm({
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      title={editingTemplate ? 'แก้ไข Template' : 'สร้าง Template ใหม่'}
+      title={editingTemplate ? "แก้ไขแม่แบบ" : "สร้างแม่แบบใหม่"}
       size="lg"
     >
       <form onSubmit={handleTemplateSave} className="flex flex-col gap-5 lg:gap-7.5">
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium text-foreground mb-1">Event Type *</label>
-            <input
+            <label htmlFor={`${uiFieldId}-1`} className="block text-sm font-medium text-foreground mb-1">ประเภทเหตุการณ์ *</label>
+            <input id={`${uiFieldId}-1`}
               type="text"
               value={templateForm.eventType}
               onChange={(e) =>
@@ -488,12 +490,12 @@ export default function TemplateForm({
               required
             />
             <div className="text-xs text-muted-foreground mt-1">
-              ใช้สำหรับ scheduler หา template เช่น dunning.reminder, payment.due_in_3_days
+              รหัสเหตุการณ์สำหรับเลือกแม่แบบอัตโนมัติ เช่น dunning.reminder, payment.due_in_3_days
             </div>
           </div>
           <div>
-            <label className="block text-sm font-medium text-foreground mb-1">ชื่อ Template *</label>
-            <input
+            <label htmlFor={`${uiFieldId}-2`} className="block text-sm font-medium text-foreground mb-1">ชื่อแม่แบบ *</label>
+            <input id={`${uiFieldId}-2`}
               type="text"
               value={templateForm.name}
               onChange={(e) => setTemplateForm((prev) => ({ ...prev, name: e.target.value }))}
@@ -504,35 +506,35 @@ export default function TemplateForm({
         </div>
         <div className="grid grid-cols-3 gap-4">
           <div>
-            <label className="block text-sm font-medium text-foreground mb-1">หมวดหมู่ *</label>
-            <select
+            <label htmlFor={`${uiFieldId}-3`} className="block text-sm font-medium text-foreground mb-1">หมวดหมู่ *</label>
+            <NativeSelect wrapperClassName="max-w-full w-full" id={`${uiFieldId}-3`}
               value={templateForm.category}
               onChange={(e) =>
                 setTemplateForm((prev) => ({ ...prev, category: e.target.value }))
               }
-              className="w-full px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
+              className="px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
             >
               <option value="DUNNING">DUNNING (ทวงหนี้)</option>
               <option value="REMINDER">REMINDER (เตือนก่อนงวด)</option>
               <option value="TRANSACTIONAL">TRANSACTIONAL (ใบเสร็จ)</option>
               <option value="STAFF">STAFF (ทีม)</option>
               <option value="MARKETING">MARKETING (โปรโมชั่น)</option>
-            </select>
+            </NativeSelect>
           </div>
           <div>
-            <label className="block text-sm font-medium text-foreground mb-1">ช่องทาง *</label>
-            <select
+            <label htmlFor={`${uiFieldId}-4`} className="block text-sm font-medium text-foreground mb-1">ช่องทาง *</label>
+            <NativeSelect wrapperClassName="max-w-full w-full" id={`${uiFieldId}-4`}
               value={templateForm.channel}
               onChange={(e) => setTemplateForm((prev) => ({ ...prev, channel: e.target.value }))}
-              className="w-full px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
+              className="px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
             >
               <option value="LINE">LINE</option>
               <option value="SMS">SMS</option>
-            </select>
+            </NativeSelect>
           </div>
           <div>
-            <label className="block text-sm font-medium text-foreground mb-1">รูปแบบ *</label>
-            <select
+            <label htmlFor={`${uiFieldId}-5`} className="block text-sm font-medium text-foreground mb-1">รูปแบบ *</label>
+            <NativeSelect wrapperClassName="max-w-full w-full" id={`${uiFieldId}-5`}
               value={templateForm.format}
               onChange={(e) =>
                 setTemplateForm((prev) => ({
@@ -540,22 +542,22 @@ export default function TemplateForm({
                   format: e.target.value as 'text' | 'flex',
                 }))
               }
-              className="w-full px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
+              className="px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
               disabled={templateForm.channel !== 'LINE'}
             >
               <option value="text">ข้อความ (Text)</option>
               <option value="flex">Flex Message (JSON)</option>
-            </select>
+            </NativeSelect>
           </div>
         </div>
 
         {/* Text Message Template + Live Preview (split on desktop) */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium text-foreground mb-1">
+            <label htmlFor={`${uiFieldId}-6`} className="block text-sm font-medium text-foreground mb-1">
               {templateForm.format === 'flex' ? 'ข้อความสำรอง (altText / SMS fallback) *' : 'ข้อความ *'}
             </label>
-            <textarea
+            <textarea id={`${uiFieldId}-6`}
               value={templateForm.messageTemplate}
               onChange={(e) =>
                 setTemplateForm((prev) => ({ ...prev, messageTemplate: e.target.value }))
@@ -611,10 +613,10 @@ export default function TemplateForm({
 
         {/* Sample data editor */}
         <div>
-          <label className="block text-sm font-medium text-foreground mb-1">
-            ข้อมูลตัวอย่าง (JSON สำหรับ preview)
+          <label htmlFor={`${uiFieldId}-7`} className="block text-sm font-medium text-foreground mb-1">
+            ข้อมูลตัวอย่าง (JSON สำหรับ ดูตัวอย่าง)
           </label>
-          <textarea
+          <textarea id={`${uiFieldId}-7`}
             value={templateForm.sampleData}
             onChange={(e) =>
               setTemplateForm((prev) => ({ ...prev, sampleData: e.target.value }))
@@ -627,21 +629,21 @@ export default function TemplateForm({
 
         {/* Preview + Test send buttons */}
         <div className="flex gap-2">
-          <button
+          <button data-ui-control="button"
             type="button"
             onClick={() => previewMutation.mutate()}
             disabled={previewMutation.isPending || !templateForm.eventType || !editingTemplate}
             className="px-4 py-2 border border-input rounded-lg text-sm hover:bg-accent disabled:opacity-50"
-            title={!editingTemplate ? 'บันทึก template ก่อนเพื่อใช้ Preview' : ''}
+            title={!editingTemplate ? "บันทึก แม่แบบก่อนเพื่อใช้ ดูตัวอย่าง" : ''}
           >
-            {previewMutation.isPending ? 'กำลัง...' : 'Preview'}
+            {previewMutation.isPending ? 'กำลัง...' : "ดูตัวอย่าง"}
           </button>
-          <button
+          <button data-ui-control="button"
             type="button"
             onClick={() => testSendMutation.mutate()}
             disabled={testSendMutation.isPending || !templateForm.eventType || !editingTemplate}
             className="px-4 py-2 border border-input rounded-lg text-sm hover:bg-accent disabled:opacity-50"
-            title={!editingTemplate ? 'บันทึก template ก่อนเพื่อใช้ Test send' : ''}
+            title={!editingTemplate ? "บันทึก แม่แบบก่อนเพื่อใช้ ทดสอบส่ง" : ''}
           >
             {testSendMutation.isPending ? 'กำลังส่ง...' : 'ส่งทดสอบให้ตัวเอง'}
           </button>
@@ -653,14 +655,14 @@ export default function TemplateForm({
             <div className="flex items-center justify-between mb-1">
               <label className="block text-sm font-medium text-foreground">Flex Message JSON *</label>
               <div className="flex gap-2">
-                <button
+                <button data-ui-control="button"
                   type="button"
                   onClick={loadDefaultFlexTemplate}
                   className="px-3 py-1 text-xs bg-info/10 text-info dark:bg-info/15 rounded-md hover:bg-info/20 font-medium"
                 >
-                  โหลด Template เริ่มต้น
+                  โหลดแม่แบบ เริ่มต้น
                 </button>
-                <button
+                <button data-ui-control="button"
                   type="button"
                   onClick={formatJson}
                   className="px-3 py-1 text-xs bg-primary/10 text-primary rounded-md hover:bg-primary/20 font-medium"
@@ -730,8 +732,8 @@ export default function TemplateForm({
         )}
 
         <div>
-          <label className="block text-sm font-medium text-foreground mb-1">คำอธิบาย</label>
-          <input
+          <label htmlFor={`${uiFieldId}-8`} className="block text-sm font-medium text-foreground mb-1">คำอธิบาย</label>
+          <input id={`${uiFieldId}-8`}
             type="text"
             value={templateForm.description}
             onChange={(e) =>
@@ -741,14 +743,14 @@ export default function TemplateForm({
           />
         </div>
         <div className="flex justify-end gap-3 pt-2">
-          <button
+          <button data-ui-control="button"
             type="button"
             onClick={onClose}
             className="px-4 py-2 text-sm text-muted-foreground"
           >
             ยกเลิก
           </button>
-          <button
+          <button data-ui-control="button"
             type="submit"
             disabled={
               saveTemplateMutation.isPending ||
@@ -770,7 +772,7 @@ export default function TemplateForm({
             className="bg-card rounded-lg p-6 max-w-2xl w-full mx-4 max-h-[80vh] overflow-auto"
             onClick={(e) => e.stopPropagation()}
           >
-            <h3 className="font-semibold mb-2">Preview</h3>
+            <h3 className="font-semibold mb-2">ดูตัวอย่าง</h3>
             <pre className="bg-muted p-3 rounded text-sm whitespace-pre-wrap mb-2">
               {previewResult.rendered}
             </pre>
@@ -779,7 +781,7 @@ export default function TemplateForm({
                 {JSON.stringify(previewResult.flexJson, null, 2)}
               </pre>
             )}
-            <button
+            <button data-ui-control="button"
               type="button"
               onClick={() => setPreviewModalOpen(false)}
               className="mt-4 px-4 py-2 border border-input rounded-lg text-sm hover:bg-accent"

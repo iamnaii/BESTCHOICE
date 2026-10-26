@@ -1,34 +1,16 @@
 import { test, expect } from '@playwright/test';
-import { loginViaAPI, getAuthHeaders } from './helpers/auth';
+import { loginViaAPI, getAuthHeaders, loginAsRole, getRoleAuthHeaders } from './helpers/auth';
 import { unwrapResponse } from './helpers/api-utils';
 
-/* ================================================================
-   Phase A.0 — F-6-003
-   Verify period-close hardening:
-   - Closing a REVIEW period with hasIssues=true MUST be blocked
-     (400) when no forceCloseReason provided.
-   - Closing same period with forceCloseReason ≥50 chars MUST succeed
-     and create an AuditLog with action=PERIOD_FORCE_CLOSE.
-
-   Strategy:
-   - We cannot fabricate an audit-issues period state without a test
-     fixture endpoint. Instead we exercise the validation layer:
-   - Send POST with too-short forceCloseReason → expect 400 (hits the
-     @MinLength(50) DTO validator).
-   - This proves the contract is wired (the bug we fixed was the
-     handler ignoring forceCloseReason entirely).
-   ================================================================ */
+import { backlogFixtures } from './helpers/backlog-fixtures';
 
 const API_URL = process.env.API_DIRECT_URL || 'http://localhost:3000';
 
 test.describe('Accounting — Period Close hardening (F-6-003)', () => {
-  test.beforeEach(async ({ page }) => {
-    await loginViaAPI(page);
-  });
-
   test('rejects close with forceCloseReason shorter than 50 chars (DTO validation)', async ({
     page,
   }) => {
+    await loginViaAPI(page);
     const res = await page.request.post(`${API_URL}/api/expenses/periods/close`, {
       headers: getAuthHeaders(),
       data: {
@@ -53,6 +35,7 @@ test.describe('Accounting — Period Close hardening (F-6-003)', () => {
       'ทดสอบ E2E สำหรับ F-6-003 — รับทราบและยอมรับปัญหา audit ทั้งหมดที่ระบบรายงาน เพื่อปิดงวดสำหรับ smoke test ของ Phase A.0';
     expect(longReason.length).toBeGreaterThanOrEqual(50);
 
+    await loginViaAPI(page);
     const res = await page.request.post(`${API_URL}/api/expenses/periods/close`, {
       headers: getAuthHeaders(),
       data: {
@@ -68,6 +51,7 @@ test.describe('Accounting — Period Close hardening (F-6-003)', () => {
     // accepted by the DTO and reaches the service layer.
     const body = await res.json().catch(() => ({}));
     const message = JSON.stringify(body);
+    expect(res.status()).toBe(400);
     expect(message).not.toMatch(/forceCloseReason ต้อง ≥50 ตัวอักษร/);
   });
 
@@ -82,22 +66,55 @@ test.describe('Accounting — Period Close hardening (F-6-003)', () => {
     expect([401, 403]).toContain(res.status());
   });
 
-  test.skip('full close-with-audit-issues flow', async () => {
-    // requires fixture: needs a REVIEW-status period with auditIssues.hasIssues=true
-    // pre-seeded via test endpoint. Currently no such fixture exists.
-    // Once available, verify:
-    //  1. POST without forceCloseReason → 400 with "audit issues" message
-    //  2. POST with valid forceCloseReason → 200 + AuditLog row exists
-    //     where action=PERIOD_FORCE_CLOSE and entity points to the period
-    expect(true).toBe(false);
+  test('full close-with-audit-issues flow', async ({ page }) => {
+    const { id, ...period } = backlogFixtures().period;
+    const reason =
+      'ทดสอบระบบ ยืนยันรับทราบประเด็นตรวจสอบจำลองทั้งหมดเพื่อทดสอบสิทธิ์การปิดงวดในฐานข้อมูลแยกเท่านั้น';
+    await loginAsRole(page, 'OWNER');
+    const owner = getRoleAuthHeaders('OWNER');
+    const read = async () => {
+      const r = await page.request.get(
+        `${API_URL}/api/expenses/periods/${period.companyId}/${period.year}/${period.month}`,
+        { headers: owner },
+      );
+      expect(r.status()).toBe(200);
+      return unwrapResponse(await r.json());
+    };
+    const blocked = await page.request.post(`${API_URL}/api/expenses/periods/close`, {
+      headers: owner,
+      data: period,
+    });
+    expect(blocked.status()).toBe(400);
+    expect((await read()).status).toBe('REVIEW');
+    await loginAsRole(page, 'FINANCE_MANAGER');
+    const denied = await page.request.post(`${API_URL}/api/expenses/periods/close`, {
+      headers: getRoleAuthHeaders('FINANCE_MANAGER'),
+      data: { ...period, forceCloseReason: reason },
+    });
+    expect(denied.status()).toBe(403);
+    expect((await read()).status).toBe('REVIEW');
+    const closed = await page.request.post(`${API_URL}/api/expenses/periods/close`, {
+      headers: owner,
+      data: { ...period, forceCloseReason: reason },
+    });
+    expect(closed.ok(), await closed.text()).toBe(true);
+    expect((await read()).status).toBe('CLOSED');
+    const audit = await page.request.get(
+      `${API_URL}/api/audit/logs?action=PERIOD_FORCE_CLOSE&entityId=${id}`,
+      { headers: owner },
+    );
+    expect(audit.status()).toBe(200);
+    const logs = unwrapResponse(await audit.json());
+    const matching = (Array.isArray(logs) ? logs : logs.data).filter(
+      (row: { action: string; entityId: string }) =>
+        row.action === 'PERIOD_FORCE_CLOSE' && row.entityId === id,
+    );
+    expect(matching).toHaveLength(1);
+    expect(matching[0].newValue.reason).toBe(reason);
   });
 });
 
 test.describe('Accounting — Period reopen (F-6-004)', () => {
-  test.beforeEach(async ({ page }) => {
-    await loginViaAPI(page);
-  });
-
   test('reopen endpoint exists and rejects unauth', async ({ request }) => {
     const res = await request.post(`${API_URL}/api/expenses/periods/reopen`, {
       data: { companyId: 'x', year: 2026, month: 1, reason: 'test' },

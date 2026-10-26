@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useId as useUiFieldId, useState } from 'react';
 import { X } from 'lucide-react';
 
 interface Props {
@@ -9,6 +9,7 @@ interface Props {
 }
 
 export function SaveAsTemplateModal({ defaultName, isLoading, onCancel, onConfirm }: Props) {
+  const uiFieldId = useUiFieldId();
   const [name, setName] = useState(defaultName);
 
   function handleSubmit(e: React.FormEvent) {
@@ -26,14 +27,14 @@ export function SaveAsTemplateModal({ defaultName, isLoading, onCancel, onConfir
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between mb-3">
-          <h3 className="font-bold">บันทึกเป็น Template</h3>
-          <button onClick={onCancel} aria-label="ปิด">
+          <h3 className="font-bold">บันทึกเป็นแม่แบบ</h3>
+          <button data-ui-control="button" data-ui-icon="true" onClick={onCancel} aria-label="ปิด">
             <X size={16} />
           </button>
         </div>
         <form onSubmit={handleSubmit}>
-          <label className="text-xs text-muted-foreground font-medium">ชื่อ Template</label>
-          <input
+          <label htmlFor={`${uiFieldId}-1`} className="text-xs text-muted-foreground font-medium">ชื่อแม่แบบ</label>
+          <input id={`${uiFieldId}-1`}
             value={name}
             onChange={(e) => setName(e.target.value)}
             className="mt-1 w-full border rounded px-3 py-2 text-sm bg-background"
@@ -41,14 +42,14 @@ export function SaveAsTemplateModal({ defaultName, isLoading, onCancel, onConfir
             autoFocus
           />
           <div className="mt-4 flex justify-end gap-2">
-            <button
+            <button data-ui-control="button"
               type="button"
               onClick={onCancel}
               className="px-3 py-1.5 rounded-md border text-sm"
             >
               ยกเลิก
             </button>
-            <button
+            <button data-ui-control="button"
               type="submit"
               disabled={!name.trim() || isLoading}
               className="px-3 py-1.5 rounded-md bg-primary text-primary-foreground text-sm disabled:opacity-50"

@@ -4,6 +4,7 @@ import api, { getErrorMessage } from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
 import { toast } from 'sonner';
 import QueryBoundary from '@/components/QueryBoundary';
+import EmptyState from '@/components/ui/EmptyState';
 import { Badge } from '@/components/ui/badge';
 import { getStatusBadgeProps, kbSuggestionStatusMap, kbSuggestionSourceMap } from '@/lib/status-badges';
 import { formatDateMedium, formatDateTime } from '@/utils/formatters';
@@ -89,7 +90,7 @@ export default function ChatbotFinanceLearningPage() {
       await api.post(`/chatbot/finance/admin/learning/suggestions/${id}/approve`);
     },
     onSuccess: () => {
-      toast.success('Approve แล้ว — สร้าง KB entry ใหม่');
+      toast.success("อนุมัติ แล้ว — สร้าง รายการความรู้ ใหม่");
       queryClient.invalidateQueries({ queryKey: ['chatbot-learning'] });
       queryClient.invalidateQueries({ queryKey: ['chatbot-finance-kb'] });
       setSelectedSuggestion(null);
@@ -102,7 +103,7 @@ export default function ChatbotFinanceLearningPage() {
       await api.post(`/chatbot/finance/admin/learning/suggestions/${id}/reject`);
     },
     onSuccess: () => {
-      toast.success('Reject แล้ว');
+      toast.success("ปฏิเสธ แล้ว");
       queryClient.invalidateQueries({ queryKey: ['chatbot-learning'] });
       setSelectedSuggestion(null);
     },
@@ -112,8 +113,8 @@ export default function ChatbotFinanceLearningPage() {
   return (
     <div>
       <PageHeader
-        title="Finance Bot — Learning Hub"
-        subtitle="ตรวจสอบและอนุมัติข้อเสนอแนะสำหรับ Knowledge Base"
+        title="ศูนย์เรียนรู้บอตการเงิน"
+        subtitle="ตรวจสอบและอนุมัติข้อเสนอแนะสำหรับ คลังความรู้"
       />
 
       {/* Stats */}
@@ -124,13 +125,13 @@ export default function ChatbotFinanceLearningPage() {
         onRetry={stats.refetch}
         errorTitle="ไม่สามารถโหลดสถิติได้"
       >
-        <div className="grid grid-cols-5 gap-3 mb-6">
-          <StatCard label="Pending" value={stats.data?.suggestions.pending ?? 0} accent="orange" />
-          <StatCard label="Approved" value={stats.data?.suggestions.approved ?? 0} accent="green" />
-          <StatCard label="Rejected" value={stats.data?.suggestions.rejected ?? 0} />
-          <StatCard label="Feedback ทั้งหมด" value={stats.data?.feedback.total ?? 0} />
+        <div className="grid grid-cols-2 xl:grid-cols-5 [&>div:last-child]:max-xl:col-span-2 gap-3 mb-6">
+          <StatCard label="รอตรวจสอบ" value={stats.data?.suggestions.pending ?? 0} accent="orange" />
+          <StatCard label="อนุมัติแล้ว" value={stats.data?.suggestions.approved ?? 0} accent="green" />
+          <StatCard label="ปฏิเสธแล้ว" value={stats.data?.suggestions.rejected ?? 0} />
+          <StatCard label="ผลตอบรับ ทั้งหมด" value={stats.data?.feedback.total ?? 0} />
           <StatCard
-            label="Feedback บวก"
+            label="ผลตอบรับ บวก"
             value={`${stats.data?.feedback.positiveRate ?? 0}%`}
             accent={
               (stats.data?.feedback.positiveRate ?? 0) >= 80 ? 'green' :
@@ -141,9 +142,9 @@ export default function ChatbotFinanceLearningPage() {
       </QueryBoundary>
 
       {/* Filter tabs */}
-      <div className="flex gap-2 mb-4">
+      <div className="flex flex-wrap gap-2 mb-4">
         {['PENDING', 'APPROVED', 'REJECTED'].map((s) => (
-          <button
+          <button data-ui-control="button"
             key={s}
             onClick={() => { setStatusFilter(s); setSelectedSuggestion(null); }}
             className={`px-4 py-1.5 rounded-full text-sm ${
@@ -152,23 +153,23 @@ export default function ChatbotFinanceLearningPage() {
                 : 'bg-muted text-muted-foreground hover:bg-muted/80'
             }`}
           >
-            {s} {s === 'PENDING' && stats.data?.suggestions.pending ? `(${stats.data.suggestions.pending})` : ''}
+            {{ PENDING: 'รอตรวจสอบ', APPROVED: 'อนุมัติแล้ว', REJECTED: 'ปฏิเสธแล้ว' }[s]} {s === 'PENDING' && stats.data?.suggestions.pending ? `(${stats.data.suggestions.pending})` : ''}
           </button>
         ))}
       </div>
 
       {/* Suggestions list + detail */}
       <div className="grid grid-cols-12 gap-4">
-        <div className="col-span-5 space-y-2 max-h-[70vh] overflow-y-auto">
+        <div className="col-span-12 lg:col-span-5 min-w-0 space-y-2 max-h-[70vh] overflow-y-auto">
           <QueryBoundary
             isLoading={suggestions.isLoading && !suggestions.data}
             isError={suggestions.isError}
             error={suggestions.error}
             onRetry={suggestions.refetch}
-            errorTitle="ไม่สามารถโหลด suggestions ได้"
+            errorTitle="ไม่สามารถโหลดข้อเสนอแนะได้"
           >
             {suggestions.data?.items.length === 0 ? (
-              <p className="text-sm text-muted-foreground p-4">ไม่มี suggestions สถานะ {statusFilter}</p>
+              <EmptyState title="ไม่พบข้อเสนอแนะในสถานะนี้" description="เลือกสถานะอื่นเพื่อตรวจสอบข้อเสนอแนะ" className="py-8" />
             ) : (
               suggestions.data?.items.map((s) => (
                 <div
@@ -195,13 +196,13 @@ export default function ChatbotFinanceLearningPage() {
         </div>
 
         {/* Detail */}
-        <div className="col-span-7 bg-card border rounded-xl p-5">
+        <div className="col-span-12 lg:col-span-7 min-w-0 bg-card border rounded-xl p-5">
           {!selectedSuggestion ? (
-            <p className="text-muted-foreground text-sm">เลือก suggestion จากด้านซ้ายเพื่อดูรายละเอียด</p>
+            <p className="text-muted-foreground text-sm">เลือกข้อเสนอแนะจากรายการเพื่อดูรายละเอียด</p>
           ) : (
             <div className="space-y-4">
               <div className="flex justify-between items-start">
-                <h2 className="font-bold">รายละเอียด Suggestion</h2>
+                <h2 className="font-bold">รายละเอียด คำแนะนำ</h2>
                 <div className="flex gap-1">
                   <SourceBadge source={selectedSuggestion.source} />
                   <StatusBadge status={selectedSuggestion.status} />
@@ -222,18 +223,18 @@ export default function ChatbotFinanceLearningPage() {
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-xs text-muted-foreground">Intent</label>
+                  <label className="text-xs text-muted-foreground">ความต้องการลูกค้า</label>
                   <p className="text-sm font-mono mt-1">{selectedSuggestion.suggestedIntent}</p>
                 </div>
                 <div>
-                  <label className="text-xs text-muted-foreground">Source</label>
+                  <label className="text-xs text-muted-foreground">ที่มา</label>
                   <p className="text-sm mt-1">{selectedSuggestion.source}</p>
                 </div>
               </div>
 
               {selectedSuggestion.suggestedKeywords.length > 0 && (
                 <div>
-                  <label className="text-xs text-muted-foreground">Keywords</label>
+                  <label className="text-xs text-muted-foreground">คำค้น</label>
                   <div className="flex flex-wrap gap-1 mt-1">
                     {selectedSuggestion.suggestedKeywords.map((kw, i) => (
                       <span key={i} className="text-xs bg-muted px-2 py-0.5 rounded">{kw}</span>
@@ -244,33 +245,33 @@ export default function ChatbotFinanceLearningPage() {
 
               {selectedSuggestion.suggestedTemplate && (
                 <div>
-                  <label className="text-xs text-muted-foreground">Suggested Template</label>
+                  <label className="text-xs text-muted-foreground">แม่แบบที่แนะนำ</label>
                   <p className="text-sm bg-info/10 p-3 rounded-lg mt-1 whitespace-pre-wrap">{selectedSuggestion.suggestedTemplate}</p>
                 </div>
               )}
 
               {selectedSuggestion.status === 'PENDING' && (
                 <div className="flex gap-2 pt-3 border-t">
-                  <button
+                  <button data-ui-control="button"
                     onClick={() => approveMutation.mutate(selectedSuggestion.id)}
                     disabled={approveMutation.isPending}
                     className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm hover:bg-primary/90 disabled:opacity-50"
                   >
-                    {approveMutation.isPending ? 'กำลัง...' : 'Approve → สร้าง KB'}
+                    {approveMutation.isPending ? 'กำลัง...' : "อนุมัติ → สร้าง KB"}
                   </button>
-                  <button
+                  <button data-ui-control="button"
                     onClick={() => rejectMutation.mutate(selectedSuggestion.id)}
                     disabled={rejectMutation.isPending}
                     className="px-4 py-2 border border-destructive/30 text-destructive rounded-lg text-sm hover:bg-destructive/10 disabled:opacity-50"
                   >
-                    Reject
+                    ปฏิเสธ
                   </button>
                 </div>
               )}
 
               {selectedSuggestion.reviewedAt && (
                 <p className="text-xs text-muted-foreground">
-                  Reviewed: {formatDateTime(new Date(selectedSuggestion.reviewedAt))}
+                  ตรวจสอบแล้ว: {formatDateTime(new Date(selectedSuggestion.reviewedAt))}
                 </p>
               )}
             </div>

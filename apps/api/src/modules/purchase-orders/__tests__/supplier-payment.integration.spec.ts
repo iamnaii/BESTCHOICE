@@ -17,7 +17,7 @@
  * CI: glob `PO_FILES` ใน `.github/workflows/deploy-gcp.yml` ครอบไฟล์นี้แล้ว
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, ConflictException } from '@nestjs/common';
 import { Prisma, PrismaClient } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
 import { seedFinanceCoa } from '../../../../prisma/seed-coa-finance';
@@ -28,6 +28,7 @@ import { CompanyResolverService } from '../../journal/company-resolver.service';
 import { ShopAccountResolver } from '../../journal/shop-account-resolver.service';
 import { ShopGoodsReceivingTemplate } from '../../journal/cpa-templates/shop-goods-receiving.template';
 import { ShopSupplierPaymentTemplate } from '../../journal/cpa-templates/shop-supplier-payment.template';
+import { SHOP_PETTY_CASH_LOCK_KEY } from '../../journal/supplier-payment-accounts';
 import { bangkokDateString } from '../../../utils/date.util';
 import { ProductsService } from '../../products/products.service';
 import { ProductPhotosService } from '../../quality-control/product-photos.service';
@@ -320,7 +321,109 @@ describe('จ่ายเงินผู้จัดจำหน่าย — fl
     expect(list.summary.status).toBe('UNPAID');
   });
 
+  it('เงินสดย่อย S11-1106: ยอดไม่พอ → 400 · เติมเงินแล้วจ่ายได้ไม่ต้องมีสลิป → Cr S11-1106 · requestId เดิมเปลี่ยนบัญชี → 409 · ยกเลิกกลับเข้าเงินสดย่อย · ธนาคารไม่มีสลิป / S11-1104 / ลิ้นชัก → 400', async () => {
+    const supplier = await seedSupplier('PETTY', true);
+    const po = await createDocExamplePo(supplier.id);
+    await receive(po.id, [poItemOf(po, `${PREFIX}A`).id]); // เจ้าหนี้ S21-1101 10,486
+
+    const pettyBalance = async () => {
+      const agg = await prisma.journalLine.aggregate({
+        where: { accountCode: 'S11-1106', deletedAt: null, journalEntry: { status: 'POSTED', deletedAt: null, companyId: shopCompanyId } },
+        _sum: { debit: true, credit: true },
+      });
+      return dec((agg._sum.debit ?? 0).toString()).sub((agg._sum.credit ?? 0).toString());
+    };
+    // ยอดเงินสดย่อยในบัญชีไม่พอ → ปฏิเสธ ไม่มีแถว/JE (ผู้ตรวจอิสระ 13/10 ข้อ 2 — ไม่ปล่อยให้สินทรัพย์ติดลบ)
+    const before = await pettyBalance();
+    await expect(
+      service.recordSupplierPayment(po.id, { paidAt: today(), amount: before.add(1000).toNumber(), paymentAccountCode: 'S11-1106' }, adminId),
+    ).rejects.toThrow(/เงินสดย่อย/);
+    expect(await prisma.purchaseOrderPayment.count({ where: { poId: po.id } })).toBe(0);
+
+    // เติมเงินสดย่อย (ยังไม่มีเมนู — รายการโอนเข้าด้วยมือ) แล้วจ่าย 486 ไม่ต้องมีสลิป
+    await journal.createAndPost({
+      companyId: shopCompanyId,
+      description: `${PREFIX} เติมเงินสดย่อย (เทส)`,
+      reference: `${PREFIX}petty-fund:${po.id}`,
+      metadata: { flow: 'test-petty-fund', poId: po.id },
+      lines: [
+        { accountCode: 'S11-1106', dr: dec('486'), cr: dec('0') },
+        { accountCode: 'S11-1202', dr: dec('0'), cr: dec('486') },
+      ],
+    });
+    const funded = await pettyBalance();
+    const requestId = `${PREFIX}petty-req-${po.id.slice(0, 8)}`;
+    const input = { paidAt: today(), amount: 486, paymentAccountCode: 'S11-1106', note: 'จ่ายสดส่วนที่เหลือ', requestId };
+    const res = await service.recordSupplierPayment(po.id, input, adminId);
+    expect(res.payments.map((p) => [p.kind, p.amount, p.bankAccountCode, p.slipUrl])).toEqual([['SETTLEMENT', '486.00', 'S11-1106', null]]);
+    const je = await prisma.journalEntry.findUniqueOrThrow({ where: { id: res.payments[0].journalEntryId! }, include: { lines: true } });
+    expect(netByAccount([je])).toEqual({ 'S21-1101': '486.00', 'S11-1106': '-486.00' });
+    expect(je.metadata).toMatchObject({ kind: 'SETTLEMENT', bankAccountCode: 'S11-1106', supplierId: supplier.id });
+    expect((await pettyBalance()).toFixed(2)).toBe(funded.sub(486).toFixed(2));
+
+    // ส่งซ้ำ requestId เดิม ยอด/บัญชีเดิม → รายการเดิม · เปลี่ยนบัญชีหรือยอด → 409 (ผู้ตรวจอิสระ ข้อ 5)
+    const again = await service.recordSupplierPayment(po.id, input, adminId);
+    expect(again.payments.map((p) => p.id)).toEqual(res.payments.map((p) => p.id));
+    await expect(
+      service.recordSupplierPayment(po.id, { ...input, paymentAccountCode: 'S11-1202', slipUrl: SLIP }, adminId),
+    ).rejects.toBeInstanceOf(ConflictException);
+    await expect(service.recordSupplierPayment(po.id, { ...input, amount: 400 }, adminId)).rejects.toBeInstanceOf(ConflictException);
+    expect(await prisma.purchaseOrderPayment.count({ where: { poId: po.id } })).toBe(1);
+
+    // ธนาคาร (รับเข้า / ค่าเริ่มต้น) ยังบังคับสลิป · เงินสดเจ้าของ S11-1104 และลิ้นชักสาขา S11-1101 ไม่อยู่ในรายการ
+    await expect(service.recordSupplierPayment(po.id, { paidAt: today(), amount: 100, paymentAccountCode: 'S11-1201' }, adminId)).rejects.toThrow(/สลิป/);
+    await expect(service.recordSupplierPayment(po.id, { paidAt: today(), amount: 100 }, adminId)).rejects.toThrow(/สลิป/);
+    for (const code of ['S11-1104', 'S11-1101']) {
+      await expect(
+        service.recordSupplierPayment(po.id, { paidAt: today(), amount: 100, paymentAccountCode: code, slipUrl: SLIP }, adminId),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    }
+    expect(await prisma.purchaseOrderPayment.count({ where: { poId: po.id } })).toBe(1);
+
+    // ยกเลิกรายการจ่ายสด → กลับรายการ Dr S11-1106 / Cr S21-1101 · เงินสดย่อยกลับเท่าก่อนจ่าย
+    const v = await service.voidSupplierPayment(po.id, res.payments[0].id, adminId, 'ทดสอบยกเลิกรายการจ่ายสด');
+    const reversal = await prisma.journalEntry.findUniqueOrThrow({ where: { id: v.payment.reversalJournalEntryId! }, include: { lines: true } });
+    expect(netByAccount([reversal])).toEqual({ 'S11-1106': '486.00', 'S21-1101': '-486.00' });
+    expect((await pettyBalance()).toFixed(2)).toBe(funded.toFixed(2));
+    const list = await service.listSupplierPayments(po.id);
+    expect(list.summary).toMatchObject({ payableOutstanding: '10486.00', paidTotal: '0.00' });
+  });
+
   // ───────────── Task 4: หักมัดจำเข้าเจ้าหนี้อัตโนมัติตอนรับของ (ข้อสมมติ ค) ─────────────
+
+  it('[race] คืน/เติมเงินสดย่อย (เมนู 20.2) กับจ่ายเงินสดพร้อมกัน → จ่ายต้องรอ advisory lock ตัวเดียวกัน (S11-1106 ไม่ติดลบข้าม flow)', async () => {
+    const supplier = await seedSupplier('PETTYRACE', true);
+    const po = await createDocExamplePo(supplier.id);
+    await receive(po.id, [poItemOf(po, `${PREFIX}A`).id]);
+    await journal.createAndPost({
+      companyId: shopCompanyId,
+      description: `${PREFIX} เติมเงินสดย่อย (เทส race)`,
+      reference: `${PREFIX}petty-fund-race:${po.id}`,
+      metadata: { flow: 'test-petty-fund', poId: po.id },
+      lines: [
+        { accountCode: 'S11-1106', dr: dec('300'), cr: dec('0') },
+        { accountCode: 'S11-1202', dr: dec('0'), cr: dec('300') },
+      ],
+    });
+    // คอนเนกชันที่สองถือล็อกเงินสดย่อยค้างไว้ (เหมือน ShopPettyCashService กำลังคืนเงิน) — การจ่ายสดต้องรอจนปล่อย
+    let releasedAt = 0;
+    const holder = prisma2.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${SHOP_PETTY_CASH_LOCK_KEY}))`;
+      await sleep(400);
+      releasedAt = Date.now();
+    });
+    await sleep(60);
+    const res = await service.recordSupplierPayment(
+      po.id,
+      { paidAt: today(), amount: 300, paymentAccountCode: 'S11-1106', requestId: `${PREFIX}petty-race-${po.id.slice(0, 8)}` },
+      adminId,
+    );
+    const doneAt = Date.now();
+    await holder;
+    expect(releasedAt).toBeGreaterThan(0);
+    expect(doneAt).toBeGreaterThanOrEqual(releasedAt);
+    expect(res.payments.map((p) => [p.kind, p.amount, p.bankAccountCode])).toEqual([['SETTLEMENT', '300.00', 'S11-1106']]);
+  });
 
   it('มัดจำ 5,000 → รับของทั้งใบ → หักมัดจำเข้าเจ้าหนี้วันเดียวกับรายการรับของ · JE รับของติด supplierId · ชำระส่วนที่เหลือแล้วเจ้าหนี้ศูนย์', async () => {
     const supplier = await seedSupplier('APPLY', true);

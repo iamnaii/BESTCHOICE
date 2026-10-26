@@ -1,5 +1,6 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useId } from 'react';
 import { Input } from '@/components/ui/input';
+import { formControlClass, formLabelClass } from './form-styles';
 import SearchableSelect from '@/components/ui/SearchableSelect';
 
 // Lazy-loaded address data (loaded only when AddressForm mounts, ~400KB separate chunk)
@@ -99,9 +100,6 @@ export function displayAddress(str: string | null | undefined): string {
   return str;
 }
 
-const selectClass =
-  'flex h-[34px] w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50';
-
 interface Props {
   value: AddressData;
   onChange: (addr: AddressData) => void;
@@ -110,6 +108,7 @@ interface Props {
 
 export default function AddressForm({ value, onChange, label }: Props) {
   const addressData = useAddressData();
+  const id = useId();
   const [selectedProvince, setSelectedProvince] = useState(value.province);
   const [selectedDistrict, setSelectedDistrict] = useState(value.district);
 
@@ -180,55 +179,67 @@ export default function AddressForm({ value, onChange, label }: Props) {
       {label && (
         <div className="text-sm font-medium text-foreground mb-2">{label}</div>
       )}
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <div>
-          <label className="block text-xs text-muted-foreground mb-1">บ้านเลขที่</label>
+          <label htmlFor={`${id}-houseNo`} className={formLabelClass}>บ้านเลขที่</label>
           <Input
+            className={formControlClass}
             type="text"
+            id={`${id}-houseNo`}
             value={value.houseNo}
             onChange={(e) => update('houseNo', e.target.value)}
             placeholder="123/45"
           />
         </div>
         <div>
-          <label className="block text-xs text-muted-foreground mb-1">หมู่</label>
+          <label htmlFor={`${id}-moo`} className={formLabelClass}>หมู่</label>
           <Input
+            className={formControlClass}
             type="text"
+            id={`${id}-moo`}
             value={value.moo}
             onChange={(e) => update('moo', e.target.value)}
             placeholder="5"
           />
         </div>
         <div>
-          <label className="block text-xs text-muted-foreground mb-1">หมู่บ้าน/อาคาร</label>
+          <label htmlFor={`${id}-village`} className={formLabelClass}>หมู่บ้าน/อาคาร</label>
           <Input
+            className={formControlClass}
             type="text"
+            id={`${id}-village`}
             value={value.village}
             onChange={(e) => update('village', e.target.value)}
             placeholder="หมู่บ้าน/คอนโด"
           />
         </div>
         <div>
-          <label className="block text-xs text-muted-foreground mb-1">ซอย</label>
+          <label htmlFor={`${id}-soi`} className={formLabelClass}>ซอย</label>
           <Input
+            className={formControlClass}
             type="text"
+            id={`${id}-soi`}
             value={value.soi}
             onChange={(e) => update('soi', e.target.value)}
             placeholder="สุขุมวิท 71"
           />
         </div>
-        <div className="col-span-2">
-          <label className="block text-xs text-muted-foreground mb-1">ถนน</label>
+        <div className="sm:col-span-2">
+          <label htmlFor={`${id}-road`} className={formLabelClass}>ถนน</label>
           <Input
+            className={formControlClass}
             type="text"
+            id={`${id}-road`}
             value={value.road}
             onChange={(e) => update('road', e.target.value)}
             placeholder="สุขุมวิท"
           />
         </div>
         <div>
-          <label className="block text-xs text-muted-foreground mb-1">จังหวัด *</label>
+          <label htmlFor={`${id}-province`} className={formLabelClass}>จังหวัด *</label>
           <SearchableSelect
+            inputClassName={formControlClass}
+            id={`${id}-province`}
             value={value.province}
             onChange={handleProvinceChange}
             options={provinces}
@@ -237,8 +248,10 @@ export default function AddressForm({ value, onChange, label }: Props) {
           />
         </div>
         <div>
-          <label className="block text-xs text-muted-foreground mb-1">อำเภอ/เขต *</label>
+          <label htmlFor={`${id}-district`} className={formLabelClass}>อำเภอ/เขต *</label>
           <SearchableSelect
+            inputClassName={formControlClass}
+            id={`${id}-district`}
             value={value.district}
             onChange={handleDistrictChange}
             options={districts}
@@ -248,8 +261,10 @@ export default function AddressForm({ value, onChange, label }: Props) {
           />
         </div>
         <div>
-          <label className="block text-xs text-muted-foreground mb-1">ตำบล/แขวง *</label>
+          <label htmlFor={`${id}-subdistrict`} className={formLabelClass}>ตำบล/แขวง *</label>
           <SearchableSelect
+            inputClassName={formControlClass}
+            id={`${id}-subdistrict`}
             value={value.subdistrict}
             onChange={handleSubdistrictChange}
             options={subdistricts.map((s) => s.name)}
@@ -259,12 +274,13 @@ export default function AddressForm({ value, onChange, label }: Props) {
           />
         </div>
         <div>
-          <label className="block text-xs text-muted-foreground mb-1">รหัสไปรษณีย์</label>
+          <label htmlFor={`${id}-postalCode`} className={formLabelClass}>รหัสไปรษณีย์</label>
           <Input
+            className={formControlClass}
             type="text"
+            id={`${id}-postalCode`}
             value={value.postalCode}
             readOnly
-            className="bg-muted"
             placeholder="รหัสไปรษณีย์"
           />
         </div>

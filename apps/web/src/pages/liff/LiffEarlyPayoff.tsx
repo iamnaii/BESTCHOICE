@@ -19,6 +19,8 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { LIFF_ERRORS } from '@/constants/liff-errors';
+import { queryErrorMessage } from '@/lib/query-error-message';
+import { earlyPayoffDiscountCopy } from './early-payoff-copy';
 
 import type {
   LiffEarlyPayoffQuote as EarlyPayoffQuote,
@@ -33,7 +35,7 @@ export default function LiffEarlyPayoff() {
   const params = new URLSearchParams(window.location.search);
   const urlContractId = params.get('contractId') || '';
 
-  const { data: contractList, isLoading: listLoading } = useQuery<LiffContractResponse>({
+  const { data: contractList, isLoading: listLoading, error: listError } = useQuery<LiffContractResponse>({
     queryKey: ['liff-contracts', lineId],
     queryFn: async () => {
       const { data: result } = await liffApi.get(
@@ -118,6 +120,30 @@ export default function LiffEarlyPayoff() {
     );
   }
 
+  // ─── Error ────────────────────────────────────────────
+  const errorMsg = error || (listError ? queryErrorMessage(listError) : null) || (quoteError ? queryErrorMessage(quoteError) : null);
+  if (errorMsg) {
+    return (
+      <Shell theme="early-payoff">
+        <TopBar theme="early-payoff" title="ปิดยอดก่อนกำหนด" initial={customerInitial} />
+        <section className="relative z-[1] px-5 pt-10 pb-8 flex flex-col items-center text-center">
+          <div className="grid h-20 w-20 place-items-center rounded-full bg-destructive/10 border border-destructive/30 mb-5">
+            <span className="text-destructive text-4xl font-light leading-none">!</span>
+          </div>
+          <h2 className="text-[18px] font-semibold text-foreground tracking-tight leading-snug">
+            ไม่สามารถดำเนินการได้
+          </h2>
+          <p className="mt-2 text-[13px] text-muted-foreground leading-snug max-w-[280px]">{errorMsg}</p>
+          <Button variant="outline" size="lg" className="mt-8 w-full max-w-xs" asChild>
+            <a href={`/liff/contract${lineId ? `?lineId=${encodeURIComponent(lineId)}` : ''}`}>
+              กลับไปดูสัญญา
+            </a>
+          </Button>
+        </section>
+      </Shell>
+    );
+  }
+
   // ─── Picker: no contractId + multiple eligible ────────
   if (!contractId && eligibleContracts.length > 1) {
     return (
@@ -134,7 +160,7 @@ export default function LiffEarlyPayoff() {
         <section className="relative z-[1] px-5 pt-6">
           <div className="flex items-center gap-2">
             <span className="text-[10.5px] font-semibold uppercase tracking-[0.18em] text-amber-800">
-              ส่วนลดพิเศษ 50%
+              ปิดยอดก่อนกำหนด
             </span>
             <Sparkles className="size-3 text-amber-600" strokeWidth={2} />
           </div>
@@ -142,7 +168,7 @@ export default function LiffEarlyPayoff() {
             เลือกสัญญาที่ต้องการปิดยอดก่อนกำหนด
           </h1>
           <p className="mt-2 text-[13px] text-muted-foreground leading-snug">
-            ได้รับส่วนลดดอกเบี้ย 50% ทันทีเมื่อปิดยอดก่อนครบสัญญา
+            ลดดอกเบี้ยเฉพาะงวดที่ยังไม่ถึงกำหนด — ยอดและส่วนลดจริงแสดงหลังเลือกสัญญา
           </p>
         </section>
 
@@ -206,7 +232,7 @@ export default function LiffEarlyPayoff() {
             <CheckCircle2 className="size-10 text-emerald-600" strokeWidth={1.5} />
           </div>
           <h2 className="text-[18px] font-semibold text-foreground tracking-tight leading-snug">
-            ทุกสัญญาชำระครบแล้ว
+            ไม่มีสัญญาที่ปิดยอดได้
           </h2>
           <p className="mt-2 text-[13px] text-muted-foreground leading-snug max-w-[280px]">
             ขณะนี้ไม่มีสัญญาค้างชำระที่สามารถปิดยอดก่อนกำหนดได้
@@ -214,30 +240,6 @@ export default function LiffEarlyPayoff() {
           <Button variant="outline" size="lg" className="mt-8 w-full max-w-xs" asChild>
             <a href={`/liff/contract${lineId ? `?lineId=${encodeURIComponent(lineId)}` : ''}`}>
               ดูสัญญาทั้งหมด
-            </a>
-          </Button>
-        </section>
-      </Shell>
-    );
-  }
-
-  // ─── Error ────────────────────────────────────────────
-  const errorMsg = error || (quoteError as Error)?.message;
-  if (errorMsg) {
-    return (
-      <Shell theme="early-payoff">
-        <TopBar theme="early-payoff" title="ปิดยอดก่อนกำหนด" initial={customerInitial} />
-        <section className="relative z-[1] px-5 pt-10 pb-8 flex flex-col items-center text-center">
-          <div className="grid h-20 w-20 place-items-center rounded-full bg-destructive/10 border border-destructive/30 mb-5">
-            <span className="text-destructive text-4xl font-light leading-none">!</span>
-          </div>
-          <h2 className="text-[18px] font-semibold text-foreground tracking-tight leading-snug">
-            ไม่สามารถดำเนินการได้
-          </h2>
-          <p className="mt-2 text-[13px] text-muted-foreground leading-snug max-w-[280px]">{errorMsg}</p>
-          <Button variant="outline" size="lg" className="mt-8 w-full max-w-xs" asChild>
-            <a href={`/liff/contract${lineId ? `?lineId=${encodeURIComponent(lineId)}` : ''}`}>
-              กลับไปดูสัญญา
             </a>
           </Button>
         </section>
@@ -281,6 +283,12 @@ export default function LiffEarlyPayoff() {
   const baseBeforeDiscount =
     quote.totalPayoff + quote.discount - quote.unpaidLateFees + quote.partiallyPaidCredit;
   const savings = quote.discount + quote.partiallyPaidCredit;
+  // ข้อความส่วนลดตามยอดจริง — ฝ่ายบัญชี 18.1: ส่วนลดอาจเป็น 0 เมื่อทุกงวดถึงกำหนดแล้ว
+  const copy = earlyPayoffDiscountCopy({
+    discount: quote.discount,
+    discountPct: quote.discountPct,
+    dueMonths: quote.dueMonths,
+  });
 
   return (
     <Shell theme="early-payoff">
@@ -325,7 +333,7 @@ export default function LiffEarlyPayoff() {
         <div className="relative">
           <div className="flex items-center gap-2">
             <span className="text-[10.5px] font-semibold uppercase tracking-[0.18em] text-amber-800">
-              ยอดปิดสัญญา · ส่วนลด 50%
+              {copy.sectionLabel}
             </span>
             <Sparkles className="size-3 text-amber-600" strokeWidth={2} />
           </div>
@@ -409,12 +417,13 @@ export default function LiffEarlyPayoff() {
           <div className="h-px bg-border/60" />
 
           <Row
-            label="ส่วนลดพิเศษ 50%"
+            label={copy.rowLabel}
             value={`−${formatNumber(quote.discount)}`}
             unit="บาท"
             tone="emerald"
             emphasize
           />
+          {copy.note && <p className="text-xs text-muted-foreground leading-snug">{copy.note}</p>}
           {quote.partiallyPaidCredit > 0 && (
             <Row
               label="หักยอดชำระบางส่วน"
@@ -475,7 +484,7 @@ export default function LiffEarlyPayoff() {
         <div className="rounded-[22px] border border-amber-200/60 bg-amber-50/60 p-4 flex items-start gap-3">
           <ShieldCheck className="size-[18px] text-amber-700 shrink-0 mt-0.5" strokeWidth={1.75} />
           <p className="text-[12px] text-amber-900/90 leading-relaxed">
-            ส่วนลดพิเศษ 50% เป็นสิทธิ์สำหรับลูกค้าที่ปิดสัญญาก่อนกำหนด ยอดจะปิดสัญญาและย้ายกรรมสิทธิ์เครื่องทันทีหลังชำระสำเร็จ
+            {copy.infoNote}
           </p>
         </div>
       </section>

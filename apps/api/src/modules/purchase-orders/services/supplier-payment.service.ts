@@ -1,5 +1,5 @@
 import { domainAccessClient, currentDomainAccess } from '../../employee-access/access-execution-context';
-import { BadRequestException, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Logger, NotFoundException } from '@nestjs/common';
 import * as Sentry from '@sentry/node';
 import { POPaymentKind, Prisma } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
@@ -9,17 +9,28 @@ import {
   SupplierPaymentJeKind,
 } from '../../journal/cpa-templates/shop-supplier-payment.template';
 import { ShopAccountResolver } from '../../journal/shop-account-resolver.service';
+import {
+  SHOP_PETTY_CASH_LOCK_KEY,
+  SUPPLIER_PAYMENT_ACCOUNTS,
+  SUPPLIER_PAYMENT_ACCOUNT_CODES,
+  isBankSupplierPaymentAccount,
+  isCashSupplierPaymentAccount,
+  isSupplierPaymentAccount,
+} from '../../journal/supplier-payment-accounts';
 import { CompanyResolverService } from '../../journal/company-resolver.service';
 import { isPeriodClosedForBackdating } from './supplier-doc.util';
 import { validatePeriodOpen } from '../../../utils/period-lock.util';
 import {
+  PO_STATUS_CLOSED_SHORT,
   PayableLine,
   SupplierPaymentPosition,
+  capsToBookedPayable,
   parsePaidAt,
   splitSettlement,
   supplierPaymentPosition,
 } from './supplier-payment.util';
 import { bangkokCalendarParts } from '../../../utils/date.util';
+import { closeDepositRejectTodos } from './po-deposit-reject-todo';
 import { formatDateShort, formatMonthName } from '../../../utils/thai-date.util';
 
 /**
@@ -27,7 +38,8 @@ import { formatDateShort, formatMonthName } from '../../../utils/thai-date.util'
  * จ่ายเงินผู้จัดจำหน่าย … ก่อนใช้งานจริง").
  *
  * กติกา:
- *   - โอนธนาคารเท่านั้น จากบัญชีธนาคารหน้าร้าน (จ่ายออก) S11-1202 — ไม่มีเงินสด · สลิปบังคับ (ข้อสมมติ ก)
+ *   - บัญชีที่จ่ายเลือกได้ (2026-10-13 — `journal/supplier-payment-accounts.ts`): ค่าเริ่มต้น S11-1202 ธนาคารหน้าร้าน (จ่ายออก) ·
+ *     ธนาคาร = สลิปบังคับ (ข้อสมมติ ก เดิม) · เงินสดย่อย S11-1106 = ไม่บังคับสลิป · รับเข้าตรงจ่ายทันทียังธนาคารอย่างเดียว
  *   - ชนิดรายการโปรแกรมตัดสินเอง: มีเจ้าหนี้คงเหลือ (รับของแล้ว) → ชำระค่าสินค้าไม่เกินเจ้าหนี้ ส่วนที่เกิน = มัดจำ (ข้อสมมติ ข);
  *     ยังไม่มีเจ้าหนี้ → มัดจำ. มัดจำถูกหักเข้าเจ้าหนี้อัตโนมัติตอนรับของ (`applyDepositInTx` — ข้อสมมติ ค)
  *   - เพดาน: มัดจำ + ชำระ − มัดจำที่ได้คืน ≤ ยอดสุทธิของใบสั่งซื้อ
@@ -48,8 +60,10 @@ export interface RecordSupplierPaymentInput {
   /** YYYY-MM-DD (ปฏิทินไทย) */
   paidAt: string;
   amount: number;
-  /** สลิปโอน (URL หรือ data URL) — บังคับ */
-  slipUrl: string;
+  /** สลิปโอน (URL หรือ data URL) — บังคับเมื่อจ่ายจากบัญชีธนาคาร · เงินสดแนบได้ไม่บังคับ */
+  slipUrl?: string;
+  /** บัญชีที่จ่าย (`SUPPLIER_PAYMENT_ACCOUNTS`) — ไม่ส่ง = S11-1202 ธนาคารหน้าร้าน (จ่ายออก) */
+  paymentAccountCode?: string;
   reference?: string;
   note?: string;
   /** รหัสคำขอจากหน้าจอ — ส่งซ้ำ (กดซ้ำ/เน็ตส่งซ้ำ) ได้รายการเดิมกลับ ไม่เกิดรายการผี */
@@ -91,6 +105,8 @@ export interface SupplierPaymentView {
 
 export interface SupplierPaymentSummary {
   netAmount: string;
+  /** เพดานจ่ายทั้งใบ — = netAmount ปกติ · ใบ CLOSED_SHORT = มูลค่าของที่รับจริงตามบัญชี */
+  paymentCap: string;
   paidTotal: string;
   remainingOnPo: string;
   payableOutstanding: string;
@@ -112,8 +128,10 @@ export interface RecordSupplierPaymentResult {
 export const SUPPLIER_PAYMENT_PERIOD_TODO_TAG = 'supplier-payment-period';
 export const supplierPaymentTodoKey = (paymentId: string) => `po-payment:${paymentId}`;
 
-/** สถานะใบสั่งซื้อที่บันทึกการจ่ายได้ — ร่างยังไม่อนุมัติ / รออนุมัติ / ยกเลิก ไม่ได้ */
-const PAYABLE_PO_STATUSES = ['APPROVED', 'ORDERED', 'PARTIALLY_RECEIVED', 'FULLY_RECEIVED'];
+/** flow ของรายการจ่าย/หักมัดจำ/กลับรายการ (ShopSupplierPaymentTemplate) — ต้องตรงกับ `FLOW` ใน template (ตัวกรองของ positionInTx อ้างค่าเดียวกัน) */
+const SUPPLIER_PAYMENT_FLOW = 'shop-supplier-payment';
+/** สถานะใบสั่งซื้อที่บันทึกการจ่ายได้ — ร่างยังไม่อนุมัติ / รออนุมัติ / ยกเลิก ไม่ได้ · ใบปิดรับไม่ครบยังจ่ายค่าของที่รับแล้วได้ (เพดาน = ของที่รับจริง) */
+const PAYABLE_PO_STATUSES = ['APPROVED', 'ORDERED', 'PARTIALLY_RECEIVED', 'FULLY_RECEIVED', PO_STATUS_CLOSED_SHORT];
 const VOIDABLE_KINDS: POPaymentKind[] = ['DEPOSIT', 'SETTLEMENT'];
 const ZERO = new Decimal(0);
 
@@ -165,7 +183,12 @@ export class SupplierPaymentService {
     now: Date = new Date(),
   ): Promise<RecordSupplierPaymentResult> {
     const amount = toMoney(input.amount);
-    if (!input.slipUrl?.trim()) throw new BadRequestException('กรุณาแนบสลิปโอนเงิน');
+    const paymentAccountCode = input.paymentAccountCode?.trim() || ShopAccountResolver.SHOP_PAYING_BANK;
+    if (!isSupplierPaymentAccount(paymentAccountCode)) {
+      throw new BadRequestException(`บัญชีจ่ายเงินไม่ถูกต้อง — เลือกได้เฉพาะ ${SUPPLIER_PAYMENT_ACCOUNT_CODES.join(' / ')}`);
+    }
+    const slipUrl = input.slipUrl?.trim() || null;
+    if (isBankSupplierPaymentAccount(paymentAccountCode) && !slipUrl) throw new BadRequestException('กรุณาแนบสลิปโอนเงิน');
     const paidAt = parsePaidAt(input.paidAt, now);
 
     const po = await this.lockPo(tx, poId);
@@ -177,6 +200,11 @@ export class SupplierPaymentService {
         orderBy: { createdAt: 'asc' },
       });
       if (existing.length > 0) {
+        // ยอด/บัญชีต้องตรงกับที่บันทึกไปแล้ว — ผู้ใช้เปลี่ยนค่าแล้วกดซ้ำด้วยคำขอเดิมต้องไม่ได้ "สำเร็จ" กลับไปเงียบ ๆ (ผู้ตรวจอิสระ 13/10 ข้อ 5)
+        const existingTotal = existing.reduce((sum, r) => sum.add(r.amount), ZERO);
+        if (!existingTotal.equals(amount) || existing.some((r) => r.bankAccountCode !== paymentAccountCode)) {
+          throw new ConflictException('คำขอนี้ถูกบันทึกไปแล้วด้วยยอดหรือบัญชีที่ต่างจากที่ส่งมา — รีเฟรชหน้าแล้วตรวจรายการจ่ายก่อนบันทึกใหม่');
+        }
         const entries = await tx.journalEntry.findMany({
           where: { id: { in: existing.map((r) => r.journalEntryId).filter((id): id is string => !!id) } },
           select: { id: true, entryNumber: true },
@@ -199,12 +227,33 @@ export class SupplierPaymentService {
       throw new BadRequestException('บันทึกการจ่ายได้เฉพาะใบสั่งซื้อที่อนุมัติแล้วและยังไม่ถูกยกเลิก');
     }
     const before = await this.positionInTx(tx, po);
-    if (before.paidTotal.add(amount).gt(po.netAmount)) {
+    if (before.paidTotal.add(amount).gt(before.paymentCap)) {
       throw new BadRequestException(
-        `ยอดจ่ายรวมเกินยอดสุทธิของใบสั่งซื้อ — จ่ายได้อีกไม่เกิน ${before.remainingOnPo.toFixed(2)} บาท`,
+        capsToBookedPayable(po.status)
+          ? `ใบนี้ปิดใบ รับไม่ครบแล้ว — จ่ายได้ไม่เกินมูลค่าของที่รับจริง ${before.paymentCap.toFixed(2)} บาท (จ่ายได้อีกไม่เกิน ${before.remainingOnPo.toFixed(2)} บาท)`
+          : `ยอดจ่ายรวมเกินยอดสุทธิของใบสั่งซื้อ — จ่ายได้อีกไม่เกิน ${before.remainingOnPo.toFixed(2)} บาท`,
       );
     }
     const shopCompanyId = await this.deps.companies.getShopCompanyId(tx);
+    if (isCashSupplierPaymentAccount(paymentAccountCode)) {
+      // เงินสดจ่ายได้ไม่เกินยอดในบัญชี (ผู้ตรวจอิสระ 13/10 ข้อ 2) — ไม่งั้นสินทรัพย์เงินสดย่อยติดลบเงียบ ๆ ตั้งแต่รายการแรก
+      // ล็อกเดียวกับเมนูเติม/คืนเงินสดย่อย (ผู้ตรวจอิสระ 18/10 ข้อ 2): คืน + จ่ายสดพร้อมกันต้องต่อคิว ไม่งั้นอ่านยอดผ่านทั้งคู่แล้วติดลบ
+      // ลำดับ แถว PO (FOR UPDATE ใน lockPo) → advisory — ฝั่งเงินสดย่อยไม่แตะ PO จึงไม่ deadlock · $executeRaw เพราะคืน void
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${SHOP_PETTY_CASH_LOCK_KEY}))`;
+      // ทางที่ทำได้จริง (2026-10-18 ข้อ 20.2): เมนู บัญชีหน้าร้าน (SHOP) › เงินสดย่อย เติมได้ หรือเลือกจ่ายจากธนาคาร
+      const agg = await tx.journalLine.aggregate({
+        where: { accountCode: paymentAccountCode, deletedAt: null, journalEntry: { status: 'POSTED', deletedAt: null, companyId: shopCompanyId } },
+        _sum: { debit: true, credit: true },
+      });
+      const cashBalance = new Decimal((agg._sum.debit ?? 0).toString()).sub((agg._sum.credit ?? 0).toString());
+      if (cashBalance.lt(amount)) {
+        const label = SUPPLIER_PAYMENT_ACCOUNTS[paymentAccountCode].label;
+        throw new BadRequestException(
+          `${label} (${paymentAccountCode}) มียอดในบัญชี ${cashBalance.toFixed(2)} บาท ไม่พอจ่าย ${amount.toFixed(2)} บาท — ` +
+            'แจ้งเจ้าของ/ผจก.การเงินเติมเงินสดย่อยที่เมนู บัญชีหน้าร้าน (SHOP) › เงินสดย่อย ก่อน หรือเลือกจ่ายจากบัญชีธนาคารแนบสลิป',
+        );
+      }
+    }
     const { postedAt, periodClosed } = await this.resolvePostingDate(tx, paidAt, now, shopCompanyId);
 
     const plan: { kind: SupplierPaymentJeKind; amount: Decimal; payableLines?: PayableLine[] }[] = [];
@@ -226,9 +275,9 @@ export class SupplierPaymentService {
           amount: step.amount,
           paidAt,
           postedAt,
-          bankAccountCode: ShopAccountResolver.SHOP_PAYING_BANK,
+          bankAccountCode: paymentAccountCode,
           reference: input.reference?.trim() || null,
-          slipUrl: input.slipUrl.trim(),
+          slipUrl,
           note: input.note?.trim() || null,
           createdById: userId,
           requestId,
@@ -245,7 +294,7 @@ export class SupplierPaymentService {
           paymentId: row.id,
           amount: step.amount,
           payableLines: step.payableLines,
-          bankAccountCode: ShopAccountResolver.SHOP_PAYING_BANK,
+          bankAccountCode: paymentAccountCode,
           postedAt,
         },
         tx,
@@ -320,7 +369,10 @@ export class SupplierPaymentService {
       tx,
     );
     await tx.purchaseOrderPayment.update({ where: { id: row.id }, data: { journalEntryId: je.journalEntryId } });
-    await this.refreshPoSummaryInTx(tx, po.id, await this.positionInTx(tx, po));
+    const after = await this.positionInTx(tx, po);
+    await this.refreshPoSummaryInTx(tx, po.id, after);
+    // งานตีกลับ (po-deposit-reject) สัญญาว่าจะปิดเองเมื่อมัดจำค้างเป็นศูนย์ — รวมกรณีมัดจำถูกหักเข้าเจ้าหนี้ของเครื่องอื่นจนหมด
+    if (!after.depositOutstanding.gt(ZERO)) await closeDepositRejectTodos(tx, po.id);
     return { paymentId: row.id, amount: amount.toFixed(2), journalEntryNo: je.entryNo, lines, postedAt };
   }
 
@@ -384,6 +436,8 @@ export class SupplierPaymentService {
     outcome: DepositOutcomeInput | undefined,
     userId: string,
     now: Date = new Date(),
+    /** คำกริยาในข้อความ 400 — ยกเลิกใบ (ค่าเริ่มต้น) หรือ ปิดใบ รับไม่ครบ ใช้ทางเดียวกัน */
+    action: 'ยกเลิก' | 'ปิดใบ' = 'ยกเลิก',
   ): Promise<{ poNumber: string; payments: SupplierPaymentView[]; depositOutstanding: string; periodClosed: boolean; postedAt: Date } | null> {
     // ล็อกแถวใบก่อนอ่านมัดจำเสมอ (ผู้ตรวจอิสระ 05/10 ข้อ 1 — ทางลัดก่อนล็อกมองไม่เห็นมัดจำที่อีกคนกำลังบันทึก)
     const po = await this.lockPo(tx, poId);
@@ -397,7 +451,7 @@ export class SupplierPaymentService {
     if (!outstanding.gt(ZERO)) return null;
     if (!outcome?.depositOutcome) {
       throw new BadRequestException(
-        `ใบสั่งซื้อนี้มีเงินมัดจำค้าง ${outstanding.toFixed(2)} บาท — ต้องระบุว่าได้เงินคืนหรือไม่ก่อนยกเลิก`,
+        `ใบสั่งซื้อนี้มีเงินมัดจำค้าง ${outstanding.toFixed(2)} บาท — ต้องระบุว่าได้เงินคืนหรือไม่ก่อน${action}`,
       );
     }
     const shopCompanyId = await this.deps.companies.getShopCompanyId(tx);
@@ -500,8 +554,8 @@ export class SupplierPaymentService {
     };
   }
 
-  /** ฐานะของใบสั่งซื้อจากสมุดบัญชี + แถวการจ่าย (ใช้ทั้งก่อน/หลังเขียน) */
-  async positionInTx(tx: Prisma.TransactionClient, po: { id: string; netAmount: Decimal }): Promise<SupplierPaymentPosition> {
+  /** ฐานะของใบสั่งซื้อจากสมุดบัญชี + แถวการจ่าย (ใช้ทั้งก่อน/หลังเขียน) — ใบ CLOSED_SHORT เพดานจ่าย = ของที่รับจริง */
+  async positionInTx(tx: Prisma.TransactionClient, po: { id: string; netAmount: Decimal; status: string }): Promise<SupplierPaymentPosition> {
     const rows = await tx.purchaseOrderPayment.findMany({
       where: { poId: po.id, deletedAt: null },
       select: { kind: true, amount: true, voidedAt: true },
@@ -513,12 +567,18 @@ export class SupplierPaymentService {
         AND: [{ metadata: { path: ['poId'], equals: po.id } as any }],
         OR: [
           { metadata: { path: ['flow'], equals: 'shop-goods-receiving' } as any },
-          { metadata: { path: ['flow'], equals: 'shop-supplier-payment' } as any },
+          { metadata: { path: ['flow'], equals: SUPPLIER_PAYMENT_FLOW } as any },
         ],
       },
-      select: { lines: { where: { deletedAt: null }, select: { accountCode: true, debit: true, credit: true } } },
+      select: { metadata: true, lines: { where: { deletedAt: null }, select: { accountCode: true, debit: true, credit: true } } },
     });
-    return supplierPaymentPosition(po.netAmount, rows, entries.flatMap((e) => e.lines));
+    // ป้ายที่มาต่อบรรทัด: รายการ flow การจ่าย (รวมรายการกลับตอนยกเลิกการจ่าย) ต้องไม่ถูกนับเป็น "ของที่รับจริง" (ผู้ตรวจอิสระ 2026-10-11 ข้อ 1)
+    const lines = entries.flatMap((e) => {
+      const flow = (e.metadata as { flow?: string } | null)?.flow;
+      const source = flow === SUPPLIER_PAYMENT_FLOW ? ('PAYMENT' as const) : ('RECEIVING' as const);
+      return e.lines.map((line) => ({ ...line, source }));
+    });
+    return supplierPaymentPosition(po.netAmount, rows, lines, { capToBooked: capsToBookedPayable(po.status) });
   }
 
   /** คอลัมน์สรุปบนใบสั่งซื้อ = ผลรวมจากตารางการจ่าย (หน้าเดิมยังอ่านได้ แต่ห้ามเขียนตรง) */
@@ -571,6 +631,7 @@ export class SupplierPaymentService {
   private toSummary(netAmount: Decimal, position: SupplierPaymentPosition): SupplierPaymentSummary {
     return {
       netAmount: new Decimal(netAmount.toString()).toFixed(2),
+      paymentCap: position.paymentCap.toFixed(2),
       paidTotal: position.paidTotal.toFixed(2),
       remainingOnPo: position.remainingOnPo.toFixed(2),
       payableOutstanding: position.payableOutstanding.toFixed(2),
@@ -626,10 +687,10 @@ export class SupplierPaymentService {
       const total = result.payments.reduce((sum, p) => sum.add(p.amount), ZERO);
       await this.prisma.todo.create({
         data: {
-          title: `จ่ายเงินผู้จัดจำหน่าย ${result.poNumber} ลงบัญชีวันที่บันทึกแทนวันที่โอน (งวด${month}ปิดแล้ว)`,
+          title: `จ่ายเงินผู้จัดจำหน่าย ${result.poNumber} ลงบัญชีวันที่บันทึกแทนวันที่จ่าย (งวด${month}ปิดแล้ว)`,
           description:
-            `โอนวันที่ ${formatDateShort(paidAt)} ${total.toFixed(2)} บาท อยู่ในงวดบัญชีที่ปิดแล้ว — ระบบลงบัญชีด้วยวันที่บันทึก ` +
-            `${formatDateShort(result.postedAt)} แทน และเก็บวันที่โอนไว้ตามจริง\n` +
+            `จ่ายวันที่ ${formatDateShort(paidAt)} ${total.toFixed(2)} บาท อยู่ในงวดบัญชีที่ปิดแล้ว — ระบบลงบัญชีด้วยวันที่บันทึก ` +
+            `${formatDateShort(result.postedAt)} แทน และเก็บวันที่จ่ายไว้ตามจริง\n` +
             result.payments.map((p) => `${p.kind} ${p.amount} บาท · รายการบัญชี ${p.journalEntryNo ?? '-'}`).join('\n') +
             '\nตรวจว่าต้องปรับปรุงรายการหรือไม่ — ระบบไม่ลงรายการปรับปรุงให้อัตโนมัติ',
           priority: 'MEDIUM',

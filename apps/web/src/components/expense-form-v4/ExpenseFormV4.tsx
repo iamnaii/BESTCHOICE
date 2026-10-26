@@ -169,7 +169,7 @@ export function ExpenseFormV4({ branchId, onClose, onSaved, initialDocType, edit
       } | null;
     };
     if (doc.documentType !== 'PAYROLL' || doc.status !== 'DRAFT' || !doc.payroll) {
-      toast.error('แก้ไขได้เฉพาะร่างใบเงินเดือน (DRAFT)');
+      toast.error("แก้ไขได้เฉพาะร่างใบเงินเดือน (ฉบับร่าง)");
       onClose();
       return;
     }
@@ -285,7 +285,7 @@ export function ExpenseFormV4({ branchId, onClose, onSaved, initialDocType, edit
 
   const saveMutation = useMutation({
     mutationFn: async ({ andPost }: { andPost: boolean }) => {
-      if (andPost && !maySubmit) throw new Error('ไม่มีสิทธิ์บันทึกและ POST รายจ่าย');
+      if (andPost && !maySubmit) throw new Error("ไม่มีสิทธิ์บันทึกและ ลงบัญชี รายจ่าย");
       let createdId: string | null = null;
 
       if (state.docType === 'EXPENSE_SAMEDAY' || state.docType === 'EXPENSE_ACCRUAL') {
@@ -546,26 +546,26 @@ export function ExpenseFormV4({ branchId, onClose, onSaved, initialDocType, edit
   }
 
   return (
-    <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
-      <div className="w-full max-w-5xl bg-background rounded-xl shadow-modal max-h-[95vh] flex flex-col">
+    <div role="dialog" aria-modal="true" aria-label="บันทึกค่าใช้จ่ายใหม่" className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-0 sm:p-4">
+      <div className="w-full min-w-0 max-w-5xl bg-background sm:rounded-xl shadow-modal h-dvh sm:h-auto max-h-dvh sm:max-h-[95dvh] flex flex-col overflow-hidden">
         {/* Header — flex-none so it doesn't shrink */}
-        <div className="flex-none bg-background border-b px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
+        <div className="flex-none bg-background border-b px-3 py-2 sm:px-6 sm:py-4 flex items-center justify-between gap-2">
+          <div className="flex min-w-0 items-center gap-2 sm:gap-3">
             <button
               type="button"
               onClick={onClose}
-              className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
+              className="flex min-h-11 shrink-0 items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
             >
               <ArrowLeft className="size-4" /> กลับ
             </button>
-            <div className="flex items-center gap-2 text-lg font-semibold">
-              <Receipt className="size-5 text-primary" /> บันทึกค่าใช้จ่ายใหม่
-            </div>
+            <h2 className="flex min-w-0 items-center gap-2 text-base sm:text-lg font-semibold">
+              <Receipt className="hidden size-5 shrink-0 text-primary sm:block" /> บันทึกค่าใช้จ่าย
+            </h2>
           </div>
-          <span className="text-xs px-2 py-1 rounded bg-muted text-muted-foreground">DRAFT</span>
+          <span className="shrink-0 text-xs px-2 py-1 rounded bg-muted text-muted-foreground">ร่าง</span>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-6 space-y-5">
+        <div className="min-h-0 min-w-0 flex-1 overflow-y-auto p-3 sm:p-6 space-y-5">
           {/* Quick Start */}
           {showQuickStart && (
             <QuickStartPanel
@@ -575,7 +575,7 @@ export function ExpenseFormV4({ branchId, onClose, onSaved, initialDocType, edit
                   setState(initial(branchId, user?.defaultCashAccountCode || '11-1101'));
                 if (m === 'copy')
                   toast.info('เปิดหน้ารายการเพื่อเลือกเอกสารเดิมที่จะคัดลอก');
-                if (m === 'template') toast.info('เลือก template จาก ใช้บ่อย ด้านล่าง');
+                if (m === 'template') toast.info("เลือกแม่แบบจาก ใช้บ่อย ด้านล่าง");
               }}
               onPickTemplate={async (tplId) => {
                 try {
@@ -608,7 +608,7 @@ export function ExpenseFormV4({ branchId, onClose, onSaved, initialDocType, edit
                           )
                         : [newLine()],
                   }));
-                  toast.success('นำเข้า template สำเร็จ');
+                  toast.success("นำเข้าแม่แบบสำเร็จ");
                 } catch (e) {
                   toast.error(getErrorMessage(e));
                 }
@@ -686,7 +686,7 @@ export function ExpenseFormV4({ branchId, onClose, onSaved, initialDocType, edit
                     while the flag is off, but we keep the && here as a second
                     line of defense for race conditions during the flag fetch. */}
                 {state.docType === 'PETTY_CASH_REIMBURSEMENT' && pettyCashEnabled && (
-                  <Section num={next()} title="รายการเงินสดย่อย (Petty Cash)" Icon={Receipt}>
+                  <Section num={next()} title="รายการเงินสดย่อย" Icon={Receipt}>
                     <PettyCashLinesSection
                       value={state.pettyCash}
                       onChange={(pc) => patch({ pettyCash: pc })}
@@ -780,7 +780,7 @@ export function ExpenseFormV4({ branchId, onClose, onSaved, initialDocType, edit
                     EXPENSE_ACCRUAL today; PAYROLL / VENDOR_SETTLEMENT /
                     CREDIT_NOTE previews are deferred (I3). */}
                 {(state.docType === 'EXPENSE_SAMEDAY' || state.docType === 'EXPENSE_ACCRUAL') && (
-                  <Section num={next()} title="AUTO JOURNAL PREVIEW" Icon={Check}>
+                  <Section num={next()} title="ตัวอย่างรายการบัญชี" Icon={Check}>
                     <JePreview preview={preview} loading={loading} error={error} />
                   </Section>
                 )}
@@ -796,25 +796,26 @@ export function ExpenseFormV4({ branchId, onClose, onSaved, initialDocType, edit
 
         {!maySubmit && (
           <p className="px-6 py-2 text-sm text-muted-foreground" role="status">
-            {permissions.isError ? 'โหลดสิทธิ์ไม่สำเร็จ' : permissions.isPending ? 'กำลังตรวจสอบสิทธิ์…' : 'ไม่มีสิทธิ์ POST รายจ่าย — สามารถบันทึกร่างได้'}
+            {permissions.isError ? 'โหลดสิทธิ์ไม่สำเร็จ' : permissions.isPending ? 'กำลังตรวจสอบสิทธิ์…' : "ไม่มีสิทธิ์ลงบัญชี รายจ่าย — สามารถบันทึกร่างได้"}
             {permissions.isError && <Button variant="ghost" onClick={() => permissions.refetch()}>ลองใหม่</Button>}
           </p>
         )}
         {/* Footer */}
-        <div className="flex-none bg-background border-t px-6 py-3 flex items-center justify-between">
-          <Button variant="ghost" onClick={onClose} className="gap-1.5">
+        <div className="flex-none bg-background border-t px-3 py-3 sm:px-6 grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center sm:justify-between pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+          <Button variant="ghost" onClick={onClose} className="min-h-11 justify-start gap-1.5">
             <ArrowLeft className="size-4" />
             ยกเลิก
           </Button>
-          <div className="flex items-center gap-3 text-xs">
-            <span>Items: {itemCount}</span>
+          <div className="flex flex-wrap items-center justify-end gap-x-2 gap-y-1 text-xs">
+            <span>{itemCount} รายการ</span>
             <span className={cn('flex items-center gap-1', ready ? 'text-success' : 'text-muted-foreground')}>
               {ready ? <CheckCircle2 className="size-3" /> : <Clock className="size-3" />}
-              {ready ? 'Ready' : 'ยังไม่พร้อม'}
+              {ready ? 'พร้อมบันทึก' : 'ยังไม่ครบ'}
             </span>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="col-span-2 grid min-w-0 grid-cols-2 gap-2 sm:flex">
             <Button
+              className="h-auto min-h-11 whitespace-normal py-2"
               variant="outline"
               onClick={() => saveMutation.mutate({ andPost: false })}
               disabled={!ready || saveMutation.isPending}
@@ -822,13 +823,14 @@ export function ExpenseFormV4({ branchId, onClose, onSaved, initialDocType, edit
               บันทึกร่าง
             </Button>
             <Button
+              className="h-auto min-h-11 whitespace-normal py-2"
               onClick={() => saveMutation.mutate({ andPost: true })}
               disabled={!ready || saveMutation.isPending || !maySubmit}
-              title={!maySubmit ? 'ไม่มีสิทธิ์ POST รายจ่าย — สามารถบันทึกร่างได้' : undefined}
+              title={!maySubmit ? "ไม่มีสิทธิ์ลงบัญชี รายจ่าย — สามารถบันทึกร่างได้" : undefined}
             >
               {requiresApproval
-                ? 'บันทึก & ส่งขออนุมัติ'
-                : 'บันทึก & POST'}
+                ? 'บันทึกและขออนุมัติ'
+                : 'บันทึกและลงบัญชี'}
             </Button>
           </div>
         </div>
@@ -849,7 +851,7 @@ function Section({
   children: React.ReactNode;
 }) {
   return (
-    <div className="rounded-xl border border-border bg-card p-5">
+    <div className="min-w-0 rounded-xl border border-border bg-card p-4 sm:p-5">
       <div className="flex items-center gap-2.5 mb-4">
         <span className="flex items-center justify-center size-7 rounded bg-primary/10 text-primary text-sm font-mono font-medium">
           {num}

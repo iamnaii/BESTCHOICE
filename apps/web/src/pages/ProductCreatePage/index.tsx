@@ -1,3 +1,4 @@
+import { formControlClass } from '@/components/ui/form-styles';
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router';
 import { useQuery, useMutation } from '@tanstack/react-query';
@@ -12,8 +13,7 @@ import PhotoUpload from './components/PhotoUpload';
 import BranchSupplierCard from './components/BranchSupplierCard';
 import PriceCard, { PriceRow } from './components/PriceCard';
 
-const inputCls =
-  'w-full px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden';
+const inputCls = formControlClass;
 
 const statusOptions = createProductStatusOptions;
 
@@ -335,7 +335,7 @@ export default function ProductCreatePage() {
       <PageHeader
         title="เพิ่มสินค้าใหม่"
         action={
-          <button
+          <button data-ui-control="button"
             onClick={() => navigate('/products')}
             className="px-4 py-2 text-sm text-muted-foreground hover:text-foreground border border-input rounded-lg hover:bg-muted transition-colors"
           >
@@ -391,14 +391,14 @@ export default function ProductCreatePage() {
 
           {/* Submit */}
           <div className="flex justify-end gap-3">
-            <button
+            <button data-ui-control="button"
               type="button"
               onClick={() => navigate('/products')}
               className="px-6 py-2.5 text-sm text-muted-foreground hover:text-foreground border border-input rounded-lg"
             >
               ยกเลิก
             </button>
-            <button
+            <button data-ui-control="button"
               type="submit"
               disabled={createMutation.isPending}
               className="px-6 py-2.5 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 disabled:opacity-50"

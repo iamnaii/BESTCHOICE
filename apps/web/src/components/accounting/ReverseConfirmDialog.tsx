@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
+import { NativeSelect } from '@/components/ui/native-select';
+import { ComponentProps, useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { AlertTriangle, Undo2 } from 'lucide-react';
 import {
@@ -35,6 +36,7 @@ import type { IcabModule, IcabReverseReason } from './types';
 export interface ReverseConfirmDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  onCloseAutoFocus?: ComponentProps<typeof DialogContent>['onCloseAutoFocus'];
   module: IcabModule;
   /** Original document number — e.g. `RT-202605-00006`. */
   docNumber: string;
@@ -78,6 +80,7 @@ const DEFAULT_IMPACT_NOTES: Record<IcabModule, string[]> = {
 export function ReverseConfirmDialog({
   open,
   onOpenChange,
+  onCloseAutoFocus,
   module,
   docNumber,
   docSubtitle,
@@ -126,7 +129,7 @@ export function ReverseConfirmDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-xl">
+      <DialogContent className="sm:max-w-xl" onCloseAutoFocus={onCloseAutoFocus}>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-destructive leading-snug">
             <AlertTriangle size={20} aria-hidden />
@@ -160,11 +163,11 @@ export function ReverseConfirmDialog({
             <Label htmlFor="icab-reason" className="text-sm font-medium">
               เหตุผลการยกเลิก *
             </Label>
-            <select
+            <NativeSelect wrapperClassName="max-w-full w-full"
               id="icab-reason"
               value={reasonId}
               onChange={(e) => setReasonId(e.target.value)}
-              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm leading-snug focus:outline-none focus:ring-2 focus:ring-ring"
+              className="rounded-md border border-input bg-background px-3 py-2 text-sm leading-snug focus:outline-none focus:ring-2 focus:ring-ring"
               disabled={isLoading}
             >
               <option value="">— เลือกเหตุผล —</option>
@@ -173,7 +176,7 @@ export function ReverseConfirmDialog({
                   {r.label}
                 </option>
               ))}
-            </select>
+            </NativeSelect>
           </div>
 
           <div className="space-y-1.5">
@@ -192,7 +195,7 @@ export function ReverseConfirmDialog({
             />
             {noteRequired && (
               <p className="text-xs text-muted-foreground leading-snug">
-                อย่างน้อย 5 ตัวอักษร — เก็บใน audit log ถาวร
+                อย่างน้อย 5 ตัวอักษร — เก็บใน ประวัติการดำเนินการ ถาวร
               </p>
             )}
           </div>

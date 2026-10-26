@@ -25,15 +25,16 @@ import {
   ConfirmExchangeDialog,
   RejectExchangeDialog,
   SwitchToRepairDialog,
-  ApprovePricedDialog,
   CancelSwapDialog,
   DeliverExchangeConfirm,
+  DeliverCashExchangeDialog,
 } from './after-sales/ExchangeActionDialogs';
 import {
   afterSalesKeys,
   baht,
   CASE_DOC_LABEL,
   canPrintHandover,
+  canPrintCashExchangeDocs,
   dayOf,
   dayTimeOf,
   OUTCOME_LABEL,
@@ -193,7 +194,8 @@ export default function AfterSalesCasePage() {
       </Button>
     );
 
-  // Ruling P-B — เปิด dialog ที่ ?action=confirm|approve ชี้มาตอนโหลดครั้งแรก (เฉพาะเมื่อเคส
+  // Ruling P-B — เปิด dialog ที่ ?action=confirm ชี้มาตอนโหลดครั้งแรก (?action=approve ไม่เปิดอะไรแล้ว
+  // ตั้งแต่ปิดเมนูเปลี่ยนแบบมีราคา 2026-10-06 — พารามิเตอร์ยังถูกลบทิ้งเหมือนเดิม) (เฉพาะเมื่อเคส
   // อยู่ใน stage ที่ตรงกันและ role ทำได้จริง — ใช้ primaryAction ตัวเดียวกับปุ่มหลัก) แล้วลบพารามิเตอร์
   // ทิ้งทันทีกัน dialog เปิดซ้ำตอน refetch/re-render ครั้งถัดไป
   useEffect(() => {
@@ -203,7 +205,6 @@ export default function AfterSalesCasePage() {
     const act = primaryAction(data, user.role);
     if (act && 'dialog' in act) {
       if (wanted === 'confirm' && act.dialog === 'exchange-confirm') setDialog('exchange-confirm');
-      if (wanted === 'approve' && act.dialog === 'approve') setDialog('approve');
     }
     setSearchParams(
       (prev) => {
@@ -261,7 +262,7 @@ export default function AfterSalesCasePage() {
               return (
                 <div className={`space-y-3 rounded-xl border p-4 sm:p-5 ${headerTone(data.stage)}`}>
                   <nav
-                    aria-label="breadcrumb"
+                    aria-label="เส้นทาง"
                     className="text-xs leading-snug text-muted-foreground"
                   >
                     <Link to="/after-sales" className="hover:underline">
@@ -334,6 +335,16 @@ export default function AfterSalesCasePage() {
                           >
                             <Printer aria-hidden className="h-4 w-4" />
                             พิมพ์ใบส่งมอบ
+                          </Button>
+                        )}
+                        {canPrintCashExchangeDocs(data) && (
+                          <Button
+                            variant="outline"
+                            size="md"
+                            onClick={() => setDocPreview('exchange-docs')}
+                          >
+                            <Printer aria-hidden className="h-4 w-4" />
+                            พิมพ์ใบรับคืน + ใบส่งมอบ (2 ใบ)
                           </Button>
                         )}
                       </div>
@@ -551,7 +562,7 @@ export default function AfterSalesCasePage() {
             {showPrimaryButton && (
               <div
                 data-testid="mobile-bar"
-                className="sticky bottom-14 z-20 -mx-4 border-t border-border bg-card px-4 py-3 md:hidden"
+                className="sticky bottom-[calc(64px+env(safe-area-inset-bottom,0px))] z-20 -mx-4 border-t border-border bg-card px-4 py-3 md:hidden"
               >
                 {renderPrimary('w-full')}
               </div>
@@ -594,11 +605,20 @@ export default function AfterSalesCasePage() {
               onOpenChange={(next) => setDialog(next ? 'exchange-confirm' : null)}
               data={data}
             />
-            <DeliverExchangeConfirm
-              caseId={data.id}
-              open={dialog === 'exchange-deliver'}
-              onOpenChange={(next) => setDialog(next ? 'exchange-deliver' : null)}
-            />
+            {data.outcome === 'CASH_SAME_MODEL_EXCHANGE' ? (
+              <DeliverCashExchangeDialog
+                caseId={data.id}
+                open={dialog === 'exchange-deliver'}
+                onOpenChange={(next) => setDialog(next ? 'exchange-deliver' : null)}
+                onPrintDocs={() => setDocPreview('exchange-docs')}
+              />
+            ) : (
+              <DeliverExchangeConfirm
+                caseId={data.id}
+                open={dialog === 'exchange-deliver'}
+                onOpenChange={(next) => setDialog(next ? 'exchange-deliver' : null)}
+              />
+            )}
             <RejectExchangeDialog
               caseId={data.id}
               open={dialog === 'exchange-reject'}
@@ -610,12 +630,6 @@ export default function AfterSalesCasePage() {
               open={dialog === 'switch-to-repair'}
               onOpenChange={(next) => setDialog(next ? 'switch-to-repair' : null)}
               defaultPayer={data.repairTicket?.payer ?? 'SHOP'}
-            />
-            <ApprovePricedDialog
-              caseId={data.id}
-              open={dialog === 'approve'}
-              onOpenChange={(next) => setDialog(next ? 'approve' : null)}
-              mode={data.exchange?.mode === 'MEMO' ? 'MEMO' : 'PRICED'}
             />
             <RejectExchangeDialog
               caseId={data.id}

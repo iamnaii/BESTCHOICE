@@ -1,3 +1,6 @@
+import { NumberInput } from '@/components/ui/NumberInput';
+import { NativeSelect } from '@/components/ui/native-select';
+import { useId as useFieldId } from 'react';
 import { useMemo, useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -32,7 +35,9 @@ const emptyHr = {
 
 export default function UserDetailPage() {
   const { id } = useParams<{ id: string }>();
-  const isNew = id === 'new';
+  // /users/new is a static route, so it has no :id parameter.
+  const isNew = id === undefined || id === 'new';
+  const fieldId = useFieldId();
   const navigate = useNavigate();
   const qc = useQueryClient();
   useDocumentTitle(isNew ? 'เพิ่มผู้ใช้' : 'รายละเอียดผู้ใช้');
@@ -199,14 +204,14 @@ export default function UserDetailPage() {
           <TabsContent value="account">
             <div className="bg-card rounded-xl border border-border/50 shadow-sm p-6 grid md:grid-cols-2 gap-5">
               <div>
-                <label className={labelClass}>อีเมล (เข้าสู่ระบบ) {isNew && '*'}</label>
-                <input className={inputClass} type="email" value={account.email} disabled={!isNew} required={isNew}
+                <label htmlFor={`${fieldId}-1`} className={labelClass}>อีเมล (เข้าสู่ระบบ) {isNew && '*'}</label>
+                <input id={`${fieldId}-1`} className={inputClass} type="email" value={account.email} disabled={!isNew} required={isNew}
                   onChange={(e) => setAccount({ ...account, email: e.target.value })} />
                 {!isNew && <p className="text-[11px] text-muted-foreground mt-1">แก้ไม่ได้หลังสร้างบัญชี</p>}
               </div>
               <div>
-                <label className={labelClass}>{isNew ? 'รหัสผ่าน *' : 'รหัสผ่านใหม่ (เว้นว่างถ้าไม่เปลี่ยน)'}</label>
-                <input className={inputClass} type="password" minLength={MIN_PASSWORD_LENGTH} required={isNew}
+                <label htmlFor={`${fieldId}-2`} className={labelClass}>{isNew ? 'รหัสผ่าน *' : 'รหัสผ่านใหม่ (เว้นว่างถ้าไม่เปลี่ยน)'}</label>
+                <input id={`${fieldId}-2`} className={inputClass} type="password" minLength={MIN_PASSWORD_LENGTH} required={isNew}
                   autoComplete="new-password"
                   value={account.password} onChange={(e) => setAccount({ ...account, password: e.target.value })} />
                 <p className="text-[11px] text-muted-foreground mt-1 leading-snug">
@@ -214,17 +219,17 @@ export default function UserDetailPage() {
                 </p>
               </div>
               <div>
-                <label className={labelClass}>บทบาท (สิทธิ์ระบบ) *</label>
-                <select className={inputClass} value={account.role} onChange={(e) => setAccount({ ...account, role: e.target.value })}>
+                <label htmlFor={`${fieldId}-3`} className={labelClass}>บทบาท (สิทธิ์ระบบ) *</label>
+                <NativeSelect wrapperClassName="max-w-full w-full min-w-0" id={`${fieldId}-3`} className={inputClass} value={account.role} onChange={(e) => setAccount({ ...account, role: e.target.value })}>
                   {availableRoles.map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-                </select>
+                </NativeSelect>
               </div>
               <div>
-                <label className={labelClass}>สาขา</label>
-                <select className={inputClass} value={account.branchId} onChange={(e) => setAccount({ ...account, branchId: e.target.value })}>
+                <label htmlFor={`${fieldId}-4`} className={labelClass}>สาขา</label>
+                <NativeSelect wrapperClassName="max-w-full w-full min-w-0" id={`${fieldId}-4`} className={inputClass} value={account.branchId} onChange={(e) => setAccount({ ...account, branchId: e.target.value })}>
                   <option value="">ไม่ระบุ (ทุกสาขา)</option>
                   {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
-                </select>
+                </NativeSelect>
               </div>
               {!isNew && (
                 <label className="md:col-span-2 flex items-center justify-between rounded-lg border border-border p-3">
@@ -259,20 +264,20 @@ export default function UserDetailPage() {
                 </div>
               ) : (
                 <div className="grid md:grid-cols-2 gap-5">
-                  <div><label className={labelClass}>ตำแหน่งงาน</label>
-                    <input className={inputClass} value={hr.position} onChange={(e) => setHr({ ...hr, position: e.target.value })} placeholder="เช่น พนักงานขาย" /></div>
-                  <div><label className={labelClass}>ประเภทการจ้าง</label>
-                    <select className={inputClass} value={hr.employmentType} onChange={(e) => setHr({ ...hr, employmentType: e.target.value as EmploymentType })}>
+                  <div><label htmlFor={`${fieldId}-5`} className={labelClass}>ตำแหน่งงาน</label>
+                    <input id={`${fieldId}-5`} className={inputClass} value={hr.position} onChange={(e) => setHr({ ...hr, position: e.target.value })} placeholder="เช่น พนักงานขาย" /></div>
+                  <div><label htmlFor={`${fieldId}-6`} className={labelClass}>ประเภทการจ้าง</label>
+                    <NativeSelect wrapperClassName="max-w-full w-full min-w-0" id={`${fieldId}-6`} className={inputClass} value={hr.employmentType} onChange={(e) => setHr({ ...hr, employmentType: e.target.value as EmploymentType })}>
                       {EMPLOYMENT.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
-                    </select></div>
-                  <div><label className={labelClass}>ฐานเงินเดือน (บาท)</label>
-                    <input className={inputClass} type="number" step="0.01" value={hr.baseSalary} onChange={(e) => setHr({ ...hr, baseSalary: e.target.value })} placeholder="0.00" /></div>
-                  <div><label className={labelClass}>วันที่ลาออก</label>
-                    <input className={inputClass} type="date" value={hr.resignedDate} onChange={(e) => setHr({ ...hr, resignedDate: e.target.value })} /></div>
-                  <div><label className={labelClass}>ธนาคาร</label>
-                    <input className={inputClass} value={hr.bankName} onChange={(e) => setHr({ ...hr, bankName: e.target.value })} /></div>
-                  <div><label className={labelClass}>เลขบัญชี</label>
-                    <input className={inputClass} value={hr.bankAccountNo} onChange={(e) => setHr({ ...hr, bankAccountNo: e.target.value })} /></div>
+                    </NativeSelect></div>
+                  <div><label htmlFor={`${fieldId}-7`} className={labelClass}>ฐานเงินเดือน (บาท)</label>
+                    <NumberInput unstyled id={`${fieldId}-7`} className={inputClass} step="0.01" value={hr.baseSalary} onChange={(e) => setHr({ ...hr, baseSalary: e.target.value })} placeholder="0.00" /></div>
+                  <div><label htmlFor={`${fieldId}-8`} className={labelClass}>วันที่ลาออก</label>
+                    <input id={`${fieldId}-8`} className={inputClass} type="date" value={hr.resignedDate} onChange={(e) => setHr({ ...hr, resignedDate: e.target.value })} /></div>
+                  <div><label htmlFor={`${fieldId}-9`} className={labelClass}>ธนาคาร</label>
+                    <input id={`${fieldId}-9`} className={inputClass} value={hr.bankName} onChange={(e) => setHr({ ...hr, bankName: e.target.value })} /></div>
+                  <div><label htmlFor={`${fieldId}-10`} className={labelClass}>เลขบัญชี</label>
+                    <input id={`${fieldId}-10`} className={inputClass} value={hr.bankAccountNo} onChange={(e) => setHr({ ...hr, bankAccountNo: e.target.value })} /></div>
                   <label className="md:col-span-2 flex items-center gap-2 text-sm rounded-lg border border-border p-3">
                     <input type="checkbox" className="size-4 accent-primary" checked={hr.ssoEligible} onChange={(e) => setHr({ ...hr, ssoEligible: e.target.checked })} />
                     เข้าประกันสังคม (หัก 5% / นายจ้างสมทบ 5%)

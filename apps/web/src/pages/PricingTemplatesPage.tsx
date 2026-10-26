@@ -1,4 +1,7 @@
-import { useState, useRef } from 'react';
+import { NumberInput } from '@/components/ui/NumberInput';
+import ScreenTable from '@/components/ui/ScreenTable';
+import { NativeSelect } from '@/components/ui/native-select';
+import { useId as useUiFieldId, useState, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { downloadExcelBuffer, importFromExcel } from '@/utils/excel.util';
 import api, { getErrorMessage } from '@/lib/api';
@@ -49,6 +52,7 @@ const defaultForm = {
 };
 
 export default function PricingTemplatesPage() {
+  const uiFieldId = useUiFieldId();
   const queryClient = useQueryClient();
   const [showModal, setShowModal] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
@@ -276,13 +280,13 @@ export default function PricingTemplatesPage() {
         subtitle="กำหนดราคาเงินสด / ผ่อน BESTCHOICE / ผ่อนไฟแนนซ์ ตามรุ่นสินค้า"
         action={
           <div className="flex gap-2">
-            <button
+            <button data-ui-control="button"
               onClick={downloadTemplate}
               className="px-3 py-2 text-sm text-muted-foreground border border-input rounded-lg hover:bg-muted/50"
             >
               ดาวน์โหลดแบบฟอร์ม
             </button>
-            <button
+            <button data-ui-control="button"
               onClick={() => fileInputRef.current?.click()}
               disabled={importMutation.isPending}
               className="px-3 py-2 text-sm text-primary border border-primary/30 rounded-lg hover:bg-primary/5 dark:hover:bg-primary/10 disabled:opacity-50"
@@ -290,7 +294,7 @@ export default function PricingTemplatesPage() {
               {importMutation.isPending ? 'กำลังนำเข้า...' : 'นำเข้า Excel'}
             </button>
             <input ref={fileInputRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={handleFileImport} />
-            <button onClick={openCreate} className="px-4 py-2 bg-primary text-primary-foreground text-sm font-medium rounded-lg hover:bg-primary/90">
+            <button data-ui-control="button" onClick={openCreate} className="px-4 py-2 bg-primary text-primary-foreground text-sm font-medium rounded-lg hover:bg-primary/90">
               + เพิ่มราคาตั้งต้น
             </button>
           </div>
@@ -299,10 +303,10 @@ export default function PricingTemplatesPage() {
 
       {/* Filters */}
       <div className="flex flex-wrap gap-3 mb-5">
-        <select aria-label="เครื่องไทย / เครื่องนอก" value={filterDeviceOrigin} onChange={e => setFilterDeviceOrigin(e.target.value)} className="px-3 py-2 border border-input rounded-lg text-sm">
+        <NativeSelect wrapperClassName="max-w-full w-auto" aria-label="เครื่องไทย / เครื่องนอก" value={filterDeviceOrigin} onChange={e => setFilterDeviceOrigin(e.target.value)} className="px-3 py-2 border border-input rounded-lg text-sm">
           <option value="">ไทย/นอกทั้งหมด</option><option value="THAI">เครื่องไทย</option><option value="IMPORTED">เครื่องนอก</option><option value="UNSPECIFIED">ยังไม่ระบุ</option>
-        </select>
-        <select
+        </NativeSelect>
+        <NativeSelect wrapperClassName="max-w-full w-auto" aria-label="ประเภทสินค้า"
           value={filterCategory}
           onChange={(e) => setFilterCategory(e.target.value)}
           className="px-3 py-2 border border-input rounded-lg text-sm"
@@ -311,8 +315,8 @@ export default function PricingTemplatesPage() {
           {CATEGORIES.map((c) => (
             <option key={c.value} value={c.value}>{c.label}</option>
           ))}
-        </select>
-        <input
+        </NativeSelect>
+        <input aria-label="ค้นหายี่ห้อ"
           type="text"
           placeholder="ค้นหายี่ห้อ..."
           value={filterBrand}
@@ -337,7 +341,7 @@ export default function PricingTemplatesPage() {
         <Card className="overflow-hidden">
           <CardContent className="p-0">
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <ScreenTable className="w-full text-sm">
               <thead>
                 <tr className="bg-muted/40 border-b border-border/50">
                   <th className="text-left px-4 py-3 font-medium text-muted-foreground">ยี่ห้อ / รุ่น</th>
@@ -386,7 +390,7 @@ export default function PricingTemplatesPage() {
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </ScreenTable>
           </div>
           </CardContent>
         </Card>
@@ -398,16 +402,16 @@ export default function PricingTemplatesPage() {
         <Modal isOpen title={editId ? 'แก้ไขราคาตั้งต้น' : 'เพิ่มราคาตั้งต้น'} onClose={closeModal}>
           <div className="space-y-4">
             <label className="block text-sm">ประเภทเครื่องของราคากลาง
-              <select aria-label="ประเภทเครื่องของราคากลาง" value={form.deviceOrigin} disabled={!!editId} onChange={(e) => setForm((f) => ({ ...f, deviceOrigin: e.target.value }))} className="w-full rounded-lg border border-input bg-background p-2">
+              <NativeSelect wrapperClassName="max-w-full w-full" aria-label="ประเภทเครื่องของราคากลาง" value={form.deviceOrigin} disabled={!!editId} onChange={(e) => setForm((f) => ({ ...f, deviceOrigin: e.target.value }))} className="rounded-lg border border-input bg-background p-2">
                 <option value="UNSPECIFIED">ยังไม่แยกไทย/นอก</option><option value="THAI">เครื่องไทย</option><option value="IMPORTED">เครื่องนอก</option>
-              </select>
+              </NativeSelect>
             </label>
             {!editId && (
               <>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-sm font-medium text-foreground mb-1">ยี่ห้อ *</label>
-                    <input
+                    <label htmlFor={`${uiFieldId}-1`} className="block text-sm font-medium text-foreground mb-1">ยี่ห้อ *</label>
+                    <input id={`${uiFieldId}-1`}
                       type="text"
                       value={form.brand}
                       onChange={(e) => setForm((f) => ({ ...f, brand: e.target.value }))}
@@ -416,8 +420,8 @@ export default function PricingTemplatesPage() {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-foreground mb-1">รุ่น *</label>
-                    <input
+                    <label htmlFor={`${uiFieldId}-2`} className="block text-sm font-medium text-foreground mb-1">รุ่น *</label>
+                    <input id={`${uiFieldId}-2`}
                       type="text"
                       value={form.model}
                       onChange={(e) => setForm((f) => ({ ...f, model: e.target.value }))}
@@ -426,10 +430,10 @@ export default function PricingTemplatesPage() {
                     />
                   </div>
                 </div>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-sm font-medium text-foreground mb-1">ความจุ</label>
-                    <input
+                    <label htmlFor={`${uiFieldId}-3`} className="block text-sm font-medium text-foreground mb-1">ความจุ</label>
+                    <input id={`${uiFieldId}-3`}
                       type="text"
                       value={form.storage}
                       onChange={(e) => setForm((f) => ({ ...f, storage: e.target.value }))}
@@ -438,16 +442,16 @@ export default function PricingTemplatesPage() {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-foreground mb-1">ประเภท *</label>
-                    <select
+                    <label htmlFor={`${uiFieldId}-4`} className="block text-sm font-medium text-foreground mb-1">ประเภท *</label>
+                    <NativeSelect wrapperClassName="max-w-full w-full" id={`${uiFieldId}-4`}
                       value={form.category}
                       onChange={(e) => setForm((f) => ({ ...f, category: e.target.value, hasWarranty: e.target.value === 'PHONE_USED' ? f.hasWarranty : null }))}
-                      className="w-full px-3 py-2 border border-input rounded-lg text-sm"
+                      className="px-3 py-2 border border-input rounded-lg text-sm"
                     >
                       {CATEGORIES.map((c) => (
                         <option key={c.value} value={c.value}>{c.label}</option>
                       ))}
-                    </select>
+                    </NativeSelect>
                   </div>
                 </div>
                 {form.category === 'PHONE_USED' && (
@@ -458,7 +462,7 @@ export default function PricingTemplatesPage() {
                         { value: true, label: 'มีประกัน' },
                         { value: false, label: 'ไม่มีประกัน' },
                       ].map((opt) => (
-                        <button
+                        <button data-ui-control="button"
                           key={String(opt.value)}
                           onClick={() => setForm((f) => ({ ...f, hasWarranty: opt.value }))}
                           className={`px-4 py-2 rounded-lg text-sm border transition-colors ${
@@ -491,9 +495,8 @@ export default function PricingTemplatesPage() {
 
             <div className="space-y-3">
               <div>
-                <label className="block text-sm font-medium text-foreground mb-1">ราคาเงินสด (บาท) *</label>
-                <input
-                  type="number"
+                <label htmlFor={`${uiFieldId}-5`} className="block text-sm font-medium text-foreground mb-1">ราคาเงินสด (บาท) *</label>
+                <NumberInput unstyled id={`${uiFieldId}-5`}
                   value={form.cashPrice}
                   onChange={(e) => setForm((f) => ({ ...f, cashPrice: e.target.value }))}
                   className="w-full px-3 py-2 border border-input rounded-lg text-sm"
@@ -501,9 +504,8 @@ export default function PricingTemplatesPage() {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-foreground mb-1">ราคาผ่อน BESTCHOICE (บาท) *</label>
-                <input
-                  type="number"
+                <label htmlFor={`${uiFieldId}-6`} className="block text-sm font-medium text-foreground mb-1">ราคาผ่อน BESTCHOICE (บาท) *</label>
+                <NumberInput unstyled id={`${uiFieldId}-6`}
                   value={form.installmentBestchoicePrice}
                   onChange={(e) => setForm((f) => ({ ...f, installmentBestchoicePrice: e.target.value }))}
                   className="w-full px-3 py-2 border border-input rounded-lg text-sm"
@@ -511,9 +513,8 @@ export default function PricingTemplatesPage() {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-foreground mb-1">ราคาผ่อนไฟแนนซ์ (บาท) *</label>
-                <input
-                  type="number"
+                <label htmlFor={`${uiFieldId}-7`} className="block text-sm font-medium text-foreground mb-1">ราคาผ่อนไฟแนนซ์ (บาท) *</label>
+                <NumberInput unstyled id={`${uiFieldId}-7`}
                   value={form.installmentFinancePrice}
                   onChange={(e) => setForm((f) => ({ ...f, installmentFinancePrice: e.target.value }))}
                   className="w-full px-3 py-2 border border-input rounded-lg text-sm"
@@ -524,13 +525,12 @@ export default function PricingTemplatesPage() {
 
             <div className="mt-4 pt-4 border-t border-border/40">
               <h3 className="text-sm font-medium text-muted-foreground mb-3">
-                ดาวน์ + จำนวนเดือน (เว้นว่าง = ใช้ default จาก Settings)
+                ดาวน์ + จำนวนเดือน (เว้นว่าง = ใช้ค่าเริ่มต้นจาก Settings)
               </h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-foreground mb-1">ดาวน์เรทที่ 1 (บาท)</label>
-                  <input
-                    type="number"
+                  <label htmlFor={`${uiFieldId}-8`} className="block text-sm font-medium text-foreground mb-1">ดาวน์เรทที่ 1 (บาท)</label>
+                  <NumberInput unstyled id={`${uiFieldId}-8`}
                     min={0}
                     value={form.rate1DownPayment ?? ''}
                     onChange={(e) => setForm((f) => ({ ...f, rate1DownPayment: e.target.value === '' ? undefined : Number(e.target.value) }))}
@@ -538,9 +538,8 @@ export default function PricingTemplatesPage() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-foreground mb-1">จำนวนเดือนเรทที่ 1</label>
-                  <input
-                    type="number"
+                  <label htmlFor={`${uiFieldId}-9`} className="block text-sm font-medium text-foreground mb-1">จำนวนเดือนเรทที่ 1</label>
+                  <NumberInput unstyled id={`${uiFieldId}-9`}
                     min={1}
                     value={form.rate1TermMonths ?? ''}
                     onChange={(e) => setForm((f) => ({ ...f, rate1TermMonths: e.target.value === '' ? undefined : Number(e.target.value) }))}
@@ -548,9 +547,8 @@ export default function PricingTemplatesPage() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-foreground mb-1">ดาวน์เรทที่ 2 (บาท)</label>
-                  <input
-                    type="number"
+                  <label htmlFor={`${uiFieldId}-10`} className="block text-sm font-medium text-foreground mb-1">ดาวน์เรทที่ 2 (บาท)</label>
+                  <NumberInput unstyled id={`${uiFieldId}-10`}
                     min={0}
                     value={form.rate2DownPayment ?? ''}
                     onChange={(e) => setForm((f) => ({ ...f, rate2DownPayment: e.target.value === '' ? undefined : Number(e.target.value) }))}
@@ -558,9 +556,8 @@ export default function PricingTemplatesPage() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-foreground mb-1">จำนวนเดือนเรทที่ 2</label>
-                  <input
-                    type="number"
+                  <label htmlFor={`${uiFieldId}-11`} className="block text-sm font-medium text-foreground mb-1">จำนวนเดือนเรทที่ 2</label>
+                  <NumberInput unstyled id={`${uiFieldId}-11`}
                     min={1}
                     value={form.rate2TermMonths ?? ''}
                     onChange={(e) => setForm((f) => ({ ...f, rate2TermMonths: e.target.value === '' ? undefined : Number(e.target.value) }))}
@@ -571,8 +568,8 @@ export default function PricingTemplatesPage() {
             </div>
 
             <div className="flex gap-3 pt-2">
-              <button onClick={closeModal} className="flex-1 px-4 py-2 text-sm border border-input rounded-lg">ยกเลิก</button>
-              <button
+              <button data-ui-control="button" onClick={closeModal} className="flex-1 px-4 py-2 text-sm border border-input rounded-lg">ยกเลิก</button>
+              <button data-ui-control="button"
                 onClick={() => saveMutation.mutate()}
                 disabled={!canSave || saveMutation.isPending}
                 className="flex-1 px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50"

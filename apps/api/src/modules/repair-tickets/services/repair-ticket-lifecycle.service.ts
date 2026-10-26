@@ -11,7 +11,7 @@ import {
   ConflictException,
   ForbiddenException,
 } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { Prisma, type RepairStatus } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { AuditEntry, AuditService } from '../../audit/audit.service';
 import { ExpenseDocumentsService } from '../../expense-documents/expense-documents.service';
@@ -734,5 +734,43 @@ export class RepairTicketLifecycleService {
     });
 
     return tx.repairTicket.findUnique({ where: { id } });
+  }
+
+  /**
+   * PR 5 — ซ่อมไม่ได้ → เปลี่ยนรุ่นเดิมบน **ใบขายสด** (ไม่มีสัญญาใหม่ให้ใส่ `replacementContractId` ซึ่งเป็น FK
+   * @unique ไป Contract — `markReplaced` จึงใช้ไม่ได้). CAS เดียวกัน · `replacementContractId` คง null ·
+   * **ไม่เรียก audit** — ผู้เรียก (`AfterSalesExchangeService.confirmCashSameModel`) เขียน
+   * `REPAIR_TICKET_REPLACED_BY_SALE` หลัง tx commit (database.md: ห้าม audit.log ใน $transaction)
+   */
+  async markReplacedBySale(
+    id: string,
+    ref: { caseNumber: string; saleNumber: string },
+    user: ReqUser,
+    tx: Prisma.TransactionClient | PrismaService = this.prisma,
+  ): Promise<{ fromStatus: RepairStatus }> {
+    const before = await tx.repairTicket.findUnique({
+      where: { id, deletedAt: null },
+      select: { status: true },
+    });
+    if (!before) throw new NotFoundException('ไม่พบ ticket');
+    const updated = await tx.repairTicket.updateMany({
+      where: { id, status: { in: ['OPEN', 'IN_PROGRESS', 'READY_FOR_PICKUP'] }, deletedAt: null },
+      data: { status: 'REPLACED', replacedAt: new Date() },
+    });
+    if (updated.count === 0) {
+      throw new ConflictException(
+        'สถานะถูกเปลี่ยนไปแล้ว — replace ทำได้เฉพาะ OPEN/IN_PROGRESS/READY_FOR_PICKUP',
+      );
+    }
+    await tx.repairStatusLog.create({
+      data: {
+        ticketId: id,
+        fromStatus: before.status,
+        toStatus: 'REPLACED',
+        changedById: user.id,
+        note: `เปลี่ยนรุ่นเดิมบนใบขายสด ${ref.saleNumber} · เคส ${ref.caseNumber}`,
+      },
+    });
+    return { fromStatus: before.status };
   }
 }

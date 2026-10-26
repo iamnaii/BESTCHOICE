@@ -13,7 +13,7 @@ import { d, dSum, dClose } from '../../utils/decimal.util';
 import { JournalAutoService } from '../journal/journal-auto.service';
 import { TaxService } from '../tax/tax.service';
 import { AccountingService } from './accounting.service';
-import { PeakService } from '../peak/peak.service';
+import { PeakService, PeakExportResult } from '../peak/peak.service';
 import { AuditService } from '../audit/audit.service';
 import { ReopenPeriodDto } from './dto/reopen-period.dto';
 
@@ -288,14 +288,14 @@ export class MonthlyCloseService {
       );
     }
 
-    if (!this.peakService.isConfigured()) {
+    if (!(await this.peakService.isConfigured())) {
       throw new BadRequestException('PEAK ยังไม่ได้ตั้งค่า — ต้องการ PEAK_USER_TOKEN, PEAK_CONNECT_ID, PEAK_SECRET_KEY');
     }
 
     const startDate = this.periodStart(year, month);
     const endDate = this.periodEnd(year, month);
 
-    let peakSyncResult: unknown;
+    let peakSyncResult: PeakExportResult;
     try {
       peakSyncResult = await this.peakService.exportJournalEntries(startDate, endDate);
     } catch (err) {
@@ -303,6 +303,10 @@ export class MonthlyCloseService {
         tags: { kind: 'monthly-close-peak-sync', companyId, year: String(year), month: String(month) },
       });
       throw err;
+    }
+
+    if (peakSyncResult.errors.length > 0) {
+      throw new BadRequestException('ซิงก์ไปยัง PEAK ไม่ครบ กรุณาตรวจสอบรายการที่ส่งไม่สำเร็จแล้วลองใหม่');
     }
 
     const period = await this.prisma.accountingPeriod.update({

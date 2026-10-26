@@ -4,6 +4,8 @@ import { buildAfterSalesDocHtml } from '../documents/after-sales-doc-html';
 import {
   composeHandoverDoc,
   composeReceiptDoc,
+  composeReplacementHandoverDoc,
+  composeReturnDoc,
   type DocSource,
 } from '../documents/after-sales-doc-compose';
 import { AfterSalesPdfRenderer } from '../documents/after-sales-pdf.renderer';
@@ -71,6 +73,14 @@ const extreme: DocSource = {
     replacementContractNumber: 'CT-2026-0951',
     newShopWarrantyEnd: new Date('2026-12-16T00:00:00.000Z'),
     newManufacturerWarrantyEnd: new Date('2027-09-16T00:00:00.000Z'),
+    saleType: null,
+    financeCompany: null,
+    sevenDayEnd: null,
+    deliveredNote: null,
+    deliveredAccessories: null,
+    approvedByName: null,
+    approvedAt: null,
+    repairTicketNumber: null,
   },
 };
 
@@ -125,4 +135,47 @@ describe('after-sales PDF — A4 หน้าเดียวบน Chromium จ�
       expect(pdf.length).toBeLessThan(1_500_000);
     });
   }
+
+  // PR 5 — เคสขายสด: ใบรับคืน + ใบส่งมอบเครื่องทดแทน ใน PDF เดียว ต้องได้ 2 หน้าพอดี
+  const cashExchange: DocSource = {
+    ...realistic,
+    source: 'CASH_SALE',
+    contractNumber: null,
+    saleNumber: 'SL-20261009-0012',
+    outcome: 'CASH_SAME_MODEL_EXCHANGE',
+    stage: 'CLOSED',
+    closedAt: new Date('2026-10-14T04:00:00.000Z'),
+    repair: null,
+    warranty: {
+      purchasedAt: new Date('2026-10-09T05:00:00.000Z'),
+      shopWarrantyEnd: new Date('2026-12-08T00:00:00.000Z'),
+      manufacturerWarrantyEnd: null,
+      within7Days: true,
+    },
+    exchange: {
+      ...extreme.exchange!,
+      mode: null,
+      replacementContractNumber: null,
+      newManufacturerWarrantyEnd: null,
+      saleType: 'CASH',
+      sevenDayEnd: new Date('2026-10-20T00:00:00.000Z'),
+      deliveredNote: 'ส่งมอบเครื่องทดแทน · ใบขาย SL-20261009-0012 · อุปกรณ์: กล่อง, สายชาร์จ',
+      deliveredAccessories: null,
+      approvedByName: 'สุดา',
+      approvedAt: new Date('2026-10-12T06:00:00.000Z'),
+    },
+  };
+  run('cash-exchange-docs = 2 หน้าพอดี (ใบรับคืน + ใบส่งมอบเครื่องทดแทน)', async () => {
+    const pdf = await new AfterSalesPdfRenderer().htmlToPdf(
+      buildAfterSalesDocHtml([
+        composeReturnDoc(cashExchange),
+        composeReplacementHandoverDoc(cashExchange),
+      ]),
+    );
+    if (process.env.AFTER_SALES_PDF_OUT)
+      writeFileSync(join(process.env.AFTER_SALES_PDF_OUT, 'cash-exchange-docs.pdf'), pdf);
+    const pages = pdf.toString('latin1').match(/\/Type\s*\/Page(?![s\w])/g) ?? [];
+    expect(pages.length).toBe(2);
+    expect(pdf.length).toBeLessThan(1_500_000);
+  });
 });

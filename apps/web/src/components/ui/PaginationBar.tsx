@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Button } from './button';
 import { Input } from './input';
+import { NativeSelect } from './native-select';
 import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react';
 
 type Props = {
@@ -47,16 +48,17 @@ export function PaginationBar({
         แสดง {start.toLocaleString()}-{end.toLocaleString()} จาก {total.toLocaleString()} รายการ
       </span>
 
-      <div className="flex items-center gap-1">
-        <Button variant="ghost" size="sm" aria-label="First" onClick={() => onPageChange(1)} disabled={page === 1}>
+      <div className="flex max-w-full flex-wrap items-center gap-1 [&_button]:max-lg:min-w-11">
+        <Button className="hidden sm:inline-flex" variant="ghost" size="sm" aria-label="หน้าแรก" onClick={() => onPageChange(1)} disabled={page === 1}>
           <ChevronsLeft className="w-4 h-4" />
         </Button>
-        <Button variant="ghost" size="sm" aria-label="Prev" onClick={() => onPageChange(page - 1)} disabled={page === 1}>
+        <Button variant="ghost" size="sm" aria-label="ก่อนหน้า" onClick={() => onPageChange(page - 1)} disabled={page === 1}>
           <ChevronLeft className="w-4 h-4" />
         </Button>
         {pagesAround(page, totalPages).map((p) => (
           <Button
             key={p}
+            className={Math.abs(p - page) > 1 ? 'hidden sm:inline-flex' : undefined}
             variant={p === page ? 'primary' : 'ghost'}
             size="sm"
             onClick={() => onPageChange(p)}
@@ -66,34 +68,35 @@ export function PaginationBar({
             {p}
           </Button>
         ))}
-        <Button variant="ghost" size="sm" aria-label="Next" onClick={() => onPageChange(page + 1)} disabled={page === totalPages}>
+        <Button variant="ghost" size="sm" aria-label="ถัดไป" onClick={() => onPageChange(page + 1)} disabled={page === totalPages}>
           <ChevronRight className="w-4 h-4" />
         </Button>
-        <Button variant="ghost" size="sm" aria-label="Last" onClick={() => onPageChange(totalPages)} disabled={page === totalPages}>
+        <Button className="hidden sm:inline-flex" variant="ghost" size="sm" aria-label="หน้าสุดท้าย" onClick={() => onPageChange(totalPages)} disabled={page === totalPages}>
           <ChevronsRight className="w-4 h-4" />
         </Button>
       </div>
 
-      <div className="flex items-center gap-2">
+      <div className="flex max-w-full flex-wrap items-center gap-2">
         <Input
           className="w-16 h-8 text-sm"
           placeholder="ไปหน้า"
+          aria-label="ไปหน้าที่"
           value={jumpValue}
           onChange={(e) => setJumpValue(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && handleJump()}
         />
         <label className="flex items-center gap-1 text-xs text-muted-foreground">
           แสดงต่อหน้า:
-          <select
+          <NativeSelect
             aria-label="แสดงต่อหน้า"
             value={size}
             onChange={(e) => onSizeChange(Number(e.target.value))}
-            className="border border-border bg-background rounded px-1 py-0.5 text-sm"
+            wrapperClassName="w-24"
           >
             {sizeOptions.map((opt) => (
               <option key={opt} value={opt}>{opt}</option>
             ))}
-          </select>
+          </NativeSelect>
         </label>
       </div>
     </div>

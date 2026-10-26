@@ -1,0 +1,168 @@
+{
+  "status": "PASS",
+  "scope": "Basic checks + synthetic Inbox, customers, dashboard, FINANCE portfolio, work-company navigation and trade-in-to-stock flow; not a full backend/financial regression",
+  "repo": "/Users/iamnaii/Desktop/App/BESTCHOICE-layout-audit",
+  "revision": "c5d26edcf",
+  "sourceFingerprint": "794b7d27bb26411dfc6dccc8310bed86ce7ab92011fee9b1ebde44c079672c66",
+  "startedAt": "2026-10-17T08:15:37.888Z",
+  "checks": [
+    {
+      "label": "Local tooling",
+      "status": "PASS"
+    },
+    {
+      "label": "Prisma SHOP",
+      "status": "PASS"
+    },
+    {
+      "label": "Prisma FINANCE",
+      "status": "PASS"
+    },
+    {
+      "label": "API + Web types",
+      "status": "PASS"
+    },
+    {
+      "label": "API lint (no autofix)",
+      "status": "PASS"
+    },
+    {
+      "label": "Web lint",
+      "status": "PASS"
+    },
+    {
+      "label": "Web tests",
+      "status": "PASS"
+    },
+    {
+      "label": "Shared tests",
+      "status": "PASS"
+    },
+    {
+      "label": "Storefront tests",
+      "status": "PASS"
+    },
+    {
+      "label": "Storefront build + types",
+      "status": "PASS"
+    },
+    {
+      "label": "Web build",
+      "status": "PASS"
+    },
+    {
+      "label": "Inbox voice: simulated Thai speech/delivery, desktop/mobile, manual send and room isolation",
+      "status": "PASS"
+    },
+    {
+      "label": "Inbox shell: consistent navigation scale and compact rail without app sidebar on desktop, compact header on phones, flags off, light/dark at 320–1512px",
+      "status": "PASS"
+    },
+    {
+      "label": "Owner setup from disabled navigation, explicit simulated feed subscription, queue activation at 320/1440px",
+      "status": "PASS"
+    },
+    {
+      "label": "Inbox layout: light/dark, 320–1920px, chat/note focus and multiline drafts",
+      "status": "PASS"
+    },
+    {
+      "label": "Inbox 1440px",
+      "status": "PASS"
+    },
+    {
+      "label": "Scoped chat queue, read/fail/success and exact task target 1440px",
+      "status": "PASS"
+    },
+    {
+      "label": "Sales evidence, follow-up conflict/cancellation and lost/reopen 1440px",
+      "status": "PASS"
+    },
+    {
+      "label": "Note mentions and A/B handoff 1440px",
+      "status": "PASS"
+    },
+    {
+      "label": "Signed synthetic Facebook comments + uncertain send 1440px; live Meta unverified",
+      "status": "PASS"
+    },
+    {
+      "label": "Chat intake, physical-receipt validation, canonical repair and closure 1440px",
+      "status": "PASS"
+    },
+    {
+      "label": "Human/bot, responder/sales owner, deduplicated sales and analytics drilldowns 1440px",
+      "status": "PASS"
+    },
+    {
+      "label": "Private library folders/upload/search/staging, ACK retry, credit copy and composer parity 1440px",
+      "status": "PASS"
+    },
+    {
+      "label": "Customers + FINANCE portfolio (filters, pagination, empty report) 1440px",
+      "status": "PASS"
+    },
+    {
+      "label": "SHOP/FINANCE navigation (requests, reload, back/forward) 1440px",
+      "status": "PASS"
+    },
+    {
+      "label": "Trade-in purchase, voucher, price and six-angle stock handoff 1440px",
+      "status": "PASS"
+    },
+    {
+      "label": "iPhone inspection, computed price and saved snapshot 1440px",
+      "status": "PASS"
+    },
+    {
+      "label": "Inbox 390px",
+      "status": "PASS"
+    },
+    {
+      "label": "Scoped chat queue, read/fail/success and exact task target 390px",
+      "status": "PASS"
+    },
+    {
+      "label": "Sales evidence, follow-up conflict/cancellation and lost/reopen 390px",
+      "status": "PASS"
+    },
+    {
+      "label": "Note mentions and A/B handoff 390px",
+      "status": "PASS"
+    },
+    {
+      "label": "Signed synthetic Facebook comments + uncertain send 390px; live Meta unverified",
+      "status": "PASS"
+    },
+    {
+      "label": "Chat intake, physical-receipt validation, canonical repair and closure 390px",
+      "status": "PASS"
+    },
+    {
+      "label": "Human/bot, responder/sales owner, deduplicated sales and analytics drilldowns 390px",
+      "status": "PASS"
+    },
+    {
+      "label": "Private library folders/upload/search/staging, ACK retry, credit copy and composer parity 390px",
+      "status": "PASS"
+    },
+    {
+      "label": "Customers + FINANCE portfolio (filters, pagination, empty report) 390px",
+      "status": "PASS"
+    },
+    {
+      "label": "SHOP/FINANCE navigation (requests, reload, back/forward) 390px",
+      "status": "PASS"
+    },
+    {
+      "label": "Trade-in purchase, voucher, price and six-angle stock handoff 390px",
+      "status": "PASS"
+    },
+    {
+      "label": "iPhone inspection, computed price and saved snapshot 390px",
+      "status": "PASS"
+    }
+  ],
+  "url": "http://localhost:5206/inbox",
+  "finishedAt": "2026-10-17T08:26:33.131Z"
+}

@@ -42,10 +42,12 @@ export function useContactLog() {
       const { data } = await api.patch(`/overdue/${contractId}/contact-log`, body);
       return data;
     },
-    onSuccess: () => {
+    onSuccess: (_, { contractId }) => {
       toast.success('บันทึกการติดต่อสำเร็จ');
       queryClient.invalidateQueries({ queryKey: ['collections-queue'] });
       queryClient.invalidateQueries({ queryKey: ['collections-kpi'] });
+      queryClient.invalidateQueries({ queryKey: ['contract-cycle-deadline', contractId] });
+      queryClient.invalidateQueries({ queryKey: ['contract-call-log-latest', contractId] });
     },
     onError: (err: unknown) => toast.error(getErrorMessage(err)),
   });

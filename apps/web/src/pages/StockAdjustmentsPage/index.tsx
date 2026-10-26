@@ -1,3 +1,5 @@
+import { NativeSelect } from '@/components/ui/native-select';
+import { getReportDateRange } from '@/lib/date';
 import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router';
 import { PackageMinus, Plus } from 'lucide-react';
@@ -19,8 +21,7 @@ const INPUT_CLS =
   'px-3 py-2 border border-input rounded-lg text-sm bg-background focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden';
 
 const monthStart = () => {
-  const d = new Date();
-  return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().slice(0, 10);
+  return getReportDateRange('this_month').startDate;
 };
 
 /**
@@ -36,8 +37,18 @@ export default function StockAdjustmentsPage() {
   const debouncedSearch = useDebounce(search);
   const [reason, setReason] = useState<AdjustmentReason | ''>('');
   const [page, setPage] = useState(1);
-  const [showRequest, setShowRequest] = useState(false);
+  // ถังขยะ (ก้อน 8 A10) ส่งมาที่ ?request=found&q=<imei> → เปิดฟอร์มคำขอ "พบของคืน" พร้อมค้นเครื่องให้
+  const requestPreset = searchParams.get('request') === 'found' ? { reason: 'FOUND' as AdjustmentReason, query: searchParams.get('q') ?? '' } : null;
+  const [showRequest, setShowRequest] = useState(!!requestPreset);
   const [openId, setOpenId] = useState<string | null>(searchParams.get('focus'));
+  const closeRequest = () => {
+    setShowRequest(false);
+    if (searchParams.has('request') || searchParams.has('q')) {
+      searchParams.delete('request');
+      searchParams.delete('q');
+      setSearchParams(searchParams, { replace: true });
+    }
+  };
 
   useEffect(() => {
     setPage(1);
@@ -108,7 +119,7 @@ export default function StockAdjustmentsPage() {
 
       <div className="flex gap-1 mb-4 bg-muted rounded-xl p-1 w-fit flex-wrap">
         {tabs.map((t) => (
-          <button
+          <button data-ui-control="button"
             key={t.key}
             onClick={() => setTab(t.key)}
             className={`px-4 py-2 text-sm rounded-lg font-medium transition-colors inline-flex items-center gap-2 ${
@@ -125,23 +136,23 @@ export default function StockAdjustmentsPage() {
         ))}
       </div>
 
-      <div className="flex flex-wrap gap-3 mb-4">
-        <input
+      <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr)_auto]">
+        <input aria-label="ค้นหาเลขคำขอ, ยี่ห้อ, รุ่น, IMEI"
           type="text"
           placeholder="ค้นหาเลขคำขอ, ยี่ห้อ, รุ่น, IMEI..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className={`${INPUT_CLS} flex-1 min-w-[220px]`}
+          className={`${INPUT_CLS} w-full min-w-0`}
         />
         {tab !== 'damaged' && (
-          <select value={reason} onChange={(e) => setReason(e.target.value as AdjustmentReason | '')} className={INPUT_CLS}>
+          <NativeSelect wrapperClassName="max-w-full w-auto" aria-label="เหตุผลปรับสต๊อก" value={reason} onChange={(e) => setReason(e.target.value as AdjustmentReason | '')} className={INPUT_CLS}>
             <option value="">ทุกเหตุผล</option>
             {REASON_OPTIONS.map((o) => (
               <option key={o.value} value={o.value}>
                 {o.label}
               </option>
             ))}
-          </select>
+          </NativeSelect>
         )}
       </div>
 
@@ -184,7 +195,7 @@ export default function StockAdjustmentsPage() {
         </>
       </QueryBoundary>
 
-      <RequestAdjustmentDialog open={showRequest} onClose={() => setShowRequest(false)} />
+      <RequestAdjustmentDialog open={showRequest} onClose={closeRequest} initialReason={requestPreset?.reason ?? ''} initialQuery={requestPreset?.query ?? ''} />
       <ApproveAdjustmentDialog adjustmentId={openId} onClose={closeDetail} user={user} />
     </div>
   );

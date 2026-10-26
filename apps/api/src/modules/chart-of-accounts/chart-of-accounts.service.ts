@@ -3,7 +3,7 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateChartOfAccountDto, UpdateChartOfAccountDto } from './dto/chart-of-account.dto';
 import { CoaAccountRow, CoaGroupedResponse } from './dto/coa-grouped.dto';
-import { UpdatePeakMappingDto } from './dto/peak-mapping.dto';
+import { PEAK_SUB_CODE_SOURCES, UpdatePeakMappingDto } from './dto/peak-mapping.dto';
 
 /**
  * P3-SP3: PEAK mapping row returned to the settings UI. peakCode is null when
@@ -15,6 +15,17 @@ export interface PeakMappingRow {
   name: string;
   type: string;
   peakCode: string | null;
+  /** FINANCE mapping v5: fixed PEAK sub-account code (null unless source = 'fixed'). */
+  peakSubCode: string | null;
+  /** none | fixed | contact | bank | cashbox — see PEAK_SUB_CODE_SOURCES. */
+  peakSubCodeSource: string;
+}
+
+/** Resolved target state of one mapping row after merging the request over the DB row. */
+interface PeakMappingState {
+  peakCode: string | null;
+  peakSubCode: string | null;
+  peakSubCodeSource: string;
 }
 
 @Injectable()
@@ -152,16 +163,26 @@ export class ChartOfAccountsService {
     const rows = await this.prisma.chartOfAccount.findMany({
       where: { deletedAt: null, status: 'ใช้งาน' },
       orderBy: { code: 'asc' },
-      select: { id: true, code: true, name: true, type: true, peakCode: true },
+      select: {
+        id: true,
+        code: true,
+        name: true,
+        type: true,
+        peakCode: true,
+        peakSubCode: true,
+        peakSubCodeSource: true,
+      },
     });
     return rows;
   }
 
   /**
-   * Bulk-update peakCode on a list of accounts. Writes one AuditLog row
-   * summarising what changed (entity = `chart_of_account`, entityId =
-   * comma-joined codes). Empty-string peakCode values are rejected — DTO must
-   * pass null or a non-empty trimmed value.
+   * Bulk-update peakCode (+ peakSubCode / peakSubCodeSource) on a list of
+   * accounts. Writes one AuditLog row summarising what changed (entity =
+   * `chart_of_account`, entityId = comma-joined codes). Empty-string codes are
+   * normalised to null. Sub-code fields that are OMITTED keep their stored
+   * value; a source other than 'fixed' always clears the sub-code, and
+   * 'fixed' without a sub-code is rejected (ฝ่ายบัญชี mapping v5 19/10/2569).
    */
   async updatePeakMapping(
     dto: UpdatePeakMappingDto,
@@ -172,24 +193,26 @@ export class ChartOfAccountsService {
     // Validate: peakCode must be either null/undefined or a trimmed non-empty string.
     // (The regex in the DTO allows ""; we reject explicitly here so the column
     // never stores '' — only null or a real code.)
-    const normalised = dto.mappings.map((m) => {
-      const raw = m.peakCode;
-      if (raw === undefined || raw === null) {
-        return { id: m.id, peakCode: null as string | null };
-      }
+    const trimOrNull = (raw: string | null | undefined): string | null => {
+      if (raw === undefined || raw === null) return null;
       const trimmed = String(raw).trim();
-      if (trimmed.length === 0) {
-        return { id: m.id, peakCode: null };
-      }
-      return { id: m.id, peakCode: trimmed };
-    });
+      return trimmed.length === 0 ? null : trimmed;
+    };
+    const normalised = dto.mappings.map((m) => ({
+      id: m.id,
+      peakCode: trimOrNull(m.peakCode),
+      // undefined = "not sent" → keep the stored value (see DTO docblock)
+      peakSubCode: m.peakSubCode === undefined ? undefined : trimOrNull(m.peakSubCode),
+      peakSubCodeSource:
+        m.peakSubCodeSource === undefined ? undefined : String(m.peakSubCodeSource).trim(),
+    }));
 
     // Pre-load existing rows in a single query so we can (a) reject unknown IDs
     // and (b) capture before/after values for the audit log.
     const ids = normalised.map((m) => m.id);
     const existing = await this.prisma.chartOfAccount.findMany({
       where: { id: { in: ids }, deletedAt: null },
-      select: { id: true, code: true, peakCode: true },
+      select: { id: true, code: true, peakCode: true, peakSubCode: true, peakSubCodeSource: true },
     });
     const existingMap = new Map(existing.map((e) => [e.id, e]));
     const missing = normalised.filter((m) => !existingMap.has(m.id));
@@ -199,19 +222,59 @@ export class ChartOfAccountsService {
       );
     }
 
+    // Resolve the target state of every row BEFORE opening the transaction so a
+    // validation failure never leaves a half-applied batch.
+    const targets = normalised.map((m) => {
+      const prev = existingMap.get(m.id)!;
+      // Rows written before mapping v5 (and older test fixtures) may lack the
+      // column entirely — treat "missing" exactly like the DB default 'none'.
+      const prevSource = prev.peakSubCodeSource ?? 'none';
+      const source = m.peakSubCodeSource ?? prevSource;
+      if (!(PEAK_SUB_CODE_SOURCES as readonly string[]).includes(source)) {
+        throw new BadRequestException(`แหล่งรหัสย่อยไม่ถูกต้อง: ${source} (บัญชี ${prev.code})`);
+      }
+      const requestedSub = m.peakSubCode === undefined ? (prev.peakSubCode ?? null) : m.peakSubCode;
+      // Only a fixed source carries a value; dynamic sources are resolved per line at export.
+      const peakSubCode = source === 'fixed' ? requestedSub : null;
+      if (source === 'fixed' && !peakSubCode) {
+        throw new BadRequestException(
+          `บัญชี ${prev.code}: แหล่งรหัสย่อย "คงที่" (fixed) ต้องระบุรหัสย่อย PEAK`,
+        );
+      }
+      const next: PeakMappingState = { peakCode: m.peakCode, peakSubCode, peakSubCodeSource: source };
+      return { id: m.id, prev, next };
+    });
+
     // Apply updates inside a transaction so partial failure rolls back the
     // whole batch (matches the all-or-nothing UX expected by a Save button).
-    const changes: { code: string; before: string | null; after: string | null }[] = [];
+    const changes: {
+      code: string;
+      before: string | null;
+      after: string | null;
+      peakSubCodeBefore: string | null;
+      peakSubCodeAfter: string | null;
+      sourceBefore: string;
+      sourceAfter: string;
+    }[] = [];
     await this.prisma.$transaction(async (tx) => {
-      for (const m of normalised) {
-        const prev = existingMap.get(m.id)!;
-        if (prev.peakCode !== m.peakCode) {
-          await tx.chartOfAccount.update({
-            where: { id: m.id },
-            data: { peakCode: m.peakCode },
-          });
-          changes.push({ code: prev.code, before: prev.peakCode, after: m.peakCode });
+      for (const { id, prev, next } of targets) {
+        const data: Partial<PeakMappingState> = {};
+        if (prev.peakCode !== next.peakCode) data.peakCode = next.peakCode;
+        if ((prev.peakSubCode ?? null) !== next.peakSubCode) data.peakSubCode = next.peakSubCode;
+        if ((prev.peakSubCodeSource ?? 'none') !== next.peakSubCodeSource) {
+          data.peakSubCodeSource = next.peakSubCodeSource;
         }
+        if (Object.keys(data).length === 0) continue;
+        await tx.chartOfAccount.update({ where: { id }, data });
+        changes.push({
+          code: prev.code,
+          before: prev.peakCode,
+          after: next.peakCode,
+          peakSubCodeBefore: prev.peakSubCode ?? null,
+          peakSubCodeAfter: next.peakSubCode,
+          sourceBefore: prev.peakSubCodeSource ?? 'none',
+          sourceAfter: next.peakSubCodeSource,
+        });
       }
 
       if (changes.length > 0) {
@@ -226,6 +289,10 @@ export class ChartOfAccountsService {
                 code: c.code,
                 before: c.before,
                 after: c.after,
+                peakSubCodeBefore: c.peakSubCodeBefore,
+                peakSubCodeAfter: c.peakSubCodeAfter,
+                sourceBefore: c.sourceBefore,
+                sourceAfter: c.sourceAfter,
               })),
               count: changes.length,
             } as unknown as Prisma.JsonObject,
@@ -238,8 +305,10 @@ export class ChartOfAccountsService {
   }
 
   /**
-   * Render the current PEAK mapping as a CSV string (UTF-8 BOM, 3 columns:
-   * code, name, peakCode). For Excel-friendly Thai display + later re-import.
+   * Render the current PEAK mapping as a CSV string (UTF-8 BOM, 5 columns:
+   * code, name, peakCode, peakSubCode, peakSubCodeSource). For Excel-friendly
+   * Thai display + later re-import (the first three columns are unchanged
+   * from the P3-SP3 format, so older import sheets still line up).
    */
   async exportPeakMappingCsv(): Promise<string> {
     const rows = await this.getPeakMapping();
@@ -251,8 +320,16 @@ export class ChartOfAccountsService {
       }
       return s;
     };
-    const header = ['code', 'name', 'peakCode'].join(',');
-    const body = rows.map((r) => [escape(r.code), escape(r.name), escape(r.peakCode)].join(','));
+    const header = ['code', 'name', 'peakCode', 'peakSubCode', 'peakSubCodeSource'].join(',');
+    const body = rows.map((r) =>
+      [
+        escape(r.code),
+        escape(r.name),
+        escape(r.peakCode),
+        escape(r.peakSubCode),
+        escape(r.peakSubCodeSource),
+      ].join(','),
+    );
     // UTF-8 BOM so Excel renders Thai correctly without prompting for encoding.
     return '﻿' + [header, ...body].join('\n');
   }

@@ -1,3 +1,4 @@
+import { NumberInput } from '@/components/ui/NumberInput';
 import { useEffect, useState } from 'react';
 import {
   Sheet,
@@ -19,6 +20,10 @@ import { Slider, SliderThumb } from '@/components/ui/slider';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { useAuth } from '@/contexts/AuthContext';
+import {
+  COLLECTION_STATUS_OPTIONS as STATUSES,
+  COLLECTION_PRODUCT_OPTIONS as PRODUCTS,
+} from '../constants/filterLabels';
 import type {
   LastContactedOption,
   LineResponseOption,
@@ -37,18 +42,6 @@ interface FilterDrawerProps {
 }
 
 const BUCKETS: OverdueBucketOption[] = ['1-7', '8-30', '31-60', '61-90', '90+'];
-const STATUSES: Array<{ value: string; label: string }> = [
-  { value: 'ACTIVE', label: 'ACTIVE' },
-  { value: 'OVERDUE', label: 'OVERDUE' },
-  { value: 'DEFAULT', label: 'DEFAULT' },
-  { value: 'TERMINATED', label: 'TERMINATED' },
-];
-const PRODUCTS: Array<{ value: string; label: string }> = [
-  { value: 'PHONE_NEW', label: 'มือถือใหม่' },
-  { value: 'PHONE_USED', label: 'มือถือมือสอง' },
-  { value: 'TABLET', label: 'แท็บเล็ต' },
-  { value: 'ACCESSORY', label: 'อุปกรณ์เสริม' },
-];
 
 const LAST_CONTACTED: Array<{ value: LastContactedOption | 'any'; label: string }> = [
   { value: 'any', label: 'ทั้งหมด' },
@@ -165,7 +158,7 @@ export default function FilterDrawer({
                   <div className="flex items-center gap-2">
                     <RadioGroupItem value="unassigned" id="assigned-unassigned" />
                     <Label htmlFor="assigned-unassigned" className="cursor-pointer">
-                      ยังไม่ assign
+                      ยังไม่ มอบหมาย
                     </Label>
                   </div>
                 </RadioGroup>
@@ -198,7 +191,7 @@ export default function FilterDrawer({
                     {BUCKETS.map((b) => {
                       const active = draft.overdueBuckets?.includes(b) ?? false;
                       return (
-                        <button
+                        <button data-ui-control="button"
                           key={b}
                           type="button"
                           onClick={() => toggleArrayValue('overdueBuckets', b)}
@@ -286,9 +279,8 @@ export default function FilterDrawer({
 
                 <div className="space-y-1.5">
                   <Label htmlFor="minLetterCount">จดหมายที่ส่งขั้นต่ำ</Label>
-                  <input
+                  <NumberInput unstyled
                     id="minLetterCount"
-                    type="number"
                     min={0}
                     value={draft.minLetterCount ?? ''}
                     onChange={(e) =>
@@ -358,9 +350,8 @@ export default function FilterDrawer({
 
                 <div className="space-y-1.5">
                   <Label htmlFor="minBrokenPromise">นัดผิดขั้นต่ำ</Label>
-                  <input
+                  <NumberInput unstyled
                     id="minBrokenPromise"
-                    type="number"
                     min={0}
                     value={draft.minBrokenPromise ?? ''}
                     onChange={(e) =>
@@ -450,16 +441,16 @@ export default function FilterDrawer({
 
             {/* Section 4: CUSTOMER TAGS (P3 Task 8 — C1 frontend) */}
             <AccordionItem value="tags">
-              <AccordionTrigger>tags ลูกค้า</AccordionTrigger>
+              <AccordionTrigger>ป้ายกำกับ ลูกค้า</AccordionTrigger>
               <AccordionContent className="space-y-4 pb-4">
                 <div>
-                  <Label>เลือก tags</Label>
+                  <Label>เลือก ป้ายกำกับ</Label>
                   <div className="mt-2 flex flex-wrap gap-1.5">
                     {(['VIP', 'HIGH_RISK', 'NEW', 'LOYAL', 'BLACKLIST'] as const).map(
                       (t) => {
                         const active = draft.customerTags?.includes(t) ?? false;
                         return (
-                          <button
+                          <button data-ui-control="button"
                             key={t}
                             type="button"
                             onClick={() => toggleArrayValue('customerTags', t)}
@@ -475,6 +466,8 @@ export default function FilterDrawer({
                               ? 'ลูกค้าใหม่'
                               : t === 'LOYAL'
                               ? 'ลูกค้าประจำ'
+                              : t === 'BLACKLIST'
+                              ? 'ระงับทำสัญญา'
                               : t}
                           </button>
                         );
@@ -499,13 +492,13 @@ export default function FilterDrawer({
                       <div className="flex items-center gap-2">
                         <RadioGroupItem value="include" id="tag-mode-include" />
                         <Label htmlFor="tag-mode-include" className="cursor-pointer">
-                          เฉพาะลูกค้าที่มี tags ที่เลือก
+                          เฉพาะลูกค้าที่มี ป้ายกำกับ ที่เลือก
                         </Label>
                       </div>
                       <div className="flex items-center gap-2">
                         <RadioGroupItem value="exclude" id="tag-mode-exclude" />
                         <Label htmlFor="tag-mode-exclude" className="cursor-pointer">
-                          ซ่อนลูกค้าที่มี tags ที่เลือก
+                          ซ่อนลูกค้าที่มี ป้ายกำกับ ที่เลือก
                         </Label>
                       </div>
                     </RadioGroup>

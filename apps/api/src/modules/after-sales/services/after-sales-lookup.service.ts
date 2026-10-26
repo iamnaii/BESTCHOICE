@@ -15,6 +15,7 @@ import { AccessAfterSalesProjectionService } from '../../employee-access/access-
 import { AccessExchangeSourceService } from '../../employee-access/access-exchange-source.service';
 import { AccessResourceService } from '../../employee-access/access-resource.service';
 import { HttpException, Injectable, NotFoundException } from '@nestjs/common';
+import type { ProductCategory } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { RepairTicketsService } from '../../repair-tickets/repair-tickets.service';
 import { DefectExchangeService } from '../../defect-exchange/defect-exchange.service';
@@ -34,6 +35,7 @@ export interface LookupResult {
     model: string;
     storage?: string | null;
     imeiSerial: string | null;
+    category: ProductCategory; // PR 5 — UI/outcomes ใช้ gate "มือสองเท่านั้น" ของขายสด
   } | null;
   customer: { id: string; name: string; phone: string | null } | null;
   contract: { id: string; contractNumber: string; status: string } | null;
@@ -118,6 +120,8 @@ export class AfterSalesLookupService {
       this.exchanges!.permits('contract-exchanges.create', exchangeSources);
     return computeOutcomes({ ...input, submissionCapabilities: { sameModel, priced } }).map(
       (option) => {
+        // CASH_SAME_MODEL_EXCHANGE (PR 5) is sale-sourced and has no managed capability
+        // boundary yet (intake/confirm/deliver all fail closed) ⇒ falls through to false.
         const permitted =
           option.outcome === 'REPAIR'
             ? repair
@@ -255,6 +259,7 @@ export class AfterSalesLookupService {
             cancelledAt: true,
             closedAt: true,
             replacementContractId: true,
+            replacementSaleId: true, // PR 5
             repairTicket: { select: { status: true, deletedAt: true, returnedToCustomerAt: true } },
             exchangeRequest: {
               select: {
@@ -352,6 +357,7 @@ export class AfterSalesLookupService {
           defectEligible,
           defectReasons,
           viewerRole: user.role,
+          productCategory: r.product.category,
         },
         r,
       ),

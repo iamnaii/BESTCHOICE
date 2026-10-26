@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react';
+import { toBangkokDateString } from '@/lib/date';
+import { useId as useUiFieldId, useMemo, useState } from 'react';
 import { Link } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
 import { BarChart3, ArrowRightLeft, Monitor, Wrench, Sofa, Car, Package } from 'lucide-react';
@@ -15,7 +16,7 @@ import { CATEGORY_LABEL, type AssetCategory } from './types';
 import type { SummaryRow, AssetTransferRow } from './types';
 import AssetHubTabs from './components/AssetHubTabs';
 
-const today = () => new Date().toISOString().slice(0, 10);
+const today = () => toBangkokDateString();
 
 const CATEGORY_ICON: Record<AssetCategory, LucideIcon> = {
   EQUIPMENT: Monitor,
@@ -82,7 +83,7 @@ function CategoryGroupCards({ data }: { data: SummaryRow[] }) {
                   </p>
                 </div>
                 <div>
-                  <p className="text-xs text-muted-foreground">มูลค่าตามบัญชีสุทธิ (NBV)</p>
+                  <p className="text-xs text-muted-foreground">มูลค่าตามบัญชีสุทธิ (มูลค่าตามบัญชีสุทธิ)</p>
                   <p className="font-semibold tabular-nums text-emerald-600 dark:text-emerald-400">
                     {formatNumberDecimal(parseFloat(row.totalNbv))}
                   </p>
@@ -114,7 +115,7 @@ function CategoryGroupCards({ data }: { data: SummaryRow[] }) {
                 </p>
               </div>
               <div>
-                <p className="text-xs text-muted-foreground">มูลค่าตามบัญชีสุทธิ (NBV) รวม</p>
+                <p className="text-xs text-muted-foreground">มูลค่าตามบัญชีสุทธิ (มูลค่าตามบัญชีสุทธิ) รวม</p>
                 <p className="font-semibold tabular-nums text-emerald-600 dark:text-emerald-400">
                   {formatNumberDecimal(grandTotal.totalNbv)}
                 </p>
@@ -153,7 +154,7 @@ function SummaryTable({ data }: { data: SummaryRow[] }) {
     },
     {
       key: 'totalNbv',
-      label: 'มูลค่าตามบัญชีสุทธิ (NBV)',
+      label: "มูลค่าตามบัญชีสุทธิ (มูลค่าตามบัญชีสุทธิ)",
       render: (r: SummaryRow) => (
         <span className="tabular-nums font-semibold">
           {formatNumberDecimal(parseFloat(r.totalNbv))}
@@ -170,6 +171,7 @@ function SummaryTable({ data }: { data: SummaryRow[] }) {
 }
 
 export default function AssetSummaryReportPage() {
+  const uiFieldId = useUiFieldId();
   const [asOfDate, setAsOfDate] = useState(today());
   const [tab, setTab] = useState<'category' | 'custodian' | 'location' | 'movement'>('category');
 
@@ -204,9 +206,9 @@ export default function AssetSummaryReportPage() {
 
       <Card>
         <CardContent className="p-4">
-          <label className="text-sm font-medium mb-1 block">ณ วันที่</label>
+          <label htmlFor={`${uiFieldId}-1`} className="text-sm font-medium mb-1 block">ณ วันที่</label>
           <div className="max-w-xs">
-            <ThaiDateInput
+            <ThaiDateInput id={`${uiFieldId}-1`}
               value={asOfDate}
               onChange={(e) => setAsOfDate(e.target.value || today())}
             />

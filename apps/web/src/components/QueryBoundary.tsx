@@ -1,4 +1,5 @@
 import { ReactNode } from 'react';
+import { ListPageSkeleton } from '@/components/ui/page-skeletons';
 import { queryErrorMessage } from '@/lib/query-error-message';
 import { AlertCircle, RefreshCw } from 'lucide-react';
 
@@ -44,12 +45,10 @@ export default function QueryBoundary({
     return (
       <>
         {loadingFallback ?? (
-          <div
-            className="flex items-center justify-center py-16"
-            role="status"
-            aria-label="กำลังโหลด"
-          >
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
+          <div className="min-h-64 py-6" role="status" aria-label="กำลังโหลด">
+            <div aria-hidden="true">
+              <ListPageSkeleton />
+            </div>
           </div>
         )}
       </>
@@ -57,19 +56,21 @@ export default function QueryBoundary({
   }
 
   if (isError) {
-    const detail =
-      errorMessage ??
-      queryErrorMessage(error);
+    const forbidden =
+      (error as { response?: { status?: number } } | undefined)?.response?.status === 403;
+    const detail = errorMessage ?? queryErrorMessage(error);
     return (
       <div
         className="flex flex-col items-center justify-center py-16 px-6 text-center"
         role="alert"
       >
         <AlertCircle className="h-10 w-10 text-destructive mb-3" aria-hidden="true" />
-        <h2 className="text-lg font-semibold text-foreground mb-1">{errorTitle}</h2>
+        <h2 className="text-lg font-semibold text-foreground mb-1">
+          {forbidden ? 'ไม่มีสิทธิ์เข้าถึงข้อมูล' : errorTitle}
+        </h2>
         <p className="text-sm text-muted-foreground max-w-md mb-4">{detail}</p>
-        {onRetry && (
-          <button
+        {onRetry && !forbidden && (
+          <button data-ui-control="button"
             type="button"
             onClick={() => onRetry()}
             className="inline-flex min-h-11 items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"

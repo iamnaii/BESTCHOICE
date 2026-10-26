@@ -2,7 +2,7 @@
 // Reverses all JE in a period + restores accumulatedDepr per asset.
 // Mirrors ReverseDisposalDialog pattern (reason ≥ 5 chars required).
 
-import { useState } from 'react';
+import { useId as useUiFieldId, useState } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -29,6 +29,7 @@ export function ReverseDepreciationRunDialog({
   onConfirm,
   isPending,
 }: ReverseDepreciationRunDialogProps) {
+  const uiFieldId = useUiFieldId();
   const [reason, setReason] = useState('');
   const valid = reason.trim().length >= 5;
 
@@ -40,12 +41,11 @@ export function ReverseDepreciationRunDialog({
         </DialogHeader>
         <div className="space-y-3">
           <p className="text-sm text-muted-foreground">
-            จะกลับรายการ Journal Entry ทั้งหมดในงวดนี้ + คืน accumulatedDepr
-            สินทรัพย์แต่ละตัว ไม่สามารถ undo ได้
+            จะกลับรายการบัญชีทั้งหมดในงวดนี้ และคืนยอดค่าเสื่อมราคาสะสมของสินทรัพย์แต่ละรายการ การดำเนินการนี้ย้อนคืนไม่ได้
           </p>
           <div className="space-y-1.5">
-            <Label>เหตุผล (ขั้นต่ำ 5 ตัวอักษร) *</Label>
-            <Textarea
+            <Label htmlFor={`${uiFieldId}-1`}>เหตุผล (ขั้นต่ำ 5 ตัวอักษร) *</Label>
+            <Textarea id={`${uiFieldId}-1`}
               value={reason}
               onChange={(e) => setReason(e.target.value)}
               rows={3}

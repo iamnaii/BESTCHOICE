@@ -25,7 +25,7 @@ export default function ReceiptVerifyPage() {
         {/* Header */}
         <div className="text-center mb-8">
           <h1 className="text-2xl font-bold text-foreground mb-1">ตรวจสอบใบเสร็จ</h1>
-          <p className="text-sm text-muted-foreground">Receipt Verification</p>
+          <p className="text-sm text-muted-foreground">ตรวจสอบใบเสร็จ</p>
         </div>
 
         {isLoading && (

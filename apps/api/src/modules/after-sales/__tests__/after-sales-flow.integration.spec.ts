@@ -132,13 +132,6 @@ const productPhotosFake = {
 const defectExchangeFake = {
   checkEligibility: async () => ({ eligible: false, reasons: ['เกินกรอบ 7 วัน'] }),
 } as never;
-// ContractExchangeService ปลอม (Task 4, PR 2) — ไฟล์นี้ทดสอบเฉพาะ outcome=REPAIR (PR 1 scope)
-// จึงไม่มีเคสไหนเรียก submit() จริง แต่ต้องมีเพื่อให้ตรง constructor shape ของ AfterSalesCaseService
-const contractExchangeFake = {
-  submit: async () => {
-    throw new Error('contractExchangeFake.submit ไม่ถูกเรียกในสเปคนี้ (ทดสอบเฉพาะ REPAIR)');
-  },
-} as never;
 
 const lookupSvc = new AfterSalesLookupService(
   prisma as never,
@@ -178,7 +171,6 @@ const caseSvc = new AfterSalesCaseService(
   repairTickets,
   afterSalesDocNumber,
   lookupSvc,
-  contractExchangeFake,
   defectExchangeFake,
   line,
 );
@@ -413,14 +405,15 @@ describe('after-sales flow — DB จริง (Task 7, PR1)', () => {
   });
 
   // -------------------------------------------------------------------------
-  it('2) lookup({imei}) → found=true, source=CASH_SALE, REPAIR เปิด, CASH_SAME_MODEL_EXCHANGE ปิด', async () => {
+  it('2) lookup({imei}) → found=true, source=CASH_SALE, REPAIR เปิด, CASH_SAME_MODEL_EXCHANGE เปิด (PR 5 — มือสองใน 7 วัน)', async () => {
     const result = await svc.lookup({ imei: IMEI }, OWNER());
     expect(result.found).toBe(true);
     expect(result.source).toBe('CASH_SALE');
     expect(result.outcomes[0]).toMatchObject({ outcome: 'REPAIR', enabled: true });
     expect(result.outcomes[1]).toMatchObject({
       outcome: 'CASH_SAME_MODEL_EXCHANGE',
-      enabled: false,
+      enabled: true,
+      implemented: true,
     });
   });
 

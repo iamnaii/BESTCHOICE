@@ -1,7 +1,8 @@
+import { NumberInput } from '@/components/ui/NumberInput';
 import { ActionEffect as Effect } from '@/components/ActionEffect';
 import { JournalPreviewTable } from '@/components/JournalPreviewTable';
 import PaymentApprovalRequestDialog from '@/components/payment/PaymentApprovalRequestDialog';
-import { useRef, useState } from 'react';
+import { useId as useUiFieldId, useRef, useState } from 'react';
 import { FocusScope } from '@radix-ui/react-focus-scope';
 import { WizardStackedOverlay } from '@/components/WizardStackedOverlay';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -49,6 +50,12 @@ export interface EarlyPayoffQuote {
   remainingExVat: number;
   remainingCost: number;
   grossProfit: number;
+  /** ฝ่ายบัญชี 16/10/2569 ข้อ 18.1 แบบ (ค): ส่วนลดเฉพาะงวดที่ยังไม่ถึงกำหนด — API ก่อน 26.10.39 ไม่ส่ง */
+  notDueMonths?: number;
+  dueMonths?: number;
+  discountableMonths?: number;
+  /** กำไรของงวดที่ยังไม่ถึงกำหนด = ฐานของ discountAmount */
+  discountBase?: number;
   discountPct: number;
   discountAmount: number;
   unpaidLateFees: number;
@@ -115,10 +122,15 @@ export function ContractEarlyPayoffQuote({
   payoffQuote,
   contractStatus,
 }: {
-  payoffQuote: { totalPayoff: number; remainingMonths: number };
+  payoffQuote: { totalPayoff: number; remainingMonths: number; discountPct?: number; dueMonths?: number };
   contractStatus: string;
 }) {
   if (!['ACTIVE', 'OVERDUE', 'DEFAULT'].includes(contractStatus)) return null;
+  // % จาก quote จริง · ลดเฉพาะงวดที่ยังไม่ถึงกำหนด (ฝ่ายบัญชี 18.1) — ไม่เขียน 50% ตายตัว · ไม่มี % = ไม่มีวงเล็บ
+  const discountLabel =
+    payoffQuote.discountPct == null
+      ? ''
+      : ` (ส่วนลด ${payoffQuote.discountPct}%${(payoffQuote.dueMonths ?? 0) > 0 ? ' ของงวดที่ยังไม่ถึงกำหนด' : ''})`;
   return (
     <div className="bg-primary/5 rounded-xl border border-primary/20 p-6 mb-6 shadow-sm">
       <h2 className="text-lg font-semibold text-primary mb-3">ประเมินปิดก่อนกำหนด</h2>
@@ -128,7 +140,7 @@ export function ContractEarlyPayoffQuote({
           <div className="font-medium">{payoffQuote.remainingMonths} งวด</div>
         </div>
         <div>
-          <div className="text-xs text-primary font-semibold">ยอดปิดสัญญา (ส่วนลด 50%)</div>
+          <div className="text-xs text-primary font-semibold">{`ยอดปิดสัญญา${discountLabel}`}</div>
           <div className="text-xl font-bold text-primary">
             {formatNumber(payoffQuote.totalPayoff)} บาท
           </div>
@@ -151,6 +163,7 @@ export function EarlyPayoffOverlay({
   onClose,
   onSuccess,
 }: Props) {
+  const uiFieldId = useUiFieldId();
   const queryClient = useQueryClient();
   const { user } = useAuth();
   const [discountPct, setDiscountPct] = useState(50);
@@ -382,18 +395,18 @@ export function EarlyPayoffOverlay({
             </div>
             <div>
               <h3 className="text-sm font-semibold text-foreground">คำนวณยอดปิดสัญญา</h3>
-              <p className="text-xs text-muted-foreground">เลือก % ส่วนลดเพื่อ recalc</p>
+              <p className="text-xs text-muted-foreground">เลือก % ส่วนลดเพื่อ คำนวณใหม่</p>
             </div>
           </div>
 
           {/* Discount selector */}
           <div className="mb-4">
-            <label className="block text-xs font-medium text-foreground mb-1.5">
+            <label htmlFor={`${uiFieldId}-1`} className="block text-xs font-medium text-foreground mb-1.5">
               ส่วนลดบนกำไรขั้นต้น
             </label>
             <div className="flex flex-wrap gap-2">
               {DISCOUNT_PRESETS.map((p) => (
-                <button
+                <button data-ui-control="button"
                   key={p}
                   type="button"
                   onClick={() => changeDiscount(p)}
@@ -406,8 +419,7 @@ export function EarlyPayoffOverlay({
                   {p}%
                 </button>
               ))}
-              <input
-                type="number"
+              <NumberInput unstyled id={`${uiFieldId}-1`}
                 min={0}
                 max={MAX_DISCOUNT}
                 value={discountPct}
@@ -468,11 +480,23 @@ export function EarlyPayoffOverlay({
                 value={`${formatNumber(quote.remainingCost)} บาท`}
               />
               <Row label="(1) − (2)" value={`${formatNumber(quote.grossProfit)} บาท`} />
+              {/* ฝ่ายบัญชี 16/10/2569 ข้อ 18.1 แบบ (ค) — งวดที่ถึงกำหนดแล้วไม่ได้ส่วนลด: แสดงฐานส่วนลดเฉพาะเมื่อมีงวดถึงกำหนด */}
+              {(quote.dueMonths ?? 0) > 0 && (
+                <Row
+                  label={`กำไรของงวดที่ยังไม่ถึงกำหนด (${quote.notDueMonths ?? 0} จาก ${quote.remainingMonths} งวด)`}
+                  value={`${formatNumber(quote.discountBase ?? 0)} บาท`}
+                />
+              )}
               <Row
-                label={`ส่วนลดลูกค้า ${discountPct}%`}
+                label={`ส่วนลดลูกค้า ${discountPct}%${(quote.dueMonths ?? 0) > 0 ? ' ของงวดที่ยังไม่ถึงกำหนด' : ''}`}
                 value={`-${formatNumber(quote.discountAmount)} บาท`}
                 success
               />
+              {(quote.dueMonths ?? 0) > 0 && (
+                <p className="text-xs text-muted-foreground leading-snug">
+                  งวดที่ถึงกำหนดแล้ว {quote.dueMonths} งวด ไม่ได้ส่วนลด (ฝ่ายบัญชี ข้อ 18.1 — ลดเฉพาะดอกเบี้ยของงวดที่ยังไม่ถึงกำหนด)
+                </p>
+              )}
               {quote.unpaidLateFees > 0 && (
                 <Row
                   label="ค่าปรับค้างชำระ"
@@ -528,7 +552,7 @@ export function EarlyPayoffOverlay({
                 ['SHOP', 'เก็บที่หน้าร้าน'],
               ] as const
             ).map(([mode, label]) => (
-              <button
+              <button data-ui-control="button"
                 key={mode}
                 type="button"
                 role="radio"
@@ -555,13 +579,13 @@ export function EarlyPayoffOverlay({
                 ทางนี้ต้องส่งขออนุมัติปิดสัญญาเสมอ
               </p>
               <div>
-                <label className="block text-xs font-medium text-foreground mb-1.5">
+                <label htmlFor={`${uiFieldId}-2`} className="block text-xs font-medium text-foreground mb-1.5">
                   วันที่รับเงิน{' '}
                   <span className="text-muted-foreground font-normal">
                     (ย้อนหลังได้ถ้างวดบัญชียังเปิด)
                   </span>
                 </label>
-                <input
+                <input id={`${uiFieldId}-2`}
                   type="date"
                   value={paymentDate}
                   max={bkkToday()}
@@ -581,7 +605,7 @@ export function EarlyPayoffOverlay({
                 />
                 <p className="mt-1 text-xs text-muted-foreground leading-snug">
                   บัญชีถูกกำหนดเป็น 11-2107 อัตโนมัติโดยระบบ — กรอกบัญชีรับโอนจากหน้าร้านตอน
-                  settlement
+                  ชำระเงินระหว่างบริษัท
                 </p>
               </div>
             </div>
@@ -645,7 +669,7 @@ export function EarlyPayoffOverlay({
                     </p>
                   </div>
                   {slip.phase !== 'idle' && slip.phase !== 'checking' && (
-                    <button
+                    <button data-ui-control="button"
                       type="button"
                       onClick={() => setSlip({ phase: 'idle' })}
                       className="min-h-11 px-3 text-xs border border-input rounded-lg hover:bg-muted"
@@ -693,7 +717,7 @@ export function EarlyPayoffOverlay({
                       ลากรูปสลิปมาวางที่นี่
                     </p>
                     <div className="flex flex-wrap justify-center gap-2">
-                      <button
+                      <button data-ui-control="button"
                         type="button"
                         onClick={() => fileInputRef.current?.click()}
                         className="inline-flex items-center gap-2 min-h-11 px-4 rounded-lg bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90"
@@ -701,7 +725,7 @@ export function EarlyPayoffOverlay({
                         <Upload className="size-4" aria-hidden="true" />
                         เลือกไฟล์
                       </button>
-                      <button
+                      <button data-ui-control="button"
                         type="button"
                         onClick={() => cameraInputRef.current?.click()}
                         className="inline-flex items-center gap-2 min-h-11 px-4 rounded-lg border border-input text-sm font-medium hover:bg-muted"
@@ -906,13 +930,13 @@ export function EarlyPayoffOverlay({
                 </div>
                 <div>
                   <h3 className="text-sm font-semibold text-foreground">
-                    JOURNAL AUTO — บันทึกทางบัญชี
+                    บันทึกบัญชีอัตโนมัติ
                   </h3>
                   <p className="text-xs text-muted-foreground">JP4 — ปิดยอดก่อนกำหนด (Policy A)</p>
                 </div>
               </div>
               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-primary/10 text-primary text-xs font-medium leading-snug">
-                AUTO
+                อัตโนมัติ
               </span>
             </div>
             <JournalPreviewTable preview={quote.journalPreview} />
@@ -948,9 +972,9 @@ export function EarlyPayoffOverlay({
           <ul className="space-y-1.5 text-sm">
             <Effect text="โอนกรรมสิทธิ์สินค้าจาก FINANCE → ลูกค้า" />
             <Effect text="ออกใบเสร็จและหนังสือปิดสัญญา" />
-            <Effect text="บันทึก JournalEntry (ตัด HP Receivable, รับรู้ดอกเบี้ย, VAT)" />
+            <Effect text="บันทึกบัญชีตัดลูกหนี้เช่าซื้อ รับรู้ดอกเบี้ย และ VAT" />
             <Effect text="แจ้งลูกค้าผ่าน LINE OA (ถ้าอนุญาต PDPA)" />
-            <Effect text="ปลดล็อค MDM (PJ-Soft) — ต้องทำ manual" warning />
+            <Effect text="ปลดล็อค MDM (PJ-Soft) — ต้องทำ ด้วยตนเอง" warning />
           </ul>
         </div>
       </div>
@@ -959,7 +983,7 @@ export function EarlyPayoffOverlay({
       <div className="sticky bottom-0 bg-background/95 backdrop-blur-xs border-t px-6 py-4 flex items-center justify-between gap-3">
         {/* Settlement button — visible to OWNER / FINANCE_MANAGER / ACCOUNTANT */}
         {canSettlement ? (
-          <button
+          <button data-ui-control="button"
             type="button"
             onClick={() => {
               setSettlementRequestId(crypto.randomUUID());
@@ -974,14 +998,14 @@ export function EarlyPayoffOverlay({
           <div />
         )}
         <div className="flex flex-wrap justify-end gap-3">
-          <button
+          <button data-ui-control="button"
             onClick={onClose}
             className="min-h-11 px-6 text-sm border border-input rounded-lg hover:bg-muted transition-colors"
           >
             ยกเลิก
           </button>
           {collectedByShop || !slipMatched ? (
-            <button
+            <button data-ui-control="button"
               onClick={() => setApprovalOpen(true)}
               disabled={!canSubmit}
               className={`min-h-11 px-6 text-sm rounded-lg font-semibold transition-colors shadow-sm disabled:opacity-50 ${
@@ -998,7 +1022,7 @@ export function EarlyPayoffOverlay({
             </button>
           ) : null}
           {!collectedByShop && (
-            <button
+            <button data-ui-control="button"
               onClick={() => {
                 setConfirmChecked(false);
                 setConfirmOpen(true);
@@ -1079,7 +1103,7 @@ export function EarlyPayoffOverlay({
                 <span>ตรวจแล้วว่าสลิปเป็นของสัญญานี้และลูกค้ารายนี้จริง</span>
               </label>
               <div className="flex justify-end gap-3">
-                <button
+                <button data-ui-control="button"
                   type="button"
                   onClick={() => setConfirmOpen(false)}
                   disabled={confirmMutation.isPending}
@@ -1087,7 +1111,7 @@ export function EarlyPayoffOverlay({
                 >
                   กลับไปแก้
                 </button>
-                <button
+                <button data-ui-control="button"
                   type="button"
                   onClick={() => slipResult.ticket && confirmMutation.mutate(slipResult.ticket)}
                   disabled={!confirmChecked || confirmMutation.isPending || !slipResult.ticket}
@@ -1141,7 +1165,7 @@ export function EarlyPayoffOverlay({
               <p className="text-xs text-muted-foreground leading-snug">
                 ใบเสร็จอยู่ในประวัติการชำระ — ส่ง/พิมพ์ได้จากที่นั่น
               </p>
-              <button
+              <button data-ui-control="button"
                 type="button"
                 onClick={onClose}
                 className="min-h-11 w-full px-5 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 font-semibold"
@@ -1182,11 +1206,10 @@ export function EarlyPayoffOverlay({
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-foreground mb-1.5">
+                  <label htmlFor={`${uiFieldId}-3`} className="block text-xs font-medium text-foreground mb-1.5">
                     จำนวนเงินที่รับโอน <span className="text-destructive">*</span>
                   </label>
-                  <input
-                    type="number"
+                  <NumberInput unstyled id={`${uiFieldId}-3`}
                     min={0.01}
                     step={0.01}
                     value={settlementAmount}
@@ -1197,7 +1220,7 @@ export function EarlyPayoffOverlay({
                 </div>
               </div>
               <div className="flex justify-end gap-3 pt-2">
-                <button
+                <button data-ui-control="button"
                   type="button"
                   onClick={() => setSettlementOpen(false)}
                   disabled={settlementMutation.isPending}
@@ -1205,7 +1228,7 @@ export function EarlyPayoffOverlay({
                 >
                   ยกเลิก
                 </button>
-                <button
+                <button data-ui-control="button"
                   type="button"
                   onClick={() => settlementMutation.mutate()}
                   disabled={

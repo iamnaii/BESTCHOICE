@@ -7,6 +7,7 @@ import { getStatusBadgeProps, sessionPriorityMap } from '@/lib/status-badges';
 import { fbWindowFor, fbWindowLeftText } from './fb-window';
 import { apptState, nextAppointment, type RoomAppointment } from './appointment';
 import type { ReactNode } from 'react';
+import SearchExcerpt from './SearchExcerpt';
 
 /** ป้ายในแถวรายชื่อไม่เกินเท่านี้ — ท่าเดียวกับ OBI (ROW_PILLS=2) หลังเจอแถวสูง 276px จากป้าย 18 ใบ */
 const MAX_ROW_PILLS = 2;
@@ -90,12 +91,14 @@ interface ConversationItemProps {
     resolvedAt?: string | null;
     /** นัดถัดไปของห้อง (API ส่งใบใกล้สุดที่ยังไม่เสร็จ) — ป้ายนัดตามความใกล้ */
     todos?: RoomAppointment[] | null;
+    storeAppointment?: RoomAppointment | null;
     /** ข้อความล่าสุดของลูกค้า — ฐานนับหน้าต่าง 24 ชม. ของ Facebook */
     lastCustomerAt?: string | null;
     customer?: { id: string; name: string; phone?: string; avatarUrl?: string | null; lineAvatarUrl?: string | null } | null;
     assignedTo?: { id: string; name: string; avatarUrl?: string | null } | null;
     tags?: { tag: string }[];
     messages?: { text?: string | null; role: string; createdAt: string }[];
+    searchMatch?: { id: string; text: string; role: string; createdAt: string } | null;
     lastMessageAt: string;
     totalMessages: number;
     lineUserId?: string;
@@ -103,7 +106,8 @@ interface ConversationItemProps {
     pictureUrl?: string | null;
   };
   isActive: boolean;
-  onSelect: (roomId: string) => void;
+  onSelect: (roomId: string, messageId?: string) => void;
+  search?: string;
   onPin?: (roomId: string, isPinned: boolean) => void;
   aiSettings?: { autoModeEnabled: boolean; enabledChannels: string[] };
 }
@@ -113,7 +117,7 @@ const CHANNEL_CONFIG: Record<string, { bg: string; label: string; text: string }
   LINE_SHOP: { bg: 'bg-[#06C755]', label: 'L', text: 'LINE' },
   FACEBOOK: { bg: 'bg-[#1877F2]', label: 'f', text: 'FB' },
   TIKTOK: { bg: 'bg-foreground', label: '♪', text: 'TT' },
-  WEB: { bg: 'bg-muted-foreground', label: 'W', text: 'Web' },
+  WEB: { bg: 'bg-muted-foreground', label: 'W', text: "เว็บไซต์" },
 };
 
 function Avatar({ session, displayName }: { session: ConversationItemProps['session']; displayName: string }) {
@@ -158,8 +162,9 @@ function Avatar({ session, displayName }: { session: ConversationItemProps['sess
   );
 }
 
-function ConversationItem({ session, isActive, onSelect, onPin, aiSettings }: ConversationItemProps) {
+function ConversationItem({ session, isActive, onSelect, onPin, aiSettings, search }: ConversationItemProps) {
   const lastMessage = session.messages?.[0];
+  const match = search ? session.searchMatch : null;
   const displayName =
     session.customer?.name ??
     session.displayName ??
@@ -187,12 +192,12 @@ function ConversationItem({ session, isActive, onSelect, onPin, aiSettings }: Co
         isPinned && !isActive && 'bg-warning/5',
         !!session.resolvedAt && !isActive && 'opacity-60',
       )}
-      onClick={() => onSelect(session.id)}
+      onClick={() => onSelect(session.id, match?.id)}
       onKeyDown={(e) => {
         if (e.target !== e.currentTarget) return;
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault();
-          onSelect(session.id);
+          onSelect(session.id, match?.id);
         }
       }}
     >
@@ -221,12 +226,14 @@ function ConversationItem({ session, isActive, onSelect, onPin, aiSettings }: Co
             {/* Last message preview */}
             <div className="inbox-room-preview flex items-center justify-between gap-2">
               <p className={cn(
-                'text-[13px] truncate',
+                'text-[13px]', match ? 'line-clamp-2 break-words' : 'truncate',
                 hasUnread ? 'text-foreground/90' : 'text-muted-foreground',
               )}>
-                {lastMessage?.role === 'STAFF' && <span className="text-primary font-medium">คุณ: </span>}
-                {lastMessage?.role === 'BOT' && <span className="text-muted-foreground font-medium">Bot: </span>}
-                {lastMessage ? formatMessagePreview(lastMessage.text) : <span className="italic text-muted-foreground">ยังไม่มีข้อความ</span>}
+                {match ? <SearchExcerpt text={match.text} search={search!} /> : <>
+                  {lastMessage?.role === 'STAFF' && <span className="text-primary font-medium">คุณ: </span>}
+                  {lastMessage?.role === 'BOT' && <span className="text-muted-foreground font-medium">บอต: </span>}
+                  {lastMessage ? formatMessagePreview(lastMessage.text) : <span className="italic text-muted-foreground">ยังไม่มีข้อความ</span>}
+                </>}
               </p>
               {hasUnread && (
                 <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-primary text-primary-foreground text-[10px] font-bold leading-snug flex-shrink-0">
@@ -234,6 +241,7 @@ function ConversationItem({ session, isActive, onSelect, onPin, aiSettings }: Co
                 </span>
               )}
             </div>
+            {match && <p className="mt-1 text-[11px] text-primary">พบในข้อความ · {formatChatTimestamp(match.createdAt)}</p>}
 
             {/* Tags + priority + assigned + AI status */}
             {(session.resolvedAt ||
@@ -267,7 +275,7 @@ function ConversationItem({ session, isActive, onSelect, onPin, aiSettings }: Co
                       pills.push(<Badge key="win" variant="destructive" appearance="light" className="text-[10px] px-1.5 py-0 h-5 leading-snug">รอ {formatWaitDuration(session.waitingSince)}</Badge>);
                     }
                   }
-                  const appt = apptState(nextAppointment(session.todos)?.dueDate);
+                  const appt = apptState(nextAppointment([...(session.todos||[]),...(session.storeAppointment?[session.storeAppointment]:[])])?.dueDate);
                   if (appt) {
                     pills.push(
                       <Badge key="appt" variant={appt.tone === 'danger' ? 'destructive' : appt.tone === 'warn' ? 'warning' : 'secondary'} appearance="light" className="text-[10px] px-1.5 py-0 h-5 leading-snug inline-flex items-center gap-1">
@@ -318,7 +326,7 @@ function ConversationItem({ session, isActive, onSelect, onPin, aiSettings }: Co
           </div>
           {/* Reserve a separate column so the pin never covers unread/status badges. */}
           {onPin && (
-            <button
+            <button data-ui-control="button" data-ui-icon="true"
               type="button"
               aria-pressed={isPinned}
               onClick={(e) => {

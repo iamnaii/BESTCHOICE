@@ -10,6 +10,14 @@ export const PAGE_TITLE_MAP: Record<string, string> = {
   '/branches': 'สาขา',
   '/notifications': 'แจ้งเตือน',
   '/after-sales/new': 'แจ้งปัญหาเครื่อง',
+  '/analytics': 'วิเคราะห์ภาพรวม',
+  '/webhooks': 'ประวัติการเชื่อมต่อ',
+  '/chatbot-finance': 'ผู้ช่วยแชทการเงิน',
+  '/chatbot-finance/learning': 'ปรับปรุงคำตอบผู้ช่วย',
+  '/receipts/verify': 'ตรวจสอบใบเสร็จ',
+  '/collection-dashboard': 'ภาพรวมติดตามหนี้',
+  '/contacts': 'รายชื่อผู้ติดต่อ',
+  '/appointments': 'นัดเข้าร้าน',
 };
 
 const normalizePath = (path: string) => path.split(/[?#]/)[0].replace(/\/+$/, '') || '/';
@@ -36,5 +44,5 @@ export function resolvePageTitle(pathname: string): string {
   if (titles[path]) return titles[path];
   const prefix = prefixes.find(candidate => path.startsWith(`${candidate}/`));
   if (prefix) return titles[prefix];
-  return path.split('/').filter(Boolean).pop()?.replace(/-/g, ' ') || 'Dashboard';
+  return 'รายละเอียด'; // Do not disclose raw route slugs or private IDs in breadcrumbs.
 }

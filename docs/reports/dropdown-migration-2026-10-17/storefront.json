@@ -1,0 +1,1155 @@
+{
+  "scope": "actual storefront UI with synthetic product/buyback data; no orders submitted",
+  "results": [
+    {
+      "engine": "chromium",
+      "width": 320,
+      "root": 16,
+      "route": "/products",
+      "status": "PASS",
+      "controls": [
+        {
+          "id": "filter-months",
+          "appearance": "none",
+          "height": 44,
+          "font": 16,
+          "inset": 13,
+          "center": 0,
+          "left": 39,
+          "right": 281,
+          "overflow": 0
+        },
+        {
+          "id": "mobile-filter-origin",
+          "appearance": "none",
+          "height": 44,
+          "font": 16,
+          "inset": 13,
+          "center": 0,
+          "left": 25,
+          "right": 295,
+          "overflow": 0
+        },
+        {
+          "id": "filter-model",
+          "appearance": "none",
+          "height": 44,
+          "font": 16,
+          "inset": 13,
+          "center": 0,
+          "left": 25,
+          "right": 295,
+          "overflow": 0
+        },
+        {
+          "id": "filter-grade",
+          "appearance": "none",
+          "height": 44,
+          "font": 16,
+          "inset": 13,
+          "center": 0,
+          "left": 25,
+          "right": 295,
+          "overflow": 0
+        },
+        {
+          "id": "filter-price",
+          "appearance": "none",
+          "height": 44,
+          "font": 16,
+          "inset": 13,
+          "center": 0,
+          "left": 25,
+          "right": 295,
+          "overflow": 0
+        }
+      ]
+    },
+    {
+      "engine": "chromium",
+      "width": 320,
+      "root": 16,
+      "route": "/products/preview-phone-0",
+      "status": "PASS",
+      "controls": [
+        {
+          "id": "months-select",
+          "appearance": "none",
+          "height": 44,
+          "font": 16,
+          "inset": 12,
+          "center": 0,
+          "left": 106.171875,
+          "right": 209.171875,
+          "overflow": 0
+        }
+      ]
+    },
+    {
+      "engine": "chromium",
+      "width": 320,
+      "root": 16,
+      "route": "/sell/quote",
+      "status": "PASS",
+      "controls": [
+        {
+          "id": "bb-model",
+          "appearance": "none",
+          "height": 44,
+          "font": 16,
+          "inset": 12,
+          "center": 0,
+          "left": 33,
+          "right": 287,
+          "overflow": 0
+        },
+        {
+          "id": "bb-storage",
+          "appearance": "none",
+          "height": 44,
+          "font": 16,
+          "inset": 12,
+          "center": 0,
+          "left": 33,
+          "right": 287,
+          "overflow": 0
+        }
+      ]
+    },
+    {
+      "engine": "chromium",
+      "width": 390,
+      "root": 16,
+      "route": "/products",
+      "status": "PASS",
+      "controls": [
+        {
+          "id": "filter-months",
+          "appearance": "none",
+          "height": 44,
+          "font": 16,
+          "inset": 13,
+          "center": 0,
+          "left": 39,
+          "right": 351,
+          "overflow": 0
+        },
+        {
+          "id": "mobile-filter-origin",
+          "appearance": "none",
+          "height": 44,
+          "font": 16,
+          "inset": 13,
+          "center": 0,
+          "left": 25,
+          "right": 365,
+          "overflow": 0
+        },
+        {
+          "id": "filter-model",
+          "appearance": "none",
+          "height": 44,
+          "font": 16,
+          "inset": 13,
+          "center": 0,
+          "left": 25,
+          "right": 365,
+          "overflow": 0
+        },
+        {
+          "id": "filter-grade",
+          "appearance": "none",
+          "height": 44,
+          "font": 16,
+          "inset": 13,
+          "center": 0,
+          "left": 25,
+          "right": 365,
+          "overflow": 0
+        },
+        {
+          "id": "filter-price",
+          "appearance": "none",
+          "height": 44,
+          "font": 16,
+          "inset": 13,
+          "center": 0,
+          "left": 25,
+          "right": 365,
+          "overflow": 0
+        }
+      ]
+    },
+    {
+      "engine": "chromium",
+      "width": 390,
+      "root": 16,
+      "route": "/products/preview-phone-0",
+      "status": "PASS",
+      "controls": [
+        {
+          "id": "months-select",
+          "appearance": "none",
+          "height": 44,
+          "font": 16,
+          "inset": 12,
+          "center": 0,
+          "left": 106.171875,
+          "right": 209.171875,
+          "overflow": 0
+        }
+      ]
+    },
+    {
+      "engine": "chromium",
+      "width": 390,
+      "root": 16,
+      "route": "/sell/quote",
+      "status": "PASS",
+      "controls": [
+        {
+          "id": "bb-model",
+          "appearance": "none",
+          "height": 44,
+          "font": 16,
+          "inset": 12,
+          "center": 0,
+          "left": 33,
+          "right": 357,
+          "overflow": 0
+        },
+        {
+          "id": "bb-storage",
+          "appearance": "none",
+          "height": 44,
+          "font": 16,
+          "inset": 12,
+          "center": 0,
+          "left": 33,
+          "right": 357,
+          "overflow": 0
+        }
+      ]
+    },
+    {
+      "engine": "chromium",
+      "width": 768,
+      "root": 16,
+      "route": "/products",
+      "status": "PASS",
+      "controls": [
+        {
+          "id": "filter-months",
+          "appearance": "none",
+          "height": 44,
+          "font": 16,
+          "inset": 13,
+          "center": 0,
+          "left": 167,
+          "right": 601,
+          "overflow": 0
+        },
+        {
+          "id": "mobile-filter-origin",
+          "appearance": "none",
+          "height": 44,
+          "font": 16,
+          "inset": 13,
+          "center": 0,
+          "left": 153,
+          "right": 615,
+          "overflow": 0
+        },
+        {
+          "id": "filter-model",
+          "appearance": "none",
+          "height": 44,
+          "font": 16,
+          "inset": 13,
+          "center": 0,
+          "left": 153,
+          "right": 615,
+          "overflow": 0
+        },
+        {
+          "id": "filter-grade",
+          "appearance": "none",
+          "height": 44,
+          "font": 16,
+          "inset": 13,
+          "center": 0,
+          "left": 153,
+          "right": 615,
+          "overflow": 0
+        },
+        {
+          "id": "filter-price",
+          "appearance": "none",
+          "height": 44,
+          "font": 16,
+          "inset": 13,
+          "center": 0,
+          "left": 153,
+          "right": 615,
+          "overflow": 0
+        }
+      ]
+    },
+    {
+      "engine": "chromium",
+      "width": 768,
+      "root": 16,
+      "route": "/products/preview-phone-0",
+      "status": "PASS",
+      "controls": [
+        {
+          "id": "months-select",
+          "appearance": "none",
+          "height": 44,
+          "font": 16,
+          "inset": 12,
+          "center": 0,
+          "left": 122.171875,
+          "right": 225.171875,
+          "overflow": 0
+        }
+      ]
+    },
+    {
+      "engine": "chromium",
+      "width": 768,
+      "root": 16,
+      "route": "/sell/quote",
+      "status": "PASS",
+      "controls": [
+        {
+          "id": "bb-model",
+          "appearance": "none",
+          "height": 44,
+          "font": 16,
+          "inset": 12,
+          "center": 0,
+          "left": 145,
+          "right": 378,
+          "overflow": 0
+        },
+        {
+          "id": "bb-storage",
+          "appearance": "none",
+          "height": 44,
+          "font": 16,
+          "inset": 12,
+          "center": 0,
+          "left": 390,
+          "right": 623,
+          "overflow": 0
+        }
+      ]
+    },
+    {
+      "engine": "chromium",
+      "width": 1440,
+      "root": 16,
+      "route": "/products",
+      "status": "PASS",
+      "controls": [
+        {
+          "id": "filter-months",
+          "appearance": "none",
+          "height": 44,
+          "font": 14,
+          "inset": 13,
+          "center": 0,
+          "left": 135,
+          "right": 363,
+          "overflow": 0
+        },
+        {
+          "id": "filter-origin",
+          "appearance": "none",
+          "height": 44,
+          "font": 14,
+          "inset": 13,
+          "center": 0,
+          "left": 121,
+          "right": 377,
+          "overflow": 0
+        },
+        {
+          "id": "filter-model",
+          "appearance": "none",
+          "height": 44,
+          "font": 14,
+          "inset": 13,
+          "center": 0,
+          "left": 121,
+          "right": 377,
+          "overflow": 0
+        },
+        {
+          "id": "filter-grade",
+          "appearance": "none",
+          "height": 44,
+          "font": 14,
+          "inset": 13,
+          "center": 0,
+          "left": 121,
+          "right": 377,
+          "overflow": 0
+        },
+        {
+          "id": "filter-price",
+          "appearance": "none",
+          "height": 44,
+          "font": 14,
+          "inset": 13,
+          "center": 0,
+          "left": 121,
+          "right": 377,
+          "overflow": 0
+        }
+      ]
+    },
+    {
+      "engine": "chromium",
+      "width": 1440,
+      "root": 16,
+      "route": "/products/preview-phone-0",
+      "status": "PASS",
+      "controls": [
+        {
+          "id": "months-select",
+          "appearance": "none",
+          "height": 44,
+          "font": 14,
+          "inset": 12,
+          "center": 0,
+          "left": 202.171875,
+          "right": 299.171875,
+          "overflow": 0
+        }
+      ]
+    },
+    {
+      "engine": "chromium",
+      "width": 1440,
+      "root": 16,
+      "route": "/sell/quote",
+      "status": "PASS",
+      "controls": [
+        {
+          "id": "bb-model",
+          "appearance": "none",
+          "height": 44,
+          "font": 14,
+          "inset": 12,
+          "center": 0,
+          "left": 481,
+          "right": 714,
+          "overflow": 0
+        },
+        {
+          "id": "bb-storage",
+          "appearance": "none",
+          "height": 44,
+          "font": 14,
+          "inset": 12,
+          "center": 0,
+          "left": 726,
+          "right": 959,
+          "overflow": 0
+        }
+      ]
+    },
+    {
+      "engine": "chromium",
+      "width": 320,
+      "root": 20,
+      "route": "/products",
+      "status": "PASS",
+      "controls": [
+        {
+          "id": "filter-months",
+          "appearance": "none",
+          "height": 55,
+          "font": 20,
+          "inset": 16,
+          "center": 0,
+          "left": 48.5,
+          "right": 271.5,
+          "overflow": 0
+        },
+        {
+          "id": "mobile-filter-origin",
+          "appearance": "none",
+          "height": 55,
+          "font": 20,
+          "inset": 16,
+          "center": 0,
+          "left": 31,
+          "right": 289,
+          "overflow": 0
+        },
+        {
+          "id": "filter-model",
+          "appearance": "none",
+          "height": 55,
+          "font": 20,
+          "inset": 16,
+          "center": 0,
+          "left": 31,
+          "right": 289,
+          "overflow": 0
+        },
+        {
+          "id": "filter-grade",
+          "appearance": "none",
+          "height": 55,
+          "font": 20,
+          "inset": 16,
+          "center": 0,
+          "left": 31,
+          "right": 289,
+          "overflow": 0
+        },
+        {
+          "id": "filter-price",
+          "appearance": "none",
+          "height": 55,
+          "font": 20,
+          "inset": 16,
+          "center": 0,
+          "left": 31,
+          "right": 289,
+          "overflow": 0
+        }
+      ]
+    },
+    {
+      "engine": "chromium",
+      "width": 320,
+      "root": 20,
+      "route": "/products/preview-phone-0",
+      "status": "PASS",
+      "controls": [
+        {
+          "id": "months-select",
+          "appearance": "none",
+          "height": 55,
+          "font": 20,
+          "inset": 15,
+          "center": 0,
+          "left": 132.46875,
+          "right": 260.46875,
+          "overflow": 0
+        }
+      ]
+    },
+    {
+      "engine": "chromium",
+      "width": 320,
+      "root": 20,
+      "route": "/sell/quote",
+      "status": "PASS",
+      "controls": [
+        {
+          "id": "bb-model",
+          "appearance": "none",
+          "height": 55,
+          "font": 20,
+          "inset": 15,
+          "center": 0,
+          "left": 41,
+          "right": 279,
+          "overflow": 0
+        },
+        {
+          "id": "bb-storage",
+          "appearance": "none",
+          "height": 55,
+          "font": 20,
+          "inset": 15,
+          "center": 0,
+          "left": 41,
+          "right": 279,
+          "overflow": 0
+        }
+      ]
+    },
+    {
+      "engine": "webkit",
+      "width": 320,
+      "root": 16,
+      "route": "/products",
+      "status": "PASS",
+      "controls": [
+        {
+          "id": "filter-months",
+          "appearance": "none",
+          "height": 44,
+          "font": 16,
+          "inset": 13,
+          "center": 0,
+          "left": 39,
+          "right": 281,
+          "overflow": 0
+        },
+        {
+          "id": "mobile-filter-origin",
+          "appearance": "none",
+          "height": 44,
+          "font": 16,
+          "inset": 13,
+          "center": 0,
+          "left": 25,
+          "right": 295,
+          "overflow": 0
+        },
+        {
+          "id": "filter-model",
+          "appearance": "none",
+          "height": 44,
+          "font": 16,
+          "inset": 13,
+          "center": 0,
+          "left": 25,
+          "right": 295,
+          "overflow": 0
+        },
+        {
+          "id": "filter-grade",
+          "appearance": "none",
+          "height": 44,
+          "font": 16,
+          "inset": 13,
+          "center": 0,
+          "left": 25,
+          "right": 295,
+          "overflow": 0
+        },
+        {
+          "id": "filter-price",
+          "appearance": "none",
+          "height": 44,
+          "font": 16,
+          "inset": 13,
+          "center": 0,
+          "left": 25,
+          "right": 295,
+          "overflow": 0
+        }
+      ]
+    },
+    {
+      "engine": "webkit",
+      "width": 320,
+      "root": 16,
+      "route": "/products/preview-phone-0",
+      "status": "PASS",
+      "controls": [
+        {
+          "id": "months-select",
+          "appearance": "none",
+          "height": 44,
+          "font": 16,
+          "inset": 12,
+          "center": 0,
+          "left": 106.171875,
+          "right": 209.171875,
+          "overflow": 0
+        }
+      ]
+    },
+    {
+      "engine": "webkit",
+      "width": 320,
+      "root": 16,
+      "route": "/sell/quote",
+      "status": "PASS",
+      "controls": [
+        {
+          "id": "bb-model",
+          "appearance": "none",
+          "height": 44,
+          "font": 16,
+          "inset": 12,
+          "center": 0,
+          "left": 33,
+          "right": 287,
+          "overflow": 0
+        },
+        {
+          "id": "bb-storage",
+          "appearance": "none",
+          "height": 44,
+          "font": 16,
+          "inset": 12,
+          "center": 0,
+          "left": 33,
+          "right": 287,
+          "overflow": 0
+        }
+      ]
+    },
+    {
+      "engine": "webkit",
+      "width": 390,
+      "root": 16,
+      "route": "/products",
+      "status": "PASS",
+      "controls": [
+        {
+          "id": "filter-months",
+          "appearance": "none",
+          "height": 44,
+          "font": 16,
+          "inset": 13,
+          "center": 0,
+          "left": 39,
+          "right": 351,
+          "overflow": 0
+        },
+        {
+          "id": "mobile-filter-origin",
+          "appearance": "none",
+          "height": 44,
+          "font": 16,
+          "inset": 13,
+          "center": 0,
+          "left": 25,
+          "right": 365,
+          "overflow": 0
+        },
+        {
+          "id": "filter-model",
+          "appearance": "none",
+          "height": 44,
+          "font": 16,
+          "inset": 13,
+          "center": 0,
+          "left": 25,
+          "right": 365,
+          "overflow": 0
+        },
+        {
+          "id": "filter-grade",
+          "appearance": "none",
+          "height": 44,
+          "font": 16,
+          "inset": 13,
+          "center": 0,
+          "left": 25,
+          "right": 365,
+          "overflow": 0
+        },
+        {
+          "id": "filter-price",
+          "appearance": "none",
+          "height": 44,
+          "font": 16,
+          "inset": 13,
+          "center": 0,
+          "left": 25,
+          "right": 365,
+          "overflow": 0
+        }
+      ]
+    },
+    {
+      "engine": "webkit",
+      "width": 390,
+      "root": 16,
+      "route": "/products/preview-phone-0",
+      "status": "PASS",
+      "controls": [
+        {
+          "id": "months-select",
+          "appearance": "none",
+          "height": 44,
+          "font": 16,
+          "inset": 12,
+          "center": 0,
+          "left": 106.171875,
+          "right": 209.171875,
+          "overflow": 0
+        }
+      ]
+    },
+    {
+      "engine": "webkit",
+      "width": 390,
+      "root": 16,
+      "route": "/sell/quote",
+      "status": "PASS",
+      "controls": [
+        {
+          "id": "bb-model",
+          "appearance": "none",
+          "height": 44,
+          "font": 16,
+          "inset": 12,
+          "center": 0,
+          "left": 33,
+          "right": 357,
+          "overflow": 0
+        },
+        {
+          "id": "bb-storage",
+          "appearance": "none",
+          "height": 44,
+          "font": 16,
+          "inset": 12,
+          "center": 0,
+          "left": 33,
+          "right": 357,
+          "overflow": 0
+        }
+      ]
+    },
+    {
+      "engine": "webkit",
+      "width": 768,
+      "root": 16,
+      "route": "/products",
+      "status": "PASS",
+      "controls": [
+        {
+          "id": "filter-months",
+          "appearance": "none",
+          "height": 44,
+          "font": 16,
+          "inset": 13,
+          "center": 0,
+          "left": 167,
+          "right": 601,
+          "overflow": 0
+        },
+        {
+          "id": "mobile-filter-origin",
+          "appearance": "none",
+          "height": 44,
+          "font": 16,
+          "inset": 13,
+          "center": 0,
+          "left": 153,
+          "right": 615,
+          "overflow": 0
+        },
+        {
+          "id": "filter-model",
+          "appearance": "none",
+          "height": 44,
+          "font": 16,
+          "inset": 13,
+          "center": 0,
+          "left": 153,
+          "right": 615,
+          "overflow": 0
+        },
+        {
+          "id": "filter-grade",
+          "appearance": "none",
+          "height": 44,
+          "font": 16,
+          "inset": 13,
+          "center": 0,
+          "left": 153,
+          "right": 615,
+          "overflow": 0
+        },
+        {
+          "id": "filter-price",
+          "appearance": "none",
+          "height": 44,
+          "font": 16,
+          "inset": 13,
+          "center": 0,
+          "left": 153,
+          "right": 615,
+          "overflow": 0
+        }
+      ]
+    },
+    {
+      "engine": "webkit",
+      "width": 768,
+      "root": 16,
+      "route": "/products/preview-phone-0",
+      "status": "PASS",
+      "controls": [
+        {
+          "id": "months-select",
+          "appearance": "none",
+          "height": 44,
+          "font": 16,
+          "inset": 12,
+          "center": 0,
+          "left": 122.171875,
+          "right": 225.171875,
+          "overflow": 0
+        }
+      ]
+    },
+    {
+      "engine": "webkit",
+      "width": 768,
+      "root": 16,
+      "route": "/sell/quote",
+      "status": "PASS",
+      "controls": [
+        {
+          "id": "bb-model",
+          "appearance": "none",
+          "height": 44,
+          "font": 16,
+          "inset": 12,
+          "center": 0,
+          "left": 145,
+          "right": 378,
+          "overflow": 0
+        },
+        {
+          "id": "bb-storage",
+          "appearance": "none",
+          "height": 44,
+          "font": 16,
+          "inset": 12,
+          "center": 0,
+          "left": 390,
+          "right": 623,
+          "overflow": 0
+        }
+      ]
+    },
+    {
+      "engine": "webkit",
+      "width": 1440,
+      "root": 16,
+      "route": "/products",
+      "status": "PASS",
+      "controls": [
+        {
+          "id": "filter-months",
+          "appearance": "none",
+          "height": 44,
+          "font": 14,
+          "inset": 13,
+          "center": 0,
+          "left": 135,
+          "right": 363,
+          "overflow": 0
+        },
+        {
+          "id": "filter-origin",
+          "appearance": "none",
+          "height": 44,
+          "font": 14,
+          "inset": 13,
+          "center": 0,
+          "left": 121,
+          "right": 377,
+          "overflow": 0
+        },
+        {
+          "id": "filter-model",
+          "appearance": "none",
+          "height": 44,
+          "font": 14,
+          "inset": 13,
+          "center": 0,
+          "left": 121,
+          "right": 377,
+          "overflow": 0
+        },
+        {
+          "id": "filter-grade",
+          "appearance": "none",
+          "height": 44,
+          "font": 14,
+          "inset": 13,
+          "center": 0,
+          "left": 121,
+          "right": 377,
+          "overflow": 0
+        },
+        {
+          "id": "filter-price",
+          "appearance": "none",
+          "height": 44,
+          "font": 14,
+          "inset": 13,
+          "center": 0,
+          "left": 121,
+          "right": 377,
+          "overflow": 0
+        }
+      ]
+    },
+    {
+      "engine": "webkit",
+      "width": 1440,
+      "root": 16,
+      "route": "/products/preview-phone-0",
+      "status": "PASS",
+      "controls": [
+        {
+          "id": "months-select",
+          "appearance": "none",
+          "height": 44,
+          "font": 14,
+          "inset": 12,
+          "center": 0,
+          "left": 202.171875,
+          "right": 299.171875,
+          "overflow": 0
+        }
+      ]
+    },
+    {
+      "engine": "webkit",
+      "width": 1440,
+      "root": 16,
+      "route": "/sell/quote",
+      "status": "PASS",
+      "controls": [
+        {
+          "id": "bb-model",
+          "appearance": "none",
+          "height": 44,
+          "font": 14,
+          "inset": 12,
+          "center": 0,
+          "left": 481,
+          "right": 714,
+          "overflow": 0
+        },
+        {
+          "id": "bb-storage",
+          "appearance": "none",
+          "height": 44,
+          "font": 14,
+          "inset": 12,
+          "center": 0,
+          "left": 726,
+          "right": 959,
+          "overflow": 0
+        }
+      ]
+    },
+    {
+      "engine": "webkit",
+      "width": 320,
+      "root": 20,
+      "route": "/products",
+      "status": "PASS",
+      "controls": [
+        {
+          "id": "filter-months",
+          "appearance": "none",
+          "height": 55,
+          "font": 20,
+          "inset": 16,
+          "center": 0,
+          "left": 48.5,
+          "right": 271.5,
+          "overflow": 0
+        },
+        {
+          "id": "mobile-filter-origin",
+          "appearance": "none",
+          "height": 55,
+          "font": 20,
+          "inset": 16,
+          "center": 0,
+          "left": 31,
+          "right": 289,
+          "overflow": 0
+        },
+        {
+          "id": "filter-model",
+          "appearance": "none",
+          "height": 55,
+          "font": 20,
+          "inset": 16,
+          "center": 0,
+          "left": 31,
+          "right": 289,
+          "overflow": 0
+        },
+        {
+          "id": "filter-grade",
+          "appearance": "none",
+          "height": 55,
+          "font": 20,
+          "inset": 16,
+          "center": 0,
+          "left": 31,
+          "right": 289,
+          "overflow": 0
+        },
+        {
+          "id": "filter-price",
+          "appearance": "none",
+          "height": 55,
+          "font": 20,
+          "inset": 16,
+          "center": 0,
+          "left": 31,
+          "right": 289,
+          "overflow": 0
+        }
+      ]
+    },
+    {
+      "engine": "webkit",
+      "width": 320,
+      "root": 20,
+      "route": "/products/preview-phone-0",
+      "status": "PASS",
+      "controls": [
+        {
+          "id": "months-select",
+          "appearance": "none",
+          "height": 55,
+          "font": 20,
+          "inset": 15,
+          "center": 0,
+          "left": 132.46875,
+          "right": 260.46875,
+          "overflow": 0
+        }
+      ]
+    },
+    {
+      "engine": "webkit",
+      "width": 320,
+      "root": 20,
+      "route": "/sell/quote",
+      "status": "PASS",
+      "controls": [
+        {
+          "id": "bb-model",
+          "appearance": "none",
+          "height": 55,
+          "font": 20,
+          "inset": 15,
+          "center": 0,
+          "left": 41,
+          "right": 279,
+          "overflow": 0
+        },
+        {
+          "id": "bb-storage",
+          "appearance": "none",
+          "height": 55,
+          "font": 20,
+          "inset": 15,
+          "center": 0,
+          "left": 41,
+          "right": 279,
+          "overflow": 0
+        }
+      ]
+    }
+  ]
+}

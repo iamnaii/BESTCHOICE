@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { NativeSelect } from '@/components/ui/native-select';
+import { useId as useUiFieldId, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import api, { getErrorMessage } from '@/lib/api';
@@ -55,6 +56,7 @@ const defaultTemplateForm: TemplateFormState = {
 };
 
 export default function NotificationsPage() {
+  const uiFieldId = useUiFieldId();
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<'logs' | 'templates' | 'send'>('logs');
   const [channelFilter, setChannelFilter] = useState('');
@@ -238,14 +240,14 @@ export default function NotificationsPage() {
 
       {/* Quick Actions */}
       <div className="flex gap-3 mb-6">
-        <button
+        <button data-ui-control="button"
           onClick={() => sendRemindersMutation.mutate()}
           disabled={sendRemindersMutation.isPending}
           className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 disabled:opacity-50"
         >
           {sendRemindersMutation.isPending ? 'กำลังส่ง...' : 'ส่งเตือนก่อนครบกำหนด'}
         </button>
-        <button
+        <button data-ui-control="button"
           onClick={() => sendOverdueMutation.mutate()}
           disabled={sendOverdueMutation.isPending}
           className="px-4 py-2 bg-warning text-warning-foreground rounded-lg text-sm font-medium hover:bg-warning/90 disabled:opacity-50"
@@ -256,19 +258,19 @@ export default function NotificationsPage() {
 
       {/* Tabs */}
       <div className="flex gap-1 mb-4 border-b">
-        <button
+        <button data-ui-control="button"
           onClick={() => setActiveTab('logs')}
           className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px ${activeTab === 'logs' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
         >
           ประวัติการส่ง
         </button>
-        <button
+        <button data-ui-control="button"
           onClick={() => setActiveTab('templates')}
           className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px ${activeTab === 'templates' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
         >
-          Template ข้อความ
+          แม่แบบข้อความ
         </button>
-        <button
+        <button data-ui-control="button"
           onClick={() => setActiveTab('send')}
           className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px ${activeTab === 'send' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
         >
@@ -306,10 +308,10 @@ export default function NotificationsPage() {
             className="flex flex-col gap-4"
           >
             <div>
-              <label className="block text-sm font-medium text-foreground mb-1">
-                Customer ID *
+              <label htmlFor={`${uiFieldId}-1`} className="block text-sm font-medium text-foreground mb-1">
+                รหัสลูกค้า *
               </label>
-              <input
+              <input id={`${uiFieldId}-1`}
                 type="text"
                 value={sendForm.customerId}
                 onChange={(e) => setSendForm({ ...sendForm, customerId: e.target.value })}
@@ -319,20 +321,20 @@ export default function NotificationsPage() {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-foreground mb-1">ช่องทาง *</label>
-              <select
+              <label htmlFor={`${uiFieldId}-2`} className="block text-sm font-medium text-foreground mb-1">ช่องทาง *</label>
+              <NativeSelect wrapperClassName="max-w-full w-full" id={`${uiFieldId}-2`}
                 value={sendForm.channel}
                 onChange={(e) => setSendForm({ ...sendForm, channel: e.target.value })}
-                className="w-full px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
+                className="px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
               >
                 <option value="LINE">LINE</option>
                 <option value="SMS">SMS</option>
                 <option value="IN_APP">ในระบบ (IN_APP)</option>
-              </select>
+              </NativeSelect>
             </div>
             <div>
-              <label className="block text-sm font-medium text-foreground mb-1">หัวข้อ</label>
-              <input
+              <label htmlFor={`${uiFieldId}-3`} className="block text-sm font-medium text-foreground mb-1">หัวข้อ</label>
+              <input id={`${uiFieldId}-3`}
                 type="text"
                 value={sendForm.subject}
                 onChange={(e) => setSendForm({ ...sendForm, subject: e.target.value })}
@@ -341,8 +343,8 @@ export default function NotificationsPage() {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-foreground mb-1">ข้อความ *</label>
-              <textarea
+              <label htmlFor={`${uiFieldId}-4`} className="block text-sm font-medium text-foreground mb-1">ข้อความ *</label>
+              <textarea id={`${uiFieldId}-4`}
                 value={sendForm.message}
                 onChange={(e) => setSendForm({ ...sendForm, message: e.target.value })}
                 rows={4}
@@ -352,7 +354,7 @@ export default function NotificationsPage() {
               />
             </div>
             <div>
-              <button
+              <button data-ui-control="button"
                 type="submit"
                 disabled={sendNotificationMutation.isPending}
                 className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 disabled:opacity-50"

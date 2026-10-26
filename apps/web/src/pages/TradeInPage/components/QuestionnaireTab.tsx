@@ -1,3 +1,6 @@
+import { NumberInput } from '@/components/ui/NumberInput';
+import ScreenTable from '@/components/ui/ScreenTable';
+import { NativeSelect } from '@/components/ui/native-select';
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -164,7 +167,8 @@ export default function QuestionnaireTab() {
               {q.isActive ? 'ปิดใช้งาน' : 'เปิดใช้งาน'}
             </Button>
           </div>
-          <table className="w-full text-sm">
+          <ScreenTable className="min-w-[36rem] w-full text-sm">
+<thead className="sr-only"><tr><th scope="col">ตัวเลือก</th><th scope="col">ประเภทการหัก</th><th scope="col">มูลค่าที่หัก</th><th scope="col">จัดการ</th></tr></thead>
             <tbody>
               {q.choices.map((c) => (
                 <tr key={c.id} className="border-t border-border">
@@ -184,9 +188,8 @@ export default function QuestionnaireTab() {
                     {c.deductType === 'PERCENT' ? 'หัก %' : 'หักบาท'}
                   </td>
                   <td className="p-2 w-32">
-                    <Input
+                    <NumberInput
                       className="h-8"
-                      type="number"
                       value={edits[c.id]?.deductValue ?? String(Number(c.deductValue))}
                       onChange={(e) =>
                         setEdits((prev) => ({
@@ -236,8 +239,8 @@ export default function QuestionnaireTab() {
                   />
                 </td>
                 <td className="p-2 w-28">
-                  <select
-                    className="w-full h-8 rounded-lg border border-input bg-background px-2 text-sm"
+                  <NativeSelect wrapperClassName="max-w-full w-full"
+                    className="h-8 rounded-lg border border-input bg-background px-2 text-sm"
                     value={newChoice[q.id]?.deductType ?? 'PERCENT'}
                     onChange={(e) =>
                       setNewChoice((prev) => ({
@@ -252,12 +255,11 @@ export default function QuestionnaireTab() {
                   >
                     <option value="PERCENT">หัก %</option>
                     <option value="FIXED">หักบาท</option>
-                  </select>
+                  </NativeSelect>
                 </td>
                 <td className="p-2 w-32">
-                  <Input
+                  <NumberInput
                     className="h-8"
-                    type="number"
                     placeholder="ค่าหัก"
                     value={newChoice[q.id]?.deductValue ?? ''}
                     onChange={(e) =>
@@ -295,7 +297,7 @@ export default function QuestionnaireTab() {
                 </td>
               </tr>
             </tbody>
-          </table>
+          </ScreenTable>
         </div>
       ))}
 

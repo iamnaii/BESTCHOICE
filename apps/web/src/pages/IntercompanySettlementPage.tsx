@@ -165,7 +165,7 @@ export default function IntercompanySettlementPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="จ่ายให้หน้าร้าน (Inter-co)"
+        title="จ่ายให้หน้าร้าน"
         subtitle="รวมสัญญาเป็นรอบจ่าย → อนุมัติ 2 ขั้น (maker-checker) → ลงบัญชี FINANCE ↔ SHOP แบบ atomic"
         icon={<ArrowRightLeft className="h-6 w-6" />}
       />

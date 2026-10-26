@@ -1,8 +1,10 @@
+import { NativeSelect } from '@/components/ui/native-select';
 import DocumentDownloadButton from '@/components/DocumentDownloadButton';
 import { useState, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api, { getErrorMessage } from '@/lib/api';
-import DataTable from '@/components/ui/DataTable';
+import DataTable, { type Column } from '@/components/ui/DataTable';
+import { Button, buttonVariants } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { getStatusBadgeProps, receiptStatusMap } from '@/lib/status-badges';
@@ -133,91 +135,65 @@ export default function ReceiptsTab({ onVoided }: ReceiptsTabProps) {
   const receipts = result?.data || [];
   const summary = result?.summary;
 
-  const columns = useMemo(() => [
+  const columns = useMemo<Column<Receipt>[]>(() => [
     {
-      key: 'receiptNumber',
-      label: 'เลขใบเสร็จ',
-      render: (r: Receipt) => <span className="font-mono text-xs">{r.receiptNumber}</span>,
-    },
-    {
-      key: 'contractNumber',
-      label: 'เลขสัญญา',
-      render: (r: Receipt) => (
-        <span className="font-mono text-xs text-primary">{r.contract?.contractNumber || '-'}</span>
-      ),
-    },
-    {
-      key: 'receiptType',
-      label: 'ประเภท',
+      key: 'receiptNumber', label: 'ใบเสร็จ / ประเภท', width: '13rem',
+      cardFullWidth: true, className: '[overflow-wrap:anywhere]',
       render: (r: Receipt) => {
         const isCredit = r.receiptType === 'CREDIT_NOTE';
         const deliveryBadge = cnDeliveryBadgeProps(r.lastCnDelivery);
-        return (
-          <div className="flex flex-col items-start gap-1">
-            <Badge variant={isCredit ? 'warning' : 'primary'} appearance="light" size="sm">
+        return <div className="space-y-2">
+          <div className="font-mono text-xs">{r.receiptNumber}</div>
+          <div className="flex flex-wrap items-center gap-1">
+            <Badge className="admin-status-badge" variant={isCredit ? 'warning' : 'primary'} appearance="light" size="sm">
               {receiptTypeLabels[r.receiptType] || r.receiptType}
             </Badge>
-            {isCredit && r.cnSource && (
-              <div className="flex flex-wrap items-center gap-1">
-                <Badge variant="secondary" appearance="light" size="sm">
-                  {cnSourceLabels[r.cnSource] || r.cnSource}
-                </Badge>
-                <Badge variant={deliveryBadge.variant} appearance="light" size="sm">
-                  {deliveryBadge.label}
-                </Badge>
-              </div>
-            )}
+            {isCredit && r.cnSource && <>
+              <Badge className="admin-status-badge" variant="secondary" appearance="light" size="sm">{cnSourceLabels[r.cnSource] || r.cnSource}</Badge>
+              <Badge className="admin-status-badge" variant={deliveryBadge.variant} appearance="light" size="sm">{deliveryBadge.label}</Badge>
+            </>}
           </div>
-        );
+        </div>;
       },
     },
     {
-      key: 'payerName',
-      label: 'ผู้ชำระ',
-      render: (r: Receipt) => <span className="text-sm">{r.payerName}</span>,
+      key: 'contractNumber', label: 'สัญญา / ผู้ชำระ', cardFullWidth: true,
+      className: '[overflow-wrap:anywhere]',
+      render: (r: Receipt) => <div className="space-y-1">
+        <div className="font-mono text-xs text-primary">{r.contract?.contractNumber || '-'}</div>
+        <div className="text-sm">{r.payerName}</div>
+      </div>,
     },
     {
-      key: 'amount',
-      label: 'จำนวนเงิน',
-      render: (r: Receipt) => (
-        <span className="font-medium text-right block">{Number(r.amount).toLocaleString()} ฿</span>
-      ),
+      key: 'amount', label: 'จำนวนเงิน', width: '11rem', align: 'right',
+      className: 'tabular-nums',
+      render: (r: Receipt) => <div className="space-y-1">
+        <div className="whitespace-nowrap font-medium">{Number(r.amount).toLocaleString()} ฿</div>
+        <div className="text-xs text-muted-foreground">งวดที่ {r.installmentNo || '-'}</div>
+        <div className="text-xs text-muted-foreground [overflow-wrap:anywhere]">{r.paymentMethod ? methodLabels[r.paymentMethod] || r.paymentMethod : '-'}</div>
+      </div>,
     },
     {
-      key: 'installmentNo',
-      label: 'งวดที่',
-      render: (r: Receipt) => <span className="text-center block">{r.installmentNo || '-'}</span>,
-    },
-    {
-      key: 'paymentMethod',
-      label: 'วิธีชำระ',
-      render: (r: Receipt) => (
-        <span className="text-xs">{r.paymentMethod ? methodLabels[r.paymentMethod] || r.paymentMethod : '-'}</span>
-      ),
-    },
-    {
-      key: 'paidDate',
-      label: 'วันที่',
-      render: (r: Receipt) => (
-        <span className="text-xs">{formatDateShort(r.paidDate)}</span>
-      ),
-    },
-    {
-      key: 'status',
-      label: 'สถานะ',
+      key: 'paidDate', label: 'วันที่ / สถานะ', width: '9rem',
       render: (r: Receipt) => {
-        const statusKey = r.isVoided ? 'REJECTED' : 'VERIFIED';
-        const cfg = getStatusBadgeProps(statusKey, receiptStatusMap);
-        return <Badge variant={cfg.variant} appearance={cfg.appearance} size="sm">{r.isVoided ? 'ยกเลิก' : 'ปกติ'}</Badge>;
+        const cfg = getStatusBadgeProps(r.isVoided ? 'REJECTED' : 'VERIFIED', receiptStatusMap);
+        return <div className="space-y-2">
+          <div className="text-xs whitespace-nowrap tabular-nums">{formatDateShort(r.paidDate)}</div>
+          <Badge className="admin-status-badge" variant={cfg.variant} appearance={cfg.appearance} size="sm">{r.isVoided ? 'ยกเลิก' : 'ปกติ'}</Badge>
+        </div>;
       },
     },
     {
       key: 'actions',
-      label: '',
+      label: 'จัดการ',
+      cardFullWidth: true,
+      width: '11rem',
+      align: 'right',
+      sortable: false,
       render: (r: Receipt) => (
-        <div className="flex items-center gap-1 justify-end">
+        <div className="flex flex-wrap items-center gap-2 justify-end">
           <DocumentDownloadButton path={`/receipts/${r.id}/pdf`} filename={`${r.receiptNumber}.pdf`}
-            className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-primary hover:bg-primary/10 rounded transition-colors"
+            className={buttonVariants({ variant: 'outline', size: 'md', className: 'min-h-0 max-lg:min-h-11' })}
             title="ดาวน์โหลดใบเสร็จ PDF"
           >
             <Download className="h-3 w-3" />
@@ -225,13 +201,14 @@ export default function ReceiptsTab({ onVoided }: ReceiptsTabProps) {
           </DocumentDownloadButton>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <button
-                className="px-2 py-1 text-muted-foreground hover:text-foreground hover:bg-muted/50 rounded transition-colors"
+              <Button
+                variant="ghost"
+                size="icon"
                 title="เพิ่มเติม"
                 aria-label="เพิ่มเติม"
               >
                 <MoreHorizontal className="h-4 w-4" />
-              </button>
+              </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-56">
               <DropdownMenuItem
@@ -339,10 +316,10 @@ export default function ReceiptsTab({ onVoided }: ReceiptsTabProps) {
         <Card className="rounded-xl border border-border/50 bg-card shadow-sm overflow-hidden hover:shadow-card-hover transition-all">
           <CardContent className="p-5 flex items-center justify-between">
             <div>
-              <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">Export</div>
+              <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ส่งออก</div>
               <div className="text-sm text-muted-foreground">ดาวน์โหลดข้อมูลตามตัวกรอง</div>
             </div>
-            <button
+            <button data-ui-control="button"
               onClick={exportExcel}
               disabled={!receipts.length}
               className="px-4 py-2 text-sm bg-success text-success-foreground rounded-lg hover:bg-success/90 disabled:opacity-50"
@@ -356,14 +333,14 @@ export default function ReceiptsTab({ onVoided }: ReceiptsTabProps) {
       {/* Filter Bar */}
       <div className="bg-card rounded-xl border border-border/50 shadow-sm p-5 mb-6">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-          <input
+          <input aria-label="ค้นหาเลขสัญญา / ชื่อลูกค้า / เบอร์โทร / เลขใบเสร็จ"
             type="text"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             placeholder="ค้นหาเลขสัญญา / ชื่อลูกค้า / เบอร์โทร / เลขใบเสร็จ..."
             className="px-3 py-2 border border-input rounded-lg text-sm md:col-span-1"
           />
-          <select
+          <NativeSelect wrapperClassName="max-w-full w-auto" aria-label="ประเภทใบเสร็จ"
             value={receiptType}
             onChange={(e) => setReceiptType(e.target.value)}
             className="px-3 py-2 border border-input rounded-lg text-sm"
@@ -373,14 +350,15 @@ export default function ReceiptsTab({ onVoided }: ReceiptsTabProps) {
             <option value="DOWN_PAYMENT">เงินดาวน์</option>
             <option value="EARLY_PAYOFF">ปิดก่อนกำหนด</option>
             <option value="CREDIT_NOTE">ใบลดหนี้</option>
-          </select>
-          <ThaiDateInput
+            <option value="ADVANCE_SURPLUS">เงินรับล่วงหน้า (ลิงก์ชำระ)</option>
+          </NativeSelect>
+          <ThaiDateInput aria-label="วันที่เริ่ม"
             value={dateFrom}
             onChange={(e) => setDateFrom(e.target.value)}
             className="px-3 py-2 border border-input rounded-lg text-sm"
             placeholder="จากวันที่"
           />
-          <ThaiDateInput
+          <ThaiDateInput aria-label="วันที่สิ้นสุด"
             value={dateTo}
             onChange={(e) => setDateTo(e.target.value)}
             className="px-3 py-2 border border-input rounded-lg text-sm"
@@ -399,6 +377,9 @@ export default function ReceiptsTab({ onVoided }: ReceiptsTabProps) {
       >
         <DataTable
           columns={columns}
+          density="compact"
+          responsive
+          scrollLabel="ตารางใบเสร็จ"
           data={receipts}
           isLoading={isLoading}
           emptyMessage="ไม่พบใบเสร็จ"

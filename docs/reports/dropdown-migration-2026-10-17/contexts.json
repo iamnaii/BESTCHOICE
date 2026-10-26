@@ -1,0 +1,275 @@
+{
+  "scope": "actual CardBubbleEditor, CreditCheckPanel, TodoFilters and CreateContactModal with synthetic in-memory data; no save/send",
+  "results": [
+    {
+      "engine": "chromium",
+      "width": 320,
+      "root": 16,
+      "status": "PASS",
+      "fields": [
+        {
+          "label": "ป้ายปุ่ม",
+          "x": 25,
+          "width": 218,
+          "right": 243
+        },
+        {
+          "label": "value",
+          "x": 25,
+          "width": 218,
+          "right": 243
+        },
+        {
+          "label": "เหตุผลการพิจารณา อย่างน้อย 20 ตัวอักษร",
+          "x": 33,
+          "width": 254,
+          "right": 287
+        }
+      ],
+      "contactNameWidth": 232.84600067138672
+    },
+    {
+      "engine": "chromium",
+      "width": 390,
+      "root": 16,
+      "status": "PASS",
+      "fields": [
+        {
+          "label": "ป้ายปุ่ม",
+          "x": 25,
+          "width": 288,
+          "right": 313
+        },
+        {
+          "label": "value",
+          "x": 25,
+          "width": 288,
+          "right": 313
+        },
+        {
+          "label": "เหตุผลการพิจารณา อย่างน้อย 20 ตัวอักษร",
+          "x": 33,
+          "width": 324,
+          "right": 357
+        }
+      ],
+      "contactNameWidth": 304.09104919433594
+    },
+    {
+      "engine": "chromium",
+      "width": 768,
+      "root": 16,
+      "status": "PASS",
+      "fields": [
+        {
+          "label": "ป้ายปุ่ม",
+          "x": 25,
+          "width": 261,
+          "right": 286
+        },
+        {
+          "label": "value",
+          "x": 430,
+          "width": 261,
+          "right": 691
+        },
+        {
+          "label": "เหตุผลการพิจารณา อย่างน้อย 20 ตัวอักษร",
+          "x": 217,
+          "width": 442.4375,
+          "right": 659.4375
+        }
+      ],
+      "contactNameWidth": 364.27667236328125
+    },
+    {
+      "engine": "chromium",
+      "width": 1440,
+      "root": 16,
+      "status": "PASS",
+      "fields": [
+        {
+          "label": "ป้ายปุ่ม",
+          "x": 245,
+          "width": 377,
+          "right": 622
+        },
+        {
+          "label": "value",
+          "x": 766,
+          "width": 377,
+          "right": 1143
+        },
+        {
+          "label": "เหตุผลการพิจารณา อย่างน้อย 20 ตัวอักษร",
+          "x": 437,
+          "width": 674.4375,
+          "right": 1111.4375
+        }
+      ],
+      "contactNameWidth": 364.12689208984375
+    },
+    {
+      "engine": "chromium",
+      "width": 320,
+      "root": 20,
+      "status": "PASS",
+      "fields": [
+        {
+          "label": "ป้ายปุ่ม",
+          "x": 27,
+          "width": 201,
+          "right": 228
+        },
+        {
+          "label": "value",
+          "x": 27,
+          "width": 201,
+          "right": 228
+        },
+        {
+          "label": "เหตุผลการพิจารณา อย่างน้อย 20 ตัวอักษร",
+          "x": 37,
+          "width": 246,
+          "right": 283
+        }
+      ],
+      "contactNameWidth": 212.1889190673828
+    },
+    {
+      "engine": "webkit",
+      "width": 320,
+      "root": 16,
+      "status": "PASS",
+      "fields": [
+        {
+          "label": "ป้ายปุ่ม",
+          "x": 25,
+          "width": 218,
+          "right": 243
+        },
+        {
+          "label": "value",
+          "x": 25,
+          "width": 218,
+          "right": 243
+        },
+        {
+          "label": "เหตุผลการพิจารณา อย่างน้อย 20 ตัวอักษร",
+          "x": 33,
+          "width": 254,
+          "right": 287
+        }
+      ],
+      "contactNameWidth": 237.8033447265625
+    },
+    {
+      "engine": "webkit",
+      "width": 390,
+      "root": 16,
+      "status": "PASS",
+      "fields": [
+        {
+          "label": "ป้ายปุ่ม",
+          "x": 25,
+          "width": 288,
+          "right": 313
+        },
+        {
+          "label": "value",
+          "x": 25,
+          "width": 288,
+          "right": 313
+        },
+        {
+          "label": "เหตุผลการพิจารณา อย่างน้อย 20 ตัวอักษร",
+          "x": 33,
+          "width": 324,
+          "right": 357
+        }
+      ],
+      "contactNameWidth": 305.2521324157715
+    },
+    {
+      "engine": "webkit",
+      "width": 768,
+      "root": 16,
+      "status": "PASS",
+      "fields": [
+        {
+          "label": "ป้ายปุ่ม",
+          "x": 25,
+          "width": 261,
+          "right": 286
+        },
+        {
+          "label": "value",
+          "x": 430,
+          "width": 261,
+          "right": 691
+        },
+        {
+          "label": "เหตุผลการพิจารณา อย่างน้อย 20 ตัวอักษร",
+          "x": 217,
+          "width": 442.4375,
+          "right": 659.4375
+        }
+      ],
+      "contactNameWidth": 372.3224182128906
+    },
+    {
+      "engine": "webkit",
+      "width": 1440,
+      "root": 16,
+      "status": "PASS",
+      "fields": [
+        {
+          "label": "ป้ายปุ่ม",
+          "x": 245,
+          "width": 377,
+          "right": 622
+        },
+        {
+          "label": "value",
+          "x": 766,
+          "width": 377,
+          "right": 1143
+        },
+        {
+          "label": "เหตุผลการพิจารณา อย่างน้อย 20 ตัวอักษร",
+          "x": 437,
+          "width": 674.4375,
+          "right": 1111.4375
+        }
+      ],
+      "contactNameWidth": 373.23876953125
+    },
+    {
+      "engine": "webkit",
+      "width": 320,
+      "root": 20,
+      "status": "PASS",
+      "fields": [
+        {
+          "label": "ป้ายปุ่ม",
+          "x": 27,
+          "width": 201,
+          "right": 228
+        },
+        {
+          "label": "value",
+          "x": 27,
+          "width": 201,
+          "right": 228
+        },
+        {
+          "label": "เหตุผลการพิจารณา อย่างน้อย 20 ตัวอักษร",
+          "x": 37,
+          "width": 246,
+          "right": 283
+        }
+      ],
+      "contactNameWidth": 217.91972732543945
+    }
+  ]
+}

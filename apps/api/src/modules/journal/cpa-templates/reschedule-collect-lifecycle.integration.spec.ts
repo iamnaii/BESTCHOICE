@@ -255,6 +255,10 @@ describe('reschedule-collect 6a → 2A accrual → advance consume lifecycle (in
     expect(dr('11-1101')).toBe('454.00'); // user default cash account
     expect(cr('21-1103')).toBe('354.00');
     expect(cr('42-1103')).toBe('100.00');
+    // PR4 (ต2 ข): ค่าธรรมเนียม 6a เข้าถัง ⇒ พักภาษีขาย HALF_UP(354 × 7/107) = 23.16 ในรายการเดียวกัน + stamp
+    expect(dr('21-2102')).toBe('23.16');
+    expect(cr('21-2101')).toBe('23.16');
+    expect((je!.metadata as Record<string, unknown>).advanceVatPark).toBe('23.16');
     const totalDr = je!.lines.reduce(
       (s, l) => s.plus(new Decimal(l.debit.toString())),
       new Decimal(0),
@@ -263,8 +267,8 @@ describe('reschedule-collect 6a → 2A accrual → advance consume lifecycle (in
       (s, l) => s.plus(new Decimal(l.credit.toString())),
       new Decimal(0),
     );
-    expect(totalDr.toFixed(2)).toBe('454.00');
-    expect(totalCr.toFixed(2)).toBe('454.00');
+    expect(totalDr.toFixed(2)).toBe('477.16'); // 454.00 + ขาพักภาษี 23.16 (คู่ที่สมดุลกันเอง)
+    expect(totalCr.toFixed(2)).toBe('477.16');
 
     // 6a fee = PREPAYMENT, park-at-last-installment (2026-08-16): the fee lands
     // on the DEDICATED park bucket — Contract.advanceBalance (generic) is
@@ -319,6 +323,18 @@ describe('reschedule-collect 6a → 2A accrual → advance consume lifecycle (in
     });
     expect(receipt, 'expected RESCHEDULE_FEE e-Receipt').not.toBeNull();
     expect(new Decimal(receipt!.amount.toString()).toFixed(2)).toBe('454.00');
+    // PR4ข: ใบ 6a เป็นใบกำกับภาษี — เก็บค่าที่พิมพ์จากรายการ 6a (advanceVatPark 23.16 · ค่าปรับนอกฐานภาษี)
+    // และผูกรายการ reschedule-collect ⇒ ใบ = บัญชี · amountBeforeVat + vat + rounding + lateFee = amount
+    expect(receipt!.sourceJournalEntryId).toBe(je!.id);
+    const money = (v: { toString(): string } | null) =>
+      v == null ? null : new Decimal(v.toString()).toFixed(2);
+    expect(money(receipt!.amountBeforeVat)).toBe('330.84');
+    expect(money(receipt!.vatAmount)).toBe('23.16');
+    expect(money(receipt!.roundingAmount)).toBe('0.00');
+    expect(money(receipt!.lateFeeAmount)).toBe('100.00');
+    expect(money(receipt!.lateFeeWaivedAmount)).toBe('0.00');
+    expect(money(receipt!.advanceAmount)).toBe('354.00');
+    expect(money(receipt!.advanceVatAmount)).toBe('23.16');
   });
 
   it('2A accrual on the shifted installment #1 (NOT the last installment) does NOT touch the park bucket at all', async () => {

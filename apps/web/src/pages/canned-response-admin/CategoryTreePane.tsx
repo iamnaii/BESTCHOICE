@@ -124,7 +124,7 @@ export default function CategoryTreePane(props: Props) {
   return (
     <div className="flex flex-col h-full border-r border-border bg-card">
       <div className="px-3 py-3 border-b border-border bg-muted/30">
-        <Input
+        <Input aria-label="ค้นหา"
           value={searchQuery}
           onChange={(e) => onSearchChange(e.target.value)}
           placeholder="ค้นหา..."
@@ -134,7 +134,7 @@ export default function CategoryTreePane(props: Props) {
       <div className="flex-1 overflow-y-auto">
         {groups.length === 0 && (
           <div className="px-4 py-8 text-sm text-muted-foreground text-center leading-snug">
-            ยังไม่มี template
+            ยังไม่มี แม่แบบ
           </div>
         )}
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>

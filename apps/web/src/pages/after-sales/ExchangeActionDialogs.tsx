@@ -1,5 +1,8 @@
+import { NumberInput } from '@/components/ui/NumberInput';
+import ScreenTable from '@/components/ui/ScreenTable';
+import { NativeSelect } from '@/components/ui/native-select';
 import { useEffect, useState } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import api, { getErrorMessage } from '@/lib/api';
 import { Button } from '@/components/ui/button';
@@ -14,10 +17,18 @@ import {
 } from '@/components/ui/dialog';
 import { RepairCenterCombobox } from '@/pages/after-sales/RepairCenterCombobox';
 import ReplacementProductPicker from './ReplacementProductPicker';
-import { afterSalesKeys, PAYER_LABEL, type CaseDetail, type Payer } from './after-sales';
+import {
+  afterSalesKeys,
+  baht,
+  isCashCase,
+  PAYER_LABEL,
+  type CaseDetail,
+  type Payer,
+} from './after-sales';
 
 /**
- * ห้า dialog + 1 ConfirmDialog wrapper ของ Step 5 (เปลี่ยนเครื่อง — Task 11). ทุก mutation:
+ * สี่ dialog + 1 ConfirmDialog wrapper ของ Step 5 (เปลี่ยนเครื่อง — Task 11; `ApprovePricedDialog` ถูกถอด
+ * 2026-10-06 พร้อมปิดเมนูเปลี่ยนแบบมีราคา — API ตอบ 410 ที่ /approve). ทุก mutation:
  * onSuccess → toast.success + invalidateQueries(afterSalesKeys.all) + ปิด dialog,
  * onError → toast.error(getErrorMessage). mirror ของ `RepairActionDialogs.tsx` (PR 1).
  */
@@ -25,6 +36,18 @@ const inputClass =
   'h-11 w-full rounded-lg border border-input bg-background px-3.5 text-sm leading-snug text-foreground placeholder:text-muted-foreground/70';
 const areaClass =
   'w-full resize-none rounded-lg border border-input bg-background px-3.5 py-2.5 text-sm leading-snug text-foreground placeholder:text-muted-foreground/70';
+
+// 15ข — ตารางใบเสร็จที่จะออกใบลดหนี้ในกล่องยืนยัน (mockup กระดาน 3)
+const METHOD_SHORT: Record<string, string> = {
+  CASH: 'เงินสด',
+  BANK_TRANSFER: 'โอน',
+  QR_EWALLET: 'QR',
+  CARD: 'บัตร',
+  ONLINE_GATEWAY: 'ลิงก์ชำระ',
+  CREDIT_BALANCE: 'เครดิต',
+};
+const thDate = (iso: string) =>
+  new Date(iso).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit' });
 
 const REJECT_MIN_REASON = 10;
 const CANCEL_SWAP_MIN_REASON = 10;
@@ -48,6 +71,8 @@ export function ConfirmExchangeDialog({
 }: DialogBaseProps & { data: CaseDetail }) {
   const queryClient = useQueryClient();
   const fromRepair = data.outcome === 'REPAIR';
+  // PR 5 — เคสขายสด: สลับเครื่องบนใบขายเดิม ไม่มีสัญญาใหม่ · เอกสารออกตอนส่งมอบ
+  const isCash = isCashCase(data);
   const [checkCondition, setCheckCondition] = useState(false);
   const [checkImei, setCheckImei] = useState(false);
   const [checkSigned, setCheckSigned] = useState(false);
@@ -65,6 +90,46 @@ export function ConfirmExchangeDialog({
   }, [open]);
 
   const valid = checkCondition && checkImei && (!fromRepair || !!replacementProductId);
+
+  // PR 5 — กล่อง "รายการบัญชีที่จะลง" (MGR เห็นต้นทุนได้ทั้งคู่) — คำนวณจากแหล่งเดียวกับตอนยืนยันจริง
+  const previewId = fromRepair ? replacementProductId : data.replacementProductId;
+  const preview = useQuery<{
+    saleNumber: string;
+    oldCost: string;
+    newCost: string;
+    lines: { accountCode: string; dr: string; cr: string }[];
+  }>({
+    queryKey: ['after-sales', 'cash-preview', caseId, previewId],
+    queryFn: async () =>
+      (
+        await api.get(`/after-sales/${caseId}/exchange/cash-preview`, {
+          params: previewId ? { replacementProductId: previewId } : {},
+        })
+      ).data,
+    enabled: open && isCash && !!previewId,
+  });
+
+  // 15ข — กิ่งสัญญาผ่อน: ใบรับเงินของสัญญาเดิมที่จะออกใบลดหนี้ + เครดิตที่จะย้าย (checkEligibility — แหล่งเดียวกับ engine)
+  const credit = useQuery<{
+    receiptsToCreditNote: {
+      id: string;
+      receiptNumber: string;
+      receiptType: string;
+      installmentNo: number | null;
+      paidDate: string;
+      paymentMethod: string | null;
+      amount: string;
+      vatAmount: string | null;
+    }[];
+    creditToTransfer: string;
+  }>({
+    queryKey: ['defect-exchange', 'eligibility', data.contractId],
+    queryFn: async () => (await api.get(`/defect-exchange/eligibility/${data.contractId}`)).data,
+    enabled: open && !isCash && !!data.contractId,
+  });
+  const receipts = credit.data?.receiptsToCreditNote ?? [];
+  const creditToTransfer = credit.data?.creditToTransfer ?? '0.00';
+  const hasCredit = receipts.length > 0 || Number(creditToTransfer) > 0;
 
   const mutate = useMutation({
     mutationFn: async () => {
@@ -87,9 +152,11 @@ export function ConfirmExchangeDialog({
         <DialogHeader>
           <DialogTitle>ยืนยันเปลี่ยนเครื่อง</DialogTitle>
           <DialogDescription>
-            {fromRepair
-              ? 'เลือกเครื่องทดแทนจากสต๊อกก่อนยืนยัน — ระบบจะเปิดสัญญาใหม่ให้ทันที'
-              : 'ตรวจสอบเครื่องเดิม/เครื่องใหม่ก่อนยืนยัน'}
+            {isCash
+              ? 'ตรวจสอบเครื่องเดิม/เครื่องทดแทนก่อนยืนยัน — สลับเครื่องบนใบขายเดิม ราคาเท่าเดิม'
+              : fromRepair
+                ? 'เลือกเครื่องทดแทนจากสต๊อกก่อนยืนยัน — ระบบจะเปิดสัญญาใหม่ให้ทันที'
+                : 'ตรวจสอบเครื่องเดิม/เครื่องใหม่ก่อนยืนยัน'}
           </DialogDescription>
         </DialogHeader>
 
@@ -121,15 +188,17 @@ export function ConfirmExchangeDialog({
             />
             เครื่องใหม่จากสต๊อกสาขานี้ IMEI ตรง
           </label>
-          <label className="flex items-center gap-2 text-sm leading-snug text-foreground">
-            <input
-              type="checkbox"
-              checked={checkSigned}
-              onChange={(e) => setCheckSigned(e.target.checked)}
-              className="h-4.5 w-4.5"
-            />
-            ลูกค้าเซ็นใบส่งมอบแล้ว
-          </label>
+          {!isCash && (
+            <label className="flex items-center gap-2 text-sm leading-snug text-foreground">
+              <input
+                type="checkbox"
+                checked={checkSigned}
+                onChange={(e) => setCheckSigned(e.target.checked)}
+                className="h-4.5 w-4.5"
+              />
+              ลูกค้าเซ็นใบส่งมอบแล้ว
+            </label>
+          )}
         </div>
 
         <div className="space-y-1">
@@ -148,14 +217,95 @@ export function ConfirmExchangeDialog({
 
         <div className="space-y-1 rounded-lg border border-warning/40 bg-warning/10 p-3 text-xs leading-snug text-warning-strong">
           <p className="font-semibold">เมื่อกดยืนยัน ระบบจะทำให้:</p>
-          <ul className="list-disc space-y-0.5 pl-4">
-            <li>สัญญาเดิมปิดเป็น &quot;เปลี่ยนเครื่องชำรุด&quot; และกลับรายการบัญชีอัตโนมัติ</li>
-            <li>
-              เปิดสัญญาใหม่เงื่อนไขเดิมด้วยเครื่องที่เลือก — ต้องเปิดใช้ที่หน้าสัญญาก่อนส่งมอบ
-            </li>
-            <li>เครื่องเดิม → รอส่งเคลมผู้จัดจำหน่าย · บันทึกผู้ยืนยันในไทม์ไลน์</li>
-          </ul>
+          {isCash ? (
+            <ul className="list-disc space-y-0.5 pl-4">
+              <li>สลับเครื่องบนใบขายเดิม — เลขใบขายเดิม ราคาเดิม ไม่มีเงินเปลี่ยนมือ</li>
+              <li>ลงรายการบัญชีสลับต้นทุน (เครื่องเดิมกลับเข้าคลัง · ต้นทุนขายเป็นของเครื่องทดแทน)</li>
+              <li>เครื่องเดิม → รอเคลมผู้จัดจำหน่าย (ขอตัดจำหน่ายได้ที่เมนูตัดสินค้า)</li>
+              <li>ส่ง LINE &quot;มารับได้แล้ว&quot; ให้ลูกค้า</li>
+              <li>บันทึกผู้ยืนยันในไทม์ไลน์ · ประกันร้านและกรอบ 7 วันนับใหม่ตอนส่งมอบ</li>
+            </ul>
+          ) : (
+            <ul className="list-disc space-y-0.5 pl-4">
+              <li>สัญญาเดิมปิดเป็น &quot;เปลี่ยนเครื่องชำรุด&quot; และกลับรายการบัญชีอัตโนมัติ</li>
+              {hasCredit && (
+                <>
+                  <li>ออกใบลดหนี้ให้ใบเสร็จ/ใบกำกับภาษีของสัญญาเดิมทุกใบ — ไม่ส่ง LINE</li>
+                  <li>เงินที่ลูกค้าจ่ายแล้วย้ายเป็นเครดิตของสัญญาใหม่ — ไม่คืนเงินสด ธนาคารไม่ขยับ</li>
+                </>
+              )}
+              <li>
+                เปิดสัญญาใหม่เงื่อนไขเดิมด้วยเครื่องที่เลือก — ต้องเปิดใช้ที่หน้าสัญญาก่อนส่งมอบ
+                {hasCredit ? ' · เมื่อเปิดใช้ ระบบใช้เครดิตชำระงวดที่ 1 ทันทีและออกใบเสร็จ/ใบกำกับภาษีใหม่' : ''}
+              </li>
+              <li>เครื่องเดิม → รอส่งเคลมผู้จัดจำหน่าย · บันทึกผู้ยืนยันในไทม์ไลน์</li>
+            </ul>
+          )}
         </div>
+
+        {!isCash && hasCredit && (
+          <div className="space-y-2 rounded-lg border border-border bg-muted p-3 text-xs leading-snug">
+            <p className="font-semibold text-foreground">ใบเสร็จของสัญญาเดิมที่จะออกใบลดหนี้</p>
+            {receipts.length > 0 && (
+              <ScreenTable className="w-full">
+                <thead className="text-muted-foreground">
+                  <tr>
+                    <th className="py-0.5 pr-2 text-left font-normal">เลขที่</th>
+                    <th className="py-0.5 pr-2 text-left font-normal">รายการ</th>
+                    <th className="py-0.5 pr-2 text-left font-normal">วันที่ชำระ</th>
+                    <th className="py-0.5 text-right font-normal">ยอด</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {receipts.map((r) => (
+                    <tr key={r.id}>
+                      <td className="py-0.5 pr-2 font-mono">{r.receiptNumber}</td>
+                      <td className="py-0.5 pr-2">
+                        {r.installmentNo ? `ค่างวดงวดที่ ${r.installmentNo}` : 'การรับชำระเงิน'}
+                      </td>
+                      <td className="py-0.5 pr-2">
+                        {thDate(r.paidDate)}
+                        {r.paymentMethod ? ` · ${METHOD_SHORT[r.paymentMethod] ?? r.paymentMethod}` : ''}
+                      </td>
+                      <td className="py-0.5 text-right">{baht(r.amount)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </ScreenTable>
+            )}
+            <div className="flex items-center justify-between rounded-md bg-primary/10 px-2 py-1.5 font-semibold text-primary">
+              <span>เครดิตที่จะย้ายไปสัญญาใหม่ (ไม่คืนเงินสด)</span>
+              <span>{baht(creditToTransfer)} บาท</span>
+            </div>
+          </div>
+        )}
+        {!isCash && credit.isError && (
+          <p className="text-xs leading-snug text-destructive">{getErrorMessage(credit.error)}</p>
+        )}
+        {isCash && preview.data && (
+          <div className="space-y-1 rounded-lg border border-border bg-muted p-3 text-xs leading-snug">
+            <p className="font-semibold text-foreground">
+              รายการบัญชีที่จะลง (ต้นทุนเดิม {baht(preview.data.oldCost)} → เครื่องทดแทน{' '}
+              {baht(preview.data.newCost)})
+            </p>
+            <ScreenTable className="min-w-[24rem] w-full">
+<thead className="sr-only"><tr><th scope="col">รหัสบัญชี</th><th scope="col">เดบิต</th><th scope="col">เครดิต</th></tr></thead>
+              <tbody>
+                {preview.data.lines.map((l, i) => (
+                  <tr key={i}>
+                    <td className="py-0.5 pr-2 font-mono">{l.accountCode}</td>
+                    <td className="py-0.5 pr-2 text-right">{l.dr !== '0.00' ? `Dr ${baht(l.dr)}` : ''}</td>
+                    <td className="py-0.5 text-right">{l.cr !== '0.00' ? `Cr ${baht(l.cr)}` : ''}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </ScreenTable>
+            <p className="text-muted-foreground">รายได้ {preview.data.saleNumber} และเงินสดไม่เปลี่ยน</p>
+          </div>
+        )}
+        {isCash && preview.isError && (
+          <p className="text-xs leading-snug text-destructive">{getErrorMessage(preview.error)}</p>
+        )}
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={mutate.isPending}>
@@ -291,7 +441,7 @@ export function SwitchToRepairDialog({
           <label htmlFor="sw-payer" className="block text-xs leading-snug text-muted-foreground">
             ผู้จ่ายค่าซ่อม <span className="text-destructive">*</span>
           </label>
-          <select
+          <NativeSelect wrapperClassName="max-w-full w-full"
             id="sw-payer"
             value={payer}
             onChange={(e) => setPayer(e.target.value as Payer)}
@@ -302,13 +452,13 @@ export function SwitchToRepairDialog({
                 {PAYER_LABEL[p]}
               </option>
             ))}
-          </select>
+          </NativeSelect>
         </div>
         <div className="space-y-1">
           <label htmlFor="sw-cost" className="block text-xs leading-snug text-muted-foreground">
             ค่าซ่อมประมาณ
           </label>
-          <input
+          <NumberInput step="any" unstyled
             id="sw-cost"
             inputMode="decimal"
             value={estimatedCost}
@@ -339,92 +489,6 @@ export function SwitchToRepairDialog({
             onClick={() => mutate.mutate()}
           >
             {mutate.isPending ? 'กำลังบันทึก…' : 'ยืนยัน'}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-/** อนุมัติคำขอเปลี่ยนเครื่องแบบมีราคา — MEMO บังคับ 2 checkbox, PRICED ยืนยันเฉยๆ (engine เปิดใช้
- * สัญญาใหม่ที่หน้าสัญญาต่างหาก — approve แค่สร้างสัญญาใหม่ DRAFT ให้) */
-export function ApprovePricedDialog({
-  caseId,
-  open,
-  onOpenChange,
-  mode,
-}: DialogBaseProps & { mode: 'MEMO' | 'PRICED' }) {
-  const queryClient = useQueryClient();
-  const [addendumSigned, setAddendumSigned] = useState(false);
-  const [mdmSwapped, setMdmSwapped] = useState(false);
-
-  useEffect(() => {
-    if (open) {
-      setAddendumSigned(false);
-      setMdmSwapped(false);
-    }
-  }, [open]);
-
-  const valid = mode === 'PRICED' || (addendumSigned && mdmSwapped);
-
-  const mutate = useMutation({
-    mutationFn: async () => {
-      const body = mode === 'MEMO' ? { memoAddendumSigned: true, memoMdmSwapped: true } : {};
-      return (await api.post(`/after-sales/${caseId}/approve`, body)).data;
-    },
-    onSuccess: () => {
-      toast.success('อนุมัติแล้ว');
-      queryClient.invalidateQueries({ queryKey: afterSalesKeys.all });
-      onOpenChange(false);
-    },
-    onError: (err) => toast.error(getErrorMessage(err)),
-  });
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>อนุมัติเปลี่ยนเครื่อง</DialogTitle>
-          <DialogDescription>
-            {mode === 'MEMO'
-              ? 'รุ่น/ความจุ/ราคาเท่าเดิม — สลับเครื่องบนสัญญาเดิม ไม่มีสัญญาใหม่'
-              : 'ระบบจะสร้างสัญญาใหม่ (DRAFT) ให้ — ต้องเปิดใช้ที่หน้าสัญญาก่อนส่งมอบ'}
-          </DialogDescription>
-        </DialogHeader>
-
-        {mode === 'MEMO' && (
-          <div className="space-y-2">
-            <label className="flex items-center gap-2 text-sm leading-snug text-foreground">
-              <input
-                type="checkbox"
-                checked={addendumSigned}
-                onChange={(e) => setAddendumSigned(e.target.checked)}
-                className="h-4.5 w-4.5"
-              />
-              เซ็น ADDENDUM แล้ว
-            </label>
-            <label className="flex items-center gap-2 text-sm leading-snug text-foreground">
-              <input
-                type="checkbox"
-                checked={mdmSwapped}
-                onChange={(e) => setMdmSwapped(e.target.checked)}
-                className="h-4.5 w-4.5"
-              />
-              สลับ MDM แล้ว
-            </label>
-          </div>
-        )}
-
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={mutate.isPending}>
-            ยกเลิก
-          </Button>
-          <Button
-            variant="primary"
-            disabled={!valid || mutate.isPending}
-            onClick={() => mutate.mutate()}
-          >
-            {mutate.isPending ? 'กำลังบันทึก…' : 'อนุมัติ'}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -516,5 +580,134 @@ export function DeliverExchangeConfirm({ caseId, open, onOpenChange }: DialogBas
       loading={mutate.isPending}
       onConfirm={() => mutate.mutate()}
     />
+  );
+}
+
+/** PR 5 — ส่งมอบเครื่องทดแทนของเคสขายสด (กระดาน 12): พิมพ์ 2 ใบ · ติ๊ก 2 ข้อ · อุปกรณ์ · ปิดเคส */
+export function DeliverCashExchangeDialog({
+  caseId,
+  open,
+  onOpenChange,
+  onPrintDocs,
+}: DialogBaseProps & { onPrintDocs: () => void }) {
+  const queryClient = useQueryClient();
+  const [checkedDocs, setCheckedDocs] = useState(false);
+  const [checkedDevice, setCheckedDevice] = useState(false);
+  const [acc, setAcc] = useState({ box: false, charger: false, case: false, other: '' });
+  const [note, setNote] = useState('');
+
+  useEffect(() => {
+    if (open) {
+      setCheckedDocs(false);
+      setCheckedDevice(false);
+      setAcc({ box: false, charger: false, case: false, other: '' });
+      setNote('');
+    }
+  }, [open]);
+
+  const mutate = useMutation({
+    mutationFn: async () =>
+      (
+        await api.post(`/after-sales/${caseId}/exchange/deliver`, {
+          accessories: {
+            box: acc.box,
+            charger: acc.charger,
+            case: acc.case,
+            ...(acc.other.trim() ? { other: acc.other.trim() } : {}),
+          },
+          ...(note.trim() ? { note: note.trim() } : {}),
+        })
+      ).data,
+    onSuccess: () => {
+      toast.success('ส่งมอบเครื่องทดแทนแล้ว — ปิดเคส');
+      queryClient.invalidateQueries({ queryKey: afterSalesKeys.all });
+      onOpenChange(false);
+    },
+    onError: (err) => toast.error(getErrorMessage(err)),
+  });
+
+  const valid = checkedDocs && checkedDevice;
+  const ACC_LABEL = { box: 'กล่อง', charger: 'สายชาร์จ', case: 'เคส' } as const;
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>ส่งมอบเครื่องทดแทน</DialogTitle>
+          <DialogDescription>
+            พิมพ์ใบรับคืน + ใบส่งมอบให้ลูกค้าเซ็นก่อน แล้วยืนยันส่งมอบ — ประกันร้านและกรอบ 7 วันเริ่มนับใหม่วันนี้
+          </DialogDescription>
+        </DialogHeader>
+
+        <Button variant="outline" onClick={onPrintDocs}>
+          พิมพ์ใบรับคืน + ใบส่งมอบ (2 ใบ)
+        </Button>
+
+        <fieldset className="space-y-2">
+          <legend className="text-xs leading-snug text-muted-foreground">อุปกรณ์ที่ส่งมอบ</legend>
+          {(['box', 'charger', 'case'] as const).map((k) => (
+            <label key={k} className="flex items-center gap-2 text-sm leading-snug text-foreground">
+              <input
+                type="checkbox"
+                checked={acc[k]}
+                onChange={(e) => setAcc({ ...acc, [k]: e.target.checked })}
+                className="h-4.5 w-4.5"
+              />
+              {ACC_LABEL[k]}
+            </label>
+          ))}
+          <input
+            className={inputClass}
+            placeholder="อื่น ๆ"
+            maxLength={60}
+            value={acc.other}
+            onChange={(e) => setAcc({ ...acc, other: e.target.value })}
+          />
+        </fieldset>
+
+        <div className="space-y-2">
+          <label className="flex items-center gap-2 text-sm leading-snug text-foreground">
+            <input
+              type="checkbox"
+              checked={checkedDocs}
+              onChange={(e) => setCheckedDocs(e.target.checked)}
+              className="h-4.5 w-4.5"
+            />
+            ลูกค้าเซ็นใบรับคืน + ใบส่งมอบแล้ว
+          </label>
+          <label className="flex items-center gap-2 text-sm leading-snug text-foreground">
+            <input
+              type="checkbox"
+              checked={checkedDevice}
+              onChange={(e) => setCheckedDevice(e.target.checked)}
+              className="h-4.5 w-4.5"
+            />
+            ลูกค้าตรวจเครื่องทดแทน IMEI ตรง เปิดใช้งานได้
+          </label>
+        </div>
+
+        <textarea
+          rows={2}
+          maxLength={300}
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          className={areaClass}
+          placeholder="หมายเหตุ"
+        />
+
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={mutate.isPending}>
+            ยกเลิก
+          </Button>
+          <Button
+            variant="primary"
+            disabled={!valid || mutate.isPending}
+            onClick={() => mutate.mutate()}
+          >
+            {mutate.isPending ? 'กำลังบันทึก…' : 'ยืนยันส่งมอบ + ปิดเคส'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

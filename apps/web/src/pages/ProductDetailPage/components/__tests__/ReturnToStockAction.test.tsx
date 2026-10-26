@@ -39,7 +39,7 @@ describe('ReturnToStockAction (Phase 5 T3 + fix round 1)', () => {
     await userEvent.click(screen.getByRole('button', { name: BUTTON }));
 
     expect(await screen.findByText(/ราคาจากตอนขายครั้งก่อน/)).toBeTruthy();
-    expect(((await screen.findByLabelText(/ราคาเงินสด/)) as HTMLInputElement).value).toBe('15900');
+    expect(((await screen.findByLabelText(/ราคาเงินสด/)) as HTMLInputElement).value).toBe('15,900');
   });
 
   it('ยืนยันโดยไม่แก้ราคา → ส่งราคาเดิมกลับไป (ผ่านตาคนแล้ว ถือว่ายืนยัน)', async () => {

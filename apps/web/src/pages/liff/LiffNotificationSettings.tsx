@@ -109,7 +109,7 @@ export default function LiffNotificationSettings() {
             <Card key={setting.key}>
               <CardContent className="py-4">
                 <button
-                  className="w-full flex items-center gap-3 text-left"
+                  className="min-h-11 w-full flex items-center gap-3 text-left"
                   onClick={() => toggleSetting(setting.key)}
                   disabled={updateMutation.isPending}
                 >
@@ -118,7 +118,7 @@ export default function LiffNotificationSettings() {
                     <p className="text-sm font-medium">{setting.label}</p>
                     <p className="text-xs text-muted-foreground">{setting.description}</p>
                   </div>
-                  <div className={`relative w-11 h-6 rounded-full transition-colors ${enabled ? 'bg-primary' : 'bg-muted'}`}>
+                  <div className={`relative w-11 h-6 shrink-0 rounded-full transition-colors ${enabled ? 'bg-primary' : 'bg-muted'}`}>
                     <div className={`absolute top-0.5 w-5 h-5 rounded-full bg-background shadow-sm transition-transform ${enabled ? 'translate-x-[22px]' : 'translate-x-0.5'}`} />
                   </div>
                 </button>

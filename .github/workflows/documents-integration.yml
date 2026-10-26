@@ -38,9 +38,28 @@ permissions:
 
 jobs:
   documents:
-    name: PDF documents (API + browser, disposable PostgreSQL)
-    runs-on: ubuntu-latest
-    # Local full run: ~6 min for 7 suites; CI machines are slower and install Chromium/Postgres first.
+    name: ${{ matrix.label }} (disposable PostgreSQL)
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - group: documents
+            label: PDF documents
+            args: --testPathIgnorePatterns=uxui-pages.browser.docs-spec.ts
+          - group: routes-1440
+            label: UX/UI routes 1440px
+            args: uxui-pages.browser.docs-spec
+            width: 1440
+          - group: routes-390
+            label: UX/UI routes 390px
+            args: uxui-pages.browser.docs-spec
+            width: 390
+          - group: routes-320
+            label: UX/UI routes 320px
+            args: uxui-pages.browser.docs-spec
+            width: 320
+    runs-on: ubuntu-24.04
+    # Keep the full domain suite and each route viewport isolated; together they exceed 45 minutes.
     timeout-minutes: 45
     env:
       # Same job-level heap ceiling as e2e-tests.yml — the API build alone needs it.
@@ -50,13 +69,14 @@ jobs:
       PUPPETEER_SKIP_DOWNLOAD: '1'
       DOCS_PG_BIN: /usr/lib/postgresql/16/bin
       DOCS_QA_INSTALL_CHROMIUM: '1'
-      DOCS_QA_RUN_ID: ci-${{ github.run_id }}-${{ github.run_attempt }}
+      DOCS_QA_RUN_ID: ci-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.group }}
+      UXUI_WIDTHS: ${{ matrix.width }}
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '24'
           cache: npm
 
       - name: PostgreSQL 16 + pgvector (initdb binaries for the disposable cluster)
@@ -69,12 +89,13 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # Browser binaries cached per Playwright version (.github/actions/playwright-chromium);
+      # the hoisted root @playwright/test is the one tools/docs-integration.mjs resolves.
       - name: Chromium (Playwright) with system libraries
-        run: npx playwright install --with-deps chromium
-        working-directory: apps/web
+        uses: ./.github/actions/playwright-chromium
 
-      - name: Documents integration (every domain)
-        run: npm run docs:check
+      - name: Documents and route integration
+        run: npm run docs:check -- ${{ matrix.args }}
 
       - name: Job summary
         if: always()
@@ -88,7 +109,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: documents-integration-${{ github.run_id }}-${{ github.run_attempt }}
+          name: documents-integration-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.group }}
           path: .tmp/docs-integration/
           retention-days: 14
           if-no-files-found: warn

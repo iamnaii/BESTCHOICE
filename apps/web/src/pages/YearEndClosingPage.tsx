@@ -1,3 +1,5 @@
+import ScreenTable from '@/components/ui/ScreenTable';
+import { NativeSelect } from '@/components/ui/native-select';
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
@@ -139,7 +141,7 @@ export default function YearEndClosingPage() {
       return data;
     },
     onSuccess: (data) => {
-      toast.success(`ปิดบัญชีปี ${toBE(year)} (พ.ศ.) เรียบร้อย — สร้าง JE 3 รายการ`);
+      toast.success(`ปิดบัญชีปี ${toBE(year)} (พ.ศ.) เรียบร้อย — สร้าง รายการบัญชี 3 รายการ`);
       setLastPosted(data);
       queryClient.invalidateQueries({ queryKey: ['year-end-closing-preview', year] });
       void previewQuery.refetch();
@@ -184,7 +186,7 @@ export default function YearEndClosingPage() {
     <>
       <PageHeader
         title="ปิดบัญชีสิ้นปี"
-        subtitle="ปิดยอดรายได้/ค่าใช้จ่ายเข้า Income Summary (39-9999) แล้วโอนเข้ากำไรสะสม (33-1101)"
+        subtitle="ปิดยอดรายได้/ค่าใช้จ่ายเข้า บัญชีสรุปกำไรขาดทุน (39-9999) แล้วโอนเข้ากำไรสะสม (33-1101)"
         icon={<CalendarCheck className="h-6 w-6" />}
       />
 
@@ -201,7 +203,7 @@ export default function YearEndClosingPage() {
                   ปี (ค.ศ.)
                 </label>
                 <div className="flex gap-2">
-                  <select
+                  <NativeSelect wrapperClassName="max-w-full w-auto"
                     id="year-input"
                     value={year}
                     onChange={(e) => setYear(Number(e.target.value))}
@@ -212,7 +214,7 @@ export default function YearEndClosingPage() {
                         {y}
                       </option>
                     ))}
-                  </select>
+                  </NativeSelect>
                   <Input
                     type="number"
                     min={2020}
@@ -271,7 +273,7 @@ export default function YearEndClosingPage() {
                       )}
                       {preview.closingBatchId && (
                         <p className="text-xs text-muted-foreground leading-snug font-mono">
-                          Batch ID: {preview.closingBatchId}
+                          รหัสชุดรายการ: {preview.closingBatchId}
                         </p>
                       )}
                     </div>
@@ -378,7 +380,7 @@ export default function YearEndClosingPage() {
                   <CardContent className="finance-closing-summary pt-6 flex items-center justify-between gap-3">
                     <div>
                       <p className="text-sm font-medium leading-snug">
-                        Step 4: ปิด 33-1101 เข้า 32-1101 (กำไรสะสม)
+                        ขั้นตอน 4: ปิด 33-1101 เข้า 32-1101 (กำไรสะสม)
                       </p>
                       <SummaryCardHelp label="วิธีคำนวณ" title="ยอดปิดกำไรสะสม">
                         ยอดที่จะปิด = กำไร(ขาดทุน)สุทธิปีนี้ + ยอดค้างเดิมใน 33-1101 (ถ้ามี)
@@ -414,7 +416,7 @@ export default function YearEndClosingPage() {
                   <CardContent className="pt-6 flex flex-wrap items-center justify-between gap-3">
                     <div className="space-y-1">
                       <p className="text-sm font-medium leading-snug">
-                        จะสร้าง Journal Entry รวม {preview.totalSteps} รายการ
+                        จะสร้างรายการบัญชี รวม {preview.totalSteps} รายการ
                       </p>
                       <p className="text-xs text-muted-foreground leading-snug">
                         บันทึกวันที่ 31 ธันวาคม {preview.year} (พ.ศ. {toBE(preview.year)}) 23:59 น. —
@@ -447,8 +449,8 @@ export default function YearEndClosingPage() {
                     <div className="flex-1 space-y-1">
                       <p className="text-sm font-semibold leading-snug">โหมดดูอย่างเดียว</p>
                       <p className="text-sm text-muted-foreground leading-snug">
-                        เฉพาะ OWNER และ ACCOUNTANT เท่านั้นที่บันทึกการปิดบัญชีได้ — บัญชีของคุณดูข้อมูลได้
-                        แต่ไม่สามารถสร้าง Journal Entry ปิดบัญชี
+                        เฉพาะ เจ้าของ และ ฝ่ายบัญชี เท่านั้นที่บันทึกการปิดบัญชีได้ — บัญชีของคุณดูข้อมูลได้
+                        แต่ไม่สามารถสร้างรายการบัญชี ปิดบัญชี
                       </p>
                     </div>
                   </CardContent>
@@ -467,27 +469,27 @@ export default function YearEndClosingPage() {
                   <CardContent>
                     <ul className="space-y-1.5 text-sm">
                       <li>
-                        <span className="text-muted-foreground">Step 1 (รายได้):</span>{' '}
+                        <span className="text-muted-foreground">ขั้นตอน 1 (รายได้):</span>{' '}
                         <span className="font-mono font-medium">{lastPosted.step1.entryNo}</span>
                       </li>
                       <li>
-                        <span className="text-muted-foreground">Step 2 (ค่าใช้จ่าย):</span>{' '}
+                        <span className="text-muted-foreground">ขั้นตอน 2 (ค่าใช้จ่าย):</span>{' '}
                         <span className="font-mono font-medium">{lastPosted.step2.entryNo}</span>
                       </li>
                       {lastPosted.step3 && (
                         <li>
-                          <span className="text-muted-foreground">Step 3 (โอน 33-1101):</span>{' '}
+                          <span className="text-muted-foreground">ขั้นตอน 3 (โอน 33-1101):</span>{' '}
                           <span className="font-mono font-medium">{lastPosted.step3.entryNo}</span>
                         </li>
                       )}
                       {lastPosted.step4 && (
                         <li>
-                          <span className="text-muted-foreground">Step 4 (ปิด 33-1101 เข้า 32-1101):</span>{' '}
+                          <span className="text-muted-foreground">ขั้นตอน 4 (ปิด 33-1101 เข้า 32-1101):</span>{' '}
                           <span className="font-mono font-medium">{lastPosted.step4.entryNo}</span>
                         </li>
                       )}
                       <li className="pt-2 text-xs text-muted-foreground font-mono">
-                        Batch ID: {lastPosted.batchId}
+                        รหัสชุดรายการ: {lastPosted.batchId}
                       </li>
                     </ul>
                   </CardContent>
@@ -503,7 +505,7 @@ export default function YearEndClosingPage() {
         open={postConfirmOpen}
         onOpenChange={setPostConfirmOpen}
         title={`ยืนยันการปิดบัญชีปี ${year} (พ.ศ. ${toBE(year)})`}
-        description={`การปิดบัญชีจะสร้าง JE ${preview?.totalSteps ?? 3} รายการ และไม่สามารถแก้ไขได้ — เฉพาะ OWNER เท่านั้นที่กลับรายการได้`}
+        description={`การปิดบัญชีจะสร้าง รายการบัญชี ${preview?.totalSteps ?? 3} รายการ และไม่สามารถแก้ไขได้ — เฉพาะ เจ้าของ เท่านั้นที่กลับรายการได้`}
         confirmLabel={`ปิดบัญชีปี ${year}`}
         cancelLabel="ยกเลิก"
         variant="destructive"
@@ -517,7 +519,7 @@ export default function YearEndClosingPage() {
           <DialogHeader>
             <DialogTitle>กลับรายการปิดบัญชีปี {year} (พ.ศ. {toBE(year)})</DialogTitle>
             <DialogDescription className="leading-snug">
-              จะสร้าง JE กลับรายการตรงข้ามทั้ง 3 รายการ — รายการเดิมจะคงอยู่เพื่อ audit trail
+              จะสร้าง รายการบัญชี กลับรายการตรงข้ามทั้ง 3 รายการ — รายการเดิมจะคงอยู่เพื่อ ประวัติการดำเนินการ
             </DialogDescription>
           </DialogHeader>
           <form
@@ -584,7 +586,7 @@ function AccountTable({
           <p className="text-sm text-muted-foreground leading-snug">ไม่มีรายการ</p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <ScreenTable className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border text-left text-xs uppercase tracking-wider text-muted-foreground">
                   <th className="py-2 font-medium">รหัส</th>
@@ -606,7 +608,7 @@ function AccountTable({
                   <td className="py-2 text-right tabular-nums">{fmtTHB(total)}</td>
                 </tr>
               </tbody>
-            </table>
+            </ScreenTable>
           </div>
         )}
       </CardContent>

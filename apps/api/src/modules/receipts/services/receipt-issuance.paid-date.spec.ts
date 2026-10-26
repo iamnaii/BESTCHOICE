@@ -118,6 +118,8 @@ describe('ReceiptIssuanceService — paidDate stamping (QA #1347 follow-up)', ()
       userId: 'u1', action: 'RECEIPT_DOCUMENT_BALANCE_V1', entity: 'receipt', entityId: 'r1',
       newValue: { version: 1, receiptId: 'r1', contractId: 'c1', receiptType: 'INSTALLMENT', contractTotalMonths: 10,
         documentRemainingBalance: null, documentRemainingMonths: null,
+        // PR4ข (T4): snapshot เก็บเงินรับล่วงหน้าค้าง ณ วันออกใบด้วย (unknown ⇒ null)
+        documentUnappliedFunds: null,
         documentInstallmentAmountDue: null, documentInstallmentAmountPaid: null },
     } });
   });

@@ -321,11 +321,11 @@ export default function WorkloadGrid() {
                         <span className="tabular-nums">
                           {preview.excludedSnooze}
                         </span>{' '}
-                        snooze ·{' '}
+                        พักการแจ้งเตือน ·{' '}
                         <span className="tabular-nums">
                           {preview.excludedLegal}
                         </span>{' '}
-                        LEGAL ·{' '}
+                        ดำเนินคดี ·{' '}
                         <span className="tabular-nums">
                           {preview.excludedRecentlyAssigned}
                         </span>{' '}

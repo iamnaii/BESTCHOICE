@@ -1,3 +1,4 @@
+import { NativeSelect } from '@/components/ui/native-select';
 import { useEffect, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import type { AvailableTradeInCredit } from '@installment/shared';
@@ -22,13 +23,13 @@ export default function TradeInCreditPicker({ customerId, branchId, productId, v
   if (!customerId || !branchId) return null;
   return <div className="rounded-xl border p-4 space-y-2">
     <Label htmlFor="trade-in-credit">เครดิตเครื่องเทิร์นของลูกค้า</Label>
-    <select id="trade-in-credit" className="w-full h-10 rounded-lg border bg-background px-3 text-sm"
+    <NativeSelect wrapperClassName="max-w-full w-full" id="trade-in-credit" className="h-10 rounded-lg border bg-background px-3 text-sm"
       value={value} disabled={disabled || query.isPending}
       onChange={(e) => onChange(e.target.value)}>
       <option value="">ไม่ใช้เครดิตเทิร์น</option>
       {value && !selected && <option value={value}>กำลังตรวจเครดิตที่เลือก</option>}
       {rows.map((row) => <option key={row.id} value={row.id}>{row.voucherNumber ?? row.id.slice(0, 8)} · {row.deviceLabel} · {Number(row.totalAmount).toLocaleString()} บาท</option>)}
-    </select>
+    </NativeSelect>
     {query.isPending && <p role="status" className="text-xs">กำลังตรวจเครดิตคงเหลือ…</p>}
     {query.isError && <div role="alert" className="text-xs text-destructive">ตรวจเครดิตไม่ได้ <Button size="sm" variant="outline" onClick={() => query.refetch()}>ลองใหม่</Button></div>}
     {value && !selected && !query.isPending && <p role="alert" className="text-xs text-destructive">เครดิตที่เลือกยังไม่พร้อมใช้ กรุณาตรวจใหม่หรือเลือกไม่ใช้เครดิต</p>}

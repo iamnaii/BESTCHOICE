@@ -66,6 +66,7 @@ export function AccountSearchDropdown({
   return (
     <div className="relative" ref={ref}>
       <button
+        data-slot="select-trigger"
         type="button"
         onClick={() => !disabled && setOpen(!open)}
         disabled={disabled}
@@ -88,7 +89,7 @@ export function AccountSearchDropdown({
           <div className="p-2 border-b">
             <div className="relative">
               <Search size={14} className="absolute left-2 top-2.5 text-muted-foreground" />
-              <input
+              <input aria-label="ค้นหารหัส หรือ ชื่อบัญชี"
                 autoFocus
                 type="text"
                 value={search}

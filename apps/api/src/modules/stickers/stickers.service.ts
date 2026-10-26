@@ -28,6 +28,8 @@ export interface StickerProductData {
   /** ISO date YYYY-MM-DD เฉพาะประกันศูนย์ที่ยังไม่หมด — หมดแล้ว/ไม่ระบุ = null */
   warrantyExpireDate: string | null;
   imei: string | null;
+  /** รหัสสินค้าเดิม (Tooltify) — QR บนดวงของอุปกรณ์ที่ไม่มี IMEI ใช้ค่านี้ (ไม่มี = product id) */
+  code: string | null;
   /** ISO datetime ของวันที่รับเข้าสต็อกล่าสุด */
   stockInDate: string | null;
   cashPrice: string | null;
@@ -54,6 +56,8 @@ const stickerProductArgs = Prisma.validator<Prisma.ProductDefaultArgs>()({
     warrantyExpireDate: true,
     warrantyExpired: true,
     imeiSerial: true,
+    // main 636313e3c — QR ของอุปกรณ์ที่ไม่มี IMEI ใช้รหัสสินค้าเดิม
+    legacyProductCode: true,
     stockInDate: true,
     cashPrice: true,
     installmentPrice: true,
@@ -181,6 +185,7 @@ export class StickersService {
         product.warrantyExpired,
       ),
       imei: product.imeiSerial,
+      code: product.legacyProductCode ?? null,
       stockInDate: product.stockInDate ? product.stockInDate.toISOString() : null,
       cashPrice: product.cashPrice != null ? product.cashPrice.toString() : null,
       installmentPrice:

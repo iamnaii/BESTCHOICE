@@ -25,19 +25,19 @@ export default function NoteBubble({
   return (
     <div className="px-4 py-1" data-testid="note-bubble">
       <div className={cn('rounded-xl border bg-warning/10 px-3 py-2 text-sm dark:bg-amber-400/10', isPinned ? 'border-warning dark:border-amber-400/70' : 'border-warning/40 dark:border-amber-400/30')}>
-        <div className="mb-1 flex items-center gap-1.5 text-[11px] text-muted-foreground">
+        <div className="mb-1 flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
           <StickyNote className="size-3 text-warning-strong" />
           <span className="font-semibold text-foreground/80">โน้ตภายใน</span>
           <span>· {note.staff?.name ?? 'พนักงาน'} · {time}</span>
           {isPinned && <span className="ml-1 rounded-full bg-warning/20 px-1.5 py-px text-[10px] font-semibold text-foreground/80">เป็นโน้ตของห้อง</span>}
           <span className="ml-auto flex items-center gap-0.5">
             {isPinned ? (
-              <button type="button" onClick={() => onUnpin?.(note.id)} title="ปลดหมุด" aria-label="ปลดหมุดโน้ต" className="rounded p-1 hover:bg-warning/20"><PinOff className="size-3.5" /></button>
+              <button data-ui-control="button" data-ui-icon="true" type="button" onClick={() => onUnpin?.(note.id)} title="ปลดหมุด" aria-label="ปลดหมุดโน้ต" className="rounded p-1 hover:bg-warning/20"><PinOff className="size-3.5" /></button>
             ) : (
-              <button type="button" onClick={() => onPin?.(note.id)} title="ปักเป็นโน้ตของห้อง" aria-label="ปักหมุดโน้ต" className="rounded p-1 hover:bg-warning/20"><Pin className="size-3.5" /></button>
+              <button data-ui-control="button" data-ui-icon="true" type="button" onClick={() => onPin?.(note.id)} title="ปักเป็นโน้ตของห้อง" aria-label="ปักหมุดโน้ต" className="rounded p-1 hover:bg-warning/20"><Pin className="size-3.5" /></button>
             )}
             {canDelete && (
-              <button type="button" onClick={() => onDelete?.(note.id)} title="ลบโน้ต" aria-label="ลบโน้ต" className="rounded p-1 hover:bg-destructive/10 hover:text-destructive"><Trash2 className="size-3.5" /></button>
+              <button data-ui-control="button" data-ui-icon="true" type="button" onClick={() => onDelete?.(note.id)} title="ลบโน้ต" aria-label="ลบโน้ต" className="rounded p-1 hover:bg-destructive/10 hover:text-destructive"><Trash2 className="size-3.5" /></button>
             )}
           </span>
         </div>

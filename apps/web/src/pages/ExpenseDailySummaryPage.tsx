@@ -1,4 +1,6 @@
+import { NativeSelect } from '@/components/ui/native-select';
 import DocumentHeader from '@/components/DocumentHeader';
+import QueryBoundary from '@/components/QueryBoundary';
 import { useCompanyDisplayName } from '@/hooks/useCompanyInfo';
 import { printDocument } from '@/lib/print-document';
 import { useState } from 'react';
@@ -9,7 +11,7 @@ import { ArrowLeft, Printer, FileSpreadsheet } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import ThaiDateInput from '@/components/ui/ThaiDateInput';
 import { formatNumberDecimal } from '@/utils/formatters';
-import { computeDefaultTimeRange, formatThaiDateLong } from '@/lib/date';
+import { computeDefaultTimeRange, formatThaiDateLong, toBangkokDateString } from '@/lib/date';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUiFlags } from '@/hooks/useUiFlags';
 
@@ -86,7 +88,7 @@ export default function ExpenseDailySummaryPage() {
     if (urlDate) return urlDate;
     const { endDate } = computeDefaultTimeRange(summaryDefaultRange);
     // endDate is always non-empty for the summary preset whitelist (no 'all').
-    return endDate || new Date().toISOString().slice(0, 10);
+    return endDate || toBangkokDateString();
   });
   const [branchId, setBranchId] = useState<string>(
     searchParams.get('branchId') ?? user?.branchId ?? '',
@@ -97,7 +99,7 @@ export default function ExpenseDailySummaryPage() {
     queryFn: async () => (await api.get('/branches')).data,
   });
 
-  const { data: summary, isLoading } = useQuery<Summary>({
+  const { data: summary, isLoading, isError, error, refetch } = useQuery<Summary>({
     queryKey: ['daily-summary', date, branchId],
     queryFn: async () =>
       (await api.get(`/expense-documents/daily-summary?date=${date}&branchId=${branchId}`)).data,
@@ -157,36 +159,38 @@ export default function ExpenseDailySummaryPage() {
   return (
     <div className="p-4 md:p-6 max-w-5xl mx-auto print:p-0 print:max-w-none">
       {/* Header — hidden in print */}
-      <div className="print:hidden flex items-center justify-between mb-5 flex-wrap gap-3">
-        <div className="flex items-center gap-3">
+      <div className="print:hidden flex min-w-0 max-w-full items-center justify-between mb-5 flex-wrap gap-3">
+        <div className="flex min-w-0 max-w-full items-center gap-3">
           <button
             type="button"
             onClick={() => navigate('/expenses')}
-            className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
+            className="flex min-h-11 shrink-0 items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
           >
             <ArrowLeft className="size-4" /> กลับ
           </button>
           <h1 className="text-base font-semibold">ใบสรุปรายจ่ายประจำวัน</h1>
         </div>
-        <div className="flex items-center gap-2 flex-wrap">
-          <ThaiDateInput value={date} onChange={(e) => setDate(e.target.value)} />
-          {branches && branches.length > 1 && (
-            <select
+        <div className="flex min-w-0 max-w-full items-center gap-2 flex-wrap">
+          <ThaiDateInput aria-label="วันที่" value={date} onChange={(e) => setDate(e.target.value)} />
+          {branches && branches.length > 0 && (
+            <NativeSelect wrapperClassName="w-auto min-w-0 max-w-full"
+              aria-label="สาขาของใบสรุปรายจ่าย"
               value={branchId}
               onChange={(e) => setBranchId(e.target.value)}
-              className="px-3 py-2 border border-input rounded-lg text-sm bg-background"
+              className="min-h-11 px-3 py-2 border border-input rounded-lg text-sm bg-background"
             >
+              <option value="" disabled>เลือกสาขา</option>
               {branches.map((b) => (
                 <option key={b.id} value={b.id}>
                   {b.name}
                 </option>
               ))}
-            </select>
+            </NativeSelect>
           )}
-          <Button variant="outline" size="sm" onClick={handlePrint} disabled={!summary}>
+          <Button variant="outline" size="sm" onClick={handlePrint} disabled={!summary || isError}>
             <Printer className="size-4" /> พิมพ์
           </Button>
-          <Button variant="outline" size="sm" onClick={handleExportExcel} disabled={!summary}>
+          <Button variant="outline" size="sm" onClick={handleExportExcel} disabled={!summary || isError}>
             <FileSpreadsheet className="size-4" /> Excel
           </Button>
         </div>
@@ -195,12 +199,14 @@ export default function ExpenseDailySummaryPage() {
       {!branchId ? (
         <div className="text-center py-12 text-muted-foreground">กรุณาเลือกสาขา</div>
       ) : isLoading ? (
-        <div className="text-center py-12 text-muted-foreground">กำลังโหลด...</div>
+        <div role="status" aria-label="กำลังโหลด" className="text-center py-12 text-muted-foreground">กำลังโหลด...</div>
+      ) : isError ? (
+        <QueryBoundary isLoading={false} isError error={error} onRetry={() => void refetch()}>{null}</QueryBoundary>
       ) : !summary ? (
         <div className="text-center py-12 text-muted-foreground">ไม่พบข้อมูลในวันที่เลือก</div>
       ) : (
         <div className="bc-document bc-daily-sheet bg-white p-6 print:p-0">
-          <DocumentHeader company={companyName} title="ใบสรุปรายจ่ายประจำวัน" subtitle="DAILY EXPENSE SUMMARY"
+          <DocumentHeader company={companyName} title="ใบสรุปรายจ่ายประจำวัน" subtitle="สรุปรายจ่ายรายวัน"
             date={formatThaiDateLong(date)} />
           <div className="bc-doc-parties"><div>สาขา {summary.branchName ?? '-'}</div><div>ผู้จัดทำ {user?.name ?? '-'}</div></div>
           {/* Documents table */}

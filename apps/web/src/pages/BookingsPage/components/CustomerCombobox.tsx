@@ -17,6 +17,7 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { useDebounce } from '@/hooks/useDebounce';
 import api from '@/lib/api';
+import { cn } from '@/lib/utils';
 import type { CustomerOption } from '../types';
 
 /**
@@ -28,11 +29,13 @@ export default function CustomerCombobox({
   onChange,
   disabled,
   canCreate,
+  className,
 }: {
   value: CustomerOption | null;
   onChange: (customer: CustomerOption | null) => void;
   disabled?: boolean;
   canCreate: boolean;
+  className?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
@@ -58,7 +61,7 @@ export default function CustomerCombobox({
     c.chatPlaceholder ? 'จากแชท · ยังไม่มีเบอร์' : c.phone ? c.phone : '';
 
   return (
-    <div className="flex items-center gap-1">
+    <div className="flex min-w-0 items-center gap-1">
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>
           <Button
@@ -68,7 +71,7 @@ export default function CustomerCombobox({
             aria-expanded={open}
             aria-label="ลูกค้า"
             disabled={disabled}
-            className="h-10 w-full justify-between font-normal"
+            className={cn('h-10 min-w-0 w-full justify-between font-normal', className)}
           >
             {value ? (
               <span className="truncate">
@@ -78,7 +81,7 @@ export default function CustomerCombobox({
                 )}
               </span>
             ) : (
-              <span className="text-muted-foreground">ค้นหาชื่อหรือเบอร์โทรลูกค้า…</span>
+              <span className="truncate text-muted-foreground">ค้นหาชื่อหรือเบอร์โทรลูกค้า…</span>
             )}
             <ChevronsUpDown aria-hidden="true" className="size-4 shrink-0 opacity-50" />
           </Button>

@@ -116,13 +116,13 @@ function IntegrationCard({
         'hover:shadow-md hover:border-primary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
       )}
     >
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex items-center gap-3">
+      <div className="flex min-w-0 flex-wrap items-start gap-3">
+        <div className="flex min-w-0 flex-[1_1_10rem] items-center gap-3">
           <div className="flex items-center justify-center size-10 rounded-lg bg-muted shrink-0">
             <Icon className="size-5 text-muted-foreground" />
           </div>
           <div className="min-w-0">
-            <p className="text-sm font-semibold text-foreground truncate">{integration.name}</p>
+            <p className="text-sm font-semibold text-foreground break-words">{integration.name}</p>
             <p className="text-xs text-muted-foreground line-clamp-2 mt-0.5">
               {integration.description}
             </p>
@@ -317,7 +317,7 @@ function ConfigDrawer({
         `อัปเดตรูป ${data?.updatedPicture ?? 0} ห้อง · เหลือที่ยังไม่มีรูป ${data?.remaining ?? 0}`,
       );
     },
-    onError: () => toast.error('Backfill รูปไม่สำเร็จ'),
+    onError: () => toast.error("เติมข้อมูลย้อนหลัง รูปไม่สำเร็จ"),
   });
 
   // Facebook only — ตั้งปุ่ม Get Started + ข้อความทักทาย + เมนูของเพจ (idempotent)
@@ -480,9 +480,8 @@ function ConfigDrawer({
                   <div className="mt-3 rounded-lg border border-border p-3">
                     <div className="text-sm font-medium">ปุ่ม Get Started + เมนู Messenger</div>
                     <p className="mt-0.5 text-xs text-muted-foreground leading-snug">
-                      ตั้งปุ่มเริ่มต้นใช้งาน + ข้อความทักทาย + เมนูของเพจ — ต้องกด 1 ครั้งหลังตั้งค่า
-                      Facebook ไม่งั้นลิงก์ Messenger จากหน้าสินค้าจะไม่บอกว่าลูกค้ามาจากเครื่องไหน
-                      (กดซ้ำได้ ไม่มีผลข้างเคียง)
+                      ตั้งค่าครั้งแรกเพื่อให้แชทจากหน้าสินค้าระบุเครื่องที่ลูกค้าสนใจ
+                      พร้อมสร้างข้อความทักทายและเมนูเพจ กดซ้ำได้
                     </p>
                     <Button
                       type="button"
@@ -505,8 +504,8 @@ function ConfigDrawer({
                   <div className="mt-3 rounded-lg border border-border p-3">
                     <div className="text-sm font-medium">รูปโปรไฟล์ลูกค้า (Facebook)</div>
                     <p className="mt-0.5 text-xs text-muted-foreground leading-snug">
-                      ดึงชื่อ + รูปโปรไฟล์ของห้องแชทเก่าที่ยังไม่มีรูป — กดซ้ำได้จนกว่า “เหลือ” จะเป็น 0
-                      (บันทึก Page Access Token ที่ใช้ได้ก่อน)
+                      เติมชื่อและรูปให้แชทเก่า หลังบันทึก Page Access Token แล้ว
+                      กดซ้ำได้จนรายการคงเหลือเป็น 0
                     </p>
                     <Button
                       type="button"

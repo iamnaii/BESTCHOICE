@@ -1,4 +1,4 @@
-import { ReactNode } from 'react';
+import { ComponentProps, ReactNode } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -23,6 +23,7 @@ interface ConfirmDialogProps {
   confirmDisabled?: boolean;
   closeOnConfirm?: boolean;
   onConfirm: () => void;
+  onCloseAutoFocus?: ComponentProps<typeof DialogContent>['onCloseAutoFocus'];
   children?: ReactNode;
   contentClassName?: string;
 }
@@ -39,12 +40,13 @@ export function ConfirmDialog({
   confirmDisabled = false,
   closeOnConfirm = true,
   onConfirm,
+  onCloseAutoFocus,
   children,
   contentClassName,
 }: ConfirmDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className={cn('sm:max-w-md', contentClassName)}>
+      <DialogContent className={cn('sm:max-w-md', contentClassName)} onCloseAutoFocus={onCloseAutoFocus}>
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription>{description}</DialogDescription>

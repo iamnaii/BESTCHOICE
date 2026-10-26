@@ -56,6 +56,24 @@ beforeEach(() => {
 const chart = () => within(screen.getByRole('tabpanel', { name: 'รายการบัญชี' }));
 
 describe('ChartOfAccountsPage — แท็บ FINANCE | SHOP', () => {
+  it('closes the account dialog with Escape, restores focus, and discards an unsaved edit', async () => {
+    const user = userEvent.setup();
+    wrap();
+    const row = await screen.findByRole('row', { name: /11-1101 เงินสด/ });
+    const edit = within(row).getByRole('button', { name: 'แก้ไข' });
+    await user.click(edit);
+    const dialog = screen.getByRole('dialog', { name: 'แก้ไขบัญชี' });
+    expect(within(dialog).getByLabelText(/รหัสบัญชี/)).toBeDisabled();
+    await user.clear(within(dialog).getByLabelText(/ชื่อบัญชี/));
+    await user.type(within(dialog).getByLabelText(/ชื่อบัญชี/), 'ยังไม่บันทึก');
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(edit).toHaveFocus();
+    expect(apiMock.patch).not.toHaveBeenCalled();
+    await user.click(edit);
+    expect(within(screen.getByRole('dialog')).getByLabelText(/ชื่อบัญชี/)).toHaveValue(ACCOUNTS[0].name);
+  });
+
   it('เปิดมาที่ FINANCE: เห็นเฉพาะรหัสตัวเลข ไม่เห็นรหัส S', async () => {
     wrap();
     await waitFor(() => expect(chart().getByText('11-1101')).toBeInTheDocument());
@@ -112,7 +130,7 @@ describe('PEAK mapping inside the chart of accounts', () => {
     expect(screen.queryByRole('button', { name: /FINANCE \(การเงิน\)/ })).not.toBeInTheDocument();
     await user.click(peak.getByRole('button', { name: /บันทึก/ }));
     await waitFor(() => expect(apiMock.put).toHaveBeenCalledWith('/chart-of-accounts/peak-mapping', {
-      mappings: [{ id: 'a1', peakCode: '1110-01' }],
+      mappings: [{ id: 'a1', peakCode: '1110-01', peakSubCode: null, peakSubCodeSource: 'none' }],
     }));
   });
 

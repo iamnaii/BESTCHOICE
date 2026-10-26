@@ -238,7 +238,7 @@ export function StickerPickerTable({
           }
           return (
             <div className="inline-flex items-center overflow-hidden rounded-md border border-primary/40 bg-primary/10 text-primary">
-              <button
+              <button data-ui-control="button" data-ui-icon="true"
                 type="button"
                 className="grid size-7 place-items-center hover:bg-primary/15"
                 aria-label={qty <= 1 ? 'ลบออกจากคิว' : 'ลดจำนวนดวง'}
@@ -249,7 +249,7 @@ export function StickerPickerTable({
               <span className="min-w-5 border-x border-primary/25 text-center font-mono text-[11px] font-bold leading-7">
                 {qty}
               </span>
-              <button
+              <button data-ui-control="button" data-ui-icon="true"
                 type="button"
                 className="grid size-7 place-items-center hover:bg-primary/15"
                 aria-label="เพิ่มจำนวนดวง"

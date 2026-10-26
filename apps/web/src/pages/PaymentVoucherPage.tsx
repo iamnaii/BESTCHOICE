@@ -164,13 +164,13 @@ export default function PaymentVoucherPage() {
             <ArrowLeft size={14} />
             กลับ
           </button>
-          <button
+          <button data-ui-control="button"
             type="button"
             onClick={printDocument}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold rounded-md bg-primary text-primary-foreground hover:bg-primary/90"
           >
             <Printer size={14} />
-            พิมพ์ / Save PDF
+            พิมพ์ / บันทึก PDF
           </button>
         </div>
       </div>
@@ -181,7 +181,11 @@ export default function PaymentVoucherPage() {
         error={docQuery.error}
         onRetry={docQuery.refetch}
       >
-        {docQuery.data && <VoucherSheet doc={docQuery.data} />}
+        {docQuery.data && (
+          <div className="max-w-full overflow-x-auto print:overflow-visible" role="region" aria-label="ตัวอย่างเอกสาร" tabIndex={0}>
+            <VoucherSheet doc={docQuery.data} />
+          </div>
+        )}
       </QueryBoundary>
 
       {/* Print CSS lives co-located with the page */}
@@ -621,11 +625,11 @@ function Sheet({
   const partialPaid = parseFloat(net || '0');
   const partialRemaining = Math.max(0, partialOriginal - partialPaid);
   const isCustomerCopy = copyVariant === 'customer';
-  // D1.2.2.7 — verification QR linking to /verify/<doc.number>. Default
+  // Link to the authenticated source document, not the legacy contract/receipt resolver. Default
   // on; OWNER can disable via SystemConfig `voucher_show_qr_code = false`.
   const verifyUrl = typeof window !== 'undefined'
-    ? `${window.location.origin}/verify/${doc.number}`
-    : `/verify/${doc.number}`;
+    ? `${window.location.origin}/expenses/verify/${encodeURIComponent(doc.id)}`
+    : `/expenses/verify/${encodeURIComponent(doc.id)}`;
   return (
     <article
       className="voucher-sheet bc-document standard-voucher bg-white border border-border rounded-md p-8 shadow-sm print:border-0 print:p-0 print:shadow-none"

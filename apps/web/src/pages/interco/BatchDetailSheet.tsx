@@ -1,3 +1,4 @@
+import ScreenTable from '@/components/ui/ScreenTable';
 import { useState, type ReactNode } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -165,8 +166,8 @@ export function BatchDetailSheet({ batchId, onClose, onChanged }: BatchDetailShe
                 />
                 <InfoField label="ผู้สร้างรอบ" value={batch.maker.name} />
                 <InfoField label="ผู้อนุมัติ" value={batch.approver?.name ?? '-'} />
-                <InfoField label="JE ฝั่ง FINANCE" value={batch.financeEntryNumber ?? '-'} mono />
-                <InfoField label="JE ฝั่ง SHOP" value={batch.shopEntryNumber ?? '-'} mono />
+                <InfoField label="รายการบัญชี ฝั่ง FINANCE" value={batch.financeEntryNumber ?? '-'} mono />
+                <InfoField label="รายการบัญชี ฝั่ง SHOP" value={batch.shopEntryNumber ?? '-'} mono />
                 {batch.note && <InfoField label="หมายเหตุ" value={batch.note} full />}
                 {batch.status === 'REVERSED' && batch.reverseReason && (
                   <InfoField label="เหตุผลย้อนกลับ" value={batch.reverseReason} full />
@@ -178,7 +179,7 @@ export function BatchDetailSheet({ batchId, onClose, onChanged }: BatchDetailShe
                   รายการสัญญา ({batch.items.length})
                 </h3>
                 <div className="overflow-x-auto rounded-lg border border-border">
-                  <table className="w-full text-sm leading-snug">
+                  <ScreenTable className="w-full text-sm leading-snug">
                     <thead className="bg-muted/50">
                       <tr>
                         <th className="text-left p-2.5 font-medium text-muted-foreground">สัญญา</th>
@@ -239,7 +240,7 @@ export function BatchDetailSheet({ batchId, onClose, onChanged }: BatchDetailShe
                                 )}
                                 {item.legacyNoShop && (
                                   <Badge variant="warning" appearance="light" size="sm">
-                                    LEGACY
+                                    ข้อมูลเดิม
                                   </Badge>
                                 )}
                               </div>
@@ -272,7 +273,7 @@ export function BatchDetailSheet({ batchId, onClose, onChanged }: BatchDetailShe
                         );
                       })}
                     </tbody>
-                  </table>
+                  </ScreenTable>
                 </div>
               </div>
 

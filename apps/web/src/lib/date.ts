@@ -247,3 +247,21 @@ export function toBangkokExpiryInstant(dateOnly: string): string {
   }
   return new Date(start.getTime() + 86_400_000).toISOString();
 }
+
+/** Reporting presets end today, unlike the full-month list-page default. */
+export function getReportDateRange(
+  preset: 'this_month' | 'last_three_months' | 'this_year',
+  now: Date = new Date(),
+): { startDate: string; endDate: string } {
+  const endDate = toBangkokDateString(now);
+  if (preset === 'this_month') return { startDate: `${endDate.slice(0, 7)}-01`, endDate };
+  if (preset === 'this_year') return { startDate: `${endDate.slice(0, 4)}-01-01`, endDate };
+  const [year, month, day] = endDate.split('-').map(Number);
+  // Clamp the day when the destination month is shorter (31 May → 28/29 February).
+  const target = new Date(Date.UTC(year, month - 4, 1));
+  const lastDay = new Date(Date.UTC(target.getUTCFullYear(), target.getUTCMonth() + 1, 0)).getUTCDate();
+  return {
+    startDate: `${target.getUTCFullYear()}-${pad(target.getUTCMonth() + 1)}-${pad(Math.min(day, lastDay))}`,
+    endDate,
+  };
+}

@@ -111,10 +111,10 @@ export function PdpaTab() {
       queryClient.invalidateQueries({ queryKey: ['pdpa', 'backfill-runs'] });
       if (resp.status === 'COMPLETED') {
         toast.success(
-          `Backfill สำเร็จ — เข้ารหัส ${resp.processedRecords} แถว / ข้าม ${resp.skippedRecords} / ${(resp.durationMs / 1000).toFixed(1)} วิ`,
+          `เติมข้อมูลย้อนหลัง สำเร็จ — เข้ารหัส ${resp.processedRecords} แถว / ข้าม ${resp.skippedRecords} / ${(resp.durationMs / 1000).toFixed(1)} วิ`,
         );
       } else {
-        toast.error(`Backfill ล้มเหลว: ${resp.errorMessage || 'ไม่ทราบสาเหตุ'}`);
+        toast.error(`เติมข้อมูลย้อนหลัง ล้มเหลว: ${resp.errorMessage || 'ไม่ทราบสาเหตุ'}`);
       }
     },
     onError: (err) => toast.error(getErrorMessage(err)),
@@ -144,8 +144,8 @@ export function PdpaTab() {
       <ConfirmDialog
         open={showStrictConfirm}
         onOpenChange={setShowStrictConfirm}
-        title="เปิด PDPA strict mode?"
-        description="เมื่อเปิดแล้ว ระบบจะปฏิเสธการอ่านข้อมูลลูกค้าที่ยังไม่ได้เข้ารหัส กรุณายืนยันว่ารัน Backfill เรียบร้อย และคอลัมน์ทุกตัวอยู่ในสถานะ encrypted แล้ว"
+        title="เปิด PDPA โหมดเข้มงวด?"
+        description="เมื่อเปิดแล้ว ระบบจะปฏิเสธการอ่านข้อมูลลูกค้าที่ยังไม่ได้เข้ารหัส กรุณายืนยันว่ารัน เติมข้อมูลย้อนหลัง เรียบร้อย และคอลัมน์ทุกตัวอยู่ในสถานะ encrypted แล้ว"
         confirmLabel="ยืนยันเปิด"
         cancelLabel="ยกเลิก"
         loading={toggleStrictMutation.isPending}
@@ -154,7 +154,7 @@ export function PdpaTab() {
       <ConfirmDialog
         open={showBackfillConfirm}
         onOpenChange={setShowBackfillConfirm}
-        title="เริ่ม Backfill เลย?"
+        title="เริ่ม เติมข้อมูลย้อนหลัง เลย?"
         description={`จะเข้ารหัสข้อมูลลูกค้าที่ยังไม่ได้เข้ารหัส ${status.plaintextCount.toLocaleString('th-TH')} คน — ใช้เวลาประมาณ ${Math.max(1, Math.ceil(status.plaintextCount / 500))} นาที (batch 100 แถว)`}
         confirmLabel="เริ่ม"
         cancelLabel="ยกเลิก"
@@ -171,21 +171,18 @@ export function PdpaTab() {
             ) : (
               <ShieldAlert className="size-5 text-amber-600 dark:text-amber-400" />
             )}
-            PDPA Strict Mode (PII column-level encryption)
+            อ่านเฉพาะข้อมูลที่เข้ารหัส
           </CardTitle>
           <CardDescription className="leading-snug">
-            เมื่อเปิด strict mode ระบบจะอ่านข้อมูลส่วนบุคคล (เลขบัตรประชาชน,
-            เบอร์โทร, อีเมล, ที่อยู่) จากคอลัมน์ encrypted เท่านั้น —
-            ป้องกันการรั่วไหลของข้อมูลแม้ DB ถูกขโมย (PDPA พ.ร.บ. 2562)
+            ใช้ข้อมูลเลขบัตรประชาชน เบอร์โทร อีเมล และที่อยู่จากส่วนที่เข้ารหัสแล้วเท่านั้น
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex items-start justify-between gap-4 rounded-lg border border-border/60 bg-muted p-4">
-            <div className="flex-1">
-              <p className="text-sm font-medium text-foreground leading-snug">เปิดใช้งาน Strict Mode</p>
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-medium text-foreground leading-snug">เปิดใช้งาน โหมดเข้มงวด</p>
               <p className="text-xs text-muted-foreground leading-snug mt-1">
-                ก่อนเปิด — ต้องรัน Backfill ให้คอลัมน์ encrypted ครบทุกแถวก่อน
-                ไม่อย่างนั้นทุก API ที่อ่าน Customer จะ 400
+                ต้องเข้ารหัสข้อมูลเดิมให้ครบก่อนเปิด มิฉะนั้นจะอ่านข้อมูลลูกค้าที่ยังไม่เข้ารหัสไม่ได้
               </p>
             </div>
             <Switch
@@ -198,7 +195,7 @@ export function PdpaTab() {
                   toggleStrictMutation.mutate(false);
                 }
               }}
-              aria-label="เปิดปิด PDPA strict mode"
+              aria-label="เปิดปิด PDPA โหมดเข้มงวด"
             />
           </div>
 
@@ -206,7 +203,7 @@ export function PdpaTab() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div className="rounded-lg bg-muted p-3 flex items-center gap-3">
               <KeyRound className="size-5 text-muted-foreground" />
-              <div className="flex-1">
+              <div className="min-w-0 flex-1">
                 <p className="text-xs text-muted-foreground leading-snug">PII_ENCRYPTION_KEY</p>
                 <p className="text-sm font-medium text-foreground leading-snug">
                   {status.encryptionKeyConfigured ? (
@@ -219,7 +216,7 @@ export function PdpaTab() {
             </div>
             <div className="rounded-lg bg-muted p-3 flex items-center gap-3">
               <KeyRound className="size-5 text-muted-foreground" />
-              <div className="flex-1">
+              <div className="min-w-0 flex-1">
                 <p className="text-xs text-muted-foreground leading-snug">PII_HASH_SALT</p>
                 <p className="text-sm font-medium text-foreground leading-snug">
                   {status.hashSaltConfigured ? (
@@ -235,11 +232,11 @@ export function PdpaTab() {
           {!envReady && (
             <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-900 p-3 text-sm">
               <ShieldAlert className="size-4 mt-0.5 shrink-0 text-amber-600 dark:text-amber-400" />
-              <p className="text-amber-900 dark:text-amber-200 leading-snug">
-                ตั้ง <code className="font-mono">PII_ENCRYPTION_KEY</code> (64
-                hex chars) และ <code className="font-mono">PII_HASH_SALT</code> (≥32
+              <p className="min-w-0 text-amber-900 dark:text-amber-200 leading-snug">
+                ตั้ง <code className="break-all font-mono">PII_ENCRYPTION_KEY</code> (64
+                hex chars) และ <code className="break-all font-mono">PII_HASH_SALT</code> (≥32
                 chars) ใน env vars ก่อน — สร้างด้วย{' '}
-                <code className="font-mono">openssl rand -hex 32</code>
+                <code className="break-all font-mono">openssl rand -hex 32</code>
               </p>
             </div>
           )}
@@ -255,17 +252,16 @@ export function PdpaTab() {
             ) : (
               <Unlock className="size-5 text-amber-600 dark:text-amber-400" />
             )}
-            Backfill PII Encryption
+            เข้ารหัสข้อมูลลูกค้าเดิม
           </CardTitle>
           <CardDescription className="leading-snug">
-            เข้ารหัสคอลัมน์ PII (nationalId, phone, email, address) สำหรับ
-            ลูกค้าที่ยังไม่ได้เข้ารหัส — รันได้หลายครั้ง (idempotent)
+            เข้ารหัสเลขบัตรประชาชน เบอร์โทร อีเมล และที่อยู่ที่ยังตกค้าง เรียกซ้ำได้
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           {/* Encryption progress */}
           <div className="space-y-2">
-            <div className="flex items-center justify-between gap-2">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <p className="text-sm font-medium text-foreground leading-snug">
                 เข้ารหัสไปแล้ว{' '}
                 <span className="tabular-nums">{status.encryptedCount.toLocaleString('th-TH')}</span>
@@ -274,7 +270,7 @@ export function PdpaTab() {
                 {' '}คน ({progressPct}%)
               </p>
               {status.readyForStrictMode ? (
-                <Badge variant="success">พร้อมเปิด Strict Mode</Badge>
+                <Badge variant="success">พร้อมเปิด โหมดเข้มงวด</Badge>
               ) : (
                 <Badge variant="outline">
                   ยังเหลือ {status.plaintextCount.toLocaleString('th-TH')} คน
@@ -301,9 +297,9 @@ export function PdpaTab() {
             <div className="rounded-lg border border-amber-200 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-900 p-3 text-sm">
               <div className="flex items-start gap-2">
                 <ShieldAlert className="size-4 mt-0.5 shrink-0 text-amber-600 dark:text-amber-400" />
-                <p className="text-amber-900 dark:text-amber-200 leading-snug">
+                <p className="min-w-0 text-amber-900 dark:text-amber-200 leading-snug">
                   ลูกค้า {status.plaintextCount.toLocaleString('th-TH')} คน
-                  ยังไม่ได้เข้ารหัส — รัน Backfill ก่อนเปิด Strict Mode
+                  ยังไม่ได้เข้ารหัส — รัน เติมข้อมูลย้อนหลัง ก่อนเปิด โหมดเข้มงวด
                 </p>
               </div>
               {/* W3 — per-column breakdown so the operator knows which
@@ -332,7 +328,7 @@ export function PdpaTab() {
               className="gap-2"
             >
               <PlayCircle className="size-4" />
-              {isRunning ? 'กำลังรัน...' : runBackfillMutation.isPending ? 'กำลังเริ่ม...' : 'เริ่ม Backfill'}
+              {isRunning ? 'กำลังรัน...' : runBackfillMutation.isPending ? 'กำลังเริ่ม...' : "เริ่ม เติมข้อมูลย้อนหลัง"}
             </Button>
           </div>
         </CardContent>
@@ -341,15 +337,14 @@ export function PdpaTab() {
       {/* History */}
       <Card>
         <CardHeader>
-          <CardTitle>ประวัติ Backfill (7 ครั้งล่าสุด)</CardTitle>
+          <CardTitle>ประวัติ เติมข้อมูลย้อนหลัง (7 ครั้งล่าสุด)</CardTitle>
           <CardDescription className="leading-snug">
-            ทั้งจาก CLI (npm run backfill:encrypt-pii) และจากการคลิกปุ่มใน
-            หน้านี้
+            รวมการสั่งจากหน้านี้และคำสั่งของผู้ดูแลระบบ
           </CardDescription>
         </CardHeader>
         <CardContent>
           {runs.length === 0 ? (
-            <p className="text-sm text-muted-foreground leading-snug">ยังไม่มีประวัติ Backfill</p>
+            <p className="text-sm text-muted-foreground leading-snug">ยังไม่มีประวัติ เติมข้อมูลย้อนหลัง</p>
           ) : (
             <div className="overflow-x-auto">
               <Table>
@@ -360,7 +355,7 @@ export function PdpaTab() {
                     <TableHead className="text-right">เข้ารหัส</TableHead>
                     <TableHead className="text-right">ข้าม</TableHead>
                     <TableHead className="text-right">ระยะเวลา</TableHead>
-                    <TableHead>Trigger</TableHead>
+                    <TableHead>เหตุการณ์</TableHead>
                     <TableHead>หมายเหตุ</TableHead>
                   </TableRow>
                 </TableHeader>

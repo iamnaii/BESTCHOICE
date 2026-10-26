@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react';
+import { NumberInput } from '@/components/ui/NumberInput';
+import { useId as useUiFieldId, useState, useEffect } from 'react';
 import { Banknote, Landmark, QrCode, ImageUp, CircleCheck } from 'lucide-react';
 import { toast } from 'sonner';
 import Modal from '@/components/ui/Modal';
@@ -31,6 +32,7 @@ const METHOD_OPTIONS: { key: PaymentMethod; label: string; icon: React.ReactNode
 ];
 
 export default function PaymentRecordDialog({ open, contract, onClose }: Props) {
+  const uiFieldId = useUiFieldId();
   const [amount, setAmount] = useState<string>('');
   const [method, setMethod] = useState<PaymentMethod>('CASH');
   const [notes, setNotes] = useState('');
@@ -136,11 +138,10 @@ export default function PaymentRecordDialog({ open, contract, onClose }: Props) 
 
         {/* Amount (hero) */}
         <div>
-          <label className="text-xs font-medium text-muted-foreground mb-1.5 block leading-snug">
+          <label htmlFor={`${uiFieldId}-1`} className="text-xs font-medium text-muted-foreground mb-1.5 block leading-snug">
             จำนวนเงิน (บาท)
           </label>
-          <input
-            type="number"
+          <NumberInput unstyled id={`${uiFieldId}-1`}
             inputMode="decimal"
             step="0.01"
             min="0.01"
@@ -239,10 +240,10 @@ export default function PaymentRecordDialog({ open, contract, onClose }: Props) 
 
         {/* Notes */}
         <div>
-          <label className="text-xs font-medium text-muted-foreground mb-1.5 block leading-snug">
+          <label htmlFor={`${uiFieldId}-2`} className="text-xs font-medium text-muted-foreground mb-1.5 block leading-snug">
             หมายเหตุ (ไม่บังคับ)
           </label>
-          <textarea
+          <textarea id={`${uiFieldId}-2`}
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
             rows={2}
@@ -253,7 +254,7 @@ export default function PaymentRecordDialog({ open, contract, onClose }: Props) 
 
         {/* Actions */}
         <div className="flex gap-2 justify-end pt-2">
-          <button
+          <button data-ui-control="button"
             type="button"
             onClick={onClose}
             disabled={mutation.isPending}
@@ -261,7 +262,7 @@ export default function PaymentRecordDialog({ open, contract, onClose }: Props) 
           >
             ยกเลิก
           </button>
-          <button
+          <button data-ui-control="button"
             type="button"
             onClick={handleSubmit}
             disabled={!canSubmit}

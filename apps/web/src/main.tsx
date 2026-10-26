@@ -1,3 +1,4 @@
+import '@/lib/appointment-token';
 import '@/lib/env';
 import * as Sentry from '@sentry/react';
 import React from 'react';
@@ -17,11 +18,12 @@ import App from './App';
 import DocumentStyles from '@/components/DocumentStyles';
 import './index.css';
 import './styles/admin-typography.css';
+import './styles/admin-controls.css';
 import './styles/admin-colors.css';
 
 // Initialize Sentry (only if DSN is configured)
 const sentryDsn = import.meta.env.VITE_SENTRY_DSN;
-if (sentryDsn) {
+if (sentryDsn && window.location.pathname !== '/visit') {
   Sentry.init({
     dsn: sentryDsn,
     environment: import.meta.env.MODE,
@@ -29,7 +31,9 @@ if (sentryDsn) {
     replaysSessionSampleRate: 0,
     replaysOnErrorSampleRate: import.meta.env.PROD ? 0.5 : 0,
     // Don't send PII to Sentry
+    beforeSendTransaction(event) { return window.location.pathname === '/visit' ? null : event; },
     beforeSend(event) {
+      if(window.location.pathname === '/visit') return null;
       if (event.request?.data) {
         const data = event.request.data as Record<string, unknown>;
         for (const key of ['nationalId', 'password', 'phone']) {
@@ -51,6 +55,7 @@ function reportQueryErrorToSentry(
   error: unknown,
   meta: { kind: 'query' | 'mutation'; key?: unknown },
 ) {
+  if(window.location.pathname === '/visit') return;
   const status = (error as { response?: { status?: number } })?.response?.status;
   if (typeof status === 'number' && status >= 400 && status < 500) {
     return;
@@ -82,7 +87,8 @@ const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       retry: (failureCount, error: unknown) => {
-        const status = (error as { response?: { status?: number } })?.response?.status;
+        if(window.location.pathname === '/visit') return false;
+  const status = (error as { response?: { status?: number } })?.response?.status;
         // Don't retry on 429 rate limit or 401 unauthorized
         if (status === 429 || status === 401) return false;
         return failureCount < 1;

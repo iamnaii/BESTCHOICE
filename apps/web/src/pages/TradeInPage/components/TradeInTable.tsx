@@ -25,6 +25,8 @@ import {
 } from 'lucide-react';
 import type { TradeIn } from '../types';
 
+const rowActionClassName = 'w-28 shrink-0 gap-2 px-3';
+
 interface TradeInTableProps {
   data: TradeIn[] | undefined;
   total: number | undefined;
@@ -150,7 +152,7 @@ export default function TradeInTable({
             <SubLine title={item.sellerPhone ?? undefined}>
               {!item.customer && (
                 <Badge variant="secondary" appearance="light" size="xs" className="shrink-0">
-                  walk-in
+                  ยังไม่ผูกข้อมูลลูกค้า
                 </Badge>
               )}
               {item.sellerPhone && <span className="truncate">{item.sellerPhone}</span>}
@@ -246,30 +248,33 @@ export default function TradeInTable({
     },
     {
       key: 'actions',
-      label: '',
+      label: 'จัดการ',
       sortable: false,
       hideable: false,
-      width: '168px',
+      width: '12rem',
+      align: 'right',
       stickyRight: true,
       render: (item) => {
         const isVoucherLoading = voucherLoadingId === item.id;
         const showAppraise = item.status === 'PENDING_APPRAISAL' && canManage;
         const showAcceptReject = item.status === 'APPRAISED' && canManage;
         const showVoucher = item.status === 'ACCEPTED' || item.status === 'COMPLETED';
+        const voucherLabel = item.voucherNumber ? 'พิมพ์ใบสำคัญ' : 'ออกใบสำคัญ';
 
         return (
-          <div className="flex items-center justify-end gap-1">
+          <div className="flex items-center justify-end gap-2">
             {/* One primary CTA per row, driven by status — everything else lives in the menu */}
             {showAppraise && (
               <Button
                 size="sm"
                 variant="outline"
+                className={rowActionClassName}
                 onClick={(e) => {
                   e.stopPropagation();
                   onAppraise(item);
                 }}
               >
-                <Gavel className="size-3.5" />
+                <Gavel className="size-4" aria-hidden="true" />
                 ประเมิน
               </Button>
             )}
@@ -277,12 +282,13 @@ export default function TradeInTable({
               <Button
                 size="sm"
                 variant="primary"
+                className={rowActionClassName}
                 onClick={(e) => {
                   e.stopPropagation();
                   onAccept(item);
                 }}
               >
-                <CheckCircle className="size-3.5" />
+                <CheckCircle className="size-4" aria-hidden="true" />
                 ยอมรับ
               </Button>
             )}
@@ -290,6 +296,10 @@ export default function TradeInTable({
               <Button
                 size="sm"
                 variant="outline"
+                className={rowActionClassName}
+                aria-label={voucherLabel}
+                title={voucherLabel}
+                aria-busy={isVoucherLoading || undefined}
                 onClick={(e) => {
                   e.stopPropagation();
                   onVoucher(item);
@@ -297,25 +307,19 @@ export default function TradeInTable({
                 disabled={isVoucherLoading}
               >
                 {isVoucherLoading ? (
-                  <Loader2 className="size-3.5 animate-spin" />
+                  <Loader2 className="size-4 animate-spin" aria-hidden="true" />
                 ) : (
-                  <FileText className="size-3.5" />
+                  <FileText className="size-4" aria-hidden="true" />
                 )}
-                {item.voucherNumber
-                  ? isVoucherLoading
-                    ? 'กำลังเปิด...'
-                    : 'พิมพ์ใบสำคัญ'
-                  : isVoucherLoading
-                    ? 'กำลังสร้าง...'
-                    : 'ออกใบสำคัญ'}
+                {isVoucherLoading ? 'รอสักครู่' : item.voucherNumber ? 'พิมพ์' : 'ออกใบ'}
               </Button>
             )}
 
             <DropdownMenu>
               <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-                <button
+                <button data-ui-control="button" data-ui-icon="true"
                   type="button"
-                  className="inline-flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                  className="inline-flex size-11 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
                   aria-label="เมนูการทำงาน"
                 >
                   <MoreVertical className="size-4" />

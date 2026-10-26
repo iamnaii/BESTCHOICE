@@ -191,23 +191,23 @@ export default function UsersPage() {
         title="จัดการผู้ใช้"
         subtitle={`ทั้งหมด ${users.length} คน`}
         action={
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             {isOwner && (
-              <button
+              <button data-ui-control="button"
                 onClick={() => {
                   setInviteForm({ email: '', role: 'SALES', branchId: '' });
                   setLastInviteUrl(null);
                   setIsInviteModalOpen(true);
                 }}
-                className="px-4 py-2 border border-primary text-primary rounded-lg text-sm font-medium hover:bg-primary/5 transition-colors flex items-center gap-1.5"
+                className="min-h-11 px-4 py-2 border border-primary text-primary rounded-lg text-sm font-medium hover:bg-primary/5 transition-colors flex items-center gap-1.5"
               >
                 <Mail className="size-4" />
                 เชิญผู้ใช้ใหม่
               </button>
             )}
-            <button
+            <button data-ui-control="button"
               onClick={openCreate}
-              className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors"
+              className="min-h-11 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors"
             >
               + เพิ่มผู้ใช้
             </button>
@@ -218,9 +218,10 @@ export default function UsersPage() {
       {/* Tabs (only for OWNER) */}
       {isOwner && (
         <div className="flex gap-1 mb-4 border-b border-border/60">
-          <button
+          <button data-ui-control="button"
             onClick={() => setActiveTab('users')}
-            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+            aria-pressed={activeTab === 'users'}
+            className={`min-h-11 px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
               activeTab === 'users'
                 ? 'border-primary text-primary'
                 : 'border-transparent text-muted-foreground hover:text-foreground'
@@ -228,9 +229,10 @@ export default function UsersPage() {
           >
             ผู้ใช้ ({users.length})
           </button>
-          <button
+          <button data-ui-control="button"
             onClick={() => setActiveTab('invites')}
-            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors flex items-center gap-1.5 ${
+            aria-pressed={activeTab === 'invites'}
+            className={`min-h-11 px-4 py-2 text-sm font-medium border-b-2 transition-colors flex items-center gap-1.5 ${
               activeTab === 'invites'
                 ? 'border-primary text-primary'
                 : 'border-transparent text-muted-foreground hover:text-foreground'

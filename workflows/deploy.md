@@ -12,7 +12,7 @@ Deploy BESTCHOICE ขึ้น production อย่างปลอดภัย
 Push ไปยัง `main` branch จะ trigger pipeline อัตโนมัติ:
 
 ### Job 1: lint-and-test
-1. Setup Node 20
+1. Setup Node 24
 2. Install dependencies
 3. `npx prisma generate`
 4. Run migrations (test DB)

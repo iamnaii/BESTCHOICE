@@ -238,7 +238,7 @@ export function DeviceWarrantyCard({ contract }: { contract: SummaryContract }) 
     <div className="rounded-[10px] border border-border bg-card p-3">
       <div className="flex items-start gap-2">
         <p className="m-0 min-w-0 flex-1 text-[13.5px] font-bold leading-[1.5]">{productTitle(contract)}</p>
-        <span className={cn('shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold', !anyActive ? 'bg-muted text-muted-foreground' : soon ? 'bg-warning/15 text-warning-foreground' : 'bg-success/10 text-success')}>
+        <span className={cn('shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold', !anyActive ? 'bg-muted text-muted-foreground' : soon ? 'bg-warning/15 text-warning-strong' : 'bg-success/10 text-success')}>
           {!anyActive ? 'หมดประกัน' : soon ? 'ใกล้หมด' : 'อยู่ในประกัน'}
         </span>
       </div>

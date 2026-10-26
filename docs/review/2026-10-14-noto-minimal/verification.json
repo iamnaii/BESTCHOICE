@@ -1,0 +1,127 @@
+{
+  "status": "PASS",
+  "baseRevision": "c26cf0091f77f4c47208532a98c140afd340dac8",
+  "branch": "feat/noto-minimal-ui-20261014",
+  "routeInventory": {
+    "rows": 269,
+    "widths": [
+      320,
+      390,
+      1440
+    ],
+    "themes": [
+      "light",
+      "dark"
+    ],
+    "states": 807,
+    "screenshots": 1614,
+    "reviewItems": 0,
+    "evidence": ".tmp/noto-minimal/routes-final/uxui-pages/inventory-results.json"
+  },
+  "adminTypography": {
+    "routes": 6,
+    "widths": [
+      390,
+      768,
+      1056,
+      1440
+    ],
+    "states": 24,
+    "status": "PASS"
+  },
+  "financeCards": {
+    "routes": 10,
+    "additionalTabStates": 3,
+    "widths": [
+      320,
+      375,
+      390,
+      768,
+      1056,
+      1440
+    ],
+    "states": 78,
+    "status": "PASS"
+  },
+  "publicDisclosureNavigation": {
+    "states": 23,
+    "rootTextSizes": [
+      16,
+      32
+    ],
+    "status": "PASS"
+  },
+  "liff": {
+    "tests": 84,
+    "browsers": [
+      "Chromium",
+      "WebKit"
+    ],
+    "themes": [
+      "light",
+      "dark"
+    ],
+    "sdkAndApi": "mocked",
+    "status": "PASS"
+  },
+  "storefront": {
+    "routes": 17,
+    "widths": [
+      320,
+      375,
+      390,
+      768,
+      1024,
+      1440
+    ],
+    "states": 102,
+    "interactionAndScreenshotTests": 3,
+    "existingCatalogWarrantyTests": 4,
+    "status": "PASS"
+  },
+  "paperBeforeAfter": {
+    "renderers": [
+      "MobileReceipt",
+      "DocumentPreview",
+      "StickerCard"
+    ],
+    "media": [
+      "screen",
+      "print"
+    ],
+    "comparisons": 6,
+    "everyDescendantMetrics": "identical",
+    "staticPolicyPrintComparisons": 2,
+    "status": "PASS"
+  },
+  "localCheck": {
+    "status": "PASS",
+    "stages": 39,
+    "unitTests": {
+      "web": 3326,
+      "shared": 149,
+      "storefront": 46
+    },
+    "sourceFingerprint": "4ae90f6ffa92f9aa7a89bf4cf188ab47e2d1a9bd47ee8607acdd46988e710c1d",
+    "evidence": "local-check.json"
+  },
+  "limits": [
+    "Synthetic fixtures, no live financial transactions",
+    "No staging or physical iPhone/Android/LINE/printer verification",
+    "Inventory covers declared initial/populated/missing-record/recovery states, not every possible state",
+    "No commit, push, merge or deployment in this task"
+  ],
+  "verifiedAt": "2026-10-14T09:31:02.687Z",
+  "sourceFingerprint": "4ae90f6ffa92f9aa7a89bf4cf188ab47e2d1a9bd47ee8607acdd46988e710c1d",
+  "previews": {
+    "admin": "http://localhost:5206/inbox",
+    "storefront": "http://localhost:5228/products",
+    "data": "synthetic",
+    "adminMatchesVerifiedSource": true
+  },
+  "independentReview": {
+    "status": "PASS",
+    "unresolvedFindings": 0
+  },
+  "followUpReport": "../2026-10-14-mobile-density/README.md"
+}

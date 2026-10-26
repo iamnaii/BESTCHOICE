@@ -20,11 +20,11 @@ export default function LocationBubbleEditor({ bubble, onChange }: Props) {
       </div>
       <div className="grid grid-cols-2 gap-2">
         <div>
-          <Label htmlFor="lat" className="text-xs">Latitude</Label>
+          <Label htmlFor="lat" className="text-xs">ละติจูด</Label>
           <Input id="lat" type="number" step="any" value={bubble.latitude ?? ''} onChange={(e) => onChange({ latitude: e.target.value ? parseFloat(e.target.value) : null })} placeholder="13.7563" />
         </div>
         <div>
-          <Label htmlFor="lng" className="text-xs">Longitude</Label>
+          <Label htmlFor="lng" className="text-xs">ลองจิจูด</Label>
           <Input id="lng" type="number" step="any" value={bubble.longitude ?? ''} onChange={(e) => onChange({ longitude: e.target.value ? parseFloat(e.target.value) : null })} placeholder="100.5018" />
         </div>
       </div>

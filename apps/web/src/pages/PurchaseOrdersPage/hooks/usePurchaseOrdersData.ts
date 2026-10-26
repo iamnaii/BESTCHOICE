@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import api, { getErrorMessage } from '@/lib/api';
-import { PurchaseOrder, PODetail, ReceivingUnitForm, ApprovePOPayload, PoPaymentsResponse, RecordSupplierPaymentPayload, SupplierPayment, CancelPOPayload, SupplierLedgerMovements, SupplierLedgerResponse } from '../types';
+import { PurchaseOrder, PODetail, ReceivingUnitForm, ApprovePOPayload, PoPaymentsResponse, RecordSupplierPaymentPayload, SupplierPayment, CancelPOPayload, ClosePOShortPayload, SupplierLedgerMovements, SupplierLedgerResponse } from '../types';
 import { defaultChecklist } from '../constants';
 import { buildReceivingItemData } from '../receiving-item';
 import { receivingBlockers } from '../receiving-flow.util';
@@ -51,6 +51,7 @@ export function usePurchaseOrdersData(options?: { onCreateSuccess?: () => void }
   const [overdueOnly, setOverdueOnly] = useState(false);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
+  const [detailReturnFocusKey, setDetailReturnFocusKey] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'list' | 'payable'>('list');
   const [isReceiveModalOpen, setIsReceiveModalOpen] = useState(false);
   const [confirmDialog, setConfirmDialog] = useState<{
@@ -63,6 +64,8 @@ export function usePurchaseOrdersData(options?: { onCreateSuccess?: () => void }
   const [voidTarget, setVoidTarget] = useState<SupplierPayment | null>(null);
   /** ใบที่กำลังจะยกเลิก — กล่องถามผลมัดจำ (กระดาน 4) */
   const [cancelTarget, setCancelTarget] = useState<PurchaseOrder | null>(null);
+  /** ใบที่กำลังจะปิดใบ รับไม่ครบ (2026-10-11) — กล่องเหตุผล + ผลมัดจำ */
+  const [closeShortTarget, setCloseShortTarget] = useState<PurchaseOrder | null>(null);
   const [selectedPO, setSelectedPO] = useState<PurchaseOrder | null>(null);
   const [poDetail, setPODetail] = useState<PODetail | null>(null);
   const [receivingUnits, setReceivingUnits] = useState<ReceivingUnitForm[]>([]);
@@ -189,6 +192,28 @@ export function usePurchaseOrdersData(options?: { onCreateSuccess?: () => void }
     onError: (err: unknown) => toast.error(getErrorMessage(err)),
   });
 
+  // ปิดใบ รับไม่ครบ (2026-10-11): เหตุผลบังคับ · มัดจำค้างปิดใน tx เดียวกันแบบยกเลิก · ใบหลุดจากการ์ดรับบางส่วน/เลยกำหนดเอง
+  const closeShortMutation = useMutation({
+    mutationFn: async ({ id, payload }: { id: string; payload: ClosePOShortPayload }) =>
+      api.post(`/purchase-orders/${id}/close-short`, payload),
+    onSuccess: (res, vars) => {
+      queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
+      queryClient.invalidateQueries({ queryKey: ['purchase-orders-summary'] });
+      queryClient.invalidateQueries({ queryKey: ['accounts-payable'] });
+      queryClient.invalidateQueries({ queryKey: ['supplier-ledger'] });
+      queryClient.invalidateQueries({ queryKey: ['po-payments', vars.id] });
+      queryClient.invalidateQueries({ queryKey: ['todos'] });
+      const body = (res?.data?.data ?? res?.data ?? {}) as { unreceivedQty?: number; depositClosed?: { depositOutstanding?: string } | null };
+      const parts = [`ปิดใบ รับไม่ครบ สำเร็จ${typeof body.unreceivedQty === 'number' ? ` · ไม่รับอีก ${body.unreceivedQty} ชิ้น` : ''}`];
+      if (body.depositClosed) {
+        parts.push(`ปิดมัดจำ ${Number(body.depositClosed.depositOutstanding ?? 0).toLocaleString('th-TH', { minimumFractionDigits: 2 })} บาทลงบัญชีแล้ว`);
+      }
+      toast.success(parts.join(' · '));
+      setCloseShortTarget(null);
+    },
+    onError: (err: unknown) => toast.error(getErrorMessage(err)),
+  });
+
   const goodsReceivingMutation = useMutation({
     mutationFn: async ({
       poId,
@@ -311,6 +336,9 @@ export function usePurchaseOrdersData(options?: { onCreateSuccess?: () => void }
   };
 
   const openDetailModal = async (po: PurchaseOrder) => {
+    // Table cell renderers can remount on this state update; retain the logical opener.
+    const active = document.activeElement;
+    setDetailReturnFocusKey(active instanceof HTMLElement ? active.dataset.poDetailTrigger ?? null : null);
     setSelectedPO(po);
     setPODetail(null);
     setIsDetailModalOpen(true);
@@ -413,6 +441,10 @@ export function usePurchaseOrdersData(options?: { onCreateSuccess?: () => void }
     setSelectedPO(po);
     setCancelTarget(po);
   };
+  const openCloseShortDialog = (po: PurchaseOrder) => {
+    setSelectedPO(po);
+    setCloseShortTarget(po);
+  };
 
   const updateReceivingUnit = (idx: number, field: string, value: string) => {
     const newUnits = [...receivingUnits];
@@ -474,6 +506,7 @@ export function usePurchaseOrdersData(options?: { onCreateSuccess?: () => void }
     orderMutation,
     rejectPOMutation,
     cancelMutation,
+    closeShortMutation,
     goodsReceivingMutation,
     directReceiveMutation,
     recordPaymentMutation,
@@ -489,6 +522,7 @@ export function usePurchaseOrdersData(options?: { onCreateSuccess?: () => void }
     isCreateModalOpen,
     setIsCreateModalOpen,
     isDetailModalOpen,
+    detailReturnFocusKey,
     setIsDetailModalOpen,
     isReceiveModalOpen,
     setIsReceiveModalOpen,
@@ -498,6 +532,8 @@ export function usePurchaseOrdersData(options?: { onCreateSuccess?: () => void }
     setVoidTarget,
     cancelTarget,
     setCancelTarget,
+    closeShortTarget,
+    setCloseShortTarget,
     confirmDialog,
     setConfirmDialog,
     selectedPO,
@@ -515,6 +551,7 @@ export function usePurchaseOrdersData(options?: { onCreateSuccess?: () => void }
     openReceiveModal,
     openPaymentModal,
     openCancelDialog,
+    openCloseShortDialog,
     updateReceivingUnit,
     updateChecklist,
     handleGoodsReceiving,

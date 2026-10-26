@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { toBangkokDateString } from '@/lib/date';
+import { useId as useUiFieldId, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
@@ -38,10 +39,11 @@ function StatCard({ icon, label, value, sub, color = 'text-foreground' }: StatCa
 }
 
 function toDateInput(d: Date): string {
-  return d.toISOString().slice(0, 10);
+  return toBangkokDateString(d);
 }
 
 export default function AiPerformancePage() {
+  const uiFieldId = useUiFieldId();
   const today = new Date();
   const thirtyDaysAgo = new Date(Date.now() - 30 * 86400000);
 
@@ -61,13 +63,13 @@ export default function AiPerformancePage() {
 
   return (
     <div>
-      <PageHeader title="AI Performance" subtitle="ประสิทธิภาพและสถิติการตอบแชทด้วย AI" />
+      <PageHeader title="ประสิทธิภาพ AI" subtitle="ประสิทธิภาพและสถิติการตอบแชทด้วย AI" />
 
       {/* Date filter */}
       <div className="flex items-center gap-3 mb-6 flex-wrap">
         <div className="flex items-center gap-2">
-          <label className="text-sm text-muted-foreground">จาก</label>
-          <Input
+          <label htmlFor={`${uiFieldId}-1`} className="text-sm text-muted-foreground">จาก</label>
+          <Input id={`${uiFieldId}-1`}
             type="date"
             value={from}
             onChange={(e) => setFrom(e.target.value)}
@@ -75,8 +77,8 @@ export default function AiPerformancePage() {
           />
         </div>
         <div className="flex items-center gap-2">
-          <label className="text-sm text-muted-foreground">ถึง</label>
-          <Input
+          <label htmlFor={`${uiFieldId}-2`} className="text-sm text-muted-foreground">ถึง</label>
+          <Input id={`${uiFieldId}-2`}
             type="date"
             value={to}
             onChange={(e) => setTo(e.target.value)}
@@ -95,34 +97,34 @@ export default function AiPerformancePage() {
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
           <StatCard
             icon={<Bot className="w-4 h-4 text-muted-foreground" />}
-            label="Auto-Reply Rate"
+            label="อัตราตอบอัตโนมัติ"
             value={data ? `${data.autoReplyRate.toFixed(1)}%` : '—'}
             sub="% ของแชทที่ AI ตอบได้"
             color="text-foreground"
           />
           <StatCard
             icon={<ThumbsUp className="w-4 h-4 text-success" />}
-            label="Accept Rate"
+            label="อัตราการยอมรับ"
             value={data ? `${data.acceptRate.toFixed(1)}%` : '—'}
             sub="ลูกค้ายอมรับคำตอบ AI"
             color="text-foreground"
           />
           <StatCard
             icon={<ArrowRightLeft className="w-4 h-4 text-muted-foreground" />}
-            label="Handoff Rate"
+            label="อัตราส่งต่อพนักงาน"
             value={data ? `${data.handoffRate.toFixed(1)}%` : '—'}
             sub="โอนให้พนักงาน"
             color="text-foreground"
           />
           <StatCard
             icon={<Database className="w-4 h-4 text-muted-foreground" />}
-            label="Training Pairs"
+            label="คู่คำถามคำตอบ"
             value={data ? (data.trainingPairs ?? 0).toLocaleString() : '—'}
             sub="คู่ข้อมูล training"
           />
           <StatCard
             icon={<TrendingUp className="w-4 h-4 text-muted-foreground" />}
-            label="Avg Confidence"
+            label="ความมั่นใจเฉลี่ย"
             value={data ? `${(data.avgConfidence * 100).toFixed(1)}%` : '—'}
             sub="ความมั่นใจเฉลี่ย"
             color="text-foreground"
@@ -135,7 +137,7 @@ export default function AiPerformancePage() {
             {data.totalSessions !== undefined && (
               <StatCard
                 icon={<BarChart3 className="w-4 h-4 text-muted-foreground" />}
-                label="Sessions ทั้งหมด"
+                label="บทสนทนา ทั้งหมด"
                 value={data.totalSessions.toLocaleString()}
               />
             )}

@@ -12,6 +12,7 @@ import {
 import { formatDateShortThai } from '@/utils/formatters';
 import ContactTimeline from './ContactTimeline';
 import FinanceContactLogDialog from './FinanceContactLogDialog';
+import api from '@/lib/api';
 
 interface Receivable {
   id: string;
@@ -31,8 +32,15 @@ interface Props {
   onClose: () => void;
 }
 
-export default function FinanceReceivableDetailDrawer({ receivable, onClose }: Props) {
+export default function FinanceReceivableDetailDrawer({ receivable: initialReceivable, onClose }: Props) {
   const [dialogOpen, setDialogOpen] = useState(false);
+  const detailQuery = useQuery({
+    queryKey: ['finance-receivable', 'detail', initialReceivable?.id],
+    queryFn: async () => (await api.get<Receivable>(`/finance-receivable/${initialReceivable!.id}`)).data,
+    enabled: !!initialReceivable,
+    staleTime: 0,
+  });
+  const receivable = detailQuery.data ?? initialReceivable;
 
   const { data: logs = [] } = useQuery({
     queryKey: receivable ? financeContactKeys.receivableLogs(receivable.id) : ['noop'],
@@ -52,6 +60,15 @@ export default function FinanceReceivableDetailDrawer({ receivable, onClose }: P
           </SheetHeader>
 
           <div className="space-y-4 mt-4">
+            {detailQuery.isFetching && (
+              <p role="status" className="text-sm text-muted-foreground">กำลังอัปเดตข้อมูล…</p>
+            )}
+            {detailQuery.isError && (
+              <div role="alert" className="text-sm text-destructive">
+                อัปเดตข้อมูลไม่สำเร็จ ข้อมูลที่แสดงอาจไม่ใช่ล่าสุด{' '}
+                <Button variant="outline" size="sm" onClick={() => detailQuery.refetch()}>ลองใหม่</Button>
+              </div>
+            )}
             <Card>
               <CardHeader className="pb-2">
                 <span className="text-sm text-muted-foreground">{receivable.financeCompany}</span>
@@ -80,7 +97,7 @@ export default function FinanceReceivableDetailDrawer({ receivable, onClose }: P
               <CardHeader className="pb-2">
                 <span className="text-sm font-medium">KPI การติดตาม</span>
               </CardHeader>
-              <CardContent className="grid grid-cols-3 gap-3 text-sm">
+              <CardContent className="grid grid-cols-1 min-[400px]:grid-cols-3 gap-3 text-sm">
                 <div>
                   <div className="text-muted-foreground">ติดต่อล่าสุด</div>
                   <div className="font-medium">

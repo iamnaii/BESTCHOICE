@@ -1,3 +1,4 @@
+import { OVERDUE_BUCKETS } from '@/lib/aging-presentation';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router';
 import { AlertTriangle, ArrowRight } from 'lucide-react';
@@ -18,12 +19,6 @@ interface AgingReport {
   summary: AgingBuckets;
 }
 
-const BUCKETS: { key: keyof AgingBuckets; label: string; color: string }[] = [
-  { key: 'bucket_0_30', label: '0–30 วัน', color: 'text-warning-strong' },
-  { key: 'bucket_31_60', label: '31–60 วัน', color: 'text-orange-500' },
-  { key: 'bucket_61_90', label: '61–90 วัน', color: 'text-destructive' },
-  { key: 'bucket_90_plus', label: '90+ วัน', color: 'text-destructive font-bold' },
-];
 
 export default function AgingSummaryWidget() {
   const {
@@ -48,7 +43,7 @@ export default function AgingSummaryWidget() {
         <div className="size-8 rounded-lg bg-destructive/10 flex items-center justify-center shrink-0">
           <AlertTriangle className="size-4 text-destructive" />
         </div>
-        <span className="font-semibold text-sm leading-snug">ลูกหนี้ค้างชำระ (Aging)</span>
+        <span className="font-semibold text-sm leading-snug">ลูกหนี้ค้างชำระ</span>
       </CardHeader>
       <CardContent className="flex-1 flex flex-col justify-between gap-3">
         <QueryBoundary
@@ -59,13 +54,13 @@ export default function AgingSummaryWidget() {
         >
           {data ? (
             <div className="grid grid-cols-2 gap-2">
-              {BUCKETS.map((bucket) => (
+              {OVERDUE_BUCKETS.map((bucket) => (
                 <div
                   key={bucket.key}
                   className="bg-muted rounded-lg p-2.5 flex flex-col gap-0.5"
                 >
                   <span className="text-2xs text-muted-foreground leading-snug">{bucket.label}</span>
-                  <span className={`text-sm font-semibold leading-snug ${bucket.color}`}>
+                  <span className={`text-sm font-semibold leading-snug ${bucket.text}`}>
                     {formatNumberDecimal(data.summary[bucket.key], 0)} ฿
                   </span>
                 </div>

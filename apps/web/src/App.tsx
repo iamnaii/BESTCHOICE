@@ -1,3 +1,5 @@
+import { useLocation } from 'react-router';
+import { safeLoginReturnPath } from '@/lib/verification-links';
 import { lazy, Suspense, useEffect } from 'react';
 import { Routes, Route, Navigate } from 'react-router';
 import { useAuth } from '@/contexts/AuthContext';
@@ -11,6 +13,11 @@ function ExternalRedirect({ to }: { to: string }) {
     window.location.replace(to);
   }, [to]);
   return null;
+}
+
+function LiffRedirect({ to }: { to: string }) {
+  const { search, hash } = useLocation();
+  return <Navigate to={`${to}${search}${hash}`} replace />;
 }
 
 // Redirect /accounting/periods → /settings/accounting#periods (preserves hash via window.location.replace).
@@ -78,13 +85,17 @@ const GeneralSettingsPage = lazy(() => import('@/pages/SettingsPage/GeneralSetti
 const DocumentConfigPage = lazy(() => import('@/pages/DocumentConfigPage'));
 // SP5 — SHOP-side additions
 // P2-SP4 — การจอง / มัดจำ (SHOP-side reservation)
+const StoreAppointmentsPage = lazy(() => import('@/pages/StoreAppointmentsPage'));
+const PublicAppointmentPage = lazy(() => import('@/pages/PublicAppointmentPage'));
 const BookingsPage = lazy(() => import('@/pages/BookingsPage'));
 const AuditLogsPage = lazy(() => import('@/pages/AuditLogsPage'));
 const FinancialAuditPage = lazy(() => import('@/pages/FinancialAuditPage'));
 const PaymentCsvImportPage = lazy(() => import('@/pages/PaymentCsvImportPage'));
 const POSPage = lazy(() => import('@/pages/POSPage'));
 const SalesHistoryPage = lazy(() => import('@/pages/SalesHistoryPage'));
+const ParcelLabelPage = lazy(() => import('@/pages/ParcelLabelPage'));
 const ShopDailyCashPage = lazy(() => import('@/pages/ShopDailyCashPage'));
+const ShopPettyCashPage = lazy(() => import('@/pages/ShopPettyCashPage'));
 const AfterSalesPage = lazy(() => import('@/pages/AfterSalesPage'));
 const AfterSalesNewPage = lazy(() => import('@/pages/AfterSalesNewPage'));
 const AfterSalesCasePage = lazy(() => import('@/pages/AfterSalesCasePage'));
@@ -110,6 +121,7 @@ const PDPAPage = lazy(() => import('@/pages/PDPAPage'));
 const ReceiptVerifyPage = lazy(() => import('@/pages/ReceiptVerifyPage'));
 const CustomerPortalPage = lazy(() => import('@/pages/CustomerPortalPage'));
 const CreditNoteViewPage = lazy(() => import('@/pages/CreditNoteViewPage'));
+const SaleReceiptViewPage = lazy(() => import('@/pages/SaleReceiptViewPage'));
 const ContractVerifyPage = lazy(() => import('@/pages/ContractVerifyPage'));
 const LiffPayment = lazy(() => import('@/pages/liff/LiffPayment'));
 const LiffContract = lazy(() => import('@/pages/liff/LiffContract'));
@@ -245,7 +257,11 @@ const PageLoader = () => (
   </div>
 );
 
+const LegacyVerifyPage = lazy(() => import('./pages/LegacyVerifyPage'));
+const ExpenseVerifyNumberPage = lazy(() => import('./pages/ExpenseVerifyNumberPage'));
+
 function App() {
+  const loginLocation = useLocation();
   const { isAuthenticated, isLoading } = useAuth();
 
   if (isLoading) {
@@ -269,7 +285,7 @@ function App() {
         />
         <Route
           path="/login"
-          element={isAuthenticated ? <Navigate to="/" replace /> : <LoginPage />}
+          element={isAuthenticated ? <Navigate to={safeLoginReturnPath(loginLocation.state?.from, '/')} replace /> : <LoginPage />}
         />
         <Route path="/privacy" element={<PrivacyPolicyPage />} />
         <Route path="/privacy/data-deletion" element={<DataDeletionPage />} />
@@ -285,22 +301,27 @@ function App() {
 
         {/* Public Customer Portal (token-based access, no auth) */}
         <Route path="/customer-access/:token" element={<CustomerPortalPage />} />
-        <Route path="/verify/:id" element={<ContractVerifyPage />} />
+        <Route path="/verify/contracts/:id" element={<ContractVerifyPage />} />
+        <Route path="/verify/:identifier" element={<LegacyVerifyPage />} />
         {/* Public ใบลดหนี้ (Credit Note) viewer — opened from the CN LINE Flex
             message link (receipts-public.controller.ts, token-based, no auth). */}
         <Route path="/cn/:token" element={<CreditNoteViewPage />} />
+        {/* Public ใบเสร็จรับเงินขายสด viewer — opened from the shop LINE Flex / QR on paper /
+            copied link (sales-receipt-public.controller.ts, token-based, no auth — ก้อน 4). */}
+        <Route path="/r/:token" element={<SaleReceiptViewPage />} />
 
         {/* LIFF Pages (public, opened from LINE) */}
+        <Route path="/visit" element={<PublicAppointmentPage />} />
         <Route path="/pay/:token" element={<LiffPayment />} />
         {/* Bare /liff and unknown /liff/* → redirect to primary LIFF page.
             Guards against Endpoint URL mis-configs and catch-all "*→/" hijacking
             LIFF traffic into ProtectedRoute. */}
-        <Route path="/liff" element={<Navigate to="/liff/contract" replace />} />
+        <Route path="/liff" element={<LiffRedirect to="/liff/contract" />} />
         {/* Shorthand aliases for rich-menu LIFF URIs (https://liff.line.me/<id>/contract).
             LINE rewrites them via liff.state so the landing pathname is the bare sub-path. */}
-        <Route path="/contract" element={<Navigate to="/liff/contract" replace />} />
-        <Route path="/history" element={<Navigate to="/liff/history" replace />} />
-        <Route path="/early-payoff" element={<Navigate to="/liff/early-payoff" replace />} />
+        <Route path="/contract" element={<LiffRedirect to="/liff/contract" />} />
+        <Route path="/history" element={<LiffRedirect to="/liff/history" />} />
+        <Route path="/early-payoff" element={<LiffRedirect to="/liff/early-payoff" />} />
         <Route path="/liff/contract" element={<LiffContract />} />
         <Route path="/liff/register" element={<LiffRegister />} />
         <Route path="/liff/history" element={<LiffHistory />} />
@@ -312,7 +333,7 @@ function App() {
         {/* ประกันของฉัน — ลูกค้าเปิดจาก LINE OA ร้าน (ช่อง SHOP) ครอบทั้งขายสด/ไฟแนนซ์นอก/ผ่อน */}
         <Route path="/liff/warranty" element={<LiffWarranty />} />
         <Route path="/liff/notifications" element={<LiffNotificationSettings />} />
-        <Route path="/liff/debug" element={<div style={{padding:20,fontFamily:'monospace'}}>
+        <Route path="/liff/debug" element={<div style={{padding:20,fontFamily:'var(--font-sans)'}}>
           <h2>LIFF Debug</h2>
           <p>pathname: {window.location.pathname}</p>
           <p>search: {window.location.search}</p>
@@ -320,7 +341,7 @@ function App() {
           <p>time: {new Date().toISOString()}</p>
         </div>} />
         {/* Unknown /liff/* sub-paths fall back to primary LIFF page (not catch-all "*→/"). */}
-        <Route path="/liff/*" element={<Navigate to="/liff/contract" replace />} />
+        <Route path="/liff/*" element={<LiffRedirect to="/liff/contract" />} />
 
 
         {/* Keep old chat bookmarks working without mounting the retired page/layout. */}
@@ -487,7 +508,11 @@ function App() {
           <Route path="/stickers" element={<StickerPrintPage />} />
           <Route path="/pos" element={<ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'SALES']}><POSPage /></ProtectedRoute>} />
           <Route path="/sales" element={<SalesHistoryPage />} />
+          {/* ใบปะหน้าพัสดุจากใบขาย (A6 · 2026-10-22) — role เดียวกับ /sales (API scope สาขาเอง) */}
+          <Route path="/sales/:id/parcel-label" element={<ParcelLabelPage />} />
           <Route path="/shop/daily-cash" element={<ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'BRANCH_MANAGER', 'SALES']}><ShopDailyCashPage /></ProtectedRoute>} />
+          {/* เงินสดย่อยหน้าร้าน S11-1106 (ข้อ 20.2 · 2026-10-18) — เติม/คืน OWNER+FM · ดู ACCOUNTANT/VIEWER */}
+          <Route path="/shop/petty-cash" element={<ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'VIEWER']}><ShopPettyCashPage /></ProtectedRoute>} />
           <Route path="/after-sales" element={<ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES']}><AfterSalesPage /></ProtectedRoute>} />
           <Route path="/after-sales/new" element={<ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'SALES']}><AfterSalesNewPage /></ProtectedRoute>} />
           <Route path="/after-sales/:id" element={<ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES']}><AfterSalesCasePage /></ProtectedRoute>} />
@@ -612,6 +637,22 @@ function App() {
             }
           />
           <Route
+            path="/expenses/verify-number/:number"
+            element={
+              <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
+                <ExpenseVerifyNumberPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/expenses/verify/:id"
+            element={
+              <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
+                <ExpenseDetailPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
             path="/expenses/:id"
             element={
               <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
@@ -660,7 +701,7 @@ function App() {
             }
           />
           <Route path="/receipts" element={<Navigate to="/payments?tab=receipts" replace />} />
-          <Route path="/verify/:receiptNumber" element={<ReceiptVerifyPage />} />
+          <Route path="/receipts/verify/:receiptNumber" element={<ReceiptVerifyPage />} />
           {/* /overdue → /collections (Task 18 of 2026-04-25-collections-ui-p1).
               Old route kept as a redirect so external bookmarks/LINE links keep
               working. MigrationBanner on /collections nudges users to update. */}
@@ -692,6 +733,7 @@ function App() {
               </ProtectedRoute>
             }
           />
+          <Route path="/appointments" element={<ProtectedRoute roles={['OWNER','BRANCH_MANAGER','SALES']}><StoreAppointmentsPage /></ProtectedRoute>} />
           {/* SP5 — SHOP-side additions */}
           {/* P2-SP4 — การจอง / มัดจำ */}
           <Route

@@ -1,3 +1,4 @@
+import { NativeSelect } from '@/components/ui/native-select';
 import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -226,7 +227,7 @@ export default function CreateContactModal({
                 <Label className="shrink-0 leading-snug">ประเภท</Label>
                 <div className="flex flex-1 gap-2">
                   {(['JURISTIC', 'INDIVIDUAL'] as const).map((t) => (
-                    <button
+                    <button data-ui-control="button"
                       key={t}
                       type="button"
                       onClick={() => {
@@ -254,13 +255,13 @@ export default function CreateContactModal({
               <Label htmlFor="ccm-name" className="leading-snug">
                 ชื่อ <span className="text-destructive">*</span>
               </Label>
-              <div className="flex gap-2">
+              <div className="flex flex-col gap-2 sm:flex-row">
                 {contactType === 'INDIVIDUAL' && (
-                  <select
+                  <NativeSelect wrapperClassName="w-full sm:w-36 sm:shrink-0"
                     aria-label="คำนำหน้า"
                     value={prefix}
                     onChange={(e) => setPrefix(e.target.value)}
-                    className="h-9 w-28 shrink-0 rounded-md border border-input bg-background px-2 text-sm outline-hidden focus:ring-2 focus:ring-ring/30"
+                    className="h-9 rounded-md border border-input bg-background px-2 text-sm outline-hidden focus:ring-2 focus:ring-ring/30"
                   >
                     <option value="">คำนำหน้า</option>
                     {(role === 'SUPPLIER' ? SUPPLIER_TITLE_OPTIONS : THAI_NAME_PREFIXES).map(
@@ -270,12 +271,12 @@ export default function CreateContactModal({
                         </option>
                       ),
                     )}
-                  </select>
+                  </NativeSelect>
                 )}
                 <Input
                   id="ccm-name"
                   ref={nameInputRef}
-                  className="flex-1"
+                  className="min-w-0 flex-1"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   placeholder={

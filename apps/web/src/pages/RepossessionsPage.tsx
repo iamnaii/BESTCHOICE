@@ -1,5 +1,8 @@
+import { NumberInput } from '@/components/ui/NumberInput';
+import ScreenTable from '@/components/ui/ScreenTable';
+import { NativeSelect } from '@/components/ui/native-select';
 import DocumentDownloadButton from '@/components/DocumentDownloadButton';
-import { useState } from 'react';
+import { useId as useUiFieldId, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import api, { getErrorMessage } from '@/lib/api';
@@ -80,6 +83,7 @@ interface Repossession {
 }
 
 export default function RepossessionsPage() {
+  const uiFieldId = useUiFieldId();
   const queryClient = useQueryClient();
   const { user } = useAuth();
   // POST /contracts/:id/shop-collect-settlement roles (OWNER/FM/ACC)
@@ -414,7 +418,7 @@ export default function RepossessionsPage() {
                 variant="info"
                 appearance="light"
                 size="sm"
-                title="ค่าเครื่องคืน (11-2107 DEVICE_RETURN) ยังไม่ถูกหัก — หักในรอบจ่าย INTER-CO ถัดไป หรือรับเงินสดที่หน้าจ่ายให้หน้าร้าน"
+                title="ค่าเครื่องคืน (11-2107 DEVICE_RETURN) ยังไม่ถูกหัก — หักในรอบจ่าย ระหว่างบริษัท ถัดไป หรือรับเงินสดที่หน้าจ่ายให้หน้าร้าน"
               >
                 รอหักในรอบจ่าย {deviceReturnOutstanding.toLocaleString()} ฿
               </Badge>
@@ -440,7 +444,7 @@ export default function RepossessionsPage() {
             onClick={() =>
               setJournalTarget({ id: r.contract.id, contractNumber: r.contract.contractNumber })
             }
-            title="บันทึกบัญชี (JE) ทุกใบของสัญญานี้ — JP5, ใบลดหนี้, จ่ายคืน, รับโอนหน้าร้าน"
+            title="บันทึกบัญชี ทุกใบของสัญญานี้ — JP5, ใบลดหนี้, จ่ายคืน, รับโอนหน้าร้าน"
             className="text-muted-foreground hover:text-foreground text-sm font-medium"
           >
             บัญชี
@@ -523,10 +527,12 @@ export default function RepossessionsPage() {
     <div>
       <PageHeader
         title="รับเครื่องคืน / ยึดคืน & ขายต่อ"
-        subtitle="สาขาบันทึกใบรับเครื่องคืนที่นี่ (ปุ่มด้านขวา หรือปุ่ม รับเครื่องคืน ในรายการรอยึดเครื่อง) เพื่อบันทึกการยึดคืน — FINANCE กดยืนยันจากตารางรอยืนยัน แล้วบัญชี JP5 ลงพร้อมขาคู่ SHOP"
+        subtitle="บันทึกรับเครื่องคืนและติดตามการยืนยัน"
+        helpLabel="ขั้นตอนรับเครื่องคืน"
+        help="สาขากดรับเครื่องคืนเพื่อบันทึกใบรับ จากนั้นฝ่ายการเงินตรวจสอบและยืนยันในตารางรอยืนยัน ระบบจึงลงบัญชี JP5 พร้อมรายการคู่ฝั่ง SHOP"
         action={
           canCreateReturn ? (
-            <button
+            <button data-ui-control="button"
               type="button"
               onClick={() => {
                 setIntakeContractId(undefined);
@@ -574,7 +580,7 @@ export default function RepossessionsPage() {
               </div>
             ) : (
               <div className="overflow-x-auto">
-                <table className="min-w-full text-sm">
+                <ScreenTable className="min-w-full text-sm">
                   <thead className="bg-secondary text-muted-foreground text-xs">
                     <tr>
                       <th className="px-4 py-2 text-left">สัญญา</th>
@@ -607,7 +613,7 @@ export default function RepossessionsPage() {
                               บัญชี
                             </button>
                             {canCreateReturn && (
-                              <button
+                              <button data-ui-control="button"
                                 type="button"
                                 onClick={() => {
                                   setIntakeContractId(c.id);
@@ -623,7 +629,7 @@ export default function RepossessionsPage() {
                       </tr>
                     ))}
                   </tbody>
-                </table>
+                </ScreenTable>
               </div>
             )}
           </QueryBoundary>
@@ -643,7 +649,7 @@ export default function RepossessionsPage() {
             <CardContent className="p-4">
               <div className="text-sm text-muted-foreground">ราคาตีรวม</div>
               <div className="text-lg font-bold">
-                {(profitLoss.summary.totalAppraisal ?? 0).toLocaleString()} บาท
+                {(profitLoss.summary.totalAppraisal ?? 0).toLocaleString()} ฿
               </div>
             </CardContent>
           </Card>
@@ -651,7 +657,7 @@ export default function RepossessionsPage() {
             <CardContent className="p-4">
               <div className="text-sm text-muted-foreground">ค่าซ่อมรวม</div>
               <div className="text-lg font-bold">
-                {(profitLoss.summary.totalRepairCost ?? 0).toLocaleString()} บาท
+                {(profitLoss.summary.totalRepairCost ?? 0).toLocaleString()} ฿
               </div>
             </CardContent>
           </Card>
@@ -659,7 +665,7 @@ export default function RepossessionsPage() {
             <CardContent className="p-4">
               <div className="text-sm text-muted-foreground">ราคาขายรวม</div>
               <div className="text-lg font-bold">
-                {(profitLoss.summary.totalResellPrice ?? 0).toLocaleString()} บาท
+                {(profitLoss.summary.totalResellPrice ?? 0).toLocaleString()} ฿
               </div>
             </CardContent>
           </Card>
@@ -669,7 +675,7 @@ export default function RepossessionsPage() {
               <div
                 className={`text-lg font-bold ${(profitLoss.summary.totalProfit ?? 0) >= 0 ? 'text-success' : 'text-destructive'}`}
               >
-                {(profitLoss.summary.totalProfit ?? 0).toLocaleString()} บาท
+                {(profitLoss.summary.totalProfit ?? 0).toLocaleString()} ฿
               </div>
             </CardContent>
           </Card>
@@ -683,7 +689,7 @@ export default function RepossessionsPage() {
             <h3 className="text-sm font-medium text-foreground">รายละเอียดกำไร/ขาดทุน</h3>
           </CardHeader>
           <div className="overflow-x-auto">
-            <table className="min-w-full text-sm">
+            <ScreenTable className="min-w-full text-sm">
               <thead className="bg-secondary text-muted-foreground text-xs">
                 <tr>
                   <th className="px-4 py-2 text-left">สัญญา</th>
@@ -694,7 +700,7 @@ export default function RepossessionsPage() {
                   <th className="px-4 py-2 text-right">ค่าซ่อม</th>
                   <th className="px-4 py-2 text-right">ราคาขาย</th>
                   <th className="px-4 py-2 text-right">กำไร</th>
-                  <th className="px-4 py-2 text-right">Margin</th>
+                  <th className="px-4 py-2 text-right">ส่วนต่างกำไร</th>
                 </tr>
               </thead>
               <tbody className="divide-y">
@@ -742,14 +748,14 @@ export default function RepossessionsPage() {
                   ),
                 )}
               </tbody>
-            </table>
+            </ScreenTable>
           </div>
         </Card>
       )}
 
       {/* Filter */}
       <div className="mb-5">
-        <select
+        <NativeSelect wrapperClassName="max-w-full w-auto" aria-label="สถานะ"
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value)}
           className="px-3 py-2 border border-input rounded-lg text-sm bg-background focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
@@ -759,7 +765,7 @@ export default function RepossessionsPage() {
           <option value="UNDER_REPAIR">กำลังซ่อม</option>
           <option value="READY_FOR_SALE">พร้อมขาย</option>
           <option value="SOLD">ขายแล้ว</option>
-        </select>
+        </NativeSelect>
       </div>
 
       <QueryBoundary
@@ -844,11 +850,10 @@ export default function RepossessionsPage() {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-foreground mb-1">
+              <label htmlFor={`${uiFieldId}-1`} className="block text-sm font-medium text-foreground mb-1">
                 จำนวนเงินที่รับโอน <span className="text-destructive">*</span>
               </label>
-              <input
-                type="number"
+              <NumberInput unstyled id={`${uiFieldId}-1`}
                 min="0.01"
                 step="0.01"
                 value={settlementAmount}
@@ -858,14 +863,14 @@ export default function RepossessionsPage() {
               />
             </div>
             <div className="flex justify-end gap-3 pt-2">
-              <button
+              <button data-ui-control="button"
                 type="button"
                 onClick={() => setSettlementRepo(null)}
                 className="px-5 py-2.5 text-sm border border-border rounded-lg hover:bg-accent transition-colors"
               >
                 ยกเลิก
               </button>
-              <button
+              <button data-ui-control="button"
                 type="submit"
                 disabled={settlementMutation.isPending || !(Number(settlementAmount) > 0)}
                 className="px-6 py-2.5 text-sm bg-primary text-primary-foreground hover:bg-primary/90 rounded-lg disabled:opacity-50 font-semibold transition-colors"
@@ -915,11 +920,10 @@ export default function RepossessionsPage() {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-foreground mb-1">
+              <label htmlFor={`${uiFieldId}-2`} className="block text-sm font-medium text-foreground mb-1">
                 จำนวนเงินที่จ่ายคืน <span className="text-destructive">*</span>
               </label>
-              <input
-                type="number"
+              <NumberInput unstyled id={`${uiFieldId}-2`}
                 min="0.01"
                 step="0.01"
                 value={refundAmount}
@@ -929,14 +933,14 @@ export default function RepossessionsPage() {
               />
             </div>
             <div className="flex justify-end gap-3 pt-2">
-              <button
+              <button data-ui-control="button"
                 type="button"
                 onClick={() => setRefundRepo(null)}
                 className="px-5 py-2.5 text-sm border border-border rounded-lg hover:bg-accent transition-colors"
               >
                 ยกเลิก
               </button>
-              <button
+              <button data-ui-control="button"
                 type="submit"
                 disabled={refundMutation.isPending || !(Number(refundAmount) > 0)}
                 className="px-6 py-2.5 text-sm bg-primary text-primary-foreground hover:bg-primary/90 rounded-lg disabled:opacity-50 font-semibold transition-colors"
@@ -982,14 +986,14 @@ export default function RepossessionsPage() {
               41-1102) — ทำแล้วย้อนกลับไม่ได้จากหน้าจอนี้
             </div>
             <div className="flex justify-end gap-3 pt-2">
-              <button
+              <button data-ui-control="button"
                 type="button"
                 onClick={() => setWaiveRepo(null)}
                 className="px-5 py-2.5 text-sm border border-border rounded-lg hover:bg-accent transition-colors"
               >
                 ยกเลิก
               </button>
-              <button
+              <button data-ui-control="button"
                 type="submit"
                 disabled={waiveMutation.isPending}
                 className="px-6 py-2.5 text-sm bg-destructive text-destructive-foreground hover:bg-destructive/90 rounded-lg disabled:opacity-50 font-semibold transition-colors"
@@ -1041,9 +1045,8 @@ export default function RepossessionsPage() {
                 >
                   ราคาเงินสด (บาท) <span className="text-destructive">*</span>
                 </label>
-                <input
+                <NumberInput unstyled
                   id="ready-for-sale-cash"
-                  type="number"
                   min="0.01"
                   step="0.01"
                   value={readyForSalePrice}
@@ -1060,9 +1063,8 @@ export default function RepossessionsPage() {
                 >
                   ราคาผ่อน BESTCHOICE (บาท) <span className="text-destructive">*</span>
                 </label>
-                <input
+                <NumberInput unstyled
                   id="ready-for-sale-installment"
-                  type="number"
                   min="0.01"
                   step="0.01"
                   value={readyForSaleInstallment}
@@ -1078,14 +1080,14 @@ export default function RepossessionsPage() {
               จะหยิบราคาเก่าไปขาย
             </p>
             <div className="flex justify-end gap-3 pt-2">
-              <button
+              <button data-ui-control="button"
                 type="button"
                 onClick={() => setReadyForSaleRepo(null)}
                 className="px-5 py-2.5 text-sm border border-border rounded-lg hover:bg-accent transition-colors"
               >
                 ยกเลิก
               </button>
-              <button
+              <button data-ui-control="button"
                 type="submit"
                 disabled={
                   readyForSaleMutation.isPending ||
@@ -1121,11 +1123,11 @@ export default function RepossessionsPage() {
               </div>
             </div>
             <div>
-              <label className="block text-sm font-medium text-foreground mb-1">สถานะ</label>
-              <select
+              <label htmlFor={`${uiFieldId}-3`} className="block text-sm font-medium text-foreground mb-1">สถานะ</label>
+              <NativeSelect wrapperClassName="max-w-full w-full" id={`${uiFieldId}-3`}
                 value={updateForm.status}
                 onChange={(e) => setUpdateForm({ ...updateForm, status: e.target.value })}
-                className="w-full px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
+                className="px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
               >
                 {/* Show only valid status transitions based on current status —
                     พร้อมขาย ตั้งผ่านปุ่ม "พร้อมขาย" เท่านั้น (สองราคา + คิวรอถ่ายรูป, 2026-09-07) */}
@@ -1151,15 +1153,14 @@ export default function RepossessionsPage() {
                     <option value="SOLD">ขายแล้ว</option>
                   </>
                 )}
-              </select>
+              </NativeSelect>
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-foreground mb-1">
+                <label htmlFor={`${uiFieldId}-4`} className="block text-sm font-medium text-foreground mb-1">
                   ค่าซ่อม (บาท)
                 </label>
-                <input
-                  type="number"
+                <NumberInput unstyled id={`${uiFieldId}-4`}
                   value={updateForm.repairCost}
                   onChange={(e) => setUpdateForm({ ...updateForm, repairCost: e.target.value })}
                   disabled={selectedRepo.status === 'SOLD'}
@@ -1167,11 +1168,10 @@ export default function RepossessionsPage() {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-foreground mb-1">
+                <label htmlFor={`${uiFieldId}-5`} className="block text-sm font-medium text-foreground mb-1">
                   ราคาขายต่อ (บาท)
                 </label>
-                <input
-                  type="number"
+                <NumberInput unstyled id={`${uiFieldId}-5`}
                   value={updateForm.resellPrice}
                   onChange={(e) => setUpdateForm({ ...updateForm, resellPrice: e.target.value })}
                   disabled={selectedRepo.status === 'SOLD'}
@@ -1185,8 +1185,8 @@ export default function RepossessionsPage() {
               )}
             </div>
             <div>
-              <label className="block text-sm font-medium text-foreground mb-1">หมายเหตุ</label>
-              <textarea
+              <label htmlFor={`${uiFieldId}-6`} className="block text-sm font-medium text-foreground mb-1">หมายเหตุ</label>
+              <textarea id={`${uiFieldId}-6`}
                 value={updateForm.notes}
                 onChange={(e) => setUpdateForm({ ...updateForm, notes: e.target.value })}
                 rows={2}
@@ -1194,14 +1194,14 @@ export default function RepossessionsPage() {
               />
             </div>
             <div className="flex justify-end gap-3 pt-2">
-              <button
+              <button data-ui-control="button"
                 type="button"
                 onClick={() => setIsUpdateModalOpen(false)}
                 className="px-4 py-2 text-sm text-muted-foreground"
               >
                 ยกเลิก
               </button>
-              <button
+              <button data-ui-control="button"
                 type="submit"
                 disabled={updateMutation.isPending}
                 className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 disabled:opacity-50"

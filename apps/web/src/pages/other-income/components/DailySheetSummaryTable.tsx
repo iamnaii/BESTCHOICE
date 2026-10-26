@@ -1,3 +1,5 @@
+import { formatNumericText } from '@/utils/numericText';
+import ScreenTable from '@/components/ui/ScreenTable';
 import type { DailySheet } from '@/lib/otherIncome.types';
 
 interface DailySheetSummaryTableProps {
@@ -12,7 +14,7 @@ export function DailySheetSummaryTable({ title, rows }: DailySheetSummaryTablePr
       {rows.length === 0 ? (
         <p className="py-6 text-center text-muted-foreground text-xs">ไม่มีข้อมูล</p>
       ) : (
-        <table className="w-full text-sm">
+        <ScreenTable className="w-full text-sm">
           <thead className="bg-muted">
             <tr>
               <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">
@@ -36,12 +38,12 @@ export function DailySheetSummaryTable({ title, rows }: DailySheetSummaryTablePr
                 <td className="px-3 py-2 text-xs leading-snug">{r.name}</td>
                 <td className="px-3 py-2 text-right text-xs text-muted-foreground">{r.count}</td>
                 <td className="px-3 py-2 text-right font-mono font-bold">
-                  {Number(r.total).toFixed(2)} ฿
+                  {formatNumericText(Number(r.total).toFixed(2))} ฿
                 </td>
               </tr>
             ))}
           </tbody>
-        </table>
+        </ScreenTable>
       )}
     </div>
   );

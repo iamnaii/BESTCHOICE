@@ -1,4 +1,4 @@
-import { ChatWorkAccessService } from '../../staff-chat/services/chat-work-access.service';
+import { ChatWorkAccessService, roomWorkWhere, WORK_CHANNELS } from '../../staff-chat/services/chat-work-access.service';
 import type { WorkScope } from '@installment/shared';
 import { ResponseCycleService } from './response-cycle.service';
 import type { InboundAttribution } from '../interfaces/channel-adapter.interface';
@@ -46,7 +46,23 @@ const ROOM_NEXT_APPOINTMENT = {
   select: { id: true, title: true, dueDate: true, status: true },
 };
 
+// The same visibility rule is used for history, search and search-result context.
+const VISIBLE_MESSAGE: Prisma.ChatMessageWhereInput = {
+  deletedAt: null,
+  OR: [
+    { intent: null },
+    { NOT: { intent: { startsWith: 'DRAFT:' } } },
+    { deliveredAt: { not: null } },
+  ],
+};
+
+function messageSearchWhere(search: string): Prisma.ChatMessageWhereInput {
+  return { ...VISIBLE_MESSAGE, role: { not: MessageRole.SYSTEM }, text: { contains: search, mode: 'insensitive' } };
+}
+
 export interface RoomFilterParams {
+  /** Authorized request scope; combined with channel filters, never replaced by them. */
+  company?: WorkScope['company'];
   channel?: ChatChannel;
   status?: ChatRoomStatus;
   priority?: ChatPriority;
@@ -967,18 +983,7 @@ export class RoomManagerService {
     const msgs = await this.prisma.chatMessage.findMany({
       where: {
         roomId,
-        deletedAt: null,
-        // WS1: ซ่อน draft เก่าที่ไม่เคยส่งถึงลูกค้า — pipeline ถูกถอดแล้ว
-        // NULL-safe form: `NOT (intent LIKE 'DRAFT:%' AND deliveredAt IS NULL)`
-        // evaluates to NULL (row dropped) when intent IS NULL under SQL
-        // three-valued logic — and intent IS NULL on every customer/staff
-        // message, so that form blanked the whole inbox. Enumerate the
-        // visible cases instead of negating the hidden one.
-        OR: [
-          { intent: null },
-          { NOT: { intent: { startsWith: 'DRAFT:' } } },
-          { deliveredAt: { not: null } },
-        ],
+        ...VISIBLE_MESSAGE,
       },
       orderBy: { createdAt: 'desc' },
       take: limit,
@@ -993,6 +998,47 @@ export class RoomManagerService {
     // slowest single presign, not the sum. Bounded by `limit` (default 20).
     if (opts?.signMedia === false || !this.storageService.configured) return ordered;
     return signMessageMedia(ordered, (key) => this.storageService.getSignedDownloadUrl(key, 3600));
+  }
+
+  /** Search the entire authorized room, including messages outside the recent-history window. */
+  async searchRoomMessages(roomId: string, query: { q: string; page: number; limit: number }, actor: { id: string }, company?: WorkScope['company']) {
+    await new ChatWorkAccessService(this.prisma).roomContext(roomId, actor, { company });
+    const where = { roomId, ...messageSearchWhere(query.q) };
+    const [data, total] = await this.prisma.$transaction([
+      this.prisma.chatMessage.findMany({ where, select: { id: true, text: true, role: true, createdAt: true },
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], skip: (query.page - 1) * query.limit, take: query.limit }),
+      this.prisma.chatMessage.count({ where }),
+    ]);
+    return { data, total, page: query.page, limit: query.limit };
+  }
+
+  /** Bounded history around a search hit, with fresh room/company/branch authorization. */
+  async getMessageContext(roomId: string, messageId: string, actor: { id: string }, company?: WorkScope['company']) {
+    await new ChatWorkAccessService(this.prisma).roomContext(roomId, actor, { company });
+    const target = await this.prisma.chatMessage.findFirst({
+      where: { ...VISIBLE_MESSAGE, roomId, id: messageId },
+    });
+    if (!target) throw new NotFoundException('ไม่พบข้อความนี้ หรือข้อความถูกลบแล้ว');
+    const include = { staff: { select: { id: true, name: true, avatarUrl: true } } };
+    const [before, after] = await Promise.all([
+      this.prisma.chatMessage.findMany({
+        where: { AND: [VISIBLE_MESSAGE, { roomId }, { OR: [
+          { createdAt: { lt: target.createdAt } },
+          { createdAt: target.createdAt, id: { lt: target.id } },
+        ] }] },
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], take: 25, include,
+      }),
+      this.prisma.chatMessage.findMany({
+        where: { AND: [VISIBLE_MESSAGE, { roomId }, { OR: [
+          { createdAt: { gt: target.createdAt } },
+          { createdAt: target.createdAt, id: { gte: target.id } },
+        ] }] },
+        orderBy: [{ createdAt: 'asc' }, { id: 'asc' }], take: 26, include,
+      }),
+    ]);
+    const messages = [...before.reverse(), ...after];
+    if (!this.storageService.configured) return messages;
+    return signMessageMedia(messages, (key) => this.storageService.getSignedDownloadUrl(key, 3600));
   }
 
   /** Find room by ID with customer and assignment info */
@@ -1095,13 +1141,14 @@ export class RoomManagerService {
 
   /** ประกอบ where ของห้องแชทจากตัวกรองชุดเดียว — แหล่งเดียวของทั้งรายการและตัวนับ
    *  ห้ามเขียนสำเนาที่สอง: ป้ายที่นับด้วยตัวกรองคนละชุดกับรายการคือป้ายที่โกหก */
-  private buildRoomWhere(params: RoomFilterParams): Prisma.ChatRoomWhereInput {
+  private buildRoomWhere(params: RoomFilterParams, searchMessages = false): Prisma.ChatRoomWhereInput {
     const where: Prisma.ChatRoomWhereInput = {
       deletedAt: null,
     };
     // เงื่อนไขที่มี OR ของตัวเอง (ค้นหา / รอตอบ / ตอบไม่ทัน / ช่องทางหลายอัน) ต้องซ้อนใน AND
     // — เดิมเขียน where.OR ทับกัน: ค้นหาบนแท็บรอตอบถูกทิ้งเงียบ ๆ และ expired+channels ทับ channel=FACEBOOK
     const and: Prisma.ChatRoomWhereInput[] = [];
+    if (params.company) and.push({ channel: { in: WORK_CHANNELS[params.company] } });
 
     if (params.channel) where.channel = params.channel;
     if (params.status) where.status = params.status;
@@ -1121,6 +1168,7 @@ export class RoomManagerService {
           // (FB PSID, TikTok user id, web visitor id).
           { displayName: { contains: params.search, mode: 'insensitive' } },
           { externalUserId: { contains: params.search } },
+          ...(searchMessages ? [{ messages: { some: messageSearchWhere(params.search) } }] : []),
         ],
       });
     }
@@ -1157,12 +1205,31 @@ export class RoomManagerService {
   }
 
   /** List rooms for the unified inbox with pagination and filters */
-  async listRooms(params: RoomFilterParams & { page?: number; limit?: number }) {
+  async listRooms(params: RoomFilterParams & { page?: number; limit?: number }, actor?: { id: string }) {
+    params = { ...params, search: params.search?.trim() || undefined };
+    const search = actor ? params.search : undefined;
     const page = params.page ?? 1;
-    const limit = params.limit ?? 50;
+    const limit = Math.min(params.limit ?? 50, 100);
     const skip = (page - 1) * limit;
 
-    const where = this.buildRoomWhere(params);
+    let where = this.buildRoomWhere(params, !!search);
+    if (search && actor) {
+      const current = await new ChatWorkAccessService(this.prisma).currentActor(actor);
+      where = { AND: [where, roomWorkWhere(current, { company: params.company ?? 'SHOP' })] };
+    }
+    // Fetch only the newest matching excerpt per visible room, while retaining its latest-message preview.
+    const withMatches = async <T extends { id: string }>(rows: T[]) => {
+      if (!search || !rows.length) return rows;
+      const matches = await this.prisma.chatRoom.findMany({
+        where: { AND: [where, { id: { in: rows.map((row) => row.id) } }] },
+        select: { id: true, messages: {
+          where: messageSearchWhere(search), orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], take: 1,
+          select: { id: true, text: true, role: true, createdAt: true },
+        } },
+      });
+      const byRoom = new Map(matches.map((room) => [room.id, room.messages[0] ?? null]));
+      return rows.map((row) => ({ ...row, searchMatch: byRoom.get(row.id) ?? null }));
+    };
     const include = {
       customer: { select: { id: true, name: true, phone: true } },
       assignedTo: { select: { id: true, name: true, avatarUrl: true } },
@@ -1197,11 +1264,11 @@ export class RoomManagerService {
       });
       const pageIds = keys.slice(skip, skip + limit).map((k) => k.id);
       const rows = pageIds.length
-        ? await this.prisma.chatRoom.findMany({ where: { id: { in: pageIds } }, include })
+        ? await this.prisma.chatRoom.findMany({ where: { ...where, id: { in: pageIds } }, include })
         : [];
       const byId = new Map(rows.map((r) => [r.id, r]));
       const data = pageIds.map((id) => byId.get(id)!).filter(Boolean);
-      return { data, total: keys.length, page, limit };
+      return { data: await withMatches(data), total: keys.length, page, limit };
     }
 
     const [data, total] = await this.prisma.$transaction([
@@ -1235,7 +1302,7 @@ export class RoomManagerService {
       this.prisma.chatRoom.count({ where }),
     ]);
 
-    return { data, total, page, limit };
+    return { data: await withMatches(data), total, page, limit };
   }
 
   /** Link room to a verified customer */
@@ -1251,9 +1318,9 @@ export class RoomManagerService {
   }
 
   /** Get active room count for a staff member (or all if no staffId) */
-  async getUnreadCount(staffId?: string) {
+  async getUnreadCount(staffId?: string, company?: WorkScope['company']) {
     const where: Prisma.ChatRoomWhereInput = {
-      deletedAt: null,
+      ...this.buildRoomWhere({ company }),
       status: ChatRoomStatus.ACTIVE,
       handoffMode: true,
     };
@@ -1278,7 +1345,7 @@ export class RoomManagerService {
    */
   async getRoomBadgeCounts(
     staffId?: string,
-    params?: { tab?: InboxTabKey; aiStatus?: 'ai' | 'human' | 'pending' },
+    params?: { tab?: InboxTabKey; aiStatus?: 'ai' | 'human' | 'pending'; company?: WorkScope['company'] },
   ): Promise<{
     /** ห้องที่ฉันดูแล — ทุกห้อง ไม่ใช่เฉพาะที่ยังไม่อ่าน */
     mine: number;
@@ -1291,9 +1358,10 @@ export class RoomManagerService {
     byChannel: Record<string, number>;
   }> {
     // ตัวกรองพื้นฐาน = สิ่งที่ผู้ใช้เลือกไว้นอกเหนือแท็บ (สถานะบอท) — ชุดเดียวกับรายการ
-    const base = this.buildRoomWhere({ aiStatus: params?.aiStatus });
-    const waitingWhere = this.buildRoomWhere({ aiStatus: params?.aiStatus, waiting: true });
-    const expiredWhere = this.buildRoomWhere({ aiStatus: params?.aiStatus, expired: true });
+    const filters = { aiStatus: params?.aiStatus, company: params?.company };
+    const base = this.buildRoomWhere(filters);
+    const waitingWhere = this.buildRoomWhere({ ...filters, waiting: true });
+    const expiredWhere = this.buildRoomWhere({ ...filters, expired: true });
     // ไม่รู้ว่าใครถาม = ไม่มี "ของฉัน" ให้นับ — ปล่อย assignedToId เป็น undefined ไม่ได้
     // เพราะ Prisma อ่านว่า "ไม่กรอง" ⇒ ทุกห้องกลายเป็นห้องของคนคนนั้น
     // "ของฉัน" = งานที่ยังเปิดของฉัน — ห้องที่ปิดงานแล้วไม่นับ (ชุดเดียวกับรายการ openOnly)

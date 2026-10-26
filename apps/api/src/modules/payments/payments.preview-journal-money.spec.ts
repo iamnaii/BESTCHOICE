@@ -187,6 +187,7 @@ describe('PaymentsService.previewJournal (characterization)', () => {
         createMany: jest.fn().mockResolvedValue({ count: 0 }),
         findUnique: jest.fn().mockImplementation(() => Promise.resolve(installment)),
       },
+      journalLine: { findMany: jest.fn().mockResolvedValue([]) }, // PR4: glContractBalance (ไม่มีบรรทัด = ไม่มีขากลับ)
       chartOfAccount: {
         // Names are irrelevant to the money assertions — return [] so the
         // service falls back to `nameMap.get(code) ?? code` (accountName = code).
@@ -568,9 +569,12 @@ describe('PaymentsService.previewJournal (characterization)', () => {
       expect(lineFor(out.lines, '21-1103')?.credit).toBe('50.00');
       // rounding adj suppressed (previewAdvCredit != 0): no 53-1503.
       expect(lineFor(out.lines, '53-1503')).toBeUndefined();
-      // Cash 2050 ; Cr 11-2103 2000 + Cr 21-1103 50 = 2050.
-      expect(out.totalDebit).toBe('2050.00');
-      expect(out.totalCredit).toBe('2050.00');
+      // PR4: เงินที่พัก 50 ได้ขาพักภาษี Dr 21-2102 / Cr 21-2101 = HALF_UP(50 × 7/107) = 3.27 ในรายการเดียวกัน
+      expect(lineFor(out.lines, '21-2102')?.debit).toBe('3.27');
+      expect(lineFor(out.lines, '21-2101')?.credit).toBe('3.27');
+      // Cash 2050 + Dr 21-2102 3.27 ; Cr 11-2103 2000 + Cr 21-1103 50 + Cr 21-2101 3.27 = 2053.27.
+      expect(out.totalDebit).toBe('2053.27');
+      expect(out.totalCredit).toBe('2053.27');
       expect(out.isBalanced).toBe(true);
     });
   });

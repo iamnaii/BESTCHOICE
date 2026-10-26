@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useId as useUiFieldId, useState, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
 import { toast } from 'sonner';
@@ -105,6 +105,7 @@ function EditablePersonaCard({
   maxChars,
   patchKey,
 }: EditablePersonaCardProps) {
+  const uiFieldId = useUiFieldId();
   const queryClient = useQueryClient();
   const [draft, setDraft] = useState(currentValue);
   const [revertOpen, setRevertOpen] = useState(false);
@@ -156,19 +157,19 @@ function EditablePersonaCard({
         </CardHeader>
         <CardContent className="space-y-3">
           <div className="space-y-1.5">
-            <Label className="leading-snug text-xs">เนื้อหา persona</Label>
-            <Textarea
+            <Label htmlFor={`${uiFieldId}-1`} className="leading-snug text-xs">เนื้อหาบุคลิก AI</Label>
+            <Textarea id={`${uiFieldId}-1`}
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
               rows={20}
               className="font-mono text-xs leading-relaxed"
               spellCheck={false}
-              placeholder="ใส่ persona ภาษาไทยตามรูปแบบที่ต้องการ — ดู 'ค่าเริ่มต้น' ตอน revert"
+              placeholder="ใส่บุคลิก AI เป็นภาษาไทยตามต้องการ หรือคืนค่าเริ่มต้น"
             />
             <div className="flex items-center justify-between text-xs text-muted-foreground leading-snug">
               <span>
                 {draft.length.toLocaleString('th-TH')} / {maxChars.toLocaleString('th-TH')} ตัวอักษร
-                {' · '}≈ {approxTokenCount(draft).toLocaleString('th-TH')} tokens
+                {' · '}≈ {approxTokenCount(draft).toLocaleString('th-TH')} โทเคน
               </span>
               {dirty && <span className="text-warning-strong">ยังไม่ได้บันทึก</span>}
             </div>
@@ -178,7 +179,7 @@ function EditablePersonaCard({
             <div className="rounded-md border border-destructive/40 bg-destructive/5 p-2.5 text-xs text-destructive leading-snug flex items-start gap-2">
               <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
               <span>
-                เกิน {maxChars.toLocaleString('th-TH')} ตัวอักษร — server จะปฏิเสธ ลดข้อความก่อนบันทึก
+                เกิน {maxChars.toLocaleString('th-TH')} ตัวอักษร — ระบบ จะปฏิเสธ ลดข้อความก่อนบันทึก
               </span>
             </div>
           )}
@@ -220,7 +221,7 @@ function EditablePersonaCard({
         open={revertOpen}
         onOpenChange={setRevertOpen}
         title="คืนค่าเริ่มต้น?"
-        description={`ลบ override ของ "${title}" → กลับไปใช้ค่าฝังในโค้ด (${defaultValue.length.toLocaleString('th-TH')} ตัวอักษร) มีผลทันที — ข้อความที่แก้ไว้จะหายไป`}
+        description={`ลบข้อความที่ปรับแต่งของ "${title}" → กลับไปใช้ค่าฝังในโค้ด (${defaultValue.length.toLocaleString('th-TH')} ตัวอักษร) มีผลทันที — ข้อความที่แก้ไว้จะหายไป`}
         variant="destructive"
         confirmLabel="คืนค่าเริ่มต้น"
         loading={saveMutation.isPending}
@@ -256,7 +257,7 @@ function ServiceBotCard({ persona }: { persona: ServiceBotPersona }) {
           </pre>
         </div>
         <p className="text-xs text-muted-foreground mt-3 leading-snug font-mono">
-          source: {persona.source}
+          ที่มา: {persona.source}
         </p>
       </CardContent>
     </Card>
@@ -271,7 +272,7 @@ export default function AiPersonaPage() {
 
   return (
     <div>
-      <PageHeader title="AI Persona" subtitle="ตัวตน บุคลิก และกฎการตอบของบอททั้ง 2 ตัว" />
+      <PageHeader title="บุคลิก AI" subtitle="ตัวตน บุคลิก และกฎการตอบของบอททั้ง 2 ตัว" />
 
       <QueryBoundary
         isLoading={personaQuery.isLoading}
@@ -297,9 +298,9 @@ export default function AiPersonaPage() {
               </div>
               <div className="grid grid-cols-1 gap-4">
                 <EditablePersonaCard
-                  title="บุคลิก & โทน (BASE)"
+                  title="บุคลิกและน้ำเสียง"
                   icon={<Bot className="w-4 h-4 text-muted-foreground" />}
-                  description="identity + tone + Thai-natural rules. ใช้ทั้ง AiSuggest (staff suggestions) และ SalesBot (auto-reply)"
+                  description="กำหนดบุคลิก น้ำเสียง และการใช้ภาษาไทย สำหรับคำแนะนำพนักงานและบอตตอบอัตโนมัติ"
                   field="base"
                   currentValue={personaQuery.data.salesBot.base}
                   defaultValue={personaQuery.data.salesBot.defaultBase}
@@ -308,9 +309,9 @@ export default function AiPersonaPage() {
                   patchKey="shopBotPersonaBase"
                 />
                 <EditablePersonaCard
-                  title="Playbook & กฎ tools (BOT_EXTRAS)"
+                  title="แนวทางตอบลูกค้าและการใช้เครื่องมือ"
                   icon={<Bot className="w-4 h-4 text-muted-foreground" />}
-                  description="ต่อท้าย BASE สำหรับ SalesBot เท่านั้น — playbook ตอบลูกค้า + เรียก tools (4-persona detect, 3-combo, 8 objections, capture_lead, handoff_to_human, MDM)"
+                  description="แนวทางเพิ่มเติมสำหรับบอตขาย: เข้าใจลูกค้า แนะนำสินค้า ตอบข้อกังวล เก็บข้อมูลผู้สนใจ และส่งต่อพนักงาน"
                   field="extras"
                   currentValue={personaQuery.data.salesBot.extras}
                   defaultValue={personaQuery.data.salesBot.defaultExtras}

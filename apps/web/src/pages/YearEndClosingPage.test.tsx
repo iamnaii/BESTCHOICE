@@ -165,7 +165,7 @@ describe('YearEndClosingPage', () => {
     // No disabled "ปิดบัญชีปี" submit button rendered
     expect(screen.queryByRole('button', { name: /ปิดบัญชีปี/i })).not.toBeInTheDocument();
     // Explainer mentions allowed roles
-    expect(screen.getByText(/OWNER และ ACCOUNTANT/)).toBeInTheDocument();
+    expect(screen.getByText(/เจ้าของ และ ฝ่ายบัญชี/)).toBeInTheDocument();
   });
 
   it('shows post Card for ACCOUNTANT (canPost path)', async () => {

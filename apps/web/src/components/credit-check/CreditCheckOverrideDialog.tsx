@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react';
+import { NativeSelect } from '@/components/ui/native-select';
+import { useId as useUiFieldId, useMemo, useState } from 'react';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Sparkles, AlertTriangle } from 'lucide-react';
@@ -83,7 +84,7 @@ const REASON_OPTIONS: ReasonOption[] = [
   },
   {
     value: 'MGR_RISK',
-    label: 'Manager/Owner รับความเสี่ยง',
+    label: "ผู้จัดการหรือเจ้าของ รับความเสี่ยง",
     requiresDetail: true,
     detailLabel: 'ผู้อนุมัติ',
     detailPlaceholder: 'เช่น approve โดยคุณ... (ระบุความสัมพันธ์)',
@@ -132,6 +133,7 @@ export default function CreditCheckOverrideDialog({
   isPending,
   onConfirm,
 }: Props) {
+  const uiFieldId = useUiFieldId();
   const [affordability, setAffordability] = useState<CreditApprovalPayload | null>(null);
   const needsAmount = status === 'APPROVED' && checkType === 'FULL';
   // `aiDecision` is actually the record's CURRENT status (possibly already
@@ -174,19 +176,19 @@ export default function CreditCheckOverrideDialog({
           )}
 
           <div>
-            <label className="block text-xs font-medium text-foreground mb-1.5">
+            <label htmlFor={`${uiFieldId}-1`} className="block text-xs font-medium text-foreground mb-1.5">
               สถานะใหม่ <span className="text-destructive">*</span>
             </label>
-            <select
+            <NativeSelect wrapperClassName="max-w-full w-full" id={`${uiFieldId}-1`}
               value={status}
               onChange={(e) => { setAffordability(null); onStatusChange(e.target.value); }}
-              className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm"
+              className="h-10 px-3 rounded-lg border border-input bg-background text-sm"
             >
               <option value="">-- เลือกสถานะ --</option>
               <option value="APPROVED">ผ่าน</option>
               <option value="REJECTED">ไม่ผ่าน</option>
               <option value="MANUAL_REVIEW">ต้องตรวจเพิ่ม</option>
-            </select>
+            </NativeSelect>
           </div>
 
           {open && needsAmount && creditCheckId && <CreditAffordabilityForm creditCheckId={creditCheckId} onChange={setAffordability} />}
@@ -207,18 +209,18 @@ export default function CreditCheckOverrideDialog({
               <div className="rounded-lg border border-warning/30 bg-warning/5 p-3 flex items-start gap-2">
                 <AlertTriangle className="size-4 text-warning-strong shrink-0 mt-0.5" />
                 <div className="text-xs text-foreground leading-snug">
-                  คุณกำลัง override ผล AI — ต้องระบุเหตุผลเพื่อ audit
+                  คุณกำลัง แก้ไขแทนค่าเดิม ผล AI — ต้องระบุเหตุผลเพื่อ การตรวจสอบ
                 </div>
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-foreground mb-1.5">
+                <label htmlFor={`${uiFieldId}-2`} className="block text-xs font-medium text-foreground mb-1.5">
                   เหตุผล <span className="text-destructive">*</span>
                 </label>
-                <select
+                <NativeSelect wrapperClassName="max-w-full w-full" id={`${uiFieldId}-2`}
                   value={reasonCategory}
                   onChange={(e) => onReasonCategoryChange(e.target.value)}
-                  className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm"
+                  className="h-10 px-3 rounded-lg border border-input bg-background text-sm"
                 >
                   <option value="">-- เลือกเหตุผล --</option>
                   {REASON_OPTIONS.map((opt) => (
@@ -226,33 +228,33 @@ export default function CreditCheckOverrideDialog({
                       {opt.label}{opt.requiresDetail ? '' : ' (ไม่ต้องระบุรายละเอียดเพิ่ม)'}
                     </option>
                   ))}
-                </select>
+                </NativeSelect>
               </div>
 
               {isHighDown && (
                 <div>
-                  <label className="block text-xs font-medium text-foreground mb-1.5">
+                  <label htmlFor={`${uiFieldId}-3`} className="block text-xs font-medium text-foreground mb-1.5">
                     % ดาวน์ <span className="text-destructive">*</span>
                   </label>
-                  <select
+                  <NativeSelect wrapperClassName="max-w-full w-full" id={`${uiFieldId}-3`}
                     value={notes}
                     onChange={(e) => onNotesChange(e.target.value)}
-                    className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm"
+                    className="h-10 px-3 rounded-lg border border-input bg-background text-sm"
                   >
                     <option value="">-- เลือก % ดาวน์ --</option>
                     {DOWN_TIERS.map((t) => (
                       <option key={t.value} value={t.value}>{t.label}</option>
                     ))}
-                  </select>
+                  </NativeSelect>
                 </div>
               )}
 
               {currentOption?.requiresDetail && !isHighDown && (
                 <div>
-                  <label className="block text-xs font-medium text-foreground mb-1.5">
+                  <label htmlFor={`${uiFieldId}-4`} className="block text-xs font-medium text-foreground mb-1.5">
                     {currentOption.detailLabel} <span className="text-destructive">*</span>
                   </label>
-                  <textarea
+                  <textarea id={`${uiFieldId}-4`}
                     value={notes}
                     onChange={(e) => onNotesChange(e.target.value)}
                     rows={3}

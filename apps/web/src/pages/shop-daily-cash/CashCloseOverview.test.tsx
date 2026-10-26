@@ -92,7 +92,7 @@ describe('CashCloseOverview — มุมมองเจ้าของ (กร�
     const dialog = await screen.findByRole('dialog');
     expect(within(dialog).getByText(/รังสิต · ส่งยอดโดย วิชัย/)).toBeInTheDocument();
     expect(within(dialog).getByLabelText(/เงินที่รับมาจริง/)).toHaveValue('4,300.00');
-    await userEvent.click(within(dialog).getByRole('button', { name: 'Close' }));
+    await userEvent.click(within(dialog).getByRole('button', { name: 'ปิด' }));
     await userEvent.click(within(table).getByRole('button', { name: 'เปิดสาขานี้' }));
     expect(onOpen).toHaveBeenCalledWith('br-bn', '2026-09-21');
   });

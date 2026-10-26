@@ -21,6 +21,7 @@ import { ProductsModule } from '../products/products.module';
 import { WarrantyModule } from '../warranty/warranty.module';
 import { ContractExchangeModule } from '../contract-exchange/contract-exchange.module';
 import { TestModeModule } from '../test-mode/test-mode.module';
+import { CustomerBlacklistModule } from '../customers/customer-blacklist.module';
 import { ReceiptsModule } from '../receipts/receipts.module';
 import { CustomerJourneyModule } from '../customer-journey/customer-journey.module';
 import { ChatbotFinanceModule } from '../chatbot-finance/chatbot-finance.module';
@@ -43,6 +44,8 @@ import { EarlyPayoffSlipService } from './early-payoff-slip/early-payoff-slip.se
     // OWNER toggle is on. TestModeModule depends only on global Prisma → no
     // circular dependency with ContractsModule.
     TestModeModule,
+    // ก้อน 5 C3 — ด่าน blacklist ตอนสร้าง/เปิดใช้สัญญา: โมดูลพึ่ง Prisma + PII เท่านั้น ไม่มีวงจรกับ ContractsModule
+    CustomerBlacklistModule,
     // EARLY_PAYOFF receipt generation. forwardRef breaks the
     // Contracts → Receipts → LineOa → Contracts module cycle.
     forwardRef(() => ReceiptsModule),

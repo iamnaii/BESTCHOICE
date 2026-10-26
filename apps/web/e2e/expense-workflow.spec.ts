@@ -79,9 +79,7 @@ test.describe('Expense Workflow', () => {
         .filter({ hasText: /รายละเอียด|คำอธิบาย/i })
         .first()
         .or(formArea.getByPlaceholder(/รายละเอียด|คำอธิบาย|description/i).first());
-      const amountField = formArea
-        .locator('input[name*="amount"], input[placeholder*="จำนวนเงิน"]')
-        .first();
+      const amountField = formArea.getByRole('spinbutton', { name: /จำนวนเงิน|ราคา\/หน่วย|ยอดเงิน/ }).first();
 
       if (await descField.isVisible({ timeout: 3000 }).catch(() => false)) {
         await expect(descField).toBeVisible();

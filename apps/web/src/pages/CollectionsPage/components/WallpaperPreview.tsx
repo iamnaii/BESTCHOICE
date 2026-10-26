@@ -17,9 +17,9 @@ export function WallpaperPreview({ wallpaperUrl, checked, onChange }: WallpaperP
   if (!wallpaperUrl) {
     return (
       <p className="text-xs text-muted-foreground leading-snug">
-        ยังไม่ตั้ง wallpaper MDM —{' '}
+        ยังไม่ตั้งภาพพื้นหลัง MDM —{' '}
         <a href="/settings" className="underline underline-offset-2">
-          ไปตั้งค่าที่หน้า Dunning
+          ไปตั้งค่าที่หน้า ทวงถามหนี้
         </a>
       </p>
     );
@@ -28,7 +28,7 @@ export function WallpaperPreview({ wallpaperUrl, checked, onChange }: WallpaperP
     <div className="flex items-start gap-3 rounded-md border border-border bg-muted/30 p-3">
       <img
         src={wallpaperUrl}
-        alt="MDM wallpaper preview"
+        alt="ตัวอย่างภาพพื้นหลัง MDM"
         className="h-16 w-16 rounded object-cover"
       />
       <div className="flex-1">

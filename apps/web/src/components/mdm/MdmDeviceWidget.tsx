@@ -70,7 +70,7 @@ function getStatusBadge(response: DeviceStatusResponse) {
   if (device.lossStatus === 1) {
     return (
       <Badge variant="destructive" appearance="light" size="sm">
-        Lost Mode
+        โหมดสูญหาย
       </Badge>
     );
   }
@@ -141,7 +141,7 @@ export default function MdmDeviceWidget({ imei }: MdmDeviceWidgetProps) {
   const lockMutation = useMutation({
     mutationFn: () => api.post('/mdm/lock', { imei, reason: lockReason }),
     onSuccess: () => {
-      toast.success('ล็อคอุปกรณ์ Lost Mode เรียบร้อยแล้ว');
+      toast.success("ล็อคอุปกรณ์ โหมดสูญหาย เรียบร้อยแล้ว");
       queryClient.invalidateQueries({ queryKey: ['mdm-device-status', imei] });
       setLockDialogOpen(false);
       setLockReason('');
@@ -228,7 +228,7 @@ export default function MdmDeviceWidget({ imei }: MdmDeviceWidgetProps) {
             </p>
             {device.lastTime && (
               <p className="text-xs text-muted-foreground leading-snug">
-                <span className="text-foreground font-medium">Last seen:</span>{' '}
+                <span className="text-foreground font-medium">พบล่าสุด:</span>{' '}
                 {formatLastSeen(device.lastTime)}
               </p>
             )}
@@ -247,7 +247,7 @@ export default function MdmDeviceWidget({ imei }: MdmDeviceWidgetProps) {
                 disabled={lockMutation.isPending}
               >
                 <Lock className="size-3 mr-1" />
-                ล็อค Lost Mode
+                ล็อคโหมดสูญหาย
               </Button>
               <Button
                 size="sm"
@@ -279,7 +279,7 @@ export default function MdmDeviceWidget({ imei }: MdmDeviceWidgetProps) {
       <Dialog open={lockDialogOpen} onOpenChange={setLockDialogOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>ล็อค Lost Mode</DialogTitle>
+            <DialogTitle>ล็อคโหมดสูญหาย</DialogTitle>
           </DialogHeader>
           <div className="py-2 space-y-3">
             <p className="text-sm text-muted-foreground leading-snug">

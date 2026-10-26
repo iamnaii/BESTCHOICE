@@ -1,3 +1,7 @@
+import { NumberInput } from '@/components/ui/NumberInput';
+import ScreenTable from '@/components/ui/ScreenTable';
+import { NativeSelect } from '@/components/ui/native-select';
+import { useId } from 'react';
 import { Plus, Trash2 } from 'lucide-react';
 import { PettyCashFormFields, newPettyCashLine } from './types';
 import { formatNumberDecimal } from '@/utils/formatters';
@@ -20,6 +24,7 @@ interface Props {
  * + system_config.
  */
 export function PettyCashLinesSection({ value, onChange }: Props) {
+  const custodianId = useId();
   const custodianNames = useUserNames();
   const updateField = (patch: Partial<PettyCashFormFields>) => onChange({ ...value, ...patch });
 
@@ -51,10 +56,11 @@ export function PettyCashLinesSection({ value, onChange }: Props) {
     <div className="space-y-4">
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
-          <label className="block text-xs font-medium mb-1 text-muted-foreground">
-            ผู้ดูแลเงินสดย่อย (custodian) — ทางเลือก
+          <label htmlFor={custodianId} className="block text-xs font-medium mb-3 text-muted-foreground">
+            ผู้ดูแลเงินสดย่อย — ไม่บังคับ
           </label>
           <NameAutocomplete
+            id={custodianId}
             value={value.custodianName}
             onChange={(v) => updateField({ custodianName: v })}
             options={custodianNames}
@@ -70,7 +76,7 @@ export function PettyCashLinesSection({ value, onChange }: Props) {
 
       {/* Lines */}
       <div className="overflow-x-auto rounded-lg border border-border">
-        <table className="w-full text-sm">
+        <ScreenTable className="w-full text-sm">
           <thead className="bg-muted/40">
             <tr className="text-left text-xs text-muted-foreground">
               <th className="px-2 py-2 w-8">#</th>
@@ -114,8 +120,7 @@ export function PettyCashLinesSection({ value, onChange }: Props) {
                   />
                 </td>
                 <td className="px-2 py-1.5">
-                  <input
-                    type="number"
+                  <NumberInput unstyled
                     step="0.01"
                     min="0"
                     value={l.amount}
@@ -125,14 +130,14 @@ export function PettyCashLinesSection({ value, onChange }: Props) {
                   />
                 </td>
                 <td className="px-2 py-1.5">
-                  <select
+                  <NativeSelect wrapperClassName="max-w-full w-full"
                     value={l.vatPercent}
                     onChange={(e) => updateLine(l.uid, { vatPercent: e.target.value })}
-                    className="w-full rounded-md border border-input bg-background px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                    className="rounded-md border border-input bg-background px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
                   >
                     <option value="0">0</option>
                     <option value="7">7</option>
-                  </select>
+                  </NativeSelect>
                 </td>
                 <td className="px-2 py-1.5">
                   <input
@@ -147,7 +152,7 @@ export function PettyCashLinesSection({ value, onChange }: Props) {
                   {formatNumberDecimal(l.totalN.toString(), 2)}
                 </td>
                 <td className="px-2 py-1.5">
-                  <button
+                  <button data-ui-control="button" data-ui-icon="true"
                     type="button"
                     onClick={() => removeLine(l.uid)}
                     disabled={value.lines.length === 1}
@@ -178,11 +183,11 @@ export function PettyCashLinesSection({ value, onChange }: Props) {
               <td></td>
             </tr>
           </tfoot>
-        </table>
+        </ScreenTable>
       </div>
 
       <div>
-        <button
+        <button data-ui-control="button"
           type="button"
           onClick={addLine}
           className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-3 py-1.5 text-sm font-medium hover:bg-accent"

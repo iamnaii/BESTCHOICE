@@ -1,0 +1,112 @@
+{
+  "status": "PASS",
+  "branch": "feat/noto-minimal-ui-20261014",
+  "baseRevision": "c26cf0091f77f4c47208532a98c140afd340dac8",
+  "inventorySourceFingerprint": "584289622c199b45ad092089cac8b1f37f36989b6589516bd6771c70dffe257f",
+  "uiContentFingerprint": "ddbf80cd8716f9eef1008c4b166eab6f69526490c9111cc7e79bfc222c9586eb",
+  "uiContentFingerprintScope": "Sorted git cached and untracked nonignored apps/packages file paths plus contents, SHA256",
+  "visualReview": {
+    "representativeRoutes": 30,
+    "baselineWidth": 320,
+    "afterWidths": [
+      320,
+      375,
+      390,
+      430
+    ],
+    "desktopWidth": 1440
+  },
+  "targetedDensity": {
+    "status": "PASS",
+    "states": 50,
+    "failures": 0,
+    "evidence": "density-results.json"
+  },
+  "mobileRouteInventory": {
+    "status": "PASS",
+    "rows": 269,
+    "widths": [
+      320,
+      390
+    ],
+    "themes": [
+      "light",
+      "dark"
+    ],
+    "routeWidthStates": 538,
+    "screenshots": 1076,
+    "reviewItems": 0,
+    "evidence": "route-results.json",
+    "originalEvidence": ".tmp/mobile-density/routes/uxui-pages/inventory-results.json",
+    "scope": "Initial/populated/missing-record/recovery states declared in inventory; not every possible record, role or workflow"
+  },
+  "components": {
+    "status": "PASS",
+    "tests": 65,
+    "logs": [
+      ".tmp/mobile-density/components.log",
+      ".tmp/mobile-density/store-components.log"
+    ]
+  },
+  "catalogBrowser": {
+    "status": "PASS",
+    "tests": 4,
+    "log": ".tmp/mobile-density/store-catalog.log"
+  },
+  "documents": {
+    "status": "PASS",
+    "renderers": [
+      "MobileReceipt",
+      "DocumentPreview",
+      "StickerCard"
+    ],
+    "media": [
+      "screen",
+      "print"
+    ],
+    "comparisons": 6,
+    "everyDescendantMetrics": "identical",
+    "log": ".tmp/mobile-density/paper.log"
+  },
+  "independentReview": {
+    "status": "PASS",
+    "unresolvedFindings": 0,
+    "scope": "Mobile implementation and pagination test-helper correction"
+  },
+  "localCheckFirstAttempt": {
+    "status": "FAIL",
+    "cause": "Retained synthetic library folders exceeded 20 per page; checker incorrectly assumed new folder was on page1",
+    "evidence": ".tmp/mobile-density/local-check-first.json",
+    "fix": "Use actual UI folder pagination with API and UI readiness assertions",
+    "standaloneRetest": "PASS1440/390",
+    "log": ".tmp/mobile-density/library-pagination.log"
+  },
+  "previews": {
+    "admin": "http://localhost:5206/inbox",
+    "storefront": "http://localhost:5228/products",
+    "data": "synthetic",
+    "adminMatchesVerifiedSource": true
+  },
+  "limits": [
+    "Browser viewport emulation, no physical iPhone/Android/LINE or printer verification",
+    "Main preview supports limited modules; full route inventory used isolated full API and PostgreSQL",
+    "Storefront preview uses synthetic products and image placeholders",
+    "No commit, push, merge or deployment"
+  ],
+  "sourceFingerprint": "796a35184936d31a9cbfb18fc3fffab81fa13eee59490774bc9c602d9d99374d",
+  "localCheck": {
+    "status": "PASS",
+    "stages": 39,
+    "unitTests": {
+      "web": 3326,
+      "shared": 149,
+      "storefront": 46
+    },
+    "sourceFingerprint": "796a35184936d31a9cbfb18fc3fffab81fa13eee59490774bc9c602d9d99374d",
+    "evidence": "local-check.json",
+    "scope": "Basic checks + synthetic Inbox, customers, dashboard, FINANCE portfolio, work-company navigation and trade-in-to-stock flow; not a full backend/financial regression"
+  },
+  "uiUnchangedSinceMobileInventory": true,
+  "sourceDifferenceSinceInventory": "Only tools/check-local-chat-library.mjs changed after the full mobile inventory; apps/packages content hash is identical",
+  "verifiedAt": "2026-10-14T11:14:30.448Z"
+}

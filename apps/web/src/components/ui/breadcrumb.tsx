@@ -8,7 +8,7 @@ function Breadcrumb({
 }: React.ComponentProps<'nav'> & {
   separator?: React.ReactNode;
 }) {
-  return <nav data-slot="breadcrumb" aria-label="breadcrumb" {...props} />;
+  return <nav data-slot="breadcrumb" aria-label="เส้นทาง" {...props} />;
 }
 
 function BreadcrumbList({ className, ...props }: React.ComponentProps<'ol'>) {
@@ -73,7 +73,7 @@ const BreadcrumbEllipsis = ({ className, ...props }: React.ComponentProps<'span'
     {...props}
   >
     <MoreHorizontal className="h-4 w-4" />
-    <span className="sr-only">More</span>
+    <span className="sr-only">เพิ่มเติม</span>
   </span>
 );
 

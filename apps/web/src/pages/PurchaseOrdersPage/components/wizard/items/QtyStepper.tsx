@@ -1,3 +1,4 @@
+import { NumberInput } from '@/components/ui/NumberInput';
 import { Minus, Plus } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -11,17 +12,16 @@ const btn =
   'grid w-8 place-items-center text-muted-foreground transition-colors cursor-pointer hover:bg-accent hover:text-foreground ' +
   'disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-transparent focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring/40';
 
-/** − [ n ] + — quantity never drops below 1 (the API rejects quantity < 1). 110px wide, 40px tall. */
+/** − [ n ] + — quantity never drops below 1 (the API rejects quantity < 1). 110px wide, 44px tall. */
 export function QtyStepper({ value, onChange, className }: QtyStepperProps) {
   const n = Math.max(1, Math.floor(Number(value)) || 1);
   return (
-    <div className={cn('inline-flex h-10 items-stretch overflow-hidden rounded-md border border-input bg-background', className)}>
+    <div data-field-frame className={cn('inline-flex h-11 items-stretch overflow-hidden rounded-md border border-input bg-background', className)}>
       <button type="button" aria-label="ลดจำนวน" disabled={n <= 1} onClick={() => onChange(String(n - 1))} className={btn}>
         <Minus className="size-3.5" />
       </button>
-      <input
+      <NumberInput unstyled data-field-embedded
         aria-label="จำนวน"
-        type="number"
         min={1}
         step={1}
         inputMode="numeric"

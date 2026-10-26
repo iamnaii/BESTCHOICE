@@ -58,6 +58,10 @@ describe('PurchaseOrdersController — จ่ายเงินผู้จั�
     expect(roles('recordTaxInvoice')).toEqual(['OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT']);
   });
 
+  it('GET receiving-doc-check → OWNER/BM/ACCOUNTANT — ตัวตรวจเลขซ้ำของ dialog ใบกำกับภาษี ต้องเปิดให้ทุก role ที่บันทึกใบกำกับได้ (Q1)', () => {
+    expect(roles('checkReceivingDoc')).toEqual(['OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT']);
+  });
+
   it('ก้อน 5 (Q5): GET :id และ GET :id/goods-receivings/:receivingId ส่ง role ของผู้เรียกให้ service ตัด receivedVat', async () => {
     await controller.findOne('po-1', { role: 'BRANCH_MANAGER' });
     expect(service.findOne).toHaveBeenCalledWith('po-1', 'BRANCH_MANAGER');
@@ -100,12 +104,15 @@ describe('PurchaseOrdersController — จ่ายเงินผู้จั�
   describe('DTO', () => {
     const errorsOf = async (cls: new () => object, body: object) => (await validate(plainToInstance(cls, body))).map((e) => e.property);
 
-    it('RecordSupplierPaymentDto: วันที่ต้อง YYYY-MM-DD · จำนวน > 0 · สลิปบังคับ', async () => {
+    it('RecordSupplierPaymentDto: วันที่ต้อง YYYY-MM-DD · จำนวน > 0 · สลิปไม่บังคับที่ DTO (service ตรวจตามบัญชี) · บัญชีจ่ายต้องอยู่ในรายการ', async () => {
       expect(await errorsOf(RecordSupplierPaymentDto, { paidAt: '2026-10-05', amount: 100, slipUrl: 'data:x' })).toEqual([]);
       expect(await errorsOf(RecordSupplierPaymentDto, { paidAt: '05/10/2569', amount: 100, slipUrl: 'data:x' })).toContain('paidAt');
       expect(await errorsOf(RecordSupplierPaymentDto, { paidAt: '2026-10-05', amount: 0, slipUrl: 'data:x' })).toContain('amount');
-      expect(await errorsOf(RecordSupplierPaymentDto, { paidAt: '2026-10-05', amount: 100 })).toContain('slipUrl');
-      expect(await errorsOf(RecordSupplierPaymentDto, { paidAt: '2026-10-05', amount: 100, slipUrl: '' })).toContain('slipUrl');
+      expect(await errorsOf(RecordSupplierPaymentDto, { paidAt: '2026-10-05', amount: 100 })).toEqual([]);
+      expect(await errorsOf(RecordSupplierPaymentDto, { paidAt: '2026-10-05', amount: 100, paymentAccountCode: 'S11-1106' })).toEqual([]);
+      expect(await errorsOf(RecordSupplierPaymentDto, { paidAt: '2026-10-05', amount: 100, paymentAccountCode: 'S11-1101' })).toContain('paymentAccountCode');
+      expect(await errorsOf(RecordSupplierPaymentDto, { paidAt: '2026-10-05', amount: 100, paymentAccountCode: 'S11-1104' })).toContain('paymentAccountCode');
+      expect(await errorsOf(RecordSupplierPaymentDto, { paidAt: '2026-10-05', amount: 100, paymentAccountCode: '' })).toContain('paymentAccountCode');
     });
 
     it('VoidSupplierPaymentDto: เหตุผลบังคับ · SupplierLedgerQueryDto: เดือน YYYY-MM หรือว่าง', async () => {

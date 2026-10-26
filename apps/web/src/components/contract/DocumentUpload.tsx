@@ -34,12 +34,12 @@ const DOCUMENT_TYPES = [
   { value: 'KYC_SELFIE', label: 'รูปถ่ายลูกค้าถือบัตรประชาชน', required: true },
   { value: 'DEVICE_PHOTO', label: 'รูปถ่ายสินค้า', required: true },
   { value: 'DEVICE_IMEI_PHOTO', label: 'รูปถ่าย IMEI สินค้า', required: true },
-  { value: 'FACEBOOK_PROFILE', label: 'Profile Facebook', required: true },
+  { value: 'FACEBOOK_PROFILE', label: "โปรไฟล์ Facebook", required: true },
   { value: 'FACEBOOK_POST', label: 'Post Facebook ล่าสุด (ไม่เกิน 1 เดือน)', required: true },
-  { value: 'LINE_PROFILE', label: 'Profile LINE', required: true },
+  { value: 'LINE_PROFILE', label: "โปรไฟล์ LINE", required: true },
   { value: 'DEVICE_RECEIPT_PHOTO', label: 'รูปรับเครื่อง', required: true },
   { value: 'GUARDIAN_DOC', label: 'เอกสารผู้ปกครอง', required: false },
-  { value: 'BANK_STATEMENT', label: 'Statement ธนาคาร / หลักฐานการทำงาน', required: true },
+  { value: 'BANK_STATEMENT', label: "รายการเดินบัญชี ธนาคาร / หลักฐานการทำงาน", required: true },
 ];
 
 const OCR_TYPES: Record<string, { endpoint: string; label: string }> = {
@@ -291,13 +291,13 @@ export default function DocumentUpload({ contractId, customerId, contractStatus 
                     ) : (
                       <div className="w-full h-full flex flex-col items-center justify-center gap-1 p-1">
                         <FileText className="w-6 h-6 text-destructive" />
-                        <div className="text-[9px] text-muted-foreground text-center truncate w-full px-1">Statement {idx + 1}</div>
+                        <div className="text-[9px] text-muted-foreground text-center truncate w-full px-1">รายการเดินบัญชี {idx + 1}</div>
                       </div>
                     )}
                     <div className="absolute inset-0 bg-black/60 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100 transition flex items-center justify-center">
-                      <button
+                      <button data-ui-control="button"
                         type="button"
-                        onClick={() => { if (isRoomCreditDocument(url)) void openCreditDocument(url); else setViewingFile({ url, name: `Statement ${idx + 1}`, label: 'Statement ธนาคาร' }); }}
+                        onClick={() => { if (isRoomCreditDocument(url)) void openCreditDocument(url); else setViewingFile({ url, name: `Statement ${idx + 1}`, label: "รายการเดินบัญชีธนาคาร" }); }}
                         className="min-h-11 min-w-11 inline-flex items-center justify-center bg-background/90 rounded text-foreground hover:bg-background"
                         aria-label="ดูเอกสาร"
                       >
@@ -393,7 +393,7 @@ export default function DocumentUpload({ contractId, customerId, contractStatus 
                       </div>
                     )}
                     <div className="absolute inset-0 bg-black/60 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100 transition flex items-center justify-center gap-1">
-                      <button
+                      <button data-ui-control="button"
                         type="button"
                         ref={element => { fileButtons.current[doc.id] = element; }}
                         onClick={() => openDocument(doc)}
@@ -403,7 +403,7 @@ export default function DocumentUpload({ contractId, customerId, contractStatus 
                       >
                         <Eye className="w-3.5 h-3.5" />
                       </button>
-                      {canDelete && !doc.isImmutable && <button
+                      {canDelete && !doc.isImmutable && <button data-ui-control="button"
                         type="button"
                         disabled={deleteMutation.isPending}
                         onClick={() => setConfirmDialog({ open: true, message: `ต้องการลบเอกสาร "${doc.fileName}" หรือไม่?`, action: () => deleteMutation.mutate(doc.id) })}
@@ -488,9 +488,9 @@ export default function DocumentUpload({ contractId, customerId, contractStatus 
       </div>
 
       {(documentsQuery.data?.total ?? 0) > 50 && <div className="flex items-center justify-between gap-2 text-sm">
-        <button className="min-h-11 px-3 border rounded-lg disabled:opacity-50" disabled={documentPage <= 1} onClick={() => setDocumentPage(documentPage - 1)}>ไฟล์หน้าก่อน</button>
+        <button data-ui-control="button" className="min-h-11 px-3 border rounded-lg disabled:opacity-50" disabled={documentPage <= 1} onClick={() => setDocumentPage(documentPage - 1)}>ไฟล์หน้าก่อน</button>
         <span>หน้า {documentPage} / {Math.ceil((documentsQuery.data?.total ?? 0) / 50)}</span>
-        <button className="min-h-11 px-3 border rounded-lg disabled:opacity-50" disabled={documentPage * 50 >= (documentsQuery.data?.total ?? 0)} onClick={() => setDocumentPage(documentPage + 1)}>ไฟล์หน้าถัดไป</button>
+        <button data-ui-control="button" className="min-h-11 px-3 border rounded-lg disabled:opacity-50" disabled={documentPage * 50 >= (documentsQuery.data?.total ?? 0)} onClick={() => setDocumentPage(documentPage + 1)}>ไฟล์หน้าถัดไป</button>
       </div>}
       </QueryBoundary>
 
@@ -562,13 +562,13 @@ export default function DocumentUpload({ contractId, customerId, contractStatus 
           </div>
           {customerId && canEditCustomer && (
             <div className="flex gap-2 pt-2 border-t border-success/30">
-              <button
+              <button data-ui-control="button"
                 onClick={updateCustomerFromOcr}
                 className="px-4 py-1.5 text-xs bg-success text-success-foreground rounded-lg hover:bg-success/90"
               >
                 อัปเดตข้อมูลลูกค้า
               </button>
-              <button
+              <button data-ui-control="button"
                 onClick={() => setShowOcrPanel(false)}
                 className="px-4 py-1.5 text-xs border border-border text-foreground rounded-lg hover:bg-muted"
               >
@@ -584,7 +584,7 @@ export default function DocumentUpload({ contractId, customerId, contractStatus 
           onOpenAutoFocus={event => { event.preventDefault(); closePreviewRef.current?.focus(); }}
           onCloseAutoFocus={event => { event.preventDefault(); fileButtons.current[lastOpenedId.current]?.focus(); }}>
           <DialogHeader className="flex-row items-center justify-between gap-3"><DialogTitle className="min-w-0 break-words">ดูเอกสาร {viewingFile?.name}</DialogTitle>
-            <button ref={closePreviewRef} onClick={() => setViewingFile(null)} className="min-h-11 min-w-11 px-3 shrink-0 border rounded-lg text-sm" aria-label="ปิดเอกสาร">ปิด</button>
+            <button data-ui-control="button" ref={closePreviewRef} onClick={() => setViewingFile(null)} className="min-h-11 min-w-11 px-3 shrink-0 border rounded-lg text-sm" aria-label="ปิดเอกสาร">ปิด</button>
           </DialogHeader>
           {viewingFile && <>
             <a href={viewingFile.url} download={viewingFile.name} className="min-h-11 inline-flex items-center justify-center self-start text-sm px-3 rounded border border-border hover:bg-accent">ดาวน์โหลดไฟล์นี้</a>

@@ -61,6 +61,8 @@ describe('ContractPaymentService early-payoff money branches (Wave 3 gap-fill)',
         contract: { findUnique: jest.fn().mockResolvedValue(contract) },
         installmentSchedule: { findMany: jest.fn().mockResolvedValue(installmentSchedules) },
         chartOfAccount: { findMany: jest.fn().mockResolvedValue([]) },
+        // PR4: advanceVatOutstanding อ่าน stamp จาก journalEntry — ไม่มีรายการที่ประทับในฟิกซ์เจอร์นี้
+        journalEntry: { findMany: jest.fn().mockResolvedValue([]) },
         journalLine: { findMany: jest.fn(ledgerLines(ledger)) },
       };
       const service = new ContractPaymentService(
@@ -486,6 +488,7 @@ describe('ContractPaymentService early-payoff money branches (Wave 3 gap-fill)',
       contract: { findUnique: jest.Mock };
       installmentSchedule: { findMany: jest.Mock };
       chartOfAccount: { findMany: jest.Mock };
+      journalEntry: { findMany: jest.Mock };
       journalLine: { findMany: jest.Mock };
       companyInfo: { findFirst: jest.Mock };
       systemConfig: { findUnique: jest.Mock };
@@ -558,6 +561,8 @@ describe('ContractPaymentService early-payoff money branches (Wave 3 gap-fill)',
         contract: { findUnique: jest.fn().mockResolvedValue(quoteContract) },
         installmentSchedule: { findMany: jest.fn().mockResolvedValue(installmentSchedules) },
         chartOfAccount: { findMany: jest.fn().mockResolvedValue([]) },
+        // PR4: advanceVatOutstanding อ่าน stamp จาก journalEntry — ไม่มีรายการที่ประทับในฟิกซ์เจอร์นี้
+        journalEntry: { findMany: jest.fn().mockResolvedValue([]) },
         journalLine: { findMany: jest.fn(ledgerAfterSixPaid) },
         companyInfo: {
           findFirst: jest.fn().mockImplementation((args: { where: { companyCode: string } }) => {

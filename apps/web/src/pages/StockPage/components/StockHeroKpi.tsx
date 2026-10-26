@@ -23,18 +23,19 @@ function MoMTone({ current, previous }: { current: number; previous: number }) {
     >
       {up ? <ArrowUpRight className="size-3" /> : <ArrowDownRight className="size-3" />}
       {up ? '+' : ''}
-      {delta.toFixed(0)}% MoM
+      {delta.toFixed(0)}% เทียบเดือนก่อน
     </span>
   );
 }
 
 export function StockHeroKpi({ totalInStock, totalValue, dashboard, isManager }: StockHeroKpiProps) {
   const avgDays = dashboard?.stockTurnover.avgDaysInStock;
-  const marginPct = dashboard?.marginOverview.avgMarginPct;
+  // marginOverview เป็น null เมื่อ server ตัดต้นทุนออก (SALES)
+  const marginPct = dashboard?.marginOverview?.avgMarginPct;
   const soldThisMonth = dashboard?.stockTurnover.soldThisMonth ?? 0;
   const soldLastMonth = dashboard?.stockTurnover.soldLastMonth ?? 0;
-  const totalCost = dashboard?.marginOverview.totalCost ?? 0;
-  const totalSell = dashboard?.marginOverview.totalSell ?? 0;
+  const totalCost = dashboard?.marginOverview?.totalCost ?? 0;
+  const totalSell = dashboard?.marginOverview?.totalSell ?? 0;
   const avgDaysAlarm = avgDays != null && avgDays > 90;
 
   return (

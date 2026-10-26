@@ -1,3 +1,4 @@
+import { NumberInput } from '@/components/ui/NumberInput';
 import { Calculator, Pencil, StickyNote } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { formatNumberDecimal, formatDateShort } from '@/utils/formatters';
@@ -100,7 +101,7 @@ export function StepSummary({
                 </>
               )}
             </span>
-            <button
+            <button data-ui-control="button"
               type="button"
               onClick={onEditItems}
               className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-input bg-background px-3 text-sm font-medium transition-colors hover:bg-muted"
@@ -137,9 +138,8 @@ export function StepSummary({
           </div>
           <div className="flex items-center justify-between">
             <span className="leading-snug text-muted-foreground">หัก ส่วนลด{supplierHasVat ? ' (ก่อน VAT)' : ''}</span>
-            <input
+            <NumberInput unstyled
               aria-label="ส่วนลด"
-              type="number"
               min="0"
               step="0.01"
               placeholder="0"
@@ -164,9 +164,8 @@ export function StepSummary({
               </div>
               <div className="flex items-center justify-between">
                 <span className="leading-snug text-muted-foreground">หัก ส่วนลด (หลัง VAT)</span>
-                <input
+                <NumberInput unstyled
                   aria-label="ส่วนลด (หลัง VAT)"
-                  type="number"
                   min="0"
                   step="0.01"
                   placeholder="0"
@@ -209,7 +208,7 @@ export function StepSummary({
         <section className={card} aria-label="การจ่ายเงิน">
           <CardHeader icon={<Calculator className="size-4.5" />} tone="bg-warning/10 text-warning-strong" title="การจ่ายเงิน" hint="จ่ายแยกหลังอนุมัติ" />
           <p className="text-sm leading-snug text-muted-foreground">
-            ซื้อเครดิต — บันทึกการจ่ายหลังอนุมัติ ผ่านปุ่ม "บันทึกการจ่าย" ในใบสั่งซื้อ (ลงบัญชีทุกครั้ง · โอนธนาคารเท่านั้น)
+            ซื้อเครดิต — บันทึกการจ่ายหลังอนุมัติ ผ่านปุ่ม "บันทึกการจ่าย" ในใบสั่งซื้อ (ลงบัญชีทุกครั้ง · โอนธนาคารแนบสลิป หรือเงินสดย่อย)
             {dueDatePreview ? ` · ครบกำหนดชำระ ${formatDateShort(dueDatePreview)}` : ''}
           </p>
         </section>

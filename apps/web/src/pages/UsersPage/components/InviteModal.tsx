@@ -1,6 +1,11 @@
+import { NativeSelect } from '@/components/ui/native-select';
+import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
+import { useRef as useReturnFocusRef } from 'react';
 import { Mail, Copy, Clock } from 'lucide-react';
 import { useUiFlags } from '@/hooks/useUiFlags';
 import { roleLabels, inputClass, labelClass } from '../types';
+import { useId as useUiFieldId } from 'react';
+
 
 interface InviteForm {
   email: string;
@@ -29,6 +34,8 @@ export default function InviteModal({
   onSubmit,
   onCopyUrl,
 }: InviteModalProps) {
+  const uiFieldId = useUiFieldId();
+  const returnFocus = useReturnFocusRef<HTMLElement | null>(null);
   // Owner Q4 (2026-05-17): VIEWER role only appears in the picker when
   // `viewer_role_enabled = 'true'`. Otherwise OWNER shouldn't be inviting
   // auditors yet — backend would deny their requests anyway.
@@ -37,14 +44,13 @@ export default function InviteModal({
     ([k]) => k !== 'VIEWER' || viewerRoleEnabled,
   );
   return (
-    <div
-      className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-start justify-center pt-8 pb-8"
-      role="dialog"
-      aria-modal="true"
-      aria-label="เชิญผู้ใช้ใหม่"
-    >
-      <div className="w-full max-w-2xl bg-background rounded-xl shadow-2xl overflow-hidden flex flex-col max-h-[calc(100vh-4rem)]">
-        <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-xs border-b px-6 py-4 flex items-center justify-between shrink-0">
+    <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
+      <DialogContent aria-describedby={undefined} showCloseButton={false}
+        onOpenAutoFocus={() => { returnFocus.current = document.activeElement instanceof HTMLElement ? document.activeElement : null; }}
+        onCloseAutoFocus={(event) => { event.preventDefault(); if (returnFocus.current?.isConnected) returnFocus.current.focus(); }}
+        className="flex flex-col gap-0 p-0 w-[calc(100%-1rem)] sm:max-w-2xl max-h-[calc(100dvh-1rem)] overflow-hidden">
+
+        <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-xs border-b px-3 sm:px-6 py-4 flex items-center justify-between shrink-0">
           <button
             type="button"
             onClick={onClose}
@@ -65,10 +71,10 @@ export default function InviteModal({
             </svg>
             กลับ
           </button>
-          <h2 className="text-lg font-semibold text-foreground">เชิญผู้ใช้ใหม่</h2>
+          <DialogTitle asChild><h2 className="text-lg font-semibold text-foreground">เชิญผู้ใช้ใหม่</h2></DialogTitle>
           <div className="w-16" />
         </div>
-        <div className="flex-1 overflow-y-auto p-6">
+        <div className="flex-1 overflow-y-auto p-3 sm:p-6">
           {lastInviteUrl ? (
             <div className="space-y-4">
               <div className="p-3 bg-success/5 dark:bg-success/10 border border-success/20 rounded-lg">
@@ -84,7 +90,7 @@ export default function InviteModal({
                   value={lastInviteUrl}
                   className={`${inputClass} text-xs flex-1`}
                 />
-                <button
+                <button data-ui-control="button"
                   onClick={() => onCopyUrl(lastInviteUrl)}
                   className="shrink-0 px-3 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 flex items-center gap-1"
                 >
@@ -100,8 +106,8 @@ export default function InviteModal({
           ) : (
             <form onSubmit={onSubmit} className="space-y-4">
               <div>
-                <label className={labelClass}>อีเมล *</label>
-                <input
+                <label htmlFor={`${uiFieldId}-1`} className={labelClass}>อีเมล *</label>
+                <input id={`${uiFieldId}-1`}
                   type="email"
                   value={inviteForm.email}
                   onChange={(e) => setInviteForm({ ...inviteForm, email: e.target.value })}
@@ -110,10 +116,10 @@ export default function InviteModal({
                   placeholder="employee@example.com"
                 />
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className={labelClass}>ตำแหน่ง *</label>
-                  <select
+                  <label htmlFor={`${uiFieldId}-2`} className={labelClass}>ตำแหน่ง *</label>
+                  <NativeSelect wrapperClassName="max-w-full w-full min-w-0" id={`${uiFieldId}-2`}
                     value={inviteForm.role}
                     onChange={(e) => setInviteForm({ ...inviteForm, role: e.target.value })}
                     className={inputClass}
@@ -123,11 +129,11 @@ export default function InviteModal({
                         {v}
                       </option>
                     ))}
-                  </select>
+                  </NativeSelect>
                 </div>
                 <div>
-                  <label className={labelClass}>สาขา</label>
-                  <select
+                  <label htmlFor={`${uiFieldId}-3`} className={labelClass}>สาขา</label>
+                  <NativeSelect wrapperClassName="max-w-full w-full min-w-0" id={`${uiFieldId}-3`}
                     value={inviteForm.branchId}
                     onChange={(e) => setInviteForm({ ...inviteForm, branchId: e.target.value })}
                     className={inputClass}
@@ -138,15 +144,15 @@ export default function InviteModal({
                         {b.name}
                       </option>
                     ))}
-                  </select>
+                  </NativeSelect>
                 </div>
               </div>
             </form>
           )}
         </div>
-        <div className="sticky bottom-0 bg-background/95 backdrop-blur-xs border-t px-6 py-4 flex justify-end gap-3 shrink-0">
+        <div className="sticky bottom-0 bg-background/95 backdrop-blur-xs border-t px-3 sm:px-6 py-4 flex justify-end gap-3 shrink-0">
           {lastInviteUrl ? (
-            <button
+            <button data-ui-control="button"
               type="button"
               onClick={onClose}
               className="px-6 py-2.5 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 font-semibold transition-colors shadow-sm"
@@ -155,14 +161,14 @@ export default function InviteModal({
             </button>
           ) : (
             <>
-              <button
+              <button data-ui-control="button"
                 type="button"
                 onClick={onClose}
                 className="px-6 py-2.5 text-sm border border-input rounded-lg hover:bg-muted transition-colors"
               >
                 ยกเลิก
               </button>
-              <button
+              <button data-ui-control="button"
                 type="button"
                 disabled={isPending}
                 onClick={onSubmit}
@@ -174,7 +180,7 @@ export default function InviteModal({
             </>
           )}
         </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }

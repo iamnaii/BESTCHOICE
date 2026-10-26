@@ -1,3 +1,5 @@
+import { NumberInput } from '@/components/ui/NumberInput';
+import { NativeSelect } from '@/components/ui/native-select';
 import { DeviceDisclosureFields } from '@/components/product/DeviceDisclosureFields';
 import { useRef, useState } from 'react';
 import { AlertTriangle, Camera, Check, ListChecks, ScanLine, Smartphone, X } from 'lucide-react';
@@ -335,7 +337,7 @@ export function UnitInspectScreen({
               สาเหตุ
               <Req />
             </label>
-            <select
+            <NativeSelect wrapperClassName="max-w-full w-full"
               id={`defect-${idx}`}
               value={unit.defectReason}
               onChange={(e) => set({ defectReason: e.target.value as DefectReasonValue | '' })}
@@ -347,7 +349,7 @@ export function UnitInspectScreen({
                   {o.label}
                 </option>
               ))}
-            </select>
+            </NativeSelect>
           </div>
           <div>
             <label htmlFor={`reject-detail-${idx}`} className={labelCls}>
@@ -378,7 +380,7 @@ export function UnitInspectScreen({
                 · ผ่าน <span className="font-semibold text-foreground">{checklistPassed}/{unit.checklist.length}</span> รายการ
               </span>
             </span>
-            <button
+            <button data-ui-control="button"
               type="button"
               aria-expanded={checklistOpen}
               onClick={() => setChecklistOpen((o) => !o)}
@@ -396,7 +398,7 @@ export function UnitInspectScreen({
                     {unit.checklist.map((c, checkIdx) =>
                       c.category !== cat ? null : (
                         <div key={checkIdx} className="flex items-center gap-2">
-                          <button
+                          <button data-ui-control="button" data-ui-icon="true"
                             type="button"
                             aria-pressed={c.passed}
                             aria-label={c.item}
@@ -437,9 +439,8 @@ export function UnitInspectScreen({
                 ราคาเงินสด (บาท)
                 <Req />
               </label>
-              <input
+              <NumberInput unstyled
                 id={`cash-${idx}`}
-                type="number"
                 inputMode="decimal"
                 min={0}
                 value={unit.sellingPrice}
@@ -453,9 +454,8 @@ export function UnitInspectScreen({
                 ราคาผ่อน (บาท)
                 <Req />
               </label>
-              <input
+              <NumberInput unstyled
                 id={`installment-${idx}`}
-                type="number"
                 inputMode="decimal"
                 min={0}
                 value={unit.installmentPrice}

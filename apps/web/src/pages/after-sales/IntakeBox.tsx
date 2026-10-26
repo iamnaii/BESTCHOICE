@@ -78,7 +78,7 @@ export default function IntakeBox({ onOpenCase }: IntakeBoxProps) {
           value={imei}
           onChange={(e) => setImei(e.target.value)}
           placeholder="กรอกเลข IMEI 15 หลัก"
-          className="h-14 w-full flex-1 rounded-lg border border-input bg-background px-4 text-lg leading-snug text-foreground placeholder:text-muted-foreground/70 focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-ring/30"
+          className="h-14 min-h-14 w-full sm:flex-1 rounded-lg border border-input bg-background px-4 text-lg leading-snug text-foreground placeholder:text-muted-foreground/70 focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-ring/30"
         />
         <div className="flex gap-2.5">
           <Button

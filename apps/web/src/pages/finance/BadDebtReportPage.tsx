@@ -1,4 +1,6 @@
-import { useState } from 'react';
+import ScreenTable from '@/components/ui/ScreenTable';
+import { getReportDateRange } from '@/lib/date';
+import { useId as useUiFieldId, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
 import QueryBoundary from '@/components/QueryBoundary';
@@ -35,10 +37,10 @@ const inputClass =
   'w-full px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden';
 
 export default function BadDebtReportPage() {
-  const now = new Date();
-  const firstOfYear = `${now.getFullYear()}-01-01`;
-  const [startDate, setStartDate] = useState(firstOfYear);
-  const [endDate, setEndDate] = useState(now.toISOString().split('T')[0]);
+  const uiFieldId = useUiFieldId();
+  const range = getReportDateRange('this_year');
+  const [startDate, setStartDate] = useState(range.startDate);
+  const [endDate, setEndDate] = useState(range.endDate);
   const [companyId, setCompanyId] = useState('');
   const { cacheTtlReports } = useUiFlags();
 
@@ -69,20 +71,20 @@ export default function BadDebtReportPage() {
 
       <div className="flex flex-wrap gap-3 mb-6">
         <div>
-          <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
+          <label htmlFor={`${uiFieldId}-1`} className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
             ตั้งแต่
           </label>
-          <ThaiDateInput
+          <ThaiDateInput id={`${uiFieldId}-1`}
             value={startDate}
             onChange={(e) => setStartDate(e.target.value)}
             className={`${inputClass} w-auto`}
           />
         </div>
         <div>
-          <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
+          <label htmlFor={`${uiFieldId}-2`} className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
             ถึง
           </label>
-          <ThaiDateInput
+          <ThaiDateInput id={`${uiFieldId}-2`}
             value={endDate}
             onChange={(e) => setEndDate(e.target.value)}
             className={`${inputClass} w-auto`}
@@ -94,12 +96,12 @@ export default function BadDebtReportPage() {
             {
               label: 'ปีนี้',
               fn: () => {
-                setStartDate(firstOfYear);
-                setEndDate(now.toISOString().split('T')[0]);
+                setStartDate(range.startDate);
+                setEndDate(range.endDate);
               },
             },
           ].map((p) => (
-            <button
+            <button data-ui-control="button"
               key={p.label}
               onClick={p.fn}
               className="px-3 py-2 text-xs border border-input rounded-lg hover:bg-accent transition-colors leading-snug"
@@ -156,14 +158,14 @@ export default function BadDebtReportPage() {
                   </div>
                 ) : (
                   <div className="overflow-x-auto">
-                    <table className="w-full text-sm leading-snug">
+                    <ScreenTable className="w-full text-sm leading-snug">
                       <thead className="bg-muted/50">
                         <tr>
                           <th className="text-left p-3 font-medium text-muted-foreground whitespace-nowrap">
                             วันที่
                           </th>
                           <th className="text-left p-3 font-medium text-muted-foreground whitespace-nowrap">
-                            เลขที่ JE
+                            เลขที่ รายการบัญชี
                           </th>
                           <th className="text-left p-3 font-medium text-muted-foreground">
                             คำอธิบาย
@@ -210,7 +212,7 @@ export default function BadDebtReportPage() {
                           </td>
                         </tr>
                       </tfoot>
-                    </table>
+                    </ScreenTable>
                   </div>
                 )}
               </CardContent>

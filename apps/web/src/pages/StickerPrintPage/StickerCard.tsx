@@ -1,203 +1,369 @@
+import { QRCodeSVG } from 'qrcode.react';
 import { cn } from '@/lib/utils';
+import { DEFAULT_STICKER_SIZE, STICKER_SIZES, type StickerSize } from './stickerSizes';
 import type { StickerView } from './stickerView';
 
+export { DEFAULT_STICKER_SIZE, STICKER_SIZES, type StickerSize } from './stickerSizes';
+
 /**
- * ดวงสติกเกอร์ 50×30 มม. (thermal ขาวดำ) — เลย์เอาต์ที่เจ้าของเคาะ 2026-09-11:
- * รุ่นอย่างเดียว · ราคาเงินสดของเครื่อง · สเปก + ประกันศูนย์ (ถ้ามี) · มือสองมีชิป %แบต + กล่อง ·
- * เรท 1/เรท 2 · ท้ายดวง IMEI อย่างเดียว (ไม่มีบาร์โค้ด/ชื่อร้าน)
- * 2026-09-12 (เจ้าของเลือกแบบ B): บรรทัดรุ่นพับได้ 2 บรรทัดข้างป้ายราคา — ด้วย IBM Plex Sans Thai
- * บรรทัดเดียวเหลือที่ ~78 pt ทำให้ "iPhone 15 Pro Max" ถูกตัดเป็น "iPhone 15 Pr…" บนกระดาษจริง;
- * ขนาดตัวอักษรทุกจุดคงเดิม ช่องไฟแนวตั้งบีบลงเล็กน้อยให้ดวงมือสองที่มีชิป + 2 เรทยังอยู่ใน 30 มม.
- * สี #000/#fff ของกระดาษพิมพ์อยู่ใน STICKER_STYLES (print context — ไม่ใช้โทเคนธีมโดยตั้งใจ)
+ * จำนวนตัวอักษรของบรรทัดสเปกที่พอดีความกว้างดวง — `normal` ที่ขนาดปกติ · `long` เมื่อย่อลงขั้นหนึ่ง
+ * (วัดจาก PDF ตัวอย่าง 60×40: 43 ตัวอักษรพอดีที่ 8pt · ม้วน 50 มม. แคบกว่า ~20%)
  */
-export function StickerCard({ view }: { view: StickerView }) {
+const SPEC_BUDGET: Record<StickerSize, { normal: number; long: number }> = {
+  '60x40': { normal: 44, long: 48 },
+  '50x40': { normal: 36, long: 40 },
+  '50x30': { normal: 34, long: 38 },
+};
+
+interface FittedSpec {
+  spec: string | null;
+  origin: string | null;
+  warranty: string | null;
+  /** ใช้ตัวอักษรขั้นย่อ (.st-spec--long) */
+  long: boolean;
+}
+
+const specLength = (parts: (string | null)[]) => parts.filter((p): p is string => !!p).join(' · ').length;
+
+/**
+ * บรรทัดสเปกต้องไม่ถูกตัดด้วย … จนวันหมดประกันหาย — ลดทีละขั้นจนพอดีความกว้าง:
+ * 1) ขนาดปกติ → 2) ย่อตัวอักษร → 3) ตัดที่มาเครื่อง → 4) "ประกันศูนย์" เหลือ "ศูนย์" → สุดท้ายค่อยปล่อยให้ … ตัด
+ */
+export function fitSpec(
+  view: Pick<StickerView, 'spec' | 'origin' | 'warrantyLabel'>,
+  size: StickerSize,
+): FittedSpec {
+  const budget = SPEC_BUDGET[size];
+  const shortWarranty = view.warrantyLabel ? view.warrantyLabel.replace(/^ประกันศูนย์ /, 'ศูนย์ ') : null;
+  const candidates: Omit<FittedSpec, 'long'>[] = [
+    { spec: view.spec, origin: view.origin, warranty: view.warrantyLabel },
+    { spec: view.spec, origin: null, warranty: view.warrantyLabel },
+    { spec: view.spec, origin: null, warranty: shortWarranty },
+  ];
+  for (const candidate of candidates) {
+    const length = specLength([candidate.spec, candidate.origin, candidate.warranty]);
+    if (length <= budget.normal) return { ...candidate, long: false };
+    if (length <= budget.long) return { ...candidate, long: true };
+  }
+  return { ...candidates[candidates.length - 1], long: true };
+}
+
+/**
+ * ค่าตัวอักษร/ระยะต่อขนาด (หน่วย pt และ mm) — ตามตารางใน spec
+ * `docs/superpowers/specs/2026-10-22-sticker-60x40-qr-design.md` ที่เจ้าของดูจาก mockup + PDF ตัวอย่างแล้ว
+ * ความสูงบรรทัดไทย: รุ่น/สเปก ≥ 1.35 · เรท ≥ 1.3 (ฟอนต์ IBM Plex Sans Thai สูงกว่า 1.2 — ต่ำกว่านี้สระบนถูกตัด/ทับ)
+ * ทุกค่าออกเป็น CSS variable บน `.sticker--<size>` จึงวางดวงหลายขนาดบนหน้าเดียวกันได้โดยไม่ตีกัน
+ */
+const METRICS: Record<StickerSize, Record<string, string>> = {
+  '60x40': {
+    pad: '1.6mm',
+    model: '11.5pt',
+    'model-lh': '1.35',
+    spec: '8pt',
+    'spec-long': '7.5pt',
+    'spec-lh': '1.4',
+    baht: '9pt',
+    price: '20pt',
+    'chip-h': '3.4mm',
+    chip: '7pt',
+    'chip-border': '0.25mm',
+    qr: '12mm',
+    'qr-pad': '0.8mm',
+    rule: '0.2mm',
+    rate: '8pt',
+    'rate-lh': '1.4',
+    'rate-col': '6.4mm',
+    id: '7pt',
+    brand: '6pt',
+    'simple-price': '26pt',
+    'simple-qr': '16mm',
+    'row-gap': '0.6mm',
+    'rule-gap': '1mm',
+  },
+  '50x40': {
+    pad: '1.5mm',
+    model: '11pt',
+    'model-lh': '1.35',
+    spec: '7.5pt',
+    'spec-long': '7pt',
+    'spec-lh': '1.35',
+    baht: '8.5pt',
+    price: '18pt',
+    'chip-h': '3.2mm',
+    chip: '7pt',
+    'chip-border': '0.25mm',
+    qr: '11mm',
+    'qr-pad': '0.8mm',
+    rule: '0.2mm',
+    rate: '8pt',
+    'rate-lh': '1.35',
+    'rate-col': '6.2mm',
+    id: '6.5pt',
+    brand: '5.5pt',
+    'simple-price': '24pt',
+    'simple-qr': '15mm',
+    'row-gap': '0.6mm',
+    'rule-gap': '0.9mm',
+  },
+  '50x30': {
+    pad: '1.2mm',
+    model: '10pt',
+    'model-lh': '1.35',
+    spec: '7pt',
+    'spec-long': '6.5pt',
+    'spec-lh': '1.35',
+    baht: '8pt',
+    price: '15pt',
+    'chip-h': '3mm',
+    chip: '6.5pt',
+    'chip-border': '0.22mm',
+    qr: '8mm',
+    'qr-pad': '0.8mm',
+    rule: '0.2mm',
+    rate: '7.5pt',
+    'rate-lh': '1.3',
+    'rate-col': '5.8mm',
+    id: '6pt',
+    brand: '5pt',
+    'simple-price': '20pt',
+    'simple-qr': '12mm',
+    'row-gap': '0.4mm',
+    'rule-gap': '0.5mm',
+  },
+};
+
+/**
+ * ดวงสติกเกอร์ติดเครื่อง "แบบ ค" (เจ้าของเคาะ 2026-10-22 บน canvas TAzRReVG6MaHZZ7tfiUZZB):
+ * รุ่น → สเปก · ประกันศูนย์ → [ราคาใหญ่ + ชิป | QR] → เส้นคั่น → เรท 1 / เรท 2 → IMEI … BESTCHOICE
+ * ขาวดำตัวหนังสือล้วน ไม่มีพื้นดำ · ทุกบรรทัดเป็น flow ปกติ (ไม่มี absolute) จึงทับกันไม่ได้
+ * สี #000/#fff ของกระดาษพิมพ์อยู่ใน CSS ของดวง (print context — ไม่ใช้โทเคนธีมโดยตั้งใจ)
+ */
+export function StickerCard({
+  view,
+  size = DEFAULT_STICKER_SIZE,
+  showQr = true,
+}: {
+  view: StickerView;
+  size?: StickerSize;
+  showQr?: boolean;
+}) {
   const chips = view.used
     ? [
         view.used.battery != null ? `แบต ${view.used.battery}%` : null,
         view.used.box == null ? null : view.used.box ? 'มีกล่อง' : 'ไม่มีกล่อง',
       ].filter((chip): chip is string => chip !== null)
     : [];
-  // มีแถวชิป → บีบช่องไฟแนวตั้งลง 0.3 มม. ให้ 2 เรท + IMEI ยังอยู่ใน 30 มม.
-  const tight = chips.length > 0;
+  const simple = view.rates.length === 0;
+  const fitted = fitSpec(view, size);
+  const specText = [fitted.spec, fitted.origin].filter((p): p is string => !!p).join(' · ');
+  const rate1 = view.rates.find((rate) => rate.no === 1) ?? null;
+  const rate2 = view.rates.find((rate) => rate.no === 2) ?? null;
 
   return (
-    <div className={cn('sticker', tight && 'sticker--tight')} data-testid="sticker">
-      <div className="st-top">
-        <span className="st-model">{view.model}</span>
-        <div className="st-price tabular-nums">
-          <span className="st-currency">฿</span>
-          <span className="st-amount">{view.cash}</span>
+    <div className={cn('sticker', `sticker--${size}`, simple && 'sticker--simple')} data-testid="sticker">
+      <div className="st-model">{view.model}</div>
+
+      {(specText || fitted.warranty) && (
+        <div className={cn('st-spec', fitted.long && 'st-spec--long')}>
+          {specText && <span className="st-spec-text">{specText}</span>}
+          {specText && fitted.warranty && <span className="st-dot">·</span>}
+          {fitted.warranty && <b className="st-warranty">{fitted.warranty}</b>}
         </div>
+      )}
+
+      <div className="st-row">
+        <div className="st-left">
+          <div className="st-price tabular-nums">
+            <span className="st-currency">฿</span>
+            <span className="st-amount">{view.cash}</span>
+          </div>
+          {chips.length > 0 && (
+            <div className="st-chips">
+              {chips.map((chip) => (
+                <span key={chip} className="st-chip">
+                  {chip}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+        {showQr && (
+          <div className="st-qr" data-testid="sticker-qr">
+            <QRCodeSVG value={view.qrValue} level="M" marginSize={0} size={128} />
+          </div>
+        )}
       </div>
 
-      {(view.spec || view.warrantyLabel) && (
-        <div className="st-spec">
-          <span className="st-spec-text">{view.spec ?? ' '}</span>
-          {view.warrantyLabel && <span className="st-warranty">{view.warrantyLabel}</span>}
-        </div>
-      )}
-
-      {chips.length > 0 && (
-        <div className="st-chips">
-          {chips.map((chip) => (
-            <span key={chip} className="st-chip">
-              {chip}
-            </span>
-          ))}
-        </div>
-      )}
-
-      <div className="st-rule" />
-
-      {view.rates.length > 0 && (
-        <div className="st-rates tabular-nums">
-          {view.rates.map((rate) => (
-            <div key={rate.no} className="st-rate">
-              <span className="st-rate-tag">{rate.no}</span>
-              <span className="st-rate-down">ดาวน์ {rate.down}</span>
-              <span className="st-rate-monthly">
-                {rate.monthly}
-                <span className="st-x"> × </span>
-                {rate.months} ด.
-              </span>
-            </div>
-          ))}
-        </div>
+      {!simple && (
+        <>
+          <div className="st-rule" />
+          <div className="st-rates tabular-nums">
+            {rate1 && (
+              <div className="st-rate">
+                <span className="st-rate-no">เรท 1</span>
+                <span className="st-rate-down">ดาวน์ {rate1.down}</span>
+                <span className="st-rate-monthly">
+                  {rate1.monthly}
+                  <span className="st-x"> × </span>
+                  {rate1.months} ด.
+                </span>
+              </div>
+            )}
+            {rate2 ? (
+              <div className="st-rate">
+                <span className="st-rate-no">เรท 2</span>
+                <span className="st-rate-down">ดาวน์ {rate2.down}</span>
+                <span className="st-rate-monthly">
+                  {rate2.monthly}
+                  <span className="st-x"> × </span>
+                  {rate2.months} ด.
+                </span>
+              </div>
+            ) : (
+              rate1 && (
+                <div className="st-rate st-rate--none">
+                  <span className="st-rate-no">เรท 2</span>
+                  <span className="st-rate-none">ไม่มีในตาราง GFIN</span>
+                  <span />
+                </div>
+              )
+            )}
+          </div>
+        </>
       )}
 
       <div className="st-footer">
-        <span className="st-imei">{view.imei ?? ' '}</span>
+        <span className="st-id">
+          <span className="st-id-label">{view.idLabel}</span>
+          <span className="st-id-text">{view.idText}</span>
+        </span>
+        <span className="st-brand">BESTCHOICE</span>
       </div>
     </div>
   );
 }
 
-/**
- * CSS ของดวงจริง (หน่วย mm/pt ตามกระดาษ) + กฎตอนพิมพ์ — render ครั้งเดียวในหน้า
- * ค่า mm/pt ชุดนี้ตรงกับ mockup ที่เจ้าของเคาะ (scratchpad sticker-mockup รอบ 5)
- */
-export const STICKER_STYLES = `
+function sizeVariables(size: StickerSize): string {
+  const { w, h } = STICKER_SIZES[size];
+  const vars = Object.entries(METRICS[size])
+    .map(([key, value]) => `--st-${key}: ${value};`)
+    .join(' ');
+  return `.sticker--${size} { --st-w: ${w}mm; --st-h: ${h}mm; ${vars} }`;
+}
+
+/** กฎร่วมของดวงทุกขนาด — อ่านค่าจาก CSS variable ที่ `.sticker--<size>` ตั้งไว้ */
+const BASE_STYLES = `
   .sticker {
-    width: 50mm;
-    height: 30mm;
-    padding: 1.6mm 1.8mm 1.2mm;
+    width: var(--st-w);
+    height: var(--st-h);
+    padding: var(--st-pad);
     font-family: 'IBM Plex Sans Thai', system-ui, sans-serif;
     box-sizing: border-box;
     display: flex;
     flex-direction: column;
     color: #000;
     background: #fff;
-    line-height: 1.12;
     overflow: hidden;
   }
-  .st-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 1.2mm; }
+  .sticker > * { flex-shrink: 0; }
   .st-model {
-    font-size: 11pt;
-    font-weight: 800;
-    line-height: 1.05;
+    font-size: var(--st-model);
+    font-weight: 700;
+    line-height: var(--st-model-lh);
     letter-spacing: -0.01em;
-    min-width: 0;
+    white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    /* แบบ B: พับได้ 2 บรรทัด (รุ่นที่ยาวกว่านั้นยังถูกตัดด้วย … เป็นตาข่ายสุดท้าย) */
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    -webkit-box-orient: vertical;
-    white-space: normal;
-    overflow-wrap: anywhere;
   }
-  .st-price {
-    display: inline-flex;
-    align-items: baseline;
-    gap: 0.6mm;
-    flex-shrink: 0;
-    padding: 0.9mm 1.4mm;
-    background: #000;
-    color: #fff;
-    border-radius: 0.8mm;
-  }
-  .st-currency { font-size: 7pt; font-weight: 600; line-height: 1; }
-  .st-amount { font-size: 12pt; font-weight: 800; line-height: 1; letter-spacing: -0.015em; }
+  /* สเปกเป็น flex: ส่วนสี/ความจุหดและตัดด้วย … ได้ ส่วนประกันศูนย์ไม่หด — วันหมดประกันต้องไม่หาย
+     (fitSpec นับตัวอักษร แต่ชื่อสีอังกฤษกว้างกว่าไทย จึงต้องมีตาข่ายนี้) */
   .st-spec {
     display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    gap: 1.2mm;
-    font-size: 7.5pt;
-    margin-top: 0.6mm;
+    align-items: baseline;
+    gap: 0.8mm;
+    font-size: var(--st-spec);
     font-weight: 500;
+    line-height: var(--st-spec-lh);
+    white-space: nowrap;
   }
-  .sticker--tight .st-spec { margin-top: 0.5mm; }
-  .st-spec-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .st-warranty { font-size: 7pt; font-weight: 600; white-space: nowrap; }
-  .st-chips { display: flex; gap: 0.8mm; margin-top: 0.6mm; }
+  .st-spec--long { font-size: var(--st-spec-long); }
+  .st-spec-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .st-dot { flex-shrink: 0; }
+  .st-warranty { font-weight: 700; flex-shrink: 0; }
+  .st-row { display: flex; gap: 1.4mm; align-items: flex-start; margin-top: var(--st-row-gap); }
+  .st-left { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1mm; }
+  .st-price { display: flex; align-items: baseline; gap: 0.6mm; line-height: 1; }
+  .st-currency { font-size: var(--st-baht); font-weight: 600; }
+  .st-amount { font-size: var(--st-price); font-weight: 800; letter-spacing: -0.025em; }
+  .st-chips { display: flex; gap: 0.8mm; }
   .st-chip {
     display: inline-flex;
     align-items: center;
-    height: 3mm;
-    padding: 0 0.9mm;
+    height: var(--st-chip-h);
+    padding: 0 1mm;
     box-sizing: border-box;
-    border: 0.22mm solid #000;
-    border-radius: 0.6mm;
-    font-size: 6.8pt;
+    border: var(--st-chip-border) solid #000;
+    border-radius: 0.5mm;
+    font-size: var(--st-chip);
     font-weight: 700;
     line-height: 1;
     white-space: nowrap;
   }
-  .st-rule { margin: 0.6mm 0 0.5mm; height: 0; border-top: 0.22mm solid #000; }
-  .sticker--tight .st-rule { margin: 0.5mm 0 0.4mm; }
-  .st-rates { display: flex; flex-direction: column; gap: 0.4mm; }
+  .st-qr { flex-shrink: 0; padding: var(--st-qr-pad); background: #fff; box-sizing: content-box; }
+  .st-qr svg { display: block; width: var(--st-qr); height: var(--st-qr); }
+  .st-rule { border-top: var(--st-rule) solid #000; margin-top: var(--st-rule-gap); }
+  .st-rates { display: flex; flex-direction: column; margin-top: 0.4mm; }
   .st-rate {
     display: grid;
-    grid-template-columns: 3.8mm 1fr auto;
-    align-items: center;
-    gap: 1.2mm;
-    font-size: 8pt;
-    line-height: 1.1;
+    grid-template-columns: var(--st-rate-col) 1fr auto;
+    align-items: baseline;
+    gap: 1mm;
+    font-size: var(--st-rate);
+    line-height: var(--st-rate-lh);
+    white-space: nowrap;
   }
-  .st-rate-tag {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 3.4mm;
-    height: 3.4mm;
-    font-family: var(--font-mono);
-    font-size: 7pt;
-    font-weight: 700;
-    color: #fff;
-    background: #000;
-    border-radius: 0.6mm;
-    line-height: 1;
-  }
-  .st-rate-down { font-weight: 600; }
-  .st-rate-monthly { font-weight: 700; white-space: nowrap; }
+  .st-rate-no { font-weight: 600; }
+  .st-rate-monthly { font-weight: 700; }
+  .st-rate-none { color: #555; }
   .st-x { color: #555; font-weight: 400; }
   .st-footer {
     margin-top: auto;
-    padding-top: 0.8mm;
-    border-top: 0.22mm dotted #000;
     display: flex;
-    align-items: center;
-  }
-  .sticker--tight .st-footer { padding-top: 0.6mm; }
-  .st-imei {
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 1mm;
     font-family: var(--font-mono);
-    font-size: 6.6pt;
     letter-spacing: 0.02em;
-    font-weight: 500;
-    flex: 1;
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    line-height: 1.35;
     white-space: nowrap;
   }
+  .st-id { font-size: var(--st-id); font-weight: 500; min-width: 0; }
+  .st-id-label { margin-right: 0.8mm; }
+  .st-brand { font-size: var(--st-brand); font-weight: 700; letter-spacing: 0.06em; flex-shrink: 0; }
+  /* ไม่มีเรท (อุปกรณ์เสริม / ไม่มีตาราง): แถวราคา+QR ยืดเต็มดวง ราคาและ QR ใหญ่ขึ้น */
+  .sticker--simple .st-row { flex: 1; align-items: center; margin-top: 1.5mm; }
+  .sticker--simple .st-left { gap: 1.6mm; }
+  .sticker--simple .st-amount { font-size: var(--st-simple-price); }
+  .sticker--simple .st-qr svg { width: var(--st-simple-qr); height: var(--st-simple-qr); }
+`;
+
+const ALL_SIZE_VARIABLES = (Object.keys(STICKER_SIZES) as StickerSize[]).map(sizeVariables).join('\n  ');
+
+/**
+ * CSS ของดวงจริง (หน่วย mm/pt ตามกระดาษ) + กฎตอนพิมพ์ — render ครั้งเดียวในหน้า
+ * `@page` ต้องเท่าขนาดม้วนที่เลือก เพราะเครื่องพิมพ์ฉลากพิมพ์หน้าละดวง
+ */
+export function stickerStyles(size: StickerSize): string {
+  const { w, h } = STICKER_SIZES[size];
+  return `${BASE_STYLES}
+  ${ALL_SIZE_VARIABLES}
 
   @media print {
-    @page { size: 50mm 30mm; margin: 0; }
+    @page { size: ${w}mm ${h}mm; margin: 0; }
     html, body { margin: 0; padding: 0; background: #fff; }
     body * { visibility: hidden !important; }
     .print-stickers, .print-stickers * { visibility: visible !important; }
-    .print-stickers { position: absolute; top: 0; left: 0; width: 50mm; display: block !important; }
+    .print-stickers { position: absolute; top: 0; left: 0; width: ${w}mm; display: block !important; }
     .sticker {
       page-break-after: always;
       page-break-inside: avoid;
@@ -208,3 +374,4 @@ export const STICKER_STYLES = `
     .sticker:last-child { page-break-after: auto; break-after: auto; }
   }
 `;
+}

@@ -25,6 +25,8 @@ export interface StickerProductData {
   /** ISO date YYYY-MM-DD เฉพาะประกันศูนย์ที่ยังไม่หมด — หมดแล้ว/ไม่ระบุ = null */
   warrantyExpireDate: string | null;
   imei: string | null;
+  /** รหัสสินค้าเดิม (Tooltify) — QR บนดวงของอุปกรณ์ที่ไม่มี IMEI ใช้ค่านี้ (ไม่มี = product id) */
+  code: string | null;
   /** ISO datetime ของวันที่รับเข้าสต็อกล่าสุด */
   stockInDate: string | null;
   cashPrice: string | null;
@@ -136,6 +138,7 @@ export class StickersService {
       hasBox: product.hasBox,
       warrantyExpireDate: this.activeWarrantyDate(product.warrantyExpireDate, product.warrantyExpired),
       imei: product.imeiSerial,
+      code: product.legacyProductCode ?? null,
       stockInDate: product.stockInDate ? product.stockInDate.toISOString() : null,
       cashPrice: product.cashPrice != null ? product.cashPrice.toString() : null,
       installmentPrice: product.installmentPrice != null ? product.installmentPrice.toString() : null,

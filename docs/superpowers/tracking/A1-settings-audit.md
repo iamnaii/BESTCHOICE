@@ -192,7 +192,7 @@ After Phase 2 produces results, owner decides per sub-section:
 
 | ID | Item | Priority | Status | PR | Evidence/Notes |
 |---|---|---|---|---|---|
-| A1.3.1.1 | `draft_alerts_enabled` (true) | P2 | ❌ | this PR | Only cron is `expense-recurring.cron.ts:17` — no draft-alert flag |
+| A1.3.1.1 | `draft_alerts_enabled` (true) | P2 | ❌ | this PR | Only cron was `expense-recurring.cron.ts:17` (replaced by `recurring-bills.cron.ts` 2026-10-26, ก้อน 6) — no draft-alert flag |
 | A1.3.1.2 | `ap_due_alerts` (true) | P2 | ❌ | this PR | AP-aging endpoint at `APAgingPage.tsx:75` + `analytics-aging.service.ts` — read-only reporting; no toggleable alert |
 | A1.3.1.3 | `email_provider` (sendgrid) | P2 | ◐ | this PR | `email.service.ts:17-26` reads SMTP host/port/user/pass from `IntegrationConfig` (DB-backed); provider hardcoded to nodemailer/SMTP — `sendgrid` never referenced. Credentials configurable, provider choice not |
 | A1.3.1.4 | `in_app_notifications` (true) | P2 | ❌ | this PR | `IN_APP` is enum value of `NotificationChannel` (`schema.prisma:237`) used unconditionally (`notifications.service.ts:986,1148,1278`). Always-on |

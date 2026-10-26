@@ -779,6 +779,20 @@ enum BuybackSelectType {
 // CORE ENTITIES
 // ============================================================
 
+/// บิลประจำ (D5) — ความถี่ของแม่แบบรายจ่ายที่เป็นบิลประจำ
+enum RecurrenceKind {
+  MONTHLY
+  QUARTERLY
+  YEARLY
+}
+
+/// สถานะงวดบิลประจำ — มุมมอง DUE_TODAY/OVERDUE/PAID_UNPOSTED คำนวณตอนอ่าน ไม่เก็บ
+enum RecurringBillStatus {
+  PENDING
+  PAID
+  SKIPPED
+}
+
 model Branch {
   appointmentWindows StaffAppointmentWindow[]
   storeAppointments StoreAppointment[]
@@ -969,6 +983,8 @@ model User {
   depreciationEntriesReversed DepreciationEntry[]       @relation("DepreciationEntryReversedBy")
   todosCreated                Todo[]                    @relation("TodoCreatedBy")
   todosAssigned               Todo[]                    @relation("TodoAssignedTo")
+  recurringBillsPaid          RecurringBillOccurrence[] @relation("RecurringBillPaidBy")
+  recurringBillsSkipped       RecurringBillOccurrence[] @relation("RecurringBillSkippedBy")
   todoComments                TodoComment[]             @relation("TodoCommentUser")
   handoffRooms                ChatRoom[]                @relation("ChatHandoffStaff")
   assignedRooms               ChatRoom[]                @relation("ChatAssignedStaff")
@@ -4659,6 +4675,7 @@ model ExpenseDocument {
   settlementsClearingThis SettlementLine[]        @relation("SettlementCleared")
   creditNotesAgainst      CreditNoteDetail[]      @relation("CreditNoteOriginal")
   adjustments             ExpenseAdjustment[]
+  recurringBillOccurrence RecurringBillOccurrence? @relation("RecurringBillOccurrenceDocument")
 
   journalEntryId String? @unique @map("journal_entry_id")
 
@@ -4969,6 +4986,14 @@ model ExpenseTemplate {
   prefilledData Json               @map("prefilled_data")
   isRecurring   Boolean            @default(false) @map("is_recurring")
   recurringDay  Int?               @map("recurring_day")
+  /// D5 บิลประจำ — null ⇔ isRecurring=false (service บังคับคู่กัน) · recurringDay = วันครบกำหนดจ่าย
+  recurrence       RecurrenceKind? @map("recurrence")
+  /// QUARTERLY 1–3 (เดือนที่เท่าไรของไตรมาส) · YEARLY 1–12 · MONTHLY null
+  recurringMonth   Int?            @map("recurring_month")
+  /// เตือนล่วงหน้ากี่วัน (0–30) — เจ้าของเคาะค่าเริ่มต้น 3
+  reminderLeadDays Int             @default(3) @map("reminder_lead_days")
+  /// เที่ยงคืนไทยของวันแรกที่นับงวด — งวดแรก = วันครบกำหนดแรกที่ ≥ startsOn (เทียบวันปฏิทินไทย)
+  startsOn         DateTime?       @map("starts_on")
   createdById   String             @map("created_by_id")
   /// D1.2.4.5 — optional category grouping. Null = uncategorised
   /// (legacy default). FK to TemplateCategory with SetNull on delete
@@ -4987,12 +5012,53 @@ model ExpenseTemplate {
   category              TemplateCategory?     @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   documentsFromTemplate ExpenseDocument[]     @relation("ExpenseDocumentFromTemplate")
   sharedWith            UserExpenseTemplate[] @relation("ExpenseTemplateSharedWith")
+  occurrences           RecurringBillOccurrence[]
 
   @@index([branchId, deletedAt])
-  @@index([isRecurring, recurringDay])
+  @@index([isRecurring, deletedAt])
   @@index([categoryId, deletedAt])
   @@index([visibility, deletedAt])
   @@map("expense_templates")
+}
+
+/// งวดของบิลประจำ (D5) — หนึ่งแถว = บิลหนึ่งใบในหนึ่งงวด (spec 2026-10-26-recurring-bill-reminders §5.2/§15.1)
+/// งวดไม่ถูกลบ — เปลี่ยนสถานะเป็น SKIPPED เท่านั้น จึงไม่มี deletedAt (exception ตาม rules/database)
+model RecurringBillOccurrence {
+  id                String              @id @default(uuid())
+  templateId        String              @map("template_id")
+  /// MONTHLY `YYYY-MM` · QUARTERLY `YYYY-Qn` · YEARLY `YYYY` — unique คู่กับ templateId = กันงวดซ้ำ
+  periodKey         String              @map("period_key")
+  /// เที่ยงคืนไทยของวันครบกำหนด — คำนวณตอนสร้าง แก้แม่แบบทีหลังไม่ย้าย
+  dueDate           DateTime            @map("due_date")
+  status            RecurringBillStatus @default(PENDING)
+  /// snapshot ของ prefilledData.sampleAmount ตอนสร้างงวด (null = ไม่ทราบ)
+  estimatedAmount   Decimal?            @map("estimated_amount") @db.Decimal(12, 2)
+  /// ร่าง/ใบรายจ่ายของงวด (null = ยังไม่สร้าง / สร้างไม่สำเร็จ)
+  expenseDocumentId String?             @unique @map("expense_document_id")
+  todoId            String?             @unique @map("todo_id")
+  paidAt            DateTime?           @map("paid_at")
+  /// null = ระบบอ่านจากใบ · มีค่า = คนบันทึกเองว่าจ่ายแล้ว (จ่ายนอกระบบ)
+  paidById          String?             @map("paid_by_id")
+  paidNote          String?             @map("paid_note")
+  skippedAt         DateTime?           @map("skipped_at")
+  /// null = ระบบข้าม (งวดหลุด / แม่แบบเปลี่ยนรอบ)
+  skippedById       String?             @map("skipped_by_id")
+  skipReason        String?             @map("skip_reason")
+  /// วันไทยล่าสุดที่ยกระดับงาน/ส่ง LINE (วันละครั้ง — รันรอบซ้ำวันเดียวกันไม่เตือนซ้ำ)
+  lastRemindedOn    DateTime?           @map("last_reminded_on") @db.Date
+  createdAt         DateTime            @default(now()) @map("created_at")
+  updatedAt         DateTime            @updatedAt @map("updated_at")
+
+  template        ExpenseTemplate  @relation(fields: [templateId], references: [id], onDelete: Restrict)
+  expenseDocument ExpenseDocument? @relation("RecurringBillOccurrenceDocument", fields: [expenseDocumentId], references: [id], onDelete: SetNull)
+  todo            Todo?            @relation("RecurringBillOccurrenceTodo", fields: [todoId], references: [id], onDelete: SetNull)
+  paidBy          User?            @relation("RecurringBillPaidBy", fields: [paidById], references: [id], onDelete: SetNull)
+  skippedBy       User?            @relation("RecurringBillSkippedBy", fields: [skippedById], references: [id], onDelete: SetNull)
+
+  @@unique([templateId, periodKey])
+  @@index([status, dueDate])
+  @@index([templateId, dueDate])
+  @@map("recurring_bill_occurrences")
 }
 
 /// D1.2.4.5 — Shop-wide grouping for Expense Templates (e.g. "เงินเดือน",
@@ -5782,6 +5848,7 @@ model Todo {
   assignee  User?         @relation("TodoAssignedTo", fields: [assigneeId], references: [id])
   room      ChatRoom?     @relation(fields: [roomId], references: [id])
   comments  TodoComment[]
+  recurringBillOccurrence RecurringBillOccurrence? @relation("RecurringBillOccurrenceTodo")
 
   @@index([roomId])
   @@index([assigneeId])

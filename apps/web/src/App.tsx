@@ -146,6 +146,7 @@ const APAgingPage = lazy(() => import('@/pages/APAgingPage'));
 const PaymentVoucherPage = lazy(() => import('@/pages/PaymentVoucherPage'));
 const ExpenseDocumentNewPage = lazy(() => import('@/pages/ExpenseDocumentNewPage'));
 const ExpenseFavoritesPage = lazy(() => import('@/pages/ExpenseFavoritesPage'));
+const RecurringBillsPage = lazy(() => import('@/pages/RecurringBillsPage'));
 const ExpenseDailySummaryPage = lazy(() => import('@/pages/ExpenseDailySummaryPage'));
 const ProfitLossPage = lazy(() => import('@/pages/ProfitLossPage'));
 // CompanySettingsPage moved to settings-registry (kind:'route') — lazy import removed
@@ -609,6 +610,14 @@ function App() {
             element={
               <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
                 <ExpenseFavoritesPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/expenses/recurring-bills"
+            element={
+              <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
+                <RecurringBillsPage />
               </ProtectedRoute>
             }
           />

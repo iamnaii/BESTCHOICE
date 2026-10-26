@@ -46,6 +46,8 @@ interface CoaRow {
 }
 
 export interface CashAccountSelectProps {
+  /** ผูกกับ <label htmlFor> ของผู้เรียก (ลงที่ปุ่ม trigger) */
+  id?: string;
   value?: string;
   onChange: (code: string) => void;
   disabled?: boolean;
@@ -61,6 +63,7 @@ export interface CashAccountSelectProps {
  * Falls back to showing the code alone if the endpoint returns no name.
  */
 export function CashAccountSelect({
+  id,
   value,
   onChange,
   disabled,
@@ -81,7 +84,7 @@ export function CashAccountSelect({
 
   return (
     <Select value={value} onValueChange={onChange} disabled={disabled || isLoading}>
-      <SelectTrigger aria-label={placeholder} className="w-full">
+      <SelectTrigger id={id} aria-label={placeholder} className="w-full">
         <SelectValue placeholder={placeholder} />
       </SelectTrigger>
       <SelectContent>

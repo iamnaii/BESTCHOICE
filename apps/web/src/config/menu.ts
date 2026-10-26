@@ -26,6 +26,7 @@ import {
   Wallet,
   FileText,
   Lock,
+  CalendarClock,
   Receipt,
   PieChart,
   Calculator,
@@ -254,6 +255,7 @@ const BRANCH_MANAGER_CONFIG: RoleMenuConfig = {
         // route อนุญาต BRANCH_MANAGER อยู่แล้ว แต่เดิมไม่มีในเมนู ⇒ MainLayout เด้งกลับ
         // Dashboard พร้อม toast "ไม่มีสิทธิ์" ทั้งที่มีสิทธิ์ (ปักที่ route-reachability.test.ts)
         { label: 'บันทึกรายจ่าย', path: '/expenses', icon: Receipt },
+        { label: 'บิลประจำ', path: '/expenses/recurring-bills', icon: CalendarClock },
         // route อนุญาต role นี้อยู่แล้ว แต่เมนูไม่มี ⇒ MainLayout เด้ง (route-reachability.test.ts)
         { label: 'สินทรัพย์ถาวร', path: '/assets', icon: Landmark },
       ],
@@ -389,6 +391,7 @@ const FINANCE_MANAGER_CONFIG: RoleMenuConfig = {
       items: [
         { label: "จ่ายให้หน้าร้าน", path: '/accounting/intercompany', icon: Store },
         { label: 'ค่าใช้จ่ายดำเนินงาน', path: '/expenses', icon: Receipt },
+        { label: 'บิลประจำ', path: '/expenses/recurring-bills', icon: CalendarClock },
       ],
     },
     {
@@ -493,6 +496,7 @@ const ACCOUNTANT_CONFIG: RoleMenuConfig = {
         { label: "ภาพรวม การเงิน", path: '/finance-portfolio', icon: CircleDollarSign },
         { label: NAV_LABELS.payments, path: '/payments', icon: HandCoins },
         { label: 'บันทึกรายจ่าย', path: '/expenses', icon: Receipt },
+        { label: 'บิลประจำ', path: '/expenses/recurring-bills', icon: CalendarClock },
         { label: 'จัดการจดหมาย', path: '/letters', icon: Mail },
         { label: 'รับเครื่องคืน / ยึดคืน', path: '/repossessions', icon: Lock },
         { label: 'พิมพ์สติกเกอร์', path: '/stickers', icon: Tag },
@@ -700,6 +704,7 @@ const OWNER_CONFIG: RoleMenuConfig = {
       items: [
         { label: "จ่ายให้หน้าร้าน", path: '/accounting/intercompany', icon: ClipboardList },
         { label: 'ค่าใช้จ่ายดำเนินงาน', path: '/expenses', icon: Receipt },
+        { label: 'บิลประจำ', path: '/expenses/recurring-bills', icon: CalendarClock },
       ],
     },
     assetMenuSection,

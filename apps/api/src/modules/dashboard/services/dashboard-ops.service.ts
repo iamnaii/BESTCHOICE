@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { Prisma } from '@prisma/client';
 import { findUnclosedYesterday, staleAwaitingConfirmWhere } from '../../shop-tenders/shop-cash-close.service';
+import { computeRecurringBillsAlert } from '../../expense-documents/recurring-bills/recurring-bills-alert';
 
 @Injectable()
 export class DashboardOpsService {
@@ -182,6 +183,10 @@ export class DashboardOpsService {
         count: unclosedBranches.length,
       });
     }
+    // ก้อน 6 — บิลประจำ (D5): งวดรอจ่ายที่ครบกำหนดภายใน 3 วัน / เกินกำหนด (spec §8)
+    const recurringBills = await computeRecurringBillsAlert(this.prisma, now, branchId);
+    if (recurringBills) alerts.push(recurringBills);
+
     if (staleCashCloses > 0) {
       alerts.push({
         type: 'cash_close_awaiting',

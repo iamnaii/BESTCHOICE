@@ -484,7 +484,7 @@ describe('DOC-04 payroll slips and annual 50 ทวิ — real workflow, real j
       expect(pageStream(pdf, 1)).toContain(foldThai(money(money1.net)));
       expect(pageStream(pdf, 2)).toContain(foldThai(money(money2.net)));
       expect(pageStream(pdf, 3)).toContain(foldThai(money(money3.net)));
-      expect(streamText(pdf)).not.toContain(foldThai('พิมพ์ / Save PDF'));
+      expect(streamText(pdf)).not.toContain(foldThai('พิมพ์ / บันทึก PDF'));
       expect(pageErrors(errors)).toEqual([]);
       const artifacts = [...screenshots, printed.printMediaShot, printed.artifact, saveArtifact(DOMAIN, 'payroll-slips-print.pdf.json', JSON.stringify({ ...pdfSummary(pdf), fontLoaded: printed.fontLoaded, consoleErrors: errors }, null, 2)).relativePath];
       recordScenario(DOMAIN, scenario({ id: `${DOMAIN}/browser-payroll-slips`, title: 'PaymentVoucherPage for a PAYROLL document: three slips (1/3..3/3), each with only its employee, base + custom income (ม.42 badge on exempt), SSO/WHT/deduction, net in words, ผู้รับเงิน/ผู้จัดทำ; print-media PDF = 3 A4 portrait pages in TH Sarabun PSK 16 pt, one employee per page', routes: ['POST /api/auth/login', 'GET /api/expense-documents/:id', 'GET /api/companies/public'], artifacts, notes: consoleNote(errors) }));

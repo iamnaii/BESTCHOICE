@@ -2,8 +2,8 @@
 
 > สร้างอัตโนมัติ ห้ามแก้ด้วยมือ · แก้ที่ `policy.mjs` แล้ว `npm run grants` ใหม่
 
-- ตารางทั้งหมด **237** · ให้สิทธิ์บางคอลัมน์ **234** · ไม่ให้เลยทั้งใบ **3**
-- คอลัมน์ทั้งหมด **3559** · ให้ **2856** · ไม่ให้ **703**
+- ตารางทั้งหมด **245** · ให้สิทธิ์บางคอลัมน์ **242** · ไม่ให้เลยทั้งใบ **3**
+- คอลัมน์ทั้งหมด **3664** · ให้ **2952** · ไม่ให้ **712**
 
 🔒 = ตารางที่ถือ PII (ให้เฉพาะที่อยู่ใน allowlist) · ⛔ = ห้ามทั้งใบ
 
@@ -49,7 +49,7 @@
 ให้ 8 · ไม่ให้ 69
 
 - **ให้**: `id` `contract_number` `customer_id` `product_id` `status` `created_at` `updated_at` `deleted_at`
-- **ไม่ให้**: `branch_id` `salesperson_id` `plan_type` `selling_price` `down_payment` `interest_rate` `total_months` `interest_total` `financed_amount` `monthly_payment` `parent_contract_id` `notes` `workflow_status` `reviewed_by_id` `reviewed_at` `review_notes` `payment_due_day` `interest_config_id` `pdpa_consent_id` `contract_hash` `has_ownership_clause` `has_repossession_clause` `has_early_payoff_clause` `has_no_transfer_clause` `has_acknowledgement` `retention_status` `retention_expiry` `legal_hold_reason` `customer_snapshot` `credit_balance` `dunning_stage` `dunning_escalated_at` `dunning_last_action_at` `store_commission` `vat_amount` `vat_pct` `assigned_to_id` `legacy_contract_code` `collection_notes` `last_contact_date` `mdm_locked_at` `shop_warranty_start_date` `shop_warranty_end_date` `device_received_at` `pending_dunning_stage` `pending_dunning_since` `block_auto_escalation` `no_answer_count` `needs_skip_tracing` `device_locked` `device_locked_at` `wallpaper_changed` `wallpaper_changed_at` `assigned_at` `kept_promise_count` `advance_balance` `exchanged_from_contract_id` `exchanged_at` `reschedule_advance_balance` `trade_in_credit_snapshot` `down_payment_method` `down_payment_received_at` `down_payment_reference` `bundle_product_ids` `product_disclosure` `input_vat_status` `input_vat_amount` `input_vat_journal_entry_id` `input_vat_reason`
+- **ไม่ให้**: `branch_id` `salesperson_id` `plan_type` `selling_price` `down_payment` `interest_rate` `total_months` `interest_total` `financed_amount` `monthly_payment` `parent_contract_id` `notes` `workflow_status` `reviewed_by_id` `reviewed_at` `review_notes` `payment_due_day` `interest_config_id` `pdpa_consent_id` `contract_hash` `has_ownership_clause` `has_repossession_clause` `has_early_payoff_clause` `has_no_transfer_clause` `has_acknowledgement` `retention_status` `retention_expiry` `legal_hold_reason` `customer_snapshot` `credit_balance` `dunning_stage` `dunning_escalated_at` `dunning_last_action_at` `store_commission` `vat_amount` `vat_pct` `legacy_contract_code` `assigned_to_id` `collection_notes` `last_contact_date` `mdm_locked_at` `shop_warranty_start_date` `shop_warranty_end_date` `no_answer_count` `needs_skip_tracing` `device_locked` `device_locked_at` `wallpaper_changed` `wallpaper_changed_at` `device_received_at` `pending_dunning_stage` `pending_dunning_since` `block_auto_escalation` `assigned_at` `kept_promise_count` `advance_balance` `trade_in_credit_snapshot` `exchanged_from_contract_id` `exchanged_at` `reschedule_advance_balance` `down_payment_method` `down_payment_received_at` `down_payment_reference` `product_disclosure` `bundle_product_ids` `input_vat_status` `input_vat_amount` `input_vat_journal_entry_id` `input_vat_reason`
 
 ### 🔒 `credit_approvals`
 ให้ 12 · ไม่ให้ 12
@@ -58,10 +58,10 @@
 - **ไม่ให้**: `verified_monthly_income` `living_expenses` `external_monthly_debt` `internal_monthly_debt` `remaining_income` `maximum_monthly_payment` `approved_monthly_payment` `salary_pay_day` `evidence_notes` `source_financial_hash` `customer_financial_hash` `commitments`
 
 ### 🔒 `credit_checks`
-ให้ 5 · ไม่ให้ 29
+ให้ 5 · ไม่ให้ 31
 
 - **ให้**: `id` `status` `created_at` `updated_at` `deleted_at`
-- **ไม่ให้**: `contract_id` `customer_id` `bank_name` `statement_files` `statement_months` `ai_analysis` `ai_score` `ai_summary` `ai_recommendation` `checked_by_id` `checked_at` `review_notes` `salary_verified` `employer_name` `salary_pay_day` `salary_slip_files` `statement_bank_name` `statement_avg_income` `statement_avg_expense` `statement_avg_balance` `risk_score` `debt_to_income_ratio` `risk_note` `original_status` `original_score` `overridden_at` `overridden_by_id` `override_reason` `check_type`
+- **ไม่ให้**: `contract_id` `customer_id` `bank_name` `statement_files` `statement_months` `ai_analysis` `ai_score` `ai_summary` `ai_recommendation` `checked_by_id` `checked_at` `review_notes` `salary_verified` `employer_name` `salary_pay_day` `salary_slip_files` `statement_bank_name` `statement_avg_income` `statement_avg_expense` `statement_avg_balance` `risk_score` `debt_to_income_ratio` `risk_note` `original_status` `original_score` `overridden_at` `overridden_by_id` `override_reason` `check_type` `appointment_decision_recorded_at` `last_appointment_decision`
 
 ### 🔒 `customer_journey_entries`
 ให้ 20 · ไม่ให้ 2
@@ -73,7 +73,7 @@
 ให้ 6 · ไม่ให้ 58
 
 - **ให้**: `id` `created_at` `updated_at` `deleted_at` `status` `merged_into_id`
-- **ไม่ให้**: `national_id` `name` `phone` `phone_secondary` `line_id_finance` `address_id_card` `address_current` `occupation` `workplace` `documents` `prefix` `nickname` `is_foreigner` `birth_date` `email` `facebook_link` `facebook_name` `facebook_friends` `google_map_link` `occupation_detail` `salary` `address_work` `references` `guardian_name` `guardian_national_id` `guardian_phone` `guardian_relation` `guardian_address` `referred_by_id` `loyalty_balance` `address_current_type` `salary_pay_day` `legacy_member_code` `chat_consent` `chat_consent_at` `notif_payment_reminder` `notif_overdue_notice` `notif_receipt` `referral_awarded_at` `national_id_encrypted` `national_id_hash` `phone_encrypted` `phone_hash` `phone_secondary_encrypted` `email_encrypted` `address_id_card_encrypted` `address_current_encrypted` `address_work_encrypted` `guardian_national_id_encrypted` `guardian_phone_encrypted` `guardian_address_encrypted` `references_encrypted` `facebook_user_id` `shipping_addresses` `credit_check_status` `line_id_shop` `acquisition_source` `contact_id`
+- **ไม่ให้**: `national_id` `name` `phone` `phone_secondary` `line_id_finance` `address_id_card` `address_current` `occupation` `workplace` `documents` `prefix` `nickname` `is_foreigner` `birth_date` `email` `facebook_link` `facebook_name` `facebook_friends` `google_map_link` `occupation_detail` `salary` `address_work` `references` `guardian_name` `guardian_national_id` `guardian_phone` `guardian_relation` `guardian_address` `referred_by_id` `legacy_member_code` `loyalty_balance` `address_current_type` `salary_pay_day` `chat_consent` `chat_consent_at` `notif_payment_reminder` `notif_overdue_notice` `notif_receipt` `line_id_shop` `referral_awarded_at` `national_id_encrypted` `national_id_hash` `phone_encrypted` `phone_hash` `phone_secondary_encrypted` `email_encrypted` `address_id_card_encrypted` `address_current_encrypted` `address_work_encrypted` `guardian_national_id_encrypted` `guardian_phone_encrypted` `guardian_address_encrypted` `references_encrypted` `credit_check_status` `facebook_user_id` `shipping_addresses` `acquisition_source` `contact_id`
 
 ### 🔒 `dsar_requests`
 ให้ 4 · ไม่ให้ 12
@@ -163,13 +163,13 @@
 ให้ 5 · ไม่ให้ 63
 
 - **ให้**: `id` `status` `created_at` `updated_at` `deleted_at`
-- **ไม่ให้**: `customer_id` `product_id` `device_brand` `device_model` `device_storage` `device_condition` `imei` `estimated_value` `offered_price` `agreed_price` `appraised_by_id` `notes` `branch_id` `device_color` `seller_name` `seller_phone` `seller_id_card_number` `seller_address` `id_card_photo_url` `id_card_source` `id_card_verified_at` `id_card_verified_by_id` `seller_signature_url` `seller_signature_base64` `seller_consent_signed` `police_report_acknowledged` `imei_blacklist_checked_at` `imei_blacklist_result` `payment_method` `transfer_bank_name` `transfer_account_number` `transfer_account_name` `voucher_number` `voucher_date` `voucher_pdf_url` `voucher_printed_at` `base_price_at_appraisal` `first_appraised_at` `appraisal_locked` `transfer_account_number_encrypted` `transfer_account_name_encrypted` `submission_source` `flow` `customer_notes` `customer_line_id` `photo_urls` `battery_health` `seller_contact_id` `condition_answers` `quote_breakdown` `preferred_visit_date` `seller_declaration_snapshot` `serial_number` `quick_buy_request_id` `quick_buy_request_hash` `quick_buy_requested_by_id` `imei_missing_reason` `serial_number_missing_reason` `credit_base_amount` `credit_bonus_amount` `credit_issued_at` `credit_issue_journal_id` `current_redemption_id`
+- **ไม่ให้**: `customer_id` `product_id` `device_brand` `device_model` `device_storage` `device_condition` `imei` `estimated_value` `offered_price` `agreed_price` `appraised_by_id` `notes` `branch_id` `device_color` `seller_name` `seller_phone` `seller_id_card_number` `seller_address` `id_card_photo_url` `id_card_source` `id_card_verified_at` `id_card_verified_by_id` `seller_signature_url` `seller_signature_base64` `seller_consent_signed` `police_report_acknowledged` `imei_blacklist_checked_at` `imei_blacklist_result` `payment_method` `transfer_bank_name` `transfer_account_number` `transfer_account_name` `voucher_number` `voucher_date` `voucher_pdf_url` `voucher_printed_at` `base_price_at_appraisal` `first_appraised_at` `appraisal_locked` `transfer_account_number_encrypted` `transfer_account_name_encrypted` `submission_source` `flow` `customer_notes` `customer_line_id` `photo_urls` `battery_health` `seller_declaration_snapshot` `serial_number` `quick_buy_request_id` `quick_buy_request_hash` `quick_buy_requested_by_id` `imei_missing_reason` `serial_number_missing_reason` `credit_base_amount` `credit_bonus_amount` `credit_issued_at` `credit_issue_journal_id` `current_redemption_id` `seller_contact_id` `condition_answers` `quote_breakdown` `preferred_visit_date`
 
 ### 🔒 `users`
 ให้ 7 · ไม่ให้ 24
 
 - **ให้**: `id` `role` `branch_id` `is_active` `created_at` `updated_at` `deleted_at`
-- **ไม่ให้**: `email` `password` `name` `saved_signature` `employee_id` `nickname` `phone` `line_id` `address` `avatar_url` `start_date` `national_id` `birth_date` `failed_login_attempts` `locked_until` `last_login_at` `is_system_user` `yeastar_extension` `collections_active` `preferences` `default_cash_account_code` `accessible_companies` `primary_company` `can_reverse_override`
+- **ไม่ให้**: `email` `password` `name` `saved_signature` `employee_id` `nickname` `phone` `line_id` `address` `avatar_url` `start_date` `national_id` `birth_date` `failed_login_attempts` `locked_until` `is_system_user` `yeastar_extension` `last_login_at` `collections_active` `preferences` `default_cash_account_code` `accessible_companies` `primary_company` `can_reverse_override`
 
 ### 🔒 `website_visits`
 ให้ 1 · ไม่ให้ 16
@@ -184,19 +184,19 @@
 | `suppliers` | 11 | 11 | `name` `contact_name` `phone` `phone_secondary` `line_id` `address` `tax_id` `notes` `nickname` `title_name` `contact_phone` |
 | `company_info` | 16 | 8 | `tax_id` `address` `phone` `director_name` `director_national_id` `director_address` `bank_account_name` `bank_account_number` |
 | `other_incomes` | 32 | 8 | `counterparty_name` `counterparty_tax_id` `counterparty_address` `counterparty_phone` `customer_note` `reverse_note` `approve_note` `reject_note` |
-| `receipts` | 35 | 7 | `payer_name` `receiver_name` `file_hash` `payer_address` `payer_tax_id` `item_description` `public_token` |
+| `receipts` | 36 | 7 | `payer_name` `receiver_name` `file_hash` `payer_address` `payer_tax_id` `item_description` `public_token` |
 | `expense_documents` | 25 | 6 | `vendor_name` `vendor_tax_id` `description` `receipt_image_url` `reference` `note` |
 | `external_finance_companies` | 12 | 6 | `name` `contact_phone` `bank_account_info` `notes` `email` `tax_id` |
 | `finance_company_contacts` | 9 | 5 | `name` `phone` `email` `line_id` `notes` |
 | `fixed_assets` | 59 | 5 | `name` `description` `supplier_name` `supplier_tax_id` `note` |
 | `online_installment_applications` | 17 | 5 | `full_name` `phone` `national_id` `line_user_id` `notes` |
 | `products` | 41 | 5 | `name` `photos` `online_description` `cosmetic_notes` `parts_history_note` |
-| `purchase_orders` | 24 | 5 | `notes` `payment_notes` `attachments` `bank_account_snapshot` `bank_name_snapshot` |
+| `purchase_orders` | 27 | 5 | `notes` `payment_notes` `attachments` `bank_account_snapshot` `bank_name_snapshot` |
 | `signatures` | 12 | 5 | `signature_image` `ip_address` `signature_svg` `signer_name` `contract_hash` |
 | `contract_exchange_requests` | 38 | 4 | `condition_note` `condition_photos` `base_price_snapshot` `ncv_snapshot` |
 | `invite_tokens` | 10 | 4 | `token` `email` `otp_hash` `phone` |
 | `kyc_verifications` | 15 | 4 | `otp_hash` `otp_phone` `id_card_image_url` `ip_address` |
-| `after_sales_cases` | 32 | 3 | `photo_keys` `purchase_photo_keys` `warranty_snapshot` |
+| `after_sales_cases` | 33 | 3 | `photo_keys` `purchase_photo_keys` `warranty_snapshot` |
 | `bank_accounts` | 9 | 3 | `account_name` `account_number` `notes` |
 | `canned_response_bubbles` | 15 | 3 | `text` `media_url` `address` |
 | `document_audit_logs` | 6 | 3 | `document_id` `ip_address` `user_agent` |
@@ -210,12 +210,13 @@
 | `repair_tickets` | 28 | 3 | `defect_description` `expense_document_id` `notes` |
 | `shareholders` | 8 | 3 | `name` `tax_id` `note` |
 | `accounting_periods` | 19 | 2 | `report_snapshot` `notes` |
+| `appointment_confirmations` | 12 | 2 | `recipient_id` `text` |
 | `branch_receiving_items` | 9 | 2 | `condition_notes` `photos` |
 | `branches` | 10 | 2 | `name` `phone` |
 | `call_logs` | 35 | 2 | `notes` `settlement_notes` |
 | `canned_response_quick_replies` | 9 | 2 | `payload` `message` |
 | `canned_responses` | 12 | 2 | `content` `media_url` |
-| `chart_of_accounts` | 11 | 2 | `name` `notes` |
+| `chart_of_accounts` | 13 | 2 | `name` `notes` |
 | `chat_auto_triggers` | 10 | 2 | `payload` `reference_key` |
 | `chatbot_otp_requests` | 7 | 2 | `line_user_id` `phone` |
 | `commission_rules` | 10 | 2 | `name` `description` |
@@ -242,8 +243,9 @@
 | `pdpa_consents` | 13 | 2 | `ip_address` `signature_image` |
 | `promotions` | 13 | 2 | `name` `description` |
 | `repossessions` | 24 | 2 | `photos` `notes` |
-| `sales` | 28 | 2 | `notes` `trade_in_credit_snapshot` |
+| `sales` | 29 | 2 | `notes` `trade_in_credit_snapshot` |
 | `sales_commissions` | 23 | 2 | `notes` `snapshot_salesperson_id` |
+| `shop_petty_cash_movements` | 12 | 2 | `bank_account_code` `note` |
 | `sms_templates` | 9 | 2 | `name` `body` |
 | `sso_config` | 8 | 2 | `salary_ceiling` `note` |
 | `staff_inbox_items` | 12 | 2 | `recipient_id` `facebook_comment_id` |
@@ -257,6 +259,7 @@
 | `account_role_map` | 7 | 1 | `note` |
 | `ads_campaigns` | 13 | 1 | `ad_photo_url` |
 | `after_sales_events` | 5 | 1 | `note` |
+| `appointment_requests` | 5 | 1 | `request_hash` |
 | `bad_debt_provisions` | 17 | 1 | `notes` |
 | `bad_debt_write_off_audit_logs` | 10 | 1 | `notes` |
 | `booking_items` | 7 | 1 | `description` |
@@ -315,6 +318,8 @@
 | `sticker_templates` | 9 | 1 | `name` |
 | `stock_count_items` | 9 | 1 | `condition_notes` |
 | `stock_counts` | 10 | 1 | `notes` |
+| `store_appointment_links` | 10 | 1 | `token_hash` |
+| `store_appointments` | 24 | 1 | `reference` |
 | `tax_reports` | 19 | 1 | `notes` |
 | `todo_comments` | 4 | 1 | `content` |
 | `trade_in_valuations` | 9 | 1 | `note` |

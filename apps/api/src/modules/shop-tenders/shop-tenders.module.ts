@@ -5,15 +5,16 @@ import { ShopCashCloseService } from './shop-cash-close.service';
 import { ShopCashHoldingService } from './shop-cash-holding.service';
 import { ShopCashOverviewService } from './shop-cash-overview.service';
 import { JournalModule } from '../journal/journal.module';
+import { CashCloseAlertsCron } from './crons/cash-close-alerts.cron';
 
 /**
  * สมุดเงินเข้า/ออกหน้าร้าน (สเปค 2026-09-20-shop-tenders-daily-cash).
  * ฝั่งเขียน (`ShopTenderRecorder`) ไม่ใช่ provider — แต่ละ flow สร้างเองใน tx ของตัวเองด้วย `new ShopTenderRecorder(prisma)`
- * ตามแบบ TradeInCreditService; module นี้มีเฉพาะฝั่งอ่าน (หน้าสรุปเงินรายวัน).
+ * ตามแบบ TradeInCreditService; module นี้มีเฉพาะฝั่งอ่าน (หน้าสรุปเงินรายวัน) + cron เตือน LINE พนักงาน 10:00 (`CashCloseAlertsCron`).
  */
 @Module({
   imports: [JournalModule],
   controllers: [ShopTendersController],
-  providers: [ShopTendersReportService, ShopCashCloseService, ShopCashHoldingService, ShopCashOverviewService],
+  providers: [ShopTendersReportService, ShopCashCloseService, ShopCashHoldingService, ShopCashOverviewService, CashCloseAlertsCron],
 })
 export class ShopTendersModule {}

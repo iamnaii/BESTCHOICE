@@ -16,6 +16,7 @@ import { MetricsModule } from '../metrics/metrics.module';
 import { PiiModule } from '../pii/pii.module';
 import { RepairTicketsModule } from '../repair-tickets/repair-tickets.module';
 import { ShopBotDefenseModule } from '../shop-bot-defense/shop-bot-defense.module';
+import { StaffNotifyModule } from '../staff-notify/staff-notify.module';
 import { StorageModule } from '../storage/storage.module';
 import { WebhookSecurityModule } from '../webhook-security/webhook-security.module';
 
@@ -48,6 +49,8 @@ describe('ShopHomeModule wiring', () => {
         PiiModule,
         RepairTicketsModule,
         ShopBotDefenseModule,
+        // ก้อน 7 A16 — @Global ใน AppModule; StaffNotificationService (ChatbotFinanceModule) inject StaffNotifyService
+        StaffNotifyModule,
         StorageModule,
         WebhookSecurityModule,
         ShopHomeModule,

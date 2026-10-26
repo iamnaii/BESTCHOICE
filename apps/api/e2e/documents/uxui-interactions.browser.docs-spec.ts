@@ -98,7 +98,8 @@ describe('UX/UI mobile controls on the real isolated API', () => {
         '/equity/dividend-register': { year: new Date().getFullYear(), rows: [{ shareholderId: 'layout-shareholder', name: longName, taxId: '0105500000028', payCount: 12, gross: '1234567', wht: '123456.70', net: '1111110.30', docNumbers: ['EQ-20261120-0001', 'EQ-20261220-0001'] }], totals: { gross: '1234567', wht: '123456.70', net: '1111110.30' } },
       };
       try {
-        await page.addInitScript(accessToken => { localStorage.setItem('access_token', accessToken); localStorage.setItem('bc.sidebar.lastZone', 'shop'); }, token);
+        // `/` is zone-based since shop-home (#1724): the mocked /dashboard/* fixtures feed the finance-zone management dashboard.
+        await page.addInitScript(accessToken => { localStorage.setItem('access_token', accessToken); localStorage.setItem('bc.sidebar.lastZone', 'fin'); }, token);
         await page.route('**/api/admin/**', route => {
           const path = new URL(route.request().url()).pathname.replace('/api/admin', '');
           return path in fixtures ? route.fulfill({ json: { success: true, data: fixtures[path] } }) : route.continue();

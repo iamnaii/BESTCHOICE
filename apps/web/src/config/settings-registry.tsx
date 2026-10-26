@@ -12,6 +12,7 @@ const LineGreetingPage = lazy(() => import('@/pages/LineGreetingPage'));
 const SmsTemplatesPage = lazy(() => import('@/pages/SmsTemplatesPage'));
 const ChannelSettingsPage = lazy(() => import('@/pages/ChannelSettingsPage'));
 const DunningSettingsPage = lazy(() => import('@/pages/DunningSettingsPage'));
+const TrashPage = lazy(() => import('@/pages/settings/TrashPage'));
 const CollectionsSettingsPage = lazy(() => import('@/pages/SettingsPage/CollectionsPage'));
 const PricingTemplatesPage = lazy(() => import('@/pages/PricingTemplatesPage'));
 const StickersSettingsPage = lazy(() => import('@/pages/SettingsPage/StickersPage'));
@@ -187,6 +188,7 @@ export const settingsRegistry: SettingsCategory[] = [
       { id: 'backup', label: 'สำรองข้อมูล', group: 'ข้อมูล', roles: ['OWNER'], kind: 'inline', component: OffsiteBackupTab, keywords: ['backup', 'สำรอง'] },
       { id: 'audit-log', label: "ประวัติการดำเนินการ", group: 'ข้อมูล', roles: ['OWNER'], kind: 'external', path: '/audit-logs' },
       { id: 'system-status', label: "สถานะระบบ", group: 'ข้อมูล', roles: ['OWNER'], kind: 'external', path: '/system-status' },
+      { id: 'trash', label: 'ถังขยะ', group: 'ข้อมูล', roles: ['OWNER'], kind: 'route', component: TrashPage, path: '/settings/system/trash', keywords: ['ถังขยะ', 'กู้คืน', 'ลบ', 'restore', 'trash', 'กู้'] },
     ],
   },
 ];

@@ -37,8 +37,18 @@ export default function StockAdjustmentsPage() {
   const debouncedSearch = useDebounce(search);
   const [reason, setReason] = useState<AdjustmentReason | ''>('');
   const [page, setPage] = useState(1);
-  const [showRequest, setShowRequest] = useState(false);
+  // ถังขยะ (ก้อน 8 A10) ส่งมาที่ ?request=found&q=<imei> → เปิดฟอร์มคำขอ "พบของคืน" พร้อมค้นเครื่องให้
+  const requestPreset = searchParams.get('request') === 'found' ? { reason: 'FOUND' as AdjustmentReason, query: searchParams.get('q') ?? '' } : null;
+  const [showRequest, setShowRequest] = useState(!!requestPreset);
   const [openId, setOpenId] = useState<string | null>(searchParams.get('focus'));
+  const closeRequest = () => {
+    setShowRequest(false);
+    if (searchParams.has('request') || searchParams.has('q')) {
+      searchParams.delete('request');
+      searchParams.delete('q');
+      setSearchParams(searchParams, { replace: true });
+    }
+  };
 
   useEffect(() => {
     setPage(1);
@@ -185,7 +195,7 @@ export default function StockAdjustmentsPage() {
         </>
       </QueryBoundary>
 
-      <RequestAdjustmentDialog open={showRequest} onClose={() => setShowRequest(false)} />
+      <RequestAdjustmentDialog open={showRequest} onClose={closeRequest} initialReason={requestPreset?.reason ?? ''} initialQuery={requestPreset?.query ?? ''} />
       <ApproveAdjustmentDialog adjustmentId={openId} onClose={closeDetail} user={user} />
     </div>
   );

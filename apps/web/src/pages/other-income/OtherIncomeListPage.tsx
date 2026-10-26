@@ -456,7 +456,7 @@ export default function OtherIncomeListPage() {
         open={confirmDeleteId !== null}
         onOpenChange={(open) => { if (!open) setConfirmDeleteId(null); }}
         title="ลบฉบับร่าง"
-        description={`ต้องการลบร่างเอกสาร ${confirmDeleteNumber}? การดำเนินการนี้ไม่สามารถยกเลิกได้`}
+        description={`ต้องการลบร่างเอกสาร ${confirmDeleteNumber}? เจ้าของกู้คืนได้จากถังขยะ (ตั้งค่า › ระบบ)`}
         confirmLabel="ลบ"
         variant="destructive"
         loading={deleteMutation.isPending}

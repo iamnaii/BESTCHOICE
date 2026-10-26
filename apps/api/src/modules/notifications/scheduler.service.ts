@@ -60,11 +60,7 @@ export class SchedulerService {
       this.paymentLinkService,
     );
     this.retention = new RetentionService(this.prisma);
-    this.ownerReportNotifier = new OwnerReportNotifierService(
-      this.prisma,
-      this.dashboardService,
-      this.lineOaService,
-    );
+    this.ownerReportNotifier = new OwnerReportNotifierService(this.prisma, this.dashboardService, this.staffNotify);
   }
 
   /**

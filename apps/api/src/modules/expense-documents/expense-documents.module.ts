@@ -21,7 +21,7 @@ import { ExpenseDocumentCreateService } from './services/expense-document-create
 import { ExpenseVoucherPdfService } from './services/expense-voucher-pdf.service';
 import { PettyCashService } from './services/petty-cash.service';
 import { PayrollCustomService } from './services/payroll-custom.service';
-import { ExpenseRecurringCron } from './crons/expense-recurring.cron';
+import { RecurringBillsCron } from './crons/recurring-bills.cron';
 import { RecurringBillsService } from './recurring-bills/recurring-bills.service';
 import { LoggingRecurringBillNotifier, RECURRING_BILL_NOTIFIER } from './recurring-bills/recurring-bill-notifier';
 import { PettyCashReplenishAlertCron } from './crons/petty-cash-replenish-alert.cron';
@@ -60,8 +60,8 @@ import { ReversePermissionGuard } from './reverse-permission.guard';
     ExpenseVoucherPdfService,
     PettyCashService,
     PayrollCustomService,
-    ExpenseRecurringCron,
-    // ก้อน 6 — บิลประจำ (D5): งวด/ร่าง/งาน/LINE stub
+    // ก้อน 6 — บิลประจำ (D5): cron 08:05 + งวด/ร่าง/งาน/LINE stub (แทน ExpenseRecurringCron เดิม)
+    RecurringBillsCron,
     RecurringBillsService,
     { provide: RECURRING_BILL_NOTIFIER, useClass: LoggingRecurringBillNotifier },
     PettyCashReplenishAlertCron,

@@ -26,7 +26,7 @@ import { EquityModule } from '../../modules/equity/equity.module';
  * ตอน onApplicationBootstrap — และไม่มี env flag ปิด cron (grep DISABLE_CRON /
  * CRON_ENABLED แล้วไม่พบ). ScheduleModule.forRoot() อยู่ที่ app.module.ts ที่เดียว
  * ⇒ ไม่ import AppModule = ไม่มี timer ใดถูกตั้ง. คลาส *Cron ที่ติดมากับ feature module
- * (GhostSaleCron, BookingExpireCron, ExpenseRecurringCron ฯลฯ) ถูก instantiate ได้
+ * (GhostSaleCron, BookingExpireCron, RecurringBillsCron ฯลฯ) ถูก instantiate ได้
  * แต่ @Cron decorator เป็นแค่ metadata — ไม่มี SchedulerOrchestrator ก็ไม่มี timer.
  * ด่านพิสูจน์เชิงประจักษ์คือ smoke test: process ต้องจบเอง (timer/socket ค้าง = จบไม่ได้).
  *

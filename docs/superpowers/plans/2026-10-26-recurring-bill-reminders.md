@@ -17,7 +17,8 @@
 - "ระบบสร้างได้แค่ร่าง" — ห้ามโพสต์/จ่าย/ลง JE จากโค้ดใหม่ทุกจุด
 - AuditLog เขียน**หลัง** `$transaction` commit ผ่าน `AuditService.log` · Todo สร้างด้วย `prisma.todo.create` ตรง (ห้ามผ่าน `TodosService`)
 - ทุกการเทียบวันใช้ปฏิทินไทย: API ใช้ `apps/api/src/utils/date.util.ts` (`bangkokCalendarParts`, `bangkokMidnight`, `bangkokDayDiff`, `addBkkDays`) · shared ใช้ `Intl` + `Asia/Bangkok` เท่านั้น (ไม่มี TZ ของโปรเซส)
-- `isExpenseDocumentPaid(doc)` = `deletedAt == null && status !== 'VOIDED' && (paidAt != null || ล้างด้วย VENDOR_SETTLEMENT ที่เอกสาร `status != 'VOIDED' && deletedAt == null`)` — ที่เดียว ห้ามเขียนซ้ำ
+- `isExpenseDocumentPaid(doc)` = `deletedAt == null && status === 'POSTED' && paidAt != null` (สเปก §15.2 — ไม่มีข้อ settlement) — ที่เดียว ห้ามเขียนซ้ำ
+- **สเปก §15 ทับทุกข้อที่ขัดกัน** — อ่านส่วน "ส่วนแก้ตาม §15" ท้ายแผนก่อนเริ่มแต่ละงาน
 - `RECURRING_BILL_NOTIFY_ROLES = ['OWNER','ACCOUNTANT']` · `RECURRING_BILL_TODO_TAG = 'recurring-bill'` · tag งวด `rb:<occurrenceId>` · `RECURRING_BILL_CATCHUP_DAYS = 7` · lead default 3 (0–30) · เหตุผลข้าม 5–200 · หมายเหตุจ่าย ≤ 200
 - ห้ามรัน `apps/api run lint` (มี `--fix`) · ก่อน jest ของ API ต้อง `npm run build --workspace=@installment/shared` · ห้าม `git stash` เปล่า
 - รันทุกคำสั่งจาก root ของ worktree ด้วย absolute path (`/Users/iamnaii/Desktop/App/BESTCHOICE/.claude/worktrees/recurring-bills`) — cwd เลื่อนได้
@@ -96,7 +97,7 @@
     - `viewStatusOf(occ, doc, today): RecurringBillViewStatus` (pure, export)
 - Todo title/description/priority/tags ตามสเปก §7.3 · `branchId` = `template.branchId` · `dueDate` = `occ.dueDate`
 
-- [ ] **Step 1: เทส util ล้มก่อน** — `isExpenseDocumentPaid`: paidAt+POSTED → true · paidAt+VOIDED → false · deletedAt → false · ไม่มี paidAt แต่มี settlement ไม่ VOIDED → true · settlement VOIDED → false
+- [ ] **Step 1: เทส util ล้มก่อน** — `isExpenseDocumentPaid`: paidAt+POSTED → true · paidAt+VOIDED → false · deletedAt → false · ACCRUAL (paidAt null) → false · PENDING_APPROVAL → false · `isLiveDocument`: DRAFT/PENDING_APPROVAL/APPROVED/ACCRUAL/POSTED → true · VOIDED/deleted → false
 - [ ] **Step 2: รันให้ล้ม** — `cd /Users/iamnaii/Desktop/App/BESTCHOICE/.claude/worktrees/recurring-bills && npm run build --workspace=@installment/shared && npm --prefix apps/api test -- src/modules/expense-documents/recurring-bills/__tests__/recurring-bill-paid.util.spec.ts` → FAIL
 - [ ] **Step 3: เขียน util** → PASS
 - [ ] **Step 4: เทส service ล้มก่อน** (`recurring-bills.service.spec.ts` — prisma mock แบบ `expense-recurring.cron.spec.ts` + mock `templates.instantiate` + notifier spy; `now` คงที่ `2026-10-26T01:05:00Z`):
@@ -221,3 +222,29 @@
 - [ ] **Step 2: รันครบ** — `./tools/check-types.sh all` 0 errors · `npm --prefix apps/api test -- src/modules/expense-documents src/modules/dashboard` เขียว · `(cd apps/web && npx vitest run src/pages/RecurringBillsPage src/components/expense-templates src/pages/ExpenseFavoritesPage src/pages/DashboardPage)` เขียว · `bash tools/test-db-vitest.sh src/modules/expense-documents/__tests__/recurring-bills.integration.spec.ts` เขียว
 - [ ] **Step 3: Commit** — `git commit -am "chore: bump web 26.10.53, docs for recurring bills"`
 - หมายเหตุก่อน deploy (ไม่ใช่โค้ด): ยืนยันผู้ใช้ระบบบน prod `SELECT id, is_active FROM users WHERE is_system_user = true` ผ่าน Cloud SQL proxy — ไม่มี = รัน `seedCollectionsFoundation` ส่วนผู้ใช้ระบบก่อนเปิดใช้
+
+---
+
+## ส่วนแก้ตาม §15 ของสเปก (ทับ Interfaces/Steps ข้างบนเมื่อขัดกัน)
+
+**Task 1 (shared):** เพิ่ม `windowOpensFor(rule, periodKey, leadDays)` (= `reminderWindowOpens`) และ `matchWindow(rule, periodKey, leadDays): { from: CalendarDate; to: CalendarDate }` = `[windowOpens(งวดนี้), windowOpens(งวดถัดไป))` · `periodsFrom` รับ `start` เป็นวันปฏิทิน (วันเดียวกันนับ) · ตัวเลขทองเพิ่ม: "ตั้งบิล 26 ต.ค. day 26 lead 3 → งวดแรก 2026-10" · "ค่าเช่า day 1 lead 3: ใบลง 30 ต.ค. อยู่ในหน้าต่างของ 2026-11"
+
+**Task 2 (schema):** ตามสเปก §15.1 ทั้งหมด — ไม่มี `deletedAt` บนงวด (+ `///` comment) · `estimatedAmount Decimal?` · `lastRemindedOn DateTime? @db.Date` · `todoId @unique` · ชื่อ relation · enum บล็อกบน · backfill เฉพาะ EXPENSE + `is_recurring=false` ประเภทอื่น · ดรอป/เพิ่ม index · เติม `recurring_bill_occurrences` ใน `apps/api/src/cli/factory-reset-tables.ts` `WIPE_TABLES` · docblock `wipe-expenses.cli.ts` · `prisma validate` + เทส factory-reset ที่มีอยู่ (ถ้ามี spec ตรวจรายชื่อตาราง) ต้องผ่าน
+
+**Task 3 (service):** ตามสเปก §15.2–15.6: `isExpenseDocumentPaid` ใหม่ + `isLiveDocument` · ขั้น A: ③ ผูกเฉพาะใบ `createdById = actor.id` + `documentDate` วันครบกำหนด · catch-up: ไล่จาก `max(startsOn, วันนี้−7−1 งวด)` · งวดหลุด → SKIPPED ระบบ + งาน MEDIUM "งวดหลุด — ตรวจว่าจ่ายแล้วหรือยัง" (ไม่มีร่าง/LINE) · `estimatedAmount` snapshot · `documentDate`/`Todo.dueDate` เที่ยงวันไทย · P2002 บน create = skipped · ขั้น B: CAS ทุก transition (`updateMany` + `count === 1`) · ข้อ 1 ค้นใบอื่นด้วย `recurringBillOccurrence: null` + หน้าต่างงวด (`matchWindow`) + ใกล้สุด · ย้ายผูกแล้วลบร่างระบบที่ยัง DRAFT ใน tx (`tx.expenseDocument.update({deletedAt})` + `tx.auditLog.create` DELETED) · `paidAt = min(doc.paidAt, now)` · todoId null + ไม่มีงาน tag → สร้าง+notify ครั้งเดียว · ผู้ใช้ระบบ `{ isSystemUser: true, deletedAt: null }` · ผู้รับ LINE where ครบ 4 เงื่อนไข · `tick` ใช้ `pg_try_advisory_lock` (ใน cron Task 5) · เทสเพิ่ม: A7 QuickStart draft (createdById คน) ไม่ถูกผูก · A8 งวดหลุด → SKIPPED + งาน MEDIUM · A9 P2002 → skipped · B10 ใบคนทำเองลง 30 ต.ค. ผูกงวด 2026-11 (day 1) · B11 ใบที่ผูกงวดอื่นแล้วไม่ถูกผูกซ้ำ · B12 CAS: งวดถูก skip ระหว่าง tick → ไม่ notify · B13 todoId null ซ่อม · B14 ร่างระบบ DRAFT ถูกลบเมื่อผูกใบอื่น · N2 ผู้ใช้ระบบไม่อยู่ในผู้รับ
+
+**Task 4 (template):** validation บนแถวรวม `{...tpl, ...dto}` · `startsOn` normalize เที่ยงคืนไทย + ช่วง [วันนี้−90, วันนี้+365] · แก้ rule → `startsOn = max(startsOn, วันนี้)` + งวด PENDING ที่ใบยังไม่ paid → SKIPPED "แม่แบบเปลี่ยนรอบ" + งาน DONE + ลบร่างระบบ DRAFT (เรียก `RecurringBillsService.retireOpenOccurrences(templateId, reason, actor)` — ย้ายการเรียกขั้น A/retire ไป controller เพื่อเลี่ยงวงกลม) · `prefilledData` รับ `paymentMethod`/`depositAccountCode` (ตรวจค่าเหมือน `create.dto.ts:66-73`) · เทสเพิ่มตามนั้น
+
+**Task 5 (cron):** `tick()` = `SELECT pg_try_advisory_lock(hashtext('recurring-bills:tick'))` → false = log+return · `finally` unlock · เทส: lock ไม่ได้ → ไม่เรียก runDaily
+
+**Task 6 (view/actions):** แถว GET เพิ่ม `templateDeleted`, `document.status` ป้ายตาม §15.2, `estimatedAmount` จาก snapshot, `paymentConfigured: boolean` (prefilledData มีวิธีจ่าย+บัญชี) · `create-draft` บนแม่แบบที่ลบ → 409 ข้อความ §15.5 · reopen จาก SKIPPED ระบบ (งวดหลุด) → PENDING + สร้างร่าง · CAS ทุก action (count 0 → 409 "สถานะเปลี่ยนแล้ว กรุณาโหลดใหม่") · summary ใช้ Decimal
+
+**Task 7 (controller/dashboard):** หลัง create/update แม่แบบ: `retireOpenOccurrences` (เมื่อ rule เปลี่ยน) แล้ว `generateForTemplate(tpl.id, now, actor = ผู้กด)` ใน try/catch
+
+**Task 8 (integration):** เพิ่มเคส: ใบไม่มีวิธีจ่าย โพสต์ → ACCRUAL → งวดยัง PENDING ป้าย "ตั้งหนี้แล้ว รอจ่าย" · ใบมีวิธีจ่าย (prefilledData) โพสต์ → POSTED+paidAt → PAID · `documentDate.getUTCHours() === 5` · สอง `runDaily` พร้อมกัน (Promise.all) → งวดเดียว/งานเดียว
+
+**Task 9 (page):** ป้ายใบตามสถานะ (DRAFT/รออนุมัติ/อนุมัติแล้ว/ตั้งหนี้แล้ว/ยกเลิก/ลบ/ไม่มี) · ปุ่มตาม `documentMissing`/`templateDeleted` · แถว SKIPPED ระบบ มีปุ่ม "เปิดใหม่"/"จ่ายแล้ว" · คำเตือน "ยังไม่ตั้งวิธีจ่าย" เมื่อ `!paymentConfigured` · เมนูครบ 4 role + เทส reachability (`resolveZoneForPath('/expenses/recurring-bills')` ทุก role ที่ route อนุญาต)
+
+**Task 10 (dialog):** ช่อง "วิธีจ่าย" (select ค่าที่ `create.dto.ts` รับ) + "บัญชีที่จ่าย" (`CashAccountSelect` เดิมถ้ามี ไม่งั้น select จาก `CASH_ACCOUNT_CODES`) ไม่บังคับ · โหมดแก้ไข ช่องสาขาอ่านอย่างเดียว · BM ล็อกสาขา · `startsOn` min/max ตาม §15.1
+
+**Task 11:** หมายเหตุก่อน deploy เพิ่ม: ตรวจ `accounting_permissions` ว่าผู้รับงาน (ACCOUNTANT) มี `EXPENSE_POST` และผู้อนุมัติมี `EXPENSE_APPROVE`

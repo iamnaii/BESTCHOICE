@@ -245,3 +245,48 @@ Migration: เพิ่มคอลัมน์ + enum · backfill `recurrence =
 
 ข้อเท็จจริงที่ยืนยันแล้ว: prod `expense_templates` = 0 แถว (26/10) · `assertTemplatesEnabled` ไม่มีแถว = เปิด · `approval_enabled = true` บน prod แต่ประเภทที่ต้องอนุมัติเป็นค่าเริ่มต้น (PAYROLL เท่านั้น) ·
 `resolveAccountingPermissions` ปฏิเสธผู้ใช้ระบบ (`accounting-permissions.ts:54`) แต่ไม่อยู่บนทางสร้างร่าง — **ห้ามเสียบมันเข้าทาง `create()`** · โควต้า 20: เติม `isRecurring: false` ใน `count` (`expense-templates.service.ts:113-116`).
+
+## 15. ผลรอบตรวจออกแบบรอบ 2 (26/10 — 4 มุมมอง 45 ข้อ · ขั้นคัดค้านล้มเพราะโควตาโมเดล จึงตรวจเองกับโค้ด) — **ส่วนนี้ทับทุกข้อที่ขัดกันด้านบน**
+
+### 15.1 ข้อมูล (แก้ §5)
+- enum สองตัวอยู่บล็อก enum ส่วนบนของ schema · relation ไป User ตั้งชื่อ `RecurringBillPaidBy` / `RecurringBillSkippedBy` + back-relation บน `User` · `todoId String? @unique` · FK: `templateId` Restrict · `expenseDocumentId`/`todoId` SetNull
+- **ไม่มี `deletedAt` บนตารางงวด** (`/// งวดไม่ถูกลบ — เปลี่ยนสถานะเป็น SKIPPED เท่านั้น` ตามกติกา exception ของ rules/database) — unique เต็มจึงปลอดภัย
+- เพิ่ม `estimatedAmount Decimal? @db.Decimal(12,2)` snapshot จาก `prefilledData.sampleAmount` ตอนสร้างงวด (null = "—") · ยอดรวมทุกที่ใช้ `Prisma.Decimal`
+- `lastRemindedOn DateTime? @db.Date` (เขียน `bangkokMidnight` ของวันไทย)
+- `startsOn` เก็บเป็น**เที่ยงคืนไทย**เสมอ (DTO รับ `YYYY-MM-DD` · ค่าเริ่มต้น = เที่ยงคืนไทยของวันที่สร้าง · ต้องไม่ย้อนเกิน 90 วันและไม่เกิน 1 ปีข้างหน้า) และเทียบกับ `dueDate` ด้วย**วันปฏิทินไทย** (`dueDate ≥ startsOn` วันเดียวกันนับ) — บิล day 26 ตั้งวันที่ 26 เวลา 14:00 → งวดแรก = 26 เดือนนี้
+- migration: backfill `recurrence='MONTHLY'`, `starts_on` = เที่ยงคืนไทยของวันนี้ **เฉพาะ `document_type = 'EXPENSE'`** และ `is_recurring = false` ให้ประเภทอื่น · ดรอป index `expense_templates_is_recurring_recurring_day_idx` เพิ่ม `@@index([isRecurring, deletedAt])` · เติม `recurring_bill_occurrences` ใน `WIPE_TABLES` ของ `factory-reset-tables.ts` (ไม่งั้น `factory:reset` abort) · `wipe:expenses` ล้างงวดผ่าน CASCADE (จด docblock)
+- `dueDate` = เที่ยงคืนไทย (เก็บ/เทียบ) · `documentDate` ของร่าง และ `Todo.dueDate` = **เที่ยงวันไทย** ของวันเดียวกัน (`getUTCHours() === 5`) — ห้ามส่งเที่ยงคืนเข้า `validatePeriodOpen` (อ่านเดือนตาม TZ ของโปรเซส)
+
+### 15.2 "จ่ายแล้ว" / สถานะใบ (แก้ §7 ข้อ 1–2, §8)
+- **`isExpenseDocumentPaid(doc) = doc.deletedAt == null && doc.status === 'POSTED' && doc.paidAt != null`** — ตัดข้อ settlement ออก (SE ร่าง/จ่ายบางส่วนไม่ใช่จ่ายแล้ว; SE ล้างครบจะพาใบ EX ไป `POSTED + paidAt` เอง `vendor-settlement.template.ts`)
+- ร่างจาก `instantiate` ไม่มี `paymentMethod`/`depositAccountCode` ⇒ โพสต์ได้เป็น `ACCRUAL` (ตั้งหนี้ `paidAt null`) เท่านั้น (`status-transition.service.ts:50-54`, `lifecycle:288`) ⇒ **กล่องตั้งบิลเพิ่มช่อง "วิธีจ่าย" + "บัญชีที่จ่าย" (ไม่บังคับ)** เก็บใน `prefilledData.paymentMethod` / `prefilledData.depositAccountCode` (`create()` รับอยู่แล้ว `create.dto.ts:66-73`) · ไม่ตั้ง = หน้าบิลแสดงคำเตือน "ยังไม่ตั้งวิธีจ่าย — ใบจะลงเป็นตั้งหนี้ ต้องทำใบจ่ายเจ้าหนี้ต่อ"
+- "ใบที่ยังอยู่" = `deletedAt == null && status !== 'VOIDED'` (ครอบ DRAFT / PENDING_APPROVAL / APPROVED / ACCRUAL / POSTED) · `documentMissing` = ไม่มีใบ / ถูกลบ / VOIDED · ป้ายใบตามสถานะจริง: DRAFT "ร่าง" · PENDING_APPROVAL "รออนุมัติ" · APPROVED "อนุมัติแล้ว รอลงบัญชี" · ACCRUAL "ตั้งหนี้แล้ว รอจ่าย" (ปุ่ม "เปิดใบ" — ทำใบจ่ายเจ้าหนี้ต่อ) · VOIDED "ใบถูกยกเลิก EX-…" · ลบ "ร่างถูกลบ" · ไม่มี "ยังไม่มีร่าง" · ปุ่ม "สร้างร่างใหม่" เฉพาะ `documentMissing`
+- ด่านอนุมัติ = ประเภทใน `approval_required_doc_types` **หรือ** ยอด ≥ `approval_threshold` (50,000) (`lifecycle:265-283`) และบน prod `approval_enabled = true` ⇒ เส้นทางจริงของร่าง = ส่งขออนุมัติ → อนุมัติ → auto-post · ชื่อปุ่ม/งานใช้คำ "ลงบัญชี" กลาง ๆ
+- `paidAt` ของงวดที่ระบบตั้งจากใบ = `min(doc.paidAt, now)` (ใบจ่ายสดก่อนกำหนดได้ `paidAt` = วันที่เอกสารในอนาคต)
+- ร่างลงวันที่ครบกำหนด: โพสต์แบบจ่ายสดก่อนกำหนดจะลง JE/ตัดเงินสดวันที่อนาคต (`expense-same-day.template.ts:214,225`) — หน้าบิลประจำและคำอธิบายงานบอกว่า "ถ้าจ่ายก่อนกำหนด ให้แก้วันที่เอกสารเป็นวันจ่ายจริงก่อนโพสต์" (แก้ได้ขณะ DRAFT `expense-document-create.service.ts:1154`)
+
+### 15.3 การจับคู่ใบ (แก้ §7 ขั้น A ③ และ B ข้อ 1)
+- ขั้น A ③ ผูก "ใบที่มีอยู่แล้ว" เฉพาะใบที่ `createdById = ผู้สร้างงวด (ระบบ/ผู้บันทึก)` และ `documentDate` = วันครบกำหนด (ร่างของรอบก่อนที่ ③ ล้ม) — ไม่ผูกร่างที่คนสร้างจาก QuickStart (ร่างกำพร้าจาก QuickStart เป็นพฤติกรรมเดิม นอกขอบเขต)
+- B ข้อ 1 ใบอื่นจากแม่แบบเดียวกัน: ค้น `fromTemplateId` เดียวกัน **ที่ยังไม่ถูกผูกงวดใด** (`recurringBillOccurrence: null`) และ `documentDate` อยู่ใน **หน้าต่างของงวด** `[windowOpens(งวดนี้), windowOpens(งวดถัดไป))` (วันไทย จาก shared) — ใบเดียวเข้าหลายงวดผูกงวดที่ `dueDate` ใกล้สุด · P2002 = ข้ามแถวพร้อม log ไม่ใช่ failed
+- เมื่อย้ายการผูกไปใบอื่น: ร่างเดิมที่ยัง `DRAFT` และ `createdById = ผู้สร้างงวด` → `tx.expenseDocument.update({ deletedAt })` ตรงใน tx เดียวกัน + `tx.auditLog.create` action `DELETED` reason "งวดจ่ายผ่านใบ EX-… แล้ว" (ไม่ผ่าน `lifecycle.softDelete` ที่ต้องการสิทธิ์)
+
+### 15.4 ความถูกต้องเมื่อรันซ้อน/พร้อมกัน (แก้ §7 กติการ่วม)
+- `tick()` ขอ `pg_try_advisory_lock(hashtext('recurring-bills:tick'))` ก่อน (Cloud Run min 1 max 10 instance รัน scheduler ทุกตัว) — ไม่ได้ล็อก = log แล้วออก · ปล่อยใน finally
+- ทุก transition ของแถวงวดเป็น **compare-and-set** `updateMany({ where: { id, status: 'PENDING', ... } })` แล้วทำงานข้างเคียง (งาน/LINE/audit) เฉพาะ `count === 1` — ข้อ 3 ใช้ `where: { id, status: 'PENDING', NOT: { lastRemindedOn: today } }` **ก่อน** แก้งาน/notify · mark-paid/skip/reopen ใช้ CAS เดียวกัน (count 0 → 409 "สถานะเปลี่ยนแล้ว")
+- `occurrence.create` ชน P2002 (instance อื่นสร้างก่อน) = `skipped` ไม่ใช่ `failed`
+- แถว PENDING ที่ `todoId null` และไม่มีงาน tag `rb:<id>` เลย (ค้นรวมงานที่ DONE/ลบ) → สร้างงาน + `notify('UPCOMING')` ครั้งเดียว (ซ่อมเคส ④ ล้ม) · มีงาน tag นั้นแต่ถูกลบ = คนลบ → ไม่สร้างใหม่
+- cron เขียนทับเฉพาะ `title`/`priority` ของงาน ไม่แตะ `description`/`checklist` ที่คนแก้
+
+### 15.5 งวดหลุด / แก้แม่แบบ / แม่แบบถูกลบ
+- งวดหลุดเกิน 7 วัน: แถว `SKIPPED` `skippedById null` เหตุผล **"งวดผ่านไปก่อนระบบเริ่มติดตาม"** (จริงทั้งกรณี cron หยุด/สวิตช์ปิด/ตั้งย้อนหลัง/แก้วัน) + **งาน MEDIUM หนึ่งใบ** "งวดหลุด — ตรวจว่าจ่ายแล้วหรือยัง: <ชื่อบิล> ครบ <วัน>" (ไม่มีร่าง ไม่มี LINE) · หน้าแสดงแถวพร้อมปุ่ม "เปิดใหม่" (→ PENDING + สร้างร่าง) / "จ่ายแล้ว" · ขั้น A ไล่จาก `max(startsOn, วันนี้ − 7 วัน − 1 งวด)` (ไม่สร้างแถว SKIPPED ย้อนหลังเป็นสิบ ๆ แถว)
+- แก้ `recurrence`/`recurringDay`/`recurringMonth` หรือพลิก `isRecurring` false→true: service ตั้ง `startsOn = max(startsOn, วันนี้)` · งวด `PENDING` ที่ใบยังไม่ผ่าน `isExpenseDocumentPaid` → `SKIPPED` ระบบ เหตุผล "แม่แบบเปลี่ยนรอบ" + งาน DONE + ร่างระบบที่ยัง DRAFT ถูกลบตาม 15.3 (ใน tx เดียว) · แล้วเรียกขั้น A ทันที · validation ทำบน**แถวที่รวมแล้ว** `{...tpl, ...dto}` (`isRecurring=false` ⇒ service ล้าง `recurrence/recurringMonth` เอง · `recurringDay` 1–31 เสมอ)
+- แม่แบบถูก soft-delete: งวดค้างยังแสดง แต่ `create-draft`/"เปิดร่างงวดนี้" ถูกซ่อน และ endpoint ตอบ 409 "แม่แบบถูกลบแล้ว — บันทึกจ่ายเอง หรือข้ามงวด" (`instantiate` ปฏิเสธแม่แบบที่ลบ `expense-templates.service.ts:174-178`) · GET ส่ง `templateDeleted: true`
+- โหมดแก้ไขในกล่อง: ช่องสาขา**อ่านอย่างเดียว** ("ย้ายสาขา = ปิดบิลนี้แล้วตั้งใหม่") — `UpdateTemplateDto` ตัด `branchId` ทิ้งเงียบ · BM โหมดสร้างล็อกสาขาตัวเอง
+
+### 15.6 ผู้ใช้ระบบ / ผู้รับ / สิทธิ์
+- หาผู้ใช้ระบบด้วย `{ isSystemUser: true, deletedAt: null }` — **ห้าม**ใส่ `isActive: true` (seed เป็น `isActive: false` `collections-foundation.seed.ts:24`) · ขั้น A ที่เรียกจากปุ่มบันทึกแม่แบบใช้**ผู้กด**เป็นผู้สร้างร่าง/งาน (ไม่พึ่งผู้ใช้ระบบ)
+- ผู้รับ LINE: `{ isActive: true, deletedAt: null, isSystemUser: false, role: { in: RECURRING_BILL_NOTIFY_ROLES } }` (ผู้ใช้ระบบมี role OWNER ต้องถูกกัน) — ปักเทส
+- สิทธิ์โพสต์/ยกเลิกใบเป็น**รายชื่อผู้ใช้**ใน SystemConfig `accounting_permissions` (`accounting-permissions.ts:26,54-70` — OWNER ได้ครบ role อื่นต้องถูกระบุชื่อ) ⇒ ก่อน deploy ตรวจว่า ACCOUNTANT ที่รับงานมี `EXPENSE_POST` (+`EXPENSE_APPROVE` สำหรับผู้อนุมัติ) · ข้อความงาน/409 เขียนเป็นข้อเท็จจริง ไม่สั่งให้ทำสิ่งที่อาจไม่มีสิทธิ์
+- งานใน /todos มองเห็นได้ทุก role ทุกสาขา (รวม SALES — `todos.service.ts:48`, route ไม่จำกัด role) และ ACCOUNTANT ลบงานไม่ได้ (`todos.service.ts:292-296`) — **ยอมรับในก้อนนี้** (ปิดงานผ่านหน้าบิล ไม่ใช่ลบงาน) · ชื่องานใส่ชื่อสาขา · path ในคำอธิบายเป็นข้อความธรรมดา
+- งาน `PAID_UNPOSTED` ยกเป็น `HIGH` ตั้งแต่วันครบกำหนด และคำอธิบายระบุ "ต้องลงบัญชีก่อนปิดงวด <เดือนของ dueDate>"
+- เมนู: เพิ่ม `/expenses/recurring-bills` ให้**ครบทั้ง 4 role** (`resolveZoneForPath` เทียบ path ตรงตัว — ตกหล่น role เดียว = ถูกเด้ง) + เทส route-reachability · ห้ามเพิ่ม `/expenses/favorites` ให้ role เดียว

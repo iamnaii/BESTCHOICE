@@ -1,7 +1,6 @@
-import { Injectable, Logger } from '@nestjs/common';
-import { LineOaService } from '../line-oa/line-oa.service';
-import { ConfigService } from '@nestjs/config';
-import { LineMessagePayload } from '../line-oa/dto/webhook-event.dto';
+import { Injectable, Logger, Optional } from '@nestjs/common';
+import { StaffNotifyService } from '../staff-notify/staff-notify.service';
+import { maskPhone } from '../chatbot-finance/utils/mask-phone';
 
 export interface ContactInquiry {
   name: string;
@@ -13,45 +12,27 @@ export interface ContactInquiry {
 export class ShopLineChatService {
   private readonly logger = new Logger(ShopLineChatService.name);
 
-  constructor(
-    private readonly lineOaService: LineOaService,
-    private readonly configService: ConfigService,
-  ) {}
+  constructor(@Optional() private readonly staffNotify?: StaffNotifyService) {}
 
   /**
-   * Notify staff of a new contact inquiry from the online shop.
-   * Sends a LINE push message to the configured staff LINE user ID.
-   * If no staff LINE ID is configured, logs the inquiry and returns gracefully.
+   * แจ้งพนักงานว่ามีข้อความสอบถามจากเว็บร้าน — ผ่านท่อกลาง StaffNotifyService (เหตุการณ์ chat.web_inquiry)
+   * (เดิมส่งไป env SHOP_STAFF_LINE_ID ซึ่งไม่ได้ตั้งบน prod — ก้อน 7 A16 §13.4)
+   * ไม่ log เนื้อหา (ชื่อ+เบอร์ = PII) — log แค่หางเบอร์
    */
   async notifyStaffOfInquiry(inquiry: ContactInquiry): Promise<void> {
-    const staffLineId = this.configService.get<string>('SHOP_STAFF_LINE_ID');
-
-    const text =
-      `[BESTCHOICE SHOP] สอบถามจากเว็บไซต์\n` +
-      `ชื่อ: ${inquiry.name}\n` +
-      `โทร: ${inquiry.phone}\n` +
-      `ข้อความ: ${inquiry.message}`;
-
-    if (!staffLineId) {
-      // TODO: wire SHOP_STAFF_LINE_ID env var when staff LINE account is ready.
-      // Do NOT log the inquiry body — it contains PII (name + phone). Log a
-      // masked marker only so the fallback is observable without leaking PDPA data.
-      const phoneTail = inquiry.phone ? inquiry.phone.slice(-4) : '????';
-      this.logger.warn(
-        `[ShopLineChat] SHOP_STAFF_LINE_ID not configured — inquiry dropped (phone ***${phoneTail})`,
-      );
+    const phoneTail = inquiry.phone ? inquiry.phone.slice(-4) : '????';
+    if (!this.staffNotify) {
+      this.logger.warn(`[ShopLineChat] StaffNotifyService unavailable — inquiry dropped (phone ***${phoneTail})`);
       return;
     }
-
     try {
-      await this.lineOaService.pushMessage(
-        staffLineId,
-        [{ type: 'text', text } as unknown as LineMessagePayload],
-        'line-staff',
-      );
-      this.logger.log(`[ShopLineChat] Inquiry notification sent to staff LINE ID ${staffLineId}`);
+      await this.staffNotify.notify('chat.web_inquiry', {
+        title: 'ข้อความสอบถามจากเว็บ',
+        lines: [`ชื่อ: ${inquiry.name}`, `โทร: ${inquiry.phone ? maskPhone(inquiry.phone) : '-'}`, `ข้อความ: ${inquiry.message}`],
+        link: '/inbox',
+      });
     } catch (err) {
-      this.logger.error(`[ShopLineChat] Failed to send LINE notification: ${err}`);
+      this.logger.error(`[ShopLineChat] Failed to notify staff (phone ***${phoneTail}): ${err instanceof Error ? err.message : err}`);
     }
   }
 }

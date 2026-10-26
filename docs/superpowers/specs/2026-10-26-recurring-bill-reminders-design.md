@@ -1,6 +1,6 @@
 # เตือนจ่ายบิลประจำ (D5) — ออกแบบ
 
-วันที่ 2026-10-26 · ก้อน 6 ของรายการช่องว่าง Tooltify · สถานะ: **เคาะแล้ว 26/10 · โค้ดเสร็จบนสาขา `feat/recurring-bill-reminders` รอ PR/merge** (mockup
+วันที่ 2026-10-26 · ก้อน 6 ของรายการช่องว่าง Tooltify · สถานะ: **เคาะแล้ว 26/10 · ทำแล้ว — PR #1733 รอ merge** (mockup
 `https://claude.ai/artifact/2CM7jqAmVoaRHSbaxBXQdr`)
 
 ## 1. ทำไมต้องมี

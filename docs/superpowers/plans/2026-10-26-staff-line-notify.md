@@ -190,3 +190,33 @@
 - [ ] **Step 1: เทส** ปุ่มทดสอบ → ล้ม → เขียน → ผ่าน
 - [ ] **Step 2: รันครบ** — `bash tools/check-types.sh all` · `cd apps/api && npx jest src/modules/staff-notify src/modules/chatbot-finance src/modules/notifications src/modules/inventory src/modules/collections-session src/modules/sales src/modules/contracts/contract-workflow.service.spec.ts src/modules/expense-documents src/modules/shop-tenders` · `cd apps/web && npx vitest run src/pages/NotificationsPage src/pages/UsersPage src/config` · `bash tools/test-db-vitest.sh src/modules/staff-notify/__tests__/staff-notify.integration.spec.ts` · ก่อน deploy: Staff OA token บน prod + กรอก lineId + เปิดสวิตช์
 - [ ] **Step 3: Commit** — `git commit -am "chore: bump web 26.10.55, docs for staff LINE notifications"`
+
+---
+
+## ส่วนแก้ตาม §13 ของสเปก (ทับ Interfaces/Steps ข้างบนเมื่อขัดกัน)
+
+**ทุก Task:** ผู้รับใช้ `User.lineStaffUserId` (ไม่ใช่ `lineId`) · `StaffEventKey` มี 18 คีย์: ตัด `recurring_bill.*` เหลือ `recurring_bill` · เพิ่ม `overdue.owner_alert` (OWNER · dedupeWindow 20) · `chat.web_inquiry` (OWNER · includeGroup) · `auth.new_device_login` (OWNER · dedupeWindow 0 = ไม่ dedupe) · ค่าเริ่มต้น `enabled: false` สำหรับ `sale.completed`, `contract.activated` · `StaffEventPayload` เพิ่ม `smsFallback?: boolean` (→ `fallbackPhone: user.phone` ต่อผู้รับที่เป็น user) · `FRONTEND_URL` = `process.env.FRONTEND_URL?.split(',')[0]?.trim()` · `StaffNotifyResult.skipped` เพิ่ม `'quota'` และ `quotaSkipped: number`
+
+**Task 1 เพิ่ม:** `STAFF_NOTIFY_MONTHLY_CAP_KEY = 'staff_notify_monthly_cap'` (default 280) · `StaffNotifyRulesService.getMonthlyCap(): Promise<number>` · `saveMonthlyCap(n, actorId)` (1–100000) · เทส R6 cap อ่าน/เขียน/validate
+
+**Task 2 เพิ่ม:** ใน `notify` ก่อนส่ง: `used = notificationLog.count({ where: { channelKey: 'line-staff', status: 'SENT', createdAt: { gte: bkkMonthStart(now) } } })` · ผู้รับที่ `used + sentSoFar ≥ cap` → `quotaSkipped++` ไม่ส่ง + warn วันละครั้ง · `usage(now): Promise<{ used: number; cap: number; monthKey: string }>` · เทส S9 quota: cap 3 used 2 ผู้รับ 3 คน → ส่ง 1 quotaSkipped 2 · `isConfigured()` = token เท่านั้น (เทส S4 เพิ่มกรณีไม่มี notifyTargets แต่มี token → ส่งตามบทบาทได้)
+
+**Task 3 เพิ่ม:** `GET rules` คืน `usage` + `monthlyCap` + `catalog[].defaults` + `webhookUrl` · `PUT monthly-cap` `{ cap }` · `POST users/:id/link-code` → `{ code, expiresAt }` (สุ่ม 6 หลัก `crypto.randomInt(0, 1_000_000)` pad 6 · หมดอายุ now+15 นาที · เขียน `lineLinkCode`/`lineLinkCodeExpiresAt`) · `DELETE users/:id/link` (ล้าง `lineStaffUserId` + audit `STAFF_LINE_UNLINKED`) · เทส C6–C8
+
+**Task 2.5 (ใหม่ · ทำก่อน Task 3): สคีมา + webhook ผูก LINE**
+- Files: `apps/api/prisma/schema.prisma` (User + 3 คอลัมน์ §13.1) · migration `20261104000000_staff_line_link/migration.sql` (เพิ่มคอลัมน์ + unique + backfill `UPDATE users SET line_staff_user_id = line_id WHERE line_id ~ '^U[0-9a-f]{32}$' AND line_staff_user_id IS NULL`) · `apps/api/src/modules/staff-notify/staff-line-link.service.ts` (`issueCode(userId, actorId)`, `unlink(userId, actorId)`, `handleWebhookEvents(events)` — follow → reply คำแนะนำ · message 6 หลัก → ผูก/ตอบ · อื่น → เงียบ · ตอบด้วย `LineOaService.replyMessage(replyToken, [...], 'line-staff')` ถ้ามี ไม่มีใช้ `pushMessage(userId, …, 'line-staff')`) · `staff-line-webhook.controller.ts` (`@Controller('webhooks/line-staff')` `@Post()` `@UseGuards(LineStaffWebhookGuard)` → `service.handleWebhookEvents(body.events)` ตอบ 200 เสมอ) · `integrations/integration-registry.ts` (`line-staff` เพิ่ม `webhookUrl`/`webhookNote`) · spec `__tests__/staff-line-link.service.spec.ts` (L1 issueCode เขียนรหัส 6 หลัก+หมดอายุ 15 นาที · L2 message รหัสถูก → ตั้ง `lineStaffUserId` ล้างรหัส ตอบ "ผูกสำเร็จ" + audit · L3 รหัสหมดอายุ/ไม่ตรง → ตอบ "รหัสไม่ถูกต้องหรือหมดอายุ…" ไม่แตะ user · L4 userId เคยผูกคนอื่น → ย้าย (updateMany ล้างคนเก่าก่อน) · L5 follow → reply คำแนะนำ · L6 ข้อความอื่น → ไม่ตอบ) + controller spec (guard ถูกใส่ · body ไม่มี events → 200 เฉย ๆ)
+- Commit: `feat(api): link staff LINE accounts via 6-digit code on the Staff OA webhook`
+
+**Task 4 เพิ่ม:** `chat.slip_sla` dedupeKey = วันที่ไทย · `chat.web_inquiry`: `shop-line-chat.service.ts` ส่งผ่าน `notify('chat.web_inquiry', { title: 'ข้อความสอบถามจากเว็บ', lines: [ชื่อ, เบอร์(mask), ข้อความ], link: '/inbox', dedupeKey: inquiryId })` แทน env · `auth.new_device_login`: `login-audit.service.ts` → `notify('auth.new_device_login', { title: 'ล็อกอินจากอุปกรณ์ใหม่', lines: [ผู้ใช้, อุปกรณ์, IP prefix, เวลา, 'หากไม่ใช่คุณ กรุณาติดต่อผู้ดูแลระบบทันที'] })` (ไม่ dedupe) · spec ทั้งสอง
+
+**Task 6 เพิ่ม:** `overdue/owner-alert.helper.ts` `sendToAllOwners(message, relatedId)` → `notify('overdue.owner_alert', { title: <บรรทัดแรก>, lines: <ที่เหลือ>, dedupeKey: relatedId, smsFallback: true })` · spec เดิมของ helper (ถ้ามี) + ผู้เรียก 3 จุดไม่ต้องแก้
+
+**Task 7 เพิ่ม:** `RecurringBillEvent.branchId: string | null` (เติมที่ `safeNotify` ใน `recurring-bills.service.ts`) · `StaffNotifyRecurringBillNotifier` dedupeKey `${occurrenceId}:${kind}:${วันที่ไทย}` · ไม่มี MISSED
+
+**Task 8 เพิ่ม:** จุดที่สอง `bookings.service.ts` แปลงใบจองเป็นใบขาย (~1163) ยิง `sale.completed` เดียวกันหลัง commit · spec bookings เพิ่มเคส
+
+**Task 11 เพิ่ม:** แถบสถานะเพิ่ม "ใช้ไป N / cap เดือนนี้" + ช่องแก้ cap (บันทึกแยก `PUT monthly-cap`) + ข้อความ "OA แพ็กเกจฟรีส่งได้ ~300 ข้อความ/เดือน นับต่อผู้รับ" · รายชื่อยังไม่ผูกใช้ `lineStaffUserId`
+
+**Task 12 เพิ่ม (แทนปุ่มทดสอบอย่างเดียว):** หน้าผู้ใช้บล็อก "ไลน์พนักงาน (แจ้งเตือนภายใน)" ตาม §13.1: ยังไม่ผูก → "สร้างรหัสผูก LINE" → กล่องรหัส + ขั้นตอน + หมดอายุ · ผูกแล้ว → "ส่งข้อความทดสอบ" + "ยกเลิกการผูก" (ConfirmDialog) · ป้ายช่องเดิม "LINE ID (สำหรับค้นหาเพื่อน)" · เทส 4 เคส · เวอร์ชัน 26.10.55
+
+**ลำดับทำ:** 1 → 2 → 2.5 → 3 → 4 → 5 → 6 → 7 → 8 → 9 → 10 → 11 → 12

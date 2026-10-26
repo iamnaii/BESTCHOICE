@@ -144,3 +144,27 @@
 - ใส่ `channelToken`/`channelSecret` ของ Staff OA ใน Integration Hub บน prod (บันทึก 23/08 ยังว่าง) แล้วกด "ทดสอบการเชื่อมต่อ"
 - กรอก `lineId` ของ OWNER/บัญชี/ผจก.สาขา ที่หน้าผู้ใช้ แล้วกด "ส่งข้อความทดสอบ" ทีละคน
 - เปิดสวิตช์เหตุการณ์ที่ต้องการในแท็บใหม่ (ค่าเริ่มต้นเปิดตาม §5)
+
+## 13. ผลตรวจของผู้สร้าง (builder check 2026-10-26) — แก้สเปกตามนี้ (ทับข้อที่ขัดกันข้างบน)
+
+**13.1 ผูก LINE ของพนักงานด้วยรหัส 6 หลักผ่าน webhook ของ Staff OA (แทนกรอกมือ)** — ช่อง "LINE ID" เดิม (`User.lineId`) เป็นข้อความอิสระที่คนกรอกไอดีค้นหาเพื่อน ใช้ push ไม่ได้ และไม่มี webhook ให้ระบบรู้ userId (`LineStaffWebhookGuard` มีแต่ไม่มี controller เรียก) ⇒
+- คอลัมน์ใหม่ `User.lineStaffUserId String? @unique @map("line_staff_user_id")` (userId ของ Messaging API ที่ Staff OA เห็น) + `lineLinkCode String? @map("line_link_code")` + `lineLinkCodeExpiresAt DateTime? @map("line_link_code_expires_at")` · migration backfill: `line_id` ที่ตรง `^U[0-9a-f]{32}$` คัดลอกไป `line_staff_user_id` (กรณีเคยกรอก userId จริงไว้) · `lineId` เดิมคงไว้เป็นข้อมูลติดต่อ ป้ายเปลี่ยนเป็น "LINE ID (สำหรับค้นหาเพื่อน)"
+- `POST /webhooks/line-staff` (guard ลายเซ็น `LineStaffWebhookGuard` เดิม) รับ `follow` → ตอบ "สวัสดี <ชื่อ OA> — พิมพ์รหัสผูกบัญชี 6 หลักที่ได้จากหน้าผู้ใช้ในระบบ" · `message` text ตรง `^\d{6}$` → หา user ที่ `lineLinkCode = code` และยังไม่หมดอายุ (15 นาที ใช้ครั้งเดียว) → ตั้ง `lineStaffUserId = source.userId` ล้างรหัส ตอบ "ผูกสำเร็จ: <ชื่อ> (<บทบาท>)" + audit `STAFF_LINE_LINKED` · ไม่ตรง → ตอบ "รหัสไม่ถูกต้องหรือหมดอายุ ขอรหัสใหม่จากหน้าผู้ใช้" · userId เดิมผูกคนอื่นอยู่ → ย้ายมาคนใหม่ (unique) + audit · ข้อความอื่น → เงียบ (200)
+- `POST /staff-notify/users/:id/link-code` (OWNER) → `{ code, expiresAt }` (สุ่ม 6 หลัก เขียนทับของเดิม) · `DELETE /staff-notify/users/:id/link` → ล้าง `lineStaffUserId` + audit
+- หน้าผู้ใช้: บล็อก "ไลน์พนักงาน (แจ้งเตือนภายใน)": สถานะ "ยังไม่ผูก" → ปุ่ม "สร้างรหัสผูก LINE" → แสดงรหัสใหญ่ + ขั้นตอน (1 เพิ่มเพื่อน Staff OA จาก QR/ลิงก์ใน Integration Hub 2 ส่งรหัสนี้ในแชท 3 รอข้อความ "ผูกสำเร็จ") + นับถอยหลังหมดอายุ · "ผูกแล้ว (U…abcd)" → ปุ่ม "ส่งข้อความทดสอบ" + "ยกเลิกการผูก"
+- Integration Hub: รายการ `line-staff` เพิ่ม `webhookUrl: ${BASE}/api/webhooks/line-staff` + คำแนะนำตั้ง Webhook URL ใน LINE Developers (เหมือนช่องอื่น)
+- ผู้รับทุกเหตุการณ์ใช้ `lineStaffUserId` เท่านั้น · "พนักงานที่ยังไม่ผูก" = `lineStaffUserId` ว่าง
+
+**13.2 โควต้าข้อความ** — OA แพ็กเกจฟรีส่งได้ ~300 ข้อความ/เดือน นับต่อผู้รับ ⇒ (ก) SystemConfig `staff_notify_monthly_cap` (ค่าเริ่มต้น 280) · `notify` นับ `NotificationLog` `line-staff` SENT ตั้งแต่ต้นเดือนไทย ถ้า `count + ผู้รับรอบนี้ > cap` → ข้ามผู้รับที่เกินด้วย `skipped: 'quota'` + warn วันละครั้ง + Sentry · (ข) แท็บตั้งค่าแสดง "ใช้ไป N / cap เดือนนี้" + ช่องแก้ cap + คำอธิบายแพ็กเกจ · (ค) ค่าเริ่มต้น **ปิด** สำหรับเหตุการณ์ถี่: `sale.completed`, `contract.activated` · `chat.slip_sla` ส่งวันละครั้ง (dedupe ตามวันที่)
+
+**13.3 Flex** — `StaffEventPayload.flex?: { altText; contents }` ส่งผ่าน `LineOaService.sendFlexMessage(…, 'line-staff')` + เขียน `NotificationLog` เอง · รายงานรายวันเจ้าของคง Flex เดิม (สร้างในโค้ด ไม่ได้ใช้แม่แบบ `staff.daily_line_report` — ข้อความใน §5 เดิมผิด) · `sms.credit_low` เปลี่ยนเป็นข้อความล้วนจากท่อ (แม่แบบ `staff.sms_credit_low` ไม่ถูกใช้อีก คงไว้ใน DB)
+
+**13.4 จุดส่งเดิมที่ตกสำรวจ — รวมเข้าท่อทั้งหมด**
+- `overdue/owner-alert.helper.ts` `sendToAllOwners` (เรียกจาก mdm-auto-propose · letter-auto-generate · dunning-governance) ส่ง line-staff ถึง OWNER พร้อม SMS สำรอง ⇒ เหตุการณ์ `overdue.owner_alert` (OWNER) และท่อรองรับ `smsFallback: true` → `fallbackPhone = user.phone` ต่อผู้รับ (SMS สำรองไม่หาย)
+- `shop-line-chat.service.ts` ข้อความสอบถามจากเว็บ → env `SHOP_STAFF_LINE_ID` (ไม่ได้ตั้งบน prod = ทิ้งเงียบ) ⇒ เหตุการณ์ `chat.web_inquiry` (OWNER + กลุ่ม LINE)
+- `auth/login-audit.service.ts` เตือนล็อกอินอุปกรณ์ใหม่ → env เดียวกัน (ไม่ใช่ lineId ของเจ้าตัว — §2 ข้อ 6 และ §11 ข้อ 5 เดิมผิด) ⇒ เหตุการณ์ `auth.new_device_login` (OWNER) ข้อความเดิม
+- แคตตาล็อกจึงมี **18 เหตุการณ์**: 15 เดิม (ตัด `recurring_bill.missed` — ก้อน 6 ไม่ยิงกรณีนี้ เหลือ `recurring_bill` ครอบ UPCOMING/DUE_TODAY/OVERDUE) + 3 ข้างบน
+
+**13.5 แก้ข้อเท็จจริง/รายละเอียด** — `isConfigured()` ของท่อ = มี token เท่านั้น (ตัวเดิมบังคับ `notifyTargets` ด้วย — ใช้เป็นด่านแรกไม่ได้) · `chat.slip_sla` dedupe = วันที่ไทย (ข้อความรวม ไม่มี slipId) · `RecurringBillEvent` เพิ่ม `branchId` และ adapter สร้าง `link` เป็น path เอง · `cash_close.*` ใช้ `findUnclosedYesterday` / `staleAwaitingConfirmWhere` ที่มีอยู่ (เงื่อนไขจริง = มีเงินสดรับเข้าเมื่อวาน) · `sale.completed` ต้องยิงที่แปลงใบจองเป็นใบขายด้วย (`bookings.service.ts` ~1163) · `contract.activated` รวมสัญญาเปลี่ยนเครื่อง (เลขที่ EXCH- บอกเอง) · เบอร์ลูกค้าใน handoff ถูก mask อยู่แล้ว (ไม่ใช่ "ใช้โทรกลับ") · `FRONTEND_URL` เป็นรายการ CORS คั่น comma → ใช้ค่าแรก · cron รายงานเจ้าของ 20:00 / สรุปหนี้ 18:00 คงเวลาเดิม · หน้า log ยังกรอง channelKey ไม่ได้ (ไม่ทำใน wave นี้ — แท็บใหม่โชว์ตัวนับแทน)
+
+**13.6 คำตัดสินเพิ่ม (ขอให้เจ้าของทบทวน)** — 8. ใช้การผูกด้วยรหัสผ่าน webhook (ต้องตั้ง Webhook URL ของ Staff OA ใน LINE Developers ก่อนใช้) · 9. เพดาน 280 ข้อความ/เดือน ค่าเริ่มต้น ปรับได้ · 10. ขายสด/เปิดสัญญา **ปิดเป็นค่าเริ่มต้น** (เพราะโควต้า) เปิดเองได้ · 11. รวมจุดส่งเดิมทั้งหมด (รวมเตือนล็อกอิน) ถึง OWNER ผ่านท่อ

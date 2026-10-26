@@ -203,7 +203,7 @@
 
 **Task 3 เพิ่ม:** `GET rules` คืน `usage` + `monthlyCap` + `catalog[].defaults` + `webhookUrl` · `PUT monthly-cap` `{ cap }` · `POST users/:id/link-code` → `{ code, expiresAt }` (สุ่ม 6 หลัก `crypto.randomInt(0, 1_000_000)` pad 6 · หมดอายุ now+15 นาที · เขียน `lineLinkCode`/`lineLinkCodeExpiresAt`) · `DELETE users/:id/link` (ล้าง `lineStaffUserId` + audit `STAFF_LINE_UNLINKED`) · เทส C6–C8
 
-**Task 2.5 (ใหม่ · ทำก่อน Task 3): สคีมา + webhook ผูก LINE**
+### Task 13: สคีมา + webhook ผูก LINE (= "Task 2.5" ทำก่อน Task 3 · ส่วนสคีมา/migration ทำไปแล้วใน Task 2)
 - Files: `apps/api/prisma/schema.prisma` (User + 3 คอลัมน์ §13.1) · migration `20261104000000_staff_line_link/migration.sql` (เพิ่มคอลัมน์ + unique + backfill `UPDATE users SET line_staff_user_id = line_id WHERE line_id ~ '^U[0-9a-f]{32}$' AND line_staff_user_id IS NULL`) · `apps/api/src/modules/staff-notify/staff-line-link.service.ts` (`issueCode(userId, actorId)`, `unlink(userId, actorId)`, `handleWebhookEvents(events)` — follow → reply คำแนะนำ · message 6 หลัก → ผูก/ตอบ · อื่น → เงียบ · ตอบด้วย `LineOaService.replyMessage(replyToken, [...], 'line-staff')` ถ้ามี ไม่มีใช้ `pushMessage(userId, …, 'line-staff')`) · `staff-line-webhook.controller.ts` (`@Controller('webhooks/line-staff')` `@Post()` `@UseGuards(LineStaffWebhookGuard)` → `service.handleWebhookEvents(body.events)` ตอบ 200 เสมอ) · `integrations/integration-registry.ts` (`line-staff` เพิ่ม `webhookUrl`/`webhookNote`) · spec `__tests__/staff-line-link.service.spec.ts` (L1 issueCode เขียนรหัส 6 หลัก+หมดอายุ 15 นาที · L2 message รหัสถูก → ตั้ง `lineStaffUserId` ล้างรหัส ตอบ "ผูกสำเร็จ" + audit · L3 รหัสหมดอายุ/ไม่ตรง → ตอบ "รหัสไม่ถูกต้องหรือหมดอายุ…" ไม่แตะ user · L4 userId เคยผูกคนอื่น → ย้าย (updateMany ล้างคนเก่าก่อน) · L5 follow → reply คำแนะนำ · L6 ข้อความอื่น → ไม่ตอบ) + controller spec (guard ถูกใส่ · body ไม่มี events → 200 เฉย ๆ)
 - Commit: `feat(api): link staff LINE accounts via 6-digit code on the Staff OA webhook`
 
@@ -219,4 +219,4 @@
 
 **Task 12 เพิ่ม (แทนปุ่มทดสอบอย่างเดียว):** หน้าผู้ใช้บล็อก "ไลน์พนักงาน (แจ้งเตือนภายใน)" ตาม §13.1: ยังไม่ผูก → "สร้างรหัสผูก LINE" → กล่องรหัส + ขั้นตอน + หมดอายุ · ผูกแล้ว → "ส่งข้อความทดสอบ" + "ยกเลิกการผูก" (ConfirmDialog) · ป้ายช่องเดิม "LINE ID (สำหรับค้นหาเพื่อน)" · เทส 4 เคส · เวอร์ชัน 26.10.55
 
-**ลำดับทำ:** 1 → 2 → 2.5 → 3 → 4 → 5 → 6 → 7 → 8 → 9 → 10 → 11 → 12
+**ลำดับทำ:** 1 → 2 → 13 → 3 → 4 → 5 → 6 → 7 → 8 → 9 → 10 → 11 → 12

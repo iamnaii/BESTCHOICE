@@ -90,8 +90,12 @@ function toStickerData(row: StockProduct) {
   };
 }
 
+// ธงจาก GET /settings/ui-flags — ค่าเริ่มต้น {} = เซิร์ฟเวอร์รุ่นก่อนที่ยังไม่ส่ง stickerSize/stickerShowQr
+let uiFlags: Record<string, unknown> = {};
+
 function mockApi() {
   mocks.get.mockImplementation(async (url: string, options?: { params?: Record<string, unknown> }) => {
+    if (url === '/settings/ui-flags') return { data: uiFlags };
     if (url === '/products') return { data: { data: ROWS, total: 132, page: options?.params?.page ?? 1, totalPages: 7 } };
     if (url === '/products/brands') return { data: ['Apple', 'Samsung'] };
     if (url.startsWith('/sticker-templates/products/data')) {
@@ -129,9 +133,15 @@ const lastStockParams = () => {
 
 beforeEach(() => {
   mocks.get.mockReset();
+  uiFlags = {};
   mockApi();
   window.localStorage.clear();
 });
+
+const pageStyles = () =>
+  Array.from(document.querySelectorAll('style'))
+    .map((style) => style.textContent ?? '')
+    .join('\n');
 
 describe('หน้าพิมพ์สติกเกอร์ — ตารางเลือกเครื่อง', () => {
   it('ขอสินค้าพร้อมขายเรียงตามวันที่รับเข้า ใหม่ → เก่า เป็นค่าเริ่มต้น และโชว์ข้อมูลชุดเดียวกับสติกเกอร์ในแต่ละแถว', async () => {
@@ -208,7 +218,11 @@ describe('หน้าพิมพ์สติกเกอร์ — คิว�
     expect(within(first).getByText('ประกันศูนย์ 27/08/27')).toBeInTheDocument();
     expect(within(first).getByText('19,900')).toBeInTheDocument();
     expect(within(first).getByText('351000000007919')).toBeInTheDocument();
-    expect(within(first).queryByText(/estchoice/i)).not.toBeInTheDocument();
+    // แบบ ค (22/10): ชื่อร้านท้ายดวง + QR ของ IMEI · เซิร์ฟเวอร์ไม่ส่งธง = 60×40 + QR เปิด
+    expect(within(first).getByText('BESTCHOICE')).toBeInTheDocument();
+    expect(within(first).getByTestId('sticker-qr').querySelector('svg')).not.toBeNull();
+    expect(first).toHaveClass('sticker--60x40');
+    expect(pageStyles()).toContain('@page { size: 60mm 40mm; margin: 0; }');
     await waitFor(() => expect(within(first).getByText('ดาวน์ 2,985')).toBeInTheDocument());
 
     const used = stickers[1];
@@ -220,6 +234,18 @@ describe('หน้าพิมพ์สติกเกอร์ — คิว�
     expect(screen.getByText(/ยังไม่ตั้งราคา — จะไม่ถูกพิมพ์/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /พิมพ์สติกเกอร์/ })).toHaveTextContent('2 ดวง');
     expect(screen.getByRole('button', { name: /พิมพ์สติกเกอร์/ })).toHaveTextContent('ข้าม 1 เครื่องที่ยังไม่ตั้งราคา');
+  });
+
+  it('ตั้งค่าม้วน 50×40 และปิด QR → @page เปลี่ยนตาม หัวหน้าบอกขนาด และดวงไม่มี QR', async () => {
+    uiFlags = { stickerSize: '50x40', stickerShowQr: false };
+    renderPage('/stickers?productIds=p1');
+
+    await waitFor(() => expect(screen.getAllByTestId('sticker').length).toBeGreaterThan(0));
+    const first = screen.getAllByTestId('sticker')[0];
+    await waitFor(() => expect(first).toHaveClass('sticker--50x40'));
+    expect(within(first).queryByTestId('sticker-qr')).toBeNull();
+    expect(pageStyles()).toContain('@page { size: 50mm 40mm; margin: 0; }');
+    expect(screen.getByText('เลือกเครื่องเข้าคิวเพื่อพิมพ์สติกเกอร์ 50 × 40 มม.')).toBeInTheDocument();
   });
 
   it('ยิงบาร์โค้ด IMEI ในช่องสแกน → ค้นด้วย IMEI ได้ตรง ๆ และเข้าคิว', async () => {

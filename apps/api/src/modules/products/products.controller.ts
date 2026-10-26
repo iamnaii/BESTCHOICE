@@ -37,7 +37,12 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { BranchGuard } from '../auth/guards/branch.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
-import { canSeeCost, omitCostPrice, redactStockSummary } from './cost-visibility.util';
+import {
+  canSeeCost,
+  omitCostPrice,
+  redactStockSummary,
+  redactStockDashboard,
+} from './cost-visibility.util';
 
 @ApiTags('Products')
 @ApiBearerAuth('JWT')
@@ -123,8 +128,13 @@ export class ProductsController {
 
   @Get('stock/dashboard')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
-  getStockDashboard(@Query('branchId') branchId?: string) {
-    return this.productsStockService.getStockDashboard(branchId);
+  async getStockDashboard(
+    @CurrentUser() user: { role: string },
+    @Query('branchId') branchId?: string,
+  ) {
+    const result = await this.productsStockService.getStockDashboard(branchId);
+    if (canSeeCost(user.role)) return result;
+    return redactStockDashboard(result);
   }
 
   @Get('brands')

@@ -136,6 +136,39 @@ export class ShopCashCloseService {
       expectedAmount: floatAmount.plus(cashIn).minus(cashOut) };
   }
 
+  /**
+   * การ์ด "เงินสดในลิ้นชัก" บนหน้าหลักหน้าร้าน — ไม่ส่ง branchId = รวมทุกสาขาที่ยังเปิด
+   * (ผู้เรียกบังคับสาขาตามสิทธิ์ก่อนแล้ว). `closedToday` = ทุกสาขาที่พิจารณามีการปิดยอดที่ยังมีผล
+   * ตั้งแต่เที่ยงคืนไทยของวันนี้; `lastClosedAt` = เวลานับ (countedAt) ของการปิดยอดล่าสุด.
+   */
+  async getDrawerSnapshot(branchId: string | undefined, now = new Date()) {
+    const branches = branchId
+      ? [{ id: branchId }]
+      : await this.prisma.branch.findMany({ where: { deletedAt: null }, select: { id: true } });
+    if (branches.length === 0) return { balance: 0, closedToday: false, lastClosedAt: null };
+
+    const ids = branches.map((b) => b.id);
+    const { start } = bkkDayRange(bangkokDateString(now));
+    const [rounds, todayCloses, last] = await Promise.all([
+      Promise.all(ids.map((id) => this.computeRound(this.prisma, id, now))),
+      this.prisma.shopCashClose.findMany({
+        where: { branchId: { in: ids }, status: { in: EFFECTIVE_CASH_CLOSE_STATUSES }, countedAt: { gte: start } },
+        select: { branchId: true },
+      }),
+      this.prisma.shopCashClose.findFirst({
+        where: { branchId: { in: ids }, status: { in: EFFECTIVE_CASH_CLOSE_STATUSES } },
+        orderBy: { countedAt: 'desc' },
+        select: { countedAt: true },
+      }),
+    ]);
+    const closedBranches = new Set(todayCloses.map((c) => c.branchId));
+    return {
+      balance: rounds.reduce((sum, r) => sum + r.expectedAmount.toNumber(), 0),
+      closedToday: ids.every((id) => closedBranches.has(id)),
+      lastClosedAt: last?.countedAt.toISOString() ?? null,
+    };
+  }
+
   /** `settled` = การปิดยอดที่ยอดนำฝากสะสมครอบแล้ว (`ShopCashHoldingService.settledCloseIds`) — ไม่ส่ง = ถือว่าตู้เซฟยังไม่ได้นำฝาก */
   present(row: CloseRow, settled?: Set<string>) {
     const moneyState: CashCloseMoneyState = row.status === 'SENT_BACK' ? 'SENT_BACK'

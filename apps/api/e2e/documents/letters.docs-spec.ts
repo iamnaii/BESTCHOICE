@@ -99,7 +99,15 @@ describe('DOC-09 collection letters — real job, real renderer, real guards, pr
     };
   }, 300000);
 
-  afterAll(async () => { await h?.close(); });
+  const unlinkStaffLine = async () => {
+    await setSystemConfig(h.prisma, 'integration.line-staff.channelToken', null);
+    await h.prisma.user.update({ where: { id: world.users.owner.id }, data: { lineStaffUserId: null } });
+  };
+
+  afterAll(async () => {
+    if (h && world) await unlinkStaffLine().catch(() => undefined);
+    await h?.close();
+  });
 
   it('the letter job creates 45-day and 60-day letters only for OVERDUE/DEFAULT contracts past the thresholds, once, and alerts the owner through the recorded transport', async () => {
     const cron = h.app.get(LetterAutoGenerateCron);
@@ -133,6 +141,10 @@ describe('DOC-09 collection letters — real job, real renderer, real guards, pr
     const ownerAlerts = h.external.calls.filter((call) => call.recipient === `TEST-NOT-SENT-OWNER-${world.prefix}`);
     expect(ownerAlerts.length).toBeGreaterThanOrEqual(1);
     expect(ownerAlerts[0].summary).toContain('หนังสือทวงถามใหม่');
+    // Undo the staff-notify seeding right away: the disposable database is shared by every suite of the
+    // run, and a configured Staff OA + linked OWNER would make `auth.new_device_login` alert this owner
+    // about every later login in every other world (their `external.calls` must stay empty).
+    await unlinkStaffLine();
     outboundAfterSetup = h.external.calls.length;
     const artifact = saveArtifact(DOMAIN, 'letters-created.json', JSON.stringify({ created, letters, ownerAlerts, contracts: Object.fromEntries(Object.entries(contracts).map(([k, v]) => [k, { id: v.id, contractNumber: v.contractNumber, overdue: expectedLetterFigures(v) }])) }, null, 2)).relativePath;
     recordScenario(DOMAIN, scenario({ id: `${DOMAIN}/auto-generate`, title: 'LetterAutoGenerateCron.run(): disabled flag → nothing; enabled → 45D for 4 contracts (≥45 days overdue), 60D for the 2 past 60 days, none for a 20-day contract or an ACTIVE one; ST-YYYY-NNNNN unique; second run idempotent; owner LINE alert recorded not sent', documents: ['RETURN_DEVICE_45D', 'CONTRACT_TERMINATION_60D'], routes: ['LetterAutoGenerateCron.run() (cron 09:15 Asia/Bangkok)'], renderer: 'none', artifacts: [artifact], notes: 'Letters are created on contract status OVERDUE/DEFAULT + an unpaid installment older than the threshold — the letter status starts PENDING_DISPATCH (tab "รอพิมพ์")' }));

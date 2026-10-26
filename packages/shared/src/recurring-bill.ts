@@ -160,6 +160,18 @@ export function nextPeriodKey(rule: RecurringRule, periodKey: string): string {
   }
 }
 
+export function prevPeriodKey(rule: RecurringRule, periodKey: string): string {
+  const { year, unit } = parsePeriodKey(rule, periodKey);
+  switch (rule.recurrence) {
+    case 'MONTHLY':
+      return unit === 1 ? `${year - 1}-12` : `${year}-${pad2(unit - 1)}`;
+    case 'QUARTERLY':
+      return unit === 1 ? `${year - 1}-Q4` : `${year}-Q${unit - 1}`;
+    case 'YEARLY':
+      return String(year - 1);
+  }
+}
+
 /** `count` งวดแรกที่วันครบกำหนด ≥ `start` (วันเดียวกันนับ) */
 export function periodsFrom(rule: RecurringRule, start: CalendarDate, count: number): string[] {
   const out: string[] = [];

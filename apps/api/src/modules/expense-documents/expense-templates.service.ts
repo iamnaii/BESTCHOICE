@@ -12,6 +12,7 @@ import { ExpenseDocumentsService } from './expense-documents.service';
 import { CreateTemplateDto } from './dto/create-template.dto';
 import { UpdateTemplateDto } from './dto/update-template.dto';
 import { hasCrossBranchAccess } from '../auth/branch-access.util';
+import { TEMPLATES_DISABLED_MESSAGE, isTemplatesEnabled } from './templates-flag.util';
 
 interface UserContext {
   id: string;
@@ -68,22 +69,9 @@ export class ExpenseTemplatesService {
    * hiding pre-existing templates from auditors.
    */
   private async assertTemplatesEnabled(): Promise<void> {
-    try {
-      const row = await this.prisma.systemConfig.findFirst({
-        where: { key: 'templates_enabled', deletedAt: null },
-        select: { value: true },
-      });
-      const raw = row?.value?.trim().toLowerCase();
-      // Only explicit 'false' / '0' disables. Missing row or any other
-      // value keeps the feature on (fail-open default).
-      if (raw === 'false' || raw === '0') {
-        throw new ForbiddenException(
-          'ระบบรายการโปรดถูกปิดใช้งานชั่วคราว — กรุณาติดต่อผู้ดูแลระบบ',
-        );
-      }
-    } catch (err) {
-      if (err instanceof ForbiddenException) throw err;
-      // DB read failure → fail-open (preserve existing behaviour)
+    // ตรรกะอยู่ที่ `templates-flag.util.ts` (ใช้ร่วมกับบิลประจำ) — explicit 'false'/'0' เท่านั้นที่ปิด
+    if (!(await isTemplatesEnabled(this.prisma))) {
+      throw new ForbiddenException(TEMPLATES_DISABLED_MESSAGE);
     }
   }
 

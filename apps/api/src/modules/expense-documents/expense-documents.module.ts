@@ -22,6 +22,8 @@ import { ExpenseVoucherPdfService } from './services/expense-voucher-pdf.service
 import { PettyCashService } from './services/petty-cash.service';
 import { PayrollCustomService } from './services/payroll-custom.service';
 import { ExpenseRecurringCron } from './crons/expense-recurring.cron';
+import { RecurringBillsService } from './recurring-bills/recurring-bills.service';
+import { LoggingRecurringBillNotifier, RECURRING_BILL_NOTIFIER } from './recurring-bills/recurring-bill-notifier';
 import { PettyCashReplenishAlertCron } from './crons/petty-cash-replenish-alert.cron';
 import { DraftAlertsCron } from './crons/draft-alerts.cron';
 import { ApDueAlertsCron } from './crons/ap-due-alerts.cron';
@@ -59,6 +61,9 @@ import { ReversePermissionGuard } from './reverse-permission.guard';
     PettyCashService,
     PayrollCustomService,
     ExpenseRecurringCron,
+    // ก้อน 6 — บิลประจำ (D5): งวด/ร่าง/งาน/LINE stub
+    RecurringBillsService,
+    { provide: RECURRING_BILL_NOTIFIER, useClass: LoggingRecurringBillNotifier },
     PettyCashReplenishAlertCron,
     // D1.3.1.1 — DRAFT alerts cron (opt-in via SystemConfig `draft_alerts_enabled`)
     DraftAlertsCron,
@@ -69,6 +74,6 @@ import { ReversePermissionGuard } from './reverse-permission.guard';
     // D1.3.2.4 — dynamic reverse-permission guard for POST /expense-documents/:id/void
     ReversePermissionGuard,
   ],
-  exports: [ExpenseDocumentsService, ExpenseTemplatesService],
+  exports: [ExpenseDocumentsService, ExpenseTemplatesService, RecurringBillsService],
 })
 export class ExpenseDocumentsModule {}

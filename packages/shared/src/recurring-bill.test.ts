@@ -16,6 +16,7 @@ import {
   matchWindow,
   nextPeriodKey,
   periodKeyFor,
+  prevPeriodKey,
   periodsFrom,
   reminderWindowOpens,
   type RecurringRule,
@@ -83,6 +84,11 @@ describe('periodKeyFor / nextPeriodKey', () => {
     expect(nextPeriodKey(monthly(5), '2026-12')).toBe('2027-01');
     expect(nextPeriodKey(quarterly(15, 2), '2026-Q4')).toBe('2027-Q1');
     expect(nextPeriodKey(yearly(1, 3), '2026')).toBe('2027');
+  });
+  it('steps backward including year rollover', () => {
+    expect(prevPeriodKey(monthly(5), '2027-01')).toBe('2026-12');
+    expect(prevPeriodKey(quarterly(15, 2), '2027-Q1')).toBe('2026-Q4');
+    expect(prevPeriodKey(yearly(1, 3), '2027')).toBe('2026');
   });
 });
 

@@ -210,6 +210,41 @@ export class SalesQueryService {
       .filter(Boolean);
   }
 
+  /**
+   * ขายดี 30 วันย้อนหลัง สำหรับหน้าหลักหน้าร้าน — จัดกลุ่มตาม "รุ่น" (brand model) และ
+   * "หมวด" ไม่ใช่ต่อเครื่องเหมือน getTopSellingProducts (ซึ่งนับทั้งช่วงอายุระบบ).
+   * นับเฉพาะใบที่ไม่ถูกยกเลิกและปิดการขายแล้ว ภายใต้ขอบเขตสาขาของผู้เรียก.
+   */
+  async getTopSellers30d(actor: SalesReadActor, branchId?: string) {
+    const since = new Date(Date.now() - 30 * 86400000);
+    const rows = await this.prisma.sale.findMany({
+      where: {
+        deletedAt: null,
+        createdAt: { gte: since },
+        AND: [completedSaleWhere],
+        ...salesBranchWhere(actor, branchId),
+      },
+      select: { product: { select: { brand: true, model: true, category: true } } },
+    });
+
+    const tally = (keyOf: (p: { brand: string; model: string; category: string }) => string) => {
+      const counts = new Map<string, number>();
+      for (const { product } of rows) {
+        const key = keyOf(product);
+        counts.set(key, (counts.get(key) ?? 0) + 1);
+      }
+      return Array.from(counts.entries())
+        .map(([name, count]) => ({ name, count }))
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 5);
+    };
+
+    return {
+      byModel: tally((p) => `${p.brand} ${p.model}`),
+      byCategory: tally((p) => p.category),
+    };
+  }
+
   async getDailySummary(date: string, actor: SalesReadActor, branchId?: string) {
     const where: Record<string, unknown> = {
       createdAt: bangkokDateRange(date, date),

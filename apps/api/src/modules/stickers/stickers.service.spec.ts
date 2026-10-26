@@ -36,6 +36,7 @@ describe('StickersService — ข้อมูลเครื่องสำห�
     warrantyExpireDate: inTwoYears,
     warrantyExpired: false,
     imeiSerial: '351000000007919',
+    legacyProductCode: 'F17P01',
     stockInDate: new Date('2026-08-11T03:00:00.000Z'),
     cashPrice: new Decimal(19900),
     installmentPrice: new Decimal(19900),
@@ -64,6 +65,7 @@ describe('StickersService — ข้อมูลเครื่องสำห�
       hasBox: true,
       warrantyExpireDate: inTwoYears.toISOString().slice(0, 10),
       imei: '351000000007919',
+      code: 'F17P01',
       stockInDate: '2026-08-11T03:00:00.000Z',
       cashPrice: '19900',
       installmentPrice: '19900',
@@ -123,6 +125,17 @@ describe('StickersService — ข้อมูลเครื่องสำห�
     expect(result.batteryHealth).toBe(87);
     expect(result.hasBox).toBe(false);
     expect(result.category).toBe('PHONE_USED');
+  });
+
+  it('อุปกรณ์ที่ไม่มี IMEI และไม่มีรหัสสินค้าเดิม: imei/code = null (QR บนดวงจะใช้ product id)', async () => {
+    prisma.product.findMany.mockResolvedValue([
+      { ...baseProduct, id: 'acc-1', category: 'ACCESSORY', imeiSerial: null, legacyProductCode: null },
+    ]);
+
+    const [result] = await service.getStickerDataBatch(['acc-1']);
+
+    expect(result.imei).toBeNull();
+    expect(result.code).toBeNull();
   });
 
   it('ไม่มี key = ไม่ยิง DB · เกิน 100 key ตัดที่ 100', async () => {

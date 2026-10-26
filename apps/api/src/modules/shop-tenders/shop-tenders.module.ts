@@ -15,5 +15,7 @@ import { JournalModule } from '../journal/journal.module';
   imports: [JournalModule],
   controllers: [ShopTendersController],
   providers: [ShopTendersReportService, ShopCashCloseService, ShopCashHoldingService, ShopCashOverviewService],
+  // ShopHomeModule ใช้ getDrawerSnapshot() สำหรับการ์ดเงินสดในลิ้นชัก
+  exports: [ShopCashCloseService],
 })
 export class ShopTendersModule {}

@@ -631,7 +631,7 @@ describe('DOC-02 goods receipts and trade-in vouchers — real purchase orders, 
     bmSession = await openAs(world.users.branchManagerA, printPath(ownerPo.id, firstReceiving.receivingId));
     const { page, errors } = bmSession;
     await waitForText(page, firstReceiving.grNumber, 'gr-print');
-    const printButton = page.getByRole('button', { name: 'พิมพ์ / Save PDF' });
+    const printButton = page.getByRole('button', { name: 'พิมพ์ / บันทึก PDF' });
     await printButton.waitFor({ state: 'visible' });
     await waitEnabled(printButton, true, 'print button');
     const bodyText = await page.locator('body').innerText();
@@ -651,7 +651,7 @@ describe('DOC-02 goods receipts and trade-in vouchers — real purchase orders, 
     insideBounds(short.pdf);
     const shortText = textOf(short.pdf);
     for (const needle of ['ใบรับของ', firstReceiving.grNumber, ownerPo.poNumber, supplier.name, 'ตรวจรับทั้งหมด 6 รายการ', 'ผู้รับของ', 'ผู้ตรวจสอบ', 'ไม่ผ่าน', 'จอภาพ']) expect(shortText).toContain(foldThai(needle));
-    expect(shortText).not.toContain(foldThai('พิมพ์ / Save PDF'));
+    expect(shortText).not.toContain(foldThai('พิมพ์ / บันทึก PDF'));
 
     // 30 units → more than one page; totals and both signature boxes on the same (last) page; every page carries text.
     await bmSession.runtime.navigate(page, printPath(longPo.id, longReceiving.receivingId));
@@ -690,7 +690,7 @@ describe('DOC-02 goods receipts and trade-in vouchers — real purchase orders, 
     try {
       await waitForText(sales.page, 'ไม่มีสิทธิ์เข้าถึง', 'gr-print-sales');
       artifacts.push(saveArtifact(DOMAIN, 'goods-receipt-sales-forbidden-1440.png', await sales.page.screenshot({ fullPage: true })).relativePath);
-      expect(await sales.page.getByRole('button', { name: 'พิมพ์ / Save PDF' }).count()).toBe(0);
+      expect(await sales.page.getByRole('button', { name: 'พิมพ์ / บันทึก PDF' }).count()).toBe(0);
     } finally {
       await sales.context.close();
     }

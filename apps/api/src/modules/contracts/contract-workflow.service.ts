@@ -29,6 +29,7 @@ import { claimInputVatOnActivation } from '../journal/input-vat/installment-inpu
 import { ProductsService } from '../products/products.service';
 import { closeRepossessionOnSale } from '../repossessions/repossession-resale.util';
 import { ModuleRef } from '@nestjs/core';
+import { StaffNotifyService } from '../staff-notify/staff-notify.service';
 import { PaymentsService } from '../payments/payments.service';
 import { applyExchangeCreditAfterActivation, type CreditApplier } from './services/exchange-credit-autoapply';
 import { ContractExchangeService } from '../contract-exchange/contract-exchange.service';
@@ -777,7 +778,39 @@ export class ContractWorkflowService {
       },
       actorId,
     );
-    return { ...(await this.findOne(id)), creditApplied };
+    const activated = await this.findOne(id);
+    this.notifyContractActivated(activated);
+    return { ...activated, creditApplied };
+  }
+
+  /** ก้อน 7 A16 — แจ้ง "สัญญาผ่อนเปิดใช้" ทาง LINE พนักงาน (fire-and-forget · ท่อกลางดึงผ่าน ModuleRef เหมือน PaymentsService) */
+  private notifyContractActivated(c: {
+    id: string;
+    contractNumber: string;
+    branchId: string;
+    financedAmount: unknown;
+    totalMonths: number;
+    customer?: { name?: string | null } | null;
+    product?: { brand?: string | null; model?: string | null; storage?: string | null } | null;
+    branch?: { name?: string | null } | null;
+  }): void {
+    try {
+      const hub = this.moduleRef?.get(StaffNotifyService, { strict: false });
+      if (!hub) return;
+      const productLabel = [c.product?.brand, c.product?.model, c.product?.storage].filter(Boolean).join(' ') || 'สินค้า';
+      const financed = Number(c.financedAmount ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      void hub
+        .notify('contract.activated', {
+          title: `สัญญาผ่อนเปิดใช้ ${c.contractNumber}`,
+          lines: [`ลูกค้า ${c.customer?.name ?? '—'}`, `${productLabel} · ยอดจัด ${financed} บาท · ${c.totalMonths} งวด`, `สาขา ${c.branch?.name ?? '—'}`],
+          link: `/contracts/${c.id}`,
+          branchId: c.branchId,
+          dedupeKey: c.id,
+        })
+        .catch(() => undefined);
+    } catch (err) {
+      this.logger.warn(`[staff-notify] contract.activated skipped: ${err instanceof Error ? err.message : String(err)}`);
+    }
   }
 
   /** 15ข — PaymentsService จาก container (ไม่ import PaymentsModule — ดูคอมเมนต์ที่ ctor) · ไม่มี = null */

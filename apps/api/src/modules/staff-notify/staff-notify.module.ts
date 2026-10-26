@@ -6,6 +6,7 @@ import { StaffLineConfigService } from './staff-line-config.service';
 import { StaffNotifyRulesService } from './staff-notify-rules.service';
 import { StaffNotifyService } from './staff-notify.service';
 import { StaffLineLinkService } from './staff-line-link.service';
+import { SaleCompletedNotifier } from './sale-completed-notifier.service';
 import { StaffLineWebhookController } from './staff-line-webhook.controller';
 import { StaffNotifyController } from './staff-notify.controller';
 import { AuditModule } from '../audit/audit.module';
@@ -18,7 +19,7 @@ import { LineStaffWebhookGuard } from '../chatbot-finance/guards/line-staff-webh
 @Module({
   imports: [NotificationsModule, LineOaModule, IntegrationsModule, AuditModule],
   controllers: [StaffLineWebhookController, StaffNotifyController],
-  providers: [StaffLineConfigService, StaffNotifyRulesService, StaffNotifyService, StaffLineLinkService, LineStaffWebhookGuard],
-  exports: [StaffNotifyService, StaffLineConfigService, StaffNotifyRulesService, StaffLineLinkService],
+  providers: [StaffLineConfigService, StaffNotifyRulesService, StaffNotifyService, StaffLineLinkService, LineStaffWebhookGuard, SaleCompletedNotifier],
+  exports: [StaffNotifyService, StaffLineConfigService, StaffNotifyRulesService, StaffLineLinkService, SaleCompletedNotifier],
 })
 export class StaffNotifyModule {}

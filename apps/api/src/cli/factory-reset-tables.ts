@@ -73,6 +73,7 @@ export const KEEP_TABLES: ReadonlySet<string> = new Set([
   'inspection_template_items',
   'expense_templates',
   'user_expense_templates',
+  'recurring_bill_occurrences',
   'other_income_templates',
   'notification_templates',         // ⚠️ seed อยู่ใน migration เท่านั้น
   'sms_templates',

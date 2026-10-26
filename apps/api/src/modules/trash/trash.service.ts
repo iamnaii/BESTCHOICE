@@ -1,11 +1,16 @@
-import { BadRequestException, Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, ConflictException, HttpException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { ModuleRef } from '@nestjs/core';
+import * as Sentry from '@sentry/nestjs';
+import { JourneyStateService } from '../customer-journey/journey-state.service';
+import { CustomerTagsService } from '../customer-tags/customer-tags.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import {
   DELETE_AUDIT_ACTIONS,
+  RESTORE_AUDIT_ACTION,
   TRASH_REGISTRY,
   trashEntry,
+  type TrashAfterRestoreServices,
   type TrashAnyRow,
   type TrashEntry,
   type TrashType,
@@ -13,7 +18,7 @@ import {
 
 /**
  * ถังขยะรวม (ก้อน 8 · A10) — อ่านของที่ถูก soft-delete ตาม allow-list (`trash-registry.ts`) รวมหลายโมเดล
- * + หาว่าใครลบจาก AuditLog (`(entity, entityId)` ตาม index) · การกู้อยู่ใน Task 3
+ * + หาว่าใครลบจาก AuditLog (`(entity, entityId)` ตาม index) · กู้คืน = ตรวจ → `deletedAt: null` ใน tx → งานนอก tx → audit หลัง commit
  */
 
 export interface TrashListQuery {
@@ -59,6 +64,23 @@ export interface TrashListResult {
 export const TRASH_PER_TYPE_CAP = 50;
 export const TRASH_AUDIT_MATCH_WINDOW_MS = 10 * 60_000;
 export const SYSTEM_DELETED_REASON = 'ระบบลบเอง (เช่น งวดบิลประจำถูกแทน) — กู้ไม่ได้';
+export const NOT_IN_TRASH_MESSAGE = 'ไม่พบรายการนี้ในถังขยะ (อาจถูกกู้คืนไปแล้ว)';
+export const TRASH_BULK_MAX = 50;
+
+export interface TrashRestoreResult {
+  ok: true;
+  warnings: string[];
+  link?: string;
+}
+
+export interface TrashBulkItem {
+  type: string;
+  id: string;
+}
+
+export interface TrashBulkResult {
+  results: Array<{ type: string; id: string; ok: boolean; error?: string; warnings?: string[]; link?: string }>;
+}
 
 interface AuditHit {
   entityId: string;
@@ -162,6 +184,99 @@ export class TrashService {
     return result;
   }
 
+  // ─── กู้คืน ───────────────────────────────────────────────────────────────────────────
+
+  async restore(type: string, id: string, actor: { id: string }): Promise<TrashRestoreResult> {
+    const entry = trashEntry(type);
+    if (!entry) throw new BadRequestException(`ไม่รู้จักประเภท "${type}"`);
+    const delegate = this.delegate(entry);
+
+    if (entry.restorable !== true) {
+      const row = (await delegate.findUnique({ where: { id }, select: entry.select })) as TrashAnyRow | null;
+      throw new BadRequestException({
+        message: entry.restorable.reason,
+        actionLabel: entry.restorable.actionLabel,
+        link: row ? entry.restorable.linkFor?.(row) : undefined,
+      });
+    }
+
+    // ตรวจนอก tx ก่อน: ยังอยู่ในถังจริง · ไม่ใช่ของที่ระบบลบเอง (สเปก §13.3)
+    const peek = (await delegate.findUnique({ where: { id }, select: entry.select })) as TrashAnyRow | null;
+    if (!peek || !peek.deletedAt || !this.matchesExtraWhere(entry, peek)) throw new NotFoundException(NOT_IN_TRASH_MESSAGE);
+    const deletedBy = (await this.resolveDeletedBy([{ entry, row: peek }])).get(`${entry.type}:${id}`);
+    if (deletedBy?.system) throw new BadRequestException(SYSTEM_DELETED_REASON);
+
+    let row: TrashAnyRow;
+    try {
+      row = await this.prisma.$transaction(async (tx) => {
+        const txDelegate = (tx as unknown as Record<string, { findUnique: (args: unknown) => Promise<unknown>; update: (args: unknown) => Promise<unknown> }>)[entry.model];
+        const current = (await txDelegate.findUnique({ where: { id }, select: entry.select })) as TrashAnyRow | null;
+        if (!current || !current.deletedAt) throw new NotFoundException(NOT_IN_TRASH_MESSAGE);
+        const ctx = { tx, actorId: actor.id };
+        await entry.check?.(ctx, current);
+        await txDelegate.update({ where: { id }, data: { deletedAt: null } });
+        await entry.restoreExtra?.(ctx, current);
+        return current;
+      });
+    } catch (err) {
+      if ((err as { code?: string })?.code === 'P2002') throw new ConflictException('กู้ไม่ได้: ข้อมูลซ้ำกับรายการที่ยังใช้งานอยู่');
+      throw err;
+    }
+
+    const warnings = [...(entry.warnings?.(row) ?? [])];
+    if (entry.afterRestore) {
+      try {
+        warnings.push(...(await entry.afterRestore(row, this.afterRestoreServices())));
+      } catch (err) {
+        Sentry.captureException(err, { tags: { subsystem: 'trash', type: entry.type }, extra: { id } });
+        this.logger.error(`[trash] afterRestore ${entry.type}/${id} ล้ม: ${err instanceof Error ? err.message : String(err)}`);
+        warnings.push('กู้แล้วแต่คำนวณข้อมูลประกอบไม่สำเร็จ — ข้อมูลหลักถูกต้อง');
+      }
+    }
+
+    // audit หลัง commit → อยู่ในสาย Merkle (database.md) — ห้ามเรียกใน tx
+    await this.audit.log({
+      action: RESTORE_AUDIT_ACTION,
+      entity: entry.type,
+      entityId: id,
+      userId: actor.id,
+      oldValue: { deletedAt: new Date(row.deletedAt).toISOString() },
+      newValue: { changes: ['deletedAt'], warnings },
+    });
+
+    return { ok: true, warnings, link: entry.toRow(row).link };
+  }
+
+  /** กู้หลายรายการทีละรายการ — รายการที่ล้มไม่หยุดรายการอื่น (สเปก §6) */
+  async restoreMany(items: TrashBulkItem[], actor: { id: string }): Promise<TrashBulkResult> {
+    if (items.length > TRASH_BULK_MAX) throw new BadRequestException(`กู้ได้ครั้งละไม่เกิน ${TRASH_BULK_MAX} รายการ`);
+    const results: TrashBulkResult['results'] = [];
+    for (const item of items) {
+      try {
+        const r = await this.restore(item.type, item.id, actor);
+        results.push({ type: item.type, id: item.id, ok: true, warnings: r.warnings, link: r.link });
+      } catch (err) {
+        results.push({ type: item.type, id: item.id, ok: false, error: errorText(err) });
+      }
+    }
+    return { results };
+  }
+
+  protected afterRestoreServices(): TrashAfterRestoreServices {
+    const get = <T>(token: new (...args: never[]) => T): T | undefined => {
+      try {
+        return this.moduleRef.get(token, { strict: false });
+      } catch {
+        return undefined;
+      }
+    };
+    return { prisma: this.prisma, journeyState: get(JourneyStateService), tags: get(CustomerTagsService) };
+  }
+
+  protected matchesExtraWhere(entry: TrashEntry, row: TrashAnyRow): boolean {
+    return Object.entries(entry.extraWhere ?? {}).every(([key, value]) => (value === null ? row[key] == null : row[key] === value));
+  }
+
   // ─── ตัวช่วย ──────────────────────────────────────────────────────────────────────────
 
   protected entriesFor(type?: string): TrashEntry[] {
@@ -195,3 +310,15 @@ export class TrashService {
     return { ...base, restorable: false, reason: entry.restorable.reason, actionLabel: entry.restorable.actionLabel, link: entry.restorable.linkFor?.(row) ?? view.link };
   }
 }
+
+function errorText(err: unknown): string {
+  if (err instanceof HttpException) {
+    const res = err.getResponse();
+    if (typeof res === 'string') return res;
+    const message = (res as { message?: unknown }).message;
+    if (typeof message === 'string') return message;
+    if (Array.isArray(message)) return message.join(' · ');
+  }
+  return err instanceof Error ? err.message : String(err);
+}
+

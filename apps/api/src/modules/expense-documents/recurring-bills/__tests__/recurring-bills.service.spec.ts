@@ -378,3 +378,138 @@ describe('retireOpenOccurrences (แม่แบบเปลี่ยนรอ�
     expect(prisma.auditLog.create).toHaveBeenCalledTimes(1);
   });
 });
+
+// ─── Task 6: มุมมองรายเดือน + การกระทำ (spec §8, §15.2, §15.5) ──────────────────────────
+describe('listMonth', () => {
+  const ACC = { id: 'u-acc', branchId: null, role: 'ACCOUNTANT' };
+  const BM = { id: 'u-bm', branchId: 'br-1', role: 'BRANCH_MANAGER' };
+  const paidDoc = (id: string, number: string, paidAt: Date) => ({ id, number, status: 'POSTED', paidAt, deletedAt: null, documentDate: paidAt, createdById: 'u', totalAmount: '25000' });
+  const draftDoc = (id: string, number: string) => ({ id, number, status: 'DRAFT', paidAt: null, deletedAt: null, documentDate: NOW, createdById: 'sys-1', totalAmount: '0.01' });
+
+  function monthFixture() {
+    const rent = template({ id: 'tpl-rent', name: 'ค่าเช่าร้าน', recurringDay: 1, prefilledData: { vendorName: 'พลาซ่า', sampleAmount: 25000 } });
+    const elec = template({ id: 'tpl-elec', name: 'ค่าไฟ', recurringDay: 15, prefilledData: { vendorName: 'กฟน.', sampleAmount: 8500 } });
+    const net = template({ id: 'tpl-net', name: 'อินเทอร์เน็ต', recurringDay: 24 });
+    const wh = template({ id: 'tpl-wh', name: 'ค่าเช่าโกดัง', recurringDay: 26, branchId: 'br-2', branch: { name: 'บางนา' }, prefilledData: { vendorName: 'ประสิทธิ์', sampleAmount: 12000 } });
+    const ins = template({ id: 'tpl-ins', name: 'ประกันภัยร้าน', recurrence: 'YEARLY', recurringDay: 29, recurringMonth: 10, prefilledData: { vendorName: 'ทิพย', sampleAmount: 18900 } });
+    const water = template({ id: 'tpl-water', name: 'ค่าน้ำ', recurringDay: 31, branchId: 'br-2', branch: { name: 'บางนา' }, prefilledData: { vendorName: 'กปน.', sampleAmount: 900 } });
+    const acct = template({ id: 'tpl-acct', name: 'ค่าทำบัญชี', recurrence: 'QUARTERLY', recurringDay: 5, recurringMonth: 1, prefilledData: { vendorName: 'สนง.', sampleAmount: 6000 } });
+    const rows = [
+      occurrence({ id: 'o-rent', templateId: 'tpl-rent', template: rent, dueDate: bkkMidnight(2026, 10, 1), status: 'PAID', paidAt: bkkNoon(2026, 9, 30), estimatedAmount: '25000', expenseDocumentId: 'd-rent', expenseDocument: paidDoc('d-rent', 'EX-20260928-0003', bkkNoon(2026, 9, 30)) }),
+      occurrence({ id: 'o-elec', templateId: 'tpl-elec', template: elec, dueDate: bkkMidnight(2026, 10, 15), status: 'PAID', paidById: 'u-som', paidAt: bkkNoon(2026, 10, 14), paidNote: 'ตัดบัตรอัตโนมัติ', paidBy: { name: 'สมหญิง' }, estimatedAmount: '8500', expenseDocumentId: 'd-elec', expenseDocument: draftDoc('d-elec', 'EX-20261012-0007') }),
+      occurrence({ id: 'o-net', templateId: 'tpl-net', template: net, dueDate: bkkMidnight(2026, 10, 24), estimatedAmount: '1284' }),
+      occurrence({ id: 'o-wh', templateId: 'tpl-wh', template: wh, dueDate: bkkMidnight(2026, 10, 26), estimatedAmount: '12000', expenseDocumentId: 'd-wh', expenseDocument: { ...draftDoc('d-wh', 'EX-20261023-0005'), deletedAt: new Date() } }),
+      occurrence({ id: 'o-ins', templateId: 'tpl-ins', template: ins, periodKey: '2026', dueDate: bkkMidnight(2026, 10, 29), estimatedAmount: '18900', expenseDocumentId: 'd-ins', expenseDocument: draftDoc('d-ins', 'EX-20261026-0001') }),
+      occurrence({ id: 'o-acct', templateId: 'tpl-acct', template: acct, periodKey: '2026-Q4', dueDate: bkkMidnight(2026, 10, 5), status: 'SKIPPED', skippedById: 'u-ek', skipReason: 'จ่ายล่วงหน้าทั้งปีไปแล้วเมื่อ ก.ค.', skippedBy: { name: 'เอก' }, estimatedAmount: '6000', expenseDocument: draftDoc('d-acct', 'EX-20261002-0004') }),
+    ];
+    return { rows, templates: [rent, elec, net, wh, ins, water, acct] };
+  }
+
+  it('L1 assembles the month: six real rows + one projected UPCOMING, statuses and summary as on the mockup', async () => {
+    const f = monthFixture();
+    prisma.recurringBillOccurrence.findMany.mockResolvedValue(f.rows);
+    prisma.expenseTemplate.findMany.mockResolvedValue(f.templates);
+    const view = await service.listMonth(ACC, '2026-10', undefined, NOW);
+    const byName = Object.fromEntries(view.rows.map((r) => [r.templateName, r]));
+    expect(view.rows.map((r) => r.templateName)).toEqual(['ค่าเช่าร้าน', 'ค่าทำบัญชี', 'ค่าไฟ', 'อินเทอร์เน็ต', 'ค่าเช่าโกดัง', 'ประกันภัยร้าน', 'ค่าน้ำ']);
+    expect(byName['ค่าเช่าร้าน'].status).toBe('PAID');
+    expect(byName['ค่าไฟ']).toMatchObject({ status: 'PAID_UNPOSTED', paidByName: 'สมหญิง', paidNote: 'ตัดบัตรอัตโนมัติ' });
+    expect(byName['อินเทอร์เน็ต']).toMatchObject({ status: 'OVERDUE', daysOverdue: 2, documentMissing: false, document: expect.objectContaining({ number: 'EX-20261021-0002', status: 'DRAFT' }) });
+    expect(byName['ค่าเช่าโกดัง']).toMatchObject({ status: 'DUE_TODAY', documentMissing: true, branch: { id: 'br-2', name: 'บางนา' } });
+    expect(byName['ประกันภัยร้าน']).toMatchObject({ status: 'PENDING', daysUntilDue: 3, periodLabel: 'ปี 2569', document: expect.objectContaining({ number: 'EX-20261026-0001', status: 'DRAFT' }) });
+    expect(byName['ค่าน้ำ']).toMatchObject({ status: 'UPCOMING', occurrenceId: null, awaitingSystem: false, periodKey: '2026-10', expectedAmount: '900' });
+    expect(byName['ค่าน้ำ'].dueDate).toBe(bkkMidnight(2026, 10, 31).toISOString());
+    expect(byName['ค่าทำบัญชี']).toMatchObject({ status: 'SKIPPED', skippedByName: 'เอก', periodLabel: 'ไตรมาส 4/2569' });
+    expect(view.summary).toEqual({ upcoming: 1, pending: 1, dueToday: 1, overdue: 1, paid: 1, paidUnposted: 1, skipped: 1, amountRemaining: '33084.00' });
+    expect(prisma.recurringBillOccurrence.findMany.mock.calls[0][0].where).toMatchObject({ dueDate: { gte: bkkMidnight(2026, 10, 1), lt: bkkMidnight(2026, 11, 1) } });
+  });
+
+  it('L2 projection: a period already passed without a row is not shown; a window already open without a row is awaitingSystem', async () => {
+    prisma.recurringBillOccurrence.findMany.mockResolvedValue([]);
+    prisma.expenseTemplate.findMany.mockResolvedValue([
+      template({ id: 'tpl-past', name: 'ผ่านไปแล้ว', recurringDay: 10, startsOn: bkkMidnight(2026, 9, 1) }),
+      template({ id: 'tpl-open', name: 'หน้าต่างเปิด', recurringDay: 28, startsOn: bkkMidnight(2026, 9, 1) }),
+      template({ id: 'tpl-before-start', name: 'ก่อนเริ่ม', recurringDay: 30, startsOn: bkkMidnight(2026, 11, 1) }),
+    ]);
+    const view = await service.listMonth(ACC, '2026-10', undefined, NOW);
+    expect(view.rows.map((r) => [r.templateName, r.status, r.awaitingSystem])).toEqual([['หน้าต่างเปิด', 'UPCOMING', true]]);
+  });
+
+  it('L3 BRANCH_MANAGER is locked to the own branch (query param ignored); BM without branch → 403', async () => {
+    prisma.recurringBillOccurrence.findMany.mockResolvedValue([]);
+    prisma.expenseTemplate.findMany.mockResolvedValue([]);
+    await service.listMonth(BM, '2026-10', 'br-2', NOW);
+    expect(prisma.recurringBillOccurrence.findMany.mock.calls[0][0].where).toMatchObject({ template: { branchId: 'br-1' } });
+    expect(prisma.expenseTemplate.findMany.mock.calls[0][0].where).toMatchObject({ branchId: 'br-1' });
+    await expect(service.listMonth({ ...BM, branchId: null }, '2026-10', undefined, NOW)).rejects.toThrow(/สาขา/);
+    await expect(service.listMonth(ACC, '2026-13', undefined, NOW)).rejects.toThrow(/เดือน/);
+  });
+});
+
+describe('occurrence actions', () => {
+  const ACC = { id: 'u-acc', branchId: null, role: 'ACCOUNTANT' };
+  const BM2 = { id: 'u-bm2', branchId: 'br-2', role: 'BRANCH_MANAGER' };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let audit: any;
+  beforeEach(() => {
+    audit = { log: jest.fn().mockResolvedValue(undefined) };
+    service = new RecurringBillsService(prisma, templates, notifier, audit);
+    prisma.recurringBillOccurrence.findUnique = jest.fn().mockResolvedValue(occurrence());
+  });
+
+  it('M1 markPaid: CAS PENDING→PAID with the actor and note, todo becomes "ลงบัญชีใบ …", audit after; 409 when not PENDING or when the state moved', async () => {
+    const res = await service.markPaid('occ-1', ACC, { note: 'ตัดบัตร' }, NOW);
+    expect(prisma.recurringBillOccurrence.updateMany).toHaveBeenCalledWith({ where: { id: 'occ-1', status: 'PENDING' }, data: { status: 'PAID', paidAt: NOW, paidById: 'u-acc', paidNote: 'ตัดบัตร' } });
+    expect(prisma.todo.updateMany).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ title: expect.stringMatching(/^ลงบัญชีใบ EX-20261021-0002/) }) }));
+    expect(audit.log).toHaveBeenCalledWith(expect.objectContaining({ action: 'RECURRING_BILL_MARKED_PAID', entity: 'recurring_bill_occurrence', entityId: 'occ-1', userId: 'u-acc' }));
+    expect(res.status).toBe('PAID');
+
+    prisma.recurringBillOccurrence.findUnique.mockResolvedValue(occurrence({ status: 'PAID', paidById: 'u-acc' }));
+    await expect(service.markPaid('occ-1', ACC, {}, NOW)).rejects.toThrow(/รอจ่าย/);
+    prisma.recurringBillOccurrence.findUnique.mockResolvedValue(occurrence());
+    prisma.recurringBillOccurrence.updateMany.mockResolvedValue({ count: 0 });
+    await expect(service.markPaid('occ-1', ACC, {}, NOW)).rejects.toThrow(/เปลี่ยน/);
+  });
+
+  it('M1b markPaid with a paidAt date in the future → 400; BM of another branch → 403', async () => {
+    await expect(service.markPaid('occ-1', ACC, { paidAt: '2026-10-27' }, NOW)).rejects.toThrow(/อนาคต|วันนี้/);
+    await expect(service.markPaid('occ-1', BM2, {}, NOW)).rejects.toThrow(/สาขา/);
+  });
+
+  it('M2 skip: PENDING→SKIPPED by the actor with reason, todo closed, system DRAFT soft-deleted', async () => {
+    await service.skip('occ-1', ACC, { reason: 'จ่ายล่วงหน้าทั้งปีแล้ว' }, NOW);
+    expect(prisma.recurringBillOccurrence.updateMany).toHaveBeenCalledWith({ where: { id: 'occ-1', status: 'PENDING' }, data: { status: 'SKIPPED', skippedAt: NOW, skippedById: 'u-acc', skipReason: 'จ่ายล่วงหน้าทั้งปีแล้ว' } });
+    expect(prisma.todo.updateMany).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: 'DONE' }) }));
+    expect(prisma.expenseDocument.updateMany).toHaveBeenCalledWith(expect.objectContaining({ where: { id: 'doc-1', status: 'DRAFT', deletedAt: null } }));
+    expect(audit.log).toHaveBeenCalledWith(expect.objectContaining({ action: 'RECURRING_BILL_SKIPPED' }));
+  });
+
+  it('M3 reopen: system-paid → 409 naming the document; manually paid → PENDING + todo back to TODO; missed (system-skipped, no draft) → PENDING + draft created by the actor', async () => {
+    prisma.recurringBillOccurrence.findUnique.mockResolvedValue(occurrence({ status: 'PAID', paidById: null, expenseDocument: { id: 'doc-1', number: 'EX-1', status: 'POSTED', paidAt: NOW, deletedAt: null, documentDate: NOW, createdById: 'u' } }));
+    await expect(service.reopen('occ-1', ACC, NOW)).rejects.toThrow(/EX-1.*ยกเลิกใบนั้น/);
+
+    prisma.recurringBillOccurrence.findUnique.mockResolvedValue(occurrence({ status: 'PAID', paidById: 'u-som', paidAt: NOW }));
+    await service.reopen('occ-1', ACC, NOW);
+    expect(prisma.recurringBillOccurrence.updateMany).toHaveBeenCalledWith({ where: { id: 'occ-1', status: 'PAID' }, data: { status: 'PENDING', paidAt: null, paidById: null, paidNote: null, skippedAt: null, skippedById: null, skipReason: null } });
+    expect(prisma.todo.updateMany).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: 'TODO' }) }));
+    expect(audit.log).toHaveBeenCalledWith(expect.objectContaining({ action: 'RECURRING_BILL_REOPENED' }));
+
+    jest.clearAllMocks();
+    prisma.recurringBillOccurrence.findUnique.mockResolvedValue(occurrence({ status: 'SKIPPED', skippedById: null, skipReason: 'งวดผ่านไปก่อนระบบเริ่มติดตาม', expenseDocumentId: null, expenseDocument: null, todoId: null, todo: null }));
+    await service.reopen('occ-1', ACC, NOW);
+    expect(templates.instantiate).toHaveBeenCalledWith('tpl-1', ACC, { documentDate: bkkNoon(2026, 10, 24) });
+    expect(prisma.todo.create).toHaveBeenCalledTimes(1);
+  });
+
+  it('M4 createDraft: live draft → 409; deleted template → 409; voided document → new draft by the actor, linked', async () => {
+    await expect(service.createDraft('occ-1', ACC, NOW)).rejects.toThrow(/ร่าง.*อยู่แล้ว/);
+    prisma.recurringBillOccurrence.findUnique.mockResolvedValue(occurrence({ template: template({ recurringDay: 24, deletedAt: new Date() }), expenseDocument: null, expenseDocumentId: null }));
+    await expect(service.createDraft('occ-1', ACC, NOW)).rejects.toThrow(/ถูกลบ/);
+    prisma.recurringBillOccurrence.findUnique.mockResolvedValue(occurrence({ expenseDocument: { id: 'doc-1', number: 'EX-1', status: 'VOIDED', paidAt: null, deletedAt: null, documentDate: NOW, createdById: 'u' } }));
+    const res = await service.createDraft('occ-1', ACC, NOW);
+    expect(templates.instantiate).toHaveBeenCalledWith('tpl-1', ACC, { documentDate: bkkNoon(2026, 10, 24) });
+    expect(prisma.recurringBillOccurrence.update).toHaveBeenCalledWith(expect.objectContaining({ data: { expenseDocumentId: 'doc-1' } }));
+    expect(res.documentNumber).toBe('EX-20261028-0001');
+    expect(audit.log).toHaveBeenCalledWith(expect.objectContaining({ action: 'RECURRING_BILL_DRAFT_CREATED' }));
+  });
+});

@@ -15,6 +15,7 @@ import { BillsTable } from './components/BillsTable';
 import { MarkPaidDialog } from './components/MarkPaidDialog';
 import { SkipDialog } from './components/SkipDialog';
 import { currentMonthKey } from './components/labels';
+import { RecurringBillDialog } from '@/components/expense-templates/RecurringBillDialog';
 
 /**
  * หน้า "บิลประจำ" (ก้อน 6 · D5) — หนึ่งเดือน ทุกสถานะในตารางเดียว (mockup กระดาน 1)
@@ -33,6 +34,8 @@ export default function RecurringBillsPage() {
   const [markPaidRow, setMarkPaidRow] = useState<RecurringBillRow | null>(null);
   const [skipRow, setSkipRow] = useState<RecurringBillRow | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  // กล่องตั้ง/แก้ไขบิลประจำ — แก้ไขส่ง templateId ให้กล่องโหลดแม่แบบเอง
+  const [billDialog, setBillDialog] = useState<{ open: boolean; templateId: string | null }>({ open: false, templateId: null });
 
   const { data: branches = [] } = useQuery<{ id: string; name: string }[]>({
     queryKey: ['branches'],
@@ -55,8 +58,8 @@ export default function RecurringBillsPage() {
   }
 
   const setMonth = (next: string) => setSearchParams({ month: next });
-  // ตั้ง/แก้บิลประจำทำที่หน้ารายการโปรด (Task 10 จะเปิดกล่องตรงนี้แทน)
-  const goCreate = () => navigate('/expenses/favorites');
+  const goCreate = () => setBillDialog({ open: true, templateId: null });
+  const editBill = (row: RecurringBillRow) => setBillDialog({ open: true, templateId: row.templateId });
 
   async function run(id: string, work: () => Promise<unknown>, done: string) {
     setBusyId(id);
@@ -131,13 +134,14 @@ export default function RecurringBillsPage() {
               onSkip={setSkipRow}
               onReopen={reopen}
               onCreateDraft={createDraft}
-              onEditBill={goCreate}
+              onEditBill={editBill}
             />
           )}
         </>
       )}
       <MarkPaidDialog row={markPaidRow} pending={actions.markPaid.isPending} onClose={() => setMarkPaidRow(null)} onConfirm={confirmMarkPaid} />
       <SkipDialog row={skipRow} pending={actions.skip.isPending} onClose={() => setSkipRow(null)} onConfirm={confirmSkip} />
+      <RecurringBillDialog open={billDialog.open} templateId={billDialog.templateId} onClose={() => setBillDialog({ open: false, templateId: null })} />
     </div>
   );
 }

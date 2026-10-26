@@ -4,24 +4,15 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router';
 import { toast } from 'sonner';
 import api, { getErrorMessage } from '@/lib/api';
-import { Bookmark, Plus, Trash2, Repeat, ArrowLeft } from 'lucide-react';
+import { Bookmark, Plus, Trash2, Repeat, ArrowLeft, CalendarClock, Pencil } from 'lucide-react';
+import { RecurringBillDialog, type ExpenseTemplate } from '@/components/expense-templates/RecurringBillDialog';
+import { nextPeriodMonthKey, recurringCardLine } from '@/components/expense-templates/recurring-template.util';
+import { formatNumberDecimal } from '@/utils/formatters';
 import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { useUiFlags } from '@/hooks/useUiFlags';
 
-interface Template {
-  id: string;
-  name: string;
-  documentType: 'EXPENSE' | 'CREDIT_NOTE' | 'PAYROLL' | 'VENDOR_SETTLEMENT';
-  branchId: string;
-  prefilledData: Record<string, unknown>;
-  isRecurring: boolean;
-  recurringDay: number | null;
-  branch: { id: string; name: string };
-  createdBy: { id: string; name: string };
-  createdAt: string;
-  updatedAt: string;
-}
+type Template = ExpenseTemplate;
 
 const typeLabels: Record<Template['documentType'], { label: string; cls: string }> = {
   EXPENSE: { label: 'รายจ่าย', cls: 'bg-success/10 text-success border-success/20' },
@@ -47,6 +38,8 @@ export default function ExpenseFavoritesPage() {
     if (!templatesEnabled) navigate('/expenses', { replace: true });
   }, [templatesEnabled, navigate]);
   const [filterType, setFilterType] = useState<string>('');
+  // ก้อน 6 — กล่องตั้ง/แก้ไขบิลประจำ (template null = ตั้งใหม่)
+  const [billDialog, setBillDialog] = useState<{ open: boolean; template: ExpenseTemplate | null }>({ open: false, template: null });
   const [confirmDelete, setConfirmDelete] = useState<{
     open: boolean;
     id: string;
@@ -61,6 +54,10 @@ export default function ExpenseFavoritesPage() {
       return (await api.get(`/expense-templates?${p}`)).data;
     },
   });
+
+  // โควต้า max_templates_per_user นับเฉพาะแม่แบบธรรมดา — บิลประจำไม่นับ (สเปก §13 ข้อ 5)
+  const quotaUsed = templates.filter((t) => !t.isRecurring).length;
+  const now = new Date();
 
   const instantiateMutation = useMutation({
     mutationFn: async (id: string) => {
@@ -98,30 +95,36 @@ export default function ExpenseFavoritesPage() {
             รายการโปรด{' '}
             <span
               className={
-                templates.length >= maxTemplatesPerUser
+                quotaUsed >= maxTemplatesPerUser
                   ? 'text-destructive font-mono'
                   : 'text-muted-foreground font-mono font-normal'
               }
               title={
-                templates.length >= maxTemplatesPerUser
+                quotaUsed >= maxTemplatesPerUser
                   ? `เต็มโควต้า ${maxTemplatesPerUser} รายการแล้ว — ลบเก่าก่อนสร้างใหม่`
-                  : `${templates.length} / ${maxTemplatesPerUser}`
+                  : `${quotaUsed} / ${maxTemplatesPerUser} (บิลประจำไม่นับโควต้า)`
               }
             >
-              ({templates.length}/{maxTemplatesPerUser})
+              ({quotaUsed}/{maxTemplatesPerUser})
             </span>
           </h1>
         </div>
-        <NativeSelect wrapperClassName="max-w-full w-auto" aria-label="ประเภทเอกสาร"
-          value={filterType}
-          onChange={(e) => setFilterType(e.target.value)}
-          className="px-3 py-2 border border-input rounded-lg text-sm bg-background"
-        >
-          <option value="">ทุกประเภท</option>
-          <option value="EXPENSE">รายจ่าย</option>
-          <option value="PAYROLL">เงินเดือน</option>
-          <option value="VENDOR_SETTLEMENT">จ่ายเจ้าหนี้</option>
-        </NativeSelect>
+        <div className="flex flex-wrap items-center gap-2">
+          <NativeSelect wrapperClassName="max-w-full w-auto" aria-label="ประเภทเอกสาร"
+            value={filterType}
+            onChange={(e) => setFilterType(e.target.value)}
+            className="px-3 py-2 border border-input rounded-lg text-sm bg-background"
+          >
+            <option value="">ทุกประเภท</option>
+            <option value="EXPENSE">รายจ่าย</option>
+            <option value="PAYROLL">เงินเดือน</option>
+            <option value="VENDOR_SETTLEMENT">จ่ายเจ้าหนี้</option>
+          </NativeSelect>
+          <Button variant="outline" size="sm" onClick={() => navigate('/expenses/recurring-bills')}>
+            <CalendarClock className="size-3.5" aria-hidden="true" />บิลประจำเดือนนี้
+          </Button>
+          <Button variant="primary" size="sm" onClick={() => setBillDialog({ open: true, template: null })}>+ บิลประจำ</Button>
+        </div>
       </div>
 
       {isLoading ? (
@@ -135,53 +138,100 @@ export default function ExpenseFavoritesPage() {
           {templates.map((tpl) => {
             const t = typeLabels[tpl.documentType];
             const vendor = tpl.prefilledData.vendorName as string | undefined;
+            const recurringLine = tpl.isRecurring ? recurringCardLine(tpl, now) : null;
+            const amount = tpl.prefilledData.sampleAmount;
+            const category = tpl.prefilledData.category as string | undefined;
+            const nextMonth = tpl.isRecurring ? nextPeriodMonthKey(tpl, now) : null;
             return (
-              <div
+              <article
                 key={tpl.id}
+                aria-label={tpl.name}
                 className="rounded-xl border border-border bg-card p-4 hover:shadow-card-hover transition-all"
               >
                 <div className="flex items-start justify-between mb-2">
                   <div className="flex items-center gap-1.5">
-                    <Bookmark className="size-4 text-primary" />
+                    {tpl.isRecurring ? <Repeat className="size-4 text-primary" aria-hidden="true" /> : <Bookmark className="size-4 text-primary" aria-hidden="true" />}
                     <span className="font-medium">{tpl.name}</span>
                   </div>
-                  <span className={`text-xs border rounded px-1.5 py-0.5 ${t.cls}`}>
-                    {t.label}
-                  </span>
+                  {tpl.isRecurring ? (
+                    <span className="text-xs border rounded px-1.5 py-0.5 bg-primary/10 text-primary border-primary/20">บิลประจำ</span>
+                  ) : (
+                    <span className={`text-xs border rounded px-1.5 py-0.5 ${t.cls}`}>
+                      {t.label}
+                    </span>
+                  )}
                 </div>
-                {vendor && (
-                  <div className="text-xs text-muted-foreground truncate mb-2">{vendor}</div>
+                {tpl.isRecurring ? (
+                  <>
+                    <div className="text-xs text-muted-foreground truncate mb-1">
+                      {[vendor, tpl.branch?.name, category, amount != null && amount !== '' ? `ยอดประมาณ ${formatNumberDecimal(String(amount))}` : null].filter(Boolean).join(' · ')}
+                    </div>
+                    {recurringLine ? (
+                      <div className="text-xs text-info mb-3">{recurringLine}</div>
+                    ) : (
+                      <div className="text-xs text-warning-strong mb-3">กติการอบไม่ครบ — กด "แก้ไข" เพื่อตั้งความถี่/วันครบกำหนด</div>
+                    )}
+                    <div className="flex items-center gap-2 mt-3">
+                      <Button
+                        variant="primary"
+                        size="sm"
+                        onClick={() => navigate(`/expenses/recurring-bills${nextMonth ? `?month=${nextMonth}` : ''}`)}
+                      >
+                        เปิดร่างงวดนี้
+                      </Button>
+                      <Button variant="outline" size="sm" onClick={() => setBillDialog({ open: true, template: tpl })}>
+                        <Pencil className="size-3.5" aria-hidden="true" />แก้ไข
+                      </Button>
+                      <button
+                        type="button"
+                        aria-label="ลบ"
+                        onClick={() =>
+                          setConfirmDelete({ open: true, id: tpl.id, name: tpl.name })
+                        }
+                        className="ml-auto p-1.5 text-destructive hover:bg-destructive/10 rounded"
+                      >
+                        <Trash2 className="size-3.5" />
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    {vendor && (
+                      <div className="text-xs text-muted-foreground truncate mb-2">{vendor}</div>
+                    )}
+                    <div className="flex items-center gap-2 mt-3">
+                      <Button
+                        variant="primary"
+                        size="sm"
+                        onClick={() => instantiateMutation.mutate(tpl.id)}
+                        disabled={instantiateMutation.isPending}
+                      >
+                        <Plus className="size-3.5" /> ใช้
+                      </Button>
+                      <button
+                        type="button"
+                        aria-label="ลบ"
+                        onClick={() =>
+                          setConfirmDelete({ open: true, id: tpl.id, name: tpl.name })
+                        }
+                        className="ml-auto p-1.5 text-destructive hover:bg-destructive/10 rounded"
+                      >
+                        <Trash2 className="size-3.5" />
+                      </button>
+                    </div>
+                  </>
                 )}
-                {tpl.isRecurring && (
-                  <div className="flex items-center gap-1 text-xs text-info mb-3">
-                    <Repeat className="size-3" />
-                    <span>ทุกวันที่ {tpl.recurringDay}</span>
-                  </div>
-                )}
-                <div className="flex items-center gap-2 mt-3">
-                  <Button
-                    variant="primary"
-                    size="sm"
-                    onClick={() => instantiateMutation.mutate(tpl.id)}
-                    disabled={instantiateMutation.isPending}
-                  >
-                    <Plus className="size-3.5" /> ใช้
-                  </Button>
-                  <button
-                    onClick={() =>
-                      setConfirmDelete({ open: true, id: tpl.id, name: tpl.name })
-                    }
-                    className="ml-auto p-1.5 text-destructive hover:bg-destructive/10 rounded"
-                  >
-                    <Trash2 className="size-3.5" />
-                  </button>
-                </div>
-              </div>
+              </article>
             );
           })}
         </div>
       )}
 
+      <RecurringBillDialog
+        open={billDialog.open}
+        template={billDialog.template}
+        onClose={() => setBillDialog({ open: false, template: null })}
+      />
       <ConfirmDialog
         open={confirmDelete.open}
         onOpenChange={(open) => setConfirmDelete((prev) => ({ ...prev, open }))}

@@ -15,6 +15,10 @@ vi.mock('@/lib/api', () => ({
 }));
 vi.mock('@/hooks/useUiFlags', () => ({ useUiFlags: () => ({ templatesEnabled, maxTemplatesPerUser: 20 }) }));
 vi.mock('@/contexts/AuthContext', () => ({ useAuth: () => ({ user }) }));
+vi.mock('@/components/expense-templates/RecurringBillDialog', () => ({
+  RecurringBillDialog: ({ open, templateId }: { open: boolean; templateId?: string | null }) =>
+    open ? <div role="dialog" aria-label="ตั้งบิลประจำ">{templateId ?? 'new'}</div> : null,
+}));
 import RecurringBillsPage from './index';
 
 /** เที่ยงคืนไทย = 17:00Z ของวันก่อนหน้า (รูปแบบเดียวกับ API) */
@@ -192,13 +196,21 @@ describe('หน้าบิลประจำ — เดือนเดีย�
     expect(screen.queryByLabelText('สาขา')).toBeNull();
   });
 
-  it('ไม่มีบิลในเดือน → empty state ชี้ไปตั้งบิลที่หน้ารายการโปรด', async () => {
+  it('ไม่มีบิลในเดือน → empty state เปิดกล่องตั้งบิลประจำ', async () => {
     const u = userEvent.setup();
     mount(emptyView);
     expect(await screen.findByText('ยังไม่มีบิลประจำในเดือนนี้')).toBeInTheDocument();
     const buttons = screen.getAllByRole('button', { name: '+ บิลประจำ' });
     await u.click(buttons[buttons.length - 1]);
-    expect(screen.getByTestId('location')).toHaveTextContent('/expenses/favorites');
+    expect(screen.getByRole('dialog', { name: 'ตั้งบิลประจำ' })).toHaveTextContent('new');
+  });
+
+  it('"แก้ไขบิล" บนแถวรอถึงรอบ เปิดกล่องแก้ไขพร้อม templateId', async () => {
+    const u = userEvent.setup();
+    mount();
+    await screen.findByRole('row', { name: 'ค่าน้ำ สาขาบางนา' });
+    await u.click(within(billRow('ค่าน้ำ สาขาบางนา')).getByRole('button', { name: 'แก้ไขบิล' }));
+    expect(screen.getByRole('dialog', { name: 'ตั้งบิลประจำ' })).toHaveTextContent('tpl-6');
   });
 
   it('ปิด templates_enabled → กล่องปิดใช้งาน และไม่โหลดข้อมูล', async () => {

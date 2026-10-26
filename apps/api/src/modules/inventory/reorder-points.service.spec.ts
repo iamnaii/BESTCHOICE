@@ -1,4 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { StaffNotifyService } from '../staff-notify/staff-notify.service';
+const staffNotify = { notify: jest.fn().mockResolvedValue({ sent: 1 }) };
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { ReorderPointsService } from './reorder-points.service';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -56,6 +58,7 @@ describe('ReorderPointsService', () => {
         ReorderPointsService,
         { provide: PrismaService, useValue: prisma },
         { provide: NotificationsService, useValue: notifications },
+        { provide: StaffNotifyService, useValue: staffNotify },
       ],
     }).compile();
     service = mod.get(ReorderPointsService);
@@ -193,6 +196,22 @@ describe('ReorderPointsService', () => {
       expect(result.alertsCreated).toBe(1);
       expect(prisma.stockAlert.create).toHaveBeenCalled();
       expect(notifications.send).toHaveBeenCalled();
+    });
+
+    it('notifies the staff LINE hub once per new alert (branch-scoped, dedupe by reorder point) and never sends LINE by email', async () => {
+      staffNotify.notify.mockClear();
+      prisma.reorderPoint.findMany.mockResolvedValue([baseReorderPoint]);
+      prisma.product.count.mockResolvedValue(1);
+      prisma.user.findMany.mockResolvedValueOnce([{ email: 'owner@test', name: 'Owner' }]).mockResolvedValueOnce([]);
+      await service.checkStockLevels();
+      expect(staffNotify.notify).toHaveBeenCalledTimes(1);
+      expect(staffNotify.notify).toHaveBeenCalledWith('stock.low', expect.objectContaining({
+        title: expect.stringMatching(/^ของต่ำกว่าจุดสั่งซื้อซ้ำ: /),
+        branchId: baseReorderPoint.branchId,
+        dedupeKey: baseReorderPoint.id,
+        link: '/stock/alerts',
+      }));
+      expect(notifications.send.mock.calls.map((c: [{ channel: string }]) => c[0].channel)).not.toContain('LINE');
     });
 
     it('skips alert when stock is healthy (> minQuantity)', async () => {

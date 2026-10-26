@@ -1,7 +1,7 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import * as Sentry from '@sentry/nestjs';
 import { PrismaService } from '../../prisma/prisma.service';
-import { LineOaService } from '../line-oa/line-oa.service';
+import { StaffNotifyService } from '../staff-notify/staff-notify.service';
 import {
   computeDeviceFingerprint,
   computeIpPrefix,
@@ -44,7 +44,7 @@ export class LoginAuditService {
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly lineOaService: LineOaService,
+    @Optional() private readonly staffNotify?: StaffNotifyService,
   ) {}
 
   /**
@@ -153,19 +153,15 @@ export class LoginAuditService {
     userAgent?: string;
   }): Promise<void> {
     try {
-      const staffLineId = process.env.SHOP_STAFF_LINE_ID;
-      if (!staffLineId) {
-        this.logger.warn('SHOP_STAFF_LINE_ID not set — skipping new-device LINE alert');
+      if (!this.staffNotify) {
+        this.logger.warn('StaffNotifyService unavailable — skipping new-device LINE alert');
         return;
       }
-
       const user = await this.prisma.user.findUnique({
         where: { id: params.userId },
         select: { email: true, name: true, role: true },
       });
-
       if (!user) return;
-
       const now = new Date();
       const bangkokTime = new Intl.DateTimeFormat('th-TH', {
         timeZone: 'Asia/Bangkok',
@@ -177,22 +173,19 @@ export class LoginAuditService {
         second: '2-digit',
         hour12: false,
       }).format(now);
-
       const deviceLabel = humanReadableDeviceLabel(params.userAgent);
-      const message =
-        `[แจ้งเตือน] พบการเข้าสู่ระบบจากอุปกรณ์ใหม่\n` +
-        `ผู้ใช้: ${user.name} (${user.email})\n` +
-        `บทบาท: ${user.role}\n` +
-        `อุปกรณ์: ${deviceLabel}\n` +
-        `IP prefix: ${params.ipPrefix}\n` +
-        `เวลา: ${bangkokTime} (เวลาไทย)\n` +
-        `หากไม่ใช่คุณ กรุณาติดต่อผู้ดูแลระบบทันที`;
-
-      await this.lineOaService.pushMessage(
-        staffLineId,
-        [{ type: 'text', text: message }],
-        'line-staff',
-      );
+      // ก้อน 7 A16 — ผ่านท่อกลาง (เหตุการณ์ auth.new_device_login ถึง OWNER · ไม่ตัดซ้ำ)
+      await this.staffNotify.notify('auth.new_device_login', {
+        title: 'พบการเข้าสู่ระบบจากอุปกรณ์ใหม่',
+        lines: [
+          `ผู้ใช้: ${user.name} (${user.email})`,
+          `บทบาท: ${user.role}`,
+          `อุปกรณ์: ${deviceLabel}`,
+          `IP prefix: ${params.ipPrefix}`,
+          `เวลา: ${bangkokTime} (เวลาไทย)`,
+          'หากไม่ใช่คุณ กรุณาติดต่อผู้ดูแลระบบทันที',
+        ],
+      });
     } catch (err) {
       this.logger.error(
         `Failed to send new-device LINE alert: ${err instanceof Error ? err.message : err}`,

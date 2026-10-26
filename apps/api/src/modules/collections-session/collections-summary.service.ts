@@ -1,7 +1,7 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-import { LineOaService } from '../line-oa/line-oa.service';
-import { LineMessagePayload } from '../line-oa/dto/webhook-event.dto';
+import { StaffNotifyService } from '../staff-notify/staff-notify.service';
+import { bangkokDateString } from '../../utils/date.util';
 
 interface CollectorSummary {
   name: string;
@@ -17,7 +17,7 @@ export class CollectionsSummaryService {
 
   constructor(
     private prisma: PrismaService,
-    private line: LineOaService,
+    @Optional() private readonly staffNotify?: StaffNotifyService,
   ) {}
 
   async sendDailySummary(date: Date): Promise<{ recipients: number; sent: number }> {
@@ -67,28 +67,20 @@ export class CollectionsSummaryService {
 
     const message = this.formatMessage(dateOnly, Array.from(byCollector.values()));
 
-    const owners = await this.prisma.user.findMany({
-      where: {
-        role: 'OWNER' as any,
-        deletedAt: null,
-        lineId: { not: null },
-      },
-      select: { id: true, lineId: true, name: true },
-    });
-
-    let sent = 0;
-    for (const owner of owners) {
-      try {
-        const payload: LineMessagePayload = { type: 'text', text: message };
-        await this.line.pushMessage(owner.lineId!, [payload], 'line-staff');
-        sent++;
-      } catch (err) {
-        this.logger.warn(`Failed to push summary to OWNER ${owner.id}: ${err}`);
-      }
+    // ก้อน 7 A16 — ผ่านท่อกลาง (เจ้าของ+ผจก.การเงิน ตามสวิตช์ collections.daily_summary) · วันละครั้ง
+    if (!this.staffNotify) {
+      this.logger.warn('Daily summary: StaffNotifyService unavailable, skipping');
+      return { recipients: 0, sent: 0 };
     }
-
-    this.logger.log(`Daily summary: ${sent}/${owners.length} OWNERs notified`);
-    return { recipients: owners.length, sent };
+    const [title, ...rest] = message.split('\n');
+    const res = await this.staffNotify.notify('collections.daily_summary', {
+      title,
+      lines: rest.filter((l) => l.trim().length > 0),
+      link: '/collections',
+      dedupeKey: bangkokDateString(dateOnly),
+    });
+    this.logger.log(`Daily summary: ${res.sent}/${res.recipients} notified`);
+    return { recipients: res.recipients, sent: res.sent };
   }
 
   formatMessage(date: Date, rows: CollectorSummary[]): string {

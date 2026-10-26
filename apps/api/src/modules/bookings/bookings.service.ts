@@ -4,12 +4,12 @@ import {
   ForbiddenException,
   Injectable,
   Logger,
-  NotFoundException,
-} from '@nestjs/common';
+  NotFoundException, Optional } from '@nestjs/common';
 import { BookingStatus, Prisma } from '@prisma/client';
 import { bangkokCalendarParts, bangkokDateRange, bangkokMidnight, bangkokStartOfDay } from '../../utils/date.util';
 import { normalizeThaiPhone } from '../../utils/thai-phone.util';
 import * as Sentry from '@sentry/node';
+import { SaleCompletedNotifier } from '../staff-notify/sale-completed-notifier.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { generateBookingNumber, generateSaleNumber } from '../../utils/sequence.util';
 import { readNumberFlag, readStringFlag } from '../../utils/config.util';
@@ -175,6 +175,8 @@ export class BookingsService {
     private readonly shopCashSaleTemplate: ShopCashSaleTemplate,
     private readonly shopBookingRefundTemplate: ShopBookingRefundTemplate,
     private readonly shopAccountResolver: ShopAccountResolver,
+    // ก้อน 7 A16 — แปลงใบจองเป็นใบขาย = ขายสดสำเร็จ → แจ้ง LINE พนักงานหลัง commit (optional)
+    @Optional() private readonly saleCompleted?: SaleCompletedNotifier,
   ) {}
 
   // ───────────────────────────────────────────────────────────────────────
@@ -1061,7 +1063,7 @@ export class BookingsService {
     salespersonId: string,
     user: RequestUser,
   ) {
-    return this.prisma.$transaction(async (tx) => {
+    const result = await this.prisma.$transaction(async (tx) => {
       await this.lockBooking(tx, id);
       const booking = await tx.booking.findFirst({
         where: { id, deletedAt: null },
@@ -1310,6 +1312,8 @@ export class BookingsService {
 
       return { sale, bookingId: id };
     });
+    void this.saleCompleted?.notify(result.sale.id).catch(() => undefined);
+    return result;
   }
 
   async remove(id: string, user: RequestUser) {

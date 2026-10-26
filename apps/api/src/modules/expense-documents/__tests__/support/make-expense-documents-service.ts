@@ -54,6 +54,8 @@ export interface ExpenseDocumentsServiceOverrides {
   pettyCash?: any;
   payrollCustom?: any;
   notifications?: any;
+  /** ก้อน 7 A16 — ท่อ LINE พนักงาน (optional เหมือน notifications) */
+  staffNotify?: any;
   // Phase 1 decompose — the read-method sub-service. Defaults to a REAL
   // ExpenseDocumentQueryService built from the same resolved `prisma` +
   // `jePreview`, so existing specs' prisma/jePreview mocks flow through the
@@ -165,6 +167,7 @@ export function makeExpenseDocumentsService(
       shopExpenseTemplate,
       journal,
       notifications,
+      overrides.staffNotify,
     );
   // Phase 3 decompose — REAL create sub-service by default. Built from the SAME
   // resolved mock instances the facade specs assert on (e.g. `docNumber.next`,

@@ -84,6 +84,38 @@ describe('ExpenseDocumentLifecycleService — notifyApprovers fan-out (via facad
     expect(send).not.toHaveBeenCalled();
   });
 
+  it('(e) also pushes LINE through the staff hub with the resolved approvers as extra recipients (ก้อน 7 A16)', async () => {
+    const send = jest.fn().mockResolvedValue(undefined);
+    const staffNotify = { notify: jest.fn().mockResolvedValue({ sent: 1 }) };
+    const prisma = makePrisma({ users: [{ id: 'owner-1', role: 'OWNER', branchId: null }, { id: 'owner-2', role: 'OWNER', branchId: null }] });
+    const { service } = makeExpenseDocumentsService({ prisma, notifications: { send }, staffNotify });
+    await service.submitForApproval('doc-1', 'user-1');
+    expect(staffNotify.notify).toHaveBeenCalledTimes(1);
+    expect(staffNotify.notify).toHaveBeenCalledWith('expense.pending_approval', expect.objectContaining({
+      title: 'ใบรายจ่ายรออนุมัติ EX-20260610-0001',
+      lines: expect.arrayContaining([expect.stringMatching(/1,234\.56/)]),
+      link: '/expenses/doc-1',
+      branchId: 'branch-1',
+      extraRecipientUserIds: ['owner-1', 'owner-2'],
+    }));
+    // รีวิว M12 — ไม่ dedupe: ใบที่ถูกตีกลับแล้วส่งใหม่วันเดียวกันต้องแจ้งรอบสอง (สถานะ DRAFT→PENDING กันซ้ำให้แล้ว)
+    expect(staffNotify.notify.mock.calls[0][1].dedupeKey).toBeUndefined();
+    expect(send).toHaveBeenCalledTimes(2); // IN_APP คงเดิม
+  });
+
+  it('(f) LINE hub that never settles must not hold the submit request (รีวิว I6 — fire-and-forget)', async () => {
+    const send = jest.fn().mockResolvedValue(undefined);
+    const staffNotify = { notify: jest.fn(() => new Promise<never>(() => undefined)) };
+    const prisma = makePrisma({ users: [{ id: 'owner-1', role: 'OWNER', branchId: null }] });
+    const { service } = makeExpenseDocumentsService({ prisma, notifications: { send }, staffNotify });
+    const outcome = await Promise.race([
+      service.submitForApproval('doc-1', 'user-1').then(() => 'done'),
+      new Promise<string>((resolve) => setTimeout(() => resolve('hung'), 300)),
+    ]);
+    expect(outcome).toBe('done');
+    expect(staffNotify.notify).toHaveBeenCalledTimes(1);
+  });
+
   it('(b) notifications undefined → submit still succeeds, no throw', async () => {
     const prisma = makePrisma({ users: [{ id: 'owner-1', role: 'OWNER', branchId: null }] });
     // notifications omitted → factory default undefined.

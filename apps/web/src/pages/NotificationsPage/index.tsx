@@ -9,6 +9,8 @@ import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import NotificationLogTable from './components/NotificationLogTable';
 import TemplateManager from './components/TemplateManager';
 import TemplateForm, { type TemplateFormState } from './components/TemplateForm';
+import StaffNotifyTab from './components/StaffNotifyTab';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface NotificationTemplate {
   id: string;
@@ -58,7 +60,9 @@ const defaultTemplateForm: TemplateFormState = {
 export default function NotificationsPage() {
   const uiFieldId = useUiFieldId();
   const queryClient = useQueryClient();
-  const [activeTab, setActiveTab] = useState<'logs' | 'templates' | 'send'>('logs');
+  const { user } = useAuth();
+  const isOwner = user?.role === 'OWNER';
+  const [activeTab, setActiveTab] = useState<'logs' | 'templates' | 'send' | 'staff'>('logs');
   const [channelFilter, setChannelFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [isTemplateModalOpen, setIsTemplateModalOpen] = useState(false);
@@ -276,6 +280,14 @@ export default function NotificationsPage() {
         >
           ส่งการแจ้งเตือน
         </button>
+        {isOwner && (
+          <button data-ui-control="button"
+            onClick={() => setActiveTab('staff')}
+            className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px ${activeTab === 'staff' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
+          >
+            แจ้งพนักงาน (LINE)
+          </button>
+        )}
       </div>
 
       {activeTab === 'logs' && (
@@ -296,6 +308,8 @@ export default function NotificationsPage() {
           onConfirmDelete={handleConfirmDelete}
         />
       )}
+
+      {activeTab === 'staff' && isOwner && <StaffNotifyTab />}
 
       {activeTab === 'send' && (
         <div className="rounded-xl border border-border/50 bg-card shadow-sm p-6 max-w-lg">

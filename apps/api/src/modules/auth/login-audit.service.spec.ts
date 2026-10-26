@@ -1,7 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { LoginAuditService } from './login-audit.service';
 import { PrismaService } from '../../prisma/prisma.service';
-import { LineOaService } from '../line-oa/line-oa.service';
+import { StaffNotifyService } from '../staff-notify/staff-notify.service';
 
 jest.mock('@sentry/nestjs', () => ({
   captureException: jest.fn(),
@@ -12,7 +12,7 @@ describe('LoginAuditService.record', () => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let prisma: any;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let lineOaService: any;
+  let staffNotify: any;
 
   beforeEach(async () => {
     prisma = {
@@ -32,15 +32,13 @@ describe('LoginAuditService.record', () => {
       // absent → toggle reads as enabled (existing behaviour preserved).
       systemConfig: { findFirst: jest.fn().mockResolvedValue(null) },
     };
-    lineOaService = {
-      pushMessage: jest.fn().mockResolvedValue(undefined),
-    };
+    staffNotify = { notify: jest.fn().mockResolvedValue({ sent: 1 }) };
 
     const mod: TestingModule = await Test.createTestingModule({
       providers: [
         LoginAuditService,
         { provide: PrismaService, useValue: prisma },
-        { provide: LineOaService, useValue: lineOaService },
+        { provide: StaffNotifyService, useValue: staffNotify },
       ],
     }).compile();
     service = mod.get(LoginAuditService);
@@ -94,8 +92,6 @@ describe('LoginAuditService.record', () => {
   // ─── New device fingerprinting tests ─────────────────────────────────────────
 
   it('new device: marks isNewDevice=true, creates KnownDevice, triggers LINE alert', async () => {
-    const origEnv = process.env.SHOP_STAFF_LINE_ID;
-    process.env.SHOP_STAFF_LINE_ID = 'U-staff-line-id';
 
     // knownDevice.findUnique returns null → new device
     prisma.knownDevice.findUnique.mockResolvedValue(null);
@@ -119,16 +115,14 @@ describe('LoginAuditService.record', () => {
     // Wait for fire-and-forget to settle
     await new Promise((r) => setImmediate(r));
 
-    // LINE alert should have been sent
-    expect(lineOaService.pushMessage).toHaveBeenCalledTimes(1);
-    const [lineId, messages] = lineOaService.pushMessage.mock.calls[0];
-    expect(lineId).toBe('U-staff-line-id');
-    expect(messages[0].type).toBe('text');
+    // แจ้งผ่านท่อกลาง (ก้อน 7 A16) — เหตุการณ์ auth.new_device_login ถึง OWNER
+    expect(staffNotify.notify).toHaveBeenCalledTimes(1);
+    const [event, payload] = staffNotify.notify.mock.calls[0];
+    expect(event).toBe('auth.new_device_login');
+    expect(payload.title).toContain('อุปกรณ์ใหม่');
     // message is built from the mocked user (test@example.com / Test User)
-    expect(messages[0].text).toContain('test@example.com');
-    expect(messages[0].text).toContain('แจ้งเตือน');
-
-    process.env.SHOP_STAFF_LINE_ID = origEnv;
+    expect(payload.lines.join('\n')).toContain('test@example.com');
+    expect(payload.lines[payload.lines.length - 1]).toContain('หากไม่ใช่คุณ');
   });
 
   it('repeat device: marks isNewDevice=false, increments loginCount, no LINE alert', async () => {
@@ -153,7 +147,7 @@ describe('LoginAuditService.record', () => {
 
     // No LINE alert for repeat device
     await new Promise((r) => setImmediate(r));
-    expect(lineOaService.pushMessage).not.toHaveBeenCalled();
+    expect(staffNotify.notify).not.toHaveBeenCalled();
   });
 
   it('failed login: does NOT create KnownDevice (security)', async () => {
@@ -171,7 +165,7 @@ describe('LoginAuditService.record', () => {
 
     // LINE alert should not be sent
     await new Promise((r) => setImmediate(r));
-    expect(lineOaService.pushMessage).not.toHaveBeenCalled();
+    expect(staffNotify.notify).not.toHaveBeenCalled();
   });
 
   // D1.4.3.6 — login_log_enabled SystemConfig toggle
@@ -196,8 +190,6 @@ describe('LoginAuditService.record', () => {
     });
 
     it('still tracks KnownDevice + sends LINE alert when login_log disabled (security-independent)', async () => {
-      const origEnv = process.env.SHOP_STAFF_LINE_ID;
-      process.env.SHOP_STAFF_LINE_ID = 'U-staff';
       prisma.systemConfig.findFirst.mockImplementation((args: { where: { key: string } }) =>
         Promise.resolve(
           args.where.key === 'login_log_enabled' ? { value: 'false' } : null,
@@ -216,9 +208,8 @@ describe('LoginAuditService.record', () => {
       expect(prisma.loginAuditLog.create).not.toHaveBeenCalled();
       expect(prisma.knownDevice.upsert).toHaveBeenCalledTimes(1);
       await new Promise((r) => setImmediate(r));
-      expect(lineOaService.pushMessage).toHaveBeenCalledTimes(1);
+      expect(staffNotify.notify).toHaveBeenCalledTimes(1);
 
-      process.env.SHOP_STAFF_LINE_ID = origEnv;
     });
 
     it('writes LoginAuditLog when login_log_enabled=true (explicit)', async () => {

@@ -31,20 +31,23 @@ export const DOCUMENT_GROUPS = [
   { id: 'DOC-09', title: 'จดหมายติดตามหนี้', keys: ['COLLECTION_LETTER', 'RETURN_DEVICE_45D', 'CONTRACT_TERMINATION_60D'] },
   { id: 'DOC-10', title: 'Collections Report', keys: ['COLLECTIONS_REPORT'] },
   { id: 'CONTRACT-PDPA', title: 'สัญญา / PDPA (preview HTML + PDF ที่ลงนาม)', keys: ['CONTRACT', 'PDPA_CONSENT'] },
-  { id: 'STICKER-50x30', title: 'สติกเกอร์ 50×30 mm (regression)', keys: ['STICKER_50X30'] },
+  { id: 'STICKER-50x30', title: 'สติกเกอร์ติดเครื่อง 60×40 / 50×40 / 50×30 mm (regression — ค่าเริ่มต้น 60×40 ตั้งแต่ #1726)', keys: ['STICKER_50X30'] },
 ];
 
 /** Page boxes a document artifact may have (PDF points; Chromium reports A4 as 595.92 × 841.92). */
 const PAGE_SIZES = [
   { name: 'A4', width: 595.28, height: 841.89 },
   { name: 'A4 landscape', width: 841.89, height: 595.28 },
+  // Sticker rolls (#1726 made the size configurable; default 60×40 mm): 1 mm = 72/25.4 pt.
+  { name: 'sticker 60×40 mm', width: 170.08, height: 113.39 },
+  { name: 'sticker 50×40 mm', width: 141.73, height: 113.39 },
   { name: 'sticker 50×30 mm', width: 141.73, height: 85.04 },
 ];
 const PAGE_TOLERANCE_PT = 1.5;
 const ALLOWED_FONT_PREFIX = 'THSarabunPSK';
-// The 50×30 mm sticker keeps the label's own typography (owner decision 2026-09-12, PR #1575 —
+// The sticker keeps the label's own typography (owner decision 2026-09-12, PR #1575 —
 // IBM Plex Sans Thai from Google Fonts); its fonts are recorded, not held to the document prefix.
-const FONT_RULE_EXEMPT_SIZES = new Set(['sticker 50×30 mm']);
+const FONT_RULE_EXEMPT_SIZES = new Set(['sticker 60×40 mm', 'sticker 50×40 mm', 'sticker 50×30 mm']);
 const BOUNDS_TOLERANCE_PT = 2;
 
 function resolveChromium() {
@@ -197,7 +200,7 @@ async function checkPdf(pdfjs, path) {
       }
       const size = pageSizeName(width, height);
       pages.push({ index, width: Number(width.toFixed(2)), height: Number(height.toFixed(2)), size, textItems, outOfBounds });
-      if (!size) problems.push(`page ${index}: ${width.toFixed(2)} × ${height.toFixed(2)} pt is not A4 / A4 landscape / 50×30 mm`);
+      if (!size) problems.push(`page ${index}: ${width.toFixed(2)} × ${height.toFixed(2)} pt is not A4 / A4 landscape / a sticker roll (60×40 · 50×40 · 50×30 mm)`);
       if (textItems === 0) problems.push(`page ${index}: no text (blank render)`);
       if (outOfBounds > 0) problems.push(`page ${index}: ${outOfBounds} text item(s) outside the page box`);
     }
@@ -236,7 +239,7 @@ function writeSummary(output, meta, manifest, checks) {
   if (meta.jest?.available) lines.push(`- jest: ${meta.jest.passed}/${meta.jest.total} tests passed (${meta.jest.failed} failed, ${meta.jest.suites} suites)`);
   else lines.push('- jest: no results file (the run did not reach the end of the suite)');
   lines.push(`- scenarios: ${manifest.totals.pass} PASS · ${manifest.totals.fail} FAIL · ${manifest.totals.blocked} BLOCKED across ${Object.keys(manifest.domains).length} domain(s)`);
-  lines.push(`- PDF artifacts checked: ${checks.totals.pass}/${checks.totals.files} files (${checks.totals.pages} pages) — page box, THSarabunPSK only on A4 pages (the 50×30 mm sticker keeps its own font, recorded), text inside the page, no blank page`, '');
+  lines.push(`- PDF artifacts checked: ${checks.totals.pass}/${checks.totals.files} files (${checks.totals.pages} pages) — page box, THSarabunPSK only on A4 pages (the sticker keeps its own font, recorded), text inside the page, no blank page`, '');
 
   const failedFiles = checks.files.filter(f => f.status === 'FAIL');
   const jestFailures = meta.jest?.failures ?? [];

@@ -9,9 +9,9 @@ import { domainDir, recordScenario, saveArtifact, ScenarioRecord } from './suppo
 import { foldThai, isPageSize, pageText, parsePdf, textSizes } from './support/pdf';
 
 /**
- * DOC-11 (issue #1570) — sticker 50×30 mm regression: the live /stickers page prints
- * through the browser (`@page { size: 50mm 30mm }`), so the evidence is what headless
- * Chromium produces for print media: one 50×30 mm page per sticker, TH Sarabun PSK only,
+ * DOC-11 (issue #1570) — sticker 60×40 mm regression: the live /stickers page prints
+ * through the browser (`@page { size: 60mm 40mm }`), so the evidence is what headless
+ * Chromium produces for print media: one 60×40 mm page per sticker, TH Sarabun PSK only,
  * the model on every sticker, no text outside the sticker box. Nothing about prices or
  * the sticker's wording is asserted here — that belongs to the sticker feature's own
  * tests; this scenario only guards the physical geometry the printer receives.
@@ -26,10 +26,11 @@ const SIMULATED = [
 const scenario = (record: Omit<ScenarioRecord, 'documents' | 'guards' | 'renderer' | 'source' | 'status' | 'simulated'> & Partial<ScenarioRecord>): ScenarioRecord => ({
   documents: ['STICKER_50X30'], guards: GUARDS, renderer: 'chromium', source: 'api', status: 'PASS', simulated: SIMULATED, ...record,
 });
-const STICKER_WIDTH_PT = 141.73; // 50 mm
-const STICKER_HEIGHT_PT = 85.04; // 30 mm
+// Default roll since #1726 (sticker_size SystemConfig · DEFAULT_STICKER_SIZE = '60x40'; the disposable DB has no override).
+const STICKER_WIDTH_PT = 170.08; // 60 mm
+const STICKER_HEIGHT_PT = 113.39; // 40 mm
 
-describe('DOC-11 sticker 50×30 mm regression — /stickers print geometry through headless Chromium', () => {
+describe('DOC-11 sticker 60×40 mm regression — /stickers print geometry through headless Chromium', () => {
   let h: DocumentsHarness;
   let web: WebRuntime;
   let world: DocumentsWorld;
@@ -95,7 +96,7 @@ describe('DOC-11 sticker 50×30 mm regression — /stickers print geometry throu
     }, 120000);
     afterAll(async () => { await context?.close(); });
 
-    it('3 products → /stickers?productIds → print media → one 50×30 mm page per sticker, fonts recorded, whole model on each page, text inside the sticker', async () => {
+    it('3 products → /stickers?productIds → print media → one 60×40 mm page per sticker, fonts recorded, whole model on each page, text inside the sticker', async () => {
       const dataRequests: string[] = [];
       page.on('request', (request) => { if (/\/sticker-templates\/products\/data/.test(request.url())) dataRequests.push(request.url().replace(web.origin, '')); });
       await web.navigate(page, `/stickers?productIds=${products.map((p) => p.id).join(',')}`);
@@ -151,7 +152,7 @@ describe('DOC-11 sticker 50×30 mm regression — /stickers print geometry throu
       expect(dataRequests.length).toBeGreaterThanOrEqual(1);
       const artifacts = [shotPreview, pdfArtifact, linesArtifact, saveArtifact(DOMAIN, 'stickers-3-1440.json', JSON.stringify({ pageCount: pdf.pageCount, fonts: pdf.fonts, sizes, printedOrder, pages: pdf.pages.map((p) => ({ w: p.widthPt.toFixed(2), h: p.heightPt.toFixed(2), lines: p.lines })), dataRequests }, null, 2)).relativePath];
       expect(errors.filter((e) => e.startsWith('pageerror'))).toEqual([]);
-      recordScenario(DOMAIN, scenario({ id: `${DOMAIN}/print-geometry`, title: `/stickers?productIds=(3) → print media → ${pdf.pageCount} pages of ${STICKER_WIDTH_PT} × ${STICKER_HEIGHT_PT} pt (50 × 30 mm), fonts ${pdf.fonts.join('/')}, text sizes ${sizes.map((s) => `${s.size}pt×${s.count}`).join(' ')}, every page identifies its product by its IMEI and prints the whole model (printed order ${printedOrder.join(' | ')}; ${truncated.length ? `cut with … on ${truncated.length}/${pdf.pageCount} labels: ${truncated.join(', ')}` : 'no model cut'}), no text outside the page`, routes: ['GET /api/sticker-templates/products/data', 'GET /api/products', 'GET /api/products/brands'], artifacts, unverified: ['thermal printer output / label stock alignment (DOC-12)', 'the OS print dialog (headless page.pdf() stands in)'], notes: `${consoleNote(errors)}; runs against the redesigned page (PR #1575, apps/web/src/pages/StickerPrintPage/) — nothing about prices, wording or typography is asserted (owner keeps the label's own font, 2026-09-12) — only geometry and product identity on each sticker; the model line is nowrap + ellipsis and with the label's font realistic models are cut on paper (see title) — an observation for the owner / DOC-12, not a failure of this check` }));
+      recordScenario(DOMAIN, scenario({ id: `${DOMAIN}/print-geometry`, title: `/stickers?productIds=(3) → print media → ${pdf.pageCount} pages of ${STICKER_WIDTH_PT} × ${STICKER_HEIGHT_PT} pt (60 × 40 mm), fonts ${pdf.fonts.join('/')}, text sizes ${sizes.map((s) => `${s.size}pt×${s.count}`).join(' ')}, every page identifies its product by its IMEI and prints the whole model (printed order ${printedOrder.join(' | ')}; ${truncated.length ? `cut with … on ${truncated.length}/${pdf.pageCount} labels: ${truncated.join(', ')}` : 'no model cut'}), no text outside the page`, routes: ['GET /api/sticker-templates/products/data', 'GET /api/products', 'GET /api/products/brands'], artifacts, unverified: ['thermal printer output / label stock alignment (DOC-12)', 'the OS print dialog (headless page.pdf() stands in)'], notes: `${consoleNote(errors)}; runs against the redesigned page (PR #1575, apps/web/src/pages/StickerPrintPage/) — nothing about prices, wording or typography is asserted (owner keeps the label's own font, 2026-09-12) — only geometry and product identity on each sticker; the model line is nowrap + ellipsis and with the label's font realistic models are cut on paper (see title) — an observation for the owner / DOC-12, not a failure of this check` }));
     }, 300000);
   });
 });

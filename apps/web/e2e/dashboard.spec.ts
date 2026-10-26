@@ -1,13 +1,15 @@
 import { test, expect } from '@playwright/test';
 import { loginViaAPI } from './helpers/auth';
 
+// `/` is zone-based since shop-home (#1724): the shop zone (OWNER default) renders หน้าหลักหน้าร้าน,
+// so these management-dashboard checks pin the finance zone with `?zone=fin` (LayoutContext priority 1).
 test.describe('Dashboard Page', () => {
   test.beforeEach(async ({ page }) => {
     await loginViaAPI(page);
   });
 
   test('should display Dashboard heading and subtitle', async ({ page }) => {
-    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await page.goto('/?zone=fin', { waitUntil: 'domcontentloaded' });
 
     // Page title must be visible
     await expect(page.getByRole('heading', { name: 'แดชบอร์ด' })).toBeVisible({ timeout: 15000 });
@@ -17,7 +19,7 @@ test.describe('Dashboard Page', () => {
   });
 
   test('should load KPI banner with key metrics', async ({ page }) => {
-    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await page.goto('/?zone=fin', { waitUntil: 'domcontentloaded' });
 
     await expect(page.getByRole('heading', { name: 'แดชบอร์ด' })).toBeVisible({ timeout: 15000 });
 
@@ -29,7 +31,7 @@ test.describe('Dashboard Page', () => {
   });
 
   test('should display KPI numeric values (non-negative)', async ({ page }) => {
-    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await page.goto('/?zone=fin', { waitUntil: 'domcontentloaded' });
 
     await expect(page.getByText('สัญญาทั้งหมด').first()).toBeVisible({ timeout: 15000 });
     await page.waitForTimeout(1500);
@@ -41,7 +43,7 @@ test.describe('Dashboard Page', () => {
   });
 
   test('should display quick action shortcut cards', async ({ page }) => {
-    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await page.goto('/?zone=fin', { waitUntil: 'domcontentloaded' });
 
     await expect(page.getByRole('heading', { name: 'แดชบอร์ด' })).toBeVisible({ timeout: 15000 });
 
@@ -52,7 +54,7 @@ test.describe('Dashboard Page', () => {
   });
 
   test('should navigate to /contracts when clicking สัญญาทั้งหมด KPI', async ({ page }) => {
-    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await page.goto('/?zone=fin', { waitUntil: 'domcontentloaded' });
 
     await expect(page.getByText('สัญญาทั้งหมด').first()).toBeVisible({ timeout: 15000 });
 
@@ -62,7 +64,7 @@ test.describe('Dashboard Page', () => {
   });
 
   test('should navigate to /collections when clicking ค้าง/ผิดนัด KPI', async ({ page }) => {
-    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await page.goto('/?zone=fin', { waitUntil: 'domcontentloaded' });
 
     await expect(page.getByText('ค้าง/ผิดนัด').first()).toBeVisible({ timeout: 15000 });
 
@@ -72,7 +74,7 @@ test.describe('Dashboard Page', () => {
   });
 
   test('should display monthly revenue section for non-SALES role', async ({ page }) => {
-    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await page.goto('/?zone=fin', { waitUntil: 'domcontentloaded' });
 
     await expect(page.getByRole('heading', { name: 'แดชบอร์ด' })).toBeVisible({ timeout: 15000 });
     await page.waitForTimeout(2000);
@@ -82,7 +84,7 @@ test.describe('Dashboard Page', () => {
   });
 
   test('should display aging summary section', async ({ page }) => {
-    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await page.goto('/?zone=fin', { waitUntil: 'domcontentloaded' });
 
     await expect(page.getByRole('heading', { name: 'แดชบอร์ด' })).toBeVisible({ timeout: 15000 });
     await page.waitForTimeout(2000);

@@ -167,8 +167,13 @@ export default function ContractCreatePage() {
           customerCreditApproved={data.customerCreditApproved}
           onOpenCredit={data.openCustomerCredit}
           onOpenCustomerModal={() => { data.resetCustForm(); data.setShowCustomerModal(true); }}
-          overrideActiveContractCheck={data.overrideActiveContractCheck}
-          setOverrideActiveContractCheck={data.setOverrideActiveContractCheck}
+          blacklist={data.blacklist}
+          blacklistStatus={data.blacklistStatus}
+          onRetryBlacklist={data.refetchBlacklist}
+          overrideAccepted={data.overrideAccepted}
+          setOverrideAccepted={data.setOverrideAccepted}
+          overrideReason={data.overrideReason}
+          setOverrideReason={data.setOverrideReason}
           heardFromSlot={heardFromSlot}
           firstContactLine={firstContactLine}
         />

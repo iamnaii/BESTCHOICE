@@ -7,7 +7,7 @@ Welcome. This repo is a Thai installment-payment + accounting system (SHOP retai
 ## Local setup
 
 ```bash
-# 1. Node 20+, then install (npm workspaces — run at repo root)
+# 1. Node 24 (ตรงกับ prod/CI), then install (npm workspaces — run at repo root)
 npm install
 
 # 2. Local Postgres (DB name `bestchoice`). Create the DB, then:

@@ -1,5 +1,5 @@
 import { Test } from '@nestjs/testing';
-import { ConflictException, ForbiddenException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException } from '@nestjs/common';
 import { CustomersController } from './customers.controller';
 import { CustomersService } from './customers.service';
 import { CustomerTierService } from './customer-tier.service';
@@ -7,6 +7,7 @@ import { SkipTracingService } from './skip-tracing.service';
 import { CustomerInsightsService } from '../overdue/customer-insights.service';
 import { PiiAuditService } from '../pii/pii-audit.service';
 import { CustomerMergeService } from '../chat-prospects/customer-merge.service';
+import { CustomerBlacklistService } from './customer-blacklist.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { BranchGuard } from '../auth/guards/branch.guard';
@@ -17,6 +18,7 @@ describe('CustomersController PII (Phase 5)', () => {
   let piiAudit: { logDecryption: jest.Mock };
   let tierService: CustomerTierService;
   let merge: { absorbPlaceholder: jest.Mock; assertActorMayAbsorb: jest.Mock };
+  let blacklist: { evaluate: jest.Mock; evaluateMany: jest.Mock };
 
   beforeEach(async () => {
     service = {
@@ -35,6 +37,7 @@ describe('CustomersController PII (Phase 5)', () => {
       assertActorMayAbsorb: jest.fn().mockResolvedValue(undefined),
     };
 
+    blacklist = { evaluate: jest.fn(), evaluateMany: jest.fn() };
     const module = await Test.createTestingModule({
       controllers: [CustomersController],
       providers: [
@@ -44,6 +47,7 @@ describe('CustomersController PII (Phase 5)', () => {
         { provide: SkipTracingService, useValue: {} },
         { provide: CustomerInsightsService, useValue: {} },
         { provide: CustomerMergeService, useValue: merge },
+        { provide: CustomerBlacklistService, useValue: blacklist },
       ],
     })
       .overrideGuard(JwtAuthGuard)
@@ -286,6 +290,26 @@ describe('CustomersController PII (Phase 5)', () => {
       const dto = { phone: '0812345678' };
       await controller.update('c1', dto as any, reqOf('OWNER'));
       expect(service.update).toHaveBeenCalledWith('c1', dto, { id: 'u1', role: 'OWNER' });
+    });
+  });
+
+  describe('blacklist read endpoints (ก้อน 5 C3)', () => {
+    const none = { level: 'NONE', reasons: [], checkedAt: 't' };
+    it('GET blacklist?ids splits, trims, dedupes and forwards to evaluateMany', async () => {
+      blacklist.evaluateMany.mockResolvedValue({ a: none, b: none });
+      await expect(controller.getBlacklistBatch(' a, b ,a,')).resolves.toEqual({ a: none, b: none });
+      expect(blacklist.evaluateMany).toHaveBeenCalledWith(['a', 'b']);
+    });
+    it('GET blacklist?ids rejects empty and more than 100 ids', async () => {
+      await expect(controller.getBlacklistBatch('')).rejects.toBeInstanceOf(BadRequestException);
+      await expect(controller.getBlacklistBatch(undefined)).rejects.toBeInstanceOf(BadRequestException);
+      await expect(controller.getBlacklistBatch(Array.from({ length: 101 }, (_, i) => `c${i}`).join(','))).rejects.toBeInstanceOf(BadRequestException);
+      expect(blacklist.evaluateMany).not.toHaveBeenCalled();
+    });
+    it('GET :id/blacklist forwards to evaluate', async () => {
+      blacklist.evaluate.mockResolvedValue(none);
+      await expect(controller.getBlacklist('c1')).resolves.toEqual(none);
+      expect(blacklist.evaluate).toHaveBeenCalledWith('c1');
     });
   });
 });

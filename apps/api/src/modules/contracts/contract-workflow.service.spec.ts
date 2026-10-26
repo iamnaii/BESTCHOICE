@@ -14,6 +14,7 @@ import { ShopDownPaymentTemplate } from '../journal/cpa-templates/shop-down-paym
 import { ShopAccountResolver } from '../journal/shop-account-resolver.service';
 import { InstallmentInputVatTemplate } from '../journal/cpa-templates/installment-input-vat.template';
 import { BadRequestException, ConflictException } from '@nestjs/common';
+import { CustomerBlacklistService } from '../customers/customer-blacklist.service';
 
 /**
  * ContractWorkflowService unit tests.
@@ -143,6 +144,7 @@ describe('ContractWorkflowService', () => {
     prisma = {
       $queryRaw: jest.fn().mockResolvedValue([]),
       contract: {
+        findMany: jest.fn().mockResolvedValue([]), // ก้อน 5 C3 — assertCustomerContractPolicy ใน tx ของ activate
         findUnique: jest.fn().mockResolvedValue(mockContract),
         findUniqueOrThrow: jest.fn().mockResolvedValue(mockContract),
         update: jest.fn().mockResolvedValue({ ...mockContract, status: 'ACTIVE' }),
@@ -251,6 +253,7 @@ describe('ContractWorkflowService', () => {
         { provide: ShopInventoryTransferTemplate, useValue: shopInventoryTransferTemplate },
         { provide: ShopDownPaymentTemplate, useValue: shopDownPaymentTemplate },
         { provide: ShopAccountResolver, useValue: shopAccountResolver },
+        { provide: CustomerBlacklistService, useValue: { evaluate: jest.fn().mockResolvedValue({ level: 'NONE', reasons: [], checkedAt: 't' }), evaluateMany: jest.fn().mockResolvedValue({}) } }, // ก้อน 5 C3
         { provide: InstallmentInputVatTemplate, useValue: installmentInputVatTemplate },
       ],
     }).compile();

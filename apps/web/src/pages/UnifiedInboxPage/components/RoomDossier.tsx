@@ -9,6 +9,8 @@ import ChatFollowUpDialog from './ChatFollowUpDialog';
 import ChatHandoffDialog from './ChatHandoffDialog';
 import ChatHandoffCard from './ChatHandoffCard';
 import { useChatWorkSettings } from '../hooks/useChatWork';
+import { useCustomerBlacklist } from '@/hooks/useCustomerBlacklist';
+import CustomerBlacklistBadge from '@/components/customer/CustomerBlacklistBadge';
 import ChatSalesContext from './ChatSalesContext';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import RoomCreditCard, { CreditFilePicker } from './RoomCreditCard';
@@ -462,6 +464,8 @@ interface RoomDossierProps {
 }
 
 export default function RoomDossier({ onClose, room, customerId, activeRoomId, onSelectRoom, credit, creditFocus, gfin, gfinFocus, onPickSlot }: RoomDossierProps) {
+  // ก้อน 5 C3 — ป้าย blacklist ที่หัวแผง (เห็นตั้งแต่ก่อนถึงขั้นทำสัญญา) · ไม่มีลูกค้าผูก = ไม่ถาม
+  const blacklist = useCustomerBlacklist(customerId);
   const navigate = useNavigate();
   const [tab, setTab] = useState<TabKey>('customer');
   const creditRef = useRef<HTMLDivElement>(null);
@@ -664,7 +668,7 @@ export default function RoomDossier({ onClose, room, customerId, activeRoomId, o
       }}>
       {creditDragging && <div className="pointer-events-none absolute inset-0 z-30 flex items-center justify-center border-2 border-dashed border-primary bg-primary/10"><div className="rounded-xl border border-primary bg-card px-4 py-5 text-center text-primary shadow-sm"><p className="font-semibold leading-snug">{tab === 'gfin' ? 'วางที่นี่ = ใส่ในใบยื่น GFIN' : 'วางที่นี่ = ให้ AI ตรวจเครดิต'}</p><p className="mt-1 text-xs leading-snug">ลูกค้าไม่เห็น</p>{(tab === 'gfin' ? gfin?.busy : credit?.busy) && <p className="mt-2 text-xs">กำลังทำงาน กรุณารอก่อนแนบไฟล์</p>}</div></div>}
       <header className="inbox-dossier-header flex shrink-0 items-center justify-between gap-2 px-5 py-4">
-        <div className="flex min-w-0 items-center gap-2">{onClose && <Button variant="ghost" size="icon" aria-label="ปิดข้อมูลลูกค้า" onClick={onClose}><ArrowLeft className="size-5" /></Button>}<h2 className="text-base font-semibold leading-snug">ข้อมูลและงาน</h2></div>
+        <div className="flex min-w-0 items-center gap-2">{onClose && <Button variant="ghost" size="icon" aria-label="ปิดข้อมูลลูกค้า" onClick={onClose}><ArrowLeft className="size-5" /></Button>}<h2 className="text-base font-semibold leading-snug">ข้อมูลและงาน</h2><CustomerBlacklistBadge result={blacklist.data} /></div>
         <div className="flex shrink-0"><Button variant="ghost" size="icon" aria-label="เปิดโปรไฟล์ลูกค้าเต็มหน้า" disabled={!customerId} onClick={() => customerId && navigate(`/customers/${customerId}`)}><ExternalLink className="size-4" /></Button></div>
       </header>
       {/* แท็บเม็ดยา */}

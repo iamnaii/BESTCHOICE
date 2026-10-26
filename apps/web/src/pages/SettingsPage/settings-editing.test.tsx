@@ -18,10 +18,8 @@ vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 const settings = {
   pdpa_privacy_notice_version: 'v1',
   customer_access_token_hours: '24',
-  'sticker.rate1.defaultDown': '1000',
-  'sticker.rate1.defaultTerm': '12',
-  'sticker.rate2.defaultDown': '2000',
-  'sticker.rate2.defaultTerm': '18',
+  sticker_size: '60x40',
+  sticker_show_qr: 'true',
   company_name_th: 'บริษัททดสอบ',
   lessor_signature_image: '/synthetic-signature.png',
   lessor_signer_name: 'ผู้ลงนามทดสอบ',
@@ -36,6 +34,65 @@ beforeEach(() => {
   vi.mocked(api.patch).mockResolvedValue({ data: {} });
 });
 
+describe('sticker settings — ขนาดม้วน + QR (ก้อน 3 A5, 2026-10-22)', () => {
+  function setup() {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <StickersPage />
+      </QueryClientProvider>,
+    );
+    return client;
+  }
+
+  it('แสดงค่าปัจจุบัน · เปลี่ยนเป็น 50×40 และปิด QR · บันทึกเฉพาะ 2 คีย์ของสติกเกอร์ · หน้าพิมพ์เห็นค่าใหม่ทันที', async () => {
+    const client = setup();
+    const invalidate = vi.spyOn(client, 'invalidateQueries');
+    await screen.findByText('60 × 40 มม.');
+    expect(screen.getByText('เปิด')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'แก้ไข' }));
+    const sizeSelect = await screen.findByLabelText('ขนาดม้วน');
+    expect(sizeSelect).toHaveValue('60x40');
+    fireEvent.change(sizeSelect, { target: { value: '50x40' } });
+    expect(screen.getByText(/Xprinter 2 นิ้ว/)).toBeInTheDocument();
+    const qr = screen.getByLabelText('พิมพ์ QR บนดวง');
+    expect(qr).toBeChecked();
+    fireEvent.click(qr);
+
+    vi.mocked(api.get).mockResolvedValue({ data: configs({ ...settings, sticker_size: '50x40', sticker_show_qr: 'false' }) });
+    fireEvent.click(screen.getByRole('button', { name: 'บันทึก' }));
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith('บันทึกสำเร็จ'));
+    const [path, data] = vi.mocked(api.patch).mock.calls[0];
+    expect(path).toBe('/settings');
+    expect((data as { items: unknown }).items).toEqual([
+      { key: 'sticker_size', value: '50x40' },
+      { key: 'sticker_show_qr', value: 'false' },
+    ]);
+    expect(await screen.findByText('50 × 40 มม.')).toBeInTheDocument();
+    expect(screen.getByText('ปิด')).toBeInTheDocument();
+    // หน้าพิมพ์สติกเกอร์อ่านธงจาก ['settings-ui-flags'] (staleTime 5 นาที) — ต้องล้าง cache ตอนบันทึก
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['settings-ui-flags'] });
+  });
+
+  it('ยังไม่เคยตั้งค่า → แสดงค่าเริ่มต้น 60 × 40 + QR เปิด และบันทึกเป็นค่าจริง ไม่ใช่ค่าว่าง', async () => {
+    const rest = Object.fromEntries(Object.entries(settings).filter(([key]) => !key.startsWith('sticker_')));
+    vi.mocked(api.get).mockResolvedValue({ data: configs(rest) });
+    setup();
+    await screen.findByText('60 × 40 มม.');
+    expect(screen.getByText('เปิด')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'แก้ไข' }));
+    await screen.findByLabelText('ขนาดม้วน');
+    fireEvent.click(screen.getByRole('button', { name: 'บันทึก' }));
+    await waitFor(() => expect(api.patch).toHaveBeenCalled());
+    expect((vi.mocked(api.patch).mock.calls[0][1] as { items: unknown }).items).toEqual([
+      { key: 'sticker_size', value: '60x40' },
+      { key: 'sticker_show_qr', value: 'true' },
+    ]);
+  });
+});
+
 describe.each([
   {
     name: 'general',
@@ -43,13 +100,6 @@ describe.each([
     key: 'pdpa_privacy_notice_version',
     old: 'v1',
     next: 'v2',
-  },
-  {
-    name: 'stickers',
-    Page: StickersPage,
-    key: 'sticker.rate1.defaultDown',
-    old: '1000',
-    next: '1500',
   },
   {
     name: 'company',

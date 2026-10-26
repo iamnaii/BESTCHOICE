@@ -10,10 +10,13 @@ import {
   Query,
   UseGuards,
   Req,
+  BadRequestException,
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import type { Request } from 'express';
 import { CustomersService } from './customers.service';
+import { CustomerBlacklistService } from './customer-blacklist.service';
+import { BLACKLIST_BATCH_MAX } from '@installment/shared';
 import { CustomerTierService } from './customer-tier.service';
 import { SkipTracingService } from './skip-tracing.service';
 import { CustomerInsightsService } from '../overdue/customer-insights.service';
@@ -46,6 +49,7 @@ export class CustomersController {
     private readonly skipTracingService: SkipTracingService,
     private readonly insightsService: CustomerInsightsService,
     private readonly merge: CustomerMergeService,
+    private readonly blacklist: CustomerBlacklistService, // ก้อน 5 C3
   ) {}
 
   // ---------------------------------------------------------------------------
@@ -176,6 +180,20 @@ export class CustomersController {
     return results;
   }
 
+  /**
+   * ก้อน 5 C3 — ผลตรวจ blacklist แบบ batch สำหรับตาราง (หน้าตรวจเครดิต) — ต้องอยู่ก่อน route `:id`
+   * ไม่มี PII ในผลลัพธ์ (เหตุผลมีชื่อคนที่จับคู่ ไม่มีเบอร์/เลขบัตร) จึงเปิดให้ทุกบทบาทที่เห็นลูกค้า
+   */
+  @Get('blacklist')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
+  async getBlacklistBatch(@Query('ids') ids?: string) {
+    const list = [...new Set((ids ?? '').split(',').map((x) => x.trim()).filter(Boolean))];
+    if (!list.length || list.length > BLACKLIST_BATCH_MAX) {
+      throw new BadRequestException(`ระบุ ids 1–${BLACKLIST_BATCH_MAX} รายการ`);
+    }
+    return this.blacklist.evaluateMany(list);
+  }
+
   @Get(':id')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
   async findOne(@Param('id') id: string, @Req() req: AuthRequest) {
@@ -204,6 +222,13 @@ export class CustomersController {
    * แยกจาก GET :id เพราะอินบ็อกซ์/สร้างสัญญา/OCR เรียก GET :id บ่อย ห้ามให้ทุกคนจ่ายค่า query เสริมชุดนี้
    * findDetail โยน NotFoundException เองเมื่อไม่พบลูกค้า (ไม่ต้องเช็ค null ซ้ำ)
    */
+  /** ก้อน 5 C3 — ผลตรวจ blacklist ของลูกค้าคนเดียว (หน้าสร้างสัญญา / หน้าลูกค้า / แผงแชท) */
+  @Get(':id/blacklist')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
+  getBlacklist(@Param('id') id: string) {
+    return this.blacklist.evaluate(id);
+  }
+
   @Get(':id/detail')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
   async findDetail(@Param('id') id: string, @Req() req: AuthRequest) {

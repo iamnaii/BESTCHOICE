@@ -1,0 +1,38 @@
+name: Playwright Chromium (cached browser)
+description: >-
+  Install Playwright's Chromium for the jobs that drive a real browser (deploy gates, E2E,
+  documents integration). The browser binaries (~/.cache/ms-playwright) are cached per
+  Playwright version from package-lock.json, so a hit skips the CDN download; the system
+  libraries Chromium needs (fonts, libnss3, xvfb …) come from apt on every run because a
+  fresh runner never has them. 2026-10-26: "Chat credit + approval" hit its 15-minute
+  timeout after `playwright install --with-deps` spent ~10 minutes on a slow Ubuntu mirror —
+  this action is the one place all four jobs install the browser, and the job timeouts were
+  raised to leave room for a slow mirror.
+
+runs:
+  using: composite
+  steps:
+    - name: Playwright version (package-lock.json)
+      id: version
+      shell: bash
+      run: |
+        version=$(node -p "require('./package-lock.json').packages['node_modules/@playwright/test'].version")
+        echo "version=$version" >> "$GITHUB_OUTPUT"
+        echo "Playwright $version"
+
+    - name: Restore Playwright browsers
+      id: browsers
+      uses: actions/cache@v4
+      with:
+        path: ~/.cache/ms-playwright
+        key: ${{ runner.os }}-playwright-${{ steps.version.outputs.version }}
+
+    - name: Install Chromium + system libraries (cache miss)
+      if: steps.browsers.outputs.cache-hit != 'true'
+      shell: bash
+      run: npx playwright install --with-deps chromium
+
+    - name: Install system libraries only (browser restored from cache)
+      if: steps.browsers.outputs.cache-hit == 'true'
+      shell: bash
+      run: npx playwright install-deps chromium

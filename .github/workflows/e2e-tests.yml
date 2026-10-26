@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
 
 env:
-  NODE_VERSION: '20'
+  NODE_VERSION: '24'
 
 jobs:
   e2e:
@@ -112,9 +112,10 @@ jobs:
         env:
           VITE_API_URL: http://localhost:3000/api
 
+      # Browser binaries cached per Playwright version (.github/actions/playwright-chromium);
+      # apps/web uses the hoisted root @playwright/test, so the root install is the right one.
       - name: Install Playwright Browsers
-        run: npx playwright install --with-deps chromium
-        working-directory: apps/web
+        uses: ./.github/actions/playwright-chromium
 
       - name: Start API server
         run: node apps/api/dist/src/main.js &
@@ -171,7 +172,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '24'
           cache: 'npm'
 
       - name: Install dependencies

@@ -16,6 +16,7 @@ import { ShopInventoryTransferTemplate } from '../journal/cpa-templates/shop-inv
 import { ShopAccountResolver } from '../journal/shop-account-resolver.service';
 import { InstallmentInputVatTemplate } from '../journal/cpa-templates/installment-input-vat.template';
 import { TestModeService } from '../test-mode/test-mode.service';
+import { CustomerBlacklistService } from '../customers/customer-blacklist.service';
 
 // Mock utility modules
 jest.mock('../../utils/installment.util', () => ({
@@ -161,6 +162,7 @@ describe('Contract Signing & Workflow', () => {
       // #1679: เปิดสัญญาบนเครื่อง RESERVED ต้องไม่มีใบจอง PAID ล็อก/ร่างอื่นถือ — ค่าเริ่มต้น = ไม่มี
       booking: { findFirst: jest.fn().mockResolvedValue(null) },
       contract: {
+        findMany: jest.fn().mockResolvedValue([]), // ก้อน 5 C3 — assertCustomerContractPolicy ใน tx ของ activate
         findUnique: jest.fn().mockResolvedValue(mockContract),
         findUniqueOrThrow: jest.fn().mockResolvedValue(mockContract),
         findFirst: jest.fn().mockResolvedValue(null),
@@ -266,6 +268,7 @@ describe('Contract Signing & Workflow', () => {
         { provide: ShopDownPaymentReversalTemplate, useValue: { execute: jest.fn().mockResolvedValue({ entryNo: 'JE-REV-001', journalEntryId: 'je-rev-1' }) } },
         { provide: ShopInventoryTransferTemplate, useValue: { execute: jest.fn().mockResolvedValue({ entryNo: 'JE-002', journalEntryId: 'je-2' }) } },
         { provide: ShopAccountResolver, useValue: { resolveBranchCashAccount: jest.fn().mockResolvedValue('S11-1102'), resolveInflowCashAccount: jest.fn().mockResolvedValue('S11-1101'), resolveProductAccounts: jest.fn().mockReturnValue({ inventoryAccountCode: 'S11-2001', cogsAccountCode: 'S50-1101', revenueAccountCode: 'S41-1101' }) } },
+        { provide: CustomerBlacklistService, useValue: { evaluate: jest.fn().mockResolvedValue({ level: 'NONE', reasons: [], checkedAt: 't' }), evaluateMany: jest.fn().mockResolvedValue({}) } }, // ก้อน 5 C3
         { provide: InstallmentInputVatTemplate, useValue: { execute: jest.fn() } }, // ก้อน 5
         { provide: TestModeService, useValue: { isEnabled: jest.fn().mockResolvedValue(false) } },
       ],

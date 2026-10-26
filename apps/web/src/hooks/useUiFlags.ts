@@ -27,6 +27,10 @@ export interface UiFlags {
   paymentDateAllowFuture: boolean;
   /** D1.2.2.7 — render verification QR on voucher footers. Default true. */
   voucherShowQrCode: boolean;
+  /** ก้อน 3 A5 — ขนาดม้วนสติกเกอร์ติดเครื่อง (SystemConfig `sticker_size`). Default '60x40'. */
+  stickerSize: '60x40' | '50x40' | '50x30';
+  /** ก้อน 3 A5 — พิมพ์ QR บนดวงสติกเกอร์ (SystemConfig `sticker_show_qr`). Default true. */
+  stickerShowQr: boolean;
   /** D1.2.2.6 — UI language. Applied to `document.lang`; i18n framework deferred. */
   language: 'th' | 'en';
   /**
@@ -314,6 +318,8 @@ const DEFAULT_UI_FLAGS: UiFlags = {
   ],
   paymentDateAllowFuture: true,
   voucherShowQrCode: true,
+  stickerSize: '60x40',
+  stickerShowQr: true,
   language: 'th',
   docPrefixMap: {
     EXPENSE: 'EX',

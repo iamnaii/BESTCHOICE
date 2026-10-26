@@ -28,6 +28,20 @@ describe('PettyCashReplenishAlertCron', () => {
     cron = new PettyCashReplenishAlertCron(prisma, notifications);
   });
 
+  it('also notifies the staff LINE hub once (dedupe per Thai day); legacy IN_APP untouched', async () => {
+    const staffNotify = { notify: jest.fn().mockResolvedValue({ sent: 1 }) };
+    const withHub = new PettyCashReplenishAlertCron(prisma, notifications, staffNotify as never);
+    prisma.expenseDocument.aggregate.mockResolvedValue({ _sum: { totalAmount: new Decimal('100.00') } });
+    const result = await withHub.tick();
+    expect(result.alertsSent).toBe(1);
+    expect(staffNotify.notify).toHaveBeenCalledTimes(1);
+    expect(staffNotify.notify).toHaveBeenCalledWith('petty_cash.replenish', expect.objectContaining({
+      title: 'เงินสดย่อยต่ำกว่าเกณฑ์เติม',
+      lines: expect.arrayContaining([expect.stringMatching(/คงเหลือ 4,900\.00/)]),
+      dedupeKey: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+    }));
+  });
+
   it('sends 1 alert per OWNER when balance < threshold (defaults: limit 5000, threshold 5000, spent 100)', async () => {
     prisma.expenseDocument.aggregate.mockResolvedValue({
       _sum: { totalAmount: new Decimal('100.00') },

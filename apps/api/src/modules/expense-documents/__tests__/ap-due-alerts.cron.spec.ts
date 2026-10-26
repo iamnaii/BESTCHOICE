@@ -58,6 +58,26 @@ describe('ApDueAlertsCron — D1.3.1.2', () => {
     expect(prisma.expenseDocument.findMany).toHaveBeenCalled();
   });
 
+  it('also notifies the staff LINE hub per document with the approver as extra recipient', async () => {
+    const staffNotify = { notify: jest.fn().mockResolvedValue({ sent: 1 }) };
+    const withHub = new ApDueAlertsCron(prisma, notifications, staffNotify as never);
+    prisma.systemConfig.findFirst.mockImplementation((args: { where: { key: string } }) =>
+      Promise.resolve(args.where.key === 'ap_due_alerts_enabled' ? { value: 'true' } : null),
+    );
+    prisma.expenseDocument.findMany.mockResolvedValue([
+      { id: 'doc-1', number: 'EX-20260514-0001', documentType: 'EXPENSE', documentDate: new Date('2026-05-10T00:00:00.000Z'), totalAmount: 5300, vendorName: 'บริษัท ตัวอย่าง จำกัด', approvedById: 'u-approver', createdById: 'u-creator', approvedBy: { email: 'a@b.com', name: 'A' }, createdBy: { email: 'c@b.com', name: 'C' } },
+    ]);
+    await withHub.tick();
+    expect(staffNotify.notify).toHaveBeenCalledTimes(1);
+    expect(staffNotify.notify).toHaveBeenCalledWith('ap.due', expect.objectContaining({
+      title: 'เจ้าหนี้ครบกำหนดจ่าย EX-20260514-0001',
+      lines: expect.arrayContaining([expect.stringMatching(/บริษัท ตัวอย่าง จำกัด/), expect.stringMatching(/5,300\.00/)]),
+      link: '/expenses/doc-1',
+      extraRecipientUserIds: ['u-approver'],
+      dedupeKey: expect.stringMatching(/^doc-1:\d{4}-\d{2}-\d{2}$/),
+    }));
+  });
+
   it('alerts approver via NotificationsService with vendor + amount + posted date', async () => {
     prisma.systemConfig.findFirst.mockImplementation(
       (args: { where: { key: string } }) => {

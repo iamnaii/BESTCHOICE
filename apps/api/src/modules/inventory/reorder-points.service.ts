@@ -1,8 +1,9 @@
-import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, Logger, Optional } from '@nestjs/common';
 import { ProductCategory } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { NotificationCategory } from '../notifications/notification-category.enum';
+import { StaffNotifyService } from '../staff-notify/staff-notify.service';
 import { CreateReorderPointDto, UpdateReorderPointDto } from './dto/reorder-point.dto';
 
 @Injectable()
@@ -12,6 +13,7 @@ export class ReorderPointsService {
   constructor(
     private prisma: PrismaService,
     private notificationsService: NotificationsService,
+    @Optional() private readonly staffNotify?: StaffNotifyService,
   ) {}
 
   async findAll(filters: { branchId?: string; isActive?: boolean; category?: string; page?: number; limit?: number }) {
@@ -207,20 +209,20 @@ export class ReorderPointsService {
             notificationsSent++;
           }
 
-          // Also try LINE notification to owners (staff OA — internal alerts)
-          for (const owner of owners) {
+          // LINE พนักงาน (ก้อน 7 A16) — ผ่านท่อกลาง: เจ้าของ + ผจก.สาขานั้น ตามสวิตช์ stock.low · ซ้ำไม่เกินวันละครั้งต่อจุดสั่งซื้อ
+          // (เดิมส่ง channel LINE ด้วยอีเมลของ OWNER = ไปไม่ถึงใคร)
+          if (this.staffNotify) {
             try {
-              await this.notificationsService.send({
-                channel: 'LINE',
-                channelKey: 'line-staff',
-                recipient: owner.email,
-                message,
-                relatedId: rp.id,
-                category: NotificationCategory.STAFF,
+              const r = await this.staffNotify.notify('stock.low', {
+                title: `ของต่ำกว่าจุดสั่งซื้อซ้ำ: ${productDesc}`,
+                lines: [`สาขา ${rp.branch.name}`, `เหลือ ${currentStock} เครื่อง (ขั้นต่ำ ${rp.minQuantity} · สั่งเพิ่ม ${rp.reorderQuantity})`],
+                link: '/stock/reorder-points',
+                branchId: rp.branchId,
+                dedupeKey: rp.id,
               });
-              notificationsSent++;
+              notificationsSent += r.sent;
             } catch {
-              // LINE may not be configured, skip silently
+              // ท่อกลางไม่ throw อยู่แล้ว — ตาข่ายสุดท้าย
             }
           }
         }

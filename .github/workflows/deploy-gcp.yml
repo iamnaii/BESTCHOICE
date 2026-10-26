@@ -296,6 +296,8 @@ jobs:
           DEFECT_FILES=$(ls src/modules/defect-exchange/__tests__/*.integration.spec.ts)
           # เงินสดย่อยหน้าร้าน 20.2 (2026-10-18) — โฟลเดอร์ใหม่ ⇒ glob ใหม่
           PETTY_FILES=$(ls src/modules/shop-petty-cash/__tests__/*.integration.spec.ts)
+          # แจ้งพนักงาน LINE ก้อน 7 A16 (2026-10-26) — โฟลเดอร์ใหม่ ⇒ glob ใหม่ (glob ไม่ recurse เอง)
+          STAFF_NOTIFY_FILES=$(ls src/modules/staff-notify/__tests__/*.integration.spec.ts)
           npx vitest run --no-file-parallelism $FILES \
             src/modules/installments/reschedule.service.spec.ts \
             $ACCT_FILES \
@@ -317,7 +319,8 @@ jobs:
             $INVENTORY_FILES \
             $BOOKINGS_FILES \
             $DEFECT_FILES \
-            $PETTY_FILES
+            $PETTY_FILES \
+            $STAFF_NOTIFY_FILES
         env:
           DATABASE_URL: postgresql://test:test@localhost:5432/test_db?schema=public
           DATABASE_URL_FINANCE: postgresql://test:test@localhost:5433/test_finance_db?schema=public

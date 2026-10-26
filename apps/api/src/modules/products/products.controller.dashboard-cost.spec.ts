@@ -4,6 +4,7 @@ import { ProductsService } from './products.service';
 import { ProductsPricingService } from './products-pricing.service';
 import { ProductsStockService } from './products-stock.service';
 import { ProductsOnlineListingService } from './products-online-listing.service';
+import { ProductScanService } from './services/product-scan.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { BranchGuard } from '../auth/guards/branch.guard';
@@ -45,6 +46,8 @@ describe('ProductsController — GET /products/stock/dashboard cost visibility',
         { provide: ProductsPricingService, useValue: {} },
         { provide: ProductsStockService, useValue: stock },
         { provide: ProductsOnlineListingService, useValue: {} },
+        // POS scan (#1727) added a 5th controller dependency — stub it so this DI graph still resolves.
+        { provide: ProductScanService, useValue: {} },
       ],
     })
       .overrideGuard(JwtAuthGuard)

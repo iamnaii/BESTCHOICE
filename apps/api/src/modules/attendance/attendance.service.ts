@@ -26,6 +26,7 @@ import {
 export type { CellStatus, MonthSummary, TodayStatus };
 export { FLAG_DEVICE_UNAVAILABLE };
 import { DEVICE_CONFLICT_FLAG } from './attendance-device.service';
+import { assertNotPaid, lockAttendancePairs, paidPayrollNumbers, periodOfWorkDate } from './attendance-payroll-lock';
 import type { CorrectDayDto, SetDayKindsDto } from './dto/attendance.dto';
 
 /**
@@ -61,6 +62,8 @@ export interface TodayRow {
   clockInPunchId: string | null;
   clockOutPunchId: string | null;
   note: string | null;
+  /** เลขที่ใบเงินเดือน (POSTED) ของเดือนนี้ที่จ่ายคนนี้แล้ว — มี = แก้ลงเวลาเดือนนี้ไม่ได้ */
+  paidDocumentNumber: string | null;
 }
 
 export interface MonthCell {
@@ -130,6 +133,7 @@ export class AttendanceService {
     ]);
     const days = await this.prisma.attendanceDay.findMany({ where: { workDate: key, deletedAt: null, userId: { in: staff.map((u) => u.id) } } });
     const byUser = new Map(days.map((d) => [d.userId, d]));
+    const paid = await paidPayrollNumbers(this.prisma, staff.map((u) => u.id), periodOfWorkDate(key));
     const rows: TodayRow[] = staff.map((u) => {
       const day = byUser.get(u.id) ?? null;
       return {
@@ -153,6 +157,7 @@ export class AttendanceService {
         clockInPunchId: day?.clockInPunchId ?? null,
         clockOutPunchId: day?.clockOutPunchId ?? null,
         note: day?.note ?? null,
+        paidDocumentNumber: paid.get(u.id) ?? null,
       };
     });
     const order: Record<TodayStatus, number> = { MISSING_OUT: 0, LATE: 1, NOT_IN: 2, ON_TIME: 3, LEAVE: 4, DAY_OFF: 5, SHOP_CLOSED: 6, NO_PIN: 7 };
@@ -195,10 +200,11 @@ export class AttendanceService {
     const rowsDb = await this.prisma.attendanceDay.findMany({ where: { deletedAt: null, workDate: { gte: from, lt: to }, OR: [{ branchId }, { userId: { in: homeIds } }] } });
     const grouped = new Map<string, AttendanceDay[]>();
     for (const d of rowsDb) grouped.set(d.userId, [...(grouped.get(d.userId) ?? []), d]);
+    const paid = await paidPayrollNumbers(this.prisma, staff.map((u) => u.id), month);
     const rows = staff.map((u) => {
       const cells: Record<string, MonthCell> = {};
       for (const d of grouped.get(u.id) ?? []) cells[workDateString(fromDbDate(d.workDate))] = cellOf(d, today);
-      return { userId: u.id, nickname: u.nickname || u.name, name: u.name, role: u.role, hasPin: !!u.attendancePinHash, visiting: u.branchId !== branchId, cells, summary: summarizeAttendanceMonth(Object.values(cells)) };
+      return { userId: u.id, nickname: u.nickname || u.name, name: u.name, role: u.role, hasPin: !!u.attendancePinHash, visiting: u.branchId !== branchId, cells, summary: summarizeAttendanceMonth(Object.values(cells)), paidDocumentNumber: paid.get(u.id) ?? null };
     });
     return { month, days, rows };
   }
@@ -248,6 +254,9 @@ export class AttendanceService {
     const after = { clockIn, clockOut, dayKind, lateMinutes: summary.lateMinutes, otHours: summary.otHours, workedMinutes: summary.workedMinutes, earlyLeaveMinutes: summary.earlyLeaveMinutes, flags };
 
     const updated = await this.prisma.$transaction(async (tx) => {
+      // ล็อกลงเวลาของคนนี้ในงวดนี้ แล้วเช็คว่าจ่ายเงินเดือนแล้วหรือยัง (ใบเงินเดือนลงบัญชีด้วยล็อกเดียวกัน)
+      await lockAttendancePairs(tx, [{ userId: day.userId, workDate: day.workDate }]);
+      await assertNotPaid(tx, [{ userId: day.userId, workDate: day.workDate }]);
       const row = await tx.attendanceDay.update({
         where: { id: day.id },
         data: {
@@ -291,6 +300,8 @@ export class AttendanceService {
       if (existing?.clockIn && !existing.deletedAt) throw new BadRequestException(`วันที่ ${e.date} พนักงานตอกเข้าแล้ว — เปลี่ยนประเภทวันที่แท็บ วันนี้ › แก้ไข พร้อมเหตุผล`);
     }
     await this.prisma.$transaction(async (tx) => {
+      await lockAttendancePairs(tx, parsed);
+      await assertNotPaid(tx, parsed);
       for (const e of parsed) {
         await tx.attendanceDay.upsert({
           where: { userId_workDate: { userId: e.userId, workDate: e.workDate } },

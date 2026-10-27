@@ -36,6 +36,7 @@ function harness() {
       return delegates.get(key);
     },
   });
+  client.$executeRaw = jest.fn(async () => 0);
   client.$transaction = jest.fn(async (cb: (tx: unknown) => unknown) => { calls.push('tx:start'); const out = await cb(proxy); calls.push('tx:end'); return out; });
   client.$queryRaw = jest.fn(async () => [{ pin_fail_count: 1 }]);
   const audit = { log: jest.fn(async () => { calls.push('audit'); }) };
@@ -215,6 +216,18 @@ describe('AttendanceDeviceService', () => {
     expect(h.d('todo').create.mock.calls[0][0].data.description).toEqual(expect.stringContaining('ตั้งค่า › บริษัท & สาขา › เครื่องตอกบัตร'));
     expect(h.d('todo').create.mock.calls[0][0].data.description).not.toContain('บุคลากร');
     expect(h.calls.indexOf('todo.create')).toBeGreaterThan(h.calls.lastIndexOf('tx:end'));
+  });
+
+  it('TD8b a conflict that flags a day in a month already paid adds the paid-month line with the payroll number to the owner Todo', async () => {
+    const h = harness();
+    const fork = new Date('2026-10-27T00:30:00.000Z');
+    h.d('attendanceDeviceToken').findUnique.mockResolvedValue({ id: 't2', deviceId: 'dev1', generation: 2, usedAt: fork, device: DEVICE });
+    h.d('attendancePunch').findMany.mockResolvedValue([{ id: 'p1', userId: 'u1', at: new Date('2026-10-27T00:31:00.000Z') }]);
+    h.d('user').findFirst.mockResolvedValue({ id: 'sys' });
+    h.d('todo').findFirst.mockResolvedValue(null);
+    h.d('payrollLine').findFirst.mockResolvedValue({ payroll: { document: { number: 'PR-2026-0042' } } });
+    await h.service.authenticate({ deviceToken: 'raw-gen2', requestId: 'r-new' }, NOW).catch(() => undefined);
+    expect(h.d('todo').create.mock.calls[0][0].data.description).toEqual(expect.stringContaining('วันที่ติดธงอยู่ในเดือนที่จ่ายเงินเดือนแล้ว (ใบ PR-2026-0042) — ถ้าตอกแทนกันจริง ให้ใส่รายการหักในใบเงินเดือนงวดถัดไป'));
   });
 
   it('TD9 checkPin: a wrong PIN bumps the counter atomically in SQL (failures inside a 15-minute window); the 5th → LOCKED until now+15min with one PIN_LOCKOUT event (รีวิว minor)', async () => {

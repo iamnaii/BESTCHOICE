@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException } from '@nestjs/common';
 import { Readable } from 'stream';
 import { bangkokMidnight } from '../../../utils/date.util';
 import { AttendanceService } from '../attendance.service';
@@ -26,6 +26,7 @@ function harness() {
       return delegates.get(key);
     },
   });
+  client.$executeRaw = jest.fn(async () => { calls.push('lock'); return 0; });
   client.$transaction = jest.fn(async (cb: (tx: unknown) => unknown) => { calls.push('tx:start'); const out = await cb(proxy); calls.push('tx:end'); return out; });
   const audit = { log: jest.fn(async () => { calls.push('audit'); }) };
   const settings = { getRules: jest.fn().mockResolvedValue(RULES) };
@@ -265,5 +266,64 @@ describe('AttendanceService', () => {
     h.d('attendanceDay').findMany.mockResolvedValue([dayRow({ userId: 'u1', branchId: 'br2', clockIn: at(10, 2) })]);
     const out = await h.service.today(OWNER, 'br1', at(14, 0));
     expect(out.rows[0]).toMatchObject({ userId: 'u1', dayBranchId: 'br2' });
+  });
+
+  const PAID = { payroll: { document: { number: 'PR-2026-0042' } }, userId: 'u5' };
+
+  it('S21 correctDay on a paid month → 409 ATTENDANCE_PAID with the payroll number; the attendance lock is taken first and nothing is written or audited', async () => {
+    const h = harness();
+    h.d('attendanceDay').findUnique.mockResolvedValue(dayRow({ userId: 'u5', clockIn: at(10, 1) }));
+    h.d('payrollLine').findFirst.mockResolvedValue(PAID);
+    const err = await h.service.correctDay(OWNER, 'd-u5', { clockOut: at(20, 0).toISOString(), reason: 'ลืมตอกออก มีลูกค้าทำสัญญา' }).catch((e) => e);
+    expect(err).toBeInstanceOf(ConflictException);
+    expect(err.getResponse()).toMatchObject({ code: 'ATTENDANCE_PAID', documentNumber: 'PR-2026-0042', message: expect.stringContaining('เดือนนี้จ่ายเงินเดือนแล้ว (ใบ PR-2026-0042)') });
+    expect(h.calls.indexOf('lock')).toBeGreaterThan(h.calls.indexOf('tx:start'));
+    expect(h.d('payrollLine').findFirst).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ userId: 'u5', payroll: { payrollPeriod: '2026-10', document: { documentType: 'PAYROLL', status: 'POSTED', deletedAt: null } } }) }));
+    expect(h.d('attendanceDay').update).not.toHaveBeenCalled();
+    expect(h.d('attendanceCorrection').create).not.toHaveBeenCalled();
+    expect(h.audit.log).not.toHaveBeenCalled();
+  });
+
+  it('S22 setDayKinds with one paid (user, month) pair → 409 and nothing written; locks are per distinct user+period, sorted', async () => {
+    const h = harness();
+    h.d('user').findMany.mockResolvedValue([{ id: 'u1', branchId: 'br1' }, { id: 'u3', branchId: 'br1' }]);
+    h.d('payrollLine').findFirst.mockImplementation(async ({ where }: { where: { userId: string } }) => (where.userId === 'u3' ? { ...PAID, userId: 'u3' } : null));
+    const err = await h.service.setDayKinds(OWNER, { branchId: 'br1', entries: [{ userId: 'u3', date: '2026-10-29', dayKind: 'DAY_OFF' }, { userId: 'u1', date: '2026-10-29', dayKind: 'DAY_OFF' }, { userId: 'u1', date: '2026-10-30', dayKind: 'DAY_OFF' }] }, at(14, 0)).catch((e) => e);
+    expect(err).toBeInstanceOf(ConflictException);
+    expect(err.getResponse()).toMatchObject({ code: 'ATTENDANCE_PAID', documentNumber: 'PR-2026-0042' });
+    expect(h.calls.filter((c) => c === 'lock')).toHaveLength(2);
+    expect(h.d('attendanceDay').upsert).not.toHaveBeenCalled();
+    expect(h.audit.log).not.toHaveBeenCalled();
+  });
+
+  it('S23 clearConflictFlag still works on a paid month (flags do not change pay) and never asks the payroll tables', async () => {
+    const h = harness();
+    h.d('attendanceDay').findUnique.mockResolvedValue(dayRow({ userId: 'u5', clockIn: at(10, 1), flags: ['DEVICE_CONFLICT'] }));
+    h.d('attendanceDay').update.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => dayRow({ userId: 'u5', ...data }));
+    h.d('payrollLine').findFirst.mockResolvedValue(PAID);
+    await expect(h.service.clearConflictFlag(OWNER, 'd-u5')).resolves.toMatchObject({ flags: [] });
+    expect(h.d('payrollLine').findFirst).not.toHaveBeenCalled();
+  });
+
+  it('S24 an unpaid month is unchanged: correctDay and setDayKinds succeed, each user+period locked once', async () => {
+    const h = harness();
+    h.d('attendanceDay').findUnique.mockResolvedValue(dayRow({ userId: 'u5', clockIn: at(10, 1) }));
+    h.d('attendanceDay').update.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => dayRow({ userId: 'u5', ...data }));
+    await expect(h.service.correctDay(OWNER, 'd-u5', { clockOut: at(20, 0).toISOString(), reason: 'ลืมตอกออก มีลูกค้าทำสัญญา' })).resolves.toBeDefined();
+    expect(h.calls.filter((c) => c === 'lock')).toHaveLength(1);
+    h.d('attendanceDay').findUnique.mockResolvedValue(null);
+    await expect(h.service.setDayKinds(OWNER, { branchId: 'br1', entries: [{ userId: 'u1', date: '2026-10-29', dayKind: 'DAY_OFF' }] }, at(14, 0))).resolves.toEqual({ updated: 1 });
+  });
+
+  it('S25 month() and today() rows carry paidDocumentNumber for people with a POSTED payroll that month (null otherwise)', async () => {
+    const h = harness();
+    h.d('user').findMany.mockResolvedValue(users.slice(0, 2));
+    h.d('payrollLine').findMany.mockResolvedValue([{ userId: 'u1', payroll: { document: { number: 'PR-2026-0042' } } }]);
+    const month = await h.service.month(BM, 'br1', '2026-10', at(12, 0));
+    expect(month.rows.map((r: { userId: string; paidDocumentNumber: string | null }) => [r.userId, r.paidDocumentNumber])).toEqual([['u1', 'PR-2026-0042'], ['u2', null]]);
+    expect(h.d('payrollLine').findMany).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ userId: { in: ['u1', 'u2'] }, payroll: { payrollPeriod: '2026-10', document: { documentType: 'PAYROLL', status: 'POSTED', deletedAt: null } } }) }));
+    const today = await h.service.today(BM, 'br1', at(12, 0));
+    expect(today.rows.find((r) => r.userId === 'u1')?.paidDocumentNumber).toBe('PR-2026-0042');
+    expect(today.rows.find((r) => r.userId === 'u2')?.paidDocumentNumber).toBeNull();
   });
 });

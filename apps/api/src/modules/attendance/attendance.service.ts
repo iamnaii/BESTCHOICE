@@ -6,10 +6,25 @@ import { AuditService } from '../audit/audit.service';
 import { StorageService } from '../storage/storage.service';
 import { bangkokMidnight, daysInMonth } from '../../utils/date.util';
 import { AttendanceSettingsService } from './attendance-settings.service';
-import { computeDaySummary, dbDate, fromDbDate, summarizeAttendanceMonth, workDateOf, workDateString, type MonthSummary, type ScheduleRules } from './attendance-rules';
+import {
+  cellStatusOf,
+  computeDaySummary,
+  dbDate,
+  FLAG_DEVICE_UNAVAILABLE,
+  FLAG_MISSING_OUT,
+  fromDbDate,
+  summarizeAttendanceMonth,
+  todayStatusOf,
+  workDateOf,
+  workDateString,
+  type CellStatus,
+  type MonthSummary,
+  type ScheduleRules,
+  type TodayStatus,
+} from './attendance-rules';
 
-export type { MonthSummary };
-import { FLAG_MISSING_OUT } from './kiosk-punch.service';
+export type { CellStatus, MonthSummary, TodayStatus };
+export { FLAG_DEVICE_UNAVAILABLE };
 import { DEVICE_CONFLICT_FLAG } from './attendance-device.service';
 import type { CorrectDayDto, SetDayKindsDto } from './dto/attendance.dto';
 
@@ -22,12 +37,7 @@ import type { CorrectDayDto, SetDayKindsDto } from './dto/attendance.dto';
  */
 
 export type Actor = { id: string; role: string; branchId?: string | null };
-export type TodayStatus = 'ON_TIME' | 'LATE' | 'NOT_IN' | 'DAY_OFF' | 'LEAVE' | 'SHOP_CLOSED' | 'MISSING_OUT' | 'NO_PIN';
-export type CellStatus = TodayStatus | 'ABSENT' | 'UNAVAILABLE' | 'NONE';
-
 export const FLAG_CORRECTED = 'CORRECTED';
-export const FLAG_DEVICE_UNAVAILABLE = 'DEVICE_UNAVAILABLE';
-const LEAVE_KINDS: AttendanceDayKind[] = ['LEAVE_SICK', 'LEAVE_PERSONAL', 'LEAVE_OTHER'];
 const STAFF_ROLES = ['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES'];
 
 export interface TodayRow {
@@ -72,25 +82,6 @@ export function assertBranchScope(actor: Actor, branchId: string): void {
   if (actor.role === 'OWNER') return;
   if (actor.role === 'BRANCH_MANAGER' && actor.branchId && actor.branchId === branchId) return;
   throw new ForbiddenException('ดูได้เฉพาะสาขาของตัวเอง');
-}
-
-function todayStatusOf(day: Pick<AttendanceDay, 'dayKind' | 'clockIn' | 'lateMinutes' | 'flags'> | null | undefined): TodayStatus {
-  if (!day) return 'NOT_IN';
-  if (day.clockIn) {
-    if (day.flags.includes(FLAG_MISSING_OUT)) return 'MISSING_OUT';
-    return day.lateMinutes > 0 ? 'LATE' : 'ON_TIME';
-  }
-  if (day.dayKind === 'DAY_OFF') return 'DAY_OFF';
-  if (day.dayKind === 'SHOP_CLOSED') return 'SHOP_CLOSED';
-  if (LEAVE_KINDS.includes(day.dayKind)) return 'LEAVE';
-  return 'NOT_IN';
-}
-
-function cellStatusOf(day: AttendanceDay, today: Date): CellStatus {
-  const base = todayStatusOf(day);
-  if (base !== 'NOT_IN') return base;
-  if (day.flags.includes(FLAG_DEVICE_UNAVAILABLE)) return 'UNAVAILABLE';
-  return fromDbDate(day.workDate).getTime() < today.getTime() ? 'ABSENT' : 'NONE';
 }
 
 function parseMonth(month: string): { year: number; month0: number; from: Date; to: Date; days: string[] } {

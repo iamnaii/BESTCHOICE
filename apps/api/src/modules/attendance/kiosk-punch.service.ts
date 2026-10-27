@@ -7,7 +7,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
 import { bangkokCalendarParts } from '../../utils/date.util';
 import { AttendanceSettingsService } from './attendance-settings.service';
-import { computeDaySummary, dbDate, fromDbDate, workDateOf } from './attendance-rules';
+import { computeDaySummary, dbDate, FLAG_MISSING_OUT, fromDbDate, workDateOf } from './attendance-rules';
 
 /**
  * ตอกบัตร (ก้อน 10 D3 · สเปก §4.2 §5)
@@ -25,7 +25,7 @@ export const FLAG_NO_PHOTO = 'NO_PHOTO';
 export const FLAG_NETWORK_CHANGED = 'NETWORK_CHANGED';
 export const FLAG_OUT_UPDATED = 'OUT_UPDATED';
 export const FLAG_REOPENED = 'REOPENED';
-export const FLAG_MISSING_OUT = 'MISSING_OUT';
+export { FLAG_MISSING_OUT }; // ย้ายไป attendance-rules.ts (ใช้ร่วมกับสถานะช่อง)
 export const FLAG_LOCATION_CHANGED = 'LOCATION_CHANGED';
 /** ตอกเข้าภายใน 30 นาทีหลังเครื่องพักรับรหัส — สายอาจเพราะตอกไม่ได้ (รีวิว minor) */
 export const FLAG_AFTER_PIN_LOCKOUT = 'AFTER_PIN_LOCKOUT';

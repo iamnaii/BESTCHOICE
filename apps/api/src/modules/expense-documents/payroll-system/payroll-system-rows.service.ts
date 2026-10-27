@@ -4,7 +4,7 @@ import type { AttendanceDay } from '@prisma/client';
 import type { PrismaService } from '../../../prisma/prisma.service';
 import { bangkokMidnight } from '../../../utils/date.util';
 import { AttendanceSettingsService } from '../../attendance/attendance-settings.service';
-import { dbDate, fromDbDate, summarizeAttendanceMonth, workDateOf, workDateString, type ScheduleRules } from '../../attendance/attendance-rules';
+import { cellStatusOf, dbDate, fromDbDate, summarizeAttendanceMonth, workDateOf, workDateString, type ScheduleRules } from '../../attendance/attendance-rules';
 import { displayRate, isAutoOtEligible, monthPayHours, payrollCutoff, systemIncomeAmount, type PayDay } from './payroll-pay';
 import { resolveRoleCodes } from './role-codes';
 import {
@@ -32,15 +32,6 @@ function periodRange(period: string): { from: Date; to: Date } {
   const month = m ? Number(m[2]) : NaN;
   if (!m || month < 1 || month > 12) throw new BadRequestException('งวดเงินเดือนต้องเป็น YYYY-MM');
   return { from: dbDate(bangkokMidnight(year, month - 1, 1)), to: dbDate(bangkokMidnight(year, month, 1)) };
-}
-
-/** สถานะช่องเท่าที่ `summarizeAttendanceMonth` นับ (ABSENT / LEAVE) — ตรงกับ `cellStatusOf` ใน attendance.service.ts */
-function summaryStatus(d: DayRow, today: Date): string {
-  if (d.clockIn) return 'PRESENT';
-  if (d.dayKind.startsWith('LEAVE_')) return 'LEAVE';
-  if (d.dayKind !== 'WORK') return d.dayKind;
-  if (d.flags.includes('DEVICE_UNAVAILABLE')) return 'UNAVAILABLE';
-  return fromDbDate(d.workDate).getTime() < today.getTime() ? 'ABSENT' : 'NONE';
 }
 
 /**
@@ -146,7 +137,10 @@ export class PayrollSystemRowsService {
       const autoOtEligible = isAutoOtEligible(profile);
       const otherDocs = otherDocsByUser.get(userId) ?? [];
       const warnings: SystemWarning[] = [...otherDocs];
-      if (!autoOtEligible) warnings.push({ code: 'NOT_MONTHLY_OR_NO_BASE', otHours: hours.otHours.add(hours.holidayOtHours).toFixed(1) });
+      // R5: เตือนเฉพาะเมื่อมีชั่วโมงให้กรอกเอง (OT วันทำงาน + OT วันหยุด + ทำงานวันหยุด > 0) · payload คง OT วันทำงาน + OT วันหยุด
+      if (!autoOtEligible && hours.otHours.add(hours.holidayOtHours).add(hours.holidayHours).gt(0)) {
+        warnings.push({ code: 'NOT_MONTHLY_OR_NO_BASE', otHours: hours.otHours.add(hours.holidayOtHours).toFixed(1) });
+      }
       if (!hasPin.get(userId) && userDays.length === 0) warnings.push({ code: 'NO_PIN' });
       if (q.now.getTime() < cutoff.getTime()) warnings.push({ code: 'NOT_YET_CLOSABLE', closableAt: cutoff.toISOString() });
 
@@ -172,9 +166,9 @@ export class PayrollSystemRowsService {
         push('ATTENDANCE_HOLIDAY_OT', 'holidayOt', hours.holidayOtHours, codes[holidayRole]);
       }
 
-      // otHours ของสรุปหน้าลงเวลา (รวม OT ที่เก็บไว้ทุกวัน เป็น number) ถูกแทนด้วยชั่วโมงที่ใช้คิดเงินจริง (Decimal)
+      // สถานะช่องตัวเดียวกับหน้าลงเวลา · otHours ของสรุปนั้น (OT ที่เก็บไว้ทุกวัน เป็น number) ถูกแทนด้วยชั่วโมงที่ใช้คิดเงินจริง (Decimal)
       const month = summarizeAttendanceMonth(
-        userDays.map((d) => ({ status: summaryStatus(d, today), clockIn: d.clockIn, lateMinutes: d.lateMinutes, otHours: d.otHours })),
+        userDays.map((d) => ({ status: cellStatusOf(d, today), clockIn: d.clockIn, lateMinutes: d.lateMinutes, otHours: d.otHours })),
       );
       return {
         userId,

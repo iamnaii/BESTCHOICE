@@ -243,6 +243,21 @@ describe('PayrollSystemRowsService.compute (Postgres)', () => {
     expect(row.attendanceSummary).toMatchObject({ otHours: '1.5', holidayHours: '8.0', holidayOtHours: '2.0', autoOtEligible: false });
   });
 
+  it('(R5) ineligible with no OT and no holiday work → no NOT_MONTHLY_OR_NO_BASE; holiday work alone still warns (payload = weekday + holiday OT)', async () => {
+    const plain = await mkUser('r5-plain', { profile: { employmentType: 'DAILY', baseSalary: 15000 } });
+    const noRows = await mkUser('r5-norows', { profile: { employmentType: 'CONTRACT', baseSalary: 15000 } });
+    const holidayOnly = await mkUser('r5-holiday', { profile: { employmentType: 'DAILY', baseSalary: 15000 } });
+    await mkDay(plain, branch1.id, 1, { in: '10:00', out: '19:00' });
+    await mkDay(plain, branch1.id, 2, { in: '10:00', out: '19:10' }); // ไม่ถึง 15 นาที = ไม่มี OT
+    await mkDay(holidayOnly, branch1.id, 4, { kind: 'DAY_OFF', in: '10:00', out: '17:00' }); // ทำงานวันหยุด 6 ชม. · OT 0
+    const res = await service.compute(prisma as never, query([plain, noRows, holidayOnly]));
+    expect(res.rows[0].notes.warnings).toEqual([]);
+    expect(res.rows[1].notes.warnings).toEqual([]);
+    expect(res.rows[2].notes.warnings).toEqual([{ code: 'NOT_MONTHLY_OR_NO_BASE', otHours: '0.0' }]);
+    expect(res.rows[2].attendanceSummary).toMatchObject({ holidayHours: '6.0', holidayOtHours: '0.0', autoOtEligible: false });
+    for (const row of res.rows) expect(row.systemIncome).toEqual([]);
+  });
+
   it('(l) registry salary 0, null, or no profile → NOT_MONTHLY_OR_NO_BASE', async () => {
     const zero = await mkUser('l-zero', { profile: { employmentType: 'MONTHLY', baseSalary: 0 } });
     const none = await mkUser('l-null', { profile: { employmentType: 'MONTHLY', baseSalary: null } });

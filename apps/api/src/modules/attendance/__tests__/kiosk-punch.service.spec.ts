@@ -245,4 +245,30 @@ describe('KioskPunchService.punch', () => {
     h.d('attendanceDay').create.mockRejectedValueOnce(new Error('db down'));
     await expect(h.service.punch({ device: DEVICE, userId: 'u1', kind: 'IN' }, at(10, 0))).rejects.toThrow('db down');
   });
+
+  it('K17 OUT picked yesterday\'s open row from the pre-read, but a correction closed it (clockOut set) before the lock → 409 retry, nothing overwritten, photo deleted', async () => {
+    const h = harness();
+    const open = { id: 'day1', userId: 'u1', branchId: 'br1', workDate: DB, dayKind: 'WORK', clockIn: at(23, 50), clockOut: null, flags: [] as string[] };
+    h.d('attendanceDay').findUnique.mockResolvedValueOnce(null).mockResolvedValueOnce({ ...open, clockOut: at(23, 59) }); // วันนี้ไม่มีแถว · อ่านใหม่: แก้ OUT แล้ว
+    h.d('attendanceDay').findFirst.mockResolvedValueOnce(open);
+    await expect(h.service.punch({ device: DEVICE, userId: 'u1', kind: 'OUT', photo: { buffer: JPEG, mimeType: 'image/jpeg' } }, at(24, 20))).rejects.toThrow(ConflictException);
+    expect(h.d('attendanceDay').update).not.toHaveBeenCalled();
+    expect(h.storage.delete).toHaveBeenCalled();
+  });
+
+  it('K18 same, when today\'s row gained an IN between the pre-read and the lock → 409 retry', async () => {
+    const h = harness();
+    const open = { id: 'day1', userId: 'u1', branchId: 'br1', workDate: DB, dayKind: 'WORK', clockIn: at(23, 50), clockOut: null, flags: [] as string[] };
+    h.d('attendanceDay').findUnique.mockResolvedValueOnce(null).mockResolvedValueOnce(open).mockResolvedValueOnce({ clockIn: at(24, 10) });
+    h.d('attendanceDay').findFirst.mockResolvedValueOnce(open);
+    await expect(h.service.punch({ device: DEVICE, userId: 'u1', kind: 'OUT' }, at(24, 20))).rejects.toThrow(ConflictException);
+    expect(h.d('attendanceDay').update).not.toHaveBeenCalled();
+  });
+
+  it('K19 a P2002 raised after the day insert (in finalize) is not treated as the insert race: no ROLLBACK TO a released savepoint, the error propagates', async () => {
+    const h = harness();
+    const err = Object.assign(new Error('unique elsewhere'), { code: 'P2002' });
+    await expect(h.service.punch({ device: DEVICE, userId: 'u1', kind: 'IN' }, at(10, 0), async () => { throw err; })).rejects.toBe(err);
+    expect(h.exec).toHaveBeenCalledTimes(2); // SAVEPOINT · RELEASE (ไม่มี ROLLBACK TO)
+  });
 });

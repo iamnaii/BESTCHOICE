@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, Logger, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import * as Sentry from '@sentry/nestjs';
-import type { AttendanceDevice, AttendanceDeviceEventKind, Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
+import type { AttendanceDevice, AttendanceDeviceEventKind } from '@prisma/client';
 import { KioskBusyException } from './kiosk-errors';
 import { dbDate, workDateOf } from './attendance-rules';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -228,7 +229,7 @@ export class AttendanceDeviceService {
     const since = staleToken.usedAt ?? device.lastCleanHeartbeatAt ?? device.createdAt;
     const flaggedPairs: Array<{ userId: string; workDate: Date }> = [];
     await this.prisma.$transaction(async (tx) => {
-      // ลำดับล็อก: แถวเครื่อง → แถววัน (เหมือน tx ตอกบัตรของ kiosk-punch ที่ล็อกแถวเครื่องก่อน) ⇒ สองฝั่งไม่ deadlock
+      // ลำดับล็อก: แถวเครื่อง → แถววัน (เรียง user_id, work_date) — เหมือน tx ตอกบัตรของ kiosk-punch/setDayKinds ⇒ ไม่ deadlock
       await tx.attendanceDevice.update({ where: { id: device.id }, data: { status: 'LOCKED' } });
       await tx.attendanceDeviceEvent.create({
         data: {
@@ -251,6 +252,8 @@ export class AttendanceDeviceService {
           pairs.set(`${p.userId}:${workDate.toISOString()}`, { userId: p.userId, workDate });
         }
         flaggedPairs.push(...pairs.values());
+        // ล็อกแถววันที่จะติดธงเรียง (user_id, work_date) ก่อน — setDayKinds ล็อกลำดับเดียวกัน ⇒ ไม่ deadlock (40P01)
+        await tx.$queryRaw(Prisma.sql`SELECT id FROM attendance_days WHERE deleted_at IS NULL AND (clock_in_punch_id IN (${Prisma.join(ids)}) OR clock_out_punch_id IN (${Prisma.join(ids)}) OR (user_id, work_date) IN (${Prisma.join([...pairs.values()].map((p) => Prisma.sql`(${p.userId}, ${p.workDate}::date)`))})) ORDER BY user_id, work_date FOR UPDATE`);
         await tx.attendanceDay.updateMany({
           where: { OR: [{ clockInPunchId: { in: ids } }, { clockOutPunchId: { in: ids } }, ...pairs.values()], deletedAt: null, ...notFlagged },
           data: { flags: { push: DEVICE_CONFLICT_FLAG } },

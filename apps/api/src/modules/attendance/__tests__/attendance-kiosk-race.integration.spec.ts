@@ -4,13 +4,14 @@ import { AuditService } from '../../audit/audit.service';
 import { bangkokMidnight } from '../../../utils/date.util';
 import { AttendanceDeviceService } from '../attendance-device.service';
 import { AttendanceSettingsService } from '../attendance-settings.service';
+import { AttendanceService } from '../attendance.service';
 import { KioskPunchService } from '../kiosk-punch.service';
 import { dbDate } from '../attendance-rules';
 
 /**
  * ตอกบัตรแข่งกับการแก้ไขของเจ้าของ บน Postgres จริง สองคอนเนกชัน (รูปแบบเดียวกับ customer-phone-lock.race.db.spec.ts):
  * คอนเนกชัน "holder" ถือล็อกแถววัน (FOR UPDATE) → ปล่อยการตอก OUT ของตู้ → รอจนมันเข้าคิวรอล็อกใน pg_locks
- * (ยืนยันว่ามันอ่านแถวเก่าไปแล้วก่อนอัปโหลด/เข้า tx) → holder commit การแก้ไข (เข้า 10:00, CORRECTED) แล้วปล่อยล็อก
+ * (รอจนมีคำสั่งที่แตะ attendance_days ติดล็อกอยู่ — ไม่ผูกกับข้อความ SQL เฉพาะ ⇒ โค้ดเก่าก็เข้าคิวที่ UPDATE แล้วแดงที่ assert) → holder commit การแก้ไข (เข้า 10:00, CORRECTED) แล้วปล่อยล็อก
  * ⇒ ตู้ต้องอ่านแถวใหม่ใต้ล็อกและคงการแก้ไขไว้ (โค้ดเดิมทับด้วยค่าจากสำเนาที่อ่านก่อน tx: สาย 30 นาที · ไม่มี CORRECTED)
  * รัน: bash tools/test-db-vitest.sh src/modules/attendance/__tests__/attendance-kiosk-race.integration.spec.ts
  */
@@ -75,9 +76,9 @@ describe('ตอกบัตร vs การแก้ไข — สองคอ�
 
     // รอจนตู้เข้าคิวรอล็อกแถววันจริง (อ่านแถวเก่าไปแล้ว)
     await waitFor(async () => {
-      const rows = await monitorDb.$queryRaw<Array<{ n: bigint }>>`SELECT count(*) AS n FROM pg_stat_activity WHERE wait_event_type = 'Lock' AND query ILIKE '%FROM attendance_days WHERE id%FOR UPDATE%'`;
+      const rows = await monitorDb.$queryRaw<Array<{ n: bigint }>>`SELECT count(*) AS n FROM pg_stat_activity WHERE wait_event_type = 'Lock' AND query ILIKE '%attendance_days%'`;
       return Number(rows[0].n) > 0;
-    }, 'the kiosk punch to queue on the day-row lock');
+    }, 'the kiosk punch to queue on a lock over attendance_days');
     release();
     await holder;
     const res = await punch;
@@ -89,5 +90,36 @@ describe('ตอกบัตร vs การแก้ไข — สองคอ�
     expect(after.lateMinutes).toBe(0); // คำนวณจาก 10:00 ที่แก้แล้ว ไม่ใช่ 10:30 ของสำเนาเก่า
     expect(after.clockOut).toEqual(at(20, 0));
     expect(res.lateMinutes).toBe(0);
+  });
+
+  it('R2 setDayKinds on a key with no row: a kiosk-style clocked-in INSERT in flight wins the unique slot → setDayKinds is refused (clocked in) and the day keeps WORK', async () => {
+    const D2 = bangkokMidnight(2026, 10, 10);
+    const key = dbDate(D2);
+    let release!: () => void;
+    const released = new Promise<void>((r) => { release = r; });
+    let inserted!: () => void;
+    const hasSlot = new Promise<void>((r) => { inserted = r; });
+    // holder = ตู้ที่ INSERT แถว WORK ที่ตอกเข้าแล้วใน tx ที่ยังไม่ commit (ถือ unique slot ของคีย์นี้)
+    const holder = holderDb.$transaction(async (tx) => {
+      await tx.attendanceDay.create({ data: { userId: staffId, branchId, workDate: key, dayKind: 'WORK', clockIn: new Date(D2.getTime() + 10 * 3600_000) } });
+      inserted();
+      await released;
+    }, { timeout: 30_000, maxWait: 10_000 });
+    await hasSlot;
+
+    const svc = new AttendanceService(kioskDb as never, new AuditService(kioskDb as never), new AttendanceSettingsService(kioskDb as never), {} as never);
+    const call = svc.setDayKinds({ id: ownerId, role: 'OWNER' }, { branchId, entries: [{ userId: staffId, date: '2026-11-10', dayKind: 'DAY_OFF' }] }, at(8, 0)).then(() => 'resolved', (e) => e);
+    await waitFor(async () => {
+      const rows = await monitorDb.$queryRaw<Array<{ n: bigint }>>`SELECT count(*) AS n FROM pg_stat_activity WHERE wait_event_type = 'Lock' AND query ILIKE '%attendance_days%'`;
+      return Number(rows[0].n) > 0;
+    }, 'setDayKinds to queue behind the in-flight insert');
+    release();
+    await holder;
+    const outcome = await call;
+    expect(outcome).not.toBe('resolved');
+    expect((outcome as { getStatus(): number }).getStatus()).toBe(400);
+    const row = await holderDb.attendanceDay.findUniqueOrThrow({ where: { userId_workDate: { userId: staffId, workDate: key } } });
+    expect(row.dayKind).toBe('WORK');
+    expect(row.clockIn).not.toBeNull();
   });
 });

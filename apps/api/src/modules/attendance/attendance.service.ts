@@ -310,21 +310,21 @@ export class AttendanceService {
     await this.prisma.$transaction(async (tx) => {
       await lockAttendancePairs(tx, parsed);
       await assertNotPaid(tx, parsed);
-      // ล็อกแถวที่มีอยู่ (เรียง user, วัน) ก่อนตรวจ "ตอกเข้าแล้ว" — IN จากตู้ตอกบัตรที่ตามมาจะรอ แล้วอ่านประเภทวันใหม่ที่เรา commit
-      const keys = [...parsed].sort((a, b) => (a.userId < b.userId ? -1 : a.userId > b.userId ? 1 : a.workDate.getTime() - b.workDate.getTime()));
-      if (keys.length > 0) await tx.$queryRaw(Prisma.sql`SELECT id FROM attendance_days WHERE (user_id, work_date) IN (${Prisma.join(keys.map((e) => Prisma.sql`(${e.userId}, ${e.workDate}::date)`))}) ORDER BY user_id, work_date FOR UPDATE`);
-      // วันที่ตอกเข้าแล้ว: เปลี่ยนประเภทวันกระทบสาย/OT = เป็นการแก้ไขที่ต้องมีเหตุผลและประวัติ (สเปก §6 · รีวิวรอบ 2 C6) — ตรวจหลังล็อก
-      for (const e of parsed) {
-        const existing = await tx.attendanceDay.findUnique({ where: { userId_workDate: { userId: e.userId, workDate: e.workDate } }, select: { clockIn: true, deletedAt: true } });
+      // 1) ทุกคีย์ต้องมีแถวก่อน (placeholder) — คีย์ที่ยังไม่มีแถวล็อกด้วย FOR UPDATE ไม่ได้ · ถ้าตู้กำลัง INSERT คีย์เดียวกันอยู่ จะรอ unique index แล้วข้าม
+      //    ซ้ำคีย์ในคำขอเดียว = รายการหลังสุดชนะ (เหมือน upsert ทีละรายการเดิม)
+      const target = new Map(parsed.map((e) => [`${e.userId}:${e.workDate.toISOString()}`, e]));
+      const keys = [...target.values()].sort((a, b) => (a.userId < b.userId ? -1 : a.userId > b.userId ? 1 : a.workDate.getTime() - b.workDate.getTime()));
+      await tx.attendanceDay.createMany({ data: keys.map((e) => ({ userId: e.userId, branchId: dto.branchId, workDate: e.workDate, dayKind: e.dayKind })), skipDuplicates: true });
+      // 2) ล็อกแถวของทุกคีย์ (เรียง user, วัน) 3) ตรวจ "ตอกเข้าแล้ว" กับแถวที่ล็อกแล้ว (รวมแถวที่ตู้เพิ่งสร้าง) — ล้มแล้ว tx ถอย placeholder ทั้งหมด
+      await tx.$queryRaw(Prisma.sql`SELECT id FROM attendance_days WHERE (user_id, work_date) IN (${Prisma.join(keys.map((e) => Prisma.sql`(${e.userId}, ${e.workDate}::date)`))}) ORDER BY user_id, work_date FOR UPDATE`);
+      for (const e of keys) {
+        const existing = await tx.attendanceDay.findUnique({ where: { userId_workDate: { userId: e.userId, workDate: e.workDate } }, select: { clockIn: true, deletedAt: true, branchId: true } });
+        // วันที่ตอกเข้าแล้ว: เปลี่ยนประเภทวันกระทบสาย/OT = เป็นการแก้ไขที่ต้องมีเหตุผลและประวัติ (สเปก §6 · รีวิวรอบ 2 C6)
         if (existing?.clockIn && !existing.deletedAt) throw new BadRequestException(`วันที่ ${e.date} พนักงานตอกเข้าแล้ว — เปลี่ยนประเภทวันที่แท็บ วันนี้ › แก้ไข พร้อมเหตุผล`);
+        if (actor.role !== 'OWNER' && existing && existing.branchId !== dto.branchId) throw new ForbiddenException('วันนั้นพนักงานลงเวลาที่สาขาอื่น — ให้ผู้จัดการสาขานั้นหรือเจ้าของแก้');
       }
-      for (const e of parsed) {
-        await tx.attendanceDay.upsert({
-          where: { userId_workDate: { userId: e.userId, workDate: e.workDate } },
-          create: { userId: e.userId, branchId: dto.branchId, workDate: e.workDate, dayKind: e.dayKind },
-          update: { dayKind: e.dayKind },
-        });
-      }
+      // 4) แถวมีครบแล้ว ⇒ update (ไม่ใช้ upsert)
+      for (const e of keys) await tx.attendanceDay.update({ where: { userId_workDate: { userId: e.userId, workDate: e.workDate } }, data: { dayKind: e.dayKind } });
     });
     await this.audit.log({ userId: actor.id, action: 'ATTENDANCE_DAY_KINDS_SET', entity: 'attendance_day', entityId: dto.branchId, newValue: { branchId: dto.branchId, entries: dto.entries } });
     return { updated: parsed.length };
@@ -347,14 +347,15 @@ export class AttendanceService {
     if (actor.role !== 'OWNER') throw new ForbiddenException('เฉพาะเจ้าของปิดธงเครื่องถูกใช้ซ้อนได้');
     const day = await this.prisma.attendanceDay.findUnique({ where: { id: dayId } });
     if (!day || day.deletedAt) throw new NotFoundException('ไม่พบแถววันทำงาน');
-    // ล็อกแถว → อ่านใหม่ → เขียน ใน tx เดียว: ไม่ทับ CORRECTED/MISSING_OUT ที่เพิ่ง commit และไม่ลบธงใหม่ที่ lockForConflict เพิ่งดันเข้าไปหลังเจ้าของตรวจ
-    const updated = await this.prisma.$transaction(async (tx) => {
+    // ล็อกแถว → อ่านใหม่ → เขียน ใน tx เดียว: ไม่ทับ CORRECTED/MISSING_OUT ที่เพิ่ง commit
+    // ข้อจำกัดที่รู้: DEVICE_CONFLICT ที่ lockForConflict ดันเข้ามาหลังเจ้าของตรวจแล้วจะถูกล้างไปด้วย (ล้างธงนี้ลบเสมอ) — ต้องมี version token จึงแยกได้
+    const { updated, oldFlags } = await this.prisma.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT id FROM attendance_days WHERE id = ${day.id} FOR UPDATE`;
       const cur = await tx.attendanceDay.findUnique({ where: { id: day.id } });
       if (!cur || cur.deletedAt) throw new NotFoundException('ไม่พบแถววันทำงาน');
-      return tx.attendanceDay.update({ where: { id: cur.id }, data: { flags: cur.flags.filter((f) => f !== DEVICE_CONFLICT_FLAG) } });
+      return { updated: await tx.attendanceDay.update({ where: { id: cur.id }, data: { flags: cur.flags.filter((f) => f !== DEVICE_CONFLICT_FLAG) } }), oldFlags: cur.flags };
     });
-    await this.audit.log({ userId: actor.id, action: 'ATTENDANCE_CONFLICT_CLEARED', entity: 'attendance_day', entityId: day.id, oldValue: { flags: day.flags }, newValue: { flags: updated.flags } });
+    await this.audit.log({ userId: actor.id, action: 'ATTENDANCE_CONFLICT_CLEARED', entity: 'attendance_day', entityId: day.id, oldValue: { flags: oldFlags }, newValue: { flags: updated.flags } });
     return updated;
   }
 }

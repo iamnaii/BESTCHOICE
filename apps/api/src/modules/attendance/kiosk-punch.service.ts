@@ -142,24 +142,29 @@ export class KioskPunchService {
         if (day) {
           current = await this.lockDay(tx, { id: day.id });
           if (!current) throw new ConflictException('แถววันทำงานเปลี่ยนไประหว่างตอกบัตร — ลองอีกครั้ง');
+          if (kind === 'OUT') await this.assertStillOutTarget(tx, userId, current, now);
         }
         let planned = plan(current);
         if (!current) {
           // ยังไม่มีแถว: INSERT · ถ้าอีกฝั่งแทรกแถวก่อน (unique user+วัน) กลับไปแถวนั้นแล้วอัปเดตแทน — ไม่ให้เป็น 500
           const key = { userId, workDate: dbDate(planned.workDate) };
           await tx.$executeRaw`SAVEPOINT attendance_day_insert`;
+          let inserted = false;
           try {
             await tx.attendanceDay.create({ data: { userId, branchId: device.branchId, workDate: key.workDate, dayKind: planned.dayKind, clockIn: now, clockInPunchId: punch.id, clockOut: null, clockOutPunchId: null, ...this.computed(planned) } });
-            await tx.$executeRaw`RELEASE SAVEPOINT attendance_day_insert`;
-            const nextToken = finalize ? await finalize(tx, planned.result) : undefined;
-            return { ...planned.result, nextToken };
+            inserted = true;
           } catch (err) {
             if ((err as { code?: string }).code !== 'P2002') throw err;
             await tx.$executeRaw`ROLLBACK TO SAVEPOINT attendance_day_insert`;
-            current = await this.lockDay(tx, { key });
-            if (!current) throw new ConflictException('แถววันทำงานเปลี่ยนไประหว่างตอกบัตร — ลองอีกครั้ง');
-            planned = plan(current);
           }
+          if (inserted) {
+            await tx.$executeRaw`RELEASE SAVEPOINT attendance_day_insert`;
+            const nextToken = finalize ? await finalize(tx, planned.result) : undefined;
+            return { ...planned.result, nextToken };
+          }
+          current = await this.lockDay(tx, { key });
+          if (!current) throw new ConflictException('แถววันทำงานเปลี่ยนไประหว่างตอกบัตร — ลองอีกครั้ง');
+          planned = plan(current);
         }
         await this.updateDay(tx, { input, now, punchId: punch.id, current, planned });
         const nextToken = finalize ? await finalize(tx, planned.result) : undefined;
@@ -240,6 +245,20 @@ export class KioskPunchService {
     } catch (err) {
       this.logger.warn(`[attendance] could not delete photo ${key} after a failed punch: ${(err as Error).message}`);
       Sentry.captureException(err, { tags: { subsystem: 'attendance', action: 'photo-cleanup' }, extra: { key } });
+    }
+  }
+
+  /**
+   * OUT ที่ผูกแถวของ "เมื่อวาน" (เลือกจากข้อมูลก่อนล็อก) ต้องยังเป็นแถวเปิดค้างที่ถูกต้องเมื่อล็อกแล้ว — ใช้เงื่อนไขเดียวกับ findTargetDay:
+   * ยังไม่มี OUT · IN ไม่เกิน MAX_OPEN_SHIFT_HOURS · แถววันนี้ยังไม่มี IN · ไม่ใช่ ⇒ 409 ให้เครื่องลองใหม่ (เลือกแถวใหม่) แทนทับ OUT ที่แก้ไว้
+   */
+  private async assertStillOutTarget(tx: Prisma.TransactionClient, userId: string, current: AttendanceDay, now: Date): Promise<void> {
+    const today = dbDate(workDateOf(now));
+    if (current.workDate.getTime() === today.getTime()) return;
+    const earliestIn = now.getTime() - MAX_OPEN_SHIFT_HOURS * 3600_000;
+    const todayRow = await tx.attendanceDay.findUnique({ where: { userId_workDate: { userId, workDate: today } }, select: { clockIn: true } });
+    if (current.clockOut || !current.clockIn || current.clockIn.getTime() < earliestIn || todayRow?.clockIn) {
+      throw new ConflictException('แถววันทำงานเปลี่ยนไประหว่างตอกบัตร — ลองอีกครั้ง');
     }
   }
 

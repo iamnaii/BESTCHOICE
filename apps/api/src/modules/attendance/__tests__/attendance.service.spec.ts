@@ -134,16 +134,21 @@ describe('AttendanceService', () => {
     expect(h.d('attendanceDay').update).not.toHaveBeenCalled();
   });
 
-  it('S7 setDayKinds upserts per (user, date) without touching existing clock times', async () => {
+  it('S7 setDayKinds creates placeholders then updates per (user, date) without touching existing clock times', async () => {
     const h = harness();
     h.d('user').findMany.mockResolvedValue([{ id: 'u1', branchId: 'br1' }, { id: 'u3', branchId: 'br1' }]);
     await h.service.setDayKinds(BM, { branchId: 'br1', entries: [{ userId: 'u1', date: '2026-10-29', dayKind: 'DAY_OFF' }, { userId: 'u3', date: '2026-10-28', dayKind: 'LEAVE_SICK' }] }, at(14, 0));
-    expect(h.d('attendanceDay').upsert).toHaveBeenCalledWith({
-      where: { userId_workDate: { userId: 'u1', workDate: dbDate(bangkokMidnight(2026, 9, 29)) } },
-      create: { userId: 'u1', branchId: 'br1', workDate: dbDate(bangkokMidnight(2026, 9, 29)), dayKind: 'DAY_OFF' },
-      update: { dayKind: 'DAY_OFF' },
+    // placeholder แถวก่อน (skipDuplicates) แล้วค่อย update ทีละแถว — ไม่ใช้ upsert
+    expect(h.d('attendanceDay').createMany).toHaveBeenCalledWith({
+      data: [
+        { userId: 'u1', branchId: 'br1', workDate: dbDate(bangkokMidnight(2026, 9, 29)), dayKind: 'DAY_OFF' },
+        { userId: 'u3', branchId: 'br1', workDate: dbDate(bangkokMidnight(2026, 9, 28)), dayKind: 'LEAVE_SICK' },
+      ],
+      skipDuplicates: true,
     });
-    expect(h.d('attendanceDay').upsert).toHaveBeenCalledTimes(2);
+    expect(h.d('attendanceDay').update).toHaveBeenCalledWith({ where: { userId_workDate: { userId: 'u1', workDate: dbDate(bangkokMidnight(2026, 9, 29)) } }, data: { dayKind: 'DAY_OFF' } });
+    expect(h.d('attendanceDay').update).toHaveBeenCalledTimes(2);
+    expect(h.d('attendanceDay').upsert).not.toHaveBeenCalled();
     expect(h.audit.log).toHaveBeenCalledWith(expect.objectContaining({ action: 'ATTENDANCE_DAY_KINDS_SET', userId: 'bm1' }));
   });
 
@@ -194,11 +199,11 @@ describe('AttendanceService', () => {
     h.d('user').findMany.mockResolvedValue([{ id: 'u1', branchId: 'br1' }]);
     h.d('attendanceDay').findMany.mockResolvedValue([dayRow({ userId: 'u1', branchId: 'br2', workDate: dbDate(bangkokMidnight(2026, 9, 29)) })]);
     await expect(h.service.setDayKinds(BM, { branchId: 'br1', entries: [{ userId: 'u1', date: '2026-10-29', dayKind: 'DAY_OFF' }] }, at(14, 0))).rejects.toThrow(ForbiddenException);
-    expect(h.d('attendanceDay').upsert).not.toHaveBeenCalled();
+    expect(h.d('attendanceDay').update).not.toHaveBeenCalled();
     h.d('user').findMany.mockResolvedValue([{ id: 'u9', branchId: 'br2' }]);
     h.d('attendanceDay').findMany.mockResolvedValue([]);
     await h.service.setDayKinds(OWNER, { branchId: 'br1', entries: [{ userId: 'u9', date: '2026-10-29', dayKind: 'LEAVE_SICK' }] }, at(14, 0));
-    expect(h.d('attendanceDay').upsert).toHaveBeenCalledTimes(1);
+    expect(h.d('attendanceDay').update).toHaveBeenCalledTimes(1);
   });
 
   it('S13 setDayKinds refuses past dates for everyone — after-the-fact leave goes through the reasoned correction (spec §6) — with a message pointing at that dialog (รีวิว I2)', async () => {
@@ -207,10 +212,10 @@ describe('AttendanceService', () => {
     const err = await h.service.setDayKinds(OWNER, { branchId: 'br1', entries: [{ userId: 'u1', date: '2026-10-26', dayKind: 'LEAVE_SICK' }] }, at(14, 0)).catch((e) => e);
     expect(err).toBeInstanceOf(BadRequestException);
     expect(err.message).toContain('แก้ไข');
-    expect(h.d('attendanceDay').upsert).not.toHaveBeenCalled();
+    expect(h.d('attendanceDay').update).not.toHaveBeenCalled();
     // วันนี้ยังกำหนดได้
     await h.service.setDayKinds(OWNER, { branchId: 'br1', entries: [{ userId: 'u1', date: '2026-10-27', dayKind: 'LEAVE_SICK' }] }, at(14, 0));
-    expect(h.d('attendanceDay').upsert).toHaveBeenCalledTimes(1);
+    expect(h.d('attendanceDay').update).toHaveBeenCalledTimes(1);
   });
 
   it('S14 correctDay can clear a clock-in (null) together with the clock-out — the day becomes "not present" with punch links cleared; clearing IN while keeping OUT → 400 (รีวิว I9)', async () => {
@@ -256,7 +261,7 @@ describe('AttendanceService', () => {
     expect(err).toBeInstanceOf(BadRequestException);
     expect(err.message).toContain('แก้ไข');
     expect(h.d('attendanceDay').update).not.toHaveBeenCalled();
-    expect(h.d('attendanceDay').upsert).not.toHaveBeenCalled();
+    expect(h.d('attendanceDay').update).not.toHaveBeenCalled();
   });
   it('S19 month keeps staff who were deactivated or left during the month when they have rows in it — their OT/late/absent stay in the export (รีวิวรอบ 2 C8)', async () => {
     const h = harness();
@@ -304,7 +309,7 @@ describe('AttendanceService', () => {
     expect(err).toBeInstanceOf(ConflictException);
     expect(err.getResponse()).toMatchObject({ code: 'ATTENDANCE_PAID', documentNumber: 'PR-2026-0042' });
     expect(h.calls.filter((c) => c === 'lock')).toHaveLength(2);
-    expect(h.d('attendanceDay').upsert).not.toHaveBeenCalled();
+    expect(h.d('attendanceDay').update).not.toHaveBeenCalled();
     expect(h.audit.log).not.toHaveBeenCalled();
   });
 
@@ -373,7 +378,7 @@ describe('AttendanceService', () => {
     await expect(h.service.setDayKinds(OWNER, { branchId: 'br1', entries: [{ userId: 'u1', date: '2026-10-29', dayKind: 'DAY_OFF' }] }, at(14, 0))).rejects.toThrow(BadRequestException);
     expect(h.calls).toContain('lock');
     expect(h.d('attendanceDay').findUnique).toHaveBeenCalledTimes(1);
-    expect(h.d('attendanceDay').upsert).not.toHaveBeenCalled();
+    expect(h.d('attendanceDay').update).not.toHaveBeenCalled();
   });
 
   it('S29 setDayKinds row-locks the existing target rows in (user, date) order after the advisory locks and before the clocked-in check', async () => {
@@ -421,5 +426,33 @@ describe('AttendanceService', () => {
     await h.service.correctDay(OWNER, 'd-u5', { clockOut: at(20, 0).toISOString(), reason: 'ลืมตอกออก มีลูกค้าทำสัญญา' });
     expect(h.settings.getRules.mock.calls[0][0]).toBe('br2');
     expect(h.settings.getRules.mock.calls[0][1]).toBe(h.tx);
+  });
+
+  it('S33 setDayKinds: a clock-in seen on a locked row that did not exist when the request started (kiosk created it) → 400, the update never runs', async () => {
+    const h = harness();
+    h.d('user').findMany.mockResolvedValue([{ id: 'u1', branchId: 'br1' }]);
+    h.d('attendanceDay').findUnique.mockResolvedValue({ clockIn: at(10, 1), deletedAt: null, branchId: 'br1' });
+    await expect(h.service.setDayKinds(OWNER, { branchId: 'br1', entries: [{ userId: 'u1', date: '2026-10-29', dayKind: 'DAY_OFF' }] }, at(14, 0))).rejects.toThrow(BadRequestException);
+    const order = h.where.filter((w) => w.startsWith('tx:'));
+    expect(order.indexOf('tx:attendanceDay.createMany')).toBeLessThan(order.indexOf('tx:$queryRaw'));
+    expect(h.d('attendanceDay').update).not.toHaveBeenCalled();
+  });
+
+  it('S34 setDayKinds by a branch manager: a locked row that is now at another branch → 403 inside the tx', async () => {
+    const h = harness();
+    h.d('user').findMany.mockResolvedValue([{ id: 'u1', branchId: 'br1' }]);
+    h.d('attendanceDay').findUnique.mockResolvedValue({ clockIn: null, deletedAt: null, branchId: 'br2' });
+    await expect(h.service.setDayKinds(BM, { branchId: 'br1', entries: [{ userId: 'u1', date: '2026-10-29', dayKind: 'DAY_OFF' }] }, at(14, 0))).rejects.toThrow(ForbiddenException);
+    expect(h.d('attendanceDay').update).not.toHaveBeenCalled();
+  });
+
+  it('S35 clearConflictFlag audits the flags of the row re-read in the tx (oldValue), not the stale pre-read', async () => {
+    const h = harness();
+    h.d('attendanceDay').findUnique
+      .mockResolvedValueOnce(dayRow({ userId: 'u1', flags: ['DEVICE_CONFLICT'] }))
+      .mockResolvedValueOnce(dayRow({ userId: 'u1', flags: ['DEVICE_CONFLICT', 'CORRECTED'] }));
+    h.d('attendanceDay').update.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => dayRow({ userId: 'u1', ...data }));
+    await h.service.clearConflictFlag(OWNER, 'd-u1');
+    expect(h.audit.log).toHaveBeenCalledWith(expect.objectContaining({ oldValue: { flags: ['DEVICE_CONFLICT', 'CORRECTED'] }, newValue: { flags: ['CORRECTED'] } }));
   });
 });

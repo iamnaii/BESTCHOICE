@@ -218,6 +218,20 @@ describe('AttendanceDeviceService', () => {
     expect(h.calls.indexOf('todo.create')).toBeGreaterThan(h.calls.lastIndexOf('tx:end'));
   });
 
+  it('TD8c the conflict locks the day rows it will flag in (user_id, work_date) order before the atomic flag push', async () => {
+    const h = harness();
+    const fork = new Date('2026-10-27T00:30:00.000Z');
+    h.d('attendanceDeviceToken').findUnique.mockResolvedValue({ id: 't2', deviceId: 'dev1', generation: 2, usedAt: fork, device: DEVICE });
+    h.d('attendancePunch').findMany.mockResolvedValue([{ id: 'p1', userId: 'u1', at: new Date('2026-10-27T00:31:00.000Z') }]);
+    h.d('user').findFirst.mockResolvedValue({ id: 'sys' });
+    h.d('todo').findFirst.mockResolvedValue(null);
+    await h.service.authenticate({ deviceToken: 'raw-gen2', requestId: 'r-new' }, NOW).catch(() => undefined);
+    const lockCall = h.queryRaw.mock.calls.find((c) => String((c[0] as { sql?: string })?.sql ?? '').includes('attendance_days'));
+    expect(lockCall).toBeDefined();
+    expect((lockCall![0] as { sql: string }).sql).toContain('ORDER BY user_id, work_date FOR UPDATE');
+    expect(h.calls.indexOf('attendanceDay.updateMany')).toBeGreaterThan(-1);
+  });
+
   it('TD8b a conflict that flags a day in a month already paid adds the paid-month line with the payroll number to the owner Todo', async () => {
     const h = harness();
     const fork = new Date('2026-10-27T00:30:00.000Z');

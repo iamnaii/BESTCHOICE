@@ -17,6 +17,7 @@ import { VoidExpenseDocumentDto } from './dto/void-expense.dto';
 import { ExpenseDocumentQueryService } from './services/expense-document-query.service';
 import { ExpenseDocumentLifecycleService } from './services/expense-document-lifecycle.service';
 import { ExpenseDocumentCreateService } from './services/expense-document-create.service';
+import type { DocumentVersionOpts } from './document-version';
 
 @Injectable()
 export class ExpenseDocumentsService implements OnModuleInit {
@@ -307,14 +308,14 @@ export class ExpenseDocumentsService implements OnModuleInit {
   // The facade delegates so the public contract (controller + callers) is
   // unchanged. executePostBody is private to the lifecycle service (shared by
   // post + approve inside their own $transaction).
-  async post(id: string, _userId: string, userRole?: string) {
-    return this.lifecycle.post(id, _userId, userRole);
+  async post(id: string, _userId: string, userRole?: string, opts: DocumentVersionOpts = {}) {
+    return this.lifecycle.post(id, _userId, userRole, opts);
   }
 
   // ─── Approve (PENDING_APPROVAL → APPROVED → optionally POSTED) ────────
   // Phase 2b decompose — delegates to ExpenseDocumentLifecycleService.approve.
-  async approve(id: string, userId: string, userRole?: string) {
-    return this.lifecycle.approve(id, userId, userRole);
+  async approve(id: string, userId: string, userRole?: string, opts: DocumentVersionOpts = {}) {
+    return this.lifecycle.approve(id, userId, userRole, opts);
   }
 
   // ─── Void (any non-VOIDED → VOIDED) ──────────────────────────────────

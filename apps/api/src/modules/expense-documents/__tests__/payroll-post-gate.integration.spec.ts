@@ -160,6 +160,10 @@ const createDoc = (branchId: string, lines: unknown[]) =>
 
 const money = (v: Prisma.Decimal | string | number | null | undefined) => (v == null ? null : new Prisma.Decimal(v.toString()).toFixed(2));
 const statusOf = async (id: string) => (await prisma.expenseDocument.findUniqueOrThrow({ where: { id }, select: { status: true } })).status;
+/** R20 FX2 — `updatedAt` ของใบตามที่หน้ารายละเอียดวาด · อนุมัติ/ลงบัญชีใบ PAYROLL ต้องส่งกลับเป็น `expectedUpdatedAt` */
+const versionOf = async (id: string) => (await prisma.expenseDocument.findUniqueOrThrow({ where: { id }, select: { updatedAt: true } })).updatedAt.toISOString();
+const approveAsSeen = async (id: string, l: ExpenseDocumentLifecycleService = lifecycle) => l.approve(id, ownerId, 'OWNER', { expectedUpdatedAt: await versionOf(id) });
+const postAsSeen = async (id: string, l: ExpenseDocumentLifecycleService = lifecycle) => l.post(id, ownerId, undefined, { expectedUpdatedAt: await versionOf(id) });
 
 async function expectConflict(p: Promise<unknown>, body: Record<string, unknown>) {
   const err = await p.then(
@@ -360,7 +364,7 @@ describe('Payroll submit / approve / post gate (Postgres)', () => {
     expect((await storedRows(doc2.id))[0].income).toEqual(manualOnly);
 
     await otDay(late, b2, 21);
-    await expectConflict(lifecycle.approve(doc2.id, ownerId, 'OWNER'), {
+    await expectConflict(approveAsSeen(doc2.id), {
       code: 'PAYROLL_STALE',
       diffs: [{ userId: late, employeeName: 'พนักงาน late', label: OT_LABEL, stored: { amount: '0.00', hours: null }, current: { amount: '154.69', hours: '1.5' } }],
       message: STALE,
@@ -389,13 +393,13 @@ describe('Payroll submit / approve / post gate (Postgres)', () => {
       const doc = await createDoc(b, [{ userId: u, baseSalary: 16500 }]);
 
       setNow(BEFORE);
-      await expectConflict(lifecycle.post(doc.id, ownerId), { code: 'PAYROLL_CUTOFF', closableAt: CLOSABLE_AT, message: POST_CUTOFF });
+      await expectConflict(postAsSeen(doc.id), { code: 'PAYROLL_CUTOFF', closableAt: CLOSABLE_AT, message: POST_CUTOFF });
       const after = await prisma.expenseDocument.findUniqueOrThrow({ where: { id: doc.id } });
       expect(after.status).toBe('DRAFT');
       expect(after.journalEntryId).toBeNull();
 
       setNow(AFTER);
-      await lifecycle.post(doc.id, ownerId);
+      await postAsSeen(doc.id);
       const posted = await prisma.expenseDocument.findUniqueOrThrow({ where: { id: doc.id } });
       expect(posted.status).toBe('POSTED');
       const lines = await prisma.journalLine.findMany({ where: { journalEntryId: posted.journalEntryId! } });
@@ -417,7 +421,7 @@ describe('Payroll submit / approve / post gate (Postgres)', () => {
     setNow(AFTER);
     await lifecycle.submitForApproval(doc.id, ownerId);
     expect(await statusOf(doc.id)).toBe('PENDING_APPROVAL');
-    await expectConflict(lifecycle.approve(doc.id, ownerId, 'OWNER'), {
+    await expectConflict(approveAsSeen(doc.id), {
       code: 'PAYROLL_DEVICE_CONFLICT',
       days: [
         { dayId: d1.id, userId: u, employeeName: 'พนักงาน dc', date: '2026-10-15', branchId: b },
@@ -432,7 +436,7 @@ describe('Payroll submit / approve / post gate (Postgres)', () => {
 
     await attendance.clearConflictFlag({ id: ownerId, role: 'OWNER', branchId: null }, d1.id);
     await attendance.clearConflictFlag({ id: ownerId, role: 'OWNER', branchId: null }, d2.id);
-    await lifecycle.approve(doc.id, ownerId, 'OWNER');
+    await approveAsSeen(doc.id);
     expect(await statusOf(doc.id)).toBe('POSTED');
   });
 
@@ -447,7 +451,7 @@ describe('Payroll submit / approve / post gate (Postgres)', () => {
     await lifecycle.submitForApproval(doc.id, ownerId);
 
     await attendance.correctDay({ id: bm, role: 'BRANCH_MANAGER', branchId: b }, corrected.id, { clockOut: atDay(3, '21:30').toISOString(), reason: 'ลืมตอกออก แก้ตามกล้องวงจรปิด' } as never);
-    await expectConflict(lifecycle.approve(doc.id, ownerId, 'OWNER'), {
+    await expectConflict(approveAsSeen(doc.id), {
       code: 'PAYROLL_STALE',
       diffs: [{ userId: u, employeeName: 'พนักงาน stale', label: OT_LABEL, stored: { amount: '154.69', hours: '1.5' }, current: { amount: '257.81', hours: '2.5' } }],
       message: STALE,
@@ -468,7 +472,7 @@ describe('Payroll submit / approve / post gate (Postgres)', () => {
 
     await prisma.employeeProfile.update({ where: { userId: raised }, data: { baseSalary: 18000 } });
     await prisma.employeeProfile.update({ where: { userId: toDaily }, data: { employmentType: 'DAILY' } });
-    await expectConflict(lifecycle.approve(doc.id, ownerId, 'OWNER'), {
+    await expectConflict(approveAsSeen(doc.id), {
       code: 'PAYROLL_STALE',
       diffs: [
         { userId: raised, employeeName: 'พนักงาน raised', label: OT_LABEL, stored: { amount: '154.69', hours: '1.5' }, current: { amount: '168.75', hours: '1.5' } },
@@ -501,7 +505,7 @@ describe('Payroll submit / approve / post gate (Postgres)', () => {
     await lifecycle.submitForApproval(doc.id, ownerId);
     expect((await storedRows(doc.id))[0].income).toEqual([{ source: 'ATTENDANCE_OT', accountCode: 'S52-1202', name: OT_LABEL, amount: '670.31', quantity: '6.5' }]);
 
-    await lifecycle.approve(doc.id, ownerId, 'OWNER');
+    await approveAsSeen(doc.id);
     const posted = await prisma.expenseDocument.findUniqueOrThrow({ where: { id: doc.id } });
     expect(posted.status).toBe('POSTED');
     const lines = await prisma.journalLine.findMany({ where: { journalEntryId: posted.journalEntryId! } });
@@ -521,7 +525,7 @@ describe('Payroll submit / approve / post gate (Postgres)', () => {
       setNow(AFTER);
       await lifecycle.submitForApproval(doc.id, ownerId);
 
-      await expectConflict(lifecycle.approve(doc.id, ownerId, 'OWNER'), {
+      await expectConflict(approveAsSeen(doc.id), {
         code: 'PAYROLL_DEVICE_CONFLICT',
         days: [{ dayId: flagged.id, userId: u, employeeName: 'พนักงาน manual-post', date: '2026-10-06', branchId: b }],
         message: 'อนุมัติไม่ได้ — มีวันที่ติดธง เครื่องถูกใช้ซ้อน 1 วัน (พนักงาน manual-post · 6 ต.ค.) ให้เจ้าของตรวจที่เมนู ลงเวลา แล้วกด "ตรวจแล้ว ล้างธง"',
@@ -529,14 +533,14 @@ describe('Payroll submit / approve / post gate (Postgres)', () => {
       expect(await statusOf(doc.id)).toBe('PENDING_APPROVAL');
 
       await attendance.clearConflictFlag({ id: ownerId, role: 'OWNER', branchId: null }, flagged.id);
-      await lifecycle.approve(doc.id, ownerId, 'OWNER');
+      await approveAsSeen(doc.id);
       const approved = await prisma.expenseDocument.findUniqueOrThrow({ where: { id: doc.id } });
       expect(approved.status).toBe('APPROVED');
       expect(approved.approvedById).toBe(ownerId);
       expect(approved.journalEntryId).toBeNull();
 
       await attendance.correctDay({ id: bm, role: 'BRANCH_MANAGER', branchId: b }, otRow.id, { clockOut: atDay(5, '21:30').toISOString(), reason: 'ลืมตอกออก แก้ตามกล้องวงจรปิด' } as never);
-      await expectConflict(lifecycle.post(doc.id, ownerId), {
+      await expectConflict(postAsSeen(doc.id), {
         code: 'PAYROLL_STALE',
         diffs: [{ userId: u, employeeName: 'พนักงาน manual-post', label: OT_LABEL, stored: { amount: '154.69', hours: '1.5' }, current: { amount: '257.81', hours: '2.5' } }],
         message: STALE,
@@ -565,7 +569,7 @@ describe('Payroll submit / approve / post gate (Postgres)', () => {
     await lifecycle.submitForApproval(first.id, ownerId);
     await lifecycle.submitForApproval(second.id, ownerId);
     const otherDoc = (number: string) => ({ code: 'PAYROLL_OTHER_DOC', documentNumber: number, message: `OT ของ พนักงาน two เดือนนี้อยู่ในใบ ${number} แล้ว — เอาออกจากใบใดใบหนึ่งก่อน` });
-    await expectConflict(lifecycle.approve(second.id, ownerId, 'OWNER'), otherDoc(first.number));
+    await expectConflict(approveAsSeen(second.id), otherDoc(first.number));
 
     // ใบที่สามถือแถวลงเวลาของคนเดียวกันด้วย (ข้อมูลที่ไม่ได้มาจากทางบันทึก) — ด่านบอก "ใบอื่น" ไม่ใช่ "ยอดเปลี่ยน"
     const third = await prisma.expenseDocument.create({
@@ -601,12 +605,12 @@ describe('Payroll submit / approve / post gate (Postgres)', () => {
         },
       },
     });
-    await expectConflict(lifecycle.approve(first.id, ownerId, 'OWNER'), otherDoc(third.number));
+    await expectConflict(approveAsSeen(first.id), otherDoc(third.number));
 
     await prisma.expenseDocument.update({ where: { id: third.id }, data: { status: 'VOIDED' } });
-    await lifecycle.approve(first.id, ownerId, 'OWNER');
+    await approveAsSeen(first.id);
     expect(await statusOf(first.id)).toBe('POSTED');
-    await expectConflict(lifecycle.approve(second.id, ownerId, 'OWNER'), otherDoc(first.number));
+    await expectConflict(approveAsSeen(second.id), otherDoc(first.number));
     expect(await statusOf(second.id)).toBe('PENDING_APPROVAL');
   });
 
@@ -680,6 +684,82 @@ describe('Payroll submit / approve / post gate (Postgres)', () => {
     expect(await statusOf(doc.id)).toBe('PENDING_APPROVAL'); // ไม่ถูกส่งกลับเป็นร่าง
   });
 
+  it('R20 FX2: the approver loads a PENDING_APPROVAL payroll → the maker presses แก้ไข, edits and re-submits → approve with the version the approver saw = 409 DOCUMENT_CHANGED (stays PENDING_APPROVAL, no JE) · with the fresh version it posts the new figures', async () => {
+    const changed = { code: 'DOCUMENT_CHANGED', message: 'ใบนี้ถูกแก้ไขหลังจากที่คุณเปิดดู — โหลดหน้านี้ใหม่ ตรวจยอดอีกครั้ง แล้วกด อนุมัติและลงบัญชี' };
+    const rendered = async (id: string) => ((await query.findOne(id, 'OWNER', null)) as unknown as { updatedAt: Date }).updatedAt.toISOString();
+    const at = (iso: string) => new Date(iso).getTime();
+    setNow(SAVED);
+    const b = await mkBranch('version');
+    const u = await mkUser('version', b);
+    await otDay(u, b, 8);
+    const doc = await createDoc(b, [{ userId: u, baseSalary: 16500 }]);
+    setNow(AFTER);
+    await lifecycle.submitForApproval(doc.id, ownerId);
+    const seen = await rendered(doc.id); // หน้าของผู้อนุมัติวาดฉบับนี้ (GET /expense-documents/:id)
+
+    // ผู้ทำเงินเดือนกด แก้ไข (PATCH ส่งกลับเป็นร่าง) เพิ่มโบนัส แล้วส่งใหม่ — ด่านใบเงินเดือนแยกไม่ออกเพราะการแก้เขียนแถวที่เก็บใหม่หมด
+    await creator.updatePayroll(
+      doc.id,
+      { documentDate: '2026-10-31', payrollPeriod: PERIOD, entityScope: 'SHOP', depositAccountCode: 'S11-1202', paymentMethod: 'BANK_TRANSFER', lines: [{ userId: u, baseSalary: 16500, customIncome: [{ accountCode: 'S52-1204', name: 'โบนัส', amount: 2000 }] }] } as never,
+      OWNER(),
+    );
+    const afterPatch = await versionOf(doc.id);
+    expect(await statusOf(doc.id)).toBe('DRAFT');
+    expect(at(afterPatch)).toBeGreaterThan(at(seen)); // PATCH ขยับ updatedAt
+    await lifecycle.submitForApproval(doc.id, ownerId);
+    const afterResubmit = await versionOf(doc.id);
+    expect(await statusOf(doc.id)).toBe('PENDING_APPROVAL');
+    expect(at(afterResubmit)).toBeGreaterThan(at(afterPatch)); // ตอนส่ง (คิดใหม่ + เปลี่ยนสถานะ) ขยับอีก
+
+    await expectConflict(lifecycle.approve(doc.id, ownerId, 'OWNER', { expectedUpdatedAt: seen }), changed);
+    await expectConflict(lifecycle.approve(doc.id, ownerId, 'OWNER'), changed); // ไม่ส่งฉบับมาเลย = ปฏิเสธเหมือนกัน
+    const held = await prisma.expenseDocument.findUniqueOrThrow({ where: { id: doc.id } });
+    expect(held.status).toBe('PENDING_APPROVAL');
+    expect(held.approvedById).toBeNull();
+    expect(held.journalEntryId).toBeNull();
+    expect(await prisma.auditLog.count({ where: { action: 'APPROVED', entityId: doc.id } })).toBe(0);
+
+    const fresh = await rendered(doc.id);
+    expect(fresh).toBe(afterResubmit);
+    await lifecycle.approve(doc.id, ownerId, 'OWNER', { expectedUpdatedAt: fresh });
+    const posted = await prisma.expenseDocument.findUniqueOrThrow({ where: { id: doc.id } });
+    expect(posted.status).toBe('POSTED');
+    const lines = await prisma.journalLine.findMany({ where: { journalEntryId: posted.journalEntryId! } });
+    expect(money(lines.find((l) => l.accountCode === 'S52-1204')?.debit)).toBe('2000.00');
+    expect(money(lines.find((l) => l.accountCode === 'S52-1202')?.debit)).toBe('154.69');
+  });
+
+  it('R20 FX2: auto-post off — the APPROVED flip moves updatedAt, so post() with the pre-approval version = 409 DOCUMENT_CHANGED (บันทึกและลงบัญชี, no JE) · with the APPROVED version it posts', async () => {
+    setNow(SAVED);
+    await setConfig('auto_post_on_approve', 'false');
+    try {
+      const b = await mkBranch('version-post');
+      const u = await mkUser('version-post', b);
+      await otDay(u, b, 9);
+      const doc = await createDoc(b, [{ userId: u, baseSalary: 16500 }]);
+      setNow(AFTER);
+      await lifecycle.submitForApproval(doc.id, ownerId);
+      const pending = await versionOf(doc.id);
+      await lifecycle.approve(doc.id, ownerId, 'OWNER', { expectedUpdatedAt: pending });
+      const approved = await versionOf(doc.id);
+      expect(await statusOf(doc.id)).toBe('APPROVED');
+      expect(new Date(approved).getTime()).toBeGreaterThan(new Date(pending).getTime());
+
+      await expectConflict(lifecycle.post(doc.id, ownerId, undefined, { expectedUpdatedAt: pending }), {
+        code: 'DOCUMENT_CHANGED',
+        message: 'ใบนี้ถูกแก้ไขหลังจากที่คุณเปิดดู — โหลดหน้านี้ใหม่ ตรวจยอดอีกครั้ง แล้วกด บันทึกและลงบัญชี',
+      });
+      const still = await prisma.expenseDocument.findUniqueOrThrow({ where: { id: doc.id } });
+      expect(still.status).toBe('APPROVED');
+      expect(still.journalEntryId).toBeNull();
+
+      await lifecycle.post(doc.id, ownerId, undefined, { expectedUpdatedAt: approved });
+      expect(await statusOf(doc.id)).toBe('POSTED');
+    } finally {
+      await setConfig('auto_post_on_approve', null);
+    }
+  });
+
   it('fail closed: without the gate / save path wired, submit, approve and post of a payroll with linked lines throw · a free-text payroll still flows', async () => {
     setNow(SAVED);
     const b = await mkBranch('unwired');
@@ -694,11 +774,11 @@ describe('Payroll submit / approve / post gate (Postgres)', () => {
     await expect(bare.submitForApproval(doc.id, ownerId)).rejects.toThrow('PayrollSystemRowsService not wired');
     await expect(gateOnly.submitForApproval(doc.id, ownerId)).rejects.toThrow('PayrollSystemRowsService not wired');
     await prisma.expenseDocument.update({ where: { id: doc.id }, data: { status: 'PENDING_APPROVAL' } });
-    await expect(bare.approve(doc.id, ownerId, 'OWNER')).rejects.toThrow('PayrollSystemRowsService not wired');
+    await expect(approveAsSeen(doc.id, bare)).rejects.toThrow('PayrollSystemRowsService not wired');
     await setConfig('approval_enabled', 'false');
     try {
       await prisma.expenseDocument.update({ where: { id: doc.id }, data: { status: 'DRAFT' } });
-      await expect(bare.post(doc.id, ownerId)).rejects.toThrow('PayrollSystemRowsService not wired');
+      await expect(postAsSeen(doc.id, bare)).rejects.toThrow('PayrollSystemRowsService not wired');
       expect(await statusOf(doc.id)).toBe('DRAFT');
     } finally {
       await setConfig('approval_enabled', 'true');

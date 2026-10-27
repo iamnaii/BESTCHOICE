@@ -1,5 +1,5 @@
 import { Test } from '@nestjs/testing';
-import { INestApplication } from '@nestjs/common';
+import { BadRequestException, INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { configureApp } from '../../../app.setup';
 import { PrismaService } from '../../../prisma/prisma.service';
@@ -32,7 +32,9 @@ describe('Payroll gate 409s over HTTP', () => {
   let app: INestApplication;
   const gate = { assertPostable: jest.fn(), assertSubmittable: jest.fn(), inspect: jest.fn() };
   const creator = { updatePayrollInTx: jest.fn() };
-  const doc = { id: DOC_ID, status: 'PENDING_APPROVAL', documentType: 'PAYROLL', branchId: 'br1', deletedAt: null, createdById: 'maker-1' };
+  // R20 FX2 — ฉบับที่หน้าเว็บวาด (`updatedAt`) ส่งกลับมาตอนอนุมัติ/ลงบัญชีเป็น `expectedUpdatedAt`
+  const SEEN = '2026-11-02T03:15:20.123Z';
+  const doc = { id: DOC_ID, status: 'PENDING_APPROVAL', documentType: 'PAYROLL', branchId: 'br1', deletedAt: null, createdById: 'maker-1', updatedAt: new Date(SEEN) };
   const tx = {
     $executeRawUnsafe: jest.fn().mockResolvedValue(1),
     user: { findFirst: jest.fn().mockResolvedValue({ id: OWNER.id, name: 'เจ้าของ', role: 'OWNER', branchId: null }) },
@@ -69,7 +71,8 @@ describe('Payroll gate 409s over HTTP', () => {
         {
           provide: ExpenseDocumentsService,
           useValue: {
-            approve: (id: string, userId: string, role?: string) => lifecycle.approve(id, userId, role),
+            approve: (id: string, userId: string, role?: string, opts?: { expectedUpdatedAt?: string }) => lifecycle.approve(id, userId, role, opts),
+            post: (id: string, userId: string, role?: string, opts?: { expectedUpdatedAt?: string }) => lifecycle.post(id, userId, role, opts),
             submitForApproval: (id: string, userId: string) => lifecycle.submitForApproval(id, userId),
           },
         },
@@ -96,7 +99,7 @@ describe('Payroll gate 409s over HTTP', () => {
 
   it('H1 approve with the gate refusing as stale → 409 JSON keeps code + diffs (the web draws the diff table) · status never flipped', async () => {
     gate.assertPostable.mockRejectedValueOnce(payrollGateConflict.stale(diffs));
-    const res = await request(app.getHttpServer()).post(`/api/expense-documents/${DOC_ID}/approve`).expect(409);
+    const res = await request(app.getHttpServer()).post(`/api/expense-documents/${DOC_ID}/approve`).send({ expectedUpdatedAt: SEEN }).expect(409);
     expect(res.body).toMatchObject({
       statusCode: 409,
       code: 'PAYROLL_STALE',
@@ -110,7 +113,7 @@ describe('Payroll gate 409s over HTTP', () => {
   it('H2 approve with the gate refusing a device-conflict day → 409 JSON keeps code + days', async () => {
     const days = [{ dayId: 'day-1', userId: 'u1', employeeName: 'พนักงาน นุ๊ก', date: '2026-10-15', branchId: 'b1' }];
     gate.assertPostable.mockRejectedValueOnce(payrollGateConflict.deviceConflict(days));
-    const res = await request(app.getHttpServer()).post(`/api/expense-documents/${DOC_ID}/approve`).expect(409);
+    const res = await request(app.getHttpServer()).post(`/api/expense-documents/${DOC_ID}/approve`).send({ expectedUpdatedAt: SEEN }).expect(409);
     expect(res.body).toMatchObject({
       code: 'PAYROLL_DEVICE_CONFLICT',
       days,
@@ -128,6 +131,40 @@ describe('Payroll gate 409s over HTTP', () => {
       message: 'ส่งขออนุมัติได้ตั้งแต่ 1 พ.ย. 2569 18:00 — รอให้ข้อมูลลงเวลาของเดือนนี้ครบก่อน ระหว่างนี้บันทึกร่างไว้ได้',
     });
     expect(creator.updatePayrollInTx).not.toHaveBeenCalled();
+    expect(tx.expenseDocument.update).not.toHaveBeenCalled();
+  });
+
+  const CHANGED_APPROVE = 'ใบนี้ถูกแก้ไขหลังจากที่คุณเปิดดู — โหลดหน้านี้ใหม่ ตรวจยอดอีกครั้ง แล้วกด อนุมัติและลงบัญชี';
+  const CHANGED_POST = 'ใบนี้ถูกแก้ไขหลังจากที่คุณเปิดดู — โหลดหน้านี้ใหม่ ตรวจยอดอีกครั้ง แล้วกด บันทึกและลงบัญชี';
+
+  it('H4 approve with the version the page rendered before an edit + re-submit → 409 JSON keeps code DOCUMENT_CHANGED · gate never runs, status never flipped', async () => {
+    tx.expenseDocument.findUniqueOrThrow.mockResolvedValue({ ...doc, updatedAt: new Date('2026-11-02T03:16:01.456Z') });
+    const res = await request(app.getHttpServer()).post(`/api/expense-documents/${DOC_ID}/approve`).send({ expectedUpdatedAt: SEEN }).expect(409);
+    expect(res.body).toMatchObject({ statusCode: 409, code: 'DOCUMENT_CHANGED', message: CHANGED_APPROVE });
+    expect(gate.assertPostable).not.toHaveBeenCalled();
+    expect(tx.expenseDocument.update).not.toHaveBeenCalled();
+  });
+
+  it('H5 approve / post of a PAYROLL without expectedUpdatedAt → 409 DOCUMENT_CHANGED · a malformed one → 400 (Thai DTO message)', async () => {
+    const approve = await request(app.getHttpServer()).post(`/api/expense-documents/${DOC_ID}/approve`).expect(409);
+    expect(approve.body).toMatchObject({ code: 'DOCUMENT_CHANGED', message: CHANGED_APPROVE });
+    tx.expenseDocument.findUniqueOrThrow.mockResolvedValue({ ...doc, status: 'APPROVED' });
+    const post = await request(app.getHttpServer()).post(`/api/expense-documents/${DOC_ID}/post`).send({}).expect(409);
+    expect(post.body).toMatchObject({ code: 'DOCUMENT_CHANGED', message: CHANGED_POST });
+    const bad = await request(app.getHttpServer()).post(`/api/expense-documents/${DOC_ID}/post`).send({ expectedUpdatedAt: 'yesterday' }).expect(400);
+    expect(JSON.stringify(bad.body)).toContain('expectedUpdatedAt');
+    expect(gate.assertPostable).not.toHaveBeenCalled();
+  });
+
+  it('H6 submit-for-approval whose refresh now finds attendance rows under a typed OT row → 400 JSON keeps code MANUAL_OT_DUPLICATE (not a 500) · status never flipped', async () => {
+    const draft = { ...doc, status: 'DRAFT' };
+    tx.expenseDocument.findUniqueOrThrow
+      .mockResolvedValueOnce(draft)
+      .mockResolvedValueOnce({ ...draft, documentDate: new Date('2026-10-31T00:00:00.000Z'), depositAccountCode: 'S11-1202', description: null, paymentMethod: 'BANK_TRANSFER', reference: null, note: null, payroll: { payrollPeriod: '2026-10', entityScope: 'SHOP', lines: [] } });
+    const message = 'พนักงาน นุ๊ก มีแถว OT ที่กรอกเองซ้ำกับ OT จากระบบลงเวลา — ลบแถวนั้น หรือติ๊ก "รายการปรับปรุงงวดก่อน" ถ้าเป็นการแก้ OT ของเดือนก่อน';
+    creator.updatePayrollInTx.mockRejectedValueOnce(new BadRequestException({ code: 'MANUAL_OT_DUPLICATE', message }));
+    const res = await request(app.getHttpServer()).post(`/api/expense-documents/${DOC_ID}/submit-for-approval`).expect(400);
+    expect(res.body).toMatchObject({ statusCode: 400, code: 'MANUAL_OT_DUPLICATE', message });
     expect(tx.expenseDocument.update).not.toHaveBeenCalled();
   });
 });

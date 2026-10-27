@@ -332,6 +332,8 @@ export function ExpenseFormV4({ branchId, onClose, onSaved, initialDocType, edit
     mutationFn: async ({ andPost }: { andPost: boolean; stay?: boolean }) => {
       if (andPost && !maySubmit) throw new Error("ไม่มีสิทธิ์บันทึกและ ลงบัญชี รายจ่าย");
       let createdId: string | null = null;
+      // R20 — ฉบับที่เพิ่งบันทึก (ใบเงินเดือน) — ลงบัญชีต่อทันทีต้องส่งกลับเป็น expectedUpdatedAt
+      let savedVersion: string | undefined;
 
       if (state.docType === 'EXPENSE_SAMEDAY' || state.docType === 'EXPENSE_ACCRUAL') {
         const payload = {
@@ -414,12 +416,14 @@ export function ExpenseFormV4({ branchId, onClose, onSaved, initialDocType, edit
             payrollPayload,
           );
           createdId = data.id;
+          savedVersion = data.updatedAt;
         } else {
           const { data } = await api.post('/expense-documents/payroll', {
             branchId: state.branchId,
             ...payrollPayload,
           });
           createdId = data.id;
+          savedVersion = data.updatedAt;
         }
       } else if (state.docType === 'VENDOR_SETTLEMENT') {
         // B2 — forward adjustments + amountPaid when the user has reconciled
@@ -524,6 +528,8 @@ export function ExpenseFormV4({ branchId, onClose, onSaved, initialDocType, edit
           if (requiresApproval) {
             await api.post(`/expense-documents/${createdId}/submit-for-approval`);
             submittedForApproval = true;
+          } else if (savedVersion) {
+            await api.post(`/expense-documents/${createdId}/post`, { expectedUpdatedAt: savedVersion });
           } else {
             await api.post(`/expense-documents/${createdId}/post`);
           }

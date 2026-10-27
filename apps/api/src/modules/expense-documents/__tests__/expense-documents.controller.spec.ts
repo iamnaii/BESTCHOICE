@@ -25,6 +25,7 @@ describe('ExpenseDocumentsController', () => {
       getAuditTrail: jest.fn().mockResolvedValue([]),
       update: jest.fn().mockResolvedValue({ id: 'doc-1' }),
       post: jest.fn().mockResolvedValue({ entryNo: 'JE-1' }),
+      approve: jest.fn().mockResolvedValue({ id: 'doc-1' }),
       voidDocument: jest.fn().mockResolvedValue({ id: 'doc-1' }),
       softDelete: jest.fn().mockResolvedValue({ id: 'doc-1' }),
       createCreditNote: jest.fn().mockResolvedValue({ id: 'cn-1', number: 'CN-20260510-0001' }),
@@ -126,8 +127,16 @@ describe('ExpenseDocumentsController', () => {
     // D1.3.2.3 — controller now forwards user.role as 3rd arg for defense-in-depth
     // role check inside service.post(). Tests pass `{ id: 'user-1' }` without
     // .role so the 3rd arg is `undefined` (service skips the check in that case).
-    await controller.post('doc-1', { id: 'user-1' } as never);
-    expect(service.post).toHaveBeenCalledWith('doc-1', 'user-1', undefined);
+    await controller.post('doc-1', {}, { id: 'user-1' } as never);
+    expect(service.post).toHaveBeenCalledWith('doc-1', 'user-1', undefined, { expectedUpdatedAt: undefined });
+  });
+
+  it('R20: POST /:id/post and /:id/approve forward expectedUpdatedAt (the version the page rendered)', async () => {
+    const seen = '2026-11-02T03:15:20.123Z';
+    await controller.post('doc-1', { expectedUpdatedAt: seen }, { id: 'user-1', role: 'OWNER' } as never);
+    expect(service.post).toHaveBeenCalledWith('doc-1', 'user-1', 'OWNER', { expectedUpdatedAt: seen });
+    await controller.approve('doc-1', { expectedUpdatedAt: seen }, { id: 'user-1', role: 'OWNER' } as never);
+    expect(service.approve).toHaveBeenCalledWith('doc-1', 'user-1', 'OWNER', { expectedUpdatedAt: seen });
   });
 
   it('POST /:id/void fires voidDocument with dto', async () => {

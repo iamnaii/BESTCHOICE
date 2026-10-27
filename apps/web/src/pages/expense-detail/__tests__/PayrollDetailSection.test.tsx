@@ -38,6 +38,9 @@ const DEVICE_CONFLICT =
 const STALE =
   'ยังไม่ได้ลงบัญชี — ข้อมูลลงเวลาเปลี่ยนหลังบันทึกใบ ให้ผู้ทำเงินเดือนกด "แก้ไข" แล้วบันทึกใบอีกครั้ง (ระบบคิดยอดใหม่ให้) ตรวจยอด แล้วส่งขออนุมัติอีกครั้ง';
 const CLOSABLE_AT = '2026-11-01T11:00:00.000Z';
+/** R20 FX2 — `updatedAt` ของใบที่หน้าวาด · ส่งกลับตอนอนุมัติ/ลงบัญชี */
+const RENDERED_AT = '2026-11-02T03:15:20.123Z';
+const DOCUMENT_CHANGED = 'ใบนี้ถูกแก้ไขหลังจากที่คุณเปิดดู — โหลดหน้านี้ใหม่ ตรวจยอดอีกครั้ง แล้วกด อนุมัติและลงบัญชี';
 
 const income = (over: Record<string, unknown>) => ({
   isTaxable: true,
@@ -113,6 +116,7 @@ function payrollDoc(status: string, payrollGate: Gate = { closableAt: null, devi
     expenseDetail: null,
     payroll: { payrollPeriod: '2026-10', entityScope: 'SHOP', lines: [LINE_SOMSRI, LINE_WICHAI] },
     payrollGate,
+    updatedAt: RENDERED_AT,
   };
 }
 
@@ -365,6 +369,41 @@ describe('409 from approve / post', () => {
     apiPost.mockRejectedValue(conflict({ code: 'PAYROLL_OTHER_DOC', documentNumber: 'PR-20261030-0002', message }));
     await userEvent.click(await screen.findByRole('button', { name: /อนุมัติและลงบัญชี/ }));
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith(message));
+  });
+
+  it('R20 FX2: approve sends the version the page rendered (expectedUpdatedAt = doc.updatedAt)', async () => {
+    mount(payrollDoc('PENDING_APPROVAL'));
+    apiPost.mockResolvedValue({ data: {} });
+    await userEvent.click(await screen.findByRole('button', { name: /อนุมัติและลงบัญชี/ }));
+    await waitFor(() => expect(apiPost).toHaveBeenCalledWith('/expense-documents/pr-1/approve', { expectedUpdatedAt: RENDERED_AT }));
+  });
+
+  it('R20 FX2: บันทึกและลงบัญชี on an APPROVED payroll sends the version the page rendered', async () => {
+    mount(payrollDoc('APPROVED'));
+    apiPost.mockResolvedValue({ data: {} });
+    await userEvent.click(await screen.findByRole('button', { name: /บันทึกและลงบัญชี/ }));
+    await waitFor(() => expect(apiPost).toHaveBeenCalledWith('/expense-documents/pr-1/post', { expectedUpdatedAt: RENDERED_AT }));
+  });
+
+  it('R20 FX2: 409 DOCUMENT_CHANGED shows the server message and reloads the document; the next approve sends the reloaded version', async () => {
+    mount(payrollDoc('PENDING_APPROVAL'));
+    const spy = vi.spyOn(queryClient, 'invalidateQueries');
+    apiPost.mockRejectedValueOnce(conflict({ code: 'DOCUMENT_CHANGED', message: DOCUMENT_CHANGED }));
+    const approve = await screen.findByRole('button', { name: /อนุมัติและลงบัญชี/ });
+    const fetchesBefore = docFetches();
+    // ผู้ทำเงินเดือนแก้แล้วส่งใหม่ระหว่างที่หน้านี้เปิดค้าง — ใบที่โหลดใหม่เป็นฉบับใหม่
+    const reloadedAt = '2026-11-02T03:16:01.456Z';
+    currentDoc = { ...payrollDoc('PENDING_APPROVAL'), updatedAt: reloadedAt, totalAmount: '34209.38' };
+    await userEvent.click(approve);
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith(DOCUMENT_CHANGED));
+    await waitFor(() => expect(docFetches()).toBeGreaterThan(fetchesBefore));
+    const keys = spy.mock.calls.map(([f]) => JSON.stringify((f as { queryKey: unknown[] }).queryKey));
+    expect(keys).toEqual(expect.arrayContaining([JSON.stringify(['expense-document', 'pr-1']), JSON.stringify(['expenses'])]));
+    expect(toast.success).not.toHaveBeenCalled();
+
+    apiPost.mockResolvedValueOnce({ data: {} });
+    await userEvent.click(await screen.findByRole('button', { name: /อนุมัติและลงบัญชี/ }));
+    await waitFor(() => expect(apiPost).toHaveBeenLastCalledWith('/expense-documents/pr-1/approve', { expectedUpdatedAt: reloadedAt }));
   });
 
   it('a successful approve refreshes the detail, the list and the edit form caches', async () => {

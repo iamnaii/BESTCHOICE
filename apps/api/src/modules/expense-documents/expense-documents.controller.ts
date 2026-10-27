@@ -27,6 +27,7 @@ import { CreatePayrollDto, UpdatePayrollDto } from './dto/create-payroll.dto';
 import { CreateSettlementDto } from './dto/create-settlement.dto';
 import { CreatePettyCashDto } from './dto/create-petty-cash.dto';
 import { VoidExpenseDocumentDto } from './dto/void-expense.dto';
+import { ExpenseDocumentVersionDto } from './dto/document-version.dto';
 import { hasCrossBranchAccess } from '../auth/branch-access.util';
 
 @Controller('expense-documents')
@@ -284,8 +285,13 @@ export class ExpenseDocumentsController {
    */
   @Post(':id/post')
   @Roles('OWNER', 'FINANCE_MANAGER', 'BRANCH_MANAGER', 'ACCOUNTANT')
-  post(@Param('id') id: string, @CurrentUser() user: { id: string; role: string }) {
-    return this.service.post(id, user.id, user.role);
+  post(
+    @Param('id') id: string,
+    // R20 — `expectedUpdatedAt` = ฉบับที่หน้าวาด (PAYROLL บังคับ · อื่นเทียบเมื่อส่งมา) — ดู document-version.ts
+    @Body() dto: ExpenseDocumentVersionDto,
+    @CurrentUser() user: { id: string; role: string },
+  ) {
+    return this.service.post(id, user.id, user.role, { expectedUpdatedAt: dto?.expectedUpdatedAt });
   }
 
   /**
@@ -305,9 +311,11 @@ export class ExpenseDocumentsController {
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
   approve(
     @Param('id') id: string,
+    // R20 — ฉบับที่ผู้อนุมัติเห็น (PAYROLL บังคับ · อื่นเทียบเมื่อส่งมา) — ดู document-version.ts
+    @Body() dto: ExpenseDocumentVersionDto,
     @CurrentUser() user: { id: string; role?: string },
   ) {
-    return this.service.approve(id, user.id, user.role);
+    return this.service.approve(id, user.id, user.role, { expectedUpdatedAt: dto?.expectedUpdatedAt });
   }
 
   /** Per-user EXPENSE_CANCEL and the actual document branch are checked in the service. */

@@ -21,6 +21,7 @@ import { useUiFlags } from '@/hooks/useUiFlags';
 import { formatNumberDecimal } from '@/utils/formatters';
 import { formatThaiDateShort } from '@/lib/date';
 import { invalidateExpenseDoc } from '@/lib/expense-document-cache';
+import { documentChangedMessage, documentVersionBody } from '@/lib/document-version';
 import { payrollConflictOf, type PayrollConflict } from '@/components/expense-form-v4/payroll-system/payroll-status';
 import {
   PayrollBankCsvButton,
@@ -78,6 +79,8 @@ interface ExpenseDocument {
   branch?: { id: string; name: string } | null;
   createdBy?: { id: string; name: string } | null;
   expenseDetail?: { lines: ExpenseLine[] } | null;
+  /** R20 — ฉบับที่หน้านี้วาด · ส่งกลับตอนอนุมัติ/ลงบัญชี (`expectedUpdatedAt`) */
+  updatedAt?: string;
   /** Payroll D4 — บรรทัดเงินเดือน + ด่านส่ง/อนุมัติ/ลงบัญชี (เฉพาะ PAYROLL) */
   payroll?: PayrollDetailDoc['payroll'];
   payrollGate?: PayrollDetailDoc['payrollGate'];
@@ -178,6 +181,15 @@ export default function ExpenseDetailPage() {
     invalidate();
   };
   const onActionError = (fallback: string) => (err: unknown) => {
+    // R20 — ใบถูกแก้หลังจากหน้านี้วาด (เช่น ผู้ทำเงินเดือนกด แก้ไข แล้วส่งใหม่): แสดงข้อความของ server + โหลดใบใหม่
+    // (ยอดใหม่ขึ้นบนหน้า ผู้กดตรวจแล้วกดอีกครั้งด้วยฉบับใหม่) · แจ้งเตือนยอดเปลี่ยนเดิมไม่ใช่ของฉบับนี้แล้ว
+    const changed = documentChangedMessage(err);
+    if (changed !== null) {
+      setStaleConflict(null);
+      invalidate();
+      toast.error(changed || fallback);
+      return;
+    }
     const conflict = payrollConflictOf(err);
     // ด่านใบเงินเดือนอาจเปลี่ยนไปแล้ว (ถึงเวลาปิดงวด · ติดธงเพิ่ม) — โหลดใบใหม่ให้แบนเนอร์ตรงกับ server
     if (conflict) invalidate();
@@ -189,7 +201,8 @@ export default function ExpenseDetailPage() {
   };
 
   const postMutation = useMutation({
-    mutationFn: () => api.post(`/expense-documents/${id}/post`, {}),
+    // R20 — ส่งฉบับที่หน้าวาด (ใบเงินเดือนบังคับ · เอกสารอื่น server เทียบเมื่อส่งมา)
+    mutationFn: () => api.post(`/expense-documents/${id}/post`, documentVersionBody(docQuery.data)),
     onSuccess: onActionSuccess('บันทึกบัญชีเรียบร้อย'),
     onError: onActionError('บันทึกบัญชีไม่สำเร็จ'),
   });
@@ -201,7 +214,7 @@ export default function ExpenseDetailPage() {
   });
 
   const approveMutation = useMutation({
-    mutationFn: () => api.post(`/expense-documents/${id}/approve`, {}),
+    mutationFn: () => api.post(`/expense-documents/${id}/approve`, documentVersionBody(docQuery.data)),
     onSuccess: onActionSuccess('อนุมัติเรียบร้อย'),
     onError: onActionError('อนุมัติไม่สำเร็จ'),
   });

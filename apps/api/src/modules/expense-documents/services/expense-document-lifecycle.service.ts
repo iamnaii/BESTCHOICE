@@ -31,6 +31,7 @@ import { VoidExpenseDocumentDto } from '../dto/void-expense.dto';
 import { ExpenseDocumentCreateService } from './expense-document-create.service';
 import { PayrollPostGateService, hasLinkedPayrollLines } from '../payroll-system/payroll-post-gate.service';
 import { storedPayrollUpdateDto } from '../payroll-system/payroll-save';
+import { assertDocumentVersion, type DocumentVersionOpts } from '../document-version';
 
 /** ส่ง/อนุมัติ/ลงบัญชีใบเงินเดือนที่มีพนักงานผูก โดยไม่ได้ต่อด่าน = ปฏิเสธ (ไม่ปล่อยผ่าน) */
 const PAYROLL_NOT_WIRED = 'PayrollSystemRowsService not wired';
@@ -278,7 +279,7 @@ export class ExpenseDocumentLifecycleService {
   // D1.2.1.6 — also accepts APPROVED → POSTED (when approval_enabled is on
   // AND auto_post_on_approve is false, OWNER manually calls post() on an
   // APPROVED doc; assertCanPost permits both DRAFT + APPROVED).
-  async post(id: string, _userId: string, _userRole?: string) {
+  async post(id: string, _userId: string, _userRole?: string, opts: DocumentVersionOpts = {}) {
     return this.prisma.$transaction(async (tx) => {
       const { user: actor } = await assertAccountingPermission(tx, _userId, 'EXPENSE_POST');
       // Per-doc advisory lock — serializes concurrent post calls on the same id.
@@ -290,6 +291,8 @@ export class ExpenseDocumentLifecycleService {
       const doc = await tx.expenseDocument.findUniqueOrThrow({ where: { id } });
       if (doc.deletedAt) throw new NotFoundException('เอกสารถูกลบแล้ว');
       assertAccountingBranch(actor, doc.branchId);
+      // R20 — ฉบับที่ผู้กดเห็น (ใต้ล็อก post: ก่อนด่านใบเงินเดือน) · PAYROLL บังคับ เอกสารอื่นเทียบเมื่อส่งมา
+      assertDocumentVersion(doc, opts.expectedUpdatedAt, 'post');
 
       // D1.2.1.2 — approval gate (threshold OR doctype filter).
       //
@@ -620,7 +623,7 @@ export class ExpenseDocumentLifecycleService {
   //
   // userId is captured for audit logs (APPROVED + AUTO_POSTED actions written
   // inside the same tx). Signature parity with post() / voidDocument().
-  async approve(id: string, userId: string, _userRole?: string) {
+  async approve(id: string, userId: string, _userRole?: string, opts: DocumentVersionOpts = {}) {
     return this.prisma.$transaction(async (tx) => {
       // Re-use the `post:` lock key — approve always either becomes the JE
       // post (auto path) or precedes a future post(), so serializing on the
@@ -642,6 +645,9 @@ export class ExpenseDocumentLifecycleService {
       })) {
         throw new ForbiddenException(SELF_APPROVAL_DENIED_MESSAGE);
       }
+      // R20 — ฉบับที่ผู้อนุมัติเห็น (ใต้ล็อก post: ก่อนตรวจสถานะและด่านใบเงินเดือน) — ใบที่ถูกกด แก้ไข แล้วส่งใหม่
+      // ระหว่างที่หน้าผู้อนุมัติเปิดค้างได้ 409 DOCUMENT_CHANGED แทนการลงบัญชีฉบับที่ไม่มีใครเห็น
+      assertDocumentVersion(doc, opts.expectedUpdatedAt, 'approve');
       this.transition.assertCanApprove({ from: doc.status });
 
       // Payroll D4 — ด่านใบเงินเดือนก่อนเปลี่ยนเป็น APPROVED เสมอ (ไม่ว่า auto_post_on_approve จะเปิดหรือปิด)

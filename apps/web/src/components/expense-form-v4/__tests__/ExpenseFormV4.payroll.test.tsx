@@ -391,6 +391,18 @@ describe('ExpenseFormV4 payroll — typed income rows', () => {
   });
 });
 
+describe('ExpenseFormV4 payroll — R20 FX2 (post needs the version that was saved)', () => {
+  it('approval off: บันทึกและลงบัญชี posts the saved payroll with expectedUpdatedAt from the save response', async () => {
+    const user = userEvent.setup();
+    const savedAt = '2026-11-02T03:15:20.123Z';
+    apiPatch.mockImplementationOnce(() => Promise.resolve({ data: { id: 'doc-1', updatedAt: savedAt } }));
+    mount({ editDocId: 'doc-1' });
+    await screen.findByRole('button', { name: 'สมศรี มีสุข' });
+    await user.click(screen.getByRole('button', { name: 'บันทึกและลงบัญชี' }));
+    await waitFor(() => expect(apiPost).toHaveBeenCalledWith('/expense-documents/doc-1/post', { expectedUpdatedAt: savedAt }));
+  });
+});
+
 describe('ExpenseFormV4 payroll — save and submit before the cutoff', () => {
   it('shows the SUBMIT_CUTOFF message and keeps the saved draft open in edit mode', async () => {
     flags.approvalEnabled = true;

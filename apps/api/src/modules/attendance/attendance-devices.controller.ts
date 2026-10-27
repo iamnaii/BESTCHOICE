@@ -7,7 +7,7 @@ import { AttendanceDeviceService } from './attendance-device.service';
 import { AttendanceSettingsService } from './attendance-settings.service';
 import { IssueRegistrationCodeDto, UpdateAttendanceSettingsDto } from './dto/attendance.dto';
 
-/** ตั้งค่า › สาขา › เครื่องตอกบัตร + เวลางาน (OWNER เท่านั้น · สเปก §4.1 §7 ข้อ 3 §8) */
+/** ตั้งค่า › บริษัท & สาขา › เครื่องตอกบัตร + เวลางาน (OWNER เท่านั้น · สเปก §4.1 §7 ข้อ 3 §8) */
 @Controller('attendance')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class AttendanceDevicesController {

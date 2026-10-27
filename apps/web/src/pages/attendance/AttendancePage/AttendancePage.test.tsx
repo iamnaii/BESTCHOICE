@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import AttendancePage from './index';
 
 /**
- * ก้อน 10 D3 Task 9 — บุคลากร › ลงเวลา (mockup บอร์ด 3–4): วันนี้ (kpi + สถานะไอคอน+คำ) · รายเดือน (ตารางคน × วัน + สรุป + Excel) ·
+ * ก้อน 10 D3 Task 9 — เมนู ลงเวลา (mockup บอร์ด 3–4): วันนี้ (kpi + สถานะไอคอน+คำ) · รายเดือน (ตารางคน × วัน + สรุป + Excel) ·
  * ตารางหยุด/ลา (กดสลับ → บันทึก) · แก้ไขรายวันพร้อมเหตุผล · ผจก.เห็นสาขาตัวเองเท่านั้น
  */
 const apiMock = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), put: vi.fn(), patch: vi.fn(), delete: vi.fn() }));
@@ -141,5 +141,28 @@ describe('AttendancePage', () => {
     expect(screen.queryByLabelText(/^สาขา$/)).not.toBeInTheDocument();
     const own = screen.getByText('เอกชัย ร.').closest('tr')!;
     expect(within(own).queryByRole('button', { name: /แก้ไข/ })).not.toBeInTheDocument();
+  });
+  it('A7 owner clears the DEVICE_CONFLICT flag from the correction dialog (POST clear-conflict)', async () => {
+    const conflicted = { ...TODAY, rows: TODAY.rows.map((r) => (r.userId === 'u1' ? { ...r, flags: ['DEVICE_CONFLICT'] } : r)) };
+    apiMock.get.mockImplementation(async (path: string) => ({ data: path === '/branches' ? BRANCHES : path === '/attendance/today' ? conflicted : null }));
+    apiMock.post.mockResolvedValue({ data: { id: 'd-u1' } });
+    wrap();
+    await screen.findByText('วรรณา ส.');
+    fireEvent.click(within(screen.getByText('วรรณา ส.').closest('tr')!).getByRole('button', { name: /แก้ไข/ }));
+    const dialog = await screen.findByRole('dialog');
+    fireEvent.click(within(dialog).getByRole('button', { name: /ตรวจแล้ว ล้างธง/ }));
+    await waitFor(() => expect(apiMock.post).toHaveBeenCalledWith('/attendance/days/d-u1/clear-conflict'));
+  });
+
+  it('A8 a branch manager editing a conflict-flagged row sees the notice but no clear button', async () => {
+    authMock.user = { id: 'u2', role: 'BRANCH_MANAGER', branchId: 'br2' };
+    const conflicted = { ...TODAY, rows: TODAY.rows.map((r) => (r.userId === 'u1' ? { ...r, flags: ['DEVICE_CONFLICT'] } : r)) };
+    apiMock.get.mockImplementation(async (path: string) => ({ data: path === '/attendance/today' ? conflicted : null }));
+    wrap();
+    await screen.findByText('วรรณา ส.');
+    fireEvent.click(within(screen.getByText('วรรณา ส.').closest('tr')!).getByRole('button', { name: /แก้ไข/ }));
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByText(/เจ้าของต้องตรวจ/)).toBeInTheDocument();
+    expect(within(dialog).queryByRole('button', { name: /ตรวจแล้ว ล้างธง/ })).not.toBeInTheDocument();
   });
 });

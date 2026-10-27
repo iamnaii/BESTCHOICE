@@ -126,6 +126,7 @@ const ContractVerifyPage = lazy(() => import('@/pages/ContractVerifyPage'));
 const LiffPayment = lazy(() => import('@/pages/liff/LiffPayment'));
 const KioskPage = lazy(() => import('@/pages/kiosk/KioskPage'));
 const AttendancePage = lazy(() => import('@/pages/attendance/AttendancePage'));
+const MyTimePage = lazy(() => import('@/pages/attendance/MyTimePage'));
 const LiffContract = lazy(() => import('@/pages/liff/LiffContract'));
 const LiffRegister = lazy(() => import('@/pages/liff/LiffRegister'));
 const LiffHistory = lazy(() => import('@/pages/liff/LiffHistory'));
@@ -524,6 +525,8 @@ function App() {
           <Route path="/imported-sales" element={<ImportedSalesPage />} />
           <Route path="/todos" element={<TodosPage />} />
           <Route path="/attendance" element={<ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER']}><AttendancePage /></ProtectedRoute>} />
+          {/* เวลาทำงานของฉัน (ก้อน 10 D3) — ทุก role อ่านของตัวเอง (API GET /attendance/me) */}
+          <Route path="/attendance/me" element={<ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES']}><MyTimePage /></ProtectedRoute>} />
           {/* เส้นทางเดียว (roomId เป็น optional segment) — สองเส้นทางแยกทำให้หน้าถูก mount ใหม่ทุกครั้งที่เปิดห้อง:
               ตัวกรอง/มุมมอง/ฟองส่งไม่สำเร็จหาย และ socket ต่อใหม่ทุกคลิก */}
           <Route path="/inbox/:roomId?" element={<ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES']}><UnifiedInboxPage /></ProtectedRoute>} />

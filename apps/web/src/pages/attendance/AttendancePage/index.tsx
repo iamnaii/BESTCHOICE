@@ -13,7 +13,7 @@ import CorrectDayDialog, { type CorrectTarget } from './components/CorrectDayDia
 import { todayBangkok, weekStart } from '../attendance.util';
 
 /**
- * บุคลากร › ลงเวลา (ก้อน 10 D3 · mockup บอร์ด 3–4) — OWNER ทุกสาขา (เลือกสาขา) · ผจก.สาขาเฉพาะสาขาตัวเอง
+ * เมนู ลงเวลา (ก้อน 10 D3 · mockup บอร์ด 3–4) — OWNER ทุกสาขา (เลือกสาขา) · ผจก.สาขาเฉพาะสาขาตัวเอง
  * แท็บ: วันนี้ (kpi + รายการ + แก้ไข) · รายเดือน (ตารางคน × วัน + สรุป + Excel) · ตารางหยุด/ลา รายสัปดาห์
  */
 type Tab = 'today' | 'month' | 'schedule';
@@ -77,7 +77,7 @@ export default function AttendancePage() {
         <ScheduleTab branchId={branchId} weekStart={week} onWeekChange={setWeek} actorId={user?.id ?? ''} isOwner={isOwner} />
       )}
 
-      <CorrectDayDialog target={target} onClose={() => setTarget(null)} />
+      <CorrectDayDialog target={target} isOwner={isOwner} onClose={() => setTarget(null)} />
     </div>
   );
 }

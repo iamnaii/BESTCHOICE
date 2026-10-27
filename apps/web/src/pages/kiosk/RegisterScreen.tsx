@@ -19,7 +19,7 @@ export default function RegisterScreen({ onRegister, error, busy }: Props) {
         <div className="flex size-11 items-center justify-center rounded-xl bg-primary/10 text-primary"><Building2 className="size-5" aria-hidden="true" /></div>
         <div>
           <h1 className="text-xl font-bold leading-snug">ผูกเครื่องนี้กับสาขา</h1>
-          <p className="text-sm text-muted-foreground leading-snug">ขอรหัสลงทะเบียนจากเจ้าของ (ตั้งค่า › สาขา › เครื่องตอกบัตร) ใช้ได้ 10 นาที ครั้งเดียว</p>
+          <p className="text-sm text-muted-foreground leading-snug">ขอรหัสลงทะเบียนจากเจ้าของ (ตั้งค่า › บริษัท & สาขา › เครื่องตอกบัตร) ใช้ได้ 10 นาที ครั้งเดียว</p>
         </div>
       </div>
       <form

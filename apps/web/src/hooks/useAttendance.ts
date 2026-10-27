@@ -164,6 +164,24 @@ export function useAttendanceDevices() {
   });
 }
 
+export type AttendanceDeviceEventKind = 'REGISTERED' | 'TOKEN_CONFLICT' | 'PIN_LOCKOUT' | 'REVOKED' | 'UNLOCKED' | 'OFFLINE';
+
+export interface AttendanceDeviceEvent {
+  id: string;
+  kind: AttendanceDeviceEventKind;
+  ip: string | null;
+  userAgent: string | null;
+  createdAt: string;
+}
+
+export function useAttendanceDeviceEvents(deviceId: string | null) {
+  return useQuery<AttendanceDeviceEvent[]>({
+    queryKey: [...ATTENDANCE_KEY, 'devices', deviceId, 'events'],
+    queryFn: async () => (await api.get(`/attendance/devices/${deviceId}/events`)).data,
+    enabled: !!deviceId,
+  });
+}
+
 export function useAttendanceSettings() {
   return useQuery<AttendanceSettings>({
     queryKey: [...ATTENDANCE_KEY, 'settings'],

@@ -9,7 +9,7 @@ import { BranchDayQueryDto, BranchMonthQueryDto, CorrectDayDto, MeMonthQueryDto,
 import { bangkokCalendarParts } from '../../utils/date.util';
 
 /**
- * บุคลากร › ลงเวลา (ก้อน 10 D3 · สเปก §7 §8) — OWNER ทุกสาขา · ผจก.สาขาเฉพาะสาขาตัวเอง (ขอบเขตอยู่ใน service)
+ * เมนู ลงเวลา (ก้อน 10 D3 · สเปก §7 §8) — OWNER ทุกสาขา · ผจก.สาขาเฉพาะสาขาตัวเอง (ขอบเขตอยู่ใน service)
  * `me` = self-service ทุก role · route ทุกตัวลงทะเบียนใน access manifest (attendance.read / attendance.manage / attendance.devices)
  */
 const ALL_STAFF = ['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES'] as const;

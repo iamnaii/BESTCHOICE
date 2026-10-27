@@ -147,6 +147,9 @@ describe('AttendanceDeviceService', () => {
     expect(h.d('attendancePunch').updateMany).toHaveBeenCalledWith({ where: { id: { in: ['p1', 'p2'] } }, data: { flags: { push: 'DEVICE_CONFLICT' } } });
     expect(h.d('attendanceDay').updateMany).toHaveBeenCalledWith({ where: { OR: [{ clockInPunchId: { in: ['p1', 'p2'] } }, { clockOutPunchId: { in: ['p1', 'p2'] } }], deletedAt: null }, data: { flags: { push: 'DEVICE_CONFLICT' } } });
     expect(h.d('todo').create).toHaveBeenCalledWith({ data: expect.objectContaining({ priority: 'HIGH', createdById: 'sys', title: expect.stringContaining('แท็บเล็ตเคาน์เตอร์') }) });
+    // ข้อความชี้เมนูที่มีจริง (ไม่มีหมวด "บุคลากร" · หมวดตั้งค่าชื่อ "บริษัท & สาขา")
+    expect(h.d('todo').create.mock.calls[0][0].data.description).toEqual(expect.stringContaining('ตั้งค่า › บริษัท & สาขา › เครื่องตอกบัตร'));
+    expect(h.d('todo').create.mock.calls[0][0].data.description).not.toContain('บุคลากร');
     expect(h.calls.indexOf('todo.create')).toBeGreaterThan(h.calls.lastIndexOf('tx:end'));
   });
 

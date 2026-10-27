@@ -150,7 +150,7 @@ export class AttendanceDeviceService {
       title: `เครื่องตอกบัตร "${device.name}" ถูกใช้จากสองที่ — ล็อกแล้ว ตรวจรายการที่ติดธงก่อนปลด`,
       description:
         `สาขา ${device.branch?.name ?? device.branchId} · พบ token รุ่น ${generationUsed} ถูกใช้ซ้ำขณะรุ่นปัจจุบันคือ ${device.currentGeneration} · ${now.toISOString()}\n` +
-        `รายการตอกตั้งแต่ ${since.toISOString()} ติดธง "เครื่องถูกใช้ซ้อน" ที่หน้า บุคลากร › ลงเวลา · ปลดล็อก/ลงทะเบียนใหม่ที่ ตั้งค่า › สาขา › เครื่องตอกบัตร · deviceId: ${device.id}`,
+        `รายการตอกตั้งแต่ ${since.toISOString()} ติดธง "เครื่องถูกใช้ซ้อน" ที่เมนู ลงเวลา (เจ้าของกด แก้ไข › ตรวจแล้ว ล้างธง) · ปลดล็อก/ลงทะเบียนใหม่ที่ ตั้งค่า › บริษัท & สาขา › เครื่องตอกบัตร · deviceId: ${device.id}`,
       priority: 'HIGH',
     });
   }

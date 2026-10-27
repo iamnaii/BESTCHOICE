@@ -14,7 +14,7 @@ export default function DeviceBlockedScreen({ message, onRetry }: Props) {
         <div className="text-2xl font-bold leading-snug">เครื่องนี้ถูกล็อก</div>
       </div>
       <p className="text-base leading-snug text-background/85">{message}</p>
-      <p className="text-sm leading-snug text-background/85">เจ้าของได้รับงานแจ้งเตือนแล้ว · ปลดล็อกได้ที่ ตั้งค่า › สาขา › เครื่องตอกบัตร แล้วลงทะเบียนเครื่องใหม่ด้วยรหัสใหม่</p>
+      <p className="text-sm leading-snug text-background/85">เจ้าของได้รับงานแจ้งเตือนแล้ว · ปลดล็อกได้ที่ ตั้งค่า › บริษัท & สาขา › เครื่องตอกบัตร แล้วลงทะเบียนเครื่องใหม่ด้วยรหัสใหม่</p>
       <button type="button" onClick={onRetry} className="h-12 rounded-xl border border-background/30 text-base font-medium text-background">ตรวจสอบอีกครั้ง</button>
     </div>
   );

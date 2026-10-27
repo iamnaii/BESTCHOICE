@@ -124,6 +124,8 @@ describe('KioskPage', () => {
     fireEvent.click(screen.getByRole('button', { name: /ยืนยันเข้างาน/ }));
     await screen.findByRole('alert');
     expect(screen.getByRole('alert')).toHaveTextContent('เครื่องนี้ถูกล็อก');
+    // ชี้เมนูที่มีจริง: หมวดตั้งค่าชื่อ "บริษัท & สาขา"
+    expect(screen.getByText(/ตั้งค่า › บริษัท & สาขา › เครื่องตอกบัตร/)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /^เข้างาน$/ })).not.toBeInTheDocument();
     expect(localStorage.getItem('bc.kiosk.device')).not.toBeNull();
     unmount();

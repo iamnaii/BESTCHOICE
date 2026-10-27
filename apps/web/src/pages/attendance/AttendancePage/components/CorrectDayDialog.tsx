@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
-import { AlertTriangle } from 'lucide-react';
+import { AlertTriangle, ShieldCheck } from 'lucide-react';
 import { getErrorMessage } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { NativeSelect } from '@/components/ui/native-select';
-import { useCorrectDay, type DayKind } from '@/hooks/useAttendance';
+import { useClearConflict, useCorrectDay, type DayKind } from '@/hooks/useAttendance';
 import { DAY_KIND_LABEL, hhmm, thaiShortDate } from '../../attendance.util';
 
 export interface CorrectTarget {
@@ -20,6 +20,8 @@ export interface CorrectTarget {
 
 interface Props {
   target: CorrectTarget | null;
+  /** เจ้าของเท่านั้นที่ล้างธง DEVICE_CONFLICT ได้ (POST days/:id/clear-conflict) */
+  isOwner: boolean;
   onClose: () => void;
 }
 
@@ -27,8 +29,9 @@ const toIso = (date: string, time: string) => new Date(`${date}T${time}:00+07:00
 const MIN_REASON = 10;
 
 /** แก้ไขเวลาเข้า-ออก/ประเภทวัน ย้อนหลัง — เหตุผลบังคับ ≥ 10 ตัวอักษร · ทุกการแก้มีประวัติ (สเปก §6) */
-export default function CorrectDayDialog({ target, onClose }: Props) {
+export default function CorrectDayDialog({ target, isOwner, onClose }: Props) {
   const correct = useCorrectDay();
+  const clearConflict = useClearConflict();
   const [clockIn, setClockIn] = useState('');
   const [clockOut, setClockOut] = useState('');
   const [dayKind, setDayKind] = useState<DayKind>('WORK');
@@ -48,6 +51,16 @@ export default function CorrectDayDialog({ target, onClose }: Props) {
   const changed = clockIn !== originalIn || clockOut !== originalOut || dayKind !== target.dayKind;
   const canSave = changed && reason.trim().length >= MIN_REASON && !correct.isPending;
   const missingOut = target.flags.includes('MISSING_OUT');
+  const conflict = target.flags.includes('DEVICE_CONFLICT');
+
+  const markChecked = () =>
+    clearConflict.mutate(target.dayId, {
+      onSuccess: () => {
+        toast.success(`ล้างธงเครื่องถูกใช้ซ้อนของ ${target.nickname} แล้ว`);
+        onClose();
+      },
+      onError: (err: unknown) => toast.error(getErrorMessage(err)),
+    });
 
   const save = () => {
     const payload: { dayId: string; clockIn?: string; clockOut?: string | null; dayKind?: DayKind; reason: string } = { dayId: target.dayId, reason: reason.trim() };
@@ -74,6 +87,20 @@ export default function CorrectDayDialog({ target, onClose }: Props) {
           {missingOut && (
             <div className="flex items-center gap-2 rounded-lg border border-warning/40 bg-warning/10 px-3 py-2 text-sm text-warning-strong leading-snug">
               <AlertTriangle className="size-4 shrink-0" aria-hidden="true" />ไม่ได้ตอกออก — ระบบปิดวันอัตโนมัติ 00:05 · OT ตอนนี้ = 0
+            </div>
+          )}
+          {conflict && (
+            <div className="flex flex-col gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm leading-snug">
+              <span className="flex items-center gap-2 text-destructive">
+                <AlertTriangle className="size-4 shrink-0" aria-hidden="true" />เครื่องตอกบัตรถูกใช้ซ้อนช่วงเวลานี้ — ดูรูปและเวลาก่อนเชื่อรายการนี้
+              </span>
+              {isOwner ? (
+                <Button variant="outline" size="sm" className="self-start max-lg:min-h-11" onClick={markChecked} disabled={clearConflict.isPending}>
+                  <ShieldCheck className="size-4" aria-hidden="true" />{clearConflict.isPending ? 'กำลังล้างธง…' : 'ตรวจแล้ว ล้างธง'}
+                </Button>
+              ) : (
+                <span className="text-muted-foreground">การแก้เวลาไม่ล้างธงนี้ — เจ้าของต้องตรวจและล้างธงเอง</span>
+              )}
             </div>
           )}
           <div className="grid grid-cols-2 gap-3">

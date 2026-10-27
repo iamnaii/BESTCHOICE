@@ -342,9 +342,11 @@ describe('AttendancePage', () => {
     const table = await screen.findByRole('table', { name: /ตารางรายเดือน/ });
     expect(within(table).getByText('จ่ายเงินเดือนแล้ว').parentElement?.querySelector('svg')).not.toBeNull();
     expect(screen.getByRole('status', { name: /เดือนที่จ่ายเงินเดือนแล้ว/ })).toHaveTextContent('PR-20261031-0001');
-    const unpaid = within(table).getByText('ยังไม่อยู่ในใบเงินเดือน — แก้ได้');
+    // เจ้าของก็เห็นแบบสั้น: สิทธิ์แก้เป็นรายวัน ไม่ใช่รายเดือน
+    const unpaid = within(table).getByText('ยังไม่อยู่ในใบเงินเดือน');
     expect(unpaid.querySelector('svg')).not.toBeNull();
-    expect(within(table).getAllByText('ยังไม่อยู่ในใบเงินเดือน — แก้ได้')).toHaveLength(1);
+    expect(within(table).getAllByText(/ยังไม่อยู่ในใบเงินเดือน/)).toHaveLength(1);
+    expect(within(table).queryByText(/แก้ได้/)).not.toBeInTheDocument();
   });
 
   it('P6 schedule tab: day cells of a paid person are disabled with a visible reason (paid text wins over the past-day tooltip)', async () => {

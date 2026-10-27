@@ -10,8 +10,6 @@ import { EXCEL_COLUMNS, FLAG_LABEL, REVIEW_FLAGS, flagChipClass, fmtOt, shiftMon
 interface Props {
   branchId: string;
   branchName: string;
-  actorId: string;
-  isOwner: boolean;
   month: string;
   onMonthChange: (next: string) => void;
   /** เปิดวันนั้นในแท็บ "วันนี้" (ดูรูป/แก้ไข/ล้างธง) */
@@ -41,9 +39,10 @@ function CellBox({ date, cell }: { date: string; cell: MonthCell | undefined }) 
   );
 }
 
-export default function MonthTab({ branchId, branchName, actorId, isOwner, month, onMonthChange, onOpenDay }: Props) {
+export default function MonthTab({ branchId, branchName, month, onMonthChange, onOpenDay }: Props) {
   const q = useAttendanceMonth(branchId, month);
   const data = q.data;
+  // ชิปรายเดือนไม่บอกว่า "แก้ได้" — สิทธิ์แก้เป็นรายวันตามสาขาที่ตอก (ดูแท็บวันนี้)
   const anyPaid = !!data?.rows.some((r) => r.paidDocumentNumber);
   const review = (data?.rows ?? []).flatMap((r) =>
     Object.entries(r.cells)
@@ -109,7 +108,7 @@ export default function MonthTab({ branchId, branchName, actorId, isOwner, month
                       <td className="sticky left-0 z-10 bg-card px-3 py-1.5">
                         <div className="font-semibold leading-snug">{r.nickname}</div>
                         <div className="text-xs text-muted-foreground leading-snug">{r.name}</div>
-                        {r.paidDocumentNumber ? <div className="mt-1"><PaidChip number={r.paidDocumentNumber} /></div> : anyPaid ? <div className="mt-1"><UnpaidChip editable={isOwner || (r.userId !== actorId && !r.visiting)} /></div> : null}
+                        {r.paidDocumentNumber ? <div className="mt-1"><PaidChip number={r.paidDocumentNumber} /></div> : anyPaid ? <div className="mt-1"><UnpaidChip editable={false} /></div> : null}
                       </td>
                       {data.days.map((d) => <td key={d} className="px-0.5 py-1.5 text-center"><CellBox date={d} cell={r.cells[d]} /></td>)}
                       <td className="border-l border-border px-2 py-1.5 text-right tabular-nums">{r.summary.workDays}</td>

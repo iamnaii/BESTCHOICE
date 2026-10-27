@@ -20,7 +20,7 @@ import { SsoConfigService } from '../../sso-config/sso-config.service';
 import { PettyCashService } from './petty-cash.service';
 import { PayrollCustomService, assertIncomeWhitelisted } from './payroll-custom.service';
 import { PayrollSystemRowsService } from '../payroll-system/payroll-system-rows.service';
-import { payrollPeriodStart } from '../payroll-system/payroll-pay';
+import { payrollDocumentLockKey, payrollPeriodStart } from '../payroll-system/payroll-pay';
 import {
   attachSystemRows,
   notInBranchMessage,
@@ -473,7 +473,7 @@ export class ExpenseDocumentCreateService {
     const doc = await this.prisma.$transaction(async (tx) => {
       // กันสร้างงวดซ้ำ (สาขา + งวด + ฝั่ง) — advisory lock ปิด race ระหว่าง 2 คน
       // กดพร้อมกัน แล้วเช็คว่ามีใบเดิมที่ยังไม่ถูก VOID/ลบอยู่หรือไม่.
-      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`payroll:${dto.branchId}:${dto.payrollPeriod}:${entityScope}`}))`;
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${payrollDocumentLockKey(dto.branchId, dto.payrollPeriod, entityScope)}))`;
       const duplicate = await tx.expenseDocument.findFirst({
         where: {
           documentType: 'PAYROLL',
@@ -600,7 +600,7 @@ export class ExpenseDocumentCreateService {
       { branchId: existing.branchId, user },
     );
 
-    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`payroll:${existing.branchId}:${dto.payrollPeriod}:${entityScope}`}))`;
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${payrollDocumentLockKey(existing.branchId, dto.payrollPeriod, entityScope)}))`;
     const duplicate = await tx.expenseDocument.findFirst({
       where: {
         id: { not: id }, // งวดซ้ำนับเฉพาะใบอื่น — แก้ใบเดิมงวดเดิมต้องผ่าน

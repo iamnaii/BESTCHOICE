@@ -78,6 +78,32 @@ describe('SentryExceptionFilter — response shape', () => {
     });
   });
 
+  /**
+   * Payroll D4 ส่วนที่ 1 — ด่านส่งขออนุมัติ/อนุมัติ/ลงบัญชีใบเงินเดือนตอบ 409 แบบมีรายละเอียด
+   * (`code` ให้เว็บเลือกข้อความ · `closableAt` เวลาที่ทำได้ · `days` วันติดธง · `diffs` ตารางยอดต่าง ·
+   * `documentNumber` ใบอื่นที่ถือ OT) — ตัวกรองเคยตัดทิ้งทุกคีย์ เว็บจึงเห็นแค่ข้อความ
+   */
+  it('forwards code and diffs of a payroll STALE 409 so the web can draw the diff table', () => {
+    const diffs = [{ userId: 'u1', employeeName: 'นุ๊ก', label: 'OT วันทำงาน (1.5 เท่า)', stored: { amount: '154.69', hours: '1.5' }, current: { amount: '257.81', hours: '2.5' } }];
+    const { status, body } = run(new ConflictException({ code: 'PAYROLL_STALE', diffs, message: 'ยังไม่ได้ลงบัญชี' }));
+    expect(status).toBe(409);
+    expect(body).toMatchObject({ statusCode: 409, code: 'PAYROLL_STALE', diffs, message: 'ยังไม่ได้ลงบัญชี' });
+  });
+
+  it('forwards closableAt, days and documentNumber of the other payroll 409s', () => {
+    const cutoff = run(new ConflictException({ code: 'PAYROLL_SUBMIT_CUTOFF', closableAt: '2026-11-01T11:00:00.000Z', message: 'ส่งขออนุมัติได้ตั้งแต่ 1 พ.ย. 18:00' }));
+    expect(cutoff.body).toMatchObject({ code: 'PAYROLL_SUBMIT_CUTOFF', closableAt: '2026-11-01T11:00:00.000Z' });
+    const days = [{ dayId: 'd1', userId: 'u1', employeeName: 'นุ๊ก', date: '2026-10-15' }];
+    expect(run(new ConflictException({ code: 'PAYROLL_DEVICE_CONFLICT', days, message: 'อนุมัติไม่ได้' })).body).toMatchObject({ code: 'PAYROLL_DEVICE_CONFLICT', days });
+    expect(run(new ConflictException({ code: 'PAYROLL_OTHER_DOC', documentNumber: 'PR-20261101-0001', message: 'OT ของ นุ๊ก' })).body).toMatchObject({ code: 'PAYROLL_OTHER_DOC', documentNumber: 'PR-20261101-0001' });
+  });
+
+  it('never forwards the payroll detail keys on a 5xx', () => {
+    const { status, body } = run(new InternalServerErrorException({ message: 'x', code: 'C', closableAt: 't', days: [1], diffs: [1], documentNumber: 'n' }), 'production');
+    expect(status).toBe(500);
+    for (const key of ['code', 'closableAt', 'days', 'diffs', 'documentNumber']) expect(body).not.toHaveProperty(key);
+  });
+
   it('still keeps the errors array of a plain 400 object response (regression guard)', () => {
     const { status, body } = run(new BadRequestException({ message: 'bad', errors: [{ rule: 'r', msg: 'm' }] }));
     expect(status).toBe(400);

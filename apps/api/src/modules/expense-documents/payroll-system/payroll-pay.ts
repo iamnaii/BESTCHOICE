@@ -100,6 +100,11 @@ export function payrollPeriodStart(period: string): Date {
   return bangkokMidnight(year, month - 1, 1);
 }
 
+/** ล็อกงวดของสาขา + ฝั่ง — ตัวที่สองในลำดับ `post:${docId}` → นี่ → `payroll-attendance:*` */
+export function payrollDocumentLockKey(branchId: string, period: string, scope: 'SHOP' | 'FINANCE'): string {
+  return `payroll:${branchId}:${period}:${scope}`;
+}
+
 export function payrollAttendanceLockKey(userId: string, period: string): string {
   return `payroll-attendance:${userId}:${period}`;
 }

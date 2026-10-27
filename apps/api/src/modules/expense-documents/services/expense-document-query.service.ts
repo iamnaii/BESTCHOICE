@@ -3,6 +3,7 @@ import {
   BadRequestException,
   NotFoundException,
   ForbiddenException,
+  Optional,
 } from '@nestjs/common';
 import { Prisma, DocumentStatus } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
@@ -12,6 +13,7 @@ import { hasCrossBranchAccess } from '../../auth/branch-access.util';
 import { maskPayrollTaxIds } from '../payroll-pii-mask.util';
 import { CreateExpenseDocumentDto } from '../dto/create.dto';
 import { ListExpenseDocumentsQueryDto } from '../dto/list-query.dto';
+import { PayrollPostGateService } from '../payroll-system/payroll-post-gate.service';
 
 /**
  * Phase 1 of the transactional-core decompose: the 9 READ-only methods of
@@ -26,6 +28,9 @@ export class ExpenseDocumentQueryService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly jePreview: JePreviewService,
+    // Payroll D4 ส่วนที่ 1 — `payrollGate` ของหน้ารายละเอียดใบเงินเดือน · trailing @Optional() (spec ประกอบเอง) ·
+    // ไม่ได้ต่อ = `payrollGate: null` (หน้าเว็บไม่เดาว่าผ่าน — ด่านจริงอยู่ที่ส่ง/อนุมัติ/ลงบัญชี)
+    @Optional() private readonly payrollGate?: PayrollPostGateService,
   ) {}
 
   // ─── List ────────────────────────────────────────────────────────────
@@ -645,7 +650,10 @@ export class ExpenseDocumentQueryService {
       doc as { payroll?: { lines: Array<{ employeeTaxId: string | null }> } | null },
       viewerRole,
     );
-    return doc;
+    if (docType.documentType !== 'PAYROLL') return doc;
+    // Payroll D4 — เวลาที่ส่ง/ลงบัญชีได้ (ยังไม่ถึง) + วันติดธงเครื่องถูกใช้ซ้อน ให้หน้ารายละเอียดปิดปุ่มพร้อมเหตุผล
+    const payrollGate = this.payrollGate ? await this.payrollGate.inspect(this.prisma, id, new Date()) : null;
+    return { ...doc, payrollGate };
   }
 
   // ─── Payroll bank-transfer CSV (R3-3, 2026-08-06) ────────────────────

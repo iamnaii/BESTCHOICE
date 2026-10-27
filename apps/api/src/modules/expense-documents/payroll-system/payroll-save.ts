@@ -1,6 +1,7 @@
 import { BadRequestException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import type { PayrollIncomeSource } from '@prisma/client';
+import type { UpdatePayrollDto } from '../dto/create-payroll.dto';
 import { assertDeductionsWithinGross } from '../services/payroll-custom.service';
 import { payrollAttendanceLockKey } from './payroll-pay';
 import type { PayrollSystemRowsService } from './payroll-system-rows.service';
@@ -161,5 +162,79 @@ export function mergePayrollLines(
       withholdingTax: saved.reduce((s, l) => s.plus(l.whtAmount), ZERO),
       netPayment: saved.reduce((s, l) => s.plus(l.netPaid), ZERO),
     },
+  };
+}
+
+/**
+ * DTO ยอดเงินเป็น number (รูปเดียวกับ JSON ที่ฟอร์มส่ง) — Decimal(12,2) มีไม่เกิน 12 หลักนัยสำคัญ ⇒ แปลงไป-กลับผ่าน double
+ * ได้ค่าเดิมทุกสตางค์ (`new Prisma.Decimal(n)` ใช้ทศนิยมสั้นสุดของ n) · ทางบันทึกแปลงกลับเป็น Decimal ทันทีก่อนคิดเงิน
+ */
+const dtoAmount = (v: Prisma.Decimal) => v.toNumber();
+
+/**
+ * ตอนส่งขออนุมัติ: ประกอบ DTO แก้ใบจากที่เก็บไว้ ให้ `updatePayrollInTx` คิดแถวระบบใหม่แล้วเก็บซ้ำ
+ * - แถวรายได้ที่ส่ง = เฉพาะที่คนกรอก (MANUAL) + รายการปรับปรุงงวดก่อน (ADJUSTMENT → `isAdjustment: true`
+ *   ไม่งั้นกลายเป็น MANUAL แล้วชน MANUAL_OT_DUPLICATE) · แถวระบบ (ATTENDANCE_* และแหล่งอื่นในอนาคต) ไม่ส่ง — คิดใหม่เสมอ
+ * - รายการหักตามที่เก็บ · บรรทัดผูกพนักงานส่งแค่ userId (ชื่อ/เลขผู้เสียภาษีอ่านจากทะเบียนใหม่) · บรรทัดพิมพ์ชื่อส่งชื่อ+เลขเดิม
+ */
+export async function storedPayrollUpdateDto(tx: Prisma.TransactionClient, documentId: string): Promise<UpdatePayrollDto> {
+  const doc = await tx.expenseDocument.findUniqueOrThrow({
+    where: { id: documentId },
+    select: {
+      documentDate: true,
+      depositAccountCode: true,
+      description: true,
+      paymentMethod: true,
+      reference: true,
+      note: true,
+      payroll: {
+        select: {
+          payrollPeriod: true,
+          entityScope: true,
+          lines: {
+            orderBy: [{ lineNo: 'asc' }, { createdAt: 'asc' }],
+            select: {
+              userId: true,
+              employeeName: true,
+              employeeTaxId: true,
+              baseSalary: true,
+              ssoEmployee: true,
+              whtAmount: true,
+              customIncome: {
+                where: { source: { in: ['MANUAL', 'ADJUSTMENT'] } },
+                orderBy: { createdAt: 'asc' },
+                select: { accountCode: true, name: true, amount: true, isTaxable: true, source: true },
+              },
+              customDeduction: { orderBy: { createdAt: 'asc' }, select: { accountCode: true, name: true, amount: true } },
+            },
+          },
+        },
+      },
+    },
+  });
+  if (!doc.payroll) throw new BadRequestException('ใบเงินเดือนนี้ไม่มีรายละเอียดบรรทัด — กด "แก้ไข" แล้วบันทึกใหม่');
+  return {
+    documentDate: doc.documentDate.toISOString(),
+    payrollPeriod: doc.payroll.payrollPeriod,
+    entityScope: doc.payroll.entityScope === 'FINANCE' ? 'FINANCE' : 'SHOP',
+    depositAccountCode: doc.depositAccountCode ?? '',
+    description: doc.description ?? undefined,
+    paymentMethod: doc.paymentMethod ?? undefined,
+    reference: doc.reference ?? undefined,
+    note: doc.note ?? undefined,
+    lines: doc.payroll.lines.map((l) => ({
+      ...(l.userId ? { userId: l.userId } : { employeeName: l.employeeName, employeeTaxId: l.employeeTaxId ?? undefined }),
+      baseSalary: dtoAmount(l.baseSalary),
+      ssoEmployee: dtoAmount(l.ssoEmployee),
+      whtAmount: dtoAmount(l.whtAmount),
+      customIncome: l.customIncome.map((i) => ({
+        accountCode: i.accountCode,
+        name: i.name,
+        amount: dtoAmount(i.amount),
+        isTaxable: i.isTaxable,
+        isAdjustment: i.source === 'ADJUSTMENT',
+      })),
+      customDeduction: l.customDeduction.map((d) => ({ accountCode: d.accountCode, name: d.name, amount: dtoAmount(d.amount) })),
+    })),
   };
 }

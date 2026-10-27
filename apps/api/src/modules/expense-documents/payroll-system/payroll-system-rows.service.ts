@@ -26,7 +26,8 @@ const ROW_NAME = { ot: 'OT วันทำงาน (1.5 เท่า)', holiday
 
 type DayRow = Pick<AttendanceDay, 'id' | 'userId' | 'branchId' | 'workDate' | 'dayKind' | 'clockIn' | 'clockOut' | 'otHours' | 'lateMinutes' | 'flags'>;
 
-function periodRange(period: string): { from: Date; to: Date } {
+/** ช่วง `@db.Date` ของเดือนงวด [วันที่ 1, วันที่ 1 เดือนถัดไป) — ใช้ร่วมกับด่านลงบัญชี (วันติดธงของเดือน) */
+export function periodRange(period: string): { from: Date; to: Date } {
   const m = /^(\d{4})-(\d{2})$/.exec(period);
   const year = m ? Number(m[1]) : NaN;
   const month = m ? Number(m[2]) : NaN;

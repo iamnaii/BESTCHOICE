@@ -81,12 +81,23 @@ export function monthPayHours(days: PayDay[], rulesFor: (branchId: string) => Sc
   return { otHours: ot, holidayHours, holidayOtHours: holidayOt, holidayWorkedDays };
 }
 
-/** 18:00 เวลาไทยของวันที่ 1 เดือนถัดจากงวด ('YYYY-MM') */
-export function payrollCutoff(period: string): Date {
+function parsePeriod(period: string): { year: number; month: number } {
   const m = /^(\d{4})-(\d{2})$/.exec(period);
   if (!m) throw new Error(`invalid payroll period '${period}' (expected YYYY-MM)`);
-  const next = bangkokMidnight(Number(m[1]), Number(m[2]), 1); // month0 = month (1-based) ⇒ เดือนถัดไป
+  return { year: Number(m[1]), month: Number(m[2]) };
+}
+
+/** 18:00 เวลาไทยของวันที่ 1 เดือนถัดจากงวด ('YYYY-MM') */
+export function payrollCutoff(period: string): Date {
+  const { year, month } = parsePeriod(period);
+  const next = bangkokMidnight(year, month, 1); // month0 = month (1-based) ⇒ เดือนถัดไป
   return new Date(next.getTime() + CUTOFF_HOUR * 60 * 60 * 1000);
+}
+
+/** เที่ยงคืนไทยของวันที่ 1 ของงวด ('YYYY-MM') — คนที่ลาออกตั้งแต่วันนี้ยังอยู่ในใบเงินเดือนงวดนี้ได้ */
+export function payrollPeriodStart(period: string): Date {
+  const { year, month } = parsePeriod(period);
+  return bangkokMidnight(year, month - 1, 1);
 }
 
 export function payrollAttendanceLockKey(userId: string, period: string): string {

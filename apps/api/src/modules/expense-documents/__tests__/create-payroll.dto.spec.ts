@@ -1,7 +1,7 @@
 import 'reflect-metadata';
 import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
-import { CreatePayrollDto } from '../dto/create-payroll.dto';
+import { CreatePayrollDto, UpdatePayrollDto } from '../dto/create-payroll.dto';
 
 /**
  * DTO-layer validation tests. The 750 cap was lifted from this DTO in
@@ -80,5 +80,24 @@ describe('CreatePayrollDto — shape validation', () => {
   it('rejects a non-string userId', async () => {
     const errors = await validateDto(baseDto({ userId: 12345 }));
     expect(JSON.stringify(errors)).toMatch(/string/i);
+  });
+
+  // Payroll D4 — ติ๊ก "รายการปรับปรุงงวดก่อน" ต้องรอด ValidationPipe({ whitelist: true }) (ฟิลด์ไม่มี decorator ถูกตัดทิ้ง)
+  it('keeps customIncome[].isAdjustment through whitelist validation (create + update)', async () => {
+    const payload = baseDto({ customIncome: [{ accountCode: 'S52-1202', name: 'OT เดือนก่อน', amount: 500, isAdjustment: true }] });
+    const created = plainToInstance(CreatePayrollDto, payload);
+    expect(await validate(created, { whitelist: true })).toEqual([]);
+    expect(created.lines[0].customIncome?.[0].isAdjustment).toBe(true);
+
+    const updatePayload: Record<string, unknown> = { ...payload };
+    delete updatePayload.branchId; // UpdatePayrollDto ไม่มี branchId
+    const updated = plainToInstance(UpdatePayrollDto, updatePayload);
+    expect(await validate(updated, { whitelist: true })).toEqual([]);
+    expect(updated.lines[0].customIncome?.[0].isAdjustment).toBe(true);
+  });
+
+  it('rejects a non-boolean isAdjustment', async () => {
+    const errors = await validateDto(baseDto({ customIncome: [{ accountCode: 'S52-1202', name: 'OT', amount: 500, isAdjustment: 'yes' }] }));
+    expect(JSON.stringify(errors)).toMatch(/isAdjustment/);
   });
 });

@@ -61,7 +61,7 @@ export interface PayrollLineSpec {
   baseSalary: number;
   ssoEmployee?: number;
   whtAmount?: number;
-  customIncome?: Array<{ accountCode: string; name: string; amount: number; isTaxable?: boolean }>;
+  customIncome?: Array<{ accountCode: string; name: string; amount: number; isTaxable?: boolean; isAdjustment?: boolean }>;
   customDeduction?: Array<{ accountCode: string; name: string; amount: number }>;
 }
 

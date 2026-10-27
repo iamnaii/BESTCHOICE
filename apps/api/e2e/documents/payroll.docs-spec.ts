@@ -62,8 +62,11 @@ describe('DOC-04 payroll slips and annual 50 ทวิ — real workflow, real j
   const pace = createLoginPacer();
 
   // Independent money: the same three SHOP employees paid twice, one FINANCE employee once, one SHOP month voided.
+  // e1 is MONTHLY with a registry salary ⇒ the server computes its OT from attendance (Payroll D4); a typed OT row on such a
+  // line must be ticked "รายการปรับปรุงงวดก่อน" (isAdjustment → source ADJUSTMENT) or the save is refused (MANUAL_OT_DUPLICATE).
+  // e1 has no attendance days in this world, so no system rows are added and every amount below is unchanged.
   const p1Lines = (): PayrollLineSpec[] => [
-    { baseSalary: 18000, ssoEmployee: 875, whtAmount: 150, customIncome: [{ accountCode: 'S52-1202', name: 'ค่าล่วงเวลา', amount: 1000, isTaxable: true }] },
+    { baseSalary: 18000, ssoEmployee: 875, whtAmount: 150, customIncome: [{ accountCode: 'S52-1202', name: 'ค่าล่วงเวลา', amount: 1000, isTaxable: true, isAdjustment: true }] },
     { baseSalary: 12000, ssoEmployee: 600, whtAmount: 0, customIncome: [{ accountCode: 'S52-1204', name: 'เบี้ยเลี้ยงเดินทาง', amount: 500, isTaxable: false }], customDeduction: [{ accountCode: 'S21-1103', name: 'คืนเงินยืม', amount: 500 }] },
     { baseSalary: 9000, ssoEmployee: 450, whtAmount: 0 },
   ];

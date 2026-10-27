@@ -4,8 +4,9 @@ import {
   BadRequestException,
   NotFoundException,
   ForbiddenException,
+  Optional,
 } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { Prisma, type DocumentStatus } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { maskPayrollTaxIds } from '../payroll-pii-mask.util';
 import {
@@ -17,7 +18,14 @@ import { StatusTransitionService } from './status-transition.service';
 import { LineAggregatorService } from './line-aggregator.service';
 import { SsoConfigService } from '../../sso-config/sso-config.service';
 import { PettyCashService } from './petty-cash.service';
-import { PayrollCustomService } from './payroll-custom.service';
+import { PayrollCustomService, assertIncomeWhitelisted } from './payroll-custom.service';
+import { PayrollSystemRowsService } from '../payroll-system/payroll-system-rows.service';
+import { payrollPeriodStart } from '../payroll-system/payroll-pay';
+import {
+  attachSystemRows,
+  notInBranchMessage,
+  type ClientPayrollLine,
+} from '../payroll-system/payroll-save';
 import { hasCrossBranchAccess } from '../../auth/branch-access.util';
 import { readBoolFlag, readIntFlag } from '../../../utils/config.util';
 import { CreateExpenseDocumentDto } from '../dto/create.dto';
@@ -30,6 +38,24 @@ import {
 } from '../dto/create-payroll.dto';
 import { CreateSettlementDto } from '../dto/create-settlement.dto';
 import { CreatePettyCashDto } from '../dto/create-petty-cash.dto';
+
+/** PATCH ใบเงินเดือนได้ในสถานะเหล่านี้ (Payroll D4 — แก้ใบรออนุมัติ/อนุมัติแล้ว = ส่งกลับเป็นร่าง) */
+const PAYROLL_EDITABLE_STATUSES: DocumentStatus[] = ['DRAFT', 'PENDING_APPROVAL', 'APPROVED'];
+
+/** บรรทัดเงินเดือนเรียงตามลำดับที่บันทึก (lineNo) — แถวเก่าก่อนมีคอลัมน์ (lineNo 0) เรียงตาม createdAt */
+const PAYROLL_LINES_INCLUDE = {
+  payroll: {
+    include: {
+      lines: {
+        orderBy: [{ lineNo: 'asc' }, { createdAt: 'asc' }],
+        include: {
+          customIncome: { orderBy: { createdAt: 'asc' } },
+          customDeduction: { orderBy: { createdAt: 'asc' } },
+        },
+      },
+    },
+  },
+} satisfies Prisma.ExpenseDocumentInclude;
 
 /**
  * Phase 3 (final) of the transactional-core decompose: the CREATE-FAMILY +
@@ -55,6 +81,9 @@ export class ExpenseDocumentCreateService {
     private readonly ssoConfig: SsoConfigService,
     private readonly payrollCustom: PayrollCustomService,
     private readonly pettyCash: PettyCashService,
+    // Payroll D4 — trailing @Optional(): many specs build this service by hand. Absent +
+    // a PAYROLL with linked lines → attachSystemRows throws 'PayrollSystemRowsService not wired'.
+    @Optional() private readonly systemRows?: PayrollSystemRowsService,
   ) {}
 
   // ─── D1.* — Service-side SystemConfig flag readers ─────────────────────
@@ -434,8 +463,12 @@ export class ExpenseDocumentCreateService {
       throw new ForbiddenException('ไม่สามารถสร้างเอกสารในสาขาอื่นได้');
     }
 
-    const { entityScope, documentDate, linesPrepared, sumBase, sumWht, sumNet } =
-      await this.preparePayrollInput(dto);
+    const now = new Date();
+    const { entityScope, documentDate, lines: clientLines } = await this.preparePayrollInput(
+      this.prisma,
+      dto,
+      { branchId: dto.branchId, user },
+    );
 
     const doc = await this.prisma.$transaction(async (tx) => {
       // กันสร้างงวดซ้ำ (สาขา + งวด + ฝั่ง) — advisory lock ปิด race ระหว่าง 2 คน
@@ -458,6 +491,14 @@ export class ExpenseDocumentCreateService {
         );
       }
 
+      // Payroll D4 — แถว OT/ทำงานวันหยุดจากการลงเวลา (server คิดเองทุกครั้ง) → netPaid + ยอดหัวใบ
+      const { lines, totals } = await attachSystemRows(tx, this.systemRows, clientLines, {
+        branchId: dto.branchId,
+        entityScope,
+        payrollPeriod: dto.payrollPeriod,
+        now,
+      });
+
       const number = await this.docNumber.next(tx, 'PAYROLL', documentDate);
       return tx.expenseDocument.create({
         data: {
@@ -466,11 +507,11 @@ export class ExpenseDocumentCreateService {
           branchId: dto.branchId,
           documentDate,
           description: dto.description ?? null,
-          subtotal: sumBase,
+          subtotal: totals.subtotal,
           vatAmount: new Prisma.Decimal(0),
-          withholdingTax: sumWht,
-          totalAmount: sumBase,
-          netPayment: sumNet,
+          withholdingTax: totals.withholdingTax,
+          totalAmount: totals.totalAmount,
+          netPayment: totals.netPayment,
           depositAccountCode: dto.depositAccountCode,
           paymentMethod: (dto.paymentMethod as never) ?? null,
           status: 'DRAFT',
@@ -483,18 +524,12 @@ export class ExpenseDocumentCreateService {
               payrollPeriod: dto.payrollPeriod,
               entityScope,
               lines: {
-                create: linesPrepared.map(payrollLineCreateData),
+                create: lines.map(payrollLineCreateData),
               },
             },
           },
         },
-        include: {
-          payroll: {
-            include: {
-              lines: { include: { customIncome: true, customDeduction: true } },
-            },
-          },
-        },
+        include: PAYROLL_LINES_INCLUDE,
       });
     });
 
@@ -505,13 +540,38 @@ export class ExpenseDocumentCreateService {
     return doc;
   }
 
-  // ─── Payroll update (R3-2, 2026-08-06) — DRAFT only, replaces lines ───
+  // ─── Payroll update (R3-2, 2026-08-06) — replaces lines ───────────────
+  // Payroll D4 — "แก้ไข" ใบที่รออนุมัติ/อนุมัติแล้ว = ส่งกลับเป็นร่าง (ไม่มี route ใหม่)
   async updatePayroll(
     id: string,
     dto: UpdatePayrollDto,
     user: { id: string; branchId?: string | null; role?: string | null },
   ) {
-    const existing = await this.prisma.expenseDocument.findUnique({
+    const now = new Date();
+    const doc = await this.prisma.$transaction((tx) => this.updatePayrollInTx(tx, id, dto, user, now));
+    maskPayrollTaxIds(doc, user.role);
+    return doc;
+  }
+
+  /**
+   * แก้ใบเงินเดือนในธุรกรรมของผู้เรียก (PATCH + ตอนส่งขออนุมัติ — Task 5) — ไม่เปิด `$transaction` ซ้อน ·
+   * ล็อก `post:${id}` ก่อนเสมอ (advisory xact lock reentrant ใน session เดียวกัน ⇒ ผู้เรียกที่ถือไว้แล้วผ่านได้) ·
+   * DRAFT คงเป็น DRAFT · PENDING_APPROVAL / APPROVED → DRAFT + ล้างผู้อนุมัติ + audit `SENT_BACK_TO_DRAFT` ใน tx ·
+   * ผลลัพธ์ไม่ปิด taxId — ผู้เรียกที่ส่งคืน client ต้อง `maskPayrollTaxIds` เอง
+   */
+  async updatePayrollInTx(
+    tx: Prisma.TransactionClient,
+    id: string,
+    dto: UpdatePayrollDto,
+    user: { id: string; branchId?: string | null; role?: string | null },
+    now: Date,
+  ) {
+    // Review W1 (2026-08-06) — serialize with post()/approve()/voidDocument()/
+    // submitForApproval() via the SAME per-document advisory key, then read the
+    // status under the lock. Without this, a racing post() could build the JE
+    // from the OLD lines while this tx replaces them.
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`post:${id}`}))`;
+    const existing = await tx.expenseDocument.findUnique({
       where: { id },
       include: { payroll: { select: { entityScope: true } } },
     });
@@ -519,9 +579,9 @@ export class ExpenseDocumentCreateService {
     if (existing.documentType !== 'PAYROLL') {
       throw new BadRequestException('เอกสารนี้ไม่ใช่ใบเงินเดือน (PR)');
     }
-    if (existing.status !== 'DRAFT') {
+    if (!PAYROLL_EDITABLE_STATUSES.includes(existing.status)) {
       throw new BadRequestException(
-        `แก้ไขได้เฉพาะร่าง (DRAFT) — สถานะปัจจุบัน ${existing.status}. ` +
+        `แก้ไขได้เฉพาะร่าง (DRAFT) ใบรออนุมัติ หรือใบอนุมัติแล้ว — สถานะปัจจุบัน ${existing.status}. ` +
           'ใบที่โพสต์แล้วต้องกลับรายการ (VOID) แล้วสร้างใหม่',
       );
     }
@@ -529,104 +589,114 @@ export class ExpenseDocumentCreateService {
       throw new ForbiddenException('ไม่สามารถแก้ไขเอกสารของสาขาอื่นได้');
     }
 
-    const { entityScope, documentDate, linesPrepared, sumBase, sumWht, sumNet } =
-      await this.preparePayrollInput({
+    const { entityScope, documentDate, lines: clientLines } = await this.preparePayrollInput(
+      tx,
+      {
         ...dto,
         entityScope:
           dto.entityScope ??
           (existing.payroll?.entityScope === 'FINANCE' ? 'FINANCE' : 'SHOP'),
-      });
+      },
+      { branchId: existing.branchId, user },
+    );
 
-    const doc = await this.prisma.$transaction(async (tx) => {
-      // Review W1 (2026-08-06) — serialize with post()/approve()/voidDocument()
-      // via the SAME per-document advisory key ('post:<id>'), then re-check the
-      // status INSIDE the tx. Without this, a racing post() could build the JE
-      // from the OLD lines while this tx replaces them — a POSTED doc whose
-      // totals no longer match its own JE.
-      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`post:${id}`}))`;
-      const fresh = await tx.expenseDocument.findUnique({
-        where: { id },
-        select: { status: true, deletedAt: true },
-      });
-      if (!fresh || fresh.deletedAt) throw new NotFoundException('ไม่พบเอกสาร');
-      if (fresh.status !== 'DRAFT') {
-        throw new BadRequestException(
-          `แก้ไขได้เฉพาะร่าง (DRAFT) — สถานะปัจจุบัน ${fresh.status}`,
-        );
-      }
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`payroll:${existing.branchId}:${dto.payrollPeriod}:${entityScope}`}))`;
+    const duplicate = await tx.expenseDocument.findFirst({
+      where: {
+        id: { not: id }, // งวดซ้ำนับเฉพาะใบอื่น — แก้ใบเดิมงวดเดิมต้องผ่าน
+        documentType: 'PAYROLL',
+        branchId: existing.branchId,
+        deletedAt: null,
+        status: { not: 'VOIDED' },
+        payroll: { payrollPeriod: dto.payrollPeriod, entityScope },
+      },
+      select: { number: true },
+    });
+    if (duplicate) {
+      throw new BadRequestException(
+        `มีใบเงินเดือนงวด ${dto.payrollPeriod} ของสาขานี้ (ฝั่ง ${entityScope}) อยู่แล้ว — ` +
+          `เอกสาร ${duplicate.number}`,
+      );
+    }
 
-      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`payroll:${existing.branchId}:${dto.payrollPeriod}:${entityScope}`}))`;
-      const duplicate = await tx.expenseDocument.findFirst({
-        where: {
-          id: { not: id }, // งวดซ้ำนับเฉพาะใบอื่น — แก้ใบเดิมงวดเดิมต้องผ่าน
-          documentType: 'PAYROLL',
-          branchId: existing.branchId,
-          deletedAt: null,
-          status: { not: 'VOIDED' },
-          payroll: { payrollPeriod: dto.payrollPeriod, entityScope },
-        },
-        select: { number: true },
-      });
-      if (duplicate) {
-        throw new BadRequestException(
-          `มีใบเงินเดือนงวด ${dto.payrollPeriod} ของสาขานี้ (ฝั่ง ${entityScope}) อยู่แล้ว — ` +
-            `เอกสาร ${duplicate.number}`,
-        );
-      }
-
-      // DRAFT → no JE references the detail rows; hard-delete + recreate is
-      // the same shape IntercoSettlementService.updateBatch uses. deleteMany
-      // (not delete) tolerates a legacy PAYROLL doc created without a detail.
-      await tx.payrollDetail.deleteMany({ where: { documentId: id } });
-      return tx.expenseDocument.update({
-        where: { id },
-        data: {
-          documentDate,
-          description: dto.description ?? null,
-          subtotal: sumBase,
-          withholdingTax: sumWht,
-          totalAmount: sumBase,
-          netPayment: sumNet,
-          depositAccountCode: dto.depositAccountCode,
-          paymentMethod: (dto.paymentMethod as never) ?? null,
-          reference: dto.reference ?? null,
-          note: dto.note ?? null,
-          payroll: {
-            create: {
-              payrollPeriod: dto.payrollPeriod,
-              entityScope,
-              lines: {
-                create: linesPrepared.map(payrollLineCreateData),
-              },
-            },
-          },
-        },
-        include: {
-          payroll: {
-            include: {
-              lines: { include: { customIncome: true, customDeduction: true } },
-            },
-          },
-        },
-      });
+    // ใบนี้เองไม่นับเป็น "ใบอื่นที่ถือ OT ของคนนี้แล้ว"
+    const { lines, totals } = await attachSystemRows(tx, this.systemRows, clientLines, {
+      branchId: existing.branchId,
+      entityScope,
+      payrollPeriod: dto.payrollPeriod,
+      excludeDocumentId: id,
+      now,
     });
 
-    maskPayrollTaxIds(doc, user.role);
+    // No JE references the detail rows before POSTED (DRAFT / PENDING_APPROVAL /
+    // APPROVED); hard-delete + recreate is the same shape
+    // IntercoSettlementService.updateBatch uses. deleteMany (not delete)
+    // tolerates a legacy PAYROLL doc created without a detail.
+    await tx.payrollDetail.deleteMany({ where: { documentId: id } });
+    const sentBack = existing.status !== 'DRAFT';
+    const doc = await tx.expenseDocument.update({
+      where: { id },
+      data: {
+        documentDate,
+        description: dto.description ?? null,
+        subtotal: totals.subtotal,
+        withholdingTax: totals.withholdingTax,
+        totalAmount: totals.totalAmount,
+        netPayment: totals.netPayment,
+        depositAccountCode: dto.depositAccountCode,
+        paymentMethod: (dto.paymentMethod as never) ?? null,
+        reference: dto.reference ?? null,
+        note: dto.note ?? null,
+        ...(sentBack ? { status: 'DRAFT' as const, approvedById: null } : {}),
+        payroll: {
+          create: {
+            payrollPeriod: dto.payrollPeriod,
+            entityScope,
+            lines: {
+              create: lines.map(payrollLineCreateData),
+            },
+          },
+        },
+      },
+      include: PAYROLL_LINES_INCLUDE,
+    });
+
+    if (sentBack) {
+      // Expense lifecycle pattern — audit atomic with the status flip (tx.auditLog.create).
+      // PII-safe payload: no salary lines.
+      await tx.auditLog.create({
+        data: {
+          action: 'SENT_BACK_TO_DRAFT',
+          entity: 'expense_document',
+          entityId: id,
+          userId: user.id,
+          oldValue: { status: existing.status },
+          newValue: { status: 'DRAFT', documentNumber: existing.number, documentType: existing.documentType },
+        },
+      });
+    }
     return doc;
   }
 
   /**
    * Shared create/update validation + line preparation (extracted 2026-08-06
-   * so updatePayroll runs the EXACT same validator chain as createPayroll:
-   * scope infer + deposit↔scope, dup-userId, SSO cap, V16/V17/V18, V19,
-   * employee-registry snapshot derive, netPaid computation).
+   * so updatePayroll runs the EXACT same validator chain as createPayroll):
+   * scope infer + deposit↔scope, dup-userId, SSO cap, V17 (client rows), V19,
+   * employee-registry snapshot derive (+ resigned-in-period, NOT_IN_BRANCH).
+   * Returns client rows only — attachSystemRows (inside the tx) appends the
+   * attendance rows, then computes netPaid and runs V18 on the merged line.
    */
-  private async preparePayrollInput(dto: {
-    entityScope?: 'SHOP' | 'FINANCE';
-    depositAccountCode: string;
-    documentDate: string;
-    lines: PayrollLineInput[];
-  }) {
+  private async preparePayrollInput(
+    client: Prisma.TransactionClient | PrismaService,
+    dto: {
+      entityScope?: 'SHOP' | 'FINANCE';
+      depositAccountCode: string;
+      documentDate: string;
+      payrollPeriod: string;
+      lines: PayrollLineInput[];
+    },
+    ctx: { branchId: string; user: { branchId?: string | null; role?: string | null } },
+  ): Promise<{ entityScope: 'SHOP' | 'FINANCE'; documentDate: Date; lines: ClientPayrollLine[] }> {
     // คำสั่งเจ้าของ 2026-08-06 — payroll สังกัดฝั่งเดียวต่อใบ. SHOP = พนักงานสาขา
     // → ผัง S + companyId SHOP; FINANCE = ส่วนกลาง → ผังเดิม. UI ส่ง entityScope
     // เสมอ (default SHOP บนฟอร์ม); caller เก่าที่ไม่ส่ง (recurring template /
@@ -674,8 +744,7 @@ export class ExpenseDocumentCreateService {
       await this.ssoConfig.validateContribution(docDate, l.ssoEmployee);
     }
 
-    // C2 — V17 whitelist lookup once (per request, per scope), then
-    // V16/V17/V18 per line.
+    // C2 — V17 whitelist lookup once (per request, per scope).
     const whitelist = await this.payrollCustom.loadWhitelist(entityScope);
 
     // V19 — deduction accounts must exist in the CoA and match the scope
@@ -688,25 +757,27 @@ export class ExpenseDocumentCreateService {
     // PR-C — resolve linked employees once. Lines with a userId get their
     // name/taxId snapshot derived from the registry (spec §4.2 — never trust
     // the client-sent snapshot). A userId that isn't an ACTIVE payroll
-    // employee (no profile / soft-deleted / resigned) is rejected.
+    // employee (no profile / soft-deleted / resigned before the period) is rejected.
     const linkedUserIds = [
       ...new Set(dto.lines.filter((l) => l.userId).map((l) => l.userId as string)),
     ];
-    const employeeByUserId = new Map<string, { name: string; taxId: string | null }>();
+    const employeeByUserId = new Map<string, { name: string; taxId: string | null; branchId: string | null }>();
     if (linkedUserIds.length > 0) {
-      const profiles = await this.prisma.employeeProfile.findMany({
+      const profiles = await client.employeeProfile.findMany({
         where: {
           userId: { in: linkedUserIds },
           deletedAt: null,
-          OR: [{ resignedDate: null }, { resignedDate: { gt: new Date() } }],
+          // Payroll D4 — ลาออกระหว่างงวด (รวมวันสุดท้าย) ยังรับเงินเดือนงวดนี้ได้ · ลาออกก่อนวันที่ 1 ของงวด = ปฏิเสธ
+          OR: [{ resignedDate: null }, { resignedDate: { gte: payrollPeriodStart(dto.payrollPeriod) } }],
           user: { is: { isActive: true, deletedAt: null } },
         },
-        include: { user: { select: { id: true, name: true, nationalId: true } } },
+        include: { user: { select: { id: true, name: true, nationalId: true, branchId: true } } },
       });
       for (const p of profiles) {
         employeeByUserId.set(p.userId, {
           name: p.user.name,
           taxId: p.taxIdOverride ?? p.user.nationalId,
+          branchId: p.user.branchId,
         });
       }
       const missing = linkedUserIds.filter((id) => !employeeByUserId.has(id));
@@ -716,102 +787,60 @@ export class ExpenseDocumentCreateService {
             'กรุณาเลือกใหม่หรือเพิ่มที่หน้าทะเบียนพนักงาน',
         );
       }
+      // อัตราต่อชั่วโมงที่เก็บในแถว OT เผยเงินเดือนทะเบียน (เห็นได้เฉพาะ OWNER/ACCOUNTANT/FINANCE_MANAGER) ⇒
+      // role ที่ไม่ข้ามสาขาใส่ได้เฉพาะพนักงานของสาขาเอกสาร
+      if (!hasCrossBranchAccess(ctx.user)) {
+        const outsiders = linkedUserIds
+          .map((id) => employeeByUserId.get(id)!)
+          .filter((e) => e.branchId !== ctx.branchId);
+        if (outsiders.length > 0) {
+          throw new ForbiddenException({
+            code: 'NOT_IN_BRANCH',
+            message: notInBranchMessage(outsiders.map((e) => e.name).join(', ')),
+          });
+        }
+      }
     }
 
-    // Compute netPaid per line + validate
-    const preparedRows = await Promise.all(
-      dto.lines.map(async (l) => {
-        // PR-C — derive snapshot from the linked employee when present.
-        const linked = l.userId ? employeeByUserId.get(l.userId) ?? null : null;
-        const employeeName = linked ? linked.name : (l.employeeName ?? '').trim();
-        const employeeTaxId = linked ? linked.taxId : (l.employeeTaxId ?? null);
-        if (!l.userId && employeeName.length < 2) {
-          throw new BadRequestException(
-            'แต่ละแถวต้องเลือกพนักงานจากทะเบียน หรือระบุชื่อพนักงาน (อย่างน้อย 2 ตัวอักษร)',
-          );
-        }
-
-        const base = new Prisma.Decimal(l.baseSalary);
-        const sso = new Prisma.Decimal(l.ssoEmployee ?? 0);
-        const wht = new Prisma.Decimal(l.whtAmount ?? 0);
-        // C2 — V16/V17/V18 validators + taxableBase result (not used here yet;
-        // exposed for future automatic-WHT-compute consumers).
-        await this.payrollCustom.validateLine(
-          {
-            employeeName,
-            baseSalary: base,
-            customIncome: l.customIncome,
-            customDeduction: l.customDeduction,
-          },
-          whitelist,
+    const lines = dto.lines.map((l): ClientPayrollLine => {
+      // PR-C — derive snapshot from the linked employee when present.
+      const linked = l.userId ? employeeByUserId.get(l.userId) ?? null : null;
+      const employeeName = linked ? linked.name : (l.employeeName ?? '').trim();
+      const employeeTaxId = linked ? linked.taxId : (l.employeeTaxId ?? null);
+      if (!l.userId && employeeName.length < 2) {
+        throw new BadRequestException(
+          'แต่ละแถวต้องเลือกพนักงานจากทะเบียน หรือระบุชื่อพนักงาน (อย่างน้อย 2 ตัวอักษร)',
         );
+      }
+      // V17 on the client rows only — attendance system rows take their account from account_role_map.
+      assertIncomeWhitelisted({ employeeName, customIncome: l.customIncome }, whitelist);
+      return {
+        userId: l.userId ?? null,
+        employeeName,
+        employeeTaxId,
+        baseSalary: new Prisma.Decimal(l.baseSalary),
+        ssoEmployee: new Prisma.Decimal(l.ssoEmployee ?? 0),
+        whtAmount: new Prisma.Decimal(l.whtAmount ?? 0),
+        customIncome: (l.customIncome ?? []).map((r) => ({
+          accountCode: r.accountCode,
+          name: r.name,
+          amount: new Prisma.Decimal(r.amount),
+          isTaxable: r.isTaxable !== false,
+          source: r.isAdjustment === true ? 'ADJUSTMENT' : 'MANUAL',
+        })),
+        customDeduction: (l.customDeduction ?? []).map((r) => ({
+          accountCode: r.accountCode,
+          name: r.name,
+          amount: new Prisma.Decimal(r.amount),
+        })),
+      };
+    });
 
-        const sumIncome = (l.customIncome ?? []).reduce<Prisma.Decimal>(
-          (s, r) => s.plus(new Prisma.Decimal(r.amount)),
-          new Prisma.Decimal(0),
-        );
-        const sumDeduction = (l.customDeduction ?? []).reduce<Prisma.Decimal>(
-          (s, r) => s.plus(new Prisma.Decimal(r.amount)),
-          new Prisma.Decimal(0),
-        );
-
-        // Net cash = base + income − sso − wht − deduction
-        const netPaid = base.plus(sumIncome).minus(sso).minus(wht).minus(sumDeduction);
-        if (netPaid.lt(0)) {
-          throw new BadRequestException(
-            `พนักงาน "${employeeName}" — เงินสุทธิติดลบ ` +
-              `(ฐาน ${base} + รายได้พิเศษ ${sumIncome} - SSO ${sso} - WHT ${wht} - หัก ${sumDeduction})`,
-          );
-        }
-        return {
-          userId: l.userId ?? null,
-          employeeName,
-          employeeTaxId,
-          baseSalary: base,
-          ssoEmployee: sso,
-          whtAmount: wht,
-          netPaid,
-          customIncome: (l.customIncome ?? []).map((r) => ({
-            accountCode: r.accountCode,
-            name: r.name,
-            amount: new Prisma.Decimal(r.amount),
-            isTaxable: r.isTaxable !== false,
-          })),
-          customDeduction: (l.customDeduction ?? []).map((r) => ({
-            accountCode: r.accountCode,
-            name: r.name,
-            amount: new Prisma.Decimal(r.amount),
-          })),
-        };
-      }),
-    );
-    const linesPrepared = preparedRows;
-
-    if (linesPrepared.length === 0) {
+    if (lines.length === 0) {
       throw new BadRequestException('ต้องมีพนักงานอย่างน้อย 1 คน');
     }
 
-    const sumBase = linesPrepared.reduce(
-      (s, l) => s.plus(l.baseSalary),
-      new Prisma.Decimal(0),
-    );
-    const sumWht = linesPrepared.reduce(
-      (s, l) => s.plus(l.whtAmount),
-      new Prisma.Decimal(0),
-    );
-    const sumNet = linesPrepared.reduce(
-      (s, l) => s.plus(l.netPaid),
-      new Prisma.Decimal(0),
-    );
-
-    return {
-      entityScope,
-      documentDate: new Date(dto.documentDate),
-      linesPrepared,
-      sumBase,
-      sumWht,
-      sumNet,
-    };
+    return { entityScope, documentDate: new Date(dto.documentDate), lines };
   }
 
   // ─── Vendor Settlement create — multi-line clears ACCRUAL EXs ────────

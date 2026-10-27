@@ -621,6 +621,8 @@ export class ExpenseDocumentQueryService {
             ? {
                 include: {
                   lines: {
+                    // Payroll D4 — ลำดับที่บันทึก (lineNo) · แถวเก่า lineNo 0 → createdAt
+                    orderBy: [{ lineNo: 'asc' }, { createdAt: 'asc' }],
                     include: {
                       customIncome: { orderBy: { createdAt: 'asc' } },
                       customDeduction: { orderBy: { createdAt: 'asc' } },

@@ -37,6 +37,15 @@ export class PayrollCustomIncomeInput {
   @IsBoolean()
   @IsOptional()
   isTaxable?: boolean;
+
+  /**
+   * Payroll D4 — ติ๊ก "รายการปรับปรุงงวดก่อน" ⇒ เก็บเป็น source `ADJUSTMENT` (ไม่ติ๊ก = `MANUAL`).
+   * แถว OT ที่กรอกเองบนบรรทัดที่ระบบคิด OT ให้ถูกปฏิเสธ (MANUAL_OT_DUPLICATE) เว้นแต่ติ๊กข้อนี้ —
+   * ทางแก้ OT ที่จ่ายขาดของเดือนที่ล็อกแล้ว. client ไม่ส่งแถวระบบ (ATTENDANCE_*) เลย — server คิดเองทุกครั้งที่บันทึก
+   */
+  @IsBoolean()
+  @IsOptional()
+  isAdjustment?: boolean;
 }
 
 /**

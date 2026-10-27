@@ -13,7 +13,21 @@ describe('ExpenseDocumentsService.createPayroll — userId link & snapshot deriv
   const activeEmployee = {
     userId: 'user-emp-1',
     taxIdOverride: null,
-    user: { id: 'user-emp-1', name: 'สมชาย ใจดี', nationalId: '1234567890123' },
+    // branchId = สาขาของใบ — ผจก.สาขาใส่ได้เฉพาะพนักงานสาขาตัวเอง (NOT_IN_BRANCH)
+    user: { id: 'user-emp-1', name: 'สมชาย ใจดี', nationalId: '1234567890123', branchId: 'b1' },
+  };
+  // Payroll D4 — บรรทัดที่ผูกพนักงานต้องผ่าน PayrollSystemRowsService (ไม่มีแถว OT ในชุดนี้)
+  const systemRows = {
+    compute: jest.fn(async (_tx: unknown, q: { userIds: string[] }) => ({
+      attendanceAccountCodes: ['53-1103'],
+      rows: q.userIds.map((userId) => ({
+        userId,
+        autoOtEligible: false,
+        systemIncome: [],
+        attendanceSummary: { otHours: '0.0', autoOtEligible: false },
+        notes: { review: [], warnings: [] },
+      })),
+    })),
   };
 
   beforeEach(() => {
@@ -54,6 +68,7 @@ describe('ExpenseDocumentsService.createPayroll — userId link & snapshot deriv
         validateDeductionAccounts: jest.fn().mockResolvedValue(undefined),
       }, // payrollCustom
       notifications: { send: jest.fn().mockResolvedValue({ id: 'n-1', status: 'SENT' }) },
+      systemRows,
     }).service;
   });
 

@@ -102,6 +102,16 @@ describe('trash registry — per-type restore rules', () => {
     await expect(trashEntry('fixed_asset')!.check!(ctx(h.tx), { id: 'a1', status: 'POSTED', deletedAt: NOW })).rejects.toThrow(BadRequestException);
   });
 
+  it('C6b expense document: a PAYROLL is never restorable, even as a draft (Payroll D4)', async () => {
+    const h = tx();
+    await expect(
+      trashEntry('expense_document')!.check!(ctx(h.tx), { id: 'p1', number: 'PR-1', documentType: 'PAYROLL', status: 'DRAFT', deletedAt: NOW }),
+    ).rejects.toThrow(new BadRequestException('กู้คืนใบเงินเดือนไม่ได้ — ให้สร้างใบใหม่ที่หน้ารายจ่าย › สร้างเอกสารใหม่ › เงินเดือน (PR)'));
+    expect(h.m('expenseDocument').findFirst).not.toHaveBeenCalled();
+    // ใบรายจ่ายร่างทั่วไปยังกู้ได้ตามเดิม
+    await expect(trashEntry('expense_document')!.check!(ctx(h.tx), { id: 'e2', number: 'EX-2', documentType: 'EXPENSE', status: 'DRAFT', deletedAt: NOW })).resolves.toBeUndefined();
+  });
+
   it('C7 expense template: owner already at quota → 409 with the cap', async () => {
     const h = tx({ expenseTemplate: { count: jest.fn().mockResolvedValue(2) }, systemConfig: { findFirst: jest.fn().mockResolvedValue({ value: '2' }) } });
     await expect(trashEntry('expense_template')!.check!(ctx(h.tx), { id: 't1', name: 'x', createdById: 'u1', isRecurring: false, deletedAt: NOW })).rejects.toThrow(/2/);

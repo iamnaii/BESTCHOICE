@@ -8,6 +8,7 @@ import { SalesQueryService } from './services/sales-query.service';
 import { SaleWriterService } from './services/sale-writer.service';
 import { SaleCreationService } from './services/sale-creation.service';
 import { SaleWarrantyNotifierService } from './services/sale-warranty-notifier.service';
+import { SaleCompletedNotifier } from '../staff-notify/sale-completed-notifier.service';
 import { ShopCashSaleTemplate } from '../journal/cpa-templates/shop-cash-sale.template';
 import { ShopAccountResolver } from '../journal/shop-account-resolver.service';
 import { ShopExternalFinanceSaleTemplate } from '../journal/cpa-templates/shop-external-finance-sale.template';
@@ -44,6 +45,8 @@ export class SalesService {
     private shopExternalFinanceSaleTemplate: ShopExternalFinanceSaleTemplate,
     private warrantyNotifier: SaleWarrantyNotifierService,
     @Optional() private audit?: AuditService,
+    // ก้อน 7 A16 — SaleCreationService ถูก `new` ที่นี่ (ไม่ผ่าน DI) จึงต้องส่งต่อเอง ไม่งั้น POS ไม่แจ้ง sale.completed (รีวิว I1)
+    @Optional() private saleCompleted?: SaleCompletedNotifier,
   ) {
     this.query = new SalesQueryService(this.prisma);
     this.writer = new SaleWriterService(
@@ -57,6 +60,7 @@ export class SalesService {
       this.writer,
       this.interCompanyService,
       this.warrantyNotifier,
+      this.saleCompleted,
     );
   }
 

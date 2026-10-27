@@ -24,7 +24,7 @@ import { PayrollCustomService } from './services/payroll-custom.service';
 import { RecurringBillsCron } from './crons/recurring-bills.cron';
 import { RecurringBillsService } from './recurring-bills/recurring-bills.service';
 import { RecurringBillsController } from './recurring-bills/recurring-bills.controller';
-import { LoggingRecurringBillNotifier, RECURRING_BILL_NOTIFIER } from './recurring-bills/recurring-bill-notifier';
+import { RECURRING_BILL_NOTIFIER, StaffNotifyRecurringBillNotifier } from './recurring-bills/recurring-bill-notifier';
 import { PettyCashReplenishAlertCron } from './crons/petty-cash-replenish-alert.cron';
 import { DraftAlertsCron } from './crons/draft-alerts.cron';
 import { ApDueAlertsCron } from './crons/ap-due-alerts.cron';
@@ -65,7 +65,7 @@ import { ReversePermissionGuard } from './reverse-permission.guard';
     // ก้อน 6 — บิลประจำ (D5): cron 08:05 + งวด/ร่าง/งาน/LINE stub (แทน ExpenseRecurringCron เดิม)
     RecurringBillsCron,
     RecurringBillsService,
-    { provide: RECURRING_BILL_NOTIFIER, useClass: LoggingRecurringBillNotifier },
+    { provide: RECURRING_BILL_NOTIFIER, useClass: StaffNotifyRecurringBillNotifier }, // ก้อน 7 A16 — ส่งจริงผ่านท่อกลาง
     PettyCashReplenishAlertCron,
     // D1.3.1.1 — DRAFT alerts cron (opt-in via SystemConfig `draft_alerts_enabled`)
     DraftAlertsCron,

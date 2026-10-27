@@ -1,7 +1,8 @@
 import { Logger } from '@nestjs/common';
 import * as Sentry from '@sentry/nestjs';
 import { PrismaService } from '../../../prisma/prisma.service';
-import { LineOaService } from '../../line-oa/line-oa.service';
+import { StaffNotifyService } from '../../staff-notify/staff-notify.service';
+import { bangkokDateString } from '../../../utils/date.util';
 import { buildDailyReportFlex } from '../../line-oa/flex-messages/daily-report.flex';
 import { DashboardService } from '../../dashboard/dashboard.service';
 
@@ -19,7 +20,8 @@ export class OwnerReportNotifierService {
   constructor(
     private prisma: PrismaService,
     private dashboardService: DashboardService,
-    private lineOaService: LineOaService,
+    /** ก้อน 7 A16 — ท่อกลาง (SchedulerService ส่งต่อมา; ว่าง = ข้าม) */
+    private readonly staffNotify?: StaffNotifyService,
   ) {}
 
   /**
@@ -77,14 +79,9 @@ export class OwnerReportNotifierService {
    * Send daily summary report via LINE to all OWNER users (the body of handleDailyLineReport).
    */
   async sendDailyLineReport() {
-    // Find OWNER users with LINE IDs configured
-    const owners = await this.prisma.user.findMany({
-      where: { role: 'OWNER', isActive: true, lineId: { not: null } },
-      select: { name: true, lineId: true },
-    });
-
-    if (owners.length === 0) {
-      this.logger.log('Daily LINE report: no OWNER users with LINE ID configured, skipping');
+    // ก้อน 7 A16 — ผู้รับ/สวิตช์/ตัดซ้ำ อยู่ที่ท่อกลาง (เหตุการณ์ report.owner_daily ถึง OWNER)
+    if (!this.staffNotify) {
+      this.logger.warn('Daily LINE report: StaffNotifyService unavailable, skipping');
       return;
     }
 
@@ -131,16 +128,13 @@ export class OwnerReportNotifierService {
       pendingApprovals,
     });
 
-    let sent = 0;
-    for (const owner of owners) {
-      try {
-        await this.lineOaService.sendFlexMessage(owner.lineId!, flex, 'line-staff');
-        sent++;
-      } catch (err) {
-        this.logger.warn(`Daily LINE report: failed to send to ${owner.name}: ${err}`);
-      }
-    }
-
-    this.logger.log(`Daily LINE report sent: ${sent}/${owners.length} OWNER users`);
+    const res = await this.staffNotify.notify('report.owner_daily', {
+      title: `รายงานประจำวัน ${dateLabel}`,
+      lines: [],
+      link: '/',
+      flex: { altText: flex.altText, contents: flex.contents },
+      dedupeKey: bangkokDateString(),
+    });
+    this.logger.log(`Daily LINE report: sent ${res.sent}/${res.recipients} (deduped ${res.deduped}, failed ${res.failed})`);
   }
 }

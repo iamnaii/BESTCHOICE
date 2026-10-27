@@ -2,6 +2,8 @@ import { Test, TestingModule } from '@nestjs/testing';
 import * as creditApproval from '../credit-check/services/credit-approval';
 import { Prisma } from '@prisma/client';
 import { ContractWorkflowService } from './contract-workflow.service';
+import { StaffNotifyService } from '../staff-notify/staff-notify.service';
+const staffNotifyMock = { notify: jest.fn().mockResolvedValue({ sent: 1 }) };
 import { PrismaService } from '../../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { JournalAutoService } from '../journal/journal-auto.service';
@@ -257,6 +259,7 @@ describe('ContractWorkflowService', () => {
         { provide: ShopAccountResolver, useValue: shopAccountResolver },
         { provide: CustomerBlacklistService, useValue: { evaluate: jest.fn().mockResolvedValue({ level: 'NONE', reasons: [], checkedAt: 't' }), evaluateMany: jest.fn().mockResolvedValue({}) } }, // ก้อน 5 C3
         { provide: InstallmentInputVatTemplate, useValue: installmentInputVatTemplate },
+        { provide: StaffNotifyService, useValue: staffNotifyMock },
       ],
     }).compile();
 
@@ -265,6 +268,20 @@ describe('ContractWorkflowService', () => {
   });
 
   describe('activate', () => {
+    it('ก้อน 7 A16: หลังเปิดใช้แจ้ง contract.activated ผ่านท่อกลางจากข้อมูลสัญญาที่โหลดแล้ว (ไม่ทำให้ activate ล้ม)', async () => {
+      staffNotifyMock.notify.mockClear();
+      await service.activate('contract-1');
+      await new Promise((r) => setImmediate(r));
+      expect(staffNotifyMock.notify).toHaveBeenCalledTimes(1);
+      expect(staffNotifyMock.notify).toHaveBeenCalledWith('contract.activated', expect.objectContaining({
+        title: 'สัญญาผ่อนเปิดใช้ BC-2026-001',
+        lines: expect.arrayContaining([expect.stringMatching(/^ลูกค้า /), expect.stringMatching(/ยอดจัด 21,754\.08 บาท/), 'สาขา สาขาลาดพร้าว']),
+        link: '/contracts/contract-1',
+        branchId: 'branch-1',
+        dedupeKey: 'contract-1',
+      }));
+    });
+
     it('ก้อน 5: หลัง 1A ตัดสินภาษีซื้อของเครื่องหลักใน tx เดียวกัน — ไม่มีใบรับของ → สัญญา NOT_ELIGIBLE ไม่โพสต์ JE', async () => {
       await service.activate('contract-1', 'activation-actor');
       expect(installmentInputVatTemplate.execute).not.toHaveBeenCalled();

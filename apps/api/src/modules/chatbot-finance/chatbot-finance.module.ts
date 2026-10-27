@@ -13,7 +13,6 @@ import { HandoffService } from './services/handoff.service';
 import { VisionService } from './services/vision.service';
 import { SlipProcessingService } from './services/slip-processing.service';
 import { AutoTriggerService } from './services/auto-trigger.service';
-import { LineStaffClientService } from './services/line-staff-client.service';
 import { StaffNotificationService } from './services/staff-notification.service';
 import { AdminAnalyticsService } from './services/admin-analytics.service';
 import { FinanceConfigService } from './services/finance-config.service';
@@ -71,7 +70,6 @@ import { ListPromotionsTool } from '../sales-bot/tools/list-promotions.tool';
     VisionService,
     SlipProcessingService,
     AutoTriggerService,
-    LineStaffClientService,
     StaffNotificationService,
     AdminAnalyticsService,
     FinanceConfigService,

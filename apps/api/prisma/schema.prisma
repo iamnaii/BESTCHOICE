@@ -896,28 +896,32 @@ model User {
   facebookCommentReplies     FacebookCommentReply[]
   assignedFacebookComments   FacebookCommentThread[]
 
-  todoWorkEvents    TodoWorkEvent[]
-  staffInboxItems   StaffInboxItem[]
-  id                String           @id @default(uuid())
-  email             String           @unique
-  password          String
-  name              String
-  role              UserRole         @default(SALES)
-  branchId          String?          @map("branch_id")
-  isActive          Boolean          @default(true) @map("is_active")
-  isSystemUser      Boolean          @default(false) @map("is_system_user")
-  collectionsActive Boolean          @default(true) @map("collections_active")
-  preferences       Json?            @map("preferences")
-  savedSignature    String?          @map("saved_signature") @db.Text
-  employeeId        String?          @unique @map("employee_id")
-  nickname          String?          @map("nickname")
-  phone             String?          @map("phone")
-  lineId            String?          @map("line_id")
-  address           String?          @map("address") @db.Text
-  avatarUrl         String?          @map("avatar_url") @db.Text
-  startDate         DateTime?        @map("start_date")
-  nationalId        String?          @map("national_id")
-  birthDate         DateTime?        @map("birth_date")
+  todoWorkEvents        TodoWorkEvent[]
+  staffInboxItems       StaffInboxItem[]
+  id                    String           @id @default(uuid())
+  email                 String           @unique
+  password              String
+  name                  String
+  role                  UserRole         @default(SALES)
+  branchId              String?          @map("branch_id")
+  isActive              Boolean          @default(true) @map("is_active")
+  isSystemUser          Boolean          @default(false) @map("is_system_user")
+  collectionsActive     Boolean          @default(true) @map("collections_active")
+  preferences           Json?            @map("preferences")
+  savedSignature        String?          @map("saved_signature") @db.Text
+  employeeId            String?          @unique @map("employee_id")
+  nickname              String?          @map("nickname")
+  phone                 String?          @map("phone")
+  lineId                String?          @map("line_id")
+  /// ก้อน 7 (A16) — userId ของ Messaging API ที่ "ไลน์พนักงาน" (Staff OA) เห็น ได้จากการผูกด้วยรหัส 6 หลักผ่าน webhook · ใช้ push แจ้งเตือนภายใน (lineId ข้างบนเป็นไอดีค้นหาเพื่อน push ไม่ได้)
+  lineStaffUserId       String?          @unique @map("line_staff_user_id")
+  lineLinkCode          String?          @map("line_link_code")
+  lineLinkCodeExpiresAt DateTime?        @map("line_link_code_expires_at")
+  address               String?          @map("address") @db.Text
+  avatarUrl             String?          @map("avatar_url") @db.Text
+  startDate             DateTime?        @map("start_date")
+  nationalId            String?          @map("national_id")
+  birthDate             DateTime?        @map("birth_date")
 
   // Brute-force protection: incremented on failed login, reset on success.
   // When failedLoginAttempts >= LOCKOUT_THRESHOLD the account is locked

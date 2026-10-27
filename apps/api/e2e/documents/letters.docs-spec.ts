@@ -94,7 +94,24 @@ describe('DOC-09 collection letters — real job, real renderer, real guards, pr
     };
   }, 300000);
 
-  afterAll(async () => { await h?.close(); });
+  // Since ก้อน 7 (A16) the owner alert travels StaffNotifyService → NotificationsService: the recipient is the
+  // staff-link id (`lineStaffUserId`, not `lineId`) and nothing is sent until the Staff OA has a channel token
+  // (Integration Hub › ไลน์พนักงาน). Both are seeded only around the letter job — the logins in beforeAll fire
+  // `auth.new_device_login` through the same pipe asynchronously, so seeding earlier would race them — and the
+  // token never leaves the process because the transport is the recorded fake.
+  const linkStaffLine = async () => {
+    await h.prisma.user.update({ where: { id: world.users.owner.id }, data: { lineStaffUserId: `TEST-NOT-SENT-OWNER-${world.prefix}` } });
+    await setSystemConfig(h.prisma, 'integration.line-staff.channelToken', `TEST-NOT-SENT-STAFF-TOKEN-${world.prefix}`);
+  };
+  const unlinkStaffLine = async () => {
+    await setSystemConfig(h.prisma, 'integration.line-staff.channelToken', null);
+    await h.prisma.user.update({ where: { id: world.users.owner.id }, data: { lineStaffUserId: null } });
+  };
+
+  afterAll(async () => {
+    if (h && world) await unlinkStaffLine().catch(() => undefined);
+    await h?.close();
+  });
 
   it('the letter job creates 45-day and 60-day letters only for OVERDUE/DEFAULT contracts past the thresholds, once, and alerts the owner through the recorded transport', async () => {
     const cron = h.app.get(LetterAutoGenerateCron);
@@ -102,6 +119,7 @@ describe('DOC-09 collection letters — real job, real renderer, real guards, pr
     await cron.run();
     expect(await worldLetters()).toEqual([]);
     await setSystemConfig(h.prisma, 'letter_auto_generate_enabled', 'true');
+    await linkStaffLine();
     const created = await cron.run();
     const rows = await worldLetters();
     const byKey = (contractId: string, type: string) => rows.find((r) => r.contractId === contractId && r.letterType === type);
@@ -127,7 +145,12 @@ describe('DOC-09 collection letters — real job, real renderer, real guards, pr
     expect((await worldLetters()).length).toBe(6);
     const ownerAlerts = h.external.calls.filter((call) => call.recipient === `TEST-NOT-SENT-OWNER-${world.prefix}`);
     expect(ownerAlerts.length).toBeGreaterThanOrEqual(1);
-    expect(ownerAlerts[0].summary).toContain('หนังสือทวงถามใหม่');
+    // Other events (e.g. `auth.new_device_login` from the logins above) may reach the owner too — the letter alert must be among them.
+    expect(ownerAlerts.some((call) => call.summary.includes('หนังสือทวงถามใหม่'))).toBe(true);
+    // Undo the staff-notify seeding right away: the disposable database is shared by every suite of the
+    // run, and a configured Staff OA + linked OWNER would make `auth.new_device_login` alert this owner
+    // about every later login in every other world (their `external.calls` must stay empty).
+    await unlinkStaffLine();
     outboundAfterSetup = h.external.calls.length;
     const artifact = saveArtifact(DOMAIN, 'letters-created.json', JSON.stringify({ created, letters, ownerAlerts, contracts: Object.fromEntries(Object.entries(contracts).map(([k, v]) => [k, { id: v.id, contractNumber: v.contractNumber, overdue: expectedLetterFigures(v) }])) }, null, 2)).relativePath;
     recordScenario(DOMAIN, scenario({ id: `${DOMAIN}/auto-generate`, title: 'LetterAutoGenerateCron.run(): disabled flag → nothing; enabled → 45D for 4 contracts (≥45 days overdue), 60D for the 2 past 60 days, none for a 20-day contract or an ACTIVE one; ST-YYYY-NNNNN unique; second run idempotent; owner LINE alert recorded not sent', documents: ['RETURN_DEVICE_45D', 'CONTRACT_TERMINATION_60D'], routes: ['LetterAutoGenerateCron.run() (cron 09:15 Asia/Bangkok)'], renderer: 'none', artifacts: [artifact], notes: 'Letters are created on contract status OVERDUE/DEFAULT + an unpaid installment older than the threshold — the letter status starts PENDING_DISPATCH (tab "รอพิมพ์")' }));

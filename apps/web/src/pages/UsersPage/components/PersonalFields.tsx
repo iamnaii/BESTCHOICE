@@ -112,8 +112,9 @@ export default function PersonalFields({ form, setForm, setMany }: Props) {
           <ThaiDateInput className={inputClass} id={`${fieldId}-birthDate`} value={form.birthDate} onChange={(e) => setForm('birthDate', e.target.value)} /></div>
         <div><label htmlFor={`${fieldId}-phone`} className={labelClass}>เบอร์โทรศัพท์</label>
           <input className={inputClass} type="tel" id={`${fieldId}-phone`} value={form.phone} onChange={(e) => setForm('phone', e.target.value)} pattern="0[0-9]{9}" placeholder="0xx-xxx-xxxx" /></div>
-        <div><label htmlFor={`${fieldId}-lineId`} className={labelClass}>LINE ID</label>
-          <input className={inputClass} id={`${fieldId}-lineId`} value={form.lineId} onChange={(e) => setForm('lineId', e.target.value)} /></div>
+        <div><label htmlFor={`${fieldId}-lineId`} className={labelClass}>LINE ID (สำหรับค้นหาเพื่อน)</label>
+          <input className={inputClass} id={`${fieldId}-lineId`} value={form.lineId} onChange={(e) => setForm('lineId', e.target.value)} aria-describedby={`${fieldId}-lineId-hint`} />
+          <p id={`${fieldId}-lineId-hint`} className="mt-1 text-xs text-muted-foreground">ไอดีที่ใช้ค้นหาเพื่อนใน LINE — การแจ้งเตือนภายในใช้การผูกบัญชีในบล็อก "ไลน์พนักงาน" ไม่ใช่ช่องนี้</p></div>
         <div className="sm:col-span-2"><label htmlFor={`${fieldId}-address`} className={labelClass}>ที่อยู่</label>
           <textarea className={formTextareaClass} rows={2} id={`${fieldId}-address`} value={form.address} onChange={(e) => setForm('address', e.target.value)} /></div>
       </div>

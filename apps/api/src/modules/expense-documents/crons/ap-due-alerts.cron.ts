@@ -1,10 +1,12 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import * as Sentry from '@sentry/nestjs';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { NotificationsService } from '../../notifications/notifications.service';
 import { NotificationCategory } from '../../notifications/notification-category.enum';
 import { readBoolFlag } from '../../../utils/config.util';
+import { bangkokDateString } from '../../../utils/date.util';
+import { StaffNotifyService } from '../../staff-notify/staff-notify.service';
 
 /**
  * D1.3.1.2 — Accounts-Payable due alerts.
@@ -49,6 +51,7 @@ export class ApDueAlertsCron {
   constructor(
     private readonly prisma: PrismaService,
     private readonly notifications: NotificationsService,
+    @Optional() private readonly staffNotify?: StaffNotifyService,
   ) {}
 
   /** Daily at 09:03 Asia/Bangkok — staggered to avoid the 09:00 thundering herd. */
@@ -147,6 +150,16 @@ export class ApDueAlertsCron {
             alerted++;
           } else {
             skipped++;
+          }
+          // LINE พนักงาน (ก้อน 7 A16): บัญชี/เจ้าของ ตามสวิตช์ ap.due + ผู้อนุมัติ/ผู้สร้างใบเป็นผู้รับเพิ่ม · วันละครั้งต่อใบ
+          if (this.staffNotify) {
+            await this.staffNotify.notify('ap.due', {
+              title: `เจ้าหนี้ครบกำหนดจ่าย ${doc.number}`,
+              lines: [`${vendor} · ยอดคงค้าง ${amount} บาท`, `บันทึกเมื่อ ${doc.documentDate.toISOString().slice(0, 10)}`],
+              link: `/expenses/${doc.id}`,
+              extraRecipientUserIds: [doc.approvedById ?? doc.createdById].filter((id): id is string => !!id),
+              dedupeKey: `${doc.id}:${bangkokDateString()}`,
+            });
           }
         } catch (err) {
           failed++;

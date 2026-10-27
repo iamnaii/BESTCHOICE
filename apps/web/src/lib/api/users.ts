@@ -24,6 +24,10 @@ export interface UserDetail {
   nickname: string | null;
   phone: string | null;
   lineId: string | null;
+  /** LINE userId ที่ผูกผ่านไลน์พนักงาน (ก้อน 7 A16) — ใช้ push แจ้งเตือนภายใน */
+  lineStaffUserId?: string | null;
+  lineLinkCode?: string | null;
+  lineLinkCodeExpiresAt?: string | null;
   address: string | null;
   avatarUrl: string | null;
   startDate: string | null;

@@ -5,10 +5,10 @@ import {
   BadRequestException,
   ForbiddenException,
   Logger,
-  NotFoundException,
-} from '@nestjs/common';
+  NotFoundException, Optional } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { TradeInCreditService } from '../../trade-in/services/trade-in-credit.service';
+import { SaleCompletedNotifier } from '../../staff-notify/sale-completed-notifier.service';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { CreateSaleDto } from '../dto/sale.dto';
 import { InterCompanyService } from '../../inter-company/inter-company.service';
@@ -48,6 +48,8 @@ export class SaleCreationService {
     private writer: SaleWriterService,
     private interCompanyService: InterCompanyService,
     private warrantyNotifier: SaleWarrantyNotifierService,
+    // ก้อน 7 A16 — แจ้ง "ขายสดสำเร็จ" ทาง LINE พนักงาน หลัง commit (optional)
+    @Optional() private readonly saleCompleted?: SaleCompletedNotifier,
   ) {}
 
   async create(dto: CreateSaleDto, salespersonId: string, userRole = 'SALES', userBranchId?: string | null) {
@@ -212,8 +214,13 @@ export class SaleCreationService {
     // แบบ synchronous ก่อนเข้า try ข้างใน. ขาผ่อน (INSTALLMENT) ไม่เข้าเพราะประกัน
     // ผูกกับสัญญาและมีเส้นทางแจ้งของตัวเอง
     if (dto.saleType === 'CASH' || dto.saleType === 'EXTERNAL_FINANCE') {
-      if (managed) onDomainCommit(() => this.warrantyNotifier.notify(sale.id));
-      else void this.warrantyNotifier.notify(sale.id).catch((err) => this.logger.error(`[warranty-line] notify ไม่ถูกเรียก: ${String(err)}`));
+      if (managed) {
+        onDomainCommit(() => this.warrantyNotifier.notify(sale.id));
+        onDomainCommit(async () => { await this.saleCompleted?.notify(sale.id); });
+      } else {
+        void this.warrantyNotifier.notify(sale.id).catch((err) => this.logger.error(`[warranty-line] notify ไม่ถูกเรียก: ${String(err)}`));
+        void this.saleCompleted?.notify(sale.id).catch((err) => this.logger.error(`[staff-notify] sale.completed ไม่ถูกเรียก: ${String(err)}`));
+      }
     }
 
     return loyaltyProof ? { ...sale, loyaltyRedemption: loyaltyProof } : sale;

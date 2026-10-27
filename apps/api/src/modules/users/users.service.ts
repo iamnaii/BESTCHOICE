@@ -98,6 +98,8 @@ export class UsersService {
         isActive: true, employeeId: true, nickname: true, phone: true,
         lineId: true, address: true, avatarUrl: true, startDate: true,
         nationalId: true, birthDate: true, lastLoginAt: true, createdAt: true,
+        // ไลน์พนักงาน (ก้อน 7 A16) — สถานะผูก + รหัสผูกที่ยังไม่หมดอายุ ให้หน้าผู้ใช้ (OWNER) แสดง
+        lineStaffUserId: true, lineLinkCode: true, lineLinkCodeExpiresAt: true,
         branch: { select: { id: true, name: true } },
         employeeProfile: {
           select: {

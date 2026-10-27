@@ -1,7 +1,9 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import * as Sentry from '@sentry/nestjs';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { NotificationsService } from './notifications.service';
+import { StaffNotifyService } from '../staff-notify/staff-notify.service';
+import { bangkokDateString } from '../../utils/date.util';
 import { OverdueService } from '../overdue/overdue.service';
 import { ReorderPointsService } from '../inventory/reorder-points.service';
 import { WarrantyService } from '../products/warranty.service';
@@ -48,6 +50,7 @@ export class SchedulerService {
     private pdpaService: PDPAService,
     private dunningEngineService: DunningEngineService,
     private integrationConfig: IntegrationConfigService,
+    @Optional() private readonly staffNotify?: StaffNotifyService,
   ) {
     this.collectionsNotifier = new CollectionsNotifierService(
       this.prisma,
@@ -57,11 +60,7 @@ export class SchedulerService {
       this.paymentLinkService,
     );
     this.retention = new RetentionService(this.prisma);
-    this.ownerReportNotifier = new OwnerReportNotifierService(
-      this.prisma,
-      this.dashboardService,
-      this.lineOaService,
-    );
+    this.ownerReportNotifier = new OwnerReportNotifierService(this.prisma, this.dashboardService, this.staffNotify);
   }
 
   /**
@@ -367,17 +366,18 @@ export class SchedulerService {
       const credit = await this.notificationsService.checkSmsCredit();
       if (!credit.configured) return;
       if (credit.credit !== undefined && credit.credit < 100) {
-        const staffTargets = (await this.integrationConfig.getValue('line-staff', 'notifyTargets')) || '';
-        const targets = staffTargets.split(',').map((s) => s.trim()).filter(Boolean);
-        for (const target of targets) {
-          await this.notificationsService.sendFromTemplate(
-            'staff.sms_credit_low',
-            { credit: String(credit.credit) },
-            target,
-            { relatedId: 'sms-credit-alert' },
-          );
+        // ก้อน 7 A16 — ผ่านท่อกลาง (เหตุการณ์ sms.credit_low ถึง OWNER · วันละครั้ง) แทนแม่แบบ staff.sms_credit_low + notifyTargets
+        if (!this.staffNotify) {
+          this.logger.warn(`SMS credit low (${credit.credit}) — StaffNotifyService unavailable, no LINE alert`);
+          return;
         }
-        this.logger.warn(`SMS credit low (${credit.credit}) — alerted ${targets.length} staff`);
+        const r = await this.staffNotify.notify('sms.credit_low', {
+          title: 'SMS credit ใกล้หมด',
+          lines: [`เหลือ ${credit.credit} เครดิต`],
+          link: '/notifications',
+          dedupeKey: bangkokDateString(),
+        });
+        this.logger.warn(`SMS credit low (${credit.credit}) — alerted ${r.sent} staff`);
       }
     } catch (error) {
       this.reportCronFailure('sms-credit-alert', error);

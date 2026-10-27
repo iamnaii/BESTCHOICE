@@ -1075,6 +1075,7 @@ export class RecurringBillsService {
         templateName: p.tpl.name,
         vendorName: vendorNameOf(p.tpl.prefilledData),
         branchName: p.tpl.branch?.name ?? 'ไม่ระบุสาขา',
+        branchId: p.tpl.branchId ?? null,
         dueDate: p.due,
         daysOverdue: p.daysOverdue,
         amount: amount ? amount.toString() : null,

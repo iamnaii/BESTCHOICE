@@ -5,9 +5,14 @@ import { MemoryRouter, Route, Routes } from 'react-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import UserDetailPage from './UserDetailPage';
 const mocks = vi.hoisted(() => ({ detail: vi.fn(), create: vi.fn(), saveProfile: vi.fn() }));
-vi.mock('@/lib/api', () => ({ default: { get: vi.fn(async () => ({ data: [] })) }, getErrorMessage: () => 'เกิดข้อผิดพลาด' }));
+const apiMock = vi.hoisted(() => ({ get: vi.fn(async () => ({ data: [] })), post: vi.fn(), delete: vi.fn() }));
+vi.mock('@/lib/api', () => ({ default: apiMock, getErrorMessage: () => 'เกิดข้อผิดพลาด' }));
+let role = 'OWNER';
+vi.mock('@/contexts/AuthContext', () => ({ useAuth: () => ({ user: { id: 'u-owner', role } }) }));
+const toastMock = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn() }));
+vi.mock('sonner', () => ({ toast: toastMock }));
 vi.mock('@/hooks/useUiFlags', () => ({ useUiFlags: () => ({ viewerRoleEnabled: false }) }));
-vi.mock('@/lib/api/users', () => ({ usersApi: mocks, userKeys: { detail: (id: string) => ['user', id] } }));
+vi.mock('@/lib/api/users', () => ({ usersApi: mocks, userKeys: { detail: (id: string) => ['users', 'detail', id] } })); // คีย์จริง — ให้ invalidate ของ hook ชนกับหน้าเหมือน production
 function open(path: string) {
   return render(<QueryClientProvider client={new QueryClient({defaultOptions:{queries:{retry:false}}})}>
     <MemoryRouter initialEntries={[path]}><Routes>
@@ -16,7 +21,7 @@ function open(path: string) {
     </Routes></MemoryRouter>
   </QueryClientProvider>);
 }
-beforeEach(() => vi.clearAllMocks());
+beforeEach(() => { vi.clearAllMocks(); role = 'OWNER'; apiMock.get.mockImplementation(async () => ({ data: [] })); });
 describe('user detail route modes', () => {
   it('opens the static new route with editable credentials and creates instead of updating undefined', async () => {
     const user = userEvent.setup();
@@ -41,5 +46,96 @@ describe('user detail route modes', () => {
     expect(screen.getByLabelText(/อีเมล \(เข้าสู่ระบบ\)/)).toBeDisabled();
     expect(screen.getByLabelText('รหัสผ่านใหม่ (เว้นว่างถ้าไม่เปลี่ยน)')).not.toBeRequired();
     expect(mocks.detail).toHaveBeenCalledWith('user-a');
+  });
+});
+
+/**
+ * ก้อน 7 A16 §13.1 — บล็อก "ไลน์พนักงาน (แจ้งเตือนภายใน)" บนแท็บข้อมูลบุคคล: ผูกด้วยรหัส 6 หลักผ่าน Staff OA
+ * (ช่อง LINE ID เดิม = ไอดีค้นหาเพื่อน ใช้ push ไม่ได้)
+ */
+const baseUser = { id: 'user-a', name: 'สมหญิง ทดสอบ', email: 'somying@example.invalid', role: 'ACCOUNTANT', isActive: true, lineId: 'somying.line', lineStaffUserId: null, lineLinkCode: null, lineLinkCodeExpiresAt: null };
+describe('staff LINE link card', () => {
+  it('L1: ยังไม่ผูก → สร้างรหัสผูก LINE → POST link-code แล้วแสดงรหัส + ขั้นตอน + เวลาหมดอายุ', async () => {
+    const user = userEvent.setup();
+    mocks.detail.mockResolvedValue(baseUser);
+    apiMock.post.mockResolvedValue({ data: { code: '123456', expiresAt: new Date(Date.now() + 15 * 60_000).toISOString() } });
+    open('/users/user-a');
+    await user.click(await screen.findByRole('tab', { name: 'ข้อมูลบุคคล' }));
+    expect(screen.getByLabelText('LINE ID (สำหรับค้นหาเพื่อน)')).toHaveAccessibleDescription(/ไม่ใช่ช่องนี้/);
+    const card = screen.getByRole('region', { name: 'ไลน์พนักงาน (แจ้งเตือนภายใน)' });
+    expect(card).toHaveTextContent('ยังไม่ผูก');
+    await user.click(screen.getByRole('button', { name: 'สร้างรหัสผูก LINE' }));
+    await waitFor(() => expect(apiMock.post).toHaveBeenCalledWith('/staff-notify/users/user-a/link-code'));
+    expect(await screen.findByText('123456')).toBeInTheDocument();
+    expect(card).toHaveTextContent(/หมดอายุใน/);
+    expect(card).toHaveTextContent(/ส่งรหัสนี้ในแชท/);
+    // รีวิว M5 — Integration Hub ไม่มี QR/ลิงก์เพิ่มเพื่อน ห้ามชี้ไปที่นั่น
+    expect(card).not.toHaveTextContent(/ลิงก์อยู่ที่/);
+    expect(card).toHaveTextContent(/LINE Official Account Manager/);
+    expect(screen.queryByRole('button', { name: 'ส่งข้อความทดสอบ' })).not.toBeInTheDocument();
+  });
+
+  it('L4: สร้างรหัส/ยกเลิกการผูก ต้องไม่โหลดผู้ใช้ซ้ำจนฟอร์มที่แก้ค้างไว้หาย (รีวิว M6)', async () => {
+    const user = userEvent.setup();
+    mocks.detail.mockResolvedValue(baseUser);
+    apiMock.post.mockResolvedValue({ data: { code: '654321', expiresAt: new Date(Date.now() + 15 * 60_000).toISOString() } });
+    open('/users/user-a');
+    await user.click(await screen.findByRole('tab', { name: 'ข้อมูลบุคคล' }));
+    const nickname = screen.getByLabelText('ชื่อเล่น');
+    await user.clear(nickname);
+    await user.type(nickname, 'หญิง');
+    await user.click(screen.getByRole('button', { name: 'สร้างรหัสผูก LINE' }));
+    expect(await screen.findByText('654321')).toBeInTheDocument();
+    expect(mocks.detail).toHaveBeenCalledTimes(1);
+    expect(screen.getByLabelText('ชื่อเล่น')).toHaveValue('หญิง');
+  });
+
+  it('L5: ยกเลิกการผูกแล้วการ์ดเปลี่ยนเป็น "ยังไม่ผูก" ทันทีโดยไม่โหลดซ้ำ', async () => {
+    const user = userEvent.setup();
+    mocks.detail.mockResolvedValue({ ...baseUser, lineStaffUserId: 'U4af4980629abcd' });
+    apiMock.delete.mockResolvedValue({ data: { ok: true } });
+    open('/users/user-a');
+    await user.click(await screen.findByRole('tab', { name: 'ข้อมูลบุคคล' }));
+    await user.click(screen.getByRole('button', { name: 'ยกเลิกการผูก' }));
+    await user.click(await screen.findByRole('button', { name: 'ยืนยัน' }));
+    await waitFor(() => expect(apiMock.delete).toHaveBeenCalledWith('/staff-notify/users/user-a/link'));
+    const card = screen.getByRole('region', { name: 'ไลน์พนักงาน (แจ้งเตือนภายใน)' });
+    await waitFor(() => expect(card).toHaveTextContent('ยังไม่ผูก'));
+    expect(screen.getByRole('button', { name: 'สร้างรหัสผูก LINE' })).toBeInTheDocument();
+    expect(mocks.detail).toHaveBeenCalledTimes(1);
+  });
+
+  it('L2: ผูกแล้ว → ส่งข้อความทดสอบ POST test · ยกเลิกการผูก (ยืนยัน) DELETE link', async () => {
+    const user = userEvent.setup();
+    mocks.detail.mockResolvedValue({ ...baseUser, lineStaffUserId: 'U4af4980629abcd' });
+    apiMock.post.mockResolvedValue({ data: { ok: true } });
+    apiMock.delete.mockResolvedValue({ data: { ok: true } });
+    open('/users/user-a');
+    await user.click(await screen.findByRole('tab', { name: 'ข้อมูลบุคคล' }));
+    const card = screen.getByRole('region', { name: 'ไลน์พนักงาน (แจ้งเตือนภายใน)' });
+    expect(card).toHaveTextContent('ผูกแล้ว');
+    expect(card).toHaveTextContent('U…abcd');
+    expect(screen.queryByRole('button', { name: 'สร้างรหัสผูก LINE' })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'ส่งข้อความทดสอบ' }));
+    await waitFor(() => expect(apiMock.post).toHaveBeenCalledWith('/staff-notify/users/user-a/test'));
+    await waitFor(() => expect(toastMock.success).toHaveBeenCalled());
+    await user.click(screen.getByRole('button', { name: 'ยกเลิกการผูก' }));
+    await user.click(await screen.findByRole('button', { name: 'ยืนยัน' }));
+    await waitFor(() => expect(apiMock.delete).toHaveBeenCalledWith('/staff-notify/users/user-a/link'));
+  });
+
+  it('L3: ไม่ใช่ OWNER หรือผู้ใช้ใหม่ → ไม่มีบล็อกผูก LINE', async () => {
+    const user = userEvent.setup();
+    role = 'ACCOUNTANT';
+    mocks.detail.mockResolvedValue(baseUser);
+    const first = open('/users/user-a');
+    await user.click(await screen.findByRole('tab', { name: 'ข้อมูลบุคคล' }));
+    expect(screen.queryByRole('region', { name: 'ไลน์พนักงาน (แจ้งเตือนภายใน)' })).not.toBeInTheDocument();
+    first.unmount();
+
+    role = 'OWNER';
+    open('/users/new');
+    await user.click(await screen.findByRole('tab', { name: 'ข้อมูลบุคคล' }));
+    expect(screen.queryByRole('region', { name: 'ไลน์พนักงาน (แจ้งเตือนภายใน)' })).not.toBeInTheDocument();
   });
 });

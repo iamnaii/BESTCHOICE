@@ -36,7 +36,7 @@ const baseDto = {
   amountReceived: 10000,
 };
 
-function makeService(customer: unknown, products: unknown[]) {
+function makeService(customer: unknown, products: unknown[], saleCompleted?: { notify: jest.Mock }) {
   const prisma = {
     customer: {
       findFirst: jest.fn().mockResolvedValue(customer),
@@ -58,9 +58,22 @@ function makeService(customer: unknown, products: unknown[]) {
     writer as never,
     {} as never,
     { notify: jest.fn().mockResolvedValue(undefined) } as never,
+    saleCompleted as never,
   );
   return { service, prisma, writer };
 }
+
+describe('SaleCreationService.create → SaleCompletedNotifier (ก้อน 7 A16)', () => {
+  it('SL1 notifies the created sale after commit; a failing notifier never breaks the sale', async () => {
+    const saleCompleted = { notify: jest.fn().mockRejectedValue(new Error('boom')) };
+    const { service, writer } = makeService(realCustomer, [realProduct], saleCompleted);
+    const sale = await service.create(baseDto as never, 'sp-1', 'OWNER');
+    expect(writer.createCashSale).toHaveBeenCalledTimes(1);
+    expect(sale).toMatchObject({ id: 'sale-1' });
+    await new Promise((r) => setImmediate(r));
+    expect(saleCompleted.notify).toHaveBeenCalledWith('sale-1');
+  });
+});
 
 describe('SaleCreationService.create — test-data fence', () => {
   it('จริง ↔ จริง ผ่าน และ writer ถูกเรียก', async () => {

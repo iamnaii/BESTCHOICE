@@ -1,10 +1,12 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import * as Sentry from '@sentry/nestjs';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { NotificationsService } from '../../notifications/notifications.service';
 import { NotificationCategory } from '../../notifications/notification-category.enum';
+import { bangkokDateString } from '../../../utils/date.util';
+import { StaffNotifyService } from '../../staff-notify/staff-notify.service';
 
 /**
  * D1.1.5.4 — Petty Cash replenish alert cron.
@@ -38,6 +40,7 @@ export class PettyCashReplenishAlertCron {
   constructor(
     private readonly prisma: PrismaService,
     private readonly notifications: NotificationsService,
+    @Optional() private readonly staffNotify?: StaffNotifyService,
   ) {}
 
   /**
@@ -129,6 +132,16 @@ export class PettyCashReplenishAlertCron {
         `Petty Cash replenish alert sent: ${alertsSent}/${owners.length} OWNER(s), ` +
           `balance=${balance.toFixed(2)} threshold=${threshold} limit=${limit}`,
       );
+      // LINE พนักงาน (ก้อน 7 A16): เจ้าของ/บัญชี ตามสวิตช์ petty_cash.replenish · วันละครั้ง
+      if (this.staffNotify) {
+        await this.staffNotify.notify('petty_cash.replenish', {
+          title: 'เงินสดย่อยต่ำกว่าเกณฑ์เติม',
+          lines: [`คงเหลือ ${balance.toNumber().toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} บาท (เกณฑ์ ${threshold.toLocaleString('en-US')} · วงเงิน ${limit.toLocaleString('en-US')})`, `ใช้ไปเดือนนี้ ${spent.toFixed(2)} บาท`],
+          link: '/expenses',
+          dedupeKey: bangkokDateString(),
+        });
+      }
+
       return {
         alertsSent,
         balance: balance.toNumber(),

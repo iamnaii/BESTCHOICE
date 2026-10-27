@@ -330,7 +330,7 @@ describe('runDaily', () => {
 describe('notifier + view status', () => {
   const event: RecurringBillEvent = {
     kind: 'OVERDUE', occurrenceId: 'occ-1', templateName: 'อินเทอร์เน็ต AIS Fibre', vendorName: 'บมจ.แอดวานซ์',
-    branchName: 'ลาดพร้าว', dueDate: { year: 2026, month: 10, day: 24 }, daysOverdue: 2, amount: '1284', documentNumber: 'EX-20261021-0002',
+    branchName: 'ลาดพร้าว', branchId: 'br-1', dueDate: { year: 2026, month: 10, day: 24 }, daysOverdue: 2, amount: '1284', documentNumber: 'EX-20261021-0002',
     link: 'https://app.example/expenses/recurring-bills?month=2026-10',
   };
   it('N1 builds the 5-line Thai message for each kind', () => {

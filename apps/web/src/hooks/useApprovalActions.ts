@@ -19,10 +19,27 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import api, { getErrorMessage } from '@/lib/api';
+import { payrollConflictOf } from '@/components/expense-form-v4/payroll-system/payroll-status';
+import { OPEN_DOC_HINT } from '@/components/expense-form-v4/payroll-system/payroll-copy';
 
 export interface ApprovalActions {
   submitForApproval: ReturnType<typeof useMutation<unknown, unknown, string>>;
   approve: ReturnType<typeof useMutation<unknown, unknown, string>>;
+}
+
+/**
+ * Toast an expense-document action error. Payroll D4: a 409 from the payroll gate
+ * (cutoff / device-conflict flag / stale amounts / OT held by another payroll) shows
+ * the server message as is, plus a pointer to the row's "เปิดใบ" item — the detail
+ * page shows the dates, flagged days and the diff table.
+ */
+export function toastActionError(err: unknown): void {
+  const conflict = payrollConflictOf(err);
+  if (conflict) {
+    toast.error(conflict.message || getErrorMessage(err), { description: OPEN_DOC_HINT });
+    return;
+  }
+  toast.error(getErrorMessage(err));
 }
 
 export function useApprovalActions(): ApprovalActions {
@@ -42,9 +59,7 @@ export function useApprovalActions(): ApprovalActions {
       toast.success('ส่งขออนุมัติแล้ว');
       invalidate();
     },
-    onError: (err) => {
-      toast.error(getErrorMessage(err));
-    },
+    onError: toastActionError,
   });
 
   const approve = useMutation<unknown, unknown, string>({
@@ -56,9 +71,7 @@ export function useApprovalActions(): ApprovalActions {
       toast.success('อนุมัติแล้ว');
       invalidate();
     },
-    onError: (err) => {
-      toast.error(getErrorMessage(err));
-    },
+    onError: toastActionError,
   });
 
   return { submitForApproval, approve };

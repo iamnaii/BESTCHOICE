@@ -1,6 +1,21 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { render, screen, within } from '@testing-library/react';
+import { MemoryRouter, Route, Routes } from 'react-router';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import Decimal from 'decimal.js';
-import { bucketWhtByRate } from './PaymentVoucherPage';
+
+const apiGet = vi.fn();
+vi.mock('@/lib/api', () => ({ default: { get: (...a: unknown[]) => apiGet(...a) } }));
+vi.mock('@/hooks/useCompanyInfo', () => ({
+  useCompanyInfo: () => ({}),
+  useCompanyDisplayName: () => 'บริษัท เบสท์ช้อยส์โฟน จำกัด',
+  useCompanyAddress: () => '',
+  useCompanyTaxId: () => '',
+  useCompanyLogoUrl: () => null,
+}));
+vi.mock('@/hooks/useUiFlags', () => ({ useUiFlags: () => ({ voucherPrintMode: 'single', voucherIncludeAdjustment: false }) }));
+
+import PaymentVoucherPage, { bucketWhtByRate } from './PaymentVoucherPage';
 
 /**
  * W7 (Round 2) — Form 50 ทวิ is a legal cert; per-row sums MUST equal
@@ -106,5 +121,90 @@ describe('bucketWhtByRate — W7 Decimal precision', () => {
     expect(buckets).toHaveLength(1);
     expect(buckets[0].base.toFixed(2)).toBe('100.00');
     expect(buckets[0].tax.toFixed(2)).toBe('3.00');
+  });
+});
+
+// Payroll D4 ส่วนที่ 1 (Task 8, mockup กระดาน 3) — สลิปเงินเดือน: ชม. × อัตรา, แถวปรับปรุงงวดก่อน, กล่องสรุปเวลาทำงาน,
+// พิมพ์ได้เฉพาะใบที่ลงบัญชีแล้ว · ทุกยอดเป็นยอดที่เก็บไว้ (ไม่คิดใหม่บนเว็บ)
+describe('PayrollSlipSheet (PAYROLL voucher)', () => {
+  const income = (over: Record<string, unknown>) => ({
+    isTaxable: true, quantity: null, rate: null, multiplier: null, source: 'MANUAL', ...over,
+  });
+  const line = {
+    id: 'l1', employeeName: 'สมศรี มีสุข', employeeTaxId: null,
+    baseSalary: '15000', ssoEmployee: '750', whtAmount: '0', netPaid: '16734.38',
+    customIncome: [
+      income({ id: 'i1', accountCode: 'S52-1202', name: 'OT วันทำงาน (1.5 เท่า)', amount: '609.38', source: 'ATTENDANCE_OT', quantity: '6.5', rate: '93.7500', multiplier: '1.5' }),
+      income({ id: 'i2', accountCode: 'S52-1202', name: 'ทำงานวันหยุด (1 เท่า)', amount: '500', source: 'ATTENDANCE_HOLIDAY', quantity: '8.0', rate: '62.5000', multiplier: '1' }),
+      income({ id: 'i3', accountCode: 'S52-1202', name: 'OT วันหยุด (3 เท่า)', amount: '375', source: 'ATTENDANCE_HOLIDAY_OT', quantity: '2.0', rate: '187.5000', multiplier: '3' }),
+      income({ id: 'i4', accountCode: 'S52-1204', name: 'เบี้ยขยัน', amount: '500' }),
+      income({ id: 'i5', accountCode: 'S52-1202', name: 'OT ก.ย. ที่จ่ายขาด', amount: '500', source: 'ADJUSTMENT' }),
+    ],
+    customDeduction: [],
+    attendanceSummary: {
+      workDays: 25, lateCount: 2, lateMinutes: 18, absent: 0, leave: 1, otHours: '6.5', holidayHours: '8.0',
+      holidayOtHours: '2.0', holidayWorkedDays: 1, reviewCount: 0, autoOtEligible: true,
+    },
+  };
+  const voucher = (status: string) => ({
+    id: 'pr-1', number: 'PR-20261031-0001', documentType: 'PAYROLL', documentDate: '2026-11-02',
+    vendorName: null, vendorTaxId: null, taxInvoiceNo: null, description: null,
+    subtotal: '16734.38', vatAmount: '0', withholdingTax: '0', whtFormType: null, totalAmount: '16734.38',
+    netPayment: '16734.38', depositAccountCode: 'S11-1201', status, reference: null, note: null,
+    expenseDetail: null, payroll: { payrollPeriod: '2026-10', lines: [line] }, journalLines: [],
+  });
+  function mountVoucher(status: string) {
+    apiGet.mockResolvedValue({ data: voucher(status) });
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MemoryRouter initialEntries={['/expenses/pr-1/voucher']}>
+          <Routes><Route path="/expenses/:id/voucher" element={<PaymentVoucherPage />} /></Routes>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+  }
+  beforeEach(() => apiGet.mockReset());
+
+  it('shows hours × rate (rate 2 dp) next to the stored amount — 6.5 × 93.75 = 609.38', async () => {
+    mountVoucher('POSTED');
+    expect(await screen.findByRole('columnheader', { name: 'ชม. × อัตรา' })).toBeInTheDocument();
+    const ot = screen.getByRole('row', { name: /OT วันทำงาน \(1\.5 เท่า\)/ });
+    expect(within(ot).getByText('6.5 × 93.75')).toBeInTheDocument();
+    expect(within(ot).getByText('609.38')).toBeInTheDocument();
+    expect(within(screen.getByRole('row', { name: /ทำงานวันหยุด \(1 เท่า\)/ })).getByText('8 × 62.50')).toBeInTheDocument();
+    expect(within(screen.getByRole('row', { name: /OT วันหยุด \(3 เท่า\)/ })).getByText('2 × 187.50')).toBeInTheDocument();
+    // แถวที่ไม่มีชั่วโมง (เงินเดือนพื้นฐาน · กรอกเอง · ค่าคอมของส่วนที่ 2) = —
+    expect(within(screen.getByRole('row', { name: /เงินเดือนพื้นฐาน/ })).getByText('—')).toBeInTheDocument();
+    expect(within(screen.getByRole('row', { name: /เบี้ยขยัน/ })).getByText('—')).toBeInTheDocument();
+    expect(within(screen.getByRole('row', { name: /รวมรายได้/ })).getByText('17,484.38')).toBeInTheDocument();
+  });
+
+  it('labels prior-period adjustment rows (ปรับปรุงงวดก่อน)', async () => {
+    mountVoucher('POSTED');
+    const adj = await screen.findByRole('row', { name: /OT ก\.ย\. ที่จ่ายขาด/ });
+    expect(adj).toHaveTextContent('(ปรับปรุงงวดก่อน)');
+    expect(screen.getByRole('row', { name: /เบี้ยขยัน/ })).not.toHaveTextContent('(ปรับปรุงงวดก่อน)');
+  });
+
+  it('shows the attendance summary as information that does not change pay, and the v2 footer', async () => {
+    mountVoucher('POSTED');
+    const box = (await screen.findByText('ข้อมูลประกอบ — ไม่มีผลต่อยอดเงิน')).closest('section') as HTMLElement;
+    expect(within(box).getByText('สรุปเวลาทำงาน ต.ค. 2569')).toBeInTheDocument();
+    expect(within(box).getByText('25 วัน')).toBeInTheDocument();
+    expect(within(box).getByText('6.5 ชม.')).toBeInTheDocument();
+    expect(screen.getByText('ใบจ่ายเงินเดือน v2')).toBeInTheDocument();
+  });
+
+  it.each([
+    ['DRAFT', /ลงบัญชีก่อนจึงพิมพ์สลิปได้/],
+    ['PENDING_APPROVAL', /ลงบัญชีก่อนจึงพิมพ์สลิปได้/],
+    ['APPROVED', /ลงบัญชีก่อนจึงพิมพ์สลิปได้/],
+    ['VOIDED', /ใบนี้กลับรายการแล้ว/],
+  ])('%s: a message instead of slips, and printing is off', async (status, message) => {
+    mountVoucher(status);
+    expect((await screen.findByText(message)).closest('[role="status"]')).not.toBeNull();
+    expect(screen.queryByText('สมศรี มีสุข')).not.toBeInTheDocument();
+    expect(screen.queryByText('ใบจ่ายเงินเดือน v2')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /พิมพ์ \/ บันทึก PDF/ })).toBeDisabled();
   });
 });

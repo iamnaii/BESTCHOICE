@@ -12,6 +12,8 @@ vi.mock('@/lib/api', () => ({
   default: { get: (...args: unknown[]) => apiGet(...args), post: (...args: unknown[]) => apiPost(...args) },
   getErrorMessage: () => 'โหลดไม่สำเร็จ',
 }));
+const toast = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn() }));
+vi.mock('sonner', () => ({ toast }));
 vi.mock('@/hooks/useAccountingPermissions', () => ({ useAccountingPermissions: () => ({ can: () => allowed }) }));
 vi.mock('@/hooks/useUiFlags', () => ({ useUiFlags: () => ({
   paginationSize: 20, templatesEnabled: false, approvalEnabled,
@@ -37,7 +39,10 @@ function mount(status = 'DRAFT', documentType = 'EXPENSE') {
   </QueryClientProvider>);
 }
 const trigger = () => screen.getByRole('button', { name: 'เมนู EX-001' });
-beforeEach(() => { apiGet.mockReset(); apiPost.mockReset(); approvalEnabled = false; allowed = true; });
+beforeEach(() => {
+  apiGet.mockReset(); apiPost.mockReset(); approvalEnabled = false; allowed = true;
+  Object.values(toast).forEach((f) => f.mockReset());
+});
 
 describe('expense row menu', () => {
   it('opens outside the table and supports keyboard dismissal', async () => {
@@ -100,5 +105,34 @@ describe('expense row menu', () => {
   it('has no action menu for voided records', async () => {
     mount('VOIDED'); await screen.findByText('EX-001');
     expect(screen.queryByRole('button', { name: 'เมนู EX-001' })).not.toBeInTheDocument();
+  });
+});
+
+// Payroll D4 ส่วนที่ 1 (Task 8) — อนุมัติ/ลงบัญชีใบเงินเดือนต้องผ่านด่าน (เวลาปิดงวด · วันติดธง · ยอดเปลี่ยน) ที่หน้ารายละเอียด
+// ⇒ แถวใบเงินเดือนไม่มี "อนุมัติเอกสาร"/"โพสต์" แต่มี "เปิดใบ" (ลิงก์ไปหน้ารายละเอียด)
+describe('payroll row actions', () => {
+  const openMenu = async () => userEvent.click(await screen.findByRole('button', { name: 'เมนู EX-001' }));
+
+  it.each(['DRAFT', 'PENDING_APPROVAL', 'APPROVED'])('%s payroll: เปิดใบ links to the detail page, no approve or post', async (status) => {
+    mount(status, 'PAYROLL'); await openMenu();
+    expect(await screen.findByRole('menuitem', { name: 'เปิดใบ' })).toHaveAttribute('href', '/expenses/expense-1');
+    expect(screen.queryByRole('menuitem', { name: /อนุมัติเอกสาร/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('menuitem', { name: 'โพสต์' })).not.toBeInTheDocument();
+  });
+
+  it('keeps approve and post on other document types', async () => {
+    mount('PENDING_APPROVAL'); await openMenu();
+    expect(await screen.findByRole('menuitem', { name: /อนุมัติเอกสาร/ })).toBeVisible();
+    expect(screen.queryByRole('menuitem', { name: 'เปิดใบ' })).not.toBeInTheDocument();
+  });
+
+  it('a payroll 409 from submitting shows the server message and points to เปิดใบ', async () => {
+    approvalEnabled = true;
+    const message = 'ส่งขออนุมัติได้ตั้งแต่ 1 พ.ย. 2569 18:00 — รอให้ข้อมูลลงเวลาของเดือนนี้ครบก่อน ระหว่างนี้บันทึกร่างไว้ได้';
+    apiPost.mockRejectedValue({ response: { status: 409, data: { code: 'PAYROLL_SUBMIT_CUTOFF', closableAt: '2026-11-01T11:00:00.000Z', message } } });
+    mount('DRAFT', 'PAYROLL'); await openMenu();
+    await userEvent.click(await screen.findByRole('menuitem', { name: 'ส่งขออนุมัติ' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'ยืนยัน' }));
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith(message, { description: 'เปิดใบเพื่อดูรายละเอียด' }));
   });
 });

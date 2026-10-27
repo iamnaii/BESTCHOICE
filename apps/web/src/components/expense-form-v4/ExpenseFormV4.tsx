@@ -34,6 +34,7 @@ import { CashAccountVisualPicker } from './CashAccountVisualPicker';
 import { JePreview } from './JePreview';
 import { ApproverSection } from './ApproverSection';
 import { AdjustmentSection } from './AdjustmentSection';
+import { isPayrollEditable } from './payroll-system/payroll-status';
 import { formatNumberDecimal } from '@/utils/formatters';
 
 interface Props {
@@ -70,8 +71,6 @@ interface PayrollDocForEdit {
   } | null;
 }
 
-/** Payroll D4 คำตัดสิน 6 — แก้ใบที่รออนุมัติ/อนุมัติแล้วได้ (บันทึกแล้ว server ตั้งกลับเป็นร่าง) */
-const PAYROLL_EDITABLE_STATUSES = ['DRAFT', 'PENDING_APPROVAL', 'APPROVED'];
 const SENT_BACK_STATUS_LABEL: Record<string, string> = { PENDING_APPROVAL: 'รออนุมัติ', APPROVED: 'อนุมัติแล้ว' };
 /** 409 ที่บอกว่า "ยังไม่ถึงเวลา" (ไม่ใช่ข้อผิดพลาดของข้อมูล) — แสดงโทนเตือน */
 const PAYROLL_NOT_YET_CODES = ['PAYROLL_SUBMIT_CUTOFF', 'PAYROLL_CUTOFF'];
@@ -239,7 +238,8 @@ export function ExpenseFormV4({ branchId, onClose, onSaved, initialDocType, edit
     // ใช้เฉพาะข้อมูลที่โหลดหลังเปิดฟอร์มนี้ (ข้อมูลใน cache อาจเก่ากว่าที่ server มี)
     if (!editDocId || !editQuery.data || !editQuery.isFetchedAfterMount || editLoaded) return;
     const doc = editQuery.data as PayrollDocForEdit;
-    if (doc.documentType !== 'PAYROLL' || !PAYROLL_EDITABLE_STATUSES.includes(doc.status) || !doc.payroll) {
+    // Payroll D4 คำตัดสิน 6 — แก้ใบที่รออนุมัติ/อนุมัติแล้วได้ (บันทึกแล้ว server ตั้งกลับเป็นร่าง)
+    if (!isPayrollEditable(doc) || !doc.payroll) {
       toast.error('แก้ไขได้เฉพาะใบเงินเดือนที่เป็นร่าง รออนุมัติ หรืออนุมัติแล้ว');
       onClose();
       return;

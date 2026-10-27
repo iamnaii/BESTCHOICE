@@ -4,13 +4,13 @@ import { useId as useFieldId } from 'react';
 import { getReportDateRange } from '@/lib/date';
 import { useAccountingPermissions } from '@/hooks/useAccountingPermissions';
 import { useState, useMemo, useRef } from 'react';
-import { useSearchParams, useNavigate } from 'react-router';
+import { useSearchParams, useNavigate, Link } from 'react-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { usePaginationParams } from '@/hooks/usePaginationParams';
 import { useUiFlags } from '@/hooks/useUiFlags';
 import { PaginationBar } from '@/components/ui/PaginationBar';
 import { toast } from 'sonner';
-import api, { getErrorMessage } from '@/lib/api';
+import api from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { useDebounce } from '@/hooks/useDebounce';
 import { useCoaGroups } from '@/hooks/useCoa';
@@ -26,7 +26,9 @@ import { formatDateShortThai, formatNumberDecimal } from '@/utils/formatters';
 import { accountDisplayName } from '@/utils/accountName';
 import { ExpenseFormV4 } from '@/components/expense-form-v4/ExpenseFormV4';
 import { ReopenedPeriodBanner } from '@/components/accounting/ReopenedPeriodBanner';
-import { useApprovalActions, getApprovalReason } from '@/hooks/useApprovalActions';
+import { useApprovalActions, getApprovalReason, toastActionError } from '@/hooks/useApprovalActions';
+import { isPayrollEditable, payrollEditPath } from '@/components/expense-form-v4/payroll-system/payroll-status';
+import { OPEN_DOC_LABEL } from '@/components/expense-form-v4/payroll-system/payroll-copy';
 
 // ─── Types ───
 interface ExpenseDocument {
@@ -67,10 +69,6 @@ interface Summary {
   /** Decimal serialized as fixed-2 string (e.g. "1234.56") */
   accrualUnpaidTotal: string;
 }
-
-/** ใบเงินเดือนที่ยังไม่ลงบัญชี — แก้ได้ (Payroll D4 คำตัดสิน 6: ส่งกลับเป็นร่าง = กด "แก้ไข") */
-const isPayrollEditable = (e: Pick<ExpenseDocument, 'documentType' | 'status'>) =>
-  e.documentType === 'PAYROLL' && ['DRAFT', 'PENDING_APPROVAL', 'APPROVED'].includes(e.status);
 
 // Map documentType to display "type" (with Same-day vs Accrual fallback for EXPENSE)
 function getDocumentType(e: Expense): { label: string; cls: string } {
@@ -241,7 +239,7 @@ export default function ExpensesPage() {
       return api.post(`/expense-documents/${id}/${newAction}`, body || {});
     },
     onSuccess: () => { invalidateAll(); toast.success('อัปเดตสถานะสำเร็จ'); },
-    onError: (err: unknown) => toast.error(getErrorMessage(err)),
+    onError: toastActionError,
   });
 
   const openCreate = () => { setShowForm(true); };
@@ -249,7 +247,7 @@ export default function ExpensesPage() {
     // The form only supports PATCH for payroll. Other document types create new records.
     // Payroll D4 คำตัดสิน 6 — ใบที่รออนุมัติ/อนุมัติแล้วแก้ได้ (บันทึกแล้ว server ตั้งกลับเป็นร่าง)
     if (!isPayrollEditable(e)) return;
-    navigate(`/expenses/new?edit=${e.id}`);
+    navigate(payrollEditPath(e.id));
   };
   const handleFormSaved = () => { setShowForm(false); invalidateAll(); };
 
@@ -437,7 +435,7 @@ export default function ExpensesPage() {
                       {/* Legacy direct POST — hidden when approval workflow is on so
                           users follow the new lifecycle. Backend gate also rejects
                           direct POST on DRAFT when approvalEnabled is true. */}
-                      {!uiFlags.approvalEnabled && permissions.can('EXPENSE_POST') && (
+                      {!uiFlags.approvalEnabled && permissions.can('EXPENSE_POST') && e.documentType !== 'PAYROLL' && (
                         <DropdownMenuItem
                           onSelect={() => setConfirmDialog({ open: true, message: `โพสต์ "${e.number}"?`, action: () => actionMutation.mutate({ id: e.id, action: 'post' }) })}
                           className="min-h-11"
@@ -452,10 +450,19 @@ export default function ExpensesPage() {
                       <Pencil className="size-4" /> แก้ไข
                     </DropdownMenuItem>
                   )}
+                  {/* Payroll D4 — อนุมัติ/ลงบัญชีใบเงินเดือนต้องผ่านด่าน (เวลาปิดงวด · วันติดธง · ยอดเปลี่ยน)
+                      ซึ่งหน้ารายละเอียดแสดงเหตุผลครบ ⇒ แถวใบเงินเดือนมี "เปิดใบ" แทน "อนุมัติเอกสาร"/"โพสต์" */}
+                  {isPayrollEditable(e) && (
+                    <DropdownMenuItem asChild className="min-h-11 flex items-center gap-2">
+                      <Link to={`/expenses/${e.id}`}>
+                        <Eye className="size-4" /> {OPEN_DOC_LABEL}
+                      </Link>
+                    </DropdownMenuItem>
+                  )}
                   {/* D1.2.1.6 — APPROVE button. Visible only on PENDING_APPROVAL +
                       current user is in approversList (or OWNER). Backend
                       assertUserCanApprove() re-validates. */}
-                  {e.status === 'PENDING_APPROVAL' && isApprover && (
+                  {e.status === 'PENDING_APPROVAL' && isApprover && e.documentType !== 'PAYROLL' && (
                     <DropdownMenuItem
                       onSelect={() =>
                         setConfirmDialog({
@@ -472,7 +479,7 @@ export default function ExpensesPage() {
                   )}
                   {/* APPROVED docs that didn't auto-post fall back to the legacy
                       POST action — OWNER can still finalize them manually. */}
-                  {e.status === 'APPROVED' && permissions.can('EXPENSE_POST') && (
+                  {e.status === 'APPROVED' && permissions.can('EXPENSE_POST') && e.documentType !== 'PAYROLL' && (
                     <DropdownMenuItem
                       onSelect={() =>
                         setConfirmDialog({

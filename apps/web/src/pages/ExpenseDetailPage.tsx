@@ -1,5 +1,5 @@
 import ScreenTable from '@/components/ui/ScreenTable';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import PdfPreview from '@/components/PdfPreview';
 import { useAccountingPermissions } from '@/hooks/useAccountingPermissions';
 import { canApproveAccountingDoc } from '@installment/shared';
@@ -20,6 +20,13 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useUiFlags } from '@/hooks/useUiFlags';
 import { formatNumberDecimal } from '@/utils/formatters';
 import { formatThaiDateShort } from '@/lib/date';
+import { payrollConflictOf, type PayrollConflict } from '@/components/expense-form-v4/payroll-system/payroll-status';
+import {
+  PayrollDetailActions,
+  PayrollDetailSection,
+  payrollBlockedReasons,
+  type PayrollDetailDoc,
+} from './expense-detail/PayrollDetailSection';
 
 /**
  * ExpenseDetailPage — single-document view that hosts the shared
@@ -66,6 +73,9 @@ interface ExpenseDocument {
   branch?: { id: string; name: string } | null;
   createdBy?: { id: string; name: string } | null;
   expenseDetail?: { lines: ExpenseLine[] } | null;
+  /** Payroll D4 — บรรทัดเงินเดือน + ด่านส่ง/อนุมัติ/ลงบัญชี (เฉพาะ PAYROLL) */
+  payroll?: PayrollDetailDoc['payroll'];
+  payrollGate?: PayrollDetailDoc['payrollGate'];
 }
 
 const DOC_TYPE_LABELS: Record<string, string> = {
@@ -152,33 +162,45 @@ export default function ExpenseDetailPage() {
     queryClient.invalidateQueries({ queryKey: ['expense-document', id] });
     queryClient.invalidateQueries({ queryKey: ['expenses'] });
     queryClient.invalidateQueries({ queryKey: ['expenses-summary'] });
+    // Payroll D4 — ฟอร์มแก้ไข (Task 7) และหน้าสลิปเก็บใบนี้ไว้คนละ key
+    queryClient.invalidateQueries({ queryKey: ['expense-doc-edit', id] });
+    queryClient.invalidateQueries({ queryKey: ['expense-doc-voucher', id] });
+  };
+
+  // Payroll D4 — 409 PAYROLL_STALE แสดงเป็นแจ้งเตือนพร้อมตาราง diff บนหน้า (ไม่ใช่ toast) จนกว่ากดสำเร็จหรือใบเปลี่ยนสถานะ
+  const [staleConflict, setStaleConflict] = useState<PayrollConflict | null>(null);
+  const onActionSuccess = (message: string) => () => {
+    toast.success(message);
+    setStaleConflict(null);
+    invalidate();
+  };
+  const onActionError = (fallback: string) => (err: unknown) => {
+    const conflict = payrollConflictOf(err);
+    // ด่านใบเงินเดือนอาจเปลี่ยนไปแล้ว (ถึงเวลาปิดงวด · ติดธงเพิ่ม) — โหลดใบใหม่ให้แบนเนอร์ตรงกับ server
+    if (conflict) invalidate();
+    if (conflict?.code === 'PAYROLL_STALE') {
+      setStaleConflict(conflict);
+      return;
+    }
+    toast.error((err as { response?: { data?: { message?: string } } })?.response?.data?.message ?? fallback);
   };
 
   const postMutation = useMutation({
     mutationFn: () => api.post(`/expense-documents/${id}/post`, {}),
-    onSuccess: () => {
-      toast.success('บันทึกบัญชีเรียบร้อย');
-      invalidate();
-    },
-    onError: (err: any) => toast.error(err?.response?.data?.message ?? 'บันทึกบัญชีไม่สำเร็จ'),
+    onSuccess: onActionSuccess('บันทึกบัญชีเรียบร้อย'),
+    onError: onActionError('บันทึกบัญชีไม่สำเร็จ'),
   });
 
   const submitMutation = useMutation({
     mutationFn: () => api.post(`/expense-documents/${id}/submit-for-approval`, {}),
-    onSuccess: () => {
-      toast.success('ส่งขออนุมัติแล้ว');
-      invalidate();
-    },
-    onError: (err: any) => toast.error(err?.response?.data?.message ?? 'ส่งขออนุมัติไม่สำเร็จ'),
+    onSuccess: onActionSuccess('ส่งขออนุมัติแล้ว'),
+    onError: onActionError('ส่งขออนุมัติไม่สำเร็จ'),
   });
 
   const approveMutation = useMutation({
     mutationFn: () => api.post(`/expense-documents/${id}/approve`, {}),
-    onSuccess: () => {
-      toast.success('อนุมัติเรียบร้อย');
-      invalidate();
-    },
-    onError: (err: any) => toast.error(err?.response?.data?.message ?? 'อนุมัติไม่สำเร็จ'),
+    onSuccess: onActionSuccess('อนุมัติเรียบร้อย'),
+    onError: onActionError('อนุมัติไม่สำเร็จ'),
   });
 
   const voidMutation = useMutation({
@@ -195,18 +217,20 @@ export default function ExpenseDetailPage() {
         reasonLabel,
         note,
       }),
-    onSuccess: () => {
-      toast.success('กลับรายการเอกสารเรียบร้อย');
-      invalidate();
-    },
-    onError: (err: any) => toast.error(err?.response?.data?.message ?? 'กลับรายการไม่สำเร็จ'),
+    onSuccess: onActionSuccess('กลับรายการเอกสารเรียบร้อย'),
+    onError: onActionError('กลับรายการไม่สำเร็จ'),
   });
 
 
 
   const doc = docQuery.data;
+  // ใบเปลี่ยนสถานะแล้ว (เช่น ผู้ทำเงินเดือนกด แก้ไข แล้วบันทึก) — แจ้งเตือนยอดเปลี่ยนเดิมไม่ใช่ของใบนี้อีกต่อไป
+  useEffect(() => setStaleConflict(null), [doc?.status]);
   const makerCheckerEnabled = flags.approvalEnabled && doc?.status !== 'APPROVED';
   const icabStatus = doc ? mapExpenseStatusToIcab(doc.status) : 'DRAFT';
+  const isPayroll = doc?.documentType === 'PAYROLL';
+  const payrollPrimary = makerCheckerEnabled ? 'submit' : 'post';
+  const payrollBlocked = isPayroll ? payrollBlockedReasons(doc?.payrollGate, payrollPrimary) : {};
 
   // Mode-aware reverse gate (Audit Finding A) — mirrors the backend
   // ReversePermissionGuard so the button only shows when the server will allow.
@@ -353,6 +377,10 @@ export default function ExpenseDetailPage() {
               </section>
             ) : null}
 
+            {isPayroll && (
+              <PayrollDetailSection doc={doc} primary={payrollPrimary} staleConflict={staleConflict} viewer={user} />
+            )}
+
             {/* Totals */}
             <section className="rounded-lg border border-border bg-card p-5">
               <dl className="space-y-1.5 text-sm max-w-xs ml-auto">
@@ -402,6 +430,9 @@ export default function ExpenseDetailPage() {
           isOwnDoc={isOwnDoc}
           isLoading={isActionLoading}
           canPost={makerCheckerEnabled || permissions.can('EXPENSE_POST')}
+          postBlockedReason={payrollBlocked.primary}
+          approveBlockedReason={payrollBlocked.approve}
+          extraActions={isPayroll ? <PayrollDetailActions doc={doc} /> : undefined}
           canReverse={Boolean(canReverse)}
           onCancel={() => navigate('/expenses')}
           onClose={() => navigate('/expenses')}

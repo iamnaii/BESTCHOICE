@@ -108,6 +108,33 @@ export interface PayrollSystemNotes {
   warnings: PayrollSystemWarning[];
 }
 
+/** วันติดธงเครื่องถูกใช้ซ้อนของพนักงานในใบ (`payrollGate.deviceConflicts`) — `date` = 'YYYY-MM-DD' วันไทย */
+export interface PayrollGateDay {
+  dayId: string;
+  userId: string;
+  employeeName: string;
+  date: string;
+}
+
+/**
+ * ด่านของใบเงินเดือนที่ `GET /expense-documents/:id` คืน (`payrollGate`) — มีค่าเฉพาะใบ DRAFT / PENDING_APPROVAL / APPROVED
+ * ที่มีพนักงานผูก · null = ใบลงบัญชี/กลับรายการแล้ว หรือไม่มีด่าน
+ */
+export interface PayrollGateView {
+  /** เวลาปิดงวด (ISO) เมื่อยังไม่ถึง · null = ส่ง/ลงบัญชีได้แล้ว */
+  closableAt: string | null;
+  deviceConflicts: PayrollGateDay[];
+}
+
+/** หนึ่งแถวของ 409 `PAYROLL_STALE` (`diffs`) — ยอด/ชั่วโมงในใบเทียบที่คิดใหม่ (hours = null เมื่อแถวไม่มีชั่วโมง) */
+export interface PayrollStaleDiff {
+  userId: string;
+  employeeName: string;
+  label: string;
+  stored: { amount: string; hours: string | null };
+  current: { amount: string; hours: string | null };
+}
+
 /**
  * C2 — Per-line custom deduction (loan repayment, advance recovery, etc.).
  * No whitelist (employer-discretion); free CoA code.

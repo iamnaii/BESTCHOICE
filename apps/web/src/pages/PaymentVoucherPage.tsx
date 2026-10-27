@@ -31,6 +31,13 @@ import {
   useCompanyLogoUrl,
 } from '@/hooks/useCompanyInfo';
 import { useUiFlags } from '@/hooks/useUiFlags';
+import { fmtOt } from '@/pages/attendance/attendance.util';
+import {
+  attendanceSummaryItems,
+  payrollPeriodShort,
+} from '@/components/expense-form-v4/payroll-system/PayrollSystemRows';
+import { SLIP_NEEDS_POST } from '@/components/expense-form-v4/payroll-system/payroll-copy';
+import type { PayrollAttendanceSummary } from '@/components/expense-form-v4/types';
 
 export interface ExpenseLine {
   lineNo: number;
@@ -70,6 +77,12 @@ export interface PayrollSlipLine {
     name: string;
     amount: string;
     isTaxable: boolean;
+    /** Payroll D4 — MANUAL | ADJUSTMENT | ATTENDANCE_* (ไม่มี = ข้อมูลก่อน D4 กรอกเอง) */
+    source?: string;
+    /** ชั่วโมง · อัตราต่อชั่วโมง (แสดงอย่างเดียว) — เฉพาะแถวที่ระบบคิด · แถวค่าคอมของส่วนที่ 2 = null */
+    quantity?: string | null;
+    rate?: string | null;
+    multiplier?: string | null;
   }>;
   customDeduction?: Array<{
     id: string;
@@ -77,6 +90,8 @@ export interface PayrollSlipLine {
     name: string;
     amount: string;
   }>;
+  /** Payroll D4 — สรุปลงเวลาที่ server เก็บไว้ (ข้อมูลประกอบ ไม่มีผลต่อยอดเงิน) */
+  attendanceSummary?: PayrollAttendanceSummary | null;
 }
 
 interface VoucherDoc {
@@ -117,6 +132,10 @@ interface VoucherDoc {
   } | null;
   journalLines?: JournalLine[];
 }
+
+/** Payroll D4 — สลิปพิมพ์ได้เฉพาะใบที่ลงบัญชีแล้ว (ยอดในใบยังเปลี่ยนได้จนกว่าจะลงบัญชี) */
+const isPayrollSlipBlocked = (doc: Pick<VoucherDoc, 'documentType' | 'status'>) =>
+  doc.documentType === 'PAYROLL' && doc.status !== 'POSTED';
 
 export default function PaymentVoucherPage() {
   const { id } = useParams<{ id: string }>();
@@ -167,7 +186,8 @@ export default function PaymentVoucherPage() {
           <button data-ui-control="button"
             type="button"
             onClick={printDocument}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold rounded-md bg-primary text-primary-foreground hover:bg-primary/90"
+            disabled={!!docQuery.data && isPayrollSlipBlocked(docQuery.data)}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
           >
             <Printer size={14} />
             พิมพ์ / บันทึก PDF
@@ -229,6 +249,17 @@ function VoucherSheet({ doc }: { doc: VoucherDoc }) {
   // ใบจ่ายเงินเดือน with base + custom income + custom deduction + SSO + WHT
   // + net + Thai-text + 2 signature slots. Browser `print()` will paginate.
   if (isPayroll && doc.payroll && doc.payroll.lines.length > 0) {
+    if (isPayrollSlipBlocked(doc)) {
+      return (
+        <div className="max-w-[210mm] mx-auto py-6 px-6">
+          <div role="status" className="rounded-md border border-border bg-card p-6 text-center text-sm leading-snug">
+            {doc.status === 'VOIDED'
+              ? `ใบนี้กลับรายการแล้ว — ไม่มีสลิปเงินเดือนให้พิมพ์ (${doc.number})`
+              : `ใบนี้ยังไม่ได้ลงบัญชี — ${SLIP_NEEDS_POST} (${doc.number})`}
+          </div>
+        </div>
+      );
+    }
     return (
       <div className="max-w-[210mm] mx-auto py-6 px-6 print:px-0 print:py-0 space-y-6">
         {doc.payroll.lines.map((line, idx) => (
@@ -384,14 +415,16 @@ function PettyCashSheet({
 /**
  * C2.7 — Payroll slip per employee. One A4 sheet per `PayrollSlipLine`.
  * `pageBreakBefore: 'always'` from slip #2 onwards so the browser print
- * dialog renders one slip per page. Email dispatch deferred to follow-up
- * (involves Mailer service + employee email column on PayrollLine).
+ * dialog renders one slip per page.
  *
  * Layout (mockup 02B Payroll Slip):
  *   - Company header
  *   - Title: ใบจ่ายเงินเดือน + slip n/N
  *   - Employee meta (name, tax ID, period, doc no)
- *   - Earnings table: base + custom income (with ม.42 flag if non-taxable)
+ *   - Earnings table: base + custom income (with ม.42 flag if non-taxable) —
+ *     Payroll D4: ชม. × อัตรา column (stored hours × stored rate at 2 dp; the
+ *     amount is the stored amount, never recomputed) + (ปรับปรุงงวดก่อน) label
+ *   - Attendance summary box (information only, does not change pay)
  *   - Deductions table: SSO + WHT + custom deduction
  *   - Net paid + Thai-text amount
  *   - 2 signature slots (ผู้รับเงิน · ผู้จัดทำ)
@@ -460,10 +493,18 @@ function PayrollSlipSheet({
           รายได้ (Earnings)
         </p>
         <table className="w-full text-sm border border-border">
+          <thead className="bg-muted/40">
+            <tr>
+              <th className="border border-border p-2 text-left font-medium leading-snug">รายการ</th>
+              <th className="border border-border p-2 text-right font-medium leading-snug w-36">ชม. × อัตรา</th>
+              <th className="border border-border p-2 text-right font-medium leading-snug w-32">จำนวนเงิน</th>
+            </tr>
+          </thead>
           <tbody>
             <tr>
               <td className="border border-border p-2">เงินเดือนพื้นฐาน</td>
-              <td className="border border-border p-2 text-right tabular-nums w-32">
+              <td className="border border-border p-2 text-right tabular-nums">—</td>
+              <td className="border border-border p-2 text-right tabular-nums">
                 {formatNumberDecimal(base.toString())}
               </td>
             </tr>
@@ -474,11 +515,15 @@ function PayrollSlipSheet({
                     {ci.accountCode}
                   </span>
                   {ci.name}
+                  {ci.source === 'ADJUSTMENT' && ' (ปรับปรุงงวดก่อน)'}
                   {!ci.isTaxable && (
                     <span className="ml-2 inline-block rounded bg-info/10 px-1.5 py-0.5 text-[10px] text-info">
                       ม.42 ยกเว้นภาษี
                     </span>
                   )}
+                </td>
+                <td className="border border-border p-2 text-right tabular-nums whitespace-nowrap">
+                  {hoursTimesRate(ci)}
                 </td>
                 <td className="border border-border p-2 text-right tabular-nums">
                   {formatNumberDecimal(ci.amount)}
@@ -486,7 +531,7 @@ function PayrollSlipSheet({
               </tr>
             ))}
             <tr className="bg-muted/30">
-              <td className="border border-border p-2 font-semibold">รวมรายได้</td>
+              <td colSpan={2} className="border border-border p-2 font-semibold">รวมรายได้</td>
               <td className="border border-border p-2 text-right tabular-nums font-semibold">
                 {formatNumberDecimal(earningsTotal.toString())}
               </td>
@@ -548,6 +593,10 @@ function PayrollSlipSheet({
         </table>
       </section>
 
+      {line.attendanceSummary && doc.payroll?.payrollPeriod && (
+        <SlipAttendanceSummary summary={line.attendanceSummary} period={doc.payroll.payrollPeriod} />
+      )}
+
       </div>
       {doc.note && (
         <section className="mt-6">
@@ -582,12 +631,37 @@ function PayrollSlipSheet({
 
       <footer className="mt-8 pt-3 border-t border-border text-[10px] text-muted-foreground flex justify-between">
         <span>ออกเอกสารจากระบบ BESTCHOICE — ไม่ต้องเซ็นต์ถือเป็นโมฆะ</span>
-        <span>
-          ใบจ่ายเงินเดือน v1.0 · {slipNo}/{totalSlips}
-        </span>
+        <span>ใบจ่ายเงินเดือน v2</span>
       </footer>
       </div>
     </article>
+  );
+}
+
+/**
+ * Payroll D4 — "ชม. × อัตรา" ของแถวที่ระบบคิด: ชั่วโมงที่เก็บ × อัตราที่เก็บ (แสดง 2 ตำแหน่ง) · จำนวนเงินในคอลัมน์ถัดไป
+ * คือยอดที่เก็บไว้ (ไม่คูณใหม่) · แถวที่ไม่มีชั่วโมง/อัตรา (กรอกเอง · ค่าคอม) = —
+ */
+function hoursTimesRate(row: { quantity?: string | null; rate?: string | null }): string {
+  if (row.quantity == null || row.rate == null) return '—';
+  return `${fmtOt(parseFloat(row.quantity))} × ${formatNumberDecimal(row.rate, 2)}`;
+}
+
+/** Payroll D4 — สรุปเวลาทำงานของเดือน (จาก `attendanceSummary` ที่เก็บไว้) · ข้อมูลประกอบ ไม่มีผลต่อยอดเงิน */
+function SlipAttendanceSummary({ summary, period }: { summary: PayrollAttendanceSummary; period: string }) {
+  return (
+    <section className="mt-5 rounded-md border border-border p-3 text-sm">
+      <p className="font-semibold leading-snug">{`สรุปเวลาทำงาน ${payrollPeriodShort(period)}`}</p>
+      <p className="text-xs text-muted-foreground leading-snug mb-2">ข้อมูลประกอบ — ไม่มีผลต่อยอดเงิน</p>
+      <dl className="grid grid-cols-4 gap-x-4 gap-y-1">
+        {attendanceSummaryItems(summary).map(([label, value]) => (
+          <div key={label}>
+            <dt className="text-xs text-muted-foreground leading-snug">{label}</dt>
+            <dd className="tabular-nums leading-snug">{value}</dd>
+          </div>
+        ))}
+      </dl>
+    </section>
   );
 }
 

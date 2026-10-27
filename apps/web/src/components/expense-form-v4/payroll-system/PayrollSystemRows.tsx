@@ -76,12 +76,15 @@ export function PayrollSystemRows({
   );
 }
 
-/** `period` = งวดของใบ ('YYYY-MM') → "ต.ค. 2569" */
-export function AttendanceSummaryBox({ summary, period }: { summary: PayrollAttendanceSummary; period: string }) {
-  const titleId = useId();
+/** งวด 'YYYY-MM' → "ต.ค. 2569" */
+export const payrollPeriodShort = (period: string) => {
   const [y, m] = period.split('-').map(Number);
-  const month = THAI_MONTHS_SHORT[m - 1] ? `${THAI_MONTHS_SHORT[m - 1]} ${y + 543}` : period;
-  const items: Array<[string, string]> = [
+  return THAI_MONTHS_SHORT[m - 1] ? `${THAI_MONTHS_SHORT[m - 1]} ${y + 543}` : period;
+};
+
+/** รายการของสรุปลงเวลา [หัวข้อ, ค่า] — ใช้ทั้งกล่องในฟอร์มและกล่องบนสลิปเงินเดือน */
+export function attendanceSummaryItems(summary: PayrollAttendanceSummary): Array<[string, string]> {
+  return [
     ['มาทำงาน', `${summary.workDays} วัน`],
     ['มาวันหยุด', `${summary.holidayWorkedDays} วัน`],
     ['สาย', summary.lateCount > 0 ? `${summary.lateCount} ครั้ง · ${summary.lateMinutes} นาที` : '0 ครั้ง'],
@@ -91,6 +94,13 @@ export function AttendanceSummaryBox({ summary, period }: { summary: PayrollAtte
     ['ทำงานวันหยุด', `${hours(summary.holidayHours)} ชม.`],
     ['OT วันหยุด', `${hours(summary.holidayOtHours)} ชม.`],
   ];
+}
+
+/** `period` = งวดของใบ ('YYYY-MM') → "ต.ค. 2569" */
+export function AttendanceSummaryBox({ summary, period }: { summary: PayrollAttendanceSummary; period: string }) {
+  const titleId = useId();
+  const month = payrollPeriodShort(period);
+  const items = attendanceSummaryItems(summary);
   return (
     <section aria-labelledby={titleId} className="rounded-lg border border-border bg-muted/40">
       <div className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium leading-snug">

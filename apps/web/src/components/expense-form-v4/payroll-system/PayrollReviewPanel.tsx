@@ -1,9 +1,9 @@
 import { useId, type ReactNode } from 'react';
 import { Link } from 'react-router';
 import { AlertTriangle, Clock, ExternalLink, KeyRound, Lock, type LucideIcon } from 'lucide-react';
-import { THAI_MONTHS_SHORT, toBangkokDateString } from '@/lib/date';
 import { FLAG_LABEL, flagChipClass, fmtOt, statusView, thaiShortDate } from '@/pages/attendance/attendance.util';
 import type { PayrollReviewDay, PayrollSystemNotes, PayrollSystemWarning } from '../types';
+import { submitCutoffText } from './payroll-copy';
 
 /**
  * Payroll D4 ส่วนที่ 1 (mockup กระดาน 1 แผงขวา) — วันที่ต้องตรวจ + คำเตือน จาก `systemNotes` ที่ server เก็บไว้ต่อบรรทัด
@@ -36,15 +36,6 @@ function flagView(flag: string): { label: string; icon: LucideIcon } {
   }
   return { label: flag, icon: AlertTriangle };
 }
-
-/** "1 พ.ย. 2569" (พ.ศ. · เวลาไทย) — รูปเดียวกับข้อความ 409 ของ server (คำตัดสิน R8) */
-function thaiDateWithYear(iso: string): string {
-  const [y, m, d] = toBangkokDateString(new Date(iso)).split('-').map(Number);
-  return `${d} ${THAI_MONTHS_SHORT[m - 1]} ${y + 543}`;
-}
-
-const submitCutoffText = (closableAt: string) =>
-  `ส่งขออนุมัติได้ตั้งแต่ ${thaiDateWithYear(closableAt)} 18:00 — รอให้ข้อมูลลงเวลาของเดือนนี้ครบก่อน ระหว่างนี้บันทึกร่างไว้ได้`;
 
 interface WarningItem {
   key: string;
@@ -88,7 +79,16 @@ function lineWarning(name: string, w: Exclude<PayrollSystemWarning, { code: 'NOT
   }
 }
 
-export function PayrollReviewPanel({ lines, viewer }: { lines: ReviewLine[]; viewer: Viewer | null | undefined }) {
+export function PayrollReviewPanel({
+  lines,
+  viewer,
+  label = 'ตรวจก่อนบันทึก',
+}: {
+  lines: ReviewLine[];
+  viewer: Viewer | null | undefined;
+  /** ชื่อของแผง (aria-label) — ฟอร์ม = ตรวจก่อนบันทึก · หน้ารายละเอียด = ตรวจก่อนอนุมัติ */
+  label?: string;
+}) {
   const reviewId = useId();
   const warningId = useId();
 
@@ -126,7 +126,7 @@ export function PayrollReviewPanel({ lines, viewer }: { lines: ReviewLine[]; vie
   if (days.length === 0 && warnings.length === 0) return null;
 
   return (
-    <aside aria-label="ตรวจก่อนบันทึก" className="flex min-w-0 flex-col gap-3">
+    <aside aria-label={label} className="flex min-w-0 flex-col gap-3">
       {days.length > 0 && (
         <section aria-labelledby={reviewId} className="flex flex-col gap-2 rounded-xl border border-border bg-card p-3">
           <h3 id={reviewId} className="flex items-center gap-1.5 text-sm font-semibold leading-snug">

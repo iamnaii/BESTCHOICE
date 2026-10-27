@@ -4,7 +4,7 @@ import QueryBoundary from '@/components/QueryBoundary';
 import { useAttendanceToday, type TodayRow } from '@/hooks/useAttendance';
 import StatusChip from './StatusChip';
 import PhotoThumb from './PhotoThumb';
-import { FLAG_LABEL, fmtOt, hhmm, shiftDate, thaiShortDate } from '../../attendance.util';
+import { FLAG_LABEL, flagChipClass, fmtOt, hhmm, shiftDate, thaiShortDate } from '../../attendance.util';
 import type { CorrectTarget } from './CorrectDayDialog';
 
 interface Props {
@@ -92,9 +92,9 @@ export default function TodayTab({ branchId, date, onDateChange, actorId, isOwne
                               const v = FLAG_LABEL[f];
                               if (!v) return null;
                               const Icon = v.icon;
-                              return <span key={f} className="inline-flex items-center gap-1 rounded-full border border-info/30 bg-info/10 px-2 py-0.5 text-xs text-info"><Icon className="size-3" aria-hidden="true" />{v.label}</span>;
+                              return <span key={f} className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs ${flagChipClass(f)}`}><Icon className="size-3" aria-hidden="true" />{v.label}</span>;
                             })}
-                            {!row.hasPin && <span className="text-xs text-muted-foreground">ยังไม่มีรหัสตอกบัตร</span>}
+                            {!row.hasPin && <span className="text-xs text-muted-foreground">ตั้งรหัสที่หน้าผู้ใช้ › รหัสตอกบัตร</span>}
                             {row.status === 'NOT_IN' && row.hasPin && <span className="text-xs text-muted-foreground">ถ้าไม่มาทั้งวันจะนับขาดตอนเที่ยงคืน</span>}
                             {row.status === 'MISSING_OUT' && <span className="text-xs text-muted-foreground">ถ้าทำ OT จริง แก้เวลาออกพร้อมเหตุผล</span>}
                           </div>

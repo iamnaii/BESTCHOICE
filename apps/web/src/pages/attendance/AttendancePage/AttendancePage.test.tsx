@@ -196,4 +196,47 @@ describe('AttendancePage', () => {
     fireEvent.click(within(dialog).getByRole('button', { name: /บันทึกการแก้ไข/ }));
     await waitFor(() => expect(apiMock.patch).toHaveBeenCalledWith('/attendance/days/d-u1', expect.objectContaining({ clockIn: null })));
   });
+  it('A11 today: staff without a PIN show a "ยังไม่มีรหัสตอกบัตร" chip with an icon; the conflict flag uses the danger style unlike harmless flags (รีวิว minor)', async () => {
+    const custom = { ...TODAY, rows: [
+      row({ userId: 'u7', nickname: 'ใหม่', name: 'พนักงานใหม่', hasPin: false, status: 'NO_PIN' }),
+      row({ userId: 'u1', nickname: 'นุ๊ก', name: 'วรรณา ส.', status: 'ON_TIME', clockIn: '2026-10-27T03:02:00.000Z', flags: ['DEVICE_CONFLICT', 'NO_PHOTO'] }),
+    ] };
+    apiMock.get.mockImplementation(async (path: string) => ({ data: path === '/branches' ? BRANCHES : path === '/attendance/today' ? custom : null }));
+    wrap();
+    await screen.findByText('พนักงานใหม่');
+    const table = screen.getByRole('table', { name: /รายการวันนี้/ });
+    const chip = within(table).getByText('ยังไม่มีรหัสตอกบัตร').closest('span');
+    expect(chip?.querySelector('svg')).not.toBeNull();
+    expect(within(table).getByText('เครื่องถูกใช้ซ้อน').closest('span')?.className).toContain('destructive');
+    expect(within(table).getByText('ไม่มีรูป').closest('span')?.className).not.toContain('destructive');
+  });
+
+  it('A12 month: the legend shows the same icons as the cells, and "วันที่ต้องตรวจ" lists flagged days with a button that opens that day (รีวิว minor)', async () => {
+    const flaggedMonth = { ...MONTH, rows: [{ ...MONTH.rows[0], cells: { ...MONTH.rows[0].cells, '2026-10-23': cell({ status: 'ON_TIME', clockIn: 'x', flags: ['DEVICE_CONFLICT'] }) } }] };
+    apiMock.get.mockImplementation(async (path: string) => ({ data: path === '/branches' ? BRANCHES : path === '/attendance/today' ? TODAY : path === '/attendance/month' ? flaggedMonth : null }));
+    wrap();
+    await screen.findByText('วรรณา ส.');
+    fireEvent.click(screen.getByRole('tab', { name: /รายเดือน/ }));
+    const legend = await screen.findByRole('list', { name: /สัญลักษณ์/ });
+    for (const label of ['ตรงเวลา', 'ขาด', 'ลา', 'วันหยุด']) expect(within(legend).getByText(label).closest('li')?.querySelector('svg')).not.toBeNull();
+    const review = await screen.findByRole('list', { name: /วันที่ต้องตรวจ/ });
+    expect(within(review).getByText(/23 ต.ค./)).toBeInTheDocument();
+    fireEvent.click(within(review).getByRole('button', { name: /เปิดวันนั้น/ }));
+    await waitFor(() => expect(apiMock.get).toHaveBeenCalledWith('/attendance/today', { params: { branchId: 'br1', date: '2026-10-23' } }));
+    expect(screen.getByRole('tab', { name: /วันนี้/ })).toHaveAttribute('aria-selected', 'true');
+  });
+
+  it('A13 correction dialog: an OUT time earlier than the IN time means after midnight (next day) — PATCH carries the next calendar day (รีวิว minor)', async () => {
+    const late = { ...TODAY, rows: [row({ userId: 'u1', nickname: 'นุ๊ก', name: 'วรรณา ส.', status: 'MISSING_OUT', clockIn: '2026-10-27T16:50:00.000Z', flags: ['MISSING_OUT'] })] };
+    apiMock.get.mockImplementation(async (path: string) => ({ data: path === '/branches' ? BRANCHES : path === '/attendance/today' ? late : null }));
+    wrap();
+    await screen.findByText('วรรณา ส.');
+    fireEvent.click(within(screen.getByText('วรรณา ส.').closest('tr')!).getByRole('button', { name: /แก้ไข/ }));
+    const dialog = await screen.findByRole('dialog');
+    fireEvent.change(within(dialog).getByLabelText(/ออกงาน/), { target: { value: '00:20' } });
+    expect(within(dialog).getByText(/วันถัดไป/)).toBeInTheDocument();
+    fireEvent.change(within(dialog).getByLabelText(/เหตุผล/), { target: { value: 'ปิดร้านดึก ลูกค้าทำสัญญาเสร็จหลังเที่ยงคืน' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: /บันทึกการแก้ไข/ }));
+    await waitFor(() => expect(apiMock.patch).toHaveBeenCalledWith('/attendance/days/d-u1', expect.objectContaining({ clockOut: '2026-10-27T17:20:00.000Z' })));
+  });
 });

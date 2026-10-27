@@ -1,5 +1,5 @@
 import type { LucideIcon } from 'lucide-react';
-import { AlertTriangle, Check, Clock, ImageOff, MapPin, Minus, MonitorOff, Stethoscope, Store, UserX, Wifi, X } from 'lucide-react';
+import { AlertTriangle, Check, Clock, ImageOff, KeyRound, MapPin, Minus, MonitorOff, Stethoscope, Store, UserX, Wifi, X } from 'lucide-react';
 import type { CellStatus, DayKind, MonthSummary, TodayStatus } from '@/hooks/useAttendance';
 
 /** ป้ายสถานะ = ไอคอน + คำ เสมอ (ห้ามบอกด้วยสีอย่างเดียว) · สีจาก token ของแอป */
@@ -29,6 +29,8 @@ export function statusView(status: CellStatus | TodayStatus, lateMinutes = 0, ot
       return { label: 'ร้านปิด', icon: Store, className: 'border-border bg-muted text-muted-foreground' };
     case 'UNAVAILABLE':
       return { label: 'เครื่องใช้ไม่ได้', icon: MonitorOff, className: 'border-border bg-muted text-muted-foreground' };
+    case 'NO_PIN':
+      return { label: 'ยังไม่มีรหัสตอกบัตร', icon: KeyRound, className: 'border-border bg-muted text-muted-foreground' };
     default:
       return { label: '—', icon: Minus, className: 'border-border bg-background text-muted-foreground' };
   }
@@ -53,6 +55,7 @@ export const FLAG_LABEL: Record<string, { label: string; icon: LucideIcon }> = {
   NO_PHOTO: { label: 'ไม่มีรูป', icon: ImageOff },
   NETWORK_CHANGED: { label: 'เครือข่ายเปลี่ยน', icon: Wifi },
   LOCATION_CHANGED: { label: 'ตำแหน่งเปลี่ยน', icon: MapPin },
+  AFTER_PIN_LOCKOUT: { label: 'ตอกหลังพักรหัส', icon: KeyRound },
   DEVICE_CONFLICT: { label: 'เครื่องถูกใช้ซ้อน', icon: AlertTriangle },
   REOPENED: { label: 'เปิดวันต่อ', icon: Clock },
   OUT_UPDATED: { label: 'แก้เวลาออก', icon: Clock },
@@ -60,6 +63,16 @@ export const FLAG_LABEL: Record<string, { label: string; icon: LucideIcon }> = {
   WORKED_ON_OFF_DAY: { label: 'ทำงานวันหยุด', icon: Store },
   DEVICE_UNAVAILABLE: { label: 'เครื่องใช้ไม่ได้', icon: MonitorOff },
 };
+
+/** ธงที่ต้องตรวจก่อนเชื่อรายการ (แสดงในรายการ "วันที่ต้องตรวจ") */
+export const REVIEW_FLAGS = ['DEVICE_CONFLICT', 'MISSING_OUT', 'DEVICE_UNAVAILABLE', 'LOCATION_CHANGED', 'NETWORK_CHANGED', 'AFTER_PIN_LOCKOUT'];
+
+/** สีชิปธง: ชน = อันตราย · ต้องตรวจ = เตือน · ข้อมูลประกอบ = ปกติ */
+export function flagChipClass(flag: string): string {
+  if (flag === 'DEVICE_CONFLICT') return 'border-destructive/30 bg-destructive/10 text-destructive';
+  if (REVIEW_FLAGS.includes(flag)) return 'border-warning/40 bg-warning/10 text-warning-strong';
+  return 'border-info/30 bg-info/10 text-info';
+}
 
 const timeFmt = new Intl.DateTimeFormat('th-TH', { timeZone: 'Asia/Bangkok', hour: '2-digit', minute: '2-digit', hour12: false });
 export const hhmm = (iso: string | null | undefined) => (iso ? timeFmt.format(new Date(iso)) : '—');

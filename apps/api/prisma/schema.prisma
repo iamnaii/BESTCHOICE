@@ -10237,6 +10237,8 @@ model AttendanceDevice {
   lastUserAgent        String?                @map("last_user_agent")
   pinFailCount         Int                    @default(0) @map("pin_fail_count")
   pinLockedUntil       DateTime?              @map("pin_locked_until")
+  /// เวลาที่ใส่รหัสผิดครั้งล่าสุด — ตัวนับรีเซ็ตเมื่อผิดครั้งก่อนเกิน 15 นาที (ผิด 5 ครั้งภายใน 15 นาที = พักรหัส)
+  pinLastFailAt        DateTime?              @map("pin_last_fail_at")
   registeredById       String                 @map("registered_by_id")
   createdAt            DateTime               @default(now()) @map("created_at")
   updatedAt            DateTime               @updatedAt @map("updated_at")

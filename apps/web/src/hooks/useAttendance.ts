@@ -4,7 +4,7 @@ import api from '@/lib/api';
 /**
  * ลงเวลาทำงาน (ก้อน 10 D3) — รูปข้อมูลต้องตรงกับ `AttendanceController` / `AttendanceDevicesController` ฝั่ง API
  */
-export type TodayStatus = 'ON_TIME' | 'LATE' | 'NOT_IN' | 'DAY_OFF' | 'LEAVE' | 'SHOP_CLOSED' | 'MISSING_OUT';
+export type TodayStatus = 'ON_TIME' | 'LATE' | 'NOT_IN' | 'DAY_OFF' | 'LEAVE' | 'SHOP_CLOSED' | 'MISSING_OUT' | 'NO_PIN';
 export type CellStatus = TodayStatus | 'ABSENT' | 'UNAVAILABLE' | 'NONE';
 export type DayKind = 'WORK' | 'DAY_OFF' | 'LEAVE_SICK' | 'LEAVE_PERSONAL' | 'LEAVE_OTHER' | 'SHOP_CLOSED';
 

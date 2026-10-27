@@ -52,6 +52,9 @@ export class AttendanceCloseDayCron {
       const dayEnd = new Date(target.getTime() + 24 * 3600_000);
       for (const branch of branches) {
         try {
+          // สาขาที่ยังไม่มีเครื่องตอกบัตร (ณ วันนั้น) = ยังไม่เริ่มใช้ระบบ — ไม่นับขาด ไม่แจ้ง "เครื่องใช้ไม่ได้" ทุกวัน (รีวิว minor)
+          const devicesThen = await this.prisma.attendanceDevice.count({ where: { branchId: branch.id, deletedAt: null, createdAt: { lt: dayEnd } } });
+          if (devicesThen === 0) continue;
           const staff = (
             await this.prisma.user.findMany({
               where: { branchId: branch.id, deletedAt: null, isActive: true, isSystemUser: false, attendancePinHash: { not: null } },

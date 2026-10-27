@@ -105,7 +105,9 @@ export class AttendanceDeviceService {
     }
     const raw = newRawToken();
     const created = await this.prisma.$transaction(async (tx) => {
-      await tx.attendanceRegistrationCode.update({ where: { id: code.id }, data: { usedAt: now } });
+      // อ้างสิทธิ์รหัสแบบมีเงื่อนไข — สองเครื่องกรอกรหัสเดียวกันพร้อมกัน ได้เครื่องเดียว
+      const claimed = await tx.attendanceRegistrationCode.updateMany({ where: { id: code.id, usedAt: null }, data: { usedAt: now } });
+      if (claimed.count !== 1) throw new BadRequestException('รหัสลงทะเบียนไม่ถูกต้องหรือหมดอายุ');
       const device = await tx.attendanceDevice.create({
         data: {
           branchId: code.branchId,
@@ -113,6 +115,7 @@ export class AttendanceDeviceService {
           status: 'ACTIVE',
           currentGeneration: 1,
           registeredById: code.createdById,
+          createdAt: now,
           lastSeenAt: now,
           lastCleanHeartbeatAt: now,
           lastIp: input.ip ?? null,
@@ -243,7 +246,10 @@ export class AttendanceDeviceService {
     });
   }
 
-  /** รหัสตอกบัตร 6 หลัก → ผู้ใช้ · ล็อกต่อเครื่อง (ไม่ใช่ต่อคน เพราะยังไม่รู้ว่าเป็นใคร) */
+  /**
+   * รหัสตอกบัตร 6 หลัก → ผู้ใช้ · ล็อกต่อเครื่อง (ไม่ใช่ต่อคน เพราะยังไม่รู้ว่าเป็นใคร)
+   * ผิด 5 ครั้งภายใน 15 นาที → พักรับรหัส 15 นาที · ตัวนับเพิ่มใน SQL คำสั่งเดียว (คำขอพร้อมกันนับครบทุกครั้ง)
+   */
   async checkPin(deviceId: string, pin: string, now: Date = new Date()): Promise<PinCheck> {
     const device = await this.prisma.attendanceDevice.findUnique({ where: { id: deviceId } });
     if (!device) throw unauthorized(DEVICE_REVOKED_CODE, 'ไม่พบเครื่อง');
@@ -252,24 +258,34 @@ export class AttendanceDeviceService {
     const salt = process.env.PII_HASH_SALT || '';
     const user = await this.prisma.user.findFirst({ where: { attendancePinHash: hashPII(pin, salt), deletedAt: null, isActive: true }, select: { id: true } });
     if (user) {
-      await this.prisma.attendanceDevice.update({ where: { id: device.id }, data: { pinFailCount: 0 } });
+      await this.prisma.attendanceDevice.update({ where: { id: device.id }, data: { pinFailCount: 0, pinLastFailAt: null } });
       return { userId: user.id };
     }
 
-    const fails = device.pinFailCount + 1;
-    if (fails >= PIN_LOCK_THRESHOLD) {
-      const pinLockedUntil = new Date(now.getTime() + PIN_LOCK_MS);
-      await this.prisma.attendanceDevice.update({ where: { id: device.id }, data: { pinFailCount: 0, pinLockedUntil } });
+    const windowStart = new Date(now.getTime() - PIN_LOCK_MS);
+    const rows = await this.prisma.$queryRaw<Array<{ pin_fail_count: number }>>`
+      UPDATE "attendance_devices"
+         SET "pin_fail_count" = CASE WHEN "pin_last_fail_at" IS NULL OR "pin_last_fail_at" < ${windowStart} THEN 1 ELSE "pin_fail_count" + 1 END,
+             "pin_last_fail_at" = ${now}
+       WHERE "id" = ${device.id}
+   RETURNING "pin_fail_count"`;
+    const fails = Number(rows[0]?.pin_fail_count ?? 1);
+    if (fails < PIN_LOCK_THRESHOLD) return 'INVALID';
+
+    const pinLockedUntil = new Date(now.getTime() + PIN_LOCK_MS);
+    const locked = await this.prisma.attendanceDevice.updateMany({
+      where: { id: device.id, OR: [{ pinLockedUntil: null }, { pinLockedUntil: { lte: now } }] },
+      data: { pinFailCount: 0, pinLastFailAt: null, pinLockedUntil },
+    });
+    if (locked.count === 1) {
       await this.prisma.attendanceDeviceEvent.create({ data: { deviceId: device.id, kind: 'PIN_LOCKOUT', detail: { until: pinLockedUntil.toISOString() } } });
       await this.createOwnerTodo({
         title: `เครื่องตอกบัตร "${device.name}" ถูกใส่รหัสผิด ${PIN_LOCK_THRESHOLD} ครั้ง — พักรับรหัส 15 นาที`,
-        description: `เวลา ${now.toISOString()} · ถ้าไม่ใช่พนักงานลืมรหัส อาจมีคนลองเดา · deviceId: ${device.id}`,
+        description: `เวลา ${now.toISOString()} · ถ้าไม่ใช่พนักงานลืมรหัส อาจมีคนลองเดา · การตอกเข้าหลังพักรหัสติดธง "หลังพักรหัส" ให้ตรวจก่อนนับสาย · deviceId: ${device.id}`,
         priority: 'MEDIUM',
       });
-      return 'LOCKED';
     }
-    await this.prisma.attendanceDevice.update({ where: { id: device.id }, data: { pinFailCount: fails } });
-    return 'INVALID';
+    return 'LOCKED';
   }
 
   async revoke(deviceId: string, actorId: string): Promise<void> {

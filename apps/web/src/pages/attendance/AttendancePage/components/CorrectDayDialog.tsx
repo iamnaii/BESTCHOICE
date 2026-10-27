@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { NativeSelect } from '@/components/ui/native-select';
 import { useClearConflict, useCorrectDay, type DayKind } from '@/hooks/useAttendance';
-import { DAY_KIND_LABEL, hhmm, thaiShortDate } from '../../attendance.util';
+import { DAY_KIND_LABEL, hhmm, shiftDate, thaiShortDate } from '../../attendance.util';
 
 export interface CorrectTarget {
   dayId: string;
@@ -51,6 +51,8 @@ export default function CorrectDayDialog({ target, isOwner, onClose }: Props) {
   const changed = clockIn !== originalIn || clockOut !== originalOut || dayKind !== target.dayKind;
   const clearingIn = !clockIn && !!originalIn;
   const outWithoutIn = !clockIn && !!clockOut;
+  // เวลาออกน้อยกว่าเวลาเข้า = ออกหลังเที่ยงคืน (วันถัดไป) — ตอกข้ามวันยังอยู่แถวของวันที่ IN
+  const outNextDay = !!clockIn && !!clockOut && clockOut <= clockIn;
   const canSave = changed && !outWithoutIn && reason.trim().length >= MIN_REASON && !correct.isPending;
   const missingOut = target.flags.includes('MISSING_OUT');
   const conflict = target.flags.includes('DEVICE_CONFLICT');
@@ -67,7 +69,7 @@ export default function CorrectDayDialog({ target, isOwner, onClose }: Props) {
   const save = () => {
     const payload: { dayId: string; clockIn?: string | null; clockOut?: string | null; dayKind?: DayKind; reason: string } = { dayId: target.dayId, reason: reason.trim() };
     if (clockIn !== originalIn) payload.clockIn = clockIn ? toIso(target.date, clockIn) : null;
-    if (clockOut !== originalOut) payload.clockOut = clockOut ? toIso(target.date, clockOut) : null;
+    if (clockOut !== originalOut) payload.clockOut = clockOut ? toIso(outNextDay ? shiftDate(target.date, 1) : target.date, clockOut) : null;
     if (dayKind !== target.dayKind) payload.dayKind = dayKind;
     correct.mutate(payload, {
       onSuccess: () => {
@@ -114,7 +116,7 @@ export default function CorrectDayDialog({ target, isOwner, onClose }: Props) {
             <div className="flex flex-col gap-1">
               <label htmlFor="corr-out" className="text-sm font-medium">ออกงาน</label>
               <input id="corr-out" type="time" value={clockOut} onChange={(e) => setClockOut(e.target.value)} className="h-11 lg:h-10 rounded-lg border border-input bg-background px-3 text-sm" />
-              <span className="text-xs text-muted-foreground">เดิม: {originalOut || '— (ไม่ได้ตอก)'}</span>
+              <span className="text-xs text-muted-foreground">เดิม: {originalOut || '— (ไม่ได้ตอก)'}{outNextDay && ' · ออกหลังเที่ยงคืน (วันถัดไป)'}</span>
             </div>
           </div>
           {clearingIn && (

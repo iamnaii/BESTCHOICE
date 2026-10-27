@@ -11,6 +11,7 @@ const DB = dbDate(DAY); // ค่าที่ Prisma เก็บ/คืนส�
 const at = (h: number, m: number, d = DAY) => new Date(d.getTime() + (h * 60 + m) * 60_000);
 const RULES = { workStart: '10:00', workEnd: '19:00', lateGraceMinutes: 15 };
 const DEVICE = { id: 'dev1', branchId: 'br1', name: 'แท็บเล็ต', lastIp: '1.1.1.1' } as never;
+const JPEG = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46]);
 
 type Delegate = Record<string, jest.Mock>;
 function harness() {
@@ -40,7 +41,7 @@ describe('KioskPunchService.punch', () => {
 
   it('K1 first IN creates the day row (clockIn, branchId = device branch, clockInPunchId), status ON_TIME, photo uploaded under attendance/yyyy/mm/<punchId>.jpg', async () => {
     const h = harness();
-    const res = await h.service.punch({ device: DEVICE, userId: 'u1', kind: 'IN', photo: { buffer: Buffer.from('x'), mimeType: 'image/jpeg' }, ip: '1.1.1.1' }, at(10, 2));
+    const res = await h.service.punch({ device: DEVICE, userId: 'u1', kind: 'IN', photo: { buffer: JPEG, mimeType: 'image/jpeg' }, ip: '1.1.1.1' }, at(10, 2));
     expect(res).toMatchObject({ nickname: 'นุ๊ก', kind: 'IN', status: 'ON_TIME', lateMinutes: 0, otHours: 0, at: at(10, 2) });
     expect(h.storage.upload).toHaveBeenCalledWith(expect.stringMatching(/^attendance\/2026\/10\/[0-9a-f-]+\.jpg$/), expect.any(Buffer), 'image/jpeg');
     expect(h.d('attendancePunch').create).toHaveBeenCalledWith({ data: expect.objectContaining({ deviceId: 'dev1', userId: 'u1', branchId: 'br1', kind: 'IN', at: at(10, 2), photoKey: expect.stringMatching(/\.jpg$/) }) });
@@ -84,7 +85,7 @@ describe('KioskPunchService.punch', () => {
     const res = await h.service.punch({ device: DEVICE, userId: 'u1', kind: 'IN' }, at(10, 0));
     expect(res.flags).toContain('NO_PHOTO');
     h.storage.upload.mockRejectedValueOnce(new Error('gcs down'));
-    const res2 = await h.service.punch({ device: DEVICE, userId: 'u1', kind: 'IN', photo: { buffer: Buffer.from('x'), mimeType: 'image/jpeg' } }, at(10, 0));
+    const res2 = await h.service.punch({ device: DEVICE, userId: 'u1', kind: 'IN', photo: { buffer: JPEG, mimeType: 'image/jpeg' } }, at(10, 0));
     expect(res2.flags).toContain('NO_PHOTO');
     expect(h.d('attendancePunch').create).toHaveBeenLastCalledWith({ data: expect.objectContaining({ photoKey: null, flags: expect.arrayContaining(['NO_PHOTO']) }) });
   });
@@ -135,12 +136,12 @@ describe('KioskPunchService.punch', () => {
   it('K12 a rejected punch uploads no photo; a failed transaction deletes the uploaded photo (รีวิว I8)', async () => {
     const h = harness();
     h.d('attendanceDay').findUnique.mockResolvedValue({ id: 'day1', userId: 'u1', branchId: 'br1', workDate: DB, dayKind: 'WORK', clockIn: at(10, 2), clockOut: null, flags: [] });
-    await expect(h.service.punch({ device: DEVICE, userId: 'u1', kind: 'IN', photo: { buffer: Buffer.from('x'), mimeType: 'image/jpeg' } }, at(10, 30))).rejects.toThrow(ConflictException);
+    await expect(h.service.punch({ device: DEVICE, userId: 'u1', kind: 'IN', photo: { buffer: JPEG, mimeType: 'image/jpeg' } }, at(10, 30))).rejects.toThrow(ConflictException);
     expect(h.storage.upload).not.toHaveBeenCalled();
 
     const h2 = harness();
     h2.d('attendancePunch').create.mockRejectedValueOnce(new Error('db down'));
-    await expect(h2.service.punch({ device: DEVICE, userId: 'u1', kind: 'IN', photo: { buffer: Buffer.from('x'), mimeType: 'image/jpeg' } }, at(10, 2))).rejects.toThrow('db down');
+    await expect(h2.service.punch({ device: DEVICE, userId: 'u1', kind: 'IN', photo: { buffer: JPEG, mimeType: 'image/jpeg' } }, at(10, 2))).rejects.toThrow('db down');
     expect(h2.storage.delete).toHaveBeenCalledWith(h2.storage.upload.mock.calls[0][0]);
   });
 
@@ -165,5 +166,26 @@ describe('KioskPunchService.punch', () => {
     expect(res.nextToken).toBe('next-for-IN');
     expect(finalize).toHaveBeenCalledTimes(1);
     expect(h.d('attendancePunch').create.mock.invocationCallOrder[0]).toBeLessThan(finalize.mock.invocationCallOrder[0]);
+  });
+  it('K15 an IN right after the device\'s PIN pause ended is flagged AFTER_PIN_LOCKOUT so lateness caused by the pause is visible (รีวิว minor)', async () => {
+    const h = harness();
+    const paused = { ...(DEVICE as object), pinLockedUntil: at(10, 20) } as never;
+    const res = await h.service.punch({ device: paused, userId: 'u1', kind: 'IN' }, at(10, 25));
+    expect(res.flags).toContain('AFTER_PIN_LOCKOUT');
+    expect(h.d('attendancePunch').create.mock.calls[0][0].data.flags).toContain('AFTER_PIN_LOCKOUT');
+    const h2 = harness();
+    const old = { ...(DEVICE as object), pinLockedUntil: at(8, 0) } as never;
+    const later = await h2.service.punch({ device: old, userId: 'u1', kind: 'IN' }, at(10, 25));
+    expect(later.flags).not.toContain('AFTER_PIN_LOCKOUT');
+  });
+  it('K16 the photo type comes from the file signature, not the client: a non-JPEG upload is not stored (NO_PHOTO); a JPEG is stored as image/jpeg even if the client claimed otherwise (รีวิว minor)', async () => {
+    const h = harness();
+    const html = Buffer.from('<html><script>alert(1)</script></html>');
+    const res = await h.service.punch({ device: DEVICE, userId: 'u1', kind: 'IN', photo: { buffer: html, mimeType: 'image/jpeg' } }, at(10, 2));
+    expect(h.storage.upload).not.toHaveBeenCalled();
+    expect(res.flags).toContain('NO_PHOTO');
+    const h2 = harness();
+    await h2.service.punch({ device: DEVICE, userId: 'u1', kind: 'IN', photo: { buffer: JPEG, mimeType: 'text/html' } }, at(10, 2));
+    expect(h2.storage.upload).toHaveBeenCalledWith(expect.stringMatching(/\.jpg$/), JPEG, 'image/jpeg');
   });
 });

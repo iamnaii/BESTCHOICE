@@ -54,7 +54,8 @@ import {
   Mail,
   // Unified contact party-master — สมุดผู้ติดต่อ
   ArrowLeft,
-  BookUser, Camera, Clock,} from 'lucide-react';
+  BookUser, Camera, Clock,
+} from 'lucide-react';
 
 /* ── Types ─────────────────────────────────────────── */
 

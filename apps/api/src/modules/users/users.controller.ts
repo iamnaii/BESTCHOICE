@@ -127,6 +127,13 @@ export class UsersController {
     return this.usersService.update(id, dto);
   }
 
+  /** ตั้ง/รีเซ็ตรหัสตอกบัตร 6 หลัก (ลงเวลา ก้อน 10) — ระบบสุ่มให้ แสดงครั้งเดียว ไม่เก็บรหัสในระบบ/audit */
+  @Post(':id/attendance-pin/reset')
+  @Roles('OWNER')
+  resetAttendancePin(@Param('id') id: string, @CurrentUser('id') actorId: string) {
+    return this.usersService.resetAttendancePin(id, actorId);
+  }
+
   /**
    * InternalControlActionBar — per-user override for the CUSTOM reverse
    * permission mode. Toggles `User.canReverseOverride`. OWNER-only because
@@ -136,13 +143,6 @@ export class UsersController {
    * Setting `value: null` resets to "follow role-based default" — used when
    * switching back from CUSTOM to a role-bundle mode.
    */
-  /** ตั้ง/รีเซ็ตรหัสตอกบัตร 6 หลัก (ลงเวลา ก้อน 10) — ระบบสุ่มให้ แสดงครั้งเดียว ไม่เก็บรหัสในระบบ/audit */
-  @Post(':id/attendance-pin/reset')
-  @Roles('OWNER')
-  resetAttendancePin(@Param('id') id: string, @CurrentUser('id') actorId: string) {
-    return this.usersService.resetAttendancePin(id, actorId);
-  }
-
   @Put(':id/reverse-override')
   @Roles('OWNER')
   setReverseOverride(

@@ -200,14 +200,6 @@ export class UsersService {
   }
 
   /**
-   * InternalControlActionBar — set or clear the per-user reverse-permission
-   * override. `null` means "follow role-based mode" (most users).
-   *
-   * Writes a `USER_REVERSE_OVERRIDE_CHANGED` AuditLog row so OWNER-driven
-   * privilege flips show up in the audit trail (matches the existing
-   * pattern for `SYSTEM_CONFIG_UPDATE` on reverse_permission flag).
-   */
-  /**
    * รีเซ็ตรหัสตอกบัตร (ลงเวลา ก้อน 10): สุ่ม 6 หลัก เก็บเป็น hashPII (unique ทั้งบริษัท — ชนแล้วสุ่มใหม่) คืนรหัสครั้งเดียว
    * audit ไม่เก็บรหัส · ใช้ได้เฉพาะ OWNER (controller)
    */
@@ -228,6 +220,14 @@ export class UsersService {
     throw new ConflictException('สุ่มรหัสไม่สำเร็จ (ชนซ้ำ) — ลองใหม่อีกครั้ง');
   }
 
+  /**
+   * InternalControlActionBar — set or clear the per-user reverse-permission
+   * override. `null` means "follow role-based mode" (most users).
+   *
+   * Writes a `USER_REVERSE_OVERRIDE_CHANGED` AuditLog row so OWNER-driven
+   * privilege flips show up in the audit trail (matches the existing
+   * pattern for `SYSTEM_CONFIG_UPDATE` on reverse_permission flag).
+   */
   async setReverseOverride(id: string, value: boolean | null, actorUserId?: string) {
     const user = await this.prisma.user.findFirst({
       where: { id, deletedAt: null },

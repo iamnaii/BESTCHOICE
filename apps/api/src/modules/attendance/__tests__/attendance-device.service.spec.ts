@@ -37,9 +37,10 @@ function harness() {
     },
   });
   client.$transaction = jest.fn(async (cb: (tx: unknown) => unknown) => { calls.push('tx:start'); const out = await cb(proxy); calls.push('tx:end'); return out; });
+  client.$queryRaw = jest.fn(async () => [{ pin_fail_count: 1 }]);
   const audit = { log: jest.fn(async () => { calls.push('audit'); }) };
   const service = new AttendanceDeviceService(proxy, audit as never);
-  return { service, prisma: proxy, audit, calls, d: (k: string) => proxy[k] as Delegate };
+  return { service, prisma: proxy, audit, calls, d: (k: string) => proxy[k] as Delegate, queryRaw: client.$queryRaw as jest.Mock };
 }
 
 const DEVICE = { id: 'dev1', branchId: 'br1', name: 'แท็บเล็ตเคาน์เตอร์', status: 'ACTIVE', currentGeneration: 3, lastCleanHeartbeatAt: new Date('2026-10-27T01:00:00.000Z'), createdAt: new Date('2026-10-20T00:00:00.000Z'), lastIp: '1.1.1.1', pinFailCount: 0, pinLockedUntil: null, branch: { id: 'br1', name: 'ลพบุรี' } };
@@ -60,13 +61,14 @@ describe('AttendanceDeviceService', () => {
     const h = harness();
     h.d('attendanceRegistrationCode').findUnique.mockResolvedValue({ id: 'code1', branchId: 'br1', createdById: 'owner', expiresAt: new Date(NOW.getTime() + 60_000), usedAt: null, branch: { id: 'br1', name: 'ลพบุรี' } });
     h.d('attendanceDevice').create.mockImplementation(async () => { h.calls.push('attendanceDevice.create'); return { ...DEVICE, currentGeneration: 1 }; });
+    h.d('attendanceRegistrationCode').updateMany.mockResolvedValue({ count: 1 });
     const out = await h.service.register({ code: 'ABCDEFGH', deviceName: 'แท็บเล็ตเคาน์เตอร์', ip: '1.1.1.1', userAgent: 'ua' }, NOW);
     expect(out.deviceToken).toMatch(/^[A-Za-z0-9_-]{43}$/);
     expect(out.device).toEqual({ id: 'dev1', branchId: 'br1', branchName: 'ลพบุรี', name: 'แท็บเล็ตเคาน์เตอร์' });
     expect(h.d('attendanceDevice').create).toHaveBeenCalledWith({ data: expect.objectContaining({ branchId: 'br1', name: 'แท็บเล็ตเคาน์เตอร์', status: 'ACTIVE', currentGeneration: 1, registeredById: 'owner', lastIp: '1.1.1.1' }) });
     expect(h.d('attendanceDeviceToken').create).toHaveBeenCalledWith({ data: expect.objectContaining({ deviceId: 'dev1', generation: 1, tokenHash: hashToken(out.deviceToken) }) });
     expect(h.d('attendanceDeviceEvent').create).toHaveBeenCalledWith({ data: expect.objectContaining({ deviceId: 'dev1', kind: 'REGISTERED' }) });
-    expect(h.d('attendanceRegistrationCode').update).toHaveBeenCalledWith({ where: { id: 'code1' }, data: { usedAt: NOW } });
+    expect(h.d('attendanceRegistrationCode').updateMany).toHaveBeenCalledWith({ where: { id: 'code1', usedAt: null }, data: { usedAt: NOW } });
     expect(h.calls.indexOf('tx:start')).toBeLessThan(h.calls.indexOf('attendanceDevice.create'));
   });
 
@@ -78,6 +80,14 @@ describe('AttendanceDeviceService', () => {
     await expect(h.service.register({ code: 'ABCDEFGH', deviceName: 'x' }, NOW)).rejects.toThrow('รหัสลงทะเบียนไม่ถูกต้องหรือหมดอายุ');
     h.d('attendanceRegistrationCode').findUnique.mockResolvedValueOnce(null);
     await expect(h.service.register({ code: 'ZZZZZZZZ', deviceName: 'x' }, NOW)).rejects.toThrow(BadRequestException);
+    expect(h.d('attendanceDevice').create).not.toHaveBeenCalled();
+  });
+
+  it('TD2b two registrations racing on the same code: the one that loses the used-at claim gets 400 and creates no device (รีวิว minor)', async () => {
+    const h = harness();
+    h.d('attendanceRegistrationCode').findUnique.mockResolvedValue({ id: 'code1', branchId: 'br1', createdById: 'owner', expiresAt: new Date(NOW.getTime() + 60_000), usedAt: null, branch: { id: 'br1', name: 'ลพบุรี' } });
+    h.d('attendanceRegistrationCode').updateMany.mockResolvedValue({ count: 0 }); // อีกคำขอใช้รหัสไปแล้วระหว่างนั้น
+    await expect(h.service.register({ code: 'ABCDEFGH', deviceName: 'x' }, NOW)).rejects.toThrow('รหัสลงทะเบียนไม่ถูกต้องหรือหมดอายุ');
     expect(h.d('attendanceDevice').create).not.toHaveBeenCalled();
   });
 
@@ -207,18 +217,27 @@ describe('AttendanceDeviceService', () => {
     expect(h.calls.indexOf('todo.create')).toBeGreaterThan(h.calls.lastIndexOf('tx:end'));
   });
 
-  it('TD9 checkPin: 4 wrong → INVALID (pinFailCount 4); the 5th wrong → LOCKED until now+15min, PIN_LOCKOUT event, counter reset', async () => {
+  it('TD9 checkPin: a wrong PIN bumps the counter atomically in SQL (failures inside a 15-minute window); the 5th → LOCKED until now+15min with one PIN_LOCKOUT event (รีวิว minor)', async () => {
     const h = harness();
-    h.d('user').findFirst.mockResolvedValue(null);
-    h.d('attendanceDevice').findUnique.mockResolvedValue({ ...DEVICE, pinFailCount: 3 });
-    expect(await h.service.checkPin('dev1', '000000', NOW)).toBe('INVALID');
-    expect(h.d('attendanceDevice').update).toHaveBeenCalledWith({ where: { id: 'dev1' }, data: { pinFailCount: 4 } });
-    h.d('attendanceDevice').findUnique.mockResolvedValue({ ...DEVICE, pinFailCount: 4 });
-    h.d('user').findFirst.mockResolvedValue({ id: 'sys' }); // system user for the Todo; pin lookup mocked separately below
     h.d('user').findFirst.mockImplementation(async ({ where }: { where: Record<string, unknown> }) => ('isSystemUser' in where ? { id: 'sys' } : null));
+    h.d('attendanceDevice').findUnique.mockResolvedValue({ ...DEVICE });
+    h.queryRaw.mockResolvedValueOnce([{ pin_fail_count: 4 }]);
+    expect(await h.service.checkPin('dev1', '000000', NOW)).toBe('INVALID');
+    expect(h.queryRaw).toHaveBeenCalledTimes(1);
+    expect(h.d('attendanceDevice').update).not.toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ pinFailCount: expect.any(Number) }) }));
+    h.queryRaw.mockResolvedValueOnce([{ pin_fail_count: 5 }]);
+    h.d('attendanceDevice').updateMany.mockResolvedValueOnce({ count: 1 });
     expect(await h.service.checkPin('dev1', '000000', NOW)).toBe('LOCKED');
-    expect(h.d('attendanceDevice').update).toHaveBeenCalledWith({ where: { id: 'dev1' }, data: { pinFailCount: 0, pinLockedUntil: new Date(NOW.getTime() + 15 * 60_000) } });
+    expect(h.d('attendanceDevice').updateMany).toHaveBeenCalledWith({
+      where: { id: 'dev1', OR: [{ pinLockedUntil: null }, { pinLockedUntil: { lte: NOW } }] },
+      data: { pinFailCount: 0, pinLastFailAt: null, pinLockedUntil: new Date(NOW.getTime() + 15 * 60_000) },
+    });
     expect(h.d('attendanceDeviceEvent').create).toHaveBeenCalledWith({ data: expect.objectContaining({ deviceId: 'dev1', kind: 'PIN_LOCKOUT' }) });
+    // คำขอที่แข่งกันข้ามเกณฑ์พร้อมกัน: ล็อกครั้งเดียว เหตุการณ์เดียว
+    h.queryRaw.mockResolvedValueOnce([{ pin_fail_count: 6 }]);
+    h.d('attendanceDevice').updateMany.mockResolvedValueOnce({ count: 0 });
+    expect(await h.service.checkPin('dev1', '000000', NOW)).toBe('LOCKED');
+    expect(h.d('attendanceDeviceEvent').create).toHaveBeenCalledTimes(1);
   });
 
   it('TD10 checkPin: a correct pin is looked up by hashPII(pin, salt) among active users, resets the counter and returns the userId', async () => {
@@ -227,7 +246,7 @@ describe('AttendanceDeviceService', () => {
     h.d('user').findFirst.mockResolvedValue({ id: 'u7', nickname: 'นุ๊ก' });
     expect(await h.service.checkPin('dev1', '123456', NOW)).toEqual({ userId: 'u7' });
     expect(h.d('user').findFirst).toHaveBeenCalledWith(expect.objectContaining({ where: { attendancePinHash: hashPII('123456', SALT), deletedAt: null, isActive: true } }));
-    expect(h.d('attendanceDevice').update).toHaveBeenCalledWith({ where: { id: 'dev1' }, data: { pinFailCount: 0 } });
+    expect(h.d('attendanceDevice').update).toHaveBeenCalledWith({ where: { id: 'dev1' }, data: { pinFailCount: 0, pinLastFailAt: null } });
   });
 
   it('TD11 checkPin while pinLockedUntil is in the future → LOCKED without touching counters or looking up users', async () => {

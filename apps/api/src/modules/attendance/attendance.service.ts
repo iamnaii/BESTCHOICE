@@ -20,7 +20,7 @@ import type { CorrectDayDto, SetDayKindsDto } from './dto/attendance.dto';
  */
 
 export type Actor = { id: string; role: string; branchId?: string | null };
-export type TodayStatus = 'ON_TIME' | 'LATE' | 'NOT_IN' | 'DAY_OFF' | 'LEAVE' | 'SHOP_CLOSED' | 'MISSING_OUT';
+export type TodayStatus = 'ON_TIME' | 'LATE' | 'NOT_IN' | 'DAY_OFF' | 'LEAVE' | 'SHOP_CLOSED' | 'MISSING_OUT' | 'NO_PIN';
 export type CellStatus = TodayStatus | 'ABSENT' | 'UNAVAILABLE' | 'NONE';
 
 export const FLAG_CORRECTED = 'CORRECTED';
@@ -169,7 +169,8 @@ export class AttendanceService {
         visiting: u.branchId !== branchId,
         dayId: day?.id ?? null,
         dayKind: day?.dayKind ?? 'WORK',
-        status: todayStatusOf(day),
+        // ยังไม่มีรหัสตอกบัตร = ยังไม่เริ่มใช้ระบบ ไม่ใช่ "ยังไม่มา" (รีวิว minor)
+        status: !day && !u.attendancePinHash ? 'NO_PIN' : todayStatusOf(day),
         clockIn: day?.clockIn ?? null,
         clockOut: day?.clockOut ?? null,
         lateMinutes: day?.lateMinutes ?? 0,
@@ -181,7 +182,7 @@ export class AttendanceService {
         note: day?.note ?? null,
       };
     });
-    const order: Record<TodayStatus, number> = { MISSING_OUT: 0, LATE: 1, NOT_IN: 2, ON_TIME: 3, LEAVE: 4, DAY_OFF: 5, SHOP_CLOSED: 6 };
+    const order: Record<TodayStatus, number> = { MISSING_OUT: 0, LATE: 1, NOT_IN: 2, ON_TIME: 3, LEAVE: 4, DAY_OFF: 5, SHOP_CLOSED: 6, NO_PIN: 7 };
     rows.sort((a, b) => order[a.status] - order[b.status] || a.nickname.localeCompare(b.nickname, 'th'));
     const present = rows.filter((r) => r.clockIn);
     const kpi = {
@@ -206,7 +207,9 @@ export class AttendanceService {
       select: { id: true, nickname: true, name: true, role: true, branchId: true, attendancePinHash: true },
       orderBy: { name: 'asc' },
     });
-    const rowsDb = await this.prisma.attendanceDay.findMany({ where: { deletedAt: null, workDate: { gte: from, lt: to }, OR: [{ branchId }, { userId: { in: staff.map((u) => u.id) } }] } });
+    // พนักงานของสาขานี้: ทุกแถวของเดือน (รวมวันที่ไปช่วยสาขาอื่น) · คนสาขาอื่นที่มาช่วย: เฉพาะแถวที่สาขานี้ (รีวิว minor)
+    const homeIds = staff.filter((u) => u.branchId === branchId).map((u) => u.id);
+    const rowsDb = await this.prisma.attendanceDay.findMany({ where: { deletedAt: null, workDate: { gte: from, lt: to }, OR: [{ branchId }, { userId: { in: homeIds } }] } });
     const grouped = new Map<string, AttendanceDay[]>();
     for (const d of rowsDb) grouped.set(d.userId, [...(grouped.get(d.userId) ?? []), d]);
     const rows = staff.map((u) => {
@@ -226,9 +229,11 @@ export class AttendanceService {
   }
 
   async photoStream(actor: Actor, punchId: string): Promise<{ stream: Readable; contentType: string }> {
-    const punch = await this.prisma.attendancePunch.findUnique({ where: { id: punchId }, select: { id: true, branchId: true, photoKey: true } });
+    const punch = await this.prisma.attendancePunch.findUnique({ where: { id: punchId }, select: { id: true, branchId: true, photoKey: true, user: { select: { branchId: true } } } });
     if (!punch) throw new NotFoundException('ไม่พบรายการตอกบัตร');
-    assertBranchScope(actor, punch.branchId);
+    // ผจก.เปิดรูปได้ทั้งการตอกที่สาขาตัวเอง และการตอกของพนักงานสาขาตัวเองที่ไปช่วยสาขาอื่น (รีวิว minor)
+    const homeBranchId = punch.user?.branchId ?? null;
+    if (!(actor.role === 'BRANCH_MANAGER' && actor.branchId && homeBranchId === actor.branchId)) assertBranchScope(actor, punch.branchId);
     if (!punch.photoKey) throw new NotFoundException('ไม่มีรูปสำหรับรายการนี้ (ถ่ายไม่ได้ตอนตอก หรือถูกลบตามอายุเก็บ)');
     const stream = await this.storage.getStream(punch.photoKey);
     return { stream, contentType: 'image/jpeg' };
@@ -299,6 +304,25 @@ export class AttendanceService {
     if (actor.role !== 'OWNER') await this.assertEntriesInBranch(dto.branchId, parsed);
     await this.prisma.$transaction(async (tx) => {
       for (const e of parsed) {
+        const existing = await tx.attendanceDay.findUnique({ where: { userId_workDate: { userId: e.userId, workDate: e.workDate } } });
+        if (existing?.clockIn && !existing.deletedAt) {
+          // แถวที่ตอกเข้าแล้ว (วันนี้): คำนวณสาย/OT/ธงใหม่ตามประเภทวัน — กติกาชุดเดียวกับตอนตอก (รีวิว minor)
+          const rules = await this.settings.getRules(existing.branchId);
+          const summary = computeDaySummary({ workDate: fromDbDate(existing.workDate), dayKind: e.dayKind, clockIn: existing.clockIn, clockOut: existing.clockOut, rules });
+          const kept = existing.flags.filter((f) => f !== 'WORKED_ON_OFF_DAY');
+          await tx.attendanceDay.update({
+            where: { id: existing.id },
+            data: {
+              dayKind: e.dayKind,
+              workedMinutes: summary.workedMinutes,
+              lateMinutes: summary.lateMinutes,
+              earlyLeaveMinutes: summary.earlyLeaveMinutes,
+              otHours: existing.flags.includes(FLAG_MISSING_OUT) ? 0 : summary.otHours,
+              flags: Array.from(new Set([...kept, ...summary.flags])),
+            },
+          });
+          continue;
+        }
         await tx.attendanceDay.upsert({
           where: { userId_workDate: { userId: e.userId, workDate: e.workDate } },
           create: { userId: e.userId, branchId: dto.branchId, workDate: e.workDate, dayKind: e.dayKind },

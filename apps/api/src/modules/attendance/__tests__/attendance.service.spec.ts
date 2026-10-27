@@ -210,4 +210,39 @@ describe('AttendanceService', () => {
     expect(data.flags).toEqual(expect.arrayContaining(['DEVICE_CONFLICT', 'CORRECTED'])); // ธงชนยังอยู่ ล้างได้เฉพาะ clearConflictFlag
     await expect(h.service.correctDay(OWNER, 'd-u1', { clockIn: null, reason: 'ตรวจรูปแล้ว ไม่ใช่ตัวพนักงาน ตอกแทนกัน' } as never)).rejects.toThrow('มีเวลาออกต้องมีเวลาเข้า');
   });
+  it('S15 today: branch staff without an attendance PIN show NO_PIN (not "not yet arrived") and are not counted in absentSoFar (รีวิว minor)', async () => {
+    const h = harness();
+    h.d('user').findMany.mockResolvedValue([users[0], { ...users[2], attendancePinHash: null }]);
+    h.d('attendanceDay').findMany.mockResolvedValue([dayRow({ userId: 'u1', clockIn: at(10, 2) })]);
+    const out = await h.service.today(OWNER, 'br1', at(14, 0));
+    expect(out.rows.find((r) => r.userId === 'u3')?.status).toBe('NO_PIN');
+    expect(out.kpi.absentSoFar).toBe(0);
+  });
+
+  it('S16 month: a visiting employee contributes only the rows worked at this branch; home staff keep all their rows (รีวิว minor)', async () => {
+    const h = harness();
+    h.d('user').findMany.mockResolvedValue([users[0], { id: 'u9', nickname: 'บิว', name: 'บิว', role: 'SALES', branchId: 'br2', attendancePinHash: 'h' }]);
+    await h.service.month(BM, 'br1', '2026-10', at(14, 0));
+    const where = h.d('attendanceDay').findMany.mock.calls[0][0].where;
+    expect(where.OR).toEqual([{ branchId: 'br1' }, { userId: { in: ['u1'] } }]);
+  });
+
+  it('S17 photo: a branch manager can open the photo of their own employee who punched at another branch; another branch\'s employee there stays 403 (รีวิว minor)', async () => {
+    const h = harness();
+    h.d('attendancePunch').findUnique.mockResolvedValue({ id: 'p1', branchId: 'br2', photoKey: 'k.jpg', user: { branchId: 'br1' } });
+    await expect(h.service.photoStream(BM, 'p1')).resolves.toMatchObject({ contentType: 'image/jpeg' });
+    h.d('attendancePunch').findUnique.mockResolvedValue({ id: 'p2', branchId: 'br2', photoKey: 'k.jpg', user: { branchId: 'br2' } });
+    await expect(h.service.photoStream(BM, 'p2')).rejects.toThrow(ForbiddenException);
+  });
+
+  it('S18 setDayKinds on today\'s row that already has a clock-in recomputes with the new kind (day off: no lateness, WORKED_ON_OFF_DAY) instead of only flipping the kind (รีวิว minor)', async () => {
+    const h = harness();
+    h.d('user').findMany.mockResolvedValue([{ id: 'u1', branchId: 'br1' }]);
+    h.d('attendanceDay').findUnique.mockResolvedValue(dayRow({ userId: 'u1', clockIn: at(10, 30), lateMinutes: 30 }));
+    await h.service.setDayKinds(BM, { branchId: 'br1', entries: [{ userId: 'u1', date: '2026-10-27', dayKind: 'DAY_OFF' }] }, at(14, 0));
+    expect(h.d('attendanceDay').upsert).not.toHaveBeenCalled();
+    const data = h.d('attendanceDay').update.mock.calls[0][0].data;
+    expect(data).toMatchObject({ dayKind: 'DAY_OFF', lateMinutes: 0 });
+    expect(data.flags).toContain('WORKED_ON_OFF_DAY');
+  });
 });

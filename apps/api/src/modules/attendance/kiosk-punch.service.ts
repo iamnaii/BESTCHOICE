@@ -27,6 +27,9 @@ export const FLAG_OUT_UPDATED = 'OUT_UPDATED';
 export const FLAG_REOPENED = 'REOPENED';
 export const FLAG_MISSING_OUT = 'MISSING_OUT';
 export const FLAG_LOCATION_CHANGED = 'LOCATION_CHANGED';
+/** ตอกเข้าภายใน 30 นาทีหลังเครื่องพักรับรหัส — สายอาจเพราะตอกไม่ได้ (รีวิว minor) */
+export const FLAG_AFTER_PIN_LOCKOUT = 'AFTER_PIN_LOCKOUT';
+const AFTER_PIN_LOCKOUT_MS = 30 * 60_000;
 /** OUT ข้ามวันผูกแถวเมื่อวานได้ไม่เกินกี่ชั่วโมงนับจาก IN */
 export const MAX_OPEN_SHIFT_HOURS = 18;
 /** ระยะ (เมตร) จากจุดตอกครั้งก่อนของเครื่องที่ถือว่าย้ายที่ */
@@ -51,7 +54,7 @@ export type PunchOutcome = PunchResult & { nextToken?: string };
 export type PunchFinalize = (tx: Prisma.TransactionClient, result: PunchResult) => Promise<string | undefined>;
 
 export interface PunchInput {
-  device: Pick<AttendanceDevice, 'id' | 'branchId' | 'name' | 'lastIp'>;
+  device: Pick<AttendanceDevice, 'id' | 'branchId' | 'name' | 'lastIp'> & Partial<Pick<AttendanceDevice, 'pinLockedUntil'>>;
   userId: string;
   kind: AttendancePunchKind;
   photo?: { buffer: Buffer; mimeType: string };
@@ -59,6 +62,9 @@ export interface PunchInput {
   userAgent?: string;
   geo?: { lat: number; lng: number };
 }
+
+/** ลายเซ็นไฟล์ JPEG (FF D8 FF) */
+const isJpeg = (b: Buffer) => b.length >= 3 && b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff;
 
 /** ระยะทางบนผิวโลก (เมตร) — haversine */
 function distanceMeters(lat1: number, lng1: number, lat2: number, lng2: number): number {
@@ -99,6 +105,8 @@ export class KioskPunchService {
     if (kind === 'OUT' && !day?.clockIn) throw new ConflictException('ยังไม่ได้ตอกเข้างานวันนี้');
 
     if (input.geo && (await this.movedFromLastLocation(device.id, input.geo))) punchFlags.push(FLAG_LOCATION_CHANGED);
+    const pauseEnded = device.pinLockedUntil ? now.getTime() - device.pinLockedUntil.getTime() : null;
+    if (kind === 'IN' && pauseEnded !== null && pauseEnded >= 0 && pauseEnded <= AFTER_PIN_LOCKOUT_MS) punchFlags.push(FLAG_AFTER_PIN_LOCKOUT);
     const photoKey = await this.uploadPhoto(punchId, input.photo, now);
     if (!photoKey) punchFlags.push(FLAG_NO_PHOTO);
 
@@ -113,6 +121,7 @@ export class KioskPunchService {
     if (kind === 'OUT' && day?.clockOut) eventFlags.add(FLAG_OUT_UPDATED);
     if (!photoKey) eventFlags.add(FLAG_NO_PHOTO);
     if (punchFlags.includes(FLAG_LOCATION_CHANGED)) eventFlags.add(FLAG_LOCATION_CHANGED);
+    if (punchFlags.includes(FLAG_AFTER_PIN_LOCKOUT)) eventFlags.add(FLAG_AFTER_PIN_LOCKOUT);
     const dayFlags = [...eventFlags, ...summary.flags];
     const status: PunchStatus = kind === 'IN' ? (summary.lateMinutes > 0 ? 'LATE' : 'ON_TIME') : summary.otHours > 0 ? 'OUT_OT' : 'OUT';
     const result: PunchResult = { nickname, kind, at: now, status, lateMinutes: summary.lateMinutes, otHours: summary.otHours, flags: dayFlags };
@@ -216,10 +225,15 @@ export class KioskPunchService {
 
   private async uploadPhoto(punchId: string, photo: PunchInput['photo'], now: Date): Promise<string | null> {
     if (!photo?.buffer?.length) return null;
+    // ชนิดไฟล์ตัดสินจากลายเซ็นไฟล์ ไม่เชื่อ mimetype ที่เครื่องส่งมา — เครื่องตอกบัตรถ่ายเป็น JPEG เสมอ (รีวิว minor)
+    if (!isJpeg(photo.buffer)) {
+      this.logger.warn(`[attendance] punch ${punchId}: photo is not a JPEG — stored without a photo`);
+      return null;
+    }
     const { year, month } = bangkokCalendarParts(now);
     const key = `attendance/${year}/${String(month + 1).padStart(2, '0')}/${punchId}.jpg`;
     try {
-      await this.storage.upload(key, photo.buffer, photo.mimeType || 'image/jpeg');
+      await this.storage.upload(key, photo.buffer, 'image/jpeg');
       return key;
     } catch (err) {
       this.logger.warn(`[attendance] photo upload failed for punch ${punchId}: ${(err as Error).message}`);

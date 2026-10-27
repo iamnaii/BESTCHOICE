@@ -25,6 +25,7 @@ function harness() {
   const cron = new AttendanceCloseDayCron(proxy, devices as never);
   const d = (k: string) => proxy[k] as Delegate;
   d('branch').findMany.mockResolvedValue([{ id: 'br1', name: 'ลพบุรี' }]);
+  d('attendanceDevice').count.mockResolvedValue(1); // สาขามีเครื่องตอกบัตรแล้ว
   d('user').findMany.mockResolvedValue([
     { id: 'u1', branchId: 'br1', attendancePinHash: 'h' },
     { id: 'u2', branchId: 'br1', attendancePinHash: 'h' },
@@ -96,5 +97,15 @@ describe('AttendanceCloseDayCron.run', () => {
     const h = harness();
     h.d('attendanceDay').updateMany.mockRejectedValueOnce(new Error('db down'));
     await expect(h.cron.run(RUN_AT)).resolves.toMatchObject({ closed: 0 });
+  });
+  it('C9 a branch that had no attendance device yet that day is skipped: no absence rows, no "device unavailable" Todo (รีวิว minor)', async () => {
+    const h = harness();
+    h.d('attendanceDevice').count.mockResolvedValue(0);
+    h.d('attendancePunch').count.mockResolvedValue(0);
+    const out = await h.cron.run(RUN_AT);
+    expect(h.d('attendanceDevice').count).toHaveBeenCalledWith({ where: { branchId: 'br1', deletedAt: null, createdAt: { lt: new Date(Y.getTime() + 24 * 3600_000) } } });
+    expect(h.d('attendanceDay').create).not.toHaveBeenCalled();
+    expect(h.devices.createOwnerTodo).not.toHaveBeenCalled();
+    expect(out.unavailableBranches).toEqual([]);
   });
 });

@@ -72,7 +72,7 @@ export default function AttendancePage() {
       ) : tab === 'today' ? (
         <TodayTab branchId={branchId} date={date} onDateChange={setDate} actorId={user?.id ?? ''} isOwner={isOwner} onEdit={setTarget} />
       ) : tab === 'month' ? (
-        <MonthTab branchId={branchId} branchName={branchName} month={month} onMonthChange={setMonth} />
+        <MonthTab branchId={branchId} branchName={branchName} month={month} onMonthChange={setMonth} onOpenDay={(d) => { setDate(d); setTab('today'); }} />
       ) : (
         <ScheduleTab branchId={branchId} weekStart={week} onWeekChange={setWeek} actorId={user?.id ?? ''} isOwner={isOwner} />
       )}

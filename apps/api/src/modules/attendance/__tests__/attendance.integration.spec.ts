@@ -47,7 +47,7 @@ const punchAt = (when: Date, token: string, pin: string, kind: 'IN' | 'OUT', opt
   atTime(when, () =>
     kiosk.punch(
       { deviceToken: token, requestId: opts.requestId ?? uuid(), pin, kind } as never,
-      opts.photo ? ({ buffer: Buffer.from('jpg'), mimetype: 'image/jpeg' } as never) : undefined,
+      opts.photo ? ({ buffer: Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10]), mimetype: 'image/jpeg' } as never) : undefined,
       reqFrom(opts.ip ?? '10.0.0.1'),
     ),
   );
@@ -193,6 +193,18 @@ describe('attendance บน Postgres จริง', () => {
 
   it('I6 attendancePinHash is unique company-wide: a second user cannot take the same pin', async () => {
     await expect(prisma.user.update({ where: { id: staffC }, data: { attendancePinHash: hashPII('111111', SALT) } })).rejects.toMatchObject({ code: 'P2002' });
+  });
+
+  it('I7 wrong PINs count only inside a 15-minute window (real SQL): 4 wrong, a pause of 16 minutes, then 4 more do not lock; the 5th inside the window does — one PIN_LOCKOUT event (รีวิว minor)', async () => {
+    const D6 = bangkokMidnight(2026, 10, 2);
+    const dev = await newDevice('เครื่อง I7', at(8, 0, D6));
+    const t = (m: number) => new Date(at(9, 0, D6).getTime() + m * 60_000);
+    for (const m of [0, 1, 2, 3]) expect(await devices.checkPin(dev.id, '000000', t(m))).toBe('INVALID');
+    for (const m of [20, 21, 22, 23]) expect(await devices.checkPin(dev.id, '000000', t(m))).toBe('INVALID'); // ครั้งแรกหลังเว้น 17 นาที นับใหม่เป็น 1
+    expect(await devices.checkPin(dev.id, '000000', t(24))).toBe('LOCKED');
+    expect(await devices.checkPin(dev.id, '111111', t(30))).toBe('LOCKED'); // รหัสถูกก็ยังพักอยู่
+    expect(await prisma.attendanceDeviceEvent.count({ where: { deviceId: dev.id, kind: 'PIN_LOCKOUT' } })).toBe(1);
+    expect(await devices.checkPin(dev.id, '111111', t(40))).toEqual({ userId: staffA }); // พ้น 15 นาที
   });
 
   it('I3 a copied token used while the tablet is off — even with the copier\'s heartbeats in between — locks the device on the real tablet\'s return and flags the copier\'s punches and days from the fork (รีวิว C4)', async () => {

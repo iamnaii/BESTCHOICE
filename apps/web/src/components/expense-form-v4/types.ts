@@ -51,6 +51,61 @@ export interface PayrollCustomIncomeRow {
   name: string;
   amount: string;
   isTaxable: boolean;
+  /** Payroll D4 — ติ๊ก "รายการปรับปรุงงวดก่อน" ⇒ ส่ง `isAdjustment: true` (server เก็บ source ADJUSTMENT) */
+  isAdjustment: boolean;
+}
+
+/**
+ * Payroll D4 — แถวรายได้ที่ server คิดจากการลงเวลา (ATTENDANCE_* · ส่วนที่ 2 จะมี COMMISSION ที่ quantity/rate/multiplier = null).
+ * อ่านอย่างเดียว: ฟอร์มไม่ส่งแถวเหล่านี้กลับ — server คิดใหม่ทุกครั้งที่บันทึก
+ */
+export interface PayrollSystemIncomeRow {
+  source: string;
+  accountCode: string;
+  name: string;
+  /** ชั่วโมง */
+  quantity: string | null;
+  /** อัตราต่อชั่วโมง (แสดงอย่างเดียว) */
+  rate: string | null;
+  multiplier: string | null;
+  amount: string;
+}
+
+/** สรุปลงเวลาที่ server เก็บไว้ต่อบรรทัด (`PayrollLine.attendanceSummary`) — ข้อมูลประกอบ ไม่หักเงิน */
+export interface PayrollAttendanceSummary {
+  workDays: number;
+  lateCount: number;
+  lateMinutes: number;
+  absent: number;
+  leave: number;
+  /** ชั่วโมงเป็นสตริงทศนิยม 1 ตำแหน่ง */
+  otHours: string;
+  holidayHours: string;
+  holidayOtHours: string;
+  holidayWorkedDays: number;
+  reviewCount: number;
+  /** รายเดือน + มีเงินเดือนในทะเบียน = ระบบคิด OT ให้ */
+  autoOtEligible: boolean;
+}
+
+/** วันที่ต้องตรวจ (`systemNotes.review`) — `date` = 'YYYY-MM-DD' วันไทย · `blocking` = เครื่องถูกใช้ซ้อน (อนุมัติไม่ได้) */
+export interface PayrollReviewDay {
+  dayId: string;
+  date: string;
+  branchId: string;
+  flags: string[];
+  blocking: boolean;
+}
+
+export type PayrollSystemWarning =
+  | { code: 'NOT_MONTHLY_OR_NO_BASE'; otHours: string }
+  | { code: 'IN_OTHER_DOCUMENT'; documentId: string; documentNumber: string; branchName: string; status: string }
+  | { code: 'NO_PIN' }
+  | { code: 'NOT_YET_CLOSABLE'; closableAt: string };
+
+export interface PayrollSystemNotes {
+  review: PayrollReviewDay[];
+  warnings: PayrollSystemWarning[];
 }
 
 /**
@@ -77,6 +132,10 @@ export interface PayrollLineForm {
   // present as empty arrays in form state for ergonomic editing.
   customIncome: PayrollCustomIncomeRow[];
   customDeduction: PayrollCustomDeductionRow[];
+  // Payroll D4 — ที่ server เก็บไว้ตอนบันทึกครั้งล่าสุด (อ่านอย่างเดียว · ไม่ส่งกลับ). บรรทัดใหม่/คัดลอกมา = ว่าง
+  systemIncome: PayrollSystemIncomeRow[];
+  attendanceSummary: PayrollAttendanceSummary | null;
+  systemNotes: PayrollSystemNotes | null;
   // UI-only: accordion expand toggle. Excluded from POST body.
   _expanded?: boolean;
 }
@@ -221,6 +280,9 @@ export const newPayrollLine = (overrides?: Partial<PayrollLineForm>): PayrollLin
   whtAmount: '0',
   customIncome: [],
   customDeduction: [],
+  systemIncome: [],
+  attendanceSummary: null,
+  systemNotes: null,
   _expanded: false,
   ...overrides,
 });
@@ -235,6 +297,7 @@ export const newPayrollCustomIncome = (
   name: '',
   amount: '',
   isTaxable: true,
+  isAdjustment: false,
   ...overrides,
 });
 

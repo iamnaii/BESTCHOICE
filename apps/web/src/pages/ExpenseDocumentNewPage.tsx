@@ -58,6 +58,8 @@ export default function ExpenseDocumentNewPage() {
       editDocId={editDocId}
       onClose={() => navigate('/expenses')}
       onSaved={() => navigate('/expenses')}
+      // Payroll D4 — "บันทึกร่าง + คิดยอด" อยู่ในหน้าแก้ไขของร่างที่เพิ่งบันทึก (รีเฟรชแล้วไม่สร้างใบซ้ำ)
+      onDraftSaved={(id) => navigate(`/expenses/new?edit=${id}`, { replace: true })}
     />
   );
 }

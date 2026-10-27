@@ -1,16 +1,24 @@
 import { buildExpenseLinePayload } from './expense-line-payload';
 import { useAccountingPermissions } from '@/hooks/useAccountingPermissions';
 import { getApprovalReason } from '@/hooks/useApprovalActions';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import api, { getErrorMessage } from '@/lib/api';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, Receipt, Users, Banknote, FileText, Check, CheckCircle2, Clock } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, Receipt, Users, Banknote, FileText, Check, CheckCircle2, Clock } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUiFlags } from '@/hooks/useUiFlags';
 import { cn } from '@/lib/utils';
 import { DocType, ExpenseFormState, newLine, newPayrollLine, newPettyCashLine } from './types';
+import {
+  formLineFromStored,
+  payrollLinesPayload,
+  stripTypedOtRows,
+  STRIP_TYPED_OT_TOAST,
+  type StoredPayrollLine,
+} from './payroll-system/payroll-lines';
+import { payrollMetaQuery } from './payroll-system/payroll-meta';
 // (Clock/Users etc. imported above from lucide-react)
 import { SHOP_CASH_ACCOUNT_CODES } from '@/components/CashAccountSelect';
 import { useFormCompute } from './useFormCompute';
@@ -40,7 +48,48 @@ interface Props {
    *  แล้วบันทึกด้วย PATCH /expense-documents/:id/payroll แทน POST.
    *  รองรับเฉพาะ PAYROLL — ประเภทอื่นยังสร้างใหม่อย่างเดียว. */
   editDocId?: string;
+  /** Payroll D4 — "บันทึกร่าง + คิดยอด" บันทึกแล้วอยู่ในโหมดแก้ไขของร่างนั้น · หน้าที่เปิดฟอร์มเปลี่ยน URL เป็น ?edit=<id> ได้ */
+  onDraftSaved?: (id: string) => void;
 }
+
+/** ใบเงินเดือนตามที่ `GET /expense-documents/:id` คืน (เฉพาะที่ฟอร์มใช้) */
+interface PayrollDocForEdit {
+  id: string;
+  documentType: string;
+  status: string;
+  branchId: string;
+  documentDate: string;
+  depositAccountCode: string | null;
+  description: string | null;
+  note: string | null;
+  reference: string | null;
+  payroll?: {
+    entityScope: 'SHOP' | 'FINANCE';
+    payrollPeriod: string;
+    lines: StoredPayrollLine[];
+  } | null;
+}
+
+/** Payroll D4 คำตัดสิน 6 — แก้ใบที่รออนุมัติ/อนุมัติแล้วได้ (บันทึกแล้ว server ตั้งกลับเป็นร่าง) */
+const PAYROLL_EDITABLE_STATUSES = ['DRAFT', 'PENDING_APPROVAL', 'APPROVED'];
+const SENT_BACK_STATUS_LABEL: Record<string, string> = { PENDING_APPROVAL: 'รออนุมัติ', APPROVED: 'อนุมัติแล้ว' };
+/** 409 ที่บอกว่า "ยังไม่ถึงเวลา" (ไม่ใช่ข้อผิดพลาดของข้อมูล) — แสดงโทนเตือน */
+const PAYROLL_NOT_YET_CODES = ['PAYROLL_SUBMIT_CUTOFF', 'PAYROLL_CUTOFF'];
+
+/** ใบเงินเดือนบันทึกแล้ว แต่ขั้นถัดไป (ส่งขออนุมัติ/ลงบัญชี/โหลดกลับ) ไม่สำเร็จ — ใบยังเป็นร่าง ฟอร์มต้องแก้ใบนี้ต่อ ไม่สร้างใหม่ */
+class PayrollSavedError extends Error {
+  constructor(
+    readonly docId: string,
+    readonly cause: unknown,
+  ) {
+    super('payroll saved; follow-up step failed');
+  }
+}
+
+const errorCodeOf = (e: unknown): string | undefined => {
+  const code = (e as { response?: { data?: { code?: unknown } } } | null)?.response?.data?.code;
+  return typeof code === 'string' ? code : undefined;
+};
 
 // W3 fix — return YYYY-MM-DD for "today in Asia/Bangkok" (en-CA gives ISO-shaped
 // output). Previously used `new Date().toISOString().slice(0,10)` which returns
@@ -115,7 +164,7 @@ const initial = (
   };
 };
 
-export function ExpenseFormV4({ branchId, onClose, onSaved, initialDocType, editDocId }: Props) {
+export function ExpenseFormV4({ branchId, onClose, onSaved, initialDocType, editDocId, onDraftSaved }: Props) {
   const { user } = useAuth();
   const permissions = useAccountingPermissions();
   const queryClient = useQueryClient();
@@ -135,47 +184,27 @@ export function ExpenseFormV4({ branchId, onClose, onSaved, initialDocType, edit
 
   const patch = (p: Partial<ExpenseFormState>) => setState((s) => ({ ...s, ...p }));
 
-  // R3-2 — โหลดร่างใบเงินเดือนมาเติมฟอร์ม (edit mode). เฉพาะ PAYROLL + DRAFT.
+  // R3-2 — โหลดใบเงินเดือนมาเติมฟอร์ม (edit mode) · Payroll D4 — รวมใบที่รออนุมัติ/อนุมัติแล้ว (ส่งกลับเป็นร่าง)
+  const [editLoaded, setEditLoaded] = useState(false);
   const editQuery = useQuery({
     queryKey: ['expense-doc-edit', editDocId],
     queryFn: async () => (await api.get(`/expense-documents/${editDocId}`)).data,
-    enabled: !!editDocId,
+    // โหลดครั้งแรกเท่านั้น — หลัง "บันทึกร่าง + คิดยอด" ฟอร์มโหลดใบเอง (openSavedDraft) แม้ host เปลี่ยน ?edit=
+    enabled: !!editDocId && !editLoaded,
     staleTime: 0,
   });
-  const [editLoaded, setEditLoaded] = useState(false);
+  // ใบที่ฟอร์มนี้แก้อยู่ — เริ่มจาก ?edit= หรือได้มาหลัง "บันทึกร่าง + คิดยอด" สร้างใบ (บันทึกครั้งถัดไป = PATCH)
+  const [draftId, setDraftId] = useState<string | undefined>(editDocId);
+  const [loadedStatus, setLoadedStatus] = useState<string | null>(null);
+  // ข้อความจาก server ของใบเงินเดือน (มี `code`) — แสดงในฟอร์มแทน toast
+  const [payrollNotice, setPayrollNotice] = useState<{ message: string; tone: 'error' | 'warning' } | null>(null);
+  const noticeRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    if (!editDocId || !editQuery.data || editLoaded) return;
-    const doc = editQuery.data as {
-      documentType: string;
-      status: string;
-      branchId: string;
-      documentDate: string;
-      depositAccountCode: string | null;
-      description: string | null;
-      note: string | null;
-      reference: string | null;
-      payroll?: {
-        entityScope: 'SHOP' | 'FINANCE';
-        payrollPeriod: string;
-        lines: Array<{
-          userId: string | null;
-          employeeName: string;
-          baseSalary: string;
-          ssoEmployee: string;
-          whtAmount: string;
-          customIncome: Array<{ accountCode: string; name: string; amount: string; isTaxable: boolean }>;
-          customDeduction: Array<{ accountCode: string; name: string; amount: string }>;
-        }>;
-      } | null;
-    };
-    if (doc.documentType !== 'PAYROLL' || doc.status !== 'DRAFT' || !doc.payroll) {
-      toast.error("แก้ไขได้เฉพาะร่างใบเงินเดือน (ฉบับร่าง)");
-      onClose();
-      return;
-    }
-    const [pyStr, pmStr] = doc.payroll.payrollPeriod.split('-');
-    const py = parseInt(pyStr, 10);
-    const pm = parseInt(pmStr, 10);
+    if (payrollNotice) noticeRef.current?.focus();
+  }, [payrollNotice]);
+
+  const applyPayrollDoc = (doc: PayrollDocForEdit & { payroll: NonNullable<PayrollDocForEdit['payroll']> }) => {
+    const [py, pm] = doc.payroll.payrollPeriod.split('-').map((v) => parseInt(v, 10));
     setState((s) => ({
       ...s,
       docType: 'PAYROLL',
@@ -187,37 +216,41 @@ export function ExpenseFormV4({ branchId, onClose, onSaved, initialDocType, edit
       payroll: {
         year: py + 543,
         month: pm,
-        payrollPeriod: doc.payroll!.payrollPeriod,
-        entityScope: doc.payroll!.entityScope === 'FINANCE' ? 'FINANCE' : 'SHOP',
-        lines: doc.payroll!.lines.map((l) =>
-          newPayrollLine({
-            userId: l.userId ?? '',
-            employeeName: l.employeeName,
-            employeeTaxId: '',
-            baseSalary: String(parseFloat(l.baseSalary)),
-            ssoEmployee: String(parseFloat(l.ssoEmployee)),
-            whtAmount: String(parseFloat(l.whtAmount)),
-            customIncome: (l.customIncome ?? []).map((r) => ({
-              uid: Math.random().toString(36).slice(2),
-              accountCode: r.accountCode,
-              name: r.name,
-              amount: String(parseFloat(r.amount)),
-              isTaxable: r.isTaxable,
-            })),
-            customDeduction: (l.customDeduction ?? []).map((r) => ({
-              uid: Math.random().toString(36).slice(2),
-              accountCode: r.accountCode,
-              name: r.name,
-              amount: String(parseFloat(r.amount)),
-            })),
-          }),
-        ),
+        payrollPeriod: doc.payroll.payrollPeriod,
+        entityScope: doc.payroll.entityScope === 'FINANCE' ? 'FINANCE' : 'SHOP',
+        // Payroll D4 (R6) — แถวที่คนกรอกเข้าตารางกรอกเอง · แถวระบบแยกไว้แสดงอย่างเดียว (ไม่ส่งกลับ)
+        lines: doc.payroll.lines.map((l) => {
+          const line = formLineFromStored(l);
+          const before = s.payroll.lines.find((p) => p.userId && p.userId === line.userId);
+          return before?._expanded ? { ...line, _expanded: true } : line;
+        }),
       },
     }));
+    setLoadedStatus(doc.status);
     setShowQuickStart(false);
+  };
+
+  useEffect(() => {
+    if (!editDocId || !editQuery.data || editLoaded) return;
+    const doc = editQuery.data as PayrollDocForEdit;
+    if (doc.documentType !== 'PAYROLL' || !PAYROLL_EDITABLE_STATUSES.includes(doc.status) || !doc.payroll) {
+      toast.error('แก้ไขได้เฉพาะใบเงินเดือนที่เป็นร่าง รออนุมัติ หรืออนุมัติแล้ว');
+      onClose();
+      return;
+    }
+    applyPayrollDoc({ ...doc, payroll: doc.payroll });
     setEditLoaded(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editDocId, editQuery.data, editLoaded]);
+
+  /** หลังบันทึก: อยู่ในโหมดแก้ไขของร่างนั้น แล้วโหลดใบกลับ (แถวระบบ + วันที่ต้องตรวจที่ server คิด) */
+  const openSavedDraft = async (id: string) => {
+    setDraftId(id);
+    setEditLoaded(true);
+    onDraftSaved?.(id);
+    const { data } = await api.get<PayrollDocForEdit>(`/expense-documents/${id}`);
+    if (data.payroll) applyPayrollDoc({ ...data, payroll: data.payroll });
+  };
 
   // Payroll: pin the cash account to the scope's chart (SHOP → S11-XXXX,
   // FINANCE → 11-XXXX). Fires on entering the payroll form and on scope toggle;
@@ -284,7 +317,7 @@ export function ExpenseFormV4({ branchId, onClose, onSaved, initialDocType, edit
   const maySubmit = requiresApproval || permissions.can('EXPENSE_POST');
 
   const saveMutation = useMutation({
-    mutationFn: async ({ andPost }: { andPost: boolean }) => {
+    mutationFn: async ({ andPost }: { andPost: boolean; stay?: boolean }) => {
       if (andPost && !maySubmit) throw new Error("ไม่มีสิทธิ์บันทึกและ ลงบัญชี รายจ่าย");
       let createdId: string | null = null;
 
@@ -341,51 +374,31 @@ export function ExpenseFormV4({ branchId, onClose, onSaved, initialDocType, edit
         // C2 — forward customIncome + customDeduction. Server V16/V17/V18
         // re-validate: whitelist, deduction ≤ gross, taxable-base calc.
         // R3-2 — edit mode: PATCH ทับร่างเดิม (ไม่ส่ง branchId — ห้ามย้ายสาขา)
+        // Payroll D4 — ไม่ส่งแถวระบบ (server คิดใหม่ทุกครั้งที่บันทึก) · บรรทัดที่บันทึกแล้วและระบบคิด OT ให้
+        // เอาแถว OT ที่กรอกเองออกก่อน (บรรทัดใหม่ให้ server ตัดสิน → MANUAL_OT_DUPLICATE แสดงในฟอร์ม)
+        const attendanceCodes = await queryClient
+          .fetchQuery(payrollMetaQuery(state.payroll.entityScope))
+          .then((m) => m.attendanceAccountCodes ?? [])
+          .catch(() => [] as string[]);
+        const stripped = stripTypedOtRows(state.payroll.lines, attendanceCodes);
+        if (stripped.removed > 0) {
+          toast.info(STRIP_TYPED_OT_TOAST);
+          setState((s) => ({
+            ...s,
+            payroll: { ...s.payroll, lines: stripTypedOtRows(s.payroll.lines, attendanceCodes).lines },
+          }));
+        }
         const payrollPayload = {
           documentDate: state.documentDate,
           payrollPeriod: state.payroll.payrollPeriod,
           entityScope: state.payroll.entityScope,
           depositAccountCode: state.depositAccountCode,
           paymentMethod: 'BANK_TRANSFER',
-          lines: state.payroll.lines
-            .filter((l) => l.employeeName && parseFloat(l.baseSalary) > 0)
-            .map((l) => {
-              const validIncome = (l.customIncome ?? []).filter(
-                (r) => r.accountCode && parseFloat(r.amount) > 0,
-              );
-              const validDeduction = (l.customDeduction ?? []).filter(
-                (r) => r.accountCode && parseFloat(r.amount) > 0,
-              );
-              return {
-                userId: l.userId || undefined,
-                employeeName: l.employeeName,
-                employeeTaxId: l.employeeTaxId || undefined,
-                baseSalary: parseFloat(l.baseSalary),
-                ssoEmployee: parseFloat(l.ssoEmployee) || 0,
-                whtAmount: parseFloat(l.whtAmount) || 0,
-                customIncome:
-                  validIncome.length > 0
-                    ? validIncome.map((r) => ({
-                        accountCode: r.accountCode,
-                        name: r.name || r.accountCode,
-                        amount: parseFloat(r.amount),
-                        isTaxable: r.isTaxable,
-                      }))
-                    : undefined,
-                customDeduction:
-                  validDeduction.length > 0
-                    ? validDeduction.map((r) => ({
-                        accountCode: r.accountCode,
-                        name: r.name || r.accountCode,
-                        amount: parseFloat(r.amount),
-                      }))
-                    : undefined,
-              };
-            }),
+          lines: payrollLinesPayload(stripped.lines),
         };
-        if (editDocId) {
+        if (draftId) {
           const { data } = await api.patch(
-            `/expense-documents/${editDocId}/payroll`,
+            `/expense-documents/${draftId}/payroll`,
             payrollPayload,
           );
           createdId = data.id;
@@ -495,25 +508,63 @@ export function ExpenseFormV4({ branchId, onClose, onSaved, initialDocType, edit
         // คำสั่งเจ้าของ 2026-08-06 — เงินเดือนต้องผ่านการอนุมัติก่อนจ่าย. เมื่อ
         // approval workflow เปิด เอกสาร PAYROLL ห้าม POST ตรง (backend ปฏิเสธ
         // ด้วย approval_required_doc_types อยู่แล้ว) — ส่งขออนุมัติแทน.
-        if (requiresApproval) {
-          await api.post(`/expense-documents/${createdId}/submit-for-approval`);
-          submittedForApproval = true;
-        } else {
-          await api.post(`/expense-documents/${createdId}/post`);
+        try {
+          if (requiresApproval) {
+            await api.post(`/expense-documents/${createdId}/submit-for-approval`);
+            submittedForApproval = true;
+          } else {
+            await api.post(`/expense-documents/${createdId}/post`);
+          }
+        } catch (e) {
+          // Payroll D4 — ส่งก่อนเวลาปิดงวด (PAYROLL_SUBMIT_CUTOFF) ฯลฯ: ใบที่บันทึกแล้วยังเป็นร่าง
+          if (state.docType === 'PAYROLL') throw new PayrollSavedError(createdId, e);
+          throw e;
         }
       }
       return { id: createdId, submittedForApproval };
     },
-    onSuccess: (result) => {
+    onSuccess: async (result, { stay }) => {
+      queryClient.invalidateQueries({ queryKey: ['expenses'] });
+      queryClient.invalidateQueries({ queryKey: ['expenses-summary'] });
+      if (stay && result.id) {
+        // "บันทึกร่าง + คิดยอด" — อยู่ต่อในโหมดแก้ไขของร่างนี้ พร้อมยอดที่ server คิด
+        try {
+          await openSavedDraft(result.id);
+          toast.success('บันทึกร่างแล้ว — ยอดในใบเป็นยอดที่ระบบคิดล่าสุด');
+        } catch (e) {
+          toast.error(getErrorMessage(e));
+        }
+        return;
+      }
       toast.success(
         result?.submittedForApproval ? 'บันทึกและส่งขออนุมัติแล้ว' : 'บันทึกรายจ่ายสำเร็จ',
       );
-      queryClient.invalidateQueries({ queryKey: ['expenses'] });
-      queryClient.invalidateQueries({ queryKey: ['expenses-summary'] });
       onSaved();
     },
-    onError: (e) => toast.error(getErrorMessage(e)),
+    onError: (e) => {
+      if (e instanceof PayrollSavedError) {
+        queryClient.invalidateQueries({ queryKey: ['expenses'] });
+        queryClient.invalidateQueries({ queryKey: ['expenses-summary'] });
+        const code = errorCodeOf(e.cause);
+        setPayrollNotice({
+          message: getErrorMessage(e.cause),
+          tone: code && PAYROLL_NOT_YET_CODES.includes(code) ? 'warning' : 'error',
+        });
+        void openSavedDraft(e.docId).catch(() => undefined);
+        return;
+      }
+      if (state.docType === 'PAYROLL' && errorCodeOf(e)) {
+        // MANUAL_OT_DUPLICATE / NOT_IN_BRANCH ฯลฯ — ข้อความของ server ระบุชื่อพนักงาน แสดงค้างไว้ในฟอร์ม
+        setPayrollNotice({ message: getErrorMessage(e), tone: 'error' });
+        return;
+      }
+      toast.error(getErrorMessage(e));
+    },
   });
+  const startSave = (v: { andPost: boolean; stay?: boolean }) => {
+    setPayrollNotice(null);
+    saveMutation.mutate(v);
+  };
 
   const itemCount =
     state.docType === 'PAYROLL'
@@ -562,10 +613,18 @@ export function ExpenseFormV4({ branchId, onClose, onSaved, initialDocType, edit
               <Receipt className="hidden size-5 shrink-0 text-primary sm:block" /> บันทึกค่าใช้จ่าย
             </h2>
           </div>
-          <span className="shrink-0 text-xs px-2 py-1 rounded bg-muted text-muted-foreground">ร่าง</span>
+          <span className="shrink-0 text-xs px-2 py-1 rounded bg-muted text-muted-foreground leading-snug">
+            {(loadedStatus && SENT_BACK_STATUS_LABEL[loadedStatus]) || 'ร่าง'}
+          </span>
         </div>
 
         <div className="min-h-0 min-w-0 flex-1 overflow-y-auto p-3 sm:p-6 space-y-5">
+          {loadedStatus && SENT_BACK_STATUS_LABEL[loadedStatus] && (
+            <p role="status" className="flex items-start gap-2 rounded-lg border border-info/30 bg-info/10 px-3 py-2 text-sm text-info leading-snug">
+              <Clock className="size-4 mt-0.5 shrink-0" aria-hidden="true" />
+              {`ใบนี้${SENT_BACK_STATUS_LABEL[loadedStatus]} — บันทึกแล้วใบจะกลับเป็นร่าง ต้องส่งขออนุมัติอีกครั้ง`}
+            </p>
+          )}
           {/* Quick Start */}
           {showQuickStart && (
             <QuickStartPanel
@@ -669,6 +728,10 @@ export function ExpenseFormV4({ branchId, onClose, onSaved, initialDocType, edit
                       documentDate={state.documentDate}
                       onDocumentDateChange={(d) => patch({ documentDate: d })}
                       branchId={state.branchId}
+                      onSaveAndCompute={() => startSave({ andPost: false, stay: true })}
+                      computing={saveMutation.isPending}
+                      computeDisabled={!ready}
+                      viewer={user ? { role: user.role, branchId: user.branchId } : null}
                     />
                   </Section>
                 )}
@@ -800,6 +863,26 @@ export function ExpenseFormV4({ branchId, onClose, onSaved, initialDocType, edit
             {permissions.isError && <Button variant="ghost" onClick={() => permissions.refetch()}>ลองใหม่</Button>}
           </p>
         )}
+        {payrollNotice && (
+          <div
+            ref={noticeRef}
+            tabIndex={-1}
+            role="alert"
+            className={cn(
+              'flex-none flex items-start gap-2 border-t px-3 py-2 text-sm leading-snug sm:px-6 focus:outline-hidden',
+              payrollNotice.tone === 'warning'
+                ? 'border-warning/40 bg-warning/10 text-warning-strong'
+                : 'border-destructive/30 bg-destructive/10 text-destructive',
+            )}
+          >
+            {payrollNotice.tone === 'warning' ? (
+              <Clock className="size-4 mt-0.5 shrink-0" aria-hidden="true" />
+            ) : (
+              <AlertTriangle className="size-4 mt-0.5 shrink-0" aria-hidden="true" />
+            )}
+            <p className="min-w-0">{payrollNotice.message}</p>
+          </div>
+        )}
         {/* Footer */}
         <div className="flex-none bg-background border-t px-3 py-3 sm:px-6 grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center sm:justify-between pb-[max(0.75rem,env(safe-area-inset-bottom))]">
           <Button variant="ghost" onClick={onClose} className="min-h-11 justify-start gap-1.5">
@@ -817,14 +900,14 @@ export function ExpenseFormV4({ branchId, onClose, onSaved, initialDocType, edit
             <Button
               className="h-auto min-h-11 whitespace-normal py-2"
               variant="outline"
-              onClick={() => saveMutation.mutate({ andPost: false })}
+              onClick={() => startSave({ andPost: false })}
               disabled={!ready || saveMutation.isPending}
             >
               บันทึกร่าง
             </Button>
             <Button
               className="h-auto min-h-11 whitespace-normal py-2"
-              onClick={() => saveMutation.mutate({ andPost: true })}
+              onClick={() => startSave({ andPost: true })}
               disabled={!ready || saveMutation.isPending || !maySubmit}
               title={!maySubmit ? "ไม่มีสิทธิ์ลงบัญชี รายจ่าย — สามารถบันทึกร่างได้" : undefined}
             >

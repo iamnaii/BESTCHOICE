@@ -7,8 +7,11 @@ const mocks = vi.hoisted(() => ({ get: vi.fn(), user: { branchId: null as string
 vi.mock('@/lib/api', () => ({ default: { get: mocks.get } }));
 vi.mock('@/contexts/AuthContext', () => ({ useAuth: () => ({ user: mocks.user }) }));
 vi.mock('@/components/expense-form-v4/ExpenseFormV4', () => ({
-  ExpenseFormV4: ({ branchId, initialDocType, editDocId }: { branchId: string; initialDocType?: string; editDocId?: string }) =>
-    <div data-testid="expense-form">{branchId} / {initialDocType} / {editDocId}</div>,
+  ExpenseFormV4: ({ branchId, initialDocType, editDocId, onDraftSaved }: { branchId: string; initialDocType?: string; editDocId?: string; onDraftSaved?: (id: string) => void }) =>
+    <div>
+      <div data-testid="expense-form">{branchId} / {initialDocType} / {editDocId}</div>
+      <button type="button" onClick={() => onDraftSaved?.('new-1')}>บันทึกร่าง + คิดยอด</button>
+    </div>,
 }));
 function Location() { return <output data-testid="location">{useLocation().pathname}</output>; }
 function open(path = '/expenses/new') {
@@ -42,6 +45,12 @@ describe('expense creation branch resolution', () => {
     expect(screen.queryByTestId('expense-form')).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'โหลดใหม่' }));
     expect(await screen.findByTestId('expense-form')).toHaveTextContent('branch-c');
+  });
+  it('a payroll draft saved with บันทึกร่าง + คิดยอด reopens on its edit route', () => {
+    mocks.user.branchId = 'assigned'; mocks.get.mockReturnValue(new Promise(() => {}));
+    open('/expenses/new?type=PR');
+    fireEvent.click(screen.getByRole('button', { name: 'บันทึกร่าง + คิดยอด' }));
+    expect(screen.getByTestId('expense-form')).toHaveTextContent('assigned / PAYROLL / new-1');
   });
   it('preserves the assigned branch and payroll edit mode', () => {
     mocks.user.branchId = 'assigned'; mocks.get.mockReturnValue(new Promise(() => {}));

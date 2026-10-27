@@ -68,6 +68,10 @@ interface Summary {
   accrualUnpaidTotal: string;
 }
 
+/** ใบเงินเดือนที่ยังไม่ลงบัญชี — แก้ได้ (Payroll D4 คำตัดสิน 6: ส่งกลับเป็นร่าง = กด "แก้ไข") */
+const isPayrollEditable = (e: Pick<ExpenseDocument, 'documentType' | 'status'>) =>
+  e.documentType === 'PAYROLL' && ['DRAFT', 'PENDING_APPROVAL', 'APPROVED'].includes(e.status);
+
 // Map documentType to display "type" (with Same-day vs Accrual fallback for EXPENSE)
 function getDocumentType(e: Expense): { label: string; cls: string } {
   switch (e.documentType) {
@@ -243,7 +247,8 @@ export default function ExpensesPage() {
   const openCreate = () => { setShowForm(true); };
   const openEdit = (e: Expense) => {
     // The form only supports PATCH for payroll. Other document types create new records.
-    if (e.status !== 'DRAFT' || e.documentType !== 'PAYROLL') return;
+    // Payroll D4 คำตัดสิน 6 — ใบที่รออนุมัติ/อนุมัติแล้วแก้ได้ (บันทึกแล้ว server ตั้งกลับเป็นร่าง)
+    if (!isPayrollEditable(e)) return;
     navigate(`/expenses/new?edit=${e.id}`);
   };
   const handleFormSaved = () => { setShowForm(false); invalidateAll(); };
@@ -441,6 +446,11 @@ export default function ExpensesPage() {
                         </DropdownMenuItem>
                       )}
                     </>
+                  )}
+                  {(e.status === 'PENDING_APPROVAL' || e.status === 'APPROVED') && isPayrollEditable(e) && (
+                    <DropdownMenuItem onSelect={() => openEdit(e)} className="min-h-11 flex items-center gap-2">
+                      <Pencil className="size-4" /> แก้ไข
+                    </DropdownMenuItem>
                   )}
                   {/* D1.2.1.6 — APPROVE button. Visible only on PENDING_APPROVAL +
                       current user is in approversList (or OWNER). Backend

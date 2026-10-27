@@ -62,6 +62,19 @@ describe('expense row menu', () => {
     await userEvent.click(await screen.findByRole('menuitem', { name: 'แก้ไข' }));
     expect(screen.getByTestId('location')).toHaveTextContent('/expenses/new?edit=expense-1');
   });
+  // Payroll D4 คำตัดสิน 6 — ส่งกลับเป็นร่าง = กด "แก้ไข" ใบที่รออนุมัติ/อนุมัติแล้ว (server ตั้งกลับเป็นร่างตอนบันทึก)
+  it.each(['PENDING_APPROVAL', 'APPROVED'])('offers แก้ไข on a %s payroll and opens the edit route', async (status) => {
+    mount(status, 'PAYROLL'); await userEvent.click(await screen.findByRole('button', { name: 'เมนู EX-001' }));
+    const edit = await screen.findByRole('menuitem', { name: 'แก้ไข' });
+    expect(edit).not.toHaveAttribute('aria-disabled', 'true');
+    await userEvent.click(edit);
+    expect(screen.getByTestId('location')).toHaveTextContent('/expenses/new?edit=expense-1');
+  });
+  it('offers no edit on a PENDING_APPROVAL document that is not payroll', async () => {
+    mount('PENDING_APPROVAL'); await userEvent.click(await screen.findByRole('button', { name: 'เมนู EX-001' }));
+    await screen.findByRole('menu');
+    expect(screen.queryByRole('menuitem', { name: 'แก้ไข' })).not.toBeInTheDocument();
+  });
   it.each(['โพสต์', 'ยกเลิก'])('opens %s confirmation and restores row focus after Escape without a write', async (name) => {
     const user = userEvent.setup(); mount();
     await user.click(await screen.findByRole('button', { name: 'เมนู EX-001' }));

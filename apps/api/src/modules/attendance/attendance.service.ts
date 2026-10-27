@@ -237,28 +237,38 @@ export class AttendanceService {
     if (reason.length < 10) throw new BadRequestException('เหตุผลต้องยาวอย่างน้อย 10 ตัวอักษร');
 
     // null = ล้างเวลา (เช่น ตรวจรูปแล้วพบว่าตอกแทนกัน → ถือว่าไม่มา) · undefined = ไม่แตะ (รีวิว I9: เดิม new Date(null) = 1970)
-    const clockIn = dto.clockIn === undefined ? day.clockIn : dto.clockIn === null ? null : new Date(dto.clockIn);
-    const clockOut = dto.clockOut === undefined ? day.clockOut : dto.clockOut === null ? null : new Date(dto.clockOut);
-    const dayKind = dto.dayKind ?? day.dayKind;
-    if (clockIn && Number.isNaN(clockIn.getTime())) throw new BadRequestException('เวลาเข้างานไม่ถูกต้อง');
-    if (clockOut && Number.isNaN(clockOut.getTime())) throw new BadRequestException('เวลาออกงานไม่ถูกต้อง');
-    if (clockIn && clockOut && clockOut.getTime() <= clockIn.getTime()) throw new BadRequestException('เวลาออกต้องหลังเวลาเข้า');
-    if (!clockIn && clockOut) throw new BadRequestException('มีเวลาออกต้องมีเวลาเข้า');
+    const parseTime = (v: string | null | undefined, label: string): Date | null | undefined => {
+      if (v === undefined || v === null) return v;
+      const d = new Date(v);
+      if (Number.isNaN(d.getTime())) throw new BadRequestException(label);
+      return d;
+    };
+    const dtoIn = parseTime(dto.clockIn, 'เวลาเข้างานไม่ถูกต้อง');
+    const dtoOut = parseTime(dto.clockOut, 'เวลาออกงานไม่ถูกต้อง');
 
-    const rules = await this.settings.getRules(day.branchId);
-    const summary = computeDaySummary({ workDate: fromDbDate(day.workDate), dayKind, clockIn, clockOut, rules });
-    const kept = day.flags.filter((f) => f !== FLAG_MISSING_OUT && f !== 'WORKED_ON_OFF_DAY');
-    const flags = Array.from(new Set([...kept, ...summary.flags, FLAG_CORRECTED]));
-    if (!clockOut && clockIn && day.flags.includes(FLAG_MISSING_OUT)) flags.push(FLAG_MISSING_OUT);
-    const before = { clockIn: day.clockIn, clockOut: day.clockOut, dayKind: day.dayKind, lateMinutes: day.lateMinutes, otHours: num(day.otHours), flags: day.flags };
-    const after = { clockIn, clockOut, dayKind, lateMinutes: summary.lateMinutes, otHours: summary.otHours, workedMinutes: summary.workedMinutes, earlyLeaveMinutes: summary.earlyLeaveMinutes, flags };
-
-    const updated = await this.prisma.$transaction(async (tx) => {
+    const { updated, before, after, current } = await this.prisma.$transaction(async (tx) => {
       // ล็อกลงเวลาของคนนี้ในงวดนี้ แล้วเช็คว่าจ่ายเงินเดือนแล้วหรือยัง (ใบเงินเดือนลงบัญชีด้วยล็อกเดียวกัน)
       await lockAttendancePairs(tx, [{ userId: day.userId, workDate: day.workDate }]);
       await assertNotPaid(tx, [{ userId: day.userId, workDate: day.workDate }]);
+      // อ่านแถวใหม่หลังล็อกแถว (ตู้ตอกบัตร/ล้างธงไม่ถือ advisory lock) — ค่าเดิมทุกอย่างคิดจากแถวนี้ ไม่ใช่สำเนาก่อน tx
+      await tx.$queryRaw`SELECT id FROM attendance_days WHERE id = ${day.id} FOR UPDATE`;
+      const cur = await tx.attendanceDay.findUnique({ where: { id: day.id } });
+      if (!cur || cur.deletedAt) throw new NotFoundException('ไม่พบแถววันทำงาน');
+      const clockIn = dtoIn === undefined ? cur.clockIn : dtoIn;
+      const clockOut = dtoOut === undefined ? cur.clockOut : dtoOut;
+      const dayKind = dto.dayKind ?? cur.dayKind;
+      if (clockIn && clockOut && clockOut.getTime() <= clockIn.getTime()) throw new BadRequestException('เวลาออกต้องหลังเวลาเข้า');
+      if (!clockIn && clockOut) throw new BadRequestException('มีเวลาออกต้องมีเวลาเข้า');
+
+      const rules = await this.settings.getRules(cur.branchId);
+      const summary = computeDaySummary({ workDate: fromDbDate(cur.workDate), dayKind, clockIn, clockOut, rules });
+      const kept = cur.flags.filter((f) => f !== FLAG_MISSING_OUT && f !== 'WORKED_ON_OFF_DAY');
+      const flags = Array.from(new Set([...kept, ...summary.flags, FLAG_CORRECTED]));
+      if (!clockOut && clockIn && cur.flags.includes(FLAG_MISSING_OUT)) flags.push(FLAG_MISSING_OUT);
+      const beforeSnap = { clockIn: cur.clockIn, clockOut: cur.clockOut, dayKind: cur.dayKind, lateMinutes: cur.lateMinutes, otHours: num(cur.otHours), flags: cur.flags };
+      const afterSnap = { clockIn, clockOut, dayKind, lateMinutes: summary.lateMinutes, otHours: summary.otHours, workedMinutes: summary.workedMinutes, earlyLeaveMinutes: summary.earlyLeaveMinutes, flags };
       const row = await tx.attendanceDay.update({
-        where: { id: day.id },
+        where: { id: cur.id },
         data: {
           clockIn,
           clockOut,
@@ -271,13 +281,13 @@ export class AttendanceService {
           earlyLeaveMinutes: summary.earlyLeaveMinutes,
           otHours: summary.otHours,
           flags,
-          correctedCount: day.correctedCount + 1,
+          correctedCount: cur.correctedCount + 1,
         },
       });
-      await tx.attendanceCorrection.create({ data: { dayId: day.id, changedById: actor.id, reason, before: before as Prisma.InputJsonValue, after: after as Prisma.InputJsonValue } });
-      return row;
+      await tx.attendanceCorrection.create({ data: { dayId: cur.id, changedById: actor.id, reason, before: beforeSnap as Prisma.InputJsonValue, after: afterSnap as Prisma.InputJsonValue } });
+      return { updated: row, before: beforeSnap, after: afterSnap, current: cur };
     });
-    await this.audit.log({ userId: actor.id, action: 'ATTENDANCE_CORRECTED', entity: 'attendance_day', entityId: day.id, oldValue: before, newValue: { ...after, reason, targetUserId: day.userId } });
+    await this.audit.log({ userId: actor.id, action: 'ATTENDANCE_CORRECTED', entity: 'attendance_day', entityId: current.id, oldValue: before, newValue: { ...after, reason, targetUserId: current.userId } });
     return updated;
   }
 
@@ -294,14 +304,14 @@ export class AttendanceService {
       return { ...e, workDate: dbDate(midnight) };
     });
     if (actor.role !== 'OWNER') await this.assertEntriesInBranch(dto.branchId, parsed);
-    // วันที่ตอกเข้าแล้ว: เปลี่ยนประเภทวันกระทบสาย/OT = เป็นการแก้ไขที่ต้องมีเหตุผลและประวัติ (สเปก §6 · รีวิวรอบ 2 C6)
-    for (const e of parsed) {
-      const existing = await this.prisma.attendanceDay.findUnique({ where: { userId_workDate: { userId: e.userId, workDate: e.workDate } }, select: { clockIn: true, deletedAt: true } });
-      if (existing?.clockIn && !existing.deletedAt) throw new BadRequestException(`วันที่ ${e.date} พนักงานตอกเข้าแล้ว — เปลี่ยนประเภทวันที่แท็บ วันนี้ › แก้ไข พร้อมเหตุผล`);
-    }
     await this.prisma.$transaction(async (tx) => {
       await lockAttendancePairs(tx, parsed);
       await assertNotPaid(tx, parsed);
+      // วันที่ตอกเข้าแล้ว: เปลี่ยนประเภทวันกระทบสาย/OT = เป็นการแก้ไขที่ต้องมีเหตุผลและประวัติ (สเปก §6 · รีวิวรอบ 2 C6) — ตรวจหลังล็อก
+      for (const e of parsed) {
+        const existing = await tx.attendanceDay.findUnique({ where: { userId_workDate: { userId: e.userId, workDate: e.workDate } }, select: { clockIn: true, deletedAt: true } });
+        if (existing?.clockIn && !existing.deletedAt) throw new BadRequestException(`วันที่ ${e.date} พนักงานตอกเข้าแล้ว — เปลี่ยนประเภทวันที่แท็บ วันนี้ › แก้ไข พร้อมเหตุผล`);
+      }
       for (const e of parsed) {
         await tx.attendanceDay.upsert({
           where: { userId_workDate: { userId: e.userId, workDate: e.workDate } },

@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, ForbiddenException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { Readable } from 'stream';
 import { bangkokMidnight } from '../../../utils/date.util';
 import { AttendanceService } from '../attendance.service';
@@ -26,6 +26,7 @@ function harness() {
       return delegates.get(key);
     },
   });
+  client.$queryRaw = jest.fn(async () => { calls.push('rowlock'); return []; });
   client.$executeRaw = jest.fn(async () => { calls.push('lock'); return 0; });
   client.$transaction = jest.fn(async (cb: (tx: unknown) => unknown) => { calls.push('tx:start'); const out = await cb(proxy); calls.push('tx:end'); return out; });
   const audit = { log: jest.fn(async () => { calls.push('audit'); }) };
@@ -325,5 +326,36 @@ describe('AttendanceService', () => {
     const today = await h.service.today(BM, 'br1', at(12, 0));
     expect(today.rows.find((r) => r.userId === 'u1')?.paidDocumentNumber).toBe('PR-2026-0042');
     expect(today.rows.find((r) => r.userId === 'u2')?.paidDocumentNumber).toBeNull();
+  });
+
+  it('S26 correctDay builds everything from the row re-read under the lock: a concurrent clockOut 20:00 survives a clockIn-only correction; before = fresh row, correctedCount = fresh+1', async () => {
+    const h = harness();
+    const v0 = dayRow({ userId: 'u5', clockIn: at(10, 5), clockOut: null, correctedCount: 0 });
+    const v1 = dayRow({ userId: 'u5', clockIn: at(10, 5), clockOut: at(20, 0), correctedCount: 1, flags: ['CORRECTED'] });
+    h.d('attendanceDay').findUnique.mockResolvedValueOnce(v0).mockResolvedValueOnce(v1);
+    h.d('attendanceDay').update.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => dayRow({ userId: 'u5', ...data }));
+    await h.service.correctDay(OWNER, 'd-u5', { clockIn: at(10, 0).toISOString(), reason: 'แก้เวลาเข้างานตามกล้องวงจรปิด' });
+    const data = h.d('attendanceDay').update.mock.calls[0][0].data;
+    expect(data).toMatchObject({ clockIn: at(10, 0), clockOut: at(20, 0), correctedCount: 2, otHours: 1 });
+    expect(h.d('attendanceCorrection').create.mock.calls[0][0].data.before).toMatchObject({ clockOut: at(20, 0) });
+    expect(h.audit.log).toHaveBeenCalledWith(expect.objectContaining({ oldValue: expect.objectContaining({ clockOut: at(20, 0) }) }));
+    expect(h.calls.indexOf('rowlock')).toBeGreaterThan(h.calls.indexOf('lock'));
+  });
+
+  it('S27 correctDay: the row soft-deleted between the pre-read and the lock → 404 and nothing written', async () => {
+    const h = harness();
+    h.d('attendanceDay').findUnique.mockResolvedValueOnce(dayRow({ userId: 'u5', clockIn: at(10, 5) })).mockResolvedValueOnce(dayRow({ userId: 'u5', clockIn: at(10, 5), deletedAt: new Date() }));
+    await expect(h.service.correctDay(OWNER, 'd-u5', { clockOut: at(20, 0).toISOString(), reason: 'ลืมตอกออก มีลูกค้าทำสัญญา' })).rejects.toThrow(NotFoundException);
+    expect(h.d('attendanceDay').update).not.toHaveBeenCalled();
+  });
+
+  it('S28 setDayKinds checks "already clocked in" after the lock: a kiosk IN landing in between → 400 and nothing written', async () => {
+    const h = harness();
+    h.d('user').findMany.mockResolvedValue([{ id: 'u1', branchId: 'br1' }]);
+    h.d('attendanceDay').findUnique.mockResolvedValue({ clockIn: at(10, 1), deletedAt: null });
+    await expect(h.service.setDayKinds(OWNER, { branchId: 'br1', entries: [{ userId: 'u1', date: '2026-10-29', dayKind: 'DAY_OFF' }] }, at(14, 0))).rejects.toThrow(BadRequestException);
+    expect(h.calls).toContain('lock');
+    expect(h.d('attendanceDay').findUnique).toHaveBeenCalledTimes(1);
+    expect(h.d('attendanceDay').upsert).not.toHaveBeenCalled();
   });
 });

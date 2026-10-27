@@ -125,3 +125,31 @@ export function computeDaySummary(input: DaySummaryInput): DaySummary {
   if (dayKind !== 'WORK') flags.push(WORKED_ON_OFF_DAY);
   return { workedMinutes, lateMinutes, earlyLeaveMinutes, otHours, flags };
 }
+
+export interface MonthSummary {
+  workDays: number;
+  lateCount: number;
+  lateMinutes: number;
+  absent: number;
+  leave: number;
+  otHours: number;
+}
+
+const num = (v: unknown) => (typeof v === 'number' ? v : Number(v ?? 0));
+
+/** สรุปรายเดือนของพนักงานหนึ่งคน จากช่องรายวัน — ใช้ร่วมกันโดยหน้าลงเวลา (`AttendanceService.month/me`) */
+export function summarizeAttendanceMonth(
+  cells: Array<{ status: string; clockIn: Date | null; lateMinutes: number; otHours: unknown }>,
+): MonthSummary {
+  return cells.reduce<MonthSummary>(
+    (acc, c) => ({
+      workDays: acc.workDays + (c.clockIn ? 1 : 0),
+      lateCount: acc.lateCount + (c.lateMinutes > 0 ? 1 : 0),
+      lateMinutes: acc.lateMinutes + c.lateMinutes,
+      absent: acc.absent + (c.status === 'ABSENT' ? 1 : 0),
+      leave: acc.leave + (c.status === 'LEAVE' ? 1 : 0),
+      otHours: Math.round((acc.otHours + num(c.otHours)) * 10) / 10,
+    }),
+    { workDays: 0, lateCount: 0, lateMinutes: 0, absent: 0, leave: 0, otHours: 0 },
+  );
+}

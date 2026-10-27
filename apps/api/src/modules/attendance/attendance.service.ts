@@ -6,7 +6,9 @@ import { AuditService } from '../audit/audit.service';
 import { StorageService } from '../storage/storage.service';
 import { bangkokMidnight, daysInMonth } from '../../utils/date.util';
 import { AttendanceSettingsService } from './attendance-settings.service';
-import { computeDaySummary, dbDate, fromDbDate, workDateOf, workDateString, type ScheduleRules } from './attendance-rules';
+import { computeDaySummary, dbDate, fromDbDate, summarizeAttendanceMonth, workDateOf, workDateString, type MonthSummary, type ScheduleRules } from './attendance-rules';
+
+export type { MonthSummary };
 import { FLAG_MISSING_OUT } from './kiosk-punch.service';
 import { DEVICE_CONFLICT_FLAG } from './attendance-device.service';
 import type { CorrectDayDto, SetDayKindsDto } from './dto/attendance.dto';
@@ -64,15 +66,6 @@ export interface MonthCell {
   clockOutPunchId: string | null;
 }
 
-export interface MonthSummary {
-  workDays: number;
-  lateCount: number;
-  lateMinutes: number;
-  absent: number;
-  leave: number;
-  otHours: number;
-}
-
 const num = (v: unknown) => (typeof v === 'number' ? v : Number(v ?? 0));
 
 export function assertBranchScope(actor: Actor, branchId: string): void {
@@ -98,20 +91,6 @@ function cellStatusOf(day: AttendanceDay, today: Date): CellStatus {
   if (base !== 'NOT_IN') return base;
   if (day.flags.includes(FLAG_DEVICE_UNAVAILABLE)) return 'UNAVAILABLE';
   return fromDbDate(day.workDate).getTime() < today.getTime() ? 'ABSENT' : 'NONE';
-}
-
-function summarize(cells: Array<Pick<MonthCell, 'status' | 'clockIn' | 'lateMinutes' | 'otHours'>>): MonthSummary {
-  return cells.reduce<MonthSummary>(
-    (acc, c) => ({
-      workDays: acc.workDays + (c.clockIn ? 1 : 0),
-      lateCount: acc.lateCount + (c.lateMinutes > 0 ? 1 : 0),
-      lateMinutes: acc.lateMinutes + c.lateMinutes,
-      absent: acc.absent + (c.status === 'ABSENT' ? 1 : 0),
-      leave: acc.leave + (c.status === 'LEAVE' ? 1 : 0),
-      otHours: Math.round((acc.otHours + num(c.otHours)) * 10) / 10,
-    }),
-    { workDays: 0, lateCount: 0, lateMinutes: 0, absent: 0, leave: 0, otHours: 0 },
-  );
 }
 
 function parseMonth(month: string): { year: number; month0: number; from: Date; to: Date; days: string[] } {
@@ -228,7 +207,7 @@ export class AttendanceService {
     const rows = staff.map((u) => {
       const cells: Record<string, MonthCell> = {};
       for (const d of grouped.get(u.id) ?? []) cells[workDateString(fromDbDate(d.workDate))] = cellOf(d, today);
-      return { userId: u.id, nickname: u.nickname || u.name, name: u.name, role: u.role, hasPin: !!u.attendancePinHash, visiting: u.branchId !== branchId, cells, summary: summarize(Object.values(cells)) };
+      return { userId: u.id, nickname: u.nickname || u.name, name: u.name, role: u.role, hasPin: !!u.attendancePinHash, visiting: u.branchId !== branchId, cells, summary: summarizeAttendanceMonth(Object.values(cells)) };
     });
     return { month, days, rows };
   }
@@ -238,7 +217,7 @@ export class AttendanceService {
     const today = workDateOf(now);
     const rowsDb = await this.prisma.attendanceDay.findMany({ where: { userId, deletedAt: null, workDate: { gte: from, lt: to } }, orderBy: { workDate: 'desc' } });
     const rows = rowsDb.map((d) => ({ date: workDateString(fromDbDate(d.workDate)), ...cellOf(d, today), correctedCount: d.correctedCount }));
-    return { month, rows, summary: summarize(rows) };
+    return { month, rows, summary: summarizeAttendanceMonth(rows) };
   }
 
   async photoStream(actor: Actor, punchId: string): Promise<{ stream: Readable; contentType: string }> {

@@ -124,6 +124,7 @@ const CreditNoteViewPage = lazy(() => import('@/pages/CreditNoteViewPage'));
 const SaleReceiptViewPage = lazy(() => import('@/pages/SaleReceiptViewPage'));
 const ContractVerifyPage = lazy(() => import('@/pages/ContractVerifyPage'));
 const LiffPayment = lazy(() => import('@/pages/liff/LiffPayment'));
+const KioskPage = lazy(() => import('@/pages/kiosk/KioskPage'));
 const LiffContract = lazy(() => import('@/pages/liff/LiffContract'));
 const LiffRegister = lazy(() => import('@/pages/liff/LiffRegister'));
 const LiffHistory = lazy(() => import('@/pages/liff/LiffHistory'));
@@ -314,6 +315,8 @@ function App() {
         {/* LIFF Pages (public, opened from LINE) */}
         <Route path="/visit" element={<PublicAppointmentPage />} />
         <Route path="/pay/:token" element={<LiffPayment />} />
+        {/* เครื่องตอกบัตรประจำสาขา — สาธารณะ token-gated ไม่มี session (ลงเวลา ก้อน 10) */}
+        <Route path="/kiosk" element={<KioskPage />} />
         {/* Bare /liff and unknown /liff/* → redirect to primary LIFF page.
             Guards against Endpoint URL mis-configs and catch-all "*→/" hijacking
             LIFF traffic into ProtectedRoute. */}

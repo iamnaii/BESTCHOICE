@@ -1,18 +1,31 @@
 import { useEffect, useId, useRef } from 'react';
 import { Link } from 'react-router';
+import { useQueryClient } from '@tanstack/react-query';
 import Decimal from 'decimal.js';
-import { AlertTriangle, Clock, Pencil, Printer } from 'lucide-react';
+import { toast } from 'sonner';
+import { AlertTriangle, Clock, Lock, Pencil, Printer, Undo2 } from 'lucide-react';
+import api from '@/lib/api';
 import ScreenTable from '@/components/ui/ScreenTable';
 import { Button } from '@/components/ui/button';
 import { formatNumberDecimal } from '@/utils/formatters';
-import { fmtOt } from '@/pages/attendance/attendance.util';
-import { PayrollReviewPanel } from '@/components/expense-form-v4/payroll-system/PayrollReviewPanel';
-import { isAttendanceSource } from '@/components/expense-form-v4/payroll-system/PayrollSystemRows';
+import { fmtOt, thaiShortDate } from '@/pages/attendance/attendance.util';
+import {
+  AttendanceDayLink,
+  PayrollReviewPanel,
+  type Viewer,
+} from '@/components/expense-form-v4/payroll-system/PayrollReviewPanel';
+import { isAttendanceSource, payrollPeriodShort } from '@/components/expense-form-v4/payroll-system/PayrollSystemRows';
 import type { StoredPayrollLine } from '@/components/expense-form-v4/payroll-system/payroll-lines';
 import {
+  BANK_CSV_NEEDS_POST,
+  DRAFT_EDIT_CAPTION,
+  NET_FOOTNOTE,
   NOT_YET_CLOSABLE_REASON,
+  REVERSE_UNLOCKS_TEXT,
   SLIP_NEEDS_POST,
   SLIP_PAPER_ONLY,
+  STALE_EDIT_HINT,
+  attendanceLockedText,
   deviceConflictReason,
   deviceConflictText,
   postCutoffText,
@@ -24,7 +37,7 @@ import {
   payrollEditPath,
   type PayrollConflict,
 } from '@/components/expense-form-v4/payroll-system/payroll-status';
-import type { PayrollGateView, PayrollStaleDiff } from '@/components/expense-form-v4/types';
+import type { PayrollGateView, PayrollStaleDiff, PayrollSystemNotes } from '@/components/expense-form-v4/types';
 
 /**
  * Payroll D4 ส่วนที่ 1 (mockup กระดาน 2 + 6A) — ส่วนเฉพาะใบเงินเดือนของหน้ารายละเอียด:
@@ -39,6 +52,7 @@ export interface PayrollDetailLine extends StoredPayrollLine {
 
 export interface PayrollDetailDoc {
   id: string;
+  number: string;
   documentType: string;
   status: string;
   payroll?: { payrollPeriod: string; lines: PayrollDetailLine[] } | null;
@@ -61,6 +75,55 @@ export function payrollBlockedReasons(
   const cutoff = gate.closableAt ? NOT_YET_CLOSABLE_REASON : undefined;
   const flagged = gate.deviceConflicts.length > 0 ? deviceConflictReason(gate.deviceConflicts.length) : undefined;
   return { primary: primary === 'submit' ? cutoff : (cutoff ?? flagged), approve: cutoff ?? flagged };
+}
+
+/** ด่านปิดปุ่มอยู่ไหม (ยังไม่ถึงเวลาปิดงวด หรือมีวันติดธง) — ระหว่างนี้หน้าโหลดใบใหม่เมื่อกลับมาที่หน้าต่าง */
+export const payrollGateBlocks = (gate: PayrollGateView | null | undefined) =>
+  !!gate && (!!gate.closableAt || gate.deviceConflicts.length > 0);
+
+/** setTimeout รอได้ไม่เกิน 2^31−1 ms (~24.8 วัน) — เกินนั้นยิงทันที ⇒ ตั้งเป็นช่วง ๆ จนถึงเวลา */
+const MAX_TIMEOUT_MS = 2_147_483_647;
+
+/**
+ * เมื่อถึงเวลาปิดงวด (+1 วินาที) โหลดใบใหม่ — server ตัดสินว่าด่านหมดหรือยัง (ไม่เปิดปุ่มจากนาฬิกาเครื่อง)
+ * · ไม่มีเวลาปิดงวด = ไม่ตั้งเวลา · เปลี่ยน/ออกจากหน้า = ยกเลิก
+ */
+export function usePayrollGateRefresh(docId: string | undefined, closableAt: string | null | undefined) {
+  const queryClient = useQueryClient();
+  useEffect(() => {
+    const at = closableAt ? Date.parse(closableAt) : NaN;
+    if (!docId || Number.isNaN(at)) return;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const arm = () => {
+      const wait = at + 1000 - Date.now();
+      if (wait <= 0) {
+        queryClient.invalidateQueries({ queryKey: ['expense-document', docId] });
+        return;
+      }
+      timer = setTimeout(arm, Math.min(wait, MAX_TIMEOUT_MS));
+    };
+    arm();
+    return () => clearTimeout(timer);
+  }, [queryClient, docId, closableAt]);
+}
+
+const DEVICE_CONFLICT_FLAG = 'DEVICE_CONFLICT';
+
+/**
+ * วันที่ต้องตรวจ/คำเตือนที่เก็บไว้ตอนบันทึก เทียบกับด่านสด: เวลาปิดงวดใช้แบนเนอร์แทน · ธงเครื่องถูกใช้ซ้อนที่เจ้าของล้างแล้ว
+ * (ไม่อยู่ใน `gate.deviceConflicts`) ไม่แสดง และวันที่ไม่เหลือธงก็ไม่แสดง · ไม่มีด่าน (ลงบัญชี/กลับรายการแล้ว) = ตามที่เก็บ
+ */
+function liveReviewNotes(notes: PayrollSystemNotes | null | undefined, gate: PayrollGateView | null | undefined) {
+  if (!notes) return null;
+  const warnings = notes.warnings.filter((w) => w.code !== 'NOT_YET_CLOSABLE');
+  if (!gate) return { ...notes, warnings };
+  const stillFlagged = new Set(gate.deviceConflicts.map((d) => d.dayId));
+  const review = notes.review.flatMap((day) => {
+    if (!day.flags.includes(DEVICE_CONFLICT_FLAG) || stillFlagged.has(day.dayId)) return [day];
+    const flags = day.flags.filter((f) => f !== DEVICE_CONFLICT_FLAG);
+    return flags.length > 0 ? [{ ...day, flags, blocking: false }] : [];
+  });
+  return { review, warnings };
 }
 
 const money = (v: Decimal) => formatNumberDecimal(v.toFixed(2), 2);
@@ -147,6 +210,7 @@ function PayrollLinesTable({ lines }: { lines: PayrollDetailLine[] }) {
           </tr>
         </tfoot>
       </ScreenTable>
+      <p className="border-t border-border px-4 py-2 text-xs text-muted-foreground leading-snug">{NET_FOOTNOTE}</p>
     </section>
   );
 }
@@ -155,7 +219,15 @@ const diffText = (v: PayrollStaleDiff['stored']) =>
   v.hours != null ? `${fmtOt(parseFloat(v.hours))} ชม. · ${formatNumberDecimal(v.amount, 2)}` : formatNumberDecimal(v.amount, 2);
 
 /** 409 PAYROLL_STALE — ข้อความของ server + ตาราง ในใบ/ตอนนี้ + ทางแก้ (แก้ไข → บันทึกใบใหม่ ระบบคิดยอดให้) */
-function PayrollStaleAlert({ docId, conflict }: { docId: string; conflict: PayrollConflict }) {
+function PayrollStaleAlert({
+  docId,
+  conflict,
+  onDismiss,
+}: {
+  docId: string;
+  conflict: PayrollConflict;
+  onDismiss: () => void;
+}) {
   const ref = useRef<HTMLDivElement>(null);
   // ข้อความเกิดจากปุ่มที่แถบควบคุมด้านล่าง — ย้ายโฟกัสมาที่นี่ให้เห็นทันที
   useEffect(() => ref.current?.focus(), [conflict]);
@@ -197,13 +269,17 @@ function PayrollStaleAlert({ docId, conflict }: { docId: string; conflict: Payro
           </ScreenTable>
         </div>
       )}
-      <div>
+      <div className="flex flex-wrap items-center gap-2">
         <Button asChild size="sm">
           <Link to={payrollEditPath(docId)}>
             <Pencil className="size-3.5" aria-hidden="true" />
             แก้ไข
           </Link>
         </Button>
+        <Button type="button" variant="outline" size="sm" onClick={onDismiss}>
+          ปิด
+        </Button>
+        <span className="text-xs text-muted-foreground leading-snug">{STALE_EDIT_HINT}</span>
       </div>
     </div>
   );
@@ -213,13 +289,18 @@ export function PayrollDetailSection({
   doc,
   primary,
   staleConflict,
+  onDismissStale,
   viewer,
+  canReverse,
 }: {
   doc: PayrollDetailDoc;
   primary: PayrollPrimaryStep;
-  /** 409 PAYROLL_STALE ล่าสุดจากปุ่มอนุมัติ/ลงบัญชี (หน้าเก็บไว้จนกดสำเร็จ) */
+  /** 409 PAYROLL_STALE ล่าสุดจากปุ่มอนุมัติ/ลงบัญชี (หน้าเก็บไว้จนกดสำเร็จ / ปิด / ใบเปลี่ยนสถานะ) */
   staleConflict: PayrollConflict | null;
-  viewer: { role: string; branchId: string | null } | null | undefined;
+  onDismissStale: () => void;
+  viewer: Viewer | null | undefined;
+  /** ผู้ดูมีปุ่ม "ยกเลิก / กลับรายการ" ในแถบควบคุมภายใน (สิทธิ์ EXPENSE_CANCEL + ใบลงบัญชีแล้ว) */
+  canReverse: boolean;
 }) {
   const gate = doc.payrollGate;
   const lines = doc.payroll?.lines ?? [];
@@ -229,17 +310,13 @@ export function PayrollDetailSection({
       : postCutoffText(gate.closableAt)
     : null;
   const conflicts = gate?.deviceConflicts ?? [];
-  // เวลาปิดงวดที่เก็บในคำเตือนต่อบรรทัดเป็นของตอนบันทึก — หน้านี้ใช้ค่าสดจาก `payrollGate` (แบนเนอร์ด้านบน)
-  const reviewLines = lines.map((l) => ({
-    employeeName: l.employeeName,
-    systemNotes: l.systemNotes
-      ? { ...l.systemNotes, warnings: l.systemNotes.warnings.filter((w) => w.code !== 'NOT_YET_CLOSABLE') }
-      : null,
-  }));
+  const reviewLines = lines.map((l) => ({ employeeName: l.employeeName, systemNotes: liveReviewNotes(l.systemNotes, gate) }));
+  // คนที่ผูกทะเบียน = คนที่ลงเวลาเดือนนี้ถูกล็อกเมื่อใบลงบัญชีแล้ว
+  const linkedPeople = lines.filter((l) => l.userId).length;
 
   return (
     <div className="flex flex-col gap-4">
-      {staleConflict && <PayrollStaleAlert docId={doc.id} conflict={staleConflict} />}
+      {staleConflict && <PayrollStaleAlert docId={doc.id} conflict={staleConflict} onDismiss={onDismissStale} />}
       {cutoffText && (
         <div role="status" className="flex items-start gap-2 rounded-lg border border-info/40 bg-info/10 p-3">
           <Clock className="mt-0.5 size-4 shrink-0 text-info" aria-hidden="true" />
@@ -247,10 +324,39 @@ export function PayrollDetailSection({
         </div>
       )}
       {conflicts.length > 0 && (
-        <div role="alert" className="flex items-start gap-2 rounded-lg border border-destructive/40 bg-destructive/10 p-3">
-          <AlertTriangle className="mt-0.5 size-4 shrink-0 text-destructive" aria-hidden="true" />
-          <p className="text-sm leading-snug text-foreground">{deviceConflictText(conflicts)}</p>
+        // สถานะของใบตอนเปิดหน้า (ไม่ใช่ผลของการกด) = status · กระดาน 6A: ลิงก์ไปวันนั้นที่ ลงเวลา ทีละวัน
+        <div role="status" className="flex flex-col gap-2 rounded-lg border border-destructive/40 bg-destructive/10 p-3">
+          <div className="flex items-start gap-2">
+            <AlertTriangle className="mt-0.5 size-4 shrink-0 text-destructive" aria-hidden="true" />
+            <p className="text-sm leading-snug text-foreground">{deviceConflictText(conflicts)}</p>
+          </div>
+          <ul className="flex flex-col gap-2 sm:pl-6">
+            {conflicts.map((d) => (
+              <li
+                key={d.dayId}
+                className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md border border-border bg-card px-2.5 py-1.5"
+              >
+                <span className="text-sm font-medium leading-snug">{d.employeeName}</span>
+                <span className="text-xs text-muted-foreground leading-snug">{thaiShortDate(d.date)}</span>
+                <AttendanceDayLink day={d} viewer={viewer} />
+              </li>
+            ))}
+          </ul>
         </div>
+      )}
+      {doc.status === 'POSTED' && linkedPeople > 0 && doc.payroll && (
+        <ul className="grid gap-3 sm:grid-cols-2">
+          <li className="flex items-start gap-2 rounded-lg border border-border bg-card p-3 text-sm leading-snug">
+            <Lock className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+            <span>{attendanceLockedText(payrollPeriodShort(doc.payroll.payrollPeriod), linkedPeople)}</span>
+          </li>
+          {canReverse && (
+            <li className="flex items-start gap-2 rounded-lg border border-border bg-card p-3 text-sm leading-snug">
+              <Undo2 className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+              <span>{REVERSE_UNLOCKS_TEXT}</span>
+            </li>
+          )}
+        </ul>
       )}
       {lines.length > 0 && (
         // แผงตรวจไม่แสดงเมื่อไม่มีวันที่ต้องตรวจ/คำเตือน — ตารางจึงเต็มความกว้าง
@@ -266,17 +372,26 @@ export function PayrollDetailSection({
 /** ปุ่มเฉพาะใบเงินเดือนในแถบควบคุมภายใน: แก้ไข (ใบที่ยังไม่ลงบัญชี) + พิมพ์สลิป (เฉพาะใบที่ลงบัญชีแล้ว) */
 export function PayrollDetailActions({ doc }: { doc: PayrollDetailDoc }) {
   const captionId = useId();
+  const editCaptionId = useId();
   const slips = doc.payroll?.lines.length ?? 0;
   const posted = doc.status === 'POSTED';
+  const draft = doc.status === 'DRAFT';
   return (
     <>
       {isPayrollEditable(doc) && (
-        <Button asChild variant="outline" size="sm">
-          <Link to={payrollEditPath(doc.id)}>
-            <Pencil size={14} className="mr-1.5" aria-hidden="true" />
-            แก้ไข
-          </Link>
-        </Button>
+        <span className="inline-flex max-w-64 flex-col items-end gap-1">
+          <Button asChild variant="outline" size="sm">
+            <Link to={payrollEditPath(doc.id)} aria-describedby={draft ? editCaptionId : undefined}>
+              <Pencil size={14} className="mr-1.5" aria-hidden="true" />
+              แก้ไข
+            </Link>
+          </Button>
+          {draft && (
+            <span id={editCaptionId} className="text-right text-xs leading-snug text-muted-foreground">
+              {DRAFT_EDIT_CAPTION}
+            </span>
+          )}
+        </span>
       )}
       {slips > 0 && doc.status !== 'VOIDED' && (
         <span className="inline-flex max-w-64 flex-col items-end gap-1">
@@ -301,5 +416,53 @@ export function PayrollDetailActions({ doc }: { doc: PayrollDetailDoc }) {
         </span>
       )}
     </>
+  );
+}
+
+/**
+ * R3-3 ไฟล์โอนเงินเดือนเข้าธนาคาร (เลขบัญชีจากทะเบียนพนักงาน · แถวที่ไม่มีเลขบัญชีถูกข้าม + แจ้งจำนวน) —
+ * กระดาน 2: ดาวน์โหลดได้เมื่อใบลงบัญชีแล้ว (ยอดยังเปลี่ยนได้จนกว่าจะลงบัญชี) · ก่อนนั้นปิดพร้อมเหตุผล · ใบกลับรายการไม่มีปุ่ม
+ */
+export function PayrollBankCsvButton({ doc }: { doc: PayrollDetailDoc }) {
+  const reasonId = useId();
+  if (doc.status === 'VOIDED') return null;
+  const posted = doc.status === 'POSTED';
+  const download = async () => {
+    try {
+      const res = await api.get(`/expense-documents/${doc.id}/bank-transfer.csv`, { responseType: 'blob' });
+      const skipped = parseInt((res.headers['x-skipped-lines'] as string) ?? '0', 10);
+      const url = URL.createObjectURL(res.data as Blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `bank-transfer-${doc.number}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+      if (skipped > 0) {
+        toast.warning(`ข้าม ${skipped} คนที่ไม่มีเลขบัญชีธนาคารในทะเบียนพนักงาน — เพิ่มได้ที่ ผู้ใช้ → HR/เงินเดือน`);
+      }
+    } catch {
+      toast.error('ดาวน์โหลดไฟล์โอนธนาคารไม่สำเร็จ');
+    }
+  };
+  return (
+    <div className="mt-2 flex flex-col items-end gap-1">
+      <span className={posted ? undefined : 'cursor-not-allowed'}>
+        <button
+          data-ui-control="button"
+          type="button"
+          onClick={download}
+          disabled={!posted}
+          aria-describedby={posted ? undefined : reasonId}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs border border-border rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent disabled:pointer-events-none disabled:opacity-60"
+        >
+          ไฟล์โอนธนาคาร (CSV)
+        </button>
+      </span>
+      {!posted && (
+        <span id={reasonId} className="text-xs text-muted-foreground leading-snug">
+          {BANK_CSV_NEEDS_POST}
+        </span>
+      )}
+    </div>
   );
 }

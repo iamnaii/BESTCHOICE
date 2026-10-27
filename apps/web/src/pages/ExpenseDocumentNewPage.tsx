@@ -2,6 +2,7 @@ import { useNavigate, useSearchParams } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
 import { ExpenseFormV4 } from '@/components/expense-form-v4/ExpenseFormV4';
+import { payrollEditPath } from '@/components/expense-form-v4/payroll-system/payroll-status';
 import type { DocType } from '@/components/expense-form-v4/types';
 import { useAuth } from '@/contexts/AuthContext';
 import QueryBoundary from '@/components/QueryBoundary';
@@ -59,7 +60,7 @@ export default function ExpenseDocumentNewPage() {
       onClose={() => navigate('/expenses')}
       onSaved={() => navigate('/expenses')}
       // Payroll D4 — "บันทึกร่าง + คิดยอด" อยู่ในหน้าแก้ไขของร่างที่เพิ่งบันทึก (รีเฟรชแล้วไม่สร้างใบซ้ำ)
-      onDraftSaved={(id) => navigate(`/expenses/new?edit=${id}`, { replace: true })}
+      onDraftSaved={(id) => navigate(payrollEditPath(id), { replace: true })}
     />
   );
 }

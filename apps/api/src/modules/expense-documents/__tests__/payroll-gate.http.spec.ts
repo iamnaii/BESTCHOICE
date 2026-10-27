@@ -108,7 +108,7 @@ describe('Payroll gate 409s over HTTP', () => {
   });
 
   it('H2 approve with the gate refusing a device-conflict day → 409 JSON keeps code + days', async () => {
-    const days = [{ dayId: 'day-1', userId: 'u1', employeeName: 'พนักงาน นุ๊ก', date: '2026-10-15' }];
+    const days = [{ dayId: 'day-1', userId: 'u1', employeeName: 'พนักงาน นุ๊ก', date: '2026-10-15', branchId: 'b1' }];
     gate.assertPostable.mockRejectedValueOnce(payrollGateConflict.deviceConflict(days));
     const res = await request(app.getHttpServer()).post(`/api/expense-documents/${DOC_ID}/approve`).expect(409);
     expect(res.body).toMatchObject({

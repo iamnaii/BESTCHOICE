@@ -8,7 +8,8 @@
  *
  * Both mutations:
  *   - Invalidate ['expenses'] + ['expenses-summary'] on success so list+badges
- *     reflect the new status without a full page refresh.
+ *     reflect the new status without a full page refresh, plus that document's
+ *     detail / payroll edit form / voucher caches (`invalidateExpenseDoc`).
  *   - Toast a Thai-language success message via sonner.
  *   - Surface API error messages through getErrorMessage().
  *
@@ -19,6 +20,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import api, { getErrorMessage } from '@/lib/api';
+import { invalidateExpenseDoc } from '@/lib/expense-document-cache';
 import { payrollConflictOf } from '@/components/expense-form-v4/payroll-system/payroll-status';
 import { OPEN_DOC_HINT } from '@/components/expense-form-v4/payroll-system/payroll-copy';
 
@@ -45,19 +47,17 @@ export function toastActionError(err: unknown): void {
 export function useApprovalActions(): ApprovalActions {
   const queryClient = useQueryClient();
 
-  const invalidate = () => {
-    queryClient.invalidateQueries({ queryKey: ['expenses'] });
-    queryClient.invalidateQueries({ queryKey: ['expenses-summary'] });
-  };
+  // รายการ + หน้ารายละเอียด/ฟอร์มแก้ไข/หน้าสลิปของใบนั้น (ส่งขออนุมัติใบเงินเดือน = server บันทึกใบซ้ำ)
+  const invalidate = (id: string) => invalidateExpenseDoc(queryClient, id);
 
   const submitForApproval = useMutation<unknown, unknown, string>({
     mutationFn: async (id: string) => {
       const { data } = await api.post(`/expense-documents/${id}/submit-for-approval`);
       return data;
     },
-    onSuccess: () => {
+    onSuccess: (_data, id) => {
       toast.success('ส่งขออนุมัติแล้ว');
-      invalidate();
+      invalidate(id);
     },
     onError: toastActionError,
   });
@@ -67,9 +67,9 @@ export function useApprovalActions(): ApprovalActions {
       const { data } = await api.post(`/expense-documents/${id}/approve`);
       return data;
     },
-    onSuccess: () => {
+    onSuccess: (_data, id) => {
       toast.success('อนุมัติแล้ว');
-      invalidate();
+      invalidate(id);
     },
     onError: toastActionError,
   });

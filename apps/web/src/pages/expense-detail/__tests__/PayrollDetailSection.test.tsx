@@ -1,8 +1,8 @@
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { QueryClient, QueryClientProvider, focusManager } from '@tanstack/react-query';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 /**
  * Payroll D4 ส่วนที่ 1 (Task 8, mockup กระดาน 2 + 6A) — หน้ารายละเอียดใบเงินเดือน: ตารางบรรทัด, วันที่ต้องตรวจ/คำเตือน,
@@ -17,10 +17,11 @@ vi.mock('@/lib/api', () => ({
 }));
 const toast = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn() }));
 vi.mock('sonner', () => ({ toast }));
-vi.mock('@/contexts/AuthContext', () => ({
-  useAuth: () => ({ user: { id: 'owner-1', name: 'เจ้าของ', role: 'OWNER', branchId: 'b1', canReverseOverride: null } }),
-}));
-vi.mock('@/hooks/useAccountingPermissions', () => ({ useAccountingPermissions: () => ({ can: () => true }) }));
+const OWNER = { id: 'owner-1', name: 'เจ้าของ', role: 'OWNER', branchId: 'b1', canReverseOverride: null };
+const auth = vi.hoisted(() => ({ user: null as Record<string, unknown> | null }));
+vi.mock('@/contexts/AuthContext', () => ({ useAuth: () => ({ user: auth.user }) }));
+const perms = vi.hoisted(() => ({ allowed: true }));
+vi.mock('@/hooks/useAccountingPermissions', () => ({ useAccountingPermissions: () => ({ can: () => perms.allowed }) }));
 const flags = vi.hoisted(() => ({ approvalEnabled: true }));
 vi.mock('@/hooks/useUiFlags', () => ({
   useUiFlags: () => ({ reversePermission: 'OWNER+FINANCE_MANAGER', reverseReasonRequired: false, reverseReasons: [], ...flags }),
@@ -65,7 +66,11 @@ const LINE_SOMSRI = {
   customDeduction: [],
   attendanceSummary: null,
   systemNotes: {
-    review: [{ dayId: 'd1', date: '2026-10-16', branchId: 'b1', flags: ['DEVICE_CONFLICT'], blocking: true }],
+    // เก็บไว้ตอนบันทึก — หน้ารายละเอียดเทียบธง DEVICE_CONFLICT กับ `payrollGate` สด (ล้างธงแล้ว = ไม่แสดง)
+    review: [
+      { dayId: 'd1', date: '2026-10-16', branchId: 'b1', flags: ['DEVICE_CONFLICT'], blocking: true },
+      { dayId: 'd3', date: '2026-10-20', branchId: 'b1', flags: ['DEVICE_CONFLICT', 'NO_PHOTO'], blocking: true },
+    ],
     // บันทึกไว้ตอนบันทึกใบ — หน้ารายละเอียดใช้เวลาปิดงวดสด (`payrollGate`) แทน
     warnings: [{ code: 'NOT_YET_CLOSABLE', closableAt: CLOSABLE_AT }],
   },
@@ -119,7 +124,13 @@ function mount(doc: ReturnType<typeof payrollDoc>) {
   apiGet.mockImplementation((path: string) =>
     Promise.resolve({ data: path === '/expense-documents/pr-1' ? currentDoc : [] }),
   );
-  queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+  // ค่าเริ่มต้นเดียวกับแอป (main.tsx) — ไม่โหลดใหม่ตอนกลับมาที่หน้าต่าง · ข้อมูลสด 3 นาที
+  queryClient = new QueryClient({
+    defaultOptions: {
+      queries: { retry: false, refetchOnWindowFocus: false, staleTime: 3 * 60 * 1000 },
+      mutations: { retry: false },
+    },
+  });
   render(
     <QueryClientProvider client={queryClient}>
       <MemoryRouter initialEntries={['/expenses/pr-1']}>
@@ -139,7 +150,21 @@ beforeEach(() => {
   apiPost.mockReset();
   Object.values(toast).forEach((f) => f.mockReset());
   flags.approvalEnabled = true;
+  auth.user = OWNER;
+  perms.allowed = true;
 });
+afterEach(() => {
+  focusManager.setFocused(undefined);
+  vi.useRealTimers();
+});
+
+const day = { dayId: 'd1', userId: 'u1', employeeName: 'สมศรี มีสุข', date: '2026-10-16', branchId: 'b1' };
+const approveButton = () => screen.getByRole('button', { name: /อนุมัติและลงบัญชี/ });
+const refocusWindow = () =>
+  act(() => {
+    focusManager.setFocused(false);
+    focusManager.setFocused(true);
+  });
 
 describe('payroll lines table', () => {
   it('shows base, OT/holiday, other income, SSO and net per line from the stored amounts, with totals', async () => {
@@ -167,10 +192,37 @@ describe('payroll lines table', () => {
     expect(within(panel).getByText('วันที่ต้องตรวจ (1)')).toBeInTheDocument();
     expect(within(panel).getByRole('link', { name: /เปิดวันนั้นที่ ลงเวลา/ })).toHaveAttribute(
       'href',
-      '/attendance?tab=today&date=2026-10-16&branchId=b1',
+      '/attendance?tab=today&date=2026-10-20&branchId=b1',
     );
     expect(within(panel).getByText(/ระบบไม่คิด OT ให้ ลงเวลาเดือนนี้มี OT 3 ชม\./)).toBeInTheDocument();
     expect(within(panel).queryByText(SUBMIT_CUTOFF)).not.toBeInTheDocument();
+  });
+
+  it('notes under the table that net is after tax and other deductions', async () => {
+    mount(payrollDoc('POSTED', null));
+    expect(await screen.findByText('สุทธิ = หลังหักภาษีและรายการหักอื่น')).toBeVisible();
+  });
+
+  // R15.1 — ธงเครื่องถูกใช้ซ้อนที่เก็บไว้ตอนบันทึกอาจถูกเจ้าของล้างไปแล้ว — เชื่อ `payrollGate` สด
+  it('keeps only the stored DEVICE_CONFLICT chips the live gate still has, and drops days left with no flag', async () => {
+    mount(payrollDoc('PENDING_APPROVAL', { closableAt: null, deviceConflicts: [] }));
+    const panel = await screen.findByRole('complementary', { name: 'ตรวจก่อนอนุมัติ' });
+    expect(within(panel).getByText('วันที่ต้องตรวจ (1)')).toBeInTheDocument();
+    expect(panel.querySelector('[data-flag="DEVICE_CONFLICT"]')).toBeNull();
+    expect(panel.querySelector('[data-flag="NO_PHOTO"]')).not.toBeNull();
+  });
+
+  it('a day still flagged in the live gate keeps its chip', async () => {
+    mount(payrollDoc('PENDING_APPROVAL', { closableAt: null, deviceConflicts: [day] }));
+    const panel = await screen.findByRole('complementary', { name: 'ตรวจก่อนอนุมัติ' });
+    expect(within(panel).getByText('วันที่ต้องตรวจ (2)')).toBeInTheDocument();
+    expect(panel.querySelectorAll('[data-flag="DEVICE_CONFLICT"]')).toHaveLength(1);
+  });
+
+  it('without a gate (posted) the stored review days stay as saved', async () => {
+    mount(payrollDoc('POSTED', null));
+    const panel = await screen.findByRole('complementary', { name: 'ตรวจก่อนอนุมัติ' });
+    expect(panel.querySelectorAll('[data-flag="DEVICE_CONFLICT"]')).toHaveLength(2);
   });
 });
 
@@ -213,11 +265,11 @@ describe('cutoff gate (payrollGate.closableAt in the future)', () => {
 });
 
 describe('device-conflict gate', () => {
-  const day = { dayId: 'd1', userId: 'u1', employeeName: 'สมศรี มีสุข', date: '2026-10-16' };
-
-  it('PENDING_APPROVAL: destructive alert and อนุมัติและลงบัญชี disabled with ติดธง เครื่องถูกใช้ซ้อน 1 วัน', async () => {
+  it('PENDING_APPROVAL: destructive banner and อนุมัติและลงบัญชี disabled with ติดธง เครื่องถูกใช้ซ้อน 1 วัน', async () => {
     mount(payrollDoc('PENDING_APPROVAL', { closableAt: null, deviceConflicts: [day] }));
-    expect((await screen.findByText(DEVICE_CONFLICT)).closest('[role="alert"]')).not.toBeNull();
+    // แบนเนอร์คงที่ตอนเปิดหน้า = status · role=alert เฉพาะผลจากการกดปุ่ม (409 ยอดเปลี่ยน)
+    expect((await screen.findByText(DEVICE_CONFLICT)).closest('[role="status"]')).not.toBeNull();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     const approve = screen.getByRole('button', { name: /อนุมัติและลงบัญชี/ });
     expect(approve).toBeDisabled();
     expect(approve).toHaveAttribute('aria-describedby', screen.getByText('ติดธง เครื่องถูกใช้ซ้อน 1 วัน').id);
@@ -228,6 +280,24 @@ describe('device-conflict gate', () => {
     expect(await screen.findByText(DEVICE_CONFLICT)).toBeVisible();
     expect(screen.getByRole('button', { name: /บันทึกและลงบัญชี/ })).toBeDisabled();
     expect(screen.getByText('ติดธง เครื่องถูกใช้ซ้อน 1 วัน')).toBeVisible();
+  });
+
+  // R15.2 — กระดาน 6A "เปิดวันนั้นที่ ลงเวลา" ต่อวัน (สาขาของวันนั้น · สิทธิ์เดียวกับแผงตรวจ)
+  it('lists each flagged day with a link to that day and its branch on ลงเวลา (OWNER)', async () => {
+    mount(payrollDoc('PENDING_APPROVAL', { closableAt: null, deviceConflicts: [{ ...day, branchId: 'b2' }] }));
+    const banner = (await screen.findByText(DEVICE_CONFLICT)).closest('[role="status"]') as HTMLElement;
+    expect(within(banner).getByRole('link', { name: /เปิดวันนั้นที่ ลงเวลา/ })).toHaveAttribute(
+      'href',
+      '/attendance?tab=today&date=2026-10-16&branchId=b2',
+    );
+  });
+
+  it('a BRANCH_MANAGER of another branch gets the text instead of the link', async () => {
+    auth.user = { ...OWNER, id: 'bm-1', role: 'BRANCH_MANAGER', branchId: 'b1' };
+    mount(payrollDoc('PENDING_APPROVAL', { closableAt: null, deviceConflicts: [{ ...day, branchId: 'b2' }] }));
+    const banner = (await screen.findByText(DEVICE_CONFLICT)).closest('[role="status"]') as HTMLElement;
+    expect(within(banner).queryByRole('link')).not.toBeInTheDocument();
+    expect(within(banner).getByText('ให้เจ้าของหรือผู้จัดการสาขาตรวจที่เมนู ลงเวลา')).toBeInTheDocument();
   });
 
   it('DRAFT: submitting is not blocked by the flag (only approve/post are)', async () => {
@@ -265,10 +335,14 @@ describe('409 from approve / post', () => {
     expect(within(diffRow).getByText('1.5 ชม. · 154.69')).toBeInTheDocument();
     expect(within(diffRow).getByText('2.5 ชม. · 257.81')).toBeInTheDocument();
     expect(within(alert).getByRole('link', { name: 'แก้ไข' })).toHaveAttribute('href', '/expenses/new?edit=pr-1');
+    expect(within(alert).getByText('กด แก้ไข แล้วใบกลับเป็นร่างเอง — ไม่ต้องรอผู้อนุมัติกดส่งกลับ')).toBeInTheDocument();
     expect(toast.error).not.toHaveBeenCalled();
     // ด่านอาจเปลี่ยนไปแล้ว (เช่น ติดธงเพิ่ม) — โหลดใบใหม่ให้แบนเนอร์ตรงกับ server · แจ้งเตือนยังอยู่
     await waitFor(() => expect(docFetches()).toBeGreaterThan(fetchesBefore));
     expect(screen.getByText(STALE)).toBeVisible();
+
+    await userEvent.click(within(alert).getByRole('button', { name: 'ปิด' }));
+    expect(screen.queryByText(STALE)).not.toBeInTheDocument();
   });
 
   it('the stale alert goes away once the document changes status (sent back to draft elsewhere)', async () => {
@@ -302,6 +376,7 @@ describe('409 from approve / post', () => {
         JSON.stringify(['expense-document', 'pr-1']),
         JSON.stringify(['expenses']),
         JSON.stringify(['expense-doc-edit', 'pr-1']),
+        JSON.stringify(['expense-doc-voucher', 'pr-1']),
       ]),
     );
   });
@@ -311,6 +386,55 @@ describe('payroll actions', () => {
   it.each(['DRAFT', 'PENDING_APPROVAL', 'APPROVED'])('%s: แก้ไข opens the payroll edit form', async (status) => {
     mount(payrollDoc(status));
     expect(await screen.findByRole('link', { name: 'แก้ไข' })).toHaveAttribute('href', '/expenses/new?edit=pr-1');
+  });
+
+  it('DRAFT: แก้ไข says the save recomputes (board 2), other statuses do not', async () => {
+    mount(payrollDoc('DRAFT'));
+    const edit = await screen.findByRole('link', { name: 'แก้ไข' });
+    expect(edit).toHaveAttribute('aria-describedby', screen.getByText('บันทึกใหม่ ระบบคิดยอดให้').id);
+  });
+
+  it('PENDING_APPROVAL: no recompute caption on แก้ไข', async () => {
+    mount(payrollDoc('PENDING_APPROVAL'));
+    await screen.findByRole('link', { name: 'แก้ไข' });
+    expect(screen.queryByText('บันทึกใหม่ ระบบคิดยอดให้')).not.toBeInTheDocument();
+  });
+
+  it('POSTED: attendance of the people on it is locked, and reversing unlocks it (viewer can reverse)', async () => {
+    mount(payrollDoc('POSTED', null));
+    expect(
+      await screen.findByText('ลงเวลา ต.ค. 2569 ของ 2 คนในใบนี้ แก้ไม่ได้แล้ว — ปรับยอดให้ใส่ในงวดถัดไป'),
+    ).toBeVisible();
+    expect(screen.getByText('กลับรายการใบนี้ → ลงเวลาเดือนนี้แก้ได้อีก')).toBeVisible();
+    expect(screen.getByRole('button', { name: /กลับรายการ/ })).toBeInTheDocument();
+  });
+
+  it('POSTED without the cancel permission: the lock note but no reverse line', async () => {
+    perms.allowed = false;
+    mount(payrollDoc('POSTED', null));
+    expect(await screen.findByText(/ลงเวลา ต.ค. 2569 ของ 2 คนในใบนี้ แก้ไม่ได้แล้ว/)).toBeVisible();
+    expect(screen.queryByText('กลับรายการใบนี้ → ลงเวลาเดือนนี้แก้ได้อีก')).not.toBeInTheDocument();
+  });
+
+  it('DRAFT: no attendance-lock note', async () => {
+    mount(payrollDoc('DRAFT'));
+    await screen.findByRole('link', { name: 'แก้ไข' });
+    expect(screen.queryByText(/แก้ไม่ได้แล้ว/)).not.toBeInTheDocument();
+  });
+
+  // R15.6 — กระดาน 2: ไฟล์โอนธนาคารเฉพาะใบที่ลงบัญชีแล้ว
+  it('the bank-transfer CSV is available only once posted', async () => {
+    mount(payrollDoc('POSTED', null));
+    const csv = await screen.findByRole('button', { name: 'ไฟล์โอนธนาคาร (CSV)' });
+    expect(csv).toBeEnabled();
+    expect(screen.queryByText('ลงบัญชีก่อนจึงดาวน์โหลดไฟล์โอนได้')).not.toBeInTheDocument();
+  });
+
+  it.each(['DRAFT', 'PENDING_APPROVAL', 'APPROVED'])('%s: the CSV button is disabled with ลงบัญชีก่อนจึงดาวน์โหลดไฟล์โอนได้', async (status) => {
+    mount(payrollDoc(status));
+    const csv = await screen.findByRole('button', { name: 'ไฟล์โอนธนาคาร (CSV)' });
+    expect(csv).toBeDisabled();
+    expect(csv).toHaveAttribute('aria-describedby', screen.getByText('ลงบัญชีก่อนจึงดาวน์โหลดไฟล์โอนได้').id);
   });
 
   it('POSTED: no แก้ไข, and the slip link with its count and the paper-only note', async () => {
@@ -329,11 +453,74 @@ describe('payroll actions', () => {
     expect(screen.queryByRole('link', { name: /พิมพ์สลิปเงินเดือน/ })).not.toBeInTheDocument();
   });
 
-  it('VOIDED: no slip button and no แก้ไข', async () => {
+  it('VOIDED: no slip button, no CSV and no แก้ไข', async () => {
     mount(payrollDoc('VOIDED', null));
     await screen.findByRole('row', { name: /สมศรี มีสุข/ });
+    expect(screen.queryByRole('button', { name: 'ไฟล์โอนธนาคาร (CSV)' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /พิมพ์สลิปเงินเดือน/ })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: /พิมพ์สลิปเงินเดือน/ })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'แก้ไข' })).not.toBeInTheDocument();
+  });
+});
+
+// I1 — ปุ่มที่ถูกปิดต้องเปิดเองเมื่อด่านหมด: server เป็นผู้ตัดสินเสมอ (ไม่ใช้นาฬิกาเครื่องเปิดปุ่มเอง) —
+// หน้าโหลดใบใหม่เมื่อถึงเวลาปิดงวด และเมื่อกลับมาที่หน้าต่างนี้ระหว่างที่ด่านยังปิดปุ่มอยู่ (กระดาน 6A: ล้างธงในอีกแท็บ)
+describe('gate refresh while the page stays open', () => {
+  it('coming back to the window while blocked re-reads the document; a cleared gate re-enables approve', async () => {
+    mount(payrollDoc('PENDING_APPROVAL', { closableAt: null, deviceConflicts: [day] }));
+    await screen.findByText(DEVICE_CONFLICT);
+    expect(approveButton()).toBeDisabled();
+    currentDoc = payrollDoc('PENDING_APPROVAL', { closableAt: null, deviceConflicts: [] });
+    const before = docFetches();
+    refocusWindow();
+    await waitFor(() => expect(docFetches()).toBeGreaterThan(before));
+    await waitFor(() => expect(approveButton()).toBeEnabled());
+    expect(screen.queryByText(DEVICE_CONFLICT)).not.toBeInTheDocument();
+  });
+
+  it('coming back to the window when nothing is blocked does not re-read', async () => {
+    mount(payrollDoc('PENDING_APPROVAL'));
+    await screen.findByRole('row', { name: /สมศรี มีสุข/ });
+    const before = docFetches();
+    refocusWindow();
+    await new Promise((r) => setTimeout(r, 50));
+    expect(docFetches()).toBe(before);
+  });
+
+  it('re-reads the document when the cutoff instant passes, which re-enables the buttons', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.setSystemTime(new Date('2026-11-01T10:59:00.000Z'));
+    mount(payrollDoc('PENDING_APPROVAL', { closableAt: CLOSABLE_AT, deviceConflicts: [] }));
+    await screen.findByText(POST_CUTOFF);
+    expect(approveButton()).toBeDisabled();
+    currentDoc = payrollDoc('PENDING_APPROVAL', { closableAt: null, deviceConflicts: [] });
+    const before = docFetches();
+    await act(async () => {
+      vi.advanceTimersByTime(30_000);
+    });
+    expect(docFetches()).toBe(before);
+    await act(async () => {
+      vi.advanceTimersByTime(32_000);
+    });
+    await waitFor(() => expect(docFetches()).toBeGreaterThan(before));
+    await waitFor(() => expect(approveButton()).toBeEnabled());
+    expect(screen.queryByText(POST_CUTOFF)).not.toBeInTheDocument();
+  });
+
+  it('a cutoff further away than one timer can wait still fires on time (no early refetch)', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    // 40 วันก่อนเวลาปิดงวด — setTimeout รอได้ไม่เกิน ~24.8 วัน
+    vi.setSystemTime(new Date(Date.parse(CLOSABLE_AT) - 40 * 24 * 3600 * 1000));
+    mount(payrollDoc('PENDING_APPROVAL', { closableAt: CLOSABLE_AT, deviceConflicts: [] }));
+    await screen.findByText(POST_CUTOFF);
+    const before = docFetches();
+    await act(async () => {
+      vi.advanceTimersByTime(30 * 24 * 3600 * 1000);
+    });
+    expect(docFetches()).toBe(before);
+    await act(async () => {
+      vi.advanceTimersByTime(10 * 24 * 3600 * 1000 + 2_000);
+    });
+    await waitFor(() => expect(docFetches()).toBeGreaterThan(before));
   });
 });

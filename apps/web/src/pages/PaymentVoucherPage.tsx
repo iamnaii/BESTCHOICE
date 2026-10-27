@@ -13,7 +13,7 @@ import { printDocument } from '@/lib/print-document';
 // `window.print()` uses @media print CSS to hide screen-only chrome and
 // flow at A4. Browser print dialog handles PDF export.
 
-import { useEffect } from 'react';
+import { useEffect, type ReactNode } from 'react';
 import { useParams, useNavigate } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
 import { ArrowLeft, Printer } from 'lucide-react';
@@ -31,7 +31,7 @@ import {
   useCompanyLogoUrl,
 } from '@/hooks/useCompanyInfo';
 import { useUiFlags } from '@/hooks/useUiFlags';
-import { fmtOt } from '@/pages/attendance/attendance.util';
+import { fmtOt, thaiMonthLabel } from '@/pages/attendance/attendance.util';
 import {
   attendanceSummaryItems,
   payrollPeriodShort,
@@ -136,6 +136,8 @@ interface VoucherDoc {
 /** Payroll D4 — สลิปพิมพ์ได้เฉพาะใบที่ลงบัญชีแล้ว (ยอดในใบยังเปลี่ยนได้จนกว่าจะลงบัญชี) */
 const isPayrollSlipBlocked = (doc: Pick<VoucherDoc, 'documentType' | 'status'>) =>
   doc.documentType === 'PAYROLL' && doc.status !== 'POSTED';
+/** ข้อความแทนสลิป (ใบยังไม่ลงบัญชี) — ปุ่มพิมพ์ที่ถูกปิดชี้มาที่นี่ (aria-describedby) */
+const SLIP_BLOCKED_ID = 'payroll-slip-blocked';
 
 export default function PaymentVoucherPage() {
   const { id } = useParams<{ id: string }>();
@@ -186,7 +188,8 @@ export default function PaymentVoucherPage() {
           <button data-ui-control="button"
             type="button"
             onClick={printDocument}
-            disabled={!!docQuery.data && isPayrollSlipBlocked(docQuery.data)}
+            disabled={docQuery.isLoading || (!!docQuery.data && isPayrollSlipBlocked(docQuery.data))}
+            aria-describedby={docQuery.data && isPayrollSlipBlocked(docQuery.data) ? SLIP_BLOCKED_ID : undefined}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
           >
             <Printer size={14} />
@@ -252,7 +255,11 @@ function VoucherSheet({ doc }: { doc: VoucherDoc }) {
     if (isPayrollSlipBlocked(doc)) {
       return (
         <div className="max-w-[210mm] mx-auto py-6 px-6">
-          <div role="status" className="rounded-md border border-border bg-card p-6 text-center text-sm leading-snug">
+          <div
+            id={SLIP_BLOCKED_ID}
+            role="status"
+            className="rounded-md border border-border bg-card p-6 text-center text-sm leading-snug"
+          >
             {doc.status === 'VOIDED'
               ? `ใบนี้กลับรายการแล้ว — ไม่มีสลิปเงินเดือนให้พิมพ์ (${doc.number})`
               : `ใบนี้ยังไม่ได้ลงบัญชี — ${SLIP_NEEDS_POST} (${doc.number})`}
@@ -480,7 +487,8 @@ function PayrollSlipSheet({
       <section className="grid grid-cols-2 gap-x-8 gap-y-2 mt-5 text-sm">
         <MetaRow label="ชื่อพนักงาน" value={line.employeeName} />
         <MetaRow label="เลขประจำตัวผู้เสียภาษี" value={line.employeeTaxId ?? '—'} mono />
-        <MetaRow label="งวด" value={doc.payroll?.payrollPeriod ?? '—'} mono />
+        {/* กระดาน 3 — "งวด ตุลาคม 2569" */}
+        <MetaRow label="งวด" value={doc.payroll?.payrollPeriod ? thaiMonthLabel(doc.payroll.payrollPeriod) : '—'} />
         <MetaRow label="วันที่จ่าย" value={formatThaiDateLong(doc.documentDate)} />
         <MetaRow label="เลขที่เอกสารต้นทาง" value={doc.number} mono />
         <MetaRow label="ช่องทางจ่าย" value={doc.depositAccountCode ?? '—'} mono />
@@ -503,7 +511,9 @@ function PayrollSlipSheet({
           <tbody>
             <tr>
               <td className="border border-border p-2">เงินเดือนพื้นฐาน</td>
-              <td className="border border-border p-2 text-right tabular-nums">—</td>
+              <td className="border border-border p-2 text-right tabular-nums">
+                <NoValue />
+              </td>
               <td className="border border-border p-2 text-right tabular-nums">
                 {formatNumberDecimal(base.toString())}
               </td>
@@ -545,19 +555,25 @@ function PayrollSlipSheet({
         <p className="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wider">
           รายการหัก (Deductions)
         </p>
+        {/* คอลัมน์เดียวกับตารางรายได้ (รายการ · ชม. × อัตรา · จำนวนเงิน) — ยอดตรงแนวกัน */}
         <table className="w-full text-sm border border-border">
+          <colgroup>
+            <col />
+            <col className="w-36" />
+            <col className="w-32" />
+          </colgroup>
           <tbody>
             {sso.gt(0) && (
               <tr>
-                <td className="border border-border p-2">เงินสมทบประกันสังคม (พนักงาน)</td>
-                <td className="border border-border p-2 text-right tabular-nums w-32">
+                <td colSpan={2} className="border border-border p-2">เงินสมทบประกันสังคม (พนักงาน)</td>
+                <td className="border border-border p-2 text-right tabular-nums">
                   {formatNumberDecimal(sso.toString())}
                 </td>
               </tr>
             )}
             {wht.gt(0) && (
               <tr>
-                <td className="border border-border p-2">หัก ณ ที่จ่าย (ภ.ง.ด. 1)</td>
+                <td colSpan={2} className="border border-border p-2">หัก ณ ที่จ่าย (ภ.ง.ด. 1)</td>
                 <td className="border border-border p-2 text-right tabular-nums">
                   {formatNumberDecimal(wht.toString())}
                 </td>
@@ -565,7 +581,7 @@ function PayrollSlipSheet({
             )}
             {customDeduction.map((cd) => (
               <tr key={cd.id}>
-                <td className="border border-border p-2">
+                <td colSpan={2} className="border border-border p-2">
                   <span className="font-mono text-xs text-muted-foreground mr-2">
                     {cd.accountCode}
                   </span>
@@ -578,13 +594,13 @@ function PayrollSlipSheet({
             ))}
             {sso.eq(0) && wht.eq(0) && customDeduction.length === 0 && (
               <tr>
-                <td colSpan={2} className="border border-border p-3 text-center text-muted-foreground italic">
+                <td colSpan={3} className="border border-border p-3 text-center text-muted-foreground italic">
                   ไม่มี
                 </td>
               </tr>
             )}
             <tr className="bg-muted/30">
-              <td className="border border-border p-2 font-semibold">รวมรายการหัก</td>
+              <td colSpan={2} className="border border-border p-2 font-semibold">รวมรายการหัก</td>
               <td className="border border-border p-2 text-right tabular-nums font-semibold">
                 {formatNumberDecimal(deductionsTotal.toString())}
               </td>
@@ -642,9 +658,19 @@ function PayrollSlipSheet({
  * Payroll D4 — "ชม. × อัตรา" ของแถวที่ระบบคิด: ชั่วโมงที่เก็บ × อัตราที่เก็บ (แสดง 2 ตำแหน่ง) · จำนวนเงินในคอลัมน์ถัดไป
  * คือยอดที่เก็บไว้ (ไม่คูณใหม่) · แถวที่ไม่มีชั่วโมง/อัตรา (กรอกเอง · ค่าคอม) = —
  */
-function hoursTimesRate(row: { quantity?: string | null; rate?: string | null }): string {
-  if (row.quantity == null || row.rate == null) return '—';
+function hoursTimesRate(row: { quantity?: string | null; rate?: string | null }): ReactNode {
+  if (row.quantity == null || row.rate == null) return <NoValue />;
   return `${fmtOt(parseFloat(row.quantity))} × ${formatNumberDecimal(row.rate, 2)}`;
+}
+
+/** "—" ในตาราง — โปรแกรมอ่านหน้าจออ่านว่า ไม่มี */
+function NoValue() {
+  return (
+    <>
+      <span aria-hidden="true">—</span>
+      <span className="sr-only">ไม่มี</span>
+    </>
+  );
 }
 
 /** Payroll D4 — สรุปเวลาทำงานของเดือน (จาก `attendanceSummary` ที่เก็บไว้) · ข้อมูลประกอบ ไม่มีผลต่อยอดเงิน */

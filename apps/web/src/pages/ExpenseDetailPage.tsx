@@ -20,11 +20,15 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useUiFlags } from '@/hooks/useUiFlags';
 import { formatNumberDecimal } from '@/utils/formatters';
 import { formatThaiDateShort } from '@/lib/date';
+import { invalidateExpenseDoc } from '@/lib/expense-document-cache';
 import { payrollConflictOf, type PayrollConflict } from '@/components/expense-form-v4/payroll-system/payroll-status';
 import {
+  PayrollBankCsvButton,
   PayrollDetailActions,
   PayrollDetailSection,
   payrollBlockedReasons,
+  payrollGateBlocks,
+  usePayrollGateRefresh,
   type PayrollDetailDoc,
 } from './expense-detail/PayrollDetailSection';
 
@@ -150,6 +154,8 @@ export default function ExpenseDetailPage() {
     queryKey: ['expense-document', id],
     queryFn: async () => (await api.get<ExpenseDocument>(`/expense-documents/${id}`)).data,
     enabled: !!id,
+    // Payroll D4 — ระหว่างที่ด่านปิดปุ่มอยู่ กลับมาที่หน้าต่างนี้ = ถาม server ใหม่ (เช่น เจ้าของเพิ่งล้างธงในอีกแท็บ)
+    refetchOnWindowFocus: (query) => (payrollGateBlocks(query.state.data?.payrollGate) ? 'always' : false),
   });
 
   const auditQuery = useQuery<RawAuditEntry[]>({
@@ -158,14 +164,7 @@ export default function ExpenseDetailPage() {
     enabled: !!id,
   });
 
-  const invalidate = () => {
-    queryClient.invalidateQueries({ queryKey: ['expense-document', id] });
-    queryClient.invalidateQueries({ queryKey: ['expenses'] });
-    queryClient.invalidateQueries({ queryKey: ['expenses-summary'] });
-    // Payroll D4 — ฟอร์มแก้ไข (Task 7) และหน้าสลิปเก็บใบนี้ไว้คนละ key
-    queryClient.invalidateQueries({ queryKey: ['expense-doc-edit', id] });
-    queryClient.invalidateQueries({ queryKey: ['expense-doc-voucher', id] });
-  };
+  const invalidate = () => invalidateExpenseDoc(queryClient, id);
 
   // Payroll D4 — 409 PAYROLL_STALE แสดงเป็นแจ้งเตือนพร้อมตาราง diff บนหน้า (ไม่ใช่ toast) จนกว่ากดสำเร็จหรือใบเปลี่ยนสถานะ
   const [staleConflict, setStaleConflict] = useState<PayrollConflict | null>(null);
@@ -226,6 +225,8 @@ export default function ExpenseDetailPage() {
   const doc = docQuery.data;
   // ใบเปลี่ยนสถานะแล้ว (เช่น ผู้ทำเงินเดือนกด แก้ไข แล้วบันทึก) — แจ้งเตือนยอดเปลี่ยนเดิมไม่ใช่ของใบนี้อีกต่อไป
   useEffect(() => setStaleConflict(null), [doc?.status]);
+  // ถึงเวลาปิดงวดระหว่างที่เปิดหน้าค้างไว้ — โหลดใบใหม่ให้ server ตัดสินว่าปุ่มเปิดได้หรือยัง
+  usePayrollGateRefresh(id, doc?.payrollGate?.closableAt);
   const makerCheckerEnabled = flags.approvalEnabled && doc?.status !== 'APPROVED';
   const icabStatus = doc ? mapExpenseStatusToIcab(doc.status) : 'DRAFT';
   const isPayroll = doc?.documentType === 'PAYROLL';
@@ -290,41 +291,8 @@ export default function ExpenseDetailPage() {
                   <div className="text-xl font-semibold leading-snug">
                     {money(doc.netPayment ?? doc.totalAmount)}
                   </div>
-                  {/* R3-3 (2026-08-06) — ไฟล์โอนเงินเดือนเข้าธนาคาร (จากเลขบัญชี
-                      ในทะเบียนพนักงาน). แถวที่ไม่มีข้อมูลธนาคารถูกข้าม + แจ้งจำนวน. */}
-                  {doc.documentType === 'PAYROLL' && (
-                    <button data-ui-control="button"
-                      type="button"
-                      onClick={async () => {
-                        try {
-                          const res = await api.get(
-                            `/expense-documents/${doc.id}/bank-transfer.csv`,
-                            { responseType: 'blob' },
-                          );
-                          const skipped = parseInt(
-                            (res.headers['x-skipped-lines'] as string) ?? '0',
-                            10,
-                          );
-                          const url = URL.createObjectURL(res.data as Blob);
-                          const a = document.createElement('a');
-                          a.href = url;
-                          a.download = `bank-transfer-${doc.number}.csv`;
-                          a.click();
-                          URL.revokeObjectURL(url);
-                          if (skipped > 0) {
-                            toast.warning(
-                              `ข้าม ${skipped} คนที่ไม่มีเลขบัญชีธนาคารในทะเบียนพนักงาน — เพิ่มได้ที่ ผู้ใช้ → HR/เงินเดือน`,
-                            );
-                          }
-                        } catch {
-                          toast.error('ดาวน์โหลดไฟล์โอนธนาคารไม่สำเร็จ');
-                        }
-                      }}
-                      className="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs border border-border rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent"
-                    >
-                      ไฟล์โอนธนาคาร (CSV)
-                    </button>
-                  )}
+                  {/* R3-3 (2026-08-06) — ไฟล์โอนเงินเดือนเข้าธนาคาร · กระดาน 2: เฉพาะใบที่ลงบัญชีแล้ว */}
+                  {isPayroll && <PayrollBankCsvButton doc={doc} />}
                 </div>
               </div>
 
@@ -378,7 +346,14 @@ export default function ExpenseDetailPage() {
             ) : null}
 
             {isPayroll && (
-              <PayrollDetailSection doc={doc} primary={payrollPrimary} staleConflict={staleConflict} viewer={user} />
+              <PayrollDetailSection
+                doc={doc}
+                primary={payrollPrimary}
+                staleConflict={staleConflict}
+                onDismissStale={() => setStaleConflict(null)}
+                viewer={user}
+                canReverse={Boolean(canReverse)}
+              />
             )}
 
             {/* Totals */}

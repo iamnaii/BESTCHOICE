@@ -25,6 +25,8 @@ export interface PayrollGateDay {
   employeeName: string;
   /** 'YYYY-MM-DD' วันไทย */
   date: string;
+  /** สาขาของวันนั้น — หน้าเว็บพาไปหน้าลงเวลาของสาขานั้น (`/attendance?…&branchId=`) */
+  branchId: string;
 }
 
 export interface PayrollGateView {
@@ -258,9 +260,15 @@ export class PayrollPostGateService {
     const nameOf = new Map(doc.lines.map((l) => [l.userId, l.employeeName]));
     const rows = await client.attendanceDay.findMany({
       where: { userId: { in: [...nameOf.keys()] }, deletedAt: null, workDate: { gte: from, lt: to }, flags: { has: DEVICE_CONFLICT_FLAG } },
-      select: { id: true, userId: true, workDate: true },
+      select: { id: true, userId: true, workDate: true, branchId: true },
       orderBy: [{ workDate: 'asc' }, { userId: 'asc' }],
     });
-    return rows.map((r) => ({ dayId: r.id, userId: r.userId, employeeName: nameOf.get(r.userId)!, date: workDateString(fromDbDate(r.workDate)) }));
+    return rows.map((r) => ({
+      dayId: r.id,
+      userId: r.userId,
+      employeeName: nameOf.get(r.userId)!,
+      date: workDateString(fromDbDate(r.workDate)),
+      branchId: r.branchId,
+    }));
   }
 }

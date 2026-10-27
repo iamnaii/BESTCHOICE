@@ -163,7 +163,10 @@ describe('PayrollSlipSheet (PAYROLL voucher)', () => {
       </QueryClientProvider>,
     );
   }
-  beforeEach(() => apiGet.mockReset());
+  // บล็อก ไม่ใช่ arrow ที่คืนค่า — vitest ถือฟังก์ชันที่ hook คืนเป็น teardown (mockReset คืนตัว mock เอง)
+  beforeEach(() => {
+    apiGet.mockReset();
+  });
 
   it('shows hours × rate (rate 2 dp) next to the stored amount — 6.5 × 93.75 = 609.38', async () => {
     mountVoucher('POSTED');
@@ -177,6 +180,34 @@ describe('PayrollSlipSheet (PAYROLL voucher)', () => {
     expect(within(screen.getByRole('row', { name: /เงินเดือนพื้นฐาน/ })).getByText('—')).toBeInTheDocument();
     expect(within(screen.getByRole('row', { name: /เบี้ยขยัน/ })).getByText('—')).toBeInTheDocument();
     expect(within(screen.getByRole('row', { name: /รวมรายได้/ })).getByText('17,484.38')).toBeInTheDocument();
+  });
+
+  it('shows the period as a Thai month (board 3), and "—" reads as ไม่มี', async () => {
+    mountVoucher('POSTED');
+    expect(await screen.findByText('ตุลาคม 2569')).toBeInTheDocument();
+    expect(screen.queryByText('2026-10')).not.toBeInTheDocument();
+    const base = screen.getByRole('row', { name: /เงินเดือนพื้นฐาน/ });
+    expect(within(base).getByText('ไม่มี')).toHaveClass('sr-only');
+    expect(within(base).getByText('—')).toHaveAttribute('aria-hidden', 'true');
+  });
+
+  it('lines the deductions table up with the 3-column earnings table', async () => {
+    mountVoucher('POSTED');
+    const sso = await screen.findByRole('cell', { name: 'เงินสมทบประกันสังคม (พนักงาน)' });
+    expect(sso).toHaveAttribute('colspan', '2');
+    expect(screen.getByRole('cell', { name: 'รวมรายการหัก' })).toHaveAttribute('colspan', '2');
+  });
+
+  it('keeps printing off while the document loads', async () => {
+    apiGet.mockReturnValue(new Promise(() => {}));
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MemoryRouter initialEntries={['/expenses/pr-1/voucher']}>
+          <Routes><Route path="/expenses/:id/voucher" element={<PaymentVoucherPage />} /></Routes>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+    expect(screen.getByRole('button', { name: /พิมพ์ \/ บันทึก PDF/ })).toBeDisabled();
   });
 
   it('labels prior-period adjustment rows (ปรับปรุงงวดก่อน)', async () => {
@@ -202,9 +233,12 @@ describe('PayrollSlipSheet (PAYROLL voucher)', () => {
     ['VOIDED', /ใบนี้กลับรายการแล้ว/],
   ])('%s: a message instead of slips, and printing is off', async (status, message) => {
     mountVoucher(status);
-    expect((await screen.findByText(message)).closest('[role="status"]')).not.toBeNull();
+    const block = (await screen.findByText(message)).closest('[role="status"]') as HTMLElement;
+    expect(block).not.toBeNull();
     expect(screen.queryByText('สมศรี มีสุข')).not.toBeInTheDocument();
     expect(screen.queryByText('ใบจ่ายเงินเดือน v2')).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /พิมพ์ \/ บันทึก PDF/ })).toBeDisabled();
+    const print = screen.getByRole('button', { name: /พิมพ์ \/ บันทึก PDF/ });
+    expect(print).toBeDisabled();
+    expect(print).toHaveAttribute('aria-describedby', block.id);
   });
 });

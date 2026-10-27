@@ -2,7 +2,7 @@ import { useId, type ReactNode } from 'react';
 import { Link } from 'react-router';
 import { AlertTriangle, Clock, ExternalLink, KeyRound, Lock, type LucideIcon } from 'lucide-react';
 import { FLAG_LABEL, flagChipClass, fmtOt, statusView, thaiShortDate } from '@/pages/attendance/attendance.util';
-import type { PayrollReviewDay, PayrollSystemNotes, PayrollSystemWarning } from '../types';
+import type { PayrollSystemNotes, PayrollSystemWarning } from '../types';
 import { submitCutoffText } from './payroll-copy';
 
 /**
@@ -18,15 +18,44 @@ interface ReviewLine {
   systemNotes: PayrollSystemNotes | null;
 }
 
-interface Viewer {
+export interface Viewer {
   role: string;
   branchId: string | null;
 }
 
 /** หน้าลงเวลาเปิดได้เฉพาะเจ้าของ (ทุกสาขา) และผู้จัดการสาขาของสาขาวันนั้น */
-const canOpenDay = (viewer: Viewer | null | undefined, day: PayrollReviewDay) =>
+const canOpenDay = (viewer: Viewer | null | undefined, day: { branchId: string }) =>
   viewer?.role === 'OWNER' ||
   (viewer?.role === 'BRANCH_MANAGER' && !!viewer.branchId && viewer.branchId === day.branchId);
+
+/**
+ * ลิงก์ "เปิดวันนั้นที่ ลงเวลา" (แท็บใหม่ · พาวันที่และสาขาของวันนั้นไป — คำตัดสิน R13) สำหรับคนที่เปิดหน้าลงเวลาได้ ·
+ * คนอื่นเห็นข้อความบอกว่าใครตรวจได้ · ใช้ทั้งแผงตรวจและแบนเนอร์วันติดธงของหน้ารายละเอียด
+ */
+export function AttendanceDayLink({
+  day,
+  viewer,
+}: {
+  day: { date: string; branchId: string };
+  viewer: Viewer | null | undefined;
+}) {
+  if (!canOpenDay(viewer, day)) {
+    return <p className="text-xs text-muted-foreground leading-snug">{REVIEW_NO_LINK_TEXT}</p>;
+  }
+  return (
+    <Link
+      // Task 9 อ่าน ?tab ?date ?branchId
+      to={`/attendance?tab=today&date=${day.date}&branchId=${day.branchId}`}
+      target="_blank"
+      rel="noreferrer"
+      className="inline-flex min-h-9 w-max items-center gap-1.5 rounded-md border border-input bg-background px-2.5 text-xs font-medium leading-snug hover:bg-accent focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+    >
+      {REVIEW_LINK_LABEL}
+      <ExternalLink className="size-3 shrink-0" aria-hidden="true" />
+      <span className="sr-only">(เปิดแท็บใหม่)</span>
+    </Link>
+  );
+}
 
 function flagView(flag: string): { label: string; icon: LucideIcon } {
   if (FLAG_LABEL[flag]) return FLAG_LABEL[flag];
@@ -156,21 +185,7 @@ export function PayrollReviewPanel({
                     );
                   })}
                 </div>
-                {canOpenDay(viewer, day) ? (
-                  <Link
-                    // คำตัดสิน R13 — พาสาขาของวันนั้นไปด้วย (เจ้าของหลายสาขา) · Task 9 อ่าน ?tab ?date ?branchId
-                    to={`/attendance?tab=today&date=${day.date}&branchId=${day.branchId}`}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="inline-flex min-h-9 w-max items-center gap-1.5 rounded-md border border-input bg-background px-2.5 text-xs font-medium leading-snug hover:bg-accent focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
-                  >
-                    {REVIEW_LINK_LABEL}
-                    <ExternalLink className="size-3 shrink-0" aria-hidden="true" />
-                    <span className="sr-only">(เปิดแท็บใหม่)</span>
-                  </Link>
-                ) : (
-                  <p className="text-xs text-muted-foreground leading-snug">{REVIEW_NO_LINK_TEXT}</p>
-                )}
+                <AttendanceDayLink day={day} viewer={viewer} />
               </li>
             ))}
           </ul>

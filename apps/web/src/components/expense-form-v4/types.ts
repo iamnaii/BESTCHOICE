@@ -114,6 +114,8 @@ export interface PayrollGateDay {
   userId: string;
   employeeName: string;
   date: string;
+  /** สาขาของวันนั้น — ลิงก์ไปหน้าลงเวลาของสาขานั้น */
+  branchId: string;
 }
 
 /**

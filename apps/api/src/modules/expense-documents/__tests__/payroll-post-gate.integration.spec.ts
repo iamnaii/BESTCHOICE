@@ -342,8 +342,8 @@ describe('Payroll submit / approve / post gate (Postgres)', () => {
     await expectConflict(lifecycle.approve(doc.id, ownerId, 'OWNER'), {
       code: 'PAYROLL_DEVICE_CONFLICT',
       days: [
-        { dayId: d1.id, userId: u, employeeName: 'พนักงาน dc', date: '2026-10-15' },
-        { dayId: d2.id, userId: daily, employeeName: 'พนักงาน dc-daily', date: '2026-10-16' },
+        { dayId: d1.id, userId: u, employeeName: 'พนักงาน dc', date: '2026-10-15', branchId: b },
+        { dayId: d2.id, userId: daily, employeeName: 'พนักงาน dc-daily', date: '2026-10-16', branchId: b },
       ],
       message: 'อนุมัติไม่ได้ — มีวันที่ติดธง เครื่องถูกใช้ซ้อน 2 วัน (พนักงาน dc · 15 ต.ค., พนักงาน dc-daily · 16 ต.ค.) ให้เจ้าของตรวจที่เมนู ลงเวลา แล้วกด "ตรวจแล้ว ล้างธง"',
     });
@@ -445,7 +445,7 @@ describe('Payroll submit / approve / post gate (Postgres)', () => {
 
       await expectConflict(lifecycle.approve(doc.id, ownerId, 'OWNER'), {
         code: 'PAYROLL_DEVICE_CONFLICT',
-        days: [{ dayId: flagged.id, userId: u, employeeName: 'พนักงาน manual-post', date: '2026-10-06' }],
+        days: [{ dayId: flagged.id, userId: u, employeeName: 'พนักงาน manual-post', date: '2026-10-06', branchId: b }],
         message: 'อนุมัติไม่ได้ — มีวันที่ติดธง เครื่องถูกใช้ซ้อน 1 วัน (พนักงาน manual-post · 6 ต.ค.) ให้เจ้าของตรวจที่เมนู ลงเวลา แล้วกด "ตรวจแล้ว ล้างธง"',
       });
       expect(await statusOf(doc.id)).toBe('PENDING_APPROVAL');
@@ -540,7 +540,7 @@ describe('Payroll submit / approve / post gate (Postgres)', () => {
     const doc = await createDoc(b, [{ userId: u, baseSalary: 16500 }]);
     const b2 = await mkBranch('inspect-free');
     const freeText = await createDoc(b2, [{ employeeName: 'ลูกจ้าง ไม่ผูกทะเบียน', baseSalary: 9000 }]);
-    const conflicts = [{ dayId: flagged.id, userId: u, employeeName: 'พนักงาน inspect', date: '2026-10-20' }];
+    const conflicts = [{ dayId: flagged.id, userId: u, employeeName: 'พนักงาน inspect', date: '2026-10-20', branchId: b }];
     const gateOf = async (q: ExpenseDocumentQueryService, id: string) => ((await q.findOne(id, 'OWNER', null)) as unknown as { payrollGate: unknown }).payrollGate;
 
     setNow(BEFORE);

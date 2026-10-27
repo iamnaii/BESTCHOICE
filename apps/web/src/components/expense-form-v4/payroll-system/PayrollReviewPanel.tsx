@@ -158,7 +158,8 @@ export function PayrollReviewPanel({ lines, viewer }: { lines: ReviewLine[]; vie
                 </div>
                 {canOpenDay(viewer, day) ? (
                   <Link
-                    to={`/attendance?tab=today&date=${day.date}`}
+                    // คำตัดสิน R13 — พาสาขาของวันนั้นไปด้วย (เจ้าของหลายสาขา) · Task 9 อ่าน ?tab ?date ?branchId
+                    to={`/attendance?tab=today&date=${day.date}&branchId=${day.branchId}`}
                     target="_blank"
                     rel="noreferrer"
                     className="inline-flex min-h-9 w-max items-center gap-1.5 rounded-md border border-input bg-background px-2.5 text-xs font-medium leading-snug hover:bg-accent focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"

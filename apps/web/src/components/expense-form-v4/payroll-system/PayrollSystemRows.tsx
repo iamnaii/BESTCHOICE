@@ -24,7 +24,10 @@ function rateText(rate: string): string {
 const hoursTimesRate = (r: PayrollSystemIncomeRow) =>
   r.quantity != null && r.rate != null ? `${hours(r.quantity)} × ${rateText(r.rate)}` : '—';
 
-const sourceLabel = (source: string) => (source.startsWith('ATTENDANCE_') ? 'จากระบบลงเวลา' : 'จากระบบ');
+/** แถวที่คิดจากการลงเวลา (OT / ทำงานวันหยุด / OT วันหยุด) — ส่วนที่ 2 จะมีแถวระบบแหล่งอื่น (ค่าคอม) ด้วย */
+export const isAttendanceSource = (source: string) => source.startsWith('ATTENDANCE_');
+
+const sourceLabel = (source: string) => (isAttendanceSource(source) ? 'จากระบบลงเวลา' : 'จากระบบ');
 
 export function PayrollSystemRows({
   rows,

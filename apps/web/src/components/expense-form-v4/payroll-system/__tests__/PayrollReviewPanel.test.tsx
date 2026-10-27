@@ -51,12 +51,12 @@ describe('PayrollReviewPanel — review days from stored systemNotes', () => {
     expect(within(second).getByText('ตอกหลังพักรหัส')).toBeInTheDocument();
   });
 
-  it('OWNER gets a link to that day on the attendance page', () => {
+  it('OWNER gets a link to that day and its branch on the attendance page (R13)', () => {
     mount({ role: 'OWNER', branchId: null });
     const links = screen.getAllByRole('link', { name: LINK_NAME });
     expect(links.map((a) => a.getAttribute('href'))).toEqual([
-      '/attendance?tab=today&date=2026-10-21',
-      '/attendance?tab=today&date=2026-10-09',
+      '/attendance?tab=today&date=2026-10-21&branchId=b2',
+      '/attendance?tab=today&date=2026-10-09&branchId=b1',
     ]);
     expect(screen.queryByText(NO_LINK_TEXT)).not.toBeInTheDocument();
   });
@@ -68,7 +68,7 @@ describe('PayrollReviewPanel — review days from stored systemNotes', () => {
     expect(within(otherBranchDay).getByText(NO_LINK_TEXT)).toBeInTheDocument();
     expect(within(ownBranchDay).getByRole('link', { name: LINK_NAME })).toHaveAttribute(
       'href',
-      '/attendance?tab=today&date=2026-10-09',
+      '/attendance?tab=today&date=2026-10-09&branchId=b1',
     );
   });
 

@@ -75,8 +75,11 @@ const PAYROLL_EDITABLE_STATUSES = ['DRAFT', 'PENDING_APPROVAL', 'APPROVED'];
 const SENT_BACK_STATUS_LABEL: Record<string, string> = { PENDING_APPROVAL: 'รออนุมัติ', APPROVED: 'อนุมัติแล้ว' };
 /** 409 ที่บอกว่า "ยังไม่ถึงเวลา" (ไม่ใช่ข้อผิดพลาดของข้อมูล) — แสดงโทนเตือน */
 const PAYROLL_NOT_YET_CODES = ['PAYROLL_SUBMIT_CUTOFF', 'PAYROLL_CUTOFF'];
+/** บันทึกสำเร็จแต่โหลดใบกลับไม่ได้ — ไม่ใช่ "บันทึกไม่สำเร็จ" · ปุ่มที่อ้างถึงอยู่บนหน้านี้ */
+const PAYROLL_RELOAD_FAILED =
+  'บันทึกร่างแล้ว แต่โหลดยอดที่ระบบคิดไม่สำเร็จ — กด บันทึกร่าง + คิดยอด อีกครั้ง';
 
-/** ใบเงินเดือนบันทึกแล้ว แต่ขั้นถัดไป (ส่งขออนุมัติ/ลงบัญชี/โหลดกลับ) ไม่สำเร็จ — ใบยังเป็นร่าง ฟอร์มต้องแก้ใบนี้ต่อ ไม่สร้างใหม่ */
+/** ใบเงินเดือนบันทึกแล้ว แต่ขั้นถัดไป (ส่งขออนุมัติ/ลงบัญชี) ไม่สำเร็จ — ใบยังเป็นร่าง ฟอร์มต้องแก้ใบนี้ต่อ ไม่สร้างใหม่ */
 class PayrollSavedError extends Error {
   constructor(
     readonly docId: string,
@@ -192,6 +195,8 @@ export function ExpenseFormV4({ branchId, onClose, onSaved, initialDocType, edit
     // โหลดครั้งแรกเท่านั้น — หลัง "บันทึกร่าง + คิดยอด" ฟอร์มโหลดใบเอง (openSavedDraft) แม้ host เปลี่ยน ?edit=
     enabled: !!editDocId && !editLoaded,
     staleTime: 0,
+    // ไม่เก็บใบไว้ข้ามการเปิดฟอร์ม — เปิด "แก้ไข" ใหม่ต้องได้ใบล่าสุด ไม่งั้นบันทึกทับรุ่นที่ใหม่กว่า
+    gcTime: 0,
   });
   // ใบที่ฟอร์มนี้แก้อยู่ — เริ่มจาก ?edit= หรือได้มาหลัง "บันทึกร่าง + คิดยอด" สร้างใบ (บันทึกครั้งถัดไป = PATCH)
   const [draftId, setDraftId] = useState<string | undefined>(editDocId);
@@ -231,7 +236,8 @@ export function ExpenseFormV4({ branchId, onClose, onSaved, initialDocType, edit
   };
 
   useEffect(() => {
-    if (!editDocId || !editQuery.data || editLoaded) return;
+    // ใช้เฉพาะข้อมูลที่โหลดหลังเปิดฟอร์มนี้ (ข้อมูลใน cache อาจเก่ากว่าที่ server มี)
+    if (!editDocId || !editQuery.data || !editQuery.isFetchedAfterMount || editLoaded) return;
     const doc = editQuery.data as PayrollDocForEdit;
     if (doc.documentType !== 'PAYROLL' || !PAYROLL_EDITABLE_STATUSES.includes(doc.status) || !doc.payroll) {
       toast.error('แก้ไขได้เฉพาะใบเงินเดือนที่เป็นร่าง รออนุมัติ หรืออนุมัติแล้ว');
@@ -241,7 +247,13 @@ export function ExpenseFormV4({ branchId, onClose, onSaved, initialDocType, edit
     applyPayrollDoc({ ...doc, payroll: doc.payroll });
     setEditLoaded(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [editDocId, editQuery.data, editLoaded]);
+  }, [editDocId, editQuery.data, editQuery.isFetchedAfterMount, editLoaded]);
+
+  /** ใบเงินเดือนถูกเขียนแล้ว — รายการ หน้ารายละเอียด และใบที่ฟอร์มแก้ไขเคยโหลดไว้ ต้องโหลดใหม่ */
+  const forgetCachedPayroll = (id: string) => {
+    queryClient.invalidateQueries({ queryKey: ['expense-document', id] });
+    queryClient.removeQueries({ queryKey: ['expense-doc-edit', id] });
+  };
 
   /** หลังบันทึก: อยู่ในโหมดแก้ไขของร่างนั้น แล้วโหลดใบกลับ (แถวระบบ + วันที่ต้องตรวจที่ server คิด) */
   const openSavedDraft = async (id: string) => {
@@ -526,13 +538,14 @@ export function ExpenseFormV4({ branchId, onClose, onSaved, initialDocType, edit
     onSuccess: async (result, { stay }) => {
       queryClient.invalidateQueries({ queryKey: ['expenses'] });
       queryClient.invalidateQueries({ queryKey: ['expenses-summary'] });
+      if (state.docType === 'PAYROLL' && result.id) forgetCachedPayroll(result.id);
       if (stay && result.id) {
         // "บันทึกร่าง + คิดยอด" — อยู่ต่อในโหมดแก้ไขของร่างนี้ พร้อมยอดที่ server คิด
         try {
           await openSavedDraft(result.id);
           toast.success('บันทึกร่างแล้ว — ยอดในใบเป็นยอดที่ระบบคิดล่าสุด');
-        } catch (e) {
-          toast.error(getErrorMessage(e));
+        } catch {
+          toast.error(PAYROLL_RELOAD_FAILED);
         }
         return;
       }
@@ -545,12 +558,13 @@ export function ExpenseFormV4({ branchId, onClose, onSaved, initialDocType, edit
       if (e instanceof PayrollSavedError) {
         queryClient.invalidateQueries({ queryKey: ['expenses'] });
         queryClient.invalidateQueries({ queryKey: ['expenses-summary'] });
+        forgetCachedPayroll(e.docId);
         const code = errorCodeOf(e.cause);
         setPayrollNotice({
           message: getErrorMessage(e.cause),
           tone: code && PAYROLL_NOT_YET_CODES.includes(code) ? 'warning' : 'error',
         });
-        void openSavedDraft(e.docId).catch(() => undefined);
+        void openSavedDraft(e.docId).catch(() => toast.error(PAYROLL_RELOAD_FAILED));
         return;
       }
       if (state.docType === 'PAYROLL' && errorCodeOf(e)) {
@@ -728,6 +742,7 @@ export function ExpenseFormV4({ branchId, onClose, onSaved, initialDocType, edit
                       documentDate={state.documentDate}
                       onDocumentDateChange={(d) => patch({ documentDate: d })}
                       branchId={state.branchId}
+                      documentId={draftId}
                       onSaveAndCompute={() => startSave({ andPost: false, stay: true })}
                       computing={saveMutation.isPending}
                       computeDisabled={!ready}

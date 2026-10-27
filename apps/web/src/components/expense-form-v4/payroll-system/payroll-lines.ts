@@ -102,6 +102,17 @@ export function copiedLineFromStored(l: StoredPayrollLine): PayrollLineForm {
 }
 
 /**
+ * แถวระบบ / สรุปลงเวลา / วันที่ต้องตรวจที่เก็บไว้ ผูกกับ (คน, งวด, ฝั่ง) ตอนบันทึกครั้งล่าสุด ⇒ เปลี่ยนคน งวด หรือฝั่งแล้ว
+ * ใช้ไม่ได้อีก — ล้างทิ้ง แล้วให้ server คิดใหม่ตอนบันทึก (บรรทัดกลายเป็น "ยังไม่เคยบันทึก" สำหรับกติกาเอาแถว OT ออกด้วย)
+ */
+export const withoutStoredSystemData = (l: PayrollLineForm): PayrollLineForm => ({
+  ...l,
+  systemIncome: [],
+  attendanceSummary: null,
+  systemNotes: null,
+});
+
+/**
  * ก่อนบันทึก: บรรทัดที่บันทึกแล้วและระบบคิด OT ให้ (`attendanceSummary.autoOtEligible` ที่เก็บไว้) ห้ามมีแถว OT ที่กรอกเอง
  * (server ปฏิเสธ MANUAL_OT_DUPLICATE) ⇒ เอาแถวรหัสบัญชีลงเวลาที่ไม่ได้ติ๊ก "รายการปรับปรุงงวดก่อน" ออก ·
  * บรรทัดใหม่/ยังไม่เคยบันทึกไม่แตะ — ให้ server ตัดสินจากทะเบียนจริง

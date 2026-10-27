@@ -14,9 +14,9 @@ import {
   newPayrollCustomIncome,
   newPayrollCustomDeduction,
 } from './types';
-import { AttendanceSummaryBox, PayrollSystemRows } from './payroll-system/PayrollSystemRows';
+import { AttendanceSummaryBox, isAttendanceSource, PayrollSystemRows } from './payroll-system/PayrollSystemRows';
 import { PayrollReviewPanel } from './payroll-system/PayrollReviewPanel';
-import { copiedLineFromStored, type StoredPayrollLine } from './payroll-system/payroll-lines';
+import { copiedLineFromStored, withoutStoredSystemData, type StoredPayrollLine } from './payroll-system/payroll-lines';
 import { payrollMetaQuery } from './payroll-system/payroll-meta';
 import { formatNumberDecimal } from '@/utils/formatters';
 import ThaiDateInput from '@/components/ui/ThaiDateInput';
@@ -37,6 +37,8 @@ interface Props {
   onDocumentDateChange: (d: string) => void;
   /** สาขาของเอกสาร — ใช้ดึงใบเงินเดือนงวดล่าสุดมาเติม (R3-1 คัดลอกงวดก่อน). */
   branchId?: string;
+  /** ใบที่กำลังแก้ (ถ้ามี) — "ดึงข้อมูลงวดล่าสุดมาเติม" ต้องไม่เลือกใบนี้เอง */
+  documentId?: string;
   /** Payroll D4 — ปุ่ม "บันทึกร่าง + คิดยอด": บันทึกร่าง (สร้าง/แก้) แล้วโหลดยอดที่ server คิดกลับมา */
   onSaveAndCompute?: () => void;
   computing?: boolean;
@@ -79,6 +81,7 @@ export function PayrollLinesSection({
   documentDate,
   onDocumentDateChange,
   branchId,
+  documentId,
   onSaveAndCompute,
   computing = false,
   computeDisabled = false,
@@ -86,7 +89,6 @@ export function PayrollLinesSection({
 }: Props) {
   const uiFieldId = useUiFieldId();
   const { taxExemptWarningEnabled } = useUiFlags();
-  const updateField = (patch: Partial<PayrollFormFields>) => onChange({ ...value, ...patch });
   const [copyLoading, setCopyLoading] = useState(false);
 
   // R3-1 — ดึงใบเงินเดือนล่าสุดของสาขา (ไม่นับใบ VOID) มาเติมทั้งชุด: ฝั่ง +
@@ -101,7 +103,8 @@ export function PayrollLinesSection({
       const { data: list } = await api.get<{
         data: Array<{ id: string; status: string; documentDate: string }>;
       }>(`/expense-documents?type=PAYROLL&branchId=${branchId}&limit=10`);
-      const candidate = (list.data ?? []).find((d) => d.status !== 'VOIDED');
+      // ไม่เลือกใบที่กำลังแก้อยู่ (ไม่งั้นได้ร่างตัวเองแล้วรายการปรับปรุงงวดก่อนหาย)
+      const candidate = (list.data ?? []).find((d) => d.status !== 'VOIDED' && d.id !== documentId);
       if (!candidate) {
         toast.info('ยังไม่มีใบเงินเดือนเดิมของสาขานี้ให้คัดลอก');
         return;
@@ -152,8 +155,9 @@ export function PayrollLinesSection({
     onChange({
       ...value,
       entityScope: next,
+      // แถวระบบเป็นของผังฝั่งเดิม — server คิดใหม่ตอนบันทึก
       lines: value.lines.map((l) => ({
-        ...l,
+        ...withoutStoredSystemData(l),
         customIncome: (l.customIncome ?? []).map((r) => ({
           ...r,
           accountCode: SCOPE_SWAP[r.accountCode] ?? fallbackCode,
@@ -164,6 +168,18 @@ export function PayrollLinesSection({
             (next === 'SHOP') === r.accountCode.startsWith('S') ? r.accountCode : '',
         })),
       })),
+    });
+  };
+
+  // เปลี่ยนงวด: แถวระบบ/สรุป/วันที่ต้องตรวจที่เก็บไว้เป็นของงวดเดิม — ล้างทุกบรรทัด (server คิดใหม่ตอนบันทึก)
+  const setPeriod = (year: number, month: number) => {
+    const payrollPeriod = `${year - 543}-${String(month).padStart(2, '0')}`;
+    onChange({
+      ...value,
+      year,
+      month,
+      payrollPeriod,
+      lines: payrollPeriod === value.payrollPeriod ? value.lines : value.lines.map(withoutStoredSystemData),
     });
   };
 
@@ -229,6 +245,8 @@ export function PayrollLinesSection({
     const netPaid = Math.max(0, base + income - sso - wht - deduction);
     const hasExtras = (l.customIncome?.length ?? 0) + (l.customDeduction?.length ?? 0) > 0;
     const reviewDays = l.systemNotes?.review.length ?? 0;
+    // ป้าย "OT n แถว" นับเฉพาะแถวจากลงเวลา (ส่วนที่ 2 มีแถวค่าคอมใน systemIncome ด้วย)
+    const attendanceRows = (l.systemIncome ?? []).filter((r) => isAttendanceSource(r.source)).length;
     // R3-4 — WHT แนะนำ (ขั้นบันได ม.48, ลดหย่อนมาตรฐาน) — advisory เท่านั้น
     const suggestedWht = suggestMonthlyWht(taxableBase, sso);
     return {
@@ -239,6 +257,7 @@ export function PayrollLinesSection({
       incomeN: income,
       systemIncomeN: systemIncome,
       reviewDays,
+      attendanceRows,
       deductionN: deduction,
       taxableBaseN: taxableBase,
       suggestedWht,
@@ -325,13 +344,7 @@ export function PayrollLinesSection({
           <label htmlFor={`${uiFieldId}-1`} className="block text-xs font-medium mb-1">ปี (พ.ศ.)</label>
           <NativeSelect wrapperClassName="max-w-full w-full" id={`${uiFieldId}-1`}
             value={value.year}
-            onChange={(e) => {
-              const y = Number(e.target.value);
-              updateField({
-                year: y,
-                payrollPeriod: `${y - 543}-${String(value.month).padStart(2, '0')}`,
-              });
-            }}
+            onChange={(e) => setPeriod(Number(e.target.value), value.month)}
             className="px-3 py-2 border border-input rounded-lg text-sm bg-background"
           >
             {[0, 1, 2, 3, 4].map((offset) => {
@@ -348,13 +361,7 @@ export function PayrollLinesSection({
           <label htmlFor={`${uiFieldId}-2`} className="block text-xs font-medium mb-1">เดือน</label>
           <NativeSelect wrapperClassName="max-w-full w-full" id={`${uiFieldId}-2`}
             value={value.month}
-            onChange={(e) => {
-              const m = Number(e.target.value);
-              updateField({
-                month: m,
-                payrollPeriod: `${value.year - 543}-${String(m).padStart(2, '0')}`,
-              });
-            }}
+            onChange={(e) => setPeriod(value.year, Number(e.target.value))}
             className="px-3 py-2 border border-input rounded-lg text-sm bg-background"
           >
             {THAI_MONTHS_FULL.map((label, idx) => (
@@ -491,6 +498,7 @@ function PayrollRow({
     incomeN: number;
     systemIncomeN: number;
     reviewDays: number;
+    attendanceRows: number;
     deductionN: number;
     taxableBaseN: number;
     suggestedWht: number;
@@ -532,12 +540,12 @@ function PayrollRow({
             placeholder="เลือกพนักงาน"
             period={period}
           />
-          {(row.systemIncome.length > 0 || row.reviewDays > 0) && (
+          {(row.attendanceRows > 0 || row.reviewDays > 0) && (
             <div className="mt-1 flex flex-wrap gap-1">
-              {row.systemIncome.length > 0 && (
+              {row.attendanceRows > 0 && (
                 <span className="inline-flex items-center gap-1 whitespace-nowrap rounded-full border border-primary/30 bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary leading-snug">
                   <Clock className="size-3 shrink-0" aria-hidden="true" />
-                  {`OT ${row.systemIncome.length} แถว`}
+                  {`OT ${row.attendanceRows} แถว`}
                 </span>
               )}
               {row.reviewDays > 0 && (

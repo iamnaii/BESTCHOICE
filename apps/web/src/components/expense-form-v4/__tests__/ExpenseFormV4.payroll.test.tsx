@@ -66,6 +66,7 @@ vi.mock('@/components/employees/EmployeeCombobox', () => ({
 import { ExpenseFormV4 } from '../ExpenseFormV4';
 
 const STRIP_TOAST = 'เอาแถว OT ที่กรอกเองออก — ระบบคิดจากลงเวลาให้แล้ว';
+const RELOAD_FAILED = 'บันทึกร่างแล้ว แต่โหลดยอดที่ระบบคิดไม่สำเร็จ — กด บันทึกร่าง + คิดยอด อีกครั้ง';
 const CUTOFF_MESSAGE =
   'ส่งขออนุมัติได้ตั้งแต่ 1 พ.ย. 2569 18:00 — รอให้ข้อมูลลงเวลาของเดือนนี้ครบก่อน ระหว่างนี้บันทึกร่างไว้ได้';
 
@@ -166,17 +167,19 @@ beforeEach(() => {
   });
 });
 
-function mount(props: { editDocId?: string } = {}) {
+const newClient = () => new QueryClient({ defaultOptions: { queries: { retry: false } } });
+
+function mount(props: { editDocId?: string } = {}, client = newClient()) {
   const onSaved = vi.fn();
   const onClose = vi.fn();
-  render(
-    <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+  const { unmount } = render(
+    <QueryClientProvider client={client}>
       <MemoryRouter>
         <ExpenseFormV4 branchId="b1" initialDocType="PAYROLL" onSaved={onSaved} onClose={onClose} {...props} />
       </MemoryRouter>
     </QueryClientProvider>,
   );
-  return { onSaved, onClose };
+  return { onSaved, onClose, unmount, client };
 }
 
 const patchedLines = (call = -1) =>
@@ -372,5 +375,89 @@ describe('ExpenseFormV4 payroll — save and submit before the cutoff', () => {
     await user.click(screen.getByRole('button', { name: 'บันทึกร่าง + คิดยอด' }));
     await waitFor(() => expect(apiPatch).toHaveBeenCalledWith('/expense-documents/new-1/payroll', expect.anything()));
     expect(apiPost.mock.calls.filter((c) => c[0] === '/expense-documents/payroll')).toHaveLength(1);
+  });
+});
+
+describe('ExpenseFormV4 payroll — fix round 1', () => {
+  it('I2: reopening แก้ไข after a save shows the saved document, and the next save PATCHes those lines', async () => {
+    const user = userEvent.setup();
+    const client = newClient();
+    const first = mount({ editDocId: 'doc-1' }, client);
+    await screen.findByRole('button', { name: 'สมศรี มีสุข' });
+    await user.click(screen.getByRole('button', { name: 'บันทึกร่าง' }));
+    await waitFor(() => expect(first.onSaved).toHaveBeenCalled());
+    first.unmount();
+
+    // server ตอนนี้มีอีกรุ่น (บันทึกแล้ว) — เปิดแก้ไขใหม่ใน client เดิมต้องไม่ใช้ใบเก่าใน cache
+    docs['doc-1'] = storedDoc('doc-1', [DAILY_LINE]);
+    mount({ editDocId: 'doc-1' }, client);
+    expect(await screen.findByRole('button', { name: 'กมล แสงทอง' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'สมศรี มีสุข' })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'บันทึกร่าง' }));
+    await waitFor(() => expect(apiPatch).toHaveBeenCalledTimes(2));
+    expect(apiPatch.mock.calls[1][1]).toEqual(
+      expect.objectContaining({ lines: [expect.objectContaining({ userId: 'u2' })] }),
+    );
+  });
+
+  it('I2: reopening แก้ไข applies only data fetched after mount (document changed elsewhere)', async () => {
+    const client = newClient();
+    const first = mount({ editDocId: 'doc-1' }, client);
+    await screen.findByRole('button', { name: 'สมศรี มีสุข' });
+    first.unmount();
+
+    docs['doc-1'] = storedDoc('doc-1', [DAILY_LINE]);
+    mount({ editDocId: 'doc-1' }, client);
+    expect(await screen.findByRole('button', { name: 'กมล แสงทอง' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'สมศรี มีสุข' })).not.toBeInTheDocument();
+  });
+
+  it('M2: a failed reload after บันทึกร่าง + คิดยอด says the draft is saved, and the next save PATCHes it', async () => {
+    const user = userEvent.setup();
+    const base = apiGet.getMockImplementation()!;
+    apiGet.mockImplementation((path: string) =>
+      path === '/expense-documents/new-1' ? Promise.reject(new Error('offline')) : base(path),
+    );
+    mount();
+    await user.click(await screen.findByRole('button', { name: 'เลือกพนักงาน' }));
+    await user.click(screen.getByRole('button', { name: 'บันทึกร่าง + คิดยอด' }));
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith(RELOAD_FAILED));
+    await user.click(screen.getByRole('button', { name: 'บันทึกร่าง + คิดยอด' }));
+    await waitFor(() => expect(apiPatch).toHaveBeenCalledWith('/expense-documents/new-1/payroll', expect.anything()));
+  });
+
+  it('M2: a failed reload after a refused submit says the same and keeps the server message inline', async () => {
+    flags.approvalEnabled = true;
+    flags.approvalRequiredDocTypes = ['PAYROLL'];
+    const user = userEvent.setup();
+    const base = apiGet.getMockImplementation()!;
+    apiGet.mockImplementation((path: string) =>
+      path === '/expense-documents/new-1' ? Promise.reject(new Error('offline')) : base(path),
+    );
+    apiPost.mockImplementation((path: string) => {
+      if (path === '/expense-documents/payroll') return Promise.resolve({ data: { id: 'new-1' } });
+      return Promise.reject({
+        response: { status: 409, data: { code: 'PAYROLL_SUBMIT_CUTOFF', message: CUTOFF_MESSAGE } },
+      });
+    });
+    mount();
+    await user.click(await screen.findByRole('button', { name: 'เลือกพนักงาน' }));
+    await user.click(screen.getByRole('button', { name: 'บันทึกและขออนุมัติ' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(CUTOFF_MESSAGE);
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith(RELOAD_FAILED));
+  });
+
+  it('M5: a payroll save invalidates the detail page query of that document', async () => {
+    const user = userEvent.setup();
+    const client = newClient();
+    client.setQueryData(['expense-document', 'doc-1'], { id: 'doc-1', status: 'PENDING_APPROVAL' });
+    mount({ editDocId: 'doc-1' }, client);
+    await screen.findByRole('button', { name: 'สมศรี มีสุข' });
+    expect(client.getQueryState(['expense-document', 'doc-1'])?.isInvalidated).toBe(false);
+    await user.click(screen.getByRole('button', { name: 'บันทึกร่าง + คิดยอด' }));
+    await waitFor(() => expect(apiPatch).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(client.getQueryState(['expense-document', 'doc-1'])?.isInvalidated).toBe(true));
   });
 });

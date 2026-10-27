@@ -32,7 +32,15 @@ const EMP: PickableEmployee = {
   baseSalary: '16000', ssoEligible: true,
 };
 
-function Harness({ initial, onValue }: { initial?: PayrollFormFields; onValue?: (v: PayrollFormFields) => void }) {
+function Harness({
+  initial,
+  onValue,
+  documentId,
+}: {
+  initial?: PayrollFormFields;
+  onValue?: (v: PayrollFormFields) => void;
+  documentId?: string;
+}) {
   const [value, setValue] = useState<PayrollFormFields>(
     initial ?? {
       year: 2569,
@@ -52,6 +60,7 @@ function Harness({ initial, onValue }: { initial?: PayrollFormFields; onValue?: 
       documentDate="2026-06-01"
       onDocumentDateChange={() => {}}
       branchId="b1"
+      documentId={documentId}
     />
   );
 }
@@ -201,5 +210,102 @@ describe('PayrollLinesSection — Payroll D4 system rows', () => {
     expect(line.userId).toBe('u1');
     expect(line.systemIncome).toEqual([]);
     expect(line.systemNotes).toBeNull();
+  });
+});
+
+describe('PayrollLinesSection — fix round 1', () => {
+  const stored = (): PayrollFormFields => ({
+    year: 2569, month: 10, payrollPeriod: '2026-10', entityScope: 'SHOP',
+    lines: [
+      newPayrollLine({
+        userId: 'u1', employeeName: 'สมศรี มีสุข', baseSalary: '15000',
+        systemIncome: [
+          { source: 'ATTENDANCE_OT', accountCode: 'S52-1202', name: 'OT วันทำงาน (1.5 เท่า)', quantity: '6.5', rate: '93.75', multiplier: '1.5', amount: '609.38' },
+          { source: 'COMMISSION', accountCode: 'S51-1101', name: 'ค่าคอมที่อนุมัติแล้ว', quantity: null, rate: null, multiplier: null, amount: '2500.00' },
+        ],
+        attendanceSummary: {
+          workDays: 25, lateCount: 0, lateMinutes: 0, absent: 0, leave: 0,
+          otHours: '6.5', holidayHours: '0.0', holidayOtHours: '0.0', holidayWorkedDays: 0, reviewCount: 0, autoOtEligible: true,
+        },
+        systemNotes: { review: [], warnings: [{ code: 'NOT_YET_CLOSABLE', closableAt: '2026-11-01T11:00:00.000Z' }] },
+      }),
+    ],
+  });
+  const lastLine = (spy: ReturnType<typeof vi.fn>) => (spy.mock.calls.at(-1)![0] as PayrollFormFields).lines[0];
+
+  it('M1: changing the month clears every line\'s stored system rows, summary and notes', async () => {
+    const onValue = vi.fn();
+    const user = userEvent.setup();
+    wrap(<Harness initial={stored()} onValue={onValue} />);
+    await user.selectOptions(screen.getByLabelText('เดือน'), '11');
+    const line = lastLine(onValue);
+    expect((onValue.mock.calls.at(-1)![0] as PayrollFormFields).payrollPeriod).toBe('2026-11');
+    expect(line.systemIncome).toEqual([]);
+    expect(line.attendanceSummary).toBeNull();
+    expect(line.systemNotes).toBeNull();
+  });
+
+  it('M1: changing the year clears them too', async () => {
+    const onValue = vi.fn();
+    const user = userEvent.setup();
+    wrap(<Harness initial={stored()} onValue={onValue} />);
+    const year = screen.getByLabelText('ปี (พ.ศ.)');
+    const other = Array.from((year as HTMLSelectElement).options).find((o) => o.value !== '2569')!.value;
+    await user.selectOptions(year, other);
+    expect(lastLine(onValue).systemIncome).toEqual([]);
+    expect(lastLine(onValue).systemNotes).toBeNull();
+  });
+
+  it('M1: switching the employee group clears them too', async () => {
+    const onValue = vi.fn();
+    const user = userEvent.setup();
+    wrap(<Harness initial={stored()} onValue={onValue} />);
+    await user.click(screen.getByRole('button', { name: 'ส่วนกลาง (FINANCE)' }));
+    const line = lastLine(onValue);
+    expect((onValue.mock.calls.at(-1)![0] as PayrollFormFields).entityScope).toBe('FINANCE');
+    expect(line.systemIncome).toEqual([]);
+    expect(line.attendanceSummary).toBeNull();
+    expect(line.systemNotes).toBeNull();
+  });
+
+  it('M3: the OT chip counts only attendance rows', () => {
+    wrap(<Harness initial={stored()} />);
+    expect(screen.getByText('OT 1 แถว')).toBeInTheDocument();
+    expect(screen.queryByText('OT 2 แถว')).not.toBeInTheDocument();
+  });
+
+  it('M4: copy previous never picks the document being edited', async () => {
+    apiGet.mockImplementation((path: string) => {
+      if (path.startsWith('/expense-documents?')) {
+        return Promise.resolve({
+          data: {
+            data: [
+              { id: 'doc-1', status: 'DRAFT', documentDate: '2026-11-02' },
+              { id: 'prev-1', status: 'POSTED', documentDate: '2026-10-02' },
+            ],
+          },
+        });
+      }
+      if (path === '/expense-documents/prev-1') {
+        return Promise.resolve({
+          data: {
+            number: 'PR-20261002-0001',
+            payroll: {
+              entityScope: 'SHOP',
+              payrollPeriod: '2026-09',
+              lines: [{ userId: 'u9', employeeName: 'คนงวดก่อน', baseSalary: '12000', ssoEmployee: '600', whtAmount: '0', customIncome: [], customDeduction: [] }],
+            },
+          },
+        });
+      }
+      return Promise.resolve({ data: { incomeWhitelist: [], cashAccounts: [] } });
+    });
+    const onValue = vi.fn();
+    const user = userEvent.setup();
+    wrap(<Harness initial={stored()} onValue={onValue} documentId="doc-1" />);
+    await user.click(screen.getByRole('button', { name: /ดึงข้อมูลงวดล่าสุดมาเติม/ }));
+    await waitFor(() => expect(onValue).toHaveBeenCalled());
+    expect(apiGet).not.toHaveBeenCalledWith('/expense-documents/doc-1');
+    expect(lastLine(onValue).userId).toBe('u9');
   });
 });

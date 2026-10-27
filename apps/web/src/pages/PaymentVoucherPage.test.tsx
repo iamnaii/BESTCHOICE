@@ -232,13 +232,27 @@ describe('PayrollSlipSheet (PAYROLL voucher)', () => {
     expect(screen.getByRole('row', { name: /เบี้ยขยัน/ })).not.toHaveTextContent('(ปรับปรุงงวดก่อน)');
   });
 
-  it('shows the attendance summary as information that does not change pay, and the v2 footer', async () => {
+  it('shows the attendance summary as information that does not change pay, and the v2 footer with the slip number', async () => {
     mountVoucher('POSTED');
     const box = (await screen.findByText('ข้อมูลประกอบ — ไม่มีผลต่อยอดเงิน')).closest('section') as HTMLElement;
     expect(within(box).getByText('สรุปเวลาทำงาน ต.ค. 2569')).toBeInTheDocument();
     expect(within(box).getByText('25 วัน')).toBeInTheDocument();
     expect(within(box).getByText('6.5 ชม.')).toBeInTheDocument();
-    expect(screen.getByText('ใบจ่ายเงินเดือน v2')).toBeInTheDocument();
+    expect(screen.getByText('ใบจ่ายเงินเดือน v2 · 1/1')).toBeInTheDocument();
+  });
+
+  it('R21: every slip of a printed batch keeps its number in the footer (slip n of total)', async () => {
+    const second = { ...line, id: 'l2', employeeName: 'วิชัย ทองดี' };
+    const third = { ...line, id: 'l3', employeeName: 'กมล แสงทอง' };
+    apiGet.mockResolvedValue({ data: { ...voucher('POSTED'), payroll: { payrollPeriod: '2026-10', lines: [line, second, third] } } });
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MemoryRouter initialEntries={['/expenses/pr-1/voucher']}>
+          <Routes><Route path="/expenses/:id/voucher" element={<PaymentVoucherPage />} /></Routes>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+    for (const n of [1, 2, 3]) expect(await screen.findByText(`ใบจ่ายเงินเดือน v2 · ${n}/3`)).toBeInTheDocument();
   });
 
   it.each([
@@ -251,7 +265,7 @@ describe('PayrollSlipSheet (PAYROLL voucher)', () => {
     const block = (await screen.findByText(message)).closest('[role="status"]') as HTMLElement;
     expect(block).not.toBeNull();
     expect(screen.queryByText('สมศรี มีสุข')).not.toBeInTheDocument();
-    expect(screen.queryByText('ใบจ่ายเงินเดือน v2')).not.toBeInTheDocument();
+    expect(screen.queryByText(/ใบจ่ายเงินเดือน v2/)).not.toBeInTheDocument();
     const print = screen.getByRole('button', { name: /พิมพ์ \/ บันทึก PDF/ });
     expect(print).toBeDisabled();
     expect(print).toHaveAttribute('aria-describedby', block.id);

@@ -455,7 +455,7 @@ describe('DOC-04 payroll slips and annual 50 ทวิ — real workflow, real j
         expect(slip).toContain(names[index]);
         for (const other of names.filter((_, i) => i !== index)) expect(slip).not.toContain(other);
         for (const token of common) expect(slip).toContain(token);
-        expect(slip).toContain(`ใบจ่ายเงินเดือน v1.0 · ${index + 1}/3`);
+        expect(slip).toContain(`ใบจ่ายเงินเดือน v2 · ${index + 1}/3`);
       });
       expect(slips[0]).toContain(e1.nationalId);
       expect(slips[0]).toContain('S52-1202');

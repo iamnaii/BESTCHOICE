@@ -385,6 +385,19 @@ describe('409 from approve / post', () => {
     await waitFor(() => expect(apiPost).toHaveBeenCalledWith('/expense-documents/pr-1/post', { expectedUpdatedAt: RENDERED_AT }));
   });
 
+  it('R21: a non-payroll document keeps today\'s body — approve and post send {} (no version token)', async () => {
+    const expense = { ...payrollDoc('PENDING_APPROVAL'), documentType: 'EXPENSE', payroll: undefined, payrollGate: undefined };
+    mount(expense as unknown as ReturnType<typeof payrollDoc>);
+    apiPost.mockResolvedValue({ data: {} });
+    await userEvent.click(await screen.findByRole('button', { name: /อนุมัติและลงบัญชี/ }));
+    await waitFor(() => expect(apiPost).toHaveBeenCalledWith('/expense-documents/pr-1/approve', {}));
+
+    currentDoc = { ...expense, status: 'APPROVED' } as unknown as ReturnType<typeof payrollDoc>;
+    await queryClient.invalidateQueries({ queryKey: ['expense-document', 'pr-1'] });
+    await userEvent.click(await screen.findByRole('button', { name: /บันทึกและลงบัญชี/ }));
+    await waitFor(() => expect(apiPost).toHaveBeenLastCalledWith('/expense-documents/pr-1/post', {}));
+  });
+
   it('R20 FX2: 409 DOCUMENT_CHANGED shows the server message and reloads the document; the next approve sends the reloaded version', async () => {
     mount(payrollDoc('PENDING_APPROVAL'));
     const spy = vi.spyOn(queryClient, 'invalidateQueries');

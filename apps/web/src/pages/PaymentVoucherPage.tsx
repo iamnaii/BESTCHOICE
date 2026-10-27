@@ -497,7 +497,10 @@ function PayrollSlipSheet({
         <MetaRow label="ช่องทางจ่าย" value={doc.depositAccountCode ?? '—'} mono />
       </section>
 
-      <div className="bc-doc-earnings">
+      {/* R21 — รายได้ / รายการหัก / สรุปเวลาทำงาน เรียงลงกว้างเต็มหน้า (ไม่ใช้กริดสองคอลัมน์ .bc-doc-earnings ของเอกสารกลาง):
+          ตารางรายได้มี 3 คอลัมน์ (รายการ · ชม. × อัตรา · จำนวนเงิน) และตารางหักตรงแนวเดียวกัน — ในครึ่งหน้า ชื่อรายการตัดบรรทัด
+          ทีละคำ ดันสลิปล้นเป็น 2 หน้า A4 (หนึ่งคนต้องหนึ่งแผ่น) */}
+      <div>
       {/* Earnings */}
       <section className="mt-6">
         <p className="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wider">
@@ -650,7 +653,8 @@ function PayrollSlipSheet({
 
       <footer className="mt-8 pt-3 border-t border-border text-[10px] text-muted-foreground flex justify-between">
         <span>ออกเอกสารจากระบบ BESTCHOICE — ไม่ต้องเซ็นต์ถือเป็นโมฆะ</span>
-        <span>ใบจ่ายเงินเดือน v2</span>
+        {/* R21 — เลขสลิปในชุดที่พิมพ์ (ลำดับบรรทัดในใบ — ตัวเดียวกับหัวกระดาษ "PAYROLL · n/ทั้งหมด") */}
+        <span>{`ใบจ่ายเงินเดือน v2 · ${slipNo}/${totalSlips}`}</span>
       </footer>
       </div>
     </article>
@@ -678,11 +682,14 @@ function NoValue() {
 
 /** Payroll D4 — สรุปเวลาทำงานของเดือน (จาก `attendanceSummary` ที่เก็บไว้) · ข้อมูลประกอบ ไม่มีผลต่อยอดเงิน */
 function SlipAttendanceSummary({ summary, period }: { summary: PayrollAttendanceSummary; period: string }) {
+  // R21 — ตอนพิมพ์ย่อกล่อง (หัว+คำอธิบายบรรทัดเดียว · 8 ช่องแถวเดียว) ให้หนึ่งคนพอดีหนึ่งแผ่น A4 · จอคงตามกระดาน 3
   return (
-    <section className="mt-5 rounded-md border border-border p-3 text-sm">
-      <p className="font-semibold leading-snug">{`สรุปเวลาทำงาน ${payrollPeriodShort(period)}`}</p>
-      <p className="text-xs text-muted-foreground leading-snug mb-2">ข้อมูลประกอบ — ไม่มีผลต่อยอดเงิน</p>
-      <dl className="grid grid-cols-4 gap-x-4 gap-y-1">
+    <section className="mt-5 rounded-md border border-border p-3 text-sm print:px-2 print:py-1.5">
+      <div className="print:flex print:items-baseline print:gap-2">
+        <p className="font-semibold leading-snug">{`สรุปเวลาทำงาน ${payrollPeriodShort(period)}`}</p>
+        <p className="text-xs text-muted-foreground leading-snug mb-2 print:mb-1">ข้อมูลประกอบ — ไม่มีผลต่อยอดเงิน</p>
+      </div>
+      <dl className="grid grid-cols-4 gap-x-4 gap-y-1 print:grid-cols-8 print:gap-x-2">
         {attendanceSummaryItems(summary).map(([label, value]) => (
           <div key={label}>
             <dt className="text-xs text-muted-foreground leading-snug">{label}</dt>

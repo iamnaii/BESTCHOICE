@@ -201,7 +201,7 @@ export default function ExpenseDetailPage() {
   };
 
   const postMutation = useMutation({
-    // R20 — ส่งฉบับที่หน้าวาด (ใบเงินเดือนบังคับ · เอกสารอื่น server เทียบเมื่อส่งมา)
+    // R20/R21 — ใบเงินเดือนส่งฉบับที่หน้าวาด (server บังคับ) · เอกสารอื่นส่ง {} เหมือนเดิม
     mutationFn: () => api.post(`/expense-documents/${id}/post`, documentVersionBody(docQuery.data)),
     onSuccess: onActionSuccess('บันทึกบัญชีเรียบร้อย'),
     onError: onActionError('บันทึกบัญชีไม่สำเร็จ'),

@@ -101,7 +101,7 @@ export default function TodayTab({ branchId, date, onDateChange, actorId, isOwne
                               const Icon = v.icon;
                               return <span key={f} className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs ${flagChipClass(f)}`}><Icon className="size-3" aria-hidden="true" />{v.label}</span>;
                             })}
-                            {row.paidDocumentNumber ? <PaidChip id={`paid-${row.userId}`} number={row.paidDocumentNumber} /> : paidRows.length > 0 && row.dayId ? <UnpaidChip /> : null}
+                            {row.paidDocumentNumber ? <PaidChip id={`paid-${row.userId}`} number={row.paidDocumentNumber} /> : paidRows.length > 0 && row.dayId ? <UnpaidChip editable={canEdit(row)} /> : null}
                             {!row.hasPin && <span className="text-xs text-muted-foreground">{isOwner ? 'ตั้งรหัสที่หน้าผู้ใช้ › รหัสตอกบัตร' : 'ให้เจ้าของตั้งรหัสตอกบัตร'}</span>}
                             {!isOwner && elsewhere(row) && <span className="text-xs text-muted-foreground">ตอกที่สาขาอื่น — ให้ผู้จัดการสาขานั้นหรือเจ้าของแก้</span>}
                             {row.status === 'NOT_IN' && row.hasPin && <span className="text-xs text-muted-foreground">ถ้าไม่มาทั้งวันจะนับขาดตอนเที่ยงคืน</span>}

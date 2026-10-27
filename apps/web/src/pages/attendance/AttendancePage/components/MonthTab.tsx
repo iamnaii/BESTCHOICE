@@ -10,6 +10,8 @@ import { EXCEL_COLUMNS, FLAG_LABEL, REVIEW_FLAGS, flagChipClass, fmtOt, shiftMon
 interface Props {
   branchId: string;
   branchName: string;
+  actorId: string;
+  isOwner: boolean;
   month: string;
   onMonthChange: (next: string) => void;
   /** เปิดวันนั้นในแท็บ "วันนี้" (ดูรูป/แก้ไข/ล้างธง) */
@@ -39,7 +41,7 @@ function CellBox({ date, cell }: { date: string; cell: MonthCell | undefined }) 
   );
 }
 
-export default function MonthTab({ branchId, branchName, month, onMonthChange, onOpenDay }: Props) {
+export default function MonthTab({ branchId, branchName, actorId, isOwner, month, onMonthChange, onOpenDay }: Props) {
   const q = useAttendanceMonth(branchId, month);
   const data = q.data;
   const anyPaid = !!data?.rows.some((r) => r.paidDocumentNumber);
@@ -107,7 +109,7 @@ export default function MonthTab({ branchId, branchName, month, onMonthChange, o
                       <td className="sticky left-0 z-10 bg-card px-3 py-1.5">
                         <div className="font-semibold leading-snug">{r.nickname}</div>
                         <div className="text-xs text-muted-foreground leading-snug">{r.name}</div>
-                        {r.paidDocumentNumber ? <div className="mt-1"><PaidChip number={r.paidDocumentNumber} /></div> : anyPaid ? <div className="mt-1"><UnpaidChip /></div> : null}
+                        {r.paidDocumentNumber ? <div className="mt-1"><PaidChip number={r.paidDocumentNumber} /></div> : anyPaid ? <div className="mt-1"><UnpaidChip editable={isOwner || (r.userId !== actorId && !r.visiting)} /></div> : null}
                       </td>
                       {data.days.map((d) => <td key={d} className="px-0.5 py-1.5 text-center"><CellBox date={d} cell={r.cells[d]} /></td>)}
                       <td className="border-l border-border px-2 py-1.5 text-right tabular-nums">{r.summary.workDays}</td>
@@ -144,7 +146,7 @@ export default function MonthTab({ branchId, branchName, month, onMonthChange, o
               </section>
             )}
             <div className="flex flex-wrap justify-between gap-2 border-t border-border px-4 py-2 text-xs text-muted-foreground">
-              <span>วางเมาส์บนช่องวันเพื่อดูรายละเอียด · แก้ไขรายวันได้จากแท็บ "วันนี้" (เลือกวันที่)</span>
+              <span>วางเมาส์บนช่องวันเพื่อดูรายละเอียด · แก้ไขรายวันได้จากแท็บ "วันนี้" (เลือกวันที่){anyPaid && ' (ยกเว้นเดือนที่จ่ายเงินเดือนแล้ว)'}</span>
               <span>ชั่วโมง OT × 1.5 × (เงินเดือน ÷ 30 ÷ 8) คิดที่หน้าเงินเดือน (ก้อน D4)</span>
             </div>
           </div>

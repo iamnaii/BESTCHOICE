@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { toast } from 'sonner';
 import { getErrorMessage } from '@/lib/api';
@@ -53,6 +53,20 @@ export default function ScheduleTab({ branchId, weekStart, onWeekChange, actorId
 
   const today = todayBangkok();
   const kindOf = (userId: string, date: string, base: DayKind | undefined) => pending[`${userId}|${date}`] ?? base ?? 'WORK';
+  const pendingRef = useRef(pending);
+  pendingRef.current = pending;
+
+  // เจ้าของเปลี่ยนสาขา: ช่องที่แก้ค้างเป็นของพนักงานสาขาเดิม — ทิ้ง ไม่ส่งไปกับสาขาใหม่
+  const prevBranch = useRef(branchId);
+  useEffect(() => {
+    if (prevBranch.current === branchId) return;
+    prevBranch.current = branchId;
+    const n = Object.keys(pendingRef.current).length;
+    if (!n) return;
+    setPending({});
+    toast.warning(`ทิ้งการแก้ ${n} ช่อง เพราะเปลี่ยนสาขา`);
+  }, [branchId]);
+
   const paidNo = (userId: string, date: string) => rows.find((r) => r.userId === userId)?.paid[date.slice(0, 7)];
   const changes = Object.entries(pending)
     .map(([k, dayKind]) => { const [userId, date] = k.split('|'); return { userId, date, dayKind }; })
@@ -70,7 +84,16 @@ export default function ScheduleTab({ branchId, weekStart, onWeekChange, actorId
     if (!changes.length) return;
     setKinds.mutate({ branchId, entries: changes }, {
       onSuccess: () => { toast.success(`บันทึกตารางแล้ว ${changes.length} รายการ`); setPending({}); },
-      onError: (err: unknown) => toast.error(getErrorMessage(err)),
+      onError: (err: unknown) => {
+        toast.error(getErrorMessage(err));
+        // 409 ATTENDANCE_PAID: เดือนที่เปิดอยู่ตัดช่องที่จ่ายแล้วทิ้งเองหลังโหลดใหม่ · เดือนที่ไม่ได้โหลด (สัปดาห์อื่น) เช็คไม่ได้ → ทิ้งช่องของเดือนนั้นด้วย
+        if ((err as { response?: { data?: { code?: string } } })?.response?.data?.code !== 'ATTENDANCE_PAID') return;
+        const loaded = new Set([first.data?.month, second.data?.month].filter(Boolean));
+        const drop = Object.keys(pendingRef.current).filter((k) => !loaded.has(k.split('|')[1].slice(0, 7)));
+        if (!drop.length) return;
+        setPending((p) => Object.fromEntries(Object.entries(p).filter(([k]) => !drop.includes(k))));
+        toast.warning(`ทิ้งการแก้ ${drop.length} ช่องของเดือนที่ไม่ได้เปิดอยู่ เพราะมีเดือนที่จ่ายเงินเดือนแล้ว`);
+      },
     });
   };
 

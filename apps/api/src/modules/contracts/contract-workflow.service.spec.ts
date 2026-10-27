@@ -270,7 +270,7 @@ describe('ContractWorkflowService', () => {
   describe('activate', () => {
     it('ก้อน 7 A16: หลังเปิดใช้แจ้ง contract.activated ผ่านท่อกลางจากข้อมูลสัญญาที่โหลดแล้ว (ไม่ทำให้ activate ล้ม)', async () => {
       staffNotifyMock.notify.mockClear();
-      await service.activate('contract-1');
+      await service.activate('contract-1', 'activation-actor');
       await new Promise((r) => setImmediate(r));
       expect(staffNotifyMock.notify).toHaveBeenCalledTimes(1);
       expect(staffNotifyMock.notify).toHaveBeenCalledWith('contract.activated', expect.objectContaining({

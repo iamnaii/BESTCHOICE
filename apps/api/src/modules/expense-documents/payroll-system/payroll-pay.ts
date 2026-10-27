@@ -28,6 +28,7 @@ export function displayRate(base: Prisma.Decimal, multiplier: Prisma.Decimal): P
 /**
  * ชั่วโมงทำงานวันหยุดที่จ่าย: ทับซ้อนของ [เข้า, ออก] กับ [เวลาเข้างาน, เวลาเลิกงาน] (นาทีปัดลง)
  * → พักเที่ยง (ทับซ้อน < 300 นาที ไม่หัก · ≥ 300 หัก 60 แต่ไม่ต่ำกว่า 299 ⇒ ไม่มีหน้าผา) → ปัด 15/45 → เพดาน 8 ชม. · ไม่มีเวลาออก = 0
+ * - `workDate` ต้องเป็นเที่ยงคืนไทย (`fromDbDate(row.workDate)`) — ส่งค่า `@db.Date` ดิบ (เที่ยงคืน UTC) ช่วงเวลางานจะเลื่อน 7 ชม.
  */
 export function holidayWorkHours(i: { workDate: Date; clockIn: Date | null; clockOut: Date | null; rules: ScheduleRules }): number {
   if (!i.clockIn || !i.clockOut) return 0;
@@ -41,6 +42,7 @@ export function holidayWorkHours(i: { workDate: Date; clockIn: Date | null; cloc
 }
 
 export interface PayDay {
+  /** เที่ยงคืนไทยของวันทำงาน (`fromDbDate(row.workDate)`) — ไม่ใช่ค่า `@db.Date` ดิบ (เที่ยงคืน UTC) ซึ่งเลื่อนช่วงเวลางาน 7 ชม. */
   workDate: Date;
   branchId: string;
   dayKind: AttendanceDayKind;

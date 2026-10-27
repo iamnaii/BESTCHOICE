@@ -54,8 +54,7 @@ import {
   Mail,
   // Unified contact party-master — สมุดผู้ติดต่อ
   ArrowLeft,
-  BookUser, Camera
-} from 'lucide-react';
+  BookUser, Camera, Clock,} from 'lucide-react';
 
 /* ── Types ─────────────────────────────────────────── */
 
@@ -214,6 +213,7 @@ const BRANCH_MANAGER_CONFIG: RoleMenuConfig = {
         { label: 'รายการขาย', path: '/sales', icon: TrendingUp },
         { label: 'สรุปเงินรายวัน', path: '/shop/daily-cash', icon: Banknote },
         { label: 'งานของทีม', path: '/todos', icon: CheckSquare },
+        { label: 'ลงเวลา', path: '/attendance', icon: Clock },
         // route อนุญาต role นี้อยู่แล้ว แต่เมนูไม่มี ⇒ MainLayout เด้ง (route-reachability.test.ts)
         { label: 'กำไร-ขาดทุน (P&L)', path: '/profit-loss', icon: PieChart },
       ],
@@ -653,6 +653,7 @@ const OWNER_CONFIG: RoleMenuConfig = {
       icon: ShoppingCart,
       zone: 'shop',
       items: [
+        { label: 'ลงเวลา', path: '/attendance', icon: Clock },
         { label: 'ลูกค้า', path: '/customers', icon: Users },
         { label: 'ตรวจเครดิต', path: '/credit-checks', icon: ShieldCheck },
         { label: NAV_LABELS.sales, path: '/pos', icon: ShoppingCart },

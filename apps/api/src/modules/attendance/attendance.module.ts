@@ -8,6 +8,8 @@ import { KioskPunchService } from './kiosk-punch.service';
 import { KioskPublicController } from './kiosk-public.controller';
 import { AttendanceController } from './attendance.controller';
 import { AttendanceDevicesController } from './attendance-devices.controller';
+import { AttendanceCloseDayCron } from './crons/attendance-close-day.cron';
+import { AttendanceRetentionCron } from './crons/attendance-retention.cron';
 
 /**
  * ลงเวลาทำงานผ่านเครื่องประจำสาขา (ก้อน 10 · D3) — spec docs/superpowers/specs/2026-10-27-attendance-kiosk-design.md
@@ -16,7 +18,7 @@ import { AttendanceDevicesController } from './attendance-devices.controller';
 @Module({
   imports: [AuditModule, StorageModule],
   controllers: [KioskPublicController, AttendanceController, AttendanceDevicesController],
-  providers: [AttendanceDeviceService, AttendanceSettingsService, KioskPunchService, AttendanceService],
+  providers: [AttendanceDeviceService, AttendanceSettingsService, KioskPunchService, AttendanceService, AttendanceCloseDayCron, AttendanceRetentionCron],
   exports: [AttendanceDeviceService, AttendanceSettingsService, KioskPunchService, AttendanceService],
 })
 export class AttendanceModule {}

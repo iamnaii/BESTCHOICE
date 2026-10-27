@@ -27,6 +27,7 @@ import {
   PayrollDetailActions,
   PayrollDetailSection,
   payrollBlockedReasons,
+  PAYROLL_GATE_POLL_MS,
   payrollGateBlocks,
   usePayrollGateRefresh,
   type PayrollDetailDoc,
@@ -156,6 +157,9 @@ export default function ExpenseDetailPage() {
     enabled: !!id,
     // Payroll D4 — ระหว่างที่ด่านปิดปุ่มอยู่ กลับมาที่หน้าต่างนี้ = ถาม server ใหม่ (เช่น เจ้าของเพิ่งล้างธงในอีกแท็บ)
     refetchOnWindowFocus: (query) => (payrollGateBlocks(query.state.data?.payrollGate) ? 'always' : false),
+    // R16 — นาฬิกาเครื่องเร็วกว่า server (ตั้งเวลาปิดงวดยิงก่อน server ถึงเวลา) หรือเจ้าของล้างธงจากอีกหน้าต่าง/อีกเครื่อง
+    // (ไม่มี visibilitychange) ⇒ ถามทุก 60 วินาทีระหว่างที่ด่านปิดปุ่ม · ไม่มีอะไรปิด/ไม่ใช่ใบเงินเดือน/ลงบัญชีแล้ว = ไม่ถาม
+    refetchInterval: (query) => (payrollGateBlocks(query.state.data?.payrollGate) ? PAYROLL_GATE_POLL_MS : false),
   });
 
   const auditQuery = useQuery<RawAuditEntry[]>({
@@ -292,7 +296,7 @@ export default function ExpenseDetailPage() {
                     {money(doc.netPayment ?? doc.totalAmount)}
                   </div>
                   {/* R3-3 (2026-08-06) — ไฟล์โอนเงินเดือนเข้าธนาคาร · กระดาน 2: เฉพาะใบที่ลงบัญชีแล้ว */}
-                  {isPayroll && <PayrollBankCsvButton doc={doc} />}
+                  {isPayroll && <PayrollBankCsvButton doc={doc} viewerRole={user?.role} />}
                 </div>
               </div>
 

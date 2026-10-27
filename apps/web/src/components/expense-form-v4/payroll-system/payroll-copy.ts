@@ -48,6 +48,18 @@ export const OPEN_DOC_HINT = 'เปิดใบเพื่อดูราย�
 /** ไฟล์โอนเงินเดือนเข้าธนาคาร — เฉพาะใบที่ลงบัญชีแล้ว (กระดาน 2) */
 export const BANK_CSV_NEEDS_POST = 'ลงบัญชีก่อนจึงดาวน์โหลดไฟล์โอนได้';
 
+/**
+ * แถวที่ไฟล์โอนข้ามเพราะไม่มีเลขบัญชี — เลขบัญชีแก้ที่ ตั้งค่าระบบ › ผู้ใช้ & สิทธิ์ › ผู้ใช้ / พนักงาน (`/users`,
+ * settings-registry 'access' › 'users') › แท็บ "HR / เงินเดือน" ของ `/users/:id` — เปิดได้เฉพาะ OWNER (App.tsx) ⇒
+ * FM/ACCOUNTANT (ดาวน์โหลดไฟล์ได้ แต่เปิดหน้าผู้ใช้ไม่ได้) ให้เจ้าของเพิ่ม
+ */
+const USERS_MENU_PATH = 'ตั้งค่าระบบ › ผู้ใช้ & สิทธิ์ › ผู้ใช้ / พนักงาน';
+export const bankCsvSkippedText = (skipped: number, viewerRole: string | undefined) =>
+  `ข้าม ${skipped} คนที่ไม่มีเลขบัญชีธนาคารในทะเบียนพนักงาน — ` +
+  (viewerRole === 'OWNER'
+    ? `เพิ่มได้ที่ ${USERS_MENU_PATH} › แท็บ HR / เงินเดือน`
+    : `ให้เจ้าของเพิ่มเลขบัญชีที่ ${USERS_MENU_PATH}`);
+
 /** กระดาน 2 — คำอธิบายใต้ปุ่ม แก้ไข */
 export const DRAFT_EDIT_CAPTION = 'บันทึกใหม่ ระบบคิดยอดให้';
 export const STALE_EDIT_HINT = 'กด แก้ไข แล้วใบกลับเป็นร่างเอง — ไม่ต้องรอผู้อนุมัติกดส่งกลับ';

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import Decimal from 'decimal.js';
@@ -196,6 +196,21 @@ describe('PayrollSlipSheet (PAYROLL voucher)', () => {
     const sso = await screen.findByRole('cell', { name: 'เงินสมทบประกันสังคม (พนักงาน)' });
     expect(sso).toHaveAttribute('colspan', '2');
     expect(screen.getByRole('cell', { name: 'รวมรายการหัก' })).toHaveAttribute('colspan', '2');
+  });
+
+  it('a non-posted payroll with no lines has no slip notice, so print does not point at one', async () => {
+    apiGet.mockResolvedValue({ data: { ...voucher('DRAFT'), payroll: { payrollPeriod: '2026-10', lines: [] } } });
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MemoryRouter initialEntries={['/expenses/pr-1/voucher']}>
+          <Routes><Route path="/expenses/:id/voucher" element={<PaymentVoucherPage />} /></Routes>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+    const print = await screen.findByRole('button', { name: /พิมพ์ \/ บันทึก PDF/ });
+    await waitFor(() => expect(print).toBeDisabled());
+    expect(document.getElementById('payroll-slip-blocked')).toBeNull();
+    expect(print).not.toHaveAttribute('aria-describedby');
   });
 
   it('keeps printing off while the document loads', async () => {

@@ -156,6 +156,7 @@ beforeEach(() => {
 afterEach(() => {
   focusManager.setFocused(undefined);
   vi.useRealTimers();
+  vi.restoreAllMocks();
 });
 
 const day = { dayId: 'd1', userId: 'u1', employeeName: 'สมศรี มีสุข', date: '2026-10-16', branchId: 'b1' };
@@ -343,6 +344,8 @@ describe('409 from approve / post', () => {
 
     await userEvent.click(within(alert).getByRole('button', { name: 'ปิด' }));
     expect(screen.queryByText(STALE)).not.toBeInTheDocument();
+    // ปุ่มปิดหายไปพร้อมแจ้งเตือน — โฟกัสไปที่หัวตารางบรรทัด ไม่หลุดไปที่ body
+    expect(screen.getByRole('heading', { name: 'รายการเงินเดือน (2 คน)' })).toHaveFocus();
   });
 
   it('the stale alert goes away once the document changes status (sent back to draft elsewhere)', async () => {
@@ -423,6 +426,43 @@ describe('payroll actions', () => {
   });
 
   // R15.6 — กระดาน 2: ไฟล์โอนธนาคารเฉพาะใบที่ลงบัญชีแล้ว
+  // R16.4 — ทางที่ข้อความชี้ต้องมีจริงสำหรับ role นั้น: แท็บ HR / เงินเดือน อยู่ในหน้าผู้ใช้ (/users/:id — เจ้าของเท่านั้น)
+  describe('skipped-lines toast after the CSV download', () => {
+    beforeEach(() => {
+      vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:csv');
+      vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+      vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+    });
+    const csvResponse = { data: new Blob(['x']), headers: { 'x-skipped-lines': '1' } };
+
+    it('OWNER is pointed at the HR tab of the user record', async () => {
+      mount(payrollDoc('POSTED', null));
+      apiGet.mockImplementation((path: string) =>
+        Promise.resolve(path.endsWith('/bank-transfer.csv') ? csvResponse : { data: path === '/expense-documents/pr-1' ? currentDoc : [] }),
+      );
+      await userEvent.click(await screen.findByRole('button', { name: 'ไฟล์โอนธนาคาร (CSV)' }));
+      await waitFor(() =>
+        expect(toast.warning).toHaveBeenCalledWith(
+          'ข้าม 1 คนที่ไม่มีเลขบัญชีธนาคารในทะเบียนพนักงาน — เพิ่มได้ที่ ตั้งค่าระบบ › ผู้ใช้ & สิทธิ์ › ผู้ใช้ / พนักงาน › แท็บ HR / เงินเดือน',
+        ),
+      );
+    });
+
+    it('ACCOUNTANT cannot open the user record, so it asks the owner', async () => {
+      auth.user = { ...OWNER, id: 'acc-1', role: 'ACCOUNTANT' };
+      mount(payrollDoc('POSTED', null));
+      apiGet.mockImplementation((path: string) =>
+        Promise.resolve(path.endsWith('/bank-transfer.csv') ? csvResponse : { data: path === '/expense-documents/pr-1' ? currentDoc : [] }),
+      );
+      await userEvent.click(await screen.findByRole('button', { name: 'ไฟล์โอนธนาคาร (CSV)' }));
+      await waitFor(() =>
+        expect(toast.warning).toHaveBeenCalledWith(
+          'ข้าม 1 คนที่ไม่มีเลขบัญชีธนาคารในทะเบียนพนักงาน — ให้เจ้าของเพิ่มเลขบัญชีที่ ตั้งค่าระบบ › ผู้ใช้ & สิทธิ์ › ผู้ใช้ / พนักงาน',
+        ),
+      );
+    });
+  });
+
   it('the bank-transfer CSV is available only once posted', async () => {
     mount(payrollDoc('POSTED', null));
     const csv = await screen.findByRole('button', { name: 'ไฟล์โอนธนาคาร (CSV)' });
@@ -507,20 +547,70 @@ describe('gate refresh while the page stays open', () => {
     expect(screen.queryByText(POST_CUTOFF)).not.toBeInTheDocument();
   });
 
-  it('a cutoff further away than one timer can wait still fires on time (no early refetch)', async () => {
+  it('a cutoff further away than one timer can wait still fires on time (no early cutoff refresh)', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
-    // 40 วันก่อนเวลาปิดงวด — setTimeout รอได้ไม่เกิน ~24.8 วัน
+    // 40 วันก่อนเวลาปิดงวด — setTimeout รอได้ไม่เกิน ~24.8 วัน (เกินแล้วยิงทันที)
     vi.setSystemTime(new Date(Date.parse(CLOSABLE_AT) - 40 * 24 * 3600 * 1000));
     mount(payrollDoc('PENDING_APPROVAL', { closableAt: CLOSABLE_AT, deviceConflicts: [] }));
     await screen.findByText(POST_CUTOFF);
-    const before = docFetches();
+    // ตัวตั้งเวลาปิดงวดสั่ง invalidate · การถามทุก 60 วินาที (R16) เป็น refetch ของ query เอง — แยกกันด้วย spy นี้
+    const spy = vi.spyOn(queryClient, 'invalidateQueries');
+    const cutoffRefreshes = () =>
+      spy.mock.calls.filter(([f]) => JSON.stringify((f as { queryKey: unknown[] }).queryKey) === JSON.stringify(['expense-document', 'pr-1'])).length;
     await act(async () => {
       vi.advanceTimersByTime(30 * 24 * 3600 * 1000);
     });
-    expect(docFetches()).toBe(before);
+    expect(cutoffRefreshes()).toBe(0);
     await act(async () => {
       vi.advanceTimersByTime(10 * 24 * 3600 * 1000 + 2_000);
     });
-    await waitFor(() => expect(docFetches()).toBeGreaterThan(before));
+    expect(cutoffRefreshes()).toBe(1);
+  });
+});
+
+// R16 — นาฬิกาเครื่องเร็วกว่า server / ล้างธงจากอีกหน้าต่างหรืออีกเครื่อง (ไม่มี visibilitychange):
+// ระหว่างที่ด่านปิดปุ่มอยู่ หน้าถาม server ทุก 60 วินาที และหยุดเมื่อไม่มีอะไรปิดปุ่มแล้ว
+describe('gate polling while blocked', () => {
+  const advance = (ms: number) =>
+    act(async () => {
+      vi.advanceTimersByTime(ms);
+    });
+
+  it('a client clock ahead of the server: the cutoff refetch still says not yet, and polling recovers within 60 s', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.setSystemTime(new Date(Date.parse(CLOSABLE_AT) + 5_000));
+    mount(payrollDoc('PENDING_APPROVAL', { closableAt: CLOSABLE_AT, deviceConflicts: [] }));
+    await screen.findByText(POST_CUTOFF);
+    // นาฬิกาเครื่องเลยเวลาแล้ว ⇒ ถามทันที แต่ server ยังตอบเวลาเดิม
+    await waitFor(() => expect(docFetches()).toBe(2));
+    expect(approveButton()).toBeDisabled();
+    currentDoc = payrollDoc('PENDING_APPROVAL', { closableAt: null, deviceConflicts: [] });
+    await advance(60_000);
+    await waitFor(() => expect(approveButton()).toBeEnabled());
+  });
+
+  it('a flag cleared elsewhere shows up within 60 s, then polling stops', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    mount(payrollDoc('PENDING_APPROVAL', { closableAt: null, deviceConflicts: [day] }));
+    await screen.findByText(DEVICE_CONFLICT);
+    currentDoc = payrollDoc('PENDING_APPROVAL', { closableAt: null, deviceConflicts: [] });
+    await advance(60_000);
+    await waitFor(() => expect(approveButton()).toBeEnabled());
+    const settled = docFetches();
+    await advance(180_000);
+    expect(docFetches()).toBe(settled);
+  });
+
+  it.each([
+    ['PENDING_APPROVAL', { closableAt: null, deviceConflicts: [] }],
+    ['POSTED', null],
+    ['VOIDED', null],
+  ] as const)('%s with nothing blocking never polls', async (status, gate) => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    mount(payrollDoc(status, gate as Gate));
+    await screen.findByRole('row', { name: /สมศรี มีสุข/ });
+    const before = docFetches();
+    await advance(180_000);
+    expect(docFetches()).toBe(before);
   });
 });

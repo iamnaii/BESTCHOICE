@@ -93,7 +93,7 @@ describe('SentryExceptionFilter — response shape', () => {
   it('forwards closableAt, days and documentNumber of the other payroll 409s', () => {
     const cutoff = run(new ConflictException({ code: 'PAYROLL_SUBMIT_CUTOFF', closableAt: '2026-11-01T11:00:00.000Z', message: 'ส่งขออนุมัติได้ตั้งแต่ 1 พ.ย. 18:00' }));
     expect(cutoff.body).toMatchObject({ code: 'PAYROLL_SUBMIT_CUTOFF', closableAt: '2026-11-01T11:00:00.000Z' });
-    const days = [{ dayId: 'd1', userId: 'u1', employeeName: 'นุ๊ก', date: '2026-10-15' }];
+    const days = [{ dayId: 'd1', userId: 'u1', employeeName: 'นุ๊ก', date: '2026-10-15', branchId: 'b1' }];
     expect(run(new ConflictException({ code: 'PAYROLL_DEVICE_CONFLICT', days, message: 'อนุมัติไม่ได้' })).body).toMatchObject({ code: 'PAYROLL_DEVICE_CONFLICT', days });
     expect(run(new ConflictException({ code: 'PAYROLL_OTHER_DOC', documentNumber: 'PR-20261101-0001', message: 'OT ของ นุ๊ก' })).body).toMatchObject({ code: 'PAYROLL_OTHER_DOC', documentNumber: 'PR-20261101-0001' });
   });

@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef } from 'react';
+import { useEffect, useId, useRef, type RefObject } from 'react';
 import { Link } from 'react-router';
 import { useQueryClient } from '@tanstack/react-query';
 import Decimal from 'decimal.js';
@@ -26,6 +26,7 @@ import {
   SLIP_PAPER_ONLY,
   STALE_EDIT_HINT,
   attendanceLockedText,
+  bankCsvSkippedText,
   deviceConflictReason,
   deviceConflictText,
   postCutoffText,
@@ -77,9 +78,12 @@ export function payrollBlockedReasons(
   return { primary: primary === 'submit' ? cutoff : (cutoff ?? flagged), approve: cutoff ?? flagged };
 }
 
-/** ด่านปิดปุ่มอยู่ไหม (ยังไม่ถึงเวลาปิดงวด หรือมีวันติดธง) — ระหว่างนี้หน้าโหลดใบใหม่เมื่อกลับมาที่หน้าต่าง */
+/** ด่านปิดปุ่มอยู่ไหม (ยังไม่ถึงเวลาปิดงวด หรือมีวันติดธง) — ระหว่างนี้หน้าโหลดใบใหม่เมื่อกลับมาที่หน้าต่าง และทุก 60 วินาที */
 export const payrollGateBlocks = (gate: PayrollGateView | null | undefined) =>
   !!gate && (!!gate.closableAt || gate.deviceConflicts.length > 0);
+
+/** ถามด่านซ้ำทุก 60 วินาทีระหว่างที่ปุ่มถูกปิด (นาฬิกาเครื่องคลาดจาก server · ล้างธงจากอีกเครื่อง) */
+export const PAYROLL_GATE_POLL_MS = 60_000;
 
 /** setTimeout รอได้ไม่เกิน 2^31−1 ms (~24.8 วัน) — เกินนั้นยิงทันที ⇒ ตั้งเป็นช่วง ๆ จนถึงเวลา */
 const MAX_TIMEOUT_MS = 2_147_483_647;
@@ -159,7 +163,14 @@ const COLUMNS: Array<[keyof LineTotals, string]> = [
   ['net', 'สุทธิ'],
 ];
 
-function PayrollLinesTable({ lines }: { lines: PayrollDetailLine[] }) {
+function PayrollLinesTable({
+  lines,
+  headingRef,
+}: {
+  lines: PayrollDetailLine[];
+  /** หัวตาราง — ที่วางโฟกัสเมื่อปิดแจ้งเตือนยอดเปลี่ยน */
+  headingRef: RefObject<HTMLHeadingElement | null>;
+}) {
   const titleId = useId();
   const rows = lines.map((l) => ({ line: l, totals: lineTotals(l) }));
   const grand = COLUMNS.reduce(
@@ -168,7 +179,12 @@ function PayrollLinesTable({ lines }: { lines: PayrollDetailLine[] }) {
   );
   return (
     <section aria-labelledby={titleId} className="min-w-0 rounded-lg border border-border bg-card overflow-hidden lg:flex-1">
-      <h2 id={titleId} className="px-4 py-2 text-sm font-semibold leading-snug">
+      <h2
+        id={titleId}
+        ref={headingRef}
+        tabIndex={-1}
+        className="px-4 py-2 text-sm font-semibold leading-snug focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+      >
         {`รายการเงินเดือน (${lines.length} คน)`}
       </h2>
       <ScreenTable className="w-full text-sm" aria-label="รายการเงินเดือน">
@@ -310,13 +326,19 @@ export function PayrollDetailSection({
       : postCutoffText(gate.closableAt)
     : null;
   const conflicts = gate?.deviceConflicts ?? [];
+  const linesHeadingRef = useRef<HTMLHeadingElement>(null);
+  // ปุ่ม "ปิด" หายไปพร้อมแจ้งเตือน — ย้ายโฟกัสไปหัวตารางบรรทัด (ไม่ให้หลุดไปที่ body)
+  const dismissStale = () => {
+    linesHeadingRef.current?.focus();
+    onDismissStale();
+  };
   const reviewLines = lines.map((l) => ({ employeeName: l.employeeName, systemNotes: liveReviewNotes(l.systemNotes, gate) }));
   // คนที่ผูกทะเบียน = คนที่ลงเวลาเดือนนี้ถูกล็อกเมื่อใบลงบัญชีแล้ว
   const linkedPeople = lines.filter((l) => l.userId).length;
 
   return (
     <div className="flex flex-col gap-4">
-      {staleConflict && <PayrollStaleAlert docId={doc.id} conflict={staleConflict} onDismiss={onDismissStale} />}
+      {staleConflict && <PayrollStaleAlert docId={doc.id} conflict={staleConflict} onDismiss={dismissStale} />}
       {cutoffText && (
         <div role="status" className="flex items-start gap-2 rounded-lg border border-info/40 bg-info/10 p-3">
           <Clock className="mt-0.5 size-4 shrink-0 text-info" aria-hidden="true" />
@@ -361,7 +383,7 @@ export function PayrollDetailSection({
       {lines.length > 0 && (
         // แผงตรวจไม่แสดงเมื่อไม่มีวันที่ต้องตรวจ/คำเตือน — ตารางจึงเต็มความกว้าง
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:[&>aside]:w-80 lg:[&>aside]:shrink-0">
-          <PayrollLinesTable lines={lines} />
+          <PayrollLinesTable lines={lines} headingRef={linesHeadingRef} />
           <PayrollReviewPanel lines={reviewLines} viewer={viewer} label="ตรวจก่อนอนุมัติ" />
         </div>
       )}
@@ -423,7 +445,7 @@ export function PayrollDetailActions({ doc }: { doc: PayrollDetailDoc }) {
  * R3-3 ไฟล์โอนเงินเดือนเข้าธนาคาร (เลขบัญชีจากทะเบียนพนักงาน · แถวที่ไม่มีเลขบัญชีถูกข้าม + แจ้งจำนวน) —
  * กระดาน 2: ดาวน์โหลดได้เมื่อใบลงบัญชีแล้ว (ยอดยังเปลี่ยนได้จนกว่าจะลงบัญชี) · ก่อนนั้นปิดพร้อมเหตุผล · ใบกลับรายการไม่มีปุ่ม
  */
-export function PayrollBankCsvButton({ doc }: { doc: PayrollDetailDoc }) {
+export function PayrollBankCsvButton({ doc, viewerRole }: { doc: PayrollDetailDoc; viewerRole: string | undefined }) {
   const reasonId = useId();
   if (doc.status === 'VOIDED') return null;
   const posted = doc.status === 'POSTED';
@@ -437,9 +459,7 @@ export function PayrollBankCsvButton({ doc }: { doc: PayrollDetailDoc }) {
       a.download = `bank-transfer-${doc.number}.csv`;
       a.click();
       URL.revokeObjectURL(url);
-      if (skipped > 0) {
-        toast.warning(`ข้าม ${skipped} คนที่ไม่มีเลขบัญชีธนาคารในทะเบียนพนักงาน — เพิ่มได้ที่ ผู้ใช้ → HR/เงินเดือน`);
-      }
+      if (skipped > 0) toast.warning(bankCsvSkippedText(skipped, viewerRole));
     } catch {
       toast.error('ดาวน์โหลดไฟล์โอนธนาคารไม่สำเร็จ');
     }

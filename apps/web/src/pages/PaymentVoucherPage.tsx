@@ -138,6 +138,9 @@ const isPayrollSlipBlocked = (doc: Pick<VoucherDoc, 'documentType' | 'status'>) 
   doc.documentType === 'PAYROLL' && doc.status !== 'POSTED';
 /** ข้อความแทนสลิป (ใบยังไม่ลงบัญชี) — ปุ่มพิมพ์ที่ถูกปิดชี้มาที่นี่ (aria-describedby) */
 const SLIP_BLOCKED_ID = 'payroll-slip-blocked';
+/** ข้อความนั้นแสดงจริงไหม — ใบเงินเดือนที่ไม่มีบรรทัดไปใช้ใบสำคัญจ่ายปกติ (ไม่มีข้อความให้ชี้) */
+const rendersSlipBlockedNotice = (doc: Pick<VoucherDoc, 'documentType' | 'status' | 'payroll'>) =>
+  isPayrollSlipBlocked(doc) && (doc.payroll?.lines.length ?? 0) > 0;
 
 export default function PaymentVoucherPage() {
   const { id } = useParams<{ id: string }>();
@@ -189,7 +192,7 @@ export default function PaymentVoucherPage() {
             type="button"
             onClick={printDocument}
             disabled={docQuery.isLoading || (!!docQuery.data && isPayrollSlipBlocked(docQuery.data))}
-            aria-describedby={docQuery.data && isPayrollSlipBlocked(docQuery.data) ? SLIP_BLOCKED_ID : undefined}
+            aria-describedby={docQuery.data && rendersSlipBlockedNotice(docQuery.data) ? SLIP_BLOCKED_ID : undefined}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
           >
             <Printer size={14} />

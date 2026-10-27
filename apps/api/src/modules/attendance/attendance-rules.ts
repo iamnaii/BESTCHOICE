@@ -59,6 +59,26 @@ export function workDateOf(at: Date): Date {
   return bangkokMidnight(year, month, day);
 }
 
+/**
+ * `AttendanceDay.workDate` เป็น `@db.Date` — Prisma เก็บ "วันที่ในเขต UTC" ของ Date ที่ส่งไป
+ * ⇒ ห้ามส่งเที่ยงคืนไทย (= 17:00Z ของวันก่อน จะถูกเก็บเป็นวันก่อน) · ส่ง/เทียบด้วย `dbDate()` และอ่านกลับด้วย `fromDbDate()` เสมอ
+ */
+export function dbDate(workDate: Date): Date {
+  const { year, month, day } = bangkokCalendarParts(workDate);
+  return new Date(Date.UTC(year, month, day));
+}
+
+/** ค่าที่ Prisma คืนจาก `@db.Date` (เที่ยงคืน UTC ของวันปฏิทิน) → เที่ยงคืนไทยของวันนั้น สำหรับคำนวณ */
+export function fromDbDate(stored: Date): Date {
+  return bangkokMidnight(stored.getUTCFullYear(), stored.getUTCMonth(), stored.getUTCDate());
+}
+
+/** 'YYYY-MM-DD' ของวันปฏิทินไทยที่ `workDate` (เที่ยงคืนไทย) แทน */
+export function workDateString(workDate: Date): string {
+  const { year, month, day } = bangkokCalendarParts(workDate);
+  return `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+}
+
 /** 'HH:mm' → นาทีนับจากเที่ยงคืน · รูปแบบผิดโยน (ค่าตั้งค่าต้องถูกตรวจตั้งแต่ตอนบันทึก) */
 export function parseClock(value: string): number {
   const m = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(value.trim());

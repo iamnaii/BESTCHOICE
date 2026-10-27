@@ -72,7 +72,7 @@ export class AttendanceSettingsService {
     workEnd?: string;
     lateGraceMinutes?: number;
     photoRetentionDays?: number;
-    branches?: Array<{ branchId: string; workStart: string | null; workEnd: string | null }>;
+    branches?: Array<{ branchId: string; workStart?: string | null; workEnd?: string | null }>;
   }): Promise<AttendanceSettings> {
     for (const clock of [input.workStart, input.workEnd, ...(input.branches ?? []).flatMap((b) => [b.workStart, b.workEnd])]) {
       if (clock != null) {
@@ -93,7 +93,8 @@ export class AttendanceSettingsService {
         await tx.systemConfig.upsert({ where: { key }, create: { key, value }, update: { value } });
       }
       for (const b of input.branches ?? []) {
-        await tx.branch.update({ where: { id: b.branchId }, data: { workStart: b.workStart, workEnd: b.workEnd } });
+        // ไม่ส่งคีย์ = ไม่แตะ · null = กลับไปใช้ค่าระบบ
+        await tx.branch.update({ where: { id: b.branchId }, data: { ...(b.workStart !== undefined ? { workStart: b.workStart } : {}), ...(b.workEnd !== undefined ? { workEnd: b.workEnd } : {}) } });
       }
     });
     return this.getSettings();

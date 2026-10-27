@@ -7,7 +7,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
 import { bangkokCalendarParts } from '../../utils/date.util';
 import { AttendanceSettingsService } from './attendance-settings.service';
-import { computeDaySummary, workDateOf } from './attendance-rules';
+import { computeDaySummary, dbDate, fromDbDate, workDateOf } from './attendance-rules';
 
 /**
  * ตอกบัตร (ก้อน 10 D3 · สเปก §4.2 §5)
@@ -82,7 +82,7 @@ export class KioskPunchService {
     if (kind === 'IN' && day?.clockIn && !day.clockOut) throw new ConflictException(`ตอกเข้าแล้วเมื่อ ${hhmm(day.clockIn)}`);
     if (kind === 'OUT' && !day?.clockIn) throw new ConflictException('ยังไม่ได้ตอกเข้างานวันนี้');
 
-    const workDate = day?.workDate ?? workDateOf(now);
+    const workDate = day ? fromDbDate(day.workDate) : workDateOf(now); // เที่ยงคืนไทย สำหรับคำนวณ
     const dayKind = day?.dayKind ?? 'WORK';
     const nextClockIn = kind === 'IN' ? (day?.clockIn && day.clockOut ? day.clockIn : now) : day!.clockIn;
     const nextClockOut = kind === 'OUT' ? now : null;
@@ -120,7 +120,7 @@ export class KioskPunchService {
       };
       if (!day) {
         return tx.attendanceDay.create({
-          data: { userId, branchId: device.branchId, workDate, dayKind, clockIn: now, clockInPunchId: punch.id, clockOut: null, clockOutPunchId: null, ...computed },
+          data: { userId, branchId: device.branchId, workDate: dbDate(workDate), dayKind, clockIn: now, clockInPunchId: punch.id, clockOut: null, clockOutPunchId: null, ...computed },
         });
       }
       // ใช้ฟิลด์ตรง (clockInPunchId/clockOutPunchId) แทน relation API — ตรงสัญญาในแผนและอ่านง่ายในเทส
@@ -142,11 +142,10 @@ export class KioskPunchService {
   /** IN = แถวของวันนี้ · OUT = แถวของวันนี้ ถ้าไม่มี/ยังไม่ IN ให้หาแถวเปิดค้างของเมื่อวาน (ข้ามเที่ยงคืน) */
   private async findTargetDay(userId: string, kind: AttendancePunchKind, now: Date): Promise<AttendanceDay | null> {
     const today = workDateOf(now);
-    const todayRow = await this.prisma.attendanceDay.findUnique({ where: { userId_workDate: { userId, workDate: today } } });
+    const todayRow = await this.prisma.attendanceDay.findUnique({ where: { userId_workDate: { userId, workDate: dbDate(today) } } });
     if (kind === 'IN' || (todayRow && todayRow.clockIn)) return todayRow;
-    const { year, month, day } = bangkokCalendarParts(new Date(today.getTime() - 60_000));
-    const yesterday = workDateOf(new Date(Date.UTC(year, month, day, 12)));
-    const open = await this.prisma.attendanceDay.findFirst({ where: { userId, workDate: yesterday, clockOut: null, clockIn: { not: null }, deletedAt: null } });
+    const yesterday = workDateOf(new Date(today.getTime() - 60_000)); // เที่ยงคืนไทยของเมื่อวาน
+    const open = await this.prisma.attendanceDay.findFirst({ where: { userId, workDate: dbDate(yesterday), clockOut: null, clockIn: { not: null }, deletedAt: null } });
     return open ?? todayRow;
   }
 

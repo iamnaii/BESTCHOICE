@@ -1,7 +1,9 @@
+import { randomInt } from 'crypto';
 import { assertNotLastOwner, lockEmployeeAccess } from '../employee-access/access-snapshot.service';
 import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
 import { UserRole, Prisma } from '@prisma/client';
 import { roleCompanyAccess } from '@installment/shared';
+import { hashPII } from '../../utils/pii.util';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { EmployeesService } from '../employees/employees.service';
@@ -202,6 +204,27 @@ export class UsersService {
    * privilege flips show up in the audit trail (matches the existing
    * pattern for `SYSTEM_CONFIG_UPDATE` on reverse_permission flag).
    */
+  /**
+   * รีเซ็ตรหัสตอกบัตร (ลงเวลา ก้อน 10): สุ่ม 6 หลัก เก็บเป็น hashPII (unique ทั้งบริษัท — ชนแล้วสุ่มใหม่) คืนรหัสครั้งเดียว
+   * audit ไม่เก็บรหัส · ใช้ได้เฉพาะ OWNER (controller)
+   */
+  async resetAttendancePin(id: string, actorUserId: string): Promise<{ pin: string }> {
+    const user = await this.prisma.user.findFirst({ where: { id, deletedAt: null }, select: { id: true, name: true, nickname: true } });
+    if (!user) throw new NotFoundException('ไม่พบผู้ใช้งาน');
+    const salt = process.env.PII_HASH_SALT || '';
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const pin = String(randomInt(0, 1_000_000)).padStart(6, '0');
+      try {
+        await this.prisma.user.update({ where: { id }, data: { attendancePinHash: hashPII(pin, salt) }, select: { id: true } });
+        await this.audit.log({ userId: actorUserId, action: 'ATTENDANCE_PIN_RESET', entity: 'user', entityId: id, newValue: { targetUserName: user.name, attempt } });
+        return { pin };
+      } catch (err) {
+        if ((err as { code?: string }).code !== 'P2002') throw err;
+      }
+    }
+    throw new ConflictException('สุ่มรหัสไม่สำเร็จ (ชนซ้ำ) — ลองใหม่อีกครั้ง');
+  }
+
   async setReverseOverride(id: string, value: boolean | null, actorUserId?: string) {
     const user = await this.prisma.user.findFirst({
       where: { id, deletedAt: null },

@@ -1,4 +1,4 @@
-import { ConflictException } from '@nestjs/common';
+import { BadRequestException, ConflictException } from '@nestjs/common';
 import { Decimal } from '@prisma/client/runtime/library';
 import { ExpenseDocumentLifecycleService } from '../services/expense-document-lifecycle.service';
 import { StatusTransitionService } from '../services/status-transition.service';
@@ -116,6 +116,37 @@ describe('approve / post require the version the approver saw (R20 FX2)', () => 
       expect(gate.assertPostable).toHaveBeenCalledWith(prisma, 'doc-1', expect.any(Date));
       expect(prisma.expenseDocument.update).toHaveBeenCalledWith({ where: { id: 'doc-1' }, data: { status: 'APPROVED', approvedById: 'owner-1' } });
       expect(templates.payroll.execute).toHaveBeenCalledWith('doc-1', prisma);
+    });
+  });
+
+  describe('R23 — the version check runs after the approval-workflow and status checks (still before the payroll gate)', () => {
+    it('a DRAFT payroll with approval on and no token → 400 "ต้องผ่านการอนุมัติก่อน" (not 409), nothing written', async () => {
+      const { prisma, templates, gate, lifecycle } = setup({ documentType: 'PAYROLL', status: 'DRAFT', updatedAt: SEEN });
+      prisma.systemConfig.findFirst.mockImplementation(async ({ where }: { where: { key: string } }) =>
+        where.key === 'approval_enabled' ? { value: 'true' } : null,
+      );
+      const err = await lifecycle.post('doc-1', 'owner-1', 'OWNER').catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(BadRequestException);
+      expect((err as BadRequestException).message).toContain('ต้องผ่านการอนุมัติก่อน');
+      expect(gate.assertPostable).not.toHaveBeenCalled();
+      expect(prisma.expenseDocument.update).not.toHaveBeenCalled();
+      expect(templates.payroll.execute).not.toHaveBeenCalled();
+    });
+
+    it('approve of a payroll that is no longer PENDING_APPROVAL (sent back to DRAFT) with a stale token → the status error, not 409', async () => {
+      const { prisma, gate, lifecycle } = setup({ documentType: 'PAYROLL', status: 'DRAFT', updatedAt: CHANGED });
+      const err = await lifecycle.approve('doc-1', 'owner-1', 'OWNER', { expectedUpdatedAt: SEEN }).catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(BadRequestException);
+      expect(err).not.toBeInstanceOf(ConflictException);
+      expect(gate.assertPostable).not.toHaveBeenCalled();
+      expect(prisma.expenseDocument.update).not.toHaveBeenCalled();
+    });
+
+    it('post of a POSTED payroll with a stale token → the status error, not 409', async () => {
+      const { templates, lifecycle } = setup({ documentType: 'PAYROLL', status: 'POSTED', updatedAt: CHANGED });
+      const err = await lifecycle.post('doc-1', 'owner-1', 'OWNER', { expectedUpdatedAt: SEEN }).catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(BadRequestException);
+      expect(templates.payroll.execute).not.toHaveBeenCalled();
     });
   });
 

@@ -291,6 +291,28 @@ describe('Payroll save path owns attendance system rows (Postgres)', () => {
     expect(dLine.systemNotes).toEqual({ review: [], warnings: [{ code: 'NOT_MONTHLY_OR_NO_BASE', otHours: '1.5' }] });
   });
 
+  it('R23: planning-only days (DAY_OFF / LEAVE from the schedule tab, no clock-in) leave the month untracked → typed OT kept as MANUAL (NO_ATTENDANCE) · after one punched day the next save refuses MANUAL_OT_DUPLICATE', async () => {
+    const u = await mkUser('planned');
+    await mkDay(u, 6, { kind: 'DAY_OFF' });
+    await mkDay(u, 13, { kind: 'LEAVE_PERSONAL' });
+    const typedOt = { accountCode: 'S52-1202', name: 'OT กรอกเอง', amount: 500 };
+    const b = await mkBranch('planned');
+    const doc = await creator.createPayroll(dto(b, [{ userId: u, baseSalary: 15000, customIncome: [typedOt] }]) as never, OWNER());
+    const line = doc.payroll!.lines[0];
+    expect(incomeView(line.customIncome as never)).toEqual([manualRow('MANUAL', 'S52-1202', 'OT กรอกเอง', '500.00')]);
+    expect(money(line.netPaid)).toBe('15500.00');
+    expect(line.attendanceSummary).toMatchObject({ autoOtEligible: true, attendanceTracked: false });
+    expect(line.systemNotes).toEqual({ review: [], warnings: [{ code: 'NO_ATTENDANCE' }] });
+
+    await otDay(u, 20, 1.5); // ตอกบัตรจริงหนึ่งวัน → เดือนนี้มีข้อมูลลงเวลาแล้ว
+    await expectHttp(
+      creator.updatePayroll(doc.id, updateDto([{ userId: u, baseSalary: 15000, customIncome: [typedOt] }]) as never, OWNER()),
+      BadRequestException,
+      'MANUAL_OT_DUPLICATE',
+      'พนักงาน planned มีแถว OT ที่กรอกเองซ้ำกับ OT จากระบบลงเวลา — ลบแถวนั้น หรือติ๊ก "รายการปรับปรุงงวดก่อน" ถ้าเป็นการแก้ OT ของเดือนก่อน',
+    );
+  });
+
   it('V18 runs on the merged line: base 9,000 + system OT 1,996.88 covers a 10,000 deduction · 11,000 still rejected', async () => {
     const u = await mkUser('v18', { profile: { employmentType: 'MONTHLY', baseSalary: 9000 } });
     for (let d = 1; d <= 10; d++) await otDay(u, d, 3.5);

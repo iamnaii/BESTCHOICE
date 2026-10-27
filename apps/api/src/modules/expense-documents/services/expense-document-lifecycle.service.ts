@@ -291,8 +291,6 @@ export class ExpenseDocumentLifecycleService {
       const doc = await tx.expenseDocument.findUniqueOrThrow({ where: { id } });
       if (doc.deletedAt) throw new NotFoundException('เอกสารถูกลบแล้ว');
       assertAccountingBranch(actor, doc.branchId);
-      // R20 — ฉบับที่ผู้กดเห็น (ใต้ล็อก post: ก่อนด่านใบเงินเดือน) · PAYROLL บังคับ เอกสารอื่นเทียบเมื่อส่งมา
-      assertDocumentVersion(doc, opts.expectedUpdatedAt, 'post');
 
       // D1.2.1.2 — approval gate (threshold OR doctype filter).
       //
@@ -336,6 +334,9 @@ export class ExpenseDocumentLifecycleService {
         hasPaymentMethod: !!doc.paymentMethod && !!doc.depositAccountCode,
         totalAmount: doc.totalAmount.toString(),
       });
+      // R20/R23 — ฉบับที่ผู้กดเห็น: หลังด่านขออนุมัติและด่านสถานะ (ใบที่ต้องขออนุมัติ/สถานะไม่ถูก ได้ข้อความของด่านนั้น
+      // ไม่ใช่ "ถูกแก้ไข") · ยังอยู่ใต้ล็อก post: ก่อนเขียนอะไรและก่อนด่านใบเงินเดือน · PAYROLL บังคับ เอกสารอื่นเทียบเมื่อส่งมา
+      assertDocumentVersion(doc, opts.expectedUpdatedAt, 'post');
 
       if (doc.status === 'DRAFT') {
         await tx.expenseDocument.update({ where: { id }, data: { approvedById: null } });
@@ -645,10 +646,10 @@ export class ExpenseDocumentLifecycleService {
       })) {
         throw new ForbiddenException(SELF_APPROVAL_DENIED_MESSAGE);
       }
-      // R20 — ฉบับที่ผู้อนุมัติเห็น (ใต้ล็อก post: ก่อนตรวจสถานะและด่านใบเงินเดือน) — ใบที่ถูกกด แก้ไข แล้วส่งใหม่
-      // ระหว่างที่หน้าผู้อนุมัติเปิดค้างได้ 409 DOCUMENT_CHANGED แทนการลงบัญชีฉบับที่ไม่มีใครเห็น
-      assertDocumentVersion(doc, opts.expectedUpdatedAt, 'approve');
       this.transition.assertCanApprove({ from: doc.status });
+      // R20/R23 — ฉบับที่ผู้อนุมัติเห็น (หลังด่านสถานะ · ใต้ล็อก post: ก่อนด่านใบเงินเดือนและก่อนเขียน) — ใบที่ถูกกด แก้ไข
+      // แล้วส่งใหม่ระหว่างที่หน้าผู้อนุมัติเปิดค้างได้ 409 DOCUMENT_CHANGED แทนการลงบัญชีฉบับที่ไม่มีใครเห็น
+      assertDocumentVersion(doc, opts.expectedUpdatedAt, 'approve');
 
       // Payroll D4 — ด่านใบเงินเดือนก่อนเปลี่ยนเป็น APPROVED เสมอ (ไม่ว่า auto_post_on_approve จะเปิดหรือปิด)
       if (doc.documentType === 'PAYROLL') await this.assertPayrollPostable(tx, id);

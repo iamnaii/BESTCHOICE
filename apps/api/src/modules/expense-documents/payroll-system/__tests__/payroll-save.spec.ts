@@ -19,7 +19,7 @@ const OT_CODE = 'S52-1202';
 
 interface Fixture {
   pin: boolean;
-  days: Array<{ dayKind?: 'WORK'; clockIn?: string; clockOut?: string; otHours?: number }>;
+  days: Array<{ dayKind?: 'WORK' | 'DAY_OFF' | 'LEAVE_SICK'; clockIn?: string; clockOut?: string; otHours?: number }>;
 }
 
 /** client ปลอมที่ตอบเฉพาะ query ที่ compute ใช้ · ผู้ใช้คนเดียว u1 รายเดือน เงินเดือนทะเบียน 15,000 */
@@ -119,6 +119,25 @@ describe('mergePayrollLines — typed OT when the month has no attendance data (
       expect(err).toBeInstanceOf(BadRequestException);
       expect((err as BadRequestException).getResponse()).toMatchObject({ code: 'MANUAL_OT_DUPLICATE' });
     }
+  });
+
+  it('R23: planning-only rows (DAY_OFF / LEAVE set from the schedule tab, no clock-in) do not make the month tracked → typed OT accepted as MANUAL', async () => {
+    const planned = [{ dayKind: 'DAY_OFF' as const }, { dayKind: 'LEAVE_SICK' as const }];
+    for (const [pin, warning] of [[false, 'NO_PIN'], [true, 'NO_ATTENDANCE']] as const) {
+      const { system, merged } = await computeAndMerge({ pin, days: planned });
+      expect(system.rows[0]).toMatchObject({ autoOtEligible: true, attendanceTracked: false, systemIncome: [] });
+      const { lines } = merged();
+      expect(lines[0].customIncome.map((i) => [i.source, i.amount.toFixed(2)])).toEqual([['MANUAL', '500.00']]);
+      expect(lines[0].systemNotes?.warnings).toEqual([{ code: warning }]);
+      expect(lines[0].attendanceSummary).toMatchObject({ attendanceTracked: false });
+    }
+  });
+
+  it('R23: one punched day (clock-in) among planned rows makes the month tracked → typed OT refused', async () => {
+    const { system, merged } = await computeAndMerge({ pin: true, days: [{ dayKind: 'DAY_OFF' }, { clockIn: '10:00' }] });
+    expect(system.rows[0]).toMatchObject({ attendanceTracked: true });
+    expect(system.rows[0].notes.warnings).toEqual([]);
+    expect(merged).toThrow(BadRequestException);
   });
 
   it('a tracked user may still carry a typed OT row ticked รายการปรับปรุงงวดก่อน (ADJUSTMENT)', async () => {

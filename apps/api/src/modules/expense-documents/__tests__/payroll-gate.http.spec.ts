@@ -148,7 +148,8 @@ describe('Payroll gate 409s over HTTP', () => {
   it('H5 approve / post of a PAYROLL without expectedUpdatedAt → 409 DOCUMENT_CHANGED · a malformed one → 400 (Thai DTO message)', async () => {
     const approve = await request(app.getHttpServer()).post(`/api/expense-documents/${DOC_ID}/approve`).expect(409);
     expect(approve.body).toMatchObject({ code: 'DOCUMENT_CHANGED', message: CHANGED_APPROVE });
-    tx.expenseDocument.findUniqueOrThrow.mockResolvedValue({ ...doc, status: 'APPROVED' });
+    // R23 — post() ตรวจฉบับหลังด่านสถานะ (assertCanPost อ่านยอด/ช่องทางจ่ายของใบ) ⇒ ใบ APPROVED ที่ครบช่องจึงถึงด่านฉบับ
+    tx.expenseDocument.findUniqueOrThrow.mockResolvedValue({ ...doc, status: 'APPROVED', totalAmount: { toString: () => '16500.00' }, paymentMethod: 'BANK_TRANSFER', depositAccountCode: 'S11-1202' });
     const post = await request(app.getHttpServer()).post(`/api/expense-documents/${DOC_ID}/post`).send({}).expect(409);
     expect(post.body).toMatchObject({ code: 'DOCUMENT_CHANGED', message: CHANGED_POST });
     const bad = await request(app.getHttpServer()).post(`/api/expense-documents/${DOC_ID}/post`).send({ expectedUpdatedAt: 'yesterday' }).expect(400);

@@ -558,6 +558,8 @@ export class ExpenseDocumentCreateService {
    * ล็อก `post:${id}` ก่อนเสมอ (advisory xact lock reentrant ใน session เดียวกัน ⇒ ผู้เรียกที่ถือไว้แล้วผ่านได้) ·
    * DRAFT คงเป็น DRAFT · PENDING_APPROVAL / APPROVED → DRAFT + ล้างผู้อนุมัติ + audit `SENT_BACK_TO_DRAFT` ใน tx ·
    * ผลลัพธ์ไม่ปิด taxId — ผู้เรียกที่ส่งคืน client ต้อง `maskPayrollTaxIds` เอง
+   * `opts.storedLines` (ตอนส่งขออนุมัติเท่านั้น): บรรทัดมาจากที่เก็บไว้ ผู้ส่งไม่ได้เปลี่ยนรายชื่อ และรายชื่อผ่านด่าน
+   * NOT_IN_BRANCH ไปแล้วตอนบันทึก ⇒ ข้ามด่านนั้นด่านเดียว (ด่านอื่นทั้งหมดยังตรวจตามเดิม)
    */
   async updatePayrollInTx(
     tx: Prisma.TransactionClient,
@@ -565,6 +567,7 @@ export class ExpenseDocumentCreateService {
     dto: UpdatePayrollDto,
     user: { id: string; branchId?: string | null; role?: string | null },
     now: Date,
+    opts: { storedLines?: boolean } = {},
   ) {
     // Review W1 (2026-08-06) — serialize with post()/approve()/voidDocument()/
     // submitForApproval() via the SAME per-document advisory key, then read the
@@ -597,7 +600,7 @@ export class ExpenseDocumentCreateService {
           dto.entityScope ??
           (existing.payroll?.entityScope === 'FINANCE' ? 'FINANCE' : 'SHOP'),
       },
-      { branchId: existing.branchId, user },
+      { branchId: existing.branchId, user, skipBranchMembership: opts.storedLines === true },
     );
 
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${payrollDocumentLockKey(existing.branchId, dto.payrollPeriod, entityScope)}))`;
@@ -695,7 +698,7 @@ export class ExpenseDocumentCreateService {
       payrollPeriod: string;
       lines: PayrollLineInput[];
     },
-    ctx: { branchId: string; user: { branchId?: string | null; role?: string | null } },
+    ctx: { branchId: string; user: { branchId?: string | null; role?: string | null }; skipBranchMembership?: boolean },
   ): Promise<{ entityScope: 'SHOP' | 'FINANCE'; documentDate: Date; lines: ClientPayrollLine[] }> {
     // คำสั่งเจ้าของ 2026-08-06 — payroll สังกัดฝั่งเดียวต่อใบ. SHOP = พนักงานสาขา
     // → ผัง S + companyId SHOP; FINANCE = ส่วนกลาง → ผังเดิม. UI ส่ง entityScope
@@ -789,7 +792,7 @@ export class ExpenseDocumentCreateService {
       }
       // อัตราต่อชั่วโมงที่เก็บในแถว OT เผยเงินเดือนทะเบียน (เห็นได้เฉพาะ OWNER/ACCOUNTANT/FINANCE_MANAGER) ⇒
       // role ที่ไม่ข้ามสาขาใส่ได้เฉพาะพนักงานของสาขาเอกสาร
-      if (!hasCrossBranchAccess(ctx.user)) {
+      if (!ctx.skipBranchMembership && !hasCrossBranchAccess(ctx.user)) {
         const outsiders = linkedUserIds
           .map((id) => employeeByUserId.get(id)!)
           .filter((e) => e.branchId !== ctx.branchId);

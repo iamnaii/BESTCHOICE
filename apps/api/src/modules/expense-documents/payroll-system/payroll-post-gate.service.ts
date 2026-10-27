@@ -2,7 +2,7 @@ import { ConflictException, Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import type { PrismaService } from '../../../prisma/prisma.service';
 import { bangkokMidnight } from '../../../utils/date.util';
-import { formatDateShortThai } from '../../../utils/thai-date.util';
+import { formatDateShortThai, formatThaiDateText } from '../../../utils/thai-date.util';
 import { DEVICE_CONFLICT_FLAG } from '../../attendance/attendance-device.service';
 import { fromDbDate, workDateString } from '../../attendance/attendance-rules';
 import { payrollCutoff, payrollDocumentLockKey } from './payroll-pay';
@@ -37,7 +37,9 @@ export interface PayrollGateView {
 const STALE_MESSAGE =
   'ยังไม่ได้ลงบัญชี — ข้อมูลลงเวลาเปลี่ยนหลังบันทึกใบ ให้ผู้ทำเงินเดือนกด "แก้ไข" แล้วบันทึกใบอีกครั้ง (ระบบคิดยอดใหม่ให้) ตรวจยอด แล้วส่งขออนุมัติอีกครั้ง';
 
-/** {วันที่ไทยสั้น} = "1 พ.ย." (Asia/Bangkok) */
+/** {วันที่ไทยสั้น} ของเวลาปิดงวด = "1 พ.ย. 2569" (มี พ.ศ. — กันสับสนช่วง ธ.ค. → ม.ค. · Asia/Bangkok) */
+const cutoffDate = (at: Date) => formatThaiDateText(at);
+/** วันในรายการวันติดธง = "15 ต.ค." (เดือนเดียวกับงวดเสมอ) */
 const thaiShort = (at: Date) => formatDateShortThai(at);
 const dayOf = (date: string) => {
   const [y, m, d] = date.split('-').map(Number);
@@ -50,13 +52,13 @@ export const payrollGateConflict = {
     new ConflictException({
       code: 'PAYROLL_SUBMIT_CUTOFF',
       closableAt: cutoff.toISOString(),
-      message: `ส่งขออนุมัติได้ตั้งแต่ ${thaiShort(cutoff)} 18:00 — รอให้ข้อมูลลงเวลาของเดือนนี้ครบก่อน ระหว่างนี้บันทึกร่างไว้ได้`,
+      message: `ส่งขออนุมัติได้ตั้งแต่ ${cutoffDate(cutoff)} 18:00 — รอให้ข้อมูลลงเวลาของเดือนนี้ครบก่อน ระหว่างนี้บันทึกร่างไว้ได้`,
     }),
   postCutoff: (cutoff: Date) =>
     new ConflictException({
       code: 'PAYROLL_CUTOFF',
       closableAt: cutoff.toISOString(),
-      message: `ลงบัญชีได้ตั้งแต่ ${thaiShort(cutoff)} 18:00 — รอให้ข้อมูลลงเวลาของเดือนนี้ครบก่อน`,
+      message: `ลงบัญชีได้ตั้งแต่ ${cutoffDate(cutoff)} 18:00 — รอให้ข้อมูลลงเวลาของเดือนนี้ครบก่อน`,
     }),
   deviceConflict: (days: PayrollGateDay[]) =>
     new ConflictException({

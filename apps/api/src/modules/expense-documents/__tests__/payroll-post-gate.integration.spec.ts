@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { Prisma, PrismaClient, type AttendanceDayKind, type EmploymentType, type UserRole } from '@prisma/client';
-import { ConflictException } from '@nestjs/common';
+import { ConflictException, ForbiddenException } from '@nestjs/common';
 import { seedFinanceCoa } from '../../../../prisma/seed-coa-finance';
 import { seedShopCoa } from '../../../../prisma/seed-coa-shop';
 import { AuditService } from '../../audit/audit.service';
@@ -83,8 +83,8 @@ const query = new ExpenseDocumentQueryService(prisma as never, undefined as neve
 const PERIOD = '2026-10';
 const MONTH0 = 9;
 const CLOSABLE_AT = '2026-11-01T11:00:00.000Z';
-const SUBMIT_CUTOFF = 'ส่งขออนุมัติได้ตั้งแต่ 1 พ.ย. 18:00 — รอให้ข้อมูลลงเวลาของเดือนนี้ครบก่อน ระหว่างนี้บันทึกร่างไว้ได้';
-const POST_CUTOFF = 'ลงบัญชีได้ตั้งแต่ 1 พ.ย. 18:00 — รอให้ข้อมูลลงเวลาของเดือนนี้ครบก่อน';
+const SUBMIT_CUTOFF = 'ส่งขออนุมัติได้ตั้งแต่ 1 พ.ย. 2569 18:00 — รอให้ข้อมูลลงเวลาของเดือนนี้ครบก่อน ระหว่างนี้บันทึกร่างไว้ได้';
+const POST_CUTOFF = 'ลงบัญชีได้ตั้งแต่ 1 พ.ย. 2569 18:00 — รอให้ข้อมูลลงเวลาของเดือนนี้ครบก่อน';
 const STALE = 'ยังไม่ได้ลงบัญชี — ข้อมูลลงเวลาเปลี่ยนหลังบันทึกใบ ให้ผู้ทำเงินเดือนกด "แก้ไข" แล้วบันทึกใบอีกครั้ง (ระบบคิดยอดใหม่ให้) ตรวจยอด แล้วส่งขออนุมัติอีกครั้ง';
 const OT_LABEL = 'OT วันทำงาน (1.5 เท่า)';
 
@@ -549,6 +549,57 @@ describe('Payroll submit / approve / post gate (Postgres)', () => {
     expect(await gateOf(query, doc.id)).toEqual({ closableAt: null, deviceConflicts: conflicts });
     expect(await gateOf(query, freeText.id)).toEqual({ closableAt: null, deviceConflicts: [] });
     expect(await gateOf(new ExpenseDocumentQueryService(prisma as never, undefined as never), doc.id)).toBeNull();
+
+    // R10 — ใบที่ลงบัญชี/ยกเลิกแล้วไม่มีด่านให้แสดง (วันติดธงของใบนี้ยังอยู่ — ถ้ายังเรียก inspect จะได้รายการวัน)
+    const inspect = vi.spyOn(gate, 'inspect');
+    try {
+      for (const status of ['POSTED', 'VOIDED'] as const) {
+        await prisma.expenseDocument.update({ where: { id: doc.id }, data: { status } });
+        expect(await gateOf(query, doc.id)).toBeNull();
+      }
+      expect(inspect).not.toHaveBeenCalled();
+      await prisma.expenseDocument.update({ where: { id: doc.id }, data: { status: 'APPROVED' } });
+      expect(await gateOf(query, doc.id)).toEqual({ closableAt: null, deviceConflicts: conflicts });
+      expect(inspect).toHaveBeenCalledTimes(1);
+    } finally {
+      inspect.mockRestore();
+    }
+  });
+
+  it('a branch manager submits an owner-made payroll that carries another branch\'s employee (no NOT_IN_BRANCH on the refresh) · a BM PATCH adding such an employee is still refused', async () => {
+    setNow(SAVED);
+    const b = await mkBranch('bm-submit');
+    const other = await mkBranch('bm-submit-other');
+    const bm = await mkUser('bm-submit-actor', b, { role: 'BRANCH_MANAGER', profile: null });
+    const insider = await mkUser('bm-insider', b);
+    const outsider = await mkUser('bm-outsider', other);
+    const outsider2 = await mkUser('bm-outsider-2', other);
+    await otDay(outsider, other, 8);
+    const doc = await createDoc(b, [{ userId: insider, baseSalary: 16500 }, { userId: outsider, baseSalary: 16500 }]); // เจ้าของทำ
+
+    setNow(AFTER);
+    await lifecycle.submitForApproval(doc.id, bm);
+    expect(await statusOf(doc.id)).toBe('PENDING_APPROVAL');
+    const [, outsiderLine] = await storedRows(doc.id);
+    expect(outsiderLine.income).toEqual([{ source: 'ATTENDANCE_OT', accountCode: 'S52-1202', name: OT_LABEL, amount: '154.69', quantity: '1.5' }]);
+    expect(outsiderLine.systemPulledAt?.toISOString()).toBe(bkk(AFTER).toISOString()); // คิดใหม่ตอนส่งจริง
+
+    const err = await creator
+      .updatePayroll(
+        doc.id,
+        {
+          documentDate: '2026-10-31',
+          payrollPeriod: PERIOD,
+          entityScope: 'SHOP',
+          depositAccountCode: 'S11-1202',
+          lines: [{ userId: insider, baseSalary: 16500 }, { userId: outsider, baseSalary: 16500 }, { userId: outsider2, baseSalary: 16500 }],
+        } as never,
+        { id: bm, branchId: b, role: 'BRANCH_MANAGER' },
+      )
+      .then(() => { throw new Error('expected NOT_IN_BRANCH'); }, (e: unknown) => e);
+    expect(err).toBeInstanceOf(ForbiddenException);
+    expect((err as ForbiddenException).getResponse()).toMatchObject({ code: 'NOT_IN_BRANCH', message: expect.stringContaining('พนักงาน bm-outsider-2') });
+    expect(await statusOf(doc.id)).toBe('PENDING_APPROVAL'); // ไม่ถูกส่งกลับเป็นร่าง
   });
 
   it('fail closed: without the gate / save path wired, submit, approve and post of a payroll with linked lines throw · a free-text payroll still flows', async () => {

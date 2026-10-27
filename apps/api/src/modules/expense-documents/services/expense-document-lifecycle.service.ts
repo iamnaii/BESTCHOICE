@@ -129,6 +129,8 @@ export class ExpenseDocumentLifecycleService {
             await storedPayrollUpdateDto(tx, id),
             { id: actor.id, branchId: actor.branchId, role: actor.role },
             now,
+            // ผู้ส่งไม่ได้แก้รายชื่อ — รายชื่อผ่านด่าน NOT_IN_BRANCH ตอนบันทึกแล้ว (ด่านอื่นตรวจครบ)
+            { storedLines: true },
           );
         }
       }

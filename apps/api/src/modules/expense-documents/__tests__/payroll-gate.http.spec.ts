@@ -125,7 +125,7 @@ describe('Payroll gate 409s over HTTP', () => {
     expect(res.body).toMatchObject({
       code: 'PAYROLL_SUBMIT_CUTOFF',
       closableAt: '2026-11-01T11:00:00.000Z',
-      message: 'ส่งขออนุมัติได้ตั้งแต่ 1 พ.ย. 18:00 — รอให้ข้อมูลลงเวลาของเดือนนี้ครบก่อน ระหว่างนี้บันทึกร่างไว้ได้',
+      message: 'ส่งขออนุมัติได้ตั้งแต่ 1 พ.ย. 2569 18:00 — รอให้ข้อมูลลงเวลาของเดือนนี้ครบก่อน ระหว่างนี้บันทึกร่างไว้ได้',
     });
     expect(creator.updatePayrollInTx).not.toHaveBeenCalled();
     expect(tx.expenseDocument.update).not.toHaveBeenCalled();

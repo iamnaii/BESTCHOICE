@@ -15,6 +15,9 @@ import { CreateExpenseDocumentDto } from '../dto/create.dto';
 import { ListExpenseDocumentsQueryDto } from '../dto/list-query.dto';
 import { PayrollPostGateService } from '../payroll-system/payroll-post-gate.service';
 
+/** สถานะที่ใบเงินเดือนยังต้องผ่านด่านส่ง/อนุมัติ/ลงบัญชี — `findOne.payrollGate` มีค่าเฉพาะสถานะเหล่านี้ */
+const PAYROLL_GATED_STATUSES: DocumentStatus[] = ['DRAFT', 'PENDING_APPROVAL', 'APPROVED'];
+
 /**
  * Phase 1 of the transactional-core decompose: the 9 READ-only methods of
  * ExpenseDocumentsService, extracted VERBATIM. The facade delegates to this
@@ -590,7 +593,7 @@ export class ExpenseDocumentQueryService {
     // 404, not a Prisma P2025 → 500 (DOC-03 integration scenario, issue #1562).
     const docType = await this.prisma.expenseDocument.findUnique({
       where: { id },
-      select: { documentType: true, deletedAt: true, branchId: true },
+      select: { documentType: true, deletedAt: true, branchId: true, status: true },
     });
     if (!docType) throw new NotFoundException('ไม่พบเอกสาร');
     if (docType.deletedAt) throw new NotFoundException('เอกสารถูกลบแล้ว');
@@ -651,8 +654,12 @@ export class ExpenseDocumentQueryService {
       viewerRole,
     );
     if (docType.documentType !== 'PAYROLL') return doc;
-    // Payroll D4 — เวลาที่ส่ง/ลงบัญชีได้ (ยังไม่ถึง) + วันติดธงเครื่องถูกใช้ซ้อน ให้หน้ารายละเอียดปิดปุ่มพร้อมเหตุผล
-    const payrollGate = this.payrollGate ? await this.payrollGate.inspect(this.prisma, id, new Date()) : null;
+    // Payroll D4 — เวลาที่ส่ง/ลงบัญชีได้ (ยังไม่ถึง) + วันติดธงเครื่องถูกใช้ซ้อน ให้หน้ารายละเอียดปิดปุ่มพร้อมเหตุผล ·
+    // เฉพาะใบที่ยังส่ง/อนุมัติ/ลงบัญชีได้ — ใบ POSTED / VOIDED ไม่มีด่านให้แสดง (และไม่เสีย query เพิ่มให้ประวัติ/ไฟล์โอนธนาคาร)
+    const payrollGate =
+      this.payrollGate && PAYROLL_GATED_STATUSES.includes(docType.status)
+        ? await this.payrollGate.inspect(this.prisma, id, new Date())
+        : null;
     return { ...doc, payrollGate };
   }
 

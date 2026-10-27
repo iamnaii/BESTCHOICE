@@ -27,7 +27,7 @@ const TABS: Array<{ id: Tab; label: string }> = [
 const isRealDate = (v: string | null): v is string => {
   if (!v || !/^\d{4}-\d{2}-\d{2}$/.test(v)) return false;
   const d = new Date(`${v}T00:00:00Z`);
-  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === v;
+  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === v && v <= todayBangkok(); // วันในอนาคตยังไม่มีข้อมูล → ค่าเดิม
 };
 
 /** ลิงก์จากหน้าเงินเดือน: `/attendance?tab=today&date=YYYY-MM-DD&branchId=<id>` — อ่านครั้งเดียวตอนเปิดหน้า · ค่าไม่ถูกต้อง = พฤติกรรมเดิม */

@@ -1,4 +1,5 @@
-import { Lock } from 'lucide-react';
+import { AlertTriangle, Lock } from 'lucide-react';
+import { useAccountingPermissions } from '@/hooks/useAccountingPermissions';
 import { thaiMonthLabel } from '../../attendance.util';
 
 /** ชิป "จ่ายเงินเดือนแล้ว" — ไอคอน + คำ (ไม่ใช้สีอย่างเดียว) · `id` ให้ปุ่มที่ถูกปิดอ้างผ่าน aria-describedby */
@@ -14,13 +15,16 @@ export function PaidChip({ number, id }: { number: string; id?: string }) {
 
 /** แบนเนอร์บอกว่าเดือนนี้มีคนที่จ่ายเงินเดือนแล้วกี่คน ในใบอะไร (mockup บอร์ด 5) */
 export function PaidBanner({ month, numbers, people }: { month: string; numbers: string[]; people: number }) {
+  const permissions = useAccountingPermissions();
   if (people === 0) return null;
+  // ปุ่ม "ยกเลิก / กลับรายการ" ในใบเงินเดือนมีเฉพาะผู้ถือสิทธิ์ EXPENSE_CANCEL — คนอื่นต้องให้เจ้าของทำ
+  const reversal = permissions.can('EXPENSE_CANCEL') ? 'ถ้ากลับรายการใบเงินเดือน เดือนนี้แก้ได้อีก' : 'ถ้าเจ้าของกลับรายการใบเงินเดือน เดือนนี้แก้ได้อีก';
   return (
     <div role="status" aria-atomic="true" aria-label="เดือนที่จ่ายเงินเดือนแล้ว" className="flex items-start gap-2 rounded-xl border border-border bg-muted px-4 py-3 text-sm leading-snug">
       <Lock className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
       <div className="flex flex-col gap-0.5">
         <b>จ่ายเงินเดือน {thaiMonthLabel(month)} แล้ว {people} คน — ใบ {numbers.join(', ')}</b>
-        <span className="text-muted-foreground">แก้เวลา หรือเปลี่ยนประเภทวันของคนเหล่านี้ในเดือนนี้ไม่ได้แล้ว (เจ้าของยังล้างธงเครื่องถูกใช้ซ้อนได้) — ถ้าต้องปรับยอด ให้ใส่รายการปรับปรุงในใบเงินเดือนงวดถัดไป</span>
+        <span className="text-muted-foreground">แก้เวลา หรือเปลี่ยนประเภทวันของคนเหล่านี้ในเดือนนี้ไม่ได้แล้ว (เจ้าของยังล้างธงเครื่องถูกใช้ซ้อนได้) — ถ้าต้องปรับยอด ให้ใส่รายการปรับปรุงในใบเงินเดือนงวดถัดไป · {reversal}</span>
       </div>
     </div>
   );
@@ -28,3 +32,12 @@ export function PaidBanner({ month, numbers, people }: { month: string; numbers:
 
 export const distinctNumbers = (rows: Array<{ paidDocumentNumber?: string | null }>): string[] =>
   [...new Set(rows.flatMap((r) => (r.paidDocumentNumber ? [r.paidDocumentNumber] : [])))];
+
+/** เดือนที่มีคนจ่ายแล้วบางคน: คนที่ยังไม่อยู่ในใบเงินเดือนแก้ได้ (board 5) — ไอคอน + คำ */
+export function UnpaidChip() {
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full border border-warning/40 bg-warning/10 px-2 py-0.5 text-xs leading-snug text-warning-strong">
+      <AlertTriangle className="size-3 shrink-0" aria-hidden="true" />ยังไม่อยู่ในใบเงินเดือน — แก้ได้
+    </span>
+  );
+}

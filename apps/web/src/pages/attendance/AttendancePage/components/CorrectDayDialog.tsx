@@ -79,7 +79,11 @@ export default function CorrectDayDialog({ target, isOwner, onClose }: Props) {
         toast.success(`บันทึกการแก้ไขของ ${target.nickname} แล้ว`);
         onClose();
       },
-      onError: (err: unknown) => toast.error(getErrorMessage(err)),
+      onError: (err: unknown) => {
+        toast.error(getErrorMessage(err));
+        // หน้าเปิดค้างมาก่อนมีการลงบัญชีใบเงินเดือน — snapshot เก่า ปิด dialog (hook โหลดแถวใหม่ให้แล้ว)
+        if ((err as { response?: { data?: { code?: string } } })?.response?.data?.code === 'ATTENDANCE_PAID') onClose();
+      },
     });
   };
 
@@ -118,12 +122,12 @@ export default function CorrectDayDialog({ target, isOwner, onClose }: Props) {
           <div className="grid grid-cols-2 gap-3">
             <div className="flex flex-col gap-1">
               <label htmlFor="corr-in" className="text-sm font-medium">เข้างาน</label>
-              <input id="corr-in" type="time" disabled={!!paid} value={clockIn} onChange={(e) => setClockIn(e.target.value)} className="h-11 lg:h-10 rounded-lg border border-input bg-background px-3 text-sm" />
+              <input id="corr-in" type="time" disabled={!!paid} aria-describedby={paid ? 'corr-paid' : undefined} value={clockIn} onChange={(e) => setClockIn(e.target.value)} className="h-11 lg:h-10 rounded-lg border border-input bg-background px-3 text-sm" />
               <span className="text-xs text-muted-foreground">เดิม: {originalIn || '—'}</span>
             </div>
             <div className="flex flex-col gap-1">
               <label htmlFor="corr-out" className="text-sm font-medium">ออกงาน</label>
-              <input id="corr-out" type="time" disabled={!!paid} value={clockOut} onChange={(e) => setClockOut(e.target.value)} className="h-11 lg:h-10 rounded-lg border border-input bg-background px-3 text-sm" />
+              <input id="corr-out" type="time" disabled={!!paid} aria-describedby={paid ? 'corr-paid' : undefined} value={clockOut} onChange={(e) => setClockOut(e.target.value)} className="h-11 lg:h-10 rounded-lg border border-input bg-background px-3 text-sm" />
               <span className="text-xs text-muted-foreground">เดิม: {originalOut || '— (ไม่ได้ตอก)'}{outNextDay && ' · ออกหลังเที่ยงคืน (วันถัดไป)'}</span>
             </div>
           </div>
@@ -134,13 +138,13 @@ export default function CorrectDayDialog({ target, isOwner, onClose }: Props) {
           )}
           <div className="flex flex-col gap-1">
             <label htmlFor="corr-kind" className="text-sm font-medium">ประเภทวัน</label>
-            <NativeSelect id="corr-kind" disabled={!!paid} value={dayKind} onChange={(e) => setDayKind(e.target.value as DayKind)}>
+            <NativeSelect id="corr-kind" disabled={!!paid} aria-describedby={paid ? 'corr-paid' : undefined} value={dayKind} onChange={(e) => setDayKind(e.target.value as DayKind)}>
               {(Object.keys(DAY_KIND_LABEL) as DayKind[]).map((k) => <option key={k} value={k}>{DAY_KIND_LABEL[k]}</option>)}
             </NativeSelect>
           </div>
           <div className="flex flex-col gap-1">
             <label htmlFor="corr-reason" className="text-sm font-medium">เหตุผล (บังคับ ≥ {MIN_REASON} ตัวอักษร)</label>
-            <textarea id="corr-reason" rows={2} disabled={!!paid} value={reason} onChange={(e) => setReason(e.target.value)} className="rounded-lg border border-input bg-background px-3 py-2 text-sm" />
+            <textarea id="corr-reason" rows={2} disabled={!!paid} aria-describedby={paid ? 'corr-paid' : undefined} value={reason} onChange={(e) => setReason(e.target.value)} className="rounded-lg border border-input bg-background px-3 py-2 text-sm" />
           </div>
         </DialogBody>
         <DialogFooter>

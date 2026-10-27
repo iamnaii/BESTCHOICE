@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { toast } from 'sonner';
 import { getErrorMessage } from '@/lib/api';
@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import QueryBoundary from '@/components/QueryBoundary';
 import { useAttendanceMonth, useSetDayKinds, type DayKind } from '@/hooks/useAttendance';
 import { PaidChip } from './PaidLock';
-import { DAY_KIND_LABEL, nextDayKind, shiftDate, thaiMonthLabel, thaiShortDate, todayBangkok } from '../../attendance.util';
+import { DAY_KIND_LABEL, attendancePaidMessage, nextDayKind, shiftDate, thaiMonthLabel, thaiShortDate, todayBangkok } from '../../attendance.util';
 
 interface Props {
   branchId: string;
@@ -53,7 +53,18 @@ export default function ScheduleTab({ branchId, weekStart, onWeekChange, actorId
 
   const today = todayBangkok();
   const kindOf = (userId: string, date: string, base: DayKind | undefined) => pending[`${userId}|${date}`] ?? base ?? 'WORK';
-  const changes = Object.entries(pending).map(([k, dayKind]) => { const [userId, date] = k.split('|'); return { userId, date, dayKind }; });
+  const paidNo = (userId: string, date: string) => rows.find((r) => r.userId === userId)?.paid[date.slice(0, 7)];
+  const changes = Object.entries(pending)
+    .map(([k, dayKind]) => { const [userId, date] = k.split('|'); return { userId, date, dayKind }; })
+    .filter((c) => !paidNo(c.userId, c.date)); // ช่องของเดือนที่จ่ายแล้วไม่ส่ง (ไม่งั้นทั้งชุดโดน 409)
+
+  // มีคนถูกลงบัญชีใบเงินเดือนระหว่างที่แก้ค้าง: ทิ้งเฉพาะช่องที่ล็อกแล้ว เก็บที่เหลือ แล้วบอกจำนวน
+  useEffect(() => {
+    const dropped = Object.keys(pending).filter((k) => { const [u, d] = k.split('|'); return !!paidNo(u, d); });
+    if (!dropped.length) return;
+    setPending((p) => Object.fromEntries(Object.entries(p).filter(([k]) => !dropped.includes(k))));
+    toast.warning(`ทิ้งการแก้ ${dropped.length} ช่อง เพราะเดือนนั้นจ่ายเงินเดือนแล้ว`);
+  }, [rows, pending]);
 
   const save = () => {
     if (!changes.length) return;
@@ -63,6 +74,7 @@ export default function ScheduleTab({ branchId, weekStart, onWeekChange, actorId
     });
   };
 
+  const secondFailed = months.length > 1 && second.isError && !second.data;
   const loading = (first.isLoading && !first.data) || (months.length > 1 && second.isLoading && !second.data);
   return (
     <div className="flex flex-col gap-4">
@@ -75,6 +87,12 @@ export default function ScheduleTab({ branchId, weekStart, onWeekChange, actorId
         <span className="text-xs text-muted-foreground">หยุดสัปดาห์ละ 1 วันสลับกัน · ไม่มีตาราง = ทุกวันเป็นวันทำงาน (ไม่มา = ขาด) · กดช่องเพื่อสลับ ทำงาน → หยุด → ลาป่วย → ลากิจ → ร้านปิด</span>
       </div>
 
+      {secondFailed && (
+        <p id="sched-month-unknown" className="flex flex-wrap items-center gap-2 rounded-lg border border-warning/40 bg-warning/10 px-3 py-2 text-sm leading-snug text-warning-strong">
+          โหลดข้อมูลเดือน {thaiMonthLabel(months[1])} ไม่สำเร็จ — ยังไม่รู้ว่าจ่ายเงินเดือนแล้วหรือยัง จึงแก้ช่องของเดือนนั้นไม่ได้
+          <Button variant="outline" size="sm" onClick={() => void second.refetch()}>ลองใหม่</Button>
+        </p>
+      )}
       <QueryBoundary isLoading={loading} isError={first.isError} error={first.error} onRetry={first.refetch} errorTitle="โหลดตารางไม่สำเร็จ">
         <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
           <div className="overflow-x-auto">
@@ -105,15 +123,16 @@ export default function ScheduleTab({ branchId, weekStart, onWeekChange, actorId
                         const kind = kindOf(r.userId, d, r.kinds[d]);
                         const dirty = `${r.userId}|${d}` in pending;
                         const past = d < today;
-                        const paidNo = r.paid[d.slice(0, 7)];
-                        const paidId = paidNo ? `sched-paid-${r.userId}-${d.slice(0, 7)}` : undefined;
+                        const paidNum = r.paid[d.slice(0, 7)];
+                        const unknown = secondFailed && d.slice(0, 7) === months[1]; // เดือนที่โหลดไม่สำเร็จ = ไม่รู้ว่าจ่ายแล้วหรือยัง
+                        const paidId = paidNum ? `sched-paid-${r.userId}-${d.slice(0, 7)}` : unknown ? 'sched-month-unknown' : undefined;
                         return (
                           <td key={d} className="px-1 py-1.5">
                             <button
                               type="button"
-                              disabled={locked || past || !!paidNo || setKinds.isPending}
+                              disabled={locked || past || !!paidNum || unknown || setKinds.isPending}
                               aria-describedby={paidId}
-                              title={past ? 'ผ่านไปแล้ว — บันทึกลา/หยุดย้อนหลังที่แท็บ วันนี้ › แก้ไข' : undefined}
+                              title={paidNum ? attendancePaidMessage(paidNum) : past ? 'ผ่านไปแล้ว — บันทึกลา/หยุดย้อนหลังที่แท็บ วันนี้ › แก้ไข' : undefined}
                               onClick={() => setPending((p) => ({ ...p, [`${r.userId}|${d}`]: nextDayKind(kind) }))}
                               className={`h-11 w-full rounded-lg border text-xs ${KIND_CLASS[kind]} ${dirty ? 'ring-2 ring-primary/40' : ''} disabled:opacity-60`}
                               aria-label={`${r.nickname} ${thaiShortDate(d)}: ${DAY_KIND_LABEL[kind]}`}
@@ -134,7 +153,7 @@ export default function ScheduleTab({ branchId, weekStart, onWeekChange, actorId
             </table>
           </div>
           <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border px-4 py-2">
-            <span className="text-xs text-muted-foreground leading-snug">วันที่ผ่านไปแล้วล็อก — บันทึกลา/หยุดย้อนหลังที่แท็บ วันนี้ (เลือกวันที่) › แก้ไข พร้อมเหตุผล · เปลี่ยน {changes.length} ช่อง</span>
+            <span className="text-xs text-muted-foreground leading-snug">วันที่ผ่านไปแล้วล็อก — บันทึกลา/หยุดย้อนหลังที่แท็บ วันนี้ (เลือกวันที่) › แก้ไข พร้อมเหตุผล (ยกเว้นเดือนที่จ่ายเงินเดือนแล้ว) · เปลี่ยน {changes.length} ช่อง</span>
             <div className="flex gap-2">
               <Button variant="outline" size="sm" disabled={!changes.length} onClick={() => setPending({})}>ยกเลิกที่แก้</Button>
               <Button size="sm" className="max-lg:min-h-11" disabled={!changes.length || setKinds.isPending} onClick={save}>บันทึกตาราง</Button>

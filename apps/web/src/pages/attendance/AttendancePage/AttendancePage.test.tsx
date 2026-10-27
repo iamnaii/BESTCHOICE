@@ -41,9 +41,9 @@ const MONTH = {
   ],
 };
 
-function wrap() {
+function wrap(entry = '/attendance') {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
-  return render(<QueryClientProvider client={qc}><MemoryRouter><AttendancePage /></MemoryRouter></QueryClientProvider>);
+  return render(<QueryClientProvider client={qc}><MemoryRouter initialEntries={[entry]}><AttendancePage /></MemoryRouter></QueryClientProvider>);
 }
 
 beforeEach(() => {
@@ -258,5 +258,130 @@ describe('AttendancePage', () => {
     await screen.findByText('พนักงานใหม่');
     expect(screen.getByText(/ให้เจ้าของตั้งรหัส/)).toBeInTheDocument();
     expect(screen.queryByText(/หน้าผู้ใช้/)).not.toBeInTheDocument();
+  });
+
+  // ---- Payroll D4 Task 9: เดือนที่จ่ายเงินเดือนแล้ว = read-only + deep link ----
+  const PAID_MSG = 'เดือนนี้จ่ายเงินเดือนแล้ว (ใบ PR-20261031-0001) — แก้ไม่ได้ ถ้าต้องปรับ ให้ใส่แถว "รายการปรับปรุงงวดก่อน" (จ่ายเพิ่ม) หรือรายการหัก (หักคืน) ในใบเงินเดือนงวดถัดไป';
+  const paidToday = (flags: string[] = []) => ({ ...TODAY, rows: TODAY.rows.map((r) => (r.userId === 'u1' ? { ...r, flags, paidDocumentNumber: 'PR-20261031-0001' } : { ...r, paidDocumentNumber: null })) });
+  const mockToday = (today: unknown, month: unknown = MONTH) =>
+    apiMock.get.mockImplementation(async (path: string) => ({ data: path === '/branches' ? BRANCHES : path === '/attendance/today' ? today : path === '/attendance/month' ? month : null }));
+
+  it('P1 today: a paid-month row shows the lock chip (icon + words), a banner, and a disabled แก้ไข whose reason is linked by aria-describedby', async () => {
+    mockToday(paidToday());
+    wrap();
+    await screen.findByText('วรรณา ส.');
+    expect(screen.getByRole('status', { name: /เดือนที่จ่ายเงินเดือนแล้ว/ })).toHaveTextContent('PR-20261031-0001');
+    const tr = screen.getByText('วรรณา ส.').closest('tr')!;
+    const chip = within(tr).getByText('จ่ายเงินเดือนแล้ว').parentElement!;
+    expect(chip.querySelector('svg')).not.toBeNull();
+    const btn = within(tr).getByRole('button', { name: /แก้ไข/ });
+    expect(btn).toBeDisabled();
+    const reason = document.getElementById(btn.getAttribute('aria-describedby')!);
+    expect(reason).toHaveTextContent('PR-20261031-0001');
+    // แถวอื่นที่ไม่ได้อยู่ในใบ ยังแก้ได้
+    expect(within(screen.getByText('อรทัย บ.').closest('tr')!).getByRole('button', { name: /แก้ไข/ })).toBeEnabled();
+  });
+
+  it('P2 dialog on a paid row: save is disabled with the ATTENDANCE_PAID text, but the owner can still clear the DEVICE_CONFLICT flag', async () => {
+    mockToday(paidToday(['DEVICE_CONFLICT']));
+    apiMock.post.mockResolvedValue({ data: { id: 'd-u1' } });
+    wrap();
+    await screen.findByText('วรรณา ส.');
+    fireEvent.click(within(screen.getByText('วรรณา ส.').closest('tr')!).getByRole('button', { name: /แก้ไข/ }));
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByText(PAID_MSG)).toBeInTheDocument();
+    fireEvent.change(within(dialog).getByLabelText(/เหตุผล/), { target: { value: 'ตรวจรูปแล้ว ไม่ใช่ตัวพนักงาน ตอกแทนกัน' } });
+    const save = within(dialog).getByRole('button', { name: /บันทึกการแก้ไข/ });
+    expect(save).toBeDisabled();
+    expect(document.getElementById(save.getAttribute('aria-describedby')!)).toHaveTextContent(PAID_MSG);
+    const clear = within(dialog).getByRole('button', { name: /ตรวจแล้ว ล้างธง/ });
+    expect(clear).toBeEnabled();
+    fireEvent.click(clear);
+    await waitFor(() => expect(apiMock.post).toHaveBeenCalledWith('/attendance/days/d-u1/clear-conflict'));
+    expect(apiMock.patch).not.toHaveBeenCalled();
+  });
+
+  it('P3 a branch manager cannot clear flags, so a paid + conflict row has a disabled แก้ไข', async () => {
+    authMock.user = { id: 'u-bm', role: 'BRANCH_MANAGER', branchId: 'br2' };
+    mockToday(paidToday(['DEVICE_CONFLICT']));
+    wrap();
+    await screen.findByText('วรรณา ส.');
+    expect(within(screen.getByText('วรรณา ส.').closest('tr')!).getByRole('button', { name: /แก้ไข/ })).toBeDisabled();
+  });
+
+  it('P4 a real 409 ATTENDANCE_PAID (page was stale) toasts the server message', async () => {
+    apiMock.patch.mockRejectedValue(Object.assign(new Error(PAID_MSG), { response: { status: 409, data: { code: 'ATTENDANCE_PAID', documentNumber: 'PR-20261031-0001', message: PAID_MSG } } })); // getErrorMessage ถูก mock ให้คืน e.message
+    wrap();
+    await screen.findByText('อรทัย บ.');
+    fireEvent.click(within(screen.getByText('อรทัย บ.').closest('tr')!).getByRole('button', { name: /แก้ไข/ }));
+    const dialog = await screen.findByRole('dialog');
+    fireEvent.change(within(dialog).getByLabelText(/ออกงาน/), { target: { value: '20:30' } });
+    fireEvent.change(within(dialog).getByLabelText(/เหตุผล/), { target: { value: 'ลืมตอกออก มีลูกค้าทำสัญญาถึงสองทุ่มครึ่ง' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: /บันทึกการแก้ไข/ }));
+    await waitFor(() => expect(toastMock.error).toHaveBeenCalledWith(PAID_MSG));
+  });
+
+  it('P5 month tab: paid people carry the lock chip and the banner names the document', async () => {
+    mockToday(TODAY, { ...MONTH, rows: [{ ...MONTH.rows[0], paidDocumentNumber: 'PR-20261031-0001' }] });
+    wrap();
+    await screen.findByText('วรรณา ส.');
+    fireEvent.click(screen.getByRole('tab', { name: /รายเดือน/ }));
+    const table = await screen.findByRole('table', { name: /ตารางรายเดือน/ });
+    expect(within(table).getByText('จ่ายเงินเดือนแล้ว').parentElement?.querySelector('svg')).not.toBeNull();
+    expect(screen.getByRole('status', { name: /เดือนที่จ่ายเงินเดือนแล้ว/ })).toHaveTextContent('PR-20261031-0001');
+  });
+
+  it('P6 schedule tab: day cells of a paid person are disabled with a visible reason', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-10-20T05:00:00.000Z')); // สัปดาห์ 19–25 ต.ค. = เดือน 2026-10 ทั้งสัปดาห์
+    mockToday(TODAY, { ...MONTH, rows: [{ ...MONTH.rows[0], paidDocumentNumber: 'PR-20261031-0001' }] });
+    wrap();
+    await screen.findByText('วรรณา ส.');
+    fireEvent.click(screen.getByRole('tab', { name: /ตารางหยุด/ }));
+    const grid = await screen.findByRole('table', { name: /ตารางหยุด/ });
+    const cells = within(within(grid).getAllByRole('row')[1]).getAllByRole('button');
+    // เดือนของสัปดาห์นี้ตามเวลาเครื่อง — ถ้า mock ไม่ตรงเดือน ช่องจะไม่ล็อก จึงเทียบเดือนจาก mock
+    const locked = cells.filter((c) => c.hasAttribute('aria-describedby'));
+    expect(locked.length).toBeGreaterThan(0);
+    for (const c of locked) {
+      expect(c).toBeDisabled();
+      expect(document.getElementById(c.getAttribute('aria-describedby')!)).toHaveTextContent('PR-20261031-0001');
+    }
+    expect(locked).toHaveLength(7);
+    vi.useRealTimers();
+  });
+
+  it('D1 deep link ?tab=today&date=&branchId= opens that day and branch for the owner', async () => {
+    wrap('/attendance?tab=today&date=2026-10-23&branchId=br2');
+    await waitFor(() => expect(apiMock.get).toHaveBeenCalledWith('/attendance/today', { params: { branchId: 'br2', date: '2026-10-23' } }));
+    expect(apiMock.get).not.toHaveBeenCalledWith('/attendance/today', { params: { branchId: 'br1', date: '2026-10-23' } });
+    expect(screen.getByRole('tab', { name: /วันนี้/ })).toHaveAttribute('aria-selected', 'true');
+    expect(await screen.findByLabelText('สาขา')).toHaveValue('br2');
+  });
+
+  it('D2 deep link ?tab=month selects the month tab; unknown tab / bad date / unknown branch fall back to defaults', async () => {
+    const { unmount } = wrap('/attendance?tab=month&branchId=br2');
+    await waitFor(() => expect(apiMock.get).toHaveBeenCalledWith('/attendance/month', { params: { branchId: 'br2', month: expect.any(String) } }));
+    expect(screen.getByRole('tab', { name: /รายเดือน/ })).toHaveAttribute('aria-selected', 'true');
+    unmount();
+    vi.clearAllMocks();
+    wrap('/attendance?tab=nope&date=31-10-2026&branchId=zzz');
+    await waitFor(() => expect(apiMock.get).toHaveBeenCalledWith('/attendance/today', { params: { branchId: 'br1', date: undefined } }));
+    expect(screen.getByRole('tab', { name: /วันนี้/ })).toHaveAttribute('aria-selected', 'true');
+  });
+
+  it('D3 a branch manager always stays on their own branch: branchId param is ignored', async () => {
+    authMock.user = { id: 'u-bm', role: 'BRANCH_MANAGER', branchId: 'br2' };
+    wrap('/attendance?tab=today&date=2026-10-23&branchId=br1');
+    await waitFor(() => expect(apiMock.get).toHaveBeenCalledWith('/attendance/today', { params: { branchId: 'br2', date: '2026-10-23' } }));
+    expect(apiMock.get).not.toHaveBeenCalledWith('/attendance/today', { params: { branchId: 'br1', date: '2026-10-23' } });
+  });
+
+  it('D4 changing the day afterwards does not fight the URL (date param follows the state)', async () => {
+    apiMock.get.mockImplementation(async (path: string, cfg?: { params?: { date?: string } }) => ({ data: path === '/branches' ? BRANCHES : path === '/attendance/today' ? { ...TODAY, date: cfg?.params?.date ?? TODAY.date } : null }));
+    wrap('/attendance?tab=today&date=2026-10-23&branchId=br1');
+    await screen.findByText('วรรณา ส.');
+    fireEvent.click(screen.getByRole('button', { name: 'วันถัดไป' }));
+    await waitFor(() => expect(apiMock.get).toHaveBeenCalledWith('/attendance/today', { params: { branchId: 'br1', date: '2026-10-24' } }));
   });
 });

@@ -129,3 +129,7 @@ export const EXCEL_COLUMNS = [
 ];
 
 export const summaryToExcelRow = (name: string, s: MonthSummary) => ({ name, workDays: s.workDays, lateCount: s.lateCount, lateMinutes: s.lateMinutes, absent: s.absent, leave: s.leave, otHours: s.otHours });
+
+/** ข้อความเดียวกับ `attendancePaidMessage` ฝั่ง API (409 ATTENDANCE_PAID) — ใช้ตอนปุ่มถูกปิดก่อนยิง API */
+export const attendancePaidMessage = (number: string) =>
+  `เดือนนี้จ่ายเงินเดือนแล้ว (ใบ ${number}) — แก้ไม่ได้ ถ้าต้องปรับ ให้ใส่แถว "รายการปรับปรุงงวดก่อน" (จ่ายเพิ่ม) หรือรายการหัก (หักคืน) ในใบเงินเดือนงวดถัดไป`;

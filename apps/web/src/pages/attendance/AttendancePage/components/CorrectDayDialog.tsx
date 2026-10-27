@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
-import { AlertTriangle, ShieldCheck } from 'lucide-react';
+import { AlertTriangle, Lock, ShieldCheck } from 'lucide-react';
 import { getErrorMessage } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { NativeSelect } from '@/components/ui/native-select';
 import { useClearConflict, useCorrectDay, type DayKind } from '@/hooks/useAttendance';
-import { DAY_KIND_LABEL, hhmm, shiftDate, thaiShortDate } from '../../attendance.util';
+import { DAY_KIND_LABEL, attendancePaidMessage, hhmm, shiftDate, thaiShortDate } from '../../attendance.util';
 
 export interface CorrectTarget {
   dayId: string;
@@ -16,6 +16,8 @@ export interface CorrectTarget {
   clockOut: string | null;
   dayKind: DayKind;
   flags: string[];
+  /** เลขที่ใบเงินเดือนที่จ่ายเดือนนี้แล้ว — ไม่ null = บันทึกการแก้ไขไม่ได้ (ล้างธงยังได้) */
+  paidDocumentNumber?: string | null;
 }
 
 interface Props {
@@ -53,7 +55,8 @@ export default function CorrectDayDialog({ target, isOwner, onClose }: Props) {
   const outWithoutIn = !clockIn && !!clockOut;
   // เวลาออกน้อยกว่าเวลาเข้า = ออกหลังเที่ยงคืน (วันถัดไป) — ตอกข้ามวันยังอยู่แถวของวันที่ IN
   const outNextDay = !!clockIn && !!clockOut && clockOut <= clockIn;
-  const canSave = changed && !outWithoutIn && reason.trim().length >= MIN_REASON && !correct.isPending;
+  const paid = target.paidDocumentNumber ?? null;
+  const canSave = !paid && changed && !outWithoutIn && reason.trim().length >= MIN_REASON && !correct.isPending;
   const missingOut = target.flags.includes('MISSING_OUT');
   const conflict = target.flags.includes('DEVICE_CONFLICT');
 
@@ -88,6 +91,11 @@ export default function CorrectDayDialog({ target, isOwner, onClose }: Props) {
           <DialogDescription>ผจก.สาขา/เจ้าของ · ทุกการแก้เก็บค่าเก่า-ใหม่ ผู้แก้ และเหตุผล · สาย/OT คำนวณใหม่ด้วยกติกาเดียวกับตอนตอกจริง</DialogDescription>
         </DialogHeader>
         <DialogBody className="flex flex-col gap-4">
+          {paid && (
+            <div id="corr-paid" className="flex items-start gap-2 rounded-lg border border-border bg-muted px-3 py-2 text-sm leading-snug">
+              <Lock className="mt-0.5 size-4 shrink-0" aria-hidden="true" />{attendancePaidMessage(paid)}
+            </div>
+          )}
           {missingOut && (
             <div className="flex items-center gap-2 rounded-lg border border-warning/40 bg-warning/10 px-3 py-2 text-sm text-warning-strong leading-snug">
               <AlertTriangle className="size-4 shrink-0" aria-hidden="true" />ไม่ได้ตอกออก — ระบบปิดวันอัตโนมัติ 00:05 · OT ตอนนี้ = 0
@@ -110,12 +118,12 @@ export default function CorrectDayDialog({ target, isOwner, onClose }: Props) {
           <div className="grid grid-cols-2 gap-3">
             <div className="flex flex-col gap-1">
               <label htmlFor="corr-in" className="text-sm font-medium">เข้างาน</label>
-              <input id="corr-in" type="time" value={clockIn} onChange={(e) => setClockIn(e.target.value)} className="h-11 lg:h-10 rounded-lg border border-input bg-background px-3 text-sm" />
+              <input id="corr-in" type="time" disabled={!!paid} value={clockIn} onChange={(e) => setClockIn(e.target.value)} className="h-11 lg:h-10 rounded-lg border border-input bg-background px-3 text-sm" />
               <span className="text-xs text-muted-foreground">เดิม: {originalIn || '—'}</span>
             </div>
             <div className="flex flex-col gap-1">
               <label htmlFor="corr-out" className="text-sm font-medium">ออกงาน</label>
-              <input id="corr-out" type="time" value={clockOut} onChange={(e) => setClockOut(e.target.value)} className="h-11 lg:h-10 rounded-lg border border-input bg-background px-3 text-sm" />
+              <input id="corr-out" type="time" disabled={!!paid} value={clockOut} onChange={(e) => setClockOut(e.target.value)} className="h-11 lg:h-10 rounded-lg border border-input bg-background px-3 text-sm" />
               <span className="text-xs text-muted-foreground">เดิม: {originalOut || '— (ไม่ได้ตอก)'}{outNextDay && ' · ออกหลังเที่ยงคืน (วันถัดไป)'}</span>
             </div>
           </div>
@@ -126,18 +134,18 @@ export default function CorrectDayDialog({ target, isOwner, onClose }: Props) {
           )}
           <div className="flex flex-col gap-1">
             <label htmlFor="corr-kind" className="text-sm font-medium">ประเภทวัน</label>
-            <NativeSelect id="corr-kind" value={dayKind} onChange={(e) => setDayKind(e.target.value as DayKind)}>
+            <NativeSelect id="corr-kind" disabled={!!paid} value={dayKind} onChange={(e) => setDayKind(e.target.value as DayKind)}>
               {(Object.keys(DAY_KIND_LABEL) as DayKind[]).map((k) => <option key={k} value={k}>{DAY_KIND_LABEL[k]}</option>)}
             </NativeSelect>
           </div>
           <div className="flex flex-col gap-1">
             <label htmlFor="corr-reason" className="text-sm font-medium">เหตุผล (บังคับ ≥ {MIN_REASON} ตัวอักษร)</label>
-            <textarea id="corr-reason" rows={2} value={reason} onChange={(e) => setReason(e.target.value)} className="rounded-lg border border-input bg-background px-3 py-2 text-sm" />
+            <textarea id="corr-reason" rows={2} disabled={!!paid} value={reason} onChange={(e) => setReason(e.target.value)} className="rounded-lg border border-input bg-background px-3 py-2 text-sm" />
           </div>
         </DialogBody>
         <DialogFooter>
           <Button variant="outline" onClick={onClose} className="max-lg:min-h-11">ยกเลิก</Button>
-          <Button onClick={save} disabled={!canSave} className="max-lg:min-h-11">{correct.isPending ? 'กำลังบันทึก…' : 'บันทึกการแก้ไข'}</Button>
+          <Button onClick={save} disabled={!canSave} aria-describedby={paid ? 'corr-paid' : undefined} className="max-lg:min-h-11">{correct.isPending ? 'กำลังบันทึก…' : 'บันทึกการแก้ไข'}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

@@ -5,7 +5,8 @@ import { getErrorMessage } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import QueryBoundary from '@/components/QueryBoundary';
 import { useAttendanceMonth, useSetDayKinds, type DayKind } from '@/hooks/useAttendance';
-import { DAY_KIND_LABEL, nextDayKind, shiftDate, thaiShortDate, todayBangkok } from '../../attendance.util';
+import { PaidChip } from './PaidLock';
+import { DAY_KIND_LABEL, nextDayKind, shiftDate, thaiMonthLabel, thaiShortDate, todayBangkok } from '../../attendance.util';
 
 interface Props {
   branchId: string;
@@ -38,10 +39,11 @@ export default function ScheduleTab({ branchId, weekStart, onWeekChange, actorId
   const [pending, setPending] = useState<Record<string, DayKind>>({}); // key = userId|date
 
   const rows = useMemo(() => {
-    const byUser = new Map<string, { userId: string; nickname: string; name: string; role: string; visiting: boolean; kinds: Record<string, DayKind> }>();
+    const byUser = new Map<string, { userId: string; nickname: string; name: string; role: string; visiting: boolean; kinds: Record<string, DayKind>; paid: Record<string, string> }>();
     for (const src of [first.data, second.data]) {
       for (const r of src?.rows ?? []) {
-        const entry = byUser.get(r.userId) ?? { userId: r.userId, nickname: r.nickname, name: r.name, role: r.role, visiting: r.visiting, kinds: {} };
+        const entry = byUser.get(r.userId) ?? { userId: r.userId, nickname: r.nickname, name: r.name, role: r.role, visiting: r.visiting, kinds: {}, paid: {} };
+        if (r.paidDocumentNumber && src?.month) entry.paid[src.month] = r.paidDocumentNumber; // เดือนที่จ่ายแล้ว → เลขที่ใบ
         for (const d of days) if (r.cells[d]) entry.kinds[d] = r.cells[d].dayKind;
         byUser.set(r.userId, entry);
       }
@@ -92,16 +94,25 @@ export default function ScheduleTab({ branchId, weekStart, onWeekChange, actorId
                   const offCount = days.filter((d) => kindOf(r.userId, d, r.kinds[d]) === 'DAY_OFF').length;
                   return (
                     <tr key={r.userId} className="border-t border-border">
-                      <td className="px-3 py-1.5"><div className="font-semibold leading-snug">{r.nickname}</div><div className="text-xs text-muted-foreground leading-snug">{r.name}{self && ' · ตารางของตัวเอง ให้เจ้าของแก้'}{otherBranch && ' · พนักงานสาขาอื่น ให้สาขานั้นกำหนด'}</div></td>
+                      <td className="px-3 py-1.5">
+                        <div className="font-semibold leading-snug">{r.nickname}</div>
+                        <div className="text-xs text-muted-foreground leading-snug">{r.name}{self && ' · ตารางของตัวเอง ให้เจ้าของแก้'}{otherBranch && ' · พนักงานสาขาอื่น ให้สาขานั้นกำหนด'}</div>
+                        {Object.entries(r.paid).map(([m, no]) => (
+                          <div key={m} className="mt-1 flex flex-wrap items-center gap-1"><PaidChip id={`sched-paid-${r.userId}-${m}`} number={no} /><span className="text-xs text-muted-foreground leading-snug">เดือน {thaiMonthLabel(m)}</span></div>
+                        ))}
+                      </td>
                       {days.map((d) => {
                         const kind = kindOf(r.userId, d, r.kinds[d]);
                         const dirty = `${r.userId}|${d}` in pending;
                         const past = d < today;
+                        const paidNo = r.paid[d.slice(0, 7)];
+                        const paidId = paidNo ? `sched-paid-${r.userId}-${d.slice(0, 7)}` : undefined;
                         return (
                           <td key={d} className="px-1 py-1.5">
                             <button
                               type="button"
-                              disabled={locked || past || setKinds.isPending}
+                              disabled={locked || past || !!paidNo || setKinds.isPending}
+                              aria-describedby={paidId}
                               title={past ? 'ผ่านไปแล้ว — บันทึกลา/หยุดย้อนหลังที่แท็บ วันนี้ › แก้ไข' : undefined}
                               onClick={() => setPending((p) => ({ ...p, [`${r.userId}|${d}`]: nextDayKind(kind) }))}
                               className={`h-11 w-full rounded-lg border text-xs ${KIND_CLASS[kind]} ${dirty ? 'ring-2 ring-primary/40' : ''} disabled:opacity-60`}

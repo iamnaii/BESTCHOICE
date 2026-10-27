@@ -35,6 +35,8 @@ export interface TodayRow {
   clockInPunchId: string | null;
   clockOutPunchId: string | null;
   note: string | null;
+  /** เลขที่ใบเงินเดือน (POSTED) ที่จ่ายเดือนของวันนี้ให้คนนี้แล้ว — ไม่ null = เดือนนี้ read-only (ยกเว้นล้างธงเครื่องซ้อน) */
+  paidDocumentNumber: string | null;
 }
 
 export interface TodayResult {
@@ -75,6 +77,8 @@ export interface MonthRow {
   visiting: boolean;
   cells: Record<string, MonthCell>;
   summary: MonthSummary;
+  /** เลขที่ใบเงินเดือน (POSTED) ที่จ่ายเดือนนี้ให้คนนี้แล้ว */
+  paidDocumentNumber: string | null;
 }
 
 export interface MonthResult {
@@ -140,6 +144,8 @@ export function useCorrectDay() {
     mutationFn: async (input: { dayId: string; clockIn?: string | null; clockOut?: string | null; dayKind?: DayKind; reason: string }) =>
       (await api.patch(`/attendance/days/${input.dayId}`, { clockIn: input.clockIn, clockOut: input.clockOut, dayKind: input.dayKind, reason: input.reason })).data,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ATTENDANCE_KEY }),
+    // 409 ATTENDANCE_PAID = มีคนลงบัญชีใบเงินเดือนระหว่างที่หน้านี้เปิดค้าง → โหลดใหม่ให้เห็นแถวถูกล็อก
+    onError: () => queryClient.invalidateQueries({ queryKey: ATTENDANCE_KEY }),
   });
 }
 
@@ -148,6 +154,7 @@ export function useSetDayKinds() {
   return useMutation({
     mutationFn: async (input: { branchId: string; entries: Array<{ userId: string; date: string; dayKind: DayKind }> }) => (await api.put('/attendance/day-kinds', input)).data,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ATTENDANCE_KEY }),
+    onError: () => queryClient.invalidateQueries({ queryKey: ATTENDANCE_KEY }),
   });
 }
 

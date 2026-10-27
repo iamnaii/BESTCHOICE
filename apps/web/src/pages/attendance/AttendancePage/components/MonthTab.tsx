@@ -3,6 +3,7 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import QueryBoundary from '@/components/QueryBoundary';
 import { useAttendanceMonth, type MonthCell } from '@/hooks/useAttendance';
+import { PaidBanner, PaidChip, distinctNumbers } from './PaidLock';
 import { exportToExcel } from '@/utils/excel.util';
 import { EXCEL_COLUMNS, FLAG_LABEL, REVIEW_FLAGS, flagChipClass, fmtOt, shiftMonth, statusView, summaryToExcelRow, thaiMonthLabel, thaiShortDate } from '../../attendance.util';
 
@@ -83,6 +84,7 @@ export default function MonthTab({ branchId, branchName, month, onMonthChange, o
       </div>
 
       <QueryBoundary isLoading={q.isLoading && !data} isError={q.isError} error={q.error} onRetry={q.refetch} errorTitle="โหลดข้อมูลรายเดือนไม่สำเร็จ">
+        {data && <PaidBanner month={month} numbers={distinctNumbers(data.rows)} people={data.rows.filter((r) => r.paidDocumentNumber).length} />}
         {data && (
           <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
             <div className="overflow-x-auto">
@@ -104,6 +106,7 @@ export default function MonthTab({ branchId, branchName, month, onMonthChange, o
                       <td className="sticky left-0 z-10 bg-card px-3 py-1.5">
                         <div className="font-semibold leading-snug">{r.nickname}</div>
                         <div className="text-xs text-muted-foreground leading-snug">{r.name}</div>
+                        {r.paidDocumentNumber && <div className="mt-1"><PaidChip number={r.paidDocumentNumber} /></div>}
                       </td>
                       {data.days.map((d) => <td key={d} className="px-0.5 py-1.5 text-center"><CellBox date={d} cell={r.cells[d]} /></td>)}
                       <td className="border-l border-border px-2 py-1.5 text-right tabular-nums">{r.summary.workDays}</td>

@@ -60,6 +60,14 @@ deletedAt DateTime?
 **ผู้อ่าน `receivedVat` / `inputVatAmount` ต้องผ่าน `canSeeInputVat` (Q5 — OWNER/FM/ACCOUNTANT) ก่อนส่งออก API** (`decorateReceivingForRole` · `buildContractInputVatView`).
 รายละเอียดบัญชี: `.claude/rules/accounting.md` หัวข้อ "ภาษีซื้อของเครื่องที่ขายผ่อน".
 
+## ลงเวลา (ก้อน 10 D3 · 2026-10-27 · migration `20261105000000_attendance_kiosk`)
+
+- **หนึ่งแถวต่อคนต่อวัน** — `attendance_days` unique `(user_id, work_date)` · `work_date @db.Date` = วันตามปฏิทินไทยเก็บเป็นเที่ยงคืน UTC ⇒ เขียน/อ่านผ่าน `dbDate()` / `fromDbDate()` (`attendance-rules.ts`) เท่านั้น — `new Date('…T00:00+07:00')` ลงคอลัมน์ Date จะกลายเป็นวันก่อนหน้า
+- **ตารางประวัติ append-only** (มี `///` กำกับใน schema): `attendance_punches` · `attendance_corrections` · `attendance_device_events` · `attendance_device_tokens` · `attendance_device_requests` · `attendance_registration_codes` — ข้อยกเว้นที่ตั้งใจ: `punch.photo_key` ถูกตั้ง null ตอนรูปหมดอายุ (PDPA · cron 03:30 แถวตอกคงอยู่) · `used_at` ของรหัสลงทะเบียน/token · แคชคำขอถูกลบเมื่อเกิน 1 วัน
+- **ผู้เขียนแถววันมี 6 ทาง**: ตอกบัตร (`KioskPunchService`) · cron ปิดวัน · ติดธงชน (`AttendanceDeviceService.lockForConflict`) และล้างธง (`clearConflictFlag`, OWNER) — แตะ `flags` อย่างเดียว · แก้ไขด้วยมือ (`AttendanceService.correctDay` — เขียน `AttendanceCorrection` ค่าเก่า→ใหม่ · ผู้แก้ · เหตุผล ≥ 10 ตัว ใน tx เดียวกัน + audit `ATTENDANCE_CORRECTED` หลัง commit) · ตารางหยุด/ลา (`setDayKinds` — แตะประเภทวันอย่างเดียว ไม่แตะเวลา) · ทางที่เปลี่ยนเวลาเข้า-ออกต้องคำนวณสาย/OT ด้วย `computeDaySummary` ตัวเดียว · ทางใหม่ที่แก้เวลาด้วยมือต้องผ่าน `correctDay` (ห้ามเขียนตรงโดยไม่มีประวัติ)
+- **รหัสตอกบัตร** `users.attendance_pin_hash` unique (NULL ซ้ำได้) = `hashPII(pin, PII_HASH_SALT)` · ห้ามเก็บ/ log รหัสดิบ · ชน unique = สุ่มใหม่ (≤ 5 ครั้ง) · API ส่งออกเป็น `hasAttendancePin` เท่านั้น
+- token เครื่อง unique `(device_id, generation)` + `token_hash` unique · แคชคำตอบ unique `(device_id, request_id)` — สองตัวนี้คือหลักฐานตอนตัดสินว่า token ถูกคัดลอก ห้ามลบประวัติ token
+
 ## AuditLog — เขียนหลัง commit หรือใน tx (กติกาสำหรับ writer ใหม่)
 
 Phase 5 มี audit สองหลักคนละทิศในสาขาเดียวกันโดยตั้งใจ — **กติกาตัดสินคือ "แถวนี้ยอมหาย

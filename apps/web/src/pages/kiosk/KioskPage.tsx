@@ -97,7 +97,6 @@ export default function KioskPage() {
       if (resultTimer.current) clearTimeout(resultTimer.current);
     };
     // mount ครั้งเดียว — device ที่เปลี่ยนภายหลังถูกอ่านจาก store ใน heartbeat เอง
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const resetToReady = useCallback(() => {

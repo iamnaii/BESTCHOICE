@@ -50,7 +50,6 @@ const CameraPreview = forwardRef<CameraHandle, Props>(function CameraPreview({ o
       streamRef.current = null;
     };
     // onState เป็น callback ที่เสถียรจากหน้าแม่ — ตั้งกล้องครั้งเดียวตอน mount
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useImperativeHandle(ref, () => ({

@@ -23,8 +23,9 @@ describe('ExpenseDocumentsService.createPayroll — userId link & snapshot deriv
       rows: q.userIds.map((userId) => ({
         userId,
         autoOtEligible: false,
+        attendanceTracked: false,
         systemIncome: [],
-        attendanceSummary: { otHours: '0.0', autoOtEligible: false },
+        attendanceSummary: { otHours: '0.0', autoOtEligible: false, attendanceTracked: false },
         notes: { review: [], warnings: [] },
       })),
     })),

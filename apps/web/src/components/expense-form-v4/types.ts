@@ -86,6 +86,11 @@ export interface PayrollAttendanceSummary {
   reviewCount: number;
   /** รายเดือน + มีเงินเดือนในทะเบียน = ระบบคิด OT ให้ */
   autoOtEligible: boolean;
+  /**
+   * เดือนนี้มีแถวลงเวลาของคนนี้ (R20) — ไม่มี = ระบบไม่คิด OT ให้ แถว OT ที่กรอกเองอยู่ได้ ·
+   * บรรทัดที่บันทึกก่อนมีช่องนี้ไม่มีค่า ⇒ ถือว่าไม่รู้ (ฟอร์มไม่เอาแถวออก ให้ server ตัดสิน)
+   */
+  attendanceTracked?: boolean;
 }
 
 /** วันที่ต้องตรวจ (`systemNotes.review`) — `date` = 'YYYY-MM-DD' วันไทย · `blocking` = เครื่องถูกใช้ซ้อน (อนุมัติไม่ได้) */
@@ -101,6 +106,7 @@ export type PayrollSystemWarning =
   | { code: 'NOT_MONTHLY_OR_NO_BASE'; otHours: string }
   | { code: 'IN_OTHER_DOCUMENT'; documentId: string; documentNumber: string; branchName: string; status: string }
   | { code: 'NO_PIN' }
+  | { code: 'NO_ATTENDANCE' }
   | { code: 'NOT_YET_CLOSABLE'; closableAt: string };
 
 export interface PayrollSystemNotes {

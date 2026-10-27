@@ -126,6 +126,22 @@ describe('PayrollReviewPanel — warnings', () => {
     ).toBeInTheDocument();
   });
 
+  it('R20 FX1: no PIN and no attendance data tell the user they can type the OT under รายได้พิเศษ, with the name', () => {
+    mount({ role: 'OWNER', branchId: null }, [
+      { employeeName: 'สมใจ ไม่มีรหัส', systemNotes: notes({ warnings: [{ code: 'NO_PIN' }] }) },
+      { employeeName: 'มานี สาขาใหม่', systemNotes: notes({ warnings: [{ code: 'NO_ATTENDANCE' }] }) },
+    ]);
+    expect(screen.getByRole('heading', { name: 'คำเตือน (2)' })).toBeInTheDocument();
+    const items = within(screen.getByRole('heading', { name: 'คำเตือน (2)' }).closest('section') as HTMLElement).getAllByRole('listitem');
+    expect(items[0]).toHaveTextContent(
+      'สมใจ ไม่มีรหัส ยังไม่มีรหัสตอกบัตร — เดือนนี้ไม่มีข้อมูลลงเวลา ระบบจึงไม่คิด OT ให้ — กรอก OT เองได้ที่ รายได้พิเศษ',
+    );
+    expect(items[1]).toHaveTextContent(
+      'มานี สาขาใหม่ เดือนนี้ไม่มีข้อมูลลงเวลา ระบบจึงไม่คิด OT ให้ — กรอก OT เองได้ที่ รายได้พิเศษ',
+    );
+    expect(within(items[1]).getByText('มานี สาขาใหม่')).toHaveClass('font-semibold');
+  });
+
   it('renders nothing when no line has stored notes', () => {
     const { container } = mount({ role: 'OWNER', branchId: null }, [
       { employeeName: 'ใหม่', systemNotes: null },

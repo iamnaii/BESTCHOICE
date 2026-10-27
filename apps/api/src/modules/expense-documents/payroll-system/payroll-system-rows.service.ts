@@ -142,7 +142,10 @@ export class PayrollSystemRowsService {
       if (!autoOtEligible && hours.otHours.add(hours.holidayOtHours).add(hours.holidayHours).gt(0)) {
         warnings.push({ code: 'NOT_MONTHLY_OR_NO_BASE', otHours: hours.otHours.add(hours.holidayOtHours).toFixed(1) });
       }
-      if (!hasPin.get(userId) && userDays.length === 0) warnings.push({ code: 'NO_PIN' });
+      // R20 — ไม่มีแถวลงเวลาเลยในเดือน = ระบบไม่คิด OT ให้ ⇒ บอกให้กรอกเอง (ไม่มีรหัส = NO_PIN · มีรหัสแต่ไม่มีแถว เช่น สาขาไม่มีเครื่อง = NO_ATTENDANCE)
+      const attendanceTracked = userDays.length > 0;
+      if (!hasPin.get(userId) && !attendanceTracked) warnings.push({ code: 'NO_PIN' });
+      else if (autoOtEligible && !attendanceTracked) warnings.push({ code: 'NO_ATTENDANCE' });
       if (q.now.getTime() < cutoff.getTime()) warnings.push({ code: 'NOT_YET_CLOSABLE', closableAt: cutoff.toISOString() });
 
       const systemIncome: SystemIncomeRow[] = [];
@@ -174,6 +177,7 @@ export class PayrollSystemRowsService {
       return {
         userId,
         autoOtEligible,
+        attendanceTracked,
         systemIncome,
         attendanceSummary: {
           workDays: month.workDays,
@@ -187,6 +191,7 @@ export class PayrollSystemRowsService {
           holidayWorkedDays: hours.holidayWorkedDays,
           reviewCount: review.length,
           autoOtEligible,
+          attendanceTracked,
         },
         notes: { review, warnings },
       };

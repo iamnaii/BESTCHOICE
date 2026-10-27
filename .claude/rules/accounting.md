@@ -1021,7 +1021,7 @@ Spec: `docs/superpowers/specs/2026-10-27-payroll-ot-commission-design.md` (§17 
 - **คิดใหม่ทุกครั้งที่บันทึก (always-compute)**: ทุกทางบันทึก (สร้าง · `PATCH …/payroll` · จากแม่แบบ/คัดลอกงวดก่อน · ตอนส่งขออนุมัติ)
   server สร้างแถวรายได้ `ATTENDANCE_OT` / `ATTENDANCE_HOLIDAY` / `ATTENDANCE_HOLIDAY_OT` ให้**ทุกบรรทัดที่ผูกพนักงาน** เอง —
   client ส่งเฉพาะ `MANUAL` / `ADJUSTMENT` (ถ้าส่ง `isAdjustment` หาย แถวปรับปรุงจะกลายเป็น MANUAL). ปุ่มในฟอร์ม = "บันทึกร่าง + คิดยอด" ไม่มี endpoint prefill.
-  แถวระบบล็อก แก้มือไม่ได้ · เก็บ `quantity` (ชม.) · `rate` (4 ตำแหน่ง) · `multiplier` ต่อแถว และต่อบรรทัด `attendanceSummary` (snapshot มา/สาย/ขาด/ลา/ชม./`autoOtEligible` — ข้อมูลประกอบ ไม่มีผลต่อยอด) · `systemNotes` (คำเตือน/รายการต้องตรวจ) · `systemPulledAt` (เวลาที่คิด). `PAYROLL_STALE` เทียบเฉพาะแถว `ATTENDANCE_*` (source · account · amount) — `systemNotes` / `attendanceSummary` เก่าได้ ⇒ หน้าผู้อนุมัติอ่านวันติดธงสดจาก `findOne.payrollGate` ไม่ใช่จากที่เก็บ.
+  แถวระบบล็อก แก้มือไม่ได้ · เก็บ `quantity` (ชม.) · `rate` (4 ตำแหน่ง) · `multiplier` ต่อแถว และต่อบรรทัด `attendanceSummary` (snapshot มา/สาย/ขาด/ลา/ชม./`autoOtEligible`/`attendanceTracked` — ข้อมูลประกอบ ไม่มีผลต่อยอด) · `systemNotes` (คำเตือน/รายการต้องตรวจ) · `systemPulledAt` (เวลาที่คิด). `PAYROLL_STALE` เทียบเฉพาะแถว `ATTENDANCE_*` (source · account · amount) — `systemNotes` / `attendanceSummary` เก่าได้ ⇒ หน้าผู้อนุมัติอ่านวันติดธงสดจาก `findOne.payrollGate` ไม่ใช่จากที่เก็บ.
   บรรทัดมี `lineNo` ลำดับคงที่ (สลิปไม่สลับ).
 - **สูตร** (`payroll-pay.ts`): ชม.ละ = `EmployeeProfile.baseSalary` (เงินเดือนเต็มในทะเบียน ไม่ใช่ฐานในบรรทัด) ÷ 240 ·
   ตัวคูณ OT วันทำงาน **1.5** · ทำงานวันหยุดในเวลางาน **1** (ส่วนบวกเพิ่ม — ลูกจ้างรายเดือนได้ค่าจ้างวันหยุดอยู่แล้ว) · OT วันหยุด **3** ·
@@ -1032,8 +1032,15 @@ Spec: `docs/superpowers/specs/2026-10-27-payroll-ot-commission-design.md` (§17 
   `PayDay.workDate` ต้องเป็นเที่ยงคืนไทย (`fromDbDate(row.workDate)`) ไม่ใช่ค่า `@db.Date` ดิบ ไม่งั้นช่วงเวลางานเลื่อน 7 ชม.
   วันทำงาน/ลา (`WORK`, `LEAVE_*`) ใช้ `otHours` ที่เก็บในแถววัน. นับแถวลงเวลาของคนนั้น**ทุกสาขา**ในเดือนของงวด.
 - **ใครได้ OT อัตโนมัติ (D4)**: `isAutoOtEligible` = `employmentType = MONTHLY` และ `baseSalary > 0` ในทะเบียน. คนอื่น (รายวัน/สัญญาจ้าง/ไม่มีฐาน) ไม่สร้างแถว —
-  ส่งชั่วโมง + คำเตือน `NOT_MONTHLY_OR_NO_BASE` (เฉพาะเมื่อมี OT/ทำงานวันหยุด > 0 ไม่งั้นรายการเตือนท่วม) ให้กรอกเอง. แถว `MANUAL` ที่ใช้บัญชีของ role OT/ทำงานวันหยุดของฝั่งนั้น บนบรรทัดของพนักงาน `isAutoOtEligible` = 400 `MANUAL_OT_DUPLICATE` — แม้เดือนนี้ไม่มีแถวระบบ หรือ OT นั้นอยู่ในใบอื่น (ตรวจที่บัญชี ไม่ใช่ที่ยอด)
-  เว้นแต่ติ๊ก "รายการปรับปรุงงวดก่อน" (`source = ADJUSTMENT`, จ่ายเพิ่มของเดือนที่ล็อกแล้ว — ไม่มีวิธีแก้ยอดที่จ่ายแล้วทางอื่น; หักคืนใช้รายการหัก). ใบอื่นที่ยังมีผล (ไม่ VOIDED) ของงวดเดียวกันถือแถวลงเวลาของคนนี้อยู่ ⇒ ไม่คิดซ้ำ (`IN_OTHER_DOCUMENT`).
+  ส่งชั่วโมง + คำเตือน `NOT_MONTHLY_OR_NO_BASE` (เฉพาะเมื่อมี OT/ทำงานวันหยุด > 0 ไม่งั้นรายการเตือนท่วม) ให้กรอกเอง.
+  **กติกาแถวซ้ำ (R20 · 2026-10-28)**: แถว `MANUAL` ที่ใช้บัญชีของ role OT/ทำงานวันหยุดของฝั่งนั้น = 400 `MANUAL_OT_DUPLICATE` เฉพาะบรรทัดที่ `autoOtEligible && attendanceTracked`
+  (`attendanceTracked` = คนนั้นมีแถวลงเวลา (ไม่ถูกลบ) อย่างน้อย 1 แถวในเดือนของงวด ทุกสาขา — ชุดวันเดียวกับที่ใช้คิดชั่วโมง · เก็บใน `SystemRowsForUser` และ `attendanceSummary`) —
+  แม้เดือนนี้ไม่มีแถวระบบ (มีแถวลงเวลาแต่ OT 0) หรือ OT นั้นอยู่ในใบอื่น (ตรวจที่บัญชี ไม่ใช่ที่ยอด) เว้นแต่ติ๊ก "รายการปรับปรุงงวดก่อน" (`source = ADJUSTMENT`, จ่ายเพิ่มของเดือนที่ล็อกแล้ว — ไม่มีวิธีแก้ยอดที่จ่ายแล้วทางอื่น; หักคืนใช้รายการหัก).
+  **ไม่มีแถวลงเวลาเลยในเดือน** (ไม่มีรหัสตอกบัตร · สาขาไม่มีเครื่อง · พนักงานส่วนกลาง FINANCE · ก่อนเริ่มใช้ระบบลงเวลา) ⇒ ระบบไม่คิด OT ให้ แถว OT ที่กรอกเองรับเป็น `MANUAL` + คำเตือน
+  `NO_PIN` (ไม่มีรหัส — เงื่อนไขเดิม ไม่ขึ้นกับ autoOtEligible) หรือ `NO_ATTENDANCE` (autoOtEligible + มีรหัส) · เว็บ: "…เดือนนี้ไม่มีข้อมูลลงเวลา ระบบจึงไม่คิด OT ให้ — กรอก OT เองได้ที่ รายได้พิเศษ" (`NO_ATTENDANCE_TEXT`).
+  แถวลงเวลาโผล่ทีหลัง: ก่อนส่ง → ตอนส่งขออนุมัติคิดใหม่แล้วได้ 400 `MANUAL_OT_DUPLICATE` (ข้อความมีชื่อ · ร่างไม่ถูกแตะ — ไม่ใช่ 500) · หลังส่ง → แถว `ATTENDANCE_*` ใหม่ทำให้อนุมัติ/ลงบัญชีชน `PAYROLL_STALE` แล้วบันทึกใหม่ชนกติกาแถวซ้ำ
+  (ปักที่ `payroll-post-gate.integration.spec.ts` "R20 FX1") · ข้อจำกัดที่รู้: แถวลงเวลาที่โผล่หลังส่งแต่ OT 0 ไม่ทำให้ยอดเปลี่ยน ⇒ ใบผ่านด่านพร้อมแถว OT ที่กรอกเอง (ไม่จ่ายซ้ำ — ระบบคิด OT 0).
+  ใบอื่นที่ยังมีผล (ไม่ VOIDED) ของงวดเดียวกันถือแถวลงเวลาของคนนี้อยู่ ⇒ ไม่คิดซ้ำ (`IN_OTHER_DOCUMENT`).
   ผจก.สาขาใส่ได้เฉพาะพนักงานของสาขาตัวเอง (`NOT_IN_BRANCH`) — ยกเว้นตอนส่งขออนุมัติที่คิดจากบรรทัดที่เก็บไว้ (`{ storedLines: true }` ข้ามด่านนี้ ด่านอื่นครบ) · ตัวเลือกพนักงานรับ `?period=YYYY-MM` ให้คนที่ลาออกในเดือนนั้นยังเลือกได้ (`payrollPeriodStart`).
 - **บัญชี**: role `payroll_overtime` / `shop_payroll_overtime` (OT วันทำงาน) และ `payroll_holiday` / `shop_payroll_holiday` (ทำงานวันหยุด + OT วันหยุด) ·
   ค่าเริ่มต้นใน migration = บัญชีเดียวกับ OT (FINANCE `53-1103`, SHOP `S52-1202`) — เปลี่ยนแยกได้ที่ AccountRoleMap (A5) — **ห้ามชี้ `payroll_holiday` ไปบัญชีที่ใช้กับรายได้พิเศษที่กรอกเองอื่น** (แถว MANUAL บัญชีนั้นจะชน `MANUAL_OT_DUPLICATE`) ·
@@ -1050,7 +1057,8 @@ Spec: `docs/superpowers/specs/2026-10-27-payroll-ot-commission-design.md` (§17 
   ล้างธง `DEVICE_CONFLICT` ยังทำได้ (ธงไม่เปลี่ยนตัวเงิน) · การตอกบัตรสดไม่ถูกล็อก · `lockForConflict` ยังติดธงในเดือนที่จ่ายแล้วและใส่เลขที่ใบ + คำแนะนำหักคืนงวดถัดไปใน Todo เจ้าของ (ตารางผู้เขียนใน `.claude/rules/database.md`) · ต้องปรับยอดที่จ่ายแล้ว = แถว "รายการปรับปรุงงวดก่อน" (จ่ายเพิ่ม) หรือรายการหัก (หักคืน) ในใบงวดถัดไป. กลับรายการ (VOID) ใบ ⇒ เดือนนั้นแก้ได้อีก.
 - **ส่งกลับเป็นร่าง = กด "แก้ไข"**: `PATCH …/payroll` รับสถานะ DRAFT / PENDING_APPROVAL / APPROVED (`PAYROLL_EDITABLE_STATUSES`); จาก PENDING_APPROVAL/APPROVED ใบกลับเป็น DRAFT + ล้างผู้อนุมัติ + audit `SENT_BACK_TO_DRAFT` ใน tx — ไม่มีปุ่ม/route ใหม่.
   ห้ามกู้ใบเงินเดือนจากถังขยะทุกกรณี (สร้างใหม่).
-- **เว็บ** (เมื่อต้องแก้ต่อ): ฟอร์มแก้ดึงข้อมูลสดและไม่ส่ง ATTENDANCE_* กลับเป็น MANUAL · ลิงก์วันที่ต้องตรวจ `/attendance?tab=today&date=YYYY-MM-DD&branchId=…` (วันของสาขาอื่นเปิดสาขานั้น; ผจก.อยู่สาขาตัวเอง; วันอนาคตถูกปฏิเสธ) ·
+- **เว็บ** (เมื่อต้องแก้ต่อ): ฟอร์มแก้ดึงข้อมูลสดและไม่ส่ง ATTENDANCE_* กลับเป็น MANUAL · ก่อนบันทึกเอาแถว OT ที่กรอกเองออก (`stripTypedOtRows` + toast) เฉพาะบรรทัดที่บันทึกแล้วและ snapshot มี `autoOtEligible` และ `attendanceTracked` เป็น true —
+  snapshot ที่บันทึกก่อน R20 (ไม่มี `attendanceTracked`) ถือว่าไม่รู้ ไม่เอาออก ให้ server ตัดสิน (server คิดใหม่ทุกครั้งที่บันทึก) · ลิงก์วันที่ต้องตรวจ `/attendance?tab=today&date=YYYY-MM-DD&branchId=…` (วันของสาขาอื่นเปิดสาขานั้น; ผจก.อยู่สาขาตัวเอง; วันอนาคตถูกปฏิเสธ) ·
   หน้ารายละเอียด poll ทุก 60 วินาทีขณะด่านยังบล็อก + ตั้ง timer ที่เวลาปิดงวด · หน้าลงเวลาของเดือนที่จ่ายแล้วแสดงป้ายล็อกและปิดปุ่มแก้ (ข้อความชี้ใบเงินเดือนงวดถัดไป) — ยกเว้นเจ้าของบนแถวที่ติด `DEVICE_CONFLICT` ซึ่งเปิดได้เพื่อล้างธงเท่านั้น. ปุ่มไฟล์โอนธนาคารเปิดเฉพาะ POSTED ที่ฝั่งเว็บเท่านั้น (endpoint `bank-transfer.csv` ไม่ตรวจสถานะ).
 - **คำตัดสินเจ้าของ 2026-10-27** (ปิดประเด็น — อย่าเสนอซ้ำ): D1 นาทีสาย **เก็บแยก ไม่หักเงิน** (แสดงบนสลิปเป็นข้อมูล) · D2 ค่าคอมพนักงานจ่ายผ่านใบเงินเดือนอย่างเดียว ต้องอนุมัติก่อนดึงเข้าใบ (ส่วนที่ 2) ·
   D3 OT เดือน M จ่ายพร้อมเงินเดือน M ลงบัญชีได้ตั้งแต่ 18:00 วันที่ 1 ของ M+1 · D4 รายวัน/สัญญาจ้าง/ไม่มีฐานในทะเบียน ไม่คิด OT อัตโนมัติ · D5 วันหยุดจ่ายตาม ม.61–63 (1.5 / +1 / 3 เท่า) ·
@@ -1063,7 +1071,7 @@ Spec: `docs/superpowers/specs/2026-10-27-payroll-ot-commission-design.md` (§17 
   - `clearConflictFlag` แยกไม่ได้ว่า `DEVICE_CONFLICT` ถูกดันเข้ามาหลังเจ้าของตรวจ (ล้างทิ้งเสมอ) — ต้องมี version token
   - ด่านธงเครื่องถูกใช้ซ้อนตอนลงบัญชี (2) เป็น TOCTOU เทียบ `lockForConflict` ระหว่าง tx (`lockForConflict` ไม่ถือ advisory lock ของเงินเดือน)
   - BRANCH_MANAGER สร้าง/แก้ใบเงินเดือนได้ (`expense-documents.controller.ts`) แต่ `GET /employees/pickable` (`employees.controller.ts`) ไม่รับ BM ⇒ BM เลือกพนักงานผูกไม่ได้ จึงไม่ได้ OT อัตโนมัติ — รอเจ้าของตัดสิน
-  - แม่แบบใบเงินเดือน / บิลประจำที่มีแถว OT พิมพ์เองบนบัญชี OT ตอนนี้ instantiate ไม่ผ่านสำหรับพนักงานรายเดือน (`expense-templates.service.ts` :356, `recurring-bills/recurring-bills.service.ts` :471 → `createPayroll` → `MANUAL_OT_DUPLICATE`)
+  - แม่แบบใบเงินเดือน / บิลประจำที่มีแถว OT พิมพ์เองบนบัญชี OT ตอนนี้ instantiate ไม่ผ่านสำหรับพนักงานรายเดือนที่เดือนนั้นมีแถวลงเวลา (`expense-templates.service.ts` :356, `recurring-bills/recurring-bills.service.ts` :471 → `createPayroll` → `MANUAL_OT_DUPLICATE` · คนที่ไม่มีแถวลงเวลาผ่านแล้วตั้งแต่ R20)
   - role `payroll_overtime` / `payroll_holiday` (และ `shop_`) ต้องคง active ใน AccountRoleMap ไม่งั้นทุกการบันทึกที่มีบรรทัดผูกพนักงานได้ 400 (`payroll-system/role-codes.ts`)
   - `compute` อ่านกติกาสาขาด้วย root client ภายใน tx เงินเดือน (`payroll-system-rows.service.ts` :92 `getRules`)
   - `lockForConflict` `updateMany` อาจจับแถวนอกชุด FOR UPDATE (`attendance-device.service.ts`)

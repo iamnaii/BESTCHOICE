@@ -104,10 +104,12 @@ export function mergePayrollLines(
   const byUser = new Map((system?.rows ?? []).map((r) => [r.userId, r]));
   const attendanceCodes = new Set(system?.attendanceAccountCodes ?? []);
 
-  // บรรทัดที่ระบบคิด OT ให้ (รายเดือน + มีเงินเดือนในทะเบียน) ห้ามมีแถว OT กรอกเอง — เว้นแต่ติ๊ก "รายการปรับปรุงงวดก่อน" (ADJUSTMENT)
+  // บรรทัดที่ระบบคิด OT ให้ (รายเดือน + มีเงินเดือนในทะเบียน) **และ** เดือนนี้มีแถวลงเวลาของคนนั้น ห้ามมีแถว OT กรอกเอง —
+  // เว้นแต่ติ๊ก "รายการปรับปรุงงวดก่อน" (ADJUSTMENT) · R20: ไม่มีแถวลงเวลาเลย (ไม่มีรหัส / สาขาไม่มีเครื่อง / ส่วนกลาง / ก่อนเริ่มใช้)
+  // ระบบไม่คิด OT ให้ ⇒ แถวที่กรอกเองรับเป็น MANUAL · แถวลงเวลาโผล่ทีหลัง = ตอนส่ง/บันทึกครั้งถัดไปกติกานี้กลับมาใช้ และใบที่ส่งแล้วชนยอดเปลี่ยนที่ด่านอนุมัติ
   const duplicated = lines.filter((l) => {
     const r = l.userId ? byUser.get(l.userId) : undefined;
-    return !!r?.autoOtEligible && l.customIncome.some((i) => i.source === 'MANUAL' && attendanceCodes.has(i.accountCode));
+    return !!r?.autoOtEligible && !!r.attendanceTracked && l.customIncome.some((i) => i.source === 'MANUAL' && attendanceCodes.has(i.accountCode));
   });
   if (duplicated.length > 0) {
     throw new BadRequestException({

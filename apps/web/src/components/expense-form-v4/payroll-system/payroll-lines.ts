@@ -113,9 +113,10 @@ export const withoutStoredSystemData = (l: PayrollLineForm): PayrollLineForm => 
 });
 
 /**
- * ก่อนบันทึก: บรรทัดที่บันทึกแล้วและระบบคิด OT ให้ (`attendanceSummary.autoOtEligible` ที่เก็บไว้) ห้ามมีแถว OT ที่กรอกเอง
- * (server ปฏิเสธ MANUAL_OT_DUPLICATE) ⇒ เอาแถวรหัสบัญชีลงเวลาที่ไม่ได้ติ๊ก "รายการปรับปรุงงวดก่อน" ออก ·
- * บรรทัดใหม่/ยังไม่เคยบันทึกไม่แตะ — ให้ server ตัดสินจากทะเบียนจริง
+ * ก่อนบันทึก: บรรทัดที่บันทึกแล้ว ระบบคิด OT ให้ และเดือนนั้นมีข้อมูลลงเวลา (`attendanceSummary.autoOtEligible` +
+ * `attendanceTracked` ที่เก็บไว้ — กติกาเดียวกับ server R20) ห้ามมีแถว OT ที่กรอกเอง (server ปฏิเสธ MANUAL_OT_DUPLICATE)
+ * ⇒ เอาแถวรหัสบัญชีลงเวลาที่ไม่ได้ติ๊ก "รายการปรับปรุงงวดก่อน" ออก · บรรทัดใหม่/ยังไม่เคยบันทึก/ไม่มีข้อมูลลงเวลา/
+ * บันทึกก่อนมี `attendanceTracked` ไม่แตะ — ให้ server ตัดสินจากลงเวลาปัจจุบัน (server คิดใหม่ทุกครั้งที่บันทึก)
  */
 export function stripTypedOtRows(
   lines: PayrollLineForm[],
@@ -124,7 +125,7 @@ export function stripTypedOtRows(
   const codes = new Set(attendanceAccountCodes);
   let removed = 0;
   const next = lines.map((l) => {
-    if (l.attendanceSummary?.autoOtEligible !== true) return l;
+    if (l.attendanceSummary?.autoOtEligible !== true || l.attendanceSummary.attendanceTracked !== true) return l;
     const kept = l.customIncome.filter((r) => r.isAdjustment || !codes.has(r.accountCode));
     removed += l.customIncome.length - kept.length;
     return kept.length === l.customIncome.length ? l : { ...l, customIncome: kept };

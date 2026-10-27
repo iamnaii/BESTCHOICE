@@ -66,8 +66,9 @@ describe('ExpenseDocumentsService.updatePayroll', () => {
           rows: q.userIds.map((userId) => ({
             userId,
             autoOtEligible: true,
+            attendanceTracked: true,
             systemIncome: [{ source: 'ATTENDANCE_OT', accountCode: 'S52-1202', name: 'OT วันทำงาน (1.5 เท่า)', quantity: '2.0', rate: '81.2500', multiplier: '1.5', amount: '162.50', isTaxable: true }],
-            attendanceSummary: { otHours: '2.0', autoOtEligible: true },
+            attendanceSummary: { otHours: '2.0', autoOtEligible: true, attendanceTracked: true },
             notes: { review: [], warnings: [] },
           })),
         };

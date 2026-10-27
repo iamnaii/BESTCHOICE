@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { Prisma, PrismaClient, type AttendanceDayKind, type EmploymentType, type UserRole } from '@prisma/client';
-import { ConflictException, ForbiddenException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException } from '@nestjs/common';
 import { seedFinanceCoa } from '../../../../prisma/seed-coa-finance';
 import { seedShopCoa } from '../../../../prisma/seed-coa-shop';
 import { AuditService } from '../../audit/audit.service';
@@ -118,10 +118,10 @@ async function mkBranch(tag: string) {
 async function mkUser(
   tag: string,
   branchId: string,
-  o: { role?: UserRole; profile?: { employmentType: EmploymentType; baseSalary: number | null } | null } = {},
+  o: { role?: UserRole; profile?: { employmentType: EmploymentType; baseSalary: number | null } | null; pin?: boolean } = {},
 ) {
   const user = await prisma.user.create({
-    data: { email: `gate-${tag}-${stamp}@test.local`, password: 'x', name: `พนักงาน ${tag}`, role: o.role ?? 'SALES', isActive: true, branchId, attendancePinHash: `pin-${tag}-${stamp}` },
+    data: { email: `gate-${tag}-${stamp}@test.local`, password: 'x', name: `พนักงาน ${tag}`, role: o.role ?? 'SALES', isActive: true, branchId, attendancePinHash: o.pin === false ? null : `pin-${tag}-${stamp}` },
   });
   userIds.push(user.id);
   const profile = o.profile === undefined ? { employmentType: 'MONTHLY' as const, baseSalary: 16500 } : o.profile;
@@ -299,6 +299,84 @@ describe('Payroll submit / approve / post gate (Postgres)', () => {
     const requested = await prisma.auditLog.findFirstOrThrow({ where: { action: 'APPROVAL_REQUESTED', entityId: doc.id } });
     expect(requested.newValue).toMatchObject({ status: 'PENDING_APPROVAL', totalAmount: '27060.94' });
     expect(await prisma.auditLog.count({ where: { action: 'SENT_BACK_TO_DRAFT', entityId: doc.id } })).toBe(0);
+  });
+
+  it('R20 FX1: no attendance rows this month → typed OT is accepted as MANUAL (NO_PIN / NO_ATTENDANCE) · rows that appear before submit make the submit refresh refuse MANUAL_OT_DUPLICATE (draft untouched) · rows that appear after submit make approve stale and the re-save refuses', async () => {
+    const typedOt = { accountCode: 'S52-1202', name: 'OT กรอกเอง', amount: 500 };
+    const manualOnly = [{ source: 'MANUAL', accountCode: 'S52-1202', name: 'OT กรอกเอง', amount: '500.00', quantity: null }];
+    const duplicate = (name: string) => ({
+      code: 'MANUAL_OT_DUPLICATE',
+      message: `${name} มีแถว OT ที่กรอกเองซ้ำกับ OT จากระบบลงเวลา — ลบแถวนั้น หรือติ๊ก "รายการปรับปรุงงวดก่อน" ถ้าเป็นการแก้ OT ของเดือนก่อน`,
+    });
+    const expect400 = async (p: Promise<unknown>, body: Record<string, unknown>) => {
+      const err = await p.then(
+        () => { throw new Error('expected a 400'); },
+        (e: unknown) => e,
+      );
+      expect(err).toBeInstanceOf(BadRequestException);
+      expect((err as BadRequestException).getResponse()).toEqual(body);
+    };
+    const notesOf = async (documentId: string) =>
+      (await prisma.payrollLine.findMany({ where: { payroll: { documentId } }, orderBy: { lineNo: 'asc' }, select: { attendanceSummary: true, systemNotes: true } })).map((l) => ({
+        tracked: (l.attendanceSummary as { attendanceTracked?: boolean } | null)?.attendanceTracked,
+        warnings: (l.systemNotes as { warnings: unknown[] } | null)?.warnings,
+      }));
+
+    // (ก) ไม่มีรหัสตอกบัตร + สาขาไม่มีเครื่อง (มีรหัสแต่ไม่มีแถวลงเวลาเลย) — รายเดือน มีเงินเดือนทะเบียน
+    setNow(SAVED);
+    const b = await mkBranch('untracked');
+    const noPin = await mkUser('no-pin', b, { pin: false });
+    const noDevice = await mkUser('no-device', b);
+    const doc = await createDoc(b, [
+      { userId: noPin, baseSalary: 16500, customIncome: [typedOt] },
+      { userId: noDevice, baseSalary: 16500, customIncome: [typedOt] },
+    ]);
+    const saved = await storedRows(doc.id);
+    expect(saved.map((l) => [l.income, l.netPaid])).toEqual([
+      [manualOnly, '17000.00'],
+      [manualOnly, '17000.00'],
+    ]);
+    expect(await notesOf(doc.id)).toEqual([
+      { tracked: false, warnings: [{ code: 'NO_PIN' }, { code: 'NOT_YET_CLOSABLE', closableAt: CLOSABLE_AT }] },
+      { tracked: false, warnings: [{ code: 'NO_ATTENDANCE' }, { code: 'NOT_YET_CLOSABLE', closableAt: CLOSABLE_AT }] },
+    ]);
+
+    // ตอกบัตรเข้ามาทีหลัง (ก่อนส่ง) → ตอนส่งคิดใหม่แล้วกติกาแถวซ้ำกลับมาใช้ ⇒ 400 ภาษาไทยพร้อมชื่อ (ไม่ใช่ 500) · ร่างไม่ถูกแตะ
+    await otDay(noDevice, b, 20);
+    setNow(AFTER);
+    await expect400(lifecycle.submitForApproval(doc.id, ownerId), duplicate('พนักงาน no-device'));
+    expect(await statusOf(doc.id)).toBe('DRAFT');
+    expect(await storedRows(doc.id)).toEqual(saved);
+    expect(await prisma.auditLog.count({ where: { action: 'APPROVAL_REQUESTED', entityId: doc.id } })).toBe(0);
+
+    // (ข) ส่งขออนุมัติตอนยังไม่มีแถวลงเวลา → แถวลงเวลาโผล่หลังส่ง → อนุมัติชนยอดเปลี่ยน (ไม่มี JE) → กดแก้ไขแล้วบันทึก = 400 แถวซ้ำ
+    setNow(SAVED);
+    const b2 = await mkBranch('untracked-later');
+    const late = await mkUser('late', b2);
+    const doc2 = await createDoc(b2, [{ userId: late, baseSalary: 16500, customIncome: [typedOt] }]);
+    setNow(AFTER);
+    await lifecycle.submitForApproval(doc2.id, ownerId);
+    expect(await statusOf(doc2.id)).toBe('PENDING_APPROVAL');
+    expect((await storedRows(doc2.id))[0].income).toEqual(manualOnly);
+
+    await otDay(late, b2, 21);
+    await expectConflict(lifecycle.approve(doc2.id, ownerId, 'OWNER'), {
+      code: 'PAYROLL_STALE',
+      diffs: [{ userId: late, employeeName: 'พนักงาน late', label: OT_LABEL, stored: { amount: '0.00', hours: null }, current: { amount: '154.69', hours: '1.5' } }],
+      message: STALE,
+    });
+    const held = await prisma.expenseDocument.findUniqueOrThrow({ where: { id: doc2.id } });
+    expect(held.status).toBe('PENDING_APPROVAL');
+    expect(held.journalEntryId).toBeNull();
+    await expect400(
+      creator.updatePayroll(
+        doc2.id,
+        { documentDate: '2026-10-31', payrollPeriod: PERIOD, entityScope: 'SHOP', depositAccountCode: 'S11-1202', paymentMethod: 'BANK_TRANSFER', lines: [{ userId: late, baseSalary: 16500, customIncome: [typedOt] }] } as never,
+        OWNER(),
+      ),
+      duplicate('พนักงาน late'),
+    );
+    expect(await statusOf(doc2.id)).toBe('PENDING_APPROVAL');
   });
 
   it('approval_enabled = false: post() of a DRAFT before the cutoff → 409 PAYROLL_CUTOFF (stays DRAFT, no JE) · at 18:01 it posts with the OT row', async () => {

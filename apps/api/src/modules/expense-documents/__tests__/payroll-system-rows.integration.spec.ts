@@ -188,6 +188,7 @@ describe('PayrollSystemRowsService.compute (Postgres)', () => {
       {
         userId: u,
         autoOtEligible: true,
+        attendanceTracked: true,
         systemIncome: [otRow('6.5', '609.38'), holidayRow('8.0', '500.00'), holidayOtRow('2.0', '375.00')],
         attendanceSummary: {
           workDays: 6,
@@ -201,6 +202,7 @@ describe('PayrollSystemRowsService.compute (Postgres)', () => {
           holidayWorkedDays: 1,
           reviewCount: 0,
           autoOtEligible: true,
+          attendanceTracked: true,
         },
         notes: { review: [], warnings: [] },
       },
@@ -297,14 +299,24 @@ describe('PayrollSystemRowsService.compute (Postgres)', () => {
     expect(atCutoff.notes.warnings).toEqual([]);
   });
 
-  it('NO_PIN only when the user has no PIN and no attendance rows in the period', async () => {
+  it('NO_PIN only when the user has no PIN and no attendance rows in the period · R20: NO_ATTENDANCE for an auto-OT user with a PIN and no rows · attendanceTracked = has rows', async () => {
     const noPinNoRows = await mkUser('pin-none', { pin: false });
     const noPinWithRows = await mkUser('pin-rows', { pin: false });
     await mkDay(noPinWithRows, branch1.id, 1, { in: '10:00', out: '19:00' });
-    const res = await service.compute(prisma as never, query([noPinNoRows, noPinWithRows]));
-    expect(res.rows[0].notes.warnings).toEqual([{ code: 'NO_PIN' }]);
+    const pinNoRows = await mkUser('pin-no-device');
+    const dailyPinNoRows = await mkUser('pin-daily', { profile: { employmentType: 'DAILY', baseSalary: null } });
+    const deletedOnly = await mkUser('pin-deleted-day');
+    await mkDay(deletedOnly, branch1.id, 2, { in: '10:00', out: '20:30', ot: 1.5, deleted: true });
+    const res = await service.compute(prisma as never, query([noPinNoRows, noPinWithRows, pinNoRows, dailyPinNoRows, deletedOnly]));
+    expect(res.rows.map((r) => [r.notes.warnings, r.attendanceTracked, r.attendanceSummary.attendanceTracked, r.autoOtEligible])).toEqual([
+      [[{ code: 'NO_PIN' }], false, false, true],
+      [[], true, true, true],
+      [[{ code: 'NO_ATTENDANCE' }], false, false, true],
+      [[], false, false, false], // รายวัน: ระบบไม่คิด OT ให้อยู่แล้ว ไม่มีชั่วโมงให้เตือน
+      [[{ code: 'NO_ATTENDANCE' }], false, false, true], // แถวที่ถูกลบไม่นับ (ชุดวันเดียวกับที่ใช้คิดชั่วโมง)
+    ]);
     expect(res.rows[0].systemIncome).toEqual([]);
-    expect(res.rows[1].notes.warnings).toEqual([]);
+    expect(res.rows[2].systemIncome).toEqual([]);
   });
 
   it('(k) document A (branch 1) holds U attendance rows → compute for branch 2 gets none + IN_OTHER_DOCUMENT; excluded / VOIDED / soft-deleted A, a MANUAL-only document and another period do not block', async () => {

@@ -51,7 +51,10 @@ export interface ReviewDay {
 export type SystemWarning =
   | { code: 'NOT_MONTHLY_OR_NO_BASE'; otHours: string }
   | { code: 'IN_OTHER_DOCUMENT'; documentId: string; documentNumber: string; branchName: string; status: string }
+  /** ไม่มีรหัสตอกบัตร และเดือนนี้ไม่มีแถวลงเวลาเลย */
   | { code: 'NO_PIN' }
+  /** ระบบคิด OT ให้ (รายเดือน + เงินเดือนทะเบียน) และมีรหัสตอกบัตร แต่เดือนนี้ไม่มีแถวลงเวลาเลย (เช่น สาขาไม่มีเครื่อง) — R20 */
+  | { code: 'NO_ATTENDANCE' }
   | { code: 'NOT_YET_CLOSABLE'; closableAt: string };
 
 export interface AttendanceSummarySnapshot extends Omit<MonthSummary, 'otHours'> {
@@ -63,6 +66,8 @@ export interface AttendanceSummarySnapshot extends Omit<MonthSummary, 'otHours'>
   reviewCount: number;
   /** รายเดือน + มีเงินเดือนในทะเบียน — ระบบคิด OT ให้ (คำตัดสิน R1: Task 4 เก็บผลนี้ตรง ๆ และเว็บอ่าน) */
   autoOtEligible: boolean;
+  /** เดือนนี้มีแถวลงเวลาของคนนี้อย่างน้อย 1 แถว (ทุกสาขา) — R20: กติกาแถว OT ที่กรอกเองซ้ำใช้เฉพาะเมื่อ autoOtEligible && attendanceTracked */
+  attendanceTracked: boolean;
 }
 
 export interface SystemNotes {
@@ -73,6 +78,8 @@ export interface SystemNotes {
 export interface SystemRowsForUser {
   userId: string;
   autoOtEligible: boolean;
+  /** เดือนนี้มีแถวลงเวลาของคนนี้ (ชุดวันเดียวกับที่ใช้คิดชั่วโมง) — ไม่มี = ระบบไม่คิด OT ให้ แถวที่กรอกเองรับเป็น MANUAL (R20) */
+  attendanceTracked: boolean;
   systemIncome: SystemIncomeRow[];
   attendanceSummary: AttendanceSummarySnapshot;
   notes: SystemNotes;

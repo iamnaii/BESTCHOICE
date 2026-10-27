@@ -36,7 +36,7 @@ const scenario = (record: Omit<ScenarioRecord, 'documents' | 'guards' | 'rendere
   documents: ['PAYROLL_SLIP'], guards: GUARDS, renderer: 'chromium', source: 'api', status: 'PASS', simulated: SIMULATED, ...record,
 });
 
-type PayrollLineRow = { id: string; userId: string | null; employeeName: string; employeeTaxId: string | null; baseSalary: string; ssoEmployee: string; whtAmount: string; netPaid: string; customIncome?: Array<{ accountCode: string; name: string; amount: string; isTaxable: boolean }>; customDeduction?: Array<{ accountCode: string; name: string; amount: string }> };
+type PayrollLineRow = { id: string; userId: string | null; employeeName: string; employeeTaxId: string | null; baseSalary: string; ssoEmployee: string; whtAmount: string; netPaid: string; customIncome?: Array<{ accountCode: string; name: string; amount: string; isTaxable: boolean; source?: string }>; customDeduction?: Array<{ accountCode: string; name: string; amount: string }> };
 type PayrollDoc = { id: string; number: string; documentType: string; status: string; branchId: string; documentDate: string; paidAt: string | null; subtotal: string; withholdingTax: string; totalAmount: string; netPayment: string | null; depositAccountCode: string | null; journalEntryId: string | null; approvedById: string | null; createdById: string; updatedAt: string; payroll: { payrollPeriod: string; entityScope: string; lines: PayrollLineRow[] } | null };
 type JeLine = { accountCode: string; debit: string; credit: string };
 type AnnualItem = { employeeName: string; employeeTaxId: string | null; monthsPaid: number; grossTotal: string; whtTotal: string; ssoTotal: string };
@@ -62,11 +62,12 @@ describe('DOC-04 payroll slips and annual 50 ทวิ — real workflow, real j
   const pace = createLoginPacer();
 
   // Independent money: the same three SHOP employees paid twice, one FINANCE employee once, one SHOP month voided.
-  // e1 is MONTHLY with a registry salary ⇒ the server computes its OT from attendance (Payroll D4); a typed OT row on such a
-  // line must be ticked "รายการปรับปรุงงวดก่อน" (isAdjustment → source ADJUSTMENT) or the save is refused (MANUAL_OT_DUPLICATE).
-  // e1 has no attendance days in this world, so no system rows are added and every amount below is unchanged.
+  // e1 is MONTHLY with a registry salary (auto OT eligible, Payroll D4) but has no attendance PIN and no attendance days in this
+  // world ⇒ the month is not tracked, the server computes no OT for it, and its typed OT row is accepted as MANUAL (R20 — the
+  // duplicate rule MANUAL_OT_DUPLICATE applies only to eligible lines that have attendance rows in the period). No system rows
+  // are added, so every amount below is unchanged.
   const p1Lines = (): PayrollLineSpec[] => [
-    { baseSalary: 18000, ssoEmployee: 875, whtAmount: 150, customIncome: [{ accountCode: 'S52-1202', name: 'ค่าล่วงเวลา', amount: 1000, isTaxable: true, isAdjustment: true }] },
+    { baseSalary: 18000, ssoEmployee: 875, whtAmount: 150, customIncome: [{ accountCode: 'S52-1202', name: 'ค่าล่วงเวลา', amount: 1000, isTaxable: true }] },
     { baseSalary: 12000, ssoEmployee: 600, whtAmount: 0, customIncome: [{ accountCode: 'S52-1204', name: 'เบี้ยเลี้ยงเดินทาง', amount: 500, isTaxable: false }], customDeduction: [{ accountCode: 'S21-1103', name: 'คืนเงินยืม', amount: 500 }] },
     { baseSalary: 9000, ssoEmployee: 450, whtAmount: 0 },
   ];
@@ -229,6 +230,8 @@ describe('DOC-04 payroll slips and annual 50 ทวิ — real workflow, real j
     expect(fixed2(l1.netPaid)).toBe('17975.00');
     expect(fixed2(l2.netPaid)).toBe('11400.00');
     expect(fixed2(l3.netPaid)).toBe('8550.00');
+    // R20 — e1 has no attendance rows this month ⇒ its typed OT is kept as a MANUAL row (no system rows, no MANUAL_OT_DUPLICATE).
+    expect(l1.customIncome!.map((row) => [row.accountCode, row.source, fixed2(row.amount)])).toEqual([['S52-1202', 'MANUAL', '1000.00']]);
     expect(l2.customIncome!.map((row) => [row.accountCode, row.isTaxable])).toEqual([['S52-1204', false]]);
     expect(l2.customDeduction!.map((row) => [row.accountCode, fixed2(row.amount)])).toEqual([['S21-1103', '500.00']]);
     expect(fixed2(edited.subtotal)).toBe(fixed2(expected.subtotal));

@@ -229,11 +229,12 @@ describe('ExpenseDocumentsService.createPayroll — attendance system rows (Payr
           rows: q.userIds.map((userId) => ({
             userId,
             autoOtEligible: true,
+            attendanceTracked: true,
             systemIncome:
               userId === 'emp-a'
                 ? [{ source: 'ATTENDANCE_OT', accountCode: '53-1103', name: 'OT วันทำงาน (1.5 เท่า)', quantity: '1.5', rate: '93.7500', multiplier: '1.5', amount: '140.63', isTaxable: true }]
                 : [],
-            attendanceSummary: { otHours: userId === 'emp-a' ? '1.5' : '0.0', autoOtEligible: true },
+            attendanceSummary: { otHours: userId === 'emp-a' ? '1.5' : '0.0', autoOtEligible: true, attendanceTracked: true },
             notes: { review: [], warnings: [] },
           })),
         };
@@ -286,7 +287,7 @@ describe('ExpenseDocumentsService.createPayroll — attendance system rows (Payr
     expect(b.customIncome).toBeUndefined();
     expect(b.netPaid.toFixed(2)).toBe('12000.00');
     expect(a.systemPulledAt).toBeInstanceOf(Date);
-    expect(a.attendanceSummary).toEqual({ otHours: '1.5', autoOtEligible: true });
+    expect(a.attendanceSummary).toEqual({ otHours: '1.5', autoOtEligible: true, attendanceTracked: true });
     expect(a.systemNotes).toEqual({ review: [], warnings: [] });
     expect([b.lineNo, a.lineNo]).toEqual([1, 2]);
     expect(doc.data.totalAmount.toFixed(2)).toBe('28140.63');

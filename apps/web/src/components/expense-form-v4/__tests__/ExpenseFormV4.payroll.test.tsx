@@ -101,7 +101,7 @@ const ELIGIBLE_LINE = {
   attendanceSummary: {
     workDays: 25, lateCount: 2, lateMinutes: 18, absent: 0, leave: 1,
     otHours: '6.5', holidayHours: '0.0', holidayOtHours: '0.0', holidayWorkedDays: 0,
-    reviewCount: 1, autoOtEligible: true,
+    reviewCount: 1, autoOtEligible: true, attendanceTracked: true,
   },
   systemNotes: {
     review: [{ dayId: 'd-21', date: '2026-10-21', branchId: 'b1', flags: ['DEVICE_CONFLICT'], blocking: true }],
@@ -119,6 +119,33 @@ const DAILY_LINE = {
   customDeduction: [],
   attendanceSummary: { ...ELIGIBLE_LINE.attendanceSummary, reviewCount: 0, autoOtEligible: false },
   systemNotes: { review: [], warnings: [{ code: 'NOT_MONTHLY_OR_NO_BASE', otHours: '4.0' }] },
+};
+
+/** R20 FX1 — รายเดือน มีเงินเดือนทะเบียน แต่เดือนนี้ไม่มีแถวลงเวลาเลย (สาขาไม่มีเครื่อง) ⇒ ระบบไม่คิด OT ให้ แถวที่กรอกเองต้องอยู่ */
+const UNTRACKED_LINE = {
+  ...DAILY_LINE,
+  userId: 'u3',
+  employeeName: 'ปรีชา ศรีสุข',
+  baseSalary: '15000',
+  ssoEmployee: '750',
+  attendanceSummary: {
+    workDays: 0, lateCount: 0, lateMinutes: 0, absent: 0, leave: 0,
+    otHours: '0.0', holidayHours: '0.0', holidayOtHours: '0.0', holidayWorkedDays: 0,
+    reviewCount: 0, autoOtEligible: true, attendanceTracked: false,
+  },
+  systemNotes: { review: [], warnings: [{ code: 'NO_ATTENDANCE' }] },
+};
+/** บรรทัดที่บันทึกก่อน R20 — snapshot ไม่มี attendanceTracked ⇒ ถือว่าไม่รู้ ไม่เอาแถวออก ให้ server ตัดสิน */
+const LEGACY_LINE = {
+  ...UNTRACKED_LINE,
+  userId: 'u4',
+  employeeName: 'มานี ใจงาม',
+  attendanceSummary: {
+    workDays: 22, lateCount: 0, lateMinutes: 0, absent: 0, leave: 0,
+    otHours: '0.0', holidayHours: '0.0', holidayOtHours: '0.0', holidayWorkedDays: 0,
+    reviewCount: 0, autoOtEligible: true,
+  },
+  systemNotes: { review: [], warnings: [] },
 };
 
 const storedDoc = (id: string, lines: unknown[], status = 'DRAFT') => ({
@@ -310,6 +337,23 @@ describe('ExpenseFormV4 payroll — typed income rows', () => {
     expect(patchedLines()[0].customIncome).not.toContainEqual(expect.objectContaining({ amount: 450 }));
     // รายการปรับปรุงงวดก่อน (รหัส OT เดียวกัน) ไม่ถูกเอาออก
     expect(patchedLines()[0].customIncome).toContainEqual(expect.objectContaining({ amount: 200, isAdjustment: true }));
+  });
+
+  it.each([
+    ['a saved eligible line whose month had no attendance data (attendanceTracked false)', UNTRACKED_LINE],
+    ['a line saved before attendanceTracked existed (no flag in the stored summary)', LEGACY_LINE],
+  ])("keeps and sends the typed S52-1202 row of %s — no strip, no toast (the server decides)", async (_label, line) => {
+    const user = userEvent.setup();
+    docs['doc-1'] = storedDoc('doc-1', [line]);
+    mount({ editDocId: 'doc-1' });
+    await screen.findByRole('button', { name: line.employeeName });
+    await user.click(screen.getByRole('button', { name: 'บันทึกร่าง' }));
+
+    await waitFor(() => expect(apiPatch).toHaveBeenCalledTimes(1));
+    expect(patchedLines()[0].customIncome).toEqual([
+      { accountCode: 'S52-1202', name: 'OT ที่กรอกเอง', amount: 400, isTaxable: true },
+    ]);
+    expect(toast.info).not.toHaveBeenCalledWith(STRIP_TOAST);
   });
 
   it("keeps and sends a DAILY line's typed S52-1202 row", async () => {

@@ -32,6 +32,12 @@ export const deviceConflictText = (days: PayrollGateDay[]) =>
   `(${days.map((d) => `${d.employeeName} · ${gateDayText(d.date)}`).join(', ')}) ` +
   'ให้เจ้าของตรวจที่เมนู ลงเวลา แล้วกด "ตรวจแล้ว ล้างธง"';
 
+/**
+ * R20 — คนที่เดือนนี้ไม่มีแถวลงเวลาเลย (คำเตือน NO_PIN ขึ้นต้นด้วย "ยังไม่มีรหัสตอกบัตร — " · NO_ATTENDANCE ใช้ตามนี้) ระบบไม่คิด OT ให้
+ * ⇒ บอกให้กรอกเองที่ส่วน "รายได้พิเศษ" ของฟอร์มใบเงินเดือน (หัวคอลัมน์/ปุ่ม "เพิ่มรายได้พิเศษ" ใน PayrollLinesSection)
+ */
+export const NO_ATTENDANCE_TEXT = 'เดือนนี้ไม่มีข้อมูลลงเวลา ระบบจึงไม่คิด OT ให้ — กรอก OT เองได้ที่ รายได้พิเศษ';
+
 /** เหตุผลใต้ปุ่มส่ง/อนุมัติ/ลงบัญชีที่ถูกปิด */
 export const NOT_YET_CLOSABLE_REASON = 'ยังไม่ถึงเวลาปิดงวด';
 export const deviceConflictReason = (n: number) => `ติดธง เครื่องถูกใช้ซ้อน ${n} วัน`;

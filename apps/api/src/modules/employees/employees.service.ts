@@ -9,6 +9,7 @@ import { AuditService } from '../audit/audit.service';
 import { CreateEmployeeDto } from './dto/create-employee.dto';
 import { UpdateEmployeeDto } from './dto/update-employee.dto';
 import { ListEmployeesDto } from './dto/list-employees.dto';
+import { payrollPeriodStart } from '../expense-documents/payroll-system/payroll-pay';
 
 type Actor = { userId?: string; ipAddress?: string; userAgent?: string };
 
@@ -234,10 +235,17 @@ export class EmployeesService {
     return profile;
   }
 
-  async pickable(search?: string) {
+  /**
+   * `period` (Payroll D4 คำตัดสิน 8): ใบเงินเดือนงวดนั้นยังจ่ายคนที่ลาออกระหว่างเดือนได้ ⇒ เลือกคนที่ลาออกตั้งแต่
+   * วันที่ 1 ของงวด (เวลาไทย) — เกณฑ์เดียวกับทางบันทึกใบ (`payrollPeriodStart`) · ไม่ส่ง = เฉพาะคนที่ยังไม่ถึงวันลาออก
+   */
+  async pickable(search?: string, period?: string) {
     const where: Prisma.EmployeeProfileWhereInput = {
       deletedAt: null,
-      OR: [{ resignedDate: null }, { resignedDate: { gt: new Date() } }],
+      OR: [
+        { resignedDate: null },
+        { resignedDate: period ? { gte: payrollPeriodStart(period) } : { gt: new Date() } },
+      ],
       user: { is: { isActive: true, deletedAt: null } },
     };
     if (search) {

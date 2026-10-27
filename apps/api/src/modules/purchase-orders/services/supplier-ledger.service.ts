@@ -1,3 +1,6 @@
+import { Prisma } from '@prisma/client';
+import { purchaseOrderScopeWhere } from '../../employee-access/access-procurement-scope';
+import { domainAccessClient, currentDomainAccess } from '../../employee-access/access-execution-context';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { Decimal } from '@prisma/client/runtime/library';
 import { PrismaService } from '../../../prisma/prisma.service';
@@ -70,8 +73,10 @@ export interface SupplierLedgerOpenPo {
 }
 
 export class SupplierLedgerService {
+  private get prisma(): PrismaService { return domainAccessClient(this.basePrisma); }
+
   constructor(
-    private readonly prisma: PrismaService,
+    private readonly basePrisma: PrismaService,
     private readonly companies: CompanyResolverService,
   ) {}
 
@@ -183,7 +188,7 @@ export class SupplierLedgerService {
         openPos: open.pos,
       });
     }
-    rows.sort((a, b) => Number(b.closing) - Number(a.closing) || a.supplier.name.localeCompare(b.supplier.name, 'th'));
+    rows.sort((a, b) => currentDomainAccess() ? a.supplier.name.localeCompare(b.supplier.name, 'th') : Number(b.closing) - Number(a.closing) || a.supplier.name.localeCompare(b.supplier.name, 'th'));
     return {
       month: label,
       periodStart,
@@ -276,9 +281,29 @@ export class SupplierLedgerService {
   /** รายการสมุดหน้าร้านของเมนูนี้ก่อนสิ้นงวด พร้อม supplierId (จาก metadata หรือย้อนจาก poId) เรียงวันที่ */
   private async loadEntries(periodEnd: Date): Promise<LedgerEntry[]> {
     const shopCompanyId = await this.companies.getShopCompanyId(this.prisma as never);
+    const ctx = currentDomainAccess();
+    let permittedJournalIds: string[] | undefined;
+    if (ctx) {
+      const pos = await ctx.client.purchaseOrder.findMany({ where: purchaseOrderScopeWhere(ctx.scope), select: { id: true } });
+      // Match the actual PO and supplier before any balances are calculated. No
+      // capped selector, supplier-only fallback, or global journal delegate patch.
+      permittedJournalIds = ctx.scope.company === 'SHOP' && pos.length ? (await ctx.client.$queryRaw<Array<{ id: string }>>`
+        SELECT je.id FROM journal_entries je JOIN purchase_orders po ON po.id = je.metadata->>'poId'
+        WHERE po.id IN (${Prisma.join(pos.map(po => po.id))})
+        AND (je.metadata->>'supplierId' IS NULL OR je.metadata->>'supplierId' = po.supplier_id)
+        AND je.company_id = ${shopCompanyId}
+        AND (
+          EXISTS (SELECT 1 FROM goods_receiving_items gri JOIN goods_receivings gr ON gr.id = gri.receiving_id
+            WHERE gri.journal_entry_id = je.id AND gr.po_id = po.id AND gri.deleted_at IS NULL AND gr.deleted_at IS NULL)
+          OR EXISTS (SELECT 1 FROM purchase_order_payments pop WHERE pop.po_id = po.id AND pop.deleted_at IS NULL
+            AND (pop.journal_entry_id = je.id OR pop.reversal_journal_entry_id = je.id))
+        )
+      `).map(row => row.id) : [];
+    }
     const raw = await this.prisma.journalEntry.findMany({
       where: {
         companyId: shopCompanyId,
+        ...(permittedJournalIds ? { id: { in: permittedJournalIds } } : {}),
         deletedAt: null,
         status: 'POSTED',
         entryDate: { lt: periodEnd },

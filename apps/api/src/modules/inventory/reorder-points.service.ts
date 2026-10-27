@@ -1,3 +1,4 @@
+import { domainAccessClient, currentDomainAccess, onDomainCommit } from '../employee-access/access-execution-context';
 import { Injectable, NotFoundException, BadRequestException, Logger, Optional } from '@nestjs/common';
 import { ProductCategory } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -10,11 +11,18 @@ import { CreateReorderPointDto, UpdateReorderPointDto } from './dto/reorder-poin
 export class ReorderPointsService {
   private readonly logger = new Logger(ReorderPointsService.name);
 
+  private get prisma(): PrismaService { return domainAccessClient(this.basePrisma); }
+
   constructor(
-    private prisma: PrismaService,
+    private readonly basePrisma: PrismaService,
     private notificationsService: NotificationsService,
     @Optional() private readonly staffNotify?: StaffNotifyService,
   ) {}
+
+  private async sendAfterCommit(input: Parameters<NotificationsService['send']>[0]) {
+    if (currentDomainAccess()) onDomainCommit(async () => { await this.notificationsService.send(input); });
+    else await this.notificationsService.send(input);
+  }
 
   async findAll(filters: { branchId?: string; isActive?: boolean; category?: string; page?: number; limit?: number }) {
     const where: Record<string, unknown> = { deletedAt: null };
@@ -181,7 +189,7 @@ export class ReorderPointsService {
             select: { email: true, name: true },
           });
           for (const owner of owners) {
-            await this.notificationsService.send({
+            await this.sendAfterCommit({
               channel: 'IN_APP',
               recipient: owner.email,
               subject: `Stock ต่ำ: ${productDesc} (${rp.branch.name})`,
@@ -198,7 +206,7 @@ export class ReorderPointsService {
             select: { email: true, name: true },
           });
           for (const manager of branchManagers) {
-            await this.notificationsService.send({
+            await this.sendAfterCommit({
               channel: 'IN_APP',
               recipient: manager.email,
               subject: `Stock ต่ำ: ${productDesc}`,
@@ -213,13 +221,18 @@ export class ReorderPointsService {
           // (เดิมส่ง channel LINE ด้วยอีเมลของ OWNER = ไปไม่ถึงใคร)
           if (this.staffNotify) {
             try {
-              const r = await this.staffNotify.notify('stock.low', {
+              // employee-access: under a managed domain transaction the LINE push must wait for the outer commit
+              const payload = {
                 title: `ของต่ำกว่าจุดสั่งซื้อซ้ำ: ${productDesc}`,
                 lines: [`สาขา ${rp.branch.name}`, `เหลือ ${currentStock} เครื่อง (ขั้นต่ำ ${rp.minQuantity} · สั่งเพิ่ม ${rp.reorderQuantity})`],
                 link: '/stock/alerts',
                 branchId: rp.branchId,
                 dedupeKey: rp.id,
-              });
+              };
+              const staffNotify = this.staffNotify;
+              let r = { sent: 0 };
+              if (currentDomainAccess()) onDomainCommit(async () => { await staffNotify.notify('stock.low', payload); });
+              else r = await staffNotify.notify('stock.low', payload);
               notificationsSent += r.sent;
             } catch {
               // ท่อกลางไม่ throw อยู่แล้ว — ตาข่ายสุดท้าย

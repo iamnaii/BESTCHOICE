@@ -1,3 +1,10 @@
+import { directDefectHistory } from '../employee-access/access-defect-history';
+import { Optional } from '@nestjs/common';
+import { AccessExchangeSourceService, exchangeActor } from '../employee-access/access-exchange-source.service';
+import { currentDomainAccess, domainAccessClient, onDomainCommit } from '../employee-access/access-execution-context';
+import { canAccess } from '@installment/shared';
+import { repairSource } from '../employee-access/access-repair-scope';
+import { liveShopServiceBranch } from '../employee-access/access-service-origin';
 import { bindExchangeCreditCheck } from '../credit-check/services/credit-approval';
 import { lockCreditCustomer } from '../credit-check/services/room-credit-history';
 import {
@@ -56,7 +63,7 @@ export class DefectExchangeService {
   private readonly logger = new Logger(DefectExchangeService.name);
 
   constructor(
-    private prisma: PrismaService,
+    private basePrisma: PrismaService,
     private journalAutoService: JournalAutoService,
     private defectExchangeReversalTemplate: DefectExchangeReversalTemplate,
     private repairTickets: RepairTicketsService,
@@ -64,13 +71,51 @@ export class DefectExchangeService {
     private receiptVoidReversal: ReceiptVoidReversalTemplate,
     /** 15ข — เลขที่ใบลดหนี้ (advisory lock เดียวกับใบเสร็จ) · provide ตรงใน DefectExchangeModule (ReceiptsModule ไม่ export) */
     private receiptNumbers: ReceiptNumberService,
+    @Optional() private readonly access?: AccessExchangeSourceService,
   ) {}
+  private get prisma() {
+    return domainAccessClient(this.basePrisma);
+  }
 
+  private async authorize(
+    oldContractId: string,
+    newProductId: string | undefined,
+    userId?: string,
+    execute = false,
+  ) {
+    const ctx = await exchangeActor(this.basePrisma, userId);
+    if (!ctx) return;
+    if (!this.access) throw new ForbiddenException('ไม่มีตัวตรวจแหล่งสิทธิ์เปลี่ยนเครื่อง');
+    const sources = await this.access.sources({ oldContractId, newProductId }, false);
+    if (execute) {
+      this.access.assert('defect-exchanges.create', sources);
+      this.access.assert('defect-exchanges.approve', sources);
+    } else this.access.assert('defect-exchanges.read', sources);
+  }
   /**
    * Check if a contract is eligible for 7-day defect exchange
    * and if the replacement product matches the rules (same model + storage).
    */
-  async checkEligibility(oldContractId: string, newProductId?: string) {
+  async checkEligibility(oldContractId: string, newProductId?: string, actor?: { id: string }) {
+    await this.authorize(oldContractId, newProductId, actor?.id);
+    return this.eligibility(oldContractId, newProductId);
+  }
+
+  /** Pending submission has create authority, independently of execution approval. */
+  async checkCreationEligibility(oldContractId: string, newProductId: string | undefined, actor: {id:string}) {
+    const ctx = await exchangeActor(this.basePrisma, actor.id, this.prisma);
+    if (!ctx || !this.access) throw new ForbiddenException('ต้องตรวจสิทธิ์การยื่นคำขอ');
+    this.access.assert('defect-exchanges.create', await this.access.sources({oldContractId,newProductId}));
+    return this.eligibility(oldContractId,newProductId);
+  }
+
+  /** Internal execution preflight: identical business rules, independent action authority. */
+  async checkExecutionEligibility(oldContractId: string, newProductId: string, actor: {id:string}) {
+    await this.authorize(oldContractId, newProductId, actor.id, true);
+    return this.eligibility(oldContractId, newProductId);
+  }
+
+  private async eligibility(oldContractId: string, newProductId?: string) {
     const contract = await this.prisma.contract.findUnique({
       where: { id: oldContractId },
       include: {
@@ -217,8 +262,49 @@ export class DefectExchangeService {
   async execute(dto: ExecuteDefectExchangeDto, user: ReqUser | string) {
     // Support legacy string userId calls (e.g. existing controller) as well as
     // the new full-user object required for bypass-window role checks.
-    const reqUser: ReqUser =
-      typeof user === 'string' ? { id: user, role: 'BRANCH_MANAGER' } : user;
+    let reqUser: ReqUser = typeof user === 'string' ? { id: user, role: 'BRANCH_MANAGER' } : user;
+    await this.authorize(dto.oldContractId, dto.newProductId, reqUser.id, true);
+    const ctx = currentDomainAccess();
+    if (ctx) {
+      const persisted = await ctx.client.user.findUniqueOrThrow({
+        where: { id: ctx.snapshot.userId },
+        select: { role: true },
+      });
+      reqUser = { ...reqUser, role: persisted.role };
+      if (dto.originRepairTicketId) {
+        const source = await repairSource(ctx.client, dto.originRepairTicketId, true);
+        if (
+          !canAccess(ctx.snapshot, 'defect-exchanges.create', source) ||
+          !canAccess(ctx.snapshot, 'defect-exchanges.approve', source)
+        )
+          throw new ForbiddenException('ไม่มีสิทธิ์เปลี่ยนเครื่องจากใบซ่อม');
+        const ticket = await ctx.client.repairTicket.findUniqueOrThrow({
+          where: { id: dto.originRepairTicketId },
+        });
+        if (ticket.contractId !== dto.oldContractId)
+          throw new ForbiddenException('ใบซ่อมไม่ตรงกับสัญญา');
+      }
+      if (dto.originAfterSalesCaseId) {
+        await ctx.client
+          .$queryRaw`SELECT id FROM after_sales_cases WHERE id = ${dto.originAfterSalesCaseId} FOR UPDATE`;
+        const source = await ctx.client.afterSalesCase.findFirst({
+          where: { id: dto.originAfterSalesCaseId, deletedAt: null, branch: liveShopServiceBranch },
+        });
+        if (
+          !source ||
+          source.contractId !== dto.oldContractId ||
+          !canAccess(ctx.snapshot, 'defect-exchanges.create', {
+            company: 'SHOP',
+            branchId: source.branchId,
+          }) ||
+          !canAccess(ctx.snapshot, 'defect-exchanges.approve', {
+            company: 'SHOP',
+            branchId: source.branchId,
+          })
+        )
+          throw new ForbiddenException('ไม่มีสิทธิ์เปลี่ยนเครื่องจากเคสหลังการขาย');
+      }
+    }
 
     // 15ข — ทุกรายการลงวันนี้ (ใบลดหนี้/กระจก/การย้ายเครดิต) ⇒ งวดบัญชี FINANCE ของวันนี้ต้องเปิด (ด่านเดียวกับ void)
     const finance = await this.prisma.companyInfo.findFirst({
@@ -238,7 +324,7 @@ export class DefectExchangeService {
               'bypassWindowCheck ต้องระบุ originRepairTicketId หรือ originAfterSalesCaseId',
             );
           }
-          if (!['OWNER', 'BRANCH_MANAGER'].includes(reqUser.role)) {
+          if (!ctx && !['OWNER', 'BRANCH_MANAGER'].includes(reqUser.role)) {
             throw new ForbiddenException(
               'สิทธิ์ไม่พอ — bypass ทำได้เฉพาะ OWNER/BRANCH_MANAGER',
             );
@@ -281,7 +367,7 @@ export class DefectExchangeService {
           }
         } else {
           // === normal 7-day eligibility check ===
-          const elig = await this.checkEligibility(dto.oldContractId, dto.newProductId);
+          const elig = await this.eligibility(dto.oldContractId, dto.newProductId);
           if (!elig.eligible) {
             throw new BadRequestException(`ไม่เข้าเกณฑ์: ${elig.reasons.join(', ')}`);
           }
@@ -293,7 +379,7 @@ export class DefectExchangeService {
         let supplierClaimEligible = false;
         if (!dto.bypassWindowCheck) {
           // We already validated eligibility above; re-fetch just the supplier claim flag.
-          const eligForClaim = await this.checkEligibility(dto.oldContractId, dto.newProductId);
+          const eligForClaim = await this.eligibility(dto.oldContractId, dto.newProductId);
           supplierClaimEligible = eligForClaim.supplierClaimEligible;
         }
 
@@ -623,9 +709,13 @@ export class DefectExchangeService {
           },
         });
 
-        this.logger.log(
-          `Defect exchange: ${oldContract.contractNumber} → ${contractNumber} (credit ${transferred.toFixed(2)} · CN ${creditNoteNumbers.length})`,
-        );
+        const log = async () => {
+          this.logger.log(
+            `Defect exchange: ${oldContract.contractNumber} → ${contractNumber} (credit ${transferred.toFixed(2)} · CN ${creditNoteNumbers.length})`,
+          );
+        };
+        if (ctx) onDomainCommit(log);
+        else await log();
 
         return {
           oldContract: {
@@ -650,14 +740,23 @@ export class DefectExchangeService {
       },
       { isolationLevel: 'Serializable' },
     );
-    emitDeferredWarnings(warnings);
+    // Managed: the nested $transaction joins the owned execution — warnings only after its commit.
+    if (ctx) onDomainCommit(async () => emitDeferredWarnings(warnings));
+    else emitDeferredWarnings(warnings);
     return result;
   }
 
   /**
    * List defect-exchange history — read from AuditLog to avoid adding a new model.
    */
-  async list(filters: { branchId?: string; from?: string; to?: string }) {
+  async list(
+    filters: { branchId?: string; from?: string; to?: string },
+    actor?: { id: string },
+    // Fixed internal direct-boundary policy, never a request option.
+    direct = false,
+  ) {
+    const ctx = await exchangeActor(this.basePrisma, actor?.id);
+    if (ctx && !this.access) throw new ForbiddenException('ไม่มีตัวตรวจแหล่งสิทธิ์เปลี่ยนเครื่อง');
     const where: Record<string, unknown> = { action: 'DEFECT_EXCHANGE' };
     if (filters.from || filters.to) {
       where.createdAt = {
@@ -665,15 +764,47 @@ export class DefectExchangeService {
         ...(filters.to ? { lte: new Date(filters.to) } : {}),
       };
     }
-    const rows = await this.prisma.auditLog.findMany({
+    const fetchBatch = (cursor?: string) => this.prisma.auditLog.findMany({
       where,
-      orderBy: { createdAt: 'desc' },
+      orderBy: ctx ? [{ createdAt: 'desc' }, { id: 'desc' }] : { createdAt: 'desc' },
+      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
       take: 200,
       select: {
         id: true, createdAt: true, userId: true, entityId: true, newValue: true,
+        ...(ctx && direct ? { entity: true } : {}),
         user: { select: { id: true, email: true, name: true } },
       },
     });
-    return rows;
+    let rows = await fetchBatch();
+    if (!ctx) return rows;
+    const visible: Array<
+      (typeof rows)[number] | NonNullable<Awaited<ReturnType<typeof directDefectHistory>>>
+    > = [];
+    // Source authorization and the explicit branch filter precede the final
+    // history limit; unrelated audit rows must not consume visible slots.
+    while (rows.length > 0) {
+      for (const row of rows) {
+        const contract = row.entityId ? await ctx.client.contract.findFirst({
+          where: { id: row.entityId, deletedAt: null, ...(filters.branchId ? { branchId: filters.branchId } : {}) },
+        }) : null;
+        if (!contract?.parentContractId) continue;
+        try {
+          const sources = await this.access!.sources({ oldContractId: contract.parentContractId, newContractId: contract.id }, false);
+          this.access!.assert('defect-exchanges.read', sources);
+          // Correlation/projection must precede the final visible limit too.
+          const projected = direct
+            ? await directDefectHistory(ctx.client, row)
+            : this.access!.project(row, sources);
+          if (!projected) continue;
+          visible.push(projected);
+          if (visible.length === 200) return visible;
+        } catch (error) {
+          if (!(error instanceof ForbiddenException)) throw error;
+        }
+      }
+      if (rows.length < 200) break;
+      rows = await fetchBatch(rows[rows.length - 1].id);
+    }
+    return visible;
   }
 }

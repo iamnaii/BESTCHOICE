@@ -1,3 +1,4 @@
+import { currentDomainAccess } from '../employee-access/access-execution-context';
 import {
   Controller,
   ForbiddenException,
@@ -74,7 +75,7 @@ export class ProductsController {
     @Query('compatibleWithProductId') compatibleWithProductId?: string,
   ) {
     const stockView = pagination.groupAccessories === 'true' || !!pagination.accessoryGroupId || !!pagination.sortBy;
-    if ((stockView || compatibleWithProductId) && !hasCrossBranchAccess(user)) {
+    if (!currentDomainAccess() && (stockView || compatibleWithProductId) && !hasCrossBranchAccess(user)) {
       if (!user.branchId) throw new ForbiddenException('บัญชีนี้ยังไม่มีสาขาที่รับผิดชอบ');
       branchId = user.branchId;
     }

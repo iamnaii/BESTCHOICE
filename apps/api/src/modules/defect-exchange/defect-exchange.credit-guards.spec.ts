@@ -138,6 +138,8 @@ describe('execute — ขั้น ก/ค/ข/ง (15ข)', () => {
       systemConfig: { findUnique: jest.fn().mockResolvedValue(null) },
     };
     const prisma = {
+      // employee-access: execute() asks whether the actor is a managed user (unmanaged here)
+      user: { findUnique: jest.fn().mockResolvedValue({ accessManaged: false }) },
       journalEntry: { findMany: jest.fn().mockResolvedValue([]) },
       contract: { findUnique: jest.fn().mockResolvedValue(contract) },
       product: { findUnique: jest.fn().mockResolvedValue(newProduct) },

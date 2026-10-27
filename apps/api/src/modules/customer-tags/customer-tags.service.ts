@@ -25,9 +25,7 @@ export class CustomerTagsService {
   private readonly logger = new Logger(CustomerTagsService.name);
 
   // Auto-tag thresholds
-  private static readonly VIP_MIN_CONTRACTS = 3;
   private static readonly VIP_LOOKBACK_MONTHS = 12;
-  private static readonly HIGH_RISK_BROKEN_PROMISES = 3;
   private static readonly HIGH_RISK_LOOKBACK_DAYS = 90;
   private static readonly NEW_LOOKBACK_DAYS = 30;
   private static readonly LOYAL_MIN_AGE_DAYS = 365 * 2;
@@ -216,10 +214,7 @@ export class CustomerTagsService {
    * Evaluate which auto-managed tags should be present for a customer right
    * now. BLACKLIST is intentionally not part of this — it stays manual-only.
    */
-  private async evaluateAutoTags(
-    customerId: string,
-    customerCreatedAt: Date,
-  ): Promise<CustomerTagType[]> {
+  async evaluateAutoTags(customerId: string, customerCreatedAt: Date): Promise<CustomerTagType[]> {
     const now = new Date();
 
     const contractCount = await this.prisma.contract.count({
@@ -293,26 +288,18 @@ export class CustomerTagsService {
       where: { deletedAt: null, contract: { customerId } },
     });
 
-    const tags: CustomerTagType[] = [];
-
-    if (contractCount >= CustomerTagsService.VIP_MIN_CONTRACTS && brokenPromise12mo === 0) {
-      tags.push('VIP');
-    }
-    if (brokenPromise90d >= CustomerTagsService.HIGH_RISK_BROKEN_PROMISES) {
-      tags.push('HIGH_RISK');
-    }
-    if (firstContract && firstContract.createdAt >= newCutoff && contractCount === 1) {
-      tags.push('NEW');
-    }
-    if (customerCreatedAt < loyalCutoff && brokenPromiseLifetime === 0) {
-      tags.push('LOYAL');
-    }
-
-    if (deviceReturnCount > 0 || repossessionCount > 0) {
-      tags.push('RETURNED_DEVICE');
-    }
-
-    return tags;
+    return computeCustomerAutoTags({
+      contractCount,
+      firstContract,
+      brokenPromise12mo,
+      brokenPromise90d,
+      brokenPromiseLifetime,
+      customerCreatedAt,
+      newCutoff,
+      loyalCutoff,
+      deviceReturnCount,
+      repossessionCount,
+    });
   }
 
   private autoReason(tag: CustomerTagType): string {
@@ -332,4 +319,50 @@ export class CustomerTagsService {
         throw new BadRequestException('BLACKLIST ไม่สามารถ apply โดยอัตโนมัติได้');
     }
   }
+}
+
+export function computeCustomerAutoTags(input: {
+  contractCount: number;
+  firstContract: { createdAt: Date } | null;
+  brokenPromise12mo: number;
+  brokenPromise90d: number;
+  brokenPromiseLifetime: number;
+  customerCreatedAt: Date;
+  newCutoff: Date;
+  loyalCutoff: Date;
+  deviceReturnCount: number;
+  repossessionCount: number;
+}): CustomerTagType[] {
+  const {
+    contractCount,
+    firstContract,
+    brokenPromise12mo,
+    brokenPromise90d,
+    brokenPromiseLifetime,
+    customerCreatedAt,
+    newCutoff,
+    loyalCutoff,
+    deviceReturnCount,
+    repossessionCount,
+  } = input;
+  const tags: CustomerTagType[] = [];
+
+  if (contractCount >= 3 && brokenPromise12mo === 0) {
+    tags.push('VIP');
+  }
+  if (brokenPromise90d >= 3) {
+    tags.push('HIGH_RISK');
+  }
+  if (firstContract && firstContract.createdAt >= newCutoff && contractCount === 1) {
+    tags.push('NEW');
+  }
+  if (customerCreatedAt < loyalCutoff && brokenPromiseLifetime === 0) {
+    tags.push('LOYAL');
+  }
+
+  if (deviceReturnCount > 0 || repossessionCount > 0) {
+    tags.push('RETURNED_DEVICE');
+  }
+
+  return tags;
 }

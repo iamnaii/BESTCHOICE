@@ -1,3 +1,5 @@
+import { currentContractDerivedExport } from '../employee-access/access-contract-derived-export';
+import { currentDomainAccess } from '../employee-access/access-execution-context';
 import { ContractQuoteDto } from './dto/contract-quote.dto';
 import { ContractQuoteService, ContractQuoteActor } from './services/contract-quote.service';
 import { Injectable, Optional } from '@nestjs/common';
@@ -83,7 +85,14 @@ export class ContractsService {
   }
 
   async exportRows(filters: Parameters<ContractQueryService['findAll']>[0], user: BranchAccessUser) {
-    const result = await this.query.exportRows(filters, user);
+    const managed = currentContractDerivedExport();
+    const result = managed ?? await this.query.exportRows(filters, user);
+    if (managed) {
+      const ctx = currentDomainAccess()!;
+      const actor = await ctx.client.user.findUniqueOrThrow({ where: { id: ctx.snapshot.userId }, select: { role: true } });
+      await (this.audit ?? new AuditService(this.prisma)).log({ userId: ctx.snapshot.userId, action: 'CONTRACTS_REPORT_EXPORTED', entity: 'contract', newValue: { rowCount: result.total, asOf: result.asOf, role: actor.role } }, ctx.client);
+      return managed;
+    }
     await (this.audit ?? new AuditService(this.prisma)).log({ userId: user.id, action: 'CONTRACTS_REPORT_EXPORTED', entity: 'contract',
       newValue: { rowCount: result.total, asOf: result.asOf, role: user.role } });
     return result;

@@ -1,3 +1,7 @@
+import { validatePeriodOpen } from '../../utils/period-lock.util';
+import { Optional } from '@nestjs/common';
+import { AccessExchangeSourceService, exchangeActor } from '../employee-access/access-exchange-source.service';
+import { currentDomainAccess, domainAccessClient } from '../employee-access/access-execution-context';
 import {
   Injectable,
   BadRequestException,
@@ -48,20 +52,52 @@ export function bkkDayDiff(from: Date, to: Date): number {
 @Injectable()
 export class ExchangeCancelService {
   constructor(
-    private readonly prisma: PrismaService,
+    private readonly basePrisma: PrismaService,
     private readonly audit: AuditService,
     private readonly companyResolver: CompanyResolverService,
     private readonly reversalTemplate: ExchangeCancelReversalTemplate,
+    @Optional() private readonly access?: AccessExchangeSourceService,
   ) {}
+  private get prisma() { return domainAccessClient(this.basePrisma); }
 
   async cancel(id: string, reason: string, user: CancelRequestUser) {
-    // ทุกเส้นทาง (MEMO / PRE_FINALIZE / FINALIZED) เขียน audit AFTER commit:
-    // `AuditService.log` opens its OWN root-client $transaction — awaiting it
-    // while this tx still holds a pool connection is the nested-tx pattern
-    // doctrine R-1 forbids (P2028 pool starvation under load), and an audit row
-    // must describe a COMMITTED cancel anyway (inside-tx write + later rollback
-    // = phantom audit row). MEMO/PRE_FINALIZE ตามมาใน Phase 5 Task 5 ข้อ 0 —
-    // เดิมสองเส้นนั้น await ใน tx จึงไม่เคยมีแถว audit ออกมาเลย.
+    const ctx = await exchangeActor(this.basePrisma, user.id);
+    if (ctx) {
+      if (!this.access) throw new ForbiddenException('ไม่มีตัวตรวจแหล่งสิทธิ์เปลี่ยนเครื่อง');
+      const { request } = await this.access.request(id, 'contract-exchanges.update', false);
+      const old = await ctx.client.contract.findUniqueOrThrow({
+        where: { id: request.oldContractId },
+      });
+      if (request.status === 'APPROVED') {
+        const expectedOldProduct =
+          request.mode === 'MEMO' ? request.newProductId : request.oldProductId;
+        if (old.productId !== expectedOldProduct)
+          throw new ForbiddenException('คำขอเปลี่ยนเครื่องไม่ตรงกับสัญญาปัจจุบัน');
+        if (request.newContractId) {
+          const replacement = await ctx.client.contract.findUniqueOrThrow({
+            where: { id: request.newContractId },
+          });
+          if (
+            replacement.customerId !== old.customerId ||
+            replacement.productId !== request.newProductId ||
+            replacement.exchangedFromContractId !== old.id
+          )
+            throw new ForbiddenException('คำขอเปลี่ยนเครื่องไม่ตรงกับสัญญาปัจจุบัน');
+        }
+      }
+      const applied = request.status === 'APPROVED' && (request.mode === 'MEMO' || !!old.exchangedAt);
+      if (applied)
+        this.access.assert(
+          'contract-exchanges.update',
+          await this.access.sources(
+            request,
+            request.mode === 'MEMO' ? 'cancel-memo' : 'cancel-finalized',
+          ),
+        );
+      if (applied && !ctx.snapshot.isOwner)
+        throw new ForbiddenException('เจ้าของเท่านั้นที่ยกเลิกการเปลี่ยนเครื่องที่ดำเนินการแล้ว');
+    }
+    // Managed audit joins the financial transaction; legacy standalone audit stays compatible.
     let pendingAudit: AuditEntry | null = null;
     const result = await this.prisma.$transaction(async (tx) => {
       const req = await (tx as any).contractExchangeRequest.findUnique({
@@ -76,7 +112,7 @@ export class ExchangeCancelService {
       }
       // I7 (final review 2026-07-29): BM must not cancel another branch's swap
       // by UUID — same in-service branch scoping as submit()/approve().
-      if (!hasCrossBranchAccess(user) && req.oldContract.branchId !== user.branchId) {
+      if (!currentDomainAccess() && !hasCrossBranchAccess(user) && req.oldContract.branchId !== user.branchId) {
         throw new ForbiddenException('ไม่สามารถยกเลิกคำขอของสาขาอื่นได้');
       }
       const now = new Date();
@@ -123,9 +159,7 @@ export class ExchangeCancelService {
         // MEMO: distinct window label for reporting — MEMO cancels never had a
         // penalty, and (owner decision 2026-07-31) no time cap either.
         await this.markCanceled(tx, id, user.id, reason, 'MEMO', null, [], now);
-        // audit หลัง commit เช่นเดียวกับ FINALIZED path (Phase 5 Task 5 ข้อ 0):
-        // เดิม await ตรงนี้ = nested root-tx ⇒ P2028 ⇒ log() กลืน error ทิ้ง ⇒
-        // สลับกรรมสิทธิ์เครื่อง/สัญญากลับโดยไม่มีร่องรอย audit เลย
+        // Managed audit rolls back together with this ownership reversal.
         pendingAudit = {
           action: 'EXCHANGE_MEMO_CANCELED',
           entity: 'contract_exchange_request',
@@ -165,7 +199,7 @@ export class ExchangeCancelService {
           });
         }
         await this.markCanceled(tx, id, user.id, reason, 'PRE_FINALIZE', null, [], now);
-        // audit หลัง commit — เหตุผลเดียวกับ MEMO/FINALIZED (P2028)
+        // Managed audit joins this draft cancellation in the outer transaction.
         pendingAudit = {
           action: 'EXCHANGE_CANCELED',
           entity: 'contract_exchange_request',
@@ -174,6 +208,24 @@ export class ExchangeCancelService {
           newValue: { reason, window: 'PRE_FINALIZE' },
         };
         return { id, cancelWindow: 'PRE_FINALIZE', penaltyAmount: null };
+      }
+
+      // Managed reversal posts into the actual current books on one checked date.
+      // No-money MEMO / draft cancellation above does not acquire a period gate.
+      const postedAt = ctx ? now : undefined;
+      const bookIds = [shopCompanyId, financeCompanyId].sort();
+      if (postedAt) {
+        if (
+          await tx.companyInfo.count({
+            where: { id: { in: bookIds }, isActive: true, deletedAt: null },
+          }) !== 2
+        )
+          throw new ForbiddenException('ไม่พบสมุดบัญชีปัจจุบัน');
+        const year = postedAt.getFullYear();
+        const month = postedAt.getMonth() + 1;
+        await tx.$queryRaw`SELECT id FROM accounting_periods WHERE company_id=ANY(${bookIds}::text[]) AND year=${year} AND month=${month} ORDER BY id FOR SHARE`;
+        await tx.$queryRaw`SELECT id FROM system_config WHERE key='period_grace_days' FOR SHARE`;
+        for (const companyId of bookIds) await validatePeriodOpen(tx, postedAt, companyId);
       }
 
       // ---------- FINALIZED (มี JE แล้ว) ----------
@@ -298,11 +350,18 @@ export class ExchangeCancelService {
         },
         include: { lines: true },
       });
+      if (ctx && candidates.length) {
+        const candidateIds = candidates.map((row) => row.id).sort();
+        await tx.$queryRaw`SELECT id FROM journal_entries WHERE id=ANY(${candidateIds}::text[]) ORDER BY id FOR UPDATE`;
+        await tx.$queryRaw`SELECT id FROM journal_lines WHERE journal_entry_id=ANY(${candidateIds}::text[]) ORDER BY id FOR SHARE`;
+      }
       for (const je of candidates) {
         const meta = (je.metadata ?? {}) as Record<string, unknown>;
         if (meta['reversed'] === true) continue;
         if (meta['flow'] === 'exchange-cancel') continue;
         if (meta['tag'] === 'REVERSAL') continue;
+        if (ctx && !bookIds.includes(je.companyId))
+          throw new ForbiddenException('รายการบัญชีไม่ตรงกับสมุดที่ตรวจสิทธิ์');
         const cashLine = je.lines.find((l) =>
           CASH_ACCOUNT_PREFIXES.some((p) => l.accountCode.startsWith(p)),
         );
@@ -352,6 +411,7 @@ export class ExchangeCancelService {
             : {}),
         },
         tx,
+        postedAt,
       );
 
       // Cross-check (C-2 — สูตรเดียวกับ generic Task 3/4): ยอดที่ redirect เข้า
@@ -452,7 +512,10 @@ export class ExchangeCancelService {
       };
       return { id, cancelWindow: window, penaltyAmount: null };
     });
-    if (pendingAudit) await this.audit.log(pendingAudit);
+    if (pendingAudit) {
+      if (ctx) await this.audit.log(pendingAudit, ctx.client);
+      else await this.audit.log(pendingAudit);
+    }
     return result;
   }
 

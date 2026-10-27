@@ -550,6 +550,7 @@ describe('after-sales exchange — DB จริง (Task 8, PR2)', () => {
       [fakeJpeg('main-intake.jpg')],
       SALES_USER(),
     );
+    if (!('caseNumber' in result)) throw new Error('Expected unmanaged creation result');
     mainCaseId = result.id;
     createdCaseIds.push(mainCaseId);
 
@@ -622,7 +623,8 @@ describe('after-sales exchange — DB จริง (Task 8, PR2)', () => {
 
     const delivered = await exchangeSvc.deliver(mainCaseId, OWNER());
     expect(delivered.stage).toBe('CLOSED');
-    expect(delivered.closedAt).not.toBeNull();
+    expect('closedAt' in delivered).toBe(true);
+    if ('closedAt' in delivered) expect(delivered.closedAt).not.toBeNull();
 
     const after = await svc.list({ summary: true } as never, OWNER());
     const afterExchanges = (after.summary as { exchanges: number }).exchanges;
@@ -677,6 +679,7 @@ describe('after-sales exchange — DB จริง (Task 8, PR2)', () => {
       [fakeJpeg('fail-reopen.jpg')],
       OWNER(),
     );
+    if (!('caseNumber' in reopened)) throw new Error('Expected unmanaged creation result');
     createdCaseIds.push(reopened.id);
     if (reopened.repairTicketId) createdRepairTicketIds.push(reopened.repairTicketId);
     expect(reopened.caseNumber).toMatch(/^AS-\d{8}-\d{4}$/);
@@ -723,6 +726,7 @@ describe('after-sales exchange — DB จริง (Task 8, PR2)', () => {
       [fakeJpeg('memo-intake.jpg')],
       OWNER(),
     );
+    if (!('caseNumber' in created)) throw new Error('Expected unmanaged creation result');
     createdCaseIds.push(created.id);
     if (created.repairTicketId) createdRepairTicketIds.push(created.repairTicketId);
     await prisma.afterSalesCase.update({
@@ -815,6 +819,7 @@ describe('after-sales exchange — DB จริง (Task 8, PR2)', () => {
       [fakeJpeg('drift-intake.jpg')],
       OWNER(),
     );
+    if (!('caseNumber' in created)) throw new Error('Expected unmanaged creation result');
     const driftCaseId = created.id;
     const driftRepairTicketId = created.repairTicketId as string;
     createdCaseIds.push(driftCaseId);
@@ -857,6 +862,7 @@ describe('after-sales exchange — DB จริง (Task 8, PR2)', () => {
       [fakeJpeg('drift-reopen.jpg')],
       OWNER(),
     );
+    if (!('caseNumber' in reopened)) throw new Error('Expected unmanaged creation result');
     createdCaseIds.push(reopened.id);
     if (reopened.repairTicketId) createdRepairTicketIds.push(reopened.repairTicketId);
     expect(reopened.id).not.toBe(driftCaseId);
@@ -904,6 +910,7 @@ describe('after-sales exchange — DB จริง (Task 8, PR2)', () => {
       [fakeJpeg('swap-intake.jpg')],
       OWNER(),
     );
+    if (!('caseNumber' in created)) throw new Error('Expected unmanaged creation result');
     createdCaseIds.push(created.id);
     if (created.repairTicketId) createdRepairTicketIds.push(created.repairTicketId);
     await prisma.afterSalesCase.update({
@@ -952,6 +959,7 @@ describe('after-sales exchange — DB จริง (Task 8, PR2)', () => {
       [fakeJpeg('swap-reopen.jpg')],
       OWNER(),
     );
+    if (!('caseNumber' in reopened)) throw new Error('Expected unmanaged creation result');
     createdCaseIds.push(reopened.id);
     if (reopened.repairTicketId) createdRepairTicketIds.push(reopened.repairTicketId);
     expect(reopened.id).not.toBe(created.id);
@@ -981,6 +989,7 @@ describe('after-sales exchange — DB จริง (Task 8, PR2)', () => {
       [fakeJpeg('rpx-intake.jpg')],
       SALES_USER(),
     );
+    if (!('caseNumber' in created)) throw new Error('Expected unmanaged creation result');
     createdCaseIds.push(created.id);
     const ticketId = created.repairTicketId as string;
     createdRepairTicketIds.push(ticketId);
@@ -1036,6 +1045,7 @@ describe('after-sales exchange — DB จริง (Task 8, PR2)', () => {
       [fakeJpeg('oow-intake.jpg')],
       BM_USER(),
     );
+    if (!('caseNumber' in created)) throw new Error('Expected unmanaged creation result');
     createdCaseIds.push(created.id);
 
     await expect(
@@ -1089,6 +1099,7 @@ describe('after-sales exchange — DB จริง (Task 8, PR2)', () => {
       [fakeJpeg('line12-intake.jpg')],
       SALES_USER(),
     );
+    if (!('caseNumber' in created)) throw new Error('Expected unmanaged creation result');
     createdCaseIds.push(created.id);
 
     const result = asInstallment(

@@ -68,6 +68,7 @@ const CASE_FOR_LINE_SELECT = {
     select: {
       payer: true,
       estimatedCost: true,
+      estimatedCostPayer: true,
       actualCost: true,
       sentToRepairAt: true,
       repairedAt: true,
@@ -313,6 +314,7 @@ export class AfterSalesLineService {
       repairTicket: c.repairTicket
         ? {
             payer: c.repairTicket.payer,
+            estimatedCostPayer: c.repairTicket.estimatedCostPayer,
             estimatedCost: c.repairTicket.estimatedCost
               ? c.repairTicket.estimatedCost.toString()
               : null,

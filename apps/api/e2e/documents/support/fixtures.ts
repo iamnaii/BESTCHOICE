@@ -47,9 +47,12 @@ export async function seedDocumentsWorld(prisma: PrismaService, options: { prefi
     };
     await prisma.companyInfo.upsert({ where: { companyCode }, update: identity, create: { companyCode, ...identity } });
   }
+  // Branches belong to the SHOP company like production rows: document provenance (employee-access)
+  // resolves a product's owning company through branch.company and denies unknown owners.
+  const shopCompany = await prisma.companyInfo.findUniqueOrThrow({ where: { companyCode: 'SHOP' }, select: { id: true } });
 
   const branch = async (label: string) => {
-    const row = await prisma.branch.create({ data: { name: `${TEST_NAME_PREFIX} ${prefix} สาขา ${label}`, location: TEST_CUSTOMER_ADDRESS, phone: '020000000' } });
+    const row = await prisma.branch.create({ data: { name: `${TEST_NAME_PREFIX} ${prefix} สาขา ${label}`, location: TEST_CUSTOMER_ADDRESS, phone: '020000000', companyId: shopCompany.id } });
     return { id: row.id, name: row.name };
   };
   const a = await branch('A');

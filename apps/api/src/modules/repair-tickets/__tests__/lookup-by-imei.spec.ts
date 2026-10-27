@@ -25,6 +25,7 @@ describe('RepairTicketsService.lookupByImei', () => {
 
   beforeEach(async () => {
     prisma = {
+      user: { findUnique: jest.fn().mockResolvedValue({ accessManaged: false }) },
       product: { findFirst: jest.fn() },
       sale: { findFirst: jest.fn() },
     };
@@ -160,7 +161,7 @@ describe('RepairTicketsService.lookupByImei', () => {
     await service.lookupByImei('RESOLD', ownerUser);
 
     const saleCall = prisma.sale.findFirst.mock.calls[0][0];
-    expect(saleCall.orderBy).toEqual({ createdAt: 'desc' });
+    expect(saleCall.orderBy).toEqual([{ createdAt: 'desc' }, { id: 'desc' }]);
   });
 
   describe('PR 5 — ใบขายไม่มีสัญญา: daysRemainingIn7Day จากวันขาย', () => {

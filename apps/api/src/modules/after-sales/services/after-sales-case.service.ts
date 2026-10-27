@@ -1,3 +1,17 @@
+import { AfterSalesMutationAcknowledgement } from '../../employee-access/access-after-sales-action';
+import { canAccess } from '@installment/shared';
+import { createHash } from 'node:crypto';
+import { AccessResourceService } from '../../employee-access/access-resource.service';
+import { AccessRepairSourceService } from '../../employee-access/access-repair-source.service';
+import { AccessExchangeSourceService } from '../../employee-access/access-exchange-source.service';
+import { procurementPreparation } from '../../employee-access/access-preparation-context';
+import { afterSalesActor } from '../../employee-access/access-after-sales-source.service';
+import {
+  domainAccessClient,
+  currentDomainAccess,
+  onDomainCommit,
+} from '../../employee-access/access-execution-context';
+import { hasGlobalOpenAfterSalesCase } from './after-sales-stage-reconcile';
 import { ChatServiceCaseLinkService } from './chat-service-case-link.service';
 import {
   BadRequestException,
@@ -47,7 +61,7 @@ export interface CreateCaseResult {
 @Injectable()
 export class AfterSalesCaseService {
   constructor(
-    private readonly prisma: PrismaService,
+    private readonly basePrisma: PrismaService,
     private readonly storage: StorageService,
     private readonly audit: AuditService,
     private readonly repair: RepairTicketsService,
@@ -56,7 +70,14 @@ export class AfterSalesCaseService {
     private readonly defect: DefectExchangeService,
     private readonly line: AfterSalesLineService,
     @Optional() private readonly chatLinks?: ChatServiceCaseLinkService,
+    @Optional() private readonly resources?: AccessResourceService,
+    @Optional() private readonly repairAccess?: AccessRepairSourceService,
+    @Optional() private readonly exchangeAccess?: AccessExchangeSourceService,
   ) {}
+
+  private get prisma() {
+    return domainAccessClient(this.basePrisma);
+  }
 
   // R29 (fix round 1) — ฟิลด์ที่ REPAIR กับกิ่งเปลี่ยนเครื่องเหมือนกันทุกประการ (~15 ฟิลด์)
   // เคยก็อปสองชุดโดยไม่มีอะไรบังคับให้ตรงกัน — รวมเป็นจุดเดียว ต่างกันแค่ที่มาของ device*
@@ -102,20 +123,25 @@ export class AfterSalesCaseService {
     };
   }
 
-  async createCase(dto: CreateCaseDto, files: Express.Multer.File[], user: ReqUser) {
-    // คำตัดสินเจ้าของ 2026-10-06 — เมนูเปลี่ยนเครื่องแบบมีราคาปิดทั้งหมด: 410 ตั้งแต่บรรทัดแรก ก่อนแตะ
-    // สาขา/รูป/lookup/storage/tx/engine (DTO ยังรับค่า PRICED_EXCHANGE เพื่อให้ไคลเอนต์เก่าได้ข้อความชี้ทาง)
-    if (dto.outcome === 'PRICED_EXCHANGE') throw deviceSwapClosed();
-    if (dto.serviceRequestId) {
-      if (!this.chatLinks) throw new BadRequestException('ระบบเชื่อมใบรับเรื่องยังไม่พร้อม');
-      const existing = await this.chatLinks.existingForCreation(dto.serviceRequestId, user);
-      if (existing) return existing;
+  private async preflight(dto: CreateCaseDto, files: Express.Multer.File[], user: ReqUser) {
+    const ctx = await afterSalesActor(this.basePrisma, user.id, this.prisma);
+    if (ctx) {
+      if (
+        !this.resources ||
+        !this.repairAccess ||
+        !this.exchangeAccess ||
+        ctx.scope.permission !== 'after-sales.create'
+      )
+        throw new ForbiddenException('ต้องตรวจแหล่งรับฝาก');
+      const source = await this.resources.branch(ctx.client, dto.branchId, true);
+      if (source.company !== 'SHOP' || !canAccess(ctx.snapshot, 'after-sales.create', source))
+        throw new ForbiddenException('ไม่มีสิทธิ์รับฝากที่สาขานี้');
     }
     // R16 (fix round 1, Critical) — BranchGuard อ่าน request.body?.branchId แต่ guards รันก่อน
     // FilesInterceptor แกะ multipart/form-data เสร็จ ⇒ ตอนถึง guard body ยังว่าง (ไม่มี branchId
     // ให้เห็น) จึงปล่อยผ่านเสมอบน POST /after-sales — ต้องบังคับ scope สาขาที่ service เอง ก่อนแตะ
     // storage/lookup/tx ใด ๆ (แบบเดียวกับ security.md "Branch scope บน route ที่มีแต่ :id")
-    if (!hasCrossBranchAccess(user) && dto.branchId !== user.branchId) {
+    if (!currentDomainAccess() && !hasCrossBranchAccess(user) && dto.branchId !== user.branchId) {
       throw new ForbiddenException('ไม่สามารถเข้าถึงสาขาอื่นได้');
     }
     // DTO ไม่บังคับ UUID แล้ว (seed ใช้ `branch-001`) — ตรวจว่าสาขามีจริงแทน ให้ role ข้ามสาขาที่ส่ง
@@ -131,17 +157,14 @@ export class AfterSalesCaseService {
     }
     files.forEach((f) => assertEvidenceImage(f, 'รูปตอนรับฝาก'));
 
-    const look = await this.lookupSvc.lookup({ imei: dto.imei }, user);
-    // R12 fast path — เช็คซ้ำอีกครั้งใน tx ด้วย advisory lock ก่อนสร้างจริง (กัน TOCTOU)
-    if (look.openCase) {
-      if (dto.serviceRequestId) {
-        const existing = await this.chatLinks!.existingForCreation(dto.serviceRequestId, user);
-        if (existing) return existing;
-      }
-      throw new ConflictException(
-        `เครื่องนี้มีเคสที่ยังไม่ปิดอยู่แล้ว: ${look.openCase.caseNumber}`,
-      );
-    }
+    const look = currentDomainAccess()
+      ? await this.lookupSvc.lookupForCreation(
+          { imei: dto.imei },
+          user,
+          dto.outcome,
+          dto.replacementProductId,
+        )
+      : await this.lookupSvc.lookup({ imei: dto.imei }, user);
     const customerId = look.customer?.id ?? dto.customerId;
     if (!customerId) throw new BadRequestException('ไม่พบเครื่องในระบบ — ต้องเลือกลูกค้า');
     const outcome = look.outcomes.find((o) => o.outcome === dto.outcome);
@@ -171,7 +194,13 @@ export class AfterSalesCaseService {
       imeiSerial: string | null;
     } | null = null;
     if (isSameModel) {
-      const elig = await this.defect.checkEligibility(look.contract!.id, dto.replacementProductId);
+      const elig = currentDomainAccess()
+        ? await this.defect.checkCreationEligibility(
+            look.contract!.id,
+            dto.replacementProductId,
+            user,
+          )
+        : await this.defect.checkEligibility(look.contract!.id, dto.replacementProductId);
       // I1 — กติกาเปลี่ยนรุ่นเดิมของ engine คงเดิมทุกข้อ (spec §4.3): ผจก. ข้ามได้ "เฉพาะกรอบ 7 วัน"
       // (ตัดสินตอนยืนยัน) — เหตุผลอื่นทุกข้อ (PHONE_USED · สถานะสัญญา · เครดิตเทิร์น · เครื่องใหม่
       // ไม่พร้อมขาย · รุ่น/ความจุไม่ตรง) บล็อกตั้งแต่ตอนแจ้ง
@@ -204,20 +233,215 @@ export class AfterSalesCaseService {
     }
 
     const imei = look.product?.imeiSerial ?? dto.imei;
-    if (dto.serviceRequestId)
-      await this.chatLinks!.candidateForCreation(
-        dto.serviceRequestId,
-        {
-          branchId: dto.branchId,
-          customerId,
-          productId: look.product?.id ?? null,
-          contractId: look.contract?.id ?? null,
-          saleId: look.sale?.id ?? null,
-          deviceImei: imei,
-        },
-        user,
+    const requestFingerprint = dto.serviceRequestId
+      ? await this.chatLinks!.candidateForCreation(
+          dto.serviceRequestId,
+          {
+            branchId: dto.branchId,
+            customerId,
+            productId: look.product?.id ?? null,
+            contractId: look.contract?.id ?? null,
+            saleId: look.sale?.id ?? null,
+            deviceImei: imei,
+          },
+          user,
+        )
+      : undefined;
+    if (ctx) {
+      const input = {
+        branchId: dto.branchId,
+        customerId,
+        productId: look.product?.id,
+        contractId: look.contract?.id,
+        repairSupplierId: dto.repairSupplierId,
+      };
+      if (dto.outcome === 'REPAIR')
+        await this.repairAccess!.resolve(
+          ctx.client,
+          ctx.snapshot,
+          'repair-tickets.create',
+          'create',
+          undefined,
+          input,
+          true,
+        );
+      else if (dto.outcome === 'CASH_SAME_MODEL_EXCHANGE')
+        // PR 5 cash swap is sale-sourced: the managed exchange boundary authorizes contract
+        // sources only (confirm/deliver deny it too) ⇒ fail closed until a sale-source rule exists.
+        throw new ForbiddenException('ไม่มีสิทธิ์ดำเนินการในแหล่งนี้');
+      else {
+        await this.repairAccess!.linked(ctx.client, ctx.snapshot, input, true);
+        this.exchangeAccess!.assert(
+          dto.outcome === 'SAME_MODEL_EXCHANGE'
+            ? 'defect-exchanges.create'
+            : 'contract-exchanges.create',
+          await this.exchangeAccess!.sources({
+            oldContractId: look.contract!.id,
+            oldProductId: look.product!.id,
+            newProductId: dto.replacementProductId,
+          }),
+        );
+      }
+    }
+    const sourceFingerprint = ctx
+      ? {
+          product: look.product
+            ? await ctx.client.product.findUnique({
+                where: { id: look.product.id },
+                select: { branchId: true, ownedByCompanyId: true },
+              })
+            : null,
+          sale: look.sale
+            ? await ctx.client.sale.findUnique({
+                where: { id: look.sale.id },
+                select: { branchId: true, customerId: true, contractId: true, productId: true },
+              })
+            : null,
+          contract: look.contract
+            ? await ctx.client.contract.findUnique({
+                where: { id: look.contract.id },
+                select: { branchId: true, customerId: true, productId: true },
+              })
+            : null,
+          replacement: dto.replacementProductId
+            ? await ctx.client.product.findUnique({
+                where: { id: dto.replacementProductId },
+                select: { branchId: true, ownedByCompanyId: true },
+              })
+            : null,
+        }
+      : undefined;
+    return {
+      look,
+      customerId,
+      outcome,
+      isSameModel,
+      isCashSameModel,
+      replacementProduct,
+      imei,
+      requestFingerprint,
+      sourceFingerprint,
+    };
+  }
+  private fingerprint(input: {
+    look: LookupResult;
+    customerId: string;
+    replacementProduct: unknown;
+  }) {
+    const { warranty, ...look } = input.look;
+    const stableWarranty = { ...warranty, checkedAt: undefined };
+    return createHash('sha256')
+      .update(JSON.stringify({ ...input, look: { ...look, warranty: stableWarranty } }))
+      .digest('hex');
+  }
+
+  async createCase(dto: CreateCaseDto, files: Express.Multer.File[], user: ReqUser) {
+    // คำตัดสินเจ้าของ 2026-10-06 — เมนูเปลี่ยนเครื่องแบบมีราคาปิดทั้งหมด: 410 ตั้งแต่บรรทัดแรก ก่อนแตะ
+    // สาขา/รูป/lookup/storage/tx/engine (DTO ยังรับค่า PRICED_EXCHANGE เพื่อให้ไคลเอนต์เก่าได้ข้อความชี้ทาง)
+    // — ทั้งผู้ใช้ทั่วไปและ managed actor (ก่อนเข้า preparation/preflight ใด ๆ)
+    if (dto.outcome === 'PRICED_EXCHANGE') throw deviceSwapClosed();
+    return this.createAttempt(dto, files, user);
+  }
+  private async createAttempt(
+    dto: CreateCaseDto,
+    files: Express.Multer.File[],
+    user: ReqUser,
+    prepared?: {
+      id: string;
+      fingerprint: string;
+      photoKeys: string[];
+      purchasePhotoKeys: string[];
+    },
+  ): Promise<CreateCaseResult | AfterSalesMutationAcknowledgement> {
+    const preparation = procurementPreparation.getStore();
+    if (preparation && !prepared) {
+      const initial = await preparation.execute(async () => {
+        if (dto.serviceRequestId) {
+          if (!this.chatLinks) throw new BadRequestException('ระบบเชื่อมใบรับเรื่องยังไม่พร้อม');
+          const existing = await this.chatLinks!.existingForCreation(dto.serviceRequestId, user);
+          if (existing) return { existing };
+        }
+        return { input: await this.preflight(dto, files, user) };
+      });
+      if (initial.existing) return { id: initial.existing.id, stage: initial.existing.stage };
+      const input = initial.input!;
+      const id = randomUUID(),
+        owned: string[] = [],
+        photoKeys: string[] = [],
+        purchasePhotoKeys: string[] = [];
+      const put = async (key: string, buffer: Buffer, mime: string) => {
+        owned.push(key);
+        await this.storage.upload(key, buffer, mime);
+        return key;
+      };
+      try {
+        // Validate every copied image before the first external storage call.
+        const copies = ANGLES.flatMap((angle) => {
+          const value = input.look.purchasePhotos?.[angle];
+          if (!value) return [];
+          const match = /^data:(image\/[a-z]+);base64,([A-Za-z0-9+/=]+)$/.exec(value);
+          if (!match) throw new BadRequestException('รูปต้นทางไม่ถูกต้อง');
+          const file = {
+            buffer: Buffer.from(match[2], 'base64'),
+            mimetype: match[1],
+          } as Express.Multer.File;
+          assertEvidenceImage(file, 'รูปต้นทาง');
+          return [{ angle, file }];
+        });
+        for (const file of files)
+          photoKeys.push(
+            await put(
+              `after-sales/${id}/intake-${randomUUID()}.${evidenceImageExtension(file.mimetype)}`,
+              file.buffer,
+              file.mimetype,
+            ),
+          );
+        for (const { angle, file } of copies)
+          purchasePhotoKeys.push(
+            await put(
+              `after-sales/${id}/purchase-${angle}.${evidenceImageExtension(file.mimetype)}`,
+              file.buffer,
+              file.mimetype,
+            ),
+          );
+        const result = await preparation.execute(() =>
+          this.createAttempt(dto, files, user, {
+            id,
+            fingerprint: this.fingerprint(input),
+            photoKeys,
+            purchasePhotoKeys,
+          }),
+        );
+        if (result.id !== id)
+          await Promise.all(owned.map((key) => this.storage.delete(key).catch(() => undefined)));
+        return { id: result.id, stage: result.stage };
+      } catch (error) {
+        await Promise.all(owned.map((key) => this.storage.delete(key).catch(() => undefined)));
+        throw error;
+      }
+    }
+    const managed = await afterSalesActor(this.basePrisma, user.id, this.prisma);
+    if (managed && !prepared) throw new ForbiddenException('ต้องเตรียมรับฝากนอกธุรกรรม');
+    if (dto.serviceRequestId) {
+      if (!this.chatLinks) throw new BadRequestException('ระบบเชื่อมใบรับเรื่องยังไม่พร้อม');
+      const existing = await this.chatLinks.existingForCreation(dto.serviceRequestId, user);
+      if (existing) return existing;
+    }
+    const input = await this.preflight(dto, files, user);
+    const { look, customerId, outcome, isSameModel, isCashSameModel, replacementProduct, imei } =
+      input;
+    if (look.openCase) {
+      if (dto.serviceRequestId) {
+        const existing = await this.chatLinks!.existingForCreation(dto.serviceRequestId, user);
+        if (existing) return existing;
+      }
+      throw new ConflictException(
+        `เครื่องนี้มีเคสที่ยังไม่ปิดอยู่แล้ว: ${look.openCase.caseNumber}`,
       );
-    const id = randomUUID();
+    }
+    if (prepared && prepared.fingerprint !== this.fingerprint(input))
+      throw new ConflictException('ข้อมูลรับฝากเปลี่ยน กรุณาลองใหม่');
+    const id = prepared?.id ?? randomUUID();
     const uploaded: string[] = [];
     const put = async (key: string, buf: Buffer, mime: string) => {
       await this.storage.upload(key, buf, mime);
@@ -230,8 +454,8 @@ export class AfterSalesCaseService {
     try {
       // R14: sequential — ทุก key ที่อัปโหลดสำเร็จต้องถูกจดไว้ใน `uploaded` ก่อนไฟล์ถัดไป
       // (Promise.all ปล่อยให้ upload ที่ยังไม่ resolve ตอนตัวอื่นพัง หลุดจากการ cleanup)
-      const photoKeys: string[] = [];
-      for (const f of files) {
+      const photoKeys: string[] = prepared?.photoKeys ?? [];
+      for (const f of prepared ? [] : files) {
         photoKeys.push(
           await put(
             `after-sales/${id}/intake-${Date.now()}-${randomUUID()}.${evidenceImageExtension(f.mimetype)}`,
@@ -241,8 +465,8 @@ export class AfterSalesCaseService {
         );
       }
 
-      const purchasePhotoKeys: string[] = [];
-      for (const angle of ANGLES) {
+      const purchasePhotoKeys: string[] = prepared?.purchasePhotoKeys ?? [];
+      for (const angle of prepared ? [] : ANGLES) {
         // สำเนา ProductPhoto (data URL) ณ วันแจ้ง — D6
         const dataUrl = look.purchasePhotos?.[angle];
         if (!dataUrl) continue;
@@ -274,21 +498,25 @@ export class AfterSalesCaseService {
         // ทีละแถวก่อนตัดสิน "ยังเปิดอยู่จริงไหม" — stage ที่เก็บไว้อาจดริฟท์จากใบซ่อมจริง (sync()
         // ของ proxy ไม่เคยรัน เพราะใบซ่อมถูกแก้นอก proxy) ไม่งั้น IMEI นี้จะถูกบล็อก 409 ตลอดไป
         // แม้เคสเก่าจะปิดไปแล้วจริง ๆ
-        const candidates = await tx.afterSalesCase.findMany({
-          where: { deviceImei: imei, deletedAt: null, stage: { notIn: ['CLOSED', 'CANCELLED'] } },
-          select: { ...RECONCILE_SELECT, caseNumber: true },
-        });
-        const reconciledCandidates = await Promise.all(
-          candidates.map((c) => reconcileStage(tx, c)),
-        );
-        const stillOpen = reconciledCandidates.find(
-          (c) => !['CLOSED', 'CANCELLED'].includes(c.stage),
-        );
-        if (stillOpen)
-          throw new ConflictException(
-            `เครื่องนี้มีเคสที่ยังไม่ปิดอยู่แล้ว: ${stillOpen.caseNumber}`,
+        if (currentDomainAccess()) {
+          if (await hasGlobalOpenAfterSalesCase(tx, imei))
+            throw new ConflictException('เครื่องนี้มีเคสที่ยังไม่ปิด');
+        } else {
+          const candidates = await tx.afterSalesCase.findMany({
+            where: { deviceImei: imei, deletedAt: null, stage: { notIn: ['CLOSED', 'CANCELLED'] } },
+            select: { ...RECONCILE_SELECT, caseNumber: true },
+          });
+          const reconciledCandidates = await Promise.all(
+            candidates.map((c) => reconcileStage(tx, c)),
           );
-
+          const stillOpen = reconciledCandidates.find(
+            (c) => !['CLOSED', 'CANCELLED'].includes(c.stage),
+          );
+          if (stillOpen)
+            throw new ConflictException(
+              `เครื่องนี้มีเคสที่ยังไม่ปิดอยู่แล้ว: ${stillOpen.caseNumber}`,
+            );
+        }
         const caseNumber = await this.docNumber.nextCaseNumber(tx);
         const receivedEvent = {
           kind: 'RECEIVED' as const,
@@ -429,7 +657,7 @@ export class AfterSalesCaseService {
 
     // R13 — audit.log อยู่นอก try/catch: ถ้ามันเองพังหลัง tx commit แล้ว ต้องไม่ไปลบรูปของ
     // เคสที่บันทึกสำเร็จแล้ว (catch ด้านบนมีไว้กัน storage/tx เท่านั้น)
-    await this.audit.log({
+    const auditEntry = {
       userId: user.id,
       action: 'AFTER_SALES_CASE_CREATED',
       entity: 'after_sales_case',
@@ -440,13 +668,21 @@ export class AfterSalesCaseService {
         repairTicketId: result.repairTicketId,
         exchangeRequestId: result.exchangeRequestId,
       },
-    });
+    };
+    if (currentDomainAccess()) await this.audit.log(auditEntry, currentDomainAccess()!.client);
+    else await this.audit.log(auditEntry);
 
     // Task 3 — จังหวะ 1 (RECEIVED): หลัง commit + audit เสมอ — ทุก outcome ที่ยังเปิด (REPAIR = RECEIVED ·
     // SAME_MODEL = AWAITING_APPROVAL; PRICED_EXCHANGE ปิด 410 ตั้งแต่ต้นเมธอด จึงไม่มีจังหวะ READY/CLOSED
     // ต่อท้ายตอนสร้างเคสอีก). fire-and-forget: LINE ล้มต้องไม่ทำให้การบันทึกล้ม (Global Constraints) —
-    // `.catch` เป็นเข็มขัดคู่กับ notifyMoment เองที่ไม่ throw.
-    void this.line.notifyMoment(result.id, 'RECEIVED', user.id).catch(() => undefined);
+    // `.catch` เป็นเข็มขัดคู่กับ notifyMoment เองที่ไม่ throw. Managed: ส่งหลัง owned execution commit.
+    const notify = () =>
+      this.line.notifyMoment(result.id, 'RECEIVED', user.id).catch(() => undefined);
+    if (currentDomainAccess())
+      onDomainCommit(async () => {
+        await notify();
+      });
+    else void notify();
 
     return result;
   }

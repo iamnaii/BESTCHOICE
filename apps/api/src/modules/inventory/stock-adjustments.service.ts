@@ -1,3 +1,6 @@
+import { currentDomainAccess, domainAccessClient, onDomainCommit } from '../employee-access/access-execution-context';
+import { procurementPreparation } from '../employee-access/access-preparation-context';
+import { adjustmentJournalAllows, adjustmentAllows, currentAdjustmentWhere, currentAdjustmentProductWhere } from '../employee-access/access-adjustments-scope';
 import {
   BadRequestException,
   ConflictException,
@@ -11,7 +14,7 @@ import { randomUUID } from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { bkkYyyymmdd } from '../../utils/document-number-format.util';
 import { evidenceImageExtension, isEvidenceImage } from '../../utils/upload-image.util';
-import { AuditService } from '../audit/audit.service';
+import { AuditEntry, AuditService } from '../audit/audit.service';
 import { validatePeriodOpen } from '../../utils/period-lock.util';
 import { CROSS_BRANCH_ROLES } from '../auth/branch-access.util';
 import { CompanyResolverService } from '../journal/company-resolver.service';
@@ -288,7 +291,7 @@ function redactCost<T extends { costAmount?: unknown; product?: { costPrice?: un
   row: T,
   actor: AdjustmentActor,
 ): T {
-  if (canSeeCost(actor.role)) return row;
+  if (currentDomainAccess() || canSeeCost(actor.role)) return row;
   const product = row.product ? (omitCostPrice(row.product) as T['product']) : row.product;
   return { ...row, costAmount: null, product };
 }
@@ -298,7 +301,7 @@ export class StockAdjustmentsService {
   private readonly logger = new Logger(StockAdjustmentsService.name);
 
   constructor(
-    private readonly prisma: PrismaService,
+    private readonly basePrisma: PrismaService,
     private readonly template: ShopStockWriteOffTemplate,
     private readonly accounts: ShopAccountResolver,
     private readonly companies: CompanyResolverService,
@@ -307,13 +310,25 @@ export class StockAdjustmentsService {
     private readonly audit: AuditService,
   ) {}
 
+  private get prisma(): PrismaService {
+    return domainAccessClient(this.basePrisma);
+  }
+
+  private isCurrentOwner(actor: AdjustmentActor): boolean {
+    return currentDomainAccess()?.snapshot.isOwner ?? actor.role === 'OWNER';
+  }
+  private logAudit(entry: AuditEntry): Promise<void> {
+    const tx = currentDomainAccess()?.client;
+    return tx ? this.audit.log(entry, tx) : this.audit.log(entry);
+  }
+
   // ────────────────────────────────────────────────────────────────────────────
   // ขอบเขตสาขา
   // ────────────────────────────────────────────────────────────────────────────
 
   /** ผู้ขอ/ผู้ยกเลิก: OWNER ทุกสาขา · อื่น ๆ เฉพาะสาขาตัวเอง (ไม่มี branchId = fail-closed) */
   private assertRequesterScope(actor: AdjustmentActor, productBranchId: string, verb: string): void {
-    if (actor.role === 'OWNER') return;
+    if (currentDomainAccess() || procurementPreparation.getStore() || actor.role === 'OWNER') return;
     if (!actor.branchId || actor.branchId !== productBranchId) {
       throw new ForbiddenException(`${verb}ได้เฉพาะเครื่องในสาขาของคุณ`);
     }
@@ -321,14 +336,14 @@ export class StockAdjustmentsService {
 
   /** ผู้อ่าน: OWNER/FM/ACCOUNTANT ข้ามสาขา · BM/SALES เฉพาะสาขาตัวเอง */
   private assertReaderScope(actor: AdjustmentActor, branchId: string): void {
-    if (CROSS_BRANCH_ROLES.has(actor.role)) return;
+    if (currentDomainAccess() || CROSS_BRANCH_ROLES.has(actor.role)) return;
     if (!actor.branchId || actor.branchId !== branchId) {
       throw new ForbiddenException('ดูได้เฉพาะรายการของสาขาคุณ');
     }
   }
 
   private readerBranchFilter(actor: AdjustmentActor): { branchId?: string; adjustedById?: string } {
-    if (CROSS_BRANCH_ROLES.has(actor.role)) return {};
+    if (currentDomainAccess() || CROSS_BRANCH_ROLES.has(actor.role)) return {};
     // ไม่มี branchId ติดตัว = เห็นได้แค่ใบที่ตัวเองขอ (fail-closed)
     return actor.branchId ? { branchId: actor.branchId } : { adjustedById: actor.id };
   }
@@ -437,12 +452,15 @@ export class StockAdjustmentsService {
     dto: CreateStockAdjustmentDto,
     photos: Express.Multer.File[],
     actor: AdjustmentActor,
+    stagedPhotoKeys?: string[],
   ): Promise<StockAdjustmentView> {
     const reason = dto.reason as StockAdjustmentReason;
     const files = photos ?? [];
-    if (reason === 'DAMAGED' && files.length === 0) {
+    if (reason === 'DAMAGED' && files.length === 0 && !stagedPhotoKeys?.length) {
       throw new BadRequestException('เหตุผล เสียหาย ต้องแนบรูปหลักฐานอย่างน้อย 1 รูป');
     }
+
+    if (!currentDomainAccess()) await procurementPreparation.getStore()?.authorize?.();
 
     // ตรวจเครื่อง/สิทธิ์ก่อนอัปโหลด — ไม่ให้รูปของคำขอที่ไม่มีทางผ่านไปค้างใน storage
     const probe = await this.prisma.product.findUnique({
@@ -456,7 +474,17 @@ export class StockAdjustmentsService {
     if (blocked) throw new BadRequestException(blocked);
 
     const now = new Date();
-    const photoKeys = await this.uploadPhotos(files, now);
+    const preparation = procurementPreparation.getStore();
+    if (preparation && !currentDomainAccess()) {
+      const staged = await this.uploadPhotos(files, now);
+      try {
+        return await preparation.execute(() => this.createRequest(dto, [], actor, staged));
+      } catch (error) {
+        await this.discardPhotos(staged);
+        throw error;
+      }
+    }
+    const photoKeys = stagedPhotoKeys ?? await this.uploadPhotos(files, now);
     const holdsProduct = EXIT_REASONS.has(reason);
 
     let created: StockAdjustmentView;
@@ -553,11 +581,11 @@ export class StockAdjustmentsService {
         { timeout: 30_000 },
       );
     } catch (err) {
-      await this.discardPhotos(photoKeys);
+      if (!stagedPhotoKeys) await this.discardPhotos(photoKeys);
       throw err;
     }
 
-    await this.audit.log({
+    await this.logAudit({
       userId: actor.id,
       action: 'STOCK_ADJUSTMENT_REQUESTED',
       entity: 'stock_adjustment',
@@ -582,7 +610,7 @@ export class StockAdjustmentsService {
     const now = new Date();
     const result = await this.prisma.$transaction(async (tx) => {
       const row = await this.lockPending(tx, id);
-      if (row.adjustedById !== actor.id && actor.role !== 'OWNER') {
+      if (row.adjustedById !== actor.id && !this.isCurrentOwner(actor)) {
         throw new ForbiddenException('ยกเลิกได้เฉพาะผู้ส่งคำขอหรือเจ้าของ');
       }
       if (EXIT_REASONS.has(row.reason)) {
@@ -600,7 +628,7 @@ export class StockAdjustmentsService {
       return updated;
     });
 
-    await this.audit.log({
+    await this.logAudit({
       userId: actor.id,
       action: 'STOCK_ADJUSTMENT_CANCELED',
       entity: 'stock_adjustment',
@@ -642,7 +670,7 @@ export class StockAdjustmentsService {
    * CORRECTION/OTHER → บันทึกอย่างเดียว. Sentry warning (ยอดที่ลงรับเข้า ≠ ต้นทุนปัจจุบัน) ส่งหลัง commit เท่านั้น.
    */
   async approve(id: string, actor: AdjustmentActor): Promise<ApproveResult> {
-    if (actor.role !== 'OWNER') throw new ForbiddenException('เจ้าของเท่านั้นที่อนุมัติคำขอตัดสินค้าได้');
+    if (!this.isCurrentOwner(actor)) throw new ForbiddenException('เจ้าของเท่านั้นที่อนุมัติคำขอตัดสินค้าได้');
     const now = new Date();
     const warnings: DeferredWarning[] = [];
 
@@ -849,8 +877,9 @@ export class StockAdjustmentsService {
       { timeout: 30_000 },
     );
 
-    emitDeferredWarnings(warnings);
-    await this.audit.log({
+    if (currentDomainAccess()) onDomainCommit(async () => { emitDeferredWarnings(warnings); });
+    else emitDeferredWarnings(warnings);
+    await this.logAudit({
       userId: actor.id,
       action: 'STOCK_ADJUSTMENT_APPROVED',
       entity: 'stock_adjustment',
@@ -867,12 +896,17 @@ export class StockAdjustmentsService {
         accountingNotified: result.accountingNotified,
       },
     });
-    const { bookedSource: _b, costAmount: _c, ...out } = result;
-    return { ...out, adjustment: redactCost(out.adjustment, actor) };
+    return {
+      adjustment: redactCost(result.adjustment, actor),
+      journalEntryNo: result.journalEntryNo,
+      inventoryBooked: result.inventoryBooked,
+      productStatus: result.productStatus,
+      accountingNotified: result.accountingNotified,
+    };
   }
 
   async reject(id: string, dto: RejectStockAdjustmentDto, actor: AdjustmentActor): Promise<StockAdjustmentView> {
-    if (actor.role !== 'OWNER') throw new ForbiddenException('เจ้าของเท่านั้นที่ไม่อนุมัติคำขอตัดสินค้าได้');
+    if (!this.isCurrentOwner(actor)) throw new ForbiddenException('เจ้าของเท่านั้นที่ไม่อนุมัติคำขอตัดสินค้าได้');
     const now = new Date();
     const result = await this.prisma.$transaction(async (tx) => {
       const row = await this.lockPending(tx, id);
@@ -891,7 +925,7 @@ export class StockAdjustmentsService {
       return updated;
     });
 
-    await this.audit.log({
+    await this.logAudit({
       userId: actor.id,
       action: 'STOCK_ADJUSTMENT_REJECTED',
       entity: 'stock_adjustment',
@@ -928,7 +962,7 @@ export class StockAdjustmentsService {
         { imeiSerial: { contains: search } },
       ];
     }
-    if (actor.role !== 'OWNER') {
+    if (!currentDomainAccess() && actor.role !== 'OWNER') {
       if (!actor.branchId) return [];
       where.branchId = actor.branchId;
     }
@@ -939,7 +973,7 @@ export class StockAdjustmentsService {
       where.deletedAt = null;
     }
     const rows = await this.prisma.product.findMany({
-      where,
+      where: { AND: [where, currentAdjustmentProductWhere()] },
       take: 10,
       orderBy: { updatedAt: 'desc' },
       select: {
@@ -955,7 +989,7 @@ export class StockAdjustmentsService {
         category: true,
         branch: { select: { id: true, name: true } },
         stockAdjustments: {
-          where: { status: 'PENDING_APPROVAL', deletedAt: null },
+          where: { status: 'PENDING_APPROVAL', deletedAt: null, ...(currentDomainAccess() ? { AND: [currentAdjustmentWhere()] } : {}) },
           select: { requestNumber: true },
           take: 1,
         },
@@ -979,7 +1013,7 @@ export class StockAdjustmentsService {
       status: p.status,
       deletedAt: p.deletedAt,
       branch: p.branch,
-      costPrice: canSeeCost(actor.role) ? money(p.costPrice) : null,
+      costPrice: currentDomainAccess() || canSeeCost(actor.role) ? money(p.costPrice) : null,
       category: p.category,
       pendingRequestNumber: p.stockAdjustments?.[0]?.requestNumber ?? null,
       // ป้ายขึ้นเฉพาะกรณีที่ด่าน poUnbookedBlock จะบล็อกจริง: เหตุผลตัดออก + ยังอยู่ในคิวรอถ่ายรูป (ปุ่มตีกลับมีจริง)
@@ -996,7 +1030,7 @@ export class StockAdjustmentsService {
     this.assertReaderScope(actor, product.branchId);
 
     const bookedFull = await resolveBookedInventory(this.prisma, productId);
-    const seesCost = canSeeCost(actor.role);
+    const seesCost = currentDomainAccess() ? await adjustmentAllows(productId, 'sensitive.cost.read') : canSeeCost(actor.role);
     const booked: BookedInventory = seesCost ? bookedFull : { ...bookedFull, bookedAmount: null };
     const cost = new Prisma.Decimal(product.costPrice);
     const inventoryAccountCode = this.accounts.resolveProductAccounts(product.category).inventoryAccountCode;
@@ -1101,7 +1135,7 @@ export class StockAdjustmentsService {
 
   async pendingCount(actor: AdjustmentActor): Promise<{ total: number }> {
     const total = await this.prisma.stockAdjustment.count({
-      where: { status: 'PENDING_APPROVAL', deletedAt: null, ...this.readerBranchFilter(actor) },
+      where: { status: 'PENDING_APPROVAL', deletedAt: null, ...this.readerBranchFilter(actor), ...(currentDomainAccess() ? { AND: [currentAdjustmentWhere()] } : {}) },
     });
     return { total };
   }
@@ -1121,8 +1155,8 @@ export class StockAdjustmentsService {
     },
     actor: AdjustmentActor,
   ) {
-    const where: Prisma.StockAdjustmentWhereInput = { deletedAt: null, ...this.readerBranchFilter(actor) };
-    if (filters.branchId && CROSS_BRANCH_ROLES.has(actor.role)) where.branchId = filters.branchId;
+    const where: Prisma.StockAdjustmentWhereInput = { deletedAt: null, ...this.readerBranchFilter(actor), ...(currentDomainAccess() ? { AND: [currentAdjustmentWhere()] } : {}) };
+    if (filters.branchId && (currentDomainAccess() || CROSS_BRANCH_ROLES.has(actor.role))) where.branchId = filters.branchId;
     if (filters.mine) where.adjustedById = actor.id;
     if (filters.reason) where.reason = filters.reason as StockAdjustmentReason;
     if (filters.status) where.status = filters.status as StockAdjustmentStatus;
@@ -1195,7 +1229,8 @@ export class StockAdjustmentsService {
     const [adjustment] = await this.withJournalEntryNo([found]);
 
     const photoUrls: string[] = [];
-    for (const key of adjustment.photos) {
+    const canReadFiles = !currentDomainAccess() || await adjustmentAllows(adjustment.productId, 'documents.read', adjustment.branchId);
+    for (const key of canReadFiles ? adjustment.photos : []) {
       if (key.startsWith('data:')) continue; // แถวยุคเก่าเคยเก็บ data URI — ไม่ส่งออก
       try {
         photoUrls.push(await this.storage.getSignedDownloadUrl(key));
@@ -1207,12 +1242,43 @@ export class StockAdjustmentsService {
       adjustment.status === 'PENDING_APPROVAL' && BOOKED_EXIT_REASONS.has(adjustment.reason)
         ? await resolveBookedInventory(this.prisma, adjustment.productId)
         : null;
-    const booked = bookedFull && !canSeeCost(actor.role) ? { ...bookedFull, bookedAmount: null } : bookedFull;
+    const booked = bookedFull && !currentDomainAccess() && !canSeeCost(actor.role) ? { ...bookedFull, bookedAmount: null } : bookedFull;
     return { ...redactCost(adjustment, actor), photoUrls, booked };
   }
 
+  private async canSeeSummaryCost(row: {
+    productId: string;
+    branchId: string;
+    journalEntryId: string | null;
+    reversesAdjustmentId: string | null;
+  }): Promise<boolean> {
+    const sourceCost = await adjustmentAllows(row.productId, 'sensitive.cost.read', row.branchId);
+    if (!sourceCost) return false;
+    if (row.reversesAdjustmentId) {
+      const original = await this.prisma.stockAdjustment.findFirst({
+        where: { id: row.reversesAdjustmentId, productId: row.productId, deletedAt: null },
+      });
+      if (!original) return false;
+      const originalCost = await adjustmentAllows(
+        original.productId,
+        'sensitive.cost.read',
+        original.branchId,
+      );
+      if (!originalCost) return false;
+      if (original.journalEntryId) {
+        const originalJournalCost = await adjustmentJournalAllows(
+          { id: original.journalEntryId },
+          'sensitive.cost.read',
+        );
+        if (!originalJournalCost) return false;
+      }
+    }
+    if (!row.journalEntryId) return true;
+    return adjustmentJournalAllows({ id: row.journalEntryId }, 'sensitive.cost.read');
+  }
+
   async getSummary(filters: { branchId?: string; startDate?: string; endDate?: string }) {
-    const where: Prisma.StockAdjustmentWhereInput = { deletedAt: null, status: 'APPROVED' };
+    const where: Prisma.StockAdjustmentWhereInput = { deletedAt: null, status: 'APPROVED', ...(currentDomainAccess() ? { AND: [currentAdjustmentWhere()] } : {}) };
     if (filters.branchId) where.branchId = filters.branchId;
     if (filters.startDate || filters.endDate) {
       const dateFilter: Prisma.DateTimeFilter = {};
@@ -1228,7 +1294,7 @@ export class StockAdjustmentsService {
     const grouped = await this.prisma.stockAdjustment.groupBy({ by: ['reason'], where, _count: true });
     const adjustments = await this.prisma.stockAdjustment.findMany({
       where,
-      select: { reason: true, costAmount: true, product: { select: { costPrice: true } } },
+      select: { productId: true, branchId: true, journalEntryId: true, reversesAdjustmentId: true, reason: true, costAmount: true, product: { select: { costPrice: true } } },
     });
 
     const byReason: Record<string, { count: number; totalValue: string }> = {};
@@ -1248,6 +1314,18 @@ export class StockAdjustmentsService {
       totalValue = totalValue.plus(sums[reason]);
     }
     const totalCount = grouped.reduce((sum, g) => sum + g._count, 0);
+    if (currentDomainAccess()) {
+      const sourceCostDecisions = await Promise.all(adjustments.map(row => this.canSeeSummaryCost(row)));
+      if (!sourceCostDecisions.every(Boolean)) {
+        return {
+          byReason: Object.fromEntries(
+            Object.entries(byReason).map(([key, value]) => [key, { ...value, totalValue: null }]),
+          ),
+          totalCount,
+          totalValue: null,
+        };
+      }
+    }
     return { byReason, totalCount, totalValue: money(totalValue) };
   }
 }

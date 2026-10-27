@@ -1,6 +1,7 @@
 import {
   IsString,
   IsNumber,
+  ValidateIf,
   IsOptional,
   IsPositive,
   Min,
@@ -43,19 +44,22 @@ export class RedeemPointsDto {
   @IsOptional()
   contractId?: string;
 
-  /**
-   * T3-C3: Anti-fraud linkage to a concrete POS transaction. Without this,
-   * staff could redeem points freely against "ghost" customer lookups. A
-   * redemption must always reference a sale/contract/manual-POS event so
-   * there's a paper trail back to who bought what.
-   */
+  /** Legacy POS field is an exact actual Sale-ID alias for managed verification.
+   * It never authorizes a new debit or completed-Sale repricing. */
+  @ValidateIf((dto: RedeemPointsDto) => !dto.saleId || dto.posTransactionId !== undefined)
   @IsString({ message: 'กรุณาระบุเลขที่ธุรกรรม POS' })
   @MaxLength(255)
   posTransactionId: string;
 
+  /** Managed verification selects an actual Sale; the legacy field is an exact alias. */
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  saleId?: string;
+
   /**
    * T3-C3: OWNER override required when redeeming > 10,000 points in one
-   * call. Service layer verifies the approver actually has OWNER role.
+   * call in legacy mode only. Managed verification rejects supplied approverId.
    */
   @IsString()
   @IsOptional()

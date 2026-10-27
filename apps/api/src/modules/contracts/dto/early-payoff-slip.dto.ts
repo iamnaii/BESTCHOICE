@@ -6,6 +6,11 @@ export class EarlyPayoffSlipVerifyDto {
   @IsOptional()
   @IsString()
   discountPct?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  reason?: string;
 }
 
 export class EarlyPayoffSlipConfirmDto {

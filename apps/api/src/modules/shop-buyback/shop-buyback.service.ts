@@ -1,3 +1,4 @@
+import { domainAccessClient } from '../employee-access/access-execution-context';
 import { BadRequestException, Injectable, Logger, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -49,8 +50,10 @@ function storageGb(storage: string): number {
 export class ShopBuybackService {
   private readonly logger = new Logger(ShopBuybackService.name);
 
+  private get prisma(): PrismaService { return domainAccessClient(this.basePrisma); }
+
   constructor(
-    private readonly prisma: PrismaService,
+    private readonly basePrisma: PrismaService,
     private readonly line: LineOaService,
     private readonly pricing: BuybackPricingService,
   ) {}

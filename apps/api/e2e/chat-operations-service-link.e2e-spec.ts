@@ -325,6 +325,7 @@ describe('Canonical after-sales case linking', () => {
       actor,
     );
     expect((await intake.get(req.id, actor, scope)).linkedCase?.stage).toBe('RECEIVED');
+    if (!('caseNumber' in c)) throw new Error('Expected unmanaged creation result');
     const returnedAt = new Date('2026-10-08T10:00:00+07:00');
     await db.repairTicket.update({
       where: { id: c.repairTicketId! },

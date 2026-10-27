@@ -1,8 +1,11 @@
+import { procurementPreparation } from '../employee-access/access-preparation-context';
+import { currentDomainAccess, onDomainCommit } from '../employee-access/access-execution-context';
 import { Throttle } from '@nestjs/throttler';
 import { ContractsListQueryDto } from './dto/contracts-list-query.dto';
 import { ContractQuoteDto } from './dto/contract-quote.dto';
 import {
   Controller,
+  ForbiddenException,
   Get,
   Post,
   Patch,
@@ -17,6 +20,7 @@ import {
   ParseFilePipe,
   MaxFileSizeValidator,
   FileTypeValidator,
+  ValidationPipe,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { Request } from 'express';
@@ -70,7 +74,10 @@ export class ContractsController {
   findAll(
     @Query() filters: ContractsListQueryDto,
     @CurrentUser() user: { id: string; role: string; branchId: string | null },
+    @Query('view') view?: unknown,
   ) {
+    // Explicit views are served only by the current managed access adapter.
+    if (view !== undefined) throw new ForbiddenException('ไม่มีสิทธิ์อ่านรูปแบบข้อมูลนี้');
     return this.contractsService.findAll(filters, user);
   }
 
@@ -92,7 +99,9 @@ export class ContractsController {
   findOne(
     @Param('id') id: string,
     @CurrentUser() user?: { id: string; role: string; branchId: string | null },
+    @Query('view') view?: unknown,
   ) {
+    if (view !== undefined) throw new ForbiddenException('ไม่มีสิทธิ์อ่านรูปแบบข้อมูลนี้');
     return this.contractsService.findOne(id, user);
   }
 
@@ -220,12 +229,13 @@ export class ContractsController {
     @Body() dto?: ActivateContractDto,
   ) {
     // Enforce branch-level access before activation
-    await this.contractsService.findOne(id, user);
+    if (!currentDomainAccess()) await this.contractsService.findOne(id, user);
     // ก้อน 5 C3 — ส่งบทบาท + เหตุผลปลด SOFT (ถ้ามี) เข้าด่าน blacklist ตอนเปิดใช้
+    // (managed execution ignores the legacy role name; the service decides from the current account)
     const activated = await this.workflowService.activate(id, user.id, { actorRole: user.role, blacklistOverrideReason: dto?.blacklistOverrideReason });
-    // การเดินทางของลูกค้า: contracts ไม่มี activatedAt และ activate(id) ไม่รับผู้ใช้ ⇒ บันทึกที่นี่หลัง tx ของ activate commit แล้ว
+    // Journey is controller-owned; managed activation defers it to the actual outer commit.
     // recordAfterCommit ไม่โยน error — สัญญาเปิดสำเร็จแล้วต้องคืนผลเสมอ · ไม่คัดลอกข้อมูลลูกค้า (PDPA)
-    await this.journeyEntries.recordAfterCommit({
+    const record = async () => { await this.journeyEntries.recordAfterCommit({
       customerId: activated.customerId,
       kind: 'CONTRACT_ACTIVATED',
       occurredAt: new Date(),
@@ -239,7 +249,8 @@ export class ContractsController {
         monthlyPayment: d(activated.monthlyPayment).toDecimalPlaces(2).toNumber(),
       },
       dedupeKey: journeyDedupeKey('CONTRACT_ACTIVATED', activated.id),
-    });
+    }); };
+    if (currentDomainAccess()) onDomainCommit(record); else await record();
     return activated;
   }
 
@@ -257,15 +268,15 @@ export class ContractsController {
 
   /**
    * ปิดสัญญาด้วยสลิป ขั้นที่ 1 (2026-09-24): อัปโหลดสลิป → อ่าน (OCR) → ตรวจ 5 ข้อกับยอดปิดสด
-   * ผ่านครบ = ได้ตั๋ว (15 นาที) ไปกดยืนยันขั้นที่ 2 โดยไม่ต้องเข้าคิวอนุมัติ · ไม่ผ่าน = ส่งขออนุมัติตามเดิม
-   * (แนบ slipUrl ไปกับคำขอได้). role เท่าเส้นทาง early-payoff เดิม.
+   * Managed: ส่วนลดบวกส่งคำขอพร้อมหลักฐานส่วนตัว; ศูนย์ที่ตรวจผ่านได้ตั๋วทึบอายุ 15 นาที.
+   * Genuine unmanaged callers retain the legacy response contract.
    */
   @Post(':id/early-payoff/slip')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER')
   @UseInterceptors(FileInterceptor('slip'))
   async earlyPayoffSlipVerify(
     @Param('id') id: string,
-    @Body() body: EarlyPayoffSlipVerifyDto,
+    @Body(new ValidationPipe({ transform: true, whitelist: true, forbidNonWhitelisted: true })) body: EarlyPayoffSlipVerifyDto,
     @UploadedFile(
       new ParseFilePipe({
         validators: [
@@ -279,6 +290,8 @@ export class ContractsController {
     file: Express.Multer.File,
     @CurrentUser() user: { id: string; role: string; branchId: string | null },
   ) {
+    if (procurementPreparation.getStore()?.source === 'payoff-slip')
+      return this.earlyPayoffSlip.verifyManaged(id, file, body.discountPct, user.id, body.reason);
     await this.contractsService.findOne(id, user);
     return this.earlyPayoffSlip.verify(id, file, body.discountPct, user.id);
   }
@@ -288,10 +301,10 @@ export class ContractsController {
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER')
   async earlyPayoffSlipConfirm(
     @Param('id') id: string,
-    @Body() dto: EarlyPayoffSlipConfirmDto,
+    @Body(new ValidationPipe({ transform: true, whitelist: true, forbidNonWhitelisted: true })) dto: EarlyPayoffSlipConfirmDto,
     @CurrentUser() user: { id: string; role: string; branchId: string | null },
   ) {
-    await this.contractsService.findOne(id, user);
+    if (!currentDomainAccess()) await this.contractsService.findOne(id, user);
     return this.earlyPayoffSlip.confirm(id, user.id, dto);
   }
 
@@ -341,8 +354,8 @@ export class ContractsController {
   // === QR CODE DATA: ข้อมูลสำหรับสร้าง QR Code ===
   @Get(':id/qr-data')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
-  getQrData(@Param('id') id: string) {
-    return this.documentService.getQrData(id);
+  getQrData(@Param('id') id: string, @CurrentUser() user: { id: string }) {
+    return this.documentService.getQrData(id, user.id);
   }
 
   // === PDPA Consent: บันทึกความยินยอม PDPA และผูกกับสัญญา ===
@@ -351,18 +364,25 @@ export class ContractsController {
   recordPdpaConsent(
     @Param('id') id: string,
     @Body() dto: PdpaConsentDto,
+    @CurrentUser() user: { id: string },
     @Req() req: Request,
   ) {
-    return this.documentService.recordPdpaConsent(id, dto.signatureImage, {
-      ip: req.ip,
-      userAgent: req.headers?.['user-agent'],
-    });
+    return this.documentService.recordPdpaConsent(
+      id,
+      dto.signatureImage,
+      {
+        ip: req.ip,
+        userAgent: req.headers?.['user-agent'],
+      },
+      user.id,
+      dto,
+    );
   }
 
   @Get(':id/pdpa-consent')
   @Roles('OWNER', 'BRANCH_MANAGER', 'SALES')
-  getPdpaConsent(@Param('id') id: string) {
-    return this.documentService.getPdpaConsent(id);
+  getPdpaConsent(@Param('id') id: string, @CurrentUser() user: { id: string }) {
+    return this.documentService.getPdpaConsent(id, user.id);
   }
 
   // === P4-SP4: Contract Cancellation ===

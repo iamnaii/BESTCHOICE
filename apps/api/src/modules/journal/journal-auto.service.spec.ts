@@ -98,6 +98,26 @@ describe('JournalAutoService.createAndPost — structural invariants (Fix #C9 Ro
     expect(prisma.systemConfig.findUnique).not.toHaveBeenCalled();
   });
 
+  it('preserves the system creator when the trusted creator input is omitted', async () => {
+    await service.createAndPost(balancedInput(new Date('2026-04-10')), prisma);
+    expect(prisma.journalEntry.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ createdById: 'user-system' }),
+    });
+    expect(prisma.user.findFirst).toHaveBeenCalledWith({
+      where: { email: 'admin@bestchoice.com', deletedAt: null },
+      select: { id: true },
+    });
+  });
+
+  it('uses an explicitly supplied internal creator without resolving the cached system actor', async () => {
+    const postedAt = new Date('2026-04-10');
+    await service.createAndPost({ ...balancedInput(postedAt), createdById: 'current-executor' }, prisma);
+    expect(prisma.journalEntry.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ createdById: 'current-executor', companyId, postedAt }),
+    });
+    expect(prisma.user.findFirst).not.toHaveBeenCalled();
+  });
+
   it('numbers max+1 (gap-resilient) — hard-deleted rows must not cause duplicates', async () => {
     // Month where a row was hard-deleted (e.g. cleanup-test-contracts):
     // 18 rows remain but the highest surviving number is 00019. count+1

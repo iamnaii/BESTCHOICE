@@ -101,10 +101,12 @@ describe('reconcileStage — A1 final-fix brief (self-heal drifted AfterSalesCas
     });
   });
 
-  it('ไม่เขียน audit — helper รับ client อย่างเดียว ไม่มี dependency กับ AuditService', () => {
-    // ตรวจ signature ไม่มีพารามิเตอร์ audit/user — compile-time already enforces this,
-    // เทสต์นี้เป็นเอกสารยืนยันเจตนา (self-healing bookkeeping ไม่ใช่ user action)
-    expect(reconcileStage.length).toBeLessThanOrEqual(2);
+  it('preserves unmanaged compatibility without writing managed derived audit', async () => {
+    client.auditLog = { create: jest.fn() };
+    const row = buildRow({ stage: 'RECEIVED' });
+    await reconcileStage(client, row as ReconcilableCase);
+    expect(client.afterSalesCase.updateMany).toHaveBeenCalledTimes(1);
+    expect(client.auditLog.create).not.toHaveBeenCalled();
   });
 
   // ===== PR 2 — deriveStage รุ่นสอง: reconcile อ่าน closedAt (คอลัมน์จริง) + exchangeRequest =====

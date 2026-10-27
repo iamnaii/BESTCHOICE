@@ -1,3 +1,5 @@
+import { currentDomainAccess, onDomainCommit } from '../employee-access/access-execution-context';
+import { tradeInAllows } from '../employee-access/access-trade-in-scope';
 import {
   Controller,
   Get,
@@ -69,7 +71,7 @@ export class TradeInController {
     t: T | null,
     userRole: string,
   ): T | null {
-    if (!t) return t;
+    if (!t || currentDomainAccess()) return t;
     if (userRole === 'BRANCH_MANAGER' || userRole === 'SALES') {
       return {
         ...t,
@@ -119,12 +121,12 @@ export class TradeInController {
 
     const role = req?.user?.role || 'UNKNOWN';
 
-    void this.piiAudit.logDecryption({
+    await this.piiAudit.logDecryption({
       userId: req?.user?.id || 'system',
       customerId: `BATCH:${result.data?.length ?? 0}`,
       fields: ['transferAccountNumber'],
       role,
-      masked: role === 'BRANCH_MANAGER' || role === 'SALES',
+      masked: currentDomainAccess() ? !(await Promise.all(result.data.map(t => tradeInAllows(String(t.id), 'sensitive.seller-bank.read')))).every(Boolean) : role === 'BRANCH_MANAGER' || role === 'SALES',
       ipAddress: req?.ip,
       userAgent: req?.headers['user-agent'] as string | undefined,
     });
@@ -365,13 +367,13 @@ export class TradeInController {
 
     const role = req.user?.role || 'UNKNOWN';
 
-    // Fire-and-forget: never let audit log block the response
-    void this.piiAudit.logDecryption({
+    // Managed reads join their existing PII audit to the access transaction.
+    await this.piiAudit.logDecryption({
       userId: req.user?.id || 'system',
       customerId: id,
       fields: ['transferAccountNumber'],
       role,
-      masked: role === 'BRANCH_MANAGER' || role === 'SALES',
+      masked: currentDomainAccess() ? !await tradeInAllows(id, 'sensitive.seller-bank.read') : role === 'BRANCH_MANAGER' || role === 'SALES',
       ipAddress: req.ip,
       userAgent: req.headers['user-agent'] as string | undefined,
     });
@@ -456,10 +458,13 @@ export class TradeInController {
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES', 'ACCOUNTANT')
   async downloadVoucher(@Param('id') id: string, @Res() res: Response) {
     const { buffer, voucherNumber, filename } = await this.tradeInService.getVoucherPdf(id);
+    const send = async () => {
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition',
       `inline; filename="voucher-${voucherNumber}.pdf"; filename*=UTF-8''${encodeURIComponent(filename)}`);
     res.append('Access-Control-Expose-Headers', 'Content-Disposition');
     res.send(buffer);
+    };
+    if(currentDomainAccess()) onDomainCommit(send); else await send();
   }
 }

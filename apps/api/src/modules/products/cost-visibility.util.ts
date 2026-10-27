@@ -1,3 +1,4 @@
+import { currentDomainAccess } from '../employee-access/access-execution-context';
 import type { ShopHomeResponse } from '../shop-home/shop-home.types';
 
 /**
@@ -13,7 +14,8 @@ import type { ShopHomeResponse } from '../shop-home/shop-home.types';
  * แทนการเทียบสตริงเดียว.
  */
 export function canSeeCost(role: string | undefined | null): boolean {
-  return role !== 'SALES';
+  // Scoped executor applies source-aware projection after the controller returns.
+  return !!currentDomainAccess() || role !== 'SALES';
 }
 
 /** ตัดคีย์ costPrice ออกจาก row (ไม่แตะฟิลด์อื่น) */

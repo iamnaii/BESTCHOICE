@@ -1,3 +1,4 @@
+import { AccessSnapshotService } from '../../employee-access/access-snapshot.service';
 import { ConfigService } from '@nestjs/config';
 import { Test, TestingModule } from '@nestjs/testing';
 import { JwtStrategy, JwtPayload } from './jwt.strategy';
@@ -5,9 +6,11 @@ import { PrismaService } from '../../../prisma/prisma.service';
 
 describe('JwtStrategy.validate — entity fields (SP7.1)', () => {
   let strategy: JwtStrategy;
+  let snapshots: { forUser: jest.Mock };
   let prismaMock: { user: { findUnique: jest.Mock }; customer: { findFirst: jest.Mock } };
 
   beforeEach(async () => {
+    snapshots = { forUser: jest.fn().mockImplementation(async userId => ({ userId, managed: false, isOwner: false, revision: 0, grants: [] })) };
     prismaMock = {
       user: { findUnique: jest.fn() },
       customer: { findFirst: jest.fn() },
@@ -16,6 +19,7 @@ describe('JwtStrategy.validate — entity fields (SP7.1)', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         JwtStrategy,
+        { provide: AccessSnapshotService, useValue: snapshots },
         {
           provide: ConfigService,
           useValue: { get: jest.fn().mockReturnValue('test-secret') },
@@ -25,6 +29,23 @@ describe('JwtStrategy.validate — entity fields (SP7.1)', () => {
     }).compile();
 
     strategy = module.get(JwtStrategy);
+  });
+
+  it('revokes a disabled account on the next request without a cache grace period', async () => {
+    prismaMock.user.findUnique.mockResolvedValueOnce({ id: 'u', role: 'OWNER', isActive: true, accessibleCompanies: [], primaryCompany: null }).mockResolvedValueOnce({ id: 'u', isActive: false });
+    await strategy.validate({ sub: 'u', role: 'OWNER' });
+    await expect(strategy.validate({ sub: 'u', role: 'OWNER' })).rejects.toThrow();
+  });
+  it('refreshes permissions and role on every request without role spoofing', async () => {
+    prismaMock.user.findUnique.mockResolvedValue({ id: 'u', role: 'SALES', isActive: true, accessibleCompanies: ['SHOP'], primaryCompany: 'SHOP' });
+    snapshots.forUser.mockResolvedValueOnce({ userId: 'u', managed: true, isOwner: false, revision: 1, grants: [{ company: 'FINANCE', permissions: ['payments.read'], scope: 'COMPANY', branchIds: [] }] }).mockResolvedValueOnce({ userId: 'u', managed: true, isOwner: false, revision: 2, grants: [] });
+    const first = await strategy.validate({ sub: 'u', role: 'OWNER' }) as any;
+    expect(first.role).toBe('SALES');
+    expect(first.accessibleCompanies).toEqual(['FINANCE']);
+    const second = await strategy.validate({ sub: 'u', role: 'OWNER' }) as any;
+    expect(second.access.revision).toBe(2);
+    expect(second.accessibleCompanies).toEqual([]);
+    expect(prismaMock.user.findUnique).toHaveBeenCalledTimes(2);
   });
 
   it('returns user with accessibleCompanies + primaryCompany from DB', async () => {

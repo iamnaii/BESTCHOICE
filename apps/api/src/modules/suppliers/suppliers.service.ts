@@ -1,3 +1,5 @@
+import { purchaseOrderScopeWhere } from '../employee-access/access-procurement-scope';
+import { domainAccessClient, currentDomainAccess, currentPermissionScope, currentProductReadWhere } from '../employee-access/access-execution-context';
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { paginatedResponse } from '../../common/helpers/pagination.helper';
@@ -7,10 +9,18 @@ import { ContactResolverService } from '../contacts/contact-resolver.service';
 
 @Injectable()
 export class SuppliersService {
+  private get prisma(): PrismaService { return domainAccessClient(this.basePrisma); }
+
   constructor(
-    private prisma: PrismaService,
+    private basePrisma: PrismaService,
     private contactResolver: ContactResolverService,
   ) {}
+
+  private sourceCounts() {
+    const products = currentProductReadWhere();
+    const pos = currentPermissionScope('purchase-orders.read');
+    return { products: products ? { where: products } : true, purchaseOrders: pos ? { where: purchaseOrderScopeWhere(pos) } : true };
+  }
 
   async findAll(search?: string, isActive?: string, page = 1, limit = 50) {
     const andConditions: Record<string, unknown>[] = [{ deletedAt: null }];
@@ -57,7 +67,7 @@ export class SuppliersService {
         skip: (page - 1) * limit,
         take: limit,
         include: {
-          _count: { select: { products: true, purchaseOrders: true } },
+          _count: { select: this.sourceCounts() },
           paymentMethods: { orderBy: [{ isDefault: 'desc' }, { createdAt: 'asc' }] },
         },
       }),
@@ -71,7 +81,7 @@ export class SuppliersService {
     const supplier = await this.prisma.supplier.findUnique({
       where: { id },
       include: {
-        _count: { select: { products: true, purchaseOrders: true } },
+        _count: { select: this.sourceCounts() },
         paymentMethods: { orderBy: [{ isDefault: 'desc' }, { createdAt: 'asc' }] },
       },
     });
@@ -96,6 +106,7 @@ export class SuppliersService {
       return tx.supplier.create({
         data: {
           ...supplierData,
+          ...(currentDomainAccess() ? { accessCompanyCode: currentDomainAccess()!.scope.company } : {}),
           contactId: contact.id,
           paymentMethods: paymentMethods?.length
             ? {
@@ -191,7 +202,7 @@ export class SuppliersService {
       return tx.supplier.findUnique({
         where: { id: supplier.id },
         include: {
-          _count: { select: { products: true, purchaseOrders: true } },
+          _count: { select: this.sourceCounts() },
           paymentMethods: { orderBy: [{ isDefault: 'desc' }, { createdAt: 'asc' }] },
         },
       });
@@ -220,8 +231,10 @@ export class SuppliersService {
     const safeLimit = Math.min(limit, 100);
     await this.findOne(id);
 
-    const productWhere = { supplierId: id, deletedAt: null };
-    const poWhere = { supplierId: id };
+    const productScope = currentProductReadWhere();
+    const poScope = currentPermissionScope('purchase-orders.read');
+    const productWhere = { supplierId: id, deletedAt: null, ...(productScope ?? {}) };
+    const poWhere = { supplierId: id, ...(poScope ? purchaseOrderScopeWhere(poScope) : {}) };
 
     const [products, productTotal, purchaseOrders, poTotal] = await Promise.all([
       this.prisma.product.findMany({
@@ -260,7 +273,7 @@ export class SuppliersService {
           createdAt: true,
           createdBy: { select: { id: true, name: true } },
           items: true,
-          _count: { select: { products: true } },
+          _count: { select: { products: productScope ? { where: productScope } : true } },
         },
         orderBy: { orderDate: 'desc' },
         skip: (page - 1) * safeLimit,

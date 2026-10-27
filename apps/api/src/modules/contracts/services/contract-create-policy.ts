@@ -1,3 +1,4 @@
+import { currentDomainAccess, isCurrentDomainClient } from '../../employee-access/access-execution-context';
 import { BadRequestException, ConflictException } from '@nestjs/common';
 import { Customer, PaymentMethod, Prisma } from '@prisma/client';
 import { isChatPlaceholder, type PlaceholderShape } from '../../chat-prospects/chat-placeholder';
@@ -6,14 +7,31 @@ import { firstTransferReference, type NormalizedTender } from '../../shop-tender
 /** Must run after lockCreditCustomer, in the same transaction as the credit claim. */
 /**
  * 1 คนผ่อนได้ 1 เครื่อง (ก้อน 5 C3 — คำตัดสินเจ้าของ 2026-10-23): ตาข่ายชั้นสุดท้ายใน tx ของ create()/activate()
- * fail-closed เสมอ — ไม่มี role/flag ปลด (ช่อง "อนุมัติผ่อนซ้อน" ถอดแล้ว; ด่านหลักอยู่ที่ assertBlacklistGate นอก tx)
+ * fail-closed เสมอ — ไม่มี role/flag/สิทธิ์ตำแหน่งปลด (ช่อง "อนุมัติผ่อนซ้อน" ถอดแล้ว; ด่านหลักอยู่ที่ assertBlacklistGate นอก tx)
+ *
+ * Managed execution must check inside its own domain transaction and never exposes Contract
+ * IDs/statuses in the business error. Named SHOP preparation may know the Customer without
+ * FINANCE Contract read (`exposeActiveContracts = false`): preserve the whole-customer gate
+ * without fetching or exposing details.
  */
-export async function assertCustomerContractPolicy(tx: Prisma.TransactionClient, customerId: string) {
-  const activeContracts = await tx.contract.findMany({ where: { customerId, deletedAt: null,
-    status: { in: ['ACTIVE', 'OVERDUE', 'DEFAULT'] } }, select: { id: true, contractNumber: true, status: true } });
-  if (activeContracts.length) throw new ConflictException({
-    message: 'ลูกค้ายังมีสัญญาที่กำลังผ่อนอยู่ ไม่สามารถเปิดสัญญาใหม่ได้',
-    code: 'CUSTOMER_HAS_ACTIVE_CONTRACT', activeContracts,
+export async function assertCustomerContractPolicy(tx: Prisma.TransactionClient, customerId: string, exposeActiveContracts = true) {
+  const where: Prisma.ContractWhereInput = { customerId, deletedAt: null,
+    status: { in: ['ACTIVE', 'OVERDUE', 'DEFAULT'] } };
+  const message = 'ลูกค้ายังมีสัญญาที่กำลังผ่อนอยู่ ไม่สามารถเปิดสัญญาใหม่ได้';
+  if (currentDomainAccess()) {
+    if (!isCurrentDomainClient(tx)) throw new ConflictException('ต้องตรวจข้อยกเว้นในธุรกรรมเดียวกัน');
+    // The former managed `contracts.override-active-contract` exception is retired by the
+    // owner ruling above: no Contract source can unlock a second live contract.
+    const rows = await tx.contract.findMany({ where, select: { id: true }, orderBy: { id: 'asc' } });
+    if (rows.length) throw new ConflictException({ code: 'CUSTOMER_HAS_ACTIVE_CONTRACT', message });
+    return;
+  }
+  const activeContracts = exposeActiveContracts ? await tx.contract.findMany({ where,
+    select: { id: true, contractNumber: true, status: true } }) : [];
+  const hasActiveContracts = exposeActiveContracts ? activeContracts.length > 0 : await tx.contract.count({ where }) > 0;
+  if (hasActiveContracts) throw new ConflictException({
+    message,
+    code: 'CUSTOMER_HAS_ACTIVE_CONTRACT', ...(exposeActiveContracts ? { activeContracts } : {}),
   });
 }
 

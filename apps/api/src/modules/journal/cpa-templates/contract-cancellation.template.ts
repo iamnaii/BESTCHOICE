@@ -1,3 +1,4 @@
+import { assertManagedCancellationPosting } from '../managed-cancellation-posting';
 import { Injectable, BadRequestException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
@@ -140,6 +141,10 @@ export class ContractCancellationTemplate {
   async execute(
     params: {
       contractId: string;
+      createdById?: string;
+      postedAt?: Date;
+      financeCompanyId?: string;
+      managedCancellation?: boolean;
       cancellationId: string;
       /** C-2 (Phase 3 Task 3): สัญญาถูกตัดจ่ายผ่าน batch POSTED แล้ว → redirect */
       isC2?: boolean;
@@ -247,6 +252,8 @@ export class ContractCancellationTemplate {
     const { reversalJeIds, redirectedTotals } = await this.sweepTemplate.reverse(
       {
         jeIds: [],
+        ...(params.createdById ? {createdById:params.createdById} : {}),
+        ...(params.managedCancellation ? {managedCancellation:true} : {}),
         newContractId: contractId, // ชื่อ param เดิมของ engine — คือ contractId ที่ sweep
         excludeFlows: C1_EXCLUDED_FLOWS,
         flowLabel: 'contract-cancellation',
@@ -261,6 +268,7 @@ export class ContractCancellationTemplate {
           : {}),
       },
       tx,
+      params.postedAt,
     );
     if (reversalJeIds.length === 0) {
       throw new BadRequestException(
@@ -301,8 +309,10 @@ export class ContractCancellationTemplate {
     // ECL: release ใบเดียวจาก live GL (pattern JP4 C1) + flip provision rows
     const eclBal = await glContractBalance(client, contractId, '11-2102', 'cr');
     if (eclBal.greaterThan(0)) {
+      if (params.managedCancellation) await assertManagedCancellationPosting(client as Prisma.TransactionClient, params.createdById, params.postedAt!, params.financeCompanyId!);
       await this.eclStageReverse.execute(
-        { contractId, reverseAmount: eclBal, fromBucket: 'CANCEL', toBucket: 'CANCEL' },
+        { contractId, reverseAmount: eclBal, fromBucket: 'CANCEL', toBucket: 'CANCEL',
+          ...(params.createdById ? {createdById:params.createdById,companyId:params.financeCompanyId,postedAt:params.postedAt} : {}) },
         tx,
       );
     }

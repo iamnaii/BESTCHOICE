@@ -1,3 +1,4 @@
+import { domainAccessClient } from '../employee-access/access-execution-context';
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { TransferProductDto, BulkTransferDto } from './dto/transfer-product.dto';
@@ -7,14 +8,15 @@ import { StockReservationService } from './services/stock-reservation.service';
 
 @Injectable()
 export class ProductsStockService {
+  private get prisma(): PrismaService { return domainAccessClient(this.basePrisma); }
   private readonly transfer_: StockTransferService;
   private readonly overview: StockOverviewService;
   private readonly reservation: StockReservationService;
 
-  constructor(private prisma: PrismaService) {
-    this.transfer_ = new StockTransferService(prisma);
-    this.overview = new StockOverviewService(prisma);
-    this.reservation = new StockReservationService(prisma);
+  constructor(private readonly basePrisma: PrismaService) {
+    this.transfer_ = new StockTransferService(basePrisma);
+    this.overview = new StockOverviewService(basePrisma);
+    this.reservation = new StockReservationService(basePrisma);
   }
 
   // === Stock Transfer ===

@@ -34,7 +34,7 @@ describe('ContactsService.ensureRole', () => {
 
     const result = await svc.ensureRole('c1', 'SUPPLIER', { userId: 'u1', ipAddress: '127.0.0.1' });
 
-    expect(resolver.ensureRole).toHaveBeenCalledWith({}, 'c1', 'SUPPLIER');
+    expect(resolver.ensureRole).toHaveBeenCalledWith({}, 'c1', 'SUPPLIER', undefined);
     expect(audit.log).toHaveBeenCalledWith(
       expect.objectContaining({
         userId: 'u1',
@@ -44,6 +44,7 @@ describe('ContactsService.ensureRole', () => {
         newValue: { role: 'SUPPLIER', supplierId: 'sup1' },
         ipAddress: '127.0.0.1',
       }),
+      undefined,
     );
     expect(result.supplierId).toBe('sup1');
   });

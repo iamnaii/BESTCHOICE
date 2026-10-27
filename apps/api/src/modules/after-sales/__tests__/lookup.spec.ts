@@ -6,6 +6,7 @@ describe('AfterSalesLookupService.lookup', () => {
   const defect = { checkEligibility: jest.fn() };
   const photos = { getPhotos: jest.fn().mockResolvedValue({ applicable: false }) };
   const prisma = {
+    user: { findUnique: jest.fn().mockResolvedValue({ accessManaged: false }) },
     afterSalesCase: {
       findFirst: jest.fn().mockResolvedValue(null),
       updateMany: jest.fn().mockResolvedValue({ count: 1 }),

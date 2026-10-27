@@ -1,3 +1,4 @@
+import { AccessSocketBoundary } from '../employee-access/access-socket-boundary';
 import {
   WebSocketGateway,
   WebSocketServer,
@@ -67,6 +68,7 @@ export class StaffChatGateway implements OnGatewayConnection, OnGatewayDisconnec
     private configService: ConfigService,
     private leadScoring: LeadScoringService,
     private prisma: PrismaService,
+    private accessBoundary: AccessSocketBoundary,
   ) {}
 
   async handleConnection(client: Socket): Promise<void> {
@@ -84,7 +86,11 @@ export class StaffChatGateway implements OnGatewayConnection, OnGatewayDisconnec
       const payload = this.jwtService.verify(token, {
         secret: this.configService.get<string>('JWT_SECRET'),
       });
+      if ((payload.aud && payload.aud !== 'admin') || payload.role === 'CUSTOMER') throw new Error('Staff token required');
       userId = payload.sub;
+      client.data.staffUserId = userId;
+      client.data.staffTokenExpiresAt = payload.exp ? payload.exp * 1000 : undefined;
+      if (!await this.accessBoundary.allowLegacy(client)) return;
       userName = payload.name ?? 'staff';
       // Attach to socket data for later use
       (client as any).userId = userId;
@@ -127,7 +133,7 @@ export class StaffChatGateway implements OnGatewayConnection, OnGatewayDisconnec
     client.join(CHAT_ROOMS.INBOX);
 
     // Broadcast presence to other staff
-    this.server.to(CHAT_ROOMS.INBOX).emit(CHAT_EVENTS.PRESENCE, {
+    this.accessBoundary.emit(this.server, CHAT_ROOMS.INBOX, CHAT_EVENTS.PRESENCE, {
       userId,
       userName,
       status: 'online',
@@ -147,7 +153,7 @@ export class StaffChatGateway implements OnGatewayConnection, OnGatewayDisconnec
     // when this staff's tab closes/crashes instead of clicking away).
     const affectedRooms = this.collisionDetectionService.removeViewerFromAll(userId);
     for (const roomId of affectedRooms) {
-      this.server.to(CHAT_ROOMS.room(roomId)).emit(CHAT_EVENTS.VIEWERS, {
+      this.accessBoundary.emit(this.server, CHAT_ROOMS.room(roomId), CHAT_EVENTS.VIEWERS, {
         roomId,
         viewers: this.collisionDetectionService.getViewers(roomId),
       });
@@ -155,7 +161,7 @@ export class StaffChatGateway implements OnGatewayConnection, OnGatewayDisconnec
 
     // Only broadcast offline if no more connections from this user
     if (!this.presenceService.isOnline(userId)) {
-      this.server.to(CHAT_ROOMS.INBOX).emit(CHAT_EVENTS.PRESENCE, {
+      this.accessBoundary.emit(this.server, CHAT_ROOMS.INBOX, CHAT_EVENTS.PRESENCE, {
         userId,
         status: 'offline',
       });
@@ -165,19 +171,21 @@ export class StaffChatGateway implements OnGatewayConnection, OnGatewayDisconnec
   }
 
   @SubscribeMessage(CHAT_CLIENT_EVENTS.JOIN)
-  handleJoinRoom(
+  async handleJoinRoom(
     @ConnectedSocket() client: Socket,
     @MessageBody() data: { roomId: string },
-  ): void {
+  ): Promise<void> {
+    if (!await this.accessBoundary.allowLegacy(client)) return;
     client.join(CHAT_ROOMS.room(data.roomId));
     this.logger.debug(`[WS] ${(client as any).userId} joined room ${data.roomId}`);
   }
 
   @SubscribeMessage(CHAT_CLIENT_EVENTS.LEAVE)
-  handleLeaveRoom(
+  async handleLeaveRoom(
     @ConnectedSocket() client: Socket,
     @MessageBody() data: { roomId: string },
-  ): void {
+  ): Promise<void> {
+    if (!await this.accessBoundary.allowLegacy(client)) return;
     const userId = (client as any).userId as string;
     client.leave(CHAT_ROOMS.room(data.roomId));
 
@@ -187,7 +195,7 @@ export class StaffChatGateway implements OnGatewayConnection, OnGatewayDisconnec
 
       // Broadcast updated viewer list to remaining viewers
       const viewers = this.collisionDetectionService.getViewers(data.roomId);
-      this.server.to(CHAT_ROOMS.room(data.roomId)).emit(CHAT_EVENTS.VIEWERS, {
+      this.accessBoundary.emit(this.server, CHAT_ROOMS.room(data.roomId), CHAT_EVENTS.VIEWERS, {
         roomId: data.roomId,
         viewers,
       });
@@ -199,6 +207,7 @@ export class StaffChatGateway implements OnGatewayConnection, OnGatewayDisconnec
     @ConnectedSocket() client: Socket,
     @MessageBody() data: { roomId: string; text: string },
   ): Promise<void> {
+    if (!await this.accessBoundary.allowLegacy(client)) return;
     const userId = (client as any).userId as string;
     if (!userId || !data.roomId || !data.text) return;
 
@@ -221,7 +230,7 @@ export class StaffChatGateway implements OnGatewayConnection, OnGatewayDisconnec
     // Broadcast to all staff in the room
     // 🔴 ต้องบอกสถานะการส่งไปด้วย — เดิม broadcast เหมือนสำเร็จเสมอ เพื่อนร่วมทีมจึงเห็น
     // บับเบิลปกติทั้งที่ลูกค้าไม่ได้รับ แล้วเข้าใจว่า "ตอบแล้ว" ⇒ ลูกค้าหลุดเงียบ
-    this.server.to(CHAT_ROOMS.room(data.roomId)).emit(CHAT_EVENTS.MESSAGE_NEW, {
+    this.accessBoundary.emit(this.server, CHAT_ROOMS.room(data.roomId), CHAT_EVENTS.MESSAGE_NEW, {
       roomId: data.roomId,
       role: 'STAFF',
       staffId: userId,
@@ -234,7 +243,7 @@ export class StaffChatGateway implements OnGatewayConnection, OnGatewayDisconnec
     // 🔴 ยิงให้ **ทั้งห้อง** ไม่ใช่แค่ `client` — คนที่สองที่เปิดห้องเดียวกันอยู่ต้องเห็นด้วย
     // ว่าข้อความนั้นยังไม่ถึงลูกค้า ไม่งั้นเขาจะข้ามห้องนี้ไปเพราะคิดว่าเพื่อนตอบแล้ว
     if (!sendResult.success) {
-      this.server.to(CHAT_ROOMS.room(data.roomId)).emit(CHAT_EVENTS.MESSAGE_SEND_FAILED, {
+      this.accessBoundary.emit(this.server, CHAT_ROOMS.room(data.roomId), CHAT_EVENTS.MESSAGE_SEND_FAILED, {
         roomId: data.roomId,
         text: data.text,
         error: sendResult.error,
@@ -248,35 +257,37 @@ export class StaffChatGateway implements OnGatewayConnection, OnGatewayDisconnec
   }
 
   @SubscribeMessage(CHAT_CLIENT_EVENTS.TYPING_START)
-  handleTypingStart(
+  async handleTypingStart(
     @ConnectedSocket() client: Socket,
     @MessageBody() data: { roomId: string },
-  ): void {
+  ): Promise<void> {
+    if (!await this.accessBoundary.allowLegacy(client)) return;
     const userId = (client as any).userId as string;
     const userName = (client as any).userName as string | undefined;
-    client.to(CHAT_ROOMS.room(data.roomId)).emit(CHAT_EVENTS.TYPING, {
+    this.accessBoundary.emit(this.server, CHAT_ROOMS.room(data.roomId), CHAT_EVENTS.TYPING, {
       roomId: data.roomId,
       userId,
       userName,
       role: 'STAFF',
       isTyping: true,
-    });
+    }, client.id);
   }
 
   @SubscribeMessage(CHAT_CLIENT_EVENTS.TYPING_STOP)
-  handleTypingStop(
+  async handleTypingStop(
     @ConnectedSocket() client: Socket,
     @MessageBody() data: { roomId: string },
-  ): void {
+  ): Promise<void> {
+    if (!await this.accessBoundary.allowLegacy(client)) return;
     const userId = (client as any).userId as string;
     const userName = (client as any).userName as string | undefined;
-    client.to(CHAT_ROOMS.room(data.roomId)).emit(CHAT_EVENTS.TYPING, {
+    this.accessBoundary.emit(this.server, CHAT_ROOMS.room(data.roomId), CHAT_EVENTS.TYPING, {
       roomId: data.roomId,
       userId,
       userName,
       role: 'STAFF',
       isTyping: false,
-    });
+    }, client.id);
   }
 
   @SubscribeMessage(CHAT_CLIENT_EVENTS.READ)
@@ -284,6 +295,7 @@ export class StaffChatGateway implements OnGatewayConnection, OnGatewayDisconnec
     @ConnectedSocket() _client: Socket,
     @MessageBody() data: { roomId: string },
   ): Promise<void> {
+    if (!await this.accessBoundary.allowLegacy(_client)) return;
     if (!data.roomId) return;
     const now = new Date();
     const result = await this.roomManager.markMessagesRead(data.roomId, now);
@@ -291,10 +303,11 @@ export class StaffChatGateway implements OnGatewayConnection, OnGatewayDisconnec
   }
 
   @SubscribeMessage(CHAT_CLIENT_EVENTS.VIEW_ROOM)
-  handleViewRoom(
+  async handleViewRoom(
     @ConnectedSocket() client: Socket,
     @MessageBody() data: { roomId: string },
-  ): void {
+  ): Promise<void> {
+    if (!await this.accessBoundary.allowLegacy(client)) return;
     const userId = (client as any).userId as string;
     const userName = (client as any).userName as string;
     if (!userId || !data.roomId) return;
@@ -306,7 +319,7 @@ export class StaffChatGateway implements OnGatewayConnection, OnGatewayDisconnec
     const viewers = this.collisionDetectionService.getViewers(data.roomId);
 
     // Broadcast viewer list to everyone in the room
-    this.server.to(CHAT_ROOMS.room(data.roomId)).emit(CHAT_EVENTS.VIEWERS, {
+    this.accessBoundary.emit(this.server, CHAT_ROOMS.room(data.roomId), CHAT_EVENTS.VIEWERS, {
       roomId: data.roomId,
       viewers,
     });
@@ -324,8 +337,8 @@ export class StaffChatGateway implements OnGatewayConnection, OnGatewayDisconnec
 
   /** Notify staff about a new customer message (called by MessageRouter) */
   emitNewMessage(roomId: string, payload: Record<string, unknown>): void {
-    this.server?.to(CHAT_ROOMS.room(roomId)).emit(CHAT_EVENTS.MESSAGE_NEW, payload);
-    this.server?.to(CHAT_ROOMS.INBOX).emit(CHAT_EVENTS.ROOM_UPDATE, {
+    this.accessBoundary.emit(this.server, CHAT_ROOMS.room(roomId), CHAT_EVENTS.MESSAGE_NEW, payload);
+    this.accessBoundary.emit(this.server, CHAT_ROOMS.INBOX, CHAT_EVENTS.ROOM_UPDATE, {
       roomId,
       ...payload,
     });
@@ -336,7 +349,7 @@ export class StaffChatGateway implements OnGatewayConnection, OnGatewayDisconnec
    * ยิงระดับห้อง ไม่ใช่เฉพาะคนส่ง — คนที่สองต้องไม่เข้าใจผิดว่าเคสนี้ตอบไปแล้ว
    */
   emitSendFailed(roomId: string, payload: { text: string; error?: string }): void {
-    this.server?.to(CHAT_ROOMS.room(roomId)).emit(CHAT_EVENTS.MESSAGE_SEND_FAILED, {
+    this.accessBoundary.emit(this.server, CHAT_ROOMS.room(roomId), CHAT_EVENTS.MESSAGE_SEND_FAILED, {
       roomId,
       ...payload,
     });
@@ -344,17 +357,17 @@ export class StaffChatGateway implements OnGatewayConnection, OnGatewayDisconnec
 
   /** Notify staff about room state change (assignment, status, etc.) */
   emitRoomUpdate(roomId: string, payload: Record<string, unknown>): void {
-    this.server?.to(CHAT_ROOMS.room(roomId)).emit(CHAT_EVENTS.ROOM_UPDATE, payload);
-    this.server?.to(CHAT_ROOMS.INBOX).emit(CHAT_EVENTS.ROOM_UPDATE, payload);
+    this.accessBoundary.emit(this.server, CHAT_ROOMS.room(roomId), CHAT_EVENTS.ROOM_UPDATE, payload);
+    this.accessBoundary.emit(this.server, CHAT_ROOMS.INBOX, CHAT_EVENTS.ROOM_UPDATE, payload);
   }
 
   /** โน้ตภายในของห้องเปลี่ยน — ส่งให้คนที่เปิดห้องอยู่ (ไม่ส่งเข้า INBOX: โน้ตไม่กระทบรายการซ้าย) */
   emitNoteChanged(roomId: string, payload: Record<string, unknown>): void {
-    this.server?.to(CHAT_ROOMS.room(roomId)).emit(CHAT_EVENTS.NOTE_CHANGED, payload);
+    this.accessBoundary.emit(this.server, CHAT_ROOMS.room(roomId), CHAT_EVENTS.NOTE_CHANGED, payload);
   }
 
   /** Notify a specific staff member */
   emitToStaff(staffId: string, event: string, payload: Record<string, unknown>): void {
-    this.server?.to(CHAT_ROOMS.staff(staffId)).emit(event, payload);
+    this.accessBoundary.emit(this.server, CHAT_ROOMS.staff(staffId), event, payload);
   }
 }

@@ -101,6 +101,9 @@ describe('ContractPaymentService.earlyPayoff — ถังพักงวดส�
       .mockResolvedValue({ id: 'je-ep-park', entryNumber: 'JE-EP-PARK-0001' });
 
     const tx = {
+      // Current persisted legacy admission is checked inside the money transaction.
+      $queryRaw: jest.fn().mockResolvedValue([]),
+      user: { findUnique: jest.fn().mockResolvedValue({ isActive: true, deletedAt: null, accessManaged: false }) },
       // 2026-10-17: earlyPayoff อ่านงวดที่มีธง VAT บังคับ 60 วันใน tx (กลับ 21-2103 ก่อนลง JP4) — ฟิกซ์เจอร์นี้ไม่มีธง
       installmentSchedule: { findMany: jest.fn().mockResolvedValue([]) },
       contract: {

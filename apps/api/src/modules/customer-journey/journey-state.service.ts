@@ -1,3 +1,4 @@
+import { canonicalJourneySql } from './journey-state-reader';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import { Injectable, Logger } from '@nestjs/common';
@@ -25,7 +26,7 @@ export interface JourneyRecomputeRun {
  */
 @Injectable()
 export class JourneyStateService {
-  private readonly stateSql = loadSql('journey-state.sql');
+  private readonly stateSql = canonicalJourneySql().writeSql;
   private readonly probeSql = loadSql('journey-activity-probe.sql');
   private readonly activeSinceSql = loadSql('journey-active-since.sql');
 

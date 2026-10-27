@@ -8,6 +8,14 @@ import { sanitizeAuditValue } from '../audit/audit-sanitize.util';
 
 describe('SkipTracingService', () => {
   let service: SkipTracingService;
+
+  // These regressions exercise unchanged unmanaged callers; managed HTTP has its own narrow acknowledgement.
+  async function legacyUpdateContact(...args: Parameters<SkipTracingService['updateContact']>) {
+    const result = await service.updateContact(...args);
+    if ('changedFields' in result) throw new Error('Expected legacy contact response');
+    return result;
+  }
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let prisma: any;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -93,7 +101,7 @@ describe('SkipTracingService', () => {
 
   describe('เบอร์ใหม่ที่ไม่มีเจ้าของอื่น → เบอร์หลัก', () => {
     it('เขียน phone + phoneHash + phoneEncrypted (แก้ hash ค้าง) และ audit หลัง commit', async () => {
-      const result = await service.updateContact(
+      const result = await legacyUpdateContact(
         'cust-1',
         { newPhone: '0820000000', reason: 'ญาติให้เบอร์ใหม่' },
         { userId: 'user-1', ipAddress: '127.0.0.1' },
@@ -130,7 +138,7 @@ describe('SkipTracingService', () => {
     });
 
     it('ค้นเจ้าของอื่นด้วย phone หรือ phoneHash และไม่นับตัวเอง', async () => {
-      await service.updateContact(
+      await legacyUpdateContact(
         'cust-1',
         { newPhone: '0820000000', reason: 'x-x-x' },
         { userId: 'u' },
@@ -142,7 +150,7 @@ describe('SkipTracingService', () => {
     });
 
     it('normalize เบอร์รูปแบบอื่นก่อนล็อก/ค้น/เขียน', async () => {
-      const result = await service.updateContact(
+      const result = await legacyUpdateContact(
         'cust-1',
         { newPhone: '+66 82-000-0000', reason: 'x-x-x' },
         { userId: 'u' },
@@ -155,7 +163,7 @@ describe('SkipTracingService', () => {
       tx.customer.findMany.mockResolvedValueOnce([
         { id: 'stale', name: 'คนเก่า', phone: '0899999999', phoneHash: 'h:0820000000' },
       ]);
-      const result = await service.updateContact(
+      const result = await legacyUpdateContact(
         'cust-1',
         { newPhone: '0820000000', reason: 'x-x-x' },
         { userId: 'u' },
@@ -170,7 +178,7 @@ describe('SkipTracingService', () => {
       tx.customer.findMany.mockResolvedValueOnce([
         { id: 'cust-2', name: 'สมชาย ใจดี', phone: '0820000000', phoneHash: 'h:0820000000' },
       ]);
-      const result = await service.updateContact(
+      const result = await legacyUpdateContact(
         'cust-1',
         { newPhone: '0820000000', reason: 'เบอร์ภรรยา' },
         { userId: 'user-1' },
@@ -204,7 +212,7 @@ describe('SkipTracingService', () => {
       tx.customer.findMany.mockResolvedValueOnce([
         { id: 'cust-3', name: 'ลูกค้าเข้ารหัส', phone: '', phoneHash: 'h:0820000000' },
       ]);
-      const result = await service.updateContact(
+      const result = await legacyUpdateContact(
         'cust-1',
         { newPhone: '0820000000', reason: 'x-x-x' },
         { userId: 'u' },
@@ -216,7 +224,7 @@ describe('SkipTracingService', () => {
 
   describe('เบอร์ใหม่ตรงกับเบอร์หลักเดิม', () => {
     it('ไม่เปลี่ยนเบอร์ และไม่ค้นเจ้าของ', async () => {
-      const result = await service.updateContact(
+      const result = await legacyUpdateContact(
         'cust-1',
         { newPhone: '081-000-0000', reason: 'ยืนยันเบอร์เดิม' },
         { userId: 'u' },
@@ -235,7 +243,7 @@ describe('SkipTracingService', () => {
         ...existingCustomer,
         phoneHash: 'h:0899999999',
       });
-      const result = await service.updateContact(
+      const result = await legacyUpdateContact(
         'cust-1',
         { newPhone: '0810000000', reason: 'ยืนยันเบอร์เดิม' },
         { userId: 'u' },
@@ -255,7 +263,7 @@ describe('SkipTracingService', () => {
         phone: '081-000-0000',
         phoneEncrypted: null,
       });
-      await service.updateContact('cust-1', { newPhone: '0810000000', reason: 'x-x-x' }, { userId: 'u' });
+      await legacyUpdateContact('cust-1', { newPhone: '0810000000', reason: 'x-x-x' }, { userId: 'u' });
       expect(tx.customer.update.mock.calls[0][0].data).toEqual({
         phone: '0810000000',
         phoneHash: 'h:0810000000',
@@ -265,7 +273,7 @@ describe('SkipTracingService', () => {
 
     it('สตริกต์โหมด (plaintext ว่าง) hash ตรง → ไม่เขียนเบอร์ ไม่ค้นเจ้าของ', async () => {
       tx.customer.findFirst.mockResolvedValueOnce({ ...existingCustomer, phone: '' });
-      const result = await service.updateContact(
+      const result = await legacyUpdateContact(
         'cust-1',
         { newPhone: '0810000000', reason: 'x-x-x' },
         { userId: 'u' },
@@ -280,7 +288,7 @@ describe('SkipTracingService', () => {
     tx.customer.findMany.mockResolvedValueOnce([
       { id: 'cust-2', name: 'สมชาย', phone: '0820000000', phoneHash: 'h:0820000000' },
     ]);
-    const result = await service.updateContact(
+    const result = await legacyUpdateContact(
       'cust-1',
       { newPhone: '0820000000', newLineId: 'new-line', reason: 'x-x-x' },
       { userId: 'u' },
@@ -298,7 +306,7 @@ describe('SkipTracingService', () => {
     tx.customer.findMany.mockResolvedValueOnce([
       { id: 'cust-2', name: 'สมชาย', phone: '0820000000', phoneHash: 'h:0820000000' },
     ]);
-    await service.updateContact('cust-1', { newPhone: '0820000000', reason: 'x-x-x' }, { userId: 'u' });
+    await legacyUpdateContact('cust-1', { newPhone: '0820000000', reason: 'x-x-x' }, { userId: 'u' });
     const entry = audit.log.mock.calls[0][0];
     const oldValue = sanitizeAuditValue(entry.oldValue) as Record<string, unknown>;
     const newValue = sanitizeAuditValue(entry.newValue) as Record<string, unknown>;
@@ -314,13 +322,13 @@ describe('SkipTracingService', () => {
 
   it('เบอร์ที่ normalize แล้วไม่ใช่ 10 หลักขึ้นต้น 0 → 400 ไม่เปิดทรานแซกชัน', async () => {
     await expect(
-      service.updateContact('cust-1', { newPhone: '12345', reason: 'x-x-x' }, { userId: 'u' }),
+      legacyUpdateContact('cust-1', { newPhone: '12345', reason: 'x-x-x' }, { userId: 'u' }),
     ).rejects.toThrow('เบอร์โทรต้องเป็นเลข 10 หลัก ขึ้นต้นด้วย 0');
     expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 
   it('updates LINE ID without touching phone (ไม่ล็อกเบอร์)', async () => {
-    const result = await service.updateContact(
+    const result = await legacyUpdateContact(
       'cust-1',
       { newLineId: 'new-line-id', reason: 'เจอใน Facebook' },
       { userId: 'user-1' },
@@ -342,7 +350,7 @@ describe('SkipTracingService', () => {
   });
 
   it('marks customer as LOST and writes audit', async () => {
-    const result = await service.updateContact(
+    const result = await legacyUpdateContact(
       'cust-1',
       { markAsLost: true, reason: 'หาทุกช่องทางแล้วไม่เจอ' },
       { userId: 'user-1' },
@@ -363,7 +371,7 @@ describe('SkipTracingService', () => {
 
   it('throws BadRequest when no field is provided', async () => {
     await expect(
-      service.updateContact('cust-1', { reason: 'ทดสอบ' }, { userId: 'u' }),
+      legacyUpdateContact('cust-1', { reason: 'ทดสอบ' }, { userId: 'u' }),
     ).rejects.toThrow(BadRequestException);
     expect(tx.customer.update).not.toHaveBeenCalled();
   });
@@ -371,7 +379,7 @@ describe('SkipTracingService', () => {
   it('throws NotFound when customer is missing or soft-deleted (ไม่เขียน audit)', async () => {
     tx.customer.findFirst.mockResolvedValueOnce(null);
     await expect(
-      service.updateContact(
+      legacyUpdateContact(
         'missing',
         { newPhone: '0820000000', reason: 'x' },
         { userId: 'u' },

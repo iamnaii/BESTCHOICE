@@ -1,3 +1,6 @@
+import { tradeInAllows } from '../../employee-access/access-trade-in-scope';
+import { maskBankAccount } from '../../../utils/pii.util';
+import { domainAccessClient, currentDomainAccess } from '../../employee-access/access-execution-context';
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { StorageService } from '../../storage/storage.service';
@@ -12,7 +15,7 @@ import { VoucherPdfRenderer } from './voucher/voucher-pdf.renderer';
  * - Reset เลขลำดับทุกเดือน เริ่ม 00001
  * - PDF render ด้วย puppeteer + อัปขึ้น S3 ผ่าน StorageService
  *
- * Facade — keeps the public surface (allocate / renderPdf) + the (prisma, storage)
+ * Facade — keeps the public surface (allocate / renderPdf) + the (basePrisma, storage)
  * constructor stable while delegating to three internally-constructed sub-services:
  *  - VoucherNumberService  (EXP-YYYYMMNNNNN sequence + tx + P2002 retry + idempotency)
  *  - VoucherHtmlBuilder    (pure inline HTML/CSS template + presentation helpers)
@@ -24,11 +27,13 @@ export class TradeInVoucherService {
   private readonly builder: VoucherHtmlBuilder;
   private readonly renderer: VoucherPdfRenderer;
 
+  private get prisma(): PrismaService { return domainAccessClient(this.basePrisma); }
+
   constructor(
-    private prisma: PrismaService,
+    private readonly basePrisma: PrismaService,
     private storage: StorageService,
   ) {
-    this.numbers = new VoucherNumberService(prisma);
+    this.numbers = new VoucherNumberService(basePrisma);
     this.builder = new VoucherHtmlBuilder();
     this.renderer = new VoucherPdfRenderer();
   }
@@ -59,6 +64,7 @@ export class TradeInVoucherService {
       throw new BadRequestException('ยังไม่ได้สร้างเลขที่ใบสำคัญ');
     }
 
+    if(currentDomainAccess() && !await tradeInAllows(tradeInId,'customers.read')) tradeIn.customer=null;
     const amount = Number(tradeIn.agreedPrice ?? tradeIn.offeredPrice ?? 0);
     const sellerName = tradeIn.sellerName || tradeIn.customer?.name || '-';
     const sellerAddress = tradeIn.sellerAddress || tradeIn.customer?.addressIdCard || '-';
@@ -113,7 +119,7 @@ export class TradeInVoucherService {
           ? 'TRADE_IN_CREDIT'
           : ((tradeIn.paymentMethod as 'CASH' | 'TRANSFER' | null) ?? 'CASH'),
       transferBankName: tradeIn.transferBankName,
-      transferAccountNumber: tradeIn.transferAccountNumber,
+      transferAccountNumber: currentDomainAccess() && !await tradeInAllows(tradeInId,'sensitive.seller-bank.read') && tradeIn.transferAccountNumber ? maskBankAccount(tradeIn.transferAccountNumber) : tradeIn.transferAccountNumber,
       transferAccountName: tradeIn.transferAccountName,
     });
 

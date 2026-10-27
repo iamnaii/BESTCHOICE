@@ -63,6 +63,7 @@ describe('AfterSalesExchangeService', () => {
 
   beforeEach(() => {
     prisma = {
+      user: { findUnique: jest.fn().mockResolvedValue({ accessManaged: false }) },
       afterSalesCase: {
         update: jest.fn().mockResolvedValue({ id: 'as-1' }),
         // M4 — claim CAS (confirm/reject) — ชนะการจองโดย default
@@ -1251,6 +1252,7 @@ describe('AfterSalesExchangeService — priced exchange proxy (Task 6)', () => {
 
   beforeEach(() => {
     prisma = {
+      user: { findUnique: jest.fn().mockResolvedValue({ accessManaged: false }) },
       afterSalesCase: {
         update: jest.fn().mockResolvedValue({ id: 'as-1' }),
         findFirstOrThrow: jest.fn(),

@@ -1,4 +1,22 @@
-import { BadRequestException, Injectable, Logger } from '@nestjs/common';
+import { AuditService } from '../../audit/audit.service';
+import { AccessAfterSalesStreams } from '../../employee-access/access-after-sales-streams';
+import type { AfterSalesDocumentCase } from '../../employee-access/access-after-sales-streams';
+import { afterSalesActor } from '../../employee-access/access-after-sales-source.service';
+import {
+  currentDomainAccess,
+  domainAccessClient,
+} from '../../employee-access/access-execution-context';
+import {
+  repairEstimateIsCustomerCharge,
+  repairActualIsCustomerCharge,
+} from '../../repair-tickets/utils/repair-charge-visibility';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  Logger,
+  Optional,
+} from '@nestjs/common';
 import type { DeliveredAccessories } from '../utils/delivered-accessories';
 import type { Readable } from 'stream';
 import { PrismaService } from '../../../prisma/prisma.service';
@@ -33,6 +51,9 @@ const DOC_NOTE: Record<AfterSalesDocKind, string> = {
 };
 const CASH_DOCS_NOTE = 'พิมพ์ใบรับคืนเครื่อง + ใบส่งมอบเครื่องทดแทน';
 const PRINT_DEDUPE_MS = 5 * 60 * 1000;
+/** Employee-access generation evidence kind: one rendered document, or PR 5's two-page cash pack. */
+type GeneratedDocKind = AfterSalesDocKind | 'RETURN+REPLACEMENT_HANDOVER';
+
 const MIME_BY_EXT: Record<string, string> = {
   jpg: 'image/jpeg',
   jpeg: 'image/jpeg',
@@ -59,36 +80,53 @@ const label = (...parts: (string | null | undefined)[]) =>
   parts.filter((p): p is string => !!p && p.trim().length > 0).join(' · ');
 
 /**
- * ใบรับฝากเครื่อง / ใบส่งมอบ (PR 4, สเปก 6) — `GET /after-sales/:id/receipt.pdf` | `/handover.pdf`.
+ * ใบรับฝากเครื่อง / ใบส่งมอบ (PR 4, สเปก 6) + ใบรับคืนเครื่อง / ใบส่งมอบเครื่องทดแทน (PR 5).
  * ขอบเขตสาขา + stage จริงมาจาก `getCase` เสมอ (route มีแต่ :id — security.md) และต้องผ่านก่อนแตะ
- * storage หรือ Chromium · การพิมพ์ลงไทม์ไลน์เป็น `AfterSalesEvent` kind PRINTED (กันซ้ำ 5 นาที)
+ * storage หรือ Chromium · การพิมพ์ลงไทม์ไลน์เป็น `AfterSalesEvent` kind PRINTED (กันซ้ำ 5 นาที).
+ * Managed documents authorize current sources independently of JSON views. Rendered bytes and
+ * required generation evidence join the actual outer transaction; controllers deliver only after
+ * commit. Historical PRINTED events are never rewritten.
  */
 @Injectable()
 export class AfterSalesDocumentService {
   private readonly logger = new Logger(AfterSalesDocumentService.name);
 
   constructor(
-    private readonly prisma: PrismaService,
+    private readonly basePrisma: PrismaService,
     private readonly storage: StorageService,
     private readonly query: AfterSalesQueryService,
     private readonly renderer: AfterSalesPdfRenderer,
+    @Optional() private readonly streams?: AccessAfterSalesStreams,
+    @Optional() private readonly audit?: AuditService,
   ) {}
+
+  private get prisma(): PrismaService {
+    return domainAccessClient(this.basePrisma);
+  }
 
   async render(
     caseId: string,
     kind: AfterSalesDocKind,
     user: ReqUser,
   ): Promise<{ pdf: Buffer; caseNumber: string }> {
-    const c = await this.query.getCase(caseId, user);
+    const managed = await afterSalesActor(this.basePrisma, user.id, this.prisma);
+    if (managed && !this.streams) throw new ForbiddenException('ระบบเอกสารยังไม่พร้อม');
+    // Managed export authority: the streams boundary only distinguishes RECEIPT (intake photo
+    // keys) from every other case document; RETURN/REPLACEMENT_HANDOVER load no photos.
+    const loaded = managed
+      ? await this.streams!.document(caseId, user.id, kind === 'RECEIPT' ? 'RECEIPT' : 'HANDOVER')
+      : null;
+    const c = loaded?.documentCase ?? (await this.query.getCase(caseId, user));
     const isCash = c.outcome === 'CASH_SAME_MODEL_EXCHANGE';
     // PR 5 — route handover.pdf เดิมของเคสขายสดให้ใบส่งมอบเครื่องทดแทน
     const effective: AfterSalesDocKind =
       kind === 'HANDOVER' && isCash ? 'REPLACEMENT_HANDOVER' : kind;
     this.assertPrintable(c, effective);
     const source = await this.loadSource(c, effective, user);
+    if (loaded && effective === 'RECEIPT') source.outcome = loaded.receiptOutcome;
     const doc = this.compose(source, effective);
     const pdf = await this.renderer.htmlToPdf(buildAfterSalesDocHtml(doc));
-    await this.recordPrinted(caseId, DOC_NOTE[effective], user.id);
+    await this.recordRendered(caseId, effective, DOC_NOTE[effective], user.id);
     return { pdf, caseNumber: c.caseNumber };
   }
 
@@ -97,17 +135,20 @@ export class AfterSalesDocumentService {
     caseId: string,
     user: ReqUser,
   ): Promise<{ pdf: Buffer; caseNumber: string }> {
-    const c = await this.query.getCase(caseId, user);
+    const managed = await afterSalesActor(this.basePrisma, user.id, this.prisma);
+    if (managed && !this.streams) throw new ForbiddenException('ระบบเอกสารยังไม่พร้อม');
+    const loaded = managed ? await this.streams!.document(caseId, user.id, 'HANDOVER') : null;
+    const c = loaded?.documentCase ?? (await this.query.getCase(caseId, user));
     this.assertPrintable(c, 'RETURN');
     const source = await this.loadSource(c, 'REPLACEMENT_HANDOVER', user);
     const pdf = await this.renderer.htmlToPdf(
       buildAfterSalesDocHtml([composeReturnDoc(source), composeReplacementHandoverDoc(source)]),
     );
-    await this.recordPrinted(caseId, CASH_DOCS_NOTE, user.id);
+    await this.recordRendered(caseId, 'RETURN+REPLACEMENT_HANDOVER', CASH_DOCS_NOTE, user.id);
     return { pdf, caseNumber: c.caseNumber };
   }
 
-  private assertPrintable(c: CaseDetail, kind: AfterSalesDocKind) {
+  private assertPrintable(c: CaseDetail | AfterSalesDocumentCase, kind: AfterSalesDocKind) {
     const hasRepairTicket = !!c.repairTicket && !c.repairTicket.deletedAt;
     const reason =
       kind === 'HANDOVER'
@@ -132,10 +173,12 @@ export class AfterSalesDocumentService {
   }
 
   private async loadSource(
-    c: CaseDetail,
+    c: CaseDetail | AfterSalesDocumentCase,
     kind: AfterSalesDocKind,
     user: ReqUser,
   ): Promise<DocSource> {
+    if (!c.customer || !c.branch || !c.receivedBy)
+      throw new ForbiddenException('ไม่พบแหล่งเอกสารที่ตรวจสอบได้');
     const ex = c.exchange;
     const printedAt = new Date();
     const [row, printer, company, contract, sale, product, newContract, newProduct, approver] =
@@ -219,7 +262,7 @@ export class AfterSalesDocumentService {
       printedByName: printer?.name ?? '—',
       customerName: c.customer.name,
       customerPhone: c.customer.phone ?? null,
-      lineLinked: c.lineLinked,
+      lineLinked: c.lineLinked === true,
       source: c.source,
       contractNumber: contract?.contractNumber ?? null,
       saleNumber: sale?.saleNumber ?? null,
@@ -262,8 +305,15 @@ export class AfterSalesDocumentService {
       repair: t
         ? {
             payer: t.payer as DocPayer,
-            estimatedCost: t.estimatedCost ? t.estimatedCost.toString() : null,
-            actualCost: t.actualCost ? t.actualCost.toString() : null,
+            estimatedCostPayer: t.estimatedCostPayer,
+            estimatedCost:
+              repairEstimateIsCustomerCharge(t) && t.estimatedCost != null
+                ? t.estimatedCost.toString()
+                : null,
+            actualCost:
+              repairActualIsCustomerCharge(t) && t.actualCost != null
+                ? t.actualCost.toString()
+                : null,
             supplierName: t.repairSupplier?.name ?? null,
             externalClaimNo: t.externalClaimNo,
             sentToRepairAt: t.sentToRepairAt,
@@ -354,14 +404,29 @@ export class AfterSalesDocumentService {
       try {
         const buf = await readAll(await this.storage.getStream(key));
         out.push(`data:${mime};base64,${buf.toString('base64')}`);
-      } catch (err) {
-        this.logger.warn(
-          `after-sales photo unreadable for PDF: ${key} (${(err as Error).message})`,
-        );
+      } catch {
+        this.logger.warn('after-sales photo unavailable for PDF');
         out.push(null);
       }
     }
     return out;
+  }
+
+  /**
+   * Timeline/evidence after a successful render. Unmanaged callers keep main's PRINTED event
+   * (5-minute dedupe, best-effort) plus additive best-effort generation audit. Managed actors
+   * (employee-access) record only the required atomic GENERATED evidence inside the owned
+   * transaction — that path never claims a paper print (epic ruling; no main behaviour exists there).
+   */
+  private async recordRendered(
+    caseId: string,
+    kind: GeneratedDocKind,
+    note: string,
+    actorId: string,
+  ) {
+    if (currentDomainAccess()) return this.recordGenerated(caseId, kind, actorId);
+    await this.recordPrinted(caseId, note, actorId);
+    await this.recordGenerated(caseId, kind, actorId);
   }
 
   private async recordPrinted(caseId: string, note: string, actorId: string) {
@@ -384,6 +449,30 @@ export class AfterSalesDocumentService {
       this.logger.warn(
         `after-sales PRINTED event not recorded for ${caseId}: ${(err as Error).message}`,
       );
+    }
+  }
+
+  private async recordGenerated(caseId: string, kind: GeneratedDocKind, actorId: string) {
+    const entry = {
+      userId: actorId,
+      action: 'AFTER_SALES_DOCUMENT_GENERATED',
+      entity: 'after_sales_case',
+      entityId: caseId,
+      newValue: { kind, result: 'GENERATED', delivery: 'NOT_OBSERVED', paperPrinted: false },
+    };
+    const ctx = currentDomainAccess();
+    if (ctx) {
+      // Required/atomic: a failure aborts the render transaction and prevents delivery.
+      await ctx.client.auditLog.create({ data: entry });
+      return;
+    }
+    // Preserve legacy best-effort evidence policy, but never claim paper was printed.
+    // AuditService uses its root hash-chain transaction outside the render operation.
+    try {
+      if (!this.audit) throw new Error('Generation audit unavailable');
+      await this.audit.log(entry);
+    } catch {
+      this.logger.warn('after-sales document generation evidence unavailable');
     }
   }
 }

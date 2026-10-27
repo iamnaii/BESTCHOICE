@@ -1,16 +1,19 @@
+import { currentDomainAccess, domainAccessClient } from '../employee-access/access-execution-context';
+import { assertImportedSource, importedCompanyAllows } from '../employee-access/access-imported-source';
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { QueryImportedSalesDto } from './dto/query-imported-sales.dto';
 
-export interface Bucket { key: string; count: number; sales: string; profit: string }
+export interface Bucket { key: string; count: number; sales: string; profit: string | null }
 
 @Injectable()
 export class ImportedSalesService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private readonly basePrisma: PrismaService) {}
+  private get prisma() { return domainAccessClient(this.basePrisma); }
 
   private buildWhere(q: QueryImportedSalesDto): Prisma.ImportedSaleWhereInput {
-    const where: Prisma.ImportedSaleWhereInput = {};
+    const where: Prisma.ImportedSaleWhereInput = currentDomainAccess() ? { source: 'TOOLTIFY' } : {};
     if (q.saleChannel) where.saleChannel = q.saleChannel;
     if (q.category) where.category = q.category;
     if (q.salespersonName) where.salespersonName = { contains: q.salespersonName };
@@ -23,26 +26,35 @@ export class ImportedSalesService {
   }
 
   async list(q: QueryImportedSalesDto) {
+    if (currentDomainAccess()) await assertImportedSource();
     const where = this.buildWhere(q);
-    const [data, total] = await this.prisma.$transaction([
-      this.prisma.importedSale.findMany({
+    const operations = (db: Pick<PrismaService, 'importedSale'>) => [
+      db.importedSale.findMany({
         where,
         orderBy: { soldAt: 'desc' },
         skip: (q.page - 1) * q.limit,
         take: q.limit,
       }),
-      this.prisma.importedSale.count({ where }),
-    ]);
-    return { data, total, page: q.page, limit: q.limit };
+      db.importedSale.count({ where }),
+    ] as const;
+    const [data, total] = currentDomainAccess()
+      ? await this.prisma.$transaction(tx => Promise.all(operations(tx)))
+      : await this.basePrisma.$transaction([...operations(this.basePrisma)]);
+    const cost = !currentDomainAccess() || importedCompanyAllows('sensitive.cost.read');
+    const profit = cost && (!currentDomainAccess() || importedCompanyAllows('sensitive.profit.read'));
+    return { data: currentDomainAccess() ? data.map(row => ({ ...row, costTotal: cost ? row.costTotal : null, profit: profit ? row.profit : null })) : data, total, page: q.page, limit: q.limit };
   }
 
   async summary(q: QueryImportedSalesDto) {
+    if (currentDomainAccess()) await assertImportedSource();
     const where = this.buildWhere(q);
     const rows = await this.prisma.importedSale.findMany({
       where,
       select: { soldAt: true, saleChannel: true, salespersonName: true, category: true, salePrice: true, profit: true, costTotal: true },
     });
 
+    const cost = !currentDomainAccess() || importedCompanyAllows('sensitive.cost.read');
+    const profit = cost && (!currentDomainAccess() || importedCompanyAllows('sensitive.profit.read'));
     const bucket = (keyOf: (r: (typeof rows)[number]) => string): Bucket[] => {
       const m = new Map<string, { count: number; sales: Prisma.Decimal; profit: Prisma.Decimal }>();
       for (const r of rows) {
@@ -53,7 +65,7 @@ export class ImportedSalesService {
         acc.profit = acc.profit.plus(r.profit);
         m.set(k, acc);
       }
-      return [...m.entries()].map(([key, v]) => ({ key, count: v.count, sales: v.sales.toString(), profit: v.profit.toString() }));
+      return [...m.entries()].map(([key, v]) => ({ key, count: v.count, sales: v.sales.toString(), profit: profit ? v.profit.toString() : null }));
     };
 
     const totalSales = rows.reduce((a, r) => a.plus(r.salePrice), new Prisma.Decimal(0));
@@ -66,7 +78,7 @@ export class ImportedSalesService {
     };
 
     return {
-      totals: { count: rows.length, sales: totalSales.toString(), profit: totalProfit.toString(), cost: totalCost.toString() },
+      totals: { count: rows.length, sales: totalSales.toString(), profit: profit ? totalProfit.toString() : null, cost: cost ? totalCost.toString() : null },
       byMonth: bucket(monthKey).sort((a, b) => a.key.localeCompare(b.key)),
       byChannel: bucket((r) => r.saleChannel),
       bySalesperson: bucket((r) => r.salespersonName),

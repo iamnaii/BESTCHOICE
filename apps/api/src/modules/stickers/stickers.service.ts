@@ -1,3 +1,6 @@
+import { currentDomainAccess } from '../employee-access/access-execution-context';
+import { writeSharedReference } from '../employee-access/access-shared-reference';
+import { stickerProductWhere } from '../employee-access/access-sticker-pricing-scope';
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -38,13 +41,41 @@ export interface StickerProductData {
 export const STICKER_BATCH_LIMIT = 100;
 
 const stickerProductArgs = Prisma.validator<Prisma.ProductDefaultArgs>()({
-  include: { prices: { where: { deletedAt: null }, orderBy: { createdAt: 'asc' } } },
+  select: {
+    id: true,
+    name: true,
+    brand: true,
+    model: true,
+    category: true,
+    status: true,
+    color: true,
+    storage: true,
+    deviceOrigin: true,
+    batteryHealth: true,
+    hasBox: true,
+    warrantyExpireDate: true,
+    warrantyExpired: true,
+    imeiSerial: true,
+    // main 636313e3c — QR ของอุปกรณ์ที่ไม่มี IMEI ใช้รหัสสินค้าเดิม
+    legacyProductCode: true,
+    stockInDate: true,
+    cashPrice: true,
+    installmentPrice: true,
+    prices: {
+      where: { deletedAt: null },
+      orderBy: { createdAt: 'asc' },
+      select: { label: true, amount: true, isDefault: true },
+    },
+  },
 });
 type StickerProductRow = Prisma.ProductGetPayload<typeof stickerProductArgs>;
 
 @Injectable()
 export class StickersService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private readonly base: PrismaService) {}
+  private get prisma() {
+    return currentDomainAccess()?.client ?? this.base;
+  }
 
   async findAll(page = 1, limit = 50) {
     page = Math.max(1, page);
@@ -64,26 +95,31 @@ export class StickersService {
   }
 
   async findOne(id: string) {
-    const template = await this.prisma.stickerTemplate.findUnique({ where: { id } });
+    const template = await this.prisma.stickerTemplate.findUnique({
+      where: { id, deletedAt: null },
+    });
     if (!template) throw new NotFoundException('ไม่พบ Template สติกเกอร์');
     return template;
   }
 
   async create(dto: CreateStickerTemplateDto) {
-    return this.prisma.stickerTemplate.create({ data: dto as Prisma.StickerTemplateCreateInput });
+    return writeSharedReference(this.base, (tx) =>
+      tx.stickerTemplate.create({ data: dto as Prisma.StickerTemplateCreateInput }),
+    );
   }
-
   async update(id: string, dto: UpdateStickerTemplateDto) {
-    await this.findOne(id);
-    return this.prisma.stickerTemplate.update({
-      where: { id },
-      data: dto as Prisma.StickerTemplateUpdateInput,
+    return writeSharedReference(this.base, async (tx) => {
+      await tx.$queryRaw`SELECT id FROM sticker_templates WHERE id = ${id} FOR UPDATE`;
+      if (!(await tx.stickerTemplate.findFirst({ where: { id, deletedAt: null } })))
+        throw new NotFoundException('ไม่พบ Template สติกเกอร์');
+      return tx.stickerTemplate.update({
+        where: { id },
+        data: dto as Prisma.StickerTemplateUpdateInput,
+      });
     });
   }
-
   async remove(id: string) {
-    await this.findOne(id);
-    return this.prisma.stickerTemplate.update({ where: { id }, data: { isActive: false } });
+    return this.update(id, { isActive: false });
   }
 
   /** เครื่องเดียว — key เป็น Product ID หรือ IMEI ก็ได้ */
@@ -98,19 +134,27 @@ export class StickersService {
    * คืนตามลำดับ key ที่ขอ เครื่องเดียวกันที่ถูกอ้างสองทางส่งครั้งเดียว · key ที่หาไม่พบถูกข้าม
    */
   async getStickerDataBatch(keys: string[]): Promise<StickerProductData[]> {
-    const wanted = [...new Set(keys.map((k) => k.trim()).filter(Boolean))].slice(0, STICKER_BATCH_LIMIT);
+    const wanted = [...new Set(keys.map((k) => k.trim()).filter(Boolean))].slice(
+      0,
+      STICKER_BATCH_LIMIT,
+    );
     if (wanted.length === 0) return [];
 
     const rows = await this.prisma.product.findMany({
-      where: { deletedAt: null, OR: [{ id: { in: wanted } }, { imeiSerial: { in: wanted } }] },
+      where: {
+        deletedAt: null,
+        OR: [{ id: { in: wanted } }, { imeiSerial: { in: wanted } }],
+        AND: [stickerProductWhere()],
+      },
       ...stickerProductArgs,
     });
 
     const byKey = new Map<string, StickerProductRow>();
     for (const row of rows) {
-      byKey.set(row.id, row);
       if (row.imeiSerial) byKey.set(row.imeiSerial, row);
     }
+    // An authorized exact ID wins over an authorized IMEI collision.
+    for (const row of rows) byKey.set(row.id, row);
     const seen = new Set<string>();
     const ordered: StickerProductRow[] = [];
     for (const key of wanted) {
@@ -136,12 +180,16 @@ export class StickersService {
       deviceOrigin: product.deviceOrigin,
       batteryHealth: product.batteryHealth,
       hasBox: product.hasBox,
-      warrantyExpireDate: this.activeWarrantyDate(product.warrantyExpireDate, product.warrantyExpired),
+      warrantyExpireDate: this.activeWarrantyDate(
+        product.warrantyExpireDate,
+        product.warrantyExpired,
+      ),
       imei: product.imeiSerial,
       code: product.legacyProductCode ?? null,
       stockInDate: product.stockInDate ? product.stockInDate.toISOString() : null,
       cashPrice: product.cashPrice != null ? product.cashPrice.toString() : null,
-      installmentPrice: product.installmentPrice != null ? product.installmentPrice.toString() : null,
+      installmentPrice:
+        product.installmentPrice != null ? product.installmentPrice.toString() : null,
       prices: product.prices.map((p) => ({
         label: p.label,
         amount: p.amount.toString(),

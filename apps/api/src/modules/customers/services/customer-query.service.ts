@@ -1,6 +1,24 @@
-import { assertExportRowCount, EXPORT_ROW_LIMIT, readExportSnapshot } from '../../../common/helpers/export-snapshot';
+import type { ManagedCustomerQueryKpis, ManagedCustomerProjection } from '@installment/shared';
+import { outstandingOf, UNPAID_INSTALLMENT_WHERE } from '../../contracts/contract-outstanding';
+import {
+  assertPartyQueryClient,
+  currentPartyQuery,
+  scopePartyCustomerWhere,
+} from '../../employee-access/access-party-query-plan';
+import { domainAccessClient } from '../../employee-access/access-execution-context';
+import {
+  assertExportRowCount,
+  EXPORT_ROW_LIMIT,
+  readExportSnapshot,
+  readJoinedExportSnapshot,
+} from '../../../common/helpers/export-snapshot';
 import { BadRequestException, Injectable, NotFoundException, Optional } from '@nestjs/common';
-import { ContractStatus, CreditCheckStatus, CustomerCreditCheckStatus, Prisma } from '@prisma/client';
+import {
+  ContractStatus,
+  CreditCheckStatus,
+  CustomerCreditCheckStatus,
+  Prisma,
+} from '@prisma/client';
 import {
   CUSTOMER_BOUGHT_CONTRACT_STATUSES,
   CUSTOMER_BOUGHT_SALE_TYPES,
@@ -12,15 +30,25 @@ import {
   type CustomerInstallmentState,
   type ProspectSource,
 } from '@installment/shared';
-import { isChatPlaceholder, PLACEHOLDER_FIELDS_SELECT } from '../../chat-prospects/chat-placeholder';
+import {
+  isChatPlaceholder,
+  PLACEHOLDER_FIELDS_SELECT,
+} from '../../chat-prospects/chat-placeholder';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { paginatedResponse } from '../../../common/helpers/pagination.helper';
 import { decryptPII, isEncrypted } from '../../../utils/crypto.util';
 import { decryptReferencesJson } from '../../../utils/pii.util';
-import { bangkokCalendarParts, bangkokDateRange, bangkokDateString } from '../../../utils/date.util';
+import {
+  bangkokCalendarParts,
+  bangkokDateRange,
+  bangkokDateString,
+} from '../../../utils/date.util';
 import { CustomerTierService } from '../customer-tier.service';
 import { CustomerPiiService } from '../customer-pii.service';
-import { CustomerPurchaseSummaryService, type CustomerPurchaseSummary } from './customer-purchase-summary.service';
+import {
+  CustomerPurchaseSummaryService,
+  type CustomerPurchaseSummary,
+} from './customer-purchase-summary.service';
 import { CustomerChatRoomsService } from './customer-chat-rooms.service';
 import { CUSTOMER_TIERS } from '../dto/customers-list-query.dto';
 import { buildContractProgress } from './customer-contract-progress';
@@ -77,7 +105,10 @@ const CHAT_SOURCE_WHERE: Prisma.CustomerWhereInput = {
 
 /** ตรงข้ามของ CHAT_SOURCE_WHERE (`fromChat=false`) — OR กับ null กัน 3VL เหมือน NOT_BOT_WHERE */
 const NOT_CHAT_SOURCE_WHERE: Prisma.CustomerWhereInput = {
-  OR: [{ acquisitionSource: null }, { acquisitionSource: { not: { startsWith: CHAT_SOURCE_PREFIX } } }],
+  OR: [
+    { acquisitionSource: null },
+    { acquisitionSource: { not: { startsWith: CHAT_SOURCE_PREFIX } } },
+  ],
 };
 
 const NO_ROOM_WHERE: Prisma.CustomerWhereInput = { chatRooms: { none: { deletedAt: null } } };
@@ -97,7 +128,10 @@ function contactedWithin(asOf: Date, daysAgo: number): Prisma.CustomerWhereInput
     chatRooms: {
       some: {
         deletedAt: null,
-        OR: [{ lastCustomerAt: { gte: since } }, { lastCustomerAt: null, lastMessageAt: { gte: since } }],
+        OR: [
+          { lastCustomerAt: { gte: since } },
+          { lastCustomerAt: null, lastMessageAt: { gte: since } },
+        ],
       },
     },
   };
@@ -111,7 +145,10 @@ function silentBeyond(asOf: Date, daysAgo: number): Prisma.CustomerWhereInput {
       some: { deletedAt: null },
       none: {
         deletedAt: null,
-        OR: [{ lastCustomerAt: { gte: since } }, { lastCustomerAt: null, lastMessageAt: { gte: since } }],
+        OR: [
+          { lastCustomerAt: { gte: since } },
+          { lastCustomerAt: null, lastMessageAt: { gte: since } },
+        ],
       },
     },
   };
@@ -139,12 +176,17 @@ function channelsOf(filter: Prisma.ChatRoomWhereInput['channel']): string[] {
  * ⇒ ทั้ง OR กลายเป็น always-true และ `?source=<ช่องใหม่>` จะคืนลูกค้าที่ไม่ใช่บอททุกคนเงียบ ๆ
  */
 const SOURCE_CHAT_VALUES: Record<string, string[]> = Object.fromEntries(
-  Object.entries(SOURCE_CHANNELS).map(([source, filter]) => [source, channelsOf(filter).map(chatSourceOf)]),
+  Object.entries(SOURCE_CHANNELS).map(([source, filter]) => [
+    source,
+    channelsOf(filter).map(chatSourceOf),
+  ]),
 );
 
 function assertEnumValue(value: string, allowed: string[], label: string): void {
   if (allowed.includes(value)) return;
-  throw new BadRequestException(`${label}ไม่ถูกต้อง: "${value}" (ค่าที่รับได้: ${allowed.join(', ')})`);
+  throw new BadRequestException(
+    `${label}ไม่ถูกต้อง: "${value}" (ค่าที่รับได้: ${allowed.join(', ')})`,
+  );
 }
 
 /**
@@ -318,8 +360,11 @@ const PROSPECT_SELECT = {
  */
 @Injectable()
 export class CustomerQueryService {
+  private get prisma(): PrismaService {
+    return domainAccessClient(this.basePrisma);
+  }
   constructor(
-    private prisma: PrismaService,
+    private basePrisma: PrismaService,
     private readonly tierService: CustomerTierService,
     private readonly purchaseSummary: CustomerPurchaseSummaryService,
     private readonly chatRooms: CustomerChatRoomsService,
@@ -339,10 +384,14 @@ export class CustomerQueryService {
     db: Prisma.TransactionClient = this.prisma,
     asOf = new Date(),
   ) {
+    assertPartyQueryClient(db);
+    const plan = currentPartyQuery();
     const view = filters.view;
     // ค่าที่สะกดผิดต้องไม่ตกเป็น "ทุกคน" เงียบ ๆ — findAll ถูกเรียกตรงจาก preview/e2e ด้วย
     if (view && view !== 'customers' && view !== 'prospects') {
-      throw new BadRequestException(`มุมมองไม่ถูกต้อง: "${view}" (ค่าที่รับได้: customers, prospects หรือไม่ส่ง = ทุกคน)`);
+      throw new BadRequestException(
+        `มุมมองไม่ถูกต้อง: "${view}" (ค่าที่รับได้: customers, prospects หรือไม่ส่ง = ทุกคน)`,
+      );
     }
     const isProspects = view === 'prospects';
     const search = filters.search ?? filters.q;
@@ -367,15 +416,21 @@ export class CustomerQueryService {
     // 🔴 `hasOverdue` มาจาก query string เป็น **สตริง** — DTO เก็บเป็น string เพราะ
     // ValidationPipe ของแอปเปิด enableImplicitConversion ซึ่งรัน Boolean('false') === true
     // ก่อน @Transform จะได้ทำงาน ⇒ ?hasOverdue=false เคยเปิดตัวกรอง (ดู DTO)
-    const hasOverdue = !isProspects && (filters.hasOverdue === true || filters.hasOverdue === 'true');
-    const creditCheckStatus = isProspects ? (filters.creditCheckStatus ?? filters.precheck) : undefined;
+    const hasOverdue =
+      !isProspects && (filters.hasOverdue === true || filters.hasOverdue === 'true');
+    const creditCheckStatus = isProspects
+      ? (filters.creditCheckStatus ?? filters.precheck)
+      : undefined;
     // 🔴 "ที่มา" ใช้ได้ทั้งสองแท็บ (Task 13) — ต่างจากตัวกรองอื่นข้างบน/ล่างที่ยัง gate เฉพาะ
     // แท็บผู้สนใจ: ลูกค้าที่ซื้อแล้วก็มี "ที่มา" เหมือนกัน (มาจากแชท/คนแนะนำ/walk-in)
     const source = filters.source;
     const contacted = isProspects ? filters.contacted : undefined;
     const owner = isProspects ? assignedToId : undefined;
     const tags = isProspects
-      ? (filters.tag ?? '').split(',').map(value => value.trim()).filter(Boolean)
+      ? (filters.tag ?? '')
+          .split(',')
+          .map((value) => value.trim())
+          .filter(Boolean)
       : [];
 
     const where: Prisma.CustomerWhereInput = { deletedAt: null };
@@ -389,14 +444,43 @@ export class CustomerQueryService {
         { nationalId: { contains: search } },
         { nickname: { contains: search, mode: 'insensitive' } },
         ...(isProspects
-          // ชื่อในแชทไม่ได้เข้ารหัส จึง contains ตรง ๆ ได้
-          ? [{ chatRooms: { some: { deletedAt: null, displayName: { contains: search, mode: 'insensitive' as const } } } }]
+          ? // ชื่อในแชทไม่ได้เข้ารหัส จึง contains ตรง ๆ ได้
+            [
+              {
+                chatRooms: {
+                  some: {
+                    deletedAt: null,
+                    displayName: { contains: search, mode: 'insensitive' as const },
+                  },
+                },
+              },
+            ]
           : [
-              { contracts: { some: { deletedAt: null, contractNumber: { contains: search, mode: 'insensitive' as const } } } },
-              { sales: { some: { deletedAt: null, saleNumber: { contains: search, mode: 'insensitive' as const } } } },
+              {
+                contracts: {
+                  some: {
+                    deletedAt: null,
+                    contractNumber: { contains: search, mode: 'insensitive' as const },
+                  },
+                },
+              },
+              {
+                sales: {
+                  some: {
+                    deletedAt: null,
+                    saleNumber: { contains: search, mode: 'insensitive' as const },
+                  },
+                },
+              },
               // IMEI ของ "เครื่องหลัก" เท่านั้น — Sale.bundleProductIds เป็น String[] ไม่มี relation
-              { contracts: { some: { deletedAt: null, product: { imeiSerial: { contains: search } } } } },
-              { sales: { some: { deletedAt: null, product: { imeiSerial: { contains: search } } } } },
+              {
+                contracts: {
+                  some: { deletedAt: null, product: { imeiSerial: { contains: search } } },
+                },
+              },
+              {
+                sales: { some: { deletedAt: null, product: { imeiSerial: { contains: search } } } },
+              },
             ]),
       ];
     }
@@ -404,10 +488,15 @@ export class CustomerQueryService {
     // ตัวกรองเดิม: สถานะสัญญา + สาขา ต้องชี้สัญญา "ใบเดียวกัน" ⇒ ช่อง where.contracts ช่องเดียว
     let branchHandled = false;
     if (hasOverdue || contractStatus) {
-      where.contracts = { some: { deletedAt: null,
-        ...(hasOverdue ? { status: { in: ['OVERDUE', 'DEFAULT'] as ContractStatus[] } } : { status: contractStatus as ContractStatus }),
-        ...(branchId ? { branchId } : {}),
-      } };
+      where.contracts = {
+        some: {
+          deletedAt: null,
+          ...(hasOverdue
+            ? { status: { in: ['OVERDUE', 'DEFAULT'] as ContractStatus[] } }
+            : { status: contractStatus as ContractStatus }),
+          ...(branchId ? { branchId } : {}),
+        },
+      };
       if (branchId) branchHandled = true;
     }
 
@@ -432,23 +521,33 @@ export class CustomerQueryService {
     // การซื้อ — สาขาถูกยัดเข้า some เดียวกันเพื่อให้ "สัญญา/ใบขายใบเดียวกัน" ตรงทั้งคู่
     if (purchase === 'INSTALLMENT') {
       const statuses = state
-        ? (CUSTOMER_INSTALLMENT_STATE_STATUSES[state as CustomerInstallmentState] as ContractStatus[] | undefined)
+        ? (CUSTOMER_INSTALLMENT_STATE_STATUSES[state as CustomerInstallmentState] as
+            | ContractStatus[]
+            | undefined)
         : BOUGHT_CONTRACT_STATUSES;
       if (!statuses) throw new BadRequestException(`สถานะการผ่อนไม่ถูกต้อง: "${state}"`);
-      filterAnd.push({ contracts: { some: { deletedAt: null, status: { in: statuses }, ...(branchId ? { branchId } : {}) } } });
+      filterAnd.push({
+        contracts: {
+          some: { deletedAt: null, status: { in: statuses }, ...(branchId ? { branchId } : {}) },
+        },
+      });
       if (branchId) branchHandled = true;
     } else if (purchase === 'CASH' || purchase === 'EXTERNAL_FINANCE') {
-      filterAnd.push({ sales: { some: { deletedAt: null, saleType: purchase, ...(branchId ? { branchId } : {}) } } });
+      filterAnd.push({
+        sales: { some: { deletedAt: null, saleType: purchase, ...(branchId ? { branchId } : {}) } },
+      });
       if (branchId) branchHandled = true;
     }
 
     // 🔴 สาขาต้อง OR ข้าม sales ด้วย — Customer ไม่มีคอลัมน์ branchId และลูกค้าเงินสด
     // ไม่มีสัญญาเลย เวอร์ชันเดิมที่ดูแต่ contracts ทำให้คนซื้อสดหายทั้งสาขา
     if (branchId && !branchHandled) {
-      filterAnd.push({ OR: [
-        { contracts: { some: { deletedAt: null, branchId } } },
-        { sales: { some: { deletedAt: null, branchId } } },
-      ] });
+      filterAnd.push({
+        OR: [
+          { contracts: { some: { deletedAt: null, branchId } } },
+          { sales: { some: { deletedAt: null, branchId } } },
+        ],
+      });
     }
 
     if (boughtWindow) {
@@ -462,17 +561,49 @@ export class CustomerQueryService {
         // เขียนด้วย `none` ไม่ใช่ `NOT: { some }` — NOT คู่กับ relation ที่ nullable เจอ 3VL
         // ของ SQL แล้วทิ้งแถวเงียบ ๆ (บั๊ก prod PR #1351) กฎเดียวกับ PROSPECT_WHERE
         const sinceCutoff = { gte: range.lt! };
-        filterAnd.push({ AND: [
-          BOUGHT_WHERE,
-          { contracts: { none: { deletedAt: null, status: { in: BOUGHT_CONTRACT_STATUSES }, createdAt: sinceCutoff } } },
-          { sales: { none: { deletedAt: null, saleType: { in: BOUGHT_SALE_TYPES }, createdAt: sinceCutoff } } },
-        ] });
+        filterAnd.push({
+          AND: [
+            BOUGHT_WHERE,
+            {
+              contracts: {
+                none: {
+                  deletedAt: null,
+                  status: { in: BOUGHT_CONTRACT_STATUSES },
+                  createdAt: sinceCutoff,
+                },
+              },
+            },
+            {
+              sales: {
+                none: {
+                  deletedAt: null,
+                  saleType: { in: BOUGHT_SALE_TYPES },
+                  createdAt: sinceCutoff,
+                },
+              },
+            },
+          ],
+        });
       } else {
         // 30d / 90d / ytd เป็นคำถามแบบ "มีใบซื้อในช่วงนี้" ⇒ some ถูกต้องแล้ว
-        filterAnd.push({ OR: [
-          { contracts: { some: { deletedAt: null, status: { in: BOUGHT_CONTRACT_STATUSES }, createdAt: range } } },
-          { sales: { some: { deletedAt: null, saleType: { in: BOUGHT_SALE_TYPES }, createdAt: range } } },
-        ] });
+        filterAnd.push({
+          OR: [
+            {
+              contracts: {
+                some: {
+                  deletedAt: null,
+                  status: { in: BOUGHT_CONTRACT_STATUSES },
+                  createdAt: range,
+                },
+              },
+            },
+            {
+              sales: {
+                some: { deletedAt: null, saleType: { in: BOUGHT_SALE_TYPES }, createdAt: range },
+              },
+            },
+          ],
+        });
       }
     }
 
@@ -513,7 +644,11 @@ export class CustomerQueryService {
 
     if (tags.length) {
       // deletedAt: null บังคับ — @@unique([customerId, tag, deletedAt]) ทำให้แท็บที่ถอดแล้วยังเป็นแถวอยู่
-      filterAnd.push({ tags: { some: { deletedAt: null, tag: { in: tags as Prisma.EnumCustomerTagTypeFilter['in'] } } } });
+      filterAnd.push({
+        tags: {
+          some: { deletedAt: null, tag: { in: tags as Prisma.EnumCustomerTagTypeFilter['in'] } },
+        },
+      });
     }
 
     if (contacted) {
@@ -521,23 +656,51 @@ export class CustomerQueryService {
       else if (contacted === 'silent30') {
         filterAnd.push(silentBeyond(asOf, 29));
       } else {
-        const days = contacted === 'today' ? 0 : contacted === '7d' ? 6 : contacted === '30d' ? 29 : null;
-        if (days === null) throw new BadRequestException(`ช่วงเวลา "ติดต่อล่าสุด" ไม่ถูกต้อง: "${contacted}"`);
+        const days =
+          contacted === 'today' ? 0 : contacted === '7d' ? 6 : contacted === '30d' ? 29 : null;
+        if (days === null)
+          throw new BadRequestException(`ช่วงเวลา "ติดต่อล่าสุด" ไม่ถูกต้อง: "${contacted}"`);
         filterAnd.push(contactedWithin(asOf, days));
       }
     }
 
     if (owner) {
       // ไม่มี Customer.assignedToId — ผู้ดูแลอยู่บนห้องแชท
-      filterAnd.push({ chatRooms: { some: { deletedAt: null, assignedToId: owner === 'unassigned' ? null : owner } } });
+      filterAnd.push({
+        chatRooms: {
+          some: { deletedAt: null, assignedToId: owner === 'unassigned' ? null : owner },
+        },
+      });
     }
 
-    const filterBaseWhere: Prisma.CustomerWhereInput = filterAnd.length ? { ...where, AND: filterAnd } : where;
+    let filterBaseWhere: Prisma.CustomerWhereInput = filterAnd.length
+      ? { ...where, AND: filterAnd }
+      : where;
     const viewPredicate = isProspects ? PROSPECT_WHERE : view === 'customers' ? BOUGHT_WHERE : null;
-    const scopedWhere: Prisma.CustomerWhereInput = viewPredicate
+    let scopedWhere: Prisma.CustomerWhereInput = viewPredicate
       ? { ...where, AND: [...filterAnd, viewPredicate] }
       : filterBaseWhere;
 
+    if (plan) {
+      // These two canonical credit filters are top-level conjuncts. Resolve the
+      // other real filters first so credit preparation never scans unrelated people.
+      // Only a credit filter requires both views for the cross-view counts.
+      // Otherwise prepare the selected view's complete (not paginated) candidates.
+      const creditCandidates = {
+        ...(creditStatus || creditCheckStatus ? filterBaseWhere : scopedWhere),
+      };
+      delete creditCandidates.creditChecks;
+      delete creditCandidates.creditCheckStatus;
+      // An unavailable global status filter is deterministically empty, even
+      // when some scoped credit history could otherwise be read.
+      if (!creditCheckStatus || plan.creditAuthorityComplete()) {
+        await plan.prepareCredit(await scopePartyCustomerWhere(plan, creditCandidates));
+      }
+      filterBaseWhere = {
+        AND: [plan.customer, await scopePartyCustomerWhere(plan, filterBaseWhere)],
+      };
+      scopedWhere = { AND: [plan.customer, await scopePartyCustomerWhere(plan, scopedWhere)] };
+    }
     if (limit > 200) assertExportRowCount(await db.customer.count({ where: scopedWhere }));
 
     // Determine sort order
@@ -552,32 +715,56 @@ export class CustomerQueryService {
       orderBy = { name: order };
     } else if (sortBy === 'createdAt') {
       orderBy = { createdAt: order };
-    } else if (sortBy === 'contractCount') {
+    } else if (sortBy === 'contractCount' && !plan) {
       orderBy = { contracts: { _count: order } };
     }
     // Derived filters must be resolved before pagination. Fetch only IDs/scores
     // here; PII and full customer rows remain bounded to the requested page.
     let matchedIds: string[] | undefined;
     let tierById: Awaited<ReturnType<CustomerTierService['getCustomerTiers']>> | undefined;
-    if (tier || sortBy === 'creditScore') {
+    if (tier || sortBy === 'creditScore' || (plan && sortBy === 'contractCount')) {
       if (tier && !(CUSTOMER_TIERS as readonly string[]).includes(tier)) {
         throw new BadRequestException('ระดับลูกค้าไม่ถูกต้อง');
       }
       const candidates = await db.customer.findMany({
-        where: scopedWhere, orderBy: [orderBy, { id: 'asc' }],
-        select: { id: true, creditChecks: { where: { deletedAt: null },
-          orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], take: 1, select: { aiScore: true } } },
+        where: scopedWhere,
+        orderBy: [orderBy, { id: 'asc' }],
+        select: {
+          id: true,
+          _count: { select: { contracts: { where: plan?.contract ?? {} } } },
+          creditChecks: {
+            where: { deletedAt: null, ...(plan ? { AND: plan.credit } : {}) },
+            orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+            take: 1,
+            select: { aiScore: true },
+          },
+        },
       });
-      if (tier) tierById = await this.tierService.getCustomerTiers(candidates.map(customer => customer.id), db, asOf);
-      const matching = tier ? candidates.filter(customer => tierById!.get(customer.id)?.tier === tier) : candidates;
-      if (sortBy === 'creditScore') matching.sort((a, b) => {
-        const aScore = a.creditChecks[0]?.aiScore, bScore = b.creditChecks[0]?.aiScore;
-        if (aScore == null && bScore != null) return 1;
-        if (bScore == null && aScore != null) return -1;
-        const delta = aScore == null || bScore == null ? 0 : aScore - bScore;
-        return (order === 'asc' ? delta : -delta) || a.id.localeCompare(b.id);
-      });
-      matchedIds = matching.map(customer => customer.id);
+      if (tier)
+        tierById = await this.tierService.getCustomerTiers(
+          candidates.map((customer) => customer.id),
+          db,
+          asOf,
+        );
+      const matching = tier
+        ? candidates.filter((customer) => tierById!.get(customer.id)?.tier === tier)
+        : candidates;
+      if (sortBy === 'creditScore')
+        matching.sort((a, b) => {
+          const aScore = a.creditChecks[0]?.aiScore,
+            bScore = b.creditChecks[0]?.aiScore;
+          if (aScore == null && bScore != null) return 1;
+          if (bScore == null && aScore != null) return -1;
+          const delta = aScore == null || bScore == null ? 0 : aScore - bScore;
+          return (order === 'asc' ? delta : -delta) || a.id.localeCompare(b.id);
+        });
+      if (plan && sortBy === 'contractCount')
+        matching.sort(
+          (a, b) =>
+            (order === 'asc' ? 1 : -1) * (a._count.contracts - b._count.contracts) ||
+            a.id.localeCompare(b.id),
+        );
+      matchedIds = matching.map((customer) => customer.id);
     }
     const selectedIds = matchedIds?.slice((page - 1) * limit, page * limit);
 
@@ -590,29 +777,32 @@ export class CustomerQueryService {
      * เหมือนกันแต่เป็นแค่การจัดเรียง ชุดนั้นพก predicate ของมุมมองมาด้วย ถ้าเอาไปบีบ
      * viewCounts ตัวเลขของแท็บตรงข้ามจะกลายเป็น 0 ทุกครั้งที่เรียงด้วยคะแนนเครดิต
      */
-    const tierScope: Prisma.CustomerWhereInput[] = tier && matchedIds ? [{ id: { in: matchedIds } }] : [];
+    const tierScope: Prisma.CustomerWhereInput[] =
+      tier && matchedIds ? [{ id: { in: matchedIds } }] : [];
 
     // KPI + viewCounts ถูกทิ้งจากซองตอบของ export (export-snapshot.ts คืนแค่ data/total/asOf)
     // ⇒ ไม่ต้องยิง count 7 นัดทับ 10,000 แถวในทรานแซกชัน read-only
     const wantsSummary = limit <= 200;
-    const kpiPredicates: Prisma.CustomerWhereInput[] = !wantsSummary ? [] : isProspects
-      ? [
-          contactedWithin(asOf, 6),
-          { creditCheckStatus: 'UNDER_REVIEW' },
-          // PRE_CHECK_PASSED เขียนไม่ได้จริงในโค้ดปัจจุบัน (checkType default FULL) ⇒ นับรวมสองค่า
-          { creditCheckStatus: { in: ['PRE_CHECK_PASSED', 'FULL_CHECK_PASSED'] } },
-          silentBeyond(asOf, 29),
-        ]
-      : [
-          { contracts: { some: { deletedAt: null, status: { in: BOUGHT_CONTRACT_STATUSES } } } },
-          { sales: { some: { deletedAt: null, saleType: 'CASH' } } },
-          { sales: { some: { deletedAt: null, saleType: 'EXTERNAL_FINANCE' } } },
-          { contracts: { some: { deletedAt: null, status: { in: ['OVERDUE', 'DEFAULT'] } } } },
-          // KPI "มาจากแชท" — นับด้วยที่มาติดตัว (acquisitionSource CHAT_*) ไม่ใช่ห้องแชทปัจจุบัน
-          // ⇒ ยังนับได้แม้ห้องแชทถูกลบไปแล้ว/ถูกรวมเข้าคนจริงแล้ว
-          // 🔴 R16: ใช้ค่าคงที่เดียวกับตัวกรอง fromChat=true (CHAT_SOURCE_WHERE) ห้ามเขียนสูตรซ้ำ
-          CHAT_SOURCE_WHERE,
-        ];
+    const kpiPredicates: Prisma.CustomerWhereInput[] = !wantsSummary
+      ? []
+      : isProspects
+        ? [
+            contactedWithin(asOf, 6),
+            { creditCheckStatus: 'UNDER_REVIEW' },
+            // PRE_CHECK_PASSED เขียนไม่ได้จริงในโค้ดปัจจุบัน (checkType default FULL) ⇒ นับรวมสองค่า
+            { creditCheckStatus: { in: ['PRE_CHECK_PASSED', 'FULL_CHECK_PASSED'] } },
+            silentBeyond(asOf, 29),
+          ]
+        : [
+            { contracts: { some: { deletedAt: null, status: { in: BOUGHT_CONTRACT_STATUSES } } } },
+            { sales: { some: { deletedAt: null, saleType: 'CASH' } } },
+            { sales: { some: { deletedAt: null, saleType: 'EXTERNAL_FINANCE' } } },
+            { contracts: { some: { deletedAt: null, status: { in: ['OVERDUE', 'DEFAULT'] } } } },
+            // KPI "มาจากแชท" — นับด้วยที่มาติดตัว (acquisitionSource CHAT_*) ไม่ใช่ห้องแชทปัจจุบัน
+            // ⇒ ยังนับได้แม้ห้องแชทถูกลบไปแล้ว/ถูกรวมเข้าคนจริงแล้ว
+            // 🔴 R16: ใช้ค่าคงที่เดียวกับตัวกรอง fromChat=true (CHAT_SOURCE_WHERE) ห้ามเขียนสูตรซ้ำ
+            CHAT_SOURCE_WHERE,
+          ];
 
     const [data, total, kpiCounts, viewCountPair] = await Promise.all([
       db.customer.findMany({
@@ -620,17 +810,57 @@ export class CustomerQueryService {
         orderBy: [orderBy, { id: 'asc' }],
         skip: selectedIds ? 0 : (page - 1) * limit,
         take: limit,
-        select: isProspects ? PROSPECT_SELECT : CUSTOMER_SELECT,
+        select: plan
+          ? this.scopedSelect(isProspects ? PROSPECT_SELECT : CUSTOMER_SELECT)
+          : isProspects
+            ? PROSPECT_SELECT
+            : CUSTOMER_SELECT,
       }),
       matchedIds ? Promise.resolve(matchedIds.length) : db.customer.count({ where: scopedWhere }),
       // KPI ทุกใบผูกกับ where ของหน้านี้ (filter-scoped) — เดิมนับทั้งฐานโดยไม่สนตัวกรองเลย
-      Promise.all(kpiPredicates.map(predicate => db.customer.count({ where: { AND: [scopedWhere, predicate, ...tierScope] } }))),
+      Promise.all(
+        kpiPredicates.map(async (predicate, index) =>
+          plan && isProspects && (index === 1 || index === 2) && !plan.creditAuthorityComplete()
+            ? 0
+            : db.customer.count({
+                where: {
+                  AND: [
+                    scopedWhere,
+                    plan
+                      ? await scopePartyCustomerWhere(
+                          plan,
+                          predicate,
+                          !isProspects && (index === 0 || index === 3) ? 'finance' : 'purchase',
+                        )
+                      : predicate,
+                    ...tierScope,
+                  ],
+                },
+              }),
+        ),
+      ),
       // viewCounts นับจาก filterBaseWhere ซึ่ง **ไม่มี** เงื่อนไขมุมมอง ⇒ ตัวเลขบนสวิตช์แท็บ
       // เคารพ search/สาขา/ตัวกรอง แต่ไม่เคารพแท็บที่กำลังเปิด (แบบเดียวกับ products-stock-groups)
       wantsSummary
         ? Promise.all([
-            db.customer.count({ where: { AND: [filterBaseWhere, BOUGHT_WHERE, ...tierScope] } }),
-            db.customer.count({ where: { AND: [filterBaseWhere, PROSPECT_WHERE, ...tierScope] } }),
+            db.customer.count({
+              where: {
+                AND: [
+                  filterBaseWhere,
+                  plan ? await scopePartyCustomerWhere(plan, BOUGHT_WHERE) : BOUGHT_WHERE,
+                  ...tierScope,
+                ],
+              },
+            }),
+            db.customer.count({
+              where: {
+                AND: [
+                  filterBaseWhere,
+                  plan ? await scopePartyCustomerWhere(plan, PROSPECT_WHERE) : PROSPECT_WHERE,
+                  ...tierScope,
+                ],
+              },
+            }),
           ])
         : Promise.resolve([0, 0]),
     ]);
@@ -645,7 +875,7 @@ export class CustomerQueryService {
       const position = new Map(selectedIds.map((id, index) => [id, index]));
       rows = [...rows].sort((a, b) => position.get(a.id)! - position.get(b.id)!);
     }
-    const pageIds = rows.map(row => row.id);
+    const pageIds = rows.map((row) => row.id);
 
     // 🔴 การเพิ่มข้อมูลต่อหน้าทั้งหมดอยู่ใน Promise.all เดียว และทุกตัวรับ `db` ต่อ
     // ⇒ จำนวน query คงที่ต่อหน้า และ export ไม่หลุดออกนอก snapshot ของตัวเอง
@@ -660,15 +890,63 @@ export class CustomerQueryService {
       this.chatRooms.forCustomers(pageIds, db),
     ]);
 
-    const summary = isProspects
-      ? { total, contacted7d: kpiCounts[0] ?? 0, checkingCredit: kpiCounts[1] ?? 0, prechecked: kpiCounts[2] ?? 0, silent30d: kpiCounts[3] ?? 0 }
-      : { total, installment: kpiCounts[0] ?? 0, cash: kpiCounts[1] ?? 0, externalFinance: kpiCounts[2] ?? 0, overdue: kpiCounts[3] ?? 0, fromChat: kpiCounts[4] ?? 0 };
-    const viewCounts = { customers: viewCountPair[0], prospects: viewCountPair[1] };
+    const summary: ManagedCustomerQueryKpis = isProspects
+      ? {
+          total,
+          contacted7d: kpiCounts[0] ?? 0,
+          checkingCredit: kpiCounts[1] ?? 0,
+          prechecked: kpiCounts[2] ?? 0,
+          silent30d: kpiCounts[3] ?? 0,
+        }
+      : {
+          total,
+          installment: kpiCounts[0] ?? 0,
+          cash: kpiCounts[1] ?? 0,
+          externalFinance: kpiCounts[2] ?? 0,
+          overdue: kpiCounts[3] ?? 0,
+          fromChat: kpiCounts[4] ?? 0,
+        };
+    const viewCounts = {
+      customers: viewCountPair[0] as number | null,
+      prospects: viewCountPair[1] as number | null,
+    };
+    if (plan) {
+      if (!plan.has('contracts.read', 'FINANCE') && 'installment' in summary) {
+        summary.installment = null;
+        summary.overdue = null;
+      }
+      if (!plan.has('sales.read', 'SHOP') && 'cash' in summary) {
+        summary.cash = null;
+        summary.externalFinance = null;
+      }
+      if (![...plan.live].some((c) => plan.has('chat.read', c))) {
+        if ('fromChat' in summary) summary.fromChat = null;
+        else {
+          summary.contacted7d = null;
+          summary.silent30d = null;
+        }
+      }
+      if (
+        isProspects &&
+        wantsSummary &&
+        !(await plan.creditStatusComplete({ AND: [scopedWhere, ...tierScope] }))
+      )
+        if ('checkingCredit' in summary) {
+          summary.checkingCredit = null;
+          summary.prechecked = null;
+        }
+      if (!plan.company('contracts.read', 'FINANCE') || !plan.company('sales.read', 'SHOP')) {
+        viewCounts.prospects = null;
+        viewCounts.customers = null;
+      }
+    }
 
-    const shaped = rows.map(row => {
+    const shaped = rows.map((row) => {
       const chat = chatById.get(row.id);
       const chatRooms = chat?.chatRooms ?? [];
-      const latestCredit = (row.creditChecks as Array<{ status: string; aiScore: number | null }> | undefined)?.[0] ?? null;
+      const latestCredit =
+        (row.creditChecks as Array<{ status: string; aiScore: number | null }> | undefined)?.[0] ??
+        null;
 
       if (isProspects) {
         const decrypted = this.decryptCustomerPII(row, { strict }) as RawRow;
@@ -701,8 +979,10 @@ export class CustomerQueryService {
       }
 
       const contracts = (row.contracts ?? []) as Array<{ status: string }>;
-      const activeContracts = contracts.filter(contract => contract.status === 'ACTIVE').length;
-      const overdueContracts = contracts.filter(contract => ['OVERDUE', 'DEFAULT'].includes(contract.status)).length;
+      const activeContracts = contracts.filter((contract) => contract.status === 'ACTIVE').length;
+      const overdueContracts = contracts.filter((contract) =>
+        ['OVERDUE', 'DEFAULT'].includes(contract.status),
+      ).length;
       // ที่มา (Task 13) ต้องอ่านค่าดิบก่อนตัด acquisitionSource/referredById ออกจาก rest ด้านล่าง —
       // ทั้งสองคอลัมน์นี้ไม่ใช่ฟิลด์ที่ตั้งใจส่งออกตรง ๆ (ไม่ใช่คอลัมน์ใหม่ของตาราง — แค่ที่มา
       // ที่อนุมานแล้ว/ค่าดิบสำหรับ debug) เหมือนกับแท็บผู้สนใจข้างบน
@@ -713,8 +993,15 @@ export class CustomerQueryService {
       );
       const acquisitionSourceRaw = (row.acquisitionSource ?? null) as string | null;
       // relation ชั่วคราวทุกตัวต้องถูกถอดออกจากคำตอบ ไม่งั้น payload บวมและหลุดข้อมูลที่ไม่ได้ตั้งใจส่ง
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      const { contracts: _c, creditChecks: _cc, tags: _t, acquisitionSource: _as, referredById: _rb, ...rest } = row;
+      const rest = { ...row };
+      for (const field of [
+        'contracts',
+        'creditChecks',
+        'tags',
+        'acquisitionSource',
+        'referredById',
+      ])
+        delete rest[field];
       // Phase 5: decrypt PII fields, then strip EVERY encrypted column from the response
       const decrypted = this.decryptCustomerPII(rest as RawRow, { strict }) as RawRow;
       const purchaseSummary = purchaseById.get(row.id);
@@ -736,7 +1023,7 @@ export class CustomerQueryService {
           phone: (decrypted.phone ?? null) as string | null,
           nationalId: (decrypted.nationalId ?? null) as string | null,
         }),
-        tier: pageTiers.get(row.id)?.tier ?? 'NEW',
+        tier: pageTiers.get(row.id)?.tier ?? (plan ? null : 'NEW'),
         purchase: purchaseSummary?.purchase ?? null,
         latestPurchase: purchaseSummary?.latestPurchase ?? null,
         warranty: purchaseSummary?.warranty ?? null,
@@ -745,19 +1032,62 @@ export class CustomerQueryService {
       };
     });
 
-    return { ...paginatedResponse(shaped, total, page, limit), summary, viewCounts };
+    return {
+      ...paginatedResponse<
+        (typeof shaped)[number] | ManagedCustomerProjection<(typeof shaped)[number]>
+      >(
+        plan ? await Promise.all(shaped.map((row) => plan.identity(row))) : shaped,
+        total,
+        page,
+        limit,
+      ),
+      summary,
+      viewCounts,
+      ...(plan
+        ? {
+            viewCoverage:
+              plan.company('contracts.read', 'FINANCE') && plan.company('sales.read', 'SHOP')
+                ? 'scoped'
+                : plan.has('contracts.read', 'FINANCE') ||
+                    plan.has('contracts.read', 'SHOP') ||
+                    plan.has('sales.read', 'SHOP')
+                  ? 'partial'
+                  : 'unavailable',
+          }
+        : {}),
+    };
   }
 
   exportRows(filters: CustomersReadFilters) {
-    return readExportSnapshot(this.prisma, (tx, asOf) =>
-      this.findAll({ ...filters, page: 1, limit: EXPORT_ROW_LIMIT + 1 }, tx, asOf));
+    return (currentPartyQuery() ? readJoinedExportSnapshot : readExportSnapshot)(
+      this.prisma,
+      (tx, asOf) => this.findAll({ ...filters, page: 1, limit: EXPORT_ROW_LIMIT + 1 }, tx, asOf),
+    );
   }
 
+  private scopedSelect(select: Prisma.CustomerSelect): Prisma.CustomerSelect {
+    const plan = currentPartyQuery()!;
+    return {
+      ...select,
+      // Stored AUTO labels have no per-contributor provenance. The read-only
+      // canonical tag evaluator supplies the permitted labels after selection.
+      ...(select.tags ? { tags: false } : {}),
+      ...(select._count ? { _count: { select: { contracts: { where: plan.contract } } } } : {}),
+      ...(select.contracts
+        ? { contracts: { ...(select.contracts as object), where: plan.contract } }
+        : {}),
+      ...(select.creditChecks
+        ? { creditChecks: { ...(select.creditChecks as object), where: plan.credit } }
+        : {}),
+    };
+  }
   async findOne(id: string) {
+    const plan = currentPartyQuery();
     const customer = await this.prisma.customer.findUnique({
-      where: { id },
+      where: { id, ...(plan ? { AND: plan.customer } : {}) },
       include: {
         contracts: {
+          ...(plan ? { where: plan.contract } : {}),
           select: {
             id: true,
             contractNumber: true,
@@ -776,7 +1106,7 @@ export class CustomerQueryService {
         // ทั้งที่แถว Sale มีอยู่ (คำสั่งเจ้าของ 2026-08-27 "เก็บประวัติไว้")
         // กรอง contractId: null กันใบขายของสัญญาผ่อนโผล่ซ้ำกับแท็บสัญญา
         sales: {
-          where: { contractId: null, deletedAt: null },
+          where: { contractId: null, deletedAt: null, ...(plan ? { AND: plan.sale } : {}) },
           select: {
             id: true,
             saleNumber: true,
@@ -789,7 +1119,12 @@ export class CustomerQueryService {
           },
           orderBy: { createdAt: 'desc' },
         },
-        _count: { select: { contracts: true, referrals: true } },
+        _count: {
+          select: {
+            contracts: plan ? { where: plan.contract } : true,
+            referrals: plan ? { where: plan.customer } : true,
+          },
+        },
         referredBy: { select: { id: true, name: true, phone: true } },
       },
     });
@@ -797,16 +1132,47 @@ export class CustomerQueryService {
     // Phase 5: decrypt PII before returning. Phase 3 SP4 also enforces
     // strict-mode rejection — if PDPA_STRICT_MODE=true and the row hasn't
     // been backfilled, BadRequestException is thrown with a clear message.
-    const strict = this.piiService ? await this.piiService.isStrictMode() : false;
-    const decrypted = this.decryptCustomerPII(customer as unknown as Record<string, unknown>, { strict }) as typeof customer;
-    return {
+    const strict = this.piiService ? await this.piiService.isStrictMode(this.prisma) : false;
+    const decrypted = this.decryptCustomerPII(customer as unknown as Record<string, unknown>, {
+      strict,
+    }) as typeof customer;
+    if (plan) {
+      if (
+        decrypted.referredBy &&
+        !(await this.prisma.customer.count({
+          where: { id: decrypted.referredBy.id, AND: plan.customer },
+        }))
+      ) {
+        decrypted.referredBy = null;
+        decrypted.referredById = null;
+      }
+    }
+    const result = {
       ...decrypted,
+      ...(plan
+        ? {
+            warrantyContracts: await plan.warrantyContracts(id),
+            contracts: await Promise.all(
+              decrypted.contracts.map(async (row) => ({
+                ...row,
+                product: await plan.productView(row.product),
+              })),
+            ),
+            sales: await Promise.all(
+              decrypted.sales.map(async (row) => ({
+                ...row,
+                product: await plan.productView(row.product),
+              })),
+            ),
+          }
+        : {}),
       chatPlaceholder: isChatPlaceholder({
         acquisitionSource: decrypted.acquisitionSource ?? null,
         phone: decrypted.phone ?? null,
         nationalId: decrypted.nationalId ?? null,
       }),
     };
+    return plan ? plan.identity(result) : result;
   }
 
   /**
@@ -814,21 +1180,47 @@ export class CustomerQueryService {
    * findOne เดิมไม่แตะ: ถูกใช้เป็นด่านเช็คว่ามีลูกค้าอยู่ใน getReferrals/getChatSummary ถ้าเติม query ลงไปทุกจุดจะช้าลง
    */
   async findDetail(id: string) {
+    const plan = currentPartyQuery();
     const base = await this.findOne(id);
     const OPEN_STATUSES = ['ACTIVE', 'OVERDUE', 'DEFAULT'] as const;
 
     const [purchaseMap, chatMap, tags, openContracts] = await Promise.all([
       this.purchaseSummary.forCustomers([id]),
       this.chatRooms.forCustomers([id]),
-      this.prisma.customerTag.findMany({ where: { customerId: id, deletedAt: null }, select: { tag: true } }),
+      plan
+        ? plan.tags(id).then((value) => value.tags)
+        : this.prisma.customerTag.findMany({
+            where: { customerId: id, deletedAt: null },
+            select: { tag: true },
+          }),
       this.prisma.contract.findMany({
-        where: { customerId: id, deletedAt: null, status: { in: [...OPEN_STATUSES] } },
+        where: {
+          customerId: id,
+          deletedAt: null,
+          status: { in: [...OPEN_STATUSES] },
+          ...(plan ? { AND: plan.contract } : {}),
+        },
         orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
         select: {
-          id: true, contractNumber: true, status: true, monthlyPayment: true, totalMonths: true, createdAt: true,
-          mdmLockedAt: true, shopWarrantyEndDate: true,
+          id: true,
+          contractNumber: true,
+          status: true,
+          monthlyPayment: true,
+          totalMonths: true,
+          createdAt: true,
+          mdmLockedAt: true,
+          shopWarrantyEndDate: true,
           branch: { select: { name: true } },
-          product: { select: { brand: true, model: true, storage: true, imeiSerial: true, warrantyExpireDate: true } },
+          product: {
+            select: {
+              id: true,
+              brand: true,
+              model: true,
+              storage: true,
+              imeiSerial: true,
+              warrantyExpireDate: true,
+            },
+          },
         },
       }),
     ]);
@@ -837,30 +1229,59 @@ export class CustomerQueryService {
     const [payments, lastCalls] = openIds.length
       ? await Promise.all([
           this.prisma.payment.findMany({
-            where: { contractId: { in: openIds }, deletedAt: null },
-            select: { contractId: true, installmentNo: true, status: true, dueDate: true, amountDue: true, amountPaid: true },
+            where: {
+              contractId: { in: openIds },
+              deletedAt: null,
+              ...(plan ? { AND: plan.payment } : {}),
+            },
+            select: {
+              contractId: true,
+              installmentNo: true,
+              status: true,
+              dueDate: true,
+              amountDue: true,
+              amountPaid: true,
+            },
           }),
           // โทรล่าสุดของแต่ละสัญญา: findFirst ทีละใบ (ใช้ @@index([contractId]) + LIMIT 1) — `distinct` ของ Prisma
           // ที่ไม่เปิด nativeDistinct จะดึงทุกแถวของทุกสัญญามากรองในหน่วยความจำ
           Promise.all(
             openIds.map((contractId) =>
               this.prisma.callLog.findFirst({
-                where: { contractId, deletedAt: null },
+                where: { contractId, deletedAt: null, ...(plan ? { AND: plan.collection } : {}) },
                 orderBy: [{ calledAt: 'desc' }, { id: 'desc' }],
-                select: { contractId: true, calledAt: true, result: true, notes: true, caller: { select: { name: true } } },
+                select: {
+                  contractId: true,
+                  calledAt: true,
+                  result: true,
+                  notes: true,
+                  caller: { select: { name: true } },
+                },
               }),
             ),
           ),
         ])
       : [[], []];
 
+    const visibleContracts = plan
+      ? await Promise.all(
+          openContracts.map(async (row) => ({
+            ...row,
+            product: await plan.productView(row.product),
+          })),
+        )
+      : openContracts;
     const purchase = purchaseMap.get(id);
     const chat = chatMap.get(id);
     const chatRooms = chat?.chatRooms ?? [];
-    return {
+    const result = {
       ...base,
       tags,
-      source: deriveSource(base.acquisitionSource ?? null, chatRooms[0]?.channel ?? null, base.referredById ?? null),
+      source: deriveSource(
+        base.acquisitionSource ?? null,
+        chatRooms[0]?.channel ?? null,
+        base.referredById ?? null,
+      ),
       purchase: purchase?.purchase ?? null,
       latestPurchase: purchase?.latestPurchase ?? null,
       warranty: purchase?.warranty ?? null,
@@ -869,53 +1290,137 @@ export class CustomerQueryService {
       lastContactAt: chat?.lastContactAt ?? null,
       assignedTo: chat?.assignedTo ?? null,
       openContracts: buildContractProgress({
-        contracts: openContracts,
+        contracts: visibleContracts,
         payments,
         lastCalls: lastCalls.filter((call): call is NonNullable<typeof call> => call !== null),
         now: new Date(),
       }),
     };
+    if (plan) {
+      const progress = await Promise.all(
+        result.openContracts.map(async (row) => {
+          const [paymentsAllowed, mdmAllowed, collectionsAllowed] = await Promise.all([
+            this.prisma.contract.count({
+              where: { id: row.id, AND: plan.finance('payments.read') },
+            }),
+            this.prisma.contract.count({ where: { id: row.id, AND: plan.mdm } }),
+            this.prisma.contract.count({
+              where: { id: row.id, AND: plan.finance('collections.read') },
+            }),
+          ]);
+          const projected: Record<string, unknown> = {
+            ...row,
+            availability: {
+              payments: !!paymentsAllowed,
+              mdm: !!mdmAllowed,
+              collections: !!collectionsAllowed,
+              product: !!visibleContracts.find((contract) => contract.id === row.id)?.product,
+            },
+          };
+          if (!paymentsAllowed)
+            for (const key of [
+              'totalInstallments',
+              'paidInstallments',
+              'remainingInstallments',
+              'overdueInstallments',
+              'overdueAmount',
+              'outstanding',
+              'nextDueDate',
+              'nextAmountDue',
+              'firstOverdueInstallmentNo',
+              'firstOverdueDueDate',
+            ])
+              projected[key] = null;
+          if (!visibleContracts.find((contract) => contract.id === row.id)?.product)
+            projected.productLabel = null;
+          if (!mdmAllowed) projected.mdmLocked = null;
+          return projected;
+        }),
+      );
+      return plan.identity({ ...result, openContracts: progress });
+    }
+    return result;
+  }
+
+  /** Narrow batched identity fields for derived reports. No child-history query
+   * or per-customer basic-detail pipeline; source and decrypt policy are shared. */
+  async managedContactViews(ids: string[]) {
+    const plan = currentPartyQuery();
+    if (!plan) throw new Error('Managed identity projection requires the owned party plan');
+    const rows = await this.prisma.customer.findMany({
+      where: { id: { in: ids }, AND: plan.customer },
+      select: { id: true, name: true, phone: true, phoneEncrypted: true },
+    });
+    const strict = this.piiService ? await this.piiService.isStrictMode(this.prisma) : false;
+    const projected = this.decryptCustomerList(rows, { strict });
+    if (projected.length) {
+      await plan.db.auditLog.createMany({
+        data: projected.map((row) => ({
+          userId: plan.actorId,
+          action: 'PII_DECRYPT_FULL',
+          entity: 'customer',
+          entityId: row.id,
+          newValue: { fields: ['phone'] },
+        })),
+      });
+    }
+    return new Map(
+      projected.map((row) => [row.id, { id: row.id, name: row.name, phone: row.phone }]),
+    );
   }
 
   async getReferrals(id: string) {
-    await this.findOne(id);
+    const plan = currentPartyQuery();
+    if (plan) await plan.assertCustomer(id);
+    else await this.findOne(id);
     const referrals = await this.prisma.customer.findMany({
-      where: { referredById: id, deletedAt: null },
+      where: { referredById: id, deletedAt: null, ...(plan ? { AND: plan.customer } : {}) },
       select: {
         id: true,
         name: true,
         phone: true,
         createdAt: true,
-        _count: { select: { contracts: true } },
+        _count: { select: { contracts: plan ? { where: plan.contract } : true } },
         contracts: {
-          where: { deletedAt: null },
+          where: { deletedAt: null, ...(plan ? { AND: plan.contract } : {}) },
           select: { status: true },
         },
       },
       orderBy: { createdAt: 'desc' },
     });
 
+    const contacts = plan
+      ? await this.managedContactViews(referrals.map((row) => row.id))
+      : undefined;
     return {
       total: referrals.length,
+      ...(plan
+        ? { availability: { referrals: 'scoped', contracts: plan.coverage('contracts.read') } }
+        : {}),
       referrals: referrals.map((r) => ({
         id: r.id,
         name: r.name,
-        phone: r.phone,
+        phone: contacts ? (contacts.get(r.id)?.phone ?? null) : r.phone,
         createdAt: r.createdAt,
-        contractCount: r._count.contracts,
-        hasActiveContract: r.contracts.some((c) => c.status === 'ACTIVE'),
+        contractCount: plan && !plan.has('contracts.read', 'FINANCE') ? null : r._count.contracts,
+        hasActiveContract:
+          plan && !plan.has('contracts.read', 'FINANCE')
+            ? null
+            : r.contracts.some((c) => c.status === 'ACTIVE'),
       })),
     };
   }
 
   async search(q: string) {
+    const plan = currentPartyQuery();
     const rows = await this.prisma.customer.findMany({
       where: {
         deletedAt: null,
+        ...(plan ? { AND: plan.customer } : {}),
         OR: [
           { name: { contains: q, mode: 'insensitive' } },
           { phone: { contains: q } },
-          { nationalId: { contains: q } },
+          plan ? await plan.nationalIdMatches({ contains: q }) : { nationalId: { contains: q } },
         ],
       },
       select: {
@@ -925,11 +1430,12 @@ export class CustomerQueryService {
         ...PLACEHOLDER_FIELDS_SELECT,
         phoneEncrypted: true,
         nationalIdEncrypted: true,
-        _count: { select: { contracts: true } },
+        _count: { select: { contracts: plan ? { where: plan.contract } : true } },
         contracts: {
           where: {
             deletedAt: null,
             status: { in: ['ACTIVE', 'OVERDUE', 'DEFAULT'] },
+            ...(plan ? { AND: plan.contract } : {}),
           },
           select: { id: true },
         },
@@ -938,8 +1444,10 @@ export class CustomerQueryService {
       orderBy: { name: 'asc' },
     });
     // Phase 5: decrypt PII, then project only the fields callers expect
-    const strict = this.piiService ? await this.piiService.isStrictMode() : false;
-    return this.decryptCustomerList(rows as unknown as Record<string, unknown>[], { strict }).map((r) => ({
+    const strict = this.piiService ? await this.piiService.isStrictMode(this.prisma) : false;
+    const results = this.decryptCustomerList(rows as unknown as Record<string, unknown>[], {
+      strict,
+    }).map((r) => ({
       id: r['id'],
       name: r['name'],
       phone: r['phone'],
@@ -953,6 +1461,7 @@ export class CustomerQueryService {
         nationalId: (r['nationalId'] ?? null) as string | null,
       }),
     }));
+    return plan ? Promise.all(results.map((row) => plan.identity(row))) : results;
   }
 
   /**
@@ -962,8 +1471,9 @@ export class CustomerQueryService {
    * `getChatSummary`, which pulls full payment/call/chat history.
    */
   async getSummary(customerId: string) {
+    const plan = currentPartyQuery();
     const customer = await this.prisma.customer.findFirst({
-      where: { id: customerId, deletedAt: null },
+      where: { id: customerId, deletedAt: null, ...(plan ? { AND: plan.customer } : {}) },
       select: { id: true, name: true, phone: true },
     });
     if (!customer) {
@@ -975,6 +1485,7 @@ export class CustomerQueryService {
         customerId,
         deletedAt: null,
         status: { in: ['ACTIVE', 'OVERDUE', 'DEFAULT'] },
+        ...(plan ? { AND: plan.contract } : {}),
       },
     });
 
@@ -983,25 +1494,38 @@ export class CustomerQueryService {
         contract: { customerId, deletedAt: null },
         deletedAt: null,
         status: 'OVERDUE',
+        ...(plan ? { AND: plan.payment } : {}),
       },
     });
 
-    const outstanding = await this.prisma.payment.aggregate({
+    const outstanding = await this.prisma.payment.findMany({
       where: {
+        ...UNPAID_INSTALLMENT_WHERE,
         contract: { customerId, deletedAt: null },
-        deletedAt: null,
-        status: { in: ['PENDING', 'OVERDUE', 'PARTIALLY_PAID'] },
+        ...(plan ? { AND: plan.payment } : {}),
       },
-      _sum: { amountDue: true },
+      select: { amountDue: true, amountPaid: true },
     });
 
+    const contacts = plan ? await this.managedContactViews([customerId]) : undefined;
     return {
       id: customer.id,
       name: customer.name,
-      phone: customer.phone ?? null,
-      activeContracts,
-      overdueCount,
-      totalOutstandingThb: Number(outstanding._sum.amountDue ?? 0),
+      phone: contacts ? (contacts.get(customerId)?.phone ?? null) : (customer.phone ?? null),
+      activeContracts: plan && !plan.has('contracts.read', 'FINANCE') ? null : activeContracts,
+      overdueCount: plan && plan.coverage('payments.read') === 'unavailable' ? null : overdueCount,
+      totalOutstandingThb:
+        plan && plan.coverage('payments.read') === 'unavailable'
+          ? null
+          : outstandingOf(outstanding),
+      ...(plan
+        ? {
+            availability: {
+              contracts: plan.coverage('contracts.read'),
+              payments: plan.coverage('payments.read'),
+            },
+          }
+        : {}),
     };
   }
 
@@ -1015,7 +1539,10 @@ export class CustomerQueryService {
    * be populated. We still gracefully fall back to the legacy plaintext
    * column if encrypted is NULL — supports rolling deploy + rollback safety.
    */
-  private decryptCustomerPII<T extends Record<string, unknown>>(c: T | null, opts: { strict?: boolean } = {}): T | null {
+  private decryptCustomerPII<T extends Record<string, unknown>>(
+    c: T | null,
+    opts: { strict?: boolean } = {},
+  ): T | null {
     // Phase 3 SP4 — delegate to CustomerPiiService when injected (also
     // surfaces strict-mode rejection). Falls back to inline logic so legacy
     // tests that construct CustomersService without the new dependency
@@ -1056,7 +1583,10 @@ export class CustomerQueryService {
   /**
    * Decrypt a list of customer rows.
    */
-  private decryptCustomerList<T extends Record<string, unknown>>(rows: T[], opts: { strict?: boolean } = {}): T[] {
+  private decryptCustomerList<T extends Record<string, unknown>>(
+    rows: T[],
+    opts: { strict?: boolean } = {},
+  ): T[] {
     return rows.map((r) => this.decryptCustomerPII(r, opts) as T);
   }
 }

@@ -1,3 +1,5 @@
+import { AccessPolicyInterceptor } from './modules/employee-access/access-policy.interceptor';
+import { EmployeeAccessModule } from './modules/employee-access/employee-access.module';
 import { Module, MiddlewareConsumer, NestModule } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { ScheduleModule } from '@nestjs/schedule';
@@ -158,6 +160,7 @@ import { AppCacheModule } from './cache/cache.module';
 
 @Module({
   imports: [
+    EmployeeAccessModule,
     ConfigModule.forRoot({
       isGlobal: true,
       envFilePath: [
@@ -436,6 +439,10 @@ import { AppCacheModule } from './cache/cache.module';
     // SP7.1 — entity scope ต้องเป็น interceptor ไม่ใช่ APP_GUARD: Nest ประกอบ guard chain เป็น
     // [...global, ...class, ...method] และ JwtAuthGuard ในบ้านนี้เป็น per-controller → global guard
     // จะเห็น req.user เป็น undefined ตลอด (JwtAudienceGuard ด้านบนติดกับดักนี้อยู่แล้ว)
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: AccessPolicyInterceptor,
+    },
     {
       provide: APP_INTERCEPTOR,
       useClass: EntityScopeInterceptor,

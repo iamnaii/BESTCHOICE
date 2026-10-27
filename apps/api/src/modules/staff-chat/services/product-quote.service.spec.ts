@@ -259,7 +259,7 @@ describe('ProductQuoteService', () => {
         isActive: true,
       },
       include: { rates: { where: { deletedAt: null } } },
-      orderBy: { createdAt: 'asc' },
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
     });
   });
 

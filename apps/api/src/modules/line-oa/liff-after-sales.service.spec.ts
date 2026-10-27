@@ -58,6 +58,25 @@ describe('LiffAfterSalesService', () => {
     service = new LiffAfterSalesService(prisma);
   });
 
+  it.each([null, 'SHOP', 'SUPPLIER_CLAIM'])(
+    'does not expose retained %s estimate through customer LIFF',
+    async (estimatedCostPayer) => {
+      prisma.customer.findFirst.mockResolvedValue({ id: 'customer-1' });
+      prisma.afterSalesCase.findMany.mockResolvedValue([
+        buildCase({
+          repairTicket: buildTicket({
+            payer: 'CUSTOMER',
+            estimatedCostPayer,
+            estimatedCost: { toString: () => '9347.25' },
+          }),
+        }),
+      ]);
+      const result = await service.getMyCases('U_line1');
+      expect(JSON.stringify(result)).not.toContain('9,347.25');
+      expect(result.cases[0].costLine).toBe('แจ้งราคาก่อนซ่อม');
+    },
+  );
+
   // ─── (a) ───────────────────────────────────────────────
 
   it('(a) returns {linked:false, cases:[]} when no customer matches lineIdShop', async () => {
@@ -92,6 +111,7 @@ describe('LiffAfterSalesService', () => {
       repairTicket: buildTicket({
         status: 'IN_PROGRESS',
         payer: 'CUSTOMER',
+        estimatedCostPayer: 'CUSTOMER',
         estimatedCost: { toString: () => '500.00' },
         sentToRepairAt: new Date('2026-09-21T00:00:00.000Z'),
       }),
@@ -112,6 +132,7 @@ describe('LiffAfterSalesService', () => {
 
     const call = prisma.afterSalesCase.findMany.mock.calls[0][0];
     expect(call.where.customerId).toBe('cust-1');
+    expect(call.select.repairTicket.select.estimatedCostPayer).toBe(true);
     expect(call.where.deletedAt).toBeNull();
     expect(call.where.OR[0]).toEqual({ stage: { notIn: ['CLOSED', 'CANCELLED'] } });
     expect(call.where.OR[1].closedAt.gte).toBeInstanceOf(Date);

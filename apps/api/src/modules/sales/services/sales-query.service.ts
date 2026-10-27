@@ -1,3 +1,12 @@
+import { FINANCE_CONTRACT_READ_LIMIT, lockFinanceContractReadSources } from '../../employee-access/access-party-source.service';
+import { currentFinanceReadWhere } from '../../employee-access/access-contract-read-scope';
+import { setSaleAggregateWhere } from '../../employee-access/access-sales-aggregate-context';
+import { AccessSnapshotService } from '../../employee-access/access-snapshot.service';
+import { canAccess } from '@installment/shared';
+import { currentCustomerReadWhere } from '../../employee-access/access-sales-scope';
+import { currentProductReadWhere } from '../../employee-access/access-execution-context';
+import { currentSaleWhere } from '../../employee-access/access-sales-scope';
+import { currentDomainAccess, domainAccessClient } from '../../employee-access/access-execution-context';
 import { completedSaleWhere } from './completed-sale-policy';
 import { assertExportRowCount, EXPORT_ROW_LIMIT, readExportSnapshot } from '../../../common/helpers/export-snapshot';
 import { bookingReceipt, bookingReceiptSelect } from './booking-receipt';
@@ -27,7 +36,9 @@ export const SALE_TENDERS_SELECT = {
 } as const;
 
 export class SalesQueryService {
-  constructor(private prisma: PrismaService) {}
+  private get prisma(): PrismaService { return domainAccessClient(this.basePrisma); }
+
+  constructor(private readonly basePrisma: PrismaService) {}
 
   async findAll(filters: SalesReadFilters, actor: SalesReadActor, db: Prisma.TransactionClient = this.prisma) {
     const { saleType, branchId, search, startDate, endDate, paymentMethod, salespersonId, contractStatus, includeVoided, page = 1, limit = 50 } = filters;
@@ -42,7 +53,10 @@ export class SalesQueryService {
     if (saleType) where.saleType = saleType;
     if (paymentMethod) where.paymentMethod = paymentMethod;
     if (salespersonId) where.salespersonId = salespersonId;
-    if (contractStatus) where.contract = { status: contractStatus };
+    if (contractStatus) where.contract = { AND: [
+      { status: contractStatus },
+      ...(currentDomainAccess() ? [await currentFinanceReadWhere(), await currentFinanceReadWhere('payments.read')] : []),
+    ] };
     else where.AND = [completedSaleWhere];
 
     if (startDate !== undefined || endDate !== undefined) {
@@ -52,11 +66,26 @@ export class SalesQueryService {
     if (search) {
       where.OR = [
         { saleNumber: { contains: search, mode: 'insensitive' } },
-        { customer: { name: { contains: search, mode: 'insensitive' } } },
-        { product: { name: { contains: search, mode: 'insensitive' } } },
+        { customer: { AND: [currentCustomerReadWhere() ?? {}, { name: { contains: search, mode: 'insensitive' } }] } },
+        { product: { AND: [currentProductReadWhere() ?? {}, { name: { contains: search, mode: 'insensitive' } }] } },
         { financeCompany: { contains: search, mode: 'insensitive' } },
         { financeRefNumber: { contains: search, mode: 'insensitive' } },
       ];
+    }
+
+    if (currentSaleWhere()) where.AND = [...(Array.isArray(where.AND) ? where.AND : []), currentSaleWhere()];
+
+    if (contractStatus && currentDomainAccess()) {
+      // Status contributors beyond the visible page also need current source proof
+      // after lock waits, before any count/aggregate/page result is returned.
+      // Probe distinct Contracts in SQL, never joined Sale rows or only the page.
+      const contributors = await db.contract.findMany({
+        where: { sale: { is: where as Prisma.SaleWhereInput } },
+        select: { id: true },
+        orderBy: { id: 'asc' },
+        take: FINANCE_CONTRACT_READ_LIMIT + 1,
+      });
+      await lockFinanceContractReadSources(db, contributors.map(row => row.id));
     }
 
     if (limit > 200) assertExportRowCount(await db.sale.count({ where }));
@@ -74,7 +103,7 @@ export class SalesQueryService {
           salesperson: { select: { id: true, name: true } },
           contract: { select: CONTRACT_SALE_SELECT },
           booking: { select: bookingReceiptSelect },
-          costSnapshot: actor.role === 'OWNER' ? { select: { mainProductCost: true } } : false,
+          costSnapshot: (currentDomainAccess() || actor.role === 'OWNER') ? { select: { mainProductCost: true } } : false,
           // ชื่อผู้ยกเลิก — หน้ารายการแสดงบนแถวที่ถูกยกเลิกเมื่อเปิด includeVoided
           // (deletedAt / voidReason เป็น scalar มากับ include อยู่แล้ว)
           voidedBy: { select: { id: true, name: true } },
@@ -101,7 +130,7 @@ export class SalesQueryService {
     let totalProfit = 0;
 
     let missingCostCount = 0;
-    if (actor.role === 'OWNER') {
+    if ((currentDomainAccess() || actor.role === 'OWNER')) {
       const [known, cost, missing] = await Promise.all([
         db.sale.aggregate({ where: { AND: [where, { costSnapshot: { isNot: null } }] }, _sum: { netAmount: true } }),
         db.saleCostSnapshot.aggregate({ where: { sale: where }, _sum: { mainProductCost: true } }),
@@ -124,16 +153,36 @@ export class SalesQueryService {
       financeAmount: new Prisma.Decimal(getGroup('EXTERNAL_FINANCE')?._sum.netAmount ?? 0).toNumber(),
     };
 
+    if (currentDomainAccess()) setSaleAggregateWhere(summary, where);
+
     const responseData = data.map(sale => projectSaleForActor({ ...sale, receiptBreakdown: bookingReceipt(sale) }, actor));
 
     return { data: responseData, total, page, limit, totalPages: Math.ceil(total / limit), summary };
   }
 
   exportRows(filters: SalesReadFilters, actor: SalesReadActor) {
+    if (currentDomainAccess()) return (async () => {
+      const result = await this.findAll({ ...filters, page: 1, limit: EXPORT_ROW_LIMIT + 1 }, actor);
+      assertExportRowCount(result.total);
+      const [clock] = await this.prisma.$queryRaw<Array<{ asOf: Date }>>`SELECT transaction_timestamp() AS "asOf"`;
+      return { data: result.data, total: result.total, asOf: clock.asOf.toISOString() };
+    })();
     return readExportSnapshot(this.prisma, (tx) => this.findAll({ ...filters, page: 1, limit: EXPORT_ROW_LIMIT + 1 }, actor, tx));
   }
 
   async getSalespersons(actor: SalesReadActor) {
+    const ctx = currentDomainAccess();
+    if (ctx) {
+      const candidates = await ctx.client.user.findMany({ where: { isActive: true, deletedAt: null, isSystemUser: false }, select: { id: true, name: true }, orderBy: { name: 'asc' } });
+      const branches = await ctx.client.branch.findMany({ where: { isActive: true, deletedAt: null, company: { companyCode: 'SHOP', isActive: true, deletedAt: null } }, select: { id: true } });
+      const snapshots = new AccessSnapshotService(this.basePrisma);
+      const allowed: Array<{ id: string; name: string }> = [];
+      for (const candidate of candidates) {
+        const access = await snapshots.forUserInTransaction(ctx.client, candidate.id);
+        if (access.managed && branches.some(b => canAccess(ctx.snapshot, 'sales.read', { company: 'SHOP', branchId: b.id, assignedUserIds: [candidate.id] }) && canAccess(access, 'sales.create', { company: 'SHOP', branchId: b.id, assignedUserIds: [candidate.id] }))) allowed.push(candidate);
+      }
+      return allowed;
+    }
     const where = { isActive: true, deletedAt: null, ...salesBranchWhere(actor) };
     return this.prisma.user.findMany({
       where,
@@ -154,7 +203,7 @@ export class SalesQueryService {
    */
   async findOne(id: string, actor: SalesReadActor) {
     const sale = await this.prisma.sale.findFirst({
-      where: { AND: [{ id }, salesBranchWhere(actor)] },
+      where: { AND: [{ id }, salesBranchWhere(actor), currentSaleWhere() ?? {}] },
       include: {
         customer: { select: { id: true, name: true, phone: true, nationalId: true } },
         product: { select: { id: true, name: true, brand: true, model: true, imeiSerial: true, serialNumber: true, costPrice: true } },
@@ -167,7 +216,7 @@ export class SalesQueryService {
         // link through its own authorized endpoint for anything beyond this summary.
         contract: { select: CONTRACT_SALE_SELECT },
           booking: { select: bookingReceiptSelect },
-          costSnapshot: actor.role === 'OWNER' ? { select: { mainProductCost: true } } : false,
+          costSnapshot: (currentDomainAccess() || actor.role === 'OWNER') ? { select: { mainProductCost: true } } : false,
       },
     });
     if (!sale) throw new NotFoundException('ไม่พบใบขาย');
@@ -188,7 +237,7 @@ export class SalesQueryService {
   async getTopSellingProducts(actor: SalesReadActor, limit = 6) {
     const results = await this.prisma.sale.groupBy({
       by: ['productId'],
-      where: { deletedAt: null, ...salesBranchWhere(actor), AND: [completedSaleWhere] },
+      where: { deletedAt: null, ...salesBranchWhere(actor), AND: [completedSaleWhere, currentSaleWhere() ?? {}, ...(currentDomainAccess() ? [{ product: currentProductReadWhere() }] : [])] },
       _count: { productId: true },
       orderBy: { _count: { productId: 'desc' } },
       take: limit,
@@ -197,7 +246,7 @@ export class SalesQueryService {
     if (results.length === 0) return [];
 
     const products = await this.prisma.product.findMany({
-      where: { id: { in: results.map(r => r.productId) }, deletedAt: null },
+      where: { id: { in: results.map(r => r.productId) }, deletedAt: null, AND: currentProductReadWhere() ?? {} },
       select: { id: true, name: true, brand: true, model: true },
     });
 
@@ -248,7 +297,7 @@ export class SalesQueryService {
   async getDailySummary(date: string, actor: SalesReadActor, branchId?: string) {
     const where: Record<string, unknown> = {
       createdAt: bangkokDateRange(date, date),
-      AND: [completedSaleWhere],
+      AND: [completedSaleWhere, currentSaleWhere() ?? {}],
       deletedAt: null,
       ...salesBranchWhere(actor, branchId),
     };

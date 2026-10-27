@@ -234,7 +234,7 @@ describe('activate() — guard สินค้าที่ถูกลบ (Phase
   it('เปิดสัญญาไม่ได้ถ้าสินค้าถูกลบไปแล้ว (deletedAt ≠ null) แม้สถานะยัง RESERVED', async () => {
     const { contractId } = await seedSignedDraftContract(1, { productDeleted: true });
 
-    await expect(service.activate(contractId)).rejects.toThrow(PRODUCT_GUARD_MSG);
+    await expect(service.activate(contractId, adminId)).rejects.toThrow(PRODUCT_GUARD_MSG);
 
     // สัญญาต้องยังเป็น DRAFT — ไม่มีอะไรถูก commit
     const after = await prisma.contract.findUniqueOrThrow({ where: { id: contractId } });
@@ -251,7 +251,7 @@ describe('activate() — guard สินค้าที่ถูกลบ (Phase
       exchangedFromContractId: old.contractId,
     });
 
-    await expect(service.activate(swap.contractId)).rejects.toThrow(PRODUCT_GUARD_MSG);
+    await expect(service.activate(swap.contractId, adminId)).rejects.toThrow(PRODUCT_GUARD_MSG);
 
     // finalizeAfterActivation ไม่เคยถูกเรียก (contractExchangeService = null
     // ⇒ ถ้าหลุด guard จะพังเป็น TypeError คนละข้อความ) และสัญญาเดิมไม่ถูกแตะ
@@ -282,7 +282,7 @@ describe('activate() — guard สินค้าที่ถูกลบ (Phase
       }) as never);
 
     try {
-      await expect(service.activate(contractId)).rejects.toThrow(PRODUCT_GUARD_MSG);
+      await expect(service.activate(contractId, adminId)).rejects.toThrow(PRODUCT_GUARD_MSG);
       expect(hits).toBe(2);
     } finally {
       spy.mockRestore();
@@ -349,8 +349,8 @@ describe('activate() — guard สินค้าที่ถูกลบ (Phase
     const { contractId } = await seedSignedDraftContract(5, { productDeleted: false });
 
     // deps ตัวถัดไปเป็น null ⇒ ต้องพังแน่ แต่ต้อง **ไม่ใช่** ข้อความของด่านสินค้า
-    await expect(service.activate(contractId)).rejects.toThrow();
-    await expect(service.activate(contractId)).rejects.not.toThrow(PRODUCT_GUARD_MSG);
+    await expect(service.activate(contractId, adminId)).rejects.toThrow();
+    await expect(service.activate(contractId, adminId)).rejects.not.toThrow(PRODUCT_GUARD_MSG);
 
     // transaction ต้อง rollback ครบ — สัญญายัง DRAFT
     const after = await prisma.contract.findUniqueOrThrow({ where: { id: contractId } });
@@ -371,7 +371,7 @@ describe('activate() — guard สินค้าที่ถูกลบ (Phase
     });
     createdBookingIds.push(booking.id);
 
-    const err = await service.activate(contractId).catch((e: unknown) => e);
+    const err = await service.activate(contractId, adminId).catch((e: unknown) => e);
     expect(err).toMatchObject({ status: 409 });
     expect((err as Error).message).toContain(bookingNumber);
 

@@ -72,6 +72,7 @@ describe('AfterSalesCaseService.createCase — real assertEvidenceImage validato
   beforeEach(() => {
     jest.clearAllMocks();
     prisma = {
+      user: {findUnique:jest.fn().mockResolvedValue({accessManaged:false})},
       $transaction: jest.fn(),
       branch: { findFirst: jest.fn().mockResolvedValue({ id: 'b-1' }) },
     };

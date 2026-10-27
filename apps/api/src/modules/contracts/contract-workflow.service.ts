@@ -1,3 +1,9 @@
+import { assertValidContractConsent } from '../pdpa/contract-consent-evidence';
+import { validatePeriodOpen } from '../../utils/period-lock.util';
+import { hasCrossBranchAccess } from '../auth/branch-access.util';
+import { currentDomainAccess, domainAccessClient, onDomainCommit } from '../employee-access/access-execution-context';
+import { assertNamedContractAction, assertNamedSources, namedExecution } from '../promotions/contract-promotion-source';
+import { assertContractPromotionTerms, assertNamedSignatures, consumeContractPromotion } from '../promotions/contract-promotion-terms';
 import { contractSignatureRequirements } from '../../utils/validation.util';
 import { cashDownPayment } from '../trade-in/services/trade-in-credit.service';
 import { Injectable, Logger, Optional, NotFoundException, BadRequestException, ConflictException, ForbiddenException, InternalServerErrorException, forwardRef } from '@nestjs/common';
@@ -41,6 +47,9 @@ import { assertContractCreditApproval } from '../credit-check/services/credit-ap
 import { lockCreditCustomer } from '../credit-check/services/room-credit-history';
 import { JourneyEntryWriter } from '../customer-journey/journey-entry-writer.service';
 import { journeyDedupeKey } from '../customer-journey/journey-data-schemas';
+import { exchangeActor } from '../employee-access/access-exchange-source.service';
+import { AccessContractPreparationActions } from '../employee-access/access-contract-preparation-actions';
+import { currentPreparationSource } from '../employee-access/access-contract-preparation-source';
 import { assertBlacklistGate } from './services/contract-blacklist-gate';
 import { assertCustomerContractPolicy } from './services/contract-create-policy';
 import { CustomerBlacklistService } from '../customers/customer-blacklist.service';
@@ -51,7 +60,7 @@ import type { CustomerBlacklistResult } from '@installment/shared';
 export class ContractWorkflowService {
   private readonly logger = new Logger(ContractWorkflowService.name);
   constructor(
-    private prisma: PrismaService,
+    private basePrisma: PrismaService,
     private notificationsService: NotificationsService,
     private journalAutoService: JournalAutoService,
     private contractActivation1ATemplate: ContractActivation1ATemplate,
@@ -66,6 +75,8 @@ export class ContractWorkflowService {
     // การเดินทางของลูกค้า (CONTRACT_REVIEWED) — @Optional: เทสเดิมประกอบ service ด้วย 9-10 อาร์กิวเมนต์
     // ContractsModule import CustomerJourneyModule อยู่แล้ว (ContractsController ฉีดแบบบังคับ ถ้าลืม import แอปจะบูตไม่ขึ้น)
     @Optional() private journeyEntries?: JourneyEntryWriter,
+    // Optional only for existing unmigrated/manual constructors; managed submit requires it.
+    @Optional() private preparation?: AccessContractPreparationActions,
     // 15ข — ใช้เครดิตที่ย้ายมาจากการเปลี่ยนเครื่องชำระงวดทันทีหลังเปิดใช้: PaymentsService อยู่ใน PaymentsModule ซึ่ง import
     // ContractsModule (forwardRef) อยู่แล้ว — ให้ ContractsModule import กลับทำให้ LineOa → Contracts → Payments → LineOa/Mdm
     // ปิดวงที่ระดับไฟล์ (บูตไม่ขึ้น: "module at index … is undefined") ⇒ ดึงผ่าน ModuleRef ตอนใช้ (strict:false) แทนการ import
@@ -74,6 +85,64 @@ export class ContractWorkflowService {
     // ก้อน 5 C3 — audit การปลด SOFT ตอนเปิดใช้ (AuditModule เป็น @Global · @Optional เพื่อ spec/e2e ที่ `new` service)
     @Optional() private audit?: AuditService,
   ) {}
+
+  private get prisma() { return domainAccessClient(this.basePrisma); }
+
+  private async transitionContract(id: string, action: 'prepare' | 'contracts.approve' | 'contracts.activate', userId?: string) {
+    if (action !== 'contracts.activate') {
+      const execution = await exchangeActor(this.basePrisma, userId);
+      if (execution) namedExecution(userId);
+      if (execution && action === 'prepare') {
+        if (!this.preparation)
+          throw new InternalServerErrorException('ไม่พบตัวตรวจแหล่งข้อมูลคำขอสัญญา');
+        const source = await currentPreparationSource(id, ['contracts.update']);
+        await this.preparation.assertCurrentSources(source);
+      }
+    }
+    if (action === 'contracts.activate' && currentDomainAccess()) {
+      namedExecution(userId);
+      await assertNamedContractAction(id, 'contracts.activate');
+      if (!this.preparation)
+        throw new InternalServerErrorException('ไม่พบตัวตรวจแหล่งข้อมูลคำขอสัญญา');
+      const source = await this.prisma.contract.findUniqueOrThrow({ where: { id } });
+      const sale = await this.prisma.sale.findFirst({ where: { contractId: id, deletedAt: null }, select: { bundleProductIds: true } });
+      await this.preparation.assertRelatedSources(source, sale?.bundleProductIds ?? []);
+      await this.prisma.$queryRaw`SELECT id FROM payments WHERE contract_id=${id} ORDER BY id FOR SHARE`;
+      await this.prisma.$queryRaw`SELECT p.id FROM pdpa_consents p JOIN contracts c ON c.pdpa_consent_id=p.id WHERE c.id=${id} FOR SHARE OF p`;
+    }
+    if (currentDomainAccess()) await this.prisma.$queryRaw`SELECT id FROM contracts WHERE id = ${id} FOR UPDATE`;
+    if (currentDomainAccess()) {
+      await this.prisma.$queryRaw`SELECT id FROM signatures WHERE contract_id = ${id} ORDER BY id FOR SHARE`;
+      await this.prisma.$queryRaw`SELECT id FROM contract_documents WHERE contract_id = ${id} ORDER BY id FOR SHARE`;
+      if (action !== 'contracts.activate') {
+        // These are internal validation/hash dependencies, not extra detail read grants.
+        await this.prisma.$queryRaw`SELECT cu.id FROM customers cu JOIN contracts c ON c.customer_id=cu.id WHERE c.id=${id} FOR SHARE OF cu`;
+        if (action === 'prepare') {
+          await this.prisma.$queryRaw`SELECT id FROM credit_checks WHERE contract_id=${id} ORDER BY id FOR SHARE`;
+          await this.prisma.$queryRaw`SELECT p.id FROM pdpa_consents p JOIN contracts c ON c.pdpa_consent_id=p.id WHERE c.id=${id} FOR SHARE OF p`;
+        }
+      }
+    }
+    const contract = await this.findOne(id);
+    if (currentDomainAccess() && (action === 'prepare' || action === 'contracts.activate'))
+      await assertValidContractConsent(this.prisma, contract);
+    if (currentDomainAccess() && !contract.promotionFingerprint) {
+      if (action === 'contracts.approve') await assertNamedContractAction(id, action);
+    }
+    if (contract.promotionFingerprint) {
+      namedExecution(userId);
+      if (action !== 'prepare') {
+        await assertNamedContractAction(id, action);
+        await assertNamedSources(contract);
+      }
+      await assertContractPromotionTerms(contract);
+      assertNamedSignatures(contract);
+      if (action === 'contracts.activate' && (contract.exchangedFromContractId || await this.prisma.sale.count({ where: { contractId: id } }))) {
+        throw new BadRequestException('โปรโมชันต้องเปิดสัญญาขายใหม่เท่านั้น');
+      }
+    }
+    return contract;
+  }
 
   /**
    * T5-C20: compute the integrity hash for a contract.
@@ -95,6 +164,7 @@ export class ContractWorkflowService {
    * "this signature happened" fingerprint.
    */
   private computeContractHash(contract: {
+    promotionFingerprint?: string | null;
     tradeInCreditSnapshot?: Prisma.JsonValue;
     contractNumber: string;
     customerId: string;
@@ -148,6 +218,7 @@ export class ContractWorkflowService {
       typeof v === 'string' ? v : v.toString();
 
     const payload = JSON.stringify({
+      ...(contract.promotionFingerprint ? { promotionFingerprint: contract.promotionFingerprint } : {}),
       contractNumber: contract.contractNumber,
       customerId: contract.customerId,
       productId: contract.productId,
@@ -176,7 +247,10 @@ export class ContractWorkflowService {
     },
     transition: string,
   ): void {
-    if (!contract.contractHash) return; // legacy contracts without hash — skip
+    if (!contract.contractHash) {
+      if (contract.promotionFingerprint) throw new BadRequestException('สัญญาโปรโมชันต้องมีหลักฐานตรวจสอบ');
+      return; // legacy contracts without hash — skip
+    }
     const current = this.computeContractHash(contract);
     if (current !== contract.contractHash) {
       this.logger.warn(
@@ -190,13 +264,13 @@ export class ContractWorkflowService {
 
   // === WORKFLOW: ส่งตรวจสอบ (ตรวจ Validation ทั้งหมดก่อนส่ง) ===
   async submitForReview(id: string, userId: string, userRole = 'SALES') {
-    const contract = await this.findOne(id);
+    const contract = await this.transitionContract(id, 'prepare', userId);
 
     if (contract.workflowStatus !== 'CREATING' && contract.workflowStatus !== 'REJECTED') {
       throw new BadRequestException('สัญญาต้องอยู่ในสถานะ กำลังสร้าง หรือ ปฏิเสธ เท่านั้น');
     }
 
-    // Only the salesperson who created it can submit
+    // Only the current persisted salesperson can submit; owner cannot substitute.
     if (contract.salespersonId !== userId) {
       throw new ForbiddenException('เฉพาะพนักงานที่สร้างสัญญาเท่านั้นที่สามารถส่งตรวจสอบ');
     }
@@ -269,7 +343,7 @@ export class ContractWorkflowService {
     const contractHash = this.computeContractHash(contract);
 
     await this.prisma.contract.update({
-      where: { id },
+      where: { id, ...(currentDomainAccess() ? { status: 'DRAFT', workflowStatus: contract.workflowStatus, salespersonId: userId } : {}) },
       data: {
         workflowStatus: 'PENDING_REVIEW',
         contractHash,
@@ -281,13 +355,14 @@ export class ContractWorkflowService {
         hasAcknowledgement: true,
       },
     });
+    await this.recordDecisionAudit(contract, 'PENDING_REVIEW');
 
     return this.findOne(id, { id: userId, role: userRole });
   }
 
   // === WORKFLOW: อนุมัติสัญญา (ตรวจเอกสารครบก่อนอนุมัติ) ===
   async approveContract(id: string, userId: string, userRole: string, reviewNotes?: string) {
-    const contract = await this.findOne(id);
+    const contract = await this.transitionContract(id, 'contracts.approve', userId);
 
     if (contract.workflowStatus !== 'PENDING_REVIEW') {
       throw new BadRequestException('สัญญาต้องอยู่ในสถานะ รอตรวจสอบ');
@@ -299,9 +374,29 @@ export class ContractWorkflowService {
     this.verifyContractHash(contract, 'APPROVED');
 
     // Prevent self-approval: salesperson cannot approve their own contract
-    // Exception: OWNER can always approve (for small business where owner is also salesperson)
-    if (contract.salespersonId === userId && userRole !== 'OWNER') {
+    // The preexisting protected-owner exception uses current authority for managed work.
+    if (contract.salespersonId === userId && !(currentDomainAccess()?.snapshot.isOwner ?? (userRole === 'OWNER'))) {
       throw new ForbiddenException('ไม่สามารถอนุมัติสัญญาที่ตัวเองสร้างได้');
+    }
+
+    if ((currentDomainAccess() || contract.promotionFingerprint) && contract.salespersonId === userId) {
+      const reason = reviewNotes?.trim();
+      if (!reason || reason.length > 2000)
+        throw new BadRequestException('เจ้าของอนุมัติสัญญาตัวเองต้องระบุเหตุผลไม่เกิน 2000 ตัวอักษร');
+      await this.prisma.auditLog.create({
+        data: {
+          userId,
+          action: contract.promotionFingerprint ? 'CONTRACT_PROMOTION_OWNER_SELF_APPROVED' : 'CONTRACT_OWNER_SELF_APPROVED',
+          entity: 'contract',
+          entityId: id,
+          newValue: {
+            makerId: contract.salespersonId,
+            checkerId: userId,
+            reason,
+            ...(contract.promotionFingerprint ? { fingerprint: contract.promotionFingerprint } : {}),
+          },
+        },
+      });
     }
 
     // Check age for guardian requirement
@@ -337,7 +432,7 @@ export class ContractWorkflowService {
 
     const reviewedAt = new Date();
     await this.prisma.contract.update({
-      where: { id },
+      where: { id, ...(currentDomainAccess() ? { workflowStatus: 'PENDING_REVIEW', salespersonId: contract.salespersonId } : {}) },
       data: {
         workflowStatus: 'APPROVED',
         reviewedById: userId,
@@ -345,6 +440,7 @@ export class ContractWorkflowService {
         reviewNotes,
       },
     });
+    await this.recordDecisionAudit(contract, 'APPROVED');
     await this.recordReviewRound(contract, 'APPROVED', userId, reviewedAt);
 
     return this.findOne(id);
@@ -352,20 +448,21 @@ export class ContractWorkflowService {
 
   // === WORKFLOW: ปฏิเสธสัญญา ===
   async rejectContract(id: string, userId: string, userRole: string, reviewNotes: string) {
-    const contract = await this.findOne(id);
+    const contract = await this.transitionContract(id, 'contracts.approve', userId);
 
     if (contract.workflowStatus !== 'PENDING_REVIEW') {
       throw new BadRequestException('สัญญาต้องอยู่ในสถานะ รอตรวจสอบ');
     }
 
-    // OWNER can always reject (for small business where owner is also salesperson)
-    if (contract.salespersonId === userId && userRole !== 'OWNER') {
+    // Preserve the existing protected-owner self-rejection exception.
+    if (contract.salespersonId === userId && !(currentDomainAccess()?.snapshot.isOwner ?? (userRole === 'OWNER'))) {
       throw new ForbiddenException('ไม่สามารถปฏิเสธสัญญาที่ตัวเองสร้างได้');
     }
+    if (!reviewNotes?.trim()) throw new BadRequestException('ต้องระบุเหตุผลปฏิเสธสัญญา');
 
     const reviewedAt = new Date();
     await this.prisma.contract.update({
-      where: { id },
+      where: { id, ...(currentDomainAccess() ? { workflowStatus: 'PENDING_REVIEW', salespersonId: contract.salespersonId } : {}) },
       data: {
         workflowStatus: 'REJECTED',
         reviewedById: userId,
@@ -373,9 +470,34 @@ export class ContractWorkflowService {
         reviewNotes,
       },
     });
+    await this.recordDecisionAudit(contract, 'REJECTED');
     await this.recordReviewRound(contract, 'REJECTED', userId, reviewedAt);
 
     return this.findOne(id);
+  }
+
+  /** Managed transitions require durable proof in their actual owned transaction.
+   * No raw review notes, customer identity, signature or storage metadata. */
+  private async recordDecisionAudit(
+    contract: { id: string; salespersonId: string },
+    workflowStatus: 'PENDING_REVIEW' | 'APPROVED' | 'REJECTED',
+  ): Promise<void> {
+    const ctx = currentDomainAccess();
+    if (!ctx) return; // Explicit unmigrated compatibility; named execution is already strict.
+    await ctx.client.auditLog.create({
+      data: {
+        userId: ctx.snapshot.userId,
+        action: workflowStatus === 'PENDING_REVIEW' ? 'CONTRACT_SUBMITTED_FOR_REVIEW'
+          : workflowStatus === 'APPROVED' ? 'CONTRACT_REVIEW_APPROVED' : 'CONTRACT_REVIEW_REJECTED',
+        entity: 'contract',
+        entityId: contract.id,
+        newValue: {
+          makerId: contract.salespersonId,
+          checkerId: workflowStatus === 'PENDING_REVIEW' ? null : ctx.snapshot.userId,
+          workflowStatus,
+        },
+      },
+    });
   }
 
   /**
@@ -391,7 +513,7 @@ export class ContractWorkflowService {
     reviewedAt: Date,
   ): Promise<void> {
     if (!this.journeyEntries) return;
-    await this.journeyEntries.recordAfterCommit({
+    const record = async () => { await this.journeyEntries!.recordAfterCommit({
       customerId: contract.customerId,
       kind: 'CONTRACT_REVIEWED',
       occurredAt: reviewedAt,
@@ -401,11 +523,35 @@ export class ContractWorkflowService {
       refId: contract.id,
       data: { decision, contractNumber: contract.contractNumber },
       dedupeKey: journeyDedupeKey('CONTRACT_REVIEWED', contract.id, reviewedAt.toISOString()),
-    });
+    }); };
+    if (currentDomainAccess()) onDomainCommit(record); else await record();
+  }
+
+  /** Verifies the current legacy actor and returns its persisted role (not the caller-supplied one). */
+  private async legacyActivationActor(id: string, actorId: string | undefined, tx: Prisma.TransactionClient = this.prisma, lock = false): Promise<string> {
+    if (!actorId) throw new ForbiddenException('ต้องระบุผู้ดำเนินการเปิดสัญญา');
+    if (lock) await tx.$queryRaw`SELECT id FROM users WHERE id=${actorId} FOR SHARE`;
+    const actor = await tx.user.findUnique({ where: { id: actorId }, select: {
+      id: true, role: true, branchId: true, accessManaged: true, isActive: true, deletedAt: true, isSystemUser: true,
+    } });
+    if (!actor || actor.accessManaged || !actor.isActive || actor.deletedAt || actor.isSystemUser ||
+      !['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER'].includes(actor.role))
+      throw new ForbiddenException('ต้องตรวจสิทธิ์ผู้ดำเนินการปัจจุบันก่อนเปิดสัญญา');
+    const contract = await tx.contract.findUnique({ where: { id }, select: { branchId: true, deletedAt: true } });
+    if (!contract || contract.deletedAt || (!hasCrossBranchAccess(actor) && (!actor.branchId || actor.branchId !== contract.branchId)))
+      throw new ForbiddenException('ไม่มีสิทธิ์เปิดสัญญานี้');
+    return actor.role;
   }
 
   async activate(id: string, actorId?: string, options?: { actorRole?: string; blacklistOverrideReason?: string | null }) {
-    const contract = await this.findOne(id);
+    const execution = await exchangeActor(this.basePrisma, actorId);
+    let legacyActorRole: string | undefined;
+    if (execution) {
+      namedExecution(actorId);
+      if (execution.scope.company !== 'FINANCE' || execution.scope.permission !== 'contracts.activate')
+        throw new ForbiddenException('ต้องเปิดสัญญาในงานการเงินด้วยสิทธิ์เปิดสัญญา');
+    } else legacyActorRole = await this.legacyActivationActor(id, actorId);
+    const contract = await this.transitionContract(id, 'contracts.activate', actorId);
 
     // Must be APPROVED workflow and DRAFT status
     if (contract.workflowStatus !== 'APPROVED') {
@@ -435,7 +581,12 @@ export class ContractWorkflowService {
     if (!skipBlacklistGate) {
       blacklistResult = await this.blacklist.evaluate(contract.customerId);
       // OWNER/BM ปลด SOFT ได้ที่จุดนี้ด้วยเหตุผล (ร่างที่อนุมัติ/ลงนามแล้วลบไม่ได้ — review I1) · บทบาทอื่น = 409 ให้คนที่ปลดได้เปิดใช้
-      blacklistOverrideReason = assertBlacklistGate({ result: blacklistResult, actorRole: options?.actorRole ?? 'SYSTEM', stage: 'ACTIVATE',
+      // Managed execution never translates a legacy role name into the SOFT override (positions replace
+      // roles): only the protected owner account overrides until a scoped exception exists. Legacy
+      // actors use the persisted role verified above; the caller-supplied role is only a fallback.
+      const blacklistActorRole = execution ? (execution.snapshot.isOwner ? 'OWNER' : 'MANAGED')
+        : legacyActorRole ?? options?.actorRole ?? 'SYSTEM';
+      blacklistOverrideReason = assertBlacklistGate({ result: blacklistResult, actorRole: blacklistActorRole, stage: 'ACTIVATE',
         persistedOverride: !!(contract as { blacklistOverriddenAt?: Date | null }).blacklistOverriddenAt,
         overrideReason: options?.blacklistOverrideReason });
     }
@@ -500,8 +651,18 @@ export class ContractWorkflowService {
     //
     // Capture as a plain bool so the closure inside $transaction reads it
     // without re-deriving from the contract object. (ประกาศไว้ข้างบนตั้งแต่ด่าน blacklist — ก้อน 5 C3)
+    const activationReceipt = execution && isExchangeContract
+      ? await this.contractExchangeService.prepareActivation(id, execution.client)
+      : undefined;
 
     await this.prisma.$transaction(async (tx) => {
+      if (!execution) await this.legacyActivationActor(id, actorId, tx, true);
+      const postedAt = new Date();
+      const bookIds = [financeCompany.id, shopCompany.id].sort();
+      const year = postedAt.getFullYear(), month = postedAt.getMonth() + 1;
+      await tx.$queryRaw`SELECT id FROM accounting_periods WHERE company_id=ANY(${bookIds}::text[]) AND year=${year} AND month=${month} ORDER BY id FOR SHARE`;
+      await tx.$queryRaw`SELECT id FROM system_config WHERE key='period_grace_days' FOR SHARE`;
+      for (const companyId of bookIds) await validatePeriodOpen(tx, postedAt, companyId);
       // Re-check product status inside transaction to prevent race condition
       await lockCreditCustomer(tx, contract.customerId);
       const current = await tx.contract.findUnique({ where: { id, deletedAt: null },
@@ -509,11 +670,17 @@ export class ContractWorkflowService {
       if (!current || current.status !== 'DRAFT' || current.workflowStatus !== 'APPROVED') {
         throw new BadRequestException('สัญญาเปลี่ยนสถานะแล้ว กรุณาโหลดข้อมูลใหม่');
       }
-      await assertContractCreditApproval(tx, { customerId: current.customerId, contractId: id,
+      try { await assertContractCreditApproval(tx, { customerId: current.customerId, contractId: id,
         paymentDueDay: current.paymentDueDay,
         monthlyAmounts: current.payments.map(payment => Number(payment.amountDue)),
         firstPaymentDue: current.payments[0]?.dueDate });
+      } catch (error) {
+        if (execution && (error instanceof BadRequestException || error instanceof ConflictException))
+          throw new BadRequestException('ผลอนุมัติยอดผ่อนไม่ตรงกับข้อมูลปัจจุบัน');
+        throw error;
+      }
       // ก้อน 5 C3 — ตาข่าย 1 คน 1 เครื่อง ใน tx: ร่างสองใบเปิดใช้พร้อมกัน ล็อกแถวลูกค้าทำให้ใบหลังเห็น ACTIVE ของใบแรก
+      // (managed execution: same domain tx, no Contract details in the error)
       if (!skipBlacklistGate) await assertCustomerContractPolicy(tx, current.customerId);
       // (เงื่อนไข `deletedAt: null` ต้องเหมือนด่านนอก tx เป๊ะ — ไม่งั้นการลบที่แทรกเข้ามา
       // ระหว่างสองด่านจะหลุดผ่านด่านใน tx ซึ่งเป็นตาข่ายสุดท้ายก่อนเงิน/กรรมสิทธิ์ขยับ)
@@ -578,7 +745,7 @@ export class ContractWorkflowService {
         // by A.1 inside finalizeAfterActivation) and the Sale row (an exchange
         // is not a fresh retail sale — no down payment, no new revenue
         // recognition; FINANCE side just rolls outstanding from old → new).
-        await this.contractExchangeService.finalizeAfterActivation(
+        try { await this.contractExchangeService.finalizeAfterActivation(
           {
             id: contract.id,
             productId: contract.productId,
@@ -594,7 +761,14 @@ export class ContractWorkflowService {
             productCostPrice: contract.product.costPrice,
           },
           tx,
-        );
+          undefined,
+          activationReceipt,
+          postedAt,
+        ); } catch (error) {
+          if (execution && (error instanceof BadRequestException || error instanceof ConflictException))
+            throw new BadRequestException('ข้อมูลเปลี่ยนเครื่องไม่พร้อมสำหรับเปิดสัญญา');
+          throw error;
+        }
       } else {
         // Standard activation flow — auto-create Sale record + post 1A JE.
         const existingSale = await tx.sale.findFirst({ where: { contractId: contract.id, deletedAt: null } });
@@ -681,7 +855,7 @@ export class ContractWorkflowService {
           contract.storeCommission = resolved;
         }
 
-        await this.contractActivation1ATemplate.execute(contract.id, tx);
+        await this.contractActivation1ATemplate.execute(contract.id, tx, postedAt);
 
         // ก้อน 5 — ภาษีซื้อของเครื่องหลัก (FINANCE: Dr 11-4101 / Cr 42-1108) ใน tx เดียวกับ 1A ลงวันเดียวกัน.
         // ไม่เคลมของแถม (Q4) · ไม่มีใบรับของ/ไม่จด VAT = NOT_ELIGIBLE ไม่มี JE (Q6) · ใบกำกับยังไม่มา = PENDING_INVOICE
@@ -689,7 +863,7 @@ export class ContractWorkflowService {
           contractId: contract.id,
           contractNumber: contract.contractNumber,
           productId: contract.productId,
-          postedAt: new Date(),
+          postedAt,
         });
 
         // SHOP-side: post inventory transfer (COGS + revenue + receivables + down clearance),
@@ -726,6 +900,7 @@ export class ContractWorkflowService {
                 contractNumber: contract.contractNumber,
                 cashAccountCode,
                 downAmount: cashDown,
+                postedAt,
               },
               tx,
             );
@@ -753,6 +928,7 @@ export class ContractWorkflowService {
         await this.shopInventoryTransferTemplate.execute(
           {
             idempotencyKey: `shop-inventory-transfer:${contract.id}`,
+            postedAt,
             bundleCosts: bundleProducts.map((bp) => {
               const bAcc = this.shopAccountResolver.resolveProductAccounts(bp.category);
               return {
@@ -793,17 +969,30 @@ export class ContractWorkflowService {
       // (Was fire-and-forget on this.prisma: not awaited, off-transaction, and a
       // failure left a broken ACTIVE contract behind a fire-and-forget log line.)
       await this.generateInstallmentSchedules(contract, tx);
+      if (execution) await tx.auditLog.create({ data: {
+        userId: execution.snapshot.userId, action: 'CONTRACT_ACTIVATED', entity: 'contract', entityId: id,
+        newValue: { operation: 'activate', source: 'FINANCE', outcome: 'SUCCESS' },
+      } });
+      if (contract.promotionFingerprint) {
+        const sale = await tx.sale.findFirstOrThrow({ where: { contractId: id, deletedAt: null } });
+        await consumeContractPromotion(contract, sale.id);
+      }
     });
 
-    // Send LINE notification to customer (non-blocking)
-    // ก้อน 5 C3 — audit การปลด SOFT ตอนเปิดใช้ หลัง commit (AuditService เปิด tx ของตัวเอง — ห้ามเรียกใน tx)
+    // ก้อน 5 C3 — audit การปลด SOFT ตอนเปิดใช้ หลัง commit (AuditService เปิด tx ของตัวเอง — ห้ามเรียกใน tx;
+    // managed execution defers it to the actual outer commit, like the notification below)
     if (blacklistOverrideReason && blacklistResult && this.audit) {
-      await this.audit.log({ userId: actorId, action: 'CONTRACT_BLACKLIST_OVERRIDDEN', entity: 'contract', entityId: id,
-        newValue: { customerId: contract.customerId, level: 'SOFT', stage: 'ACTIVATE', reasons: blacklistResult.reasons, overrideReason: blacklistOverrideReason } });
+      const audit = this.audit;
+      const overrideAudit = { userId: actorId, action: 'CONTRACT_BLACKLIST_OVERRIDDEN', entity: 'contract', entityId: id,
+        newValue: { customerId: contract.customerId, level: 'SOFT', stage: 'ACTIVATE', reasons: blacklistResult.reasons, overrideReason: blacklistOverrideReason } };
+      const recordOverride = async () => { await audit.log(overrideAudit); };
+      if (currentDomainAccess()) onDomainCommit(recordOverride); else await recordOverride();
     }
-    this.sendContractActivatedNotification(contract).catch(err =>
+    // Send LINE notification to customer (non-blocking)
+    const notify = async () => { await this.sendContractActivatedNotification(contract).catch(err =>
       this.logger.warn(`Failed to send contract activation notification: ${err?.message || err}`),
-    );
+    ); };
+    if (currentDomainAccess()) onDomainCommit(notify); else void notify();
 
     // 15ข (spec §6): เครดิตจากการเปลี่ยนเครื่องตำหนิ → ชำระงวดของสัญญานี้ทันที (หลัง tx commit — ล้มไม่ย้อนการเปิดใช้)
     const creditApplied = await applyExchangeCreditAfterActivation(
@@ -880,7 +1069,7 @@ export class ContractWorkflowService {
     const bookingLock = await findPaidBookingLock(db, contract.productId);
     if (bookingLock) {
       throw new ConflictException(
-        `เครื่องนี้ถูกใบจอง ${bookingLock.bookingNumber} ล็อกไว้ — เปิดสัญญาไม่ได้ กรุณาเลือกเครื่องอื่นหรือยกเลิกใบจองก่อน`,
+        currentDomainAccess() ? 'สินค้าไม่พร้อมสำหรับเปิดสัญญา' : `เครื่องนี้ถูกใบจอง ${bookingLock.bookingNumber} ล็อกไว้ — เปิดสัญญาไม่ได้ กรุณาเลือกเครื่องอื่นหรือยกเลิกใบจองก่อน`,
       );
     }
     const otherDraft = await db.contract.findFirst({
@@ -889,7 +1078,7 @@ export class ContractWorkflowService {
     });
     if (otherDraft) {
       throw new ConflictException(
-        `เครื่องนี้ถูกร่างสัญญา ${otherDraft.contractNumber} จองไว้ — เปิดสัญญาไม่ได้ กรุณาปฏิเสธ/ลบร่างสัญญานั้นก่อน หรือเลือกเครื่องอื่น`,
+        currentDomainAccess() ? 'สินค้าไม่พร้อมสำหรับเปิดสัญญา' : `เครื่องนี้ถูกร่างสัญญา ${otherDraft.contractNumber} จองไว้ — เปิดสัญญาไม่ได้ กรุณาปฏิเสธ/ลบร่างสัญญานั้นก่อน หรือเลือกเครื่องอื่น`,
       );
     }
   }

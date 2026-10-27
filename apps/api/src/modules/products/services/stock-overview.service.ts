@@ -1,3 +1,4 @@
+import { domainAccessClient } from '../../employee-access/access-execution-context';
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
@@ -5,7 +6,8 @@ import { calculateDaysElapsed } from '../../../utils/date.util';
 
 @Injectable()
 export class StockOverviewService {
-  constructor(private prisma: PrismaService) {}
+  private get prisma(): PrismaService { return domainAccessClient(this.basePrisma); }
+  constructor(private readonly basePrisma: PrismaService) {}
 
   // === Stock Overview ===
 

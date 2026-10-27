@@ -1,3 +1,4 @@
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { Controller, Get, Post, Param, UseGuards } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
@@ -17,8 +18,8 @@ export class CustomerAccessController {
   // Staff generates a link for customer (requires auth)
   @Post('contracts/:id/customer-link')
   @Roles('OWNER', 'BRANCH_MANAGER', 'SALES')
-  generateAccessToken(@Param('id') contractId: string) {
-    return this.customerAccessService.generateAccessToken(contractId);
+  generateAccessToken(@Param('id') contractId: string, @CurrentUser() user: { id: string }) {
+    return this.customerAccessService.generateAccessToken(contractId, user.id);
   }
 
   // Customer accesses documents via token (NO auth required - public endpoint).

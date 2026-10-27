@@ -9,6 +9,7 @@ export interface OutcomeInput {
   defectEligible: boolean; // จาก DefectExchangeService.checkEligibility(...).eligible
   defectReasons: string[]; // ...reasons
   viewerRole: string;
+  submissionCapabilities?: { sameModel: boolean; priced: boolean };
   productCategory?: ProductCategory | null; // PR 5 — gate "มือสองเท่านั้น" ของขายสดอยู่ชั้นนี้ ไม่ใช่ใน warrantyStatus
 }
 
@@ -130,7 +131,7 @@ export function computeOutcomes(i: OutcomeInput): OutcomeOption[] {
       note: 'ผจก.สาขา ต้องยืนยัน',
     };
   } else if (
-    managerUp &&
+    (i.submissionCapabilities?.sameModel ?? managerUp) &&
     i.defectReasons.length === 1 &&
     WINDOW_REASON_RE.test(i.defectReasons[0])
   ) {

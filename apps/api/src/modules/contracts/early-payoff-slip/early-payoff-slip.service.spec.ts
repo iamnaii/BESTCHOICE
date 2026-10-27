@@ -35,6 +35,21 @@ describe('EarlyPayoffSlipService', () => {
     } = {},
   ) {
     const prisma = {
+      $transaction: jest.fn(async (work) =>
+        work({
+          $queryRaw: jest.fn(),
+          user: {
+            findUnique: jest
+              .fn()
+              .mockResolvedValue({
+                id: 'u-1',
+                isActive: true,
+                deletedAt: null,
+                accessManaged: false,
+              }),
+          },
+        }),
+      ),
       slipFingerprint: {
         findUnique: jest.fn().mockResolvedValue(over.reused ? { id: 'fp-1' } : null),
       },

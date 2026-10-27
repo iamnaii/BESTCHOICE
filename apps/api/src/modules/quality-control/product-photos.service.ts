@@ -1,3 +1,4 @@
+import { domainAccessClient } from '../employee-access/access-execution-context';
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { enterStockAuditData, hasSellingPrice } from '../products/product-enter-stock.util';
@@ -33,7 +34,8 @@ const PHOTOS_DONE_ONLY = 'ยืนยันรูปครบแล้ว';
 
 @Injectable()
 export class ProductPhotosService {
-  constructor(private prisma: PrismaService) {}
+  private get prisma(): PrismaService { return domainAccessClient(this.basePrisma); }
+  constructor(private readonly basePrisma: PrismaService) {}
 
   async getPhotos(productId: string) {
     const product = await this.prisma.product.findUnique({

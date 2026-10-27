@@ -1,3 +1,11 @@
+import { GeneratedDocumentsService } from '../../src/modules/contracts/services/generated-documents.service';
+import { AccessGeneratedDocumentsBoundaries } from '../../src/modules/employee-access/access-generated-documents-boundaries';
+import { AccessContractFilesBoundaries } from '../../src/modules/employee-access/access-contract-files-boundaries';
+import { AccessPartySourceService } from '../../src/modules/employee-access/access-party-source.service';
+import { AccessProcurementSourceService } from '../../src/modules/employee-access/access-procurement-source.service';
+import { AccessDocumentTemplateBoundaries } from '../../src/modules/employee-access/access-document-template-boundaries';
+import { AccessResourceService } from '../../src/modules/employee-access/access-resource.service';
+import { AccessSnapshotService } from '../../src/modules/employee-access/access-snapshot.service';
 import { CustomerBlacklistService } from '../../src/modules/customers/customer-blacklist.service';
 import { CustomerPiiService } from '../../src/modules/customers/customer-pii.service';
 import { AppointmentConfirmationService } from '../../src/modules/store-appointments/appointment-confirmation.service';
@@ -56,6 +64,8 @@ import { SettingsService } from '../../src/modules/settings/settings.service';
 import { NotificationsService } from '../../src/modules/notifications/notifications.service';
 import { DocumentsService } from '../../src/modules/contracts/documents.service';
 import { DocumentsController } from '../../src/modules/contracts/documents.controller';
+import { ContractSignaturesAccessService } from '../../src/modules/contracts/services/contract-signatures-access.service';
+import { AccessSignaturesBoundaries } from '../../src/modules/employee-access/access-signatures-boundaries';
 import { ContractDocumentsService } from '../../src/modules/contracts/contract-documents.service';
 import { ContractDocumentsController } from '../../src/modules/contracts/contract-documents.controller';
 import { ContractFileAccessGuard } from '../../src/modules/contracts/contract-file-access.guard';
@@ -88,7 +98,7 @@ import { CreateContractDto } from '../../src/modules/contracts/dto/contract.dto'
 import { loadInstallmentConfig } from '../../src/utils/config.util';
 /** Isolated manual preview. Never imported by AppModule or deployed with API source. */
 import 'reflect-metadata';
-import { Body, Controller, Get, Param, Patch, Post, Query, ValidationPipe } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Param, Patch, Post, Query, ValidationPipe } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import { createReadStream, existsSync, readFileSync, writeFileSync } from 'node:fs';
@@ -322,7 +332,7 @@ class PreviewController {
   @Get('customers/upsell-candidates') customerUpsell(@Query('limit') limit = '5') {
     return customerAnalytics.getUpsellCandidates(undefined, Math.max(1, Math.min(parseInt(limit, 10) || 5, 50)));
   }
-  @Get('reports/entity-profit') entityProfit(@Query('startDate') startDate?: string, @Query('endDate') endDate?: string) {
+  @Get('reports/entity-profit') entityProfit(@Query('startDate') startDate: string, @Query('endDate') endDate: string) {
     return revenueReports.getEntityProfitReport(startDate, endDate);
   }
   @Get('reports/comparative-pl') comparativePL(@Query('year') year: string, @Query('month') month: string) {
@@ -589,12 +599,13 @@ async function main() {
       GlobalCreditCheckController,
       PreviewController,
     ],
-    providers: [AppointmentConfirmationService, StoreAppointmentsService, AppointmentScheduleService, AppointmentLinksService, ChatLibraryService, ChatLibraryDeliveryService, { provide: MessageRouterService, useValue: library.router }, ChatAnalyticsV2Service, ChatSalesAttributionService,
+    providers: [GeneratedDocumentsService, AccessGeneratedDocumentsBoundaries, ContractSignaturesAccessService, AccessSignaturesBoundaries, AppointmentConfirmationService, StoreAppointmentsService, AppointmentScheduleService, AppointmentLinksService, ChatLibraryService, ChatLibraryDeliveryService, { provide: MessageRouterService, useValue: library.router }, ChatAnalyticsV2Service, ChatSalesAttributionService,
       ChatServiceRequestService, ChatServiceCaseLinkService, ...afterSales.providers,
       FacebookCommentRefreshService, { provide: FacebookCommentIngestService, useValue: facebookComments.ingest }, FacebookCommentWorkService, FacebookCommentReplyService, { provide: FacebookCommentClient, useValue: facebookComments.client },
       ChatHandoffService, NoteMentionService, { provide: StaffMessageService, useValue: Object.assign(Object.create(StaffMessageService.prototype), { prisma: db }) }, ChatSalesDispositionService, TodosService, ChatFollowUpService, ChatSalesContextService, JourneySummaryService, JourneyStateService, ChatWorkQueryService, ChatWorkSettingsService, StaffInboxService, ChatWorkAccessService,
       ...tradeInProviders(db, storageForPreview as StorageService),
       ProductPhotosService, DocumentsService, ContractDocumentsService, ContractFileAccessGuard,
+      AccessContractFilesBoundaries, AccessPartySourceService, AccessProcurementSourceService, AccessDocumentTemplateBoundaries, AccessResourceService, AccessSnapshotService,
       { provide: SettingsService, useValue: { findAll: () => db.systemConfig.findMany() } },
       { provide: NotificationsService, useValue: { send: () => { throw new Error('Document preview cannot send notifications'); } } },
       RoomCreditService,

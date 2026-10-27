@@ -29,6 +29,11 @@ import { AiProviderService } from '../src/modules/ai-usage/ai-provider.service';
 import { ContractLifecycleService } from '../src/modules/contracts/services/contract-lifecycle.service';
 import { ContractQueryService } from '../src/modules/contracts/services/contract-query.service';
 import { ContractSignatureService } from '../src/modules/contracts/services/contract-signature.service';
+import { AccessSignaturesBoundaries } from '../src/modules/employee-access/access-signatures-boundaries';
+import { AccessResourceService } from '../src/modules/employee-access/access-resource.service';
+import { AccessSnapshotService } from '../src/modules/employee-access/access-snapshot.service';
+import { AccessPartySourceService } from '../src/modules/employee-access/access-party-source.service';
+import { AccessProcurementSourceService } from '../src/modules/employee-access/access-procurement-source.service';
 import { ContractWorkflowService } from '../src/modules/contracts/contract-workflow.service';
 import { AuditService } from '../src/modules/audit/audit.service';
 import { ProductsService } from '../src/modules/products/products.service';
@@ -71,7 +76,11 @@ const sum = (entries: Entry[], account: string, side: 'debit' | 'credit') => ent
 describe('approved credit → real create/sign/activate → partial/complete payment → ledger', () => {
   let ownerId: string, branchId: string, shopId: string, financeId: string;
   let salesId: string; // ก้อน 5 C3 — บทบาทที่ปลด SOFT ไม่ได้
+  // ก้อน 5 C3 × employee access: ผู้เปิดใช้ที่ "เปิดได้แต่ปลด SOFT ไม่ได้" ต้องเป็นบัญชี FINANCE_MANAGER จริง —
+  // activate() ตรวจบทบาทปัจจุบันของผู้ดำเนินการจากฐานข้อมูล (SALES เปิดสัญญาไม่ได้ตั้งแต่ด่านสิทธิ์)
+  let financeManagerId: string;
   let credits: CreditCheckService, lifecycle: ContractLifecycleService, signatures: ContractSignatureService;
+  let signatureBoundary: AccessSignaturesBoundaries;
   let workflow: ContractWorkflowService, payments: PaymentsService, accrual: InstallmentAccrual2ATemplate;
   let tradeIns: TradeInService, tradeCredits: TradeInCreditService, sales: SaleCreationService;
   let saleVoid: SaleVoidService, cancellations: ContractCancellationService;
@@ -96,6 +105,9 @@ describe('approved credit → real create/sign/activate → partial/complete pay
     salesId = (await db.user.upsert({ where: { email: 'sales@isolated.test' },
       create: { email: 'sales@isolated.test', password: 'unused', name: 'ISOLATED SALES', role: 'SALES', branchId, accessibleCompanies: ['SHOP'], primaryCompany: 'SHOP' },
       update: { role: 'SALES', branchId, isActive: true, deletedAt: null } })).id;
+    financeManagerId = (await db.user.upsert({ where: { email: 'finance-manager@isolated.test' },
+      create: { email: 'finance-manager@isolated.test', password: 'unused', name: 'ISOLATED FINANCE MANAGER', role: 'FINANCE_MANAGER', accessibleCompanies: ['SHOP', 'FINANCE'], primaryCompany: 'FINANCE' },
+      update: { role: 'FINANCE_MANAGER', isActive: true, deletedAt: null, accessManaged: false } })).id;
     await db.interestConfig.create({ data: { name: 'ISOLATED CREDIT 5% × 12', productCategories: ['ACCESSORY'],
       interestRate: '0.0500', minDownPaymentPct: '0.2000', storeCommissionPct: '0.1000', vatPct: '0.0700',
       minInstallmentMonths: 6, maxInstallmentMonths: 12 } });
@@ -117,19 +129,18 @@ describe('approved credit → real create/sign/activate → partial/complete pay
     const config = new ConfigService({});
     credits = new CreditCheckService(db, new IntegrationConfigService(db, config), new AiProviderService(new AiUsageService(db, config)));
     // Only PDF generation/storage and external notifications are substituted.
-    // Real signature persistence and integrity verification still execute.
-    signatures = new ContractSignatureService(db, () => ({
-      ensureSignedContractDocument: (contractId: string, uploadedById: string) => {
-        const job = db.contractDocument.create({ data: { contractId, uploadedById, documentType: 'SIGNED_CONTRACT',
-          fileName: 'synthetic-signed.pdf', fileUrl: 'synthetic://signed.pdf', mimeType: 'application/pdf', fileHash: hash(contractId) } });
-        pdfJobs.push(job); return job;
-      },
-    }) as never);
+    // Real signature persistence and integrity verification still execute — through the staff capture
+    // boundary, which owns admission and the transaction (employee access: the facade never runs bare).
+    signatures = new ContractSignatureService(db);
+    const accessSnapshots = new AccessSnapshotService(db), accessResources = new AccessResourceService(db, accessSnapshots);
+    signatureBoundary = new AccessSignaturesBoundaries(db, accessResources,
+      new AccessPartySourceService(accessResources, new AccessProcurementSourceService(accessResources)), accessSnapshots);
     workflow = new ContractWorkflowService(db, null as never, journal, new ContractActivation1ATemplate(journal, db),
       products, null as never, new ShopInventoryTransferTemplate(journal, db, resolver), down, shopAccounts,
       new InstallmentInputVatTemplate(journal, db, resolver), // ก้อน 5 — ภาษีซื้อเครื่องหลักหลัง 1A
       new CustomerBlacklistService(db, new CustomerPiiService(db)), // ก้อน 5 C3 — ด่าน blacklist ตอน activate
-      undefined, undefined, undefined, audit); // audit = CONTRACT_BLACKLIST_OVERRIDDEN ตอนปลด SOFT ที่ activate
+      // testMode · journeyEntries · preparation (employee access) · moduleRef — ไม่ใช้ในไฟล์นี้
+      undefined, undefined, undefined, undefined, audit); // audit = CONTRACT_BLACKLIST_OVERRIDDEN ตอนปลด SOFT ที่ activate
     const receipts = new ReceiptsService(db, journal, new ReceiptVoidReversalTemplate(journal, db), undefined);
     const badDebt = new BadDebtService(db, journal, new BadDebtProvisionTemplate(journal, db),
       new BadDebtWriteOffTemplate(journal, db), new EclStageReverseTemplate(journal, db),
@@ -178,15 +189,25 @@ describe('approved credit → real create/sign/activate → partial/complete pay
       affordability: { ...basis, contextToken: preview.contextToken, approvedMonthlyPayment: 2000, confirmed: true } }, ownerId, 'OWNER');
   }
 
+  /** ลายเซ็น 4 ฝ่ายผ่านด่านบันทึกลายเซ็นของพนักงาน (legacy OWNER) + แถว SIGNED_CONTRACT จำลอง (แทนการสร้าง PDF จริง) */
+  async function signAll(contractId: string) {
+    for (const signerType of ['CUSTOMER', 'COMPANY', 'WITNESS_1', 'WITNESS_2']) {
+      const req = { user: { id: ownerId }, params: { id: contractId }, query: { company: 'SHOP' }, headers: {}, body: {} } as never;
+      await signatureBoundary.preflight('signContract', req);
+      await signatureBoundary.current('signContract', req, () => signatures.signContract(contractId, image, signerType,
+        { ip: '127.0.0.1', userAgent: 'isolated-jest' }, { signerName: `Synthetic ${signerType}`, staffUserId: ownerId }));
+    }
+    // Document writes must finish before the submit integrity hash.
+    await db.contractDocument.create({ data: { contractId, uploadedById: ownerId, documentType: 'SIGNED_CONTRACT',
+      fileName: 'synthetic-signed.pdf', fileUrl: 'synthetic://signed.pdf', mimeType: 'application/pdf', fileHash: hash(contractId) } });
+  }
   /** ยินยอม PDPA + เอกสาร + ลายเซ็น 4 ฝ่าย + ส่งตรวจ + อนุมัติ — เตรียมร่างให้พร้อมเปิดใช้ (เรียกครั้งเดียวต่อร่าง) */
   async function prepareForActivation(contractId: string, customerId: string) {
     const consent = await db.pDPAConsent.create({ data: { customerId, consentVersion: 'SYNTHETIC-1', privacyNoticeText: 'Synthetic consent', status: 'GRANTED', grantedAt: new Date(), purposes: ['CONTRACT'] } });
     await db.contract.update({ where: { id: contractId }, data: { pdpaConsentId: consent.id } });
     await db.contractDocument.createMany({ data: (['ID_CARD_COPY', 'KYC_SELFIE', 'DEVICE_PHOTO'] as const).map(documentType => ({
       contractId, documentType, uploadedById: ownerId, fileName: `${documentType}.png`, fileUrl: `synthetic://${documentType}.png`, fileHash: hash(documentType) })) });
-    for (const signerType of ['CUSTOMER', 'COMPANY', 'WITNESS_1', 'WITNESS_2']) await signatures.signContract(contractId, image, signerType,
-      { ip: '127.0.0.1', userAgent: 'isolated-jest' }, { signerName: `Synthetic ${signerType}`, staffUserId: ownerId });
-    await Promise.all(pdfJobs);
+    await signAll(contractId);
     await workflow.submitForReview(contractId, ownerId, 'OWNER');
     await workflow.approveContract(contractId, ownerId, 'OWNER', 'Synthetic approval');
   }
@@ -501,15 +522,11 @@ describe('approved credit → real create/sign/activate → partial/complete pay
     await db.contract.update({ where: { id: contractId }, data: { pdpaConsentId: consent.id } });
     await db.contractDocument.createMany({ data: (['ID_CARD_COPY', 'KYC_SELFIE', 'DEVICE_PHOTO'] as const).map(documentType => ({
       contractId, documentType, uploadedById: ownerId, fileName: `${documentType}.png`, fileUrl: `synthetic://${documentType}.png`, fileHash: hash(documentType) })) });
-    for (const signerType of ['CUSTOMER', 'COMPANY', 'WITNESS_1', 'WITNESS_2']) {
-      await signatures.signContract(contractId, image, signerType, { ip: '127.0.0.1', userAgent: 'isolated-jest' },
-        { signerName: `Synthetic ${signerType}`, staffUserId: ownerId });
-    }
-    await Promise.all(pdfJobs); // Document writes must finish before the submit integrity hash.
+    await signAll(contractId);
     expect(await db.signature.count({ where: { contractId, deletedAt: null } })).toBe(4);
     await workflow.submitForReview(contractId, ownerId, 'OWNER');
     await workflow.approveContract(contractId, ownerId, 'OWNER', 'Synthetic approval');
-    await workflow.activate(contractId);
+    await workflow.activate(contractId, ownerId);
     const active = await db.contract.findUniqueOrThrow({ where: { id: contractId } });
     expect(active.status).toBe('ACTIVE');
     expect(active.contractHash).toMatch(/^[a-f0-9]{64}$/);
@@ -643,7 +660,7 @@ describe('approved credit → real create/sign/activate → partial/complete pay
       await approve(bad.id);
       const badContract = await lifecycle.create(plainDto(bad.id, (await plainProduct()).id), ownerId, 'OWNER'); await activate(badContract.id, bad.id);
       await db.contract.update({ where: { id: badContract.id }, data: { status: 'TERMINATED' } });
-      await expect(workflow.activate(draft.id, salesId, { actorRole: 'FINANCE_MANAGER' })).rejects.toMatchObject({ response: { code: 'CUSTOMER_BLACKLIST_REVIEW', canOverride: false } });
+      await expect(workflow.activate(draft.id, financeManagerId, { actorRole: 'FINANCE_MANAGER' })).rejects.toMatchObject({ response: { code: 'CUSTOMER_BLACKLIST_REVIEW', canOverride: false } });
       await expect(workflow.activate(draft.id, ownerId, { actorRole: 'OWNER' })).rejects.toMatchObject({ response: { code: 'CUSTOMER_BLACKLIST_REVIEW', canOverride: true,
         reasons: [expect.objectContaining({ code: 'REFERENCED_BY_BLACKLISTED', related: expect.objectContaining({ customerId: bad.id }) })] } });
       expect((await db.contract.findUniqueOrThrow({ where: { id: draft.id } })).status).toBe('DRAFT');

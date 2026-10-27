@@ -34,6 +34,7 @@ describe('RepairTicketsService.create', () => {
 
   beforeEach(async () => {
     prisma = {
+      user: { findUnique: jest.fn().mockResolvedValue({ accessManaged: false }) },
       $transaction: jest.fn().mockImplementation((cb: any) => cb(prisma)),
       $executeRawUnsafe: jest.fn().mockResolvedValue(undefined),
       contract: { findUnique: jest.fn().mockResolvedValue(null) },
@@ -192,6 +193,7 @@ describe('RepairTicketsService.create', () => {
 
 function buildTransitionModule() {
   const prisma: any = {
+    user: { findUnique: jest.fn().mockResolvedValue({ accessManaged: false }) },
     $transaction: jest.fn().mockImplementation((cb: any) => cb(prisma)),
     supplier: { findUnique: jest.fn() },
     contract: { findUnique: jest.fn() },
@@ -215,6 +217,7 @@ async function buildSvc(
   otherIncome: any = {},
   settings: any = {},
 ) {
+  prisma.user ??= { findUnique: jest.fn().mockResolvedValue({ accessManaged: false }) };
   const mod: TestingModule = await Test.createTestingModule({
     providers: [
       RepairTicketsService,

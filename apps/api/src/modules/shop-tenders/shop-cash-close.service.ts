@@ -1,3 +1,10 @@
+import { stageCashSlip, recordCashSlip, readCashSlip } from './shop-cash-slip';
+import { procurementPreparation } from '../employee-access/access-preparation-context';
+import { assertCountingNote } from '../employee-access/access-tender-money-boundaries';
+import { currentDomainAccess, onDomainCommit } from '../employee-access/access-execution-context';
+import { cashTransaction, assertCashExecution } from './shop-cash-access';
+import { AccessSnapshotService } from '../employee-access/access-snapshot.service';
+import { tenderAccess, tenderReadClient } from '../employee-access/access-tender-source';
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import * as Sentry from '@sentry/node';
 import { Prisma, ShopCashCloseStatus, ShopCashDestination } from '@prisma/client';
@@ -93,8 +100,10 @@ const money = (value: Prisma.Decimal | null | undefined) => (value == null ? nul
 export class ShopCashCloseService {
   private readonly logger = new Logger(ShopCashCloseService.name);
 
+  private get prisma() { return tenderReadClient(this.basePrisma); }
+
   constructor(
-    private readonly prisma: PrismaService,
+    private readonly basePrisma: PrismaService,
     private readonly audit: AuditService,
     private readonly journal: JournalAutoService,
     private readonly companies: CompanyResolverService,
@@ -208,7 +217,7 @@ export class ShopCashCloseService {
     // "ตอนนี้รอใคร / สาขายังขาดอะไร" (mockup กระดาน 12–13): ลิ้นชักยังไม่ตั้ง = หน้าขายรับเงินสดไม่ได้ จึงไม่มีอะไรให้นับ ·
     // ผู้นับ = พนักงานขาย/ผจก.สาขาของสาขานี้ที่ยังใช้งานอยู่ — ส่งชื่อไปให้คนที่รออยู่รู้ว่าต้องตามใคร
     const setup = await this.prisma.branch.findUnique({ where: { id: query.branchId }, select: { shopCashAccountCode: true } });
-    const counters = await this.prisma.user.findMany({
+    const counters = tenderAccess.getStore() ? await tenderAccess.getStore()!.counters(query.branchId, new AccessSnapshotService(this.basePrisma)) : await this.prisma.user.findMany({
       where: { branchId: query.branchId, role: { in: COUNTER_ROLES as never }, isActive: true, deletedAt: null },
       // enum UserRole ประกาศ SALES ก่อน BRANCH_MANAGER ⇒ desc = ผู้จัดการสาขาขึ้นก่อน
       select: { id: true, name: true, role: true }, orderBy: [{ role: 'desc' }, { name: 'asc' }],
@@ -232,7 +241,7 @@ export class ShopCashCloseService {
   /** ประวัติการปิดยอด + แถบเตือน (เจ้าของ/ผจก.การเงิน/บัญชี = ทุกสาขา · ผจก.สาขา = สาขาตัวเอง) */
   async getHistory(actor: CashCloseActor, query: { branchId?: string; month?: string }) {
     let branchId = query.branchId || undefined;
-    if (!hasCrossBranchAccess(actor)) {
+    if (!tenderAccess.getStore() && !hasCrossBranchAccess(actor)) {
       if (actor.role !== 'BRANCH_MANAGER' || !actor.branchId || (branchId && branchId !== actor.branchId)) {
         throw new ForbiddenException('ดูประวัติการปิดยอดได้เฉพาะสาขาของตัวเอง');
       }
@@ -279,17 +288,19 @@ export class ShopCashCloseService {
 
   /** พนักงานนับเงินปิดยอด — snapshot ยอดรอบ ณ ตอนนับ ภายใต้ล็อกของสาขา (กันสองคนนับพร้อมกัน/กดซ้ำ) */
   async count(actor: CashCloseActor, input: { branchId: string; countedAmount: number; varianceReason?: string | null }) {
-    if (!COUNTER_ROLES.includes(actor.role)) {
+    await assertCashExecution(this.basePrisma, actor.id);
+    if (!tenderAccess.getStore() && !COUNTER_ROLES.includes(actor.role)) {
       throw new ForbiddenException('ผู้ส่งยอดรายวันต้องเป็นพนักงานขายหรือผู้จัดการสาขาของสาขานั้น');
     }
     if (!this.canCount(actor, input.branchId)) {
       throw new ForbiddenException('ส่งยอดรายวันได้เฉพาะสาขาของตัวเอง');
     }
     const counted = new Prisma.Decimal(input.countedAmount).toDecimalPlaces(2);
-    const reason = input.varianceReason?.trim() || null;
+    const reason = tenderAccess.getStore() ? assertCountingNote(input.varianceReason) : input.varianceReason?.trim() || null;
 
-    const created = await this.prisma.$transaction(async (tx) => {
+    const created = await cashTransaction(this.basePrisma, async (tx) => {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${'shop-cash-close:' + input.branchId}))`;
+      tenderAccess.getStore()?.assertComplete(input.branchId, 'shop-tenders.count', false);
       const now = new Date();
       const round = await this.computeRound(tx, input.branchId, now);
       if (round.hasPreviousClose && round.movementCount === 0) {
@@ -307,12 +318,17 @@ export class ShopCashCloseService {
           branchId: input.branchId, attemptNo: latest?.status === 'SENT_BACK' ? latest.attemptNo + 1 : 1,
           periodStart: round.periodStart, floatAmount: round.floatAmount, cashIn: round.cashIn, cashOut: round.cashOut,
           expectedAmount: round.expectedAmount, countedAmount: counted, varianceAmount: variance,
-          varianceReason: variance.abs().gte(CENT) ? reason : null, sendAmount, countedById: actor.id, countedAt: now,
+          varianceReason: tenderAccess.getStore() || variance.abs().gte(CENT) ? reason : null, sendAmount, countedById: actor.id, countedAt: now,
         },
         include: CLOSE_INCLUDE,
       });
     });
 
+    if (currentDomainAccess()) {
+      await this.managedEvidence(actor.id, 'SHOP_CASH_CLOSE_COUNTED', created);
+      this.scheduleReview(actor.id, created, 'COUNTED');
+      return { id: created.id, status: 'PENDING_CONFIRM' as const };
+    }
     await this.audit.log({ userId: actor.id, action: 'SHOP_CASH_CLOSE_COUNTED', entity: 'shop_cash_close', entityId: created.id,
       newValue: { branchId: created.branchId, attemptNo: created.attemptNo, expectedAmount: created.expectedAmount,
         countedAmount: created.countedAmount, varianceAmount: created.varianceAmount, varianceReason: created.varianceReason,
@@ -324,6 +340,25 @@ export class ShopCashCloseService {
       });
     }
     return this.present(created);
+  }
+
+  private async managedEvidence(actorId: string, action: string, row: CloseRow) {
+    await this.audit.log({ userId: actorId, action, entity: 'shop_cash_close', entityId: row.id,
+      newValue: { branchId: row.branchId, status: row.status } }, currentDomainAccess()!.client);
+  }
+
+  private scheduleReview(actorId: string, row: CloseRow, event: 'COUNTED' | 'CONFIRMED') {
+    onDomainCommit(async () => {
+      const owners = await this.basePrisma.user.findMany({ where: { role: 'OWNER', isActive: true, deletedAt: null, isSystemUser: false }, select: { id: true } });
+      for (const owner of owners) {
+        const requestKey = `cash-close-review:${row.id}:${event}:${owner.id}`;
+        await this.basePrisma.todo.upsert({ where: { requestKey }, update: {}, create: {
+          requestKey, title: 'ตรวจสอบการปิดยอดเงินสด', priority: 'MEDIUM',
+          tags: ['cash-close-review', `shop-cash-close:${row.id}`, `event:${event}`],
+          branchId: row.branchId, createdById: actorId, assigneeId: owner.id,
+        } });
+      }
+    });
   }
 
   /**
@@ -350,10 +385,12 @@ export class ShopCashCloseService {
 
   /** โหลดแถวใต้ล็อกสาขา + ตรวจสิทธิ์ผู้ยืนยัน (ใช้ร่วมกันระหว่างยืนยันรับเงินกับตีกลับ) */
   private async loadForDecision(tx: Prisma.TransactionClient, actor: CashCloseActor, id: string) {
+    await assertCashExecution(this.basePrisma, actor.id);
     const peek = await tx.shopCashClose.findUnique({ where: { id }, select: { branchId: true } });
     if (!peek) throw new NotFoundException('ไม่พบรายการปิดยอด');
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${'shop-cash-close:' + peek.branchId}))`;
     const row = await tx.shopCashClose.findUniqueOrThrow({ where: { id } });
+    tenderAccess.getStore()?.assertComplete(row.branchId, 'shop-tenders.confirm', true);
     if (!this.canConfirmBranch(actor, row.branchId)) {
       throw new ForbiddenException('ผู้ยืนยันรับเงินต้องเป็นเจ้าของ ผู้จัดการการเงิน หรือผู้จัดการสาขาของสาขานั้น');
     }
@@ -371,6 +408,18 @@ export class ShopCashCloseService {
    * ผู้แนบ = ผู้มีสิทธิ์ยืนยันของสาขานั้นและไม่ใช่ผู้นับ (กติกาเดียวกับการยืนยัน) · แนบใหม่ = แทนรูปเดิม
    */
   async attachDepositSlip(actor: CashCloseActor, id: string, file: Express.Multer.File | undefined) {
+    await assertCashExecution(this.basePrisma, actor.id, true);
+    if (procurementPreparation.getStore() && !currentDomainAccess()) {
+      return stageCashSlip(this.storage, `shop-cash-close/${id}`, file, async staged => {
+        const row = await this.loadForDecision(currentDomainAccess()!.client, actor, id);
+        const changed = await currentDomainAccess()!.client.shopCashClose.updateMany({ where: { id, status: 'PENDING_CONFIRM' }, data: { depositSlipKey: staged.key } });
+        if (!changed.count) throw new ConflictException('สถานะการปิดยอดเปลี่ยนแล้ว');
+        await recordCashSlip(staged, 'CLOSE', id);
+        await this.audit.log({ userId: actor.id, action: 'SHOP_CASH_CLOSE_SLIP_ATTACHED', entity: 'shop_cash_close', entityId: id, newValue: { branchId: row.branchId } }, currentDomainAccess()!.client);
+        return { id, hasDepositSlip: true };
+      });
+    }
+    if (currentDomainAccess()) throw new ForbiddenException('ต้องเตรียมหลักฐานก่อนทำรายการ');
     assertEvidenceImage(file, 'สลิปฝากเงิน');
     const row = await this.prisma.shopCashClose.findUnique({ where: { id }, select: { branchId: true, countedById: true, status: true, depositSlipKey: true } });
     if (!row) throw new NotFoundException('ไม่พบรายการปิดยอด');
@@ -388,30 +437,32 @@ export class ShopCashCloseService {
       await this.storage.delete(key).catch(() => undefined);
       throw error;
     }
-    if (row.depositSlipKey) await this.storage.delete(row.depositSlipKey).catch(() => undefined);
+    // Retain committed slip bytes across managed/legacy replacements; only failed staging is cleaned up.
     return { id, hasDepositSlip: true };
   }
 
   /** รูปสลิปฝากเงินของการปิดยอด — ขอบเขตสาขาเดียวกับการดูกล่องปิดยอด (route จำกัด role แล้ว) */
   async getDepositSlip(actor: CashCloseActor, id: string) {
+    await assertCashExecution(this.basePrisma, actor.id);
     const row = await this.prisma.shopCashClose.findUnique({ where: { id }, select: { branchId: true, depositSlipKey: true } });
     if (!row) throw new NotFoundException('ไม่พบรายการปิดยอด');
     this.assertCanView(actor, row.branchId);
     if (!row.depositSlipKey) throw new NotFoundException('รายการนี้ไม่มีรูปสลิปฝากเงิน');
+    if (currentDomainAccess()) return readCashSlip(this.storage, this.audit, 'CLOSE', id, row.branchId, row.depositSlipKey);
     return { key: row.depositSlipKey, stream: await this.storage.getStream(row.depositSlipKey) };
   }
 
   async confirm(actor: CashCloseActor, id: string,
     input: { receivedAmount: number; destination: ShopCashDestination; note?: string | null; depositReference?: string | null }) {
+    await assertCashExecution(this.basePrisma, actor.id);
     const received = new Prisma.Decimal(input.receivedAmount).toDecimalPlaces(2);
     const note = input.note?.trim() || null;
     const depositReference = input.depositReference?.trim() || null;
     let journal: ConfirmJournalResult = { entryId: null, entryNumber: null, skipped: null };
-    const cleanup: { slipKey: string | null } = { slipKey: null };
-    const updated = await this.prisma.$transaction(async (tx) => {
+    const updated = await cashTransaction(this.basePrisma, async (tx) => {
       const row = await this.loadForDecision(tx, actor, id);
       // "เจ้าของเก็บไว้" = เงินถึงมือเจ้าของ ⇒ คนที่กดยืนยันต้องเป็นเจ้าของเอง (เดิมผู้จัดการเลือกแทนได้โดยไม่มีอะไรยืนยัน)
-      if (input.destination === 'OWNER_HOLD' && actor.role !== 'OWNER') {
+      if (input.destination === 'OWNER_HOLD' && (currentDomainAccess() ? !currentDomainAccess()!.snapshot.isOwner : actor.role !== 'OWNER')) {
         throw new ForbiddenException('เลือก "เจ้าของเก็บไว้" ได้เฉพาะเมื่อเจ้าของเป็นผู้กดยืนยันรับเงินเอง — ผู้จัดการให้เลือก "นำฝากธนาคารของร้าน" หรือ "ตู้เซฟสาขา"');
       }
       const receiveVariance = received.minus(row.sendAmount);
@@ -424,13 +475,12 @@ export class ShopCashCloseService {
         if (!depositReference || depositReference.length < MIN_REFERENCE_LENGTH || depositReference.length > MAX_REFERENCE_LENGTH) {
           throw new BadRequestException(`กรอกเลขอ้างอิงในสลิปฝากเงิน (${MIN_REFERENCE_LENGTH}–${MAX_REFERENCE_LENGTH} ตัว)`);
         }
-      } else if (row.depositSlipKey) {
-        cleanup.slipKey = row.depositSlipKey; // แนบไว้แล้วเปลี่ยนปลายทาง — ไม่เก็บรูปที่ไม่เกี่ยวกับการปิดยอดครั้งนี้
       }
       const confirmedAt = new Date();
       const confirmed = await tx.shopCashClose.update({
         where: { id },
         data: { status: 'CONFIRMED', receivedAmount: received, receiveVariance, receiveNote: note, destination: input.destination,
+          // Clear the current attachment for non-slip destinations, retaining all committed bytes.
           depositReference: needsSlip ? depositReference : null, ...(needsSlip ? {} : { depositSlipKey: null }),
           confirmedById: actor.id, confirmedAt },
         include: CLOSE_INCLUDE,
@@ -440,10 +490,14 @@ export class ShopCashCloseService {
       if (!journal.entryId) return confirmed;
       return tx.shopCashClose.update({ where: { id }, data: { journalEntryId: journal.entryId }, include: CLOSE_INCLUDE });
     });
-    if (cleanup.slipKey) await this.storage.delete(cleanup.slipKey).catch(() => undefined);
-    if (journal.skipped) {
+    if (journal.skipped && !currentDomainAccess()) {
       Sentry.captureMessage('[shop-cash-close] confirmed without a journal entry', {
         level: 'warning', tags: { subsystem: 'shop-cash-close' }, extra: { closeId: id, reason: journal.skipped } });
+    }
+    if (currentDomainAccess()) {
+      await this.managedEvidence(actor.id, 'SHOP_CASH_CLOSE_CONFIRMED', updated);
+      this.scheduleReview(actor.id, updated, 'CONFIRMED');
+      return this.present(updated, await this.holdings.settledCloseIds([updated.branchId]));
     }
     await this.audit.log({ userId: actor.id, action: 'SHOP_CASH_CLOSE_CONFIRMED', entity: 'shop_cash_close', entityId: id,
       newValue: { branchId: updated.branchId, sendAmount: updated.sendAmount, receivedAmount: updated.receivedAmount,
@@ -519,11 +573,12 @@ export class ShopCashCloseService {
   }
 
   async sendBack(actor: CashCloseActor, id: string, input: { reason: string }) {
+    await assertCashExecution(this.basePrisma, actor.id);
     const reason = input.reason?.trim() ?? '';
     if (reason.length < MIN_REASON_LENGTH) {
       throw new BadRequestException(`กรอกเหตุผลที่ตีกลับให้นับใหม่ (อย่างน้อย ${MIN_REASON_LENGTH} ตัวอักษร)`);
     }
-    const updated = await this.prisma.$transaction(async (tx) => {
+    const updated = await cashTransaction(this.basePrisma, async (tx) => {
       const row = await this.loadForDecision(tx, actor, id);
       // ตีกลับได้เฉพาะการปิดยอดครั้งล่าสุดของสาขา — ครั้งที่มีการปิดยอดใหม่ทับแล้วเป็นขอบรอบของครั้งถัดไป
       // ถ้าถอนออก เงินของรอบนั้นจะไม่ถูกนับอีกเลย
@@ -538,6 +593,10 @@ export class ShopCashCloseService {
         include: CLOSE_INCLUDE,
       });
     });
+    if (currentDomainAccess()) {
+      await this.managedEvidence(actor.id, 'SHOP_CASH_CLOSE_SENT_BACK', updated);
+      return this.present(updated);
+    }
     await this.audit.log({ userId: actor.id, action: 'SHOP_CASH_CLOSE_SENT_BACK', entity: 'shop_cash_close', entityId: id,
       newValue: { branchId: updated.branchId, attemptNo: updated.attemptNo, countedAmount: updated.countedAmount, reason,
         countedById: updated.countedById } });

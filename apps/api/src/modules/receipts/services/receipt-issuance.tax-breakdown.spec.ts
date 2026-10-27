@@ -1,6 +1,7 @@
 import { BadRequestException, Logger } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { ReceiptIssuanceService } from './receipt-issuance.service';
+import { domainAccessExecution, type DomainAccessExecution } from '../../employee-access/access-execution-context';
 
 /**
  * ใบกำกับภาษีตามบัญชี (PR3 — คำตัดสินฝ่ายบัญชี D3–D5): generateReceipt เก็บค่าที่ใบค่างวดต้องพิมพ์ ณ ตอนออกใบ
@@ -513,5 +514,53 @@ describe('ReceiptIssuanceService — ใบกำกับภาษีตาม�
       expect(created).toHaveLength(0);
     });
   });
-});
 
+  // Managed (owned) payoff receipt: issued inside the same Serializable domain transaction as the JP4 —
+  // may link that JP4 so the 16.1/16.2 tax columns are stored, but the owned path stays EARLY_PAYOFF-only.
+  describe('ใบปิดยอดในธุรกรรมของสิทธิ์ตำแหน่ง (ownedPayoff)', () => {
+    function owned(tx: unknown) {
+      const ctx = {
+        snapshot: { userId: 'u1', isOwner: false, managed: true, revision: 1, grants: [] },
+        scope: { userId: 'u1', company: 'FINANCE', permission: 'payments.create', tuples: [] },
+        client: tx,
+        scopeReads: false,
+        domain: 'parties',
+        isolationLevel: 'Serializable',
+        effects: { commit: [], rollback: [] },
+      } as unknown as DomainAccessExecution;
+      return {
+        run: <T>(work: () => Promise<T>) => domainAccessExecution.run(ctx, work),
+        payoff: { client: tx as Prisma.TransactionClient, financeCompanyId: 'co-fin' },
+      };
+    }
+
+    it('ownedPayoff + เลขที่รายการ JP4 → ผูกรายการและเก็บค่าที่ประทับ (ไม่ปฏิเสธ)', async () => {
+      const { svc, tx, created } = buildService({ source: jp4Source() });
+      tx.companyInfo.findFirst.mockResolvedValue({ id: 'co-fin', nameTh: 'FINANCE' });
+      const { run, payoff } = owned(tx);
+
+      await run(() =>
+        svc.generateReceipt('c1', null, 'EARLY_PAYOFF', 15189.98, null, 'BANK_TRANSFER', null, 'u1', undefined, 'JE-JP4', payoff),
+      );
+
+      expect(tx.companyInfo.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({ where: expect.objectContaining({ id: 'co-fin', companyCode: 'FINANCE' }) }),
+      );
+      expect(created).toHaveLength(1);
+      expect(created[0].sourceJournalEntryId).toBe('je-jp4');
+      expect(created[0].vatAmount?.toString()).toBe('1190');
+      expect(created[0].discountAmount?.toString()).toBe('3000.02');
+    });
+
+    it('ownedPayoff กับใบชนิดอื่น (ส่งเลขที่รายการมาด้วย) → ยังปฏิเสธ ก่อนอ่านรายการบัญชี', async () => {
+      const { svc, tx, created } = buildService({ source: receiptSource() });
+      const { run, payoff } = owned(tx);
+
+      await expect(
+        run(() => svc.generateReceipt('c1', 'p1', 'INSTALLMENT', 6079, 3, 'CASH', null, 'u1', undefined, 'JE-1', payoff)),
+      ).rejects.toThrow('ไม่มีขอบเขตการออกใบเสร็จปิดสัญญา');
+      expect(tx.journalEntry.findUnique).not.toHaveBeenCalled();
+      expect(created).toHaveLength(0);
+    });
+  });
+});

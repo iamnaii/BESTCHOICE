@@ -61,6 +61,7 @@ export class ExchangeBuybackReceivable11_2107Template {
   async execute(
     input: ExchangeBuybackReceivableInput,
     tx?: Prisma.TransactionClient,
+    postedAt?: Date,
   ): Promise<{ id: string; entryNumber: string }> {
     const buyback = new Decimal(input.buyback.toString());
     if (buyback.lte(0)) {
@@ -72,6 +73,7 @@ export class ExchangeBuybackReceivable11_2107Template {
 
     return this.journal.createAndPost(
       {
+        postedAt,
         description: `Exchange A.3 — ตั้งลูกหนี้หน้าร้าน 11-2107 ล้างบัญชีพัก 21-1106 (ราคารับซื้อ ${buyback.toFixed(2)})`,
         metadata: {
           flow: 'exchange-buyback-receivable-11-2107',

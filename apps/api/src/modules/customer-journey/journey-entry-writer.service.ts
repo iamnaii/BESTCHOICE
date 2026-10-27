@@ -1,3 +1,4 @@
+import { partyWriteExecution } from '../employee-access/access-party-source.service';
 import { Injectable, Logger } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import * as Sentry from '@sentry/nestjs';
@@ -60,7 +61,10 @@ export class JourneyEntryWriter {
 
   async recordInTx(tx: Prisma.TransactionClient, entry: JourneyEntryInput): Promise<void> {
     const row = this.toRow(entry);
-    if (!row) return;
+    if (!row) {
+      if (partyWriteExecution(tx)) throw new Error('Required customer journey evidence is invalid');
+      return;
+    }
     await tx.customerJourneyEntry.createMany({ data: [row], skipDuplicates: true });
   }
 
@@ -77,6 +81,7 @@ export class JourneyEntryWriter {
 
     const sanitized = sanitizeJourneyData(entry.kind, entry.data ?? {});
     if (!sanitized.ok) {
+      if (partyWriteExecution()) throw new Error('Required customer journey evidence failed validation');
       this.logger.warn(`[journey] ${entry.kind} data ไม่ผ่าน whitelist ถูกตัดทิ้ง: ${sanitized.issues.join(', ')}`);
       Sentry.captureMessage('customer-journey: data ไม่ผ่าน JOURNEY_DATA_SCHEMAS — เก็บแถวโดยไม่มี data', {
         level: 'warning',

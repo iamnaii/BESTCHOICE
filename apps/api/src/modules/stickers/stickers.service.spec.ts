@@ -77,7 +77,12 @@ describe('StickersService — ข้อมูลเครื่องสำห�
   });
 
   it('ค้นได้ทั้ง Product ID และ IMEI (ยิงบาร์โค้ดจากช่องสแกน) — คืนตามลำดับที่ขอ ไม่ซ้ำ', async () => {
-    const second = { ...baseProduct, id: 'product-2', imeiSerial: '351000000055433', model: 'Galaxy S24' };
+    const second = {
+      ...baseProduct,
+      id: 'product-2',
+      imeiSerial: '351000000055433',
+      model: 'Galaxy S24',
+    };
     prisma.product.findMany.mockResolvedValue([baseProduct, second]);
 
     const result = await service.getStickerDataBatch([
@@ -88,13 +93,13 @@ describe('StickersService — ข้อมูลเครื่องสำห�
 
     expect(prisma.product.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: {
+        where: expect.objectContaining({
           deletedAt: null,
           OR: [
             { id: { in: ['351000000055433', 'product-1', '351000000007919'] } },
             { imeiSerial: { in: ['351000000055433', 'product-1', '351000000007919'] } },
           ],
-        },
+        }),
       }),
     );
     expect(result.map((r) => r.productId)).toEqual(['product-2', 'product-1']);
@@ -103,7 +108,12 @@ describe('StickersService — ข้อมูลเครื่องสำห�
   it('ประกันศูนย์: หมดแล้ว (flag) หรือวันที่ผ่านมาแล้ว = null · ไม่ระบุ = null', async () => {
     prisma.product.findMany.mockResolvedValue([
       { ...baseProduct, id: 'a', warrantyExpired: true },
-      { ...baseProduct, id: 'b', warrantyExpireDate: new Date('2024-01-01'), warrantyExpired: false },
+      {
+        ...baseProduct,
+        id: 'b',
+        warrantyExpireDate: new Date('2024-01-01'),
+        warrantyExpired: false,
+      },
       { ...baseProduct, id: 'c', warrantyExpireDate: null, warrantyExpired: null },
     ]);
 
@@ -114,7 +124,15 @@ describe('StickersService — ข้อมูลเครื่องสำห�
 
   it('เครื่องที่ยังไม่ตั้งราคา: cashPrice/installmentPrice = null และไม่มีแถวราคา (ให้ web เตือน ไม่พิมพ์)', async () => {
     prisma.product.findMany.mockResolvedValue([
-      { ...baseProduct, cashPrice: null, installmentPrice: null, prices: [], batteryHealth: 87, hasBox: false, category: 'PHONE_USED' },
+      {
+        ...baseProduct,
+        cashPrice: null,
+        installmentPrice: null,
+        prices: [],
+        batteryHealth: 87,
+        hasBox: false,
+        category: 'PHONE_USED',
+      },
     ]);
 
     const [result] = await service.getStickerDataBatch(['product-1']);

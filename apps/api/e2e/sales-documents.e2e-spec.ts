@@ -1,3 +1,11 @@
+import { GeneratedDocumentsService } from '../src/modules/contracts/services/generated-documents.service';
+import { AccessGeneratedDocumentsBoundaries } from '../src/modules/employee-access/access-generated-documents-boundaries';
+import { AccessContractFilesBoundaries } from '../src/modules/employee-access/access-contract-files-boundaries';
+import { AccessPartySourceService } from '../src/modules/employee-access/access-party-source.service';
+import { AccessProcurementSourceService } from '../src/modules/employee-access/access-procurement-source.service';
+import { AccessDocumentTemplateBoundaries } from '../src/modules/employee-access/access-document-template-boundaries';
+import { AccessResourceService } from '../src/modules/employee-access/access-resource.service';
+import { AccessSnapshotService } from '../src/modules/employee-access/access-snapshot.service';
 import { randomUUID, createHash } from 'crypto';
 import { DocumentPersistenceService } from '../src/modules/contracts/services/document-persistence.service';
 import { NotificationDispatchService } from '../src/modules/notifications/services/notification-dispatch.service';
@@ -11,6 +19,8 @@ import { Test } from '@nestjs/testing';
 import request from 'supertest';
 import { PrismaService } from '../src/prisma/prisma.service';
 import { DocumentsController } from '../src/modules/contracts/documents.controller';
+import { ContractSignaturesAccessService } from '../src/modules/contracts/services/contract-signatures-access.service';
+import { AccessSignaturesBoundaries } from '../src/modules/employee-access/access-signatures-boundaries';
 import { ContractDocumentsController } from '../src/modules/contracts/contract-documents.controller';
 import { DocumentsService } from '../src/modules/contracts/documents.service';
 import { ContractDocumentsService } from '../src/modules/contracts/contract-documents.service';
@@ -24,7 +34,8 @@ import { JwtAuthGuard } from '../src/modules/auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../src/modules/auth/guards/roles.guard';
 import { EntityScopeInterceptor } from '../src/interceptors/entity-scope.interceptor';
 
-if (!process.env.DATABASE_URL?.includes('/bc_chat_credit_test?host=/tmp/bc-chat-credit.')) throw new Error('Run tools/test-chat-credit.sh with its disposable database');
+const templateFixture = process.env.DATABASE_URL?.includes('/bc_access_task2?host=/tmp/bc-access-templates.') && process.env.DATABASE_URL_FINANCE === process.env.DATABASE_URL && process.env.EMPLOYEE_ACCESS_TEST_DATABASE_URL === process.env.DATABASE_URL;
+if (!templateFixture && !process.env.DATABASE_URL?.includes('/bc_chat_credit_test?host=/tmp/bc-chat-credit.')) throw new Error('Run an owned disposable database harness');
 
 describe('Staff sales documents on isolated PostgreSQL', () => {
   const db = new PrismaService();
@@ -42,10 +53,24 @@ describe('Staff sales documents on isolated PostgreSQL', () => {
   const pdf = Buffer.from('%PDF-1.4\n%Synthetic document test\n%%EOF');
   const render = jest.spyOn(DocumentRenderingService.prototype, 'htmlToPdf');
   const read = (path: string) => request(app.getHttpServer()).get(path).query({ company: 'shop' });
+  let signatureBoundary: AccessSignaturesBoundaries;
+  // Signature writes run inside the staff signature-capture boundary (epic contract); direct
+  // service calls from the test go through the same preflight/current pair as the HTTP guard.
+  const withSignatureBoundary = async <T,>(op: 'signContract' | 'deleteSignature', contractId: string, work: () => Promise<T>, signerType?: string): Promise<T> => {
+    const req = { user: { id: userId }, params: { id: contractId, ...(signerType ? { signerType } : {}) }, query: { company: 'SHOP' }, headers: {}, body: {} } as never;
+    await signatureBoundary.preflight(op, req);
+    return signatureBoundary.current(op, req, () => work());
+  };
   beforeAll(async () => {
     await db.$connect();
-    branchA = (await db.branch.create({ data: { name: `${prefix}-A` } })).id;
-    branchB = (await db.branch.create({ data: { name: `${prefix}-B` } })).id;
+    // Generated-document provenance resolves the product's owning company (branch.company); keep the
+    // fixture realistic like bookings-lifecycle: branches belong to the SHOP company.
+    const shopId = (await db.companyInfo.upsert({ where: { companyCode: 'SHOP' }, create: {
+      companyCode: 'SHOP', nameTh: 'ISOLATED SHOP', taxId: '9999999999996', address: 'Synthetic Road',
+      directorName: 'Synthetic Director', vatRegistered: true, vatRate: '0.0700',
+    }, update: {} })).id;
+    branchA = (await db.branch.create({ data: { name: `${prefix}-A`, companyId: shopId } })).id;
+    branchB = (await db.branch.create({ data: { name: `${prefix}-B`, companyId: shopId } })).id;
     userId = (await db.user.create({ data: { name: prefix, email: `${prefix}@example.invalid`, password: 'unused', role: 'OWNER', branchId: branchA } })).id;
     const customer = await db.customer.create({ data: { name: prefix, phone: '0800000000', nationalId: `799${Date.now().toString().slice(-10)}`, birthDate: new Date('1990-01-01'), lineIdFinance: `TEST-NOT-SENT-${prefix}` } });
     const make = async (branchId: string, name: string) => {
@@ -61,12 +86,14 @@ describe('Staff sales documents on isolated PostgreSQL', () => {
     const generated = async (contractId: string) => db.eDocument.create({ data: { contractId, documentType: 'CONTRACT', fileUrl: `${contractId}.pdf`, fileHash: 'test', createdById: userId } });
     generatedA = (await generated(contractA)).id; files.set(`${contractA}.pdf`, pdf);
     generatedB = (await generated(contractB)).id; files.set(`${contractB}.pdf`, pdf);
-    const module = await Test.createTestingModule({ controllers: [ContractDocumentsController, DocumentsController], providers: [
-      DocumentsService, ContractDocumentsService, ContractFileAccessGuard, RolesGuard,
+    const module = await Test.createTestingModule({ controllers: [ContractDocumentsController, DocumentsController], providers: [GeneratedDocumentsService, AccessGeneratedDocumentsBoundaries, ContractSignaturesAccessService, AccessSignaturesBoundaries,
+      DocumentsService, ContractDocumentsService, ContractFileAccessGuard,
+      AccessContractFilesBoundaries, AccessPartySourceService, AccessProcurementSourceService, AccessDocumentTemplateBoundaries, AccessResourceService, AccessSnapshotService, RolesGuard,
       { provide: PrismaService, useValue: db }, { provide: StorageService, useValue: storage },
       { provide: NotificationsService, useValue: notifications }, { provide: SettingsService, useValue: { findAll: async () => [] } }, { provide: OcrService, useValue: {} },
-    ] }).overrideGuard(JwtAuthGuard).useValue({ canActivate: (ctx: ExecutionContext) => { ctx.switchToHttp().getRequest().user = actor; return true; } }).compile();
+    ] }).overrideGuard(JwtAuthGuard).useValue({ canActivate: async (ctx: ExecutionContext) => { await db.user.update({ where: { id: actor.id }, data: { role: actor.role as 'OWNER' | 'SALES' | 'BRANCH_MANAGER' | 'FINANCE_MANAGER' | 'ACCOUNTANT', branchId: actor.branchId } }); ctx.switchToHttp().getRequest().user = actor; return true; } }).compile();
     documents = module.get(DocumentsService);
+    signatureBoundary = module.get(AccessSignaturesBoundaries);
     app = module.createNestApplication({ logger: false });
     app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
     app.useGlobalInterceptors(new EntityScopeInterceptor());
@@ -173,14 +200,14 @@ describe('Staff sales documents on isolated PostgreSQL', () => {
     const oldHash = createHash('sha256').update(oldBytes).digest('hex');
     const generating = documents.generateSignedDocuments(contractA, userId);
     await rendering;
-    await documents.deleteSignature(contractA, 'WITNESS_2');
+    await withSignatureBoundary('deleteSignature', contractA, () => documents.deleteSignature(contractA, 'WITNESS_2'), 'WITNESS_2');
     expect(await db.contractDocument.count({ where: { contractId: contractA, documentType: 'SIGNED_CONTRACT', isLatest: true, deletedAt: null } })).toBe(0);
     expect(await db.eDocument.count({ where: { contractId: contractA, documentType: 'CONTRACT', deletedAt: null } })).toBe(0);
     expect(await db.notificationLog.count({ where: { relatedId: contractA, subject: 'CONTRACT_DOCUMENTS_READY', status: 'DELAYED' } })).toBe(0);
     // Control the independent auto-save hook; retry below exercises actual persistence.
     const auto = jest.spyOn(DocumentPersistenceService.prototype, 'ensureSignedContractDocument').mockResolvedValueOnce(null);
     try {
-      await documents.signContract(contractA, 'data:image/png;base64,bmV3', 'WITNESS_2', {}, { staffUserId: userId });
+      await withSignatureBoundary('signContract', contractA, () => documents.signContract(contractA, 'data:image/png;base64,bmV3', 'WITNESS_2', {}, { staffUserId: userId }));
     } finally { auto.mockRestore(); finish(oldBytes); }
     const stale = await generating;
     expect(stale.errors?.join(' ')).toContain('เปลี่ยน');
@@ -200,7 +227,7 @@ describe('Staff sales documents on isolated PostgreSQL', () => {
       {} as NotificationTemplateService);
     const processing = dispatch.processRetryQueue();
     await checking;
-    await documents.deleteSignature(contractA, 'WITNESS_2');
+    await withSignatureBoundary('deleteSignature', contractA, () => documents.deleteSignature(contractA, 'WITNESS_2'), 'WITNESS_2');
     proceed();
     await processing;
     expect(sendLine).not.toHaveBeenCalled();

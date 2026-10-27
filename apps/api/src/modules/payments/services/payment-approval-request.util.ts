@@ -27,6 +27,18 @@ export interface PaymentApprovalContext {
   reason?: string;
 }
 
+/** Server-only pending provenance; owning approval integration must explicitly
+ * implement current owner/source/money consumption before enabling this version. */
+export const MANAGED_PAYOFF_SOURCE_KEY = 'managedEarlyPayoffSource';
+export interface ManagedPayoffRequestSource {
+  version: 1;
+  requesterId: string;
+  contractId: string;
+  financeCompanyId: string;
+  originShopCompanyId: string;
+  originBranchId: string;
+}
+
 export function approvalJson(value: unknown): Prisma.InputJsonValue {
   return JSON.parse(JSON.stringify(value));
 }
@@ -147,6 +159,14 @@ export async function consumePaymentApproval(
     throw new ForbiddenException('คำขออนุมัติไม่ตรงกับรายการ');
   }
   if (request.status !== 'PENDING') throw new ConflictException('คำขอนี้ดำเนินการแล้ว');
+  if (
+    request.action === 'EARLY_PAYOFF' &&
+    request.snapshot &&
+    typeof request.snapshot === 'object' &&
+    Object.prototype.hasOwnProperty.call(request.snapshot, MANAGED_PAYOFF_SOURCE_KEY)
+  ) {
+    throw new ForbiddenException('คำขอนี้ยังรอขั้นตอนอนุมัติของเจ้าของที่รองรับสิทธิ์ปัจจุบัน');
+  }
   const permission = await getPaymentApprovalPermissions(tx, context.actorId);
   if (
     !request.requiredPermissions.length ||

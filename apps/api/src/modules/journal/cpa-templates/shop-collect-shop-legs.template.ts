@@ -53,6 +53,8 @@ export interface ShopCollectSettlementShopInput {
   /** requestId ของใบ FINANCE — ใช้เป็น idempotency key คู่กัน */
   requestId?: string;
   postedAt?: Date;
+  /** Current owned executor; omitted callers retain the system creator. */
+  createdById?: string;
 }
 
 export class ShopCollectShopLegs {
@@ -122,6 +124,7 @@ export class ShopCollectShopLegs {
         description: `โอนเงินให้ FINANCE ล้างเจ้าหนี้ค่าเครื่องยึด/เงินที่รับแทน — สัญญา ${contractLabel}`,
         reference: `contract:${input.contractId}:shop-collect-settlement-shop:${key}`,
         postedAt: input.postedAt,
+        ...(input.createdById ? { createdById: input.createdById } : {}),
         metadata: {
           flow: SHOP_COLLECT_SETTLEMENT_SHOP_FLOW,
           idempotencyKey: `${SHOP_COLLECT_SETTLEMENT_SHOP_FLOW}:${input.contractId}:${key}`,

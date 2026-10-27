@@ -144,6 +144,8 @@ describe('ContractWorkflowService', () => {
     jest.spyOn(creditApproval, 'assertContractCreditApproval').mockResolvedValue({ id: 'approved-cap' } as never);
 
     prisma = {
+      // Legacy canonical fixture; managed direct calls require owned current execution.
+      user: { findUnique: jest.fn().mockResolvedValue({ id: 'activation-actor', accessManaged: false, role: 'OWNER', isActive: true, isSystemUser: false, deletedAt: null, branchId: 'branch-1' }) },
       $queryRaw: jest.fn().mockResolvedValue([]),
       contract: {
         findMany: jest.fn().mockResolvedValue([]), // ก้อน 5 C3 — assertCustomerContractPolicy ใน tx ของ activate
@@ -268,7 +270,7 @@ describe('ContractWorkflowService', () => {
   describe('activate', () => {
     it('ก้อน 7 A16: หลังเปิดใช้แจ้ง contract.activated ผ่านท่อกลางจากข้อมูลสัญญาที่โหลดแล้ว (ไม่ทำให้ activate ล้ม)', async () => {
       staffNotifyMock.notify.mockClear();
-      await service.activate('contract-1');
+      await service.activate('contract-1', 'activation-actor');
       await new Promise((r) => setImmediate(r));
       expect(staffNotifyMock.notify).toHaveBeenCalledTimes(1);
       expect(staffNotifyMock.notify).toHaveBeenCalledWith('contract.activated', expect.objectContaining({
@@ -281,7 +283,7 @@ describe('ContractWorkflowService', () => {
     });
 
     it('ก้อน 5: หลัง 1A ตัดสินภาษีซื้อของเครื่องหลักใน tx เดียวกัน — ไม่มีใบรับของ → สัญญา NOT_ELIGIBLE ไม่โพสต์ JE', async () => {
-      await service.activate('contract-1');
+      await service.activate('contract-1', 'activation-actor');
       expect(installmentInputVatTemplate.execute).not.toHaveBeenCalled();
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const vatUpdate = prisma.contract.update.mock.calls.find((c: any[]) => c[0]?.data?.inputVatStatus);
@@ -293,10 +295,11 @@ describe('ContractWorkflowService', () => {
         receivedVat: new Prisma.Decimal('686'),
         receiving: { id: 'gr-1', grNumber: 'GR-1', supplierDocType: 'TAX_INVOICE', supplierDocNumber: 'IV-9', supplierDocDate: new Date('2026-09-29T17:00:00Z'), taxInvoiceNumber: null, taxInvoiceDate: null },
       });
-      await service.activate('contract-1');
+      await service.activate('contract-1', 'activation-actor');
       expect(installmentInputVatTemplate.execute).toHaveBeenCalledTimes(1);
       expect(installmentInputVatTemplate.execute.mock.calls[0][0]).toMatchObject({ contractId: 'contract-1', productId: mockProduct.id, taxInvoiceNumber: 'IV-9' });
-      expect(installmentInputVatTemplate.execute.mock.calls[0][1]).toBeDefined(); // tx เดียวกับ 1A
+      expect(installmentInputVatTemplate.execute.mock.calls[0][1]).toBe(contractActivationTemplateMock.execute.mock.calls[0][1]);
+      expect(installmentInputVatTemplate.execute.mock.calls[0][0].postedAt).toBe(contractActivationTemplateMock.execute.mock.calls[0][2]); // same checked posting date/client
       expect(contractActivationTemplateMock.execute.mock.invocationCallOrder[0]).toBeLessThan(installmentInputVatTemplate.execute.mock.invocationCallOrder[0]);
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const vatUpdate = prisma.contract.update.mock.calls.find((c: any[]) => c[0]?.data?.inputVatStatus);
@@ -306,7 +309,7 @@ describe('ContractWorkflowService', () => {
     it('checks the approved installment amount before activating or posting money', async () => {
       const guard = jest.spyOn(creditApproval, 'assertContractCreditApproval').mockRejectedValue(new Error('ยอดอนุมัติไม่พอ'));
       try {
-        await expect(service.activate('contract-1')).rejects.toThrow('ยอดอนุมัติไม่พอ');
+        await expect(service.activate('contract-1', 'activation-actor')).rejects.toThrow('ยอดอนุมัติไม่พอ');
         expect(prisma.contract.update).not.toHaveBeenCalled();
       } finally { guard.mockRestore(); }
     });
@@ -314,11 +317,11 @@ describe('ContractWorkflowService', () => {
       const transferContract = { ...mockContract, downPaymentMethod: 'BANK_TRANSFER', downPaymentReceivedAt: new Date(), downPaymentReference: 'SYNTHETIC-TRANSFER' };
       prisma.contract.findUnique.mockResolvedValue(transferContract);
       prisma.contract.findUniqueOrThrow.mockResolvedValue(transferContract);
-      await service.activate('contract-1');
+      await service.activate('contract-1', 'activation-actor');
       expect(prisma.sale.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ paymentMethod: 'BANK_TRANSFER' }) }));
     });
     it('activates a fully-approved DRAFT contract and writes the activation JE', async () => {
-      await service.activate('contract-1');
+      await service.activate('contract-1', 'activation-actor');
 
       // Contract status flipped to ACTIVE
       expect(prisma.contract.update).toHaveBeenCalledWith(
@@ -332,12 +335,13 @@ describe('ContractWorkflowService', () => {
       expect(contractActivationTemplateMock.execute).toHaveBeenCalledTimes(1);
       expect(contractActivationTemplateMock.execute).toHaveBeenCalledWith(
         'contract-1',
-        expect.anything(), // tx client
+        expect.anything(),
+        expect.any(Date), // tx client
       );
     });
 
     it('closes an open Repossession row for the device (resale on a new installment — 2026-09-05)', async () => {
-      await service.activate('contract-1');
+      await service.activate('contract-1', 'activation-actor');
 
       expect(prisma.repossession.updateMany).toHaveBeenCalledTimes(1);
       expect(prisma.repossession.updateMany).toHaveBeenCalledWith(
@@ -355,11 +359,12 @@ describe('ContractWorkflowService', () => {
       // Wave 1 / Task 4: template now runs inside outer $transaction so it
       // receives tx as its 2nd argument. If 1A throws, the whole activation
       // (contract status + product ownership transfer + sale row) rolls back.
-      await service.activate('contract-1');
+      await service.activate('contract-1', 'activation-actor');
 
       expect(contractActivationTemplateMock.execute).toHaveBeenCalledWith(
         'contract-1',
         expect.anything(),
+        expect.any(Date),
       );
     });
 
@@ -370,7 +375,7 @@ describe('ContractWorkflowService', () => {
         new Error('1A fail'),
       );
 
-      await expect(service.activate('contract-1')).rejects.toThrow('1A fail');
+      await expect(service.activate('contract-1', 'activation-actor')).rejects.toThrow('1A fail');
 
       // The 1A template was still called once before rejecting
       expect(contractActivationTemplateMock.execute).toHaveBeenCalledTimes(1);
@@ -395,7 +400,7 @@ describe('ContractWorkflowService', () => {
       });
 
       it('calls finalizeAfterActivation with the contract identity + plan numbers', async () => {
-        await service.activate('contract-exch');
+        await service.activate('contract-exch', 'activation-actor');
 
         expect(exchangeServiceMock.finalizeAfterActivation).toHaveBeenCalledTimes(1);
         const [arg, tx] = exchangeServiceMock.finalizeAfterActivation.mock.calls[0];
@@ -413,17 +418,17 @@ describe('ContractWorkflowService', () => {
       });
 
       it('does NOT call the standard ContractActivation1ATemplate for exchange contracts', async () => {
-        await service.activate('contract-exch');
+        await service.activate('contract-exch', 'activation-actor');
         expect(contractActivationTemplateMock.execute).not.toHaveBeenCalled();
       });
 
       it('does NOT create a Sale row for exchange contracts', async () => {
-        await service.activate('contract-exch');
+        await service.activate('contract-exch', 'activation-actor');
         expect(prisma.sale.create).not.toHaveBeenCalled();
       });
 
       it('still flips the new contract to ACTIVE + transfers product ownership to FINANCE', async () => {
-        await service.activate('contract-exch');
+        await service.activate('contract-exch', 'activation-actor');
         expect(prisma.contract.update).toHaveBeenCalledWith(
           expect.objectContaining({
             where: { id: 'contract-exch' },
@@ -447,7 +452,7 @@ describe('ContractWorkflowService', () => {
         exchangeServiceMock.finalizeAfterActivation.mockRejectedValueOnce(
           new Error('finalize fail'),
         );
-        await expect(service.activate('contract-exch')).rejects.toThrow('finalize fail');
+        await expect(service.activate('contract-exch', 'activation-actor')).rejects.toThrow('finalize fail');
         // standard 1A path was not used here
         expect(contractActivationTemplateMock.execute).not.toHaveBeenCalled();
       });
@@ -463,7 +468,7 @@ describe('ContractWorkflowService', () => {
 
       it('RESERVED + ใบจอง PAID ล็อกเครื่องอยู่ → 409 บอกเลขใบจอง ไม่เปิดสัญญา ไม่ตัดสต็อก', async () => {
         prisma.booking.findFirst.mockResolvedValue({ bookingNumber: 'BK-20261005-0001' });
-        const err = await service.activate('contract-1').catch((e: unknown) => e);
+        const err = await service.activate('contract-1', 'activation-actor').catch((e: unknown) => e);
         expect(err).toBeInstanceOf(ConflictException);
         expect((err as Error).message).toBe(
           'เครื่องนี้ถูกใบจอง BK-20261005-0001 ล็อกไว้ — เปิดสัญญาไม่ได้ กรุณาเลือกเครื่องอื่นหรือยกเลิกใบจองก่อน',
@@ -481,7 +486,7 @@ describe('ContractWorkflowService', () => {
           .mockResolvedValueOnce({ ...mockProduct, status: 'IN_STOCK' }) // ด่านนอก tx
           .mockResolvedValueOnce(mockProduct); // ด่านใน tx — RESERVED
         prisma.booking.findFirst.mockResolvedValue({ bookingNumber: 'BK-20261005-0002' });
-        await expect(service.activate('contract-1')).rejects.toThrow(/BK-20261005-0002/);
+        await expect(service.activate('contract-1', 'activation-actor')).rejects.toThrow(/BK-20261005-0002/);
         expect(prisma.$transaction).toHaveBeenCalledTimes(1);
         expect(prisma.contract.update).not.toHaveBeenCalled();
         expect(prisma.product.update).not.toHaveBeenCalled();
@@ -491,7 +496,7 @@ describe('ContractWorkflowService', () => {
 
       it('RESERVED + ร่างสัญญาอื่น (ยังไม่ลบ) บนเครื่องเดียวกัน → 409 บอกเลขร่างนั้น', async () => {
         otherDraftOnSameProduct();
-        const err = await service.activate('contract-1').catch((e: unknown) => e);
+        const err = await service.activate('contract-1', 'activation-actor').catch((e: unknown) => e);
         expect(err).toBeInstanceOf(ConflictException);
         expect((err as Error).message).toMatch(/BC-2026-999/);
         expect(prisma.contract.findFirst).toHaveBeenCalledWith(expect.objectContaining({
@@ -503,7 +508,7 @@ describe('ContractWorkflowService', () => {
       });
 
       it('RESERVED ที่ไม่มีใครอื่นถือ (ร่างนี้จองเอง) → เปิดสัญญาได้ตามปกติ', async () => {
-        await service.activate('contract-1');
+        await service.activate('contract-1', 'activation-actor');
         expect(prisma.booking.findFirst).toHaveBeenCalled();
         expect(prisma.contract.update).toHaveBeenCalledWith(expect.objectContaining({
           where: { id: 'contract-1' }, data: expect.objectContaining({ status: 'ACTIVE' }),
@@ -517,7 +522,7 @@ describe('ContractWorkflowService', () => {
 
       it('สัญญาจากเปลี่ยนเครื่อง: approve จองเครื่องใหม่ให้ร่าง EXCH- เอง → ด่านร่างอื่นไม่นับตัวเอง เปิดได้', async () => {
         prisma.contract.findUnique.mockResolvedValue({ ...mockContract, id: 'contract-exch', exchangedFromContractId: 'contract-original' });
-        await service.activate('contract-exch');
+        await service.activate('contract-exch', 'activation-actor');
         expect(prisma.contract.findFirst).toHaveBeenCalledWith(expect.objectContaining({
           where: expect.objectContaining({ id: { not: 'contract-exch' }, status: 'DRAFT' }),
         }));
@@ -526,7 +531,7 @@ describe('ContractWorkflowService', () => {
 
       it('IN_STOCK → เปิดได้ตามเดิม ไม่ต้องถามเจ้าของ RESERVED', async () => {
         prisma.product.findFirst.mockResolvedValue({ ...mockProduct, status: 'IN_STOCK' });
-        await service.activate('contract-1');
+        await service.activate('contract-1', 'activation-actor');
         expect(prisma.booking.findFirst).not.toHaveBeenCalled();
         expect(prisma.contract.update).toHaveBeenCalledWith(expect.objectContaining({
           data: expect.objectContaining({ status: 'ACTIVE' }),
@@ -540,7 +545,7 @@ describe('ContractWorkflowService', () => {
       // คั่นระหว่างอ่านใน tx กับจังหวะ flip ได้ ⇒ flip ต้องเป็น CAS บนสถานะที่อ่านมา ไม่งั้นทับ RESERVED ของใบจอง
       it('flip SOLD_INSTALLMENT CAS count 0 (สถานะเปลี่ยนคั่นกลาง) → 409 ไม่เปิดสัญญา ไม่ย้ายกรรมสิทธิ์ ไม่ลง JE', async () => {
         prisma.product.updateMany.mockResolvedValue({ count: 0 });
-        const err = await service.activate('contract-1').catch((e: unknown) => e);
+        const err = await service.activate('contract-1', 'activation-actor').catch((e: unknown) => e);
         expect(err).toBeInstanceOf(ConflictException);
         expect((err as Error).message).toMatch(/สินค้าเปลี่ยนสถานะระหว่างเปิดสัญญา/);
         expect(prisma.contract.update).not.toHaveBeenCalled();
@@ -622,7 +627,7 @@ describe('ContractWorkflowService', () => {
     });
 
     it('posts ShopInventoryTransfer with salePrice = down + financed at activation', async () => {
-      await service.activate('c-1');
+      await service.activate('c-1', 'activation-actor');
       const input = shopInventoryTransferTemplate.execute.mock.calls[0][0];
       // D-8: salePrice must be down + financed (2000 + 18000 = 20000), NOT raw sellingPrice
       expect(input.salePrice.toString()).toBe('20000');
@@ -650,7 +655,7 @@ describe('ContractWorkflowService', () => {
         { id: 'gift-2', category: 'MOBILE_NEW', costPrice: new Prisma.Decimal(0) },
       ]);
 
-      await service.activate('c-1');
+      await service.activate('c-1', 'activation-actor');
 
       const input = shopInventoryTransferTemplate.execute.mock.calls[0][0];
       expect(input.bundleCosts).toHaveLength(2);
@@ -666,7 +671,7 @@ describe('ContractWorkflowService', () => {
     });
 
     it('ไม่มีใบขาย/ไม่มีของแถม → bundleCosts ว่าง (พฤติกรรมเดิม)', async () => {
-      await service.activate('c-1');
+      await service.activate('c-1', 'activation-actor');
       expect(shopInventoryTransferTemplate.execute.mock.calls[0][0].bundleCosts).toEqual([]);
       // ไม่มีของแถม = ไม่ต้องไปดึงสินค้าเลย
       expect(prisma.product.findMany).not.toHaveBeenCalled();
@@ -682,7 +687,7 @@ describe('ContractWorkflowService', () => {
         storeCommission: null,
       });
 
-      await service.activate('c-1');
+      await service.activate('c-1', 'activation-actor');
 
       const input = shopInventoryTransferTemplate.execute.mock.calls[0][0];
       // 18000 × 10% = 1800 — ตัวเลขเดียวกับที่ ContractActivation1ATemplate ตั้งบน 21-1102
@@ -700,7 +705,7 @@ describe('ContractWorkflowService', () => {
         { key: 'store_commission_pct', value: '0.05' },
       ]);
 
-      await service.activate('c-1');
+      await service.activate('c-1', 'activation-actor');
 
       // 18000 × 5% = 900
       const input = shopInventoryTransferTemplate.execute.mock.calls[0][0];
@@ -713,7 +718,7 @@ describe('ContractWorkflowService', () => {
         storeCommission: null,
       });
 
-      await service.activate('c-1');
+      await service.activate('c-1', 'activation-actor');
 
       // ต้องมี update ที่เซ็ต storeCommission ก่อน 1A จะอ่าน
       // (ไม่งั้นอัตราถูกแก้วันหลัง = สองสมุดคำนวณใหม่ได้คนละตัว)
@@ -731,7 +736,7 @@ describe('ContractWorkflowService', () => {
         storeCommission: new Prisma.Decimal(0),
       });
 
-      await service.activate('c-1');
+      await service.activate('c-1', 'activation-actor');
 
       const input = shopInventoryTransferTemplate.execute.mock.calls[0][0];
       expect(input.commission.toString()).toBe('0');
@@ -742,7 +747,7 @@ describe('ContractWorkflowService', () => {
       // Receipt metadata exists, but the ledger entry is missing.
       prisma.journalEntry.findFirst.mockResolvedValue(null);
       shopAccountResolver.resolveBranchCashAccount.mockResolvedValue('S11-1102');
-      await service.activate('c-1');
+      await service.activate('c-1', 'activation-actor');
       expect(shopDownPaymentTemplate.execute).toHaveBeenCalledTimes(1);
       expect(shopDownPaymentTemplate.execute.mock.calls[0][0]).toMatchObject({
         idempotencyKey: 'shop-down-payment:c-1',
@@ -752,13 +757,13 @@ describe('ContractWorkflowService', () => {
 
     it('does not invent a historical receipt without evidence', async () => {
       prisma.journalEntry.findFirst.mockResolvedValue(null);
-      await expect(service.activate('c-1')).rejects.toThrow('ไม่พบหลักฐานรับเงินดาวน์');
+      await expect(service.activate('c-1', 'activation-actor')).rejects.toThrow('ไม่พบหลักฐานรับเงินดาวน์');
       expect(shopDownPaymentTemplate.execute).not.toHaveBeenCalled();
     });
 
     it('skips the catch-up when a down JE already exists (post-Task-6 contract)', async () => {
       prisma.journalEntry.findFirst.mockResolvedValue({ id: 'down-je-1' });
-      await service.activate('c-1');
+      await service.activate('c-1', 'activation-actor');
       expect(shopDownPaymentTemplate.execute).not.toHaveBeenCalled();
     });
 
@@ -769,7 +774,7 @@ describe('ContractWorkflowService', () => {
         exchangedFromContractId: 'c-original',
       };
       prisma.contract.findUnique.mockResolvedValue(exchangeShopContract);
-      await service.activate('c-exch');
+      await service.activate('c-exch', 'activation-actor');
       expect(shopInventoryTransferTemplate.execute).not.toHaveBeenCalled();
       expect(shopDownPaymentTemplate.execute).not.toHaveBeenCalled();
     });

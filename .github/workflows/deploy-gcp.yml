@@ -107,10 +107,10 @@ jobs:
   test-api:
     name: Test API
     runs-on: ubuntu-24.04
-    timeout-minutes: 25
+    timeout-minutes: 35 # 2026-10-27: 5 shard ต่อเนื่อง (main ใช้ ~16 นาที; สาขา epic suite ใหญ่กว่า)
     if: inputs.skip_tests != true
     env:
-      NODE_OPTIONS: --max-old-space-size=6144
+      NODE_OPTIONS: --max-old-space-size=8192
 
     # jest unit specs บางไฟล์ต่อ DB จริง (asset-journal, credit-check, room-manager …) จึงต้องมี
     # Postgres ทั้งสองตัว + migrate เหมือนเดิม (ซ้ำกับ test-integration โดยจำเป็น — GitHub Actions
@@ -160,7 +160,13 @@ jobs:
         env:
           DATABASE_URL_FINANCE: postgresql://test:test@localhost:5433/test_finance_db?schema=public
       - name: Test API
-        run: npm run test --workspace=apps/api
+        # 2026-10-27: epic employee-access ทำให้ suite โต (1,105 ไฟล์) — รัน --runInBand ต่อเนื่องใน process
+        # เดียว heap โตสะสมจน OOM (exit 134 ที่ ~320 suite / 6 GB) จึงแบ่งเป็น 5 shard รันทีละ process
+        # (ยัง runInBand ภายใน shard เพื่อไม่ให้ spec ที่ต่อ DB จริงชนกัน)
+        run: |
+          for shard in 1 2 3 4 5; do
+            npm run test --workspace=apps/api -- --shard=$shard/5
+          done
         env:
           DATABASE_URL: postgresql://test:test@localhost:5432/test_db?schema=public
           DATABASE_URL_FINANCE: postgresql://test:test@localhost:5433/test_finance_db?schema=public
@@ -266,7 +272,9 @@ jobs:
           EXCH_FILES=$(ls src/modules/contract-exchange/__tests__/*.integration.spec.ts)
           INTERCO_FILES=$(ls src/modules/interco-settlement/__tests__/*.integration.spec.ts)
           # + __tests__/ level added 2026-08-20 (Phase 3 contract-cancellation C-1)
-          CONTRACTS_FILES=$(ls src/modules/contracts/*.integration.spec.ts src/modules/contracts/__tests__/*.integration.spec.ts)
+          # employee-access epic: *-access/payoff-* specs are jest-format (jest.* globals) and run through
+          # tools/test-employee-access-*.sh on their own isolated DB — vitest's collector crashes on them
+          CONTRACTS_FILES=$(ls src/modules/contracts/*.integration.spec.ts src/modules/contracts/__tests__/*.integration.spec.ts | grep -v -E '/(cancellation-access|payoff-atomic|payoff-private|shop-settlement-access)\.integration\.spec\.ts$')
           JOURNAL_FILES="src/modules/journal/__tests__/scenario-helpers.spec.ts src/modules/journal/cron/installment-accrual.cron.spec.ts src/modules/journal/cron/advance-excess-income.cron.spec.ts src/modules/journal/cron/vat-60day.cron.spec.ts"
           OVERDUE_FILES=$(ls src/modules/overdue/*.integration.spec.ts src/modules/overdue/services/*.integration.spec.ts)
           PAYMENTS_FILES=$(ls src/modules/payments/services/*.integration.spec.ts)

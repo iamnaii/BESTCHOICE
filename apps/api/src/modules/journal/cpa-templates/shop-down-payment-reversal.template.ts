@@ -1,3 +1,4 @@
+import { assertManagedCancellationPosting } from '../managed-cancellation-posting';
 import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { Decimal } from '@prisma/client/runtime/library';
 import { Prisma } from '@prisma/client';
@@ -45,6 +46,8 @@ export interface ShopDownPaymentReversalInput {
   /** ID of the original JE that posted the down (for paired audit trail). */
   originalJournalEntryId?: string;
   postedAt?: Date;
+  createdById?: string;
+  managedCancellation?: boolean;
 }
 
 @Injectable()
@@ -136,6 +139,7 @@ export class ShopDownPaymentReversalTemplate {
       }
 
       const shopCompanyId = await this.companyResolver.getShopCompanyId(tx);
+      if (input.managedCancellation) await assertManagedCancellationPosting(tx,input.createdById,input.postedAt!,shopCompanyId);
       const result = await this.journal.createAndPost(
         {
           description: `กลับรายการเงินดาวน์ — สัญญา ${input.contractNumber ?? input.contractId} (SHOP)`,
@@ -153,6 +157,7 @@ export class ShopDownPaymentReversalTemplate {
           },
           postedAt: input.postedAt ?? new Date(),
           companyId: shopCompanyId,
+          ...(input.createdById ? {createdById:input.createdById} : {}),
           lines,
         },
         tx,

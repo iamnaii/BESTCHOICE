@@ -1,18 +1,26 @@
-import { IsString, IsOptional, IsBoolean, IsArray, MaxLength, Matches } from 'class-validator';
+import { IsString, IsOptional, IsBoolean, IsArray, MaxLength, Matches, ArrayMaxSize, IsNotEmpty } from 'class-validator';
 
 export class CreateTemplateDto {
   @IsString()
+  @IsNotEmpty()
+  @MaxLength(256)
   name: string;
 
   @IsString()
   @IsOptional()
+  @MaxLength(128)
   type?: string = 'STORE_DIRECT';
 
   @IsString()
+  @MaxLength(1048576)
+  @IsNotEmpty()
   contentHtml: string;
 
   @IsArray()
   @IsOptional()
+  @ArrayMaxSize(1000)
+  @IsString({ each: true })
+  @MaxLength(256, { each: true })
   placeholders?: string[];
 
   @IsOptional()
@@ -29,14 +37,21 @@ export class CreateTemplateDto {
 export class UpdateTemplateDto {
   @IsString()
   @IsOptional()
+  @MaxLength(256)
+  @IsNotEmpty()
   name?: string;
 
   @IsString()
   @IsOptional()
+  @MaxLength(1048576)
+  @IsNotEmpty()
   contentHtml?: string;
 
   @IsArray()
   @IsOptional()
+  @ArrayMaxSize(1000)
+  @IsString({ each: true })
+  @MaxLength(256, { each: true })
   placeholders?: string[];
 
   @IsOptional()
@@ -51,6 +66,15 @@ export class UpdateTemplateDto {
 }
 
 export class SignContractDto {
+  @IsOptional()
+  @Matches(/^BUILTIN$/)
+  templateSource?: 'BUILTIN';
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(36)
+  templateId?: string;
+
   @IsString()
   @MaxLength(500000, { message: 'ลายเซ็นต้องมีขนาดไม่เกิน 500KB' })
   @Matches(/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/, { message: 'ลายเซ็นต้องเป็นรูปแบบ base64 image เท่านั้น' })
@@ -82,6 +106,10 @@ export class SignContractDto {
 }
 
 export class GenerateDocumentDto {
+  @IsOptional()
+  @Matches(/^BUILTIN$/, { message: 'ตัวเลือกแม่แบบไม่ถูกต้อง' })
+  templateSource?: 'BUILTIN';
+
   @IsString()
   @IsOptional()
   templateId?: string;

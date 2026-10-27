@@ -220,7 +220,7 @@ export async function runDrive(ctx: SeedContext, postDate: Date): Promise<DriveR
         );
       }
       const workflow = app.get(ContractWorkflowService, { strict: false });
-      await workflow.activate(c.id);
+      await workflow.activate(c.id, ctx.refs.ownerId);
       return `เปิดสัญญา ${c.contractNumber} แล้ว — ตรวจคิวรอจ่ายที่เมนูจ่ายให้หน้าร้าน (INTER-CO)${nowOnlyDayNote}`;
     });
 

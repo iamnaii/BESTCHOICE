@@ -14,6 +14,10 @@ export interface EclStageReverseInput {
   toBucket: string;
   /** Optional period tag (defaults to current YYYY-MM) for traceability */
   period?: string;
+  /** Internal provenance supplied by an already authorized monetary producer. */
+  companyId?: string;
+  createdById?: string;
+  postedAt?: Date;
 }
 
 /**
@@ -58,7 +62,7 @@ export class EclStageReverseTemplate {
     const period =
       input.period ??
       (() => {
-        const now = new Date();
+        const now = input.postedAt ?? new Date();
         return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
       })();
 
@@ -68,6 +72,9 @@ export class EclStageReverseTemplate {
         {
           description: `ECL stage reverse ${input.fromBucket}→${input.toBucket} — สัญญา ${input.contractId.slice(0, 8)}`,
           reference: `${input.contractId}:ecl-stage-reverse:${period}:${input.fromBucket}-${input.toBucket}:${Date.now()}`,
+          ...(input.companyId ? { companyId: input.companyId } : {}),
+          ...(input.createdById ? { createdById: input.createdById } : {}),
+          ...(input.postedAt ? { postedAt: input.postedAt } : {}),
           metadata: {
             tag: 'ECL-STAGE-REVERSE',
             flow: 'stage-reverse',

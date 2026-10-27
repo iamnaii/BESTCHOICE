@@ -1,3 +1,5 @@
+import { AccessSocketBoundary } from '../employee-access/access-socket-boundary';
+import { PrismaService } from '../../prisma/prisma.service';
 import {
   WebSocketGateway,
   WebSocketServer,
@@ -46,6 +48,8 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   constructor(
     private jwtService: JwtService,
     private configService: ConfigService,
+    private accessBoundary: AccessSocketBoundary,
+    private prisma: PrismaService,
   ) {}
 
   async handleConnection(client: AuthenticatedSocket) {
@@ -62,6 +66,14 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
         secret: this.configService.get<string>('JWT_SECRET'),
       });
 
+      if ((payload.aud && payload.aud !== 'admin') || payload.role === 'CUSTOMER') throw new Error('Staff token required');
+      client.data.staffUserId = payload.sub;
+      client.data.staffTokenExpiresAt = payload.exp ? payload.exp * 1000 : undefined;
+      if (!await this.accessBoundary.allowLegacy(client)) return;
+      const user = await this.prisma.user.findUnique({ where: { id: payload.sub }, select: { role: true, branchId: true } });
+      if (!user) throw new Error('Staff required');
+      payload.role = user.role;
+      payload.branchId = user.branchId;
       client.userId = payload.sub;
       client.userRole = payload.role;
       client.branchId = payload.branchId;
@@ -96,22 +108,22 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
   /** Emit event to all connected clients */
   emitToAll(event: string, data: unknown) {
-    this.server.to('all').emit(event, data);
+    this.accessBoundary.emit(this.server, 'all', event, data);
   }
 
   /** Emit to a specific user */
   emitToUser(userId: string, event: string, data: unknown) {
-    this.server.to(`user:${userId}`).emit(event, data);
+    this.accessBoundary.emit(this.server, `user:${userId}`, event, data);
   }
 
   /** Emit to all users in a branch */
   emitToBranch(branchId: string, event: string, data: unknown) {
-    this.server.to(`branch:${branchId}`).emit(event, data);
+    this.accessBoundary.emit(this.server, `branch:${branchId}`, event, data);
   }
 
   /** Emit to all users with a specific role */
   emitToRole(role: string, event: string, data: unknown) {
-    this.server.to(`role:${role}`).emit(event, data);
+    this.accessBoundary.emit(this.server, `role:${role}`, event, data);
   }
 
   /** Notify all: payment was recorded */

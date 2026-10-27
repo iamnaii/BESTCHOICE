@@ -1,6 +1,7 @@
+import { currentDomainAccess, domainAccessClient } from '../../employee-access/access-execution-context';
 import { isRetryablePrismaWriteError } from '../../../utils/transaction-retry.util';
 import { ShopTenderRecorder } from '../../shop-tenders/shop-tender.recorder';
-import { firstTransferReference, normalizeTenders } from '../../shop-tenders/shop-tender.util';
+import { normalizeTenders } from '../../shop-tenders/shop-tender.util';
 import { assertSaleProductEligible, type SaleProductActor } from './sale-product-policy';
 import { assertBundleIsAccessory } from './bundle-policy';
 import { isAccessoryCompatible, type AccessoryDevice } from '@installment/shared';
@@ -29,8 +30,10 @@ import { preemptReservationsInTx } from '../../../utils/reservation-preempt.util
  */
 @Injectable()
 export class SaleWriterService {
+  private get prisma(): PrismaService { return domainAccessClient(this.basePrisma); }
+
   constructor(
-    private prisma: PrismaService,
+    private readonly basePrisma: PrismaService,
     private shopCashSaleTemplate: ShopCashSaleTemplate,
     private shopAccountResolver: ShopAccountResolver,
     private shopExternalFinanceSaleTemplate: ShopExternalFinanceSaleTemplate,
@@ -52,6 +55,7 @@ export class SaleWriterService {
     fn: (tx: Prisma.TransactionClient) => Promise<T>,
     options?: { isolationLevel?: Prisma.TransactionIsolationLevel },
   ): Promise<T> {
+    if (currentDomainAccess()) return this.prisma.$transaction(fn, options);
     const MAX_RETRIES = 3;
     for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
       try {
@@ -178,12 +182,12 @@ export class SaleWriterService {
    * เป็น READY_FOR_SALE (SaleVoidService).
    */
 
-  async createCashSale(dto: CreateSaleDto, salespersonId: string, netAmount: number, discount: number, actor: SaleProductActor = { role: 'SALES' }) {
+  async createCashSale(dto: CreateSaleDto, salespersonId: string, netAmount: number, discount: number, actor: SaleProductActor = { role: 'SALES' }, promotionDiscount = new Decimal(0)) {
     if (!dto.paymentMethod) throw new BadRequestException('กรุณาเลือกวิธีชำระเงิน');
 
     return this.runSaleTransaction(async (tx) => {
       const credits = new TradeInCreditService(this.prisma);
-      const creditInput = { ...dto, tradeInId: dto.tradeInCreditId!, priceAfterDiscount: new Decimal(dto.sellingPrice).minus(dto.discount ?? 0).minus(dto.loyaltyPointsRedeemed ?? 0).toNumber() };
+      const creditInput = { ...dto, tradeInId: dto.tradeInCreditId!, priceAfterDiscount: new Decimal(dto.sellingPrice).minus(dto.discount ?? 0).minus(promotionDiscount).minus(dto.loyaltyPointsRedeemed ?? 0).toNumber() };
       const credit = dto.tradeInCreditId ? await credits.quote(tx, creditInput) : null;
       if (credit && !credit.net.eq(netAmount)) throw new BadRequestException('ราคาหลังโบนัสเทิร์นเปลี่ยนแล้ว กรุณาตรวจยอดอีกครั้ง');
       const cashDue = new Decimal(netAmount).minus(credit?.base ?? 0);

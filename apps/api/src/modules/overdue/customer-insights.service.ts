@@ -1,3 +1,5 @@
+import { currentPartyQuery } from '../employee-access/access-party-query-plan';
+import { domainAccessClient } from '../employee-access/access-execution-context';
 import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 
@@ -39,14 +41,15 @@ export interface CustomerInsights {
  */
 @Injectable()
 export class CustomerInsightsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly basePrisma: PrismaService) {}
+  private get prisma() {
+    return domainAccessClient(this.basePrisma);
+  }
 
-  async getInsights(
-    customerId: string,
-    requester?: { role?: string; branchId?: string | null },
-  ): Promise<CustomerInsights> {
+  async getInsights(customerId: string, requester?: { role?: string; branchId?: string | null }) {
+    const plan = currentPartyQuery();
     const customer = await this.prisma.customer.findFirst({
-      where: { id: customerId, deletedAt: null },
+      where: { id: customerId, deletedAt: null, ...(plan ? { AND: plan.customer } : {}) },
       select: { id: true },
     });
     if (!customer) {
@@ -56,7 +59,7 @@ export class CustomerInsightsService {
     // Z6: SALES users may only see insights for customers with at least one
     // contract in their branch. Cross-branch roles (OWNER/FM/Acct/BM) bypass
     // — BRANCH_MANAGER is naturally branch-scoped at higher layers.
-    if (requester?.role === 'SALES' && requester.branchId) {
+    if (!plan && requester?.role === 'SALES' && requester.branchId) {
       const sameBranch = await this.prisma.contract.findFirst({
         where: {
           customerId,
@@ -75,6 +78,9 @@ export class CustomerInsightsService {
     const callLogs = await this.prisma.callLog.findMany({
       where: {
         deletedAt: null,
+        ...(plan
+          ? { AND: { contract: { AND: [plan.contract, plan.finance('collections.read')] } } }
+          : {}),
         contract: { customerId, deletedAt: null },
       },
       select: { callResult: true, calledAt: true },
@@ -83,13 +89,16 @@ export class CustomerInsightsService {
     const dunningActions = await this.prisma.dunningAction.findMany({
       where: {
         deletedAt: null,
+        ...(plan
+          ? { AND: { contract: { AND: [plan.contract, plan.finance('collections.read')] } } }
+          : {}),
         contract: { customerId, deletedAt: null },
       },
       select: { channel: true, status: true },
     });
 
     const room = await this.prisma.chatRoom.findFirst({
-      where: { customerId, deletedAt: null },
+      where: { customerId, deletedAt: null, ...(plan ? { AND: plan.room } : {}) },
       orderBy: { lastMessageAt: 'desc' },
       select: { lastMessageAt: true },
     });
@@ -97,8 +106,19 @@ export class CustomerInsightsService {
     return {
       preferredContactTime: this.computePreferredTime(callLogs),
       preferredChannel: this.computePreferredChannel(dunningActions),
-      channelResponseRates: this.computeChannelRates(dunningActions),
+      channelResponseRates:
+        plan && plan.coverage('collections.read') === 'unavailable'
+          ? null
+          : this.computeChannelRates(dunningActions),
       lineOnlineAt: room?.lastMessageAt ?? null,
+      ...(plan
+        ? {
+            availability: {
+              collections: plan.coverage('collections.read'),
+              chat: [...plan.live].some((c) => plan.has('chat.read', c)) ? 'scoped' : 'unavailable',
+            },
+          }
+        : {}),
     };
   }
 

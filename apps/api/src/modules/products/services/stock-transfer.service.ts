@@ -1,3 +1,4 @@
+import { domainAccessClient, currentDomainAccess } from '../../employee-access/access-execution-context';
 import { Injectable, NotFoundException, BadRequestException, ForbiddenException, Logger, InternalServerErrorException, HttpException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
@@ -25,9 +26,10 @@ const stockTransferSelect = {
 
 @Injectable()
 export class StockTransferService {
+  private get prisma(): PrismaService { return domainAccessClient(this.basePrisma); }
   private readonly logger = new Logger(StockTransferService.name);
 
-  constructor(private prisma: PrismaService) {}
+  constructor(private readonly basePrisma: PrismaService) {}
 
   // === Stock Transfer ===
 
@@ -289,7 +291,7 @@ export class StockTransferService {
     if (!transfer || transfer.deletedAt) throw new NotFoundException('ไม่พบรายการโอน');
 
     // Branch-level access: non-OWNER/ACCOUNTANT can only see transfers involving their branch
-    if (user && user.role !== 'OWNER' && user.role !== 'ACCOUNTANT' && user.branchId) {
+    if (!currentDomainAccess() && user && user.role !== 'OWNER' && user.role !== 'ACCOUNTANT' && user.branchId) {
       if (transfer.fromBranchId !== user.branchId && transfer.toBranchId !== user.branchId) {
         throw new ForbiddenException('ไม่สามารถดูรายการโอนข้ามสาขาได้');
       }

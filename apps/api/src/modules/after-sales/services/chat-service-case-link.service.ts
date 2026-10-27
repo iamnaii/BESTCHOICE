@@ -1,3 +1,16 @@
+import { saleSource } from '../../employee-access/access-sales-scope';
+import { AccessRepairSourceService } from '../../employee-access/access-repair-source.service';
+import { AccessExchangeSourceService } from '../../employee-access/access-exchange-source.service';
+import { repairSource } from '../../employee-access/access-repair-scope';
+import { Optional } from '@nestjs/common';
+import { AccessResourceService } from '../../employee-access/access-resource.service';
+import { authorizeChatServiceRequest } from '../../employee-access/access-chat-service-request-source';
+import {
+  domainAccessClient,
+  currentDomainAccess,
+} from '../../employee-access/access-execution-context';
+import { loadAfterSalesActionCase } from '../../employee-access/access-after-sales-action';
+import { canAccess } from '@installment/shared';
 import { RECONCILE_SELECT, type ReconcilableCase } from './after-sales-stage-reconcile';
 import { serviceCaseStage } from '../../staff-chat/services/chat-service-case-state';
 import { serviceCustomerFamily } from '../../staff-chat/services/chat-service-access';
@@ -45,9 +58,15 @@ export function serviceCaseBrief(row: AfterSalesCase & ReconcilableCase): Create
 @Injectable()
 export class ChatServiceCaseLinkService {
   constructor(
-    private readonly prisma: PrismaService,
+    private readonly basePrisma: PrismaService,
     private readonly access: ChatWorkAccessService,
+    @Optional() private readonly resources?: AccessResourceService,
+    @Optional() private readonly repairs?: AccessRepairSourceService,
+    @Optional() private readonly exchanges?: AccessExchangeSourceService,
   ) {}
+  private get prisma() {
+    return domainAccessClient(this.basePrisma);
+  }
   async lockRequest(
     tx: Prisma.TransactionClient,
     id: string,
@@ -62,7 +81,7 @@ export class ChatServiceCaseLinkService {
     await tx.$queryRaw`SELECT id FROM chat_rooms WHERE id = ${initial.roomId} FOR UPDATE`;
     await tx.$queryRaw`SELECT id FROM chat_service_requests WHERE id = ${id} FOR UPDATE`;
     const actor = await this.access.currentActor(authenticated, tx);
-    if (!['OWNER', 'BRANCH_MANAGER', 'SALES'].includes(actor.role))
+    if (!currentDomainAccess() && !['OWNER', 'BRANCH_MANAGER', 'SALES'].includes(actor.role))
       throw new ForbiddenException('ไม่มีสิทธิ์เปิดหรือผูกเคสหลังการขาย');
     if (
       !parseBooleanFlag(
@@ -83,8 +102,14 @@ export class ChatServiceCaseLinkService {
     const scope = selected ?? {
       company: request.room.channel === 'LINE_FINANCE' ? ('FINANCE' as const) : ('SHOP' as const),
     };
-    await this.access.assertRoom(request.roomId, actor, scope, tx);
+    if (currentDomainAccess()) {
+      if (!this.resources) throw new ForbiddenException('ไม่มีตัวตรวจแหล่งใบรับเรื่อง');
+      const origin = await authorizeChatServiceRequest(tx, id, actor.id, this.resources);
+      if (scope.company !== origin.company)
+        throw new ForbiddenException('บริษัทใบรับเรื่องไม่ตรงกัน');
+    } else await this.access.assertRoom(request.roomId, actor, scope, tx);
     if (
+      !currentDomainAccess() &&
       actor.role === 'SALES' &&
       request.createdById !== actor.id &&
       request.todo.assigneeId !== actor.id
@@ -111,11 +136,20 @@ export class ChatServiceCaseLinkService {
     )
       throw new ConflictException('ลูกค้าของห้องเปลี่ยนจากใบรับเรื่อง กรุณาตรวจข้อมูล');
     if (
+      !currentDomainAccess() &&
       !(await tx.branch.count({
         where: { AND: [serviceBranchWhere(actor, scope), { id: candidate.branchId }] },
       }))
     )
       throw new ForbiddenException('ไม่มีสิทธิ์เคสในบริษัทหรือสาขานี้');
+    if (currentDomainAccess()) {
+      const source = await this.resources!.branch(tx, candidate.branchId, true);
+      if (
+        source.company !== 'SHOP' ||
+        !canAccess(currentDomainAccess()!.snapshot, 'after-sales.create', source)
+      )
+        throw new ForbiddenException('ไม่มีสิทธิ์เคสที่เลือก');
+    }
     if (request.requestedProductId && request.requestedProductId !== candidate.productId)
       throw new BadRequestException('เครื่องไม่ตรงกับใบรับเรื่อง');
     if (request.contractId && request.contractId !== candidate.contractId)
@@ -153,6 +187,18 @@ export class ChatServiceCaseLinkService {
     return this.prisma.$transaction(async (tx) => {
       const context = await this.lockRequest(tx, requestId, actor);
       await this.validateCandidate(tx, context.request, candidate, context.actor, context.scope);
+      return {
+        revision: context.request.revision,
+        fingerprint: context.request.requestFingerprint,
+        roomId: context.request.roomId,
+        roomCustomerId: context.request.room.customerId,
+        roomChannel: context.request.room.channel,
+        customerId: context.request.customerId,
+        requestedProductId: context.request.requestedProductId,
+        contractId: context.request.contractId,
+        saleId: context.request.saleId,
+        todoAssigneeId: context.request.todo.assigneeId,
+      };
     });
   }
   private async caseInScope(
@@ -161,8 +207,136 @@ export class ChatServiceCaseLinkService {
     actor: ChatWorkActor,
     scope: WorkScope,
   ) {
+    const ctx = currentDomainAccess();
+    if (ctx) {
+      const row = await loadAfterSalesActionCase(
+        this.prisma,
+        caseId,
+        actor.id,
+        'after-sales.create',
+      );
+      if (!this.repairs || !this.exchanges) throw new ForbiddenException('ไม่มีตัวตรวจแหล่งเคส');
+      let contractProductId = row.productId;
+      if (row.exchangeRequestId) {
+        const child = await this.exchanges.request(
+          row.exchangeRequestId,
+          'contract-exchanges.create',
+        );
+        if (
+          child.request.oldContractId !== row.contractId ||
+          child.request.oldProductId !== row.productId ||
+          child.request.newProductId !== row.replacementProductId
+        )
+          throw new ForbiddenException('แหล่งคำขอเปลี่ยนเครื่องไม่ตรงกัน');
+        if (
+          child.request.mode === 'MEMO' &&
+          child.request.status === 'APPROVED' &&
+          child.request.memoAppliedAt
+        )
+          contractProductId = child.request.newProductId;
+        if (child.request.newContractId) {
+          await this.repairs.linked(
+            tx,
+            ctx.snapshot,
+            {
+              customerId: row.customerId,
+              contractId: child.request.newContractId,
+              productId: child.request.newProductId,
+            },
+            true,
+          );
+          const next = await tx.contract.findUniqueOrThrow({
+            where: { id: child.request.newContractId },
+            select: { exchangedFromContractId: true },
+          });
+          if (next.exchangedFromContractId !== row.contractId)
+            throw new ForbiddenException('แหล่งสัญญาใหม่ไม่ตรงกัน');
+        }
+        if (row.replacementContractId && row.replacementContractId !== child.request.newContractId)
+          throw new ForbiddenException('แหล่งสัญญาใหม่ไม่ตรงกัน');
+      }
+      await this.repairs.linked(
+        tx,
+        ctx.snapshot,
+        {
+          customerId: row.customerId,
+          productId: row.productId ?? undefined,
+          replacementContractId: row.replacementContractId ?? undefined,
+        },
+        true,
+      );
+      if (row.contractId)
+        await this.repairs.linked(
+          tx,
+          ctx.snapshot,
+          {
+            customerId: row.customerId,
+            contractId: row.contractId,
+            productId: contractProductId ?? undefined,
+          },
+          true,
+        );
+      if (row.replacementContractId && !row.exchangeRequestId) {
+        const next = await tx.contract.findUniqueOrThrow({
+          where: { id: row.replacementContractId },
+          select: { parentContractId: true, productId: true },
+        });
+        if (next.parentContractId !== row.contractId || next.productId !== row.replacementProductId)
+          throw new ForbiddenException('แหล่งสัญญาทดแทนไม่ตรงกัน');
+      }
+      if (row.saleId) {
+        if (!canAccess(ctx.snapshot, 'sales.read', await saleSource(tx, row.saleId, true)))
+          throw new ForbiddenException('ไม่มีสิทธิ์แหล่งใบขาย');
+        const sale = await tx.sale.findUniqueOrThrow({
+          where: { id: row.saleId },
+          select: { customerId: true, productId: true, contractId: true },
+        });
+        if (
+          sale.customerId !== row.customerId ||
+          sale.productId !== row.productId ||
+          sale.contractId !== row.contractId
+        )
+          throw new ForbiddenException('แหล่งใบขายไม่ตรงกัน');
+      }
+      if (row.repairTicketId) {
+        if (
+          !canAccess(
+            ctx.snapshot,
+            'repair-tickets.create',
+            await repairSource(tx, row.repairTicketId, true),
+          )
+        )
+          throw new ForbiddenException('ไม่มีสิทธิ์ใบซ่อมที่เชื่อม');
+        const repair = await tx.repairTicket.findUniqueOrThrow({
+          where: { id: row.repairTicketId },
+          select: { customerId: true, productId: true, contractId: true },
+        });
+        if (
+          repair.customerId !== row.customerId ||
+          repair.productId !== row.productId ||
+          repair.contractId !== row.contractId
+        )
+          throw new ForbiddenException('แหล่งใบซ่อมไม่ตรงกัน');
+      }
+      if (row.outcome === 'SAME_MODEL_EXCHANGE' || row.outcome === 'PRICED_EXCHANGE') {
+        if (!row.contractId) throw new ForbiddenException('ไม่พบแหล่งสัญญา');
+        this.exchanges.assert(
+          row.outcome === 'SAME_MODEL_EXCHANGE'
+            ? 'defect-exchanges.create'
+            : 'contract-exchanges.create',
+          await this.exchanges.sources({
+            oldContractId: row.contractId,
+            newProductId: row.replacementProductId ?? undefined,
+          }),
+        );
+      }
+    }
     const c = await tx.afterSalesCase.findFirst({
-      where: { id: caseId, deletedAt: null, branch: serviceBranchWhere(actor, scope) },
+      where: {
+        id: caseId,
+        deletedAt: null,
+        ...(currentDomainAccess() ? {} : { branch: serviceBranchWhere(actor, scope) }),
+      },
       include: {
         repairTicket: RECONCILE_SELECT.repairTicket,
         exchangeRequest: RECONCILE_SELECT.exchangeRequest,

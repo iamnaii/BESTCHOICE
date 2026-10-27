@@ -1,3 +1,4 @@
+import { AccessSnapshotService } from '../employee-access/access-snapshot.service';
 import { Test, TestingModule } from '@nestjs/testing';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
@@ -47,6 +48,7 @@ describe('AuthService', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         AuthService,
+        { provide: AccessSnapshotService, useValue: { forUser: jest.fn().mockResolvedValue({ userId: 'user-1', isOwner: false, managed: false, revision: 0, grants: [] }) } },
         {
           provide: PrismaService,
           useValue: {
@@ -118,6 +120,15 @@ describe('AuthService', () => {
 
     service = module.get<AuthService>(AuthService);
     prisma = module.get<PrismaService>(PrismaService);
+  });
+
+  it.each(['login', 'refresh'] as const)('hydrates managed access on %s before /auth/me', async mode => {
+    (prisma.user.findUnique as jest.Mock).mockResolvedValue(mockUser);
+    const snapshot = { userId: 'user-1', managed: true, isOwner: false, revision: 9, grants: [{ positionId: 'p', company: 'FINANCE', permissions: ['payments.read'], scope: 'BRANCHES', branchIds: ['shop-origin'] }] };
+    (service as any).accessSnapshots.forUser.mockResolvedValue(snapshot);
+    (prisma.refreshToken.findUnique as jest.Mock).mockResolvedValue({ id: 'rt-1', userId: 'user-1', expiresAt: new Date(Date.now() + 60000), isRevoked: false });
+    const result = mode === 'login' ? await service.login({ email: mockUser.email, password: 'password123' }) : await service.refreshToken('valid');
+    expect(result).toMatchObject({ user: { role: 'SALES', access: snapshot, accessibleCompanies: ['FINANCE'], primaryCompany: 'FINANCE' } });
   });
 
   describe('login', () => {
@@ -547,9 +558,19 @@ describe('AuthService', () => {
       (prisma.inviteToken.findFirst as jest.Mock).mockResolvedValue(pendingInvite);
       mockInviteService.resend.mockRejectedValue(new Error('SMTP down'));
 
-      await expect(service.forgotPassword({ email: 'invited@test.com' })).resolves.toEqual({
-        message: expect.any(String),
-      });
+      const errorLog = jest.spyOn((service as any).logger, 'error').mockImplementation(() => undefined);
+      try {
+        await expect(service.forgotPassword({ email: 'invited@test.com' })).resolves.toEqual({
+          message: expect.any(String),
+        });
+        expect(errorLog).toHaveBeenCalledTimes(1);
+        expect(errorLog).toHaveBeenCalledWith(expect.stringMatching(
+          /^Failed to resend pending invite on forgot-password \(email hash: [a-f0-9]{12}\): Error: SMTP down$/,
+        ));
+        expect(errorLog.mock.calls[0][0]).not.toContain('invited@test.com');
+      } finally {
+        errorLog.mockRestore();
+      }
     });
   });
 });

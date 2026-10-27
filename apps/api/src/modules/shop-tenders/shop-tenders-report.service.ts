@@ -1,3 +1,4 @@
+import { tenderAccess, tenderReadClient } from '../employee-access/access-tender-source';
 import { ForbiddenException, Injectable } from '@nestjs/common';
 import { Prisma, ShopTenderKind } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -11,7 +12,7 @@ export interface TenderViewer {
 }
 
 /** ALL = ทุกสาขา (เลือกสาขาได้) · BRANCH = สาขาตัวเอง · OWN = เฉพาะรายการที่ตัวเองรับ/จ่าย */
-export type TenderScope = 'ALL' | 'BRANCH' | 'OWN';
+export type TenderScope = 'ALL' | 'BRANCH' | 'OWN' | 'SCOPED';
 
 const KIND_ORDER: ShopTenderKind[] = [
   'CONTRACT_DOWN', 'CASH_SALE', 'EXTERNAL_FINANCE_DOWN', 'BOOKING_DEPOSIT',
@@ -55,9 +56,12 @@ function docOf(row: { saleId: string | null; contractId: string | null; bookingI
  */
 @Injectable()
 export class ShopTendersReportService {
-  constructor(private readonly prisma: PrismaService) {}
+  private get prisma() { return tenderReadClient(this.basePrisma); }
+
+  constructor(private readonly basePrisma: PrismaService) {}
 
   private resolveScope(viewer: TenderViewer, requestedBranchId?: string): { scope: TenderScope; where: Prisma.ShopTenderWhereInput; branchId: string | null } {
+    if (tenderAccess.getStore()) return { scope: 'SCOPED', where: {}, branchId: requestedBranchId ?? null };
     if (hasCrossBranchAccess(viewer)) {
       return { scope: 'ALL', where: requestedBranchId ? { branchId: requestedBranchId } : {}, branchId: requestedBranchId ?? null };
     }
@@ -99,7 +103,7 @@ export class ShopTendersReportService {
       refDocs.get(key)!.set(`${doc.docType}:${doc.docId}`, doc.docNumber);
     };
     const transfersIn = tenders.filter((r) => r.direction === 'IN' && r.method !== 'CASH' && r.reference);
-    transfersIn.forEach((r) => noteRef(r.reference, docs.get(r.id)!));
+    transfersIn.forEach((r) => noteRef(r.reference, { ...docs.get(r.id)!, docNumber: !tenderAccess.getStore() || tenderAccess.getStore()!.navigate(r.id) ? docs.get(r.id)!.docNumber : '' }));
     if (transfersIn.length) {
       const references = [...new Set(transfersIn.map((r) => r.reference!.trim()))];
       const others = await this.prisma.shopTender.findMany({
@@ -108,12 +112,12 @@ export class ShopTendersReportService {
           OR: references.map((reference) => ({ reference: { equals: reference, mode: 'insensitive' as const } })),
         },
         select: {
-          reference: true, saleId: true, contractId: true, bookingId: true,
+          id: true, reference: true, saleId: true, contractId: true, bookingId: true,
           sale: { select: { saleNumber: true } }, contract: { select: { contractNumber: true } },
           booking: { select: { bookingNumber: true } },
         },
       });
-      others.forEach((o) => noteRef(o.reference, docOf(o)));
+      others.forEach((o) => noteRef(o.reference, { ...docOf(o), docNumber: !tenderAccess.getStore() || tenderAccess.getStore()!.navigate(o.id) ? docOf(o).docNumber : '' }));
     }
     const duplicateKeys = new Set([...refDocs].filter(([, d]) => d.size > 1).map(([key]) => key));
 
@@ -147,9 +151,9 @@ export class ShopTendersReportService {
       kinds.set(r.kind, k);
     }
 
-    const branches = scope === 'ALL'
+    const branches = tenderAccess.getStore()?.selectableBranches ?? (scope === 'ALL'
       ? await this.prisma.branch.findMany({ where: { deletedAt: null }, select: { id: true, name: true }, orderBy: { name: 'asc' } })
-      : [];
+      : []);
 
     return {
       date: query.date,
@@ -185,7 +189,7 @@ export class ShopTendersReportService {
       }),
       duplicateReferences: [...duplicateKeys].map((key) => ({
         reference: transfersIn.find((r) => refKey(r.reference!) === key)!.reference!.trim(),
-        documents: [...refDocs.get(key)!.values()],
+        documents: [...refDocs.get(key)!.values()].filter(Boolean),
       })),
     };
   }

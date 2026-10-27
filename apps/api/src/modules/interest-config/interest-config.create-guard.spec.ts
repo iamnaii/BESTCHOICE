@@ -33,6 +33,9 @@ describe('InterestConfigService.create — months-range guard (Wave 3 MED gap-fi
       },
     };
 
+    prisma.$executeRaw = jest.fn().mockResolvedValue(0);
+    prisma.$transaction = jest.fn(async (work) => work(prisma));
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [InterestConfigService, { provide: PrismaService, useValue: prisma }],
     }).compile();

@@ -15,7 +15,8 @@ describe('UsersService.updateFull', () => {
     user: { findUnique: userFindUnique },
     $transaction: jest.fn(async (cb: any) =>
       cb({
-        user: { update: userUpdate },
+        $executeRaw: jest.fn(),
+        user: { update: userUpdate, findUnique: userFindUnique, count: jest.fn().mockResolvedValue(0) },
         refreshToken: { updateMany: refreshUpdateMany },
       }),
     ),
@@ -59,6 +60,13 @@ describe('UsersService.updateFull', () => {
       where: { userId: 'u1', isRevoked: false },
       data: { isRevoked: true, revokedAt: expect.any(Date) },
     });
+  });
+
+  it.each([{ isActive: false }, { password: 'newpass1234' }])('propagates token-revocation failure for %j', async (dto) => {
+    userFindUnique.mockResolvedValue({ id: 'u1', isActive: true });
+    refreshUpdateMany.mockRejectedValueOnce(new Error('token write failed'));
+    await expect(svc.updateFull('u1', dto, { userId: 'owner' })).rejects.toThrow('token write failed');
+    expect(svc.findOneFull).not.toHaveBeenCalled();
   });
 
   it('does NOT touch employee profile when employee is null', async () => {

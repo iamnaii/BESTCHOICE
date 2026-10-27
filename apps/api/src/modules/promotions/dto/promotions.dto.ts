@@ -24,14 +24,14 @@ export class CreatePromotionDto {
 
   @IsNumber({}, { message: 'ส่วนลดต้องเป็นตัวเลข' })
   @IsOptional()
-  discountValue?: number;
+  discountValue?: number | null;
 
   @IsNumber({}, { message: 'อัตราดอกเบี้ยพิเศษต้องเป็นตัวเลข' })
   @IsOptional()
-  specialInterestRate?: number;
+  specialInterestRate?: number | null;
 
   @IsOptional()
-  conditions?: Record<string, unknown>;
+  conditions?: Record<string, unknown> | null;
 
   @IsDateString({}, { message: 'กรุณาระบุวันที่เริ่มต้น' })
   startDate: string;
@@ -41,7 +41,7 @@ export class CreatePromotionDto {
 
   @IsInt({ message: 'จำนวนครั้งใช้งานสูงสุดต้องเป็นจำนวนเต็ม' })
   @IsOptional()
-  maxUsageCount?: number;
+  maxUsageCount?: number | null;
 
   @IsBoolean()
   @IsOptional()
@@ -66,14 +66,14 @@ export class UpdatePromotionDto {
 
   @IsNumber({}, { message: 'ส่วนลดต้องเป็นตัวเลข' })
   @IsOptional()
-  discountValue?: number;
+  discountValue?: number | null;
 
   @IsNumber({}, { message: 'อัตราดอกเบี้ยพิเศษต้องเป็นตัวเลข' })
   @IsOptional()
-  specialInterestRate?: number;
+  specialInterestRate?: number | null;
 
   @IsOptional()
-  conditions?: Record<string, unknown>;
+  conditions?: Record<string, unknown> | null;
 
   @IsDateString()
   @IsOptional()
@@ -85,7 +85,7 @@ export class UpdatePromotionDto {
 
   @IsInt({ message: 'จำนวนครั้งใช้งานสูงสุดต้องเป็นจำนวนเต็ม' })
   @IsOptional()
-  maxUsageCount?: number;
+  maxUsageCount?: number | null;
 
   @IsBoolean()
   @IsOptional()
@@ -100,5 +100,6 @@ export class ApplyPromotionDto {
   customerId: string;
 
   @IsNumber({}, { message: 'จำนวนส่วนลดต้องเป็นตัวเลข' })
-  discountAmount: number;
+  @IsOptional()
+  discountAmount?: number;
 }

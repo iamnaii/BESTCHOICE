@@ -29,7 +29,7 @@ export class EntityScopeGuard implements CanActivate {
 
     const req = context.switchToHttp().getRequest();
     const user = req.user as
-      | { role?: string; accessibleCompanies?: string[]; aud?: string }
+      | { access?: import('@installment/shared').AccessSnapshot; role?: string; accessibleCompanies?: string[]; aud?: string }
       | undefined;
 
     // route ที่ติด @Entity ต้องผ่าน JwtAuthGuard มาก่อนเสมอ ไม่มี user = ผิดปกติ
@@ -49,6 +49,10 @@ export class EntityScopeGuard implements CanActivate {
       );
     }
 
+    if (user.access?.managed) {
+      if (user.access.isOwner || user.access.grants.some(g => g.company === required)) return true;
+      throw new ForbiddenException('ไม่มีสิทธิ์ในส่วนงานนี้');
+    }
     if (!hasCompanyAccess(user.role ?? '', user.accessibleCompanies, required)) {
       throw new ForbiddenException(
         `Handler ต้องการสิทธิ์ company ${required}; user สิทธิ์: ${

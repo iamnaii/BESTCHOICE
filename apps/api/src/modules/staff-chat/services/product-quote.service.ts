@@ -155,16 +155,11 @@ export class ProductQuoteService {
         isActive: true,
       },
       include: { rates: { where: { deletedAt: null } } },
-      orderBy: { createdAt: 'asc' },
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
     });
 
-    // config ตัวแรกสุด (createdAt asc) ชนะต่อหมวด — deterministic ต่างจาก
-    // installment-preview.service.ts ที่ findFirst ไม่มี orderBy. Fix round 1
-    // [C2]: InterestConfigService.resolveConfig (interest-config.service.ts)
-    // now carries the SAME `orderBy: { createdAt: 'asc' }` for the same
-    // reason — keep both in sync if this selection rule ever changes, or the
-    // bot/web-shop resolver and this one can quote two different numbers for
-    // a category with >1 active config.
+    // Oldest-active first-wins, including the same ID tie-break used by direct
+    // reference and canonical Contract quote selection.
     const byCategory = new Map<string, (typeof configs)[number]>();
     for (const c of configs) {
       for (const cat of c.productCategories) {

@@ -99,8 +99,8 @@ describe('CustomerInsightsService', () => {
       ]);
       const res = await service.getInsights('cust-1');
       // LINE: 2 delivered / 4 total = 50%
-      expect(res.channelResponseRates.LINE).toBe(50);
-      expect(res.channelResponseRates.SMS).toBe(50);
+      expect(res.channelResponseRates?.LINE).toBe(50);
+      expect(res.channelResponseRates?.SMS).toBe(50);
       expect(res.preferredChannel).toBe('LINE'); // higher absolute count of delivered
     });
 
@@ -110,7 +110,7 @@ describe('CustomerInsightsService', () => {
         { channel: 'CALL_TASK', status: 'DELIVERED' },
       ]);
       const res = await service.getInsights('cust-1');
-      expect(res.channelResponseRates.CALL).toBe(100);
+      expect(res.channelResponseRates?.CALL).toBe(100);
       expect(res.preferredChannel).toBe('CALL');
     });
 

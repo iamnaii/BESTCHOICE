@@ -10,7 +10,7 @@ import { QueryImportedSalesDto } from './dto/query-imported-sales.dto';
 // unexported type from another module, and this controller's `summary()`
 // method returns whatever shape `ImportedSalesService.summary()` produces.
 export interface ImportedSalesSummaryResult {
-  totals: { count: number; sales: string; profit: string; cost: string };
+  totals: { count: number; sales: string; profit: string | null; cost: string | null };
   byMonth: Bucket[];
   byChannel: Bucket[];
   bySalesperson: Bucket[];

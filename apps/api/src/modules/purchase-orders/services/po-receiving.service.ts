@@ -1,3 +1,4 @@
+import { domainAccessClient, currentDomainAccess } from '../../employee-access/access-execution-context';
 import { NotFoundException, BadRequestException, ConflictException, Logger } from '@nestjs/common';
 import * as Sentry from '@sentry/node';
 import { Prisma } from '@prisma/client';
@@ -87,8 +88,10 @@ export class PoReceivingService {
     timeout: 30_000,
   } as const;
 
+  private get prisma(): PrismaService { return domainAccessClient(this.basePrisma); }
+
   constructor(
-    private prisma: PrismaService,
+    private basePrisma: PrismaService,
     private journal: PoReceivingJournalDeps,
   ) {}
 
@@ -113,7 +116,7 @@ export class PoReceivingService {
         return { ...result, accountingNotified: await this.alertIfDocPeriodClosed(result, userId) };
       } catch (e) {
         const code = (e as { code?: string })?.code;
-        if ((code === 'P2002' || code === 'P2034') && attempt < MAX_ATTEMPTS) continue;
+        if (!currentDomainAccess() && (code === 'P2002' || code === 'P2034') && attempt < MAX_ATTEMPTS) continue;
         throw e;
       }
     }
@@ -150,11 +153,14 @@ export class PoReceivingService {
     // ก้อน 5 — ภาษีซื้อต่อหน่วย: ปัน vatAmount ของใบสั่งซื้อตามสัดส่วนราคา (ฝ่ายบัญชี 2.2) · ไม่จด VAT = 0 ทุกหน่วย
     const lineVats = poLineVats({ vatAmount: d(po.vatAmount), lines: costLines });
 
+    // Managed execution pins the destination which was resolved and locked.
+    const receivingBranchId = currentDomainAccess()?.receivingBranchId;
+    if (currentDomainAccess() && !receivingBranchId) throw new BadRequestException('ไม่พบคลังที่ผ่านการตรวจสิทธิ์');
     // Find main warehouse branch
     let mainWarehouse = await tx.branch.findFirst({
-      where: { isMainWarehouse: true, isActive: true, deletedAt: null },
+      where: { ...(receivingBranchId ? { id: receivingBranchId } : { isMainWarehouse: true }), isActive: true, deletedAt: null },
     });
-    if (!mainWarehouse) {
+    if (!mainWarehouse && !receivingBranchId) {
       // Fallback: use first active branch
       mainWarehouse = await tx.branch.findFirst({
         where: { isActive: true, deletedAt: null },
@@ -622,6 +628,8 @@ export class PoReceivingService {
    * แบบ ข (เจ้าของเคาะ 2026-10-01): งวดของวันที่ในเอกสารปิดแล้ว — รับของได้ ลงบัญชีวันที่รับของแทน และ "แจ้งฝ่ายบัญชีให้ทราบ"
    * = งานในหน้า "งานของทีม" (`/todos`) หนึ่งใบต่อใบรับของ (ช่องทางเดียวกับส่วนต่างปิดยอดเงินสด). เรียก **หลัง commit** และห้าม
    * throw — ของรับเข้าแล้ว การเตือนพังต้องไม่ทำให้ผู้ใช้เห็นว่ารับของไม่สำเร็จ
+   * Managed access joins the owning transaction: the Todo is durable on commit;
+   * an insert failure must abort that transaction, not continue it after a DB error.
    */
   private async alertIfDocPeriodClosed(
     result: {
@@ -665,6 +673,7 @@ export class PoReceivingService {
       });
       return true;
     } catch (error) {
+      if (currentDomainAccess()) throw error;
       this.logger.error(
         `สร้างงานแจ้งฝ่ายบัญชีไม่สำเร็จ (${result.grNumber} งวดของวันที่ในเอกสารปิดแล้ว)`,
         error instanceof Error ? error.stack : String(error),
@@ -763,6 +772,7 @@ export class PoReceivingService {
             const po = await tx.purchaseOrder.create({
               data: {
                 poNumber,
+                ...(currentDomainAccess() ? { accessCompanyCode: currentDomainAccess()!.scope.company, accessBranchId: dto.accessBranchId ?? null } : {}),
                 supplierId: dto.supplierId,
                 orderDate,
                 totalAmount: amounts.totalAmount,
@@ -871,7 +881,7 @@ export class PoReceivingService {
         return { ...result, accountingNotified: accountingNotified || paymentNotified };
       } catch (e) {
         const code = (e as { code?: string })?.code;
-        if ((code === 'P2002' || code === 'P2034') && attempt < MAX_ATTEMPTS) continue;
+        if (!currentDomainAccess() && (code === 'P2002' || code === 'P2034') && attempt < MAX_ATTEMPTS) continue;
         throw e;
       }
     }

@@ -1,10 +1,13 @@
+import { domainAccessClient } from '../employee-access/access-execution-context';
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateStockCountDto, SubmitStockCountDto } from './dto/stock-count.dto';
 
 @Injectable()
 export class StockCountService {
-  constructor(private prisma: PrismaService) {}
+  private get prisma(): PrismaService { return domainAccessClient(this.basePrisma); }
+
+  constructor(private readonly basePrisma: PrismaService) {}
 
   async findAll(filters: { branchId?: string; status?: string; page?: number; limit?: number }) {
     const where: Record<string, unknown> = { deletedAt: null };
@@ -64,12 +67,15 @@ export class StockCountService {
       const today = new Date();
       const year = today.getFullYear();
       const month = String(today.getMonth() + 1).padStart(2, '0');
-      const monthStart = new Date(year, today.getMonth(), 1);
-      const monthEnd = new Date(year, today.getMonth() + 1, 1);
-      const monthCount = await tx.stockCount.count({
-        where: { createdAt: { gte: monthStart, lt: monthEnd } },
-      });
-      const countNumber = `SC-${year}-${month}-${String(monthCount + 1).padStart(3, '0')}`;
+      const prefix = `SC-${year}-${month}-`;
+      // Internal global numbering is deliberately outside user query scoping.
+      // Shared lock also protects unmanaged callers; soft-deleted numbers remain reserved.
+      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${prefix}))::text`;
+      const rows = await tx.$queryRaw<Array<{ sequence: number }>>`
+        SELECT COALESCE(MAX(substring(count_number from '[0-9]+$')::integer), 0)::integer AS sequence
+        FROM stock_counts WHERE count_number LIKE ${prefix + '%'}
+      `;
+      const countNumber = `${prefix}${String(rows[0].sequence + 1).padStart(3, '0')}`;
 
       // Get all products that should be in this branch
       const expectedProducts = await tx.product.findMany({
@@ -120,6 +126,9 @@ export class StockCountService {
       throw new BadRequestException('รายการตรวจนับนี้ถูกยกเลิกแล้ว');
     }
 
+    if (dto.items.some(item => !stockCount.items.some(expected => expected.productId === item.productId)) || new Set(dto.items.map(item => item.productId)).size !== dto.items.length) {
+      throw new BadRequestException('สินค้าไม่อยู่ในรายการตรวจนับหรือซ้ำกัน');
+    }
     return this.prisma.$transaction(async (tx) => {
       // Update each item
       for (const item of dto.items) {

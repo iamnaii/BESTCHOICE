@@ -1,10 +1,26 @@
+import type { CreateCaseDto } from '../dto/create-case.dto';
+import { liveShopServiceBranch } from '../../employee-access/access-service-origin';
+import { optionalSource } from '../../employee-access/access-after-sales-source.service';
+import { Optional, ForbiddenException } from '@nestjs/common';
+import { canAccess } from '@installment/shared';
+import {
+  domainAccessClient,
+  currentDomainAccess,
+} from '../../employee-access/access-execution-context';
+import {
+  afterSalesActor,
+  currentAfterSalesWhere,
+} from '../../employee-access/access-after-sales-source.service';
+import { AccessAfterSalesProjectionService } from '../../employee-access/access-after-sales-projection.service';
+import { AccessExchangeSourceService } from '../../employee-access/access-exchange-source.service';
+import { AccessResourceService } from '../../employee-access/access-resource.service';
 import { HttpException, Injectable, NotFoundException } from '@nestjs/common';
 import type { ProductCategory } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { RepairTicketsService } from '../../repair-tickets/repair-tickets.service';
 import { DefectExchangeService } from '../../defect-exchange/defect-exchange.service';
 import { ProductPhotosService } from '../../quality-control/product-photos.service';
-import { computeOutcomes, OutcomeOption } from '../utils/after-sales-outcomes.util';
+import { computeOutcomes, OutcomeOption, OutcomeInput } from '../utils/after-sales-outcomes.util';
 import { reconcileStage } from './after-sales-stage-reconcile';
 import { LookupDto } from '../dto/lookup.dto';
 
@@ -40,7 +56,7 @@ export interface LookupResult {
     top: string | null;
     bottom: string | null;
   } | null; // data URL จาก ProductPhoto (null = ไม่มีรูปตอนซื้อ)
-  openCase: { id: string; caseNumber: string; stage: string } | null; // เคสที่ยังไม่ปิดของ IMEI นี้ (กันเปิดซ้ำ)
+  openCase: { id: string; caseNumber: string; stage: string; stageVerified?: boolean } | null; // เคสที่ยังไม่ปิดของ IMEI นี้ (กันเปิดซ้ำ)
   outcomes: OutcomeOption[];
   /**
    * PR 3 Task 3 (PF-4) — ลูกค้าผูก LINE ไว้แล้วหรือยัง (customer.lineIdShop มีค่าจริง). อ่าน
@@ -59,19 +75,99 @@ function toIso(d: Date | null | undefined): string | null {
 @Injectable()
 export class AfterSalesLookupService {
   constructor(
-    private readonly prisma: PrismaService,
+    private readonly basePrisma: PrismaService,
     private readonly repair: RepairTicketsService,
     private readonly defect: DefectExchangeService,
     private readonly photos: ProductPhotosService,
+    @Optional() private readonly projection?: AccessAfterSalesProjectionService,
+    @Optional() private readonly exchanges?: AccessExchangeSourceService,
+    @Optional() private readonly resources?: AccessResourceService,
   ) {}
 
+  private async outcomes(
+    input: OutcomeInput,
+    found?: {
+      contract?: { id: string } | null;
+      sale?: { id: string } | null;
+      product?: { id: string };
+    },
+  ) {
+    const ctx = currentDomainAccess();
+    if (!ctx) return computeOutcomes(input);
+    // Public hints have no chosen destination: advertise only if some live SHOP
+    // destination is actually creatable. Internal intake checks the chosen one.
+    const candidates = (
+      await ctx.client.branch.findMany({ where: liveShopServiceBranch, select: { id: true } })
+    ).map((branch) => ({ company: 'SHOP' as const, branchId: branch.id }));
+    const repair = candidates.some(
+      (s) =>
+        canAccess(ctx.snapshot, 'after-sales.create', s) &&
+        canAccess(ctx.snapshot, 'repair-tickets.create', s),
+    );
+    const exchangeSources = found?.contract
+      ? await optionalSource(() => this.exchanges!.sources({ oldContractId: found.contract!.id }))
+      : null;
+    const createCase = candidates.some((source) =>
+      canAccess(ctx.snapshot, 'after-sales.create', source),
+    );
+    const sameModel =
+      createCase &&
+      !!exchangeSources &&
+      this.exchanges!.permits('defect-exchanges.create', exchangeSources);
+    const priced =
+      createCase &&
+      !!exchangeSources &&
+      this.exchanges!.permits('contract-exchanges.create', exchangeSources);
+    return computeOutcomes({ ...input, submissionCapabilities: { sameModel, priced } }).map(
+      (option) => {
+        // CASH_SAME_MODEL_EXCHANGE (PR 5) is sale-sourced and has no managed capability
+        // boundary yet (intake/confirm/deliver all fail closed) ⇒ falls through to false.
+        const permitted =
+          option.outcome === 'REPAIR'
+            ? repair
+            : option.outcome === 'SAME_MODEL_EXCHANGE'
+              ? sameModel
+              : option.outcome === 'PRICED_EXCHANGE'
+                ? priced
+                : false;
+        return permitted
+          ? option
+          : { ...option, enabled: false, reason: 'ไม่มีสิทธิ์ดำเนินการในแหล่งนี้' };
+      },
+    );
+  }
+
+  private get prisma() {
+    return domainAccessClient(this.basePrisma);
+  }
+
+  async lookupForCreation(
+    dto: LookupDto,
+    user: ReqUser,
+    outcome: CreateCaseDto['outcome'],
+    replacementProductId?: string,
+  ): Promise<LookupResult> {
+    return this.lookupInput(dto, user, { outcome, replacementProductId });
+  }
   async lookup(dto: LookupDto, user: ReqUser): Promise<LookupResult> {
+    return this.lookupInput(dto, user);
+  }
+  private async lookupInput(
+    dto: LookupDto,
+    user: ReqUser,
+    creation?: { outcome: CreateCaseDto['outcome']; replacementProductId?: string },
+  ): Promise<LookupResult> {
+    const ctx = await afterSalesActor(this.basePrisma, user.id);
+    if (ctx && ((!creation && !this.projection) || !this.exchanges || !this.resources))
+      throw new ForbiddenException('ไม่มีตัวตรวจแหล่งเคส');
     // C7 (final-fix brief) — ข้อความเดิม "เลือกเครื่องก่อน (productId)" ชี้ไปหน้าจอค้นด้วยลูกค้า
     // ที่ PR 1 ไม่มี UI รองรับจริง (มีแค่ query param `productId` ใน DTO เผื่ออนาคต) — เปลี่ยนเป็น
     // ข้อความที่ตรงกับสิ่งที่ผู้ใช้ทำได้จริงวันนี้ (ค้นด้วย IMEI เท่านั้น)
     if (!dto.imei)
       throw new NotFoundException('ไม่พบเครื่องจากเลข IMEI นี้ — ตรวจเลข IMEI แล้วลองใหม่');
-    const r = await this.repair.lookupByImei(dto.imei, user);
+    const r = creation
+      ? await this.repair.lookupForCreation(dto.imei, user)
+      : await this.repair.lookupByImei(dto.imei, user);
     const checkedAt = new Date().toISOString();
     if (!r.found) {
       return {
@@ -92,7 +188,7 @@ export class AfterSalesLookupService {
           manufacturerWarrantyEndDate: null,
           checkedAt,
         },
-        outcomes: computeOutcomes({
+        outcomes: await (creation ? computeOutcomes : this.outcomes.bind(this))({
           source: 'WALK_IN',
           warrantyStatus: 'WALK_IN',
           daysRemainingIn7Day: 0,
@@ -106,59 +202,80 @@ export class AfterSalesLookupService {
     const source = r.contract ? 'INSTALLMENT_CONTRACT' : r.sale ? 'CASH_SALE' : 'WALK_IN'; // Review Focus 1: พบเครื่องแต่ไม่มีใบขาย/สัญญา = walk-in
     let defectEligible = false;
     let defectReasons: string[] = [];
-    if (r.contract) {
+    if (r.contract && (!creation || creation.outcome === 'SAME_MODEL_EXCHANGE')) {
       // R10: checkEligibility can throw (e.g. NotFoundException('ไม่พบสัญญา') on a
       // race where the contract was deleted between lookupByImei and here) — a
       // throw here must not fail this whole read-only lookup. Fail closed:
       // treat as ineligible and surface the error message as the disabled reason.
       try {
-        const e = await this.defect.checkEligibility(r.contract.id);
+        const creationSources = ctx
+          ? await optionalSource(() => this.exchanges!.sources({ oldContractId: r.contract!.id }))
+          : null;
+        const maySubmit =
+          !!creationSources && this.exchanges!.permits('defect-exchanges.create', creationSources);
+        const e =
+          creation || maySubmit
+            ? await this.defect.checkCreationEligibility(
+                r.contract.id,
+                creation?.replacementProductId,
+                user,
+              )
+            : await this.defect.checkEligibility(r.contract.id);
         defectEligible = e.eligible;
         defectReasons = e.reasons;
       } catch (err) {
+        if (creation) throw err;
         defectEligible = false;
         // C8 (final-fix brief) — whitelist เฉพาะ HttpException (ข้อความที่ตั้งใจสื่อสารกับผู้ใช้
         // อยู่แล้ว) ส่วน error อื่นทั้งหมด (Prisma/JS ดิบ) ต้องไม่หลุดไปถึง UI — ใช้เหตุผลกลาง
         defectReasons = [
-          err instanceof HttpException ? err.message : 'ตรวจสิทธิ์เปลี่ยนเครื่องไม่สำเร็จ',
+          !ctx && err instanceof HttpException ? err.message : 'ตรวจสิทธิ์เปลี่ยนเครื่องไม่สำเร็จ',
         ];
       }
+    }
+    // This is a fresh Product load, independently authorized under current ownership.
+    if (ctx) {
+      const source = await this.resources!.product(ctx.client, r.product.id, true);
+      if (!canAccess(ctx.snapshot, 'products.read', source))
+        throw new ForbiddenException('ไม่มีสิทธิ์อ่านสินค้า');
     }
     const photos = await this.photos.getPhotos(r.product.id);
     // A1 (final-fix brief) — reconcile ก่อนตัดสิน "มีเคสเปิดค้างไหม": stored stage อาจดริฟท์จาก
     // ใบซ่อมจริง (sync() ของ proxy ไม่เคยรัน) ⇒ ไม่ reconcile จุดนี้ = createCase บล็อก IMEI นี้
     // ตลอดไปด้วย 409 ทั้งที่เคสเก่าปิดไปแล้วจริง ๆ
-    const openCaseRaw = await this.prisma.afterSalesCase.findFirst({
-      where: {
-        deviceImei: r.product.imeiSerial ?? dto.imei,
-        deletedAt: null,
-        stage: { notIn: ['CLOSED', 'CANCELLED'] },
-      },
-      select: {
-        id: true,
-        caseNumber: true,
-        stage: true,
-        outcome: true,
-        cancelledAt: true,
-        closedAt: true,
-        replacementContractId: true,
-        replacementSaleId: true, // PR 5
-        repairTicket: { select: { status: true, deletedAt: true, returnedToCustomerAt: true } },
-        exchangeRequest: {
-          select: {
-            status: true,
-            mode: true,
-            memoAppliedAt: true,
-            rejectionReason: true,
-            cancelReason: true,
-            newContract: { select: { status: true } },
+    const openCaseRaw = ctx
+      ? null
+      : await this.prisma.afterSalesCase.findFirst({
+          where: {
+            deviceImei: r.product.imeiSerial ?? dto.imei,
+            deletedAt: null,
+            stage: { notIn: ['CLOSED', 'CANCELLED'] },
           },
-        },
-      },
-      orderBy: { receivedAt: 'desc' },
-    });
+          select: {
+            id: true,
+            caseNumber: true,
+            stage: true,
+            outcome: true,
+            cancelledAt: true,
+            closedAt: true,
+            replacementContractId: true,
+            replacementSaleId: true, // PR 5
+            repairTicket: { select: { status: true, deletedAt: true, returnedToCustomerAt: true } },
+            exchangeRequest: {
+              select: {
+                status: true,
+                mode: true,
+                memoAppliedAt: true,
+                rejectionReason: true,
+                cancelReason: true,
+                newContract: { select: { status: true } },
+              },
+            },
+          },
+          orderBy: { receivedAt: 'desc' },
+        });
     const openCaseReconciled = openCaseRaw ? await reconcileStage(this.prisma, openCaseRaw) : null;
-    const openCase =
+    let openCase: LookupResult['openCase'] =
       openCaseReconciled && !['CLOSED', 'CANCELLED'].includes(openCaseReconciled.stage)
         ? {
             id: openCaseReconciled.id,
@@ -166,6 +283,34 @@ export class AfterSalesLookupService {
             stage: openCaseReconciled.stage,
           }
         : null;
+    if (ctx && !creation) {
+      let cursor: string | undefined;
+      for (;;) {
+        const candidates = await ctx.client.afterSalesCase.findMany({
+          where: {
+            AND: [currentAfterSalesWhere(), { deviceImei: r.product.imeiSerial ?? dto.imei }],
+          },
+          select: { id: true },
+          orderBy: [{ receivedAt: 'desc' }, { id: 'desc' }],
+          take: 100,
+          ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+        });
+        for (const candidate of candidates) {
+          const view = await this.projection!.project(candidate.id);
+          if (!['CLOSED', 'CANCELLED'].includes(view.stage)) {
+            openCase = {
+              id: view.id,
+              caseNumber: view.caseNumber,
+              stage: view.stage,
+              stageVerified: view.stageVerified,
+            };
+            break;
+          }
+        }
+        if (openCase || candidates.length < 100) break;
+        cursor = candidates[candidates.length - 1].id;
+      }
+    }
     const warrantyStatus = source === 'WALK_IN' ? 'WALK_IN' : r.warrantyStatus;
     // PF-4 — อ่าน lineIdShop แยกที่นี่เท่านั้น (`lookupByImei`/`r.customer` ไม่มีคอลัมน์นี้เลย —
     // select ของมันคือ {id,name,phone} ตายตัว ห้าม widen) แล้วแปลงเป็น boolean ก่อนคืนค่า
@@ -195,16 +340,27 @@ export class AfterSalesLookupService {
         checkedAt,
       },
       purchasePhotos: photos.photos ?? null,
-      outcomes: computeOutcomes({
-        source,
-        warrantyStatus,
-        daysRemainingIn7Day: r.daysRemainingIn7Day ?? 0,
-        contractStatus: r.contract?.status,
-        defectEligible,
-        defectReasons,
-        viewerRole: user.role,
-        productCategory: r.product.category,
-      }),
+      outcomes: await (
+        creation
+          ? (input: OutcomeInput) =>
+              computeOutcomes({
+                ...input,
+                submissionCapabilities: { sameModel: true, priced: true },
+              })
+          : this.outcomes.bind(this)
+      )(
+        {
+          source,
+          warrantyStatus,
+          daysRemainingIn7Day: r.daysRemainingIn7Day ?? 0,
+          contractStatus: r.contract?.status,
+          defectEligible,
+          defectReasons,
+          viewerRole: user.role,
+          productCategory: r.product.category,
+        },
+        r,
+      ),
     };
   }
 }

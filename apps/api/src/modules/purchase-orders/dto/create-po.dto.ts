@@ -42,6 +42,8 @@ export class POItemDto {
 }
 
 export class CreatePODto {
+  /** Explicit procurement origin; never inferred from the employee home branch. */
+  @IsOptional() @IsString() accessBranchId?: string;
   @IsString()
   supplierId: string;
 
@@ -396,6 +398,8 @@ export class DirectReceiveItemDto {
 }
 
 export class DirectReceiveDto {
+  /** Explicit procurement origin; never inferred from the employee home branch. */
+  @IsOptional() @IsString() accessBranchId?: string;
   @IsString() supplierId: string;
 
   @IsDateString() orderDate: string;

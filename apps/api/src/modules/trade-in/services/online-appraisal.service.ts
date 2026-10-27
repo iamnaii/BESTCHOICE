@@ -1,3 +1,4 @@
+import { domainAccessClient, currentDomainAccess } from '../../employee-access/access-execution-context';
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma, TradeIn } from '@prisma/client';
 import { createHash } from 'node:crypto';
@@ -20,8 +21,10 @@ type QuickBuyAssessment = AppraisalDevice & { answers?: QuoteAnswerDto[]; device
  */
 @Injectable()
 export class OnlineAppraisalService {
+  private get prisma(): PrismaService { return domainAccessClient(this.basePrisma); }
+
   constructor(
-    private readonly prisma: PrismaService,
+    private readonly basePrisma: PrismaService,
     private readonly shopBuyback: ShopBuybackService,
   ) {}
 
@@ -77,8 +80,8 @@ export class OnlineAppraisalService {
   private async loadItem(id: string, userRole: string, userBranchId: string | null) {
     const tradeIn = await this.prisma.tradeIn.findFirst({ where: { id, deletedAt: null } });
     if (!tradeIn) throw new NotFoundException('ไม่พบรายการเทรดอิน');
-    if (!['OWNER', 'BRANCH_MANAGER'].includes(userRole)) throw new ForbiddenException('ไม่มีสิทธิ์ประเมินราคา');
-    if (userRole === 'BRANCH_MANAGER' && (!userBranchId || (tradeIn.branchId
+    if (!currentDomainAccess() && !['OWNER', 'BRANCH_MANAGER'].includes(userRole)) throw new ForbiddenException('ไม่มีสิทธิ์ประเมินราคา');
+    if (!currentDomainAccess() && userRole === 'BRANCH_MANAGER' && (!userBranchId || (tradeIn.branchId
       ? tradeIn.branchId !== userBranchId
       : tradeIn.submissionSource !== 'ONLINE'))) {
       throw new ForbiddenException('ไม่สามารถประเมินรายการของสาขาอื่นหรือรายการหน้าร้านที่ยังไม่มีสาขา');
@@ -231,7 +234,7 @@ export class OnlineAppraisalService {
       };
     } else {
       // MANUAL
-      if (userRole !== 'OWNER') {
+      if (!(currentDomainAccess() ? currentDomainAccess()!.snapshot.isOwner : userRole === 'OWNER')) {
         throw new ForbiddenException('ราคานอกระบบประเมิน — เฉพาะเจ้าของร้าน (OWNER) เท่านั้น');
       }
       if (dto.offeredPrice === undefined || dto.offeredPrice <= 0) {

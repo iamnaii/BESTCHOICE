@@ -77,7 +77,7 @@ export class SentryExceptionFilter extends BaseExceptionFilter {
       });
       this.logger.error(
         `${request.method} ${safeUrl} → ${status}`,
-        exception instanceof Error ? exception.stack : String(exception),
+        redactShareToken(exception instanceof Error ? exception.stack ?? exception.message : String(exception)),
       );
     }
 

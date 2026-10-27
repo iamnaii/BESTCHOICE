@@ -1,3 +1,4 @@
+import { CustomerDocumentsService } from './services/customer-documents.service';
 import { Module } from '@nestjs/common';
 import { CustomersController } from './customers.controller';
 import { CustomersService } from './customers.service';
@@ -25,6 +26,7 @@ import { CustomerJourneyModule } from '../customer-journey/customer-journey.modu
   imports: [OverdueModule, CustomerPiiModule, CustomerBlacklistModule, ContactsModule, TestModeModule, CreditCheckModule, ChatProspectsModule, CustomerJourneyModule],
   controllers: [CustomersController],
   providers: [
+    CustomerDocumentsService,
     CustomersService,
     CustomerQueryService,
     CustomerWriteService,

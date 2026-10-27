@@ -6,6 +6,12 @@ export type AiCallerContext = Pick<UsageRecord, 'service' | 'method' | 'userId'>
 export type AiRequest = Anthropic.MessageCreateParamsNonStreaming;
 export type AiClient = Pick<Anthropic, 'messages'>;
 export type AiClientProfile = 'interactive' | 'document' | 'credit';
+export interface AiCompletionOptions {
+  signal: AbortSignal;
+  timeout: number;
+  maxRetries: 0;
+  telemetryTimeoutMs: number;
+}
 
 // Domain policies remain independent: credit keeps the SDK defaults, documents
 // keep their existing 120-second timeout/retries, short staff assistance is bounded.
@@ -44,6 +50,7 @@ export class AiProviderService {
     client: AiClient,
     request: AiRequest,
     context: AiCallerContext,
+    options?: AiCompletionOptions,
   ): Promise<Anthropic.Message> {
     const usage: UsageRecord = {
       ...context,
@@ -53,7 +60,12 @@ export class AiProviderService {
       status: 'error',
     };
     try {
-      const response = await client.messages.create(request);
+      if (options?.signal.aborted) throw new APIConnectionTimeoutError();
+      const response = options
+        ? await client.messages.create(request, {
+          signal: options.signal, timeout: options.timeout, maxRetries: options.maxRetries,
+        })
+        : await client.messages.create(request);
       usage.status = 'success';
       usage.inputTokens = response.usage?.input_tokens ?? 0;
       usage.outputTokens = response.usage?.output_tokens ?? 0;
@@ -65,7 +77,18 @@ export class AiProviderService {
       // Request content, document bytes and provider error bodies never enter usage logs.
       // Await on Cloud Run so its response CPU throttling cannot discard this write.
       try {
-        await this.aiUsage.record(usage);
+        if (!options) await this.aiUsage.record(usage);
+        else {
+          let timer: ReturnType<typeof setTimeout> | undefined;
+          try {
+            await Promise.race([
+              this.aiUsage.record(usage),
+              new Promise<never>((_resolve, reject) => {
+                timer = setTimeout(() => reject(new Error('usage timeout')), options.telemetryTimeoutMs);
+              }),
+            ]);
+          } finally { if (timer) clearTimeout(timer); }
+        }
       } catch {
         this.logger.error(`Failed to record AI usage for ${context.service}`);
       }

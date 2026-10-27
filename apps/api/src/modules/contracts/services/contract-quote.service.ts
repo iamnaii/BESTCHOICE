@@ -1,3 +1,7 @@
+import { canAccess } from '@installment/shared';
+import { tradeInSource } from '../../employee-access/access-trade-in-scope';
+import { NamedContractQuote, prepareContractPromotion } from '../../promotions/contract-promotion-terms';
+import { currentDomainAccess, domainAccessClient } from '../../employee-access/access-execution-context';
 import { BadRequestException, ForbiddenException, Injectable } from '@nestjs/common';
 import { createHash } from 'node:crypto';
 import { Prisma } from '@prisma/client';
@@ -18,8 +22,12 @@ const money = (value: Prisma.Decimal | number | string) => new Prisma.Decimal(va
 export class ContractQuoteService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async resolve(dto: ContractQuoteDto, actor: ContractQuoteActor, tx: Prisma.TransactionClient = this.prisma): Promise<ContractQuote> {
-    if (!hasCrossBranchAccess(actor) && (!actor.branchId || actor.branchId !== dto.branchId)) {
+  async resolve(dto: ContractQuoteDto, actor: ContractQuoteActor, tx: Prisma.TransactionClient = this.prisma): Promise<NamedContractQuote> {
+    if (currentDomainAccess() && currentDomainAccess()!.snapshot.userId !== actor.id) throw new ForbiddenException('ผู้ดำเนินการไม่ตรงกับสิทธิ์ปัจจุบัน');
+    if (currentDomainAccess()) tx = domainAccessClient(this.prisma);
+    const namedPromotion = await prepareContractPromotion(dto, actor.id, tx);
+    if (currentDomainAccess()) actor = { ...actor, role: currentDomainAccess()!.snapshot.isOwner ? 'OWNER' : 'SALES' };
+    if (!currentDomainAccess() && !dto.promotionId && !hasCrossBranchAccess(actor) && (!actor.branchId || actor.branchId !== dto.branchId)) {
       throw new ForbiddenException('ไม่มีสิทธิ์คำนวณสัญญาของสาขานี้');
     }
     if (![dto.sellingPrice, dto.downPayment].every(Number.isFinite) || dto.sellingPrice <= 0 || dto.downPayment < 0) {
@@ -37,6 +45,12 @@ export class ContractQuoteService {
     const product = await tx.product.findUnique({ where: { id: dto.productId } });
     if (!product || product.deletedAt) throw new BadRequestException('ไม่พบสินค้าที่ต้องการคำนวณ');
     if (product.branchId !== dto.branchId) throw new ForbiddenException('สินค้าต้องอยู่สาขาเดียวกับสัญญา');
+    if (dto.tradeInCreditId && currentDomainAccess()) {
+      const ctx = currentDomainAccess()!;
+      const source = await tradeInSource(tx, dto.tradeInCreditId, true);
+      if (!canAccess(ctx.snapshot, 'trade-in.read', source) || !canAccess(ctx.snapshot, ctx.scope.permission, source))
+        throw new ForbiddenException('ไม่มีสิทธิ์เลือกเครดิตเทิร์นต้นทาง');
+    }
     const credit = dto.tradeInCreditId ? await new TradeInCreditService(this.prisma).quote(tx, {
       tradeInId: dto.tradeInCreditId, customerId: dto.customerId, productId: dto.productId,
       branchId: dto.branchId, priceAfterDiscount: dto.sellingPrice,
@@ -44,6 +58,11 @@ export class ContractQuoteService {
     if (credit) DiscountPolicy.assertDiscountAllowed(dto.sellingPrice, credit.bonus.toNumber(), actor.role, Number(product.costPrice), undefined);
     const sellingPrice = credit?.net ?? new Prisma.Decimal(dto.sellingPrice);
     const downPayment = new Prisma.Decimal(dto.downPayment).plus(credit?.base ?? 0);
+    if (currentDomainAccess()) {
+      await tx.$queryRaw`SELECT id FROM interest_configs ORDER BY id FOR SHARE`;
+      await tx.$queryRaw`SELECT id FROM system_config ORDER BY id FOR SHARE`;
+      await tx.$queryRaw`SELECT id FROM company_info WHERE company_code IN ('SHOP', 'FINANCE') ORDER BY id FOR SHARE`;
+    }
     const config = await tx.interestConfig.findFirst({
       where: { isActive: true, deletedAt: null, productCategories: { has: product.category } },
       orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
@@ -57,7 +76,7 @@ export class ContractQuoteService {
     if (dto.totalMonths < params.minInstallmentMonths || dto.totalMonths > params.maxInstallmentMonths) {
       throw new BadRequestException(`จำนวนงวดต้องอยู่ระหว่าง ${params.minInstallmentMonths}-${params.maxInstallmentMonths} เดือน`);
     }
-    const rate = config ? await getRateForMonths(tx, config.id, dto.totalMonths)
+    const rate = namedPromotion ? new Prisma.Decimal(namedPromotion.monthlyRate).mul(dto.totalMonths) : config ? await getRateForMonths(tx, config.id, dto.totalMonths)
       : new Prisma.Decimal(params.interestRate).mul(dto.totalMonths);
     const interestTotal = roundBaht(roundBaht(sellingPrice.minus(downPayment).toNumber()) * Number(rate));
     const calc = calculateInstallmentWithInterest(sellingPrice.toNumber(), downPayment.toNumber(), interestTotal,
@@ -79,8 +98,8 @@ export class ContractQuoteService {
       totalMonths: dto.totalMonths, firstDueDate: schedule[0].dueDate, schedule,
     };
     const fingerprint = createHash('sha256').update(JSON.stringify({ customerId: dto.customerId, productId: dto.productId,
-      branchId: dto.branchId, paymentDueDay: dto.paymentDueDay ?? null, tradeInCreditId: dto.tradeInCreditId ?? null, grossSellingPrice: money(dto.sellingPrice), ...amounts })).digest('hex');
-    return { fingerprint, ...amounts };
+      branchId: dto.branchId, paymentDueDay: dto.paymentDueDay ?? null, tradeInCreditId: dto.tradeInCreditId ?? null, grossSellingPrice: money(dto.sellingPrice), ...(namedPromotion ? { namedPromotion } : {}), ...amounts })).digest('hex');
+    return { fingerprint, ...amounts, ...(namedPromotion ? { namedPromotion } : {}) };
   }
 }
 

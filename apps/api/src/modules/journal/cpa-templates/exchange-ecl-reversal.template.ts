@@ -43,6 +43,7 @@ export class ExchangeEclReversalTemplate {
       requestId: string;
     },
     tx?: Prisma.TransactionClient,
+    postedAt?: Date,
   ): Promise<{ id: string; entryNumber: string } | null> {
     const client = tx ?? this.prisma;
     const balance = await glContractBalance(client, input.oldContractId, '11-2102', 'cr');
@@ -65,6 +66,7 @@ export class ExchangeEclReversalTemplate {
     const zero = new Decimal(0);
     return this.journal.createAndPost(
       {
+        postedAt,
         description: `Exchange A.5 — reverse ECL allowance on derecognition (สัญญา ${input.oldContractId.slice(0, 8)})`,
         metadata: {
           tag: 'EXCHANGE-ECL-REVERSAL',

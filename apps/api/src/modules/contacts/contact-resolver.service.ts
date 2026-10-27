@@ -1,6 +1,17 @@
+import type { ContactRoleDestination } from '@installment/shared';
+import { AuditService } from '../audit/audit.service';
+import {
+  AccessPartySourceService,
+  PartyOrigin,
+  partyWriteExecution,
+} from '../employee-access/access-party-source.service';
+import { lockCustomerPhone } from '../customers/customer-phone-lock';
+import { hashPII } from '../../utils/pii.util';
+import { domainAccessClient } from '../employee-access/access-execution-context';
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
   Optional,
@@ -19,6 +30,11 @@ export interface ResolveContactInput {
   phone?: string | null;
   email?: string | null;
   role: ContactRole;
+  origin?: PartyOrigin;
+  /** Internal managed-writer proof; checked against the persisted archived Customer link. */
+  reviveCustomerId?: string;
+  /** Canonical opaque reuse notification; never exposed in a response. */
+  onExisting?: (id: string) => void;
 }
 
 export interface EnsureRoleResult {
@@ -34,13 +50,19 @@ export interface EnsureRoleResult {
 export class ContactResolverService {
   private readonly pii: CustomerPiiService;
 
+  private get prisma(): PrismaService {
+    return domainAccessClient(this.basePrisma);
+  }
+
   constructor(
-    private readonly prisma: PrismaService,
+    private readonly basePrisma: PrismaService,
     // CustomerPiiModule (leaf) — ไม่ฉีดมา (spec/CLI เก่าที่ new ด้วย prisma ตัวเดียว) = สร้างเอง
     // encryptCustomerFields ไม่แตะ DB เลย จึงใช้ตัวที่สร้างเองได้ผลเท่ากัน
     @Optional() pii?: CustomerPiiService,
+    @Optional() private readonly parties?: AccessPartySourceService,
+    @Optional() private readonly audit?: AuditService,
   ) {
-    this.pii = pii ?? new CustomerPiiService(prisma);
+    this.pii = pii ?? new CustomerPiiService(basePrisma);
   }
 
   /** Sequential internal code P-NNNNN, serialized via a global advisory lock. */
@@ -77,12 +99,111 @@ export class ContactResolverService {
       const existing = await tx.contact.findFirst({
         where: { deletedAt: null, OR: orClauses },
       });
+      const ctx = partyWriteExecution(tx);
+      if (ctx) {
+        const archived = await tx.contact.findMany({
+          where: { deletedAt: { not: null }, OR: orClauses },
+          orderBy: { id: 'asc' },
+        });
+        const ghost = input.reviveCustomerId
+          ? await tx.customer.findFirst({
+              where: { id: input.reviveCustomerId, deletedAt: { not: null }, mergedIntoId: null },
+              select: { contactId: true },
+            })
+          : null;
+        if (input.reviveCustomerId && !ghost)
+          throw new ConflictException('ข้อมูลซ้ำกับรายการที่มีอยู่แล้ว');
+        const linked = ghost?.contactId
+          ? await tx.contact.findUnique({ where: { id: ghost.contactId } })
+          : null;
+        // A persisted archived link takes precedence. Never replace or merge it implicitly.
+        const candidate = linked?.deletedAt ? linked : !existing ? archived[0] : undefined;
+        if (candidate) {
+          if (
+            archived.length !== 1 ||
+            archived[0].id !== candidate.id ||
+            !candidate.isActive ||
+            (existing && existing.id !== candidate.id)
+          )
+            throw new ConflictException('ข้อมูลซ้ำกับรายการที่มีอยู่แล้ว');
+          try {
+            const sources = await this.parties!.contact(tx, candidate.id, true, false, {
+              ...(linked?.id === candidate.id && input.reviveCustomerId
+                ? { ghostCustomerId: input.reviveCustomerId }
+                : {}),
+            });
+            this.parties!.assert(ctx.snapshot, 'contacts.read', sources);
+            this.parties!.assert(ctx.snapshot, 'contacts.update', sources);
+          } catch (error) {
+            if (error instanceof ForbiddenException)
+              throw new ConflictException('ข้อมูลซ้ำกับรายการที่มีอยู่แล้ว');
+            throw error;
+          }
+          input.onExisting?.(candidate.id);
+          const row = await tx.contact.update({
+            where: { id: candidate.id },
+            data: {
+              deletedAt: null,
+              roles: {
+                set: candidate.roles.includes(input.role)
+                  ? candidate.roles
+                  : [...candidate.roles, input.role],
+              },
+            },
+          });
+          if (!this.audit) throw new Error('Required contact audit writer unavailable');
+          await this.audit.log(
+            {
+              userId: ctx.snapshot.userId,
+              action: 'CONTACT_REVIVED',
+              entity: 'contact',
+              entityId: candidate.id,
+              oldValue: { deletedAt: candidate.deletedAt, roles: candidate.roles },
+              newValue: {
+                deletedAt: null,
+                roles: row.roles,
+                customerId: input.reviveCustomerId ?? null,
+              },
+            },
+            ctx.client,
+          );
+          return row;
+        }
+        if (existing && !existing.isActive)
+          throw new ConflictException('ข้อมูลซ้ำกับรายการที่มีอยู่แล้ว');
+      }
       if (existing) {
+        input.onExisting?.(existing.id);
+        if (partyWriteExecution(tx) && !existing.roles.includes(input.role)) {
+          try {
+            await this.parties!.mutation(tx, 'contact', existing.id, 'contacts.update');
+          } catch (error) {
+            if (error instanceof ForbiddenException)
+              throw new ConflictException('ข้อมูลซ้ำกับรายการที่มีอยู่แล้ว');
+            throw error;
+          }
+        }
         if (!existing.roles.includes(input.role)) {
-          return tx.contact.update({
+          const row = await tx.contact.update({
             where: { id: existing.id },
             data: { roles: { set: [...existing.roles, input.role] } },
           });
+          const ctx = partyWriteExecution(tx);
+          if (ctx) {
+            if (!this.audit) throw new Error('Required contact audit writer unavailable');
+            await this.audit.log(
+              {
+                userId: ctx.snapshot.userId,
+                action: 'CONTACT_ROLE_ADDED',
+                entity: 'contact',
+                entityId: existing.id,
+                oldValue: { roles: existing.roles },
+                newValue: { roles: row.roles },
+              },
+              ctx.client,
+            );
+          }
+          return row;
         }
         return existing;
       }
@@ -99,6 +220,7 @@ export class ContactResolverService {
           phone: input.phone ?? null,
           email: input.email ?? null,
           roles: [input.role],
+          ...(input.origin ?? {}),
         },
       });
     } catch (e) {
@@ -123,6 +245,7 @@ export class ContactResolverService {
     tx: Tx,
     contactId: string,
     role: ContactRole,
+    destination?: ContactRoleDestination,
   ): Promise<EnsureRoleResult> {
     if (role !== 'SUPPLIER' && role !== 'CUSTOMER' && role !== 'TRADE_IN_SELLER') {
       throw new BadRequestException(
@@ -133,8 +256,99 @@ export class ContactResolverService {
     const contact = await tx.contact.findFirst({
       where: { id: contactId, deletedAt: null },
     });
-    if (!contact) throw new NotFoundException('ไม่พบผู้ติดต่อ');
+    if (!contact) {
+      if (partyWriteExecution(tx)) throw new ForbiddenException('ไม่มีสิทธิ์ดำเนินการกับข้อมูลนี้');
+      throw new NotFoundException('ไม่พบผู้ติดต่อ');
+    }
 
+    const ctx = partyWriteExecution(tx);
+    let origin: PartyOrigin | undefined;
+    if (ctx) {
+      // Opaque phone load precedes business row/code locks. Re-read under source locks below.
+      await lockCustomerPhone(ctx.client, this.pii, contact.phone);
+      const existing =
+        role === 'CUSTOMER'
+          ? await tx.customer.findFirst({
+              where: { contactId, deletedAt: null },
+              select: { id: true },
+            })
+          : role === 'SUPPLIER'
+            ? await tx.supplier.findFirst({
+                where: { contactId, deletedAt: null },
+                select: { id: true },
+              })
+            : null;
+      const changes =
+        (destination?.assignedToId !== undefined &&
+          destination.assignedToId !== contact.assignedToId) ||
+        !contact.roles.includes(role) ||
+        (role !== 'TRADE_IN_SELLER' && !existing);
+      const sources = await this.parties!.contact(tx, contactId, true, !changes);
+      if (
+        !changes &&
+        !sources.some(
+          (source) =>
+            this.parties!.allows(ctx.snapshot, 'contacts.read', source) &&
+            this.parties!.allows(ctx.snapshot, 'contacts.update', source),
+        )
+      )
+        throw new ForbiddenException('ไม่มีสิทธิ์ดำเนินการกับข้อมูลนี้');
+      this.parties!.assert(ctx.snapshot, 'contacts.read', sources, changes);
+      this.parties!.assert(ctx.snapshot, 'contacts.update', sources, changes);
+      await this.parties!.assignment(tx, 'contact', contactId, destination?.assignedToId, sources);
+      if (existing) {
+        const childSources =
+          role === 'CUSTOMER'
+            ? await this.parties!.customer(tx, existing.id, true, false, true)
+            : await this.parties!.supplier(tx, existing.id, true, true);
+        this.parties!.assert(
+          ctx.snapshot,
+          role === 'CUSTOMER' ? 'customers.read' : 'suppliers.read',
+          childSources,
+          false,
+        );
+        // ensureRole does not silently reassign an existing child.
+        if (destination?.customerAssignedToId !== undefined) {
+          const actual =
+            role === 'CUSTOMER'
+              ? await tx.customer.findUniqueOrThrow({
+                  where: { id: existing.id },
+                  select: { assignedToId: true },
+                })
+              : null;
+          if (!actual || actual.assignedToId !== destination.customerAssignedToId)
+            throw new BadRequestException('กรุณาแก้ผู้รับผิดชอบที่รายการเดิม');
+        }
+      } else if (role !== 'TRADE_IN_SELLER') {
+        origin = await this.parties!.destination(tx, ctx.scope.company, destination?.branchId);
+        const source = {
+          company: origin.accessCompanyCode,
+          ...(origin.accessBranchId ? { branchId: origin.accessBranchId } : {}),
+        };
+        this.parties!.assert(
+          ctx.snapshot,
+          role === 'CUSTOMER' ? 'customers.create' : 'suppliers.create',
+          [source],
+        );
+        if (role === 'CUSTOMER') {
+          await this.parties!.assignment(tx, 'customer', null, destination?.customerAssignedToId, [
+            source,
+          ]);
+          const phone = normalizeThaiPhone(contact.phone);
+          if (
+            phone &&
+            (await tx.customer.count({
+              where: {
+                phoneHash: hashPII(phone, process.env.PII_HASH_SALT || ''),
+                deletedAt: null,
+              },
+            }))
+          )
+            throw new ConflictException('ข้อมูลซ้ำกับรายการที่มีอยู่แล้ว');
+        } else if (destination?.customerAssignedToId !== undefined)
+          throw new BadRequestException('รายการนี้ไม่รองรับผู้รับผิดชอบ');
+      }
+    }
     let provisioned = false;
     let supplierId: string | undefined;
     let customerId: string | undefined;
@@ -148,7 +362,12 @@ export class ContactResolverService {
         ? existing.id
         : (
             await tx.supplier.create({
-              data: { name: contact.name, phone: contact.phone ?? '', contactId },
+              data: {
+                name: contact.name,
+                phone: contact.phone ?? '',
+                contactId,
+                ...(origin ?? {}),
+              },
               select: { id: true },
             })
           ).id;
@@ -167,7 +386,15 @@ export class ContactResolverService {
         ? existing.id
         : (
             await tx.customer.create({
-              data: { name: contact.name, ...this.stubPhone(contact.phone), contactId },
+              data: {
+                name: contact.name,
+                ...this.stubPhone(contact.phone),
+                contactId,
+                ...(origin ?? {}),
+                ...(ctx && destination?.customerAssignedToId
+                  ? { assignedToId: destination.customerAssignedToId }
+                  : {}),
+              },
               select: { id: true },
             })
           ).id;
@@ -175,6 +402,18 @@ export class ContactResolverService {
     }
     // TRADE_IN_SELLER: no child row — the TradeIn record links directly via
     // sellerContactId. Just append the role to the Contact if absent.
+
+    if (
+      ctx &&
+      destination?.assignedToId !== undefined &&
+      destination.assignedToId !== contact.assignedToId
+    ) {
+      await tx.contact.update({
+        where: { id: contactId },
+        data: { assignedToId: destination.assignedToId },
+      });
+      provisioned = true;
+    }
 
     if (!contact.roles.includes(role)) {
       await tx.contact.update({

@@ -1,3 +1,4 @@
+import { ACCESS_AUTHORIZED } from '../../employee-access/access-policy';
 import { Injectable, CanActivate, ExecutionContext } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { ROLES_KEY } from '../decorators/roles.decorator';
@@ -35,6 +36,10 @@ export class RolesGuard implements CanActivate {
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
+    const request = context.switchToHttp().getRequest();
+    if (request.user?.access?.managed) {
+      return request[ACCESS_AUTHORIZED] === `${context.getClass().name}.${context.getHandler().name}`;
+    }
     const requiredRoles = this.reflector.getAllAndOverride<string[]>(ROLES_KEY, [
       context.getHandler(),
       context.getClass(),

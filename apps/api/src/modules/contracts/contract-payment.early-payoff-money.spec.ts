@@ -495,6 +495,8 @@ describe('ContractPaymentService early-payoff money branches (Wave 3 gap-fill)',
       $transaction: jest.Mock;
     };
     let tx: {
+      $queryRaw: jest.Mock;
+      user: { findUnique: jest.Mock };
       contract: {
         findUnique: jest.Mock;
         findUniqueOrThrow: jest.Mock;
@@ -524,6 +526,9 @@ describe('ContractPaymentService early-payoff money branches (Wave 3 gap-fill)',
       eclStageReverseTemplate = { execute: jest.fn().mockResolvedValue({ entryNo: 'JE-ECL-1' }) };
 
       tx = {
+      // Current persisted legacy admission is checked inside the money transaction.
+      $queryRaw: jest.fn().mockResolvedValue([]),
+      user: { findUnique: jest.fn().mockResolvedValue({ isActive: true, deletedAt: null, accessManaged: false }) },
         contract: {
           findUnique: jest.fn().mockResolvedValue(freshContract),
           findUniqueOrThrow: jest.fn().mockResolvedValue(epContractRow),

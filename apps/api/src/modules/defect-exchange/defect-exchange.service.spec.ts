@@ -176,6 +176,7 @@ describe('DefectExchangeService', () => {
     };
 
     prisma = {
+      user: { findUnique: jest.fn().mockResolvedValue({ accessManaged: false }) },
       // 15ข (I2): checkEligibility จำลองขั้น ก/ค/ข จากรายการบัญชีของสัญญา
       journalEntry: { findMany: jest.fn().mockResolvedValue([]) },
       contract: {

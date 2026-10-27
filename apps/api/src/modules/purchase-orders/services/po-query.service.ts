@@ -1,3 +1,5 @@
+import { purchaseOrderScopeWhere } from '../../employee-access/access-procurement-scope';
+import { domainAccessClient, currentDomainAccess, currentPermissionScope, currentProductReadWhere } from '../../employee-access/access-execution-context';
 import { NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
@@ -33,7 +35,9 @@ const AP_OWED_WHERE: Prisma.PurchaseOrderWhereInput = {
  * provides PrismaService) is untouched.
  */
 export class PoQueryService {
-  constructor(private prisma: PrismaService) {}
+  private get prisma(): PrismaService { return domainAccessClient(this.basePrisma); }
+
+  constructor(private basePrisma: PrismaService) {}
 
   async findAll(filters: { status?: string; supplierId?: string; page?: number; limit?: number }) {
     const where: Record<string, unknown> = { deletedAt: null };
@@ -52,7 +56,7 @@ export class PoQueryService {
           approvedBy: { select: { id: true, name: true } },
           closedBy: { select: { id: true, name: true } },
           items: true,
-          _count: { select: { products: true } },
+          _count: { select: { products: currentProductReadWhere() ? { where: currentProductReadWhere() } : true } },
         },
         orderBy: { createdAt: 'desc' },
         skip: (page - 1) * limit,
@@ -82,6 +86,7 @@ export class PoQueryService {
           },
         },
         products: {
+          where: currentProductReadWhere(),
           select: { id: true, name: true, brand: true, model: true, imeiSerial: true, serialNumber: true, photos: true, status: true, costPrice: true, branchId: true, accessoryType: true, accessoryBrand: true },
         },
         goodsReceivings: {
@@ -178,7 +183,10 @@ export class PoQueryService {
       supplierMap.set(po.supplierId, entry);
     }
 
-    const suppliers = Array.from(supplierMap.values()).sort((a, b) => b.totalRemaining - a.totalRemaining);
+    const costScope = currentPermissionScope('sensitive.cost.read');
+    const ctx = currentDomainAccess();
+    const canSortCost = !ctx || (!!costScope?.tuples.length && await ctx.client.purchaseOrder.count({ where: { AND: [purchaseOrderScopeWhere(ctx.scope), { NOT: purchaseOrderScopeWhere(costScope!) }] } }) === 0);
+    const suppliers = Array.from(supplierMap.values()).sort((a, b) => canSortCost ? b.totalRemaining - a.totalRemaining : a.supplier.id.localeCompare(b.supplier.id));
     const grandTotal = dSum(suppliers.map((s) => s.totalRemaining)).toNumber();
     const total = suppliers.length;
     const data = suppliers.slice((page - 1) * safeLimit, page * safeLimit);

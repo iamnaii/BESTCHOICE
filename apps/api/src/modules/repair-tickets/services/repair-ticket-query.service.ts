@@ -1,3 +1,9 @@
+import { currentRepairWhere } from '../../employee-access/access-repair-scope';
+import { currentCustomerReadWhere } from '../../employee-access/access-sales-scope';
+import {
+  currentDomainAccess,
+  domainAccessClient,
+} from '../../employee-access/access-execution-context';
 import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
@@ -12,7 +18,11 @@ type ReqUser = { id: string; role: string; branchId?: string | null };
  */
 @Injectable()
 export class RepairTicketQueryService {
-  constructor(private readonly prisma: PrismaService) {}
+  private get prisma(): PrismaService {
+    return domainAccessClient(this.basePrisma);
+  }
+
+  constructor(private readonly basePrisma: PrismaService) {}
 
   /** Paginated list with filtering + branch scoping. */
   async findAll(dto: ListRepairTicketsDto, user: ReqUser) {
@@ -31,7 +41,10 @@ export class RepairTicketQueryService {
     }
 
     // Branch scope — OWNER/ACCOUNTANT/FINANCE_MANAGER are cross-branch
-    if (!hasCrossBranchAccess(user)) {
+    if (currentDomainAccess()) {
+      where.AND = currentRepairWhere();
+      if (dto.branchId) where.branchId = dto.branchId;
+    } else if (!hasCrossBranchAccess(user)) {
       if (user.branchId) {
         where.branchId = user.branchId;
       }
@@ -47,7 +60,12 @@ export class RepairTicketQueryService {
     if (dto.q) {
       where.OR = [
         { ticketNumber: { contains: dto.q, mode: 'insensitive' } },
-        { customer: { name: { contains: dto.q, mode: 'insensitive' } } },
+        {
+          customer: {
+            name: { contains: dto.q, mode: 'insensitive' },
+            ...(currentCustomerReadWhere() ?? {}),
+          },
+        },
         { deviceImei: { contains: dto.q, mode: 'insensitive' } },
       ];
     }
@@ -90,7 +108,12 @@ export class RepairTicketQueryService {
     });
     if (!ticket) throw new NotFoundException('ไม่พบ ticket');
 
-    if (!hasCrossBranchAccess(user) && user.branchId && ticket.branchId !== user.branchId) {
+    if (
+      !currentDomainAccess() &&
+      !hasCrossBranchAccess(user) &&
+      user.branchId &&
+      ticket.branchId !== user.branchId
+    ) {
       throw new ForbiddenException('ไม่สามารถเข้าถึงสาขาอื่นได้');
     }
     return ticket;

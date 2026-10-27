@@ -1,9 +1,14 @@
+import { ContractTemplateDraft } from '@installment/shared';
 import {
   Injectable,
   BadRequestException,
   InternalServerErrorException,
   Logger,
+  ForbiddenException,
 } from '@nestjs/common';
+import { templateRequest } from '../../employee-access/access-document-template-context';
+import { TEMPLATE_HTML_BYTES } from '../../contracts/services/template-input';
+import { TemplateGenerationDeadline } from './template-generation-deadline';
 import { AnthropicOcrClient } from './anthropic-ocr.client';
 import { Prisma } from '@prisma/client';
 import { AiProviderService } from '../../ai-usage/ai-provider.service';
@@ -57,16 +62,29 @@ export class OcrExtractorsService {
 6. ตอบเป็น HTML เท่านั้น ห้ามมี markdown code block หรือข้อความอื่น
 7. ถ้าเอกสารไม่ใช่สัญญาหรือเอกสารทางธุรกิจ ให้สร้างเทมเพลตสัญญาผ่อนชำระทั่วไป โดยอ้างอิงจากรูปแบบที่เห็น`;
 
-  async generateTemplateHtml(fileBase64: string, userId?: string): Promise<{ contentHtml: string; placeholders: string[] }> {
-    const client = await this.client.ensureAnthropicReady();
+  async generateTemplateHtml(fileBase64: string, userId?: string): Promise<ContractTemplateDraft> {
+    const entrance = templateRequest.getStore();
+    if (!userId || entrance?.actorId !== userId ||
+      entrance.operation !== 'generateTemplateFromFile' || !entrance.stage)
+      throw new ForbiddenException('ไม่มีสิทธิ์สร้างเทมเพลตจากไฟล์');
+    if (typeof fileBase64 !== 'string' || fileBase64.length > 15000000)
+      throw new BadRequestException('ไฟล์มีขนาดใหญ่เกินไป');
     const { mediaType, base64Data, isDocument } = validateFileBase64(fileBase64);
-
+    if (Buffer.from(base64Data, 'base64').length > 10 * 1024 * 1024)
+      throw new BadRequestException('ไฟล์มีขนาดใหญ่เกินไป');
+    const deadline = new TemplateGenerationDeadline();
     try {
+      // Database stages own SQL cancellation and await rollback before returning.
+      await entrance.stage('PREPARE', deadline);
+      const client = await deadline.wait(() => this.client.ensureAnthropicReady(), 5000);
+      // Reload authority after acquisition, then commit required evidence before submission.
+      await entrance.stage('ADMITTED', deadline);
+      deadline.check();
       const fileContent = isDocument
         ? { type: 'document' as const, source: { type: 'base64' as const, media_type: mediaType as 'application/pdf', data: base64Data } }
         : { type: 'image' as const, source: { type: 'base64' as const, media_type: mediaType as 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp', data: base64Data } };
 
-      const response = await this.provider.complete(client, {
+      const response = await deadline.wait(() => this.provider.complete(client, {
         model: AnthropicOcrClient.OCR_MODEL,
         max_tokens: 8192,
         temperature: 0.2,
@@ -83,7 +101,9 @@ export class OcrExtractorsService {
             ],
           },
         ],
-      }, { service: 'ocr', method: 'generateTemplateHtml', userId });
+      }, { service: 'ocr', method: 'generateTemplateHtml', userId }, {
+        signal: deadline.controller.signal, timeout: 20000, maxRetries: 0, telemetryTimeoutMs: 500,
+      }), 20500);
 
       const textContent = response.content.find((c) => c.type === 'text');
       if (!textContent || textContent.type !== 'text') {
@@ -96,15 +116,21 @@ export class OcrExtractorsService {
       if (htmlMatch) {
         html = htmlMatch[1].trim();
       }
+      if (!html || Buffer.byteLength(html) > TEMPLATE_HTML_BYTES)
+        throw new InternalServerErrorException('ผลลัพธ์เทมเพลตไม่ถูกต้องหรือมีขนาดใหญ่เกินไป');
 
       // Extract placeholders used
       const placeholders = [...new Set((html.match(/\{[a-z_]+\}/g) || []))];
-
+      if (placeholders.length > 1000 || placeholders.some(value => value.length > 256))
+        throw new InternalServerErrorException('ผลลัพธ์เทมเพลตไม่ถูกต้อง');
+      await entrance.stage('COMPLETED', deadline);
+      deadline.check();
       return { contentHtml: html, placeholders };
     } catch (error) {
-      if (error instanceof BadRequestException) throw error;
+      deadline.controller.abort();
+      if (error instanceof BadRequestException || error instanceof ForbiddenException) throw error;
       const errMsg = (error as Error).message || '';
-      this.logger.error('Template generation from file failed', errMsg);
+      this.logger.error('Template generation from file failed');
 
       if (errMsg.includes('timeout') || errMsg.includes('ETIMEDOUT') || errMsg.includes('abort')) {
         throw new InternalServerErrorException('AI ใช้เวลานานเกินไป — ลองใช้ไฟล์ที่มีขนาดเล็กลง หรือเป็นรูปภาพแทน PDF');

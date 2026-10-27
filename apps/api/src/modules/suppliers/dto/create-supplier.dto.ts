@@ -39,6 +39,8 @@ export class PaymentMethodDto {
 }
 
 export class CreateSupplierDto {
+  /** Explicit procurement origin; never inferred from the employee home branch. */
+  @IsOptional() @IsString() accessBranchId?: string;
   @IsEnum(SupplierType, { message: 'ประเภทผู้ขายไม่ถูกต้อง' })
   @IsOptional()
   type?: SupplierType;

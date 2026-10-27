@@ -205,7 +205,7 @@ describe('InterestConfigService.resolveConfig — precedence / no-match fallback
         isActive: true,
       },
       include: { rates: { where: { deletedAt: null } } },
-      orderBy: { createdAt: 'asc' },
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
     });
   });
 
@@ -220,7 +220,7 @@ describe('InterestConfigService.resolveConfig — precedence / no-match fallback
     // numbers" bug (product-quote.service.ts pins the identical clause on
     // its own getQuotes() query).
     expect(findFirst.mock.calls[0][0]).toMatchObject({
-      orderBy: { createdAt: 'asc' },
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
     });
   });
 

@@ -1,10 +1,33 @@
+import { purchaseOrderScopeWhere } from '../employee-access/access-procurement-scope';
+import { domainAccessClient, currentDomainAccess } from '../employee-access/access-execution-context';
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateBranchReceivingDto } from './dto/branch-receiving.dto';
 
 @Injectable()
 export class BranchReceivingService {
-  constructor(private prisma: PrismaService) {}
+  private get prisma(): PrismaService { return domainAccessClient(this.basePrisma); }
+
+  constructor(private readonly basePrisma: PrismaService) {}
+
+  async approvedPurchaseOrders(branchId?: string, page = 1, limit = 50) {
+    const ctx = currentDomainAccess();
+    const tx = ctx?.client ?? this.basePrisma;
+    const destination = ctx?.receivingBranchId
+      ? await tx.branch.findUniqueOrThrow({ where: { id: ctx.receivingBranchId }, select: { id: true, name: true } })
+      : await tx.branch.findFirst({ where: { isMainWarehouse: true, isActive: true, deletedAt: null }, select: { id: true, name: true } }) ?? await tx.branch.findFirst({ where: { isActive: true, deletedAt: null }, orderBy: { createdAt: 'asc' }, select: { id: true, name: true } });
+    if (!destination || branchId && branchId !== destination.id) throw new BadRequestException('ปลายทางไม่ตรงกับคลังรับสินค้า');
+    const safePage = Math.max(1, page), safeLimit = Math.min(100, Math.max(1, limit));
+    const source = purchaseOrderScopeWhere({ userId: ctx?.snapshot.userId ?? '', company: 'SHOP', permission: 'stock-receiving.read', tuples: [{ userId: ctx?.snapshot.userId ?? '', scope: 'COMPANY', branchIds: [] }] });
+    const outstanding = { deletedAt: null, receivedQty: { lt: tx.pOItem.fields.quantity } };
+    const where = { AND: [source], items: { some: outstanding }, status: { in: ['APPROVED', 'ORDERED', 'PARTIALLY_RECEIVED'] as Array<'APPROVED' | 'ORDERED' | 'PARTIALLY_RECEIVED'> } };
+    const [rows, total] = await Promise.all([
+      tx.purchaseOrder.findMany({ where, orderBy: [{ createdAt: 'desc' }, { id: 'asc' }], skip: (safePage - 1) * safeLimit, take: safeLimit,
+        select: { id: true, poNumber: true, status: true, items: { where: outstanding, select: { id: true, brand: true, model: true, color: true, storage: true, category: true, accessoryType: true, accessoryBrand: true, quantity: true, receivedQty: true } } } }),
+      tx.purchaseOrder.count({ where }),
+    ]);
+    return { destination, data: rows.map(po => ({ ...po, items: po.items.map(item => ({ ...item, remainingQty: Math.max(0, item.quantity - item.receivedQty) })) })), total, page: safePage, limit: safeLimit };
+  }
 
   /**
    * Branch receives products from transfer (Step 6: สาขาเช็ครับสินค้า)

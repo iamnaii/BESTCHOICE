@@ -18,9 +18,10 @@ export class DefectExchangeController {
   @Roles('OWNER', 'BRANCH_MANAGER', 'SALES')
   getEligibility(
     @Param('contractId') contractId: string,
+    @CurrentUser() user: { id: string },
     @Query('newProductId') newProductId?: string,
   ) {
-    return this.service.checkEligibility(contractId, newProductId);
+    return this.service.checkEligibility(contractId, newProductId, user);
   }
 
   @Post('execute')
@@ -35,10 +36,11 @@ export class DefectExchangeController {
   @Get()
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER')
   list(
+    @CurrentUser() user: { id: string },
     @Query('branchId') branchId?: string,
     @Query('from') from?: string,
     @Query('to') to?: string,
   ) {
-    return this.service.list({ branchId, from, to });
+    return this.service.list({ branchId, from, to }, user);
   }
 }

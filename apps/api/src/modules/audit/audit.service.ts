@@ -90,7 +90,7 @@ export class AuditService {
     );
   }
 
-  async log(entry: AuditEntry) {
+  async log(entry: AuditEntry, outerTx?: Prisma.TransactionClient) {
     try {
       if (!entry.userId) return;
 
@@ -106,7 +106,7 @@ export class AuditService {
       // T2-C4 ext: hash chain. $transaction keeps nextval() + read-last-hash
       // + insert atomic so two concurrent writers can't race to the same
       // prevRowHash value.
-      await this.prisma.$transaction(async (tx) => {
+      const write = async (tx: Prisma.TransactionClient) => {
         const seqRow = await tx.$queryRaw<Array<{ nextval: bigint }>>`
           SELECT nextval('audit_logs_seq') AS nextval
         `;
@@ -152,7 +152,9 @@ export class AuditService {
             prevRowHash: prevRow?.rowHash ?? null,
           },
         });
-      });
+      };
+      if (outerTx) await write(outerTx);
+      else await this.prisma.$transaction(write);
     } catch (err) {
       // Audit rows are compliance evidence — a silent write failure must ALERT,
       // not just log to stdout. Sentry surfaces the gap so it gets investigated
@@ -160,6 +162,7 @@ export class AuditService {
       // write never breaks the user-facing request it was observing.
       this.logger.error('Failed to write audit log', err);
       Sentry.captureException(err, { tags: { subsystem: 'audit', action: entry.action } });
+      if (outerTx) throw err;
     }
   }
 

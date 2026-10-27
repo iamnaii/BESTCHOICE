@@ -1,3 +1,4 @@
+import { domainAccessClient } from '../employee-access/access-execution-context';
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { Prisma, ProductCategory, PaymentMethod } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -19,7 +20,9 @@ export class ShopAccountResolver {
   /** SHOP bank that funds outflows (branch expenses, transfer trade-in payout). */
   static readonly SHOP_PAYING_BANK = 'S11-1202';
 
-  constructor(private readonly prisma: PrismaService) {}
+  private get prisma(): PrismaService { return domainAccessClient(this.basePrisma); }
+
+  constructor(private readonly basePrisma: PrismaService) {}
 
   /** TABLET reuses PHONE_NEW codes (D-5); dedicated tablet S-codes deferred. */
   resolveProductAccounts(category: ProductCategory): ShopProductAccounts {

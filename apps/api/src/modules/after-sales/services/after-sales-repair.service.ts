@@ -1,7 +1,23 @@
+import { AccessAfterSalesStreams } from '../../employee-access/access-after-sales-streams';
+import {
+  currentDomainAccess,
+  domainAccessClient,
+  onDomainCommit,
+} from '../../employee-access/access-execution-context';
+import { procurementPreparation } from '../../employee-access/access-preparation-context';
+import { afterSalesActor } from '../../employee-access/access-after-sales-source.service';
+import {
+  loadAfterSalesActionCase,
+  loadAfterSalesRepairBusiness,
+  AfterSalesMutationAcknowledgement,
+  AfterSalesPhotoAcknowledgement,
+} from '../../employee-access/access-after-sales-action';
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
+  Optional,
   NotFoundException,
 } from '@nestjs/common';
 import { randomUUID } from 'crypto';
@@ -38,24 +54,53 @@ type Kind =
 @Injectable()
 export class AfterSalesRepairService {
   constructor(
-    private readonly prisma: PrismaService,
+    private readonly basePrisma: PrismaService,
     private readonly storage: StorageService,
     private readonly repair: RepairTicketsService,
     private readonly query: AfterSalesQueryService,
     private readonly audit: AuditService,
     private readonly line: AfterSalesLineService,
+    @Optional() private readonly streams?: AccessAfterSalesStreams,
   ) {}
+
+  private get prisma() {
+    return domainAccessClient(this.basePrisma);
+  }
+
+  private async businessCase(caseId: string, user: ReqUser) {
+    const ctx = await afterSalesActor(this.basePrisma, user.id, this.prisma);
+    if (!ctx) return this.query.getCase(caseId, user);
+    const row = await loadAfterSalesActionCase(this.prisma, caseId, user.id, 'after-sales.update');
+    const ticket = await loadAfterSalesRepairBusiness(row);
+    return {
+      ...row,
+      repairTicket: ticket
+        ? {
+            ...ticket,
+            repairSupplier: ticket.repairSupplierId ? { id: ticket.repairSupplierId } : null,
+          }
+        : null,
+    };
+  }
+
+  private notify(caseId: string, moment: 'READY' | 'CLOSED', userId: string) {
+    const effect = async () => {
+      await this.line.notifyMoment(caseId, moment, userId);
+    };
+    if (currentDomainAccess()) onDomainCommit(effect);
+    else void effect().catch(() => undefined);
+  }
 
   /** โหลดเคส (เช็คสิทธิ์สาขาผ่าน query.getCase) แล้วคืน ticketId */
   private async ticketOf(caseId: string, user: ReqUser) {
-    const c = await this.query.getCase(caseId, user);
+    const c = await this.businessCase(caseId, user);
     if (!c.repairTicket) throw new BadRequestException('เคสนี้ไม่ได้เลือกทางออก "ซ่อม"');
     return { c, ticketId: c.repairTicket.id };
   }
 
   /**
-   * เขียน stage กลับ + event หลังใบซ่อมเปลี่ยนสถานะ (นอก tx ของใบซ่อม — ใบซ่อมคือความจริง
-   * เคสตามหลัง). `replacementContractId: null` / `closedAt: null` / `exchange: null` เพราะ
+   * เขียน stage กลับ + event หลังใบซ่อมเปลี่ยนสถานะ. Managed calls join the
+   * actual outer repair transaction; legacy calls retain their existing ordering. `replacementContractId: null` / `closedAt: null` / `exchange: null` เพราะ
    * proxy นี้คุมเฉพาะ flow REPAIR (R7 ของ SAME_MODEL_EXCHANGE/PRICED_EXCHANGE เป็นคนละ service —
    * PR 2 เพิ่มกิ่งของทางออกเหล่านั้นใน deriveStage แต่ proxy ซ่อมนี้ไม่ต้องรู้จักมัน).
    */
@@ -65,7 +110,7 @@ export class AfterSalesRepairService {
     kind: Kind,
     note: string,
     extra: Record<string, unknown> = {},
-  ) {
+  ): Promise<AfterSalesMutationAcknowledgement> {
     const t = await this.prisma.repairTicket.findFirst({
       where: { afterSalesCase: { id: caseId } },
       select: { status: true, deletedAt: true },
@@ -113,9 +158,8 @@ export class AfterSalesRepairService {
       'REPAIR_DONE',
       `${label} · ค่าซ่อมจริง ${dto.actualCost} · ผู้จ่าย ${dto.payer}`,
     );
-    // Task 3 — จังหวะ 2 (READY): หลัง sync (commit) เสมอ — fire-and-forget, LINE ล้มต้องไม่ทำให้
-    // การซ่อมล้ม (Global Constraints). notifyMoment เองก็ไม่ throw อยู่แล้ว — `.catch` เป็นเข็มขัดคู่
-    void this.line.notifyMoment(caseId, 'READY', user.id).catch(() => undefined);
+    // Managed LINE delivery waits for the actual outer commit, including retries.
+    this.notify(caseId, 'READY', user.id);
     return result;
   }
 
@@ -130,13 +174,13 @@ export class AfterSalesRepairService {
     await this.repair.returnToCustomer(ticketId, dto, user);
     await this.sync(caseId, user, 'DELIVERED', 'ส่งมอบคืนลูกค้าแล้ว');
     const result = await this.sync(caseId, user, 'CLOSED', 'ปิดเคส');
-    // Task 3 — จังหวะ 3 (CLOSED): หลัง sync (commit) เสมอ — fire-and-forget เช่นเดียวกับข้างบน
-    void this.line.notifyMoment(caseId, 'CLOSED', user.id).catch(() => undefined);
+    // Managed LINE delivery waits for the actual outer commit.
+    this.notify(caseId, 'CLOSED', user.id);
     return result;
   }
 
   async cancelCase(caseId: string, dto: CancelCaseDto, user: ReqUser) {
-    const found = await this.query.getCase(caseId, user);
+    const found = await this.businessCase(caseId, user);
     if (
       !found.repairTicket &&
       (found.outcome === 'SAME_MODEL_EXCHANGE' || found.outcome === 'PRICED_EXCHANGE')
@@ -189,7 +233,7 @@ export class AfterSalesRepairService {
     }
     if (['CLOSED', 'CANCELLED'].includes(c.stage)) throw new BadRequestException('เคสนี้จบแล้ว');
     const cancelledAt = new Date();
-    // CAS + event ในทรานแซกชันเดียว (ไม่มีเคส CANCELLED ที่ขาด event) — audit หลัง commit
+    // CAS + event join the owned transaction; managed critical audit joins it too.
     const updated = await this.prisma.$transaction(async (tx) => {
       const claim = await tx.afterSalesCase.updateMany({
         where: {
@@ -211,29 +255,50 @@ export class AfterSalesRepairService {
         select: { id: true, stage: true },
       });
     });
-    await this.audit.log({
+    const auditData = {
       userId: user.id,
       action: 'AFTER_SALES_CASE_CANCELLED',
       entity: 'after_sales_case',
       entityId: c.id,
       newValue: { outcome: c.outcome, reason: dto.reason },
-    });
+    };
+    const ctx = currentDomainAccess();
+    if (ctx) await this.audit.log(auditData, ctx.client);
+    else await this.audit.log(auditData);
     return updated;
   }
 
-  async addPhoto(caseId: string, file: Express.Multer.File, user: ReqUser) {
-    const c = await this.query.getCase(caseId, user);
-    const row = await this.prisma.afterSalesCase.findUniqueOrThrow({
-      where: { id: caseId },
-      select: { photoKeys: true },
-    });
-    if (row.photoKeys.length >= MAX_INTAKE_PHOTOS) {
-      throw new BadRequestException(`รูปตอนรับฝากได้ไม่เกิน ${MAX_INTAKE_PHOTOS} รูป`);
-    }
+  async addPhoto(
+    caseId: string,
+    file: Express.Multer.File,
+    user: ReqUser,
+  ): Promise<AfterSalesPhotoAcknowledgement> {
     assertEvidenceImage(file, 'รูปตอนรับฝาก');
+    const preparation = procurementPreparation.getStore();
+    if (preparation) await preparation.authorize!();
+    else if (await afterSalesActor(this.basePrisma, user.id, this.prisma))
+      throw new ForbiddenException('ต้องเตรียมรูปก่อนเปิดธุรกรรม');
+    // Stage once, outside the authority lock. This request owns only this new key.
+    if (!preparation) {
+      await this.query.getCase(caseId, user);
+      const row = await this.prisma.afterSalesCase.findUniqueOrThrow({
+        where: { id: caseId },
+        select: { photoKeys: true },
+      });
+      if (row.photoKeys.length >= MAX_INTAKE_PHOTOS)
+        throw new BadRequestException(`รูปตอนรับฝากได้ไม่เกิน ${MAX_INTAKE_PHOTOS} รูป`);
+    }
     const key = `after-sales/${caseId}/intake-${Date.now()}-${randomUUID()}.${evidenceImageExtension(file.mimetype)}`;
-    await this.storage.upload(key, file.buffer, file.mimetype);
-    try {
+    const write = async () => {
+      const c = currentDomainAccess()
+        ? await loadAfterSalesActionCase(this.prisma, caseId, user.id, 'after-sales.create')
+        : await this.query.getCase(caseId, user);
+      const row = await this.prisma.afterSalesCase.findUniqueOrThrow({
+        where: { id: caseId },
+        select: { photoKeys: true },
+      });
+      if (row.photoKeys.length >= MAX_INTAKE_PHOTOS)
+        throw new BadRequestException(`รูปตอนรับฝากได้ไม่เกิน ${MAX_INTAKE_PHOTOS} รูป`);
       await this.prisma.afterSalesCase.update({
         where: { id: caseId },
         data: {
@@ -247,14 +312,24 @@ export class AfterSalesRepairService {
           },
         },
       });
-    } catch (e) {
+      return { photoCount: row.photoKeys.length + 1, stage: c.stage };
+    };
+    try {
+      await this.storage.upload(key, file.buffer, file.mimetype);
+      return preparation ? await preparation.execute(write) : await write();
+    } catch (error) {
       await this.storage.delete(key).catch(() => undefined);
-      throw e;
+      throw error;
     }
-    return { photoCount: row.photoKeys.length + 1, stage: c.stage };
   }
 
   async getPhoto(caseId: string, index: number, user: ReqUser) {
+    const managed = await afterSalesActor(this.basePrisma, user.id, this.prisma);
+    if (managed) {
+      if (!this.streams) throw new ForbiddenException('ระบบเอกสารยังไม่พร้อม');
+      const key = await this.streams.photo(caseId, user.id, { index });
+      return { key, stream: await this.storage.getStream(key) };
+    }
     await this.query.getCase(caseId, user);
     const row = await this.prisma.afterSalesCase.findUniqueOrThrow({
       where: { id: caseId },
@@ -266,6 +341,12 @@ export class AfterSalesRepairService {
   }
 
   async getPurchasePhoto(caseId: string, angle: string, user: ReqUser) {
+    const managed = await afterSalesActor(this.basePrisma, user.id, this.prisma);
+    if (managed) {
+      if (!this.streams) throw new ForbiddenException('ระบบเอกสารยังไม่พร้อม');
+      const key = await this.streams.photo(caseId, user.id, { angle });
+      return { key, stream: await this.storage.getStream(key) };
+    }
     await this.query.getCase(caseId, user);
     const row = await this.prisma.afterSalesCase.findUniqueOrThrow({
       where: { id: caseId },

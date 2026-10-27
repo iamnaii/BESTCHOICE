@@ -1,9 +1,22 @@
-import {
-  Injectable,
-  NestInterceptor,
-  ExecutionContext,
-  CallHandler,
-} from '@nestjs/common';
+import { signatureHandlers } from '../employee-access/access-signatures-boundaries';
+import { generatedDocumentHandlers } from '../employee-access/access-generated-documents-context';
+import { DocumentsController } from '../contracts/documents.controller';
+import { ContractDocumentsController } from '../contracts/contract-documents.controller';
+import { PaymentApprovalController } from '../payments/payment-approval.controller';
+import { ContractExchangeController } from '../contract-exchange/contract-exchange.controller';
+import { CustomerAccessController } from '../customer-access/customer-access.controller';
+import { InterestConfigController } from '../interest-config/interest-config.controller';
+import { ContractsController } from '../contracts/contracts.controller';
+import { DefectExchangeController } from '../defect-exchange/defect-exchange.controller';
+import { LoyaltyController } from '../loyalty/loyalty.controller';
+import { StickersController } from '../stickers/stickers.controller';
+import { PricingTemplatesController } from '../pricing-templates/pricing-templates.controller';
+import { ShopTendersController } from '../shop-tenders/shop-tenders.controller';
+import { ImportedSalesController } from '../imported-sales/imported-sales.controller';
+import { CustomerJourneyController } from '../customer-journey/customer-journey.controller';
+import { ContactsController } from '../contacts/contacts.controller';
+import { CustomersController } from '../customers/customers.controller';
+import { Injectable, NestInterceptor, ExecutionContext, CallHandler } from '@nestjs/common';
 import { AuditService } from './audit.service';
 import { sanitizeAuditValue } from './audit-sanitize.util';
 import { clientIp } from '../../utils/client-ip.util';
@@ -19,14 +32,33 @@ export class AuditInterceptor implements NestInterceptor {
     const request = context.switchToHttp().getRequest();
     const { method, url, body, user } = request;
 
+    const managedSafeRead = this.isManagedSafeRead(context);
+    const managedJourney =
+      request.user?.access?.managed === true &&
+      context.getClass() === CustomerJourneyController &&
+      [
+        CustomerJourneyController.prototype.list,
+        CustomerJourneyController.prototype.summary,
+        CustomerJourneyController.prototype.createEntry,
+        CustomerJourneyController.prototype.removeEntry,
+      ].some((h) => h === context.getHandler());
     // Only audit mutating operations
-    if (['GET', 'HEAD', 'OPTIONS'].includes(method)) {
+    const managedDocument =
+      request.user?.access?.managed === true &&
+      context.getClass() === CustomersController &&
+      [
+        CustomersController.prototype.uploadDocument,
+        CustomersController.prototype.deleteDocument,
+        CustomersController.prototype.listDocuments,
+        CustomersController.prototype.readDocument,
+      ].some((candidate) => candidate === context.getHandler());
+    if (['GET', 'HEAD', 'OPTIONS'].includes(method) && !managedDocument && !managedJourney && !managedSafeRead) {
       return next.handle();
     }
 
     const startTime = Date.now();
-    const ipAddress = clientIp(request);
-    const userAgent = request.headers['user-agent'] || '';
+    const ipAddress = managedSafeRead ? undefined : clientIp(request);
+    const userAgent = managedSafeRead ? undefined : request.headers['user-agent'] || '';
 
     return next.handle().pipe(
       tap({
@@ -36,7 +68,7 @@ export class AuditInterceptor implements NestInterceptor {
 
           const duration = Date.now() - startTime;
           // Try to extract entityId from response for POST (create) operations
-          let entityId = this.extractEntityId(url);
+          let entityId = this.isSharedReference(context) ? undefined : this.extractEntityId(url);
           if (!entityId && method === 'POST' && responseBody && typeof responseBody === 'object') {
             entityId = responseBody.id;
           }
@@ -46,7 +78,9 @@ export class AuditInterceptor implements NestInterceptor {
             action: method,
             entity: this.extractEntity(url),
             entityId,
-            newValue: this.sanitizeBody(body),
+            newValue:
+              this.contactRequestMetadata(context, 'SUCCESS', undefined, duration) ??
+              this.sanitizeBody(body),
             ipAddress,
             userAgent,
             duration,
@@ -61,8 +95,13 @@ export class AuditInterceptor implements NestInterceptor {
             userId: user.id,
             action: `${method}_ERROR`,
             entity: this.extractEntity(url),
-            entityId: this.extractEntityId(url),
-            newValue: {
+            entityId: this.isSharedReference(context) ? undefined : this.extractEntityId(url),
+            newValue: this.contactRequestMetadata(
+              context,
+              'ERROR',
+              err.status || err.statusCode || 500,
+              duration,
+            ) ?? {
               error: err.message,
               statusCode: err.status || err.statusCode || 500,
               body: this.sanitizeBody(body),
@@ -75,6 +114,162 @@ export class AuditInterceptor implements NestInterceptor {
         },
       }),
     );
+  }
+
+  private isConsentHandler(context: ExecutionContext): boolean {
+    return (
+      (context.getClass() === CustomerAccessController &&
+        context.getHandler() === CustomerAccessController.prototype.generateAccessToken) ||
+      (context.getClass() === ContractsController &&
+        [
+          ContractsController.prototype.getQrData,
+          ContractsController.prototype.getPdpaConsent,
+          ContractsController.prototype.recordPdpaConsent,
+        ].includes(context.getHandler() as typeof ContractsController.prototype.getQrData))
+    );
+  }
+  private isSharedReference(context: ExecutionContext): boolean {
+    return (context.getClass() === DocumentsController && [DocumentsController.prototype.findAllTemplates, DocumentsController.prototype.findOneTemplate, DocumentsController.prototype.createTemplate, DocumentsController.prototype.updateTemplate, DocumentsController.prototype.deleteTemplate, DocumentsController.prototype.generateTemplateFromFile].some(h => h === context.getHandler())) || context.getClass() === StickersController || context.getClass() === PricingTemplatesController || context.getClass() === InterestConfigController;
+  }
+  private isUploadedContractDocument(context: ExecutionContext): boolean {
+    return context.getClass() === ContractDocumentsController && [
+      ContractDocumentsController.prototype.findByContract, ContractDocumentsController.prototype.getDocumentChecklist,
+      ContractDocumentsController.prototype.getDocumentAuditTrail, ContractDocumentsController.prototype.upload,
+      ContractDocumentsController.prototype.recordView, ContractDocumentsController.prototype.content,
+      ContractDocumentsController.prototype.recordDownload, ContractDocumentsController.prototype.remove,
+    ].some(handler => handler === context.getHandler());
+  }
+
+  /** Admission can discover that an initially unmanaged actor is now managed.
+   * These exact request entrances never put private request evidence in HTTP audit. */
+  private isPayoffRequest(context: ExecutionContext): boolean {
+    return (context.getClass() === ContractsController &&
+      [ContractsController.prototype.earlyPayoff, ContractsController.prototype.earlyPayoffSlipVerify, ContractsController.prototype.earlyPayoffSlipConfirm].some(handler => handler === context.getHandler())) ||
+      (context.getClass() === PaymentApprovalController &&
+        context.getHandler() === PaymentApprovalController.prototype.create &&
+        context.switchToHttp().getRequest().body?.action === 'EARLY_PAYOFF');
+  }
+
+  private isManagedSafeRead(context: ExecutionContext): boolean {
+    if (signatureHandlers.get(context.getClass())?.has(context.getHandler())) return true;
+    if (generatedDocumentHandlers.get(context.getClass())?.has(context.getHandler())) return true;
+    if (this.isUploadedContractDocument(context)) return true;
+    if (this.isConsentHandler(context)) return true;
+    if (this.isSharedReference(context)) return true;
+    if (this.isPayoffRequest(context)) return true;
+    if (context.switchToHttp().getRequest().user?.access?.managed !== true) return false;
+    if (context.getClass() === ContractsController && [ContractsController.prototype.exportRows, ContractsController.prototype.getDocumentDashboard, ContractsController.prototype.getMilestonesSummary, ContractsController.prototype.getSnapshot, ContractsController.prototype.findAll, ContractsController.prototype.findOne, ContractsController.prototype.quote, ContractsController.prototype.create, ContractsController.prototype.update, ContractsController.prototype.updateBundles, ContractsController.prototype.validateForSubmit, ContractsController.prototype.submitForReview, ContractsController.prototype.approve, ContractsController.prototype.reject, ContractsController.prototype.activate, ContractsController.prototype.getSchedule, ContractsController.prototype.getEarlyPayoffQuote, ContractsController.prototype.softDelete, ContractsController.prototype.listPendingCancellations, ContractsController.prototype.requestCancellation, ContractsController.prototype.approveCancellation, ContractsController.prototype.rejectCancellation].some(handler => handler === context.getHandler())) return true;
+    if (context.getClass() === ContractExchangeController && [
+      ContractExchangeController.prototype.submit, ContractExchangeController.prototype.preview,
+      ContractExchangeController.prototype.listPending, ContractExchangeController.prototype.listRecent,
+      ContractExchangeController.prototype.approve, ContractExchangeController.prototype.reject,
+      ContractExchangeController.prototype.cancel,
+    ].some(handler => handler === context.getHandler())) return true;
+    if (context.getClass() === DefectExchangeController && [
+      DefectExchangeController.prototype.getEligibility, DefectExchangeController.prototype.execute,
+      DefectExchangeController.prototype.list,
+    ].some(handler => handler === context.getHandler())) return true;
+    if (context.getClass() === LoyaltyController && [
+      LoyaltyController.prototype.getPoints, LoyaltyController.prototype.getHistory,
+      LoyaltyController.prototype.getReferralStats, LoyaltyController.prototype.redeemPoints,
+    ].some(handler => handler === context.getHandler())) return true;
+    return context.getClass() === ShopTendersController && [
+      ShopTendersController.prototype.getDailySummary, ShopTendersController.prototype.getCashCloseStatus,
+      ShopTendersController.prototype.getCashCloseHistory, ShopTendersController.prototype.getCashCloseOverview,
+      ShopTendersController.prototype.getCashCloseReminder,
+      ShopTendersController.prototype.countCashClose, ShopTendersController.prototype.confirmCashClose,
+      ShopTendersController.prototype.sendBackCashClose, ShopTendersController.prototype.attachDepositSlip,
+      ShopTendersController.prototype.createCashDeposit, ShopTendersController.prototype.getCloseDepositSlip,
+      ShopTendersController.prototype.getCashDepositSlip,
+    ].some(handler => handler === context.getHandler()) || context.getClass() === ImportedSalesController && [
+      ImportedSalesController.prototype.list, ImportedSalesController.prototype.summary,
+    ].some(handler => handler === context.getHandler());
+  }
+
+  /** These four exact managed handlers own durable business proof in their transaction.
+   * This outer best-effort record describes only the HTTP request outcome,
+   * including denials and rollbacks, never contact values or exception text. */
+  private contactRequestMetadata(
+    context: ExecutionContext,
+    outcome: 'SUCCESS' | 'ERROR',
+    statusCode: number | undefined,
+    duration: number,
+  ): Record<string, unknown> | undefined {
+    const request = context.switchToHttp().getRequest();
+    const safeRequest = this.isManagedSafeRead(context);
+    if (request.user?.access?.managed !== true && !safeRequest) return undefined;
+    const handler = context.getHandler();
+    const controller = context.getClass();
+    if (safeRequest) {
+      const code = statusCode ?? context.switchToHttp().getResponse().statusCode;
+      return { route: `${controller.name}.${handler.name}`, outcome,
+        statusCode: Number.isInteger(code) && code >= 100 && code <= 599 ? code : 500, duration };
+    }
+    if (
+      controller === CustomerJourneyController &&
+      [
+        CustomerJourneyController.prototype.list,
+        CustomerJourneyController.prototype.summary,
+        CustomerJourneyController.prototype.createEntry,
+        CustomerJourneyController.prototype.removeEntry,
+      ].some((h) => h === handler)
+    ) {
+      const body = request.body && typeof request.body === 'object' ? request.body : {};
+      const responseStatus = statusCode ?? context.switchToHttp().getResponse().statusCode;
+      return {
+        presentFields: [
+          'kind',
+          'channel',
+          'outcome',
+          'lostReason',
+          'heardFrom',
+          'clientRequestId',
+        ].filter((key) => Object.prototype.hasOwnProperty.call(body, key)),
+        outcome,
+        statusCode:
+          Number.isInteger(responseStatus) && responseStatus >= 100 && responseStatus <= 599
+            ? responseStatus
+            : 500,
+        duration,
+      };
+    }
+    if (controller !== CustomersController && controller !== ContactsController) return undefined;
+    const documentHandler =
+      controller === CustomersController &&
+      [
+        CustomersController.prototype.uploadDocument,
+        CustomersController.prototype.deleteDocument,
+        CustomersController.prototype.listDocuments,
+        CustomersController.prototype.readDocument,
+      ].some((candidate) => candidate === handler);
+    const fields = documentHandler
+      ? ['sourceKind', 'sourceId', 'attachmentId']
+      : controller === ContactsController && handler === ContactsController.prototype.merge
+        ? ['primaryId', 'duplicateId']
+        : controller === CustomersController && handler === CustomersController.prototype.absorbInto
+          ? []
+          : controller === CustomersController &&
+              handler === CustomersController.prototype.fillContact
+            ? ['phone', 'nationalId', 'name', 'prefix', 'nickname', 'facebookName']
+            : controller === CustomersController &&
+                handler === CustomersController.prototype.updateContact
+              ? ['newPhone', 'newLineId', 'markAsLost']
+              : undefined;
+    if (!fields) return undefined;
+    const body = request.body && typeof request.body === 'object' ? request.body : {};
+    const requestStatus = statusCode ?? context.switchToHttp().getResponse().statusCode;
+    return {
+      presentFields: fields.filter((field) => Object.prototype.hasOwnProperty.call(body, field)),
+      outcome,
+      statusCode:
+        Number.isInteger(requestStatus) && requestStatus >= 100 && requestStatus <= 599
+          ? requestStatus
+          : 500,
+      duration,
+      ...(handler === CustomersController.prototype.updateContact
+        ? { reasonProvided: typeof body.reason === 'string' && body.reason.trim().length > 0 }
+        : {}),
+    };
   }
 
   private extractEntity(url: string): string {

@@ -1,3 +1,5 @@
+import { inspectionScopeWhere } from '../employee-access/access-query-scope';
+import { domainAccessClient, currentDomainAccess } from '../employee-access/access-execution-context';
 import { Injectable, NotFoundException, BadRequestException, Optional } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -10,8 +12,9 @@ import {
 
 @Injectable()
 export class InspectionsService {
+  private get prisma(): PrismaService { return domainAccessClient(this.basePrisma); }
   constructor(
-    private prisma: PrismaService,
+    private readonly basePrisma: PrismaService,
     // @Optional() เพราะ spec เดิม 11 จุดเรียก `new InspectionsService(prisma)` ตรงๆ
     @Optional() private onlineListing?: ProductsOnlineListingService,
   ) {}
@@ -19,9 +22,10 @@ export class InspectionsService {
   // === Template Management ===
 
   async findAllTemplates() {
+    const execution = currentDomainAccess();
     return this.prisma.inspectionTemplate.findMany({
       orderBy: { createdAt: 'desc' },
-      include: { _count: { select: { items: { where: { deletedAt: null } }, inspections: true } } },
+      include: { _count: { select: { items: { where: { deletedAt: null } }, inspections: execution ? { where: inspectionScopeWhere(execution.scope) } : true } } },
     });
   }
 
@@ -35,7 +39,7 @@ export class InspectionsService {
   }
 
   async createTemplate(dto: CreateTemplateDto) {
-    return this.prisma.inspectionTemplate.create({ data: dto });
+    return this.prisma.inspectionTemplate.create({ data: { ...dto, ...(currentDomainAccess() ? { accessCompanyCode: currentDomainAccess()!.scope.company } : {}) } });
   }
 
   async updateTemplate(id: string, dto: UpdateTemplateDto) {

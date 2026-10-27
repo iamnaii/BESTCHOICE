@@ -6,8 +6,21 @@
 import { ContractWorkflowService } from './contract-workflow.service';
 
 const stub = {} as never;
-function build(opts: { exchanged: boolean; level: 'NONE' | 'SOFT' | 'HARD'; persisted?: boolean; parentStatus?: string }) {
-  const prisma = { $transaction: jest.fn(), contract: { findUnique: jest.fn().mockResolvedValue(opts.parentStatus ? { status: opts.parentStatus } : null) } };
+// Employee access: activate() verifies the current legacy actor (persisted, active, OWNER/BM/FM, branch scope)
+// before any business gate — the default actor here is a FINANCE_MANAGER (can activate, cannot override SOFT).
+const FM = 'fm-1';
+function build(opts: { exchanged: boolean; level: 'NONE' | 'SOFT' | 'HARD'; persisted?: boolean; parentStatus?: string; actorRole?: string }) {
+  const actor = { id: opts.actorRole === 'OWNER' ? 'owner-1' : FM, role: opts.actorRole ?? 'FINANCE_MANAGER', branchId: null,
+    accessManaged: false, isActive: true, deletedAt: null, isSystemUser: false };
+  const prisma = {
+    $transaction: jest.fn(),
+    user: { findUnique: jest.fn().mockResolvedValue(actor) },
+    contract: {
+      findUnique: jest.fn(async (args: { where: { id: string } }) => args.where.id === 'c1'
+        ? { branchId: 'branch-1', deletedAt: null } // legacy actor branch-scope check
+        : opts.parentStatus ? { status: opts.parentStatus } : null),
+    },
+  };
   const reasons = opts.level === 'NONE' ? [] : [{ code: opts.level === 'HARD' ? 'MANUAL_TAG' : 'REFERENCES_BLACKLISTED', level: opts.level, message: 'x' }];
   const blacklist = { evaluate: jest.fn().mockResolvedValue({ level: opts.level, reasons, checkedAt: 't' }) };
   const service = new ContractWorkflowService(prisma as never, stub, stub, stub, stub, stub, stub, stub, stub, stub, blacklist as never);
@@ -24,27 +37,27 @@ function build(opts: { exchanged: boolean; level: 'NONE' | 'SOFT' | 'HARD'; pers
 describe('ContractWorkflowService.activate — blacklist gate', () => {
   it('skips the blacklist gate for an exchange contract (the old contract is legitimately ACTIVE)', async () => {
     const { service, blacklist } = build({ exchanged: true, level: 'HARD' });
-    await service.activate('c1').catch(() => undefined); // ล้มทีหลังที่ด่าน hash/ลายเซ็น — ไม่ใช่ประเด็น
+    await service.activate('c1', FM).catch(() => undefined); // ล้มทีหลังที่ด่าน hash/ลายเซ็น — ไม่ใช่ประเด็น
     expect(blacklist.evaluate).not.toHaveBeenCalled();
   });
 
   it('HARD blocks activation before the transaction opens', async () => {
     const { service, blacklist, prisma } = build({ exchanged: false, level: 'HARD' });
-    await expect(service.activate('c1')).rejects.toMatchObject({ response: { code: 'CUSTOMER_BLACKLISTED', level: 'HARD' } });
+    await expect(service.activate('c1', FM)).rejects.toMatchObject({ response: { code: 'CUSTOMER_BLACKLISTED', level: 'HARD' } });
     expect(blacklist.evaluate).toHaveBeenCalledWith('cust-1');
     expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 
   it('SOFT without a persisted override blocks with the activate-stage message', async () => {
     const { service, prisma } = build({ exchanged: false, level: 'SOFT' });
-    await expect(service.activate('c1')).rejects.toMatchObject({ response: { code: 'CUSTOMER_BLACKLIST_REVIEW', canOverride: false,
+    await expect(service.activate('c1', FM)).rejects.toMatchObject({ response: { code: 'CUSTOMER_BLACKLIST_REVIEW', canOverride: false,
       message: expect.stringContaining('ให้ OWNER/ผู้จัดการสาขาเป็นผู้เปิดใช้สัญญาพร้อมเหตุผล') } });
     expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 
   it('SOFT with a persisted override passes the gate and continues to the later checks', async () => {
     const { service, blacklist } = build({ exchanged: false, level: 'SOFT', persisted: true });
-    const err = await service.activate('c1').catch((e: unknown) => e);
+    const err = await service.activate('c1', FM).catch((e: unknown) => e);
     expect(blacklist.evaluate).toHaveBeenCalledWith('cust-1');
     // ล้มทีหลังที่ด่าน hash/ลายเซ็น (stub) — แต่ต้องไม่ใช่ 409 ของด่าน blacklist
     expect(String((err as { response?: { code?: string } })?.response?.code ?? '')).not.toMatch(/CUSTOMER_BLACKLIST/);
@@ -52,18 +65,18 @@ describe('ContractWorkflowService.activate — blacklist gate', () => {
 
   it('skips the gate for a defect-exchange replacement (parent contract DEFECT_EXCHANGED) — continuation of the same customer', async () => {
     const { service, blacklist } = build({ exchanged: false, level: 'HARD', parentStatus: 'DEFECT_EXCHANGED' });
-    await service.activate('c1').catch(() => undefined);
+    await service.activate('c1', FM).catch(() => undefined);
     expect(blacklist.evaluate).not.toHaveBeenCalled();
   });
 
   it('a parentContractId whose parent is not DEFECT_EXCHANGED does not skip the gate', async () => {
     const { service, blacklist } = build({ exchanged: false, level: 'HARD', parentStatus: 'ACTIVE' });
-    await expect(service.activate('c1')).rejects.toMatchObject({ response: { code: 'CUSTOMER_BLACKLISTED' } });
+    await expect(service.activate('c1', FM)).rejects.toMatchObject({ response: { code: 'CUSTOMER_BLACKLISTED' } });
     expect(blacklist.evaluate).toHaveBeenCalledWith('cust-1');
   });
 
   it('SOFT without persisted override: OWNER can override at activation with a reason; FINANCE_MANAGER cannot', async () => {
-    const owner = build({ exchanged: false, level: 'SOFT' });
+    const owner = build({ exchanged: false, level: 'SOFT', actorRole: 'OWNER' });
     const err = await owner.service.activate('c1', 'owner-1', { actorRole: 'OWNER', blacklistOverrideReason: 'ผู้จัดการตรวจแล้ว ไม่ใช่คนเดียวกัน' }).catch((e: unknown) => e);
     expect(String((err as { response?: { code?: string } })?.response?.code ?? '')).not.toMatch(/CUSTOMER_BLACKLIST/);
     const fm = build({ exchanged: false, level: 'SOFT' });

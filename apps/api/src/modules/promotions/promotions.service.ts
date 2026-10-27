@@ -1,7 +1,17 @@
 import {
+  currentDomainAccess,
+  domainAccessClient,
+} from '../employee-access/access-execution-context';
+import {
+  promotionUsageVisible,
+  visiblePromotionUsageWhere,
+} from '../employee-access/access-promotions-source';
+import { promotionProjection, validatePromotion } from './promotion-policy';
+import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { Prisma, PromotionType } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -10,23 +20,53 @@ import { CreatePromotionDto, UpdatePromotionDto } from './dto/promotions.dto';
 
 @Injectable()
 export class PromotionsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private readonly basePrisma: PrismaService) {}
+  private get prisma(): PrismaService {
+    return domainAccessClient(this.basePrisma);
+  }
+
+  private async project(p: Parameters<typeof promotionProjection>[0]) {
+    const safe = promotionProjection(p);
+    if (!currentDomainAccess()) return safe;
+    const usages = await this.prisma.promotionUsage.findMany({
+      where: { promotionId: p.id, AND: visiblePromotionUsageWhere() },
+      include: { sale: true, benefit: true },
+    });
+    let visibleUsageCount = 0;
+    for (const usage of usages) if (await promotionUsageVisible(usage)) visibleUsageCount++;
+    return { ...safe, visibleUsageCount, usageCountScope: 'CURRENT_AUTHORIZED_COMPLETE_SOURCES' };
+  }
+  private async audit(id: string, action: string) {
+    const ctx = currentDomainAccess();
+    if (ctx)
+      await ctx.client.auditLog.create({
+        data: { userId: ctx.snapshot.userId, action, entity: 'promotion', entityId: id },
+      });
+  }
 
   async create(dto: CreatePromotionDto) {
-    return this.prisma.promotion.create({
+    validatePromotion({
+      ...dto,
+      startDate: new Date(dto.startDate),
+      endDate: new Date(dto.endDate),
+    });
+    const row = await this.prisma.promotion.create({
       data: {
         name: dto.name,
         description: dto.description,
         type: dto.type as PromotionType,
         discountValue: dto.discountValue,
         specialInterestRate: dto.specialInterestRate,
-        conditions: dto.conditions as Prisma.InputJsonValue,
+        conditions:
+          dto.conditions === null ? Prisma.DbNull : (dto.conditions as Prisma.InputJsonValue),
         startDate: new Date(dto.startDate),
         endDate: new Date(dto.endDate),
         maxUsageCount: dto.maxUsageCount,
         isActive: dto.isActive ?? true,
       },
     });
+    await this.audit(row.id, 'PROMOTION_CREATED');
+    return this.project(row);
   }
 
   async findAll(filters: { isActive?: boolean; page?: number; limit?: number }) {
@@ -41,17 +81,19 @@ export class PromotionsService {
         skip: (page - 1) * limit,
         take: limit,
         orderBy: { createdAt: 'desc' },
-        include: {
-          _count: { select: { usages: true } },
-        },
       }),
       this.prisma.promotion.count({ where }),
     ]);
 
-    return paginatedResponse(data, total, page, limit);
+    return paginatedResponse(
+      await Promise.all(data.map((p) => this.project(p))),
+      total,
+      page,
+      limit,
+    );
   }
 
-  async findActivePromotions() {
+  private async activeRows() {
     const now = new Date();
     const promotions = await this.prisma.promotion.findMany({
       where: {
@@ -67,13 +109,17 @@ export class PromotionsService {
     );
   }
 
+  async findActivePromotions() {
+    return Promise.all((await this.activeRows()).map((p) => this.project(p)));
+  }
+
   /**
    * Public (web-shop) view of active promotions — display-safe fields only.
    * Usage counters stay internal: exposing remaining quota invites quota-sniping
    * and leaks campaign performance to competitors.
    */
   async findActivePublic() {
-    const promotions = await this.findActivePromotions();
+    const promotions = await this.activeRows();
     return promotions.map((p) => ({
       id: p.id,
       name: p.name,
@@ -90,18 +136,23 @@ export class PromotionsService {
   async findOne(id: string) {
     const promotion = await this.prisma.promotion.findUnique({
       where: { id },
-      include: {
-        _count: { select: { usages: true } },
-      },
     });
     if (!promotion || promotion.deletedAt) {
       throw new NotFoundException('ไม่พบโปรโมชัน');
     }
-    return promotion;
+    return this.project(promotion);
   }
 
   async update(id: string, dto: UpdatePromotionDto) {
-    await this.findOne(id);
+    await this.prisma.$queryRaw`SELECT id FROM promotions WHERE id = ${id} FOR UPDATE`;
+    const current = await this.prisma.promotion.findFirst({ where: { id, deletedAt: null } });
+    if (!current) throw new NotFoundException('ไม่พบโปรโมชัน');
+    validatePromotion({
+      ...current,
+      ...dto,
+      startDate: dto.startDate === undefined ? current.startDate : new Date(dto.startDate),
+      endDate: dto.endDate === undefined ? current.endDate : new Date(dto.endDate),
+    });
 
     const data: Record<string, unknown> = {};
     if (dto.name !== undefined) data.name = dto.name;
@@ -109,81 +160,52 @@ export class PromotionsService {
     if (dto.type !== undefined) data.type = dto.type;
     if (dto.discountValue !== undefined) data.discountValue = dto.discountValue;
     if (dto.specialInterestRate !== undefined) data.specialInterestRate = dto.specialInterestRate;
-    if (dto.conditions !== undefined) data.conditions = dto.conditions as Prisma.InputJsonValue;
+    if (dto.conditions !== undefined)
+      data.conditions =
+        dto.conditions === null ? Prisma.DbNull : (dto.conditions as Prisma.InputJsonValue);
     if (dto.startDate !== undefined) data.startDate = new Date(dto.startDate);
     if (dto.endDate !== undefined) data.endDate = new Date(dto.endDate);
     if (dto.maxUsageCount !== undefined) data.maxUsageCount = dto.maxUsageCount;
     if (dto.isActive !== undefined) data.isActive = dto.isActive;
 
-    return this.prisma.promotion.update({
-      where: { id },
-      data,
-    });
+    const row = await this.prisma.promotion.update({ where: { id }, data });
+    await this.audit(id, 'PROMOTION_UPDATED');
+    return this.project(row);
   }
 
   async applyToSale(
     promotionId: string,
     saleId: string,
     customerId: string,
-    discountAmount: number,
+    discountAmount?: number,
   ) {
-    const promotion = await this.findOne(promotionId);
-
-    // Validate promotion is active and within date range
-    const now = new Date();
-    if (!promotion.isActive) {
-      throw new BadRequestException('โปรโมชันนี้ไม่ได้เปิดใช้งาน');
-    }
-    if (now < promotion.startDate || now > promotion.endDate) {
-      throw new BadRequestException('โปรโมชันนี้ไม่อยู่ในช่วงเวลาที่กำหนด');
-    }
-    if (
-      promotion.maxUsageCount !== null &&
-      promotion.currentUsageCount >= promotion.maxUsageCount
-    ) {
-      throw new BadRequestException('โปรโมชันนี้ถูกใช้งานครบจำนวนแล้ว');
-    }
-
-    // Create usage and increment count in a transaction.
-    // The check above is a fast-fail only — it reads currentUsageCount OUTSIDE
-    // the tx, so two concurrent callers could both pass it. The real cap
-    // guarantee is the conditional (CAS) increment below: updateMany only bumps
-    // the row while it is still under the cap, so exactly one of two racing
-    // callers at (cap-1) succeeds and the other gets count=0 → over-cap reject.
-    return this.prisma.$transaction(async (tx) => {
-      if (promotion.maxUsageCount !== null) {
-        const bumped = await tx.promotion.updateMany({
-          where: { id: promotionId, currentUsageCount: { lt: promotion.maxUsageCount } },
-          data: { currentUsageCount: { increment: 1 } },
-        });
-        if (bumped.count !== 1) {
-          throw new BadRequestException('โปรโมชันนี้ถูกใช้งานครบจำนวนแล้ว');
-        }
-      } else {
-        await tx.promotion.update({
-          where: { id: promotionId },
-          data: { currentUsageCount: { increment: 1 } },
-        });
-      }
-
-      const usage = await tx.promotionUsage.create({
-        data: {
-          promotionId,
-          saleId,
-          customerId,
-          discountApplied: discountAmount,
-        },
-      });
-
-      return usage;
+    if (!currentDomainAccess()) throw new ForbiddenException('ต้องตรวจสอบสิทธิ์การขายปัจจุบัน');
+    // Lock/re-read the actual Sale before reading evidence; campaign edits cannot invalidate a committed benefit.
+    await this.prisma.$queryRaw`SELECT id FROM sales WHERE id = ${saleId} FOR UPDATE`;
+    const usage = await this.prisma.promotionUsage.findFirst({
+      where: { promotionId, saleId, customerId, deletedAt: null, benefitId: { not: null }, AND: visiblePromotionUsageWhere(true) },
+      include: { sale: true, benefit: true },
     });
+    if (!usage || !usage.benefit || !(await promotionUsageVisible(usage, true)))
+      throw new ForbiddenException('ไม่พบหลักฐานโปรโมชันที่มีสิทธิ์');
+    if (discountAmount !== undefined && !usage.discountApplied.eq(discountAmount))
+      throw new BadRequestException('ยอดส่วนลดไม่ตรงหลักฐาน');
+    return {
+      id: usage.id,
+      benefitId: usage.benefitId,
+      saleId: usage.saleId,
+      promotionId: usage.promotionId,
+      discountApplied: usage.discountApplied,
+      status: 'RECORDED',
+    };
   }
 
   async remove(id: string) {
-    await this.findOne(id);
-    return this.prisma.promotion.update({
-      where: { id },
-      data: { deletedAt: new Date() },
-    });
+    await this.prisma.$queryRaw`SELECT id FROM promotions WHERE id = ${id} FOR UPDATE`;
+    const row = await this.prisma.promotion.findFirst({ where: { id, deletedAt: null } });
+    if (!row) throw new NotFoundException('ไม่พบโปรโมชัน');
+    await this.prisma.promotion.update({ where: { id }, data: { deletedAt: new Date() } });
+    await this.audit(id, 'PROMOTION_REMOVED');
+    return { id };
   }
 }

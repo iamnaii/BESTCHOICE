@@ -35,6 +35,7 @@ export class ContractActivation1ATemplate {
   async execute(
     contractId: string,
     tx?: Prisma.TransactionClient,
+    postedAt?: Date,
   ): Promise<{ entryNumber: string }> {
     const client = tx ?? this.prisma;
     const c = await client.contract.findUniqueOrThrow({
@@ -64,6 +65,7 @@ export class ContractActivation1ATemplate {
 
     const result = await this.journal.createAndPost(
       {
+        postedAt,
       description: `สัญญาผ่อนชำระ ${c.contractNumber} — รับรู้ลูกหนี้ครั้งแรก`,
       reference: contractId,
       metadata: { tag: '1A', contractId },

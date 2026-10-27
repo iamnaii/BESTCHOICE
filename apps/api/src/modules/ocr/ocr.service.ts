@@ -1,3 +1,4 @@
+import { ContractTemplateDraft } from '@installment/shared';
 import { Injectable } from '@nestjs/common';
 import { IntegrationConfigService } from '../integrations/integration-config.service';
 import { AiProviderService } from '../ai-usage/ai-provider.service';
@@ -29,7 +30,7 @@ export class OcrService {
     return this.anthropicClient.checkAiStatus(userId);
   }
 
-  generateTemplateHtml(fileBase64: string, userId?: string): Promise<{ contentHtml: string; placeholders: string[] }> {
+  generateTemplateHtml(fileBase64: string, userId?: string): Promise<ContractTemplateDraft> {
     return this.extractors.generateTemplateHtml(fileBase64, userId);
   }
 

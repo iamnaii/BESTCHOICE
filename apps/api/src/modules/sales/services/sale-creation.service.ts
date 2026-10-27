@@ -1,3 +1,6 @@
+import { prepareLoyaltySale, recordLoyaltySale } from '../../loyalty/loyalty-sale-proof';
+import { preparePromotionBenefit, recordPromotionBenefit } from '../../promotions/promotion-benefit';
+import { currentDomainAccess, domainAccessClient, onDomainCommit } from '../../employee-access/access-execution-context';
 import {
   BadRequestException,
   ForbiddenException,
@@ -31,19 +34,17 @@ export const INSTALLMENT_VIA_CONTRACT_MSG =
 /**
  * Sale-creation orchestrator extracted from SalesService.create.
  *
- * Owns the pre-tx validation (loyalty pre-validation, wasPreviouslyDamaged
- * pre-check, costPrice lookup, discount policy assertion), the saleType switch
- * dispatch to the per-type writers, and the post-commit best-effort loyalty
- * redemption $transaction (with the stamped `_loyaltyRedemptionFailed` flag).
- *
- * Body is verbatim from the original SalesService.create — only `this.<dep>`
- * resolution changed (discount → DiscountPolicy, create*Sale → writer).
+ * Owns sale validation and dispatch to the canonical per-type writers.
+ * Managed loyalty proof, debit and required audit join the owned Sale transaction;
+ * the unmigrated path retains its original best-effort redemption behavior.
  */
 export class SaleCreationService {
   private readonly logger = new Logger(SaleCreationService.name);
 
+  private get prisma(): PrismaService { return domainAccessClient(this.basePrisma); }
+
   constructor(
-    private prisma: PrismaService,
+    private readonly basePrisma: PrismaService,
     private writer: SaleWriterService,
     private interCompanyService: InterCompanyService,
     private warrantyNotifier: SaleWarrantyNotifierService,
@@ -55,15 +56,33 @@ export class SaleCreationService {
     // ขายผ่อนในเครือทำผ่านหน้าสัญญาทางเดียว (2026-09-20) — เปิดใช้สัญญาแล้ว ContractWorkflowService.activate ตัดสต๊อก
     // + ออกใบขาย INSTALLMENT + ตั้งค่าคอมให้เอง. ปฏิเสธก่อนแตะแต้ม/เครดิตเทิร์น/ส่วนลด/ฐานข้อมูลใด ๆ
     if (dto.saleType === 'INSTALLMENT') throw new BadRequestException(INSTALLMENT_VIA_CONTRACT_MSG);
+    const managed = currentDomainAccess();
+    if (!managed && (dto.loyaltyPointsRedeemed ?? 0) !== 0) {
+      const actor = await this.basePrisma.user.findUnique({
+        where: { id: salespersonId },
+        select: { accessManaged: true, isActive: true, deletedAt: true },
+      });
+      if (!actor || actor.accessManaged || !actor.isActive || actor.deletedAt)
+        throw new ForbiddenException('ต้องตรวจสิทธิ์บัญชีแต้มในธุรกรรมการขายปัจจุบัน');
+    }
+    if (managed) {
+      const actor = await this.prisma.user.findUniqueOrThrow({ where: { id: managed.snapshot.userId } });
+      userRole = managed.snapshot.isOwner ? 'OWNER' : actor.role;
+    }
     const baseDiscount = dto.discount || 0;
+    if (managed && baseDiscount > 0) {
+      if (!managed.snapshot.isOwner) throw new ForbiddenException('ส่วนลดนอกโปรต้องได้รับอนุมัติจากเจ้าของ');
+      if (typeof dto.discountReason !== 'string' || dto.discountReason.trim().length < 3 || dto.discountReason.trim().length > 500) throw new BadRequestException('กรุณาระบุเหตุผลส่วนลด 3–500 ตัวอักษร');
+    }
 
-    // T6-C1: loyalty redeem at POS — validate customer balance and fold the
-    // redeemed value into discount (1 pt = 1 ฿). The redemption itself is
-    // applied after the sale is created so we have saleId/contractId to
-    // reference. If the downstream redemption ever fails after the sale is
-    // persisted, follow-up reconciliation is manual — but pre-validation
-    // makes that corner case very unlikely.
+    const promotion = await preparePromotionBenefit(dto, salespersonId);
+    const promotionDiscount = promotion?.discount ?? new Prisma.Decimal(0);
+
+    // One point remains one baht. Managed account authority, sources, balance
+    // and daily cap are checked under the outer transaction's current locks;
+    // the canonical writer's money and subsequent typed debit commit together.
     const loyaltyPoints = dto.loyaltyPointsRedeemed ?? 0;
+    if (managed) await prepareLoyaltySale(dto, salespersonId);
     if (loyaltyPoints > 0) {
       const customer = await this.prisma.customer.findUnique({
         where: { id: dto.customerId },
@@ -75,7 +94,7 @@ export class SaleCreationService {
           `แต้มไม่เพียงพอ — มี ${customer.loyaltyBalance} แต้ม ต้องการ ${loyaltyPoints} แต้ม`,
         );
       }
-      if (loyaltyPoints > dto.sellingPrice - baseDiscount) {
+      if (loyaltyPoints > new Prisma.Decimal(dto.sellingPrice).minus(baseDiscount).minus(promotionDiscount).toNumber()) {
         throw new BadRequestException(
           'จำนวนแต้มที่แลกเกินยอดสุทธิ — ลดจำนวนแต้มให้ไม่เกินยอดคงเหลือ',
         );
@@ -84,10 +103,12 @@ export class SaleCreationService {
 
     if (dto.tradeInCreditId && dto.saleType === 'EXTERNAL_FINANCE') throw new BadRequestException('เครดิตเทิร์นยังไม่รองรับไฟแนนซ์ภายนอก');
     const tradeCredit = dto.tradeInCreditId ? await new TradeInCreditService(this.prisma).quote(this.prisma, {
-      ...dto, tradeInId: dto.tradeInCreditId, priceAfterDiscount: new Prisma.Decimal(dto.sellingPrice).minus(baseDiscount).minus(loyaltyPoints).toNumber(),
+      ...dto, tradeInId: dto.tradeInCreditId, priceAfterDiscount: new Prisma.Decimal(dto.sellingPrice).minus(baseDiscount).minus(promotionDiscount).minus(loyaltyPoints).toNumber(),
     }) : null;
-    const discount = new Prisma.Decimal(baseDiscount).plus(loyaltyPoints).plus(tradeCredit?.bonus ?? 0).toNumber();
+    const discount = new Prisma.Decimal(baseDiscount).plus(promotionDiscount).plus(loyaltyPoints).plus(tradeCredit?.bonus ?? 0).toNumber();
     const netAmount = new Prisma.Decimal(dto.sellingPrice).minus(discount).toNumber();
+
+    if (promotion && new Prisma.Decimal(netAmount).lt(0)) throw new BadRequestException('ยอดสุทธิต้องไม่ติดลบ');
 
     // test-data fence (spec 2026-09-05 §5.1): เครื่องทุกชิ้นในใบกับลูกค้าต้องอยู่ฝั่งเดียวกัน
     // — ตรวจก่อนแตะ tx ใด ๆ; ของแถมผิดฝั่งก็ต้องดัง
@@ -132,7 +153,7 @@ export class SaleCreationService {
 
     DiscountPolicy.assertDiscountAllowed(
       dto.sellingPrice,
-      discount,
+      promotion ? new Prisma.Decimal(discount).minus(promotionDiscount).toNumber() : discount,
       userRole,
       costPrice,
       dto.secondApproverId,
@@ -141,7 +162,7 @@ export class SaleCreationService {
     let sale: { id: string; contractId?: string | null };
     switch (dto.saleType) {
       case 'CASH':
-        sale = await this.writer.createCashSale(dto, salespersonId, netAmount, discount, { role: userRole, branchId: userBranchId });
+        sale = await this.writer.createCashSale(dto, salespersonId, netAmount, discount, { role: userRole, branchId: userBranchId }, ...(promotion ? [promotionDiscount] as const : [] as const));
         break;
       case 'EXTERNAL_FINANCE':
         sale = await this.writer.createExternalFinanceSale(dto, salespersonId, netAmount, discount, { role: userRole, branchId: userBranchId });
@@ -150,10 +171,24 @@ export class SaleCreationService {
         throw new BadRequestException('ประเภทการขายไม่ถูกต้อง');
     }
 
-    // Apply loyalty redemption after sale is confirmed. Wrap in try/catch so a
-    // redemption failure doesn't hide the sale response — the sale already
-    // posted, support flow will reconcile if the point deduction fell through.
-    if (loyaltyPoints > 0) {
+    if (promotion) await recordPromotionBenefit(dto, sale.id, promotion);
+
+    if (managed && baseDiscount > 0) {
+      await managed.client.auditLog.create({ data: {
+        userId: managed.snapshot.userId, action: 'SALE_DISCOUNT_OWNER_APPROVED', entity: 'sale', entityId: sale.id,
+        newValue: { requesterId: managed.snapshot.userId, approverId: managed.snapshot.userId, saleId: sale.id,
+          reason: dto.discountReason!.trim(), sellingPrice: String(dto.sellingPrice), baseDiscount: String(baseDiscount), totalDiscount: String(discount), netAmount: String(netAmount) },
+      } });
+    }
+
+    // Managed proof/debit/audit join the outer Sale transaction. Only the
+    // original unmigrated compatibility path retains best-effort behavior.
+    let loyaltyProof: Awaited<ReturnType<typeof recordLoyaltySale>> | undefined;
+    if (managed && loyaltyPoints > 0) {
+      loyaltyProof = await recordLoyaltySale(dto, sale.id, {
+        baseDiscount, promotionDiscount, tradeBonus: tradeCredit?.bonus ?? 0,
+      });
+    } else if (loyaltyPoints > 0) {
       try {
         await this.prisma.$transaction(async (tx) => {
           await tx.loyaltyRedemption.create({
@@ -165,10 +200,7 @@ export class SaleCreationService {
               contractId: sale.contractId ?? null,
             },
           });
-          await tx.customer.update({
-            where: { id: dto.customerId },
-            data: { loyaltyBalance: { decrement: loyaltyPoints } },
-          });
+          await tx.customer.update({ where: { id: dto.customerId }, data: { loyaltyBalance: { decrement: loyaltyPoints } } });
         });
       } catch (err) {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -182,13 +214,16 @@ export class SaleCreationService {
     // แบบ synchronous ก่อนเข้า try ข้างใน. ขาผ่อน (INSTALLMENT) ไม่เข้าเพราะประกัน
     // ผูกกับสัญญาและมีเส้นทางแจ้งของตัวเอง
     if (dto.saleType === 'CASH' || dto.saleType === 'EXTERNAL_FINANCE') {
-      void this.warrantyNotifier
-        .notify(sale.id)
-        .catch((err) => this.logger.error(`[warranty-line] notify ไม่ถูกเรียก: ${String(err)}`));
-      void this.saleCompleted?.notify(sale.id).catch((err) => this.logger.error(`[staff-notify] sale.completed ไม่ถูกเรียก: ${String(err)}`));
+      if (managed) {
+        onDomainCommit(() => this.warrantyNotifier.notify(sale.id));
+        onDomainCommit(async () => { await this.saleCompleted?.notify(sale.id); });
+      } else {
+        void this.warrantyNotifier.notify(sale.id).catch((err) => this.logger.error(`[warranty-line] notify ไม่ถูกเรียก: ${String(err)}`));
+        void this.saleCompleted?.notify(sale.id).catch((err) => this.logger.error(`[staff-notify] sale.completed ไม่ถูกเรียก: ${String(err)}`));
+      }
     }
 
-    return sale;
+    return loyaltyProof ? { ...sale, loyaltyRedemption: loyaltyProof } : sale;
   }
 
   /**

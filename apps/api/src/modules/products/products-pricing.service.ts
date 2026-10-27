@@ -1,12 +1,14 @@
+import { domainAccessClient } from '../employee-access/access-execution-context';
 import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateProductPriceDto, UpdateProductPriceDto } from './dto/product-price.dto';
 
 @Injectable()
 export class ProductsPricingService {
+  private get prisma(): PrismaService { return domainAccessClient(this.basePrisma); }
   private readonly logger = new Logger(ProductsPricingService.name);
 
-  constructor(private prisma: PrismaService) {}
+  constructor(private readonly basePrisma: PrismaService) {}
 
   async addPrice(productId: string, dto: CreateProductPriceDto) {
     // Verify product exists

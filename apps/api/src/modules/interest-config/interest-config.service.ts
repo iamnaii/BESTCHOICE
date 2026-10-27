@@ -1,3 +1,5 @@
+import { currentDomainAccess } from '../employee-access/access-execution-context';
+import { writeSharedReference } from '../employee-access/access-shared-reference';
 import { resolveBcConfig } from './resolve-bc-config';
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -5,7 +7,11 @@ import { CreateInterestConfigDto, UpdateInterestConfigDto } from './dto/interest
 
 @Injectable()
 export class InterestConfigService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private readonly base: PrismaService) {}
+
+  private get prisma() {
+    return currentDomainAccess()?.client ?? this.base;
+  }
 
   async findAll() {
     return this.prisma.interestConfig.findMany({
@@ -39,39 +45,50 @@ export class InterestConfigService {
   }
 
   async create(dto: CreateInterestConfigDto) {
-    if (dto.minInstallmentMonths > dto.maxInstallmentMonths) {
-      throw new BadRequestException('จำนวนงวดขั้นต่ำต้องน้อยกว่าหรือเท่ากับจำนวนงวดสูงสุด');
-    }
-    return this.prisma.interestConfig.create({
-      data: {
-        name: dto.name,
-        productCategories: dto.productCategories,
-        interestRate: dto.interestRate,
-        minDownPaymentPct: dto.minDownPaymentPct,
-        storeCommissionPct: dto.storeCommissionPct,
-        vatPct: dto.vatPct,
-        minInstallmentMonths: dto.minInstallmentMonths,
-        maxInstallmentMonths: dto.maxInstallmentMonths,
-      },
-    });
+    this.validateMonths(dto.minInstallmentMonths, dto.maxInstallmentMonths);
+    return writeSharedReference(this.base, (tx) =>
+      tx.interestConfig.create({
+        data: {
+          name: dto.name,
+          productCategories: dto.productCategories,
+          interestRate: dto.interestRate,
+          minDownPaymentPct: dto.minDownPaymentPct,
+          storeCommissionPct: dto.storeCommissionPct,
+          vatPct: dto.vatPct,
+          minInstallmentMonths: dto.minInstallmentMonths,
+          maxInstallmentMonths: dto.maxInstallmentMonths,
+        },
+      }),
+    );
   }
 
   async update(id: string, dto: UpdateInterestConfigDto) {
-    await this.findOne(id);
-    return this.prisma.interestConfig.update({
-      where: { id },
-      data: dto,
+    return writeSharedReference(this.base, async (tx) => {
+      const config = await tx.interestConfig.findFirst({ where: { id, deletedAt: null } });
+      if (!config) throw new NotFoundException('ไม่พบการตั้งค่าดอกเบี้ย');
+      this.validateMonths(
+        dto.minInstallmentMonths ?? config.minInstallmentMonths,
+        dto.maxInstallmentMonths ?? config.maxInstallmentMonths,
+      );
+      return tx.interestConfig.update({ where: { id }, data: dto });
     });
   }
 
   async remove(id: string) {
-    await this.findOne(id);
-    // Soft-delete to avoid breaking FK references from existing contracts.
-    // Also mark inactive so dropdowns/finders hide it.
-    return this.prisma.interestConfig.update({
-      where: { id },
-      data: { isActive: false, deletedAt: new Date() },
+    return writeSharedReference(this.base, async (tx) => {
+      const config = await tx.interestConfig.findFirst({ where: { id, deletedAt: null } });
+      if (!config) throw new NotFoundException('ไม่พบการตั้งค่าดอกเบี้ย');
+      // Preserve existing Contract references and hide deleted definitions from finders.
+      return tx.interestConfig.update({
+        where: { id },
+        data: { isActive: false, deletedAt: new Date() },
+      });
     });
+  }
+
+  private validateMonths(min: number, max: number) {
+    if (min > max)
+      throw new BadRequestException('จำนวนงวดขั้นต่ำต้องน้อยกว่าหรือเท่ากับจำนวนงวดสูงสุด');
   }
 
   resolveConfig(category: string) {

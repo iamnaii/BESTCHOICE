@@ -101,6 +101,7 @@ describe('ExchangeCancelService (spec §9)', () => {
   beforeEach(async () => {
     requests = {};
     txMock = {
+      user: { findUnique: jest.fn().mockResolvedValue({ accessManaged: false }) },
       contractExchangeRequest: {
         findUnique: jest.fn().mockImplementation(async ({ where }: any) => requests[where.id] ?? null),
         updateMany: jest.fn().mockResolvedValue({ count: 1 }),
@@ -182,6 +183,7 @@ describe('ExchangeCancelService (spec §9)', () => {
       // ข้อ 6 (ฝ่ายบัญชี 13/10/2569): JE ภาษีซื้อของสัญญาใหม่ไม่ถูกกลับรายการ — การเคลมติดกับใบกำกับ
       { jeIds: ['je1', 'je2', 'je3', 'je4', 'je5'], newContractId: 'newC1', excludeFlows: ['finance-input-vat-installment'] },
       txMock,
+      undefined, // R127: unmanaged callers retain the existing default posting date.
     );
     // Restore: old contract back to ACTIVE, exchangedAt cleared
     expect(txMock.contract.update).toHaveBeenCalledWith(

@@ -19,6 +19,7 @@ import { ShopBotDefenseModule } from '../shop-bot-defense/shop-bot-defense.modul
 import { StaffNotifyModule } from '../staff-notify/staff-notify.module';
 import { StorageModule } from '../storage/storage.module';
 import { WebhookSecurityModule } from '../webhook-security/webhook-security.module';
+import { EmployeeAccessModule } from '../employee-access/employee-access.module';
 
 /**
  * ตรวจการต่อ DI ของ ShopHomeModule โดยไม่ต่อฐานข้อมูล — ทุก service ที่ ShopHomeService inject
@@ -53,6 +54,8 @@ describe('ShopHomeModule wiring', () => {
         StaffNotifyModule,
         StorageModule,
         WebhookSecurityModule,
+        // AuthService ต้องการ AccessSnapshotService จาก EmployeeAccessModule (@Global ใน AppModule)
+        EmployeeAccessModule,
         ShopHomeModule,
       ],
     })

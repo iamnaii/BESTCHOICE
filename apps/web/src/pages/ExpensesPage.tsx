@@ -27,6 +27,7 @@ import { accountDisplayName } from '@/utils/accountName';
 import { ExpenseFormV4 } from '@/components/expense-form-v4/ExpenseFormV4';
 import { ReopenedPeriodBanner } from '@/components/accounting/ReopenedPeriodBanner';
 import { useApprovalActions, getApprovalReason, toastActionError } from '@/hooks/useApprovalActions';
+import { invalidateExpenseDoc } from '@/lib/expense-document-cache';
 import { isPayrollEditable, payrollEditPath } from '@/components/expense-form-v4/payroll-system/payroll-status';
 import { OPEN_DOC_LABEL } from '@/components/expense-form-v4/payroll-system/payroll-copy';
 
@@ -238,7 +239,8 @@ export default function ExpensesPage() {
       const newAction = action === 'void' ? 'void' : 'post';
       return api.post(`/expense-documents/${id}/${newAction}`, body || {});
     },
-    onSuccess: () => { invalidateAll(); toast.success('อัปเดตสถานะสำเร็จ'); },
+    // โพสต์/ยกเลิกจากแถว — รายการ + หน้ารายละเอียด/ฟอร์มแก้ไข/หน้าสลิปของใบนั้นที่เปิดไว้ต้องโหลดใหม่
+    onSuccess: (_data, { id }) => { invalidateExpenseDoc(queryClient, id); toast.success('อัปเดตสถานะสำเร็จ'); },
     onError: toastActionError,
   });
 

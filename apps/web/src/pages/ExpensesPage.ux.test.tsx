@@ -24,6 +24,7 @@ vi.mock('@/components/accounting/ReopenedPeriodBanner', () => ({ ReopenedPeriodB
 vi.mock('@/components/expense-form-v4/ExpenseFormV4', () => ({ ExpenseFormV4: () => <div role="dialog" aria-label="สร้างรายจ่ายใหม่" /> }));
 import ExpensesPage from './ExpensesPage';
 
+let queryClient: QueryClient;
 function LocationProbe() { const l = useLocation(); return <output data-testid="location">{l.pathname + l.search}</output>; }
 function mount(status = 'DRAFT', documentType = 'EXPENSE') {
   const row = { id: 'expense-1', number: 'EX-001', status, documentType, vendorName: 'ผู้ขายตัวอย่าง',
@@ -34,7 +35,8 @@ function mount(status = 'DRAFT', documentType = 'EXPENSE') {
     path.startsWith('/expense-documents?') ? { data: [row], total: 1 }
     : path.includes('/summary') ? { totalCount: 1, byStatus: {}, accrualUnpaidCount: 0, accrualUnpaidTotal: '0' } : [],
   }));
-  render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+  queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  render(<QueryClientProvider client={queryClient}>
     <MemoryRouter initialEntries={['/expenses']}><ExpensesPage /><LocationProbe /></MemoryRouter>
   </QueryClientProvider>);
 }
@@ -134,5 +136,29 @@ describe('payroll row actions', () => {
     await userEvent.click(await screen.findByRole('menuitem', { name: 'ส่งขออนุมัติ' }));
     await userEvent.click(await screen.findByRole('button', { name: 'ยืนยัน' }));
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith(message, { description: 'เปิดใบเพื่อดูรายละเอียด' }));
+  });
+});
+
+// Task 8 fix round 1 — สถานะที่เปลี่ยนจากหน้ารายการต้องทำให้หน้ารายละเอียด/ฟอร์มแก้ไข/หน้าสลิปของใบนั้นโหลดใหม่ด้วย
+describe('list-page status changes refresh that document', () => {
+  it('โพสต์ from the row menu invalidates the cached detail of that document', async () => {
+    apiPost.mockResolvedValue({ data: {} });
+    mount();
+    const spy = vi.spyOn(queryClient, 'invalidateQueries');
+    await userEvent.click(await screen.findByRole('button', { name: 'เมนู EX-001' }));
+    await userEvent.click(await screen.findByRole('menuitem', { name: 'โพสต์' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'ยืนยัน' }));
+    await waitFor(() => expect(apiPost).toHaveBeenCalledWith('/expense-documents/expense-1/post', {}));
+    await waitFor(() => {
+      const keys = spy.mock.calls.map(([f]) => JSON.stringify((f as { queryKey: unknown[] }).queryKey));
+      expect(keys).toEqual(
+        expect.arrayContaining([
+          JSON.stringify(['expense-document', 'expense-1']),
+          JSON.stringify(['expense-doc-edit', 'expense-1']),
+          JSON.stringify(['expense-doc-voucher', 'expense-1']),
+          JSON.stringify(['expenses']),
+        ]),
+      );
+    });
   });
 });

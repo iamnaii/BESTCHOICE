@@ -68,6 +68,21 @@ deletedAt DateTime?
 - **รหัสตอกบัตร** `users.attendance_pin_hash` unique (NULL ซ้ำได้) = `hashPII(pin, PII_HASH_SALT)` · ห้ามเก็บ/ log รหัสดิบ · ชน unique = สุ่มใหม่ (≤ 5 ครั้ง) · API ส่งออกเป็น `hasAttendancePin` เท่านั้น
 - รหัสผิด: `attendance_devices.pin_fail_count` เพิ่มด้วย `UPDATE … RETURNING` คำสั่งเดียว รีเซ็ตเมื่อ `pin_last_fail_at` เก่ากว่า 15 นาที · ล็อกด้วย `updateMany where pin_locked_until is null or ≤ now` (คำขอพร้อมกันได้เหตุการณ์ PIN_LOCKOUT เดียว) · รหัสลงทะเบียนอ้างสิทธิ์ด้วย `updateMany where used_at is null` (รหัสเดียวได้เครื่องเดียว)
 - token เครื่อง unique `(device_id, generation)` + `token_hash` unique · แคชคำตอบ unique `(device_id, request_id)` · `response_json` = `{status, body, consumedGeneration}` (**ไม่มี token ดิบ** — คำตอบที่หายได้ token ใหม่ด้วยการ re-key รุ่นที่ยังไม่ถูกใช้) — สองตารางนี้คือหลักฐานตอนตัดสินว่า token ถูกคัดลอก ห้ามลบประวัติ token · cron 03:30 ลบแคชคำตอบเก่ากว่า 1 วัน **ยกเว้นคำตอบของการหมุนครั้งล่าสุดของแต่ละเครื่อง** (`consumedGeneration = current_generation − 1`) — ไม่งั้นแท็บเล็ตที่ปิดไปหลายวันพร้อมคำตอบที่หายจะกู้ไม่ได้และถูกล็อก · หมุนรุ่นด้วย `updateMany where currentGeneration = N` (count 0 = แข่งกัน → 409 ไม่ใช่ล็อก)
+- **ลำดับล็อกของผู้เขียน `attendance_days` (D4 ส่วนที่ 1 · 2026-10-27)** — ทุกผู้เขียนต้องเรียงตามนี้ (ห้ามย้อน):
+  `payroll-attendance:${userId}:${period}` advisory (เรียง `userId`; ผ่าน `lockAttendancePairs` ใน `attendance-payroll-lock.ts`) → แถวเครื่อง `attendance_devices FOR UPDATE` → แถววัน `attendance_days FOR UPDATE` เรียง `(user_id, work_date)`.
+  ฝั่งเงินเดือนก่อนหน้านั้น: `post:${docId}` → `payroll:${branchId}:${period}:${scope}` → `payroll-attendance:*` (เรียง). **กติกาผู้เขียนใหม่: ห้ามขอ advisory `payroll-attendance:*` หลังถือล็อกแถววันแล้ว** (ย้อนลำดับ ⇒ deadlock กับด่านลงบัญชี).
+  | ผู้เขียน (path) | ล็อกตามลำดับ |
+  |---|---|
+  | `AttendanceService.correctDay` (`attendance.service.ts`) | advisory `payroll-attendance:*` → แถววัน FOR UPDATE → อ่านแถวใหม่ → อ่านกติกาผ่าน `tx` → `assertNotPaid` → เขียน + `AttendanceCorrection` |
+  | `AttendanceService.setDayKinds` | advisory (เรียง) → `createMany skipDuplicates` แถว placeholder (dayKind เป้าหมาย) → FOR UPDATE ทุกคีย์เรียง `(user_id, work_date)` → ตรวจ clock-in ใหม่ → `assertNotPaid` → update |
+  | `KioskPunchService` (`kiosk-punch.service.ts`) | แถวเครื่อง FOR UPDATE → แถววัน FOR UPDATE → อ่านซ้ำ + วางแผนใหม่ + ตรวจเป้าหมาย OUT ซ้ำ (ไม่ตรง = 409 ให้ลองใหม่) · แถวใหม่ `create()` ใต้ `SAVEPOINT attendance_day_insert` กู้ `P2002` · **ไม่ถือ advisory เงินเดือน** (ตอกสดไม่ถูกล็อกตามกติกา D3) |
+  | `AttendanceDeviceService.lockForConflict` | แถวเครื่อง → แถววันเรียง `(user_id, work_date)` → ติดธง `DEVICE_CONFLICT` (แตะ `flags` อย่างเดียว) |
+  | `AttendanceService.clearConflictFlag` (OWNER) | แถววัน FOR UPDATE → อ่านใหม่ → เขียน `flags` ที่ตัด `DEVICE_CONFLICT` · **ไม่ล็อกเดือนที่จ่ายแล้ว** |
+  | ผู้อ่านฝั่งเงินเดือน (`PayrollSystemRowsService.compute`, ด่าน `assertPostable`) | advisory อย่างเดียว แล้วอ่านแถววันธรรมดา (ไม่ FOR UPDATE) |
+- **เดือนที่จ่ายแล้ว = แก้ลงเวลาไม่ได้**: `correctDay` / `setDayKinds` → 409 `ATTENDANCE_PAID` เมื่อ (คน, เดือน) มีบรรทัดในใบ PAYROLL `POSTED` ไม่ลบ (`findPaidPayroll`; VOIDED ปลดเอง) · ล้างธง `DEVICE_CONFLICT` ยังได้ (ธงไม่เปลี่ยนตัวเงิน) · ตอกบัตรสดไม่ล็อก.
+  ผู้เขียนใหม่ที่แก้เวลา/ประเภทวันต้องเรียก `lockAttendancePairs` แล้ว `assertNotPaid` เหมือนกัน.
+- **ยังเปิดอยู่** (รู้แล้ว ยังไม่แก้ — รายละเอียดใน `.claude/rules/accounting.md` หัวข้อ "OT จากระบบลงเวลา"): `setDayKinds` กับ `entries: []` ได้ 500 · cron ปิดวัน (`crons/attendance-close-day.cron.ts`) `create()` แถวขาดงานไม่ idempotent ข้าม 2 instance และ `updateMany` ไม่เรียงเทียบ `lockForConflict` ·
+  kiosk กับการลงบัญชีเงินเดือนจัดลำดับกันได้เพราะ `MAX_OPEN_SHIFT_HOURS` (18) = ชั่วโมงเวลาปิดงวด (18) · `clearConflictFlag` แยก `DEVICE_CONFLICT` ที่ดันเข้ามาหลังตรวจไม่ได้ (ต้องมี version token) · ด่านธงชนตอนลงบัญชีเป็น TOCTOU เทียบ `lockForConflict`.
 
 ## AuditLog — เขียนหลัง commit หรือใน tx (กติกาสำหรับ writer ใหม่)
 
